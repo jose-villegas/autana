@@ -1,0 +1,7 @@
+# Line endings and final newlines only; indentation for C is .clang-format's.
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+charset = utf-8
