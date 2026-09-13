@@ -90,6 +90,16 @@ static gfx_color_t* gather_buf;
 _Static_assert(GFX_WIDTH % 2 == 0 && GFX_HEIGHT % 2 == 0, "panel windows round to even edges");
 #define GATHER_WINDOW_MAX_PIXELS (GATHER_MAX_PIXELS + GFX_WIDTH + STRIP_HEIGHT + 1)
 
+/* Full-width sends copy out of the PSRAM framebuffer into internal DMA
+ * RAM first. SPI DMA reading PSRAM in place shares the PSRAM bus's
+ * bandwidth, and past 40 MHz QSPI the panel receives dropped data. Two
+ * slots are enough to keep strips queuing back to back: esp_lcd sends a
+ * window's address commands only after the previous transfer has drained,
+ * so once draw_bitmap() returns, the strip before it is off the bus. */
+#define STRIP_BOUNCE_SLOTS       2
+static gfx_color_t* strip_bounce[STRIP_BOUNCE_SLOTS];
+static int strip_bounce_next;
+
 static inline int
 even_floor(int v) {
     return v & ~1;
@@ -164,9 +174,8 @@ panel_bring_up_sh8601(void) {
 
     esp_lcd_panel_io_spi_config_t io_config = SH8601_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, on_strip_sent, NULL);
 
-    /* Defaults to 40 MHz, 17.6 ms frame, 94% bus-bound. See GFX_QSPI_HZ. */
+    /* See GFX_QSPI_HZ. */
     io_config.pclk_hz = GFX_QSPI_HZ;
-    io_config.flags.psram_dma_direct = 1; /* see BOARD_FRAMEBUFFER_CAPS */
     err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, &panel_io);
     if (err != ESP_OK) {
         return err;
@@ -204,7 +213,6 @@ panel_bring_up_co5300(void) {
 
     esp_lcd_panel_io_spi_config_t io_config = CO5300_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, on_strip_sent, NULL);
     io_config.pclk_hz = GFX_QSPI_HZ;
-    io_config.flags.psram_dma_direct = 1; /* see BOARD_FRAMEBUFFER_CAPS */
     err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, &panel_io);
     if (err != ESP_OK) {
         return err;
@@ -274,13 +282,10 @@ gfx_init(void) {
              (unsigned)heap_caps_get_largest_free_block(BOARD_FRAMEBUFFER_CAPS));
 #endif
 
-    /* BOARD_FRAMEBUFFER_CAPS names which pool this board's framebuffer
-     * comes from - internal DMA-capable RAM on a board with no PSRAM,
-     * PSRAM once it is on, since that is bigger than the internal pool
-     * has room for. See board.h's own comment on what a PSRAM framebuffer
-     * costs a full-strip send. */
+    /* PSRAM: the internal pool has no room for it. It never goes to the
+     * panel directly - see strip_bounce. */
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-    fb = heap_caps_aligned_alloc(BOARD_FRAMEBUFFER_ALIGN, bytes, BOARD_FRAMEBUFFER_CAPS);
+    fb = heap_caps_malloc(bytes, BOARD_FRAMEBUFFER_CAPS);
     if (fb == NULL) {
         ESP_LOGE(TAG,
                  "Could not allocate %u byte framebuffer "
@@ -295,6 +300,15 @@ gfx_init(void) {
     if (gather_buf == NULL) {
         ESP_LOGE(TAG, "Could not allocate %u byte gather buffer", (unsigned)gather_bytes);
         return false;
+    }
+
+    const size_t strip_bytes = (size_t)GFX_WIDTH * STRIP_HEIGHT * sizeof(gfx_color_t);
+    for (int i = 0; i < STRIP_BOUNCE_SLOTS; i++) {
+        strip_bounce[i] = heap_caps_malloc(strip_bytes, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+        if (strip_bounce[i] == NULL) {
+            ESP_LOGE(TAG, "Could not allocate %u byte strip buffer", (unsigned)strip_bytes);
+            return false;
+        }
     }
 
     gfx_clear_clip();
@@ -1306,6 +1320,16 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
     xSemaphoreTake(strip_sent, portMAX_DELAY);
 }
 
+/* Queues framebuffer rows [y0, y1) through the next strip_bounce slot. At
+ * most STRIP_HEIGHT rows. */
+static void
+send_fb_rows(int y0, int y1) {
+    gfx_color_t* const slot = strip_bounce[strip_bounce_next];
+    strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
+    memcpy(slot, fb + (size_t)y0 * GFX_WIDTH, (size_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t));
+    esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, slot);
+}
+
 static void
 send_full_row(int row, int* queued) {
     const int y = row * STRIP_HEIGHT;
@@ -1345,7 +1369,7 @@ send_full_row(int row, int* queued) {
             mark_rect_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
         }
 
-        esp_lcd_panel_draw_bitmap(panel, 0, y, GFX_WIDTH, y + STRIP_HEIGHT, fb + (size_t)y * GFX_WIDTH);
+        send_fb_rows(y, y + STRIP_HEIGHT);
         xSemaphoreTake(strip_sent, portMAX_DELAY);
 
         /* Restore in the reverse order of saving. */
@@ -1364,7 +1388,7 @@ send_full_row(int row, int* queued) {
     }
 #endif
 
-    esp_lcd_panel_draw_bitmap(panel, 0, y, GFX_WIDTH, y + STRIP_HEIGHT, fb + (size_t)y * GFX_WIDTH);
+    send_fb_rows(y, y + STRIP_HEIGHT);
     (*queued)++;
 }
 
@@ -1384,7 +1408,7 @@ send_partial_band(int y0, int y1, int* queued) {
 #endif
     y0 = even_floor(y0);
     y1 = even_ceil(y1);
-    esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, fb + (size_t)y0 * GFX_WIDTH);
+    send_fb_rows(y0, y1);
     (*queued)++;
     return true;
 }
@@ -1509,11 +1533,15 @@ gfx_present(void) {
 #endif /* ESP_PLATFORM - the presentation pipeline */
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-/* Bypasses gfx_present() for raw QSPI. SPI driver splits into chunks, one
- * strip_sent means full frame. */
+/* Bypasses gfx_present()'s dirty tracking: every strip through the same
+ * bounce copy and queue a full-band send takes, one strip_sent per strip. */
 void
 gfx_present_raw_full_frame_for_test(void) {
-    esp_lcd_panel_draw_bitmap(panel, 0, 0, GFX_WIDTH, GFX_HEIGHT, fb);
-    xSemaphoreTake(strip_sent, portMAX_DELAY);
+    for (int row = 0; row < STRIP_COUNT; row++) {
+        send_fb_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT);
+    }
+    for (int row = 0; row < STRIP_COUNT; row++) {
+        xSemaphoreTake(strip_sent, portMAX_DELAY);
+    }
 }
 #endif

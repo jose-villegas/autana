@@ -26,7 +26,7 @@ reset lines on the (optional) IO expander.
 That is not a preference. The BSP holds `panel_handle` and `io_handle` as
 private statics and offers no way to reach the init sequence at all — owning
 bring-up is what lets `gfx.c` set its own QSPI clock (`GFX_QSPI_HZ`), the
-`psram_dma_direct` flag and Waveshare-tuned init commands rather than the
+transfer queue that strip_bounce relies on, and Waveshare-tuned init commands rather than the
 BSP's defaults.
 
 Owning bring-up costs one thing: Waveshare's `sh8601_lcd_init_cmds` array is a
