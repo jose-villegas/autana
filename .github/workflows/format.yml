@@ -48,3 +48,21 @@ jobs:
       # generated sources are excluded by it, not by this workflow.
       - name: Every first-party C and header file is formatted
         run: scripts/format-file-list.sh | xargs scripts/check-format.sh --check
+
+  line-endings:
+    name: LF line endings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reads the index, not the checkout, so a CRLF file fails here whatever
+      # .gitattributes or the runner's git config would do to it on disk.
+      - name: No text file is stored with CRLF
+        run: |
+          set -eu
+          crlf=$(git ls-files --eol | awk '$1 ~ /crlf|mixed/ {print $NF}')
+          if [ -n "$crlf" ]; then
+            echo "Stored with CRLF - run: git add --renormalize ."
+            echo "$crlf"
+            exit 1
+          fi
