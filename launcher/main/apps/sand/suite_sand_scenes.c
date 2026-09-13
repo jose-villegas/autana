@@ -2957,7 +2957,7 @@ test_the_landscape_water_pour_keeps_taking_the_board_awake(void) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(asleep_before / 2, awake_at_close, why);
 }
 
-/* Equivalence for sand_step_reactions()'s soak-only skip (bd autana-8r1):
+/* Equivalence for sand_step_reactions()'s soak-only skip:
  * runs this same water-onto-sand-bed pour twice, once forcing the reference
  * full walk and once at the shipped default, comparing grids after every
  * step rather than only the settled end state - a divergence mid-fall

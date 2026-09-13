@@ -125,7 +125,7 @@ liquid_near_cell_bound(const sand_t* s) {
     return total;
 }
 
-/* THE REGRESSION (bd autana-8r1): MAT_SAND soaks, so this scene - a stone
+/* THE REGRESSION: MAT_SAND soaks, so this scene - a stone
  * wall keeps its sand and water apart - still walked its full grid every
  * step. sand_step_reactions()'s soak-only skip walks only BLOCK_LIQUID_NEAR
  * blocks instead - see its own soak_only comment.
