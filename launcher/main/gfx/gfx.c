@@ -12,6 +12,7 @@
 #include "driver/spi_master.h"
 #include "esp_check.h"
 #include "esp_heap_caps.h"
+#include "esp_lcd_co5300.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_sh8601.h"
@@ -19,9 +20,6 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-#if CONFIG_IDF_TARGET_ESP32S3
-#include "esp_lcd_co5300.h"
-#endif
 #endif
 
 /* Carries GFX_DIRTY_WIDTH/HEIGHT for ESP-IDF independence and aligns with
@@ -38,16 +36,13 @@ static gfx_color_t* fb;
 #ifdef ESP_PLATFORM
 static esp_lcd_panel_handle_t panel;
 static esp_lcd_panel_io_handle_t panel_io;
-static bool spi_bus_up;
 static SemaphoreHandle_t strip_sent;
 
 /* Copied from the Waveshare BSP (Apache-2.0, (c) 2026 Waveshare Team),
  * where it is a private static - needed here because gfx brings the
- * panel up itself rather than calling bsp_display_new(): the BSP offers
- * no way to release the display, and releasing it is the only way to
- * reach the SD card (shared SPI2, only one bus owner at a time), which
- * is what makes gfx_suspend()/gfx_resume() possible. Command 0x11 (sleep
- * out) carries a 120 ms settle, dominating a full re-init's cost. */
+ * panel up itself rather than calling bsp_display_new(), which offers no
+ * way to reach the init sequence at all. Command 0x11 (sleep out) carries
+ * a 120 ms settle, dominating a full init's cost. */
 static const sh8601_lcd_init_cmd_t lcd_init_cmds[] = {
     {0x11, (uint8_t[]){0x00}, 0, 120},
     {0x44, (uint8_t[]){0x01, 0xD1}, 2, 0},
@@ -60,9 +55,8 @@ static const sh8601_lcd_init_cmd_t lcd_init_cmds[] = {
     {0x51, (uint8_t[]){0xFF}, 1, 0},
 };
 
-#if CONFIG_IDF_TARGET_ESP32S3
-/* The S3's V2 revision (CO5300 panel). From Waveshare's own esp-idf
- * colour-bar example for this board. */
+/* The V2 revision (CO5300 panel). From Waveshare's own esp-idf colour-bar
+ * example for this board. */
 static const co5300_lcd_init_cmd_t co5300_init_cmds[] = {
     {0xFE, (uint8_t[]){0x00}, 1, 0},
     {0xC4, (uint8_t[]){0x80}, 1, 0},
@@ -76,7 +70,6 @@ static const co5300_lcd_init_cmd_t co5300_init_cmds[] = {
     {0x11, NULL, 0, 100},
     {0x29, NULL, 0, 0},
 };
-#endif
 #endif
 
 /* Current clip rectangle, as inclusive-exclusive bounds. */
@@ -92,8 +85,8 @@ static gfx_color_t* gather_buf;
 
 /*
  * Panel plumbing - device-only. A host build never brings a panel up or
- * presents to one; see gfx_init()/gfx_suspend()/gfx_resume()/gfx_present()
- * below for the host side of each.
+ * presents to one; see gfx_init()/gfx_present() below for the host side of
+ * each.
  */
 
 #ifdef ESP_PLATFORM
@@ -122,7 +115,6 @@ qspi_bus_up(void) {
         ESP_LOGE(TAG, "spi_bus_initialize failed: %s", esp_err_to_name(err));
         return err;
     }
-    spi_bus_up = true;
 
 #if defined(CONFIG_LAUNCHER_GFX_QSPI_STRONG_PADS) && CONFIG_LAUNCHER_GFX_QSPI_STRONG_PADS
     /* AFTER spi_bus_initialize(), which is what configures these pads - set
@@ -144,11 +136,9 @@ qspi_bus_up(void) {
     return ESP_OK;
 }
 
-/* SH8601 panel - both the C6 and the S3's original (pre-V2) revision.
- * `send_init` chooses full init or re-attach, skipping the command
- * sequence to avoid its 120 ms wait. */
+/* SH8601 panel - the original (pre-V2) revision. */
 static esp_err_t
-panel_bring_up_sh8601(bool send_init) {
+panel_bring_up_sh8601(void) {
     esp_err_t err = qspi_bus_up();
     if (err != ESP_OK) {
         return err;
@@ -180,18 +170,15 @@ panel_bring_up_sh8601(bool send_init) {
         return err;
     }
 
-    if (send_init) {
-        ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), TAG, "reset");
-        ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "init");
-        ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "on");
-    }
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), TAG, "reset");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "init");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "on");
     return ESP_OK;
 }
 
-#if CONFIG_IDF_TARGET_ESP32S3
-/* CO5300 panel - the S3's V2 revision only. */
+/* CO5300 panel - the V2 revision only. */
 static esp_err_t
-panel_bring_up_co5300(bool send_init) {
+panel_bring_up_co5300(void) {
     esp_err_t err = qspi_bus_up();
     if (err != ESP_OK) {
         return err;
@@ -221,68 +208,23 @@ panel_bring_up_co5300(bool send_init) {
         return err;
     }
 
-    if (send_init) {
-        ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), TAG, "reset");
-        ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "init");
-        ESP_RETURN_ON_ERROR(esp_lcd_panel_set_gap(panel, BOARD_PANEL_X_GAP, 0), TAG, "gap");
-        ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "on");
-    }
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), TAG, "reset");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "init");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_set_gap(panel, BOARD_PANEL_X_GAP, 0), TAG, "gap");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "on");
     return ESP_OK;
 }
-#endif
 
-/* Picks the driver the detected board revision actually needs. On the C6
- * this always resolves to the SH8601 path - see board_variant_t. */
+/* Picks the driver the detected board revision actually needs - see
+ * board_variant_t. */
 static esp_err_t
-panel_bring_up(bool send_init) {
-#if CONFIG_IDF_TARGET_ESP32S3
+panel_bring_up(void) {
     if (board_variant() == BOARD_VARIANT_CO5300_CST) {
-        return panel_bring_up_co5300(send_init);
+        return panel_bring_up_co5300();
     }
-#endif
-    return panel_bring_up_sh8601(send_init);
-}
-
-/* Releases SPI2 for other use. Framebuffer is ordinary RAM, not bus-related. */
-static void
-panel_tear_down(void) {
-    if (panel != NULL) {
-        esp_lcd_panel_del(panel);
-        panel = NULL;
-    }
-    if (panel_io != NULL) {
-        esp_lcd_panel_io_del(panel_io);
-        panel_io = NULL;
-    }
-    if (spi_bus_up) {
-        spi_bus_free(BSP_LCD_SPI_NUM);
-        spi_bus_up = false;
-    }
+    return panel_bring_up_sh8601();
 }
 #endif /* ESP_PLATFORM - panel plumbing */
-
-bool
-gfx_suspend(void) {
-#ifdef ESP_PLATFORM
-    panel_tear_down();
-#endif
-    return true;
-}
-
-bool
-gfx_resume(bool full_init) {
-#ifdef ESP_PLATFORM
-    /* GRAM unknown after re-init; assume screen cleared. One frame after
-     * resume. */
-    if (full_init) {
-        gfx_mark_all_dirty();
-    }
-    return panel_bring_up(full_init) == ESP_OK;
-#else
-    (void)full_init;
-    return true;
-#endif
-}
 
 bool
 gfx_init(void) {
@@ -301,7 +243,7 @@ gfx_init(void) {
         return false;
     }
 
-    if (panel_bring_up(true) != ESP_OK) {
+    if (panel_bring_up() != ESP_OK) {
         ESP_LOGE(TAG, "Could not start the display");
         return false;
     }

@@ -1,6 +1,6 @@
 # Platform Notes
 
-Working notes for the Waveshare ESP32-C6-Touch-AMOLED-1.8. Everything here was
+Working notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8. Everything here was
 verified on the actual board or read out of the actual source — nothing is
 copied from a spec sheet unless it is marked as such. Numbers come from boot
 logs and `esp_timer` measurements taken in this repo.
@@ -12,8 +12,8 @@ the falling-sand app's own discovery narrative, moved out to
 [`../sand/`](../sand/) once that folder existed to hold it properly:
 
 - **[Board-and-Memory.md](Board-and-Memory.md)** — the board's hardware
-  inventory, the memory budget with no PSRAM, and the SPI2/SD-card
-  time-multiplexing story.
+  inventory, the memory budget built around the framebuffer living in
+  PSRAM, and why the SD card and the display no longer contend for a bus.
 - **[Display-and-Rendering.md](Display-and-Rendering.md)** — owning the
   panel directly, the QSPI clock history (including why 80 MHz is not
   usable and why an intermediate clock does not exist), and the

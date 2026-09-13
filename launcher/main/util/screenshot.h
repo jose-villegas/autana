@@ -5,7 +5,7 @@
  * clock - see screenshot_dump()'s own comment for the full list).
  *
  * There is no other channel off this board: no SD-card-as-USB-drive, no
- * second data port - only the console, which on this board is the ESP32-C6's
+ * second data port - only the console, which on this board is the ESP32-S3's
  * native USB-Serial/JTAG peripheral (see sdkconfig.defaults' own comment on
  * why - the single USB-C port is wired to that, not to UART0) already
  * carrying boot logs and idf_monitor's output (see boot/post.c's SD-card

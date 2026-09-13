@@ -119,7 +119,7 @@ sustains. It runs the portable suites only.
 **The device run is the guarantee.** It runs *every* registered suite, including
 the portable ones. That is deliberate: passing on a laptop only proves the logic is
 right on x86, whereas running on-target proves the same source behaves
-identically built by the RISC-V toolchain and executed on this chip.
+identically built by the Xtensa toolchain and executed on this chip.
 
 ### The host runner enforces two of the device's limits
 
@@ -147,27 +147,22 @@ build-flash-capture cycle to find — twice over, for both:
   starves every later test in the same boot.
 
 Both numbers come from `launcher/tools/device_profiles/<chip>.sh`, selected
-by `$DEVICE_PROFILE` (default `esp32c6`), each carrying its own provenance.
+by `$DEVICE_PROFILE` (default `esp32s3`), each carrying its own provenance.
 
-A third limit lives outside the host runner entirely, because neither a
-host malloc nor a host stack frame can see it: DIRAM is one pool behind
-`.data`/`.bss` *and* the heap, so the framebuffer and then a real-size sand
-grid need one contiguous block each, carved out of whatever the linker
-left. `launcher/tools/check_static_ram.py` predicts — arithmetic on the map
-file, not a reproduction — whether both still fit, and runs as a
-`POST_BUILD` step on every `idf.py build` (release, dev, diag alike), so a
-build that would not have booted fails on a laptop instead. Two of its
-constants are calibrated from a real boot capture rather than derived: the
-overhead before the framebuffer lands (task stacks, drivers, the SD probe),
-and everything else — every allocation from boot through a fully-up shell,
-plus a ~11 KiB region that heap_init hands back separately and can never
-serve a large allocation. Neither of these is "fragmentation" — a device
-heap block map measured that directly, at 12 bytes — they are simply
-pegged at the moment the sand grid's allocation actually has to compete,
-shell-ready, because that is when the app opens it, not at `gfx_init()`
-time. See the script's header comment for the exact log lines each
-constant was pegged to, and re-peg them from a fresh boot if boot-time
-allocations change.
+A third kind of limit — internal-heap contiguity for a large allocation like
+the sand grid — lives outside the host runner entirely, because neither a
+host malloc nor a host stack frame can see it. On this board the framebuffer
+itself is no longer part of that question: it lives in PSRAM
+(`BOARD_FRAMEBUFFER_CAPS = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT`), not
+internal DRAM, so it no longer competes with the sand grid or anything else
+for internal-heap contiguity the way it would on a board without PSRAM.
+There is no automated build-time gate for the remaining internal-heap
+question any more — the build-time predictor this project once had
+(`launcher/tools/check_static_ram.py`) was written for a board where the
+framebuffer *did* live in internal DRAM, and was retired along with that
+constraint; nothing has replaced it. Watching internal-heap headroom (the
+measured free-heap figure in a device profile, and `HEAPMARK` boot lines on
+a dev build) is a manual habit now, not an enforced one.
 Nothing hardcodes a chip's constants, so a second board is a new profile
 rather than an edit everywhere; a profile field that has never been
 measured is the literal `unmeasured`, and both loaders refuse to hand one
@@ -199,8 +194,8 @@ test suites at all.
 Verified rather than assumed, by counting symbols in the two images:
 
 ```sh
-riscv32-esp-elf-nm build/launcher.elf      | grep -ci 'unity\|suite_\|selftest\|app_diagnostics'   # 0
-riscv32-esp-elf-nm build.diag/launcher.elf | grep -ci 'unity\|suite_\|selftest\|app_diagnostics'   # 39
+xtensa-esp32s3-elf-nm build/launcher.elf      | grep -ci 'unity\|suite_\|selftest\|app_diagnostics'   # 0
+xtensa-esp32s3-elf-nm build.diag/launcher.elf | grep -ci 'unity\|suite_\|selftest\|app_diagnostics'   # 39
 ```
 
 `build/launcher.elf` is still release, so this check is unaffected by
@@ -216,7 +211,8 @@ the panel, which is fine in diagnostics and unacceptable in a product; and test
 hooks in a shipped image are a liability rather than a feature.
 
 The **Diagnostics app** is a bench tool: entering it re-runs POST, which
-cycles the audio power rail and drops the display off SPI2 mid-session.
+cycles the audio power rail and re-mounts the SD card live (both while the
+display keeps running undisturbed, since neither shares its bus).
 Reasonable while debugging, not something to leave reachable in a shipped
 product — hence DEVELOPMENT, not left ungated. The boot POST still runs in
 release — only this way *in* is compiled out. The self-test *runner* inside
@@ -230,11 +226,14 @@ under `CONFIG_LAUNCHER_SELFTEST` — see `main/CMakeLists.txt`).
 
 A diagnostics build compiles **every** suite: 48 of them, 952 timed tests,
 7m 23s of device run. Perf-scoped that is 3 suites, 39 tests, 2m 19s. A sand performance capture reads a dozen rows of that
-and pays for all of it — in run time, in build time, and in static RAM, where
-the suites' own `.bss` had left `tools/check_static_ram.py`'s "one grid fits
-after POST" gate 64 bytes of headroom. One added decomposition row costs 272
-bytes and fails the build outright, so a round could no longer instrument
-itself.
+and pays for all of it — in run time, in build time, and in static RAM. On a
+board where the framebuffer lived in the same internal-DRAM pool as `.bss`,
+this once cost a round its ability to instrument itself outright — the
+suites' own `.bss` had left the (since-retired) build-time predictor's "one
+grid fits after POST" gate 64 bytes of headroom, and one added decomposition
+row costing 272 bytes failed the build. On this board the framebuffer lives
+in PSRAM instead, so that specific failure mode no longer applies, but every
+suite added still costs real `.bss` and run time regardless.
 
 `CONFIG_LAUNCHER_SELFTEST` says whether the suites are compiled in;
 `CONFIG_LAUNCHER_SELFTEST_SCOPE_*` says **which**. Excluding a suite removes
@@ -393,8 +392,9 @@ so a production rig can grep it.
 Keep it non-destructive. Anything that changes device state or takes real time
 belongs in a suite, not here, because this runs on every boot of every unit.
 
-It runs in two phases, because the SD card and the display cannot both hold
-SPI2. The card is tested *before* `gfx_init()` takes the bus, which makes it a
+It runs in two phases: the SD card is tested *before* `gfx_init()` brings the
+display up, purely as an ordering convenience (the card sits on its own
+independent SDMMC bus and never contends with the display), which makes it a
 real mount rather than an assumption, with nothing to tear down afterwards. An
 absent card is optional, not a failure. The audio codec needs its power-amp
 rail raised before it will answer, so POST raises it, probes, and lowers it
@@ -597,31 +597,28 @@ against.
    its performance checks (`suite_sand_perf.c`) only on the chip.
 5. **Keep big fixtures off `.bss`.** A suite's file-scope objects are
    firmware static data in a diagnostics build, charged against the same
-   budget as everything else - and that budget is tight enough to fail on
-   one careless object. A microui context added to a suite this way cost
-   10,744 bytes and broke `check_static_ram.py`'s "one grid fits" gate
-   outright. Neither the host runner (a laptop's memory behind it) nor a
-   release build (which links no suites) can see it. Allocate anything
-   large in `fixture()` instead, as `suite_sand_liquid_depth.c` already
-   does, and run `tools/build_diag_check.sh` before pushing rather than
-   finding out from a pull request.
+   internal-heap budget as everything else in that build. A microui context
+   added to a suite this way once cost 10,744 bytes of `.bss` on its own.
+   Neither the host runner (a laptop's memory behind it) nor a release build
+   (which links no suites) can see it. Allocate anything large in
+   `fixture()` instead, as `suite_sand_liquid_depth.c` already does, and run
+   `tools/build_diag_check.sh` before pushing rather than finding out from a
+   pull request — there is no automated gate on this any more (see "A
+   diagnostics build can be scoped" above), so the check is `idf.py -B
+   build.diag size` read by eye, not a pass/fail script.
 
-   Two traps make a local measurement lie, and both cost a day in
-   September 2026. First, **`check_static_ram.py
-   --self-test` is not the gate** — it exercises the script's own parser
-   and arithmetic against a synthetic map, and passes on a tree the real
-   gate rejects. The gate runs inside `idf.py build`. Second, **a local
-   `build.diag` keeps whatever scope it was last configured with**: a
-   leftover `CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF=y` compiles the perf
-   suite alone, which measured 22,216 bytes of `.bss` against full
-   scope's 28,960 — a comfortable-looking 48,944 bytes of headroom
-   instead of the real 41,648. CI always generates a fresh config and so
-   always sees full scope. The sequence that answers the real question
-   is:
+   One trap makes a local measurement lie: **a local `build.diag` keeps
+   whatever scope it was last configured with**. A leftover
+   `CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF=y` compiles the perf suite alone,
+   which once measured 22,216 bytes of `.bss` against full scope's 28,960 —
+   a comfortably wrong number if you believed it was the full-scope figure.
+   CI always generates a fresh config and so always sees full scope. The
+   sequence that answers the real question is:
 
    ```sh
    rm -f launcher/build.diag/sdkconfig
-   ./launcher/tools/build_diag_check.sh   # read "predicted largest after POST"
+   ./launcher/tools/build_diag_check.sh
+   idf.py -B launcher/build.diag size            # read the real .bss total
    ```
 6. **Stick to ISO C in a suite.** The host runner compiles with
    `-std=c11`, which on glibc hides everything POSIX-only behind

@@ -1,6 +1,6 @@
 # Board and Memory
 
-Part of the platform notes for the Waveshare ESP32-C6-Touch-AMOLED-1.8 - see
+Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 - see
 [`README.md`](README.md) for the full set. Everything here was verified on the
 actual board or read out of the actual source - nothing is copied from a spec
 sheet unless it is marked as such. Numbers come from boot logs and
@@ -16,12 +16,13 @@ Reported by the BSP at boot rather than assumed:
 
 | Property | Value |
 |---|---|
-| Variant | **V1** — SH8601 display + FT5x06 touch |
+| Chip | ESP32-S3R8, dual-core Xtensa LX7 @ 240 MHz, single-precision FPU |
+| Variant | auto-detected: **original** (SH8601 + FT3168) or **V2** (CO5300 + CST820) |
 | Display | 368 × 448, QSPI, RGB565 |
-| Touch / peripheral I2C | port 0, SDA GPIO 8, SCL GPIO 7 |
+| Touch / peripheral I2C | port 0, SDA GPIO 15, SCL GPIO 14 |
 | Flash | 16 MB |
-| PSRAM | **none** |
-| CPU | single core @ 160 MHz (`SOC_CPU_CORES_NUM 1`) |
+| PSRAM | 8 MB octal, 80 MHz |
+| CPU | dual-core, `SOC_CPU_CORES_NUM 2` |
 
 ### Hardware inventory
 
@@ -31,109 +32,117 @@ the firmware probes each of these at boot and prints exactly this table — see
 
 | Peripheral | Part | Where | Notes |
 |---|---|---|---|
-| Display | SH8601 (V1) / CO5300 (V2) | QSPI, pins 0–5 | 368×448 RGB565, 40 MHz |
-| Touch | FT5x06 (V1) / CST820 (V2) | I2C `0x38` / `0x15` | which address answers identifies the board revision |
-| IO expander | TCA9554 | I2C `0x20` | drives display and touch reset lines |
+| Display | SH8601 (original) / CO5300 (V2) | QSPI on SPI2 | 368×448 RGB565, 40 MHz |
+| Touch | FT3168 (original) / CST820 (V2) | I2C `0x38` / `0x15` | which address answers identifies the board revision |
+| IO expander | TCA9554 | I2C `0x20` | optional on this board; pulses the display/touch reset lines when fitted, skipped rather than faulted when absent |
 | Power management | AXP2101 | I2C `0x34` | battery charging; the PWR button goes through it |
-| IMU | QMI8658 | I2C `0x6b` | accelerometer + gyroscope; driver in `launcher/main/input/imu.c`, axes in [Input-and-Sensors.md](Input-and-Sensors.md) |
+| IMU | QMI8658 | I2C `0x6B` | accelerometer + gyroscope; driver in `launcher/main/input/imu.c`, axes in [Input-and-Sensors.md](Input-and-Sensors.md) |
 | Real-time clock | PCF85063 | I2C `0x51` | |
-| Audio codec | ES8311 | I2C, I2S pins 19–23 | speaker + mic; amp enable on expander pin 7 |
-| microSD | — | SPI2, pins 6/10/11/18 | shares SPI2 with the display; see [time-multiplexing](#time-multiplexing-the-bus--the-actual-workaround) |
+| Audio codec | ES8311 | I2C `0x18` | speaker + mic; amp enabled via a direct GPIO (46), not an IO-expander pin |
+| microSD | — | native SDMMC, 1-bit, its own dedicated pins | fully independent of the display bus — see [SD card](#sd-card--fully-independent-of-the-display) |
 | Flash | — | SPI0/1 | 16 MB, memory-mapped, never contended |
-| PSRAM | — | — | **none** — the constraint behind most decisions here |
-| Wi-Fi 6 / BLE 5 / 802.15.4 | on-die | — | radios present; Thread and Zigbee capable |
-| BOOT button | — | GPIO 9, pull-up | active low, bounces; also the flashing button |
+| PSRAM | — | SPI0/1, octal | 8 MB — the framebuffer lives here, see [Memory](#memory--the-constraint-that-shapes-everything) |
+| Wi-Fi 4 / BLE 5 | on-die | — | radios present |
+| BOOT button | — | GPIO 0, pull-up | active low, bounces; also the flashing button |
 | PWR button | via AXP2101 | I2C `0x34` | not wired to the SoC at all — see [Input-and-Sensors.md](Input-and-Sensors.md) |
-| Temperature sensor | on-die | — | reads ~31 °C idle |
+| Temperature sensor | on-die | — | |
 
-All the I2C parts share one bus (port 0, SDA 8, SCL 7), so a single probe per
+All the I2C parts share one bus (port 0, SDA 15, SCL 14), so a single probe per
 address establishes whether each is addressable. That is the cheapest possible
 health check and what the POST is built on.
 
-Both awkward peripherals are genuinely tested rather than assumed:
+The two peripherals worth calling out are genuinely tested rather than assumed:
 
-- **SD card** — at boot, probed *before* `gfx_init()`, in the window where SPI2
-  is still free. A re-run instead suspends the display and takes the bus, which
-  costs under a millisecond. Either way it is a real mount, not an assumption. An
-  absent card is reported as optional rather than failing the board. Doing this
-  after the display is up would mean dismantling a running panel.
-- **Audio codec** — the ES8311 sits behind the power-amp enable on the IO
-  expander, so POST raises that rail before probing (and lowers it again).
+- **SD card** — mounted and unmounted as a real POST probe before
+  `gfx_init()` brings the display up. Since the two now sit on entirely
+  separate buses (see below), the ordering is bookkeeping, not a bus-contention
+  requirement. An absent card is reported as optional rather than failing the
+  board.
+- **Audio codec** — the ES8311 sits behind a dedicated GPIO amplifier-enable
+  line (not an IO-expander pin, since the expander itself is optional on this
+  board), so POST raises that GPIO before probing (and lowers it again).
   Probing without it reports a working codec as missing. Note the datasheet
   address 0x30 is 8-bit; I2C wants the 7-bit `0x18`.
 
-There is a V2 of this board (CO5300 + CST820). The BSP auto-detects which one
-it is by probing the touch controller's I2C address — CST816S at `0x15` means
-V2, FT5x06 at `0x38` means V1. Always go through `bsp_board_detect()` rather
-than hardcoding a driver.
+The board has two hardware revisions, both supported by this one firmware
+build. `board_detect()` auto-detects which is fitted by probing the touch
+controller's I2C address — CST820 at `0x15` means **V2** (CO5300 panel),
+FT3168 at `0x38` means **original** (SH8601 panel). Always go through
+`board_detect()` rather than hardcoding a driver.
 
-Note the CO5300 (V2) needs an X-offset of `0x10` that the SH8601 (V1) does not.
-The BSP applies it via `esp_lcd_panel_set_gap()`, so code that drives the panel
-directly should not add its own.
+Note the CO5300 (V2) needs an X-offset of `0x10` that the SH8601 (original)
+does not. The panel bring-up applies it via `esp_lcd_panel_set_gap()`, so code
+that drives the panel directly should not add its own.
 
 ---
 
 ## Memory — the constraint that shapes everything
 
-There is no PSRAM. The entire budget is internal SRAM:
+8 MB of octal PSRAM (80 MHz, the fastest mode this die supports) changes what
+"the constraint" even means here compared to a board without it. The
+framebuffer (`BOARD_FRAMEBUFFER_CAPS = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT` in
+`board.h`, 64-byte aligned to the cache line) is allocated entirely in PSRAM
+and read in place by the panel's SPI DMA via the panel IO config's
+`psram_dma_direct` flag — there is no internal-DRAM bounce copy, and internal
+DRAM headroom is no longer shared with the framebuffer the way it would be on
+a PSRAM-less board.
 
-| Configuration | Free heap at startup |
-|---|---|
-| Raw panel access (`bsp_display_new`) | **~424 KiB** |
-| With LVGL started (`bsp_display_start`) | ~357 KiB |
+| Measurement | Value | Source |
+|---|---|---|
+| Internal (non-PSRAM) free heap after `gfx_init()` | **311,775 bytes** | `launcher/tools/device_profiles/esp32s3.sh`'s `DP_FREE_HEAP_BYTES`, device capture on the diagnostics build, 2026-09-13 |
 
-LVGL costs roughly **67 KiB** before you allocate anything of your own. If you
-are not using its widgets, `bsp_display_new()` gives you the panel without it.
+That figure already excludes the framebuffer, since the framebuffer no longer
+competes for it — it is the headroom left for everything else (task stacks,
+app state, the sand grid, test fixtures in non-release builds).
 
 ### What fits
 
 | Buffer | Size | Verdict |
 |---|---|---|
-| Full-screen RGB565 framebuffer | 322 KiB | fits, ~109 KiB left over |
-| Full-screen RGBA8 + float32 depth | ~1.3 MB | **3× more than the chip has** |
+| Full-screen RGB565 framebuffer | 322 KiB | lives in PSRAM, not counted against the internal heap above |
 | One 64-row RGB565 strip | 46 KiB | trivial |
+| Falling-sand grid (184×224) | 41,216 bytes | the largest single contiguous allocation of interest; unchanged by the port |
 
-The second row is why a conventional software rasterizer does not work here.
-`swrast` allocates colour *and* depth at 8 bytes/pixel and cannot be talked out
-of it. `small3dlib` avoids both costs — it owns no framebuffer (it hands each
-pixel to a callback) and with `S3L_Z_BUFFER 0` keeps no depth buffer, resolving
-visibility by sorting triangles back-to-front instead. That is what makes a
-real full-screen framebuffer affordable.
+`small3dlib` (the cube renderer) still owns no framebuffer of its own — it
+hands each pixel to a callback — and with `S3L_Z_BUFFER 0` keeps no depth
+buffer, resolving visibility by sorting triangles back-to-front instead of
+allocating a depth buffer. That choice no longer needs justifying on a memory
+basis the way it would on a PSRAM-less board, but the code is unchanged and
+the sorted-visibility caveat still holds: it is not pixel-exact — it cannot
+resolve intersecting geometry — but for convex solids it is correct.
 
-Sorted visibility is not pixel-exact — it cannot resolve intersecting geometry
-— but for convex solids it is correct.
+### Static growth still taxes the internal heap
 
-### Static growth taxes the heap too
-
-DIRAM is one unified pool behind `.text`, `.bss`, `.data` *and* the heap — a
-new file-scope `static` array anywhere in `main/` (not just the file you're
-editing) permanently reserves that space for the whole process lifetime,
-competing with every large device-only allocation, most sharply
-`app_sand.c`'s grid, which needs one 41,216-byte *contiguous* block on an
-already thin margin (see that allocation's own comment). This has caused two
-separate on-device OOM incidents so far, from unrelated files, in unrelated
+Internal DRAM is one unified pool behind `.text`, `.bss`, `.data` *and* the
+non-PSRAM heap — a new file-scope `static` array anywhere in `main/` (not
+just the file you're editing) permanently reserves that space for the whole
+process lifetime, competing with every other internal-heap allocation. This
+has caused on-device OOM incidents before, from unrelated files, in unrelated
 build variants — see [Optimization-Playbook.md](Optimization-Playbook.md)'s
 "Test and debug code shares your production memory budget" for the full
-story, the checklist for avoiding a third, and the "app exclusivity"
-convention: an app's own big buffers get malloc'd once and kept; anything
-optional (screenshots, debug overlays, future dev tooling) must be
-malloc'd-on-use and freed-after, never a permanent static, and must be
-checked with `idf.py -B build.dev size` / `build.diag size` — not just
-`build.release`, which does not even compile that code in. The build now
-refuses to link an image whose statics would leave no room for the
-framebuffer plus one grid, for exactly that reason — see
-`launcher/tools/check_static_ram.py`.
+story and the checklist for avoiding a repeat: an app's own big buffers get
+malloc'd once and kept; anything optional (screenshots, debug overlays,
+future dev tooling) must be malloc'd-on-use and freed-after, never a
+permanent static, and must be checked with `idf.py -B build.dev size` /
+`build.diag size` — not just `build.release`, which does not even compile
+that code in.
 
-A device heap trace on 2026-09-06 mapped the DMA-capable
-memory precisely: one main region of 404 KiB, plus a second, physically
-separate ~11 KiB region (the ROM-stack area, handed back by `heap_init` at
-startup) that is never contiguous with the main one and so can never serve a
-large allocation. Real fragmentation *inside* the main region, read straight
-off a heap block map, was 12 bytes — not the ~20 KiB once believed. `esp_get_
-free_heap_size()` sums both regions; `heap_caps_get_largest_free_block()`
-only ever reports from one. Reading them side by side, as POST used to,
-manufactures a gap that means nothing; free and largest must be read from
-the *same* `heap_caps_*(MALLOC_CAP_DMA)` pool before comparing them.
+There is no automated build-time gate for this any more: the framebuffer no
+longer lives in internal DRAM, so the old prediction of "does the framebuffer
+plus one grid still fit" no longer applies, and nothing has replaced it.
+Watching internal-heap headroom (the measured figure above, and `HEAPMARK`
+boot lines on a dev build) is a manual habit now, not an enforced one.
+
+Reading `esp_get_free_heap_size()` against
+`heap_caps_get_largest_free_block()` still invents a fragmentation gap that
+is not there if the two are read from different pools: `esp_get_free_heap_size()`
+sums a second, physically separate ~11 KiB DMA region (the ROM-stack area)
+that is never contiguous with the main heap, so comparing it against
+`heap_caps_get_largest_free_block()`'s single-region answer manufactures a
+gap that was never real (see `check_memory()` in `launcher/main/boot/post.c`,
+and [Optimization-Playbook.md](Optimization-Playbook.md) for the general
+lesson). Free and largest must be read from the *same*
+`heap_caps_*(MALLOC_CAP_DMA)` pool before comparing them.
 
 ### Task stacks are not the heap
 
@@ -173,128 +182,20 @@ Caveat: mapped reads go through the CPU cache. Sequential access is fast,
 random access thrashes. For texture sampling that argues for a tiled/swizzled
 layout rather than row-major — the same reason GPUs store textures tiled.
 
-### SD card — not while the display holds the bus
+### SD card — fully independent of the display
 
-The BSP refuses outright:
+The microSD slot is native 1-bit SDMMC (`esp_driver_sdmmc`) on its own
+dedicated pins, entirely separate from SPI2 and the QSPI lines the display
+uses. This is different from a board where the display and an SD card share
+one SPI bus: there is no bus to hand back and forth, no teardown/rebuild
+dance, and no frozen-frame window while the card is in use. `bsp_sdcard_mount()`
+and `bsp_sdcard_unmount()` can be called at any time regardless of whether the
+display is up.
 
-```c
-if (lcd_spi_initialized || panel_handle != NULL) {
-    ESP_LOGE(TAG, "Display and SD card cannot share SPI2 at the same time");
-    return ESP_ERR_INVALID_STATE;
-}
-```
-
-That guard is about *its* panel, though, not the hardware. `gfx.c` brings the
-panel up itself rather than calling `bsp_display_new()`, so those statics stay
-false and the guard never trips — which is what makes the time-multiplexing
-below possible. See [Display-and-Rendering.md](Display-and-Rendering.md)'s
-"Owning panel bring-up".
-
-**This is a board wiring decision, not a chip limitation** — worth being precise
-about, because sharing one SPI bus between a display and an SD card is
-completely standard and Espressif
-[documents it officially](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/sdspi_share.html).
-On boards that do it, the two devices sit on the *same wires* with separate CS
-lines and take turns microseconds apart, with no visible effect.
-
-It does not work here because they are wired to entirely separate pin sets:
-
-| | CS | CLK | Data |
-|---|---|---|---|
-| Display | 5 | 0 | 1, 2, 3, 4 (QSPI, 4 lanes @ 40 MHz) |
-| SD | 6 | 11 | MOSI 10, MISO 18 |
-
-Espressif's guide is explicit that all devices must share the same
-MOSI/MISO/SCLK pins. Combined with the C6 having exactly one general-purpose
-SPI controller (`SOC_SPI_PERIPH_NUM 2` = SPI1-flash + SPI2) and **no SDMMC host
-peripheral at all**, the two cannot run concurrently.
-
-```mermaid
-flowchart LR
-    subgraph chip["ESP32-C6"]
-        SPI0["SPI0/1<br/><i>flash only</i>"]
-        SPI2["SPI2<br/><b>the only general-purpose SPI</b>"]
-    end
-
-    SPI0 -->|"memory-mapped, always available"| FLASH["16 MB flash"]
-
-    SPI2 -.->|"pins 0-5 &nbsp;QSPI 40 MHz"| LCD["SH8601 AMOLED"]
-    SPI2 -.->|"pins 6,10,11,18 &nbsp;1-bit"| SD["microSD"]
-
-    LCD -.- X(("either<br/>or")) -.- SD
-```
-
-The dashed pair is the whole problem. One controller can be bound to one pin
-mapping at a time, and Waveshare wired the two devices to different pins — so
-switching devices means tearing down and re-initialising the bus, not just
-asserting a different chip select. On a board that shared the wires (the common
-case) both would work concurrently with no visible effect.
-
-Flash, by contrast, sits on its own controller and is never in contention,
-which is why it is the viable option for streaming data while rendering.
-
-Waveshare presumably chose this deliberately: hanging an SD card on the
-display's lines adds AC loading, which the same guide warns can prevent pins
-toggling fast enough to hold 40 MHz timing. Display bandwidth won.
-
-Multi-threading does not help. The obstacle is one peripheral that can only be
-bound to one pin mapping at a time — two tasks would just queue on a mutex
-around the same hardware.
-
-### Time-multiplexing the bus — the actual workaround
-
-Because the panel self-refreshes from GRAM, the MCU can stop talking to it and
-the picture persists. So during SD access the screen shows a **frozen frame,
-not black**.
-
-This is implemented and measured. `gfx_suspend()` releases the panel, the IO
-handle and the SPI bus; `gfx_resume(false)` rebuilds them *without* re-sending
-the panel init sequence, because the SH8601 keeps its registers while powered.
-The Diagnostics app does a full round trip on every entry.
-
-Measured on hardware, six consecutive runs, ±15 µs:
-
-| Step | Cost |
-|---|---|
-| `gfx_suspend()` — panel + IO + bus teardown | **318 µs** |
-| SD probe (no card — the failure path, which times out) | 26.7 ms |
-| `gfx_resume(false)` — rebuild, no init sequence | **605 µs** |
-| **Display round trip** (suspend + resume) | **~0.92 ms** |
-
-The earlier estimate of "single-digit milliseconds" was pessimistic by an order
-of magnitude. The display cost is **sub-millisecond** — under 4% of one 25 ms
-frame at 40 fps, small enough to disappear into a frame's slack.
-
-Skipping the init sequence is exactly why this is cheap, and the gap is far
-wider than the datasheet suggests. Measured by calling `gfx_resume(true)`
-instead:
-
-| | Cost |
-|---|---|
-| `gfx_resume(false)` — reattach only | **715 µs** |
-| `gfx_resume(true)` — full init sequence | **230 ms** |
-
-**321× more expensive.** The `0x11` sleep-out settle accounts for only 120 ms of
-that; the rest is the remaining commands' own delays plus QSPI transaction
-overhead. So pass `full_init = true` only if the panel actually lost power —
-`suite_gfx.c` has a regression test that fails if anyone reintroduces it.
-
-Note also what dominates: the SD layer, not the display, by a factor of thirty.
-So budget the *card* access, not the switch.
-
-| Use case | Verdict |
-|---|---|
-| Audio playback (128 kbps MP3 = 16 KB/s, 32 KB chunks → one switch per ~2 s) | comfortably viable |
-| Level / asset loading between scenes | viable |
-| Per-frame texture streaming | marginal — but the switch is not what makes it so |
-
-Two things the frozen frame does cost you: no animation and no touch feedback
-for the duration. Under a millisecond that is invisible; across a 27 ms card
-access it is one dropped frame.
-
-One ordering constraint if you build this: mount the SD **before** any other
-SPI traffic. Once a card enters SPI mode it stays there until power-cycled, and
-may otherwise respond randomly to bus activity.
+POST mounts the card once at boot (before `gfx_init()`, as a matter of
+ordering convenience, not necessity) and can remount it live to catch a card
+inserted or removed later — both are plain, independent SDMMC operations; see
+`launcher/main/boot/post.c`.
 
 ### SD capacity limits
 
@@ -305,8 +206,8 @@ ESP-IDF's bundled FatFs has `FF_FS_EXFAT 0` — exFAT is compiled out.
   (FAT32 + 32-bit LBA covers up to 2 TB)
 
 Two more gotchas: `CONFIG_FATFS_LFN_NONE=y` means **8.3 filenames only**
-(`TEXTURE.BIN` fine, `cube_texture_hi.bin` not), and SDSPI runs at
-`SDMMC_FREQ_DEFAULT` = 20 MHz over 1-bit SPI, so expect ~1–2 MB/s.
+(`TEXTURE.BIN` fine, `cube_texture_hi.bin` not), and the slot runs at
+`SDMMC_FREQ_DEFAULT` = 20 MHz over native 1-bit SDMMC, so expect ~1–2 MB/s.
 
 ---
 
@@ -314,6 +215,5 @@ Two more gotchas: `CONFIG_FATFS_LFN_NONE=y` means **8.3 filenames only**
 
 - [Display-and-Rendering.md](Display-and-Rendering.md) — panel bring-up and
   the rest of the SPI2 story, on top of these constraints.
-- [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md) — including the
-  `gfx_resume(true)` cost referenced above, exercised by the panel-recovery
-  path.
+- [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md) — the toolchain and
+  build-flag notes that affect the numbers referenced above.

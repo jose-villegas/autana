@@ -1,24 +1,33 @@
 # Display and Rendering
 
-Part of the platform notes for the Waveshare ESP32-C6-Touch-AMOLED-1.8 - see
+Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 - see
 [`README.md`](README.md) for the full set. Everything here was verified on the
 actual board or read out of the actual source. See
-[Board-and-Memory.md](Board-and-Memory.md) for the SPI2 wiring and
-time-multiplexing story this builds on.
+[Board-and-Memory.md](Board-and-Memory.md) for the SPI2 wiring this builds on.
+
+Most of the timing figures below were captured before this project's move to
+the ESP32-S3 and have not been re-measured on this board since. The
+bus-bandwidth-bound findings (the QSPI clock analysis, the 80 MHz panel
+corruption, the dirty-region send costs) are the most likely to still hold,
+since they are dictated by the QSPI clock and the panel rather than the CPU;
+anything CPU-bound (the cube's rasterize stage in particular) should be
+treated as unconfirmed on this board until re-measured. Numbers are kept
+because the reasoning that produced them still applies - re-verify before
+relying on any specific figure for a decision.
 
 ---
 
 ## Owning panel bring-up
 
 `gfx.c` does not call `bsp_display_new()`. It initialises SPI2, the panel IO and
-the SH8601 itself, keeping `bsp_board_detect()` only for variant detection and
-the reset lines on the IO expander.
+the panel itself, keeping `board_detect()` only for variant detection and the
+reset lines on the (optional) IO expander.
 
-That is not a preference. The BSP holds `panel_handle`, `io_handle` and
-`lcd_spi_initialized` as private statics and offers **no teardown** — they are
-cleaned up only on its own internal failure path. Since `bsp_sdcard_mount()`
-gates on exactly those, a BSP-owned display can never give the bus back, and
-the card becomes untestable the moment the screen comes up.
+That is not a preference. The BSP holds `panel_handle` and `io_handle` as
+private statics and offers no way to reach the init sequence at all — owning
+bring-up is what lets `gfx.c` set its own QSPI clock (`GFX_QSPI_HZ`), the
+`psram_dma_direct` flag and Waveshare-tuned init commands rather than the
+BSP's defaults.
 
 Owning bring-up costs one thing: Waveshare's `sh8601_lcd_init_cmds` array is a
 private static too. It is nine commands, Apache-2.0, and is copied into `gfx.c`
@@ -28,25 +37,13 @@ Waveshare tuned `0x44`/`0x53`/`0x51` for this panel.
 ```mermaid
 flowchart TB
     subgraph gfx["gfx.c owns the panel"]
-        BD["bsp_board_detect()<br/><i>variant, I2C, reset lines</i>"]
-        BU["panel_bring_up(send_init)"]
-        TD["panel_tear_down()"]
+        BD["board_detect()<br/><i>variant, I2C, reset lines</i>"]
+        BU["panel_bring_up()"]
     end
 
     BD --> BU
-    BU -->|"spi_bus_initialize<br/>esp_lcd_new_panel_io_spi<br/>esp_lcd_new_panel_sh8601"| UP(("display up<br/>SPI2 held"))
-    UP -->|"gfx_suspend() &nbsp;318 us"| TD
-    TD --> FREE(("SPI2 free<br/><i>panel still showing<br/>its last frame</i>"))
-    FREE -->|"bsp_sdcard_mount()"| FREE
-    FREE -->|"gfx_resume(false) &nbsp;605 us"| BU
+    BU -->|"spi_bus_initialize<br/>esp_lcd_new_panel_io_spi<br/>esp_lcd_new_panel_sh8601 / co5300"| UP(("display up<br/>SPI2 held"))
 ```
-
-The framebuffer is untouched by all of this — it is ordinary RAM and has no
-relationship to the bus, so nothing needs redrawing on resume.
-
-One rule: nothing may call `gfx_present()` between suspend and resume. Today
-that is guaranteed structurally, because the only caller is the shell's frame
-loop and the re-run happens inside it, on the same task.
 
 ---
 
@@ -78,8 +75,7 @@ for LVGL that snaps areas to even boundaries. Full-width strips at multiples of
 
 ## Measured performance
 
-Full-screen 368×448, Gouraud-shaded rotating cube, `small3dlib`, no PSRAM, no
-GPU:
+Full-screen 368×448, Gouraud-shaded rotating cube, `small3dlib`, no GPU:
 
 | Stage | Time | Share |
 |---|---|---|
@@ -89,6 +85,14 @@ GPU:
 | **Total** | **~59 ms → 15.5 fps** | |
 
 The blit works out to ~13 MB/s effective over QSPI at 40 MHz.
+
+These per-stage figures were captured before the ESP32-S3 port and have not
+been re-measured on this board; Clear and Rasterize are CPU-bound and will not
+carry over as-is to a dual-core Xtensa LX7 at 240 MHz. The blit figure is
+bandwidth-bound on the QSPI clock rather than the CPU (see "The blit is
+bus-bound" below) and so is the more likely of the three to still hold, but it
+too is unconfirmed on this board — treat the whole table as historical,
+unmeasured on this board.
 
 Those cube figures predate a build-flag change and are kept as a record of the
 starting point: the build now uses -O2 rather than -Og (see
@@ -595,11 +599,13 @@ count does not produce the other.
 ## There is no graphics acceleration
 
 Verified, not assumed. `SOC_PPA_SUPPORTED` is defined **only for the ESP32-P4**
-in ESP-IDF's SoC caps — the C6 has no Pixel Processing Accelerator, no 2D
+in ESP-IDF's SoC caps — this chip has no Pixel Processing Accelerator, no 2D
 blitter, no GPU. `esp_lvgl_port` does ship PPA rotation code and hand-written
-SIMD blend routines, but the PPA path compiles only when `SOC_PPA_SUPPORTED` is
-set, and the SIMD assembly is Xtensa (`_esp32.S`, `_esp32s3.S`), not RISC-V.
-Everything on this chip is scalar C on one core.
+SIMD blend routines for Xtensa (`_esp32.S`, `_esp32s3.S`), so the S3-specific
+SIMD path is present in that dependency, but the PPA path itself still
+compiles only when `SOC_PPA_SUPPORTED` is set, which it is not on the S3
+either. Everything on this chip is scalar C, and only across its two cores if
+something is explicitly split to use both - the render path here is not.
 
 If graphics throughput ever becomes the requirement, that is a board decision:
 the ESP32-P4 has the PPA, PSRAM, *and* a real SDMMC host.
@@ -608,7 +614,7 @@ the ESP32-P4 has the PPA, PSRAM, *and* a real SDMMC host.
 
 ## Related
 
-- [Board-and-Memory.md](Board-and-Memory.md) — the SPI2 wiring and
-  time-multiplexing this all sits on top of.
+- [Board-and-Memory.md](Board-and-Memory.md) — the SPI2 wiring this all sits
+  on top of.
 - [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md) — the -O2 build-flag
   history referenced above.

@@ -8,7 +8,7 @@ and fails if any function's frame exceeds the device profile's ceiling.
 Why this exists: two device panics in this project's history were "Stack
 protection fault" loops, both caused by a test fixture declaring a huge local
 array - a 4 KB comparison buffer, and later an impulse_t[4096] (24 KB). Both
-passed green on the host, whose stack is megabytes; the ESP32-C6's main task
+passed green on the host, whose stack is megabytes; this board's main task
 stack (CONFIG_ESP_MAIN_TASK_STACK_SIZE) is 3,584 bytes, shared with Unity,
 printf, and the call chain above the fixture. The host build
 cannot reproduce a stack panic - it can only predict one, statically, from
@@ -16,7 +16,7 @@ the frame sizes GCC/Clang already compute for their own prologues. This gate
 is that prediction, run every time the host suite runs.
 
 The ceiling (DP_TEST_FRAME_CEILING_BYTES, see launcher/tools/device_profiles/
-esp32c6.sh) is 1024 bytes: comfortably below the 3,584-byte device stack
+esp32s3.sh) is 1024 bytes: comfortably below the 3,584-byte device stack
 (generous margin given that stack is shared with Unity and the interpreter
 chain above a fixture, not just the fixture's own frame), yet it catches
 both historical panics (24 KB and 4 KB) with two orders of magnitude to
@@ -183,7 +183,7 @@ def main(argv):
                              "files (as produced by -fstack-usage)")
     parser.add_argument("--profile", default=None,
                         help="device profile name (default: $DEVICE_PROFILE "
-                             "or esp32c6)")
+                             "or esp32s3)")
     parser.add_argument("--profile-dir", default=None,
                         help="override the directory profiles are read "
                              "from (default: launcher/tools/device_profiles)")
