@@ -7,10 +7,11 @@
  * site knowing: nothing above ui.c ever sees a physical coordinate. Pure
  * geometry, which is what keeps it linkable on a host.
  *
- * Fixed point because this is RISC-V with no FPU, and the transform is applied
- * per rect, per glyph and per icon on every repaint - a software float trap on
- * every multiply is not worth paying for a shape this simple. Q16.16 has ample
- * range for a 368x448 panel and ample precision for rotate, scale, translate.
+ * Fixed point rather than float: the transform is applied per rect, per glyph
+ * and per icon on every repaint, and integer math keeps every multiply exact
+ * and reproducible across the host and device builds for a shape this
+ * simple. Q16.16 has ample range for a 368x448 panel and ample precision for
+ * rotate, scale, translate.
  *
  * The type is more general than the backend, and that gap is the trap.
  * ui_transform_t can express any affine map, shear included, while

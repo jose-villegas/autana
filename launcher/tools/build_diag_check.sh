@@ -6,11 +6,11 @@
 #
 # Exists because the diagnostics variant is the only one that links every
 # test suite into firmware, so it is the only one where a suite's own
-# static data is charged against the framebuffer-plus-grid budget that
-# tools/check_static_ram.py defends. A suite that costs 10 KiB of .bss is
-# invisible to the host runner (which has a laptop's memory behind it) and
-# to a release build (which links no suites at all) - this is the check
-# that sees it, and running it here beats finding out from CI.
+# static data is charged against the same internal-heap headroom the shell
+# and its apps need. A suite that costs 10 KiB of .bss is invisible to the
+# host runner (which has a laptop's memory behind it) and to a release
+# build (which links no suites at all) - building this variant surfaces it,
+# and doing so here beats finding out from CI.
 #
 # See build_flash.sh for the arguments and for why both -D flags on its
 # idf.py call are load-bearing.

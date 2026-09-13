@@ -11,11 +11,9 @@
  * what boot found - the point of opening it is usually to see whether something
  * is failing now.
  *
- * Every check is repeated, including the SD card. That one is interesting: the
- * card and the display share SPI2 on different pins, so the re-run releases the
- * panel, mounts the card, and takes the bus back. Nothing is visible on screen
- * while that happens - the panel goes on refreshing its last frame from its own
- * GRAM - and the report prints how long the round trip took.
+ * Every check is repeated, including the SD card: the re-run just re-mounts
+ * the card on its own dedicated SDMMC bus, independent of the display, and
+ * the report prints how long that round trip took.
  *
  * BOOT pages between the report and the toggle screen, rather than the
  * toggle screen adding a control to the report itself - the report is
@@ -210,8 +208,7 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
          * sequence of quarter-turns ending wherever the LAST test left
          * it, not the board's real orientation - restored here
          * immediately, one frame of latency before draw_toggles_page()
-         * ever opens its own frame, the same deferral gfx_resume()
-         * uses. */
+         * ever opens its own frame. */
         ui_set_transform(ui_transform_quarter_turn(display_shell_quarter(), GFX_WIDTH, GFX_HEIGHT));
     }
 #endif /* CONFIG_LAUNCHER_SELFTEST */

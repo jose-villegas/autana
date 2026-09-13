@@ -3,7 +3,7 @@
 # Build the launcher's firmware and flash it to the device.
 #
 # Usage:
-#   tools/build_flash.sh [--dev|--diag] [--s3] [--build-only] [COM_PORT] [IDF_EXPORT]
+#   tools/build_flash.sh [--dev|--diag] [--build-only] [COM_PORT] [IDF_EXPORT]
 #
 #   --dev       build the DEVELOPMENT image instead of the release one, and
 #               leave it on the board: development-only logging and
@@ -13,18 +13,7 @@
 #               leave it on the board: everything --dev gets you, plus the
 #               on-device test suites and Diagnostics' own button for
 #               running them. See below.
-#   --s3        build for the ESP32-S3 board instead of the ESP32-C6, into
-#               build.s3.<variant> rather than build.<variant>. Always
-#               passes its own -D IDF_TARGET and -D SDKCONFIG, release
-#               included, since the checked-in launcher/sdkconfig is a C6
-#               config and must never be the one a S3 build reads or
-#               rewrites.
 #   --build-only  build and stop: no device needed, nothing flashed.
-#               Every idf.py build runs tools/check_static_ram.py, and
-#               --diag is the only variant where the test suites' own
-#               static data counts against the framebuffer-plus-grid
-#               budget - so this is how that gate gets exercised on a
-#               laptop instead of on a pull request.
 #   COM_PORT    serial port the device is on. Default: COM3.
 #   IDF_EXPORT  path to ESP-IDF's export script - export.bat on Windows,
 #               export.sh elsewhere. Default: the ESP-IDF Windows
@@ -55,9 +44,8 @@
 # every suite linked in, and run at boot before the shell starts - which is
 # fine on a bench and unwanted just to watch a frame-timing log line or pull
 # a screenshot. Note the Diagnostics app carries its own side effects in
-# EITHER build: entering it re-runs POST, cycling the audio rail and
-# dropping the display off SPI2 mid-session. That is the cost of the way in
-# being compiled at all, not of the test suites.
+# EITHER build: entering it re-runs POST, cycling the audio rail - that is
+# the cost of the way in being compiled at all, not of the test suites.
 #
 # Using either flag means putting that image on the board and leaving it.
 # Nothing else here does that: test/run_device_tests.sh builds and flashes
@@ -74,14 +62,11 @@ set -euo pipefail
 
 VARIANT=release
 BUILD_ONLY=0
-TARGET=
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --dev)     VARIANT=dev; shift ;;
         -d|--diag) VARIANT=diag; shift ;;
-        --s3)      TARGET=esp32s3; shift ;;
-        --target)  TARGET="$2"; shift 2 ;;
         --build-only) BUILD_ONLY=1; shift ;;
         -h|--help) sed -n '2,59p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         --)        shift; break ;;
@@ -102,11 +87,7 @@ else
 fi
 IDF_EXPORT="${2:-$DEFAULT_EXPORT}"
 
-if [ "$TARGET" = esp32s3 ]; then
-    BUILD_DIR="build.s3.$VARIANT"
-else
-    BUILD_DIR="build.$VARIANT"
-fi
+BUILD_DIR="build.$VARIANT"
 
 # So a double-clicked window (which closes the instant the script exits)
 # still shows the reason for a failure instead of vanishing on the spot.
@@ -117,24 +98,7 @@ trap 'status=$?; if [ $status -ne 0 ]; then echo; echo "=== FAILED (exit $status
 idf_init "$LAUNCHER_DIR" "$IDF_EXPORT" "$SCRIPT_DIR"
 
 echo "=== Building $BUILD_DIR ==="
-if [ "$TARGET" = esp32s3 ]; then
-    # The checked-in launcher/sdkconfig is a C6 config, and CMake guesses
-    # IDF_TARGET from it when nothing else says otherwise (targets.cmake) -
-    # so an S3 build must always pass its own -D IDF_TARGET, and -D
-    # SDKCONFIG so it never reads or rewrites that file, release included
-    # (unlike the C6 release build below, which reads launcher/sdkconfig on
-    # purpose).
-    if [ "$VARIANT" = release ]; then
-        S3_DEFAULTS="sdkconfig.defaults"
-    else
-        S3_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.$VARIANT"
-    fi
-    idf -B "$BUILD_DIR" \
-        -D IDF_TARGET=esp32s3 \
-        -D SDKCONFIG_DEFAULTS="$S3_DEFAULTS" \
-        -D SDKCONFIG="$BUILD_DIR/sdkconfig" \
-        build
-elif [ "$VARIANT" = release ]; then
+if [ "$VARIANT" = release ]; then
     idf -B "$BUILD_DIR" build
 else
     # BOTH -D flags are needed, and the second is the one that is easy to
@@ -169,9 +133,8 @@ if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/launcher.bin" ]; then
 fi
 
 if [ "$BUILD_ONLY" -eq 1 ]; then
-    # The build itself already ran the gates that matter here - the
-    # static-RAM prediction among them - so reaching this line IS the
-    # result. Nothing is flashed and no device has to be attached.
+    # Reaching this line IS the result: nothing is flashed and no device
+    # has to be attached.
     echo "=== Done - $BUILD_DIR built, nothing flashed ==="
     exit 0
 fi

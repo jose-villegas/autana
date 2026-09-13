@@ -8,7 +8,7 @@
  * It runs EVERY suite, not just the hardware ones. The portable suites already
  * pass on a host, but passing there only proves the logic is right on a laptop
  * - running them here proves the same code behaves identically built by the
- * RISC-V toolchain and executed on this chip.
+ * Xtensa toolchain and executed on this chip.
  *
  * Cost is roughly half a second, most of it the DMA tests waiting on real
  * frames, which is cheap enough to pay on every boot for the guarantee that a

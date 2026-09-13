@@ -735,8 +735,7 @@ sweep_x_order(sand_t* s, int dx) {
 /* One bit per materials[] row for the two questions the sweep asks of every
  * cell on the grid, so each reads as a shift out of a word in SRAM instead of
  * dereferencing a struct in flash. The same trade gas_kind_mask makes in
- * sand_gas.c, on a hotter loop: this one runs per cell of every awake block,
- * and there is no data cache, so that dereference is a real flash read.
+ * sand_gas.c, on a hotter loop: this one runs per cell of every awake block.
  *
  * Eight bytes rather than two 32-entry tables, because MATERIAL_ROWS is 32 and
  * a row index therefore fits a uint32_t exactly. */

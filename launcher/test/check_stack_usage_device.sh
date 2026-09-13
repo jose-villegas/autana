@@ -6,9 +6,10 @@
 #
 #   ./check_stack_usage_device.sh
 #
-# Opt-in, not part of run_tests.sh: it needs the ESP RISC-V toolchain, which
-# a contributor running the host suite may not have. The host pass is the
-# gate; this is how you check the gate is still telling the truth.
+# Opt-in, not part of run_tests.sh: it needs the target's own cross
+# toolchain, which a contributor running the host suite may not have. The
+# host pass is the gate; this is how you check the gate is still telling
+# the truth.
 #
 # It compiles the app suites for the target with -fstack-usage, using the
 # device profile's own ISA and codegen flags, and runs the same

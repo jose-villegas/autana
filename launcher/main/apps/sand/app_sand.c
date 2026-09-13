@@ -475,8 +475,9 @@ static uint32_t wood_leaf_wind_flip_due_ms = WOOD_LEAF_WIND_FLIP_BASE_MS;
 static unsigned wood_leaf_wind_flip_count;
 
 /* One bit per row per feature, not five 224-byte GRID_H_MAX arrays each
- * holding a single 0/1 flag - the diagnostics build has no headroom to
- * spend on that (check_static_ram.py). */
+ * holding a single 0/1 flag - the diagnostics build, which links every
+ * test suite into firmware alongside this app, has no headroom to spend
+ * on that. */
 #define ROW_FLAG_SHINE     (1u << 0)
 #define ROW_FLAG_LIQUID    (1u << 1)
 #define ROW_FLAG_CULLET    (1u << 2)

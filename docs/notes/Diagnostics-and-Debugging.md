@@ -1,6 +1,6 @@
 # Diagnostics and Debugging
 
-Part of the platform notes for the Waveshare ESP32-C6-Touch-AMOLED-1.8 - see
+Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 - see
 [`README.md`](README.md) for the full set.
 
 What to reach for depends on what is actually wrong. This is organised by
@@ -60,7 +60,7 @@ logic rather than about the actual board. See
 ```
 
 Builds the diagnostics variant, flashes it, and runs *every* registered
-suite - portable ones included - actually compiled by the RISC-V toolchain
+suite - portable ones included - actually compiled by the Xtensa toolchain
 and executed on the chip, which a host run cannot vouch for. Needs a
 `CONFIG_LAUNCHER_SELFTEST` build (`build_flash_diag.sh` /
 `build_flash.sh --diag`); see [`../Testing-Guide.md`](../Testing-Guide.md)
@@ -119,11 +119,10 @@ file and line number.
 
 ## The console is USB-Serial-JTAG, not UART0
 
-**This board's single USB-C port is the ESP32-C6's own native USB-Serial/JTAG
-peripheral.** Waveshare's own documentation says so directly: "USB Type-C
-port - ESP32-C6 USB interface, for program flashing and log printing." UART0
-exists on this board too, but only broken out on separate solder pads -
-nothing a USB cable ever reaches.
+**This board's single USB-C port is the ESP32-S3's own native USB-Serial/JTAG
+peripheral**, not an external USB-UART bridge chip. UART0 exists on this
+board too, but only broken out on separate solder pads - nothing a USB cable
+ever reaches.
 
 ESP-IDF's own default for a chip with this peripheral assumes the OTHER
 common board design instead: UART0 as the primary console (read AND

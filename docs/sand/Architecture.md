@@ -79,7 +79,7 @@ there as an immovable block.
 
 Every field on `material_t` is read from the innermost loop, several
 times per cell per step, which is why the struct is kept small with the
-movement fields first - the C6's cache line is 32 bytes, and a fatter
+movement fields first - this chip's cache line is 32 bytes, and a fatter
 row would straddle two lines. Full field-by-field reasoning:
 [`material.h`](../../launcher/main/apps/sand/material.h)'s own top
 comment and struct comment.

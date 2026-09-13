@@ -13,7 +13,7 @@
  * suite that draws and presents on its own - running on this task while the
  * render loop runs on the main one is two tasks driving one panel.
  *
- * USB-Serial/JTAG, not UART: this board's USB-C is the C6's own peripheral
+ * USB-Serial/JTAG, not UART: this board's USB-C is the S3's own peripheral
  * and the console's primary channel, so this listener sees the bytes
  * idf_monitor does. Its own task, because screenshot_start() switches the fd
  * to the driver's interrupt-driven reader, which is what lets a read block

@@ -1,10 +1,9 @@
 /*
  * board - ESP32-S3 binding (Waveshare ESP32-S3-Touch-AMOLED-1.8).
  *
- * Unlike the C6, this board's BSP has no board_detect() of its own - it
- * ships only the display/touch/I2C/SD building blocks - so this file does
- * the probe itself: which touch controller answers decides the panel
- * revision, exactly as the C6 BSP does internally.
+ * The BSP ships only the display/touch/I2C/SD building blocks and has no
+ * board_detect() of its own, so this file does the probe itself: which
+ * touch controller answers decides the panel revision.
  */
 #include "board/board.h"
 
@@ -19,7 +18,7 @@
 static const char* TAG = "board";
 
 /* Drives the audio power amplifier directly - this board has no IO
- * expander pin for it, unlike the C6. */
+ * expander pin for it. */
 #define AUDIO_AMP_GPIO GPIO_NUM_46
 
 static board_variant_t detected = BOARD_VARIANT_UNKNOWN;
@@ -47,8 +46,8 @@ pulse_io_expander_reset(i2c_master_bus_handle_t bus) {
 
 board_variant_t
 board_detect(void) {
-    /* Cached like the C6 BSP's: a second call must not pulse the reset
-     * lines again under a panel that is already running. */
+    /* A second call must not pulse the reset lines again under a panel
+     * that is already running. */
     if (detected != BOARD_VARIANT_UNKNOWN) {
         return detected;
     }

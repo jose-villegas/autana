@@ -19,18 +19,8 @@ set(app_srcs
     "util/screenshot.c"
 )
 
-# board/board.h binds one target's hardware facts; exactly one of these
-# provides them. IDF_TARGET is a plain CMake variable set before either of
-# ESP-IDF's two evaluation passes of this file runs (unlike CONFIG_* Kconfig
-# macros, which script mode never sees - see the WHOLE_ARCHIVE/unity note
-# below), so it is safe to branch on here.
-if(IDF_TARGET STREQUAL "esp32c6")
-    list(APPEND app_srcs "board/board_esp32c6.c")
-elseif(IDF_TARGET STREQUAL "esp32s3")
-    list(APPEND app_srcs "board/board_esp32s3.c")
-else()
-    message(FATAL_ERROR "launcher/main has no board/board_${IDF_TARGET}.c - add one, and a branch in board/board.h")
-endif()
+# board/board.h binds this target's hardware facts to board_esp32s3.c.
+list(APPEND app_srcs "board/board_esp32s3.c")
 
 # Apps are discovered, not listed.
 #
@@ -85,8 +75,8 @@ list(FILTER discovered_apps EXCLUDE REGEX "/suite_[^/]*\\.c$")
 # while working on sand, plus the POST report and (SELFTEST builds only -
 # see app_diagnostics.c) the self-test runner button. None of that belongs
 # in a release image: entering the app re-runs POST, which cycles the audio
-# rail and drops the display off SPI2 mid-session - reasonable while
-# debugging, not something to leave reachable in a shipped product. Gated
+# rail - reasonable while debugging, not something to leave reachable in a
+# shipped product. Gated
 # on DEVELOPMENT rather than SELFTEST so it ships in a --dev build too, with
 # no test suites along for the ride - that is the whole reason a --dev
 # build exists: SELFTEST's linked-in suites cost enough static RAM that
@@ -103,28 +93,18 @@ list(APPEND app_srcs ${discovered_apps})
 # post.c reaches for chip identity, flash size, I2C probing and the on-die
 # temperature sensor, so it pulls in more of the platform than the rest.
 #
-# The SD card host driver differs by board: the C6 wires the card to SPI2
-# alongside the display (esp_driver_sdspi), the S3 wires it to native 1-bit
-# SDMMC pins of its own (esp_driver_sdmmc). Both need "sdmmc" itself for
-# sdmmc_card_t and the protocol layer underneath either host driver.
-if(IDF_TARGET STREQUAL "esp32c6")
-    set(sd_host_req esp_driver_sdspi)
-elseif(IDF_TARGET STREQUAL "esp32s3")
-    set(sd_host_req esp_driver_sdmmc)
-endif()
-
-# esp_lcd_co5300 brings up the S3's V2 (CO5300 panel) revision - see gfx.c.
-# It is a PRIVATE dependency of the S3 BSP's own idf_component.yml, so main
-# needs its own declaration (main/idf_component.yml) to see its headers.
-if(IDF_TARGET STREQUAL "esp32s3")
-    set(target_lcd_reqs espressif__esp_lcd_co5300)
-endif()
-
+# The SD card is native 1-bit SDMMC on its own pins (esp_driver_sdmmc), not
+# SPI2. "sdmmc" itself is still needed for sdmmc_card_t and the protocol
+# layer underneath the host driver.
+#
+# esp_lcd_co5300 brings up the V2 (CO5300 panel) revision - see gfx.c. It is
+# a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
+# own declaration (main/idf_component.yml) to see its headers.
 set(app_reqs microui small3dlib esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support spi_flash
-             fatfs ${sd_host_req} sdmmc
+             fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag vfs
-             waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch ${target_lcd_reqs}
+             waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300
              # Unity is listed unconditionally, NOT inside the block below.
              # ESP-IDF expands REQUIRES in an early pass where CONFIG_* is not
              # yet defined, so a Kconfig-gated REQUIRES silently does nothing -
