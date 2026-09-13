@@ -525,6 +525,13 @@ def self_test():
 
 # --- CLI ---------------------------------------------------------------------
 
+# Every calibrated constant above (APP_USABLE_DRAM_END among them) came from
+# an esp32c6 boot capture and a esp32c6 linker map layout. Nothing here
+# generalises to another target's DRAM layout without its own capture, so
+# the gate skips rather than guesses on one.
+CALIBRATED_TARGET = "esp32c6"
+
+
 def main(argv):
     parser = argparse.ArgumentParser(
         description="Predict, from a GNU ld map file, whether the "
@@ -533,6 +540,10 @@ def main(argv):
                     "module docstring for the full arithmetic and its "
                     "provenance.")
     parser.add_argument("--map", help="path to launcher.map")
+    parser.add_argument("--target", default=CALIBRATED_TARGET,
+                         help="IDF_TARGET this build is for (default: %s, "
+                              "the only target this gate is calibrated "
+                              "for)" % CALIBRATED_TARGET)
     parser.add_argument("--self-test", action="store_true",
                          help="run the parser/arithmetic self-test on an "
                               "embedded synthetic map and exit")
@@ -544,6 +555,11 @@ def main(argv):
         except AssertionError as exc:
             print("check_static_ram --self-test: FAILED: %s" % exc, file=sys.stderr)
             return 1
+
+    if args.target != CALIBRATED_TARGET:
+        print("check_static_ram: no calibrated profile for target '%s' yet "
+              "(only %s) - gate skipped." % (args.target, CALIBRATED_TARGET))
+        return 0
 
     if not args.map:
         parser.error("--map is required unless --self-test is given")
