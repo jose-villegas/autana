@@ -1220,8 +1220,124 @@ test_drawing_marks_what_it_touched(void) {
 
 /* --- suite ------------------------------------------------------------- */
 
+/* --- memory throughput: PSRAM against internal RAM ------------------------ */
+
+/* An instrument, not a gate: prices the bulk reads, writes and copies a
+ * framebuffer architecture would do, per memory pool, so the choice between
+ * PSRAM and internal buffers rests on numbers. Best of five, in MB/s. */
+#define MEMTP_REPS 5
+
+static double
+memtp_mb_per_s(size_t bytes, int64_t us) {
+    return us > 0 ? ((double)bytes / (1024.0 * 1024.0)) / ((double)us / 1e6) : 0.0;
+}
+
+static int64_t
+memtp_best_us(void (*op)(void*, void*, size_t), void* a, void* b, size_t bytes) {
+    int64_t best = INT64_MAX;
+    for (int i = 0; i < MEMTP_REPS; i++) {
+        const int64_t t0 = esp_timer_get_time();
+        op(a, b, bytes);
+        const int64_t dt = esp_timer_get_time() - t0;
+        best = dt < best ? dt : best;
+    }
+    return best;
+}
+
+static uint32_t memtp_sink;
+
+static void
+memtp_op_memset(void* dst, void* unused, size_t bytes) {
+    (void)unused;
+    memset(dst, (int)(memtp_sink++ & 0xFF), bytes);
+}
+
+static void
+memtp_op_pixels(void* dst, void* unused, size_t bytes) {
+    (void)unused;
+    uint16_t* p = dst;
+    const size_t n = bytes / sizeof(uint16_t);
+    uint16_t v = (uint16_t)memtp_sink++;
+    for (size_t i = 0; i < n; i++) {
+        p[i] = v;
+        v = (uint16_t)(v + 0x0421u);
+    }
+}
+
+static void
+memtp_op_read(void* src, void* unused, size_t bytes) {
+    (void)unused;
+    const uint8_t* p = src;
+    uint32_t sum = 0;
+    for (size_t i = 0; i < bytes; i++) {
+        sum += p[i];
+    }
+    memtp_sink += sum;
+}
+
+static void
+memtp_op_copy(void* dst, void* src, size_t bytes) {
+    memcpy(dst, src, bytes);
+}
+
+static void
+memtp_op_copy_rows(void* dst, void* src, size_t bytes) {
+    const size_t row = (size_t)GFX_WIDTH * sizeof(gfx_color_t);
+    for (size_t at = 0; at + row <= bytes; at += row) {
+        memcpy((uint8_t*)dst + at, (uint8_t*)src + at, row);
+    }
+}
+
+static void
+memtp_log(const char* what, const char* pools, size_t bytes, int64_t us) {
+    ESP_LOGI(TAG, "memtp: %-10s %-16s %6u KB %7lld us %7.1f MB/s", what, pools, (unsigned)(bytes / 1024), (long long)us,
+             memtp_mb_per_s(bytes, us));
+}
+
+static void
+test_memory_throughput_psram_against_internal(void) {
+    const size_t band = (size_t)GFX_WIDTH * 64 * sizeof(gfx_color_t); /* one 64-row strip */
+    const size_t frame = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+
+    uint8_t* int_a = heap_caps_malloc(band, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint8_t* int_b = heap_caps_malloc(band, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint8_t* ps_a = heap_caps_malloc(frame, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    uint8_t* ps_b = heap_caps_malloc(frame, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    const bool ok = int_a && int_b && ps_a && ps_b;
+
+    if (ok) {
+        memset(int_a, 0x5A, band);
+        memset(int_b, 0xA5, band);
+        memset(ps_a, 0x5A, frame);
+        memset(ps_b, 0xA5, frame);
+
+        memtp_log("memset", "internal", band, memtp_best_us(memtp_op_memset, int_a, NULL, band));
+        memtp_log("memset", "psram", band, memtp_best_us(memtp_op_memset, ps_a, NULL, band));
+        memtp_log("memset", "psram", frame, memtp_best_us(memtp_op_memset, ps_a, NULL, frame));
+        memtp_log("pixels", "internal", band, memtp_best_us(memtp_op_pixels, int_a, NULL, band));
+        memtp_log("pixels", "psram", band, memtp_best_us(memtp_op_pixels, ps_a, NULL, band));
+        memtp_log("pixels", "psram", frame, memtp_best_us(memtp_op_pixels, ps_a, NULL, frame));
+        memtp_log("read", "internal", band, memtp_best_us(memtp_op_read, int_a, NULL, band));
+        memtp_log("read", "psram", band, memtp_best_us(memtp_op_read, ps_a, NULL, band));
+        memtp_log("read", "psram", frame, memtp_best_us(memtp_op_read, ps_a, NULL, frame));
+        memtp_log("copy", "internal>internal", band, memtp_best_us(memtp_op_copy, int_b, int_a, band));
+        memtp_log("copy", "internal>psram", band, memtp_best_us(memtp_op_copy, ps_b, int_a, band));
+        memtp_log("copy", "psram>internal", band, memtp_best_us(memtp_op_copy, int_b, ps_a, band));
+        memtp_log("copy", "psram>psram", band, memtp_best_us(memtp_op_copy, ps_b, ps_a, band));
+        memtp_log("copy", "psram>psram", frame, memtp_best_us(memtp_op_copy, ps_b, ps_a, frame));
+        memtp_log("copy-rows", "psram>psram", frame, memtp_best_us(memtp_op_copy_rows, ps_b, ps_a, frame));
+    }
+
+    heap_caps_free(int_a);
+    heap_caps_free(int_b);
+    heap_caps_free(ps_a);
+    heap_caps_free(ps_b);
+    TEST_ASSERT_TRUE_MESSAGE(ok, "could not allocate the throughput buffers");
+}
+
 void
 run_gfx_suite(void) {
+    RUN_TEST(test_memory_throughput_psram_against_internal);
     RUN_TEST(test_display_is_up);
     RUN_TEST(test_framebuffer_fits_with_headroom_to_spare);
     RUN_TEST(test_touch_controller_is_present);
