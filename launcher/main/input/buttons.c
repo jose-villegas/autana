@@ -1,6 +1,7 @@
 #include "input/buttons.h"
 #include "input/button_fsm.h"
 
+#include "board/board.h"
 #include "bsp/esp-bsp.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
@@ -11,16 +12,11 @@
 
 static const char* TAG = "buttons";
 
-/* The BOOT button. Standard on every ESP32-C6 board: GPIO 9, pulled up, and
- * pulled to ground when pressed - so a LOW level means down. */
-#define BOOT_GPIO           GPIO_NUM_9
-
 /* AXP2101 power-management chip. PWR button wired to it, not the SoC, so the
  * only way to see a press is over I2C. Interrupts are three enable + three
  * status registers; power-key events live in the second of each. A status
  * bit clears by writing a ONE back, not zero - the obvious guess leaves it
  * set and the button appears stuck. */
-#define AXP2101_ADDR        0x34
 #define AXP2101_I2C_HZ      400000
 #define AXP2101_TIMEOUT_MS  100
 
@@ -67,9 +63,9 @@ static button_fsm_t boot_fsm;
 static bool power_pressed;
 static bool power_held;
 
-/* Shared between the polling task and the render loop. The chip is
- * single-core, so a spinlock-guarded critical section is both correct and
- * essentially free here. */
+/* Shared between the polling task and the render loop. A spinlock-guarded
+ * critical section is correct on either a one-core or two-core target, and
+ * cheap here since it only ever spans a few field updates. */
 static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
 
 /* The PMU */
@@ -95,7 +91,7 @@ pmu_init(void) {
 
     const i2c_device_config_t config = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address = AXP2101_ADDR,
+        .device_address = BOARD_PMU_I2C_ADDR,
         .scl_speed_hz = AXP2101_I2C_HZ,
     };
     if (i2c_master_bus_add_device(bus, &config, &pmu) != ESP_OK) {
@@ -121,7 +117,7 @@ pmu_init(void) {
     pmu_write(AXP2101_REG_INTSTS2, AXP2101_PKEY_SHORT | AXP2101_PKEY_LONG);
 
     pmu_ready = true;
-    ESP_LOGI(TAG, "PWR button via AXP2101, BOOT button on GPIO %d", BOOT_GPIO);
+    ESP_LOGI(TAG, "PWR button via AXP2101, BOOT button on GPIO %d", BOARD_BOOT_GPIO);
 
     /* Log what this board's PMU actually boots with. 0x22 and 0x27 default
      * from EFUSE/POR, so this is not something the datasheet can answer and
@@ -178,7 +174,7 @@ pmu_take_events(bool* short_press, bool* long_press) {
 
 static void
 poll_once(void) {
-    const bool boot_down = gpio_get_level(BOOT_GPIO) == 0; /* active low */
+    const bool boot_down = gpio_get_level(BOARD_BOOT_GPIO) == 0; /* active low */
     bool short_press = false, long_press = false;
     if (pmu_ready) {
         pmu_take_events(&short_press, &long_press);
@@ -212,7 +208,7 @@ buttons_task(void* arg) {
 void
 buttons_start(void) {
     const gpio_config_t boot = {
-        .pin_bit_mask = 1ULL << BOOT_GPIO,
+        .pin_bit_mask = 1ULL << BOARD_BOOT_GPIO,
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,

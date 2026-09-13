@@ -42,7 +42,7 @@ PANIC_TYPE_RE = re.compile(r"panic'ed\s*\(([^)]+)\)")
 
 # One per boot. More than one means the device reset mid-run - a crash
 # loop, not a slow run - which changes what a stall in the capture means.
-BOOT_BANNER = "ESP-ROM:esp32c6"
+BOOT_BANNER = "ESP-ROM:esp32s3"
 
 # Printed once per frame-budget test as it starts. Its absence, with an
 # otherwise unremarkable capture, means the flashed image had the suites

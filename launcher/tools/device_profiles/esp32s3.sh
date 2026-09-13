@@ -1,66 +1,81 @@
 #!/bin/sh
 #
-# Device profile: ESP32-S3 - DELIBERATELY PARTIAL.
+# Device profile: Waveshare ESP32-S3-Touch-AMOLED-1.8 (the board this repo
+# is written for). Read the format's own rules in ../device_profile.sh
+# before editing: plain KEY=value, no logic, no command substitution - both
+# POSIX sh and device_profile.py parse this file.
 #
-# No such board has been measured here. This file exists to prove the
-# profile abstraction holds for a second chip, and to be the place a real
-# S3's first capture lands. Every field that can only come from a capture
-# is the literal string "unmeasured"; the loader refuses to hand an
-# unmeasured value to a gate, so nothing can quietly run against a made-up
-# number. Fields sourced from ESP-IDF and the S3 TRM are real.
-#
-# Adding a device is this file plus that first capture's numbers - nothing
-# else in the tree should need to change.
+# Every number here carries its provenance in the *_SOURCE field beside it.
+# A number without a source is a guess, and a guess in this file silently
+# becomes a gate somewhere else.
 
 DP_NAME=esp32s3
-DP_DESC="ESP32-S3 (Xtensa LX7) - profile skeleton, no board measured"
-DP_STATUS=partial
+DP_DESC="Waveshare ESP32-S3-Touch-AMOLED-1.8, octal PSRAM, 368x448 AMOLED"
+DP_STATUS=measured
 
 # --- main task stack -------------------------------------------------------
-# Not a capture value: it is whatever the project's sdkconfig says, and
-# ESP-IDF's default is the same 3584 on every target.
+# What a test fixture's locals actually live inside on device. The host's
+# stack is megabytes, which is why a 24 KB fixture array passed on a laptop
+# and panic-looped the board twice.
 DP_MAIN_TASK_STACK_BYTES=3584
-DP_MAIN_TASK_STACK_SOURCE="ESP-IDF v5.5 components/esp_system/Kconfig, ESP_MAIN_TASK_STACK_SIZE default 3584 (target-independent)"
+DP_MAIN_TASK_STACK_SOURCE="CONFIG_ESP_MAIN_TASK_STACK_SIZE in launcher/sdkconfig, read 2026-09-13"
 
+# Per-function stack-frame ceiling the host checker enforces on test code.
+# Justified in launcher/test/check_stack_usage.py's header - short version:
+# both historical panics (24 KB and 4 KB frames) are caught with two orders
+# of magnitude of margin, while the largest legitimate fixture frame in the
+# tree today is far below it.
 DP_TEST_FRAME_CEILING_BYTES=1024
-DP_TEST_FRAME_CEILING_SOURCE="same derivation as esp32c6, same stack size"
+DP_TEST_FRAME_CEILING_SOURCE="derived from DP_MAIN_TASK_STACK_BYTES; see check_stack_usage.py"
 
 # --- heap ------------------------------------------------------------------
-# Capture-derived: depends on this board's framebuffer, PSRAM and app.
-DP_FREE_HEAP_BYTES=unmeasured
-DP_FREE_HEAP_SOURCE="unmeasured - needs one device capture's 'free heap after framebuffer'"
-DP_LARGEST_ALLOC_BYTES=unmeasured
-DP_LARGEST_ALLOC_SOURCE="unmeasured"
+# Internal heap free after gfx_init() (HEAPMARK). The framebuffer lives in
+# PSRAM on this board (see board.h's BOARD_FRAMEBUFFER_CAPS), so it is not
+# subtracted here - PSRAM is not counted: hot allocations (sand grids and
+# the like) are meant to stay internal.
+DP_FREE_HEAP_BYTES=201183
+DP_FREE_HEAP_SOURCE="internal heap free after gfx_init: 311,775 bytes (HEAPMARK, device capture, S3 diag build, 2026-09-13) minus the two 47,104-byte strip bounce buffers and the 16 KB the 32 KB instruction cache takes, both added the same day - derived, re-capture on the next diag run. PSRAM is not counted: hot allocations are meant to stay internal"
+
+# One sand grid, for scale: a single contiguous request this size is why
+# fragmentation - not just total bytes - decides whether a fixture runs.
+DP_LARGEST_ALLOC_BYTES=41216
+DP_LARGEST_ALLOC_SOURCE="one sand grid (184x224), unchanged by the port"
 
 # --- toolchain and codegen -------------------------------------------------
 DP_TOOLCHAIN_PREFIX=xtensa-esp32s3-elf
-DP_TOOLCHAIN_SOURCE="ESP-IDF v5.5 tools/tools.json, xtensa-esp-elf"
+DP_TOOLCHAIN_SOURCE="ESP-IDF v5.5 tools/tools.json, xtensa-esp-elf esp-14.2.0_20260121"
 
-DP_ARCH_FLAGS="-mlongcalls"
-DP_ARCH_FLAGS_SOURCE="ESP-IDF Xtensa builds; not verified against a real S3 build here"
+# ISA-targeting flags. These are for a cross build ONLY and must never be
+# copied onto a host compile - that is the whole distinction this file draws.
+DP_ARCH_FLAGS="-mlongcalls -fno-builtin-memcpy -fno-builtin-memset -fno-builtin-bzero -mdisable-hardware-atomics"
+DP_ARCH_FLAGS_SOURCE="launcher/build.dev/toolchain/cflags, read from a real S3 build, 2026-09-13"
 
-# -fno-jump-tables and -fno-tree-switch-conversion are appended in IDF's
-# top-level CMakeLists.txt for every target, so they are real for the S3
-# too. -O2 assumes the same CONFIG_COMPILER_OPTIMIZATION as this project's;
-# re-read compile_commands.json from a real S3 build before trusting it.
+# Codegen-SHAPING flags: they change what code the compiler emits for
+# portable C, not which instruction set it emits it in, so a host harness
+# that wants to predict device cost must use them too.
+#
+# -fno-jump-tables / -fno-tree-switch-conversion come from ESP-IDF's own
+# top-level CMakeLists.txt (v5.5, line 273) and are target-independent, so
+# every switch is a compare chain on every IDF target. Attempt 19's
+# dispatcher regression was partly this.
 DP_CODEGEN_FLAGS="-O2 -fno-jump-tables -fno-tree-switch-conversion -fstrict-volatile-bitfields -ffunction-sections -fdata-sections"
 DP_STD_FLAG="-std=gnu17"
-DP_CODEGEN_SOURCE="ESP-IDF v5.5 CMakeLists.txt line 273 (target-independent flags); the rest assumed from this project's C6 build, not verified"
+DP_CODEGEN_SOURCE="launcher/build.dev/compile_commands.json, sand_reactions.c entry, read from a real S3 build, 2026-09-13"
 
 # --- instruction cache -----------------------------------------------------
-# The S3's icache is Kconfig-selectable (CONFIG_ESP32S3_INSTRUCTION_CACHE_*),
-# so these are the IDF defaults, not a fixed property of the chip. A real
-# profile reads them out of that board's own sdkconfig.
-DP_ICACHE_BYTES=16384
+# The S3's icache is Kconfig-selectable (CONFIG_ESP32S3_INSTRUCTION_CACHE_*);
+# these are this project's sdkconfig choice, not a fixed property of the
+# chip. Data cache is 32 KB, same line and way count, but this project has
+# no field for it yet.
+DP_ICACHE_BYTES=32768
 DP_ICACHE_LINE_BYTES=32
 DP_ICACHE_WAYS=8
-DP_ICACHE_SOURCE="ESP-IDF defaults CONFIG_ESP32S3_INSTRUCTION_CACHE_16KB / _LINE_32B / 8-way; re-read from the target board's sdkconfig"
+DP_ICACHE_SOURCE="launcher/sdkconfig.defaults: CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB, _LINE_32B, _8WAYS (data cache: _DATA_CACHE_32KB, _LINE_32B, _8WAYS), read from a real S3 build, 2026-09-13"
 
 # --- QEMU route ------------------------------------------------------------
-# The opposite of the C6's situation, and the reason the route is a profile
-# field rather than an assumption: Espressif's QEMU fork DOES model the S3,
-# so the primary route here is running the real diag image under
-# `idf.py qemu`, not the generic-virt portable-sim route.
+# Espressif's QEMU fork models the S3 directly, so the primary route here is
+# running the real diag image under `idf.py qemu`, not a generic-virt
+# portable-sim route.
 DP_QEMU_ROUTE=espressif-machine
 DP_QEMU_SYSTEM_BIN=qemu-system-xtensa
 DP_QEMU_MACHINE=esp32s3

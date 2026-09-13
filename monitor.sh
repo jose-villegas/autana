@@ -97,12 +97,12 @@ fi
 
 # The toolchain provides addr2line, which turns crash addresses into source
 # locations. Without it the monitor still runs, just less usefully.
-TOOLCHAIN=$(find "$HOME/.espressif/tools/riscv32-esp-elf" -maxdepth 4 -type d \
+TOOLCHAIN=$(find "$HOME/.espressif/tools/xtensa-esp-elf" -maxdepth 4 -type d \
             -name bin 2>/dev/null | head -n 1 || true)
 [ -n "$TOOLCHAIN" ] && PATH="$TOOLCHAIN:$PATH" && export PATH
 
 exec "$IDF_PYTHON" "$IDF_PATH/tools/idf_monitor.py" \
     -p "$PORT" -b 115200 \
-    --toolchain-prefix riscv32-esp-elf- \
-    --target esp32c6 \
+    --toolchain-prefix xtensa-esp32s3-elf- \
+    --target esp32s3 \
     "$ELF"

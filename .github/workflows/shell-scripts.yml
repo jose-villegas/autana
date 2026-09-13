@@ -68,6 +68,6 @@ jobs:
       - uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: release-v5.5
-          target: esp32c6
+          target: esp32s3
           path: launcher
           command: sh tools/ci_check_idf_sh.sh

@@ -6,9 +6,9 @@
 #   device_profile_load "" "$LAUNCHER/tools/device_profiles"
 #   echo "$DP_MAIN_TASK_STACK_BYTES"
 #
-# An empty first argument means "$DEVICE_PROFILE, else esp32c6".
+# An empty first argument means "$DEVICE_PROFILE, else esp32s3".
 #
-# WHY THIS EXISTS: a second board (S3, P4, C3) may join the test family, and
+# WHY THIS EXISTS: a second board (P4, C3, ...) may join the test family, and
 # the numbers that make the host resemble a device - stack size, free heap,
 # icache geometry, the codegen-shaping flags, the QEMU route - are all
 # per-chip. They live in exactly one file per chip so that adding a device
@@ -30,7 +30,7 @@
 #
 #   device_profile_load [name] [profiles-dir]
 #
-# Name comes from the argument, else $DEVICE_PROFILE, else esp32c6 - so
+# Name comes from the argument, else $DEVICE_PROFILE, else esp32s3 - so
 # every existing caller keeps today's behaviour without setting anything.
 #
 # The directory comes from the argument, else $DEVICE_PROFILE_DIR, else the
@@ -40,7 +40,7 @@
 # they are; find_cc.sh is sourced the same way one line above, so this costs
 # nothing extra at any call site.
 device_profile_load() {
-    dp_name="${1:-${DEVICE_PROFILE:-esp32c6}}"
+    dp_name="${1:-${DEVICE_PROFILE:-esp32s3}}"
     dp_dir="${2:-${DEVICE_PROFILE_DIR:-}}"
     if [ -z "$dp_dir" ]; then
         echo "device_profile: pass the profiles directory, or set DEVICE_PROFILE_DIR" >&2
@@ -77,7 +77,7 @@ device_profile_require() {
         echo "device_profile: ${DEVICE_PROFILE:-?}'s $dp_field is unmeasured -" >&2
         echo "  no board of this kind has been captured here. Capture one and" >&2
         echo "  record the number in device_profiles/${DEVICE_PROFILE:-?}.sh," >&2
-        echo "  or run with DEVICE_PROFILE=esp32c6." >&2
+        echo "  or run with DEVICE_PROFILE=esp32s3." >&2
         return 1
     fi
     printf '%s\n' "$dp_value"

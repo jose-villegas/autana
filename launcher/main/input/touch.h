@@ -23,3 +23,10 @@ void touch_start(void);
 /* Copies the accumulated state into `out` and clears the latched edges, so
  * each press and release is reported exactly once. */
 void touch_read(input_t* out);
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* Samples since the last call that carried a point, and how many of those
+ * moved from the previous one - the controller's real report rate, which a
+ * resting finger or a slow controller holds below TOUCH_POLL_HZ. */
+void touch_take_sample_counts(uint32_t* points, uint32_t* moved);
+#endif

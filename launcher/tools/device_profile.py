@@ -7,7 +7,7 @@ that restriction exists: it parses the files itself rather than shelling
 out, so a Python gate does not need a POSIX sh on the machine.
 
     from device_profile import load, require
-    p = load()                       # $DEVICE_PROFILE, default esp32c6
+    p = load()                       # $DEVICE_PROFILE, default esp32s3
     ceiling = require(p, "DP_TEST_FRAME_CEILING_BYTES", int)
 
 A field whose value is the literal "unmeasured" means no board of that kind
@@ -35,7 +35,7 @@ def available(profile_dir=None):
 
 def load(name=None, profile_dir=None):
     """Parse a profile into a dict of str -> str."""
-    name = name or os.environ.get("DEVICE_PROFILE") or "esp32c6"
+    name = name or os.environ.get("DEVICE_PROFILE") or "esp32s3"
     d = profile_dir or PROFILE_DIR
     path = os.path.join(d, name + ".sh")
     if not os.path.isfile(path):
@@ -70,7 +70,7 @@ def require(profile, field, cast=str):
         raise ProfileError(
             "profile %s's %s is unmeasured - no board of this kind has been\n"
             "captured here. Capture one and record the number in\n"
-            "device_profiles/%s.sh, or run with DEVICE_PROFILE=esp32c6."
+            "device_profiles/%s.sh, or run with DEVICE_PROFILE=esp32s3."
             % (name, field, name))
     try:
         return cast(value)

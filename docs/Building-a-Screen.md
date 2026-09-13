@@ -139,10 +139,10 @@ fifth icon; the brush screen already sits at about two thirds.
   assertion still catches what it claims.
 - **A UI suite's file-scope objects are firmware `.bss`.** Diagnostics
   builds link every suite, and UI fixtures are exactly the ones that get
-  large - a microui context alone is 10,744 bytes, more than the
-  framebuffer-plus-grid budget has to spare. Allocate them in
-  `fixture()`, and run `tools/build_diag_check.sh`: it is the only local
-  check that sees this at all.
+  large - a microui context alone is 10,744 bytes, real weight against
+  internal heap headroom. Allocate them in `fixture()`, and run
+  `tools/build_diag_check.sh` to build that configuration locally rather
+  than finding out from CI.
 
 ## Checklist before flashing
 

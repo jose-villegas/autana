@@ -123,6 +123,69 @@ test_dirt_takes_on_moisture_and_dries_out_again(void) {
                                          "makes a patch fertile for good");
 }
 
+/* Guards a bug where sand_step_reactions() went quiet while a poured liquid
+ * was still falling, and soaking - the only way moisture is made - never ran
+ * again: dirt stayed dry for 400 steps. Sleeping is ON, as the shipped app
+ * runs it, so the bed is already asleep when the water lands - the shape
+ * the bug needed.
+ *
+ * MEASURED fixed: wetted within 25 steps. 80 is headroom under the bug's
+ * 400, not a tight peg. */
+static void
+test_water_falling_onto_a_sleeping_dirt_bed_still_wets_it(void) {
+    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
+    TEST_ASSERT_NOT_NULL(wide_cells);
+    const int block_cols = (WIDE_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W;
+    const int block_rows = (WIDE_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H;
+    uint8_t* blocks = malloc((size_t)block_cols * (size_t)block_rows);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 7u);
+    sand_enable_sleeping(&wide, blocks);
+    sand_set_soak(&wide, SAND_SOAK_PER_MATERIAL);
+
+    const int floor_y = WIDE_H - 1;
+    const int dirt_y = WIDE_H - 2;
+    for (int x = 0; x < WIDE_W; x++) {
+        sand_set(&wide, x, floor_y, STONE);
+        sand_set(&wide, x, dirt_y, CELL_MAKE(MAT_DIRT, 0));
+    }
+
+    /* Settle to sleep BEFORE the water drops - the bug only showed once the
+     * board had already gone quiet once. */
+    for (int i = 0; i < 40; i++) {
+        sand_step(&wide, 0, 1000, 0);
+    }
+
+    const int water_y = dirt_y - 8;
+    for (int x = 0; x < WIDE_W; x++) {
+        sand_set(&wide, x, water_y, CELL_MAKE(MAT_WATER, MASS_MAX));
+    }
+
+    int wetted_at = -1;
+    for (int i = 0; i < 200 && wetted_at < 0; i++) {
+        sand_step(&wide, 0, 1000, 0);
+        for (int x = 0; x < WIDE_W; x++) {
+            const cell_t c = sand_at(&wide, x, dirt_y);
+            if (CELL_MATERIAL(c) == MAT_DIRT && CELL_MOISTURE(c) != 0) {
+                wetted_at = i + 1;
+                break;
+            }
+        }
+    }
+
+    free(wide_cells);
+    wide_cells = NULL;
+    free(blocks);
+
+    char why[176];
+    snprintf(why, sizeof why,
+             "water dropped eight rows above a sleeping dirt bed must wet it "
+             "well inside the old bug's 400-step dry spell - wetted_at=%d",
+             wetted_at);
+    TEST_ASSERT_TRUE_MESSAGE(wetted_at > 0 && wetted_at < 80, why);
+}
+
 /* Freshly drawn dirt is dry, and freshly poured dirt is banded the way a
  * freshly poured grain of sand is - see random_cell() (sand.c).
  *
@@ -876,6 +939,7 @@ void
 run_sand_dirt_suite(void) {
     RUN_TEST(test_wet_sand_becomes_dirt_and_spends_the_water);
     RUN_TEST(test_dirt_takes_on_moisture_and_dries_out_again);
+    RUN_TEST(test_water_falling_onto_a_sleeping_dirt_bed_still_wets_it);
     RUN_TEST(test_new_dirt_starts_dry_in_a_random_tone);
     RUN_TEST(test_consecutive_dirt_pours_land_on_different_bands);
     RUN_TEST(test_a_dry_dirt_grain_keeps_its_tone_as_it_falls);

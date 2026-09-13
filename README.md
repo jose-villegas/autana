@@ -8,11 +8,13 @@
 
 Autana is a small game engine for ESP32 AMOLED boards, growing out of
 `launcher`, a custom app shell for the [Waveshare
-ESP32-C6-Touch-AMOLED-1.8](https://www.waveshare.com/) board — no PSRAM, a
-368×448 AMOLED panel, capacitive touch, and a 6-axis IMU. Everything here
+ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/) board — dual-core
+Xtensa LX7 @ 240 MHz, 8 MB octal PSRAM, a 368×448 AMOLED panel, capacitive
+touch, and a 6-axis IMU. Everything here
 drives the hardware directly rather than through a display framework: LVGL
 ships as a transitive dependency of the board support package but is never
-called, saving the ~67 KiB of RAM it costs before drawing anything.
+called, saving the internal RAM it would otherwise cost before drawing
+anything.
 
 ## What's inside
 
@@ -89,5 +91,6 @@ this, not a tour. Start wherever your question is:
 Actively developed, single-maintainer, not affiliated with Waveshare or
 Espressif. Board-specific enough that most of this will not transfer
 directly to other hardware, but the *reasoning* in the docs above — sweep
-order in a cellular automaton, why a data cache assumption doesn't hold on
-this chip, how to keep test code out of a release image — should.
+order in a cellular automaton, checking what memory tiers a chip actually
+has before assuming them, how to keep test code out of a release image —
+should.

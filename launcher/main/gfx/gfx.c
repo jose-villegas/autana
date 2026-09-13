@@ -7,10 +7,12 @@
 #include <string.h>
 
 #ifdef ESP_PLATFORM
+#include "board/board.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
 #include "esp_heap_caps.h"
+#include "esp_lcd_co5300.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_sh8601.h"
@@ -34,16 +36,13 @@ static gfx_color_t* fb;
 #ifdef ESP_PLATFORM
 static esp_lcd_panel_handle_t panel;
 static esp_lcd_panel_io_handle_t panel_io;
-static bool spi_bus_up;
 static SemaphoreHandle_t strip_sent;
 
 /* Copied from the Waveshare BSP (Apache-2.0, (c) 2026 Waveshare Team),
  * where it is a private static - needed here because gfx brings the
- * panel up itself rather than calling bsp_display_new(): the BSP offers
- * no way to release the display, and releasing it is the only way to
- * reach the SD card (shared SPI2, only one bus owner at a time), which
- * is what makes gfx_suspend()/gfx_resume() possible. Command 0x11 (sleep
- * out) carries a 120 ms settle, dominating a full re-init's cost. */
+ * panel up itself rather than calling bsp_display_new(), which offers no
+ * way to reach the init sequence at all. Command 0x11 (sleep out) carries
+ * a 120 ms settle, dominating a full init's cost. */
 static const sh8601_lcd_init_cmd_t lcd_init_cmds[] = {
     {0x11, (uint8_t[]){0x00}, 0, 120},
     {0x44, (uint8_t[]){0x01, 0xD1}, 2, 0},
@@ -54,6 +53,22 @@ static const sh8601_lcd_init_cmd_t lcd_init_cmds[] = {
     {0x51, (uint8_t[]){0x00}, 1, 10},
     {0x29, (uint8_t[]){0x00}, 0, 10},
     {0x51, (uint8_t[]){0xFF}, 1, 0},
+};
+
+/* The V2 revision (CO5300 panel). From Waveshare's own esp-idf colour-bar
+ * example for this board. */
+static const co5300_lcd_init_cmd_t co5300_init_cmds[] = {
+    {0xFE, (uint8_t[]){0x00}, 1, 0},
+    {0xC4, (uint8_t[]){0x80}, 1, 0},
+    {0x3A, (uint8_t[]){0x55}, 1, 0},
+    {0x35, (uint8_t[]){0x00}, 1, 0},
+    {0x53, (uint8_t[]){0x20}, 1, 0},
+    {0x51, (uint8_t[]){0xFF}, 1, 0},
+    {0x63, (uint8_t[]){0xFF}, 1, 0},
+    {0x2A, (uint8_t[]){0x00, 0x00, 0x01, 0x6F}, 4, 0},
+    {0x2B, (uint8_t[]){0x00, 0x00, 0x01, 0xBF}, 4, 0},
+    {0x11, NULL, 0, 100},
+    {0x29, NULL, 0, 0},
 };
 #endif
 
@@ -66,12 +81,40 @@ static struct {
 /* Scratch space for gather_and_send(), bounded by GATHER_MAX_PIXELS,
  * allocated with MALLOC_CAP_DMA. Misalignment causes DMA errors. */
 static gfx_color_t* gather_buf;
+
+/* The panel controller takes a window only on even edges: an odd start or
+ * an odd exclusive end leaves stale pixels at the window's corners.
+ * Waveshare's BSP rounds every flush area the same way. GFX_WIDTH and
+ * GFX_HEIGHT are even, so rounding outward never leaves the screen. A
+ * gathered box grows by at most one column and one row, hence the slack. */
+_Static_assert(GFX_WIDTH % 2 == 0 && GFX_HEIGHT % 2 == 0, "panel windows round to even edges");
+#define GATHER_WINDOW_MAX_PIXELS (GATHER_MAX_PIXELS + GFX_WIDTH + STRIP_HEIGHT + 1)
+
+/* Full-width sends copy out of the PSRAM framebuffer into internal DMA
+ * RAM first. SPI DMA reading PSRAM in place shares the PSRAM bus's
+ * bandwidth, and past 40 MHz QSPI the panel receives dropped data. Two
+ * slots are enough to keep strips queuing back to back: esp_lcd sends a
+ * window's address commands only after the previous transfer has drained,
+ * so once draw_bitmap() returns, the strip before it is off the bus. */
+#define STRIP_BOUNCE_SLOTS       2
+static gfx_color_t* strip_bounce[STRIP_BOUNCE_SLOTS];
+static int strip_bounce_next;
+
+static inline int
+even_floor(int v) {
+    return v & ~1;
+}
+
+static inline int
+even_ceil(int v) {
+    return (v + 1) & ~1;
+}
 #endif
 
 /*
  * Panel plumbing - device-only. A host build never brings a panel up or
- * presents to one; see gfx_init()/gfx_suspend()/gfx_resume()/gfx_present()
- * below for the host side of each.
+ * presents to one; see gfx_init()/gfx_present() below for the host side of
+ * each.
  */
 
 #ifdef ESP_PLATFORM
@@ -82,20 +125,24 @@ on_strip_sent(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t* event
     return woken == pdTRUE;
 }
 
-/* SPI2 panel. `send_init` chooses full init or re-attach, skipping command
- * sequence to avoid 120 ms wait. */
+/* Common to every panel driver this file brings up: claims SPI2 for the
+ * QSPI lines board.h names, with the same pad-strength opt-in either way. */
 static esp_err_t
-panel_bring_up(bool send_init) {
-    const spi_bus_config_t bus =
-        SH8601_PANEL_BUS_QSPI_CONFIG(BSP_LCD_PCLK, BSP_LCD_DATA0, BSP_LCD_DATA1, BSP_LCD_DATA2, BSP_LCD_DATA3,
-                                     GFX_WIDTH * STRIP_HEIGHT * sizeof(gfx_color_t));
+qspi_bus_up(void) {
+    const spi_bus_config_t bus = {
+        .sclk_io_num = BSP_LCD_PCLK,
+        .data0_io_num = BSP_LCD_DATA0,
+        .data1_io_num = BSP_LCD_DATA1,
+        .data2_io_num = BSP_LCD_DATA2,
+        .data3_io_num = BSP_LCD_DATA3,
+        .max_transfer_sz = GFX_WIDTH * STRIP_HEIGHT * sizeof(gfx_color_t),
+    };
 
     esp_err_t err = spi_bus_initialize(BSP_LCD_SPI_NUM, &bus, SPI_DMA_CH_AUTO);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "spi_bus_initialize failed: %s", esp_err_to_name(err));
         return err;
     }
-    spi_bus_up = true;
 
 #if defined(CONFIG_LAUNCHER_GFX_QSPI_STRONG_PADS) && CONFIG_LAUNCHER_GFX_QSPI_STRONG_PADS
     /* AFTER spi_bus_initialize(), which is what configures these pads - set
@@ -114,10 +161,20 @@ panel_bring_up(bool send_init) {
     }
 #endif
     ESP_LOGI(TAG, "panel QSPI at %d MHz", (int)(GFX_QSPI_HZ / 1000000));
+    return ESP_OK;
+}
+
+/* SH8601 panel - the original (pre-V2) revision. */
+static esp_err_t
+panel_bring_up_sh8601(void) {
+    esp_err_t err = qspi_bus_up();
+    if (err != ESP_OK) {
+        return err;
+    }
 
     esp_lcd_panel_io_spi_config_t io_config = SH8601_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, on_strip_sent, NULL);
 
-    /* Defaults to 40 MHz, 17.6 ms frame, 94% bus-bound. See GFX_QSPI_HZ. */
+    /* See GFX_QSPI_HZ. */
     io_config.pclk_hz = GFX_QSPI_HZ;
     err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, &panel_io);
     if (err != ESP_OK) {
@@ -130,7 +187,7 @@ panel_bring_up(bool send_init) {
         .flags = {.use_qspi_interface = 1},
     };
     const esp_lcd_panel_dev_config_t panel_config = {
-        .reset_gpio_num = GPIO_NUM_NC, /* reset is on the IO expander */
+        .reset_gpio_num = GPIO_NUM_NC, /* no dedicated reset line - see board_detect() */
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16,
         .vendor_config = &vendor,
@@ -140,54 +197,60 @@ panel_bring_up(bool send_init) {
         return err;
     }
 
-    if (send_init) {
-        ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), TAG, "reset");
-        ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "init");
-        ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "on");
-    }
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), TAG, "reset");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "init");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "on");
     return ESP_OK;
 }
 
-/* Releases SPI2 for other use. Framebuffer is ordinary RAM, not bus-related. */
-static void
-panel_tear_down(void) {
-    if (panel != NULL) {
-        esp_lcd_panel_del(panel);
-        panel = NULL;
+/* CO5300 panel - the V2 revision only. */
+static esp_err_t
+panel_bring_up_co5300(void) {
+    esp_err_t err = qspi_bus_up();
+    if (err != ESP_OK) {
+        return err;
     }
-    if (panel_io != NULL) {
-        esp_lcd_panel_io_del(panel_io);
-        panel_io = NULL;
+
+    esp_lcd_panel_io_spi_config_t io_config = CO5300_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, on_strip_sent, NULL);
+    io_config.pclk_hz = GFX_QSPI_HZ;
+    err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, &panel_io);
+    if (err != ESP_OK) {
+        return err;
     }
-    if (spi_bus_up) {
-        spi_bus_free(BSP_LCD_SPI_NUM);
-        spi_bus_up = false;
+
+    co5300_vendor_config_t vendor = {
+        .init_cmds = co5300_init_cmds,
+        .init_cmds_size = sizeof(co5300_init_cmds) / sizeof(co5300_init_cmds[0]),
+        .flags = {.use_qspi_interface = 1},
+    };
+    const esp_lcd_panel_dev_config_t panel_config = {
+        .reset_gpio_num = GPIO_NUM_NC, /* no dedicated reset line - see board_detect() */
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+        .bits_per_pixel = 16,
+        .vendor_config = &vendor,
+    };
+    err = esp_lcd_new_panel_co5300(panel_io, &panel_config, &panel);
+    if (err != ESP_OK) {
+        return err;
     }
+
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), TAG, "reset");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "init");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_set_gap(panel, BOARD_PANEL_X_GAP, 0), TAG, "gap");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "on");
+    return ESP_OK;
+}
+
+/* Picks the driver the detected board revision actually needs - see
+ * board_variant_t. */
+static esp_err_t
+panel_bring_up(void) {
+    if (board_variant() == BOARD_VARIANT_CO5300_CST) {
+        return panel_bring_up_co5300();
+    }
+    return panel_bring_up_sh8601();
 }
 #endif /* ESP_PLATFORM - panel plumbing */
-
-bool
-gfx_suspend(void) {
-#ifdef ESP_PLATFORM
-    panel_tear_down();
-#endif
-    return true;
-}
-
-bool
-gfx_resume(bool full_init) {
-#ifdef ESP_PLATFORM
-    /* GRAM unknown after re-init; assume screen cleared. One frame after
-     * resume. */
-    if (full_init) {
-        gfx_mark_all_dirty();
-    }
-    return panel_bring_up(full_init) == ESP_OK;
-#else
-    (void)full_init;
-    return true;
-#endif
-}
 
 bool
 gfx_init(void) {
@@ -201,12 +264,12 @@ gfx_init(void) {
     }
 
     /* Detect board: initialises I2C, pulses display and touch reset lines. */
-    if (bsp_board_detect() == BSP_BOARD_VARIANT_UNKNOWN) {
+    if (board_detect() == BOARD_VARIANT_UNKNOWN) {
         ESP_LOGE(TAG, "Could not identify the board");
         return false;
     }
 
-    if (panel_bring_up(true) != ESP_OK) {
+    if (panel_bring_up() != ESP_OK) {
         ESP_LOGE(TAG, "Could not start the display");
         return false;
     }
@@ -215,35 +278,48 @@ gfx_init(void) {
     /* Framebuffer state post SD probe & panel bring-up; paired with HEAPMARK
      * in main.c. See heap_mark() comment. */
     ESP_LOGI(TAG, "HEAPMARK %-18s free %6u largest %6u", "before framebuffer",
-             (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
-             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+             (unsigned)heap_caps_get_free_size(BOARD_FRAMEBUFFER_CAPS),
+             (unsigned)heap_caps_get_largest_free_block(BOARD_FRAMEBUFFER_CAPS));
 #endif
 
+    /* PSRAM: the internal pool has no room for it. It never goes to the
+     * panel directly - see strip_bounce. */
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-    fb = heap_caps_malloc(bytes, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+    fb = heap_caps_malloc(bytes, BOARD_FRAMEBUFFER_CAPS);
     if (fb == NULL) {
         ESP_LOGE(TAG,
                  "Could not allocate %u byte framebuffer "
-                 "(largest free DMA block is %u bytes)",
-                 (unsigned)bytes, (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+                 "(largest free %s block is %u bytes)",
+                 (unsigned)bytes, BOARD_FRAMEBUFFER_POOL_NAME,
+                 (unsigned)heap_caps_get_largest_free_block(BOARD_FRAMEBUFFER_CAPS));
         return false;
     }
 
-    const size_t gather_bytes = (size_t)GATHER_MAX_PIXELS * sizeof(gfx_color_t);
+    const size_t gather_bytes = (size_t)GATHER_WINDOW_MAX_PIXELS * sizeof(gfx_color_t);
     gather_buf = heap_caps_malloc(gather_bytes, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
     if (gather_buf == NULL) {
         ESP_LOGE(TAG, "Could not allocate %u byte gather buffer", (unsigned)gather_bytes);
         return false;
     }
 
+    const size_t strip_bytes = (size_t)GFX_WIDTH * STRIP_HEIGHT * sizeof(gfx_color_t);
+    for (int i = 0; i < STRIP_BOUNCE_SLOTS; i++) {
+        strip_bounce[i] = heap_caps_malloc(strip_bytes, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+        if (strip_bounce[i] == NULL) {
+            ESP_LOGE(TAG, "Could not allocate %u byte strip buffer", (unsigned)strip_bytes);
+            return false;
+        }
+    }
+
     gfx_clear_clip();
     gfx_mark_all_dirty();
 
     ESP_LOGI(TAG,
-             "%dx%d framebuffer at %p, %u bytes; heap free %u, "
-             "largest DMA block %u",
-             GFX_WIDTH, GFX_HEIGHT, (void*)fb, (unsigned)bytes, (unsigned)esp_get_free_heap_size(),
-             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+             "%dx%d framebuffer at %p, %u bytes in %s; heap free %u, "
+             "largest %s block %u",
+             GFX_WIDTH, GFX_HEIGHT, (void*)fb, (unsigned)bytes, BOARD_FRAMEBUFFER_POOL_NAME,
+             (unsigned)esp_get_free_heap_size(), BOARD_FRAMEBUFFER_POOL_NAME,
+             (unsigned)heap_caps_get_largest_free_block(BOARD_FRAMEBUFFER_CAPS));
     return true;
 #else
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
@@ -1199,6 +1275,10 @@ gfx_set_leaf_overlay(bool on) {
 static void
 gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_end, bool refined, int* queued,
                 gfx_color_t border) {
+    x0 = even_floor(x0);
+    y0 = even_floor(y0);
+    x1 = even_ceil(x1);
+    y1 = even_ceil(y1);
     const int w = x1 - x0;
     const int h = y1 - y0;
 
@@ -1240,6 +1320,16 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
     xSemaphoreTake(strip_sent, portMAX_DELAY);
 }
 
+/* Queues framebuffer rows [y0, y1) through the next strip_bounce slot. At
+ * most STRIP_HEIGHT rows. */
+static void
+send_fb_rows(int y0, int y1) {
+    gfx_color_t* const slot = strip_bounce[strip_bounce_next];
+    strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
+    memcpy(slot, fb + (size_t)y0 * GFX_WIDTH, (size_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t));
+    esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, slot);
+}
+
 static void
 send_full_row(int row, int* queued) {
     const int y = row * STRIP_HEIGHT;
@@ -1279,7 +1369,7 @@ send_full_row(int row, int* queued) {
             mark_rect_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
         }
 
-        esp_lcd_panel_draw_bitmap(panel, 0, y, GFX_WIDTH, y + STRIP_HEIGHT, fb + (size_t)y * GFX_WIDTH);
+        send_fb_rows(y, y + STRIP_HEIGHT);
         xSemaphoreTake(strip_sent, portMAX_DELAY);
 
         /* Restore in the reverse order of saving. */
@@ -1298,7 +1388,7 @@ send_full_row(int row, int* queued) {
     }
 #endif
 
-    esp_lcd_panel_draw_bitmap(panel, 0, y, GFX_WIDTH, y + STRIP_HEIGHT, fb + (size_t)y * GFX_WIDTH);
+    send_fb_rows(y, y + STRIP_HEIGHT);
     (*queued)++;
 }
 
@@ -1316,7 +1406,9 @@ send_partial_band(int y0, int y1, int* queued) {
         return false;
     }
 #endif
-    esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, fb + (size_t)y0 * GFX_WIDTH);
+    y0 = even_floor(y0);
+    y1 = even_ceil(y1);
+    send_fb_rows(y0, y1);
     (*queued)++;
     return true;
 }
@@ -1441,11 +1533,15 @@ gfx_present(void) {
 #endif /* ESP_PLATFORM - the presentation pipeline */
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-/* Bypasses gfx_present() for raw QSPI. SPI driver splits into chunks, one
- * strip_sent means full frame. */
+/* Bypasses gfx_present()'s dirty tracking: every strip through the same
+ * bounce copy and queue a full-band send takes, one strip_sent per strip. */
 void
 gfx_present_raw_full_frame_for_test(void) {
-    esp_lcd_panel_draw_bitmap(panel, 0, 0, GFX_WIDTH, GFX_HEIGHT, fb);
-    xSemaphoreTake(strip_sent, portMAX_DELAY);
+    for (int row = 0; row < STRIP_COUNT; row++) {
+        send_fb_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT);
+    }
+    for (int row = 0; row < STRIP_COUNT; row++) {
+        xSemaphoreTake(strip_sent, portMAX_DELAY);
+    }
 }
 #endif

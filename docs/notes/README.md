@@ -1,6 +1,6 @@
 # Platform Notes
 
-Working notes for the Waveshare ESP32-C6-Touch-AMOLED-1.8. Everything here was
+Working notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8. Everything here was
 verified on the actual board or read out of the actual source — nothing is
 copied from a spec sheet unless it is marked as such. Numbers come from boot
 logs and `esp_timer` measurements taken in this repo.
@@ -12,11 +12,11 @@ the falling-sand app's own discovery narrative, moved out to
 [`../sand/`](../sand/) once that folder existed to hold it properly:
 
 - **[Board-and-Memory.md](Board-and-Memory.md)** — the board's hardware
-  inventory, the memory budget with no PSRAM, and the SPI2/SD-card
-  time-multiplexing story.
+  inventory, the memory budget built around the framebuffer living in
+  PSRAM, and why the SD card and the display no longer contend for a bus.
 - **[Display-and-Rendering.md](Display-and-Rendering.md)** — owning the
-  panel directly, the QSPI clock history (including why 80 MHz is not
-  usable and why an intermediate clock does not exist), and the
+  panel directly, the QSPI clock history (why 80 MHz needs the strips sent
+  from internal RAM and why an intermediate clock does not exist), and the
   dirty-region tracking that partial screen updates are built on.
 - **[Input-and-Sensors.md](Input-and-Sensors.md)** — touch, the IMU's axes
   and its accelerometer/gyroscope split, and the two buttons that are not
@@ -38,12 +38,17 @@ the falling-sand app's own discovery narrative, moved out to
 
 ## Not verified on a board
 
-- **[Second-Target-Draft.md](Second-Target-Draft.md)** — what a second
-  target (ESP32-S3) would cost, and which sand findings are the chip's
-  rather than the algorithm's. Kept apart from the six notes above because
-  it breaks their rule: no S3 has been built for, flashed or captured, so
-  every row is marked `[spec]`, `[repo]` or `[derived]` and none of it is a
-  board measurement. Read it for the mechanism arguments, not for numbers.
+- **[Second-Target-Draft.md](Second-Target-Draft.md)** — what moving to
+  the ESP32-S3 would cost, and which sand findings are the chip's rather
+  than the algorithm's. Written before the board existed, so every row is
+  marked `[spec]`, `[repo]` or `[derived]` and none of it is a board
+  measurement. Read it for the mechanism arguments, not for numbers.
+- **[Image-Kernels-Research.md](Image-Kernels-Research.md)** — literature
+  and precedent for real-time blur and edge detection on this hardware:
+  packed-RGB565 tricks, running-sum and repeated-box blurs, luminance and
+  palette representations, ESP-DSP's SIMD, and a ranked list of first
+  experiments. Every cost in it is an estimate; nothing has run on the
+  board.
 
 ## Related
 
