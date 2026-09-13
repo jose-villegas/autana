@@ -117,7 +117,7 @@ menu "Launcher"
 
     config LAUNCHER_GFX_QSPI_80MHZ
         bool "Drive the panel's QSPI bus at 80 MHz instead of 40"
-        default n
+        default y
         help
             Halves the time a full frame spends on the bus: 8.2 ms at 80 MHz
             against 16.5 at 40, and a measured full present of 17.6 ms says
@@ -129,17 +129,15 @@ menu "Launcher"
             (n >= 2 floor) resolves to exactly 40 or 80, so this is a bool
             rather than a frequency.
 
-            OFF BY DEFAULT BECAUSE IT IS NOT PROVEN. 80 MHz produces
-            corner-shaped artifacts - corruption at the START of a transfer
-            rather than noise across the frame. Raising the pad drive below
-            makes them rare rather than routine, which points at an edge-rate
-            or setup-margin problem at the panel's receiver rather than a
-            bandwidth ceiling, but rare is not gone. A redraw over the affected
-            area clears it, so nothing latches.
+            Needs every strip sent from internal DMA RAM, never read in place
+            from PSRAM: DMA from PSRAM shares the PSRAM bus's bandwidth, and at
+            80 MHz the panel receives dropped data (gfx.c, strip_bounce). The
+            corner-shaped artifacts once blamed on this clock were odd-edged
+            panel windows, which gfx.c now rounds to even edges.
 
-            IF YOU TURN THIS ON, the dirty-band thresholds in gfx.h were fitted
-            to 40 MHz timings and are wrong until re-measured - some of the win
-            leaks back otherwise.
+            The dirty-band thresholds in gfx.h were fitted to 40 MHz timings
+            and are wrong until re-measured - some of the win leaks back
+            otherwise.
 
     config LAUNCHER_GFX_QSPI_STRONG_PADS
         bool "Drive the QSPI pads at 40 mA instead of the 20 mA default"
