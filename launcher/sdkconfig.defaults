@@ -29,3 +29,14 @@ CONFIG_FREERTOS_HZ=1000
 # optimiser helps and exactly what -Og leaves on the table. Measured effect is
 # in docs/notes/Flashing-and-Toolchain.md.
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# Allocations up to 64 KB try internal RAM before PSRAM (IDF default 16 KB),
+# so sand's 41 KB grids and per-step buffers stay off the PSRAM bus. Larger
+# ones - the framebuffer - still land in PSRAM. Device, perf scope,
+# 2026-09-13: 1-6% faster sand steps.
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536
+
+# 32 KB instruction cache instead of 16. Same capture: a further 0-5% on
+# complex scenes (thermal shock 7% in total) for 16 KB of internal RAM. A
+# 64 KB data cache measured exactly nothing once no hot data is in PSRAM.
+CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
