@@ -1,8 +1,8 @@
 /*
  * A first-fit arena allocator that stands in for malloc/calloc/realloc/free
  * in the HOST test build, sized to what this project's device profile says
- * is actually free once the framebuffer is carved out (device_profiles/
- * esp32c6.sh's DP_FREE_HEAP_BYTES). A laptop-scale heap cannot stand in for
+ * is actually free on the internal heap (device_profiles/esp32s3.sh's
+ * DP_FREE_HEAP_BYTES). A laptop-scale heap cannot stand in for
  * the device's: an allocation that fits on the host and not on the board is
  * exactly the failure this exists to catch.
  *
@@ -47,7 +47,7 @@
 #ifndef HOST_HEAP_ARENA_BYTES
 #error "heap_arena.c: HOST_HEAP_ARENA_BYTES must be supplied by the build " \
     "(-DHOST_HEAP_ARENA_BYTES=<n>), sourced from a device profile's " \
-    "DP_FREE_HEAP_BYTES (launcher/tools/device_profiles/esp32c6.sh, read " \
+    "DP_FREE_HEAP_BYTES (launcher/tools/device_profiles/esp32s3.sh, read " \
     "via launcher/tools/device_profile.sh). A gate running against an " \
     "invented cap is worse than no gate."
 #endif

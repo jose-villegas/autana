@@ -262,10 +262,27 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
 static void
 report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
     (*frames)++;
+
+    /* Loop passes alone overstate smoothness: an idle pass sends nothing.
+     * Presents that sent a strip, and the touch samples feeding them, are
+     * what a swipe actually sees. */
+    static uint32_t drawn;
+    int full = 0, gathered = 0, partial = 0;
+    gfx_get_strip_send_counts(&full, &gathered, &partial);
+    if (full + gathered + partial > 0) {
+        drawn++;
+        gfx_reset_strip_send_counts();
+    }
+
     const int64_t since = now_us - *window_start;
     if (since >= 1500000) {
-        ESP_LOGI(TAG, "%.1f fps", (double)*frames * 1000000.0 / (double)since);
+        uint32_t points = 0, moved = 0;
+        touch_take_sample_counts(&points, &moved);
+        const double per_s = 1000000.0 / (double)since;
+        ESP_LOGI(TAG, "%.1f fps, %.1f drawn/s, touch %.1f points/s %.1f moved/s", (double)*frames * per_s,
+                 (double)drawn * per_s, (double)points * per_s, (double)moved * per_s);
         *frames = 0;
+        drawn = 0;
         *window_start = now_us;
     }
 }

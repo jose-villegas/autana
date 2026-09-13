@@ -1785,11 +1785,21 @@ step_one_acid_rain_cell(sand_t* s, int x, int y, int w, int h) {
 #define FOUND_FALLER_MOVE 32u
 #define FOUND_CONDENSING  64u
 
-/* REACTION-STAGE DISPATCH TABLE skips PREFIX rows. Water, oil, metal traverse
- * all fields. */
+/* Cells the dispatch loop below actually visits, across both the full row
+ * walk and the soak-only partial walk. Never reset here - see its own
+ * comment in sand_priv.h. */
+unsigned sand_reactions_cells_dispatched;
 
+/* REACTION-STAGE DISPATCH TABLE skips PREFIX rows. Water, oil, metal traverse
+ * all fields.
+ *
+ * RANGE [x_lo, x_hi), NOT ALWAYS THE FULL ROW: the soak-only walk in
+ * sand_step_reactions() calls this once per BLOCK_LIQUID_NEAR block instead
+ * of once per row, ascending in x the same way a full [0, w) call would, so
+ * a cell it does visit sees exactly the state and RNG stream a full walk
+ * would have given it. */
 static unsigned
-step_one_reacting_row(sand_t* s, int y, int w, int h) {
+step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
     const size_t row_at = (size_t)y * (size_t)w;
     uint8_t* row = s->cells + row_at;
 
@@ -1800,8 +1810,12 @@ step_one_reacting_row(sand_t* s, int y, int w, int h) {
         &&stage_sprout,   &&stage_bud,         &&stage_end,
     };
 
+    /* Once per call, not per cell: the loop visits every cell of the range,
+     * and a store per cell would tax every pass in every build. */
+    sand_reactions_cells_dispatched += (unsigned)(x_hi - x_lo);
+
     unsigned found = 0;
-    for (int x = 0; x < w; x++) {
+    for (int x = x_lo; x < x_hi; x++) {
         const cell_t c = row[x];
         seen_materials |= (uint16_t)(1u << CELL_MATERIAL(c));
         if (CELL_IS_EMPTY(c)) {
@@ -2086,6 +2100,35 @@ sand_smothering_ceiling(void) {
     return max_smothering_density;
 }
 
+static bool reactions_force_full_walk;
+
+void
+sand_reactions_force_full_walk(bool on) {
+    reactions_force_full_walk = on;
+}
+
+/* SOAK-ONLY WALK: every block outside BLOCK_LIQUID_NEAR is skipped rather
+ * than visited and rejected. Sound only under sand_step_reactions()'s own
+ * soak_only gate - see the block comment there - which has already ruled
+ * out every stage but stage_soak_dry, and step_one_soaking_cell() is a
+ * proven no-op off liquid_near(), which BLOCK_LIQUID_NEAR is built to
+ * answer for any four-neighbour test. Visits blocks left to right, same as
+ * the x order a full row walk would give them. */
+static unsigned
+step_one_reacting_row_liquid_near(sand_t* s, int y, int w, int h) {
+    unsigned found = 0;
+    const int by = (int)((unsigned)y / SAND_BLOCK_H);
+    for (int bx = 0; bx < s->block_cols; bx++) {
+        if ((s->block_state[(size_t)by * (size_t)s->block_cols + (size_t)bx] & BLOCK_LIQUID_NEAR) == 0) {
+            continue;
+        }
+        const int x_lo = bx * SAND_BLOCK_W;
+        const int x_hi = (x_lo + SAND_BLOCK_W < w) ? x_lo + SAND_BLOCK_W : w;
+        found |= step_one_reacting_row(s, y, w, h, x_lo, x_hi);
+    }
+    return found;
+}
+
 void
 sand_step_reactions(sand_t* s) {
     if (s->fuse_blast_wait != 0) {
@@ -2144,6 +2187,17 @@ sand_step_reactions(sand_t* s) {
         fill_burn_plan(&extended_plan[k], s, &extended_reactions[k], material_of(CELL_MAKE(MAT_EXTENDED, (uint8_t)k)));
     }
 
+    /* SOAK-ONLY: alive for no reason but the wettable term above, with every
+     * other stage's OWN presence flag already reading quiet (each is false
+     * only once nothing on the board could make it true) and no drinker's
+     * find_water() reach - the one stage not block-local - per
+     * drinker_mask(). Only stage_soak_dry is left, and it only acts where
+     * liquid_near() is true, exactly what BLOCK_LIQUID_NEAR marks. */
+    const bool soak_only =
+        !reactions_force_full_walk && !s->may_have_burning && !s->may_have_dissolver && !s->may_have_temperature
+        && !s->may_have_moisture && !(s->may_have_faller && s->faller_may_move) && !s->may_have_condenser
+        && s->may_have_liquid && (s->may_have_materials & drinker_mask()) == 0 && s->block_state != NULL;
+
     /* CLEARED HERE so a bit latch_content_flags() ORs in mid-pass survives the
      * write-back below. Assigning the walk's census there instead dropped any
      * cell this pass CREATED at its own coordinates - the walk logged the old
@@ -2152,7 +2206,12 @@ sand_step_reactions(sand_t* s) {
      * The other five may_have_* bools are live per-cell gates for stage_warm
      * and the plant stages, so they keep the clear-at-the-end rule below. The
      * fall pair gates nothing inside the pass and joins the mask here. */
-    s->may_have_materials = 0;
+    /* SOAK-ONLY SKIPS THIS CLEAR: an unvisited block proves nothing gone, so
+     * `|=` below only adds to the old value - narrower than a full pass, but
+     * never wrong. */
+    if (!soak_only) {
+        s->may_have_materials = 0;
+    }
     seen_materials = 0;
 
     /* CLEARED HERE, not with the five below, for the same reason the mask
@@ -2160,16 +2219,21 @@ sand_step_reactions(sand_t* s) {
      * a row. Clearing at the end throws that arming away and leaves a plant
      * over the hole this same pass opened under it. Presence joins it so a
      * plant BUDDED mid-pass, into a row already walked, is not cleared away
-     * either. */
-    s->may_have_faller = false;
-    s->faller_may_move = false;
+     * either.
+     *
+     * SOAK-ONLY SKIPS THIS CLEAR TOO, same reasoning as the materials mask
+     * above. */
+    if (!soak_only) {
+        s->may_have_faller = false;
+        s->faller_may_move = false;
+    }
 
     const int w = s->w;
     const int h = s->h;
 
     unsigned found = 0;
     for (int y = 0; y < h; y++) {
-        found |= step_one_reacting_row(s, y, w, h);
+        found |= soak_only ? step_one_reacting_row_liquid_near(s, y, w, h) : step_one_reacting_row(s, y, w, h, 0, w);
     }
 
     if (!(found & FOUND_BURNING)) {

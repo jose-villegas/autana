@@ -13,7 +13,7 @@
  * suite that draws and presents on its own - running on this task while the
  * render loop runs on the main one is two tasks driving one panel.
  *
- * USB-Serial/JTAG, not UART: this board's USB-C is the C6's own peripheral
+ * USB-Serial/JTAG, not UART: this board's USB-C is the S3's own peripheral
  * and the console's primary channel, so this listener sees the bytes
  * idf_monitor does. Its own task, because screenshot_start() switches the fd
  * to the driver's interrupt-driven reader, which is what lets a read block
@@ -211,6 +211,33 @@ static char* row_b64; /* +1: NUL, for printf("%s") */
  * device_state_format_json() produces a complete object - by
  * overwriting its closing `}` with `,"app":<fragment>}` rather than
  * teaching device_state.h about apps. */
+/* Protocol lines bypass stdio. The console VFS drops every byte once the
+ * host has not drained the TX ring for 50 ms (TX_FLUSH_TIMEOUT_US in
+ * usb_serial_jtag_vfs.c) - right for logs, fatal for a 660 KB capture,
+ * which lost rows mid-stream on the S3. The driver call below waits
+ * instead. */
+/* No single write may exceed the driver's TX ring (tx_buffer_size in
+ * screenshot_start()): a byte ringbuffer refuses a larger item outright,
+ * however long it is told to wait. */
+#define EMIT_CHUNK_BYTES        128
+
+static void
+emit_bytes(const char* bytes, size_t len) {
+    while (len > 0) {
+        const size_t n = len < EMIT_CHUNK_BYTES ? len : EMIT_CHUNK_BYTES;
+        usb_serial_jtag_write_bytes(bytes, n, portMAX_DELAY);
+        bytes += n;
+        len -= n;
+    }
+}
+
+static void
+emit_line(const char* prefix, const char* payload) {
+    emit_bytes(prefix, strlen(prefix));
+    emit_bytes(payload, strlen(payload));
+    emit_bytes("\n", 1);
+}
+
 static void
 dump_state(const input_t* input, const app_t* current_app) {
     device_state_t state;
@@ -238,7 +265,7 @@ dump_state(const input_t* input, const app_t* current_app) {
         }
     }
 
-    printf("SCREENSHOT_STATE:%s\n", json);
+    emit_line("SCREENSHOT_STATE:", json);
 }
 
 void
@@ -271,14 +298,17 @@ screenshot_dump(const input_t* input, const app_t* current_app) {
 
     ESP_LOGI(TAG, "streaming %lu bytes to the console", (unsigned long)total_bytes);
 
-    /* The marker and data lines are plain printf(), not ESP_LOGx: a log
+    /* The marker and data lines go out through emit_line(), not ESP_LOGx: a log
      * line carries a "I (12345) TAG: " prefix (see boot/post.c's
      * report() for an ordinary use of that prefix) that
      * tools/screenshot.py would otherwise have to strip back off before
      * the fixed-prefix match it does on every line - simpler for both
      * ends to keep the protocol's own lines free of it from the
      * start. */
-    printf("SCREENSHOT_BEGIN size=%lu\n", (unsigned long)total_bytes);
+    char begin[32];
+    snprintf(begin, sizeof begin, "SCREENSHOT_BEGIN size=%lu", (unsigned long)total_bytes);
+    fflush(stdout); /* buffered log output must not land inside the stream */
+    emit_line(begin, "");
 
     uint8_t header[SCREENSHOT_BMP_HEADER_SIZE];
     screenshot_bmp_header(header, GFX_WIDTH, GFX_HEIGHT);
@@ -288,7 +318,7 @@ screenshot_dump(const input_t* input, const app_t* current_app) {
     char header_b64[72 + 1];
     screenshot_base64_encode(header, sizeof header, header_b64);
     header_b64[sizeof(header_b64) - 1] = '\0';
-    printf("SCREENSHOT_DATA:%s\n", header_b64);
+    emit_line("SCREENSHOT_DATA:", header_b64);
 
     const gfx_color_t* fb = gfx_framebuffer();
 
@@ -308,13 +338,12 @@ screenshot_dump(const input_t* input, const app_t* current_app) {
         }
         screenshot_base64_encode(row, row_bytes, row_b64);
         row_b64[row_b64_bytes - 1] = '\0';
-        printf("SCREENSHOT_DATA:%s\n", row_b64);
+        emit_line("SCREENSHOT_DATA:", row_b64);
     }
 
     dump_state(input, current_app);
 
-    printf("SCREENSHOT_END\n");
-    fflush(stdout);
+    emit_line("SCREENSHOT_END", "");
 
     free(row);
     free(row_b64);

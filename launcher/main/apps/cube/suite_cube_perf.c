@@ -305,12 +305,10 @@ run_perf_capture(const char* label, bool with_hud, bool with_partial, bool with_
     phase_stats_t pres = compute_stats(FIELD_PRESENT, valid);
 
     /* --- LOG THE REPORT --- */
-    /* Console only - this project has no mounted filesystem to write a
-     * persistent report to (no SPIFFS partition exists, and the SD card is
-     * unmounted again right after POST to free the SPI2 bus the display
-     * needs - see post.c). ESP_LOGI is what every other perf tool in this
-     * codebase already reports through (e.g. suite_sand.c's own budget
-     * tests), captured the same way by tools/capture_selftest.py. */
+    /* Console only - no mounted filesystem exists here (no SPIFFS partition,
+     * and POST only mounts the SD card transiently to probe it - see
+     * post.c). ESP_LOGI is what every perf tool here reports through,
+     * captured the same way by tools/capture_selftest.py. */
     ESP_LOGI(TAG, "=== CUBE PERF %s (%lld frames over %ds) ===", label, (long long)sample_count, SAMPLE_SECONDS);
     ESP_LOGI(TAG, "Total:   min=%lldus max=%lldus avg=%lldus med=%lldus p95=%lldus (%.1f/%.1f/%.1f fps)",
              (long long)total.min, (long long)total.max, (long long)total.avg, (long long)total.med,

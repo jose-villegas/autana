@@ -1,6 +1,6 @@
 name: Build (Diagnostics)
 
-# Compiles the diagnostics/test variant for the esp32c6 target - the
+# Compiles the diagnostics/test variant for the esp32s3 target - the
 # firmware plus the on-device test suites (see
 # launcher/test/run_device_tests.sh, which builds this same config
 # locally: -B build.diag -D SDKCONFIG=build.diag/sdkconfig -D
@@ -42,6 +42,6 @@ jobs:
       - uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: release-v5.5
-          target: esp32c6
+          target: esp32s3
           path: launcher
           command: idf.py -B build.diag -D SDKCONFIG=build.diag/sdkconfig -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag" build

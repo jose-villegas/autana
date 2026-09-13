@@ -38,13 +38,11 @@
 #define BTN_H    64
 
 /* Heap, not a file-scope object: a mu_Context is 10,744 bytes, and the
- * diagnostics build links every suite into firmware, where the
- * framebuffer plus an app's largest buffer still have to fit
-     * (check_static_ram.py).
- * A second context in .bss fails that gate outright - which host tests,
- * with a laptop's memory behind them, cannot notice. Allocated once and
- * reset per test rather than per-test malloc/free: the runner has no
- * teardown hook to free it in. */
+ * diagnostics build links every suite into firmware, where internal heap
+ * headroom is scarce enough that a second context in .bss would not be
+ * free - something host tests, with a laptop's memory behind them,
+ * cannot notice. Allocated once and reset per test rather than per-test
+ * malloc/free: the runner has no teardown hook to free it in. */
 static mu_Context* ctx;
 static ui_pointer_t pointer;
 

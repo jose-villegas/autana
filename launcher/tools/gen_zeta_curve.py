@@ -6,10 +6,11 @@
 WHY THIS IS A TABLE AND NOT DEVICE CODE
 
 The animation plots zeta(1/2 + it) as t rises. That value cannot be had
-cheaply on an ESP32-C6: the Dirichlet series does not converge on the
+cheaply on this device: the Dirichlet series does not converge on the
 critical line, the alternating series that does converges far too slowly to
-be worth 240 evaluations a frame, and the chip is RV32IMAC - no FPU, so
-every step of any of it is a soft-float library call.
+be worth 240 evaluations a frame, and it is computed in double precision -
+this chip's FPU is single-precision only, so every step of it is still a
+soft-float library call.
 
 None of that matters, because the curve never changes. It is one fixed
 polyline, so it is computed here, once, in double precision, and shipped in
