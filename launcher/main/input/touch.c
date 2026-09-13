@@ -4,6 +4,7 @@
 #include "bsp/esp-bsp.h"
 #include "bsp/touch.h"
 #include "driver/gpio.h"
+#include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "esp_lcd_touch.h"
 #include "esp_log.h"
@@ -25,15 +26,32 @@ static touch_fsm_t fsm;
  * cheap here since it only ever spans a few field updates. */
 static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
 
+/* Set from the INT falling edge. The CST820 signals each report with a ~1 ms
+ * pulse rather than holding INT low while touched, so sampling the level at
+ * TOUCH_POLL_HZ alone sees about one report in ten. */
+static volatile bool report_pending;
+
+/* Whether the last read found a finger: a controller that pulses only on
+ * change must still be read while a finger rests, or the FSM sees a lift. */
+static bool was_touching;
+
+static void IRAM_ATTR
+on_touch_int(esp_lcd_touch_handle_t tp) {
+    (void)tp;
+    report_pending = true;
+}
+
 static void
 poll_once(void) {
     bool have_point = false;
     int x = 0, y = 0;
 
-    /* Only talk to the controller when it says it has something. The FT5x06
-     * NACKs register reads while idle, and each failed transaction costs a bus
+    /* Only talk to the controller when it has something: a controller NACKs
+     * register reads while idle, and each failed transaction costs a bus
      * timeout - polling blindly at this rate would swamp the system. */
-    if (panel != NULL && gpio_get_level(BSP_LCD_TOUCH_INT) == 0) {
+    const bool pending = report_pending;
+    report_pending = false;
+    if (panel != NULL && (pending || was_touching || gpio_get_level(BSP_LCD_TOUCH_INT) == 0)) {
         if (esp_lcd_touch_read_data(panel) == ESP_OK) {
             esp_lcd_touch_point_data_t point = {0};
             uint8_t count = 0;
@@ -44,6 +62,7 @@ poll_once(void) {
             }
         }
     }
+    was_touching = have_point;
 
     const int64_t now_us = esp_timer_get_time();
 
@@ -70,6 +89,8 @@ touch_start(void) {
     if (bsp_touch_new(NULL, &panel) != ESP_OK) {
         ESP_LOGW(TAG, "Touch controller unavailable; input will not work");
         panel = NULL;
+    } else if (esp_lcd_touch_register_interrupt_callback(panel, on_touch_int) != ESP_OK) {
+        ESP_LOGW(TAG, "No touch interrupt; falling back to sampling INT's level");
     }
 
     /* Above the render loop's priority so a long blit cannot delay sampling -
