@@ -1490,6 +1490,24 @@ draw_brush_screen(const input_t* input) {
 
 /* Frame */
 
+/* State sand_update() computes for sand_frame() to draw with, on the same
+ * pass - see the app.h contract: update() must not touch gfx, so every
+ * advance_*() result it needs to hand off is state, not a draw call. */
+static int pending_gx, pending_gy;
+static bool label_dirty_this_frame;
+
+/* sand_ui_step()'s actions, stepped in sand_update() and drawn in
+ * sand_frame(). A pass with no update() (the first frame after entering)
+ * leaves ui_stepped_this_pass false, and sand_frame() steps the UI itself. */
+static unsigned pending_ui_actions;
+static bool ui_stepped_this_pass;
+static bool pending_shine_moved, pending_local_depth_woke, pending_cullet_moved, pending_glass_moved,
+    pending_wood_leaf_moved;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static int64_t pending_step_us;
+static int pending_awake_blocks, pending_awake_cells;
+#endif
+
 static void
 read_gravity_input(uint32_t dt_ms, imu_sample_t* sample, int* gx, int* gy, int* flow, int* jostle, int* rotation) {
     *gx = 0;
@@ -1722,6 +1740,96 @@ draw_menu(const input_t* input) {
     ui_end(COL_BACKGROUND);
 }
 
+/* Everything the play screen needs each pass that does not draw: gravity and
+ * pour input, the sim itself, and the state (not pixels) the advance_*()
+ * family produces for sand_frame() to paint with. Returns early - untouched
+ * state, no gfx - whenever the play screen is not the one showing, since the
+ * menu/palette/brush screens are drawn, not simulated. */
+static void
+sand_update(uint32_t dt_ms, const input_t* input) {
+    if (ui.screen == SAND_UI_MENU || failed) {
+        return;
+    }
+
+    /* UI FIRST, as when this all ran inside sand_frame(): a tap that opens
+     * or closes a panel is the UI's, so it must be consumed before
+     * handle_pour_input() below could pour under the button. sand_ui_step()
+     * is state only; sand_frame() does the drawing its actions ask for. */
+    const unsigned actions = sand_ui_step(&ui, input);
+    pending_ui_actions |= actions;
+    ui_stepped_this_pass = true;
+
+    if (actions & (SAND_UI_CLOSE_PALETTE | SAND_UI_CLOSE_BRUSH)) {
+        if (actions & SAND_UI_SHOW_LABEL) {
+            label_left_ms = LABEL_MS;
+        }
+        sim_accumulator_q8 = 0;
+        pour_accumulator_ms = 0;
+        return;
+    }
+    if (actions & (SAND_UI_OPEN_PALETTE | SAND_UI_OPEN_BRUSH)) {
+        label_left_ms = 0;
+    }
+    if (ui.screen != SAND_UI_RUNNING) {
+        return;
+    }
+
+    int gx, gy, flow, jostle, rotation;
+    imu_sample_t sample = {0};
+    read_gravity_input(dt_ms, &sample, &gx, &gy, &flow, &jostle, &rotation);
+
+    label_dirty_this_frame = label_left_ms > 0;
+    if (label_dirty_this_frame) {
+        label_left_ms = (dt_ms >= label_left_ms) ? 0 : (label_left_ms - dt_ms);
+    }
+
+    if (input_ready) {
+        handle_pour_input(input, dt_ms);
+    } else if (!input->down) {
+        input_ready = true;
+    }
+    log_direction_change(gx, gy, jostle, &sample);
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    const int64_t t0 = esp_timer_get_time();
+#endif
+
+    run_sim_steps(gx, gy, jostle, flow, dt_ms);
+
+    material_set_gravity(gx, gy);
+
+    material_shine_direction(gx, gy, &shine_ux_q8, &shine_uy_q8);
+
+    material_wood_leaf_wind_axis(gx, gy, &wood_leaf_wind_ux_q8, &wood_leaf_wind_uy_q8);
+
+    material_wood_leaf_top5(gx, gy, &wood_leaf_top5_down, wood_leaf_top5);
+
+    advance_wood_leaf_wind_sign(dt_ms);
+
+    update_local_depth_gravity(gx, gy);
+
+    foam_elapsed_ms += dt_ms;
+    material_set_foam_phase(foam_elapsed_ms / FOAM_PHASE_MS);
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    pending_step_us = esp_timer_get_time() - t0;
+    count_awake(&pending_awake_blocks, &pending_awake_cells);
+#endif
+
+    /* Local-depth wake, cullet cycle, shine, and the wood-leaf swing each
+     * have their own clock tick and row array. Driven by dt_ms, not frame
+     * count. Glass's wake uses gravity_bearing_q16(). State only - each
+     * result feeds sand_frame()'s draw_dirty_rows() call. */
+    pending_shine_moved = advance_shine(dt_ms);
+    pending_local_depth_woke = advance_local_depth_wake(dt_ms);
+    pending_cullet_moved = advance_cullet(dt_ms);
+    pending_glass_moved = advance_glass_phase(gx, gy);
+    pending_wood_leaf_moved = advance_wood_leaf_phase(dt_ms);
+
+    pending_gx = gx;
+    pending_gy = gy;
+}
+
 static void
 sand_frame(uint32_t dt_ms, const input_t* input) {
     if (ui.screen == SAND_UI_MENU) {
@@ -1735,13 +1843,26 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
         return;
     }
 
-    const unsigned actions = sand_ui_step(&ui, input);
+    unsigned actions;
+    if (ui_stepped_this_pass) {
+        actions = pending_ui_actions;
+    } else {
+        actions = sand_ui_step(&ui, input);
+        if (actions & (SAND_UI_CLOSE_PALETTE | SAND_UI_CLOSE_BRUSH)) {
+            if (actions & SAND_UI_SHOW_LABEL) {
+                label_left_ms = LABEL_MS;
+            }
+            sim_accumulator_q8 = 0;
+            pour_accumulator_ms = 0;
+        }
+        if (actions & (SAND_UI_OPEN_PALETTE | SAND_UI_OPEN_BRUSH)) {
+            label_left_ms = 0;
+        }
+    }
+    pending_ui_actions = 0;
+    ui_stepped_this_pass = false;
 
     if (actions & (SAND_UI_CLOSE_PALETTE | SAND_UI_CLOSE_BRUSH)) {
-        if (actions & SAND_UI_SHOW_LABEL) {
-            label_left_ms = LABEL_MS;
-        }
-
         /* Restores UI_TEXT_PLAIN so the palette's outline style doesn't leak
          * into the next UI drawn (text style stays in force until changed -
          * ui.h); the brush screen only ever used PLAIN, so this is a no-op
@@ -1813,69 +1934,31 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
         return;
     }
 
-    int gx, gy, flow, jostle, rotation;
-    imu_sample_t sample = {0};
-    read_gravity_input(dt_ms, &sample, &gx, &gy, &flow, &jostle, &rotation);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    const int64_t t1 = esp_timer_get_time();
+#endif
 
-    if (label_left_ms > 0) {
-        label_left_ms = (dt_ms >= label_left_ms) ? 0 : (label_left_ms - dt_ms);
+    if (label_dirty_this_frame) {
         memset(dirty_rows, 1, (size_t)grid_h);
         gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
     }
 
-    if (input_ready) {
-        handle_pour_input(input, dt_ms);
-    } else if (!input->down) {
-        input_ready = true;
-    }
-    log_direction_change(gx, gy, jostle, &sample);
-
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    const int64_t t0 = esp_timer_get_time();
-#endif
-
-    run_sim_steps(gx, gy, jostle, flow, dt_ms);
-
-    material_set_gravity(gx, gy);
-
-    material_shine_direction(gx, gy, &shine_ux_q8, &shine_uy_q8);
-
-    material_wood_leaf_wind_axis(gx, gy, &wood_leaf_wind_ux_q8, &wood_leaf_wind_uy_q8);
-
-    material_wood_leaf_top5(gx, gy, &wood_leaf_top5_down, wood_leaf_top5);
-
-    advance_wood_leaf_wind_sign(dt_ms);
-
-    update_local_depth_gravity(gx, gy);
-
-    foam_elapsed_ms += dt_ms;
-    material_set_foam_phase(foam_elapsed_ms / FOAM_PHASE_MS);
-
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    const int64_t t1 = esp_timer_get_time();
-    int awake_blocks, awake_cells;
-    count_awake(&awake_blocks, &awake_cells);
-#endif
-
-    /* Local-depth wake, cullet cycle, shine, and the wood-leaf swing each
-     * have their own clock tick and row array. Driven by dt_ms, not frame
-     * count. Glass's wake uses gravity_bearing_q16(). */
-    draw_dirty_rows(advance_shine(dt_ms), advance_local_depth_wake(dt_ms), advance_cullet(dt_ms),
-                    advance_glass_phase(gx, gy), advance_wood_leaf_phase(dt_ms));
+    draw_dirty_rows(pending_shine_moved, pending_local_depth_woke, pending_cullet_moved, pending_glass_moved,
+                    pending_wood_leaf_moved);
 
     draw_emitter_markers();
 
     /* On top of the sand, so it is never painted over. */
     if (label_left_ms > 0) {
-        draw_mode_label(gx, gy);
+        draw_mode_label(pending_gx, pending_gy);
     }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t t2 = esp_timer_get_time();
-    step_us_total += t1 - t0;
+    step_us_total += pending_step_us;
     draw_us_total += t2 - t1;
     frames++;
-    track_pour_split(input, t1 - t0, t2 - t1, awake_blocks, awake_cells, t2);
+    track_pour_split(input, pending_step_us, t2 - t1, pending_awake_blocks, pending_awake_cells, t2);
 #endif
 }
 
@@ -1889,6 +1972,7 @@ const app_t app_sand = {
     .summary = "Tilt to steer, touch to pour",
     .enter = sand_enter,
     .frame = sand_frame,
+    .update = sand_update,
     .exit = sand_exit,
     .diagnostic_json = sand_diagnostic_json,
 };
