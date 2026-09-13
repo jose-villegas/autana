@@ -139,6 +139,17 @@ menu "Launcher"
             and are wrong until re-measured - some of the win leaks back
             otherwise.
 
+    config LAUNCHER_GFX_PRESENT_ON_CORE1
+        bool "Present asynchronously on core 1, overlapped with the next update()"
+        default y
+        help
+            gfx_present_begin() hands the send to a task pinned to core 1 and
+            returns; an app with an update() callback (app.h) runs it on core
+            0 while that task sends, then gfx_present_wait() joins before the
+            next frame() draws. Turn this off to force every send back onto
+            the caller, synchronously, for an A/B measurement against the
+            overlapped path - runtime override: gfx_set_present_async().
+
     config LAUNCHER_GFX_QSPI_STRONG_PADS
         bool "Drive the QSPI pads at 40 mA instead of the 20 mA default"
         default n

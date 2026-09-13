@@ -563,6 +563,15 @@ the cheapest moment to capture it, and the only thing that stops it returning.
   for the counting-semaphore deadlock, which was impossible to catch off-device.
   If it ever regresses the call never returns, boot hangs, and that is the
   correct, loud outcome.
+- **The present/update overlap** — `test_present_overlap_against_serial` begins
+  a present, runs a fixed CPU-bound workload standing in for an app's
+  `update()`, waits, and logs that against the same work done serially
+  (`gfx_set_present_async(false)`); a sanity assert only, not a budget.
+
+`suite_gfx_present_guard.c` (portable) covers the present-in-flight guard and
+the dirty tracker's own begin/wait/present sequencing on a host, by including
+`gfx_present_guard.h` and `gfx_dirty.h` directly — the same reason
+`suite_gfx_dirty.c` can, and gfx.c's panel plumbing cannot.
 
 Still untested: `ui_launcher.c`'s microui integration and the small3dlib
 rendering. Both are verified by running the firmware and looking at the screen.
