@@ -2957,6 +2957,61 @@ test_the_landscape_water_pour_keeps_taking_the_board_awake(void) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(asleep_before / 2, awake_at_close, why);
 }
 
+/* Equivalence for sand_step_reactions()'s soak-only skip (bd autana-8r1):
+ * runs this same water-onto-sand-bed pour twice, once forcing the reference
+ * full walk and once at the shipped default, comparing grids after every
+ * step rather than only the settled end state - a divergence mid-fall
+ * would still show up in what finally lands, but comparing only the end
+ * would blame the wrong step, or miss one shaken out by a later pour. */
+static void
+test_the_soak_only_skip_matches_the_full_walk_pouring_water_onto_a_sand_bed(void) {
+    uint8_t* big_full = malloc(REAL_W * REAL_H);
+    uint8_t* blocks_full =
+        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    uint8_t* big_fast = malloc(REAL_W * REAL_H);
+    uint8_t* blocks_fast =
+        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    TEST_ASSERT_NOT_NULL(big_full);
+    TEST_ASSERT_NOT_NULL(blocks_full);
+    TEST_ASSERT_NOT_NULL(big_fast);
+    TEST_ASSERT_NOT_NULL(blocks_fast);
+
+    sand_t full, fast;
+    landscape_fixture(&full, big_full, blocks_full, 29u);
+    build_landscape_bed_scene(&full);
+    landscape_fixture(&fast, big_fast, blocks_fast, 29u);
+    build_landscape_bed_scene(&fast);
+
+    const int steps = LANDSCAPE_PRIME_STEPS + LANDSCAPE_MEASURED_STEPS;
+    int mismatch_at = -1;
+    for (int i = 0; i < steps && mismatch_at < 0; i++) {
+        landscape_water_pour(&full, i);
+        sand_reactions_force_full_walk(true);
+        sand_step(&full, LANDSCAPE_GX, 0, 0);
+
+        landscape_water_pour(&fast, i);
+        sand_reactions_force_full_walk(false);
+        sand_step(&fast, LANDSCAPE_GX, 0, 0);
+
+        if (memcmp(big_full, big_fast, (size_t)REAL_W * (size_t)REAL_H) != 0) {
+            mismatch_at = i;
+        }
+    }
+    sand_reactions_force_full_walk(false); /* restore the shipped default */
+
+    free(big_full);
+    free(blocks_full);
+    free(big_fast);
+    free(blocks_fast);
+
+    char why[160];
+    snprintf(why, sizeof why,
+             "the soak-only skip must reproduce the full walk exactly, step by step - first mismatch at "
+             "step %d",
+             mismatch_at);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(-1, mismatch_at, why);
+}
+
 void
 run_sand_scenes_suite(void) {
     RUN_TEST(test_the_mixed_scene_puts_every_material_pair_in_contact);
@@ -2976,6 +3031,7 @@ run_sand_scenes_suite(void) {
     RUN_TEST(test_the_settled_plant_heap_is_dry_and_still_full_of_plants);
     RUN_TEST(test_the_landscape_beds_sleep_against_the_landscape_floor);
     RUN_TEST(test_the_landscape_water_pour_keeps_taking_the_board_awake);
+    RUN_TEST(test_the_soak_only_skip_matches_the_full_walk_pouring_water_onto_a_sand_bed);
 }
 
 SUITE_REGISTER(run_sand_scenes_suite);

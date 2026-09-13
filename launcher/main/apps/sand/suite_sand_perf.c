@@ -42,6 +42,190 @@
                        * filter shape rather than a straight line */
 #include "util/intmath.h"
 
+#define REAL_BLOCK_COLS ((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
+#define REAL_BLOCK_ROWS ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
+
+/* Sand and dirt in equal amounts under water would soak; this instead pairs
+ * sand against water across a settled stone-X divider that never lets the
+ * two touch, so the reaction pass stays alive only on the wettable term
+ * (MAT_SAND's own soaks!=0) - the case sand_step_reactions()'s soak-only
+ * skip exists for. Portable, not DEVICE_BUILD-only: the host regression
+ * suite for that skip (suite_sand_dirt.c) reruns this same scene, and must
+ * see exactly what the frame-budget test below measures. */
+static void
+build_mixed_gravity_flip_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
+    sand_init(real, big, REAL_W, REAL_H, 17u);
+    sand_enable_sleeping(real, blocks);
+
+    const int sand_x1 = (REAL_W * 3) / 10;           /* ~30% from the left */
+    const int water_x0 = REAL_W - (REAL_W * 3) / 10; /* ~30% from the right */
+
+    for (int y = REAL_H / 2; y < REAL_H; y++) {
+        for (int x = 0; x < sand_x1; x++) {
+            sand_set(real, x, y, SAND_FIRST_SHADE);
+        }
+        for (int x = water_x0; x < REAL_W; x++) {
+            sand_set(real, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+        }
+    }
+
+    const int mid_w = water_x0 - sand_x1;
+    for (int y = 0; y < REAL_H; y++) {
+        const int off = (y * (mid_w - 1)) / (REAL_H - 1);
+        const int xa = sand_x1 + off;
+        const int xb = water_x0 - 1 - off;
+        const int xa2 = (xa + 1 < water_x0) ? xa + 1 : xa;
+        const int xb2 = (xb - 1 >= sand_x1) ? xb - 1 : xb;
+        sand_set(real, xa, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
+        sand_set(real, xa2, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
+        sand_set(real, xb, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
+        sand_set(real, xb2, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
+    }
+
+    /* Let it fully settle first - same starting state a real pour-then-
+     * pause reaches, stone included (it was never moving, but the pass
+     * still has to notice that). */
+    for (int i = 0; i < 300; i++) {
+        sand_step(real, 0, 1000, 0);
+    }
+}
+
+/* FNV-1a over the grid, so a host build of the same scene can be compared
+ * byte-for-byte against the device at the same steps. Portable for the same
+ * reason build_mixed_gravity_flip_scene() is. */
+static uint32_t
+grid_hash(const uint8_t* grid, size_t n) {
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < n; i++) {
+        h ^= grid[i];
+        h *= 16777619u;
+    }
+    return h;
+}
+
+/* Cells a soak-only pass would visit for THIS board right now: summed
+ * BLOCK_LIQUID_NEAR block areas, clipped to the grid edge exactly the way
+ * step_one_reacting_row_liquid_near() (sand_reactions.c) clips them. The
+ * real bound the fast path is built from, not an estimate. */
+static long
+liquid_near_cell_bound(const sand_t* s) {
+    long total = 0;
+    for (int by = 0; by < s->block_rows; by++) {
+        const int y_lo = by * SAND_BLOCK_H;
+        const int y_hi = (y_lo + SAND_BLOCK_H < s->h) ? y_lo + SAND_BLOCK_H : s->h;
+        for (int bx = 0; bx < s->block_cols; bx++) {
+            if ((s->block_state[(size_t)by * (size_t)s->block_cols + (size_t)bx] & BLOCK_LIQUID_NEAR) == 0) {
+                continue;
+            }
+            const int x_lo = bx * SAND_BLOCK_W;
+            const int x_hi = (x_lo + SAND_BLOCK_W < s->w) ? x_lo + SAND_BLOCK_W : s->w;
+            total += (long)(x_hi - x_lo) * (long)(y_hi - y_lo);
+        }
+    }
+    return total;
+}
+
+/* THE REGRESSION (bd autana-8r1): MAT_SAND soaks, so this scene - a stone
+ * wall keeps its sand and water apart - still walked its full grid every
+ * step. sand_step_reactions()'s soak-only skip walks only BLOCK_LIQUID_NEAR
+ * blocks instead - see its own soak_only comment.
+ *
+ * Runs the SAME scene and steps twice so "far fewer" reads against a
+ * measured full-walk count, not a guess; the LIQUID_NEAR bound is likewise
+ * summed fresh per step, since flipping gravity moves the marked blocks. */
+static void
+test_the_soak_only_skip_dispatches_far_fewer_cells_than_a_full_walk(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    const int steps = 20;
+    sand_t real;
+
+    build_mixed_gravity_flip_scene(&real, big, blocks);
+    sand_reactions_force_full_walk(true);
+    sand_reactions_cells_dispatched = 0;
+    for (int i = 0; i < steps; i++) {
+        sand_step(&real, 0, -1000, 0);
+    }
+    const unsigned dispatched_full = sand_reactions_cells_dispatched;
+
+    build_mixed_gravity_flip_scene(&real, big, blocks);
+    sand_reactions_force_full_walk(false);
+    sand_reactions_cells_dispatched = 0;
+    long near_bound = 0;
+    for (int i = 0; i < steps; i++) {
+        /* Sampled AFTER the step, not before: the liquid pass inside
+         * sand_step() refreshes BLOCK_LIQUID_NEAR before reactions runs, so
+         * the state reactions actually saw this step is the state left
+         * behind at the end of it, not the one entering it. */
+        sand_step(&real, 0, -1000, 0);
+        near_bound += liquid_near_cell_bound(&real);
+    }
+    const unsigned dispatched_fast = sand_reactions_cells_dispatched;
+
+    sand_reactions_force_full_walk(false); /* restore the shipped default */
+    free(big);
+    free(blocks);
+
+    TEST_ASSERT_EQUAL_UINT_MESSAGE((unsigned)(REAL_W * REAL_H * steps), dispatched_full,
+                                   "sanity: forcing the full walk must dispatch every cell of every step");
+
+    char why[220];
+    snprintf(why, sizeof why,
+             "the soak-only skip must dispatch exactly the BLOCK_LIQUID_NEAR bound, not the full grid - "
+             "bound=%ld fast=%u full=%u",
+             near_bound, dispatched_fast, dispatched_full);
+    TEST_ASSERT_EQUAL_UINT_MESSAGE((unsigned)near_bound, dispatched_fast, why);
+    TEST_ASSERT_LESS_THAN_MESSAGE(dispatched_full / 2, dispatched_fast, why);
+}
+
+/* THE FINGERPRINT: this exact scene and step count is also
+ * report_fingerprint.sh's device/host equivalence anchor - see its own
+ * top comment for why 20 flip steps and this hash. Kept here beside the
+ * scene it hashes rather than duplicated. */
+#define MIXED_FLIP_20_STEP_HASH 0x6a6aa1cfu
+
+/* Equivalence half of the regression above: the soak-only skip must be
+ * byte-identical to the reference full walk, not merely cheaper. Runs the
+ * fast path (the shipped default) and checks its grid hash against the one
+ * report_fingerprint.sh's device capture also carries for this scene. */
+static void
+test_the_soak_only_skip_matches_the_full_walks_grid_exactly(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t real;
+    build_mixed_gravity_flip_scene(&real, big, blocks);
+
+    sand_reactions_force_full_walk(true);
+    for (int i = 0; i < 20; i++) {
+        sand_step(&real, 0, -1000, 0);
+    }
+    const uint32_t full_hash = grid_hash(big, (size_t)REAL_W * (size_t)REAL_H);
+
+    build_mixed_gravity_flip_scene(&real, big, blocks);
+    sand_reactions_force_full_walk(false);
+    for (int i = 0; i < 20; i++) {
+        sand_step(&real, 0, -1000, 0);
+    }
+    const uint32_t fast_hash = grid_hash(big, (size_t)REAL_W * (size_t)REAL_H);
+
+    sand_reactions_force_full_walk(false);
+    free(big);
+    free(blocks);
+
+    TEST_ASSERT_EQUAL_HEX32_MESSAGE(full_hash, fast_hash,
+                                    "the soak-only skip must reproduce the full walk's grid exactly");
+    TEST_ASSERT_EQUAL_HEX32_MESSAGE(MIXED_FLIP_20_STEP_HASH, fast_hash,
+                                    "the mixed flip scene's hash must stay pegged - a change here without "
+                                    "an accompanying report_fingerprint.sh --update means behaviour moved, "
+                                    "not just performance");
+}
+
 #ifdef DEVICE_BUILD
 #include <stdlib.h>
 #include "../../gfx/gfx.h"
@@ -51,8 +235,6 @@
 #include "row_runs.h"
 #include "xtensa/xt_perf_consts.h"
 #include "xtensa_perfmon_access.h"
-#define REAL_BLOCK_COLS     ((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
-#define REAL_BLOCK_ROWS     ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
 
 /* The worst case: every cell on the screen moving at once. Cross-build
  * risk: the same code has measured a 3.2-3.9 ms swing purely from the
@@ -765,44 +947,6 @@ test_turning_a_half_screen_of_gas_fits_in_the_frame_budget(void) {
 }
 
 static void
-build_mixed_gravity_flip_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
-    sand_init(real, big, REAL_W, REAL_H, 17u);
-    sand_enable_sleeping(real, blocks);
-
-    const int sand_x1 = (REAL_W * 3) / 10;           /* ~30% from the left */
-    const int water_x0 = REAL_W - (REAL_W * 3) / 10; /* ~30% from the right */
-
-    for (int y = REAL_H / 2; y < REAL_H; y++) {
-        for (int x = 0; x < sand_x1; x++) {
-            sand_set(real, x, y, SAND_FIRST_SHADE);
-        }
-        for (int x = water_x0; x < REAL_W; x++) {
-            sand_set(real, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
-
-    const int mid_w = water_x0 - sand_x1;
-    for (int y = 0; y < REAL_H; y++) {
-        const int off = (y * (mid_w - 1)) / (REAL_H - 1);
-        const int xa = sand_x1 + off;
-        const int xb = water_x0 - 1 - off;
-        const int xa2 = (xa + 1 < water_x0) ? xa + 1 : xa;
-        const int xb2 = (xb - 1 >= sand_x1) ? xb - 1 : xb;
-        sand_set(real, xa, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
-        sand_set(real, xa2, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
-        sand_set(real, xb, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
-        sand_set(real, xb2, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
-    }
-
-    /* Let it fully settle first - same starting state a real pour-then-
-     * pause reaches, stone included (it was never moving, but the pass
-     * still has to notice that). */
-    for (int i = 0; i < 300; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
-}
-
-static void
 test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget(void) {
     uint8_t* big = malloc(REAL_W * REAL_H);
     uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
@@ -984,18 +1128,6 @@ run_xtperf_over_full_step_scene(uint64_t* total_cycles, uint64_t* total_insn) {
  * window starts from the same deterministic state rather than drifting
  * across fifteen back-to-back runs. Counters are per-CPU, so the core is
  * checked rather than assumed. */
-/* FNV-1a over the grid, so a host build of the same scene can be compared
- * byte-for-byte against the device at the same steps. */
-static uint32_t
-grid_hash(const uint8_t* grid, size_t n) {
-    uint32_t h = 2166136261u;
-    for (size_t i = 0; i < n; i++) {
-        h ^= grid[i];
-        h *= 16777619u;
-    }
-    return h;
-}
-
 static void
 log_mixed_scene_hashes(void) {
     uint8_t* big = malloc(REAL_W * REAL_H);
@@ -2676,6 +2808,8 @@ void
 run_sand_perf_suite(void) {
     RUN_TEST(test_acid_bubbles_do_not_favour_one_wall);
     RUN_TEST(test_acid_bubbles_still_fire_once_the_block_is_asleep);
+    RUN_TEST(test_the_soak_only_skip_dispatches_far_fewer_cells_than_a_full_walk);
+    RUN_TEST(test_the_soak_only_skip_matches_the_full_walks_grid_exactly);
 
 #ifdef DEVICE_BUILD
     RUN_TEST(test_the_sand_app_can_still_allocate_everything_it_needs);
