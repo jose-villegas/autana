@@ -140,7 +140,18 @@ transfer pattern rather than the clock. They were not: the same corner
 corruption came back on the new, unrelated design too, which rules out
 "it was that one prototype" and points at the bus margin itself.
 
-**Root cause, as far as it has been pinned down:** the vendor SH8601 driver's
+**A better explanation, found 2026-09-13 on the CO5300 board:** the same
+corner-shaped corruption appeared at 40 MHz, and went away once every
+window sent to the panel was rounded outward to even edges (gfx.c,
+`even_floor()`/`even_ceil()`; Waveshare's BSP rounds every flush area the
+same way). An odd start or odd exclusive end is what the controller
+mishandles. That also fits the history below better than bus margin: the
+full-band design only ever sent even windows and never showed it, and both
+designs that did were the ones sending arbitrary, odd-edged boxes. 80 MHz
+has not been retried since the rounding landed, so the paragraph below is
+now the weaker hypothesis, not a confirmed cause.
+
+**The earlier hypothesis:** the vendor SH8601 driver's
 `draw_bitmap()` (`esp_lcd_sh8601.c`) sends three separate QSPI transactions per
 call, not one - `LCD_CMD_CASET` (column window), then `LCD_CMD_RASET` (row
 window), then `LCD_CMD_RAMWR` with the pixel data. The panel has to latch both
