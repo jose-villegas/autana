@@ -105,18 +105,18 @@ set(app_reqs microui small3dlib esp_lcd heap esp_timer
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag vfs
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300
-             # Unity is listed unconditionally, NOT inside the block below.
-             # ESP-IDF expands REQUIRES in an early pass where CONFIG_* is not
-             # yet defined, so a Kconfig-gated REQUIRES silently does nothing -
-             # SRCS and compile definitions are evaluated later and do work,
-             # which makes the failure look baffling: the test sources compile
-             # but cannot find unity.h.
+             # perfmon and unity are both listed unconditionally, NOT inside
+             # the block below: ESP-IDF expands REQUIRES in an early pass
+             # where CONFIG_* is not yet defined, so a Kconfig-gated REQUIRES
+             # silently does nothing - SRCS and compile definitions are
+             # evaluated later and do work, which makes the failure look
+             # baffling: the code compiles but cannot find the header.
              #
-             # This costs release nothing. IDF puts unity in the component graph
-             # either way; REQUIRES only decides whether main can see its
-             # headers. With no test sources compiled, nothing references it and
-             # --gc-sections drops it from the image.
-             unity)
+             # This costs release nothing. IDF puts both in the component
+             # graph either way; REQUIRES only decides whether main can see
+             # their headers. With nothing built that references them,
+             # --gc-sections drops them from the image.
+             perfmon unity)
 
 if(CONFIG_LAUNCHER_SELFTEST)
     # The suites are shared with the host runner - same sources, so what passes

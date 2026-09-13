@@ -14,6 +14,7 @@
  * live in suite_sand_common.{c,h}; the scene builders these frame-budget
  * tests measure live in suite_sand_scenes.{c,h} - see those headers.
  */
+#include <inttypes.h>
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
                      * but every file inherited suite_sand.c's own include
                      * block rather than being pruned by hand, to keep the
@@ -44,9 +45,12 @@
 #ifdef DEVICE_BUILD
 #include <stdlib.h>
 #include "../../gfx/gfx.h"
+#include "esp_cpu.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "row_runs.h"
+#include "xtensa/xt_perf_consts.h"
+#include "xtensa_perfmon_access.h"
 #define REAL_BLOCK_COLS     ((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
 #define REAL_BLOCK_ROWS     ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
 
@@ -65,24 +69,29 @@
  * percolation) - holding it frozen would conflate a feature's real cost
  * with a regression. This one: measured 6434 us -> target 5800. */
 
+/* Half full, and deliberately not settled: a grid of falling grains is the
+ * expensive case, because every one of them attempts a move. A settled
+ * pile is cheaper and would flatter the measurement. */
+static void
+build_full_size_step_scene(sand_t* real, uint8_t* big) {
+    sand_init(real, big, REAL_W, REAL_H, 99u);
+
+    for (int y = 0; y < REAL_H / 2; y++) {
+        for (int x = 0; x < REAL_W; x++) {
+            if (((x + y) & 1) == 0) {
+                sand_set(real, x, y, SAND_FIRST_SHADE);
+            }
+        }
+    }
+}
+
 static void
 test_a_full_size_step_fits_in_the_frame_budget(void) {
     uint8_t* big = malloc(REAL_W * REAL_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(big, "the real grid must fit in what the framebuffer leaves behind");
 
     sand_t real;
-    sand_init(&real, big, REAL_W, REAL_H, 99u);
-
-    /* Half full, and deliberately not settled: a grid of falling grains is the
-     * expensive case, because every one of them attempts a move. A settled
-     * pile is cheaper and would flatter the measurement. */
-    for (int y = 0; y < REAL_H / 2; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            if (((x + y) & 1) == 0) {
-                sand_set(&real, x, y, SAND_FIRST_SHADE);
-            }
-        }
-    }
+    build_full_size_step_scene(&real, big);
     const int grains = sand_count(&real);
 
     const int64_t start = esp_timer_get_time();
@@ -756,25 +765,19 @@ test_turning_a_half_screen_of_gas_fits_in_the_frame_budget(void) {
 }
 
 static void
-test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
-
-    sand_t real;
-    sand_init(&real, big, REAL_W, REAL_H, 17u);
-    sand_enable_sleeping(&real, blocks);
+build_mixed_gravity_flip_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
+    sand_init(real, big, REAL_W, REAL_H, 17u);
+    sand_enable_sleeping(real, blocks);
 
     const int sand_x1 = (REAL_W * 3) / 10;           /* ~30% from the left */
     const int water_x0 = REAL_W - (REAL_W * 3) / 10; /* ~30% from the right */
 
     for (int y = REAL_H / 2; y < REAL_H; y++) {
         for (int x = 0; x < sand_x1; x++) {
-            sand_set(&real, x, y, SAND_FIRST_SHADE);
+            sand_set(real, x, y, SAND_FIRST_SHADE);
         }
         for (int x = water_x0; x < REAL_W; x++) {
-            sand_set(&real, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+            sand_set(real, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
         }
     }
 
@@ -785,18 +788,29 @@ test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget(void) {
         const int xb = water_x0 - 1 - off;
         const int xa2 = (xa + 1 < water_x0) ? xa + 1 : xa;
         const int xb2 = (xb - 1 >= sand_x1) ? xb - 1 : xb;
-        sand_set(&real, xa, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
-        sand_set(&real, xa2, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
-        sand_set(&real, xb, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
-        sand_set(&real, xb2, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
+        sand_set(real, xa, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
+        sand_set(real, xa2, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
+        sand_set(real, xb, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
+        sand_set(real, xb2, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
     }
 
     /* Let it fully settle first - same starting state a real pour-then-
      * pause reaches, stone included (it was never moving, but the pass
      * still has to notice that). */
     for (int i = 0; i < 300; i++) {
-        sand_step(&real, 0, 1000, 0);
+        sand_step(real, 0, 1000, 0);
     }
+}
+
+static void
+test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t real;
+    build_mixed_gravity_flip_scene(&real, big, blocks);
 
     /* Flip - straight up instead of straight down. */
     const int64_t start = esp_timer_get_time();
@@ -827,6 +841,200 @@ test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget(void) {
     TEST_ASSERT_LESS_THAN_MESSAGE(8300, (int)per_step,
                                   "reversing gravity over a mixed sand/water/stone scene should come "
                                   "down to this - a target to optimize toward, not yet the reality");
+}
+
+/* select/mask pairs from xtensa/xt_perf_consts.h. "insn" doubles as the
+ * retired-instruction reference for the derived cycles-per-insn line below.
+ * All confirmed present in this IDF; none were dropped. */
+typedef struct {
+    const char* name;
+    uint16_t select;
+    uint16_t mask;
+} xtperf_event_t;
+
+static const xtperf_event_t XTPERF_EVENTS[] = {
+    {"insn", XTPERF_CNT_INSN, XTPERF_MASK_INSN_ALL},
+    {"window", XTPERF_CNT_EXR, XTPERF_MASK_EXR_WINDOW},
+    {"level1_int", XTPERF_CNT_EXR, XTPERF_MASK_EXR_LEVEL1_INT},
+    {"replays", XTPERF_CNT_EXR, XTPERF_MASK_EXR_REPLAYS},
+    {"icache_miss_stall", XTPERF_CNT_I_STALL, XTPERF_MASK_I_STALL_CACHE_MISS},
+    {"iterative_mul", XTPERF_CNT_I_STALL, XTPERF_MASK_I_STALL_ITERATIVE_MUL},
+    {"iterative_div", XTPERF_CNT_I_STALL, XTPERF_MASK_I_STALL_ITERATIVE_DIV},
+    {"d_stall_all", XTPERF_CNT_D_STALL, XTPERF_MASK_D_STALL_ALL},
+    {"bubbles_cti", XTPERF_CNT_BUBBLES, XTPERF_MASK_BUBBLES_CTI},
+    {"bubbles_all", XTPERF_CNT_BUBBLES, XTPERF_MASK_BUBBLES_ALL},
+    {"branch_taken", XTPERF_CNT_INSN, XTPERF_MASK_INSN_BRANCH_TAKEN},
+    {"branch_not_taken", XTPERF_CNT_INSN, XTPERF_MASK_INSN_BRANCH_NOT_TAKEN},
+    {"call", XTPERF_CNT_INSN, (uint16_t)(XTPERF_MASK_INSN_CALL | XTPERF_MASK_INSN_CALLX)},
+    {"icache_miss_fetch", XTPERF_CNT_I_MEM, XTPERF_MASK_I_MEM_CACHE_MISSES},
+    {"iram_fetch", XTPERF_CNT_I_MEM, XTPERF_MASK_I_MEM_IRAM},
+};
+#define XTPERF_EVENT_COUNT (sizeof(XTPERF_EVENTS) / sizeof(XTPERF_EVENTS[0]))
+
+/* Counter 0 is cycles, seeded the way xtensa_perfmon_exec() seeds it (select
+ * 0, mask 0xffff). kernelcnt 0 / tracelevel -1 is exec()'s own encoding for
+ * "no interrupt-level filter" (xtensa_perfmon_config_t: negative tracelevel
+ * means the filter is ignored) - every level counts, none excluded, which is
+ * what a whole-step instrument needs. */
+static void
+measure_xtperf_event(const char* scene, sand_t* real, int gx, int gy, int gz, int steps, const xtperf_event_t* event,
+                     uint32_t* out_cycles, uint32_t* out_value) {
+    xtensa_perfmon_stop();
+    xtensa_perfmon_init(0, XTPERF_CNT_CYCLES, 0xffff, 0, -1);
+    xtensa_perfmon_init(1, event->select, event->mask, 0, -1);
+    xtensa_perfmon_reset(0);
+    xtensa_perfmon_reset(1);
+    xtensa_perfmon_start();
+
+    for (int i = 0; i < steps; i++) {
+        sand_step(real, gx, gy, gz);
+    }
+
+    xtensa_perfmon_stop();
+    const uint32_t cycles = xtensa_perfmon_value(0);
+    const uint32_t value = xtensa_perfmon_value(1);
+    const bool cycles_overflowed = xtensa_perfmon_overflow(0) != ESP_OK;
+    const bool value_overflowed = xtensa_perfmon_overflow(1) != ESP_OK;
+
+    ESP_LOGI("xtperf", "scene=%s event=%s cycles_per_step=%u value_per_step=%u steps=%d%s%s", scene, event->name,
+             (unsigned)(cycles / (uint32_t)steps), (unsigned)(value / (uint32_t)steps), steps,
+             cycles_overflowed ? " overflow=cycles" : "", value_overflowed ? " overflow=value" : "");
+
+    if (event->select == XTPERF_CNT_INSN && event->mask == XTPERF_MASK_INSN_ALL && value != 0) {
+        const uint32_t cpi_x100 = (uint32_t)(((uint64_t)cycles * 100) / value);
+        ESP_LOGI("xtperf", "scene=%s cycles_per_retired_insn=%u.%02u", scene, (unsigned)(cpi_x100 / 100),
+                 (unsigned)(cpi_x100 % 100));
+    }
+
+    *out_cycles = cycles;
+    *out_value = value;
+}
+
+static void
+run_xtperf_over_mixed_scene(uint64_t* total_cycles, uint64_t* total_insn) {
+    for (size_t e = 0; e < XTPERF_EVENT_COUNT; e++) {
+        uint8_t* big = malloc(REAL_W * REAL_H);
+        uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
+        TEST_ASSERT_NOT_NULL(big);
+        TEST_ASSERT_NOT_NULL(blocks);
+
+        sand_t real;
+        build_mixed_gravity_flip_scene(&real, big, blocks);
+
+        uint32_t cycles = 0, value = 0;
+        measure_xtperf_event("mixed_flip", &real, 0, -1000, 0, 20, &XTPERF_EVENTS[e], &cycles, &value);
+
+        free(big);
+        free(blocks);
+
+        *total_cycles += cycles;
+        if (XTPERF_EVENTS[e].select == XTPERF_CNT_INSN && XTPERF_EVENTS[e].mask == XTPERF_MASK_INSN_ALL) {
+            *total_insn += value;
+        }
+    }
+}
+
+static void
+run_xtperf_over_water_scene(uint64_t* total_cycles, uint64_t* total_insn) {
+    for (size_t e = 0; e < XTPERF_EVENT_COUNT; e++) {
+        uint8_t* big = malloc(REAL_W * REAL_H);
+        uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
+        TEST_ASSERT_NOT_NULL(big);
+        TEST_ASSERT_NOT_NULL(blocks);
+
+        sand_t real;
+        build_water_scene(&real, big, blocks);
+
+        uint32_t cycles = 0, value = 0;
+        measure_xtperf_event("water", &real, 0, 1000, 0, 20, &XTPERF_EVENTS[e], &cycles, &value);
+
+        free(big);
+        free(blocks);
+
+        *total_cycles += cycles;
+        if (XTPERF_EVENTS[e].select == XTPERF_CNT_INSN && XTPERF_EVENTS[e].mask == XTPERF_MASK_INSN_ALL) {
+            *total_insn += value;
+        }
+    }
+}
+
+static void
+run_xtperf_over_full_step_scene(uint64_t* total_cycles, uint64_t* total_insn) {
+    for (size_t e = 0; e < XTPERF_EVENT_COUNT; e++) {
+        uint8_t* big = malloc(REAL_W * REAL_H);
+        TEST_ASSERT_NOT_NULL(big);
+
+        sand_t real;
+        build_full_size_step_scene(&real, big);
+
+        uint32_t cycles = 0, value = 0;
+        measure_xtperf_event("full_step", &real, 0, 1, 0, 10, &XTPERF_EVENTS[e], &cycles, &value);
+
+        free(big);
+
+        *total_cycles += cycles;
+        if (XTPERF_EVENTS[e].select == XTPERF_CNT_INSN && XTPERF_EVENTS[e].mask == XTPERF_MASK_INSN_ALL) {
+            *total_insn += value;
+        }
+    }
+}
+
+/* An instrument, not a gate: asserts only that the counters moved at all -
+ * the logged ratios are the point. Rebuilds each scene per event so every
+ * window starts from the same deterministic state rather than drifting
+ * across fifteen back-to-back runs. Counters are per-CPU, so the core is
+ * checked rather than assumed. */
+/* FNV-1a over the grid, so a host build of the same scene can be compared
+ * byte-for-byte against the device at the same steps. */
+static uint32_t
+grid_hash(const uint8_t* grid, size_t n) {
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < n; i++) {
+        h ^= grid[i];
+        h *= 16777619u;
+    }
+    return h;
+}
+
+static void
+log_mixed_scene_hashes(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
+    if (big == NULL || blocks == NULL) {
+        free(big);
+        free(blocks);
+        return;
+    }
+    sand_t real;
+    build_mixed_gravity_flip_scene(&real, big, blocks);
+    ESP_LOGI("xtperf", "scene=mixed_flip hash settled=%08" PRIx32, grid_hash(big, REAL_W * REAL_H));
+    for (int i = 0; i < 20; i++) {
+        sand_step(&real, 0, -1000, 0);
+        if (i == 0 || i == 9 || i == 19) {
+            ESP_LOGI("xtperf", "scene=mixed_flip hash flip%d=%08" PRIx32, i + 1, grid_hash(big, REAL_W * REAL_H));
+        }
+    }
+    free(big);
+    free(blocks);
+}
+
+static void
+test_the_xtensa_counters_over_three_scenes(void) {
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, esp_cpu_get_core_id(),
+                                  "perfmon counters are per-core; this instrument only means what it "
+                                  "says if it counts and reads back on the same core the sand step "
+                                  "actually runs on");
+
+    uint64_t total_cycles = 0;
+    uint64_t total_insn = 0;
+
+    log_mixed_scene_hashes();
+    run_xtperf_over_mixed_scene(&total_cycles, &total_insn);
+    run_xtperf_over_water_scene(&total_cycles, &total_insn);
+    run_xtperf_over_full_step_scene(&total_cycles, &total_insn);
+
+    TEST_ASSERT_TRUE_MESSAGE(total_cycles > 0, "the cycle counter never moved across any scene or event");
+    TEST_ASSERT_TRUE_MESSAGE(total_insn > 0, "the retired-instruction counter never moved across any scene");
 }
 
 /* Board banded with every material, reactive pairs touch, gravity inverted.
@@ -2477,6 +2685,7 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget);
     RUN_TEST(test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget);
     RUN_TEST(test_a_screen_of_water_fits_in_the_frame_budget);
+    RUN_TEST(test_the_xtensa_counters_over_three_scenes);
     /* Ungated: the two gas movers compare through sand_set_gas_walk(), an
      * ordinary API, so this runs in every diagnostics build. */
     RUN_TEST(test_the_gas_random_walk_against_the_exhaustive_mover);
