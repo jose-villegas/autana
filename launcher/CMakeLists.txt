@@ -14,6 +14,6 @@ project(launcher)
 # for the full arithmetic.
 idf_build_get_property(python PYTHON)
 add_custom_command(TARGET ${project_elf} POST_BUILD
-    COMMAND ${python} ${CMAKE_CURRENT_LIST_DIR}/tools/check_static_ram.py --map ${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}.map
+    COMMAND ${python} ${CMAKE_CURRENT_LIST_DIR}/tools/check_static_ram.py --map ${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}.map --target ${IDF_TARGET}
     COMMENT "static RAM gate: framebuffer + one grid must still fit (tools/check_static_ram.py)"
     VERBATIM)

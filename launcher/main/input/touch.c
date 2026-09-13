@@ -2,6 +2,7 @@
 #include "input/touch_fsm.h"
 
 #include "bsp/esp-bsp.h"
+#include "bsp/touch.h"
 #include "driver/gpio.h"
 #include "esp_heap_caps.h"
 #include "esp_lcd_touch.h"
@@ -19,9 +20,9 @@ static esp_lcd_touch_handle_t panel;
  * of the controller and handing them over. */
 static touch_fsm_t fsm;
 
-/* Shared between the polling task and the render loop. The chip is
- * single-core, so a spinlock-guarded critical section is both correct and
- * essentially free here. */
+/* Shared between the polling task and the render loop. A spinlock-guarded
+ * critical section is correct on either a one-core or two-core target, and
+ * cheap here since it only ever spans a few field updates. */
 static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
 
 static void

@@ -11,13 +11,13 @@
 
 #include <string.h>
 
+#include "board/board.h"
 #include "bsp/esp-bsp.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 
 static const char* TAG = "imu";
 
-#define QMI8658_ADDR            0x6B
 #define QMI8658_I2C_HZ          400000
 #define QMI8658_TIMEOUT_MS      100
 
@@ -78,7 +78,7 @@ imu_init(void) {
     if (dev == NULL) {
         const i2c_device_config_t config = {
             .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-            .device_address = QMI8658_ADDR,
+            .device_address = BOARD_IMU_I2C_ADDR,
             .scl_speed_hz = QMI8658_I2C_HZ,
         };
         if (i2c_master_bus_add_device(bus, &config, &dev) != ESP_OK) {
@@ -91,11 +91,11 @@ imu_init(void) {
      * otherwise be handed a stream of writes it never asked for. */
     uint8_t who = 0;
     if (!read_regs(REG_WHO_AM_I, &who, 1)) {
-        ESP_LOGE(TAG, "No response from 0x%02x", QMI8658_ADDR);
+        ESP_LOGE(TAG, "No response from 0x%02x", BOARD_IMU_I2C_ADDR);
         return false;
     }
     if (who != WHO_AM_I_VALUE) {
-        ESP_LOGE(TAG, "0x%02x answered WHO_AM_I 0x%02x, expected 0x%02x", QMI8658_ADDR, who, WHO_AM_I_VALUE);
+        ESP_LOGE(TAG, "0x%02x answered WHO_AM_I 0x%02x, expected 0x%02x", BOARD_IMU_I2C_ADDR, who, WHO_AM_I_VALUE);
         return false;
     }
 
