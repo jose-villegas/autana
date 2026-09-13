@@ -81,11 +81,13 @@ that drives the panel directly should not add its own.
 8 MB of octal PSRAM (80 MHz, the fastest mode this die supports) changes what
 "the constraint" even means here compared to a board without it. The
 framebuffer (`BOARD_FRAMEBUFFER_CAPS = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT` in
-`board.h`, 64-byte aligned to the cache line) is allocated entirely in PSRAM
-and read in place by the panel's SPI DMA via the panel IO config's
-`psram_dma_direct` flag — there is no internal-DRAM bounce copy, and internal
-DRAM headroom is no longer shared with the framebuffer the way it would be on
-a PSRAM-less board.
+`board.h`) is allocated entirely in PSRAM. It never goes to the panel in
+place: each full-width strip is copied into one of two internal DMA strip
+buffers (`strip_bounce` in `gfx.c`, 47 KB each) and sent from there. SPI DMA
+can read PSRAM directly (`psram_dma_direct`), but that shares the PSRAM bus's
+bandwidth, and at 80 MHz QSPI the panel received dropped data (a green box
+and a black band, 2026-09-13). The two strip buffers plus the gather buffer
+are the framebuffer's only claim on internal DRAM.
 
 | Measurement | Value | Source |
 |---|---|---|

@@ -794,8 +794,8 @@ test_an_unchanged_frame_costs_almost_nothing(void) {
  * the gather-vs-full-band choice, all of which run even when the whole
  * screen goes out as full-band sends.
  * gfx_present_raw_full_frame_for_test() (gfx.c, CONFIG_LAUNCHER_DEVELOPMENT
- * only) is the bus-time side: one draw-bitmap call over the whole
- * framebuffer, with none of that involved. */
+ * only) is the bus-time side: every strip as a full-band send, with none
+ * of that involved. */
 static void
 test_full_present_cost_splits_into_bus_time_and_overhead(void) {
     fixture();

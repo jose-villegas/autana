@@ -42,12 +42,8 @@ esp_err_t board_audio_amp_enable(bool on);
 #define BOARD_TOUCH_FT_NAME         "FT3168"
 #define BOARD_PANEL_X_GAP           0x10
 
-/* The framebuffer does not fit internal SRAM once octal PSRAM is on. The
- * panel IO's psram_dma_direct lets the SPI DMA read it in place; without
- * that every strip needs an internal DMA bounce copy, which fails on a
- * fragmented heap and leaves gfx_present() waiting forever. Aligned to the
- * cache line so a full strip (736 bytes per row) needs no copy at all. */
+/* The framebuffer does not fit internal SRAM once octal PSRAM is on; gfx
+ * copies each strip into internal DMA RAM before it goes to the panel. */
 #define BOARD_FRAMEBUFFER_CAPS      (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
-#define BOARD_FRAMEBUFFER_ALIGN     64
 #define BOARD_FRAMEBUFFER_POOL_NAME "SPIRAM"
 #define BOARD_I2C_PIN_DESC          "port 0, SDA 15, SCL 14"

@@ -369,6 +369,15 @@ landed, which also took the boot animation from ~21 fps to ~32-36 fps
 (device, 2026-09-13). Both present figures sit above the 16.5 ms
 theoretical; the gap is *unmeasured* why.
 
+**80 MHz is now the default (2026-09-13).** Reading the framebuffer in
+place from PSRAM does not survive 80 MHz — DMA from PSRAM shares the PSRAM
+bus's bandwidth and the panel received dropped data — so every full-width
+strip is copied into one of two 47 KB internal DMA buffers first. On the
+device that took the boot animation from 22.9 to 28.4 fps and the cube and
+sand from 11.8–14.3 to 16.7–20.3 drawn frames per second, at a cost of
+~94 KB of internal RAM. A full-present time at 80 MHz is *unmeasured*; the
+next diagnostics capture replaces the 18.0–18.9 ms row.
+
 80 MHz corrupted the corner of the frame on the previous development board
 (an SH8601 panel, the same part as this board's original revision; see
 [notes/Second-Target-Draft.md](notes/Second-Target-Draft.md)) — traced to

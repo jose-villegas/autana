@@ -33,8 +33,8 @@ DP_TEST_FRAME_CEILING_SOURCE="derived from DP_MAIN_TASK_STACK_BYTES; see check_s
 # PSRAM on this board (see board.h's BOARD_FRAMEBUFFER_CAPS), so it is not
 # subtracted here - PSRAM is not counted: hot allocations (sand grids and
 # the like) are meant to stay internal.
-DP_FREE_HEAP_BYTES=311775
-DP_FREE_HEAP_SOURCE="internal heap free after the PSRAM framebuffer (HEAPMARK after gfx_init), device capture, S3 diag build, 2026-09-13 - PSRAM is not counted: hot allocations are meant to stay internal"
+DP_FREE_HEAP_BYTES=217567
+DP_FREE_HEAP_SOURCE="internal heap free after gfx_init: 311,775 bytes (HEAPMARK, device capture, S3 diag build, 2026-09-13) minus the two 47,104-byte strip bounce buffers added the same day - derived, re-capture on the next diag run. PSRAM is not counted: hot allocations are meant to stay internal"
 
 # One sand grid, for scale: a single contiguous request this size is why
 # fragmentation - not just total bytes - decides whether a fixture runs.
