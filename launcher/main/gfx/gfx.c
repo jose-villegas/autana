@@ -81,6 +81,24 @@ static struct {
 /* Scratch space for gather_and_send(), bounded by GATHER_MAX_PIXELS,
  * allocated with MALLOC_CAP_DMA. Misalignment causes DMA errors. */
 static gfx_color_t* gather_buf;
+
+/* The panel controller takes a window only on even edges: an odd start or
+ * an odd exclusive end leaves stale pixels at the window's corners.
+ * Waveshare's BSP rounds every flush area the same way. GFX_WIDTH and
+ * GFX_HEIGHT are even, so rounding outward never leaves the screen. A
+ * gathered box grows by at most one column and one row, hence the slack. */
+_Static_assert(GFX_WIDTH % 2 == 0 && GFX_HEIGHT % 2 == 0, "panel windows round to even edges");
+#define GATHER_WINDOW_MAX_PIXELS (GATHER_MAX_PIXELS + GFX_WIDTH + STRIP_HEIGHT + 1)
+
+static inline int
+even_floor(int v) {
+    return v & ~1;
+}
+
+static inline int
+even_ceil(int v) {
+    return (v + 1) & ~1;
+}
 #endif
 
 /*
@@ -272,7 +290,7 @@ gfx_init(void) {
         return false;
     }
 
-    const size_t gather_bytes = (size_t)GATHER_MAX_PIXELS * sizeof(gfx_color_t);
+    const size_t gather_bytes = (size_t)GATHER_WINDOW_MAX_PIXELS * sizeof(gfx_color_t);
     gather_buf = heap_caps_malloc(gather_bytes, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
     if (gather_buf == NULL) {
         ESP_LOGE(TAG, "Could not allocate %u byte gather buffer", (unsigned)gather_bytes);
@@ -1243,6 +1261,10 @@ gfx_set_leaf_overlay(bool on) {
 static void
 gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_end, bool refined, int* queued,
                 gfx_color_t border) {
+    x0 = even_floor(x0);
+    y0 = even_floor(y0);
+    x1 = even_ceil(x1);
+    y1 = even_ceil(y1);
     const int w = x1 - x0;
     const int h = y1 - y0;
 
@@ -1360,6 +1382,8 @@ send_partial_band(int y0, int y1, int* queued) {
         return false;
     }
 #endif
+    y0 = even_floor(y0);
+    y1 = even_ceil(y1);
     esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, fb + (size_t)y0 * GFX_WIDTH);
     (*queued)++;
     return true;
