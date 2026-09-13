@@ -33,8 +33,8 @@ DP_TEST_FRAME_CEILING_SOURCE="derived from DP_MAIN_TASK_STACK_BYTES; see check_s
 # PSRAM on this board (see board.h's BOARD_FRAMEBUFFER_CAPS), so it is not
 # subtracted here - PSRAM is not counted: hot allocations (sand grids and
 # the like) are meant to stay internal.
-DP_FREE_HEAP_BYTES=217567
-DP_FREE_HEAP_SOURCE="internal heap free after gfx_init: 311,775 bytes (HEAPMARK, device capture, S3 diag build, 2026-09-13) minus the two 47,104-byte strip bounce buffers added the same day - derived, re-capture on the next diag run. PSRAM is not counted: hot allocations are meant to stay internal"
+DP_FREE_HEAP_BYTES=201183
+DP_FREE_HEAP_SOURCE="internal heap free after gfx_init: 311,775 bytes (HEAPMARK, device capture, S3 diag build, 2026-09-13) minus the two 47,104-byte strip bounce buffers and the 16 KB the 32 KB instruction cache takes, both added the same day - derived, re-capture on the next diag run. PSRAM is not counted: hot allocations are meant to stay internal"
 
 # One sand grid, for scale: a single contiguous request this size is why
 # fragmentation - not just total bytes - decides whether a fixture runs.
@@ -67,10 +67,10 @@ DP_CODEGEN_SOURCE="launcher/build.dev/compile_commands.json, sand_reactions.c en
 # these are this project's sdkconfig choice, not a fixed property of the
 # chip. Data cache is 32 KB, same line and way count, but this project has
 # no field for it yet.
-DP_ICACHE_BYTES=16384
+DP_ICACHE_BYTES=32768
 DP_ICACHE_LINE_BYTES=32
 DP_ICACHE_WAYS=8
-DP_ICACHE_SOURCE="launcher/build.dev/sdkconfig: CONFIG_ESP32S3_INSTRUCTION_CACHE_16KB, _LINE_32B, _8WAYS (data cache: _DATA_CACHE_32KB, _LINE_32B, _8WAYS), read from a real S3 build, 2026-09-13"
+DP_ICACHE_SOURCE="launcher/sdkconfig.defaults: CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB, _LINE_32B, _8WAYS (data cache: _DATA_CACHE_32KB, _LINE_32B, _8WAYS), read from a real S3 build, 2026-09-13"
 
 # --- QEMU route ------------------------------------------------------------
 # Espressif's QEMU fork models the S3 directly, so the primary route here is
