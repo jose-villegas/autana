@@ -35,6 +35,11 @@ static volatile bool report_pending;
  * change must still be read while a finger rests, or the FSM sees a lift. */
 static bool was_touching;
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static uint32_t point_samples, moved_samples;
+static int last_x = -1, last_y = -1;
+#endif
+
 static void IRAM_ATTR
 on_touch_int(esp_lcd_touch_handle_t tp) {
     (void)tp;
@@ -68,6 +73,14 @@ poll_once(void) {
 
     portENTER_CRITICAL(&lock);
     touch_fsm_update(&fsm, have_point, x, y, now_us);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (have_point) {
+        point_samples++;
+        moved_samples += (x != last_x || y != last_y) ? 1u : 0u;
+        last_x = x;
+        last_y = y;
+    }
+#endif
     portEXIT_CRITICAL(&lock);
 }
 
@@ -112,3 +125,15 @@ touch_read(input_t* out) {
     touch_fsm_take(&fsm, out);
     portEXIT_CRITICAL(&lock);
 }
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+void
+touch_take_sample_counts(uint32_t* points, uint32_t* moved) {
+    portENTER_CRITICAL(&lock);
+    *points = point_samples;
+    *moved = moved_samples;
+    point_samples = 0;
+    moved_samples = 0;
+    portEXIT_CRITICAL(&lock);
+}
+#endif
