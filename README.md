@@ -1,12 +1,13 @@
-# launcher
+# Autana
 
-[![Host Tests](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/host-tests.yml/badge.svg)](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/host-tests.yml)
-[![Build (Release)](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/build-release.yml/badge.svg)](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/build-release.yml)
-[![Build (Diagnostics)](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/build-diagnostics.yml/badge.svg)](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/build-diagnostics.yml)
-[![Shell Scripts](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/shell-scripts.yml/badge.svg)](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/shell-scripts.yml)
-[![Format](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/format.yml/badge.svg)](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/format.yml)
+[![Host Tests](https://github.com/jose-villegas/autana/actions/workflows/host-tests.yml/badge.svg)](https://github.com/jose-villegas/autana/actions/workflows/host-tests.yml)
+[![Build (Release)](https://github.com/jose-villegas/autana/actions/workflows/build-release.yml/badge.svg)](https://github.com/jose-villegas/autana/actions/workflows/build-release.yml)
+[![Build (Diagnostics)](https://github.com/jose-villegas/autana/actions/workflows/build-diagnostics.yml/badge.svg)](https://github.com/jose-villegas/autana/actions/workflows/build-diagnostics.yml)
+[![Shell Scripts](https://github.com/jose-villegas/autana/actions/workflows/shell-scripts.yml/badge.svg)](https://github.com/jose-villegas/autana/actions/workflows/shell-scripts.yml)
+[![Format](https://github.com/jose-villegas/autana/actions/workflows/format.yml/badge.svg)](https://github.com/jose-villegas/autana/actions/workflows/format.yml)
 
-A custom app shell for the [Waveshare
+Autana is a small game engine for ESP32 AMOLED boards, growing out of
+`launcher`, a custom app shell for the [Waveshare
 ESP32-C6-Touch-AMOLED-1.8](https://www.waveshare.com/) board — no PSRAM, a
 368×448 AMOLED panel, capacitive touch, and a 6-axis IMU. Everything here
 drives the hardware directly rather than through a display framework: LVGL
