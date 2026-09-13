@@ -4,8 +4,8 @@ suite_cube_perf.c's frame-budget breakdown: one comparison table across every
 run variant found, then each variant's own min/max/avg/median/p95 detail -
 the same shape suite_cube_perf.c would write itself if this project had a
 mounted filesystem to write to (it does not: no SPIFFS partition exists, and
-the SD card is unmounted again right after POST to free the SPI2 bus the
-display needs - see main/boot/post.c). ESP_LOGI is the only persistent
+the SD card is only mounted transiently by POST's own probe, not held open
+for general use - see main/boot/post.c). ESP_LOGI is the only persistent
 output a DEVICE_BUILD suite has here, the same as suite_sand.c's own
 frame-budget tests, so this generates the report on the host from a
 captured serial log instead, mirroring

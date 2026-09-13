@@ -42,18 +42,16 @@ typedef struct {
     char detail[96];
 } post_result_t;
 
-/* POST runs in two phases, because the SD card and the display are wired to
- * different pins on the one SPI2 controller and cannot both hold it.
+/* POST runs in two phases. The SD card is tested first, before gfx_init()
+ * brings the display up - a matter of ordering convenience, not necessity:
+ * the card sits on its own dedicated SDMMC bus, entirely independent of the
+ * display's SPI2, so there is no bus contention to sequence around.
  *
- * Call order matters:
+ * Call order:
  *
- *   post_run_before_display();   // SD card - needs SPI2 free
- *   gfx_init();                  // display takes SPI2
+ *   post_run_before_display();   // SD card
+ *   gfx_init();                  // display
  *   post_run_after_display();    // everything else
- *
- * Testing the card before the display claims the bus means genuinely mounting
- * it, with no teardown and nothing to restore. Doing it later would mean
- * dismantling a running display.
  */
 void post_run_before_display(void);
 
@@ -62,12 +60,10 @@ void post_run_before_display(void);
 bool post_run_after_display(void);
 
 /* Re-runs every check that can be repeated while the shell is live, replacing
- * the retained results.
- *
- * The SD card is the one exception: testing it needs SPI2, which the display
- * holds, and the BSP offers no way to release the display. Its row is carried
- * forward from boot and labelled "(at boot)" rather than silently dropped or
- * presented as fresh. */
+ * the retained results. The SD card is included: it sits on its own SDMMC
+ * bus, entirely independent of the display, so re-testing it live costs
+ * nothing more than a plain mount/unmount - see check_sdcard_live() in
+ * post.c. */
 void post_rerun(void);
 
 /* The results of the last run, retained so they can be shown on screen as well

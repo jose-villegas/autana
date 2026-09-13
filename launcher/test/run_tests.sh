@@ -51,7 +51,7 @@ CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -g -O1"
 # Sourced the same way find_cc.sh is, one block above. The cap is a profile
 # field rather than a literal here for the reason device_profile.sh's own
 # header gives: it is a per-chip number, and a second board may join the
-# test family. Selection is $DEVICE_PROFILE, default esp32c6.
+# test family. Selection is $DEVICE_PROFILE, default esp32s3.
 # shellcheck source=../tools/device_profile.sh
 . "$TEST_DIR/../tools/device_profile.sh"
 device_profile_load "" "$TEST_DIR/../tools/device_profiles" || exit 1

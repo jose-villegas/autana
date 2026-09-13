@@ -80,13 +80,14 @@ below: `main/boot/boot_anim_curve.h` (`tools/gen_zeta_curve.py`),
 `design/fonts/LatinModern/lmroman10-bold.otf`).
 
 `boot_anim_curve.h` holds the zeta function evaluated along the critical
-line. That is not something to compute on a chip with no FPU, and it never
-changes, so `tools/gen_zeta_curve.py` computes it once in double precision
-and the result ships in flash. `boot_anim_image.h` holds the same idea
-applied to a photograph the boot animation crossfades to: no PNG decoder on
-this chip, no PSRAM to decode into, so the pixel data - already rotated into
-panel space and packed into the panel's own byte-swapped RGB565 - ships in
-flash the same way. `font_lmroman_40.h` is the same idea a third time: no
+line. That is not something to compute on this chip at the precision it
+needs - the hardware FPU is single-precision only, and zeta along the
+critical line needs double - and it never changes, so `tools/gen_zeta_curve.py`
+computes it once in double precision on a host and the result ships in
+flash. `boot_anim_image.h` holds the same idea applied to a photograph the
+boot animation crossfades to: there is no PNG decoder in this codebase, so
+the pixel data - already rotated into panel space and packed into the
+panel's own byte-swapped RGB565 - ships in flash the same way. `font_lmroman_40.h` is the same idea a third time: no
 TrueType rasterizer here either, so `gen_font.py` renders the glyphs once on
 a host - at one fixed pixel size, on a common baseline, with a real
 proportional advance table - and the coverage atlas ships in flash.
@@ -222,10 +223,11 @@ for the same reason.
 
 ### 3. Apps are callbacks, not processes
 
-One binary, one address space, one core. There is no isolation: a misbehaving
-app can corrupt the shell. That is the accepted trade for instant switching and
-no flash-partition machinery. Worth revisiting only if third-party apps ever
-become a goal.
+One binary, one address space. There is no isolation: a misbehaving app can
+corrupt the shell, and nothing stops a task on either of the chip's two cores
+from touching another app's state. That is the accepted trade for instant
+switching and no flash-partition machinery. Worth revisiting only if
+third-party apps ever become a goal.
 
 ---
 
@@ -235,7 +237,7 @@ Before the loop below ever runs, `app_main()` goes through a fixed order, and
 the order is most of the point:
 
 ```
-post_run_before_display()   the SD card, while SPI2 is still free
+post_run_before_display()   the SD card, on its own independent SDMMC bus
 gfx_init()                  panel up, framebuffer allocated
 post_run_after_display()    the rest of the health check
                             -> a failure holds the screen for 8 s
@@ -263,7 +265,7 @@ Three files, split by what can be tested where:
 
 | | |
 |---|---|
-| `boot_anim_curve.h` | the curve, as a generated table. Zeta cannot be had cheaply on a chip with no FPU, and the curve never changes, so `tools/gen_zeta_curve.py` computes it once in double precision and it ships in flash. |
+| `boot_anim_curve.h` | the curve, as a generated table. Zeta along the critical line needs double precision, and this chip's hardware FPU is single-precision only, so `tools/gen_zeta_curve.py` computes it once in double precision on a host and it ships in flash. The curve never changes either way. |
 | `boot_anim.h` | the projection, the spline, the colour and the timeline - integer arithmetic, no hardware header, so `test/suites/suite_boot_anim.c` checks all of it on a host. |
 | `boot_anim.c` | gfx calls and the loop. |
 
@@ -424,8 +426,8 @@ something to depend on, so the shell sorts before showing the list.
 
 **Bench-only apps** live in `apps/diagnostics/`, excluded by folder when
 `CONFIG_LAUNCHER_DEVELOPMENT` is off — structural rather than a name check.
-Diagnostics re-runs POST, which cycles the audio rail and takes the display off
-SPI2, so it has no business being reachable in a shipped image. See
+Diagnostics re-runs POST, which cycles the audio rail and re-mounts the SD
+card, so it has no business being reachable in a shipped image. See
 [Testing-Guide](Testing-Guide.md#release-builds-contain-no-test-code) — note in
 particular that `REQUIRES` must **not** be gated this way.
 
@@ -789,14 +791,16 @@ binary, which carries zero `lv_*` symbols.
 Three constraints, all already documented elsewhere in this project, point
 the same direction once put next to each other:
 
-**The memory budget has no room for it.** There is no PSRAM - the whole
-budget is ~424 KiB of internal SRAM, and the framebuffer alone is 322 KiB of
-that (see `docs/notes/Board-and-Memory.md`). LVGL costs roughly **67 KiB**
-before a single widget is allocated - about 16% of the entire chip's memory
-gone before drawing anything. microui needed patching too (upstream sizes
-`mu_Context` for desktop, 256 KiB for the command list alone), but that is a
-one-time struct-layout edit down to a small fixed size, not a standing tax
-on every frame the way a persistent widget tree and style system are.
+**The internal-heap budget is tight even with the framebuffer moved to
+PSRAM.** The framebuffer itself no longer competes with anything for
+internal SRAM - it lives entirely in the board's 8 MB of octal PSRAM (see
+`docs/notes/Board-and-Memory.md`) - but internal (non-PSRAM) free heap is
+still a few hundred KiB, not gigabytes, and a persistent widget tree and
+style system are a standing tax on that pool for the life of the process,
+not a one-time cost. microui needed patching too (upstream sizes `mu_Context`
+for desktop, 256 KiB for the command list alone), but that is a one-time
+struct-layout edit down to a small fixed size, not a standing tax on every
+frame the way a persistent widget tree and style system are.
 
 **This device runs apps that own their entire framebuffer.** The falling-sand
 simulation and the cube renderer each drive the panel directly, on their own

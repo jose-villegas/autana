@@ -90,9 +90,8 @@ post_run_before_display(void) {
 
     ESP_LOGI(TAG, "power-on self test (storage)");
 
-    /* Where BOARD_SD_SHARES_DISPLAY_BUS, this is the only chance to mount
-     * the card for real, before gfx_init() takes the bus it needs.
-     * Elsewhere it is just the natural place to test it first. */
+    /* SD is native SDMMC on its own pins, so this is just the natural place
+     * to test it first, before gfx_init() takes SPI2 for the display. */
     const esp_err_t err = bsp_sdcard_mount();
 
     if (err == ESP_OK && bsp_sdcard != NULL) {
@@ -103,7 +102,8 @@ post_run_before_display(void) {
                  (unsigned long long)(bytes >> 20));
         report("sd card", true, POST_OPTIONAL, detail);
 
-        /* Release it again so the display can have the bus back. */
+        /* Release it again: this was only a mount test, not a hold the
+         * shell should inherit. */
         bsp_sdcard_unmount();
     } else {
         /* No card is a normal state, not a fault - hence OPTIONAL. */
@@ -112,19 +112,12 @@ post_run_before_display(void) {
     }
 }
 
-/* Re-tests the card while the shell is running, by borrowing SPI2 from
- * the display and giving it straight back. This is the experiment the
- * board notes described but had not measured: the claim was that
- * resuming without re-sending the panel's init sequence costs
- * single-digit milliseconds. The timings are logged so the note can be
- * replaced with a fact. */
+/* Re-tests the card while the shell is running: SD has its own SDMMC bus,
+ * so this is a plain re-mount/unmount, useful for catching a card inserted
+ * or removed after POST ran. */
 static void
 check_sdcard_live(void) {
     const int64_t t0 = esp_timer_get_time();
-#if BOARD_SD_SHARES_DISPLAY_BUS
-    gfx_suspend();
-    const int64_t t_suspended = esp_timer_get_time();
-#endif
 
     const esp_err_t err = bsp_sdcard_mount();
     char card[40] = "no card";
@@ -133,21 +126,11 @@ check_sdcard_live(void) {
         snprintf(card, sizeof(card), "%s, %llu MB", bsp_sdcard->cid.name, (unsigned long long)(bytes >> 20));
         bsp_sdcard_unmount();
     }
-    const int64_t t_card = esp_timer_get_time();
 
-#if BOARD_SD_SHARES_DISPLAY_BUS
-    /* No full init: the panel never lost power, so only the ESP32 side needs
-     * rebuilding. This is the part worth measuring. */
-    const bool back = gfx_resume(false);
-    const int64_t t_end = esp_timer_get_time();
-    ESP_LOGI(TAG, "sd round trip: suspend %lld us, card %lld us, resume %lld us", (long long)(t_suspended - t0),
-             (long long)(t_card - t_suspended), (long long)(t_end - t_card));
-#else
     /* SD has its own bus here, so there is nothing to hand back and forth -
      * only the mount/unmount cost is worth timing. */
-    const int64_t t_end = t_card;
+    const int64_t t_end = esp_timer_get_time();
     ESP_LOGI(TAG, "sd round trip: card %lld us", (long long)(t_end - t0));
-#endif
 
     /* Matches post_result_t::detail's size exactly, like every other check in
      * this file - report()'s copy into it can never truncate what fit here. */
@@ -155,12 +138,6 @@ check_sdcard_live(void) {
     snprintf(detail, sizeof(detail), "%s (live, %lld ms round trip)", card, (long long)((t_end - t0) / 1000));
 
     report("sd card", err == ESP_OK, POST_OPTIONAL, detail);
-
-#if BOARD_SD_SHARES_DISPLAY_BUS
-    if (!back) {
-        report("display resume", false, POST_REQUIRED, "panel did not come back");
-    }
-#endif
 }
 
 /* --- phase two: once the display is up ----------------------------------- */
@@ -209,21 +186,18 @@ check_memory(void) {
      * is 41,216 bytes and must be contiguous) is a contiguity question, not a total-bytes one. */
     report("memory", largest_dma > MIN_LARGEST_DMA_BLOCK, POST_REQUIRED, detail);
 
-    /* BOARD_EXPECTED_PSRAM says what this board should have. Either
-     * direction of mismatch means the code is running on hardware other
-     * than what it assumes, which is worth knowing. */
+    /* This board always has octal PSRAM; its absence means the code is
+     * running on hardware other than what it assumes, which is worth
+     * knowing. */
     const size_t psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
-    const bool psram_ok = (psram != 0) == (bool)BOARD_EXPECTED_PSRAM;
 
     char psram_detail[64];
-    if (BOARD_EXPECTED_PSRAM && psram != 0) {
+    if (psram != 0) {
         snprintf(psram_detail, sizeof(psram_detail), "%u MiB present", (unsigned)(psram / (1024 * 1024)));
-    } else if (BOARD_EXPECTED_PSRAM) {
-        snprintf(psram_detail, sizeof(psram_detail), "absent - unexpected");
     } else {
-        snprintf(psram_detail, sizeof(psram_detail), "%s", psram == 0 ? "absent (expected)" : "present - unexpected");
+        snprintf(psram_detail, sizeof(psram_detail), "absent - unexpected");
     }
-    report("psram", psram_ok, POST_REQUIRED, psram_detail);
+    report("psram", psram != 0, POST_REQUIRED, psram_detail);
 }
 
 static void
@@ -282,8 +256,7 @@ check_i2c_devices(void) {
         const char* what;
         post_severity_t severity;
     } devices[] = {
-        {"io expander", BOARD_IO_EXPANDER_I2C_ADDR, "TCA9554 reset lines",
-         BOARD_IO_EXPANDER_REQUIRED ? POST_REQUIRED : POST_OPTIONAL},
+        {"io expander", BOARD_IO_EXPANDER_I2C_ADDR, "TCA9554 reset lines", POST_OPTIONAL},
         {"pmu", BOARD_PMU_I2C_ADDR, "AXP2101 power", POST_REQUIRED},
         {"imu", BOARD_IMU_I2C_ADDR, "QMI8658 accel+gyro", POST_REQUIRED},
         {"rtc", BOARD_RTC_I2C_ADDR, "PCF85063 clock", POST_REQUIRED},
@@ -352,10 +325,9 @@ post_rerun(void) {
 
     ESP_LOGI(TAG, "re-running self test");
 
-    /* Now that gfx owns the panel it can be released where the card needs
-     * that bus back - see check_sdcard_live(). The panel goes on showing
-     * its last frame throughout, because it refreshes from its own GRAM
-     * without the MCU. */
+    /* SD has its own SDMMC bus, so this never touches the panel; it goes on
+     * showing its last frame throughout, because it refreshes from its own
+     * GRAM without the MCU. */
     check_sdcard_live();
 
     post_run_after_display();
