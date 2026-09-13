@@ -7,6 +7,7 @@
 #include <string.h>
 
 #ifdef ESP_PLATFORM
+#include "board/board.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
@@ -18,6 +19,9 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#if CONFIG_IDF_TARGET_ESP32S3
+#include "esp_lcd_co5300.h"
+#endif
 #endif
 
 /* Carries GFX_DIRTY_WIDTH/HEIGHT for ESP-IDF independence and aligns with
@@ -55,6 +59,24 @@ static const sh8601_lcd_init_cmd_t lcd_init_cmds[] = {
     {0x29, (uint8_t[]){0x00}, 0, 10},
     {0x51, (uint8_t[]){0xFF}, 1, 0},
 };
+
+#if CONFIG_IDF_TARGET_ESP32S3
+/* The S3's V2 revision (CO5300 panel). From Waveshare's own esp-idf
+ * colour-bar example for this board. */
+static const co5300_lcd_init_cmd_t co5300_init_cmds[] = {
+    {0xFE, (uint8_t[]){0x00}, 1, 0},
+    {0xC4, (uint8_t[]){0x80}, 1, 0},
+    {0x3A, (uint8_t[]){0x55}, 1, 0},
+    {0x35, (uint8_t[]){0x00}, 1, 0},
+    {0x53, (uint8_t[]){0x20}, 1, 0},
+    {0x51, (uint8_t[]){0xFF}, 1, 0},
+    {0x63, (uint8_t[]){0xFF}, 1, 0},
+    {0x2A, (uint8_t[]){0x00, 0x00, 0x01, 0x6F}, 4, 0},
+    {0x2B, (uint8_t[]){0x00, 0x00, 0x01, 0xBF}, 4, 0},
+    {0x11, NULL, 0, 100},
+    {0x29, NULL, 0, 0},
+};
+#endif
 #endif
 
 /* Current clip rectangle, as inclusive-exclusive bounds. */
@@ -82,13 +104,18 @@ on_strip_sent(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t* event
     return woken == pdTRUE;
 }
 
-/* SPI2 panel. `send_init` chooses full init or re-attach, skipping command
- * sequence to avoid 120 ms wait. */
+/* Common to every panel driver this file brings up: claims SPI2 for the
+ * QSPI lines board.h names, with the same pad-strength opt-in either way. */
 static esp_err_t
-panel_bring_up(bool send_init) {
-    const spi_bus_config_t bus =
-        SH8601_PANEL_BUS_QSPI_CONFIG(BSP_LCD_PCLK, BSP_LCD_DATA0, BSP_LCD_DATA1, BSP_LCD_DATA2, BSP_LCD_DATA3,
-                                     GFX_WIDTH * STRIP_HEIGHT * sizeof(gfx_color_t));
+qspi_bus_up(void) {
+    const spi_bus_config_t bus = {
+        .sclk_io_num = BSP_LCD_PCLK,
+        .data0_io_num = BSP_LCD_DATA0,
+        .data1_io_num = BSP_LCD_DATA1,
+        .data2_io_num = BSP_LCD_DATA2,
+        .data3_io_num = BSP_LCD_DATA3,
+        .max_transfer_sz = GFX_WIDTH * STRIP_HEIGHT * sizeof(gfx_color_t),
+    };
 
     esp_err_t err = spi_bus_initialize(BSP_LCD_SPI_NUM, &bus, SPI_DMA_CH_AUTO);
     if (err != ESP_OK) {
@@ -114,11 +141,24 @@ panel_bring_up(bool send_init) {
     }
 #endif
     ESP_LOGI(TAG, "panel QSPI at %d MHz", (int)(GFX_QSPI_HZ / 1000000));
+    return ESP_OK;
+}
+
+/* SH8601 panel - both the C6 and the S3's original (pre-V2) revision.
+ * `send_init` chooses full init or re-attach, skipping the command
+ * sequence to avoid its 120 ms wait. */
+static esp_err_t
+panel_bring_up_sh8601(bool send_init) {
+    esp_err_t err = qspi_bus_up();
+    if (err != ESP_OK) {
+        return err;
+    }
 
     esp_lcd_panel_io_spi_config_t io_config = SH8601_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, on_strip_sent, NULL);
 
     /* Defaults to 40 MHz, 17.6 ms frame, 94% bus-bound. See GFX_QSPI_HZ. */
     io_config.pclk_hz = GFX_QSPI_HZ;
+    io_config.flags.psram_dma_direct = 1; /* see BOARD_FRAMEBUFFER_CAPS */
     err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, &panel_io);
     if (err != ESP_OK) {
         return err;
@@ -130,7 +170,7 @@ panel_bring_up(bool send_init) {
         .flags = {.use_qspi_interface = 1},
     };
     const esp_lcd_panel_dev_config_t panel_config = {
-        .reset_gpio_num = GPIO_NUM_NC, /* reset is on the IO expander */
+        .reset_gpio_num = GPIO_NUM_NC, /* no dedicated reset line - see board_detect() */
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16,
         .vendor_config = &vendor,
@@ -146,6 +186,61 @@ panel_bring_up(bool send_init) {
         ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "on");
     }
     return ESP_OK;
+}
+
+#if CONFIG_IDF_TARGET_ESP32S3
+/* CO5300 panel - the S3's V2 revision only. */
+static esp_err_t
+panel_bring_up_co5300(bool send_init) {
+    esp_err_t err = qspi_bus_up();
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    esp_lcd_panel_io_spi_config_t io_config = CO5300_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, on_strip_sent, NULL);
+    io_config.pclk_hz = GFX_QSPI_HZ;
+    io_config.flags.psram_dma_direct = 1; /* see BOARD_FRAMEBUFFER_CAPS */
+    err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, &panel_io);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    co5300_vendor_config_t vendor = {
+        .init_cmds = co5300_init_cmds,
+        .init_cmds_size = sizeof(co5300_init_cmds) / sizeof(co5300_init_cmds[0]),
+        .flags = {.use_qspi_interface = 1},
+    };
+    const esp_lcd_panel_dev_config_t panel_config = {
+        .reset_gpio_num = GPIO_NUM_NC, /* no dedicated reset line - see board_detect() */
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+        .bits_per_pixel = 16,
+        .vendor_config = &vendor,
+    };
+    err = esp_lcd_new_panel_co5300(panel_io, &panel_config, &panel);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    if (send_init) {
+        ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), TAG, "reset");
+        ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "init");
+        ESP_RETURN_ON_ERROR(esp_lcd_panel_set_gap(panel, BOARD_PANEL_X_GAP, 0), TAG, "gap");
+        ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "on");
+    }
+    return ESP_OK;
+}
+#endif
+
+/* Picks the driver the detected board revision actually needs. On the C6
+ * this always resolves to the SH8601 path - see board_variant_t. */
+static esp_err_t
+panel_bring_up(bool send_init) {
+#if CONFIG_IDF_TARGET_ESP32S3
+    if (board_variant() == BOARD_VARIANT_CO5300_CST) {
+        return panel_bring_up_co5300(send_init);
+    }
+#endif
+    return panel_bring_up_sh8601(send_init);
 }
 
 /* Releases SPI2 for other use. Framebuffer is ordinary RAM, not bus-related. */
@@ -201,7 +296,7 @@ gfx_init(void) {
     }
 
     /* Detect board: initialises I2C, pulses display and touch reset lines. */
-    if (bsp_board_detect() == BSP_BOARD_VARIANT_UNKNOWN) {
+    if (board_detect() == BOARD_VARIANT_UNKNOWN) {
         ESP_LOGE(TAG, "Could not identify the board");
         return false;
     }
@@ -215,17 +310,23 @@ gfx_init(void) {
     /* Framebuffer state post SD probe & panel bring-up; paired with HEAPMARK
      * in main.c. See heap_mark() comment. */
     ESP_LOGI(TAG, "HEAPMARK %-18s free %6u largest %6u", "before framebuffer",
-             (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
-             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+             (unsigned)heap_caps_get_free_size(BOARD_FRAMEBUFFER_CAPS),
+             (unsigned)heap_caps_get_largest_free_block(BOARD_FRAMEBUFFER_CAPS));
 #endif
 
+    /* BOARD_FRAMEBUFFER_CAPS names which pool this board's framebuffer
+     * comes from - internal DMA-capable RAM on a board with no PSRAM,
+     * PSRAM once it is on, since that is bigger than the internal pool
+     * has room for. See board.h's own comment on what a PSRAM framebuffer
+     * costs a full-strip send. */
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-    fb = heap_caps_malloc(bytes, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+    fb = heap_caps_aligned_alloc(BOARD_FRAMEBUFFER_ALIGN, bytes, BOARD_FRAMEBUFFER_CAPS);
     if (fb == NULL) {
         ESP_LOGE(TAG,
                  "Could not allocate %u byte framebuffer "
-                 "(largest free DMA block is %u bytes)",
-                 (unsigned)bytes, (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+                 "(largest free %s block is %u bytes)",
+                 (unsigned)bytes, BOARD_FRAMEBUFFER_POOL_NAME,
+                 (unsigned)heap_caps_get_largest_free_block(BOARD_FRAMEBUFFER_CAPS));
         return false;
     }
 
@@ -240,10 +341,11 @@ gfx_init(void) {
     gfx_mark_all_dirty();
 
     ESP_LOGI(TAG,
-             "%dx%d framebuffer at %p, %u bytes; heap free %u, "
-             "largest DMA block %u",
-             GFX_WIDTH, GFX_HEIGHT, (void*)fb, (unsigned)bytes, (unsigned)esp_get_free_heap_size(),
-             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+             "%dx%d framebuffer at %p, %u bytes in %s; heap free %u, "
+             "largest %s block %u",
+             GFX_WIDTH, GFX_HEIGHT, (void*)fb, (unsigned)bytes, BOARD_FRAMEBUFFER_POOL_NAME,
+             (unsigned)esp_get_free_heap_size(), BOARD_FRAMEBUFFER_POOL_NAME,
+             (unsigned)heap_caps_get_largest_free_block(BOARD_FRAMEBUFFER_CAPS));
     return true;
 #else
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);

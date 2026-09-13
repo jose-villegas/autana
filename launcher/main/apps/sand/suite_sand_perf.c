@@ -162,6 +162,10 @@ test_a_screen_of_water_fits_in_the_frame_budget(void) {
 }
 
 #ifdef DEVICE_BUILD
+/* EXTMEM_L1_* is this chip's own cache-counter register set; the S3's is
+ * shaped differently and unmeasured here, so this instrumentation stays
+ * C6-only rather than guessing at a port. */
+#if CONFIG_IDF_TARGET_ESP32C6
 /* Elapsed microseconds cannot tell a stall from an instruction, so "cycles
  * per grid load" has been read as a memory signature without evidence. These
  * registers count fetches and misses directly. The grid is heap SRAM and
@@ -239,6 +243,7 @@ test_the_cache_counters_over_a_settled_sand_step(void) {
 
     free(big);
 }
+#endif /* CONFIG_IDF_TARGET_ESP32C6 */
 
 static void
 build_fire_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
@@ -2558,8 +2563,10 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget);
     RUN_TEST(test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget);
     RUN_TEST(test_a_screen_of_water_fits_in_the_frame_budget);
+#if CONFIG_IDF_TARGET_ESP32C6
     RUN_TEST(test_the_cache_counters_over_a_water_step);
     RUN_TEST(test_the_cache_counters_over_a_settled_sand_step);
+#endif
     /* Ungated: the two gas movers compare through sand_set_gas_walk(), an
      * ordinary API, so this runs in every diagnostics build. */
     RUN_TEST(test_the_gas_random_walk_against_the_exhaustive_mover);

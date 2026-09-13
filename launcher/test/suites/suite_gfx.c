@@ -24,11 +24,11 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "bsp/esp-bsp.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 
+#include "board/board.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
 
@@ -89,8 +89,8 @@ test_touch_controller_is_present(void) {
     fixture();
     /* Confirms the I2C bus works and something answers - the host suite can
      * test what samples mean, but never that the controller exists. */
-    const bsp_board_variant_t variant = bsp_board_detect();
-    TEST_ASSERT_NOT_EQUAL_MESSAGE(BSP_BOARD_VARIANT_UNKNOWN, variant, "no supported touch controller responded on I2C");
+    const board_variant_t variant = board_detect();
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(BOARD_VARIANT_UNKNOWN, variant, "no supported touch controller responded on I2C");
 }
 
 /* --- colour packing ----------------------------------------------------- */
