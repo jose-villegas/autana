@@ -234,8 +234,31 @@ void gfx_mark_all_dirty(void);
 bool gfx_region_dirty(int x, int y, int w, int h);
 
 /* Send the changed bands to the panel and wait for the transfers to land.
- * The wait is mandatory - see the notes on asynchronous DMA in the docs. */
+ * The wait is mandatory - see the notes on asynchronous DMA in the docs.
+ * Exactly gfx_present_begin() followed by gfx_present_wait(); every existing
+ * caller keeps working unchanged under the core-1 present task below. */
 void gfx_present(void);
+
+/*
+ * Split present: gfx_present_begin() hands the framebuffer to the core-1
+ * present task and returns at once; gfx_present_wait() blocks until sent.
+ * Between the two, no gfx_* call that touches drawing state or the
+ * framebuffer may run - app.h's update() contract, asserted in development
+ * builds (gfx_present_guard.h). gfx_set_present_async(false) sends
+ * synchronously on the caller instead, for A/B measurement.
+ */
+void gfx_present_begin(void);
+void gfx_present_wait(void);
+
+void gfx_set_present_async(bool on);
+bool gfx_present_async_enabled(void);
+
+/* Test-only, always declared: an unsigned trip counter for the present-in-
+ * flight guard above, and whether one is in flight right now. Both return
+ * inert values (0 / false) wherever GFX_PRESENT_GUARD() itself folds to
+ * nothing - see gfx_present_guard.h. */
+unsigned gfx_present_guard_trip_count(void);
+bool gfx_present_in_flight(void);
 
 /* Runtime toggle for the panel-grid overlay layer: outlines whichever grid
  * cells are actually sent each frame, cyan for a full-row send and yellow
