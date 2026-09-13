@@ -1,7 +1,13 @@
 # Flashing and Toolchain
 
-Part of the platform notes for the Waveshare ESP32-C6-Touch-AMOLED-1.8 - see
+Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 - see
 [`README.md`](README.md) for the full set.
+
+The build-flag and framerate figures below were captured before this
+project's move to the ESP32-S3 and have not been re-measured on this board.
+The qualitative points (-Og being the wrong default, a generated `sdkconfig`
+going stale, one microui button costing real time) still apply; treat the
+specific millisecond and fps numbers as historical, not current.
 
 ---
 
@@ -27,7 +33,7 @@ That forces the ROM bootloader regardless of firmware state. Confirm you are in
 download mode with:
 
 ```bash
-esptool.py --chip esp32c6 -p <PORT> --before no_reset flash_id
+esptool.py --chip esp32s3 -p <PORT> --before no_reset flash_id
 ```
 
 Connecting almost instantly (a few dots) means the chip is sitting in the
@@ -48,17 +54,22 @@ the cable first, then the PWR button: this board's power is managed by an
 
 - **ESP-IDF v5.5+ is required.** The Waveshare BSP declares `idf: ">=5.5"`;
   v5.4 will not resolve it. Both can coexist — they are keyed by `IDF_PATH`.
-- BSP component: `waveshare/esp32_c6_touch_amoled_1_8` `^1.0.0`, which pulls 14
-  dependencies including `lvgl` 9.5 and the display/touch drivers for *both*
-  board variants.
+- BSP component: `waveshare/esp32_s3_touch_amoled_1_8` `^2.0.3` (see
+  `launcher/main/idf_component.yml`), plus the two panel drivers it only
+  depends on privately and so must be declared again here directly:
+  `espressif/esp_lcd_co5300` (V2) and `waveshare/esp_lcd_sh8601` (original).
 - `sdkconfig.defaults` worth keeping: `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y` —
   without it the image header says 2 MB and the bootloader warns on every boot.
 
 Console output reaches the USB CDC port because
-`CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y`, even though the primary
-console is UART0 on GPIO 16/17. The `GPIO 17 and 16 are used as console UART
-I/O pins` line in every boot log refers to that primary, and is not evidence
-that USB logging is off.
+`CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y` makes USB-Serial-JTAG the *primary*
+console outright — this board's one USB-C port is the SoC's own native
+USB-Serial/JTAG peripheral, not an external USB-UART bridge on UART0.
+ESP-IDF's own default assumes the other, more common board design (UART0
+primary, USB-Serial-JTAG a write-only secondary mirror), which would leave
+input silently unread on a board wired this way; see
+[Diagnostics-and-Debugging.md](Diagnostics-and-Debugging.md) for the full
+mismatch this fixes.
 
 ---
 

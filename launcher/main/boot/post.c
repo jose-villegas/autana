@@ -16,6 +16,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "board/board.h"
 #include "gfx/gfx.h"
 
 static const char* TAG = "post";
@@ -89,12 +90,8 @@ post_run_before_display(void) {
 
     ESP_LOGI(TAG, "power-on self test (storage)");
 
-    /* The SD slot and the display are wired to different pins on the
-     * one SPI2 controller, so only one can hold the bus. Testing the
-     * card here - before gfx_init() takes SPI2 - means genuinely
-     * mounting it, with no teardown and nothing to restore afterwards.
-     * Once the display is up this is impossible without tearing it
-     * down again. */
+    /* SD is native SDMMC on its own pins, so this is just the natural place
+     * to test it first, before gfx_init() takes SPI2 for the display. */
     const esp_err_t err = bsp_sdcard_mount();
 
     if (err == ESP_OK && bsp_sdcard != NULL) {
@@ -105,7 +102,8 @@ post_run_before_display(void) {
                  (unsigned long long)(bytes >> 20));
         report("sd card", true, POST_OPTIONAL, detail);
 
-        /* Release it again so the display can have the bus back. */
+        /* Release it again: this was only a mount test, not a hold the
+         * shell should inherit. */
         bsp_sdcard_unmount();
     } else {
         /* No card is a normal state, not a fault - hence OPTIONAL. */
@@ -114,17 +112,12 @@ post_run_before_display(void) {
     }
 }
 
-/* Re-tests the card while the shell is running, by borrowing SPI2 from
- * the display and giving it straight back. This is the experiment the
- * board notes described but had not measured: the claim was that
- * resuming without re-sending the panel's init sequence costs
- * single-digit milliseconds. The timings are logged so the note can be
- * replaced with a fact. */
+/* Re-tests the card while the shell is running: SD has its own SDMMC bus,
+ * so this is a plain re-mount/unmount, useful for catching a card inserted
+ * or removed after POST ran. */
 static void
 check_sdcard_live(void) {
     const int64_t t0 = esp_timer_get_time();
-    gfx_suspend();
-    const int64_t t_suspended = esp_timer_get_time();
 
     const esp_err_t err = bsp_sdcard_mount();
     char card[40] = "no card";
@@ -133,26 +126,18 @@ check_sdcard_live(void) {
         snprintf(card, sizeof(card), "%s, %llu MB", bsp_sdcard->cid.name, (unsigned long long)(bytes >> 20));
         bsp_sdcard_unmount();
     }
-    const int64_t t_card = esp_timer_get_time();
 
-    /* No full init: the panel never lost power, so only the ESP32 side needs
-     * rebuilding. This is the part worth measuring. */
-    const bool back = gfx_resume(false);
-    const int64_t t_resumed = esp_timer_get_time();
-
-    ESP_LOGI(TAG, "sd round trip: suspend %lld us, card %lld us, resume %lld us", (long long)(t_suspended - t0),
-             (long long)(t_card - t_suspended), (long long)(t_resumed - t_card));
+    /* SD has its own bus here, so there is nothing to hand back and forth -
+     * only the mount/unmount cost is worth timing. */
+    const int64_t t_end = esp_timer_get_time();
+    ESP_LOGI(TAG, "sd round trip: card %lld us", (long long)(t_end - t0));
 
     /* Matches post_result_t::detail's size exactly, like every other check in
      * this file - report()'s copy into it can never truncate what fit here. */
     char detail[96];
-    snprintf(detail, sizeof(detail), "%s (live, %lld ms round trip)", card, (long long)((t_resumed - t0) / 1000));
+    snprintf(detail, sizeof(detail), "%s (live, %lld ms round trip)", card, (long long)((t_end - t0) / 1000));
 
     report("sd card", err == ESP_OK, POST_OPTIONAL, detail);
-
-    if (!back) {
-        report("display resume", false, POST_REQUIRED, "panel did not come back");
-    }
 }
 
 /* --- phase two: once the display is up ----------------------------------- */
@@ -201,10 +186,18 @@ check_memory(void) {
      * is 41,216 bytes and must be contiguous) is a contiguity question, not a total-bytes one. */
     report("memory", largest_dma > MIN_LARGEST_DMA_BLOCK, POST_REQUIRED, detail);
 
-    /* This board has no PSRAM. Finding some would mean we are running on
-     * different hardware than the code assumes, which is worth knowing. */
+    /* This board always has octal PSRAM; its absence means the code is
+     * running on hardware other than what it assumes, which is worth
+     * knowing. */
     const size_t psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
-    report("psram", psram == 0, POST_REQUIRED, psram == 0 ? "absent (expected)" : "present - unexpected");
+
+    char psram_detail[64];
+    if (psram != 0) {
+        snprintf(psram_detail, sizeof(psram_detail), "%u MiB present", (unsigned)(psram / (1024 * 1024)));
+    } else {
+        snprintf(psram_detail, sizeof(psram_detail), "absent - unexpected");
+    }
+    report("psram", psram != 0, POST_REQUIRED, psram_detail);
 }
 
 static void
@@ -255,17 +248,18 @@ check_i2c_devices(void) {
         report("i2c bus", false, POST_REQUIRED, "not initialised");
         return;
     }
-    report("i2c bus", true, POST_REQUIRED, "port 0, SDA 8, SCL 7");
+    report("i2c bus", true, POST_REQUIRED, BOARD_I2C_PIN_DESC);
 
     static const struct {
         const char* name;
         uint16_t address;
         const char* what;
+        post_severity_t severity;
     } devices[] = {
-        {"io expander", BSP_IO_EXPANDER_I2C_ADDRESS, "TCA9554 reset lines"},
-        {"pmu", BSP_PMU_I2C_ADDRESS, "AXP2101 power"},
-        {"imu", BSP_IMU_I2C_ADDRESS, "QMI8658 accel+gyro"},
-        {"rtc", BSP_RTC_I2C_ADDRESS, "PCF85063 clock"},
+        {"io expander", BOARD_IO_EXPANDER_I2C_ADDR, "TCA9554 reset lines", POST_OPTIONAL},
+        {"pmu", BOARD_PMU_I2C_ADDR, "AXP2101 power", POST_REQUIRED},
+        {"imu", BOARD_IMU_I2C_ADDR, "QMI8658 accel+gyro", POST_REQUIRED},
+        {"rtc", BOARD_RTC_I2C_ADDR, "PCF85063 clock", POST_REQUIRED},
     };
 
     for (unsigned i = 0; i < sizeof(devices) / sizeof(devices[0]); i++) {
@@ -273,18 +267,23 @@ check_i2c_devices(void) {
 
         char detail[96];
         snprintf(detail, sizeof(detail), "0x%02x  %s", devices[i].address, devices[i].what);
-        report(devices[i].name, present, POST_REQUIRED, detail);
+        report(devices[i].name, present, devices[i].severity, detail);
     }
 
     /* Touch sits at a different address per board revision, so report which
      * one answered rather than probing a single expected address. */
-    const bool ft5x06 = i2c_master_probe(bus, BSP_TOUCH_FT5X06_I2C_ADDRESS, 100) == ESP_OK;
-    const bool cst820 = i2c_master_probe(bus, BSP_TOUCH_CST820_I2C_ADDRESS, 100) == ESP_OK;
+    const bool ft = i2c_master_probe(bus, BOARD_TOUCH_FT_I2C_ADDR, 100) == ESP_OK;
+    const bool cst = i2c_master_probe(bus, BOARD_TOUCH_CST_I2C_ADDR, 100) == ESP_OK;
 
-    report("touch", ft5x06 || cst820, POST_REQUIRED,
-           ft5x06   ? "0x38  FT5x06 (V1)"
-           : cst820 ? "0x15  CST820 (V2)"
-                    : "no controller answered");
+    char touch_detail[40];
+    if (ft) {
+        snprintf(touch_detail, sizeof(touch_detail), "0x%02x  %s (V1)", BOARD_TOUCH_FT_I2C_ADDR, BOARD_TOUCH_FT_NAME);
+    } else if (cst) {
+        snprintf(touch_detail, sizeof(touch_detail), "0x%02x  CST820 (V2)", BOARD_TOUCH_CST_I2C_ADDR);
+    } else {
+        snprintf(touch_detail, sizeof(touch_detail), "no controller answered");
+    }
+    report("touch", ft || cst, POST_REQUIRED, touch_detail);
 }
 
 static void
@@ -295,16 +294,17 @@ check_audio_codec(void) {
         return;
     }
 
-    /* The codec sits behind the power amplifier enable on the IO expander, so
-     * bring that up before probing or an alive codec reports as missing. This
-     * only powers the rail - it makes no sound and configures nothing. */
-    const bool powered = bsp_audio_poweramp_enable(true) == ESP_OK;
+    /* The codec sits behind the amplifier enable board_audio_amp_enable()
+     * controls, so bring that up before probing or an alive codec reports
+     * as missing. This only powers the rail - it makes no sound and
+     * configures nothing. */
+    const bool powered = board_audio_amp_enable(true) == ESP_OK;
     vTaskDelay(pdMS_TO_TICKS(10)); /* let the rail settle before probing */
 
     const bool present = i2c_master_probe(bus, ES8311_I2C_7BIT_ADDR, 100) == ESP_OK;
 
     /* Leave it off again: POST must not change the state the shell inherits. */
-    bsp_audio_poweramp_enable(false);
+    board_audio_amp_enable(false);
 
     char detail[96];
     snprintf(detail, sizeof(detail), "0x%02x  ES8311%s", ES8311_I2C_7BIT_ADDR, powered ? "" : " (amp enable failed)");
@@ -314,8 +314,7 @@ check_audio_codec(void) {
 static void
 check_display(void) {
     char detail[96];
-    snprintf(detail, sizeof(detail), "%dx%d %s", GFX_WIDTH, GFX_HEIGHT,
-             bsp_board_variant_to_name(bsp_board_get_variant()));
+    snprintf(detail, sizeof(detail), "%dx%d %s", GFX_WIDTH, GFX_HEIGHT, board_variant_name(board_variant()));
     report("display", gfx_framebuffer() != NULL, POST_REQUIRED, detail);
 }
 
@@ -326,10 +325,9 @@ post_rerun(void) {
 
     ESP_LOGI(TAG, "re-running self test");
 
-    /* Now that gfx owns the panel it can be released, so the card really can
-     * be re-tested live: suspend the display, take SPI2, mount, hand the bus
-     * back. The panel goes on showing its last frame throughout, because it
-     * refreshes from its own GRAM without the MCU. */
+    /* SD has its own SDMMC bus, so this never touches the panel; it goes on
+     * showing its last frame throughout, because it refreshes from its own
+     * GRAM without the MCU. */
     check_sdcard_live();
 
     post_run_after_display();

@@ -98,6 +98,18 @@ void sand_gas_row_audit_enable(bool on);
 extern unsigned sand_gas_row_audit_failures;
 extern unsigned sand_gas_row_audit_skippable;
 
+/* Not sand.h API: a test hook for the reaction pass's soak-only skip (see
+ * sand_step_reactions()). Counts every cell the per-row dispatch actually
+ * visits, so a suite can compare it against a bound derived from
+ * BLOCK_LIQUID_NEAR instead of guessing at wall time. Never reset by the
+ * pass itself - a suite that wants a per-step delta zeroes it directly. */
+extern unsigned sand_reactions_cells_dispatched;
+
+/* Test-only override: on, forces every pass to walk the full board even
+ * where soak-only conditions hold, so a suite can diff the fast path's
+ * output against the reference walk on the same board. Off by default. */
+void sand_reactions_force_full_walk(bool on);
+
 #define BLOCK_SETTLED_NEAREST 0x1
 #define BLOCK_SETTLED_OTHER   0x2
 #define BLOCK_ACTIVE          0x4
@@ -127,11 +139,17 @@ liquid_mask(void) {
 /* What a liquid could still put moisture INTO: something that drinks it
  * directly, or ground that soaks. A board holding a liquid and none of these
  * has no way to make moisture at all, which is what lets the reaction pass
- * skip a screen of water outright. MAT_EXTENDED is one bit over sixteen
- * codes, so it joins if any of them qualifies - the conservative direction. */
+ * skip a screen of water outright. MAT_EXTENDED joins if any of its sixteen
+ * codes qualifies - the conservative direction.
+ *
+ * CACHED: reactions[]/extended_reactions[] are `const`, read every step. */
 static inline uint16_t
 wettable_mask(void) {
-    uint16_t mask = 0;
+    static uint16_t mask;
+    static bool ready;
+    if (ready) {
+        return mask;
+    }
     for (int m = 1; m < MAT_COUNT; m++) {
         if (reactions[m].soaks != 0 || reactions[m].drinks != 0) {
             mask |= (uint16_t)(1u << m);
@@ -142,6 +160,33 @@ wettable_mask(void) {
             mask |= (uint16_t)(1u << MAT_EXTENDED);
         }
     }
+    ready = true;
+    return mask;
+}
+
+/* What could still DRINK a liquid from beyond one cell away: find_water()'s
+ * root-depth search walks stems and soil past a single block, more reach
+ * than BLOCK_LIQUID_NEAR promises (see its own comment above), so its
+ * presence forces the full board walk. Same cache argument as
+ * wettable_mask(). */
+static inline uint16_t
+drinker_mask(void) {
+    static uint16_t mask;
+    static bool ready;
+    if (ready) {
+        return mask;
+    }
+    for (int m = 1; m < MAT_COUNT; m++) {
+        if (reactions[m].drinks != 0) {
+            mask |= (uint16_t)(1u << m);
+        }
+    }
+    for (int k = 0; k < MATERIAL_EXTENDED_CODES; k++) {
+        if (extended_reactions[k].drinks != 0) {
+            mask |= (uint16_t)(1u << MAT_EXTENDED);
+        }
+    }
+    ready = true;
     return mask;
 }
 

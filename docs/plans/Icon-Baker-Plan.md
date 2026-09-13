@@ -128,12 +128,12 @@ the generator emits is `static const`, which on this target lands in
 `.rodata` in flash rather than in DRAM — the same placement
 `docs/notes/Optimization-Playbook.md` records for the boot photo ("the photo
 is `static const`, so it lives in flash behind the XIP cache"). That keeps
-icons entirely out of the pool `check_static_ram.py` guards, where the
-framebuffer plus one sand grid already have to fit contiguously. **Verify it
-rather than assume it**: a baked set must move `check_static_ram.py`'s
-number by zero, and that is a one-line check to run when phase 1 lands, not
-a claim to take on faith. A single missing `const` silently relocates the
-whole table into DRAM.
+icons entirely out of internal heap, where a sand grid already has to fit
+contiguously. **Verify it rather than assume it**: a baked set must move the
+internal free-heap reading (see `launcher/tools/device_profiles/esp32s3.sh`'s
+DP_FREE_HEAP_BYTES for how that number is captured) by zero, and that is a
+one-line check to run when phase 1 lands, not a claim to take on faith. A
+single missing `const` silently relocates the whole table into DRAM.
 
 **No runtime registry, no init-time copies.** Lookup is an index into a
 generated `const` table, resolved at the call site. Nothing is assembled in
@@ -238,7 +238,7 @@ failure mode docs/Launcher-Architecture.md's convention is written to prevent.
    Purely additive: nothing is rewired, and the acceptance test is that the
    baked check mark is bit-for-bit the shape `icon_check_bitmap` already
    holds, with `suite_icons.c` green and untouched as the independent
-   witness. **Record `check_static_ram.py`'s number before and after** — a
+   witness. **Record the internal free-heap reading before and after** — a
    baked set must move it by exactly zero, which is what proves the flash
    placement claimed above rather than asserting it.
 

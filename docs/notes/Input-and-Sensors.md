@@ -1,6 +1,6 @@
 # Input and Sensors
 
-Part of the platform notes for the Waveshare ESP32-C6-Touch-AMOLED-1.8 - see
+Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 - see
 [`README.md`](README.md) for the full set. Everything here was verified on the
 actual board or read out of the actual source.
 
@@ -11,17 +11,20 @@ actual board or read out of the actual source.
 Three separate traps, and like the panel ones they all fail quietly — the
 screen simply feels broken rather than reporting anything.
 
-**1. The FT5x06 NACKs register reads while idle.** Polling it unconditionally
-produces a failed I2C transaction every time, and each failure costs a bus
-timeout. Doing that once per frame stalled the whole loop from 25 fps to
-roughly 0.3 fps, with the console filling with:
+**1. The touch controller NACKs register reads while idle.** Polling it
+unconditionally produces a failed I2C transaction every time, and each
+failure costs a bus timeout. Doing that once per frame stalled the whole loop
+from 25 fps to roughly 0.3 fps, with the console filling with:
 
 ```
 lcd_panel.io.i2c: panel_io_i2c_rx_buffer(149): i2c transaction failed
 FT5x06: esp_lcd_touch_ft5x06_read_data(186): I2C read error!
 ```
 
-Gate reads on the INT line (GPIO 15, active low). That is what it is for.
+(The driver component is named for the FT5x06 but is the same one used for
+this board's FT3168, hence the log tag - see `main/input/touch.c`.)
+
+Gate reads on the INT line (GPIO 21, active low). That is what it is for.
 
 **2. INT means "data ready", not "finger down".** It drops briefly mid-touch,
 so treating every deassertion as a release makes a held finger flicker between
@@ -104,7 +107,7 @@ spun, nothing about orientation.
 Worth separating, because a single "read the button" abstraction over them
 would be a lie.
 
-**BOOT** is a plain GPIO — pin 9, pulled up, shorted to ground when pressed, so
+**BOOT** is a plain GPIO — pin 0, pulled up, shorted to ground when pressed, so
 low means down. It is a *level*, and being a mechanical contact it bounces on
 both make and break: read naively, one press becomes several. `button_fsm.c`
 debounces it (pure, host-tested, 25 ms) into press and release edges. It also

@@ -36,11 +36,9 @@
 #endif
 
 /* QSPI clock for the panel - the largest single cost in a frame: 16.5 ms of
- * bus at 40 MHz against 8.2 at 80, and a measured full present of 17.6 ms
- * leaves no software slack. Only 40 is vendor-validated; 80 corrupts the
- * START of a transfer rather than the whole frame, and 40 mA pads
- * (CONFIG_LAUNCHER_GFX_QSPI_STRONG_PADS) make that rare but not gone, so 80
- * stays opt-in. The divider resolves to exactly 40 or 80,
+ * bus at 40 MHz against 8.2 at 80. 80 is the default and holds only while
+ * every strip is sent from internal DMA RAM (gfx.c, strip_bounce); see
+ * CONFIG_LAUNCHER_GFX_QSPI_80MHZ. The divider resolves to exactly 40 or 80,
  * hence a bool. THE THRESHOLDS BELOW ARE FITTED TO 40 MHz. */
 #if defined(CONFIG_LAUNCHER_GFX_QSPI_80MHZ) && CONFIG_LAUNCHER_GFX_QSPI_80MHZ
 #define GFX_QSPI_HZ (80 * 1000 * 1000)
@@ -212,21 +210,6 @@ int gfx_font_width(const gfx_font_t* font, const char* text, int len, int scale)
 void gfx_set_clip(int x, int y, int w, int h);
 void gfx_clear_clip(void);
 
-/* Release SPI2 so something else can use it - in practice, the SD card,
- * which is wired to different pins on the same controller and so cannot
- * share it. The framebuffer survives: it is ordinary RAM, unrelated to
- * the bus. Nothing may be presented between suspend and resume. The
- * panel keeps showing whatever was last sent to it, because it refreshes
- * from its own GRAM. */
-bool gfx_suspend(void);
-
-/* Bring the panel back. `full_init` re-sends the initialisation sequence.
- * It is not normally needed: the SH8601 keeps its registers while
- * powered, so only the ESP32 side has to be rebuilt - and the sequence
- * carries a 120 ms settle that dominates the cost of a round trip. Pass
- * true only if the panel has actually lost power. */
-bool gfx_resume(bool full_init);
-
 /*
  * gfx_present() sends only the horizontal bands that changed - the panel
  * holds the rest in its own GRAM, and sending is almost the whole cost of a
@@ -284,9 +267,8 @@ bool gfx_debug_leaf_overlay(void);
 void gfx_reset_strip_send_counts(void);
 void gfx_get_strip_send_counts(int* full_bands, int* gathered, int* partial_bands);
 
-/* Test-only: one raw esp_lcd_panel_draw_bitmap() of the whole framebuffer,
- * bypassing every dirty-tracking decision gfx_present() makes - see gfx.c
- * for what this isolates and why one wait is still correct despite the
- * driver chunking the transfer internally. */
+/* Test-only: every strip of the framebuffer sent as a full band, bypassing
+ * every dirty-tracking decision gfx_present() makes - the bus-time side of
+ * a full present. */
 void gfx_present_raw_full_frame_for_test(void);
 #endif

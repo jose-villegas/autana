@@ -1,13 +1,13 @@
 name: Build (Release)
 
-# Compiles the real shipping firmware for the esp32c6 target via
-# Espressif's own CI action - no test code, nothing this can't ship as-is.
-# Own workflow file so it gets its own badge, separate from the
-# diagnostics variant and the host test suite - see host-tests.yml's top
-# comment for why these are three files instead of one.
+# Compiles the real shipping firmware via Espressif's own CI action - no
+# test code, nothing this can't ship as-is. Own workflow file so it gets its
+# own badge, separate from the diagnostics variant and the host test suite -
+# see host-tests.yml's top comment for why these are three files instead of
+# one.
 #
 # What this can't cover: an on-device run - GitHub-hosted runners have no
-# USB/serial access to the real board. See
+# USB/serial access to a real board. See
 # docs/sand/Architecture.md's "Verifying performance on real hardware"
 # section for that workflow.
 
@@ -17,13 +17,13 @@ on:
 
 jobs:
   build-release:
-    name: Build (release)
+    name: Build (release, esp32s3)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: release-v5.5
-          target: esp32c6
+          target: esp32s3
           path: launcher
           command: idf.py build
