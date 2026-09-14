@@ -114,6 +114,13 @@ _Static_assert((int)SAND_COLOR_FULL == (int)SAND_COLOUR_FULL && (int)SAND_COLOR_
  * palette/brush screens suspend it without changing color_mode at all. */
 static sand_colour_state_t colour_state;
 
+/* sand_palette16_dither_rgb never changes at runtime, so this is built once,
+ * at the first indexed entry, not per sand_enter() - see
+ * gfx_indexed_dither16_classify()'s own comment on what it buys
+ * paint_row_n()'s change detection below. */
+static uint8_t dither16_class[GFX_INDEXED_PALETTE_SIZE];
+static bool dither16_class_ready;
+
 /* Once per start_sim(), not once per frame - see the emitter-marker/mode-
  * label skip in sand_frame(). */
 static bool overlays_skipped_reason_logged;
@@ -317,6 +324,10 @@ apply_gfx_enter_indexed(void) {
     gfx_indexed_set_lut(sand_palette256.entries);
     gfx_indexed_set_lut16(sand_palette16_dither_rgb);
     gfx_indexed_set_dither16(color_mode == SAND_COLOR_16);
+    if (!dither16_class_ready) {
+        gfx_indexed_dither16_classify(sand_palette16_dither_rgb, dither16_class);
+        dither16_class_ready = true;
+    }
 }
 
 /* Runs whatever gfx_mode_enter()/exit() call `action` names - the one place
@@ -660,6 +671,15 @@ static uint8_t row_flags[GRID_H_MAX];
 static uint16_t row_flag_x0[GRID_H_MAX];
 static uint16_t row_flag_x1[GRID_H_MAX];
 
+/* Indexed modes only: the column span, within the last-painted row, that
+ * paint_row_n() actually wrote a new index into - narrower than the span it
+ * examined, since a cell whose new value dithers the same as its stored one
+ * is left untouched. draw_dirty_rows() sends this instead of the wider
+ * examined span, so a shading change 16 (or 256) colours cannot show costs
+ * nothing beyond having been looked at. */
+static uint16_t row_changed_x0[GRID_H_MAX];
+static uint16_t row_changed_x1[GRID_H_MAX];
+
 #define FOAM_BLOB_SHIFT 3
 
 #define FOAM_PHASE_MS   90
@@ -802,6 +822,16 @@ note_row_flag_x(int cy, int cx) {
     }
 }
 
+static inline void
+note_row_change_x(int cy, int cx) {
+    if (cx < row_changed_x0[cy]) {
+        row_changed_x0[cy] = (uint16_t)cx;
+    }
+    if (cx + 1 > row_changed_x1[cy]) {
+        row_changed_x1[cy] = (uint16_t)(cx + 1);
+    }
+}
+
 /* `index_row` NULL means the RGB565 path (`fb`/`pal`/`n`); non-NULL is
  * GFX_PIXFMT_INDEXED8's own grid row, writing one
  * material_palette256_index() byte per in-span cell instead. One function,
@@ -816,6 +846,8 @@ paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy,
     row_flags[cy] = 0;
     row_flag_x0[cy] = (uint16_t)grid_w;
     row_flag_x1[cy] = 0;
+    row_changed_x0[cy] = (uint16_t)grid_w;
+    row_changed_x1[cy] = 0;
 
     const uint8_t* above = (cy > 0) ? row - grid_w : NULL;
     const uint8_t* below = (cy < grid_h - 1) ? row + grid_w : NULL;
@@ -997,7 +1029,17 @@ paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy,
                 const int along = ((shine_q8 >> 8) + shine_offset) & (SHINE_PERIOD - 1);
                 shade = (along < n) ? col[2] : col[0];
             }
-            index_row[cx] = (uint8_t)material_palette256_index(shade);
+
+            /* Compares against what this cell already holds - the index
+             * image is never cleared between frames (only on a fresh
+             * indexed entry, app_sand.c's own apply_gfx_enter_indexed()),
+             * so it IS last frame's sent value, at no extra storage. */
+            const uint8_t new_idx = (uint8_t)material_palette256_index(shade);
+            const uint8_t old_idx = index_row[cx];
+            if (gfx_indexed_cell_changed(old_idx, new_idx, color_mode == SAND_COLOR_16, dither16_class)) {
+                index_row[cx] = new_idx;
+                note_row_change_x(cy, cx);
+            }
             continue;
         }
 
@@ -1263,13 +1305,18 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
         uint16_t send_x0[2 * ROW_MAX_RUNS], send_x1[2 * ROW_MAX_RUNS];
         const int send_n = row_runs_reconcile(cur_x0, cur_x1, cur_n, prev_x0, prev_x1, prev_n, send_x0, send_x1);
 
-        /* Clipped to the span actually repainted above: row_runs_reconcile()
-         * still answers over the row's true, full-width shape, so a send
-         * range outside [wx0,wx1) names pixels that provably did not
-         * change (see paint_row_n()'s own comment) and were never drawn. */
+        /* Clipped to the span actually repainted above: a send range outside
+         * [wx0,wx1) provably did not change (paint_row_n()'s own comment).
+         * Indexed modes narrow further, to row_changed_x0/x1 - a cell
+         * visited but left untouched dithers the same as before, not
+         * merely unpainted. */
         for (int i = 0; i < send_n; i++) {
-            const int sx0 = send_x0[i] > wx0 ? send_x0[i] : wx0;
-            const int sx1 = send_x1[i] < wx1 ? send_x1[i] : wx1;
+            int sx0 = send_x0[i] > wx0 ? send_x0[i] : wx0;
+            int sx1 = send_x1[i] < wx1 ? send_x1[i] : wx1;
+            if (indexed) {
+                sx0 = sx0 > row_changed_x0[cy] ? sx0 : row_changed_x0[cy];
+                sx1 = sx1 < row_changed_x1[cy] ? sx1 : row_changed_x1[cy];
+            }
             if (sx0 >= sx1) {
                 continue;
             }

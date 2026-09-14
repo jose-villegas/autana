@@ -88,3 +88,45 @@ gfx_indexed_expand_row_dither16(const uint8_t* grid_row, int grid_w,
         out_row[x] = dither16_rgb[py + px]; /* index 0: reserved background */
     }
 }
+
+/* Groups the 256 indices by whether `dither16_rgb` renders them IDENTICALLY
+ * - same colour at every phase, so a cell whose index moves within a class
+ * has provably unchanged output wherever it sits. `out_class[i]` is the
+ * smallest index sharing i's own row. O(n^2): call once per install, not
+ * per frame - see app_sand.c's paint_row_n() for the change-detection use. */
+static inline void
+gfx_indexed_dither16_classify(const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES],
+                              uint8_t out_class[GFX_INDEXED_PALETTE_SIZE]) {
+    for (int i = 0; i < GFX_INDEXED_PALETTE_SIZE; i++) {
+        out_class[i] = (uint8_t)i;
+        for (int j = 0; j < i; j++) {
+            bool same = true;
+            for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
+                if (dither16_rgb[i * GFX_INDEXED_DITHER16_PHASES + p]
+                    != dither16_rgb[j * GFX_INDEXED_DITHER16_PHASES + p]) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) {
+                out_class[i] = out_class[j];
+                break;
+            }
+        }
+    }
+}
+
+/* True if a cell moving from `old_idx` to `new_idx` is worth a repaint and
+ * a send: always, by raw index, when `dither16_on` is false (256 mode, no
+ * further quantizing to exploit); by dither CLASS when it is true (16
+ * mode) - see gfx_indexed_dither16_classify()'s own comment for why that
+ * is exact, not an approximation. The one decision app_sand.c's
+ * paint_row_n() makes per cell under GFX_PIXFMT_INDEXED8. */
+static inline bool
+gfx_indexed_cell_changed(uint8_t old_idx, uint8_t new_idx, bool dither16_on,
+                         const uint8_t dither_class[GFX_INDEXED_PALETTE_SIZE]) {
+    if (!dither16_on) {
+        return old_idx != new_idx;
+    }
+    return dither_class[old_idx] != dither_class[new_idx];
+}

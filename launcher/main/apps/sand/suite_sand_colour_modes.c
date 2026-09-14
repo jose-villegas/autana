@@ -112,7 +112,8 @@ static const colour_scene_t scenes[] = {
 typedef struct {
     int64_t draw_us;
     int64_t present_us;
-    int64_t bytes_sent;
+    int64_t bytes_per_frame;
+    int64_t cells_marked_per_frame;
 } mode_result_t;
 
 static void
@@ -133,17 +134,43 @@ paint_full_frame_full(const uint8_t* grid) {
     }
 }
 
-static void
-paint_full_frame_indexed(const uint8_t* grid) {
+/* Unlike paint_full_frame_full(), this ALSO applies lever 1's own
+ * suppression (gfx_indexed_cell_changed()) instead of writing every cell
+ * unconditionally: the whole point of measuring it here is the narrower
+ * region it marks, not the wider one paint_full_frame_full() still uses.
+ * Returns how many cells its own bounding box covers - 0 with the box
+ * fields untouched if nothing changed at all. */
+static int
+paint_full_frame_indexed(const uint8_t* grid, bool dither16_on, const uint8_t dither_class[GFX_INDEXED_PALETTE_SIZE],
+                         int* out_x0, int* out_y0, int* out_x1, int* out_y1) {
     uint8_t* img = gfx_indexed_image();
+    int x0 = CM_GRID_W, y0 = CM_GRID_H, x1 = 0, y1 = 0;
     for (int cy = 0; cy < CM_GRID_H; cy++) {
         for (int cx = 0; cx < CM_GRID_W; cx++) {
             const unsigned hash = material_grain_hash(cx, cy);
             gfx_color_t col[3];
             material_colours(grid[cy * CM_GRID_W + cx], hash, 0u, 0u, col);
-            img[cy * CM_GRID_W + cx] = (uint8_t)material_palette256_index(col[0]);
+            const int i = cy * CM_GRID_W + cx;
+            const uint8_t new_idx = (uint8_t)material_palette256_index(col[0]);
+            const uint8_t old_idx = img[i];
+            if (!gfx_indexed_cell_changed(old_idx, new_idx, dither16_on, dither_class)) {
+                continue;
+            }
+            img[i] = new_idx;
+            x0 = cx < x0 ? cx : x0;
+            y0 = cy < y0 ? cy : y0;
+            x1 = cx + 1 > x1 ? cx + 1 : x1;
+            y1 = cy + 1 > y1 ? cy + 1 : y1;
         }
     }
+    if (x1 <= x0 || y1 <= y0) {
+        return 0;
+    }
+    *out_x0 = x0;
+    *out_y0 = y0;
+    *out_x1 = x1;
+    *out_y1 = y1;
+    return (x1 - x0) * (y1 - y0);
 }
 
 static uint8_t prev_grid[CM_GRID_W * CM_GRID_H];
@@ -193,6 +220,7 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, mode_result_t* out
     scene->build(&sim);
 
     const bool indexed = mode != CM_MODE_FULL;
+    static uint8_t dither_class[GFX_INDEXED_PALETTE_SIZE];
     if (indexed) {
         gfx_mode_request_t req = {0};
         req.layout = GFX_LAYOUT_BANDS;
@@ -203,13 +231,15 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, mode_result_t* out
         req.cell_size = CM_CELL;
         const gfx_mode_t* granted = gfx_mode_enter(&req);
         TEST_ASSERT_TRUE_MESSAGE(granted->layout == GFX_LAYOUT_BANDS, "GFX_PIXFMT_INDEXED8 could not be granted");
+        memset(gfx_indexed_image(), 0, (size_t)CM_GRID_W * CM_GRID_H);
         gfx_indexed_set_lut(sand_palette256_lut);
         gfx_indexed_set_lut16(sand_palette16_dither_rgb);
         gfx_indexed_set_dither16(mode == CM_MODE_16);
+        gfx_indexed_dither16_classify(sand_palette16_dither_rgb, dither_class);
     }
 
     gfx_reset_strip_send_counts();
-    int64_t draw_total = 0, present_total = 0;
+    int64_t draw_total = 0, present_total = 0, cells_marked_total = 0;
 
     for (int i = 0; i < CM_MEASURED_FRAMES; i++) {
         /* Gravity flips along its own (landscape) axis at the midpoint of
@@ -223,12 +253,22 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, mode_result_t* out
 
         const int64_t t0 = esp_timer_get_time();
         if (indexed) {
-            paint_full_frame_indexed(grid);
+            /* Lever 1's own narrower box - some cells diff_bounding_box()
+             * above already called changed dither to the SAME 16-colour
+             * (or, in 256 mode, the same index), so this can be, and often
+             * is, smaller than [dx0,dx1)x[dy0,dy1). */
+            int ix0, iy0, ix1, iy1;
+            const int cells = paint_full_frame_indexed(grid, mode == CM_MODE_16, dither_class, &ix0, &iy0, &ix1, &iy1);
+            if (cells > 0) {
+                gfx_mark_dirty(ix0 * CM_CELL, iy0 * CM_CELL, (ix1 - ix0) * CM_CELL, (iy1 - iy0) * CM_CELL);
+            }
+            cells_marked_total += cells;
         } else {
             paint_full_frame_full(grid);
-        }
-        if (changed) {
-            gfx_mark_dirty(dx0 * CM_CELL, dy0 * CM_CELL, (dx1 - dx0) * CM_CELL, (dy1 - dy0) * CM_CELL);
+            if (changed) {
+                gfx_mark_dirty(dx0 * CM_CELL, dy0 * CM_CELL, (dx1 - dx0) * CM_CELL, (dy1 - dy0) * CM_CELL);
+                cells_marked_total += (int64_t)(dx1 - dx0) * (dy1 - dy0);
+            }
         }
         const int64_t t1 = esp_timer_get_time();
 
@@ -242,7 +282,8 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, mode_result_t* out
 
     out->draw_us = draw_total / CM_MEASURED_FRAMES;
     out->present_us = present_total / CM_MEASURED_FRAMES;
-    out->bytes_sent = gfx_get_bytes_sent();
+    out->bytes_per_frame = gfx_get_bytes_sent() / CM_MEASURED_FRAMES;
+    out->cells_marked_per_frame = cells_marked_total / CM_MEASURED_FRAMES;
 
     if (indexed) {
         gfx_mode_exit();
@@ -255,15 +296,18 @@ static const char* const mode_names[] = {"FULL", "256", "16"};
 static void
 log_and_check(const colour_scene_t* scene, colour_mode_t mode, const mode_result_t* r) {
     const int64_t frame_us = r->draw_us + r->present_us;
-    ESP_LOGI(TAG, "colour mode %s, %s: sand draw %lld us, present %lld us, bytes sent %lld, frame %lld us/frame",
-             mode_names[mode], scene->name, (long long)r->draw_us, (long long)r->present_us, (long long)r->bytes_sent,
-             (long long)frame_us);
+    ESP_LOGI(TAG,
+             "colour mode %s, %s: sand draw %lld us, present %lld us, %lld bytes/frame, %lld cells/frame, "
+             "frame %lld us/frame",
+             mode_names[mode], scene->name, (long long)r->draw_us, (long long)r->present_us,
+             (long long)r->bytes_per_frame, (long long)r->cells_marked_per_frame, (long long)frame_us);
 
     /* Sanity, not a frame-budget target: proves work actually happened in
      * this mode rather than measuring an accidental no-op. int32/boolean
      * only - the device Unity build has no 64-bit assert. */
     TEST_ASSERT_TRUE_MESSAGE(r->present_us > 0, "present() reported no time at all");
-    TEST_ASSERT_TRUE_MESSAGE(r->bytes_sent > 0, "nothing was sent to the panel");
+    TEST_ASSERT_TRUE_MESSAGE(r->bytes_per_frame > 0, "nothing was sent to the panel");
+    TEST_ASSERT_TRUE_MESSAGE(r->cells_marked_per_frame > 0, "no cell was ever marked dirty");
     TEST_ASSERT_TRUE_MESSAGE(frame_us > 0, "a full frame reported no time at all");
 }
 
