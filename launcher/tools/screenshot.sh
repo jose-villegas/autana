@@ -50,15 +50,6 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# Serial devices are named differently on every platform, so guess only when
-# the caller has not said - same list monitor.sh and run_device_tests.sh use.
-if [ -z "$PORT" ]; then
-    for candidate in /dev/ttyACM0 /dev/ttyUSB0 /dev/cu.usbmodem* COM3; do
-        if [ -e "$candidate" ]; then PORT="$candidate"; break; fi
-    done
-    [ -z "$PORT" ] && PORT="COM3"     # Windows COM ports are not filesystem entries
-fi
-
 mkdir -p "$OUT_DIR"
 if [ -z "$OUT" ]; then
     OUT="$OUT_DIR/screenshot_$(date +%Y%m%d_%H%M%S).png"
@@ -74,6 +65,28 @@ for candidate in "$HOME/.espressif/python_env"/idf*_env/bin/python \
 done
 if [ -z "${PYTHON:-}" ]; then
     echo "no Python found (need pyserial - ESP-IDF's own environment has it)" >&2
+    exit 1
+fi
+
+# Find the board by its USB identity first: Espressif's built-in USB
+# Serial/JTAG enumerates as VID 0x303A, and the COM number Windows assigns
+# changes between machines and re-plugs. The name guesses stay as a fallback
+# for a USB-UART bridge board.
+if [ -z "$PORT" ]; then
+    PORT=$("$PYTHON" -c "
+from serial.tools import list_ports
+ports = list_ports.comports()
+hit = [p.device for p in ports if p.vid == 0x303A] or [p.device for p in ports if 'JTAG' in (p.description or '')]
+print(hit[0] if hit else '')
+" 2>/dev/null | tr -d '' || true)
+fi
+if [ -z "$PORT" ]; then
+    for candidate in /dev/ttyACM0 /dev/ttyUSB0 /dev/cu.usbmodem*; do
+        if [ -e "$candidate" ]; then PORT="$candidate"; break; fi
+    done
+fi
+if [ -z "$PORT" ]; then
+    echo "no board found: plug it in, or pass -p PORT" >&2
     exit 1
 fi
 
