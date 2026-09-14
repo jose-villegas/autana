@@ -167,6 +167,155 @@ test_dither_expansion_stays_in_phase_across_a_band_boundary(void) {
     TEST_ASSERT_EQUAL_HEX16_ARRAY(whole + 16, right, 16);
 }
 
+static uint8_t class_out[GFX_INDEXED_PALETTE_SIZE];
+
+/* Two indices whose sixteen-entry rows are byte-identical land in the same
+ * class - the property app_sand.c's change detection depends on. */
+static void
+test_classify_groups_indices_with_an_identical_dither_row(void) {
+    memset(dither_table, 0, sizeof dither_table);
+    for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
+        set_dither_entry(3, p, (gfx_color_t)(0x4000 + p));
+        set_dither_entry(9, p, (gfx_color_t)(0x4000 + p)); /* same row as 3 */
+        set_dither_entry(5, p, (gfx_color_t)(0x5000 + p)); /* its own row */
+    }
+
+    gfx_indexed_dither16_classify(dither_table, class_out);
+
+    TEST_ASSERT_EQUAL_UINT8(class_out[3], class_out[9]);
+    TEST_ASSERT_NOT_EQUAL_UINT8(class_out[3], class_out[5]);
+}
+
+/* No two rows agree anywhere in this table: every index is its own class,
+ * matching a raw index compare exactly - classifying never merges what a
+ * plain equality check would have told apart. */
+static void
+test_classify_gives_every_index_its_own_class_when_all_rows_differ(void) {
+    for (int i = 0; i < GFX_INDEXED_PALETTE_SIZE; i++) {
+        for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
+            set_dither_entry(i, p, (gfx_color_t)(i * GFX_INDEXED_DITHER16_PHASES + p));
+        }
+    }
+
+    gfx_indexed_dither16_classify(dither_table, class_out);
+
+    for (int i = 0; i < GFX_INDEXED_PALETTE_SIZE; i++) {
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE((uint8_t)i, class_out[i], "an all-distinct table merged two indices");
+    }
+}
+
+/* A class id is always the SMALLEST index sharing that row - app_sand.c's
+ * own comparison only needs equality, but a stable, low id is what a human
+ * reading a dump of the table would expect. */
+static void
+test_classify_names_a_class_after_its_smallest_member(void) {
+    memset(dither_table, 0, sizeof dither_table);
+    for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
+        set_dither_entry(50, p, (gfx_color_t)(0x6000 + p));
+        set_dither_entry(20, p, (gfx_color_t)(0x6000 + p));
+        set_dither_entry(80, p, (gfx_color_t)(0x6000 + p));
+    }
+
+    gfx_indexed_dither16_classify(dither_table, class_out);
+
+    TEST_ASSERT_EQUAL_UINT8(20, class_out[20]);
+    TEST_ASSERT_EQUAL_UINT8(20, class_out[50]);
+    TEST_ASSERT_EQUAL_UINT8(20, class_out[80]);
+}
+
+/* --- gfx_indexed_cell_changed(): incremental output vs a full re-expansion,
+ * over many steps of a busy scene - app_sand.c's own real question, ported
+ * here since the decision itself (gfx_indexed_cell_changed()) is portable
+ * even though app_sand.c's row painter is not. */
+
+/* Deterministic across platforms and libc versions, unlike rand() - "many
+ * steps, seeds varied" must reproduce exactly on a re-run. */
+static uint32_t
+xorshift32(uint32_t* state) {
+    uint32_t x = *state;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    *state = x;
+    return x;
+}
+
+#define IC_GRID_W    6
+#define IC_GRID_H    4
+#define IC_CELL_SIZE 4
+#define IC_STEPS     200
+
+/* One seeded run: `incremental` only updates a cell gfx_indexed_cell_
+ * changed() says changed, mirroring paint_row_n()'s own rule; `truth`
+ * always takes the fresh value, standing in for a full repaint every step.
+ * Every step, both re-expand through the SAME table and must match pixel
+ * for pixel - the dither depends only on panel position and index, so an
+ * unchanged 16-colour value really does mean identical pixels. */
+static void
+run_incremental_matches_full_reexpansion(uint32_t seed, bool dither16_on) {
+    static gfx_color_t table[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES];
+    /* Every 4 consecutive indices share a row - a handful of classes, not
+     * 256 distinct ones, the realistic case where suppression has
+     * something to catch. */
+    for (int i = 0; i < GFX_INDEXED_PALETTE_SIZE; i++) {
+        for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
+            table[i * GFX_INDEXED_DITHER16_PHASES + p] = (gfx_color_t)((i / 4) * 100 + p);
+        }
+    }
+    static uint8_t class_table[GFX_INDEXED_PALETTE_SIZE];
+    gfx_indexed_dither16_classify(table, class_table);
+
+    static uint8_t incremental[IC_GRID_W * IC_GRID_H];
+    static uint8_t truth[IC_GRID_W * IC_GRID_H];
+    memset(incremental, 0, sizeof incremental);
+    memset(truth, 0, sizeof truth);
+
+    uint32_t rng = seed;
+    for (int step = 0; step < IC_STEPS; step++) {
+        for (int c = 0; c < IC_GRID_W * IC_GRID_H; c++) {
+            const uint8_t new_idx = (uint8_t)(xorshift32(&rng) % GFX_INDEXED_PALETTE_SIZE);
+            truth[c] = new_idx;
+            if (gfx_indexed_cell_changed(incremental[c], new_idx, dither16_on, class_table)) {
+                incremental[c] = new_idx;
+            }
+        }
+
+        for (int cy = 0; cy < IC_GRID_H; cy++) {
+            for (int dy = 0; dy < IC_CELL_SIZE; dy++) {
+                const int panel_row = cy * IC_CELL_SIZE + dy;
+                gfx_color_t out_incremental[IC_GRID_W * IC_CELL_SIZE];
+                gfx_color_t out_truth[IC_GRID_W * IC_CELL_SIZE];
+                gfx_indexed_expand_row_dither16(&incremental[cy * IC_GRID_W], IC_GRID_W, table, IC_CELL_SIZE, panel_row,
+                                                0, out_incremental, IC_GRID_W * IC_CELL_SIZE);
+                gfx_indexed_expand_row_dither16(&truth[cy * IC_GRID_W], IC_GRID_W, table, IC_CELL_SIZE, panel_row, 0,
+                                                out_truth, IC_GRID_W * IC_CELL_SIZE);
+                TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(out_truth, out_incremental, IC_GRID_W * IC_CELL_SIZE,
+                                                      "incremental output diverged from a full re-expansion");
+            }
+        }
+    }
+}
+
+static void
+test_incremental_16_colour_output_matches_a_full_reexpansion(void) {
+    static const uint32_t seeds[] = {1, 12345, 0xDEADBEEFu, 7, 999983};
+    for (size_t s = 0; s < sizeof seeds / sizeof seeds[0]; s++) {
+        run_incremental_matches_full_reexpansion(seeds[s], true);
+    }
+}
+
+/* Same proof at the 256-index level: dither16_on false means
+ * gfx_indexed_cell_changed() falls back to a raw index compare, so every
+ * distinct random index is its own "class" and nothing is ever suppressed
+ * that a full repaint would have shown differently. */
+static void
+test_incremental_256_index_output_matches_a_full_reexpansion(void) {
+    static const uint32_t seeds[] = {2, 54321, 0xC0FFEEu};
+    for (size_t s = 0; s < sizeof seeds / sizeof seeds[0]; s++) {
+        run_incremental_matches_full_reexpansion(seeds[s], false);
+    }
+}
+
 void
 run_gfx_indexed_suite(void) {
     RUN_TEST(test_every_output_pixel_reads_its_own_cells_lut_entry);
@@ -177,6 +326,11 @@ run_gfx_indexed_suite(void) {
     RUN_TEST(test_dither_every_output_pixel_reads_its_own_index_phase_entry);
     RUN_TEST(test_dither_expansion_is_deterministic_at_the_same_panel_coordinates);
     RUN_TEST(test_dither_expansion_stays_in_phase_across_a_band_boundary);
+    RUN_TEST(test_classify_groups_indices_with_an_identical_dither_row);
+    RUN_TEST(test_classify_gives_every_index_its_own_class_when_all_rows_differ);
+    RUN_TEST(test_classify_names_a_class_after_its_smallest_member);
+    RUN_TEST(test_incremental_16_colour_output_matches_a_full_reexpansion);
+    RUN_TEST(test_incremental_256_index_output_matches_a_full_reexpansion);
 }
 
 SUITE_REGISTER(run_gfx_indexed_suite);
