@@ -54,7 +54,13 @@
  * device sweep saying otherwise (docs/Autana-Rendering-Roadmap.md section
  * 8, decision 2); override with -DGFX_BAND_HEIGHT=N to try another. */
 #ifndef GFX_BAND_HEIGHT
+#if defined(CONFIG_LAUNCHER_GFX_BAND_HEIGHT_16) && CONFIG_LAUNCHER_GFX_BAND_HEIGHT_16
+#define GFX_BAND_HEIGHT 16
+#elif defined(CONFIG_LAUNCHER_GFX_BAND_HEIGHT_64) && CONFIG_LAUNCHER_GFX_BAND_HEIGHT_64
+#define GFX_BAND_HEIGHT 64
+#else
 #define GFX_BAND_HEIGHT 32
+#endif
 #endif
 _Static_assert(GFX_HEIGHT % GFX_BAND_HEIGHT == 0, "GFX_BAND_HEIGHT must divide GFX_HEIGHT evenly");
 _Static_assert(GFX_BAND_HEIGHT % 2 == 0, "a band's row range must round to even panel window edges");
@@ -310,6 +316,17 @@ int gfx_band_count(void);
  * band's send is still in flight (gfx_band_ring_must_wait(), gfx_band.h) -
  * never for the one just queued. */
 void gfx_band_submit(void);
+
+/* True if [row0, row1) needs rendering and sending this frame - fed by the
+ * ordinary gfx_mark_dirty() calls an app and ui.c already make. A true
+ * return also gives the even-rounded column span (out_x0/out_x1) worth
+ * touching. Always true, full width, right after gfx_mode_enter() and any
+ * frame following gfx_invalidate(). */
+bool gfx_band_dirty(int row0, int row1, int* out_x0, int* out_x1);
+
+/* The band gfx_band_next() just handed out needs no redraw - advances past
+ * it without rendering or sending, in place of gfx_band_submit(). */
+void gfx_band_skip(void);
 
 /* Test-only, always declared: an unsigned trip counter for the present-in-
  * flight guard above, and whether one is in flight right now. Both return
