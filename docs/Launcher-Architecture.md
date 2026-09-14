@@ -398,6 +398,34 @@ CONFIG_LAUNCHER_GFX_PRESENT_ON_CORE1 (default on) and the runtime
 `gfx_set_present_async(false)` force the send back onto the caller, for an
 A/B measurement against the overlapped path.
 
+### Full redraw
+
+`gfx_request_full_redraw()` (`gfx.h`) is the one call a transition needs
+instead of composing `gfx_mark_all_dirty()` and `gfx_invalidate()`
+separately - opening or closing an overlay, an orientation change, a
+SCREENSHOT capture, a RUNSUITE run. It marks the whole framebuffer dirty,
+resets partial-clear tracking and forces every band on the next band
+frame, then latches a pending flag: `gfx_full_redraw_pending()` answers
+whether one is outstanding, and `gfx_full_redraw_clear_pending()` ends the
+window. Only sets state and frees nothing, so it is safe to call from
+anywhere on core 0, including an app's own `frame()`.
+
+gfx has no idea an app keeps its own draw cache beyond the framebuffer -
+sand's row-run spans, cube's band-mode coverage bbox. `app_t.invalidate`
+(`app.h`) is the opt-in half: NULL unless an app owns such a cache, called
+once per pending request before the app's next `frame()`. The shell
+(`main.c`'s `apply_pending_full_redraw()`) checks the pending flag at the
+top of a pass, calls the running app's `invalidate()` (or `ui_invalidate()`
+while the launcher is showing) and clears the flag right there - a request
+made inside that very `frame()` call is left pending for the pass that
+follows, not cleared out from under it before ever being read.
+
+The shell calls `gfx_request_full_redraw()` on app enter and exit, an
+orientation change, a SCREENSHOT dump and a completed RUNSUITE run. An app
+may call it itself where the timing is equivalent to its own ad hoc
+marking - sand does, at its overlay's close and at `start_sim()`, both
+already deferring their visible effect to the following `frame()`.
+
 ---
 
 ## Adding an app
