@@ -92,10 +92,10 @@ room_in(cell_t c, uint8_t id) {
 
 /* The one piece of liquid movement inside the main sweep. */
 
-/* Row-shaped bookkeeping. Calls mark_rows() up to thrice per grain. Cache
+/* Row-shaped bookkeeping. Calls mark_slide() up to thrice per grain. Cache
  * removal makes it cheap. */
 static inline int
-give_mass(sand_t* s, uint8_t* to_row, int tx, int w, int mass, uint8_t mat_id, int y, int ty) {
+give_mass(sand_t* s, uint8_t* to_row, int x, int tx, int w, int mass, uint8_t mat_id, int y, int ty) {
     if (to_row == NULL || (unsigned)tx >= (unsigned)w) {
         return 0;
     }
@@ -105,7 +105,7 @@ give_mass(sand_t* s, uint8_t* to_row, int tx, int w, int mass, uint8_t mat_id, i
         /* Gating on was_empty here would reintroduce per-transfer cost. See
          * equalise_one_cell() comment. */
         pour_into(&to_row[tx], mat_id, give);
-        mark_rows(s, y, ty);
+        mark_slide(s, x, y, tx, ty);
     }
     return give;
 }
@@ -165,7 +165,7 @@ move_liquid_grain(sand_t* s, uint8_t* row, uint8_t* prow, int x, int y, int dx, 
      * never reads as empty again. */
     const bool target_occupied = (unsigned)tx0 < (unsigned)w && prow != NULL && !CELL_IS_EMPTY(prow[tx0]);
 
-    const int down = give_mass(s, prow, tx0, w, mass, mat_id, y, ty0);
+    const int down = give_mass(s, prow, x, tx0, w, mass, mat_id, y, ty0);
     mass -= down;
     if (down > 0) {
         moved = true;
@@ -179,7 +179,7 @@ move_liquid_grain(sand_t* s, uint8_t* row, uint8_t* prow, int x, int y, int dx, 
         const int* slide = (d == 0) ? slide_a : slide_b;
         uint8_t* srow = dest_row(s, y + slide[1]);
         const int tx = x + slide[0], ty = y + slide[1];
-        const int given = give_mass(s, srow, tx, w, mass, mat_id, y, ty);
+        const int given = give_mass(s, srow, x, tx, w, mass, mat_id, y, ty);
         mass -= given;
         if (given > 0) {
             moved = true;

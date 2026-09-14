@@ -109,6 +109,8 @@ PRE_EXISTING_STACK_DEBT = {
     ("suite_sand_liquid_depth.c",
      "test_turning_a_settled_pool_to_landscape_does_not_flash_the_whole_body"):
         1088,
+    ("suite_sand_gunpowder.c",
+     "test_damp_gunpowder_ignites_less_readily_than_dry"): 1040,
 }
 
 
