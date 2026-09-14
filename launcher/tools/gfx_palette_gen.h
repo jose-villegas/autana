@@ -39,3 +39,11 @@ void gfx_palette_gen_build_index_map(const gfx_palette_t* palette, int first_ind
  * built from; the two are independent finished palettes here. */
 void gfx_palette_gen_build_dither16(const gfx_palette_t* palette256, const gfx_palette_t* palette16,
                                     gfx_color_t out_table[GFX_PALETTE_MAX_ENTRIES * 16]);
+
+/* The CO5300's 4-bit mode (COL SET 70h-7Fh) wants the dither CHOICE
+ * packed 2px/byte, high nibble first - the panel resolves colour itself.
+ * One entry per (256-index, Bayer row phase 0-3): the 4-pixel run at that
+ * phase - see gfx_indexed.h's comment on the RGB565 table for why phase
+ * is keyed this way. */
+void gfx_palette_gen_build_dither4_packed(const gfx_palette_t* palette256, const gfx_palette_t* palette16,
+                                          uint8_t out_table[GFX_PALETTE_MAX_ENTRIES * 4 * 2]);
