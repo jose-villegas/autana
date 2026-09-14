@@ -95,6 +95,17 @@ static bool menu_open;
  * cube_frame(), widened by every covered pixel small3dlib reports. */
 static int frame_x0, frame_y0, frame_x1, frame_y1;
 
+/* This frame's overall cube coverage - the union of every bin entry's own
+ * extent, accumulated by cube_transform_and_bin() - and last frame's,
+ * remembered so band mode can mark the union of where the cube WAS and
+ * where it IS dirty: a band the cube left still needs erasing even though
+ * nothing there overlaps this frame. Declared ahead of cube_enter() below,
+ * which resets prev_cube_bbox_valid on every visit. */
+static int cube_bbox_x0, cube_bbox_y0, cube_bbox_x1, cube_bbox_y1;
+static bool cube_bbox_valid;
+static int prev_cube_bbox_x0, prev_cube_bbox_y0, prev_cube_bbox_x1, prev_cube_bbox_y1;
+static bool prev_cube_bbox_valid;
+
 /* Set only while cube_rasterize_band() runs; NULL otherwise, when
  * shade_pixel() writes into gfx_framebuffer() as before. small3dlib
  * rasterizes the whole scene once per band, so this is how the callback
@@ -231,6 +242,11 @@ cube_enter(void) {
      * a previous visit - the same reason app_diagnostics.c resets `page` to
      * 0 here instead of leaving it wherever a past visit left it. */
     menu_open = false;
+
+    /* A stale box from a previous visit is not really "last frame" -
+     * gfx_invalidate() above already forces this visit's first band frame
+     * regardless, so this only avoids marking a box nobody drew any more. */
+    prev_cube_bbox_valid = false;
 
     /* Baseline for the orientation check in cube_frame() - without this,
      * a rotation that happened while some OTHER app was showing would
@@ -477,16 +493,6 @@ typedef struct {
 static cube_triangle_bin_t cube_bin[S3L_CUBE_TRIANGLE_COUNT];
 static int cube_bin_count;
 
-/* This frame's overall cube coverage - the union of every bin entry's own
- * extent, accumulated by cube_transform_and_bin() - and last frame's,
- * remembered so band mode can mark the union of where the cube WAS and
- * where it IS dirty: a band the cube left still needs erasing even though
- * nothing there overlaps this frame. */
-static int cube_bbox_x0, cube_bbox_y0, cube_bbox_x1, cube_bbox_y1;
-static bool cube_bbox_valid;
-static int prev_cube_bbox_x0, prev_cube_bbox_y0, prev_cube_bbox_x1, prev_cube_bbox_y1;
-static bool prev_cube_bbox_valid;
-
 /* Transforms and depth-sorts every visible triangle once per frame, so band
  * mode does not re-transform the whole scene once per band. Only correct
  * while S3L_NEAR_CROSS_STRATEGY stays 0: _S3L_projectTriangle() then never
@@ -579,6 +585,23 @@ cube_transform_and_bin(void) {
             }
         }
     }
+
+    /* Marked here, not by each caller: a band the cube left still needs
+     * erasing even though nothing there overlaps this frame's own bbox,
+     * and every band-mode caller of this function needs both boxes marked
+     * the same way. */
+    if (prev_cube_bbox_valid) {
+        gfx_mark_dirty(prev_cube_bbox_x0, prev_cube_bbox_y0, prev_cube_bbox_x1 - prev_cube_bbox_x0,
+                       prev_cube_bbox_y1 - prev_cube_bbox_y0);
+    }
+    if (cube_bbox_valid) {
+        gfx_mark_dirty(cube_bbox_x0, cube_bbox_y0, cube_bbox_x1 - cube_bbox_x0, cube_bbox_y1 - cube_bbox_y0);
+    }
+    prev_cube_bbox_x0 = cube_bbox_x0;
+    prev_cube_bbox_y0 = cube_bbox_y0;
+    prev_cube_bbox_x1 = cube_bbox_x1;
+    prev_cube_bbox_y1 = cube_bbox_y1;
+    prev_cube_bbox_valid = cube_bbox_valid;
 }
 
 /* Draws only the bin's triangles that overlap [row0, row1) into `buf`,
@@ -616,24 +639,7 @@ cube_frame_band(uint32_t dt_ms, const input_t* input) {
     if (!menu_open) {
         update_fps_counter(dt_ms);
         cube_update_rotation(dt_ms);
-        cube_transform_and_bin();
-
-        /* The union of where the cube WAS and where it IS now - a band it
-         * left still needs erasing even though nothing there overlaps this
-         * frame's own bbox. gfx_band_dirty() (gfx.c) is what turns these
-         * marks into a per-band decision. */
-        if (prev_cube_bbox_valid) {
-            gfx_mark_dirty(prev_cube_bbox_x0, prev_cube_bbox_y0, prev_cube_bbox_x1 - prev_cube_bbox_x0,
-                           prev_cube_bbox_y1 - prev_cube_bbox_y0);
-        }
-        if (cube_bbox_valid) {
-            gfx_mark_dirty(cube_bbox_x0, cube_bbox_y0, cube_bbox_x1 - cube_bbox_x0, cube_bbox_y1 - cube_bbox_y0);
-        }
-        prev_cube_bbox_x0 = cube_bbox_x0;
-        prev_cube_bbox_y0 = cube_bbox_y0;
-        prev_cube_bbox_x1 = cube_bbox_x1;
-        prev_cube_bbox_y1 = cube_bbox_y1;
-        prev_cube_bbox_valid = cube_bbox_valid;
+        cube_transform_and_bin(); /* also marks the cube's own coverage dirty - see its own comment */
     }
 
     if (menu_open) {
