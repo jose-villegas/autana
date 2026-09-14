@@ -28,6 +28,12 @@ material_grain_hash(int cx, int cy) {
 
 const gfx_color_t* material_palette(void);
 
+/* GFX_PIXFMT_INDEXED8's colour-to-index step: the sand_palette256_lut
+ * (sand_palette256.h) entry nearest `c`, always >= SAND_PALETTE_UI_ENTRIES.
+ * See material_palette.c for the distance and why an exact match is the
+ * expected common case. */
+int material_palette256_index(gfx_color_t c);
+
 /* FLAT stays free. Only patterned materials pay for it. */
 typedef enum {
     MATERIAL_FLAT = 0, /* one colour, whole block */

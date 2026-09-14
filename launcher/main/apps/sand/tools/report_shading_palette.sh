@@ -10,8 +10,9 @@
 # Writes stats.txt, mapping.csv, palette_swatches.png, and per scene
 # scene_<name>.png (original | 256 | 16 dithered) and
 # scene_<name>_16_per_scene.png into results-dir (default: this tool's
-# build/ folder). The sweep calls material_colours() a few billion times,
-# so a run takes a minute or two.
+# build/ folder), and regenerates main/apps/sand/sand_palette256.h - the
+# device's own copy of the same palette. The sweep calls material_colours()
+# a few billion times, so a run takes a minute or two.
 
 set -eu
 
@@ -56,4 +57,4 @@ OUT_BIN="$BUILD_DIR/shading_palette"
 
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"
 
-"$OUT_BIN" "$RESULTS_DIR"
+"$OUT_BIN" "$RESULTS_DIR" minimax "$SAND_DIR/sand_palette256.h"

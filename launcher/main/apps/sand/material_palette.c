@@ -17,7 +17,8 @@
  * of.
  */
 #include "material_palette.h"
-#include "util/intmath.h" /* see material_set_gravity() below */
+#include "sand_palette256.h" /* see material_palette256_index() below */
+#include "util/intmath.h"    /* see material_set_gravity() below */
 
 /* Channel `sh` of the way from `lo` to `hi`, out of 15. */
 #define LERP_CH(lo, hi, shift, sh)                                                                                     \
@@ -963,4 +964,36 @@ material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth, gfx_col
 const gfx_color_t*
 material_palette(void) {
     return palette;
+}
+
+/* Nearest of sand_palette256_lut's own sand entries (never a UI one - a
+ * shading colour has no business landing on a reserved index), by squared
+ * RGB888 channel distance. Linear, not a shortcut through the group budgets
+ * the palette study derived them from: those budgets shaped which colours
+ * the table holds, not which one a given colour maps back to. Exact matches
+ * - the common case, since the palette was built to contain sand's own
+ * colours - return on the first equal entry without measuring anything. */
+int
+material_palette256_index(gfx_color_t c) {
+    const uint32_t rgb = gfx_color_rgb888(c);
+    const int r = (int)((rgb >> 16) & 0xFFu), g = (int)((rgb >> 8) & 0xFFu), b = (int)(rgb & 0xFFu);
+
+    int best = SAND_PALETTE_UI_ENTRIES;
+    long best_d = -1;
+    for (int i = SAND_PALETTE_UI_ENTRIES; i < GFX_INDEXED_PALETTE_SIZE; i++) {
+        const gfx_color_t p = sand_palette256_lut[i];
+        if (p == c) {
+            return i;
+        }
+        const uint32_t prgb = gfx_color_rgb888(p);
+        const long dr = r - (long)((prgb >> 16) & 0xFFu);
+        const long dg = g - (long)((prgb >> 8) & 0xFFu);
+        const long db = b - (long)(prgb & 0xFFu);
+        const long d = dr * dr + dg * dg + db * db;
+        if (best_d < 0 || d < best_d) {
+            best_d = d;
+            best = i;
+        }
+    }
+    return best;
 }
