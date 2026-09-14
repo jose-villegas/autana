@@ -792,6 +792,16 @@ typedef struct {
  * gravity direction. */
 void sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy);
 
+/* Runs fn(ctx) somewhere other than the caller while the caller keeps
+ * going; sand_core1_join() blocks until it has finished. Never call
+ * sand_core1_run() again before joining the previous one. Only for work
+ * that would give the same answer run before, after, or genuinely
+ * alongside the caller's own - see sand_two_core_step_enabled() (sand.h).
+ * A no-op pair when two-core stepping is off or unavailable: fn(ctx) then
+ * runs inline inside sand_core1_run() itself. */
+void sand_core1_run(void (*fn)(void* ctx), void* ctx);
+void sand_core1_join(void);
+
 void sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, const int* slide_b, const int* perp_a,
                    const int* perp_b, int load_dx, int load_dy, int x_step, int jostle);
 
