@@ -488,6 +488,52 @@ test_band_extent_is_full_width_once_everything_is_marked(void) {
     TEST_ASSERT_TRUE(dirty_band_extent(416, 448, &x0, &x1));
 }
 
+/* A moving box across several frames, marked and queried the way a real
+ * band-mode frame loop repeats it: mark old+new bounds, query every band,
+ * dirty_frame_sent() before the next frame. A caller that stops marking
+ * after frame one - the exact way suite_cube_band_perf.c's own band_frame()
+ * once did, silently, since nothing but this sequence proves per-frame
+ * marks still land - would show every band skipped from frame two on. */
+static void
+test_band_extent_follows_a_moving_box_across_several_frames(void) {
+    fixture();
+
+    /* One full STRIP_HEIGHT per frame: a smaller step re-marks the same
+     * cell with a different sub-range each frame, and a cell's box only
+     * ever widens within its own lifetime (never narrows before the next
+     * dirty_mark_all()) - correct, but it would make this test's exact
+     * per-frame equality assert fail on a real, harmless over-touch. */
+    const int band_height = 32; /* a real GFX_BAND_HEIGHT choice (gfx.h) - not reachable from here, see file comment */
+    const int box_x = 10, box_w = 15, box_h = 20;
+    int box_y = 0;
+    bool prev_valid = false;
+    int prev_y = 0;
+
+    for (int frame = 0; frame < 4; frame++) {
+        if (prev_valid) {
+            dirty_mark(box_x, prev_y, box_w, box_h);
+        }
+        dirty_mark(box_x, box_y, box_w, box_h);
+
+        for (int band = 0; band * band_height < GFX_DIRTY_HEIGHT; band++) {
+            const int row0 = band * band_height;
+            const int row1 = row0 + band_height;
+            int x0, x1;
+            const bool touched = dirty_band_extent(row0, row1, &x0, &x1);
+            const bool overlaps_old = prev_valid && prev_y < row1 && prev_y + box_h > row0;
+            const bool overlaps_new = box_y < row1 && box_y + box_h > row0;
+
+            TEST_ASSERT_EQUAL_INT_MESSAGE(overlaps_old || overlaps_new, touched,
+                                          "band touch/skip must follow the moving box every frame, not just the first");
+        }
+
+        dirty_frame_sent();
+        prev_valid = true;
+        prev_y = box_y;
+        box_y += STRIP_HEIGHT;
+    }
+}
+
 void
 run_gfx_dirty_suite(void) {
     RUN_TEST(test_mark_leaves_stays_in_the_leaf_before_a_boundary);
@@ -530,6 +576,7 @@ run_gfx_dirty_suite(void) {
     RUN_TEST(test_band_extent_ignores_a_band_outside_the_marked_rows);
     RUN_TEST(test_band_extent_only_sees_the_part_of_a_strip_its_own_range_covers);
     RUN_TEST(test_band_extent_is_full_width_once_everything_is_marked);
+    RUN_TEST(test_band_extent_follows_a_moving_box_across_several_frames);
 }
 
 SUITE_REGISTER(run_gfx_dirty_suite);
