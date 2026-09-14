@@ -21,6 +21,7 @@
 #include "gfx/gfx_color.h"
 #include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font.h"
+#include "gfx/gfx_indexed.h"
 #include "gfx/gfx_mode.h"
 
 /* ESP_PLATFORM is defined by ESP-IDF's own toolchain file - never by this
@@ -341,6 +342,37 @@ int gfx_band_count(void);
  * never for the one just queued. */
 void gfx_band_submit(void);
 
+/*
+ * GFX_PIXFMT_INDEXED8 - a persistent index image gfx owns instead of an
+ * RGB565 band, valid only between a gfx_mode_enter() request carrying that
+ * pixfmt and the matching gfx_mode_exit(). The app writes indices; gfx
+ * expands them through a LUT and sends them on the present task the next
+ * time it calls gfx_present_begin()/gfx_present_wait() - the same two
+ * calls it already uses for GFX_LAYOUT_FULL_FB, unchanged.
+ */
+
+/* Row-major, gfx_mode_current()->index_grid_w bytes per row. Write only the
+ * cells that changed and gfx_mark_dirty() the matching panel-pixel
+ * rectangle (index cell (cx, cy) is panel pixels
+ * [cx*cell_size, (cx+1)*cell_size) x [cy*cell_size, (cy+1)*cell_size)) -
+ * gfx never marks a write dirty on the app's behalf, the same contract
+ * gfx_framebuffer() already carries. */
+uint8_t* gfx_indexed_image(void);
+
+/* Installs the 256-entry LUT GFX_PIXFMT_INDEXED8 expands through when 16-
+ * colour dithering (below) is off. Copied, not referenced: the caller's
+ * own table may be `static const` and go out of scope. */
+void gfx_indexed_set_lut(const gfx_color_t lut[GFX_INDEXED_PALETTE_SIZE]);
+
+/* Installs the 16-colour table and the per-index dither choice 16-colour
+ * mode expands through instead. */
+void gfx_indexed_set_lut16(const gfx_color_t lut16[16], const gfx_indexed_dither16_t table[GFX_INDEXED_PALETTE_SIZE]);
+
+/* Selects which of the two installed LUTs GFX_PIXFMT_INDEXED8 expands
+ * through - off is the 256-colour path, on is the dithered 16-colour one.
+ * Both LUTs stay installed either way, so switching is free. */
+void gfx_indexed_set_dither16(bool enabled);
+
 /* True if [row0, row1) needs rendering and sending this frame - fed by the
  * ordinary gfx_mark_dirty() calls an app and ui.c already make. A true
  * return also gives the even-rounded column span (out_x0/out_x1) worth
@@ -393,6 +425,12 @@ bool gfx_debug_leaf_overlay(void);
  * so a caller can accumulate across exactly the frames it is measuring. */
 void gfx_reset_strip_send_counts(void);
 void gfx_get_strip_send_counts(int* full_bands, int* gathered, int* partial_bands);
+
+/* Panel-format bytes queued since the last gfx_reset_strip_send_counts() -
+ * every send path alike, so a device test can compare pixel formats that
+ * have no strip/gather distinction of their own (GFX_PIXFMT_INDEXED8)
+ * against ones that do. */
+int64_t gfx_get_bytes_sent(void);
 
 /* Test-only: every strip of the framebuffer sent as a full band, bypassing
  * every dirty-tracking decision gfx_present() makes - the bus-time side of

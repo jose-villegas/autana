@@ -61,6 +61,24 @@ static int band_render_height;
  * band_frame_force_all is this frame's own captured value, taken once by
  * gfx_band_frame_begin() so a later gfx_invalidate() call mid-frame
  * affects the NEXT frame, not this one. */
+
+/* GFX_PIXFMT_INDEXED8's own state - the app writes indices, run_present_
+ * indexed() below expands them through whichever LUT is installed. Not a
+ * gfx_target.h render target: no drawing primitive writes through it. */
+static uint8_t* indexed_image;
+static int indexed_grid_w, indexed_grid_h, indexed_cell_size;
+static gfx_color_t indexed_lut256[GFX_INDEXED_PALETTE_SIZE];
+static gfx_color_t indexed_lut16[16];
+static gfx_indexed_dither16_t indexed_dither16[GFX_INDEXED_PALETTE_SIZE];
+static bool indexed_dither16_on;
+
+/* True only for the RGB565 band mode, where an app's own frame() drives
+ * gfx_band_next()/_submit() itself - see gfx_present_begin() below. */
+static inline bool
+band_is_app_driven(void) {
+    return current_mode.layout == GFX_LAYOUT_BANDS && current_mode.pixfmt == GFX_PIXFMT_RGB565;
+}
+
 static bool band_frame_force_all;
 
 /* What every pixel-writing primitive below actually draws into: the whole
@@ -1460,11 +1478,19 @@ static int dev_strips_sent_full;
 static int dev_strips_sent_gathered;
 static int dev_strips_sent_partial;
 
+/* Actual panel-format bytes queued, every send path alike (full-fb gather/
+ * strip, and GFX_PIXFMT_INDEXED8's own whole-strip send) - what the three
+ * counts above cannot answer by themselves for a mode with no strip/gather
+ * distinction at all. Exists for a device test comparing send cost across
+ * pixel formats. Not reset by gfx_present(). */
+static int64_t dev_bytes_sent;
+
 void
 gfx_reset_strip_send_counts(void) {
     dev_strips_sent_full = 0;
     dev_strips_sent_gathered = 0;
     dev_strips_sent_partial = 0;
+    dev_bytes_sent = 0;
 }
 
 void
@@ -1478,6 +1504,11 @@ gfx_get_strip_send_counts(int* full_bands, int* gathered, int* partial_bands) {
     if (partial_bands) {
         *partial_bands = dev_strips_sent_partial;
     }
+}
+
+int64_t
+gfx_get_bytes_sent(void) {
+    return dev_bytes_sent;
 }
 
 static void
@@ -1639,6 +1670,9 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
     (void)refined;
     (void)border;
 #endif
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    dev_bytes_sent += (int64_t)w * h * sizeof(gfx_color_t);
+#endif
     esp_lcd_panel_draw_bitmap(panel, x0, y0, x1, y1, gather_buf);
     xSemaphoreTake(strip_sent, portMAX_DELAY);
 }
@@ -1650,6 +1684,34 @@ send_fb_rows(int y0, int y1) {
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
     strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
     memcpy(slot, fb + (size_t)y0 * GFX_WIDTH, (size_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t));
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
+#endif
+    esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, slot);
+}
+
+/* send_fb_rows()'s GFX_PIXFMT_INDEXED8 counterpart: expands rows [y0, y1)
+ * from the index image through the installed LUT, into the same bounce
+ * slots, instead of copying pixels already sitting in `fb`. */
+static void
+send_indexed_rows(int y0, int y1) {
+    gfx_color_t* const slot = strip_bounce[strip_bounce_next];
+    strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
+
+    for (int y = y0; y < y1; y++) {
+        const int grid_row = gfx_indexed_panel_row_to_grid_row(y, indexed_cell_size);
+        const uint8_t* row_ptr = (grid_row < indexed_grid_h) ? indexed_image + (size_t)grid_row * indexed_grid_w : NULL;
+        gfx_color_t* out_row = slot + (size_t)(y - y0) * GFX_WIDTH;
+        if (indexed_dither16_on) {
+            gfx_indexed_expand_row_dither16(row_ptr, indexed_grid_w, indexed_lut16, indexed_dither16, indexed_cell_size,
+                                            y, 0, out_row, GFX_WIDTH);
+        } else {
+            gfx_indexed_expand_row(row_ptr, indexed_grid_w, indexed_lut256, indexed_cell_size, out_row, GFX_WIDTH);
+        }
+    }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
+#endif
     esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, slot);
 }
 
@@ -1801,12 +1863,40 @@ send_one_row(int row, int* queued) {
     }
 }
 
+/* GFX_PIXFMT_INDEXED8's own send loop - whole dirty STRIP_HEIGHT strips,
+ * full width, rather than send_one_row()'s per-run gathering: the index
+ * image is small enough that expanding a strip nothing changed in costs
+ * little, and every dirty strip still goes through gfx_dirty.h's own
+ * tracker unmodified. No interlace or partial-clear here - both are
+ * independent app opt-ins the RGB565 path alone offers. */
+static void
+run_present_indexed(void) {
+    int queued = 0;
+    for (int row = 0; row < STRIP_COUNT; row++) {
+        if (!dirty_row_is_dirty(row)) {
+            continue;
+        }
+        send_indexed_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT);
+        queued++;
+        dirty_row_sent(row);
+    }
+    dirty_frame_sent();
+    for (int i = 0; i < queued; i++) {
+        xSemaphoreTake(strip_sent, portMAX_DELAY);
+    }
+}
+
 /* The real send, run on the present task (async) or on the caller
  * (gfx_set_present_async(false)) - either way, on whichever core called it,
  * since strip_sent is an ordinary FreeRTOS semaphore and the panel's own
  * strip-sent interrupt is core-agnostic about who it wakes. */
 static void
 run_present_normal(void) {
+    if (current_mode.pixfmt == GFX_PIXFMT_INDEXED8) {
+        run_present_indexed();
+        return;
+    }
+
     int queued = 0;
     if (interlace_on) {
         frame_parity = !frame_parity;
@@ -1888,7 +1978,7 @@ dispatch_present(void) {
 void
 gfx_present_begin(void) {
     gfx_present_guard_begin();
-    if (current_mode.layout == GFX_LAYOUT_BANDS) {
+    if (band_is_app_driven()) {
         return; /* the band ring sends and waits inside frame() itself */
     }
     present_task_mode = PRESENT_TASK_NORMAL;
@@ -1897,7 +1987,7 @@ gfx_present_begin(void) {
 
 void
 gfx_present_wait(void) {
-    if (current_mode.layout != GFX_LAYOUT_BANDS && present_async_on) {
+    if (!band_is_app_driven() && present_async_on) {
         xSemaphoreTake(present_done_sem, portMAX_DELAY);
     }
     gfx_present_guard_end();
@@ -1928,9 +2018,9 @@ gfx_present_wait(void) {
     /* No panel on a host build; draining the dirty tracker here is what
      * lets a host test assert the same "sequencing leaves it clean"
      * property a real present provides - see suite_gfx_present_guard.c.
-     * Band mode has no dirty tracker to drain - the ring itself already
-     * settled inside frame(). */
-    if (current_mode.layout != GFX_LAYOUT_BANDS) {
+     * The app-driven RGB565 band ring has no dirty tracker to drain - it
+     * already settled inside frame(). */
+    if (!band_is_app_driven()) {
         dirty_frame_sent();
     }
     gfx_present_guard_end();
@@ -1986,6 +2076,23 @@ alloc_band_buffers(int band_height) {
     }
     return true;
 }
+
+static bool
+alloc_indexed_image(int grid_w, int grid_h) {
+    const size_t bytes = (size_t)grid_w * (size_t)grid_h;
+    indexed_image = heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (indexed_image == NULL) {
+        ESP_LOGE(TAG, "Could not allocate %u byte index image", (unsigned)bytes);
+        return false;
+    }
+    return true;
+}
+
+static void
+free_indexed_image(void) {
+    heap_caps_free(indexed_image);
+    indexed_image = NULL;
+}
 #else
 static bool
 alloc_full_framebuffer(void) {
@@ -2011,6 +2118,18 @@ alloc_band_buffers(int band_height) {
     }
     return true;
 }
+
+static bool
+alloc_indexed_image(int grid_w, int grid_h) {
+    indexed_image = malloc((size_t)grid_w * (size_t)grid_h);
+    return indexed_image != NULL;
+}
+
+static void
+free_indexed_image(void) {
+    free(indexed_image);
+    indexed_image = NULL;
+}
 #endif
 
 static void
@@ -2034,6 +2153,10 @@ reset_mode_to_full_fb(void) {
     current_mode.width = GFX_WIDTH;
     current_mode.height = GFX_HEIGHT;
     current_mode.band_height = 0;
+    current_mode.pixfmt = GFX_PIXFMT_RGB565;
+    current_mode.index_grid_w = 0;
+    current_mode.index_grid_h = 0;
+    current_mode.cell_size = 0;
 }
 
 /* Only GFX_RESOLUTION_FULL is wired to real rendering, so the system-wide
@@ -2047,7 +2170,20 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
 
     const gfx_mode_t granted = gfx_mode_resolve(request, GFX_RESOLUTION_FULL, GFX_WIDTH, GFX_HEIGHT, GFX_BAND_HEIGHT);
 
-    if (granted.layout == GFX_LAYOUT_BANDS) {
+    if (granted.layout == GFX_LAYOUT_BANDS && granted.pixfmt == GFX_PIXFMT_INDEXED8) {
+        if (granted.index_grid_w <= 0 || granted.index_grid_h <= 0 || granted.cell_size <= 0
+            || !alloc_indexed_image(granted.index_grid_w, granted.index_grid_h)) {
+            free_indexed_image();
+            return &current_mode; /* stays GFX_LAYOUT_FULL_FB */
+        }
+        free_full_framebuffer();
+        gfx_fb_guard_set_available(false);
+        indexed_grid_w = granted.index_grid_w;
+        indexed_grid_h = granted.index_grid_h;
+        indexed_cell_size = granted.cell_size;
+        indexed_dither16_on = false;
+        gfx_mark_all_dirty(); /* nothing sent to the panel yet this visit */
+    } else if (granted.layout == GFX_LAYOUT_BANDS) {
         if (!alloc_band_buffers(granted.band_height)) {
             free_band_buffers();
             return &current_mode; /* stays GFX_LAYOUT_FULL_FB */
@@ -2067,7 +2203,11 @@ void
 gfx_mode_exit(void) {
     GFX_PRESENT_GUARD();
     if (current_mode.layout == GFX_LAYOUT_BANDS) {
-        free_band_buffers();
+        if (current_mode.pixfmt == GFX_PIXFMT_INDEXED8) {
+            free_indexed_image();
+        } else {
+            free_band_buffers();
+        }
         if (alloc_full_framebuffer()) {
             gfx_fb_guard_set_available(true);
         }
@@ -2215,6 +2355,31 @@ gfx_band_submit(void) {
     band_render_active = false;
     gfx_fb_guard_set_available(false);
     gfx_band_ring_advance(&band_ring);
+}
+
+uint8_t*
+gfx_indexed_image(void) {
+    GFX_PRESENT_GUARD();
+    return indexed_image;
+}
+
+void
+gfx_indexed_set_lut(const gfx_color_t lut[GFX_INDEXED_PALETTE_SIZE]) {
+    GFX_PRESENT_GUARD();
+    memcpy(indexed_lut256, lut, sizeof indexed_lut256);
+}
+
+void
+gfx_indexed_set_lut16(const gfx_color_t lut16[16], const gfx_indexed_dither16_t table[GFX_INDEXED_PALETTE_SIZE]) {
+    GFX_PRESENT_GUARD();
+    memcpy(indexed_lut16, lut16, sizeof indexed_lut16);
+    memcpy(indexed_dither16, table, sizeof indexed_dither16);
+}
+
+void
+gfx_indexed_set_dither16(bool enabled) {
+    GFX_PRESENT_GUARD();
+    indexed_dither16_on = enabled;
 }
 
 unsigned
