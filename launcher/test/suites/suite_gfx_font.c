@@ -286,6 +286,37 @@ test_row_run_rect_matches_per_bit_placement_at_scale_one_and_at_origin(void) {
     }
 }
 
+/*
+ * gfx_text_font() (gfx.c) skips a whole character when its own row extent
+ * misses the current gfx_target_t entirely - one command replayed into
+ * several bands (ui_replay_band()) otherwise re-walks every character per
+ * band. Safe only if every rect gfx_font_row_run_rect() can ever produce
+ * for that character stays inside the same row extent, so skipping never
+ * discards a rect that would have painted anything - proven here for every
+ * (row, col) a real glyph can pass, at every turn, without gfx.c.
+ */
+static void
+test_row_run_rect_never_leaves_the_characters_own_row_extent(void) {
+    const int x = 7, y = 30, scale = 3;
+
+    for (int turn = 0; turn < 4; turn++) {
+        const int char_h = (turn & 1) ? gfx_font_8x8.cell_w * scale : gfx_font_8x8.cell_h * scale;
+
+        for (int row = 0; row < gfx_font_8x8.cell_h; row++) {
+            for (int col0 = 0; col0 < gfx_font_8x8.cell_w; col0++) {
+                for (int col1 = col0; col1 < gfx_font_8x8.cell_w; col1++) {
+                    int rx, ry, rw, rh;
+                    gfx_font_row_run_rect(&gfx_font_8x8, x, y, row, col0, col1, scale, turn, &rx, &ry, &rw, &rh);
+
+                    TEST_ASSERT_TRUE_MESSAGE(ry >= y, "a run rect must not start above the character's own extent");
+                    TEST_ASSERT_TRUE_MESSAGE(ry + rh <= y + char_h,
+                                             "a run rect must not reach below the character's own extent");
+                }
+            }
+        }
+    }
+}
+
 void
 run_gfx_font_suite(void) {
     RUN_TEST(test_default_font_width_matches_char_w_per_character);
@@ -303,6 +334,7 @@ run_gfx_font_suite(void) {
     RUN_TEST(test_proportional_height_is_cell_h_times_scale);
     RUN_TEST(test_row_run_rect_matches_per_bit_placement_at_every_turn);
     RUN_TEST(test_row_run_rect_matches_per_bit_placement_at_scale_one_and_at_origin);
+    RUN_TEST(test_row_run_rect_never_leaves_the_characters_own_row_extent);
 }
 
 SUITE_REGISTER(run_gfx_font_suite);
