@@ -1728,6 +1728,97 @@ render_scene(const char* dir, int si, FILE* f, gfx_color_t* fb, uint8_t* grp) {
             (unsigned long long)unseen);
 }
 
+/* --- production header ------------------------------------------------------
+ *
+ * sand_palette256.h: the 256-colour LUT (UI block 0-15, palette[] 16-255),
+ * the shared 16-colour LUT, and one dither choice per 256-entry - the
+ * device's GFX_PIXFMT_INDEXED8 path never recomputes any of this. Emitted
+ * straight from the same build_palette()/ega_build() output the report
+ * above is built from, not re-derived from mapping.csv, so the two cannot
+ * drift apart.
+ */
+
+/* gfx_color_t is RGB565 with its bytes swapped (gfx_color.h) - the inverse
+ * of native_key() above. */
+static uint16_t
+to_gfx_color(uint16_t native) {
+    return (uint16_t)((native >> 8) | (native << 8));
+}
+
+static void
+write_sand_palette_header(const char* path) {
+    /* "wb", not "w": this output is committed, and every text file in the
+     * tree is LF - text mode would translate it to CRLF on Windows. */
+    FILE* f = fopen(path, "wb");
+    if (f == NULL) {
+        fprintf(stderr, "cannot write %s\n", path);
+        exit(1);
+    }
+
+    /* A generator that half-works is worse than one that fails outright -
+     * see docs/Launcher-Architecture.md's "Generated sources". */
+    if (palette_used <= UI_ENTRIES || palette_used > PALETTE_SIZE) {
+        fprintf(stderr, "build_palette() produced %d entries, expected (%d, %d]\n", palette_used, UI_ENTRIES,
+                PALETTE_SIZE);
+        exit(1);
+    }
+
+    /* palette[] already holds UI_ENTRIES entries (build_palette() seeds them
+     * with ui_key()) - a plain 0..255 copy, no separate UI case. Unused
+     * trailing entries (palette_used < PALETTE_SIZE) fall back to a valid,
+     * already-built index rather than reading unwritten memory. */
+    uint16_t entry_key[PALETTE_SIZE];
+    for (int i = 0; i < PALETTE_SIZE; i++) {
+        entry_key[i] = i < palette_used ? palette[i] : palette[UI_ENTRIES];
+    }
+
+    fprintf(f,
+            "/*=============================================================="
+            "=============\n"
+            " * GENERATED FILE - do not edit.\n"
+            " *\n"
+            " *     main/apps/sand/tools/report_shading_palette.sh\n"
+            " *\n"
+            " * The 256-entry sand palette (UI block 0-%d, sand %d-255) and its\n"
+            " * 16-colour dithered counterpart - see docs/sand/Shading-and-Colour.md\n"
+            " * and shading_palette.c's own top comment for how these are chosen.\n"
+            " *========================================================================"
+            "===*/\n"
+            "#pragma once\n\n"
+            "#include \"gfx/gfx_color.h\"\n"
+            "#include \"gfx/gfx_indexed.h\"\n\n"
+            "#define SAND_PALETTE_UI_ENTRIES %d\n\n",
+            UI_ENTRIES - 1, UI_ENTRIES, UI_ENTRIES);
+
+    fprintf(f, "static const gfx_color_t sand_palette256_lut[GFX_INDEXED_PALETTE_SIZE] = {\n");
+    for (int i = 0; i < PALETTE_SIZE; i++) {
+        fprintf(f, "%s0x%04X,", i % 8 == 0 ? "    " : " ", to_gfx_color(entry_key[i]));
+        if (i % 8 == 7) {
+            fprintf(f, "\n");
+        }
+    }
+    fprintf(f, "\n};\n\n");
+
+    fprintf(f, "static const gfx_color_t sand_palette16_lut[16] = {\n    ");
+    for (int i = 0; i < EGA_ENTRIES; i++) {
+        fprintf(f, "0x%04X,%s", to_gfx_color(ega_global.key[i]), i % 8 == 7 ? "\n    " : " ");
+    }
+    fprintf(f, "\n};\n\n");
+
+    fprintf(f, "static const gfx_indexed_dither16_t sand_palette16_dither[GFX_INDEXED_PALETTE_SIZE] = {\n");
+    for (int i = 0; i < PALETTE_SIZE; i++) {
+        const ega_choice_t ch = ega_choose(&ega_global, entry_key[i]);
+        const uint8_t alpha = ch.level == 0 ? 0u : (uint8_t)(ch.level * 16u);
+        if (i % 4 == 0) {
+            fprintf(f, "    ");
+        }
+        fprintf(f, "{%d, %d, %d},%s", ch.lo, ch.hi, alpha, i % 4 == 3 ? "\n" : " ");
+    }
+    fprintf(f, "};\n");
+
+    fclose(f);
+}
+
 /* --- main ----------------------------------------------------------------- */
 
 static uint8_t grids[SCENE_COUNT][GRID_W * GRID_H];
@@ -1735,11 +1826,12 @@ static uint8_t grids[SCENE_COUNT][GRID_W * GRID_H];
 int
 main(int argc, char** argv) {
     if (argc < 2) {
-        fprintf(stderr, "usage: shading_palette <results-dir> [minimax|sse]\n");
+        fprintf(stderr, "usage: shading_palette <results-dir> [minimax|sse] [header-path]\n");
         return 2;
     }
     const char* dir = argv[1];
     minimax = !(argc > 2 && strcmp(argv[2], "sse") == 0);
+    const char* header_path = argc > 3 ? argv[3] : NULL;
     char path[512];
     snprintf(path, sizeof path, "%s/stats.txt", dir);
     FILE* f = fopen(path, "w");
@@ -1787,6 +1879,11 @@ main(int argc, char** argv) {
     static ega_points_t ega_all;
     ega_points(&ega_all, used);
     ega_build(&ega_global, &ega_all, native_key(material_palette()[SAND_EMPTY]));
+
+    if (header_path != NULL) {
+        fprintf(stderr, "writing %s...\n", header_path);
+        write_sand_palette_header(header_path);
+    }
 
     fprintf(f, "SWEEP: distinct RGB565 colours per group\n");
     fprintf(f, "  %-10s %8s %8s %8s %8s %8s %8s %8s %8s %9s %9s\n", "group", "all", "hash=0", "mask=0", "depth=0",
