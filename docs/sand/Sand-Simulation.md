@@ -944,6 +944,53 @@ step" and the numbers above:
   mattered: it alone was the difference between a settled screen of sand
   costing 17 us and costing 5.5 ms.
 
+## Two cores, and why most of a step still runs on one
+
+The device's own present() overlaps with `sand_step()` on the other core
+already - see `docs/Launcher-Architecture.md`. The obvious next
+question is whether the step itself can be split the same way: a guard-band
+stripe of the grid on each core, proven order-equivalent by the fingerprint
+suite. It cannot, and the reason is not the sweep order the guard band
+would protect - that part is genuinely fixable with a one-row margin, the
+same distance every move in the main sweep already reaches. The reason is
+`sand_t.rng`: one `xorshift32` word, drawn from by every pass in this file
+(the sweep's scatter and slide rolls, `move_liquid_grain()`'s splash and
+viscosity checks, cross-flow's own viscosity gate, the gas walk, every
+reaction roll), a data-dependent number of times per cell. Two cores
+drawing from it at once is a race on that one word; giving each core its
+own stream instead reproduces a different simulation for the same seed,
+because which random value lands on which cell's decision would no longer
+match the single sequential order a serial run always takes. Either way,
+the fingerprint - a hash of what a seed actually produces - stops matching,
+and the hard constraint this feature works under is that it must not.
+
+What is left after excluding everything that touches `rng` is the
+book-keeping around a step, not the step's own movement: `finalize_settling()`
+(sand.c) and `mark_liquid_neighbourhoods()` (sand_liquid.c) each walk every
+block once, and each block's own outcome depends only on a neighbour's
+`BLOCK_ACTIVE`/`BLOCK_HAS_LIQUID` bit - written earlier in the same step,
+read-only from here - and writes only that block's own bit back. No block
+ever depends on another block's SETTLED or LIQUID_NEAR bit, so the whole
+scan is order-independent and needs no guard band at all: any split, or no
+split, gives the same board. `sand_set_two_core_step()` (on by default,
+`CONFIG_LAUNCHER_SAND_TWO_CORE_STEP`) hands half the block rows of each
+scan to a task pinned to core 1 while the caller finishes the other half,
+joining before the step returns.
+
+That task runs BELOW present's own priority (sand_core1.c), not in a
+window carved out before or after it: `sand_step()` can run while a
+previous frame is still presenting (main.c's `step_app()`), and present's
+own timing must never move for anything sand does. A lower-priority task
+only gets the CPU while present is blocked waiting on the strip-sent
+semaphore - which is most of a present, since the transfer itself is
+DMA - so present is never delayed, and core 1 still does the scan during
+gaps that would otherwise sit idle. It is scaffolding sized for a modest,
+specific saving - two O(blocks) scans, not the O(cells) sweep the device's
+own time is actually spent in - and the mechanism it proves out (a core-1
+task, notify in, semaphore out, gated by provable order-independence and
+scheduled by priority rather than by a hand-carved time window) is what
+any future win here would still need.
+
 ## Why the liquid logic is its own file
 
 `sand.c` and `sand_liquid.c` used to be one file. Measured with a cognitive

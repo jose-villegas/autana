@@ -911,6 +911,10 @@ ran first. This exact phrase appears at every call site in `sand.c` and
 every pass's own declaration in `sand_priv.h` - if you add a seventh pass,
 it goes here too, before `finalize_settling()`, not after.
 
+`finalize_settling()` is also where a second core actually helps - see
+[Two cores, and why most of a step still runs on
+one](Sand-Simulation.md#two-cores-and-why-most-of-a-step-still-runs-on-one).
+
 Two passes are gated differently on purpose:
 `sand_step_gas()` is checked at the call site (`if (s->may_have_gas)`)
 because it takes nine arguments and this call site runs on every step of
