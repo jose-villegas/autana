@@ -444,13 +444,16 @@ replace it, chosen by app kind:
    turn, PSRAM never written. **The ring itself is built** - `gfx_mode_enter()`
    grants `GFX_LAYOUT_BANDS`, `gfx_band_next()`/`gfx_band_submit()` (`gfx.h`,
    `gfx_band.h`) hand out and send one band at a time, waiting only on the
-   previous band's transfer - and the cube app ports onto it by
-   re-rasterizing the whole scene per band and keeping only its own rows
-   (`app_cube.c`), clipping rather than the scissored span rasterizer this
-   section otherwise assumes. That rasterizer (section 8 decision 4) is
-   still a separate, unbuilt piece; a full-screen z-buffer in PSRAM is no
-   longer recommended for per-pixel access, and a per-band one arrives with
-   the rasterizer, not with the ring alone.
+   previous band's transfer - and the cube app ports onto it by transforming
+   and depth-sorting the scene once per frame, binning each triangle by its
+   own screen-space row range, and per band drawing only the triangles that
+   overlap it, scissored to that band's rows by a small hook added to
+   small3dlib (`S3L_SCISSOR_Y`, `components/small3dlib/include/small3dlib.h`)
+   rather than the scissored span rasterizer this section otherwise assumes.
+   That rasterizer (section 8 decision 4) is still a separate, unbuilt
+   piece; a full-screen z-buffer in PSRAM is no longer recommended for
+   per-pixel access, and a per-band one arrives with the rasterizer, not
+   with the ring alone.
 
 PSRAM's role narrows to bulk and cold data read at load or per frame —
 textures, levels, the retained framebuffer as a read source — never the

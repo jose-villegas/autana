@@ -221,6 +221,18 @@ one app that uses it today, gated by `CONFIG_LAUNCHER_CUBE_BAND_MODE` or its
 own `cube_band_mode` runtime switch, so its ordinary full-fb behaviour is
 what a plain build still ships.
 
+**Everything that writes a pixel has to know the framebuffer might not
+exist.** Band mode frees it, so `gfx_fb_guard.h` backs every drawing
+primitive (`gfx_clear()`, `gfx_fill_rect()`, `gfx_pixel()`, the line and
+text functions) with a check that no-ops instead of writing through a NULL
+pointer - loud (an assertion) on a development device build or a host
+build, silent on release, the same asymmetry `gfx_present_guard.h` already
+uses for its own invariant. The shell itself has to ask before drawing
+anything of its own: `main.c`'s home-swipe hint and `screenshot.c`'s device
+dump both check `gfx_mode_current()->layout` first and skip themselves in
+band mode, since the guard only stops a crash, not the pixels going
+nowhere.
+
 ### 2. There is exactly one frame loop, and it belongs to the shell
 
 Apps do not loop, do not present, do not block and do not yield. An app's
