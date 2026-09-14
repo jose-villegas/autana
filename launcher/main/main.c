@@ -275,7 +275,10 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
         (*current)->frame(dt_ms, input);
     }
 
-    if ((*current)->home_gesture) {
+    /* Band mode (gfx.h) has no framebuffer for the hint to draw into -
+     * the running app owns every pixel it sends, band by band, and gfx
+     * has already freed the PSRAM buffer this would otherwise write. */
+    if ((*current)->home_gesture && gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB) {
         draw_home_hint(exit_edge);
     }
 }

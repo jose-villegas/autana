@@ -270,6 +270,14 @@ dump_state(const input_t* input, const app_t* current_app) {
 
 void
 screenshot_dump(const input_t* input, const app_t* current_app) {
+    /* Band mode (gfx.h) has no framebuffer to read - gfx_framebuffer()
+     * would hand back the internal-SRAM band ring's own NULL. Refuse with
+     * a reason on the console rather than crash or stream garbage. */
+    if (gfx_mode_current()->layout != GFX_LAYOUT_FULL_FB) {
+        ESP_LOGW(TAG, "screenshot skipped - the running app has no framebuffer (band mode)");
+        return;
+    }
+
     const int32_t stride = screenshot_bmp_row_stride(GFX_WIDTH);
     const uint32_t pixel_bytes = (uint32_t)(stride * GFX_HEIGHT);
     const uint32_t total_bytes = SCREENSHOT_BMP_HEADER_SIZE + pixel_bytes;
