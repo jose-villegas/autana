@@ -150,7 +150,7 @@ equalise_one_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* below_ro
     const bool was_empty = pour_into(&s->cells[(size_t)ty * (size_t)w + (size_t)tx], id, give);
     row[x] = (mass - give > 0) ? CELL_MAKE(id, mass - give) : CELL_EMPTY;
     if (was_empty) {
-        mark_depth_band(s, ty);
+        mark_depth_band(s, tx, ty);
     }
 
     *stayed_in_row = (ty == y);
@@ -342,7 +342,8 @@ equalise_one_row(sand_t* s, int y, int w, int x_step, const xflow_t* r, int dx, 
     }
 
     if (touched) {
-        mark_rows(s, y, y);
+        s->faller_may_move = true;
+        mark_row_span(s, y, touched_x0, touched_x1);
         /* Unsigned cast needed for shift instead of signed division
          * correction. */
         const int by = (int)((unsigned)y / SAND_BLOCK_H);
@@ -533,7 +534,7 @@ float_lighter_liquids(sand_t* s, int dx, int dy) {
                 urow[ux] = me;
                 row[x] = above;
                 swapped[col >> 3] |= (uint8_t)(1u << (col & 7));
-                mark_rows(s, y, uy);
+                mark_slide(s, x, y, ux, uy);
                 wake_block_and_neighbors(s, x, y);
                 wake_block_and_neighbors(s, ux, uy);
                 moved = true;

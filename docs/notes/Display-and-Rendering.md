@@ -442,6 +442,16 @@ not from the new leaf layer. The leaf layer's own value is the general,
 caller-invisible capability: it stands ready for any future caller that
 does not do its own run-detection, which was the actual point.
 
+A run being gap-free within a row is not the same as the run being no
+bigger than what changed: every non-empty run in a dirty row was still
+sent whole, so one changed cell in a settled stack re-sent the stack. The
+sim's `dirty_x0`/`dirty_x1` (`sand.h`, see `docs/sand/Architecture.md`'s
+own "Dirty-row and dirty-column tracking") close that - a per-row column
+span, on top of the row bit, that `app_sand.c` clips both the pixel writes
+and the sent rects to. Landscape is where it matters: a grid row runs
+along gravity there, so it is where a run spanning far more than the
+changed cell was most likely to happen.
+
 ### Still untapped
 
 Rendering ideas raised and reasoned through, deliberately not built yet -
