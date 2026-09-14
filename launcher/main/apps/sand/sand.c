@@ -26,11 +26,9 @@
 #include "util/fixed.h"
 #include "util/intmath.h"
 
-/* Default from CONFIG_LAUNCHER_SAND_TWO_CORE_STEP on the device, off on a
- * host build too: a real device hang was traced to core 1 contention this
- * feature adds (see sand_core1.c's own join-timeout comment), so the
- * default stays off tree-wide until that is confirmed fixed on hardware.
- * A test that wants the split path calls sand_set_two_core_step(true)
+/* Default from CONFIG_LAUNCHER_SAND_TWO_CORE_STEP on the device; off on a
+ * host build, where suites and the fingerprint expect the serial path. A
+ * test that wants the split path calls sand_set_two_core_step(true)
  * itself - see sand_two_core_step_enabled() (sand.h). */
 #if defined(ESP_PLATFORM)
 #if defined(CONFIG_LAUNCHER_SAND_TWO_CORE_STEP) && CONFIG_LAUNCHER_SAND_TWO_CORE_STEP
