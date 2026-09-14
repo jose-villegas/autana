@@ -1215,9 +1215,22 @@ gfx_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int 
         {0, -1}, /* three quarters: bottom to top */
     };
 
+    /* A quarter turn of 1 or 3 swaps which cell dimension becomes the
+     * on-screen row extent - see gfx_font_row_run_rect()'s own comment. */
+    const int char_h = (turn & 1) ? font->cell_w * scale : font->cell_h * scale;
+    const gfx_target_t target = current_target();
+
     for (const char* p = text; *p != '\0'; p++) {
         const unsigned char ch = (unsigned char)*p;
-        draw_glyph_font(font, x, y, ch, color, scale, turn);
+        /* One command replayed into several bands (ui_replay_band()) walks
+         * every character again per band; skipping one whose own row
+         * extent misses the current target entirely turns that back into
+         * one walk's worth of work overall, the same as it costs in
+         * GFX_LAYOUT_FULL_FB, where the target spans the full screen and
+         * this is never false. */
+        if (gfx_target_row_range_overlaps(target, y, y + char_h)) {
+            draw_glyph_font(font, x, y, ch, color, scale, turn);
+        }
         const int adv = gfx_font_advance(font, ch, scale);
         x += step[turn][0] * adv;
         y += step[turn][1] * adv;
