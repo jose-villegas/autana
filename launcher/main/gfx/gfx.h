@@ -373,6 +373,13 @@ void gfx_indexed_set_lut16(const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE_SI
  * Both LUTs stay installed either way, so switching is free. */
 void gfx_indexed_set_dither16(bool enabled);
 
+/* Lever 2: installs `table` for `mode` and makes it the active SPATIAL
+ * pattern 16-colour mode expands through (gfx_indexed_set_dither16(true))
+ * - see gfx_dither_mode_t's own comment (gfx_indexed.h) for what each
+ * mode's table must hold. Meaningless in 256 mode. Safe only between
+ * frames, on the present task, like every other indexed setter here. */
+void gfx_indexed_set_dither(gfx_dither_mode_t mode, const gfx_color_t* table);
+
 /* True if [row0, row1) needs rendering and sending this frame - fed by the
  * ordinary gfx_mark_dirty() calls an app and ui.c already make. A true
  * return also gives the even-rounded column span (out_x0/out_x1) worth

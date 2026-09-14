@@ -141,6 +141,78 @@ test_dither_table_is_deterministic(void) {
     }
 }
 
+/* GFX_DITHER_NONE's own table: vga256's index 0 IS cga16's own black (see
+ * test_ega16_is_bit_identical_to_cga16), so the nearest search must land
+ * on it exactly, not merely close. */
+static void
+test_lut_nearest_reproduces_an_exact_match(void) {
+    static gfx_color_t lut[GFX_PALETTE_MAX_ENTRIES];
+    gfx_palette_gen_build_lut_nearest(&gfx_palette_vga256, &gfx_palette_cga16, lut);
+    TEST_ASSERT_EQUAL_HEX16(gfx_palette_cga16.entries[0], lut[0]);
+}
+
+static void
+test_lut_nearest_is_deterministic(void) {
+    static gfx_color_t a[GFX_PALETTE_MAX_ENTRIES], b[GFX_PALETTE_MAX_ENTRIES];
+    gfx_palette_gen_build_lut_nearest(&gfx_palette_db32, &gfx_palette_pico8_16, a);
+    gfx_palette_gen_build_lut_nearest(&gfx_palette_db32, &gfx_palette_pico8_16, b);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(a, b, gfx_palette_db32.count);
+}
+
+/* GFX_DITHER_CELL_CHECKER's own table: an exact match is solid at both of
+ * its 2 phases, the same trivial case the pixel modes must also get
+ * right. */
+static void
+test_dither_cell_checker_reproduces_an_exact_match_at_both_phases(void) {
+    static gfx_color_t table[GFX_PALETTE_MAX_ENTRIES * GFX_INDEXED_CELL_CHECKER_PHASES];
+    gfx_palette_gen_build_dither_cell(&gfx_palette_vga256, &gfx_palette_cga16, false, table);
+    for (int phase = 0; phase < GFX_INDEXED_CELL_CHECKER_PHASES; phase++) {
+        TEST_ASSERT_EQUAL_HEX16(gfx_palette_cga16.entries[0], table[0 * GFX_INDEXED_CELL_CHECKER_PHASES + phase]);
+    }
+}
+
+/* GFX_DITHER_CELL_BAYER2's own table: solid at all 4 of its phases. */
+static void
+test_dither_cell_bayer2_reproduces_an_exact_match_at_every_phase(void) {
+    static gfx_color_t table[GFX_PALETTE_MAX_ENTRIES * GFX_INDEXED_CELL_BAYER2_PHASES];
+    gfx_palette_gen_build_dither_cell(&gfx_palette_vga256, &gfx_palette_cga16, true, table);
+    for (int phase = 0; phase < GFX_INDEXED_CELL_BAYER2_PHASES; phase++) {
+        TEST_ASSERT_EQUAL_HEX16(gfx_palette_cga16.entries[0], table[0 * GFX_INDEXED_CELL_BAYER2_PHASES + phase]);
+    }
+}
+
+static void
+test_dither_cell_bayer2_is_deterministic(void) {
+    static gfx_color_t a[GFX_PALETTE_MAX_ENTRIES * GFX_INDEXED_CELL_BAYER2_PHASES];
+    static gfx_color_t b[GFX_PALETTE_MAX_ENTRIES * GFX_INDEXED_CELL_BAYER2_PHASES];
+    gfx_palette_gen_build_dither_cell(&gfx_palette_db32, &gfx_palette_pico8_16, true, a);
+    gfx_palette_gen_build_dither_cell(&gfx_palette_db32, &gfx_palette_pico8_16, true, b);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(a, b, gfx_palette_db32.count * GFX_INDEXED_CELL_BAYER2_PHASES);
+}
+
+/* GFX_DITHER_PIXEL_CHECKER2's own table: solid across all 4 (row, column)
+ * phase combinations - the same exact-match case gfx_palette_gen_build_
+ * dither16()'s own test covers for the 4x4 pattern. */
+static void
+test_dither_checker2_reproduces_an_exact_match_at_every_phase(void) {
+    static gfx_color_t table[GFX_PALETTE_MAX_ENTRIES * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX];
+    gfx_palette_gen_build_dither_checker2(&gfx_palette_vga256, &gfx_palette_cga16, table);
+    const int stride = GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX;
+    for (int i = 0; i < stride; i++) {
+        TEST_ASSERT_EQUAL_HEX16(gfx_palette_cga16.entries[0], table[i]);
+    }
+}
+
+static void
+test_dither_checker2_is_deterministic(void) {
+    static gfx_color_t a[GFX_PALETTE_MAX_ENTRIES * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX];
+    static gfx_color_t b[GFX_PALETTE_MAX_ENTRIES * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX];
+    gfx_palette_gen_build_dither_checker2(&gfx_palette_db32, &gfx_palette_pico8_16, a);
+    gfx_palette_gen_build_dither_checker2(&gfx_palette_db32, &gfx_palette_pico8_16, b);
+    const int n = gfx_palette_db32.count * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX;
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(a, b, n);
+}
+
 void
 run_gfx_palette_suite(void) {
     RUN_TEST(test_cga16_has_16_entries_black_first_white_last);
@@ -154,6 +226,13 @@ run_gfx_palette_suite(void) {
     RUN_TEST(test_index_map_never_returns_a_reserved_entry);
     RUN_TEST(test_dither_table_reproduces_an_exact_16_colour_match_at_every_phase);
     RUN_TEST(test_dither_table_is_deterministic);
+    RUN_TEST(test_lut_nearest_reproduces_an_exact_match);
+    RUN_TEST(test_lut_nearest_is_deterministic);
+    RUN_TEST(test_dither_cell_checker_reproduces_an_exact_match_at_both_phases);
+    RUN_TEST(test_dither_cell_bayer2_reproduces_an_exact_match_at_every_phase);
+    RUN_TEST(test_dither_cell_bayer2_is_deterministic);
+    RUN_TEST(test_dither_checker2_reproduces_an_exact_match_at_every_phase);
+    RUN_TEST(test_dither_checker2_is_deterministic);
 }
 
 SUITE_REGISTER(run_gfx_palette_suite);

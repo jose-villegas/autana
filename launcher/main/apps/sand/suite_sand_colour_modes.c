@@ -51,6 +51,16 @@ typedef enum {
     CM_MODE_16,
 } colour_mode_t;
 
+/* One entry per gfx_dither_mode_t, CM_MODE_16's own axis - measured
+ * alongside FULL and 256 on the same landscape scenes, not a separate
+ * suite: the maintainer's own ask is one table to read, not several. */
+static const gfx_dither_mode_t dither_modes[] = {
+    GFX_DITHER_NONE,           GFX_DITHER_CELL_CHECKER, GFX_DITHER_CELL_BAYER2,
+    GFX_DITHER_PIXEL_CHECKER2, GFX_DITHER_PIXEL_BAYER4,
+};
+#define DITHER_MODE_COUNT ((int)(sizeof dither_modes / sizeof dither_modes[0]))
+_Static_assert(DITHER_MODE_COUNT == GFX_DITHER_MODE_COUNT, "dither_modes must list every gfx_dither_mode_t");
+
 typedef struct {
     const char* name;
     void (*build)(sand_t* s);
@@ -134,15 +144,40 @@ paint_full_frame_full(const uint8_t* grid) {
     }
 }
 
+/* app_sand.c's own sand_indexed_cell_needs_repaint(), the classify tables
+ * this file has no access to already computed by the caller - lever 1's
+ * per-mode rule: exact per cell for the two CELL modes, class equality for
+ * the two PIXEL ones, raw equality in 256 mode (dither16_on false). */
+static bool
+cell_needs_repaint(gfx_dither_mode_t mode, bool dither16_on, uint8_t old_idx, uint8_t new_idx,
+                   const uint8_t dither16_class[GFX_INDEXED_PALETTE_SIZE],
+                   const uint8_t checker2_class[GFX_INDEXED_PALETTE_SIZE], int cx, int cy) {
+    if (!dither16_on) {
+        return old_idx != new_idx;
+    }
+    switch (mode) {
+        case GFX_DITHER_NONE: return sand_dither_none_lut[old_idx] != sand_dither_none_lut[new_idx];
+        case GFX_DITHER_CELL_CHECKER:
+            return gfx_indexed_cell_dither_changed(old_idx, new_idx, sand_dither_cell_checker, false, cx, cy);
+        case GFX_DITHER_CELL_BAYER2:
+            return gfx_indexed_cell_dither_changed(old_idx, new_idx, sand_dither_cell_bayer2, true, cx, cy);
+        case GFX_DITHER_PIXEL_CHECKER2: return gfx_indexed_cell_changed(old_idx, new_idx, true, checker2_class);
+        case GFX_DITHER_PIXEL_BAYER4:
+        default: return gfx_indexed_cell_changed(old_idx, new_idx, true, dither16_class);
+    }
+}
+
 /* Unlike paint_full_frame_full(), this ALSO applies lever 1's own
- * suppression (gfx_indexed_cell_changed()) instead of writing every cell
+ * suppression (cell_needs_repaint()) instead of writing every cell
  * unconditionally: the whole point of measuring it here is the narrower
  * region it marks, not the wider one paint_full_frame_full() still uses.
  * Returns how many cells its own bounding box covers - 0 with the box
  * fields untouched if nothing changed at all. */
 static int
-paint_full_frame_indexed(const uint8_t* grid, bool dither16_on, const uint8_t dither_class[GFX_INDEXED_PALETTE_SIZE],
-                         int* out_x0, int* out_y0, int* out_x1, int* out_y1) {
+paint_full_frame_indexed(const uint8_t* grid, gfx_dither_mode_t mode, bool dither16_on,
+                         const uint8_t dither16_class[GFX_INDEXED_PALETTE_SIZE],
+                         const uint8_t checker2_class[GFX_INDEXED_PALETTE_SIZE], int* out_x0, int* out_y0, int* out_x1,
+                         int* out_y1) {
     uint8_t* img = gfx_indexed_image();
     int x0 = CM_GRID_W, y0 = CM_GRID_H, x1 = 0, y1 = 0;
     for (int cy = 0; cy < CM_GRID_H; cy++) {
@@ -153,7 +188,7 @@ paint_full_frame_indexed(const uint8_t* grid, bool dither16_on, const uint8_t di
             const int i = cy * CM_GRID_W + cx;
             const uint8_t new_idx = (uint8_t)material_palette256_index(col[0]);
             const uint8_t old_idx = img[i];
-            if (!gfx_indexed_cell_changed(old_idx, new_idx, dither16_on, dither_class)) {
+            if (!cell_needs_repaint(mode, dither16_on, old_idx, new_idx, dither16_class, checker2_class, cx, cy)) {
                 continue;
             }
             img[i] = new_idx;
@@ -209,8 +244,22 @@ diff_bounding_box(const uint8_t* grid, int* out_x0, int* out_y0, int* out_x1, in
     return any;
 }
 
+static const gfx_color_t*
+dither_table_for(gfx_dither_mode_t mode) {
+    switch (mode) {
+        case GFX_DITHER_NONE: return sand_dither_none_lut;
+        case GFX_DITHER_CELL_CHECKER: return sand_dither_cell_checker;
+        case GFX_DITHER_CELL_BAYER2: return sand_dither_cell_bayer2;
+        case GFX_DITHER_PIXEL_CHECKER2: return sand_dither_pixel_checker2;
+        case GFX_DITHER_PIXEL_BAYER4:
+        default: return sand_palette16_dither_rgb;
+    }
+}
+
+/* `dither_mode` only matters when `mode` is CM_MODE_16 - FULL and 256 both
+ * ignore it. */
 static void
-measure_mode(const colour_scene_t* scene, colour_mode_t mode, mode_result_t* out) {
+measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t dither_mode, mode_result_t* out) {
     uint8_t* grid = malloc((size_t)CM_GRID_W * CM_GRID_H);
     TEST_ASSERT_NOT_NULL(grid);
     prev_grid_valid = false;
@@ -220,7 +269,8 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, mode_result_t* out
     scene->build(&sim);
 
     const bool indexed = mode != CM_MODE_FULL;
-    static uint8_t dither_class[GFX_INDEXED_PALETTE_SIZE];
+    static uint8_t dither16_class[GFX_INDEXED_PALETTE_SIZE];
+    static uint8_t checker2_class[GFX_INDEXED_PALETTE_SIZE];
     if (indexed) {
         gfx_mode_request_t req = {0};
         req.layout = GFX_LAYOUT_BANDS;
@@ -233,9 +283,13 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, mode_result_t* out
         TEST_ASSERT_TRUE_MESSAGE(granted->layout == GFX_LAYOUT_BANDS, "GFX_PIXFMT_INDEXED8 could not be granted");
         memset(gfx_indexed_image(), 0, (size_t)CM_GRID_W * CM_GRID_H);
         gfx_indexed_set_lut(sand_palette256_lut);
-        gfx_indexed_set_lut16(sand_palette16_dither_rgb);
         gfx_indexed_set_dither16(mode == CM_MODE_16);
-        gfx_indexed_dither16_classify(sand_palette16_dither_rgb, dither_class);
+        if (mode == CM_MODE_16) {
+            gfx_indexed_set_dither(dither_mode, dither_table_for(dither_mode));
+            gfx_indexed_dither16_classify(sand_palette16_dither_rgb, dither16_class);
+            gfx_indexed_classify(sand_dither_pixel_checker2,
+                                 GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX, checker2_class);
+        }
     }
 
     gfx_reset_strip_send_counts();
@@ -258,7 +312,8 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, mode_result_t* out
              * (or, in 256 mode, the same index), so this can be, and often
              * is, smaller than [dx0,dx1)x[dy0,dy1). */
             int ix0, iy0, ix1, iy1;
-            const int cells = paint_full_frame_indexed(grid, mode == CM_MODE_16, dither_class, &ix0, &iy0, &ix1, &iy1);
+            const int cells = paint_full_frame_indexed(grid, dither_mode, mode == CM_MODE_16, dither16_class,
+                                                       checker2_class, &ix0, &iy0, &ix1, &iy1);
             if (cells > 0) {
                 gfx_mark_dirty(ix0 * CM_CELL, iy0 * CM_CELL, (ix1 - ix0) * CM_CELL, (iy1 - iy0) * CM_CELL);
             }
@@ -292,15 +347,20 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, mode_result_t* out
 }
 
 static const char* const mode_names[] = {"FULL", "256", "16"};
+static const char* const dither_mode_names[] = {"NONE", "CELL_CHECKER", "CELL_BAYER2", "PIXEL_CHECKER2",
+                                                "PIXEL_BAYER4"};
 
+/* `dither_label` is NULL for FULL/256, which have no dither pattern of
+ * their own. */
 static void
-log_and_check(const colour_scene_t* scene, colour_mode_t mode, const mode_result_t* r) {
+log_and_check(const colour_scene_t* scene, colour_mode_t mode, const char* dither_label, const mode_result_t* r) {
     const int64_t frame_us = r->draw_us + r->present_us;
     ESP_LOGI(TAG,
-             "colour mode %s, %s: sand draw %lld us, present %lld us, %lld bytes/frame, %lld cells/frame, "
+             "colour mode %s%s%s, %s: sand draw %lld us, present %lld us, %lld bytes/frame, %lld cells/frame, "
              "frame %lld us/frame",
-             mode_names[mode], scene->name, (long long)r->draw_us, (long long)r->present_us,
-             (long long)r->bytes_per_frame, (long long)r->cells_marked_per_frame, (long long)frame_us);
+             mode_names[mode], dither_label != NULL ? " " : "", dither_label != NULL ? dither_label : "", scene->name,
+             (long long)r->draw_us, (long long)r->present_us, (long long)r->bytes_per_frame,
+             (long long)r->cells_marked_per_frame, (long long)frame_us);
 
     /* Sanity, not a frame-budget target: proves work actually happened in
      * this mode rather than measuring an accidental no-op. int32/boolean
@@ -314,15 +374,18 @@ log_and_check(const colour_scene_t* scene, colour_mode_t mode, const mode_result
 static void
 test_colour_modes_on_scene(int scene_index) {
     const colour_scene_t* scene = &scenes[scene_index];
-    mode_result_t full, c256, c16;
+    mode_result_t full, c256;
 
-    measure_mode(scene, CM_MODE_FULL, &full);
-    measure_mode(scene, CM_MODE_256, &c256);
-    measure_mode(scene, CM_MODE_16, &c16);
+    measure_mode(scene, CM_MODE_FULL, GFX_DITHER_PIXEL_BAYER4, &full);
+    measure_mode(scene, CM_MODE_256, GFX_DITHER_PIXEL_BAYER4, &c256);
+    log_and_check(scene, CM_MODE_FULL, NULL, &full);
+    log_and_check(scene, CM_MODE_256, NULL, &c256);
 
-    log_and_check(scene, CM_MODE_FULL, &full);
-    log_and_check(scene, CM_MODE_256, &c256);
-    log_and_check(scene, CM_MODE_16, &c16);
+    for (int d = 0; d < DITHER_MODE_COUNT; d++) {
+        mode_result_t c16;
+        measure_mode(scene, CM_MODE_16, dither_modes[d], &c16);
+        log_and_check(scene, CM_MODE_16, dither_mode_names[d], &c16);
+    }
 }
 
 static void
