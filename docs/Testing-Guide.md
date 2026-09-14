@@ -14,8 +14,8 @@ Living document: update it when the approach changes.
 ./launcher/test/run_device_tests.sh   # every suite, on the board, host-triggered
 ```
 
-**Where those 40 seconds go, because it is not the tests.** All 1,016 of
-them execute in a couple of seconds. The rest is compiling: `run_tests.sh`
+**Where those 40 seconds go, because it is not the tests.** All of the
+over 1,000 host tests execute in a couple of seconds. The rest is compiling: `run_tests.sh`
 builds every source in one `gcc` invocation each run and then compiles them
 all a second time for the `-fstack-usage` pass, with no object caching
 between runs - a re-run that changes nothing costs the same 40 s as one
@@ -190,13 +190,13 @@ under `CONFIG_LAUNCHER_SELFTEST` — see `main/CMakeLists.txt`).
 
 ### A diagnostics build can be scoped
 
-A diagnostics build compiles **every** suite: 57 of them, 1,098 tests,
-about 18 minutes of device run (about 6-7 of those minutes in the sand
+A diagnostics build compiles **every** suite. The full run measured on
+2026-09-14 was 1,098 tests in about 18 minutes of device run (about 6-7 of those minutes in the sand
 frame-budget suite alone; every other suite runs in seconds to a minute).
 Perf-scoped compiles only 3 of them - `suite_sand_perf.c`,
 `suite_sand_scenes.c`, `suite_sand_common.c` - so a sand performance
 capture, which reads a dozen rows out of the full run, does not pay for
-the other 54 suites too.
+every other suite too.
 
 Scoping used to buy back static RAM, on a board where the framebuffer
 shared internal DRAM with `.bss`. On this board the framebuffer lives in
@@ -655,17 +655,17 @@ against.
 
 ## Which suites cover which area
 
-Built by grepping every `SUITE_REGISTER` call site — 57 suites today. Use
+Built by grepping every `SUITE_REGISTER` call site (63 suites when written). Use
 this to pick which RUNSUITE commands cover a change, and to know a sand-free
 gfx/ui change can be checked without touching the sand suites at all.
 
 | Area | Suites | Covers |
 |---|---|---|
-| gfx | `run_gfx_suite`, `run_gfx_color_suite`, `run_gfx_dirty_suite`, `run_gfx_present_guard_suite`, `run_gfx_font_suite`, `run_gfx_font_roles_suite`, `run_icons_suite`, `run_icons_system_suite`, `run_display_suite`, `suite_screenshot` | framebuffer, clipping, colour packing, DMA/present, dirty-rect tracking, fonts, icons, display orientation, the screenshot protocol |
+| gfx | `run_gfx_suite`, `run_gfx_color_suite`, `run_gfx_dirty_suite`, `run_gfx_present_guard_suite`, `run_gfx_font_suite`, `run_gfx_font_roles_suite`, `run_gfx_mode_suite`, `run_gfx_band_suite`, `run_gfx_target_suite`, `run_gfx_fb_guard_suite`, `run_icons_suite`, `run_icons_system_suite`, `run_display_suite`, `suite_screenshot` | framebuffer, clipping, colour packing, DMA/present, dirty-rect tracking, fonts, icons, display orientation, the screenshot protocol, band mode (mode grant, band ring, band draw target, framebuffer guard) |
 | ui | `run_ui_suite`, `run_ui_pointer_suite`, `run_ui_pointer_microui_suite`, `run_ui_slider_suite`, `suite_ui_style`, `suite_ui_transform`, `suite_ui_centered_rect` | microui integration, pointer/widget hit-testing, style tokens, rotation transforms |
 | input | `run_touch_fsm_suite`, `run_gesture_suite`, `run_button_fsm_suite`, `run_tilt_suite` | touch debounce FSM, swipe gestures, button FSM, the tilt filter |
 | boot/POST | `run_boot_anim_suite`, `run_boot_anim_perf_suite` | the small3dlib boot animation and its frame budget. POST itself (`boot/post.c`) has no suite — it runs every boot and is read from its own `POST_COMPLETE` line, not Unity |
-| cube | `run_cube_perf_suite` | the cube app's frame budget |
+| cube | `run_cube_perf_suite`, `run_cube_band_perf_suite`, `run_small3dlib_scissor_suite` | the cube app's frame budget, band mode against the full framebuffer across orientations, the rasterizer's row scissor |
 | sand behaviour | 28 suites: `run_sand_*_suite` (25 of them) plus `run_row_runs_suite`, `run_palette_suite`, `run_brush_screen_suite` — see `launcher/main/apps/sand/suite_*.c` | materials, reactions, liquids, gas, dirt/roots, gunpowder, glass thermal, metal, the brush UI and palette picker, dirty-row reconciliation |
 | sand perf | `run_sand_perf_suite` | the 13 frame-budget scenes — see [`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md) |
 | shell/util | `suite_fixed`, `suite_tween`, `run_rng_suite`, `suite_device_state` | fixed-point math, tweening, RNG, the device-state JSON `screenshot.py` reads |
