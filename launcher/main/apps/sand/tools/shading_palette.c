@@ -1897,23 +1897,15 @@ write_sand_palette_header(const char* path) {
 /* --- main ----------------------------------------------------------------- */
 
 static uint8_t grids[SCENE_COUNT][GRID_W * GRID_H];
+static gfx_color_t common_fb[PANEL_W * PANEL_H];
+static uint8_t common_grp[PANEL_W * PANEL_H];
 
-int
-main(int argc, char** argv) {
-    if (argc < 2) {
-        fprintf(stderr, "usage: shading_palette <results-dir> [minimax|sse] [header-path]\n");
-        return 2;
-    }
-    const char* dir = argv[1];
-    minimax = !(argc > 2 && strcmp(argv[2], "sse") == 0);
-    const char* header_path = argc > 3 ? argv[3] : NULL;
-    char path[512];
-    snprintf(path, sizeof path, "%s/stats.txt", dir);
-    FILE* f = fopen(path, "w");
-    if (f == NULL) {
-        fprintf(stderr, "cannot write %s\n", path);
-        return 1;
-    }
+/* Sweep, settle every scene, and build both palettes - shared by the normal
+ * report below and run_dither_pattern_compare() (dp_*), which needs the same
+ * ega_global/palette/map_index and grids[] but writes no header and no
+ * stats.txt. */
+static void
+common_setup(void) {
     crc_init();
     for (int k = 0; k < KEYS; k++) {
         key_lin[k] = rgb_to_lin(key_rgb888((uint16_t)k));
@@ -1937,12 +1929,10 @@ main(int argc, char** argv) {
 
     /* Usage feeds the palette's weights, so scenes are painted once before it
      * is built and again, for the images, after. */
-    static gfx_color_t fb[PANEL_W * PANEL_H];
-    static uint8_t grp[PANEL_W * PANEL_H];
     for (int si = 0; si < SCENE_COUNT; si++) {
-        paint_frame(grids[si], fb, grp, 1234u + 97u * (uint32_t)si);
+        paint_frame(grids[si], common_fb, common_grp, 1234u + 97u * (uint32_t)si);
         for (int i = 0; i < PANEL_W * PANEL_H; i++) {
-            used[grp[i]][native_key(fb[i])]++;
+            used[common_grp[i]][native_key(common_fb[i])]++;
         }
     }
 
@@ -1954,6 +1944,215 @@ main(int argc, char** argv) {
     static ega_points_t ega_all;
     ega_points(&ega_all, used);
     ega_build(&ega_global, &ega_all, native_key(material_palette()[SAND_EMPTY]));
+}
+
+/* --- dither pattern exploration (report only - writes no generated header,
+ * not part of report_shading_palette.sh's own gate) --------------------- */
+
+/* The single nearest entry, never a blend - what ega_choose() itself starts
+ * from before searching for a better pair. Variant (e)'s own choice. */
+static ega_choice_t
+ega_nearest(const ega_palette_t* pal, uint16_t key) {
+    const lab_t target = key_lab[key];
+    ega_choice_t best = {0, 0, 0, 1e30, 0.0};
+    for (int i = 0; i < EGA_ENTRIES; i++) {
+        const double e = sqrt(dist2(target, pal->lab[i]));
+        if (e < best.error) {
+            best = (ega_choice_t){(uint8_t)i, (uint8_t)i, 0, e, 0.0};
+        }
+    }
+    return best;
+}
+
+typedef enum {
+    DP_BAYER4X4_PIXEL,   /* a: today's gfx_dither_covers(), per panel pixel */
+    DP_CHECKER2X2_PIXEL, /* b: solid lo / 50-50 checker / solid hi, per pixel */
+    DP_CHECKER_CELL,     /* c: solid lo or hi, alternating by (cx+cy)&1 */
+    DP_BAYER2X2_CELL,    /* d: gfx_dither_covers()'s idea, one cell = one tap */
+    DP_NEAREST_CELL,     /* e: no dither, nearest of the 16 per cell */
+    DP_VARIANT_COUNT,
+} dp_variant_t;
+
+/* draw_text()'s own 3x5 font (below) has no lowercase and no punctuation -
+ * a label outside A-Z0-9 and space draws as a gap, not the character. */
+static const char* const dp_names[DP_VARIANT_COUNT] = {
+    "A BAYER 4X4 PX", "B CHECKER 2X2 PX", "C CHECKER CELL", "D BAYER 2X2 CELL", "E NEAREST CELL",
+};
+
+/* gfx_dither4x4 (gfx_color.h) at order 2: the same recursive Bayer
+ * construction, its four taps spaced evenly over gfx_dither_level()'s
+ * 0..16 domain - 5 achievable coverages per cell (0 to 4 of the
+ * surrounding 2x2 block), once every cell renders solid. */
+static const int dp_bayer2x2[2][2] = {
+    {0, 8},
+    {12, 4},
+};
+
+/* `ch` is variants a-d's shared blend choice, or e's own never-blended one.
+ * `cx`/`cy` are this quality's CELL coordinates; `px`/`py` are absolute
+ * panel pixels, the phase gfx_dither_covers() keys off. */
+static uint32_t
+dp_pixel(dp_variant_t v, const ega_palette_t* pal, const ega_choice_t* ch, int px, int py, int cx, int cy) {
+    switch (v) {
+        case DP_BAYER4X4_PIXEL: return ega_pixel(pal, ch, px, py);
+        case DP_CHECKER2X2_PIXEL: {
+            if (ch->level == 0) {
+                return key_rgb888(pal->key[ch->lo]);
+            }
+            const bool hi = ((px + py) & 1) != 0;
+            return key_rgb888(pal->key[hi ? ch->hi : ch->lo]);
+        }
+        case DP_CHECKER_CELL: {
+            if (ch->level == 0) {
+                return key_rgb888(pal->key[ch->lo]);
+            }
+            const bool hi = ((cx + cy) & 1) != 0;
+            return key_rgb888(pal->key[hi ? ch->hi : ch->lo]);
+        }
+        case DP_BAYER2X2_CELL: {
+            const bool hi = ch->level > dp_bayer2x2[cy & 1][cx & 1];
+            return key_rgb888(pal->key[hi ? ch->hi : ch->lo]);
+        }
+        case DP_NEAREST_CELL:
+        default: return key_rgb888(pal->key[ch->lo]);
+    }
+}
+
+typedef struct {
+    const char* name;
+    int cell; /* panel pixels per side - CELL_PX is this study's own ULTRA */
+} dp_quality_t;
+
+static const dp_quality_t dp_qualities[] = {
+    {"cell2", CELL_PX},
+    {"cell4", CELL_PX * 2},
+};
+#define DP_QUALITY_COUNT ((int)(sizeof dp_qualities / sizeof dp_qualities[0]))
+
+/* mixed and water_pool: one scene busy across every material group, one
+ * dominated by a single liquid's own dither - scenes[]'s own declaration
+ * order (top of this file) fixes these indices. */
+static const int dp_scene_idx[] = {5, 1};
+#define DP_SCENE_COUNT ((int)(sizeof dp_scene_idx / sizeof dp_scene_idx[0]))
+
+/* One (scene, quality) case: coarsens the already-settled native (CELL_PX)
+ * frame to `q->cell` by keeping each block's own top-left sub-cell, an
+ * approximation good enough for a dither PATTERN comparison, not a second
+ * simulation. Panels left to right: ORIGINAL, 256, each dp_variant_t. */
+static void
+run_one_dp_case(const char* out_dir, int si, const dp_quality_t* q, FILE* stats) {
+    paint_frame(grids[si], common_fb, common_grp, 1234u + 97u * (uint32_t)si);
+
+    const int cell = q->cell;
+    const int qgw = PANEL_W / cell, qgh = PANEL_H / cell;
+    static uint16_t cell_key[(PANEL_W / CELL_PX) * (PANEL_H / CELL_PX)];
+    static uint8_t cell_grp[(PANEL_W / CELL_PX) * (PANEL_H / CELL_PX)];
+    for (int qy = 0; qy < qgh; qy++) {
+        for (int qx = 0; qx < qgw; qx++) {
+            const int px = qx * cell, py = qy * cell;
+            cell_key[qy * qgw + qx] = native_key(common_fb[py * PANEL_W + px]);
+            cell_grp[qy * qgw + qx] = common_grp[py * PANEL_W + px];
+        }
+    }
+
+    static ega_choice_t cell_choice[(PANEL_W / CELL_PX) * (PANEL_H / CELL_PX)];
+    static ega_choice_t cell_nearest[(PANEL_W / CELL_PX) * (PANEL_H / CELL_PX)];
+    for (int c = 0; c < qgw * qgh; c++) {
+        cell_choice[c] = ega_choose(&ega_global, cell_key[c]);
+        cell_nearest[c] = ega_nearest(&ega_global, cell_key[c]);
+    }
+
+    const int panels = 2 + DP_VARIANT_COUNT;
+    const int w = VIEW_W * panels + PANEL_GAP * (panels - 1), h = VIEW_H + LABEL_H;
+    uint8_t* rgb = calloc((size_t)w * (size_t)h, 3);
+    fill(rgb, w, 0, 0, w, LABEL_H, 0x101010);
+    draw_text(rgb, w, 6, 5, "ORIGINAL", 3, 0xFFFFFF);
+    draw_text(rgb, w, VIEW_W + PANEL_GAP + 6, 5, "256", 3, 0xFFFFFF);
+    for (int v = 0; v < DP_VARIANT_COUNT; v++) {
+        draw_text(rgb, w, (2 + v) * (VIEW_W + PANEL_GAP) + 6, 5, dp_names[v], 2, 0xFFFFFF);
+    }
+
+    double sum_e[DP_VARIANT_COUNT] = {0}, max_e[DP_VARIANT_COUNT] = {0};
+    for (int py = 0; py < PANEL_H; py++) {
+        for (int px = 0; px < PANEL_W; px++) {
+            const int cx = px / cell, cy = py / cell;
+            const int c = cy * qgw + cx;
+            const uint16_t key = cell_key[c];
+            const int idx = map_index[cell_grp[c]][key];
+
+            view_put(rgb, w, 0, LABEL_H, px, py, key_rgb888(key));
+            view_put(rgb, w, VIEW_W + PANEL_GAP, LABEL_H, px, py, idx < 0 ? 0xFF00FF : key_rgb888(palette[idx]));
+            for (int v = 0; v < DP_VARIANT_COUNT; v++) {
+                const ega_choice_t* ch = v == DP_NEAREST_CELL ? &cell_nearest[c] : &cell_choice[c];
+                const uint32_t colour = dp_pixel((dp_variant_t)v, &ega_global, ch, px, py, cx, cy);
+                view_put(rgb, w, (2 + v) * (VIEW_W + PANEL_GAP), LABEL_H, px, py, colour);
+                sum_e[v] += ch->error;
+                max_e[v] = ch->error > max_e[v] ? ch->error : max_e[v];
+            }
+        }
+    }
+
+    char path[512];
+    snprintf(path, sizeof path, "%s/dither_%s_%s.png", out_dir, scenes[si].name, q->name);
+    write_png(path, rgb, w, h);
+    free(rgb);
+    fprintf(stderr, "wrote %s\n", path);
+
+    const double n = (double)(PANEL_W * PANEL_H);
+    fprintf(stats, "%-10s %-6s", scenes[si].name, q->name);
+    for (int v = 0; v < DP_VARIANT_COUNT; v++) {
+        fprintf(stats, "  %s mean %.2f max %.2f", dp_names[v], sum_e[v] / n, max_e[v]);
+    }
+    fprintf(stats, "\n");
+}
+
+static int
+run_dither_pattern_compare(const char* out_dir) {
+    common_setup();
+
+    char path[512];
+    snprintf(path, sizeof path, "%s/dither_patterns.txt", out_dir);
+    FILE* stats = fopen(path, "w");
+    if (stats == NULL) {
+        fprintf(stderr, "cannot write %s\n", path);
+        return 1;
+    }
+    fprintf(stats, "dE is OKLab x100, the blend's own perceived error - identical for a/b/c/d\n");
+    fprintf(stats, "(same blend ratio, different spatial arrangement); e alone never blends.\n");
+
+    for (int s = 0; s < DP_SCENE_COUNT; s++) {
+        for (int q = 0; q < DP_QUALITY_COUNT; q++) {
+            run_one_dp_case(out_dir, dp_scene_idx[s], &dp_qualities[q], stats);
+        }
+    }
+    fclose(stats);
+    fprintf(stderr, "wrote %s\n", path);
+    return 0;
+}
+
+int
+main(int argc, char** argv) {
+    if (argc > 2 && strcmp(argv[1], "dither-patterns") == 0) {
+        return run_dither_pattern_compare(argv[2]);
+    }
+    if (argc < 2) {
+        fprintf(stderr, "usage: shading_palette <results-dir> [minimax|sse] [header-path]\n");
+        fprintf(stderr, "       shading_palette dither-patterns <results-dir>\n");
+        return 2;
+    }
+    const char* dir = argv[1];
+    minimax = !(argc > 2 && strcmp(argv[2], "sse") == 0);
+    const char* header_path = argc > 3 ? argv[3] : NULL;
+    char path[512];
+    snprintf(path, sizeof path, "%s/stats.txt", dir);
+    FILE* f = fopen(path, "w");
+    if (f == NULL) {
+        fprintf(stderr, "cannot write %s\n", path);
+        return 1;
+    }
+    common_setup();
+    gfx_color_t* fb = common_fb;
+    uint8_t* grp = common_grp;
 
     if (header_path != NULL) {
         fprintf(stderr, "writing %s...\n", header_path);
