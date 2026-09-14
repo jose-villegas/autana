@@ -994,12 +994,14 @@ A 2-colour checkerboard of 2-D tiles was tried on paper first and rejected:
 tiles diagonal to each other share a corner, and a reach of even 1 cell can
 touch that corner from a same-coloured tile on the far side of it, exactly
 the class of bug Noita's own write-up (GDC 2019) solves with a 2x2, four
--colour scheme and a per-cell "updated this frame" stamp. Stripes avoid the
-question outright: a row-stripe has exactly two neighbours, above and
-below, and colouring stripes by index means a stripe's only neighbours are
-always the opposite colour. Two same-coloured stripes are always a full
-stripe height apart - far past the sweep's 1-cell reach - so the split
-needs no halo, no stamp and no guard band.
+-colour scheme and a per-cell "updated this frame" stamp. Stripes avoid
+that specific problem outright: a row-stripe has exactly two neighbours,
+above and below, and colouring stripes by index means a stripe's only
+neighbours are always the opposite colour, so two same-coloured stripes
+are always a full stripe height apart - far past the sweep's 1-cell reach.
+
+That does NOT mean the split needs no boundary handling at all - see
+"The seam fix" below for the one it does need.
 
 `SWEEP_STRIPE_H` is `SAND_BLOCK_H` (32), reusing the sleep-tracking grid's
 own row size rather than inventing a second one. Each step picks one of two
@@ -1018,6 +1020,43 @@ outlier at stripe-boundary rows.
 Below `SWEEP_CHECKERBOARD_MIN_ROWS` (four stripes' worth) the whole sweep
 just runs on one core - a handful of stripes plus a hop to core 1 is not
 worth it.
+
+### The seam fix
+
+The serial sweep's own no-double-move guarantee rests on one property:
+every row's possible destinations were already visited this step, so a
+grain that lands there is never picked up again. That property is per
+GRID, not per stripe - a stripe boundary sits inside it, not outside it.
+Two adjacent stripes are always different colours, so ONE of a stripe's
+two neighbours belongs to whichever phase runs second - and a move that
+crosses into that neighbour's boundary row lands somewhere that phase has
+not swept yet. Once it does, it finds the just-arrived grain sitting
+there and moves it again: two cells in one step, at roughly half of every
+seam, every step.
+
+`run_sweep_stripes()` excludes both boundary rows of every stripe from
+the phases entirely - `step_one_grain()`'s reach is exactly one cell
+(every offset the sweep uses, primary or slide, is one of the eight ring
+directions), so a boundary row is the only one a move could reach past a
+stripe's edge, and excluding it removes the crossing outright.
+`run_sweep_guard_rows()` sweeps those excluded rows afterward, once both
+phases have joined, in the same relative order an unstriped sweep would
+give them - the only order that matters, since a boundary pair (adjacent
+by construction) is the only place two of them are ever close enough to
+interact, and every other pair is a full stripe height apart. This costs
+roughly `2 / SWEEP_STRIPE_H` of the sweep back to a single core - about 6%
+for the shipped stripe height - in exchange for the guarantee holding
+exactly as it always did.
+
+`suite_sand_two_core.c` checks this directly: a lone grain placed exactly
+on a seam, under all four axis-aligned gravity directions and both stripe
+offsets, must travel exactly one cell in one step, the same as one placed
+away from any seam - both for an open fall and for a slide forced by
+blocking the straight-ahead cell, since a slide can carry a diagonal
+component across a seam that a straight fall never would. With scatter
+forced to zero (removing every random draw from the scenario), the same
+setup must also match the serial path's own fall distance exactly, not
+merely stay bounded.
 
 ### The draw
 
