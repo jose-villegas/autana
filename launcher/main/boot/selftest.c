@@ -1,18 +1,17 @@
 /*
  * On-device self test.
  *
- * Runs at boot, inside the shipped firmware, before the launcher starts. There
- * is no separate test build: what gets verified is exactly the binary that
- * ships, compiled by the same toolchain with the same options.
+ * Compiled only into a CONFIG_LAUNCHER_SELFTEST build; release carries no
+ * test code. With CONFIG_LAUNCHER_SELFTEST_AUTORUN it runs every registered
+ * suite at boot, before the launcher starts; otherwise suites run on demand
+ * (RUNSUITE on the console, or an on-device toggle).
  *
- * It runs EVERY suite, not just the hardware ones. The portable suites already
- * pass on a host, but passing there only proves the logic is right on a laptop
- * - running them here proves the same code behaves identically built by the
- * Xtensa toolchain and executed on this chip.
+ * The full run includes the portable suites. Passing on a host proves the
+ * logic on a laptop; running them here proves the same code behaves
+ * identically built by the Xtensa toolchain and executed on this chip.
  *
- * Cost is roughly half a second, most of it the DMA tests waiting on real
- * frames, which is cheap enough to pay on every boot for the guarantee that a
- * booting device is a verified device.
+ * A full run takes about 18 minutes on the S3 - too long for every boot,
+ * which is why autorun is opt-in.
  */
 
 #include "boot/selftest.h"

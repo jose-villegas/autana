@@ -69,6 +69,16 @@ cleanup() {
 trap cleanup EXIT
 
 echo "=== Building and flashing build.diag to $COM_PORT ==="
+# An existing build.diag/sdkconfig takes precedence over SDKCONFIG_DEFAULTS
+# below - idf.py only applies the defaults file to a config that does not
+# exist yet. A build.diag left over from an interactive --diag build (no
+# autorun) or a perf-scoped one silently keeps that shape here: the build
+# succeeds, the flash succeeds, and the capture below just times out with
+# no SELFTEST_COMPLETE line, because nothing in this script's own output
+# says which config actually got compiled. Deleting it first is what makes
+# SDKCONFIG_DEFAULTS below actually take effect on every run of this
+# script, not just a fresh checkout.
+rm -f "$LAUNCHER_DIR/build.diag/sdkconfig"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
     Remove-Item Env:\MSYSTEM -ErrorAction SilentlyContinue
     & '$IDF_EXPORT_PS1' | Out-Null
@@ -96,6 +106,20 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
     # fast instead of running the suites automatically.
     idf.py -B build.diag -D SDKCONFIG_DEFAULTS=\"sdkconfig.defaults;sdkconfig.defaults.diag;sdkconfig.defaults.diag_autorun\" -D SDKCONFIG=build.diag/sdkconfig build
     if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
+    # Belt and braces alongside the rm -f above: read back what actually
+    # landed in the generated config rather than trusting the delete-and-
+    # regenerate to have worked. Catches the case SDKCONFIG_DEFAULTS itself
+    # stops producing what this script needs - a renamed Kconfig symbol, a
+    # dropped defaults file - which a missing sdkconfig alone would not.
+    \$cfg = Get-Content 'build.diag/sdkconfig' -Raw
+    if (\$cfg -notmatch '(?m)^CONFIG_LAUNCHER_SELFTEST_AUTORUN=y\$') {
+        Write-Error 'build.diag/sdkconfig has no CONFIG_LAUNCHER_SELFTEST_AUTORUN=y - the capture below would wait out its full timeout for a SELFTEST_COMPLETE line that never comes.'
+        exit 1
+    }
+    if (\$cfg -notmatch '(?m)^CONFIG_LAUNCHER_SELFTEST_SCOPE_FULL=y\$') {
+        Write-Error 'build.diag/sdkconfig is not full-scope - this gate exists to run every suite, not a subset.'
+        exit 1
+    }
     idf.py -B build.diag -p '$COM_PORT' flash
     exit \$LASTEXITCODE
 "
