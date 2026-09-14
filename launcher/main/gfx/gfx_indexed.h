@@ -89,21 +89,19 @@ gfx_indexed_expand_row_dither16(const uint8_t* grid_row, int grid_w,
     }
 }
 
-/* Groups the 256 indices by whether `dither16_rgb` renders them IDENTICALLY
- * - same colour at every phase, so a cell whose index moves within a class
- * has provably unchanged output wherever it sits. `out_class[i]` is the
- * smallest index sharing i's own row. O(n^2): call once per install, not
- * per frame - see app_sand.c's paint_row_n() for the change-detection use. */
+/* Groups the 256 indices by whether a `phases`-wide table renders them
+ * IDENTICALLY - a cell whose index moves within a class has provably
+ * unchanged output wherever it sits. `out_class[i]` is the smallest index
+ * sharing i's own row. The PIXEL modes' own rule; gfx_indexed_cell_
+ * dither_changed() is the CELL modes' tighter one. */
 static inline void
-gfx_indexed_dither16_classify(const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES],
-                              uint8_t out_class[GFX_INDEXED_PALETTE_SIZE]) {
+gfx_indexed_classify(const gfx_color_t* table, int phases, uint8_t out_class[GFX_INDEXED_PALETTE_SIZE]) {
     for (int i = 0; i < GFX_INDEXED_PALETTE_SIZE; i++) {
         out_class[i] = (uint8_t)i;
         for (int j = 0; j < i; j++) {
             bool same = true;
-            for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
-                if (dither16_rgb[i * GFX_INDEXED_DITHER16_PHASES + p]
-                    != dither16_rgb[j * GFX_INDEXED_DITHER16_PHASES + p]) {
+            for (int p = 0; p < phases; p++) {
+                if (table[i * phases + p] != table[j * phases + p]) {
                     same = false;
                     break;
                 }
@@ -114,6 +112,14 @@ gfx_indexed_dither16_classify(const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE
             }
         }
     }
+}
+
+/* gfx_indexed_classify() at GFX_DITHER_PIXEL_BAYER4's own width - kept
+ * under its historical name for every existing caller. */
+static inline void
+gfx_indexed_dither16_classify(const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES],
+                              uint8_t out_class[GFX_INDEXED_PALETTE_SIZE]) {
+    gfx_indexed_classify(dither16_rgb, GFX_INDEXED_DITHER16_PHASES, out_class);
 }
 
 /* True if a cell moving from `old_idx` to `new_idx` is worth a repaint and
@@ -140,4 +146,97 @@ static inline bool
 gfx_indexed_cell_needs_repaint(bool force_full, uint8_t old_idx, uint8_t new_idx, bool dither16_on,
                                const uint8_t dither_class[GFX_INDEXED_PALETTE_SIZE]) {
     return force_full || gfx_indexed_cell_changed(old_idx, new_idx, dither16_on, dither_class);
+}
+
+/* Lever 2: which SPATIAL PATTERN a 16-colour reduction paints with - the
+ * blend choice itself (tools/gfx_palette_gen.h) is shared by all five;
+ * only where lo/hi land differs, solid cells to per-pixel dither. */
+typedef enum {
+    GFX_DITHER_NONE,           /* nearest of the 16, no blend - one solid colour per cell */
+    GFX_DITHER_CELL_CHECKER,   /* solid, alternating by (cx + cy) & 1 */
+    GFX_DITHER_CELL_BAYER2,    /* solid, a 2x2 Bayer threshold over cells */
+    GFX_DITHER_PIXEL_CHECKER2, /* a 2x2 ordered dither, per panel pixel */
+    GFX_DITHER_PIXEL_BAYER4,   /* today's 4x4 ordered dither, per panel pixel */
+    GFX_DITHER_MODE_COUNT,
+} gfx_dither_mode_t;
+
+/* GFX_DITHER_CELL_CHECKER's own table: 2 phases (cx+cy even/odd) per
+ * index, each one solid colour - same cell-fill cost as
+ * gfx_indexed_expand_row()'s own 256-colour LUT path, one lookup per cell,
+ * never per pixel. */
+#define GFX_INDEXED_CELL_CHECKER_PHASES 2
+
+/* GFX_DITHER_CELL_BAYER2's own table: 4 phases, (cy & 1) * 2 + (cx & 1) -
+ * the four positions of a 2x2 Bayer block over cells, not pixels. */
+#define GFX_INDEXED_CELL_BAYER2_PHASES  4
+
+/* One lookup per CELL, keyed by its own (cx, cy) phase, filled solid
+ * across its pixels - `bayer2` picks the phase formula matching whichever
+ * table `cell_table` was baked for. `cy` is the GRID row: a cell's phase
+ * never depends on which panel pixel is being written. */
+static inline void
+gfx_indexed_expand_row_dither_cell(const uint8_t* grid_row, int grid_w, const gfx_color_t* cell_table, bool bayer2,
+                                   int cell_size, int cy, gfx_color_t* out_row, int out_width) {
+    const int phases = bayer2 ? GFX_INDEXED_CELL_BAYER2_PHASES : GFX_INDEXED_CELL_CHECKER_PHASES;
+    const int grid_pixels = grid_w * cell_size;
+    const int solid_pixels = grid_pixels < out_width ? grid_pixels : out_width;
+
+    for (int x = 0; x < solid_pixels; x++) {
+        const int gx = x / cell_size;
+        const uint8_t idx = grid_row != NULL ? grid_row[gx] : 0u;
+        const int phase = bayer2 ? ((cy & 1) * 2 + (gx & 1)) : ((gx + cy) & 1);
+        out_row[x] = cell_table[idx * phases + phase];
+    }
+    for (int x = solid_pixels; x < out_width; x++) {
+        const int gx = x / cell_size;
+        const int phase = bayer2 ? ((cy & 1) * 2 + (gx & 1)) : ((gx + cy) & 1);
+        out_row[x] = cell_table[phase]; /* index 0: reserved background */
+    }
+}
+
+/* Exact, not an approximation: a fixed cell never leaves its own (cx, cy)
+ * phase, so comparing the two indices' resolved colours at THAT phase
+ * alone is the whole answer - unlike gfx_indexed_dither16_classify()'s
+ * every-phase match, needed only because a PIXEL mode's cell spans several. */
+static inline bool
+gfx_indexed_cell_dither_changed(uint8_t old_idx, uint8_t new_idx, const gfx_color_t* cell_table, bool bayer2, int cx,
+                                int cy) {
+    if (old_idx == new_idx) {
+        return false;
+    }
+    const int phases = bayer2 ? GFX_INDEXED_CELL_BAYER2_PHASES : GFX_INDEXED_CELL_CHECKER_PHASES;
+    const int phase = bayer2 ? ((cy & 1) * 2 + (cx & 1)) : ((cx + cy) & 1);
+    return cell_table[(int)old_idx * phases + phase] != cell_table[(int)new_idx * phases + phase];
+}
+
+/* GFX_DITHER_PIXEL_CHECKER2's own table: like GFX_INDEXED_DITHER16_PHASES
+ * but at half the period - one 2-pixel/4-byte chunk per (index, row
+ * phase 0-1); GFX_DITHER_PIXEL_BAYER4 keeps the finer 4x4 pattern. */
+#define GFX_INDEXED_CHECKER2_ROW_PHASES 2
+#define GFX_INDEXED_CHECKER2_CHUNK_PX   2
+
+/* Same shape as gfx_indexed_expand_row_dither16(), read at a 2-pixel
+ * period instead of 4: `panel_row`/`panel_col0` are absolute panel
+ * coordinates, so two dithered bands sent side by side stay in phase. */
+static inline void
+gfx_indexed_expand_row_dither_checker2(
+    const uint8_t* grid_row, int grid_w,
+    const gfx_color_t
+        checker2_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX],
+    int cell_size, int panel_row, int panel_col0, gfx_color_t* out_row, int out_width) {
+    const int stride = GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX;
+    const int grid_pixels = grid_w * cell_size;
+    const int solid_pixels = grid_pixels < out_width ? grid_pixels : out_width;
+    const int py = (panel_row & 1) * GFX_INDEXED_CHECKER2_CHUNK_PX;
+
+    for (int x = 0; x < solid_pixels; x++) {
+        const int gx = x / cell_size;
+        const uint8_t idx = grid_row != NULL ? grid_row[gx] : 0u;
+        const int px = (panel_col0 + x) & 1;
+        out_row[x] = checker2_rgb[idx * stride + py + px];
+    }
+    for (int x = solid_pixels; x < out_width; x++) {
+        const int px = (panel_col0 + x) & 1;
+        out_row[x] = checker2_rgb[py + px]; /* index 0: reserved background */
+    }
 }
