@@ -1,12 +1,14 @@
 /*
- * Portable suite: gfx_font - the pure metrics half of a font descriptor.
+ * Portable suite: gfx_font - the pure metrics half of a font descriptor,
+ * plus gfx_font_row_run_rect()'s screen-space geometry.
  *
  * gfx_font.h splits a font into pure metrics (gfx_font_advance(),
  * gfx_font_text_width(), gfx_font_height() - `static inline` in the header,
  * same reason icon_walk_blocks() is in gfx/icon.h: it links on a host with no
  * gfx.h, no BSP, no drivers) and drawing (gfx_text_font() in gfx.c, which
- * calls gfx_fill_rect() and so cannot). This suite exercises only the
- * metrics, the same split suite_icons.c makes for gfx/icons_system.h.
+ * calls gfx_fill_rect() and so cannot). This suite exercises the metrics and
+ * the geometry, the same split suite_icons.c makes for gfx/icons_system.h -
+ * gfx_font_row_run_rect() computes where a rect goes, gfx.c only calls it.
  *
  * gfx.h is deliberately NOT included here - it pulls in bsp/esp-bsp.h, which
  * does not compile on a host. That means GFX_CHAR_W, GFX_CHAR_H and
@@ -185,6 +187,105 @@ test_proportional_height_is_cell_h_times_scale(void) {
     TEST_ASSERT_EQUAL_INT(21, gfx_font_height(&synth_font, 3));
 }
 
+/*
+ * gfx_font_row_run_rect() - proof that batching a run of set bits into one
+ * rect covers exactly the same pixels as gfx.c's draw_rotated_font_pixel()
+ * would have, one bit at a time. gfx.c cannot link on a host (it calls
+ * gfx_fill_rect()), so draw_rotated_font_pixel()'s px/py switch is mirrored
+ * here rather than driven directly - see this suite's own file comment.
+ */
+
+static void
+reference_unit_rect(const gfx_font_t* f, int x, int y, int row, int col, int scale, int turn, int* out_x, int* out_y) {
+    int px, py;
+    switch (turn) {
+        case 1:
+            px = f->cell_h - 1 - row;
+            py = col;
+            break;
+        case 2:
+            px = f->cell_w - 1 - col;
+            py = f->cell_h - 1 - row;
+            break;
+        case 3:
+            px = row;
+            py = f->cell_w - 1 - col;
+            break;
+        default:
+            px = col;
+            py = row;
+            break;
+    }
+    *out_x = x + px * scale;
+    *out_y = y + py * scale;
+}
+
+/* Every unit cell in [col0, col1] at `turn`, unioned, must equal the one
+ * rect gfx_font_row_run_rect() returns - exactly, not just in area, or a
+ * gap or an off-by-one overlap could slip through unnoticed. */
+static void
+assert_run_rect_matches_reference(const gfx_font_t* f, int x, int y, int row, int col0, int col1, int scale, int turn) {
+    int union_x0 = 0, union_y0 = 0, union_x1 = 0, union_y1 = 0;
+    for (int col = col0; col <= col1; col++) {
+        int ux, uy;
+        reference_unit_rect(f, x, y, row, col, scale, turn, &ux, &uy);
+        const int ux1 = ux + scale, uy1 = uy + scale;
+        if (col == col0) {
+            union_x0 = ux;
+            union_y0 = uy;
+            union_x1 = ux1;
+            union_y1 = uy1;
+        } else {
+            if (ux < union_x0) {
+                union_x0 = ux;
+            }
+            if (uy < union_y0) {
+                union_y0 = uy;
+            }
+            if (ux1 > union_x1) {
+                union_x1 = ux1;
+            }
+            if (uy1 > union_y1) {
+                union_y1 = uy1;
+            }
+        }
+    }
+
+    int rx, ry, rw, rh;
+    gfx_font_row_run_rect(f, x, y, row, col0, col1, scale, turn, &rx, &ry, &rw, &rh);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(union_x0, rx, "run rect's left edge");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(union_y0, ry, "run rect's top edge");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(union_x1 - union_x0, rw, "run rect's width");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(union_y1 - union_y0, rh, "run rect's height");
+}
+
+static void
+test_row_run_rect_matches_per_bit_placement_at_every_turn(void) {
+    /* A single bit, a run in the middle, and a run touching each edge of
+     * the cell - across all four turns, gfx_font_8x8's own 8x8 shape. */
+    const int col0s[] = {3, 0, 2, 0};
+    const int col1s[] = {3, 2, 7, 7};
+
+    for (int turn = 0; turn < 4; turn++) {
+        for (size_t i = 0; i < sizeof(col0s) / sizeof(col0s[0]); i++) {
+            for (int row = 0; row < gfx_font_8x8.cell_h; row++) {
+                assert_run_rect_matches_reference(&gfx_font_8x8, 10, 20, row, col0s[i], col1s[i], 2, turn);
+            }
+        }
+    }
+}
+
+static void
+test_row_run_rect_matches_per_bit_placement_at_scale_one_and_at_origin(void) {
+    /* scale 1 and (x, y) == (0, 0) are the values most likely to hide an
+     * off-by-one that a larger scale or offset would smear across many
+     * pixels instead. */
+    for (int turn = 0; turn < 4; turn++) {
+        assert_run_rect_matches_reference(&gfx_font_8x8, 0, 0, 5, 0, 7, 1, turn);
+    }
+}
+
 void
 run_gfx_font_suite(void) {
     RUN_TEST(test_default_font_width_matches_char_w_per_character);
@@ -200,6 +301,8 @@ run_gfx_font_suite(void) {
     RUN_TEST(test_proportional_text_width_sums_per_glyph_advances);
     RUN_TEST(test_proportional_text_width_len_negative_is_nul_terminated);
     RUN_TEST(test_proportional_height_is_cell_h_times_scale);
+    RUN_TEST(test_row_run_rect_matches_per_bit_placement_at_every_turn);
+    RUN_TEST(test_row_run_rect_matches_per_bit_placement_at_scale_one_and_at_origin);
 }
 
 SUITE_REGISTER(run_gfx_font_suite);

@@ -1081,8 +1081,9 @@ gfx_text_scaled(int x, int y, const char* text, gfx_color_t color, int scale) {
     gfx_text_turned(x, y, text, color, scale, 0);
 }
 
-/* Generalised to variable cell size. 1bpp path only for 8x8. Used by 8bpp
- * path too. */
+/* One glyph pixel, solid. Coverage varies per pixel in an 8bpp atlas, so
+ * draw_glyph_font()'s 8bpp path still draws one at a time; its 1bpp path
+ * batches runs instead (gfx_font_row_run_rect()). */
 static void
 draw_rotated_font_pixel(const gfx_font_t* font, int x, int y, int row, int col, int scale, int turn,
                         gfx_color_t color) {
@@ -1146,15 +1147,32 @@ draw_glyph_font(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_colo
     if (font->bpp == 1) {
         const uint8_t* glyph = font->atlas + (size_t)(ch - font->first) * font->cell_h;
 
+        /* One filled rect per contiguous run of set bits, not one per bit
+         * - gfx_font_row_run_rect() turns a run into the same straight
+         * screen-space span draw_rotated_font_pixel() would have covered
+         * one cell at a time. A rotated fps-style label is drawn glyph by
+         * glyph the same number of times either way, but each glyph's own
+         * strokes (typically a handful of runs, not cell_w bits) now cost
+         * one gfx_fill_rect() call apiece instead of one per set bit. */
         for (int row = 0; row < font->cell_h; row++) {
             const uint8_t bits = glyph[row];
             if (bits == 0) {
                 continue;
             }
-            for (int col = 0; col < font->cell_w; col++) {
-                if (bits & (1 << col)) {
-                    draw_rotated_font_pixel(font, x, y, row, col, scale, turn, color);
+            int col = 0;
+            while (col < font->cell_w) {
+                if (!(bits & (1 << col))) {
+                    col++;
+                    continue;
                 }
+                int run_end = col;
+                while (run_end + 1 < font->cell_w && (bits & (1 << (run_end + 1)))) {
+                    run_end++;
+                }
+                int rx, ry, rw, rh;
+                gfx_font_row_run_rect(font, x, y, row, col, run_end, scale, turn, &rx, &ry, &rw, &rh);
+                gfx_fill_rect(rx, ry, rw, rh, color);
+                col = run_end + 1;
             }
         }
         return;
