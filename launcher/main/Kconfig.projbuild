@@ -150,6 +150,21 @@ menu "Launcher"
             the caller, synchronously, for an A/B measurement against the
             overlapped path - runtime override: gfx_set_present_async().
 
+    config LAUNCHER_SAND_TWO_CORE_STEP
+        bool "Run sand's order-independent per-step scans on core 1"
+        default y
+        help
+            A step's movement passes - the gravity sweep, cross-flow, gas
+            and reactions - draw from one sequential PRNG a data-dependent
+            number of times per cell, so splitting them across cores would
+            either race on that shared state or consume it in a different
+            order than a serial run, changing the step's own output for a
+            given seed. What this option moves to core 1 is narrower: two
+            block-bookkeeping scans whose per-block answer depends on
+            nothing any other block writes - see finalize_settling()
+            (sand.c) and mark_liquid_neighbourhoods() (sand_liquid.c).
+            Runtime override for an A/B measurement: sand_set_two_core_step().
+
     config LAUNCHER_GFX_QSPI_STRONG_PADS
         bool "Drive the QSPI pads at 40 mA instead of the 20 mA default"
         default n
