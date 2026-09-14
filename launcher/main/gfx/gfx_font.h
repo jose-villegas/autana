@@ -118,3 +118,40 @@ gfx_font_height(const gfx_font_t* f, int scale) {
     }
     return f->cell_h * scale;
 }
+
+/* Screen-space rect for glyph columns [col0, col1] of one row, at `turn`
+ * (numbered as display.h) and `scale`. A quarter turn maps one glyph
+ * axis onto one screen axis, so a run of set bits within a row is always
+ * a straight span in screen space too - one rect instead of one per bit.
+ * col0 <= col1 required. */
+static inline void
+gfx_font_row_run_rect(const gfx_font_t* f, int x, int y, int row, int col0, int col1, int scale, int turn, int* out_x,
+                      int* out_y, int* out_w, int* out_h) {
+    const int run = col1 - col0 + 1;
+    switch (turn) {
+        case 1: /* top-to-bottom: glyph row fixes screen x, columns run down y */
+            *out_x = x + (f->cell_h - 1 - row) * scale;
+            *out_y = y + col0 * scale;
+            *out_w = scale;
+            *out_h = run * scale;
+            break;
+        case 2: /* upside down: glyph row fixes screen y, columns run backward along x */
+            *out_x = x + (f->cell_w - 1 - col1) * scale;
+            *out_y = y + (f->cell_h - 1 - row) * scale;
+            *out_w = run * scale;
+            *out_h = scale;
+            break;
+        case 3: /* bottom-to-top: glyph row fixes screen x, columns run backward up y */
+            *out_x = x + row * scale;
+            *out_y = y + (f->cell_w - 1 - col1) * scale;
+            *out_w = scale;
+            *out_h = run * scale;
+            break;
+        default: /* upright: glyph row fixes screen y, columns run along x */
+            *out_x = x + col0 * scale;
+            *out_y = y + row * scale;
+            *out_w = run * scale;
+            *out_h = scale;
+            break;
+    }
+}
