@@ -35,6 +35,7 @@ extern void cube_exit(void);
 extern void cube_update_rotation(uint32_t dt_ms);
 extern void cube_clear_frame(void);
 extern void cube_rasterize_frame(void);
+extern void cube_transform_and_bin(void);
 extern void cube_rasterize_band(gfx_color_t* buf, int row0, int row1);
 
 static const char* TAG = "cube_band_perf";
@@ -121,14 +122,15 @@ full_fb_frame(uint32_t dt_ms) {
 }
 
 /* cube_frame_band()'s own shape, rebuilt from the pieces app_cube.c exposes
- * (its own clear_band() is file-static) rather than duplicating the
- * rasterizer itself - cube_rasterize_band() is the one call that actually
- * exercises small3dlib against this scene. */
+ * (its own clear_band() is file-static). cube_transform_and_bin() must run
+ * once per frame, before the band loop, or the bin holds the previous
+ * frame's triangles. */
 static void
 band_frame(uint32_t dt_ms) {
     const gfx_color_t bg = gfx_rgb(0x0A0C14);
 
     cube_update_rotation(dt_ms);
+    cube_transform_and_bin();
     gfx_band_frame_begin();
     while (gfx_band_next()) {
         gfx_color_t* buf = gfx_band_buffer();

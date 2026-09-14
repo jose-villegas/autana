@@ -12,6 +12,7 @@
  * this resolution, against ~424 KiB of RAM on the whole chip.
  */
 
+#include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -26,6 +27,7 @@
 #define S3L_Z_BUFFER           0  /* no depth buffer; sorting handles it */
 #define S3L_SORT               1  /* back-to-front (painter's algorithm) */
 #define S3L_MAX_TRIANGES_DRAWN 16 /* the cube has 12 */
+#define S3L_SCISSOR_Y          1  /* band mode scissors S3L_drawTriangle() to one band's rows */
 #include "small3dlib.h"
 
 /* small3dlib is fixed point: S3L_F (512) is 1.0, and is also one full turn
@@ -400,6 +402,13 @@ cube_rasterize_frame(void) {
         frame_y1 = 0;
     }
 
+    /* S3L_SCISSOR_Y is on for this whole translation unit (band mode needs
+     * it), so a full-fb frame must reset the range itself rather than trust
+     * whatever band mode's own last band left behind - see
+     * cube_rasterize_band()'s own comment. */
+    S3L_scissorMinY = 0;
+    S3L_scissorMaxY = GFX_HEIGHT;
+
     S3L_newFrame();       /* resets the triangle sorter */
     S3L_drawScene(scene); /* calls shade_pixel() for every covered pixel */
 
@@ -429,27 +438,114 @@ clear_band(gfx_color_t* buf, int height) {
     }
 }
 
-/* Rasterizes the whole scene into `buf`, keeping only the pixels
- * shade_pixel() finds inside [row0, row1) - see band_target's own comment
- * for why this re-rasterizes rather than scissoring small3dlib itself. */
+/* One visible triangle, transformed once per frame - see
+ * cube_transform_and_bin(). y0/y1 is its screen-space row extent, so a band
+ * can test overlap without touching small3dlib; sort_value is
+ * S3L_drawScene()'s own depth key, kept so the bin stays back-to-front. */
+typedef struct {
+    S3L_Vec4 v0, v1, v2;
+    S3L_Index triangle_index;
+    int y0, y1;
+    S3L_Unit sort_value;
+} cube_triangle_bin_t;
+
+static cube_triangle_bin_t cube_bin[S3L_CUBE_TRIANGLE_COUNT];
+static int cube_bin_count;
+
+/* Transforms and depth-sorts every visible triangle once per frame, so band
+ * mode does not re-transform the whole scene once per band. Only correct
+ * while S3L_NEAR_CROSS_STRATEGY stays 0: _S3L_projectTriangle() then never
+ * splits a triangle across the near plane (asserted below), so one bin
+ * entry per source triangle is enough. */
+void
+cube_transform_and_bin(void) {
+    S3L_Mat4 mat_camera, mat_final;
+
+    assert(cube.customTransformMatrix == 0); /* S3L_sceneInit()'s own default - never set by this app */
+
+    S3L_makeCameraMatrix(scene.camera.transform, mat_camera);
+    S3L_makeWorldMatrix(cube.transform, mat_final);
+    S3L_mat4Xmat4(mat_final, mat_camera);
+
+    cube_bin_count = 0;
+
+    for (S3L_Index t = 0; t < S3L_CUBE_TRIANGLE_COUNT; t++) {
+        S3L_Vec4 transformed[6];
+
+        _S3L_projectTriangle(&cube, t, mat_final, scene.camera.focalLength, transformed);
+        assert(_S3L_projectedTriangleState == 0);
+
+        if (!S3L_triangleIsVisible(transformed[0], transformed[1], transformed[2], cube.config.backfaceCulling)) {
+            continue;
+        }
+
+        int y0 = transformed[0].y;
+        int y1 = transformed[0].y;
+        for (int i = 1; i < 3; i++) {
+            const S3L_Unit y = transformed[i].y;
+            if (y < y0) {
+                y0 = y;
+            }
+            if (y > y1) {
+                y1 = y;
+            }
+        }
+
+        cube_triangle_bin_t entry;
+        entry.v0 = transformed[0];
+        entry.v1 = transformed[1];
+        entry.v2 = transformed[2];
+        entry.triangle_index = t;
+        entry.y0 = y0 < 0 ? 0 : y0;
+        entry.y1 = (y1 + 1 > GFX_HEIGHT) ? GFX_HEIGHT : y1 + 1; /* +1: inclusive of the bottom row */
+        entry.sort_value = S3L_zeroClamp(transformed[0].w + transformed[1].w + transformed[2].w) >> 2;
+
+        /* Insertion sort into place - the same shape as S3L_drawScene()'s
+         * own sort, descending by sort_value (S3L_SORT == 1) so farther
+         * triangles land first and nearer ones draw over them. */
+        int slot = cube_bin_count;
+        while (slot > 0 && cube_bin[slot - 1].sort_value < entry.sort_value) {
+            cube_bin[slot] = cube_bin[slot - 1];
+            slot--;
+        }
+        cube_bin[slot] = entry;
+        cube_bin_count++;
+    }
+}
+
+/* Draws only the bin's triangles that overlap [row0, row1) into `buf`,
+ * scissored to those rows by S3L_SCISSOR_Y (small3dlib.h) - a triangle
+ * confined to one band costs nothing in any other band, and even a
+ * triangle spanning the whole screen only ever computes one band's worth
+ * of rows per call. */
 void
 cube_rasterize_band(gfx_color_t* buf, int row0, int row1) {
     band_target = buf;
     band_row0 = row0;
     band_row1 = row1;
+    S3L_scissorMinY = row0;
+    S3L_scissorMaxY = row1;
 
     S3L_newFrame();
-    S3L_drawScene(scene);
+    for (int i = 0; i < cube_bin_count; i++) {
+        const cube_triangle_bin_t* entry = &cube_bin[i];
+        if (entry->y1 <= row0 || entry->y0 >= row1) {
+            continue; /* this band's rows are entirely outside the triangle */
+        }
+        S3L_drawTriangle(entry->v0, entry->v1, entry->v2, 0, entry->triangle_index);
+    }
 
     band_target = NULL;
 }
 
 /* The band-mode frame: no HUD, no BOOT menu - both draw through microui
- * into a full framebuffer that does not exist here. Just the cube, redrawn
- * band by band, each sent as soon as it is rasterized. */
+ * into a full framebuffer that does not exist here. The scene is
+ * transformed once (cube_transform_and_bin()), then drawn band by band,
+ * each sent as soon as it is rasterized. */
 static void
 cube_frame_band(uint32_t dt_ms) {
     cube_update_rotation(dt_ms);
+    cube_transform_and_bin();
 
     gfx_band_frame_begin();
     while (gfx_band_next()) {
