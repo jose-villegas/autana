@@ -1170,6 +1170,136 @@ test_pouring_onto_a_settled_pool_redirties_a_bounded_band_below(void) {
     free(depth_test_cells);
 }
 
+/* The same test, gravity along the ROW instead of across rows. The channel
+ * is ROWS now, not columns: a row's own surface needs CROSS-FLOW to spread
+ * into its neighbours before a far was_empty fires - same mechanism as the
+ * portrait test, axes swapped. */
+#define LANDSCAPE_DEPTH_TEST_W ((3 * MATERIAL_LIQUID_DEPTH_BAND) + 40)
+#define LANDSCAPE_DEPTH_TEST_H 8
+
+static void
+test_pouring_onto_a_settled_pool_in_landscape_redirties_a_bounded_column_band(void) {
+    uint8_t* cells = malloc((size_t)LANDSCAPE_DEPTH_TEST_W * LANDSCAPE_DEPTH_TEST_H);
+    uint8_t* settled_snapshot = malloc((size_t)LANDSCAPE_DEPTH_TEST_W * LANDSCAPE_DEPTH_TEST_H);
+    uint8_t* row_dirty = malloc((size_t)LANDSCAPE_DEPTH_TEST_H);
+    uint16_t* col_x0 = malloc(LANDSCAPE_DEPTH_TEST_H * sizeof(uint16_t));
+    uint16_t* col_x1 = malloc(LANDSCAPE_DEPTH_TEST_H * sizeof(uint16_t));
+    if (!cells || !settled_snapshot || !row_dirty || !col_x0 || !col_x1) {
+        free(cells);
+        free(settled_snapshot);
+        free(row_dirty);
+        free(col_x0);
+        free(col_x1);
+        TEST_ASSERT_TRUE_MESSAGE(false, "landscape pour-staleness grid and dirty maps must fit in what "
+                                        "the framebuffer leaves");
+    }
+    sand_init(&fx.depth_test, cells, LANDSCAPE_DEPTH_TEST_W, LANDSCAPE_DEPTH_TEST_H, 101u);
+
+    /* Down is grid +X here - a deep reservoir fills the gravity-ward part
+     * of every row, settled before tracking starts. */
+    const int fill_x0 = LANDSCAPE_DEPTH_TEST_W / 3;
+    for (int y = 0; y < LANDSCAPE_DEPTH_TEST_H; y++) {
+        for (int x = fill_x0; x < LANDSCAPE_DEPTH_TEST_W; x++) {
+            sand_set(&fx.depth_test, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+        }
+    }
+    for (int i = 0; i < 300; i++) {
+        sand_step(&fx.depth_test, 1000, 0, 0);
+    }
+
+    memcpy(settled_snapshot, cells, (size_t)LANDSCAPE_DEPTH_TEST_W * LANDSCAPE_DEPTH_TEST_H);
+
+    sand_track_dirty_rows(&fx.depth_test, row_dirty);
+    sand_track_dirty_cols(&fx.depth_test, col_x0, col_x1);
+    memset(row_dirty, 0, (size_t)LANDSCAPE_DEPTH_TEST_H);
+
+    /* Poured into row 0 only, near the ceiling (low x) - its own local
+     * surface rises above its neighbours', and cross-flow spreads the
+     * excess into rows 1-3, the same way the portrait test's pour into one
+     * column spreads sideways into its neighbouring columns. */
+    for (int i = 0; i < 20; i++) {
+        sand_spawn(&fx.depth_test, 2, 0, 1, MAT_WATER);
+        sand_step(&fx.depth_test, 1000, 0, 0);
+    }
+    for (int i = 0; i < 10; i++) {
+        sand_step(&fx.depth_test, 1000, 0, 0);
+    }
+
+    /* Deep in the ORIGINAL reservoir, well past any band a real pour
+     * anywhere near the ceiling could reach - mass conservation makes this
+     * column's content unchanged in every row, the same argument the
+     * portrait test's far_row rests on. */
+    const int far_x = fill_x0 + MATERIAL_LIQUID_DEPTH_BAND + 8;
+    TEST_ASSERT_TRUE_MESSAGE(far_x < LANDSCAPE_DEPTH_TEST_W, "setup: the fixture must hold a control column "
+                                                             "outside the band too");
+
+    /* A row whose content is byte-identical to before the pour was never
+     * touched by anything, cross-flow included, so it must not be reported
+     * dirty at all - a row-band branch marking every row within
+     * MATERIAL_LIQUID_DEPTH_BAND regardless of content is the wrong axis. */
+    bool any_row_unchanged = false;
+    for (int y = 0; y < LANDSCAPE_DEPTH_TEST_H; y++) {
+        const uint8_t* before_row = &settled_snapshot[(size_t)y * (size_t)LANDSCAPE_DEPTH_TEST_W];
+        const uint8_t* after_row = &cells[(size_t)y * (size_t)LANDSCAPE_DEPTH_TEST_W];
+        if (memcmp(before_row, after_row, (size_t)LANDSCAPE_DEPTH_TEST_W) != 0) {
+            continue;
+        }
+        any_row_unchanged = true;
+        char why[224];
+        snprintf(why, sizeof why,
+                 "row %d's content never changed at all, so it must not be reported dirty - a row-band "
+                 "mark reaching it regardless of content is the wrong-axis defect mark_depth_band() "
+                 "must not have in landscape",
+                 y);
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, row_dirty[y], why);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(any_row_unchanged, "setup: at least one row must stay entirely untouched by "
+                                                "the pour, or this test cannot tell a bounded mark from "
+                                                "an unbounded one");
+
+    bool any_row_dirty = false;
+    for (int y = 0; y < LANDSCAPE_DEPTH_TEST_H; y++) {
+        if (!row_dirty[y]) {
+            continue;
+        }
+        any_row_dirty = true;
+
+        char sentinel_why[192];
+        snprintf(sentinel_why, sizeof sentinel_why,
+                 "row %d is dirty with no column span recorded at all (x0=%d, x1=%d) - that is the "
+                 "fallback for a caller that never narrows a span, not a bounded landscape band",
+                 y, col_x0[y], col_x1[y]);
+        TEST_ASSERT_TRUE_MESSAGE(col_x0[y] < col_x1[y], sentinel_why);
+
+        const size_t far_at = (size_t)y * (size_t)LANDSCAPE_DEPTH_TEST_W + (size_t)far_x;
+        char why[224];
+        snprintf(why, sizeof why,
+                 "row %d: a cell already at MASS_MAX before the pour cannot have changed content, so "
+                 "a dirty mark reaching it is mark_depth_band()'s own doing, not the pour",
+                 y);
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(settled_snapshot[far_at], cells[far_at], why);
+
+        snprintf(why, sizeof why,
+                 "row %d's dirty column span is %d wide against a %d-wide row - mark_depth_band() "
+                 "must widen COLUMNS by a bounded band when gravity runs along the row, not the "
+                 "row's full width the way the no-narrower-span fallback would",
+                 y, (int)col_x1[y] - (int)col_x0[y], LANDSCAPE_DEPTH_TEST_W);
+        TEST_ASSERT_TRUE_MESSAGE((int)col_x1[y] - (int)col_x0[y] < LANDSCAPE_DEPTH_TEST_W - 20, why);
+
+        snprintf(why, sizeof why, "row %d: the control column outside the band must not be inside the dirty span", y);
+        TEST_ASSERT_FALSE_MESSAGE(far_x >= col_x0[y] && far_x < col_x1[y], why);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(any_row_dirty, "setup: the pour must have redirtied at least one row via "
+                                            "cross-flow, or this test is not exercising the case it "
+                                            "claims to");
+
+    free(cells);
+    free(settled_snapshot);
+    free(row_dirty);
+    free(col_x0);
+    free(col_x1);
+}
+
 /* Water's interior uses the same plain shade-index shift oil, lava and
  * acid always have (material_colours()'s liquid interior branch) - the old
  * fog-blend/wave-table pinned near-maximum haze at any realistic pool
@@ -2668,6 +2798,7 @@ run_sand_liquid_depth_suite(void) {
     RUN_TEST(test_the_debounce_survives_open_air_above_the_pool);
     RUN_TEST(test_the_horizontal_debounce_survives_open_air_beside_the_pool);
     RUN_TEST(test_pouring_onto_a_settled_pool_redirties_a_bounded_band_below);
+    RUN_TEST(test_pouring_onto_a_settled_pool_in_landscape_redirties_a_bounded_column_band);
     RUN_TEST(test_every_liquid_interior_is_exactly_the_body_colour_when_saturated);
     RUN_TEST(test_a_shallow_puddle_still_shows_real_darkening);
     RUN_TEST(test_a_settled_edge_does_not_flicker_stale_to_fresh);
