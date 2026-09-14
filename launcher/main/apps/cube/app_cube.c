@@ -82,6 +82,14 @@ bool cube_band_mode = true;
 bool cube_band_mode = false;
 #endif
 
+/* -1 (default): draw_overlay_box() centers the fps box as normal, same as
+ * ever. Any other value pins the box's own logical x there instead - a
+ * test-only hook (suite_cube_band_perf.c) for measuring the UI cost of a
+ * box whose PANEL row extent (a 90-degree turn maps logical x onto panel
+ * rows) starts on a band boundary rather than wherever centering lands
+ * it, without touching the app's own default layout. */
+int cube_fps_box_x_override = -1;
+
 /* Whether the BOOT-opened menu (draw_menu()) is showing instead of the
  * cube. The normal view renders only the cube and the fps counter - see
  * cube_frame()'s own comment - and everything else, right now just the
@@ -271,7 +279,10 @@ mu_color_hex(uint32_t rgb) {
 
 static mu_Rect
 draw_overlay_box(mu_Context* ctx, int w, int h) {
-    const mu_Rect box = ui_centered_rect(ui_width(), w, h, 2);
+    mu_Rect box = ui_centered_rect(ui_width(), w, h, 2);
+    if (cube_fps_box_x_override >= 0) {
+        box.x = cube_fps_box_x_override;
+    }
     mu_draw_rect(ctx, box, mu_color_hex(BACKGROUND_RGB));
     return box;
 }
