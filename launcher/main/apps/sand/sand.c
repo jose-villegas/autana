@@ -25,6 +25,30 @@
 #include "util/fixed.h"
 #include "util/intmath.h"
 
+/* Default from CONFIG_LAUNCHER_SAND_TWO_CORE_STEP on the device, mirroring
+ * gfx.c's present_async_on; true on a host, so the split path this enables
+ * gets exercised by default there too - see sand_two_core_step_enabled()
+ * (sand.h). */
+#if defined(ESP_PLATFORM)
+#if defined(CONFIG_LAUNCHER_SAND_TWO_CORE_STEP) && CONFIG_LAUNCHER_SAND_TWO_CORE_STEP
+static bool two_core_step_on = true;
+#else
+static bool two_core_step_on = false;
+#endif
+#else
+static bool two_core_step_on = true;
+#endif
+
+void
+sand_set_two_core_step(bool on) {
+    two_core_step_on = on;
+}
+
+bool
+sand_two_core_step_enabled(void) {
+    return two_core_step_on;
+}
+
 /* tan(22.5 deg) is the boundary between "straight down" and "diagonal"; its
  * reciprocal, 2.4142, is approximated as 29/12 to keep this in integers.
  * The largest operand is a raw accelerometer reading, so 32767 * 29 stays well
@@ -1034,15 +1058,16 @@ step_one_row(sand_t* s, int y, int w, int dx, int dy, const int* slide_a, const 
 }
 
 /* Finalise a step's settling: a block earns the settled bit if no
- * BLOCK_ACTIVE marks exist in the step or its neighbours. This is deferred
- * per block, not row, as blocks span SAND_BLOCK_H rows and require full
- * sweeping to check movement. */
+ * BLOCK_ACTIVE marks exist in the step or its neighbours. Deferred per
+ * block, not row, since a block spans SAND_BLOCK_H rows.
+ *
+ * ORDER-INDEPENDENT over [by_from, by_to): every iteration only reads
+ * BLOCK_ACTIVE, which nothing here writes, and only writes its own block's
+ * settled bits - never a neighbour's - so a range may run before, after or
+ * genuinely alongside any other, with no guard. */
 static void
-finalize_settling(sand_t* s, uint8_t settled_bit) {
-    if (s->block_state == NULL) {
-        return;
-    }
-    for (int by = 0; by < s->block_rows; by++) {
+finalize_settling_range(sand_t* s, uint8_t settled_bit, int by_from, int by_to) {
+    for (int by = by_from; by < by_to; by++) {
         for (int bx = 0; bx < s->block_cols; bx++) {
             const int i = by * s->block_cols + bx;
             if (s->block_state[i] & BLOCK_ACTIVE) {
@@ -1055,6 +1080,40 @@ finalize_settling(sand_t* s, uint8_t settled_bit) {
             }
         }
     }
+}
+
+typedef struct {
+    sand_t* s;
+    uint8_t settled_bit;
+    int by_from, by_to;
+} finalize_settling_half_t;
+
+static void
+finalize_settling_worker(void* ctx) {
+    const finalize_settling_half_t* half = ctx;
+    finalize_settling_range(half->s, half->settled_bit, half->by_from, half->by_to);
+}
+
+/* Below this many block rows, a single core walks the whole board faster
+ * than a hop to core 1 and back costs. */
+#define FINALIZE_SETTLING_SPLIT_MIN_BLOCK_ROWS 4
+
+static void
+finalize_settling(sand_t* s, uint8_t settled_bit) {
+    if (s->block_state == NULL) {
+        return;
+    }
+
+    if (sand_two_core_step_enabled() && s->block_rows >= FINALIZE_SETTLING_SPLIT_MIN_BLOCK_ROWS) {
+        const int mid = s->block_rows / 2;
+        finalize_settling_half_t half = {s, settled_bit, mid, s->block_rows};
+        sand_core1_run(finalize_settling_worker, &half);
+        finalize_settling_range(s, settled_bit, 0, mid);
+        sand_core1_join();
+        return;
+    }
+
+    finalize_settling_range(s, settled_bit, 0, s->block_rows);
 }
 
 /* The two rays a liquid levels along, and what one step of each costs in
