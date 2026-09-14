@@ -364,9 +364,9 @@ uint8_t* gfx_indexed_image(void);
  * own table may be `static const` and go out of scope. */
 void gfx_indexed_set_lut(const gfx_color_t lut[GFX_INDEXED_PALETTE_SIZE]);
 
-/* Installs the 16-colour table and the per-index dither choice 16-colour
- * mode expands through instead. */
-void gfx_indexed_set_lut16(const gfx_color_t lut16[16], const gfx_indexed_dither16_t table[GFX_INDEXED_PALETTE_SIZE]);
+/* Installs the precomputed (index, Bayer phase) -> RGB565 table 16-colour
+ * mode expands through instead - see gfx_indexed.h's own comment. */
+void gfx_indexed_set_lut16(const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES]);
 
 /* Selects which of the two installed LUTs GFX_PIXFMT_INDEXED8 expands
  * through - off is the 256-colour path, on is the dithered 16-colour one.

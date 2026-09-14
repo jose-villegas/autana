@@ -13,7 +13,6 @@
  */
 #pragma once
 
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -57,39 +56,35 @@ gfx_indexed_expand_row(const uint8_t* grid_row, int grid_w, const gfx_color_t lu
     }
 }
 
-/* One 256-entry palette index's dither against a shared 16-colour table:
- * the ordered dither alternates `lo` and `hi` at `alpha`'s own coverage
- * (gfx_dither_covers(), gfx_color.h) - `alpha` 0 always picks `lo`. Built
- * once, offline, by the same palette study that builds the 256-colour LUT
- * (see sand_palette256.h) - never computed per pixel. */
-typedef struct {
-    uint8_t lo, hi;
-    uint8_t alpha;
-} gfx_indexed_dither16_t;
+/* One entry per (palette index, Bayer phase): the RGB565 colour that
+ * index's dither against the shared 16-colour table resolves to at panel
+ * position (x, y), keyed by `index * 16 + (y & 3) * 4 + (x & 3)` - built
+ * once, offline (see sand_palette256.h), so expansion never calls
+ * gfx_dither_covers() itself. 256 * 16 * 2 bytes = 8 KiB flat. */
+#define GFX_INDEXED_DITHER16_PHASES 16
 
-/* Same as gfx_indexed_expand_row(), but every pixel is dithered between two
- * of a 16-colour palette instead of read straight from a 256-colour one.
+/* Same as gfx_indexed_expand_row(), but every pixel is one lookup into a
+ * precomputed (index, phase) table instead of a 256-colour LUT read.
  * `panel_row`/`panel_col0` are the OUTPUT row's absolute panel coordinates -
- * gfx_dither_covers() keys off them, not a position local to this call, so
- * two dithered bands sent side by side stay in phase (see its own comment
- * in gfx_color.h). */
+ * the phase is keyed off them, not a position local to this call, so two
+ * dithered bands sent side by side stay in phase (see gfx_dither_covers()'s
+ * own comment in gfx_color.h, whose table this one is baked from). */
 static inline void
-gfx_indexed_expand_row_dither16(const uint8_t* grid_row, int grid_w, const gfx_color_t lut16[16],
-                                const gfx_indexed_dither16_t table[GFX_INDEXED_PALETTE_SIZE], int cell_size,
-                                int panel_row, int panel_col0, gfx_color_t* out_row, int out_width) {
+gfx_indexed_expand_row_dither16(const uint8_t* grid_row, int grid_w,
+                                const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES],
+                                int cell_size, int panel_row, int panel_col0, gfx_color_t* out_row, int out_width) {
     const int grid_pixels = grid_w * cell_size;
     const int solid_pixels = grid_pixels < out_width ? grid_pixels : out_width;
+    const int py = (panel_row & 3) * 4;
 
     for (int x = 0; x < solid_pixels; x++) {
         const int gx = x / cell_size;
         const uint8_t idx = grid_row != NULL ? grid_row[gx] : 0u;
-        const gfx_indexed_dither16_t entry = table[idx];
-        const bool hi = gfx_dither_covers(panel_col0 + x, panel_row, entry.alpha);
-        out_row[x] = lut16[hi ? entry.hi : entry.lo];
+        const int px = (panel_col0 + x) & 3;
+        out_row[x] = dither16_rgb[idx * GFX_INDEXED_DITHER16_PHASES + py + px];
     }
     for (int x = solid_pixels; x < out_width; x++) {
-        const gfx_indexed_dither16_t entry = table[0];
-        const bool hi = gfx_dither_covers(panel_col0 + x, panel_row, entry.alpha);
-        out_row[x] = lut16[hi ? entry.hi : entry.lo];
+        const int px = (panel_col0 + x) & 3;
+        out_row[x] = dither16_rgb[py + px]; /* index 0: reserved background */
     }
 }
