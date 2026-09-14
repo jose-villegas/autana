@@ -40,3 +40,19 @@ CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536
 # complex scenes (thermal shock 7% in total) for 16 KB of internal RAM. A
 # 64 KB data cache measured exactly nothing once no hot data is in PSRAM.
 CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
+
+# 120 MHz octal PSRAM and 120 MHz flash, EXPERIMENTAL in ESP-IDF 5.5. Quad
+# flash paired with octal PSRAM needs both at 120 MHz. The flash
+# (XM25QH128C) runs in its supported high-performance mode only with the
+# dummy-cycle-aware bootloader, and the PSRAM sample point is retuned as
+# the die temperature moves; Espressif warns of random access faults after
+# roughly 20 C of drift without it. Measured: cube 4-9% faster, sand
+# simulation unchanged; 20/20 resets and a 55-minute sand soak clean.
+# To go back to 80 MHz, delete this block and rebuild with a fresh
+# sdkconfig (the bootloader changes too, so flash it as well).
+CONFIG_IDF_EXPERIMENTAL_FEATURES=y
+CONFIG_SPIRAM_SPEED_120M=y
+CONFIG_ESPTOOLPY_FLASHFREQ_120M=y
+CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR=y
+CONFIG_BOOTLOADER_FLASH_DC_AWARE=y
+CONFIG_SPI_FLASH_HPM_ENA=y
