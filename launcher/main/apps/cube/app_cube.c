@@ -477,6 +477,16 @@ typedef struct {
 static cube_triangle_bin_t cube_bin[S3L_CUBE_TRIANGLE_COUNT];
 static int cube_bin_count;
 
+/* This frame's overall cube coverage - the union of every bin entry's own
+ * extent, accumulated by cube_transform_and_bin() - and last frame's,
+ * remembered so band mode can mark the union of where the cube WAS and
+ * where it IS dirty: a band the cube left still needs erasing even though
+ * nothing there overlaps this frame. */
+static int cube_bbox_x0, cube_bbox_y0, cube_bbox_x1, cube_bbox_y1;
+static bool cube_bbox_valid;
+static int prev_cube_bbox_x0, prev_cube_bbox_y0, prev_cube_bbox_x1, prev_cube_bbox_y1;
+static bool prev_cube_bbox_valid;
+
 /* Transforms and depth-sorts every visible triangle once per frame, so band
  * mode does not re-transform the whole scene once per band. Only correct
  * while S3L_NEAR_CROSS_STRATEGY stays 0: _S3L_projectTriangle() then never
@@ -493,6 +503,7 @@ cube_transform_and_bin(void) {
     S3L_mat4Xmat4(mat_final, mat_camera);
 
     cube_bin_count = 0;
+    cube_bbox_valid = false;
 
     for (S3L_Index t = 0; t < S3L_CUBE_TRIANGLE_COUNT; t++) {
         S3L_Vec4 transformed[6];
@@ -504,10 +515,19 @@ cube_transform_and_bin(void) {
             continue;
         }
 
+        int x0 = transformed[0].x;
+        int x1 = transformed[0].x;
         int y0 = transformed[0].y;
         int y1 = transformed[0].y;
         for (int i = 1; i < 3; i++) {
+            const S3L_Unit x = transformed[i].x;
             const S3L_Unit y = transformed[i].y;
+            if (x < x0) {
+                x0 = x;
+            }
+            if (x > x1) {
+                x1 = x;
+            }
             if (y < y0) {
                 y0 = y;
             }
@@ -515,6 +535,8 @@ cube_transform_and_bin(void) {
                 y1 = y;
             }
         }
+        x0 = x0 < 0 ? 0 : x0;
+        x1 = (x1 + 1 > GFX_WIDTH) ? GFX_WIDTH : x1 + 1;
 
         cube_triangle_bin_t entry;
         entry.v0 = transformed[0];
@@ -535,6 +557,27 @@ cube_transform_and_bin(void) {
         }
         cube_bin[slot] = entry;
         cube_bin_count++;
+
+        if (!cube_bbox_valid) {
+            cube_bbox_x0 = x0;
+            cube_bbox_y0 = entry.y0;
+            cube_bbox_x1 = x1;
+            cube_bbox_y1 = entry.y1;
+            cube_bbox_valid = true;
+        } else {
+            if (x0 < cube_bbox_x0) {
+                cube_bbox_x0 = x0;
+            }
+            if (entry.y0 < cube_bbox_y0) {
+                cube_bbox_y0 = entry.y0;
+            }
+            if (x1 > cube_bbox_x1) {
+                cube_bbox_x1 = x1;
+            }
+            if (entry.y1 > cube_bbox_y1) {
+                cube_bbox_y1 = entry.y1;
+            }
+        }
     }
 }
 
@@ -574,6 +617,23 @@ cube_frame_band(uint32_t dt_ms, const input_t* input) {
         update_fps_counter(dt_ms);
         cube_update_rotation(dt_ms);
         cube_transform_and_bin();
+
+        /* The union of where the cube WAS and where it IS now - a band it
+         * left still needs erasing even though nothing there overlaps this
+         * frame's own bbox. gfx_band_dirty() (gfx.c) is what turns these
+         * marks into a per-band decision. */
+        if (prev_cube_bbox_valid) {
+            gfx_mark_dirty(prev_cube_bbox_x0, prev_cube_bbox_y0, prev_cube_bbox_x1 - prev_cube_bbox_x0,
+                           prev_cube_bbox_y1 - prev_cube_bbox_y0);
+        }
+        if (cube_bbox_valid) {
+            gfx_mark_dirty(cube_bbox_x0, cube_bbox_y0, cube_bbox_x1 - cube_bbox_x0, cube_bbox_y1 - cube_bbox_y0);
+        }
+        prev_cube_bbox_x0 = cube_bbox_x0;
+        prev_cube_bbox_y0 = cube_bbox_y0;
+        prev_cube_bbox_x1 = cube_bbox_x1;
+        prev_cube_bbox_y1 = cube_bbox_y1;
+        prev_cube_bbox_valid = cube_bbox_valid;
     }
 
     if (menu_open) {
@@ -584,10 +644,24 @@ cube_frame_band(uint32_t dt_ms, const input_t* input) {
 
     gfx_band_frame_begin();
     while (gfx_band_next()) {
-        gfx_color_t* buf = gfx_band_buffer();
         const int row0 = gfx_band_row0();
         const int height = gfx_band_height();
 
+        /* touched_x0/x1 (the column span worth touching) is not narrowed
+         * further yet - the whole band's own internal-SRAM buffer is
+         * reused across bands, so sending less than the whole width would
+         * need packing the same way gfx.c's own gather_and_send() does for
+         * full-fb, which is future work; only whether to touch the band
+         * at all is exploited here. */
+        int touched_x0, touched_x1;
+        if (!gfx_band_dirty(row0, row0 + height, &touched_x0, &touched_x1)) {
+            gfx_band_skip(); /* the panel already shows what belongs here */
+            continue;
+        }
+        (void)touched_x0;
+        (void)touched_x1;
+
+        gfx_color_t* buf = gfx_band_buffer();
         clear_band(buf, height);
         if (!menu_open) {
             cube_rasterize_band(buf, row0, row0 + height);
