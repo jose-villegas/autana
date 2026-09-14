@@ -261,13 +261,12 @@ draw_overlay_box(mu_Context* ctx, int w, int h) {
 }
 
 /* The persistent HUD: the cube and, over it, the fps line - nothing else
- * renders while the menu is closed (see cube_frame()). Drawn via
- * ui.c/microui exactly as app_diagnostics.c's own toggle page is. Exposed
- * for performance testing (suite_cube_perf.c) - timed as its own phase
- * there, separate from the cube's own clear/rotate/rasterize work, so the
- * suite can compare the frame budget with and without the HUD text. */
+ * renders while the menu is closed (see cube_frame()). Exposed for
+ * performance testing (suite_cube_perf.c), timed as its own phase there.
+ * `for_bands` builds the same commands either way; only the finishing
+ * call differs - see ui_end_for_bands()'s own comment (ui.h). */
 void
-draw_fps(const input_t* input) {
+draw_fps(const input_t* input, bool for_bands) {
     mu_Context* ctx = ui_context();
     ui_begin(input);
     /* UI_TEXT_OUTLINED is app_sand.c's palette-label fix for the same
@@ -308,7 +307,11 @@ draw_fps(const input_t* input) {
      * "something else has already dirtied the screen", so the fps line
      * stays correctly composited over a background that never stops
      * changing, with no special handling needed here. */
-    ui_end(UI_NO_BACKGROUND);
+    if (for_bands) {
+        ui_end_for_bands(UI_NO_BACKGROUND);
+    } else {
+        ui_end(UI_NO_BACKGROUND);
+    }
 }
 
 #define MENU_BTN_W   300
@@ -322,7 +325,7 @@ draw_fps(const input_t* input) {
  * menu_open's own comment for the one-button-one-screen-level-concern
  * precedent this follows. */
 static void
-draw_menu(const input_t* input) {
+draw_menu(const input_t* input, bool for_bands) {
     mu_Context* ctx = ui_context();
     ui_begin(input);
     /* ui_set_button_style(UI_BUTTON_BEZEL) is required, not automatic -
@@ -361,12 +364,32 @@ draw_menu(const input_t* input) {
     }
 
     /* Modeled on app_sand.c's own draw_menu(): one full-screen OPAQUE
-     * window (ui_end(BACKGROUND_RGB), not UI_NO_BACKGROUND), because
-     * cube_frame() does not draw the cube at all while menu_open is
-     * true. That is what makes this simpler than draw_fps(): no
-     * spinning cube underneath to stay composited over, so none of that
-     * function's ghosting/ordering concerns apply here. */
-    ui_end(BACKGROUND_RGB);
+     * window (BACKGROUND_RGB, not UI_NO_BACKGROUND), because cube_frame()
+     * does not draw the cube at all while menu_open is true. In band mode
+     * clear_band() already filled the whole band with this same colour,
+     * so the finishing call there passes UI_NO_BACKGROUND instead of
+     * paying for that fill twice. */
+    if (for_bands) {
+        ui_end_for_bands(UI_NO_BACKGROUND);
+    } else {
+        ui_end(BACKGROUND_RGB);
+    }
+}
+
+/* fps_value only actually changes once a window closes, so it reads as a
+ * settled average rather than jittering with every frame's own dt_ms -
+ * same reason report_fps() in main.c windows instead of reporting per
+ * frame. Shared by both render paths so the readout means the same thing
+ * in either mode. */
+static void
+update_fps_counter(uint32_t dt_ms) {
+    fps_frame_count++;
+    fps_window_elapsed_ms += dt_ms;
+    if (fps_window_elapsed_ms >= FPS_WINDOW_MS) {
+        fps_value = (double)fps_frame_count * 1000.0 / (double)fps_window_elapsed_ms;
+        fps_frame_count = 0;
+        fps_window_elapsed_ms = 0;
+    }
 }
 
 void
@@ -424,8 +447,10 @@ cube_rasterize_frame(void) {
 
 /* Fills an entire band buffer with the background colour - the band ring
  * has no accumulated framebuffer to clear a bounding box out of, so every
- * band is a full redraw. Two pixels per store, the same trick
- * cube_clear_frame()'s own gfx_clear() uses. */
+ * band is a full redraw regardless of partial_updates: gfx_clear()'s own
+ * partial path never fires without gfx_present()'s bookkeeping, which
+ * band mode's no-op present (gfx.c) never runs. Two pixels per store, the
+ * same trick cube_clear_frame()'s own gfx_clear() uses. */
 static void
 clear_band(gfx_color_t* buf, int height) {
     const gfx_color_t color = gfx_rgb(BACKGROUND_RGB);
@@ -538,14 +563,24 @@ cube_rasterize_band(gfx_color_t* buf, int row0, int row1) {
     band_target = NULL;
 }
 
-/* The band-mode frame: no HUD, no BOOT menu - both draw through microui
- * into a full framebuffer that does not exist here. The scene is
- * transformed once (cube_transform_and_bin()), then drawn band by band,
- * each sent as soon as it is rasterized. */
+/* The band-mode frame: the fps counter and BOOT menu are built once
+ * (for_bands=true) before the band loop and replayed into each band by
+ * ui_replay_band() - ui.c's own general mechanism, not built for this app
+ * alone. menu_open skips the cube entirely, matching cube_frame()'s
+ * full-fb shape. */
 static void
-cube_frame_band(uint32_t dt_ms) {
-    cube_update_rotation(dt_ms);
-    cube_transform_and_bin();
+cube_frame_band(uint32_t dt_ms, const input_t* input) {
+    if (!menu_open) {
+        update_fps_counter(dt_ms);
+        cube_update_rotation(dt_ms);
+        cube_transform_and_bin();
+    }
+
+    if (menu_open) {
+        draw_menu(input, true);
+    } else {
+        draw_fps(input, true);
+    }
 
     gfx_band_frame_begin();
     while (gfx_band_next()) {
@@ -554,24 +589,23 @@ cube_frame_band(uint32_t dt_ms) {
         const int height = gfx_band_height();
 
         clear_band(buf, height);
-        cube_rasterize_band(buf, row0, row0 + height);
+        if (!menu_open) {
+            cube_rasterize_band(buf, row0, row0 + height);
+        }
+        ui_replay_band(row0, row0 + height);
         gfx_band_submit();
     }
 }
 
 static void
 cube_frame(uint32_t dt_ms, const input_t* input) {
-    if (band_mode_active) {
-        cube_frame_band(dt_ms);
-        return;
-    }
-
     /* BOOT opens/closes the menu now, rather than flipping partial_updates
      * directly - the toggle moved onto its own bezel button inside
      * draw_menu(). Invalidation on open and close resets partial clear
      * tracking for the same reasons: opening replaces the framebuffer
      * with the menu's opaque screen, and closing repaints the cube from
-     * scratch. */
+     * scratch. Shared by both render paths: BOOT must open the menu
+     * whichever one is running. */
     if (input->boot.pressed) {
         menu_open = !menu_open;
         gfx_invalidate();
@@ -590,34 +624,24 @@ cube_frame(uint32_t dt_ms, const input_t* input) {
         gfx_invalidate();
     }
 
+    if (band_mode_active) {
+        cube_frame_band(dt_ms, input);
+        return;
+    }
+
     /* Everything below is the cube view: the fps counter measures ITS
      * throughput specifically, so counting a frame that only ever drew the
      * menu would blend two unrelated numbers into one misleading reading. */
     if (menu_open) {
-        draw_menu(input);
+        draw_menu(input, false);
         return;
     }
 
-    /* fps_value only actually changes once a window closes, so it reads
-     * as a settled average rather than jittering with every frame's own
-     * dt_ms - same reason report_fps() in main.c windows instead of
-     * reporting per frame. An occasional dt_ms of 0 (two frames landing
-     * in the same millisecond) is harmless: fps_frame_count keeps
-     * counting them and the window still closes once the rest add up.
-     * Only every frame under 1 ms, sustained, would stall it - not a
-     * real risk for a scene this heavy to rasterize. */
-    fps_frame_count++;
-    fps_window_elapsed_ms += dt_ms;
-    if (fps_window_elapsed_ms >= FPS_WINDOW_MS) {
-        fps_value = (double)fps_frame_count * 1000.0 / (double)fps_window_elapsed_ms;
-        fps_frame_count = 0;
-        fps_window_elapsed_ms = 0;
-    }
-
+    update_fps_counter(dt_ms);
     cube_update_rotation(dt_ms);
     cube_clear_frame();
     cube_rasterize_frame();
-    draw_fps(input);
+    draw_fps(input, false);
 }
 
 void
