@@ -22,6 +22,8 @@ its own set. Eight files, two jobs:
   only material that moves heat a long way.
 - **[Shading-and-Colour.md](Shading-and-Colour.md)** — how a cell's
   material and variant become a pixel, and the traps specific to that.
+- **[Testing-Sand.md](Testing-Sand.md)** — the frame-budget capture, its
+  free-heap precondition, and the scoping rules specific to this app.
 
 **How to change it:**
 
@@ -35,4 +37,5 @@ its own set. Eight files, two jobs:
 - [`../notes/README.md`](../notes/README.md) — the hardware constraints
   (no PSRAM, the memory budget) this app's numbers are shaped by.
 - [`../Testing-Guide.md`](../Testing-Guide.md) — how any of this gets
-  verified, on host and on device.
+  verified, on host and on device; [`Testing-Sand.md`](Testing-Sand.md)
+  is this app's own half of that.
