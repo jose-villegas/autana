@@ -1,12 +1,14 @@
 /*
  * Device-only suite: the cube's band-mode path against its full-fb path, on
- * the same rotating scene - the A/B the band ring exists to answer (see
- * docs/Autana-Rendering-Roadmap.md section 3.3's frame-time argument).
+ * the same rotating scene with the fps counter showing in both - the A/B
+ * the band ring exists to answer (see docs/Autana-Rendering-Roadmap.md
+ * section 3.3's frame-time argument), with real UI cost included rather
+ * than measured separately.
  *
- * Both variants draw the same scene with no HUD and no partial-clear
- * bookkeeping, since band mode has neither: every band is a full redraw, so
- * the fairest full-fb comparison is also a full gfx_clear() and a full
- * gfx_present() every frame, not the app's own partial-update default.
+ * Neither variant uses the app's own partial-update default: band mode
+ * has no partial-clear path at all (every band is a full redraw), so the
+ * fairest full-fb comparison is also a full gfx_clear() and a full
+ * gfx_present() every frame.
  *
  * Runs under DEVICE_BUILD only - needs real internal RAM, PSRAM, DMA and the
  * panel.
@@ -37,6 +39,7 @@ extern void cube_clear_frame(void);
 extern void cube_rasterize_frame(void);
 extern void cube_transform_and_bin(void);
 extern void cube_rasterize_band(gfx_color_t* buf, int row0, int row1);
+extern void draw_fps(const input_t* input, bool for_bands);
 
 static const char* TAG = "cube_band_perf";
 
@@ -113,24 +116,39 @@ capture(void (*run_frame)(uint32_t dt_ms)) {
     }
 }
 
+/* Nothing pressed, no touch - draw_fps() feeds this straight into
+ * ui_begin()/feed_input(), which dereference it unconditionally. */
+static const input_t null_input = {0};
+
+/* Total time spent inside ui_replay_band() across a band capture, and how
+ * many bands that covers - logged as a per-frame average alongside the
+ * timing stats, since it is cheap to measure here and is exactly the cost
+ * item 4 of the band-mode UI work asks to see. */
+static int64_t replay_us_accum;
+static int replay_band_count;
+
 static void
 full_fb_frame(uint32_t dt_ms) {
     cube_update_rotation(dt_ms);
     cube_clear_frame();
     cube_rasterize_frame();
+    draw_fps(&null_input, false);
     gfx_present();
 }
 
 /* cube_frame_band()'s own shape, rebuilt from the pieces app_cube.c exposes
  * (its own clear_band() is file-static). cube_transform_and_bin() must run
  * once per frame, before the band loop, or the bin holds the previous
- * frame's triangles. */
+ * frame's triangles - draw_fps(for_bands=true) similarly builds the HUD's
+ * commands once, for ui_replay_band() to bin per band below. */
 static void
 band_frame(uint32_t dt_ms) {
     const gfx_color_t bg = gfx_rgb(0x0A0C14);
 
     cube_update_rotation(dt_ms);
     cube_transform_and_bin();
+    draw_fps(&null_input, true);
+
     gfx_band_frame_begin();
     while (gfx_band_next()) {
         gfx_color_t* buf = gfx_band_buffer();
@@ -141,6 +159,12 @@ band_frame(uint32_t dt_ms) {
             buf[i] = bg;
         }
         cube_rasterize_band(buf, row0, row0 + height);
+
+        const int64_t replay_start = esp_timer_get_time();
+        ui_replay_band(row0, row0 + height);
+        replay_us_accum += esp_timer_get_time() - replay_start;
+        replay_band_count++;
+
         gfx_band_submit();
     }
 }
@@ -165,6 +189,8 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     const stats_t full_fb_stats = compute_stats(full_fb_n);
 
     cube_band_mode = true;
+    replay_us_accum = 0;
+    replay_band_count = 0;
     cube_enter();
     capture(band_frame);
     cube_exit();
@@ -174,9 +200,15 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
 
     cube_band_mode = false;
 
-    ESP_LOGI(TAG, "=== CUBE BAND VS FULL-FB (%ds each, band height %d) ===", SAMPLE_SECONDS, GFX_BAND_HEIGHT);
+    ESP_LOGI(TAG, "=== CUBE BAND VS FULL-FB (%ds each, band height %d, fps counter on in both) ===", SAMPLE_SECONDS,
+             GFX_BAND_HEIGHT);
     log_stats("full_fb", full_fb_stats);
     log_stats("band", band_stats);
+    if (replay_band_count > 0) {
+        ESP_LOGI(TAG, "ui_replay_band: %lld us total over %d bands, %.1f us/band, %.1f us/frame",
+                 (long long)replay_us_accum, replay_band_count, (double)replay_us_accum / replay_band_count,
+                 (double)replay_us_accum / sample_count);
+    }
 
     free(samples);
     samples = NULL;
