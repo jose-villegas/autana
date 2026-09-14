@@ -116,7 +116,7 @@ equalise_one_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* below_ro
     if (!neighbour_is_lower(n_row, w, x + px, id, mass, bias_q8)) {
         return false;
     }
-    if (s->may_have_viscous_liquid && !liquid_may_move(s, id)) {
+    if (s->may_have_viscous_liquid && !liquid_may_move(s, x, y, id)) {
         return false; /* viscosity affects levelling; syrupy liquid would
                          * level instantly sideways, resembling "runny" */
     }
@@ -391,7 +391,7 @@ mark_liquid_neighbourhoods(sand_t* s) {
     if (sand_two_core_step_enabled() && s->block_rows >= MARK_LIQUID_NEIGHBOURHOODS_SPLIT_MIN_BLOCK_ROWS) {
         const int mid = s->block_rows / 2;
         mark_liquid_neighbourhoods_half_t half = {s, mid, s->block_rows};
-        sand_core1_run(mark_liquid_neighbourhoods_worker, &half);
+        sand_core1_run(mark_liquid_neighbourhoods_worker, &half, sizeof half);
         mark_liquid_neighbourhoods_range(s, 0, mid);
         sand_core1_join();
         return;
@@ -526,7 +526,7 @@ float_lighter_liquids(sand_t* s, int dx, int dy) {
              * idea as gas's mobility gate - a rise should be a lazy drift,
              * not a guaranteed cell every step. Without it this pass sorts
              * harder than the sinking swap it replaced ever did. */
-                if (s->may_have_viscous_liquid && !liquid_may_move(s, mine)) {
+                if (s->may_have_viscous_liquid && !liquid_may_move(s, x, y, mine)) {
                     continue;
                 }
 

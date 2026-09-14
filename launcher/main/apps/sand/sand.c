@@ -25,10 +25,12 @@
 #include "util/fixed.h"
 #include "util/intmath.h"
 
-/* Default from CONFIG_LAUNCHER_SAND_TWO_CORE_STEP on the device, mirroring
- * gfx.c's present_async_on; true on a host, so the split path this enables
- * gets exercised by default there too - see sand_two_core_step_enabled()
- * (sand.h). */
+/* Default from CONFIG_LAUNCHER_SAND_TWO_CORE_STEP on the device, off on a
+ * host build too: a real device hang was traced to core 1 contention this
+ * feature adds (see sand_core1.c's own join-timeout comment), so the
+ * default stays off tree-wide until that is confirmed fixed on hardware.
+ * A test that wants the split path calls sand_set_two_core_step(true)
+ * itself - see sand_two_core_step_enabled() (sand.h). */
 #if defined(ESP_PLATFORM)
 #if defined(CONFIG_LAUNCHER_SAND_TWO_CORE_STEP) && CONFIG_LAUNCHER_SAND_TWO_CORE_STEP
 static bool two_core_step_on = true;
@@ -36,7 +38,7 @@ static bool two_core_step_on = true;
 static bool two_core_step_on = false;
 #endif
 #else
-static bool two_core_step_on = true;
+static bool two_core_step_on = false;
 #endif
 
 void
@@ -153,6 +155,8 @@ sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
     s->w = w;
     s->h = h;
     rng_seed(&s->rng, seed);
+    s->rng_seed_base = seed;
+    s->rng_hashed = false;
     s->pour_phase = 0;
     s->step_phase = 0;
     s->sweep_flip = false;
@@ -770,6 +774,13 @@ static uint32_t sweep_liquid_mask; /* KIND_LIQUID - takes the liquid path  */
 static uint16_t sweep_cell_liquid_mask;
 static bool sweep_tables_ready;
 
+/* Rebuilt fresh every step by compute_driven(), never carried across one -
+ * FILE-STATIC rather than a local of sand_step(), so a checkerboard-
+ * parallel dispatch's core-1 half (sand_core1.c) can read it without a
+ * dangling pointer into a caller's stack frame that a timed-out join may
+ * have already returned from. */
+static bool sweep_driven[MATERIAL_ROWS][2];
+
 static void
 build_sweep_tables(void) {
     if (sweep_tables_ready) {
@@ -1107,7 +1118,7 @@ finalize_settling(sand_t* s, uint8_t settled_bit) {
     if (sand_two_core_step_enabled() && s->block_rows >= FINALIZE_SETTLING_SPLIT_MIN_BLOCK_ROWS) {
         const int mid = s->block_rows / 2;
         finalize_settling_half_t half = {s, settled_bit, mid, s->block_rows};
-        sand_core1_run(finalize_settling_worker, &half);
+        sand_core1_run(finalize_settling_worker, &half, sizeof half);
         finalize_settling_range(s, settled_bit, 0, mid);
         sand_core1_join();
         return;
@@ -1202,6 +1213,137 @@ viscous_liquid_possible(const sand_t* s) {
     return false;
 }
 
+/* The gravity sweep's own inner loop, restricted to [y0, y1) in y_step
+ * order - shared by the plain serial call below and every stripe a
+ * checkerboard-parallel dispatch hands to either core. */
+static void
+sweep_range(sand_t* s, int y0, int y1, int y_step, int w, int dx, int dy, const int* slide_a, const int* slide_b,
+            int x_step, int load_dx, int load_dy, int jostle, uint8_t settled_bit, uint16_t is_liquid) {
+    int scanned_by = -1;
+    bool block_row_settled = false;
+
+    for (int y = y0; y != y1; y += y_step) {
+        if (settled_bit != 0) {
+            const int by = y / SAND_BLOCK_H;
+            if (by != scanned_by) {
+                scanned_by = by;
+                block_row_settled = true;
+                const uint8_t* const brow = &s->block_state[(size_t)by * (size_t)s->block_cols];
+                for (int bx = 0; bx < s->block_cols; bx++) {
+                    if ((brow[bx] & settled_bit) == 0) {
+                        block_row_settled = false;
+                        break;
+                    }
+                }
+            }
+            if (block_row_settled) {
+                continue;
+            }
+        }
+        step_one_row(s, y, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
+                     sweep_driven);
+    }
+}
+
+/* Row-stripe height for the checkerboard-parallel sweep: full grid width,
+ * banded by row, so two same-coloured stripes are always at least this
+ * many rows apart - comfortably clear of the one-cell reach every move in
+ * step_one_grain() has. Reused from SAND_BLOCK_H so the stripe grid lines
+ * up with the sleep-skip grid sweep_range() already reads. */
+#define SWEEP_STRIPE_H SAND_BLOCK_H
+
+typedef struct {
+    sand_t* s;
+    int w, dx, dy, x_step, load_dx, load_dy, jostle;
+    int slide_a[2], slide_b[2];
+    uint16_t is_liquid;
+    uint8_t settled_bit;
+    int y_step;
+    int offset;
+    int color;
+    int share;
+} sweep_phase_ctx_t;
+
+_Static_assert(sizeof(sweep_phase_ctx_t) <= SAND_CORE1_CTX_MAX,
+               "sweep_phase_ctx_t must fit sand_core1_run()'s context buffer");
+
+/* Every stripe of `c->color` whose position among same-coloured stripes
+ * matches `c->share`, each swept in the step's own y_step order. Two
+ * stripes sharing a colour are never within SWEEP_STRIPE_H rows of each
+ * other - colour alternates every stripe - so nothing here is also being
+ * touched by whichever call is handling the other share right now. */
+static void
+run_sweep_stripes(const sweep_phase_ctx_t* c) {
+    const int h = c->s->h;
+    int k = (c->offset == 0) ? 0 : -1;
+    int seen = 0;
+
+    for (;;) {
+        const int band0 = c->offset + k * SWEEP_STRIPE_H;
+        if (band0 >= h) {
+            break;
+        }
+        int y0 = band0 < 0 ? 0 : band0;
+        int y1 = band0 + SWEEP_STRIPE_H;
+        if (y1 > h) {
+            y1 = h;
+        }
+        if (y0 < y1) {
+            const int stripe_color = ((k % 2) + 2) % 2;
+            if (stripe_color == c->color) {
+                if ((seen & 1) == c->share) {
+                    const int sy_from = (c->y_step > 0) ? y0 : y1 - 1;
+                    const int sy_to = (c->y_step > 0) ? y1 : y0 - 1;
+                    sweep_range(c->s, sy_from, sy_to, c->y_step, c->w, c->dx, c->dy, c->slide_a, c->slide_b, c->x_step,
+                                c->load_dx, c->load_dy, c->jostle, c->settled_bit, c->is_liquid);
+                }
+                seen++;
+            }
+        }
+        k++;
+    }
+}
+
+static void
+sweep_phase_worker(void* ctx) {
+    run_sweep_stripes((const sweep_phase_ctx_t*)ctx);
+}
+
+/* Runs one checkerboard phase - every stripe of `color` - half on core 1,
+ * half here, joining before returning. See sweep_phase_ctx_t and
+ * run_sweep_stripes() for why the split needs no guard band. */
+static void
+run_sweep_phase(sand_t* s, int color, int w, int dx, int dy, const int* slide_a, const int* slide_b, int x_step,
+                int load_dx, int load_dy, int jostle, uint8_t settled_bit, uint16_t is_liquid, int y_step, int offset) {
+    sweep_phase_ctx_t ctx = {
+        .s = s,
+        .w = w,
+        .dx = dx,
+        .dy = dy,
+        .x_step = x_step,
+        .load_dx = load_dx,
+        .load_dy = load_dy,
+        .jostle = jostle,
+        .slide_a = {slide_a[0], slide_a[1]},
+        .slide_b = {slide_b[0], slide_b[1]},
+        .is_liquid = is_liquid,
+        .settled_bit = settled_bit,
+        .y_step = y_step,
+        .offset = offset,
+        .color = color,
+        .share = 1,
+    };
+
+    sand_core1_run(sweep_phase_worker, &ctx, sizeof ctx);
+    ctx.share = 0;
+    run_sweep_stripes(&ctx);
+    sand_core1_join();
+}
+
+/* Below this many rows the whole grid is a handful of stripes, and one
+ * core walks all of them faster than two cores plus a hop to core 1. */
+#define SWEEP_CHECKERBOARD_MIN_ROWS (SWEEP_STRIPE_H * 4)
+
 __attribute__((aligned(16))) void
 sand_step(sand_t* s, int gx, int gy, int jostle) {
     /* Emitters act first per step, before gravity, mimicking
@@ -1256,8 +1398,7 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     s->last_step_dx = dx;
     s->last_step_dy = dy;
 
-    bool driven[MATERIAL_ROWS][2];
-    compute_driven(driven, slide_a, slide_b, gx, gy);
+    compute_driven(sweep_driven, slide_a, slide_b, gx, gy);
 
     /* Sweep against travel on both axes. Grains move to gravity-ward cells
      * first, ensuring no grain is revisited. Sweeping the other way causes
@@ -1281,36 +1422,21 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     const int w = s->w;
     const uint16_t is_liquid = liquid_mask();
 
-    /* Asked once per BLOCK row, not once per row. step_one_row() already
-     * skips a settled block, but only after building a seventeen-field
-     * context for the row - and the answer is the same for all
-     * SAND_BLOCK_H rows sharing that block row, so on a settled board that
-     * context is built 64 times over to find nothing to do. Nothing in the
-     * skipped row has a side effect (dest_row() is pure), so this is the
-     * same program with the dead contexts removed. */
-    int scanned_by = -1;
-    bool block_row_settled = false;
-
-    for (int y = y_from; y != y_to; y += y_step) {
-        if (settled_bit != 0) {
-            const int by = y / SAND_BLOCK_H;
-            if (by != scanned_by) {
-                scanned_by = by;
-                block_row_settled = true;
-                const uint8_t* const brow = &s->block_state[(size_t)by * (size_t)s->block_cols];
-                for (int bx = 0; bx < s->block_cols; bx++) {
-                    if ((brow[bx] & settled_bit) == 0) {
-                        block_row_settled = false;
-                        break;
-                    }
-                }
-            }
-            if (block_row_settled) {
-                continue;
-            }
-        }
-        step_one_row(s, y, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
-                     driven);
+    /* Hashed draws (sand_rng_next_at(), sand_priv.h) are armed for exactly
+     * this window, never longer - gas and reactions later this step must
+     * still draw from the plain sequential stream. Below
+     * SWEEP_CHECKERBOARD_MIN_ROWS one core is simply faster. */
+    if (sand_two_core_step_enabled() && s->h >= SWEEP_CHECKERBOARD_MIN_ROWS) {
+        const int offset = (s->step_phase & 1) ? SWEEP_STRIPE_H / 2 : 0;
+        s->rng_hashed = true;
+        run_sweep_phase(s, 0, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
+                        y_step, offset);
+        run_sweep_phase(s, 1, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
+                        y_step, offset);
+        s->rng_hashed = false;
+    } else {
+        sweep_range(s, y_from, y_to, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
+                    is_liquid);
     }
 
     /* Cross-flow for liquids, excluding gravity. See sand_step_liquids() in
