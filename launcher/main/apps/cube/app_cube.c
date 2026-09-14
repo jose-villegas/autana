@@ -742,6 +742,15 @@ cube_exit(void) {
     gfx_mode_exit();
 }
 
+/* gfx_request_full_redraw()'s app half (app.h): the band-mode coverage
+ * union gfx cannot see - a stale box from before the request would mark a
+ * region nobody is about to redraw, the same reasoning cube_enter() gives
+ * for resetting it there. */
+static void
+cube_invalidate(void) {
+    prev_cube_bbox_valid = false;
+}
+
 /* Exported as the struct itself rather than a pointer to it, so the registry
  * in main.c can take its address in a static initializer. */
 const app_t app_cube = {
@@ -750,6 +759,7 @@ const app_t app_cube = {
     .enter = cube_enter,
     .frame = cube_frame,
     .exit = cube_exit,
+    .invalidate = cube_invalidate,
     .home_gesture = true,
 };
 

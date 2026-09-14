@@ -400,6 +400,26 @@ test_a_clear_stays_full_width_after_a_later_narrow_mark(void) {
     }
 }
 
+/* The realistic case: a row already narrowed by ordinary sim activity
+ * before the request, not the fresh sentinel every other test in this
+ * group starts from - gfx_request_full_redraw() (gfx.h) reaches sand
+ * through exactly this sand_clear()-shaped reset. */
+static void
+test_a_clear_widens_an_already_narrowed_row_back_to_full_width(void) {
+    dirty_cols_fixture();
+
+    sand_spawn(&s, 2, 5, 0, MAT_SAND);
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(2, dirty_x0[5], "narrowed by ordinary activity before the request");
+
+    sand_clear(&s);
+    sand_spawn(&s, 4, 4, 0, MAT_SAND);
+
+    for (int y = 0; y < H; y++) {
+        TEST_ASSERT_EQUAL_UINT16_MESSAGE(0, dirty_x0[y], "the request must widen a narrowed row back to column 0");
+        TEST_ASSERT_EQUAL_UINT16_MESSAGE(W, dirty_x1[y], "and through the last column, after any later mark");
+    }
+}
+
 /* A settled run sharing a row with a moving grain must not appear in that
  * row's dirty span. Gravity runs along X here, so the fall stays inside
  * row 3 the whole way - a row-only mark_rows(y0, y1) could never tell that
@@ -818,6 +838,7 @@ run_sand_motion_suite(void) {
     RUN_TEST(test_dirty_cols_start_with_the_sentinel);
     RUN_TEST(test_spawning_marks_only_the_column_it_filled);
     RUN_TEST(test_a_clear_stays_full_width_after_a_later_narrow_mark);
+    RUN_TEST(test_a_clear_widens_an_already_narrowed_row_back_to_full_width);
     RUN_TEST(test_a_sideways_fall_does_not_dirty_a_settled_run_elsewhere_in_the_row);
     RUN_TEST(test_load_counts_the_grains_stacked_above);
     RUN_TEST(test_load_stops_at_a_gap);
