@@ -123,9 +123,13 @@ static const input_t null_input = {0};
 /* Total time spent inside ui_replay_band() across a band capture, and how
  * many bands that covers - logged as a per-frame average alongside the
  * timing stats, since it is cheap to measure here and is exactly the cost
- * item 4 of the band-mode UI work asks to see. */
+ * item 4 of the band-mode UI work asks to see. touched_band_count and
+ * skipped_band_count are band mode's own dirty decision (gfx_band_dirty(),
+ * gfx.c): how many of the total actually needed clearing and sending. */
 static int64_t replay_us_accum;
 static int replay_band_count;
+static int touched_band_count;
+static int skipped_band_count;
 
 static void
 full_fb_frame(uint32_t dt_ms) {
@@ -151,10 +155,20 @@ band_frame(uint32_t dt_ms) {
 
     gfx_band_frame_begin();
     while (gfx_band_next()) {
-        gfx_color_t* buf = gfx_band_buffer();
         const int row0 = gfx_band_row0();
         const int height = gfx_band_height();
 
+        int x0, x1;
+        if (!gfx_band_dirty(row0, row0 + height, &x0, &x1)) {
+            gfx_band_skip();
+            skipped_band_count++;
+            continue;
+        }
+        (void)x0;
+        (void)x1;
+        touched_band_count++;
+
+        gfx_color_t* buf = gfx_band_buffer();
         for (int i = 0; i < GFX_WIDTH * height; i++) {
             buf[i] = bg;
         }
@@ -191,6 +205,8 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     cube_band_mode = true;
     replay_us_accum = 0;
     replay_band_count = 0;
+    touched_band_count = 0;
+    skipped_band_count = 0;
     cube_enter();
     capture(band_frame);
     cube_exit();
@@ -208,6 +224,15 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
         ESP_LOGI(TAG, "ui_replay_band: %lld us total over %d bands, %.1f us/band, %.1f us/frame",
                  (long long)replay_us_accum, replay_band_count, (double)replay_us_accum / replay_band_count,
                  (double)replay_us_accum / sample_count);
+    }
+    {
+        const int total_bands = touched_band_count + skipped_band_count;
+        const double touched_pct = total_bands > 0 ? 100.0 * touched_band_count / total_bands : 0.0;
+        const double bytes_per_frame = sample_count > 0 ? (double)touched_band_count * GFX_WIDTH * GFX_BAND_HEIGHT
+                                                              * sizeof(gfx_color_t) / sample_count
+                                                        : 0.0;
+        ESP_LOGI(TAG, "bands: %d touched, %d skipped (%.1f%% touched), %.0f bytes/frame sent", touched_band_count,
+                 skipped_band_count, touched_pct, bytes_per_frame);
     }
 
     free(samples);
