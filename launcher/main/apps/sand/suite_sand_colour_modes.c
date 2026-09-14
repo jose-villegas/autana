@@ -314,12 +314,27 @@ test_indexed_mode_does_not_survive_a_return_to_the_menu(void) {
                              "indexed mode survived a return to the menu after a 16 sim");
 }
 
+/* Same reasoning as the declaration above - drives the START button itself,
+ * not its outcome (a real device crash on the pre-fix code, not a Unity
+ * failure line: gfx_fb_guard_ok() only counts on a host or a non-development
+ * build, and this is neither - see gfx_fb_guard.h). */
+bool sand_app_test_start_button_survives_the_ui_build(int mode);
+
+static void
+test_the_start_button_itself_does_not_crash_the_menu(void) {
+    TEST_ASSERT_TRUE_MESSAGE(sand_app_test_start_button_survives_the_ui_build(1 /* 256 */),
+                             "START did not reach RUNNING in indexed mode 256");
+    TEST_ASSERT_TRUE_MESSAGE(sand_app_test_start_button_survives_the_ui_build(2 /* 16 */),
+                             "START did not reach RUNNING in indexed mode 16");
+}
+
 #endif /* DEVICE_BUILD */
 
 void
 run_sand_colour_modes_suite(void) {
 #ifdef DEVICE_BUILD
     RUN_TEST(test_indexed_mode_does_not_survive_a_return_to_the_menu);
+    RUN_TEST(test_the_start_button_itself_does_not_crash_the_menu);
     RUN_TEST(test_mixed_flip);
     RUN_TEST(test_gas_over_pile);
     RUN_TEST(test_levelling_pool);
