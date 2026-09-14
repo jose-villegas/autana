@@ -17,8 +17,11 @@
 #ifdef ESP_PLATFORM
 #include "bsp/esp-bsp.h"
 #endif
+#include "gfx/gfx_band.h"
 #include "gfx/gfx_color.h"
+#include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font.h"
+#include "gfx/gfx_mode.h"
 
 /* ESP_PLATFORM is defined by ESP-IDF's own toolchain file - never by this
  * project - which is what makes it the natural, zero-plumbing switch
@@ -45,6 +48,22 @@
 #else
 #define GFX_QSPI_HZ (40 * 1000 * 1000)
 #endif
+
+/* The band ring's compile-time band height (gfx_mode.h, gfx_band.h) - a
+ * divisor of GFX_HEIGHT (448): 64, 32 or 16. 32 is the default absent a
+ * device sweep saying otherwise (docs/Autana-Rendering-Roadmap.md section
+ * 8, decision 2); override with -DGFX_BAND_HEIGHT=N to try another. */
+#ifndef GFX_BAND_HEIGHT
+#if defined(CONFIG_LAUNCHER_GFX_BAND_HEIGHT_16) && CONFIG_LAUNCHER_GFX_BAND_HEIGHT_16
+#define GFX_BAND_HEIGHT 16
+#elif defined(CONFIG_LAUNCHER_GFX_BAND_HEIGHT_64) && CONFIG_LAUNCHER_GFX_BAND_HEIGHT_64
+#define GFX_BAND_HEIGHT 64
+#else
+#define GFX_BAND_HEIGHT 32
+#endif
+#endif
+_Static_assert(GFX_HEIGHT % GFX_BAND_HEIGHT == 0, "GFX_BAND_HEIGHT must divide GFX_HEIGHT evenly");
+_Static_assert(GFX_BAND_HEIGHT % 2 == 0, "a band's row range must round to even panel window edges");
 
 /* Glyphs are 8x8 in the font data, drawn at 2x so they are legible on a
  * 368-wide panel. Text metrics elsewhere must agree with these. */
@@ -198,6 +217,14 @@ void gfx_text_font(int x, int y, const char* text, gfx_color_t color, int scale,
 void gfx_text_font_dither(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
                           const gfx_font_t* font, uint8_t alpha);
 
+/* gfx_text_font(), but draws each run one pixel wider on every side
+ * instead of its own ink - the halo UI_TEXT_OUTLINED (ui_style.h) casts,
+ * in one pass instead of eight unit-offset copies of gfx_text_font()
+ * itself. Only bpp==1 fonts (gfx_font_row_run_rect_dilated()'s own
+ * comment): the caller still draws the ink pass afterwards, unchanged. */
+void gfx_text_font_halo(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
+                        const gfx_font_t* font);
+
 /* gfx_text_width()'s general form: the width `text` would draw at in
  * `font`, at `scale`. gfx_text_width() is this called with gfx_font_ui().
  * See gfx_font_text_width() in gfx_font.h for the pure metric this wraps,
@@ -253,12 +280,73 @@ void gfx_present_wait(void);
 void gfx_set_present_async(bool on);
 bool gfx_present_async_enabled(void);
 
+/*
+ * Mode: a full PSRAM framebuffer, or an internal-SRAM band ring for a
+ * full-redraw renderer (docs/Autana-Rendering-Roadmap.md section 3.3).
+ * Requested from enter(), released with gfx_mode_exit() from exit(). Only
+ * full resolution with no interlace renders; other requests grant
+ * correctly (gfx_mode.h) but nothing consumes them yet.
+ */
+
+/* Grants `request`, allocates whatever the granted layout needs, and
+ * returns the grant. Asserts the current mode is already GFX_LAYOUT_FULL_FB:
+ * nesting one app's mode inside another's is not supported. */
+const gfx_mode_t* gfx_mode_enter(const gfx_mode_request_t* request);
+
+/* Frees whatever the current mode allocated and restores GFX_LAYOUT_FULL_FB
+ * at full resolution, no interlace - the mode every app but the one just
+ * exiting assumes is already in force. */
+void gfx_mode_exit(void);
+
+const gfx_mode_t* gfx_mode_current(void);
+
+/*
+ * The band ring, valid only while gfx_mode_current()->layout is
+ * GFX_LAYOUT_BANDS:
+ *
+ *     gfx_band_frame_begin();
+ *     while (gfx_band_next()) {
+ *         ...draw into gfx_band_buffer(), rows gfx_band_row0().. ...
+ *         gfx_band_submit();
+ *     }
+ *
+ * gfx_band_next() returning false has already waited for the last band's
+ * send to land.
+ */
+void gfx_band_frame_begin(void);
+bool gfx_band_next(void);
+gfx_color_t* gfx_band_buffer(void);
+int gfx_band_row0(void);
+int gfx_band_height(void);
+int gfx_band_count(void);
+
+/* Queues the current band's send, waiting first for whichever previous
+ * band's send is still in flight (gfx_band_ring_must_wait(), gfx_band.h) -
+ * never for the one just queued. */
+void gfx_band_submit(void);
+
+/* True if [row0, row1) needs rendering and sending this frame - fed by the
+ * ordinary gfx_mark_dirty() calls an app and ui.c already make. A true
+ * return also gives the even-rounded column span (out_x0/out_x1) worth
+ * touching. Always true, full width, right after gfx_mode_enter() and any
+ * frame following gfx_invalidate(). */
+bool gfx_band_dirty(int row0, int row1, int* out_x0, int* out_x1);
+
+/* The band gfx_band_next() just handed out needs no redraw - advances past
+ * it without rendering or sending, in place of gfx_band_submit(). */
+void gfx_band_skip(void);
+
 /* Test-only, always declared: an unsigned trip counter for the present-in-
  * flight guard above, and whether one is in flight right now. Both return
  * inert values (0 / false) wherever GFX_PRESENT_GUARD() itself folds to
  * nothing - see gfx_present_guard.h. */
 unsigned gfx_present_guard_trip_count(void);
 bool gfx_present_in_flight(void);
+
+/* Test-only, always declared: an unsigned trip counter for the
+ * framebuffer-availability guard (gfx_fb_guard.h) that every drawing
+ * primitive checks before touching the framebuffer. */
+unsigned gfx_fb_guard_trip_count(void);
 
 /* Runtime toggle for the panel-grid overlay layer: outlines whichever grid
  * cells are actually sent each frame, cyan for a full-row send and yellow

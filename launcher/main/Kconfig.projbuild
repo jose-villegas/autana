@@ -170,6 +170,38 @@ menu "Launcher"
             A/B measurement or a test that wants the plain serial path:
             sand_set_two_core_step().
 
+    choice LAUNCHER_GFX_BAND_HEIGHT
+        prompt "Band ring height (GFX_LAYOUT_BANDS)"
+        default LAUNCHER_GFX_BAND_HEIGHT_32
+        help
+            Rows per band buffer for a full-redraw renderer's internal-SRAM
+            band ring (gfx.h) - a divisor of 448. 32 is the default absent
+            a device sweep saying otherwise; tools/sweeps/band_height_sweep.sh
+            builds one image per choice for that sweep.
+
+        config LAUNCHER_GFX_BAND_HEIGHT_16
+            bool "16 rows"
+
+        config LAUNCHER_GFX_BAND_HEIGHT_32
+            bool "32 rows"
+
+        config LAUNCHER_GFX_BAND_HEIGHT_64
+            bool "64 rows"
+
+    endchoice
+
+    config LAUNCHER_CUBE_BAND_MODE
+        bool "Run the cube app's default entry in band mode"
+        default n
+        help
+            The cube requests gfx's internal-SRAM band ring (GFX_LAYOUT_BANDS,
+            gfx.h) at enter() instead of the usual PSRAM framebuffer, and
+            rasterizes the scene once per band, clipped to that band's rows.
+            Off by default so the cube's own byte-for-byte full-fb behaviour
+            stays the one anybody flashing this build sees; the perf suite
+            (suite_cube_band_perf.c) exercises both paths regardless of this
+            setting via cube_set_band_mode() at runtime.
+
     config LAUNCHER_GFX_QSPI_STRONG_PADS
         bool "Drive the QSPI pads at 40 mA instead of the 20 mA default"
         default n

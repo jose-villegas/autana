@@ -439,13 +439,22 @@ replace it, chosen by app kind:
    them (the present/simulation overlap work); an app that does not split
    the two keeps today's serial behaviour.
 2. **Full-redraw renderers** (the 3D renderer, raycaster, image kernels)
-   get **a band ring in internal SRAM**: 64-row (47 KiB) band buffers
-   rendered and sent in turn, PSRAM never written. It is built together
-   with the span rasterizer, which is designed band-aware from the start
-   rather than retrofitted onto small3dlib's per-pixel callback (3.4,
-   section 8 decision 4). A full-screen z-buffer in PSRAM is no longer
-   recommended for per-pixel access; a per-band z-buffer in internal SRAM
-   is, sized to one band at a time.
+   get **a band ring in internal SRAM**: band buffers, `GFX_BAND_HEIGHT`
+   rows each (a Kconfig choice of 16/32/64, default 32 pending a device
+   sweep - `tools/sweeps/band_height_sweep.sh`, section 8 decision 2),
+   rendered and sent in turn, PSRAM never written. **The ring itself is built** - `gfx_mode_enter()`
+   grants `GFX_LAYOUT_BANDS`, `gfx_band_next()`/`gfx_band_submit()` (`gfx.h`,
+   `gfx_band.h`) hand out and send one band at a time, waiting only on the
+   previous band's transfer - and the cube app ports onto it by transforming
+   and depth-sorting the scene once per frame, binning each triangle by its
+   own screen-space row range, and per band drawing only the triangles that
+   overlap it, scissored to that band's rows by a small hook added to
+   small3dlib (`S3L_SCISSOR_Y`, `components/small3dlib/include/small3dlib.h`)
+   rather than the scissored span rasterizer this section otherwise assumes.
+   That rasterizer (section 8 decision 4) is still a separate, unbuilt
+   piece; a full-screen z-buffer in PSRAM is no longer recommended for
+   per-pixel access, and a per-band one arrives with the rasterizer, not
+   with the ring alone.
 
 PSRAM's role narrows to bulk and cold data read at load or per frame —
 textures, levels, the retained framebuffer as a read source — never the
@@ -538,7 +547,11 @@ There are two ways to get it:
   composes with everything above; the tracker is per-band bookkeeping
   from object bounds, not pixels, so it is cheap and host-testable. Its
   cost is re-rasterizing the static geometry in touched bands, which a
-  baked per-band background image removes.
+  baked per-band background image removes. Prototyped for the cube
+  (`gfx_band_dirty()`, `gfx.c`): reuses `gfx_dirty.h`'s own strip/cell
+  tracker rather than a second one, fed by the app's own frame bounding
+  box and by `ui.c`'s per-band command hashing - still whole-band
+  touch/skip only, no column-span narrowing within a touched band yet.
 
 This is a per-app choice through the same `enter()` request, and it
 reaches into game design: a rolling-ball game with a fixed or stepwise
@@ -1036,12 +1049,14 @@ cheapest path to something that is unmistakably a game.
    decision B (2026-09-13).** The band ring in internal SRAM is the
    standing mechanism for every full-redraw renderer (r3d, raycaster,
    image kernels); PSRAM is never their render target. Band height stays
-   a compile-time constant (divisors of 448: 64, 32, 16) — 64 rows / 47
-   KiB per band is the figure decision B is written against — and Phase 2
-   ends with a device sweep across heights measuring present time,
-   rasterizer time, and RAM freed, in the same style as the
-   `GATHER_MAX_PIXELS` and `LEAF_REFINE_MAX_RUNS` sweeps recorded in
-   Display-and-Rendering.md.
+   a compile-time constant (`GFX_BAND_HEIGHT`, divisors of 448: 64, 32,
+   16), now a Kconfig choice rather than a hard-coded macro — the ring
+   ships with 32 as the default, absent a device sweep saying otherwise.
+   `tools/sweeps/band_height_sweep.sh` builds one diagnostics image per
+   height (one command each); Phase 2 still ends with the device sweep
+   itself across heights measuring present time, rasterizer time, and RAM
+   freed, in the same style as the `GATHER_MAX_PIXELS` and
+   `LEAF_REFINE_MAX_RUNS` sweeps recorded in Display-and-Rendering.md.
 3. ~~"Parallax" in the platformer~~ **Decided 2026-09-04: layered
    parallax scrolling**, not per-pixel parallax mapping.
 4. ~~Own rasterizer vs. deeper small3dlib configuration.~~ **Decided
