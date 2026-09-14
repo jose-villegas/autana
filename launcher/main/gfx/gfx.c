@@ -3,6 +3,7 @@
 #include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font_roles.h"
 #include "gfx/gfx_present_guard.h"
+#include "gfx/gfx_target.h"
 #include "util/intmath.h"
 
 #include <assert.h>
@@ -41,6 +42,30 @@ static gfx_color_t* fb;
  * gfx_mode_enter() grants something else. gfx_present_begin()/_wait() read
  * this to know whether there is a framebuffer to send at all. */
 static gfx_mode_t current_mode;
+
+/* The band ring's own buffers - declared here, not with the rest of the
+ * mode/band implementation further down, so current_target() below can
+ * reach them. band_render_active is true only between a successful
+ * gfx_band_next() and the matching gfx_band_submit(); outside that window
+ * band mode has no valid target at all, matching gfx_fb_guard.h. */
+static gfx_color_t* band_buf[GFX_BAND_SLOTS];
+static gfx_band_ring_t band_ring;
+static int band_current_slot;
+static bool band_render_active;
+static int band_render_row0;
+static int band_render_height;
+
+/* What every pixel-writing primitive below actually draws into: the whole
+ * framebuffer, or the band currently being rendered - see gfx_target.h for
+ * why a target carries its own row range rather than every primitive
+ * checking band_render_active for itself. */
+static inline gfx_target_t
+current_target(void) {
+    if (band_render_active) {
+        return (gfx_target_t){band_buf[band_current_slot], band_render_row0, band_render_height, GFX_WIDTH};
+    }
+    return (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
+}
 
 /* Default from CONFIG_LAUNCHER_GFX_PRESENT_ON_CORE1 on the device; true on a
  * host, where gfx_present_begin()/_wait() never dispatch to a task anyway. */
@@ -471,7 +496,9 @@ gfx_framebuffer(void) {
 
 static bool partial_clear_on;
 static bool interlace_on;
-static int frame_parity;
+#ifdef ESP_PLATFORM
+static int frame_parity; /* read only inside run_present_normal(), below */
+#endif
 static bool prev_bbox_valid;
 static int prev_bbox_x0, prev_bbox_y0, prev_bbox_x1, prev_bbox_y1;
 static bool drawn_bbox_valid;
@@ -607,14 +634,18 @@ gfx_clear_clip(void) {
 
 /* Primitives */
 
-/* Ignores clip rect; clears whole-screen or bounding box; marks box dirty. */
+/* Ignores clip rect; clears the whole target (a bounding box in full-fb
+ * mode's partial-clear path, or the whole target buffer otherwise) and
+ * marks it dirty - dirty tracking is meaningless while a band is the
+ * target, since band mode resends every band every frame regardless, so
+ * that half is skipped entirely there. */
 void
 gfx_clear(gfx_color_t color) {
     GFX_PRESENT_GUARD();
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
     }
-    if (partial_clear_on && prev_bbox_valid) {
+    if (!band_render_active && partial_clear_on && prev_bbox_valid) {
         for (int y = prev_bbox_y0; y < prev_bbox_y1; y++) {
             gfx_color_t* dst = fb + (size_t)y * GFX_WIDTH + prev_bbox_x0;
             for (int x = prev_bbox_x0; x < prev_bbox_x1; x++) {
@@ -626,15 +657,18 @@ gfx_clear(gfx_color_t color) {
         return;
     }
 
+    const gfx_target_t target = current_target();
     const uint32_t pair = ((uint32_t)color << 16) | color;
-    uint32_t* words = (uint32_t*)fb;
-    const int count = (GFX_WIDTH * GFX_HEIGHT) / 2;
+    uint32_t* words = (uint32_t*)target.buf;
+    const int count = (target.stride * target.height) / 2;
 
     for (int i = 0; i < count; i++) {
         words[i] = pair;
     }
 
-    gfx_mark_all_dirty();
+    if (!band_render_active) {
+        gfx_mark_all_dirty();
+    }
 }
 
 void
@@ -643,11 +677,19 @@ gfx_pixel(int x, int y, gfx_color_t color) {
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
     }
-    if (x < clip.x0 || x >= clip.x1 || y < clip.y0 || y >= clip.y1) {
+    if (x < clip.x0 || x >= clip.x1) {
         return;
     }
-    fb[y * GFX_WIDTH + x] = color;
-    mark_band(y, y + 1);
+    const gfx_target_t target = current_target();
+    int y0 = y, y1 = y + 1;
+    gfx_target_clip_y(target, clip.y0, clip.y1, &y0, &y1);
+    if (y0 >= y1) {
+        return;
+    }
+    gfx_target_row(target, y)[x] = color;
+    if (!band_render_active) {
+        mark_band(y, y + 1);
+    }
 }
 
 /* Cohen-Sutherland outcodes: one bit per edge the point lies outside of. */
@@ -718,10 +760,16 @@ clip_line(int* x0, int* y0, int* x1, int* y1) {
 /* One pixel of a line. */
 static void
 plot(int x, int y, gfx_color_t color, unsigned flags) {
-    if (x < clip.x0 || x >= clip.x1 || y < clip.y0 || y >= clip.y1) {
+    if (x < clip.x0 || x >= clip.x1) {
         return;
     }
-    gfx_color_t* const dst = &fb[(size_t)y * GFX_WIDTH + x];
+    const gfx_target_t target = current_target();
+    int y0 = y, y1 = y + 1;
+    gfx_target_clip_y(target, clip.y0, clip.y1, &y0, &y1);
+    if (y0 >= y1) {
+        return;
+    }
+    gfx_color_t* const dst = &gfx_target_row(target, y)[x];
 
     *dst = (flags & GFX_LINE_ADD) ? gfx_color_add(*dst, color) : color;
 }
@@ -786,7 +834,7 @@ draw_line(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
 
     walk(x0, y0, x1, y1, color, flags);
 
-    if (bx0 < bx1 && by0 < by1) {
+    if (!band_render_active && bx0 < bx1 && by0 < by1) {
         dirty_mark(bx0, by0, bx1 - bx0, by1 - by0);
     }
 }
@@ -815,29 +863,12 @@ gfx_fill_rect(int x, int y, int w, int h, gfx_color_t color) {
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
     }
-    int x0 = x, y0 = y, x1 = x + w, y1 = y + h;
+    int x0, y0, x1, y1;
+    gfx_target_fill_rect(current_target(), clip.x0, clip.y0, clip.x1, clip.y1, x, y, w, h, color, &x0, &y0, &x1, &y1);
 
-    if (x0 < clip.x0) {
-        x0 = clip.x0;
+    if (!band_render_active) {
+        mark_band(y0, y1); /* already clipped above */
     }
-    if (y0 < clip.y0) {
-        y0 = clip.y0;
-    }
-    if (x1 > clip.x1) {
-        x1 = clip.x1;
-    }
-    if (y1 > clip.y1) {
-        y1 = clip.y1;
-    }
-
-    for (int row = y0; row < y1; row++) {
-        gfx_color_t* dst = fb + (size_t)row * GFX_WIDTH + x0;
-        for (int col = x0; col < x1; col++) {
-            *dst++ = color;
-        }
-    }
-
-    mark_band(y0, y1); /* already clipped above */
 }
 
 /*
@@ -862,23 +893,19 @@ gfx_fill_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t alph
         return;
     }
 
+    const gfx_target_t target = current_target();
     int x0 = x, y0 = y, x1 = x + w, y1 = y + h;
 
     if (x0 < clip.x0) {
         x0 = clip.x0;
     }
-    if (y0 < clip.y0) {
-        y0 = clip.y0;
-    }
     if (x1 > clip.x1) {
         x1 = clip.x1;
     }
-    if (y1 > clip.y1) {
-        y1 = clip.y1;
-    }
+    gfx_target_clip_y(target, clip.y0, clip.y1, &y0, &y1);
 
     for (int row = y0; row < y1; row++) {
-        gfx_color_t* dst = fb + (size_t)row * GFX_WIDTH;
+        gfx_color_t* dst = gfx_target_row(target, row);
         for (int col = x0; col < x1; col++) {
             if (gfx_dither_covers(col, row, alpha)) {
                 dst[col] = color;
@@ -886,7 +913,9 @@ gfx_fill_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t alph
         }
     }
 
-    mark_band(y0, y1);
+    if (!band_render_active) {
+        mark_band(y0, y1);
+    }
 }
 
 /* Per-pixel blend, reads framebuffer. Efficient for glyphs, not full-frame.
@@ -901,29 +930,27 @@ gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha
         return;
     }
 
+    const gfx_target_t target = current_target();
     int x0 = x, y0 = y, x1 = x + w, y1 = y + h;
 
     if (x0 < clip.x0) {
         x0 = clip.x0;
     }
-    if (y0 < clip.y0) {
-        y0 = clip.y0;
-    }
     if (x1 > clip.x1) {
         x1 = clip.x1;
     }
-    if (y1 > clip.y1) {
-        y1 = clip.y1;
-    }
+    gfx_target_clip_y(target, clip.y0, clip.y1, &y0, &y1);
 
     for (int row = y0; row < y1; row++) {
-        gfx_color_t* dst = fb + (size_t)row * GFX_WIDTH;
+        gfx_color_t* dst = gfx_target_row(target, row);
         for (int col = x0; col < x1; col++) {
             dst[col] = gfx_color_mix(dst[col], color, alpha);
         }
     }
 
-    mark_band(y0, y1);
+    if (!band_render_active) {
+        mark_band(y0, y1);
+    }
 }
 
 /* Cheap by construction, not by luck: alpha is one value for the whole
@@ -944,20 +971,16 @@ gfx_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stri
         return;
     }
 
+    const gfx_target_t target = current_target();
     int x0 = x, y0 = y, x1 = x + w, y1 = y + h;
 
     if (x0 < clip.x0) {
         x0 = clip.x0;
     }
-    if (y0 < clip.y0) {
-        y0 = clip.y0;
-    }
     if (x1 > clip.x1) {
         x1 = clip.x1;
     }
-    if (y1 > clip.y1) {
-        y1 = clip.y1;
-    }
+    gfx_target_clip_y(target, clip.y0, clip.y1, &y0, &y1);
     if (x0 >= x1 || y0 >= y1) {
         return;
     }
@@ -972,7 +995,7 @@ gfx_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stri
             continue;
         }
 
-        gfx_color_t* dst = fb + (size_t)row * GFX_WIDTH;
+        gfx_color_t* dst = gfx_target_row(target, row);
         const gfx_color_t* s = src + (size_t)(row - y) * (size_t)src_stride + (x0 - x);
 
         if (p[0] && p[1] && p[2] && p[3]) {
@@ -1009,7 +1032,9 @@ gfx_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stri
         }
     }
 
-    mark_band(y0, y1);
+    if (!band_render_active) {
+        mark_band(y0, y1);
+    }
 }
 
 /*
@@ -1759,6 +1784,19 @@ gfx_present_wait(void) {
 
 #else /* !ESP_PLATFORM */
 
+/* collect_dirty_runs()/plan_run()/run_box() (gfx_dirty.h) back send_one_row()
+ * and friends below, which exist only on the device - a host build's own
+ * copy of the header (this file includes it directly, same as any suite
+ * that does) would otherwise trip -Wunused-function. See
+ * suite_gfx_present_guard.c's touch_unused_dirty_symbols() for the same
+ * fix applied to a smaller subset of this header. */
+static void __attribute__((unused))
+touch_unused_dirty_run_symbols(void) {
+    (void)collect_dirty_runs;
+    (void)plan_run;
+    (void)run_box;
+}
+
 void
 gfx_present_begin(void) {
     gfx_present_guard_begin();
@@ -1796,10 +1834,6 @@ gfx_present_async_enabled(void) {
 }
 
 /* Mode and the band ring */
-
-static gfx_color_t* band_buf[GFX_BAND_SLOTS];
-static gfx_band_ring_t band_ring;
-static int band_current_slot;
 
 #ifdef ESP_PLATFORM
 static bool
@@ -1939,6 +1973,8 @@ void
 gfx_band_frame_begin(void) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_BANDS);
+    band_render_active = false;
+    gfx_fb_guard_set_available(false);
     gfx_band_ring_begin(&band_ring, current_mode.height / current_mode.band_height);
 }
 
@@ -1953,9 +1989,14 @@ gfx_band_next(void) {
 #endif
             gfx_band_ring_settle(&band_ring);
         }
+        band_render_active = false;
         return false;
     }
     band_current_slot = gfx_band_ring_slot(&band_ring);
+    band_render_row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
+    band_render_height = current_mode.band_height;
+    band_render_active = true;
+    gfx_fb_guard_set_available(true);
     return true;
 }
 
@@ -1968,13 +2009,13 @@ gfx_band_buffer(void) {
 int
 gfx_band_row0(void) {
     GFX_PRESENT_GUARD();
-    return gfx_band_ring_row0(&band_ring, current_mode.band_height);
+    return band_render_row0;
 }
 
 int
 gfx_band_height(void) {
     GFX_PRESENT_GUARD();
-    return current_mode.band_height;
+    return band_render_height;
 }
 
 int
@@ -1994,6 +2035,8 @@ gfx_band_submit(void) {
     const int row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
     esp_lcd_panel_draw_bitmap(panel, 0, row0, GFX_WIDTH, row0 + current_mode.band_height, band_buf[band_current_slot]);
 #endif
+    band_render_active = false;
+    gfx_fb_guard_set_available(false);
     gfx_band_ring_advance(&band_ring);
 }
 
