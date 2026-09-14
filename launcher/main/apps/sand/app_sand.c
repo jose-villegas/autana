@@ -307,7 +307,7 @@ apply_gfx_enter_indexed(void) {
     }
 
     memset(gfx_indexed_image(), 0, (size_t)grid_w * (size_t)grid_h);
-    gfx_indexed_set_lut(sand_palette256_lut);
+    gfx_indexed_set_lut(sand_palette256.entries);
     gfx_indexed_set_lut16(sand_palette16_dither_rgb);
     gfx_indexed_set_dither16(color_mode == SAND_COLOR_16);
 }

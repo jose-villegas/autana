@@ -34,6 +34,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "gfx/gfx_palette.h"
+#include "gfx_palette_gen.h"
 #include "material.h"
 #include "material_palette.h"
 #include "sand.h"
@@ -1786,7 +1788,8 @@ write_sand_palette_header(const char* path) {
             "===*/\n"
             "#pragma once\n\n"
             "#include \"gfx/gfx_color.h\"\n"
-            "#include \"gfx/gfx_indexed.h\"\n\n"
+            "#include \"gfx/gfx_indexed.h\"\n"
+            "#include \"gfx/gfx_palette.h\"\n\n"
             "#define SAND_PALETTE_UI_ENTRIES %d\n\n",
             UI_ENTRIES - 1, UI_ENTRIES, UI_ENTRIES);
 
@@ -1854,22 +1857,39 @@ write_sand_palette_header(const char* path) {
     }
     fprintf(f, "\n};\n\n");
 
+    /* gfx_palette_gen_build_dither16() (launcher/tools/) is the same bake
+     * this file used to do inline, generalised out of it - see that
+     * header's own comment for why building a PALETTE stays here while
+     * baking a derived table from one finished does not. */
+    gfx_color_t sand256_rgb[PALETTE_SIZE], sand16_rgb[EGA_ENTRIES];
+    for (int i = 0; i < PALETTE_SIZE; i++) {
+        sand256_rgb[i] = to_gfx_color(entry_key[i]);
+    }
+    for (int i = 0; i < EGA_ENTRIES; i++) {
+        sand16_rgb[i] = to_gfx_color(ega_global.key[i]);
+    }
+    const gfx_palette_t sand256_palette = {"sand256", sand256_rgb, PALETTE_SIZE};
+    const gfx_palette_t sand16_palette = {"sand16", sand16_rgb, EGA_ENTRIES};
+
+    static gfx_color_t dither_table[PALETTE_SIZE * 16];
+    gfx_palette_gen_build_dither16(&sand256_palette, &sand16_palette, dither_table);
+
     fprintf(f, "static const gfx_color_t sand_palette16_dither_rgb[GFX_INDEXED_PALETTE_SIZE * "
                "GFX_INDEXED_DITHER16_PHASES] = {\n");
-    for (int i = 0; i < PALETTE_SIZE; i++) {
-        const ega_choice_t ch = ega_choose(&ega_global, entry_key[i]);
-        const uint8_t alpha = ch.level == 0 ? 0u : (uint8_t)(ch.level * 16u);
-        fprintf(f, "    ");
-        for (int py = 0; py < 4; py++) {
-            for (int px = 0; px < 4; px++) {
-                const bool hi = gfx_dither_covers(px, py, alpha);
-                fprintf(f, "0x%04X,%s", to_gfx_color(hi ? ega_global.key[ch.hi] : ega_global.key[ch.lo]),
-                        (px == 3) ? "" : " ");
-            }
-            fprintf(f, "%s", (py == 3) ? "\n" : "  ");
+    for (int i = 0; i < PALETTE_SIZE * 16; i++) {
+        fprintf(f, "%s0x%04X,", i % 8 == 0 ? "    " : " ", dither_table[i]);
+        if (i % 8 == 7) {
+            fprintf(f, "\n");
         }
     }
-    fprintf(f, "};\n");
+    fprintf(f, "\n};\n\n");
+
+    /* The 256-entry LUT is the palette sand actually registers through
+     * gfx_palette.h; the 16-colour dither is a derived presentation of it
+     * (sand_palette16_dither_rgb above), not a second independent
+     * palette. */
+    fprintf(f, "static const gfx_palette_t sand_palette256 = {\"sand256\", sand_palette256_lut, "
+               "GFX_INDEXED_PALETTE_SIZE};\n");
 
     fclose(f);
 }

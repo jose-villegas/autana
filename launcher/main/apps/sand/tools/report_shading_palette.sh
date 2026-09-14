@@ -42,7 +42,7 @@ mkdir -p "$BUILD_DIR" "$RESULTS_DIR"
 OUT_BIN="$BUILD_DIR/shading_palette"
 
 # shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$SAND_DIR" \
+"$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$SAND_DIR" -I "$LAUNCHER_DIR/tools" \
     "$SCRIPT_DIR/shading_palette.c" \
     "$SAND_DIR/sand.c" \
     "$SAND_DIR/sand_core1.c" \
@@ -53,6 +53,7 @@ OUT_BIN="$BUILD_DIR/shading_palette"
     "$SAND_DIR/sand_liquid.c" \
     "$SAND_DIR/material.c" \
     "$SAND_DIR/material_palette.c" \
+    "$LAUNCHER_DIR/tools/gfx_palette_gen.c" \
     -o "$OUT_BIN" -lm
 
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"
