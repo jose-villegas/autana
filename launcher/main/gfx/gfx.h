@@ -17,8 +17,10 @@
 #ifdef ESP_PLATFORM
 #include "bsp/esp-bsp.h"
 #endif
+#include "gfx/gfx_band.h"
 #include "gfx/gfx_color.h"
 #include "gfx/gfx_font.h"
+#include "gfx/gfx_mode.h"
 
 /* ESP_PLATFORM is defined by ESP-IDF's own toolchain file - never by this
  * project - which is what makes it the natural, zero-plumbing switch
@@ -45,6 +47,16 @@
 #else
 #define GFX_QSPI_HZ (40 * 1000 * 1000)
 #endif
+
+/* The band ring's compile-time band height (gfx_mode.h, gfx_band.h) - a
+ * divisor of GFX_HEIGHT (448): 64, 32 or 16. 32 is the default absent a
+ * device sweep saying otherwise (docs/Autana-Rendering-Roadmap.md section
+ * 8, decision 2); override with -DGFX_BAND_HEIGHT=N to try another. */
+#ifndef GFX_BAND_HEIGHT
+#define GFX_BAND_HEIGHT 32
+#endif
+_Static_assert(GFX_HEIGHT % GFX_BAND_HEIGHT == 0, "GFX_BAND_HEIGHT must divide GFX_HEIGHT evenly");
+_Static_assert(GFX_BAND_HEIGHT % 2 == 0, "a band's row range must round to even panel window edges");
 
 /* Glyphs are 8x8 in the font data, drawn at 2x so they are legible on a
  * 368-wide panel. Text metrics elsewhere must agree with these. */
@@ -252,6 +264,51 @@ void gfx_present_wait(void);
 
 void gfx_set_present_async(bool on);
 bool gfx_present_async_enabled(void);
+
+/*
+ * Mode: a full PSRAM framebuffer, or an internal-SRAM band ring for a
+ * full-redraw renderer (docs/Autana-Rendering-Roadmap.md section 3.3).
+ * Requested from enter(), released with gfx_mode_exit() from exit(). Only
+ * full resolution with no interlace renders; other requests grant
+ * correctly (gfx_mode.h) but nothing consumes them yet.
+ */
+
+/* Grants `request`, allocates whatever the granted layout needs, and
+ * returns the grant. Asserts the current mode is already GFX_LAYOUT_FULL_FB:
+ * nesting one app's mode inside another's is not supported. */
+const gfx_mode_t* gfx_mode_enter(const gfx_mode_request_t* request);
+
+/* Frees whatever the current mode allocated and restores GFX_LAYOUT_FULL_FB
+ * at full resolution, no interlace - the mode every app but the one just
+ * exiting assumes is already in force. */
+void gfx_mode_exit(void);
+
+const gfx_mode_t* gfx_mode_current(void);
+
+/*
+ * The band ring, valid only while gfx_mode_current()->layout is
+ * GFX_LAYOUT_BANDS:
+ *
+ *     gfx_band_frame_begin();
+ *     while (gfx_band_next()) {
+ *         ...draw into gfx_band_buffer(), rows gfx_band_row0().. ...
+ *         gfx_band_submit();
+ *     }
+ *
+ * gfx_band_next() returning false has already waited for the last band's
+ * send to land.
+ */
+void gfx_band_frame_begin(void);
+bool gfx_band_next(void);
+gfx_color_t* gfx_band_buffer(void);
+int gfx_band_row0(void);
+int gfx_band_height(void);
+int gfx_band_count(void);
+
+/* Queues the current band's send, waiting first for whichever previous
+ * band's send is still in flight (gfx_band_ring_must_wait(), gfx_band.h) -
+ * never for the one just queued. */
+void gfx_band_submit(void);
 
 /* Test-only, always declared: an unsigned trip counter for the present-in-
  * flight guard above, and whether one is in flight right now. Both return
