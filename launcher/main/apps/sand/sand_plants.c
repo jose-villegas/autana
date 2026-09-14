@@ -136,10 +136,7 @@ step_one_falling_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
 
     s->cells[nat] = s->cells[at];
     s->cells[at] = SAND_EMPTY;
-    mark_rows(s, y, y);
-    mark_rows(s, ny, ny);
-    wake_block_and_neighbors(s, x, y);
-    wake_block_and_neighbors(s, nx, ny);
+    mark_move(s, x, y, nx, ny);
     return true;
 }
 
@@ -305,7 +302,7 @@ spend_soil_moisture(sand_t* s, int w, const reaction_t* r, int soil_at, uint8_t 
                     int root_depth) {
     const cell_t soil = s->cells[soil_at];
     s->cells[soil_at] = soil_set_moisture(soil, (uint8_t)(moisture_of(soil, reaction_of(soil)) - amount), 0);
-    mark_rows(s, soil_at / w, soil_at / w);
+    mark_rows(s, soil_at % w, soil_at / w, soil_at / w);
 
     if (r->roots == 0 || contact_at < 0 || root_depth != 0) {
         return;
@@ -385,8 +382,8 @@ step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t
     const cell_t src = s->cells[src_at], dst = s->cells[dst_at];
     s->cells[src_at] = soil_set_moisture(src, (uint8_t)(src_m - 1), (uint8_t)(dst_m + 1));
     s->cells[dst_at] = with_moisture(dst, (uint8_t)(dst_m + 1), reaction_of(dst));
-    mark_rows(s, src_y, src_y);
-    mark_rows(s, dst_y, dst_y);
+    mark_rows(s, src_x, src_y, src_y);
+    mark_rows(s, dst_x, dst_y, dst_y);
     wake_block_and_neighbors(s, src_x, src_y);
     wake_block_and_neighbors(s, dst_x, dst_y);
     return true;
@@ -531,7 +528,7 @@ step_one_drinking_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* 
     const cell_t soil = s->cells[soil_at];
     const reaction_t* sr = reaction_of(soil);
     s->cells[soil_at] = with_moisture(soil, (uint8_t)(moisture_of(soil, sr) + 1), sr);
-    mark_rows(s, soil_at / w, soil_at / w);
+    mark_rows(s, soil_at % w, soil_at / w, soil_at / w);
     wake_block_and_neighbors(s, soil_at % w, soil_at / w);
     return true;
 }
@@ -700,11 +697,11 @@ shove_aside(sand_t* s, int gx, int gy, int dx, int dy, int w, int h) {
         ex -= dx;
         ey -= dy;
         s->cells[(size_t)ty * (size_t)w + (size_t)tx] = s->cells[(size_t)ey * (size_t)w + (size_t)ex];
-        mark_rows(s, ty, ty);
+        mark_rows(s, tx, ty, ty);
         wake_block_and_neighbors(s, tx, ty);
     }
     s->cells[(size_t)gy * (size_t)w + (size_t)gx] = SAND_EMPTY;
-    mark_rows(s, gy, gy);
+    mark_rows(s, gx, gy, gy);
     wake_block_and_neighbors(s, gx, gy);
     return true;
 }
@@ -854,7 +851,7 @@ step_one_growing_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
     /* Grow, and spend the water. */
     s->cells[gat] = self;
     latch_content_flags(s, self);
-    mark_rows(s, gy, gy);
+    mark_rows(s, gx, gy, gy);
     wake_block_and_neighbors(s, gx, gy);
 
     spend_soil_moisture(s, w, r, soil_at, 1, contact_at, root_depth);

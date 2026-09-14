@@ -198,7 +198,7 @@ queue_flying_grain(sand_t* s, int x, int y, int dir, int speed, bool allow_dislo
         flying = cullet_cell(s);
         s->cells[at] = flying;
         latch_content_flags(s, flying);
-        mark_rows(s, y, y);
+        mark_rows(s, x, y, y);
         wake_block_and_neighbors(s, x, y);
     }
 
@@ -330,7 +330,7 @@ sand_explode(sand_t* s, int cx, int cy, int radius) {
             const cell_t fire = CELL_MAKE(MAT_FIRE, (uint8_t)life);
             s->cells[fat] = fire;
             latch_content_flags(s, fire);
-            mark_rows(s, fy, fy);
+            mark_rows(s, fx, fy, fy);
             wake_block_and_neighbors(s, fx, fy);
         }
     }

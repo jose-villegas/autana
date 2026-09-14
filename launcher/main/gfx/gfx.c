@@ -1,6 +1,7 @@
 #include "gfx/gfx.h"
 #include "gfx/gfx_dirty.h"
 #include "gfx/gfx_font_roles.h"
+#include "gfx/gfx_present_guard.h"
 #include "util/intmath.h"
 
 #include <stdlib.h>
@@ -20,6 +21,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 #endif
 
 /* Carries GFX_DIRTY_WIDTH/HEIGHT for ESP-IDF independence and aligns with
@@ -33,10 +35,42 @@ static const char* TAG = "gfx";
 
 static gfx_color_t* fb;
 
+/* Default from CONFIG_LAUNCHER_GFX_PRESENT_ON_CORE1 on the device; true on a
+ * host, where gfx_present_begin()/_wait() never dispatch to a task anyway. */
+/* A bool Kconfig option set to n leaves its macro UNDEFINED rather than 0,
+ * so "not defined" means off on the device, not "use the default". */
+#if defined(ESP_PLATFORM)
+#if defined(CONFIG_LAUNCHER_GFX_PRESENT_ON_CORE1) && CONFIG_LAUNCHER_GFX_PRESENT_ON_CORE1
+static bool present_async_on = true;
+#else
+static bool present_async_on = false;
+#endif
+#else
+static bool present_async_on = true;
+#endif
+
 #ifdef ESP_PLATFORM
 static esp_lcd_panel_handle_t panel;
 static esp_lcd_panel_io_handle_t panel_io;
 static SemaphoreHandle_t strip_sent;
+
+/* The present task: brings the panel up on core 1 (so the strip-sent
+ * interrupt lands there) and, from then on, is the only task that ever
+ * sends. gfx_init() waits on present_bringup_sem for present_bringup_ok
+ * before deciding its own return value. */
+static TaskHandle_t present_task_handle;
+static SemaphoreHandle_t present_bringup_sem;
+static SemaphoreHandle_t present_done_sem;
+static bool present_bringup_ok;
+static StaticTask_t present_task_tcb;
+
+typedef enum { PRESENT_TASK_NORMAL, PRESENT_TASK_RAW_FULL } present_task_mode_t;
+
+static present_task_mode_t present_task_mode;
+
+#define PRESENT_TASK_STACK_BYTES 4096
+#define PRESENT_TASK_PRIORITY    5
+#define PRESENT_TASK_CORE        1
 
 /* Copied from the Waveshare BSP (Apache-2.0, (c) 2026 Waveshare Team),
  * where it is a private static - needed here because gfx brings the
@@ -252,25 +286,95 @@ panel_bring_up(void) {
 }
 #endif /* ESP_PLATFORM - panel plumbing */
 
-bool
-gfx_init(void) {
 #ifdef ESP_PLATFORM
+/* Defined far below, alongside every other send-path function; the task
+ * loop only needs to call them. */
+static void run_present_normal(void);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static void run_present_raw_full(void);
+#endif
+
+/* Runs entirely on core 1. Bring-up happens here, once, so the strip-sent
+ * interrupt esp_lcd installs lands on this core - see panel_bring_up().
+ * After reporting bring-up, waits for a notification per present and gives
+ * present_done_sem back once everything queued has actually landed. */
+static void
+present_task_fn(void* arg) {
+    (void)arg;
+
     /* Sized for STRIP_COUNT * GRID_COLS: see send_one_row(). Undersizing
-     * blocks gfx_present() forever. */
+     * blocks this task's own send loop forever. */
     strip_sent = xSemaphoreCreateCounting(STRIP_COUNT * GRID_COLS + 2, 0);
     if (strip_sent == NULL) {
         ESP_LOGE(TAG, "Could not create the strip-transfer semaphore");
-        return false;
+        present_bringup_ok = false;
+        xSemaphoreGive(present_bringup_sem);
+        vTaskDelete(NULL);
+        return;
     }
 
-    /* Detect board: initialises I2C, pulses display and touch reset lines. */
     if (board_detect() == BOARD_VARIANT_UNKNOWN) {
         ESP_LOGE(TAG, "Could not identify the board");
-        return false;
+        present_bringup_ok = false;
+        xSemaphoreGive(present_bringup_sem);
+        vTaskDelete(NULL);
+        return;
     }
 
     if (panel_bring_up() != ESP_OK) {
         ESP_LOGE(TAG, "Could not start the display");
+        present_bringup_ok = false;
+        xSemaphoreGive(present_bringup_sem);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    present_bringup_ok = true;
+    xSemaphoreGive(present_bringup_sem);
+
+    for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        if (present_task_mode == PRESENT_TASK_RAW_FULL) {
+            run_present_raw_full();
+            xSemaphoreGive(present_done_sem);
+            continue;
+        }
+#endif
+        run_present_normal();
+        xSemaphoreGive(present_done_sem);
+    }
+}
+#endif /* ESP_PLATFORM */
+
+bool
+gfx_init(void) {
+#ifdef ESP_PLATFORM
+    present_bringup_sem = xSemaphoreCreateBinary();
+    present_done_sem = xSemaphoreCreateBinary();
+    if (present_bringup_sem == NULL || present_done_sem == NULL) {
+        ESP_LOGE(TAG, "Could not create the present task's semaphores");
+        return false;
+    }
+
+    StackType_t* const present_stack =
+        heap_caps_malloc(PRESENT_TASK_STACK_BYTES, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (present_stack == NULL) {
+        ESP_LOGE(TAG, "Could not allocate the present task's %u byte stack", (unsigned)PRESENT_TASK_STACK_BYTES);
+        return false;
+    }
+    present_task_handle =
+        xTaskCreateStaticPinnedToCore(present_task_fn, "gfx_present", PRESENT_TASK_STACK_BYTES / sizeof(StackType_t),
+                                      NULL, PRESENT_TASK_PRIORITY, present_stack, &present_task_tcb, PRESENT_TASK_CORE);
+    if (present_task_handle == NULL) {
+        ESP_LOGE(TAG, "Could not create the present task");
+        return false;
+    }
+
+    /* Bring-up (board_detect(), panel_bring_up()) runs on that task - see
+     * present_task_fn(). Its own ESP_LOGE already named the failure. */
+    xSemaphoreTake(present_bringup_sem, portMAX_DELAY);
+    if (!present_bringup_ok) {
         return false;
     }
 
@@ -337,6 +441,7 @@ gfx_color_t*
 gfx_framebuffer(void) {
     /* gfx can't guess intent. "Everything" wastes resources. Raw writers use
      * gfx_mark_dirty(). Be cautious. */
+    GFX_PRESENT_GUARD();
     return fb;
 }
 
@@ -352,6 +457,7 @@ static int drawn_bbox_x0, drawn_bbox_y0, drawn_bbox_x1, drawn_bbox_y1;
 
 void
 gfx_set_partial_clear(bool on) {
+    GFX_PRESENT_GUARD();
     if (!on) {
         prev_bbox_valid = false;
     }
@@ -365,6 +471,7 @@ gfx_partial_clear_enabled(void) {
 
 void
 gfx_set_interlace(bool on) {
+    GFX_PRESENT_GUARD();
     interlace_on = on;
 }
 
@@ -375,6 +482,7 @@ gfx_interlace_enabled(void) {
 
 void
 gfx_invalidate(void) {
+    GFX_PRESENT_GUARD();
     prev_bbox_valid = false;
 }
 
@@ -382,6 +490,7 @@ gfx_invalidate(void) {
  * API. */
 void
 gfx_mark_all_dirty(void) {
+    GFX_PRESENT_GUARD();
     dirty_mark_all();
     drawn_bbox_valid = false;
     prev_bbox_valid = false;
@@ -389,6 +498,7 @@ gfx_mark_all_dirty(void) {
 
 void
 gfx_mark_dirty(int x, int y, int w, int h) {
+    GFX_PRESENT_GUARD();
     dirty_mark(x, y, w, h);
 
     if (w <= 0 || h <= 0) {
@@ -435,6 +545,7 @@ gfx_mark_dirty(int x, int y, int w, int h) {
 
 bool
 gfx_region_dirty(int x, int y, int w, int h) {
+    GFX_PRESENT_GUARD();
     (void)x;
     (void)w;
     return dirty_region_dirty(y, h);
@@ -453,6 +564,7 @@ gfx_rgb(uint32_t rgb) {
 
 void
 gfx_set_clip(int x, int y, int w, int h) {
+    GFX_PRESENT_GUARD();
     int x1 = x + w;
     int y1 = y + h;
 
@@ -464,6 +576,7 @@ gfx_set_clip(int x, int y, int w, int h) {
 
 void
 gfx_clear_clip(void) {
+    GFX_PRESENT_GUARD();
     clip.x0 = 0;
     clip.y0 = 0;
     clip.x1 = GFX_WIDTH;
@@ -475,6 +588,7 @@ gfx_clear_clip(void) {
 /* Ignores clip rect; clears whole-screen or bounding box; marks box dirty. */
 void
 gfx_clear(gfx_color_t color) {
+    GFX_PRESENT_GUARD();
     if (partial_clear_on && prev_bbox_valid) {
         for (int y = prev_bbox_y0; y < prev_bbox_y1; y++) {
             gfx_color_t* dst = fb + (size_t)y * GFX_WIDTH + prev_bbox_x0;
@@ -500,6 +614,7 @@ gfx_clear(gfx_color_t color) {
 
 void
 gfx_pixel(int x, int y, gfx_color_t color) {
+    GFX_PRESENT_GUARD();
     if (x < clip.x0 || x >= clip.x1 || y < clip.y0 || y >= clip.y1) {
         return;
     }
@@ -650,16 +765,19 @@ draw_line(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
 
 void
 gfx_line(int x0, int y0, int x1, int y1, gfx_color_t color) {
+    GFX_PRESENT_GUARD();
     draw_line(x0, y0, x1, y1, color, 0);
 }
 
 void
 gfx_line_ex(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
+    GFX_PRESENT_GUARD();
     draw_line(x0, y0, x1, y1, color, flags);
 }
 
 void
 gfx_fill_rect(int x, int y, int w, int h, gfx_color_t color) {
+    GFX_PRESENT_GUARD();
     int x0 = x, y0 = y, x1 = x + w, y1 = y + h;
 
     if (x0 < clip.x0) {
@@ -699,6 +817,7 @@ gfx_fill_rect(int x, int y, int w, int h, gfx_color_t color) {
  * reads. gfx_dither_covers() in gfx_color.h. Returns if 0. */
 void
 gfx_fill_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha) {
+    GFX_PRESENT_GUARD();
     if (alpha == 0) {
         return;
     }
@@ -734,6 +853,7 @@ gfx_fill_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t alph
  * Alpha 0 no-op, 255 matches gfx_fill_rect(). */
 void
 gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha) {
+    GFX_PRESENT_GUARD();
     if (alpha == 0) {
         return;
     }
@@ -773,6 +893,7 @@ gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha
  * draw_image()). */
 void
 gfx_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stride, uint8_t alpha) {
+    GFX_PRESENT_GUARD();
     if (alpha == 0) {
         return;
     }
@@ -979,6 +1100,7 @@ draw_glyph_font(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_colo
 
 void
 gfx_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns, const gfx_font_t* font) {
+    GFX_PRESENT_GUARD();
     if (scale < 1) {
         scale = 1;
     }
@@ -1087,6 +1209,7 @@ draw_glyph_font_dither(const gfx_font_t* font, int x, int y, unsigned char ch, g
 void
 gfx_text_font_dither(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
                      const gfx_font_t* font, uint8_t alpha) {
+    GFX_PRESENT_GUARD();
     if (scale < 1) {
         scale = 1;
     }
@@ -1236,11 +1359,13 @@ static dirty_leaf_rect_t* leaf_rect_scratch;
 
 void
 gfx_set_debug_overlay(bool on) {
+    GFX_PRESENT_GUARD();
     debug_overlay_on = on;
 }
 
 void
 gfx_set_leaf_overlay(bool on) {
+    GFX_PRESENT_GUARD();
     if (on) {
         if (leaf_rect_scratch == NULL) {
             leaf_rect_scratch = malloc(sizeof(*leaf_rect_scratch) * LEAF_RECTS_PER_ROW_MAX);
@@ -1478,8 +1603,12 @@ send_one_row(int row, int* queued) {
     }
 }
 
-void
-gfx_present(void) {
+/* The real send, run on the present task (async) or on the caller
+ * (gfx_set_present_async(false)) - either way, on whichever core called it,
+ * since strip_sent is an ordinary FreeRTOS semaphore and the panel's own
+ * strip-sent interrupt is core-agnostic about who it wakes. */
+static void
+run_present_normal(void) {
     int queued = 0;
     if (interlace_on) {
         frame_parity = !frame_parity;
@@ -1523,20 +1652,11 @@ gfx_present(void) {
     }
 }
 
-#else /* !ESP_PLATFORM */
-
-void
-gfx_present(void) {
-    /* No panel on a host build - see this section's own top comment. */
-}
-
-#endif /* ESP_PLATFORM - the presentation pipeline */
-
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Bypasses gfx_present()'s dirty tracking: every strip through the same
  * bounce copy and queue a full-band send takes, one strip_sent per strip. */
-void
-gfx_present_raw_full_frame_for_test(void) {
+static void
+run_present_raw_full(void) {
     for (int row = 0; row < STRIP_COUNT; row++) {
         send_fb_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT);
     }
@@ -1544,4 +1664,107 @@ gfx_present_raw_full_frame_for_test(void) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
 }
+#endif
+
+/* Dispatches to the present task when async, runs directly otherwise - see
+ * gfx_set_present_async(). Shared by gfx_present_begin() and the raw-full
+ * test helper below, which only differ in present_task_mode. */
+static void
+dispatch_present(void) {
+    if (present_async_on) {
+        xTaskNotifyGive(present_task_handle);
+        return;
+    }
+    /* Synchronous: the send happens now, on the caller's own core, before
+     * gfx_present_begin() returns - gfx_present_wait() then has nothing
+     * left to wait for. */
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (present_task_mode == PRESENT_TASK_RAW_FULL) {
+        run_present_raw_full();
+        return;
+    }
+#endif
+    run_present_normal();
+}
+
+void
+gfx_present_begin(void) {
+    gfx_present_guard_begin();
+    present_task_mode = PRESENT_TASK_NORMAL;
+    dispatch_present();
+}
+
+void
+gfx_present_wait(void) {
+    if (present_async_on) {
+        xSemaphoreTake(present_done_sem, portMAX_DELAY);
+    }
+    gfx_present_guard_end();
+}
+
+#else /* !ESP_PLATFORM */
+
+void
+gfx_present_begin(void) {
+    gfx_present_guard_begin();
+}
+
+void
+gfx_present_wait(void) {
+    /* No panel on a host build; draining the dirty tracker here is what
+     * lets a host test assert the same "sequencing leaves it clean"
+     * property a real present provides - see suite_gfx_present_guard.c. */
+    dirty_frame_sent();
+    gfx_present_guard_end();
+}
+
+#endif /* ESP_PLATFORM - the presentation pipeline */
+
+void
+gfx_present(void) {
+    gfx_present_begin();
+    gfx_present_wait();
+}
+
+void
+gfx_set_present_async(bool on) {
+    present_async_on = on;
+}
+
+bool
+gfx_present_async_enabled(void) {
+    return present_async_on;
+}
+
+unsigned
+gfx_present_guard_trip_count(void) {
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+    return gfx_present_guard_trips;
+#else
+    return 0;
+#endif
+}
+
+bool
+gfx_present_in_flight(void) {
+    return gfx_present_guard_in_flight;
+}
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+#ifdef ESP_PLATFORM
+/* Every send runs on the present task (or the caller, under
+ * gfx_set_present_async(false)) - never call this while a present is
+ * already in flight; it is a test helper, not part of the app-facing
+ * pipeline, so it has no begin/wait split of its own. */
+void
+gfx_present_raw_full_frame_for_test(void) {
+    gfx_present_guard_begin();
+    present_task_mode = PRESENT_TASK_RAW_FULL;
+    dispatch_present();
+    if (present_async_on) {
+        xSemaphoreTake(present_done_sem, portMAX_DELAY);
+    }
+    gfx_present_guard_end();
+}
+#endif /* ESP_PLATFORM */
 #endif

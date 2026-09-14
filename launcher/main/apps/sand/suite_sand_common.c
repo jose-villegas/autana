@@ -17,6 +17,8 @@ sand_t s;
 uint8_t cells[W * H];
 sand_test_fx_t fx;
 uint8_t dirty[H];
+uint16_t dirty_x0[H];
+uint16_t dirty_x1[H];
 uint8_t sleep_blocks[BLOCK_COLS * BLOCK_ROWS];
 uint8_t* wide_cells;
 sand_t wide;
@@ -45,6 +47,12 @@ dirty_fixture(void) {
     fixture();
     sand_track_dirty_rows(&s, dirty);
     memset(dirty, 0, sizeof(dirty));
+}
+
+void
+dirty_cols_fixture(void) {
+    dirty_fixture();
+    sand_track_dirty_cols(&s, dirty_x0, dirty_x1);
 }
 
 void
