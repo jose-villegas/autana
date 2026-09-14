@@ -130,3 +130,14 @@ gfx_indexed_cell_changed(uint8_t old_idx, uint8_t new_idx, bool dither16_on,
     }
     return dither_class[old_idx] != dither_class[new_idx];
 }
+
+/* gfx_indexed_cell_changed(), plus the one case it cannot see for itself:
+ * `force_full` set means the PANEL, not just this cell's own index, needs
+ * repainting - an overlay just closed, the board turned - so every visited
+ * cell is worth a write and a send whether or not its index moved. Never
+ * narrow that with the change compare above; only ever widen past it. */
+static inline bool
+gfx_indexed_cell_needs_repaint(bool force_full, uint8_t old_idx, uint8_t new_idx, bool dither16_on,
+                               const uint8_t dither_class[GFX_INDEXED_PALETTE_SIZE]) {
+    return force_full || gfx_indexed_cell_changed(old_idx, new_idx, dither16_on, dither_class);
+}
