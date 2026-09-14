@@ -349,10 +349,17 @@ typedef
   #define S3L_MAX_TRIANGES_DRAWN 128 
 #endif
 
+#ifndef S3L_SCISSOR_Y
+  /** Off by default. When 1, S3L_drawTriangle only computes rows inside
+  [S3L_scissorMinY, S3L_scissorMaxY), set by the caller - for band-at-a-time
+  callers that only want to pay per band for that band's own rows. */
+  #define S3L_SCISSOR_Y 0
+#endif
+
 #ifndef S3L_NEAR
   /** Distance of the near clipping plane. Points in front or EXATLY ON this
   plane are considered outside the frustum. This must be >= 0. */
-  #define S3L_NEAR (S3L_F / 4) 
+  #define S3L_NEAR (S3L_F / 4)
 #endif
 
 #if S3L_NEAR <= 0
@@ -1959,6 +1966,11 @@ static uint8_t _S3L_projectedTriangleState = 0; // 0 = normal, 1 = cut, 2 = spli
 S3L_Vec4 _S3L_triangleRemapBarycentrics[6];
 #endif
 
+#if S3L_SCISSOR_Y
+S3L_ScreenCoord S3L_scissorMinY = 0;
+S3L_ScreenCoord S3L_scissorMaxY = S3L_RESOLUTION_Y;
+#endif
+
 static inline void S3L_drawTriangle(
   S3L_Vec4 point0,
   S3L_Vec4 point1,
@@ -2178,6 +2190,10 @@ static inline void S3L_drawTriangle(
 
   endY = S3L_min(endY,S3L_RESOLUTION_Y);
 
+#if S3L_SCISSOR_Y
+  endY = S3L_min(endY,S3L_scissorMaxY);
+#endif
+
   /* Clipping above the screen (y < 0) can't be easily done here, will be
      handled inside the loop. */
 
@@ -2212,10 +2228,14 @@ static inline void S3L_drawTriangle(
     stepSide(r)
     stepSide(l)
 
+#if S3L_SCISSOR_Y
+    if (currentY >= S3L_scissorMinY && currentY < S3L_scissorMaxY)
+#else
     if (currentY >= 0) /* clipping of pixels whose y < 0 (can't be easily done
                           outside the loop because of the Bresenham-like
                           algorithm steps) */
-    { 
+#endif
+    {
       p.y = currentY;
 
       // draw the horizontal line

@@ -141,41 +141,62 @@ sort_apps(void) {
 /* --- chrome ------------------------------------------------------------- */
 
 static void
-draw_home_hint(gesture_edge_t edge) {
-    int x = 0, y = 0, w = 0, h = 0;
+home_hint_rect(gesture_edge_t edge, int* x, int* y, int* w, int* h) {
+    *x = 0;
+    *y = 0;
+    *w = 0;
+    *h = 0;
 
     switch (edge) {
         case GESTURE_EDGE_TOP:
-            w = HOME_HINT_WIDTH;
-            h = HOME_HINT_HEIGHT;
-            x = (GFX_WIDTH - w) / 2;
-            y = HOME_HINT_MARGIN;
+            *w = HOME_HINT_WIDTH;
+            *h = HOME_HINT_HEIGHT;
+            *x = (GFX_WIDTH - *w) / 2;
+            *y = HOME_HINT_MARGIN;
             break;
         case GESTURE_EDGE_BOTTOM:
-            w = HOME_HINT_WIDTH;
-            h = HOME_HINT_HEIGHT;
-            x = (GFX_WIDTH - w) / 2;
-            y = GFX_HEIGHT - HOME_HINT_MARGIN - h;
+            *w = HOME_HINT_WIDTH;
+            *h = HOME_HINT_HEIGHT;
+            *x = (GFX_WIDTH - *w) / 2;
+            *y = GFX_HEIGHT - HOME_HINT_MARGIN - *h;
             break;
         case GESTURE_EDGE_LEFT:
-            w = HOME_HINT_HEIGHT;
-            h = HOME_HINT_WIDTH;
-            x = HOME_HINT_MARGIN;
-            y = (GFX_HEIGHT - h) / 2;
+            *w = HOME_HINT_HEIGHT;
+            *h = HOME_HINT_WIDTH;
+            *x = HOME_HINT_MARGIN;
+            *y = (GFX_HEIGHT - *h) / 2;
             break;
         case GESTURE_EDGE_RIGHT:
-            w = HOME_HINT_HEIGHT;
-            h = HOME_HINT_WIDTH;
-            x = GFX_WIDTH - HOME_HINT_MARGIN - w;
-            y = (GFX_HEIGHT - h) / 2;
+            *w = HOME_HINT_HEIGHT;
+            *h = HOME_HINT_WIDTH;
+            *x = GFX_WIDTH - HOME_HINT_MARGIN - *w;
+            *y = (GFX_HEIGHT - *h) / 2;
             break;
     }
+}
+
+static void
+draw_home_hint(gesture_edge_t edge) {
+    int x, y, w, h;
+    home_hint_rect(edge, &x, &y, &w, &h);
 
     if (!gfx_region_dirty(x, y, w, h)) {
         return;
     }
 
     gfx_fill_rect(x, y, w, h, gfx_rgb(HOME_HINT_RGB));
+}
+
+/* Band mode (gfx.h) has no framebuffer for draw_home_hint() to write into,
+ * and its whole band loop runs inside frame() with no chance to draw
+ * afterward - see step_app(). Queuing the hint before frame() runs lets
+ * whichever ui_end_for_bands() call happens this frame (fps counter, BOOT
+ * menu, whichever is showing) bin it alongside its own commands. */
+static void
+queue_home_hint(gesture_edge_t edge) {
+    int x, y, w, h;
+    home_hint_rect(edge, &x, &y, &w, &h);
+    ui_queue_band_overlay_rect(x, y, w, h, HOME_HINT_RGB);
 }
 
 /* Holds failing checks until touch. Prevents dead hardware diagnosis from
@@ -258,6 +279,14 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
         return;
     }
 
+    /* Band mode's whole band loop runs inside frame(), with no chance to
+     * draw anything once it returns - see queue_home_hint()'s own comment.
+     * Queued before frame() runs; the trailing draw_home_hint() below
+     * covers every other app unchanged. */
+    if ((*current)->home_gesture && gfx_mode_current()->layout == GFX_LAYOUT_BANDS) {
+        queue_home_hint(exit_edge);
+    }
+
     /* An app with update(): overlap it with sending the frame drawn last
      * pass (gfx_present_begin()/_wait(), gfx.h) - skipped while priming
      * (frame_ready false), since there is nothing to send yet. Presenting
@@ -275,7 +304,7 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
         (*current)->frame(dt_ms, input);
     }
 
-    if ((*current)->home_gesture) {
+    if ((*current)->home_gesture && gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB) {
         draw_home_hint(exit_edge);
     }
 }

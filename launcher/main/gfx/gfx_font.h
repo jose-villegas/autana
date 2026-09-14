@@ -118,3 +118,210 @@ gfx_font_height(const gfx_font_t* f, int scale) {
     }
     return f->cell_h * scale;
 }
+
+/* Screen-space rect for glyph columns [col0, col1] of one row, at `turn`
+ * (numbered as display.h) and `scale`. A quarter turn maps one glyph
+ * axis onto one screen axis, so a run of set bits within a row is always
+ * a straight span in screen space too - one rect instead of one per bit.
+ * col0 <= col1 required. */
+static inline void
+gfx_font_row_run_rect(const gfx_font_t* f, int x, int y, int row, int col0, int col1, int scale, int turn, int* out_x,
+                      int* out_y, int* out_w, int* out_h) {
+    const int run = col1 - col0 + 1;
+    switch (turn) {
+        case 1: /* top-to-bottom: glyph row fixes screen x, columns run down y */
+            *out_x = x + (f->cell_h - 1 - row) * scale;
+            *out_y = y + col0 * scale;
+            *out_w = scale;
+            *out_h = run * scale;
+            break;
+        case 2: /* upside down: glyph row fixes screen y, columns run backward along x */
+            *out_x = x + (f->cell_w - 1 - col1) * scale;
+            *out_y = y + (f->cell_h - 1 - row) * scale;
+            *out_w = run * scale;
+            *out_h = scale;
+            break;
+        case 3: /* bottom-to-top: glyph row fixes screen x, columns run backward up y */
+            *out_x = x + row * scale;
+            *out_y = y + (f->cell_w - 1 - col1) * scale;
+            *out_w = scale;
+            *out_h = run * scale;
+            break;
+        default: /* upright: glyph row fixes screen y, columns run along x */
+            *out_x = x + col0 * scale;
+            *out_y = y + row * scale;
+            *out_w = run * scale;
+            *out_h = scale;
+            break;
+    }
+}
+
+/* gfx_font_row_run_rect(), grown by one pixel on every side - unioning a
+ * rect's 8 unit-offset copies (ui_style.h's UI_TEXT_OUTLINED) covers the
+ * same area as this, since those 8 offsets are a full 3x3 neighbourhood
+ * minus its own centre, which the caller redraws in ink afterwards
+ * anyway. */
+static inline void
+gfx_font_row_run_rect_dilated(const gfx_font_t* f, int x, int y, int row, int col0, int col1, int scale, int turn,
+                              int* out_x, int* out_y, int* out_w, int* out_h) {
+    gfx_font_row_run_rect(f, x, y, row, col0, col1, scale, turn, out_x, out_y, out_w, out_h);
+    *out_x -= 1;
+    *out_y -= 1;
+    *out_w += 2;
+    *out_h += 2;
+}
+
+/* gfx_font_row_run_rect(), generalised from one glyph row to a row RANGE
+ * [row0, row1) sharing the same [col0, col1] run - a vertical stroke
+ * spans several rows with an identical run, and mapping the whole box at
+ * once, rather than row by row, is what turns landscape's "one narrow
+ * rect per row" into one rect regardless of turn. Reduces to
+ * gfx_font_row_run_rect() when row1 == row0 + 1. */
+static inline void
+gfx_font_run_box_rect(const gfx_font_t* f, int x, int y, int row0, int row1, int col0, int col1, int scale, int turn,
+                      int* out_x, int* out_y, int* out_w, int* out_h) {
+    const int rows = row1 - row0;
+    const int cols = col1 - col0 + 1;
+    switch (turn) {
+        case 1: /* glyph rows run backward along screen x, columns run down y */
+            *out_x = x + (f->cell_h - row1) * scale;
+            *out_y = y + col0 * scale;
+            *out_w = rows * scale;
+            *out_h = cols * scale;
+            break;
+        case 2: /* columns run backward along x, rows run backward along y */
+            *out_x = x + (f->cell_w - 1 - col1) * scale;
+            *out_y = y + (f->cell_h - row1) * scale;
+            *out_w = cols * scale;
+            *out_h = rows * scale;
+            break;
+        case 3: /* rows run along screen x, columns run backward along y */
+            *out_x = x + row0 * scale;
+            *out_y = y + (f->cell_w - 1 - col1) * scale;
+            *out_w = rows * scale;
+            *out_h = cols * scale;
+            break;
+        default: /* upright: columns run along x, rows run along y */
+            *out_x = x + col0 * scale;
+            *out_y = y + row0 * scale;
+            *out_w = cols * scale;
+            *out_h = rows * scale;
+            break;
+    }
+}
+
+/* gfx_font_run_box_rect(), grown by one pixel on every side - see
+ * gfx_font_row_run_rect_dilated()'s own comment; the same Minkowski
+ * argument holds for any box, not just a single-row run. */
+static inline void
+gfx_font_run_box_rect_dilated(const gfx_font_t* f, int x, int y, int row0, int row1, int col0, int col1, int scale,
+                              int turn, int* out_x, int* out_y, int* out_w, int* out_h) {
+    gfx_font_run_box_rect(f, x, y, row0, row1, col0, col1, scale, turn, out_x, out_y, out_w, out_h);
+    *out_x -= 1;
+    *out_y -= 1;
+    *out_w += 2;
+    *out_h += 2;
+}
+
+/* One coalesced box of a glyph's own set bits - [row0, row1) x [col0,
+ * col1], in glyph-local coordinates, before any turn is applied. What
+ * gfx_font_glyph_run_boxes() below emits instead of one entry per row. */
+typedef struct {
+    int row0, row1;
+    int col0, col1;
+} gfx_font_run_box_t;
+
+/* A caller's own gfx_font_run_box_t[] needs no more than this many slots
+ * for the one 1bpp font shipped (gfx_font_8x8, 8 wide): worst case, every
+ * row's up to 4 runs fail to match its neighbour, giving cell_h * 4 - 32
+ * for an 8-row glyph. */
+#define GFX_FONT_RUN_BOXES_MAX 32
+
+/* A 1bpp glyph's own bit-runs, coalesced across consecutive rows sharing
+ * the identical [col0, col1] - a vertical stroke becomes one box instead
+ * of one per row, before rotation, so the merge is turn-independent. At
+ * most cell_w/2 runs open at once (an alternating bit pattern), well
+ * under GFX_FONT_MAX_OPEN_RUNS for the one 1bpp font shipped (8 wide).
+ * Returns boxes written, capped at `max_out` like dirty_leaf_rects()
+ * (gfx_dirty.h); ch outside the font's range yields zero. */
+static inline int
+gfx_font_glyph_run_boxes(const gfx_font_t* f, unsigned char ch, gfx_font_run_box_t* out, int max_out) {
+    if (ch < f->first || (unsigned)(ch - f->first) >= f->count) {
+        return 0;
+    }
+
+#define GFX_FONT_MAX_OPEN_RUNS 8
+    const uint8_t* glyph = f->atlas + (size_t)(ch - f->first) * f->cell_h;
+    gfx_font_run_box_t open_runs[GFX_FONT_MAX_OPEN_RUNS];
+    int open_count = 0;
+    int n = 0;
+
+    /* One extra pass with bits == 0 flushes every run still open once
+     * the real rows are done, without a separate closing loop. */
+    for (int row = 0; row <= f->cell_h; row++) {
+        const uint8_t bits = (row < f->cell_h) ? glyph[row] : 0;
+
+        gfx_font_run_box_t current[GFX_FONT_MAX_OPEN_RUNS];
+        int current_count = 0;
+        int col = 0;
+        while (col < f->cell_w) {
+            if (!(bits & (1 << col))) {
+                col++;
+                continue;
+            }
+            int end = col;
+            while (end + 1 < f->cell_w && (bits & (1 << (end + 1)))) {
+                end++;
+            }
+            if (current_count < GFX_FONT_MAX_OPEN_RUNS) {
+                current[current_count].row0 = row;
+                current[current_count].row1 = row + 1;
+                current[current_count].col0 = col;
+                current[current_count].col1 = end;
+                current_count++;
+            }
+            col = end + 1;
+        }
+
+        bool current_matched[GFX_FONT_MAX_OPEN_RUNS] = {0};
+        gfx_font_run_box_t next_open[GFX_FONT_MAX_OPEN_RUNS];
+        int next_open_count = 0;
+
+        /* Extend an open run whose [col0, col1] survives into this row;
+         * flush it (it stops here) otherwise. */
+        for (int p = 0; p < open_count; p++) {
+            int found = -1;
+            for (int c = 0; c < current_count; c++) {
+                if (!current_matched[c] && current[c].col0 == open_runs[p].col0
+                    && current[c].col1 == open_runs[p].col1) {
+                    found = c;
+                    break;
+                }
+            }
+            if (found >= 0) {
+                current_matched[found] = true;
+                if (next_open_count < GFX_FONT_MAX_OPEN_RUNS) {
+                    next_open[next_open_count] = open_runs[p];
+                    next_open[next_open_count].row1 = row + 1;
+                    next_open_count++;
+                }
+            } else if (n < max_out) {
+                out[n++] = open_runs[p];
+            }
+        }
+        /* A run this row that matched no open one starts fresh here. */
+        for (int c = 0; c < current_count; c++) {
+            if (!current_matched[c] && next_open_count < GFX_FONT_MAX_OPEN_RUNS) {
+                next_open[next_open_count++] = current[c];
+            }
+        }
+
+        open_count = next_open_count;
+        for (int i = 0; i < open_count; i++) {
+            open_runs[i] = next_open[i];
+        }
+    }
+
+    return n;
+#undef GFX_FONT_MAX_OPEN_RUNS
+}

@@ -203,3 +203,27 @@ bool ui_end(uint32_t background_rgb);
  * its unchanged command list, skip the repaint, and leave the app's
  * last frame on screen. */
 void ui_invalidate(void);
+
+/*
+ * Band mode (gfx.h) has no retained framebuffer, so hash-and-skip does
+ * not apply: every band redraws every frame regardless. Closes the frame
+ * like ui_end() does, but BINS the commands by row range instead of
+ * painting - ui_replay_band() draws a band's own share later. Call once
+ * per frame, before the band loop. Pass UI_NO_BACKGROUND if the caller
+ * already cleared the band itself.
+ */
+void ui_end_for_bands(uint32_t background_rgb);
+
+/* Draws whatever ui_end_for_bands() bin holds that overlaps [row0, row1) -
+ * call once per band, into gfx's current band draw target, after the
+ * app's own band content. Commands replay in the same back-to-front,
+ * within-canvas order ui_end() itself would paint them in. */
+void ui_replay_band(int row0, int row1);
+
+/* Queues a plain opaque rect for the NEXT ui_end_for_bands() call to bin
+ * alongside its own microui commands - for pixels to show in band mode
+ * that were never built through microui, such as the shell's own
+ * home-swipe hint. Drained (and cleared) by that call, so state it every
+ * frame it is wanted. `rgb` is plain 0xRRGGBB, not a gfx_color_t - ui.h
+ * does not otherwise depend on gfx.h. */
+void ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb);

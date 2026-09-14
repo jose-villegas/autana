@@ -425,6 +425,115 @@ test_dirty_mark_is_a_noop_once_everything_is_already_claimed(void) {
                                   "can only ever repeat work already done - it must not run at all");
 }
 
+/* --- dirty_band_extent(): band mode's own "does this row range need
+ * touching" query -------------------------------------------------------- */
+
+static void
+test_band_extent_false_when_nothing_is_dirty(void) {
+    fixture();
+    int x0, x1;
+    TEST_ASSERT_FALSE(dirty_band_extent(0, 32, &x0, &x1));
+}
+
+/* An odd-edged mark rounds outward to even, the same rule gfx.c's own
+ * even_floor()/even_ceil() apply to a real panel window. */
+static void
+test_band_extent_returns_the_marked_x_range_rounded_even(void) {
+    fixture();
+    dirty_mark(11, 5, 21, 10); /* x in [11, 32) */
+
+    int x0, x1;
+    TEST_ASSERT_TRUE(dirty_band_extent(0, 32, &x0, &x1));
+    TEST_ASSERT_EQUAL_INT(10, x0); /* 11 rounded down */
+    TEST_ASSERT_EQUAL_INT(32, x1); /* already even */
+}
+
+static void
+test_band_extent_ignores_a_band_outside_the_marked_rows(void) {
+    fixture();
+    dirty_mark(10, 10, 20, 20); /* rows [10, 30) */
+
+    int x0, x1;
+    TEST_ASSERT_FALSE_MESSAGE(dirty_band_extent(200, 232, &x0, &x1),
+                              "a band nowhere near the mark must report nothing dirty");
+}
+
+/* A band-ring band is often narrower than STRIP_HEIGHT (64) - the query
+ * must use the mark's own narrowed cell_y0/y1, not the whole strip, so a
+ * band above or below the real mark inside the SAME strip still misses it. */
+static void
+test_band_extent_only_sees_the_part_of_a_strip_its_own_range_covers(void) {
+    fixture();
+    dirty_mark(0, 40, 8, 4); /* rows [40, 44), well inside strip 0 (rows 0-63) */
+
+    int x0, x1;
+    TEST_ASSERT_TRUE_MESSAGE(dirty_band_extent(32, 64, &x0, &x1), "a band containing the mark's real rows must see it");
+    TEST_ASSERT_FALSE_MESSAGE(dirty_band_extent(0, 32, &x0, &x1),
+                              "a band in the same strip but above the mark's own rows must not");
+}
+
+/* dirty_mark_all() is what a caller reaches for to force everything - band
+ * mode's own "orientation change / app enter / gfx_invalidate()" case (see
+ * gfx.c) ends up here too, so this is the query-side half of that promise:
+ * once marked, every row range reports the full width dirty. */
+static void
+test_band_extent_is_full_width_once_everything_is_marked(void) {
+    fixture();
+    dirty_mark_all();
+
+    int x0, x1;
+    TEST_ASSERT_TRUE(dirty_band_extent(0, 32, &x0, &x1));
+    TEST_ASSERT_EQUAL_INT(0, x0);
+    TEST_ASSERT_EQUAL_INT(GFX_DIRTY_WIDTH, x1);
+    TEST_ASSERT_TRUE(dirty_band_extent(416, 448, &x0, &x1));
+}
+
+/* A moving box across several frames, marked and queried the way a real
+ * band-mode frame loop repeats it: mark old+new bounds, query every band,
+ * dirty_frame_sent() before the next frame. A caller that stops marking
+ * after frame one - the exact way suite_cube_band_perf.c's own band_frame()
+ * once did, silently, since nothing but this sequence proves per-frame
+ * marks still land - would show every band skipped from frame two on. */
+static void
+test_band_extent_follows_a_moving_box_across_several_frames(void) {
+    fixture();
+
+    /* One full STRIP_HEIGHT per frame: a smaller step re-marks the same
+     * cell with a different sub-range each frame, and a cell's box only
+     * ever widens within its own lifetime (never narrows before the next
+     * dirty_mark_all()) - correct, but it would make this test's exact
+     * per-frame equality assert fail on a real, harmless over-touch. */
+    const int band_height = 32; /* a real GFX_BAND_HEIGHT choice (gfx.h) - not reachable from here, see file comment */
+    const int box_x = 10, box_w = 15, box_h = 20;
+    int box_y = 0;
+    bool prev_valid = false;
+    int prev_y = 0;
+
+    for (int frame = 0; frame < 4; frame++) {
+        if (prev_valid) {
+            dirty_mark(box_x, prev_y, box_w, box_h);
+        }
+        dirty_mark(box_x, box_y, box_w, box_h);
+
+        for (int band = 0; band * band_height < GFX_DIRTY_HEIGHT; band++) {
+            const int row0 = band * band_height;
+            const int row1 = row0 + band_height;
+            int x0, x1;
+            const bool touched = dirty_band_extent(row0, row1, &x0, &x1);
+            const bool overlaps_old = prev_valid && prev_y < row1 && prev_y + box_h > row0;
+            const bool overlaps_new = box_y < row1 && box_y + box_h > row0;
+
+            TEST_ASSERT_EQUAL_INT_MESSAGE(overlaps_old || overlaps_new, touched,
+                                          "band touch/skip must follow the moving box every frame, not just the first");
+        }
+
+        dirty_frame_sent();
+        prev_valid = true;
+        prev_y = box_y;
+        box_y += STRIP_HEIGHT;
+    }
+}
+
 void
 run_gfx_dirty_suite(void) {
     RUN_TEST(test_mark_leaves_stays_in_the_leaf_before_a_boundary);
@@ -461,6 +570,13 @@ run_gfx_dirty_suite(void) {
 
     RUN_TEST(test_mark_all_claims_every_row);
     RUN_TEST(test_dirty_mark_is_a_noop_once_everything_is_already_claimed);
+
+    RUN_TEST(test_band_extent_false_when_nothing_is_dirty);
+    RUN_TEST(test_band_extent_returns_the_marked_x_range_rounded_even);
+    RUN_TEST(test_band_extent_ignores_a_band_outside_the_marked_rows);
+    RUN_TEST(test_band_extent_only_sees_the_part_of_a_strip_its_own_range_covers);
+    RUN_TEST(test_band_extent_is_full_width_once_everything_is_marked);
+    RUN_TEST(test_band_extent_follows_a_moving_box_across_several_frames);
 }
 
 SUITE_REGISTER(run_gfx_dirty_suite);
