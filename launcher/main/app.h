@@ -62,6 +62,14 @@ typedef struct {
     /* Called once as the app stops. Release anything enter() acquired. */
     void (*exit)(void);
 
+    /* Opt-in, NULL unless an app keeps a draw cache of its own beyond the
+     * framebuffer - row-run spans, a partial-clear bbox, and so on. The
+     * shell calls this once, before the next frame() after
+     * gfx_request_full_redraw() (gfx.h) was called by the shell or by the
+     * app itself, so that cache can be reset the same way the framebuffer
+     * already was. An app with no such cache needs no implementation. */
+    void (*invalidate)(void);
+
     /* Opt-in, not opt-out: false unless an app sets it. main.c only
      * tracks the edge-swipe-home gesture and draws its hint strip while
      * an app with this true is running - an app that leaves it unset

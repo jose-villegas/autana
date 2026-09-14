@@ -243,6 +243,10 @@ const app_t app_diagnostics = {
     .enter = diagnostics_enter,
     .frame = diagnostics_frame,
     .exit = diagnostics_exit,
+    /* No cache of its own beyond ui.c's shared one - see ui_invalidate()'s
+     * own comment for why a repaint replacing the screen out from under it
+     * needs this. */
+    .invalidate = ui_invalidate,
     .home_gesture = true,
 };
 
