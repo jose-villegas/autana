@@ -51,6 +51,11 @@ extern sand_test_fx_t fx;
  * elsewhere in the split that also exercises sand_track_dirty_rows(). */
 extern uint8_t dirty[H];
 
+/* Dirty-COLUMN span, one pair per row, reused by dirty_cols_fixture() the
+ * same way dirty[] is by dirty_fixture(). */
+extern uint16_t dirty_x0[H];
+extern uint16_t dirty_x1[H];
+
 #define BLOCK_COLS ((W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
 #define BLOCK_ROWS ((H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
 extern uint8_t sleep_blocks[BLOCK_COLS * BLOCK_ROWS];
@@ -111,6 +116,10 @@ void load(const char* rows[], int count);
 /* Resets the default fixture and arms dirty-row tracking against it,
  * clearing `dirty`. */
 void dirty_fixture(void);
+
+/* Same as dirty_fixture(), plus sand_track_dirty_cols() against
+ * dirty_x0/dirty_x1. */
+void dirty_cols_fixture(void);
 
 /* Resets the default fixture, enables block-sleeping against sleep_blocks,
  * loads `rows`, then steps `steps` times under (gx, gy). */

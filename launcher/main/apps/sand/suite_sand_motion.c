@@ -354,6 +354,64 @@ test_tracking_starts_by_assuming_everything_changed(void) {
     }
 }
 
+/* --- dirty-column tracking -----------------------------------------------
+ *
+ * dirty[] alone only answers "did this row change" - a grain moving along a
+ * row still marked the WHOLE row. dirty_x0[y]/dirty_x1[y] add which
+ * COLUMNS actually changed. */
+
+static void
+test_dirty_cols_start_with_the_sentinel(void) {
+    dirty_cols_fixture();
+
+    for (int y = 0; y < H; y++) {
+        TEST_ASSERT_TRUE_MESSAGE(dirty_x0[y] > dirty_x1[y],
+                                 "no span has been recorded yet, so the row must read as the sentinel "
+                                 "- a caller reading dirty_x0 >= dirty_x1 as anything else would "
+                                 "under-repaint the very first frame");
+    }
+}
+
+static void
+test_spawning_marks_only_the_column_it_filled(void) {
+    dirty_cols_fixture();
+
+    sand_spawn(&s, 4, 4, 0, MAT_SAND);
+
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(4, dirty_x0[4], "the span must start at the column actually filled");
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(5, dirty_x1[4], "and end one past it, not the row's far edge");
+    TEST_ASSERT_TRUE_MESSAGE(dirty_x0[0] > dirty_x1[0], "a distant row was never touched at all");
+}
+
+/* A settled run sharing a row with a moving grain must not appear in that
+ * row's dirty span. Gravity runs along X here, so the fall stays inside
+ * row 3 the whole way - a row-only mark_rows(y0, y1) could never tell that
+ * apart from "the whole row changed". */
+static void
+test_a_sideways_fall_does_not_dirty_a_settled_run_elsewhere_in_the_row(void) {
+    dirty_cols_fixture();
+
+    /* Rests against the far wall under +X gravity from the moment it is
+     * placed - the board edge leaves it nowhere to fall. */
+    sand_set(&s, W - 1, 3, SAND_FIRST_SHADE);
+    sand_set(&s, 0, 3, SAND_FIRST_SHADE);
+    /* Both placements just marked their own columns - clear that so only
+     * the step below is being measured. */
+    memset(dirty, 0, sizeof(dirty));
+    for (int y = 0; y < H; y++) {
+        dirty_x0[y] = (uint16_t)W;
+        dirty_x1[y] = 0;
+    }
+
+    sand_step(&s, 1000, 0, 0);
+
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, dirty[3], "the row the lone grain moved in must be reported dirty");
+    TEST_ASSERT_TRUE_MESSAGE(dirty_x1[3] <= W - 2,
+                             "the settled grain against the far wall never changed and must not be "
+                             "inside the dirty span - a span reaching it is the whole-row bug this "
+                             "feature exists to fix, just measured in columns");
+}
+
 /* --- friction ------------------------------------------------------------ */
 
 /* The behaviour these exist for: a floor of sand that skated sideways on the
@@ -740,6 +798,9 @@ run_sand_motion_suite(void) {
     RUN_TEST(test_every_changed_row_is_reported);
     RUN_TEST(test_spawning_marks_the_rows_it_filled);
     RUN_TEST(test_tracking_starts_by_assuming_everything_changed);
+    RUN_TEST(test_dirty_cols_start_with_the_sentinel);
+    RUN_TEST(test_spawning_marks_only_the_column_it_filled);
+    RUN_TEST(test_a_sideways_fall_does_not_dirty_a_settled_run_elsewhere_in_the_row);
     RUN_TEST(test_load_counts_the_grains_stacked_above);
     RUN_TEST(test_load_stops_at_a_gap);
     RUN_TEST(test_open_sky_is_not_load);
