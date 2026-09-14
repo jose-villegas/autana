@@ -49,6 +49,13 @@ typedef struct sand_s {
     uint8_t* cells; /* w * h, row-major, caller-owned */
     int w, h;
     rng_t rng; /* seeded explicitly, so every run repeats exactly */
+    /* The same seed, kept aside for sand_rng_next_at()'s hashed draws -
+     * see sand_two_core_step_enabled() (below) and sand_priv.h. rng_hashed
+     * is true only while a checkerboard-parallel pass is actually running,
+     * so every other draw in a step still advances the sequential stream
+     * above, unaffected. */
+    uint32_t rng_seed_base;
+    bool rng_hashed;
     /* Drifts the shade band random_cell() spawns with, so two separate pours
      * read as two shades rather than one flat fill. */
     uint32_t pour_phase;
@@ -603,6 +610,16 @@ void sand_set_mobility(sand_t* s, int chance);
  * it. A walk draws one direction and probes once. */
 void sand_set_gas_walk(sand_t* s, bool on);
 #define SAND_MOBILITY_PER_MATERIAL (-1)
+
+/* Global, not per-board, like gfx_set_present_async(): one core 1 regardless
+ * of how many sand_t instances exist. Hands a step's order-independent
+ * block bookkeeping to a task pinned there - see finalize_settling()
+ * (sand.c) - while the movement passes, which draw a data-dependent number
+ * of times from one shared PRNG, stay on the caller's core. Runtime
+ * override for an A/B measurement or a test that wants the plain serial
+ * path; CONFIG_LAUNCHER_SAND_TWO_CORE_STEP sets the default. */
+void sand_set_two_core_step(bool on);
+bool sand_two_core_step_enabled(void);
 
 /* Advance one frame. (gx, gy) is a gravity vector, direction matters. Zero
  * vector means free fall. `jostle` (0-255) makes grains slide sideways and

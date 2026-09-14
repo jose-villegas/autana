@@ -944,6 +944,196 @@ step" and the numbers above:
   mattered: it alone was the difference between a settled screen of sand
   costing 17 us and costing 5.5 ms.
 
+## Two cores: a checkerboard sweep, and what stays serial
+
+The device's own present() overlaps with `sand_step()` on the other core
+already - see `docs/Launcher-Architecture.md`. Splitting the step itself
+across cores is harder, for a reason that has nothing to do with sweep
+order: `sand_t.rng` is one `xorshift32` word, drawn from a data-dependent
+number of times per cell by every pass. Two cores drawing from it at once
+race on that word; the fix is to stop sharing it - see "The draw" below -
+which means the split can no longer promise the byte-identical output the
+project held itself to until this feature. What it promises instead is
+**determinism**: the same seed gives the same board every time, on any
+core, in any order, because no draw depends on anything but (seed, step,
+cell, which draw). The serial path is unchanged and still byte-identical -
+the fingerprint suite still holds it to that - but a step run with
+`sand_set_two_core_step(true)` is a **different, deliberately allowed**
+simulation for the same seed, checked for its own determinism rather than
+against the serial one.
+
+### The reaches, measured
+
+What can share a core-1 dispatch at all depends on how far one cell's
+update can touch another's, in cells:
+
+| Pass | Reach | Parallel? |
+| --- | --- | --- |
+| Main sweep (`step_one_grain`, `move_liquid_grain`) | 1 (Chebyshev - every move is one of the eight ring directions) | yes |
+| Liquid cross-flow (`equalise_liquids`, `find_shallowest`) | `SAND_LIQUID_SIGHT`, 8, along a ray that can run diagonally through several rows | no (this round) |
+| Gas walk (`gas_walk_once`) | 1, same shape as the sweep | no (this round) |
+| Gas cross-flow (`equalise_gas`) | 8, shares `SAND_LIQUID_SIGHT` | no |
+| Heat conduction to a boiler (`try_heat_transform_given`'s `CONDUCT_REACH`) | 32, a directed walk, not a spread | no |
+| Glass crack flood | up to `CRACK_MAX`, 256 | no |
+| Lava cool-off chain | up to `SAND_LAVA_COOLOFF_MAX_CHAIN`, 8 links, each an arbitrary further cell | no |
+| Explosions and thrown debris (`step_impulses`) | queued, crosses many steps, effectively unbounded | no |
+
+Only the main sweep's reach is small and fixed enough to tile cheaply and
+safely. Cross-flow's reach is the same order of magnitude as a stripe, and
+folding it in would mean either a much taller stripe (more serial-sized
+work per phase) or accepting a materially larger boundary error than the
+sweep's own one-cell corner case - not attempted this round. Reactions mix
+1-cell rules with `CONDUCT_REACH`, the crack flood and the cool-off chain,
+none of which tile at any sane stripe height, and impulses are not even
+bounded within one step. All four - cross-flow, gas, reactions, impulses -
+stay exactly as they were, serial, drawing the plain sequential stream.
+
+### Stripes, not tiles
+
+A 2-colour checkerboard of 2-D tiles was tried on paper first and rejected:
+tiles diagonal to each other share a corner, and a reach of even 1 cell can
+touch that corner from a same-coloured tile on the far side of it, exactly
+the class of bug Noita's own write-up (GDC 2019) solves with a 2x2, four
+-colour scheme and a per-cell "updated this frame" stamp. Stripes avoid
+that specific problem outright: a row-stripe has exactly two neighbours,
+above and below, and colouring stripes by index means a stripe's only
+neighbours are always the opposite colour, so two same-coloured stripes
+are always a full stripe height apart - far past the sweep's 1-cell reach.
+
+That does NOT mean the split needs no boundary handling at all - see
+"The seam fix" below for the one it does need.
+
+`SWEEP_STRIPE_H` is `SAND_BLOCK_H` (32), reusing the sleep-tracking grid's
+own row size rather than inventing a second one. Each step picks one of two
+phases - all even-coloured stripes, then all odd - and for each phase, half
+the stripes run on a task pinned to core 1 while the rest run on the
+caller's own core, joining before the next phase starts. Within a phase,
+which stripe goes to which core does not matter: none of them touch each
+other. The stripe grid's own offset alternates by half a stripe height
+every step (`s->step_phase & 1`), the same idea Margolus-style block
+automata use (see the probabilistic-cellular-automata literature on GPU
+falling sand) to keep a boundary from sitting on the same rows long enough
+to become a visible seam - `suite_sand_two_core.c`'s own seam test checks
+exactly this, by histogramming a settled pile's row-to-row occupancy for an
+outlier at stripe-boundary rows.
+
+Below `SWEEP_CHECKERBOARD_MIN_ROWS` (four stripes' worth) the whole sweep
+just runs on one core - a handful of stripes plus a hop to core 1 is not
+worth it.
+
+### The seam fix
+
+The serial sweep's own no-double-move guarantee rests on one property:
+every row's possible destinations were already visited this step, so a
+grain that lands there is never picked up again. That property is per
+GRID, not per stripe - a stripe boundary sits inside it, not outside it.
+Two adjacent stripes are always different colours, so ONE of a stripe's
+two neighbours belongs to whichever phase runs second - and a move that
+crosses into that neighbour's boundary row lands somewhere that phase has
+not swept yet. Once it does, it finds the just-arrived grain sitting
+there and moves it again: two cells in one step, at roughly half of every
+seam, every step.
+
+`run_sweep_stripes()` excludes both boundary rows of every stripe from
+the phases entirely - `step_one_grain()`'s reach is exactly one cell
+(every offset the sweep uses, primary or slide, is one of the eight ring
+directions), so a boundary row is the only one a move could reach past a
+stripe's edge, and excluding it removes the crossing outright. That alone
+is not the whole fix, though: an interior row directly beside a guard row
+is still swept DURING its own phase, using the guard row's state from
+before that phase ran. In an unstriped sweep the guard row (closer to the
+sweep's starting edge) would already have had its own turn by then; here
+it has not, so a grain that the interior row pushes into the guard row
+gets a second, unwanted move once the guard pass finally reaches it.
+
+The guard pass fixes this by snapshotting every guard row's content
+before either phase runs, then comparing: a column that still matches its
+snapshot got no phase-time write and takes its ordinary turn; a column
+that changed already moved once this step, via the interior row beside
+it, and is skipped. That removes the double-move without needing the two
+guard rows of a boundary - or the boundary's own place relative to every
+other boundary in the grid - in exact serial order.
+
+Exact serial order is, in fact, provably out of reach for a plain
+two-phase split once three or more stripes are active: tracing the
+dependency chain across two adjacent boundaries (interior row of the top
+stripe, its guard pair, interior row of the middle stripe, the next guard
+pair, interior row of the bottom stripe) shows the middle stripe needs to
+run before the top stripe at one boundary and after the bottom stripe at
+the other - but the top and bottom stripes share a colour and are meant
+to run as a single phase. No reordering of "all of colour A, then all of
+colour B" satisfies both constraints at once. A per-seam moved stamp
+sidesteps the contradiction rather than solving it: it is a safety fix,
+not an order-equivalence one.
+
+What that buys, and what it doesn't: `suite_sand_two_core.c` places a
+lone grain exactly on a seam, under all four axis-aligned gravity
+directions and both stripe offsets, and checks it travels exactly one
+cell in one step, an open fall and a slide alike - and, with scatter
+forced to zero, that this matches the serial path's own fall distance
+exactly. That case has nothing else nearby to contend with, so the guard
+pass's snapshot always matches and the fix is exact. A dense column or
+pile crossing several boundaries at once is a different story: running
+the same scatter-zero comparison on a full falling column and a settling
+slab shows the two paths' final boards are NOT byte-identical once a
+contested chain spans more than one seam - exactly the scenario the
+dependency-chain argument above rules out. What the guard pass still
+guarantees there, and what the suite checks instead, is that the grain
+count never drifts: nothing is duplicated or dropped, only reordered by
+up to the width of a stripe boundary.
+
+### The draw
+
+`sand_rng_next_at(s, x, y, slot)` (sand_priv.h) replaces `rng_next(&s->rng)`
+at every call site the sweep reaches - `try_scatter()`, `try_slide_impl()`,
+`liquid_may_move()` - while `s->rng_hashed` is armed, which is true only for
+the two checkerboard phases and nowhere else in the step. Armed, it hashes
+`(s->rng_seed_base, s->step_phase, y * s->w + x, slot)` through
+`rng_hash()` (util/rng.h); disarmed, it is `rng_next(&s->rng)` unchanged, so
+gas and reactions later the same step, and the whole step with the switch
+off, are untouched. `slot` is a fixed per-call-site constant
+(`SAND_RNG_SLOT_*`), not a per-cell counter - a cell's scatter roll and its
+slide roll hash different inputs because they are different constants, not
+because anything counts draws, which is what makes a draw depend on nothing
+but its own four inputs and nothing any other core is doing. One case had
+no safe answer at all: `splash_displace()`'s hard-landing splash queues into
+`s->impulse_buf`, one shared counter with no lock, so it simply does not
+fire while `rng_hashed` is armed - a documented, narrow behaviour loss
+rather than a race on that queue.
+
+### Scheduling: below present, not around it
+
+The core-1 task (`sand_core1.c`) runs at priority 3, below gfx's present
+task at 5 - not in a window carved out before or after present, because
+`sand_step()` can run while a previous frame is still presenting
+(`main.c`'s `step_app()`) and present's own timing must never move for
+anything sand does. A lower-priority task only gets the CPU while present
+is blocked on its own strip-sent semaphore, which is most of a present
+since the transfer itself is DMA, so present is never delayed and core 1
+still does useful work in gaps that would otherwise sit idle.
+
+### A device hang, and the fix
+
+A diagnostics build of an earlier version of this task hung completely
+after boot with core-1 dispatch wired up: no fps line, no response to a
+RUNSUITE trigger, every reset. The mechanism a wait like that already
+existed in this codebase - `gfx_present_wait()`'s own `xSemaphoreTake(...,
+portMAX_DELAY)` chain has no timeout anywhere in it either, and has always
+been one wedged strip-sent interrupt away from hanging the whole frame loop
+the same way; adding a second task to core 1 is exactly the kind of change
+that could expose a latent timing assumption there. `sand_core1_join()` now
+waits `CORE1_JOIN_TIMEOUT_MS` (100, far above any dispatch this file makes)
+rather than forever, logs loudly in development builds if it gives up, and
+latches `core1_disabled` so no later dispatch ever notifies that task
+again - the same fallback an allocation failure already takes. The
+dispatched context is copied into a static buffer, not merely pointed at,
+because a join that times out cannot also stop a straggler task still
+reading it, and a stack-allocated context would dangle the moment its
+caller returns. `CONFIG_LAUNCHER_SAND_TWO_CORE_STEP` defaults to **on**
+on the device: the diagnostics build boots, answers RUNSUITE and runs the
+sand perf suite with it. Host builds default to the serial path. The
+unbounded waits in gfx.c's present pipeline are still unchanged.
+
 ## Why the liquid logic is its own file
 
 `sand.c` and `sand_liquid.c` used to be one file. Measured with a cognitive

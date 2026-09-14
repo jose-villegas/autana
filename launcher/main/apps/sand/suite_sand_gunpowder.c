@@ -1063,28 +1063,36 @@ test_damp_gunpowder_ignites_less_readily_than_dry(void) {
 
     const reaction_t* r = reaction_of(GUNPOWDER_BASE);
     const cell_t damp_byte = with_moisture(GUNPOWDER_CELL(0), 1, r);
-    sand_t dry_g, damp_g;
-    ignite_trial_row(&dry_g, dry_cells, w, DAMP_TEST_TRIALS, GUNPOWDER_CELL(0));
-    ignite_trial_row(&damp_g, damp_cells, w, DAMP_TEST_TRIALS, damp_byte);
+    /* HEAP, not stack: two sand_t locals plus this function's own buffers
+     * crossed the device frame ceiling once sand_t grew for the two-core
+     * RNG fields - see check_stack_usage.py's own header. */
+    sand_t* dry_g = malloc(sizeof *dry_g);
+    sand_t* damp_g = malloc(sizeof *damp_g);
+    TEST_ASSERT_NOT_NULL_MESSAGE(dry_g, "dry ignition-rate sand_t must fit in what the framebuffer leaves");
+    TEST_ASSERT_NOT_NULL_MESSAGE(damp_g, "damp ignition-rate sand_t must fit in what the framebuffer leaves");
+    ignite_trial_row(dry_g, dry_cells, w, DAMP_TEST_TRIALS, GUNPOWDER_CELL(0));
+    ignite_trial_row(damp_g, damp_cells, w, DAMP_TEST_TRIALS, damp_byte);
 
     /* ONE step only - a short exposure to a single roll, not a budget
      * long enough for the heat path to dry a damp cell off (dries != 0)
      * and then catch it on a LATER, undamped roll, which would erase the
      * very difference this test exists to measure. */
-    sand_step(&dry_g, 0, 1000, 0);
-    sand_step(&damp_g, 0, 1000, 0);
+    sand_step(dry_g, 0, 1000, 0);
+    sand_step(damp_g, 0, 1000, 0);
 
     int dry_lit = 0, damp_lit = 0;
     for (int i = 0; i < DAMP_TEST_TRIALS; i++) {
-        const cell_t dry_c = sand_at(&dry_g, i * 3 + 1, 0);
+        const cell_t dry_c = sand_at(dry_g, i * 3 + 1, 0);
         if (cell_is_gunpowder(dry_c) && cell_code(dry_c) == GUNPOWDER_LIT) {
             dry_lit++;
         }
-        const cell_t damp_c = sand_at(&damp_g, i * 3 + 1, 0);
+        const cell_t damp_c = sand_at(damp_g, i * 3 + 1, 0);
         if (cell_is_gunpowder(damp_c) && cell_code(damp_c) == GUNPOWDER_LIT) {
             damp_lit++;
         }
     }
+    free(dry_g);
+    free(damp_g);
     free(dry_cells);
     free(damp_cells);
 
