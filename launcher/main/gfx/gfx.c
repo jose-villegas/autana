@@ -2,6 +2,7 @@
 #include "gfx/gfx_dirty.h"
 #include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font_roles.h"
+#include "gfx/gfx_full_redraw.h"
 #include "gfx/gfx_present_guard.h"
 #include "gfx/gfx_target.h"
 #include "util/intmath.h"
@@ -55,12 +56,11 @@ static bool band_render_active;
 static int band_render_row0;
 static int band_render_height;
 
-/* Set by gfx_invalidate() and gfx_mode_enter() - band mode's own "redraw
- * and resend everything" signal, independent of gfx_dirty.h's all_dirty
- * (which full-fb's present already owns): captured once into
- * band_frame_force_all at gfx_band_frame_begin() so a later
- * gfx_invalidate() call mid-frame affects the NEXT frame, not this one. */
-static bool band_force_all_dirty = true;
+/* gfx_band_force_all_dirty itself lives in gfx_full_redraw.h, for the same
+ * reason gfx_dirty.h's all_dirty does - a host suite needs its own copy.
+ * band_frame_force_all is this frame's own captured value, taken once by
+ * gfx_band_frame_begin() so a later gfx_invalidate() call mid-frame
+ * affects the NEXT frame, not this one. */
 static bool band_frame_force_all;
 
 /* What every pixel-writing primitive below actually draws into: the whole
@@ -541,7 +541,7 @@ void
 gfx_invalidate(void) {
     GFX_PRESENT_GUARD();
     prev_bbox_valid = false;
-    band_force_all_dirty = true;
+    gfx_band_force_all();
 }
 
 /* gfx_dirty.h header-only for inlining mark_band(); thin wrappers for gfx.h
@@ -552,6 +552,39 @@ gfx_mark_all_dirty(void) {
     dirty_mark_all();
     drawn_bbox_valid = false;
     prev_bbox_valid = false;
+}
+
+/* The one call a transition needs instead of composing gfx_mark_all_dirty()
+ * and gfx_invalidate() separately: every gfx-side cache that decides
+ * whether to repaint or resend a region is reset in one place. Latches a
+ * pending flag an app's optional invalidate() callback (app.h) answers to
+ * on the pass that follows - see gfx_full_redraw_pending() below. Sets
+ * state only and frees nothing, so it is safe from anywhere on core 0,
+ * including inside a UI build or an app callback. */
+void
+gfx_request_full_redraw(void) {
+    GFX_PRESENT_GUARD();
+    gfx_mark_all_dirty();
+    gfx_invalidate();
+    gfx_full_redraw_latch();
+}
+
+/* True once gfx_request_full_redraw() has been called and the shell has
+ * not yet cleared it for the pass that follows - see
+ * gfx_full_redraw_clear_pending(). */
+bool
+gfx_full_redraw_pending(void) {
+    return gfx_full_redraw_is_pending();
+}
+
+/* Ends the window gfx_request_full_redraw() opened. The shell calls this
+ * once it has read the flag and decided whether to invoke an app's
+ * invalidate(), before that pass's frame() runs - see main.c's
+ * apply_pending_full_redraw(). */
+void
+gfx_full_redraw_clear_pending(void) {
+    GFX_PRESENT_GUARD();
+    gfx_full_redraw_unlatch();
 }
 
 void
@@ -2023,7 +2056,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
         gfx_fb_guard_set_available(false);
         gfx_band_ring_begin(&band_ring, granted.height / granted.band_height);
         band_current_slot = 0;
-        band_force_all_dirty = true; /* nothing sent to the panel yet this visit */
+        gfx_band_force_all(); /* nothing sent to the panel yet this visit */
     }
 
     current_mode = granted;
@@ -2069,8 +2102,7 @@ gfx_band_frame_begin(void) {
     /* Captured once per frame, not read live from gfx_band_dirty(): a
      * gfx_invalidate() call mid-frame (an app's own BOOT-menu toggle, say)
      * must not retroactively force bands this frame already skipped. */
-    band_frame_force_all = band_force_all_dirty;
-    band_force_all_dirty = false;
+    band_frame_force_all = gfx_band_take_force_all();
 }
 
 /* Band mode's own "does [row0, row1) need touching this frame" query -

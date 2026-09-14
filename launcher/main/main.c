@@ -225,14 +225,35 @@ show_post_failures(void) {
  * running app changes, so a freshly entered one always primes first. */
 static bool frame_ready;
 
+/* The app half of gfx_request_full_redraw() (gfx.h): an app's own cache
+ * beyond the framebuffer, if it keeps one, or the launcher's ui.c canvas
+ * cache while none is running. Consumes the pending flag before whichever
+ * of the two draws next, not after: a request made inside that very
+ * frame() call (an app invalidating itself) must reach the FOLLOWING
+ * pass's check, not be cleared out from under it before ever being read. */
+static void
+apply_pending_full_redraw(const app_t* app) {
+    if (!gfx_full_redraw_pending()) {
+        return;
+    }
+    gfx_full_redraw_clear_pending();
+    if (app != NULL) {
+        if (app->invalidate != NULL) {
+            app->invalidate();
+        }
+    } else {
+        ui_invalidate();
+    }
+}
+
 static void
 leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
     *current = NULL;
     frame_ready = false;
-    /* Launcher must repaint due to framebuffer output. */
-    ui_invalidate();
+    gfx_request_full_redraw();
+    apply_pending_full_redraw(NULL);
     /* Draw it immediately, so the frame presented below is the home screen
      * rather than the app's last one. */
     ui_launcher_frame(input);
@@ -248,10 +269,12 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
     const gesture_edge_t exit_edge = exit_edge_for_quarter(display_shell_quarter());
 
     if (*current == NULL) {
+        apply_pending_full_redraw(NULL);
         const int chosen = ui_launcher_frame(input);
         if (chosen >= 0 && chosen < apps_registered) {
             *current = apps[chosen];
             ESP_LOGI(TAG, "Starting %s", (*current)->name);
+            gfx_request_full_redraw();
             (*current)->enter();
             frame_ready = false;
         } else {
@@ -286,6 +309,8 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
     if ((*current)->home_gesture && gfx_mode_current()->layout == GFX_LAYOUT_BANDS) {
         queue_home_hint(exit_edge);
     }
+
+    apply_pending_full_redraw(*current);
 
     /* An app with update(): overlap it with sending the frame drawn last
      * pass (gfx_present_begin()/_wait(), gfx.h) - skipped while priming
@@ -426,6 +451,10 @@ app_main(void) {
             if (!suites_run_one(runsuite_name)) {
                 ESP_LOGE(TAG, "no suite named '%s' is registered", runsuite_name);
             }
+            /* A suite draws, clears and presents on its own, outside the
+             * shell's own dirty tracking - the next real frame must repaint
+             * in full rather than trust whatever a test left behind. */
+            gfx_request_full_redraw();
         }
 #endif
 
@@ -441,6 +470,7 @@ app_main(void) {
                 const int gy = DISPLAY_GRAVITY_Y(&sample);
                 if (display_update(&shell_display, gx, gy)) {
                     ui_set_transform(ui_transform_quarter_turn(display_quarter(&shell_display), GFX_WIDTH, GFX_HEIGHT));
+                    gfx_request_full_redraw();
                 }
             }
         }
@@ -450,6 +480,7 @@ app_main(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
         if (screenshot_take_request()) {
             screenshot_dump(&input, current);
+            gfx_request_full_redraw();
         }
 #endif
 

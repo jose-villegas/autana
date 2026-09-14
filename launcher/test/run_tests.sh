@@ -77,6 +77,7 @@ $TEST_DIR/suites/suite_fixed.c
 $TEST_DIR/suites/suite_tween.c
 $TEST_DIR/suites/suite_boot_anim.c
 $TEST_DIR/suites/suite_gfx_dirty.c
+$TEST_DIR/suites/suite_gfx_full_redraw.c
 $TEST_DIR/suites/suite_gfx_present_guard.c
 $TEST_DIR/suites/suite_gfx_fb_guard.c
 $TEST_DIR/suites/suite_gfx_target.c
