@@ -275,10 +275,11 @@ sand_track_dirty_cols(sand_t* s, uint16_t* x0, uint16_t* x1) {
 void
 sand_clear(sand_t* s) {
     memset(s->cells, SAND_EMPTY, (size_t)s->w * (size_t)s->h);
-    if (s->dirty_rows != NULL) {
-        memset(s->dirty_rows, 1, (size_t)s->h);
+    /* Explicit full-width spans, not the sentinel: a later narrow mark in the
+     * same frame unions into a sentinel and would shrink the wipe. */
+    for (int y = 0; y < s->h; y++) {
+        mark_row_span(s, y, 0, s->w - 1);
     }
-    reset_dirty_cols(s);
     if (s->block_state != NULL) {
         memset(s->block_state, 0, (size_t)s->block_cols * (size_t)s->block_rows);
     }
