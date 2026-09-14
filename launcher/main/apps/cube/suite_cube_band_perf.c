@@ -110,11 +110,14 @@ assert_band_frame_did_real_work(stats_t frame, int touched, int64_t raster_us) {
      * as its own check because it is the sanity property item 3 named. */
     const int64_t bytes_sent = (int64_t)touched * GFX_WIDTH * GFX_BAND_HEIGHT * sizeof(gfx_color_t);
 
+    /* Plain boolean asserts, not the *_INT64 comparison macros: this
+     * device's Unity build has 64-bit support disabled, and those abort
+     * with "Unity 64-bit Support Disabled" before printing anything -
+     * see suite_fixed.c's own comment on the same constraint. */
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, touched, "band mode touched no bands - the cube never redraws");
-    TEST_ASSERT_GREATER_THAN_INT64_MESSAGE(0, raster_us, "band mode never rasterized a touched band");
-    TEST_ASSERT_GREATER_THAN_INT64_MESSAGE(0, bytes_sent, "band mode sent nothing to the panel");
-    TEST_ASSERT_GREATER_THAN_INT64_MESSAGE(2000, frame.avg,
-                                           "band frame time is impossibly fast - bands are likely being skipped");
+    TEST_ASSERT_TRUE_MESSAGE(raster_us > 0, "band mode never rasterized a touched band");
+    TEST_ASSERT_TRUE_MESSAGE(bytes_sent > 0, "band mode sent nothing to the panel");
+    TEST_ASSERT_TRUE_MESSAGE(frame.avg > 2000, "band frame time is impossibly fast - bands are likely being skipped");
 }
 
 /* Runs one variant for `duration_ms`, timing whichever frame path
@@ -267,7 +270,6 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     const stats_t band_stats = compute_stats(band_n);
     const double band_bytes_per_frame =
         (double)touched_band_count * GFX_WIDTH * GFX_BAND_HEIGHT * sizeof(gfx_color_t) / sample_count;
-    assert_band_frame_did_real_work(band_stats, touched_band_count, raster_us_accum);
 
     cube_band_mode = false;
 
@@ -286,6 +288,11 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
         ESP_LOGI(TAG, "bands: %d touched, %d skipped (%.1f%% touched), %.0f bytes/frame sent", touched_band_count,
                  skipped_band_count, touched_pct, band_bytes_per_frame);
     }
+
+    /* After the log lines, not before: a failing arm must still print its
+     * numbers - the all-skip regression this guards against would
+     * otherwise abort silently, the same blind spot logging-only once had. */
+    assert_band_frame_did_real_work(band_stats, touched_band_count, raster_us_accum);
 
     free(samples);
     samples = NULL;
@@ -347,10 +354,6 @@ run_arm(const char* label, bool band_mode, int quarter, bool fps_on) {
     };
     const int n = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES;
     r.frame = compute_stats(n);
-
-    if (band_mode) {
-        assert_band_frame_did_real_work(r.frame, r.touched_bands, r.raster_us);
-    }
     return r;
 }
 
@@ -396,6 +399,9 @@ test_cube_orientation_and_fps_sweep(void) {
             snprintf(label, sizeof label, "band/%s/fps-%s", orientations[o].name, fps_states[f] ? "on" : "off");
             arm_result_t band = run_arm(label, true, orientations[o].quarter, fps_states[f]);
             log_arm(&band);
+            /* After logging, not inside run_arm(): a failing arm must
+             * still print its numbers first. */
+            assert_band_frame_did_real_work(band.frame, band.touched_bands, band.raster_us);
         }
     }
 
