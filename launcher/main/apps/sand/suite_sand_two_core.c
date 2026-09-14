@@ -410,7 +410,7 @@ test_two_core_step_never_double_moves_at_a_seam(void) {
 
     for (size_t o = 0; o < sizeof offsets / sizeof offsets[0]; o++) {
         for (int boundary = SAND_BLOCK_H; boundary < TC_H - SAND_BLOCK_H; boundary += SAND_BLOCK_H) {
-            const int seam_rows[] = {boundary - 1, boundary, boundary - SAND_BLOCK_H / 2};
+            const int seam_rows[] = {boundary - 2, boundary - 1, boundary, boundary + 1, boundary - SAND_BLOCK_H / 2};
             for (size_t r = 0; r < sizeof seam_rows / sizeof seam_rows[0]; r++) {
                 for (size_t g = 0; g < sizeof gxs / sizeof gxs[0]; g++) {
                     tc_assert_free_fall_moves_one_cell(offsets[o], gxs[g], gys[g], seam_rows[r], true);
@@ -481,6 +481,128 @@ test_two_core_step_matches_serial_fall_distance_at_a_seam(void) {
     }
 }
 
+/* A box of STONE around the whole grid, so every one of the four
+ * axis-aligned gravity directions below has a floor to settle against -
+ * not just down. */
+static void
+tc_build_bordered_box(sand_t* s) {
+    for (int x = 0; x < TC_W; x++) {
+        sand_set(s, x, 0, STONE);
+        sand_set(s, x, TC_H - 1, STONE);
+    }
+    for (int y = 0; y < TC_H; y++) {
+        sand_set(s, 0, y, STONE);
+        sand_set(s, TC_W - 1, y, STONE);
+    }
+}
+
+/* A single, unbroken column of touching grains spanning every stripe in
+ * the grid - unlike tc_assert_free_fall_moves_one_cell's lone grain, each
+ * cell's upstream neighbour is occupied too, so a guard row here starts
+ * genuinely contested rather than empty. */
+static void
+tc_build_falling_column(sand_t* s) {
+    tc_build_bordered_box(s);
+    const int x = TC_W / 2;
+    for (int y = 1; y < TC_H / 2; y++) {
+        sand_set(s, x, y, SAND);
+    }
+}
+
+/* A wide slab, dense enough that grains contend with each other both
+ * along the fall and sideways as they pack against the floor and each
+ * other - the "pile" the double-move fix must still match serial on. */
+static void
+tc_build_dense_pile(sand_t* s) {
+    tc_build_bordered_box(s);
+    for (int y = TC_H / 4; y < 3 * TC_H / 4; y++) {
+        for (int x = TC_W / 4; x < 3 * TC_W / 4; x++) {
+            sand_set(s, x, y, SAND);
+        }
+    }
+}
+
+static uint32_t
+tc_run_zero_rng_and_hash(void (*build)(sand_t*), int steps, int gx, int gy, int offset, bool two_core, int* out_n) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(cells);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t s;
+    sand_init(&s, cells, TC_W, TC_H, 1u);
+    sand_enable_sleeping(&s, blocks);
+    sand_set_scatter(&s, 0);
+    tc_prime_offset(&s, offset);
+    build(&s);
+
+    sand_set_two_core_step(two_core);
+    for (int i = 0; i < steps; i++) {
+        sand_step(&s, gx, gy, 0);
+    }
+    sand_set_two_core_step(false);
+
+    uint32_t h = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
+    h ^= tc_hash(blocks, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS) * 0x9E3779B1u;
+
+    if (out_n != NULL) {
+        int n = 0;
+        for (int i = 0; i < TC_W * TC_H; i++) {
+            if (!CELL_IS_EMPTY(cells[i]) && CELL_MATERIAL(cells[i]) == MAT_SAND) {
+                n++;
+            }
+        }
+        *out_n = n;
+    }
+
+    free(cells);
+    free(blocks);
+    return h;
+}
+
+/* A dense column and pile, where a guard row's neighbour is never empty,
+ * so a phase-time move there truly contends with something. Not a
+ * hash-identity check: three-plus stripes provably cannot reproduce
+ * serial order exactly once a contested chain spans more than one
+ * boundary - see "The seam fix" in Sand-Simulation.md. This checks the
+ * part that must still hold - the grain count - which a double-move or a
+ * dropped cell would break. */
+static void
+test_two_core_step_conserves_grains_on_a_dense_column_and_pile(void) {
+    static const int gxs[] = {0, 0, 1000, -1000};
+    static const int gys[] = {1000, -1000, 0, 0};
+    static const int offsets[] = {0, SAND_BLOCK_H / 2};
+
+    const struct {
+        const char* name;
+        void (*build)(sand_t*);
+        int steps;
+    } scenes[] = {
+        {"a full falling column", tc_build_falling_column, TC_H},
+        {"a dense settling pile", tc_build_dense_pile, TC_H * 2},
+    };
+
+    for (size_t sc = 0; sc < sizeof scenes / sizeof scenes[0]; sc++) {
+        for (size_t g = 0; g < sizeof gxs / sizeof gxs[0]; g++) {
+            for (size_t o = 0; o < sizeof offsets / sizeof offsets[0]; o++) {
+                int serial_n = 0, two_core_n = 0;
+                tc_run_zero_rng_and_hash(scenes[sc].build, scenes[sc].steps, gxs[g], gys[g], offsets[o], false,
+                                         &serial_n);
+                tc_run_zero_rng_and_hash(scenes[sc].build, scenes[sc].steps, gxs[g], gys[g], offsets[o], true,
+                                         &two_core_n);
+
+                char why[200];
+                snprintf(why, sizeof why,
+                         "%s under gravity %d,%d offset %d: two-core stepping changed the "
+                         "grain count from %d to %d - a guard row moved a cell twice or "
+                         "dropped it",
+                         scenes[sc].name, gxs[g], gys[g], offsets[o], serial_n, two_core_n);
+                TEST_ASSERT_EQUAL_INT_MESSAGE(serial_n, two_core_n, why);
+            }
+        }
+    }
+}
+
 void
 run_sand_two_core_suite(void) {
     RUN_TEST(test_two_core_step_is_deterministic_across_seeds);
@@ -489,6 +611,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam);
     RUN_TEST(test_two_core_step_never_double_moves_at_a_seam);
     RUN_TEST(test_two_core_step_matches_serial_fall_distance_at_a_seam);
+    RUN_TEST(test_two_core_step_conserves_grains_on_a_dense_column_and_pile);
 }
 
 SUITE_REGISTER(run_sand_two_core_suite);
