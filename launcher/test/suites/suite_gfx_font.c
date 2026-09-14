@@ -427,6 +427,151 @@ test_dilated_halo_matches_eight_offset_copies_at_a_band_edge(void) {
     }
 }
 
+/*
+ * gfx_font_glyph_run_boxes() - the merge itself, against synthetic glyphs
+ * whose exact box output is known by construction, plus proof that
+ * merging changes no pixel real letters draw, at every turn and a band
+ * edge.
+ */
+
+/* Rows 0-2 share one run (cols 1-2), rows 3-7 share another (cols 3-4) -
+ * two boxes, not eight one-row runs. */
+static const uint8_t merge_synth_atlas[8] = {0x06, 0x06, 0x06, 0x18, 0x18, 0x18, 0x18, 0x18};
+static const gfx_font_t merge_synth_font = {
+    .atlas = merge_synth_atlas,
+    .bpp = 1,
+    .cell_w = 8,
+    .cell_h = 8,
+    .first = (uint8_t)'A',
+    .count = 1,
+    .advance = NULL,
+};
+
+static void
+test_glyph_run_boxes_merges_consecutive_identical_rows(void) {
+    gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
+    const int n = gfx_font_glyph_run_boxes(&merge_synth_font, 'A', boxes, GFX_FONT_RUN_BOXES_MAX);
+
+    TEST_ASSERT_EQUAL_INT(2, n);
+    TEST_ASSERT_EQUAL_INT(0, boxes[0].row0);
+    TEST_ASSERT_EQUAL_INT(3, boxes[0].row1);
+    TEST_ASSERT_EQUAL_INT(1, boxes[0].col0);
+    TEST_ASSERT_EQUAL_INT(2, boxes[0].col1);
+    TEST_ASSERT_EQUAL_INT(3, boxes[1].row0);
+    TEST_ASSERT_EQUAL_INT(8, boxes[1].row1);
+    TEST_ASSERT_EQUAL_INT(3, boxes[1].col0);
+    TEST_ASSERT_EQUAL_INT(4, boxes[1].col1);
+}
+
+/* The same [1, 2] run at rows 0 and 2, but not row 1 - two single-row
+ * boxes, since a gap must not bridge a merge. */
+static const uint8_t merge_gap_atlas[8] = {0x06, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00};
+static const gfx_font_t merge_gap_font = {
+    .atlas = merge_gap_atlas,
+    .bpp = 1,
+    .cell_w = 8,
+    .cell_h = 8,
+    .first = (uint8_t)'A',
+    .count = 1,
+    .advance = NULL,
+};
+
+static void
+test_glyph_run_boxes_does_not_merge_across_a_gap_row(void) {
+    gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
+    const int n = gfx_font_glyph_run_boxes(&merge_gap_font, 'A', boxes, GFX_FONT_RUN_BOXES_MAX);
+
+    TEST_ASSERT_EQUAL_INT(2, n);
+    TEST_ASSERT_EQUAL_INT(0, boxes[0].row0);
+    TEST_ASSERT_EQUAL_INT(1, boxes[0].row1);
+    TEST_ASSERT_EQUAL_INT(2, boxes[1].row0);
+    TEST_ASSERT_EQUAL_INT(3, boxes[1].row1);
+}
+
+static void
+test_glyph_run_boxes_empty_glyph_yields_none(void) {
+    static const uint8_t blank[8] = {0};
+    static const gfx_font_t blank_font = {
+        .atlas = blank,
+        .bpp = 1,
+        .cell_w = 8,
+        .cell_h = 8,
+        .first = (uint8_t)'A',
+        .count = 1,
+        .advance = NULL,
+    };
+    gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
+    TEST_ASSERT_EQUAL_INT(0, gfx_font_glyph_run_boxes(&blank_font, 'A', boxes, GFX_FONT_RUN_BOXES_MAX));
+}
+
+static void
+test_glyph_run_boxes_out_of_range_char_yields_none(void) {
+    gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
+    TEST_ASSERT_EQUAL_INT(0, gfx_font_glyph_run_boxes(&merge_synth_font, 'Z', boxes, GFX_FONT_RUN_BOXES_MAX));
+}
+
+typedef void (*run_box_fn_t)(const gfx_font_t*, int, int, int, int, int, int, int, int, int*, int*, int*, int*);
+
+static void
+sim_walk_boxes(gfx_target_t target, const gfx_font_t* f, int x, int y, unsigned char ch, int scale, int turn,
+               run_box_fn_t box_fn, gfx_color_t color) {
+    gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
+    const int n = gfx_font_glyph_run_boxes(f, ch, boxes, GFX_FONT_RUN_BOXES_MAX);
+    for (int i = 0; i < n; i++) {
+        int rx, ry, rw, rh, ox0, oy0, ox1, oy1;
+        box_fn(f, x, y, boxes[i].row0, boxes[i].row1, boxes[i].col0, boxes[i].col1, scale, turn, &rx, &ry, &rw, &rh);
+        gfx_target_fill_rect(target, 0, 0, SIM_DIM, SIM_DIM, rx, ry, rw, rh, color, &ox0, &oy0, &ox1, &oy1);
+    }
+}
+
+/* draw_glyph_font()/draw_glyph_font_halo()'s own merged-box shape: one
+ * dilated-box halo pass, one plain-box ink pass. */
+static void
+sim_draw_merged(gfx_target_t target, const gfx_font_t* f, int x, int y, unsigned char ch, int scale, int turn) {
+    sim_walk_boxes(target, f, x, y, ch, scale, turn, gfx_font_run_box_rect_dilated, SIM_HALO);
+    sim_walk_boxes(target, f, x, y, ch, scale, turn, gfx_font_run_box_rect, SIM_INK);
+}
+
+static gfx_color_t sim_merged[SIM_DIM * SIM_DIM];
+
+static void
+assert_merged_matches_unmerged(gfx_target_t band, int x, int y, unsigned char ch, int scale, int turn) {
+    memset(sim_new, 0, sizeof sim_new);
+    memset(sim_merged, 0, sizeof sim_merged);
+
+    gfx_target_t unmerged_target = band, merged_target = band;
+    unmerged_target.buf = sim_new;
+    merged_target.buf = sim_merged;
+
+    sim_draw_new(unmerged_target, &gfx_font_8x8, x, y, ch, scale, turn);
+    sim_draw_merged(merged_target, &gfx_font_8x8, x, y, ch, scale, turn);
+
+    TEST_ASSERT_EQUAL_UINT16_ARRAY_MESSAGE(sim_new, sim_merged, SIM_DIM * SIM_DIM,
+                                           "merging identical consecutive-row runs must not change any pixel");
+}
+
+static void
+test_merged_boxes_match_unmerged_runs_at_every_turn(void) {
+    const gfx_target_t full = {NULL, 0, SIM_DIM, SIM_DIM};
+
+    for (int turn = 0; turn < 4; turn++) {
+        for (unsigned char ch = 'A'; ch <= 'Z'; ch++) {
+            assert_merged_matches_unmerged(full, 15, 15, ch, 2, turn);
+        }
+    }
+}
+
+/* A band edge cutting through a merged, multi-row box - the case a tall
+ * merged rect must still clip correctly against. */
+static void
+test_merged_boxes_match_unmerged_runs_at_a_band_edge(void) {
+    const gfx_target_t band = {NULL, 10, 8, SIM_DIM}; /* rows [10, 18) only */
+
+    for (int turn = 0; turn < 4; turn++) {
+        assert_merged_matches_unmerged(band, 15, 15, 'A', 2, turn);
+    }
+}
+
 void
 run_gfx_font_suite(void) {
     RUN_TEST(test_default_font_width_matches_char_w_per_character);
@@ -447,6 +592,12 @@ run_gfx_font_suite(void) {
     RUN_TEST(test_row_run_rect_never_leaves_the_characters_own_row_extent);
     RUN_TEST(test_dilated_halo_matches_eight_offset_copies_at_every_turn);
     RUN_TEST(test_dilated_halo_matches_eight_offset_copies_at_a_band_edge);
+    RUN_TEST(test_glyph_run_boxes_merges_consecutive_identical_rows);
+    RUN_TEST(test_glyph_run_boxes_does_not_merge_across_a_gap_row);
+    RUN_TEST(test_glyph_run_boxes_empty_glyph_yields_none);
+    RUN_TEST(test_glyph_run_boxes_out_of_range_char_yields_none);
+    RUN_TEST(test_merged_boxes_match_unmerged_runs_at_every_turn);
+    RUN_TEST(test_merged_boxes_match_unmerged_runs_at_a_band_edge);
 }
 
 SUITE_REGISTER(run_gfx_font_suite);
