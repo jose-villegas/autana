@@ -196,6 +196,13 @@ static impulse_t* impulse_buf; /* APP_IMPULSE_MAX entries: grains in
 static uint16_t* row_run_x0;
 static uint16_t* row_run_x1;
 static uint8_t* row_run_n;
+
+/* GRID_H_MAX entries each: the sim's own changed-column span per row - see
+ * sand_track_dirty_cols(). x0 > x1 (the sentinel sand_track_dirty_cols()
+ * seeds) means no span was ever narrowed for that row this frame, so
+ * draw_dirty_rows() repaints it full-width, exactly as before this existed. */
+static uint16_t* dirty_x0;
+static uint16_t* dirty_x1;
 static sand_t sim;
 static tilt_t tilt;
 static bool failed;
@@ -215,6 +222,7 @@ static uint32_t frames;
 static int64_t step_us_total;
 static int64_t draw_us_total;
 static int64_t rows_redrawn_total;
+static int64_t pixels_repainted_total;
 static int64_t steps_total;
 
 static int64_t pour_step_us_total, pour_draw_us_total;
@@ -251,6 +259,7 @@ sand_enter(void) {
     step_us_total = 0;
     draw_us_total = 0;
     rows_redrawn_total = 0;
+    pixels_repainted_total = 0;
     steps_total = 0;
     pour_step_us_total = 0;
     pour_draw_us_total = 0;
@@ -282,10 +291,22 @@ seed_row_runs_full_width(void) {
     }
 }
 
+/* Sentinel span (x0 > x1) on every row: draw_dirty_rows() reads that as "no
+ * narrower span recorded" and repaints full-width, same as dirty_rows alone
+ * did before column tracking existed. */
+static void
+reset_dirty_cols_full_width(void) {
+    for (int i = 0; i < grid_h; i++) {
+        dirty_x0[i] = (uint16_t)grid_w;
+        dirty_x1[i] = 0;
+    }
+}
+
 static void
 mark_sand_fully_dirty(void) {
     seed_row_runs_full_width();
     memset(dirty_rows, 1, (size_t)grid_h);
+    reset_dirty_cols_full_width();
     gfx_mark_all_dirty();
 }
 
@@ -298,9 +319,11 @@ sand_app_alloc_selfcheck(size_t* out_largest_free, bool* out_impulses_ok) {
     uint16_t* t_x0 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(uint16_t));
     uint16_t* t_x1 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(uint16_t));
     uint8_t* t_n = malloc(GRID_H_MAX * sizeof(uint8_t));
+    uint16_t* t_dcx0 = malloc(GRID_H_MAX * sizeof(uint16_t));
+    uint16_t* t_dcx1 = malloc(GRID_H_MAX * sizeof(uint16_t));
     impulse_t* t_imp = malloc((size_t)APP_IMPULSE_MAX * sizeof(impulse_t));
 
-    const bool essential_ok = (t_dirty && t_blocks && t_grid && t_x0 && t_x1 && t_n);
+    const bool essential_ok = (t_dirty && t_blocks && t_grid && t_x0 && t_x1 && t_n && t_dcx0 && t_dcx1);
     if (out_impulses_ok) {
         *out_impulses_ok = (t_imp != NULL);
     }
@@ -309,6 +332,8 @@ sand_app_alloc_selfcheck(size_t* out_largest_free, bool* out_impulses_ok) {
     }
 
     free(t_imp);
+    free(t_dcx1);
+    free(t_dcx0);
     free(t_n);
     free(t_x1);
     free(t_x0);
@@ -377,8 +402,14 @@ start_sim(void) {
     if (row_run_n == NULL) {
         row_run_n = malloc(GRID_H_MAX * sizeof(*row_run_n));
     }
+    if (dirty_x0 == NULL) {
+        dirty_x0 = malloc(GRID_H_MAX * sizeof(*dirty_x0));
+    }
+    if (dirty_x1 == NULL) {
+        dirty_x1 = malloc(GRID_H_MAX * sizeof(*dirty_x1));
+    }
     if (grid == NULL || dirty_rows == NULL || sleep_blocks == NULL || row_run_x0 == NULL || row_run_x1 == NULL
-        || row_run_n == NULL) {
+        || row_run_n == NULL || dirty_x0 == NULL || dirty_x1 == NULL) {
         ESP_LOGE(TAG,
                  "Could not allocate a %d x %d grid (%d bytes); "
                  "largest free block is %u",
@@ -399,6 +430,7 @@ start_sim(void) {
     sand_set_mobility(&sim, SAND_MOBILITY_PER_MATERIAL);
 
     sand_track_dirty_rows(&sim, dirty_rows);
+    sand_track_dirty_cols(&sim, dirty_x0, dirty_x1);
 
     sand_enable_sleeping(&sim, sleep_blocks);
 
@@ -429,9 +461,10 @@ sand_exit(void) {
     if (frames > 0) {
         ESP_LOGI(TAG,
                  "%lu frames, %lld sim steps, step %lld us, draw %lld us, "
-                 "%lld of %d rows redrawn per frame",
+                 "%lld of %d rows redrawn per frame, %lld px repainted per frame",
                  (unsigned long)frames, (long long)steps_total, (long long)(step_us_total / frames),
-                 (long long)(draw_us_total / frames), (long long)(rows_redrawn_total / frames), grid_h);
+                 (long long)(draw_us_total / frames), (long long)(rows_redrawn_total / frames), grid_h,
+                 (long long)(pixels_repainted_total / frames));
     }
 #endif
 }
@@ -485,6 +518,13 @@ static unsigned wood_leaf_wind_flip_count;
 #define ROW_FLAG_WOOD_LEAF (1u << 4)
 
 static uint8_t row_flags[GRID_H_MAX];
+
+/* The column span, within the last-painted row, carrying any of the five
+ * ROW_FLAG_* properties above - a safe superset for every wake tick to
+ * repaint by, one shared span rather than five keeping a tick's cost
+ * independent of how many properties a row happens to mix. */
+static uint16_t row_flag_x0[GRID_H_MAX];
+static uint16_t row_flag_x1[GRID_H_MAX];
 
 #define FOAM_BLOB_SHIFT 3
 
@@ -619,9 +659,21 @@ update_local_depth_gravity(int gx, int gy) {
 static uint32_t local_depth_wake_elapsed_ms;
 
 static inline void
-paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, int cy, const uint8_t* row, int n) {
+note_row_flag_x(int cy, int cx) {
+    if (cx < row_flag_x0[cy]) {
+        row_flag_x0[cy] = (uint16_t)cx;
+    }
+    if (cx + 1 > row_flag_x1[cy]) {
+        row_flag_x1[cy] = (uint16_t)(cx + 1);
+    }
+}
+
+static inline void
+paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, int cy, const uint8_t* row, int n, int wx0, int wx1) {
     gfx_color_t* out = fb + (cy * n) * GFX_WIDTH;
     row_flags[cy] = 0;
+    row_flag_x0[cy] = (uint16_t)grid_w;
+    row_flag_x1[cy] = 0;
 
     const uint8_t* above = (cy > 0) ? row - grid_w : NULL;
     const uint8_t* below = (cy < grid_h - 1) ? row + grid_w : NULL;
@@ -755,18 +807,22 @@ paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, int cy, const uint8_t* row,
 
         if (here_liquid) {
             row_flags[cy] |= ROW_FLAG_LIQUID;
+            note_row_flag_x(cy, cx);
         }
 
         if (leaf_shading) {
             row_flags[cy] |= ROW_FLAG_WOOD_LEAF;
+            note_row_flag_x(cy, cx);
         }
 
         if ((unsigned)(row[cx] - cullet_first) < SAND_CULLET_SHADES) {
             row_flags[cy] |= ROW_FLAG_CULLET;
+            note_row_flag_x(cy, cx);
         }
 
         if (CELL_MATERIAL(row[cx]) == MAT_GLASS) {
             row_flags[cy] |= ROW_FLAG_GLASS;
+            note_row_flag_x(cy, cx);
         }
 
         gfx_color_t col[3];
@@ -775,15 +831,28 @@ paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, int cy, const uint8_t* row,
 
         if (pat == MATERIAL_HATCHED) {
             row_flags[cy] |= ROW_FLAG_SHINE;
+            note_row_flag_x(cy, cx);
         }
 
+        /* State above (local depth, row_flags, hash) runs the full row
+         * regardless - only pixels reaching the framebuffer are bounded to
+         * [wx0,wx1). A cx outside it has provably unchanged output: every
+         * mark site already widens for the reach its own output depends on. */
+        const bool in_span = cx >= wx0 && cx < wx1;
+
         if (pat != MATERIAL_HATCHED) {
-            const gfx_color_t c = col[0];
-            for (int dy = 0; dy < n; dy++) {
-                for (int dx = 0; dx < n; dx++) {
-                    p[dy * GFX_WIDTH + dx] = c;
+            if (in_span) {
+                const gfx_color_t c = col[0];
+                for (int dy = 0; dy < n; dy++) {
+                    for (int dx = 0; dx < n; dx++) {
+                        p[dy * GFX_WIDTH + dx] = c;
+                    }
                 }
             }
+            continue;
+        }
+
+        if (!in_span) {
             continue;
         }
 
@@ -808,24 +877,27 @@ paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, int cy, const uint8_t* row,
 }
 
 static void
-paint_row(gfx_color_t* fb, const gfx_color_t* pal, int cy, const uint8_t* row) {
+paint_row(gfx_color_t* fb, const gfx_color_t* pal, int cy, const uint8_t* row, int wx0, int wx1) {
     switch (cell) {
-        case 2: paint_row_n(fb, pal, cy, row, 2); break;
-        case 3: paint_row_n(fb, pal, cy, row, 3); break;
-        case 4: paint_row_n(fb, pal, cy, row, 4); break;
-        case 6: paint_row_n(fb, pal, cy, row, 6); break;
-        case 8: paint_row_n(fb, pal, cy, row, 8); break;
+        case 2: paint_row_n(fb, pal, cy, row, 2, wx0, wx1); break;
+        case 3: paint_row_n(fb, pal, cy, row, 3, wx0, wx1); break;
+        case 4: paint_row_n(fb, pal, cy, row, 4, wx0, wx1); break;
+        case 6: paint_row_n(fb, pal, cy, row, 6, wx0, wx1); break;
+        case 8: paint_row_n(fb, pal, cy, row, 8, wx0, wx1); break;
         /* Unreachable for any cell size in qualities[]; falls back to size 2 to
      * avoid out-of-bounds writes. */
-        default: paint_row_n(fb, pal, cy, row, 2); break;
+        default: paint_row_n(fb, pal, cy, row, 2, wx0, wx1); break;
     }
 }
 
+/* wx0/wx1: the columns actually worth repainting - see draw_dirty_rows().
+ * Run detection stays full-row, so row_run_x0/x1/n keeps seeing the row's
+ * true shape, not just the part just repainted. */
 static int
-draw_one_row(gfx_color_t* fb, const gfx_color_t* pal, int cy, uint16_t* cur_x0, uint16_t* cur_x1) {
+draw_one_row(gfx_color_t* fb, const gfx_color_t* pal, int cy, uint16_t* cur_x0, uint16_t* cur_x1, int wx0, int wx1) {
     const uint8_t* row = &grid[cy * grid_w];
 
-    paint_row(fb, pal, cy, row);
+    paint_row(fb, pal, cy, row, wx0, wx1);
 
     int run_x0[ROW_MAX_RUNS], run_x1[ROW_MAX_RUNS];
     const int n = row_runs_find(row, grid_w, SAND_EMPTY, run_x0, run_x1);
@@ -930,54 +1002,70 @@ advance_glass_phase(int gx, int gy) {
     return changed;
 }
 
+/* One row per bit here; unlike dirty_rows[] this scratch never survives
+ * past the call it was set in, so it needs no reset elsewhere. */
+static bool wake_hit[GRID_H_MAX];
+
+static void
+mark_wake_hits(bool moved, uint8_t flag) {
+    if (!moved) {
+        return;
+    }
+    for (int cy = 0; cy < grid_h; cy++) {
+        if (row_flags[cy] & flag) {
+            dirty_rows[cy] = 1;
+            wake_hit[cy] = true;
+        }
+    }
+}
+
+/* The span of row cy worth repainting: the sim's own changed-column union,
+ * widened one column either way for the edge and wood/leaf neighbour
+ * checks, plus a wake tick's own flagged-cell span when one fires. No span
+ * recorded at all falls back to the row's full width, as before. */
+static void
+row_paint_span(int cy, int* out_x0, int* out_x1) {
+    int x0 = dirty_x0[cy];
+    int x1 = dirty_x1[cy];
+
+    /* Sentinel x0/x1 (grid_w, 0) is already the correct identity element
+     * for a min/max union - it never wins against a real span below. */
+    if (wake_hit[cy]) {
+        if (row_flag_x0[cy] < x0) {
+            x0 = row_flag_x0[cy];
+        }
+        if (row_flag_x1[cy] > x1) {
+            x1 = row_flag_x1[cy];
+        }
+    }
+
+    if (x0 >= x1) {
+        *out_x0 = 0;
+        *out_x1 = grid_w;
+        return;
+    }
+    x0 -= 1;
+    x1 += 1;
+    *out_x0 = x0 < 0 ? 0 : x0;
+    *out_x1 = x1 > grid_w ? grid_w : x1;
+}
+
 static void
 draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool glass_moved, bool wood_leaf_moved) {
     gfx_color_t* fb = gfx_framebuffer();
 
-    if (shine_moved) {
-        for (int cy = 0; cy < grid_h; cy++) {
-            if (row_flags[cy] & ROW_FLAG_SHINE) {
-                dirty_rows[cy] = 1;
-            }
-        }
-    }
-
-    if (local_depth_woke) {
-        for (int cy = 0; cy < grid_h; cy++) {
-            if (row_flags[cy] & ROW_FLAG_LIQUID) {
-                dirty_rows[cy] = 1;
-            }
-        }
-    }
-
-    if (cullet_moved) {
-        for (int cy = 0; cy < grid_h; cy++) {
-            if (row_flags[cy] & ROW_FLAG_CULLET) {
-                dirty_rows[cy] = 1;
-            }
-        }
-    }
-
-    if (glass_moved) {
-        for (int cy = 0; cy < grid_h; cy++) {
-            if (row_flags[cy] & ROW_FLAG_GLASS) {
-                dirty_rows[cy] = 1;
-            }
-        }
-    }
-
-    if (wood_leaf_moved) {
-        for (int cy = 0; cy < grid_h; cy++) {
-            if (row_flags[cy] & ROW_FLAG_WOOD_LEAF) {
-                dirty_rows[cy] = 1;
-            }
-        }
-    }
+    memset(wake_hit, 0, (size_t)grid_h * sizeof(*wake_hit));
+    mark_wake_hits(shine_moved, ROW_FLAG_SHINE);
+    mark_wake_hits(local_depth_woke, ROW_FLAG_LIQUID);
+    mark_wake_hits(cullet_moved, ROW_FLAG_CULLET);
+    mark_wake_hits(glass_moved, ROW_FLAG_GLASS);
+    mark_wake_hits(wood_leaf_moved, ROW_FLAG_WOOD_LEAF);
 
     const gfx_color_t* pal = material_palette();
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     int redrawn = 0;
+    int64_t pixels_repainted = 0;
 #endif
 
     /* Gravity-UP reverses this loop's order: cur_row[]/prev_row[]'s pointer
@@ -998,8 +1086,13 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
         redrawn++;
 #endif
 
+        int wx0, wx1;
+        row_paint_span(cy, &wx0, &wx1);
+        dirty_x0[cy] = (uint16_t)grid_w;
+        dirty_x1[cy] = 0;
+
         uint16_t cur_x0[ROW_MAX_RUNS], cur_x1[ROW_MAX_RUNS];
-        const int cur_n = draw_one_row(fb, pal, cy, cur_x0, cur_x1);
+        const int cur_n = draw_one_row(fb, pal, cy, cur_x0, cur_x1, wx0, wx1);
 
         uint16_t* prev_x0 = &row_run_x0[cy * ROW_MAX_RUNS];
         uint16_t* prev_x1 = &row_run_x1[cy * ROW_MAX_RUNS];
@@ -1008,8 +1101,20 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
         uint16_t send_x0[2 * ROW_MAX_RUNS], send_x1[2 * ROW_MAX_RUNS];
         const int send_n = row_runs_reconcile(cur_x0, cur_x1, cur_n, prev_x0, prev_x1, prev_n, send_x0, send_x1);
 
+        /* Clipped to the span actually repainted above: row_runs_reconcile()
+         * still answers over the row's true, full-width shape, so a send
+         * range outside [wx0,wx1) names pixels that provably did not
+         * change (see paint_row_n()'s own comment) and were never drawn. */
         for (int i = 0; i < send_n; i++) {
-            gfx_mark_dirty(send_x0[i] * cell, cy * cell, (send_x1[i] - send_x0[i]) * cell, cell);
+            const int sx0 = send_x0[i] > wx0 ? send_x0[i] : wx0;
+            const int sx1 = send_x1[i] < wx1 ? send_x1[i] : wx1;
+            if (sx0 >= sx1) {
+                continue;
+            }
+            gfx_mark_dirty(sx0 * cell, cy * cell, (sx1 - sx0) * cell, cell);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+            pixels_repainted += (int64_t)(sx1 - sx0) * cell * cell;
+#endif
         }
 
         for (int i = 0; i < cur_n; i++) {
@@ -1021,6 +1126,7 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     rows_redrawn_total += redrawn;
+    pixels_repainted_total += pixels_repainted;
 #endif
 }
 
@@ -1940,6 +2046,10 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
 
     if (label_dirty_this_frame) {
         memset(dirty_rows, 1, (size_t)grid_h);
+        /* Full width, not whatever the sim narrowed this step to: the
+         * label's own erase can leave sand pixels stale under it with no
+         * grid cell having changed there at all. */
+        reset_dirty_cols_full_width();
         gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
     }
 
