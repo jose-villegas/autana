@@ -64,6 +64,15 @@ gfx_band_ring_advance(gfx_band_ring_t* ring) {
     ring->next_render++;
 }
 
+/* Advances past the current band WITHOUT sending it - the caller decided
+ * this band needs no redraw this frame. Nothing new is in flight, so
+ * whatever the ring was already waiting on (if anything) is unaffected;
+ * only gfx_band_ring_advance() ever changes in_flight. */
+static inline void
+gfx_band_ring_skip(gfx_band_ring_t* ring) {
+    ring->next_render++;
+}
+
 /* True once the last band handed out has also been waited for - what a
  * frame's closing wait checks before it can skip its own wait. */
 static inline bool

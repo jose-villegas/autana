@@ -55,6 +55,14 @@ static bool band_render_active;
 static int band_render_row0;
 static int band_render_height;
 
+/* Set by gfx_invalidate() and gfx_mode_enter() - band mode's own "redraw
+ * and resend everything" signal, independent of gfx_dirty.h's all_dirty
+ * (which full-fb's present already owns): captured once into
+ * band_frame_force_all at gfx_band_frame_begin() so a later
+ * gfx_invalidate() call mid-frame affects the NEXT frame, not this one. */
+static bool band_force_all_dirty = true;
+static bool band_frame_force_all;
+
 /* What every pixel-writing primitive below actually draws into: the whole
  * framebuffer, or the band currently being rendered - see gfx_target.h for
  * why a target carries its own row range rather than every primitive
@@ -533,6 +541,7 @@ void
 gfx_invalidate(void) {
     GFX_PRESENT_GUARD();
     prev_bbox_valid = false;
+    band_force_all_dirty = true;
 }
 
 /* gfx_dirty.h header-only for inlining mark_band(); thin wrappers for gfx.h
@@ -1935,6 +1944,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
         gfx_fb_guard_set_available(false);
         gfx_band_ring_begin(&band_ring, granted.height / granted.band_height);
         band_current_slot = 0;
+        band_force_all_dirty = true; /* nothing sent to the panel yet this visit */
     }
 
     current_mode = granted;
@@ -1976,6 +1986,40 @@ gfx_band_frame_begin(void) {
     band_render_active = false;
     gfx_fb_guard_set_available(false);
     gfx_band_ring_begin(&band_ring, current_mode.height / current_mode.band_height);
+
+    /* Captured once per frame, not read live from gfx_band_dirty(): a
+     * gfx_invalidate() call mid-frame (an app's own BOOT-menu toggle, say)
+     * must not retroactively force bands this frame already skipped. */
+    band_frame_force_all = band_force_all_dirty;
+    band_force_all_dirty = false;
+}
+
+/* Band mode's own "does [row0, row1) need touching this frame" query -
+ * reuses gfx_dirty.h's cell tracker (dirty_band_extent()), the same one
+ * gfx_present() consults for full-fb sends, fed by the ordinary
+ * gfx_mark_dirty() calls an app and ui.c already make. A forced frame
+ * (gfx_invalidate(), gfx_mode_enter()) always reports the full width
+ * dirty, without needing every cell actually marked. */
+bool
+gfx_band_dirty(int row0, int row1, int* out_x0, int* out_x1) {
+    if (band_frame_force_all) {
+        *out_x0 = 0;
+        *out_x1 = GFX_WIDTH;
+        return true;
+    }
+    return dirty_band_extent(row0, row1, out_x0, out_x1);
+}
+
+/* The band gfx_band_next() just handed out needs no redraw this frame
+ * (gfx_band_dirty() said so) - advances past it without rendering or
+ * sending anything, leaving whatever the panel already shows there. */
+void
+gfx_band_skip(void) {
+    GFX_PRESENT_GUARD();
+    assert(current_mode.layout == GFX_LAYOUT_BANDS);
+    band_render_active = false;
+    gfx_fb_guard_set_available(false);
+    gfx_band_ring_skip(&band_ring);
 }
 
 bool
@@ -1990,6 +2034,11 @@ gfx_band_next(void) {
             gfx_band_ring_settle(&band_ring);
         }
         band_render_active = false;
+        /* This frame's gfx_mark_dirty() calls (an app's own coverage, ui.c's
+         * per-band UI changes) have done their job for gfx_band_dirty();
+         * clear them so next frame's marks start from nothing, the same
+         * reset a full-fb present gives itself at the end of every frame. */
+        dirty_frame_sent();
         return false;
     }
     band_current_slot = gfx_band_ring_slot(&band_ring);
