@@ -105,6 +105,22 @@ bool gfx_interlace_enabled(void);
  * partial clear tracking. Needed when an app opens, closes, or rotates. */
 void gfx_invalidate(void);
 
+/* One call for a transition instead of composing gfx_mark_all_dirty() and
+ * gfx_invalidate() separately, plus a pending latch (below) an app's
+ * optional invalidate() callback (app.h) answers to. Sets state only and
+ * frees nothing, so it is safe from anywhere on core 0, an app callback or
+ * a UI build included. */
+void gfx_request_full_redraw(void);
+
+/* True from a gfx_request_full_redraw() call until the shell clears it for
+ * the pass that follows. */
+bool gfx_full_redraw_pending(void);
+
+/* Ends the window gfx_request_full_redraw() opened - called by the shell
+ * once it has read the flag and decided whether to invoke an app's
+ * invalidate(), before that pass's frame() runs. */
+void gfx_full_redraw_clear_pending(void);
+
 void gfx_fill_rect(int x, int y, int w, int h, gfx_color_t color);
 
 /* Like gfx_fill_rect(), but at `alpha`'s own apparent coverage (0 nothing,
