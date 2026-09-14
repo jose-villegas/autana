@@ -19,6 +19,7 @@
 
 #include "sand_priv.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "sand_liquid_move.h"
@@ -1306,18 +1307,14 @@ run_sweep_stripes(const sweep_phase_ctx_t* c) {
     }
 }
 
-/* THE SEAM FIX: step_one_grain()'s reach is exactly one cell, so a move
- * out of a stripe's boundary row can only land in a neighbour's boundary
- * row - and if that neighbour is the OTHER phase, its sweep has not run
- * yet, so the arriving cell gets moved AGAIN once it does.
- * run_sweep_stripes() excludes both boundary rows; this sweeps them
- * afterward, serially, in the same relative order an unstriped sweep
- * would give them - the only order that matters here. */
-static void
-run_sweep_guard_rows(sand_t* s, int w, int dx, int dy, const int* slide_a, const int* slide_b, int x_step, int load_dx,
-                     int load_dy, int jostle, uint8_t settled_bit, uint16_t is_liquid, int y_step, int offset) {
-    const int h = s->h;
+/* Every guard row this step has, boundary order (not yet sweep order -
+ * callers that care about that reorder the pair themselves). Returns the
+ * count; writes into `out` (capacity `max`) when `out` is non-NULL, so
+ * the same walk both sizes the list and fills it. */
+static int
+sweep_guard_row_list(int h, int offset, int* out, int max) {
     int k = (offset == 0) ? 0 : -1;
+    int n = 0;
 
     for (;;) {
         const int boundary = offset + (k + 1) * SWEEP_STRIPE_H;
@@ -1325,17 +1322,65 @@ run_sweep_guard_rows(sand_t* s, int w, int dx, int dy, const int* slide_a, const
             break;
         }
         if (boundary > 0) {
-            const int above = boundary - 1;
-            const int below = boundary;
-            const int first = (y_step > 0) ? above : below;
-            const int second = (y_step > 0) ? below : above;
-
-            sweep_range(s, first, first + y_step, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle,
-                        settled_bit, is_liquid);
-            sweep_range(s, second, second + y_step, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy,
-                        jostle, settled_bit, is_liquid);
+            if (out != NULL && n + 1 < max) {
+                out[n] = boundary - 1;
+                out[n + 1] = boundary;
+            }
+            n += 2;
         }
         k++;
+    }
+    return n;
+}
+
+/* A guard row's own sweep, skipping any column that no longer matches
+ * `snapshot` - see run_sweep_guard_rows() for why. An unchanged column
+ * gets its ordinary turn. No block-settled skip here: a step's guard
+ * rows are a small, fixed slice of the grid regardless. */
+static void
+sweep_guard_row(sand_t* s, int y, int w, int dx, int dy, const int* slide_a, const int* slide_b, int x_step,
+                int load_dx, int load_dy, int jostle, const uint8_t* snapshot) {
+    uint8_t* const row = s->cells + (size_t)y * (size_t)w;
+    uint8_t* const prow = dest_row(s, y + dy);
+    uint8_t* const arow = dest_row(s, y + slide_a[1]);
+    uint8_t* const brow = dest_row(s, y + slide_b[1]);
+    dest_state_t dest = DEST_UNKNOWN;
+
+    const int cx_from = (x_step > 0) ? 0 : w - 1;
+    const int cx_to = (x_step > 0) ? w : -1;
+
+    for (int x = cx_from; x != cx_to; x += x_step) {
+        if (row[x] == snapshot[x] && !CELL_IS_EMPTY(row[x])) {
+            step_one_grain(s, row, prow, arow, brow, x, y, w, dx, dy, slide_a, slide_b, load_dx, load_dy, jostle,
+                           sweep_driven, &dest);
+        }
+    }
+}
+
+/* THE SEAM FIX: a move out of a stripe's boundary row, or from the
+ * interior row beside one, can land in a not-yet-swept neighbour and be
+ * found and moved again once it is. `snapshot` - each guard row's
+ * content from before either phase ran - lets sweep_guard_row() tell "a
+ * phase-time move already landed here" from "still what the step
+ * started with," which stops the double move without needing every
+ * guard row in serial order - see Sand-Simulation.md for what that
+ * costs. */
+static void
+run_sweep_guard_rows(sand_t* s, int w, int dx, int dy, const int* slide_a, const int* slide_b, int x_step, int load_dx,
+                     int load_dy, int jostle, int y_step, const int* guard_rows, int guard_count,
+                     const uint8_t* snapshot) {
+    for (int i = 0; i < guard_count; i += 2) {
+        const int above = guard_rows[i];
+        const int below = guard_rows[i + 1];
+        const int first = (y_step > 0) ? above : below;
+        const int second = (y_step > 0) ? below : above;
+        const int first_i = (first == above) ? i : i + 1;
+        const int second_i = (first == above) ? i + 1 : i;
+
+        sweep_guard_row(s, first, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle,
+                        &snapshot[(size_t)first_i * (size_t)w]);
+        sweep_guard_row(s, second, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle,
+                        &snapshot[(size_t)second_i * (size_t)w]);
     }
 }
 
@@ -1344,9 +1389,9 @@ sweep_phase_worker(void* ctx) {
     run_sweep_stripes((const sweep_phase_ctx_t*)ctx);
 }
 
-/* Runs one checkerboard phase - every stripe of `color` - half on core 1,
- * half here, joining before returning. See sweep_phase_ctx_t and
- * run_sweep_stripes() for why the split needs no guard band. */
+/* Runs one checkerboard phase - every stripe of `color`, minus its guard
+ * rows - half on core 1, half here, joining before returning. See
+ * run_sweep_guard_rows() for where the excluded rows get their turn. */
 static void
 run_sweep_phase(sand_t* s, int color, int w, int dx, int dy, const int* slide_a, const int* slide_b, int x_step,
                 int load_dx, int load_dy, int jostle, uint8_t settled_bit, uint16_t is_liquid, int y_step, int offset) {
@@ -1460,17 +1505,38 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     /* Hashed draws (sand_rng_next_at(), sand_priv.h) are armed for exactly
      * this window, never longer - gas and reactions later this step must
      * still draw from the plain sequential stream. Below
-     * SWEEP_CHECKERBOARD_MIN_ROWS one core is simply faster. */
+     * SWEEP_CHECKERBOARD_MIN_ROWS one core is simply faster. A snapshot
+     * buffer this step cannot spare falls back the same way: two cores
+     * are not worth a guard row that might move a cell twice. */
+    int guard_count = 0;
+    uint8_t* guard_snapshot = NULL;
     if (sand_two_core_step_enabled() && s->h >= SWEEP_CHECKERBOARD_MIN_ROWS) {
         const int offset = (s->step_phase & 1) ? SWEEP_STRIPE_H / 2 : 0;
-        s->rng_hashed = true;
-        run_sweep_phase(s, 0, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
-                        y_step, offset);
-        run_sweep_phase(s, 1, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
-                        y_step, offset);
-        run_sweep_guard_rows(s, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
-                             y_step, offset);
-        s->rng_hashed = false;
+        guard_count = sweep_guard_row_list(s->h, offset, NULL, 0);
+        int* guard_rows = malloc(sizeof(int) * (size_t)guard_count);
+        guard_snapshot = malloc((size_t)guard_count * (size_t)w);
+
+        if (guard_rows != NULL && guard_snapshot != NULL) {
+            sweep_guard_row_list(s->h, offset, guard_rows, guard_count);
+            for (int gi = 0; gi < guard_count; gi++) {
+                memcpy(&guard_snapshot[(size_t)gi * (size_t)w], s->cells + (size_t)guard_rows[gi] * (size_t)w,
+                       (size_t)w);
+            }
+
+            s->rng_hashed = true;
+            run_sweep_phase(s, 0, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
+                            y_step, offset);
+            run_sweep_phase(s, 1, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
+                            y_step, offset);
+            run_sweep_guard_rows(s, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, y_step, guard_rows,
+                                 guard_count, guard_snapshot);
+            s->rng_hashed = false;
+        } else {
+            sweep_range(s, y_from, y_to, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle,
+                        settled_bit, is_liquid);
+        }
+        free(guard_rows);
+        free(guard_snapshot);
     } else {
         sweep_range(s, y_from, y_to, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
                     is_liquid);
