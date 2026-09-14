@@ -354,6 +354,155 @@ test_needs_repaint_matches_cell_changed_when_not_forced(void) {
     }
 }
 
+/* --- lever 2: cell dither modes ------------------------------------------ */
+
+static gfx_color_t checker_table[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CELL_CHECKER_PHASES];
+static gfx_color_t bayer2_table[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CELL_BAYER2_PHASES];
+
+/* Every cell reads its own (gx + cy) & 1 phase, whole cells solid - not a
+ * per-pixel dither. */
+static void
+test_cell_checker_phase_is_gx_plus_cy_parity(void) {
+    memset(checker_table, 0, sizeof checker_table);
+    checker_table[7 * GFX_INDEXED_CELL_CHECKER_PHASES + 0] = (gfx_color_t)0xAAAA;
+    checker_table[7 * GFX_INDEXED_CELL_CHECKER_PHASES + 1] = (gfx_color_t)0xBBBB;
+    const uint8_t row_even[2] = {7, 7}; /* gx 0, 1 at grid row cy */
+
+    gfx_color_t out[8];
+    /* cy=0: gx=0 -> phase 0, gx=1 -> phase 1. cy=1: parities flip. */
+    gfx_indexed_expand_row_dither_cell(row_even, 2, checker_table, false, 4, 0, out, 8);
+    for (int x = 0; x < 4; x++) {
+        TEST_ASSERT_EQUAL_HEX16(0xAAAA, out[x]);
+    }
+    for (int x = 4; x < 8; x++) {
+        TEST_ASSERT_EQUAL_HEX16(0xBBBB, out[x]);
+    }
+    gfx_indexed_expand_row_dither_cell(row_even, 2, checker_table, false, 4, 1, out, 8);
+    for (int x = 0; x < 4; x++) {
+        TEST_ASSERT_EQUAL_HEX16(0xBBBB, out[x]);
+    }
+    for (int x = 4; x < 8; x++) {
+        TEST_ASSERT_EQUAL_HEX16(0xAAAA, out[x]);
+    }
+}
+
+/* Every cell reads its own (cy & 1) * 2 + (gx & 1) phase - the four
+ * positions of a 2x2 Bayer block over cells, not pixels. */
+static void
+test_cell_bayer2_phase_is_2x2_cell_position(void) {
+    memset(bayer2_table, 0, sizeof bayer2_table);
+    for (int p = 0; p < GFX_INDEXED_CELL_BAYER2_PHASES; p++) {
+        bayer2_table[3 * GFX_INDEXED_CELL_BAYER2_PHASES + p] = (gfx_color_t)(0xC000 + p);
+    }
+    const uint8_t row[2] = {3, 3};
+
+    for (int cy = 0; cy < 2; cy++) {
+        gfx_color_t out[8];
+        gfx_indexed_expand_row_dither_cell(row, 2, bayer2_table, true, 4, cy, out, 8);
+        const int phase_gx0 = cy * 2 + 0, phase_gx1 = cy * 2 + 1;
+        for (int x = 0; x < 4; x++) {
+            TEST_ASSERT_EQUAL_HEX16((gfx_color_t)(0xC000 + phase_gx0), out[x]);
+        }
+        for (int x = 4; x < 8; x++) {
+            TEST_ASSERT_EQUAL_HEX16((gfx_color_t)(0xC000 + phase_gx1), out[x]);
+        }
+    }
+}
+
+/* A NULL grid row (a panel row past the grid's own height) reads phase 0
+ * of index 0, the reserved background entry - the margin every other
+ * expand function in this header shares. */
+static void
+test_cell_null_row_reads_background_phase(void) {
+    memset(checker_table, 0, sizeof checker_table);
+    checker_table[0] = (gfx_color_t)0xD00D; /* index 0, phase (gx=0)+(cy=0) & 1 == 0 */
+    gfx_color_t out[4];
+    gfx_indexed_expand_row_dither_cell(NULL, 1, checker_table, false, 4, 0, out, 4);
+    for (int x = 0; x < 4; x++) {
+        TEST_ASSERT_EQUAL_HEX16(0xD00D, out[x]);
+    }
+}
+
+/* Exact, not merely safe: two indices sharing THIS cell's own phase are
+ * unchanged even if they differ at some other phase this cell never
+ * visits - the property that makes the cell-mode rule tighter than
+ * gfx_indexed_dither16_classify()'s every-phase match. */
+static void
+set_agree_at_phase_0_only(void) {
+    memset(bayer2_table, 0, sizeof bayer2_table);
+    bayer2_table[1 * GFX_INDEXED_CELL_BAYER2_PHASES + 0] = (gfx_color_t)0x1111;
+    bayer2_table[2 * GFX_INDEXED_CELL_BAYER2_PHASES + 0] = (gfx_color_t)0x1111;
+    bayer2_table[1 * GFX_INDEXED_CELL_BAYER2_PHASES + 1] = (gfx_color_t)0x2222;
+    bayer2_table[2 * GFX_INDEXED_CELL_BAYER2_PHASES + 1] = (gfx_color_t)0x3333;
+}
+
+static void
+test_cell_dither_changed_is_exact_per_cell_not_every_phase(void) {
+    set_agree_at_phase_0_only();
+
+    TEST_ASSERT_FALSE(gfx_indexed_cell_dither_changed(1, 2, bayer2_table, true, 0, 0)); /* (0,0): phase 0 */
+    TEST_ASSERT_TRUE(gfx_indexed_cell_dither_changed(1, 2, bayer2_table, true, 1, 0));  /* (1,0): phase 1 */
+    TEST_ASSERT_FALSE(gfx_indexed_cell_dither_changed(1, 1, bayer2_table, true, 1, 0));
+}
+
+/* --- lever 2: GFX_DITHER_PIXEL_CHECKER2 ----------------------------------- */
+
+static gfx_color_t
+    checker2_table[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX];
+
+static void
+set_checker2_entry(int index, int row_phase, int chunk_px, gfx_color_t rgb) {
+    checker2_table[(index * GFX_INDEXED_CHECKER2_ROW_PHASES + row_phase) * GFX_INDEXED_CHECKER2_CHUNK_PX + chunk_px] =
+        rgb;
+}
+
+/* Every output pixel reads its own (index, row phase, column phase) slot -
+ * phase keyed by absolute panel coordinates, a 2-pixel period instead of
+ * dither16's 4x4. */
+static void
+test_checker2_every_output_pixel_reads_its_own_phase_entry(void) {
+    memset(checker2_table, 0, sizeof checker2_table);
+    for (int py = 0; py < GFX_INDEXED_CHECKER2_ROW_PHASES; py++) {
+        for (int px = 0; px < GFX_INDEXED_CHECKER2_CHUNK_PX; px++) {
+            set_checker2_entry(9, py, px, (gfx_color_t)(0x8000 + py * 2 + px));
+        }
+    }
+    const uint8_t row[1] = {9};
+    gfx_color_t out[4];
+
+    for (int y = 0; y < 4; y++) {
+        gfx_indexed_expand_row_dither_checker2(row, 1, checker2_table, 4, y, 0, out, 4);
+        for (int x = 0; x < 4; x++) {
+            const int expected_phase = (y & 1) * 2 + (x & 1);
+            TEST_ASSERT_EQUAL_HEX16((gfx_color_t)(0x8000 + expected_phase), out[x]);
+        }
+    }
+}
+
+/* Two dithered bands sent side by side stay in phase, column offset
+ * carried through panel_col0 - odd alignments included. */
+static void
+test_checker2_stays_in_phase_across_a_band_boundary(void) {
+    memset(checker2_table, 0, sizeof checker2_table);
+    for (int py = 0; py < GFX_INDEXED_CHECKER2_ROW_PHASES; py++) {
+        for (int px = 0; px < GFX_INDEXED_CHECKER2_CHUNK_PX; px++) {
+            set_checker2_entry(5, py, px, (gfx_color_t)(0x9000 + py * 2 + px));
+        }
+    }
+    const uint8_t row[6] = {5, 5, 5, 5, 5, 5};
+
+    gfx_color_t whole[12];
+    gfx_indexed_expand_row_dither_checker2(row, 6, checker2_table, 2, 3, 0, whole, 12);
+
+    /* Odd split, at an odd starting column - both irregular on purpose. */
+    gfx_color_t left[5], right[7];
+    gfx_indexed_expand_row_dither_checker2(row, 6, checker2_table, 2, 3, 0, left, 5);
+    gfx_indexed_expand_row_dither_checker2(row, 6, checker2_table, 2, 3, 5, right, 7);
+
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(whole, left, 5);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(whole + 5, right, 7);
+}
+
 void
 run_gfx_indexed_suite(void) {
     RUN_TEST(test_every_output_pixel_reads_its_own_cells_lut_entry);
@@ -371,6 +520,12 @@ run_gfx_indexed_suite(void) {
     RUN_TEST(test_incremental_256_index_output_matches_a_full_reexpansion);
     RUN_TEST(test_needs_repaint_ignores_unchanged_index_when_forced);
     RUN_TEST(test_needs_repaint_matches_cell_changed_when_not_forced);
+    RUN_TEST(test_cell_checker_phase_is_gx_plus_cy_parity);
+    RUN_TEST(test_cell_bayer2_phase_is_2x2_cell_position);
+    RUN_TEST(test_cell_null_row_reads_background_phase);
+    RUN_TEST(test_cell_dither_changed_is_exact_per_cell_not_every_phase);
+    RUN_TEST(test_checker2_every_output_pixel_reads_its_own_phase_entry);
+    RUN_TEST(test_checker2_stays_in_phase_across_a_band_boundary);
 }
 
 SUITE_REGISTER(run_gfx_indexed_suite);

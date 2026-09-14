@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "gfx/gfx_indexed.h"
 #include "gfx/gfx_palette.h"
 #include "gfx_palette_gen.h"
 #include "material.h"
@@ -1878,6 +1879,57 @@ write_sand_palette_header(const char* path) {
                "GFX_INDEXED_DITHER16_PHASES] = {\n");
     for (int i = 0; i < PALETTE_SIZE * 16; i++) {
         fprintf(f, "%s0x%04X,", i % 8 == 0 ? "    " : " ", dither_table[i]);
+        if (i % 8 == 7) {
+            fprintf(f, "\n");
+        }
+    }
+    fprintf(f, "\n};\n\n");
+
+    /* Lever 2's own four remaining GFX_DITHER_* tables - PIXEL_BAYER4's is
+     * sand_palette16_dither_rgb above, already the shared 16-colour
+     * palette's own dither against sand256. gfx_palette_gen.h builds each;
+     * this file only owns the FINAL sand256/sand16 palettes they read. */
+    static gfx_color_t none_lut[PALETTE_SIZE];
+    gfx_palette_gen_build_lut_nearest(&sand256_palette, &sand16_palette, none_lut);
+    fprintf(f, "static const gfx_color_t sand_dither_none_lut[GFX_INDEXED_PALETTE_SIZE] = {\n");
+    for (int i = 0; i < PALETTE_SIZE; i++) {
+        fprintf(f, "%s0x%04X,", i % 8 == 0 ? "    " : " ", none_lut[i]);
+        if (i % 8 == 7) {
+            fprintf(f, "\n");
+        }
+    }
+    fprintf(f, "\n};\n\n");
+
+    static gfx_color_t cell_checker[PALETTE_SIZE * GFX_INDEXED_CELL_CHECKER_PHASES];
+    gfx_palette_gen_build_dither_cell(&sand256_palette, &sand16_palette, false, cell_checker);
+    fprintf(f, "static const gfx_color_t sand_dither_cell_checker[GFX_INDEXED_PALETTE_SIZE * "
+               "GFX_INDEXED_CELL_CHECKER_PHASES] = {\n");
+    for (int i = 0; i < PALETTE_SIZE * GFX_INDEXED_CELL_CHECKER_PHASES; i++) {
+        fprintf(f, "%s0x%04X,", i % 8 == 0 ? "    " : " ", cell_checker[i]);
+        if (i % 8 == 7) {
+            fprintf(f, "\n");
+        }
+    }
+    fprintf(f, "\n};\n\n");
+
+    static gfx_color_t cell_bayer2[PALETTE_SIZE * GFX_INDEXED_CELL_BAYER2_PHASES];
+    gfx_palette_gen_build_dither_cell(&sand256_palette, &sand16_palette, true, cell_bayer2);
+    fprintf(f, "static const gfx_color_t sand_dither_cell_bayer2[GFX_INDEXED_PALETTE_SIZE * "
+               "GFX_INDEXED_CELL_BAYER2_PHASES] = {\n");
+    for (int i = 0; i < PALETTE_SIZE * GFX_INDEXED_CELL_BAYER2_PHASES; i++) {
+        fprintf(f, "%s0x%04X,", i % 8 == 0 ? "    " : " ", cell_bayer2[i]);
+        if (i % 8 == 7) {
+            fprintf(f, "\n");
+        }
+    }
+    fprintf(f, "\n};\n\n");
+
+    static gfx_color_t pixel_checker2[PALETTE_SIZE * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX];
+    gfx_palette_gen_build_dither_checker2(&sand256_palette, &sand16_palette, pixel_checker2);
+    fprintf(f, "static const gfx_color_t sand_dither_pixel_checker2[GFX_INDEXED_PALETTE_SIZE * "
+               "GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX] = {\n");
+    for (int i = 0; i < PALETTE_SIZE * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX; i++) {
+        fprintf(f, "%s0x%04X,", i % 8 == 0 ? "    " : " ", pixel_checker2[i]);
         if (i % 8 == 7) {
             fprintf(f, "\n");
         }
