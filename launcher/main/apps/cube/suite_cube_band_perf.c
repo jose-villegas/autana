@@ -96,6 +96,27 @@ log_stats(const char* label, stats_t s) {
              1000000.0 / (double)s.med);
 }
 
+/* A band arm that skips every band looks identical to a healthy one by
+ * sample_count alone - exactly how the all-skip regression this guards
+ * against once passed silently (both tests only logged). The frame-time
+ * floor catches "rendered impossibly fast to be real" the way a bare
+ * touched>0 check would still miss a bug that only fires most frames. */
+static void
+assert_band_frame_did_real_work(stats_t frame, int touched, int64_t raster_us) {
+    /* Total bytes across the whole capture, not a per-frame average: a
+     * per-frame average this small can truncate to 0 as an integer even
+     * when touched is genuinely nonzero, which would fail this for the
+     * wrong reason. touched > 0 already implies this is positive - kept
+     * as its own check because it is the sanity property item 3 named. */
+    const int64_t bytes_sent = (int64_t)touched * GFX_WIDTH * GFX_BAND_HEIGHT * sizeof(gfx_color_t);
+
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, touched, "band mode touched no bands - the cube never redraws");
+    TEST_ASSERT_GREATER_THAN_INT64_MESSAGE(0, raster_us, "band mode never rasterized a touched band");
+    TEST_ASSERT_GREATER_THAN_INT64_MESSAGE(0, bytes_sent, "band mode sent nothing to the panel");
+    TEST_ASSERT_GREATER_THAN_INT64_MESSAGE(2000, frame.avg,
+                                           "band frame time is impossibly fast - bands are likely being skipped");
+}
+
 /* Runs one variant for `duration_ms`, timing whichever frame path
  * `run_frame` performs - either the band loop or the full-fb path, both
  * called with dt_ms clamped the same way main.c's own loop clamps it. */
@@ -138,6 +159,10 @@ static int touched_band_count;
 static int skipped_band_count;
 static int64_t ui_build_us_accum;
 
+/* Total time inside cube_rasterize_band() across a capture - proof a
+ * touched band actually rasterized something, not just bookkeeping. */
+static int64_t raster_us_accum;
+
 /* Whether either arm draws the fps counter at all this capture - off
  * isolates the cube's own cost from the UI's, on (the default) is what
  * every capture before the orientation sweep always measured. */
@@ -158,9 +183,10 @@ full_fb_frame(uint32_t dt_ms) {
 
 /* cube_frame_band()'s own shape, rebuilt from the pieces app_cube.c exposes
  * (its own clear_band() is file-static). cube_transform_and_bin() must run
- * once per frame, before the band loop, or the bin holds the previous
- * frame's triangles - draw_fps(for_bands=true) similarly builds the HUD's
- * commands once, for ui_replay_band() to bin per band below. */
+ * once per frame, before the band loop - it also marks the cube's own
+ * coverage dirty (its own comment), the only reason gfx_band_dirty() below
+ * ever returns true for a rotating cube. draw_fps(for_bands=true) builds
+ * the HUD's commands once, for ui_replay_band() to bin per band below. */
 static void
 band_frame(uint32_t dt_ms) {
     const gfx_color_t bg = gfx_rgb(0x0A0C14);
@@ -192,7 +218,9 @@ band_frame(uint32_t dt_ms) {
         for (int i = 0; i < GFX_WIDTH * height; i++) {
             buf[i] = bg;
         }
+        const int64_t raster_start = esp_timer_get_time();
         cube_rasterize_band(buf, row0, row0 + height);
+        raster_us_accum += esp_timer_get_time() - raster_start;
 
         if (run_fps_on) {
             const int64_t replay_start = esp_timer_get_time();
@@ -230,12 +258,16 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     replay_band_count = 0;
     touched_band_count = 0;
     skipped_band_count = 0;
+    raster_us_accum = 0;
     cube_enter();
     capture(band_frame, SAMPLE_MS);
     cube_exit();
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, sample_count, "no band-mode frames captured");
     const int band_n = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES;
     const stats_t band_stats = compute_stats(band_n);
+    const double band_bytes_per_frame =
+        (double)touched_band_count * GFX_WIDTH * GFX_BAND_HEIGHT * sizeof(gfx_color_t) / sample_count;
+    assert_band_frame_did_real_work(band_stats, touched_band_count, raster_us_accum);
 
     cube_band_mode = false;
 
@@ -251,11 +283,8 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     {
         const int total_bands = touched_band_count + skipped_band_count;
         const double touched_pct = total_bands > 0 ? 100.0 * touched_band_count / total_bands : 0.0;
-        const double bytes_per_frame = sample_count > 0 ? (double)touched_band_count * GFX_WIDTH * GFX_BAND_HEIGHT
-                                                              * sizeof(gfx_color_t) / sample_count
-                                                        : 0.0;
         ESP_LOGI(TAG, "bands: %d touched, %d skipped (%.1f%% touched), %.0f bytes/frame sent", touched_band_count,
-                 skipped_band_count, touched_pct, bytes_per_frame);
+                 skipped_band_count, touched_pct, band_bytes_per_frame);
     }
 
     free(samples);
@@ -276,10 +305,14 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
 typedef struct {
     const char* label;
     stats_t frame;
-    int n;
+    int frame_count; /* the real, uncapped sample_count - compute_stats()'s own
+                       * n is capped to MAX_SAMPLES for the ring buffer, which
+                       * would badly inflate a per-frame total divided by it at
+                       * the frame rates an all-skip band bug runs at */
     int64_t ui_build_us;
     int64_t replay_us;
     int replay_band_count;
+    int64_t raster_us;
     int touched_bands;
     int skipped_bands;
 } arm_result_t;
@@ -294,6 +327,7 @@ run_arm(const char* label, bool band_mode, int quarter, bool fps_on) {
     replay_band_count = 0;
     touched_band_count = 0;
     skipped_band_count = 0;
+    raster_us_accum = 0;
 
     cube_band_mode = band_mode;
     cube_enter();
@@ -303,14 +337,20 @@ run_arm(const char* label, bool band_mode, int quarter, bool fps_on) {
 
     arm_result_t r = {
         .label = label,
-        .n = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES,
+        .frame_count = sample_count,
         .ui_build_us = ui_build_us_accum,
         .replay_us = replay_us_accum,
         .replay_band_count = replay_band_count,
+        .raster_us = raster_us_accum,
         .touched_bands = touched_band_count,
         .skipped_bands = skipped_band_count,
     };
-    r.frame = compute_stats(r.n);
+    const int n = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES;
+    r.frame = compute_stats(n);
+
+    if (band_mode) {
+        assert_band_frame_did_real_work(r.frame, r.touched_bands, r.raster_us);
+    }
     return r;
 }
 
@@ -320,9 +360,9 @@ log_arm(const arm_result_t* r) {
     ESP_LOGI(TAG,
              "%-24s ui_build=%.1f us/frame, ui_replay=%.1f us/frame, bands touched=%d skipped=%d, "
              "%.0f bytes/frame sent",
-             r->label, (double)r->ui_build_us / r->n, r->replay_band_count > 0 ? (double)r->replay_us / r->n : 0.0,
-             r->touched_bands, r->skipped_bands,
-             (double)r->touched_bands * GFX_WIDTH * GFX_BAND_HEIGHT * sizeof(gfx_color_t) / r->n);
+             r->label, (double)r->ui_build_us / r->frame_count,
+             r->replay_band_count > 0 ? (double)r->replay_us / r->frame_count : 0.0, r->touched_bands, r->skipped_bands,
+             (double)r->touched_bands * GFX_WIDTH * GFX_BAND_HEIGHT * sizeof(gfx_color_t) / r->frame_count);
 }
 
 void
