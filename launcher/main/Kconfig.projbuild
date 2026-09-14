@@ -151,19 +151,25 @@ menu "Launcher"
             overlapped path - runtime override: gfx_set_present_async().
 
     config LAUNCHER_SAND_TWO_CORE_STEP
-        bool "Run sand's order-independent per-step scans on core 1"
-        default y
+        bool "Split sand's gravity sweep across both cores"
+        default n
         help
-            A step's movement passes - the gravity sweep, cross-flow, gas
-            and reactions - draw from one sequential PRNG a data-dependent
-            number of times per cell, so splitting them across cores would
-            either race on that shared state or consume it in a different
-            order than a serial run, changing the step's own output for a
-            given seed. What this option moves to core 1 is narrower: two
-            block-bookkeeping scans whose per-block answer depends on
-            nothing any other block writes - see finalize_settling()
-            (sand.c) and mark_liquid_neighbourhoods() (sand_liquid.c).
-            Runtime override for an A/B measurement: sand_set_two_core_step().
+            Off until a real device hang, traced to core 1 contention this
+            feature adds, is confirmed fixed on hardware - see
+            sand_core1.c's own join-timeout comment. When on: the gravity
+            sweep runs as a checkerboard of row stripes, two phases per
+            step (even stripes, then odd), half of each phase on a task
+            pinned to core 1. A stripe's own reach never touches another
+            same-phase stripe, so the split needs no lock - but it also no
+            longer draws sand_t's PRNG in the same order a serial step
+            would, so this path is NOT byte-identical to serial and the
+            fingerprint suite checks it separately from the pinned one.
+            Two smaller, order-independent block scans - see
+            finalize_settling() (sand.c) and mark_liquid_neighbourhoods()
+            (sand_liquid.c) - also move to core 1 under this switch, and
+            those stay byte-identical either way. Runtime override for an
+            A/B measurement or a test that wants the plain serial path:
+            sand_set_two_core_step().
 
     config LAUNCHER_GFX_QSPI_STRONG_PADS
         bool "Drive the QSPI pads at 40 mA instead of the 20 mA default"

@@ -24,6 +24,14 @@ splash_displace(sand_t* s, int x, int y, uint8_t mat_id) {
     if (mat_id != MAT_WATER) {
         return;
     }
+    /* sand_impulse() below appends to one shared, board-wide queue with no
+     * lock - fine for the single core this always ran on, unsafe for two
+     * cores appending at once. A checkerboard-parallel dispatch (sand.c)
+     * arms rng_hashed for exactly this window, so a splash simply does
+     * not fire while one is running, rather than risk the queue. */
+    if (s->rng_hashed) {
+        return;
+    }
     if ((rng_next(&s->rng) & 0xFF) > s->splash_chance) {
         return; /* this echo lost the roll - let the bounce die here */
     }
@@ -119,7 +127,7 @@ give_mass(sand_t* s, uint8_t* to_row, int tx, int w, int mass, uint8_t mat_id, i
  * viscosity keeps old behaviour. No jostle bypass: shaking a viscous
  * liquid does not thin it. */
 static inline bool
-liquid_may_move(sand_t* s, uint8_t id) {
+liquid_may_move(sand_t* s, int x, int y, uint8_t id) {
     const int m = (s->mobility >= 0) ? s->mobility : material_by_id((material_id_t)id)->mobility;
 
     /* Default is NO VISCOSITY, not "never moves". Unset lava behaves like
@@ -129,7 +137,7 @@ liquid_may_move(sand_t* s, uint8_t id) {
     if (m == 0) {
         return true;
     }
-    return m >= 255 || (int)(rng_next(&s->rng) & 0xFF) < m;
+    return m >= 255 || (int)(sand_rng_next_at(s, x, y, SAND_RNG_SLOT_VISCOSITY) & 0xFF) < m;
 }
 
 /* `dest_full` says the caller has already established that nothing this grain
@@ -153,7 +161,7 @@ move_liquid_grain(sand_t* s, uint8_t* row, uint8_t* prow, int x, int y, int dx, 
      * too-viscous-to-move code out of the hot path, worth ~26% on a
      * water benchmark. Wrong for oil (refuses ~2 in 3 steps), but water
      * is what a screen of liquid usually is. */
-    if (s->may_have_viscous_liquid && __builtin_expect(!liquid_may_move(s, mat_id), 0)) {
+    if (s->may_have_viscous_liquid && __builtin_expect(!liquid_may_move(s, x, y, mat_id), 0)) {
         return false;
     }
 
