@@ -157,7 +157,7 @@ try_bubble(sand_t* s, uint8_t* row, uint8_t* prow, int x, int y, int w, int rdx,
     prow[nx] = grain;
     row[x] = target;
 
-    mark_rows(s, y, y + rdy);
+    mark_slide(s, x, y, nx, y + rdy);
     gas_row_arm(y + rdy);
     wake_block_and_neighbors(s, x, y);
     wake_block_and_neighbors(s, nx, y + rdy);
@@ -250,7 +250,7 @@ gas_walk_once(sand_t* s, uint8_t* row, int x, int y, int w, int rdx, int rdy, ce
     if (can_enter(density, CELL_MATERIAL(grain), target)) {
         trow[nx] = grain;
         row[x] = target;
-        mark_rows(s, y, ny);
+        mark_slide(s, x, y, nx, ny);
         gas_row_arm(ny);
         return true;
     }
@@ -272,7 +272,7 @@ gas_walk_once(sand_t* s, uint8_t* row, int x, int y, int w, int rdx, int rdy, ce
 
     trow[nx] = grain;
     row[x] = target;
-    mark_rows(s, y, ny);
+    mark_slide(s, x, y, nx, ny);
     gas_row_arm(ny);
     wake_block_and_neighbors(s, x, y);
     wake_block_and_neighbors(s, nx, ny);
@@ -698,7 +698,8 @@ equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, 
     }
 
     if (touched) {
-        mark_rows(s, y, y);
+        s->faller_may_move = true;
+        mark_row_span(s, y, touched_x0, touched_x1);
         const int by = (int)((unsigned)y / SAND_BLOCK_H);
         wake_blocks_range(s, (int)((unsigned)touched_x0 / SAND_BLOCK_W), by, (int)((unsigned)touched_x1 / SAND_BLOCK_W),
                           by);

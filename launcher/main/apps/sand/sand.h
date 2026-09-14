@@ -157,6 +157,13 @@ typedef struct sand_s {
      * cleared. NULL disables tracking entirely. See sand_track_dirty_rows(). */
     uint8_t* dirty_rows;
 
+    /* Optional, caller-owned, h entries each: [dirty_x0[y], dirty_x1[y]),
+     * unioned into row y since last cleared - meaningless where
+     * dirty_rows[y] == 0. NULL keeps a row-only caller working unchanged.
+     * See sand_track_dirty_cols(). */
+    uint16_t* dirty_x0;
+    uint16_t* dirty_x1;
+
     /* Optional, caller-owned, block_cols*block_rows bytes: which blocks of
      * the grid to consider. NULL means check every block. Always walks grid
      * in blocks of SAND_BLOCK_W x SAND_BLOCK_H (see step_one_row()).
@@ -234,6 +241,12 @@ void sand_clear(sand_t* s);
  * cleared here; clearing is caller's responsibility. Functions marking
  * changes: settling, spawning, sand_set, sand_clear. */
 void sand_track_dirty_rows(sand_t* s, uint8_t* rows);
+
+/* Adds each dirty row's own changed-column span (`x0`/`x1`, h entries each)
+ * on top of sand_track_dirty_rows()'s row granularity - a grain moving
+ * along a row no longer dirties columns it never touched. Opt-in: a caller
+ * can track rows without columns, not columns without rows. */
+void sand_track_dirty_cols(sand_t* s, uint16_t* x0, uint16_t* x1);
 
 /* Skip settled BLOCKS entirely - without this, a settled grain still fails
  * its gravity-ward move and both slides, every step, to conclude nothing.
