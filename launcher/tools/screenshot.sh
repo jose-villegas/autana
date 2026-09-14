@@ -78,7 +78,7 @@ from serial.tools import list_ports
 ports = list_ports.comports()
 hit = [p.device for p in ports if p.vid == 0x303A] or [p.device for p in ports if 'JTAG' in (p.description or '')]
 print(hit[0] if hit else '')
-" 2>/dev/null | tr -d '' || true)
+" 2>/dev/null | tr -d '\r' || true)
 fi
 if [ -z "$PORT" ]; then
     for candidate in /dev/ttyACM0 /dev/ttyUSB0 /dev/cu.usbmodem*; do
