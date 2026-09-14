@@ -221,17 +221,33 @@ one app that uses it today, gated by `CONFIG_LAUNCHER_CUBE_BAND_MODE` or its
 own `cube_band_mode` runtime switch, so its ordinary full-fb behaviour is
 what a plain build still ships.
 
-**Everything that writes a pixel has to know the framebuffer might not
-exist.** Band mode frees it, so `gfx_fb_guard.h` backs every drawing
-primitive (`gfx_clear()`, `gfx_fill_rect()`, `gfx_pixel()`, the line and
-text functions) with a check that no-ops instead of writing through a NULL
-pointer - loud (an assertion) on a development device build or a host
-build, silent on release, the same asymmetry `gfx_present_guard.h` already
-uses for its own invariant. The shell itself has to ask before drawing
-anything of its own: `main.c`'s home-swipe hint and `screenshot.c`'s device
-dump both check `gfx_mode_current()->layout` first and skip themselves in
-band mode, since the guard only stops a crash, not the pixels going
-nowhere.
+**Every drawing primitive targets whichever buffer is current, not always
+the framebuffer.** `gfx_target.h` is the shared clip-and-translate
+arithmetic behind `gfx_clear()`, `gfx_fill_rect()`, `gfx_pixel()`, the line,
+dither and blend variants, and text: while a band is being rendered they
+write into that band's own buffer, with an absolute y translated into its
+local rows and the app's own clip rect narrowed to the band's own row
+range. Outside a band render - between frames, or in `GFX_LAYOUT_FULL_FB`
+with no band ring at all - there is no valid target, and `gfx_fb_guard.h`
+backs every one of those same primitives with a check that no-ops instead
+of writing through a NULL pointer: loud (an assertion) on a development
+device build or a host build, silent on release, the same asymmetry
+`gfx_present_guard.h` already uses for its own invariant.
+
+**A UI is built once per frame and replayed per band, not drawn once per
+app.** microui's command list is already a complete description of the
+output (see "Immediate mode versus dirty bands" below); `ui_end_for_bands()`
+bins it by row range instead of painting, and `ui_replay_band()` draws
+whichever commands overlap the band currently being rendered - the same
+shape `app_cube.c` bins triangles in. This is why the shell's own
+home-swipe hint shows in band mode too, rather than being skipped: `main.c`
+queues it (`ui_queue_band_overlay_rect()`) before an app's `frame()` runs,
+since a band-mode app's whole band loop happens inside that one call with
+no chance to draw anything afterward, and whichever `ui_end_for_bands()`
+call happens that frame bins it alongside its own commands.
+`screenshot.c`'s device dump has no band-shaped equivalent - it needs one
+contiguous buffer to stream, which band mode never has - so it still checks
+`gfx_mode_current()->layout` and refuses outright.
 
 ### 2. There is exactly one frame loop, and it belongs to the shell
 
