@@ -42,15 +42,14 @@ flowchart LR
   end
   subgraph P1["Phase 1 - memory, cores and bus"]
     busRoot["80 MHz QSPI<br/>root cause"]:::p1
-    presentPipe["Present pipelining<br/>for sand"]:::p1
-    doubleBuffer["PSRAM double buffer,<br/>present on core 1"]:::p1
+    corePresent["Core-1 present, reads only +<br/>sim/update overlap (retained apps)"]:::p1
     memPlacement["Hot buffers to internal RAM;<br/>icache 32K / dcache 64K experiment"]:::p1
-    bandRingAlt["Band ring (internal SRAM):<br/>measured alternative only"]:::side
     resSettings["Resolution / colour<br/>system settings"]:::p1
   end
   subgraph P2["Phase 2 - r3d"]
     s3lExtract["Extract S3L transform<br/>from boot_anim"]:::side
-    rasterizer["Span rasterizer, binning,<br/>ordering table, colormap"]:::p2
+    bandRing["Internal-SRAM band ring<br/>(full-redraw renderers)"]:::p2
+    rasterizer["Span rasterizer, binning,<br/>ordering table, colormap<br/>(band-aware)"]:::p2
   end
   subgraph G["Phases 3-5 - the games"]
     raycaster["Raycaster + FPS"]:::game
@@ -66,15 +65,12 @@ flowchart LR
   sandPerf5["Sand perf round 5"]:::side
 
   frameTime --> busRoot
-  frameTime --> presentPipe
-  frameTime --> doubleBuffer
+  frameTime --> corePresent
   frameTime --> memPlacement
-  resSettings --> doubleBuffer
-  memPlacement -.->|if PSRAM fill rate loses| bandRingAlt
-  doubleBuffer --> rasterizer
-  bandRingAlt -.-> rasterizer
+  resSettings --> corePresent
+  bandRing --> rasterizer
   s3lExtract --> rasterizer
-  doubleBuffer --> raycaster
+  bandRing --> raycaster
   tiltShake --> raycaster
   rasterizer --> rollingBall
   tiltShake --> rollingBall
@@ -83,40 +79,54 @@ flowchart LR
   sandInstance --> platformer
   tiltShake --> platformer
   reactionMatrix --> materialData
-  doubleBuffer -.->|scrolling track| platformer
+  bandRing -.->|scrolling track| platformer
   sandPerf5 --> tiltShake
   hostHarness -.-> rasterizer
   hostHarness -.-> levelEditor
   busRoot -.-> raycaster
-  presentPipe -.-> platformer
+  corePresent -.-> platformer
 ```
 
-### Where a frame's time goes, today and with the double buffer
+### Where a frame's time goes, today, with core-1 present, and with the band ring
 
 Today the shell runs `frame()` then `gfx_present()`, and present blocks
 until the last DMA transfer drains — the CPU idles for the whole present.
-The default going forward (decision B, 2026-09-13) is a full-frame double
-buffer in PSRAM with render on core 0 and `gfx_present()` on core 1, so
-frame time becomes max(render, present) instead of render + present once
-the pipeline is full. Present is measured at 18.0-18.9 ms
-(`boot_anim_perf` rows, device, 2026-09-13); render is shown only for
-shape, using the cube's measured raster figure (19.3 ms, HUD on / partial
-present on / interlace off, cube perf capture, 2026-09-13) since no
-app-general render number exists yet (Phase 0).
+Decision B (2026-09-13, revised) is "read PSRAM, never write it in bulk":
+retained apps (sand, the UI) get one retained framebuffer in PSRAM that
+core 1 only *reads* while it presents, in parallel with core 0 running the
+next update; full-redraw renderers (the 3D renderer, raycaster, image
+kernels) render into an internal-SRAM band ring and never write PSRAM at
+all. A PSRAM-resident double buffer with a catch-up copy was built and
+measured instead: the copy cost 6-15 ms per frame at ~22 MB/s and sand fell
+from ~17-20 to 11-12 drawn fps (device, 2026-09-13), so it is parked, not
+shipped. Present today copies full-width strips out of the PSRAM
+framebuffer into two internal DMA buffers and sends them at 80 MHz QSPI:
+~10.2-10.9 ms per full frame (device, 2026-09-13). Render/rasterize
+durations below are shown only for shape, since no app-general render
+number exists yet (Phase 0) and the band ring has not been built.
 
 ```
 time (ms) 0         10        20        30        40
           |---------|---------|---------|---------|
-today     [ render, shape only ~19.3 ][ present ~18.0-18.9 ]
-core 0    busy ──────────────────────  idle while DMA drains ────
-                                        (serial: render then present)
+today     [ update + draw, shape only    ][ present ~10.2-10.9 measured ]
+core 0    busy ────────────────────────── idle while DMA drains ────────
+                                           (serial: update+draw, then present)
 
-double buffer + core-1 present
-core 0    [ render frame N+1, shape only ~19.3            ]
-core 1               [ present frame N, ~18.0-18.9 measured ]
-                                         frame time -> max(render, present),
-                                         not render + present; core 0 never
-                                         waits on the bus
+core-1 present + sim/update overlap (retained apps: sand, UI)
+core 0    [ update N+1, shape only   ][ draw N+1, waits on core 1 ]
+core 1    [ present N: read PSRAM + send, ~10.2-10.9 measured     ]
+                                        frame time -> max(update+draw,
+                                        present); draw cannot start until
+                                        core 1 finishes reading the
+                                        retained buffer, so there is no
+                                        second buffer and no copy
+
+internal-SRAM band ring (full-redraw renderers: r3d, raycaster)
+core 0    [ render band k+1, shape only ][ render band k+2 ]...
+core 1         [ send band k, shape only ][ send band k+1 ]...
+                render/send durations are shape only; PSRAM is never
+                written in bulk, so there is nothing for present to
+                contend with in the data cache
 ```
 
 ### Memory: internal SRAM vs. PSRAM
@@ -126,15 +136,16 @@ Internal SRAM, ~296 KiB main heap region (+21 KiB +32 KiB DRAM at boot);
 311,775 bytes free after gfx_init(), framebuffer excluded, largest block
 ~241 KiB (diag build, device capture, 2026-09-13 — Board-and-Memory.md)
 
-[ stacks, RTOS, DMA gather buffer ~16 KiB ][ headroom for hot buffers, if
-  Phase 1's memory-placement experiment moves the sand grids and per-step
-  scratch here — up to the ~241 KiB largest block ][ free ]
+[ stacks, RTOS, DMA gather buffer ~16 KiB ][ headroom for hot buffers —
+  Phase 1's sand-grid relocation, and the band ring's band buffers
+  (64-row / 47 KiB each) for full-redraw renderers — up to the ~241 KiB
+  largest block ][ free ]
 
 PSRAM, 8 MB octal @ 80 MHz — the framebuffer is a rounding error here
 
-[ front buffer 322 KiB ][ back buffer 322 KiB ][ z-buffer, up to 322 KiB,
-  optional ][ textures ][ levels ][ .......................... free,
-  several MB .......................... ]
+[ retained framebuffer 322 KiB, read-only for present (decision B) ]
+[ textures ][ levels ][ .......................... free, several MB
+  .......................... ]
 ```
 
 ### Which renderer each game uses
@@ -150,12 +161,12 @@ flowchart TB
   PLAT["Platformer:<br/>tiles and/or sand world,<br/>parallax, 2D light"]:::game
 
   RC["render/rc - raycaster<br/>DDA per column, textured<br/>vertical spans, depth array"]:::r
-  R3D["render/r3d - span rasterizer<br/>flat / Gouraud / dithered / affine,<br/>ordering table, 16-bit z in PSRAM"]:::r
+  R3D["render/r3d - span rasterizer<br/>flat / Gouraud / dithered / affine,<br/>ordering table, 16-bit z per band, internal SRAM"]:::r
   M7["Mode-7 floor<br/>per-scanline affine plane"]:::r
   SPR["render/r2d - tiles, line scroll,<br/>sprites, collision, sim-window<br/>compositing"]:::r
   SIM["sim/sand - the automaton as instances:<br/>full-screen world, or VFX windows<br/>over tiles; materials as data"]:::r
 
-  GFX["gfx double buffer + dirty bands<br/>present on core 1,<br/>mode request at enter()"]:::core
+  GFX["gfx retained fb, core-1 present +<br/>internal-SRAM band ring, dirty bands,<br/>mode request at enter()"]:::core
   CM["colormap / palettes + CLUT<br/>textures + Bayer dither"]:::core
   FX["core: fixed.h, rng, tween,<br/>tilt/shake, timelines"]:::core
 
@@ -294,13 +305,13 @@ detail behind every row.
 
 | Property | ESP32-S3 (Waveshare ESP32-S3-Touch-AMOLED-1.8) | Consequence |
 |---|---|---|
-| Core | 2 × Xtensa LX7, 240 MHz | two cores exist to hand `present()` to (decision B) |
+| Core | 2 × Xtensa LX7, 240 MHz | for retained apps, core 1 runs `present()` (read-only) while core 0 runs the next update; full-redraw renderers split rendering and sending the band ring across both (decision B) |
 | FPU | single-precision hardware; `double` is software-emulated | float32 is fine per vertex/object; `double` stays banned on the device (decision A) |
 | SIMD | PIE 128-bit (16×8 / 8×16 lanes), inline asm only | any vector path sits behind a scalar reference implementation with a test asserting identical output (decision A) |
 | Integer mul/div | hardware, pipelined 32-bit mul and div; **64-bit div is a library call** | `__divdi3` and signed `/ 2^n` stay banned in hot loops (playbook items 7 and 11) |
-| Internal RAM | 512 KB SRAM: ~296 KiB main heap region + 21 KiB + 32 KiB DRAM at boot; 311,775 bytes free after `gfx_init()` (framebuffer excluded — it lives in PSRAM), largest block ~241 KiB (diag build, device capture, 2026-09-13) | this is where stacks and the DMA gather buffer live today, and the candidate home for hot buffers (the sand grids) if Phase 1's experiment moves them there |
-| PSRAM | 8 MB octal @ 80 MHz; `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384` routes any malloc over 16 KB here | the framebuffer — both of them, under decision B — and the sand grids all land here automatically; headroom is a non-issue |
-| Data cache | 32 KB, 32-byte line, 8-way (sdkconfig default); the S3 allows 64 KB, untested | every PSRAM access — CPU render writes and DMA present reads alike — goes through this cache; see the S3-specific catch in 3.3 |
+| Internal RAM | 512 KB SRAM: ~296 KiB main heap region + 21 KiB + 32 KiB DRAM at boot; 311,775 bytes free after `gfx_init()` (framebuffer excluded — it lives in PSRAM), largest block ~241 KiB (diag build, device capture, 2026-09-13) | stacks, the DMA gather and strip buffers, and hot per-step buffers (sand's grids, via `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536`) live here; the band ring's buffers will too |
+| PSRAM | 8 MB octal @ 80 MHz (120 MHz experimental); `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps allocations up to 64 KB internal and routes larger ones here; memcpy out ~58 MB/s, in ~47, PSRAM to PSRAM ~22 (device, 2026-09-13) | under decision B this is read-only bulk/cold storage: the one retained framebuffer, textures and levels; it is never the target of a full-screen write or copy; headroom is a non-issue |
+| Data cache | 32 KB, 32-byte line, 8-way; 64 KB measured no gain (device, 2026-09-13) | every PSRAM access — CPU render writes and DMA present reads alike — goes through this cache; see 3.3 |
 | Instruction cache | 16 KB, 32-byte line, 8-way (sdkconfig default); the S3 allows 32 KB, untested | hot loops must fit tighter than the larger option would allow; growing it is a Phase 1 experiment |
 | DMA | GDMA, 3 TX + 3 RX channels; async memcpy supported | strip transfers already DMA; mem-to-mem copies could offload clears — measure, do not assume |
 | Display bus | QSPI, both board revisions share the same 368×448 panel geometry and SPI2 wiring, 40 MHz stable | fixing 80 MHz (untested on the current V2 board, see 3.2) halves present |
@@ -314,18 +325,26 @@ The two numbers to carry in your head for the S3:
   — computed from the clock and the pixel count, not measured. At 30 fps
   it is ~48. At half resolution (184×224, the sand grid's own size) it is
   ~97 at 60 fps. Every renderer design below is judged against this
-  ceiling. Two cores exist (decision B puts present on the second one),
-  but that does not raise this per-core ceiling; it removes present's
-  competition for it.
+  ceiling. Two cores exist (decision B puts read-only present on the
+  second one for retained apps, and splits render/send across both for
+  the band ring), but that does not raise this per-core ceiling; it
+  removes present's competition for it.
 - **Memory: internal vs. PSRAM, with a cache in between.** Internal SRAM
   (~296 KiB main region, 311,775 bytes free after `gfx_init()`, largest
   block ~241 KiB) holds stacks and the DMA gather buffer, and is the
-  candidate home for hot buffers if Phase 1 moves them there. PSRAM
-  (8 MB) holds the front and back framebuffer (2 × 322 KiB), a z-buffer if
-  one is added, textures and levels, with room to spare. The number that
-  is not yet known is the one that matters most for a renderer: how much
-  the 32 KB data cache between the CPU and PSRAM costs a hot loop that
-  writes there while DMA reads it — Phase 1's job to measure (3.3).
+  candidate home for hot buffers if Phase 1 moves them there, plus the
+  band ring's own band buffers (64 rows / 47 KiB each) for full-redraw
+  renderers. PSRAM (8 MB) holds the one retained framebuffer (322 KiB),
+  textures and levels, with room to spare; decision B keeps it read-only
+  in bulk, so no z-buffer lives here — a full-redraw renderer's z-buffer
+  is per-band, in internal SRAM, alongside the band it belongs to.
+  Measured: PSRAM read throughput is 33-58 MB/s depending on access
+  pattern, versus 365-724 MB/s for internal RAM, and PSRAM writes cost
+  more than reads because each cache line is loaded from PSRAM before
+  it is written back (device, 2026-09-13; Espressif staff on esp32.com;
+  matches the independent project-x51/esp32-s3-memorycopy benchmark) —
+  the reason decision B avoids bulk PSRAM writes rather than trying to
+  make them cheap.
 
 What the move to PSRAM costs the sand campaign's existing findings — which
 of them transfer to a chip with a data cache and which were written on the
@@ -392,57 +411,75 @@ between `CASET`/`RASET`/`RAMWR`, and the panel datasheet's actual maximum.
 If it holds, the single largest fixed cost on the board goes from ~18 ms
 toward ~9-10 ms — for every app. Interlace stacks on top.
 
-### 3.3 Overlap render and present: double buffer in PSRAM, core-1 present
+### 3.3 Read PSRAM, never write it in bulk: core-1 present and an internal-SRAM band ring
 
 Today `gfx_present()` is synchronous: `main.c` calls `frame()`, then
-present, which drains every queued DMA transfer before returning
-(`gfx.c:1794-1796`). The CPU idles for the whole present.
+present, which drains every queued DMA transfer before returning. The CPU
+idles for the whole present.
 
-**Decided 2026-09-13 (decision B): the default frame architecture is a
-full-frame double buffer in PSRAM, render on core 0, `gfx_present()` on
-core 1.** The render core never waits on the bus; frame time becomes
-max(render, present) instead of render + present once the pipeline is
-full. No app changes — the shell's frame loop and the one-framebuffer rule
-hold, now read as "one front + one back buffer owned by gfx". This is
-affordable because it barely competes for space: front + back is
-2 × 322 KiB against 8 MB of PSRAM, and a per-band or full-screen 16-bit
-z-buffer (up to 322 KiB) is now affordable there too — the thing the
-cube's file header calls unaffordable, because that was written against
-internal SRAM.
+**Decided 2026-09-13 (decision B, revised): "read PSRAM, never write it in
+bulk."** A PSRAM-resident double buffer with a retained catch-up copy
+(two framebuffers, copying the frame's dirty regions forward after each
+swap) was built and proven exact on the host, then measured on the
+device: the catch-up copy cost 6-15 ms per frame at ~22 MB/s, and sand
+fell from ~17-20 to 11-12 drawn fps. Writing PSRAM in bulk costs more than
+its own bandwidth number suggests, because each cache line is loaded from
+PSRAM before it is written back (device, 2026-09-13; Espressif staff on
+esp32.com); the double buffer is parked, not shipped. Two mechanisms
+replace it, chosen by app kind:
 
-**The band ring (internal SRAM, 2-band buffer) is kept as a measured
-alternative only** — to adopt if rasterizing into PSRAM behind the 32 KB
-data cache proves to be the bottleneck. Fill-rate cost of PSRAM vs.
-internal SRAM is the thing Phase 1 has to measure before this is settled
-either way; decision 2 in section 8 (band height) is conditional on that
-measurement, not a foregone next step.
+1. **Retained apps** (sand, the UI, anything that draws only what
+   changed) get **one retained framebuffer in PSRAM**. Present runs on
+   core 1 and only *reads* it — strip copies into internal DMA buffers,
+   then the bus, ~10.2-10.9 ms per full frame measured (device,
+   2026-09-13) — while core 0 runs the next frame's update step in
+   parallel. The draw phase waits for core 1 to finish reading, so there
+   is no second buffer and no copy. This needs the app contract to
+   separate an update phase from a draw phase so the shell can schedule
+   them (the present/simulation overlap work); an app that does not split
+   the two keeps today's serial behaviour.
+2. **Full-redraw renderers** (the 3D renderer, raycaster, image kernels)
+   get **a band ring in internal SRAM**: 64-row (47 KiB) band buffers
+   rendered and sent in turn, PSRAM never written. It is built together
+   with the span rasterizer, which is designed band-aware from the start
+   rather than retrofitted onto small3dlib's per-pixel callback (3.4,
+   section 8 decision 4). A full-screen z-buffer in PSRAM is no longer
+   recommended for per-pixel access; a per-band z-buffer in internal SRAM
+   is, sized to one band at a time.
 
-**The S3-specific catch, to measure not assume:** rendering into PSRAM
-goes through the 32 KB data cache while DMA also reads PSRAM to present —
-the two are not obviously free of contention. There is already a live,
-unexplained example: sand's full-size step now measures 6,623 us on this
-board against a previously pegged budget of 5,800 us, and a gravity flip
-on a mixed scene measures 18,731 us against a previously pegged 8,300 us
-(device, 2026-09-13) — sand is currently *slower* here despite the much
-higher clock. The suspected cause is the grids now sitting in PSRAM behind
-the data cache, but this is unconfirmed and is a tracked experiment
-(Phase 1: move hot buffers — the sand grids, per-step scratch — to
-internal RAM and re-measure; try the larger 64 KB data-cache option; only
-then decide where a 3D renderer's per-band or per-pixel working set
-should live).
+PSRAM's role narrows to bulk and cold data read at load or per frame —
+textures, levels, the retained framebuffer as a read source — never the
+target of full-screen writes, effects, or copies. 120 MHz PSRAM
+(experimental, flash also at 120 MHz, being made the development default)
+raised cube frame rates 4-9% and left the sand simulation unchanged (it
+reads internal RAM); it does not change the PSRAM-vs-internal ranking
+above, so it changes none of this section's reasoning.
+
+**Sand's working set is not part of this.** Sand's grids and per-step
+scratch live in internal RAM (allocations up to 64 KB stay internal), and
+its simulation reads no PSRAM: moving them there and doubling the
+instruction cache bought 1-11% per step, a 64 KB data cache bought
+nothing, and the mixed-scene gravity flip that once measured 18,731 us
+was a reaction-pass regression, fixed at 11,924 us (device, 2026-09-13).
+Only sand's draw into the framebuffer touches PSRAM, and under this
+decision that write is the retained framebuffer's ordinary per-frame
+update, not a bulk copy.
 
 **What this does to rule 1 ("exactly one framebuffer").** The rule stays;
 its *shape* becomes a mode owned by gfx, which is exactly where
 resolution and colour mode as system settings already lands: the
 framebuffer's geometry and pixel format become runtime state, an app
-declares what it needs at `enter()` (layout: the default double buffer, or
-the band ring if it is ever adopted; resolution: full or half), gfx grants
-it subject to the system-wide maximum-resolution setting and reallocates,
-and `exit()` restores. Sand and the UI keep full-fb mode with dirty bands;
-a 3D app gets the double buffer by default. `gfx_present()` grows an entry
-point that hands out the spare buffer and waits only on the *previous*
-frame's DMA. The shell's loop does not change: `frame()` still draws and
-returns.
+declares what it needs at `enter()` (layout: the retained framebuffer for
+apps that split update from draw, or the band ring for full-redraw
+renderers; resolution: full or half), gfx grants it subject to the
+system-wide maximum-resolution setting and reallocates, and `exit()`
+restores. Sand and the UI keep full-fb mode with dirty bands, now read
+through the same retained buffer core 1 presents; a full-redraw 3D app
+gets the band ring. `gfx_present()` grows an entry point that, for the
+retained buffer, only reads and signals the app's draw phase when it is
+done; for the band ring it hands the next band to render as the previous
+one finishes sending. The shell's loop does not change: `frame()` still
+draws and returns.
 
 **Interlace and bands are panel-row shaped; the game is not.** The
 maintainer's observation (2026-09-04) that different orientations favour
@@ -467,12 +504,13 @@ carries the interlace choice per axis and the app decides it against the
 *user's* frame, not the panel's, using the quarter-turn orientation model
 the UI layer already has; an app that rotates with the device re-picks
 when the layout generation changes. Second, orientation also changes which
-renderer maps naturally onto bands, if the band ring (above) is ever
-adopted: in landscape a panel band is a group of complete user-space
-*columns*, which is ideal for a raycaster (each band is a set of whole
-rays), while in portrait a band is a slice through every column. The
-raycaster's band pass, should that path be taken, should be written for
-both cases from the start rather than assuming one.
+axis a full-redraw renderer's band ring maps onto: in landscape a panel
+band is a group of complete user-space *columns*, which is ideal for a
+raycaster (each band is a set of whole rays), while in portrait a band is
+a slice through every column. The raycaster's band pass should be written
+for both cases from the start rather than assuming one; this does not
+apply to retained apps (sand, the UI), which read a full buffer, not
+bands.
 
 **The panel remembers, so only change needs sending.** The panel keeps
 what it was last sent; the dirty-band system already exploits that for
@@ -485,21 +523,22 @@ the per-frame change is the union of the old and new bounding boxes of
 the moving objects, and fill and bus both drop by an order of magnitude.
 There are two ways to get it:
 
-- *Retained framebuffer plus dirty rectangles* — the classic form, and
-  how fixed-camera games of the PS1 era worked. Static geometry is drawn
-  once; each frame restores the background under the old boxes (either
+- *Retained framebuffer plus dirty rectangles* — the classic form, how
+  fixed-camera games of the PS1 era worked, and exactly what decision B's
+  retained-app mechanism gives for free. Static geometry is drawn once;
+  each frame restores the background under the old boxes (either
   re-rasterize the static triangles scissored to the box, or blit a
   pre-rendered background baked into flash like the boot photograph) and
   redraws the dynamic objects. Needs full-fb mode: 322 KiB, or ~80 KB at
   half-res.
-- *If the band ring is adopted, band-level dirtiness* — no retained
-  buffer; the scene is the retained state. A band nothing moved through is
-  neither rendered nor sent. A band something moved through is
-  re-rendered whole from the scene and sent. No restore step, no second
-  copy, and it composes with everything above; the tracker is per-band
-  bookkeeping from object bounds, not pixels, so it is cheap and
-  host-testable. Its cost is re-rasterizing the static geometry in touched
-  bands, which a baked per-band background image removes.
+- *With the band ring, band-level dirtiness* — no retained buffer; the
+  scene is the retained state. A band nothing moved through is neither
+  rendered nor sent. A band something moved through is re-rendered whole
+  from the scene and sent. No restore step, no second copy, and it
+  composes with everything above; the tracker is per-band bookkeeping
+  from object bounds, not pixels, so it is cheap and host-testable. Its
+  cost is re-rasterizing the static geometry in touched bands, which a
+  baked per-band background image removes.
 
 This is a per-app choice through the same `enter()` request, and it
 reaches into game design: a rolling-ball game with a fixed or stepwise
@@ -609,12 +648,10 @@ buys at 60 fps:
   prerequisite); the two buttons move and act. Touch can be an
   on-screen stick if two buttons prove too few.
 
-If the band ring is ever adopted (3.3), it fits a raycaster naturally:
-columns are independent, so rendering band *k* means rendering 64 rows of
-every column — the ray results (hit distance, texture column, span
-bounds) are computed once per frame and the per-band pass is only fills.
-The default double buffer works the same way without the banding: compute
-once, fill the whole frame.
+The band ring (3.3) fits a raycaster naturally: columns are independent,
+so rendering band *k* means rendering 64 rows of every column — the ray
+results (hit distance, texture column, span bounds) are computed once per
+frame and the per-band pass is only fills.
 
 A sector/portal renderer (Doom-shaped: sloped-free rooms, varying floor
 heights) is the natural second step and reuses everything above; a full
@@ -623,7 +660,7 @@ mesh FPS is not the first thing to build against this budget.
 ### 4.2 Rolling ball with physics and lighting → the "real 3D" showcase
 
 This is where the span rasterizer's per-pixel discipline (3.4) and the
-z-buffer the double buffer now affords (3.3) earn their place:
+band ring's per-band z-buffer in internal SRAM (3.3) earn their place:
 
 - The world is a heightfield or tiled floor, rendered as a mesh with
   vertex lighting (Gouraud via span stepping) and an affine floor texture.
@@ -649,8 +686,8 @@ z-buffer the double buffer now affords (3.3) earn their place:
   lights are a per-vertex cost, not per-pixel, so they are cheap.
 - Camera: fixed per screen, or stepping between fixed positions, rather
   than a smooth follow. That is what unlocks dirty-region tracking (the
-  grid system already shipped for sand/UI, or band-level dirtiness if the
-  band ring is ever adopted, 3.3): per frame only the region the ball and
+  grid system already shipped for sand/UI, or the band ring's band-level
+  dirtiness, 3.3): per frame only the region the ball and
   its shadow moved through is re-rendered and sent, an order of magnitude
   less fill and bus than a full frame. A smooth follow camera gives that
   up for every frame it moves. Decide this before the level format is
@@ -672,9 +709,8 @@ track gets far.
   per layer) gives parallax, water and shimmer from one mechanism.
 - Scrolling defeats dirty tracking (every pixel moves), so this track
   needs 3.2 and 3.3 like the 3D apps: a full frame every frame, streamed
-  via whichever frame architecture 3.3 settles on — a natural slice of
-  tile rows if the band ring is adopted, or the double buffer's own
-  front/back swap if not.
+  through the band ring (3.3) as a natural slice of tile rows, sent as
+  each band finishes rendering.
 - **2D lighting**: a light map at tile (or 8 px) resolution multiplied
   through the colormap, plus per-pixel normal-mapped lighting only inside
   each light's radius. Dithered radial gradients handle soft edges.
@@ -803,9 +839,8 @@ both, for different jobs:
   per-pixel cost.
 - **Compositing.** Scrolling: every frame is full, so the draw is
   `draw(instance, band, clip, offset)` per band for each overlapping
-  window — the band pipeline of 3.3, or the double buffer's own full-frame
-  pass. Rooms: the row-run dirty path as today. Same instance type, two
-  draw paths.
+  window — the band ring of 3.3. Rooms: the row-run dirty path as today.
+  Same instance type, two draw paths.
 - **Budget, estimates.** A 48×48 window is ~2,300 cells: from the sand
   app's measured 6,623 us full-size step for 41,216 cells (device,
   2026-09-13 — see 3.3 for why this is currently slower than the
@@ -860,10 +895,10 @@ and baked data serve both.
 This changes the engine framing either way: the sand app graduates from
 showcase to the world-simulation layer (`sim/` in section 5), and the
 tilt library, the editor pattern and the reaction table become engine
-pieces rather than app internals. A full-frame-per-step frame
-architecture (whichever 3.3 settles on) is a prerequisite for Track A and
-C's scrolling; Track B lives in full-fb mode on the sand dirty tracker
-either way. The first prototype is Track B, because it needs the least
+pieces rather than app internals. The band ring (3.3) is a prerequisite
+for Track A and C's scrolling; Track B lives in full-fb mode on the sand
+dirty tracker either way, reading through decision B's retained
+framebuffer. The first prototype is Track B, because it needs the least
 new code; Track A and C are explored from there, not after it.
 
 ---
@@ -913,20 +948,24 @@ Principles, each of which is already a repo habit:
   that renders any app's frame to a `.bmp`, so the device screenshot tool
   and the host render can be diffed pixel-exact. That is the visual
   regression suite, and the TDD loop for a renderer.
-- **The frame loop stays the shell's.** The double buffer and present
-  pipelining live in gfx and the shell; apps declare a mode at `enter()`
-  and draw in `frame()`. Rule 2 is what makes 3.3 possible without
-  touching apps.
+- **The frame loop stays the shell's.** The retained framebuffer's core-1
+  present and the internal-SRAM band ring live in gfx and the shell; apps
+  declare a mode at `enter()` and draw in `frame()`. Retained apps that
+  want the sim/present overlap additionally split an update phase from a
+  draw phase so the shell can schedule them; an app that does not split
+  keeps today's serial behaviour. Rule 2 is what makes 3.3 possible
+  without touching apps.
 - **Data is baked, not parsed.** Textures, colormaps, maps, timelines and
   fonts go through generators into headers with the regenerate command
   in their banner, validated by the generator and tested independently
   (the generated-sources convention in `docs/Launcher-Architecture.md`).
 - **Allocate at `enter()`, free at `exit()`, nothing in between.**
 - **One board, `board/` binds the facts.** `board/board.h` and
-  `board_esp32s3.c` pick the bus clocks, the PSRAM policy (double-buffer
-  the full frame in PSRAM, present from core 1), and the input wiring —
-  one binary, one board, no per-target folders. Same panel, same driver,
-  same dirty tracker across the two detected hardware revisions.
+  `board_esp32s3.c` pick the bus clocks, the PSRAM policy (one retained
+  framebuffer read by core-1 present; full-redraw renderers use the
+  internal-SRAM band ring instead), and the input wiring — one binary, one
+  board, no per-target folders. Same panel, same driver, same dirty
+  tracker across the two detected hardware revisions.
 
 ---
 
@@ -938,8 +977,8 @@ in.
 | Phase | Work | Gate (measured, on device) |
 |---|---|---|
 | **0. Attribution on the S3** | Real frame-time row (sim + draw + present); cube perf report checked in (all four variants: baseline, no HUD, no partial, interlaced); a cycles-per-covered-pixel counter; re-peg the device frame budgets once memory placement is settled | A checked-in table replacing the stale 15.5 fps figures, every row sourced |
-| **1. Memory, cores and bus** | Hot buffers (sand grids, per-step scratch) to internal RAM; the icache 32 KB / dcache 64 KB experiment; PSRAM double buffer + present on core 1 (decision B); 80 MHz QSPI on this panel; present pipelining; an internal-RAM build-time gate once hot buffers are pinned | Sand full step and present measured and checked in; render core never blocks on the bus |
-| **2. r3d v1** | Own span rasterizer: flat, Gouraud, affine texture, colormap lighting; transform/clip extracted from boot_anim; triangle binning; half-res mode (scope unchanged) | Gates recomputed for 240 MHz and the double buffer; cycles/pixel judged against the ~24 cycles/pixel/core ceiling (section 2), the old flat/textured sub-targets pending re-derivation |
+| **1. Memory, cores and bus** | Core-1 present with sim/update overlap for retained apps (decision B); 80 MHz QSPI on this panel (present measured ~10.2-10.9 ms full-frame); an internal-RAM build-time gate now that hot buffers are internal | Sand frame time serial vs overlap measured and checked in; core 0's update never blocks on core 1's present |
+| **2. r3d v1** | Span rasterizer built band-aware into the internal-SRAM band ring (3.3): flat, Gouraud, affine texture, colormap lighting; transform/clip extracted from boot_anim; triangle binning; half-res mode (scope unchanged) | Gates recomputed for 240 MHz and the band ring; cycles/pixel judged against the ~24 cycles/pixel/core ceiling (section 2), the old flat/textured sub-targets pending re-derivation |
 | **3. Raycaster and the FPS prototype** | `render/rc`, column-major textures, per-column depth, sprites, gyro look via the tilt/shake library, buttons move (scope unchanged) | Original target — 60 fps full-res walls + sprites, playable on the glass — reviewed against S3 numbers once Phases 0-1 land |
 | **4. Rolling ball** | Heightfield mesh on r3d, lit-disc ball, 2.5D fixed-point physics, gyro gravity (scope unchanged) | Original target — 30+ fps full-res, physics stable at dt 16-33 ms — reviewed against S3 numbers |
 | **5. Platformer, two tracks and the mix** | Sand core as an instance (size-agnostic, several alive, host-supplied boundary); Track B first: sprite + collision layer over the automaton, rooms, per-block lighting; level editor; materials as baked data; then Track A tiles + line scroll and Track C sim windows over tiles (scope unchanged) | Original targets — Track B ≥ 30 fps with the automaton live, zero bands sent when nothing moves; Track A/C 60 fps scrolling with three layers and a dozen live sim windows — reviewed against S3 numbers |
@@ -958,16 +997,17 @@ cheapest path to something that is unmistakably a game.
 - **Do not chase triangles per second.** The metric that transfers is
   cycles per covered pixel and bytes per frame on the bus.
 - **Do not add a bespoke second framebuffer or z-buffer outside gfx's own
-  front/back buffers, and do not add LVGL.** The default double buffer
-  (decision B) already gives a 3D app both a second buffer and, if
-  wanted, a full-screen z-buffer in PSRAM — anything more is redundant
-  state to keep in sync; LVGL is ruled out in Launcher-Architecture.md
-  regardless.
+  retained buffer and band ring, and do not add LVGL.** Decision B
+  (2026-09-13) already gives retained apps one PSRAM framebuffer read
+  only by present, and full-redraw renderers an internal-SRAM band ring
+  with its own per-band z-buffer — anything more is redundant state to
+  keep in sync. A full-screen z-buffer in PSRAM is specifically ruled
+  out: per-pixel access to it pays PSRAM's read cost on every touch (3.3).
+  LVGL is ruled out in Launcher-Architecture.md regardless.
 - **Do not swizzle the framebuffer into tiles.** Parked on purpose in
   Display-and-Rendering.md; the dirty-region grid already shipped gets
   most of that transfer-contiguity property without touching every draw
-  call, and the band ring, if it is ever adopted (3.3), gets the same
-  property for free too.
+  call, and the band ring (3.3) gets the same property for free too.
 - **Do not build on small3dlib's per-pixel callback.** Keep its transform
   half, replace its rasterizer.
 - **Do not put `double`, a 64-bit divide, or a signed divide by a power of
@@ -992,19 +1032,16 @@ cheapest path to something that is unmistakably a game.
    min(app request, system max) and pixel-doubles on the way out when
    they differ; the app is told the resolution it actually received, the
    way it is already told the screen height as a parameter.
-2. ~~Band height: 64 rows or 32?~~ **Conditional on decision B's
-   frame-architecture measurement (2026-09-13).** Band mode is no longer
-   the default architecture — it is a measured alternative (3.3), adopted
-   only if rendering into PSRAM behind the 32 KB data cache proves to
-   bottleneck fill rate against internal SRAM. If it is adopted, the
-   original plan holds: band height stays a compile-time constant
-   (divisors of 448: 64, 32, 16), and Phase 1 ends with a device sweep
-   across them measuring present time, rasterizer time under DMA
-   contention, and RAM freed, in the same style as the
+2. ~~Band height: 64 rows or 32?~~ **Live again under the revised
+   decision B (2026-09-13).** The band ring in internal SRAM is the
+   standing mechanism for every full-redraw renderer (r3d, raycaster,
+   image kernels); PSRAM is never their render target. Band height stays
+   a compile-time constant (divisors of 448: 64, 32, 16) — 64 rows / 47
+   KiB per band is the figure decision B is written against — and Phase 2
+   ends with a device sweep across heights measuring present time,
+   rasterizer time, and RAM freed, in the same style as the
    `GATHER_MAX_PIXELS` and `LEAF_REFINE_MAX_RUNS` sweeps recorded in
-   Display-and-Rendering.md. If the double buffer wins outright on its
-   own measurement, this decision is moot and band height never needs
-   choosing.
+   Display-and-Rendering.md.
 3. ~~"Parallax" in the platformer~~ **Decided 2026-09-04: layered
    parallax scrolling**, not per-pixel parallax mapping.
 4. ~~Own rasterizer vs. deeper small3dlib configuration.~~ **Decided
@@ -1059,10 +1096,11 @@ what is making it:
   variant before trusting a static buffer's size.
 - No new file-scope `static` buffer in any build variant without a `.bss`
   diff; allocate at `enter()`, free at `exit()`.
-- The three shell rules hold for any change: one framebuffer (one front
-  and one back buffer, or the band ring alternative, as a gfx-owned mode),
-  one frame loop owned by the shell, apps as callbacks that draw and
-  return ([Launcher-Architecture.md](Launcher-Architecture.md)).
+- The three shell rules hold for any change: one framebuffer (the
+  retained buffer for retained apps, or the internal-SRAM band ring for
+  full-redraw renderers, as a gfx-owned mode), one frame loop owned by
+  the shell, apps as callbacks that draw and return
+  ([Launcher-Architecture.md](Launcher-Architecture.md)).
 - Anything graduated out of an app or the boot animation needs a second
   consumer and a reference test, or it stays where it was.
 - Update the docs a change makes wrong in the same change that makes them
@@ -1079,6 +1117,6 @@ what is making it:
 - [notes/Optimization-Playbook.md](notes/Optimization-Playbook.md) — the
   code-shape rules a new renderer will hit.
 - [notes/Board-and-Memory.md](notes/Board-and-Memory.md) — the memory
-  budget the double buffer is designed against.
+  budget the retained framebuffer and the band ring are designed against.
 - [Settings-App-Plan.md](plans/Settings-App-Plan.md) — the
   mode switch the framebuffer geometry lands in.

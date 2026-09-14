@@ -203,14 +203,6 @@ static char* row_b64; /* +1: NUL, for printf("%s") */
  * exact bound for. */
 #define APP_DIAGNOSTIC_JSON_MAX 256
 
-/* Prints one SCREENSHOT_STATE: line of plain-text JSON (no base64 -
- * it's already printable ASCII, small enough that base64's reason to
- * exist, staying UART-safe, isn't worth the decode step for one line).
- * Reading/formatting live in util/device_state.h/.c. `current_app`'s
- * OPTIONAL diagnostic_json() is spliced in as an "app" key AFTER
- * device_state_format_json() produces a complete object - by
- * overwriting its closing `}` with `,"app":<fragment>}` rather than
- * teaching device_state.h about apps. */
 /* Protocol lines bypass stdio. The console VFS drops every byte once the
  * host has not drained the TX ring for 50 ms (TX_FLUSH_TIMEOUT_US in
  * usb_serial_jtag_vfs.c) - right for logs, fatal for a 660 KB capture,
@@ -238,6 +230,14 @@ emit_line(const char* prefix, const char* payload) {
     emit_bytes("\n", 1);
 }
 
+/* Prints one SCREENSHOT_STATE: line of plain-text JSON (no base64 -
+ * it's already printable ASCII, small enough that base64's reason to
+ * exist, staying UART-safe, isn't worth the decode step for one line).
+ * Reading/formatting live in util/device_state.h/.c. `current_app`'s
+ * OPTIONAL diagnostic_json() is spliced in as an "app" key AFTER
+ * device_state_format_json() produces a complete object - by
+ * overwriting its closing `}` with `,"app":<fragment>}` rather than
+ * teaching device_state.h about apps. */
 static void
 dump_state(const input_t* input, const app_t* current_app) {
     device_state_t state;

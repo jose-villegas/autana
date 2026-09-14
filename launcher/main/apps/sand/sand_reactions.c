@@ -2199,16 +2199,12 @@ sand_step_reactions(sand_t* s) {
         && s->may_have_liquid && (s->may_have_materials & drinker_mask()) == 0 && s->block_state != NULL;
 
     /* CLEARED HERE so a bit latch_content_flags() ORs in mid-pass survives the
-     * write-back below. Assigning the walk's census there instead dropped any
-     * cell this pass CREATED at its own coordinates - the walk logged the old
-     * material and never returns.
+     * write-back below; assigning the walk's census there dropped cells this
+     * pass CREATED at its own coordinates. The other five may_have_* bools
+     * gate stage_warm and the plants per cell, so they clear at the end; the
+     * fall pair gates nothing in the pass and joins the mask here.
      *
-     * The other five may_have_* bools are live per-cell gates for stage_warm
-     * and the plant stages, so they keep the clear-at-the-end rule below. The
-     * fall pair gates nothing inside the pass and joins the mask here. */
-    /* SOAK-ONLY SKIPS THIS CLEAR: an unvisited block proves nothing gone, so
-     * `|=` below only adds to the old value - narrower than a full pass, but
-     * never wrong. */
+     * SOAK-ONLY skips the clear: an unvisited block proves nothing gone. */
     if (!soak_only) {
         s->may_have_materials = 0;
     }
