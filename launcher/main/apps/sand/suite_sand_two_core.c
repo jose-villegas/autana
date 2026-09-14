@@ -291,12 +291,204 @@ test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
     TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(interior_worst + TC_W / 10, boundary_worst, why);
 }
 
+/* sand_step() increments step_phase before picking the stripe offset
+ * (SWEEP_STRIPE_H/2 on an odd phase, 0 on an even one - sand.c), so one
+ * free-fall call (gx=gy=0, which returns before touching a single cell)
+ * advances the phase without moving anything - letting a test choose
+ * which offset the NEXT, real step gets. */
+static void
+tc_prime_offset(sand_t* s, int offset) {
+    if (offset == 0) {
+        sand_step(s, 0, 0, 0);
+    }
+}
+
+/* THE DOUBLE-MOVE CHECK: a lone grain with nothing to block it moves
+ * exactly one cell in one step, whether it starts on a stripe seam or
+ * two stripes away from one. Landing on a seam and travelling two cells
+ * in one step is exactly what run_sweep_guard_rows() (sand.c) exists to
+ * prevent - a phase-A move that lands in a not-yet-swept phase-B row,
+ * found and moved again once that row's own sweep runs. */
+static void
+tc_assert_free_fall_moves_one_cell(int offset, int gx, int gy, int start_y, bool two_core) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(cells);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t s;
+    sand_init(&s, cells, TC_W, TC_H, 1u);
+    sand_enable_sleeping(&s, blocks);
+    sand_set_scatter(&s, 0); /* a deterministic, driftless fall */
+    tc_prime_offset(&s, offset);
+
+    const int start_x = TC_W / 2;
+    sand_set(&s, start_x, start_y, SAND);
+
+    sand_set_two_core_step(two_core);
+    sand_step(&s, gx, gy, 0);
+    sand_set_two_core_step(false);
+
+    int dx, dy;
+    sand_gravity_direction(gx, gy, &dx, &dy);
+    const bool left_start = CELL_IS_EMPTY(sand_at(&s, start_x, start_y));
+    const bool at_one = !CELL_IS_EMPTY(sand_at(&s, start_x + dx, start_y + dy));
+    const bool at_two_empty = CELL_IS_EMPTY(sand_at(&s, start_x + 2 * dx, start_y + 2 * dy));
+
+    free(cells);
+    free(blocks);
+
+    char why[200];
+    snprintf(why, sizeof why,
+             "a lone grain at row %d (offset %d, gravity %d,%d, two_core=%d) "
+             "did not travel exactly one cell in one step",
+             start_y, offset, gx, gy, (int)two_core);
+    TEST_ASSERT_TRUE_MESSAGE(left_start && at_one && at_two_empty, why);
+}
+
+/* A slide can move a grain diagonally even under horizontal gravity (see
+ * Sand-Simulation.md's reach table), which is the other way a seam can be
+ * crossed - so this blocks the straight-ahead cell and checks the row
+ * component of the resulting slide never exceeds one either. */
+static void
+tc_assert_forced_slide_does_not_double_move(int offset, int gx, int gy, int start_y, bool two_core) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(cells);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t s;
+    sand_init(&s, cells, TC_W, TC_H, 1u);
+    sand_enable_sleeping(&s, blocks);
+    tc_prime_offset(&s, offset);
+
+    const int start_x = TC_W / 2;
+    int dx, dy;
+    sand_gravity_direction(gx, gy, &dx, &dy);
+    sand_set(&s, start_x + dx, start_y + dy, STONE);
+    sand_set(&s, start_x, start_y, SAND);
+
+    sand_set_two_core_step(two_core);
+    sand_step(&s, gx, gy, 0);
+    sand_set_two_core_step(false);
+
+    int found_y = -1;
+    for (int y = start_y - 2; y <= start_y + 2; y++) {
+        for (int x = start_x - 2; x <= start_x + 2; x++) {
+            if ((unsigned)x >= (unsigned)TC_W || (unsigned)y >= (unsigned)TC_H) {
+                continue;
+            }
+            const cell_t c = sand_at(&s, x, y);
+            if (!CELL_IS_EMPTY(c) && CELL_MATERIAL(c) == MAT_SAND) {
+                found_y = y;
+            }
+        }
+    }
+
+    free(cells);
+    free(blocks);
+
+    char why[200];
+    snprintf(why, sizeof why,
+             "a lone grain slid more than one row in one step at row %d "
+             "(offset %d, gravity %d,%d, two_core=%d)",
+             start_y, offset, gx, gy, (int)two_core);
+    TEST_ASSERT_TRUE_MESSAGE(found_y >= 0, why);
+    const int row_delta = found_y - start_y;
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(1, row_delta < 0 ? -row_delta : row_delta, why);
+}
+
+/* Every internal stripe boundary this grid has, for BOTH stripe offsets -
+ * see tc_prime_offset() - is a seam row pair; a row two stripes away from
+ * either is the control. All four axis-aligned gravity directions, since
+ * the seam is a ROW property and does not care which way is down. */
+static void
+test_two_core_step_never_double_moves_at_a_seam(void) {
+    static const int gxs[] = {0, 0, 1000, -1000};
+    static const int gys[] = {1000, -1000, 0, 0};
+    static const int offsets[] = {0, SAND_BLOCK_H / 2};
+
+    for (size_t o = 0; o < sizeof offsets / sizeof offsets[0]; o++) {
+        for (int boundary = SAND_BLOCK_H; boundary < TC_H - SAND_BLOCK_H; boundary += SAND_BLOCK_H) {
+            const int seam_rows[] = {boundary - 1, boundary, boundary - SAND_BLOCK_H / 2};
+            for (size_t r = 0; r < sizeof seam_rows / sizeof seam_rows[0]; r++) {
+                for (size_t g = 0; g < sizeof gxs / sizeof gxs[0]; g++) {
+                    tc_assert_free_fall_moves_one_cell(offsets[o], gxs[g], gys[g], seam_rows[r], true);
+                    tc_assert_forced_slide_does_not_double_move(offsets[o], gxs[g], gys[g], seam_rows[r], true);
+                }
+            }
+        }
+    }
+}
+
+/* THE SERIAL COMPARISON: with scatter forced to 0 and nothing else on the
+ * board, a free fall draws no randomness at all (try_scatter() returns
+ * immediately, the primary move needs no roll), so the serial and
+ * two-core paths must agree exactly, not merely both travel one cell. */
+static void
+test_two_core_step_matches_serial_fall_distance_at_a_seam(void) {
+    const int boundary = SAND_BLOCK_H * 2;
+
+    static const int gxs[] = {0, 0, 1000, -1000};
+    static const int gys[] = {1000, -1000, 0, 0};
+
+    for (size_t g = 0; g < sizeof gxs / sizeof gxs[0]; g++) {
+        for (int offset = 0; offset <= SAND_BLOCK_H / 2; offset += SAND_BLOCK_H / 2) {
+            uint8_t* serial_cells = malloc((size_t)TC_W * (size_t)TC_H);
+            uint8_t* two_core_cells = malloc((size_t)TC_W * (size_t)TC_H);
+            uint8_t* serial_blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+            uint8_t* two_core_blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+            TEST_ASSERT_NOT_NULL(serial_cells);
+            TEST_ASSERT_NOT_NULL(two_core_cells);
+            TEST_ASSERT_NOT_NULL(serial_blocks);
+            TEST_ASSERT_NOT_NULL(two_core_blocks);
+
+            sand_t serial_s, two_core_s;
+            sand_init(&serial_s, serial_cells, TC_W, TC_H, 1u);
+            sand_init(&two_core_s, two_core_cells, TC_W, TC_H, 1u);
+            sand_enable_sleeping(&serial_s, serial_blocks);
+            sand_enable_sleeping(&two_core_s, two_core_blocks);
+            sand_set_scatter(&serial_s, 0);
+            sand_set_scatter(&two_core_s, 0);
+            tc_prime_offset(&serial_s, offset);
+            tc_prime_offset(&two_core_s, offset);
+
+            const int start_x = TC_W / 2;
+            sand_set(&serial_s, start_x, boundary, SAND);
+            sand_set(&two_core_s, start_x, boundary, SAND);
+
+            sand_set_two_core_step(false);
+            sand_step(&serial_s, gxs[g], gys[g], 0);
+            sand_set_two_core_step(true);
+            sand_step(&two_core_s, gxs[g], gys[g], 0);
+            sand_set_two_core_step(false);
+
+            const uint32_t serial_hash = tc_hash(serial_cells, (size_t)TC_W * (size_t)TC_H);
+            const uint32_t two_core_hash = tc_hash(two_core_cells, (size_t)TC_W * (size_t)TC_H);
+
+            free(serial_cells);
+            free(two_core_cells);
+            free(serial_blocks);
+            free(two_core_blocks);
+
+            char why[160];
+            snprintf(why, sizeof why,
+                     "gravity %d,%d offset %d: a zero-randomness fall across a "
+                     "seam moved differently under two-core stepping",
+                     gxs[g], gys[g], offset);
+            TEST_ASSERT_EQUAL_HEX32_MESSAGE(serial_hash, two_core_hash, why);
+        }
+    }
+}
+
 void
 run_sand_two_core_suite(void) {
     RUN_TEST(test_two_core_step_is_deterministic_across_seeds);
     RUN_TEST(test_two_core_step_actually_changes_the_draw_stream);
     RUN_TEST(test_two_core_step_does_not_leak_or_fabricate_mass);
     RUN_TEST(test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam);
+    RUN_TEST(test_two_core_step_never_double_moves_at_a_seam);
+    RUN_TEST(test_two_core_step_matches_serial_fall_distance_at_a_seam);
 }
 
 SUITE_REGISTER(run_sand_two_core_suite);
