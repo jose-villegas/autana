@@ -291,14 +291,15 @@ seed_row_runs_full_width(void) {
     }
 }
 
-/* Sentinel span (x0 > x1) on every row: draw_dirty_rows() reads that as "no
- * narrower span recorded" and repaints full-width, same as dirty_rows alone
- * did before column tracking existed. */
+/* An explicit [0, grid_w) span on every row, NOT the (grid_w, 0) sentinel:
+ * the sentinel is the empty span a union starts from, so a sim mark landing
+ * before the next draw would shrink a sentinel row to just the moved cells
+ * and leave an overlay's pixels (palette panel, mode label) unrepainted. */
 static void
 reset_dirty_cols_full_width(void) {
     for (int i = 0; i < grid_h; i++) {
-        dirty_x0[i] = (uint16_t)grid_w;
-        dirty_x1[i] = 0;
+        dirty_x0[i] = 0;
+        dirty_x1[i] = (uint16_t)grid_w;
     }
 }
 

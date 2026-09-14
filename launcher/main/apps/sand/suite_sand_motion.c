@@ -383,6 +383,23 @@ test_spawning_marks_only_the_column_it_filled(void) {
     TEST_ASSERT_TRUE_MESSAGE(dirty_x0[0] > dirty_x1[0], "a distant row was never touched at all");
 }
 
+/* A whole-board wipe must survive a narrow mark landing before the next
+ * draw. The sentinel is the empty span a union starts from, so a wipe that
+ * leaves it behind shrinks to the moved cells - the palette-panel ghost seen
+ * on the device. */
+static void
+test_a_clear_stays_full_width_after_a_later_narrow_mark(void) {
+    dirty_cols_fixture();
+
+    sand_clear(&s);
+    sand_spawn(&s, 4, 4, 0, MAT_SAND);
+
+    for (int y = 0; y < H; y++) {
+        TEST_ASSERT_EQUAL_UINT16_MESSAGE(0, dirty_x0[y], "a cleared row must repaint from column 0");
+        TEST_ASSERT_EQUAL_UINT16_MESSAGE(W, dirty_x1[y], "and through the last column, after any later mark");
+    }
+}
+
 /* A settled run sharing a row with a moving grain must not appear in that
  * row's dirty span. Gravity runs along X here, so the fall stays inside
  * row 3 the whole way - a row-only mark_rows(y0, y1) could never tell that
@@ -800,6 +817,7 @@ run_sand_motion_suite(void) {
     RUN_TEST(test_tracking_starts_by_assuming_everything_changed);
     RUN_TEST(test_dirty_cols_start_with_the_sentinel);
     RUN_TEST(test_spawning_marks_only_the_column_it_filled);
+    RUN_TEST(test_a_clear_stays_full_width_after_a_later_narrow_mark);
     RUN_TEST(test_a_sideways_fall_does_not_dirty_a_settled_run_elsewhere_in_the_row);
     RUN_TEST(test_load_counts_the_grains_stacked_above);
     RUN_TEST(test_load_stops_at_a_gap);

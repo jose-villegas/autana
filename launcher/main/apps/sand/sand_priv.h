@@ -134,8 +134,8 @@ mark_rows(sand_t* s, int x, int y0, int y1) {
 
 /* Only pour_into()'s was_empty can make LOCAL DEPTH shading stale, within
  * MATERIAL_LIQUID_DEPTH_BAND either way. The band runs along gravity, same
- * as the depth count: columns of this row, or rows (full-width - the
- * mark_row_span() sentinel) otherwise. */
+ * as the depth count: columns of this row, or whole rows (explicit
+ * full-width spans) otherwise. */
 static inline void
 mark_depth_band(sand_t* s, int x, int y) {
     if (s->dirty_rows == NULL) {
@@ -155,7 +155,9 @@ mark_depth_band(sand_t* s, int x, int y) {
     if (y1 >= s->h) {
         y1 = s->h - 1;
     }
-    memset(&s->dirty_rows[y0], 1, (size_t)(y1 - y0 + 1));
+    for (int yy = y0; yy <= y1; yy++) {
+        mark_row_span(s, yy, 0, s->w - 1);
+    }
 }
 
 /* Not sand.h API: a test hook for the gas spread pass's row skip. With it on,
