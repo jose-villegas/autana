@@ -1196,6 +1196,42 @@ draw_glyph_font(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_colo
     }
 }
 
+/* draw_glyph_font()'s bpp==1 path, halo variant: each run is
+ * gfx_font_row_run_rect_dilated() instead of gfx_font_row_run_rect() -
+ * see that function's own comment for why this covers the same area as
+ * UI_TEXT_OUTLINED's 8 unit-offset copies. Never called for a bpp==8
+ * font - see gfx_text_font_halo()'s own comment. */
+static void
+draw_glyph_font_halo(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_color_t color, int scale, int turn) {
+    if (ch < font->first || (unsigned)(ch - font->first) >= font->count) {
+        return;
+    }
+    assert(font->bpp == 1);
+
+    const uint8_t* glyph = font->atlas + (size_t)(ch - font->first) * font->cell_h;
+    for (int row = 0; row < font->cell_h; row++) {
+        const uint8_t bits = glyph[row];
+        if (bits == 0) {
+            continue;
+        }
+        int col = 0;
+        while (col < font->cell_w) {
+            if (!(bits & (1 << col))) {
+                col++;
+                continue;
+            }
+            int run_end = col;
+            while (run_end + 1 < font->cell_w && (bits & (1 << (run_end + 1)))) {
+                run_end++;
+            }
+            int rx, ry, rw, rh;
+            gfx_font_row_run_rect_dilated(font, x, y, row, col, run_end, scale, turn, &rx, &ry, &rw, &rh);
+            gfx_fill_rect(rx, ry, rw, rh, color);
+            col = run_end + 1;
+        }
+    }
+}
+
 void
 gfx_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns, const gfx_font_t* font) {
     GFX_PRESENT_GUARD();
@@ -1240,6 +1276,48 @@ gfx_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int 
 void
 gfx_text_turned(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns) {
     gfx_text_font(x, y, text, color, scale, quarter_turns, gfx_font_ui());
+}
+
+/* gfx_text_font()'s own loop, drawing each character's halo
+ * (draw_glyph_font_halo()) rather than its ink - see gfx.h's own comment.
+ * UI_TEXT_OUTLINED is the only caller and only ever styles gfx_font_ui(),
+ * a bpp==1 font - draw_glyph_font_halo() asserts that rather than
+ * drawing a bpp==8 font's halo wrong. */
+void
+gfx_text_font_halo(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
+                   const gfx_font_t* font) {
+    GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
+    if (scale < 1) {
+        scale = 1;
+    }
+
+    const int turn = ((quarter_turns % 4) + 4) % 4;
+
+    static const int step[4][2] = {
+        {1, 0},
+        {0, 1},
+        {-1, 0},
+        {0, -1},
+    };
+
+    const int char_h = (turn & 1) ? font->cell_w * scale : font->cell_h * scale;
+    const gfx_target_t target = current_target();
+
+    for (const char* p = text; *p != '\0'; p++) {
+        const unsigned char ch = (unsigned char)*p;
+        /* y - 1, + 1: the halo reaches one pixel beyond the ink on every
+         * side (gfx_font_row_run_rect_dilated()), so the row range this
+         * character can possibly touch is one pixel taller too. */
+        if (gfx_target_row_range_overlaps(target, y - 1, y + char_h + 1)) {
+            draw_glyph_font_halo(font, x, y, ch, color, scale, turn);
+        }
+        const int adv = gfx_font_advance(font, ch, scale);
+        x += step[turn][0] * adv;
+        y += step[turn][1] * adv;
+    }
 }
 
 /*

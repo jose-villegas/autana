@@ -27,6 +27,7 @@
 #include "unity.h"
 
 #include "gfx/gfx_font.h"
+#include "gfx/gfx_target.h"
 
 /* Mirrors gfx.h's GFX_GLYPH_SCALE (8x8 glyphs drawn at 2x - see gfx.h's own
  * comment on GFX_CHAR_W/GFX_CHAR_H). Kept in one place, right where it is
@@ -317,6 +318,115 @@ test_row_run_rect_never_leaves_the_characters_own_row_extent(void) {
     }
 }
 
+/*
+ * gfx_font_row_run_rect_dilated() - proof that one dilated-halo pass
+ * paints the same pixels as UI_TEXT_OUTLINED's 8 unit-offset copies of
+ * gfx_text_font(), ink drawn last either way. Rasterizes both forms into
+ * small pixel grids via gfx_target_fill_rect() (the same body gfx.c's
+ * gfx_fill_rect() calls) and compares them exactly, at every turn and
+ * with a band edge cutting through the glyph.
+ */
+
+#define SIM_DIM  40
+#define SIM_INK  ((gfx_color_t)1)
+#define SIM_HALO ((gfx_color_t)2)
+
+static gfx_color_t sim_old[SIM_DIM * SIM_DIM];
+static gfx_color_t sim_new[SIM_DIM * SIM_DIM];
+
+typedef void (*run_rect_fn_t)(const gfx_font_t*, int, int, int, int, int, int, int, int*, int*, int*, int*);
+
+static void
+sim_walk_runs(gfx_target_t target, const gfx_font_t* f, int x, int y, unsigned char ch, int scale, int turn,
+              run_rect_fn_t rect_fn, gfx_color_t color) {
+    const uint8_t* glyph = f->atlas + (size_t)(ch - f->first) * f->cell_h;
+    for (int row = 0; row < f->cell_h; row++) {
+        const uint8_t bits = glyph[row];
+        if (bits == 0) {
+            continue;
+        }
+        int col = 0;
+        while (col < f->cell_w) {
+            if (!(bits & (1 << col))) {
+                col++;
+                continue;
+            }
+            int end = col;
+            while (end + 1 < f->cell_w && (bits & (1 << (end + 1)))) {
+                end++;
+            }
+            int rx, ry, rw, rh, ox0, oy0, ox1, oy1;
+            rect_fn(f, x, y, row, col, end, scale, turn, &rx, &ry, &rw, &rh);
+            gfx_target_fill_rect(target, 0, 0, SIM_DIM, SIM_DIM, rx, ry, rw, rh, color, &ox0, &oy0, &ox1, &oy1);
+            col = end + 1;
+        }
+    }
+}
+
+/* draw_command()'s own 8-offset loop, at the row-run level: SIM_HALO at
+ * each of the 8 unit screen-space offsets, SIM_INK last, unshifted. */
+static void
+sim_draw_old(gfx_target_t target, const gfx_font_t* f, int x, int y, unsigned char ch, int scale, int turn) {
+    static const int offsets[8][2] = {
+        {-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1},
+    };
+    for (int i = 0; i < 8; i++) {
+        sim_walk_runs(target, f, x + offsets[i][0], y + offsets[i][1], ch, scale, turn, gfx_font_row_run_rect,
+                      SIM_HALO);
+    }
+    sim_walk_runs(target, f, x, y, ch, scale, turn, gfx_font_row_run_rect, SIM_INK);
+}
+
+/* gfx_text_font_halo()/gfx_text_font() at the row-run level: one dilated
+ * SIM_HALO pass, SIM_INK last, unshifted - draw_command()'s fast path. */
+static void
+sim_draw_new(gfx_target_t target, const gfx_font_t* f, int x, int y, unsigned char ch, int scale, int turn) {
+    sim_walk_runs(target, f, x, y, ch, scale, turn, gfx_font_row_run_rect_dilated, SIM_HALO);
+    sim_walk_runs(target, f, x, y, ch, scale, turn, gfx_font_row_run_rect, SIM_INK);
+}
+
+/* `band` gives the row range to draw into - its own buf is ignored and
+ * replaced with sim_old/sim_new so both forms land in a real buffer. */
+static void
+assert_old_and_new_match(gfx_target_t band, int x, int y, unsigned char ch, int scale, int turn) {
+    memset(sim_old, 0, sizeof sim_old);
+    memset(sim_new, 0, sizeof sim_new);
+
+    gfx_target_t old_target = band, new_target = band;
+    old_target.buf = sim_old;
+    new_target.buf = sim_new;
+
+    sim_draw_old(old_target, &gfx_font_8x8, x, y, ch, scale, turn);
+    sim_draw_new(new_target, &gfx_font_8x8, x, y, ch, scale, turn);
+
+    TEST_ASSERT_EQUAL_UINT16_ARRAY_MESSAGE(sim_old, sim_new, SIM_DIM * SIM_DIM,
+                                           "one dilated halo pass must paint exactly what 8 offset copies do");
+}
+
+static void
+test_dilated_halo_matches_eight_offset_copies_at_every_turn(void) {
+    const gfx_target_t full = {NULL, 0, SIM_DIM, SIM_DIM};
+
+    for (int turn = 0; turn < 4; turn++) {
+        for (unsigned char ch = 'A'; ch <= 'Z'; ch++) {
+            assert_old_and_new_match(full, 15, 15, ch, 2, turn);
+        }
+    }
+}
+
+/* A band edge cutting straight through the glyph's own rows - the case
+ * ui_replay_band() creates for real: the target's own row range narrower
+ * than SIM_DIM, clipping both forms the same way gfx_target_clip_y()
+ * always does. */
+static void
+test_dilated_halo_matches_eight_offset_copies_at_a_band_edge(void) {
+    const gfx_target_t band = {NULL, 10, 8, SIM_DIM}; /* rows [10, 18) only */
+
+    for (int turn = 0; turn < 4; turn++) {
+        assert_old_and_new_match(band, 15, 15, 'A', 2, turn);
+    }
+}
+
 void
 run_gfx_font_suite(void) {
     RUN_TEST(test_default_font_width_matches_char_w_per_character);
@@ -335,6 +445,8 @@ run_gfx_font_suite(void) {
     RUN_TEST(test_row_run_rect_matches_per_bit_placement_at_every_turn);
     RUN_TEST(test_row_run_rect_matches_per_bit_placement_at_scale_one_and_at_origin);
     RUN_TEST(test_row_run_rect_never_leaves_the_characters_own_row_extent);
+    RUN_TEST(test_dilated_halo_matches_eight_offset_copies_at_every_turn);
+    RUN_TEST(test_dilated_halo_matches_eight_offset_copies_at_a_band_edge);
 }
 
 SUITE_REGISTER(run_gfx_font_suite);
