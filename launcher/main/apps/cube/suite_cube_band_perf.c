@@ -357,14 +357,19 @@ run_arm(const char* label, bool band_mode, int quarter, bool fps_on) {
     return r;
 }
 
+static double
+arm_replay_us_per_frame(const arm_result_t* r) {
+    return r->replay_band_count > 0 ? (double)r->replay_us / r->frame_count : 0.0;
+}
+
 static void
 log_arm(const arm_result_t* r) {
     log_stats(r->label, r->frame);
     ESP_LOGI(TAG,
              "%-24s ui_build=%.1f us/frame, ui_replay=%.1f us/frame, bands touched=%d skipped=%d, "
              "%.0f bytes/frame sent",
-             r->label, (double)r->ui_build_us / r->frame_count,
-             r->replay_band_count > 0 ? (double)r->replay_us / r->frame_count : 0.0, r->touched_bands, r->skipped_bands,
+             r->label, (double)r->ui_build_us / r->frame_count, arm_replay_us_per_frame(r), r->touched_bands,
+             r->skipped_bands,
              (double)r->touched_bands * GFX_WIDTH * GFX_BAND_HEIGHT * sizeof(gfx_color_t) / r->frame_count);
 }
 
@@ -385,6 +390,11 @@ test_cube_orientation_and_fps_sweep(void) {
 
     static const bool fps_states[] = {true, false};
 
+    /* Set from the portrait/fps-on arm below, checked against the
+     * landscape/fps-on one - orientations[] runs portrait before
+     * landscape, so by the time landscape needs it, it is already there. */
+    double portrait_fps_on_replay_us = 0.0;
+
     ESP_LOGI(TAG,
              "=== CUBE ORIENTATION x FPS SWEEP (%lds/arm, band height %d) ===", (long)(ORIENTATION_SAMPLE_MS / 1000),
              GFX_BAND_HEIGHT);
@@ -402,6 +412,23 @@ test_cube_orientation_and_fps_sweep(void) {
             /* After logging, not inside run_arm(): a failing arm must
              * still print its numbers first. */
             assert_band_frame_did_real_work(band.frame, band.touched_bands, band.raster_us);
+
+            const double replay_us = arm_replay_us_per_frame(&band);
+            if (fps_states[f]) {
+                if (orientations[o].quarter == DISPLAY_PORTRAIT) {
+                    portrait_fps_on_replay_us = replay_us;
+                } else {
+                    /* Boolean, not a numeric comparison macro - this device's
+                     * Unity build has no 64-bit support (see
+                     * assert_band_frame_did_real_work()'s own comment), and
+                     * this is a double besides. An absolute floor alongside
+                     * the ratio: a portrait cost near zero would make "4x
+                     * portrait" an unreasonably tight bound on its own. */
+                    TEST_ASSERT_TRUE_MESSAGE(replay_us <= 4.0 * portrait_fps_on_replay_us || replay_us <= 200.0,
+                                             "landscape ui_replay is more than 4x portrait and over 200 us/frame - "
+                                             "rotated text is not sharing portrait's per-band cost");
+                }
+            }
         }
     }
 
