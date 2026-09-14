@@ -8,20 +8,20 @@
  * Drives the real sand_t simulation and the real gfx.c present pipeline
  * directly, at a fixed NORMAL-quality (4 px) cell size - not app_sand.c,
  * which owns quality/colour-mode state this file has no access to and is
- * not part of any library this can link against selectively. Every cell,
- * every measured frame is repainted (gfx_mark_all_dirty()) rather than
- * only the changed spans #203 tracks in the real app: this suite compares
- * the three pixel formats' own draw/present cost against each other and
- * confirms real work happens, which a worst-case full redraw shows just as
- * well and more simply than reproducing the app's own dirty-row/run
- * bookkeeping here a second time.
- */
+ * not part of any library this can link against selectively. Every grid
+ * cell is repainted every measured frame (not only the changed spans #203
+ * tracks in the real app - a worst-case draw cost, simpler than
+ * reproducing that bookkeeping here a second time), but only the real
+ * changed bounding box (diff_bounding_box()) is marked dirty, so present
+ * cost and bytes sent answer the real question instead of all reading the
+ * same worst case regardless of pixel format. */
 #include "suites.h"
 #include "unity.h"
 
 #ifdef DEVICE_BUILD
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -146,10 +146,47 @@ paint_full_frame_indexed(const uint8_t* grid) {
     }
 }
 
+static uint8_t prev_grid[CM_GRID_W * CM_GRID_H];
+static bool prev_grid_valid;
+
+/* Real per-frame dirty extent, from the grid itself - not gfx_mark_all_
+ * dirty() every frame, which sends every strip regardless of pixel format
+ * and would make FULL/256/16 present the same bytes for no reason but this
+ * suite's own shortcut. `false` (no change at all) leaves nothing marked;
+ * the caller still owns whether that is expected this frame. */
+static bool
+diff_bounding_box(const uint8_t* grid, int* out_x0, int* out_y0, int* out_x1, int* out_y1) {
+    int x0 = CM_GRID_W, y0 = CM_GRID_H, x1 = 0, y1 = 0;
+    bool any = false;
+    for (int cy = 0; cy < CM_GRID_H; cy++) {
+        for (int cx = 0; cx < CM_GRID_W; cx++) {
+            const int i = cy * CM_GRID_W + cx;
+            if (prev_grid_valid && grid[i] == prev_grid[i]) {
+                continue;
+            }
+            any = true;
+            x0 = cx < x0 ? cx : x0;
+            y0 = cy < y0 ? cy : y0;
+            x1 = cx + 1 > x1 ? cx + 1 : x1;
+            y1 = cy + 1 > y1 ? cy + 1 : y1;
+        }
+    }
+    memcpy(prev_grid, grid, sizeof prev_grid);
+    prev_grid_valid = true;
+    if (any) {
+        *out_x0 = x0;
+        *out_y0 = y0;
+        *out_x1 = x1;
+        *out_y1 = y1;
+    }
+    return any;
+}
+
 static void
 measure_mode(const colour_scene_t* scene, colour_mode_t mode, mode_result_t* out) {
     uint8_t* grid = malloc((size_t)CM_GRID_W * CM_GRID_H);
     TEST_ASSERT_NOT_NULL(grid);
+    prev_grid_valid = false;
 
     sand_t sim;
     sand_init(&sim, grid, CM_GRID_W, CM_GRID_H, 0xC0107000u);
@@ -167,7 +204,7 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, mode_result_t* out
         const gfx_mode_t* granted = gfx_mode_enter(&req);
         TEST_ASSERT_TRUE_MESSAGE(granted->layout == GFX_LAYOUT_BANDS, "GFX_PIXFMT_INDEXED8 could not be granted");
         gfx_indexed_set_lut(sand_palette256_lut);
-        gfx_indexed_set_lut16(sand_palette16_lut, sand_palette16_dither);
+        gfx_indexed_set_lut16(sand_palette16_dither_rgb);
         gfx_indexed_set_dither16(mode == CM_MODE_16);
     }
 
@@ -181,13 +218,18 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, mode_result_t* out
         const int gx = (i < CM_MEASURED_FRAMES / 2) ? CM_GRAVITY_X : -CM_GRAVITY_X;
         sand_step(&sim, gx, CM_GRAVITY_Y, 0);
 
+        int dx0, dy0, dx1, dy1;
+        const bool changed = diff_bounding_box(grid, &dx0, &dy0, &dx1, &dy1);
+
         const int64_t t0 = esp_timer_get_time();
         if (indexed) {
             paint_full_frame_indexed(grid);
         } else {
             paint_full_frame_full(grid);
         }
-        gfx_mark_all_dirty();
+        if (changed) {
+            gfx_mark_dirty(dx0 * CM_CELL, dy0 * CM_CELL, (dx1 - dx0) * CM_CELL, (dy1 - dy0) * CM_CELL);
+        }
         const int64_t t1 = esp_timer_get_time();
 
         gfx_present_begin();
@@ -256,11 +298,28 @@ test_levelling_pool(void) {
 
 _Static_assert(SCENE_COUNT == 3, "test_mixed_flip/test_gas_over_pile/test_levelling_pool index scenes[] positionally");
 
+/* Defined in app_sand.c (CONFIG_LAUNCHER_SELFTEST only), which is not part
+ * of any library this could declare through a shared header - one function
+ * does not earn an app_sand.h, the same reasoning suite_sand_perf.c's own
+ * sand_app_alloc_selfcheck() declaration gives. Drives the real app through
+ * the exact sequence the reported crash reproduced: a sim entered in the
+ * given colour mode, then back to the launch menu. */
+bool sand_app_test_survives_indexed_then_menu(int mode);
+
+static void
+test_indexed_mode_does_not_survive_a_return_to_the_menu(void) {
+    TEST_ASSERT_TRUE_MESSAGE(sand_app_test_survives_indexed_then_menu(1 /* 256 */),
+                             "indexed mode survived a return to the menu after a 256 sim");
+    TEST_ASSERT_TRUE_MESSAGE(sand_app_test_survives_indexed_then_menu(2 /* 16 */),
+                             "indexed mode survived a return to the menu after a 16 sim");
+}
+
 #endif /* DEVICE_BUILD */
 
 void
 run_sand_colour_modes_suite(void) {
 #ifdef DEVICE_BUILD
+    RUN_TEST(test_indexed_mode_does_not_survive_a_return_to_the_menu);
     RUN_TEST(test_mixed_flip);
     RUN_TEST(test_gas_over_pile);
     RUN_TEST(test_levelling_pool);
