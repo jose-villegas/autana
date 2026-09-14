@@ -4,6 +4,7 @@
 #include "gfx/gfx_present_guard.h"
 #include "util/intmath.h"
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -34,6 +35,11 @@ static const char* TAG = "gfx";
 #endif
 
 static gfx_color_t* fb;
+
+/* GFX_LAYOUT_FULL_FB until gfx_init() sets real geometry below, or an app's
+ * gfx_mode_enter() grants something else. gfx_present_begin()/_wait() read
+ * this to know whether there is a framebuffer to send at all. */
+static gfx_mode_t current_mode;
 
 /* Default from CONFIG_LAUNCHER_GFX_PRESENT_ON_CORE1 on the device; true on a
  * host, where gfx_present_begin()/_wait() never dispatch to a task anyway. */
@@ -415,6 +421,11 @@ gfx_init(void) {
         }
     }
 
+    current_mode.layout = GFX_LAYOUT_FULL_FB;
+    current_mode.resolution = GFX_RESOLUTION_FULL;
+    current_mode.width = GFX_WIDTH;
+    current_mode.height = GFX_HEIGHT;
+
     gfx_clear_clip();
     gfx_mark_all_dirty();
 
@@ -431,6 +442,10 @@ gfx_init(void) {
     if (fb == NULL) {
         return false;
     }
+    current_mode.layout = GFX_LAYOUT_FULL_FB;
+    current_mode.resolution = GFX_RESOLUTION_FULL;
+    current_mode.width = GFX_WIDTH;
+    current_mode.height = GFX_HEIGHT;
     gfx_clear_clip();
     gfx_mark_all_dirty();
     return true;
@@ -1690,13 +1705,16 @@ dispatch_present(void) {
 void
 gfx_present_begin(void) {
     gfx_present_guard_begin();
+    if (current_mode.layout == GFX_LAYOUT_BANDS) {
+        return; /* the band ring sends and waits inside frame() itself */
+    }
     present_task_mode = PRESENT_TASK_NORMAL;
     dispatch_present();
 }
 
 void
 gfx_present_wait(void) {
-    if (present_async_on) {
+    if (current_mode.layout != GFX_LAYOUT_BANDS && present_async_on) {
         xSemaphoreTake(present_done_sem, portMAX_DELAY);
     }
     gfx_present_guard_end();
@@ -1713,8 +1731,12 @@ void
 gfx_present_wait(void) {
     /* No panel on a host build; draining the dirty tracker here is what
      * lets a host test assert the same "sequencing leaves it clean"
-     * property a real present provides - see suite_gfx_present_guard.c. */
-    dirty_frame_sent();
+     * property a real present provides - see suite_gfx_present_guard.c.
+     * Band mode has no dirty tracker to drain - the ring itself already
+     * settled inside frame(). */
+    if (current_mode.layout != GFX_LAYOUT_BANDS) {
+        dirty_frame_sent();
+    }
     gfx_present_guard_end();
 }
 
@@ -1734,6 +1756,204 @@ gfx_set_present_async(bool on) {
 bool
 gfx_present_async_enabled(void) {
     return present_async_on;
+}
+
+/* Mode and the band ring */
+
+static gfx_color_t* band_buf[GFX_BAND_SLOTS];
+static gfx_band_ring_t band_ring;
+static int band_current_slot;
+
+#ifdef ESP_PLATFORM
+static bool
+alloc_full_framebuffer(void) {
+    const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+    fb = heap_caps_malloc(bytes, BOARD_FRAMEBUFFER_CAPS);
+    if (fb == NULL) {
+        ESP_LOGE(TAG, "Could not reallocate the %u byte framebuffer leaving band mode", (unsigned)bytes);
+        return false;
+    }
+    return true;
+}
+
+static void
+free_full_framebuffer(void) {
+    heap_caps_free(fb);
+    fb = NULL;
+}
+
+static bool
+alloc_band_buffers(int band_height) {
+    const size_t bytes = (size_t)GFX_WIDTH * (size_t)band_height * sizeof(gfx_color_t);
+    for (int i = 0; i < GFX_BAND_SLOTS; i++) {
+        band_buf[i] = heap_caps_malloc(bytes, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+        if (band_buf[i] == NULL) {
+            ESP_LOGE(TAG, "Could not allocate %u byte band buffer", (unsigned)bytes);
+            return false;
+        }
+    }
+    return true;
+}
+#else
+static bool
+alloc_full_framebuffer(void) {
+    const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+    fb = malloc(bytes);
+    return fb != NULL;
+}
+
+static void
+free_full_framebuffer(void) {
+    free(fb);
+    fb = NULL;
+}
+
+static bool
+alloc_band_buffers(int band_height) {
+    const size_t bytes = (size_t)GFX_WIDTH * (size_t)band_height * sizeof(gfx_color_t);
+    for (int i = 0; i < GFX_BAND_SLOTS; i++) {
+        band_buf[i] = malloc(bytes);
+        if (band_buf[i] == NULL) {
+            return false;
+        }
+    }
+    return true;
+}
+#endif
+
+static void
+free_band_buffers(void) {
+    for (int i = 0; i < GFX_BAND_SLOTS; i++) {
+#ifdef ESP_PLATFORM
+        heap_caps_free(band_buf[i]);
+#else
+        free(band_buf[i]);
+#endif
+        band_buf[i] = NULL;
+    }
+}
+
+static void
+reset_mode_to_full_fb(void) {
+    current_mode.layout = GFX_LAYOUT_FULL_FB;
+    current_mode.resolution = GFX_RESOLUTION_FULL;
+    current_mode.interlace_x = false;
+    current_mode.interlace_y = false;
+    current_mode.width = GFX_WIDTH;
+    current_mode.height = GFX_HEIGHT;
+    current_mode.band_height = 0;
+}
+
+/* Only GFX_RESOLUTION_FULL is wired to real rendering, so the system-wide
+ * resolution cap a future Settings app would own (roadmap section 8,
+ * decision 1) is not a variable yet - hardcoding it here is the one place
+ * that changes once it is. */
+const gfx_mode_t*
+gfx_mode_enter(const gfx_mode_request_t* request) {
+    GFX_PRESENT_GUARD();
+    assert(current_mode.layout == GFX_LAYOUT_FULL_FB);
+
+    const gfx_mode_t granted = gfx_mode_resolve(request, GFX_RESOLUTION_FULL, GFX_WIDTH, GFX_HEIGHT, GFX_BAND_HEIGHT);
+
+    if (granted.layout == GFX_LAYOUT_BANDS) {
+        if (!alloc_band_buffers(granted.band_height)) {
+            free_band_buffers();
+            return &current_mode; /* stays GFX_LAYOUT_FULL_FB */
+        }
+        free_full_framebuffer();
+        gfx_band_ring_begin(&band_ring, granted.height / granted.band_height);
+        band_current_slot = 0;
+    }
+
+    current_mode = granted;
+    return &current_mode;
+}
+
+void
+gfx_mode_exit(void) {
+    GFX_PRESENT_GUARD();
+    if (current_mode.layout == GFX_LAYOUT_BANDS) {
+        free_band_buffers();
+        if (!alloc_full_framebuffer()) {
+#ifdef ESP_PLATFORM
+            /* Nothing downstream can draw without a framebuffer - the same
+             * dead end gfx_init() itself parks in on the same allocation. */
+            while (1) {
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            }
+#endif
+        }
+        gfx_clear_clip();
+        gfx_mark_all_dirty();
+    }
+    reset_mode_to_full_fb();
+}
+
+const gfx_mode_t*
+gfx_mode_current(void) {
+    return &current_mode;
+}
+
+void
+gfx_band_frame_begin(void) {
+    GFX_PRESENT_GUARD();
+    assert(current_mode.layout == GFX_LAYOUT_BANDS);
+    gfx_band_ring_begin(&band_ring, current_mode.height / current_mode.band_height);
+}
+
+bool
+gfx_band_next(void) {
+    GFX_PRESENT_GUARD();
+    assert(current_mode.layout == GFX_LAYOUT_BANDS);
+    if (gfx_band_ring_done(&band_ring)) {
+        if (!gfx_band_ring_settled(&band_ring)) {
+#ifdef ESP_PLATFORM
+            xSemaphoreTake(strip_sent, portMAX_DELAY);
+#endif
+            gfx_band_ring_settle(&band_ring);
+        }
+        return false;
+    }
+    band_current_slot = gfx_band_ring_slot(&band_ring);
+    return true;
+}
+
+gfx_color_t*
+gfx_band_buffer(void) {
+    GFX_PRESENT_GUARD();
+    return band_buf[band_current_slot];
+}
+
+int
+gfx_band_row0(void) {
+    GFX_PRESENT_GUARD();
+    return gfx_band_ring_row0(&band_ring, current_mode.band_height);
+}
+
+int
+gfx_band_height(void) {
+    GFX_PRESENT_GUARD();
+    return current_mode.band_height;
+}
+
+int
+gfx_band_count(void) {
+    GFX_PRESENT_GUARD();
+    return band_ring.band_count;
+}
+
+void
+gfx_band_submit(void) {
+    GFX_PRESENT_GUARD();
+    assert(current_mode.layout == GFX_LAYOUT_BANDS);
+#ifdef ESP_PLATFORM
+    if (gfx_band_ring_must_wait(&band_ring)) {
+        xSemaphoreTake(strip_sent, portMAX_DELAY);
+    }
+    const int row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
+    esp_lcd_panel_draw_bitmap(panel, 0, row0, GFX_WIDTH, row0 + current_mode.band_height, band_buf[band_current_slot]);
+#endif
+    gfx_band_ring_advance(&band_ring);
 }
 
 unsigned
