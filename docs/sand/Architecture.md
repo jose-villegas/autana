@@ -1003,17 +1003,41 @@ that a settled board has no motion for the extra cost to lag. The shape is
 not behaviour-neutral - see that attempt for the one fingerprint cell and
 the three scene constants it moved.
 
-## Dirty-row tracking
+## Dirty-row and dirty-column tracking
 
 Separate from block sleeping, and for a different purpose: block sleeping
 decides what the *simulation* can skip; `dirty_rows` (`sand.h`) decides
 what the *renderer* can skip. Any move marks its source and destination
-row (`mark_rows()`, `sand_priv.h`). `app_sand.c`'s `draw_dirty_rows()`
-walks every row, skips the clean ones outright, and for the dirty ones
-calls into `row_runs.h`'s span-reconciliation so only the pixel spans
-that actually changed get sent to the panel via `gfx_mark_dirty()` - "a
-screen band containing no changed rows need not be sent to the panel at
-all, which is most of a frame's cost."
+row (`mark_rows()`/`mark_move()`/`mark_slide()`, `sand_priv.h`) - and, on
+top of that, the column(s) actually touched, into `dirty_x0[y]`/
+`dirty_x1[y]` (`sand_track_dirty_cols()`), a half-open span unioned across
+every mark that lands on row `y` this step. Row marking alone cannot say
+"which part of this row changed" - in landscape, where a grid row runs
+ALONG gravity, that meant one changed cell resending a whole settled stack
+sharing its row. `mark_depth_band()` follows the same rule: it widens
+`dirty_x0`/`dirty_x1` by `MATERIAL_LIQUID_DEPTH_BAND` along whichever axis
+gravity actually runs on (`s->last_load_dx`/`dy`), rows in portrait,
+columns in landscape - never 49 rows for a pour that only ever changes one.
+
+A row with no column span narrowed this step (the sentinel `dirty_x0[y] >
+dirty_x1[y]`) reads as "repaint this row full-width" - what every row got
+before column tracking existed, and still what a full `gfx_mark_all_dirty()`
+or a portrait depth-band mark asks for.
+
+`app_sand.c`'s `draw_dirty_rows()` walks every row, skips the clean ones
+outright, and for the dirty ones computes a repaint span
+(`row_paint_span()`): the row's own `dirty_x0`/`dirty_x1`, widened by one
+column each side for the edge-softening and wood/leaf neighbour checks
+that read a row's immediate left and right, and further widened to a wake
+tick's own last-painted flagged-cell span (shine, liquid depth, cullet,
+glass, wood/leaf) when one of those fires for the row. `paint_row_n()`
+still computes state (local depth, `row_flags`, hash) across the row's
+full width - the state chain crosses columns and even rows - but only
+writes pixels inside that span, and `row_runs.h`'s span-reconciliation
+still runs full-width for bookkeeping; only the rects it hands to
+`gfx_mark_dirty()` are clipped down to the span. "A screen band containing
+no changed rows need not be sent to the panel at all" still holds; the
+column span is the same idea one axis finer, for the rows that are dirty.
 
 ## Two screens: the palette and the brush screen
 
