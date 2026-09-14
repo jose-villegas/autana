@@ -85,34 +85,66 @@ dest_row(const sand_t* s, int y) {
     return s->cells + (size_t)y * (size_t)s->w;
 }
 
-/* ALSO THE BOARD-CHANGED SIGNAL, not only a repaint request: a changed cell
- * that is not repainted is a visible bug, so every writer already comes
- * through here - the one place a content change can be seen without auditing
- * them all. See faller_may_move in sand.h for what rests on that. */
+/* Unions [x0,x1] (either order, clipped to the grid) into row y's
+ * changed-column span - a no-op on dirty_x0/dirty_x1 wherever column
+ * tracking was never opted into (sand_track_dirty_cols() not called), so a
+ * row-only caller still gets exactly dirty_rows[y] = 1 as before. */
 static inline void
-mark_rows(sand_t* s, int y0, int y1) {
-    s->faller_may_move = true;
+mark_row_span(sand_t* s, int y, int x0, int x1) {
+    if ((unsigned)y >= (unsigned)s->h) {
+        return;
+    }
     if (s->dirty_rows != NULL) {
-        if ((unsigned)y0 < (unsigned)s->h) {
-            s->dirty_rows[y0] = 1;
-        }
-        if ((unsigned)y1 < (unsigned)s->h) {
-            s->dirty_rows[y1] = 1;
-        }
+        s->dirty_rows[y] = 1;
+    }
+    if (s->dirty_x0 == NULL || s->dirty_x1 == NULL) {
+        return;
+    }
+    int lo = x0 < x1 ? x0 : x1;
+    int hi = x0 < x1 ? x1 : x0;
+    if (lo < 0) {
+        lo = 0;
+    }
+    if (hi >= s->w) {
+        hi = s->w - 1;
+    }
+    if (lo > hi) {
+        return; /* span was entirely off-grid */
+    }
+    if (lo < (int)s->dirty_x0[y]) {
+        s->dirty_x0[y] = (uint16_t)lo;
+    }
+    if (hi + 1 > (int)s->dirty_x1[y]) {
+        s->dirty_x1[y] = (uint16_t)(hi + 1);
     }
 }
 
-/* Only pour_into()'s was_empty triggers this: the only event that moves
- * a puddle's surface, so the only one that can make LOCAL DEPTH stale.
- * Mass between already-liquid cells never calls it - dirtying for that
- * would repaint a settled reservoir every step something levels out.
- * Marks a BAND, not two points: anything within
- * MATERIAL_LIQUID_DEPTH_BAND of the surface can read differently,
- * further out already saturates. Direction-agnostic, avoiding coupling
- * to app_sand.c's gravity bookkeeping. */
+/* ALSO THE BOARD-CHANGED SIGNAL: a changed cell that is not repainted is a
+ * visible bug, so every writer comes through here. `x` is the one column
+ * that changed in both y0 and y1 - a move that changes column too goes
+ * through mark_move() instead. */
 static inline void
-mark_depth_band(sand_t* s, int y) {
+mark_rows(sand_t* s, int x, int y0, int y1) {
+    s->faller_may_move = true;
+    mark_row_span(s, y0, x, x);
+    if (y1 != y0) {
+        mark_row_span(s, y1, x, x);
+    }
+}
+
+/* Only pour_into()'s was_empty can make LOCAL DEPTH shading stale, within
+ * MATERIAL_LIQUID_DEPTH_BAND either way. The band runs along gravity, same
+ * as the depth count: columns of this row, or rows (full-width - the
+ * mark_row_span() sentinel) otherwise. */
+static inline void
+mark_depth_band(sand_t* s, int x, int y) {
     if (s->dirty_rows == NULL) {
+        return;
+    }
+    const int ax = s->last_load_dx < 0 ? -s->last_load_dx : s->last_load_dx;
+    const int ay = s->last_load_dy < 0 ? -s->last_load_dy : s->last_load_dy;
+    if (ax > ay) {
+        mark_row_span(s, y, x - MATERIAL_LIQUID_DEPTH_BAND, x + MATERIAL_LIQUID_DEPTH_BAND);
         return;
     }
     int y0 = y - MATERIAL_LIQUID_DEPTH_BAND;
@@ -647,7 +679,7 @@ static inline void
 place_cell(sand_t* s, int x, int y, size_t at, cell_t c) {
     s->cells[at] = c;
     latch_content_flags(s, c);
-    mark_rows(s, y, y);
+    mark_rows(s, x, y, y);
     wake_block_and_neighbors(s, x, y);
 }
 
@@ -675,7 +707,7 @@ pay_quench_cost(sand_t* s, int nx, int ny, int w) {
     const cell_t n = s->cells[at];
     const int mass = CELL_VARIANT(n) - 1;
     s->cells[at] = (mass > 0) ? CELL_MAKE(CELL_MATERIAL(n), mass) : CELL_EMPTY;
-    mark_rows(s, ny, ny);
+    mark_rows(s, nx, ny, ny);
     wake_block_and_neighbors(s, nx, ny);
 }
 
@@ -711,9 +743,22 @@ soil_set_moisture(cell_t c, uint8_t new_moisture, uint8_t nearby_moisture) {
     return new_moisture != 0 ? with_moisture(c, new_moisture, reaction_of(c)) : soil_dry_out(c, nearby_moisture);
 }
 
+/* Source and destination column marked separately, with no block-wake: the
+ * main sweep's own moved_here bookkeeping (sand.c) already keeps
+ * BLOCK_ACTIVE current for every cell it walks, so waking here would pay
+ * the 3x3 clear a second time for cells the sweep was already visiting. */
+static inline void
+mark_slide(sand_t* s, int x0, int y0, int x1, int y1) {
+    s->faller_may_move = true;
+    mark_row_span(s, y0, x0, x0);
+    if (y1 != y0 || x1 != x0) {
+        mark_row_span(s, y1, x1, x1);
+    }
+}
+
 static inline void
 mark_move(sand_t* s, int x0, int y0, int x1, int y1) {
-    mark_rows(s, y0, y1);
+    mark_slide(s, x0, y0, x1, y1);
     wake_block_and_neighbors(s, x0, y0);
     wake_block_and_neighbors(s, x1, y1);
 }
@@ -739,14 +784,14 @@ tick_decay_at(sand_t* s, uint8_t* row, int x, int y, cell_t* grain, const reacti
     const uint8_t life = cell_code(*grain);
     if (life <= r->lit_from) {
         row[x] = CELL_EMPTY;
-        mark_rows(s, y, y);
+        mark_rows(s, x, y, y);
         wake_block_and_neighbors(s, x, y);
         return false;
     }
 
     *grain = cell_with_code(*grain, (uint8_t)(life - 1));
     row[x] = *grain;
-    mark_rows(s, y, y);
+    mark_rows(s, x, y, y);
     return true;
 }
 
@@ -766,14 +811,14 @@ tick_decay(sand_t* s, uint8_t* row, int x, int y, cell_t* grain, uint8_t mat_id,
     const uint8_t life = CELL_VARIANT(*grain);
     if (life <= 1) {
         row[x] = CELL_EMPTY;
-        mark_rows(s, y, y);
+        mark_rows(s, x, y, y);
         wake_block_and_neighbors(s, x, y);
         return false;
     }
 
     *grain = CELL_MAKE(mat_id, life - 1);
     row[x] = *grain;
-    mark_rows(s, y, y);
+    mark_rows(s, x, y, y);
     return true;
 }
 
@@ -931,7 +976,7 @@ try_scatter(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow
         const int ddy = pick_a ? slide_a[1] : slide_b[1];
 
         if (move_to(row, drow, x, x + ddx, w, grain, density)) {
-            mark_rows(s, y, y + ddy);
+            mark_slide(s, x, y, x + ddx, y + ddy);
         }
     }
     return true;
@@ -946,7 +991,7 @@ try_fall_or_scatter_impl(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, 
     }
 
     if (move_to(row, prow, x, x + dx, w, grain, density)) {
-        mark_rows(s, y, y + dy);
+        mark_slide(s, x, y, x + dx, y + dy);
         return true;
     }
     return false;
@@ -990,11 +1035,11 @@ try_slide_pair(sand_t* s, uint8_t* row, int x, int y, int w, cell_t grain, uint8
     }
 
     if (first_driven && move_to(row, first_row, x, x + first_dx, w, grain, density)) {
-        mark_rows(s, y, y + first_dy);
+        mark_slide(s, x, y, x + first_dx, y + first_dy);
         return true;
     }
     if (second_driven && move_to(row, second_row, x, x + second_dx, w, grain, density)) {
-        mark_rows(s, y, y + second_dy);
+        mark_slide(s, x, y, x + second_dx, y + second_dy);
         return true;
     }
     return false;
@@ -1018,7 +1063,7 @@ try_slide_impl(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* b
     const bool shaken = jostle > 0 && (int)((r >> 8) & 0xFF) < jostle;
 
     if (!shaken && jostle > 0 && move_to(row, prow, x, x + dx, w, grain, density)) {
-        mark_rows(s, y, y + dy);
+        mark_slide(s, x, y, x + dx, y + dy);
         return true;
     }
 
@@ -1028,7 +1073,7 @@ try_slide_impl(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* b
     }
 
     if (shaken && move_to(row, prow, x, x + dx, w, grain, density)) {
-        mark_rows(s, y, y + dy);
+        mark_slide(s, x, y, x + dx, y + dy);
         return true;
     }
 
