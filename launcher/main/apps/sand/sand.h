@@ -49,6 +49,13 @@ typedef struct sand_s {
     uint8_t* cells; /* w * h, row-major, caller-owned */
     int w, h;
     rng_t rng; /* seeded explicitly, so every run repeats exactly */
+    /* The same seed, kept aside for sand_rng_next_at()'s hashed draws -
+     * see sand_two_core_step_enabled() (below) and sand_priv.h. rng_hashed
+     * is true only while a checkerboard-parallel pass is actually running,
+     * so every other draw in a step still advances the sequential stream
+     * above, unaffected. */
+    uint32_t rng_seed_base;
+    bool rng_hashed;
     /* Drifts the shade band random_cell() spawns with, so two separate pours
      * read as two shades rather than one flat fill. */
     uint32_t pour_phase;

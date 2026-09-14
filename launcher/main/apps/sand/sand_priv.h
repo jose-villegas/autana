@@ -40,6 +40,42 @@
 
 #include "sand.h"
 
+/* One constant per rng draw site inside a checkerboard-parallel pass -
+ * see sand_rng_next_at() below. A fixed slot per site, not a per-cell
+ * counter, is what keeps a draw thread-safe with no shared mutable state:
+ * two cores drawing for two different cells never share an input, and
+ * the same cell's two draws (say, a scatter roll and a slide roll) never
+ * collide because they hash different slots, not different counts. */
+enum {
+    SAND_RNG_SLOT_SCATTER,
+    SAND_RNG_SLOT_SLIDE,
+    SAND_RNG_SLOT_VISCOSITY,
+    SAND_RNG_SLOT_SPLASH,
+};
+
+/* Draws for (x, y) at `slot` - see the enum above. Sequential and
+ * identical to plain rng_next() unless a checkerboard-parallel pass has
+ * armed s->rng_hashed (sand.h); every other caller, including these same
+ * functions when reactions or gas call them, is untouched. */
+static inline uint32_t
+sand_rng_next_at(sand_t* s, int x, int y, uint32_t slot) {
+    if (!s->rng_hashed) {
+        return rng_next(&s->rng);
+    }
+    return rng_hash(s->rng_seed_base, (uint32_t)s->step_phase, (uint32_t)(y * s->w + x), slot);
+}
+
+static inline bool
+sand_rng_chance_at(sand_t* s, int x, int y, uint32_t slot, int chance) {
+    if (chance <= 0) {
+        return false;
+    }
+    if (chance >= 256) {
+        return true;
+    }
+    return (int)(sand_rng_next_at(s, x, y, slot) & 0xFF) < chance;
+}
+
 /* NULL if off grid; vertical bounds checked per row, not per grain. */
 static inline uint8_t*
 dest_row(const sand_t* s, int y) {
@@ -792,14 +828,19 @@ typedef struct {
  * gravity direction. */
 void sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy);
 
-/* Runs fn(ctx) somewhere other than the caller while the caller keeps
- * going; sand_core1_join() blocks until it has finished. Never call
- * sand_core1_run() again before joining the previous one. Only for work
- * that would give the same answer run before, after, or genuinely
- * alongside the caller's own - see sand_two_core_step_enabled() (sand.h).
- * A no-op pair when two-core stepping is off or unavailable: fn(ctx) then
- * runs inline inside sand_core1_run() itself. */
-void sand_core1_run(void (*fn)(void* ctx), void* ctx);
+/* Largest context sand_core1_run() below ever needs to copy. Bump it and
+ * check callers still fit before adding a bigger one. */
+#define SAND_CORE1_CTX_MAX 128
+
+/* Runs fn(ctx) somewhere other than the caller; sand_core1_join() blocks
+ * until it finishes or gives up (sand_core1.c). Never call this again
+ * before joining the previous dispatch, and only for work that gives the
+ * same answer run before, after, or alongside the caller's own - see
+ * sand_two_core_step_enabled() (sand.h).
+ *
+ * `ctx` (<= SAND_CORE1_CTX_MAX bytes) is COPIED, not merely pointed to: a
+ * timed-out join cannot stop a straggler still reading it. */
+void sand_core1_run(void (*fn)(void* ctx), const void* ctx, size_t ctx_size);
 void sand_core1_join(void);
 
 void sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, const int* slide_b, const int* perp_a,
@@ -878,7 +919,7 @@ try_scatter(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow
         return false;
     }
 
-    const uint32_t r = rng_next(&s->rng);
+    const uint32_t r = sand_rng_next_at(s, x, y, SAND_RNG_SLOT_SCATTER);
     if ((int)(r & 0xFF) >= scatter) {
         return false;
     }
@@ -963,7 +1004,7 @@ static inline bool
 try_slide_impl(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int dx,
                int dy, const int* slide_a, const int* slide_b, int load_dx, int load_dy, int jostle, cell_t grain,
                uint8_t driven_row, uint8_t density, const material_t* mat, bool driven[][2]) {
-    const uint32_t r = rng_next(&s->rng);
+    const uint32_t r = sand_rng_next_at(s, x, y, SAND_RNG_SLOT_SLIDE);
 
     uint8_t *first_row, *second_row;
     int first_dx, second_dx;
