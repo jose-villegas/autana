@@ -68,8 +68,7 @@ static int band_render_height;
 static uint8_t* indexed_image;
 static int indexed_grid_w, indexed_grid_h, indexed_cell_size;
 static gfx_color_t indexed_lut256[GFX_INDEXED_PALETTE_SIZE];
-static gfx_color_t indexed_lut16[16];
-static gfx_indexed_dither16_t indexed_dither16[GFX_INDEXED_PALETTE_SIZE];
+static gfx_color_t indexed_dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES];
 static bool indexed_dither16_on;
 
 /* True only for the RGB565 band mode, where an app's own frame() drives
@@ -1703,8 +1702,8 @@ send_indexed_rows(int y0, int y1) {
         const uint8_t* row_ptr = (grid_row < indexed_grid_h) ? indexed_image + (size_t)grid_row * indexed_grid_w : NULL;
         gfx_color_t* out_row = slot + (size_t)(y - y0) * GFX_WIDTH;
         if (indexed_dither16_on) {
-            gfx_indexed_expand_row_dither16(row_ptr, indexed_grid_w, indexed_lut16, indexed_dither16, indexed_cell_size,
-                                            y, 0, out_row, GFX_WIDTH);
+            gfx_indexed_expand_row_dither16(row_ptr, indexed_grid_w, indexed_dither16_rgb, indexed_cell_size, y, 0,
+                                            out_row, GFX_WIDTH);
         } else {
             gfx_indexed_expand_row(row_ptr, indexed_grid_w, indexed_lut256, indexed_cell_size, out_row, GFX_WIDTH);
         }
@@ -2370,10 +2369,9 @@ gfx_indexed_set_lut(const gfx_color_t lut[GFX_INDEXED_PALETTE_SIZE]) {
 }
 
 void
-gfx_indexed_set_lut16(const gfx_color_t lut16[16], const gfx_indexed_dither16_t table[GFX_INDEXED_PALETTE_SIZE]) {
+gfx_indexed_set_lut16(const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES]) {
     GFX_PRESENT_GUARD();
-    memcpy(indexed_lut16, lut16, sizeof indexed_lut16);
-    memcpy(indexed_dither16, table, sizeof indexed_dither16);
+    memcpy(indexed_dither16_rgb, dither16_rgb, sizeof indexed_dither16_rgb);
 }
 
 void

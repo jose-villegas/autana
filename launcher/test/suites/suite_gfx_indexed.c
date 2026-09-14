@@ -5,6 +5,8 @@
  * present-task wiring around this needs a device and is not covered here.
  */
 
+#include <string.h>
+
 #include "suites.h"
 #include "unity.h"
 
@@ -97,69 +99,69 @@ test_panel_row_to_grid_row_floors_and_back_is_the_bands_first_row(void) {
     TEST_ASSERT_EQUAL_INT(9, gfx_indexed_grid_row_to_panel_row(3, 3));
 }
 
-/* Alpha 0 always picks `lo`; a saturating alpha always picks `hi` - the two
- * ends of gfx_dither_covers()'s own range (gfx_color.h), pinned here so a
- * mistake reading `entry.alpha` cannot silently invert the two colours. */
+static gfx_color_t dither_table[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES];
+
 static void
-test_dither_alpha_zero_is_always_lo_full_alpha_is_always_hi(void) {
-    fixture();
-    const gfx_color_t lut16[16] = {[3] = 0x3333, [9] = 0x9999};
-    gfx_indexed_dither16_t table[GFX_INDEXED_PALETTE_SIZE] = {0};
-    table[7] = (gfx_indexed_dither16_t){.lo = 3, .hi = 9, .alpha = 0};
-    const uint8_t row[1] = {7};
-    gfx_color_t out[16];
+set_dither_entry(int index, int phase, gfx_color_t rgb) {
+    dither_table[index * GFX_INDEXED_DITHER16_PHASES + phase] = rgb;
+}
 
-    for (int y = 0; y < 4; y++) {
-        gfx_indexed_expand_row_dither16(row, 1, lut16, table, 4, y, 0, out, 4);
-        for (int x = 0; x < 4; x++) {
-            TEST_ASSERT_EQUAL_HEX16(lut16[3], out[x]);
-        }
+/* Every output pixel reads its own (index, phase) slot - `phase` keyed by
+ * the panel coordinates the RGB565 table was baked to, `(y & 3) * 4 +
+ * (x & 3)`, not a position local to this call. */
+static void
+test_dither_every_output_pixel_reads_its_own_index_phase_entry(void) {
+    memset(dither_table, 0, sizeof dither_table);
+    for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
+        set_dither_entry(7, p, (gfx_color_t)(0x1000 + p));
     }
+    const uint8_t row[1] = {7};
+    gfx_color_t out[4];
 
-    table[7].alpha = 255;
-    for (int y = 0; y < 4; y++) {
-        gfx_indexed_expand_row_dither16(row, 1, lut16, table, 4, y, 0, out, 4);
+    for (int y = 0; y < 8; y++) {
+        gfx_indexed_expand_row_dither16(row, 1, dither_table, 4, y, 0, out, 4);
         for (int x = 0; x < 4; x++) {
-            TEST_ASSERT_EQUAL_HEX16(lut16[9], out[x]);
+            const int phase = (y & 3) * 4 + (x & 3);
+            TEST_ASSERT_EQUAL_HEX16((gfx_color_t)(0x1000 + phase), out[x]);
         }
     }
 }
 
 /* Same inputs, same absolute panel coordinates: two calls agree pixel for
- * pixel - the dither has no hidden state to drift between them. */
+ * pixel - the expansion has no hidden state to drift between them. */
 static void
 test_dither_expansion_is_deterministic_at_the_same_panel_coordinates(void) {
-    fixture();
-    const gfx_color_t lut16[16] = {[2] = 0x2222, [11] = 0xBBBB};
-    gfx_indexed_dither16_t table[GFX_INDEXED_PALETTE_SIZE] = {0};
-    table[40] = (gfx_indexed_dither16_t){.lo = 2, .hi = 11, .alpha = 128};
+    memset(dither_table, 0, sizeof dither_table);
+    for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
+        set_dither_entry(40, p, (gfx_color_t)(0x2000 + p));
+    }
     const uint8_t row[6] = {40, 40, 40, 40, 40, 40};
     gfx_color_t a[24], b[24];
 
     for (int y = 0; y < 4; y++) {
-        gfx_indexed_expand_row_dither16(row, 6, lut16, table, 4, 100 + y, 5, a + y * 6, 6);
-        gfx_indexed_expand_row_dither16(row, 6, lut16, table, 4, 100 + y, 5, b + y * 6, 6);
+        gfx_indexed_expand_row_dither16(row, 6, dither_table, 4, 100 + y, 5, a + y * 6, 6);
+        gfx_indexed_expand_row_dither16(row, 6, dither_table, 4, 100 + y, 5, b + y * 6, 6);
     }
     TEST_ASSERT_EQUAL_HEX16_ARRAY(a, b, 24);
 }
 
-/* Two dithered bands sent side by side must stay in the same Bayer phase -
+/* Two dithered bands sent side by side must stay in the same phase -
  * expanding one wide row in one call must equal expanding it as two
  * adjacent halves, column offset carried through panel_col0. */
 static void
 test_dither_expansion_stays_in_phase_across_a_band_boundary(void) {
-    fixture();
-    const gfx_color_t lut16[16] = {[1] = 0x1111, [4] = 0x4444};
-    gfx_indexed_dither16_t table[GFX_INDEXED_PALETTE_SIZE] = {0};
-    table[99] = (gfx_indexed_dither16_t){.lo = 1, .hi = 4, .alpha = 96};
+    memset(dither_table, 0, sizeof dither_table);
+    for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
+        set_dither_entry(99, p, (gfx_color_t)(0x3000 + p));
+    }
     const uint8_t row[8] = {99, 99, 99, 99, 99, 99, 99, 99};
 
     gfx_color_t whole[32];
-    gfx_indexed_expand_row_dither16(row, 8, lut16, table, 4, 7, 0, whole, 32);
+    gfx_indexed_expand_row_dither16(row, 8, dither_table, 4, 7, 0, whole, 32);
 
     gfx_color_t left[16], right[16];
-    gfx_indexed_expand_row_dither16(row, 8, lut16, table, 4, 7, 0, left, 16);
-    gfx_indexed_expand_row_dither16(row, 8, lut16, table, 4, 7, 16, right, 16);
+    gfx_indexed_expand_row_dither16(row, 8, dither_table, 4, 7, 0, left, 16);
+    gfx_indexed_expand_row_dither16(row, 8, dither_table, 4, 7, 16, right, 16);
 
     TEST_ASSERT_EQUAL_HEX16_ARRAY(whole, left, 16);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(whole + 16, right, 16);
@@ -172,7 +174,7 @@ run_gfx_indexed_suite(void) {
     RUN_TEST(test_the_margin_past_the_grids_own_width_is_background);
     RUN_TEST(test_a_null_grid_row_reads_all_background);
     RUN_TEST(test_panel_row_to_grid_row_floors_and_back_is_the_bands_first_row);
-    RUN_TEST(test_dither_alpha_zero_is_always_lo_full_alpha_is_always_hi);
+    RUN_TEST(test_dither_every_output_pixel_reads_its_own_index_phase_entry);
     RUN_TEST(test_dither_expansion_is_deterministic_at_the_same_panel_coordinates);
     RUN_TEST(test_dither_expansion_stays_in_phase_across_a_band_boundary);
 }
