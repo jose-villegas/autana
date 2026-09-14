@@ -70,6 +70,16 @@ static uint32_t elapsed_ms;
  * so a stray leftover toggle can never silently skew a perf run. */
 bool partial_updates = true;
 
+/* Requests gfx's internal-SRAM band ring (GFX_LAYOUT_BANDS, gfx.h) instead
+ * of the PSRAM framebuffer - default from LAUNCHER_CUBE_BAND_MODE
+ * (Kconfig.projbuild), runtime override for suite_cube_band_perf.c. Read
+ * only at enter(), so flipping it mid-visit needs a re-entry to take hold. */
+#if defined(CONFIG_LAUNCHER_CUBE_BAND_MODE) && CONFIG_LAUNCHER_CUBE_BAND_MODE
+bool cube_band_mode = true;
+#else
+bool cube_band_mode = false;
+#endif
+
 /* Whether the BOOT-opened menu (draw_menu()) is showing instead of the
  * cube. The normal view renders only the cube and the fps counter - see
  * cube_frame()'s own comment - and everything else, right now just the
@@ -82,6 +92,19 @@ static bool menu_open;
  * partial_updates is on - reset to an empty range at the top of
  * cube_frame(), widened by every covered pixel small3dlib reports. */
 static int frame_x0, frame_y0, frame_x1, frame_y1;
+
+/* Set only while cube_rasterize_band() runs; NULL otherwise, when
+ * shade_pixel() writes into gfx_framebuffer() as before. small3dlib
+ * rasterizes the whole scene once per band, so this is how the callback
+ * keeps only the rows the current band owns. */
+static gfx_color_t* band_target;
+static int band_row0, band_row1;
+
+/* What gfx actually granted at enter() - not simply cube_band_mode, which
+ * is only the request: gfx falls back to GFX_LAYOUT_FULL_FB if the band
+ * ring fails to allocate, and cube_frame() has to follow the grant rather
+ * than call gfx_band_*() against buffers that were never allocated. */
+static bool band_mode_active;
 
 /* On-screen framerate readout - the other half of what makes the toggle
  * above worth having: main.c's own report_fps() only ever reaches a
@@ -128,8 +151,17 @@ shade_pixel(S3L_PixelInfo* pixel) {
     const uint8_t r = clamp_to_byte(S3L_interpolateBarycentric(a[0], b[0], c[0], pixel->barycentric));
     const uint8_t g = clamp_to_byte(S3L_interpolateBarycentric(a[1], b[1], c[1], pixel->barycentric));
     const uint8_t bl = clamp_to_byte(S3L_interpolateBarycentric(a[2], b[2], c[2], pixel->barycentric));
+    const gfx_color_t color = gfx_rgb(((uint32_t)r << 16) | ((uint32_t)g << 8) | bl);
 
-    gfx_framebuffer()[pixel->y * GFX_WIDTH + pixel->x] = gfx_rgb(((uint32_t)r << 16) | ((uint32_t)g << 8) | bl);
+    if (band_target != NULL) {
+        if (pixel->y < band_row0 || pixel->y >= band_row1) {
+            return; /* not this band's row - small3dlib drew the whole scene */
+        }
+        band_target[(pixel->y - band_row0) * GFX_WIDTH + pixel->x] = color;
+        return;
+    }
+
+    gfx_framebuffer()[pixel->y * GFX_WIDTH + pixel->x] = color;
 
     /* Only tracked in partial_updates mode - cube_frame() is the sole
      * reader, and there is no reason to pay for it on every one of the
@@ -155,6 +187,14 @@ shade_pixel(S3L_PixelInfo* pixel) {
 
 void
 cube_enter(void) {
+    const gfx_mode_request_t mode_request = {
+        .layout = cube_band_mode ? GFX_LAYOUT_BANDS : GFX_LAYOUT_FULL_FB,
+        .resolution = GFX_RESOLUTION_FULL,
+        .interlace_x = false,
+        .interlace_y = false,
+    };
+    band_mode_active = gfx_mode_enter(&mode_request)->layout == GFX_LAYOUT_BANDS;
+
     S3L_model3DInit(cube_vertices, S3L_CUBE_VERTEX_COUNT, cube_triangles, S3L_CUBE_TRIANGLE_COUNT, &cube);
     cube.transform.translation.z = CUBE_DISTANCE;
 
@@ -373,8 +413,63 @@ cube_rasterize_frame(void) {
     }
 }
 
+/* Fills an entire band buffer with the background colour - the band ring
+ * has no accumulated framebuffer to clear a bounding box out of, so every
+ * band is a full redraw. Two pixels per store, the same trick
+ * cube_clear_frame()'s own gfx_clear() uses. */
+static void
+clear_band(gfx_color_t* buf, int height) {
+    const gfx_color_t color = gfx_rgb(BACKGROUND_RGB);
+    const uint32_t pair = ((uint32_t)color << 16) | color;
+    uint32_t* words = (uint32_t*)buf;
+    const int count = (GFX_WIDTH * height) / 2;
+
+    for (int i = 0; i < count; i++) {
+        words[i] = pair;
+    }
+}
+
+/* Rasterizes the whole scene into `buf`, keeping only the pixels
+ * shade_pixel() finds inside [row0, row1) - see band_target's own comment
+ * for why this re-rasterizes rather than scissoring small3dlib itself. */
+void
+cube_rasterize_band(gfx_color_t* buf, int row0, int row1) {
+    band_target = buf;
+    band_row0 = row0;
+    band_row1 = row1;
+
+    S3L_newFrame();
+    S3L_drawScene(scene);
+
+    band_target = NULL;
+}
+
+/* The band-mode frame: no HUD, no BOOT menu - both draw through microui
+ * into a full framebuffer that does not exist here. Just the cube, redrawn
+ * band by band, each sent as soon as it is rasterized. */
+static void
+cube_frame_band(uint32_t dt_ms) {
+    cube_update_rotation(dt_ms);
+
+    gfx_band_frame_begin();
+    while (gfx_band_next()) {
+        gfx_color_t* buf = gfx_band_buffer();
+        const int row0 = gfx_band_row0();
+        const int height = gfx_band_height();
+
+        clear_band(buf, height);
+        cube_rasterize_band(buf, row0, row0 + height);
+        gfx_band_submit();
+    }
+}
+
 static void
 cube_frame(uint32_t dt_ms, const input_t* input) {
+    if (band_mode_active) {
+        cube_frame_band(dt_ms);
+        return;
+    }
+
     /* BOOT opens/closes the menu now, rather than flipping partial_updates
      * directly - the toggle moved onto its own bezel button inside
      * draw_menu(). Invalidation on open and close resets partial clear
@@ -433,6 +528,7 @@ void
 cube_exit(void) {
     gfx_set_partial_clear(false);
     gfx_invalidate();
+    gfx_mode_exit();
 }
 
 /* Exported as the struct itself rather than a pointer to it, so the registry
