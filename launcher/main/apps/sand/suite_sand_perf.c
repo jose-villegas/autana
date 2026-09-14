@@ -2604,6 +2604,248 @@ test_present_cost_against_the_thermal_shock_scene(void) {
                                   "than a full-screen send every frame, which is already what it "
                                   "costs - check the strip-send counts in the log line above");
 }
+
+/* Present cost with column-precise dirty tracking, against the two scenes
+ * a row-only policy costs the most on: gas rising clear of a sand pile, and
+ * a pool levelling - both LANDSCAPE, where a row runs ALONG gravity, so a
+ * changed cell's row can hold a long, unrelated run the old policy resent. */
+
+static void
+mirror_app_sand_marking_span(const uint8_t* cells, int w, int h, uint8_t* dirty_rows, uint16_t* dirty_x0,
+                             uint16_t* dirty_x1, uint16_t* row_x0, uint16_t* row_x1, uint8_t* row_n,
+                             int64_t* pixels_sent_accum) {
+    for (int cy = 0; cy < h; cy++) {
+        if (!dirty_rows[cy]) {
+            continue;
+        }
+        dirty_rows[cy] = 0;
+
+        int wx0 = dirty_x0[cy];
+        int wx1 = dirty_x1[cy];
+        dirty_x0[cy] = (uint16_t)w;
+        dirty_x1[cy] = 0;
+        if (wx0 >= wx1) {
+            wx0 = 0;
+            wx1 = w;
+        } else {
+            wx0 = wx0 > 0 ? wx0 - 1 : 0;
+            wx1 = wx1 < w ? wx1 + 1 : w;
+        }
+
+        const uint8_t* row = &cells[(size_t)cy * w];
+
+        int run_x0[ROW_MAX_RUNS], run_x1[ROW_MAX_RUNS];
+        const int n = row_runs_find(row, w, SAND_EMPTY, run_x0, run_x1);
+
+        uint16_t cur_x0[ROW_MAX_RUNS], cur_x1[ROW_MAX_RUNS];
+        int cur_n;
+        if (n < 0) {
+            int x0, x1;
+            row_runs_span_fallback(row, w, SAND_EMPTY, &x0, &x1);
+            cur_x0[0] = (uint16_t)x0;
+            cur_x1[0] = (uint16_t)x1;
+            cur_n = 1;
+        } else {
+            for (int i = 0; i < n; i++) {
+                cur_x0[i] = (uint16_t)run_x0[i];
+                cur_x1[i] = (uint16_t)run_x1[i];
+            }
+            cur_n = n;
+        }
+
+        uint16_t* rprev_x0 = &row_x0[cy * ROW_MAX_RUNS];
+        uint16_t* rprev_x1 = &row_x1[cy * ROW_MAX_RUNS];
+        const int rprev_n = row_n[cy];
+
+        uint16_t send_x0[2 * ROW_MAX_RUNS], send_x1[2 * ROW_MAX_RUNS];
+        const int send_n = row_runs_reconcile(cur_x0, cur_x1, cur_n, rprev_x0, rprev_x1, rprev_n, send_x0, send_x1);
+
+        for (int i = 0; i < send_n; i++) {
+            const int sx0 = send_x0[i] > wx0 ? send_x0[i] : wx0;
+            const int sx1 = send_x1[i] < wx1 ? send_x1[i] : wx1;
+            if (sx0 >= sx1) {
+                continue;
+            }
+            gfx_mark_dirty(sx0 * REAL_CELL_PX, cy * REAL_CELL_PX, (sx1 - sx0) * REAL_CELL_PX, REAL_CELL_PX);
+            if (pixels_sent_accum != NULL) {
+                *pixels_sent_accum += (int64_t)(sx1 - sx0) * REAL_CELL_PX * REAL_CELL_PX;
+            }
+        }
+
+        for (int i = 0; i < cur_n; i++) {
+            rprev_x0[i] = cur_x0[i];
+            rprev_x1[i] = cur_x1[i];
+        }
+        row_n[cy] = (uint8_t)cur_n;
+    }
+}
+
+/* Same shape as run_present_against_scene() above, `dirty_x0`/`dirty_x1`
+ * added and routed through sand_track_dirty_cols() so the sim itself
+ * starts recording a span, not just which rows changed. */
+static int64_t
+run_present_against_scene_span(sand_t* s, const uint8_t* cells, int w, int h, uint8_t* dirty_rows, uint16_t* dirty_x0,
+                               uint16_t* dirty_x1, uint16_t* row_x0, uint16_t* row_x1, uint8_t* row_n, int gx, int gy,
+                               int gz, int settle_steps, int measured_steps, int* full_bands, int* gathered,
+                               int* partial_bands, int64_t* pixels_sent_out) {
+    sand_track_dirty_cols(s, dirty_x0, dirty_x1);
+
+    for (int i = 0; i < settle_steps; i++) {
+        sand_step(s, gx, gy, gz);
+        mirror_app_sand_marking_span(cells, w, h, dirty_rows, dirty_x0, dirty_x1, row_x0, row_x1, row_n, NULL);
+        gfx_present();
+    }
+
+    gfx_reset_strip_send_counts();
+
+    int64_t present_us = 0;
+    int64_t pixels_sent = 0;
+    for (int i = 0; i < measured_steps; i++) {
+        sand_step(s, gx, gy, gz);
+        mirror_app_sand_marking_span(cells, w, h, dirty_rows, dirty_x0, dirty_x1, row_x0, row_x1, row_n, &pixels_sent);
+        const int64_t t0 = esp_timer_get_time();
+        gfx_present();
+        present_us += esp_timer_get_time() - t0;
+    }
+
+    gfx_get_strip_send_counts(full_bands, gathered, partial_bands);
+
+    if (pixels_sent_out != NULL) {
+        *pixels_sent_out = pixels_sent / measured_steps;
+    }
+    return present_us / measured_steps;
+}
+
+/* The same 65%-deep settled pile the deep landscape bed perf row pours
+ * onto - real repose slopes, not a drawn block. Gas goes in near the
+ * ceiling, clear of the pile, rising further AWAY from the sand it shares
+ * a row with. */
+static void
+build_landscape_gas_over_sand_pile_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
+    sand_init(real, big, REAL_W, REAL_H, 53u);
+    sand_enable_sleeping(real, blocks);
+    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
+    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
+    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    build_landscape_deep_bed_scene(real);
+
+    for (int y = REAL_H / 3; y < (REAL_H * 2) / 3; y++) {
+        sand_set(real, LANDSCAPE_POUR_RADIUS, y, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
+    }
+}
+
+#define POOL_UNEVEN_DEEP_X1    ((REAL_W * 6) / 10)
+#define POOL_UNEVEN_SHALLOW_X1 ((REAL_W * 2) / 10)
+
+/* A wedge, not a flat slab: half the rows filled deep, half shallow, along
+ * gravity (+X). Levelling this needs cross-flow, which moves mass BETWEEN
+ * rows once gravity runs along one - the shape the bug report's "pool
+ * levelling" case names. */
+static void
+build_landscape_levelling_pool_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
+    sand_init(real, big, REAL_W, REAL_H, 59u);
+    sand_enable_sleeping(real, blocks);
+
+    for (int y = 0; y < REAL_H; y++) {
+        const int x1 = (y < REAL_H / 2) ? POOL_UNEVEN_DEEP_X1 : POOL_UNEVEN_SHALLOW_X1;
+        for (int x = 0; x < x1; x++) {
+            sand_set(real, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+        }
+    }
+}
+
+/* Runs `build` under both the old row-only mirror and the new column-span
+ * one, back to back on two freshly built copies of the same scene, so the
+ * before/after numbers this prints come from one run rather than two
+ * captures that could drift apart. */
+static void
+report_span_vs_row_present_cost(const char* scene_name, void (*build)(sand_t*, uint8_t*, uint8_t*), int gx, int gy) {
+    uint8_t* row_big = malloc(REAL_W * REAL_H);
+    uint8_t* row_blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
+    uint8_t* row_dirty = malloc(REAL_H);
+    uint16_t* row_x0 = malloc(REAL_H * ROW_MAX_RUNS * sizeof(uint16_t));
+    uint16_t* row_x1 = malloc(REAL_H * ROW_MAX_RUNS * sizeof(uint16_t));
+    uint8_t* row_n = malloc(REAL_H);
+    TEST_ASSERT_NOT_NULL(row_big);
+    TEST_ASSERT_NOT_NULL(row_blocks);
+    TEST_ASSERT_NOT_NULL(row_dirty);
+    TEST_ASSERT_NOT_NULL(row_x0);
+    TEST_ASSERT_NOT_NULL(row_x1);
+    TEST_ASSERT_NOT_NULL(row_n);
+
+    sand_t row_sim;
+    build(&row_sim, row_big, row_blocks);
+    sand_track_dirty_rows(&row_sim, row_dirty);
+    seed_row_runs_full_width_for_gfx_test(row_x0, row_x1, row_n, REAL_W, REAL_H);
+
+    int row_full = 0, row_gathered = 0, row_partial = 0;
+    const int measured_steps = 20;
+    const int64_t row_us =
+        run_present_against_scene(&row_sim, row_big, REAL_W, REAL_H, row_dirty, row_x0, row_x1, row_n, gx, gy, 0, 20,
+                                  measured_steps, &row_full, &row_gathered, &row_partial, NULL, NULL, NULL);
+
+    free(row_big);
+    free(row_blocks);
+    free(row_dirty);
+    free(row_x0);
+    free(row_x1);
+    free(row_n);
+
+    uint8_t* span_big = malloc(REAL_W * REAL_H);
+    uint8_t* span_blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
+    uint8_t* span_dirty = malloc(REAL_H);
+    uint16_t* span_dirty_x0 = malloc(REAL_H * sizeof(uint16_t));
+    uint16_t* span_dirty_x1 = malloc(REAL_H * sizeof(uint16_t));
+    uint16_t* span_x0 = malloc(REAL_H * ROW_MAX_RUNS * sizeof(uint16_t));
+    uint16_t* span_x1 = malloc(REAL_H * ROW_MAX_RUNS * sizeof(uint16_t));
+    uint8_t* span_n = malloc(REAL_H);
+    TEST_ASSERT_NOT_NULL(span_big);
+    TEST_ASSERT_NOT_NULL(span_blocks);
+    TEST_ASSERT_NOT_NULL(span_dirty);
+    TEST_ASSERT_NOT_NULL(span_dirty_x0);
+    TEST_ASSERT_NOT_NULL(span_dirty_x1);
+    TEST_ASSERT_NOT_NULL(span_x0);
+    TEST_ASSERT_NOT_NULL(span_x1);
+    TEST_ASSERT_NOT_NULL(span_n);
+
+    sand_t span_sim;
+    build(&span_sim, span_big, span_blocks);
+    sand_track_dirty_rows(&span_sim, span_dirty);
+    seed_row_runs_full_width_for_gfx_test(span_x0, span_x1, span_n, REAL_W, REAL_H);
+
+    int span_full = 0, span_gathered = 0, span_partial = 0;
+    int64_t pixels_sent = 0;
+    const int64_t span_us = run_present_against_scene_span(
+        &span_sim, span_big, REAL_W, REAL_H, span_dirty, span_dirty_x0, span_dirty_x1, span_x0, span_x1, span_n, gx, gy,
+        0, 20, measured_steps, &span_full, &span_gathered, &span_partial, &pixels_sent);
+
+    free(span_big);
+    free(span_blocks);
+    free(span_dirty);
+    free(span_dirty_x0);
+    free(span_dirty_x1);
+    free(span_x0);
+    free(span_x1);
+    free(span_n);
+
+    ESP_LOGI("device_tests",
+             "present cost, %s, %dx%d: ROW-only %lld us/frame (%d full, %d "
+             "gathered, %d partial) vs COLUMN-span %lld us/frame (%d full, "
+             "%d gathered, %d partial, %lld px/frame)",
+             scene_name, REAL_W, REAL_H, (long long)row_us, row_full, row_gathered, row_partial, (long long)span_us,
+             span_full, span_gathered, span_partial, (long long)pixels_sent);
+}
+
+static void
+test_present_cost_against_a_landscape_gas_over_sand_pile(void) {
+    report_span_vs_row_present_cost("landscape gas over a sand pile", build_landscape_gas_over_sand_pile_scene,
+                                    LANDSCAPE_GX, 0);
+}
+
+static void
+test_present_cost_against_a_landscape_levelling_pool(void) {
+    report_span_vs_row_present_cost("landscape levelling pool", build_landscape_levelling_pool_scene, LANDSCAPE_GX, 0);
+}
 #endif /* DEVICE_BUILD */
 
 #define BUBBLE_W 41
@@ -2854,6 +3096,8 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_a_real_frame_is_sim_plus_present_on_a_falling_sand_scene);
     RUN_TEST(test_present_cost_against_the_lava_stress_scene);
     RUN_TEST(test_present_cost_against_the_thermal_shock_scene);
+    RUN_TEST(test_present_cost_against_a_landscape_gas_over_sand_pile);
+    RUN_TEST(test_present_cost_against_a_landscape_levelling_pool);
 #endif
 }
 
