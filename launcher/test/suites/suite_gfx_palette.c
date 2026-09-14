@@ -141,6 +141,36 @@ test_dither_table_is_deterministic(void) {
     }
 }
 
+/* The CO5300 hardware mode's own table: an exact 16-colour match packs the
+ * same nibble (its own index into palette16) at every one of the 4 column
+ * phases, in both bytes of the row - the packed-index analogue of
+ * test_dither_table_reproduces_an_exact_16_colour_match_at_every_phase. */
+static void
+test_dither4_packed_reproduces_an_exact_16_colour_match_at_every_phase(void) {
+    static uint8_t table[GFX_PALETTE_MAX_ENTRIES * 4 * 2];
+    gfx_palette_gen_build_dither4_packed(&gfx_palette_vga256, &gfx_palette_cga16, table);
+
+    /* Index 0 of vga256 is EGA16's (== CGA16's) own black. */
+    const uint8_t expected = (uint8_t)((0 << 4) | 0);
+    for (int py = 0; py < 4; py++) {
+        TEST_ASSERT_EQUAL_HEX8(expected, table[(0 * 4 + py) * 2 + 0]);
+        TEST_ASSERT_EQUAL_HEX8(expected, table[(0 * 4 + py) * 2 + 1]);
+    }
+}
+
+static void
+test_dither4_packed_nibbles_stay_within_the_16_colour_range(void) {
+    static uint8_t table[GFX_PALETTE_MAX_ENTRIES * 4 * 2];
+    gfx_palette_gen_build_dither4_packed(&gfx_palette_db32, &gfx_palette_pico8_16, table);
+
+    for (int i = 0; i < gfx_palette_db32.count * 4 * 2; i++) {
+        const uint8_t hi_nibble = table[i] >> 4;
+        const uint8_t lo_nibble = table[i] & 0x0Fu;
+        TEST_ASSERT_LESS_THAN_UINT8(gfx_palette_pico8_16.count, hi_nibble);
+        TEST_ASSERT_LESS_THAN_UINT8(gfx_palette_pico8_16.count, lo_nibble);
+    }
+}
+
 void
 run_gfx_palette_suite(void) {
     RUN_TEST(test_cga16_has_16_entries_black_first_white_last);
@@ -154,6 +184,8 @@ run_gfx_palette_suite(void) {
     RUN_TEST(test_index_map_never_returns_a_reserved_entry);
     RUN_TEST(test_dither_table_reproduces_an_exact_16_colour_match_at_every_phase);
     RUN_TEST(test_dither_table_is_deterministic);
+    RUN_TEST(test_dither4_packed_reproduces_an_exact_16_colour_match_at_every_phase);
+    RUN_TEST(test_dither4_packed_nibbles_stay_within_the_16_colour_range);
 }
 
 SUITE_REGISTER(run_gfx_palette_suite);

@@ -139,24 +139,35 @@ choose_dither(const lin_t* lin, const lab_t* lab, int count16, lab_t target, lin
     return best;
 }
 
+static void
+lin_lab_of_palette16(const gfx_palette_t* palette16, lin_t out_lin[16], lab_t out_lab[16]) {
+    for (int i = 0; i < palette16->count; i++) {
+        const uint32_t rgb888 = native_to_rgb888(gfx_color_to_native(palette16->entries[i]));
+        out_lin[i] = rgb_to_lin(rgb888);
+        out_lab[i] = lin_to_lab(out_lin[i]);
+    }
+}
+
+/* `palette256` entry `i`'s own dither choice against `palette16` - the one
+ * step both gfx_palette_gen_build_dither16() (resolved to RGB565) and
+ * gfx_palette_gen_build_dither4_packed() (kept as raw indices) share. */
+static dither_choice_t
+dither_choice_of_entry(const gfx_palette_t* palette256, int i, const lin_t* lin16, const lab_t* lab16, int count16) {
+    const uint32_t rgb888 = native_to_rgb888(gfx_color_to_native(palette256->entries[i]));
+    const lab_t target_lab = lin_to_lab(rgb_to_lin(rgb888));
+    const lin_t target_lin = rgb_to_lin(rgb888);
+    return choose_dither(lin16, lab16, count16, target_lab, target_lin);
+}
+
 void
 gfx_palette_gen_build_dither16(const gfx_palette_t* palette256, const gfx_palette_t* palette16,
                                gfx_color_t out_table[GFX_PALETTE_MAX_ENTRIES * 16]) {
     lin_t lin16[16];
     lab_t lab16[16];
-    for (int i = 0; i < palette16->count; i++) {
-        const uint32_t rgb888 = native_to_rgb888(gfx_color_to_native(palette16->entries[i]));
-        lin16[i] = rgb_to_lin(rgb888);
-        lab16[i] = lin_to_lab(lin16[i]);
-    }
+    lin_lab_of_palette16(palette16, lin16, lab16);
 
     for (int i = 0; i < palette256->count; i++) {
-        const uint16_t native = gfx_color_to_native(palette256->entries[i]);
-        const uint32_t rgb888 = native_to_rgb888(native);
-        const lab_t target_lab = lin_to_lab(rgb_to_lin(rgb888));
-        const lin_t target_lin = rgb_to_lin(rgb888);
-
-        const dither_choice_t ch = choose_dither(lin16, lab16, palette16->count, target_lab, target_lin);
+        const dither_choice_t ch = dither_choice_of_entry(palette256, i, lin16, lab16, palette16->count);
         const uint8_t alpha = ch.level == 0 ? 0u : (uint8_t)(ch.level * 16u);
 
         for (int py = 0; py < 4; py++) {
@@ -165,6 +176,29 @@ gfx_palette_gen_build_dither16(const gfx_palette_t* palette256, const gfx_palett
                 out_table[i * GFX_INDEXED_DITHER16_PHASES + py * 4 + px] =
                     hi ? palette16->entries[ch.hi] : palette16->entries[ch.lo];
             }
+        }
+    }
+}
+
+void
+gfx_palette_gen_build_dither4_packed(const gfx_palette_t* palette256, const gfx_palette_t* palette16,
+                                     uint8_t out_table[GFX_PALETTE_MAX_ENTRIES * 4 * 2]) {
+    lin_t lin16[16];
+    lab_t lab16[16];
+    lin_lab_of_palette16(palette16, lin16, lab16);
+
+    for (int i = 0; i < palette256->count; i++) {
+        const dither_choice_t ch = dither_choice_of_entry(palette256, i, lin16, lab16, palette16->count);
+        const uint8_t alpha = ch.level == 0 ? 0u : (uint8_t)(ch.level * 16u);
+
+        for (int py = 0; py < 4; py++) {
+            uint8_t nibble[4];
+            for (int px = 0; px < 4; px++) {
+                nibble[px] = gfx_dither_covers(px, py, alpha) ? ch.hi : ch.lo;
+            }
+            uint8_t* out = &out_table[(i * 4 + py) * 2];
+            out[0] = (uint8_t)((nibble[0] << 4) | nibble[1]);
+            out[1] = (uint8_t)((nibble[2] << 4) | nibble[3]);
         }
     }
 }
