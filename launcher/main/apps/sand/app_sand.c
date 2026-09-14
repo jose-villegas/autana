@@ -59,6 +59,7 @@
 #include "palette.h"
 #include "row_runs.h"
 #include "sand.h"
+#include "sand_colour_state.h"
 #include "sand_palette256.h"
 #include "sand_swatch.h"
 #include "sand_ui.h"
@@ -100,16 +101,22 @@ static const char* const color_names[SAND_COLOR_COUNT] = {"FULL", "256", "16"};
 
 static sand_color_mode_t color_mode = SAND_COLOR_FULL;
 
-/* True from a successful GFX_PIXFMT_INDEXED8 gfx_mode_enter() (start_sim())
- * to the matching gfx_mode_exit() (sand_exit()) - false whenever color_mode
- * requested it but the allocation failed, so the rest of the app always
- * asks this rather than color_mode directly. */
-static bool indexed_mode_active;
+/* sand_color_mode_t and sand_colour_state.h's own sand_colour_mode_t share
+ * an ordinal order (FULL, 256, 16) by construction - one cast, not a
+ * second enum's worth of call-site plumbing. */
+_Static_assert((int)SAND_COLOR_FULL == (int)SAND_COLOUR_FULL && (int)SAND_COLOR_256 == (int)SAND_COLOUR_256
+                   && (int)SAND_COLOR_16 == (int)SAND_COLOUR_16,
+               "sand_color_mode_t must stay ordinal-compatible with sand_colour_mode_t");
 
-/* True while the palette/brush screen has temporarily forced FULL back on
- * top of an active indexed color_mode - see sand_frame()'s OPEN/CLOSE
- * handling. Distinct from color_mode itself surviving unchanged underneath. */
-static bool indexed_mode_suspended;
+/* Whether GFX_PIXFMT_INDEXED8 is actually active right now - see
+ * sand_colour_state.h. The rest of the app asks sand_colour_indexed_active()
+ * rather than color_mode directly: a mode request can be denied, and the
+ * palette/brush screens suspend it without changing color_mode at all. */
+static sand_colour_state_t colour_state;
+
+/* Once per start_sim(), not once per frame - see the emitter-marker/mode-
+ * label skip in sand_frame(). */
+static bool overlays_skipped_reason_logged;
 
 static int cell, grid_w, grid_h, block_cols, block_rows;
 
@@ -278,6 +285,44 @@ static uint32_t pour_accumulator_ms;
 
 /* Setup */
 
+/* Actually issues the gfx_mode_enter() call SAND_GFX_ENTER_INDEXED asks
+ * for, sized to the grid start_sim() computed. Rolls the state back via
+ * sand_colour_grant_failed() if gfx could not grant it - a launch option
+ * never blocks a player from playing at all, it just stays FULL. */
+static void
+apply_gfx_enter_indexed(void) {
+    gfx_mode_request_t req = {0};
+    req.layout = GFX_LAYOUT_BANDS;
+    req.resolution = GFX_RESOLUTION_FULL;
+    req.pixfmt = GFX_PIXFMT_INDEXED8;
+    req.index_grid_w = grid_w;
+    req.index_grid_h = grid_h;
+    req.cell_size = cell;
+
+    const gfx_mode_t* granted = gfx_mode_enter(&req);
+    if (granted->layout != GFX_LAYOUT_BANDS) {
+        ESP_LOGW(TAG, "COLOUR %s unavailable this session - staying FULL", color_names[color_mode]);
+        sand_colour_grant_failed(&colour_state);
+        return;
+    }
+
+    memset(gfx_indexed_image(), 0, (size_t)grid_w * (size_t)grid_h);
+    gfx_indexed_set_lut(sand_palette256_lut);
+    gfx_indexed_set_lut16(sand_palette16_dither_rgb);
+    gfx_indexed_set_dither16(color_mode == SAND_COLOR_16);
+}
+
+/* Runs whatever gfx_mode_enter()/exit() call `action` names - the one place
+ * that turns a sand_colour_state.h verdict into a real gfx call. */
+static void
+apply_gfx_action(sand_gfx_action_t action) {
+    switch (action) {
+        case SAND_GFX_ENTER_INDEXED: apply_gfx_enter_indexed(); break;
+        case SAND_GFX_EXIT_TO_FULL: gfx_mode_exit(); break;
+        case SAND_GFX_NONE: break;
+    }
+}
+
 static void
 sand_enter(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -299,6 +344,10 @@ sand_enter(void) {
     idle_awake_cells_total = 0;
     split_log_at_us = esp_timer_get_time() + 2000000;
 #endif
+    /* Every path back to the menu leaves indexed mode first - the menu has
+     * no indexed draw path and would touch a framebuffer that does not
+     * exist. Idempotent: a plain FULL entry asks for nothing. */
+    apply_gfx_action(sand_colour_on_enter_menu(&colour_state));
     ui.screen = SAND_UI_MENU;
 
     ui_invalidate();
@@ -369,39 +418,8 @@ sand_app_alloc_selfcheck(size_t* out_largest_free, bool* out_impulses_ok) {
     free(t_dirty);
     return essential_ok;
 }
+
 #endif /* CONFIG_LAUNCHER_SELFTEST */
-
-/* Requests GFX_PIXFMT_INDEXED8 for color_mode 256/16, sized to the grid
- * start_sim() just computed. Leaves indexed_mode_active false, staying
- * FULL for this session, if gfx could not grant it - a launch option never
- * blocks a player from playing at all. */
-static void
-enter_color_mode(void) {
-    indexed_mode_active = false;
-    if (color_mode == SAND_COLOR_FULL) {
-        return;
-    }
-
-    gfx_mode_request_t req = {0};
-    req.layout = GFX_LAYOUT_BANDS;
-    req.resolution = GFX_RESOLUTION_FULL;
-    req.pixfmt = GFX_PIXFMT_INDEXED8;
-    req.index_grid_w = grid_w;
-    req.index_grid_h = grid_h;
-    req.cell_size = cell;
-
-    const gfx_mode_t* granted = gfx_mode_enter(&req);
-    if (granted->layout != GFX_LAYOUT_BANDS) {
-        ESP_LOGW(TAG, "COLOUR %s unavailable this session - staying FULL", color_names[color_mode]);
-        return;
-    }
-
-    memset(gfx_indexed_image(), 0, (size_t)grid_w * (size_t)grid_h);
-    gfx_indexed_set_lut(sand_palette256_lut);
-    gfx_indexed_set_lut16(sand_palette16_lut, sand_palette16_dither);
-    gfx_indexed_set_dither16(color_mode == SAND_COLOR_16);
-    indexed_mode_active = true;
-}
 
 static void
 start_sim(void) {
@@ -418,6 +436,7 @@ start_sim(void) {
     label_left_ms = 0;
     failed = false;
     input_ready = false;
+    overlays_skipped_reason_logged = false;
 
     if (dirty_rows == NULL) {
         dirty_rows = malloc(GRID_H_MAX);
@@ -505,8 +524,8 @@ start_sim(void) {
 
     ESP_LOGI(TAG, "%d x %d grid, %d bytes, %d px cells", grid_w, grid_h, grid_w * grid_h, cell);
 
-    enter_color_mode();
-    if (!indexed_mode_active) {
+    apply_gfx_action(sand_colour_on_start_sim(&colour_state, (sand_colour_mode_t)color_mode));
+    if (!sand_colour_indexed_active(&colour_state)) {
         gfx_clear(material_palette()[SAND_EMPTY]);
     }
     /* Explicit full-width spans for the first real draw: the menu that
@@ -529,15 +548,25 @@ sand_app_enter_running_for_test(void) {
     start_sim();
     sand_spawn_cell(&sim, grid_w / 2, grid_h / 2, 3, brushes[0]);
 }
+
+/* Drives the crash's own reproduction with the real functions: enter, start
+ * a sim in `mode`, then return to the menu the only real way that happens -
+ * a fresh sand_enter() - and reports whether indexed mode survived it. Only
+ * a boolean crosses back to the caller; the assertion belongs to the test. */
+bool
+sand_app_test_survives_indexed_then_menu(int mode) {
+    color_mode = (sand_color_mode_t)mode;
+    sand_enter();
+    start_sim();
+    sand_enter();
+    return !sand_colour_indexed_active(&colour_state);
+}
 #endif /* CONFIG_LAUNCHER_SELFTEST */
 
 static void
 sand_exit(void) {
-    if (indexed_mode_active) {
-        gfx_mode_exit(); /* other apps assume GFX_LAYOUT_FULL_FB/RGB565 */
-        indexed_mode_active = false;
-    }
-    indexed_mode_suspended = false;
+    /* Other apps assume GFX_LAYOUT_FULL_FB/RGB565. */
+    apply_gfx_action(sand_colour_on_exit_app(&colour_state));
 
     /* Grid is kept between visits (the app's largest allocation) so
      * re-entry cannot fail to heap fragmentation from whatever ran while
@@ -753,9 +782,17 @@ note_row_flag_x(int cy, int cx) {
     }
 }
 
+/* `index_row` NULL means the RGB565 path (`fb`/`pal`/`n`); non-NULL is
+ * GFX_PIXFMT_INDEXED8's own grid row, writing one
+ * material_palette256_index() byte per in-span cell instead. One function,
+ * not two, keeps local depth and mask - see Shading-and-Colour.md - shared
+ * rather than re-derived. Glass's MATERIAL_HATCHED shine still cannot
+ * survive one byte per cell and paints col[0] flat; liquid depth, root and
+ * leaf shading reach the index exactly as they reach a pixel. */
 static inline void
-paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, int cy, const uint8_t* row, int n, int wx0, int wx1) {
-    gfx_color_t* out = fb + (cy * n) * GFX_WIDTH;
+paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy, const uint8_t* row, int n, int wx0,
+            int wx1) {
+    gfx_color_t* out = index_row == NULL ? fb + (cy * n) * GFX_WIDTH : NULL;
     row_flags[cy] = 0;
     row_flag_x0[cy] = (uint16_t)grid_w;
     row_flag_x1[cy] = 0;
@@ -912,7 +949,6 @@ paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, int cy, const uint8_t* row,
 
         gfx_color_t col[3];
         const material_pattern_t pat = material_colours(row[cx], hash, mask, depth, col);
-        gfx_color_t* p = out + cx * n;
 
         if (pat == MATERIAL_HATCHED) {
             row_flags[cy] |= ROW_FLAG_SHINE;
@@ -924,20 +960,27 @@ paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, int cy, const uint8_t* row,
          * [wx0,wx1). A cx outside it has provably unchanged output: every
          * mark site already widens for the reach its own output depends on. */
         const bool in_span = cx >= wx0 && cx < wx1;
-
-        if (pat != MATERIAL_HATCHED) {
-            if (in_span) {
-                const gfx_color_t c = col[0];
-                for (int dy = 0; dy < n; dy++) {
-                    for (int dx = 0; dx < n; dx++) {
-                        p[dy * GFX_WIDTH + dx] = c;
-                    }
-                }
-            }
+        if (!in_span) {
             continue;
         }
 
-        if (!in_span) {
+        if (index_row != NULL) {
+            /* One byte, whatever the pattern: MATERIAL_HATCHED's shine
+             * sub-pattern cannot survive one index per cell (see this
+             * function's own top comment), so it paints its body colour. */
+            index_row[cx] = (uint8_t)material_palette256_index(col[0]);
+            continue;
+        }
+
+        gfx_color_t* p = out + cx * n;
+
+        if (pat != MATERIAL_HATCHED) {
+            const gfx_color_t c = col[0];
+            for (int dy = 0; dy < n; dy++) {
+                for (int dx = 0; dx < n; dx++) {
+                    p[dy * GFX_WIDTH + dx] = c;
+                }
+            }
             continue;
         }
 
@@ -962,120 +1005,31 @@ paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, int cy, const uint8_t* row,
 }
 
 static void
-paint_row(gfx_color_t* fb, const gfx_color_t* pal, int cy, const uint8_t* row, int wx0, int wx1) {
+paint_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy, const uint8_t* row, int wx0, int wx1) {
     switch (cell) {
-        case 2: paint_row_n(fb, pal, cy, row, 2, wx0, wx1); break;
-        case 3: paint_row_n(fb, pal, cy, row, 3, wx0, wx1); break;
-        case 4: paint_row_n(fb, pal, cy, row, 4, wx0, wx1); break;
-        case 6: paint_row_n(fb, pal, cy, row, 6, wx0, wx1); break;
-        case 8: paint_row_n(fb, pal, cy, row, 8, wx0, wx1); break;
+        case 2: paint_row_n(fb, pal, index_row, cy, row, 2, wx0, wx1); break;
+        case 3: paint_row_n(fb, pal, index_row, cy, row, 3, wx0, wx1); break;
+        case 4: paint_row_n(fb, pal, index_row, cy, row, 4, wx0, wx1); break;
+        case 6: paint_row_n(fb, pal, index_row, cy, row, 6, wx0, wx1); break;
+        case 8: paint_row_n(fb, pal, index_row, cy, row, 8, wx0, wx1); break;
         /* Unreachable for any cell size in qualities[]; falls back to size 2 to
      * avoid out-of-bounds writes. */
-        default: paint_row_n(fb, pal, cy, row, 2, wx0, wx1); break;
+        default: paint_row_n(fb, pal, index_row, cy, row, 2, wx0, wx1); break;
     }
 }
 
 /* wx0/wx1: the columns actually worth repainting - see draw_dirty_rows().
  * Run detection stays full-row, so row_run_x0/x1/n keeps seeing the row's
- * true shape, not just the part just repainted. */
+ * true shape, not just the part just repainted. `index_image` is NULL for
+ * the RGB565 path; otherwise GFX_PIXFMT_INDEXED8's own index image, and
+ * `fb`/`pal` go unused - see paint_row_n()'s own comment. */
 static int
-draw_one_row(gfx_color_t* fb, const gfx_color_t* pal, int cy, uint16_t* cur_x0, uint16_t* cur_x1, int wx0, int wx1) {
+draw_one_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_image, int cy, uint16_t* cur_x0, uint16_t* cur_x1,
+             int wx0, int wx1) {
     const uint8_t* row = &grid[cy * grid_w];
+    uint8_t* index_row = index_image != NULL ? index_image + cy * grid_w : NULL;
 
-    paint_row(fb, pal, cy, row, wx0, wx1);
-
-    int run_x0[ROW_MAX_RUNS], run_x1[ROW_MAX_RUNS];
-    const int n = row_runs_find(row, grid_w, SAND_EMPTY, run_x0, run_x1);
-    if (n < 0) {
-        int x0, x1;
-        row_runs_span_fallback(row, grid_w, SAND_EMPTY, &x0, &x1);
-        cur_x0[0] = (uint16_t)x0;
-        cur_x1[0] = (uint16_t)x1;
-        return 1;
-    }
-
-    for (int i = 0; i < n; i++) {
-        cur_x0[i] = (uint16_t)run_x0[i];
-        cur_x1[i] = (uint16_t)run_x1[i];
-    }
-    return n;
-}
-
-/* GFX_PIXFMT_INDEXED8's own row painter: one palette-index byte per grid
- * cell, never an n x n pixel block. Liquid depth shading and glass's
- * diagonal shine are not reproduced - both are local-depth or per-sub-pixel
- * work this mode trades away; every cell paints its body colour flat. Root
- * thickness and leaf wave need no local-depth walk, so both still shade. */
-static inline void
-paint_row_indexed_n(uint8_t* index_row, int cy, const uint8_t* row, int wx0, int wx1) {
-    row_flags[cy] = 0;
-    row_flag_x0[cy] = (uint16_t)grid_w;
-    row_flag_x1[cy] = 0;
-
-    const uint8_t* above = (cy > 0) ? row - grid_w : NULL;
-    const uint8_t* below = (cy < grid_h - 1) ? row + grid_w : NULL;
-    const unsigned cullet_first = MAT_SAND * MATERIAL_VARIANTS + SAND_CULLET_BASE;
-
-    for (int cx = wx0; cx < wx1; cx++) {
-        unsigned mask = ((cx > 0 && CELL_IS_EMPTY(row[cx - 1])) ? MATERIAL_EDGE_LEFT : 0u)
-                        | ((cx < grid_w - 1 && CELL_IS_EMPTY(row[cx + 1])) ? MATERIAL_EDGE_RIGHT : 0u)
-                        | ((above != NULL && CELL_IS_EMPTY(above[cx])) ? MATERIAL_EDGE_UP : 0u)
-                        | ((below != NULL && CELL_IS_EMPTY(below[cx])) ? MATERIAL_EDGE_DOWN : 0u);
-
-        if ((mask & MATERIAL_EDGE_CARDINAL) != 0 && CELL_MATERIAL(row[cx]) == MAT_WATER) {
-            mask |=
-                ((cx > 0 && above != NULL && CELL_IS_EMPTY(above[cx - 1])) ? MATERIAL_EDGE_UP_LEFT : 0u)
-                | ((cx < grid_w - 1 && above != NULL && CELL_IS_EMPTY(above[cx + 1])) ? MATERIAL_EDGE_UP_RIGHT : 0u)
-                | ((cx > 0 && below != NULL && CELL_IS_EMPTY(below[cx - 1])) ? MATERIAL_EDGE_DOWN_LEFT : 0u)
-                | ((cx < grid_w - 1 && below != NULL && CELL_IS_EMPTY(below[cx + 1])) ? MATERIAL_EDGE_DOWN_RIGHT : 0u);
-        }
-
-        const bool cell_is_water = CELL_MATERIAL(row[cx]) == MAT_WATER;
-        const unsigned hash = cell_is_water ? material_grain_hash(cx >> FOAM_BLOB_SHIFT, cy >> FOAM_BLOB_SHIFT)
-                                            : material_grain_hash(cx, cy);
-
-        const bool wood_near_leaf =
-            row[cx] == CELL_MAKE(MAT_WOOD, 0)
-            && material_wood_near_leaf(above, row, below, cx, grid_w, wood_leaf_top5, hash, WOOD_LEAF_SLOTS_CHECKED);
-        const int wood_leaf_wind_pos =
-            wood_leaf_wind_sign * ((cx * wood_leaf_wind_ux_q8 + cy * wood_leaf_wind_uy_q8) >> 8);
-        const bool leaf_shading = wood_near_leaf || row[cx] == MATX(MATX_LEAF);
-
-        const unsigned depth =
-            (row[cx] == MATX(MATX_ROOT))
-                ? material_root_neighbours(above, row, below, cx, grid_w)
-                : (leaf_shading ? material_wood_leaf_wave(wood_leaf_time_ms, wood_leaf_wind_pos, grid_w, hash) + 1u
-                                : 0u);
-
-        if (material_of(row[cx])->kind == KIND_LIQUID) {
-            row_flags[cy] |= ROW_FLAG_LIQUID;
-            note_row_flag_x(cy, cx);
-        }
-        if (leaf_shading) {
-            row_flags[cy] |= ROW_FLAG_WOOD_LEAF;
-            note_row_flag_x(cy, cx);
-        }
-        if ((unsigned)(row[cx] - cullet_first) < SAND_CULLET_SHADES) {
-            row_flags[cy] |= ROW_FLAG_CULLET;
-            note_row_flag_x(cy, cx);
-        }
-        if (CELL_MATERIAL(row[cx]) == MAT_GLASS) {
-            row_flags[cy] |= ROW_FLAG_GLASS;
-            note_row_flag_x(cy, cx);
-        }
-
-        gfx_color_t col[3];
-        material_colours(row[cx], hash, mask, depth, col);
-        index_row[cx] = (uint8_t)material_palette256_index(col[0]);
-    }
-}
-
-/* draw_one_row()'s GFX_PIXFMT_INDEXED8 counterpart - see draw_dirty_rows(). */
-static int
-draw_one_row_indexed(uint8_t* index_image, int cy, uint16_t* cur_x0, uint16_t* cur_x1, int wx0, int wx1) {
-    const uint8_t* row = &grid[cy * grid_w];
-
-    paint_row_indexed_n(index_image + cy * grid_w, cy, row, wx0, wx1);
+    paint_row(fb, pal, index_row, cy, row, wx0, wx1);
 
     int run_x0[ROW_MAX_RUNS], run_x1[ROW_MAX_RUNS];
     const int n = row_runs_find(row, grid_w, SAND_EMPTY, run_x0, run_x1);
@@ -1230,9 +1184,10 @@ row_paint_span(int cy, int* out_x0, int* out_x1) {
 
 static void
 draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool glass_moved, bool wood_leaf_moved) {
-    gfx_color_t* fb = indexed_mode_active ? NULL : gfx_framebuffer();
-    const gfx_color_t* pal = indexed_mode_active ? NULL : material_palette();
-    uint8_t* index_image = indexed_mode_active ? gfx_indexed_image() : NULL;
+    const bool indexed = sand_colour_indexed_active(&colour_state);
+    gfx_color_t* fb = indexed ? NULL : gfx_framebuffer();
+    const gfx_color_t* pal = indexed ? NULL : material_palette();
+    uint8_t* index_image = indexed ? gfx_indexed_image() : NULL;
 
     memset(wake_hit, 0, (size_t)grid_h * sizeof(*wake_hit));
     mark_wake_hits(shine_moved, ROW_FLAG_SHINE);
@@ -1270,8 +1225,7 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
         dirty_x1[cy] = 0;
 
         uint16_t cur_x0[ROW_MAX_RUNS], cur_x1[ROW_MAX_RUNS];
-        const int cur_n = indexed_mode_active ? draw_one_row_indexed(index_image, cy, cur_x0, cur_x1, wx0, wx1)
-                                              : draw_one_row(fb, pal, cy, cur_x0, cur_x1, wx0, wx1);
+        const int cur_n = draw_one_row(fb, pal, index_image, cy, cur_x0, cur_x1, wx0, wx1);
 
         uint16_t* prev_x0 = &row_run_x0[cy * ROW_MAX_RUNS];
         uint16_t* prev_x1 = &row_run_x1[cy * ROW_MAX_RUNS];
@@ -2127,6 +2081,12 @@ sand_update(uint32_t dt_ms, const input_t* input) {
 static void
 sand_frame(uint32_t dt_ms, const input_t* input) {
     if (ui.screen == SAND_UI_MENU) {
+        /* Last-resort guard: the menu has no indexed draw path, so it must
+         * never draw while indexed mode is active, whatever put it there -
+         * sand_enter() already asks for this, but this is what keeps a
+         * future path back to the menu from reintroducing the crash rather
+         * than a second place trusting it stays covered. */
+        apply_gfx_action(sand_colour_on_enter_menu(&colour_state));
         draw_menu(input);
         return;
     }
@@ -2166,10 +2126,7 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
          * fight the shell the moment the board is actually held sideways. */
         ui_set_text_style(UI_TEXT_PLAIN);
 
-        if (indexed_mode_suspended) {
-            indexed_mode_suspended = false;
-            enter_color_mode();
-        }
+        apply_gfx_action(sand_colour_on_close_overlay(&colour_state));
 
         sim_accumulator_q8 = 0;
         pour_accumulator_ms = 0;
@@ -2186,10 +2143,8 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
          * already holds (UI_NO_BACKGROUND, so frozen sand shows through the
          * grout) - indexed mode never wrote one, so it must repaint the RGB565
          * path's own backdrop before that screen dims and draws over it. */
-        if (indexed_mode_active) {
+        if (sand_colour_on_open_overlay(&colour_state) == SAND_GFX_EXIT_TO_FULL) {
             gfx_mode_exit();
-            indexed_mode_active = false;
-            indexed_mode_suspended = true;
             gfx_clear(material_palette()[SAND_EMPTY]);
             mark_sand_fully_dirty();
             draw_dirty_rows(false, false, false, false, false);
@@ -2265,14 +2220,19 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
                     pending_wood_leaf_moved);
 
     /* Markers and the mode label draw straight onto the canvas outside the
-     * indexed pipeline (gfx_target.h has no INDEXED8 case yet) - skipped
-     * rather than drawn wrong while indexed_mode_active. */
-    if (!indexed_mode_active) {
+     * indexed pipeline (gfx_target.h has no INDEXED8 case yet). Reported
+     * once per run rather than skipped silently - see
+     * overlays_skipped_reason_logged's own declaration. */
+    if (!sand_colour_indexed_active(&colour_state)) {
         draw_emitter_markers();
 
         if (label_left_ms > 0) {
             draw_mode_label(pending_gx, pending_gy);
         }
+    } else if (!overlays_skipped_reason_logged) {
+        ESP_LOGW(TAG, "COLOUR %s: emitter markers and the mode label do not draw yet - FULL-only for now",
+                 color_names[color_mode]);
+        overlays_skipped_reason_logged = true;
     }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
