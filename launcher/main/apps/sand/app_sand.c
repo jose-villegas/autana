@@ -448,7 +448,10 @@ start_sim(void) {
     ESP_LOGI(TAG, "%d x %d grid, %d bytes, %d px cells", grid_w, grid_h, grid_w * grid_h, cell);
 
     gfx_clear(material_palette()[SAND_EMPTY]);
-    gfx_mark_all_dirty();
+    /* Explicit full-width spans for the first draw: the menu that called
+     * this can still paint its START button after the clear, and a sentinel
+     * span would shrink to the first pour's cells and keep that button. */
+    mark_sand_fully_dirty();
 
     ui.screen = SAND_UI_RUNNING;
 }
