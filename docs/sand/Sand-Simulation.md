@@ -1129,10 +1129,10 @@ again - the same fallback an allocation failure already takes. The
 dispatched context is copied into a static buffer, not merely pointed at,
 because a join that times out cannot also stop a straggler task still
 reading it, and a stack-allocated context would dangle the moment its
-caller returns. `CONFIG_LAUNCHER_SAND_TWO_CORE_STEP` defaults to **off**
-until this is confirmed fixed on real hardware - the gfx.c risk this
-surfaced is recorded here rather than fixed, since it is outside this
-feature's own files and unverified without a device.
+caller returns. `CONFIG_LAUNCHER_SAND_TWO_CORE_STEP` defaults to **on**
+on the device: the diagnostics build boots, answers RUNSUITE and runs the
+sand perf suite with it. Host builds default to the serial path. The
+unbounded waits in gfx.c's present pipeline are still unchanged.
 
 ## Why the liquid logic is its own file
 
