@@ -348,6 +348,64 @@ dirty_row_is_dirty(int row) {
     return (cell_dirty >> (row * GRID_COLS)) & ((1u << GRID_COLS) - 1u);
 }
 
+/* Rounds down/up to an even coordinate - the panel controller only takes a
+ * window on even edges (gfx.c's own even_floor()/even_ceil(), duplicated
+ * here rather than shared across a device-only boundary: this file has no
+ * ESP-IDF dependency and gfx.c's copies are file-static). */
+static inline int
+dirty_even_floor(int v) {
+    return v & ~1;
+}
+
+static inline int
+dirty_even_ceil(int v) {
+    return (v + 1) & ~1;
+}
+
+/* Band mode's own "does this row range need touching" query: true if any
+ * cell overlapping [y0, y1) is dirty, with out_x0 and out_x1 the union of
+ * those cells' own (already-narrowed, see dirty_mark()) x-extents, rounded
+ * to even panel-window edges. Unlike dirty_row_is_dirty(), the caller's
+ * range need not align to a whole strip - a band ring's own band height
+ * (gfx.h) is a divisor of STRIP_HEIGHT but is not necessarily equal to it. */
+static inline bool
+dirty_band_extent(int y0, int y1, int* out_x0, int* out_x1) {
+    const int row_first = y0 / STRIP_HEIGHT;
+    const int row_last = (y1 - 1) / STRIP_HEIGHT;
+    int x0 = GFX_DIRTY_WIDTH;
+    int x1 = 0;
+    bool any = false;
+
+    for (int row = row_first; row <= row_last; row++) {
+        for (int col = 0; col < GRID_COLS; col++) {
+            const int idx = row * GRID_COLS + col;
+            if (!(cell_dirty & (1u << idx))) {
+                continue;
+            }
+            if (cell_y1[idx] <= y0 || cell_y0[idx] >= y1) {
+                continue; /* this cell's own narrowed range misses the band */
+            }
+            any = true;
+            if (cell_x0[idx] < x0) {
+                x0 = cell_x0[idx];
+            }
+            if (cell_x1[idx] > x1) {
+                x1 = cell_x1[idx];
+            }
+        }
+    }
+
+    if (!any) {
+        return false;
+    }
+
+    x0 = dirty_even_floor(x0);
+    x1 = dirty_even_ceil(x1);
+    *out_x0 = x0 < 0 ? 0 : x0;
+    *out_x1 = x1 > GFX_DIRTY_WIDTH ? GFX_DIRTY_WIDTH : x1;
+    return true;
+}
+
 /* Collects the contiguous set bits of `mask` (bits 0..width-1) into
  * [start,end) ranges - shared by the cell-level and leaf-level run
  * finders below, same shape, different width and mask. Returns how many

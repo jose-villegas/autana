@@ -27,6 +27,8 @@ launcher/
     │   └── boot_anim_curve.h   GENERATED - see tools/gen_zeta_curve.py
     ├── gfx/            the panel, and the one framebuffer
     │   ├── gfx.{h,c}           owns THE framebuffer, primitives, text
+    │   ├── gfx_mode.h          the mode-grant arithmetic  (host-tested)
+    │   ├── gfx_band.h          the band-ring state machine (host-tested)
     │   ├── gfx_color.h         what a pixel is            (host-tested)
     │   ├── gfx_dirty.h         which bands changed        (host-tested)
     │   ├── gfx_font.h          what a font IS             (host-tested)
@@ -205,6 +207,70 @@ This is also why the 3D renderer is small3dlib. It owns no framebuffer — it
 hands back every rasterized pixel through a callback — and with `S3L_Z_BUFFER 0`
 it keeps no depth buffer either, resolving visibility by sorting triangles
 back-to-front. A conventional colour+depth rasterizer would want ~1.3 MB here.
+
+**The rule's shape, not its substance, bends for a full-redraw renderer.**
+`gfx_mode_enter()`/`gfx_mode_exit()` (`gfx.h`) let an app request
+`GFX_LAYOUT_BANDS` at `enter()` instead of the default `GFX_LAYOUT_FULL_FB`:
+gfx frees the PSRAM framebuffer and allocates a 2-slot band ring in internal
+SRAM instead, `GFX_BAND_HEIGHT` rows tall (a compile-time divisor of
+`GFX_HEIGHT`). `exit()` reverses it. There is still exactly one destination
+for pixels at any moment — never both a framebuffer and a band ring —
+`gfx_mode_resolve()` (`gfx_mode.h`) and the ring's own state machine
+(`gfx_band.h`) are pure and host-tested; the cube app (`app_cube.c`) is the
+one app that uses it today, gated by `CONFIG_LAUNCHER_CUBE_BAND_MODE` or its
+own `cube_band_mode` runtime switch, so its ordinary full-fb behaviour is
+what a plain build still ships.
+
+**Every drawing primitive targets whichever buffer is current, not always
+the framebuffer.** `gfx_target.h` is the shared clip-and-translate
+arithmetic behind `gfx_clear()`, `gfx_fill_rect()`, `gfx_pixel()`, the line,
+dither and blend variants, and text: while a band is being rendered they
+write into that band's own buffer, with an absolute y translated into its
+local rows and the app's own clip rect narrowed to the band's own row
+range. Outside a band render - between frames, or in `GFX_LAYOUT_FULL_FB`
+with no band ring at all - there is no valid target, and `gfx_fb_guard.h`
+backs every one of those same primitives with a check that no-ops instead
+of writing through a NULL pointer: loud (an assertion) on a development
+device build or a host build, silent on release, the same asymmetry
+`gfx_present_guard.h` already uses for its own invariant.
+
+**A UI is built once per frame and replayed per band, not drawn once per
+app.** microui's command list is already a complete description of the
+output (see "Immediate mode versus dirty bands" below); `ui_end_for_bands()`
+bins it by row range instead of painting, and `ui_replay_band()` draws
+whichever commands overlap the band currently being rendered - the same
+shape `app_cube.c` bins triangles in. This is why the shell's own
+home-swipe hint shows in band mode too, rather than being skipped: `main.c`
+queues it (`ui_queue_band_overlay_rect()`) before an app's `frame()` runs,
+since a band-mode app's whole band loop happens inside that one call with
+no chance to draw anything afterward, and whichever `ui_end_for_bands()`
+call happens that frame bins it alongside its own commands.
+`screenshot.c`'s device dump has no band-shaped equivalent - it needs one
+contiguous buffer to stream, which band mode never has - so it still checks
+`gfx_mode_current()->layout` and refuses outright.
+
+**A touched band is redrawn and sent; an untouched one is neither.** The
+panel retains whatever a band last sent it, so `gfx_band_dirty()` (`gfx.c`)
+answers "does this row range need this frame" against `gfx_dirty.h`'s own
+strip/cell tracker - the one a full-fb present already narrows via
+`gfx_mark_dirty()` - rather than a second tracker, since every
+`GFX_BAND_HEIGHT` (16/32/64) divides `STRIP_HEIGHT` (64) evenly. A `false`
+answer means `gfx_band_skip()` instead of drawing: the ring advances but
+nothing is cleared, rendered or sent. `cube_frame_band()` marks the union
+of its previous and current frame's screen bounds dirty before its band
+loop; `ui.c` hashes each band's queued commands and marks only the bands
+whose hash changed. `gfx_invalidate()`, `gfx_mode_enter()` and an
+orientation change force every band, through a flag kept independent of
+`gfx_dirty.h`'s own `all_dirty` so band mode's forced redraw can never
+change what a full-fb present (or `suite_gfx.c`'s fixture) observes. The
+debug overlays (`gfx_set_debug_overlay()`/`gfx_set_leaf_overlay()`, dev
+builds) draw through the same band target now, outlining whichever bands
+were actually sent - a skipped one reads as visibly unoutlined next to its
+touched neighbours.
+
+`GFX_BAND_HEIGHT` is a Kconfig choice (16/32/64 rows, default 32 pending a
+device sweep) rather than a fixed constant; `tools/sweeps/band_height_sweep.sh`
+builds one diagnostics image per height for that sweep.
 
 ### 2. There is exactly one frame loop, and it belongs to the shell
 

@@ -44,7 +44,7 @@ extern void cube_exit(void);
 extern void cube_update_rotation(uint32_t dt_ms);
 extern void cube_clear_frame(void);
 extern void cube_rasterize_frame(void);
-extern void draw_fps(const input_t* input);
+extern void draw_fps(const input_t* input, bool for_bands);
 
 static const char* TAG = "cube_perf";
 
@@ -262,7 +262,7 @@ run_perf_capture(const char* label, bool with_hud, bool with_partial, bool with_
          * ~0 rather than the cost of a no-op draw_fps() call. */
         int64_t hud_start = esp_timer_get_time();
         if (with_hud) {
-            draw_fps(&null_input);
+            draw_fps(&null_input, false);
         }
         int64_t hud_end = esp_timer_get_time();
 

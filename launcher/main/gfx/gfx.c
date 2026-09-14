@@ -1,9 +1,12 @@
 #include "gfx/gfx.h"
 #include "gfx/gfx_dirty.h"
+#include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font_roles.h"
 #include "gfx/gfx_present_guard.h"
+#include "gfx/gfx_target.h"
 #include "util/intmath.h"
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -34,6 +37,43 @@ static const char* TAG = "gfx";
 #endif
 
 static gfx_color_t* fb;
+
+/* GFX_LAYOUT_FULL_FB until gfx_init() sets real geometry below, or an app's
+ * gfx_mode_enter() grants something else. gfx_present_begin()/_wait() read
+ * this to know whether there is a framebuffer to send at all. */
+static gfx_mode_t current_mode;
+
+/* The band ring's own buffers - declared here, not with the rest of the
+ * mode/band implementation further down, so current_target() below can
+ * reach them. band_render_active is true only between a successful
+ * gfx_band_next() and the matching gfx_band_submit(); outside that window
+ * band mode has no valid target at all, matching gfx_fb_guard.h. */
+static gfx_color_t* band_buf[GFX_BAND_SLOTS];
+static gfx_band_ring_t band_ring;
+static int band_current_slot;
+static bool band_render_active;
+static int band_render_row0;
+static int band_render_height;
+
+/* Set by gfx_invalidate() and gfx_mode_enter() - band mode's own "redraw
+ * and resend everything" signal, independent of gfx_dirty.h's all_dirty
+ * (which full-fb's present already owns): captured once into
+ * band_frame_force_all at gfx_band_frame_begin() so a later
+ * gfx_invalidate() call mid-frame affects the NEXT frame, not this one. */
+static bool band_force_all_dirty = true;
+static bool band_frame_force_all;
+
+/* What every pixel-writing primitive below actually draws into: the whole
+ * framebuffer, or the band currently being rendered - see gfx_target.h for
+ * why a target carries its own row range rather than every primitive
+ * checking band_render_active for itself. */
+static inline gfx_target_t
+current_target(void) {
+    if (band_render_active) {
+        return (gfx_target_t){band_buf[band_current_slot], band_render_row0, band_render_height, GFX_WIDTH};
+    }
+    return (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
+}
 
 /* Default from CONFIG_LAUNCHER_GFX_PRESENT_ON_CORE1 on the device; true on a
  * host, where gfx_present_begin()/_wait() never dispatch to a task anyway. */
@@ -415,6 +455,12 @@ gfx_init(void) {
         }
     }
 
+    current_mode.layout = GFX_LAYOUT_FULL_FB;
+    current_mode.resolution = GFX_RESOLUTION_FULL;
+    current_mode.width = GFX_WIDTH;
+    current_mode.height = GFX_HEIGHT;
+    gfx_fb_guard_set_available(true);
+
     gfx_clear_clip();
     gfx_mark_all_dirty();
 
@@ -431,6 +477,11 @@ gfx_init(void) {
     if (fb == NULL) {
         return false;
     }
+    current_mode.layout = GFX_LAYOUT_FULL_FB;
+    current_mode.resolution = GFX_RESOLUTION_FULL;
+    current_mode.width = GFX_WIDTH;
+    current_mode.height = GFX_HEIGHT;
+    gfx_fb_guard_set_available(true);
     gfx_clear_clip();
     gfx_mark_all_dirty();
     return true;
@@ -442,6 +493,10 @@ gfx_framebuffer(void) {
     /* gfx can't guess intent. "Everything" wastes resources. Raw writers use
      * gfx_mark_dirty(). Be cautious. */
     GFX_PRESENT_GUARD();
+    /* fb is already NULL in band mode - the right answer for a caller that
+     * checks. This call is only the loud dev-time signal that one reached
+     * for the framebuffer at all while it does not exist. */
+    (void)GFX_REQUIRE_FRAMEBUFFER();
     return fb;
 }
 
@@ -449,7 +504,9 @@ gfx_framebuffer(void) {
 
 static bool partial_clear_on;
 static bool interlace_on;
-static int frame_parity;
+#ifdef ESP_PLATFORM
+static int frame_parity; /* read only inside run_present_normal(), below */
+#endif
 static bool prev_bbox_valid;
 static int prev_bbox_x0, prev_bbox_y0, prev_bbox_x1, prev_bbox_y1;
 static bool drawn_bbox_valid;
@@ -484,6 +541,7 @@ void
 gfx_invalidate(void) {
     GFX_PRESENT_GUARD();
     prev_bbox_valid = false;
+    band_force_all_dirty = true;
 }
 
 /* gfx_dirty.h header-only for inlining mark_band(); thin wrappers for gfx.h
@@ -585,11 +643,18 @@ gfx_clear_clip(void) {
 
 /* Primitives */
 
-/* Ignores clip rect; clears whole-screen or bounding box; marks box dirty. */
+/* Ignores clip rect; clears the whole target (a bounding box in full-fb
+ * mode's partial-clear path, or the whole target buffer otherwise) and
+ * marks it dirty - dirty tracking is meaningless while a band is the
+ * target, since band mode resends every band every frame regardless, so
+ * that half is skipped entirely there. */
 void
 gfx_clear(gfx_color_t color) {
     GFX_PRESENT_GUARD();
-    if (partial_clear_on && prev_bbox_valid) {
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
+    if (!band_render_active && partial_clear_on && prev_bbox_valid) {
         for (int y = prev_bbox_y0; y < prev_bbox_y1; y++) {
             gfx_color_t* dst = fb + (size_t)y * GFX_WIDTH + prev_bbox_x0;
             for (int x = prev_bbox_x0; x < prev_bbox_x1; x++) {
@@ -601,25 +666,39 @@ gfx_clear(gfx_color_t color) {
         return;
     }
 
+    const gfx_target_t target = current_target();
     const uint32_t pair = ((uint32_t)color << 16) | color;
-    uint32_t* words = (uint32_t*)fb;
-    const int count = (GFX_WIDTH * GFX_HEIGHT) / 2;
+    uint32_t* words = (uint32_t*)target.buf;
+    const int count = (target.stride * target.height) / 2;
 
     for (int i = 0; i < count; i++) {
         words[i] = pair;
     }
 
-    gfx_mark_all_dirty();
+    if (!band_render_active) {
+        gfx_mark_all_dirty();
+    }
 }
 
 void
 gfx_pixel(int x, int y, gfx_color_t color) {
     GFX_PRESENT_GUARD();
-    if (x < clip.x0 || x >= clip.x1 || y < clip.y0 || y >= clip.y1) {
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
     }
-    fb[y * GFX_WIDTH + x] = color;
-    mark_band(y, y + 1);
+    if (x < clip.x0 || x >= clip.x1) {
+        return;
+    }
+    const gfx_target_t target = current_target();
+    int y0 = y, y1 = y + 1;
+    gfx_target_clip_y(target, clip.y0, clip.y1, &y0, &y1);
+    if (y0 >= y1) {
+        return;
+    }
+    gfx_target_row(target, y)[x] = color;
+    if (!band_render_active) {
+        mark_band(y, y + 1);
+    }
 }
 
 /* Cohen-Sutherland outcodes: one bit per edge the point lies outside of. */
@@ -690,10 +769,16 @@ clip_line(int* x0, int* y0, int* x1, int* y1) {
 /* One pixel of a line. */
 static void
 plot(int x, int y, gfx_color_t color, unsigned flags) {
-    if (x < clip.x0 || x >= clip.x1 || y < clip.y0 || y >= clip.y1) {
+    if (x < clip.x0 || x >= clip.x1) {
         return;
     }
-    gfx_color_t* const dst = &fb[(size_t)y * GFX_WIDTH + x];
+    const gfx_target_t target = current_target();
+    int y0 = y, y1 = y + 1;
+    gfx_target_clip_y(target, clip.y0, clip.y1, &y0, &y1);
+    if (y0 >= y1) {
+        return;
+    }
+    gfx_color_t* const dst = &gfx_target_row(target, y)[x];
 
     *dst = (flags & GFX_LINE_ADD) ? gfx_color_add(*dst, color) : color;
 }
@@ -758,7 +843,7 @@ draw_line(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
 
     walk(x0, y0, x1, y1, color, flags);
 
-    if (bx0 < bx1 && by0 < by1) {
+    if (!band_render_active && bx0 < bx1 && by0 < by1) {
         dirty_mark(bx0, by0, bx1 - bx0, by1 - by0);
     }
 }
@@ -766,41 +851,33 @@ draw_line(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
 void
 gfx_line(int x0, int y0, int x1, int y1, gfx_color_t color) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     draw_line(x0, y0, x1, y1, color, 0);
 }
 
 void
 gfx_line_ex(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     draw_line(x0, y0, x1, y1, color, flags);
 }
 
 void
 gfx_fill_rect(int x, int y, int w, int h, gfx_color_t color) {
     GFX_PRESENT_GUARD();
-    int x0 = x, y0 = y, x1 = x + w, y1 = y + h;
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
+    int x0, y0, x1, y1;
+    gfx_target_fill_rect(current_target(), clip.x0, clip.y0, clip.x1, clip.y1, x, y, w, h, color, &x0, &y0, &x1, &y1);
 
-    if (x0 < clip.x0) {
-        x0 = clip.x0;
+    if (!band_render_active) {
+        mark_band(y0, y1); /* already clipped above */
     }
-    if (y0 < clip.y0) {
-        y0 = clip.y0;
-    }
-    if (x1 > clip.x1) {
-        x1 = clip.x1;
-    }
-    if (y1 > clip.y1) {
-        y1 = clip.y1;
-    }
-
-    for (int row = y0; row < y1; row++) {
-        gfx_color_t* dst = fb + (size_t)row * GFX_WIDTH + x0;
-        for (int col = x0; col < x1; col++) {
-            *dst++ = color;
-        }
-    }
-
-    mark_band(y0, y1); /* already clipped above */
 }
 
 /*
@@ -818,27 +895,26 @@ gfx_fill_rect(int x, int y, int w, int h, gfx_color_t color) {
 void
 gfx_fill_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     if (alpha == 0) {
         return;
     }
 
+    const gfx_target_t target = current_target();
     int x0 = x, y0 = y, x1 = x + w, y1 = y + h;
 
     if (x0 < clip.x0) {
         x0 = clip.x0;
     }
-    if (y0 < clip.y0) {
-        y0 = clip.y0;
-    }
     if (x1 > clip.x1) {
         x1 = clip.x1;
     }
-    if (y1 > clip.y1) {
-        y1 = clip.y1;
-    }
+    gfx_target_clip_y(target, clip.y0, clip.y1, &y0, &y1);
 
     for (int row = y0; row < y1; row++) {
-        gfx_color_t* dst = fb + (size_t)row * GFX_WIDTH;
+        gfx_color_t* dst = gfx_target_row(target, row);
         for (int col = x0; col < x1; col++) {
             if (gfx_dither_covers(col, row, alpha)) {
                 dst[col] = color;
@@ -846,7 +922,9 @@ gfx_fill_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t alph
         }
     }
 
-    mark_band(y0, y1);
+    if (!band_render_active) {
+        mark_band(y0, y1);
+    }
 }
 
 /* Per-pixel blend, reads framebuffer. Efficient for glyphs, not full-frame.
@@ -854,33 +932,34 @@ gfx_fill_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t alph
 void
 gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     if (alpha == 0) {
         return;
     }
 
+    const gfx_target_t target = current_target();
     int x0 = x, y0 = y, x1 = x + w, y1 = y + h;
 
     if (x0 < clip.x0) {
         x0 = clip.x0;
     }
-    if (y0 < clip.y0) {
-        y0 = clip.y0;
-    }
     if (x1 > clip.x1) {
         x1 = clip.x1;
     }
-    if (y1 > clip.y1) {
-        y1 = clip.y1;
-    }
+    gfx_target_clip_y(target, clip.y0, clip.y1, &y0, &y1);
 
     for (int row = y0; row < y1; row++) {
-        gfx_color_t* dst = fb + (size_t)row * GFX_WIDTH;
+        gfx_color_t* dst = gfx_target_row(target, row);
         for (int col = x0; col < x1; col++) {
             dst[col] = gfx_color_mix(dst[col], color, alpha);
         }
     }
 
-    mark_band(y0, y1);
+    if (!band_render_active) {
+        mark_band(y0, y1);
+    }
 }
 
 /* Cheap by construction, not by luck: alpha is one value for the whole
@@ -894,24 +973,23 @@ gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha
 void
 gfx_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stride, uint8_t alpha) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     if (alpha == 0) {
         return;
     }
 
+    const gfx_target_t target = current_target();
     int x0 = x, y0 = y, x1 = x + w, y1 = y + h;
 
     if (x0 < clip.x0) {
         x0 = clip.x0;
     }
-    if (y0 < clip.y0) {
-        y0 = clip.y0;
-    }
     if (x1 > clip.x1) {
         x1 = clip.x1;
     }
-    if (y1 > clip.y1) {
-        y1 = clip.y1;
-    }
+    gfx_target_clip_y(target, clip.y0, clip.y1, &y0, &y1);
     if (x0 >= x1 || y0 >= y1) {
         return;
     }
@@ -926,7 +1004,7 @@ gfx_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stri
             continue;
         }
 
-        gfx_color_t* dst = fb + (size_t)row * GFX_WIDTH;
+        gfx_color_t* dst = gfx_target_row(target, row);
         const gfx_color_t* s = src + (size_t)(row - y) * (size_t)src_stride + (x0 - x);
 
         if (p[0] && p[1] && p[2] && p[3]) {
@@ -963,7 +1041,9 @@ gfx_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stri
         }
     }
 
-    mark_band(y0, y1);
+    if (!band_render_active) {
+        mark_band(y0, y1);
+    }
 }
 
 /*
@@ -1001,8 +1081,9 @@ gfx_text_scaled(int x, int y, const char* text, gfx_color_t color, int scale) {
     gfx_text_turned(x, y, text, color, scale, 0);
 }
 
-/* Generalised to variable cell size. 1bpp path only for 8x8. Used by 8bpp
- * path too. */
+/* One glyph pixel, solid. Coverage varies per pixel in an 8bpp atlas, so
+ * draw_glyph_font()'s 8bpp path still draws one at a time; its 1bpp path
+ * batches runs instead (gfx_font_row_run_rect()). */
 static void
 draw_rotated_font_pixel(const gfx_font_t* font, int x, int y, int row, int col, int scale, int turn,
                         gfx_color_t color) {
@@ -1064,18 +1145,19 @@ draw_glyph_font(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_colo
     }
 
     if (font->bpp == 1) {
-        const uint8_t* glyph = font->atlas + (size_t)(ch - font->first) * font->cell_h;
-
-        for (int row = 0; row < font->cell_h; row++) {
-            const uint8_t bits = glyph[row];
-            if (bits == 0) {
-                continue;
-            }
-            for (int col = 0; col < font->cell_w; col++) {
-                if (bits & (1 << col)) {
-                    draw_rotated_font_pixel(font, x, y, row, col, scale, turn, color);
-                }
-            }
+        /* One filled rect per coalesced box of set bits, not one per run
+         * per row - gfx_font_glyph_run_boxes() merges a vertical stroke's
+         * identical run across every row it spans into one box, so
+         * gfx_font_run_box_rect() covers it with one gfx_fill_rect() call
+         * regardless of which glyph axis a turn maps onto the screen's
+         * narrow one. */
+        gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
+        const int n = gfx_font_glyph_run_boxes(font, ch, boxes, GFX_FONT_RUN_BOXES_MAX);
+        for (int i = 0; i < n; i++) {
+            int rx, ry, rw, rh;
+            gfx_font_run_box_rect(font, x, y, boxes[i].row0, boxes[i].row1, boxes[i].col0, boxes[i].col1, scale, turn,
+                                  &rx, &ry, &rw, &rh);
+            gfx_fill_rect(rx, ry, rw, rh, color);
         }
         return;
     }
@@ -1098,9 +1180,34 @@ draw_glyph_font(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_colo
     }
 }
 
+/* draw_glyph_font()'s bpp==1 path, halo variant: each run is
+ * gfx_font_row_run_rect_dilated() instead of gfx_font_row_run_rect() -
+ * see that function's own comment for why this covers the same area as
+ * UI_TEXT_OUTLINED's 8 unit-offset copies. Never called for a bpp==8
+ * font - see gfx_text_font_halo()'s own comment. */
+static void
+draw_glyph_font_halo(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_color_t color, int scale, int turn) {
+    if (ch < font->first || (unsigned)(ch - font->first) >= font->count) {
+        return;
+    }
+    assert(font->bpp == 1);
+
+    gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
+    const int n = gfx_font_glyph_run_boxes(font, ch, boxes, GFX_FONT_RUN_BOXES_MAX);
+    for (int i = 0; i < n; i++) {
+        int rx, ry, rw, rh;
+        gfx_font_run_box_rect_dilated(font, x, y, boxes[i].row0, boxes[i].row1, boxes[i].col0, boxes[i].col1, scale,
+                                      turn, &rx, &ry, &rw, &rh);
+        gfx_fill_rect(rx, ry, rw, rh, color);
+    }
+}
+
 void
 gfx_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns, const gfx_font_t* font) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     if (scale < 1) {
         scale = 1;
     }
@@ -1114,9 +1221,22 @@ gfx_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int 
         {0, -1}, /* three quarters: bottom to top */
     };
 
+    /* A quarter turn of 1 or 3 swaps which cell dimension becomes the
+     * on-screen row extent - see gfx_font_row_run_rect()'s own comment. */
+    const int char_h = (turn & 1) ? font->cell_w * scale : font->cell_h * scale;
+    const gfx_target_t target = current_target();
+
     for (const char* p = text; *p != '\0'; p++) {
         const unsigned char ch = (unsigned char)*p;
-        draw_glyph_font(font, x, y, ch, color, scale, turn);
+        /* One command replayed into several bands (ui_replay_band()) walks
+         * every character again per band; skipping one whose own row
+         * extent misses the current target entirely turns that back into
+         * one walk's worth of work overall, the same as it costs in
+         * GFX_LAYOUT_FULL_FB, where the target spans the full screen and
+         * this is never false. */
+        if (gfx_target_row_range_overlaps(target, y, y + char_h)) {
+            draw_glyph_font(font, x, y, ch, color, scale, turn);
+        }
         const int adv = gfx_font_advance(font, ch, scale);
         x += step[turn][0] * adv;
         y += step[turn][1] * adv;
@@ -1126,6 +1246,48 @@ gfx_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int 
 void
 gfx_text_turned(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns) {
     gfx_text_font(x, y, text, color, scale, quarter_turns, gfx_font_ui());
+}
+
+/* gfx_text_font()'s own loop, drawing each character's halo
+ * (draw_glyph_font_halo()) rather than its ink - see gfx.h's own comment.
+ * UI_TEXT_OUTLINED is the only caller and only ever styles gfx_font_ui(),
+ * a bpp==1 font - draw_glyph_font_halo() asserts that rather than
+ * drawing a bpp==8 font's halo wrong. */
+void
+gfx_text_font_halo(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
+                   const gfx_font_t* font) {
+    GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
+    if (scale < 1) {
+        scale = 1;
+    }
+
+    const int turn = ((quarter_turns % 4) + 4) % 4;
+
+    static const int step[4][2] = {
+        {1, 0},
+        {0, 1},
+        {-1, 0},
+        {0, -1},
+    };
+
+    const int char_h = (turn & 1) ? font->cell_w * scale : font->cell_h * scale;
+    const gfx_target_t target = current_target();
+
+    for (const char* p = text; *p != '\0'; p++) {
+        const unsigned char ch = (unsigned char)*p;
+        /* y - 1, + 1: the halo reaches one pixel beyond the ink on every
+         * side (gfx_font_row_run_rect_dilated()), so the row range this
+         * character can possibly touch is one pixel taller too. */
+        if (gfx_target_row_range_overlaps(target, y - 1, y + char_h + 1)) {
+            draw_glyph_font_halo(font, x, y, ch, color, scale, turn);
+        }
+        const int adv = gfx_font_advance(font, ch, scale);
+        x += step[turn][0] * adv;
+        y += step[turn][1] * adv;
+    }
 }
 
 /*
@@ -1210,6 +1372,9 @@ void
 gfx_text_font_dither(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
                      const gfx_font_t* font, uint8_t alpha) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     if (scale < 1) {
         scale = 1;
     }
@@ -1690,19 +1855,35 @@ dispatch_present(void) {
 void
 gfx_present_begin(void) {
     gfx_present_guard_begin();
+    if (current_mode.layout == GFX_LAYOUT_BANDS) {
+        return; /* the band ring sends and waits inside frame() itself */
+    }
     present_task_mode = PRESENT_TASK_NORMAL;
     dispatch_present();
 }
 
 void
 gfx_present_wait(void) {
-    if (present_async_on) {
+    if (current_mode.layout != GFX_LAYOUT_BANDS && present_async_on) {
         xSemaphoreTake(present_done_sem, portMAX_DELAY);
     }
     gfx_present_guard_end();
 }
 
 #else /* !ESP_PLATFORM */
+
+/* collect_dirty_runs()/plan_run()/run_box() (gfx_dirty.h) back send_one_row()
+ * and friends below, which exist only on the device - a host build's own
+ * copy of the header (this file includes it directly, same as any suite
+ * that does) would otherwise trip -Wunused-function. See
+ * suite_gfx_present_guard.c's touch_unused_dirty_symbols() for the same
+ * fix applied to a smaller subset of this header. */
+static void __attribute__((unused))
+touch_unused_dirty_run_symbols(void) {
+    (void)collect_dirty_runs;
+    (void)plan_run;
+    (void)run_box;
+}
 
 void
 gfx_present_begin(void) {
@@ -1713,8 +1894,12 @@ void
 gfx_present_wait(void) {
     /* No panel on a host build; draining the dirty tracker here is what
      * lets a host test assert the same "sequencing leaves it clean"
-     * property a real present provides - see suite_gfx_present_guard.c. */
-    dirty_frame_sent();
+     * property a real present provides - see suite_gfx_present_guard.c.
+     * Band mode has no dirty tracker to drain - the ring itself already
+     * settled inside frame(). */
+    if (current_mode.layout != GFX_LAYOUT_BANDS) {
+        dirty_frame_sent();
+    }
     gfx_present_guard_end();
 }
 
@@ -1736,6 +1921,270 @@ gfx_present_async_enabled(void) {
     return present_async_on;
 }
 
+/* Mode and the band ring */
+
+#ifdef ESP_PLATFORM
+static bool
+alloc_full_framebuffer(void) {
+    const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+    fb = heap_caps_malloc(bytes, BOARD_FRAMEBUFFER_CAPS);
+    if (fb == NULL) {
+        ESP_LOGE(TAG, "Could not reallocate the %u byte framebuffer leaving band mode", (unsigned)bytes);
+        return false;
+    }
+    return true;
+}
+
+static void
+free_full_framebuffer(void) {
+    heap_caps_free(fb);
+    fb = NULL;
+}
+
+static bool
+alloc_band_buffers(int band_height) {
+    const size_t bytes = (size_t)GFX_WIDTH * (size_t)band_height * sizeof(gfx_color_t);
+    for (int i = 0; i < GFX_BAND_SLOTS; i++) {
+        band_buf[i] = heap_caps_malloc(bytes, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+        if (band_buf[i] == NULL) {
+            ESP_LOGE(TAG, "Could not allocate %u byte band buffer", (unsigned)bytes);
+            return false;
+        }
+    }
+    return true;
+}
+#else
+static bool
+alloc_full_framebuffer(void) {
+    const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+    fb = malloc(bytes);
+    return fb != NULL;
+}
+
+static void
+free_full_framebuffer(void) {
+    free(fb);
+    fb = NULL;
+}
+
+static bool
+alloc_band_buffers(int band_height) {
+    const size_t bytes = (size_t)GFX_WIDTH * (size_t)band_height * sizeof(gfx_color_t);
+    for (int i = 0; i < GFX_BAND_SLOTS; i++) {
+        band_buf[i] = malloc(bytes);
+        if (band_buf[i] == NULL) {
+            return false;
+        }
+    }
+    return true;
+}
+#endif
+
+static void
+free_band_buffers(void) {
+    for (int i = 0; i < GFX_BAND_SLOTS; i++) {
+#ifdef ESP_PLATFORM
+        heap_caps_free(band_buf[i]);
+#else
+        free(band_buf[i]);
+#endif
+        band_buf[i] = NULL;
+    }
+}
+
+static void
+reset_mode_to_full_fb(void) {
+    current_mode.layout = GFX_LAYOUT_FULL_FB;
+    current_mode.resolution = GFX_RESOLUTION_FULL;
+    current_mode.interlace_x = false;
+    current_mode.interlace_y = false;
+    current_mode.width = GFX_WIDTH;
+    current_mode.height = GFX_HEIGHT;
+    current_mode.band_height = 0;
+}
+
+/* Only GFX_RESOLUTION_FULL is wired to real rendering, so the system-wide
+ * resolution cap a future Settings app would own (roadmap section 8,
+ * decision 1) is not a variable yet - hardcoding it here is the one place
+ * that changes once it is. */
+const gfx_mode_t*
+gfx_mode_enter(const gfx_mode_request_t* request) {
+    GFX_PRESENT_GUARD();
+    assert(current_mode.layout == GFX_LAYOUT_FULL_FB);
+
+    const gfx_mode_t granted = gfx_mode_resolve(request, GFX_RESOLUTION_FULL, GFX_WIDTH, GFX_HEIGHT, GFX_BAND_HEIGHT);
+
+    if (granted.layout == GFX_LAYOUT_BANDS) {
+        if (!alloc_band_buffers(granted.band_height)) {
+            free_band_buffers();
+            return &current_mode; /* stays GFX_LAYOUT_FULL_FB */
+        }
+        free_full_framebuffer();
+        gfx_fb_guard_set_available(false);
+        gfx_band_ring_begin(&band_ring, granted.height / granted.band_height);
+        band_current_slot = 0;
+        band_force_all_dirty = true; /* nothing sent to the panel yet this visit */
+    }
+
+    current_mode = granted;
+    return &current_mode;
+}
+
+void
+gfx_mode_exit(void) {
+    GFX_PRESENT_GUARD();
+    if (current_mode.layout == GFX_LAYOUT_BANDS) {
+        free_band_buffers();
+        if (alloc_full_framebuffer()) {
+            gfx_fb_guard_set_available(true);
+        }
+#ifdef ESP_PLATFORM
+        else {
+            /* Nothing downstream can draw without a framebuffer - the same
+             * dead end gfx_init() itself parks in on the same allocation. */
+            while (1) {
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            }
+        }
+#endif
+        gfx_clear_clip();
+        gfx_mark_all_dirty();
+    }
+    reset_mode_to_full_fb();
+}
+
+const gfx_mode_t*
+gfx_mode_current(void) {
+    return &current_mode;
+}
+
+void
+gfx_band_frame_begin(void) {
+    GFX_PRESENT_GUARD();
+    assert(current_mode.layout == GFX_LAYOUT_BANDS);
+    band_render_active = false;
+    gfx_fb_guard_set_available(false);
+    gfx_band_ring_begin(&band_ring, current_mode.height / current_mode.band_height);
+
+    /* Captured once per frame, not read live from gfx_band_dirty(): a
+     * gfx_invalidate() call mid-frame (an app's own BOOT-menu toggle, say)
+     * must not retroactively force bands this frame already skipped. */
+    band_frame_force_all = band_force_all_dirty;
+    band_force_all_dirty = false;
+}
+
+/* Band mode's own "does [row0, row1) need touching this frame" query -
+ * reuses gfx_dirty.h's cell tracker (dirty_band_extent()), the same one
+ * gfx_present() consults for full-fb sends, fed by the ordinary
+ * gfx_mark_dirty() calls an app and ui.c already make. A forced frame
+ * (gfx_invalidate(), gfx_mode_enter()) always reports the full width
+ * dirty, without needing every cell actually marked. */
+bool
+gfx_band_dirty(int row0, int row1, int* out_x0, int* out_x1) {
+    if (band_frame_force_all) {
+        *out_x0 = 0;
+        *out_x1 = GFX_WIDTH;
+        return true;
+    }
+    return dirty_band_extent(row0, row1, out_x0, out_x1);
+}
+
+/* The band gfx_band_next() just handed out needs no redraw this frame
+ * (gfx_band_dirty() said so) - advances past it without rendering or
+ * sending anything, leaving whatever the panel already shows there. */
+void
+gfx_band_skip(void) {
+    GFX_PRESENT_GUARD();
+    assert(current_mode.layout == GFX_LAYOUT_BANDS);
+    band_render_active = false;
+    gfx_fb_guard_set_available(false);
+    gfx_band_ring_skip(&band_ring);
+}
+
+bool
+gfx_band_next(void) {
+    GFX_PRESENT_GUARD();
+    assert(current_mode.layout == GFX_LAYOUT_BANDS);
+    if (gfx_band_ring_done(&band_ring)) {
+        if (!gfx_band_ring_settled(&band_ring)) {
+#ifdef ESP_PLATFORM
+            xSemaphoreTake(strip_sent, portMAX_DELAY);
+#endif
+            gfx_band_ring_settle(&band_ring);
+        }
+        band_render_active = false;
+        /* This frame's gfx_mark_dirty() calls (an app's own coverage, ui.c's
+         * per-band UI changes) have done their job for gfx_band_dirty();
+         * clear them so next frame's marks start from nothing, the same
+         * reset a full-fb present gives itself at the end of every frame. */
+        dirty_frame_sent();
+        return false;
+    }
+    band_current_slot = gfx_band_ring_slot(&band_ring);
+    band_render_row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
+    band_render_height = current_mode.band_height;
+    band_render_active = true;
+    gfx_fb_guard_set_available(true);
+    return true;
+}
+
+gfx_color_t*
+gfx_band_buffer(void) {
+    GFX_PRESENT_GUARD();
+    return band_buf[band_current_slot];
+}
+
+int
+gfx_band_row0(void) {
+    GFX_PRESENT_GUARD();
+    return band_render_row0;
+}
+
+int
+gfx_band_height(void) {
+    GFX_PRESENT_GUARD();
+    return band_render_height;
+}
+
+int
+gfx_band_count(void) {
+    GFX_PRESENT_GUARD();
+    return band_ring.band_count;
+}
+
+void
+gfx_band_submit(void) {
+    GFX_PRESENT_GUARD();
+    assert(current_mode.layout == GFX_LAYOUT_BANDS);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    /* The same cyan the full-fb overlay borders a sent cell with
+     * (gfx_set_debug_overlay(), send_full_row()) - drawn through the band
+     * draw target, into the buffer about to be sent, so a band
+     * gfx_band_skip() left alone carries no border at all. No per-leaf
+     * breakdown yet (send_full_row()'s green leaves): this is the
+     * band-level "was it sent" signal only. */
+    if (overlay_any_on()) {
+        const gfx_color_t cyan = gfx_rgb(0x00FFFF);
+        const int row0 = band_render_row0;
+        const int row1 = row0 + band_render_height;
+        gfx_line(0, row0, GFX_WIDTH - 1, row0, cyan);
+        gfx_line(0, row1 - 1, GFX_WIDTH - 1, row1 - 1, cyan);
+        gfx_line(0, row0, 0, row1 - 1, cyan);
+        gfx_line(GFX_WIDTH - 1, row0, GFX_WIDTH - 1, row1 - 1, cyan);
+    }
+#endif
+#ifdef ESP_PLATFORM
+    if (gfx_band_ring_must_wait(&band_ring)) {
+        xSemaphoreTake(strip_sent, portMAX_DELAY);
+    }
+    const int row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
+    esp_lcd_panel_draw_bitmap(panel, 0, row0, GFX_WIDTH, row0 + current_mode.band_height, band_buf[band_current_slot]);
+#endif
+    band_render_active = false;
+    gfx_fb_guard_set_available(false);
+    gfx_band_ring_advance(&band_ring);
+}
+
 unsigned
 gfx_present_guard_trip_count(void) {
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
@@ -1748,6 +2197,15 @@ gfx_present_guard_trip_count(void) {
 bool
 gfx_present_in_flight(void) {
     return gfx_present_guard_in_flight;
+}
+
+unsigned
+gfx_fb_guard_trip_count(void) {
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+    return gfx_fb_guard_trips;
+#else
+    return 0;
+#endif
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
