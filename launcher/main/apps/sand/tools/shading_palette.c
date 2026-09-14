@@ -1799,20 +1799,75 @@ write_sand_palette_header(const char* path) {
     }
     fprintf(f, "\n};\n\n");
 
-    fprintf(f, "static const gfx_color_t sand_palette16_lut[16] = {\n    ");
-    for (int i = 0; i < EGA_ENTRIES; i++) {
-        fprintf(f, "0x%04X,%s", to_gfx_color(ega_global.key[i]), i % 8 == 7 ? "\n    " : " ");
+    /* Reverse map, RGB565 -> palette index: build_palette()'s own per-group
+     * OKLab assignment (map_index[][]), not a fresh RGB-distance search. A
+     * key more than one group produces keeps whichever group's on-scene
+     * pixel count (used[][]) is larger when the two disagree. A key no
+     * group's sweep reached falls back to one OKLab-nearest search, paid
+     * once here rather than never. */
+    static uint8_t rgb565_to_index[KEYS];
+    int collisions = 0, unswept = 0;
+    for (int k = 0; k < KEYS; k++) {
+        int best_g = -1;
+        uint32_t best_used = 0;
+        for (int g = 0; g < G_COUNT; g++) {
+            if (!(seen[g][k] & PIN_NONE) || map_index[g][k] < 0) {
+                continue;
+            }
+            if (best_g < 0) {
+                best_g = g;
+                best_used = used[g][k];
+            } else if (map_index[g][k] != map_index[best_g][k]) {
+                collisions++;
+                if (used[g][k] > best_used) {
+                    best_g = g;
+                    best_used = used[g][k];
+                }
+            }
+        }
+        if (best_g >= 0) {
+            rgb565_to_index[k] = (uint8_t)map_index[best_g][k];
+            continue;
+        }
+        unswept++;
+        int best = UI_ENTRIES;
+        double bd = 1e30;
+        for (int j = UI_ENTRIES; j < palette_used; j++) {
+            const double d = dist2(key_lab[k], key_lab[palette[j]]);
+            if (d < bd) {
+                bd = d;
+                best = j;
+            }
+        }
+        rgb565_to_index[k] = (uint8_t)best;
+    }
+    fprintf(stderr, "reverse index: %d keys, %d group collisions, %d never swept (OKLab-nearest fallback)\n", KEYS,
+            collisions, unswept);
+
+    fprintf(f, "#define SAND_RGB565_INDEX_KEYS %d\n\n", KEYS);
+    fprintf(f, "static const uint8_t sand_rgb565_to_index[SAND_RGB565_INDEX_KEYS] = {\n");
+    for (int k = 0; k < KEYS; k++) {
+        fprintf(f, "%s%d,", k % 16 == 0 ? "    " : " ", rgb565_to_index[k]);
+        if (k % 16 == 15) {
+            fprintf(f, "\n");
+        }
     }
     fprintf(f, "\n};\n\n");
 
-    fprintf(f, "static const gfx_indexed_dither16_t sand_palette16_dither[GFX_INDEXED_PALETTE_SIZE] = {\n");
+    fprintf(f, "static const gfx_color_t sand_palette16_dither_rgb[GFX_INDEXED_PALETTE_SIZE * "
+               "GFX_INDEXED_DITHER16_PHASES] = {\n");
     for (int i = 0; i < PALETTE_SIZE; i++) {
         const ega_choice_t ch = ega_choose(&ega_global, entry_key[i]);
         const uint8_t alpha = ch.level == 0 ? 0u : (uint8_t)(ch.level * 16u);
-        if (i % 4 == 0) {
-            fprintf(f, "    ");
+        fprintf(f, "    ");
+        for (int py = 0; py < 4; py++) {
+            for (int px = 0; px < 4; px++) {
+                const bool hi = gfx_dither_covers(px, py, alpha);
+                fprintf(f, "0x%04X,%s", to_gfx_color(hi ? ega_global.key[ch.hi] : ega_global.key[ch.lo]),
+                        (px == 3) ? "" : " ");
+            }
+            fprintf(f, "%s", (py == 3) ? "\n" : "  ");
         }
-        fprintf(f, "{%d, %d, %d},%s", ch.lo, ch.hi, alpha, i % 4 == 3 ? "\n" : " ");
     }
     fprintf(f, "};\n");
 

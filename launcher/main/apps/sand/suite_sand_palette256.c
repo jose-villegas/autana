@@ -5,7 +5,7 @@
  * host-portable, the same reason suite_sand_*.c can drive the real
  * simulation at all - see suite_sand_common.h's own top comment.
  *
- * Does not share app_sand.c's own paint_row_indexed_n(): that file is not
+ * Does not share app_sand.c's own paint_row_n(): that file is not
  * host-portable (app_*.c, see run_tests.sh). This exercises the pieces it
  * calls - material_colours(), material_palette256_index(),
  * gfx_indexed_expand_row() - against real settled scenes instead.
@@ -54,12 +54,15 @@ channel_error_sq(gfx_color_t a, gfx_color_t b) {
     return dr * dr + dg * dg + db * db;
 }
 
-/* Every (material, variant) FLAT/SPECKLED/HATCHED body colour the sim can
- * actually produce at rest (hash 0 and 255, mask 0, depth 0) maps to a
- * sand entry within the study's own error budget - the sweep half of "the
- * index image plus LUT expansion equals the study's quantised render". */
+/* Every material's body colour maps within the study's own error budget -
+ * the sweep half of "the index image plus LUT expansion equals the study's
+ * quantised render". A material whose group budget is smaller than its own
+ * distinct colour count (glass: 480 colours, 52 slots) misses "exact" for
+ * most of its own hash range by design, not by defect - so the floor below
+ * only guards against the table degrading to a uniform nearest search. */
 static void
 test_every_material_bytes_body_colour_maps_within_budget(void) {
+    int sampled = 0, exact = 0;
     for (unsigned c = 0; c < 256u; c++) {
         if (!is_real_cell((cell_t)c)) {
             continue;
@@ -75,8 +78,16 @@ test_every_material_bytes_body_colour_maps_within_budget(void) {
             const long err = channel_error_sq(out[0], sand_palette256_lut[idx]);
             TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(MAX_CHANNEL_ERROR_SQ, (int)err,
                                                   "a material's body colour drifted out of budget");
+            sampled++;
+            exact += (err == 0);
         }
     }
+
+    TEST_ASSERT_GREATER_THAN_INT(0, sampled);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE((sampled * 3) / 10, exact,
+                                             "the reverse index table's exact-match rate collapsed - it "
+                                             "should reproduce most of the study's own colours, not "
+                                             "degrade to a uniform nearest search");
 }
 
 /* gfx_indexed_expand_row() reproduces the installed LUT exactly, cell for
