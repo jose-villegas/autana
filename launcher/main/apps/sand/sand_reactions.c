@@ -219,7 +219,7 @@ try_heat_transform_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cel
         }
         s->cells[at] = CELL_MAKE(CELL_MATERIAL(n), heat + 1);
         s->may_have_temperature = true;
-        mark_rows(s, ny, ny); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
+        mark_rows(s, nx, ny, ny); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
         return true;
     }
 
@@ -253,7 +253,7 @@ try_heat_transform_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cel
         }
         /* No neighbour to bias from - see soil_set_moisture() comment. */
         s->cells[at] = soil_set_moisture(n, (uint8_t)(moisture_of(n, r) - 1), 0);
-        mark_rows(s, ny, ny);
+        mark_rows(s, nx, ny, ny);
         wake_block_and_neighbors(s, nx, ny);
         emit_into_empty_neighbor(s, nx, ny, w, h, MAT_STEAM);
         return true;
@@ -438,13 +438,13 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
                 s->cells[(size_t)y * (size_t)w + (size_t)x] =
                     soil_cell(CELL_MAKE(r->soaks_to, 0), 0, 1, &reactions[r->soaks_to]);
                 latch_content_flags(s, s->cells[(size_t)y * (size_t)w + (size_t)x]);
-                mark_rows(s, y, y);
+                mark_rows(s, x, y, y);
                 wake_block_and_neighbors(s, x, y);
                 return true;
             }
             if (held < r->moist_max) {
                 row[x] = with_moisture(c, (uint8_t)(held + 1), r);
-                mark_rows(s, y, y);
+                mark_rows(s, x, y, y);
                 wake_block_and_neighbors(s, x, y);
             }
             return true;
@@ -500,8 +500,8 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
             }
 
             row[x] = soil_set_moisture(c, (uint8_t)(held - cost), (uint8_t)recv_m);
-            mark_rows(s, y, y);
-            mark_rows(s, ny, ny);
+            mark_rows(s, x, y, y);
+            mark_rows(s, nx, ny, ny);
             wake_block_and_neighbors(s, x, y);
             wake_block_and_neighbors(s, nx, ny);
             return true;
@@ -573,8 +573,8 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
                 cost = give;
             }
             row[x] = soil_set_moisture(c, (uint8_t)(held - cost), (uint8_t)recv_m);
-            mark_rows(s, y, y);
-            mark_rows(s, ny, ny);
+            mark_rows(s, x, y, y);
+            mark_rows(s, nx, ny, ny);
             wake_block_and_neighbors(s, x, y);
             wake_block_and_neighbors(s, nx, ny);
             return true;
@@ -583,7 +583,7 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
 
     if (r->dries != 0 && held != 0 && (int)(rng_next(&s->rng) & 0xFF) < r->dries) {
         row[x] = soil_set_moisture(c, (uint8_t)(held - 1), 0);
-        mark_rows(s, y, y);
+        mark_rows(s, x, y, y);
         wake_block_and_neighbors(s, x, y);
         return held - 1 != 0;
     }
@@ -620,7 +620,7 @@ step_one_warming_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
             }
             s->cells[nat] = CELL_MAKE(CELL_MATERIAL(n), (uint8_t)(t + 1));
             s->may_have_temperature = true;
-            mark_rows(s, ny, ny);
+            mark_rows(s, nx, ny, ny);
             wake_block_and_neighbors(s, nx, ny);
             continue;
         }
@@ -742,7 +742,7 @@ step_one_cold_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
                 /* Drawn, not woken - see HEAT LEVELS DO NOT WAKE. This walk
                  * is where that rule was first found and paid for. */
                 s->cells[cat] = CELL_MAKE(CELL_MATERIAL(cc), (uint8_t)(ct - 1));
-                mark_rows(s, cy, cy);
+                mark_rows(s, cx, cy, cy);
                 if (ct > SAND_AMBIENT_HEAT) {
                     spent_on_heat = true;
                 }
@@ -792,7 +792,7 @@ step_one_cold_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
             if (rate > 0 && (int)(rng_next(&s->rng) & 0xFF) < rate) {
                 /* The soil pays for it, or one damp cell melts a whole bank. */
                 s->cells[nat] = soil_set_moisture(n, (uint8_t)(wet - 1), 0);
-                mark_rows(s, ny, ny);
+                mark_rows(s, nx, ny, ny);
                 place_reacted(s, x, y, (size_t)y * (size_t)w + (size_t)x, (material_id_t)r->heats_to);
                 return false;
             }
@@ -822,7 +822,7 @@ step_one_cold_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
 
         s->cells[nat] = CELL_MAKE(CELL_MATERIAL(n), (uint8_t)(temp - 1));
         s->may_have_temperature = true;
-        mark_rows(s, ny, ny); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
+        mark_rows(s, nx, ny, ny); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
 
         /* AND ON THROUGH THE MEDIUM. Cold stopped where it touched: snow on
          * glass chilled three rows and sat there, the same at 250 steps as at
@@ -893,7 +893,7 @@ step_one_tempered_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cons
         }
         s->cells[nat] = CELL_MAKE(CELL_MATERIAL(n), (uint8_t)(gap > 0 ? nt + 1 : nt - 1));
         s->may_have_temperature = true;
-        mark_rows(s, ny, ny); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
+        mark_rows(s, nx, ny, ny); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
     }
 
     /* MULTIPLIES DRAIN BY SAND_WET_COOLING_FACTOR (sand.h) */
@@ -922,7 +922,7 @@ step_one_tempered_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cons
 
     const uint8_t next = (uint8_t)(temp > SAND_AMBIENT_HEAT ? temp - 1 : temp + 1);
     row[x] = CELL_MAKE(CELL_MATERIAL(c), next);
-    mark_rows(s, y, y); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
+    mark_rows(s, x, y, y); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
     return next != SAND_AMBIENT_HEAT;
 }
 
@@ -1385,7 +1385,7 @@ step_one_dissolver_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, con
             if ((int)(rng_next(&s->rng) & 0xFF) < SAND_ACID_OIL_DEATH_CHANCE) {
                 const size_t self_at = (size_t)y * (size_t)w + (size_t)x;
                 s->cells[self_at] = CELL_EMPTY;
-                mark_rows(s, y, y);
+                mark_rows(s, x, y, y);
                 wake_block_and_neighbors(s, x, y);
             } else {
                 pay_quench_cost(s, x, y, w);
@@ -1400,13 +1400,13 @@ step_one_dissolver_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, con
             place_reacted(s, nx, ny, at, residue);
         } else {
             s->cells[at] = CELL_EMPTY;
-            mark_rows(s, ny, ny);
+            mark_rows(s, nx, ny, ny);
             wake_block_and_neighbors(s, nx, ny);
         }
 
         if ((int)(rng_next(&s->rng) & 0xFF) < SAND_ACID_EAT_DEATH_CHANCE) {
             row[x] = CELL_EMPTY;
-            mark_rows(s, y, y);
+            mark_rows(s, x, y, y);
             wake_block_and_neighbors(s, x, y);
         } else {
             pay_quench_cost(s, x, y, w);
@@ -1521,7 +1521,7 @@ step_one_burning_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cell_
                         place_cell(s, x, y, at, with_moisture(grain, rx->moist_max, rx));
                     } else {
                         row[x] = CELL_MAKE(mat_id, 0);
-                        mark_rows(s, y, y);
+                        mark_rows(s, x, y, y);
                         wake_block_and_neighbors(s, x, y);
                     }
                 } else if (quench_to != 0) {
@@ -1548,12 +1548,12 @@ step_one_burning_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cell_
                         }
                     } else {
                         row[x] = CELL_EMPTY;
-                        mark_rows(s, y, y);
+                        mark_rows(s, x, y, y);
                         wake_block_and_neighbors(s, x, y);
                     }
                 } else {
                     row[x] = CELL_EMPTY;
-                    mark_rows(s, y, y);
+                    mark_rows(s, x, y, y);
                     wake_block_and_neighbors(s, x, y);
                 }
                 pay_quench_cost(s, nx, ny, w);
@@ -1572,7 +1572,7 @@ step_one_burning_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cell_
      * step and has NEVER once smothered. */
     if ((plan_flags & BURN_SMOTHERS) != 0 && smothered(s, x, y, w, h, mat->density)) {
         row[x] = lit_state ? cell_with_code(grain, 0) : CELL_EMPTY;
-        mark_rows(s, y, y);
+        mark_rows(s, x, y, y);
         wake_block_and_neighbors(s, x, y);
         return true;
     }
@@ -1916,7 +1916,7 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
             REACTION_DOC(crusts_to, "what a settled cell slowly crusts into");
             row[x] = (cell_t)r->crusts_to;
             latch_content_flags(s, row[x]);
-            mark_rows(s, y, y);
+            mark_rows(s, x, y, y);
             continue;
         }
         /* Falls through: snow that did not crust this step still chills. */

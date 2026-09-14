@@ -638,6 +638,12 @@ main(void) {
     _setmode(_fileno(stdout), _O_BINARY);
 #endif
 
+    /* EXPLICIT, not merely relying on the default: this baseline is the
+     * serial step's own signature, and sand_set_two_core_step(true)'s
+     * checkerboard sweep is deliberately not byte-identical to it - see
+     * Sand-Simulation.md's own section on why. */
+    sand_set_two_core_step(false);
+
     printf("# grid fingerprint: %dx%d, %d steps per scene\n", FP_W, FP_H, FP_STEPS);
     printf("# scene hash mat0..mat15\n");
 

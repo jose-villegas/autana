@@ -313,6 +313,25 @@ cube app is slower because rasterizing costs ~28 ms on top.
 
 `dt_ms` is clamped to 250 ms so a stall does not make animation jump.
 
+### Apps with `update()`: overlapping the next step with the present
+
+An app that sets `app_t.update` (app.h) is stepped differently: once a frame
+is on screen, the shell begins presenting it, runs `update()` on core 0 while
+a present task on core 1 sends, joins the two with `gfx_present_wait()`, and
+only then calls `frame()` to draw. `update()` may change app state but must
+never call a `gfx_*` function or touch the framebuffer - the buffer it would
+touch may still be mid-send - and a development build asserts that. An app
+that leaves `update` NULL sees none of this: `frame()`, then `gfx_present()`,
+exactly as above. Sand is the first adopter, splitting `sand_update()` (input,
+sim, wake ticks) from `sand_frame()` (drawing) - see `app_sand.c`.
+
+`gfx.h`'s `gfx_present_begin()`/`gfx_present_wait()` are the primitive this
+runs on; `gfx_present()` stays exactly their `begin` then `wait`, so every
+caller that never adopts `update()` is unaffected.
+CONFIG_LAUNCHER_GFX_PRESENT_ON_CORE1 (default on) and the runtime
+`gfx_set_present_async(false)` force the send back onto the caller, for an
+A/B measurement against the overlapped path.
+
 ---
 
 ## Adding an app
@@ -757,6 +776,7 @@ was deliberately not created, because labels use the UI typeface at a smaller
 | Call `gfx_present()` | **no** — the shell presents |
 | Loop or block or `vTaskDelay` | **no** — return promptly |
 | Keep a framebuffer of its own | **no** — there is only one |
+| Call any `gfx_*` function, or touch the framebuffer, from `update()` | **no** — see below |
 
 Anything expensive belongs in `enter()`, not `frame()`.
 

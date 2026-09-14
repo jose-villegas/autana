@@ -199,11 +199,17 @@ show_post_failures(void) {
 
 /* --- main --------------------------------------------------------------- */
 
+/* True once frame() has drawn a frame for the current app that update()'s
+ * caller has not yet begun presenting - see step_app(). Reset whenever the
+ * running app changes, so a freshly entered one always primes first. */
+static bool frame_ready;
+
 static void
 leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
     *current = NULL;
+    frame_ready = false;
     /* Launcher must repaint due to framebuffer output. */
     ui_invalidate();
     /* Draw it immediately, so the frame presented below is the home screen
@@ -226,6 +232,7 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
             *current = apps[chosen];
             ESP_LOGI(TAG, "Starting %s", (*current)->name);
             (*current)->enter();
+            frame_ready = false;
         } else {
             draw_home_hint(exit_edge);
         }
@@ -251,7 +258,23 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
         return;
     }
 
-    (*current)->frame(dt_ms, input);
+    /* An app with update(): overlap it with sending the frame drawn last
+     * pass (gfx_present_begin()/_wait(), gfx.h) - skipped while priming
+     * (frame_ready false), since there is nothing to send yet. Presenting
+     * THIS pass's own frame() output is deferred the same way, to the next
+     * pass's begin - see app_main()'s trailing gfx_present(). */
+    if ((*current)->update != NULL) {
+        if (frame_ready) {
+            gfx_present_begin();
+            (*current)->update(dt_ms, input);
+            gfx_present_wait();
+        }
+        (*current)->frame(dt_ms, input);
+        frame_ready = true;
+    } else {
+        (*current)->frame(dt_ms, input);
+    }
+
     if ((*current)->home_gesture) {
         draw_home_hint(exit_edge);
     }
@@ -401,7 +424,13 @@ app_main(void) {
         }
 #endif
 
-        gfx_present();
+        /* An app with update() manages its own present begin/wait inside
+         * step_app(), deferring the frame just drawn to next pass's begin -
+         * see its own comment. Everything else (the launcher included)
+         * keeps presenting here, synchronously, exactly as before. */
+        if (current == NULL || current->update == NULL) {
+            gfx_present();
+        }
 #if CONFIG_LAUNCHER_DEVELOPMENT
         report_fps(now_us, &fps_window_start, &frames);
 #endif

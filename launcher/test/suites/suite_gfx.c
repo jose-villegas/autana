@@ -1335,8 +1335,61 @@ test_memory_throughput_psram_against_internal(void) {
     TEST_ASSERT_TRUE_MESSAGE(ok, "could not allocate the throughput buffers");
 }
 
+/* --- present/update overlap ---------------------------------------------- */
+
+/* Stands in for an app's update(): a fixed amount of CPU work, cheap to
+ * reason about. `volatile` keeps the compiler from proving the loop dead. */
+static volatile uint32_t overlap_busy_sink;
+
+#define PRESENT_OVERLAP_BUSY_ITERATIONS 2000000
+
+static void
+run_overlap_busy_work(void) {
+    uint32_t acc = 0;
+    for (int i = 0; i < PRESENT_OVERLAP_BUSY_ITERATIONS; i++) {
+        acc = acc * 1103515245u + 12345u;
+    }
+    overlap_busy_sink = acc;
+}
+
+/* Instrument, not a budget: logs the overlapped cost against the same send
+ * plus busy work done back to back (gfx_set_present_async(false)), and
+ * asserts only that overlapping never costs materially more than serial -
+ * see autana-91i. */
+static void
+test_present_overlap_against_serial(void) {
+    fixture();
+    const bool was_async = gfx_present_async_enabled();
+
+    gfx_set_present_async(true);
+    gfx_mark_all_dirty();
+    const int64_t overlap_start = esp_timer_get_time();
+    gfx_present_begin();
+    run_overlap_busy_work();
+    gfx_present_wait();
+    const int64_t overlap_us = esp_timer_get_time() - overlap_start;
+
+    gfx_set_present_async(false);
+    gfx_mark_all_dirty();
+    const int64_t serial_start = esp_timer_get_time();
+    gfx_present_begin();
+    run_overlap_busy_work();
+    gfx_present_wait();
+    const int64_t serial_us = esp_timer_get_time() - serial_start;
+
+    gfx_set_present_async(was_async);
+
+    ESP_LOGI(TAG, "present/update overlap: overlapped %lld us, serial %lld us", (long long)overlap_us,
+             (long long)serial_us);
+
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE((int)(serial_us + serial_us / 4), (int)overlap_us,
+                                          "overlapping update() with present cost noticeably more than serial");
+}
+
 void
 run_gfx_suite(void) {
+    RUN_TEST(test_present_overlap_against_serial);
+
     RUN_TEST(test_memory_throughput_psram_against_internal);
     RUN_TEST(test_display_is_up);
     RUN_TEST(test_framebuffer_fits_with_headroom_to_spare);

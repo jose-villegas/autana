@@ -49,6 +49,13 @@ typedef struct sand_s {
     uint8_t* cells; /* w * h, row-major, caller-owned */
     int w, h;
     rng_t rng; /* seeded explicitly, so every run repeats exactly */
+    /* The same seed, kept aside for sand_rng_next_at()'s hashed draws -
+     * see sand_two_core_step_enabled() (below) and sand_priv.h. rng_hashed
+     * is true only while a checkerboard-parallel pass is actually running,
+     * so every other draw in a step still advances the sequential stream
+     * above, unaffected. */
+    uint32_t rng_seed_base;
+    bool rng_hashed;
     /* Drifts the shade band random_cell() spawns with, so two separate pours
      * read as two shades rather than one flat fill. */
     uint32_t pour_phase;
@@ -157,6 +164,13 @@ typedef struct sand_s {
      * cleared. NULL disables tracking entirely. See sand_track_dirty_rows(). */
     uint8_t* dirty_rows;
 
+    /* Optional, caller-owned, h entries each: [dirty_x0[y], dirty_x1[y]),
+     * unioned into row y since last cleared - meaningless where
+     * dirty_rows[y] == 0. NULL keeps a row-only caller working unchanged.
+     * See sand_track_dirty_cols(). */
+    uint16_t* dirty_x0;
+    uint16_t* dirty_x1;
+
     /* Optional, caller-owned, block_cols*block_rows bytes: which blocks of
      * the grid to consider. NULL means check every block. Always walks grid
      * in blocks of SAND_BLOCK_W x SAND_BLOCK_H (see step_one_row()).
@@ -234,6 +248,12 @@ void sand_clear(sand_t* s);
  * cleared here; clearing is caller's responsibility. Functions marking
  * changes: settling, spawning, sand_set, sand_clear. */
 void sand_track_dirty_rows(sand_t* s, uint8_t* rows);
+
+/* Adds each dirty row's own changed-column span (`x0`/`x1`, h entries each)
+ * on top of sand_track_dirty_rows()'s row granularity - a grain moving
+ * along a row no longer dirties columns it never touched. Opt-in: a caller
+ * can track rows without columns, not columns without rows. */
+void sand_track_dirty_cols(sand_t* s, uint16_t* x0, uint16_t* x1);
 
 /* Skip settled BLOCKS entirely - without this, a settled grain still fails
  * its gravity-ward move and both slides, every step, to conclude nothing.
@@ -603,6 +623,16 @@ void sand_set_mobility(sand_t* s, int chance);
  * it. A walk draws one direction and probes once. */
 void sand_set_gas_walk(sand_t* s, bool on);
 #define SAND_MOBILITY_PER_MATERIAL (-1)
+
+/* Global, not per-board, like gfx_set_present_async(): one core 1 regardless
+ * of how many sand_t instances exist. Hands a step's order-independent
+ * block bookkeeping to a task pinned there - see finalize_settling()
+ * (sand.c) - while the movement passes, which draw a data-dependent number
+ * of times from one shared PRNG, stay on the caller's core. Runtime
+ * override for an A/B measurement or a test that wants the plain serial
+ * path; CONFIG_LAUNCHER_SAND_TWO_CORE_STEP sets the default. */
+void sand_set_two_core_step(bool on);
+bool sand_two_core_step_enabled(void);
 
 /* Advance one frame. (gx, gy) is a gravity vector, direction matters. Zero
  * vector means free fall. `jostle` (0-255) makes grains slide sideways and
