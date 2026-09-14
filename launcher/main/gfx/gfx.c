@@ -2077,6 +2077,23 @@ void
 gfx_band_submit(void) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_BANDS);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    /* The same cyan the full-fb overlay borders a sent cell with
+     * (gfx_set_debug_overlay(), send_full_row()) - drawn through the band
+     * draw target, into the buffer about to be sent, so a band
+     * gfx_band_skip() left alone carries no border at all. No per-leaf
+     * breakdown yet (send_full_row()'s green leaves): this is the
+     * band-level "was it sent" signal only. */
+    if (overlay_any_on()) {
+        const gfx_color_t cyan = gfx_rgb(0x00FFFF);
+        const int row0 = band_render_row0;
+        const int row1 = row0 + band_render_height;
+        gfx_line(0, row0, GFX_WIDTH - 1, row0, cyan);
+        gfx_line(0, row1 - 1, GFX_WIDTH - 1, row1 - 1, cyan);
+        gfx_line(0, row0, 0, row1 - 1, cyan);
+        gfx_line(GFX_WIDTH - 1, row0, GFX_WIDTH - 1, row1 - 1, cyan);
+    }
+#endif
 #ifdef ESP_PLATFORM
     if (gfx_band_ring_must_wait(&band_ring)) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
