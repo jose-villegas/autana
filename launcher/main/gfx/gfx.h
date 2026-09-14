@@ -19,6 +19,7 @@
 #endif
 #include "gfx/gfx_band.h"
 #include "gfx/gfx_color.h"
+#include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font.h"
 #include "gfx/gfx_mode.h"
 
@@ -316,6 +317,11 @@ void gfx_band_submit(void);
  * nothing - see gfx_present_guard.h. */
 unsigned gfx_present_guard_trip_count(void);
 bool gfx_present_in_flight(void);
+
+/* Test-only, always declared: an unsigned trip counter for the
+ * framebuffer-availability guard (gfx_fb_guard.h) that every drawing
+ * primitive checks before touching the framebuffer. */
+unsigned gfx_fb_guard_trip_count(void);
 
 /* Runtime toggle for the panel-grid overlay layer: outlines whichever grid
  * cells are actually sent each frame, cyan for a full-row send and yellow

@@ -1,5 +1,6 @@
 #include "gfx/gfx.h"
 #include "gfx/gfx_dirty.h"
+#include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font_roles.h"
 #include "gfx/gfx_present_guard.h"
 #include "util/intmath.h"
@@ -425,6 +426,7 @@ gfx_init(void) {
     current_mode.resolution = GFX_RESOLUTION_FULL;
     current_mode.width = GFX_WIDTH;
     current_mode.height = GFX_HEIGHT;
+    gfx_fb_guard_set_available(true);
 
     gfx_clear_clip();
     gfx_mark_all_dirty();
@@ -446,6 +448,7 @@ gfx_init(void) {
     current_mode.resolution = GFX_RESOLUTION_FULL;
     current_mode.width = GFX_WIDTH;
     current_mode.height = GFX_HEIGHT;
+    gfx_fb_guard_set_available(true);
     gfx_clear_clip();
     gfx_mark_all_dirty();
     return true;
@@ -457,6 +460,10 @@ gfx_framebuffer(void) {
     /* gfx can't guess intent. "Everything" wastes resources. Raw writers use
      * gfx_mark_dirty(). Be cautious. */
     GFX_PRESENT_GUARD();
+    /* fb is already NULL in band mode - the right answer for a caller that
+     * checks. This call is only the loud dev-time signal that one reached
+     * for the framebuffer at all while it does not exist. */
+    (void)GFX_REQUIRE_FRAMEBUFFER();
     return fb;
 }
 
@@ -604,6 +611,9 @@ gfx_clear_clip(void) {
 void
 gfx_clear(gfx_color_t color) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     if (partial_clear_on && prev_bbox_valid) {
         for (int y = prev_bbox_y0; y < prev_bbox_y1; y++) {
             gfx_color_t* dst = fb + (size_t)y * GFX_WIDTH + prev_bbox_x0;
@@ -630,6 +640,9 @@ gfx_clear(gfx_color_t color) {
 void
 gfx_pixel(int x, int y, gfx_color_t color) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     if (x < clip.x0 || x >= clip.x1 || y < clip.y0 || y >= clip.y1) {
         return;
     }
@@ -781,18 +794,27 @@ draw_line(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
 void
 gfx_line(int x0, int y0, int x1, int y1, gfx_color_t color) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     draw_line(x0, y0, x1, y1, color, 0);
 }
 
 void
 gfx_line_ex(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     draw_line(x0, y0, x1, y1, color, flags);
 }
 
 void
 gfx_fill_rect(int x, int y, int w, int h, gfx_color_t color) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     int x0 = x, y0 = y, x1 = x + w, y1 = y + h;
 
     if (x0 < clip.x0) {
@@ -833,6 +855,9 @@ gfx_fill_rect(int x, int y, int w, int h, gfx_color_t color) {
 void
 gfx_fill_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     if (alpha == 0) {
         return;
     }
@@ -869,6 +894,9 @@ gfx_fill_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t alph
 void
 gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     if (alpha == 0) {
         return;
     }
@@ -909,6 +937,9 @@ gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha
 void
 gfx_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stride, uint8_t alpha) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     if (alpha == 0) {
         return;
     }
@@ -1116,6 +1147,9 @@ draw_glyph_font(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_colo
 void
 gfx_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns, const gfx_font_t* font) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     if (scale < 1) {
         scale = 1;
     }
@@ -1225,6 +1259,9 @@ void
 gfx_text_font_dither(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
                      const gfx_font_t* font, uint8_t alpha) {
     GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
     if (scale < 1) {
         scale = 1;
     }
@@ -1861,6 +1898,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
             return &current_mode; /* stays GFX_LAYOUT_FULL_FB */
         }
         free_full_framebuffer();
+        gfx_fb_guard_set_available(false);
         gfx_band_ring_begin(&band_ring, granted.height / granted.band_height);
         band_current_slot = 0;
     }
@@ -1874,15 +1912,18 @@ gfx_mode_exit(void) {
     GFX_PRESENT_GUARD();
     if (current_mode.layout == GFX_LAYOUT_BANDS) {
         free_band_buffers();
-        if (!alloc_full_framebuffer()) {
+        if (alloc_full_framebuffer()) {
+            gfx_fb_guard_set_available(true);
+        }
 #ifdef ESP_PLATFORM
+        else {
             /* Nothing downstream can draw without a framebuffer - the same
              * dead end gfx_init() itself parks in on the same allocation. */
             while (1) {
                 vTaskDelay(pdMS_TO_TICKS(1000));
             }
-#endif
         }
+#endif
         gfx_clear_clip();
         gfx_mark_all_dirty();
     }
@@ -1968,6 +2009,15 @@ gfx_present_guard_trip_count(void) {
 bool
 gfx_present_in_flight(void) {
     return gfx_present_guard_in_flight;
+}
+
+unsigned
+gfx_fb_guard_trip_count(void) {
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+    return gfx_fb_guard_trips;
+#else
+    return 0;
+#endif
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
