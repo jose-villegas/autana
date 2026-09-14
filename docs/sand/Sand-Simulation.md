@@ -1038,25 +1038,49 @@ seam, every step.
 the phases entirely - `step_one_grain()`'s reach is exactly one cell
 (every offset the sweep uses, primary or slide, is one of the eight ring
 directions), so a boundary row is the only one a move could reach past a
-stripe's edge, and excluding it removes the crossing outright.
-`run_sweep_guard_rows()` sweeps those excluded rows afterward, once both
-phases have joined, in the same relative order an unstriped sweep would
-give them - the only order that matters, since a boundary pair (adjacent
-by construction) is the only place two of them are ever close enough to
-interact, and every other pair is a full stripe height apart. This costs
-roughly `2 / SWEEP_STRIPE_H` of the sweep back to a single core - about 6%
-for the shipped stripe height - in exchange for the guarantee holding
-exactly as it always did.
+stripe's edge, and excluding it removes the crossing outright. That alone
+is not the whole fix, though: an interior row directly beside a guard row
+is still swept DURING its own phase, using the guard row's state from
+before that phase ran. In an unstriped sweep the guard row (closer to the
+sweep's starting edge) would already have had its own turn by then; here
+it has not, so a grain that the interior row pushes into the guard row
+gets a second, unwanted move once the guard pass finally reaches it.
 
-`suite_sand_two_core.c` checks this directly: a lone grain placed exactly
-on a seam, under all four axis-aligned gravity directions and both stripe
-offsets, must travel exactly one cell in one step, the same as one placed
-away from any seam - both for an open fall and for a slide forced by
-blocking the straight-ahead cell, since a slide can carry a diagonal
-component across a seam that a straight fall never would. With scatter
-forced to zero (removing every random draw from the scenario), the same
-setup must also match the serial path's own fall distance exactly, not
-merely stay bounded.
+The guard pass fixes this by snapshotting every guard row's content
+before either phase runs, then comparing: a column that still matches its
+snapshot got no phase-time write and takes its ordinary turn; a column
+that changed already moved once this step, via the interior row beside
+it, and is skipped. That removes the double-move without needing the two
+guard rows of a boundary - or the boundary's own place relative to every
+other boundary in the grid - in exact serial order.
+
+Exact serial order is, in fact, provably out of reach for a plain
+two-phase split once three or more stripes are active: tracing the
+dependency chain across two adjacent boundaries (interior row of the top
+stripe, its guard pair, interior row of the middle stripe, the next guard
+pair, interior row of the bottom stripe) shows the middle stripe needs to
+run before the top stripe at one boundary and after the bottom stripe at
+the other - but the top and bottom stripes share a colour and are meant
+to run as a single phase. No reordering of "all of colour A, then all of
+colour B" satisfies both constraints at once. A per-seam moved stamp
+sidesteps the contradiction rather than solving it: it is a safety fix,
+not an order-equivalence one.
+
+What that buys, and what it doesn't: `suite_sand_two_core.c` places a
+lone grain exactly on a seam, under all four axis-aligned gravity
+directions and both stripe offsets, and checks it travels exactly one
+cell in one step, an open fall and a slide alike - and, with scatter
+forced to zero, that this matches the serial path's own fall distance
+exactly. That case has nothing else nearby to contend with, so the guard
+pass's snapshot always matches and the fix is exact. A dense column or
+pile crossing several boundaries at once is a different story: running
+the same scatter-zero comparison on a full falling column and a settling
+slab shows the two paths' final boards are NOT byte-identical once a
+contested chain spans more than one seam - exactly the scenario the
+dependency-chain argument above rules out. What the guard pass still
+guarantees there, and what the suite checks instead, is that the grain
+count never drifts: nothing is duplicated or dropped, only reordered by
+up to the width of a stripe boundary.
 
 ### The draw
 
