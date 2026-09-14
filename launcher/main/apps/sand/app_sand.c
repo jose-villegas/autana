@@ -291,14 +291,15 @@ seed_row_runs_full_width(void) {
     }
 }
 
-/* Sentinel span (x0 > x1) on every row: draw_dirty_rows() reads that as "no
- * narrower span recorded" and repaints full-width, same as dirty_rows alone
- * did before column tracking existed. */
+/* An explicit [0, grid_w) span on every row, NOT the (grid_w, 0) sentinel:
+ * the sentinel is the empty span a union starts from, so a sim mark landing
+ * before the next draw would shrink a sentinel row to just the moved cells
+ * and leave an overlay's pixels (palette panel, mode label) unrepainted. */
 static void
 reset_dirty_cols_full_width(void) {
     for (int i = 0; i < grid_h; i++) {
-        dirty_x0[i] = (uint16_t)grid_w;
-        dirty_x1[i] = 0;
+        dirty_x0[i] = 0;
+        dirty_x1[i] = (uint16_t)grid_w;
     }
 }
 
@@ -447,10 +448,27 @@ start_sim(void) {
     ESP_LOGI(TAG, "%d x %d grid, %d bytes, %d px cells", grid_w, grid_h, grid_w * grid_h, cell);
 
     gfx_clear(material_palette()[SAND_EMPTY]);
-    gfx_mark_all_dirty();
+    /* Explicit full-width spans for the first real draw: the menu that
+     * called this can still paint its START button after the clear, and a
+     * sentinel span would shrink to the first pour's cells and keep that
+     * button. sand_invalidate() applies this before that first frame()
+     * runs - this frame's own output is still the menu, drawn above. */
+    gfx_request_full_redraw();
 
     ui.screen = SAND_UI_RUNNING;
 }
+
+#if CONFIG_LAUNCHER_SELFTEST
+/* Test-only: starts the simulation and pours one brush's worth of sand at
+ * the grid's centre, bypassing the menu's START button and a real touch
+ * drag - a device suite exercising sand_frame()'s own dirty tracking has
+ * no way to reach either through microui. */
+void
+sand_app_enter_running_for_test(void) {
+    start_sim();
+    sand_spawn_cell(&sim, grid_w / 2, grid_h / 2, 3, brushes[0]);
+}
+#endif /* CONFIG_LAUNCHER_SELFTEST */
 
 static void
 sand_exit(void) {
@@ -1980,7 +1998,9 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
 
         sim_accumulator_q8 = 0;
         pour_accumulator_ms = 0;
-        mark_sand_fully_dirty();
+        /* sand_invalidate() applies the full-width spans before the next
+         * frame() - this pass returns without drawing the grid at all. */
+        gfx_request_full_redraw();
         return;
     }
 
@@ -2077,6 +2097,17 @@ sand_diagnostic_json(char* out, size_t len) {
     snprintf(out, len, "{\"tilt_x\":%d,\"tilt_y\":%d}", tilt_x(&tilt), tilt_y(&tilt));
 }
 
+/* gfx_request_full_redraw()'s app half (app.h): the row-run spans and
+ * dirty-column tracker gfx cannot see, plus the overlay's own UI canvas
+ * when a palette or brush screen is what is actually showing. */
+static void
+sand_invalidate(void) {
+    mark_sand_fully_dirty();
+    if (ui.screen == SAND_UI_PALETTE || ui.screen == SAND_UI_BRUSH) {
+        ui_invalidate();
+    }
+}
+
 const app_t app_sand = {
     .name = "Falling Sand",
     .summary = "Tilt to steer, touch to pour",
@@ -2084,6 +2115,7 @@ const app_t app_sand = {
     .frame = sand_frame,
     .update = sand_update,
     .exit = sand_exit,
+    .invalidate = sand_invalidate,
     .diagnostic_json = sand_diagnostic_json,
 };
 
