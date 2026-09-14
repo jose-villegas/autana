@@ -1165,15 +1165,22 @@ sweep never produced (essentially never, in real gameplay) falls back to
 whatever OKLab-nearest search the table itself was already built with, paid
 once at generation time rather than per cell on the device.
 
-**What indexed sand modes do NOT reproduce.** Glass's `MATERIAL_HATCHED`
-diagonal shine paints flat body colour instead of its shimmer sub-pattern -
-a structural limit, not an effort one: one index byte per cell cannot carry
-a two-tone diagonal pattern within that cell, at any upscale factor. Liquid
+**How MATERIAL_HATCHED adapts, rather than drops, in indexed modes.**
+`MATERIAL_HATCHED` (currently metal's own diagonal shine -
+`material_palette.c`'s `MAT_GLASS` case returns `MATERIAL_SPECKLED`, a flat
+gradient with no sub-pattern of its own and so no adaptation to make) still
+cannot carry a two-tone diagonal within one index byte at any upscale
+factor. `paint_row_n()` instead samples the same shine line once at each
+cell's own centre: a cell the line crosses takes `col[2]`'s own index
+instead of `col[0]`'s - already one of the study's own swept colours (glass
+and metal's shine outputs are both in the sweep - see `record()`'s
+`n_out`), so it lands on a sensible nearby entry with no extra palette
+work, and dithers to a visibly different 16-colour entry too. Liquid
 depth, root thickness and leaf wave all reach the index exactly as they
-reach a pixel, since `paint_row_n()` computes `depth` once and both outputs
-read the same value. None of this touches the FULL path or the simulation
-itself - `material_colours()` is unmodified and the fingerprint suite
-(hashing cell bytes, never rendered pixels) stays green in every mode.
+reach a pixel, since `paint_row_n()` computes `depth` once and every
+output reads the same value. None of this touches the FULL path or the
+simulation itself - `material_colours()` is unmodified and the fingerprint
+suite (hashing cell bytes, never rendered pixels) stays green in every mode.
 
 **Indexed mode must never be active when the launch menu draws** - it has
 no indexed draw path and would touch a framebuffer that does not exist.

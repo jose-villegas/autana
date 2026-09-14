@@ -108,6 +108,62 @@ test_expansion_reproduces_the_real_lut_cell_for_cell(void) {
     }
 }
 
+/* Mirrors paint_row_n()'s own indexed shine test (app_sand.c, not host-
+ * portable) at a fixed NORMAL cell size and zero shine phase - the same
+ * mirroring suite_sand_common.h's own top comment describes for local
+ * depth. */
+#define SHINE_TEST_CELL   4
+#define SHINE_TEST_PERIOD 64
+
+/* MATERIAL_HATCHED belongs to metal (MATX_METAL); MAT_GLASS is a flat
+ * MATERIAL_SPECKLED gradient with no sub-cell pattern, so it needs no
+ * shine-index handling. Metal's shine cells get col[2]'s own index, which
+ * dithers to a different 16-colour entry too - see paint_row_n()'s own
+ * comment (app_sand.c) for why one index byte forces this adaptation. */
+static void
+test_metal_shine_cells_get_a_different_index_in_256_and_16(void) {
+    int shine_ux_q8, shine_uy_q8;
+    material_shine_direction(1000, 0, &shine_ux_q8, &shine_uy_q8);
+
+    const cell_t metal = MATX(MATX_METAL);
+    int shine_idx = -1, body_idx = -1;
+
+    for (int cy = 0; cy < 24 && (shine_idx < 0 || body_idx < 0); cy++) {
+        for (int cx = 0; cx < 24; cx++) {
+            const unsigned hash = material_grain_hash(cx, cy);
+            gfx_color_t col[3];
+            const material_pattern_t pat = material_colours(metal, hash, 0u, 0u, col);
+            TEST_ASSERT_EQUAL_INT(MATERIAL_HATCHED, pat);
+
+            const int shine_q8 = (cx * SHINE_TEST_CELL + SHINE_TEST_CELL / 2) * shine_ux_q8
+                                 + (cy * SHINE_TEST_CELL + SHINE_TEST_CELL / 2) * shine_uy_q8;
+            const int along = (shine_q8 >> 8) & (SHINE_TEST_PERIOD - 1);
+
+            if (along < SHINE_TEST_CELL && shine_idx < 0) {
+                shine_idx = material_palette256_index(col[2]);
+            } else if (along >= SHINE_TEST_CELL && body_idx < 0) {
+                body_idx = material_palette256_index(col[0]);
+            }
+        }
+    }
+
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, shine_idx,
+                                             "no cell along the expected diagonal fell in the shine band");
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, body_idx, "every sampled cell fell in the shine band");
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(body_idx, shine_idx, "a shine cell's 256 index matched its own body index");
+
+    bool dither_differs = false;
+    for (int phase = 0; phase < GFX_INDEXED_DITHER16_PHASES; phase++) {
+        if (sand_palette16_dither_rgb[shine_idx * GFX_INDEXED_DITHER16_PHASES + phase]
+            != sand_palette16_dither_rgb[body_idx * GFX_INDEXED_DITHER16_PHASES + phase]) {
+            dither_differs = true;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(dither_differs, "a shine cell's 16-colour dither matched its own body colour at "
+                                             "every phase");
+}
+
 #define SCENE_W 40
 #define SCENE_H 30
 
@@ -197,6 +253,7 @@ void
 run_sand_palette256_suite(void) {
     RUN_TEST(test_every_material_bytes_body_colour_maps_within_budget);
     RUN_TEST(test_expansion_reproduces_the_real_lut_cell_for_cell);
+    RUN_TEST(test_metal_shine_cells_get_a_different_index_in_256_and_16);
     RUN_TEST(test_settled_scenes_map_and_expand_correctly_at_every_quality);
 }
 
