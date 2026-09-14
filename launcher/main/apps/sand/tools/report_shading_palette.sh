@@ -7,10 +7,11 @@
 # Usage:
 #   main/apps/sand/tools/report_shading_palette.sh [results-dir]
 #
-# Writes stats.txt, mapping.csv, palette_swatches.png and one
-# scene_<name>.png per scene into results-dir (default: this tool's build/
-# folder). The sweep calls material_colours() a few billion times, so a run
-# takes a minute or two.
+# Writes stats.txt, mapping.csv, palette_swatches.png, and per scene
+# scene_<name>.png (original | 256 | 16 dithered) and
+# scene_<name>_16_per_scene.png into results-dir (default: this tool's
+# build/ folder). The sweep calls material_colours() a few billion times,
+# so a run takes a minute or two.
 
 set -eu
 
