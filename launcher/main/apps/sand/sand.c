@@ -1267,11 +1267,11 @@ typedef struct {
 _Static_assert(sizeof(sweep_phase_ctx_t) <= SAND_CORE1_CTX_MAX,
                "sweep_phase_ctx_t must fit sand_core1_run()'s context buffer");
 
-/* Every stripe of `c->color` whose position among same-coloured stripes
- * matches `c->share`, each swept in the step's own y_step order. Two
- * stripes sharing a colour are never within SWEEP_STRIPE_H rows of each
- * other - colour alternates every stripe - so nothing here is also being
- * touched by whichever call is handling the other share right now. */
+/* Every stripe of `c->color` matching `c->share`, swept in y_step order,
+ * MINUS the one row on each side touching a real neighbour stripe - see
+ * run_sweep_guard_rows() for why. Two same-coloured stripes are never
+ * within SWEEP_STRIPE_H rows of each other, so nothing here is touched by
+ * whichever call is handling the other share right now. */
 static void
 run_sweep_stripes(const sweep_phase_ctx_t* c) {
     const int h = c->s->h;
@@ -1288,17 +1288,52 @@ run_sweep_stripes(const sweep_phase_ctx_t* c) {
         if (y1 > h) {
             y1 = h;
         }
-        if (y0 < y1) {
-            const int stripe_color = ((k % 2) + 2) % 2;
-            if (stripe_color == c->color) {
-                if ((seen & 1) == c->share) {
-                    const int sy_from = (c->y_step > 0) ? y0 : y1 - 1;
-                    const int sy_to = (c->y_step > 0) ? y1 : y0 - 1;
+        const int stripe_color = ((k % 2) + 2) % 2;
+        if (stripe_color == c->color) {
+            if ((seen & 1) == c->share) {
+                const int inner_y0 = (y0 > 0) ? y0 + 1 : y0;
+                const int inner_y1 = (y1 < h) ? y1 - 1 : y1;
+                if (inner_y0 < inner_y1) {
+                    const int sy_from = (c->y_step > 0) ? inner_y0 : inner_y1 - 1;
+                    const int sy_to = (c->y_step > 0) ? inner_y1 : inner_y0 - 1;
                     sweep_range(c->s, sy_from, sy_to, c->y_step, c->w, c->dx, c->dy, c->slide_a, c->slide_b, c->x_step,
                                 c->load_dx, c->load_dy, c->jostle, c->settled_bit, c->is_liquid);
                 }
-                seen++;
             }
+            seen++;
+        }
+        k++;
+    }
+}
+
+/* THE SEAM FIX: step_one_grain()'s reach is exactly one cell, so a move
+ * out of a stripe's boundary row can only land in a neighbour's boundary
+ * row - and if that neighbour is the OTHER phase, its sweep has not run
+ * yet, so the arriving cell gets moved AGAIN once it does.
+ * run_sweep_stripes() excludes both boundary rows; this sweeps them
+ * afterward, serially, in the same relative order an unstriped sweep
+ * would give them - the only order that matters here. */
+static void
+run_sweep_guard_rows(sand_t* s, int w, int dx, int dy, const int* slide_a, const int* slide_b, int x_step, int load_dx,
+                     int load_dy, int jostle, uint8_t settled_bit, uint16_t is_liquid, int y_step, int offset) {
+    const int h = s->h;
+    int k = (offset == 0) ? 0 : -1;
+
+    for (;;) {
+        const int boundary = offset + (k + 1) * SWEEP_STRIPE_H;
+        if (boundary >= h) {
+            break;
+        }
+        if (boundary > 0) {
+            const int above = boundary - 1;
+            const int below = boundary;
+            const int first = (y_step > 0) ? above : below;
+            const int second = (y_step > 0) ? below : above;
+
+            sweep_range(s, first, first + y_step, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle,
+                        settled_bit, is_liquid);
+            sweep_range(s, second, second + y_step, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy,
+                        jostle, settled_bit, is_liquid);
         }
         k++;
     }
@@ -1433,6 +1468,8 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
                         y_step, offset);
         run_sweep_phase(s, 1, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
                         y_step, offset);
+        run_sweep_guard_rows(s, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
+                             y_step, offset);
         s->rng_hashed = false;
     } else {
         sweep_range(s, y_from, y_to, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
