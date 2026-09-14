@@ -32,6 +32,7 @@
 
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
+#include "gfx/gfx_target.h"
 #include "gfx/icons_system.h"
 #include "ui/ui_pointer.h"
 #include "ui/ui_slider.h"
@@ -753,4 +754,181 @@ ui_end(uint32_t background_rgb) {
 
     invalidated = false;
     return drew;
+}
+
+/*
+ * Band mode replay
+ *
+ * Band mode has no framebuffer to hash against, so ui_end()'s whole
+ * changed/unchanged question does not apply - every band redraws every
+ * frame regardless. What DOES matter is not walking or drawing a command
+ * for a band it never reaches, the same reason app_cube.c bins triangles
+ * by row range instead of re-rasterizing the whole scene per band.
+ */
+
+typedef enum {
+    UI_BAND_ENTRY_COMMAND,    /* replay via draw_command() */
+    UI_BAND_ENTRY_FILL_RECT,  /* an opaque rect with no mu_Command behind it -
+                                 a canvas's own background, or a queued
+                                 overlay (ui_queue_band_overlay_rect()) */
+    UI_BAND_ENTRY_CLIP_RESET, /* paint_canvas()'s own trailing gfx_clear_clip(),
+                                  replayed at the same point in the stream */
+} ui_band_entry_kind_t;
+
+typedef struct {
+    ui_band_entry_kind_t kind;
+    const mu_Command* cmd; /* UI_BAND_ENTRY_COMMAND only */
+    mu_Rect rect;          /* UI_BAND_ENTRY_FILL_RECT only */
+    mu_Color color;        /* UI_BAND_ENTRY_FILL_RECT only */
+    int y0, y1;            /* this entry's own row range - ignored when always is true */
+    bool always;           /* replay regardless of a band's own range: CLIP_RESET,
+                                and any command type command_row_range() does not
+                                recognise (currently just MU_COMMAND_CLIP, whose
+                                effect is state for what follows, not pixels of
+                                its own) */
+} ui_band_entry_t;
+
+/* Headroom, not a tight fit - see gfx_dirty.h's own SUITE_MAX comment for
+ * the same reasoning. A typical screen here is a handful of commands per
+ * window plus one boundary marker; this leaves room for several such
+ * windows in one frame. */
+#define UI_BAND_BIN_MAX 64
+
+static ui_band_entry_t ui_band_bin[UI_BAND_BIN_MAX];
+static int ui_band_bin_count;
+
+#define UI_EXTRA_RECT_MAX 4
+
+typedef struct {
+    int x, y, w, h;
+    uint32_t rgb;
+} ui_extra_rect_t;
+
+static ui_extra_rect_t extra_rects[UI_EXTRA_RECT_MAX];
+static int extra_rect_count;
+
+void
+ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb) {
+    if (extra_rect_count < UI_EXTRA_RECT_MAX) {
+        extra_rects[extra_rect_count++] = (ui_extra_rect_t){x, y, w, h, rgb};
+    }
+}
+
+/* The row range `cmd`'s own drawing would touch, after the transform -
+ * geometry only, no colour or font-pass work, since binning only needs to
+ * decide whether a band should bother calling draw_command() at all.
+ * False means "no extent of its own" (MU_COMMAND_CLIP), which the caller
+ * takes to mean "always replay". */
+static bool
+command_row_range(const mu_Command* cmd, int* y0, int* y1) {
+    const ui_transform_t t = effective_transform();
+
+    switch (cmd->type) {
+        case MU_COMMAND_RECT: {
+            const mu_Rect r = ui_transform_rect(t, cmd->rect.rect);
+            *y0 = r.y;
+            *y1 = r.y + r.h;
+            return true;
+        }
+        case MU_COMMAND_TEXT: {
+            const ui_font_scaled_t fs = resolve_font_scaled(cmd->text.font);
+            const int tw = gfx_font_text_width(fs.font, cmd->text.str, -1, fs.scale);
+            const int th = gfx_font_height(fs.font, fs.scale);
+            const mu_Rect box = ui_transform_rect(t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
+            *y0 = box.y;
+            *y1 = box.y + box.h;
+            return true;
+        }
+        case MU_COMMAND_ICON: {
+            const mu_Rect r = ui_transform_rect(t, cmd->icon.rect);
+            *y0 = r.y;
+            *y1 = r.y + r.h;
+            return true;
+        }
+        default: return false;
+    }
+}
+
+static void
+bin_fill_rect(mu_Rect rect, mu_Color color) {
+    if (ui_band_bin_count >= UI_BAND_BIN_MAX) {
+        return;
+    }
+    ui_band_entry_t* e = &ui_band_bin[ui_band_bin_count++];
+    e->kind = UI_BAND_ENTRY_FILL_RECT;
+    e->rect = rect;
+    e->color = color;
+    e->y0 = rect.y;
+    e->y1 = rect.y + rect.h;
+    e->always = false;
+}
+
+void
+ui_end_for_bands(uint32_t background_rgb) {
+    mu_end(&ctx);
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    report_command_list_high_water(ctx.command_list.idx);
+#endif
+
+    ui_band_bin_count = 0;
+    const int n = ctx.root_list.idx;
+
+    for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
+        const mu_Container* cnt = ctx.root_list.items[i];
+
+        if (background_rgb != UI_NO_BACKGROUND) {
+            const uint32_t rgb = background_rgb;
+            const mu_Color c = mu_color((int)((rgb >> 16) & 0xFF), (int)((rgb >> 8) & 0xFF), (int)(rgb & 0xFF), 255);
+            bin_fill_rect(canvas_physical_rect(cnt), c);
+        }
+
+        const char* p = (const char*)cnt->head + cnt->head->base.size;
+        const char* end = (const char*)cnt->tail;
+        while (p < end) {
+            const mu_Command* cmd = (const mu_Command*)p;
+            if (cmd->base.size <= 0) {
+                break; /* corrupt list: stop rather than spin */
+            }
+            if (ui_band_bin_count < UI_BAND_BIN_MAX) {
+                ui_band_entry_t* e = &ui_band_bin[ui_band_bin_count++];
+                e->kind = UI_BAND_ENTRY_COMMAND;
+                e->cmd = cmd;
+                e->always = !command_row_range(cmd, &e->y0, &e->y1);
+            }
+            p += cmd->base.size;
+        }
+
+        if (ui_band_bin_count < UI_BAND_BIN_MAX) {
+            ui_band_entry_t* e = &ui_band_bin[ui_band_bin_count++];
+            e->kind = UI_BAND_ENTRY_CLIP_RESET;
+            e->always = true;
+        }
+    }
+
+    for (int i = 0; i < extra_rect_count; i++) {
+        const ui_extra_rect_t* r = &extra_rects[i];
+        const mu_Color c =
+            mu_color((int)((r->rgb >> 16) & 0xFF), (int)((r->rgb >> 8) & 0xFF), (int)(r->rgb & 0xFF), 255);
+        bin_fill_rect(mu_rect(r->x, r->y, r->w, r->h), c);
+    }
+    extra_rect_count = 0;
+}
+
+void
+ui_replay_band(int row0, int row1) {
+    for (int i = 0; i < ui_band_bin_count; i++) {
+        const ui_band_entry_t* e = &ui_band_bin[i];
+        if (!e->always && !(e->y0 < row1 && e->y1 > row0)) {
+            continue;
+        }
+        switch (e->kind) {
+            case UI_BAND_ENTRY_COMMAND: draw_command(e->cmd); break;
+            case UI_BAND_ENTRY_FILL_RECT:
+                gfx_fill_rect(e->rect.x, e->rect.y, e->rect.w, e->rect.h,
+                              gfx_rgb(((uint32_t)e->color.r << 16) | ((uint32_t)e->color.g << 8) | e->color.b));
+                break;
+            case UI_BAND_ENTRY_CLIP_RESET: gfx_clear_clip(); break;
+        }
+    }
 }
