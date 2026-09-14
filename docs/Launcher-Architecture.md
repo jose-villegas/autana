@@ -272,6 +272,23 @@ touched neighbours.
 device sweep) rather than a fixed constant; `tools/sweeps/band_height_sweep.sh`
 builds one diagnostics image per height for that sweep.
 
+**A band can hold indices instead of pixels.** `gfx_mode_request_t` carries
+a `pixfmt` alongside layout, resolution and interlace: `GFX_PIXFMT_RGB565`
+is every band user above, `GFX_PIXFMT_INDEXED8` instead has gfx own a
+persistent `grid_w x grid_h` byte image of palette indices in internal RAM
+and a 256-entry RGB565 LUT (`gfx_indexed_image()`/`gfx_indexed_set_lut()`,
+`gfx/gfx_indexed.h`). Consumption is the opposite way round from
+`GFX_PIXFMT_RGB565`'s app-driven `gfx_band_next()`/`gfx_band_submit()` loop:
+the app just writes indices and calls `gfx_present_begin()`/
+`gfx_present_wait()`, the same two calls `GFX_LAYOUT_FULL_FB` already uses,
+and the present task expands whichever dirty strips exist - LUT lookup plus
+a cell-size upscale, or the same lookup dithered against an installed
+16-colour table (`gfx_indexed_set_lut16()`) - into the internal DMA buffers
+already used for a full-fb send. `docs/sand/Shading-and-Colour.md`'s
+"Indexed colour modes" is the one real adopter today. Sends whole dirty
+strips rather than gathering scattered runs the way a full-fb present
+does - a deliberate simplification, not a limit of the pixel format itself.
+
 ### 2. There is exactly one frame loop, and it belongs to the shell
 
 Apps do not loop, do not present, do not block and do not yield. An app's

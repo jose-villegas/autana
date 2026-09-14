@@ -1124,6 +1124,71 @@ pairs), `test_the_blend_has_no_jump_crossing_45_degrees`,
 
 ---
 
+## Indexed colour modes: 256 and 16
+
+The sand launch menu's COLOUR option picks between FULL (today's RGB565
+path, byte-identical - this document's whole pipeline above), 256, and 16.
+Both alternates request `GFX_PIXFMT_INDEXED8` (`gfx/gfx_mode.h`): gfx frees
+the PSRAM framebuffer, as `GFX_LAYOUT_BANDS` already does, and instead owns
+a persistent `grid_w x grid_h` byte image of palette indices in internal
+RAM plus a 256-entry RGB565 LUT. Sand writes indices, never pixels, into
+that image (`paint_row_indexed_n()`, `app_sand.c`) - one byte per changed
+cell, not an `n x n` pixel block, which is the whole reason this mode
+skips the PSRAM framebuffer's slow writes (see
+`docs/notes/Board-and-Memory.md` for those numbers). The present task
+expands indices back to pixels through the LUT while upscaling by the
+grid's own cell size, band by band, exactly the way `paint_row_n()` above
+upscales a cell into `n x n` pixels - see `docs/Launcher-Architecture.md`
+for the present-side half of this.
+
+**The palette.** `main/apps/sand/tools/shading_palette.c` (the study
+introduced on the palette work) also emits `sand_palette256.h`: a 256-entry
+LUT (16 reserved UI entries, 240 sand entries) and a 16-entry EGA-style LUT
+with a per-256-entry ordered-dither choice (two nearest 16-colour entries
+plus a Bayer threshold, `gfx_dither_covers()`) for 16-colour mode.
+Regenerate both the study's report and this header together:
+
+```
+main/apps/sand/tools/report_shading_palette.sh
+```
+
+`material_palette256_index()` (`material_palette.c`) is the colour-to-index
+step: the nearest of the 256 sand entries to a `material_colours()` body
+colour, by squared RGB888 channel distance, exact for the common case where
+that body colour is already one of the 951 the study's sweep found. Its
+input is always a body colour computed the ordinary way - no accumulator or
+table depends on being in this mode, so `record()`-style host sweeps stay
+identical.
+
+**What indexed sand modes do NOT reproduce, deliberately.** Liquid interior
+and rim depth shading always reads as flat body colour - the local-depth
+walk this document spends most of its length on is the single most
+expensive per-cell signal here, and this mode exists to buy per-cell cost
+back, not spend it twice on a lookup a screenshot-quality tradeoff was
+never asked to preserve. Glass's `MATERIAL_HATCHED` diagonal shine
+similarly paints flat body colour rather than its shimmer sub-pattern. Root
+thickness and leaf wave still shade correctly, since neither reads local
+depth. None of this touches the FULL path or the simulation itself -
+`material_colours()` is unmodified and the fingerprint suite (hashing cell
+bytes, never rendered pixels) stays green in every mode.
+
+**UI in 256/16 is scoped down for now, not fully wired.** The always-on
+overlays a running sand screen draws outside the grid (emitter markers, the
+mode label) are skipped while an indexed mode is active - both draw
+straight onto the canvas (`gfx_target.h` has no `GFX_PIXFMT_INDEXED8` case
+yet), and drawing them today would touch a framebuffer that does not exist
+in this mode. The palette and brush screens, which a player actually needs
+to change material, instead have sand temporarily exit indexed mode back to
+FULL for as long as either is open (`gfx_mode_exit()`/`gfx_mode_enter()`
+paired around the OPEN/CLOSE actions, `app_sand.c`), repainting the RGB565
+backdrop those screens composite over before dimming it, and re-entering
+indexed mode on close. The reserved UI indices (0-15) already in
+`sand_palette256_lut` are for the eventual indexed-target version of this;
+wiring `gfx_target.h`/microui through them is future work, not shipped
+here.
+
+---
+
 ## How to test a shading change
 
 - **A host-side probe, no device needed.** Every investigation into a
