@@ -81,6 +81,7 @@ $TEST_DIR/suites/suite_gfx_present_guard.c
 $TEST_DIR/suites/suite_gfx_fb_guard.c
 $TEST_DIR/suites/suite_gfx_mode.c
 $TEST_DIR/suites/suite_gfx_band.c
+$TEST_DIR/suites/suite_small3dlib_scissor.c
 $TEST_DIR/suites/suite_gfx_color.c
 $TEST_DIR/suites/suite_gfx_font.c
 $TEST_DIR/suites/suite_gfx_font_roles.c
