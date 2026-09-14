@@ -554,9 +554,13 @@ start_sim(void) {
 /* Test-only: starts the simulation and pours one brush's worth of sand at
  * the grid's centre, bypassing the menu's START button and a real touch
  * drag - a device suite exercising sand_frame()'s own dirty tracking has
- * no way to reach either through microui. */
+ * no way to reach either through microui. Forces FULL regardless of
+ * whatever a colour-mode test left color_mode at - a caller wanting the
+ * real framebuffer to draw into (suite_sand_full_redraw.c, say) must not
+ * silently start indexed instead. */
 void
 sand_app_enter_running_for_test(void) {
+    color_mode = SAND_COLOR_FULL;
     start_sim();
     sand_spawn_cell(&sim, grid_w / 2, grid_h / 2, 3, brushes[0]);
 }
@@ -564,14 +568,18 @@ sand_app_enter_running_for_test(void) {
 /* Drives the crash's own reproduction with the real functions: enter, start
  * a sim in `mode`, then return to the menu the only real way that happens -
  * a fresh sand_enter() - and reports whether indexed mode survived it. Only
- * a boolean crosses back to the caller; the assertion belongs to the test. */
+ * a boolean crosses back to the caller; the assertion belongs to the test.
+ * Leaves color_mode at FULL - whatever runs next in the same boot must not
+ * inherit this test's own choice of mode. */
 bool
 sand_app_test_survives_indexed_then_menu(int mode) {
     color_mode = (sand_color_mode_t)mode;
     sand_enter();
     start_sim();
     sand_enter();
-    return !sand_colour_indexed_active(&colour_state);
+    const bool ok = !sand_colour_indexed_active(&colour_state);
+    color_mode = SAND_COLOR_FULL;
+    return ok;
 }
 #endif /* CONFIG_LAUNCHER_SELFTEST */
 
@@ -1969,6 +1977,15 @@ track_pour_split(const input_t* input, int64_t step_us, int64_t draw_us, int awa
 }
 #endif
 
+/* The START button's own on-screen rect - shared with the SELFTEST tap
+ * below so a real touch and this arithmetic can never drift apart. */
+static mu_Rect
+menu_start_rect(void) {
+    const int total_h = 3 * MENU_BTN_H + 2 * MENU_BTN_GAP;
+    const int top = (ui_height() - total_h) / 2;
+    return ui_centered_rect(ui_width(), MENU_BTN_W, MENU_BTN_H, top);
+}
+
 static void
 draw_menu(const input_t* input) {
     mu_Context* ctx = ui_context();
@@ -1980,7 +1997,7 @@ draw_menu(const input_t* input) {
         const int total_h = 3 * MENU_BTN_H + 2 * MENU_BTN_GAP;
         const int top = (ui_height() - total_h) / 2;
 
-        mu_layout_set_next(ctx, ui_centered_rect(ui_width(), MENU_BTN_W, MENU_BTN_H, top), 0);
+        mu_layout_set_next(ctx, menu_start_rect(), 0);
         if (mu_button(ctx, "START")) {
             /* Not called here - see pending_start's own comment. */
             pending_start = true;
@@ -2276,29 +2293,48 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
 
 #if CONFIG_LAUNCHER_SELFTEST
 /* Unlike sand_app_test_survives_indexed_then_menu() above, this runs the
- * START button itself: ui_pointer_step()'s single-frame tap (`pressed` and
- * `released` both set - ui_pointer.c) puts a real press+release through
- * mu_button() inside ONE draw_menu() call, the path calling start_sim()
- * directly never exercised. Identity transform makes the button's on-screen
- * rect match its own layout math with no orientation guessing. */
+ * START button itself. One pressed+released frame is not enough: microui's
+ * hover_root lags next_hover_root by a frame (begin_root_container(),
+ * microui.c), so a brand-new window cannot grant hover the instant it
+ * opens - PRESS/HOLD below replay ui_pointer_step()'s own
+ * UI_POINTER_HOVER_FRAMES wait for that; `released` on the third frame
+ * folds DOWN and UP into the same draw_menu() call, leaving no touch
+ * state behind. */
 bool
 sand_app_test_start_button_survives_the_ui_build(int mode) {
     color_mode = (sand_color_mode_t)mode;
     ui_set_transform(ui_transform_identity());
     sand_enter();
 
-    const int total_h = 3 * MENU_BTN_H + 2 * MENU_BTN_GAP;
-    const int top = (GFX_HEIGHT - total_h) / 2;
-    const int cx = GFX_WIDTH / 2;
-    const int cy = top + MENU_BTN_H / 2;
+    const mu_Rect start_rect = menu_start_rect();
+    const int cx = start_rect.x + start_rect.w / 2;
+    const int cy = start_rect.y + start_rect.h / 2;
+    ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", cx, cy, start_rect.x, start_rect.y,
+             start_rect.w, start_rect.h);
 
-    const input_t tap = {.pressed = true, .released = true, .x = cx, .y = cy, .press_x = cx, .press_y = cy};
-    sand_frame(0, &tap); /* the crash's own frame: START tapped inside draw_menu() */
+    const input_t press = {.pressed = true, .x = cx, .y = cy};
+    sand_frame(0, &press); /* primes next_hover_root - see the comment above */
+
+    const input_t hold = {.x = cx, .y = cy};
+    sand_frame(16, &hold); /* hover_root now Sand Menu; hover granted this frame */
+
+    const input_t release = {.released = true, .x = cx, .y = cy};
+    sand_frame(16, &release); /* DOWN then UP, same draw_menu() call - the click */
 
     const input_t idle = {0};
     sand_frame(16, &idle); /* pending_start applies here, before any UI build */
 
-    return sand_colour_indexed_active(&colour_state) && ui.screen == SAND_UI_RUNNING;
+    const bool ok = sand_colour_indexed_active(&colour_state) && ui.screen == SAND_UI_RUNNING;
+    ESP_LOGI(TAG, "START tap test: indexed_active=%d screen=%d -> %s", sand_colour_indexed_active(&colour_state),
+             ui.screen, ok ? "PASS" : "FAIL");
+
+    /* Leaves indexed mode and color_mode exactly as sand_exit() would for a
+     * real player closing the app - this test is the one place in the
+     * whole suite that can return with indexed mode still engaged, and
+     * whatever runs next in the same boot must not inherit it. */
+    sand_exit();
+    color_mode = SAND_COLOR_FULL;
+    return ok;
 }
 #endif /* CONFIG_LAUNCHER_SELFTEST */
 
