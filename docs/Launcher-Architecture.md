@@ -249,6 +249,29 @@ call happens that frame bins it alongside its own commands.
 contiguous buffer to stream, which band mode never has - so it still checks
 `gfx_mode_current()->layout` and refuses outright.
 
+**A touched band is redrawn and sent; an untouched one is neither.** The
+panel retains whatever a band last sent it, so `gfx_band_dirty()` (`gfx.c`)
+answers "does this row range need this frame" against `gfx_dirty.h`'s own
+strip/cell tracker - the one a full-fb present already narrows via
+`gfx_mark_dirty()` - rather than a second tracker, since every
+`GFX_BAND_HEIGHT` (16/32/64) divides `STRIP_HEIGHT` (64) evenly. A `false`
+answer means `gfx_band_skip()` instead of drawing: the ring advances but
+nothing is cleared, rendered or sent. `cube_frame_band()` marks the union
+of its previous and current frame's screen bounds dirty before its band
+loop; `ui.c` hashes each band's queued commands and marks only the bands
+whose hash changed. `gfx_invalidate()`, `gfx_mode_enter()` and an
+orientation change force every band, through a flag kept independent of
+`gfx_dirty.h`'s own `all_dirty` so band mode's forced redraw can never
+change what a full-fb present (or `suite_gfx.c`'s fixture) observes. The
+debug overlays (`gfx_set_debug_overlay()`/`gfx_set_leaf_overlay()`, dev
+builds) draw through the same band target now, outlining whichever bands
+were actually sent - a skipped one reads as visibly unoutlined next to its
+touched neighbours.
+
+`GFX_BAND_HEIGHT` is a Kconfig choice (16/32/64 rows, default 32 pending a
+device sweep) rather than a fixed constant; `tools/sweeps/band_height_sweep.sh`
+builds one diagnostics image per height for that sweep.
+
 ### 2. There is exactly one frame loop, and it belongs to the shell
 
 Apps do not loop, do not present, do not block and do not yield. An app's
