@@ -272,6 +272,52 @@ touched neighbours.
 device sweep) rather than a fixed constant; `tools/sweeps/band_height_sweep.sh`
 builds one diagnostics image per height for that sweep.
 
+**A band can hold indices instead of pixels.** `gfx_mode_request_t` carries
+a `pixfmt` alongside layout, resolution and interlace: `GFX_PIXFMT_RGB565`
+is every band user above, `GFX_PIXFMT_INDEXED8` instead has gfx own a
+persistent `grid_w x grid_h` byte image of palette indices in internal RAM
+and a 256-entry RGB565 LUT (`gfx_indexed_image()`/`gfx_indexed_set_lut()`,
+`gfx/gfx_indexed.h`). Consumption is the opposite way round from
+`GFX_PIXFMT_RGB565`'s app-driven `gfx_band_next()`/`gfx_band_submit()` loop:
+the app just writes indices and calls `gfx_present_begin()`/
+`gfx_present_wait()`, the same two calls `GFX_LAYOUT_FULL_FB` already uses,
+and the present task expands whichever dirty strips exist - LUT lookup plus
+a cell-size upscale, or the same lookup dithered against an installed
+16-colour table (`gfx_indexed_set_lut16()`) - into the internal DMA buffers
+already used for a full-fb send. `docs/sand/Shading-and-Colour.md`'s
+"Indexed colour modes" is the one real adopter today. Sends whole dirty
+strips rather than gathering scattered runs the way a full-fb present
+does - a deliberate simplification, not a limit of the pixel format itself.
+
+**Palettes are a gfx concept, not a sand one.** `gfx/gfx_palette.h` is the
+type any app builds or installs a `GFX_PIXFMT_INDEXED8` palette through: a
+name, an entry list, a count, and the UI-reserved-entries-0-15 convention
+(`GFX_PALETTE_UI_ENTRIES`) every such palette shares. `gfx/
+gfx_palette_standard.h` ships a handful of curated ones as `const` data -
+CGA/EGA 16, PICO-8 16, DawnBringer DB16/DB32, a VGA-style default 256, and
+16/256-level grayscale - found by name (`gfx_palette_standard_find()`) or
+listed (`_count()`/`_at()`), for an app that wants indexed rendering
+without building its own study. Choosing one is a runtime call, never a
+Kconfig symbol: an app installs a palette's LUT and reverse map through
+the same `gfx_indexed_set_lut()`/`_set_lut16()` calls regardless of where
+the palette came from.
+
+Building a palette (which colours it holds, weighted however an app
+likes) is app-specific work and stays out of gfx - sand's own budgeted,
+per-material study (`main/apps/sand/tools/shading_palette.c`) is one
+example. What IS shared is the two steps every such palette needs
+afterward: `tools/gfx_palette_gen.h` (host-only, links libm, never in the
+firmware image) builds the 65536-entry reverse index map a colour-to-index
+lookup needs, and the 256 x 16-phase dither table
+`gfx_indexed_expand_row_dither16()` reads, both in OKLab so two palette
+entries near each other do not fight over which colour a search prefers.
+Sand's own generator calls the dither builder directly, generalised out of
+what used to be its own private copy; its reverse index map keeps its own
+per-material-group logic (`gfx_palette_gen`'s plain nearest-search has no
+notion of a material's own budget) and registers the finished LUT as an
+ordinary `gfx_palette_t` (`sand_palette256`, `sand_palette256.h`) once
+built.
+
 ### 2. There is exactly one frame loop, and it belongs to the shell
 
 Apps do not loop, do not present, do not block and do not yield. An app's

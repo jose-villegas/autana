@@ -83,6 +83,8 @@ $TEST_DIR/suites/suite_gfx_fb_guard.c
 $TEST_DIR/suites/suite_gfx_target.c
 $TEST_DIR/suites/suite_gfx_mode.c
 $TEST_DIR/suites/suite_gfx_band.c
+$TEST_DIR/suites/suite_gfx_indexed.c
+$TEST_DIR/suites/suite_gfx_palette.c
 $TEST_DIR/suites/suite_small3dlib_scissor.c
 $TEST_DIR/suites/suite_gfx_color.c
 $TEST_DIR/suites/suite_gfx_font.c
@@ -103,6 +105,8 @@ $MAIN_DIR/input/gesture.c
 $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/ui/ui_pointer.c
+$MAIN_DIR/gfx/gfx_palette_standard.c
+$MAIN_DIR/../tools/gfx_palette_gen.c
 $TEST_DIR/../components/microui/src/microui.c
 "
 
@@ -194,7 +198,7 @@ UNITY_OBJ="$BUILD_DIR/unity.o"
 # shellcheck disable=SC2086
 "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
     -I "$TEST_DIR/../components/microui/include" \
-    -I "$TEST_DIR/../components/small3dlib/include" -include "$TEST_DIR/timing.h" \
+    -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
     -DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES="$HOST_HEAP_ARENA_BYTES" \
     $SOURCES "$UNITY_OBJ" -o "$OUT" \
     -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm
@@ -266,7 +270,7 @@ for f in $SU_SOURCES; do
     # shellcheck disable=SC2086
     "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
         -I "$TEST_DIR/../components/microui/include" \
-        -I "$TEST_DIR/../components/small3dlib/include" -include "$TEST_DIR/timing.h" \
+        -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
         -fstack-usage -c "$f" -o "$SU_DIR/$(printf '%02d' "$n")_$base.o" &
     su_pids="$su_pids $!"
     in_batch=$((in_batch + 1))

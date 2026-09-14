@@ -17,7 +17,8 @@
  * of.
  */
 #include "material_palette.h"
-#include "util/intmath.h" /* see material_set_gravity() below */
+#include "sand_palette256.h" /* see material_palette256_index() below */
+#include "util/intmath.h"    /* see material_set_gravity() below */
 
 /* Channel `sh` of the way from `lo` to `hi`, out of 15. */
 #define LERP_CH(lo, hi, shift, sh)                                                                                     \
@@ -963,4 +964,15 @@ material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth, gfx_col
 const gfx_color_t*
 material_palette(void) {
     return palette;
+}
+
+/* One flash read, no search: sand_rgb565_to_index[] is generated straight
+ * from build_palette()'s own per-group OKLab assignment (shading_palette.c,
+ * write_sand_palette_header()), keyed by native (non-byte-swapped) RGB565 -
+ * gfx_color_t is that swapped for the panel (gfx_color.h), so the lookup
+ * key is the same swap native_key() takes in the generator. */
+int
+material_palette256_index(gfx_color_t c) {
+    const uint16_t native = (uint16_t)((c >> 8) | (c << 8));
+    return sand_rgb565_to_index[native];
 }
