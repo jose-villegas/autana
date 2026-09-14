@@ -425,6 +425,69 @@ test_dirty_mark_is_a_noop_once_everything_is_already_claimed(void) {
                                   "can only ever repeat work already done - it must not run at all");
 }
 
+/* --- dirty_band_extent(): band mode's own "does this row range need
+ * touching" query -------------------------------------------------------- */
+
+static void
+test_band_extent_false_when_nothing_is_dirty(void) {
+    fixture();
+    int x0, x1;
+    TEST_ASSERT_FALSE(dirty_band_extent(0, 32, &x0, &x1));
+}
+
+/* An odd-edged mark rounds outward to even, the same rule gfx.c's own
+ * even_floor()/even_ceil() apply to a real panel window. */
+static void
+test_band_extent_returns_the_marked_x_range_rounded_even(void) {
+    fixture();
+    dirty_mark(11, 5, 21, 10); /* x in [11, 32) */
+
+    int x0, x1;
+    TEST_ASSERT_TRUE(dirty_band_extent(0, 32, &x0, &x1));
+    TEST_ASSERT_EQUAL_INT(10, x0); /* 11 rounded down */
+    TEST_ASSERT_EQUAL_INT(32, x1); /* already even */
+}
+
+static void
+test_band_extent_ignores_a_band_outside_the_marked_rows(void) {
+    fixture();
+    dirty_mark(10, 10, 20, 20); /* rows [10, 30) */
+
+    int x0, x1;
+    TEST_ASSERT_FALSE_MESSAGE(dirty_band_extent(200, 232, &x0, &x1),
+                              "a band nowhere near the mark must report nothing dirty");
+}
+
+/* A band-ring band is often narrower than STRIP_HEIGHT (64) - the query
+ * must use the mark's own narrowed cell_y0/y1, not the whole strip, so a
+ * band above or below the real mark inside the SAME strip still misses it. */
+static void
+test_band_extent_only_sees_the_part_of_a_strip_its_own_range_covers(void) {
+    fixture();
+    dirty_mark(0, 40, 8, 4); /* rows [40, 44), well inside strip 0 (rows 0-63) */
+
+    int x0, x1;
+    TEST_ASSERT_TRUE_MESSAGE(dirty_band_extent(32, 64, &x0, &x1), "a band containing the mark's real rows must see it");
+    TEST_ASSERT_FALSE_MESSAGE(dirty_band_extent(0, 32, &x0, &x1),
+                              "a band in the same strip but above the mark's own rows must not");
+}
+
+/* dirty_mark_all() is what a caller reaches for to force everything - band
+ * mode's own "orientation change / app enter / gfx_invalidate()" case (see
+ * gfx.c) ends up here too, so this is the query-side half of that promise:
+ * once marked, every row range reports the full width dirty. */
+static void
+test_band_extent_is_full_width_once_everything_is_marked(void) {
+    fixture();
+    dirty_mark_all();
+
+    int x0, x1;
+    TEST_ASSERT_TRUE(dirty_band_extent(0, 32, &x0, &x1));
+    TEST_ASSERT_EQUAL_INT(0, x0);
+    TEST_ASSERT_EQUAL_INT(GFX_DIRTY_WIDTH, x1);
+    TEST_ASSERT_TRUE(dirty_band_extent(416, 448, &x0, &x1));
+}
+
 void
 run_gfx_dirty_suite(void) {
     RUN_TEST(test_mark_leaves_stays_in_the_leaf_before_a_boundary);
@@ -461,6 +524,12 @@ run_gfx_dirty_suite(void) {
 
     RUN_TEST(test_mark_all_claims_every_row);
     RUN_TEST(test_dirty_mark_is_a_noop_once_everything_is_already_claimed);
+
+    RUN_TEST(test_band_extent_false_when_nothing_is_dirty);
+    RUN_TEST(test_band_extent_returns_the_marked_x_range_rounded_even);
+    RUN_TEST(test_band_extent_ignores_a_band_outside_the_marked_rows);
+    RUN_TEST(test_band_extent_only_sees_the_part_of_a_strip_its_own_range_covers);
+    RUN_TEST(test_band_extent_is_full_width_once_everything_is_marked);
 }
 
 SUITE_REGISTER(run_gfx_dirty_suite);
