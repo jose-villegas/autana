@@ -82,3 +82,27 @@ rng_chance(rng_t* r, int chance) {
     }
     return (int)(rng_next(r) & 0xFF) < chance;
 }
+
+/* A counter-based draw: (seed, a, b, c) always hashes to the same value,
+ * in any order, on any core - what a checkerboard-parallel step needs,
+ * where two same-phase cells may be drawn by either core in either order.
+ * rng_avalanche32() is Skeeto's "lowbias32" finalizer; rng_hash() folds
+ * three values through it so (step, cell, draw-site) never collides. */
+static inline uint32_t
+rng_avalanche32(uint32_t x) {
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return x;
+}
+
+static inline uint32_t
+rng_hash(uint32_t seed, uint32_t a, uint32_t b, uint32_t c) {
+    uint32_t h = rng_avalanche32(seed ^ 0x9E3779B9u);
+    h = rng_avalanche32(h ^ a);
+    h = rng_avalanche32(h ^ b);
+    h = rng_avalanche32(h ^ c);
+    return h;
+}

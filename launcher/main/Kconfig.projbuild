@@ -150,6 +150,26 @@ menu "Launcher"
             the caller, synchronously, for an A/B measurement against the
             overlapped path - runtime override: gfx_set_present_async().
 
+    config LAUNCHER_SAND_TWO_CORE_STEP
+        bool "Split sand's gravity sweep across both cores"
+        default y
+        help
+            The gravity sweep runs as a checkerboard of row stripes, two
+            phases per step (even stripes, then odd), half of each phase on
+            a task pinned to core 1; a core-1 wait that times out falls back
+            to serial. A stripe's own reach never touches another
+            same-phase stripe, so the split needs no lock - but it also no
+            longer draws sand_t's PRNG in the same order a serial step
+            would, so this path is NOT byte-identical to serial. The
+            fingerprint runs the serial path; host tests check the split
+            path for determinism and conservation.
+            Two smaller, order-independent block scans - see
+            finalize_settling() (sand.c) and mark_liquid_neighbourhoods()
+            (sand_liquid.c) - also move to core 1 under this switch, and
+            those stay byte-identical either way. Runtime override for an
+            A/B measurement or a test that wants the plain serial path:
+            sand_set_two_core_step().
+
     config LAUNCHER_GFX_QSPI_STRONG_PADS
         bool "Drive the QSPI pads at 40 mA instead of the 20 mA default"
         default n

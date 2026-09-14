@@ -116,7 +116,7 @@ equalise_one_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* below_ro
     if (!neighbour_is_lower(n_row, w, x + px, id, mass, bias_q8)) {
         return false;
     }
-    if (s->may_have_viscous_liquid && !liquid_may_move(s, id)) {
+    if (s->may_have_viscous_liquid && !liquid_may_move(s, x, y, id)) {
         return false; /* viscosity affects levelling; syrupy liquid would
                          * level instantly sideways, resembling "runny" */
     }
@@ -354,16 +354,50 @@ equalise_one_row(sand_t* s, int y, int w, int x_step, const xflow_t* r, int dx, 
 }
 
 /* BLOCK_LIQUID_NEAR checks blocks/neighbours with liquid; O(blocks). Expanded
- * for liquid movement. See sand_priv.h for BLOCK_HAS_LIQUID. */
+ * for liquid movement. See sand_priv.h for BLOCK_HAS_LIQUID.
+ *
+ * ORDER-INDEPENDENT over [by_from, by_to), the same way and for the same
+ * reason as finalize_settling_range() (sand.c): every iteration only reads
+ * BLOCK_HAS_LIQUID, which nothing here writes, and only writes its own
+ * block's NEAR bit. */
 static void
-mark_liquid_neighbourhoods(sand_t* s) {
-    for (int by = 0; by < s->block_rows; by++) {
+mark_liquid_neighbourhoods_range(sand_t* s, int by_from, int by_to) {
+    for (int by = by_from; by < by_to; by++) {
         for (int bx = 0; bx < s->block_cols; bx++) {
             uint8_t* slot = &s->block_state[by * s->block_cols + bx];
             *slot = block_or_neighbour_has_liquid(s, bx, by) ? (uint8_t)(*slot | BLOCK_LIQUID_NEAR)
                                                              : (uint8_t)(*slot & ~BLOCK_LIQUID_NEAR);
         }
     }
+}
+
+typedef struct {
+    sand_t* s;
+    int by_from, by_to;
+} mark_liquid_neighbourhoods_half_t;
+
+static void
+mark_liquid_neighbourhoods_worker(void* ctx) {
+    const mark_liquid_neighbourhoods_half_t* half = ctx;
+    mark_liquid_neighbourhoods_range(half->s, half->by_from, half->by_to);
+}
+
+/* Same threshold as finalize_settling(); below it one core outruns a hop to
+ * core 1 and back. */
+#define MARK_LIQUID_NEIGHBOURHOODS_SPLIT_MIN_BLOCK_ROWS 4
+
+static void
+mark_liquid_neighbourhoods(sand_t* s) {
+    if (sand_two_core_step_enabled() && s->block_rows >= MARK_LIQUID_NEIGHBOURHOODS_SPLIT_MIN_BLOCK_ROWS) {
+        const int mid = s->block_rows / 2;
+        mark_liquid_neighbourhoods_half_t half = {s, mid, s->block_rows};
+        sand_core1_run(mark_liquid_neighbourhoods_worker, &half, sizeof half);
+        mark_liquid_neighbourhoods_range(s, 0, mid);
+        sand_core1_join();
+        return;
+    }
+
+    mark_liquid_neighbourhoods_range(s, 0, s->block_rows);
 }
 
 static void
@@ -492,7 +526,7 @@ float_lighter_liquids(sand_t* s, int dx, int dy) {
              * idea as gas's mobility gate - a rise should be a lazy drift,
              * not a guaranteed cell every step. Without it this pass sorts
              * harder than the sinking swap it replaced ever did. */
-                if (s->may_have_viscous_liquid && !liquid_may_move(s, mine)) {
+                if (s->may_have_viscous_liquid && !liquid_may_move(s, x, y, mine)) {
                     continue;
                 }
 
