@@ -863,6 +863,72 @@ bin_fill_rect(mu_Rect rect, mu_Color color) {
     e->always = false;
 }
 
+/* One hash per possible band slot, sized for the smallest GFX_BAND_HEIGHT
+ * (16) regardless of which one this build actually uses - a build using a
+ * taller band simply leaves the tail unused. Compared and updated once per
+ * ui_end_for_bands() call, this is the UI's own contribution to band
+ * mode's per-band dirty decision (gfx_band_dirty(), gfx.c): a band whose
+ * bound commands hash the same as last frame drew nothing new. */
+#define UI_BAND_HASH_MAX (GFX_HEIGHT / 16)
+static uint64_t ui_band_hash[UI_BAND_HASH_MAX];
+
+/* FNV-1a, folded over whatever bytes make up an entry's own content -
+ * the same algorithm hash_canvas() already uses for the same reason. */
+static uint64_t
+hash_bytes(uint64_t h, const void* data, size_t len) {
+    const unsigned char* p = (const unsigned char*)data;
+    for (size_t i = 0; i < len; i++) {
+        h ^= p[i];
+        h *= 1099511628211ull;
+    }
+    return h;
+}
+
+/* Hashes whichever bound entries overlap [row0, row1) - a COMMAND entry by
+ * its own bytes (cmd->base.size is trustworthy: paint_canvas() already
+ * relies on it the same way), a FILL_RECT by its rect and colour. Two
+ * frames whose relevant entries hash the same drew the identical picture
+ * in this band, mu_Command byte layout and all. */
+static uint64_t
+hash_band_entries(int row0, int row1) {
+    uint64_t h = 1469598103934665603ull;
+
+    for (int i = 0; i < ui_band_bin_count; i++) {
+        const ui_band_entry_t* e = &ui_band_bin[i];
+        if (!e->always && !(e->y0 < row1 && e->y1 > row0)) {
+            continue;
+        }
+        h = hash_bytes(h, &e->kind, sizeof e->kind);
+        switch (e->kind) {
+            case UI_BAND_ENTRY_COMMAND: h = hash_bytes(h, e->cmd, (size_t)e->cmd->base.size); break;
+            case UI_BAND_ENTRY_FILL_RECT:
+                h = hash_bytes(h, &e->rect, sizeof e->rect);
+                h = hash_bytes(h, &e->color, sizeof e->color);
+                break;
+            case UI_BAND_ENTRY_CLIP_RESET: break;
+        }
+    }
+    return h;
+}
+
+/* The UI's own half of band mode's per-band dirty decision - marks a band
+ * dirty (gfx_mark_dirty(), gfx.c) exactly when what would replay into it
+ * changed since last frame, at that band's own full width: an entry's own
+ * rect narrower than the band is not tracked per-entry here, only per-band. */
+static void
+mark_changed_ui_bands(void) {
+    const int band_count = GFX_HEIGHT / GFX_BAND_HEIGHT;
+
+    for (int b = 0; b < band_count && b < UI_BAND_HASH_MAX; b++) {
+        const int row0 = b * GFX_BAND_HEIGHT;
+        const uint64_t h = hash_band_entries(row0, row0 + GFX_BAND_HEIGHT);
+        if (h != ui_band_hash[b]) {
+            gfx_mark_dirty(0, row0, GFX_WIDTH, GFX_BAND_HEIGHT);
+            ui_band_hash[b] = h;
+        }
+    }
+}
+
 void
 ui_end_for_bands(uint32_t background_rgb) {
     mu_end(&ctx);
@@ -913,6 +979,8 @@ ui_end_for_bands(uint32_t background_rgb) {
         bin_fill_rect(mu_rect(r->x, r->y, r->w, r->h), c);
     }
     extra_rect_count = 0;
+
+    mark_changed_ui_bands();
 }
 
 void
