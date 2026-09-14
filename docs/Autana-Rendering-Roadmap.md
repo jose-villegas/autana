@@ -439,13 +439,18 @@ replace it, chosen by app kind:
    them (the present/simulation overlap work); an app that does not split
    the two keeps today's serial behaviour.
 2. **Full-redraw renderers** (the 3D renderer, raycaster, image kernels)
-   get **a band ring in internal SRAM**: 64-row (47 KiB) band buffers
-   rendered and sent in turn, PSRAM never written. It is built together
-   with the span rasterizer, which is designed band-aware from the start
-   rather than retrofitted onto small3dlib's per-pixel callback (3.4,
-   section 8 decision 4). A full-screen z-buffer in PSRAM is no longer
-   recommended for per-pixel access; a per-band z-buffer in internal SRAM
-   is, sized to one band at a time.
+   get **a band ring in internal SRAM**: band buffers, `GFX_BAND_HEIGHT`
+   rows each (32 by default - section 8 decision 2), rendered and sent in
+   turn, PSRAM never written. **The ring itself is built** - `gfx_mode_enter()`
+   grants `GFX_LAYOUT_BANDS`, `gfx_band_next()`/`gfx_band_submit()` (`gfx.h`,
+   `gfx_band.h`) hand out and send one band at a time, waiting only on the
+   previous band's transfer - and the cube app ports onto it by
+   re-rasterizing the whole scene per band and keeping only its own rows
+   (`app_cube.c`), clipping rather than the scissored span rasterizer this
+   section otherwise assumes. That rasterizer (section 8 decision 4) is
+   still a separate, unbuilt piece; a full-screen z-buffer in PSRAM is no
+   longer recommended for per-pixel access, and a per-band one arrives with
+   the rasterizer, not with the ring alone.
 
 PSRAM's role narrows to bulk and cold data read at load or per frame —
 textures, levels, the retained framebuffer as a read source — never the
@@ -1036,12 +1041,12 @@ cheapest path to something that is unmistakably a game.
    decision B (2026-09-13).** The band ring in internal SRAM is the
    standing mechanism for every full-redraw renderer (r3d, raycaster,
    image kernels); PSRAM is never their render target. Band height stays
-   a compile-time constant (divisors of 448: 64, 32, 16) — 64 rows / 47
-   KiB per band is the figure decision B is written against — and Phase 2
-   ends with a device sweep across heights measuring present time,
-   rasterizer time, and RAM freed, in the same style as the
-   `GATHER_MAX_PIXELS` and `LEAF_REFINE_MAX_RUNS` sweeps recorded in
-   Display-and-Rendering.md.
+   a compile-time constant (`GFX_BAND_HEIGHT`, divisors of 448: 64, 32,
+   16) — the ring itself now ships with 32 as the default, absent a
+   device sweep saying otherwise — and Phase 2 still ends with a device
+   sweep across heights measuring present time, rasterizer time, and RAM
+   freed, in the same style as the `GATHER_MAX_PIXELS` and
+   `LEAF_REFINE_MAX_RUNS` sweeps recorded in Display-and-Rendering.md.
 3. ~~"Parallax" in the platformer~~ **Decided 2026-09-04: layered
    parallax scrolling**, not per-pixel parallax mapping.
 4. ~~Own rasterizer vs. deeper small3dlib configuration.~~ **Decided

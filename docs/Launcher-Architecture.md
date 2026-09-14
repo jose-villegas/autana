@@ -27,6 +27,8 @@ launcher/
     │   └── boot_anim_curve.h   GENERATED - see tools/gen_zeta_curve.py
     ├── gfx/            the panel, and the one framebuffer
     │   ├── gfx.{h,c}           owns THE framebuffer, primitives, text
+    │   ├── gfx_mode.h          the mode-grant arithmetic  (host-tested)
+    │   ├── gfx_band.h          the band-ring state machine (host-tested)
     │   ├── gfx_color.h         what a pixel is            (host-tested)
     │   ├── gfx_dirty.h         which bands changed        (host-tested)
     │   ├── gfx_font.h          what a font IS             (host-tested)
@@ -205,6 +207,19 @@ This is also why the 3D renderer is small3dlib. It owns no framebuffer — it
 hands back every rasterized pixel through a callback — and with `S3L_Z_BUFFER 0`
 it keeps no depth buffer either, resolving visibility by sorting triangles
 back-to-front. A conventional colour+depth rasterizer would want ~1.3 MB here.
+
+**The rule's shape, not its substance, bends for a full-redraw renderer.**
+`gfx_mode_enter()`/`gfx_mode_exit()` (`gfx.h`) let an app request
+`GFX_LAYOUT_BANDS` at `enter()` instead of the default `GFX_LAYOUT_FULL_FB`:
+gfx frees the PSRAM framebuffer and allocates a 2-slot band ring in internal
+SRAM instead, `GFX_BAND_HEIGHT` rows tall (a compile-time divisor of
+`GFX_HEIGHT`). `exit()` reverses it. There is still exactly one destination
+for pixels at any moment — never both a framebuffer and a band ring —
+`gfx_mode_resolve()` (`gfx_mode.h`) and the ring's own state machine
+(`gfx_band.h`) are pure and host-tested; the cube app (`app_cube.c`) is the
+one app that uses it today, gated by `CONFIG_LAUNCHER_CUBE_BAND_MODE` or its
+own `cube_band_mode` runtime switch, so its ordinary full-fb behaviour is
+what a plain build still ships.
 
 ### 2. There is exactly one frame loop, and it belongs to the shell
 
