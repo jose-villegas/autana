@@ -785,10 +785,10 @@ note_row_flag_x(int cy, int cx) {
 /* `index_row` NULL means the RGB565 path (`fb`/`pal`/`n`); non-NULL is
  * GFX_PIXFMT_INDEXED8's own grid row, writing one
  * material_palette256_index() byte per in-span cell instead. One function,
- * not two, keeps local depth and mask - see Shading-and-Colour.md - shared
- * rather than re-derived. Glass's MATERIAL_HATCHED shine still cannot
- * survive one byte per cell and paints col[0] flat; liquid depth, root and
- * leaf shading reach the index exactly as they reach a pixel. */
+ * not two, keeps local depth, mask and the shine line - see
+ * Shading-and-Colour.md - shared rather than re-derived. A cell the
+ * diagonal shine crosses (sampled at the cell's own centre, not per pixel)
+ * takes col[2]'s own index instead of col[0]'s. */
 static inline void
 paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy, const uint8_t* row, int n, int wx0,
             int wx1) {
@@ -965,10 +965,19 @@ paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy,
         }
 
         if (index_row != NULL) {
-            /* One byte, whatever the pattern: MATERIAL_HATCHED's shine
-             * sub-pattern cannot survive one index per cell (see this
-             * function's own top comment), so it paints its body colour. */
-            index_row[cx] = (uint8_t)material_palette256_index(col[0]);
+            /* MATERIAL_HATCHED's diagonal cannot survive one index per
+             * cell, but whether THIS cell falls on the band still can: the
+             * same shine line, sampled once at the cell's own centre
+             * instead of per pixel. A cell the line crosses takes col[2]'s
+             * own index (already in the study's sweep - see material_
+             * palette256_index()'s own comment) instead of col[0]'s. */
+            gfx_color_t shade = col[0];
+            if (pat == MATERIAL_HATCHED) {
+                const int shine_q8 = (cx * n + n / 2) * shine_ux_q8 + (cy * n + n / 2) * shine_uy_q8;
+                const int along = ((shine_q8 >> 8) + shine_offset) & (SHINE_PERIOD - 1);
+                shade = (along < n) ? col[2] : col[0];
+            }
+            index_row[cx] = (uint8_t)material_palette256_index(shade);
             continue;
         }
 
