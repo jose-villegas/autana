@@ -140,6 +140,8 @@ sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
      * into a fresh board and wake reactions it shouldn't. */
     clear_content_flags(s);
     s->dirty_rows = NULL;
+    s->dirty_x0 = NULL;
+    s->dirty_x1 = NULL;
     s->block_state = NULL;
     s->impulse_buf = NULL;
     s->impulse_max = 0;
@@ -222,12 +224,34 @@ sand_track_dirty_rows(sand_t* s, uint8_t* rows) {
     }
 }
 
+/* x0[y] > x1[y] is the sentinel for "no column recorded" - a row marked
+ * dirty with a sentinel span falls back to a full-width repaint, exactly
+ * what dirty_rows alone drew before column tracking existed. */
+static void
+reset_dirty_cols(sand_t* s) {
+    if (s->dirty_x0 == NULL || s->dirty_x1 == NULL) {
+        return;
+    }
+    for (int y = 0; y < s->h; y++) {
+        s->dirty_x0[y] = (uint16_t)s->w;
+        s->dirty_x1[y] = 0;
+    }
+}
+
+void
+sand_track_dirty_cols(sand_t* s, uint16_t* x0, uint16_t* x1) {
+    s->dirty_x0 = x0;
+    s->dirty_x1 = x1;
+    reset_dirty_cols(s);
+}
+
 void
 sand_clear(sand_t* s) {
     memset(s->cells, SAND_EMPTY, (size_t)s->w * (size_t)s->h);
     if (s->dirty_rows != NULL) {
         memset(s->dirty_rows, 1, (size_t)s->h);
     }
+    reset_dirty_cols(s);
     if (s->block_state != NULL) {
         memset(s->block_state, 0, (size_t)s->block_cols * (size_t)s->block_rows);
     }
