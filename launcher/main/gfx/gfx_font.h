@@ -155,3 +155,18 @@ gfx_font_row_run_rect(const gfx_font_t* f, int x, int y, int row, int col0, int 
             break;
     }
 }
+
+/* gfx_font_row_run_rect(), grown by one pixel on every side - unioning a
+ * rect's 8 unit-offset copies (ui_style.h's UI_TEXT_OUTLINED) covers the
+ * same area as this, since those 8 offsets are a full 3x3 neighbourhood
+ * minus its own centre, which the caller redraws in ink afterwards
+ * anyway. */
+static inline void
+gfx_font_row_run_rect_dilated(const gfx_font_t* f, int x, int y, int row, int col0, int col1, int scale, int turn,
+                              int* out_x, int* out_y, int* out_w, int* out_h) {
+    gfx_font_row_run_rect(f, x, y, row, col0, col1, scale, turn, out_x, out_y, out_w, out_h);
+    *out_x -= 1;
+    *out_y -= 1;
+    *out_w += 2;
+    *out_h += 2;
+}

@@ -565,6 +565,17 @@ draw_command(const mu_Command* cmd) {
             int mx, my;
             ui_text_glyph0_origin(font, box, quarter, scale, &mx, &my);
 
+            if (text_style == UI_TEXT_OUTLINED && font->bpp == 1) {
+                /* gfx_text_font_halo() draws the same halo ui_text_passes()'s
+                 * 8 unit-offset copies would, in one pass instead of eight -
+                 * see its own comment. Ink is still drawn last, unchanged. */
+                const gfx_color_t halo_color = gfx_rgb(((uint32_t)halo.r << 16) | ((uint32_t)halo.g << 8) | halo.b);
+                const gfx_color_t ink_color = gfx_rgb(((uint32_t)ink.r << 16) | ((uint32_t)ink.g << 8) | ink.b);
+                gfx_text_font_halo(mx, my, cmd->text.str, halo_color, scale, quarter, font);
+                gfx_text_font(mx, my, cmd->text.str, ink_color, scale, quarter, font);
+                break;
+            }
+
             ui_text_pass_t passes[UI_TEXT_MAX_PASSES];
             const int n = ui_text_passes(text_style, passes, UI_TEXT_MAX_PASSES);
             for (int i = 0; i < n; i++) {

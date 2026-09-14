@@ -217,6 +217,14 @@ void gfx_text_font(int x, int y, const char* text, gfx_color_t color, int scale,
 void gfx_text_font_dither(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
                           const gfx_font_t* font, uint8_t alpha);
 
+/* gfx_text_font(), but draws each run one pixel wider on every side
+ * instead of its own ink - the halo UI_TEXT_OUTLINED (ui_style.h) casts,
+ * in one pass instead of eight unit-offset copies of gfx_text_font()
+ * itself. Only bpp==1 fonts (gfx_font_row_run_rect_dilated()'s own
+ * comment): the caller still draws the ink pass afterwards, unchanged. */
+void gfx_text_font_halo(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
+                        const gfx_font_t* font);
+
 /* gfx_text_width()'s general form: the width `text` would draw at in
  * `font`, at `scale`. gfx_text_width() is this called with gfx_font_ui().
  * See gfx_font_text_width() in gfx_font.h for the pure metric this wraps,
