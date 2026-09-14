@@ -1132,9 +1132,11 @@ Both alternates request `GFX_PIXFMT_INDEXED8` (`gfx/gfx_mode.h`): gfx frees
 the PSRAM framebuffer, as `GFX_LAYOUT_BANDS` already does, and instead owns
 a persistent `grid_w x grid_h` byte image of palette indices in internal
 RAM plus a 256-entry RGB565 LUT. Sand writes indices, never pixels, into
-that image (`paint_row_indexed_n()`, `app_sand.c`) - one byte per changed
-cell, not an `n x n` pixel block, which is the whole reason this mode
-skips the PSRAM framebuffer's slow writes (see
+that image (`paint_row_n()`, `app_sand.c` - the same function the RGB565
+path uses, forking only at the final write so hash, mask and local depth
+stay one piece of code instead of two that can drift apart) - one byte per
+changed cell, not an `n x n` pixel block, which is the whole reason this
+mode skips the PSRAM framebuffer's slow writes (see
 `docs/notes/Board-and-Memory.md` for those numbers). The present task
 expands indices back to pixels through the LUT while upscaling by the
 grid's own cell size, band by band, exactly the way `paint_row_n()` above
@@ -1143,9 +1145,14 @@ for the present-side half of this.
 
 **The palette.** `main/apps/sand/tools/shading_palette.c` (the study
 introduced on the palette work) also emits `sand_palette256.h`: a 256-entry
-LUT (16 reserved UI entries, 240 sand entries) and a 16-entry EGA-style LUT
-with a per-256-entry ordered-dither choice (two nearest 16-colour entries
-plus a Bayer threshold, `gfx_dither_covers()`) for 16-colour mode.
+LUT (16 reserved UI entries, 240 sand entries), a 65536-entry `sand_
+rgb565_to_index[]` reverse map keyed by native RGB565 (the same per-group
+OKLab assignment `build_palette()` computed, not a fresh distance search;
+a key several materials produce keeps whichever material's own on-scene
+pixel count is larger), and a 256 x 16-phase `sand_palette16_dither_rgb[]`
+table - one precomputed RGB565 value per (palette index, Bayer phase)
+pair, baked from the same 16-colour study palette and `gfx_dither_covers()`
+so 16-colour expansion is a single lookup, never a per-pixel dither call.
 Regenerate both the study's report and this header together:
 
 ```
@@ -1153,24 +1160,28 @@ main/apps/sand/tools/report_shading_palette.sh
 ```
 
 `material_palette256_index()` (`material_palette.c`) is the colour-to-index
-step: the nearest of the 256 sand entries to a `material_colours()` body
-colour, by squared RGB888 channel distance, exact for the common case where
-that body colour is already one of the 951 the study's sweep found. Its
-input is always a body colour computed the ordinary way - no accumulator or
-table depends on being in this mode, so `record()`-style host sweeps stay
-identical.
+step: one `sand_rgb565_to_index[]` read, no search. A colour the study's
+sweep never produced (essentially never, in real gameplay) falls back to
+whatever OKLab-nearest search the table itself was already built with, paid
+once at generation time rather than per cell on the device.
 
-**What indexed sand modes do NOT reproduce, deliberately.** Liquid interior
-and rim depth shading always reads as flat body colour - the local-depth
-walk this document spends most of its length on is the single most
-expensive per-cell signal here, and this mode exists to buy per-cell cost
-back, not spend it twice on a lookup a screenshot-quality tradeoff was
-never asked to preserve. Glass's `MATERIAL_HATCHED` diagonal shine
-similarly paints flat body colour rather than its shimmer sub-pattern. Root
-thickness and leaf wave still shade correctly, since neither reads local
-depth. None of this touches the FULL path or the simulation itself -
-`material_colours()` is unmodified and the fingerprint suite (hashing cell
-bytes, never rendered pixels) stays green in every mode.
+**What indexed sand modes do NOT reproduce.** Glass's `MATERIAL_HATCHED`
+diagonal shine paints flat body colour instead of its shimmer sub-pattern -
+a structural limit, not an effort one: one index byte per cell cannot carry
+a two-tone diagonal pattern within that cell, at any upscale factor. Liquid
+depth, root thickness and leaf wave all reach the index exactly as they
+reach a pixel, since `paint_row_n()` computes `depth` once and both outputs
+read the same value. None of this touches the FULL path or the simulation
+itself - `material_colours()` is unmodified and the fingerprint suite
+(hashing cell bytes, never rendered pixels) stays green in every mode.
+
+**Indexed mode must never be active when the launch menu draws** - it has
+no indexed draw path and would touch a framebuffer that does not exist.
+`sand_colour_state.h` is the small, host-tested state machine that decides
+when a `gfx_mode_enter()`/`exit()` call is owed: every path back to the
+menu (a fresh entry, the only one today) clears it, the palette/brush
+screens suspend rather than clear it, and a denied grant rolls the
+optimistic state back. `app_sand.c` only ever asks it what to do next.
 
 **UI in 256/16 is scoped down for now, not fully wired.** The always-on
 overlays a running sand screen draws outside the grid (emitter markers, the
