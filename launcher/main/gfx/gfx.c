@@ -1145,35 +1145,19 @@ draw_glyph_font(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_colo
     }
 
     if (font->bpp == 1) {
-        const uint8_t* glyph = font->atlas + (size_t)(ch - font->first) * font->cell_h;
-
-        /* One filled rect per contiguous run of set bits, not one per bit
-         * - gfx_font_row_run_rect() turns a run into the same straight
-         * screen-space span draw_rotated_font_pixel() would have covered
-         * one cell at a time. A rotated fps-style label is drawn glyph by
-         * glyph the same number of times either way, but each glyph's own
-         * strokes (typically a handful of runs, not cell_w bits) now cost
-         * one gfx_fill_rect() call apiece instead of one per set bit. */
-        for (int row = 0; row < font->cell_h; row++) {
-            const uint8_t bits = glyph[row];
-            if (bits == 0) {
-                continue;
-            }
-            int col = 0;
-            while (col < font->cell_w) {
-                if (!(bits & (1 << col))) {
-                    col++;
-                    continue;
-                }
-                int run_end = col;
-                while (run_end + 1 < font->cell_w && (bits & (1 << (run_end + 1)))) {
-                    run_end++;
-                }
-                int rx, ry, rw, rh;
-                gfx_font_row_run_rect(font, x, y, row, col, run_end, scale, turn, &rx, &ry, &rw, &rh);
-                gfx_fill_rect(rx, ry, rw, rh, color);
-                col = run_end + 1;
-            }
+        /* One filled rect per coalesced box of set bits, not one per run
+         * per row - gfx_font_glyph_run_boxes() merges a vertical stroke's
+         * identical run across every row it spans into one box, so
+         * gfx_font_run_box_rect() covers it with one gfx_fill_rect() call
+         * regardless of which glyph axis a turn maps onto the screen's
+         * narrow one. */
+        gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
+        const int n = gfx_font_glyph_run_boxes(font, ch, boxes, GFX_FONT_RUN_BOXES_MAX);
+        for (int i = 0; i < n; i++) {
+            int rx, ry, rw, rh;
+            gfx_font_run_box_rect(font, x, y, boxes[i].row0, boxes[i].row1, boxes[i].col0, boxes[i].col1, scale, turn,
+                                  &rx, &ry, &rw, &rh);
+            gfx_fill_rect(rx, ry, rw, rh, color);
         }
         return;
     }
@@ -1208,27 +1192,13 @@ draw_glyph_font_halo(const gfx_font_t* font, int x, int y, unsigned char ch, gfx
     }
     assert(font->bpp == 1);
 
-    const uint8_t* glyph = font->atlas + (size_t)(ch - font->first) * font->cell_h;
-    for (int row = 0; row < font->cell_h; row++) {
-        const uint8_t bits = glyph[row];
-        if (bits == 0) {
-            continue;
-        }
-        int col = 0;
-        while (col < font->cell_w) {
-            if (!(bits & (1 << col))) {
-                col++;
-                continue;
-            }
-            int run_end = col;
-            while (run_end + 1 < font->cell_w && (bits & (1 << (run_end + 1)))) {
-                run_end++;
-            }
-            int rx, ry, rw, rh;
-            gfx_font_row_run_rect_dilated(font, x, y, row, col, run_end, scale, turn, &rx, &ry, &rw, &rh);
-            gfx_fill_rect(rx, ry, rw, rh, color);
-            col = run_end + 1;
-        }
+    gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
+    const int n = gfx_font_glyph_run_boxes(font, ch, boxes, GFX_FONT_RUN_BOXES_MAX);
+    for (int i = 0; i < n; i++) {
+        int rx, ry, rw, rh;
+        gfx_font_run_box_rect_dilated(font, x, y, boxes[i].row0, boxes[i].row1, boxes[i].col0, boxes[i].col1, scale,
+                                      turn, &rx, &ry, &rw, &rh);
+        gfx_fill_rect(rx, ry, rw, rh, color);
     }
 }
 
