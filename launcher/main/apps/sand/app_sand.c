@@ -121,6 +121,16 @@ static sand_colour_state_t colour_state;
 static uint8_t dither16_class[GFX_INDEXED_PALETTE_SIZE];
 static bool dither16_class_ready;
 
+/* Set whenever the PANEL, not just the simulation, needs every visited
+ * cell resent regardless of whether its own index moved -
+ * mark_sand_fully_dirty()'s call sites (an overlay just closed, the board
+ * turned) can leave the index image already holding the value about to be
+ * recomputed while the panel shows something else entirely (the overlay,
+ * the wrong turn's pixels). Captured once per draw_dirty_rows() pass and
+ * cleared there, the same idiom gfx.c's own band_force_all_dirty uses for
+ * gfx_invalidate(). */
+static bool indexed_force_full_repaint;
+
 /* Once per start_sim(), not once per frame - see the emitter-marker/mode-
  * label skip in sand_frame(). */
 static bool overlays_skipped_reason_logged;
@@ -328,6 +338,10 @@ apply_gfx_enter_indexed(void) {
         gfx_indexed_dither16_classify(sand_palette16_dither_rgb, dither16_class);
         dither16_class_ready = true;
     }
+    /* Belt and suspenders past the memset above: entering indexed mode
+     * always owes a full repaint, whatever the index image happens to
+     * hold - see indexed_force_full_repaint's own comment. */
+    indexed_force_full_repaint = true;
 }
 
 /* Runs whatever gfx_mode_enter()/exit() call `action` names - the one place
@@ -407,6 +421,7 @@ mark_sand_fully_dirty(void) {
     memset(dirty_rows, 1, (size_t)grid_h);
     reset_dirty_cols_full_width();
     gfx_mark_all_dirty();
+    indexed_force_full_repaint = true;
 }
 
 #if CONFIG_LAUNCHER_SELFTEST
@@ -838,10 +853,11 @@ note_row_change_x(int cy, int cx) {
  * not two, keeps local depth, mask and the shine line - see
  * Shading-and-Colour.md - shared rather than re-derived. A cell the
  * diagonal shine crosses (sampled at the cell's own centre, not per pixel)
- * takes col[2]'s own index instead of col[0]'s. */
+ * takes col[2]'s own index instead of col[0]'s. `force_full`: see
+ * mark_sand_fully_dirty()'s own comment. */
 static inline void
 paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy, const uint8_t* row, int n, int wx0,
-            int wx1) {
+            int wx1, bool force_full) {
     gfx_color_t* out = index_row == NULL ? fb + (cy * n) * GFX_WIDTH : NULL;
     row_flags[cy] = 0;
     row_flag_x0[cy] = (uint16_t)grid_w;
@@ -1036,7 +1052,8 @@ paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy,
              * so it IS last frame's sent value, at no extra storage. */
             const uint8_t new_idx = (uint8_t)material_palette256_index(shade);
             const uint8_t old_idx = index_row[cx];
-            if (gfx_indexed_cell_changed(old_idx, new_idx, color_mode == SAND_COLOR_16, dither16_class)) {
+            if (gfx_indexed_cell_needs_repaint(force_full, old_idx, new_idx, color_mode == SAND_COLOR_16,
+                                               dither16_class)) {
                 index_row[cx] = new_idx;
                 note_row_change_x(cy, cx);
             }
@@ -1076,16 +1093,17 @@ paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy,
 }
 
 static void
-paint_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy, const uint8_t* row, int wx0, int wx1) {
+paint_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy, const uint8_t* row, int wx0, int wx1,
+          bool force_full) {
     switch (cell) {
-        case 2: paint_row_n(fb, pal, index_row, cy, row, 2, wx0, wx1); break;
-        case 3: paint_row_n(fb, pal, index_row, cy, row, 3, wx0, wx1); break;
-        case 4: paint_row_n(fb, pal, index_row, cy, row, 4, wx0, wx1); break;
-        case 6: paint_row_n(fb, pal, index_row, cy, row, 6, wx0, wx1); break;
-        case 8: paint_row_n(fb, pal, index_row, cy, row, 8, wx0, wx1); break;
+        case 2: paint_row_n(fb, pal, index_row, cy, row, 2, wx0, wx1, force_full); break;
+        case 3: paint_row_n(fb, pal, index_row, cy, row, 3, wx0, wx1, force_full); break;
+        case 4: paint_row_n(fb, pal, index_row, cy, row, 4, wx0, wx1, force_full); break;
+        case 6: paint_row_n(fb, pal, index_row, cy, row, 6, wx0, wx1, force_full); break;
+        case 8: paint_row_n(fb, pal, index_row, cy, row, 8, wx0, wx1, force_full); break;
         /* Unreachable for any cell size in qualities[]; falls back to size 2 to
      * avoid out-of-bounds writes. */
-        default: paint_row_n(fb, pal, index_row, cy, row, 2, wx0, wx1); break;
+        default: paint_row_n(fb, pal, index_row, cy, row, 2, wx0, wx1, force_full); break;
     }
 }
 
@@ -1096,11 +1114,11 @@ paint_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy, c
  * `fb`/`pal` go unused - see paint_row_n()'s own comment. */
 static int
 draw_one_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_image, int cy, uint16_t* cur_x0, uint16_t* cur_x1,
-             int wx0, int wx1) {
+             int wx0, int wx1, bool force_full) {
     const uint8_t* row = &grid[cy * grid_w];
     uint8_t* index_row = index_image != NULL ? index_image + cy * grid_w : NULL;
 
-    paint_row(fb, pal, index_row, cy, row, wx0, wx1);
+    paint_row(fb, pal, index_row, cy, row, wx0, wx1, force_full);
 
     int run_x0[ROW_MAX_RUNS], run_x1[ROW_MAX_RUNS];
     const int n = row_runs_find(row, grid_w, SAND_EMPTY, run_x0, run_x1);
@@ -1260,6 +1278,13 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
     const gfx_color_t* pal = indexed ? NULL : material_palette();
     uint8_t* index_image = indexed ? gfx_indexed_image() : NULL;
 
+    /* Captured once, then cleared, so a request made mid-frame (the next
+     * mark_sand_fully_dirty()) affects the NEXT pass, not this one - see
+     * indexed_force_full_repaint's own comment and gfx.c's identical
+     * band_force_all_dirty idiom. */
+    const bool force_full = indexed_force_full_repaint;
+    indexed_force_full_repaint = false;
+
     memset(wake_hit, 0, (size_t)grid_h * sizeof(*wake_hit));
     mark_wake_hits(shine_moved, ROW_FLAG_SHINE);
     mark_wake_hits(local_depth_woke, ROW_FLAG_LIQUID);
@@ -1296,7 +1321,7 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
         dirty_x1[cy] = 0;
 
         uint16_t cur_x0[ROW_MAX_RUNS], cur_x1[ROW_MAX_RUNS];
-        const int cur_n = draw_one_row(fb, pal, index_image, cy, cur_x0, cur_x1, wx0, wx1);
+        const int cur_n = draw_one_row(fb, pal, index_image, cy, cur_x0, cur_x1, wx0, wx1, force_full);
 
         uint16_t* prev_x0 = &row_run_x0[cy * ROW_MAX_RUNS];
         uint16_t* prev_x1 = &row_run_x1[cy * ROW_MAX_RUNS];

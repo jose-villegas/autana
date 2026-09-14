@@ -316,6 +316,44 @@ test_incremental_256_index_output_matches_a_full_reexpansion(void) {
     }
 }
 
+/* The forced-repaint bypass: indices unchanged (even the same class) must
+ * still come back "needs repaint" once force_full is set - a mode switch,
+ * an overlay closing, an invalidate() can leave the index image already
+ * holding the value about to be recomputed while the panel shows something
+ * else, and narrowing on index equality then would resend nothing. */
+static void
+test_needs_repaint_ignores_unchanged_index_when_forced(void) {
+    static uint8_t identity_class[GFX_INDEXED_PALETTE_SIZE];
+    for (int i = 0; i < GFX_INDEXED_PALETTE_SIZE; i++) {
+        identity_class[i] = (uint8_t)i;
+    }
+
+    TEST_ASSERT_FALSE(gfx_indexed_cell_needs_repaint(false, 5, 5, true, identity_class));
+    TEST_ASSERT_TRUE(gfx_indexed_cell_needs_repaint(true, 5, 5, true, identity_class));
+    TEST_ASSERT_TRUE(gfx_indexed_cell_needs_repaint(true, 5, 5, false, identity_class));
+}
+
+/* Unforced, the combinator is exactly gfx_indexed_cell_changed() - the
+ * bypass only ever widens what gets repainted, never narrows it further. */
+static void
+test_needs_repaint_matches_cell_changed_when_not_forced(void) {
+    memset(dither_table, 0, sizeof dither_table);
+    for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
+        set_dither_entry(11, p, (gfx_color_t)(0x7000 + p));
+        set_dither_entry(22, p, (gfx_color_t)(0x7000 + p)); /* same row as 11 */
+    }
+    gfx_indexed_dither16_classify(dither_table, class_out);
+
+    static const uint8_t pairs[][2] = {{11, 22}, {11, 5}, {5, 5}};
+    for (size_t i = 0; i < sizeof pairs / sizeof pairs[0]; i++) {
+        for (int dither16_on = 0; dither16_on <= 1; dither16_on++) {
+            const bool expected = gfx_indexed_cell_changed(pairs[i][0], pairs[i][1], dither16_on, class_out);
+            const bool actual = gfx_indexed_cell_needs_repaint(false, pairs[i][0], pairs[i][1], dither16_on, class_out);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(expected, actual, "unforced needs_repaint diverged from cell_changed");
+        }
+    }
+}
+
 void
 run_gfx_indexed_suite(void) {
     RUN_TEST(test_every_output_pixel_reads_its_own_cells_lut_entry);
@@ -331,6 +369,8 @@ run_gfx_indexed_suite(void) {
     RUN_TEST(test_classify_names_a_class_after_its_smallest_member);
     RUN_TEST(test_incremental_16_colour_output_matches_a_full_reexpansion);
     RUN_TEST(test_incremental_256_index_output_matches_a_full_reexpansion);
+    RUN_TEST(test_needs_repaint_ignores_unchanged_index_when_forced);
+    RUN_TEST(test_needs_repaint_matches_cell_changed_when_not_forced);
 }
 
 SUITE_REGISTER(run_gfx_indexed_suite);
