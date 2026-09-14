@@ -410,6 +410,48 @@ test_the_gas_random_walk_against_the_exhaustive_mover(void) {
     }
 }
 
+/* A/B against the plain serial step, same shape as the gas mover comparison
+ * above. The mixed flip scene, not the plainer ones elsewhere in this
+ * file: sleeping is enabled and both sand and water are already settled,
+ * so finalize_settling() and mark_liquid_neighbourhoods() have real
+ * per-block work every step. No budget asserted - this reports the cost,
+ * it does not gate on it. */
+static void
+time_two_core_arm(bool two_core, int64_t* out_per_step) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t real;
+    build_mixed_gravity_flip_scene(&real, big, blocks);
+
+    sand_set_two_core_step(two_core);
+    const int steps = 20;
+    const int64_t start = esp_timer_get_time();
+    for (int i = 0; i < steps; i++) {
+        sand_step(&real, 0, -1000, 0);
+    }
+    *out_per_step = (esp_timer_get_time() - start) / steps;
+    sand_set_two_core_step(true); /* restore the shipped default */
+
+    free(big);
+    free(blocks);
+}
+
+static void
+test_two_core_step_against_the_serial_path_on_the_mixed_flip_scene(void) {
+    int64_t serial_per_step = 0, two_core_per_step = 0;
+    time_two_core_arm(false, &serial_per_step);
+    time_two_core_arm(true, &two_core_per_step);
+
+    ESP_LOGI("device_tests",
+             "mixed flip scene, %dx%d: serial %lld us/step, two-core %lld "
+             "us/step (%lld%% of serial)",
+             REAL_W, REAL_H, (long long)serial_per_step, (long long)two_core_per_step,
+             serial_per_step > 0 ? (long long)((two_core_per_step * 100) / serial_per_step) : 0);
+}
+
 static void
 test_a_screen_of_settled_sand_costs_almost_nothing(void) {
     /* The user-visible complaint this answers: adding lots of sand dropped the
@@ -2823,6 +2865,7 @@ run_sand_perf_suite(void) {
     /* Ungated: the two gas movers compare through sand_set_gas_walk(), an
      * ordinary API, so this runs in every diagnostics build. */
     RUN_TEST(test_the_gas_random_walk_against_the_exhaustive_mover);
+    RUN_TEST(test_two_core_step_against_the_serial_path_on_the_mixed_flip_scene);
     RUN_TEST(test_a_gravity_flip_on_every_material_at_once_stays_sane);
     RUN_TEST(test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget);
     RUN_TEST(test_a_full_screen_of_fire_fits_in_the_frame_budget);
