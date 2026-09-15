@@ -34,6 +34,11 @@
  * is exactly what several of these tests compare. */
 extern bool partial_updates;
 
+/* This suite measures full-framebuffer phases, independent of the app's
+ * current runtime selection. */
+extern bool cube_band_mode;
+static bool saved_band_mode;
+
 /* app_cube.c's three per-frame phases plus its enter/exit, exposed for this
  * suite. NOT S3L_newFrame()/S3L_drawScene() directly: small3dlib.h defines
  * real, non-static functions once configured and included, so a second
@@ -169,6 +174,8 @@ cube_perf_fixture(void) {
     ui_init();
 
     /* Use the app's own enter to set up cube, scene, etc. */
+    saved_band_mode = cube_band_mode;
+    cube_band_mode = false;
     cube_enter();
 
     /* Neither partial_updates nor gfx_set_interlace() is forced here -
@@ -197,6 +204,7 @@ cube_perf_fixture(void) {
 static void
 cube_perf_teardown(void) {
     cube_exit();
+    cube_band_mode = saved_band_mode;
 
     /* gfx_set_interlace() is gfx.c-global state, not app-scoped like
      * partial_clear - left on, it leaks into every suite that runs after

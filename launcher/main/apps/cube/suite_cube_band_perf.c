@@ -240,6 +240,7 @@ band_frame(uint32_t dt_ms) {
 void
 test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     ui_init(); /* cube_enter() reads ui_layout_generation(); see suite_cube_perf.c's fixture */
+    const bool saved_band_mode = cube_band_mode;
 
     samples = malloc(sizeof(int32_t) * MAX_SAMPLES);
     TEST_ASSERT_NOT_NULL_MESSAGE(samples, "need a sample buffer for the band-vs-full-fb capture");
@@ -272,7 +273,7 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     const double band_bytes_per_frame =
         (double)touched_band_count * GFX_WIDTH * GFX_BAND_HEIGHT * sizeof(gfx_color_t) / sample_count;
 
-    cube_band_mode = false;
+    cube_band_mode = saved_band_mode;
 
     ESP_LOGI(TAG, "=== CUBE BAND VS FULL-FB (%ds each, band height %d, fps counter on in both) ===", SAMPLE_SECONDS,
              GFX_BAND_HEIGHT);
@@ -377,6 +378,7 @@ log_arm(const arm_result_t* r) {
 void
 test_cube_orientation_and_fps_sweep(void) {
     ui_init();
+    const bool saved_band_mode = cube_band_mode;
     samples = malloc(sizeof(int32_t) * MAX_SAMPLES);
     TEST_ASSERT_NOT_NULL_MESSAGE(samples, "need a sample buffer for the orientation/fps sweep");
     partial_updates = false;
@@ -437,7 +439,7 @@ test_cube_orientation_and_fps_sweep(void) {
         }
     }
 
-    cube_band_mode = false;
+    cube_band_mode = saved_band_mode;
     ui_set_transform(ui_transform_identity());
 
     /* Deferred to here, after every arm above has already logged - a
