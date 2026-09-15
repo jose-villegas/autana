@@ -131,9 +131,17 @@ menu "Launcher"
 
             Needs every strip sent from internal DMA RAM, never read in place
             from PSRAM: DMA from PSRAM shares the PSRAM bus's bandwidth, and at
-            80 MHz the panel receives dropped data (gfx.c, strip_bounce). The
-            corner-shaped artifacts once blamed on this clock were odd-edged
-            panel windows, which gfx.c now rounds to even edges.
+            80 MHz the panel receives dropped data (gfx.c, strip_bounce).
+
+            80 MHz is outside the panel's own rating: the CO5300 datasheet
+            (6.4) gives a 50 MHz write maximum, 6.5 ns clock high/low (80
+            gives 6.25) and 10 ns CS setup, and every panel pin reaches it
+            through the GPIO matrix. A renderer that redraws only dirty
+            regions shows the result as stray pixels or thin lines that
+            stay until that region is sent again with a different window
+            layout; a renderer redrawing whole frames hides it within one
+            frame. 40 MHz is clean. Even-edged windows are still required
+            at either clock, but do not make 80 clean.
 
             The dirty-band thresholds in gfx.h were fitted to 40 MHz timings
             and are wrong until re-measured - some of the win leaks back
@@ -213,8 +221,8 @@ menu "Launcher"
 
             Only meaningful alongside the 80 MHz option above: at 40 MHz the
             link has margin to spare and this changes nothing measurable. At
-            80 it took the corner artifacts from routine to hard to provoke,
-            which is the evidence that the failure is about edge rate rather
-            than bandwidth.
+            80 it does not clear the partial-redraw corruption described
+            under that option: the clock is out of the panel's spec, which
+            sharper edges cannot fix.
 
 endmenu
