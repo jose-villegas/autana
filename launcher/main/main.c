@@ -75,10 +75,10 @@ heap_mark(const char* where) {
 #define DISPLAY_SAMPLE_MS 100
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-#define BUILD_MARK_GLYPH  8
-#define BUILD_MARK_CHARS  8
-#define BUILD_MARK_SIZE   (BUILD_MARK_GLYPH * BUILD_MARK_CHARS)
-#define BUILD_MARK_RGB    0x384054
+#define BUILD_MARK_GLYPH 8
+#define BUILD_MARK_CHARS 8
+#define BUILD_MARK_SIZE  (BUILD_MARK_GLYPH * BUILD_MARK_CHARS)
+#define BUILD_MARK_RGB   0x384054
 
 static void
 draw_build_mark(void) {
