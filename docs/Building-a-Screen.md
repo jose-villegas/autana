@@ -127,10 +127,22 @@ accumulators the pause built up.
 
 ### Knowing what a screen costs
 
-`MU_COMMANDLIST_SIZE` is 8 KiB and everything drawn spends it - roughly 250
-rects for a whole screen. A `CONFIG_LAUNCHER_DEVELOPMENT` build logs the
-high-water mark from `ui_end()`. Check it before adding a texture or a
-fifth icon; the brush screen already sits at about two thirds.
+microui is immediate mode: widget calls draw nothing themselves. Each one
+appends small commands - clip, rect, text, icon - to one fixed byte buffer,
+the context's command list, and `ui_end()` walks that buffer to paint it,
+hashes it to skip unchanged frames, and bins it by row range for band mode.
+
+The buffer is `MU_COMMANDLIST_SIZE`, 8 KiB here (upstream microui uses
+256 KiB), and everything a screen draws in one frame must fit in it. A rect
+command is 28 bytes and a text command about 24 plus its string, so a whole
+screen gets roughly 250-290 rects' worth. Overflowing it is not a misdraw:
+microui's `expect()` fails and the firmware aborts.
+
+A `CONFIG_LAUNCHER_DEVELOPMENT` build logs the high-water mark from
+`ui_end()`, and each app's `ui/suite_command_list_budget.c` drives its real
+screens on the host and asserts each one's peak, in bytes, stays 2 KiB below
+the limit. Check them before adding a texture or a fifth icon; the brush
+screen already sits at about two thirds.
 
 ## Testing rules specific to UI
 
