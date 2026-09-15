@@ -299,8 +299,8 @@ bool gfx_present_async_enabled(void);
 
 /* The panel link's clock. The fast rate halves bus time but is past the
  * panel's rated 50 MHz: a region can land with stray pixels that stay until
- * it is sent again. Saved on the device; GFX_QSPI_HZ is the first-boot
- * default. */
+ * it is sent again. gfx starts at GFX_QSPI_HZ and keeps whatever it was
+ * last told; it does not choose or remember a rate itself. */
 #define GFX_PANEL_CLOCK_SLOW_HZ (40 * 1000 * 1000)
 #define GFX_PANEL_CLOCK_FAST_HZ (80 * 1000 * 1000)
 
@@ -326,8 +326,12 @@ void gfx_heal_mark(int x, int y, int w, int h);
 void gfx_heal_set_budget(int pixels_per_present);
 
 /* Rows per present of a sweep over the whole screen, 0 for none - for an app
- * that wants healing without a policy. Whoever turns it on turns it off. */
+ * that wants healing without a policy. */
 void gfx_heal_set_rolling(int rows_per_present);
+
+/* Empties the queue and puts the budget and rolling sweep back to their
+ * defaults. */
+void gfx_heal_restore_defaults(void);
 
 bool gfx_heal_active(void);
 

@@ -27,8 +27,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#include "nvs.h"
-#include "nvs_flash.h"
 #endif
 
 /* Carries GFX_DIRTY_WIDTH/HEIGHT for ESP-IDF independence and aligns with
@@ -384,50 +382,7 @@ panel_bring_up_co5300(int hz) {
     return ESP_OK;
 }
 
-#define PANEL_CLOCK_NVS_NAMESPACE "gfx"
-#define PANEL_CLOCK_NVS_KEY       "panel_hz"
-
 static int panel_clock_applied_hz;
-
-static bool
-panel_clock_nvs_ready(void) {
-    esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        err = nvs_flash_erase();
-        if (err == ESP_OK) {
-            err = nvs_flash_init();
-        }
-    }
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "NVS unavailable, the panel clock choice is not kept: %s", esp_err_to_name(err));
-    }
-    return err == ESP_OK;
-}
-
-static void
-panel_clock_load(void) {
-    nvs_handle_t h;
-    if (!panel_clock_nvs_ready() || nvs_open(PANEL_CLOCK_NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) {
-        return;
-    }
-    int32_t hz;
-    if (nvs_get_i32(h, PANEL_CLOCK_NVS_KEY, &hz) == ESP_OK && panel_clock_valid(hz)) {
-        panel_clock_requested_hz = hz;
-    }
-    nvs_close(h);
-}
-
-static void
-panel_clock_save(int hz) {
-    nvs_handle_t h;
-    if (!panel_clock_nvs_ready() || nvs_open(PANEL_CLOCK_NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) {
-        return;
-    }
-    if (nvs_set_i32(h, PANEL_CLOCK_NVS_KEY, hz) != ESP_OK || nvs_commit(h) != ESP_OK) {
-        ESP_LOGW(TAG, "could not save the panel clock choice");
-    }
-    nvs_close(h);
-}
 
 /* VERY important: only with nothing queued on the link - deleting the io
  * waits out its transactions, but the strip_sent a caller is owed is lost. */
@@ -494,7 +449,6 @@ present_task_fn(void* arg) {
         return;
     }
 
-    panel_clock_load();
     panel_clock_applied_hz = panel_clock_requested_hz;
     if (panel_bring_up(panel_clock_applied_hz) != ESP_OK) {
         ESP_LOGE(TAG, "Could not start the display");
@@ -2234,6 +2188,14 @@ gfx_heal_set_rolling(int rows_per_present) {
     heal_rolling_rows = rows_per_present < 0 ? 0 : rows_per_present;
 }
 
+void
+gfx_heal_restore_defaults(void) {
+    GFX_PRESENT_GUARD();
+    gfx_heal_reset(&heal);
+    heal_budget_pixels = GFX_HEAL_DEFAULT_BUDGET_PIXELS;
+    heal_rolling_rows = 0;
+}
+
 bool
 gfx_heal_active(void) {
     return panel_clock_requested_hz == GFX_PANEL_CLOCK_FAST_HZ;
@@ -2244,12 +2206,7 @@ gfx_set_panel_clock_hz(int hz) {
     if (!panel_clock_valid(hz)) {
         return false;
     }
-    if (hz != panel_clock_requested_hz) {
-        panel_clock_requested_hz = hz;
-#ifdef ESP_PLATFORM
-        panel_clock_save(hz);
-#endif
-    }
+    panel_clock_requested_hz = hz;
     return true;
 }
 

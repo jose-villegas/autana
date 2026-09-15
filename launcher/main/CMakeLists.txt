@@ -5,6 +5,7 @@ set(app_srcs
     "boot/post.c"
     "boot/post_ui.c"
     "display/display.c"
+    "display/panel_clock.c"
     "gfx/gfx.c"
     "input/touch.c"
     "input/touch_fsm.c"
@@ -146,6 +147,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites/suite_ui_pointer_microui.c"
         "../test/suites/suite_ui_slider.c"
         "../test/suites/suite_display.c"
+        "../test/suites/suite_panel_clock.c"
         "../test/suites/suite_screenshot.c"
         "../test/suites/suite_device_state.c"
     )

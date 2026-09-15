@@ -702,7 +702,6 @@ static void
 sand_exit(void) {
     /* Other apps assume GFX_LAYOUT_FULL_FB/RGB565. */
     apply_gfx_action(sand_colour_on_exit_app(&colour_state));
-    gfx_heal_set_budget(GFX_HEAL_DEFAULT_BUDGET_PIXELS);
 
     /* Grid is kept between visits (the app's largest allocation) so
      * re-entry cannot fail to heap fragmentation from whatever ran while

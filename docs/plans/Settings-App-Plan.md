@@ -123,13 +123,15 @@ occasion to relitigate what belongs where.
   the diagnostic this project has needed twice: the round where three
   device captures measured nothing because fixtures had eaten the heap
   would have been one glance at this screen.
-- **The panel clock moves here from Developer Toggles.** It is already a
-  user setting in every sense but its home: `gfx_set_panel_clock_hz()`
-  switches between 40 and 80 MHz at runtime and saves the choice in NVS, so
-  a release build (no Diagnostics) still boots at whatever was last chosen.
-  Its Settings row keeps the warning Diagnostics shows today - 80 MHz is
-  faster, but apps that redraw only what changed may show stray pixels or
-  thin lines - and belongs beside the other display settings.
+- **The system panel clock moves here from Developer Toggles.** It is
+  already a user setting in every sense but its home:
+  `shell_set_system_panel_clock_hz()` chooses 80 MHz (default) or 40 and the
+  shell keeps it in NVS, so a release build (no Diagnostics) still boots at
+  whatever was last chosen. Every app starts at it; an app may force another
+  rate for itself, and the shell restores the system value on every app
+  switch (Launcher-Architecture.md, "The panel clock"). The row keeps
+  Diagnostics' warning - 80 MHz is faster, but apps that redraw only what
+  changed may show stray pixels or thin lines.
 - Should Settings be reachable from the launcher unconditionally (like any
   other app) or only exist in `--dev`/`--diag` builds the way Diagnostics
   does today? Development-only content argues for the latter, matching how
