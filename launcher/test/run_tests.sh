@@ -108,6 +108,7 @@ $MAIN_DIR/input/gesture.c
 $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/display/panel_clock.c
+$MAIN_DIR/ui/ui_build.c
 $MAIN_DIR/ui/ui_pointer.c
 $MAIN_DIR/gfx/gfx_palette_standard.c
 $MAIN_DIR/../tools/gfx_palette_gen.c
@@ -126,13 +127,14 @@ $TEST_DIR/../components/microui/src/microui.c
 # separable from its wiring, which is the only reason a falling-sand automaton
 # can be tested on a laptop at all.
 #
-# The glob below is one level deep (apps/*/*.c), so an app's own
-# apps/<name>/tools/*.{sh,ps1,py} - its sweep scripts, report generators -
-# is already invisible to it without any special-casing. Worth saying so
-# explicitly: the next reader hitting a two-level-deep tools/ folder that
-# this loop skips should be able to tell that is deliberate, not an
-# oversight this script just hasn't caught up to yet.
-for f in "$MAIN_DIR"/apps/*/*.c; do
+# Recursive, matching main/CMakeLists.txt's own discovered_apps glob and its
+# tools/ exclusion - a screen's drawing code lives one level deeper, in
+# apps/<name>/ui/, so a one-level walk would silently drop it from this
+# runner while the firmware kept building it. apps/<name>/tools/ - sweep
+# scripts, report generators - is excluded the same way CMake excludes it:
+# by folder, not depth, so a future two-level-deep non-tools folder is swept
+# in rather than silently skipped.
+for f in $(find "$MAIN_DIR/apps" -name '*.c' ! -path '*/tools/*' | sort); do
     [ -e "$f" ] || continue
     case "$(basename "$f")" in
         app_*.c) continue ;;
