@@ -207,7 +207,8 @@ walked along gravity's dominant axis, using a persistent per-column array
 itself was `col_local_depth[]`; see the "A dead array can survive its own
 mechanism" lesson below for why the two names briefly, wrongly, referred to
 *different* things in the same file) that survives across `paint_row_n()`
-calls the same way `row_has_shine[]` already does. Verified against an
+calls the same way the per-row `ROW_FLAG_SHINE` bit in `row_flags[]`
+already does. Verified against an
 irregular pool (a rock plug inside it): the shading correctly dips right
 where the rock breaks the surface, instead of sweeping past it.
 
@@ -539,11 +540,14 @@ state has been set on it (gravity, foam phase, now cullet phase), so a
 cell's displayed colour can move while every fingerprint test - which
 hashes cell bytes, never rendered pixels - stays green. What DOES have to
 move is `app_sand.c`'s repaint bookkeeping: a cullet cell's own row needs
-the same periodic-wake treatment the shine already gets
-(`row_has_cullet[]`, `CULLET_PHASE_MS`, `advance_cullet()`) or a heap that
-has stopped moving would repaint on nothing and freeze on whatever tint it
-happened to hold the moment it went still - the identical reasoning
-`row_has_shine[]` was built on, applied to a second, independent clock.
+the same periodic-wake treatment the shine already gets - `row_flags[]`
+carries a `ROW_FLAG_CULLET` bit per row alongside `CULLET_PHASE_MS` and
+`advance_cullet()`, and `mark_wake_hits()` marks every row with that bit
+dirty (widening its repaint span from `row_flag_x0[]`/`row_flag_x1[]`)
+whenever the cullet phase moves - or a heap that has stopped moving would
+repaint on nothing and freeze on whatever tint it happened to hold the
+moment it went still. That is the identical reasoning `ROW_FLAG_SHINE`
+was built on, applied to a second, independent clock.
 
 ---
 
