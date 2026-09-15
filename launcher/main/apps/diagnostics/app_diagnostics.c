@@ -50,11 +50,6 @@ static int page;
  * physically turning it through its holds to read the numbers off. */
 static int show_orientation;
 
-/* A sweep over the whole screen in every app, for comparing against an
- * app's own heal policy on the glass. */
-#define ROLLING_HEAL_ROWS 32
-static int rolling_heal;
-
 #if CONFIG_LAUNCHER_SELFTEST
 /* Last selftest_run() result, persisted across frames like
  * show_orientation above rather than reset in diagnostics_enter():
@@ -124,15 +119,11 @@ draw_toggles_page(const input_t* input) {
         gfx_set_interlace(interlace_on);
 
         mu_layout_row(ctx, 1, (int[]){-1}, UI_ROW_HEIGHT);
-        int fast_clock = gfx_panel_clock_hz() == GFX_PANEL_CLOCK_FAST_HZ;
-        mu_checkbox(ctx, "panel clock 80 MHz", &fast_clock);
-        gfx_set_panel_clock_hz(fast_clock ? GFX_PANEL_CLOCK_FAST_HZ : GFX_PANEL_CLOCK_SLOW_HZ);
+        int fast_clock = shell_system_panel_clock_hz() == GFX_PANEL_CLOCK_FAST_HZ;
+        mu_checkbox(ctx, "panel clock 80 MHz (system)", &fast_clock);
+        shell_set_system_panel_clock_hz(fast_clock ? GFX_PANEL_CLOCK_FAST_HZ : GFX_PANEL_CLOCK_SLOW_HZ);
         mu_layout_row(ctx, 1, (int[]){-1}, gfx_text_height() + 4);
         mu_text(ctx, "80 MHz is faster; apps that redraw only what changed may show stray pixels or thin lines.");
-
-        mu_layout_row(ctx, 1, (int[]){-1}, UI_ROW_HEIGHT);
-        mu_checkbox(ctx, "gfx rolling heal at 80 MHz", &rolling_heal);
-        gfx_heal_set_rolling(rolling_heal ? ROLLING_HEAL_ROWS : 0);
 
         mu_layout_row(ctx, 1, (int[]){-1}, UI_ROW_HEIGHT);
         mu_checkbox(ctx, "show orientation", &show_orientation);

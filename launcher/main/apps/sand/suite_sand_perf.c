@@ -3466,6 +3466,7 @@ clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_wi
     *settled = clock_row_measure(CLOCK_ROW_SETTLED_FRAMES, false, &frame_index);
 
     app_sand.exit();
+    gfx_heal_restore_defaults();
 }
 
 static void
