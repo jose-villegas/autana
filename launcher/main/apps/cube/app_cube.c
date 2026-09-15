@@ -19,6 +19,7 @@
 #include "../../app.h"
 #include "../../gfx/gfx.h"
 #include "../../ui/ui.h"
+#include "cube_mode_switch.h"
 
 /* small3dlib config - must precede its include. */
 #define S3L_PIXEL_FUNCTION     shade_pixel
@@ -73,10 +74,10 @@ static uint32_t elapsed_ms;
 bool partial_updates = true;
 
 /* Requests gfx's internal-SRAM band ring (GFX_LAYOUT_BANDS, gfx.h) instead
- * of the PSRAM framebuffer. Off by default; runtime override for
+ * of the PSRAM framebuffer. On by default; runtime override for
  * suite_cube_band_perf.c. Read only at enter(), so flipping it mid-visit
  * needs a re-entry to take hold. */
-bool cube_band_mode = false;
+bool cube_band_mode = true;
 
 /* -1 (default): draw_overlay_box() centers the fps box as normal, same as
  * ever. Any other value pins the box's own logical x there instead - a
@@ -93,6 +94,7 @@ int cube_fps_box_x_override = -1;
  * one-physical-button-one-screen-level-concern split app_diagnostics.c's
  * page cycling and app_sand.c's SAND_UI_MENU/RUNNING split already use. */
 static bool menu_open;
+static cube_mode_switch_t mode_switch;
 
 /* This frame's drawn-pixel bounds, accumulated by shade_pixel() while
  * partial_updates is on - reset to an empty range at the top of
@@ -202,8 +204,8 @@ shade_pixel(S3L_PixelInfo* pixel) {
     }
 }
 
-void
-cube_enter(void) {
+static void
+enter_layout(void) {
     const gfx_mode_request_t mode_request = {
         .layout = cube_band_mode ? GFX_LAYOUT_BANDS : GFX_LAYOUT_FULL_FB,
         .resolution = GFX_RESOLUTION_FULL,
@@ -211,6 +213,12 @@ cube_enter(void) {
         .interlace_y = false,
     };
     band_mode_active = gfx_mode_enter(&mode_request)->layout == GFX_LAYOUT_BANDS;
+    gfx_invalidate();
+}
+
+void
+cube_enter(void) {
+    enter_layout();
 
     S3L_model3DInit(cube_vertices, S3L_CUBE_VERTEX_COUNT, cube_triangles, S3L_CUBE_TRIANGLE_COUNT, &cube);
     cube.transform.translation.z = CUBE_DISTANCE;
@@ -233,8 +241,6 @@ cube_enter(void) {
      * partial_updates itself is deliberately left alone: a developer
      * toggle that reset every visit would defeat the point of it, same
      * as show_orientation in app_diagnostics.c. */
-    gfx_invalidate();
-
     /* Unlike partial_updates, the readout itself starts over every visit -
      * a stale fps_value left over from a previous run would show a number
      * with nothing behind it for up to FPS_WINDOW_MS. */
@@ -246,6 +252,7 @@ cube_enter(void) {
      * a previous visit - the same reason app_diagnostics.c resets `page` to
      * 0 here instead of leaving it wherever a past visit left it. */
     menu_open = false;
+    mode_switch.pending = false;
 
     /* A stale box from a previous visit is not really "last frame" -
      * gfx_invalidate() above already forces this visit's first band frame
@@ -259,6 +266,14 @@ cube_enter(void) {
      * forces. Not wrong, just redundant with a clearer reason already
      * stated. */
     last_layout_generation = ui_layout_generation();
+}
+
+static void
+switch_layout(void) {
+    gfx_set_partial_clear(false);
+    gfx_mode_exit();
+    enter_layout();
+    ui_invalidate();
 }
 
 /* mu_Color from a 0xRRGGBB value, opaque - same reason and same shape as
@@ -341,8 +356,8 @@ draw_fps(const input_t* input, bool for_bands) {
 #define MENU_BTN_H   UI_ROW_HEIGHT
 #define MENU_BTN_GAP 20
 
-/* The BOOT-opened menu - currently just the partial_updates toggle, as
- * one centered bezel button, but the place any future option belongs
+/* The BOOT-opened menu holds the runtime rendering options as centered
+ * bezel buttons, but the place any future option belongs
  * rather than growing the persistent HUD in draw_fps(). See cube_frame()
  * for why BOOT opens this instead of flipping the toggle directly, and
  * menu_open's own comment for the one-button-one-screen-level-concern
@@ -359,7 +374,7 @@ draw_menu(const input_t* input, bool for_bands) {
 
     if (ui_begin_screen(ctx, "Cube Menu", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
         const int hint_h = gfx_text_height() + 4;
-        const int total_h = MENU_BTN_H + MENU_BTN_GAP + hint_h;
+        const int total_h = 2 * MENU_BTN_H + 2 * MENU_BTN_GAP + hint_h;
         const int top = (ui_height() - total_h) / 2;
 
         char label[24];
@@ -380,7 +395,16 @@ draw_menu(const input_t* input, bool for_bands) {
             gfx_invalidate();
         }
 
-        mu_layout_set_next(ctx, ui_centered_rect(ui_width(), MENU_BTN_W, hint_h, top + MENU_BTN_H + MENU_BTN_GAP), 0);
+        snprintf(label, sizeof label, "BAND MODE: %s", cube_band_mode ? "ON" : "OFF");
+        mu_layout_set_next(ctx, ui_centered_rect(ui_width(), MENU_BTN_W, MENU_BTN_H, top + MENU_BTN_H + MENU_BTN_GAP),
+                           0);
+        if (mu_button(ctx, label)) {
+            cube_band_mode = !cube_band_mode;
+            cube_mode_switch_request(&mode_switch);
+        }
+
+        mu_layout_set_next(ctx,
+                           ui_centered_rect(ui_width(), MENU_BTN_W, hint_h, top + 2 * (MENU_BTN_H + MENU_BTN_GAP)), 0);
         mu_label(ctx, "BOOT to close");
 
         mu_end_window(ctx);
@@ -686,6 +710,10 @@ cube_frame_band(uint32_t dt_ms, const input_t* input) {
 
 static void
 cube_frame(uint32_t dt_ms, const input_t* input) {
+    if (cube_mode_switch_take(&mode_switch)) {
+        switch_layout();
+    }
+
     /* BOOT opens/closes the menu now, rather than flipping partial_updates
      * directly - the toggle moved onto its own bezel button inside
      * draw_menu(). Invalidation on open and close resets partial clear
