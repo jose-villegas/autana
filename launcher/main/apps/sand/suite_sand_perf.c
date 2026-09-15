@@ -3392,7 +3392,8 @@ test_water_slope_captured_scene_diagonal_flip_logs_a_per_step_table(void) {
 #include "app.h"
 
 extern const app_t app_sand;
-extern void sand_app_enter_running_for_test(void);
+extern int sand_app_enter_running_for_test(void);
+extern void sand_app_restore_colour_mode_for_test(int mode);
 extern void sand_app_select_brush_for_test(int brush);
 
 typedef enum {
@@ -3449,7 +3450,7 @@ static void
 clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_window_t* settled) {
     gfx_set_panel_clock_hz(row == CLOCK_ROW_40 ? GFX_PANEL_CLOCK_SLOW_HZ : GFX_PANEL_CLOCK_FAST_HZ);
     app_sand.enter();
-    sand_app_enter_running_for_test();
+    const int previous_mode = sand_app_enter_running_for_test();
     sand_app_select_brush_for_test(brush);
     if (row == CLOCK_ROW_80) {
         gfx_heal_set_budget(0);
@@ -3466,6 +3467,7 @@ clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_wi
     *settled = clock_row_measure(CLOCK_ROW_SETTLED_FRAMES, false, &frame_index);
 
     app_sand.exit();
+    sand_app_restore_colour_mode_for_test(previous_mode);
     gfx_heal_restore_defaults();
 }
 
