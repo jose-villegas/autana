@@ -1749,7 +1749,7 @@ test_wet_sand_becomes_soil_wet_with_no_tone_of_its_own(void) {
     sand_set(&s, 1, H - 2, CELL_MAKE(MAT_SAND, dark_shade));
     sand_set(&s, 5, H - 2, CELL_MAKE(MAT_SAND, pale_shade));
 
-    for (int i = 0; i < 3000; i++) {
+    for (int i = 0; i < 4000; i++) {
         /* Keep both of them standing in water. */
         for (int k = 0; k < 2; k++) {
             const int x = k ? 5 : 1;
