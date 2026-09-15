@@ -3143,6 +3143,62 @@ water_slope_step_and_log(sand_t* s, int gx, int gy, const char* phase, int step_
                          sand_liquid_crossflow_probes - p0);
 }
 
+/* THE PRIMARY REPRO: no tilt, no diagonal, just a plain landscape pile
+ * fully submerged with headroom, settled undisturbed. Logs a checkpoint
+ * every 100 steps through the long settle to show whether awake blocks are
+ * genuinely stuck or slowly converging, and asserts the pile actually
+ * reaches full sleep within its settle budget - see
+ * build_submerged_pile_scene()'s own comment for the measured convergence
+ * time this budget is set from. */
+static void
+test_submerged_pile_settles_and_logs_the_pass_split(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks = malloc((size_t)REAL_BLOCK_COLS * (size_t)REAL_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t real;
+    sand_init(&real, big, REAL_W, REAL_H, 29u);
+    sand_enable_sleeping(&real, blocks);
+    build_landscape_bed_scene(&real);
+
+    for (int i = 0; i < SUBMERGED_PILE_POUR_STEPS; i++) {
+        landscape_water_pour(&real, i);
+        sand_step(&real, LANDSCAPE_GX, 0, 0);
+    }
+    const long mass_before = water_slope_water_mass(&real);
+
+    int settled_at = -1;
+    for (int i = 0; i < SUBMERGED_PILE_SETTLE_STEPS; i++) {
+        const unsigned d0 = sand_reactions_cells_dispatched;
+        const unsigned m0 = sand_liquid_moves;
+        const unsigned p0 = sand_liquid_crossflow_probes;
+        sand_step(&real, LANDSCAPE_GX, 0, 0);
+        const int awake = water_slope_awake_blocks(&real);
+        if (i % 100 == 0 || i == SUBMERGED_PILE_SETTLE_STEPS - 1) {
+            water_slope_log_step("settle", i, &real, sand_reactions_cells_dispatched - d0, sand_liquid_moves - m0,
+                                 sand_liquid_crossflow_probes - p0);
+        }
+        if (awake == 0 && settled_at < 0) {
+            settled_at = i;
+        }
+    }
+    const long mass_after = water_slope_water_mass(&real);
+    const int awake_at_end = water_slope_awake_blocks(&real);
+
+    free(big);
+    free(blocks);
+
+    ESP_LOGI("device_tests", "submerged pile: settled_at step %d of %d, awake_at_end=%d", settled_at,
+             SUBMERGED_PILE_SETTLE_STEPS, awake_at_end);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE((int)mass_before, (int)mass_after,
+                                  "settling a submerged pile must move water, not create or destroy it");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, awake_at_end,
+                                  "a plain submerged pile with no further disturbance must reach full "
+                                  "sleep given enough settle steps");
+}
+
 /* Task 1a: water poured continuously at the slope's high corner until it
  * covers the slope and runs down. Logs the pass split averaged over the
  * pour, then asserts only that real work happened - this scene exists to
@@ -3411,6 +3467,7 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_present_cost_against_a_landscape_gas_over_sand_pile);
     RUN_TEST(test_present_cost_against_a_landscape_levelling_pool);
 
+    RUN_TEST(test_submerged_pile_settles_and_logs_the_pass_split);
     RUN_TEST(test_water_slope_pouring_water_logs_the_pass_split);
     RUN_TEST(test_water_slope_controls_log_the_pass_split);
     RUN_TEST(test_water_slope_gravity_flip_logs_a_per_step_table);
