@@ -233,6 +233,10 @@ void build_water_over_lava_scene(sand_t* s);
 
 void build_gunpowder_basin_scene(sand_t* s);
 
+#define GAS_IGNITION_VESSEL_IMPULSE_MAX    2048
+#define GAS_IGNITION_VESSEL_MEASURED_STEPS 300
+void build_gas_ignition_vessel_scene(sand_t* s);
+
 /* The landscape set. Every other scene here falls down grid +Y; the board
  * is played sideways, down grid +X. The grid is 184x224,
  * so a landscape pour drops 184 cells onto a floor 224 wide and settles

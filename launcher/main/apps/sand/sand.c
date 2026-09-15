@@ -1462,6 +1462,7 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
 #ifdef DEVICE_BUILD
     memset(&s->pass_us, 0, sizeof s->pass_us);
 #endif
+    s->explosions_this_step = 0;
 
     s->step_phase++;
     s->may_have_viscous_liquid = viscous_liquid_possible(s);
