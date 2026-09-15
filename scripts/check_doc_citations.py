@@ -11,7 +11,7 @@ import sys
 from code_vocabulary import names
 
 INLINE = re.compile(r"`([^`\n]+)`")
-FUNCTION = re.compile(r"^([a-z_][a-z0-9_]*)\(\)$")
+FUNCTION = re.compile(r"^([a-z][a-z0-9_]*)\(\)$")
 MACRO = re.compile(r"^[A-Z][A-Z0-9_]*$")
 FILE = re.compile(r"^(?:launcher/|apps/|[\w.-]+/)*[\w.-]+\.(?:c|h|py|sh)$")
 SKIP_FENCES = {"sh", "shell", "bash", "console", "text", "output"}
