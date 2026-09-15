@@ -106,36 +106,34 @@ needed a line of movement code.
 
 Before writing anything, know which of these boxes you are touching. The
 red box is the only one that costs you performance thinking; everything
-downstream of the main sweep is gated behind a flag and runs on nobody's
-frame budget when your material is not on the grid.
+downstream of the main sweep is checked against a flag, at the call site
+or inside the pass itself, and runs on nobody's frame budget when your
+material is not on the grid.
 
 ```mermaid
 flowchart TD
     Set["sand_set() / try_spawn_one()\nlatch may_have_* flags"] --> Sweep
 
-    Sweep["MAIN SWEEP - step_one_grain()\nevery awake cell, every step\nPOWDER falls - LIQUID falls+slides\nGAS skipped - STATIC skipped"]
+    Sweep["MAIN SWEEP - step_one_row() per row\nevery awake cell, every step\nPOWDER falls - LIQUID falls+slides\nGAS skipped - STATIC skipped\ncheckerboard-split across cores via job_run_core1()/job_wait()"]
 
-    Sweep --> Liq{"may_have_liquid?"}
-    Liq -- yes --> LiqP["sand_step_liquids()\ncross-flow, splash"]
-    Liq -- no --> Gas
-    LiqP --> Gas
+    Sweep --> LiqP["sand_step_liquids()\ncross-flow, splash\n(internal may_have_liquid check)\nstriped across cores via job_run_core1()/job_wait()"]
 
-    Gas{"may_have_gas?"}
+    LiqP --> Gas{"may_have_gas?"}
     Gas -- yes --> GasP["sand_step_gas()\nrise, disperse"]
     Gas -- no --> Rx
     GasP --> Rx
 
-    Rx{"may_have_burning?"}
-    Rx -- yes --> RxP["sand_step_reactions()\nignite, quench, smother,\nconduct, flare, burn out"]
-    Rx -- no --> Fin
-    RxP --> Fin
+    Rx["sand_step_reactions()\nignite, quench, smother,\nconduct, flare, burn out"]
 
-    Fin["finalize_settling()\nBLOCK_ACTIVE for the WHOLE step"]
+    Rx --> Imp["step_impulses()\nexplosions, thrown chunks,\nsplash pushback"]
+
+    Imp --> Fin["finalize_settling()\nBLOCK_ACTIVE for the WHOLE step\nsplit across cores via job_run_core1()/job_wait()"]
 
     style Sweep fill:#8a3d3d,color:#fff
     style LiqP fill:#3d6b8a,color:#fff
     style GasP fill:#4a7c59,color:#fff
-    style RxP fill:#5a5a5a,color:#fff
+    style Rx fill:#5a5a5a,color:#fff
+    style Imp fill:#5a5a5a,color:#fff
     style Set fill:#a87a3d,color:#fff
 ```
 

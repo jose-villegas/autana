@@ -58,8 +58,8 @@ Requires a **host** compiler, not the ESP32 toolchain:
 
 **Sand's own frame-budget capture and its rules live beside the app**, in
 [`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md) - the free-heap
-precondition, the perf-scope trade-off, and the thirteen frame-budget
-scenes. Start here for everything else; go there once you are specifically
+precondition, the perf-scope trade-off, and the frame-budget scenes.
+Start here for everything else; go there once you are specifically
 capturing sand performance numbers.
 
 ---
