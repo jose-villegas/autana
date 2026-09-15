@@ -1,6 +1,16 @@
 #include "brush_screen.h"
 
+#include <stdio.h>
+#include <string.h>
+
+#include "gfx/gfx_color.h"
+#include "gfx/gfx_font_roles.h"
 #include "ui/ui.h"
+#include "ui/ui_style.h"
+
+#include "../icons_sand.h"
+#include "../material_palette.h"
+#include "../sand_swatch.h"
 
 /* Space between the three stacked panels - and between a panel's own
  * caption row and the control below it, which reuses the same value so the
@@ -178,4 +188,195 @@ brush_screen_segment_label(brush_screen_segment_t seg) {
 const char*
 brush_screen_size_caption(brush_screen_segment_t seg) {
     return SIZE_CAPTIONS[seg];
+}
+
+/* mu_Color from a 0xRRGGBB value, opaque - kept as this file's own copy
+ * rather than shared; see app_diagnostics.c's ORIENTATION_GRAVITY_X/Y
+ * comment for why a small, independent copy like this is not worth a
+ * shared header of its own. */
+static mu_Color
+mu_color_hex(uint32_t rgb) {
+    return mu_color((int)((rgb >> 16) & 0xFF), (int)((rgb >> 8) & 0xFF), (int)(rgb & 0xFF), 255);
+}
+
+#define BRUSH_SEG_PAD       8
+#define BRUSH_SEG_LABEL_GAP 4
+
+#define BRUSH_INFO_ICON_PAD 12
+
+static const icon_t* const brush_seg_icons[BRUSH_SCREEN_SEGMENT_COUNT] = {
+    [BRUSH_SCREEN_SEG_POUR] = &icon_sand_table[ICON_SAND_POUR],
+    [BRUSH_SCREEN_SEG_ERASE] = &icon_sand_table[ICON_SAND_ERASE],
+    [BRUSH_SCREEN_SEG_BOOM] = &icon_sand_table[ICON_SAND_BOOM],
+};
+
+static void
+draw_brush_panel(mu_Context* ctx, mu_Rect r) {
+    ui_span_t spans[UI_PANEL_MAX_SPANS];
+    const int n = ui_panel_spans(r, mu_color_hex(BRUSH_PANEL_FACE_COLOR), mu_color_hex(BRUSH_PANEL_BORDER_COLOR), spans,
+                                 UI_PANEL_MAX_SPANS);
+    for (int i = 0; i < n; i++) {
+        mu_draw_rect(ctx, spans[i].rect, spans[i].color);
+    }
+}
+
+static void
+draw_brush_bezel(mu_Context* ctx, mu_Rect r, uint32_t face_rgb, bool sunken) {
+    ui_span_t spans[UI_BEZEL_MAX_SPANS];
+    const int n = ui_bezel_spans(r, mu_color_hex(face_rgb), sunken, spans, UI_BEZEL_MAX_SPANS);
+    for (int i = 0; i < n; i++) {
+        mu_draw_rect(ctx, spans[i].rect, spans[i].color);
+    }
+}
+
+#define BRUSH_SWATCH_CELLS 8
+
+static void
+draw_brush_swatch(mu_Context* ctx, mu_Rect r, cell_t spec) {
+    const gfx_color_t* palette = material_palette();
+
+    for (int row = 0; row < BRUSH_SWATCH_CELLS; row++) {
+        const int y0 = r.y + row * r.h / BRUSH_SWATCH_CELLS;
+        const int y1 = r.y + (row + 1) * r.h / BRUSH_SWATCH_CELLS;
+        for (int col = 0; col < BRUSH_SWATCH_CELLS; col++) {
+            const int x0 = r.x + col * r.w / BRUSH_SWATCH_CELLS;
+            const int x1 = r.x + (col + 1) * r.w / BRUSH_SWATCH_CELLS;
+            const cell_t cell = sand_swatch_cell(spec, col, row, BRUSH_SWATCH_CELLS);
+            mu_draw_rect(ctx, mu_rect(x0, y0, x1 - x0, y1 - y0), mu_color_hex(gfx_color_rgb888(palette[cell])));
+        }
+    }
+
+    ui_span_t spans[UI_BEZEL_MAX_SPANS];
+    const int n =
+        ui_bezel_spans(r, mu_color_hex(gfx_color_rgb888(material_brush_color(spec))), false, spans, UI_BEZEL_MAX_SPANS);
+    for (int i = 1; i < n; i++) {
+        mu_draw_rect(ctx, spans[i].rect, spans[i].color);
+    }
+}
+
+static void
+draw_brush_text(mu_Context* ctx, mu_Rect r, const char* str, mu_Color color, int scale, int align) {
+    const int tw = ui_measure_text(str);
+    const int th = gfx_font_height(gfx_font_ui(), scale);
+    const int x = (align < 0) ? r.x : (align == 0) ? r.x + (r.w - tw) / 2 : r.x + r.w - tw;
+    const int y = r.y + (r.h - th) / 2;
+
+    mu_push_clip_rect(ctx, r);
+    mu_draw_text(ctx, ctx->style->font, str, -1, mu_vec2(x, y), color);
+    mu_pop_clip_rect(ctx);
+}
+
+void
+brush_screen_draw(mu_Context* ctx, sand_ui_t* ui) {
+    ui_set_text_style(UI_TEXT_PLAIN);
+
+    brush_screen_layout_t lay;
+    brush_screen_layout(ui_width(), ui_height(), &lay);
+
+    if (ui_begin_screen(ctx, "Sand Brush", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+
+        ui_set_font_scaled(gfx_font_ui(), BRUSH_SCREEN_CAPTION_SCALE);
+
+        draw_brush_panel(ctx, lay.header_panel);
+
+        draw_brush_swatch(ctx, lay.swatch, ui->brushes[ui->brush]);
+
+        draw_brush_text(ctx, lay.material_caption, BRUSH_SCREEN_MATERIAL_CAPTION, mu_color_hex(BRUSH_CAPTION_COLOR),
+                        BRUSH_SCREEN_CAPTION_SCALE, -1);
+
+        /* 4 is the starting scale, but "Gunpowder" (the longest name any
+         * brush carries) doesn't fit it in the name rect at the narrower
+         * of the two real canvases - drop a size at a time rather than let
+         * draw_brush_text()'s clip cut the tail off a real material name. */
+        const char* name = material_name(ui->brushes[ui->brush]);
+        int name_scale = 4;
+        for (; name_scale > 1; name_scale--) {
+            ui_set_font_scaled(gfx_font_ui(), name_scale);
+            if (ui_measure_text(name) <= lay.material_name.w) {
+                break;
+            }
+        }
+        draw_brush_text(ctx, lay.material_name, name, mu_color_hex(BRUSH_TEXT_COLOR), name_scale, -1);
+        ui_set_font_scaled(gfx_font_ui(), BRUSH_SCREEN_CAPTION_SCALE);
+
+        draw_brush_bezel(ctx, lay.info_button, BRUSH_SEG_UNSELECTED_COLOR, false);
+        {
+            /* No handler: the panel this button opens is separate, later
+             * work. Drawn now because it's in the design; not a bug that
+             * tapping it does nothing yet. */
+            const mu_Rect icon_r = {
+                lay.info_button.x + BRUSH_INFO_ICON_PAD,
+                lay.info_button.y + BRUSH_INFO_ICON_PAD,
+                lay.info_button.w - 2 * BRUSH_INFO_ICON_PAD,
+                lay.info_button.h - 2 * BRUSH_INFO_ICON_PAD,
+            };
+            ui_draw_icon(ctx, icon_r, &icon_sand_table[ICON_SAND_INFO], icon_sand_rows, mu_color_hex(BRUSH_TEXT_COLOR));
+        }
+
+        draw_brush_panel(ctx, lay.mode_panel);
+        draw_brush_text(ctx, lay.mode_caption, BRUSH_SCREEN_MODE_CAPTION, mu_color_hex(BRUSH_CAPTION_COLOR),
+                        BRUSH_SCREEN_CAPTION_SCALE, -1);
+
+        for (int i = 0; i < BRUSH_SCREEN_SEGMENT_COUNT; i++) {
+            const mu_Rect r = lay.segments[i];
+            const char* seg_name = brush_screen_segment_label((brush_screen_segment_t)i);
+
+            /* Id from the segment's own name, the same idiom mu_button_ex()
+             * uses for a labelled control - the three names differ, so no
+             * two segments can collide. */
+            const mu_Id id = mu_get_id(ctx, seg_name, (int)strlen(seg_name));
+            mu_update_control(ctx, id, r, 0);
+
+            if (ctx->mouse_pressed == MU_MOUSE_LEFT && ctx->focus == id) {
+                sand_ui_mode_clicked(ui, i);
+            }
+
+            const bool selected = ((sand_mode_t)i == ui->mode);
+            const bool pressed = (ctx->hover == id) || (ctx->focus == id);
+            const uint32_t face = selected ? BRUSH_SEG_SELECTED_COLOR : BRUSH_SEG_UNSELECTED_COLOR;
+            const mu_Color ink = mu_color_hex(selected ? BRUSH_SEG_SELECTED_INK_COLOR : BRUSH_TEXT_COLOR);
+
+            draw_brush_bezel(ctx, r, face, pressed);
+
+            const int label_h = gfx_font_height(gfx_font_ui(), BRUSH_SCREEN_CAPTION_SCALE);
+            int icon_side = r.h - 2 * BRUSH_SEG_PAD - label_h - BRUSH_SEG_LABEL_GAP;
+            const int icon_side_max = r.w - 2 * BRUSH_SEG_PAD;
+            if (icon_side > icon_side_max) {
+                icon_side = icon_side_max;
+            }
+            const mu_Rect icon_r = {
+                r.x + (r.w - icon_side) / 2,
+                r.y + BRUSH_SEG_PAD,
+                icon_side,
+                icon_side,
+            };
+            ui_draw_icon(ctx, icon_r, brush_seg_icons[i], icon_sand_rows, ink);
+
+            const mu_Rect label_r = {
+                r.x + BRUSH_SEG_PAD,
+                icon_r.y + icon_side + BRUSH_SEG_LABEL_GAP,
+                r.w - 2 * BRUSH_SEG_PAD,
+                label_h,
+            };
+            draw_brush_text(ctx, label_r, seg_name, ink, BRUSH_SCREEN_CAPTION_SCALE, 0);
+        }
+
+        draw_brush_panel(ctx, lay.size_panel);
+
+        const char* size_caption = brush_screen_size_caption((brush_screen_segment_t)ui->mode);
+        draw_brush_text(ctx, lay.size_caption, size_caption, mu_color_hex(BRUSH_CAPTION_COLOR),
+                        BRUSH_SCREEN_CAPTION_SCALE, -1);
+
+        char size_value[8];
+        snprintf(size_value, sizeof size_value, "%02u PX", (unsigned)sand_ui_radius(ui));
+        draw_brush_text(ctx, lay.size_value, size_value, mu_color_hex(BRUSH_TEXT_COLOR), BRUSH_SCREEN_CAPTION_SCALE, 1);
+
+        mu_layout_set_next(ctx, lay.slider_track, 0);
+        int radius = sand_ui_radius(ui);
+        if (ui_slider_int(ctx, &radius, SAND_UI_RADIUS_MIN, SAND_UI_RADIUS_MAX, 1)) {
+            sand_ui_set_radius(ui, (uint8_t)radius);
+        }
+
+        mu_end_window(ctx);
+    }
 }
