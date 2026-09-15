@@ -2186,6 +2186,48 @@ test_acid_eats_through_stone(void) {
                                       "held would leave glass with nothing to do");
 }
 
+/* Landscape is how the board is played, so gravity runs along +X and the
+ * lower diagonals point to x+1; the portrait pocket test above cannot see a
+ * change that breaks only the rotated case. Trapped gas is allowed, so most
+ * seeds must escape, not all. */
+static void
+test_gas_escapes_a_pocket_through_a_lower_diagonal_in_landscape(void) {
+    static char failure_message[64];
+    int escaped_seeds = 0;
+    for (uint32_t seed = 1; seed <= 16; seed++) {
+        sand_init(&s, cells, W, H, seed);
+        sand_clear(&s);
+        sand_set_mobility(&s, 255);
+        sand_set_scatter(&s, 0);
+
+        sand_set(&s, 3, 3, GAS);
+        for (int y = 2; y <= 4; y++) {
+            for (int x = 2; x <= 4; x++) {
+                if (x != 3 || y != 3) {
+                    sand_set(&s, x, y, STONE);
+                }
+            }
+        }
+        sand_set(&s, 4, 2, SAND_EMPTY);
+
+        bool escaped = false;
+        for (int i = 0; i < 10000 && !escaped; i++) {
+            sand_step(&s, 1000, 0, 0);
+            for (int y = 0; y < H; y++) {
+                for (int x = 4; x < W; x++) {
+                    if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_GAS) {
+                        escaped = true;
+                    }
+                }
+            }
+        }
+
+        escaped_seeds += escaped;
+    }
+    snprintf(failure_message, sizeof failure_message, "escaped in only %d of 16 seeds", escaped_seeds);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(12, escaped_seeds, failure_message);
+}
+
 void
 run_sand_combustion_suite(void) {
     RUN_TEST(test_gas_rises_straight_up_under_ordinary_gravity);
@@ -2252,6 +2294,7 @@ run_sand_combustion_suite(void) {
     RUN_TEST(test_acid_dissolves_sand);
     RUN_TEST(test_acid_does_not_dissolve_its_container);
     RUN_TEST(test_acid_eats_through_stone);
+    RUN_TEST(test_gas_escapes_a_pocket_through_a_lower_diagonal_in_landscape);
 }
 
 SUITE_REGISTER(run_sand_combustion_suite);
