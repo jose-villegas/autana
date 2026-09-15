@@ -100,7 +100,7 @@ typedef enum {
 
 static const char* const color_names[SAND_COLOR_COUNT] = {"FULL", "256", "16"};
 
-static sand_color_mode_t color_mode = SAND_COLOR_FULL;
+static sand_color_mode_t color_mode = SAND_COLOR_256;
 
 /* The DITHER launch option, next to COLOUR once it is 16 - gfx_dither_
  * mode_t (gfx_indexed.h) directly, no sand-side mirror: "dither" has one
@@ -666,20 +666,26 @@ start_sim(void) {
  * no way to reach either through microui. Forces FULL regardless of
  * whatever a colour-mode test left color_mode at - a caller wanting the
  * real framebuffer to draw into (suite_sand_full_redraw.c, say) must not
- * silently start indexed instead. */
-void
+ * silently start indexed instead. Returns the mode to restore afterward. */
+int
 sand_app_enter_running_for_test(void) {
+    const int previous_mode = color_mode;
     color_mode = SAND_COLOR_FULL;
     start_sim();
     sand_spawn_cell(&sim, grid_w / 2, grid_h / 2, 3, brushes[0]);
+    return previous_mode;
+}
+
+void
+sand_app_restore_colour_mode_for_test(int mode) {
+    color_mode = (sand_color_mode_t)mode;
 }
 
 /* Drives the crash's own reproduction with the real functions: enter, start
  * a sim in `mode`, then return to the menu the only real way that happens -
  * a fresh sand_enter() - and reports whether indexed mode survived it. Only
  * a boolean crosses back to the caller; the assertion belongs to the test.
- * Leaves color_mode at FULL - whatever runs next in the same boot must not
- * inherit this test's own choice of mode. */
+ * Restores the mode that was selected before this test. */
 /* Test-only: which of brushes[] a pour spawns. */
 void
 sand_app_select_brush_for_test(int brush) {
@@ -688,12 +694,13 @@ sand_app_select_brush_for_test(int brush) {
 
 bool
 sand_app_test_survives_indexed_then_menu(int mode) {
+    const int previous_mode = color_mode;
     color_mode = (sand_color_mode_t)mode;
     sand_enter();
     start_sim();
     sand_enter();
     const bool ok = !sand_colour_indexed_active(&colour_state);
-    color_mode = SAND_COLOR_FULL;
+    color_mode = (sand_color_mode_t)previous_mode;
     return ok;
 }
 #endif /* CONFIG_LAUNCHER_SELFTEST */
@@ -2513,6 +2520,7 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
  * state behind. */
 bool
 sand_app_test_start_button_survives_the_ui_build(int mode) {
+    const int previous_mode = color_mode;
     color_mode = (sand_color_mode_t)mode;
     ui_set_transform(ui_transform_identity());
     sand_enter();
@@ -2539,12 +2547,10 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
     ESP_LOGI(TAG, "START tap test: indexed_active=%d screen=%d -> %s", sand_colour_indexed_active(&colour_state),
              ui.screen, ok ? "PASS" : "FAIL");
 
-    /* Leaves indexed mode and color_mode exactly as sand_exit() would for a
-     * real player closing the app - this test is the one place in the
-     * whole suite that can return with indexed mode still engaged, and
-     * whatever runs next in the same boot must not inherit it. */
+    /* This test can return with indexed mode still engaged, so close it like
+     * a real player would before restoring the prior menu selection. */
     sand_exit();
-    color_mode = SAND_COLOR_FULL;
+    color_mode = (sand_color_mode_t)previous_mode;
     return ok;
 }
 #endif /* CONFIG_LAUNCHER_SELFTEST */
