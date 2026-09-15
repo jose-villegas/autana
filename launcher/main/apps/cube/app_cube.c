@@ -403,8 +403,8 @@ draw_menu(const input_t* input, bool for_bands) {
             cube_mode_switch_request(&mode_switch);
         }
 
-        mu_layout_set_next(ctx,
-                           ui_centered_rect(ui_width(), MENU_BTN_W, hint_h, top + 2 * (MENU_BTN_H + MENU_BTN_GAP)), 0);
+        mu_layout_set_next(ctx, ui_centered_rect(ui_width(), MENU_BTN_W, hint_h, top + 2 * (MENU_BTN_H + MENU_BTN_GAP)),
+                           0);
         mu_label(ctx, "BOOT to close");
 
         mu_end_window(ctx);
