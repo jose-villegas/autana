@@ -165,38 +165,37 @@ try_bubble(sand_t* s, uint8_t* row, uint8_t* prow, int x, int y, int w, int rdx,
 }
 
 /* THE SPEC FOR THE WALK, not the lookup it reads - gas_walk_offset[] below
- * is derived from this by hand. Offsets are in gravity's frame: ring_dir()
- * is ordered, so with `up` the rise direction, up+-1 are the upper
- * diagonals, up+-2 the sides and up+4 straight down. Weights sum to 256
- * exactly, so one draw decides everything. The lower diagonals are 0:
- * a downward component on five of eight directions read as smoke sinking
- * rather than swirling. */
+ * is derived from this by hand. In gravity's frame, with `up` the rise
+ * direction: up+-1 are upper diagonals, up+-2 sides, up+3 and up+5 lower
+ * diagonals, and up+4 straight down. Weights total 256, so one draw decides.
+ */
 static const __attribute__((unused)) struct {
     uint16_t upto;
     int8_t off;
 } gas_walk_weights[] = {
-    {72, 0},   /* straight up          */
-    {144, -1}, /* up, one side         */
-    {216, 1},  /* up, the other        */
-    {240, 4},  /* straight down        */
-    {248, -2}, /* sideways             */
+    {2, 3},    /* lower diagonal       */
+    {4, 5},    /* lower diagonal       */
+    {74, 0},   /* straight up          */
+    {142, -1}, /* up, one side         */
+    {210, 1},  /* up, the other        */
+    {234, 4},  /* straight down        */
+    {245, -2}, /* sideways             */
     {256, 2},  /* sideways, the other  */
 };
 
-/* DERIVED FROM THE WEIGHTS TABLE ABOVE, the source of truth: every
- * boundary is a multiple of 8, so roll >> 3 selects a bucket exactly,
- * replacing a linear search that cost up to seven iterations. Const, so
- * it costs no RAM - smaller than the 256-entry version this replaced,
- * which cost real headroom against this board's internal heap budget.
- * Hand-written, so it must agree with the weights: a single wrong entry
- * moves the behaviour fingerprint. */
-static const int8_t gas_walk_offset[32] = {
-    0,  0,  0,  0,  0,  0,  0,  0,  0,  /* rolls   0.. 71 - stay on course */
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, /* rolls  72..143 - one notch left */
-    1,  1,  1,  1,  1,  1,  1,  1,  1,  /* rolls 144..215 - one notch right */
-    4,  4,  4,                          /* rolls 216..239 - straight down */
-    -2,                                 /* rolls 240..247 - side */
-    2,                                  /* rolls 248..255 - side */
+/* DERIVED FROM THE WEIGHTS TABLE ABOVE, the source of truth. Hand-written,
+ * so it must agree with the weights: a single wrong entry moves the
+ * behaviour fingerprint. */
+static const int8_t gas_walk_offset[256] = {
+    3,  3,  5,  5,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1,  1,  1,
+    1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
+    1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
+    1,  1,  1,  1,  1,  1,  1,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,
+    4,  4,  -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, 2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,
 };
 
 /* One bit per materials[] row, so the row filter reads a shift instead of
@@ -230,7 +229,7 @@ gas_walk_once(sand_t* s, uint8_t* row, int x, int y, int w, int rdx, int rdy, ce
     const int up = ring_of(rdx, rdy);
     const int roll = (int)(rng_next(&s->rng) & 0xFF);
 
-    const int off = gas_walk_offset[roll >> 3];
+    const int off = gas_walk_offset[roll];
 
     const int* d = ring_dir(up + off);
     const int ny = y + d[1];
