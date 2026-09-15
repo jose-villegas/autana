@@ -1225,8 +1225,9 @@ rather than a race on that queue.
 
 ### Scheduling: below present, not around it
 
-The core-1 task (`sand_core1.c`) runs at priority 3, below gfx's present
-task at 5 - not in a window carved out before or after present, because
+The core-1 task (`util/job.c`, shared by every engine client, not owned
+by this app) runs at priority 3, below gfx's present task at 5 - not in
+a window carved out before or after present, because
 `sand_step()` can run while a previous frame is still presenting
 (`main.c`'s `step_app()`) and present's own timing must never move for
 anything sand does. A lower-priority task only gets the CPU while present
@@ -1234,27 +1235,27 @@ is blocked on its own strip-sent semaphore, which is most of a present
 since the transfer itself is DMA, so present is never delayed and core 1
 still does useful work in gaps that would otherwise sit idle.
 
-### A device hang, and the fix
+### Why the core-1 dispatch can never hang the shell
 
-A diagnostics build of an earlier version of this task hung completely
-after boot with core-1 dispatch wired up: no fps line, no response to a
-RUNSUITE trigger, every reset. The mechanism a wait like that already
-existed in this codebase - `gfx_present_wait()`'s own `xSemaphoreTake(...,
-portMAX_DELAY)` chain has no timeout anywhere in it either, and has always
-been one wedged strip-sent interrupt away from hanging the whole frame loop
-the same way; adding a second task to core 1 is exactly the kind of change
-that could expose a latent timing assumption there. `sand_core1_join()` now
-waits `CORE1_JOIN_TIMEOUT_MS` (100, far above any dispatch this file makes)
-rather than forever, logs loudly in development builds if it gives up, and
-latches `core1_disabled` so no later dispatch ever notifies that task
-again - the same fallback an allocation failure already takes. The
-dispatched context is copied into a static buffer, not merely pointed at,
-because a join that times out cannot also stop a straggler task still
-reading it, and a stack-allocated context would dangle the moment its
-caller returns. Device builds split the gravity sweep across both cores:
-the diagnostics build boots, answers RUNSUITE and runs the sand perf suite
-with it. Host builds default to the serial path. The
-unbounded waits in gfx.c's present pipeline are still unchanged.
+Nothing on this codebase's core-1 dispatch path may wait forever, because
+`gfx_present_wait()`'s own `xSemaphoreTake(..., portMAX_DELAY)` chain has
+no timeout anywhere in it either, and has always been one wedged
+strip-sent interrupt away from hanging the whole frame loop; a second task
+on core 1 must not risk exposing that same latent assumption. `job_wait()`
+(`util/job.h`) takes a timeout instead - every sand call site here passes
+100 ms, far above any dispatch this file makes - and a timeout that fires
+is permanent for that dispatch: the flag it leaves set routes every later
+`job_run_core1()` call straight down the inline path, so a stuck core-1
+task is never notified again, the same fallback an allocation failure
+already takes. `job_run_core1()` copies its context into a static buffer
+before returning, not merely pointing at the caller's, because a
+dispatch a timed-out wait gave up on can still be read later by whatever
+core-1 is doing, and a stack-allocated context would dangle the moment
+its caller returned. Device builds split the gravity sweep, the liquid
+cross-flow pass, and `finalize_settling()` across both cores this way;
+host builds default to the serial path, where `job_run_core1()` always
+runs its callback inline. The unbounded waits in gfx.c's present pipeline
+are still unchanged.
 
 ## Why the liquid logic is its own file
 
