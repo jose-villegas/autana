@@ -75,7 +75,6 @@ heap_mark(const char* where) {
 #define DISPLAY_SAMPLE_MS 100
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-#define BUILD_MARK_MARGIN 4
 #define BUILD_MARK_GLYPH  8
 #define BUILD_MARK_CHARS  8
 #define BUILD_MARK_SIZE   (BUILD_MARK_GLYPH * BUILD_MARK_CHARS)
@@ -88,20 +87,20 @@ draw_build_mark(void) {
     int y = 0;
     switch (quarter) {
         case 0:
-            x = GFX_WIDTH - BUILD_MARK_MARGIN - BUILD_MARK_SIZE;
-            y = GFX_HEIGHT - BUILD_MARK_MARGIN - BUILD_MARK_GLYPH;
+            x = GFX_WIDTH - UI_MARGIN - BUILD_MARK_SIZE;
+            y = GFX_HEIGHT - UI_MARGIN - BUILD_MARK_GLYPH;
             break;
         case 1:
-            x = BUILD_MARK_MARGIN;
-            y = GFX_HEIGHT - BUILD_MARK_MARGIN - BUILD_MARK_SIZE;
+            x = UI_MARGIN;
+            y = GFX_HEIGHT - UI_MARGIN - BUILD_MARK_SIZE;
             break;
         case 2:
-            x = BUILD_MARK_MARGIN + BUILD_MARK_SIZE - BUILD_MARK_GLYPH;
-            y = BUILD_MARK_MARGIN;
+            x = UI_MARGIN + BUILD_MARK_SIZE - BUILD_MARK_GLYPH;
+            y = UI_MARGIN;
             break;
         default:
-            x = GFX_WIDTH - BUILD_MARK_MARGIN - BUILD_MARK_GLYPH;
-            y = BUILD_MARK_MARGIN + BUILD_MARK_SIZE - BUILD_MARK_GLYPH;
+            x = GFX_WIDTH - UI_MARGIN - BUILD_MARK_GLYPH;
+            y = UI_MARGIN + BUILD_MARK_SIZE - BUILD_MARK_GLYPH;
             break;
     }
 
