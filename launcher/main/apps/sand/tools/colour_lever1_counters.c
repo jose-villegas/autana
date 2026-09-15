@@ -30,7 +30,7 @@
 #define STEPS     40
 
 static void
-build_scene(sand_t* s) {
+build_scene_mixed_flip(sand_t* s) {
     for (int x = 0; x < GRID_W / 2; x++) {
         for (int y = GRID_H / 2; y < GRID_H; y++) {
             sand_set(s, x, y, SAND_FIRST_SHADE);
@@ -47,6 +47,36 @@ build_scene(sand_t* s) {
     for (int i = 0; i < 60; i++) {
         sand_step(s, GRAVITY_X, GRAVITY_Y, 0);
     }
+}
+
+static void
+step_mixed_flip(sand_t* s, int step_i) {
+    const int gx = (step_i < STEPS / 2) ? GRAVITY_X : -GRAVITY_X;
+    sand_step(s, gx, GRAVITY_Y, 0);
+}
+
+/* Lever 1's own target case: most of the grid already at rest, one slow
+ * trickle the only change - see suite_sand_colour_modes.c's own
+ * scene_settled_pour and paint_full_frame_indexed() comments for why the
+ * device suite's single bounding box needs a scene shaped like this one to
+ * show a win at all, unlike this file's own per-row changed_span_cells(). */
+static void
+build_scene_settled_pour(sand_t* s) {
+    for (int x = 0; x < GRID_W; x++) {
+        for (int y = GRID_H / 3; y < GRID_H; y++) {
+            sand_set(s, x, y, SAND_FIRST_SHADE);
+        }
+    }
+    for (int i = 0; i < 200; i++) {
+        sand_step(s, GRAVITY_X, GRAVITY_Y, 0);
+    }
+}
+
+static void
+step_settled_pour(sand_t* s, int step_i) {
+    (void)step_i;
+    sand_spawn_cell(s, GRID_W / 2, 0, 1, SAND_FIRST_SHADE);
+    sand_step(s, GRAVITY_X, GRAVITY_Y, 0);
 }
 
 /* This step's 256-index per cell - material_colours() at a fixed hash/
@@ -127,18 +157,16 @@ changed_span_cells(const uint16_t* cur, const uint16_t* prev) {
 
 static const char* const mode_names[] = {"NONE", "CELL_CHECKER", "CELL_BAYER2", "PIXEL_CHECKER2", "PIXEL_BAYER4"};
 
-int
-main(void) {
+typedef void (*scene_build_fn)(sand_t* s);
+typedef void (*scene_step_fn)(sand_t* s, int step_i);
+
+static void
+run_scene(const char* name, scene_build_fn build, scene_step_fn step, const uint8_t* dither16_class,
+          const uint8_t* checker2_class) {
     static uint8_t grid[GRID_W * GRID_H];
     sand_t sim;
     sand_init(&sim, grid, GRID_W, GRID_H, 0xC0107000u);
-    build_scene(&sim);
-
-    static uint8_t dither16_class[GFX_INDEXED_PALETTE_SIZE];
-    static uint8_t checker2_class[GFX_INDEXED_PALETTE_SIZE];
-    gfx_indexed_dither16_classify(sand_palette16_dither_rgb, dither16_class);
-    gfx_indexed_classify(sand_dither_pixel_checker2, GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX,
-                         checker2_class);
+    build(&sim);
 
     static uint8_t prev_grid[GRID_W * GRID_H], prev_idx256[GRID_W * GRID_H];
     static uint16_t prev_repr[GFX_DITHER_MODE_COUNT][GRID_W * GRID_H];
@@ -153,8 +181,7 @@ main(void) {
     long after_total[GFX_DITHER_MODE_COUNT] = {0};
 
     for (int i = 0; i < STEPS; i++) {
-        const int gx = (i < STEPS / 2) ? GRAVITY_X : -GRAVITY_X;
-        sand_step(&sim, gx, GRAVITY_Y, 0);
+        step(&sim, i);
 
         static uint8_t cur_idx256[GRID_W * GRID_H];
         shade_frame(grid, cur_idx256);
@@ -196,11 +223,23 @@ main(void) {
     const double bytes_per_cell = (double)(CELL * CELL) * 2.0;
     const double before_cells = (double)before_total / STEPS;
 
-    printf("cells marked per frame (mean over %d steps), mixed_flip, NORMAL quality:\n", STEPS);
+    printf("cells marked per frame (mean over %d steps), %s, NORMAL quality:\n", STEPS, name);
     printf("  before (today, unfiltered): %.1f cells, %.0f bytes\n", before_cells, before_cells * bytes_per_cell);
     for (int m = 0; m < GFX_DITHER_MODE_COUNT; m++) {
         const double after_cells = (double)after_total[m] / STEPS;
         printf("  after, 16 %-14s: %.1f cells, %.0f bytes\n", mode_names[m], after_cells, after_cells * bytes_per_cell);
     }
+}
+
+int
+main(void) {
+    static uint8_t dither16_class[GFX_INDEXED_PALETTE_SIZE];
+    static uint8_t checker2_class[GFX_INDEXED_PALETTE_SIZE];
+    gfx_indexed_dither16_classify(sand_palette16_dither_rgb, dither16_class);
+    gfx_indexed_classify(sand_dither_pixel_checker2, GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX,
+                         checker2_class);
+
+    run_scene("mixed_flip", build_scene_mixed_flip, step_mixed_flip, dither16_class, checker2_class);
+    run_scene("settled_pour", build_scene_settled_pour, step_settled_pour, dither16_class, checker2_class);
     return 0;
 }
