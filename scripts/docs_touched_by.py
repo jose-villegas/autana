@@ -12,6 +12,7 @@ import sys
 from check_doc_citations import citations
 
 FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\([^;]*\)\s*\{")
+PYTHON_FUNCTION = re.compile(r"^\s*def\s+([a-z_][a-z0-9_]*)\s*\(")
 MACRO = re.compile(r"^\s*#\s*define\s+([A-Z][A-Z0-9_]+)\b")
 
 
@@ -22,11 +23,17 @@ def changed_symbols(base):
         check=True, capture_output=True, text=True, encoding="utf-8",
     )
     found = set()
+    path = None
     for line in result.stdout.splitlines():
+        if line.startswith(("+++ b/", "--- a/")):
+            path = line[6:]
+            continue
         if not line or line[0] not in "+-" or line.startswith(("+++", "---")):
             continue
         text = line[1:]
-        function = FUNCTION.search(text)
+        function = FUNCTION.search(text) if path and path.endswith((".c", ".h")) else None
+        if path and path.endswith(".py"):
+            function = PYTHON_FUNCTION.search(text)
         macro = MACRO.search(text)
         if function:
             found.add(("function", function.group(1)))
