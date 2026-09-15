@@ -33,7 +33,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "brush_screen.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_color.h"
 #include "gfx/gfx_font_roles.h"
@@ -43,6 +42,7 @@
 #include "material_palette.h"
 #include "sand_swatch.h"
 #include "sand_ui.h"
+#include "ui/brush_screen.h"
 #include "ui/ui.h" /* UI_MARGIN, UI_SLIDER_KNOB_W only */
 #include "ui/ui_slider.h"
 #include "ui/ui_style.h"
@@ -145,18 +145,7 @@ draw_text(ui_transform_t t, mu_Rect r, const char* str, uint32_t color_rgb, int 
     gfx_text_font(mx, my, str, gfx_rgb(color_rgb), scale, quarter, font);
 }
 
-/* Mirrors app_sand.c's brush_color(): which palette entry a brush cell's
- * own swatch border/badge draws in. */
-static gfx_color_t
-preview_brush_color(cell_t c) {
-    const gfx_color_t* palette = material_palette();
-    if (cell_is_gunpowder(c)) {
-        return palette[GUNPOWDER_CELL(2)];
-    }
-    return palette[cell_is_extended(c) ? c : CELL_MAKE(CELL_MATERIAL(c), 13)];
-}
-
-/* Mirrors app_sand.c's draw_brush_swatch(). */
+/* Mirrors ui/brush_screen.c's draw_brush_swatch(). */
 static void
 draw_swatch(ui_transform_t t, mu_Rect r, cell_t spec) {
     const gfx_color_t* palette = material_palette();
@@ -173,7 +162,7 @@ draw_swatch(ui_transform_t t, mu_Rect r, cell_t spec) {
 
     ui_span_t spans[UI_BEZEL_MAX_SPANS];
     const int n =
-        ui_bezel_spans(r, hex_to_mu(gfx_color_rgb888(preview_brush_color(spec))), false, spans, UI_BEZEL_MAX_SPANS);
+        ui_bezel_spans(r, hex_to_mu(gfx_color_rgb888(material_brush_color(spec))), false, spans, UI_BEZEL_MAX_SPANS);
     for (int i = 1; i < n; i++) {
         fill_rect_logical(t, spans[i].rect, mu_to_gfx(spans[i].color));
     }
