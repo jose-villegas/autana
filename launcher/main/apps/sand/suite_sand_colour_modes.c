@@ -64,6 +64,7 @@ _Static_assert(DITHER_MODE_COUNT == GFX_DITHER_MODE_COUNT, "dither_modes must li
 typedef struct {
     const char* name;
     void (*build)(sand_t* s);
+    void (*step)(sand_t* s, int frame_i); /* NULL: measure_mode()'s own gravity-flip step */
 } colour_scene_t;
 
 static void
@@ -112,10 +113,35 @@ scene_levelling_pool(sand_t* s) {
     }
 }
 
+/* Lever 1's own target case: most of the grid already at rest, not a busy
+ * scene resettling every frame - a single slow trickle is the only change,
+ * so a per-row change span (the real app's own granularity) should shrink
+ * far more than one global bounding box over a widely scattered change
+ * region ever can. See paint_full_frame_indexed()'s own comment. */
+static void
+scene_settled_pour_build(sand_t* s) {
+    for (int x = 0; x < CM_GRID_W; x++) {
+        for (int y = CM_GRID_H / 3; y < CM_GRID_H; y++) {
+            sand_set(s, x, y, SAND_FIRST_SHADE);
+        }
+    }
+    for (int i = 0; i < 200; i++) {
+        sand_step(s, CM_GRAVITY_X, CM_GRAVITY_Y, 0);
+    }
+}
+
+static void
+scene_settled_pour_step(sand_t* s, int frame_i) {
+    (void)frame_i;
+    sand_spawn_cell(s, CM_GRID_W / 2, 0, 1, SAND_FIRST_SHADE);
+    sand_step(s, CM_GRAVITY_X, CM_GRAVITY_Y, 0);
+}
+
 static const colour_scene_t scenes[] = {
-    {"mixed_flip", scene_mixed_flip},
-    {"gas_over_pile", scene_gas_over_pile},
-    {"levelling_pool", scene_levelling_pool},
+    {"mixed_flip", scene_mixed_flip, NULL},
+    {"gas_over_pile", scene_gas_over_pile, NULL},
+    {"levelling_pool", scene_levelling_pool, NULL},
+    {"settled_pour", scene_settled_pour_build, scene_settled_pour_step},
 };
 #define SCENE_COUNT ((int)(sizeof scenes / sizeof scenes[0]))
 
@@ -144,40 +170,15 @@ paint_full_frame_full(const uint8_t* grid) {
     }
 }
 
-/* app_sand.c's own sand_indexed_cell_needs_repaint(), the classify tables
- * this file has no access to already computed by the caller - lever 1's
- * per-mode rule: exact per cell for the two CELL modes, class equality for
- * the two PIXEL ones, raw equality in 256 mode (dither16_on false). */
-static bool
-cell_needs_repaint(gfx_dither_mode_t mode, bool dither16_on, uint8_t old_idx, uint8_t new_idx,
-                   const uint8_t dither16_class[GFX_INDEXED_PALETTE_SIZE],
-                   const uint8_t checker2_class[GFX_INDEXED_PALETTE_SIZE], int cx, int cy) {
-    if (!dither16_on) {
-        return old_idx != new_idx;
-    }
-    switch (mode) {
-        case GFX_DITHER_NONE: return sand_dither_none_lut[old_idx] != sand_dither_none_lut[new_idx];
-        case GFX_DITHER_CELL_CHECKER:
-            return gfx_indexed_cell_dither_changed(old_idx, new_idx, sand_dither_cell_checker, false, cx, cy);
-        case GFX_DITHER_CELL_BAYER2:
-            return gfx_indexed_cell_dither_changed(old_idx, new_idx, sand_dither_cell_bayer2, true, cx, cy);
-        case GFX_DITHER_PIXEL_CHECKER2: return gfx_indexed_cell_changed(old_idx, new_idx, true, checker2_class);
-        case GFX_DITHER_PIXEL_BAYER4:
-        default: return gfx_indexed_cell_changed(old_idx, new_idx, true, dither16_class);
-    }
-}
-
 /* Unlike paint_full_frame_full(), this ALSO applies lever 1's own
- * suppression (cell_needs_repaint()) instead of writing every cell
- * unconditionally: the whole point of measuring it here is the narrower
- * region it marks, not the wider one paint_full_frame_full() still uses.
- * Returns how many cells its own bounding box covers - 0 with the box
- * fields untouched if nothing changed at all. */
+ * suppression. `kind`/`class_table`/`cell_table` are resolved once by the
+ * caller, never re-derived per cell. Returns 0 if nothing changed.
+ * ONE global box, not the real app's own per-row spans - scattered
+ * suppressed cells barely shrink a box already wide; scene_settled_pour
+ * keeps the box itself small enough for suppression to show here too. */
 static int
-paint_full_frame_indexed(const uint8_t* grid, gfx_dither_mode_t mode, bool dither16_on,
-                         const uint8_t dither16_class[GFX_INDEXED_PALETTE_SIZE],
-                         const uint8_t checker2_class[GFX_INDEXED_PALETTE_SIZE], int* out_x0, int* out_y0, int* out_x1,
-                         int* out_y1) {
+paint_full_frame_indexed(const uint8_t* grid, gfx_indexed_repaint_kind_t kind, const uint8_t* class_table,
+                         const gfx_color_t* cell_table, int* out_x0, int* out_y0, int* out_x1, int* out_y1) {
     uint8_t* img = gfx_indexed_image();
     int x0 = CM_GRID_W, y0 = CM_GRID_H, x1 = 0, y1 = 0;
     for (int cy = 0; cy < CM_GRID_H; cy++) {
@@ -188,7 +189,7 @@ paint_full_frame_indexed(const uint8_t* grid, gfx_dither_mode_t mode, bool dithe
             const int i = cy * CM_GRID_W + cx;
             const uint8_t new_idx = (uint8_t)material_palette256_index(col[0]);
             const uint8_t old_idx = img[i];
-            if (!cell_needs_repaint(mode, dither16_on, old_idx, new_idx, dither16_class, checker2_class, cx, cy)) {
+            if (!gfx_indexed_cell_repaint(kind, class_table, cell_table, false, old_idx, new_idx, cx, cy)) {
                 continue;
             }
             img[i] = new_idx;
@@ -269,8 +270,14 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t 
     scene->build(&sim);
 
     const bool indexed = mode != CM_MODE_FULL;
+    /* Resolved once here, mirroring app_sand.c's own apply_gfx_enter_
+     * indexed() - never re-derived from `mode`/`dither_mode` per cell. */
+    gfx_indexed_repaint_kind_t kind = GFX_INDEXED_REPAINT_RAW;
+    static uint8_t none_class[GFX_INDEXED_PALETTE_SIZE];
     static uint8_t dither16_class[GFX_INDEXED_PALETTE_SIZE];
     static uint8_t checker2_class[GFX_INDEXED_PALETTE_SIZE];
+    const uint8_t* class_table = NULL;
+    const gfx_color_t* cell_table = NULL;
     if (indexed) {
         gfx_mode_request_t req = {0};
         req.layout = GFX_LAYOUT_BANDS;
@@ -284,11 +291,38 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t 
         memset(gfx_indexed_image(), 0, (size_t)CM_GRID_W * CM_GRID_H);
         gfx_indexed_set_lut(sand_palette256_lut);
         gfx_indexed_set_dither16(mode == CM_MODE_16);
-        if (mode == CM_MODE_16) {
+        if (mode != CM_MODE_16) {
+            kind = GFX_INDEXED_REPAINT_RAW;
+        } else {
             gfx_indexed_set_dither(dither_mode, dither_table_for(dither_mode));
-            gfx_indexed_dither16_classify(sand_palette16_dither_rgb, dither16_class);
-            gfx_indexed_classify(sand_dither_pixel_checker2,
-                                 GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX, checker2_class);
+            switch (dither_mode) {
+                case GFX_DITHER_NONE:
+                    gfx_indexed_classify(sand_dither_none_lut, 1, none_class);
+                    kind = GFX_INDEXED_REPAINT_CLASS;
+                    class_table = none_class;
+                    break;
+                case GFX_DITHER_CELL_CHECKER:
+                    kind = GFX_INDEXED_REPAINT_CELL_CHECKER;
+                    cell_table = sand_dither_cell_checker;
+                    break;
+                case GFX_DITHER_CELL_BAYER2:
+                    kind = GFX_INDEXED_REPAINT_CELL_BAYER2;
+                    cell_table = sand_dither_cell_bayer2;
+                    break;
+                case GFX_DITHER_PIXEL_CHECKER2:
+                    gfx_indexed_classify(sand_dither_pixel_checker2,
+                                         GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX,
+                                         checker2_class);
+                    kind = GFX_INDEXED_REPAINT_CLASS;
+                    class_table = checker2_class;
+                    break;
+                case GFX_DITHER_PIXEL_BAYER4:
+                default:
+                    gfx_indexed_dither16_classify(sand_palette16_dither_rgb, dither16_class);
+                    kind = GFX_INDEXED_REPAINT_CLASS;
+                    class_table = dither16_class;
+                    break;
+            }
         }
     }
 
@@ -296,11 +330,15 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t 
     int64_t draw_total = 0, present_total = 0, cells_marked_total = 0;
 
     for (int i = 0; i < CM_MEASURED_FRAMES; i++) {
-        /* Gravity flips along its own (landscape) axis at the midpoint of
-         * the run for scene_mixed_flip's own sake; the other two scenes
-         * just keep falling the way they were already headed. */
-        const int gx = (i < CM_MEASURED_FRAMES / 2) ? CM_GRAVITY_X : -CM_GRAVITY_X;
-        sand_step(&sim, gx, CM_GRAVITY_Y, 0);
+        if (scene->step != NULL) {
+            scene->step(&sim, i);
+        } else {
+            /* Gravity flips along its own (landscape) axis at the midpoint
+             * of the run for scene_mixed_flip's own sake; gas_over_pile and
+             * levelling_pool just keep falling the way they were headed. */
+            const int gx = (i < CM_MEASURED_FRAMES / 2) ? CM_GRAVITY_X : -CM_GRAVITY_X;
+            sand_step(&sim, gx, CM_GRAVITY_Y, 0);
+        }
 
         int dx0, dy0, dx1, dy1;
         const bool changed = diff_bounding_box(grid, &dx0, &dy0, &dx1, &dy1);
@@ -312,8 +350,7 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t 
              * (or, in 256 mode, the same index), so this can be, and often
              * is, smaller than [dx0,dx1)x[dy0,dy1). */
             int ix0, iy0, ix1, iy1;
-            const int cells = paint_full_frame_indexed(grid, dither_mode, mode == CM_MODE_16, dither16_class,
-                                                       checker2_class, &ix0, &iy0, &ix1, &iy1);
+            const int cells = paint_full_frame_indexed(grid, kind, class_table, cell_table, &ix0, &iy0, &ix1, &iy1);
             if (cells > 0) {
                 gfx_mark_dirty(ix0 * CM_CELL, iy0 * CM_CELL, (ix1 - ix0) * CM_CELL, (iy1 - iy0) * CM_CELL);
             }
@@ -403,7 +440,13 @@ test_levelling_pool(void) {
     test_colour_modes_on_scene(2);
 }
 
-_Static_assert(SCENE_COUNT == 3, "test_mixed_flip/test_gas_over_pile/test_levelling_pool index scenes[] positionally");
+static void
+test_settled_pour(void) {
+    test_colour_modes_on_scene(3);
+}
+
+_Static_assert(SCENE_COUNT == 4, "test_mixed_flip/test_gas_over_pile/test_levelling_pool/test_settled_pour index "
+                                 "scenes[] positionally");
 
 /* Defined in app_sand.c (CONFIG_LAUNCHER_SELFTEST only), which is not part
  * of any library this could declare through a shared header - one function
@@ -445,6 +488,7 @@ run_sand_colour_modes_suite(void) {
     RUN_TEST(test_mixed_flip);
     RUN_TEST(test_gas_over_pile);
     RUN_TEST(test_levelling_pool);
+    RUN_TEST(test_settled_pour);
 #endif
 }
 

@@ -125,12 +125,23 @@ _Static_assert((int)SAND_COLOR_FULL == (int)SAND_COLOUR_FULL && (int)SAND_COLOR_
 static sand_colour_state_t colour_state;
 
 /* Built once, at the first indexed entry, not per sand_enter() - the
- * generated tables never change at runtime. One per PIXEL dither mode;
- * the CELL modes need no classify step at all (gfx_indexed_cell_dither_
- * changed()). */
+ * generated tables never change at runtime. One per CLASS-kind dither mode
+ * (NONE, both PIXEL ones); the CELL modes carry their own phase formula and
+ * never classify at all - see gfx_indexed_cell_repaint()'s own comment. */
+static uint8_t none_class[GFX_INDEXED_PALETTE_SIZE];
 static uint8_t dither16_class[GFX_INDEXED_PALETTE_SIZE];
 static uint8_t checker2_class[GFX_INDEXED_PALETTE_SIZE];
 static bool dither_classes_ready;
+
+/* paint_row_n()'s per-cell dispatch, resolved once per indexed-mode entry -
+ * see apply_gfx_enter_indexed() - never re-derived from color_mode/
+ * dither_mode inside the hot loop itself. `repaint_class_table` is read
+ * for GFX_INDEXED_REPAINT_CLASS only; the two CELL kinds read their own
+ * generated table directly (sand_dither_cell_checker/_bayer2), never a
+ * class, so `repaint_class_table` is left stale (unread) for those. */
+static gfx_indexed_repaint_kind_t repaint_kind = GFX_INDEXED_REPAINT_RAW;
+static const uint8_t* repaint_class_table = NULL;
+static const gfx_color_t* repaint_cell_table = NULL;
 
 /* Set whenever the PANEL, not just the simulation, needs every visited
  * cell resent regardless of whether its own index moved -
@@ -362,10 +373,45 @@ apply_gfx_enter_indexed(void) {
         gfx_indexed_set_dither(dither_mode, sand_dither_table_for(dither_mode));
     }
     if (!dither_classes_ready) {
+        gfx_indexed_classify(sand_dither_none_lut, 1, none_class);
         gfx_indexed_dither16_classify(sand_palette16_dither_rgb, dither16_class);
         gfx_indexed_classify(sand_dither_pixel_checker2,
                              GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX, checker2_class);
         dither_classes_ready = true;
+    }
+    /* sand_indexed_cell_needs_repaint()'s own dispatch, resolved here and
+     * only here - color_mode/dither_mode cannot change mid-run (the START
+     * lesson), so the hot loop never re-derives this per cell or per row. */
+    if (color_mode != SAND_COLOR_16) {
+        repaint_kind = GFX_INDEXED_REPAINT_RAW;
+        repaint_class_table = NULL;
+        repaint_cell_table = NULL;
+    } else {
+        repaint_class_table = NULL;
+        repaint_cell_table = NULL;
+        switch (dither_mode) {
+            case GFX_DITHER_NONE:
+                repaint_kind = GFX_INDEXED_REPAINT_CLASS;
+                repaint_class_table = none_class;
+                break;
+            case GFX_DITHER_CELL_CHECKER:
+                repaint_kind = GFX_INDEXED_REPAINT_CELL_CHECKER;
+                repaint_cell_table = sand_dither_cell_checker;
+                break;
+            case GFX_DITHER_CELL_BAYER2:
+                repaint_kind = GFX_INDEXED_REPAINT_CELL_BAYER2;
+                repaint_cell_table = sand_dither_cell_bayer2;
+                break;
+            case GFX_DITHER_PIXEL_CHECKER2:
+                repaint_kind = GFX_INDEXED_REPAINT_CLASS;
+                repaint_class_table = checker2_class;
+                break;
+            case GFX_DITHER_PIXEL_BAYER4:
+            default:
+                repaint_kind = GFX_INDEXED_REPAINT_CLASS;
+                repaint_class_table = dither16_class;
+                break;
+        }
     }
     /* Belt and suspenders past the memset above: entering indexed mode
      * always owes a full repaint, whatever the index image happens to
@@ -876,27 +922,13 @@ note_row_change_x(int cy, int cx) {
     }
 }
 
-/* paint_row_n()'s one per-cell decision: raw index equality in 256 mode;
- * in 16, whichever rule dither_mode's own table needs - exact per cell for
- * CELL modes, class equality for PIXEL ones. `force_full` only widens. */
+/* paint_row_n()'s one per-cell decision - repaint_kind and its table were
+ * resolved once at apply_gfx_enter_indexed() time, not re-derived here:
+ * a force_full check, an index compare, one lookup, no switch per cell. */
 static inline bool
 sand_indexed_cell_needs_repaint(bool force_full, uint8_t old_idx, uint8_t new_idx, int cx, int cy) {
-    if (force_full) {
-        return true;
-    }
-    if (color_mode != SAND_COLOR_16) {
-        return old_idx != new_idx;
-    }
-    switch (dither_mode) {
-        case GFX_DITHER_NONE: return sand_dither_none_lut[old_idx] != sand_dither_none_lut[new_idx];
-        case GFX_DITHER_CELL_CHECKER:
-            return gfx_indexed_cell_dither_changed(old_idx, new_idx, sand_dither_cell_checker, false, cx, cy);
-        case GFX_DITHER_CELL_BAYER2:
-            return gfx_indexed_cell_dither_changed(old_idx, new_idx, sand_dither_cell_bayer2, true, cx, cy);
-        case GFX_DITHER_PIXEL_CHECKER2: return gfx_indexed_cell_changed(old_idx, new_idx, true, checker2_class);
-        case GFX_DITHER_PIXEL_BAYER4:
-        default: return gfx_indexed_cell_changed(old_idx, new_idx, true, dither16_class);
-    }
+    return gfx_indexed_cell_repaint(repaint_kind, repaint_class_table, repaint_cell_table, force_full, old_idx, new_idx,
+                                    cx, cy);
 }
 
 /* `index_row` NULL means the RGB565 path (`fb`/`pal`/`n`); non-NULL is

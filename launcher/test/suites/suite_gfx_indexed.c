@@ -445,6 +445,69 @@ test_cell_dither_changed_is_exact_per_cell_not_every_phase(void) {
     TEST_ASSERT_FALSE(gfx_indexed_cell_dither_changed(1, 1, bayer2_table, true, 1, 0));
 }
 
+/* --- lever 1/2 unified dispatch: gfx_indexed_cell_repaint() --------------- */
+
+/* force_full widens past every kind, even RAW with the tables left NULL -
+ * the one case a stale index image must still repaint. */
+static void
+test_repaint_force_full_widens_every_kind(void) {
+    TEST_ASSERT_TRUE(gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_RAW, NULL, NULL, true, 5, 5, 0, 0));
+    TEST_ASSERT_TRUE(gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_CELL_BAYER2, NULL, bayer2_table, true, 5, 5, 0, 0));
+}
+
+/* An unmoved index answers false before any table is even read - NULL
+ * tables prove no lookup happened. */
+static void
+test_repaint_unforced_unmoved_index_is_cheap_and_false(void) {
+    TEST_ASSERT_FALSE(gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_CLASS, NULL, NULL, false, 9, 9, 0, 0));
+    TEST_ASSERT_FALSE(gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_CELL_CHECKER, NULL, NULL, false, 9, 9, 3, 4));
+}
+
+/* RAW: any two distinct indices always repaint - 256 mode's own rule. */
+static void
+test_repaint_raw_kind_is_index_inequality(void) {
+    TEST_ASSERT_TRUE(gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_RAW, NULL, NULL, false, 1, 2, 0, 0));
+}
+
+/* CLASS matches gfx_indexed_cell_changed()'s own class-table compare. */
+static void
+test_repaint_class_kind_matches_cell_changed(void) {
+    memset(dither_table, 0, sizeof dither_table);
+    for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
+        set_dither_entry(11, p, (gfx_color_t)(0x8000 + p));
+        set_dither_entry(22, p, (gfx_color_t)(0x8000 + p));
+    }
+    gfx_indexed_dither16_classify(dither_table, class_out);
+
+    static const uint8_t pairs[][2] = {{11, 22}, {11, 5}};
+    for (size_t i = 0; i < sizeof pairs / sizeof pairs[0]; i++) {
+        const bool expected = gfx_indexed_cell_changed(pairs[i][0], pairs[i][1], true, class_out);
+        const bool actual =
+            gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_CLASS, class_out, NULL, false, pairs[i][0], pairs[i][1], 0, 0);
+        TEST_ASSERT_EQUAL_INT(expected, actual);
+    }
+}
+
+/* CELL_CHECKER/CELL_BAYER2 match gfx_indexed_cell_dither_changed()'s own
+ * exact per-cell phase compare, at more than one (cx, cy). */
+static void
+test_repaint_cell_kinds_match_cell_dither_changed(void) {
+    set_agree_at_phase_0_only();
+
+    TEST_ASSERT_FALSE(gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_CELL_BAYER2, NULL, bayer2_table, false, 1, 2, 0, 0));
+    TEST_ASSERT_TRUE(gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_CELL_BAYER2, NULL, bayer2_table, false, 1, 2, 1, 0));
+
+    memset(checker_table, 0, sizeof checker_table);
+    checker_table[7 * GFX_INDEXED_CELL_CHECKER_PHASES + 0] = (gfx_color_t)0xAAAA;
+    checker_table[7 * GFX_INDEXED_CELL_CHECKER_PHASES + 1] = (gfx_color_t)0xBBBB;
+    checker_table[9 * GFX_INDEXED_CELL_CHECKER_PHASES + 0] = (gfx_color_t)0xAAAA;
+    checker_table[9 * GFX_INDEXED_CELL_CHECKER_PHASES + 1] = (gfx_color_t)0xCCCC;
+    TEST_ASSERT_FALSE(
+        gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_CELL_CHECKER, NULL, checker_table, false, 7, 9, 0, 0));
+    TEST_ASSERT_TRUE(
+        gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_CELL_CHECKER, NULL, checker_table, false, 7, 9, 1, 0));
+}
+
 /* --- lever 2: GFX_DITHER_PIXEL_CHECKER2 ----------------------------------- */
 
 static gfx_color_t
@@ -524,6 +587,11 @@ run_gfx_indexed_suite(void) {
     RUN_TEST(test_cell_bayer2_phase_is_2x2_cell_position);
     RUN_TEST(test_cell_null_row_reads_background_phase);
     RUN_TEST(test_cell_dither_changed_is_exact_per_cell_not_every_phase);
+    RUN_TEST(test_repaint_force_full_widens_every_kind);
+    RUN_TEST(test_repaint_unforced_unmoved_index_is_cheap_and_false);
+    RUN_TEST(test_repaint_raw_kind_is_index_inequality);
+    RUN_TEST(test_repaint_class_kind_matches_cell_changed);
+    RUN_TEST(test_repaint_cell_kinds_match_cell_dither_changed);
     RUN_TEST(test_checker2_every_output_pixel_reads_its_own_phase_entry);
     RUN_TEST(test_checker2_stays_in_phase_across_a_band_boundary);
 }

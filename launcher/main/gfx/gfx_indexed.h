@@ -171,26 +171,25 @@ typedef enum {
 #define GFX_INDEXED_CELL_BAYER2_PHASES  4
 
 /* One lookup per CELL, keyed by its own (cx, cy) phase, filled solid
- * across its pixels - `bayer2` picks the phase formula matching whichever
- * table `cell_table` was baked for. `cy` is the GRID row: a cell's phase
- * never depends on which panel pixel is being written. */
+ * across its pixels by a run fill - `bayer2` picks the phase formula
+ * matching whichever table `cell_table` was baked for, resolved once per
+ * cell rather than the divide, ternary and multiply gfx_indexed_expand_row()
+ * never needs repeated once per PANEL PIXEL. `cy` is the GRID row: a cell's
+ * phase never depends on which panel pixel is being written. */
 static inline void
 gfx_indexed_expand_row_dither_cell(const uint8_t* grid_row, int grid_w, const gfx_color_t* cell_table, bool bayer2,
                                    int cell_size, int cy, gfx_color_t* out_row, int out_width) {
     const int phases = bayer2 ? GFX_INDEXED_CELL_BAYER2_PHASES : GFX_INDEXED_CELL_CHECKER_PHASES;
-    const int grid_pixels = grid_w * cell_size;
-    const int solid_pixels = grid_pixels < out_width ? grid_pixels : out_width;
-
-    for (int x = 0; x < solid_pixels; x++) {
-        const int gx = x / cell_size;
-        const uint8_t idx = grid_row != NULL ? grid_row[gx] : 0u;
-        const int phase = bayer2 ? ((cy & 1) * 2 + (gx & 1)) : ((gx + cy) & 1);
-        out_row[x] = cell_table[idx * phases + phase];
-    }
-    for (int x = solid_pixels; x < out_width; x++) {
-        const int gx = x / cell_size;
-        const int phase = bayer2 ? ((cy & 1) * 2 + (gx & 1)) : ((gx + cy) & 1);
-        out_row[x] = cell_table[phase]; /* index 0: reserved background */
+    const int cy_term = bayer2 ? (cy & 1) * 2 : (cy & 1);
+    int x = 0;
+    for (int gx = 0; x < out_width; gx++) {
+        const uint8_t idx = (grid_row != NULL && gx < grid_w) ? grid_row[gx] : 0u;
+        const int phase = bayer2 ? (cy_term + (gx & 1)) : ((cy_term + gx) & 1);
+        const gfx_color_t colour = cell_table[idx * phases + phase];
+        const int run_end = x + cell_size < out_width ? x + cell_size : out_width;
+        for (; x < run_end; x++) {
+            out_row[x] = colour;
+        }
     }
 }
 
@@ -207,6 +206,52 @@ gfx_indexed_cell_dither_changed(uint8_t old_idx, uint8_t new_idx, const gfx_colo
     const int phases = bayer2 ? GFX_INDEXED_CELL_BAYER2_PHASES : GFX_INDEXED_CELL_CHECKER_PHASES;
     const int phase = bayer2 ? ((cy & 1) * 2 + (cx & 1)) : ((cx + cy) & 1);
     return cell_table[(int)old_idx * phases + phase] != cell_table[(int)new_idx * phases + phase];
+}
+
+/* Which rule paint_row_n()'s hot loop resolves to, decided once per
+ * indexed-mode entry - never per cell, and never by a runtime dither16_on/
+ * dither_mode pair re-examined on every visit the way the two hand-written
+ * callers (app_sand.c, suite_sand_colour_modes.c) once each did. RAW is 256
+ * mode; CLASS covers NONE and the two PIXEL modes, all a single 256-entry
+ * lookup; the two CELL kinds carry their own phase formula and never touch
+ * a class table at all. */
+typedef enum {
+    GFX_INDEXED_REPAINT_RAW,
+    GFX_INDEXED_REPAINT_CLASS,
+    GFX_INDEXED_REPAINT_CELL_CHECKER,
+    GFX_INDEXED_REPAINT_CELL_BAYER2,
+} gfx_indexed_repaint_kind_t;
+
+/* The one per-cell decision, cheap in every kind: `force_full` widens
+ * before either table is touched, and an unmoved index answers `false`
+ * before any lookup at all - guards a switch-per-cell shape once skipped.
+ * `class_table` is read for GFX_INDEXED_REPAINT_CLASS, `cell_table` for the
+ * two CELL kinds; the kind picks which one, so the unused pointer may be
+ * NULL. */
+static inline bool
+gfx_indexed_cell_repaint(gfx_indexed_repaint_kind_t kind, const uint8_t* class_table, const gfx_color_t* cell_table,
+                         bool force_full, uint8_t old_idx, uint8_t new_idx, int cx, int cy) {
+    if (force_full) {
+        return true;
+    }
+    if (old_idx == new_idx) {
+        return false;
+    }
+    switch (kind) {
+        case GFX_INDEXED_REPAINT_RAW: return true;
+        case GFX_INDEXED_REPAINT_CLASS: return class_table[old_idx] != class_table[new_idx];
+        case GFX_INDEXED_REPAINT_CELL_CHECKER: {
+            const int phase = (cx + cy) & 1;
+            return cell_table[(int)old_idx * GFX_INDEXED_CELL_CHECKER_PHASES + phase]
+                   != cell_table[(int)new_idx * GFX_INDEXED_CELL_CHECKER_PHASES + phase];
+        }
+        case GFX_INDEXED_REPAINT_CELL_BAYER2: {
+            const int phase = (cy & 1) * 2 + (cx & 1);
+            return cell_table[(int)old_idx * GFX_INDEXED_CELL_BAYER2_PHASES + phase]
+                   != cell_table[(int)new_idx * GFX_INDEXED_CELL_BAYER2_PHASES + phase];
+        }
+    }
+    return true;
 }
 
 /* GFX_DITHER_PIXEL_CHECKER2's own table: like GFX_INDEXED_DITHER16_PHASES
