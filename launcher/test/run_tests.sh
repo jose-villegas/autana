@@ -83,6 +83,7 @@ $TEST_DIR/suites/suite_gfx_fb_guard.c
 $TEST_DIR/suites/suite_gfx_target.c
 $TEST_DIR/suites/suite_gfx_mode.c
 $TEST_DIR/suites/suite_gfx_band.c
+$TEST_DIR/suites/suite_gfx_heal.c
 $TEST_DIR/suites/suite_gfx_indexed.c
 $TEST_DIR/suites/suite_gfx_palette.c
 $TEST_DIR/suites/suite_small3dlib_scissor.c
@@ -98,12 +99,14 @@ $TEST_DIR/suites/suite_ui_pointer.c
 $TEST_DIR/suites/suite_ui_pointer_microui.c
 $TEST_DIR/suites/suite_ui_slider.c
 $TEST_DIR/suites/suite_display.c
+$TEST_DIR/suites/suite_panel_clock.c
 $TEST_DIR/suites/suite_screenshot.c
 $TEST_DIR/suites/suite_device_state.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/gesture.c
 $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
+$MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/ui/ui_pointer.c
 $MAIN_DIR/gfx/gfx_palette_standard.c
 $MAIN_DIR/../tools/gfx_palette_gen.c

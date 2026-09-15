@@ -116,7 +116,7 @@ menu "Launcher"
     endchoice
 
     config LAUNCHER_GFX_QSPI_80MHZ
-        bool "Drive the panel's QSPI bus at 80 MHz instead of 40"
+        bool "Drive the panel's QSPI bus at 80 MHz until a saved choice says otherwise"
         default y
         help
             Halves the time a full frame spends on the bus: 8.2 ms at 80 MHz

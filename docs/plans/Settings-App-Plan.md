@@ -123,16 +123,18 @@ occasion to relitigate what belongs where.
   the diagnostic this project has needed twice: the round where three
   device captures measured nothing because fixtures had eaten the heap
   would have been one glance at this screen.
-- **The panel clock is a display setting too: 40 or 80 MHz.** 80 halves
-  the bus time of a full frame (8.2 against 16.5 ms) but is outside the
-  panel's 50 MHz rating, and an app that redraws only dirty regions can
-  show stray pixels or thin lines that stay until the region changes; an
-  app redrawing whole frames is safe. The toggle carries that warning.
-  At 80, gfx's planned opt-in heal (re-send regions an app marks, with a
-  different layout, under a pixel budget) is what a partial-redraw app
-  would use to stay clean. See
-  [Display-and-Rendering.md](../notes/Display-and-Rendering.md), "The blit
-  is bus-bound".
+- **The system panel clock moves here from Developer Toggles.** 80 MHz
+  (default) halves the bus time of a full frame (8.2 against 16.5 ms) but is
+  outside the panel's 50 MHz rating, so an app that redraws only dirty regions
+  can show stray pixels or thin lines until the region changes; an app
+  redrawing whole frames is safe. `shell_set_system_panel_clock_hz()` chooses
+  80 or 40 and the shell keeps it in NVS, so a release build (no Diagnostics)
+  still boots at whatever was last chosen. Every app starts at it; an app may
+  force another rate for itself, and the shell restores the system value on
+  every app switch (Launcher-Architecture.md, "The panel clock"). At 80 a
+  partial-redraw app opts into gfx heal to stay clean. The row keeps the
+  warning; see [Display-and-Rendering.md](../notes/Display-and-Rendering.md),
+  "The blit is bus-bound".
 - Should Settings be reachable from the launcher unconditionally (like any
   other app) or only exist in `--dev`/`--diag` builds the way Diagnostics
   does today? Development-only content argues for the latter, matching how

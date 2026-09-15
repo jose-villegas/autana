@@ -174,16 +174,18 @@ since commands at 40 with pixels at 80 still corrupted.
 
 **Decision.** Both clocks stay: 80 is a large present win (8.2 against
 16.5 ms of bus for a full frame) and safe for a renderer that redraws whole
-frames. Planned, not built:
+frames. So:
 
-- a panel-clock choice, 40 or 80, in the system display settings (see
-  [Settings-App-Plan.md](../plans/Settings-App-Plan.md)), warning that apps
-  redrawing only part of the screen may show stray pixels or lines;
-- an opt-in gfx heal, active only at 80 MHz. gfx provides the mechanism:
-  re-send regions a caller marks, with a *different* layout (full strips),
-  under a per-frame pixel budget, plus a rolling option. The app owns the
-  policy - sand would heal strips that recently moved, a frame or a few
-  later.
+- the shell owns a system panel clock, 80 (default) or 40, kept in NVS and
+  set from Developer Toggles until the Settings app exists (see
+  [Settings-App-Plan.md](../plans/Settings-App-Plan.md)); every app starts
+  at it, may force another rate, and gets the system value restored on every
+  app switch - see Launcher-Architecture.md, "The panel clock";
+- gfx heal, opt-in and active only at 80 MHz: a caller marks rows with
+  `gfx_heal_mark()`, and gfx re-sends them as full-width strips with the
+  strip grid shifted each time, under a per-present pixel budget. The app
+  owns the policy - sand heals bands that sent pixels a few presents after
+  they go quiet.
 
 A synthetic cost independently regressed at 80 MHz too, for an unrelated
 reason worth keeping in mind if this is ever revisited: gathering two small,
@@ -559,8 +561,7 @@ kept here so the reasoning survives to whoever picks one up.
   it clean.** Window commands at 40 MHz with pixels at 80, CS setup, pad
   drive and sending every region twice were each tried on device - see
   "The blit is bus-bound" above. The clock is out of the panel's rating, so
-  what remains is concealment: the planned opt-in heal described there, or
-  40 MHz.
+  what remains is concealment: the opt-in heal described there, or 40 MHz.
 - **A tiled (swizzled) framebuffer - parked on purpose, not a next step.**
   Store pixels in fixed NxN tile order instead of scanline order, so a
   whole tile - not just one row of it - is a single contiguous run and

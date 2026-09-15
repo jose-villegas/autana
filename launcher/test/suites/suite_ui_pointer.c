@@ -221,6 +221,88 @@ test_idle_parks_the_pointer_off_screen(void) {
     TEST_ASSERT_EQUAL_INT(-1, ev[0].y);
 }
 
+/*
+ * Scrollable content: a press waits, a vertical drag scrolls, a tap still
+ * presses.
+ */
+
+static int
+count_kind(int n, ui_pointer_kind_t kind) {
+    int count = 0;
+    for (int i = 0; i < n; i++) {
+        count += ev[i].kind == kind;
+    }
+    return count;
+}
+
+static void
+test_a_vertical_drag_on_scrollable_content_scrolls_and_never_presses(void) {
+    fixture();
+    p.over_scrollable = true;
+
+    int downs = 0;
+    int scrolled_y = 0;
+    int y = 200;
+    for (int frame = 0; frame < 10; frame++) {
+        const int n = step(true, frame == 0, false, 100, y);
+        downs += count_kind(n, UI_POINTER_DOWN);
+        for (int i = 0; i < n; i++) {
+            if (ev[i].kind == UI_POINTER_SCROLL) {
+                scrolled_y += ev[i].y;
+            }
+        }
+        y -= 10;
+    }
+    const int n = step(false, false, true, 100, y);
+    downs += count_kind(n, UI_POINTER_DOWN);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, downs, "a drag that scrolls must not press the control it started on");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_kind(n, UI_POINTER_UP), "no DOWN went out, so no UP may follow");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(200 - (y + 10), scrolled_y, "content follows the finger one pixel for one pixel");
+}
+
+static void
+test_a_tap_with_a_small_wobble_on_scrollable_content_presses_on_release(void) {
+    fixture();
+    p.over_scrollable = true;
+
+    int downs = 0;
+    int n = step(true, true, false, 100, 200);
+    downs += count_kind(n, UI_POINTER_DOWN);
+    for (int frame = 0; frame < 6; frame++) {
+        n = step(true, false, false, 100 + frame % 2, 200 + UI_POINTER_DRAG_THRESHOLD - 1);
+        downs += count_kind(n, UI_POINTER_DOWN);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_kind(n, UI_POINTER_SCROLL), "a wobble under the threshold is no drag");
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, downs, "on scrollable content the press waits for the release");
+
+    n = step(false, false, true, 101, 211);
+    TEST_ASSERT_EQUAL_INT(3, n);
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_DOWN, ev[1].kind);
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_UP, ev[2].kind);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(200, ev[1].y, "the deferred press lands where the finger went down");
+}
+
+static void
+test_a_sideways_drag_on_scrollable_content_presses_so_a_slider_still_moves(void) {
+    fixture();
+    p.over_scrollable = true;
+
+    press_through_hover(100, 200);
+    int n = step(true, false, false, 100, 200);
+    TEST_ASSERT_EQUAL_INT(0, count_kind(n, UI_POINTER_DOWN));
+
+    n = step(true, false, false, 100 + UI_POINTER_DRAG_THRESHOLD + 1, 202);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, count_kind(n, UI_POINTER_DOWN), "a sideways move presses at once");
+    TEST_ASSERT_EQUAL_INT(0, count_kind(n, UI_POINTER_SCROLL));
+
+    n = step(true, false, false, 140, 203);
+    TEST_ASSERT_EQUAL_INT(1, n);
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
+    TEST_ASSERT_EQUAL_INT(140, ev[0].x);
+}
+
 void
 run_ui_pointer_suite(void) {
     RUN_TEST(test_a_tap_hovers_two_frames_before_pressing);
@@ -231,6 +313,9 @@ run_ui_pointer_suite(void) {
     RUN_TEST(test_a_finger_already_down_at_open_then_released_emits_no_up);
     RUN_TEST(test_a_too_small_buffer_returns_zero_and_leaves_state_untouched);
     RUN_TEST(test_idle_parks_the_pointer_off_screen);
+    RUN_TEST(test_a_vertical_drag_on_scrollable_content_scrolls_and_never_presses);
+    RUN_TEST(test_a_tap_with_a_small_wobble_on_scrollable_content_presses_on_release);
+    RUN_TEST(test_a_sideways_drag_on_scrollable_content_presses_so_a_slider_still_moves);
 }
 
 SUITE_REGISTER(run_ui_pointer_suite);

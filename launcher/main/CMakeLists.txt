@@ -5,6 +5,7 @@ set(app_srcs
     "boot/post.c"
     "boot/post_ui.c"
     "display/display.c"
+    "display/panel_clock.c"
     "gfx/gfx.c"
     "input/touch.c"
     "input/touch_fsm.c"
@@ -103,7 +104,7 @@ list(APPEND app_srcs ${discovered_apps})
 set(app_reqs microui small3dlib esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support spi_flash
              fatfs esp_driver_sdmmc sdmmc
-             esp_driver_usb_serial_jtag vfs
+             esp_driver_usb_serial_jtag vfs nvs_flash
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300
              # perfmon and unity are both listed unconditionally, NOT inside
              # the block below: ESP-IDF expands REQUIRES in an early pass
@@ -132,6 +133,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites/suite_tween.c"
         "../test/suites/suite_gfx.c"
         "../test/suites/suite_gfx_dirty.c"
+        "../test/suites/suite_gfx_heal.c"
         "../test/suites/suite_gfx_color.c"
         "../test/suites/suite_gfx_font.c"
         "../test/suites/suite_gfx_font_roles.c"
@@ -145,6 +147,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites/suite_ui_pointer_microui.c"
         "../test/suites/suite_ui_slider.c"
         "../test/suites/suite_display.c"
+        "../test/suites/suite_panel_clock.c"
         "../test/suites/suite_screenshot.c"
         "../test/suites/suite_device_state.c"
     )
