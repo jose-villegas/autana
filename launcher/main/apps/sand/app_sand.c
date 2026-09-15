@@ -60,6 +60,7 @@
 #include "row_runs.h"
 #include "sand.h"
 #include "sand_colour_state.h"
+#include "sand_heal.h"
 #include "sand_palette256.h"
 #include "sand_swatch.h"
 #include "sand_ui.h"
@@ -165,6 +166,11 @@ static bool overlays_skipped_reason_logged;
 static bool pending_start;
 
 static int cell, grid_w, grid_h, block_cols, block_rows;
+
+/* Two heal strips a present: enough to keep up with a pour's settling
+ * bands without costing more than a seventh of a full frame. */
+#define SAND_HEAL_BUDGET_PIXELS (GFX_WIDTH * 64)
+static sand_heal_t heal_policy;
 
 #define CELL_MIN                  2 /* finest quality; sets every allocation size */
 #define GRID_W_MAX                (GFX_WIDTH / CELL_MIN)
@@ -544,6 +550,8 @@ start_sim(void) {
 
     sim_accumulator_q8 = 0;
     pour_accumulator_ms = 0;
+    sand_heal_init(&heal_policy, GFX_HEIGHT);
+    gfx_heal_set_budget(SAND_HEAL_BUDGET_PIXELS);
     ui.brush = 0;
     ui.mode = SAND_MODE_PAINT;
     label_left_ms = 0;
@@ -672,6 +680,12 @@ sand_app_enter_running_for_test(void) {
  * a boolean crosses back to the caller; the assertion belongs to the test.
  * Leaves color_mode at FULL - whatever runs next in the same boot must not
  * inherit this test's own choice of mode. */
+/* Test-only: which of brushes[] a pour spawns. */
+void
+sand_app_select_brush_for_test(int brush) {
+    ui.brush = brush;
+}
+
 bool
 sand_app_test_survives_indexed_then_menu(int mode) {
     color_mode = (sand_color_mode_t)mode;
@@ -688,6 +702,7 @@ static void
 sand_exit(void) {
     /* Other apps assume GFX_LAYOUT_FULL_FB/RGB565. */
     apply_gfx_action(sand_colour_on_exit_app(&colour_state));
+    gfx_heal_set_budget(GFX_HEAL_DEFAULT_BUDGET_PIXELS);
 
     /* Grid is kept between visits (the app's largest allocation) so
      * re-entry cannot fail to heap fragmentation from whatever ran while
@@ -1367,6 +1382,7 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
      * band_force_all_dirty idiom. */
     const bool force_full = indexed_force_full_repaint;
     indexed_force_full_repaint = false;
+    const bool healing = gfx_heal_active();
 
     memset(wake_hit, 0, (size_t)grid_h * sizeof(*wake_hit));
     mark_wake_hits(shine_moved, ROW_FLAG_SHINE);
@@ -1429,6 +1445,9 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
                 continue;
             }
             gfx_mark_dirty(sx0 * cell, cy * cell, (sx1 - sx0) * cell, cell);
+            if (healing) {
+                sand_heal_note_rows(&heal_policy, cy * cell, (cy + 1) * cell);
+            }
 #if CONFIG_LAUNCHER_DEVELOPMENT
             pixels_repainted += (int64_t)(sx1 - sx0) * cell * cell;
 #endif
@@ -1445,6 +1464,18 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
     rows_redrawn_total += redrawn;
     pixels_repainted_total += pixels_repainted;
 #endif
+}
+
+static void
+heal_settled_rows(void) {
+    if (!gfx_heal_active()) {
+        return;
+    }
+    sand_heal_span_t spans[SAND_HEAL_MAX_SPANS];
+    const int n = sand_heal_step(&heal_policy, spans, SAND_HEAL_MAX_SPANS);
+    for (int i = 0; i < n; i++) {
+        gfx_heal_mark(0, spans[i].y0, GFX_WIDTH, spans[i].y1 - spans[i].y0);
+    }
 }
 
 #define EMITTER_MARKER_COLOR 0xFF3EC8
@@ -2445,6 +2476,7 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
 
     draw_dirty_rows(pending_shine_moved, pending_local_depth_woke, pending_cullet_moved, pending_glass_moved,
                     pending_wood_leaf_moved);
+    heal_settled_rows();
 
     /* Markers and the mode label draw straight onto the canvas outside the
      * indexed pipeline (gfx_target.h has no INDEXED8 case yet). Reported
