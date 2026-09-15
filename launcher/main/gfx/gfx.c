@@ -622,14 +622,22 @@ gfx_invalidate(void) {
     gfx_band_force_all();
 }
 
+/* Guard-free body of gfx_mark_all_dirty(), also called from the send path
+ * itself (already past the guard by definition - a present is in flight)
+ * when a rejected draw_bitmap() means this frame never reached the panel. */
+static void
+mark_all_dirty_now(void) {
+    dirty_mark_all();
+    drawn_bbox_valid = false;
+    prev_bbox_valid = false;
+}
+
 /* gfx_dirty.h header-only for inlining mark_band(); thin wrappers for gfx.h
  * API. */
 void
 gfx_mark_all_dirty(void) {
     GFX_PRESENT_GUARD();
-    dirty_mark_all();
-    drawn_bbox_valid = false;
-    prev_bbox_valid = false;
+    mark_all_dirty_now();
 }
 
 /* The one call a transition needs instead of composing gfx_mark_all_dirty()
@@ -1805,6 +1813,35 @@ send_audit_check(void) {
 }
 #endif
 
+/* A rejected esp_lcd_panel_draw_bitmap() queues nothing, so its strip_sent
+ * give never comes - every send site below checks this instead of taking
+ * the semaphore unconditionally. present_send_failed lets one present
+ * notice a mid-frame rejection and force a full resend once, at the end,
+ * rather than re-deriving which region was affected at each call site. */
+static bool present_send_failed;
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+#define SEND_FAILURE_KINDS_MAX 4
+static esp_err_t send_failure_kinds[SEND_FAILURE_KINDS_MAX];
+static int send_failure_kind_count;
+#endif
+
+static void
+note_send_failure(esp_err_t err) {
+    present_send_failed = true;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    for (int i = 0; i < send_failure_kind_count; i++) {
+        if (send_failure_kinds[i] == err) {
+            return;
+        }
+    }
+    ESP_LOGE(TAG, "esp_lcd_panel_draw_bitmap rejected a strip: %s", esp_err_to_name(err));
+    if (send_failure_kind_count < SEND_FAILURE_KINDS_MAX) {
+        send_failure_kinds[send_failure_kind_count++] = err;
+    }
+#endif
+}
+
 /* gather_buf is shared and about to be overwritten, so every queued
  * transfer, not just the most recent, must drain first. strip_sent is a
  * plain counter with no transfer identity: taking it once is not the
@@ -1861,13 +1898,18 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
 #if CONFIG_LAUNCHER_DEVELOPMENT
     dev_bytes_sent += (int64_t)w * h * sizeof(gfx_color_t);
 #endif
-    esp_lcd_panel_draw_bitmap(panel, x0, y0, x1, y1, gather_buf);
+    const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, x0, y0, x1, y1, gather_buf);
+    if (err != ESP_OK) {
+        note_send_failure(err);
+        return;
+    }
     xSemaphoreTake(strip_sent, portMAX_DELAY);
 }
 
 /* Queues framebuffer rows [y0, y1) through the next strip_bounce slot. At
- * most STRIP_HEIGHT rows. */
-static void
+ * most STRIP_HEIGHT rows. Returns whether the panel accepted the transfer -
+ * false means no strip_sent give is coming for it. */
+static bool
 send_fb_rows(int y0, int y1) {
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
     strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
@@ -1876,7 +1918,12 @@ send_fb_rows(int y0, int y1) {
     send_audit_capture(0, y0, GFX_WIDTH, y1 - y0, slot);
     dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
 #endif
-    esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, slot);
+    const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, slot);
+    if (err == ESP_OK) {
+        return true;
+    }
+    note_send_failure(err);
+    return false;
 }
 
 /* One indexed row through whichever of the five GFX_DITHER_* modes is
@@ -1911,8 +1958,9 @@ expand_indexed_row(const uint8_t* row_ptr, int grid_row, int y, gfx_color_t* out
 
 /* send_fb_rows()'s GFX_PIXFMT_INDEXED8 counterpart: expands rows [y0, y1)
  * from the index image through the installed LUT, into the same bounce
- * slots, instead of copying pixels already sitting in `fb`. */
-static void
+ * slots, instead of copying pixels already sitting in `fb`. Same return
+ * contract as send_fb_rows(). */
+static bool
 send_indexed_rows(int y0, int y1) {
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
     strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
@@ -1930,7 +1978,12 @@ send_indexed_rows(int y0, int y1) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
 #endif
-    esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, slot);
+    const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, slot);
+    if (err == ESP_OK) {
+        return true;
+    }
+    note_send_failure(err);
+    return false;
 }
 
 static void
@@ -1972,8 +2025,9 @@ send_full_row(int row, int* queued) {
             mark_rect_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
         }
 
-        send_fb_rows(y, y + STRIP_HEIGHT);
-        xSemaphoreTake(strip_sent, portMAX_DELAY);
+        if (send_fb_rows(y, y + STRIP_HEIGHT)) {
+            xSemaphoreTake(strip_sent, portMAX_DELAY);
+        }
 
         /* Restore in the reverse order of saving. */
         for (int i = leaf_n - 1; i >= 0; i--) {
@@ -1991,8 +2045,9 @@ send_full_row(int row, int* queued) {
     }
 #endif
 
-    send_fb_rows(y, y + STRIP_HEIGHT);
-    (*queued)++;
+    if (send_fb_rows(y, y + STRIP_HEIGHT)) {
+        (*queued)++;
+    }
 }
 
 /* Third, cheapest send path: a full-width box is already contiguous in
@@ -2011,8 +2066,9 @@ send_partial_band(int y0, int y1, int* queued) {
 #endif
     y0 = even_floor(y0);
     y1 = even_ceil(y1);
-    send_fb_rows(y0, y1);
-    (*queued)++;
+    if (send_fb_rows(y0, y1)) {
+        (*queued)++;
+    }
     return true;
 }
 
@@ -2084,7 +2140,7 @@ send_one_row(int row, int* queued) {
 /* Queues this present's heal strips through `send_rows`, after its dirty
  * sends so a strip carries whatever they just put on the panel. */
 static void
-send_heal_strips(void (*send_rows)(int y0, int y1), int* queued) {
+send_heal_strips(bool (*send_rows)(int y0, int y1), int* queued) {
     if (panel_clock_applied_hz != GFX_PANEL_CLOCK_FAST_HZ) {
         gfx_heal_reset(&heal);
         return;
@@ -2093,7 +2149,9 @@ send_heal_strips(void (*send_rows)(int y0, int y1), int* queued) {
     gfx_heal_strip_t strips[GFX_HEAL_MAX_STRIPS];
     const int n = gfx_heal_plan(&heal, heal_budget_pixels, GFX_WIDTH, strips, GFX_HEAL_MAX_STRIPS);
     for (int i = 0; i < n; i++) {
-        send_rows(strips[i].y0, strips[i].y1);
+        if (!send_rows(strips[i].y0, strips[i].y1)) {
+            continue;
+        }
         (*queued)++;
 #if CONFIG_LAUNCHER_DEVELOPMENT
         dev_heal_bytes_sent += (int64_t)(strips[i].y1 - strips[i].y0) * GFX_WIDTH * sizeof(gfx_color_t);
@@ -2114,14 +2172,18 @@ run_present_indexed(void) {
         if (!dirty_row_is_dirty(row)) {
             continue;
         }
-        send_indexed_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT);
-        queued++;
+        if (send_indexed_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT)) {
+            queued++;
+        }
         dirty_row_sent(row);
     }
     dirty_frame_sent();
     send_heal_strips(send_indexed_rows, &queued);
     for (int i = 0; i < queued; i++) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
+    }
+    if (present_send_failed) {
+        mark_all_dirty_now();
     }
 }
 
@@ -2132,6 +2194,7 @@ run_present_indexed(void) {
 static void
 run_present_normal(void) {
     panel_clock_apply();
+    present_send_failed = false;
     if (current_mode.pixfmt == GFX_PIXFMT_INDEXED8) {
         run_present_indexed();
         return;
@@ -2183,6 +2246,9 @@ run_present_normal(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     send_audit_check();
 #endif
+    if (present_send_failed) {
+        mark_all_dirty_now();
+    }
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -2191,10 +2257,13 @@ run_present_normal(void) {
 static void
 run_present_raw_full(void) {
     panel_clock_apply();
+    int queued = 0;
     for (int row = 0; row < STRIP_COUNT; row++) {
-        send_fb_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT);
+        if (send_fb_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT)) {
+            queued++;
+        }
     }
-    for (int row = 0; row < STRIP_COUNT; row++) {
+    for (int i = 0; i < queued; i++) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
 }
@@ -2643,16 +2712,31 @@ gfx_band_submit(void) {
         gfx_line(GFX_WIDTH - 1, row0, GFX_WIDTH - 1, row1 - 1, cyan);
     }
 #endif
+    bool sent = true;
 #ifdef ESP_PLATFORM
     if (gfx_band_ring_must_wait(&band_ring)) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
     const int row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
-    esp_lcd_panel_draw_bitmap(panel, 0, row0, GFX_WIDTH, row0 + current_mode.band_height, band_buf[band_current_slot]);
+    const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, row0, GFX_WIDTH, row0 + current_mode.band_height,
+                                                    band_buf[band_current_slot]);
+    if (err != ESP_OK) {
+        note_send_failure(err);
+        sent = false;
+    }
 #endif
     band_render_active = false;
     gfx_fb_guard_set_available(false);
-    gfx_band_ring_advance(&band_ring);
+    if (sent) {
+        gfx_band_ring_advance(&band_ring);
+        return;
+    }
+    /* Nothing queued, so nothing will ever mark this band's strip_sent -
+     * settle the ring in place and force every band next frame instead of
+     * leaving gfx_band_next() waiting on a give that is never coming. */
+    gfx_band_force_all();
+    gfx_band_ring_settle(&band_ring);
+    gfx_band_ring_skip(&band_ring);
 }
 
 uint8_t*
