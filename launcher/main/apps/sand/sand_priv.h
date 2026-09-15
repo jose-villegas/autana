@@ -193,6 +193,13 @@ extern bool sand_reactions_last_was_soak_only;
 extern unsigned sand_liquid_moves;
 extern unsigned sand_liquid_crossflow_probes;
 
+/* Not sand.h API: a liquid grain moving in the MAIN SWEEP's own down-and-
+ * slide (move_liquid_grain(), sand_liquid_move.h) - separate from cross-
+ * flow's sand_liquid_moves above, and the one a settled-looking board with
+ * an uneven, brush-poured surface can keep doing for a long time after
+ * cross-flow itself has gone quiet. */
+extern unsigned sand_liquid_sweep_moves;
+
 #define BLOCK_SETTLED_NEAREST 0x1
 #define BLOCK_SETTLED_OTHER   0x2
 #define BLOCK_ACTIVE          0x4
