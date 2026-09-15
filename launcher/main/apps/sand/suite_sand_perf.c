@@ -236,6 +236,9 @@ test_the_soak_only_skip_matches_the_full_walks_grid_exactly(void) {
 #include "xtensa/xt_perf_consts.h"
 #include "xtensa_perfmon_access.h"
 
+static void log_pass_split(const char* name, int steps, int impulse_max, const int64_t totals[6], const int64_t peak[6],
+                           int peak_impulses, unsigned cap_hits);
+
 /* The worst case: every cell on the screen moving at once. Cross-build
  * risk: the same code has measured a 3.2-3.9 ms swing purely from the
  * ESP32-C6's flash cache aligning differently as unrelated code shifts
@@ -1460,12 +1463,30 @@ test_the_lava_stress_scene_fits_in_the_frame_budget(void) {
 
     const int64_t start = esp_timer_get_time();
     const int steps = 20;
+    int64_t pass_totals[6] = {0};
+    int64_t pass_peak[6] = {0};
+    int64_t peak_total = -1;
+    int peak_impulses = 0;
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1000, 0);
+        const int64_t pass[6] = {real.pass_us.sweep_us, real.pass_us.liquid_us,    real.pass_us.float_us,
+                                 real.pass_us.gas_us,   real.pass_us.reactions_us, real.pass_us.impulses_us};
+        int64_t total = 0;
+        for (int j = 0; j < 6; j++) {
+            pass_totals[j] += pass[j];
+            total += pass[j];
+        }
+        if (total > peak_total) {
+            memcpy(pass_peak, pass, sizeof pass_peak);
+            peak_total = total;
+            peak_impulses = real.impulse_count;
+        }
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
 
     ESP_LOGI("device_tests", "lava stress scene, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
+    log_pass_split("lava stress scene", steps, real.impulse_max, pass_totals, pass_peak, peak_impulses,
+                   real.impulse_cap_hits);
 
     free(big);
     free(blocks);
@@ -1755,12 +1776,30 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
 
     const int64_t start = esp_timer_get_time();
     const int steps = GUNPOWDER_BASIN_MEASURED_STEPS;
+    int64_t pass_totals[6] = {0};
+    int64_t pass_peak[6] = {0};
+    int64_t peak_total = -1;
+    int peak_impulses = 0;
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1000, 0);
+        const int64_t pass[6] = {real.pass_us.sweep_us, real.pass_us.liquid_us,    real.pass_us.float_us,
+                                 real.pass_us.gas_us,   real.pass_us.reactions_us, real.pass_us.impulses_us};
+        int64_t total = 0;
+        for (int j = 0; j < 6; j++) {
+            pass_totals[j] += pass[j];
+            total += pass[j];
+        }
+        if (total > peak_total) {
+            memcpy(pass_peak, pass, sizeof pass_peak);
+            peak_total = total;
+            peak_impulses = real.impulse_count;
+        }
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
 
     ESP_LOGI("device_tests", "gunpowder basin scene, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
+    log_pass_split("gunpowder basin scene", steps, real.impulse_max, pass_totals, pass_peak, peak_impulses,
+                   real.impulse_cap_hits);
 
     free(big);
     free(blocks);
@@ -3143,6 +3182,20 @@ water_slope_step_and_log(sand_t* s, int gx, int gy, const char* phase, int step_
 
     water_slope_log_step(phase, step_index, s, sand_reactions_cells_dispatched - d0, sand_liquid_moves - m0,
                          sand_liquid_crossflow_probes - p0, sand_liquid_sweep_moves - sw0);
+}
+
+static void
+log_pass_split(const char* name, int steps, int impulse_max, const int64_t totals[6], const int64_t peak[6],
+               int peak_impulses, unsigned cap_hits) {
+    ESP_LOGI("device_tests",
+             "%s: mean tot=%lld sweep=%lld liq=%lld flt=%lld gas=%lld react=%lld imp=%lld us, peak tot=%lld "
+             "sweep=%lld liq=%lld flt=%lld gas=%lld react=%lld imp=%lld us, impulse_peak=%d/%d cap=%s",
+             name, (long long)((totals[0] + totals[1] + totals[2] + totals[3] + totals[4] + totals[5]) / steps),
+             (long long)(totals[0] / steps), (long long)(totals[1] / steps), (long long)(totals[2] / steps),
+             (long long)(totals[3] / steps), (long long)(totals[4] / steps), (long long)(totals[5] / steps),
+             (long long)(peak[0] + peak[1] + peak[2] + peak[3] + peak[4] + peak[5]), (long long)peak[0],
+             (long long)peak[1], (long long)peak[2], (long long)peak[3], (long long)peak[4], (long long)peak[5],
+             peak_impulses, impulse_max, impulse_max == 0 ? "disabled" : (cap_hits != 0 ? "hit" : "not-hit"));
 }
 
 /* THE PRIMARY REPRO: no tilt, no diagonal, just a plain landscape pile

@@ -173,6 +173,9 @@ sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
     s->impulse_buf = NULL;
     s->impulse_max = 0;
     s->impulse_count = 0;
+#ifdef DEVICE_BUILD
+    s->impulse_cap_hits = 0;
+#endif
     s->splash_chance = SAND_SPLASH_CHANCE_START;
     s->splash_radius_water = SAND_SPLASH_RADIUS_WATER;
     s->heat_flaw_seq = 0;
