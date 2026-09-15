@@ -197,5 +197,8 @@ move_liquid_grain(sand_t* s, uint8_t* row, uint8_t* prow, int x, int y, int dx, 
     /* CELL_EMPTY avoids material nibble misuse */
     row[x] = (mass > 0) ? CELL_MAKE(mat_id, mass) : CELL_EMPTY;
 
+    if (moved) {
+        sand_liquid_sweep_moves++;
+    }
     return moved;
 }
