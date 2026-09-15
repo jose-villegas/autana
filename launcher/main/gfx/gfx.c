@@ -1175,21 +1175,6 @@ gfx_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stri
  * public-domain bitmap data (gfx_font_8x8's comment, gfx_font.h).
  */
 
-int
-gfx_font_width(const gfx_font_t* font, const char* text, int len, int scale) {
-    return gfx_font_text_width(font, text, len, scale);
-}
-
-int
-gfx_text_width(const char* text, int len) {
-    return gfx_font_width(gfx_font_ui(), text, len, GFX_GLYPH_SCALE);
-}
-
-int
-gfx_text_height(void) {
-    return gfx_font_height(gfx_font_ui(), GFX_GLYPH_SCALE);
-}
-
 void
 gfx_text(int x, int y, const char* text, gfx_color_t color) {
     gfx_text_scaled(x, y, text, color, GFX_GLYPH_SCALE);

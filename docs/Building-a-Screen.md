@@ -13,8 +13,16 @@ is instructions, not narrative.
      taken as parameters. No `gfx.h`, no hardware.
    - **state** (`*_ui.c/.h`) - which screen is up, what a click MEANS, what
      the screen remembers. Pure, no drawing.
-   - **drawing** (`app_*.c`) - the only file that calls `ui_*`/`gfx_*`, and
-     the only one the host runner cannot compile.
+   - **drawing** (`apps/<app>/ui/<screen>.c/.h`) - the microui calls that
+     build this screen's command list: `ui_begin_screen()` through
+     `mu_end_window()`, taking a `mu_Context*` and a small state struct
+     rather than reaching for `app_*.c`'s own statics. `app_*.c` keeps
+     input, gfx calls, timing and app-state ownership, brackets the call
+     with `ui_begin()`/`ui_end()`, and applies whatever the screen reports
+     was clicked. This is what makes a screen's OWN drawing host-testable -
+     see `ui/suite_command_list_budget.c` beside each app's screens for
+     one that drives the real function against a real microui and asserts
+     its command-list use fits `MU_COMMANDLIST_SIZE`.
 
 1. **Write the layout module first, and test it before drawing anything.**
    Every rect the screen needs, from one function. It is the cheapest thing

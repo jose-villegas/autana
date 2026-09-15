@@ -28,6 +28,8 @@
 
 #include "microui.h"
 
+#include "../sand_ui.h"
+
 /* The three brush-mode segments, in the order they are laid out left to
  * right - matching sand_mode_t's own PAINT/ERASE/DETONATE order (see this
  * file's top comment), labelled POUR/ERASE/BOOM by the design. A local
@@ -105,3 +107,9 @@ const char* brush_screen_size_caption(brush_screen_segment_t seg);
  * (ui_width()/ui_height()), which swap under a quarter turn, exactly as
  * palette_tile_rect() takes them. Never reads GFX_WIDTH/GFX_HEIGHT. */
 void brush_screen_layout(int screen_w, int screen_h, brush_screen_layout_t* out);
+
+/* Draws the whole screen - header, mode segments, size slider - and applies
+ * a segment tap to `ui` before returning. Caller brackets this with
+ * ui_begin()/ui_end(UI_NO_BACKGROUND): input and presentation are the app's
+ * job, this is only the microui build - see docs/Building-a-Screen.md. */
+void brush_screen_draw(mu_Context* ctx, sand_ui_t* ui);
