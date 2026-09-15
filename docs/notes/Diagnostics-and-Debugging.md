@@ -19,6 +19,7 @@ symptom, not by tool - skim the table, jump to the matching section.
 | Need live logs, or a crash to resolve to file:line | [monitor.sh](#live-logs-and-crash-backtraces---monitorsh) |
 | Typing into `monitor.sh` does nothing | [Console channel](#the-console-is-usb-serial-jtag-not-uart0) / [mintty](#typing-into-monitorsh-under-git-bash--msys2) |
 | A render looks wrong - stale pixels, wrong region sent | [gfx debug overlays](#rendering-looks-wrong---gfx-debug-overlays) |
+| Stray pixels/lines on the glass that a screenshot does not show | [Panel-link faults](Display-and-Rendering.md#panel-link-faults-are-invisible-to-screenshots) |
 | Frame rate / performance seems off | [Performance](#performance-seems-off) |
 | Orientation or the IMU seems wrong | [Orientation and IMU](#orientation-or-the-imu-seems-wrong) |
 | Suspected memory pressure | [Memory](#suspected-memory-pressure) |
@@ -95,6 +96,11 @@ and the full field list.
   animation.
 - Only one process can hold the serial port at a time - close `monitor.sh`
   first.
+- **Blind to the panel link.** It captures the framebuffer, and the shell
+  requests a full redraw right after, which heals a corrupted panel. Stray
+  pixels or lines seen on the glass but not in the capture are a link fault;
+  see "Panel-link faults are invisible to screenshots" in
+  [`Display-and-Rendering.md`](Display-and-Rendering.md).
 
 To test the listener in isolation from the host script, attach `monitor.sh`
 and type `SCREENSHOT` (then Enter) directly - the firmware logs `screenshot:

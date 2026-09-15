@@ -7,8 +7,8 @@ actual board or read out of the actual source. See
 
 Most of the timing figures below were captured before this project's move to
 the ESP32-S3 and have not been re-measured on this board since. The
-bus-bandwidth-bound findings (the QSPI clock analysis, the 80 MHz panel
-corruption, the dirty-region send costs) are the most likely to still hold,
+bus-bandwidth-bound findings (the QSPI clock analysis, the dirty-region send
+costs) are the most likely to still hold,
 since they are dictated by the QSPI clock and the panel rather than the CPU;
 anything CPU-bound (the cube's rasterize stage in particular) should be
 treated as unconfirmed on this board until re-measured. Numbers are kept
@@ -97,9 +97,8 @@ unmeasured on this board.
 Those cube figures predate a build-flag change and are kept as a record of the
 starting point: the build now uses -O2 rather than -Og (see
 [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md)). An 80 MHz QSPI clock
-was also tried twice since - it would roughly halve the blit row, but both
-times introduced real pixel corruption on device and was reverted; see
-"The blit is bus-bound" below for why.
+roughly halves the blit row, but is outside the panel's rating and corrupts
+partially redrawn frames; see "The blit is bus-bound" below.
 
 Two results worth remembering because they contradict the intuitive guess:
 
@@ -125,49 +124,66 @@ that in. The panel runs at 80 without complaint on the surface:
 | `gfx_present()` | 17,602 us | 9,600 us |
 | Shell framerate | 43.5 fps | 70.0 fps |
 
-Tempting, and tried twice - but **80 MHz is not actually usable on this panel**,
-and both attempts ended the same way: small, corner-shaped pixel corruption on
-real hardware, disappearing when the exact same region was redrawn a moment
-later. Not corrupted data at rest, in other words - a transient race that a
-retry always won.
+**80 MHz is outside the panel's rating** (proven on device, 2026-09-15). The
+CO5300 datasheet, section 6.4 (QSPI write):
 
-The first time was during the per-row prototype below; reverted along with
-that idea, so the clock was not the obvious suspect yet. The second time was
-after the grid-and-gathered-runs design (see "Partial updates" below) had
-fully replaced it and settled - re-tried specifically on the theory that the
-*old* artifacts might have been an artefact of that abandoned prototype's own
-transfer pattern rather than the clock. They were not: the same corner
-corruption came back on the new, unrelated design too, which rules out
-"it was that one prototype" and points at the bus margin itself.
+| Parameter | Datasheet | At 80 MHz | At 40 MHz |
+|---|---|---|---|
+| Clock cycle | >= 20 ns (50 MHz max) | 12.5 ns | 25 ns |
+| Clock high / low | >= 6.5 ns | 6.25 ns | 12.5 ns |
+| CS setup (IDF default, half a clock) | >= 10 ns | 6.25 ns | 12.5 ns |
+| Data setup / hold | >= 4 / 4 ns | +-2.25 ns clock-to-data skew left | +-8.5 ns |
 
-**A better explanation, found 2026-09-13 on the CO5300 board:** the same
-corner-shaped corruption appeared at 40 MHz, and went away once every
-window sent to the panel was rounded outward to even edges (gfx.c,
-`even_floor()`/`even_ceil()`; Waveshare's BSP rounds every flush area the
-same way). An odd start or odd exclusive end is what the controller
-mishandles. That also fits the history below better than bus margin: the
-full-band design only ever sent even windows and never showed it, and both
-designs that did were the ones sending arbitrary, odd-edged boxes. 80 MHz
-has not been retried since the rounding landed, so the paragraph below is
-now the weaker hypothesis, not a confirmed cause.
+On this board every panel pin (SCK GPIO11, D0-D3 GPIO4-7, CS GPIO12) goes
+through the GPIO matrix; the SPI2 IOMUX pins are elsewhere. The S3 cannot
+make anything between 40 and 80 (see below), so 40 is the fastest in-spec
+clock.
 
-**The earlier hypothesis:** the vendor SH8601 driver's
-`draw_bitmap()` (`esp_lcd_sh8601.c`) sends three separate QSPI transactions per
-call, not one - `LCD_CMD_CASET` (column window), then `LCD_CMD_RASET` (row
-window), then `LCD_CMD_RAMWR` with the pixel data. The panel has to latch both
-address-window commands into its internal counters before the pixel burst
-starts writing into the right place; a corner-shaped corruption is exactly
-what a race between "counters settled" and "burst started" looks like - only
-the first pixels written land wrong. At 80 MHz there is measurably less time
-between the address commands and the burst for that latch to complete.
+**What it looks like.** Sand being poured shows sparse red pixels in
+landscape and thin black lines through moving sand in portrait or while
+tilting; 256-colour mode shows it only at ULTRA quality. 40 MHz is clean.
+The corruption is pattern-dependent, not random noise: re-sending the same
+window next frame fails the same way, and only a send with a different
+window or strip layout (a full redraw, say) heals it. Screenshots never show
+it - see "Panel-link faults are invisible to screenshots" below.
 
-This also explains why the *first* prototype tripped over it and the original,
-fixed-full-band-only design never had: the old design called `draw_bitmap()`
-at most 7 times a frame, always with the same handful of fixed windows. Both
-newer designs call it far more often, with a window that changes shape and
-position every time - more rolls of the same rare, clock-margin-dependent
-dice, not a different or worse bug. The race is native to running this panel
-at 80 MHz at all; a higher transaction count just makes it easier to observe.
+**Why other projects run 80 MHz without seeing it.** Most community code for
+this board runs 40. The ones at 80 redraw whole frames or full-width bands
+every frame, so a bad pixel lives ~16 ms. gfx sends only dirty regions, so a
+bad pixel stays until that region changes.
+
+**Ruled out on device, each hands-on at 80 MHz:**
+
+- 40 mA pad drive (`CONFIG_LAUNCHER_GFX_QSPI_STRONG_PADS`)
+- `cs_ena_pretrans = 1` (18.75 ns CS setup instead of 6.25)
+- window commands (`CASET`/`RASET`) at 40 MHz, pixel data at 80
+- every dirty region sent twice, one present apart
+- no pixel write continued across a held CS (sub-windows under 32 KiB)
+- PSRAM and flash at 80 instead of 120 MHz
+- a software fault: the dev-only send audit (Diagnostics toggle "gfx send
+  audit (logs)") showed every changed pixel sent with correct bytes, and
+  PSRAM reads clean
+
+**Even edges are still required, at either clock.** Corner-shaped stale
+pixels appeared at 40 MHz on the CO5300 and went away once every window was
+rounded outward to even edges (gfx.c, `even_floor()`/`even_ceil()`;
+Waveshare's BSP rounds every flush area the same way). That fix is real, but
+it is not what goes wrong at 80: the older explanation here - a race between
+the panel latching `CASET`/`RASET` and the `RAMWR` burst - is also retired,
+since commands at 40 with pixels at 80 still corrupted.
+
+**Decision.** Both clocks stay: 80 is a large present win (8.2 against
+16.5 ms of bus for a full frame) and safe for a renderer that redraws whole
+frames. Planned, not built:
+
+- a panel-clock choice, 40 or 80, in the system display settings (see
+  [Settings-App-Plan.md](../plans/Settings-App-Plan.md)), warning that apps
+  redrawing only part of the screen may show stray pixels or lines;
+- an opt-in gfx heal, active only at 80 MHz. gfx provides the mechanism:
+  re-send regions a caller marks, with a *different* layout (full strips),
+  under a per-frame pixel budget, plus a rolling option. The app owns the
+  policy - sand would heal strips that recently moved, a frame or a few
+  later.
 
 A synthetic cost independently regressed at 80 MHz too, for an unrelated
 reason worth keeping in mind if this is ever revisited: gathering two small,
@@ -183,8 +199,8 @@ cheaper. `GATHER_MAX_PIXELS` and the run-merging thresholds in `gfx.c` are
 tuned against the 40 MHz numbers; they would need re-measuring, not just
 reusing, if the clock ever changes.
 
-**Settled on 40 MHz.** Set by `GFX_QSPI_HZ` in `gfx.h`, along with this
-history - read the comment there before trying 80 again.
+The clock is `GFX_QSPI_HZ` in `gfx.h`, chosen by
+`CONFIG_LAUNCHER_GFX_QSPI_80MHZ`.
 
 An in-between clock looked like the obvious next thing to try - more margin
 than 80, still faster than 40 - and is exactly what 60 MHz was tried as. It
@@ -198,6 +214,17 @@ byte-identical to plain 40, including matching millisecond-since-boot log
 timestamps across independent reboots, because it silently *was* plain 40.
 Every achievable value in this range is one of exactly two clocks; there is
 no third option to chase here.
+
+### Panel-link faults are invisible to screenshots
+
+`screenshot.sh` reads the framebuffer, not the glass, and `main.c` requests
+a full redraw right after a capture - which re-sends every region with a
+different layout and heals whatever the link corrupted. A fault between the
+chip and the panel has to be judged by eye on the device. To tell a software
+fault from a link fault, turn on the dev-only send audit (Diagnostics, "gfx
+send audit (logs)"): it logs whether every changed pixel went out with the
+right bytes. If it did, A/B the link itself - clock, pad drive, PSRAM speed
+- one build at a time.
 
 ### Partial updates: only send the bands that changed
 
@@ -267,7 +294,7 @@ win over strips-only, not just an orientation-independence argument on paper.
 
 (The two-corners comparison specifically flips at 80 MHz - 1,916 us either
 way, since it is fixed-overhead-bound, against a full band that drops to
-about 1,405 us - but that is the clock margin problem covered above, not a
+about 1,405 us - but that is the threshold re-fit covered above, not a
 property of the grid design itself.)
 
 Two bugs surfaced by this that are worth remembering if the design is ever
@@ -528,38 +555,12 @@ kept here so the reasoning survives to whoever picks one up.
   function. Not started: no concrete motivating case has needed it yet.
 - ~~`LEAF_REFINE_MAX_RUNS` and `ROW_MAX_RUNS` (row_runs.h) are both 2,
   unmeasured.~~ **Measured** - see "The cap sweeps" below. Both stay at 2.
-- **Fixing 80 MHz at the driver level, instead of just not using it.**
-  Raised, not started. The corner-shaped corruption traced back to
-  `panel_sh8601_draw_bitmap()` in
-  `managed_components/waveshare__esp_lcd_sh8601/esp_lcd_sh8601.c` sending
-  `LCD_CMD_CASET`, `LCD_CMD_RASET` and `LCD_CMD_RAMWR` as three separate,
-  back-to-back QSPI transactions with no settle time between them - the
-  theory being that the panel's address counters have not always finished
-  latching the window before the pixel burst starts writing, at the
-  margin 80 MHz leaves (see "The blit is bus-bound" above for the full
-  reasoning and how this was pinned down). Two directions worth trying,
-  neither attempted yet:
-  - **A small delay between the address commands and the burst** - even a
-    handful of dummy cycles or a short explicit wait right before
-    `tx_color()`'s `LCD_CMD_RAMWR` call, if the panel's actual latch time
-    turns out to be the bottleneck rather than the QSPI clock itself.
-    Cheap to try, and would settle whether this is really a clock-margin
-    problem or a missing-delay problem - currently assumed to be the
-    former, not confirmed.
-  - **A second, slower-clocked `esp_lcd_panel_io` on the same SPI2 bus**,
-    used only for `CASET`/`RASET`, with `RAMWR` staying on the fast 80 MHz
-    one - the address commands are a handful of bytes each, so paying
-    40 MHz there costs almost nothing, while the actual pixel burst (the
-    part that is genuinely bandwidth-bound) keeps the full 80 MHz benefit.
-    More invasive: `panel_sh8601_draw_bitmap()` would need to stop being
-    used as-is, since it issues all three commands through one `io`
-    handle - this means either forking the vendor function or bypassing
-    `esp_lcd_panel_draw_bitmap()` for something gfx-specific.
-
-  Either way, `esp_lcd_sh8601.c` lives under `managed_components/`, which
-  the component manager can overwrite on a dependency update - a real fix
-  needs to move into (or be reapplied from) a location this project
-  actually owns, not edited in place and forgotten.
+- ~~Fixing 80 MHz at the driver level.~~ **Tried; no firmware knob makes
+  it clean.** Window commands at 40 MHz with pixels at 80, CS setup, pad
+  drive and sending every region twice were each tried on device - see
+  "The blit is bus-bound" above. The clock is out of the panel's rating, so
+  what remains is concealment: the planned opt-in heal described there, or
+  40 MHz.
 - **A tiled (swizzled) framebuffer - parked on purpose, not a next step.**
   Store pixels in fixed NxN tile order instead of scanline order, so a
   whole tile - not just one row of it - is a single contiguous run and
