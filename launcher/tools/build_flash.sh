@@ -87,7 +87,10 @@ else
 fi
 IDF_EXPORT="${2:-$DEFAULT_EXPORT}"
 
-BUILD_DIR="build.$VARIANT"
+case "$VARIANT" in
+    release) BUILD_DIR="build" ;;
+    *)       BUILD_DIR="build.$VARIANT" ;;
+esac
 
 # So a double-clicked window (which closes the instant the script exits)
 # still shows the reason for a failure instead of vanishing on the spot.
@@ -131,6 +134,14 @@ if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/launcher.bin" ]; then
     echo "  $LAUNCHER_DIR/$BUILD_DIR/launcher.bin" >&2
     exit 1
 fi
+
+if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt" ]; then
+    echo "build reported success but produced no build id at" >&2
+    echo "  $LAUNCHER_DIR/$BUILD_DIR/build_id.txt" >&2
+    exit 1
+fi
+BUILD_ID=$(tr -d '\r\n' < "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt")
+echo "BUILD_ID=$BUILD_ID"
 
 if [ "$BUILD_ONLY" -eq 1 ]; then
     # Reaching this line IS the result: nothing is flashed and no device
