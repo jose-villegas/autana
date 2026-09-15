@@ -1738,6 +1738,72 @@ test_the_water_over_lava_scene_fits_in_the_frame_budget(void) {
                                   "done, not that something broke");
 }
 
+static void
+test_the_gas_ignition_vessel_logs_the_blast_stress(void) {
+    uint8_t* big = malloc((size_t)REAL_W * REAL_H);
+    uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
+    impulse_t* impulses = malloc((size_t)GAS_IGNITION_VESSEL_IMPULSE_MAX * sizeof *impulses);
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+    TEST_ASSERT_NOT_NULL(impulses);
+
+    sand_t real;
+    sand_init(&real, big, REAL_W, REAL_H, 71u);
+    sand_enable_sleeping(&real, blocks);
+    sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
+    sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
+    sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
+    sand_enable_impulses(&real, impulses, GAS_IGNITION_VESSEL_IMPULSE_MAX);
+    build_gas_ignition_vessel_scene(&real);
+
+    int64_t totals[6] = {0};
+    int64_t peak[6] = {0};
+    int64_t peak_total = -1;
+    int peak_impulses = 0;
+    unsigned peak_blasts = 0;
+    unsigned blasts_after_50 = 0;
+    unsigned cap_hits_after_50 = 0;
+    for (int step = 1; step <= GAS_IGNITION_VESSEL_MEASURED_STEPS; step++) {
+        const unsigned cap_before = real.impulse_cap_hits;
+        sand_step(&real, 0, 1000, 0);
+        const int64_t pass[6] = {real.pass_us.sweep_us, real.pass_us.liquid_us,    real.pass_us.float_us,
+                                 real.pass_us.gas_us,   real.pass_us.reactions_us, real.pass_us.impulses_us};
+        int64_t total = 0;
+        for (int i = 0; i < 6; i++) {
+            totals[i] += pass[i];
+            total += pass[i];
+        }
+        if (total > peak_total) {
+            memcpy(peak, pass, sizeof peak);
+            peak_total = total;
+            peak_impulses = real.impulse_count;
+            peak_blasts = real.explosions_this_step;
+        }
+        if (step <= 50) {
+            ESP_LOGI("device_tests",
+                     "gas ignition vessel step=%d blasts=%u live=%d dropped=%u sweep=%lld liq=%lld "
+                     "flt=%lld gas=%lld react=%lld imp=%lld us",
+                     step, real.explosions_this_step, real.impulse_count, real.impulse_cap_hits - cap_before,
+                     (long long)pass[0], (long long)pass[1], (long long)pass[2], (long long)pass[3], (long long)pass[4],
+                     (long long)pass[5]);
+        } else {
+            blasts_after_50 += real.explosions_this_step;
+            cap_hits_after_50 += real.impulse_cap_hits - cap_before;
+        }
+    }
+
+    ESP_LOGI("device_tests", "gas ignition vessel scene, %dx%d: steps=%d, post50 mean blasts=%u live=%d dropped=%u",
+             REAL_W, REAL_H, GAS_IGNITION_VESSEL_MEASURED_STEPS,
+             blasts_after_50 / (GAS_IGNITION_VESSEL_MEASURED_STEPS - 50), real.impulse_count, cap_hits_after_50);
+    log_pass_split("gas ignition vessel scene", GAS_IGNITION_VESSEL_MEASURED_STEPS, real.impulse_max, totals, peak,
+                   peak_impulses, real.impulse_cap_hits);
+    ESP_LOGI("device_tests", "gas ignition vessel scene: peak blasts=%u", peak_blasts);
+
+    free(big);
+    free(blocks);
+    free(impulses);
+}
+
 /* The gunpowder basin scene (build_gunpowder_basin_scene(),
  * suite_sand_scenes.c), shared with the coverage test that proves the
  * chain-detonation really spans several bursts and reaches fuel
@@ -3621,6 +3687,7 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_the_boiler_scene_fits_in_the_frame_budget);
     RUN_TEST(test_the_wet_earth_scene_fits_in_the_frame_budget);
     RUN_TEST(test_the_water_over_lava_scene_fits_in_the_frame_budget);
+    RUN_TEST(test_the_gas_ignition_vessel_logs_the_blast_stress);
     RUN_TEST(test_the_gunpowder_basin_scene_fits_in_the_frame_budget);
     RUN_TEST(test_the_plant_ruin_scene_fits_in_the_frame_budget);
     RUN_TEST(test_the_filling_basin_scene_fits_in_the_frame_budget);

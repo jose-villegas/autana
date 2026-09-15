@@ -11,6 +11,7 @@
                      * but every file inherited suite_sand.c's own include
                      * block rather than being pruned by hand, to keep the
                      * split itself mechanical and low-risk */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -1967,6 +1968,61 @@ build_gunpowder_basin_scene(sand_t* s) {
     }
 }
 
+void
+build_gas_ignition_vessel_scene(sand_t* s) {
+    const int x0 = 20;
+    const int x1 = 164;
+    const int y0 = 60;
+    const int y1 = 180;
+
+    for (int y = y0; y <= y1; y++) {
+        for (int x = x0; x <= x1; x++) {
+            if (x == x0 || x == x1 || y == y0 || y == y1) {
+                sand_set(s, x, y, STONE);
+            } else {
+                sand_set(s, x, y, CELL_MAKE(MAT_GAS, 0));
+            }
+        }
+    }
+    for (int x = x0 + 8; x < x1; x += 8) {
+        for (int y = y0 + 1; y < y1; y++) {
+            sand_set(s, x, y, STONE);
+        }
+    }
+    for (int x = x0 + 1; x < x1; x++) {
+        sand_set(s, x, y0 + 20, FIRE);
+    }
+}
+
+static void
+test_the_gas_ignition_vessel_logs_blasts_per_step(void) {
+    uint8_t* big = malloc((size_t)REAL_W * REAL_H);
+    uint8_t* blocks =
+        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    impulse_t* impulses = malloc((size_t)GAS_IGNITION_VESSEL_IMPULSE_MAX * sizeof *impulses);
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+    TEST_ASSERT_NOT_NULL(impulses);
+
+    sand_t s;
+    sand_init(&s, big, REAL_W, REAL_H, 71u);
+    sand_enable_sleeping(&s, blocks);
+    sand_set_scatter(&s, SAND_SCATTER_PER_MATERIAL);
+    sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
+    sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
+    sand_enable_impulses(&s, impulses, GAS_IGNITION_VESSEL_IMPULSE_MAX);
+    build_gas_ignition_vessel_scene(&s);
+
+    for (int step = 1; step <= GAS_IGNITION_VESSEL_MEASURED_STEPS; step++) {
+        sand_step(&s, 0, 1000, 0);
+        printf("gas ignition vessel step=%d blasts=%u\n", step, s.explosions_this_step);
+    }
+
+    free(big);
+    free(blocks);
+    free(impulses);
+}
+
 /* THE MEASURED WINDOW: 90 steps, no settling. Fire touches gunpowder
  * from step one, so the scene is already at its busiest the instant it
  * is painted - the same reasoning the thermal shock lattice and the
@@ -3510,6 +3566,7 @@ run_sand_scenes_suite(void) {
     RUN_TEST(test_the_wet_earth_scene_keeps_percolating_across_the_window);
     RUN_TEST(test_the_water_over_lava_scene_reaches_the_quench_cooloff_and_burst_paths_it_claims);
     RUN_TEST(test_the_gunpowder_basin_scene_reaches_the_reactions_it_claims);
+    RUN_TEST(test_the_gas_ignition_vessel_logs_blasts_per_step);
     RUN_TEST(test_the_plant_ruin_scene_eats_roots_and_burns_a_canopy);
     RUN_TEST(test_the_mature_tree_scene_is_finished_but_can_be_restarted);
     RUN_TEST(test_the_filling_basin_scene_runs_from_the_lip_to_the_pool);
