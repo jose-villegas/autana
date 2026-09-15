@@ -1,22 +1,5 @@
-/*
- * Portable suite: the checkerboard-parallel sweep sand_set_two_core_step()
- * arms is NOT byte-identical to the serial step - it draws its own PRNG
- * hash rather than the shared sequential stream, on purpose, so two
- * stripes can run on two cores with nothing to race on (see
- * Sand-Simulation.md). What this suite checks instead is what the new
- * design actually promises: the same seed gives the same answer every
- * time, regardless of which core would have done which stripe, and the
- * result still looks like sand - mass-plausible, eventually settled, no
- * seam baked into the board at the stripe boundaries.
- *
- * On a host build sand_core1_run() has no second core to hand work to,
- * so it runs its callback inline - see sand_core1.c's own top comment.
- * That is exactly what "regardless of which core" needs: every draw this
- * design makes is a pure function of (seed, step, cell, draw site), never
- * of a shared counter or of execution order, so a host run already proves
- * what a genuinely concurrent one would give - see sand_rng_next_at()
- * (sand_priv.h).
- */
+/* Portable checks for the checkerboard-parallel sweep: deterministic,
+ * mass-conserving, and without a stripe seam. Host jobs run inline. */
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -24,6 +7,13 @@
 #include "suite_sand_common.h"
 #include "suites.h"
 #include "unity.h"
+
+#include "util/job.h"
+
+#ifdef DEVICE_BUILD
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#endif
 
 #define TC_W          ((int)REAL_W)
 #define TC_H          ((int)REAL_H)
@@ -603,6 +593,46 @@ test_two_core_step_conserves_grains_on_a_dense_column_and_pile(void) {
     }
 }
 
+#ifdef DEVICE_BUILD
+typedef struct {
+    volatile bool* finished;
+} job_timeout_ctx_t;
+
+typedef struct {
+    int* calls;
+} job_inline_ctx_t;
+
+static void
+job_timeout_worker(void* ctx) {
+    const job_timeout_ctx_t* const work = ctx;
+    vTaskDelay(pdMS_TO_TICKS(20));
+    *work->finished = true;
+}
+
+static void
+job_inline_worker(void* ctx) {
+    job_inline_ctx_t* const work = ctx;
+    (*work->calls)++;
+}
+
+static void
+test_a_timed_out_job_falls_back_inline(void) {
+    volatile bool finished = false;
+    const job_timeout_ctx_t timeout = {.finished = &finished};
+    int inline_calls = 0;
+    const job_inline_ctx_t inline_ctx = {.calls = &inline_calls};
+
+    TEST_ASSERT_TRUE(job_run_core1(job_timeout_worker, &timeout, sizeof timeout));
+    TEST_ASSERT_FALSE(job_wait(1));
+    TEST_ASSERT_TRUE(job_run_core1(job_inline_worker, &inline_ctx, sizeof inline_ctx));
+    TEST_ASSERT_EQUAL_INT(1, inline_calls);
+
+    vTaskDelay(pdMS_TO_TICKS(40));
+    TEST_ASSERT_TRUE(finished);
+    TEST_ASSERT_TRUE(job_wait(0));
+}
+#endif
+
 void
 run_sand_two_core_suite(void) {
     RUN_TEST(test_two_core_step_is_deterministic_across_seeds);
@@ -612,6 +642,9 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_two_core_step_never_double_moves_at_a_seam);
     RUN_TEST(test_two_core_step_matches_serial_fall_distance_at_a_seam);
     RUN_TEST(test_two_core_step_conserves_grains_on_a_dense_column_and_pile);
+#ifdef DEVICE_BUILD
+    RUN_TEST(test_a_timed_out_job_falls_back_inline);
+#endif
 }
 
 SUITE_REGISTER(run_sand_two_core_suite);
