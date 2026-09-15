@@ -39,9 +39,10 @@
 #define GFX_HEIGHT 448
 #endif
 
-/* QSPI clock for the panel - the largest single cost in a frame: 16.5 ms of
- * bus at 40 MHz against 8.2 at 80. 80 is the default and holds only while
- * every strip is sent from internal DMA RAM (gfx.c, strip_bounce); see
+/* QSPI clock for the panel: 16.5 ms of bus a full frame at 40 MHz, 8.2 at
+ * 80. 80 needs every strip sent from internal DMA RAM (strip_bounce),
+ * exceeds the panel's rated 50 MHz, and can leave stray pixels in a
+ * partially redrawn frame; see
  * CONFIG_LAUNCHER_GFX_QSPI_80MHZ. The divider resolves to exactly 40 or 80,
  * hence a bool. THE THRESHOLDS BELOW ARE FITTED TO 40 MHz. */
 #if defined(CONFIG_LAUNCHER_GFX_QSPI_80MHZ) && CONFIG_LAUNCHER_GFX_QSPI_80MHZ

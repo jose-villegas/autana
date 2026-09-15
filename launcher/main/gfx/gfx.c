@@ -186,7 +186,8 @@ static struct {
 static gfx_color_t* gather_buf;
 
 /* The panel controller takes a window only on even edges: an odd start or
- * an odd exclusive end leaves stale pixels at the window's corners.
+ * an odd exclusive end leaves stale pixels at the window's corners, at
+ * either clock.
  * Waveshare's BSP rounds every flush area the same way. GFX_WIDTH and
  * GFX_HEIGHT are even, so rounding outward never leaves the screen. A
  * gathered box grows by at most one column and one row, hence the slack. */
@@ -249,8 +250,8 @@ qspi_bus_up(void) {
 
 #if defined(CONFIG_LAUNCHER_GFX_QSPI_STRONG_PADS) && CONFIG_LAUNCHER_GFX_QSPI_STRONG_PADS
     /* AFTER spi_bus_initialize(), which is what configures these pads - set
-     * before it and the driver overwrites the setting. See the option's own
-     * help text for why edge rate is the suspect at 80 MHz. */
+     * before it and the driver overwrites the setting. Does not bring 80 MHz
+     * back inside the panel's rating; see the option's help text. */
     {
         static const gpio_num_t qspi_pads[] = {
             BSP_LCD_PCLK, BSP_LCD_DATA0, BSP_LCD_DATA1, BSP_LCD_DATA2, BSP_LCD_DATA3,
