@@ -8,11 +8,17 @@
  * which value changed, the split docs/Building-a-Screen.md asks every
  * screen to keep.
  *
- * The self-test button and its result line are narrower still - real only
- * in a CONFIG_LAUNCHER_SELFTEST build, same as app_diagnostics.c's own
- * copy - so a host build (CONFIG_LAUNCHER_SELFTEST never defined there)
- * measures this page without them; only a SELFTEST build's own run of
- * ui/suite_command_list_budget.c ever exercises that row.
+ * The self-test button and its result line are narrower still - drawn only
+ * in a CONFIG_LAUNCHER_SELFTEST build, guarded in toggles_screen.c itself
+ * rather than here: this header is included before any file in a
+ * translation unit has necessarily pulled in the config macro yet (a
+ * `#if CONFIG_LAUNCHER_SELFTEST` at parse time here saw it as always
+ * undefined once, silently dropping the fields for every includer), so its
+ * two fields below stay unconditional - a few unused bytes outside a
+ * SELFTEST build, never a missing member. A host build (CONFIG_LAUNCHER_
+ * SELFTEST never defined there) measures this page without the row they
+ * feed; only a SELFTEST build's own run of ui/suite_command_list_budget.c
+ * exercises it.
  */
 #pragma once
 
@@ -38,9 +44,7 @@ typedef struct {
     int gravity_gx, gravity_gy;
     int shell_quarter;
 
-#if CONFIG_LAUNCHER_SELFTEST
-    int selftest_failures; /* -1: never run yet */
-#endif
+    int selftest_failures; /* -1: never run yet. Read only in a SELFTEST build. */
 } toggles_screen_state_t;
 
 typedef struct {
@@ -50,9 +54,7 @@ typedef struct {
     bool fast_clock;
     bool send_audit_on;
     bool show_orientation;
-#if CONFIG_LAUNCHER_SELFTEST
-    bool selftest_clicked;
-#endif
+    bool selftest_clicked; /* meaningful only in a SELFTEST build */
 } toggles_screen_result_t;
 
 /* Draws every row and reports each toggle's value after this frame's tap,
