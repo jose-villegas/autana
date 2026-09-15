@@ -63,6 +63,13 @@ The return value, `material_pattern_t`, is `MATERIAL_FLAT`,
 about how much per-pixel work this cell needs, never read by anything
 else.
 
+**Edges are softened.** A cell with empty space cardinally beside it
+(`mask`'s four cardinal bits) is drawn most of the way back toward its own
+resting colour rather than its current one. A wall going hot or cold
+otherwise changes its whole silhouette the moment any part of it heats up,
+so the shape stops reading at exactly the moment it matters - the outline
+still shifts, just by much less than the body does.
+
 **The cost discipline that governs every change in this file:** `depth`,
 `hash`, and the diagonal half of `mask` are each computed *once per frame*
 where possible (a gravity-derived value, a blend weight) and reduced to a

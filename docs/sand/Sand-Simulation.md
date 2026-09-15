@@ -602,6 +602,94 @@ steps and then plateaued as the remaining pockets thinned out and
 scattered. Not a suppression mechanism - the tapering is an emergent
 consequence of the blast itself clearing cover, not a cap anyone added.
 
+## Temperature: glass, snow, and a scale that has room for cold
+
+Four fields, kept off `reactions[]`'s main table because they describe a
+*quantity* a cell carries rather than a reaction that fires once. Only
+glass and stone carry a temperature today (`heat_ramp != 0`); glass, snow
+and ice (`MATX_ICE`) act on one - snow and ice both chill a neighbour and
+thaw in any liquid, at their own separate rates.
+
+| Field | On | Meaning |
+| --- | --- | --- |
+| `heat_ramp` | glass, 64 | chance/256 per step per adjacent heat source to climb one level. Non-zero is what makes the variant a temperature rather than a shade |
+| `cools` | glass, 5 | chance/256 to move one level towards `SAND_AMBIENT_HEAT`, **scaled** by how far above ambient the cell already is |
+| `chills` | snow, 40 | chance/256 to pull a level out of a neighbour that has a temperature, down to 0; non-zero also marks the material cold |
+| `shatters_to` | glass -> sand | on contact, no roll, in either direction: at or above `SAND_SHOCK_HEAT` when something cold touches it, or at or below `SAND_SHOCK_COLD` when heat reaches it |
+| `thaws` | snow, 4 | chance/256 per step per adjacent liquid cell that it gives up and becomes `heats_to` |
+| `SAND_AMBIENT_HEAT` | 3 | not a field - where room temperature sits on the 0-15 scale, so cold has somewhere to go |
+| `conducts >> SPREAD_SHIFT` | glass, 220>>1 = 110 | chance/256 that a cell off ambient drags a same-material neighbour one level towards itself, only across a gap of 2 or more |
+
+**`heat_ramp` and `heat_chance` are alternatives, not partners.**
+`heat_chance` is a memoryless roll - sand fuses to glass the first time it
+wins one, nothing remembered between attempts. `heat_ramp` banks progress
+in the cell, the only way to express *sustained* exposure: under a
+memoryless roll, a candle lit for one step a day would melt a pane exactly
+as surely as a furnace, just later. `cools` is what makes the ramp measure
+duration rather than lifetime total - without a drain, exposure would only
+ever accumulate.
+
+**`chills` and `cools` do the same thing in the same units and are still
+two fields**, because they sit on different materials and cannot share a
+number: `cools` belongs to the hot one and drains it to nothing, `chills`
+belongs to the cold one and drains a neighbour - snow's 40 against glass's
+5-6 is what lets a snowbank win a race that ambient cooling alone would
+lose.
+
+**The drain scales with distance from ambient** so that one constant can
+serve two jobs that pull opposite ways: getting a pane *warm* stays easy,
+and getting it *molten* stays hard. A flat drain cannot do both at once -
+raising it enough to make melting reachable in reasonable time also makes
+a pane fragile almost the instant a flame touches it.
+
+**Room temperature sits in the middle of the scale, not at the bottom**,
+entirely so cold has somewhere to be seen: with ambient at 0, chilling a
+resting pane changes no number and so changes no colour, and a snowbank
+sitting on glass would look identical to a snowbank sitting on nothing.
+With ambient at 3, 0-2 is frost - pale, near white - and it fades on its
+own, because `cools` moves a cell *towards* ambient from either side, not
+only downward. Chilling is driven from the **cold** cell (the way fire
+reaches its neighbours), not the warm one, so a pane at rest still gets
+chilled by snow sitting on it; a warm-cell-driven design only gets a turn
+when the pane is already off ambient.
+
+**Temperature spreads along the material itself**, not only from whatever
+heat source touches it - `conducts >> SPREAD_SHIFT`, applied *within* the
+material rather than only to whatever is on the far side of it, so a
+chilled cell drags its neighbours down and a heated one pulls them up.
+Two things keep this from erasing the mechanic it is meant to support:
+heavily scaled down (`SPREAD_SHIFT` is 1, so 110 in 256 rather than 220 -
+at the full value a pane goes isothermal within a step or two, and a wall
+that is all one temperature cannot be hot inside and cold at the rim), and
+gated to a gap of 2 or more (a difference of one is left alone, so a smooth
+gradient across a wall survives rather than collapsing flat). It is derived
+from `conducts` rather than being its own field because it is the same
+physical property - a material that carries a fire's heat well carries its
+own temperature well too.
+
+**Chilling something above room temperature costs the cold material its
+own `heats_to`**; pushing cold into something at or below room temperature
+costs nothing, because nothing was absorbed. Without that asymmetry, snow
+would melt on contact with ordinary cold glass at the rate tuned for
+standing beside a fire, making a snowbank impossible to keep anywhere near
+the material it exists to be used against.
+
+**Shattering is instant, not gradual, and converts the whole connected run
+of the material at once**, up to `CRACK_MAX` (256) cells - a pane breaks as
+a pane, not grain by grain, because the stress a crack releases belongs to
+the whole sheet rather than to the one cell that started it. The crack
+follows material identity (two panes not touching are two panes) and does
+not re-check temperature as it spreads - the test belongs only at the cell
+where the crack starts. Because the trigger is instant and the two
+directions (cold-onto-hot in `step_one_cold_cell()`, hot-onto-cold in
+`try_heat_transform()`) share one threshold each, **the player has to be
+able to see which side of the line a pane is on**: glass's palette is not
+a smooth ramp but a flat neutral over the safe levels that jumps into a
+glow right at `SAND_SHOCK_HEAT`, so the largest colour change on the whole
+ramp lands exactly on the threshold. A `_Static_assert` ties the constant
+and the palette together, and a test asserts the ramp's widest colour step
+still lands on it.
+
 ## Roots: a tree welds itself to the soil it drinks from, then spreads through it
 
 The plant/wood/leaf family (`MATX_PLANT`, `MAT_WOOD`, `MATX_LEAF`) is not
