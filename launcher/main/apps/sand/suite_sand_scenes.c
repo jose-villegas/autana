@@ -3407,6 +3407,45 @@ test_a_submerged_pile_settles_asleep_with_headroom(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, awake, why);
 }
 
+/* A board with water soaking into sand and no plant material anywhere must
+ * stay on the cheap soak-only path - the reactions pass has no drinker or
+ * grower to protect, so a moisture event happening SOMEWHERE is not a
+ * reason to walk the whole board EVERY WHERE. Dispatch should track
+ * BLOCK_LIQUID_NEAR coverage, not REAL_W * REAL_H. */
+static void
+test_a_soaking_no_plant_board_stays_on_the_soak_only_path(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks =
+        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t s2;
+    landscape_fixture(&s2, big, blocks, 29u);
+    build_submerged_pile_scene(&s2);
+
+    const unsigned d0 = sand_reactions_cells_dispatched;
+    bool any_soak_only = false;
+    const int steps = 200;
+    for (int i = 0; i < steps; i++) {
+        sand_step(&s2, LANDSCAPE_GX, 0, 0);
+        any_soak_only = any_soak_only || sand_reactions_last_was_soak_only;
+    }
+    const unsigned dispatched = sand_reactions_cells_dispatched - d0;
+
+    free(big);
+    free(blocks);
+
+    char why[220];
+    snprintf(why, sizeof why,
+             "%u cells dispatched over %d steps, board is %d - a board with water soaking into sand and "
+             "no plants must not pay for a full walk every step",
+             dispatched, steps, REAL_W * REAL_H * steps);
+    TEST_ASSERT_LESS_THAN_UINT_MESSAGE((unsigned)(REAL_W * REAL_H * steps) / 2, dispatched, why);
+    TEST_ASSERT_TRUE_MESSAGE(any_soak_only, "the soak-only path must actually be taken at least once in this "
+                                            "window, or the dispatch bound above proves nothing");
+}
+
 void
 run_sand_scenes_suite(void) {
     RUN_TEST(test_the_mixed_scene_puts_every_material_pair_in_contact);
@@ -3434,6 +3473,7 @@ run_sand_scenes_suite(void) {
     RUN_TEST(test_the_captured_slope_scene_matches_the_sampled_screenshot);
     RUN_TEST(test_the_captured_slope_scenes_water_is_live);
     RUN_TEST(test_a_submerged_pile_settles_asleep_with_headroom);
+    RUN_TEST(test_a_soaking_no_plant_board_stays_on_the_soak_only_path);
 }
 
 SUITE_REGISTER(run_sand_scenes_suite);

@@ -280,6 +280,35 @@ drinker_mask(void) {
     return mask;
 }
 
+/* What could still act on a moisture-driven growth stage (grow/sprout/
+ * bud/root-weld) this pass would otherwise defer to may_have_moisture for.
+ * A root's own feed (step_one_rooting_cell()) reaches nearby WET DIRT, not
+ * nearby LIQUID, so it can be several cells past every BLOCK_LIQUID_NEAR
+ * block the soak-only walk would visit - presence, not any one step's own
+ * moisture event, is what has to gate the skip. Same cache argument as
+ * wettable_mask(). */
+static inline uint16_t
+grower_mask(void) {
+    static uint16_t mask;
+    static bool ready;
+    if (ready) {
+        return mask;
+    }
+    for (int m = 1; m < MAT_COUNT; m++) {
+        if (reactions[m].grows != 0 || reactions[m].sprouts != 0 || reactions[m].buds != 0 || reactions[m].roots != 0) {
+            mask |= (uint16_t)(1u << m);
+        }
+    }
+    for (int k = 0; k < MATERIAL_EXTENDED_CODES; k++) {
+        if (extended_reactions[k].grows != 0 || extended_reactions[k].sprouts != 0 || extended_reactions[k].buds != 0
+            || extended_reactions[k].roots != 0) {
+            mask |= (uint16_t)(1u << MAT_EXTENDED);
+        }
+    }
+    ready = true;
+    return mask;
+}
+
 /* A full cell, a foreign material and a wall all refuse mass alike, so this
  * answers for every liquid at once without being told which one is asking.
  * Breaks on the first cell that could take mass: a span still moving costs a
