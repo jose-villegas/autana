@@ -18,6 +18,7 @@ set(app_srcs
     "ui/ui_launcher.c"
     "ui/ui_pointer.c"
     "util/device_state.c"
+    "util/job.c"
     "util/screenshot.c"
 )
 
@@ -174,6 +175,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites/suite_screenshot.c"
         "../test/suites/suite_build_id.c"
         "../test/suites/suite_device_state.c"
+        "../test/suites/suite_job.c"
     )
     # SCOPE: which of those suites this image actually carries.
     #
