@@ -395,6 +395,15 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
         return true;
     }
 
+    /* `soaks` below is forced to this same 0 by the override, so gaining or
+     * sharing moisture can never fire - but AMBIENT drying (held != 0,
+     * further down) does not read `soaks` at all, so it must not be
+     * skipped here too. A dry cell with soaking off has nothing left this
+     * stage can ever do to it. */
+    if (s->soak == 0 && (r->dries == 0 || held == 0)) {
+        return false;
+    }
+
     bool beside_liquid = false;
 
     /* Cullet is glass milled back to grains, with none of a dune's pore
@@ -403,15 +412,12 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
      * water does not spend the water for nothing. */
     const int soaks = cell_is_cullet(c) ? 0 : ((s->soak >= 0) ? s->soak : r->soaks);
 
-    /* LOCAL, NOT BOARD-WIDE. This walk looks only at the four orthogonal
-     * neighbours, all one cell away, so any water it could find is in this
-     * block or one touching it - exactly what BLOCK_LIQUID_NEAR covers. A
-     * cell this rejects provably had nothing to find.
-     *
-     * RNG-NEUTRAL: the roll inside the walk is drawn only after a PAIR_WETS
-     * neighbour is found, so a cell with no liquid neighbour draws nothing
-     * and the stream is untouched. */
-    if (soaks != 0 && r->soaks != 0 && liquid_near(s, x, y)) {
+    /* LOCAL, NOT BOARD-WIDE - any water this finds is in this block or one
+     * touching it, exactly what BLOCK_LIQUID_NEAR covers. `moisture_capped`
+     * excludes only `soaks_to == 0` (dirt): `soaks_to` materials (sand)
+     * ignore `held` and must keep rolling toward their conversion. */
+    const bool moisture_capped = r->soaks_to == 0 && held >= r->moist_max;
+    if (soaks != 0 && r->soaks != 0 && !moisture_capped && liquid_near(s, x, y)) {
         for (int d = 0; d < 4; d++) {
             const int nx = x + reaction_dirs[d][0];
             const int ny = y + reaction_dirs[d][1];
@@ -1790,6 +1796,9 @@ step_one_acid_rain_cell(sand_t* s, int x, int y, int w, int h) {
  * comment in sand_priv.h. */
 unsigned sand_reactions_cells_dispatched;
 
+/* Which shape the call below took - see sand_priv.h. */
+bool sand_reactions_last_was_soak_only;
+
 /* REACTION-STAGE DISPATCH TABLE skips PREFIX rows. Water, oil, metal traverse
  * all fields.
  *
@@ -2131,6 +2140,8 @@ step_one_reacting_row_liquid_near(sand_t* s, int y, int w, int h) {
 
 void
 sand_step_reactions(sand_t* s) {
+    sand_reactions_last_was_soak_only = false;
+
     if (s->fuse_blast_wait != 0) {
         s->fuse_blast_wait--;
     }
@@ -2187,16 +2198,17 @@ sand_step_reactions(sand_t* s) {
         fill_burn_plan(&extended_plan[k], s, &extended_reactions[k], material_of(CELL_MAKE(MAT_EXTENDED, (uint8_t)k)));
     }
 
-    /* SOAK-ONLY: alive for no reason but the wettable term above, with every
-     * other stage's OWN presence flag already reading quiet (each is false
-     * only once nothing on the board could make it true) and no drinker's
-     * find_water() reach - the one stage not block-local - per
-     * drinker_mask(). Only stage_soak_dry is left, and it only acts where
-     * liquid_near() is true, exactly what BLOCK_LIQUID_NEAR marks. */
+    /* SOAK-ONLY: every other stage's presence flag reads quiet and no
+     * drinker's find_water() reaches past a block, per drinker_mask() -
+     * only stage_soak_dry is left, block-local via liquid_near(). may_have_
+     * moisture matters only alongside grower_mask(): grow/sprout/bud/root-
+     * weld are its only readers, unreachable with none present. */
     const bool soak_only =
         !reactions_force_full_walk && !s->may_have_burning && !s->may_have_dissolver && !s->may_have_temperature
-        && !s->may_have_moisture && !(s->may_have_faller && s->faller_may_move) && !s->may_have_condenser
-        && s->may_have_liquid && (s->may_have_materials & drinker_mask()) == 0 && s->block_state != NULL;
+        && !(s->may_have_moisture && (s->may_have_materials & grower_mask()) != 0)
+        && !(s->may_have_faller && s->faller_may_move) && !s->may_have_condenser && s->may_have_liquid
+        && (s->may_have_materials & drinker_mask()) == 0 && s->block_state != NULL;
+    sand_reactions_last_was_soak_only = soak_only;
 
     /* CLEARED HERE so a bit latch_content_flags() ORs in mid-pass survives the
      * write-back below; assigning the walk's census there dropped cells this
