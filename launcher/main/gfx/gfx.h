@@ -21,6 +21,7 @@
 #include "gfx/gfx_color.h"
 #include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font.h"
+#include "gfx/gfx_font_roles.h"
 #include "gfx/gfx_indexed.h"
 #include "gfx/gfx_mode.h"
 
@@ -207,9 +208,20 @@ void gfx_text_scaled(int x, int y, const char* text, gfx_color_t color, int scal
  * stops meaning the top edge once the device is turned. */
 void gfx_text_turned(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns);
 
-/* Text metrics. Kept here so the UI layer and the renderer cannot disagree. */
-int gfx_text_width(const char* text, int len);
-int gfx_text_height(void);
+/* Text metrics. Kept here so the UI layer and the renderer cannot disagree.
+ * `static inline` over gfx_font.h's pure gfx_font_text_width()/height() -
+ * no framebuffer, panel or DMA state behind either, so a caller needing
+ * only a metric (an app's own microui screen, say) links no more of gfx
+ * than gfx_font_ui()'s own font data already costs. */
+static inline int
+gfx_text_width(const char* text, int len) {
+    return gfx_font_text_width(gfx_font_ui(), text, len, GFX_GLYPH_SCALE);
+}
+
+static inline int
+gfx_text_height(void) {
+    return gfx_font_height(gfx_font_ui(), GFX_GLYPH_SCALE);
+}
 
 /* The font every gfx_text*() call above draws with is gfx_font_ui()
  * (gfx/gfx_font_roles.h) - the UI/body-text role, not something this file
@@ -247,7 +259,10 @@ void gfx_text_font_halo(int x, int y, const char* text, gfx_color_t color, int s
  * `font`, at `scale`. gfx_text_width() is this called with gfx_font_ui().
  * See gfx_font_text_width() in gfx_font.h for the pure metric this wraps,
  * and its own comment for the `len < 0` contract. */
-int gfx_font_width(const gfx_font_t* font, const char* text, int len, int scale);
+static inline int
+gfx_font_width(const gfx_font_t* font, const char* text, int len, int scale) {
+    return gfx_font_text_width(font, text, len, scale);
+}
 
 /* Restrict subsequent drawing to a rectangle. microui emits clip commands
  * around every container, and honouring them is what stops a scrolled panel
