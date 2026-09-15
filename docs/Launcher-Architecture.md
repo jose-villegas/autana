@@ -217,9 +217,8 @@ SRAM instead, `GFX_BAND_HEIGHT` rows tall (a compile-time divisor of
 for pixels at any moment — never both a framebuffer and a band ring —
 `gfx_mode_resolve()` (`gfx_mode.h`) and the ring's own state machine
 (`gfx_band.h`) are pure and host-tested; the cube app (`app_cube.c`) is the
-one app that uses it today, gated by `CONFIG_LAUNCHER_CUBE_BAND_MODE` or its
-own `cube_band_mode` runtime switch, so its ordinary full-fb behaviour is
-what a plain build still ships.
+one app that uses it today. Its `cube_band_mode` runtime switch is off by
+default, so ordinary full-fb behaviour is what a plain build ships.
 
 **Every drawing primitive targets whichever buffer is current, not always
 the framebuffer.** `gfx_target.h` is the shared clip-and-translate
@@ -440,9 +439,9 @@ sim, wake ticks) from `sand_frame()` (drawing) - see `app_sand.c`.
 `gfx.h`'s `gfx_present_begin()`/`gfx_present_wait()` are the primitive this
 runs on; `gfx_present()` stays exactly their `begin` then `wait`, so every
 caller that never adopts `update()` is unaffected.
-CONFIG_LAUNCHER_GFX_PRESENT_ON_CORE1 (default on) and the runtime
-`gfx_set_present_async(false)` force the send back onto the caller, for an
-A/B measurement against the overlapped path.
+Presentation runs asynchronously on core 1 by default. The runtime
+`gfx_set_present_async(false)` switch forces the send back onto the caller,
+for an A/B measurement against the overlapped path.
 
 ### Full redraw
 

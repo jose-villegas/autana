@@ -645,7 +645,7 @@ void sand_set_gas_walk(sand_t* s, bool on);
  * (sand.c) - while the movement passes, which draw a data-dependent number
  * of times from one shared PRNG, stay on the caller's core. Runtime
  * override for an A/B measurement or a test that wants the plain serial
- * path; CONFIG_LAUNCHER_SAND_TWO_CORE_STEP sets the default. */
+ * path; device builds enable it by default. */
 void sand_set_two_core_step(bool on);
 bool sand_two_core_step_enabled(void);
 
