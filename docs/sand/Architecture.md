@@ -1051,8 +1051,8 @@ one menu, opened by different buttons and never both at once
 
 | Button | Opens | Screen | Picks |
 |---|---|---|---|
-| BOOT | `SAND_UI_PALETTE` | the material picker (`palette.c/.h`) | which material the finger places |
-| PWR | `SAND_UI_BRUSH` | the brush screen (`brush_screen.c/.h`) | POUR/ERASE/BOOM, and that mode's radius |
+| BOOT | `SAND_UI_PALETTE` | the material picker (`palette.c/.h` layout, `ui/palette_screen.c/.h` drawing) | which material the finger places |
+| PWR | `SAND_UI_BRUSH` | the brush screen (`ui/brush_screen.c/.h`, layout and drawing both) | POUR/ERASE/BOOM, and that mode's radius |
 
 PWR used to cycle PAINT/ERASE/DETONATE directly, with no panel at all; it
 now opens the brush screen instead, and closes it on a second press.
@@ -1062,25 +1062,36 @@ Mode selection moved to the brush screen's own three-segment control - see
 Both panels split the same way: a **pure layout** module with no gfx and no
 hardware header (host-tested at both real canvases, since the shell can be
 under a quarter turn), a **pure state machine** in `sand_ui.c/.h` that owns
-what a tap on either panel *means*, and `app_sand.c`, which lays out real
-`mu_button()`/`mu_update_control()` hit targets from the layout module's
-rects, calls into `sand_ui.c` with the result, and draws. See sand_ui.h's
-own "WHO HIT-TESTS AND WHO DECIDES": the caller (`app_sand.c`) hit-tests
-through microui, so rotation is free; `sand_ui.c` decides what a hit means,
-so that logic is host-testable - the file exists because four edge-
-ownership bugs (a state reading an edge that belonged to a different one)
-shipped out of exactly this logic before the split, and `suite_sand_ui.c`
-is what now pins all four down, plus the corresponding brush-screen case:
-**the PWR press that opens the screen must not also close it** - guaranteed
-by `sand_ui_step()` reading `ui->screen` exactly once per frame, before any
-branch can change it.
+what a tap on either panel *means*, and a **drawing** module in
+`apps/sand/ui/` that lays out real `mu_button()`/`mu_update_control()` hit
+targets from the layout module's rects, calls into `sand_ui.c` with the
+result, and draws - host-testable in its own right, since it is not
+`app_*.c`. `app_sand.c` only brackets the call with `ui_begin()`/`ui_end()`
+and hands it `&ui` (the app's own `sand_ui_t`). See sand_ui.h's own "WHO
+HIT-TESTS AND WHO DECIDES": the caller hit-tests through microui, so
+rotation is free; `sand_ui.c` decides what a hit means, so that logic is
+host-testable - the file exists because four edge-ownership bugs (a state
+reading an edge that belonged to a different one) shipped out of exactly
+this logic before the split, and `suite_sand_ui.c` is what now pins all
+four down, plus the corresponding brush-screen case: **the PWR press that
+opens the screen must not also close it** - guaranteed by `sand_ui_step()`
+reading `ui->screen` exactly once per frame, before any branch can change
+it.
+
+A third, simpler screen lives beside these two: `ui/sand_menu_screen.c/.h`
+draws the boot-time START/QUALITY/COLOUR/DITHER menu (`SAND_UI_MENU`,
+outside `sand_ui_t` entirely - it runs before a simulation exists), taking
+pre-formatted labels and reporting which button was tapped rather than
+touching `app_sand.c`'s own option enums directly.
 
 The brush screen's own files:
 
-- **`brush_screen.h`/`.c`** - pure layout, the same split `palette.c` uses:
-  a canvas width and height in, every rect (panels, swatch, info button,
-  three segments, slider track) out, nothing reading `gfx.h` or `GFX_WIDTH`/
-  `GFX_HEIGHT` directly. `suite_brush_screen.c` asserts the layout holds at
+- **`ui/brush_screen.h`/`.c`** - pure layout (a canvas width and height in,
+  every rect - panels, swatch, info button, three segments, slider track -
+  out, nothing reading `gfx.h` or `GFX_WIDTH`/`GFX_HEIGHT` directly) and,
+  in the same file, the drawing that turns those rects into
+  `mu_button()`/`mu_draw_rect()` calls via `brush_screen_draw(mu_Context*,
+  sand_ui_t*)`. `suite_brush_screen.c` (`ui/`) asserts the layout holds at
   both 368x448 and 448x368 - nothing overlaps, nothing leaves the canvas,
   every tap target stays finger-sized - and measures every one of the
   screen's fixed strings against the rect it has to fit inside, at the
@@ -1113,16 +1124,22 @@ The brush screen's own files:
   would defeat `ui_end()`'s repaint hash and force a repaint of an
   otherwise-static panel forever. `suite_sand_swatch.c` checks determinism
   and that every variant stays in range.
-- **`app_sand.c`**'s `draw_brush_screen()` - the drawing and hit-testing,
-  using the shell's Phase 1-4 primitives (`ui_draw_bitmap()`,
+- **`ui/brush_screen.c`**'s `brush_screen_draw()` - the drawing and
+  hit-testing, using the shell's Phase 1-4 primitives (`ui_draw_bitmap()`,
   `ui_slider_int()`, `ui_panel_spans()`/`ui_bezel_spans()`,
   `ui_set_font_scaled()`) documented in
   [`Launcher-Architecture.md`](../Launcher-Architecture.md#drawing-a-ui-in-the-shell-or-in-an-app).
-  `handle_pour_input()` reads the current mode's radius from
+  `handle_pour_input()` (`app_sand.c`) reads the current mode's radius from
   `sand_ui_radius(&ui)` rather than a fixed `POUR_RADIUS_PX`/
   `ERASE_RADIUS_PX`/`DETONATE_RADIUS_PX` - those three constants are still
   there, now only as the three modes' starting defaults
   (`sand_ui_t.radius_px`, seeded once at startup).
+- **`ui/suite_command_list_budget.c`** - drives `palette_screen_draw()`,
+  `brush_screen_draw()` and `sand_menu_screen_draw()` against a real
+  `ui_init()`/`ui_begin()`, asserting each screen's peak command-list use
+  against `MU_COMMANDLIST_SIZE` with headroom to spare - the host
+  counterpart to eyeballing a screen on the device, and the reason these
+  three needed their own files rather than staying inside `app_sand.c`.
 
 **One size per mode, not one shared slider.** POUR, ERASE and BOOM each
 remember their own radius in `sand_ui_t.radius_px[SAND_MODE_COUNT]`,
