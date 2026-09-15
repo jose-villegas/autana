@@ -3383,6 +3383,117 @@ test_water_slope_captured_scene_diagonal_flip_logs_a_per_step_table(void) {
                                              "soaking may only ever spend it");
 }
 
+/* --- the panel clock and heal against a real pour -----------------------
+ *
+ * Drives the real app_sand.c, touch pour and all, and times gfx_present()
+ * three ways: 40 MHz, 80 MHz, and 80 MHz with sand's heal policy. The heal
+ * is only worth having if the third stays clearly under the first. */
+
+#include "app.h"
+
+extern const app_t app_sand;
+extern void sand_app_enter_running_for_test(void);
+extern void sand_app_select_brush_for_test(int brush);
+
+typedef enum {
+    CLOCK_ROW_40,
+    CLOCK_ROW_80,
+    CLOCK_ROW_80_HEAL,
+    CLOCK_ROW_COUNT,
+} clock_row_t;
+
+#define CLOCK_ROW_POUR_WARM_FRAMES 30
+#define CLOCK_ROW_POUR_FRAMES      240
+#define CLOCK_ROW_SETTLE_FRAMES    300
+#define CLOCK_ROW_SETTLED_FRAMES   120
+#define CLOCK_ROW_DT_MS            16
+
+typedef struct {
+    int64_t present_us;
+    int64_t bytes;
+    int64_t heal_bytes;
+} clock_row_window_t;
+
+static void
+clock_row_frame(const input_t* in, int64_t* present_us) {
+    if (gfx_full_redraw_pending()) {
+        gfx_full_redraw_clear_pending();
+        app_sand.invalidate();
+    }
+    app_sand.update(CLOCK_ROW_DT_MS, in);
+    app_sand.frame(CLOCK_ROW_DT_MS, in);
+    const int64_t t0 = esp_timer_get_time();
+    gfx_present();
+    *present_us += esp_timer_get_time() - t0;
+}
+
+static clock_row_window_t
+clock_row_measure(int frames, bool pouring, int* frame_index) {
+    gfx_reset_strip_send_counts();
+    clock_row_window_t w = {0};
+    for (int i = 0; i < frames; i++, (*frame_index)++) {
+        input_t in = {0};
+        in.down = pouring;
+        in.pressed = pouring && *frame_index == 0;
+        in.x = 150 + (*frame_index * 7) % 60;
+        in.y = 120 + (*frame_index * 3) % 40;
+        clock_row_frame(&in, &w.present_us);
+    }
+    w.present_us /= frames;
+    w.bytes = gfx_get_bytes_sent() / frames;
+    w.heal_bytes = gfx_get_heal_bytes_sent() / frames;
+    return w;
+}
+
+static void
+clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_window_t* settled) {
+    gfx_set_panel_clock_hz(row == CLOCK_ROW_40 ? GFX_PANEL_CLOCK_SLOW_HZ : GFX_PANEL_CLOCK_FAST_HZ);
+    app_sand.enter();
+    sand_app_enter_running_for_test();
+    sand_app_select_brush_for_test(brush);
+    if (row == CLOCK_ROW_80) {
+        gfx_heal_set_budget(0);
+    }
+
+    int frame_index = 0;
+    clock_row_measure(CLOCK_ROW_POUR_WARM_FRAMES, true, &frame_index);
+    *pour = clock_row_measure(CLOCK_ROW_POUR_FRAMES, true, &frame_index);
+    input_t lift = {0};
+    lift.released = true;
+    int64_t unused = 0;
+    clock_row_frame(&lift, &unused);
+    clock_row_measure(CLOCK_ROW_SETTLE_FRAMES, false, &frame_index);
+    *settled = clock_row_measure(CLOCK_ROW_SETTLED_FRAMES, false, &frame_index);
+
+    app_sand.exit();
+}
+
+static void
+test_present_cost_at_40_mhz_80_mhz_and_80_mhz_with_heal_on_a_real_pour(void) {
+    static const char* const brush_names[] = {"sand", "water"};
+    static const char* const row_names[CLOCK_ROW_COUNT] = {"40", "80", "80+heal"};
+    const int saved_clock = gfx_panel_clock_hz();
+
+    for (int brush = 0; brush < 2; brush++) {
+        for (int row = 0; row < CLOCK_ROW_COUNT; row++) {
+            clock_row_window_t pour, settled;
+            clock_row_run(brush, (clock_row_t)row, &pour, &settled);
+            ESP_LOGI("device_tests",
+                     "CLOCK_ROW %s pour %s MHz: present %lld us, %lld bytes (heal %lld) | settled: present %lld "
+                     "us, %lld bytes (heal %lld)",
+                     brush_names[brush], row_names[row], (long long)pour.present_us, (long long)pour.bytes,
+                     (long long)pour.heal_bytes, (long long)settled.present_us, (long long)settled.bytes,
+                     (long long)settled.heal_bytes);
+            if (row != CLOCK_ROW_80_HEAL) {
+                TEST_ASSERT_EQUAL_INT64_MESSAGE(0, pour.heal_bytes + settled.heal_bytes,
+                                                "only the heal row may send heal strips");
+            }
+        }
+    }
+
+    gfx_set_panel_clock_hz(saved_clock);
+}
+
 #endif /* DEVICE_BUILD */
 
 /* --- suite -------------------------------------------------------------- */
@@ -3471,6 +3582,7 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_present_cost_against_the_thermal_shock_scene);
     RUN_TEST(test_present_cost_against_a_landscape_gas_over_sand_pile);
     RUN_TEST(test_present_cost_against_a_landscape_levelling_pool);
+    RUN_TEST(test_present_cost_at_40_mhz_80_mhz_and_80_mhz_with_heal_on_a_real_pour);
 
     RUN_TEST(test_submerged_pile_settles_and_logs_the_pass_split);
     RUN_TEST(test_water_slope_pouring_water_logs_the_pass_split);
