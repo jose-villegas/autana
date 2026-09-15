@@ -101,6 +101,16 @@ static const char* const color_names[SAND_COLOR_COUNT] = {"FULL", "256", "16"};
 
 static sand_color_mode_t color_mode = SAND_COLOR_FULL;
 
+/* The DITHER launch option, next to COLOUR once it is 16 - gfx_dither_
+ * mode_t (gfx_indexed.h) directly, no sand-side mirror: "dither" has one
+ * spelling either side of the app/engine line. CELL_BAYER2 by default, the
+ * maintainer's own pick. */
+static const char* const dither_names[GFX_DITHER_MODE_COUNT] = {
+    "NONE", "CELL CHECKER", "CELL BAYER2", "PIXEL CHECKER2", "PIXEL BAYER4",
+};
+
+static gfx_dither_mode_t dither_mode = GFX_DITHER_CELL_BAYER2;
+
 /* sand_color_mode_t and sand_colour_state.h's own sand_colour_mode_t share
  * an ordinal order (FULL, 256, 16) by construction - one cast, not a
  * second enum's worth of call-site plumbing. */
@@ -113,6 +123,35 @@ _Static_assert((int)SAND_COLOR_FULL == (int)SAND_COLOUR_FULL && (int)SAND_COLOR_
  * rather than color_mode directly: a mode request can be denied, and the
  * palette/brush screens suspend it without changing color_mode at all. */
 static sand_colour_state_t colour_state;
+
+/* Built once, at the first indexed entry, not per sand_enter() - the
+ * generated tables never change at runtime. One per CLASS-kind dither mode
+ * (NONE, both PIXEL ones); the CELL modes carry their own phase formula and
+ * never classify at all - see gfx_indexed_cell_repaint()'s own comment. */
+static uint8_t none_class[GFX_INDEXED_PALETTE_SIZE];
+static uint8_t dither16_class[GFX_INDEXED_PALETTE_SIZE];
+static uint8_t checker2_class[GFX_INDEXED_PALETTE_SIZE];
+static bool dither_classes_ready;
+
+/* paint_row_n()'s per-cell dispatch, resolved once per indexed-mode entry -
+ * see apply_gfx_enter_indexed() - never re-derived from color_mode/
+ * dither_mode inside the hot loop itself. `repaint_class_table` is read
+ * for GFX_INDEXED_REPAINT_CLASS only; the two CELL kinds read their own
+ * generated table directly (sand_dither_cell_checker/_bayer2), never a
+ * class, so `repaint_class_table` is left stale (unread) for those. */
+static gfx_indexed_repaint_kind_t repaint_kind = GFX_INDEXED_REPAINT_RAW;
+static const uint8_t* repaint_class_table = NULL;
+static const gfx_color_t* repaint_cell_table = NULL;
+
+/* Set whenever the PANEL, not just the simulation, needs every visited
+ * cell resent regardless of whether its own index moved -
+ * mark_sand_fully_dirty()'s call sites (an overlay just closed, the board
+ * turned) can leave the index image already holding the value about to be
+ * recomputed while the panel shows something else entirely (the overlay,
+ * the wrong turn's pixels). Captured once per draw_dirty_rows() pass and
+ * cleared there, the same idiom gfx.c's own band_force_all_dirty uses for
+ * gfx_invalidate(). */
+static bool indexed_force_full_repaint;
 
 /* Once per start_sim(), not once per frame - see the emitter-marker/mode-
  * label skip in sand_frame(). */
@@ -292,6 +331,20 @@ static uint32_t pour_accumulator_ms;
 
 /* Setup */
 
+/* dither_mode's own generated table - sand_palette256.h ships one per
+ * GFX_DITHER_* (report_shading_palette.sh). */
+static const gfx_color_t*
+sand_dither_table_for(gfx_dither_mode_t mode) {
+    switch (mode) {
+        case GFX_DITHER_NONE: return sand_dither_none_lut;
+        case GFX_DITHER_CELL_CHECKER: return sand_dither_cell_checker;
+        case GFX_DITHER_CELL_BAYER2: return sand_dither_cell_bayer2;
+        case GFX_DITHER_PIXEL_CHECKER2: return sand_dither_pixel_checker2;
+        case GFX_DITHER_PIXEL_BAYER4:
+        default: return sand_palette16_dither_rgb;
+    }
+}
+
 /* Actually issues the gfx_mode_enter() call SAND_GFX_ENTER_INDEXED asks
  * for, sized to the grid start_sim() computed. Rolls the state back via
  * sand_colour_grant_failed() if gfx could not grant it - a launch option
@@ -315,8 +368,55 @@ apply_gfx_enter_indexed(void) {
 
     memset(gfx_indexed_image(), 0, (size_t)grid_w * (size_t)grid_h);
     gfx_indexed_set_lut(sand_palette256.entries);
-    gfx_indexed_set_lut16(sand_palette16_dither_rgb);
     gfx_indexed_set_dither16(color_mode == SAND_COLOR_16);
+    if (color_mode == SAND_COLOR_16) {
+        gfx_indexed_set_dither(dither_mode, sand_dither_table_for(dither_mode));
+    }
+    if (!dither_classes_ready) {
+        gfx_indexed_classify(sand_dither_none_lut, 1, none_class);
+        gfx_indexed_dither16_classify(sand_palette16_dither_rgb, dither16_class);
+        gfx_indexed_classify(sand_dither_pixel_checker2,
+                             GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX, checker2_class);
+        dither_classes_ready = true;
+    }
+    /* sand_indexed_cell_needs_repaint()'s own dispatch, resolved here and
+     * only here - color_mode/dither_mode cannot change mid-run (the START
+     * lesson), so the hot loop never re-derives this per cell or per row. */
+    if (color_mode != SAND_COLOR_16) {
+        repaint_kind = GFX_INDEXED_REPAINT_RAW;
+        repaint_class_table = NULL;
+        repaint_cell_table = NULL;
+    } else {
+        repaint_class_table = NULL;
+        repaint_cell_table = NULL;
+        switch (dither_mode) {
+            case GFX_DITHER_NONE:
+                repaint_kind = GFX_INDEXED_REPAINT_CLASS;
+                repaint_class_table = none_class;
+                break;
+            case GFX_DITHER_CELL_CHECKER:
+                repaint_kind = GFX_INDEXED_REPAINT_CELL_CHECKER;
+                repaint_cell_table = sand_dither_cell_checker;
+                break;
+            case GFX_DITHER_CELL_BAYER2:
+                repaint_kind = GFX_INDEXED_REPAINT_CELL_BAYER2;
+                repaint_cell_table = sand_dither_cell_bayer2;
+                break;
+            case GFX_DITHER_PIXEL_CHECKER2:
+                repaint_kind = GFX_INDEXED_REPAINT_CLASS;
+                repaint_class_table = checker2_class;
+                break;
+            case GFX_DITHER_PIXEL_BAYER4:
+            default:
+                repaint_kind = GFX_INDEXED_REPAINT_CLASS;
+                repaint_class_table = dither16_class;
+                break;
+        }
+    }
+    /* Belt and suspenders past the memset above: entering indexed mode
+     * always owes a full repaint, whatever the index image happens to
+     * hold - see indexed_force_full_repaint's own comment. */
+    indexed_force_full_repaint = true;
 }
 
 /* Runs whatever gfx_mode_enter()/exit() call `action` names - the one place
@@ -396,6 +496,7 @@ mark_sand_fully_dirty(void) {
     memset(dirty_rows, 1, (size_t)grid_h);
     reset_dirty_cols_full_width();
     gfx_mark_all_dirty();
+    indexed_force_full_repaint = true;
 }
 
 #if CONFIG_LAUNCHER_SELFTEST
@@ -660,6 +761,15 @@ static uint8_t row_flags[GRID_H_MAX];
 static uint16_t row_flag_x0[GRID_H_MAX];
 static uint16_t row_flag_x1[GRID_H_MAX];
 
+/* Indexed modes only: the column span, within the last-painted row, that
+ * paint_row_n() actually wrote a new index into - narrower than the span it
+ * examined, since a cell whose new value dithers the same as its stored one
+ * is left untouched. draw_dirty_rows() sends this instead of the wider
+ * examined span, so a shading change 16 (or 256) colours cannot show costs
+ * nothing beyond having been looked at. */
+static uint16_t row_changed_x0[GRID_H_MAX];
+static uint16_t row_changed_x1[GRID_H_MAX];
+
 #define FOAM_BLOB_SHIFT 3
 
 #define FOAM_PHASE_MS   90
@@ -802,20 +912,42 @@ note_row_flag_x(int cy, int cx) {
     }
 }
 
+static inline void
+note_row_change_x(int cy, int cx) {
+    if (cx < row_changed_x0[cy]) {
+        row_changed_x0[cy] = (uint16_t)cx;
+    }
+    if (cx + 1 > row_changed_x1[cy]) {
+        row_changed_x1[cy] = (uint16_t)(cx + 1);
+    }
+}
+
+/* paint_row_n()'s one per-cell decision - repaint_kind and its table were
+ * resolved once at apply_gfx_enter_indexed() time, not re-derived here:
+ * a force_full check, an index compare, one lookup, no switch per cell. */
+static inline bool
+sand_indexed_cell_needs_repaint(bool force_full, uint8_t old_idx, uint8_t new_idx, int cx, int cy) {
+    return gfx_indexed_cell_repaint(repaint_kind, repaint_class_table, repaint_cell_table, force_full, old_idx, new_idx,
+                                    cx, cy);
+}
+
 /* `index_row` NULL means the RGB565 path (`fb`/`pal`/`n`); non-NULL is
  * GFX_PIXFMT_INDEXED8's own grid row, writing one
  * material_palette256_index() byte per in-span cell instead. One function,
  * not two, keeps local depth, mask and the shine line - see
  * Shading-and-Colour.md - shared rather than re-derived. A cell the
  * diagonal shine crosses (sampled at the cell's own centre, not per pixel)
- * takes col[2]'s own index instead of col[0]'s. */
+ * takes col[2]'s own index instead of col[0]'s. `force_full`: see
+ * mark_sand_fully_dirty()'s own comment. */
 static inline void
 paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy, const uint8_t* row, int n, int wx0,
-            int wx1) {
+            int wx1, bool force_full) {
     gfx_color_t* out = index_row == NULL ? fb + (cy * n) * GFX_WIDTH : NULL;
     row_flags[cy] = 0;
     row_flag_x0[cy] = (uint16_t)grid_w;
     row_flag_x1[cy] = 0;
+    row_changed_x0[cy] = (uint16_t)grid_w;
+    row_changed_x1[cy] = 0;
 
     const uint8_t* above = (cy > 0) ? row - grid_w : NULL;
     const uint8_t* below = (cy < grid_h - 1) ? row + grid_w : NULL;
@@ -997,7 +1129,17 @@ paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy,
                 const int along = ((shine_q8 >> 8) + shine_offset) & (SHINE_PERIOD - 1);
                 shade = (along < n) ? col[2] : col[0];
             }
-            index_row[cx] = (uint8_t)material_palette256_index(shade);
+
+            /* Compares against what this cell already holds - the index
+             * image is never cleared between frames (only on a fresh
+             * indexed entry, app_sand.c's own apply_gfx_enter_indexed()),
+             * so it IS last frame's sent value, at no extra storage. */
+            const uint8_t new_idx = (uint8_t)material_palette256_index(shade);
+            const uint8_t old_idx = index_row[cx];
+            if (sand_indexed_cell_needs_repaint(force_full, old_idx, new_idx, cx, cy)) {
+                index_row[cx] = new_idx;
+                note_row_change_x(cy, cx);
+            }
             continue;
         }
 
@@ -1034,16 +1176,17 @@ paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy,
 }
 
 static void
-paint_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy, const uint8_t* row, int wx0, int wx1) {
+paint_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy, const uint8_t* row, int wx0, int wx1,
+          bool force_full) {
     switch (cell) {
-        case 2: paint_row_n(fb, pal, index_row, cy, row, 2, wx0, wx1); break;
-        case 3: paint_row_n(fb, pal, index_row, cy, row, 3, wx0, wx1); break;
-        case 4: paint_row_n(fb, pal, index_row, cy, row, 4, wx0, wx1); break;
-        case 6: paint_row_n(fb, pal, index_row, cy, row, 6, wx0, wx1); break;
-        case 8: paint_row_n(fb, pal, index_row, cy, row, 8, wx0, wx1); break;
+        case 2: paint_row_n(fb, pal, index_row, cy, row, 2, wx0, wx1, force_full); break;
+        case 3: paint_row_n(fb, pal, index_row, cy, row, 3, wx0, wx1, force_full); break;
+        case 4: paint_row_n(fb, pal, index_row, cy, row, 4, wx0, wx1, force_full); break;
+        case 6: paint_row_n(fb, pal, index_row, cy, row, 6, wx0, wx1, force_full); break;
+        case 8: paint_row_n(fb, pal, index_row, cy, row, 8, wx0, wx1, force_full); break;
         /* Unreachable for any cell size in qualities[]; falls back to size 2 to
      * avoid out-of-bounds writes. */
-        default: paint_row_n(fb, pal, index_row, cy, row, 2, wx0, wx1); break;
+        default: paint_row_n(fb, pal, index_row, cy, row, 2, wx0, wx1, force_full); break;
     }
 }
 
@@ -1054,11 +1197,11 @@ paint_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy, c
  * `fb`/`pal` go unused - see paint_row_n()'s own comment. */
 static int
 draw_one_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_image, int cy, uint16_t* cur_x0, uint16_t* cur_x1,
-             int wx0, int wx1) {
+             int wx0, int wx1, bool force_full) {
     const uint8_t* row = &grid[cy * grid_w];
     uint8_t* index_row = index_image != NULL ? index_image + cy * grid_w : NULL;
 
-    paint_row(fb, pal, index_row, cy, row, wx0, wx1);
+    paint_row(fb, pal, index_row, cy, row, wx0, wx1, force_full);
 
     int run_x0[ROW_MAX_RUNS], run_x1[ROW_MAX_RUNS];
     const int n = row_runs_find(row, grid_w, SAND_EMPTY, run_x0, run_x1);
@@ -1218,6 +1361,13 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
     const gfx_color_t* pal = indexed ? NULL : material_palette();
     uint8_t* index_image = indexed ? gfx_indexed_image() : NULL;
 
+    /* Captured once, then cleared, so a request made mid-frame (the next
+     * mark_sand_fully_dirty()) affects the NEXT pass, not this one - see
+     * indexed_force_full_repaint's own comment and gfx.c's identical
+     * band_force_all_dirty idiom. */
+    const bool force_full = indexed_force_full_repaint;
+    indexed_force_full_repaint = false;
+
     memset(wake_hit, 0, (size_t)grid_h * sizeof(*wake_hit));
     mark_wake_hits(shine_moved, ROW_FLAG_SHINE);
     mark_wake_hits(local_depth_woke, ROW_FLAG_LIQUID);
@@ -1254,7 +1404,7 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
         dirty_x1[cy] = 0;
 
         uint16_t cur_x0[ROW_MAX_RUNS], cur_x1[ROW_MAX_RUNS];
-        const int cur_n = draw_one_row(fb, pal, index_image, cy, cur_x0, cur_x1, wx0, wx1);
+        const int cur_n = draw_one_row(fb, pal, index_image, cy, cur_x0, cur_x1, wx0, wx1, force_full);
 
         uint16_t* prev_x0 = &row_run_x0[cy * ROW_MAX_RUNS];
         uint16_t* prev_x1 = &row_run_x1[cy * ROW_MAX_RUNS];
@@ -1263,13 +1413,18 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
         uint16_t send_x0[2 * ROW_MAX_RUNS], send_x1[2 * ROW_MAX_RUNS];
         const int send_n = row_runs_reconcile(cur_x0, cur_x1, cur_n, prev_x0, prev_x1, prev_n, send_x0, send_x1);
 
-        /* Clipped to the span actually repainted above: row_runs_reconcile()
-         * still answers over the row's true, full-width shape, so a send
-         * range outside [wx0,wx1) names pixels that provably did not
-         * change (see paint_row_n()'s own comment) and were never drawn. */
+        /* Clipped to the span actually repainted above: a send range outside
+         * [wx0,wx1) provably did not change (paint_row_n()'s own comment).
+         * Indexed modes narrow further, to row_changed_x0/x1 - a cell
+         * visited but left untouched dithers the same as before, not
+         * merely unpainted. */
         for (int i = 0; i < send_n; i++) {
-            const int sx0 = send_x0[i] > wx0 ? send_x0[i] : wx0;
-            const int sx1 = send_x1[i] < wx1 ? send_x1[i] : wx1;
+            int sx0 = send_x0[i] > wx0 ? send_x0[i] : wx0;
+            int sx1 = send_x1[i] < wx1 ? send_x1[i] : wx1;
+            if (indexed) {
+                sx0 = sx0 > row_changed_x0[cy] ? sx0 : row_changed_x0[cy];
+                sx1 = sx1 < row_changed_x1[cy] ? sx1 : row_changed_x1[cy];
+            }
             if (sx0 >= sx1) {
                 continue;
             }
@@ -1977,11 +2132,20 @@ track_pour_split(const input_t* input, int64_t step_us, int64_t draw_us, int awa
 }
 #endif
 
+/* A DITHER row joins QUALITY/COLOUR only once COLOUR is 16 - the other two
+ * modes have no pattern to choose. Both menu_start_rect() and draw_menu()
+ * read this so START's own centring moves with the row count exactly the
+ * way draw_menu() lays the rest out, never independently of it. */
+static int
+menu_row_count(void) {
+    return color_mode == SAND_COLOR_16 ? 4 : 3;
+}
+
 /* The START button's own on-screen rect - shared with the SELFTEST tap
  * below so a real touch and this arithmetic can never drift apart. */
 static mu_Rect
 menu_start_rect(void) {
-    const int total_h = 3 * MENU_BTN_H + 2 * MENU_BTN_GAP;
+    const int total_h = menu_row_count() * MENU_BTN_H + (menu_row_count() - 1) * MENU_BTN_GAP;
     const int top = (ui_height() - total_h) / 2;
     return ui_centered_rect(ui_width(), MENU_BTN_W, MENU_BTN_H, top);
 }
@@ -1994,31 +2158,47 @@ draw_menu(const input_t* input) {
 
     if (ui_begin_screen(ctx, "Sand Menu", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
 
-        const int total_h = 3 * MENU_BTN_H + 2 * MENU_BTN_GAP;
+        const int rows = menu_row_count();
+        const int total_h = rows * MENU_BTN_H + (rows - 1) * MENU_BTN_GAP;
         const int top = (ui_height() - total_h) / 2;
+        int row = 0;
 
         mu_layout_set_next(ctx, menu_start_rect(), 0);
         if (mu_button(ctx, "START")) {
             /* Not called here - see pending_start's own comment. */
             pending_start = true;
         }
+        row++;
 
         char label[24];
         snprintf(label, sizeof label, "QUALITY: %s", qualities[quality].name);
-
-        mu_layout_set_next(ctx, ui_centered_rect(ui_width(), MENU_BTN_W, MENU_BTN_H, top + MENU_BTN_H + MENU_BTN_GAP),
-                           0);
+        mu_layout_set_next(
+            ctx, ui_centered_rect(ui_width(), MENU_BTN_W, MENU_BTN_H, top + row * (MENU_BTN_H + MENU_BTN_GAP)), 0);
         if (mu_button(ctx, label)) {
             quality = (quality + 1) % QUALITY_COUNT;
         }
+        row++;
 
         char color_label[24];
         snprintf(color_label, sizeof color_label, "COLOUR: %s", color_names[color_mode]);
-
         mu_layout_set_next(
-            ctx, ui_centered_rect(ui_width(), MENU_BTN_W, MENU_BTN_H, top + 2 * (MENU_BTN_H + MENU_BTN_GAP)), 0);
+            ctx, ui_centered_rect(ui_width(), MENU_BTN_W, MENU_BTN_H, top + row * (MENU_BTN_H + MENU_BTN_GAP)), 0);
         if (mu_button(ctx, color_label)) {
+            /* Not applied here - the next start_sim() (apply_gfx_enter_
+             * indexed()) reads dither_mode, the same "menu picks, entry
+             * applies" split QUALITY/COLOUR already use. */
             color_mode = (color_mode + 1) % SAND_COLOR_COUNT;
+        }
+        row++;
+
+        if (color_mode == SAND_COLOR_16) {
+            char dither_label[24];
+            snprintf(dither_label, sizeof dither_label, "DITHER: %s", dither_names[dither_mode]);
+            mu_layout_set_next(
+                ctx, ui_centered_rect(ui_width(), MENU_BTN_W, MENU_BTN_H, top + row * (MENU_BTN_H + MENU_BTN_GAP)), 0);
+            if (mu_button(ctx, dither_label)) {
+                dither_mode = (gfx_dither_mode_t)((dither_mode + 1) % GFX_DITHER_MODE_COUNT);
+            }
         }
 
         mu_end_window(ctx);

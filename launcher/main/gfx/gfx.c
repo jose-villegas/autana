@@ -68,8 +68,20 @@ static int band_render_height;
 static uint8_t* indexed_image;
 static int indexed_grid_w, indexed_grid_h, indexed_cell_size;
 static gfx_color_t indexed_lut256[GFX_INDEXED_PALETTE_SIZE];
-static gfx_color_t indexed_dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES];
 static bool indexed_dither16_on;
+
+/* Lever 2: which of gfx_dither_mode_t's five is installed for 16-colour
+ * mode - meaningless while indexed_dither16_on is false (256 mode keeps
+ * its own plain LUT above, no dither concept at all). One table per mode,
+ * not a shared buffer: gfx_indexed_set_dither() only ever overwrites the
+ * one an app's own mode switch actually asks for. */
+static gfx_dither_mode_t indexed_dither_mode = GFX_DITHER_PIXEL_BAYER4;
+static gfx_color_t indexed_dither_none_lut[GFX_INDEXED_PALETTE_SIZE];
+static gfx_color_t indexed_dither_cell_checker[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CELL_CHECKER_PHASES];
+static gfx_color_t indexed_dither_cell_bayer2[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CELL_BAYER2_PHASES];
+static gfx_color_t indexed_dither_pixel_checker2[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CHECKER2_ROW_PHASES
+                                                 * GFX_INDEXED_CHECKER2_CHUNK_PX];
+static gfx_color_t indexed_dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES];
 
 /* True only for the RGB565 band mode, where an app's own frame() drives
  * gfx_band_next()/_submit() itself - see gfx_present_begin() below. */
@@ -1689,6 +1701,36 @@ send_fb_rows(int y0, int y1) {
     esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, slot);
 }
 
+/* One indexed row through whichever of the five GFX_DITHER_* modes is
+ * installed - the present-task half of gfx_indexed_set_dither(). */
+static void
+expand_indexed_row(const uint8_t* row_ptr, int grid_row, int y, gfx_color_t* out_row) {
+    switch (indexed_dither_mode) {
+        case GFX_DITHER_CELL_CHECKER:
+            gfx_indexed_expand_row_dither_cell(row_ptr, indexed_grid_w, indexed_dither_cell_checker, false,
+                                               indexed_cell_size, grid_row, out_row, GFX_WIDTH);
+            return;
+        case GFX_DITHER_CELL_BAYER2:
+            gfx_indexed_expand_row_dither_cell(row_ptr, indexed_grid_w, indexed_dither_cell_bayer2, true,
+                                               indexed_cell_size, grid_row, out_row, GFX_WIDTH);
+            return;
+        case GFX_DITHER_PIXEL_CHECKER2:
+            gfx_indexed_expand_row_dither_checker2(row_ptr, indexed_grid_w, indexed_dither_pixel_checker2,
+                                                   indexed_cell_size, y, 0, out_row, GFX_WIDTH);
+            return;
+        case GFX_DITHER_NONE:
+            gfx_indexed_expand_row(row_ptr, indexed_grid_w, indexed_dither_none_lut, indexed_cell_size, out_row,
+                                   GFX_WIDTH);
+            return;
+        case GFX_DITHER_PIXEL_BAYER4:
+        case GFX_DITHER_MODE_COUNT:
+        default:
+            gfx_indexed_expand_row_dither16(row_ptr, indexed_grid_w, indexed_dither16_rgb, indexed_cell_size, y, 0,
+                                            out_row, GFX_WIDTH);
+            return;
+    }
+}
+
 /* send_fb_rows()'s GFX_PIXFMT_INDEXED8 counterpart: expands rows [y0, y1)
  * from the index image through the installed LUT, into the same bounce
  * slots, instead of copying pixels already sitting in `fb`. */
@@ -1702,8 +1744,7 @@ send_indexed_rows(int y0, int y1) {
         const uint8_t* row_ptr = (grid_row < indexed_grid_h) ? indexed_image + (size_t)grid_row * indexed_grid_w : NULL;
         gfx_color_t* out_row = slot + (size_t)(y - y0) * GFX_WIDTH;
         if (indexed_dither16_on) {
-            gfx_indexed_expand_row_dither16(row_ptr, indexed_grid_w, indexed_dither16_rgb, indexed_cell_size, y, 0,
-                                            out_row, GFX_WIDTH);
+            expand_indexed_row(row_ptr, grid_row, y, out_row);
         } else {
             gfx_indexed_expand_row(row_ptr, indexed_grid_w, indexed_lut256, indexed_cell_size, out_row, GFX_WIDTH);
         }
@@ -2378,6 +2419,32 @@ void
 gfx_indexed_set_dither16(bool enabled) {
     GFX_PRESENT_GUARD();
     indexed_dither16_on = enabled;
+}
+
+/* Installs `table` for `mode` and selects it as the active one -
+ * GFX_PIXFMT_INDEXED8's own dither pattern while indexed_dither16_on is
+ * true (gfx_indexed_set_dither16()); meaningless in 256 mode, which never
+ * consults it. `table` must be sized for `mode` - see gfx_dither_mode_t's
+ * own comment (gfx_indexed.h) for which. Present-task-only, like every
+ * other indexed setter here (GFX_PRESENT_GUARD()). */
+void
+gfx_indexed_set_dither(gfx_dither_mode_t mode, const gfx_color_t* table) {
+    GFX_PRESENT_GUARD();
+    switch (mode) {
+        case GFX_DITHER_NONE: memcpy(indexed_dither_none_lut, table, sizeof indexed_dither_none_lut); break;
+        case GFX_DITHER_CELL_CHECKER:
+            memcpy(indexed_dither_cell_checker, table, sizeof indexed_dither_cell_checker);
+            break;
+        case GFX_DITHER_CELL_BAYER2:
+            memcpy(indexed_dither_cell_bayer2, table, sizeof indexed_dither_cell_bayer2);
+            break;
+        case GFX_DITHER_PIXEL_CHECKER2:
+            memcpy(indexed_dither_pixel_checker2, table, sizeof indexed_dither_pixel_checker2);
+            break;
+        case GFX_DITHER_PIXEL_BAYER4: memcpy(indexed_dither16_rgb, table, sizeof indexed_dither16_rgb); break;
+        case GFX_DITHER_MODE_COUNT: break;
+    }
+    indexed_dither_mode = mode;
 }
 
 unsigned
