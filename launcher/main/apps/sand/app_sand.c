@@ -53,7 +53,6 @@
 #include "../../gfx/gfx_font_roles.h"
 #include "../../input/imu.h"
 #include "../../ui/ui.h"
-#include "brush_screen.h"
 #include "icons_sand.h"
 #include "material_palette.h"
 #include "palette.h"
@@ -65,6 +64,9 @@
 #include "sand_swatch.h"
 #include "sand_ui.h"
 #include "tilt.h"
+#include "ui/brush_screen.h"
+#include "ui/palette_screen.h"
+#include "ui/sand_menu_screen.h"
 #include "util/intmath.h" /* im_abs(), im_len() - see
                              * update_local_depth_gravity() below, which
                              * projects gravity's own direction into the
@@ -179,10 +181,6 @@ static sand_heal_t heal_policy;
 #define BLOCK_COLS_MAX            ((GRID_W_MAX + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
 #define BLOCK_ROWS_MAX            ((GRID_H_MAX + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
 
-#define MENU_BTN_W                300
-#define MENU_BTN_H                UI_ROW_HEIGHT
-#define MENU_BTN_GAP              20
-
 /* Default pour brush radius, in px - seeds sand_ui_t.radius_px; the value
  * actually in force is whatever the brush screen's slider last set (see
  * sand_ui_radius()). */
@@ -228,8 +226,8 @@ static const cell_t brushes[] = {
     CELL_MAKE(MAT_SAND, 0), CELL_MAKE(MAT_WATER, 0), CELL_MAKE(MAT_STONE, 0), CELL_MAKE(MAT_GAS, 0),
     CELL_MAKE(MAT_FIRE, 0), CELL_MAKE(MAT_WOOD, 0),  CELL_MAKE(MAT_OIL, 0),   CELL_MAKE(MAT_LAVA, 0),
     CELL_MAKE(MAT_ACID, 0), CELL_MAKE(MAT_GLASS, 0), CELL_MAKE(MAT_SNOW, 0),  CELL_MAKE(MAT_DIRT, 0),
-    MATX(MATX_ICE),         MATX(MATX_PLANT),        GUNPOWDER_CELL(0), /* dry, tone 0 - see brush_color()'s own comment for
-                         * why the panel tile itself paints a different code */
+    MATX(MATX_ICE),         MATX(MATX_PLANT),        GUNPOWDER_CELL(0), /* dry, tone 0 - see material_brush_color()'s own
+                         * comment (material_palette.h) for why the panel tile itself paints a different code */
 };
 #define BRUSH_COUNT ((int)(sizeof(brushes) / sizeof(brushes[0])))
 
@@ -1510,14 +1508,6 @@ draw_emitter_markers(void) {
     }
 }
 
-static gfx_color_t
-brush_color(cell_t c) {
-    if (cell_is_gunpowder(c)) {
-        return material_palette()[GUNPOWDER_CELL(2)];
-    }
-    return material_palette()[cell_is_extended(c) ? c : CELL_MAKE(CELL_MATERIAL(c), 13)];
-}
-
 static int
 gravity_quarter_turn(int gx, int gy) {
     const int ax = gx < 0 ? -gx : gx;
@@ -1581,28 +1571,10 @@ draw_mode_label(int gx, int gy) {
     } else if (ui.mode == SAND_MODE_ERASE) {
         ink = gfx_rgb(0xFF8A5C);
     } else {
-        ink = brush_color(brushes[ui.brush]);
+        ink = material_brush_color(brushes[ui.brush]);
     }
 
     gfx_text_turned(x, y, text, ink, LABEL_SCALE, turn);
-}
-
-#define PALETTE_GROUT              4
-
-#define PALETTE_BEZEL              3
-
-/* Eligibility/spawn corner badge: 18px outer square on 92px PALETTE_TILE
- * tile, 2px border, 2px margin. */
-#define PALETTE_BADGE_SIZE         18
-#define PALETTE_BADGE_INSET        2
-#define PALETTE_BADGE_MARGIN       2
-
-#define PALETTE_BADGE_BORDER_COLOR 0x141414
-#define PALETTE_BADGE_FILL_COLOR   0xF2F2F2
-
-static mu_Color
-mu_color_hex(uint32_t rgb) {
-    return mu_color((int)((rgb >> 16) & 0xFF), (int)((rgb >> 8) & 0xFF), (int)(rgb & 0xFF), 255);
 }
 
 /* APPLY EXACTLY ONCE PER REPAINT OF WHAT IS UNDERNEATH, never per frame.
@@ -1622,329 +1594,16 @@ dim_backdrop(void) {
 static void
 draw_palette(const input_t* input) {
     mu_Context* ctx = ui_context();
-
     ui_begin(input);
-
-    ui_set_text_style(UI_TEXT_OUTLINED);
-
-    ui_set_button_style(UI_BUTTON_BEZEL);
-
-    const mu_Color saved_button_color = ctx->style->colors[MU_COLOR_BUTTON];
-    const mu_Color saved_text_color = ctx->style->colors[MU_COLOR_TEXT];
-
-    /* Black used for each tile name by mu_button() and UI_TEXT_OUTLINED.
-     * ui_text_halo() derives a light halo at render time, ensuring dark text
-     * reads against any swatch. Unlike the face below, this colour is set
-     * once here rather than per tile. */
-    ctx->style->colors[MU_COLOR_TEXT] = mu_color(0, 0, 0, 255);
-
-    const int cols = palette_cols(ui_width());
-
-    if (ui_begin_screen(ctx, "Sand Palette", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-
-        for (int i = 0; i < BRUSH_COUNT; i++) {
-            int x, y, w, h;
-            palette_tile_rect(i, BRUSH_COUNT, cols, ui_width(), ui_height(), &x, &y, &w, &h);
-
-            const int ix = x + PALETTE_GROUT;
-            const int iy = y + PALETTE_GROUT;
-            const int iw = w - 2 * PALETTE_GROUT;
-            const int ih = h - 2 * PALETTE_GROUT;
-
-            const mu_Color face = mu_color_hex(gfx_color_rgb888(brush_color(brushes[i])));
-            ctx->style->colors[MU_COLOR_BUTTON] = face;
-
-            /* Button placed by mu_layout_set_next() at (ix,iy,iw,ih).
-             * mu_button() hit-tests using microui's mouse state, fed via
-             * feed_input() in ui.c, mapped through inverse transform. Draws
-             * styled frame and centered label, the button's unique id from
-             * mu_get_id() in microui.c. Each BRUSH_COUNT brush has a unique
-             * name to prevent id collisions. */
-            const char* name = material_name(brushes[i]);
-            mu_layout_set_next(ctx, mu_rect(ix, iy, iw, ih), 0);
-            const int clicked = mu_button(ctx, name);
-
-            /* Hand click to sand_ui_tile_clicked() before drawing selection
-             * ring and badge for immediate toggle or selection display in the
-             * same frame. Return value unused. */
-            if (clicked) {
-                sand_ui_tile_clicked(&ui, i);
-            }
-
-            /* No "selected" state exists for mu_button() (selection is this
-             * app's idea, not microui's), so this draws a second cue: the
-             * SUNKEN edge pair, mixed toward white/black off THIS TILE'S
-             * face rather than a fixed colour - keeps it visible on both
-             * Snow (black-mixed edge reads) and Stone (white-mixed edge
-             * reads). Safe here, unlike the badge below: it always sits
-             * paired with the one face it was mixed from. */
-            if (i == ui.brush) {
-                ui_span_t spans[UI_BEZEL_MAX_SPANS];
-                const int n = ui_bezel_spans(mu_rect(ix, iy, iw, ih), face, true, spans, UI_BEZEL_MAX_SPANS);
-                for (int s = 1; s < n; s++) {
-                    mu_draw_rect(ctx, spans[s].rect, spans[s].color);
-                }
-            }
-
-            /* Badge shows eligibility (material_can_emit(), false for every
-             * KIND_STATIC material - gunpowder is the one extended-range
-             * exception, being KIND_POWDER). Border/fill are a FIXED pair,
-             * not derived from the face like the bezel above - Snow's
-             * near-white face would make a derived fill nearly invisible
-             * against it, and a mark that must read on every swatch can't
-             * itself be made of the swatch. */
-            if (material_can_emit(brushes[i])) {
-                const mu_Color border = mu_color_hex(PALETTE_BADGE_BORDER_COLOR);
-                const mu_Color fill = mu_color_hex(PALETTE_BADGE_FILL_COLOR);
-                const int bx = ix + iw - PALETTE_BEZEL - PALETTE_BADGE_MARGIN - PALETTE_BADGE_SIZE;
-                const int by = iy + PALETTE_BEZEL + PALETTE_BADGE_MARGIN;
-                const mu_Rect badge_rect = mu_rect(bx, by, PALETTE_BADGE_SIZE, PALETTE_BADGE_SIZE);
-
-                mu_draw_rect(ctx, badge_rect, border);
-                mu_draw_rect(ctx,
-                             mu_rect(bx + PALETTE_BADGE_INSET, by + PALETTE_BADGE_INSET,
-                                     PALETTE_BADGE_SIZE - 2 * PALETTE_BADGE_INSET,
-                                     PALETTE_BADGE_SIZE - 2 * PALETTE_BADGE_INSET),
-                             fill);
-
-                if (ui.modes[i] == BRUSH_SPAWN) {
-                    mu_draw_icon(ctx, MU_ICON_CHECK, badge_rect, border);
-                }
-            }
-        }
-
-        mu_end_window(ctx);
-    }
-
-    /* Restores what this loop borrowed - see the comment above
-     * saved_button_color/saved_text_color for why leaving either mutated
-     * would leak into the next thing drawn with MU_COLOR_BUTTON/
-     * MU_COLOR_TEXT. */
-    ctx->style->colors[MU_COLOR_BUTTON] = saved_button_color;
-    ctx->style->colors[MU_COLOR_TEXT] = saved_text_color;
-
+    palette_screen_draw(ctx, &ui);
     ui_end(UI_NO_BACKGROUND);
 }
 
-/* Padding inside one brush-mode segment, and the gap between its icon and
- * its label - the icon square is whatever is left of the segment's height
- * after both, capped to the segment's width so a narrow canvas can't ask
- * for a wider icon than the segment actually has. */
-#define BRUSH_SEG_PAD       8
-#define BRUSH_SEG_LABEL_GAP 4
-
-/* Inset from the info button's own edge to its icon - same reasoning as
- * INFO_BTN_SIDE's own comment in brush_screen.c: room so the glyph isn't
- * pressed against the button frame. */
-#define BRUSH_INFO_ICON_PAD 12
-
-static const icon_t* const brush_seg_icons[BRUSH_SCREEN_SEGMENT_COUNT] = {
-    [BRUSH_SCREEN_SEG_POUR] = &icon_sand_table[ICON_SAND_POUR],
-    [BRUSH_SCREEN_SEG_ERASE] = &icon_sand_table[ICON_SAND_ERASE],
-    [BRUSH_SCREEN_SEG_BOOM] = &icon_sand_table[ICON_SAND_BOOM],
-};
-
-/* One panel frame (ui_style.h's flat section frame) in a fixed colour
- * pair, spans drawn back to front. */
-static void
-draw_brush_panel(mu_Context* ctx, mu_Rect r) {
-    ui_span_t spans[UI_PANEL_MAX_SPANS];
-    const int n = ui_panel_spans(r, mu_color_hex(BRUSH_PANEL_FACE_COLOR), mu_color_hex(BRUSH_PANEL_BORDER_COLOR), spans,
-                                 UI_PANEL_MAX_SPANS);
-    for (int i = 0; i < n; i++) {
-        mu_draw_rect(ctx, spans[i].rect, spans[i].color);
-    }
-}
-
-/* One bezelled frame (ui_style.h's lit/shadowed control frame) in a given
- * face colour - the info button and the three mode segments use this,
- * each with its own face and `sunken`. The swatch draws its own border
- * below, via draw_brush_swatch(). */
-static void
-draw_brush_bezel(mu_Context* ctx, mu_Rect r, uint32_t face_rgb, bool sunken) {
-    ui_span_t spans[UI_BEZEL_MAX_SPANS];
-    const int n = ui_bezel_spans(r, mu_color_hex(face_rgb), sunken, spans, UI_BEZEL_MAX_SPANS);
-    for (int i = 0; i < n; i++) {
-        mu_draw_rect(ctx, spans[i].rect, spans[i].color);
-    }
-}
-
-/* Swatch side, in cells per axis. 8 divides SWATCH_SIDE (80px) into an
- * exact 10px cell and keeps the brush screen's whole command list under
- * two thirds of MU_COMMANDLIST_SIZE - see ui.c's command-list high-water
- * log (CONFIG_LAUNCHER_DEVELOPMENT) for the measured figure. */
-#define BRUSH_SWATCH_CELLS 8
-
-/* Fills `r` with sand_swatch_cell()'s deterministic pattern for `spec`,
- * then its bezel border on top (span[0] of ui_bezel_spans() is skipped -
- * the grid already fills the face that span would flatten over). */
-static void
-draw_brush_swatch(mu_Context* ctx, mu_Rect r, cell_t spec) {
-    const gfx_color_t* palette = material_palette();
-
-    for (int row = 0; row < BRUSH_SWATCH_CELLS; row++) {
-        const int y0 = r.y + row * r.h / BRUSH_SWATCH_CELLS;
-        const int y1 = r.y + (row + 1) * r.h / BRUSH_SWATCH_CELLS;
-        for (int col = 0; col < BRUSH_SWATCH_CELLS; col++) {
-            const int x0 = r.x + col * r.w / BRUSH_SWATCH_CELLS;
-            const int x1 = r.x + (col + 1) * r.w / BRUSH_SWATCH_CELLS;
-            const cell_t cell = sand_swatch_cell(spec, col, row, BRUSH_SWATCH_CELLS);
-            mu_draw_rect(ctx, mu_rect(x0, y0, x1 - x0, y1 - y0), mu_color_hex(gfx_color_rgb888(palette[cell])));
-        }
-    }
-
-    ui_span_t spans[UI_BEZEL_MAX_SPANS];
-    const int n =
-        ui_bezel_spans(r, mu_color_hex(gfx_color_rgb888(brush_color(spec))), false, spans, UI_BEZEL_MAX_SPANS);
-    for (int i = 1; i < n; i++) {
-        mu_draw_rect(ctx, spans[i].rect, spans[i].color);
-    }
-}
-
-/* `str` at the CURRENT font/scale (whatever ui_set_font_scaled() last set -
- * `scale` must agree, since it's what sizes the text vertically here),
- * vertically centred in `r`, horizontally at `align` (-1 left, 0 centre, 1
- * right). Clipped to `r`, the same guard mu_draw_control_text() gives an
- * ordinary control's label - this screen has no built-in equivalent since
- * it draws its own frames rather than going through mu_button(). */
-static void
-draw_brush_text(mu_Context* ctx, mu_Rect r, const char* str, mu_Color color, int scale, int align) {
-    const int tw = ui_measure_text(str);
-    const int th = gfx_font_height(gfx_font_ui(), scale);
-    const int x = (align < 0) ? r.x : (align == 0) ? r.x + (r.w - tw) / 2 : r.x + r.w - tw;
-    const int y = r.y + (r.h - th) / 2;
-
-    mu_push_clip_rect(ctx, r);
-    mu_draw_text(ctx, ctx->style->font, str, -1, mu_vec2(x, y), color);
-    mu_pop_clip_rect(ctx);
-}
-
-/* Modeled on draw_palette() above - same "caller hit-tests via a real
- * control, sand_ui.c decides what the hit means" split. UI_NO_BACKGROUND
- * for the same reason too: the frozen sand shows through everything the
- * panels do not cover, so the screen reads as sitting ON the sandbox. */
 static void
 draw_brush_screen(const input_t* input) {
     mu_Context* ctx = ui_context();
-
     ui_begin(input);
-
-    ui_set_text_style(UI_TEXT_PLAIN);
-
-    brush_screen_layout_t lay;
-    brush_screen_layout(ui_width(), ui_height(), &lay);
-
-    if (ui_begin_screen(ctx, "Sand Brush", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-
-        ui_set_font_scaled(gfx_font_ui(), BRUSH_SCREEN_CAPTION_SCALE);
-
-        /* Header: swatch, caption/name, info button (drawn, inert). */
-        draw_brush_panel(ctx, lay.header_panel);
-
-        draw_brush_swatch(ctx, lay.swatch, brushes[ui.brush]);
-
-        draw_brush_text(ctx, lay.material_caption, BRUSH_SCREEN_MATERIAL_CAPTION, mu_color_hex(BRUSH_CAPTION_COLOR),
-                        BRUSH_SCREEN_CAPTION_SCALE, -1);
-
-        /* 4 is the starting scale, but "Gunpowder" (the longest name any
-         * brush carries) doesn't fit it in the name rect at the narrower
-         * of the two real canvases - drop a size at a time rather than let
-         * draw_brush_text()'s clip cut the tail off a real material name. */
-        const char* name = material_name(brushes[ui.brush]);
-        int name_scale = 4;
-        for (; name_scale > 1; name_scale--) {
-            ui_set_font_scaled(gfx_font_ui(), name_scale);
-            if (ui_measure_text(name) <= lay.material_name.w) {
-                break;
-            }
-        }
-        draw_brush_text(ctx, lay.material_name, name, mu_color_hex(BRUSH_TEXT_COLOR), name_scale, -1);
-        ui_set_font_scaled(gfx_font_ui(), BRUSH_SCREEN_CAPTION_SCALE);
-
-        draw_brush_bezel(ctx, lay.info_button, BRUSH_SEG_UNSELECTED_COLOR, false);
-        {
-            /* No handler: the panel this button opens is separate, later
-             * work (see docs/plans/Sand-Brush-Screen-Plan.md). Drawn now
-             * because it's in the design; not a bug that tapping it does
-             * nothing yet. */
-            const mu_Rect icon_r = {
-                lay.info_button.x + BRUSH_INFO_ICON_PAD,
-                lay.info_button.y + BRUSH_INFO_ICON_PAD,
-                lay.info_button.w - 2 * BRUSH_INFO_ICON_PAD,
-                lay.info_button.h - 2 * BRUSH_INFO_ICON_PAD,
-            };
-            ui_draw_icon(ctx, icon_r, &icon_sand_table[ICON_SAND_INFO], icon_sand_rows, mu_color_hex(BRUSH_TEXT_COLOR));
-        }
-
-        /* Brush mode: caption, three segments. */
-        draw_brush_panel(ctx, lay.mode_panel);
-        draw_brush_text(ctx, lay.mode_caption, BRUSH_SCREEN_MODE_CAPTION, mu_color_hex(BRUSH_CAPTION_COLOR),
-                        BRUSH_SCREEN_CAPTION_SCALE, -1);
-
-        for (int i = 0; i < BRUSH_SCREEN_SEGMENT_COUNT; i++) {
-            const mu_Rect r = lay.segments[i];
-            const char* name = brush_screen_segment_label((brush_screen_segment_t)i);
-
-            /* Id from the segment's own name, the same idiom mu_button_ex()
-             * uses for a labelled control - the three names differ, so no
-             * two segments can collide. */
-            const mu_Id id = mu_get_id(ctx, name, (int)strlen(name));
-            mu_update_control(ctx, id, r, 0);
-
-            if (ctx->mouse_pressed == MU_MOUSE_LEFT && ctx->focus == id) {
-                sand_ui_mode_clicked(&ui, i);
-            }
-
-            const bool selected = ((sand_mode_t)i == ui.mode);
-            const bool pressed = (ctx->hover == id) || (ctx->focus == id);
-            const uint32_t face = selected ? BRUSH_SEG_SELECTED_COLOR : BRUSH_SEG_UNSELECTED_COLOR;
-            const mu_Color ink = mu_color_hex(selected ? BRUSH_SEG_SELECTED_INK_COLOR : BRUSH_TEXT_COLOR);
-
-            draw_brush_bezel(ctx, r, face, pressed);
-
-            const int label_h = gfx_font_height(gfx_font_ui(), BRUSH_SCREEN_CAPTION_SCALE);
-            int icon_side = r.h - 2 * BRUSH_SEG_PAD - label_h - BRUSH_SEG_LABEL_GAP;
-            const int icon_side_max = r.w - 2 * BRUSH_SEG_PAD;
-            if (icon_side > icon_side_max) {
-                icon_side = icon_side_max;
-            }
-            const mu_Rect icon_r = {
-                r.x + (r.w - icon_side) / 2,
-                r.y + BRUSH_SEG_PAD,
-                icon_side,
-                icon_side,
-            };
-            ui_draw_icon(ctx, icon_r, brush_seg_icons[i], icon_sand_rows, ink);
-
-            const mu_Rect label_r = {
-                r.x + BRUSH_SEG_PAD,
-                icon_r.y + icon_side + BRUSH_SEG_LABEL_GAP,
-                r.w - 2 * BRUSH_SEG_PAD,
-                label_h,
-            };
-            draw_brush_text(ctx, label_r, name, ink, BRUSH_SCREEN_CAPTION_SCALE, 0);
-        }
-
-        /* Brush size: caption/value, slider. */
-        draw_brush_panel(ctx, lay.size_panel);
-
-        const char* size_caption = brush_screen_size_caption((brush_screen_segment_t)ui.mode);
-        draw_brush_text(ctx, lay.size_caption, size_caption, mu_color_hex(BRUSH_CAPTION_COLOR),
-                        BRUSH_SCREEN_CAPTION_SCALE, -1);
-
-        char size_value[8];
-        snprintf(size_value, sizeof size_value, "%02u PX", (unsigned)sand_ui_radius(&ui));
-        draw_brush_text(ctx, lay.size_value, size_value, mu_color_hex(BRUSH_TEXT_COLOR), BRUSH_SCREEN_CAPTION_SCALE, 1);
-
-        mu_layout_set_next(ctx, lay.slider_track, 0);
-        int radius = sand_ui_radius(&ui);
-        if (ui_slider_int(ctx, &radius, SAND_UI_RADIUS_MIN, SAND_UI_RADIUS_MAX, 1)) {
-            sand_ui_set_radius(&ui, (uint8_t)radius);
-        }
-
-        mu_end_window(ctx);
-    }
-
+    brush_screen_draw(ctx, &ui);
     ui_end(UI_NO_BACKGROUND);
 }
 
@@ -2169,76 +1828,44 @@ track_pour_split(const input_t* input, int64_t step_us, int64_t draw_us, int awa
 }
 #endif
 
-/* A DITHER row joins QUALITY/COLOUR only once COLOUR is 16 - the other two
- * modes have no pattern to choose. Both menu_start_rect() and draw_menu()
- * read this so START's own centring moves with the row count exactly the
- * way draw_menu() lays the rest out, never independently of it. */
-static int
-menu_row_count(void) {
-    return color_mode == SAND_COLOR_16 ? 4 : 3;
-}
-
-/* The START button's own on-screen rect - shared with the SELFTEST tap
- * below so a real touch and this arithmetic can never drift apart. */
-static mu_Rect
-menu_start_rect(void) {
-    const int total_h = menu_row_count() * MENU_BTN_H + (menu_row_count() - 1) * MENU_BTN_GAP;
-    const int top = (ui_height() - total_h) / 2;
-    return ui_centered_rect(ui_width(), MENU_BTN_W, MENU_BTN_H, top);
-}
-
 static void
 draw_menu(const input_t* input) {
     mu_Context* ctx = ui_context();
 
     ui_begin(input);
 
-    if (ui_begin_screen(ctx, "Sand Menu", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+    char quality_label[24];
+    snprintf(quality_label, sizeof quality_label, "QUALITY: %s", qualities[quality].name);
+    char color_label[24];
+    snprintf(color_label, sizeof color_label, "COLOUR: %s", color_names[color_mode]);
+    char dither_label[24] = "";
+    if (color_mode == SAND_COLOR_16) {
+        snprintf(dither_label, sizeof dither_label, "DITHER: %s", dither_names[dither_mode]);
+    }
 
-        const int rows = menu_row_count();
-        const int total_h = rows * MENU_BTN_H + (rows - 1) * MENU_BTN_GAP;
-        const int top = (ui_height() - total_h) / 2;
-        int row = 0;
+    const sand_menu_screen_state_t state = {
+        .quality = quality_label,
+        .color = color_label,
+        .dither = dither_label,
+        .show_dither = (color_mode == SAND_COLOR_16),
+    };
+    const sand_menu_screen_result_t result = sand_menu_screen_draw(ctx, &state);
 
-        mu_layout_set_next(ctx, menu_start_rect(), 0);
-        if (mu_button(ctx, "START")) {
-            /* Not called here - see pending_start's own comment. */
-            pending_start = true;
-        }
-        row++;
-
-        char label[24];
-        snprintf(label, sizeof label, "QUALITY: %s", qualities[quality].name);
-        mu_layout_set_next(
-            ctx, ui_centered_rect(ui_width(), MENU_BTN_W, MENU_BTN_H, top + row * (MENU_BTN_H + MENU_BTN_GAP)), 0);
-        if (mu_button(ctx, label)) {
-            quality = (quality + 1) % QUALITY_COUNT;
-        }
-        row++;
-
-        char color_label[24];
-        snprintf(color_label, sizeof color_label, "COLOUR: %s", color_names[color_mode]);
-        mu_layout_set_next(
-            ctx, ui_centered_rect(ui_width(), MENU_BTN_W, MENU_BTN_H, top + row * (MENU_BTN_H + MENU_BTN_GAP)), 0);
-        if (mu_button(ctx, color_label)) {
-            /* Not applied here - the next start_sim() (apply_gfx_enter_
-             * indexed()) reads dither_mode, the same "menu picks, entry
-             * applies" split QUALITY/COLOUR already use. */
-            color_mode = (color_mode + 1) % SAND_COLOR_COUNT;
-        }
-        row++;
-
-        if (color_mode == SAND_COLOR_16) {
-            char dither_label[24];
-            snprintf(dither_label, sizeof dither_label, "DITHER: %s", dither_names[dither_mode]);
-            mu_layout_set_next(
-                ctx, ui_centered_rect(ui_width(), MENU_BTN_W, MENU_BTN_H, top + row * (MENU_BTN_H + MENU_BTN_GAP)), 0);
-            if (mu_button(ctx, dither_label)) {
-                dither_mode = (gfx_dither_mode_t)((dither_mode + 1) % GFX_DITHER_MODE_COUNT);
-            }
-        }
-
-        mu_end_window(ctx);
+    if (result.start_clicked) {
+        /* Not called here - see pending_start's own comment. */
+        pending_start = true;
+    }
+    if (result.quality_clicked) {
+        quality = (quality + 1) % QUALITY_COUNT;
+    }
+    if (result.color_clicked) {
+        /* Not applied here - the next start_sim() (apply_gfx_enter_
+         * indexed()) reads dither_mode, the same "menu picks, entry
+         * applies" split QUALITY/COLOUR already use. */
+        color_mode = (color_mode + 1) % SAND_COLOR_COUNT;
+    }
+    if (result.dither_clicked) {
+        dither_mode = (gfx_dither_mode_t)((dither_mode + 1) % GFX_DITHER_MODE_COUNT);
     }
 
     ui_end(COL_BACKGROUND);
@@ -2525,7 +2152,7 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
     ui_set_transform(ui_transform_identity());
     sand_enter();
 
-    const mu_Rect start_rect = menu_start_rect();
+    const mu_Rect start_rect = sand_menu_screen_start_rect(color_mode == SAND_COLOR_16);
     const int cx = start_rect.x + start_rect.w / 2;
     const int cy = start_rect.y + start_rect.h / 2;
     ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", cx, cy, start_rect.x, start_rect.y,
