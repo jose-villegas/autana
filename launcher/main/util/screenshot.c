@@ -21,6 +21,9 @@
  */
 #include "util/screenshot.h"
 
+#include "build_id_generated.h"
+#include "util/build_id.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,12 +39,6 @@
 #include "util/device_state.h"
 
 static const char* TAG = "screenshot";
-
-#define SCREENSHOT_TRIGGER "SCREENSHOT"
-
-#if CONFIG_LAUNCHER_SELFTEST
-#define RUNSUITE_TRIGGER "RUNSUITE "
-#endif
 
 static volatile bool s_request_pending;
 
@@ -93,17 +90,21 @@ screenshot_task(void* arg) {
         if (c == '\n' || c == '\r') {
             if (len > 0) {
                 line[len] = '\0';
-                if (strcmp(line, SCREENSHOT_TRIGGER) == 0) {
+                const build_console_command_t command = build_console_command_parse(line);
+                if (command == BUILD_CONSOLE_SCREENSHOT) {
                     ESP_LOGI(TAG, "trigger received");
                     s_request_pending = true;
 #if CONFIG_LAUNCHER_SELFTEST
-                } else if (strncmp(line, RUNSUITE_TRIGGER, strlen(RUNSUITE_TRIGGER)) == 0) {
-                    const char* name = line + strlen(RUNSUITE_TRIGGER);
+                } else if (command == BUILD_CONSOLE_RUNSUITE) {
+                    const char* name = line + sizeof "RUNSUITE " - 1;
                     ESP_LOGI(TAG, "RUNSUITE %s", name);
                     strncpy(s_runsuite_name, name, sizeof(s_runsuite_name) - 1);
                     s_runsuite_name[sizeof(s_runsuite_name) - 1] = '\0';
                     s_runsuite_pending = true;
 #endif
+                } else if (command == BUILD_CONSOLE_BUILD_ID) {
+                    printf("BUILD_ID=%s\n", BUILD_ID);
+                    fflush(stdout);
                 } else {
                     ESP_LOGI(TAG, "ignoring line: '%s'", line);
                 }
@@ -159,9 +160,9 @@ screenshot_start(void) {
     }
 
 #if CONFIG_LAUNCHER_SELFTEST
-    ESP_LOGI(TAG, "listening for '%s' and '%s<name>' on the console", SCREENSHOT_TRIGGER, RUNSUITE_TRIGGER);
+    ESP_LOGI(TAG, "listening for 'SCREENSHOT', 'BUILDID', and 'RUNSUITE <name>' on the console");
 #else
-    ESP_LOGI(TAG, "listening for '%s' on the console", SCREENSHOT_TRIGGER);
+    ESP_LOGI(TAG, "listening for 'SCREENSHOT' and 'BUILDID' on the console");
 #endif
 }
 

@@ -18,6 +18,7 @@
 #include "boot/boot_anim.h"
 #include "boot/post.h"
 #include "boot/post_ui.h"
+#include "build_id_generated.h"
 #include "display/display.h"
 #include "display/panel_clock.h"
 #include "gfx/gfx.h"
@@ -72,6 +73,44 @@ heap_mark(const char* where) {
 
 /* 10 Hz: sufficient for reorientation without lag. */
 #define DISPLAY_SAMPLE_MS 100
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+#define BUILD_MARK_MARGIN 4
+#define BUILD_MARK_GLYPH  8
+#define BUILD_MARK_CHARS  8
+#define BUILD_MARK_SIZE   (BUILD_MARK_GLYPH * BUILD_MARK_CHARS)
+#define BUILD_MARK_RGB    0x384054
+
+static void
+draw_build_mark(void) {
+    const int quarter = display_shell_quarter();
+    int x = 0;
+    int y = 0;
+    switch (quarter) {
+        case 0:
+            x = GFX_WIDTH - BUILD_MARK_MARGIN - BUILD_MARK_SIZE;
+            y = GFX_HEIGHT - BUILD_MARK_MARGIN - BUILD_MARK_GLYPH;
+            break;
+        case 1:
+            x = BUILD_MARK_MARGIN;
+            y = GFX_HEIGHT - BUILD_MARK_MARGIN - BUILD_MARK_SIZE;
+            break;
+        case 2:
+            x = BUILD_MARK_MARGIN + BUILD_MARK_SIZE - BUILD_MARK_GLYPH;
+            y = BUILD_MARK_MARGIN;
+            break;
+        default:
+            x = GFX_WIDTH - BUILD_MARK_MARGIN - BUILD_MARK_GLYPH;
+            y = BUILD_MARK_MARGIN + BUILD_MARK_SIZE - BUILD_MARK_GLYPH;
+            break;
+    }
+
+    if (gfx_region_dirty(x, y, quarter % 2 == 0 ? BUILD_MARK_SIZE : BUILD_MARK_GLYPH,
+                         quarter % 2 == 0 ? BUILD_MARK_GLYPH : BUILD_MARK_SIZE)) {
+        gfx_text_turned(x, y, "D" BUILD_ID_SHORT, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
+    }
+}
+#endif
 
 /* --- panel clock --------------------------------------------------------- */
 
@@ -439,6 +478,8 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
 
 void
 app_main(void) {
+    printf("BUILD_ID=%s\n", BUILD_ID);
+    fflush(stdout);
     heap_mark("boot");
 
     /* Test SD card during panel use. */
@@ -551,6 +592,7 @@ app_main(void) {
         step_app(&current, &input, dt_ms);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
+        draw_build_mark();
         if (screenshot_take_request()) {
             screenshot_dump(&input, current);
             gfx_request_full_redraw();

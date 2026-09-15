@@ -101,6 +101,7 @@ $TEST_DIR/suites/suite_ui_slider.c
 $TEST_DIR/suites/suite_display.c
 $TEST_DIR/suites/suite_panel_clock.c
 $TEST_DIR/suites/suite_screenshot.c
+$TEST_DIR/suites/suite_build_id.c
 $TEST_DIR/suites/suite_device_state.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/gesture.c
