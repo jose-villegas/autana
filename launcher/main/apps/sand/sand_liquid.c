@@ -15,10 +15,18 @@
 
 #include "sand_priv.h"
 
+#ifdef DEVICE_BUILD
+#include "esp_timer.h"
+#endif
+
 #include "sand_liquid_move.h"
 #include "util/fixed.h"
 
 /* See liquid_mask() in sand_priv.h */
+
+/* See sand_priv.h. */
+unsigned sand_liquid_moves;
+unsigned sand_liquid_crossflow_probes;
 
 /* Everything that is NOT gravity-ward, and so cannot live in that sweep. */
 
@@ -74,6 +82,7 @@ find_shallowest(const sand_t* s, int x, int y, int px, int py, int sight, uint8_
         if ((unsigned)sx >= (unsigned)s->w || (unsigned)sy >= (unsigned)s->h) {
             break;
         }
+        sand_liquid_crossflow_probes++;
         const cell_t o = s->cells[(size_t)sy * (size_t)s->w + (size_t)sx];
         int there;
 
@@ -152,6 +161,7 @@ equalise_one_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* below_ro
     if (was_empty) {
         mark_depth_band(s, tx, ty);
     }
+    sand_liquid_moves++;
 
     *stayed_in_row = (ty == y);
     if (*stayed_in_row) {
@@ -569,7 +579,13 @@ sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy) {
     run.q_q8 = flow->q_q8;
 
     /* Cross-flow levels both ways. See equalise_liquids(). */
+#ifdef DEVICE_BUILD
+    const int64_t equalise_t0 = esp_timer_get_time();
+#endif
     equalise_liquids(s, &run, SAND_LIQUID_SIGHT, dx, dy);
+#ifdef DEVICE_BUILD
+    s->pass_us.liquid_us = esp_timer_get_time() - equalise_t0;
+#endif
     s->liquid_flip = !s->liquid_flip;
 
     /* SKIPPED ON ONE BOARD-WIDE FACT. Sorting by density needs two different
@@ -578,6 +594,12 @@ sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy) {
      * liquid scene usually is - therefore pays a popcount, not a pass. */
     const uint16_t liquids_here = s->may_have_materials & liquid_mask();
     if ((liquids_here & (uint16_t)(liquids_here - 1u)) != 0u && (s->step_phase & (LIQUID_SORT_PERIOD - 1u)) == 0u) {
+#ifdef DEVICE_BUILD
+        const int64_t float_t0 = esp_timer_get_time();
+#endif
         (void)float_lighter_liquids(s, dx, dy);
+#ifdef DEVICE_BUILD
+        s->pass_us.float_us = esp_timer_get_time() - float_t0;
+#endif
     }
 }

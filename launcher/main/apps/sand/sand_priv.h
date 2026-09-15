@@ -180,6 +180,19 @@ extern unsigned sand_reactions_cells_dispatched;
  * output against the reference walk on the same board. Off by default. */
 void sand_reactions_force_full_walk(bool on);
 
+/* Not sand.h API: which shape sand_step_reactions() actually took this call -
+ * the soak-only partial walk, or the full one (including an early return
+ * that ran neither). Set unconditionally on every call, so a stale value
+ * never survives past the step that produced it. */
+extern bool sand_reactions_last_was_soak_only;
+
+/* Not sand.h API: test hooks for the liquid cross-flow pass. A move is one
+ * successful transfer out of equalise_one_cell(); a probe is one ray step
+ * find_shallowest() examines looking for somewhere shallower. Never reset by
+ * the pass itself, same convention as sand_reactions_cells_dispatched. */
+extern unsigned sand_liquid_moves;
+extern unsigned sand_liquid_crossflow_probes;
+
 #define BLOCK_SETTLED_NEAREST 0x1
 #define BLOCK_SETTLED_OTHER   0x2
 #define BLOCK_ACTIVE          0x4
