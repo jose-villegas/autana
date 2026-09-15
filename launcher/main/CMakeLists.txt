@@ -14,6 +14,7 @@ set(app_srcs
     "input/gesture.c"
     "input/imu.c"
     "ui/ui.c"
+    "ui/ui_build.c"
     "ui/ui_launcher.c"
     "ui/ui_pointer.c"
     "util/device_state.c"
