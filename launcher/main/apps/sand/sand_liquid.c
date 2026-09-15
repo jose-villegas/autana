@@ -15,10 +15,18 @@
 
 #include "sand_priv.h"
 
+#ifdef DEVICE_BUILD
+#include "esp_timer.h"
+#endif
+
 #include "sand_liquid_move.h"
 #include "util/fixed.h"
 
 /* See liquid_mask() in sand_priv.h */
+
+/* See sand_priv.h. */
+unsigned sand_liquid_moves;
+unsigned sand_liquid_crossflow_probes;
 
 /* Everything that is NOT gravity-ward, and so cannot live in that sweep. */
 
@@ -74,6 +82,7 @@ find_shallowest(const sand_t* s, int x, int y, int px, int py, int sight, uint8_
         if ((unsigned)sx >= (unsigned)s->w || (unsigned)sy >= (unsigned)s->h) {
             break;
         }
+        sand_liquid_crossflow_probes++;
         const cell_t o = s->cells[(size_t)sy * (size_t)s->w + (size_t)sx];
         int there;
 
@@ -152,6 +161,7 @@ equalise_one_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* below_ro
     if (was_empty) {
         mark_depth_band(s, tx, ty);
     }
+    sand_liquid_moves++;
 
     *stayed_in_row = (ty == y);
     if (*stayed_in_row) {
@@ -211,9 +221,22 @@ equalise_one_row_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* ax_r
     if (equalise_one_cell(s, row, x, y, below_row, n_row, w, px, py, dx, sight, id, CELL_VARIANT(c), bias_q8,
                           &stayed_in_row, &tx)
         && stayed_in_row) {
+        const int lo = x < tx ? x : tx;
+        const int hi = x > tx ? x : tx;
+
         /* Marking deferred for gravity-free orientations. mark_rows() impact.
          * Narrow x range for wake. */
-        union_touched_x(touched, touched_x0, touched_x1, x < tx ? x : tx, x > tx ? x : tx);
+        union_touched_x(touched, touched_x0, touched_x1, lo, hi);
+
+        /* Woken HERE, per transfer - not once for the whole row's combined
+         * span in equalise_one_row(), which unions every transfer's own
+         * narrow span first. A settled block with no transfer of its own
+         * sat inside that union whenever any OTHER transfer landed on the
+         * far side of it, so a wide, mostly-still pool never slept: any one
+         * correction anywhere on the row kept the entire span between it
+         * and the next one awake. */
+        const int by = (int)((unsigned)y / SAND_BLOCK_H);
+        wake_blocks_range(s, (int)((unsigned)lo / SAND_BLOCK_W), by, (int)((unsigned)hi / SAND_BLOCK_W), by);
     }
     return true;
 }
@@ -315,6 +338,21 @@ equalise_one_row(sand_t* s, int y, int w, int x_step, const xflow_t* r, int dx, 
         const int lo = bx * SAND_BLOCK_W;
         const int hi = (lo + SAND_BLOCK_W < w) ? lo + SAND_BLOCK_W : w;
 
+        /* A block the main sweep left settled had no arrival from gravity OR
+         * a prior cross-flow transfer last step - either wakes it directly
+         * (wake_block_and_neighbors()/wake_blocks_range()) - so this pass
+         * already answered "nothing to find" here, 32 rows' worth of times
+         * over one block, and the answer cannot have changed since. Skips
+         * past rays_blocked() rediscovering the same thing every row. */
+        if (brow != NULL
+            && (brow[bx] & (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER))
+                   == (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER)) {
+            if (span_has_liquid(row, lo, hi, is_liquid)) {
+                any_liquid = true;
+            }
+            continue;
+        }
+
         if (span_is_empty(row, lo, hi)) {
             continue;
         }
@@ -343,12 +381,10 @@ equalise_one_row(sand_t* s, int y, int w, int x_step, const xflow_t* r, int dx, 
 
     if (touched) {
         s->faller_may_move = true;
+        /* The dirty span for drawing is still the whole row's union - a
+         * repaint wants everything that changed, unlike the wake above,
+         * which equalise_one_row_cell() now does per transfer. */
         mark_row_span(s, y, touched_x0, touched_x1);
-        /* Unsigned cast needed for shift instead of signed division
-         * correction. */
-        const int by = (int)((unsigned)y / SAND_BLOCK_H);
-        wake_blocks_range(s, (int)((unsigned)touched_x0 / SAND_BLOCK_W), by, (int)((unsigned)touched_x1 / SAND_BLOCK_W),
-                          by);
     }
 
     return any_liquid;
@@ -569,7 +605,13 @@ sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy) {
     run.q_q8 = flow->q_q8;
 
     /* Cross-flow levels both ways. See equalise_liquids(). */
+#ifdef DEVICE_BUILD
+    const int64_t equalise_t0 = esp_timer_get_time();
+#endif
     equalise_liquids(s, &run, SAND_LIQUID_SIGHT, dx, dy);
+#ifdef DEVICE_BUILD
+    s->pass_us.liquid_us = esp_timer_get_time() - equalise_t0;
+#endif
     s->liquid_flip = !s->liquid_flip;
 
     /* SKIPPED ON ONE BOARD-WIDE FACT. Sorting by density needs two different
@@ -578,6 +620,12 @@ sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy) {
      * liquid scene usually is - therefore pays a popcount, not a pass. */
     const uint16_t liquids_here = s->may_have_materials & liquid_mask();
     if ((liquids_here & (uint16_t)(liquids_here - 1u)) != 0u && (s->step_phase & (LIQUID_SORT_PERIOD - 1u)) == 0u) {
+#ifdef DEVICE_BUILD
+        const int64_t float_t0 = esp_timer_get_time();
+#endif
         (void)float_lighter_liquids(s, dx, dy);
+#ifdef DEVICE_BUILD
+        s->pass_us.float_us = esp_timer_get_time() - float_t0;
+#endif
     }
 }

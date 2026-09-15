@@ -22,9 +22,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef DEVICE_BUILD
+#include "esp_timer.h"
+#endif
+
 #include "sand_liquid_move.h"
 #include "util/fixed.h"
 #include "util/intmath.h"
+
+/* See sand_priv.h. Defined here, not sand_liquid.c: move_liquid_grain()
+ * (sand_liquid_move.h) is called only from this file's own sweep. */
+unsigned sand_liquid_sweep_moves;
 
 /* Default from CONFIG_LAUNCHER_SAND_TWO_CORE_STEP on the device; off on a
  * host build, where suites and the fingerprint expect the serial path. A
@@ -1455,6 +1463,10 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
      * sand_step()". */
     build_sweep_tables();
 
+#ifdef DEVICE_BUILD
+    memset(&s->pass_us, 0, sizeof s->pass_us);
+#endif
+
     s->step_phase++;
     s->may_have_viscous_liquid = viscous_liquid_possible(s);
 
@@ -1533,6 +1545,9 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
      * are not worth a guard row that might move a cell twice. */
     int guard_count = 0;
     uint8_t* guard_snapshot = NULL;
+#ifdef DEVICE_BUILD
+    const int64_t sweep_t0 = esp_timer_get_time();
+#endif
     if (sand_two_core_step_enabled() && s->h >= SWEEP_CHECKERBOARD_MIN_ROWS) {
         const int offset = (s->step_phase & 1) ? SWEEP_STRIPE_H / 2 : 0;
         guard_count = sweep_guard_row_list(s->h, offset, NULL, 0);
@@ -1564,6 +1579,9 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
         sweep_range(s, y_from, y_to, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
                     is_liquid);
     }
+#ifdef DEVICE_BUILD
+    s->pass_us.sweep_us = esp_timer_get_time() - sweep_t0;
+#endif
 
     /* Cross-flow for liquids, excluding gravity. See sand_step_liquids() in
      * sand_liquid.c. Runs before finalising block sleep states to ensure
@@ -1576,7 +1594,13 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
      * skipping avoids marshalling nine arguments if no gas. Flash layout
      * cost. */
     if (s->may_have_gas) {
+#ifdef DEVICE_BUILD
+        const int64_t gas_t0 = esp_timer_get_time();
+#endif
         sand_step_gas(s, gx, gy, dx, dy, slide_a, slide_b, perp_a, perp_b, load_dx, load_dy, x_step, jostle);
+#ifdef DEVICE_BUILD
+        s->pass_us.gas_us = esp_timer_get_time() - gas_t0;
+#endif
     }
 
     /* Same slot for burning cell reactions; ignition/extinguish/burn-out are
@@ -1584,11 +1608,23 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
      * Takes `s` argument, unlike sand_step_gas(). Boiling now happens at heat
      * source. No cost to dodge by checking may_have_burning, internal check
      * suffices. */
+#ifdef DEVICE_BUILD
+    const int64_t reactions_t0 = esp_timer_get_time();
+#endif
     sand_step_reactions(s);
+#ifdef DEVICE_BUILD
+    s->pass_us.reactions_us = esp_timer_get_time() - reactions_t0;
+#endif
 
     /* Final step after others to ensure correct position and arc for thrown
      * grains, adding outward half after gravity. */
+#ifdef DEVICE_BUILD
+    const int64_t impulses_t0 = esp_timer_get_time();
+#endif
     step_impulses(s, dx, dy);
+#ifdef DEVICE_BUILD
+    s->pass_us.impulses_us = esp_timer_get_time() - impulses_t0;
+#endif
 
     finalize_settling(s, settled_bit);
 }
