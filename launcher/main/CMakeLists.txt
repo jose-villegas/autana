@@ -91,6 +91,28 @@ endif()
 
 list(APPEND app_srcs ${discovered_apps})
 
+if(CONFIG_LAUNCHER_SELFTEST)
+    set(build_id_variant diag)
+elseif(CONFIG_LAUNCHER_DEVELOPMENT)
+    set(build_id_variant dev)
+else()
+    set(build_id_variant release)
+endif()
+
+set(build_id_generated_dir "${CMAKE_CURRENT_BINARY_DIR}/generated")
+if(NOT CMAKE_SCRIPT_MODE_FILE)
+    file(MAKE_DIRECTORY "${build_id_generated_dir}")
+    add_custom_target(build_id_header ALL
+        COMMAND ${CMAKE_COMMAND}
+            -DSOURCE_DIR=${CMAKE_CURRENT_LIST_DIR}/../..
+            -DBUILD_DIR=${CMAKE_BINARY_DIR}
+            -DGENERATED_DIR=${build_id_generated_dir}
+            -DVARIANT=${build_id_variant}
+            -P ${CMAKE_CURRENT_LIST_DIR}/build_id.cmake
+        BYPRODUCTS "${build_id_generated_dir}/build_id_generated.h"
+        VERBATIM)
+endif()
+
 # post.c reaches for chip identity, flash size, I2C probing and the on-die
 # temperature sensor, so it pulls in more of the platform than the rest.
 #
@@ -149,6 +171,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites/suite_display.c"
         "../test/suites/suite_panel_clock.c"
         "../test/suites/suite_screenshot.c"
+        "../test/suites/suite_build_id.c"
         "../test/suites/suite_device_state.c"
     )
     # SCOPE: which of those suites this image actually carries.
@@ -209,7 +232,7 @@ endif()
 
 idf_component_register(
     SRCS ${app_srcs}
-    INCLUDE_DIRS "." "../test"
+    INCLUDE_DIRS "." "../test" "${build_id_generated_dir}"
     REQUIRES ${app_reqs}
 
     # Required by self-registration, and easy to get wrong.
@@ -225,6 +248,10 @@ idf_component_register(
     # still runs, so genuinely unreachable code is still dropped.
     WHOLE_ARCHIVE
 )
+
+if(NOT CMAKE_SCRIPT_MODE_FILE)
+    add_dependencies(${COMPONENT_LIB} build_id_header)
+endif()
 
 if(CONFIG_LAUNCHER_SELFTEST)
     # Tells the shared suite headers they are being built for the target, which
