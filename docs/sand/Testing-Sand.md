@@ -51,9 +51,7 @@ Three rules keep a reading honest:
   gravity moves within a fixed grid, so a portrait-tuned scene measures
   the wrong thing. A portrait-only frame-budget row has hidden real costs
   before: rotated UI work, and sand rows running along gravity rather
-  than across it. See
-  [`Architecture.md`](Architecture.md#verifying-performance-on-real-hardware)
-  for what a capture's numbers mean once you have one.
+  than across it.
 
 ### Free heap is no longer the precondition it was
 
@@ -109,14 +107,13 @@ self-test is what gates a merge, and it runs unscoped by construction.
 2026-09-14) twelve of these thirteen fail - each pegged to a budget
 measured on the previous board and not yet re-measured on this one. That
 is the expected, tracked state: re-peg each budget from a fresh landscape
-capture on this board rather than reading a fail as a regression. See
-[`Architecture.md`](Architecture.md#the-thirteen-device-frame-budget-tests)
-for what each scene measures and its last-known numbers.
+capture on this board rather than reading a fail as a regression. Read
+each test's own comment in `suite_sand_perf.c` for what its scene measures
+and why its budget sits where it does.
 
 ## Related
 
 - [`../Testing-Guide.md`](../Testing-Guide.md) - the host/device split,
   RUNSUITE, the two device-only traps, and the suite-to-area table.
-- [`Architecture.md`](Architecture.md#verifying-performance-on-real-hardware) -
-  reading a capture's result once you have one, and the frame-budget
-  test table with its last measured numbers.
+- [`Architecture.md`](Architecture.md) - the app's own shape: the grid,
+  the material tables, the step pipeline.
