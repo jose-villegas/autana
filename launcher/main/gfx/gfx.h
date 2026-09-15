@@ -424,6 +424,13 @@ bool gfx_debug_overlay(void);
 void gfx_set_leaf_overlay(bool on);
 bool gfx_debug_leaf_overlay(void);
 
+/* Runtime toggle for the send audit: a PSRAM shadow of every pixel handed
+ * to the panel, compared with the framebuffer after each present, logging
+ * pixels the panel was never sent and pixels read back wrong from PSRAM.
+ * Off by default - it costs a full-screen compare per present. */
+void gfx_set_send_audit(bool on);
+bool gfx_send_audit(void);
+
 /* Per-strip counts of which send path the last stretch of gfx_present()
  * calls actually took - full-band, a gathered send of runs, or a
  * full-width send at less than the whole band's height - for a device
