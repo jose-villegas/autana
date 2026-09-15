@@ -3119,16 +3119,17 @@ water_slope_water_mass(const sand_t* s) {
  * here. */
 static void
 water_slope_log_step(const char* phase, int step_index, const sand_t* s, unsigned dispatched_delta,
-                     unsigned moves_delta, unsigned probes_delta) {
+                     unsigned moves_delta, unsigned probes_delta, unsigned sweep_moves_delta) {
     ESP_LOGI("device_tests",
-             "%-8s %3d tot=%5d sweep=%4d liq=%4d flt=%3d gas=%3d react=%4d imp=%3d dispatch=%5u moves=%4u "
-             "probes=%5u soak=%d awake=%3d liqnear=%3d",
+             "%-8s %3d tot=%5d sweep=%4d liq=%4d flt=%3d gas=%3d react=%4d imp=%3d dispatch=%5u xmoves=%4u "
+             "xprobes=%5u smoves=%4u soak=%d awake=%3d liqnear=%3d",
              phase, step_index,
              (int)(s->pass_us.sweep_us + s->pass_us.liquid_us + s->pass_us.float_us + s->pass_us.gas_us
                    + s->pass_us.reactions_us + s->pass_us.impulses_us),
              (int)s->pass_us.sweep_us, (int)s->pass_us.liquid_us, (int)s->pass_us.float_us, (int)s->pass_us.gas_us,
              (int)s->pass_us.reactions_us, (int)s->pass_us.impulses_us, dispatched_delta, moves_delta, probes_delta,
-             (int)sand_reactions_last_was_soak_only, water_slope_awake_blocks(s), water_slope_liquid_near_blocks(s));
+             sweep_moves_delta, (int)sand_reactions_last_was_soak_only, water_slope_awake_blocks(s),
+             water_slope_liquid_near_blocks(s));
 }
 
 static void
@@ -3136,11 +3137,12 @@ water_slope_step_and_log(sand_t* s, int gx, int gy, const char* phase, int step_
     const unsigned d0 = sand_reactions_cells_dispatched;
     const unsigned m0 = sand_liquid_moves;
     const unsigned p0 = sand_liquid_crossflow_probes;
+    const unsigned sw0 = sand_liquid_sweep_moves;
 
     sand_step(s, gx, gy, 0);
 
     water_slope_log_step(phase, step_index, s, sand_reactions_cells_dispatched - d0, sand_liquid_moves - m0,
-                         sand_liquid_crossflow_probes - p0);
+                         sand_liquid_crossflow_probes - p0, sand_liquid_sweep_moves - sw0);
 }
 
 /* THE PRIMARY REPRO: no tilt, no diagonal, just a plain landscape pile
@@ -3160,6 +3162,7 @@ test_submerged_pile_settles_and_logs_the_pass_split(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 29u);
     sand_enable_sleeping(&real, blocks);
+    sand_set_soak(&real, SAND_SOAK_PER_MATERIAL);
     build_landscape_bed_scene(&real);
 
     for (int i = 0; i < SUBMERGED_PILE_POUR_STEPS; i++) {
@@ -3169,15 +3172,16 @@ test_submerged_pile_settles_and_logs_the_pass_split(void) {
     const long mass_before = water_slope_water_mass(&real);
 
     int settled_at = -1;
-    for (int i = 0; i < SUBMERGED_PILE_SETTLE_STEPS; i++) {
+    for (int i = 0; i < SUBMERGED_PILE_FULL_SETTLE_STEPS; i++) {
         const unsigned d0 = sand_reactions_cells_dispatched;
         const unsigned m0 = sand_liquid_moves;
         const unsigned p0 = sand_liquid_crossflow_probes;
+        const unsigned sw0 = sand_liquid_sweep_moves;
         sand_step(&real, LANDSCAPE_GX, 0, 0);
         const int awake = water_slope_awake_blocks(&real);
-        if (i % 100 == 0 || i == SUBMERGED_PILE_SETTLE_STEPS - 1) {
+        if (i % 100 == 0 || i == SUBMERGED_PILE_FULL_SETTLE_STEPS - 1) {
             water_slope_log_step("settle", i, &real, sand_reactions_cells_dispatched - d0, sand_liquid_moves - m0,
-                                 sand_liquid_crossflow_probes - p0);
+                                 sand_liquid_crossflow_probes - p0, sand_liquid_sweep_moves - sw0);
         }
         if (awake == 0 && settled_at < 0) {
             settled_at = i;
@@ -3190,10 +3194,11 @@ test_submerged_pile_settles_and_logs_the_pass_split(void) {
     free(blocks);
 
     ESP_LOGI("device_tests", "submerged pile: settled_at step %d of %d, awake_at_end=%d", settled_at,
-             SUBMERGED_PILE_SETTLE_STEPS, awake_at_end);
+             SUBMERGED_PILE_FULL_SETTLE_STEPS, awake_at_end);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE((int)mass_before, (int)mass_after,
-                                  "settling a submerged pile must move water, not create or destroy it");
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE((int)mass_after, (int)mass_before,
+                                             "settling a submerged pile must never create water - soaking may "
+                                             "only ever spend it");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, awake_at_end,
                                   "a plain submerged pile with no further disturbance must reach full "
                                   "sleep given enough settle steps");
@@ -3335,9 +3340,9 @@ test_water_slope_gravity_flip_logs_a_per_step_table(void) {
     free(big);
     free(blocks);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE((int)mass_before, (int)mass_after,
-                                  "a tilt right into portrait and back must move water, not create or "
-                                  "destroy it");
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE((int)mass_after, (int)mass_before,
+                                             "a tilt right into portrait and back must never create water - "
+                                             "soaking may only ever spend it");
 }
 
 /* The mid-task correction: a scene seeded directly from a device screenshot
@@ -3373,9 +3378,9 @@ test_water_slope_captured_scene_diagonal_flip_logs_a_per_step_table(void) {
     free(big);
     free(blocks);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE((int)mass_before, (int)mass_after,
-                                  "the captured diagonal gravity change must move water, not create or "
-                                  "destroy it");
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE((int)mass_after, (int)mass_before,
+                                             "the captured diagonal gravity change must never create water - "
+                                             "soaking may only ever spend it");
 }
 
 #endif /* DEVICE_BUILD */

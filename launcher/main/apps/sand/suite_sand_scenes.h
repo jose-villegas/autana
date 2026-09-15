@@ -347,13 +347,20 @@ void build_captured_water_slope_scene(sand_t* s);
  * the bed is fully covered with headroom, then settled undisturbed. The
  * primary repro; the diagonal slope and its flip are the secondary,
  * worse-case row. */
-#define SUBMERGED_PILE_POUR_STEPS   300
+#define SUBMERGED_PILE_POUR_STEPS        300
 
-/* Measured: a freshly covered, freshly poured pile takes on the order of
- * 1,400-1,500 further steps to reach full sleep by itself - two full orders
- * of magnitude past the 60-90 step windows the gravity-flip rows use, which
- * is why those rows never see it happen at all. Comfortable margin over
- * that. */
-#define SUBMERGED_PILE_SETTLE_STEPS 1700
+/* Just past the pour's own splash, not full quiescence - the scene must
+ * still read as a freshly covered pile, the state a player actually sees.
+ * Short on purpose: soaking (on, matching the app) starts spending this
+ * water back into the ground from the moment it lands. */
+#define SUBMERGED_PILE_SETTLE_STEPS      40
+
+/* Measured with soaking on (SAND_SOAK_PER_MATERIAL, matching app_sand.c's
+ * own real-app config): a freshly covered pile this size takes on the
+ * order of 4,000-4,400 further steps to fully absorb its water and reach
+ * true sleep - two orders of magnitude past the 60-90 step windows the
+ * gravity-flip rows use, which is why those rows never see it happen at
+ * all. Comfortable margin over that. */
+#define SUBMERGED_PILE_FULL_SETTLE_STEPS 6000
 
 void build_submerged_pile_scene(sand_t* s);
