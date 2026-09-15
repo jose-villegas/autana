@@ -50,10 +50,16 @@ mkdir -p "$BUILD_DIR"
 OUT_BIN="$BUILD_DIR/brush_screen_preview"
 
 # gfx.c for real drawing (see brush_screen_preview.c's own top comment),
-# brush_screen.c/material.c/material_palette.c for the layout and swatch
+# ui/brush_screen.c/material.c/material_palette.c for the layout and swatch
 # colours it draws with - the same portable half of the app
-# report_fingerprint.sh (this file's sibling) pulls in, plus the three this
+# report_fingerprint.sh (this file's sibling) pulls in, plus the ones this
 # tool alone needs.
+#
+# sand_ui.c, ui_build.c, ui_pointer.c and microui.c are linked only to satisfy
+# the linker: ui/brush_screen.c holds the live brush_screen_draw() beside the
+# layout this tool calls, and an unreferenced function still brings its own
+# undefined symbols.
+# test/run_tests.sh links the same four for the same reason.
 # shellcheck disable=SC2086
 "$CC_BIN" $CFLAGS \
     -I "$MAIN_DIR" -I "$SAND_DIR" \
@@ -63,6 +69,10 @@ OUT_BIN="$BUILD_DIR/brush_screen_preview"
     "$SAND_DIR/ui/brush_screen.c" \
     "$SAND_DIR/material.c" \
     "$SAND_DIR/material_palette.c" \
+    "$SAND_DIR/sand_ui.c" \
+    "$MAIN_DIR/ui/ui_build.c" \
+    "$MAIN_DIR/ui/ui_pointer.c" \
+    "$LAUNCHER_DIR/components/microui/src/microui.c" \
     -o "$OUT_BIN"
 
 # MinGW appends .exe; elsewhere the plain name is produced.
