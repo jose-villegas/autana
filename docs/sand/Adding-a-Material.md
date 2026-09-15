@@ -302,6 +302,97 @@ distance in cells.**
 
 ---
 
+## Making room: the material-slot ladder
+
+A cell is one byte: four bits of material, four of variant. Zero is empty,
+so there are 15 material slots, and **zero ordinary ones are free** - 14
+materials plus `MAT_EXTENDED`, the doorway below. Five ways to make more
+room, cheapest first, two of which mostly do not and one that looks like a
+way and is not:
+
+**1. Reinterpret a nibble.** Free, and already the pattern: liquids read
+the variant as fill, transients as life remaining, glass and stone as
+temperature, wood as burn progress. A material needing two small
+quantities can read its own nibble *by state* - one range meaning one
+thing, a disjoint range meaning another - the way dirt does (variant 0-7 a
+dry tone, 8-14 moisture 1-7). This adds no slot, it removes the *need* for
+one: glass carrying a temperature is why there is no separate "hot glass"
+material. Always ask this first, since the answer costs nothing to try.
+
+**2. Make a material a state of another one - possible only when the
+VARIANT can carry it.** The tables are indexed by the material nibble
+alone, so two states of one material share the same `density`, `slip`,
+`repose` and `scatter`. What separates a state that works from one that
+does not is which table the differences live in, and whether the variant
+is free to say which state a cell is in. Ember is the worked example: it
+differed from wood in seven fields, and only one of the seven (`decay`)
+was in the *movement* table - the other six are reactions, read in the
+cold pass, and wood's own variant was doing nothing but holding a shade.
+So ember became a state (`burn_decay` non-zero, dispatched by
+`cell_is_burning()` rather than a material check), one slot back, and one
+thing that was not expressible as a separate material: water puts a log
+out, leaving the log - an ember could never be put out, because the ember
+*was* the fire. The rule this leaves: what forces a slot is needing a
+different row in the table the sweep reads, or having no spare variant
+bits to say which state a cell is in. Steam and smoke fail this test on
+both counts - their reaction rows are identical, but they differ in five
+*movement* fields, and both already spend their variant on life remaining.
+
+**3. Spend the extended range on anything stateless** - built, and mostly
+used up. `MAT_EXTENDED` (id 15) is a doorway: a cell carrying it reads its
+low nibble as naming one of `MATERIAL_EXTENDED_COUNT` (8) further
+materials, sharing one `density`/`kind`/`slip`/`repose`/`scatter` row and
+one entry each in `palette[256]` (indexed by the raw cell byte, so distinct
+colours are free) and `reactions[]` (read only by the cold pass, where
+decoding the extended id costs nothing that matters). What an extended
+static cannot have is anything the *hot* path would need to read - its own
+physics, or a variant. A plant is the case that proves this is narrower
+than "inert solids only": its growth is *spatial* (more cells, not a
+counter), so it needs no bits at all, and it moves in the cold pass rather
+than the shared `KIND_STATIC` row, under a rule that only moves a cell into
+empty space. The trade the extended range actually offers is not "no
+state" but *state you are willing to re-derive from the grid, in the cold
+pass, every time you need it*. Today: `MATX_ICE`, `MATX_PLANT`,
+`MATX_LEAF`, `MATX_METAL`, `MATX_ROOT` used, 3 codes spare.
+
+**4. Split an extended half-row** - built, for gunpowder, and the
+expensive option once (3) runs out. A nibble has a top bit like any other
+value: split `MAT_EXTENDED`'s low nibble by bit 3, and the two halves
+become two independent rows in a doubled `materials[]`
+(`MATERIAL_ROWS`, 32, indexed by `cell >> 3` rather than the id nibble
+alone; `TWIN_ROW()` in `material.c` writes every ordinary material into
+both of its twin rows, so this is invisible to the fourteen ordinary
+materials). `0xF0`-`0xF7` stays the extended-statics doorway, unchanged;
+`0xF8`-`0xFF` becomes one ordinary `KIND_POWDER`/`KIND_LIQUID`/`KIND_GAS`
+material with its own density, slip, repose, scatter, and a real 3-bit
+variant to spend on a state split exactly like dirt's. The cost: half of
+whatever was left of the extended range, spent on one material (5 codes
+used of 16 before the split, 5 of 8 after), and a doubled hot table (192 B
+of flash -> 384 B). Worth it only once no ordinary slot and no extended
+code will do, and not a route to reuse casually a second time without
+re-reading this section.
+
+**5. Pack the byte** - not built. Drop the fixed 4+4 split for a flat
+0-255 index with a per-material base offset, giving each material only as
+many variant codes as it actually uses (measured against the current
+table: 189 of 256 codes needed, 67 left - about four more liquids or
+sixteen more inert solids). The cost lands in the hottest loop in the
+program: `CELL_MATERIAL`/`CELL_VARIANT` become dependent table lookups
+instead of a shift and a mask. Worth doing only when slot pressure is
+real enough to justify that.
+
+**What does not work: moving transients out of the grid into a side
+list.** Fire, smoke, steam, gas and ember-like states are short-lived, so a
+list of the active ones looks like it would free a third of the table. It
+does the opposite: in the scenes that actually stress the simulation (a
+screen of ignited gas, for one) transients are most of the board at once,
+so a side table holding position, kind and life would need several times
+the RAM the grid itself costs. They are not the rare case; they are the
+case that fills the screen, which is exactly why they belong in the grid
+rather than beside it.
+
+---
+
 ## The mechanical part
 
 ```mermaid
@@ -326,18 +417,9 @@ SHADES(lo,hi)"]
 ```
 
 1. **`material.h`**: add the new `material_id_t` enum value, before
-   `MAT_COUNT`. **If no ordinary slot is free** - it currently is not; see
-   "The material budget, and what is left" in
-   [`Architecture.md`](Architecture.md) - a genuinely stateless material
-   still has a home behind `MATX(k)` (`k < MATERIAL_EXTENDED_COUNT`, 8, not
-   16 - gunpowder's split spent the other half of that nibble, see below).
-   A material that needs real `KIND_POWDER`/`KIND_LIQUID`/`KIND_GAS`
-   physics or a variant, and cannot wait for the extended range's
-   cold-pass tricks, is the harder case gunpowder's own half-row split
-   was built for - not a route to reuse casually, since it costs half of
-   whatever is left of the extended range and doubles the hot table
-   (`materials[]` → `MATERIAL_ROWS`, 32 rows, indexed by `cell >> 3`); read
-   the budget section before reaching for it a second time.
+   `MAT_COUNT`. **If no ordinary slot is free** - it currently is not - see
+   "Making room: the material-slot ladder" below before reaching for
+   `MATX(k)` or a half-row split.
 2. **`material.c`**: add a `materials[]` row and a `palette[]` block. The
    block needs its own designator - `[MAT_YOURS * MATERIAL_VARIANTS] =`
    followed by `SHADES(lo, hi)` - which is what stops it depending on
@@ -990,8 +1072,7 @@ pass makes the two existing fire budgets worth re-measuring.
 - [`Sand-Simulation.md`](Sand-Simulation.md) — how the simulation works
   today, including the gas, fire-chemistry and boiler sections.
 - [`Architecture.md`](Architecture.md) — both material tables as
-  reference tables, the `kind` decision diagram, the step pipeline, and
-  the exact device build/flash/verify commands.
+  reference tables and the step pipeline, in one page.
 - [`Shading-and-Colour.md`](Shading-and-Colour.md) — the deeper dive on
   painting an *existing* material once it has a palette block: the
   pipeline, the recurring shading mistakes, and the one item still open.
