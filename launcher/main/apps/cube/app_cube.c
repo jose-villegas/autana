@@ -213,6 +213,9 @@ enter_layout(void) {
         .interlace_y = false,
     };
     band_mode_active = gfx_mode_enter(&mode_request)->layout == GFX_LAYOUT_BANDS;
+    /* The framebuffer is whatever the previous app or layout left in it -
+     * the first frame after entering, in either mode, has to clear in full.
+     * gfx_invalidate() ensures the partial clear cache starts fresh. */
     gfx_invalidate();
 }
 
@@ -235,15 +238,11 @@ cube_enter(void) {
 
     elapsed_ms = 0;
 
-    /* The framebuffer is whatever the previous app left in it - the very
-     * first frame back in this app, in either mode, has to clear in full.
-     * gfx_invalidate() ensures the partial clear cache starts fresh.
-     * partial_updates itself is deliberately left alone: a developer
+    /* partial_updates itself is deliberately left alone: a developer
      * toggle that reset every visit would defeat the point of it, same
-     * as show_orientation in app_diagnostics.c. */
-    /* Unlike partial_updates, the readout itself starts over every visit -
-     * a stale fps_value left over from a previous run would show a number
-     * with nothing behind it for up to FPS_WINDOW_MS. */
+     * as show_orientation in app_diagnostics.c. The readout, unlike it,
+     * starts over every visit - a stale fps_value left over from a previous
+     * run would show a number with nothing behind it for up to FPS_WINDOW_MS. */
     fps_frame_count = 0;
     fps_window_elapsed_ms = 0;
     fps_value = 0.0;
