@@ -100,16 +100,15 @@ bash launcher/main/apps/sand/tools/report_performance.sh --perf-scope
 Use scoping for perf captures only, not for a merge decision - the full
 self-test is what gates a merge, and it runs unscoped by construction.
 
-## The thirteen frame-budget tests
+## The frame-budget tests
 
-`suite_sand_perf.c`, `#ifdef DEVICE_BUILD` only, run against the real
-184x224 grid. In the current full self-test (S3, full scope, landscape,
-2026-09-14) twelve of these thirteen fail - each pegged to a budget
-measured on the previous board and not yet re-measured on this one. That
-is the expected, tracked state: re-peg each budget from a fresh landscape
-capture on this board rather than reading a fail as a regression. Read
-each test's own comment in `suite_sand_perf.c` for what its scene measures
-and why its budget sits where it does.
+`suite_sand_perf.c`, `#ifdef DEVICE_BUILD` only, runs 28 frame-budget
+tests against the real 184x224 grid. Most of their budgets are still
+pegged to numbers measured on the previous board and fail here until
+re-measured and re-pegged on this one; that is the expected, tracked
+state, not a regression. Read each test's own comment in
+`suite_sand_perf.c` for what its scene measures and why its budget sits
+where it does.
 
 ## Related
 
