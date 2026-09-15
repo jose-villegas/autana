@@ -3069,6 +3069,261 @@ test_acid_bubbles_still_fire_once_the_block_is_asleep(void) {
                                      "at all)");
 }
 
+/* --- water slope: reported gravity-flip drop over a covered slope -------- */
+
+#ifdef DEVICE_BUILD
+
+static int
+water_slope_awake_blocks(const sand_t* s) {
+    int n = 0;
+    for (int by = 0; by < s->block_rows; by++) {
+        for (int bx = 0; bx < s->block_cols; bx++) {
+            if (!sand_block_settled(s, bx, by)) {
+                n++;
+            }
+        }
+    }
+    return n;
+}
+
+static int
+water_slope_liquid_near_blocks(const sand_t* s) {
+    int n = 0;
+    for (int by = 0; by < s->block_rows; by++) {
+        for (int bx = 0; bx < s->block_cols; bx++) {
+            if ((s->block_state[(size_t)by * (size_t)s->block_cols + (size_t)bx] & BLOCK_LIQUID_NEAR) != 0) {
+                n++;
+            }
+        }
+    }
+    return n;
+}
+
+static long
+water_slope_water_mass(const sand_t* s) {
+    long total = 0;
+    for (int y = 0; y < s->h; y++) {
+        for (int x = 0; x < s->w; x++) {
+            const cell_t c = sand_at(s, x, y);
+            if (!CELL_IS_EMPTY(c) && CELL_MATERIAL(c) == MAT_WATER) {
+                total += CELL_VARIANT(c);
+            }
+        }
+    }
+    return total;
+}
+
+/* One line per sand_step(), every pass split plus the counts task the
+ * mechanism to a pass rather than only a total. Counters are cumulative
+ * (sand_priv.h) - only the delta since the previous step is meaningful
+ * here. */
+static void
+water_slope_log_step(const char* phase, int step_index, const sand_t* s, unsigned dispatched_delta,
+                     unsigned moves_delta, unsigned probes_delta) {
+    ESP_LOGI("device_tests",
+             "%-8s %3d tot=%5d sweep=%4d liq=%4d flt=%3d gas=%3d react=%4d imp=%3d dispatch=%5u moves=%4u "
+             "probes=%5u soak=%d awake=%3d liqnear=%3d",
+             phase, step_index,
+             (int)(s->pass_us.sweep_us + s->pass_us.liquid_us + s->pass_us.float_us + s->pass_us.gas_us
+                   + s->pass_us.reactions_us + s->pass_us.impulses_us),
+             (int)s->pass_us.sweep_us, (int)s->pass_us.liquid_us, (int)s->pass_us.float_us, (int)s->pass_us.gas_us,
+             (int)s->pass_us.reactions_us, (int)s->pass_us.impulses_us, dispatched_delta, moves_delta, probes_delta,
+             (int)sand_reactions_last_was_soak_only, water_slope_awake_blocks(s), water_slope_liquid_near_blocks(s));
+}
+
+static void
+water_slope_step_and_log(sand_t* s, int gx, int gy, const char* phase, int step_index) {
+    const unsigned d0 = sand_reactions_cells_dispatched;
+    const unsigned m0 = sand_liquid_moves;
+    const unsigned p0 = sand_liquid_crossflow_probes;
+
+    sand_step(s, gx, gy, 0);
+
+    water_slope_log_step(phase, step_index, s, sand_reactions_cells_dispatched - d0, sand_liquid_moves - m0,
+                         sand_liquid_crossflow_probes - p0);
+}
+
+/* Task 1a: water poured continuously at the slope's high corner until it
+ * covers the slope and runs down. Logs the pass split averaged over the
+ * pour, then asserts only that real work happened - this scene exists to
+ * characterise a cost, not to gate one yet. */
+static void
+test_water_slope_pouring_water_logs_the_pass_split(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks = malloc((size_t)REAL_BLOCK_COLS * (size_t)REAL_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t real;
+    sand_init(&real, big, REAL_W, REAL_H, 41u);
+    sand_enable_sleeping(&real, blocks);
+    build_water_slope_scene(&real);
+
+    int64_t liquid_total = 0, reactions_total = 0, sweep_total = 0;
+    const int steps = WATER_SLOPE_COVER_STEPS;
+    for (int i = 0; i < steps; i++) {
+        water_slope_water_pour(&real, i);
+        sand_step(&real, LANDSCAPE_GX, 0, 0);
+        sweep_total += real.pass_us.sweep_us;
+        liquid_total += real.pass_us.liquid_us;
+        reactions_total += real.pass_us.reactions_us;
+    }
+    const long mass = water_slope_water_mass(&real);
+    const int liq_near = water_slope_liquid_near_blocks(&real);
+
+    free(big);
+    free(blocks);
+
+    ESP_LOGI("device_tests", "water slope pour, %d steps: mean sweep=%d liq=%d react=%d us, water_mass=%ld liqnear=%d",
+             steps, (int)(sweep_total / steps), (int)(liquid_total / steps), (int)(reactions_total / steps), mass,
+             liq_near);
+
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, (int)mass, "the pour must actually place water on the board");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, liq_near,
+                                         "the pour must reach BLOCK_LIQUID_NEAR blocks, or the "
+                                         "reactions soak-only skip has nothing to walk");
+}
+
+/* Task 1c: the three controls beside the covered slope, one line each - a
+ * dry slope (no liquid pass at all), water over a flat pile (same pour
+ * mechanism, no diagonal), and water over stone (the same diagonal, nothing
+ * wettable). Compares them against the covered slope on the counters that
+ * matter: reactions dispatch and cross-flow moves/probes. */
+static void
+test_water_slope_controls_log_the_pass_split(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks = malloc((size_t)REAL_BLOCK_COLS * (size_t)REAL_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t real;
+    long masses[4] = {0};
+    const char* names[4] = {"dry", "slope", "flat", "stone"};
+
+    sand_init(&real, big, REAL_W, REAL_H, 41u);
+    sand_enable_sleeping(&real, blocks);
+    build_water_slope_scene(&real);
+    for (int i = 0; i < 60; i++) {
+        sand_step(&real, LANDSCAPE_GX, 0, 0);
+    }
+    water_slope_step_and_log(&real, LANDSCAPE_GX, 0, names[0], 0);
+    masses[0] = water_slope_water_mass(&real);
+
+    sand_init(&real, big, REAL_W, REAL_H, 41u);
+    sand_enable_sleeping(&real, blocks);
+    build_water_slope_covered_scene(&real);
+    water_slope_step_and_log(&real, LANDSCAPE_GX, 0, names[1], 0);
+    masses[1] = water_slope_water_mass(&real);
+
+    sand_init(&real, big, REAL_W, REAL_H, 41u);
+    sand_enable_sleeping(&real, blocks);
+    build_water_slope_flat_covered_scene(&real);
+    water_slope_step_and_log(&real, LANDSCAPE_GX, 0, names[2], 0);
+    masses[2] = water_slope_water_mass(&real);
+
+    sand_init(&real, big, REAL_W, REAL_H, 41u);
+    sand_enable_sleeping(&real, blocks);
+    build_water_slope_stone_covered_scene(&real);
+    water_slope_step_and_log(&real, LANDSCAPE_GX, 0, names[3], 0);
+    masses[3] = water_slope_water_mass(&real);
+
+    free(big);
+    free(blocks);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, (int)masses[0], "the dry control must hold no water at all");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, (int)masses[1], "the covered slope must hold water");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, (int)masses[2], "the flat-pile control must hold water");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, (int)masses[3], "the stone control must hold water");
+}
+
+/* Task 1b, and the maintainer's own refinement: settle the covered slope in
+ * landscape, tilt right into portrait, hold, tilt back. One line per step
+ * through the whole sequence - the flip itself, not only its settled ends,
+ * is what the report says is worst. */
+static void
+test_water_slope_gravity_flip_logs_a_per_step_table(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks = malloc((size_t)REAL_BLOCK_COLS * (size_t)REAL_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t real;
+    sand_init(&real, big, REAL_W, REAL_H, 41u);
+    sand_enable_sleeping(&real, blocks);
+    build_water_slope_covered_scene(&real);
+
+    const long mass_before = water_slope_water_mass(&real);
+
+    for (int i = 0; i < WATER_SLOPE_FLIP_SETTLE_STEPS; i++) {
+        water_slope_step_and_log(&real, LANDSCAPE_GX, 0, "settle", i);
+    }
+    for (int i = 1; i <= WATER_SLOPE_FLIP_TURN_STEPS; i++) {
+        const int gx = LANDSCAPE_GX - (LANDSCAPE_GX * i) / WATER_SLOPE_FLIP_TURN_STEPS;
+        const int gy = (WATER_SLOPE_PORTRAIT_GY * i) / WATER_SLOPE_FLIP_TURN_STEPS;
+        water_slope_step_and_log(&real, gx, gy, "to_port", i);
+    }
+    for (int i = 0; i < WATER_SLOPE_FLIP_HOLD_STEPS; i++) {
+        water_slope_step_and_log(&real, WATER_SLOPE_PORTRAIT_GX, WATER_SLOPE_PORTRAIT_GY, "hold", i);
+    }
+    for (int i = 1; i <= WATER_SLOPE_FLIP_TURN_STEPS; i++) {
+        const int gx = (LANDSCAPE_GX * i) / WATER_SLOPE_FLIP_TURN_STEPS;
+        const int gy = WATER_SLOPE_PORTRAIT_GY - (WATER_SLOPE_PORTRAIT_GY * i) / WATER_SLOPE_FLIP_TURN_STEPS;
+        water_slope_step_and_log(&real, gx, gy, "to_land", i);
+    }
+    for (int i = 0; i < WATER_SLOPE_FLIP_HOLD_STEPS; i++) {
+        water_slope_step_and_log(&real, LANDSCAPE_GX, 0, "recover", i);
+    }
+
+    const long mass_after = water_slope_water_mass(&real);
+
+    free(big);
+    free(blocks);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE((int)mass_before, (int)mass_after,
+                                  "a tilt right into portrait and back must move water, not create or "
+                                  "destroy it");
+}
+
+/* The mid-task correction: a scene seeded directly from a device screenshot
+ * of the reported drop, gravity swept between the two tilt vectors the same
+ * capture pair recorded - a partly diagonal change, not an axis-aligned
+ * flip. */
+static void
+test_water_slope_captured_scene_diagonal_flip_logs_a_per_step_table(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks = malloc((size_t)REAL_BLOCK_COLS * (size_t)REAL_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t real;
+    sand_init(&real, big, REAL_W, REAL_H, 41u);
+    sand_enable_sleeping(&real, blocks);
+    build_captured_water_slope_scene(&real);
+
+    const long mass_before = water_slope_water_mass(&real);
+
+    for (int i = 1; i <= WATER_SLOPE_CAPTURED_SWEEP_STEPS; i++) {
+        const int gx =
+            WATER_SLOPE_CAPTURED_TILT1_GX
+            + ((WATER_SLOPE_CAPTURED_TILT2_GX - WATER_SLOPE_CAPTURED_TILT1_GX) * i) / WATER_SLOPE_CAPTURED_SWEEP_STEPS;
+        const int gy =
+            WATER_SLOPE_CAPTURED_TILT1_GY
+            + ((WATER_SLOPE_CAPTURED_TILT2_GY - WATER_SLOPE_CAPTURED_TILT1_GY) * i) / WATER_SLOPE_CAPTURED_SWEEP_STEPS;
+        water_slope_step_and_log(&real, gx, gy, "captured", i);
+    }
+
+    const long mass_after = water_slope_water_mass(&real);
+
+    free(big);
+    free(blocks);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE((int)mass_before, (int)mass_after,
+                                  "the captured diagonal gravity change must move water, not create or "
+                                  "destroy it");
+}
+
+#endif /* DEVICE_BUILD */
+
 /* --- suite -------------------------------------------------------------- */
 
 #ifdef DEVICE_BUILD
@@ -3155,6 +3410,11 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_present_cost_against_the_thermal_shock_scene);
     RUN_TEST(test_present_cost_against_a_landscape_gas_over_sand_pile);
     RUN_TEST(test_present_cost_against_a_landscape_levelling_pool);
+
+    RUN_TEST(test_water_slope_pouring_water_logs_the_pass_split);
+    RUN_TEST(test_water_slope_controls_log_the_pass_split);
+    RUN_TEST(test_water_slope_gravity_flip_logs_a_per_step_table);
+    RUN_TEST(test_water_slope_captured_scene_diagonal_flip_logs_a_per_step_table);
 #endif
 }
 
