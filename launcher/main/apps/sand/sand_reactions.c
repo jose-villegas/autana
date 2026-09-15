@@ -446,12 +446,14 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
                 latch_content_flags(s, s->cells[(size_t)y * (size_t)w + (size_t)x]);
                 mark_rows(s, x, y, y);
                 wake_block_and_neighbors(s, x, y);
+                mark_block_has_moisture(s, x, y);
                 return true;
             }
             if (held < r->moist_max) {
                 row[x] = with_moisture(c, (uint8_t)(held + 1), r);
                 mark_rows(s, x, y, y);
                 wake_block_and_neighbors(s, x, y);
+                mark_block_has_moisture(s, x, y);
             }
             return true;
         }
@@ -510,6 +512,8 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
             mark_rows(s, nx, ny, ny);
             wake_block_and_neighbors(s, x, y);
             wake_block_and_neighbors(s, nx, ny);
+            mark_block_has_moisture(s, x, y);
+            mark_block_has_moisture(s, nx, ny);
             return true;
         }
     }
@@ -583,6 +587,8 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
             mark_rows(s, nx, ny, ny);
             wake_block_and_neighbors(s, x, y);
             wake_block_and_neighbors(s, nx, ny);
+            mark_block_has_moisture(s, x, y);
+            mark_block_has_moisture(s, nx, ny);
             return true;
         }
     }
@@ -2116,19 +2122,58 @@ sand_reactions_force_full_walk(bool on) {
     reactions_force_full_walk = on;
 }
 
-/* SOAK-ONLY WALK: every block outside BLOCK_LIQUID_NEAR is skipped rather
- * than visited and rejected. Sound only under sand_step_reactions()'s own
- * soak_only gate - see the block comment there - which has already ruled
- * out every stage but stage_soak_dry, and step_one_soaking_cell() is a
- * proven no-op off liquid_near(), which BLOCK_LIQUID_NEAR is built to
- * answer for any four-neighbour test. Visits blocks left to right, same as
- * the x order a full row walk would give them. */
+/* BLOCK_HAS_MOISTURE is set eagerly wherever a write grants moisture (see
+ * mark_block_has_moisture(), sand_priv.h) but never cleared there - nothing
+ * at a single write site knows whether it left the block's last moist
+ * cell. This is the other half: for every block CURRENTLY flagged, ask
+ * whether it still holds one. Cost is bounded by cells in flagged blocks,
+ * which is exactly the drying board's own shrinking active region, not
+ * REAL_W * REAL_H. */
+static void
+refresh_moisture_blocks(sand_t* s) {
+    for (int by = 0; by < s->block_rows; by++) {
+        const int y_lo = by * SAND_BLOCK_H;
+        const int y_hi = (y_lo + SAND_BLOCK_H < s->h) ? y_lo + SAND_BLOCK_H : s->h;
+        for (int bx = 0; bx < s->block_cols; bx++) {
+            uint8_t* const slot = &s->block_state[(size_t)by * (size_t)s->block_cols + (size_t)bx];
+            if ((*slot & BLOCK_HAS_MOISTURE) == 0) {
+                continue;
+            }
+            const int x_lo = bx * SAND_BLOCK_W;
+            const int x_hi = (x_lo + SAND_BLOCK_W < s->w) ? x_lo + SAND_BLOCK_W : s->w;
+            bool still_moist = false;
+            for (int y = y_lo; y < y_hi && !still_moist; y++) {
+                const uint8_t* const row = s->cells + (size_t)y * (size_t)s->w;
+                for (int x = x_lo; x < x_hi; x++) {
+                    const cell_t c = row[x];
+                    if (CELL_IS_EMPTY(c)) {
+                        continue;
+                    }
+                    const reaction_t* r = reaction_of(c);
+                    if (r->dries != 0 && moisture_of(c, r) != 0) {
+                        still_moist = true;
+                        break;
+                    }
+                }
+            }
+            if (!still_moist) {
+                *slot &= (uint8_t)~BLOCK_HAS_MOISTURE;
+            }
+        }
+    }
+}
+
+/* SOAK-ONLY WALK: every block outside BLOCK_LIQUID_NEAR or BLOCK_HAS_
+ * MOISTURE is skipped rather than visited and rejected. Sound only under
+ * sand_step_reactions()'s own soak_only gate, which has already ruled out
+ * every stage but stage_soak_dry - a proven no-op off both flags. */
 static unsigned
 step_one_reacting_row_liquid_near(sand_t* s, int y, int w, int h) {
     unsigned found = 0;
     const int by = (int)((unsigned)y / SAND_BLOCK_H);
     for (int bx = 0; bx < s->block_cols; bx++) {
-        if ((s->block_state[(size_t)by * (size_t)s->block_cols + (size_t)bx] & BLOCK_LIQUID_NEAR) == 0) {
+        if ((s->block_state[(size_t)by * (size_t)s->block_cols + (size_t)bx] & (BLOCK_LIQUID_NEAR | BLOCK_HAS_MOISTURE))
+            == 0) {
             continue;
         }
         const int x_lo = bx * SAND_BLOCK_W;
@@ -2203,12 +2248,16 @@ sand_step_reactions(sand_t* s) {
      * only stage_soak_dry is left, block-local via liquid_near(). may_have_
      * moisture matters only alongside grower_mask(): grow/sprout/bud/root-
      * weld are its only readers, unreachable with none present. */
-    const bool soak_only =
-        !reactions_force_full_walk && !s->may_have_burning && !s->may_have_dissolver && !s->may_have_temperature
-        && !(s->may_have_moisture && (s->may_have_materials & grower_mask()) != 0)
-        && !(s->may_have_faller && s->faller_may_move) && !s->may_have_condenser && s->may_have_liquid
-        && (s->may_have_materials & drinker_mask()) == 0 && s->block_state != NULL;
+    const bool soak_only = !reactions_force_full_walk && !s->may_have_burning && !s->may_have_dissolver
+                           && !s->may_have_temperature
+                           && !(s->may_have_moisture && (s->may_have_materials & grower_mask()) != 0)
+                           && !(s->may_have_faller && s->faller_may_move) && !s->may_have_condenser
+                           && (s->may_have_liquid || s->may_have_moisture)
+                           && (s->may_have_materials & drinker_mask()) == 0 && s->block_state != NULL;
     sand_reactions_last_was_soak_only = soak_only;
+    if (soak_only) {
+        refresh_moisture_blocks(s);
+    }
 
     /* CLEARED HERE so a bit latch_content_flags() ORs in mid-pass survives the
      * write-back below; assigning the walk's census there dropped cells this
