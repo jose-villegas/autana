@@ -104,19 +104,7 @@ current_target(void) {
     return (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
 }
 
-/* Default from CONFIG_LAUNCHER_GFX_PRESENT_ON_CORE1 on the device; true on a
- * host, where gfx_present_begin()/_wait() never dispatch to a task anyway. */
-/* A bool Kconfig option set to n leaves its macro UNDEFINED rather than 0,
- * so "not defined" means off on the device, not "use the default". */
-#if defined(ESP_PLATFORM)
-#if defined(CONFIG_LAUNCHER_GFX_PRESENT_ON_CORE1) && CONFIG_LAUNCHER_GFX_PRESENT_ON_CORE1
 static bool present_async_on = true;
-#else
-static bool present_async_on = false;
-#endif
-#else
-static bool present_async_on = true;
-#endif
 
 #ifdef ESP_PLATFORM
 static esp_lcd_panel_handle_t panel;
