@@ -10,6 +10,7 @@
                      * but every file inherited suite_sand.c's own include
                      * block rather than being pruned by hand, to keep the
                      * split itself mechanical and low-risk */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -29,6 +30,11 @@
 #include "sand_priv.h"
 #include "suite_sand_common.h"
 #include "util/intmath.h"
+
+enum { GAS_RISE_TRIALS = 64, GAS_RISE_STEPS = 8, GAS_RISE_W = 64, GAS_RISE_H = 64 };
+
+static uint8_t gas_rise_cells[GAS_RISE_W * GAS_RISE_H];
+static sand_t gas_rise_sim;
 
 /* --- gas ------------------------------------------------------------------ */
 
@@ -229,6 +235,75 @@ test_gas_is_blocked_by_a_stone_ceiling(void) {
     }
     TEST_ASSERT_TRUE_MESSAGE(found_gas_below_ceiling,
                              "gas must stop right below a sealed ceiling, not pass through it");
+}
+
+static void
+test_open_air_gas_rise_rate_stays_at_its_baseline(void) {
+    int total_rise = 0;
+
+    for (int trial = 0; trial < GAS_RISE_TRIALS; trial++) {
+        sand_init(&gas_rise_sim, gas_rise_cells, GAS_RISE_W, GAS_RISE_H, (uint32_t)(trial + 1));
+        sand_set_mobility(&gas_rise_sim, 255);
+        sand_set(&gas_rise_sim, GAS_RISE_W / 2, GAS_RISE_H / 2, GAS);
+
+        for (int step = 0; step < GAS_RISE_STEPS; step++) {
+            sand_step(&gas_rise_sim, 0, 1000, 0);
+        }
+
+        int final_row = GAS_RISE_H;
+        for (int y = 0; y < GAS_RISE_H; y++) {
+            for (int x = 0; x < GAS_RISE_W; x++) {
+                if (CELL_MATERIAL(sand_at(&gas_rise_sim, x, y)) == MAT_GAS) {
+                    final_row = y;
+                }
+            }
+        }
+        TEST_ASSERT_LESS_THAN_INT_MESSAGE(GAS_RISE_H, final_row,
+                                          "setup: every open-air trial must retain its gas grain");
+        total_rise += GAS_RISE_H / 2 - final_row;
+    }
+
+    TEST_ASSERT_INT_WITHIN_MESSAGE(
+        9, 409, total_rise,
+        "the 64-trial, eight-step baseline rises 409 cells; a move outside two percent changes open-air gas");
+}
+
+static void
+test_gas_escapes_through_a_down_diagonal_pocket_exit(void) {
+    static char failure_message[64];
+    int escaped_seeds = 0;
+    for (uint32_t seed = 1; seed <= 16; seed++) {
+        sand_init(&s, cells, W, H, seed);
+        sand_clear(&s);
+        sand_set_mobility(&s, 255);
+        sand_set_scatter(&s, 0);
+
+        sand_set(&s, 3, 3, GAS);
+        for (int y = 2; y <= 4; y++) {
+            for (int x = 2; x <= 4; x++) {
+                if (x != 3 || y != 3) {
+                    sand_set(&s, x, y, STONE);
+                }
+            }
+        }
+        sand_set(&s, 2, 4, SAND_EMPTY);
+
+        bool escaped = false;
+        for (int i = 0; i < 10000 && !escaped; i++) {
+            sand_step(&s, 0, 1000, 0);
+            for (int y = 4; y < H; y++) {
+                for (int x = 0; x < W; x++) {
+                    if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_GAS) {
+                        escaped = true;
+                    }
+                }
+            }
+        }
+
+        escaped_seeds += escaped;
+    }
+    snprintf(failure_message, sizeof failure_message, "escaped in only %d of 16 seeds", escaped_seeds);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(12, escaped_seeds, failure_message);
 }
 
 static void
@@ -491,6 +566,7 @@ test_a_confined_gas_pocket_bursts_instead_of_just_catching(void) {
      * ceiling/floor neighbours are real KIND_STATIC cells to burst into,
      * not empty air standing in for one. */
     fire_room(3, 4);
+    sand_set_mobility(&s, 0);
     impulse_t* confined_gas_impulse_buf = malloc((size_t)(W * H) * sizeof *confined_gas_impulse_buf);
     TEST_ASSERT_NOT_NULL_MESSAGE(confined_gas_impulse_buf, "confined-gas-pocket impulse queue must fit in what the "
                                                            "framebuffer leaves");
@@ -570,6 +646,7 @@ test_an_open_gas_pocket_still_just_catches_fire(void) {
 static void
 test_extinguishing_wins_over_igniting(void) {
     fire_room(2, 4);
+    sand_set_mobility(&s, 0);
     sand_set(&s, 2, 3, WATER);
     sand_set(&s, 3, 3, FIRE);
     sand_set(&s, 4, 3, GAS);
@@ -2118,6 +2195,8 @@ run_sand_combustion_suite(void) {
     RUN_TEST(test_gas_drifts_downward_when_the_board_is_inverted);
     RUN_TEST(test_gas_drifts_against_tilted_gravity);
     RUN_TEST(test_gas_is_blocked_by_a_stone_ceiling);
+    RUN_TEST(test_open_air_gas_rise_rate_stays_at_its_baseline);
+    RUN_TEST(test_gas_escapes_through_a_down_diagonal_pocket_exit);
     RUN_TEST(test_gas_disperses_across_a_ceiling);
     RUN_TEST(test_sand_sinks_through_gas);
     RUN_TEST(test_water_sinks_through_gas);
