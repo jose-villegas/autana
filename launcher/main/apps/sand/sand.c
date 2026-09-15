@@ -30,6 +30,10 @@
 #include "util/fixed.h"
 #include "util/intmath.h"
 
+/* See sand_priv.h. Defined here, not sand_liquid.c: move_liquid_grain()
+ * (sand_liquid_move.h) is called only from this file's own sweep. */
+unsigned sand_liquid_sweep_moves;
+
 /* Default from CONFIG_LAUNCHER_SAND_TWO_CORE_STEP on the device; off on a
  * host build, where suites and the fingerprint expect the serial path. A
  * test that wants the split path calls sand_set_two_core_step(true)

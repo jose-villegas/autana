@@ -338,6 +338,21 @@ equalise_one_row(sand_t* s, int y, int w, int x_step, const xflow_t* r, int dx, 
         const int lo = bx * SAND_BLOCK_W;
         const int hi = (lo + SAND_BLOCK_W < w) ? lo + SAND_BLOCK_W : w;
 
+        /* A block the main sweep left settled had no arrival from gravity OR
+         * a prior cross-flow transfer last step - either wakes it directly
+         * (wake_block_and_neighbors()/wake_blocks_range()) - so this pass
+         * already answered "nothing to find" here, 32 rows' worth of times
+         * over one block, and the answer cannot have changed since. Skips
+         * past rays_blocked() rediscovering the same thing every row. */
+        if (brow != NULL
+            && (brow[bx] & (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER))
+                   == (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER)) {
+            if (span_has_liquid(row, lo, hi, is_liquid)) {
+                any_liquid = true;
+            }
+            continue;
+        }
+
         if (span_is_empty(row, lo, hi)) {
             continue;
         }
