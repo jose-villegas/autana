@@ -920,6 +920,24 @@ was deliberately not created, because labels use the UI typeface at a smaller
 
 Anything expensive belongs in `enter()`, not `frame()`.
 
+### The panel clock
+
+Every app starts at the system panel clock: the user's choice of 80 MHz (the
+default) or 40, kept in NVS by the shell (`shell_set_system_panel_clock_hz()`,
+`app.h`). An app that wants a different rate forces it with
+`gfx_set_panel_clock_hz()`, from `enter()` or an in-app option; that call is
+the only way an app says anything about the clock. When an app starts or
+exits, the shell puts the system value back and resets gfx heal to its
+defaults, so an app never restores either.
+
+80 MHz is past the panel's rated 50 MHz, but it never breaks an app: the worst
+case for an app that redraws only what changed is a stray pixel or thin line
+that stays until that region is sent again. An app that minds opts into gfx
+heal (`gfx_heal_mark()`, `gfx_heal_set_budget()`, `gfx_heal_set_rolling()`),
+which re-sends marked rows as differently cut strips and does nothing at
+40 MHz. The resolution logic is `display/panel_clock.c`, host-tested in
+`suite_panel_clock.c`.
+
 ---
 
 ## Input
