@@ -10,19 +10,20 @@ import subprocess
 import sys
 
 from check_doc_citations import citations
+from code_vocabulary import source_paths
 
 FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\([^;]*\)\s*\{")
 PYTHON_FUNCTION = re.compile(r"^\s*def\s+([a-z_][a-z0-9_]*)\s*\(")
 MACRO = re.compile(r"^\s*#\s*define\s+([A-Z][A-Z0-9_]+)\b")
 
 
-def changed_symbols(base):
+def changed_definitions(base):
     result = subprocess.run(
         ["git", "diff", "--find-renames", "--unified=0", "--diff-filter=ACMRD",
          f"{base}...HEAD"],
         check=True, capture_output=True, text=True, encoding="utf-8",
     )
-    found = set()
+    found = {}
     path = None
     for line in result.stdout.splitlines():
         if line.startswith(("+++ b/", "--- a/")):
@@ -36,17 +37,56 @@ def changed_symbols(base):
             function = PYTHON_FUNCTION.search(text)
         macro = MACRO.search(text)
         if function:
-            found.add(("function", function.group(1)))
+            found.setdefault(("function", function.group(1)), set()).add(path)
         if macro:
-            found.add(("macro", macro.group(1)))
+            found.setdefault(("macro", macro.group(1)), set()).add(path)
     return found
 
 
+def changed_symbols(base):
+    return set(changed_definitions(base))
+
+
+def definition_counts(root):
+    counts = {}
+    for path in source_paths(root):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for line in text.splitlines():
+            function = FUNCTION.search(line) if path.suffix in {".c", ".h"} else None
+            if path.suffix == ".py":
+                function = PYTHON_FUNCTION.search(line)
+            macro = MACRO.search(line)
+            if function:
+                key = ("function", function.group(1))
+                counts.setdefault(key, set()).add(path.relative_to(root).as_posix())
+            if macro:
+                key = ("macro", macro.group(1))
+                counts.setdefault(key, set()).add(path.relative_to(root).as_posix())
+    return counts
+
+
+def cites_path(citation, path):
+    if citation.kind != "path":
+        return False
+    return path == citation.value or path.endswith("/" + citation.value)
+
+
 def touched(root, base):
-    symbols = changed_symbols(base)
+    definitions = changed_definitions(base)
+    symbols = set(definitions)
+    counts = definition_counts(root)
+    doc_paths = {}
+    for citation in citations(root):
+        if citation.kind == "path":
+            doc_paths.setdefault(citation.doc, []).append(citation)
     hits = []
     for citation in citations(root):
-        if (citation.kind, citation.value) in symbols:
+        key = (citation.kind, citation.value)
+        changed_paths = definitions.get(key, set())
+        if key in symbols and (len(counts.get(key, ())) <= 1 or
+                               any(cites_path(path_citation, path)
+                                   for path in changed_paths
+                                   for path_citation in doc_paths.get(citation.doc, []))):
             hits.append({"doc": citation.doc, "line": citation.line,
                          "kind": citation.kind, "symbol": citation.value})
     return sorted(symbols), hits

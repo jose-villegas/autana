@@ -1,30 +1,9 @@
 # doc path<TAB>citation<TAB>reason
 docs/plans/*	*	Plans retain proposed and superseded implementation names.
-docs/Launcher-Architecture.md	_count	Historical generated palette helper.
-docs/Launcher-Architecture.md	_at	Historical generated palette helper.
-docs/Launcher-Architecture.md	_set_lut16	Historical generated palette helper.
-docs/Launcher-Architecture.md	ui_set_text_scale	Rejected render-time design.
-docs/Launcher-Architecture.md	icon_check_blocks	Superseded icon helper.
-docs/Launcher-Architecture.md	ICON_CHECK_MAX_BLOCKS	Superseded icon helper limit.
-docs/Launcher-Architecture.md	gfx/icons.h	Superseded icon header.
 docs/Launcher-Architecture.md	bsp_display_start	Board support package API.
 docs/notes/Display-and-Rendering.md	spi_ll_master_cal_clock	ESP-IDF private API.
 docs/notes/Display-and-Rendering.md	spi_ll.h	ESP-IDF private header.
-docs/notes/Display-and-Rendering.md	main/gfx_dirty.h	Historical path before gfx folder split.
-docs/notes/Optimization-Playbook.md	launcher/tools/check_static_ram.py	Historical tool location.
-docs/notes/Second-Target-Draft.md	check_static_ram.py	Historical tool location.
-docs/sand/Adding-a-Material.md	POUR_RADIUS	Historical fixed brush radius.
-docs/sand/Adding-a-Material.md	ERASE_RADIUS	Historical fixed brush radius.
-docs/sand/Adding-a-Material.md	MAT_EMBER	Historical material name.
 docs/sand/Adding-a-Material.md	probe.c	Example probe source, not shipped.
-docs/sand/Architecture.md	gfx/icons.h	Superseded icon header.
-docs/sand/Architecture.md	UI_DRAW_BITMAP_MAX_BLOCKS	Superseded command-list limit.
-docs/sand/Impulse-Mechanics.md	MAT_CULLET	Historical material name.
-docs/sand/Sand-Simulation.md	ROOT_DEPTH_MAX	Historical root-depth limit.
-docs/sand/Shading-and-Colour.md	mirror_local_depth_row	Historical test helper.
-docs/sand/Shading-and-Colour.md	tools/gen_wave_table.c	Historical palette generator.
-docs/sand/Testing-Sand.md	CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF	Historical self-test option.
-docs/Testing-Guide.md	launcher/tools/check_static_ram.py	Historical tool location.
 docs/Testing-Guide.md	FATAL_ERROR	CMake command.
 docs/Testing-Guide.md	LAUNCHER_SELFTEST	Kconfig symbol before CONFIG expansion.
 docs/Testing-Guide.md	LAUNCHER_DEVELOPMENT	Kconfig symbol before CONFIG expansion.

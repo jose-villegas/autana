@@ -40,6 +40,16 @@ missing_function() LIVE_MISSING missing.sh
              ("macro", "LIVE_MISSING")],
         )
 
+    def test_tokenizer_ignores_pasted_identifier_fragments(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/example.c", "void live_function(void) {}\n")
+            self.write(root, "docs/Guide.md",
+                       "`live_function()` `_count()` `palette##_set_lut16()` `<prefix>_count()`\n")
+            found = list(check_doc_citations.citations(root))
+        self.assertEqual([(item.kind, item.value) for item in found],
+                         [("function", "live_function")])
+
     def test_reverse_index_reports_deleted_cited_function_as_json(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
@@ -63,6 +73,31 @@ missing_function() LIVE_MISSING missing.sh
         self.assertEqual(json.loads(result.stdout)["citations"], [{
             "doc": "docs/Guide.md", "kind": "function", "line": 1,
             "symbol": "old_name",
+        }])
+
+    def test_reverse_index_ignores_repeated_function_definition(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            self.write(root, "launcher/main/a.c", "void fixture(void) {}\n")
+            self.write(root, "launcher/main/b.c", "void fixture(void) {}\n")
+            self.write(root, "docs/Guide.md", "Use `fixture()`.\n")
+            self.write(root, "docs/Bound.md", "Use `fixture()` from `launcher/main/a.c`.\n")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root,
+                                  check=True, capture_output=True, text=True).stdout.strip()
+            self.write(root, "launcher/main/a.c", "void fixture(void) { int changed = 1; }\n")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "change"], cwd=root, check=True)
+            result = subprocess.run(
+                [sys.executable, str(SCRIPTS / "docs_touched_by.py"), base, "--json"],
+                cwd=root, check=True, capture_output=True, text=True)
+        self.assertEqual(json.loads(result.stdout)["citations"], [{
+            "doc": "docs/Bound.md", "kind": "function", "line": 1,
+            "symbol": "fixture",
         }])
 
 
