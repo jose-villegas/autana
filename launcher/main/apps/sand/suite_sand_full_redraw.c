@@ -23,7 +23,8 @@
 #include "gfx/gfx.h"
 
 extern const app_t app_sand;
-extern void sand_app_enter_running_for_test(void);
+extern int sand_app_enter_running_for_test(void);
+extern void sand_app_restore_colour_mode_for_test(int mode);
 
 static const char* TAG = "suite_sand_full_redraw";
 
@@ -55,7 +56,7 @@ test_full_redraw_repaints_a_stale_rect_and_sends_every_strip(void) {
     input_t idle = {0};
 
     app_sand.enter();
-    sand_app_enter_running_for_test();
+    const int previous_mode = sand_app_enter_running_for_test();
     apply_pending_full_redraw();
     app_sand.frame(0, &idle);
     gfx_present();
@@ -92,6 +93,7 @@ test_full_redraw_repaints_a_stale_rect_and_sends_every_strip(void) {
                                         "and black-cutout class of bug");
 
     app_sand.exit();
+    sand_app_restore_colour_mode_for_test(previous_mode);
 }
 
 #endif /* DEVICE_BUILD */

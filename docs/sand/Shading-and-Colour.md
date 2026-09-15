@@ -1126,8 +1126,9 @@ pairs), `test_the_blend_has_no_jump_crossing_45_degrees`,
 
 ## Indexed colour modes: 256 and 16
 
-The sand launch menu's COLOUR option picks between FULL (today's RGB565
-path, byte-identical - this document's whole pipeline above), 256, and 16.
+The sand launch menu's COLOUR option defaults to 256 and picks between FULL
+(today's RGB565 path, byte-identical - this document's whole pipeline above),
+256, and 16. FULL remains available when a player needs the original path.
 Both alternates request `GFX_PIXFMT_INDEXED8` (`gfx/gfx_mode.h`): gfx frees
 the PSRAM framebuffer, as `GFX_LAYOUT_BANDS` already does, and instead owns
 a persistent `grid_w x grid_h` byte image of palette indices in internal
