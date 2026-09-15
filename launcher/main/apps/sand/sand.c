@@ -34,16 +34,8 @@
  * (sand_liquid_move.h) is called only from this file's own sweep. */
 unsigned sand_liquid_sweep_moves;
 
-/* Default from CONFIG_LAUNCHER_SAND_TWO_CORE_STEP on the device; off on a
- * host build, where suites and the fingerprint expect the serial path. A
- * test that wants the split path calls sand_set_two_core_step(true)
- * itself - see sand_two_core_step_enabled() (sand.h). */
-#if defined(ESP_PLATFORM)
-#if defined(CONFIG_LAUNCHER_SAND_TWO_CORE_STEP) && CONFIG_LAUNCHER_SAND_TWO_CORE_STEP
+#ifdef ESP_PLATFORM
 static bool two_core_step_on = true;
-#else
-static bool two_core_step_on = false;
-#endif
 #else
 static bool two_core_step_on = false;
 #endif
