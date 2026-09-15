@@ -2198,16 +2198,16 @@ sand_step_reactions(sand_t* s) {
         fill_burn_plan(&extended_plan[k], s, &extended_reactions[k], material_of(CELL_MAKE(MAT_EXTENDED, (uint8_t)k)));
     }
 
-    /* SOAK-ONLY: alive for no reason but the wettable term above, with every
-     * other stage's OWN presence flag already reading quiet (each is false
-     * only once nothing on the board could make it true) and no drinker's
-     * find_water() reach - the one stage not block-local - per
-     * drinker_mask(). Only stage_soak_dry is left, and it only acts where
-     * liquid_near() is true, exactly what BLOCK_LIQUID_NEAR marks. */
+    /* SOAK-ONLY: every other stage's presence flag reads quiet and no
+     * drinker's find_water() reaches past a block, per drinker_mask() -
+     * only stage_soak_dry is left, block-local via liquid_near(). may_have_
+     * moisture matters only alongside grower_mask(): grow/sprout/bud/root-
+     * weld are its only readers, unreachable with none present. */
     const bool soak_only =
         !reactions_force_full_walk && !s->may_have_burning && !s->may_have_dissolver && !s->may_have_temperature
-        && !s->may_have_moisture && !(s->may_have_faller && s->faller_may_move) && !s->may_have_condenser
-        && s->may_have_liquid && (s->may_have_materials & drinker_mask()) == 0 && s->block_state != NULL;
+        && !(s->may_have_moisture && (s->may_have_materials & grower_mask()) != 0)
+        && !(s->may_have_faller && s->faller_may_move) && !s->may_have_condenser && s->may_have_liquid
+        && (s->may_have_materials & drinker_mask()) == 0 && s->block_state != NULL;
     sand_reactions_last_was_soak_only = soak_only;
 
     /* CLEARED HERE so a bit latch_content_flags() ORs in mid-pass survives the
