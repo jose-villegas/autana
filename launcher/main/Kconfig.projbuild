@@ -131,44 +131,21 @@ menu "Launcher"
 
             Needs every strip sent from internal DMA RAM, never read in place
             from PSRAM: DMA from PSRAM shares the PSRAM bus's bandwidth, and at
-            80 MHz the panel receives dropped data (gfx.c, strip_bounce). The
-            corner-shaped artifacts once blamed on this clock were odd-edged
-            panel windows, which gfx.c now rounds to even edges.
+            80 MHz the panel receives dropped data (gfx.c, strip_bounce).
+
+            80 MHz is outside the panel's own rating: the CO5300 datasheet
+            (6.4) gives a 50 MHz write maximum, 6.5 ns clock high/low (80
+            gives 6.25) and 10 ns CS setup, and every panel pin reaches it
+            through the GPIO matrix. A renderer that redraws only dirty
+            regions shows the result as stray pixels or thin lines that
+            stay until that region is sent again with a different window
+            layout; a renderer redrawing whole frames hides it within one
+            frame. 40 MHz is clean. Even-edged windows are still required
+            at either clock, but do not make 80 clean.
 
             The dirty-band thresholds in gfx.h were fitted to 40 MHz timings
             and are wrong until re-measured - some of the win leaks back
             otherwise.
-
-    config LAUNCHER_GFX_PRESENT_ON_CORE1
-        bool "Present asynchronously on core 1, overlapped with the next update()"
-        default y
-        help
-            gfx_present_begin() hands the send to a task pinned to core 1 and
-            returns; an app with an update() callback (app.h) runs it on core
-            0 while that task sends, then gfx_present_wait() joins before the
-            next frame() draws. Turn this off to force every send back onto
-            the caller, synchronously, for an A/B measurement against the
-            overlapped path - runtime override: gfx_set_present_async().
-
-    config LAUNCHER_SAND_TWO_CORE_STEP
-        bool "Split sand's gravity sweep across both cores"
-        default y
-        help
-            The gravity sweep runs as a checkerboard of row stripes, two
-            phases per step (even stripes, then odd), half of each phase on
-            a task pinned to core 1; a core-1 wait that times out falls back
-            to serial. A stripe's own reach never touches another
-            same-phase stripe, so the split needs no lock - but it also no
-            longer draws sand_t's PRNG in the same order a serial step
-            would, so this path is NOT byte-identical to serial. The
-            fingerprint runs the serial path; host tests check the split
-            path for determinism and conservation.
-            Two smaller, order-independent block scans - see
-            finalize_settling() (sand.c) and mark_liquid_neighbourhoods()
-            (sand_liquid.c) - also move to core 1 under this switch, and
-            those stay byte-identical either way. Runtime override for an
-            A/B measurement or a test that wants the plain serial path:
-            sand_set_two_core_step().
 
     choice LAUNCHER_GFX_BAND_HEIGHT
         prompt "Band ring height (GFX_LAYOUT_BANDS)"
@@ -190,18 +167,6 @@ menu "Launcher"
 
     endchoice
 
-    config LAUNCHER_CUBE_BAND_MODE
-        bool "Run the cube app's default entry in band mode"
-        default n
-        help
-            The cube requests gfx's internal-SRAM band ring (GFX_LAYOUT_BANDS,
-            gfx.h) at enter() instead of the usual PSRAM framebuffer, and
-            rasterizes the scene once per band, clipped to that band's rows.
-            Off by default so the cube's own byte-for-byte full-fb behaviour
-            stays the one anybody flashing this build sees; the perf suite
-            (suite_cube_band_perf.c) exercises both paths regardless of this
-            setting via cube_set_band_mode() at runtime.
-
     config LAUNCHER_GFX_QSPI_STRONG_PADS
         bool "Drive the QSPI pads at 40 mA instead of the 20 mA default"
         default n
@@ -213,8 +178,8 @@ menu "Launcher"
 
             Only meaningful alongside the 80 MHz option above: at 40 MHz the
             link has margin to spare and this changes nothing measurable. At
-            80 it took the corner artifacts from routine to hard to provoke,
-            which is the evidence that the failure is about edge rate rather
-            than bandwidth.
+            80 it does not clear the partial-redraw corruption described
+            under that option: the clock is out of the panel's spec, which
+            sharper edges cannot fix.
 
 endmenu

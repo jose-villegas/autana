@@ -913,8 +913,12 @@ estimated:
 The blit dominates. One raw `esp_lcd_panel_draw_bitmap()` of the whole
 framebuffer measures **16,998 us of bus time against 18,147 us for a full
 `gfx_present()`** - the dirty-tracking path's own overhead is 1,149 us,
-6%, and the frame is **94% bus-bound**. 80 MHz would halve it but
-produces visual artifacts on this panel, so 17 ms is the floor.
+6%, and the frame is **94% bus-bound** (at 40 MHz). 80 MHz halves it but
+is outside the panel's rating, and sand's partial redraws are exactly what
+shows it: stray red pixels or thin black lines through moving sand that stay
+until that region is re-sent differently. See
+[Display-and-Rendering.md](../notes/Display-and-Rendering.md), "The blit is
+bus-bound", for the finding and the heal sand uses.
 
 Water, not sand, is the bottleneck whenever a body of it is moving.
 
@@ -1129,9 +1133,9 @@ again - the same fallback an allocation failure already takes. The
 dispatched context is copied into a static buffer, not merely pointed at,
 because a join that times out cannot also stop a straggler task still
 reading it, and a stack-allocated context would dangle the moment its
-caller returns. `CONFIG_LAUNCHER_SAND_TWO_CORE_STEP` defaults to **on**
-on the device: the diagnostics build boots, answers RUNSUITE and runs the
-sand perf suite with it. Host builds default to the serial path. The
+caller returns. Device builds split the gravity sweep across both cores:
+the diagnostics build boots, answers RUNSUITE and runs the sand perf suite
+with it. Host builds default to the serial path. The
 unbounded waits in gfx.c's present pipeline are still unchanged.
 
 ## Why the liquid logic is its own file

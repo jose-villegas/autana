@@ -627,9 +627,8 @@ the cheapest moment to capture it, and the only thing that stops it returning.
   a present, runs a fixed CPU-bound workload standing in for an app's
   `update()`, waits, and logs that against the same work done serially
   (`gfx_set_present_async(false)`); a sanity assert only, not a budget. The
-  present itself runs on core 1 while an app's `update()` runs on core 0
-  (`CONFIG_LAUNCHER_GFX_PRESENT_ON_CORE1`), which is what this overlap is
-  actually measuring.
+  present itself runs on core 1 while an app's `update()` runs on core 0,
+  which is what this overlap is actually measuring.
 
 `suite_gfx_present_guard.c` (portable) covers the present-in-flight guard and
 the dirty tracker's own begin/wait/present sequencing on a host, by including

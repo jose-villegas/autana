@@ -15,9 +15,10 @@ the falling-sand app's own discovery narrative, moved out to
   inventory, the memory budget built around the framebuffer living in
   PSRAM, and why the SD card and the display no longer contend for a bus.
 - **[Display-and-Rendering.md](Display-and-Rendering.md)** — owning the
-  panel directly, the QSPI clock history (why 80 MHz needs the strips sent
-  from internal RAM and why an intermediate clock does not exist), and the
-  dirty-region tracking that partial screen updates are built on.
+  panel directly, the QSPI clock (80 MHz is outside the panel's rating and
+  corrupts partial redraws, needs the strips sent from internal RAM, and no
+  intermediate clock exists), why screenshots cannot see a panel-link fault,
+  and the dirty-region tracking that partial screen updates are built on.
 - **[Input-and-Sensors.md](Input-and-Sensors.md)** — touch, the IMU's axes
   and its accelerometer/gyroscope split, and the two buttons that are not
   the same kind of device.
