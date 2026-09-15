@@ -39,6 +39,7 @@
 #include <string.h>
 
 #include "sand.h"
+#include "util/job.h"
 
 /* One constant per rng draw site inside a checkerboard-parallel pass -
  * see sand_rng_next_at() below. A fixed slot per site, not a per-cell
@@ -947,21 +948,6 @@ typedef struct {
 /* Cross-flow levelling. Called from `sand_step()`. `flow` levels, `dx`/`dy`
  * gravity direction. */
 void sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy);
-
-/* Largest context sand_core1_run() below ever needs to copy. Bump it and
- * check callers still fit before adding a bigger one. */
-#define SAND_CORE1_CTX_MAX 128
-
-/* Runs fn(ctx) somewhere other than the caller; sand_core1_join() blocks
- * until it finishes or gives up (sand_core1.c). Never call this again
- * before joining the previous dispatch, and only for work that gives the
- * same answer run before, after, or alongside the caller's own - see
- * sand_two_core_step_enabled() (sand.h).
- *
- * `ctx` (<= SAND_CORE1_CTX_MAX bytes) is COPIED, not merely pointed to: a
- * timed-out join cannot stop a straggler still reading it. */
-void sand_core1_run(void (*fn)(void* ctx), const void* ctx, size_t ctx_size);
-void sand_core1_join(void);
 
 void sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, const int* slide_b, const int* perp_a,
                    const int* perp_b, int load_dx, int load_dy, int x_step, int jostle);
