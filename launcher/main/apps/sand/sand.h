@@ -235,6 +235,21 @@ typedef struct sand_s {
     } emitters[SAND_MAX_EMITTERS];
 
     int emitter_count;
+
+#ifdef DEVICE_BUILD
+    /* Last sand_step() call's wall time per pass - dev/diag builds only, so
+     * this field and every store into it are absent from release. Zeroed at
+     * the top of sand_step(), so a pass that did not run this step reads 0
+     * rather than a stale value from an earlier one. */
+    struct {
+        int64_t sweep_us;
+        int64_t liquid_us;
+        int64_t float_us;
+        int64_t gas_us;
+        int64_t reactions_us;
+        int64_t impulses_us;
+    } pass_us;
+#endif
 } sand_t;
 
 /* `cells` must have room for w * h bytes and is cleared. */

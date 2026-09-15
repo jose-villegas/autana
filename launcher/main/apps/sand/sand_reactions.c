@@ -1790,6 +1790,9 @@ step_one_acid_rain_cell(sand_t* s, int x, int y, int w, int h) {
  * comment in sand_priv.h. */
 unsigned sand_reactions_cells_dispatched;
 
+/* Which shape the call below took - see sand_priv.h. */
+bool sand_reactions_last_was_soak_only;
+
 /* REACTION-STAGE DISPATCH TABLE skips PREFIX rows. Water, oil, metal traverse
  * all fields.
  *
@@ -2131,6 +2134,8 @@ step_one_reacting_row_liquid_near(sand_t* s, int y, int w, int h) {
 
 void
 sand_step_reactions(sand_t* s) {
+    sand_reactions_last_was_soak_only = false;
+
     if (s->fuse_blast_wait != 0) {
         s->fuse_blast_wait--;
     }
@@ -2197,6 +2202,7 @@ sand_step_reactions(sand_t* s) {
         !reactions_force_full_walk && !s->may_have_burning && !s->may_have_dissolver && !s->may_have_temperature
         && !s->may_have_moisture && !(s->may_have_faller && s->faller_may_move) && !s->may_have_condenser
         && s->may_have_liquid && (s->may_have_materials & drinker_mask()) == 0 && s->block_state != NULL;
+    sand_reactions_last_was_soak_only = soak_only;
 
     /* CLEARED HERE so a bit latch_content_flags() ORs in mid-pass survives the
      * write-back below; assigning the walk's census there dropped cells this
