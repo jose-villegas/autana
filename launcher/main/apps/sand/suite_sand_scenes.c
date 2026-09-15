@@ -3446,6 +3446,59 @@ test_a_soaking_no_plant_board_stays_on_the_soak_only_path(void) {
                                             "window, or the dispatch bound above proves nothing");
 }
 
+/* Once the water is fully gone, ambient drying is the only thing left for a
+ * no-plant board to do - and it reads no liquid at all, so BLOCK_LIQUID_NEAR
+ * (now empty everywhere) cannot be what finds it. A drying-only board must
+ * still avoid a REAL_W * REAL_H walk every step. */
+static void
+test_a_drying_no_plant_board_stays_off_the_full_walk(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks =
+        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t s2;
+    landscape_fixture(&s2, big, blocks, 29u);
+    build_submerged_pile_scene(&s2);
+
+    /* Run until the water is entirely gone (absorbed by soaking), or give
+     * up - this is the setup, not the measurement. */
+    int water_gone_at = -1;
+    for (int i = 0; i < 6000 && water_gone_at < 0; i++) {
+        sand_step(&s2, LANDSCAPE_GX, 0, 0);
+        if (landscape_material_count(&s2, MAT_WATER) == 0) {
+            water_gone_at = i;
+        }
+    }
+    const int dirt_holding_moisture = landscape_material_count(&s2, MAT_DIRT);
+
+    const unsigned d0 = sand_reactions_cells_dispatched;
+    const int steps = 300;
+    for (int i = 0; i < steps; i++) {
+        sand_step(&s2, LANDSCAPE_GX, 0, 0);
+    }
+    const unsigned dispatched = sand_reactions_cells_dispatched - d0;
+
+    free(big);
+    free(blocks);
+
+    char setup_why[200];
+    snprintf(setup_why, sizeof setup_why,
+             "setup: the water must actually run out within the window, and there must be dirt left "
+             "to dry, or this test measures nothing - water gone at step %d, %d dirt cells",
+             water_gone_at, dirt_holding_moisture);
+    TEST_ASSERT_TRUE_MESSAGE(water_gone_at >= 0, setup_why);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, dirt_holding_moisture, setup_why);
+
+    char why[220];
+    snprintf(why, sizeof why,
+             "%u cells dispatched over %d steps with the water gone, board is %d - drying-only must "
+             "not fall back to a full walk",
+             dispatched, steps, REAL_W * REAL_H * steps);
+    TEST_ASSERT_LESS_THAN_UINT_MESSAGE((unsigned)(REAL_W * REAL_H * steps) / 2, dispatched, why);
+}
+
 void
 run_sand_scenes_suite(void) {
     RUN_TEST(test_the_mixed_scene_puts_every_material_pair_in_contact);
@@ -3474,6 +3527,7 @@ run_sand_scenes_suite(void) {
     RUN_TEST(test_the_captured_slope_scenes_water_is_live);
     RUN_TEST(test_a_submerged_pile_settles_asleep_with_headroom);
     RUN_TEST(test_a_soaking_no_plant_board_stays_on_the_soak_only_path);
+    RUN_TEST(test_a_drying_no_plant_board_stays_off_the_full_walk);
 }
 
 SUITE_REGISTER(run_sand_scenes_suite);
