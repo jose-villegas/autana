@@ -199,9 +199,20 @@ Two things the diagram makes obvious that prose does not:
 
 ### 1. There is exactly one framebuffer
 
-368 × 448 × 2 bytes = **322 KiB**, out of roughly 424 KiB of RAM. A second one
-is not affordable, so "who owns the pixels" is settled architecturally rather
-than negotiated per app: `gfx` owns it, everything else draws into it.
+368 × 448 × 2 bytes = **322 KiB**, allocated in PSRAM
+(`BOARD_FRAMEBUFFER_CAPS` in `board.h`), so it does not count against the
+internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)). There is
+room in PSRAM for a second one; there is no time for it. PSRAM is fine to read
+but slow to write in bulk: a double buffer with a per-frame catch-up copy was
+built and measured at 6-15 ms per frame (~22 MB/s PSRAM to PSRAM), dropping
+sand from ~17-20 to 11-12 fps (device, 2026-09-13), and was parked. The panel
+link is the other ceiling: one full frame over QSPI is bandwidth-bound, not
+CPU-bound (see [Display-and-Rendering.md](notes/Display-and-Rendering.md),
+"The blit is bus-bound"), so a second buffer buys nothing on the send side.
+"Who owns the pixels" is therefore settled architecturally rather than
+negotiated per app: `gfx` owns it, everything else draws into it. The
+decision and its measurements are in
+[Autana-Rendering-Roadmap.md](Autana-Rendering-Roadmap.md) (decision B).
 
 This is also why the 3D renderer is small3dlib. It owns no framebuffer — it
 hands back every rasterized pixel through a callback — and with `S3L_Z_BUFFER 0`
