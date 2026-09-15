@@ -28,6 +28,20 @@ material_grain_hash(int cx, int cy) {
 
 const gfx_color_t* material_palette(void);
 
+/* The one representative colour for brush cell `c` - a badge, a label, a
+ * palette tile face, anywhere a material needs exactly one swatch rather
+ * than the textured grid material_colours() paints. Gunpowder and the
+ * MATX() materials spend their low nibble on state, not a shade, so each
+ * gets its own fixed tone (GUNPOWDER_CELL(2), or `c` itself when already
+ * extended) instead of tone 13 of an ordinary material's shade span. */
+static inline gfx_color_t
+material_brush_color(cell_t c) {
+    if (cell_is_gunpowder(c)) {
+        return material_palette()[GUNPOWDER_CELL(2)];
+    }
+    return material_palette()[cell_is_extended(c) ? c : CELL_MAKE(CELL_MATERIAL(c), 13)];
+}
+
 /* GFX_PIXFMT_INDEXED8's colour-to-index step: the sand_palette256_lut
  * (sand_palette256.h) entry nearest `c`, always >= SAND_PALETTE_UI_ENTRIES.
  * See material_palette.c for the distance and why an exact match is the

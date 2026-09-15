@@ -20,6 +20,8 @@
 #include "../../gfx/gfx.h"
 #include "../../ui/ui.h"
 #include "cube_mode_switch.h"
+#include "ui/cube_hud_screen.h"
+#include "ui/cube_menu_screen.h"
 
 /* small3dlib config - must precede its include. */
 #define S3L_PIXEL_FUNCTION     shade_pixel
@@ -275,28 +277,6 @@ switch_layout(void) {
     ui_invalidate();
 }
 
-/* mu_Color from a 0xRRGGBB value, opaque - same reason and same shape as
- * app_sand.c's own mu_color_hex(): every colour handed to a microui
- * drawing call crosses from this file's plain hex constants into mu's
- * 8-bit form exactly once, here. Kept as its own copy rather than shared
- * - see ORIENTATION_GRAVITY_X/Y's comment in app_diagnostics.c for why a
- * small, independent copy like this is not worth a shared header of its
- * own. */
-static mu_Color
-mu_color_hex(uint32_t rgb) {
-    return mu_color((int)((rgb >> 16) & 0xFF), (int)((rgb >> 8) & 0xFF), (int)(rgb & 0xFF), 255);
-}
-
-static mu_Rect
-draw_overlay_box(mu_Context* ctx, int w, int h) {
-    mu_Rect box = ui_centered_rect(ui_width(), w, h, 2);
-    if (cube_fps_box_x_override >= 0) {
-        box.x = cube_fps_box_x_override;
-    }
-    mu_draw_rect(ctx, box, mu_color_hex(BACKGROUND_RGB));
-    return box;
-}
-
 /* The persistent HUD: the cube and, over it, the fps line - nothing else
  * renders while the menu is closed (see cube_frame()). Exposed for
  * performance testing (suite_cube_perf.c), timed as its own phase there.
@@ -306,35 +286,12 @@ void
 draw_fps(const input_t* input, bool for_bands) {
     mu_Context* ctx = ui_context();
     ui_begin(input);
-    /* UI_TEXT_OUTLINED is app_sand.c's palette-label fix for the same
-     * reason it was built for: a label with no halo of its own would
-     * wash out against whichever of the cube's shifting corner colours
-     * happens to sit behind it. Left in place even with the box's own
-     * opaque backing - a NO_BACKGROUND window is still one BOOT tap away
-     * whenever partial_updates is off, and the halo costs nothing extra
-     * when the backing is already opaque. */
-    ui_set_text_style(UI_TEXT_OUTLINED);
 
-    if (ui_begin_screen(ctx, "Cube HUD", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        char fps_line[16];
-        snprintf(fps_line, sizeof fps_line, "%.1f fps", fps_value);
-        const int tw = gfx_text_width(fps_line, -1);
-        const int th = gfx_text_height() + 4;
-
-        /* BUT: mu_text() draws only its own ink, no background of its
-         * own. Under partial_updates, cube_frame() only erases the
-         * CUBE's own last bounding box, never this box's, so when the
-         * fps line repaints - it changes shape every FPS_WINDOW_MS as
-         * digits change - old digits the new ones don't overdraw stay on
-         * screen. draw_overlay_box() fixes this: an opaque box behind
-         * the text, painted through the same mu command list already
-         * hashed, costing nothing on frames where fps did not change. */
-        mu_Rect box = draw_overlay_box(ctx, tw + 8, th);
-        mu_layout_set_next(ctx, box, 0);
-        mu_text(ctx, fps_line);
-
-        mu_end_window(ctx);
-    }
+    const cube_hud_screen_state_t state = {
+        .fps_value = fps_value,
+        .fps_box_x_override = cube_fps_box_x_override,
+    };
+    cube_hud_screen_draw(ctx, &state);
 
     /* UI_NO_BACKGROUND is what lets the spinning cube show through
      * everywhere this window doesn't itself paint - see app_sand.c's
@@ -351,10 +308,6 @@ draw_fps(const input_t* input, bool for_bands) {
     }
 }
 
-#define MENU_BTN_W   300
-#define MENU_BTN_H   UI_ROW_HEIGHT
-#define MENU_BTN_GAP 20
-
 /* The BOOT-opened menu holds the runtime rendering options as centered
  * bezel buttons, but the place any future option belongs
  * rather than growing the persistent HUD in draw_fps(). See cube_frame()
@@ -365,48 +318,24 @@ static void
 draw_menu(const input_t* input, bool for_bands) {
     mu_Context* ctx = ui_context();
     ui_begin(input);
-    /* ui_set_button_style(UI_BUTTON_BEZEL) is required, not automatic -
-     * ui_begin() resets the button style to UI_BUTTON_FLAT every frame
-     * (see ui.h), so a bezelled button needs asking for on every frame
-     * that draws one, the same as ui_launcher.c's own menu does. */
-    ui_set_button_style(UI_BUTTON_BEZEL);
 
-    if (ui_begin_screen(ctx, "Cube Menu", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        const int hint_h = gfx_text_height() + 4;
-        const int total_h = 2 * MENU_BTN_H + 2 * MENU_BTN_GAP + hint_h;
-        const int top = (ui_height() - total_h) / 2;
+    const cube_menu_screen_state_t state = {
+        .partial_updates_on = partial_updates,
+        .band_mode_on = cube_band_mode,
+    };
+    const cube_menu_screen_result_t result = cube_menu_screen_draw(ctx, &state);
 
-        char label[24];
-        snprintf(label, sizeof label, "PARTIAL UPDATES: %s", partial_updates ? "ON" : "OFF");
+    if (result.partial_updates_clicked) {
+        partial_updates = !partial_updates;
 
-        /* Both the button and the hint below it are placed via
-         * mu_layout_set_next() at an absolute rect rather than through
-         * mu_layout_row()'s normal top-down flow, the same trick
-         * app_sand.c's own two-button boot menu uses: a single small
-         * control centered mid-screen has no natural row to sit in. */
-        mu_layout_set_next(ctx, ui_centered_rect(ui_width(), MENU_BTN_W, MENU_BTN_H, top), 0);
-        if (mu_button(ctx, label)) {
-            partial_updates = !partial_updates;
-
-            /* Same reason cube_frame()'s BOOT handling forces this on every
-             * open/close of this menu: flipping the toggle mid-visit resets
-             * the partial clear cache. */
-            gfx_invalidate();
-        }
-
-        snprintf(label, sizeof label, "BAND MODE: %s", cube_band_mode ? "ON" : "OFF");
-        mu_layout_set_next(ctx, ui_centered_rect(ui_width(), MENU_BTN_W, MENU_BTN_H, top + MENU_BTN_H + MENU_BTN_GAP),
-                           0);
-        if (mu_button(ctx, label)) {
-            cube_band_mode = !cube_band_mode;
-            cube_mode_switch_request(&mode_switch);
-        }
-
-        mu_layout_set_next(ctx, ui_centered_rect(ui_width(), MENU_BTN_W, hint_h, top + 2 * (MENU_BTN_H + MENU_BTN_GAP)),
-                           0);
-        mu_label(ctx, "BOOT to close");
-
-        mu_end_window(ctx);
+        /* Same reason cube_frame()'s BOOT handling forces this on every
+         * open/close of this menu: flipping the toggle mid-visit resets
+         * the partial clear cache. */
+        gfx_invalidate();
+    }
+    if (result.band_mode_clicked) {
+        cube_band_mode = !cube_band_mode;
+        cube_mode_switch_request(&mode_switch);
     }
 
     /* Modeled on app_sand.c's own draw_menu(): one full-screen OPAQUE
