@@ -60,7 +60,7 @@ OUT_BIN="$BUILD_DIR/brush_screen_preview"
     -I "$LAUNCHER_DIR/components/microui/include" \
     "$SCRIPT_DIR/brush_screen_preview.c" \
     "$MAIN_DIR/gfx/gfx.c" \
-    "$SAND_DIR/brush_screen.c" \
+    "$SAND_DIR/ui/brush_screen.c" \
     "$SAND_DIR/material.c" \
     "$SAND_DIR/material_palette.c" \
     -o "$OUT_BIN"
