@@ -341,3 +341,19 @@ void water_slope_gravity_hold(sand_t* s, int gx, int gy, int steps);
  * showed, sampled into a grid - see captured_slope_data.h. Seeds the
  * scenario from a real board instead of a hand-built approximation of one. */
 void build_captured_water_slope_scene(sand_t* s);
+
+/* The plain case the report also reproduces with no tilt and no diagonal at
+ * all - a flat landscape bed, water swept across the whole ceiling until
+ * the bed is fully covered with headroom, then settled undisturbed. The
+ * primary repro; the diagonal slope and its flip are the secondary,
+ * worse-case row. */
+#define SUBMERGED_PILE_POUR_STEPS   300
+
+/* Measured: a freshly covered, freshly poured pile takes on the order of
+ * 1,400-1,500 further steps to reach full sleep by itself - two full orders
+ * of magnitude past the 60-90 step windows the gravity-flip rows use, which
+ * is why those rows never see it happen at all. Comfortable margin over
+ * that. */
+#define SUBMERGED_PILE_SETTLE_STEPS 1700
+
+void build_submerged_pile_scene(sand_t* s);
