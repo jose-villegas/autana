@@ -41,7 +41,7 @@ flowchart LR
     cubePerf["Cube perf report,<br/>cycles per covered pixel"]:::p0
   end
   subgraph P1["Phase 1 - memory, cores and bus"]
-    busRoot["80 MHz QSPI<br/>root cause"]:::p1
+    busRoot["80 MHz QSPI<br/>clock setting + heal"]:::p1
     corePresent["Core-1 present, reads only +<br/>sim/update overlap (retained apps)"]:::p1
     memPlacement["Hot buffers to internal RAM;<br/>icache 32K / dcache 64K experiment"]:::p1
     resSettings["Resolution / colour<br/>system settings"]:::p1
@@ -314,7 +314,7 @@ detail behind every row.
 | Data cache | 32 KB, 32-byte line, 8-way; 64 KB measured no gain (device, 2026-09-13) | every PSRAM access — CPU render writes and DMA present reads alike — goes through this cache; see 3.3 |
 | Instruction cache | 16 KB, 32-byte line, 8-way (sdkconfig default); the S3 allows 32 KB, untested | hot loops must fit tighter than the larger option would allow; growing it is a Phase 1 experiment |
 | DMA | GDMA, 3 TX + 3 RX channels; async memcpy supported | strip transfers already DMA; mem-to-mem copies could offload clears — measure, do not assume |
-| Display bus | QSPI, both board revisions share the same 368×448 panel geometry and SPI2 wiring, 40 MHz stable | fixing 80 MHz (untested on the current V2 board, see 3.2) halves present |
+| Display bus | QSPI, both board revisions share the same 368×448 panel geometry and SPI2 wiring, all through the GPIO matrix; 40 MHz clean, 80 MHz outside the panel's 50 MHz rating | 80 MHz halves present but corrupts partial redraws; full-frame renderers are safe, partial ones need 40 or gfx heal (3.2) |
 | Second processor | ULP-RISC-V and ULP-FSM coprocessors | low-power only, not a render resource — they cannot touch the framebuffer at speed |
 | Graphics acceleration | none (`SOC_PPA_SUPPORTED` is P4-only) | scalar C, verified not assumed |
 
@@ -397,19 +397,18 @@ sand from 11.8–14.3 to 16.7–20.3 drawn frames per second, at a cost of
 ~94 KB of internal RAM. A full-present time at 80 MHz is *unmeasured*; the
 next diagnostics capture replaces the 18.0–18.9 ms row.
 
-80 MHz corrupted the corner of the frame on the previous development board
-(an SH8601 panel, the same part as this board's original revision; see
-[notes/Second-Target-Draft.md](notes/Second-Target-Draft.md)) — traced to
-the vendor driver sending
-`CASET`/`RASET`/`RAMWR` as three back-to-back QSPI transactions with no
-settle time for the panel's address latch (see "The blit is bus-bound" in
-Display-and-Rendering.md). It has not been tried on the V2 board's CO5300
-panel now on hand, so it is an open, untested lever on this board, not a
-confirmed failure. Untried knobs remain: `cs_ena_pretrans`/
-`cs_ena_posttrans`, pad drive strength, SPI mode, an explicit settle
-between `CASET`/`RASET`/`RAMWR`, and the panel datasheet's actual maximum.
-If it holds, the single largest fixed cost on the board goes from ~18 ms
-toward ~9-10 ms — for every app. Interlace stacks on top.
+**Root cause found (2026-09-15): 80 MHz is outside the CO5300's rating.**
+Its datasheet caps the write clock at 50 MHz, and every panel pin reaches
+it through the GPIO matrix. An app that redraws only dirty regions shows
+stray pixels and thin lines that persist until the region is re-sent with
+a different layout; a full-frame renderer hides them within a frame. CS
+setup, pad drive, 40 MHz window commands and double sends were each tried
+on device and none made it clean (see "The blit is bus-bound" in
+Display-and-Rendering.md). What is planned instead: keep both clocks, as a
+system display setting with a warning for partial-redraw apps, plus an
+opt-in gfx heal that re-sends app-marked regions with a different layout
+under a pixel budget, active only at 80. Full-frame apps keep the ~9 ms
+present for free. Interlace stacks on top.
 
 ### 3.3 Read PSRAM, never write it in bulk: core-1 present and an internal-SRAM band ring
 
@@ -990,7 +989,7 @@ in.
 | Phase | Work | Gate (measured, on device) |
 |---|---|---|
 | **0. Attribution on the S3** | Real frame-time row (sim + draw + present); cube perf report checked in (all four variants: baseline, no HUD, no partial, interlaced); a cycles-per-covered-pixel counter; re-peg the device frame budgets once memory placement is settled | A checked-in table replacing the stale 15.5 fps figures, every row sourced |
-| **1. Memory, cores and bus** | Core-1 present with sim/update overlap for retained apps (decision B); 80 MHz QSPI on this panel (present measured ~10.2-10.9 ms full-frame); an internal-RAM build-time gate now that hot buffers are internal | Sand frame time serial vs overlap measured and checked in; core 0's update never blocks on core 1's present |
+| **1. Memory, cores and bus** | Core-1 present with sim/update overlap for retained apps (decision B); 80 MHz QSPI on this panel (present measured ~10.2-10.9 ms full-frame; out of the panel's rating, so a 40/80 display setting plus an opt-in heal for partial-redraw apps); an internal-RAM build-time gate now that hot buffers are internal | Sand frame time serial vs overlap measured and checked in; core 0's update never blocks on core 1's present |
 | **2. r3d v1** | Span rasterizer built band-aware into the internal-SRAM band ring (3.3): flat, Gouraud, affine texture, colormap lighting; transform/clip extracted from boot_anim; triangle binning; half-res mode (scope unchanged) | Gates recomputed for 240 MHz and the band ring; cycles/pixel judged against the ~24 cycles/pixel/core ceiling (section 2), the old flat/textured sub-targets pending re-derivation |
 | **3. Raycaster and the FPS prototype** | `render/rc`, column-major textures, per-column depth, sprites, gyro look via the tilt/shake library, buttons move (scope unchanged) | Original target — 60 fps full-res walls + sprites, playable on the glass — reviewed against S3 numbers once Phases 0-1 land |
 | **4. Rolling ball** | Heightfield mesh on r3d, lit-disc ball, 2.5D fixed-point physics, gyro gravity (scope unchanged) | Original target — 30+ fps full-res, physics stable at dt 16-33 ms — reviewed against S3 numbers |

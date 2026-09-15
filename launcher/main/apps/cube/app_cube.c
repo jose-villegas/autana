@@ -73,14 +73,10 @@ static uint32_t elapsed_ms;
 bool partial_updates = true;
 
 /* Requests gfx's internal-SRAM band ring (GFX_LAYOUT_BANDS, gfx.h) instead
- * of the PSRAM framebuffer - default from LAUNCHER_CUBE_BAND_MODE
- * (Kconfig.projbuild), runtime override for suite_cube_band_perf.c. Read
- * only at enter(), so flipping it mid-visit needs a re-entry to take hold. */
-#if defined(CONFIG_LAUNCHER_CUBE_BAND_MODE) && CONFIG_LAUNCHER_CUBE_BAND_MODE
-bool cube_band_mode = true;
-#else
+ * of the PSRAM framebuffer. Off by default; runtime override for
+ * suite_cube_band_perf.c. Read only at enter(), so flipping it mid-visit
+ * needs a re-entry to take hold. */
 bool cube_band_mode = false;
-#endif
 
 /* -1 (default): draw_overlay_box() centers the fps box as normal, same as
  * ever. Any other value pins the box's own logical x there instead - a
