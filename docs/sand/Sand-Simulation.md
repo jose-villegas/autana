@@ -974,7 +974,7 @@ update can touch another's, in cells:
 | Pass | Reach | Parallel? |
 | --- | --- | --- |
 | Main sweep (`step_one_grain`, `move_liquid_grain`) | 1 (Chebyshev - every move is one of the eight ring directions) | yes |
-| Liquid cross-flow (`equalise_liquids`, `find_shallowest`) | `SAND_LIQUID_SIGHT`, 8, along a ray that can run diagonally through several rows | no (this round) |
+| Liquid cross-flow (`equalise_liquids`, `find_shallowest`) | `SAND_LIQUID_SIGHT`, 8, along a ray that can run diagonally through several rows | yes; private wake and repaint state |
 | Gas walk (`gas_walk_once`) | 1, same shape as the sweep | no (this round) |
 | Gas cross-flow (`equalise_gas`) | 8, shares `SAND_LIQUID_SIGHT` | no |
 | Heat conduction to a boiler (`try_heat_transform_given`'s `CONDUCT_REACH`) | 32, a directed walk, not a spread | no |
@@ -982,15 +982,43 @@ update can touch another's, in cells:
 | Lava cool-off chain | up to `SAND_LAVA_COOLOFF_MAX_CHAIN`, 8 links, each an arbitrary further cell | no |
 | Explosions and thrown debris (`step_impulses`) | queued, crosses many steps, effectively unbounded | no |
 
-Only the main sweep's reach is small and fixed enough to tile cheaply and
-safely. Cross-flow's reach is the same order of magnitude as a stripe, and
-folding it in would mean either a much taller stripe (more serial-sized
-work per phase) or accepting a materially larger boundary error than the
-sweep's own one-cell corner case - not attempted this round. Reactions mix
-1-cell rules with `CONDUCT_REACH`, the crack flood and the cool-off chain,
-none of which tile at any sane stripe height, and impulses are not even
-bounded within one step. All four - cross-flow, gas, reactions, impulses -
-stay exactly as they were, serial, drawing the plain sequential stream.
+The gravity sweep and liquid cross-flow have fixed cell reaches suitable
+for stripes. Gas, reactions, liquid density sorting and impulses remain
+serial. Reactions mix local rules with conduction and flood walks;
+impulses can reach across the board.
+
+### Liquid cross-flow stripes
+
+Cross-flow uses 32-row stripes with 8 guard rows on each side of every
+internal boundary. The offset alternates between 0 and 16 rows. Boards
+shorter than 128 rows, and scratch allocation failures, use the unchanged
+serial order. The existing core-1 worker runs half of each checkerboard
+phase; its join completes before the next phase or the serial guards run.
+
+A cell reads or transfers at most 8 rows away. Immediate neighbor and
+`rays_blocked()` reads reach one row. Depth repaint marks extend another
+24 rows from a destination, while block wakes clear settled flags in the
+source and destination blocks and their neighbors. Those writes exceed
+the cell guards, so each worker owns a copy of the block flags and dirty
+spans, plus its movement and probe counters. Each phase reads immutable
+sleep flags; wake clears, active bits, dirty spans and counters merge at
+join. A wake becomes visible to other stripes in the next phase or guard
+pass. Cells themselves remain in the single shared grid.
+
+An arrival bitmap prevents the guard pass from forwarding mass received
+during a phase. Bitmap rows are byte-padded so odd grid widths cannot
+make concurrent stripes share a byte. Guard rows run against transfer
+direction after both phases. Isolated seam transfers are serial-exact;
+contested pools can redistribute differently and are checked for exact
+mass conservation, deterministic output and no persistent seam jumps.
+Cross-flow viscosity uses hashed draws throughout phases and guards.
+
+`tools/report_crossflow.sh` measures the liquid pass on host using the
+shared water-slope and submerged-pile builders. All other passes remain
+serial in this comparison; the host worker itself dispatches inline, so
+its timings measure overhead and changed work, not multicore speedup.
+The device perf suite explicitly enables splitting for its liquid tables;
+`pass_us.liquid_us` includes both phases, joins, metadata merges and guards.
 
 ### Stripes, not tiles
 
@@ -1090,12 +1118,14 @@ up to the width of a stripe boundary.
 
 `sand_rng_next_at(s, x, y, slot)` (sand_priv.h) replaces `rng_next(&s->rng)`
 at every call site the sweep reaches - `try_scatter()`, `try_slide_impl()`,
-`liquid_may_move()` - while `s->rng_hashed` is armed, which is true only for
-the two checkerboard phases and nowhere else in the step. Armed, it hashes
+`liquid_may_move()` - while `s->rng_hashed` is armed, which is true during
+the sweep phases and guards, and the liquid cross-flow phases and guards.
+Armed, it hashes
 `(s->rng_seed_base, s->step_phase, y * s->w + x, slot)` through
 `rng_hash()` (util/rng.h); disarmed, it is `rng_next(&s->rng)` unchanged, so
-gas and reactions later the same step, and the whole step with the switch
-off, are untouched. `slot` is a fixed per-call-site constant
+gas and reactions later the same step retain sequential draws, and the
+whole step with the switch off is unchanged. `slot` is a fixed per-call-site
+constant
 (`SAND_RNG_SLOT_*`), not a per-cell counter - a cell's scatter roll and its
 slide roll hash different inputs because they are different constants, not
 because anything counts draws, which is what makes a draw depend on nothing

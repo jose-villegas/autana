@@ -68,8 +68,8 @@ OUT_BIN="$BUILD_DIR/grid_fingerprint"
 # shellcheck disable=SC2086
 "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$SAND_DIR" \
     "$SCRIPT_DIR/grid_fingerprint.c" \
+    "$MAIN_DIR/util/job.c" \
     "$SAND_DIR/sand.c" \
-    "$SAND_DIR/sand_core1.c" \
     "$SAND_DIR/sand_impulse.c" \
     "$SAND_DIR/sand_reactions.c" \
     "$SAND_DIR/sand_plants.c" \

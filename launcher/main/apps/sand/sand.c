@@ -800,7 +800,7 @@ static bool sweep_tables_ready;
 
 /* Rebuilt fresh every step by compute_driven(), never carried across one -
  * FILE-STATIC rather than a local of sand_step(), so a checkerboard-
- * parallel dispatch's core-1 half (sand_core1.c) can read it without a
+ * parallel dispatch's core-1 half can read it without a
  * dangling pointer into a caller's stack frame that a timed-out join may
  * have already returned from. */
 static bool sweep_driven[MATERIAL_ROWS][2];
@@ -1123,6 +1123,8 @@ typedef struct {
     int by_from, by_to;
 } finalize_settling_half_t;
 
+_Static_assert(sizeof(finalize_settling_half_t) <= JOB_CTX_MAX, "finalize_settling_half_t must fit JOB_CTX_MAX");
+
 static void
 finalize_settling_worker(void* ctx) {
     const finalize_settling_half_t* half = ctx;
@@ -1142,9 +1144,9 @@ finalize_settling(sand_t* s, uint8_t settled_bit) {
     if (sand_two_core_step_enabled() && s->block_rows >= FINALIZE_SETTLING_SPLIT_MIN_BLOCK_ROWS) {
         const int mid = s->block_rows / 2;
         finalize_settling_half_t half = {s, settled_bit, mid, s->block_rows};
-        sand_core1_run(finalize_settling_worker, &half, sizeof half);
+        (void)job_run_core1(finalize_settling_worker, &half, sizeof half);
         finalize_settling_range(s, settled_bit, 0, mid);
-        sand_core1_join();
+        (void)job_wait(100);
         return;
     }
 
@@ -1288,8 +1290,7 @@ typedef struct {
     int share;
 } sweep_phase_ctx_t;
 
-_Static_assert(sizeof(sweep_phase_ctx_t) <= SAND_CORE1_CTX_MAX,
-               "sweep_phase_ctx_t must fit sand_core1_run()'s context buffer");
+_Static_assert(sizeof(sweep_phase_ctx_t) <= JOB_CTX_MAX, "sweep_phase_ctx_t must fit JOB_CTX_MAX");
 
 /* Every stripe of `c->color` matching `c->share`, swept in y_step order,
  * MINUS the one row on each side touching a real neighbour stripe - see
@@ -1437,10 +1438,10 @@ run_sweep_phase(sand_t* s, int color, int w, int dx, int dy, const int* slide_a,
         .share = 1,
     };
 
-    sand_core1_run(sweep_phase_worker, &ctx, sizeof ctx);
+    (void)job_run_core1(sweep_phase_worker, &ctx, sizeof ctx);
     ctx.share = 0;
     run_sweep_stripes(&ctx);
-    sand_core1_join();
+    (void)job_wait(100);
 }
 
 /* Below this many rows the whole grid is a handful of stripes, and one

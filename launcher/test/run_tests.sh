@@ -103,10 +103,12 @@ $TEST_DIR/suites/suite_panel_clock.c
 $TEST_DIR/suites/suite_screenshot.c
 $TEST_DIR/suites/suite_build_id.c
 $TEST_DIR/suites/suite_device_state.c
+$TEST_DIR/suites/suite_job.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/gesture.c
 $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
+$MAIN_DIR/util/job.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/ui/ui_pointer.c
 $MAIN_DIR/gfx/gfx_palette_standard.c
