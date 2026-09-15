@@ -310,6 +310,28 @@ bool gfx_set_panel_clock_hz(int hz);
 int gfx_panel_clock_hz(void);
 
 /*
+ * Heal, an opt-in for an app that sends only what changed: gfx sends a
+ * marked region again on a later present, as full-width strips cut
+ * differently from any earlier send, to clear what the fast clock left
+ * wrong. All of it does nothing while the clock is the slow one.
+ */
+
+#define GFX_HEAL_DEFAULT_BUDGET_PIXELS (GFX_WIDTH * 32)
+
+/* Queues rows [y, y + h) for healing; x and w are ignored, strips are full
+ * width. Safe wherever gfx_mark_dirty() is. */
+void gfx_heal_mark(int x, int y, int w, int h);
+
+/* How many pixels of heal one present may add. */
+void gfx_heal_set_budget(int pixels_per_present);
+
+/* Rows per present of a sweep over the whole screen, 0 for none - for an app
+ * that wants healing without a policy. Whoever turns it on turns it off. */
+void gfx_heal_set_rolling(int rows_per_present);
+
+bool gfx_heal_active(void);
+
+/*
  * Mode: a full PSRAM framebuffer, or an internal-SRAM band ring for a
  * full-redraw renderer (docs/Autana-Rendering-Roadmap.md section 3.3).
  * Requested from enter(), released with gfx_mode_exit() from exit(). Only
@@ -450,6 +472,9 @@ void gfx_get_strip_send_counts(int* full_bands, int* gathered, int* partial_band
  * have no strip/gather distinction of their own (GFX_PIXFMT_INDEXED8)
  * against ones that do. */
 int64_t gfx_get_bytes_sent(void);
+
+/* The part of gfx_get_bytes_sent() that heal strips added. */
+int64_t gfx_get_heal_bytes_sent(void);
 
 /* Test-only: every strip of the framebuffer sent as a full band, bypassing
  * every dirty-tracking decision gfx_present() makes - the bus-time side of

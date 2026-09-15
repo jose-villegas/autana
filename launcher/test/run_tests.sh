@@ -83,6 +83,7 @@ $TEST_DIR/suites/suite_gfx_fb_guard.c
 $TEST_DIR/suites/suite_gfx_target.c
 $TEST_DIR/suites/suite_gfx_mode.c
 $TEST_DIR/suites/suite_gfx_band.c
+$TEST_DIR/suites/suite_gfx_heal.c
 $TEST_DIR/suites/suite_gfx_indexed.c
 $TEST_DIR/suites/suite_gfx_palette.c
 $TEST_DIR/suites/suite_small3dlib_scissor.c
