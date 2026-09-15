@@ -85,7 +85,7 @@ budget outright.
 | The ±6.7% flash-layout spread (measured across the sand performance campaign) | Mechanism exists on both (code is flash-resident behind a cache), geometry does not: 16 KB/8-way default vs 32 KB/4-way. Re-derive from two identical-source builds |
 | Free heap 63,952 / grid 41,216 / `check_static_ram.py`'s literals | This chip, this build, this boot |
 | Every `suite_sand_perf.c` budget (`measured × 0.9`) | Wall-clock, pegged from C6 captures at 160 MHz |
-| QSPI 40 MHz, 17.6 ms present, 80 MHz corner corruption | Panel and board wiring — the sibling S3 board carries the same panel, so this is the one number that might survive, and only by coincidence |
+| QSPI 40 MHz, 17.6 ms present, 80 MHz corruption | Panel and board wiring — the sibling S3 board carries the same panel, so this is the one number that might survive, and only by coincidence. It did: on the S3 board 80 MHz is outside the CO5300's rating and corrupts partial redraws (Display-and-Rendering.md) |
 
 ### The one that needs its own argument: the SRAM-mask trade
 
