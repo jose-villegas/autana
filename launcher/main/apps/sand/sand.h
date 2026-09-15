@@ -639,13 +639,10 @@ void sand_set_mobility(sand_t* s, int chance);
 void sand_set_gas_walk(sand_t* s, bool on);
 #define SAND_MOBILITY_PER_MATERIAL (-1)
 
-/* Global, not per-board, like gfx_set_present_async(): one core 1 regardless
- * of how many sand_t instances exist. Hands a step's order-independent
- * block bookkeeping to a task pinned there - see finalize_settling()
- * (sand.c) - while the movement passes, which draw a data-dependent number
- * of times from one shared PRNG, stay on the caller's core. Runtime
- * override for an A/B measurement or a test that wants the plain serial
- * path; device builds enable it by default. */
+/* Global: one core-1 worker serves all boards. Splits the gravity sweep,
+ * liquid cross-flow and independent block scans. Movement uses hashed
+ * draws and guarded stripes; serial remains the host default and the
+ * fingerprint reference. Device builds enable splitting by default. */
 void sand_set_two_core_step(bool on);
 bool sand_two_core_step_enabled(void);
 
