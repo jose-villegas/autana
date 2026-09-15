@@ -297,6 +297,18 @@ void gfx_present_wait(void);
 void gfx_set_present_async(bool on);
 bool gfx_present_async_enabled(void);
 
+/* The panel link's clock. The fast rate halves bus time but is past the
+ * panel's rated 50 MHz: a region can land with stray pixels that stay until
+ * it is sent again. Saved on the device; GFX_QSPI_HZ is the first-boot
+ * default. */
+#define GFX_PANEL_CLOCK_SLOW_HZ (40 * 1000 * 1000)
+#define GFX_PANEL_CLOCK_FAST_HZ (80 * 1000 * 1000)
+
+/* Takes effect before the next present sends anything, never mid-send.
+ * Returns false, changing nothing, for any other rate. */
+bool gfx_set_panel_clock_hz(int hz);
+int gfx_panel_clock_hz(void);
+
 /*
  * Mode: a full PSRAM framebuffer, or an internal-SRAM band ring for a
  * full-redraw renderer (docs/Autana-Rendering-Roadmap.md section 3.3).
