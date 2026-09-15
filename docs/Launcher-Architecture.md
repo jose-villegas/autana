@@ -217,8 +217,8 @@ SRAM instead, `GFX_BAND_HEIGHT` rows tall (a compile-time divisor of
 for pixels at any moment — never both a framebuffer and a band ring —
 `gfx_mode_resolve()` (`gfx_mode.h`) and the ring's own state machine
 (`gfx_band.h`) are pure and host-tested; the cube app (`app_cube.c`) is the
-one app that uses it today. Its `cube_band_mode` runtime switch is off by
-default, so ordinary full-fb behaviour is what a plain build ships.
+one app that uses it today. Its `cube_band_mode` runtime switch is on by
+default, so a plain build ships with the band ring.
 
 **Every drawing primitive targets whichever buffer is current, not always
 the framebuffer.** `gfx_target.h` is the shared clip-and-translate
