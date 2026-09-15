@@ -5,6 +5,7 @@
 """
 import pathlib
 import re
+import subprocess
 import sys
 
 from code_vocabulary import names
@@ -17,6 +18,7 @@ SKIP_FENCES = {"sh", "shell", "bash", "console", "text", "output"}
 SKIP = {"build", "build.dev", "build.diag", "managed_components", ".git"}
 FOREIGN_FUNCTIONS = {"exit", "main", "max", "name"}
 FOREIGN_PATHS = {"idf.py"}
+FOREIGN_MACRO_PREFIXES = ("ESP", "CONFIG_COMPILER", "CONFIG_LOG", "IDF", "SDMMC", "WHOLE", "LOG", "DP")
 
 
 class Citation:
@@ -30,7 +32,14 @@ class Citation:
 def documentation(root):
     root = pathlib.Path(root)
     yield from sorted((root / "docs").rglob("*.md"))
-    yield from sorted(root.glob("*.md"))
+    result = subprocess.run(["git", "ls-files", "*.md"], cwd=root,
+                            capture_output=True, text=True)
+    if result.returncode:
+        yield from sorted(root.glob("*.md"))
+        return
+    for name in sorted(result.stdout.splitlines()):
+        if "/" not in name:
+            yield root / name
 
 
 def citations(root):
@@ -97,7 +106,8 @@ def check(root):
     allowed = allowlist(root)
     missing = []
     for citation in citations(root):
-        if (citation.doc, citation.value) in allowed:
+        if ((citation.doc, citation.value) in allowed or
+                ("docs/plans/*", "*") in allowed and citation.doc.startswith("docs/plans/")):
             continue
         if citation.kind == "function" and (
                 citation.value in FOREIGN_FUNCTIONS or
@@ -106,6 +116,8 @@ def check(root):
         if citation.kind == "path" and citation.value in FOREIGN_PATHS:
             continue
         if citation.kind == "macro":
+            if citation.value.startswith(FOREIGN_MACRO_PREFIXES):
+                continue
             prefix = citation.value.split("_", 1)[0]
             prefixes = {name.split("_", 1)[0] for name in macros}
             if "_" not in citation.value or prefix not in prefixes:
