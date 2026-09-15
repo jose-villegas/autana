@@ -356,6 +356,13 @@ replay_pointer_event(const ui_pointer_event_t* e) {
         case UI_POINTER_MOVE: mu_input_mousemove(&ctx, lx, ly); break;
         case UI_POINTER_DOWN: mu_input_mousedown(&ctx, lx, ly, MU_MOUSE_LEFT); break;
         case UI_POINTER_UP: mu_input_mouseup(&ctx, lx, ly, MU_MOUSE_LEFT); break;
+        case UI_POINTER_SCROLL: {
+            /* A distance, not a point: only the transform's turn applies. */
+            int ox, oy;
+            to_logical(0, 0, &ox, &oy);
+            mu_input_scroll(&ctx, lx - ox, ly - oy);
+            break;
+        }
     }
 }
 
@@ -751,6 +758,7 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
 bool
 ui_end(uint32_t background_rgb) {
     mu_end(&ctx);
+    pointer.over_scrollable = ctx.scroll_target != NULL;
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     report_command_list_high_water(ctx.command_list.idx);
@@ -943,6 +951,7 @@ mark_changed_ui_bands(void) {
 void
 ui_end_for_bands(uint32_t background_rgb) {
     mu_end(&ctx);
+    pointer.over_scrollable = ctx.scroll_target != NULL;
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     report_command_list_high_water(ctx.command_list.idx);

@@ -92,6 +92,16 @@ typedef struct {
 } app_t;
 
 /*
+ * The panel clock. Every app starts at the system value, the user's choice
+ * kept across reboots. An app wanting another rate sets it with
+ * gfx_set_panel_clock_hz(); the shell puts the system value back, and gfx
+ * heal back to its defaults, whenever an app starts or exits, so no app
+ * restores either.
+ */
+void shell_set_system_panel_clock_hz(int hz);
+int shell_system_panel_clock_hz(void);
+
+/*
  * Apps register themselves, so an app is entirely contained in
  * main/apps/<name>/ and deleting that folder removes it - source, logic and
  * tests - without touching another file, CMakeLists.txt included.

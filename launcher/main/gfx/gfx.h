@@ -298,6 +298,44 @@ void gfx_present_wait(void);
 void gfx_set_present_async(bool on);
 bool gfx_present_async_enabled(void);
 
+/* The panel link's clock. The fast rate halves bus time but is past the
+ * panel's rated 50 MHz: a region can land with stray pixels that stay until
+ * it is sent again. gfx starts at GFX_QSPI_HZ and keeps whatever it was
+ * last told; it does not choose or remember a rate itself. */
+#define GFX_PANEL_CLOCK_SLOW_HZ (40 * 1000 * 1000)
+#define GFX_PANEL_CLOCK_FAST_HZ (80 * 1000 * 1000)
+
+/* Takes effect before the next present sends anything, never mid-send.
+ * Returns false, changing nothing, for any other rate. */
+bool gfx_set_panel_clock_hz(int hz);
+int gfx_panel_clock_hz(void);
+
+/*
+ * Heal, an opt-in for an app that sends only what changed: gfx sends a
+ * marked region again on a later present, as full-width strips cut
+ * differently from any earlier send, to clear what the fast clock left
+ * wrong. All of it does nothing while the clock is the slow one.
+ */
+
+#define GFX_HEAL_DEFAULT_BUDGET_PIXELS (GFX_WIDTH * 32)
+
+/* Queues rows [y, y + h) for healing; x and w are ignored, strips are full
+ * width. Safe wherever gfx_mark_dirty() is. */
+void gfx_heal_mark(int x, int y, int w, int h);
+
+/* How many pixels of heal one present may add. */
+void gfx_heal_set_budget(int pixels_per_present);
+
+/* Rows per present of a sweep over the whole screen, 0 for none - for an app
+ * that wants healing without a policy. */
+void gfx_heal_set_rolling(int rows_per_present);
+
+/* Empties the queue and puts the budget and rolling sweep back to their
+ * defaults. */
+void gfx_heal_restore_defaults(void);
+
+bool gfx_heal_active(void);
+
 /*
  * Mode: a full PSRAM framebuffer, or an internal-SRAM band ring for a
  * full-redraw renderer (docs/Autana-Rendering-Roadmap.md section 3.3).
@@ -446,6 +484,9 @@ void gfx_get_strip_send_counts(int* full_bands, int* gathered, int* partial_band
  * have no strip/gather distinction of their own (GFX_PIXFMT_INDEXED8)
  * against ones that do. */
 int64_t gfx_get_bytes_sent(void);
+
+/* The part of gfx_get_bytes_sent() that heal strips added. */
+int64_t gfx_get_heal_bytes_sent(void);
 
 /* Test-only: every strip of the framebuffer sent as a full band, bypassing
  * every dirty-tracking decision gfx_present() makes - the bus-time side of
