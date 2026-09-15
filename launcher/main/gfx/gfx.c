@@ -3,6 +3,7 @@
 #include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font_roles.h"
 #include "gfx/gfx_full_redraw.h"
+#include "gfx/gfx_heal.h"
 #include "gfx/gfx_present_guard.h"
 #include "gfx/gfx_target.h"
 #include "util/intmath.h"
@@ -34,6 +35,8 @@
  * gfx.h's BSP values. */
 _Static_assert(GFX_WIDTH == GFX_DIRTY_WIDTH && GFX_HEIGHT == GFX_DIRTY_HEIGHT,
                "gfx_dirty.h's screen dimensions must match gfx.h's");
+_Static_assert(GFX_HEIGHT == GFX_HEAL_SCREEN_ROWS, "gfx_heal.h's screen height must match gfx.h's");
+_Static_assert(GFX_HEAL_STRIP_ROWS <= STRIP_HEIGHT, "a heal strip must fit one strip bounce slot");
 
 #ifdef ESP_PLATFORM
 static const char* TAG = "gfx";
@@ -124,6 +127,11 @@ static bool present_async_on = true;
  * The send side reopens the link at this rate before a present's first send,
  * when nothing is in flight. */
 static volatile int panel_clock_requested_hz = GFX_QSPI_HZ;
+
+/* Filled on the caller's side of a present, drained on the send side. */
+static gfx_heal_t heal;
+static int heal_budget_pixels = GFX_HEAL_DEFAULT_BUDGET_PIXELS;
+static int heal_rolling_rows;
 
 static bool
 panel_clock_valid(int hz) {
@@ -1593,6 +1601,7 @@ static int dev_strips_sent_partial;
  * distinction at all. Exists for a device test comparing send cost across
  * pixel formats. Not reset by gfx_present(). */
 static int64_t dev_bytes_sent;
+static int64_t dev_heal_bytes_sent;
 
 void
 gfx_reset_strip_send_counts(void) {
@@ -1600,6 +1609,7 @@ gfx_reset_strip_send_counts(void) {
     dev_strips_sent_gathered = 0;
     dev_strips_sent_partial = 0;
     dev_bytes_sent = 0;
+    dev_heal_bytes_sent = 0;
 }
 
 void
@@ -1613,6 +1623,11 @@ gfx_get_strip_send_counts(int* full_bands, int* gathered, int* partial_bands) {
     if (partial_bands) {
         *partial_bands = dev_strips_sent_partial;
     }
+}
+
+int64_t
+gfx_get_heal_bytes_sent(void) {
+    return dev_heal_bytes_sent;
 }
 
 int64_t
@@ -2001,6 +2016,26 @@ send_one_row(int row, int* queued) {
     }
 }
 
+/* Queues this present's heal strips through `send_rows`, after its dirty
+ * sends so a strip carries whatever they just put on the panel. */
+static void
+send_heal_strips(void (*send_rows)(int y0, int y1), int* queued) {
+    if (panel_clock_applied_hz != GFX_PANEL_CLOCK_FAST_HZ) {
+        gfx_heal_reset(&heal);
+        return;
+    }
+    gfx_heal_queue_rolling(&heal, heal_rolling_rows);
+    gfx_heal_strip_t strips[GFX_HEAL_MAX_STRIPS];
+    const int n = gfx_heal_plan(&heal, heal_budget_pixels, GFX_WIDTH, strips, GFX_HEAL_MAX_STRIPS);
+    for (int i = 0; i < n; i++) {
+        send_rows(strips[i].y0, strips[i].y1);
+        (*queued)++;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        dev_heal_bytes_sent += (int64_t)(strips[i].y1 - strips[i].y0) * GFX_WIDTH * sizeof(gfx_color_t);
+#endif
+    }
+}
+
 /* GFX_PIXFMT_INDEXED8's own send loop - whole dirty STRIP_HEIGHT strips,
  * full width, rather than send_one_row()'s per-run gathering: the index
  * image is small enough that expanding a strip nothing changed in costs
@@ -2019,6 +2054,7 @@ run_present_indexed(void) {
         dirty_row_sent(row);
     }
     dirty_frame_sent();
+    send_heal_strips(send_indexed_rows, &queued);
     for (int i = 0; i < queued; i++) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
@@ -2072,6 +2108,8 @@ run_present_normal(void) {
         prev_bbox_valid = false;
     }
     drawn_bbox_valid = false;
+
+    send_heal_strips(send_fb_rows, &queued);
 
     /* Wait for queued full-width sends to drain. */
     for (int i = 0; i < queued; i++) {
@@ -2172,6 +2210,33 @@ void
 gfx_present(void) {
     gfx_present_begin();
     gfx_present_wait();
+}
+
+void
+gfx_heal_mark(int x, int y, int w, int h) {
+    GFX_PRESENT_GUARD();
+    (void)x;
+    (void)w;
+    if (gfx_heal_active()) {
+        gfx_heal_queue_rows(&heal, y, y + h);
+    }
+}
+
+void
+gfx_heal_set_budget(int pixels_per_present) {
+    GFX_PRESENT_GUARD();
+    heal_budget_pixels = pixels_per_present < 0 ? 0 : pixels_per_present;
+}
+
+void
+gfx_heal_set_rolling(int rows_per_present) {
+    GFX_PRESENT_GUARD();
+    heal_rolling_rows = rows_per_present < 0 ? 0 : rows_per_present;
+}
+
+bool
+gfx_heal_active(void) {
+    return panel_clock_requested_hz == GFX_PANEL_CLOCK_FAST_HZ;
 }
 
 bool
