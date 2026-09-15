@@ -25,6 +25,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "captured_slope_data.h"
 #include "sand.h"
 #include "sand_priv.h"
 #include "suite_sand_common.h"
@@ -2831,6 +2832,161 @@ landscape_material_count(const sand_t* s, material_id_t want) {
     return n;
 }
 
+/* Cycling radius over successive discs, the same cadence
+ * gunpowder_basin_wall_run() uses for its brush-drawn wall - deterministic,
+ * not rolled, so two builds of the same scene are byte-identical. */
+static int
+water_slope_brush_radius(int index) {
+    static const int radii[3] = {2, 3, 4};
+    return radii[index % 3];
+}
+
+/* Fills the downhill side of the diagonal running from (x=0, y=0) - the
+ * ceiling meeting one edge, where the pile reaches all the way up - to
+ * (x=REAL_W-1, y=REAL_H-1), where only the floor itself is covered. A grid
+ * of overlapping discs, not a sand_set() line, so the surface the water
+ * meets is the same rough shape a brush-drawn one is. */
+static void
+water_slope_fill(sand_t* s, material_id_t material) {
+    int i = 0;
+    for (int y = 0; y < REAL_H; y += WATER_SLOPE_DISC_STEP) {
+        const int x_edge = (y * (REAL_W - 1)) / (REAL_H - 1);
+        for (int x = x_edge; x < REAL_W; x += WATER_SLOPE_DISC_STEP, i++) {
+            sand_spawn(s, x, y, water_slope_brush_radius(i), material);
+        }
+    }
+}
+
+/* Every water-slope/submerged-pile/captured scene below turns soaking on
+ * the way app_sand.c's real entry does (sand_set_soak(SAND_SOAK_PER_
+ * MATERIAL)) - measured with it off before, which is a configuration the
+ * app never runs. Set here, not by each caller, so a new one cannot forget
+ * it the way every existing caller already had. */
+void
+build_water_slope_scene(sand_t* s) {
+    sand_set_soak(s, SAND_SOAK_PER_MATERIAL);
+    memset(s->cells, CELL_EMPTY, (size_t)s->w * (size_t)s->h);
+    water_slope_fill(s, MAT_SAND);
+}
+
+void
+build_water_slope_stone_scene(sand_t* s) {
+    sand_set_soak(s, SAND_SOAK_PER_MATERIAL);
+    memset(s->cells, CELL_EMPTY, (size_t)s->w * (size_t)s->h);
+    water_slope_fill(s, MAT_STONE);
+}
+
+void
+build_water_slope_flat_scene(sand_t* s) {
+    sand_set_soak(s, SAND_SOAK_PER_MATERIAL);
+    build_landscape_bed(s, LANDSCAPE_BED_STEPS);
+}
+
+/* Poured at the slope's own high corner rather than swept along the whole
+ * ceiling the way landscape_stamp() is - the report's water enters at the
+ * top of the slope and runs down it, not across the board's width. Walking
+ * outward from the ceiling until something is placed matches
+ * landscape_stamp(): a pour drops into whatever open space is there, and
+ * gravity carries it onto the pile from there. */
+static void
+water_slope_stamp(sand_t* s, cell_t cell) {
+    for (int x = 1; x < REAL_W; x += WATER_SLOPE_POUR_RADIUS) {
+        if (sand_spawn_cell(s, x, WATER_SLOPE_POUR_Y, WATER_SLOPE_POUR_RADIUS, cell) > 0) {
+            return;
+        }
+    }
+}
+
+void
+water_slope_water_pour(sand_t* s, int step) {
+    (void)step;
+    for (int k = 0; k < WATER_SLOPE_POUR_STAMPS; k++) {
+        water_slope_stamp(s, CELL_MAKE(MAT_WATER, MASS_MAX));
+    }
+}
+
+static void
+water_slope_cover(sand_t* s, int steps) {
+    for (int i = 0; i < steps; i++) {
+        water_slope_water_pour(s, i);
+        sand_step(s, LANDSCAPE_GX, 0, 0);
+    }
+}
+
+void
+build_water_slope_covered_scene(sand_t* s) {
+    build_water_slope_scene(s);
+    water_slope_cover(s, WATER_SLOPE_COVER_STEPS);
+}
+
+void
+build_water_slope_flat_covered_scene(sand_t* s) {
+    build_water_slope_flat_scene(s);
+    water_slope_cover(s, WATER_SLOPE_COVER_STEPS);
+}
+
+void
+build_water_slope_stone_covered_scene(sand_t* s) {
+    build_water_slope_stone_scene(s);
+    water_slope_cover(s, WATER_SLOPE_COVER_STEPS);
+}
+
+void
+water_slope_gravity_sweep(sand_t* s, int gx0, int gy0, int gx1, int gy1, int steps) {
+    for (int i = 1; i <= steps; i++) {
+        const int gx = gx0 + ((gx1 - gx0) * i) / steps;
+        const int gy = gy0 + ((gy1 - gy0) * i) / steps;
+        sand_step(s, gx, gy, 0);
+    }
+}
+
+void
+water_slope_gravity_hold(sand_t* s, int gx, int gy, int steps) {
+    for (int i = 0; i < steps; i++) {
+        sand_step(s, gx, gy, 0);
+    }
+}
+
+/* One sand_set() per non-empty cell, not a memcpy of captured_slope_cells:
+ * a raw write bypasses sand_set()'s own latch_content_flags()/mark_move(),
+ * leaving may_have_liquid false and every block's HAS_LIQUID/LIQUID_NEAR
+ * bit clear - the water sits in the grid but sand_step_liquids() and the
+ * reactions soak path both see nothing there and never run. */
+void
+build_captured_water_slope_scene(sand_t* s) {
+    _Static_assert(CAPTURED_SLOPE_W == REAL_W && CAPTURED_SLOPE_H == REAL_H,
+                   "the captured scene must already be sampled at the perf suite's own grid size");
+    sand_set_soak(s, SAND_SOAK_PER_MATERIAL);
+    memset(s->cells, CELL_EMPTY, (size_t)s->w * (size_t)s->h);
+    for (int y = 0; y < REAL_H; y++) {
+        for (int x = 0; x < REAL_W; x++) {
+            const cell_t c = captured_slope_cells[y * CAPTURED_SLOPE_W + x];
+            if (!CELL_IS_EMPTY(c)) {
+                sand_set(s, x, y, c);
+            }
+        }
+    }
+}
+
+/* THE PLAIN CASE the report also reproduces with no tilt and no diagonal at
+ * all: a flat landscape sand bed, water swept across the whole ceiling
+ * until the bed is fully covered with headroom left above it, then settled
+ * with no further disturbance. The diagonal slope and its flip are the
+ * secondary, worse-case row - this is the primary one, since it isolates
+ * the drop from both of those. */
+void
+build_submerged_pile_scene(sand_t* s) {
+    sand_set_soak(s, SAND_SOAK_PER_MATERIAL);
+    build_landscape_bed_scene(s);
+    for (int i = 0; i < SUBMERGED_PILE_POUR_STEPS; i++) {
+        landscape_water_pour(s, i);
+        sand_step(s, LANDSCAPE_GX, 0, 0);
+    }
+    for (int i = 0; i < SUBMERGED_PILE_SETTLE_STEPS; i++) {
+        sand_step(s, LANDSCAPE_GX, 0, 0);
+    }
+}
+
 static void
 landscape_fixture(sand_t* s, uint8_t* big, uint8_t* blocks, uint32_t seed) {
     sand_init(s, big, REAL_W, REAL_H, seed);
@@ -3012,6 +3168,284 @@ test_the_soak_only_skip_matches_the_full_walk_pouring_water_onto_a_sand_bed(void
     TEST_ASSERT_EQUAL_INT_MESSAGE(-1, mismatch_at, why);
 }
 
+static long
+water_slope_total_water_mass(const sand_t* s) {
+    long total = 0;
+    for (int y = 0; y < REAL_H; y++) {
+        for (int x = 0; x < REAL_W; x++) {
+            const cell_t c = sand_at(s, x, y);
+            if (!CELL_IS_EMPTY(c) && CELL_MATERIAL(c) == MAT_WATER) {
+                total += CELL_VARIANT(c);
+            }
+        }
+    }
+    return total;
+}
+
+/* The dry control: a real fraction of the board, reaching the ceiling at its
+ * tall corner and leaving the far corner's ceiling column open. */
+static void
+test_the_water_slope_is_the_reported_shape(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    TEST_ASSERT_NOT_NULL(big);
+
+    sand_t s2;
+    sand_init(&s2, big, REAL_W, REAL_H, 41u);
+    build_water_slope_scene(&s2);
+
+    const int sand_cells = landscape_material_count(&s2, MAT_SAND);
+    const bool tall_corner_full = !CELL_IS_EMPTY(sand_at(&s2, 2, 2));
+    const bool far_corner_open = CELL_IS_EMPTY(sand_at(&s2, 2, REAL_H - 2));
+
+    free(big);
+
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(REAL_W * REAL_H / 10, sand_cells,
+                                         "the diagonal pile must hold a real fraction of the board");
+    TEST_ASSERT_TRUE_MESSAGE(tall_corner_full, "the pile's tall corner must reach the ceiling");
+    TEST_ASSERT_TRUE_MESSAGE(far_corner_open, "the pile's far corner must still leave the ceiling open");
+}
+
+/* The stone control: the same shape, holding nothing wettable. */
+static void
+test_the_water_slope_stone_control_holds_no_sand(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    TEST_ASSERT_NOT_NULL(big);
+
+    sand_t s2;
+    sand_init(&s2, big, REAL_W, REAL_H, 41u);
+    build_water_slope_stone_scene(&s2);
+
+    const int stone_cells = landscape_material_count(&s2, MAT_STONE);
+    const int sand_cells = landscape_material_count(&s2, MAT_SAND);
+
+    free(big);
+
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(REAL_W * REAL_H / 10, stone_cells,
+                                         "the stone control must cover the same fraction of the board");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_cells, "the stone control must hold no sand at all");
+}
+
+/* What the covered scenes actually build: water poured at the high corner
+ * must run the whole way down the slope rather than pooling at the top. */
+static void
+test_pouring_water_over_the_slope_reaches_the_floor(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks =
+        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t s2;
+    landscape_fixture(&s2, big, blocks, 41u);
+    build_water_slope_covered_scene(&s2);
+
+    /* The slope's own floor-side edge, x_edge(y) = y * (w-1) / (h-1) - see
+     * water_slope_fill(). Water rides on top of that surface rather than
+     * inside it, so "reached the shallow end" means it sits within the
+     * pour's own disc width of the edge there, not past it. */
+    int reached_near_floor = 0;
+    for (int y = REAL_H - 20; y < REAL_H; y++) {
+        const int x_edge = (y * (REAL_W - 1)) / (REAL_H - 1);
+        for (int x = x_edge - 2 * WATER_SLOPE_DISC_STEP - WATER_SLOPE_POUR_RADIUS; x < x_edge; x++) {
+            if (x >= 0 && x < REAL_W && CELL_MATERIAL(sand_at(&s2, x, y)) == MAT_WATER) {
+                reached_near_floor++;
+                break;
+            }
+        }
+    }
+    const long mass = water_slope_total_water_mass(&s2);
+
+    free(big);
+    free(blocks);
+
+    char why[200];
+    snprintf(why, sizeof why,
+             "water poured at the high corner must run down to the shallow end - only %d of the last 20 "
+             "rows there hold any",
+             reached_near_floor);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(10, reached_near_floor, why);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, (int)mass, "the covered slope must still hold water");
+}
+
+/* Soaking is on (matching app_sand.c), so wet sand genuinely spends water
+ * turning into soil - mass may only ever fall through the sequence, never
+ * rise, the one direction actual creation-from-nothing could show up as. */
+static void
+test_the_gravity_flip_conserves_water_mass_over_the_covered_slope(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks =
+        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t s2;
+    landscape_fixture(&s2, big, blocks, 41u);
+    build_water_slope_covered_scene(&s2);
+    const long mass_before = water_slope_total_water_mass(&s2);
+
+    water_slope_gravity_hold(&s2, LANDSCAPE_GX, 0, WATER_SLOPE_FLIP_SETTLE_STEPS);
+    water_slope_gravity_sweep(&s2, LANDSCAPE_GX, 0, WATER_SLOPE_PORTRAIT_GX, WATER_SLOPE_PORTRAIT_GY,
+                              WATER_SLOPE_FLIP_TURN_STEPS);
+    water_slope_gravity_hold(&s2, WATER_SLOPE_PORTRAIT_GX, WATER_SLOPE_PORTRAIT_GY, WATER_SLOPE_FLIP_HOLD_STEPS);
+    water_slope_gravity_sweep(&s2, WATER_SLOPE_PORTRAIT_GX, WATER_SLOPE_PORTRAIT_GY, LANDSCAPE_GX, 0,
+                              WATER_SLOPE_FLIP_TURN_STEPS);
+
+    const long mass_after = water_slope_total_water_mass(&s2);
+
+    free(big);
+    free(blocks);
+
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE((int)mass_after, (int)mass_before,
+                                             "a tilt right into portrait and back must never create water - "
+                                             "soaking may only ever spend it");
+}
+
+/* The screenshot-seeded scene: exact counts from the generated data, so a
+ * regenerated header or a wrong classification threshold shows up here
+ * rather than only being noticed by eye on a device screen. */
+static void
+test_the_captured_slope_scene_matches_the_sampled_screenshot(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    TEST_ASSERT_NOT_NULL(big);
+
+    sand_t s2;
+    sand_init(&s2, big, REAL_W, REAL_H, 41u);
+    build_captured_water_slope_scene(&s2);
+
+    const int sand_cells = landscape_material_count(&s2, MAT_SAND);
+    const int water_cells = landscape_material_count(&s2, MAT_WATER);
+
+    free(big);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(13488, sand_cells, "the sampled screenshot's sand count must not drift silently");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(9204, water_cells, "the sampled screenshot's water count must not drift silently");
+}
+
+/* A raw cell count says the array is right; it does not say the water on
+ * it is LIVE. A builder that writes s->cells directly, bypassing sand_set()'s
+ * bookkeeping, leaves may_have_liquid false and every block's HAS_LIQUID/
+ * LIQUID_NEAR bit clear - the water is there but sand_step_liquids() and the
+ * reactions soak path both see nothing and never run. */
+static void
+test_the_captured_slope_scenes_water_is_live(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks =
+        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t s2;
+    landscape_fixture(&s2, big, blocks, 41u);
+    build_captured_water_slope_scene(&s2);
+
+    const long mass_before = water_slope_total_water_mass(&s2);
+    const bool tracked = s2.may_have_liquid;
+
+    for (int i = 0; i < 30; i++) {
+        sand_step(&s2, LANDSCAPE_GX, 0, 0);
+    }
+    const long mass_after = water_slope_total_water_mass(&s2);
+
+    free(big);
+    free(blocks);
+
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, (int)mass_before, "the captured scene must hold water on the board");
+    TEST_ASSERT_TRUE_MESSAGE(tracked, "the captured scene's water must be tracked (may_have_liquid) as soon as "
+                                      "it is built, or the liquid and reactions passes never see it at all");
+    /* Soaking is on, so a few steps beside sand may already spend some -
+     * never create it. */
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE((int)mass_after, (int)mass_before,
+                                             "stepping the captured scene must never create water");
+}
+
+/* The primary repro: a plain, untilted, fully submerged pile with headroom,
+ * settled with no further disturbance, must actually reach full sleep -
+ * every block asleep, not merely quiet. A count that never reaches 0 here
+ * would mean something keeps a settled, covered block awake forever; one
+ * that does reach 0 says the cost is convergence time, not a stuck block. */
+static void
+test_a_submerged_pile_settles_asleep_with_headroom(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks =
+        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t s2;
+    landscape_fixture(&s2, big, blocks, 41u);
+    build_submerged_pile_scene(&s2);
+
+    /* Checked on the FRESH scene, before the long settle below has any
+     * chance to absorb it away - this is the state a player actually sees
+     * right after covering a pile. */
+    int ceiling = 0;
+    for (int y = 0; y < REAL_H; y++) {
+        if (!CELL_IS_EMPTY(sand_at(&s2, 0, y))) {
+            ceiling++;
+        }
+    }
+    const int water_cells = landscape_material_count(&s2, MAT_WATER);
+
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(REAL_H / 10, ceiling,
+                                      "the pour must leave headroom - too much of the ceiling column is full");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(REAL_W * REAL_H / 10, water_cells,
+                                         "the pile must actually be submerged, not just splashed");
+
+    for (int i = 0; i < SUBMERGED_PILE_FULL_SETTLE_STEPS; i++) {
+        sand_step(&s2, LANDSCAPE_GX, 0, 0);
+    }
+    const int awake = landscape_awake_blocks(&s2);
+
+    free(big);
+    free(blocks);
+
+    char why[200];
+    snprintf(why, sizeof why,
+             "a plain submerged pile with no further disturbance must reach full sleep - %d blocks still "
+             "awake after %d settle steps",
+             awake, SUBMERGED_PILE_FULL_SETTLE_STEPS);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, awake, why);
+}
+
+/* A board with water soaking into sand and no plant material anywhere must
+ * stay on the cheap soak-only path - the reactions pass has no drinker or
+ * grower to protect, so a moisture event happening SOMEWHERE is not a
+ * reason to walk the whole board EVERY WHERE. Dispatch should track
+ * BLOCK_LIQUID_NEAR coverage, not REAL_W * REAL_H. */
+static void
+test_a_soaking_no_plant_board_stays_on_the_soak_only_path(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks =
+        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t s2;
+    landscape_fixture(&s2, big, blocks, 29u);
+    build_submerged_pile_scene(&s2);
+
+    const unsigned d0 = sand_reactions_cells_dispatched;
+    bool any_soak_only = false;
+    const int steps = 200;
+    for (int i = 0; i < steps; i++) {
+        sand_step(&s2, LANDSCAPE_GX, 0, 0);
+        any_soak_only = any_soak_only || sand_reactions_last_was_soak_only;
+    }
+    const unsigned dispatched = sand_reactions_cells_dispatched - d0;
+
+    free(big);
+    free(blocks);
+
+    char why[220];
+    snprintf(why, sizeof why,
+             "%u cells dispatched over %d steps, board is %d - a board with water soaking into sand and "
+             "no plants must not pay for a full walk every step",
+             dispatched, steps, REAL_W * REAL_H * steps);
+    TEST_ASSERT_LESS_THAN_UINT_MESSAGE((unsigned)(REAL_W * REAL_H * steps) / 2, dispatched, why);
+    TEST_ASSERT_TRUE_MESSAGE(any_soak_only, "the soak-only path must actually be taken at least once in this "
+                                            "window, or the dispatch bound above proves nothing");
+}
+
 void
 run_sand_scenes_suite(void) {
     RUN_TEST(test_the_mixed_scene_puts_every_material_pair_in_contact);
@@ -3032,6 +3466,14 @@ run_sand_scenes_suite(void) {
     RUN_TEST(test_the_landscape_beds_sleep_against_the_landscape_floor);
     RUN_TEST(test_the_landscape_water_pour_keeps_taking_the_board_awake);
     RUN_TEST(test_the_soak_only_skip_matches_the_full_walk_pouring_water_onto_a_sand_bed);
+    RUN_TEST(test_the_water_slope_is_the_reported_shape);
+    RUN_TEST(test_the_water_slope_stone_control_holds_no_sand);
+    RUN_TEST(test_pouring_water_over_the_slope_reaches_the_floor);
+    RUN_TEST(test_the_gravity_flip_conserves_water_mass_over_the_covered_slope);
+    RUN_TEST(test_the_captured_slope_scene_matches_the_sampled_screenshot);
+    RUN_TEST(test_the_captured_slope_scenes_water_is_live);
+    RUN_TEST(test_a_submerged_pile_settles_asleep_with_headroom);
+    RUN_TEST(test_a_soaking_no_plant_board_stays_on_the_soak_only_path);
 }
 
 SUITE_REGISTER(run_sand_scenes_suite);

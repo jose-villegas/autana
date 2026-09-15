@@ -281,3 +281,86 @@ void landscape_sand_pour(sand_t* s, int step);
 #define LANDSCAPE_PRIME_STEPS    150
 #define LANDSCAPE_MEASURED_STEPS 90
 #define LANDSCAPE_POUR_STAMPS    2
+
+/* The water-slope set: the reported worst case - a fully inclined pile, one
+ * diagonal running corner to corner in landscape, water poured at its high
+ * corner until it covers the slope and runs the whole way down. Built from
+ * overlapping sand_spawn() discs along the diagonal, the same brush-drawn
+ * shape GUNPOWDER_BASIN's wall uses, not a clean sand_set() line. */
+#define WATER_SLOPE_DISC_STEP    3
+#define WATER_SLOPE_POUR_RADIUS  LANDSCAPE_POUR_RADIUS
+#define WATER_SLOPE_POUR_Y       6
+#define WATER_SLOPE_POUR_STAMPS  2
+
+void build_water_slope_scene(sand_t* s);
+void build_water_slope_stone_scene(sand_t* s);
+void build_water_slope_flat_scene(sand_t* s);
+void water_slope_water_pour(sand_t* s, int step);
+
+/* Measured: 500 steps of pouring at the high corner puts water the whole way
+ * down the slope with the downhill face wet end to end - see the coverage
+ * test in suite_sand_scenes.c. */
+#define WATER_SLOPE_COVER_STEPS 500
+
+void build_water_slope_covered_scene(sand_t* s);
+void build_water_slope_flat_covered_scene(sand_t* s);
+void build_water_slope_stone_covered_scene(sand_t* s);
+
+/* The reported gravity flip. Landscape rest is (LANDSCAPE_GX, 0); this
+ * suite's own portrait rest - see
+ * test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget,
+ * suite_sand_perf.c, which already turns one into the other - is
+ * (0, LANDSCAPE_GX). A tilt right is one quarter turn from the first to the
+ * second, held, then the same turn back. */
+#define WATER_SLOPE_PORTRAIT_GX       0
+#define WATER_SLOPE_PORTRAIT_GY       LANDSCAPE_GX
+#define WATER_SLOPE_FLIP_SETTLE_STEPS 60
+#define WATER_SLOPE_FLIP_TURN_STEPS   90
+#define WATER_SLOPE_FLIP_HOLD_STEPS   60
+
+/* Runs `steps` calls to sand_step(), gx/gy swept linearly from (gx0, gy0) to
+ * (gx1, gy1) - one call per step, so a caller can time or count each of them
+ * individually as the turn happens rather than only the settled ends. */
+void water_slope_gravity_sweep(sand_t* s, int gx0, int gy0, int gx1, int gy1, int steps);
+
+/* `steps` calls at a fixed (gx, gy) - the settle and hold phases either side
+ * of a sweep. */
+void water_slope_gravity_hold(sand_t* s, int gx, int gy, int steps);
+
+/* The two tilt vectors a device screenshot pair captured mid-pour
+ * (app.tilt_x/tilt_y, one capture 5.8s after the other) - a partly diagonal
+ * gravity change, not an axis-aligned flip, swept over about the same span
+ * of steps the capture covered. */
+#define WATER_SLOPE_CAPTURED_TILT1_GX    1534
+#define WATER_SLOPE_CAPTURED_TILT1_GY    2067
+#define WATER_SLOPE_CAPTURED_TILT2_GX    (-2746)
+#define WATER_SLOPE_CAPTURED_TILT2_GY    374
+#define WATER_SLOPE_CAPTURED_SWEEP_STEPS 30
+
+/* The sand pile and diagonal water surface a device screenshot actually
+ * showed, sampled into a grid - see captured_slope_data.h. Seeds the
+ * scenario from a real board instead of a hand-built approximation of one. */
+void build_captured_water_slope_scene(sand_t* s);
+
+/* The plain case the report also reproduces with no tilt and no diagonal at
+ * all - a flat landscape bed, water swept across the whole ceiling until
+ * the bed is fully covered with headroom, then settled undisturbed. The
+ * primary repro; the diagonal slope and its flip are the secondary,
+ * worse-case row. */
+#define SUBMERGED_PILE_POUR_STEPS        300
+
+/* Just past the pour's own splash, not full quiescence - the scene must
+ * still read as a freshly covered pile, the state a player actually sees.
+ * Short on purpose: soaking (on, matching the app) starts spending this
+ * water back into the ground from the moment it lands. */
+#define SUBMERGED_PILE_SETTLE_STEPS      40
+
+/* Measured with soaking on (SAND_SOAK_PER_MATERIAL, matching app_sand.c's
+ * own real-app config): a freshly covered pile this size takes on the
+ * order of 4,000-4,400 further steps to fully absorb its water and reach
+ * true sleep - two orders of magnitude past the 60-90 step windows the
+ * gravity-flip rows use, which is why those rows never see it happen at
+ * all. Comfortable margin over that. */
+#define SUBMERGED_PILE_FULL_SETTLE_STEPS 6000
+
+void build_submerged_pile_scene(sand_t* s);
