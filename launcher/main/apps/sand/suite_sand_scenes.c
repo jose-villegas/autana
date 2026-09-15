@@ -2939,11 +2939,42 @@ water_slope_gravity_hold(sand_t* s, int gx, int gy, int steps) {
     }
 }
 
+/* One sand_set() per non-empty cell, not a memcpy of captured_slope_cells:
+ * a raw write bypasses sand_set()'s own latch_content_flags()/mark_move(),
+ * leaving may_have_liquid false and every block's HAS_LIQUID/LIQUID_NEAR
+ * bit clear - the water sits in the grid but sand_step_liquids() and the
+ * reactions soak path both see nothing there and never run. */
 void
 build_captured_water_slope_scene(sand_t* s) {
     _Static_assert(CAPTURED_SLOPE_W == REAL_W && CAPTURED_SLOPE_H == REAL_H,
                    "the captured scene must already be sampled at the perf suite's own grid size");
-    memcpy(s->cells, captured_slope_cells, (size_t)REAL_W * (size_t)REAL_H);
+    memset(s->cells, CELL_EMPTY, (size_t)s->w * (size_t)s->h);
+    for (int y = 0; y < REAL_H; y++) {
+        for (int x = 0; x < REAL_W; x++) {
+            const cell_t c = captured_slope_cells[y * CAPTURED_SLOPE_W + x];
+            if (!CELL_IS_EMPTY(c)) {
+                sand_set(s, x, y, c);
+            }
+        }
+    }
+}
+
+/* THE PLAIN CASE the report also reproduces with no tilt and no diagonal at
+ * all: a flat landscape sand bed, water swept across the whole ceiling
+ * until the bed is fully covered with headroom left above it, then settled
+ * with no further disturbance. The diagonal slope and its flip are the
+ * secondary, worse-case row - this is the primary one, since it isolates
+ * the drop from both of those. */
+void
+build_submerged_pile_scene(sand_t* s) {
+    build_landscape_bed_scene(s);
+    for (int i = 0; i < SUBMERGED_PILE_POUR_STEPS; i++) {
+        landscape_water_pour(s, i);
+        sand_step(s, LANDSCAPE_GX, 0, 0);
+    }
+    for (int i = 0; i < SUBMERGED_PILE_SETTLE_STEPS; i++) {
+        sand_step(s, LANDSCAPE_GX, 0, 0);
+    }
 }
 
 static void
@@ -3280,6 +3311,83 @@ test_the_captured_slope_scene_matches_the_sampled_screenshot(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(9204, water_cells, "the sampled screenshot's water count must not drift silently");
 }
 
+/* A raw cell count says the array is right; it does not say the water on
+ * it is LIVE. A builder that writes s->cells directly, bypassing sand_set()'s
+ * bookkeeping, leaves may_have_liquid false and every block's HAS_LIQUID/
+ * LIQUID_NEAR bit clear - the water is there but sand_step_liquids() and the
+ * reactions soak path both see nothing and never run. */
+static void
+test_the_captured_slope_scenes_water_is_live(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks =
+        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t s2;
+    landscape_fixture(&s2, big, blocks, 41u);
+    build_captured_water_slope_scene(&s2);
+
+    const long mass_before = water_slope_total_water_mass(&s2);
+    const bool tracked = s2.may_have_liquid;
+
+    for (int i = 0; i < 30; i++) {
+        sand_step(&s2, LANDSCAPE_GX, 0, 0);
+    }
+    const long mass_after = water_slope_total_water_mass(&s2);
+
+    free(big);
+    free(blocks);
+
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, (int)mass_before, "the captured scene must hold water on the board");
+    TEST_ASSERT_TRUE_MESSAGE(tracked, "the captured scene's water must be tracked (may_have_liquid) as soon as "
+                                      "it is built, or the liquid and reactions passes never see it at all");
+    TEST_ASSERT_EQUAL_INT_MESSAGE((int)mass_before, (int)mass_after,
+                                  "stepping the captured scene must move water, not create or destroy it");
+}
+
+/* The primary repro: a plain, untilted, fully submerged pile with headroom,
+ * settled with no further disturbance, must actually reach full sleep -
+ * every block asleep, not merely quiet. A count that never reaches 0 here
+ * would mean something keeps a settled, covered block awake forever; one
+ * that does reach 0 says the cost is convergence time, not a stuck block. */
+static void
+test_a_submerged_pile_settles_asleep_with_headroom(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks =
+        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t s2;
+    landscape_fixture(&s2, big, blocks, 41u);
+    build_submerged_pile_scene(&s2);
+
+    int ceiling = 0;
+    for (int y = 0; y < REAL_H; y++) {
+        if (!CELL_IS_EMPTY(sand_at(&s2, 0, y))) {
+            ceiling++;
+        }
+    }
+    const int water_cells = landscape_material_count(&s2, MAT_WATER);
+    const int awake = landscape_awake_blocks(&s2);
+
+    free(big);
+    free(blocks);
+
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(REAL_H / 10, ceiling,
+                                      "the pour must leave headroom - too much of the ceiling column is full");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(REAL_W * REAL_H / 10, water_cells,
+                                         "the pile must actually be submerged, not just splashed");
+
+    char why[200];
+    snprintf(why, sizeof why,
+             "a plain submerged pile with no further disturbance must reach full sleep - %d blocks still "
+             "awake after %d settle steps",
+             awake, SUBMERGED_PILE_SETTLE_STEPS);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, awake, why);
+}
+
 void
 run_sand_scenes_suite(void) {
     RUN_TEST(test_the_mixed_scene_puts_every_material_pair_in_contact);
@@ -3305,6 +3413,8 @@ run_sand_scenes_suite(void) {
     RUN_TEST(test_pouring_water_over_the_slope_reaches_the_floor);
     RUN_TEST(test_the_gravity_flip_conserves_water_mass_over_the_covered_slope);
     RUN_TEST(test_the_captured_slope_scene_matches_the_sampled_screenshot);
+    RUN_TEST(test_the_captured_slope_scenes_water_is_live);
+    RUN_TEST(test_a_submerged_pile_settles_asleep_with_headroom);
 }
 
 SUITE_REGISTER(run_sand_scenes_suite);
