@@ -31,3 +31,6 @@ jobs:
 
       - name: No comment below apps/ names an app
         run: python3 scripts/check_comment_layers.py
+
+      - name: Every documentation citation resolves
+        run: python3 scripts/check_doc_citations.py
