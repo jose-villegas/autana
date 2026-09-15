@@ -26,6 +26,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 #endif
 
 /* Carries GFX_DIRTY_WIDTH/HEIGHT for ESP-IDF independence and aligns with
@@ -117,6 +119,16 @@ static bool present_async_on = false;
 #else
 static bool present_async_on = true;
 #endif
+
+/* The panel clock choice, written by gfx_set_panel_clock_hz() from any task.
+ * The send side reopens the link at this rate before a present's first send,
+ * when nothing is in flight. */
+static volatile int panel_clock_requested_hz = GFX_QSPI_HZ;
+
+static bool
+panel_clock_valid(int hz) {
+    return hz == GFX_PANEL_CLOCK_SLOW_HZ || hz == GFX_PANEL_CLOCK_FAST_HZ;
+}
 
 #ifdef ESP_PLATFORM
 static esp_lcd_panel_handle_t panel;
@@ -263,23 +275,17 @@ qspi_bus_up(void) {
         }
     }
 #endif
-    ESP_LOGI(TAG, "panel QSPI at %d MHz", (int)(GFX_QSPI_HZ / 1000000));
     return ESP_OK;
 }
 
-/* SH8601 panel - the original (pre-V2) revision. */
+/* The panel io and driver objects at `hz`. Creating them sends nothing to
+ * the panel, which is what lets a clock change reopen them without
+ * re-running bring-up. */
 static esp_err_t
-panel_bring_up_sh8601(void) {
-    esp_err_t err = qspi_bus_up();
-    if (err != ESP_OK) {
-        return err;
-    }
-
+panel_open_sh8601(int hz) {
     esp_lcd_panel_io_spi_config_t io_config = SH8601_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, on_strip_sent, NULL);
-
-    /* See GFX_QSPI_HZ. */
-    io_config.pclk_hz = GFX_QSPI_HZ;
-    err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, &panel_io);
+    io_config.pclk_hz = hz;
+    esp_err_t err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, &panel_io);
     if (err != ESP_OK) {
         return err;
     }
@@ -295,28 +301,14 @@ panel_bring_up_sh8601(void) {
         .bits_per_pixel = 16,
         .vendor_config = &vendor,
     };
-    err = esp_lcd_new_panel_sh8601(panel_io, &panel_config, &panel);
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), TAG, "reset");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "init");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "on");
-    return ESP_OK;
+    return esp_lcd_new_panel_sh8601(panel_io, &panel_config, &panel);
 }
 
-/* CO5300 panel - the V2 revision only. */
 static esp_err_t
-panel_bring_up_co5300(void) {
-    esp_err_t err = qspi_bus_up();
-    if (err != ESP_OK) {
-        return err;
-    }
-
+panel_open_co5300(int hz) {
     esp_lcd_panel_io_spi_config_t io_config = CO5300_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, on_strip_sent, NULL);
-    io_config.pclk_hz = GFX_QSPI_HZ;
-    err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, &panel_io);
+    io_config.pclk_hz = hz;
+    esp_err_t err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, &panel_io);
     if (err != ESP_OK) {
         return err;
     }
@@ -336,22 +328,126 @@ panel_bring_up_co5300(void) {
     if (err != ESP_OK) {
         return err;
     }
+    return esp_lcd_panel_set_gap(panel, BOARD_PANEL_X_GAP, 0);
+}
+
+static esp_err_t
+panel_open(int hz) {
+    ESP_LOGI(TAG, "panel QSPI at %d MHz", hz / 1000000);
+    if (board_variant() == BOARD_VARIANT_CO5300_CST) {
+        return panel_open_co5300(hz);
+    }
+    return panel_open_sh8601(hz);
+}
+
+/* SH8601 panel - the original (pre-V2) revision. */
+static esp_err_t
+panel_bring_up_sh8601(int hz) {
+    esp_err_t err = qspi_bus_up();
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = panel_open(hz);
+    if (err != ESP_OK) {
+        return err;
+    }
 
     ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), TAG, "reset");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "init");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_set_gap(panel, BOARD_PANEL_X_GAP, 0), TAG, "gap");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "on");
     return ESP_OK;
+}
+
+/* CO5300 panel - the V2 revision only. */
+static esp_err_t
+panel_bring_up_co5300(int hz) {
+    esp_err_t err = qspi_bus_up();
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = panel_open(hz);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), TAG, "reset");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "init");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "on");
+    return ESP_OK;
+}
+
+#define PANEL_CLOCK_NVS_NAMESPACE "gfx"
+#define PANEL_CLOCK_NVS_KEY       "panel_hz"
+
+static int panel_clock_applied_hz;
+
+static bool
+panel_clock_nvs_ready(void) {
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        err = nvs_flash_erase();
+        if (err == ESP_OK) {
+            err = nvs_flash_init();
+        }
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "NVS unavailable, the panel clock choice is not kept: %s", esp_err_to_name(err));
+    }
+    return err == ESP_OK;
+}
+
+static void
+panel_clock_load(void) {
+    nvs_handle_t h;
+    if (!panel_clock_nvs_ready() || nvs_open(PANEL_CLOCK_NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) {
+        return;
+    }
+    int32_t hz;
+    if (nvs_get_i32(h, PANEL_CLOCK_NVS_KEY, &hz) == ESP_OK && panel_clock_valid(hz)) {
+        panel_clock_requested_hz = hz;
+    }
+    nvs_close(h);
+}
+
+static void
+panel_clock_save(int hz) {
+    nvs_handle_t h;
+    if (!panel_clock_nvs_ready() || nvs_open(PANEL_CLOCK_NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) {
+        return;
+    }
+    if (nvs_set_i32(h, PANEL_CLOCK_NVS_KEY, hz) != ESP_OK || nvs_commit(h) != ESP_OK) {
+        ESP_LOGW(TAG, "could not save the panel clock choice");
+    }
+    nvs_close(h);
+}
+
+/* VERY important: only with nothing queued on the link - deleting the io
+ * waits out its transactions, but the strip_sent a caller is owed is lost. */
+static void
+panel_clock_apply(void) {
+    const int hz = panel_clock_requested_hz;
+    if (hz == panel_clock_applied_hz) {
+        return;
+    }
+    esp_lcd_panel_del(panel);
+    esp_lcd_panel_io_del(panel_io);
+    panel = NULL;
+    panel_io = NULL;
+    if (panel_open(hz) != ESP_OK) {
+        ESP_LOGE(TAG, "could not reopen the panel link at %d MHz", hz / 1000000);
+        abort();
+    }
+    panel_clock_applied_hz = hz;
 }
 
 /* Picks the driver the detected board revision actually needs - see
  * board_variant_t. */
 static esp_err_t
-panel_bring_up(void) {
+panel_bring_up(int hz) {
     if (board_variant() == BOARD_VARIANT_CO5300_CST) {
-        return panel_bring_up_co5300();
+        return panel_bring_up_co5300(hz);
     }
-    return panel_bring_up_sh8601();
+    return panel_bring_up_sh8601(hz);
 }
 #endif /* ESP_PLATFORM - panel plumbing */
 
@@ -390,7 +486,9 @@ present_task_fn(void* arg) {
         return;
     }
 
-    if (panel_bring_up() != ESP_OK) {
+    panel_clock_load();
+    panel_clock_applied_hz = panel_clock_requested_hz;
+    if (panel_bring_up(panel_clock_applied_hz) != ESP_OK) {
         ESP_LOGE(TAG, "Could not start the display");
         present_bringup_ok = false;
         xSemaphoreGive(present_bringup_sem);
@@ -1932,6 +2030,7 @@ run_present_indexed(void) {
  * strip-sent interrupt is core-agnostic about who it wakes. */
 static void
 run_present_normal(void) {
+    panel_clock_apply();
     if (current_mode.pixfmt == GFX_PIXFMT_INDEXED8) {
         run_present_indexed();
         return;
@@ -1985,6 +2084,7 @@ run_present_normal(void) {
  * bounce copy and queue a full-band send takes, one strip_sent per strip. */
 static void
 run_present_raw_full(void) {
+    panel_clock_apply();
     for (int row = 0; row < STRIP_COUNT; row++) {
         send_fb_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT);
     }
@@ -2072,6 +2172,25 @@ void
 gfx_present(void) {
     gfx_present_begin();
     gfx_present_wait();
+}
+
+bool
+gfx_set_panel_clock_hz(int hz) {
+    if (!panel_clock_valid(hz)) {
+        return false;
+    }
+    if (hz != panel_clock_requested_hz) {
+        panel_clock_requested_hz = hz;
+#ifdef ESP_PLATFORM
+        panel_clock_save(hz);
+#endif
+    }
+    return true;
+}
+
+int
+gfx_panel_clock_hz(void) {
+    return panel_clock_requested_hz;
 }
 
 void
@@ -2275,6 +2394,9 @@ void
 gfx_band_frame_begin(void) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_BANDS);
+#ifdef ESP_PLATFORM
+    panel_clock_apply();
+#endif
     band_render_active = false;
     gfx_fb_guard_set_available(false);
     gfx_band_ring_begin(&band_ring, current_mode.height / current_mode.band_height);
