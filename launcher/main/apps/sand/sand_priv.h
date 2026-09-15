@@ -215,6 +215,15 @@ extern unsigned sand_liquid_sweep_moves;
 #define BLOCK_HAS_LIQUID      0x8
 #define BLOCK_LIQUID_NEAR     0x10
 
+/* A block holding a cell whose moisture is currently nonzero - the soak-
+ * only walk's alternative to LIQUID_NEAR once the liquid that put the
+ * moisture there is gone, since ambient drying and dirt-to-dirt
+ * percolation (step_one_soaking_cell(), sand_reactions.c) need neither
+ * liquid nor NEAR to keep running. Set wherever a write grants moisture;
+ * cleared only by refresh_moisture_blocks() actually finding none left,
+ * the same "trust it until disproven" shape BLOCK_HAS_LIQUID uses. */
+#define BLOCK_HAS_MOISTURE    0x20
+
 static inline uint16_t
 liquid_mask(void) {
     uint16_t mask = 0;
@@ -467,6 +476,21 @@ wake_block_and_neighbors(sand_t* s, int x, int y) {
         }
     }
     s->block_state[by * s->block_cols + bx] |= BLOCK_ACTIVE;
+}
+
+/* Called wherever step_one_soaking_cell() (sand_reactions.c) grants a cell
+ * moisture, at that cell's own coordinates - see BLOCK_HAS_MOISTURE. */
+static inline void
+mark_block_has_moisture(sand_t* s, int x, int y) {
+    if (s->block_state == NULL) {
+        return;
+    }
+    if ((unsigned)x >= (unsigned)s->w || (unsigned)y >= (unsigned)s->h) {
+        return;
+    }
+    const int bx = (int)((unsigned)x / SAND_BLOCK_W);
+    const int by = (int)((unsigned)y / SAND_BLOCK_H);
+    s->block_state[by * s->block_cols + bx] |= BLOCK_HAS_MOISTURE;
 }
 
 /* ONE copy: sand_set()/try_spawn_one() once each carried their own,
