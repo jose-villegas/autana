@@ -591,7 +591,9 @@ app_main(void) {
         step_app(&current, &input, dt_ms);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        draw_build_mark();
+        if (gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB) {
+            draw_build_mark();
+        }
         if (screenshot_take_request()) {
             screenshot_dump(&input, current);
             gfx_request_full_redraw();
