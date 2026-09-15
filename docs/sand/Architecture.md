@@ -3,12 +3,10 @@
 A single-page map of `main/apps/sand/`: the shapes, not the reasoning.
 [`Sand-Simulation.md`](Sand-Simulation.md) is the "why" behind every rule
 here; [`Adding-a-Material.md`](Adding-a-Material.md) is the checklist for
-extending any of this. This page exists for a
-narrower job those don't do well as prose: showing the *shape* of the
-system at a glance, and writing down - in one place, precisely - every
-hop between "I changed a `.c` file" and "I have a real number from the
-device," so nobody has to rediscover the Git Bash/`idf.py` trap this repo
-already paid for once.
+extending any of this; [`Reaction-Table.md`](Reaction-Table.md) is the
+current, generated fire-chemistry table. This page's job is narrower than
+any of those: the *shape* of the system at a glance, and where each concern
+lives.
 
 ---
 
@@ -17,917 +15,201 @@ already paid for once.
 ```
 ┌───────────────┬───────────────┐
 │  material id  │    variant    │   one cell = one uint8_t
-│   (4 bits)    │   (4 bits)    │   184 x 224 grid = 41 KB total
+│   (4 bits)    │   (4 bits)    │
 │   0-15        │   0-15        │
 └───────────────┴───────────────┘
    high nibble       low nibble
 ```
 
+`app_sand.c` picks a cell size of 2-8 screen pixels from the QUALITY menu
+and derives the grid as `GFX_WIDTH/cell x GFX_HEIGHT/cell` - 184x224 (41 KB)
+at the finest, ULTRA, setting; coarser settings shrink it. The byte layout
+below is the same at every size.
+
 The material id indexes `materials[]` (`material.c`), `const` -
-memory-mapped from flash, zero bytes of RAM. That table is `MATERIAL_ROWS`
-(32) rows deep, not 16: every ordinary id is written once and lands in two
-identical rows (`material_of()` indexes by `cell >> 3`, not the id nibble
-alone), purely so id 15's low nibble can be split by its own top bit into
-two halves with independent physics - gunpowder is why, and "The material
-budget, and what is left" below is the full story. For every ordinary
-material this is invisible: same field values, same one shift-and-load in
-the hot path. What the variant *means* depends entirely on the material
-sitting in that row:
+memory-mapped from flash, zero bytes of RAM. What the variant *means*
+depends entirely on the material sitting in that row:
 
 | Material's `decay` | Variant means | Example |
 |---|---|---|
 | `0` (immortal) and `kind == KIND_POWDER` | a shade (cosmetic texture) | sand |
 | `0` (immortal) and `kind == KIND_LIQUID` | fill level, 1-15 | water |
 | non-zero (transient) | life remaining, counts down to 0 = gone | gas, fire |
-| `heat_ramp != 0` | **temperature, 0-15, resting at 3** - and the palette index, so the cell's colour *is* its temperature. Below 3 is frost, above it is heat | glass, stone |
-| `burn_decay != 0` | **how much is left to burn**; how "unlit" and "lit" are spelled is per-material (`reaction_t.lit_from`), see below | wood (variant 0 unlit, non-zero lit); gunpowder (code 7 is its only lit state, the top of its 3-bit variant) |
-| `dries != 0` | **read by STATE, not a fixed bit split**: dry tones first, then moisture 1..`moist_max` - the exact split is per-material (`reaction_t.tones`/`moist_max`), see below | dirt (8 tones, moisture 1-7, code 15 unused); gunpowder (3 tones, moisture 1-4, then code 7 borrowed by `burn_decay` for lit - only 3 bits of variant to spend, see the budget section) |
+| `heat_ramp != 0` | temperature, 0-15, resting at `SAND_AMBIENT_HEAT` (3) - and the palette index, so the cell's colour *is* its temperature | glass, stone |
+| `burn_decay != 0` | how much is left to burn; `reaction_t.lit_from` says which variant codes count as "burning" | wood, gunpowder |
+| `dries != 0` | read **by state**, not a fixed bit split: dry tones first, then moisture 1..`moist_max` (`reaction_t.tones`/`moist_max`, per material) | dirt (8 tones, moisture 1-7); gunpowder (3 tones, moisture 1-4, code 7 borrowed by `burn_decay` for lit) |
 
-Reusing one nibble for three different jobs is deliberate, not a
-shortcut: the alternative is a second byte per cell, which at this grid
-size is 41 KB more RAM than the ~90 KB actually free after the
-framebuffer. See [`Sand-Simulation.md`](Sand-Simulation.md#the-grid-is-one-byte-per-cell-and-always-will-be)
-for the exact budget.
+Reusing one nibble for several jobs is deliberate: the alternative is a
+second byte per cell, and this app has no RAM to spare for that. See
+[`Sand-Simulation.md`](Sand-Simulation.md#the-grid-is-one-byte-per-cell-and-always-will-be)
+for the budget.
+
+Id 15 (`MAT_EXTENDED`) is not an ordinary material - a cell carrying it
+reads its own low nibble as an identity, not a variant, doubling
+`materials[]` to `MATERIAL_ROWS` (32 rows, indexed by `cell >> 3` rather
+than the id nibble alone). Every ordinary material lands in two identical
+rows of that doubled table (`TWIN_ROW()`, `material.c`), invisible to the
+hot path; only id 15 reads as two different rows depending on the nibble's
+top bit. See "Getting more than sixteen materials out of one nibble" below.
 
 ## The material table, today
 
-All 16 ordinary-id slots are spoken for: 14 ordinary materials, id 15
-given over to the extended range (below), and id 0 is empty. Slots that
-hold nothing are zeroed to an inert inline material (`kind = KIND_STATIC`,
-`density = 255`) so a corrupt cell byte can never crash anything, only sit
-there as an immovable block.
+All 16 ordinary-id slots are spoken for: 14 ordinary materials, id 15 given
+to the extended range below, id 0 empty. An empty slot is zeroed to an
+inert `KIND_STATIC`/`density = 255` row, so a corrupt cell byte can never
+crash anything, only sit there as an immovable block.
 
 | Slot | Material | `kind` | Rises/falls | Notable fields |
 |---|---|---|---|---|
 | 0 | empty | `KIND_NONE` | - | - |
 | 1 | sand | `KIND_POWDER` | falls | `repose=7` (~35°), `slip=96` |
 | 2 | water | `KIND_LIQUID` | falls | `slip=255` (no resistance) |
-| 3 | stone | `KIND_STATIC` | never | `density=200`, undisplaceable. Carries a **temperature** like glass, but never melts and never shatters - acid is the only thing that destroys it |
+| 3 | stone | `KIND_STATIC` | never | `density=200`, undisplaceable; carries a temperature but never melts or shatters |
 | 4 | gas | `KIND_GAS` | rises | `sight=16`, `decay=32`, `mobility=96` |
-| 5 | fire | `KIND_GAS` | rises | `sight=5` (tighter), `decay=96` (shorter life), reacts via a second pass (below) |
-| 6 | wood | `KIND_STATIC` | never | `density=150`; fuel, does not burn on its own. Its variant is **burn progress**, which is what let ember stop being a slot of its own - a burning log is wood with a non-zero variant. Also what a plant hardens into |
+| 5 | fire | `KIND_GAS` | rises | `sight=5`, `decay=96`; a heat source, reacts via the cold pass |
+| 6 | wood | `KIND_STATIC` | never | `density=150`; fuel, does not burn on its own - its variant is burn progress |
 | 7 | steam | `KIND_GAS` | rises | `sight=20`, `mobility=160` (fastest); water that got hot |
 | 8 | smoke | `KIND_GAS` | rises | `sight=24` (widest), `decay=16` (longest-lived); fuel that burned out |
-| 9 | dirt | `KIND_POWDER` | falls | `density=62` (just above sand); soaks up any liquid and dries out again. Variant is a dry **tone** or a **moisture** level depending on which state the cell is in, never both at once - the one state-split nibble. Took the slot ember gave up |
+| 9 | dirt | `KIND_POWDER` | falls | `density=62`; soaks up liquid and dries out again - the state-split variant |
 | 10 | oil | `KIND_LIQUID` | falls | `density=22` (floats on water); fuel, burns only where it meets air |
-| 11 | lava | `KIND_LIQUID` | falls | `density=45`, `decay=0` (**must** stay 0); a liquid that is also a heat source |
-| 12 | acid | `KIND_LIQUID` | falls | `density=38` (sinks in water, floats on lava), `mobility=220`; dissolves what opts in |
-| 13 | glass | `KIND_STATIC` | never | `density=200`; made from sand by heat, the **only** thing acid cannot eat. Carries a temperature, like stone, and unlike stone it shatters on thermal shock |
-| 14 | snow | `KIND_POWDER` | falls | `density=15` (floats on water **and** oil), `scatter=90` (drifts), `repose=9` (~42°); the only **cold** material. Melts in any liquid, keeps indefinitely on dry ground |
-| 15, `0xF0`-`0xF7` | *extended statics* | one shared row, `KIND_STATIC` | - | not a material: the low 3 bits name one of `MATERIAL_EXTENDED_COUNT` (8) further statics, 3 spare. `MATX_ICE`, `MATX_PLANT`, `MATX_LEAF`, `MATX_METAL`, `MATX_ROOT` so far |
-| 15, `0xF8`-`0xFF` | gunpowder | `KIND_POWDER` | falls | `density=50`, `slip=80`, `repose=8`, `scatter=30`. The other half of id 15's row, split off by bit 3 of the cell byte rather than a slot of its own - see below. 3-bit variant (`GUNPOWDER_CELL()`/`cell_is_gunpowder()`): 3 dry tones, then moisture 1-4, then code 7 is **lit** - a burning fuse cell, same state-carrying trick as wood's `burn_decay` variant, just sharing the 3 bits dirt's pattern already uses for tone/moisture |
-
-Every field on `material_t` is read from the innermost loop, several
-times per cell per step, which is why the struct is kept small with the
-movement fields first - this chip's cache line is 32 bytes, and a fatter
-row would straddle two lines. Full field-by-field reasoning:
-[`material.h`](../../launcher/main/apps/sand/material.h)'s own top
-comment and struct comment.
-
-## The reaction table, a second table for a cold pass
-
-Fire chemistry - flammability, what a material ignites into, whether it
-is itself a heat source, how well it conducts heat, whether it smokes
-on burn-out, what it becomes when quenched, whether it flares a flame -
-lives in a **second** table, `reaction_t reactions[MATERIAL_MAX]`, not
-as more fields on `materials[]` above. None of those fields are read by
-any movement code, only by `sand_reactions.c`'s cold pass, gated behind
-`may_have_burning`; fattening the hot table's stride to carry them would
-cost every step that never touches fire at all, for a table almost
-nothing reads on such a step. The cost of the split is that adding a
-material capable of burning, catching, conducting, or reacting to
-either is now potentially two rows instead of one - `materials[]` for
-how it moves, `reactions[]` for how it burns - which is a small price
-for keeping the hot table exactly as small as its own comment insists
-it stay.
-
-| Material | `flammability` | `needs_air` | `ignites_to` | `burns` | `conducts` | `residue` | `quench_to` | `flare` | `dissolves` | `dissolvable` | `heats_to` |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| sand | 0 | - | - | 0 | 0 | 0 | - | 0 | 0 | **200** | **glass** (16) |
-| stone | 0 | - | - | 0 | 220 | 0 | - | 0 | 0 | **60** | - |
-| gas | 255 | - | fire | 0 | 0 | 0 | - | 0 | 0 | 0 | - |
-| fire | 0 | - | - | 1 | 0 | 40 | steam | 0 | 0 | 0 | - |
-| wood | 6 | - | ember | 0 | 0 | 0 | - | 0 | 0 | **160** | - |
-| ember | 0 | - | - | 1 | 0 | 90 | steam | 48 | 0 | **160** | - |
-| oil | 50 | **1** | fire | 0 | 0 | 0 | - | 0 | 0 | 0 | - |
-| lava | 0 | - | - | **1** | 0 | 0 | **stone** | 16 | 0 | 0 | - |
-| acid | 0 | - | - | 0 | 0 | 0 | - | 0 | **60** | 0 | - |
-| glass | 0 | - | - | 0 | **220** | 0 | - | 0 | 0 | **0** (immune) | **lava**, by ramp |
-| snow | 0 | - | - | 0 | 0 | 0 | - | 0 | 0 | 0 | **water** (120) |
-| gunpowder | 200 | - | **lit** (code 7, a heat source - not fire) | 0, but **burn_decay 16** | 0 | 0 | **soaked** (quenched to wet, not unlit) | 0 | 0 | **200** | **lit** (24) |
-
-Gunpowder catches like a `burn_decay` material, not like gas: `ignites_to`
-and `heats_to` both name its own **lit** cell (code 7) rather than
-`MAT_FIRE` - what a burn-down material ignites *into* is itself, carrying
-a new variant, not a different material. A lit cell is a heat source in
-its own right (ignites neighbours, so a trail of powder burns along; boils
-adjacent water), and it counts down every step
-(`burn_decay = 16`, roughly sixteen steps of fuse per cell) via the same
-`tick_decay_at()` wood already uses, generalised by a new field,
-`reaction_t.lit_from` - the first variant code that counts as "burning"
-(wood: 1; gunpowder: 7), so `cell_is_burning()` stops assuming unlit is
-always variant 0. Two gunpowder-only wrinkles on top of the shared
-mechanism: it is never smothered by neighbours the way a buried wood fire
-would be (`explodes != 0` opts a material out of `smothered()` - it
-carries its own oxidiser, and a fuse buried in its own pile has to keep
-burning or nothing inside a pile ever goes off), and quenching it with
-water writes moisture at `moist_max` (soaked) rather than the unlit code,
-or it would relight from an adjacent lit cell on the very next step.
-
-Only at **burn-out** does `explodes` (blast radius, 20) get read: if the
-cell is one corner of a 2x2 whose other three cells are also lit gunpowder
-and the impulse buffer is live, it detonates (`sand_explode()`); otherwise
-it becomes an ordinary `MAT_FIRE` cell, the same no-buffer fallback the
-confined-gas blast already relies on. That neighbour check is what keeps a
-one-wide trail or a lone lit cell from ever blasting. A fully-lit 3x3 was
-asked for first and made blasts rare enough on the device to look broken:
-burn-out rolls are independent per cell, so by the time any cell burns
-out the neighbours lit before it are usually already fire, and a whole
-3x3 alight at once existed only in the brief window behind the fuse
-front. Three lit neighbours in one quadrant is what a lit pile actually
-presents at burn-out.
-
-A big pile's blasts still land one at a time across several frames rather
-than all landing on the same step, and the mechanism that actually
-guarantees that is `SAND_GUNPOWDER_BLAST_COOLDOWN` (8, board-wide,
-`sand_reactions.c`): after a detonation the board waits that many steps
-before another may fire, ticked down once per reactions pass, so at most
-one detonation fires no matter how many 2x2s burn out qualifying in the
-same step. Raising it spaces a pile's blasts further apart in time
-without changing how big any one of them is, and 0 lifts the limit;
-`sand_set_fuse_cooldown()` overrides it at runtime for tests. Each blast's
-core and thrown grains removing the cells around it from every 2x2 they
-were part of helps too - a corner already consumed by an earlier blast
-this same step cannot also qualify a second one - but that is a secondary
-effect of the geometry, not what bounds the cost; the cap is what does.
-Two earlier designs - immediate detonation on ignition, then a
-boundary-only check - were measured on-device and dropped for costing the
-same or more; see
-[`Sand-Simulation.md`](Sand-Simulation.md#fire-chemistry-wood-embers-steam-and-a-working-boiler)
-for the full trigger and `soaked_to`/`soaked_chance` (saturated powder has
-an 8-in-256 chance per step to become a full `MAT_OIL` cell instead of
-drying out - the other field that fits none of these columns). Moisture
-damps the `flammability` roll itself (`f >>= 2 * moisture`, generic to any
-`dries != 0` material), which is why gunpowder needs no separate "is it
-wet" branch here.
-
-**Gunpowder is not soil.** A new `reaction_t` field, `soil` (nonzero:
-plants may root in, sprout from, drink from and conduct water into this
-material), replaces the old `dries != 0` test at every plant/root site
-that meant "this is soil" - `find_water()`, `step_one_sprouting_cell()`,
-`step_one_rooting_cell()`, `step_one_conducting_cell()`,
-`spend_soil_moisture()`. Dirt sets `soil = 1`; nobody else, gunpowder
-included, even though gunpowder now has a moisture codec of its own.
-`dries != 0` still means exactly what it always did - "this variant can
-mean moisture" - and moisture DIFFUSION between same-species cells and
-percolation keep reading it; only the narrower "is this ground a root can
-use" question moved to `soil`, because a fuse buried in a garden bed was
-never meant to be something a tree could water itself from.
-
-### Heat that accumulates
-
-Four fields that only glass and snow use today, kept out of the table above
-because they describe a different thing: not a reaction that fires once, but
-a quantity a cell carries.
-
-| Field | On | Meaning |
-| --- | --- | --- |
-| `heat_ramp` | glass, 64 | chance/256 per step per adjacent heat source to climb one level. **Non-zero is what makes the variant a temperature** rather than a shade |
-| `cools` | glass, 5 | chance/256 to move one level **towards `SAND_AMBIENT_HEAT`**, down if hot and up if frosted - **scaled** by how far above ambient the cell already is, so the drain grows the hotter it gets |
-| `chills` | snow, 40 | chance/256 to pull a level out of a *neighbour* that has a temperature, down to 0; non-zero also marks the material **cold** |
-| `shatters_to` | glass, sand | what a cell becomes when shocked - **on contact, no roll**, in **either** direction: at or above `SAND_SHOCK_HEAT` when something cold touches it, or at or below `SAND_SHOCK_COLD` when heat reaches it |
-| `thaws` | snow, 4 | chance/256 per step per adjacent **liquid** cell that it gives up and becomes `heats_to` |
-| `SAND_AMBIENT_HEAT` | 3 | not a field - where room temperature sits on the 0-15 scale, so that **cold has somewhere to go** |
-| `conducts >> SPREAD_SHIFT` | glass, 220>>3 = 27 | chance/256 that a cell off ambient drags a neighbour of the same kind one level towards itself, when they differ by 2 or more |
-
-`thaws` is a second trigger for the transformation `heat_chance` already
-drives, and needs its own number because one cannot serve both. Snow beside
-a flame should be gone in two steps (`heat_chance` 120); snow landing on a
-pond should not, or a snowfall over water would never be seen to land -
-it lasts about 60 steps there instead. Any liquid counts, because nothing
-in this simulation is at a temperature except glass, so "liquid" is the
-nearest available statement of *warm and touching you on every side*.
-
-What it melts *into* is always water, whatever melted it. Snow becoming
-more of the liquid that touched it would be an exploit rather than a
-flourish: acid is spent as it dissolves, so snow melting into acid is a
-bucket that refills itself.
-
-`heat_ramp` and `heat_chance` are alternatives, not partners. `heat_chance`
-is a memoryless roll - sand fuses to glass the first time it wins one, and
-nothing is remembered between attempts. `heat_ramp` banks progress in the
-cell, which is the only way to express *sustained* exposure: under a
-memoryless roll a candle lit for one step a day melts a pane exactly as
-surely as a furnace, just later.
-
-`cools` is the other half of that and is not optional. Without it the ramp
-measures lifetime total rather than duration, and the distinction the ramp
-exists for disappears.
-
-`chills` and `cools` do the same thing in the same units and are still two
-fields, because they sit on different materials: `cools` belongs to the hot
-one and drains it to nothing, `chills` belongs to the cold one and drains a
-neighbour. They also cannot share a number - snow's 40 against glass's 6 is
-what lets a snowbank win a race that ambient cooling always loses.
-
-### A crack runs through the pane
-
-Shattering converts the whole connected run of the material, not one cell,
-up to `CRACK_MAX` (256) cells per shock.
-
-One cell at a time meant breaking a pane took as many separate successful
-shocks as it had cells - and each one needs something cold touching glass
-that is still hot, at the moment it touches. Getting that to happen once is
-the interesting part; needing it sixty times in the same place is
-attrition, and on the board it read as thermal shock barely working.
-Measured on the vessel scene, the mean panes broken went from **2.8 to
-29.8** with nothing else changed.
-
-It is also what glass does. A pane does not crumble cell by cell as each
-part independently decides to; a crack starts somewhere and travels, and
-the pane goes at once.
-
-The crack deliberately does **not** re-check temperature as it spreads -
-the stress it releases is the whole pane's, and a crack does not stop
-because the far end of the sheet was cooler. The temperature test belongs
-where the crack *starts*. It does follow the material, so two panes that
-are not touching are two panes.
-
-### Shock runs in both directions
-
-Thermal shock is a large temperature **change**, not a high temperature. For
-a while only half of it existed - cold arriving at hot glass broke it, heat
-arriving at frosted glass did not - which is an asymmetry nobody could have
-explained to a player, and which made the obvious experiment (chill a
-vessel, then pour something hot in) quietly do nothing.
-
-The two directions live in different code and can break independently:
-cold-onto-hot in `step_one_cold_cell()`, driven by the cold cell;
-hot-onto-cold in `try_heat_transform()`, driven by the heat source.
-
-### Why the drain scales with temperature
-
-`cools` is the drain **one level above ambient**, and it is multiplied by
-how far above ambient the cell already is. One constant then serves two
-jobs that pull opposite ways: getting a pane WARM is easy, and getting it
-MOLTEN stays hard.
-
-With a flat drain there was no setting that did both. At 12 up against 6
-flat, a pane took 152 steps just to become shatterable. Raising the ramp
-enough to fix that dropped time-to-melt from ~450 steps to ~30 and threw
-away the long exposure the ramp exists for. Scaled, the same ramp gives:
-
-| held source | shatterable | molten |
-| --- | --- | --- |
-| lava | 12-26 steps | 102-678 steps |
-| fire | ~65 steps | **never** (peaks at 13) |
-
-Fire making glass fragile but never melting it is a consequence, not a
-special case.
-
-One **brush** of fire still does almost nothing, and no ramp fixes it: fire
-is a rising gas, so a single dab has drifted off the pane within a couple of
-steps. Measured, it peaks around 6 whether the ramp is 64 or 160. Heat has
-to be held against glass.
-
-### What the vessel scene taught
-
-The scene people actually build is a drawn glass ring filled about half way
-with lava, with snow poured over the top. It did not work, and the reason
-was not the transfer rate:
-
-- A half filled vessel puts the glass a player can **reach** - the rim,
-  above the lava line - several cells from the heat. The gradient decays
-  about two levels per cell, so the rim sits in the warming band while the
-  submerged glass glows. Snow can only touch the part that was never hot.
-- Snow and lava **annihilate each other** before either reaches the glass.
-  Snow melts to water, and water quenches lava to stone. Measured on a
-  filled ring, the lava had turned to stone and the whole vessel had
-  frosted over with two panes broken out of dozens.
-
-Lowering `SAND_SHOCK_HEAT` is what fixed it, and the numbers are worth
-keeping because they are the only measurement of the scene as played:
-
-| threshold | panes broken |
-| --- | --- |
-| ambient + 6 | **0** |
-| ambient + 4 | 12 |
-| ambient + 3 | 17 |
-| ambient + 2 | 25 |
-
-### What the host can and cannot check
-
-`run_tests.sh` skips every `apps/<name>/app_*.c`: those talk to gfx, the IMU
-and the frame loop, so they cannot link on a laptop and there is nothing to
-run. Right for testing, and it left a hole in *checking* - nothing compiled
-them at all until a full device build.
-
-`check_app_sources.sh` closes it. Syntax-only, with stand-in headers in
-`launcher/test/stubs/` for the handful of IDF and BSP things those files
-include, and `run_tests.sh` runs it first. Nothing is linked and nothing
-runs; it catches what a compiler catches - undeclared identifiers, bad
-types, wrong format strings - which is the class that was getting through.
-
-It found its own reason for existing: a rendering change referred to three
-identifiers declared further down the file, the host suite passed, a
-`-fsyntax-only` pass over the sand test suite (`suite_sand_*.c`) passed,
-and the error surfaced on the device where it stopped an unrelated
-performance run.
-
-Not a substitute for building on device. A stub declares only what the real
-header is used for, so a new IDF call needs a line adding to it first -
-which is deliberate, and should be a decision rather than a surprise.
-
-### The material budget, and what is left
-
-A cell is one byte: four bits of material, four of variant. Zero is empty,
-so there are **15 material slots**: **14 ordinary materials** - sand,
-water, stone, gas, fire, wood, steam, smoke, dirt, oil, lava, acid, glass,
-snow - and `MAT_EXTENDED`, a doorway to more. This used to say one ordinary
-slot was still free; that was stale the moment dirt shipped (id 9, above)
-and stayed wrong in this file for a while after. **Zero ordinary slots are
-free.** Corrected here rather than left to be discovered a second time.
-
-Five ways to make more room, cheapest first - two of which mostly do not,
-and one that looks like a way and is not. The short version: reinterpret a
-nibble first, fold a state into an existing material second, spend the
-extended range on anything stateless third, and only split an extended
-half-row - gunpowder's route - when a material needs real physics and no
-ordinary slot is left to give it one. Packing the whole byte stays the
-last resort.
-
-**Reinterpret a nibble.** Free, and already the pattern: liquids read the
-variant as fill, transients as life remaining, glass and stone as
-temperature, wood as how far along it has burned. A material needing two
-small quantities can read its own nibble by STATE, one range meaning one
-thing and a disjoint range meaning another - dirt does, and how it got
-there is the useful part.
-
-Moisture had all four bits and used only the bottom three of them, a fixed
-bit split (one carried-tone bit, three of moisture) that gave the same
-tiny two-tone range to soil however wet or dry it was. Measured over six
-waterings of a dirt bank, 99.98% of soil cells sat at moisture 7 or below:
-diffusion spreads water thin almost at once, so saturation is a state soil
-passes THROUGH rather than one it sits in - which meant the tone bit was
-earning its keep on a wet cell only rarely, and on a DRY one (variant 0, the
-commonest value dirt has) it bought nothing at all, since a bit split by
-POSITION rather than by state gives a dry cell the same one bit of tone a
-saturated one gets. Re-encoding by state instead - variant 0-7 a dry tone,
-8-14 moisture 1-7 - gives dry soil the full eight-value range for exactly
-the case (bone dry, the commonest) that most needed it, at the cost of an
-independent tone on wet soil, which has the moisture gradient itself to
-show variation with.
-
-Worth doing in that order. The counter-argument to splitting is always that
-the range is needed, and it is usually asserted rather than measured.
-
-This adds no slots - it removes the *need* for one. Glass carrying a
-temperature is why there is no separate "hot glass" material, and stone
-getting its speckle from a position hash is why it could give its variant
-up for the same thing. Always ask this first, because the answer costs
-nothing.
-
-**Make a material a state of another - possible when the VARIANT can carry
-it.** The tables are indexed by the material nibble alone, so two states of
-one material get the same `density`, `slip`, `repose` and `scatter` - every
-field the sweep reads. What separates a state that works from one that does
-not is which table the differences live in, and whether the variant is free
-to say which state a cell is in.
-
-Ember is the worked example, and it went both ways. It was a material for a
-long time, and it differed from wood in seven fields:
-
-| | wood | ember |
-| --- | --- | --- |
-| `decay` | 0 | 24 |
-| `burns` | 0 | 1 |
-| `flammability` | 6 | 0 |
-| `ignites_to` | ember | - |
-| `residue` | 0 | 90 |
-| `quench_to` | - | steam |
-| `flare` | 0 | 48 |
-
-Only ONE of the seven - `decay` - is in the movement table. The other six
-are reactions, read in the cold pass. And wood's variant was doing nothing
-but holding a shade.
-
-So ember is now a state: `burn_decay` makes wood burn while its variant is
-non-zero, that variant is how much is left to burn, and the dispatch asks
-`cell_is_burning(c)` rather than whether the material burns. `decay` stays
-0 in wood's movement row, because wood is not a transient - it does not
-disappear on its own, it disappears because it burned. Identical behaviour,
-one slot back, and one thing that was not expressible before: **water puts
-a log out**, leaving the log. An ember could never be put out, because the
-ember *was* the fire and quenching it had to replace it with something.
-
-The general rule this leaves: what forces a slot is not "behaves
-differently", it is needing a different row in the table the SWEEP reads,
-or having no spare variant to say which state a cell is in.
-
-Smoke and steam are NOT the same opportunity, and the contrast is the
-useful part. Their reaction rows are identical, but they differ in five
-fields - density 7 against 5, scatter 150/140, decay 16/24, mobility
-120/160, sight 24/20 - and **every one is in the movement table**, because
-steam is meant to be the lighter, faster, shorter-lived one. Worse, both
-already spend their variant on life remaining, so there is nothing left to
-say which of the two a cell is.
-
-Ember worked because its differences were mostly cold-table and wood's
-variant was spare. Steam and smoke fail on both counts at once.
-
-**Add an extended range behind the last slot** - *built*. Material id 15 is
-`MAT_EXTENDED`, and a cell carrying it reads its low nibble as naming one of
-further materials - sixteen of them, until gunpowder needed real physics
-and this section's own "what they cannot have" below ruled every one of
-the sixteen out (see "Split an extended half-row" further down). What is
-left of this doorway after that split is the **static** half, `0xF0`-
-`0xF7`, eight codes: `MATX_ICE`, `MATX_PLANT`, `MATX_LEAF`, `MATX_METAL`,
-`MATX_ROOT` so far, three spare.
-
-Three facts make it free in the sweep, and all three are properties of how
-the tables are already indexed:
-
-| | what happens |
-| --- | --- |
-| `material_of()` | indexes `materials[]` by `cell >> 3` - the static half is **one shared row** of the doubled table, so the hot path pays nothing extra for how many of the eight codes are used |
-| `palette[256]` | is indexed by the **raw cell byte**, so eight distinct colours come for free with no change whatsoever |
-| `reaction_of()` | is used only in `sand_reactions.c` - the **cold** table, where decoding the extended id costs nothing that matters |
-
-So the eight statics can each have their own colour and their own reaction
-row - their own flammability, acid resistance, heat behaviour, whatever -
-while `sand_step()` continues to treat them as one material.
-
-What a static extended code cannot have is its own **physics** or a
-**variant**. They share one `density`, `kind`, `slip`, `repose` and
-`scatter`, because that is the row the hot path reads; and the low bits are
-spent naming which one they are, so there is nothing left for a shade, a
-fill level, a life or a temperature. That is exactly the wall gunpowder hit.
-
-The obvious reading of that is "inert static solids only" - coloured brick,
-decorative block, an ore that acid or fire treats differently. That is what
-this said, and the plant is the counter-example that improved it. A plant
-grows, which sounds like exactly the sort of accumulating per-cell state
-the scheme forbids, and is not: its growth is **spatial**. It occupies more
-cells rather than filling up a counter, so the thing being accumulated is
-the shape on the grid, which needs no bits at all.
-
-The shared `kind` gave way the same way. A plant has to be poured like a
-grain, and it cannot be a `KIND_POWDER` to manage it: that row is shared,
-so ice would fall too - and a plant is its own stem, so a column of powder
-six cells tall would slump the moment it grew. It falls in the **cold
-pass** instead, under a rule that only moves a cell into empty space, and
-the board answers that differently for a seed in mid-air than for a stem
-standing on more stem. The same trick lets a shoot shove loose cover
-aside on its way up, which the sweep would never have done for it.
-
-So the honest limit is narrower than "static": what an extended material
-cannot have is anything the HOT path would need to read. Everything else
-is available at cold-pass prices.
-
-The cost is that a stateless material has to READ what it would otherwise
-have stored. A plant cannot know how tall it is, so it walks its own column
-to find the tip before growing and walks it again to decide whether the run
-is long enough to harden - the same run-scan the glass crack already used.
-That is the trade the extended range actually offers: not "no state", but
-**state you are willing to re-derive from the grid, in the cold pass, every
-time you need it**.
-
-Painting one needs `sand_spawn_cell()` rather than `sand_spawn()`: an
-extended material cannot be named by a `material_id_t` at all, because its
-low nibble is its identity rather than a variant. For the same reason
-nothing may randomise that nibble - the ordinary "static materials get a
-random shade" path would silently repaint ice as a different extended
-material, which is the one way this scheme can go wrong quietly, and there
-is a test for it.
-
-A reaction can produce one too: `place_reacted()` takes a spec that is
-either an ordinary id or a whole `MATX(k)` byte, and the two cannot be
-confused because an ordinary id is well under 0xF0. Without that an
-extended material could only ever be painted, never made. `MATX(k)`'s own
-mask is `& 0x07` now, not `& 0x0F` - a static's low bits only ever address
-the eight codes on its own side of the split (`MATERIAL_EXTENDED_COUNT`),
-guarded by a `_Static_assert` for exactly the same reason nothing may
-randomise the identity nibble above: silently wrapping into gunpowder's
-half would be the same class of quiet corruption.
-
-Which made the budget, right up until gunpowder:
-
-- **zero** ordinary slots with full physics - dirt spent the last one;
-- **eleven** more inert solids behind the extended range (sixteen codes,
-  five used), disturbing nothing that already exists;
-- packing the whole byte only after both were spent.
-
-That is precisely the corner gunpowder was built into. It needs
-`KIND_POWDER` movement - pile, pour, sink in a liquid, be thrown by a
-blast - and a variant, a shade plus a moisture level: exactly what "what a
-static extended code cannot have" above rules out, and there was no
-ordinary slot left to give it one instead. Packing the whole byte (below)
-would also solve it, but is a hot-loop refactor out of scope for landing
-one material - see "Split an extended half-row" next.
-
-**Split an extended half-row** - *built, for gunpowder*. A nibble has a top
-bit like any other value: split `MAT_EXTENDED`'s low nibble by its own bit
-3, and the two halves become two independent rows in `materials[]` -
-`0xF0`-`0xF7` stays the extended-statics doorway above, unchanged in
-everything but size, and `0xF8`-`0xFF` becomes one ordinary `KIND_POWDER`
-material (gunpowder) with its own density, slip, repose, scatter, and a
-real 3-bit variant to spend on a state split exactly like dirt's.
-
-The mechanism: `materials[]` grows from 16 rows to `MATERIAL_ROWS` (32),
-indexed by `cell >> 3` rather than the id nibble alone. Every ordinary
-material is written once and lands in two identical rows of the doubled
-table (`TWIN_ROW()`, `material.c`), so for the fourteen ordinary materials
-this is invisible - same field values, same one shift-and-load in the hot
-path, same instruction count. Only id 15 reads as two different rows
-depending on bit 3, which is the entire trick: the table doubled so that
-one nibble value could stop being one thing.
-
-The costs, stated plainly rather than left implicit:
-
-| | before | after gunpowder |
-| --- | --- | --- |
-| extended statics | 16 codes, 5 used, 11 spare | 8 codes, 5 used, **3 spare** |
-| `materials[]` (hot table) | 16 rows, 192 B of flash | 32 rows, **384 B** of flash |
-| control frame-budget rows | believed pinned (`sand_step`, `aligned(32)`) - it was not, see [the layout lottery](../notes/Optimization-Playbook.md#the-layout-lottery) | **unmeasured** against the doubled table - a flash-layout-lottery question, not a logic one |
-
-Half of what was left of the extended range's own doorway, spent on one
-material, is a real price - three spare static codes is not much room for
-the next inert solid that wants one. It is still the cheapest thing on
-this list that buys a material genuine physics once no ordinary slot
-remains: the alternative, packing the whole byte, is a hot-loop refactor,
-not an afternoon. Whether the split stays this way, or a future material
-instead argues for finally packing the byte, is the maintainer's call, not
-one this page makes for them.
-
-**Pack the byte.** Drop the fixed 4+4 split for a flat 0-255 index with a
-per-material base offset, giving each material only as many variant codes
-as it uses. Measured against the current table that needs **189 of 256
-codes, leaving 67** - about four more liquids or sixteen more inert solids.
-The cost lands in the worst place: `CELL_MATERIAL` and `CELL_VARIANT`
-become dependent table lookups instead of a shift and a mask, in the
-hottest loop in the program. Worth doing only when slot pressure is real.
-
-**What does not work: moving transients out of the grid.** The idea is
-appealing - fire, smoke, steam, gas and ember are five of the fourteen
-slots, and they are short-lived, so a side list of active ones would free
-a third of the table. Measured peak transient population:
-
-| scene | transient cells at once |
-| --- | --- |
-| a burning wood floor | 2,631 |
-| a lava pool, flaring | 412 |
-| a screen of gas, ignited | **33,879** |
-
-The grid is 41,216 cells. In the scenes that actually stress the
-simulation transients are most of the board, so a side table holding
-position, kind and life would want ~132 KB against the ~50 KB of RAM that
-exists - more than three times the whole grid at one byte per cell. They
-are not the rare case; they are the case that fills the screen, which is
-exactly why they belong in the grid rather than beside it.
-
-### What carries a temperature, and what it does with one
-
-`heat_ramp` makes a material's variant a temperature. What it does with
-that temperature is a separate question, answered by which other fields it
-has - and for the two materials that carry one, the answers are opposites:
-
-| | shows heat | melts (`heats_to`) | shatters (`shatters_to`) | acid |
-| --- | --- | --- | --- | --- |
-| stone | yes | **no** | **no** | eaten |
-| glass | yes | to lava | to sand | immune |
-
-Both absences on stone are decisions rather than omissions. If stone melted
-there would be no vessel that holds lava indefinitely and the choice
-between the two would collapse into "glass, but it dies". And rock does not
-thermally shock into anything this simulation has a material for - a
-quenched slab spalls and cracks, it does not become sand - so there is no
-honest byproduct to name, and thermal shock stays glass's alone. That is
-most of what makes glass worth making.
-
-### How these materials are drawn
-
-Purely visual, all of it: nothing in `material_colours()` is read by the
-simulation, which is exactly why it needs its own tests - a wrong colour
-breaks no behaviour and nothing else would notice.
-
-- **Flat** is the default and stays free. One colour, whole block, the same
-  tight loop it always used.
-
-  Sand's own reserved CULLET band (`SAND_CULLET_BASE`) is still FLAT - one
-  colour, same tight loop - but a TIME-VARYING one: each of the four cullet
-  shades is a starting point on a shared colour cycle that a per-frame
-  phase steps through, so a heap of broken glass shimmers even while every
-  cell's stored byte sits perfectly still, with a rare grain flashing pure
-  white for one step as a glint. It repaints on its own clock the same way the shine does
-  (`row_has_cullet[]`, `CULLET_PHASE_MS`, `app_sand.c`) - see
-  docs/sand/Shading-and-Colour.md's own section on it for the full
-  mechanism.
-- **Speckled** (stone) picks its shade from the cell's POSITION rather than
-  its variant. Stone used to carry a random shade and a wall looked like
-  rock because of it; spending the variant on temperature took that away.
-  The shade never needed to be *stored*, only to be stable, and a position
-  gives that for free. Still one colour per cell, so it costs nothing extra
-  in the pixel loop.
-
-  Eight levels, spread **both ways** around the temperature colour. The
-  first version only darkened, which put every wall below the grey it used
-  to average at and read as a different, murkier material. A fifth toward
-  black and a fifth toward white from resting grey lands back on very
-  nearly the old ramp's own endpoints, 0x4A4F5A and 0x767D8C.
-- **Hatched** (glass, metal) draws two families of single-pixel diagonals,
-  one every eight pixels each way, over three colours: the body, a quiet
-  **grain** that does not move or care about gravity, and a brighter
-  **shine** that does both. The shine is a band that travels on a clock
-  AND sweeps against gravity, turned 45 degrees to the left on the panel -
-  a Q8 unit vector (`material_shine_direction()`) recomputed once a frame
-  and projected onto each pixel, so tilting the board visibly rotates
-  which way the band runs rather than merely picking between two fixed
-  diagonals. The 45-degree lean is deliberate: with the sweep pointing
-  straight up gravity, the bands lay exactly across it, and on the device
-  a slant was wanted instead. That binary version is what an earlier
-  attempt tried first, and it never became visible: two diagonals
-  differing only in which way they lean was too fine a difference for the
-  eye to catch on this grid.
-  Movement was what finally sold it as a surface catching light rather
-  than a texture printed on one; a continuously rotating angle is the
-  second attempt at making direction read too, layered on top of the
-  movement rather than instead of it.
-
-  Both the grain and the shine's WIDTH were tried the other way round
-  first and neither worked. Wide bands buried the pane - half the pixels
-  were line and a quarter were highlight. And the lines mixed *toward the
-  background*, which is the obvious thing to do for something see-through
-  and came out as no pattern at all: a dark line on a dark pane is
-  invisible. Light caught on glass is lighter than the glass, so they lift
-  toward white instead.
-
-  Lines are measured in screen pixels so they run unbroken from one cell
-  into the next. Hatched is the one pattern that cannot be constant-folded
-  and the only one that does per-pixel work.
-
-  Metal reuses this same mechanism with no variant involved at all - it
-  has no variant to shade a reflection by, since an extended material's
-  low nibble names WHICH one it is rather than holding a shade (see
-  `MAT_EXTENDED` above). Its grain and shine are each one constant colour
-  rather than glass's per-heat ramp, and unlike glass it has no per-heat
-  edge dimming either, for the same reason - but it gets the same
-  gravity-following shine angle glass does, since that mechanism has never
-  depended on a variant to begin with.
-
-All of it happens *inside* a cell's block. The dirty-run tracking works on
-grid cells, so a pattern made of whole cells would break every run into
-one-cell pieces and multiply what gets pushed to the panel; a pattern made
-of pixels inside a cell is invisible to it.
-
-**Edges are softened.** A cell with empty space cardinally beside it is
-drawn two thirds of the way back toward its own resting colour. A wall
-going from grey to glowing otherwise changes its whole silhouette, so the
-shape stops reading at exactly the moment it matters. The outline still
-shifts with heat, a third as far; the body is what shows the temperature.
-
-### Room temperature is in the middle
-
-`SAND_AMBIENT_HEAT` is 3, not 0, and the reason is entirely about what can
-be seen. With ambient at the bottom of the range there is no such thing as
-colder than resting: chilling a pane at 0 changes no number, so it changes
-no colour, and snow sitting on glass looks exactly like snow sitting on
-nothing.
-
-Putting ambient at 3 gives cold somewhere to go. 0-2 is **frost** - pale,
-near white, the way cold glass actually goes - and it fades, because
-`cools` moves a cell *towards* ambient from either side rather than only
-downwards. Frost is a state, not a scar.
-
-The same change fixed a second half of the same bug. Chilling used to be
-driven from the warm cell, and a warm cell only gets a turn when it is
-already off ambient - so a pane at rest never looked at the snow on top of
-it and could not be chilled at all. Chilling is driven from the **cold**
-cell now, the way fire reaches out to its neighbours. Melting (`thaws`)
-stays there too, but for a different reason: a neighbour scan per liquid
-cell would land on the commonest material on the board, where a scan per
-snow cell lands on something that arrives in drifts.
-
-### Temperature spreads along the material
-
-A chilled cell drags its neighbours down and a heated one pulls them up,
-which is what `conducts` has always meant - applied *within* the material
-rather than only to whatever is on the far side of it.
-
-Without it the effect was real and nearly invisible. Only the single cell a
-flake touched ever changed, and barely: snow melts after a chill or two and
-`cools` pulls the cell straight back towards ambient, so it hovered one
-level off and nobody could see it on a 184x224 board. Spreading turns that
-into a patch of frost creeping outward from where the snow landed.
-
-Two things keep it from destroying the mechanic, and both were found by
-breaking them:
-
-- **Scaled down hard.** At the full `conducts` value a pane goes isothermal
-  within a step or two, and a wall that is all one temperature cannot be
-  hot inside and cold outside. Measured: a pane under lava never reached
-  melting at all, because heat was shared out faster than any cell could
-  bank it. `SPREAD_SHIFT` is 3, so 27 in 256 rather than 220.
-- **Only across a gap of 2 or more.** A difference of one is left alone, so
-  a smooth gradient across a wall survives instead of collapsing flat.
-
-It is derived from `conducts` rather than being its own field because it is
-the same physical property - a material that carries a fire's heat well
-carries its own temperature well - and two independent numbers could
-disagree about a material for no reason anyone could explain.
-
-### What chilling costs the cold material
-
-Taking heat out of something **above** room temperature costs the cold
-material its own `heats_to`: snow that cooled a glowing pane for free would
-be an unlimited heat sink arriving in a light drift.
-
-Pushing cold *into* something at or below room temperature costs nothing,
-because nothing was absorbed. That distinction is load-bearing rather than
-pedantic - without it, snow melted on contact with ordinary cold glass at
-the rate tuned for standing beside a fire, which makes a snowbank
-impossible to keep anywhere near the one building material it exists to be
-used against.
-
-### The threshold is a visible state
-
-Cooling is gradual and takes a roll; **shattering is not**. A cold neighbour
-touching a cell at or above `SAND_SHOCK_HEAT` breaks it the same step, with
-no roll at all.
-
-Shock used to wait for the `chills` roll, and that roll is also what *cools*
-the pane - so the usual outcome of pouring snow on a hot basin was that the
-pane quietly cooled below the threshold instead of breaking, and nothing
-appeared to happen. Cracking is the fast path now and cooling is the slow
-one, which is the right way round physically as well.
-
-That leaves a rule where one heat level decides everything - a pane at 5 is
-untouchable and a pane at 6 breaks instantly - so **the player has to be
-able to see which side of the line a pane is on**. Glass's palette is
-therefore not a smooth ramp: it runs cold blue to a flat neutral over levels
-0-5, then jumps into a glow and climbs to lava's brightest at 15. The
-largest colour change along the ramp is exactly at the threshold, so
-*orange means snow will break this*.
-
-Three things have to agree on that number - the rule, the palette and the
-tests - which is why it is `SAND_SHOCK_HEAT` in `material.h` rather than a
-private `#define` beside the code. A `_Static_assert` fails the build if it
-moves without the palette, and a test asserts the widest colour step in the
-ramp still lands on it.
-
-**Measured** (host, 2026-08-25): lava held under a cold pane makes it
-shatterable in 42-84 steps and molten in 633-818 - fragile quickly, melted
-slowly, which is the useful split. Snow on a pane at or above the threshold
-breaks every cell in 1 step; below it, never. A pane at full heat drains
-back to cold in ~610 steps once the fire is gone.
-
-```mermaid
-graph LR
-    Sand["SAND"] -->|"heat_chance 16<br/>(memoryless)"| Glass["GLASS<br/>heat 0"]
-    Frost["GLASS<br/>0-2 frosted"] -->|"cools, drifts back"| Glass
-    Glass -->|"chills 40"| Frost
-    Glass -->|"heat_ramp 12<br/>climbs"| Hot["GLASS<br/>heat 15 - glowing"]
-    Hot -->|"cools 6<br/>when the fire stops"| Glass
-    Hot -->|"melts"| Lava["LAVA"]
-    Hot -->|"shatters_to<br/>+ anything that chills"| Sand
-    Warm["GLASS<br/>heat 6 - glowing"] -->|"shatters_to<br/>on contact"| Sand
-    Glass -->|"heat 6"| Warm
-    Snow["SNOW"] -->|"heats_to 120 near fire<br/>thaws 4 in any liquid"| Water["WATER"]
-    Snow -.->|"chills 40"| Hot
-
-    style Sand fill:#a87a3d,color:#fff
-    style Glass fill:#3d6b8a,color:#fff
-    style Hot fill:#8a3d3d,color:#fff
-    style Lava fill:#8a3d3d,color:#fff
-    style Warm fill:#8a3d3d,color:#fff
-    style Frost fill:#3d6b8a,color:#fff
-    style Snow fill:#5a5a5a,color:#fff
-    style Water fill:#3d6b8a,color:#fff
-```
-| glass | 0 | - | - | 0 | **220** | 0 | - | 0 | 0 | **0 (immune)** | - |
-
-Six things in that table are worth reading twice:
-
-- **The byproducts are different materials.** `quench_to` gives **steam**
-  (water that got hot); `residue` gives **smoke** (fuel that burned out). See the
-  simulation document for why steam and smoke are not one row.
-- **`needs_air` is what makes a pool of fuel burn rather than detonate.**
-  Only oil sets it. Without it a spark lights a whole connected pool
-  inside one pass.
-- **`dissolves` and `dissolvable` are a pair, on two different
-  materials.** One is how hard the acid tries, the other is how easily the
-  target gives way, and both must be nonzero for anything to happen. That
-  split lets a single acid figure produce different rates against sand
-  (200), stone (60) and glass (immune) without acid knowing any of their
-  names. `dissolvable` defaulting to **0 = immune** means a material is
-  eaten only by opting in, so anything added without a thought for acid is
-  safe by omission.
-- **Glass is the only thing acid cannot eat, and it has to be made.**
-  Stone held that role by being immune; it dissolves now, slowly, and
-  glass took over. A container is therefore something you build - sand
-  plus sustained heat - rather than something the level already gave you.
-- **`heats_to` is a phase change, not combustion.** Sand becomes glass
-  beside a burning cell, or through a conductor exactly as water boils
-  through one. Kept apart from `flammability`/`ignites_to`, which would
-  work mechanically and would be a lie: sand does not catch fire, and the
-  field name would send the next reader hunting for a flame.
-- **Lava is `KIND_LIQUID` *and* `burns`.** That combination is the
-  clearest evidence the movement and reaction axes are genuinely
-  independent - nothing anywhere special-cases it. It is also why lava's
-  `decay` **must** be 0: `decay != 0` reinterprets the variant nibble as
-  life remaining, and for a liquid that nibble is its fill level, so any
-  decay at all would eat the cell's own mass.
-
-Everything else - sand, water, steam, smoke, and every unused slot -
-is all-zero, which reads correctly for every field on its own: never
-catches, never a heat source, never conducts, leaves nothing, vanishes on
-quench, never flares. See
-[Fire chemistry: wood, embers, steam, and a working
-boiler](Sand-Simulation.md#fire-chemistry-wood-embers-steam-and-a-working-boiler)
-for what each field actually drives.
-
-## Choosing a `kind` for a new material
-
-```mermaid
-flowchart TD
-    A["New material"] --> B{"Does it move\nunder gravity at all?"}
-    B -- "no" --> C["KIND_STATIC\n(stone, and fire's\npredecessor design)"]
-    B -- "yes" --> D{"Moves an AMOUNT\nper cell, or a\nWHOLE grain?"}
-    D -- "amount\n(1-15, splits/merges)" --> E["KIND_LIQUID\n(water)"]
-    D -- "whole grain" --> F{"Falls with gravity,\nor rises against it?"}
-    F -- "falls" --> G["KIND_POWDER\n(sand)"]
-    F -- "rises" --> H["KIND_GAS\n(gas, fire, steam)"]
-    H --> I["Tune per-material:\nsight (spread), decay\n(lifespan), mobility\n(rise speed)"]
-
-    style C fill:#5a5a5a,color:#fff
-    style E fill:#3d6b8a,color:#fff
-    style G fill:#a87a3d,color:#fff
-    style H fill:#4a7c59,color:#fff
-    style I fill:#8a3d3d,color:#fff
-```
-
-This only answers *movement*. A material's *reactions* (ignite, extinguish,
-smother, conduct, quench, flare - `sand_reactions.c`) are a separate,
-orthogonal axis, driven by the second table above: fire is `KIND_GAS`
-for how it moves, but `reaction_t.burns` and the reactions pass's own
-neighbour-scanning are what make it a fire specifically. Ember is the
-clearest proof the two axes are independent: it is `KIND_STATIC` - the
-same kind as motionless stone - and yet it is very much a heat source,
-`reaction_t.burns` and all, decaying and flaring exactly like a fire
-that happens not to move. A future material can mix and match too - a
-`KIND_POWDER` material that is also flammable needs a `reactions[]` row
-and nothing else, no new pass. See
-[`Adding-a-Material.md`](Adding-a-Material.md) for the full worked
-checklist, including the three-attempt inlining lesson that applies
-whenever a new material needs to call into an existing hot-path function
-from a second place, and the `place_reacted()` lesson this feature's own
-design surfaced.
+| 11 | lava | `KIND_LIQUID` | falls | `density=45`, `decay=0` (**must** stay 0 - a liquid's variant is fill, not life); a heat source |
+| 12 | acid | `KIND_LIQUID` | falls | `density=38`, `mobility=220`; dissolves what opts in |
+| 13 | glass | `KIND_STATIC` | never | `density=200`; made from sand by heat, the only thing acid cannot eat; shatters on thermal shock |
+| 14 | snow | `KIND_POWDER` | falls | `density=15` (floats on water and oil); the only cold material, melts in any liquid |
+| 15, `0xF0`-`0xF7` | extended statics | one shared row, `KIND_STATIC` | - | low 3 bits name one of `MATERIAL_EXTENDED_COUNT` (8) further statics: `MATX_ICE`, `MATX_PLANT`, `MATX_LEAF`, `MATX_METAL`, `MATX_ROOT`, 3 spare |
+| 15, `0xF8`-`0xFF` | gunpowder | `KIND_POWDER` | falls | `density=50`; the other half of id 15's row, split off by bit 3 - see below |
+
+Every field on `material_t` is read from the innermost loop, several times
+per cell per step, which is why the struct is kept small - this chip's
+cache line is 32 bytes. Full field-by-field reasoning:
+[`material.h`](../../launcher/main/apps/sand/material.h)'s own header and
+struct comments.
+
+`materials[]`/`reactions[]` (movement and fire chemistry) live in
+`material.c`; `material_colours()` and `palette[256]` (purely visual - see
+[`Shading-and-Colour.md`](Shading-and-Colour.md)) live in
+`material_palette.c` instead, so a change to how a material looks never
+touches the file the hot sweep reads.
+
+### Getting more than sixteen materials out of one nibble
+
+With every ordinary slot spent, two further tricks each bought one more
+material without widening the byte:
+
+- **Fold a state into an existing material's variant**, when the variant
+  has room. Ember used to be its own material; it is now wood with
+  `burn_decay` non-zero, so quenching it (water puts a fire out, leaving
+  the wood) became expressible for free. This works whenever the two
+  states differ only in fields the *cold* table reads, not the hot one.
+- **Split `MAT_EXTENDED`'s low nibble by its own top bit.** `0xF0`-`0xF7`
+  stays the extended-statics doorway; `0xF8`-`0xFF` (gunpowder) became a
+  second, ordinary `KIND_POWDER` row with real physics and a 3-bit
+  variant. This is what doubled `materials[]` to `MATERIAL_ROWS`, and it
+  is expensive - it spent half of what was left of the extended range on
+  one material. `Adding-a-Material.md`'s "Making room" section has the
+  full ladder of options and what each one costs, for whoever needs a
+  tenth.
+
+An extended static (`MATX(k)`) cannot have its own `density`, `kind`, or a
+variant of its own - those are the row the hot path reads, shared by all
+eight codes - only its own colour and reaction row. `place_reacted()` is
+how a reaction produces one (a spec is either an ordinary id or a whole
+`MATX(k)` byte); `sand_spawn_cell()`, not `sand_spawn()`, is how a brush
+paints one, since an extended material has no `material_id_t` to name it.
+
+## The reaction table: a second table for the cold pass
+
+Fire chemistry - flammability, what a material ignites into, whether it is
+a heat source, conducts heat, smokes on burn-out, quenches to something,
+dissolves or is dissolved - lives in a *second* table, `reaction_t
+reactions[MATERIAL_MAX]`, not as more fields on `materials[]`. Nothing in
+the movement code reads it; only `sand_reactions.c`'s cold pass does,
+gated behind `may_have_burning`/`may_have_dissolver`/`may_have_temperature`.
+Fattening the hot table's stride to carry these fields would cost every
+step that never touches fire, for a table almost nothing reads on such a
+step. The cost of the split: a material capable of burning, catching,
+conducting or reacting is potentially two rows instead of one.
+
+[`Reaction-Table.md`](Reaction-Table.md) is the generated, current table -
+regenerate it with `report_reactions.sh` rather than hand-editing. Its own
+"Gunpowder's fuse" section documents the four gunpowder mechanics that live
+entirely at a read site in `sand_reactions.c` (the 2x2-detonation check,
+the blast cooldown, moisture damping ignition, why a buried fuse is never
+smothered) rather than on any `reaction_t` field a generator can walk.
+
+A `soil` field (nonzero: plants may root in, drink from and conduct water
+into this material) replaced an old `dries != 0` test at every
+plant/root site. Dirt sets it; gunpowder, despite having its own moisture
+codec, does not - a fuse buried in a garden bed is not something a tree
+can water itself from.
+
+### Temperature: glass, snow, and a scale with room for cold
+
+`heat_ramp` is what makes a material's variant a temperature rather than a
+shade or a life count; only glass and stone carry one, and only glass acts
+on it (`heats_to` melts it to lava, `shatters_to` breaks it to sand on
+shock - stone has neither, by design: nothing thermally shocks into a
+material this simulation has, and a vessel that melts would leave no
+container for lava at all). `SAND_AMBIENT_HEAT` sits at 3, not 0, so a
+chilled cell has somewhere to go below resting - without that, "colder
+than resting" would be an unreachable, uncolourable state. `cools` drains
+a cell towards ambient, scaled by distance from it, so a pane gets warm
+easily but stays hard to melt; `chills` does the same from a cold
+neighbour (snow, ice); `conducts >> SPREAD_SHIFT` spreads a temperature
+along the material itself, heavily damped, only across a gap of 2 or more,
+so a wall can be hot inside and cold at the rim without going isothermal.
+Shock - `shatters_to` - is instant and re-checked from both directions
+(cold arriving at hot glass, in `step_one_cold_cell()`; heat arriving at
+frosted glass, in `try_heat_transform()`) and, once triggered, converts the
+*whole* connected run of the material at once, up to `CRACK_MAX` (256)
+cells - a pane breaks as a pane, not grain by grain. See
+[`Sand-Simulation.md`](Sand-Simulation.md#temperature-glass-snow-and-a-scale-that-has-room-for-cold)
+for the full mechanism and every constant's reasoning.
 
 ## One step, in order
 
 ```mermaid
 flowchart TD
-    Start(["sand_step(s, gx, gy, jostle)"]) --> Mom["update_momentum()"]
+    Start(["sand_step(s, gx, gy, jostle)"]) --> Mom["build_sweep_tables()\nemit_from_emitters()"]
     Mom --> Dith["dithered gravity direction\n(free fall -> early return)"]
-    Dith --> Sweep["Main gravity sweep\nstep_one_row() per row\n(sand + water's DOWN move)"]
-    Sweep --> Liq["sand_step_liquids()\ncross-flow + wall rebound\n(skips blocks with no liquid near)"]
+    Dith --> Sweep["Main gravity sweep\nstep_one_row() per row\n(sand + water's DOWN move)\ncheckerboard-split across cores\nabove SWEEP_CHECKERBOARD_MIN_ROWS"]
+    Sweep --> Liq["sand_step_liquids()\ncross-flow + wall rebound\nstriped across cores above LIQUID_SPLIT_MIN_ROWS"]
     Liq --> GasCheck{"may_have_gas?"}
-    GasCheck -- yes --> Gas["sand_step_gas()\nrise + disperse\n(gas, fire)"]
+    GasCheck -- yes --> Gas["sand_step_gas()\nrise + disperse"]
     GasCheck -- no --> React
-    Gas --> React["sand_step_reactions(s, gx, gy)\nignite / extinguish / smother /\nburn out / conduct heat / flare"]
-    React --> Fin["finalize_settling()\nBLOCK_ACTIVE -> settled bits"]
+    Gas --> React["sand_step_reactions(s)\nignite / extinguish / smother /\nburn out / conduct heat / flare"]
+    React --> Imp["step_impulses(s, dx, dy)\nexplosions, thrown chunks, splash pushback"]
+    Imp --> Fin["finalize_settling()\nBLOCK_ACTIVE -> settled bits\nsplit across cores above FINALIZE_SETTLING_SPLIT_MIN_BLOCK_ROWS"]
     Fin --> End(["done"])
 
     style Sweep fill:#a87a3d,color:#fff
     style Liq fill:#3d6b8a,color:#fff
     style Gas fill:#4a7c59,color:#fff
     style React fill:#8a3d3d,color:#fff
+    style Imp fill:#5a5a5a,color:#fff
     style Fin fill:#5a5a5a,color:#fff
 ```
 
-The one rule that governs the whole pipeline: **every pass that isn't the
-main sweep has to finish before `finalize_settling()` runs**, because
-`BLOCK_ACTIVE` has to reflect the *whole* step, not just whichever pass
-ran first. This exact phrase appears at every call site in `sand.c` and
-every pass's own declaration in `sand_priv.h` - if you add a seventh pass,
-it goes here too, before `finalize_settling()`, not after.
+The one rule that governs the whole pipeline: **every pass has to finish
+before `finalize_settling()` runs**, because `BLOCK_ACTIVE` has to reflect
+the *whole* step, not just whichever pass ran first. If you add a pass, it
+goes here too, before `finalize_settling()`, not after.
 
-`finalize_settling()` is also where a second core actually helps - see
-[Two cores, and why most of a step still runs on
-one](Sand-Simulation.md#two-cores-and-why-most-of-a-step-still-runs-on-one).
-
-Two passes are gated differently on purpose:
-`sand_step_gas()` is checked at the call site (`if (s->may_have_gas)`)
-because it takes nine arguments and this call site runs on every step of
-every test - skipping the call avoids marshalling all nine for nothing.
-`sand_step_liquids()` and `sand_step_reactions()` rely on their own
-internal early-return instead, because they take few enough arguments
-that the marshalling cost was never worth a second check -
-`sand_step_reactions()` grew from one argument to three (`s, gx, gy`)
-when heat conduction's boiler needed a gravity direction, and two ints
-is still nowhere near sand_step_gas()'s nine, so the reasoning held
-without needing to move the check. Getting this
-gating wrong in the wrong direction is a real, shipped bug class: a
-mis-ordered conditional has silently skipped a pass that should have run.
+Three of these passes can split across both cores through the same
+primitive, `job_run_core1()`/`job_wait()` (`util/job.h`) - one copied
+context, run on core 1 if its worker is idle, otherwise inline: the main
+sweep (as two checkerboard-coloured phases of row-stripes, each phase half
+on core 1), the liquid cross-flow pass (the same stripe idea, gated
+separately), and `finalize_settling()` itself (split by block row). Gas,
+reactions and impulses stay serial. Splitting cost the project its
+byte-for-byte determinism guarantee - a two-core step and the serial path
+no longer produce the same board for the same seed - and bought back a
+narrower one: a two-core step is itself deterministic, repeatable from
+(seed, step, cell, draw slot) alone, checked by its own suite rather than
+against the serial path. See
+[Sand-Simulation.md's "Two cores" section](Sand-Simulation.md#two-cores-a-checkerboard-sweep-and-what-stays-serial)
+for the seam-safety argument, the reach table that decides what can split
+at all, and why gas/reactions/impulses cannot (yet).
 
 ## Block and row sleeping
 
@@ -945,119 +227,74 @@ stateDiagram-v2
     class Settled settledStyle
 ```
 
-**A wake buys another chance to MOVE, and nothing else.** The reactions
-pass is not sleep-gated, so a settled block still reacts; waking it only
-costs the movement sweep. That is why writes that shift a cell's heat
-nibble one level call `mark_rows()` and stop there - only `MAT_STONE` and
-`MAT_GLASS` carry a `heat_ramp`, both `KIND_STATIC`, so warmer or colder is
-no new move. Anything that does change how a cell moves changes its
-*material*, through `place_cell()`, which still wakes. Waking on heat
-instead was not free: it shook a solid ice block out of its column, and it
-put snow's crust rate - gated on `cell_settled()` - under
-`COLD_REWARM_PERIOD`, an unrelated thermal constant, moving the balance
-ceiling 9x.
+A wake buys another chance to *move*, and nothing else - the reactions pass
+is not sleep-gated, so a settled block still reacts; a write that only
+shifts a heat nibble one level calls `mark_rows()` and stops there, since
+neither stone nor glass changes how it moves by getting warmer or colder.
+Anything that changes a cell's *material*, through `place_cell()`, still
+wakes.
 
-A settled block costs one comparison per step (`BLOCK_ACTIVE` check in
-`finalize_settling()`) instead of a full grain-by-grain sweep - this is
-the entire reason `test_a_screen_of_settled_sand_costs_almost_nothing`
-exists and has a budget of its own, three orders of magnitude under the
-others, instead of one shared with them. The sweep asks the question once
-per BLOCK row rather than once per row, so a settled board never builds
-the per-row context at all. Two settled bits, not one
-(`BLOCK_SETTLED_NEAREST`/`BLOCK_SETTLED_OTHER`), because gravity's
+A settled block costs one comparison per step (`BLOCK_ACTIVE` in
+`finalize_settling()`) instead of a grain-by-grain sweep. Two settled bits,
+not one (`BLOCK_SETTLED_NEAREST`/`BLOCK_SETTLED_OTHER`), because gravity's
 direction is dithered between two ring directions each step, and a block
 settled under one might not be under the other.
 
-`block_state` carries two more bits, for a different question the same
-grid answers cheaply. `BLOCK_HAS_LIQUID` is set by the main sweep - which
-reads every cell of every awake block anyway - when it sees a liquid cell,
-and `BLOCK_LIQUID_NEAR` is that bit expanded to a block's 8 neighbours by
-one pass over the blocks. `sand_step_liquids()`'s cross-flow pass skips
-the block-columns whose NEAR bit is clear, which took it from reading all
-41,216 cells of the grid every step to reading only the ~59% that could
-possibly matter. The expansion is what makes it sound: liquid moves one
-cell in the sweep and at most `SAND_LIQUID_SIGHT` (8) in the cross-flow
-pass, so anywhere it can arrive after its own block was walked belongs to
-a neighbour of the block that was seen holding it. See `sand_priv.h` for
-the invariant in full, and
-`test_water_falling_into_the_next_block_down_still_spreads` for the
-fixture that fails without the expansion.
+`block_state` carries two more bits for a different question: `BLOCK_HAS_LIQUID`
+is set by the main sweep when it sees a liquid cell, and `BLOCK_LIQUID_NEAR`
+expands that to a block's 8 neighbours by one pass. The cross-flow pass
+skips any block-column whose `NEAR` bit is clear - liquid moves one cell in
+the sweep and at most `SAND_LIQUID_SIGHT` (8) in cross-flow, so anywhere it
+can arrive belongs to a neighbour of the block that was seen holding it.
+See `sand_priv.h` for the invariant in full.
 
-Block size (`SAND_BLOCK_W=16`, `SAND_BLOCK_H=32`, `sand.h`) was swept
-across several candidate pairs on real hardware, not guessed, and the
-sweep found two real device-only bugs along the way (a stack overflow,
-two test fixtures that assumed the old size).
-
-**The first round of candidates were all W ≤ 32 and H ≥ 32** - no square and no
-transpose of any of them - and every scene they were judged on poured down
-grid +Y. The board is played landscape, where down is grid +X, so the search
-space could not have found a landscape answer. The candidate list was
-later closed under transpose plus the square, and ranked on the host
-before spending a device round on it. Only `SAND_BLOCK_W` is constrained -
-a power of two, for the mask in `dest_rows_full()`, and no narrower than
-`SAND_LIQUID_SIGHT` for the invariant above; `SAND_BLOCK_H` is only ever
-divided by.
-
-That reopened sweep is what moved the shape from 32×64 to 16×32. **W is the knob in both
-orientations** - every block-level rejection spans along X in units of it -
-so every transpose lost and every narrower block won. The trade is explicit
-and one-way: every row where something MOVES got cheaper, and the two rows
-where nothing does got dearer, which the maintainer accepted on the grounds
-that a settled board has no motion for the extra cost to lag. The shape is
-not behaviour-neutral - see that attempt for the one fingerprint cell and
-the three scene constants it moved.
+Block size is `SAND_BLOCK_W=16`, `SAND_BLOCK_H=32` (`sand.h`), swept across
+candidate pairs on real hardware rather than guessed. `SAND_BLOCK_W` is
+constrained - a power of two, no narrower than `SAND_LIQUID_SIGHT` - because
+every block-level rejection spans along X in units of it, and the board is
+played landscape (down is grid +X); `SAND_BLOCK_H` is only ever divided by.
+See [Sand-Simulation.md](Sand-Simulation.md#performance-discipline) for the
+measurements behind the current shape.
 
 ## Dirty-row and dirty-column tracking
 
 Separate from block sleeping, and for a different purpose: block sleeping
 decides what the *simulation* can skip; `dirty_rows` (`sand.h`) decides
-what the *renderer* can skip. Any move marks its source and destination
-row (`mark_rows()`/`mark_move()`/`mark_slide()`, `sand_priv.h`) - and, on
-top of that, the column(s) actually touched, into `dirty_x0[y]`/
-`dirty_x1[y]` (`sand_track_dirty_cols()`), a half-open span unioned across
-every mark that lands on row `y` this step. Row marking alone cannot say
-"which part of this row changed" - in landscape, where a grid row runs
-ALONG gravity, that meant one changed cell resending a whole settled stack
-sharing its row. `mark_depth_band()` follows the same rule: it widens
-`dirty_x0`/`dirty_x1` by `MATERIAL_LIQUID_DEPTH_BAND` along whichever axis
-gravity actually runs on (`s->last_load_dx`/`dy`), rows in portrait,
-columns in landscape - never 49 rows for a pour that only ever changes one.
+what the *renderer* can skip. Any move marks its source and destination row
+(`mark_rows()`/`mark_move()`/`mark_slide()`, `sand_priv.h`) and, on top of
+that, the column(s) actually touched, into `dirty_x0[y]`/`dirty_x1[y]`
+(`sand_track_dirty_cols()`), a half-open span unioned across every mark
+that lands on row `y` this step. Row marking alone cannot say "which part
+of this row changed" - in landscape, where a grid row runs *along*
+gravity, one changed cell would otherwise resend a whole settled stack
+sharing its row. `mark_depth_band()` follows the same rule, widening the
+span by `MATERIAL_LIQUID_DEPTH_BAND` along whichever axis gravity actually
+runs on.
 
-A row with no column span narrowed this step (the sentinel `dirty_x0[y] >
-dirty_x1[y]`) reads as "repaint this row full-width" - what every row got
-before column tracking existed, and still what a full `gfx_mark_all_dirty()`
-or a portrait depth-band mark asks for.
+A row with no column span narrowed this step (the sentinel
+`dirty_x0[y] > dirty_x1[y]`) reads as "repaint this row full-width" - what
+a full `gfx_mark_all_dirty()` or a portrait depth-band mark still asks for.
 
-`app_sand.c`'s `draw_dirty_rows()` walks every row, skips the clean ones
-outright, and for the dirty ones computes a repaint span
-(`row_paint_span()`): the row's own `dirty_x0`/`dirty_x1`, widened by one
-column each side for the edge-softening and wood/leaf neighbour checks
-that read a row's immediate left and right, and further widened to a wake
-tick's own last-painted flagged-cell span (shine, liquid depth, cullet,
-glass, wood/leaf) when one of those fires for the row. `paint_row_n()`
-still computes state (local depth, `row_flags`, hash) across the row's
-full width - the state chain crosses columns and even rows - but only
-writes pixels inside that span, and `row_runs.h`'s span-reconciliation
-still runs full-width for bookkeeping; only the rects it hands to
-`gfx_mark_dirty()` are clipped down to the span. "A screen band containing
-no changed rows need not be sent to the panel at all" still holds; the
-column span is the same idea one axis finer, for the rows that are dirty.
+`app_sand.c`'s `draw_dirty_rows()` walks every row, skips the clean ones,
+and for the dirty ones computes a repaint span (`row_paint_span()`): the
+row's own `dirty_x0`/`dirty_x1`, widened by one column each side for
+edge-softening and wood/leaf neighbour checks, and further widened to
+cover whatever a periodic wake tick (shine, liquid depth, glass, wood/leaf,
+the cullet colour cycle) touched this frame. `paint_row_n()` still computes
+state across the row's full width - the state chain crosses columns and
+rows - but only writes pixels inside that span.
 
 ## Two screens: the palette and the brush screen
 
 The app has two full-screen overlay panels, siblings rather than pages of
 one menu, opened by different buttons and never both at once
-(`sand_ui_screen_t`, `sand_ui.h`):
+(`sand_ui_screen_t`, `sand_ui.h` - `SAND_UI_MENU`, `SAND_UI_RUNNING`,
+`SAND_UI_PALETTE`, `SAND_UI_BRUSH`):
 
 | Button | Opens | Screen | Picks |
 |---|---|---|---|
 | BOOT | `SAND_UI_PALETTE` | the material picker (`palette.c/.h` layout, `ui/palette_screen.c/.h` drawing) | which material the finger places |
 | PWR | `SAND_UI_BRUSH` | the brush screen (`ui/brush_screen.c/.h`, layout and drawing both) | POUR/ERASE/BOOM, and that mode's radius |
-
-PWR used to cycle PAINT/ERASE/DETONATE directly, with no panel at all; it
-now opens the brush screen instead, and closes it on a second press.
-Mode selection moved to the brush screen's own three-segment control - see
-`sand_ui_mode_clicked()` below.
 
 Both panels split the same way: a **pure layout** module with no gfx and no
 hardware header (host-tested at both real canvases, since the shell can be
@@ -1065,271 +302,80 @@ under a quarter turn), a **pure state machine** in `sand_ui.c/.h` that owns
 what a tap on either panel *means*, and a **drawing** module in
 `apps/sand/ui/` that lays out real `mu_button()`/`mu_update_control()` hit
 targets from the layout module's rects, calls into `sand_ui.c` with the
-result, and draws - host-testable in its own right, since it is not
-`app_*.c`. `app_sand.c` only brackets the call with `ui_begin()`/`ui_end()`
-and hands it `&ui` (the app's own `sand_ui_t`). See sand_ui.h's own "WHO
-HIT-TESTS AND WHO DECIDES": the caller hit-tests through microui, so
-rotation is free; `sand_ui.c` decides what a hit means, so that logic is
-host-testable - the file exists because four edge-ownership bugs (a state
-reading an edge that belonged to a different one) shipped out of exactly
-this logic before the split, and `suite_sand_ui.c` is what now pins all
-four down, plus the corresponding brush-screen case: **the PWR press that
-opens the screen must not also close it** - guaranteed by `sand_ui_step()`
-reading `ui->screen` exactly once per frame, before any branch can change
-it.
+result, and draws. `app_sand.c` only brackets the call with
+`ui_begin()`/`ui_end()`. See `sand_ui.h`'s own "WHO HIT-TESTS AND WHO
+DECIDES": the caller hit-tests through microui, so rotation is free;
+`sand_ui.c` decides what a hit means, so that logic is host-testable -
+`suite_sand_ui.c` pins down the edge-ownership bugs that motivated the
+split, including "the PWR press that opens the screen must not also close
+it" (`sand_ui_step()` reads `ui->screen` exactly once per frame, before any
+branch can change it).
 
-A third, simpler screen lives beside these two: `ui/sand_menu_screen.c/.h`
-draws the boot-time START/QUALITY/COLOUR/DITHER menu (`SAND_UI_MENU`,
-outside `sand_ui_t` entirely - it runs before a simulation exists), taking
-pre-formatted labels and reporting which button was tapped rather than
-touching `app_sand.c`'s own option enums directly.
+A third, simpler screen, `ui/sand_menu_screen.c/.h`, draws the boot-time
+START/QUALITY/COLOUR/DITHER menu (`SAND_UI_MENU`, outside `sand_ui_t`
+entirely - it runs before a simulation exists), taking pre-formatted
+labels and reporting which button was tapped.
 
-The brush screen's own files:
+The brush screen's own files, beyond `ui/brush_screen.c/.h` (layout and
+drawing, asserted against both 368x448 and 448x368 by
+`ui/suite_brush_screen.c`):
 
-- **`ui/brush_screen.h`/`.c`** - pure layout (a canvas width and height in,
-  every rect - panels, swatch, info button, three segments, slider track -
-  out, nothing reading `gfx.h` or `GFX_WIDTH`/`GFX_HEIGHT` directly) and,
-  in the same file, the drawing that turns those rects into
-  `mu_button()`/`mu_draw_rect()` calls via `brush_screen_draw(mu_Context*,
-  sand_ui_t*)`. `suite_brush_screen.c` (`ui/`) asserts the layout holds at
-  both 368x448 and 448x368 - nothing overlaps, nothing leaves the canvas,
-  every tap target stays finger-sized - and measures every one of the
-  screen's fixed strings against the rect it has to fit inside, at the
-  scale it is actually drawn at. That check is what caught the design's own
-  wording not fitting: the size caption reads **`POUR SIZE`**, not the
-  design's `POUR BRUSH SIZE`, which needs 240px of a row that is only 232px
-  wide in portrait once the value box takes its 80. `BRUSH_SCREEN_SEG_POUR/
-  ERASE/BOOM` line up with `sand_mode_t`'s `SAND_MODE_PAINT/ERASE/DETONATE`
-  order by construction, a fact `brush_screen.h`'s own header comment
-  warns about at length: this app has three unrelated things called some
-  form of "brush" (the palette's materials, `brush_mode_t`'s pour-vs-spawn,
-  and this screen's PAINT/ERASE/DETONATE selector), and the segments below
-  are the third one, not the other two.
-- **`sand_icons.h`** - the funnel/cross/starburst/`i` bitmaps for POUR,
-  ERASE, BOOM and the (currently inert) info button, hand-drawn 16x16 in
-  `gfx/icons.h`'s own format and reusing its `icon_bitmap_blocks()`
-  rather than repeating that logic. Lives in the app's own folder, not
-  `gfx/icons.h`, per "an app is a folder" - deleting `apps/sand/` deletes
-  its icons with it. `suite_sand_icons.c` checks structural facts only
-  (non-empty, fits `UI_DRAW_BITMAP_MAX_BLOCKS` at the size the screen
-  actually draws it, symmetric where the artwork claims to be) - never
-  against the code that draws it, since nothing can assert a funnel looks
-  like a funnel.
+- **`icons_sand.h`** - the POUR/ERASE/BOOM/info bitmaps, generated by
+  `tools/gen_icons.py` from `icons/sand.png` + `icons/sand.json`, reusing
+  `gfx/icons.h`'s bitmap format. Lives in the app's own folder, per "an app
+  is a folder" - deleting `apps/sand/` deletes its icons with it.
 - **`sand_swatch.h`** - a deterministic pattern of shade variants for the
-  header's textured material swatch, drawn from `MATERIAL_SHADE_SPAN` and
-  `material_grain_hash()` so the swatch is made of the same shades the
-  grid itself renders with, not a second, drifting idea of what a material
-  looks like. A pure function of `(spec, col, row)` alone, never sand_t's
-  RNG or a frame counter - a swatch that reshuffled itself every frame
-  would defeat `ui_end()`'s repaint hash and force a repaint of an
-  otherwise-static panel forever. `suite_sand_swatch.c` checks determinism
-  and that every variant stays in range.
-- **`ui/brush_screen.c`**'s `brush_screen_draw()` - the drawing and
-  hit-testing, using the shell's Phase 1-4 primitives (`ui_draw_bitmap()`,
-  `ui_slider_int()`, `ui_panel_spans()`/`ui_bezel_spans()`,
-  `ui_set_font_scaled()`) documented in
-  [`Launcher-Architecture.md`](../Launcher-Architecture.md#drawing-a-ui-in-the-shell-or-in-an-app).
-  `handle_pour_input()` (`app_sand.c`) reads the current mode's radius from
-  `sand_ui_radius(&ui)` rather than a fixed `POUR_RADIUS_PX`/
-  `ERASE_RADIUS_PX`/`DETONATE_RADIUS_PX` - those three constants are still
-  there, now only as the three modes' starting defaults
-  (`sand_ui_t.radius_px`, seeded once at startup).
-- **`ui/suite_command_list_budget.c`** - drives `palette_screen_draw()`,
-  `brush_screen_draw()` and `sand_menu_screen_draw()` against a real
-  `ui_init()`/`ui_begin()`, asserting each screen's peak command-list use
-  against `MU_COMMANDLIST_SIZE` with headroom to spare - the host
-  counterpart to eyeballing a screen on the device, and the reason these
-  three needed their own files rather than staying inside `app_sand.c`.
+  header's material swatch, a pure function of `(spec, col, row)` alone so
+  it never forces a repaint of an otherwise-static panel.
+- **`ui/suite_command_list_budget.c`** - drives all three screens against a
+  real `ui_init()`/`ui_begin()`, asserting each one's peak microui
+  command-list use against `MU_COMMANDLIST_SIZE` with headroom to spare.
 
 **One size per mode, not one shared slider.** POUR, ERASE and BOOM each
-remember their own radius in `sand_ui_t.radius_px[SAND_MODE_COUNT]`,
-clamped to `[SAND_UI_RADIUS_MIN, SAND_UI_RADIUS_MAX]` by
-`sand_ui_set_radius()`. A single shared value would flatten reaches that
-are deliberately different - BOOM's default (50px) is five times POUR's
-(10px) - so switching segments would either make BOOM's blast tiny or
-POUR's brush enormous depending on which was touched last.
+remember their own radius in `sand_ui_t.radius_px[SAND_MODE_COUNT]`
+(`sand_ui_set_radius()`), because BOOM's default reach is five times
+POUR's - a single shared value would flatten reaches that are deliberately
+different. Nothing on either screen persists across an app restart.
 
-**Deliberately deferred**, both flagged in code comments rather than left
-to be mistaken for bugs: the info button draws (`icon_info_bitmap`) but
-has no handler - the panel behind it is separate, unbuilt work - and
-nothing on either screen persists across an app restart; brush, mode and
-every radius reset with `sand_ui_t` the same way everything else in it
-already does. See
-[`Sand-Brush-Screen-Plan.md`](../plans/Sand-Brush-Screen-Plan.md) for the
-plan this shipped from and what else it deferred.
+## Indexed colour modes
+
+`app_sand.c` renders through `gfx`'s indexed-8 pipeline in two modes,
+picked from the boot menu (`SAND_COLOR_256` is the default, `SAND_COLOR_16`
+the alternative, `SAND_COLOR_FULL` bypassing indexed mode entirely) -
+`sand_colour_state.h` tracks when a `gfx_mode_enter()`/`exit()` transition
+is actually needed (entering/leaving the app, opening/closing an overlay
+screen, since neither screen draws through the indexed pipeline yet).
+16-colour mode drives a selectable dither; both modes suppress shading
+changes the target palette cannot show, rather than spending cycles
+computing a gradient step nothing will display. See
+[`Shading-and-Colour.md`](Shading-and-Colour.md#indexed-colour-modes-256-and-16)
+for the mechanism.
 
 ## Verifying performance on real hardware
 
-Build, flash and capture commands live in
-[`../Testing-Guide.md`](../Testing-Guide.md) and the `report_*.sh` scripts
-under `launcher/tools/` and `launcher/main/apps/sand/tools/` - see
-`report_performance.sh` for the sand-specific capture. The rest of this
-section is what a capture actually shows once you have one.
-
-### Reading the result
-
-Grep the capture for the headline line and any failures:
-
-```bash
-grep -E "FAIL|SELFTEST_COMPLETE" /path/to/output.txt
-```
-
-`SELFTEST_COMPLETE failures=N` is the number that matters. **The
-current accepted baseline is `failures=13` - every frame-budget test,
-deliberately.** On 2026-08-26 the first full capture of the
-post-materials-wave tree (`performance_20260826_150930`, reproduced by
-a second capture to within 4 µs on every test) re-measured all
-thirteen scenes, and every budget was re-set to a uniform reduction
-target of measured × 0.9, rounded - see `FULL_STEP_BUDGET_US`'s
-comment in `suite_sand_perf.c` for the full reasoning. Nothing passes by
-decree, nothing was ratcheted up to what the code happens to cost:
-each budget sits a tenth below its own fresh measurement, and each
-test stops failing only when that tenth is actually won.
-
-**Still `failures=13` after the sixteenth attempt**, and that is the
-right outcome to expect from a round that went well: it took the fire
-screen down 10.4%, the lava stress scene 6.5%, thermal shock 4.9% and
-the four liquids 3.6% - between a third and a half of the tenth each of
-those rows owes - without moving a single budget. A row turns green
-when its own tenth is won, not when it improves.
-
-The measured baselines that capture established (µs, per step except
-the cascade's single step): settled screen 260, full-size step 6434,
-settled-pile flip 6529, mixed scene 12999, water 16043, every-material
-flip 74911, thermal shock 106650, lava stress 121377, four liquids
-125430, smoke+steam 141189, fire screen 295533, fire cascade 506666.
-
-Two findings from that capture worth keeping next to the numbers.
-First, the eleventh attempt's host-measured water/mixed recovery did
-NOT materialise on the device (water 16043 against a predicted
-12-13.5k) - the host ratio is scene-specific and unstable, as this
-file already warns, and the wave's tail commits also landed in
-between. Second, the liquid-free controls both moved ~+10% against the
-50-commit-older build (full step 5867→6434, flip 5959→6529), which was
-unattributed at the time of the re-base. **It has since been
-attributed**, in the fifteenth tuning attempt, and to neither of the
-two candidates this paragraph originally offered: a device bisect put
-it on one commit, `e03aabd`, whose added line *never executes* in
-either control and cost ~5% purely by changing how GCC scheduled
-`sand_step` around it. Same instructions, differently ordered - a
-third category beside "new work" and "layout".
-
-Both controls have since been read again, four captures across three
-builds, and they land on one of exactly two value-pairs - (6005, 6100)
-or (6263, 6356) - with nothing in between. See the sixteenth attempt:
-the layout lottery on this target may be quantised rather than
-continuous, which if it holds makes "which state did the control land
-in" a much sharper test than "is the delta under 4%".
-
-One tooling note that has since been corrected: the eleventh attempt
-flagged the generated report as reading the every-material budget as
-"300000", a number that appears in that test's *comment prose*
-describing a discarded estimate, and suspected the report tool was
-matching a number near the test name rather than the assertion's
-argument. **That bug does not exist.** Run against the current source,
-the tool returns all eleven budgets correctly, 54,000 included. The
-stale capture's report said 300,000 because the build that was flashed
-*asserted* 300,000 at the time - the tool was reading the assertion
-correctly, and the source had simply changed since. A report is a
-measurement of a tree too; "the tool is wrong" was diagnosed from a
-report generated against different source.
-
-It was `failures=3` for a long time, and all three came off without a
-single budget moving, which is the part worth knowing. The settled-pile
-flip and the screen of water came in during the ninth tuning attempt,
-which found that per-move row bookkeeping was 40% of the flip and then
-that the cache it protected (`ROW_NO_LIQUID`) cost more than it saved and
-deleted it outright. The mixed scene came in during the tenth, which gave
-the cross-flow pass a block-shaped skip for the cells that hold no liquid.
-
-## The thirteen device frame-budget tests
-
-All `#ifdef DEVICE_BUILD`-only, in `suite_sand_perf.c`, run against the real
-184x224 grid rather than the 8x8 host-test fixture. Eight of the thirteen
-have a real device number behind them - see each test's own comment for
-the reasoning behind its specific budget. The five added by the twelfth
-and thirteenth attempts do not yet; their ceilings are provisional
-guesses, flagged as such below.
-
-Two of them are **reduction targets** rather than headroom - set below
-what the code could do when they were written, on purpose, so they fail
-until the work is done. The mixed scene was the first and came good; the
-mixed-material flip is the second and has not yet.
-
-Every "last measured" below is the 2026-08-25 capture, whose build is
-fifty commits behind HEAD - see the caveat above. The "expected" notes
-are host-measured predictions from the eleventh attempt and are
-**unverified pending a flash**.
-
-| Test | Scenario | Budget | Last measured |
-|---|---|---|---|
-| `test_a_full_size_step_fits_in_the_frame_budget` | Checkerboard of falling sand, worst-case movement | 6000 µs | 5867 µs (thin - watch it; its code is unchanged since, so any move is layout) |
-| `test_a_screen_of_settled_sand_costs_almost_nothing` | Entire grid full of sand, nothing moving | 300 µs | 267 µs |
-| `test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget` | Big pile settled asleep, then gravity flipped | 6500 µs | 5959 µs (was 8996 and failing until the ninth attempt) |
-| `test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget` | Sand ~30% left, water ~30% right, a stone X in between, all settled then flipped | 12000 µs | 12876 µs - **FAIL**; expected to pass after the eleventh attempt (host -17%), unverified |
-| `test_a_screen_of_water_fits_in_the_frame_budget` | Half a screen of water dropped as a slab | 14000 µs (tightened from 16000 after the tenth attempt) | 16052 µs - **FAIL**; expected to pass after the eleventh attempt (host -28%), unverified |
-| `test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget` | Whole grid of gas, one fire spark, single step (ignition, not steady state) | 350000 µs | 390158 µs - **FAIL**; expected to still fail, possibly higher than this, and recommended for re-pegging |
-| `test_a_full_screen_of_fire_fits_in_the_frame_budget` | Whole grid already all fire (steady state - both `sand_step_gas()` and `sand_step_reactions()` pay per cell, every step) | 250000 µs | 286720 µs - **FAIL**; expected to still fail and recommended for re-pegging |
-| `test_a_gravity_flip_on_every_material_at_once_stays_sane` | A wrapped tile of **every** material, laid out so all material pairs touch, settled then flipped - every pass doing real work at once | 54000 µs (**reduction target**, 10% under measured) | 60091 µs, measured against the older 300000 budget and passing there; **expected to fail** against 54000 on HEAD |
-| `test_four_liquids_reacting_at_once_fits_in_the_frame_budget` | Water, oil, acid and lava painted upside down (densest on top) so every layer migrates through every other one instead of settling quiet, run at the app's own per-material scatter, decay and mobility | 150000 µs (**provisional sanity ceiling**, not a tuned budget) | **never measured on hardware; ceiling is provisional and must be re-pegged from the first capture** |
-| `test_the_lava_stress_scene_fits_in_the_frame_budget` | A lava reservoir under a water roof with sand/wood/oil columns between them, one column in four left empty as a chute so the roof water reaches the lava inside the window | 150000 µs (**provisional sanity ceiling**, not a tuned budget) | **never measured on hardware; ceiling is provisional and must be re-pegged from the first capture** |
-| `test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget` | A full grid of smoke and steam, checkerboarded, with one flame - the only benchmark holding either gas's convection behaviour in quantity | 400000 µs (**provisional sanity ceiling**, not a tuned budget) | **never measured on hardware; ceiling is provisional and must be re-pegged from the first capture** |
-| `test_the_thermal_shock_scene_fits_in_the_frame_budget` | 480 glass-ringed compartments, each with a shatter trigger outside the ring and a payload inside, both thermal shock directions firing across the lattice from step 1 | 400000 µs (**provisional sanity ceiling**, not a tuned budget; paired with the 10-step window for the watchdog arithmetic) | **never measured on hardware; ceiling is provisional and must be re-pegged from the first capture** |
-| `test_the_boiler_scene_fits_in_the_frame_budget` | A stone basin of 30 rows of water on an 11-row slab over lava and burning-wood burners, run as a sustained steady state (20 settle steps, 30 measured) | 80000 µs (**provisional sanity ceiling**, not a tuned budget; 50 steps at that ceiling is four seconds against the five-second watchdog) | **never measured on hardware; ceiling is provisional and must be re-pegged from the first capture** |
-
-Four of the eight budgeted rows fail as of that capture, and no budget was ever raised to make
-any row pass - the mixed scene in particular was set 21% *below* what
-the code could do when it was written, deliberately, as a reduction
-target rather than a safety margin, and it went from 26.2% over to 7.0%
-under without the number moving. That is the standard to hold the next
-one to, and the reason the rows above carry labelled expectations rather
-than quietly-updated figures: a number nobody measured on the device is
-worse than no number, because it looks like one.
-
-The two fire rows are the exception being argued about rather than
-chased. Both budgets are regression guards pegged at about 9% over a
-measured figure, and both say in their own comments that they are not
-real-time promises. A deliberate feature wave moved what they were
-pegged to. The eleventh attempt recommends re-pegging them from a fresh
-capture by the method their comments already document, and deliberately
-did not do it - a budget adjusted to accommodate the code it guards has
-stopped guarding anything.
-
-One row to watch rather than celebrate: `full_size_step` sits at ~2.1%
-under its budget, thin enough that an unrelated code change can flip it
-purely by moving where things land in flash - it has crossed twice in this
-project's history for exactly that reason. If a capture ever shows a
-failure, check whether the number that moved actually moved *much* (not the
-ordinary ~2-5%, occasionally more, flash-layout noise this project has
-already characterised) before assuming a real regression. A restructuring
-that changed no semantics at all has measured a 14% swing on the water
-benchmark from flash layout alone, so "much" has a wide floor here.
-
-The two fire rows were new territory when they were written, not a
-template that existed before: there was no gas- or fire-specific
-frame-budget test until fire needed one, because gas shipped without a
-dedicated worst-case perf test at all. If a future material needs its
-own, these two are the closest things to a pattern to copy - one for a
-worst-case *transition* (like the cascade), one for worst-case *steady
-state* (like the full-screen-of-fire test), since those two numbers are
-not interchangeable (the redesign that made fire move like gas changed
-the steady-state cost without touching the transition cost at all - see
-"Corrections" in the plan history if you want the full trace of why).
-
-The five provisional rows below them are a different kind of new: not a
-pattern to copy so much as an open question to close. Nobody has run
-them on hardware, so unlike every other row in this table their "last
-measured" column has no number in it at all - re-pegging them from a
-first capture is the next thing this table needs, whatever that capture
-says.
+[`../Testing-Guide.md`](../Testing-Guide.md) is the host/device split and
+the general practice; [`Testing-Sand.md`](Testing-Sand.md) is this app's
+own half of it - the frame-budget capture, `RUNSUITE`, how to read a
+result, and the current state of `suite_sand_perf.c`'s frame-budget tests
+on this board. Don't duplicate numbers here: a captured budget is a fact
+about one build on one board at one point in time, and the last full
+capture is always the honest source for it, not this page.
 
 ## Related
 
-- [`Sand-Simulation.md`](Sand-Simulation.md) - the "why" behind every
-  rule sketched here: movement, the water model, gas, the performance
-  discipline.
-- [`Adding-a-Material.md`](Adding-a-Material.md) - the practical
-  checklist for extending any of this with a new material.
+- [`Sand-Simulation.md`](Sand-Simulation.md) - the "why" behind every rule
+  sketched here: movement, the water model, gas, fire chemistry,
+  temperature, two-core execution, the performance discipline.
+- [`Adding-a-Material.md`](Adding-a-Material.md) - the practical checklist
+  for extending any of this with a new material, including the material
+  slot budget and how to make room for one more.
+- [`Reaction-Table.md`](Reaction-Table.md) - the generated, current
+  material-interaction table, plus gunpowder's fuse mechanics.
 - [`Shading-and-Colour.md`](Shading-and-Colour.md) - how an existing
-  material's variant becomes a pixel, the recurring shading mistakes and
-  their fixes, and the one item still open.
+  material's variant becomes a pixel: the flat/speckled/hatched patterns,
+  the indexed colour modes, the recurring shading mistakes and their
+  fixes.
+- [`Impulse-Mechanics.md`](Impulse-Mechanics.md) - explosions, thrown
+  chunks, a liquid's own splash: one mechanism, three call sites.
+- [`Testing-Sand.md`](Testing-Sand.md) - this app's own half of the test
+  guide: frame-budget captures, `RUNSUITE`, and scoping a diagnostics build.
