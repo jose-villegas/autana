@@ -1629,6 +1629,126 @@ gfx_set_leaf_overlay(bool on) {
 /* Device-only path for QSPI panel send. Host build is no-op. */
 #ifdef ESP_PLATFORM
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* `send_shadow` holds every pixel handed to the panel, so after a present
+ * it must equal `fb`. A difference is a pixel never sent, or one copied out
+ * of PSRAM wrong (also counted on its own). A glitch this stays silent on
+ * lies past the send buffers, on the QSPI link. */
+static gfx_color_t* send_shadow;
+static bool send_audit_primed;
+static int64_t send_audit_uncovered_px;
+static int64_t send_audit_copy_fault_px;
+static int send_audit_first_x = -1, send_audit_first_y = -1;
+static int64_t send_audit_log_at_us;
+
+#define SEND_AUDIT_LOG_US 1000000
+
+bool
+gfx_send_audit(void) {
+    return send_shadow != NULL;
+}
+
+void
+gfx_set_send_audit(bool on) {
+    GFX_PRESENT_GUARD();
+    if (on == (send_shadow != NULL)) {
+        return;
+    }
+    if (!on) {
+        heap_caps_free(send_shadow);
+        send_shadow = NULL;
+        return;
+    }
+    send_shadow = heap_caps_malloc((size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t), BOARD_FRAMEBUFFER_CAPS);
+    if (send_shadow == NULL) {
+        ESP_LOGE(TAG, "send audit: no room for the shadow framebuffer - staying off");
+        return;
+    }
+    send_audit_primed = false;
+}
+
+static int
+count_differing_px(const gfx_color_t* a, const gfx_color_t* b, int n) {
+    int count = 0;
+    for (int i = 0; i < n; i++) {
+        count += a[i] != b[i];
+    }
+    return count;
+}
+
+/* `buf` is what is about to go to the panel for [x0, x0+w) x [y0, y0+h),
+ * already copied out of `fb`. */
+static void
+send_audit_capture(int x0, int y0, int w, int h, const gfx_color_t* buf) {
+    if (send_shadow == NULL) {
+        return;
+    }
+    for (int r = 0; r < h; r++) {
+        const gfx_color_t* src = buf + (size_t)r * w;
+        const gfx_color_t* fb_row = fb + (size_t)(y0 + r) * GFX_WIDTH + x0;
+        if (memcmp(src, fb_row, (size_t)w * sizeof(gfx_color_t)) != 0) {
+            send_audit_copy_fault_px += count_differing_px(src, fb_row, w);
+        }
+        memcpy(send_shadow + (size_t)(y0 + r) * GFX_WIDTH + x0, src, (size_t)w * sizeof(gfx_color_t));
+    }
+}
+
+/* Runs after a full-framebuffer present has drained, while `fb` still
+ * holds exactly what that present was meant to send. An overlay or
+ * interlace legitimately leaves the shadow out of step, so the audit
+ * pauses under either and re-primes after: everything is marked dirty and
+ * the next present resends it. */
+static void
+send_audit_check(void) {
+    if (send_shadow == NULL) {
+        return;
+    }
+    if (overlay_any_on() || interlace_on) {
+        send_audit_primed = false;
+        return;
+    }
+    if (!send_audit_primed) {
+        send_audit_primed = true;
+        dirty_mark_all();
+        return;
+    }
+
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        const gfx_color_t* fb_row = fb + (size_t)y * GFX_WIDTH;
+        const gfx_color_t* shadow_row = send_shadow + (size_t)y * GFX_WIDTH;
+        if (memcmp(fb_row, shadow_row, (size_t)GFX_WIDTH * sizeof(gfx_color_t)) == 0) {
+            continue;
+        }
+        for (int x = 0; x < GFX_WIDTH; x++) {
+            if (fb_row[x] == shadow_row[x]) {
+                continue;
+            }
+            if (send_audit_first_x < 0) {
+                send_audit_first_x = x;
+                send_audit_first_y = y;
+            }
+            send_audit_uncovered_px++;
+            /* Resent in full next time, so one gap is counted once. */
+            send_audit_primed = false;
+        }
+    }
+
+    const int64_t now = esp_timer_get_time();
+    if (now < send_audit_log_at_us || (send_audit_uncovered_px == 0 && send_audit_copy_fault_px == 0)) {
+        return;
+    }
+    send_audit_log_at_us = now + SEND_AUDIT_LOG_US;
+    ESP_LOGW(TAG,
+             "send audit: %lld px on the panel differ from fb (first at %d,%d), %lld px read back wrong from PSRAM",
+             (long long)send_audit_uncovered_px, send_audit_first_x, send_audit_first_y,
+             (long long)send_audit_copy_fault_px);
+    send_audit_uncovered_px = 0;
+    send_audit_copy_fault_px = 0;
+    send_audit_first_x = -1;
+    send_audit_first_y = -1;
+}
+#endif
+
 /* gather_buf is shared and about to be overwritten, so every queued
  * transfer, not just the most recent, must drain first. strip_sent is a
  * plain counter with no transfer identity: taking it once is not the
@@ -1656,6 +1776,7 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
         memcpy(gather_buf + (size_t)r * w, fb + (size_t)(y0 + r) * GFX_WIDTH + x0, (size_t)w * sizeof(gfx_color_t));
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
+    send_audit_capture(x0, y0, w, h, gather_buf);
     if (debug_overlay_on && refined) {
         /* One border around the whole packed box. */
         mark_rect_border(gather_buf, w, w, h, border);
@@ -1696,6 +1817,7 @@ send_fb_rows(int y0, int y1) {
     strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
     memcpy(slot, fb + (size_t)y0 * GFX_WIDTH, (size_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t));
 #if CONFIG_LAUNCHER_DEVELOPMENT
+    send_audit_capture(0, y0, GFX_WIDTH, y1 - y0, slot);
     dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
 #endif
     esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, slot);
@@ -1978,6 +2100,9 @@ run_present_normal(void) {
     for (int i = 0; i < queued; i++) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    send_audit_check();
+#endif
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
