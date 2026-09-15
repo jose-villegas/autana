@@ -188,6 +188,7 @@ typedef struct sand_s {
 #ifdef DEVICE_BUILD
     unsigned impulse_cap_hits;
 #endif
+    unsigned explosions_this_step;
 
     /* Decaying trigger chance for splash_displace() (sand_liquid.c) - see
      * SAND_SPLASH_RADIUS_WATER's own comment above for why this lives

@@ -301,6 +301,7 @@ sand_displace_material(sand_t* s, int cx, int cy, int radius, uint8_t mat_id) {
 
 void
 sand_explode(sand_t* s, int cx, int cy, int radius) {
+    s->explosions_this_step++;
     if (s->impulse_buf == NULL) {
         return; /* sand_enable_impulses() was never called - see its comment */
     }
