@@ -19,6 +19,7 @@
 #include "boot/post.h"
 #include "boot/post_ui.h"
 #include "display/display.h"
+#include "display/panel_clock.h"
 #include "gfx/gfx.h"
 #include "input/buttons.h"
 #include "input/gesture.h"
@@ -41,6 +42,8 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 
 static const char* TAG = "shell";
 
@@ -69,6 +72,73 @@ heap_mark(const char* where) {
 
 /* 10 Hz: sufficient for reorientation without lag. */
 #define DISPLAY_SAMPLE_MS 100
+
+/* --- panel clock --------------------------------------------------------- */
+
+_Static_assert(PANEL_CLOCK_SLOW_HZ == GFX_PANEL_CLOCK_SLOW_HZ && PANEL_CLOCK_FAST_HZ == GFX_PANEL_CLOCK_FAST_HZ,
+               "panel_clock.h's rates must match gfx.h's");
+
+#define PANEL_CLOCK_NVS_NAMESPACE "shell"
+#define PANEL_CLOCK_NVS_KEY       "panel_hz"
+
+static panel_clock_t shell_panel_clock;
+
+static bool
+nvs_ready(void) {
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        err = nvs_flash_erase();
+        if (err == ESP_OK) {
+            err = nvs_flash_init();
+        }
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "NVS unavailable, settings are not kept: %s", esp_err_to_name(err));
+    }
+    return err == ESP_OK;
+}
+
+static void
+load_system_panel_clock(void) {
+    int32_t saved = 0;
+    bool found = false;
+    nvs_handle_t h;
+    if (nvs_ready() && nvs_open(PANEL_CLOCK_NVS_NAMESPACE, NVS_READONLY, &h) == ESP_OK) {
+        found = nvs_get_i32(h, PANEL_CLOCK_NVS_KEY, &saved) == ESP_OK;
+        nvs_close(h);
+    }
+    panel_clock_init(&shell_panel_clock, found, saved, GFX_QSPI_HZ);
+    gfx_set_panel_clock_hz(panel_clock_system_hz(&shell_panel_clock));
+}
+
+/* Whatever the app that just started or exited did to the clock or to heal,
+ * the next context begins from the system value and heal's defaults. */
+static void
+restore_system_display_state(void) {
+    gfx_set_panel_clock_hz(panel_clock_for_switch(&shell_panel_clock));
+    gfx_heal_restore_defaults();
+}
+
+void
+shell_set_system_panel_clock_hz(int hz) {
+    if (hz == panel_clock_system_hz(&shell_panel_clock) || !panel_clock_set_system(&shell_panel_clock, hz)) {
+        return;
+    }
+    gfx_set_panel_clock_hz(hz);
+    nvs_handle_t h;
+    if (!nvs_ready() || nvs_open(PANEL_CLOCK_NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) {
+        return;
+    }
+    if (nvs_set_i32(h, PANEL_CLOCK_NVS_KEY, hz) != ESP_OK || nvs_commit(h) != ESP_OK) {
+        ESP_LOGW(TAG, "could not save the panel clock choice");
+    }
+    nvs_close(h);
+}
+
+int
+shell_system_panel_clock_hz(void) {
+    return panel_clock_system_hz(&shell_panel_clock);
+}
 
 /* --- app registry ------------------------------------------------------- */
 
@@ -250,6 +320,7 @@ static void
 leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
+    restore_system_display_state();
     *current = NULL;
     frame_ready = false;
     gfx_request_full_redraw();
@@ -275,6 +346,7 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
             *current = apps[chosen];
             ESP_LOGI(TAG, "Starting %s", (*current)->name);
             gfx_request_full_redraw();
+            restore_system_display_state();
             (*current)->enter();
             frame_ready = false;
         } else {
@@ -383,6 +455,7 @@ app_main(void) {
     }
 
     heap_mark("after gfx_init");
+    load_system_panel_clock();
 #if CONFIG_LAUNCHER_DEVELOPMENT
     heap_caps_dump(MALLOC_CAP_DMA);
 #endif

@@ -3,6 +3,7 @@
 #include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font_roles.h"
 #include "gfx/gfx_full_redraw.h"
+#include "gfx/gfx_heal.h"
 #include "gfx/gfx_present_guard.h"
 #include "gfx/gfx_target.h"
 #include "util/intmath.h"
@@ -32,6 +33,8 @@
  * gfx.h's BSP values. */
 _Static_assert(GFX_WIDTH == GFX_DIRTY_WIDTH && GFX_HEIGHT == GFX_DIRTY_HEIGHT,
                "gfx_dirty.h's screen dimensions must match gfx.h's");
+_Static_assert(GFX_HEIGHT == GFX_HEAL_SCREEN_ROWS, "gfx_heal.h's screen height must match gfx.h's");
+_Static_assert(GFX_HEAL_STRIP_ROWS <= STRIP_HEIGHT, "a heal strip must fit one strip bounce slot");
 
 #ifdef ESP_PLATFORM
 static const char* TAG = "gfx";
@@ -105,6 +108,21 @@ current_target(void) {
 }
 
 static bool present_async_on = true;
+
+/* The panel clock choice, written by gfx_set_panel_clock_hz() from any task.
+ * The send side reopens the link at this rate before a present's first send,
+ * when nothing is in flight. */
+static volatile int panel_clock_requested_hz = GFX_QSPI_HZ;
+
+/* Filled on the caller's side of a present, drained on the send side. */
+static gfx_heal_t heal;
+static int heal_budget_pixels = GFX_HEAL_DEFAULT_BUDGET_PIXELS;
+static int heal_rolling_rows;
+
+static bool
+panel_clock_valid(int hz) {
+    return hz == GFX_PANEL_CLOCK_SLOW_HZ || hz == GFX_PANEL_CLOCK_FAST_HZ;
+}
 
 #ifdef ESP_PLATFORM
 static esp_lcd_panel_handle_t panel;
@@ -252,23 +270,17 @@ qspi_bus_up(void) {
         }
     }
 #endif
-    ESP_LOGI(TAG, "panel QSPI at %d MHz", (int)(GFX_QSPI_HZ / 1000000));
     return ESP_OK;
 }
 
-/* SH8601 panel - the original (pre-V2) revision. */
+/* The panel io and driver objects at `hz`. Creating them sends nothing to
+ * the panel, which is what lets a clock change reopen them without
+ * re-running bring-up. */
 static esp_err_t
-panel_bring_up_sh8601(void) {
-    esp_err_t err = qspi_bus_up();
-    if (err != ESP_OK) {
-        return err;
-    }
-
+panel_open_sh8601(int hz) {
     esp_lcd_panel_io_spi_config_t io_config = SH8601_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, on_strip_sent, NULL);
-
-    /* See GFX_QSPI_HZ. */
-    io_config.pclk_hz = GFX_QSPI_HZ;
-    err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, &panel_io);
+    io_config.pclk_hz = hz;
+    esp_err_t err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, &panel_io);
     if (err != ESP_OK) {
         return err;
     }
@@ -284,28 +296,14 @@ panel_bring_up_sh8601(void) {
         .bits_per_pixel = 16,
         .vendor_config = &vendor,
     };
-    err = esp_lcd_new_panel_sh8601(panel_io, &panel_config, &panel);
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), TAG, "reset");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "init");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "on");
-    return ESP_OK;
+    return esp_lcd_new_panel_sh8601(panel_io, &panel_config, &panel);
 }
 
-/* CO5300 panel - the V2 revision only. */
 static esp_err_t
-panel_bring_up_co5300(void) {
-    esp_err_t err = qspi_bus_up();
-    if (err != ESP_OK) {
-        return err;
-    }
-
+panel_open_co5300(int hz) {
     esp_lcd_panel_io_spi_config_t io_config = CO5300_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, on_strip_sent, NULL);
-    io_config.pclk_hz = GFX_QSPI_HZ;
-    err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, &panel_io);
+    io_config.pclk_hz = hz;
+    esp_err_t err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, &panel_io);
     if (err != ESP_OK) {
         return err;
     }
@@ -325,22 +323,83 @@ panel_bring_up_co5300(void) {
     if (err != ESP_OK) {
         return err;
     }
+    return esp_lcd_panel_set_gap(panel, BOARD_PANEL_X_GAP, 0);
+}
+
+static esp_err_t
+panel_open(int hz) {
+    ESP_LOGI(TAG, "panel QSPI at %d MHz", hz / 1000000);
+    if (board_variant() == BOARD_VARIANT_CO5300_CST) {
+        return panel_open_co5300(hz);
+    }
+    return panel_open_sh8601(hz);
+}
+
+/* SH8601 panel - the original (pre-V2) revision. */
+static esp_err_t
+panel_bring_up_sh8601(int hz) {
+    esp_err_t err = qspi_bus_up();
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = panel_open(hz);
+    if (err != ESP_OK) {
+        return err;
+    }
 
     ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), TAG, "reset");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "init");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_set_gap(panel, BOARD_PANEL_X_GAP, 0), TAG, "gap");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "on");
     return ESP_OK;
+}
+
+/* CO5300 panel - the V2 revision only. */
+static esp_err_t
+panel_bring_up_co5300(int hz) {
+    esp_err_t err = qspi_bus_up();
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = panel_open(hz);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), TAG, "reset");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "init");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "on");
+    return ESP_OK;
+}
+
+static int panel_clock_applied_hz;
+
+/* VERY important: only with nothing queued on the link - deleting the io
+ * waits out its transactions, but the strip_sent a caller is owed is lost. */
+static void
+panel_clock_apply(void) {
+    const int hz = panel_clock_requested_hz;
+    if (hz == panel_clock_applied_hz) {
+        return;
+    }
+    esp_lcd_panel_del(panel);
+    esp_lcd_panel_io_del(panel_io);
+    panel = NULL;
+    panel_io = NULL;
+    if (panel_open(hz) != ESP_OK) {
+        ESP_LOGE(TAG, "could not reopen the panel link at %d MHz", hz / 1000000);
+        abort();
+    }
+    panel_clock_applied_hz = hz;
 }
 
 /* Picks the driver the detected board revision actually needs - see
  * board_variant_t. */
 static esp_err_t
-panel_bring_up(void) {
+panel_bring_up(int hz) {
     if (board_variant() == BOARD_VARIANT_CO5300_CST) {
-        return panel_bring_up_co5300();
+        return panel_bring_up_co5300(hz);
     }
-    return panel_bring_up_sh8601();
+    return panel_bring_up_sh8601(hz);
 }
 #endif /* ESP_PLATFORM - panel plumbing */
 
@@ -379,7 +438,8 @@ present_task_fn(void* arg) {
         return;
     }
 
-    if (panel_bring_up() != ESP_OK) {
+    panel_clock_applied_hz = panel_clock_requested_hz;
+    if (panel_bring_up(panel_clock_applied_hz) != ESP_OK) {
         ESP_LOGE(TAG, "Could not start the display");
         present_bringup_ok = false;
         xSemaphoreGive(present_bringup_sem);
@@ -1484,6 +1544,7 @@ static int dev_strips_sent_partial;
  * distinction at all. Exists for a device test comparing send cost across
  * pixel formats. Not reset by gfx_present(). */
 static int64_t dev_bytes_sent;
+static int64_t dev_heal_bytes_sent;
 
 void
 gfx_reset_strip_send_counts(void) {
@@ -1491,6 +1552,7 @@ gfx_reset_strip_send_counts(void) {
     dev_strips_sent_gathered = 0;
     dev_strips_sent_partial = 0;
     dev_bytes_sent = 0;
+    dev_heal_bytes_sent = 0;
 }
 
 void
@@ -1504,6 +1566,11 @@ gfx_get_strip_send_counts(int* full_bands, int* gathered, int* partial_bands) {
     if (partial_bands) {
         *partial_bands = dev_strips_sent_partial;
     }
+}
+
+int64_t
+gfx_get_heal_bytes_sent(void) {
+    return dev_heal_bytes_sent;
 }
 
 int64_t
@@ -2014,6 +2081,26 @@ send_one_row(int row, int* queued) {
     }
 }
 
+/* Queues this present's heal strips through `send_rows`, after its dirty
+ * sends so a strip carries whatever they just put on the panel. */
+static void
+send_heal_strips(void (*send_rows)(int y0, int y1), int* queued) {
+    if (panel_clock_applied_hz != GFX_PANEL_CLOCK_FAST_HZ) {
+        gfx_heal_reset(&heal);
+        return;
+    }
+    gfx_heal_queue_rolling(&heal, heal_rolling_rows);
+    gfx_heal_strip_t strips[GFX_HEAL_MAX_STRIPS];
+    const int n = gfx_heal_plan(&heal, heal_budget_pixels, GFX_WIDTH, strips, GFX_HEAL_MAX_STRIPS);
+    for (int i = 0; i < n; i++) {
+        send_rows(strips[i].y0, strips[i].y1);
+        (*queued)++;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        dev_heal_bytes_sent += (int64_t)(strips[i].y1 - strips[i].y0) * GFX_WIDTH * sizeof(gfx_color_t);
+#endif
+    }
+}
+
 /* GFX_PIXFMT_INDEXED8's own send loop - whole dirty STRIP_HEIGHT strips,
  * full width, rather than send_one_row()'s per-run gathering: the index
  * image is small enough that expanding a strip nothing changed in costs
@@ -2032,6 +2119,7 @@ run_present_indexed(void) {
         dirty_row_sent(row);
     }
     dirty_frame_sent();
+    send_heal_strips(send_indexed_rows, &queued);
     for (int i = 0; i < queued; i++) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
@@ -2043,6 +2131,7 @@ run_present_indexed(void) {
  * strip-sent interrupt is core-agnostic about who it wakes. */
 static void
 run_present_normal(void) {
+    panel_clock_apply();
     if (current_mode.pixfmt == GFX_PIXFMT_INDEXED8) {
         run_present_indexed();
         return;
@@ -2085,6 +2174,8 @@ run_present_normal(void) {
     }
     drawn_bbox_valid = false;
 
+    send_heal_strips(send_fb_rows, &queued);
+
     /* Wait for queued full-width sends to drain. */
     for (int i = 0; i < queued; i++) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
@@ -2099,6 +2190,7 @@ run_present_normal(void) {
  * bounce copy and queue a full-band send takes, one strip_sent per strip. */
 static void
 run_present_raw_full(void) {
+    panel_clock_apply();
     for (int row = 0; row < STRIP_COUNT; row++) {
         send_fb_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT);
     }
@@ -2186,6 +2278,55 @@ void
 gfx_present(void) {
     gfx_present_begin();
     gfx_present_wait();
+}
+
+void
+gfx_heal_mark(int x, int y, int w, int h) {
+    GFX_PRESENT_GUARD();
+    (void)x;
+    (void)w;
+    if (gfx_heal_active()) {
+        gfx_heal_queue_rows(&heal, y, y + h);
+    }
+}
+
+void
+gfx_heal_set_budget(int pixels_per_present) {
+    GFX_PRESENT_GUARD();
+    heal_budget_pixels = pixels_per_present < 0 ? 0 : pixels_per_present;
+}
+
+void
+gfx_heal_set_rolling(int rows_per_present) {
+    GFX_PRESENT_GUARD();
+    heal_rolling_rows = rows_per_present < 0 ? 0 : rows_per_present;
+}
+
+void
+gfx_heal_restore_defaults(void) {
+    GFX_PRESENT_GUARD();
+    gfx_heal_reset(&heal);
+    heal_budget_pixels = GFX_HEAL_DEFAULT_BUDGET_PIXELS;
+    heal_rolling_rows = 0;
+}
+
+bool
+gfx_heal_active(void) {
+    return panel_clock_requested_hz == GFX_PANEL_CLOCK_FAST_HZ;
+}
+
+bool
+gfx_set_panel_clock_hz(int hz) {
+    if (!panel_clock_valid(hz)) {
+        return false;
+    }
+    panel_clock_requested_hz = hz;
+    return true;
+}
+
+int
+gfx_panel_clock_hz(void) {
+    return panel_clock_requested_hz;
 }
 
 void
@@ -2389,6 +2530,9 @@ void
 gfx_band_frame_begin(void) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_BANDS);
+#ifdef ESP_PLATFORM
+    panel_clock_apply();
+#endif
     band_render_active = false;
     gfx_fb_guard_set_available(false);
     gfx_band_ring_begin(&band_ring, current_mode.height / current_mode.band_height);

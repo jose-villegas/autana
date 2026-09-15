@@ -119,6 +119,13 @@ draw_toggles_page(const input_t* input) {
         gfx_set_interlace(interlace_on);
 
         mu_layout_row(ctx, 1, (int[]){-1}, UI_ROW_HEIGHT);
+        int fast_clock = shell_system_panel_clock_hz() == GFX_PANEL_CLOCK_FAST_HZ;
+        mu_checkbox(ctx, "panel clock 80 MHz (system)", &fast_clock);
+        shell_set_system_panel_clock_hz(fast_clock ? GFX_PANEL_CLOCK_FAST_HZ : GFX_PANEL_CLOCK_SLOW_HZ);
+        mu_layout_row(ctx, 1, (int[]){-1}, gfx_text_height() + 4);
+        mu_text(ctx, "80 MHz is faster; apps that redraw only what changed may show stray pixels or thin lines.");
+
+        mu_layout_row(ctx, 1, (int[]){-1}, UI_ROW_HEIGHT);
         int send_audit_on = gfx_send_audit();
         mu_checkbox(ctx, "gfx send audit (logs)", &send_audit_on);
         gfx_set_send_audit(send_audit_on);

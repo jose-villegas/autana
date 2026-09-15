@@ -92,6 +92,7 @@ frame(bool down, bool pressed, bool released, int x, int y) {
             case UI_POINTER_MOVE: mu_input_mousemove(ctx, ev[i].x, ev[i].y); break;
             case UI_POINTER_DOWN: mu_input_mousedown(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
             case UI_POINTER_UP: mu_input_mouseup(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
+            case UI_POINTER_SCROLL: mu_input_scroll(ctx, ev[i].x, ev[i].y); break;
         }
     }
 
@@ -236,7 +237,7 @@ test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap(void) {
                 mu_input_mousemove(ctx, ev[i].x, ev[i].y);
             } else if (ev[i].kind == UI_POINTER_DOWN) {
                 mu_input_mousedown(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT);
-            } else {
+            } else if (ev[i].kind == UI_POINTER_UP) {
                 mu_input_mouseup(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT);
             }
         }
@@ -261,6 +262,138 @@ test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap(void) {
                                         "mouse stays down, which is the reason the pointer holds DOWN at all");
 }
 
+/* A screen of rows far taller than the canvas: the shape a list of toggles
+ * takes once it outgrows the glass. */
+
+#define LIST_ROWS  20
+#define LIST_ROW_H 64
+
+/* One frame of a scrollable list, fed exactly as ui.c does, including the
+ * over_scrollable report back after mu_end(). Returns the index of the row
+ * whose button submitted, or -1. */
+static int
+list_frame(bool down, bool pressed, bool released, int x, int y) {
+    input_t in = {0};
+    in.down = down;
+    in.pressed = pressed;
+    in.released = released;
+    in.x = x;
+    in.y = y;
+
+    ui_pointer_event_t ev[UI_POINTER_MAX_EVENTS];
+    const int n = ui_pointer_step(&pointer, &in, ev, UI_POINTER_MAX_EVENTS);
+    for (int i = 0; i < n; i++) {
+        switch (ev[i].kind) {
+            case UI_POINTER_MOVE: mu_input_mousemove(ctx, ev[i].x, ev[i].y); break;
+            case UI_POINTER_DOWN: mu_input_mousedown(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
+            case UI_POINTER_UP: mu_input_mouseup(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
+            case UI_POINTER_SCROLL: mu_input_scroll(ctx, ev[i].x, ev[i].y); break;
+        }
+    }
+
+    int submitted = -1;
+    mu_begin(ctx);
+    if (mu_begin_window_ex(ctx, "list", mu_rect(0, 0, CANVAS_W, CANVAS_H),
+                           MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+        for (int row = 0; row < LIST_ROWS; row++) {
+            char label[8];
+            label[0] = (char)('A' + row);
+            label[1] = '\0';
+            mu_layout_row(ctx, 1, (int[]){-1}, LIST_ROW_H);
+            if (mu_button(ctx, label)) {
+                submitted = row;
+            }
+        }
+        mu_end_window(ctx);
+    }
+    mu_end(ctx);
+    pointer.over_scrollable = ctx->scroll_target != NULL;
+    return submitted;
+}
+
+static void
+list_idle_frames(int count) {
+    for (int i = 0; i < count; i++) {
+        list_frame(false, false, false, 0, 0);
+    }
+}
+
+/* Drags from (x, y0) to (x, y1) in `steps` frames and lifts; returns how many
+ * buttons submitted along the way. */
+static int
+list_drag(int x, int y0, int y1, int steps) {
+    int submits = 0;
+    submits += list_frame(true, true, false, x, y0) >= 0;
+    for (int i = 1; i <= steps; i++) {
+        submits += list_frame(true, false, false, x, y0 + (y1 - y0) * i / steps) >= 0;
+    }
+    submits += list_frame(false, false, true, x, y1) >= 0;
+    return submits;
+}
+
+static int
+list_tap(int x, int y) {
+    int row = -1;
+    int r = list_frame(true, true, false, x, y);
+    row = r >= 0 ? r : row;
+    for (int i = 0; i < 4; i++) {
+        r = list_frame(true, false, false, x, y);
+        row = r >= 0 ? r : row;
+    }
+    r = list_frame(false, false, true, x, y);
+    return r >= 0 ? r : row;
+}
+
+static void
+test_dragging_up_scrolls_the_list_without_pressing_a_row(void) {
+    fixture();
+    list_idle_frames(2);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, list_drag(CANVAS_W / 2, 400, 100, 10), "a scrolling drag presses nothing");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, mu_get_container(ctx, "list")->scroll.y,
+                                         "a drag up must move the content up");
+}
+
+static void
+test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once(void) {
+    fixture();
+    list_idle_frames(2);
+
+    int submits = 0;
+    const int cx = CANVAS_W / 2;
+    const int cy = 5 + LIST_ROW_H / 2;
+    submits += list_frame(true, true, false, cx, cy) >= 0;
+    for (int i = 0; i < 4; i++) {
+        submits += list_frame(true, false, false, cx, cy) >= 0;
+    }
+    const int row = list_frame(false, false, true, cx, cy);
+    submits += row >= 0;
+    list_idle_frames(2);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, submits, "a tap still presses exactly once on content that scrolls");
+    TEST_ASSERT_EQUAL_INT(0, row);
+}
+
+static void
+test_scrolling_stops_at_the_end_and_the_last_row_is_reachable(void) {
+    fixture();
+    list_idle_frames(2);
+
+    for (int i = 0; i < 6; i++) {
+        list_drag(CANVAS_W / 2, 420, 20, 8);
+        list_idle_frames(1);
+    }
+    const mu_Container* cnt = mu_get_container(ctx, "list");
+    const int scroll_after_overshoot = cnt->scroll.y;
+    list_idle_frames(1);
+    const int max_scroll = cnt->content_size.y + 2 * ctx->style->padding - cnt->body.h;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(max_scroll, cnt->scroll.y, "an overshooting drag clamps to the content's end");
+    TEST_ASSERT_EQUAL_INT(scroll_after_overshoot, cnt->scroll.y);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(LIST_ROWS - 1, list_tap(CANVAS_W / 2, CANVAS_H - 40),
+                                  "the bottom of the glass must now hold the last row");
+}
+
 void
 run_ui_pointer_microui_suite(void) {
     RUN_TEST(test_a_tap_submits_the_button_underneath_it);
@@ -268,6 +401,9 @@ run_ui_pointer_microui_suite(void) {
     RUN_TEST(test_a_one_frame_tap_cannot_resolve_a_control);
     RUN_TEST(test_a_tap_outside_the_button_submits_nothing);
     RUN_TEST(test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap);
+    RUN_TEST(test_dragging_up_scrolls_the_list_without_pressing_a_row);
+    RUN_TEST(test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once);
+    RUN_TEST(test_scrolling_stops_at_the_end_and_the_last_row_is_reachable);
 }
 
 SUITE_REGISTER(run_ui_pointer_microui_suite);
