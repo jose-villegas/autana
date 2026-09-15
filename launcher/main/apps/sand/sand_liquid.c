@@ -221,9 +221,22 @@ equalise_one_row_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* ax_r
     if (equalise_one_cell(s, row, x, y, below_row, n_row, w, px, py, dx, sight, id, CELL_VARIANT(c), bias_q8,
                           &stayed_in_row, &tx)
         && stayed_in_row) {
+        const int lo = x < tx ? x : tx;
+        const int hi = x > tx ? x : tx;
+
         /* Marking deferred for gravity-free orientations. mark_rows() impact.
          * Narrow x range for wake. */
-        union_touched_x(touched, touched_x0, touched_x1, x < tx ? x : tx, x > tx ? x : tx);
+        union_touched_x(touched, touched_x0, touched_x1, lo, hi);
+
+        /* Woken HERE, per transfer - not once for the whole row's combined
+         * span in equalise_one_row(), which unions every transfer's own
+         * narrow span first. A settled block with no transfer of its own
+         * sat inside that union whenever any OTHER transfer landed on the
+         * far side of it, so a wide, mostly-still pool never slept: any one
+         * correction anywhere on the row kept the entire span between it
+         * and the next one awake. */
+        const int by = (int)((unsigned)y / SAND_BLOCK_H);
+        wake_blocks_range(s, (int)((unsigned)lo / SAND_BLOCK_W), by, (int)((unsigned)hi / SAND_BLOCK_W), by);
     }
     return true;
 }
@@ -353,12 +366,10 @@ equalise_one_row(sand_t* s, int y, int w, int x_step, const xflow_t* r, int dx, 
 
     if (touched) {
         s->faller_may_move = true;
+        /* The dirty span for drawing is still the whole row's union - a
+         * repaint wants everything that changed, unlike the wake above,
+         * which equalise_one_row_cell() now does per transfer. */
         mark_row_span(s, y, touched_x0, touched_x1);
-        /* Unsigned cast needed for shift instead of signed division
-         * correction. */
-        const int by = (int)((unsigned)y / SAND_BLOCK_H);
-        wake_blocks_range(s, (int)((unsigned)touched_x0 / SAND_BLOCK_W), by, (int)((unsigned)touched_x1 / SAND_BLOCK_W),
-                          by);
     }
 
     return any_liquid;
