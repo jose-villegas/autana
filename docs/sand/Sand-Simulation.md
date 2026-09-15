@@ -1244,10 +1244,13 @@ strip-sent interrupt away from hanging the whole frame loop; a second task
 on core 1 must not risk exposing that same latent assumption. `job_wait()`
 (`util/job.h`) takes a timeout instead - every sand call site here passes
 100 ms, far above any dispatch this file makes - and a timeout that fires
-is permanent for that dispatch: the flag it leaves set routes every later
-`job_run_core1()` call straight down the inline path, so a stuck core-1
-task is never notified again, the same fallback an allocation failure
-already takes. `job_run_core1()` copies its context into a static buffer
+falls back to inline dispatch only for as long as the stuck job still
+holds the worker: the flag it leaves set routes every `job_run_core1()`
+call straight down the inline path until a later `job_wait()` takes the
+semaphore once that job actually finishes and clears the flag -
+`job_reap_finished()` makes the same check on the dispatch side - so
+core-1 dispatch resumes on its own rather than staying disabled.
+`job_run_core1()` copies its context into a static buffer
 before returning, not merely pointing at the caller's, because a
 dispatch a timed-out wait gave up on can still be read later by whatever
 core-1 is doing, and a stack-allocated context would dangle the moment
