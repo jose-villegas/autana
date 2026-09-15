@@ -3587,11 +3587,15 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_present_cost_against_a_landscape_levelling_pool);
     RUN_TEST(test_present_cost_at_40_mhz_80_mhz_and_80_mhz_with_heal_on_a_real_pour);
 
+    const bool two_core_before = sand_two_core_step_enabled();
+    sand_set_two_core_step(true);
+    ESP_LOGI("device_tests", "liquid pass tables: two-core stripes enabled");
     RUN_TEST(test_submerged_pile_settles_and_logs_the_pass_split);
     RUN_TEST(test_water_slope_pouring_water_logs_the_pass_split);
     RUN_TEST(test_water_slope_controls_log_the_pass_split);
     RUN_TEST(test_water_slope_gravity_flip_logs_a_per_step_table);
     RUN_TEST(test_water_slope_captured_scene_diagonal_flip_logs_a_per_step_table);
+    sand_set_two_core_step(two_core_before);
 #endif
 }
 
