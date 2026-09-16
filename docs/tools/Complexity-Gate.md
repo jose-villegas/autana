@@ -101,8 +101,9 @@ python launcher/tools/complexity_gate.py --update-baseline      # record today's
 python launcher/tools/complexity_gate.py --changed origin/main  # only files that changed - still needs the build above
 ```
 
-In CI the gate runs inside `.github/workflows/build-diagnostics.yml`'s
-ESP-IDF container, in the same command as the diagnostics build: the
+In CI the gate is its own job in `.github/workflows/build-diagnostics.yml`,
+the only one that fetches the upstream submodules. It runs inside the ESP-IDF
+container, in the same command as its own diagnostics build: the
 toolchains exist only inside that container, and the compile database the
 build writes names container paths. The command installs esp-clang with
 ESP-IDF's own tool installer first, so CI scores with the same esp-clang a
