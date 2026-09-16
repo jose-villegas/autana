@@ -92,6 +92,21 @@ missing_function() LIVE_MISSING missing.sh
         guide = next(row for row in rows if row["doc"] == "docs/Guide.md")
         self.assertEqual(guide["age"], 1)
 
+    def test_drift_ranks_changed_cited_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            self.write(root, "docs/Guide.md", "See `launcher/main/example.c`.\n")
+            self.write(root, "launcher/main/example.c", "int example = 1;\n")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            self.write(root, "launcher/main/example.c", "int example = 2;\n")
+            subprocess.run(["git", "commit", "-am", "change", "-q"], cwd=root, check=True)
+            row = next(row for row in doc_drift.report(root) if row["doc"] == "docs/Guide.md")
+        self.assertEqual((len(row["files"]), row["rank"] - row["age"]), (1, 30))
+
     def test_vocabulary_gate_honours_archive_exception(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
