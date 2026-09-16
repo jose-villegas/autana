@@ -26,6 +26,7 @@
 #include "esp_timer.h"
 #endif
 
+#include "sand_limits.h"
 #include "sand_liquid_move.h"
 #include "util/fixed.h"
 #include "util/intmath.h"
@@ -1287,7 +1288,11 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int w, int dx, int dy, const 
  * many rows apart - comfortably clear of the one-cell reach every move in
  * step_one_grain() has. Reused from SAND_BLOCK_H so the stripe grid lines
  * up with the sleep-skip grid sweep_range() already reads. */
-#define SWEEP_STRIPE_H SAND_BLOCK_H
+#define SWEEP_STRIPE_H      SAND_BLOCK_H
+#define SWEEP_GUARD_ROW_MAX (2 * ((GRID_H_MAX + SWEEP_STRIPE_H - 1) / SWEEP_STRIPE_H))
+
+static int sweep_guard_rows[SWEEP_GUARD_ROW_MAX];
+static uint8_t sweep_guard_snapshot[SWEEP_GUARD_ROW_MAX * GRID_W_MAX];
 
 typedef struct {
     sand_t* s;
@@ -1551,41 +1556,26 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     /* Hashed draws (sand_rng_next_at(), sand_priv.h) are armed for exactly
      * this window, never longer - gas and reactions later this step must
      * still draw from the plain sequential stream. Below
-     * SWEEP_CHECKERBOARD_MIN_ROWS one core is simply faster. A snapshot
-     * buffer this step cannot spare falls back the same way: two cores
-     * are not worth a guard row that might move a cell twice. */
-    int guard_count = 0;
-    uint8_t* guard_snapshot = NULL;
+     * SWEEP_CHECKERBOARD_MIN_ROWS one core is simply faster. */
 #ifdef DEVICE_BUILD
     const int64_t sweep_t0 = esp_timer_get_time();
 #endif
     if (sand_two_core_step_enabled() && s->h >= SWEEP_CHECKERBOARD_MIN_ROWS) {
         const int offset = (s->step_phase & 1) ? SWEEP_STRIPE_H / 2 : 0;
-        guard_count = sweep_guard_row_list(s->h, offset, NULL, 0);
-        int* guard_rows = malloc(sizeof(int) * (size_t)guard_count);
-        guard_snapshot = malloc((size_t)guard_count * (size_t)w);
-
-        if (guard_rows != NULL && guard_snapshot != NULL) {
-            sweep_guard_row_list(s->h, offset, guard_rows, guard_count);
-            for (int gi = 0; gi < guard_count; gi++) {
-                memcpy(&guard_snapshot[(size_t)gi * (size_t)w], s->cells + (size_t)guard_rows[gi] * (size_t)w,
-                       (size_t)w);
-            }
-
-            s->rng_hashed = true;
-            run_sweep_phase(s, 0, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
-                            y_step, offset);
-            run_sweep_phase(s, 1, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
-                            y_step, offset);
-            run_sweep_guard_rows(s, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, y_step,
-                                 guard_rows, guard_count, guard_snapshot);
-            s->rng_hashed = false;
-        } else {
-            sweep_range(s, y_from, y_to, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle,
-                        settled_bit, is_liquid);
+        const int guard_count = sweep_guard_row_list(s->h, offset, sweep_guard_rows, SWEEP_GUARD_ROW_MAX);
+        for (int gi = 0; gi < guard_count; gi++) {
+            memcpy(&sweep_guard_snapshot[(size_t)gi * (size_t)w], s->cells + (size_t)sweep_guard_rows[gi] * (size_t)w,
+                   (size_t)w);
         }
-        free(guard_rows);
-        free(guard_snapshot);
+
+        s->rng_hashed = true;
+        run_sweep_phase(s, 0, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
+                        y_step, offset);
+        run_sweep_phase(s, 1, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
+                        y_step, offset);
+        run_sweep_guard_rows(s, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, y_step,
+                             sweep_guard_rows, guard_count, sweep_guard_snapshot);
+        s->rng_hashed = false;
     } else {
         sweep_range(s, y_from, y_to, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
                     is_liquid);
