@@ -260,3 +260,15 @@ panel_luminance(gfx_color_t c) {
     const unsigned b = (v & 0x1Fu) * 255u / 31u;
     return (int)((299u * r + 587u * g + 114u * b) / 1000u);
 }
+
+two_core_scope_t
+two_core_scope_begin(bool two_core) {
+    const two_core_scope_t scope = {.before = sand_two_core_step_enabled()};
+    sand_set_two_core_step(two_core);
+    return scope;
+}
+
+void
+two_core_scope_end(two_core_scope_t scope) {
+    sand_set_two_core_step(scope.before);
+}
