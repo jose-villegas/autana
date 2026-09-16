@@ -17,4 +17,3 @@ docs/sand/Sand-Simulation.md	sand_set_flick	Rewrite in flight.
 docs/sand/Shading-and-Colour.md	mirror_local_depth_row	Rewrite in flight.
 docs/sand/Shading-and-Colour.md	tools/gen_wave_table.c	Rewrite in flight.
 docs/notes/Second-Target-Draft.md	check_static_ram.py	Retirement of this old-target draft is in flight.
-docs/tools/Complexity-Gate.md	cognitive_complexity.py	Retired script, named only for the history of what it replaced.
