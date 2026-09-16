@@ -145,6 +145,30 @@ for f in $(find "$MAIN_DIR/apps" -name '*.c' ! -path '*/tools/*' | sort); do
 $f"
 done
 
+# Exit here, before touching a compiler, for a caller that only wants the
+# exact file list or flag set this script proves compilable - the clang-tidy
+# complexity gate (tools/complexity_gate.py) builds its compile database
+# from these instead of keeping its own copy, so the two cannot drift apart
+# the way cognitive_complexity.py's own function finder did. -Werror is
+# left out of --print-flags: it is this script's own strictness choice, not
+# a fact about what compiles, and a warning unrelated to complexity should
+# not cost that file its coverage in the gate.
+case "${1:-}" in
+    --print-sources)
+        printf '%s\n' $SOURCES | sed '/^$/d'
+        exit 0
+        ;;
+    --print-flags)
+        printf '%s\n' -std=c11 -Wall -Wextra -Wno-unused-parameter -g -O1 \
+            -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
+            -I "$TEST_DIR/../components/microui/include" \
+            -I "$TEST_DIR/../components/small3dlib/include" \
+            -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
+            -DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES="$HOST_HEAP_ARENA_BYTES"
+        exit 0
+        ;;
+esac
+
 # The hardware-facing app_*.c files are excluded from SOURCES above because
 # they cannot link here - which also meant nothing compiled them at all
 # until a full device build. Compile-check them first, so a change that
