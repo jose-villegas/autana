@@ -10,6 +10,7 @@ SCRIPTS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
 
 import check_doc_citations  # noqa: E402
+import check_doc_constants  # noqa: E402
 import check_doc_vocabulary  # noqa: E402
 import doc_drift  # noqa: E402
 
@@ -51,6 +52,30 @@ missing_function() LIVE_MISSING missing.sh
             found = list(check_doc_citations.citations(root))
         self.assertEqual([(item.kind, item.value) for item in found],
                          [("function", "live_function")])
+
+    def test_constant_checker_matches_and_reports_mismatches(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/example.h", "#define LIVE_LIMIT 32\nenum { LIVE_ENUM = 9 };\n")
+            self.write(root, "docs/Guide.md",
+                       "`LIVE_LIMIT` is 32. `LIVE_ENUM` is 9.\n"
+                       "`LIVE_LIMIT` is 16.\n| `LIVE_LIMIT` | 16 |\n")
+            found = check_doc_constants.check(root)
+        self.assertEqual([(item.line, item.name, item.claimed, item.defined) for item in found],
+                         [(2, "LIVE_LIMIT", 16, 32), (3, "LIVE_LIMIT", 16, 32)])
+
+    def test_constant_checker_skips_ambiguous_historical_and_allowlisted_values(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/a.h", "#define AMBIGUOUS 4\n#define LIVE_LIMIT 32\n")
+            self.write(root, "launcher/main/b.h", "#define AMBIGUOUS 8\n")
+            self.write(root, "docs/Guide.md",
+                       "`AMBIGUOUS` is 1.\n`LIVE_LIMIT` was 16.\n"
+                       "`LIVE_LIMIT` is 16.\n`LIVE_LIMIT` is 8. <!-- doc-constants: ignore -->\n")
+            self.write(root, "scripts/doc_constant_allowlist.txt",
+                       "docs/Guide.md\tLIVE_LIMIT\t16\tdeliberate exception\n")
+            found = check_doc_constants.check(root)
+        self.assertEqual(found, [])
 
     def test_reverse_index_reports_deleted_cited_function_as_json(self):
         with tempfile.TemporaryDirectory() as temp:
