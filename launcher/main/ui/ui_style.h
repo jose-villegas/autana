@@ -101,39 +101,44 @@ ui_shade(mu_Color c, int t) {
     return (mu_Color){ui_shade_channel(c.r, t), ui_shade_channel(c.g, t), ui_shade_channel(c.b, t), c.a};
 }
 
-/* The rects making one bezelled frame, back to front. `sunken` swaps
- * which edge pair is lit, raised into pressed. Returns spans written, or
- * 0 if `max` can't hold a bezel - a partial one looks like a bug. Edge
- * rects OVERLAP at corners, shadowed pair last, so both dark corners
- * come out right - the classic mitre-free bevel; insetting leaves bare
- * corner pixels that read as chipped. Thickness is clamped so edges
- * never cross; with no room, the result is one flat face span, same as
- * UI_BUTTON_FLAT. */
+/* Shared geometry behind ui_bezel_spans() and ui_panel_spans(): a face rect
+ * plus a top/left edge pair and a bottom/right edge pair, back to front,
+ * OVERLAPPING at corners - the classic mitre-free bevel; insetting leaves
+ * bare corner pixels that read as chipped. Returns spans written, or 0 if
+ * `max` can't hold a face plus its four edges. Thickness is clamped so
+ * opposite edges never cross; with no room, the result is one flat face
+ * span. */
 static inline int
-ui_bezel_spans(mu_Rect r, mu_Color face, bool sunken, ui_span_t* out, int max) {
+ui_frame_spans(mu_Rect r, mu_Color face, int thickness, mu_Color top_left, mu_Color bottom_right, ui_span_t* out,
+               int max) {
     if (max < UI_BEZEL_MAX_SPANS || r.w <= 0 || r.h <= 0) {
         return 0;
     }
 
     out[0] = (ui_span_t){r, face};
 
-    /* Leave at least one pixel of face visible between the two edges. */
+    /* Leave at least one pixel of face visible between opposite edges. */
     const int room = (mu_min(r.w, r.h) - 1) / 2;
-    const int t = mu_min(UI_BEZEL_THICKNESS, room);
+    const int t = mu_min(thickness, room);
     if (t < 1) {
         return 1;
     }
-
-    const mu_Color lit = ui_shade(face, UI_BEZEL_HIGHLIGHT);
-    const mu_Color shadow = ui_shade(face, -UI_BEZEL_SHADOW);
-    const mu_Color top_left = sunken ? shadow : lit;
-    const mu_Color bottom_right = sunken ? lit : shadow;
 
     out[1] = (ui_span_t){(mu_Rect){r.x, r.y, r.w, t}, top_left};
     out[2] = (ui_span_t){(mu_Rect){r.x, r.y, t, r.h}, top_left};
     out[3] = (ui_span_t){(mu_Rect){r.x, r.y + r.h - t, r.w, t}, bottom_right};
     out[4] = (ui_span_t){(mu_Rect){r.x + r.w - t, r.y, t, r.h}, bottom_right};
     return UI_BEZEL_MAX_SPANS;
+}
+
+/* `sunken` swaps which edge pair is lit, raised into pressed - see
+ * ui_frame_spans() for the shared geometry and its all-or-nothing rule,
+ * same as UI_BUTTON_FLAT falls back to when there is no room for edges. */
+static inline int
+ui_bezel_spans(mu_Rect r, mu_Color face, bool sunken, ui_span_t* out, int max) {
+    const mu_Color lit = ui_shade(face, UI_BEZEL_HIGHLIGHT);
+    const mu_Color shadow = ui_shade(face, -UI_BEZEL_SHADOW);
+    return ui_frame_spans(r, face, UI_BEZEL_THICKNESS, sunken ? shadow : lit, sunken ? lit : shadow, out, max);
 }
 
 /*
@@ -229,31 +234,12 @@ ui_text_passes(ui_text_style_t style, ui_text_pass_t* out, int max) {
  * grouping without competing with the bezelled controls inside it. */
 #define UI_PANEL_BORDER_THICKNESS 2
 
-/* The rects making one panel frame, back to front: face first, then the
- * four border edges, overlapping at corners the same way ui_bezel_spans()
- * does. Returns spans written, or 0 if `max` can't hold a panel - same
- * all-or-nothing rule. Border thickness is clamped so opposite edges can
- * never cross; with no room, the result is one flat face span. */
+/* One border colour on every edge, unlike the bezel's lit/shadowed pair -
+ * see ui_frame_spans() for the shared geometry and its all-or-nothing
+ * rule. */
 static inline int
 ui_panel_spans(mu_Rect r, mu_Color face, mu_Color border, ui_span_t* out, int max) {
-    if (max < UI_PANEL_MAX_SPANS || r.w <= 0 || r.h <= 0) {
-        return 0;
-    }
-
-    out[0] = (ui_span_t){r, face};
-
-    /* Leave at least one pixel of face visible between opposite edges. */
-    const int room = (mu_min(r.w, r.h) - 1) / 2;
-    const int t = mu_min(UI_PANEL_BORDER_THICKNESS, room);
-    if (t < 1) {
-        return 1;
-    }
-
-    out[1] = (ui_span_t){(mu_Rect){r.x, r.y, r.w, t}, border};
-    out[2] = (ui_span_t){(mu_Rect){r.x, r.y, t, r.h}, border};
-    out[3] = (ui_span_t){(mu_Rect){r.x, r.y + r.h - t, r.w, t}, border};
-    out[4] = (ui_span_t){(mu_Rect){r.x + r.w - t, r.y, t, r.h}, border};
-    return UI_PANEL_MAX_SPANS;
+    return ui_frame_spans(r, face, UI_PANEL_BORDER_THICKNESS, border, border, out, max);
 }
 
 /* The halo colour for a given ink, derived from the ink's luminance rather
