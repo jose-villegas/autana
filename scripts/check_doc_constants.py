@@ -191,7 +191,7 @@ def allowlist(root):
 
 def adjacent(name, number, text):
     before = text[:number.start()]
-    return (re.search(r"\b" + re.escape(name.group()) + r"\b\s*(?:`)?\s*(?:\(|=|,|,?\s*(?:is|are|currently|at|of))[^\d]{0,24}$", before) is not None or
+    return (re.search(r"\b" + re.escape(name.group()) + r"\b\s*(?:`)?\s*(?:\(|=|,\s*currently(?:\s+is)?\s+|(?:is|are|currently|at|of)\s+)[^\d]{0,24}$", before) is not None or
             re.match(r"\s*\(\s*" + re.escape(name.group()) + r"\b", text[number.end():]) is not None or
             re.search(r"\b" + re.escape(name.group()) + r"\b[^|\n]*\|\s*$", before) is not None)
 
@@ -394,7 +394,7 @@ def check(root, verbose=False, docs_ref=None):
                 close = [number for number in numbers if adjacent(name, number, sentence)]
                 candidates = close
                 if not candidates:
-                    skipped.append((doc, line, "multiple numbers without an adjacent value"))
+                    skipped.append((doc, line, "lacks an explicit value claim"))
                     continue
                 for number in candidates:
                     if hypothetical(name, number, sentence):

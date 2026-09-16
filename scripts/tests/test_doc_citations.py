@@ -99,6 +99,23 @@ missing_function() LIVE_MISSING missing.sh
         self.assertEqual(found, [])
         self.assertIn(("docs/Guide.md", 1, "skipped-on-hypothetical"), skipped)
 
+    def test_constant_checker_requires_an_explicit_constant_value_claim(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/example.h", "#define back 1\n#define LIVE_LIMIT 32\n")
+            self.write(root, "docs/Guide.md", """\
+back, the honest value is 0, not whatever a different part of the pool last left there.
+`LIVE_LIMIT` = 16.
+| Constant | value |
+| --- | --- |
+| `LIVE_LIMIT` | 16 |
+""")
+            found = check_doc_constants.check(root)
+        self.assertEqual([(item.line, item.name, item.claimed, item.defined) for item in found], [
+            (2, "LIVE_LIMIT", 16, 32),
+            (3, "LIVE_LIMIT", 16, 32),
+        ])
+
     def test_constant_checker_compares_matching_units_and_material_table_fields(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
@@ -133,7 +150,6 @@ Acid -->|"dissolvable 110"| Metal
             found, skipped = check_doc_constants.check(root, verbose=True)
         self.assertEqual([(item.name, item.claimed, item.defined) for item in found], [
             ("CONDUCT_REACH", 99, 32),
-            ("CONDUCT_REACH", 98, 32),
             ("CONDUCT_REACH", 97, 32),
             ("FRAME_MS", 99, 16),
             ("Glass.density", 200, 121),
