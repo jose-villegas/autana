@@ -19,7 +19,7 @@ def source_paths(root):
         if not base.is_dir():
             continue
         for path in sorted(base.rglob("*")):
-            if path.suffix in SOURCE_SUFFIXES and not any(part in SKIP for part in path.parts):
+            if (path.suffix in SOURCE_SUFFIXES or path.name == "Kconfig.projbuild") and not any(part in SKIP for part in path.parts):
                 yield path
 
 
