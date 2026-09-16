@@ -204,6 +204,10 @@ extern unsigned sand_liquid_crossflow_probes;
  * cross-flow itself has gone quiet. */
 extern unsigned sand_liquid_sweep_moves;
 
+/* Not sand.h API: cells considered by the checkerboard sweep's guard rows.
+ * Never reset by the pass itself, so tests can measure a per-step delta. */
+extern unsigned sand_guard_cells_scanned;
+
 #define BLOCK_SETTLED_NEAREST 0x1
 #define BLOCK_SETTLED_OTHER   0x2
 #define BLOCK_ACTIVE          0x4
