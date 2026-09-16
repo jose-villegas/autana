@@ -63,7 +63,7 @@ These are not style preferences. Each one is a bug that shipped.
 
 - **Never hand-roll a hit test.** Go through a real control, or build one
   from `mu_get_id()` + `mu_update_control()`. Hand-tested coordinates do not
-  survive a transform, which is what kept the palette from rotating.
+  survive a transform.
 - **Never assume `GFX_WIDTH`/`GFX_HEIGHT` in layout.** Ask `ui_width()` /
   `ui_height()`; they swap under a quarter turn.
 - **Never paint pixels outside the command list.** `ui_end()` hashes that
@@ -102,9 +102,6 @@ scale) are free. Ask which kind you are adding before you add it.
 ### Text that must fit
 
 Measure it: `ui_measure_text()`, or `gfx_font_text_width()` in a host test.
-Both text bugs on the brush screen were layout constants chosen by eye
-before glyph metrics existed. The drawing clipped correctly, which is why
-nothing caught them.
 
 ### Artwork
 
@@ -130,7 +127,7 @@ accumulators the pause built up.
 `MU_COMMANDLIST_SIZE` is 8 KiB and everything drawn spends it - roughly 250
 rects for a whole screen. A `CONFIG_LAUNCHER_DEVELOPMENT` build logs the
 high-water mark from `ui_end()`. Check it before adding a texture or a
-fifth icon; the brush screen already sits at about two thirds.
+fifth icon.
 
 ## Testing rules specific to UI
 
