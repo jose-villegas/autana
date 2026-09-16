@@ -11,12 +11,12 @@
 
 #include "display/display.h"
 
-bool
+temp_sensor_status_t
 temp_sensor_read_celsius(float* out_celsius) {
     temperature_sensor_handle_t sensor = NULL;
     temperature_sensor_config_t cfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(-10, 80);
     if (temperature_sensor_install(&cfg, &sensor) != ESP_OK) {
-        return false;
+        return TEMP_SENSOR_INSTALL_FAILED;
     }
 
     const bool ok =
@@ -24,7 +24,7 @@ temp_sensor_read_celsius(float* out_celsius) {
 
     temperature_sensor_disable(sensor);
     temperature_sensor_uninstall(sensor);
-    return ok;
+    return ok ? TEMP_SENSOR_OK : TEMP_SENSOR_READ_FAILED;
 }
 
 void
@@ -41,7 +41,7 @@ device_state_read(device_state_t* out) {
      * for a value that cannot actually change on this board. */
     out->cpu_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
 
-    out->temp_ok = temp_sensor_read_celsius(&out->temp_c);
+    out->temp_ok = temp_sensor_read_celsius(&out->temp_c) == TEMP_SENSOR_OK;
 
     out->quarter = display_shell_quarter();
 
