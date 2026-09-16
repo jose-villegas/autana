@@ -138,7 +138,13 @@ queue_flying_grain(sand_t* s, int x, int y, int dir, int speed, bool allow_dislo
     /* Disabled, or already full - see sand_impulse()'s own comment in
      * sand_impulse.h on why both are silent no-ops rather than something a
      * caller has to check for itself first. */
-    if (s->impulse_buf == NULL || s->impulse_count >= s->impulse_max) {
+    if (s->impulse_buf == NULL) {
+        return;
+    }
+    if (s->impulse_count >= s->impulse_max) {
+#ifdef DEVICE_BUILD
+        s->impulse_cap_hits++;
+#endif
         return;
     }
     if (x < 0 || x >= s->w || y < 0 || y >= s->h) {
@@ -214,6 +220,9 @@ void
 sand_enable_impulses(sand_t* s, impulse_t* buf, int max) {
     s->impulse_buf = buf;
     s->impulse_max = (buf != NULL) ? max : 0;
+#ifdef DEVICE_BUILD
+    s->impulse_cap_hits = 0;
+#endif
     /* Nothing can already be in flight against a buffer that was just handed
      * over - the same reasoning sand_enable_sleeping() gives for zeroing
      * `blocks`, applied to a count rather than a memset since there is no
@@ -292,6 +301,7 @@ sand_displace_material(sand_t* s, int cx, int cy, int radius, uint8_t mat_id) {
 
 void
 sand_explode(sand_t* s, int cx, int cy, int radius) {
+    s->explosions_this_step++;
     if (s->impulse_buf == NULL) {
         return; /* sand_enable_impulses() was never called - see its comment */
     }
