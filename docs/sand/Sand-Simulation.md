@@ -1425,16 +1425,18 @@ The unbounded waits in gfx.c's present pipeline are still unchanged.
 
 ## Why the liquid logic is its own file
 
-`sand.c` and `sand_liquid.c` used to be one file. Measured with a
-cognitive complexity analyzer (`launcher/tools/cognitive_complexity.py`,
-cross-checked against `idf.py clang-check`'s real clang-tidy run until
-the two agreed exactly): `sand_step()` alone scored 191 against Sonar's
-own "worth a look" line of 25.
+`sand.c` and `sand_liquid.c` used to be one file. A complexity scan at the
+time - a hand-rolled script since retired for going quietly blind on a
+later reformat, see `docs/tools/Complexity-Gate.md` - found `sand_step()`
+scoring far above Sonar's own "worth a look" line of 25: high enough on
+its own to justify a split, though that tool cannot be trusted for the
+exact figure and the file has been split twice more since, so there is no
+reproducing it today.
 
-Two things were already true about that number: `equalise_liquids()` (85)
-and the wall-rebound pass (27) were already separate *functions*, just
-not a separate *domain*, since both are liquid-only and already shared
-helpers with each other.
+Two things were already true at that point: `equalise_liquids()` and the
+wall-rebound pass were both already separate *functions*, comfortably
+over that same line themselves, just not yet a separate *domain*, since
+both are liquid-only and already shared helpers with each other.
 
 The split moved everything about a liquid that is **not** gravity-ward
 (cross-flow, the rebound splash, the momentum accessors) into
@@ -1443,7 +1445,7 @@ The split moved everything about a liquid that is **not** gravity-ward
 gravity-ward guarantee every other move there does) into its own
 function.
 
-That extraction alone dropped `sand_step()` from 191 to 134 - a real
+That extraction cut `sand_step()`'s complexity substantially - a real
 complexity cut, not just relocated lines, because it collapsed nesting
 that had been compounding the score.
 
@@ -1473,13 +1475,16 @@ own top comment for the rationale.
 
 ### Broken down further
 
-134 and 85 are still well over Sonar's *default* line, which is 15, not
-the 25 used above - that line only ever applied to the standalone check,
-not to what the project actually holds itself to. Both functions were
-later broken down the same way again, one level deeper: nested per-cell
-and per-row logic pulled into small named functions, until every function
-in `main/` scored 15 or under (`sand_step()` itself: 6; `equalise_liquids()`:
-13).
+Both were still well over Sonar's *default* line, which is 15, not the 25
+used above - that line only ever applied to the standalone check, not to
+what the project actually holds itself to. Both functions were later
+broken down the same way again, one level deeper: nested per-cell and
+per-row logic pulled into small named functions, until `sand_step()` and
+`equalise_liquids()` themselves scored 15 or under. Newer code has since
+pushed some functions - `sand_step()` itself included - back above that
+line; `launcher/tools/complexity_baseline.txt` holds every function's
+real, current score, not this paragraph, precisely so a claim here cannot
+go stale the way this one already had.
 
 The main sweep, per grain:
 
@@ -1552,5 +1557,6 @@ instead of one large one.
   why release builds carry none of the test code.
 - `docs/sand/Testing-Sand.md` - the frame-budget capture and the current
   state of `suite_sand_perf.c`'s numbers on this board.
-- `launcher/tools/cognitive_complexity.py` - the complexity analyzer
-  mentioned above, with its own reasoning documented in its module comment.
+- `docs/tools/Complexity-Gate.md` - the cognitive-complexity ratchet
+  mentioned above: what it measures, what it cannot reach, and how the
+  baseline it checks against works.

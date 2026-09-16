@@ -40,3 +40,24 @@ jobs:
 
       - name: Documentation names the supported board
         run: python3 scripts/check_doc_vocabulary.py
+
+  # Own job, not a step above: a real clang-tidy AST pass over ~110 files
+  # runs tens of seconds, not the sub-second cost every check above this
+  # line pays - see launcher/tools/complexity_gate.py's own header and
+  # docs/tools/Complexity-Gate.md for what the gate does and why it lives
+  # here rather than in the pre-commit hook.
+  complexity-ratchet:
+    name: Cognitive complexity ratchet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same major scripts/check-format.sh pins clang-format to, and for
+      # the same reason: different clang-tidy majors score this check
+      # differently. Wheel package, not apt, so the runner gets the exact
+      # patch version regardless of image.
+      - name: Install clang-tidy 19
+        run: pip install 'clang-tidy==19.1.0.1'
+
+      - name: Ratchet first-party cognitive complexity against the baseline
+        run: python3 launcher/tools/complexity_gate.py
