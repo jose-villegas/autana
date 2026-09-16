@@ -39,23 +39,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # The complexity gate runs in the SAME container invocation as the
+      # build. esp-idf-ci-action runs its command inside ESP-IDF's Docker
+      # image, so the toolchains exist only in there, and the compile
+      # database the build writes names container paths - a later step on
+      # the bare runner has neither. esp-clang is an optional ESP-IDF tool,
+      # so it is installed here; that installer's version is the one the
+      # baseline was recorded with, the same esp-clang a local ESP-IDF
+      # install provides.
       - uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: release-v5.5
           target: esp32s3
           path: launcher
-          command: idf.py -B build.diag -D SDKCONFIG=build.diag/sdkconfig -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag" build
-
-      # Depends on this same build: launcher/build.diag/compile_commands.json
-      # is the diagnostics build's own output, which is what lets the gate
-      # reach hardware-facing files (app_*.c, gfx.c, ui.c, boot/, board/,
-      # the input/ drivers) at all - see docs/tools/Complexity-Gate.md.
-      # Cannot live in a separate workflow file: a compile database from
-      # one job's checkout is not visible to a job in a different workflow
-      # run. esp-idf-ci-action leaves ESP-IDF's own xtensa-esp-elf and
-      # esp-clang toolchains in place afterward, which the gate also needs.
-      - name: Install clang-tidy 19
-        run: pip install 'clang-tidy==19.1.0.1'
-
-      - name: Ratchet first-party cognitive complexity against the baseline
-        run: python3 launcher/tools/complexity_gate.py
+          command: >-
+            idf.py -B build.diag -D SDKCONFIG=build.diag/sdkconfig -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag" build
+            && python "$IDF_PATH/tools/idf_tools.py" install esp-clang
+            && cd ..
+            && python3 launcher/tools/complexity_gate.py

@@ -119,6 +119,14 @@ def clang_tidy_major(binary):
     return m.group(1) if m else None
 
 
+def espressif_tools_root():
+    """Where ESP-IDF's tool installer put its toolchains: $IDF_TOOLS_PATH
+    when set (ESP-IDF's container images use /opt/esp), else the installer's
+    default under the home directory."""
+    env = os.environ.get("IDF_TOOLS_PATH")
+    return Path(env) if env else Path.home() / ".espressif"
+
+
 def candidate_clang_tidy_binaries():
     candidates = []
     env = os.environ.get("CLANG_TIDY")
@@ -130,7 +138,7 @@ def candidate_clang_tidy_binaries():
         if found:
             candidates.append(found)
     exe = "clang-tidy.exe" if os.name == "nt" else "clang-tidy"
-    pattern = str(Path.home() / ".espressif" / "tools" / "esp-clang" / "*" /
+    pattern = str(espressif_tools_root() / "tools" / "esp-clang" / "*" /
                   "esp-clang" / "bin" / exe)
     candidates.extend(sorted(glob.glob(pattern), reverse=True))
     return candidates
@@ -151,7 +159,7 @@ def resolve_clang_tidy():
     if fallback is None:
         sys.exit(
             "No clang-tidy found: not on PATH, not in $CLANG_TIDY, and not "
-            "under ~/.espressif/tools/esp-clang/. This gate needs clang-tidy "
+            f"under {espressif_tools_root() / 'tools' / 'esp-clang'}. This gate needs clang-tidy "
             f"{PINNED_MAJOR}.x - ESP-IDF's bundled esp-clang carries it "
             "(install ESP-IDF, or source its export script so PATH finds "
             "it), or install LLVM 19 directly "
@@ -175,13 +183,12 @@ def find_xtensa_toolchain_root():
     """The xtensa-esp-elf GCC install esp-clang needs pointed at
     (--sysroot/--gcc-toolchain) to resolve newlib's platform_include shims
     - esp-clang carries no libc of its own for this target. Same
-    glob-and-take-newest convention as the esp-clang lookup above; ESP-IDF
-    installs both under the same ~/.espressif/tools/ prefix on every
-    platform this project's CI or a contributor's machine runs on."""
+    glob-and-take-newest convention as the esp-clang lookup above, under
+    the same ESP-IDF tools root."""
     env = os.environ.get("XTENSA_GCC_ROOT")
     if env:
         return env
-    pattern = str(Path.home() / ".espressif" / "tools" / "xtensa-esp-elf" /
+    pattern = str(espressif_tools_root() / "tools" / "xtensa-esp-elf" /
                   "*" / "xtensa-esp-elf")
     matches = sorted(glob.glob(pattern), reverse=True)
     return matches[0] if matches else None
