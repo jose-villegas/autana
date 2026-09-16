@@ -173,6 +173,9 @@ sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
     s->impulse_buf = NULL;
     s->impulse_max = 0;
     s->impulse_count = 0;
+#ifdef DEVICE_BUILD
+    s->impulse_cap_hits = 0;
+#endif
     s->splash_chance = SAND_SPLASH_CHANCE_START;
     s->splash_radius_water = SAND_SPLASH_RADIUS_WATER;
     s->heat_flaw_seq = 0;
@@ -1459,6 +1462,8 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
 #ifdef DEVICE_BUILD
     memset(&s->pass_us, 0, sizeof s->pass_us);
 #endif
+    s->explosions_this_step = 0;
+    s->confined_blasts_this_step = 0;
 
     s->step_phase++;
     s->may_have_viscous_liquid = viscous_liquid_possible(s);
