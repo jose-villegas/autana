@@ -188,15 +188,18 @@ test_the_soak_only_skip_dispatches_far_fewer_cells_than_a_full_walk(void) {
 #define MIXED_FLIP_20_STEP_HASH 0x6a6aa1cfu
 
 /* Equivalence half of the regression above: the soak-only skip must be
- * byte-identical to the reference full walk, not merely cheaper. Runs the
- * fast path (the shipped default) and checks its grid hash against the one
- * report_fingerprint.sh's device capture also carries for this scene. */
+ * byte-identical to the reference full walk. Pinned to serial like
+ * report_fingerprint.sh's own capture (grid_fingerprint.c) - two-core
+ * stepping is deliberately a different hash (Sand-Simulation.md). */
 static void
 test_the_soak_only_skip_matches_the_full_walks_grid_exactly(void) {
     uint8_t* big = malloc(REAL_W * REAL_H);
     uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
     TEST_ASSERT_NOT_NULL(big);
     TEST_ASSERT_NOT_NULL(blocks);
+
+    const bool two_core_before = sand_two_core_step_enabled();
+    sand_set_two_core_step(false);
 
     sand_t real;
     build_mixed_gravity_flip_scene(&real, big, blocks);
@@ -215,6 +218,7 @@ test_the_soak_only_skip_matches_the_full_walks_grid_exactly(void) {
     const uint32_t fast_hash = grid_hash(big, (size_t)REAL_W * (size_t)REAL_H);
 
     sand_reactions_force_full_walk(false);
+    sand_set_two_core_step(two_core_before);
     free(big);
     free(blocks);
 
@@ -224,6 +228,23 @@ test_the_soak_only_skip_matches_the_full_walks_grid_exactly(void) {
                                     "the mixed flip scene's hash must stay pegged - a change here without "
                                     "an accompanying report_fingerprint.sh --update means behaviour moved, "
                                     "not just performance");
+}
+
+/* A suite run alone (RUNSUITE, or this suite's own perf scope) inherits
+ * two_core_step_on's raw ESP_PLATFORM default - true - since nothing ahead
+ * of it in that run has pinned it false yet. The equivalence test above
+ * must not care either way. */
+static void
+test_the_soak_only_skip_hash_survives_ambient_two_core_state(void) {
+    const bool two_core_before = sand_two_core_step_enabled();
+
+    sand_set_two_core_step(true);
+    test_the_soak_only_skip_matches_the_full_walks_grid_exactly();
+
+    sand_set_two_core_step(false);
+    test_the_soak_only_skip_matches_the_full_walks_grid_exactly();
+
+    sand_set_two_core_step(two_core_before);
 }
 
 #ifdef DEVICE_BUILD
@@ -3686,6 +3707,7 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_acid_bubbles_still_fire_once_the_block_is_asleep);
     RUN_TEST(test_the_soak_only_skip_dispatches_far_fewer_cells_than_a_full_walk);
     RUN_TEST(test_the_soak_only_skip_matches_the_full_walks_grid_exactly);
+    RUN_TEST(test_the_soak_only_skip_hash_survives_ambient_two_core_state);
 
 #ifdef DEVICE_BUILD
     RUN_TEST(test_the_sand_app_can_still_allocate_everything_it_needs);
