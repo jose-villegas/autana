@@ -58,6 +58,9 @@ device_profile_load "" "$TEST_DIR/../tools/device_profiles" || exit 1
 HOST_HEAP_ARENA_BYTES=$(device_profile_require DP_FREE_HEAP_BYTES) || exit 1
 HOST_HEAP_ARENA_PSRAM_BYTES=$(device_profile_require DP_PSRAM_BYTES) || exit 1
 HOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES=$(device_profile_require DP_SPIRAM_ALWAYSINTERNAL_BYTES) || exit 1
+# One list for the test binary and --print-flags, so the complexity gate parses
+# heap_arena.c with every define the real compile has.
+HEAP_ARENA_DEFINES="-DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES=$HOST_HEAP_ARENA_BYTES -DHOST_HEAP_ARENA_PSRAM_BYTES=$HOST_HEAP_ARENA_PSRAM_BYTES -DHOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES=$HOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES"
 
 # The shell's own portable units and their suites. Hardware suites are absent
 # by design - suite_gfx.c would not compile here, which is the point.
@@ -167,7 +170,7 @@ case "${1:-}" in
             -I "$TEST_DIR/../components/microui/include" \
             -I "$TEST_DIR/../components/small3dlib/include" \
             -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
-            -DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES="$HOST_HEAP_ARENA_BYTES"
+            $HEAP_ARENA_DEFINES
         exit 0
         ;;
 esac
@@ -234,9 +237,7 @@ UNITY_OBJ="$BUILD_DIR/unity.o"
 "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
     -I "$TEST_DIR/../components/microui/include" \
     -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
-    -DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES="$HOST_HEAP_ARENA_BYTES" \
-    -DHOST_HEAP_ARENA_PSRAM_BYTES="$HOST_HEAP_ARENA_PSRAM_BYTES" \
-    -DHOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES="$HOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES" \
+    $HEAP_ARENA_DEFINES \
     $SOURCES "$UNITY_OBJ" -o "$OUT" \
     -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm
 
