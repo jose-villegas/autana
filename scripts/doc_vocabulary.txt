@@ -1,0 +1,5 @@
+# retired term<TAB>why it is wrong for the current board
+C6	The supported board is ESP32-S3R8, not ESP32-C6.
+ESP32-C6	The supported board is ESP32-S3R8.
+RISC-V	The ESP32-S3 uses dual Xtensa LX7 cores.
+no PSRAM	This board has 8 MB octal PSRAM.

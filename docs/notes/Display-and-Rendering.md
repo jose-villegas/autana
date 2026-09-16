@@ -425,7 +425,7 @@ architectural split between the two existing entry points.
 **Consumers stay unaware the split exists.** `gfx_mark_dirty()`,
 `gfx_mark_all_dirty()` and `gfx_region_dirty()` keep their exact names and
 signatures; the actual tracking state and logic moved into
-`main/gfx_dirty.h`, and `gfx.c` implements the three public functions as
+`gfx/gfx_dirty.h`, and `gfx.c` implements the three public functions as
 thin wrappers around it. That header is deliberately *not* a matching
 `.c`/`.h` pair despite being the natural first instinct: `mark_band()` sits
 on `gfx_fill_rect()`/`gfx_pixel()`'s hot path (`gfx_text_scaled()` calls it
@@ -450,7 +450,7 @@ already arrived at `gfx_mark_dirty()` merged, with the gap between them,
 before the leaf layer ever got a chance to see it. Fixed by extracting the
 run-finding and previous/current reconciliation into
 `main/apps/sand/row_runs.c`/`.h` (a portable sibling of `sand.c`/`tilt.c`,
-not a special case wired into `gfx.c`) - `find_row_runs()` mirrors
+not a special case wired into `gfx.c`) - its run finder mirrors
 `gfx.c`'s own `collect_runs_from_mask()`, and `row_runs_reconcile()`
 generalises the old single-range previous/current union to a small diff
 between two short run lists: a current run absorbs every previous run it

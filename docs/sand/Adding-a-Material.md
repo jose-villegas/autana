@@ -1,15 +1,9 @@
 # Adding a Material
 
-A practical checklist, worked out by actually building materials four
-through nine end to end - `MAT_GAS`, then fire's redesign, then the whole
-wood/ember/steam/smoke chain and the boiler that came with it. Read
+A practical checklist for extending `main/apps/sand/`'s material table. Read
 [`Sand-Simulation.md`](Sand-Simulation.md) first if you have not - this
-assumes you already know what `material_t`, `material_kind_t`, and the
-main sweep's no-double-move guarantee are.
-
-Everything here was paid for once already. The sections marked **lesson**
-are mistakes that shipped or nearly shipped, kept in the shape that makes
-them recognisable next time rather than tidied into rules.
+assumes you already know what `material_t`, `material_kind_t`, and the main
+sweep's no-double-move guarantee are.
 
 ---
 
@@ -53,12 +47,9 @@ flowchart LR
 in `material.c` says exactly that: `KIND_LIQUID`, the same kind as
 ordinary water, and simultaneously a heat source that ignites its
 neighbours and flares, with not one line of movement code anywhere
-knowing about the combination. (Ember made the same point once, as a
-`KIND_STATIC` material that was also a heat source - see "Lesson: the
-obvious material is sometimes the wrong one" below for why it folded into
-wood instead.) A `KIND_POWDER` material that is also flammable needs a
-`reactions[]` row and *nothing else* - no new pass, no movement code, no
-branch anywhere.
+knowing about the combination. A `KIND_POWDER` material that is also
+flammable needs a `reactions[]` row and *nothing else* - no new pass, no
+movement code, no branch anywhere.
 
 Colour convention, used consistently in every diagram in this folder:
 
@@ -88,215 +79,169 @@ independent of each other:
    it is: "adding a material is a row here rather than a branch in the
    movement code" (`material.h`'s own header comment).
 
-2. **Does it need a new KIND?** Only if the movement shape itself is new
-   - as it was for gas (`KIND_GAS`, rises instead of falls). This is the
-   harder path, covered below, and it was genuinely harder than adding a
-   row: it needed a new file, a second sweep pass, and three attempts to
-   get the performance right.
+2. **Does it need a new KIND?** `material_kind_t` has exactly five values
+   - `NONE`/`STATIC`/`POWDER`/`LIQUID`/`GAS` - and only one of them,
+   `KIND_GAS`, was ever added after the founding three (sand, water,
+   stone) established the first three. Every ordinary and extended
+   material shipped since has reused one of the existing four. That is
+   the honest odds: a genuinely new movement shape is rare, and it is the
+   harder path - a new file, a second sweep pass, and real performance
+   work, covered below.
 
 If your answer to (1) is yes, stop reading here and go do that - a new
 row in `materials[]` plus a palette entry (see "The mechanical part"
-below) is the whole job. **Five of the nine real materials - fire,
-wood, steam, smoke and ember - were exactly this**, and none of them
-needed a line of movement code.
+below) is the whole job.
 
 ---
 
 ## Where your change actually lands
 
-Before writing anything, know which of these boxes you are touching. The
-red box is the only one that costs you performance thinking; everything
-downstream of the main sweep is checked against a flag, at the call site
-or inside the pass itself, and runs on nobody's frame budget when your
-material is not on the grid.
-
-```mermaid
-flowchart TD
-    Set["sand_set() / try_spawn_one()\nlatch may_have_* flags"] --> Sweep
-
-    Sweep["MAIN SWEEP - step_one_row() per row\nevery awake cell, every step\nPOWDER falls - LIQUID falls+slides\nGAS skipped - STATIC skipped\ncheckerboard-split across cores via job_run_core1()/job_wait()"]
-
-    Sweep --> LiqP["sand_step_liquids()\ncross-flow, splash\n(internal may_have_liquid check)\nstriped across cores via job_run_core1()/job_wait()"]
-
-    LiqP --> Gas{"may_have_gas?"}
-    Gas -- yes --> GasP["sand_step_gas()\nrise, disperse"]
-    Gas -- no --> Rx
-    GasP --> Rx
-
-    Rx["sand_step_reactions()\nignite, quench, smother,\nconduct, flare, burn out"]
-
-    Rx --> Imp["step_impulses()\nexplosions, thrown chunks,\nsplash pushback"]
-
-    Imp --> Fin["finalize_settling()\nBLOCK_ACTIVE for the WHOLE step\nsplit across cores via job_run_core1()/job_wait()"]
-
-    style Sweep fill:#8a3d3d,color:#fff
-    style LiqP fill:#3d6b8a,color:#fff
-    style GasP fill:#4a7c59,color:#fff
-    style Rx fill:#5a5a5a,color:#fff
-    style Imp fill:#5a5a5a,color:#fff
-    style Set fill:#a87a3d,color:#fff
-```
-
-Every extra pass runs **after** the main sweep and **before**
-`finalize_settling()`, so `BLOCK_ACTIVE` reflects the whole step rather
-than the main sweep's share of it. That ordering is not cosmetic - see
-the comment at the call site in `sand.c`.
+[`Architecture.md`](Architecture.md#one-step-in-order) has the full step
+pipeline; the rule that matters here is narrower. Every pass a new `KIND`
+needs runs **after** the main sweep and **before** `finalize_settling()`,
+gated behind its own `may_have_<kind>` flag - checked inside the pass as a
+cheap early-out, and once the pass is measured, at its call site in
+`sand_step()` too, so a material that never appears on the grid costs
+nobody's frame budget. The ordering is not cosmetic: `BLOCK_ACTIVE` has to
+reflect the *whole* step, not just whichever pass ran first - see the
+comment at the call site in `sand.c`.
 
 ---
 
 ## Design questions worth working through before writing code
 
-These came up designing gas and then again designing fire chemistry, in
-roughly the order they became unavoidable. Not all of them apply to every
-new material - but check each one, because skipping one silently is how a
-material ships broken in a way host tests might not catch.
+Not all of these apply to every new material, but check each one -
+skipping one silently is how a material ships broken in a way host tests
+might not catch.
 
-**Does the main sweep's no-double-move guarantee hold for this
-material's own primary direction?** The main sweep sweeps *against*
-gravity, so any move gravity-ward lands in already-visited territory.
-If your material moves gravity-ward too (even partially, like a liquid's
-fall-then-slide), it can join the main sweep. If it moves in some other
-fixed direction - anti-gravity, like gas, or something else entirely -
-it needs its **own pass**, swept in whichever order makes *that*
-direction's moves land in already-visited territory. Get this wrong and
-the symptom is dramatic: a grain that should move one cell a step
-teleports across the whole grid in one frame, because the sweep re-visits
-a cell it just moved into.
+**Does the no-double-move guarantee hold for this material's own primary
+direction?** The main sweep sweeps *against* gravity, so a gravity-ward
+move (even partial, like a liquid's fall-then-slide) can join it. Anything
+else - anti-gravity, like gas, or some other fixed direction - needs its
+**own pass**, swept so that direction's moves land in already-visited
+territory. Get this wrong and a grain that should move one cell a step
+teleports across the grid, because the sweep re-visits a cell it just
+moved into.
 
-**Can it reuse the existing movement primitives, direction-inverted, or
-does it need genuinely new movement logic?** `try_fall_or_scatter()`/
-`try_slide()` (declared in `sand_priv.h`, `_impl` bodies there, real
-wrappers in `sand.c`) take a plain `(dx, dy)` direction and are not
-hardcoded to "down" - passing a negated direction produces correct
-"rise and slide" behaviour for free. Whether this is enough depends on
-what the material is meant to look like: reusing them gets you rising/
-falling plus diagonal sliding under friction, but **not** flat spreading
-- that is what `equalise_liquids()`/`equalise_gas()`'s own *second* sub-pass
-does, and skipping it (assuming the reused primitives are the whole
-story) is exactly the mistake gas's own design almost made.
+**Can it reuse the existing movement primitives, direction-inverted?**
+`try_fall_or_scatter()`/`try_slide()` (`sand_priv.h`, wrappers in
+`sand.c`) take a plain `(dx, dy)` and are not hardcoded to "down", so a
+negated direction gives correct rise-and-slide for free. That covers
+rising/falling plus diagonal sliding under friction, but **not** flat
+spreading - `equalise_liquids()`/`equalise_gas()`'s own second sub-pass
+does that, and skipping it is a real trap. Gas itself has since moved off
+this route to a biased random walk instead (`gas_walk_once()`,
+`sand_gas.c` - the exhaustive primitives cost more exactly when the grid
+is full and every candidate is blocked), kept reachable via
+`sand_set_gas_walk(false)` for comparison. If nothing existing fits,
+think hard about whether the material is really a new `KIND`.
 
-Note that gas no longer takes this route itself: it moves by a biased
-random walk (see [`Sand-Simulation.md`](Sand-Simulation.md)), because the
-exhaustive primitives cost more exactly when the grid is full and every
-candidate is blocked. The primitives are still the right first question
-for a new material - just not the answer gas settled on. If the
-existing primitives genuinely do not fit the movement shape at all, a
-new material needs its own logic - at which point think hard about
-whether it is really a new `KIND`, or a variant of an existing one.
-
-**Whole-grain or mass-based?** `KIND_POWDER` moves whole grains
-(`move_to()`, a swap); `KIND_LIQUID` moves an *amount* per cell
+**Whole-grain or mass-based?** `KIND_POWDER` swaps whole grains
+(`move_to()`); `KIND_LIQUID` moves an amount per cell
 (`give_mass()`/`pour_into()`, 1-15 via `CELL_VARIANT`). Whole-grain is
-the smaller diff if an existing kind's primitives are being reused (as
-above) - but it means the visual result is discrete grains, not a
-smoothly thinning cloud. This is a real product/visual decision, not one
-the code makes for you.
+the smaller diff when reusing an existing kind, but reads as discrete
+grains rather than a thinning cloud - a real visual decision.
 
-**What is its density, relative to every other material?** `can_enter()`/
-`move_to()`'s displacement rule is one-directional: denser only ever
-displaces lighter, never the other way round. Pick a density that makes
-every displacement relationship you actually want come out true - gas's
-`10` (between empty's `0` and water's `30`) lets sand and water sink
-*through* it for free, with zero gas-specific code, simply because the
-existing displacement rule already runs in the main sweep whenever
-something denser tries to move into a gas-occupied cell.
+**What is its density, relative to every other material?** `can_enter()`
+only ever admits a *strictly* denser mover into a `KIND_LIQUID` or
+`KIND_GAS` target - never a powder or a static, regardless of density.
+Pick a density that makes every displacement relationship you want come
+out true - gas's `10` (between empty's `0` and water's `30`) lets sand
+and water sink through it for free, purely because that rule already
+runs in the main sweep. The current ladder (movement density,
+`materials[]` - not an extended static's own `dislodge_density`, see
+"Making room" below):
 
-The current ladder, which any new material has to slot into somewhere:
-
-```mermaid
-flowchart LR
-    E["empty\n0"] --> S["steam\n5"] --> K["smoke\n7"] --> G["gas\n10"] --> F["fire\n15"] --> SN["snow\n15"] --> X["oil\n22"] --> W["water\n30"] --> AC["acid\n38"] --> LV["lava\n45"] --> GP["gunpowder\n50"] --> A["sand\n60"] --> DT["dirt\n62"] --> D["wood/ember\n150"] --> T["stone / glass\n200"]
-
-    style E fill:#2a2a2a,color:#fff
-    style S fill:#3d6b8a,color:#fff
-    style K fill:#5a5a5a,color:#fff
-    style G fill:#4a7c59,color:#fff
-    style F fill:#8a3d3d,color:#fff
-    style W fill:#3d6b8a,color:#fff
-    style A fill:#a87a3d,color:#fff
-    style D fill:#a87a3d,color:#fff
-    style T fill:#5a5a5a,color:#fff
-    style X fill:#a87a3d,color:#fff
-    style LV fill:#8a3d3d,color:#fff
-    style AC fill:#4a7c59,color:#fff
-    style GP fill:#a87a3d,color:#fff
-    style DT fill:#a87a3d,color:#fff
+```
+empty 0 < steam 5 < smoke 7 < gas 10 < fire 15 = snow 15 < oil 22 <
+water 30 < acid 38 < lava 45 < gunpowder 50 < sand 60 < dirt 62 <
+glass 121 < wood 141 < stone 181
 ```
 
-Oil at 22 and lava at 45 straddle water deliberately: oil floats, lava
-sinks, and both fall out of one rule rather than any material-specific
-code. Gunpowder at 50 sits between lava and sand on purpose: it sinks in
-every liquid on the board (water 30, acid 38, lava 45), and sand (60) and
-dirt (62) rest on it rather than mixing in - a powder never sinks through
-another powder at rest here (see `sand.c`'s own comment on why weight alone
-earns no such move), so the gap to sand only matters under an impulse,
-where a blast sorts the heavier grit out. Real black powder is lighter than quartz sand
-too, so the ladder position and the physical intuition happen to agree.
+Oil and lava straddle water deliberately - oil floats, lava sinks, both
+free from the one rule. Gunpowder sits between lava and sand: it sinks in
+every liquid, and sand/dirt rest on it rather than mixing in, since a
+powder never sinks through another powder at rest (`can_enter()` only
+admits liquid/gas targets) - the gap to sand only matters under an
+impulse, where a blast sorts the heavier grit out.
 
-Note which mechanism each kind goes through, because it decides whether
-a density relationship needs code at all. A **powder** moves via
-`can_enter()`, which admits a mover only if it is denser than the target
-- so for a powder, "lighter than water" already means "floats", for free.
-A **liquid** never consults `can_enter()`, which is why oil floating on
-water needed a rule of its own (`float_lighter_liquids()`). **Check
-the mechanism before assuming a density relationship needs enforcing.**
+The mechanism a kind goes through decides whether a relationship needs
+code at all: a **powder**'s "lighter than water" already means "floats",
+for free, through `can_enter()`; a **liquid** never consults
+`can_enter()` at all, which is why oil floating on water needed its own
+rule. **Check the mechanism before assuming a density gap is enough.**
+Two consequences worth knowing, both real limitations rather than bugs:
 
-Two consequences worth internalising, both real limitations rather than
-bugs to chase:
+- **Equal density blocks, it does not mix.** `can_enter()` needs
+  *strictly* greater density - steam (5) and smoke (7) keep a deliberate
+  gap for exactly this reason.
+- **Mobility is not expressible in `can_enter()`.** Steam cannot enter
+  standing water (the rule wants a denser mover) and water cannot fall
+  into steam either (`room_in()` refuses a cell holding a different
+  material outright) - `try_bubble()` (`sand_gas.c`) is the fix, a
+  straight two-cell swap living in the warm tier. When a rule cannot
+  express what you need, extending the cold or warm pass is usually
+  right; teaching the hot predicate is usually wrong.
+- **Two liquids of different density need a reversed pass, and it is not
+  free.** Phrasing a fix as "the denser one moves DOWN" inherits the main
+  sweep's no-double-move guarantee; "the lighter one rises" needs its own
+  pass - `float_lighter_liquids()` (`sand_liquid.c`). What it costs is the
+  ordering guarantee: sweep order protects the mover, never the cell it
+  displaces, so budget for the displaced cell.
 
-- **Equal density means mutual blocking, not mixing.** `can_enter()`
-  needs *strictly* greater density to displace. Two materials at the
-  same density simply stop each other dead. Steam sits at 5 and smoke
-  at 7 for exactly this reason - nothing else depends on the gap.
-- **Mobility is not expressible in `can_enter()`, and needed its own
-  code.** Steam (5) cannot *enter* water (30) - the rule wants a denser
-  mover - and water will not fall into steam either, because `room_in()`
-  refuses a cell holding a different material outright. Between them a
-  gas under standing liquid had no legal move in either direction and
-  froze there permanently. The fix is `try_bubble()` in `sand_gas.c`: a
-  straight two-cell swap, gated on `KIND_GAS` and an inverted density
-  test, living in the warm tier so the hot predicate never learns about
-  it. Worth knowing as a precedent - **when a rule cannot express what
-  you need, adding the exception to the cold or warm pass is usually
-  right, and teaching the hot predicate is usually wrong.**
-- **Two liquids of different densities also needed their own rule, and
-  the cheap phrasing did not last.** `room_in()` refuses a cell holding
-  another material, so oil and water simply blocked each other. The first
-  fix was phrased as *the denser liquid moves DOWN* rather than *the
-  lighter one rises*, because down is gravity-ward and so inherits the
-  main sweep's existing no-double-move guarantee; the mirror-image rule
-  would have needed its own reversed pass, exactly like gas's. It got one
-  anyway - `float_lighter_liquids()` (`sand_liquid.c`) is that reversed
-  pass, and it replaced the sinking rule outright. What the reversal
-  costs is the ordering guarantee: sweep order protects the cell that
-  moves, never the one it displaces, so the pass carries one bit per
-  column to stop a displaced cell cascading the length of the board.
-  **Gravity-ward is still the phrasing to reach for first, but a reversed
-  pass is affordable - budget for the displaced cell, not the moving
-  one.**
-
-**Does it need `slip`/`repose` to mean "no resistance", like a liquid,
-even if it is whole-grain?** Gas's `slip = 255`/`repose = 0` copy water's
-values exactly, even though gas moves through the powder primitives, not
-the liquid ones - `slide_chance()` and `driven_by_gravity()` both already
-treat those values as "never held back", so a whole-grain material can
-still get liquid-like freedom of movement just by setting the same
-numbers.
+**Does it need `slip`/`repose` at "no resistance", like a liquid, even
+if whole-grain?** Gas copies water's `slip = 255`/`repose = 0` even
+though it moves through the powder primitives - those values already
+mean "never held back" to `slide_chance()`/`driven_by_gravity()`.
 
 **Does the movement direction interact with `driven_by_gravity()`
-correctly?** This one is subtle and easy to get backwards.
-`driven_by_gravity()`'s friction check is a dot product against the
-*real* gravity vector - if a material's own primary direction is not
-gravity itself (gas's is the negation of it), its slide vectors must be
-checked against a matching negated gravity vector too, or the dot
-product comes out negative for every slide and the material never slides
-at all. `sand_gas.c` builds its own `driven_gas[][]` table against
-`(-gx, -gy)` for exactly this reason.
+correctly?** Its friction check is a dot product against the *real*
+gravity vector - if a material's primary direction is not gravity itself
+(gas's is the negation of it), its slide vectors need checking against a
+matching negated vector too, or the dot product is negative for every
+slide and the material never slides. `sand_gas.c` builds its own
+`driven_gas[][]` table against `(-gx, -gy)` for this reason.
 
 **Can a player actually build the scene this material needs?** The
-newest question, and the one that cost the most rework. It has its own
-section below - **read it before picking any constant that describes a
-distance in cells.**
+question that has cost the most rework, twice, in the same shape. A rule
+specified as reaching exactly one conductor cell is unbuildable through
+the real brush - a hand drag is never one cell thick
+(`POUR_RADIUS_PX`/`ERASE_RADIUS_PX` in `app_sand.c`, 10/16 px, ~5 cells
+radius at the finest 2 px/cell zoom). The fix that generalises: an
+*attenuating* walk (crossing `d` cells succeeds at `(conducts/256)^d`)
+instead of a hard "exactly N", so thickness costs time rather than being
+a wall. A walk like that still needs a cost cap
+(`CONDUCT_REACH`, 32 cells, `sand_reactions.c`) - which is a statement
+about cost, not physics: size it past anything the brush can build, so
+the probability curve is what limits the result, never the cap itself.
+If you cannot tell which one is biting in your own test, the cap is too
+tight. Before finalising a constant that describes a distance in cells:
+look up the real brush radii, assume the sloppiest plausible
+construction, and build the fixture at that thickness.
+
+**Does a predicate named after a physical concept mean what you think in
+the state the feature actually runs in?** `touches_air()` counts a cell
+as air if empty *or* `KIND_GAS` - because a flame resting on the fuel it
+just ignited is not empty space, and the naive reading would make the
+flame's own presence hide its own fuel from ever reading as exposed.
+
+**When a reaction turns one material into another, do the new
+material's movement rules still make sense for what just happened?**
+Wood catching fire could not simply become `MAT_FIRE`: fire is
+`KIND_GAS`, so a burning log would rise and drift away instead of
+staying put to ignite its neighbour - why burning is a *state* of wood
+(`reaction_t.burn_decay`), not a transition. See "Making room" below.
+
+**When two materials differ mainly in appearance, does a test assert
+the appearance?** `MAT_STEAM` and `MAT_SMOKE` share almost the same
+`materials[]` row and were one material at first - wrong, because the
+overlap is real in the physics and false in the picture (a fire burning
+out with nothing to boil should not puff obvious kettle-steam). The
+palette is what makes them tellable apart, so here it is load-bearing:
+`test_steam_and_smoke_are_told_apart_by_brightness` pins steam at ≥89
+luminance brighter than smoke at equal life, with the *ranges* never
+overlapping at all (freshest smoke, 122, still dimmer than dying steam,
+132).
 
 ---
 
@@ -314,70 +259,66 @@ temperature, wood as burn progress. A material needing two small
 quantities can read its own nibble *by state* - one range meaning one
 thing, a disjoint range meaning another - the way dirt does (variant 0-7 a
 dry tone, 8-14 moisture 1-7). This adds no slot, it removes the *need* for
-one: glass carrying a temperature is why there is no separate "hot glass"
-material. Always ask this first, since the answer costs nothing to try.
+one. Always ask this first, since the answer costs nothing to try.
 
 **2. Make a material a state of another one - possible only when the
 VARIANT can carry it.** The tables are indexed by the material nibble
-alone, so two states of one material share the same `density`, `slip`,
-`repose` and `scatter`. What separates a state that works from one that
-does not is which table the differences live in, and whether the variant
-is free to say which state a cell is in. Ember is the worked example: it
-differed from wood in seven fields, and only one of the seven (`decay`)
-was in the *movement* table - the other six are reactions, read in the
-cold pass, and wood's own variant was doing nothing but holding a shade.
-So ember became a state (`burn_decay` non-zero, dispatched by
-`cell_is_burning()` rather than a material check), one slot back, and one
-thing that was not expressible as a separate material: water puts a log
-out, leaving the log - an ember could never be put out, because the ember
-*was* the fire. The rule this leaves: what forces a slot is needing a
-different row in the table the sweep reads, or having no spare variant
-bits to say which state a cell is in. Steam and smoke fail this test on
-both counts - their reaction rows are identical, but they differ in five
-*movement* fields, and both already spend their variant on life remaining.
+alone, so two states of one material share `density`, `slip`, `repose`
+and `scatter`. What decides it is which table the differences live in,
+and whether the variant is free to name the state. Ember is the worked
+example: it differed from wood in seven fields, and only one (`decay`)
+was in the *movement* table - the rest are reactions, read in the cold
+pass, and wood's own variant was only holding a shade. So ember became a
+state (`burn_decay` non-zero, dispatched by `cell_is_burning()`), one
+slot back, and gained something a separate material never had: water
+puts a log out and leaves the log, where before the ember *was* the
+fire. The rule: what forces a slot is needing a different row in the
+table the sweep reads, or having no spare variant bits to name the
+state. Steam and smoke fail this test on both counts - identical
+reaction rows, but five differing *movement* fields, and both already
+spend their variant on life remaining.
 
 **3. Spend the extended range on anything stateless** - built, and mostly
 used up. `MAT_EXTENDED` (id 15) is a doorway: a cell carrying it reads its
 low nibble as naming one of `MATERIAL_EXTENDED_COUNT` (8) further
 materials, sharing one `density`/`kind`/`slip`/`repose`/`scatter` row and
-one entry each in `palette[256]` (indexed by the raw cell byte, so distinct
-colours are free) and `reactions[]` (read only by the cold pass, where
-decoding the extended id costs nothing that matters). What an extended
-static cannot have is anything the *hot* path would need to read - its own
-physics, or a variant. A plant is the case that proves this is narrower
-than "inert solids only": its growth is *spatial* (more cells, not a
-counter), so it needs no bits at all, and it moves in the cold pass rather
-than the shared `KIND_STATIC` row, under a rule that only moves a cell into
-empty space. The trade the extended range actually offers is not "no
-state" but *state you are willing to re-derive from the grid, in the cold
-pass, every time you need it*. Today: `MATX_ICE`, `MATX_PLANT`,
-`MATX_LEAF`, `MATX_METAL`, `MATX_ROOT` used, 3 codes spare.
+one entry each in `palette[256]` and `reactions[]` (read only by the cold
+pass, where decoding the extended id costs nothing that matters). What an
+extended static cannot have is anything the *hot* path would need to
+read - its own physics, or a variant. A plant is the case that proves this
+is narrower than "inert solids only": its growth is *spatial* (more
+cells, not a counter), so it needs no bits at all, and it moves in the
+cold pass rather than the shared `KIND_STATIC` row, under a rule that only
+moves a cell into empty space. The trade the extended range actually
+offers is not "no state" but *state you are willing to re-derive from the
+grid, in the cold pass, every time you need it*. Today: `MATX_ICE`,
+`MATX_PLANT`, `MATX_LEAF`, `MATX_METAL`, `MATX_ROOT` used, 3 codes spare.
 
 **4. Split an extended half-row** - built, for gunpowder, and the
 expensive option once (3) runs out. A nibble has a top bit like any other
 value: split `MAT_EXTENDED`'s low nibble by bit 3, and the two halves
-become two independent rows in a doubled `materials[]`
-(`MATERIAL_ROWS`, 32, indexed by `cell >> 3` rather than the id nibble
-alone; `TWIN_ROW()` in `material.c` writes every ordinary material into
-both of its twin rows, so this is invisible to the fourteen ordinary
-materials). `0xF0`-`0xF7` stays the extended-statics doorway, unchanged;
-`0xF8`-`0xFF` becomes one ordinary `KIND_POWDER`/`KIND_LIQUID`/`KIND_GAS`
+become two independent rows in a doubled `materials[]` (`MATERIAL_ROWS`,
+32, indexed by `cell >> 3`; `TWIN_ROW()` in `material.c` writes every
+ordinary material into both of its twin rows, so this is invisible to
+the fourteen ordinary materials). `0xF0`-`0xF7` stays the
+extended-statics doorway, unchanged; `0xF8`-`0xFF` becomes one ordinary
 material with its own density, slip, repose, scatter, and a real 3-bit
 variant to spend on a state split exactly like dirt's. The cost: half of
 whatever was left of the extended range, spent on one material (5 codes
-used of 16 before the split, 5 of 8 after), and a doubled hot table (192 B
-of flash -> 384 B). Worth it only once no ordinary slot and no extended
-code will do, and not a route to reuse casually a second time without
-re-reading this section.
+used of 16 before the split, 5 of 8 after), and a doubled hot table
+(192 B of flash -> 384 B). Worth it only once no ordinary slot and no
+extended code will do, and not a route to reuse casually a second time
+without re-reading this section.
 
 **5. Pack the byte** - not built. Drop the fixed 4+4 split for a flat
 0-255 index with a per-material base offset, giving each material only as
-many variant codes as it actually uses (measured against the current
-table: 189 of 256 codes needed, 67 left - about four more liquids or
-sixteen more inert solids). The cost lands in the hottest loop in the
-program: `CELL_MATERIAL`/`CELL_VARIANT` become dependent table lookups
-instead of a shift and a mask. Worth doing only when slot pressure is
-real enough to justify that.
+many variant codes as it actually uses. The cost lands in the hottest
+loop in the program: `CELL_MATERIAL`/`CELL_VARIANT` become dependent
+table lookups instead of a shift and a mask. Worth doing only when slot
+pressure is real enough to justify that, and only after recomputing the
+actual headroom against the table as it stands - the growth/root/canopy
+fields and the extended materials that use them did not exist when this
+option was last costed out, so the old count is not trustworthy any more.
 
 **What does not work: moving transients out of the grid into a side
 list.** Fire, smoke, steam, gas and ember-like states are short-lived, so a
@@ -415,88 +356,96 @@ SHADES(lo,hi)"]
 ```
 
 1. **`material.h`**: add the new `material_id_t` enum value, before
-   `MAT_COUNT`. **If no ordinary slot is free** - it currently is not - see
-   "Making room: the material-slot ladder" below before reaching for
-   `MATX(k)` or a half-row split.
+   `MAT_COUNT`. **If no ordinary slot is free** - it currently is not -
+   see "Making room" above before reaching for `MATX(k)` or a half-row
+   split.
 2. **`material.c`**: add a `materials[]` row and a `palette[]` block. The
    block needs its own designator - `[MAT_YOURS * MATERIAL_VARIANTS] =`
    followed by `SHADES(lo, hi)` - which is what stops it depending on
-   where in the list it sits. `MATERIAL_MAX` stays 16 either way - it
-   counts nibble values, not table rows, so it did not move even when
-   `materials[]` itself doubled for gunpowder's split.
+   where in the list it sits: the palette used to be positional, and a
+   block added or removed mid-list once shifted every block after it by
+   sixteen entries, handing materials each other's colours and leaving
+   the last one reading zero-filled tail - plain black, looking like a
+   styling choice rather than a bug.
+   `test_every_material_has_a_palette_block` now checks the result.
+   `MATERIAL_MAX` stays 16 either way - it counts nibble values, not
+   table rows, so it did not move even when `materials[]` itself doubled
+   for gunpowder's split.
 
-   The designators are not decoration. The palette used to be positional,
-   and twice a block added or removed in the middle shifted every block
-   after it by sixteen entries, handing materials each other's colours and
-   leaving the last one reading the array's zero-filled tail - which
-   renders as plain black and looks like a styling choice rather than a
-   bug. `test_every_material_has_a_palette_block` now checks the result.
+   **If the material reacts to fire at all** - it can catch, it is a
+   heat source, it conducts, it smokes, it does something other than
+   vanish when quenched, or it flares - it also needs a row in the
+   *second* table, `reaction_t reactions[]` (same header, same file).
+   Fields worth knowing about beyond the obvious ones: `lit_from` (the
+   first variant code that counts as "burning" - wood's is 1, since its
+   unlit/lit split is variant 0 vs. anything else; a material whose
+   burning state shares its variant with something else, like
+   gunpowder's 3-bit moisture split, sets this higher so
+   `cell_is_burning()` still knows which codes mean lit); `explodes` (a
+   blast radius, checked only once `burn_decay` counts out to `lit_from`
+   *and* the cell is one corner of an all-lit 2x2 - ignition and heat
+   write the lit code, never detonate directly); `soaked_to`/
+   `soaked_chance` (what a cell *saturated* to `moist_max` has a
+   chance/256 per step of becoming, rolled only once actually full); and
+   `tones`/`moist_max`, which size the dry-tone/moisture split a
+   `dries != 0` material's variant reads (dirt: 8 tones, moisture 1-7;
+   gunpowder: 3 tones, moisture 1-4, since its variant is only 3 bits and
+   the eighth code goes to `lit_from`).
 
-   **If the material reacts to fire at all** - it can catch, it is
-   itself a heat source, it conducts heat, it smokes, it does something
-   other than vanish when quenched, or it flares a flame - it also needs
-   a row in the *second* table, `reaction_t reactions[]` (same header,
-   same file). Several more fields joined this table for gunpowder, and
-   apply to any material with similar behaviour of its own: `lit_from`
-   (for a `burn_decay != 0` material, the first variant code that counts
-   as "burning" - wood is 1, so its own unlit/lit split is variant 0 vs.
-   anything else, unchanged; a material whose burning state shares its
-   variant with something else, like gunpowder sharing 3 bits with a
-   dry-tone/moisture split, sets this higher so `cell_is_burning()` still
-   knows which codes mean lit); `explodes` (a blast radius - non-zero
-   means the cell can detonate via `sand_explode()`, checked once it
-   **burns out**, i.e. when its `burn_decay` countdown reaches
-   `lit_from`, and only if it is one corner of a 2x2 that is all lit;
-   otherwise, or with no impulse buffer live, it becomes plain fire
-   instead - ignition and heat write the *lit* code, they never detonate
-   directly); `soaked_to`/`soaked_chance` (what a *saturated* cell -
-   moisture at `moist_max` - has a chance/256 per step of becoming
-   instead, checked only once the cell is actually full so an inert
-   material with `soaked_to = 0` never rolls); and `tones`/`moist_max`,
-   which are encoding, not reaction behaviour - they size the
-   dry-tone/moisture split a `dries != 0` material's variant reads (dirt:
-   8 tones, moisture 1-7; gunpowder: 3 tones, moisture 1-4, because its
-   variant is only 3 bits wide and the eighth code is spent on
-   `lit_from` instead).
+   **An absent row is not neutral.** All-zero means something different
+   per field: never catches, never a heat source - safe to skip - but
+   also **immune to acid** and **heat stops here**, real behaviours.
+   Glass shipped with both once, from the same missing row: correctly
+   immune to acid, wrongly inert to heat - a stone vessel over a flame
+   boiled its contents, a glass one did not, backwards for the one
+   vessel acid cannot eat. Nothing distinguishes the feature from the
+   bug, since neither is written anywhere - read the field list and say
+   what zero means for *each* field before leaving a row out, in a
+   comment even when the answer is zero, the way stone's row does for
+   `dissolvable`.
 
-   **An absent row is not neutral.** It is all-zero, and zero means
-   something different for each field: never catches, never a heat
-   source - but also **immune to acid** and **heat stops here**. The
-   first two are the harmless reading that makes most materials able to
-   skip this table entirely. The last two are real behaviours, and glass
-   shipped with both by accident - correctly immune to acid, wrongly
-   inert to heat, from the same missing row. See "An omission is a
-   decision" below.
-
-   **If your stage is gated on the cell's material IDENTITY rather than
-   a `reaction_t` field, it has to be threaded into
-   `reaction_first_stage()` (`sand_priv.h`) by hand, or the dispatcher
-   never reaches it.** `step_one_reacting_row()`'s computed-goto
-   dispatch (`sand_reactions.c`) skips straight to the first stage a row
-   could ever match, decided once per pass from each row's own fields -
-   a stage that instead checks `CELL_MATERIAL(c) == MAT_YOURS` directly,
-   the way today's acid-rain stage checks for `MAT_GAS`/`MAT_STEAM`, is
-   invisible to that field-only scan unless its own boolean is added as
-   a `reaction_first_stage()` parameter and passed in from
-   `sand_step_reactions()`'s table rebuild, mirroring
-   `is_acid_rain_material`. Get this wrong and the failure is silent: no
-   test goes red, the material simply never reacts, because dispatch
-   jumps clean past the stage that would have handled it.
+   **A stage gated on the cell's material IDENTITY, rather than a
+   `reaction_t` field, must be threaded into `reaction_first_stage()`
+   (`sand_priv.h`) by hand, or the dispatcher never reaches it.**
+   `step_one_reacting_row()`'s computed-goto dispatch
+   (`sand_reactions.c`) jumps straight to the first stage a row could
+   ever match, decided once per pass from each row's own fields - a
+   stage that instead checks `CELL_MATERIAL(c) == MAT_YOURS` directly
+   (the way the acid-rain stage checks for `MAT_GAS`/`MAT_STEAM`) needs
+   its own boolean threaded through as a `reaction_first_stage()`
+   parameter, mirroring `is_acid_rain_material`, or dispatch jumps clean
+   past it - silently: no test goes red, the material simply never
+   reacts.
 
    **A new `reaction_t` field costs a byte of padding and a doc row.**
-   The struct is padded to a 64-byte stride (`stride_pad0..2`) so
-   `reaction_of()`'s index is one shift instead of four ALU ops, and a
-   `_Static_assert` holds the size at 64 - so a new field must consume
-   one of those pad bytes, not grow the struct. It also needs its own
-   row in `field_docs[]` (`tools/dump_reactions.c`), which asserts that
-   every byte of `reaction_t` is claimed by exactly one documented field
-   and walks the offsets to prove there are no gaps or repeats. Both
-   failures are loud, at compile time. Deleting a pad row without
-   shrinking the pad, or vice versa, trips the same assert.
+   The struct is padded to a 64-byte stride (`stride_pad2`/`3`/`4`, one
+   shift instead of four ALU ops in `reaction_of()`), held at exactly 64
+   by a `_Static_assert` - a new field consumes a pad byte, never grows
+   the struct - and needs its own row in `field_docs[]`
+   (`tools/dump_reactions.c`), which asserts every byte is claimed by
+   exactly one documented field. Both failures are loud, at compile time.
 
-   See `material.h`'s own comment on `reaction_t` for why this is a
-   second table rather than more fields on `materials[]` - the short
-   version is the next section.
+   **If a reaction can create this material mid-step** (ignite, quench,
+   boil, flare), the creation must go through `place_reacted()` or
+   `place_cell()` in `sand_reactions.c`, never a direct write to
+   `s->cells[]` - those two are the only functions that latch the
+   `may_have_<kind>` flags a *reaction-created* cell needs
+   (`sand_set()`/`try_spawn_one()` only cover a material placed from
+   outside the simulation). The failure is invisible to almost every
+   test: the flag is usually already set by some other cell of that kind
+   already on the grid, so only a scene with *nothing else* of the new
+   kind catches it (`test_creating_steam_arms_the_gas_pass`).
+   `place_reacted()` also always starts the new cell at
+   `MATERIAL_VARIANTS - 1`, right for a fill level or a life count,
+   wrong for a variant that *accumulates* (heat, burn progress,
+   moisture) - use `place_cell()` for those and say what it starts at:
+
+   ```c
+   place_cell(s, cx, cy, at, CELL_MAKE(r->hardens_to, 0));   /* grew, not caught */
+   ```
+
+   Both go through the same latch/mark/wake either way.
+
 3. **If reusing an existing `KIND`**: that is the whole implementation.
    Write host tests (see below) and you are done.
 4. **If it needs a new `KIND`**: a new file (`sand_<name>.c`), mirroring
@@ -507,12 +456,10 @@ SHADES(lo,hi)"]
    `may_have_gas`) set wherever the material gets placed
    (`sand_set()`/`try_spawn_one()`), checked both inside the new pass
    (cheap early-out) and, once the pass exists and is measured, at its
-   call site in `sand_step()` too (avoids marshalling arguments for a
-   call that will immediately return - see `sand_step_gas()`'s own call
-   site for the pattern).
+   call site in `sand_step()` too.
 5. **`step_one_grain()`** (`sand.c`): the new `KIND` needs a branch, even
-   if it is just "skip - handled by its own pass", exactly like `KIND_GAS`
-   is skipped there with a comment explaining why.
+   if it is just "skip - handled by its own pass", exactly like
+   `KIND_GAS` is skipped there with a comment explaining why.
 6. **`app_sand.c`**: add the new material to the paintable-materials
    brush list if it should be usable in the real app. Separate,
    app-level concern from the core simulation - **easy to forget, and
@@ -525,15 +472,17 @@ SHADES(lo,hi)"]
 
 Useful as a worked example of how much behaviour comes out of pure table
 data. Every arrow below is a `reaction_t` field, not a branch in code.
+Ice, plant, leaf and root are not on it - [`Reaction-Table.md`](Reaction-Table.md)
+is the generated, complete table.
 
 ```mermaid
 flowchart TD
-    Wood["WOOD\nstatic, density 150"] -->|"flammability 6\n~43 steps of contact"| Wood
+    Wood["WOOD\nstatic, density 141"] -->|"flammability 6\n~43 steps of contact"| Wood
     Gas["GAS\nrises"] -->|"flammability 255\ninstant, no RNG draw"| Fire
 
     Wood -->|"flare 48, while lit"| Fire["FIRE\nrises, burns, decay 96"]
     Wood -->|"residue 90, burned out"| Smoke
-    Fire -->|"smoke 40"| Smoke["SMOKE\nfuel that burned out"]
+    Fire -->|"residue 40"| Smoke["SMOKE\nfuel that burned out"]
 
     Fire -->|"quench_to\n+ water pays 1 mass"| Steam["STEAM\nwater that got hot"]
 
@@ -545,11 +494,10 @@ flowchart TD
     Lava["LAVA\nliquid AND burns"] -->|"quench_to\n(water pays a unit)"| Stone["STONE"]
     Acid["ACID\ndissolves"] -->|"dissolves 60 x dissolvable\n(acid pays a unit)"| Gone["EMPTY"]
     Acid -->|"dissolvable 60"| Stone
-    Acid -->|"dissolvable 110"| Metal
-    Sand["SAND"] -->|"heats_to, 16\n(needs sustained heat)"| Glass["GLASS\nimmune to acid"]
-    Glass -->|"heat_ramp - long exposure"| Lava
-    Glass -->|"shatters_to, at heat 9+
-on contact, no roll"| Sand
+    Acid -->|"dissolvable 1 - barely touches it"| Metal
+    Sand["SAND"] -->|"heats_to, chance 8/256\n(~3% a step)"| Glass["GLASS\nimmune to acid"]
+    Glass -->|"heat_ramp 64 - long exposure"| Lava
+    Glass -->|"shatters_to, at SAND_SHOCK_HEAT\n(ambient+2), no roll"| Sand
     Snow["SNOW
 cold"] -->|"heats_to 120 near fire
 thaws 4 in any liquid"| Water["WATER"]
@@ -578,24 +526,15 @@ thaws 4 in any liquid"| Water["WATER"]
 ```
 
 Note the two byproducts are **different materials on purpose**: steam is
-water that got hot, smoke is fuel that burned out. That split has its own
-lesson below.
+water that got hot, smoke is fuel that burned out - see the palette
+question in "Design questions" above.
 
-Ember is not a node here any more. It folded into wood's own variant -
+Ember is not a node here: it folded into wood's own variant -
 `burn_decay` counts down how much of a lit log is left to burn, so
 "catching fire" is wood becoming a lit version of itself (the self-loop
-above) rather than becoming a different material - see "Lesson: the
-obvious material is sometimes the wrong one" below for the full story.
-
-The old `Ember -->|"conducts"| Steam` edge is gone too, and not because
-conducting was ever removed from anything: ember's own rows
-(`materials[MAT_EMBER]` and `reactions[MAT_EMBER]`, checked directly
-against the commit before the fold) never had a `conducts` field at
-all. The edge was wrong the day it was drawn - a diagram claiming a
-field the table never had - not a behaviour this fold took away.
-Wood's current row still has no `conducts`, which is simply consistent
-with what ember's row always was. Dirt and metal are the newest
-arrivals - see
+above) rather than becoming a different material, for the reason given
+in "Design questions" above (fire is `KIND_GAS` and would simply drift
+away). Dirt and metal are the newest arrivals - see
 [`Metal.md`](Metal.md).
 
 ---
@@ -613,330 +552,30 @@ which tier your code is in. They differ by orders of magnitude.
 
 **This is why `reaction_t` is a second table.** `material_t` is read
 several times per cell per step from the hot tier, and its own comment
-explains why keeping the row inside a 32-byte cache line matters. The
-seven reaction fields are read by exactly one cold function. Fattening
-the hot table's stride to carry them would have cost every step that
-never touches fire at all. The price of the split is that a material
-that both moves and burns needs two rows instead of one - cheap, at that
-exchange rate.
+explains why keeping the row inside a 32-byte cache line matters. Every
+field of `reaction_t`, however many there are today, is read only by the
+cold pass. Fattening the hot table's stride to carry any of them would
+cost every step that never touches fire at all - the price of the split
+is that a material that both moves and burns needs two rows instead of
+one, which is cheap at that exchange rate.
 
-### Lesson: inlining into more call sites is not free
-
-If step 4 applies - a new pass reusing an existing kind's movement
-primitives - the exact way those primitives get shared between the main
-sweep and the new pass matters more than it looks like it should. Three
-attempts, each measured on real hardware, each wrong in a different way:
-
-1. Just remove `static` from the primitives so the new file can call
-   them. **Loses inlining at the ORIGINAL call site** (the main sweep's),
-   which had been relying on the compiler inlining a `static` function
-   used once per grain - regressed two frame-budget tests by ~26%,
-   exactly reproducible, with neither test ever touching the new material
-   at all.
-2. Move the whole primitive chain to a header as `static inline`, so both
-   files get their own independently inlinable copy. Fixes (1), but now
-   the NEW call site also gets a full inlined copy of a large call graph
-   - measured to nearly double a worst-case test's time, again exactly
-   reproducible, again without that test touching the new material.
-3. **What actually works**: keep the primitives `static inline` in the
-   header (so the hot, original call site stays fully inlined, exactly
-   as before), but give the new pass an ordinary, non-inline wrapper
-   function - defined once, real linkage, calling the inline version
-   internally - to call instead. One genuine function-call's worth of
-   overhead from the new pass, zero code duplicated into it, and the
-   original hot path untouched.
-
-**Flash is a cache-constrained resource on this chip** (32 KB instruction
-cache, see "Performance discipline" in `Sand-Simulation.md`), and a
-function's compiled size at each call site is part of that budget, not
-just its execution time. If a shared hot-path function needs calling from
-a second place, measure whether that second place is hot enough to *need*
-its own inlined copy before giving it one - a plain function call across
-translation units is often the right default, not the fallback.
-
-Full numbers live in `sand_priv.h`'s comments above
-`try_fall_or_scatter_impl()`.
-
-### Lesson: a cost bound must never decide whether a feature works
-
-Heat conduction walks a run of conductor cells, capped by
-`CONDUCT_REACH`. That cap exists purely so a cold pass cannot become an
-unbounded scan - it is a statement about cost, not about physics.
-
-It was set to 16, on the reasoning that one drag of the pour brush lays
-down about eleven cells and 16 is comfortably past that. But a player
-scribbling back and forth builds a floor well past sixteen cells, and at
-that thickness the walk gave up entirely: the boiler was not slow, it was
-**silently, completely dead**. The bound had quietly become a feature
-gate.
-
-The rule that leaves behind: when you cap a loop for cost reasons, set
-the cap far enough out that the *physics* (here, probabilistic
-attenuation) is what limits the result in every reachable scene, and the
-cap only ever catches pathological ones. If you cannot tell which is
-biting, that is a sign the cap is too tight, not that the feature is
-fine.
-
----
-
-## Lesson: can a player actually draw this?
-
-The most expensive mistake of the whole fire-chemistry feature, made
-twice in a row, in the same shape.
-
-Heat conduction was first specified as reaching **exactly one** conductor
-cell: fire on one side of a stone wall, water on the other, boil it. A
-clean rule, easy to reason about, easy to test, and completely
-unbuildable - because `app_sand.c`'s pour brush is a fixed radius-5 disc
-(`POUR_RADIUS 5`) with no size control anywhere in the UI.
-
-```mermaid
-flowchart LR
-    subgraph Spec["what the rule assumed"]
-        S1["fire"] --- S2["stone\n1 cell"] --- S3["water"]
-    end
-
-    subgraph Real["what a finger actually draws"]
-        R1["fire"] --- R2["stone\n~11 cells from ONE drag,\nmore if you scribble"] --- R3["water"]
-    end
-
-    Spec -.->|"never conducts\nin the real app"| Real
-
-    style S2 fill:#4a7c59,color:#fff
-    style R2 fill:#8a3d3d,color:#fff
-    style S1 fill:#8a3d3d,color:#fff
-    style R1 fill:#8a3d3d,color:#fff
-    style S3 fill:#3d6b8a,color:#fff
-    style R3 fill:#3d6b8a,color:#fff
-```
-
-The fix was an attenuating walk - crossing `d` cells succeeds with
-probability `(conducts/256)^d`, so thickness costs time instead of
-being a hard wall, and thermal resistance falls out for free with no
-second constant. Then the *same class* of mistake bit again: the first
-attenuation figure (176, ≈0.69/cell) was tuned against the eleven-cell
-case and collapsed past it - a thirteen-cell floor got through on 0.8%
-of steps, a sixteen-cell one on 0.3%. In practice: a minute of staring
-at nothing.
-
-**The general lesson.** A rule that is clean in the abstract can be
-unreachable through the very UI that has to produce the scene it depends
-on, and neither the simulation nor its host tests will ever tell you.
-Only asking *"can a player actually draw this?"* does. Concretely, before
-finalising any constant that describes a distance in cells:
-
-- Look up `POUR_RADIUS` and `ERASE_RADIUS` in `app_sand.c`. Those, not
-  your intuition, define the granularity of every scene a player can
-  make.
-- Assume the sloppiest plausible construction, not the neatest one.
-- Build the test fixture at that thickness. A test that passes on a
-  one-cell idealisation while the real case fails is worse than no test,
-  because it reports success.
-
----
-
-## Lesson: a predicate about "air" has to know what air is
-
-Oil burns off its surface rather than detonating through its volume
-because of one flag, `needs_air`, and one predicate behind it:
-`touches_air()`. The first version of that predicate tested whether any
-cardinal neighbour was **empty**, which is the obvious reading and is
-wrong in exactly the situation the feature exists for.
-
-A flame resting on a pool is not empty space. The moment the surface
-caught, its neighbour became a fire cell, the surface stopped counting as
-exposed, and the pool could never light. Measured, not reasoned about: a
-fire blob sat on an oil slick for thirty steps doing nothing. The fix is
-one clause - air is empty space **or any `KIND_GAS` cell** - and the
-slick then burns top-down exactly as intended.
-
-Worth generalising, because this shape recurs: **a predicate named after
-a physical concept will be written against the simplest encoding of it,
-and the simplest encoding is usually the one that breaks under the
-condition the feature was built to handle.** "Empty" and "open to the
-air" feel like the same thing right up until something occupies the
-opening. Test the predicate in the state the feature actually runs in,
-not the state you set it up in.
-
-## Lesson: an omission is a decision
-
-`reactions[]` rows are optional, and a material without one gets all
-zeroes. The guide above used to say that reads correctly for a material
-with no reactions, and for most materials it does. It is not true field
-by field.
-
-Glass is the counterexample. It shipped with no reaction row at all,
-which gave it two properties at once:
-
-- `dissolvable = 0` - **immune to acid**. Correct, and the entire reason
-  glass exists.
-- `conducts = 0` - **heat stops dead at it**. Wrong. A stone vessel over
-  a flame boiled its contents and a glass one did not, which is backwards
-  for the vessel you have to make and the only one acid cannot eat.
-
-Both came from the same absence, and nothing in the source distinguishes
-them: the feature and the bug look identical, because neither is written
-anywhere. It took someone noticing the beaker did not boil.
-
-The general shape: **a defaulted field is a decision you did not make,
-and the safety of the default depends entirely on which field it is.**
-Before leaving a material without a reaction row, read the field list and
-ask what zero means for each one, rather than what it means on average.
-The fields where zero is genuinely inert (`flammability`, `burns`,
-`dissolves`, `residue`) are safe to skip; the ones where zero is a real
-behaviour (`conducts`, `dissolvable`) want a deliberate answer even when
-the answer is zero - and a comment saying so, as stone's row does for
-`dissolvable`.
-
-## Lesson: sometimes the palette *is* the feature
-
-`MAT_STEAM` and `MAT_SMOKE` have nearly identical `materials[]` rows.
-Both are light gases that rise, spread and fade; their densities differ
-by 2, their decay and mobility by a little. By every argument this
-document otherwise makes, they should be **one** material - and they
-were, at first.
-
-That was wrong, and the way it was wrong is the point. The overlap was
-real in the *physics* and false in the *picture*: a lone fire burning out
-in mid-air, nowhere near water, puffing bright white kettle-steam reads
-as a bug to whoever is watching, because they can see for themselves
-there was nothing there to boil.
-
-So the two rows exist to be **told apart on sight**, which makes their
-palettes load-bearing rather than decorative - unusual here, and worth
-recognising when it happens again. Two properties, both measured, both
-pinned by `test_steam_and_smoke_are_told_apart_by_brightness`:
-
-| | |
-|---|---|
-| at equal life | steam is ≥ 89 luminance brighter than smoke, all 16 variants |
-| across whole ranges | freshest smoke (122) is still dimmer than dying steam (132) - **no overlap at all** |
-
-The second is the subtle one, and the first draft of the palette did not
-have it (`0x9A8F84` put fresh smoke at 144 against dying steam's 132). A
-puff is caught at whatever point in its life you happen to look at it, so
-only non-overlapping *ranges* make every cell unambiguous.
-
-**When two materials differ mainly in appearance, write a test that
-asserts the appearance.** Everything else in the sand test suite (split
-across `suite_sand_*.c`) tests behaviour, and a future palette tweak
-would break this feature while passing every one of them.
-
----
-
-## Lesson: a reaction that changes a cell's KIND must latch that kind's flag
-
-Invisible to almost every test that could catch it, which is what makes
-it worth its own section.
-
-```mermaid
-flowchart TD
-    A["reactions pass creates a cell\n(ignite / quench / boil / flare)"] --> B{"went through\nplace_reacted()?"}
-    B -- yes --> C["may_have_gas / may_have_liquid /\nmay_have_burning latched"]
-    C --> D["next step: the owning pass runs,\nthe cell moves and lives"]
-    B -- "no - wrote the cell array directly" --> E["flag never set"]
-    E --> F["owning pass early-returns forever.\nCell frozen on the grid.\nEVERY OTHER TEST STILL PASSES."]
-
-    style D fill:#4a7c59,color:#fff
-    style F fill:#8a3d3d,color:#fff
-    style C fill:#3d6b8a,color:#fff
-```
-
-`sand_t` carries a `may_have_<kind>` flag per movement kind
-(`may_have_liquid`, `may_have_gas`) plus `may_have_burning` for
-reactions, and every pass those flags gate **early-returns** when its
-flag is clear - that is the entire point of the flag.
-`sand_set()`/`try_spawn_one()` set the right flag(s) when a material is
-placed *from outside the simulation*. That covers a player painting, and
-does not cover a material a *reaction* creates mid-step: fuel igniting,
-a liquid boiling into steam, an ember flaring fire. Those cells appear
-from inside `sand_reactions.c`, never through `sand_set()`.
-
-The danger is that the flag is usually **already** set some other way -
-another gas cell already on the grid - so the bug hides. The one test
-that catches it is a scene with *nothing else* of that kind present,
-which is not the scene anyone writes by default. See
-`test_creating_steam_arms_the_gas_pass`.
-
-The fix that shipped: every cell-creating path in `sand_reactions.c`
-goes through one function, `place_reacted()`, which sets the cell *and*
-latches every flag the new material needs, in the same independent-`if`
-shape `sand_set()` uses (an `else if` chain would shadow one - a material
-can need more than one flag at once).
-
-### And the variant it is born holding is a decision, not a default
-
-`place_reacted()` takes a material, not a cell, so it has to pick the new
-variant itself. It picks `MATERIAL_VARIANTS - 1`, which is right for a
-**fill level** (a new pool of water is full) and for a **life** (a new
-wisp of smoke has its whole life ahead of it) and wrong for every variant
-that *accumulates towards* an end state instead of draining from one.
-Heat has always been special-cased for this reason: a pane of glass born
-at the top of its melt ramp would run to lava on the next step.
-
-Burn progress is the same shape and was not. Wood's variant is how far
-along it has burned, so `place_reacted(..., MAT_WOOD)` places a log
-**already well alight** - which is exactly right when the reaction is fire
-making an ember of a log, and catastrophic when it is a plant hardening
-into a trunk. Every tree that grew tall enough to become wood burned to
-nothing over the next couple of hundred steps, on a board with no flame
-anywhere on it.
-
-The general fix would be to make wood born-cold, and it is wrong: it
-breaks ignition, which is the one caller that *means* the maximum. The
-variant is not a property of the material, it is a property of the
-**reaction**. So the shared bookkeeping was split out into `place_cell()`,
-which takes a whole `cell_t`, and a caller that has an opinion about the
-variant states it:
-
-```c
-place_cell(s, cx, cy, at, CELL_MAKE(r->hardens_to, 0));   /* grew, not caught */
-```
-
-Both go through the same latch/mark/wake, so nothing is lost. If you add a
-reaction whose product has an accumulating variant - heat, burn progress,
-moisture - say what it starts at.
-
----
-
-## Lesson: the obvious material is sometimes the wrong one
-
-Worth recording because the instinct it corrects is reasonable. The
-obvious way to make wood burn is: wood touches fire, wood becomes fire.
-Same shape gas already uses, less code, and wrong for wood specifically
-in a way that only shows up when you ask what happens on the *next* step.
-
-Fire is `KIND_GAS`. A wood cell that became fire would rise and disperse
-on the next `sand_step_gas()` pass, exactly like any other fire cell -
-so a log would dissolve into a rising flame that drifts away, often
-before it gets a turn to ignite the log next to it. The burn stalls or
-races depending on nothing the player did. The symptom is not even
-obviously wrong at a glance, because fire *is* supposed to rise.
-
-The fix is to split the burn into two jobs rather than ask one thing to do
-both: a `KIND_STATIC` heat source that stays exactly where the wood was -
-igniting, counting down, conducting, burning out, all without moving - plus
-an ordinary `MAT_FIRE` flame it periodically flares upward
-(`reaction_t.flare`) purely for looks.
-
-That static heat source used to be its own material, `MAT_EMBER`. It is now
-a STATE of wood: `reaction_t.burn_decay` makes wood burn while its variant
-is non-zero, and the variant is how much is left to burn. The behaviour is
-identical - the same 24-in-256 countdown, the same flare, the same smoke -
-and it stopped costing a material slot.
-
-Which is the more useful lesson, because ember spent a long time looking
-like it had to be a material. It differed from wood in seven fields, and
-only ONE of them (`decay`) was in the movement table; the other six were
-reactions. What forces a slot is not "behaves differently" - it is needing
-a different row in the table the SWEEP reads, since that is indexed by the
-material nibble alone. A state the variant can carry does not need one.
-
-**The question this leaves for the next material:** when something reacts
-into another material, ask whether the reacted-into material's own
-*movement* rules still make sense for what just happened. "Wood catches
-fire" sounds right until "fire floats away" turns out to be exactly wrong
-for a log.
+**Sharing a hot function across a second call site is not free.** If a
+new pass reuses an existing kind's movement primitives
+(`try_fall_or_scatter()`/`try_slide()`, `sand_priv.h`), keep them
+`static inline` in the header so the original, hot call site stays fully
+inlined, and give the new pass an ordinary, non-inline wrapper instead -
+un-`static`ing the shared primitives loses inlining at the *original*
+site, and duplicating the inline chain into the new translation unit
+inlines a whole call graph into a place that rarely needs it as much.
+`sand_gas.c` takes the wrapper route for exactly this reason (see
+`sand_priv.h`'s own comment above `try_fall_or_scatter()`/`try_slide()`);
+`suite_sand_perf.c` records a measured 26% regression as precedent for
+sharing a hot per-call function across a translation-unit boundary the
+wrong way. Flash is a cache-constrained resource here (32 KB
+code/constant cache, `Sand-Simulation.md`), and a function's compiled
+size at each call site is part of that budget, not just its execution
+time - measure whether a second site is hot enough to need its own
+inlined copy before giving it one.
 
 ---
 
@@ -945,21 +584,18 @@ for a log.
 Do not guess a constant, and do not ship it and hope you notice. The
 simulation sources compile on the host with no ESP-IDF anywhere, so you
 can build a one-off harness that sweeps a parameter and prints real
-numbers in about five minutes. This is how the conduction figures above
-were fixed, and it is the highest-leverage habit in this document.
+numbers in about five minutes. This is the highest-leverage habit in this
+document.
 
 ```bash
-gcc -std=c11 -O1 -I launcher/main -o probe.exe probe.c launcher/main/apps/sand/sand.c launcher/main/apps/sand/sand_liquid.c launcher/main/apps/sand/sand_gas.c launcher/main/apps/sand/sand_reactions.c launcher/main/apps/sand/material.c launcher/main/apps/sand/row_runs.c
+gcc -std=c11 -O1 -I launcher/main -o probe.exe probe.c launcher/main/apps/sand/sand.c launcher/main/apps/sand/sand_liquid.c launcher/main/apps/sand/sand_gas.c launcher/main/apps/sand/sand_reactions.c launcher/main/apps/sand/sand_plants.c launcher/main/apps/sand/sand_impulse.c launcher/main/apps/sand/material.c launcher/main/apps/sand/row_runs.c launcher/main/util/job.c
 ```
 
 Your `probe.c` needs only `#include "apps/sand/sand.h"`, a grid, and a
 loop. Build the scene the way the *app* would build it (pour-brush-sized
-blobs, hand-drawn thicknesses - see the UI lesson above), sweep the
-constant you are unsure about, and print a table. The conduction sweep
-was slab thickness 1..20 against one blob of fire, reporting first-boil
-step and water consumed; the answer - that the old numbers died past 13
-cells and vanished entirely past 16 - was obvious in one glance at the
-table and invisible in every other way.
+blobs, hand-drawn thicknesses - see "Can a player actually build the
+scene this material needs?" above), sweep the constant you are unsure
+about, and print a table.
 
 Keep the probe in your scratch directory, not the repo. It is a
 measuring instrument, not a test: once it has told you the number, the
@@ -991,14 +627,10 @@ number goes in a comment next to the constant and the probe is disposable.
   over, cascading into unrelated failures. Give the outlier its own grid -
   see `test_conduction_stops_at_the_reach_cap`
   (`suite_sand_reaction_encoding.c`).
-- **Palette blocks carry their own `[MAT_X * MATERIAL_VARIANTS] =`
-  designator.** They used to be positional and it bit twice: a block added
-  or removed mid-list shifts every one after it, and the symptom is a
-  material rendering black rather than any kind of error. Do not add a
-  block without one.
-- **`smothered()` needs all four neighbours *strictly* denser.** A dense
-  material (wood at 150) is therefore essentially unsmotherable - only
-  stone qualifies. Check this whenever you pick a density above sand's.
+- **`smothered()` needs all four neighbours *strictly* denser.** Wood, at
+  141, is essentially unsmotherable this way - among non-liquids, only
+  stone and the extended statics that share its row (both 181) sit above
+  it. Check this whenever you pick a density above sand's.
 - **A material's variant may already mean something.** Liquids read it as
   fill, transients as life, glass and stone as temperature, wood as how
   much is left to burn. The suite's `GLASS`, `STONE` and `WOOD` macros have
