@@ -24,8 +24,8 @@ file counted twice:
   suite. esp-clang does not recognise three GCC-only Xtensa flags in that
   database (stripped) and has no bundled libc for the target (given
   `--sysroot`/`--gcc-toolchain` pointing at the same `xtensa-esp-elf` GCC
-  install ESP-IDF itself uses, found under
-  `~/.espressif/tools/xtensa-esp-elf/`).
+  install ESP-IDF itself uses, found under the ESP-IDF tools root:
+  `$IDF_TOOLS_PATH` when set, else `~/.espressif`).
 - **`launcher/test/run_tests.sh --print-sources`/`--print-flags`** - the
   same host-portable file list and flags that script proves compile,
   used for whatever the diagnostics database does not contain: the
@@ -101,17 +101,25 @@ python launcher/tools/complexity_gate.py --update-baseline      # record today's
 python launcher/tools/complexity_gate.py --changed origin/main  # only files that changed - still needs the build above
 ```
 
-Wired into CI as a step in `.github/workflows/build-diagnostics.yml`,
-right after that job's own diagnostics build - the compile database it
-depends on is that build's output, and a job in a different workflow file
-cannot see another workflow run's checkout, so the gate cannot live
-anywhere else. Not the pre-commit hook, which has to stay fast enough to
-run on every commit. `--changed` is the fast path for local use instead:
-point it at whatever ref the branch forked from.
+In CI the gate runs inside `.github/workflows/build-diagnostics.yml`'s
+ESP-IDF container, in the same command as the diagnostics build: the
+toolchains exist only inside that container, and the compile database the
+build writes names container paths. The command installs esp-clang with
+ESP-IDF's own tool installer first, so CI scores with the same esp-clang a
+local ESP-IDF install provides. Not the pre-commit hook, which has to stay
+fast enough to run on every commit. `--changed` is the fast path for local
+use instead: point it at whatever ref the branch forked from.
 
 clang-tidy is pinned to major 19, resolved the same way
 `scripts/check-format.sh` resolves clang-format: `$CLANG_TIDY` if set,
 then `clang-tidy-19` or `clang-tidy` on `PATH`, then ESP-IDF's bundled
-esp-clang under `~/.espressif/tools/esp-clang/`. A different major scores
-this check differently, so anything else is refused unless
+esp-clang under the ESP-IDF tools root. A different major scores this
+check differently, so anything else is refused unless
 `CLANG_TIDY_ANY_VERSION=1` is set - informational use only, never CI.
+
+Pristine upstream copies of the vendored components are git submodules
+under `third_party/upstream/`, pinned to the upstream commit each vendored
+copy was taken from: `microui` at rxi/microui `0850aba8` (version 2.02),
+and `small3dlib` at drummyfish/small3dlib `6a2cfb5c`. They sit outside
+`launcher/`, so the firmware build never sees them. A worktree or clone
+needs `git submodule update --init` before they are present.
