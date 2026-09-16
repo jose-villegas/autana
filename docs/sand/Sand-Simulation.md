@@ -9,10 +9,11 @@ This document is the "why" behind it - the material encoding, the movement
 rules, the water model, and the performance discipline that shaped all of
 them. [`Architecture.md`](Architecture.md) is the "what": a single-page map
 of the same app's shape, with the byte layout, the material table and the
-per-step pipeline diagram this document assumes rather than repeats. For the
-app-registration mechanics (how `main/apps/*` plugs into the shell), see
-`docs/Launcher-Architecture.md`. For the hardware constraints underneath
-everything here, see `docs/notes/README.md`.
+per-step pipeline diagram this document assumes rather than repeats.
+
+For the app-registration mechanics (how `main/apps/*` plugs into the
+shell), see `docs/Launcher-Architecture.md`. For the hardware constraints
+underneath everything here, see `docs/notes/README.md`.
 
 ---
 
@@ -31,11 +32,12 @@ shrinks or grows with it:
 
 ULTRA's 41,216-byte grid is, in `docs/notes/Board-and-Memory.md`'s own
 words, "the largest single contiguous allocation of interest" the sand app
-makes, and it is unchanged since this board moved to a PSRAM framebuffer.
-That move is worth stating plainly, because it changes the shape of the
-constraint this section used to describe: the 322 KiB framebuffer now
-lives entirely in PSRAM (`BOARD_FRAMEBUFFER_CAPS`, `board.h`) and no
-longer competes with the sand grid, or anything else, for internal SRAM.
+makes. It is unchanged since this board moved to a PSRAM framebuffer.
+
+That move is worth stating plainly: the 322 KiB framebuffer now lives
+entirely in PSRAM (`BOARD_FRAMEBUFFER_CAPS`, `board.h`) and no longer
+competes with the sand grid, or anything else, for internal SRAM.
+
 Measured internal (non-PSRAM) free heap after `gfx_init()` is 311,775
 bytes - comfortably more than even a two-byte-per-cell grid at ULTRA
 (82 KB) would need.
@@ -43,11 +45,12 @@ bytes - comfortably more than even a two-byte-per-cell grid at ULTRA
 The one-byte encoding predates that move: it was chosen when the
 framebuffer still lived in the same internal pool as everything else,
 leaving far less headroom to work with. The port to a PSRAM board loosened
-that specific constraint, but the byte layout itself was never revisited -
-every other per-cell trick in this file (reusing the nibble, doubling the
-table only where a material actually needs it) still follows the
-discipline that byte was chosen under, and unwinding it for memory that is
-no longer scarce would touch every material's encoding for no behavioural
+that specific constraint, but the byte layout itself was never revisited.
+
+Every other per-cell trick in this file - reusing the nibble, doubling
+the table only where a material actually needs it - still follows the
+discipline that byte was chosen under. Unwinding it for memory that is no
+longer scarce would touch every material's encoding for no behavioural
 gain.
 
 [`Architecture.md`](Architecture.md#the-grid-in-one-byte) has the byte
@@ -82,11 +85,13 @@ accidents:
 `materials[MATERIAL_ROWS]` (`material.c`) is `const`, so it is
 memory-mapped from flash and costs **zero bytes of RAM** - confirmed via
 `idf.py size`, not assumed. Adding a material is a row in that table, not
-a branch in the movement code. Every field on `material_t` - `kind`,
-`density`, `slip`, `repose`, `scatter`, `decay`, `mobility`, `sight`, plus
-the cold `name` string - is read from the innermost loop, several times per
-cell per step, which is why the struct stays small; see `material.h`'s own
-header and struct comments for the field-by-field reasoning, and
+a branch in the movement code.
+
+Every field on `material_t` - `kind`, `density`, `slip`, `repose`,
+`scatter`, `decay`, `mobility`, `sight`, plus the cold `name` string - is
+read from the innermost loop, several times per cell per step. That is
+why the struct stays small. See `material.h`'s own header and struct
+comments for the field-by-field reasoning, and
 [`Architecture.md`](Architecture.md#the-material-table-today) for the
 current table of all 16 material slots.
 
@@ -113,15 +118,17 @@ modelled explicitly. It all falls out of those three attempts. (Gas is the
 one exception - the same rule, run against a negated direction, from its
 own pass - see [Gas: a biased random walk](#gas-a-biased-random-walk).)
 
-**The sweep order is the one thing that cannot be wrong.** A grain only ever
-moves into a cell in the gravity-ward half of its neighbourhood, so sweeping
-the grid *against* the direction of travel guarantees a cell's destination
-has already been visited this step - a grain that moves cannot be picked up
-and moved again in the same frame. Sweep the other way and a falling grain
-teleports to the floor in one frame instead of falling one cell at a time.
-Every pass in this codebase (the main sweep, and the liquid cross-flow pass
-below) is built around this same guarantee, each with its own sweep order
-derived from whichever direction *it* moves things in.
+**The sweep order is the one thing that cannot be wrong.** A grain only
+ever moves into a cell in the gravity-ward half of its neighbourhood. So
+sweeping the grid *against* the direction of travel guarantees a cell's
+destination has already been visited this step - a grain that moves
+cannot be picked up and moved again in the same frame.
+
+Sweep the other way and a falling grain teleports to the floor in one
+frame instead of falling one cell at a time. Every pass in this codebase
+(the main sweep, and the liquid cross-flow pass below) is built around
+this same guarantee, each with its own sweep order derived from whichever
+direction *it* moves things in.
 
 **Friction is two separate things**, because burial alone does not explain
 the reported symptom (a floor of sand skating sideways on the faintest
@@ -171,14 +178,15 @@ water, pressure travels far faster than the water itself does, and this is
 the cheap stand-in every falling-sand game has some version of.
 
 **Why this cannot live in the main sweep.** The main sweep's no-double-move
-guarantee depends on sweeping against gravity - but once gravity is tilted,
+guarantee depends on sweeping against gravity. Once gravity is tilted,
 that pins the sweep on *both* axes, and of the two directions across the
-flow, only the one the sweep has already passed is safe to use. Water could
-cross a slope one way and never back: a tilted pool did not level at all,
-it walked into the low corner and sat there. Cross-flow needs its own pass,
-with its own sweep order chosen to fit whichever direction it is using that
-step - the two alternate every step, so both directions become available
-over time.
+flow, only the one the sweep has already passed is safe to use.
+
+Water could cross a slope one way and never back: a tilted pool did not
+level at all, it walked into the low corner and sat there. Cross-flow
+needs its own pass, with its own sweep order chosen to fit whichever
+direction it is using that step - the two alternate every step, so both
+directions become available over time.
 
 **Why 8, not more.** A longer sight distance hands mass directly to a cell
 far away, skipping everything between - water visibly vanishes from one
@@ -217,30 +225,34 @@ tilted pool, gravity down-and-right:
   but the MIX across the pool still reads as the true angle
 ```
 
-Two bugs, both fixed and both worth knowing if this code is touched again:
+Two bugs, both fixed and both worth knowing if this code is touched again.
 
-- **Picking the ray from the dithered direction flickered a settled
-  pool.** Gravity's direction is dithered every step (see
-  [Movement](#movement-one-rule-and-one-invariant-that-has-to-be-right)
-  above); if cross-flow's axis followed that dither, "is this level" was
-  asked along a different axis almost every step, and a settled pool read
-  as wildly unbalanced along whichever direction it wasn't just checked
-  against - large amounts of mass swinging back and forth every step or
-  two, visible as flashing and resettling. Fixed by taking the axis from
-  the *nearest* (non-dithered) direction instead - the same fix friction's
-  burial check already used. See
-  `test_a_settled_pool_does_not_flicker` (`suite_sand_materials.c`).
-- **Pinning to one ray flattened every surface to 0/45/90 degrees.**
-  That was the correct fix for the flicker, but it had an unpriced cost: a
-  pool could then only settle perpendicular to one of eight directions.
-  The near-vertical octant lost the most - its axis ray is horizontal, and
-  a horizontal ray can only move mass within a row, so that octant
-  couldn't tilt its surface at all. The fix shown above - dithering
-  between the axis ray and the diagonal beside it, by column, in space
-  rather than in time - restored real tilt angles without bringing the
-  flicker back. `test_a_pool_settles_at_the_angle_it_is_tilted_to`
-  (`suite_sand_materials.c`) guards the second property; the flicker test
-  above still guards the first. Neither alone is enough.
+**Bug one: picking the ray from the dithered direction flickered a
+settled pool.** Gravity's direction is dithered every step (see
+[Movement](#movement-one-rule-and-one-invariant-that-has-to-be-right)
+above). If cross-flow's axis followed that dither, "is this level" was
+asked along a different axis almost every step.
+
+A settled pool then read as wildly unbalanced along whichever direction
+it wasn't just checked against - large amounts of mass swinging back and
+forth every step or two, visible as flashing and resettling. Fixed by
+taking the axis from the *nearest* (non-dithered) direction instead - the
+same fix friction's burial check already used. See
+`test_a_settled_pool_does_not_flicker` (`suite_sand_materials.c`).
+
+**Bug two: pinning to one ray flattened every surface to 0/45/90
+degrees.** That was the correct fix for the flicker, but it had an
+unpriced cost: a pool could then only settle perpendicular to one of
+eight directions. The near-vertical octant lost the most - its axis ray
+is horizontal, and a horizontal ray can only move mass within a row, so
+that octant couldn't tilt its surface at all.
+
+The fix shown above - dithering between the axis ray and the diagonal
+beside it, by column, in space rather than in time - restored real tilt
+angles without bringing the flicker back.
+`test_a_pool_settles_at_the_angle_it_is_tilted_to`
+(`suite_sand_materials.c`) guards the second property; the flicker test
+above still guards the first. Neither alone is enough.
 
 ## Gas: a biased random walk
 
@@ -265,19 +277,22 @@ component reads as smoke *sinking* rather than swirling.
 `try_fall_or_scatter()`/`try_slide()` with the direction negated - the
 water model reflected. That mover is exhaustive: it tries each candidate
 in turn, so its cost rises exactly when the grid is full and every
-candidate is blocked. The walk is O(1) per cell and looks better, since
-real hot gas is chaotic rather than uniformly upward. The exhaustive
-mover is still reachable through `sand_set_gas_walk(false)` so the two
-can be compared, which is the only thing that still uses it.
+candidate is blocked.
+
+The walk is O(1) per cell and looks better, since real hot gas is chaotic
+rather than uniformly upward. The exhaustive mover is still reachable
+through `sand_set_gas_walk(false)` so the two can be compared, which is
+the only thing that still uses it.
 
 **Buoyancy is part of the walk, not a separate pass**, and only on the
 upward picks (straight up or an upper diagonal). A blocked upward pick
 whose blocker is a liquid *denser* than the gas swaps through it - gas
 rises through the liquid instead of sitting trapped in it, because
 `can_enter()` only ever admits a liquid to something denser, never to
-something lighter. Sideways and downward picks never bubble: a bubble
-rises, and a downward swap would also break the sweep's one-move-per-cell
-guarantee.
+something lighter.
+
+Sideways and downward picks never bubble: a bubble rises, and a downward
+swap would also break the sweep's one-move-per-cell guarantee.
 
 **Why it needs its own pass.** The main sweep's no-double-move guarantee
 depends on sweeping *against* the direction things move - right for
@@ -311,12 +326,14 @@ out" expressible: the log is still there, just no longer alight.
 
 `MAT_FIRE` is `KIND_GAS`, so a wood cell that turned *into* fire would
 float away on the next `sand_step_gas()`, leaving a hole where the log
-was. Instead a lit log stays `KIND_STATIC`, igniting neighbours and
-counting down, while the flame licking off it (`reaction_t.flare`) is
-ordinary separate `MAT_FIRE` - there for looks and for reaching fuel
-stacked above. "Burning below, flame above" falls out of two simple
-things rather than one material trying to be a heat source and a moving
-flame at once.
+was.
+
+Instead a lit log stays `KIND_STATIC`, igniting neighbours and counting
+down, while the flame licking off it (`reaction_t.flare`) is ordinary
+separate `MAT_FIRE` - there for looks and for reaching fuel stacked
+above. "Burning below, flame above" falls out of two simple things
+rather than one material trying to be a heat source and a moving flame
+at once.
 
 Wood's `flammability` of 6 in 256 makes catching a negotiation - roughly
 43 steps of contact with a single flame - so a log burns rather than
@@ -336,11 +353,14 @@ Quenching costs the water a unit of its own mass, so a pot boiled dry
 eventually runs dry. The two rows are nearly identical in `materials[]`;
 the split is really about palettes - steam is cool and bright, smoke warm
 and dim, and a fresh puff of smoke tops out dimmer than a dying wisp of
-steam so they stay separable where they overlap. The reason to keep them
-apart is visual, not physical: a lone fire burning out in mid-air, nowhere
-near water, puffing bright kettle-steam reads as a bug to anyone watching.
+steam so they stay separable where they overlap.
+
+The reason to keep them apart is visual, not physical: a lone fire
+burning out in mid-air, nowhere near water, puffing bright kettle-steam
+reads as a bug to anyone watching.
 `test_quenching_makes_steam_but_burning_out_makes_smoke` guards against
-re-merging them on the correct observation that their rows look the same.
+re-merging them on the correct observation that their rows look the
+same.
 
 ### Gas under standing liquid needs buoyancy to escape
 
@@ -361,12 +381,14 @@ across untouched.
 It is deliberately not in `can_enter()` itself. That predicate is the
 hottest thing in the project, read several times per cell per step by the
 main sweep; a mobility special case there would be paid by every falling
-grain of sand forever. In the gas pass it costs one comparison, only for
-gas cells, only in a pass already gated behind `may_have_gas`, and only
-where the ordinary rise was already blocked. Sweep order makes it safe for
-free: the gas pass sweeps so the destination is already-visited territory,
-and both liquid passes ran earlier in the same `sand_step()`, so the
-displaced liquid still gets exactly one move.
+grain of sand forever.
+
+In the gas pass it costs one comparison, only for gas cells, only in a
+pass already gated behind `may_have_gas`, and only where the ordinary
+rise was already blocked. Sweep order makes it safe for free: the gas
+pass sweeps so the destination is already-visited territory, and both
+liquid passes ran earlier in the same `sand_step()`, so the displaced
+liquid still gets exactly one move.
 
 ### Boiling happens at the heat source
 
@@ -390,32 +412,42 @@ in the usual way (`flammability` 200, so it catches almost every time it
 is rolled). Heat alone, with nothing burning yet, can also reach the same
 trigger from the heat-transform path - lava resting beside it, or heat
 conducted through stone or metal, once the wet stage below has steamed
-any moisture off. Either path writes code 7, the cell's **lit** state
-(`GUNPOWDER_LIT`), in place of the plain `MAT_FIRE` a less flammable fuel
-would get. A lit cell is a heat source in its own right, exactly like a
-burning log: it ignites neighbouring dry powder (so a trail burns along,
-cell by cell), it can boil adjacent water, and it counts down its own
-`burn_decay` (16, roughly sixteen steps of fuse) every step via the same
-`tick_decay_at()` wood already uses - generalised by `reaction_t.lit_from`,
-the first variant code a `burn_decay` material treats as "burning" (wood:
-1; gunpowder: 7, since gunpowder's other six codes are already spoken for
-by dry tone and moisture). It is not smothered by its own neighbours the
-way a buried wood fire would be - `explodes != 0` opts a material out of
-that check, because gunpowder carries its own oxidiser and a fuse buried
-in the middle of a pile has to keep burning regardless. Water quenches a
-lit cell to **soaked** (moisture pinned at `moist_max`), not to the unlit
+any moisture off.
+
+Either path writes code 7, the cell's **lit** state (`GUNPOWDER_LIT`), in
+place of the plain `MAT_FIRE` a less flammable fuel would get. A lit cell
+is a heat source in its own right, exactly like a burning log:
+
+- it ignites neighbouring dry powder, so a trail burns along, cell by
+  cell
+- it can boil adjacent water
+- it counts down its own `burn_decay` (16, roughly sixteen steps of
+  fuse) every step, via the same `tick_decay_at()` wood already uses
+
+That countdown is generalised by `reaction_t.lit_from`, the first
+variant code a `burn_decay` material treats as "burning" (wood: 1;
+gunpowder: 7, since gunpowder's other six codes are already spoken for by
+dry tone and moisture).
+
+A lit cell is not smothered by its own neighbours the way a buried wood
+fire would be - `explodes != 0` opts a material out of that check,
+because gunpowder carries its own oxidiser and a fuse buried in the
+middle of a pile has to keep burning regardless. Water quenches a lit
+cell to **soaked** (moisture pinned at `moist_max`), not to the unlit
 code, or it would simply relight from an adjacent lit neighbour on the
 very next step.
 
 **Burning out: the blast and its cooldown.** Only when a lit cell burns
 out - its countdown reaching `lit_from` - does the blast radius
 (`reaction_t.explodes`, 20 cells, `SAND_GUNPOWDER_BLAST_RADIUS`) get read
-at all. If the cell is one corner of a 2x2 whose other three cells (the
-board edge counts as not-lit) are also lit gunpowder, and the impulse
-buffer is live, it detonates (`sand_explode()`); otherwise it simply
-becomes an ordinary `MAT_FIRE` cell, the same no-buffer fallback the
-confined-gas blast already relies on. A one-wide trail or a lone lit cell
-never blasts at all - there is no lit 2x2 to be part of.
+at all.
+
+If the cell is one corner of a 2x2 whose other three cells (the board
+edge counts as not-lit) are also lit gunpowder, and the impulse buffer is
+live, it detonates (`sand_explode()`). Otherwise it simply becomes an
+ordinary `MAT_FIRE` cell, the same no-buffer fallback the confined-gas
+blast already relies on. A one-wide trail or a lone lit cell never blasts
+at all - there is no lit 2x2 to be part of.
 
 A thick pile's blasts land one at a time, spread across several frames,
 rather than all going off together - guaranteed by
@@ -423,10 +455,12 @@ rather than all going off together - guaranteed by
 number of steps the board waits after a detonation before another may
 fire, ticked down once per reactions pass. Raising it spreads a pile's
 blasts further apart without making any one of them smaller; 0 lifts the
-limit. A blast also takes the lit cells around it out of every 2x2 they
-belonged to - they are fire or flying grains by their own burn-out - which
-helps the spreading-out along independently, but that is a side effect of
-the geometry, not what bounds the cost: the cooldown does that.
+limit.
+
+A blast also takes the lit cells around it out of every 2x2 they belonged
+to - they are fire or flying grains by their own burn-out - which helps
+the spreading-out along independently. That is a side effect of the
+geometry, though, not what bounds the cost: the cooldown does that.
 
 The 2x2 rule started as a fully-lit 3x3 and was loosened after device
 testing: with independent burn-out rolls, the neighbours lit before a cell
@@ -438,21 +472,24 @@ check. The 2x2 fuse model is what shipped.
 **Moisture damps ignition.** For any `dries != 0` material, the ignition
 roll is scaled down per moisture level: `f >>= SAND_DAMP_IGNITION_SHIFT *
 moisture` (shift 2), so gunpowder's 200-in-256 base chance runs
-200 -> 50 -> 12 -> 3 -> inert at moisture 4. A fully wet charge (moisture
-pinned at `moist_max`, 4) cannot ignite at all until something dries it
-out - either heat driving a level off as steam (the same wet-earth stage
-`try_heat_transform_given()` already uses for dirt), or simple time
-(`dries = 1`, half dirt's own rate of 2 - powder holds water longer than
-soil does).
+200 -> 50 -> 12 -> 3 -> inert at moisture 4.
+
+A fully wet charge (moisture pinned at `moist_max`, 4) cannot ignite at
+all until something dries it out - either heat driving a level off as
+steam (the same wet-earth stage `try_heat_transform_given()` already uses
+for dirt), or simple time (`dries = 1`, half dirt's own rate of 2 -
+powder holds water longer than soil does).
 
 A saturated cell additionally has a small chance per step
 (`soaked_to`/`soaked_chance`, 16 in 256) to give up being powder
 altogether and become a full `MAT_OIL` cell instead - the same "one grain
 plus its water becomes one liquid cell" shape other saturation reactions
-already use. That rate was tuned once against a measured target: on
-pre-saturated powder sitting under standing water, the board took 1,542
-steps to lose half its powder to oil at a chance of 8, and 835 steps at
-16 - the shipped value.
+already use.
+
+That rate was tuned once against a measured target: on pre-saturated
+powder sitting under standing water, the board took 1,542 steps to lose
+half its powder to oil at a chance of 8, and 835 steps at 16 - the
+shipped value.
 
 Acid dissolves gunpowder at the same rate it dissolves sand
 (`dissolvable = 200`); nothing about being explosive changes how a cell
@@ -462,26 +499,31 @@ disappears once acid is what is touching it.
 `dries != 0` to mean "this is ground a root can use" now tests a separate
 field, `reaction_t.soil`, instead. Dirt sets `soil = 1`; gunpowder does
 not, even though it has a moisture codec of its own and would otherwise
-match every one of those checks. Moisture diffusion between same-species
-cells and percolation still read `dries`, unchanged - "can this variant
-mean wetness" and "is this ground" are genuinely different questions once
-more than one material can be wet, and a fuse sitting in a garden bed was
-never meant to be something a tree could root into, drink from, or drain
-moisture out of.
+match every one of those checks.
+
+Moisture diffusion between same-species cells and percolation still read
+`dries`, unchanged - "can this variant mean wetness" and "is this ground"
+are genuinely different questions once more than one material can be wet.
+A fuse sitting in a garden bed was never meant to be something a tree
+could root into, drink from, or drain moisture out of.
 
 ### Heat banking on stone and glass
 
 Stone and glass bank heat in the low nibble their `KIND_STATIC` never
 otherwise needed, 0-15 with `SAND_AMBIENT_HEAT` sitting in the middle
-rather than at the floor, so a pane has somewhere to go both when it warms
-and when it chills (`step_one_tempered_cell()`, `sand_reactions.c`). Left
-alone, that variant relaxes back toward ambient on its own, at a rate
-(`reaction_t.cools`) that gets harder to outrun the further off ambient the
-cell already sits - a single brush of fire makes a pane fragile quickly,
-while cooking it all the way to molten stays a long exposure. The full
-mechanism (`heat_ramp`, `cools`, `chills`, shattering) is covered in
-[Temperature: glass, snow, and a scale that has room for cold](#temperature-glass-snow-and-a-scale-that-has-room-for-cold)
-below; this section is only the two reactions that touch it from outside -
+rather than at the floor. That way a pane has somewhere to go both when
+it warms and when it chills (`step_one_tempered_cell()`, `sand_reactions.c`).
+
+Left alone, that variant relaxes back toward ambient on its own, at a
+rate (`reaction_t.cools`) that gets harder to outrun the further off
+ambient the cell already sits. A single brush of fire makes a pane
+fragile quickly, while cooking it all the way to molten stays a long
+exposure.
+
+The full mechanism (`heat_ramp`, `cools`, `chills`, shattering) is
+covered in [Temperature: glass, snow, and a scale that has room for
+cold](#temperature-glass-snow-and-a-scale-that-has-room-for-cold) below;
+this section is only the two reactions that touch it from outside -
 quenching and lava.
 
 **Quenching multiplies the drain, but only downhill of ambient.** A
@@ -490,36 +532,41 @@ sitting against a heat-ramping cell multiplies the ordinary cooling drain
 by `SAND_WET_COOLING_FACTOR` (8, `sand.h`), but only in the above-ambient
 half of the ramp. Pouring water on a glowing wall is what brings its
 banked heat back down in a reasonable number of steps, rather than the
-many dozens plain ambient cooling alone would take. The asymmetry is
-deliberate: nothing about being wet can push a cell *below*
-`SAND_AMBIENT_HEAT`. That is chilling's job alone (snow, ice,
+many dozens plain ambient cooling alone would take.
+
+The asymmetry is deliberate: nothing about being wet can push a cell
+*below* `SAND_AMBIENT_HEAT`. That is chilling's job alone (snow, ice,
 `reaction_t.chills`), and letting water do it too would let an ordinary
 splash thermally shock glass the same way a deliberately-placed snowbank
 does.
 
 **Lava quenched into stone can take a neighbour down with it.** The
 one-touch quench any water-on-lava contact has always done
-(`neighbor_quenches()`, `quench_to`) also rolls a small, deliberately rare
-chance (`SAND_LAVA_COOLOFF_CHANCE`, sand.h, 32 in 256) to freeze one
-further adjacent lava cell too, which rolls again in turn - an iterative
-walk (`cool_off_chain()`, `sand_reactions.c`), bounded at
+(`neighbor_quenches()`, `quench_to`).
+
+It also rolls a small, deliberately rare chance
+(`SAND_LAVA_COOLOFF_CHANCE`, sand.h, 32 in 256) to freeze one further
+adjacent lava cell too, which rolls again in turn - an iterative walk
+(`cool_off_chain()`, `sand_reactions.c`), bounded at
 `SAND_LAVA_COOLOFF_MAX_CHAIN` (8) links so one lucky roll can never run
-the whole pool to stone in a single event. This is what lets a sustained
-pour eat into a pool rather than only ever sealing its surface. Stop
-pouring, and the crust that formed simply sits there - nothing about it
-keeps spreading on its own.
+the whole pool to stone in a single event.
+
+This is what lets a sustained pour eat into a pool rather than only ever
+sealing its surface. Stop pouring, and the crust that formed simply sits
+there - nothing about it keeps spreading on its own.
 
 The same small chance also gates the actual *work* of melting a neighbour
 into something else - sand fusing to lava, a thermal-shock crack, a real
 material change, not merely banking one more level of heat (which stone
-and glass do on nearly every step they touch lava, for free). Getting this
-distinction right mattered enough to be its own guarded test
+and glass do on nearly every step they touch lava, for free).
+
+Getting this distinction right mattered enough to be its own guarded test
 (`test_a_lava_pool_in_a_dry_stone_bowl_does_not_freeze_itself`,
 `suite_sand_reaction_encoding.c`): gating on whether the heat-transform
 probe merely *returned true*, rather than on whether `CELL_MATERIAL`
-actually changed, would have made a lava pool sitting in an ordinary stone
-bowl slowly self-extinguish with no water and no fuel anywhere on the
-board.
+actually changed, would have made a lava pool sitting in an ordinary
+stone bowl slowly self-extinguish with no water and no fuel anywhere on
+the board.
 
 ### A sufficiently covered lava cell can burst
 
@@ -566,60 +613,73 @@ fell between two eighths, turning the rule into orientation noise.
 
 This shape replaced an earlier five-cell **semi-disc** (the same three
 cells plus the two perpendiculars, needing three covered in a contiguous
-run). The perpendiculars were the defect: a finger-drawn stone wall bulges
-one cell past itself every brush step, giving its inner face a notch, and
-lava settling into each notch saw wall to its side, wall on the diagonal
-above that side, and wall directly above - three cells, contiguous,
-"sealed" - while the pool's surface sat wide open one cell over. Every
-hand-drawn basin blew its own sides out as the lava settled. Measured: a
-clean one-cell wall never produced a single eligible cell in 5,000 steps
-(no test caught it, since every basin in the suite is drawn clean); a
-brush-drawn one did within 16 steps and breached by step 62 at natural
-odds. Dropping the perpendiculars removed every eligible cell in that
-scene at brush radii 2-4, left the wide-pool-under-a-crust case exactly as
-it was, and is cheaper besides: three probes, no count, no contiguity
-walk. The one shape it still fires on, that a player might not expect, is
-a two-cell-wide overhang, where the innermost cell does have a complete
+run). The perpendiculars were the defect.
+
+A finger-drawn stone wall bulges one cell past itself every brush step,
+giving its inner face a notch. Lava settling into each notch saw wall to
+its side, wall on the diagonal above that side, and wall directly above -
+three cells, contiguous, "sealed" - while the pool's surface sat wide
+open one cell over. Every hand-drawn basin blew its own sides out as the
+lava settled.
+
+Measured: a clean one-cell wall never produced a single eligible cell in
+5,000 steps (no test caught it, since every basin in the suite is drawn
+clean); a brush-drawn one did within 16 steps and breached by step 62 at
+natural odds. Dropping the perpendiculars removed every eligible cell in
+that scene at brush radii 2-4, left the wide-pool-under-a-crust case
+exactly as it was, and is cheaper besides: three probes, no count, no
+contiguity walk.
+
+The one shape it still fires on, that a player might not expect, is a
+two-cell-wide overhang, where the innermost cell does have a complete
 lid. See `test_lava_in_a_wall_notch_never_bursts` and
 `test_cover_primitive_matches_the_exhaustive_shape_table`
 (`suite_sand_lava_burial.c`).
 
 **`sand_explode()` fills a core of radius `radius / SAND_EXPLODE_CORE_
 DIVISOR` with fire before it queues a single flight entry.** At
-`SAND_LAVA_BURST_RADIUS` (12) and divisor 5, that core radius is 2, so the
-`MAT_STONE` this feature just wrote at the centre is immediately
+`SAND_LAVA_BURST_RADIUS` (12) and divisor 5, that core radius is 2, so
+the `MAT_STONE` this feature just wrote at the centre is immediately
 overwritten by fresh fire - pinned, expected behaviour (see
 `test_buried_lava_bursts_into_stone_and_fire`,
-`suite_sand_lava_burial.c`), not a bug. The radius itself moved twice
-before settling: it started at the confined-gas burst's own figure (8),
-was raised to 16 once a radius-8 burst read as a barely-visible flicker on
-device (core radius 1, about five cells of flame), then brought back down
-to 12 once gunpowder existed - the one material whose whole point is to go
-off (`SAND_GUNPOWDER_BLAST_RADIUS`, 20) should own the biggest
-reaction-driven blast on the board, and 12 still gives a core radius of 2,
-about thirteen cells of flame, well past the original flicker.
+`suite_sand_lava_burial.c`), not a bug.
+
+The radius itself moved twice before settling. It started at the
+confined-gas burst's own figure (8), then was raised to 16 once a
+radius-8 burst read as a barely-visible flicker on device (core radius 1,
+about five cells of flame).
+
+It was then brought back down to 12 once gunpowder existed: the one
+material whose whole point is to go off (`SAND_GUNPOWDER_BLAST_RADIUS`,
+20) should own the biggest reaction-driven blast on the board. 12 still
+gives a core radius of 2, about thirteen cells of flame, well past the
+original flicker.
 
 Not gated on `sand_enable_impulses()` having been called: `sand_explode()`
 is a documented no-op without it, so with impulses off the cell simply
 becomes stone and nothing is thrown - correct, since no impulses means no
 explosions anywhere else in the simulation either.
 
-**The rate is per covered cell, per step, not per pool or per event** - a
-figure that reads as vanishingly rare in isolation is common in aggregate,
-because a large sealed pool has many covered cells, each independently
-rolling every step it stays covered. A stress-tested "pool under a
-hand-drawn floor" scene (many one-cell dimples across a wide ceiling,
-packed tighter than the blast radius) confirmed the mechanism is
-self-limiting rather than a runaway chain: a burst's own explosion
-destroys the cover around it as it clears the pocket, so a
-freshly-uncovered neighbour is usually blown open rather than left
-standing and re-eligible. At the real production chance the scene lost
-roughly a sixth of its lava over 3,000 steps in a slow trickle, never more
-than a handful of dimples in a single step; pinned to the maximum chance
-the same scene lost about half its lava in the first 20 steps and then
-plateaued as the remaining pockets thinned out and scattered. The
-tapering is an emergent consequence of the blast itself clearing cover,
-not a cap anyone added.
+**The rate is per covered cell, per step, not per pool or per event.** A
+figure that reads as vanishingly rare in isolation is common in
+aggregate, because a large sealed pool has many covered cells, each
+independently rolling every step it stays covered.
+
+A stress-tested "pool under a hand-drawn floor" scene (many one-cell
+dimples across a wide ceiling, packed tighter than the blast radius)
+confirmed the mechanism is self-limiting rather than a runaway chain: a
+burst's own explosion destroys the cover around it as it clears the
+pocket, so a freshly-uncovered neighbour is usually blown open rather
+than left standing and re-eligible.
+
+At the real production chance the scene lost roughly a sixth of its lava
+over 3,000 steps in a slow trickle, never more than a handful of dimples
+in a single step. Pinned to the maximum chance, the same scene lost about
+half its lava in the first 20 steps and then plateaued as the remaining
+pockets thinned out and scattered.
+
+The tapering is an emergent consequence of the blast itself clearing
+cover, not a cap anyone added.
 
 ## Temperature: glass, snow, and a scale that has room for cold
 
@@ -642,11 +702,12 @@ thaw in any liquid, at their own separate rates.
 **`heat_ramp` and `heat_chance` are alternatives, not partners.**
 `heat_chance` is a memoryless roll - sand fuses to glass the first time it
 wins one, nothing remembered between attempts. `heat_ramp` banks progress
-in the cell instead, the only way to express *sustained* exposure: under a
-memoryless roll, a candle lit for one step a day would melt a pane exactly
-as surely as a furnace, just later. `cools` is what makes the ramp measure
-duration rather than lifetime total - without a drain, exposure would only
-ever accumulate.
+in the cell instead, the only way to express *sustained* exposure: under
+a memoryless roll, a candle lit for one step a day would melt a pane
+exactly as surely as a furnace, just later.
+
+`cools` is what makes the ramp measure duration rather than lifetime
+total - without a drain, exposure would only ever accumulate.
 
 **`chills` and `cools` do the same thing in the same units and are still
 two fields**, because they sit on different materials and cannot share a
@@ -665,26 +726,33 @@ a pane fragile almost the instant a flame touches it.
 entirely so cold has somewhere to be seen: with ambient at 0, chilling a
 resting pane would change no number and so no colour, and a snowbank
 sitting on glass would look identical to a snowbank sitting on nothing.
+
 With ambient at 3, 0-2 is frost - pale, near white - and it fades on its
 own, because `cools` moves a cell *towards* ambient from either side, not
-only downward. Chilling is driven from the **cold** cell (the way fire
-reaches its neighbours), not the warm one, so a pane at rest still gets
-chilled by snow sitting on it; a warm-cell-driven design only gets a turn
-when the pane is already off ambient.
+only downward.
 
-**Temperature spreads along the material itself**, not only from whatever
-heat source touches it - `conducts >> SPREAD_SHIFT`, applied *within* the
-material rather than only to whatever is on the far side of it, so a
-chilled cell drags its neighbours down and a heated one pulls them up. Two
-things keep this from erasing the mechanic it is meant to support: it is
-heavily scaled down (`SPREAD_SHIFT` is 1, so 110 in 256 rather than 220 -
-at the full value a pane goes isothermal within a step or two, and a wall
-that is all one temperature cannot be hot inside and cold at the rim), and
-it is gated to a gap of 2 or more (a difference of one is left alone, so a
-smooth gradient across a wall survives rather than collapsing flat). It is
-derived from `conducts` rather than given its own field because it is the
-same physical property - a material that carries a fire's heat well
-carries its own temperature well too.
+Chilling is driven from the **cold** cell (the way fire reaches its
+neighbours), not the warm one, so a pane at rest still gets chilled by
+snow sitting on it; a warm-cell-driven design only gets a turn when the
+pane is already off ambient.
+
+**Temperature spreads along the material itself**, not only from
+whatever heat source touches it - `conducts >> SPREAD_SHIFT`, applied
+*within* the material rather than only to whatever is on the far side of
+it, so a chilled cell drags its neighbours down and a heated one pulls
+them up.
+
+Two things keep this from erasing the mechanic it is meant to support.
+It is heavily scaled down (`SPREAD_SHIFT` is 1, so 110 in 256 rather than
+220 - at the full value a pane goes isothermal within a step or two, and
+a wall that is all one temperature cannot be hot inside and cold at the
+rim). And it is gated to a gap of 2 or more - a difference of one is left
+alone, so a smooth gradient across a wall survives rather than collapsing
+flat.
+
+It is derived from `conducts` rather than given its own field because it
+is the same physical property - a material that carries a fire's heat
+well carries its own temperature well too.
 
 **Chilling something above room temperature costs the cold material its
 own `heats_to`**; pushing cold into something at or below room temperature
@@ -693,32 +761,37 @@ would melt on contact with ordinary cold glass at the rate tuned for
 standing beside a fire, making a snowbank impossible to keep anywhere near
 the material it exists to be used against.
 
-**Shattering is instant, not gradual, and converts the whole connected run
-of the material at once**, up to `CRACK_MAX` (256) cells - a pane breaks as
-a pane, not grain by grain, because the stress a crack releases belongs to
-the whole sheet rather than to the one cell that started it. The crack
-follows material identity (two panes not touching are two panes) and does
-not re-check temperature as it spreads - the test belongs only at the cell
-where the crack starts. Because the trigger is instant and the two
-directions (cold-onto-hot in `step_one_cold_cell()`, hot-onto-cold in
-`try_heat_transform()`) share one threshold each, **the player has to be
-able to see which side of the line a pane is on**: glass's palette is not
-a smooth ramp but a flat neutral over the safe levels that jumps into a
-glow right at `SAND_SHOCK_HEAT`, so the largest colour change on the whole
-ramp lands exactly on the threshold. A `_Static_assert` ties the constant
-and the palette together, and a test asserts the ramp's widest colour step
-still lands on it.
+**Shattering is instant, not gradual, and converts the whole connected
+run of the material at once**, up to `CRACK_MAX` (256) cells - a pane
+breaks as a pane, not grain by grain, because the stress a crack releases
+belongs to the whole sheet rather than to the one cell that started it.
+
+The crack follows material identity (two panes not touching are two
+panes) and does not re-check temperature as it spreads - the test
+belongs only at the cell where the crack starts.
+
+Because the trigger is instant, and the two directions (cold-onto-hot in
+`step_one_cold_cell()`, hot-onto-cold in `try_heat_transform()`) share
+one threshold each, **the player has to be able to see which side of the
+line a pane is on**. Glass's palette is not a smooth ramp but a flat
+neutral over the safe levels that jumps into a glow right at
+`SAND_SHOCK_HEAT`, so the largest colour change on the whole ramp lands
+exactly on the threshold.
+
+A `_Static_assert` ties the constant and the palette together, and a
+test asserts the ramp's widest colour step still lands on it.
 
 ## Roots: how a tree stays anchored, and how the root system it grows takes shape
 
 The plant/wood/leaf family (`MATX_PLANT`, `MAT_WOOD`, `MATX_LEAF`) is not
 otherwise covered in this document - its growth, hardening and budding
 rules live in the extensive comments on `extended_reactions[MATX_PLANT]`
-and `reactions[MAT_WOOD]` in `material.c`, which is the source of truth for
-how a tree grows tall, thickens, and buds new limbs. This section covers
-one narrower piece: how a tree stays connected to the ground it drinks
-from once the ground itself starts moving, and the shape that grows out of
-that connection.
+and `reactions[MAT_WOOD]` in `material.c`, which is the source of truth
+for how a tree grows tall, thickens, and buds new limbs.
+
+This section covers one narrower piece: how a tree stays connected to
+the ground it drinks from once the ground itself starts moving, and the
+shape that grows out of that connection.
 
 **The problem.** Dirt is a powder and shifts. A tree finds water by
 walking down its own stem to the ground and on down into the soil
@@ -730,14 +803,15 @@ down, because the one cell it needed to reach it is gone.
 
 ### How a root forms
 
-As a plant or a trunk spends the soil moisture it grows, buds or sprouts
-on, there is a small chance (`reaction_t.roots` on the PLANT/WOOD rows, 40
-in 256) that the **contact cell** - the collar itself, not wherever the
-moisture actually came from - welds into a `MATX_ROOT` cell instead of
-staying an ordinary grain of dirt. A root is `KIND_STATIC`: it does not
-fall, slide, or get displaced the way loose dirt does, so once a collar
-has rooted, nothing about the bed shifting can carry it away from under
-the tree.
+As a plant or a trunk spends the soil moisture it grows, buds or
+sprouts on, there is a small chance (`reaction_t.roots` on the PLANT/WOOD
+rows, 40 in 256) that the **contact cell** - the collar itself, not
+wherever the moisture actually came from - welds into a `MATX_ROOT` cell
+instead of staying an ordinary grain of dirt.
+
+A root is `KIND_STATIC`: it does not fall, slide, or get displaced the
+way loose dirt does, so once a collar has rooted, nothing about the bed
+shifting can carry it away from under the tree.
 
 This roll fires **only once per tree**, gated in `spend_soil_moisture()`
 to `root_depth == 0`, meaning `find_water()`'s stem walk crossed no root
@@ -751,12 +825,14 @@ growth rule over the same collar.
 
 A root cell is not otherwise inert - it eats. Every step,
 `step_one_rooting_cell()` scans its own eight neighbours for one that is
-dirt and still holds moisture, rolls a small chance (`reaction_t.roots` on
-`MATX_ROOT`'s own row, 8 in 256 - the same field, a second reading of it),
-and converts it into more root. The conversion *is* the water cost:
-`place_reacted()` overwrites the whole cell with a fresh root byte, so the
-dirt's moisture nibble is simply gone along with everything else the cell
-used to be, rather than being separately debited.
+dirt and still holds moisture, rolls a small chance (`reaction_t.roots`
+on `MATX_ROOT`'s own row, 8 in 256 - the same field, a second reading of
+it), and converts it into more root.
+
+The conversion *is* the water cost: `place_reacted()` overwrites the
+whole cell with a fresh root byte, so the dirt's moisture nibble is
+simply gone along with everything else the cell used to be, rather than
+being separately debited.
 
 ```
 a root eating outward:
@@ -771,34 +847,41 @@ a root eating outward:
 
 Almost no direction weights are needed, because moisture itself already
 has a shape: it percolates down through a bed and diffuses out from
-anything drinking or pouring nearby, so a root that simply reaches for
+anything drinking or pouring nearby. A root that simply reaches for
 whichever neighbour still has water in it spreads wide near a wet surface
-and fingers downward through a bed drying from the top. The first cut had
-no weights at all on exactly that reasoning, and on the device the
-sideways spread near a wet surface won so completely that depth only
-happened at the angles the geometry favoured. So there is one small skew,
-read off the grid with no state: a candidate that continues **away** from
-the cell's own root neighbours weighs +2, and one that reaches
-**gravity-ward** also weighs +2, both over a base of 1 (`ROOT_WEIGHT_AWAY`,
-`ROOT_WEIGHT_DOWN`, `sand_plants.c`). A tip has one parent and keeps going
-the way it was going - what `holds_line` does for a stem, without
-remembering anything; a junction's neighbours partly cancel and it is free
-to turn; the trunk a root grew from counts as a parent too (`clings_to`),
-so the very first root under a tree heads down and out from under the
-wood rather than tossing a coin along the wet surface. Measured over
-thirty seeds (six was per-seed scatter of +/-10 rows): mean deepest root
-3.5 rows with the weights zeroed, 7.2-7.4 with them; systems about twice
-the size (22 roots against 42), because a directed tip keeps finding fresh
-moist cells instead of re-hitting the crowd.
+and fingers downward through a bed drying from the top.
+
+The first cut had no weights at all on exactly that reasoning. On the
+device, the sideways spread near a wet surface won so completely that
+depth only happened at the angles the geometry favoured.
+
+So there is one small skew, read off the grid with no state: a candidate
+that continues **away** from the cell's own root neighbours weighs +2,
+and one that reaches **gravity-ward** also weighs +2, both over a base of
+1 (`ROOT_WEIGHT_AWAY`, `ROOT_WEIGHT_DOWN`, `sand_plants.c`).
+
+A tip has one parent and keeps going the way it was going - what
+`holds_line` does for a stem, without remembering anything. A junction's
+neighbours partly cancel and it is free to turn. The trunk a root grew
+from counts as a parent too (`clings_to`), so the very first root under a
+tree heads down and out from under the wood rather than tossing a coin
+along the wet surface.
+
+Measured over thirty seeds (six was per-seed scatter of +/-10 rows): mean
+deepest root 3.5 rows with the weights zeroed, 7.2-7.4 with them; systems
+about twice the size (22 roots against 42), because a directed tip keeps
+finding fresh moist cells instead of re-hitting the crowd.
 
 **Depth is bounded by water, not by the weights.** Raising the gravity
 term and adding the trunk term narrowed systems (mean half-width 8.5 ->
 7.9) and did not deepen them (7.2 -> 7.4) - after 20,000 steps every
-saturated bed in the harness was 98-99% dry and not one live tip had moist
-dirt beside it. A root can only eat moist soil, a bed watered from the top
-dries from the top, and the moist front the fingers chase is gone before
-they reach the floor. The weights decide which moist cell a tip takes
-next; how deep the water goes decides how deep the roots can.
+saturated bed in the harness was 98-99% dry and not one live tip had
+moist dirt beside it.
+
+A root can only eat moist soil, a bed watered from the top dries from the
+top, and the moist front the fingers chase is gone before they reach the
+floor. The weights decide which moist cell a tip takes next; how deep the
+water goes decides how deep the roots can.
 
 ### The roots carry the water down
 
@@ -806,14 +889,16 @@ A root cell is also a **conduit** (`step_one_conducting_cell()`,
 `ROOT_CONDUCT_CHANCE` 64): each step it may move one level of moisture
 from the wettest soil beside or above it into the driest soil beneath it.
 Moves only, never makes - the same conservation percolation keeps - and
-one way only, gravity-ward, so it cannot ping-pong against diffusion. The
-sink is the next cell a tip wants to eat, and a fresh tip is itself a
+one way only, gravity-ward, so it cannot ping-pong against diffusion.
+
+The sink is the next cell a tip wants to eat, and a fresh tip is itself a
 conduit, so the moisture front and the root front move down together:
-depth is earned a level of water at a time. Sides count as sources, not
-only "above" - a column has more root above each cell, not soil, so only
-its top cell would ever conduct otherwise; drawing from the wet soil
-flanking each cell is what lets a whole column drain the surface layer
-downward.
+depth is earned a level of water at a time.
+
+Sides count as sources, not only "above" - a column has more root above
+each cell, not soil, so only its top cell would ever conduct otherwise.
+Drawing from the wet soil flanking each cell is what lets a whole column
+drain the surface layer downward.
 
 Measured on a dry bed watered at the collar only (the device case), ten
 seeds, mean deepest root of 19 rows, for three percolation rates:
@@ -839,53 +924,65 @@ Three things, in the order that matters:
    pouring more in.
 2. **`ROOT_SURFACE_MAX`, 2.** A root already touching more than 2 other
    roots does not roll to grow at all. This is what actually gives the
-   system its shape - without it, a well-watered bed converts every moist
-   cell it can reach into a solid slab of root rather than a filigree of
-   it. Measured against a runaway scene - a root pre-planted so the rare
-   first-root lottery cannot confound the reading, its collar rewatered
-   to `SOIL_MOISTURE_MAX` every step for 20,000 steps, root count sampled
-   every 2,000: at `ROOT_SURFACE_MAX = 1` the system starved itself shut
-   at 4 cells (a bare stub); at 3 it never stopped growing - 99 roots by
-   step 2,000, still climbing at 220 by step 20,000; at 2 it climbed to
-   the low forties by step 2,000 and then sat there **byte-identical**
-   through the remaining 18,000 steps, seed after seed - a genuine fixed
-   point.
-3. **`reaction_t.roots` itself, 8 in 256 on the root's own row** - a small
-   chance, the same discipline every roll in `sand_plants.c` follows.
+   system its shape - without it, a well-watered bed converts every
+   moist cell it can reach into a solid slab of root rather than a
+   filigree of it.
+3. **`reaction_t.roots` itself, 8 in 256 on the root's own row** - a
+   small chance, the same discipline every roll in `sand_plants.c`
+   follows.
 
-No depth or spread cap turned out to be needed - an earlier walk-shaped
+`ROOT_SURFACE_MAX` was measured against a runaway scene: a root
+pre-planted so the rare first-root lottery cannot confound the reading,
+its collar rewatered to `SOIL_MOISTURE_MAX` every step for 20,000 steps,
+root count sampled every 2,000.
+
+At `ROOT_SURFACE_MAX = 1` the system starved itself shut at 4 cells (a
+bare stub). At 3 it never stopped growing - 99 roots by step 2,000, still
+climbing at 220 by step 20,000. At 2 it climbed to the low forties by
+step 2,000 and then sat there **byte-identical** through the remaining
+18,000 steps, seed after seed - a genuine fixed point.
+
+No depth or spread cap turned out to be needed. An earlier walk-shaped
 design (reusing `step_one_growing_cell()`'s stem-walk machinery, with its
-own depth cap) was replaced by this local eating rule, because a root does
-not need a stem's machinery to look like a root, and because eating rests
-on the same scarce-resource philosophy the rest of this feature already
-uses, rather than adding depth and spread caps as a second, separate kind
-of bound beside it. `ROOT_SURFACE_MAX` alone already produces a genuine
-fixed point at the scale this feature runs at.
+own depth cap) was replaced by this local eating rule, because a root
+does not need a stem's machinery to look like a root.
 
-**Eight neighbours, not four.** `step_one_rooting_cell()`'s scan walks all
-eight ring directions rather than the four cardinals `reaction_dirs[]`
-uses elsewhere in this file. Compared directly, both ways, over the same
-six seeds: four gave a near-straight taproot, one or two cells wide, that
-only fanned out where moisture happened to pool against the stone floor;
-eight let a root step diagonally as it reaches for water, producing the
-wandering, forking shape a root system is supposed to have. The
-difference was qualitative, not a rounding error.
+Eating rests on the same scarce-resource philosophy the rest of this
+feature already uses, rather than adding depth and spread caps as a
+second, separate kind of bound beside it. `ROOT_SURFACE_MAX` alone
+already produces a genuine fixed point at the scale this feature runs
+at.
+
+**Eight neighbours, not four.** `step_one_rooting_cell()`'s scan walks
+all eight ring directions rather than the four cardinals
+`reaction_dirs[]` uses elsewhere in this file.
+
+Compared directly, both ways, over the same six seeds: four gave a
+near-straight taproot, one or two cells wide, that only fanned out where
+moisture happened to pool against the stone floor; eight let a root step
+diagonally as it reaches for water, producing the wandering, forking
+shape a root system is supposed to have. The difference was qualitative,
+not a rounding error.
 
 ### Shade follows structure, not age
 
 A root darkens from fresh tan toward a wood-like brown (`ROOT_OLD`,
 `material_palette.c`) as more root grows around it: the painter hands
-`material_colours()` the count of root neighbours in the `depth` slot only
-a liquid's interior otherwise reads (`material_root_neighbours()`,
-`material_palette.h`), and that count picks one of `ROOT_SHADES` steps. A
-tip touching one other root wears the fresh colour; a cell that has put
+`material_colours()` the count of root neighbours in the `depth` slot
+only a liquid's interior otherwise reads (`material_root_neighbours()`,
+`material_palette.h`), and that count picks one of `ROOT_SHADES` steps.
+
+A tip touching one other root wears the fresh colour; a cell that has put
 out children steps darker; the collar, touched on most sides, wears the
-darkest. Not a lifetime, on purpose - an age would darken the tips too,
-and the tips are the part meant to stay fresh. Lose a child to rot or lava
-and the parent lightens again. The eating rule above is what makes this
-visible at all: a straight column is almost entirely two-neighbour cells,
-while a branching system is full of the junctions the darker steps are
-keyed to.
+darkest.
+
+Not a lifetime, on purpose - an age would darken the tips too, and the
+tips are the part meant to stay fresh. Lose a child to rot or lava and
+the parent lightens again.
+
+The eating rule above is what makes this visible at all: a straight
+column is almost entirely two-neighbour cells, while a branching system
+is full of the junctions the darker steps are keyed to.
 
 ### What the growth rule adds, measured
 
@@ -907,13 +1004,14 @@ seed    roots depth  half-width  wood      roots depth  half-width  wood
 
 Welding alone gives a short column near the collar, one to seven cells,
 starved by how rarely a single un-replanted tree spends soil moisture at
-all. With growth, the same scene grows a genuine branching system reaching
-most of the bed's own depth, spreading well past the collar. Seed 11
-growing zero roots either side is not a regression - the welding roll
-(~16% per eligible spend, and a single tree spends only a few dozen times
-in its life) simply missed for that seed within 20,000 steps; the suite's
-own tests replant every 40 steps specifically to give that roll many
-independent tries, the way this raw harness does not.
+all. With growth, the same scene grows a genuine branching system
+reaching most of the bed's own depth, spreading well past the collar.
+
+Seed 11 growing zero roots either side is not a regression - the welding
+roll (~16% per eligible spend, and a single tree spends only a few dozen
+times in its life) simply missed for that seed within 20,000 steps. The
+suite's own tests replant every 40 steps specifically to give that roll
+many independent tries, the way this raw harness does not.
 
 One seed's soil, picture (`seed 4242`, `R` root, `W` wood, `.` dirt,
 collar near the top centre):
@@ -955,14 +1053,18 @@ already spoken for: it is burn progress (`reaction_t.burn_decay`), and
 pass. A root wearing a wood variant would read as a nearly-burnt-out log.
 
 Being its own material also buys two things a wood-based encoding could
-not: a root does not count against `TREE_LIFT` (`find_water()` tracks a
+not.
+
+First, a root does not count against `TREE_LIFT`: `find_water()` tracks a
 separate `root_depth` purely so it can **not** add to `lift` - a cell
 below the water line lifts nothing, and charging it anyway would let a
 handful of root cells eat a real share of every tree's height budget for
-free), and the stem walk can tell a root apart from ordinary ground well
+free.
+
+Second, the stem walk can tell a root apart from ordinary ground well
 enough to treat one buried under freshly-shifted dirt as transparent
-rather than as a second dead end, reintroducing the very bug this feature
-exists to fix from the other side.
+rather than as a second dead end - reintroducing the very bug this
+feature exists to fix, from the other side.
 
 Flammability is zero on a root's own row, deliberately - not an omission.
 A root is buried, and a fire that could reach down and burn out a tree's
@@ -973,21 +1075,24 @@ roots existed, just one fire away.
 ### A root competing with its own tree
 
 The growth rule created one new and genuinely surprising failure mode: a
-root sitting directly on its tree's only reachable water can, given enough
-steps, eat that exact cell itself and convert it to more root - and if
-nothing lies beyond it but stone, the tree's own water access is gone,
-spent on growing the root system instead of ever reaching the trunk above.
+root sitting directly on its tree's only reachable water can, given
+enough steps, eat that exact cell itself and convert it to more root.
+If nothing lies beyond it but stone, the tree's own water access is gone,
+spent on growing the root system instead of ever reaching the trunk
+above.
+
 This is not a bug in `find_water()`'s transparency (untouched by root
 growth, and still correct); it is root and tree genuinely competing for
 the same scarce moisture, first roll wins.
+
 `test_a_buried_root_does_not_cut_off_the_water_below_it`
 (`suite_sand_roots.c`) used to rest on a single row of water directly
 under the root, and the growth rule made that scene racy against this
 exact competition (measured: failed, deterministically, for the suite's
-fixed seed) - the fix was a deeper wet reserve below the root, not a
-change to the mechanism, since a real root system does not get to consume
-literally every cell of water below it before the tree it belongs to can
-use any.
+fixed seed). The fix was a deeper wet reserve below the root, not a
+change to the mechanism, since a real root system does not get to
+consume literally every cell of water below it before the tree it
+belongs to can use any.
 
 ## Performance discipline
 
@@ -1006,14 +1111,16 @@ exact microseconds still hold.
 | Full-screen panel blit | **~17 ms** | (fixed hardware cost) |
 
 The blit dominates. One raw `esp_lcd_panel_draw_bitmap()` of the whole
-framebuffer measures **16,998 us of bus time against 18,147 us for a full
-`gfx_present()`** - the dirty-tracking path's own overhead is 1,149 us,
-6%, and the frame is **94% bus-bound** (at 40 MHz). 80 MHz halves it but
-is outside the panel's rating, and sand's partial redraws are exactly what
-shows it: stray red pixels or thin black lines through moving sand that
-stay until that region is re-sent differently. See
-[Display-and-Rendering.md](../notes/Display-and-Rendering.md), "The blit is
-bus-bound", for the finding and the heal sand uses.
+framebuffer measures **16,998 us of bus time against 18,147 us for a
+full `gfx_present()`** - the dirty-tracking path's own overhead is
+1,149 us, 6%, and the frame is **94% bus-bound** (at 40 MHz). 80 MHz
+halves it but is outside the panel's rating.
+
+Sand's partial redraws are exactly what shows it: stray red pixels or
+thin black lines through moving sand that stay until that region is
+re-sent differently. See
+[Display-and-Rendering.md](../notes/Display-and-Rendering.md), "The blit
+is bus-bound", for the finding and the heal sand uses.
 
 Water, not sand, is the bottleneck whenever a body of it is moving.
 
@@ -1034,36 +1141,43 @@ every step" and the numbers above:
   anywhere on the grid) as costing far more than the row scans it avoided:
   a screen of water went from 17,860 us a step to 13,130 just from
   removing it. Worth reading before adding another one.
-- **Bitmasks over flash-table reads, inside a hot loop.** `materials[]` is
-  `const` data in flash, read through this chip's 32 KB data cache - kept
-  separate from the 16 KB instruction cache the sweep's own code lives in,
-  so the two no longer evict each other, but a cache miss on a cold line
-  is still a real cost inside the tightest loop in the project. Asking
-  `materials[id].kind` per cell pays that cost per cell. Precomputing a
-  16-bit "is this id a liquid" bitmask once per pass avoids the repeated
-  flash reads entirely, and it measurably mattered: it alone was the
-  difference between a settled screen of sand costing 17 us and costing
-  5.5 ms. See
-  [Optimization-Playbook.md](../notes/Optimization-Playbook.md#know-what-kind-of-memory-you-actually-have)
-  for the cache sizes and the general lesson.
+- **Bitmasks over flash-table reads, inside a hot loop.** Asking
+  `materials[id].kind` per cell means a flash read every time.
+  Precomputing a 16-bit "is this id a liquid" bitmask once per pass
+  instead avoids that entirely, and it measurably mattered: it alone was
+  the difference between a settled screen of sand costing 17 us and
+  costing 5.5 ms.
+
+`materials[]` is `const` data in flash, read through this chip's 32 KB
+data cache - kept separate from the 16 KB instruction cache the sweep's
+own code lives in, so the two no longer evict each other. A cache miss on
+a cold line is still a real cost inside the tightest loop in the project,
+which is what the bitmask above avoids paying per cell. See
+[Optimization-Playbook.md](../notes/Optimization-Playbook.md#know-what-kind-of-memory-you-actually-have)
+for the cache sizes and the general lesson.
 
 ## Two cores: a checkerboard sweep, and what stays serial
 
-The device's own `present()` overlaps with `sand_step()` on the other core
-already - see `docs/Launcher-Architecture.md`. Splitting the step itself
-across cores is harder, for a reason that has nothing to do with sweep
-order: `sand_t.rng` is one `xorshift32` word, drawn from a data-dependent
-number of times per cell by every pass. Two cores drawing from it at once
-race on that word; the fix is to stop sharing it - see [The
-draw](#the-draw) below - which means the split can no longer promise the
-byte-identical output the project held itself to until this feature. What
-it promises instead is **determinism**: the same seed gives the same board
-every time, on any core, in any order, because no draw depends on anything
-but (seed, step, cell, which draw). The serial path is unchanged and still
-byte-identical - the fingerprint suite still holds it to that - but a step
-run with `sand_set_two_core_step(true)` is a **different, deliberately
-allowed** simulation for the same seed, checked for its own determinism
-rather than against the serial one.
+The device's own `present()` overlaps with `sand_step()` on the other
+core already - see `docs/Launcher-Architecture.md`. Splitting the step
+itself across cores is harder, for a reason that has nothing to do with
+sweep order: `sand_t.rng` is one `xorshift32` word, drawn from a
+data-dependent number of times per cell by every pass.
+
+Two cores drawing from it at once race on that word; the fix is to stop
+sharing it - see [The draw](#the-draw) below - which means the split can
+no longer promise the byte-identical output the project held itself to
+until this feature.
+
+What it promises instead is **determinism**: the same seed gives the same
+board every time, on any core, in any order, because no draw depends on
+anything but (seed, step, cell, which draw).
+
+The serial path is unchanged and still byte-identical - the fingerprint
+suite still holds it to that - but a step run with
+`sand_set_two_core_step(true)` is a **different, deliberately allowed**
+simulation for the same seed, checked for its own determinism rather than
+against the serial one.
 
 ### The reaches, measured
 
@@ -1089,17 +1203,19 @@ impulses can reach across the board.
 ### Stripes, not tiles
 
 A 2-colour checkerboard of 2-D tiles was tried on paper first and
-rejected: tiles diagonal to each other share a corner, and a reach of even
-1 cell can touch that corner from a same-coloured tile on the far side of
-it - exactly the class of bug Noita's own write-up (GDC 2019) solves with
-a 2x2, four-colour scheme and a per-cell "updated this frame" stamp.
-Stripes avoid that specific problem outright: a row-stripe has exactly two
-neighbours, above and below, and colouring stripes by index means a
+rejected: tiles diagonal to each other share a corner, and a reach of
+even 1 cell can touch that corner from a same-coloured tile on the far
+side of it - exactly the class of bug Noita's own write-up (GDC 2019)
+solves with a 2x2, four-colour scheme and a per-cell "updated this frame"
+stamp.
+
+Stripes avoid that specific problem outright: a row-stripe has exactly
+two neighbours, above and below, and colouring stripes by index means a
 stripe's only neighbours are always the opposite colour, so two
-same-coloured stripes are always a full stripe height apart - far past the
-sweep's 1-cell reach. That does *not* mean the split needs no boundary
-handling at all - see [The seam fix](#the-seam-fix) below for the one it
-does need.
+same-coloured stripes are always a full stripe height apart - far past
+the sweep's 1-cell reach. That does *not* mean the split needs no
+boundary handling at all - see [The seam fix](#the-seam-fix) below for
+the one it does need.
 
 ```
 gravity down; stripe height = SWEEP_STRIPE_H (32 rows);
@@ -1118,17 +1234,18 @@ two phases, alternating colour, offset by half a stripe every step
   reach from one can never touch another being swept at once
 ```
 
-`SWEEP_STRIPE_H` is `SAND_BLOCK_H` (32), reusing the sleep-tracking grid's
-own row size rather than inventing a second one. Within a phase, half the
-stripes run on a task pinned to core 1, the rest on the caller's own core,
-joining before the next phase starts - which stripe goes to which core
-does not matter, since none of them touch each other. The stripe grid's
-own offset alternates by half a stripe height every step
-(`s->step_phase & 1`), the same idea Margolus-style block automata use to
-keep a boundary from sitting on the same rows long enough to become a
-visible seam - `suite_sand_two_core.c`'s own seam test checks exactly
-this, by histogramming a settled pile's row-to-row occupancy for an
-outlier at stripe-boundary rows.
+`SWEEP_STRIPE_H` is `SAND_BLOCK_H` (32), reusing the sleep-tracking
+grid's own row size rather than inventing a second one. Within a phase,
+half the stripes run on a task pinned to core 1, the rest on the
+caller's own core, joining before the next phase starts - which stripe
+goes to which core does not matter, since none of them touch each other.
+
+The stripe grid's own offset alternates by half a stripe height every
+step (`s->step_phase & 1`), the same idea Margolus-style block automata
+use to keep a boundary from sitting on the same rows long enough to
+become a visible seam - `suite_sand_two_core.c`'s own seam test checks
+exactly this, by histogramming a settled pile's row-to-row occupancy for
+an outlier at stripe-boundary rows.
 
 Below `SWEEP_CHECKERBOARD_MIN_ROWS` (four stripes' worth) the whole sweep
 just runs on one core - a handful of stripes plus a hop to core 1 is not
@@ -1139,24 +1256,26 @@ worth it.
 The serial sweep's no-double-move guarantee rests on one property: every
 row's possible destinations were already visited this step, so a grain
 that lands there is never picked up again. That property is per **grid**,
-not per stripe - a stripe boundary sits inside it, not outside it. Two
-adjacent stripes are always different colours, so one of a stripe's two
-neighbours belongs to whichever phase runs second - and a move that
-crosses into that neighbour's boundary row lands somewhere that phase has
-not swept yet. Once it does, it finds the just-arrived grain sitting there
-and moves it again: two cells in one step, at roughly half of every seam,
-every step.
+not per stripe - a stripe boundary sits inside it, not outside it.
 
-`run_sweep_stripes()` excludes both boundary rows of every stripe from the
-phases entirely - `step_one_grain()`'s reach is exactly one cell, so a
-boundary row is the only one a move could reach past a stripe's edge, and
-excluding it removes the crossing outright. That alone is not the whole
-fix: an interior row directly beside a guard row is still swept **during**
-its own phase, using the guard row's state from before that phase ran. In
-an unstriped sweep the guard row would already have had its own turn by
-then; here it has not, so a grain that the interior row pushes into the
-guard row gets a second, unwanted move once the guard pass finally reaches
-it.
+Two adjacent stripes are always different colours, so one of a stripe's
+two neighbours belongs to whichever phase runs second - and a move that
+crosses into that neighbour's boundary row lands somewhere that phase has
+not swept yet. Once it does, it finds the just-arrived grain sitting
+there and moves it again: two cells in one step, at roughly half of every
+seam, every step.
+
+`run_sweep_stripes()` excludes both boundary rows of every stripe from
+the phases entirely - `step_one_grain()`'s reach is exactly one cell, so
+a boundary row is the only one a move could reach past a stripe's edge,
+and excluding it removes the crossing outright.
+
+That alone is not the whole fix: an interior row directly beside a guard
+row is still swept **during** its own phase, using the guard row's state
+from before that phase ran. In an unstriped sweep the guard row would
+already have had its own turn by then; here it has not, so a grain that
+the interior row pushes into the guard row gets a second, unwanted move
+once the guard pass finally reaches it.
 
 The guard pass fixes this by snapshotting every guard row's content before
 either phase runs, then comparing: a column that still matches its
@@ -1170,23 +1289,28 @@ two-phase split once three or more stripes are active: tracing the
 dependency chain across two adjacent boundaries shows a middle stripe
 needs to run before the top stripe at one boundary and after the bottom
 stripe at the other - but the top and bottom stripes share a colour and
-are meant to run as a single phase. No reordering of "all of colour A,
-then all of colour B" satisfies both constraints at once. The per-seam
-moved stamp above sidesteps the contradiction rather than solving it: a
-safety fix, not an order-equivalence one.
+are meant to run as a single phase.
 
-What that buys, and what it doesn't: `suite_sand_two_core.c` places a lone
-grain exactly on a seam, under all four axis-aligned gravity directions
-and both stripe offsets, and checks it travels exactly one cell in one
-step, an open fall and a slide alike - and, with scatter forced to zero,
-that this matches the serial path's own fall distance exactly. That case
-has nothing else nearby to contend with, so the guard pass's snapshot
-always matches and the fix is exact. A dense column or pile crossing
-several boundaries at once is different: the same scatter-zero comparison
-on a full falling column and a settling slab shows the two paths' final
-boards are **not** byte-identical once a contested chain spans more than
-one seam - exactly the scenario the dependency-chain argument above rules
-out. What the guard pass still guarantees there, and what the suite checks
+No reordering of "all of colour A, then all of colour B" satisfies both
+constraints at once. The per-seam moved stamp above sidesteps the
+contradiction rather than solving it: a safety fix, not an
+order-equivalence one.
+
+What that buys, and what it doesn't. `suite_sand_two_core.c` places a
+lone grain exactly on a seam, under all four axis-aligned gravity
+directions and both stripe offsets, and checks it travels exactly one
+cell in one step, an open fall and a slide alike - and, with scatter
+forced to zero, that this matches the serial path's own fall distance
+exactly. That case has nothing else nearby to contend with, so the guard
+pass's snapshot always matches and the fix is exact.
+
+A dense column or pile crossing several boundaries at once is different:
+the same scatter-zero comparison on a full falling column and a settling
+slab shows the two paths' final boards are **not** byte-identical once a
+contested chain spans more than one seam - exactly the scenario the
+dependency-chain argument above rules out.
+
+What the guard pass still guarantees there, and what the suite checks
 instead, is that the grain count never drifts: nothing is duplicated or
 dropped, only reordered by up to the width of a stripe boundary.
 
@@ -1199,17 +1323,18 @@ transfer in one pass. The offset alternates between 0 and 16 rows exactly
 as the main sweep's does. Boards shorter than 128 rows, and scratch
 allocation failures, fall back to the unchanged serial order.
 
-A cell reads or transfers at most 8 rows away, but the bookkeeping around
-it reaches further: depth-repaint marks extend another 24 rows from a
-destination, and block wakes clear settled flags across a 3x3
+A cell reads or transfers at most 8 rows away, but the bookkeeping
+around it reaches further: depth-repaint marks extend another 24 rows
+from a destination, and block wakes clear settled flags across a 3x3
 neighbourhood. Those writes exceed the cell guards, so each worker owns a
 private copy of the block flags, dirty spans, and its own movement and
-probe counters, merged back in at the join. An arrival bitmap prevents the
-guard pass from forwarding mass a cell only just received during the
-phase it ran in. Isolated seam transfers are serial-exact; contested pools
-can redistribute differently between the two paths and are checked instead
-for exact mass conservation, deterministic output, and no persistent seam
-jumps.
+probe counters, merged back in at the join.
+
+An arrival bitmap prevents the guard pass from forwarding mass a cell
+only just received during the phase it ran in. Isolated seam transfers
+are serial-exact; contested pools can redistribute differently between
+the two paths and are checked instead for exact mass conservation,
+deterministic output, and no persistent seam jumps.
 
 `tools/report_crossflow.sh` measures the liquid pass on host using the
 shared water-slope and submerged-pile builders; every other pass stays
@@ -1221,19 +1346,22 @@ guards together.
 
 ### The draw
 
-`sand_rng_next_at(s, x, y, slot)` (`sand_priv.h`) replaces `rng_next(&s->rng)`
-at every call site the sweep reaches - `try_scatter()`, `try_slide_impl()`,
-`liquid_may_move()` - while `s->rng_hashed` is armed, which is true during
-the sweep phases and guards, and the liquid cross-flow phases and guards.
+`sand_rng_next_at(s, x, y, slot)` (`sand_priv.h`) replaces
+`rng_next(&s->rng)` at every call site the sweep reaches -
+`try_scatter()`, `try_slide_impl()`, `liquid_may_move()` - while
+`s->rng_hashed` is armed, which is true during the sweep phases and
+guards, and the liquid cross-flow phases and guards.
+
 Armed, it hashes `(s->rng_seed_base, s->step_phase, y * s->w + x, slot)`
 through `rng_hash()` (`util/rng.h`); disarmed, it is `rng_next(&s->rng)`
 unchanged, so gas and reactions later the same step retain sequential
-draws, and the whole step with the switch off is unchanged. `slot` is a
-fixed per-call-site constant (`SAND_RNG_SLOT_*`), not a per-cell counter -
-a cell's scatter roll and its slide roll hash different inputs because
-they are different constants, not because anything counts draws, which is
-what makes a draw depend on nothing but its own four inputs and nothing
-any other core is doing.
+draws, and the whole step with the switch off is unchanged.
+
+`slot` is a fixed per-call-site constant (`SAND_RNG_SLOT_*`), not a
+per-cell counter - a cell's scatter roll and its slide roll hash
+different inputs because they are different constants, not because
+anything counts draws. That is what makes a draw depend on nothing but
+its own four inputs and nothing any other core is doing.
 
 One case had no safe answer at all: `splash_displace()`'s hard-landing
 splash queues into `s->impulse_buf`, one shared counter with no lock, so
@@ -1242,60 +1370,70 @@ behaviour loss rather than a race on that queue.
 
 ### Scheduling: below present, not around it
 
-The core-1 task (`util/job.c`, shared by every engine client, not owned by
-this app) runs at priority 3, below gfx's present task at 5 - not in a
+The core-1 task (`util/job.c`, shared by every engine client, not owned
+by this app) runs at priority 3, below gfx's present task at 5 - not in a
 window carved out before or after present, because `sand_step()` can run
 while a previous frame is still presenting (`main.c`'s `step_app()`) and
-present's own timing must never move for anything sand does. A
-lower-priority task only gets the CPU while present is blocked on its own
-strip-sent semaphore, which is most of a present since the transfer itself
-is DMA, so present is never delayed and core 1 still does useful work in
-gaps that would otherwise sit idle.
+present's own timing must never move for anything sand does.
+
+A lower-priority task only gets the CPU while present is blocked on its
+own strip-sent semaphore, which is most of a present since the transfer
+itself is DMA, so present is never delayed and core 1 still does useful
+work in gaps that would otherwise sit idle.
 
 ### Why the core-1 dispatch can never hang the shell
 
-Nothing on this codebase's core-1 dispatch path may wait forever, because
-`gfx_present_wait()`'s own `xSemaphoreTake(..., portMAX_DELAY)` chain has
-no timeout anywhere in it either, and has always been one wedged
-strip-sent interrupt away from hanging the whole frame loop; a second task
-on core 1 must not risk exposing that same latent assumption. `job_wait()`
-(`util/job.h`) takes a timeout instead - every sand call site here passes
-100 ms, far above any dispatch this file makes - and a timeout that fires
-falls back to inline dispatch only for as long as the stuck job still
-holds the worker: the flag it leaves set routes every `job_run_core1()`
-call straight down the inline path until a later `job_wait()` takes the
-semaphore once that job actually finishes and clears the flag -
-`job_reap_finished()` makes the same check on the dispatch side - so
-core-1 dispatch resumes on its own rather than staying disabled.
+Nothing on this codebase's core-1 dispatch path may wait forever,
+because `gfx_present_wait()`'s own `xSemaphoreTake(..., portMAX_DELAY)`
+chain has no timeout anywhere in it either, and has always been one
+wedged strip-sent interrupt away from hanging the whole frame loop. A
+second task on core 1 must not risk exposing that same latent assumption.
+
+`job_wait()` (`util/job.h`) takes a timeout instead - every sand call
+site here passes 100 ms, far above any dispatch this file makes. A
+timeout that fires falls back to inline dispatch only for as long as the
+stuck job still holds the worker: the flag it leaves set routes every
+`job_run_core1()` call straight down the inline path.
+
+A later `job_wait()` takes the semaphore once that job actually finishes
+and clears the flag - `job_reap_finished()` makes the same check on the
+dispatch side - so core-1 dispatch resumes on its own rather than staying
+disabled.
+
 `job_run_core1()` copies its context into a static buffer before
 returning, not merely pointing at the caller's, because a dispatch a
 timed-out wait gave up on can still be read later by whatever core-1 is
 doing, and a stack-allocated context would dangle the moment its caller
-returned. Device builds split the gravity sweep, the liquid cross-flow
-pass, and `finalize_settling()` across both cores this way; host builds
-default to the serial path, where `job_run_core1()` always runs its
-callback inline. The unbounded waits in gfx.c's present pipeline are still
-unchanged.
+returned.
+
+Device builds split the gravity sweep, the liquid cross-flow pass, and
+`finalize_settling()` across both cores this way; host builds default to
+the serial path, where `job_run_core1()` always runs its callback inline.
+The unbounded waits in gfx.c's present pipeline are still unchanged.
 
 ## Why the liquid logic is its own file
 
 `sand.c` and `sand_liquid.c` used to be one file. Measured with a
 cognitive complexity analyzer (`launcher/tools/cognitive_complexity.py`,
-cross-checked against `idf.py clang-check`'s real clang-tidy run until the
-two agreed exactly): `sand_step()` alone scored 191 against Sonar's own
-"worth a look" line of 25. Two things were already true about that number:
-`equalise_liquids()` (85) and the wall-rebound pass (27) were already
-separate *functions*, just not a separate *domain*, since both are
-liquid-only and already shared helpers with each other.
+cross-checked against `idf.py clang-check`'s real clang-tidy run until
+the two agreed exactly): `sand_step()` alone scored 191 against Sonar's
+own "worth a look" line of 25.
+
+Two things were already true about that number: `equalise_liquids()` (85)
+and the wall-rebound pass (27) were already separate *functions*, just
+not a separate *domain*, since both are liquid-only and already shared
+helpers with each other.
 
 The split moved everything about a liquid that is **not** gravity-ward
 (cross-flow, the rebound splash, the momentum accessors) into
-`sand_liquid.c`, and extracted the one piece that had to stay in `sand.c`'s
-sweep (`move_liquid_grain()`, since it obeys the same gravity-ward
-guarantee every other move there does) into its own function. That
-extraction alone dropped `sand_step()` from 191 to 134 - a real complexity
-cut, not just relocated lines, because it collapsed nesting that had been
-compounding the score.
+`sand_liquid.c`, and extracted the one piece that had to stay in
+`sand.c`'s sweep (`move_liquid_grain()`, since it obeys the same
+gravity-ward guarantee every other move there does) into its own
+function.
+
+That extraction alone dropped `sand_step()` from 191 to 134 - a real
+complexity cut, not just relocated lines, because it collapsed nesting
+that had been compounding the score.
 
 `dest_row()` and `mark_rows()`, needed on both sides of the split, stay
 `static inline` in a shared `sand_priv.h` rather than becoming ordinary
@@ -1309,10 +1447,12 @@ The same reasoning later split `sand_impulse.c` out of `sand.c` too:
 queued explosions, thrown debris and splash pushback move outward rather
 than gravity-ward, so `step_impulses()` is called from `sand_step()`
 exactly once, the same seam `sand_step_liquids()` and `sand_step_gas()`
-use. (The wall-rebound pass named above has since been removed entirely -
-see [Performance discipline](#performance-discipline)'s neighbouring
-sections for what liquids do today; this paragraph describes why the file
-split happened, not a mechanism still in the tree.)
+use.
+
+(The wall-rebound pass named above has since been removed entirely - see
+[Performance discipline](#performance-discipline)'s neighbouring sections
+for what liquids do today; this paragraph describes why the file split
+happened, not a mechanism still in the tree.)
 
 `sand_reactions.c` later split the same way: fire chemistry and the
 tree/root/leaf growth system it also housed shared almost no call graph,
@@ -1366,13 +1506,17 @@ flowchart TB
 `neighbour_is_lower()`, `find_shallowest()`, `equalise_one_cell()` and
 `give_mass()` are all on the per-cell path above, and none of them were
 marked `inline` when they were pulled out - unlike `pour_into()`/`room_in()`,
-the pair already living in that file. A full screen of water went from the
-~15 ms in the table above to 18 ms against its 16 ms budget, caught
-directly by `test_a_screen_of_water_fits_in_the_frame_budget` on device,
-not noticed by eye. Marking those five `inline` restored it. The lesson
-from the file split above held a second time: a call this hot has to be
-confirmed on device, not assumed free because the source now reads as
-several small functions instead of one large one.
+the pair already living in that file.
+
+A full screen of water went from the ~15 ms in the table above to 18 ms
+against its 16 ms budget, caught directly by
+`test_a_screen_of_water_fits_in_the_frame_budget` on device, not noticed
+by eye.
+
+Marking those five `inline` restored it. The lesson from the file split
+above held a second time: a call this hot has to be confirmed on device,
+not assumed free because the source now reads as several small functions
+instead of one large one.
 
 ---
 
