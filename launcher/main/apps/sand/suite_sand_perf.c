@@ -300,12 +300,14 @@ test_a_full_size_step_fits_in_the_frame_budget(void) {
     build_full_size_step_scene(&real, big);
     const int grains = sand_count(&real);
 
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     const int steps = 10;
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests", "sand_step on %dx%d with %d grains: %lld us", REAL_W, REAL_H, grains, (long long)per_step);
 
@@ -341,12 +343,14 @@ water_scene_us_per_step(void) {
     sand_t real;
     build_water_scene(&real, big, blocks);
 
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     const int steps = 20;
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1000, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     free(big);
     free(blocks);
@@ -400,6 +404,7 @@ static void
 test_the_gas_random_walk_against_the_exhaustive_mover(void) {
     int64_t best[2] = {-1, -1};
 
+    const two_core_scope_t core = two_core_scope_begin(true);
     for (int arm = 0; arm < 2; arm++) {
         for (int r = 0; r < FIRE_REPEATS; r++) {
             uint8_t* big = malloc(REAL_W * REAL_H);
@@ -425,6 +430,7 @@ test_the_gas_random_walk_against_the_exhaustive_mover(void) {
             }
         }
     }
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests", "gas mover, fire scene: exhaustive %lld us", (long long)best[0]);
     ESP_LOGI("device_tests", "gas mover, fire scene: random walk %lld us", (long long)best[1]);
@@ -448,14 +454,14 @@ time_two_core_arm(void (*build)(sand_t*, uint8_t*, uint8_t*), int gy, bool two_c
     sand_t real;
     build(&real, big, blocks);
 
-    sand_set_two_core_step(two_core);
+    const two_core_scope_t core = two_core_scope_begin(two_core);
     const int steps = 20;
     const int64_t start = esp_timer_get_time();
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, gy, 0);
     }
     *out_per_step = (esp_timer_get_time() - start) / steps;
-    sand_set_two_core_step(false); /* restore the shipped default */
+    two_core_scope_end(core);
 
     free(big);
     free(blocks);
@@ -511,12 +517,14 @@ test_a_screen_of_settled_sand_costs_almost_nothing(void) {
     }
     sand_step(&real, 0, 1, 0); /* one step to notice it is settled */
 
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     const int steps = 50;
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests", "settled %dx%d grid: %lld us per step", REAL_W, REAL_H, (long long)per_step);
 
@@ -565,12 +573,14 @@ test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget(void) {
     }
 
     /* Flip - straight up instead of straight down. */
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     const int steps = 20;
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, -1000, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests",
              "gravity flip on a %d-grain pile, %dx%d: %lld us "
@@ -637,6 +647,7 @@ test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget(void) {
     }
 
     /* THE TURN. */
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int steps = 90;
     int64_t worst = 0;
     const int64_t start = esp_timer_get_time();
@@ -651,6 +662,7 @@ test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget(void) {
         }
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests",
              "portrait->landscape turn on a settled %d-mass "
@@ -824,6 +836,8 @@ test_pouring_water_onto_a_plant_bed_costs_more_than_steady_growth(void) {
 
     const int steps = 20;
 
+    const two_core_scope_t core = two_core_scope_begin(true);
+
     /* Steady first, from the same board the pour will start from - measuring
      * the pour first would leave the steady rows a wetter bed than the one
      * the other row times. */
@@ -839,6 +853,7 @@ test_pouring_water_onto_a_plant_bed_costs_more_than_steady_growth(void) {
         sand_step(&real, 0, 1000, 0);
     }
     const int64_t poured = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests",
              "plant bed pour: steady %lld us, first %d steps after a pour "
@@ -871,11 +886,13 @@ test_a_growing_plant_bed_fits_in_the_frame_budget(void) {
     }
 
     const int steps = 20;
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1000, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests", "growing plant bed, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
 
@@ -909,11 +926,13 @@ test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
     }
 
     const int steps = 20;
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1000, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests", "campfire on a sand bed, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
 
@@ -1045,12 +1064,14 @@ test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget(void) {
     build_mixed_gravity_flip_scene(&real, big, blocks);
 
     /* Flip - straight up instead of straight down. */
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     const int steps = 20;
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, -1000, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests",
              "gravity flip on a mixed sand/water/stone-X "
@@ -1248,10 +1269,12 @@ test_the_xtensa_counters_over_three_scenes(void) {
     uint64_t total_cycles = 0;
     uint64_t total_insn = 0;
 
+    const two_core_scope_t core = two_core_scope_begin(true);
     log_mixed_scene_hashes();
     run_xtperf_over_mixed_scene(&total_cycles, &total_insn);
     run_xtperf_over_water_scene(&total_cycles, &total_insn);
     run_xtperf_over_full_step_scene(&total_cycles, &total_insn);
+    two_core_scope_end(core);
 
     TEST_ASSERT_TRUE_MESSAGE(total_cycles > 0, "the cycle counter never moved across any scene or event");
     TEST_ASSERT_TRUE_MESSAGE(total_insn > 0, "the retired-instruction counter never moved across any scene");
@@ -1294,12 +1317,14 @@ test_a_gravity_flip_on_every_material_at_once_stays_sane(void) {
         sand_step(&real, 0, 1000, 0);
     }
 
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     const int steps = 20;
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, -1000, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests",
              "gravity flip with every material at once, "
@@ -1378,17 +1403,17 @@ test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget(void) 
 
 static void
 test_the_gas_budget_rows_on_the_serial_path(void) {
-    const bool two_core_before = sand_two_core_step_enabled();
     gas_ab_reporting = true;
-    sand_set_two_core_step(false);
+    two_core_scope_t core = two_core_scope_begin(false);
     test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget();
     test_turning_a_half_screen_of_gas_fits_in_the_frame_budget();
     test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget();
-    sand_set_two_core_step(true);
+    two_core_scope_end(core);
+    core = two_core_scope_begin(true);
     test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget();
     test_turning_a_half_screen_of_gas_fits_in_the_frame_budget();
     test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget();
-    sand_set_two_core_step(two_core_before);
+    two_core_scope_end(core);
     gas_ab_reporting = false;
 }
 
@@ -1410,12 +1435,14 @@ test_a_full_screen_of_fire_fits_in_the_frame_budget(void) {
     }
     const int total = REAL_W * REAL_H;
 
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     const int steps = 10;
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1000, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests",
              "full %dx%d screen already fire, steady "
@@ -1466,12 +1493,14 @@ test_four_liquids_reacting_at_once_fits_in_the_frame_budget(void) {
         sand_step(&real, 0, 1000, 0);
     }
 
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     const int steps = 20;
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1000, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests",
              "four liquids reacting at once, %dx%d: %lld "
@@ -1511,6 +1540,7 @@ test_the_lava_stress_scene_fits_in_the_frame_budget(void) {
         sand_step(&real, 0, 1000, 0);
     }
 
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     const int steps = 20;
     int64_t pass_totals[6] = {0};
@@ -1533,6 +1563,7 @@ test_the_lava_stress_scene_fits_in_the_frame_budget(void) {
         }
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests", "lava stress scene, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
     log_pass_split("lava stress scene", steps, real.impulse_max, pass_totals, pass_peak, peak_impulses,
@@ -1563,12 +1594,14 @@ test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget(void) {
     build_smoke_and_steam_scene(&real);
     const int total = REAL_W * REAL_H;
 
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     const int steps = 10;
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1000, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests",
              "screen of smoke and steam, %dx%d: %lld us "
@@ -1627,12 +1660,14 @@ test_the_thermal_shock_scene_fits_in_the_frame_budget(void) {
 
     build_thermal_shock_scene(&real);
 
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     const int steps = 10;
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1000, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests",
              "thermal shock lattice, %dx%d: %lld us per "
@@ -1668,12 +1703,14 @@ test_the_boiler_scene_fits_in_the_frame_budget(void) {
         sand_step(&real, 0, 1000, 0);
     }
 
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     const int steps = 30;
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1000, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests", "boiler scene, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
 
@@ -1719,12 +1756,14 @@ test_the_wet_earth_scene_fits_in_the_frame_budget(void) {
         sand_step(&real, 0, 1000, 0);
     }
 
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     const int steps = 30;
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1000, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests", "wet earth scene, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
 
@@ -1766,12 +1805,14 @@ test_the_water_over_lava_scene_fits_in_the_frame_budget(void) {
 
     build_water_over_lava_scene(&real);
 
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     const int steps = 20;
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1000, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests", "water over lava scene, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
 
@@ -1813,6 +1854,7 @@ test_the_gas_ignition_vessel_logs_the_blast_stress(void) {
     unsigned peak_blasts = 0;
     unsigned blasts_after_50 = 0;
     unsigned cap_hits_after_50 = 0;
+    const two_core_scope_t core = two_core_scope_begin(true);
     for (int step = 1; step <= GAS_IGNITION_VESSEL_MEASURED_STEPS; step++) {
         const unsigned cap_before = real.impulse_cap_hits;
         sand_step(&real, 0, 1000, 0);
@@ -1841,6 +1883,7 @@ test_the_gas_ignition_vessel_logs_the_blast_stress(void) {
             cap_hits_after_50 += real.impulse_cap_hits - cap_before;
         }
     }
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests", "gas ignition vessel scene, %dx%d: steps=%d, post50 mean blasts=%u live=%d dropped=%u",
              REAL_W, REAL_H, GAS_IGNITION_VESSEL_MEASURED_STEPS,
@@ -1890,6 +1933,7 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
 
     build_gunpowder_basin_scene(&real);
 
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     const int steps = GUNPOWDER_BASIN_MEASURED_STEPS;
     int64_t pass_totals[6] = {0};
@@ -1912,6 +1956,7 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
         }
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests", "gunpowder basin scene, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
     log_pass_split("gunpowder basin scene", steps, real.impulse_max, pass_totals, pass_peak, peak_impulses,
@@ -1999,6 +2044,7 @@ test_the_plant_ruin_scene_fits_in_the_frame_budget(void) {
 
     const int steps = PLANT_RUIN_MEASURED_STEPS;
     int64_t worst = 0;
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     for (int i = 0; i < steps; i++) {
         if (i % PLANT_RUIN_ACID_EVERY == 0) {
@@ -2012,6 +2058,7 @@ test_the_plant_ruin_scene_fits_in_the_frame_budget(void) {
         }
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests",
              "plant ruin scene, %dx%d: %lld us per step, "
@@ -2060,6 +2107,7 @@ test_the_filling_basin_scene_fits_in_the_frame_budget(void) {
 
     const int steps = FILLING_BASIN_MEASURED_STEPS;
     int64_t worst = 0;
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     for (int i = 0; i < steps; i++) {
         if (i % FILLING_BASIN_POUR_EVERY == 0) {
@@ -2073,6 +2121,7 @@ test_the_filling_basin_scene_fits_in_the_frame_budget(void) {
         }
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests",
              "filling basin scene, %dx%d: %lld us per step, "
@@ -2120,6 +2169,7 @@ test_the_snowfall_scene_fits_in_the_frame_budget(void) {
 
     const int steps = SNOWFALL_MEASURED_STEPS;
     int64_t worst = 0;
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     for (int i = 0; i < steps; i++) {
         if (i % SNOWFALL_DRIFT_EVERY == 0) {
@@ -2133,6 +2183,7 @@ test_the_snowfall_scene_fits_in_the_frame_budget(void) {
         }
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests",
              "snowfall scene, %dx%d: %lld us per step, "
@@ -2175,6 +2226,7 @@ test_pouring_the_plant_brush_fits_in_the_frame_budget(void) {
 
     const int steps = PLANT_POUR_MEASURED_STEPS;
     int64_t worst = 0;
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     for (int i = 0; i < steps; i++) {
         plant_pour_stamp(&real, i);
@@ -2186,6 +2238,7 @@ test_pouring_the_plant_brush_fits_in_the_frame_budget(void) {
         }
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests",
              "plant pour, %dx%d: %lld us per step, "
@@ -2227,11 +2280,13 @@ test_a_settled_plant_garden_fits_in_the_frame_budget(void) {
     }
 
     const int steps = 200;
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1000, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests", "settled plant garden, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
 
@@ -2267,11 +2322,13 @@ test_a_finished_tree_fits_in_the_frame_budget(void) {
     }
 
     const int steps = 200;
+    const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1000, 0);
     }
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
 
     ESP_LOGI("device_tests", "finished tree, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
 
@@ -2296,6 +2353,7 @@ test_a_finished_tree_fits_in_the_frame_budget(void) {
 
 static int64_t
 landscape_scene_us_per_step(sand_t* real, bool water, int64_t* worst_out) {
+    const two_core_scope_t core = two_core_scope_begin(true);
     for (int i = 0; i < LANDSCAPE_PRIME_STEPS; i++) {
         if (water) {
             landscape_water_pour(real, i);
@@ -2322,7 +2380,9 @@ landscape_scene_us_per_step(sand_t* real, bool water, int64_t* worst_out) {
         }
     }
     *worst_out = worst;
-    return (esp_timer_get_time() - start) / steps;
+    const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
+    return per_step;
 }
 
 /* Water poured into a settled sand bed, held the way the board is played
@@ -2526,6 +2586,7 @@ run_present_against_scene(sand_t* s, const uint8_t* cells, int w, int h, uint8_t
                           uint16_t* row_x1, uint8_t* row_n, int gx, int gy, int gz, int settle_steps,
                           int measured_steps, int* full_bands, int* gathered, int* partial_bands, int64_t* sim_us_out,
                           int64_t* mark_us_out, int64_t* present_us_out) {
+    const two_core_scope_t core = two_core_scope_begin(true);
     for (int i = 0; i < settle_steps; i++) {
         sand_step(s, gx, gy, gz);
         mirror_app_sand_marking(cells, w, h, dirty_rows, row_x0, row_x1, row_n);
@@ -2562,6 +2623,7 @@ run_present_against_scene(sand_t* s, const uint8_t* cells, int w, int h, uint8_t
     if (present_us_out != NULL) {
         *present_us_out = present_us / measured_steps;
     }
+    two_core_scope_end(core);
 
     return present_us / measured_steps;
 }
@@ -2901,6 +2963,7 @@ run_present_against_scene_span(sand_t* s, const uint8_t* cells, int w, int h, ui
                                int* partial_bands, int64_t* pixels_sent_out) {
     sand_track_dirty_cols(s, dirty_x0, dirty_x1);
 
+    const two_core_scope_t core = two_core_scope_begin(true);
     for (int i = 0; i < settle_steps; i++) {
         sand_step(s, gx, gy, gz);
         mirror_app_sand_marking_span(cells, w, h, dirty_rows, dirty_x0, dirty_x1, row_x0, row_x1, row_n, NULL);
@@ -2924,6 +2987,7 @@ run_present_against_scene_span(sand_t* s, const uint8_t* cells, int w, int h, ui
     if (pixels_sent_out != NULL) {
         *pixels_sent_out = pixels_sent / measured_steps;
     }
+    two_core_scope_end(core);
     return present_us / measured_steps;
 }
 
@@ -3645,6 +3709,7 @@ test_present_cost_at_40_mhz_80_mhz_and_80_mhz_with_heal_on_a_real_pour(void) {
     static const char* const brush_names[] = {"sand", "water"};
     static const char* const row_names[CLOCK_ROW_COUNT] = {"40", "80", "80+heal"};
     const int saved_clock = gfx_panel_clock_hz();
+    const two_core_scope_t core = two_core_scope_begin(true);
 
     for (int brush = 0; brush < 2; brush++) {
         for (int row = 0; row < CLOCK_ROW_COUNT; row++) {
@@ -3662,6 +3727,7 @@ test_present_cost_at_40_mhz_80_mhz_and_80_mhz_with_heal_on_a_real_pour(void) {
             }
         }
     }
+    two_core_scope_end(core);
 
     gfx_set_panel_clock_hz(saved_clock);
 }
@@ -3710,6 +3776,11 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_the_soak_only_skip_hash_survives_ambient_two_core_state);
 
 #ifdef DEVICE_BUILD
+    /* Every budget test below pins its own mode now, so this is provenance,
+     * not a dependency: whatever two_core_step_on was already at suite
+     * entry - the ESP_PLATFORM boot default, or whatever the last suite
+     * run in this boot left it at. */
+    ESP_LOGI("device_tests", "run_sand_perf_suite: two_core_step_on=%d at entry", (int)sand_two_core_step_enabled());
     RUN_TEST(test_the_sand_app_can_still_allocate_everything_it_needs);
     RUN_TEST(test_a_full_size_step_fits_in_the_frame_budget);
     RUN_TEST(test_a_screen_of_settled_sand_costs_almost_nothing);
@@ -3724,7 +3795,15 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_two_core_step_against_the_serial_path_on_three_scenes);
     RUN_TEST(test_a_gravity_flip_on_every_material_at_once_stays_sane);
     RUN_TEST(test_the_gas_budget_rows_on_the_serial_path);
-    RUN_TEST(test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget);
+    /* test_fire_cascading_..._fits_in_the_frame_budget also runs, ambient,
+     * from inside the row above (gas_ab_reporting suppresses its own
+     * asserts there) - its budget only means something pinned here, at
+     * its own standalone entry. */
+    {
+        const two_core_scope_t core = two_core_scope_begin(true);
+        RUN_TEST(test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget);
+        two_core_scope_end(core);
+    }
     RUN_TEST(test_a_full_screen_of_fire_fits_in_the_frame_budget);
     RUN_TEST(test_four_liquids_reacting_at_once_fits_in_the_frame_budget);
     RUN_TEST(test_the_lava_stress_scene_fits_in_the_frame_budget);
@@ -3733,8 +3812,15 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_a_growing_plant_bed_fits_in_the_frame_budget);
     RUN_TEST(test_the_wood_leaf_shading_on_a_grove);
     RUN_TEST(test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget);
-    RUN_TEST(test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget);
-    RUN_TEST(test_turning_a_half_screen_of_gas_fits_in_the_frame_budget);
+    /* Same dual use as the fire-cascade row above: also called ambient
+     * from test_the_gas_budget_rows_on_the_serial_path, pinned here for
+     * their own standalone budget. */
+    {
+        const two_core_scope_t core = two_core_scope_begin(true);
+        RUN_TEST(test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget);
+        RUN_TEST(test_turning_a_half_screen_of_gas_fits_in_the_frame_budget);
+        two_core_scope_end(core);
+    }
     RUN_TEST(test_the_thermal_shock_scene_fits_in_the_frame_budget);
     RUN_TEST(test_the_boiler_scene_fits_in_the_frame_budget);
     RUN_TEST(test_the_wet_earth_scene_fits_in_the_frame_budget);
