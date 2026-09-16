@@ -77,6 +77,50 @@ missing_function() LIVE_MISSING missing.sh
             found = check_doc_constants.check(root)
         self.assertEqual(found, [])
 
+    def test_constant_checker_compares_matching_units_and_material_table_fields(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/example.h", "#define CONDUCT_REACH 32\n#define FRAME_MS 16\n")
+            self.write(root, "launcher/main/apps/sand/material.c", """\
+const material_t materials[] = {
+    TWIN_ROW(MAT_GLASS, { .name = "Glass", .density = 121, }),
+};
+const reaction_t reactions[] = {
+    [MAT_GLASS] = { .heat_chance = 8, },
+};
+static const char* const extended_names[] = {
+    [MATX_METAL] = "Metal", [8] = "Gunpowder",
+};
+const reaction_t extended_reactions[] = {
+    [MATX_METAL] = { .dissolvable = 1, },
+#define GUNPOWDER_REACTION { .soaked_chance = 16, }
+    [8] = GUNPOWDER_REACTION,
+};
+""")
+            self.write(root, "docs/Guide.md", """\
+`CONDUCT_REACH` (99 cells). `CONDUCT_REACH`, 98-cell wide. `CONDUCT_REACH` is a 97-cell run.
+`FRAME_MS` is 99 cells. `FRAME_MS` is 99 ms.
+| Material | density |
+| --- | --- |
+| Glass | 200 |
+Glass heat_chance 16. `soaked_chance` 8.
+```mermaid
+Acid -->|"dissolvable 110"| Metal
+```
+""")
+            found, skipped = check_doc_constants.check(root, verbose=True)
+        self.assertEqual([(item.name, item.claimed, item.defined) for item in found], [
+            ("CONDUCT_REACH", 99, 32),
+            ("CONDUCT_REACH", 98, 32),
+            ("CONDUCT_REACH", 97, 32),
+            ("FRAME_MS", 99, 16),
+            ("Glass.density", 200, 121),
+            ("Glass.heat_chance", 16, 8),
+            ("Gunpowder.soaked_chance", 8, 16),
+            ("Metal.dissolvable", 110, 1),
+        ])
+        self.assertIn(("docs/Guide.md", 2, "skipped-on-unit"), skipped)
+
     def test_reverse_index_reports_deleted_cited_function_as_json(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
