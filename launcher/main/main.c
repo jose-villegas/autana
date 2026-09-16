@@ -76,7 +76,8 @@ heap_mark(const char* where) {
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #define BUILD_MARK_GLYPH 8
-#define BUILD_MARK_CHARS 8
+#define BUILD_MARK_TEXT  "D" BUILD_ID_SHORT
+#define BUILD_MARK_CHARS ((int)sizeof(BUILD_MARK_TEXT) - 1)
 #define BUILD_MARK_SIZE  (BUILD_MARK_GLYPH * BUILD_MARK_CHARS)
 #define BUILD_MARK_RGB   0x384054
 
@@ -106,7 +107,7 @@ draw_build_mark(void) {
 
     if (gfx_region_dirty(x, y, quarter % 2 == 0 ? BUILD_MARK_SIZE : BUILD_MARK_GLYPH,
                          quarter % 2 == 0 ? BUILD_MARK_GLYPH : BUILD_MARK_SIZE)) {
-        gfx_text_turned(x, y, "D" BUILD_ID_SHORT, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
+        gfx_text_turned(x, y, BUILD_MARK_TEXT, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
     }
 }
 #endif
