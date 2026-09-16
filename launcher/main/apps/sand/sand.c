@@ -1242,6 +1242,21 @@ viscous_liquid_possible(const sand_t* s) {
     return false;
 }
 
+static bool
+is_block_row_settled(const sand_t* s, int y, uint8_t settled_bit) {
+    if (settled_bit == 0) {
+        return false;
+    }
+    const int by = y / SAND_BLOCK_H;
+    const uint8_t* const brow = &s->block_state[(size_t)by * (size_t)s->block_cols];
+    for (int bx = 0; bx < s->block_cols; bx++) {
+        if ((brow[bx] & settled_bit) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /* The gravity sweep's own inner loop, restricted to [y0, y1) in y_step
  * order - shared by the plain serial call below and every stripe a
  * checkerboard-parallel dispatch hands to either core. */
@@ -1256,14 +1271,7 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int w, int dx, int dy, const 
             const int by = y / SAND_BLOCK_H;
             if (by != scanned_by) {
                 scanned_by = by;
-                block_row_settled = true;
-                const uint8_t* const brow = &s->block_state[(size_t)by * (size_t)s->block_cols];
-                for (int bx = 0; bx < s->block_cols; bx++) {
-                    if ((brow[bx] & settled_bit) == 0) {
-                        block_row_settled = false;
-                        break;
-                    }
-                }
+                block_row_settled = is_block_row_settled(s, y, settled_bit);
             }
             if (block_row_settled) {
                 continue;
@@ -1362,11 +1370,14 @@ sweep_guard_row_list(int h, int offset, int* out, int max) {
 
 /* A guard row's own sweep, skipping any column that no longer matches
  * `snapshot` - see run_sweep_guard_rows() for why. An unchanged column
- * gets its ordinary turn. No block-settled skip here: a step's guard
- * rows are a small, fixed slice of the grid regardless. */
+ * gets its ordinary turn. */
 static void
 sweep_guard_row(sand_t* s, int y, int w, int dx, int dy, const int* slide_a, const int* slide_b, int x_step,
-                int load_dx, int load_dy, int jostle, const uint8_t* snapshot) {
+                int load_dx, int load_dy, int jostle, uint8_t settled_bit, const uint8_t* snapshot) {
+    if (is_block_row_settled(s, y, settled_bit)) {
+        return;
+    }
+    sand_guard_cells_scanned += (unsigned)w;
     uint8_t* const row = s->cells + (size_t)y * (size_t)w;
     uint8_t* const prow = dest_row(s, y + dy);
     uint8_t* const arow = dest_row(s, y + slide_a[1]);
@@ -1384,6 +1395,8 @@ sweep_guard_row(sand_t* s, int y, int w, int dx, int dy, const int* slide_a, con
     }
 }
 
+unsigned sand_guard_cells_scanned;
+
 /* THE SEAM FIX: a move out of a stripe's boundary row, or from the
  * interior row beside one, can land in a not-yet-swept neighbour and be
  * found and moved again once it is. `snapshot` - each guard row's
@@ -1394,7 +1407,7 @@ sweep_guard_row(sand_t* s, int y, int w, int dx, int dy, const int* slide_a, con
  * costs. */
 static void
 run_sweep_guard_rows(sand_t* s, int w, int dx, int dy, const int* slide_a, const int* slide_b, int x_step, int load_dx,
-                     int load_dy, int jostle, int y_step, const int* guard_rows, int guard_count,
+                     int load_dy, int jostle, uint8_t settled_bit, int y_step, const int* guard_rows, int guard_count,
                      const uint8_t* snapshot) {
     for (int i = 0; i < guard_count; i += 2) {
         const int above = guard_rows[i];
@@ -1404,9 +1417,9 @@ run_sweep_guard_rows(sand_t* s, int w, int dx, int dy, const int* slide_a, const
         const int first_i = (first == above) ? i : i + 1;
         const int second_i = (first == above) ? i + 1 : i;
 
-        sweep_guard_row(s, first, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle,
+        sweep_guard_row(s, first, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
                         &snapshot[(size_t)first_i * (size_t)w]);
-        sweep_guard_row(s, second, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle,
+        sweep_guard_row(s, second, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
                         &snapshot[(size_t)second_i * (size_t)w]);
     }
 }
@@ -1564,8 +1577,8 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
                             y_step, offset);
             run_sweep_phase(s, 1, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
                             y_step, offset);
-            run_sweep_guard_rows(s, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, y_step, guard_rows,
-                                 guard_count, guard_snapshot);
+            run_sweep_guard_rows(s, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, y_step,
+                                 guard_rows, guard_count, guard_snapshot);
             s->rng_hashed = false;
         } else {
             sweep_range(s, y_from, y_to, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle,
