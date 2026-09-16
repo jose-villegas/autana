@@ -908,6 +908,8 @@ test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
                                   "is not done yet");
 }
 
+static bool gas_ab_reporting;
+
 /* A tilted board is a different path, not a rotation of the same one:
  * equalise_gas() takes its spread direction from ring_dir(i_stable + 2), and
  * gas_run_t's carry runs only where py == 0. Packed bounds the worst case
@@ -931,9 +933,10 @@ test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget(void) {
     const int64_t per_step = time_a_quarter_turn(&real, 24, &worst);
 
     ESP_LOGI("device_tests",
-             "quarter turn on a PACKED screen of gas, %dx%d: "
-             "%lld us per step, worst single step %lld us",
-             REAL_W, REAL_H, (long long)per_step, (long long)worst);
+             "quarter turn on a PACKED screen of gas, %dx%d, %s: "
+             "%lld us per step, worst single step %lld us, last gas pass %lld us",
+             REAL_W, REAL_H, sand_two_core_step_enabled() ? "two-core" : "serial", (long long)per_step,
+             (long long)worst, (long long)real.pass_us.gas_us);
 
     /* Read before the frees, asserted after - Unity longjmps out of a failing
      * assert, so an assert ahead of free() would leak ~41 KB on this device's
@@ -946,15 +949,17 @@ test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget(void) {
     /* Same condensation caveat as the smoke-and-steam row above, and more
      * of it: a turning board keeps stirring steam into fresh 2x2 patches,
      * so the loss is larger here and varies run to run. */
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(total - total / 8, count,
-                                             "turning the board must not empty it - steam condensing into water "
-                                             "loses three cells a patch, but a packed screen that has shed an "
-                                             "eighth of itself is not the scene this row means to time");
+    if (!gas_ab_reporting) {
+        TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(total - total / 8, count,
+                                                 "turning the board must not empty it - steam condensing into water "
+                                                 "loses three cells a patch, but a packed screen that has shed an "
+                                                 "eighth of itself is not the scene this row means to time");
 
-    TEST_ASSERT_LESS_THAN_MESSAGE(128800, (int)per_step,
-                                  "a quarter turn on a fully packed screen of gas is the worst case the "
-                                  "gas passes can be handed - a reduction target at measured x 0.9, so "
-                                  "failing means the work is not done yet");
+        TEST_ASSERT_LESS_THAN_MESSAGE(128800, (int)per_step,
+                                      "a quarter turn on a fully packed screen of gas is the worst case the "
+                                      "gas passes can be handed - a reduction target at measured x 0.9, so "
+                                      "failing means the work is not done yet");
+    }
 }
 
 static void
@@ -986,23 +991,26 @@ test_turning_a_half_screen_of_gas_fits_in_the_frame_budget(void) {
     const int64_t per_step = time_a_quarter_turn(&real, 24, &worst);
 
     ESP_LOGI("device_tests",
-             "quarter turn on a HALF screen of gas, %dx%d: "
-             "%lld us per step, worst single step %lld us",
-             REAL_W, REAL_H, (long long)per_step, (long long)worst);
+             "quarter turn on a HALF screen of gas, %dx%d, %s: "
+             "%lld us per step, worst single step %lld us, last gas pass %lld us",
+             REAL_W, REAL_H, sand_two_core_step_enabled() ? "two-core" : "serial", (long long)per_step,
+             (long long)worst, (long long)real.pass_us.gas_us);
 
     const int after = sand_count(&real);
 
     free(big);
     free(blocks);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(before, after,
-                                  "turning the board must move gas, not create or destroy it - decay is "
-                                  "off by default, so the cell count is conserved across the turn");
+    if (!gas_ab_reporting) {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(before, after,
+                                      "turning the board must move gas, not create or destroy it - decay is "
+                                      "off by default, so the cell count is conserved across the turn");
 
-    TEST_ASSERT_LESS_THAN_MESSAGE(46100, (int)per_step,
-                                  "a quarter turn on a settled half screen of gas is the realistic "
-                                  "tilted case - a reduction target at measured x 0.9, so failing "
-                                  "means the work is not done yet");
+        TEST_ASSERT_LESS_THAN_MESSAGE(46100, (int)per_step,
+                                      "a quarter turn on a settled half screen of gas is the realistic "
+                                      "tilted case - a reduction target at measured x 0.9, so failing "
+                                      "means the work is not done yet");
+    }
 }
 
 static void
@@ -1320,26 +1328,47 @@ test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget(void) 
 
     ESP_LOGI("device_tests",
              "fire cascading through a full %dx%d screen of "
-             "gas: %lld us for the one step",
-             REAL_W, REAL_H, (long long)elapsed);
+             "gas, %s: %lld us for the one step, gas pass %lld us",
+             REAL_W, REAL_H, sand_two_core_step_enabled() ? "two-core" : "serial", (long long)elapsed,
+             (long long)real.pass_us.gas_us);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(total, sand_count(&real),
-                                  "setup: cells must only ever convert material, never appear or "
-                                  "vanish, across gas igniting into fire");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&real, REAL_W - 1, REAL_H - 1)),
-                                  "setup: the cascade must have reached the far corner - the whole "
-                                  "grid must have ignited in this one step, or this is not "
-                                  "actually measuring the worst case it claims to");
+    if (!gas_ab_reporting) {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(total, sand_count(&real),
+                                      "setup: cells must only ever convert material, never appear or "
+                                      "vanish, across gas igniting into fire");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&real, REAL_W - 1, REAL_H - 1)),
+                                      "setup: the cascade must have reached the far corner - the whole "
+                                      "grid must have ignited in this one step, or this is not "
+                                      "actually measuring the worst case it claims to");
+    }
 
     free(big);
     free(blocks);
 
     /* A DELIBERATELY SYNTHETIC WORST CASE: not held to plain-material
      * budgets. Failing by design, not moving goalposts. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(222700, (int)elapsed,
-                                  "a full-screen cascade must stay in the same ballpark as measured "
-                                  "- a jump here means something got much more expensive, not that "
-                                  "this specific number is a real-time requirement");
+    if (!gas_ab_reporting) {
+        TEST_ASSERT_LESS_THAN_MESSAGE(222700, (int)elapsed,
+                                      "a full-screen cascade must stay in the same ballpark as measured "
+                                      "- a jump here means something got much more expensive, not that "
+                                      "this specific number is a real-time requirement");
+    }
+}
+
+static void
+test_the_gas_budget_rows_on_the_serial_path(void) {
+    const bool two_core_before = sand_two_core_step_enabled();
+    gas_ab_reporting = true;
+    sand_set_two_core_step(false);
+    test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget();
+    test_turning_a_half_screen_of_gas_fits_in_the_frame_budget();
+    test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget();
+    sand_set_two_core_step(true);
+    test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget();
+    test_turning_a_half_screen_of_gas_fits_in_the_frame_budget();
+    test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget();
+    sand_set_two_core_step(two_core_before);
+    gas_ab_reporting = false;
 }
 
 static void
@@ -3672,6 +3701,7 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_the_gas_random_walk_against_the_exhaustive_mover);
     RUN_TEST(test_two_core_step_against_the_serial_path_on_three_scenes);
     RUN_TEST(test_a_gravity_flip_on_every_material_at_once_stays_sane);
+    RUN_TEST(test_the_gas_budget_rows_on_the_serial_path);
     RUN_TEST(test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget);
     RUN_TEST(test_a_full_screen_of_fire_fits_in_the_frame_budget);
     RUN_TEST(test_four_liquids_reacting_at_once_fits_in_the_frame_budget);

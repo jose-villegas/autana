@@ -52,6 +52,9 @@ enum {
     SAND_RNG_SLOT_SLIDE,
     SAND_RNG_SLOT_VISCOSITY,
     SAND_RNG_SLOT_SPLASH,
+    SAND_RNG_SLOT_GAS_DECAY,
+    SAND_RNG_SLOT_GAS_MOBILITY,
+    SAND_RNG_SLOT_GAS_WALK,
 };
 
 /* Draws for (x, y) at `slot` - see the enum above. Sequential and
@@ -879,7 +882,7 @@ tick_decay(sand_t* s, uint8_t* row, int x, int y, cell_t* grain, uint8_t mat_id,
     if (decay == 0) {
         return true;
     }
-    const uint32_t r = rng_next(&s->rng);
+    const uint32_t r = sand_rng_next_at(s, x, y, SAND_RNG_SLOT_GAS_DECAY);
     if ((int)(r & 0xFF) >= decay) {
         return true;
     }
@@ -951,6 +954,7 @@ void sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy);
 
 void sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, const int* slide_b, const int* perp_a,
                    const int* perp_b, int load_dx, int load_dy, int x_step, int jostle);
+void sand_gas_set_worker_order_for_test(bool reverse);
 
 /* The flight pass - explosions, debris, splash pushback - lives in
  * sand_impulse.c since it moves OUTWARD, not gravity-ward. Called once

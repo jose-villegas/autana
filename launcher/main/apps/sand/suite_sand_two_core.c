@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #include "sand.h"
+#include "sand_priv.h"
 #include "suite_sand_common.h"
 #include "suites.h"
 #include "unity.h"
@@ -122,6 +123,82 @@ test_two_core_step_is_deterministic_across_seeds(void) {
 
     for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
         tc_assert_seed_is_deterministic(seeds[i], 40);
+    }
+}
+
+static void
+test_split_gas_walk_uses_hashed_rng(void) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    TEST_ASSERT_NOT_NULL(cells);
+
+    sand_t s;
+    sand_init(&s, cells, TC_W, TC_H, 91u);
+    sand_set_decay(&s, 0);
+    for (int y = 1; y < TC_H - 1; y += 3) {
+        for (int x = 1; x < TC_W - 1; x += 2) {
+            sand_set(&s, x, y, GAS);
+        }
+    }
+
+    static const int slide_a[] = {-1, 1};
+    static const int slide_b[] = {1, 1};
+    static const int perp_a[] = {1, 0};
+    static const int perp_b[] = {-1, 0};
+    const rng_t before = s.rng;
+    sand_set_two_core_step(true);
+    sand_step_gas(&s, 0, 1000, 0, 1, slide_a, slide_b, perp_a, perp_b, 0, 1, 1, 0);
+    sand_set_two_core_step(false);
+    const rng_t after = s.rng;
+
+    free(cells);
+    TEST_ASSERT_EQUAL_MEMORY_MESSAGE(&before, &after, sizeof before,
+                                     "split gas walk must leave the sequential RNG untouched");
+}
+
+static uint32_t
+tc_run_gas_walk_and_hash(uint32_t seed, bool reverse_workers) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    TEST_ASSERT_NOT_NULL(cells);
+
+    sand_t s;
+    sand_init(&s, cells, TC_W, TC_H, seed);
+    sand_set_decay(&s, 0);
+    rng_t placement;
+    rng_seed(&placement, seed ^ 0xA5A5A5A5u);
+    for (int y = 1; y < TC_H - 1; y++) {
+        for (int x = 1; x < TC_W - 1; x++) {
+            if (rng_below(&placement, 3) == 0) {
+                sand_set(&s, x, y, GAS);
+            }
+        }
+    }
+
+    static const int slide_a[] = {-1, 1};
+    static const int slide_b[] = {1, 1};
+    static const int perp_a[] = {1, 0};
+    static const int perp_b[] = {-1, 0};
+    sand_gas_set_worker_order_for_test(reverse_workers);
+    sand_set_two_core_step(true);
+    for (int step = 0; step < 20; step++) {
+        s.step_phase = (uint16_t)step;
+        sand_step_gas(&s, 0, 1000, 0, 1, slide_a, slide_b, perp_a, perp_b, 0, 1, 1, 0);
+    }
+    sand_set_two_core_step(false);
+    sand_gas_set_worker_order_for_test(false);
+
+    const uint32_t hash = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
+    free(cells);
+    return hash;
+}
+
+static void
+test_split_gas_walk_ignores_worker_order(void) {
+    static const uint32_t seeds[] = {1u, 17u, 91u, 0xC0FFEEu};
+    for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
+        const uint32_t ordinary = tc_run_gas_walk_and_hash(seeds[i], false);
+        const uint32_t reversed = tc_run_gas_walk_and_hash(seeds[i], true);
+        TEST_ASSERT_EQUAL_HEX32_MESSAGE(ordinary, reversed,
+                                        "changing which worker owns each stripe must not change the gas walk");
     }
 }
 
@@ -636,6 +713,8 @@ test_a_timed_out_job_falls_back_inline(void) {
 void
 run_sand_two_core_suite(void) {
     RUN_TEST(test_two_core_step_is_deterministic_across_seeds);
+    RUN_TEST(test_split_gas_walk_uses_hashed_rng);
+    RUN_TEST(test_split_gas_walk_ignores_worker_order);
     RUN_TEST(test_two_core_step_actually_changes_the_draw_stream);
     RUN_TEST(test_two_core_step_does_not_leak_or_fabricate_mass);
     RUN_TEST(test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam);
