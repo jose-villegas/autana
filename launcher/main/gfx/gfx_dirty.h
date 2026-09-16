@@ -180,6 +180,18 @@ dirty_leaf_rects(int row, int x0, int y0, int x1, int y1, dirty_leaf_rect_t* out
     return n;
 }
 
+/* Cell `idx`'s full [x0,x1)x[y0,y1) extent from its own (row, col) - the
+ * inner step mark_band() and dirty_mark_all() share when marking a whole
+ * band or the whole grid, as opposed to dirty_mark()'s narrower per-call
+ * extent below. */
+static inline void
+set_cell_full_extent(int idx, int row, int col) {
+    cell_x0[idx] = col * COL_WIDTH;
+    cell_x1[idx] = (col + 1) * COL_WIDTH;
+    cell_y0[idx] = row * STRIP_HEIGHT;
+    cell_y1[idx] = (row + 1) * STRIP_HEIGHT;
+}
+
 /* Marks every cell spanned by an ALREADY-CLIPPED row range, full width
  * and full strip height - mark_band() gets no x information at all, so
  * every column in the affected rows has to be assumed dirty across its
@@ -199,10 +211,7 @@ mark_band(int y0, int y1) {
         for (int col = 0; col < GRID_COLS; col++) {
             const int idx = row * GRID_COLS + col;
             cell_dirty |= (1u << idx);
-            cell_x0[idx] = col * COL_WIDTH;
-            cell_x1[idx] = (col + 1) * COL_WIDTH;
-            cell_y0[idx] = row * STRIP_HEIGHT;
-            cell_y1[idx] = (row + 1) * STRIP_HEIGHT;
+            set_cell_full_extent(idx, row, col);
         }
     }
 }
@@ -219,11 +228,7 @@ dirty_mark_all(void) {
     cell_dirty = (CELL_COUNT >= 32) ? 0xFFFFFFFFu : (1u << CELL_COUNT) - 1u;
     for (int row = 0; row < STRIP_COUNT; row++) {
         for (int col = 0; col < GRID_COLS; col++) {
-            const int idx = row * GRID_COLS + col;
-            cell_x0[idx] = col * COL_WIDTH;
-            cell_x1[idx] = (col + 1) * COL_WIDTH;
-            cell_y0[idx] = row * STRIP_HEIGHT;
-            cell_y1[idx] = (row + 1) * STRIP_HEIGHT;
+            set_cell_full_extent(row * GRID_COLS + col, row, col);
         }
     }
 }
