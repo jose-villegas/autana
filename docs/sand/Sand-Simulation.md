@@ -1423,63 +1423,39 @@ Device builds split the gravity sweep, the liquid cross-flow pass, and
 the serial path, where `job_run_core1()` always runs its callback inline.
 The unbounded waits in gfx.c's present pipeline are still unchanged.
 
-## Why the liquid logic is its own file
+## The gravity-ward split: sand.c, sand_liquid.c, sand_impulse.c
 
-`sand.c` and `sand_liquid.c` used to be one file. Measured with a
-cognitive complexity analyzer (`launcher/tools/cognitive_complexity.py`,
-cross-checked against `idf.py clang-check`'s real clang-tidy run until
-the two agreed exactly): `sand_step()` alone scored 191 against Sonar's
-own "worth a look" line of 25.
+`sand_step()`'s sweep (`sand.c`) moves every grain gravity-ward: try to
+fall, then try the two slides. A liquid's fall obeys that same guarantee,
+so `move_liquid_grain()` runs FROM inside that sweep rather than as a
+separate pass - defined in `sand_liquid_move.h`, `static inline`, shared
+between `sand.c` (the sweep that calls it) and `sand_liquid.c` (whose
+cross-flow half calls the other inline helpers there). Everything else
+about a liquid - cross-flow levelling - is **not** gravity-ward, so it
+cannot safely share the sweep; it lives in `sand_liquid.c` instead,
+called once from `sand_step()` as `sand_step_liquids()`.
 
-Two things were already true about that number: `equalise_liquids()` (85)
-and the wall-rebound pass (27) were already separate *functions*, just
-not a separate *domain*, since both are liquid-only and already shared
-helpers with each other.
+The same domain rule places `sand_impulse.c`: a thrown chunk, an
+explosion's blast, a splash's pushback move OUTWARD, against or across
+gravity, so `step_impulses()` lives there, called once from `sand_step()`
+right before `finalize_settling()`. Fire chemistry and plant growth are
+both `reaction_t`-driven per-cell passes dispatched by the same
+`step_one_reacting_row()` (`sand_reactions.c`), but share almost no call
+graph with each other, so growth lives in its own `sand_plants.c`.
 
-The split moved everything about a liquid that is **not** gravity-ward
-(cross-flow, the rebound splash, the momentum accessors) into
-`sand_liquid.c`, and extracted the one piece that had to stay in
-`sand.c`'s sweep (`move_liquid_grain()`, since it obeys the same
-gravity-ward guarantee every other move there does) into its own
-function.
+Two headers hold the `static inline` helpers each split needs on both
+sides of it - both sit on the hottest path in the simulation, and a call
+across translation units is not guaranteed to inline the way a call
+within one file is: `sand_priv.h` (`dest_row()`, `mark_rows()`, and
+whatever else `sand.c`, `sand_liquid.c`, `sand_gas.c`, `sand_reactions.c`,
+`sand_plants.c` and `sand_impulse.c` all need) and `sand_liquid_move.h`
+(`move_liquid_grain()`, `give_mass()`, `splash_displace()`, shared only
+between `sand.c` and `sand_liquid.c`).
 
-That extraction alone dropped `sand_step()` from 191 to 134 - a real
-complexity cut, not just relocated lines, because it collapsed nesting
-that had been compounding the score.
-
-`dest_row()` and `mark_rows()`, needed on both sides of the split, stay
-`static inline` in a shared `sand_priv.h` rather than becoming ordinary
-`extern` functions - both sit on the hottest path in the simulation, and a
-call across translation units is not guaranteed to inline the way a call
-within one file is. Confirmed on device rather than assumed: the
-frame-budget tests above are what would have caught it if splitting the
-file had cost anything.
-
-The same reasoning later split `sand_impulse.c` out of `sand.c` too:
-queued explosions, thrown debris and splash pushback move outward rather
-than gravity-ward, so `step_impulses()` is called from `sand_step()`
-exactly once, the same seam `sand_step_liquids()` and `sand_step_gas()`
-use.
-
-(The wall-rebound pass named above has since been removed entirely - see
-[Performance discipline](#performance-discipline)'s neighbouring sections
-for what liquids do today; this paragraph describes why the file split
-happened, not a mechanism still in the tree.)
-
-`sand_reactions.c` later split the same way: fire chemistry and the
-tree/root/leaf growth system it also housed shared almost no call graph,
-so the growth half moved into its own `sand_plants.c` - see that file's
-own top comment for the rationale.
-
-### Broken down further
-
-134 and 85 are still well over Sonar's *default* line, which is 15, not
-the 25 used above - that line only ever applied to the standalone check,
-not to what the project actually holds itself to. Both functions were
-later broken down the same way again, one level deeper: nested per-cell
-and per-row logic pulled into small named functions, until every function
-in `main/` scored 15 or under (`sand_step()` itself: 6; `equalise_liquids()`:
-13).
+Cognitive complexity is ratcheted, not documented here:
+`launcher/tools/complexity_gate.py` checks every first-party function
+against `launcher/tools/complexity_baseline.txt`, which holds each one's
+current score - see `docs/tools/Complexity-Gate.md`.
 
 The main sweep, per grain:
 
@@ -1489,7 +1465,7 @@ flowchart TB
     ROW --> GRAIN["step_one_grain()<br/><i>once per grain in the row</i>"]
 
     GRAIN -->|"static or gas"| SKIP(("nothing to do"))
-    GRAIN -->|"liquid"| LIQ["move_liquid_grain()<br/><i>sand_liquid.c</i>"]
+    GRAIN -->|"liquid"| LIQ["move_liquid_grain()<br/><i>sand_liquid_move.h</i>"]
     GRAIN -->|"powder, unblocked"| FALL["try_fall_or_scatter()"]
     GRAIN -->|"blocked, or shaken"| SLIDE["try_slide()"]
 
@@ -1514,21 +1490,10 @@ flowchart TB
     ECELL --> FIND["find_shallowest()<br/><i>only reached along a real imbalance</i>"]
 ```
 
-**The extraction was not free.** `has_room_below()`,
-`neighbour_is_lower()`, `find_shallowest()`, `equalise_one_cell()` and
-`give_mass()` are all on the per-cell path above, and none of them were
-marked `inline` when they were pulled out - unlike `pour_into()`/`room_in()`,
-the pair already living in that file.
-
-A full screen of water went from the ~15 ms in the table above to 18 ms
-against its 16 ms budget, caught directly by
-`test_a_screen_of_water_fits_in_the_frame_budget` on device, not noticed
-by eye.
-
-Marking those five `inline` restored it. The lesson from the file split
-above held a second time: a call this hot has to be confirmed on device,
-not assumed free because the source now reads as several small functions
-instead of one large one.
+`has_room_below()`, `neighbour_is_lower()`, `find_shallowest()` and
+`equalise_one_cell()` are all on this per-cell path and stay `static
+inline` in `sand_liquid.c` for the same hot-path reason as the two shared
+headers above.
 
 ---
 
@@ -1552,5 +1517,6 @@ instead of one large one.
   why release builds carry none of the test code.
 - `docs/sand/Testing-Sand.md` - the frame-budget capture and the current
   state of `suite_sand_perf.c`'s numbers on this board.
-- `launcher/tools/cognitive_complexity.py` - the complexity analyzer
-  mentioned above, with its own reasoning documented in its module comment.
+- `docs/tools/Complexity-Gate.md` - the cognitive-complexity ratchet
+  mentioned above: what it measures, what it cannot reach, and how the
+  baseline it checks against works.
