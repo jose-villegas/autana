@@ -330,8 +330,8 @@ ui_end(uint32_t background_rgb) {
  * Band mode has no framebuffer to hash against, so ui_end()'s whole
  * changed/unchanged question does not apply - every band redraws every
  * frame regardless. What DOES matter is not walking or drawing a command
- * for a band it never reaches, the same reason app_cube.c bins triangles
- * by row range instead of re-rasterizing the whole scene per band.
+ * for a band it never reaches, the same reason a software rasterizer bins
+ * shapes by row range instead of re-rasterizing the whole scene per band.
  */
 
 typedef enum {

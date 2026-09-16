@@ -11,11 +11,16 @@ anything below them - that direction cannot dangle.
 
 App names come from the folders themselves, so adding an app extends the check.
 
-A name is all this checks. Borrowing an app's VOCABULARY is the same fault one
-step quieter - "an app's working grid" names no app but still assumes apps have
-grids, and gfx has no concept of a grain - but no word list can judge it: the
-dirty tracker really does have a grid of cells, and a font really does have a
-glyph cell. That one is read, not scripted.
+A name is all this checks, including a name spelled as part of a compound
+identifier or filename - `app_sand.c`, `sand_ui_step()`, `sand_palette256.h` -
+not just the bare word, since a comment does not stop naming an app just
+because the reference sits inside a longer token.
+
+Borrowing an app's VOCABULARY is the same fault one step quieter - "an app's
+working grid" names no app but still assumes apps have grids, and gfx has no
+concept of a grain - but no word list can judge it: the dirty tracker really
+does have a grid of cells, and a font really does have a glyph cell. That one
+is read, not scripted.
 """
 import pathlib
 import re
@@ -55,7 +60,11 @@ def sources():
 def main():
     context = "--context" in sys.argv[1:]
     names = app_names()
-    word = re.compile(r"\b(" + "|".join(names) + r")\b", re.I)
+    # Boundaries exclude only [A-Za-z0-9], not underscore, so this also
+    # matches an app name inside a compound identifier or filename like
+    # `app_sand.c` or `sand_ui_step` - a plain \b would miss both, since
+    # underscore counts as a word character.
+    word = re.compile(r"(?<![A-Za-z0-9])(" + "|".join(names) + r")(?![A-Za-z0-9])", re.I)
     found = 0
     for rp in sources():
         text = pathlib.Path(rp).read_text(encoding="utf-8", errors="replace")
