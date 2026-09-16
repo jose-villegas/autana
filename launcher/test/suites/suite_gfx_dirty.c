@@ -488,12 +488,10 @@ test_band_extent_is_full_width_once_everything_is_marked(void) {
     TEST_ASSERT_TRUE(dirty_band_extent(416, 448, &x0, &x1));
 }
 
-/* A moving box across several frames, marked and queried the way a real
- * band-mode frame loop repeats it: mark old+new bounds, query every band,
- * dirty_frame_sent() before the next frame. A caller that stops marking
- * after frame one - the exact way suite_cube_band_perf.c's own band_frame()
- * once did, silently, since nothing but this sequence proves per-frame
- * marks still land - would show every band skipped from frame two on. */
+/* A moving box across several frames, marked and queried the way a band-mode
+ * frame loop repeats it: mark old+new bounds, query every band, then
+ * dirty_frame_sent(). A caller that stops marking after frame one shows every
+ * band skipped from frame two on, and only a multi-frame sequence sees it. */
 static void
 test_band_extent_follows_a_moving_box_across_several_frames(void) {
     fixture();

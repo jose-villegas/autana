@@ -56,9 +56,8 @@ test_cell_size_upscale_correct_for_every_grid_quality(void) {
     }
 }
 
-/* A cell size that does not divide the panel's own width leaves a margin -
- * app_sand.c's own top comment documents the identical margin for the
- * RGB565 path. The margin reads as lut[0], the reserved background entry. */
+/* A cell size that does not divide the panel's width leaves a margin, which
+ * reads as lut[0], the reserved background entry. */
 static void
 test_the_margin_past_the_grids_own_width_is_background(void) {
     fixture();
@@ -170,7 +169,7 @@ test_dither_expansion_stays_in_phase_across_a_band_boundary(void) {
 static uint8_t class_out[GFX_INDEXED_PALETTE_SIZE];
 
 /* Two indices whose sixteen-entry rows are byte-identical land in the same
- * class - the property app_sand.c's change detection depends on. */
+ * class - the property a caller's change detection depends on. */
 static void
 test_classify_groups_indices_with_an_identical_dither_row(void) {
     memset(dither_table, 0, sizeof dither_table);
@@ -204,9 +203,8 @@ test_classify_gives_every_index_its_own_class_when_all_rows_differ(void) {
     }
 }
 
-/* A class id is always the SMALLEST index sharing that row - app_sand.c's
- * own comparison only needs equality, but a stable, low id is what a human
- * reading a dump of the table would expect. */
+/* A class id is always the SMALLEST index sharing that row. Change detection
+ * only needs equality; a stable, low id keeps a dump of the table readable. */
 static void
 test_classify_names_a_class_after_its_smallest_member(void) {
     memset(dither_table, 0, sizeof dither_table);
@@ -224,9 +222,8 @@ test_classify_names_a_class_after_its_smallest_member(void) {
 }
 
 /* --- gfx_indexed_cell_changed(): incremental output vs a full re-expansion,
- * over many steps of a busy scene - app_sand.c's own real question, ported
- * here since the decision itself (gfx_indexed_cell_changed()) is portable
- * even though app_sand.c's row painter is not. */
+ * over many steps of a busy scene. The decision is portable even where the
+ * row painter calling it is not. */
 
 /* Deterministic across platforms and libc versions, unlike rand() - "many
  * steps, seeds varied" must reproduce exactly on a re-run. */
