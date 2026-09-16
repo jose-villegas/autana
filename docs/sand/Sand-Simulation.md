@@ -1029,12 +1029,14 @@ step" and the numbers above:
   step to 13,130 just from removing it. Worth reading before adding another
   one.
 - **Bitmasks over flash-table reads, inside a hot loop.** Asking
-  `materials[id].kind` per cell is a flash read and a likely cache miss
-  (the 32 KB code/constant cache on this chip, not a data cache).
-  Precomputing a 16-bit "is this id a
-  liquid" bitmask once per pass, instead of once per cell, measurably
-  mattered: it alone was the difference between a settled screen of sand
-  costing 17 us and costing 5.5 ms.
+  `materials[id].kind` per cell is a flash read served by this chip's
+  32 KB data cache, kept separate from the 16 KB instruction cache the hot
+  loop's own code lives in (see
+  [Optimization-Playbook.md](../notes/Optimization-Playbook.md), "Know
+  what kind of memory you actually have"). Precomputing a 16-bit "is this
+  id a liquid" bitmask once per pass, instead of once per cell, still
+  measurably mattered: it alone was the difference between a settled
+  screen of sand costing 17 us and costing 5.5 ms.
 
 ## Two cores: a checkerboard sweep, and what stays serial
 
