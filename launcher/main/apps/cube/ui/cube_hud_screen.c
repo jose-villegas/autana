@@ -6,9 +6,8 @@
 #include "ui/ui.h"
 
 /* Mirrors app_cube.c's own BACKGROUND_RGB - kept as this file's own copy
- * rather than shared; see app_diagnostics.c's ORIENTATION_GRAVITY_X/Y
- * comment for why a small, independent copy like this is not worth a
- * shared header of its own. */
+ * rather than shared, since a copy this small is not worth a shared
+ * header of its own. */
 #define CUBE_HUD_BACKGROUND_RGB 0x0A0C14
 
 static mu_Color

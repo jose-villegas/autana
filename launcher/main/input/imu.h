@@ -53,3 +53,18 @@ bool imu_read(imu_sample_t* out);
  * business - see tilt_shake(). Deliberately not a filter or gesture
  * detector; the caller decides what counts as "fast". */
 int imu_rotation_level(const imu_sample_t* s);
+
+/* Sensor axes to screen axes: how the QMI8658 is soldered relative to the
+ * panel is a board layout fact no datasheet carries, so both facts here come
+ * from tilting the board - held upright the sensor reads about +1 g on its
+ * X axis and roughly zero on Y, so the chip's X runs down the screen and its
+ * Y runs across it pointing left, hence the negation. */
+static inline int
+imu_gravity_screen_x(const imu_sample_t* s) {
+    return -s->ay;
+}
+
+static inline int
+imu_gravity_screen_y(const imu_sample_t* s) {
+    return s->ax;
+}

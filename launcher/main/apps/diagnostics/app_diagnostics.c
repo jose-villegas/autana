@@ -68,17 +68,6 @@ static int selftest_failures = -1;
 static bool selftest_pending;
 #endif /* CONFIG_LAUNCHER_SELFTEST */
 
-/* Sensor axes to screen axes - the SAME board-layout fact main.c's
- * DISPLAY_GRAVITY_X/Y and app_sand.c's GRAVITY_SCREEN_X/Y already
- * carry, copied rather than shared for the same reason main.c's copy
- * gives: these are small, independent readers of a sensor that only
- * ever answers "which way is down", and forcing a shared one is
- * separate work this toggle does not need. This copy exists so the
- * numbers shown here are the exact gx/gy display_update() actually
- * decides orientation from. */
-#define ORIENTATION_GRAVITY_X(s) (-(s)->ay)
-#define ORIENTATION_GRAVITY_Y(s) ((s)->ax)
-
 static void
 diagnostics_enter(void) {
     /* Always open on the report - the page you came here for by default,
@@ -122,8 +111,8 @@ draw_toggles_page(const input_t* input) {
             state.accel_ax = sample.ax;
             state.accel_ay = sample.ay;
             state.accel_az = sample.az;
-            state.gravity_gx = ORIENTATION_GRAVITY_X(&sample);
-            state.gravity_gy = ORIENTATION_GRAVITY_Y(&sample);
+            state.gravity_gx = imu_gravity_screen_x(&sample);
+            state.gravity_gy = imu_gravity_screen_y(&sample);
         }
     }
 
