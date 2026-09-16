@@ -548,6 +548,35 @@ test_two_core_step_matches_serial_fall_distance_at_a_seam(void) {
     }
 }
 
+static void
+test_settled_guard_rows_do_no_grain_work(void) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(cells);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t s;
+    sand_init(&s, cells, TC_W, TC_H, 1u);
+    sand_enable_sleeping(&s, blocks);
+    for (int y = 0; y < TC_H; y++) {
+        for (int x = 0; x < TC_W; x++) {
+            sand_set(&s, x, y, STONE);
+        }
+    }
+
+    sand_set_two_core_step(true);
+    sand_step(&s, 0, 1000, 0);
+    sand_guard_cells_scanned = 0;
+    sand_step(&s, 0, 1000, 0);
+    sand_set_two_core_step(false);
+
+    free(cells);
+    free(blocks);
+
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0, sand_guard_cells_scanned,
+                                   "settled guard rows must take the same block-row skip as the ordinary sweep");
+}
+
 /* A box of STONE around the whole grid, so every one of the four
  * axis-aligned gravity directions below has a floor to settle against -
  * not just down. */
@@ -720,6 +749,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam);
     RUN_TEST(test_two_core_step_never_double_moves_at_a_seam);
     RUN_TEST(test_two_core_step_matches_serial_fall_distance_at_a_seam);
+    RUN_TEST(test_settled_guard_rows_do_no_grain_work);
     RUN_TEST(test_two_core_step_conserves_grains_on_a_dense_column_and_pile);
 #ifdef DEVICE_BUILD
     RUN_TEST(test_a_timed_out_job_falls_back_inline);
