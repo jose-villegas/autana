@@ -208,6 +208,36 @@ Acid -->|"dissolvable 110"| Metal
             found = check_doc_vocabulary.check(root)
         self.assertEqual([(path, term) for path, _, term, _ in found], [("docs/Guide.md", "C6")])
 
+    def test_vocabulary_gate_honours_inline_and_previous_line_escapes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "scripts/doc_vocabulary.txt", "C6\twrong board\n")
+            self.write(root, "docs/Guide.md",
+                       "C6 is historical. <!-- doc-vocabulary: ignore -->\n"
+                       "<!-- doc-vocabulary: ignore -->\n"
+                       "C6 was the prior target.\n")
+            found = check_doc_vocabulary.check(root)
+        self.assertEqual(found, [])
+
+    def test_vocabulary_gate_reports_stale_exception(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "scripts/doc_vocabulary.txt", "C6\twrong board\n")
+            self.write(root, "scripts/doc_vocabulary_exceptions.txt",
+                       "docs/Deleted.md\tobsolete exception\n")
+            found = check_doc_vocabulary.check(root)
+        self.assertEqual([(path, term) for path, _, term, _ in found], [
+            ("docs/Deleted.md", "stale exception"),
+        ])
+
+    def test_vocabulary_gate_reports_unescaped_retired_term(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "scripts/doc_vocabulary.txt", "C6\twrong board\n")
+            self.write(root, "docs/Guide.md", "C6 is not the current board.\n")
+            found = check_doc_vocabulary.check(root)
+        self.assertEqual([(path, term) for path, _, term, _ in found], [("docs/Guide.md", "C6")])
+
     def test_reverse_index_ignores_repeated_function_definition(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

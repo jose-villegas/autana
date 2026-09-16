@@ -282,10 +282,10 @@ the cost, not that the work was free.
 
 A disassembly-derived cycle count is read off one instruction set's codegen
 shapes. This project's own move to the ESP32-S3 carried a full set of
-cycle counts forward from the RISC-V board it replaced, and every one
+cycle counts forward from the RISC-V board it replaced, and every one <!-- doc-vocabulary: ignore --> <!-- The historical ISA identifies the source of invalid cycle counts. -->
 stopped applying — not because the optimization was wrong, but because
 Xtensa's PC-relative literal loads, shift-add addressing and windowed
-calls are different codegen entirely from a flat RISC-V ABI. The
+calls are different codegen entirely from a flat RISC-V ABI. The <!-- doc-vocabulary: ignore --> <!-- The historical ABI is the comparison that invalidates the count. -->
 *mechanism* an optimization rests on ("skip the read entirely") can still
 hold across the swap; the *cycle number* that backed it cannot, and has to
 be re-derived from a fresh disassembly on the new target before it is
