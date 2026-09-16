@@ -468,7 +468,7 @@ above, so it changes none of this section's reasoning.
 
 **Sand's working set is not part of this.** Sand's grids and per-step
 scratch live in internal RAM (allocations up to 64 KB stay internal), and
-its simulation reads no PSRAM: moving them there and doubling the
+its simulation reads no PSRAM: moving them there and doubling the <!-- doc-vocabulary: ignore --> <!-- This describes a hypothetical memory layout, not the board. -->
 instruction cache bought 1-11% per step, a 64 KB data cache bought
 nothing, and the mixed-scene gravity flip that once measured 18,731 us
 was a reaction-pass regression, fixed at 11,924 us (device, 2026-09-13).

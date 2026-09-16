@@ -4,6 +4,9 @@ import pathlib
 import re
 import sys
 
+ESCAPE = "<!-- doc-vocabulary: ignore -->"
+STALE_EXCEPTION = "stale exception"
+
 
 def terms(root):
     path = pathlib.Path(root) / "scripts/doc_vocabulary.txt"
@@ -22,17 +25,22 @@ def exceptions(root):
 def check(root):
     root = pathlib.Path(root)
     skipped = exceptions(root)
-    found = []
+    retired_terms = terms(root)
+    found = [(name, 0, STALE_EXCEPTION, "exception entry names no file")
+             for name in sorted(skipped) if not (root / name).is_file()]
     for path in sorted((root / "docs").rglob("*.md")):
         name = path.relative_to(root).as_posix()
         if name in skipped:
             continue
+        previous_escape = False
         for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-            for term, reason in terms(root):
+            escaped = ESCAPE in line or previous_escape
+            previous_escape = ESCAPE in line
+            if escaped:
+                continue
+            for term, reason in retired_terms:
                 if re.search(r"(?<![A-Za-z0-9-])" + re.escape(term) + r"(?![A-Za-z0-9-])", line,
                              re.IGNORECASE):
-                    if term.lower() == "no psram" and "reads no PSRAM" in line:
-                        continue
                     found.append((name, number, term, reason))
     return found
 
@@ -42,9 +50,13 @@ def main(argv):
     if root is None:
         print("usage: check_doc_vocabulary.py [--root ROOT]", file=sys.stderr)
         return 2
-    for path, line, term, reason in check(root):
-        print(f"{path}:{line}: retired term {term!r}: {reason}")
-    return 1 if check(root) else 0
+    found = check(root)
+    for path, line, term, reason in found:
+        if term == STALE_EXCEPTION:
+            print(f"{path}: stale exception entry: {reason}")
+        else:
+            print(f"{path}:{line}: retired term {term!r}: {reason}")
+    return 1 if found else 0
 
 
 if __name__ == "__main__":
