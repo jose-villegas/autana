@@ -45,6 +45,11 @@ fixture(void) {
     gfx_invalidate();
 }
 
+static void
+perf_guard(const char* name, int64_t measured_us, int64_t ceiling_us) {
+    TEST_ASSERT_LESS_THAN_INT64_MESSAGE(ceiling_us, measured_us, name);
+}
+
 /* Counts pixels equal to `expect` across the whole framebuffer, which is how
  * most of these tests assert "exactly this region changed and nothing else". */
 static int
@@ -728,9 +733,7 @@ test_present_completes(void) {
      * the observed maximum - past scheduling jitter, still tight enough to
      * catch the bus clock regressing or the bands dropping out of
      * pipelining. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(19500, (int)elapsed_us,
-                                  "a full-frame present cost more than its observed price - the bus "
-                                  "clock may have regressed, or the seven bands stopped pipelining");
+    perf_guard("full-frame present", elapsed_us, 19500);
 }
 
 void
@@ -1146,7 +1149,7 @@ test_a_near_budget_split_crosses_the_gather_threshold(void) {
      * question a sweep of GATHER_MAX_PIXELS is for. 1,671/1,800/1,715/1,754
      * us across four captures, a 7.7% spread - two independent sends, so
      * wider than the single-piece gathers above; 2,050 leaves ~14% over. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(2050, (int)near_budget, "the near-budget split cost more than its observed price");
+    perf_guard("near-budget split", near_budget, 2050);
 }
 
 /* Two small marks inside the SAME 92px cell, far enough apart to leave a
@@ -1196,9 +1199,7 @@ test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
      * reason: two independent gather-and-waits, DMA-dominated, with little
      * room for copy-side jitter. 2,050 us leaves about 4.6% over the
      * observed maximum, tight to match. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(2050, (int)two_marks,
-                                  "two marks in one cell cost more than their observed price - the "
-                                  "leaf-refined split may have regressed");
+    perf_guard("two marks in one cell", two_marks, 2050);
 }
 
 static void
