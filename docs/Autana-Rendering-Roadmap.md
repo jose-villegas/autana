@@ -348,11 +348,14 @@ The two numbers to carry in your head for the S3:
 
 What the move to PSRAM costs the sand campaign's existing findings — which
 of them transfer to a chip with a data cache and which were written on the
-premise that there is none — is worked through in
-[`notes/Second-Target-Draft.md`](notes/Second-Target-Draft.md), kept here
-as background reading. The short version: the algorithmic skips transfer;
-the old SRAM-mask-style wins plausibly do not, because a data cache now
-sits between the CPU and where the grids live.
+premise that there is none — split cleanly: the algorithmic skips
+transfer, and the old SRAM-mask-style wins plausibly do not, because a
+data cache now sits between the CPU and where the grids live (see
+[`notes/Optimization-Playbook.md`](notes/Optimization-Playbook.md), "Know
+what kind of memory you actually have," and
+[`notes/Board-and-Memory.md`](notes/Board-and-Memory.md), "Cache is
+carved from the same pool"). The cost/benefit case for taking on the S3 at
+all is retired now that the port has happened.
 
 ---
 

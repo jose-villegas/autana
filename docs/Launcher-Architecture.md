@@ -690,7 +690,7 @@ as focus is what keeps it sinking smoothly through the whole gesture instead
 of flashing in on the second frame.
 
 The geometry and the shading are pure functions in the header, the same split
-`icons.h` makes, so `test/suites/suite_ui_style.c` checks the shape on a host
+the former icon helper made, so `test/suites/suite_ui_style.c` checks the shape on a host
 without linking `gfx.c` or even `microui.c` — nobody can eyeball five
 overlapping rectangles reliably.
 
@@ -705,7 +705,7 @@ shadowed the same way.
 Every `mu_Font` used to mean the same thing: `gfx_font_ui()` at the
 compile-time `GFX_GLYPH_SCALE`, no exceptions. A screen that puts a small
 caption next to a much larger value or heading needs two sizes on one
-canvas, and the obvious fix — a `ui_set_text_scale()` global read at render
+canvas, and the obvious fix — a global scale read at render
 time — would be the same shape as `ui_set_text_style()` above and pay the
 same cost: a scale carried outside the command list changes what gets drawn
 without changing a single byte of it, so `hash_canvas()` cannot see the
@@ -731,12 +731,12 @@ re-derive the font role and scale it already set.
 
 #### App-owned artwork, and how it reaches the command list
 
-`gfx/icons.h` used to hand-draw exactly one glyph — the check mark
+The former gfx icon header used to hand-draw exactly one glyph — the check mark
 microui's own checkbox needs. The run-length/scale/centre geometry behind
 it was never specific to that shape, so `icon_bitmap_blocks()` generalises
 it into a function taking any 16×16 bitmap in the same one-row-per-scanline
-format; `icon_check_blocks()` is now a thin wrapper over it, kept as its own
-entry point so `ICON_CHECK_MAX_BLOCKS` still promises a bound specific to
+format; its check-mark wrapper is kept as its own entry point so its maximum
+block count still promises a bound specific to
 that one glyph's own run count. It stays pure geometry, the same split
 `ui_style.h`'s spans use: it returns WHERE the blocks go, not how they
 reach a framebuffer, so it links and is tested on a host with no `gfx.c` or
@@ -752,12 +752,12 @@ not pixels" rule above, applied to an app's own artwork instead of a
 control's frame. It also means an app icon needs no new `MU_ICON_*` id and
 no patch to `components/microui/`.
 
-The icons themselves are never the shell's to own. `gfx/icons.h` stays the
+The icons themselves are never the shell's to own. The gfx icon header stays the
 one hand-drawn glyph microui's own checkbox needs — see its own header
 comment for why `MU_ICON_CLOSE`/`COLLAPSED`/`EXPANDED` stay unbuilt, which
 is unrelated to this and still true. An app that wants a funnel, a cross, a
 starburst draws its own bitmaps in its own folder (e.g.
-`apps/sand/sand_icons.h`) and reaches `ui_draw_bitmap()` to put them in its
+`apps/sand/icons_sand.h`) and reaches `ui_draw_bitmap()` to put them in its
 own command list. Deleting the app folder deletes its icons with it, per
 "an app is a folder" above.
 

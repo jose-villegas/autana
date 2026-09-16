@@ -237,9 +237,8 @@ run says whether the largest contiguous block a device-only allocation
 needs still exists after the addition. Diff `.bss`/`.data` size for
 **every** build variant, not just release; trust
 `heap_caps_get_largest_free_block()` over "total free heap." This class is
-now caught mechanically: `launcher/tools/check_static_ram.py` predicts the
-largest contiguous block from every build's map file and fails `idf.py
-build` if the framebuffer or a real-size grid would no longer fit.
+must be caught by inspecting the map file's largest contiguous block before a
+firmware image is accepted.
 
 When checking memory live rather than at link time, compare
 `heap_caps_get_largest_free_block(MALLOC_CAP_DMA)` only against
@@ -276,6 +275,21 @@ neighbour, not just a magnitude one. Don't retire a candidate that
 demonstrably removes executed work on the strength of a host measurement
 reading zero; that reading means the host's own execution model hides
 the cost, not that the work was free.
+
+---
+
+## A cycle count is bound to its ISA, not just its clock
+
+A disassembly-derived cycle count is read off one instruction set's codegen
+shapes. This project's own move to the ESP32-S3 carried a full set of
+cycle counts forward from the RISC-V board it replaced, and every one
+stopped applying — not because the optimization was wrong, but because
+Xtensa's PC-relative literal loads, shift-add addressing and windowed
+calls are different codegen entirely from a flat RISC-V ABI. The
+*mechanism* an optimization rests on ("skip the read entirely") can still
+hold across the swap; the *cycle number* that backed it cannot, and has to
+be re-derived from a fresh disassembly on the new target before it is
+quoted again.
 
 ---
 
