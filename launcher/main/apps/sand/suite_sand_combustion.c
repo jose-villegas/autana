@@ -605,6 +605,59 @@ test_a_confined_gas_pocket_bursts_instead_of_just_catching(void) {
 }
 
 static void
+test_confined_gas_blasts_chain_without_losing_a_pocket(void) {
+    enum { CELL_COUNT = 6, CELL_SPACING = 40, CW = CELL_COUNT * CELL_SPACING, CH = 5 };
+
+    uint8_t* cells = calloc(CW * CH, 1);
+    impulse_t* impulses = malloc((size_t)(CW * CH) * sizeof *impulses);
+    TEST_ASSERT_NOT_NULL(cells);
+    TEST_ASSERT_NOT_NULL(impulses);
+
+    sand_t chain;
+    sand_init(&chain, cells, CW, CH, 29u);
+    sand_set_mobility(&chain, 0);
+    sand_enable_impulses(&chain, impulses, CW * CH);
+
+    for (int i = 0; i < CELL_COUNT; i++) {
+        const int x = 10 + i * CELL_SPACING;
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                if (dx != 0 || dy != 0) {
+                    sand_set(&chain, x + dx, 2 + dy, STONE);
+                }
+            }
+        }
+        sand_set(&chain, x - 1, 2, FIRE);
+        sand_set(&chain, x, 2, GAS);
+    }
+
+    int completed_step = 0;
+    for (int step = 1; step <= CELL_COUNT; step++) {
+        sand_step(&chain, 0, 1000, 0);
+        TEST_ASSERT_LESS_OR_EQUAL_UINT_MESSAGE(4, chain.explosions_this_step,
+                                               "confined pockets must wait for a later step once the burst cap fills");
+        int remaining = 0;
+        for (int y = 0; y < CH; y++) {
+            for (int x = 0; x < CW; x++) {
+                remaining += CELL_MATERIAL(sand_at(&chain, x, y)) == MAT_GAS;
+            }
+        }
+        if (remaining == 0) {
+            completed_step = step;
+            break;
+        }
+    }
+
+    free(impulses);
+    free(cells);
+
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(1, completed_step,
+                                         "more pockets than the cap must not all detonate in one reaction pass");
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(CELL_COUNT, completed_step,
+                                          "each confined pocket must remain ignitable until it has burst");
+}
+
+static void
 test_an_open_gas_pocket_still_just_catches_fire(void) {
     fixture();
     impulse_t* confined_gas_impulse_buf = malloc((size_t)(W * H) * sizeof *confined_gas_impulse_buf);
@@ -2208,6 +2261,7 @@ run_sand_combustion_suite(void) {
     RUN_TEST(test_tilted_equalise_still_spreads_a_packed_row_under_the_sight_bound);
     RUN_TEST(test_fire_ignites_an_adjacent_flammable_neighbour);
     RUN_TEST(test_a_confined_gas_pocket_bursts_instead_of_just_catching);
+    RUN_TEST(test_confined_gas_blasts_chain_without_losing_a_pocket);
     RUN_TEST(test_an_open_gas_pocket_still_just_catches_fire);
     RUN_TEST(test_extinguishing_wins_over_igniting);
     RUN_TEST(test_fire_burns_out_and_disappears_over_time);
