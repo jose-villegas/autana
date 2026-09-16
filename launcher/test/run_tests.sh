@@ -56,6 +56,8 @@ CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -g -O1"
 . "$TEST_DIR/../tools/device_profile.sh"
 device_profile_load "" "$TEST_DIR/../tools/device_profiles" || exit 1
 HOST_HEAP_ARENA_BYTES=$(device_profile_require DP_FREE_HEAP_BYTES) || exit 1
+HOST_HEAP_ARENA_PSRAM_BYTES=$(device_profile_require DP_PSRAM_BYTES) || exit 1
+HOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES=$(device_profile_require DP_SPIRAM_ALWAYSINTERNAL_BYTES) || exit 1
 
 # The shell's own portable units and their suites. Hardware suites are absent
 # by design - suite_gfx.c would not compile here, which is the point.
@@ -104,6 +106,7 @@ $TEST_DIR/suites/suite_screenshot.c
 $TEST_DIR/suites/suite_build_id.c
 $TEST_DIR/suites/suite_device_state.c
 $TEST_DIR/suites/suite_job.c
+$TEST_DIR/suites/suite_heap_caps.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/gesture.c
 $MAIN_DIR/input/button_fsm.c
@@ -208,6 +211,8 @@ UNITY_OBJ="$BUILD_DIR/unity.o"
     -I "$TEST_DIR/../components/microui/include" \
     -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
     -DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES="$HOST_HEAP_ARENA_BYTES" \
+    -DHOST_HEAP_ARENA_PSRAM_BYTES="$HOST_HEAP_ARENA_PSRAM_BYTES" \
+    -DHOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES="$HOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES" \
     $SOURCES "$UNITY_OBJ" -o "$OUT" \
     -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm
 
