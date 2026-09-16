@@ -400,13 +400,12 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
         return;
     }
 
-    /* HELD, not a plain press: app_sand.c's own sand_ui_step() already
-     * reads a short PWR press to open its brush screen, and stealing it
-     * here would silence that everywhere else in this shell too. `held`
-     * fires from the PMU's own separate long-press interrupt (buttons.h),
-     * so the two are independent presses, not the same edge read twice.
-     * Checked before frame() runs, so the app never sees the hold that
-     * just exited it. */
+    /* HELD, not a plain press: an app may read a short PWR press itself for
+     * its own purposes, and stealing it here would silence that everywhere
+     * else in this shell too. `held` fires from the PMU's own separate
+     * long-press interrupt (buttons.h), so the two are independent presses,
+     * not the same edge read twice. Checked before frame() runs, so the app
+     * never sees the hold that just exited it. */
     if (!(*current)->home_gesture && input->power.held) {
         leave_app(current, input, exit_edge);
         return;
