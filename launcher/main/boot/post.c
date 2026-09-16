@@ -6,7 +6,6 @@
 
 #include "bsp/esp-bsp.h"
 #include "driver/i2c_master.h"
-#include "driver/temperature_sensor.h"
 #include "esp_chip_info.h"
 #include "esp_flash.h"
 #include "esp_heap_caps.h"
@@ -18,6 +17,7 @@
 
 #include "board/board.h"
 #include "gfx/gfx.h"
+#include "util/device_state.h"
 
 static const char* TAG = "post";
 
@@ -216,20 +216,8 @@ check_mac(void) {
 
 static void
 check_temperature(void) {
-    temperature_sensor_handle_t sensor = NULL;
-    temperature_sensor_config_t cfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(-10, 80);
-
-    if (temperature_sensor_install(&cfg, &sensor) != ESP_OK) {
-        report("temp sensor", false, POST_REQUIRED, "install failed");
-        return;
-    }
-
     float celsius = 0.0f;
-    const bool ok =
-        temperature_sensor_enable(sensor) == ESP_OK && temperature_sensor_get_celsius(sensor, &celsius) == ESP_OK;
-
-    temperature_sensor_disable(sensor);
-    temperature_sensor_uninstall(sensor);
+    const bool ok = temp_sensor_read_celsius(&celsius);
 
     char detail[96];
     snprintf(detail, sizeof(detail), "%.1f C", celsius);

@@ -49,6 +49,12 @@ typedef struct {
  * screenshot_dump()'s. */
 void device_state_read(device_state_t* out);
 
+/* The on-die temperature sensor's own one-shot install/enable/read/
+ * disable/uninstall cycle, shared with boot/post.c's POST check - not for
+ * every frame, fine for an occasional read either caller is for. False
+ * leaves *out_celsius untouched. */
+bool temp_sensor_read_celsius(float* out_celsius);
+
 /* Large enough for every field at its worst-case width (a full int64_t
  * uptime, both heap counters at UINT32_MAX, the IMU's six int16_t axes all
  * at their most negative, touch/button booleans and coordinates) with
