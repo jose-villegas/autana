@@ -34,6 +34,11 @@
 
 static const char* TAG = "device_tests";
 
+/* Regression ceilings are worst + max(spread, 2% of worst) across three
+ * fresh-boot S3 portrait SELFTEST captures on 2026-09-16, build
+ * 982ee5662f25-diag. Shipping landscape costs 17-37% more; these pegs do not
+ * cover that orientation. */
+
 /* gfx owns global hardware state and is already initialised by the time this
  * runs - the shipped firmware brings the display up before self-testing. Tests
  * may leave the framebuffer in any state, but must not deinitialise it, and
@@ -728,12 +733,7 @@ test_present_completes(void) {
                                          "present returned implausibly fast - did it actually wait for the DMA?");
     TEST_ASSERT_LESS_THAN_INT(500000, (int)elapsed_us);
 
-    /* A full seven-band frame measured between 18,094 and 18,444 us across
-     * four device captures, under 2% apart. 19,500 leaves about 5.7% over
-     * the observed maximum - past scheduling jitter, still tight enough to
-     * catch the bus clock regressing or the bands dropping out of
-     * pipelining. */
-    perf_guard("full-frame present", elapsed_us, 19500);
+    perf_guard("full-frame present", elapsed_us, 10765);
 }
 
 void
@@ -1145,11 +1145,9 @@ test_a_near_budget_split_crosses_the_gather_threshold(void) {
     ESP_LOGI(TAG, "present: full band %lld us, near-budget split %lld us", (long long)full_band,
              (long long)near_budget);
 
-    /* No ratio on purpose: whether gathering at this size helps is the open
-     * question a sweep of GATHER_MAX_PIXELS is for. 1,671/1,800/1,715/1,754
-     * us across four captures, a 7.7% spread - two independent sends, so
-     * wider than the single-piece gathers above; 2,050 leaves ~14% over. */
-    perf_guard("near-budget split", near_budget, 2050);
+    /* No ratio: whether gathering at this size helps is the open question a
+     * sweep of GATHER_MAX_PIXELS is for. */
+    perf_guard("near-budget split", near_budget, 2064);
 }
 
 /* Two small marks inside the SAME 92px cell, far enough apart to leave a
@@ -1194,12 +1192,7 @@ test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
                                   "two small marks separated by a real gap inside one cell must cost "
                                   "less than sending the coarse box spanning both");
 
-    /* 1,958 / 1,960 / 1,959 / 1,959 us across four captures - a 0.1%
-     * spread, the same shape as two-far-corners above and for the same
-     * reason: two independent gather-and-waits, DMA-dominated, with little
-     * room for copy-side jitter. 2,050 us leaves about 4.6% over the
-     * observed maximum, tight to match. */
-    perf_guard("two marks in one cell", two_marks, 2050);
+    perf_guard("two marks in one cell", two_marks, 2976);
 }
 
 static void
