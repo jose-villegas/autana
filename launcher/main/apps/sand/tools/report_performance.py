@@ -33,13 +33,13 @@ from datetime import datetime, timezone
 # function's closing brace per line, blank line, next function).
 DEVICE_BUILD_RE = re.compile(r"#ifdef DEVICE_BUILD(.*?)#endif\s*/\*\s*DEVICE_BUILD", re.DOTALL)
 FUNC_RE = re.compile(
-    r"static void (test_\w+)\(void\)\s*\{(.*?)\n\}",
+    r"static void\s+(test_\w+)\(void\)\s*\{(.*?)\n\}",
     re.DOTALL,
 )
 BUDGET_RE = re.compile(r"TEST_ASSERT_LESS_THAN_MESSAGE\(\s*(\w+)\s*,")
 DEFINE_RE = re.compile(r"#define\s+(\w+)\s+(\d+)")
 
-RESULT_RE = re.compile(r"^\S+:\d+:(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
+RESULT_RE = re.compile(r"^\S*:\d+:(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
 
 # A separate line - not part of the result line above - emitted by
 # test/timing.c for every test, on both host and device. Kept separate on
