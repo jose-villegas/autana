@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 # "<file>:<line>:<test_name>:FAIL: <message>". Only lines that end in
 # :PASS or :FAIL(: ...) are test results - everything else in the capture
 # (boot log, ESP_LOGI lines) is noise for this report.
-RESULT_RE = re.compile(r"^(?P<file>\S+):(?P<line>\d+):(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
+RESULT_RE = re.compile(r"^(?P<file>\S*):(?P<line>\d+):(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
 COMPLETE_RE = re.compile(r"SELFTEST_COMPLETE failures=(\d+) elapsed_ms=(\d+)")
 
 
