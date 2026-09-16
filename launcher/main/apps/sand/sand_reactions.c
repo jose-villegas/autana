@@ -1006,15 +1006,19 @@ crust_faces(const sand_t* s, int x, int y, int w, int h, uint8_t mine, uint8_t b
  *
  * The stagger multipliers differ per path so the two do not come due
  * together. */
-#define CRUST_SEED_PERIOD            4
-#define CRUST_WIDEN_PERIOD           8
+#define CRUST_SEED_PERIOD             4
+#define CRUST_WIDEN_PERIOD            8
+
+/* Bounds burst cost per frame while retaining a paced chain. */
+#define SAND_GUNPOWDER_BLAST_COOLDOWN 8
+#define SAND_CONFINED_BLASTS_PER_STEP 4
 
 /* Fixed blast radius. Cascade ignition simulates lid giving way. Tune on
  * device. */
-#define SAND_GAS_IGNITE_BLAST_RADIUS 8
+#define SAND_GAS_IGNITE_BLAST_RADIUS  8
 
 /* Shift for simplicity and reliability. */
-#define SAND_DAMP_IGNITION_SHIFT     2
+#define SAND_DAMP_IGNITION_SHIFT      2
 
 /* Checks GAS confinement by KIND_STATIC neighbours. Off-grid not considered a
  * wall. Avoids flood fill. */
@@ -1032,6 +1036,11 @@ gas_ignite_confined(const sand_t* s, int x, int y, int w, int h) {
         }
     }
     return false;
+}
+
+static inline bool
+confined_blast_available(const sand_t* s) {
+    return s->confined_blasts_this_step < SAND_CONFINED_BLASTS_PER_STEP;
 }
 
 static inline bool
@@ -1068,6 +1077,10 @@ try_ignite_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cell_t n) {
         return false;
     }
     if (s->impulse_buf != NULL && material_of(n)->kind == KIND_GAS && gas_ignite_confined(s, nx, ny, w, h)) {
+        if (!confined_blast_available(s)) {
+            return false;
+        }
+        s->confined_blasts_this_step++;
         sand_explode(s, nx, ny, SAND_GAS_IGNITE_BLAST_RADIUS);
         return true;
     }
@@ -1473,9 +1486,6 @@ spend_lit_two_by_two(sand_t* s, int x, int y, int w, int dx, int dy) {
     }
 }
 
-/* BOUNDS BURST COST PER FRAME; CADENCE OF DETONATIONS. BOARD-WIDE. */
-#define SAND_GUNPOWDER_BLAST_COOLDOWN 8
-
 /* grain/rx/plan/row_at are the caller's: the dispatch loop already loaded
  * row[x] and indexed the per-material row to pick the stage, and row is
  * s->cells + y*w. Re-deriving them here cost a reload, the MAT_EXTENDED
@@ -1605,7 +1615,7 @@ step_one_burning_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cell_
     /* See test_buried_lava_still_becomes_stone_with_impulses_off,
      * suite_sand_lava_burial.c */
     const bool is_lava = (plan_flags & BURN_LAVA) != 0;
-    if (is_lava) {
+    if (is_lava && confined_blast_available(s)) {
         /* Test at 255 means 'fire on every cell'; 1-in-N complicates testing. */
         const bool burst_natural = s->lava_burst < 0;
         const int burst_chance = burst_natural ? SAND_LAVA_BURST_CHANCE : s->lava_burst;
@@ -1613,6 +1623,7 @@ step_one_burning_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cell_
             && (!burst_natural || (rng_next(&s->rng) % SAND_LAVA_BURST_GATE) == 0)
             && covered_at(s, x, y, w, h, mat->density)) {
             place_reacted(s, x, y, at, rx->quench_to);
+            s->confined_blasts_this_step++;
             sand_explode(s, x, y, SAND_LAVA_BURST_RADIUS);
             return true;
         }
@@ -1651,6 +1662,10 @@ step_one_burning_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cell_
         const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
         const cell_t n = s->cells[nat];
         if (CELL_IS_EMPTY(n)) {
+            continue;
+        }
+        if (s->impulse_buf != NULL && material_of(n)->kind == KIND_GAS && gas_ignite_confined(s, nx, ny, w, h)
+            && !confined_blast_available(s)) {
             continue;
         }
         const uint8_t pair = my_pair_row[CELL_MATERIAL(n)];
