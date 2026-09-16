@@ -9,46 +9,60 @@ fixed threshold.
 ## The compilation database
 
 clang-tidy needs real include paths and defines to parse a file. The gate
-gets these from `launcher/test/run_tests.sh --print-sources` and
-`--print-flags`, which report the exact file list and flags that script
-compiles for the host test build, and turns them into a
-`compile_commands.json` under `launcher/build.tidy/` (gitignored,
-regenerated on every run). Deriving the database from `run_tests.sh`
-itself, rather than keeping a second copy of its file list, is what keeps
-the gate's coverage identical to the host build's: whatever `run_tests.sh`
-compiles is what the gate measures, with nothing to fall out of step.
+builds one `compile_commands.json` (under `launcher/build.tidy/`,
+gitignored, regenerated on every run) from two sources, merged with no
+file counted twice:
 
-**Measured** - every file in `run_tests.sh`'s own source list, minus
-vendored code: the shell's portable modules (`input/`, `display/`, parts
-of `util/` and `ui/`), every app's non-hardware logic (`sand.c`,
-`sand_liquid.c`, `sand_reactions.c`, `sand_plants.c`, `sand_impulse.c`,
-`material_palette.c`, cube's and diagnostics' portable files, ...), and
-this project's own test suites (`test/suites/*.c`, each app's
-`suite_*.c`).
+- **The diagnostics build's own database**,
+  `launcher/build.diag/compile_commands.json` - real esp32s3 flags,
+  restricted to `launcher/main/` and `launcher/test/`. This is what
+  reaches hardware-facing files: `app_sand.c`, `app_cube.c`,
+  `app_diagnostics.c`, `main.c`, `gfx/gfx.c`, `ui/ui.c`,
+  `ui/ui_launcher.c`, `board/board_esp32s3.c`, `boot/*.c`,
+  `input/buttons.c`, `input/imu.c`, `input/touch.c`,
+  `util/device_state.c`, `util/screenshot.c`, and every on-device test
+  suite. esp-clang does not recognise three GCC-only Xtensa flags in that
+  database (stripped) and has no bundled libc for the target (given
+  `--sysroot`/`--gcc-toolchain` pointing at the same `xtensa-esp-elf` GCC
+  install ESP-IDF itself uses, found under
+  `~/.espressif/tools/xtensa-esp-elf/`).
+- **`launcher/test/run_tests.sh --print-sources`/`--print-flags`** - the
+  same host-portable file list and flags that script proves compile,
+  used for whatever the diagnostics database does not contain: the
+  host-only test-runner files (`host_main.c`, `heap_arena.c`) and
+  `gfx/gfx_palette_standard.c`. esp-clang's own default target has no
+  usable libc either, so these get the same `--sysroot`/`--gcc-toolchain`
+  treatment against the host compiler `tools/find_cc.sh` resolves -
+  never a second, independently-guessed compiler.
+- **`apps/*/tools/*.c`** (sweep and report scripts, excluded from the
+  firmware and the host build alike by long-standing convention) get the
+  host route's flags plus one additional include path for their sibling
+  headers, since each already has its own working host compile line in a
+  `report_*.sh` beside it.
 
-**Not measured** - anything that cannot compile for a host at all:
+**Coverage is a checked rule, not a description.** Every `.c` file under
+`launcher/main/` is walked directly from the filesystem, independent of
+either database, and compared against what was actually measured. A file
+neither source reaches, and that is not below, fails the gate by name:
 
-- every app's hardware-facing entry point: `app_sand.c`, `app_cube.c`,
-  `app_diagnostics.c`
-- the shell's own hardware-facing files: `main.c`, `gfx/gfx.c`,
-  `ui/ui.c`, `ui/ui_launcher.c`, `board/board_esp32s3.c`,
-  `boot/boot_anim.c`, `boot/post.c`, `boot/post_ui.c`, `boot/selftest.c`,
-  `input/buttons.c`, `input/imu.c`, `input/touch.c`, `util/device_state.c`,
-  `util/screenshot.c`
-- `apps/*/tools/` sweep and report scripts - excluded by the same
-  convention `main/CMakeLists.txt` and `run_tests.sh` already use
-- vendored code (`launcher/components/`, and the vendored Unity under
-  `test/framework/`) - a ratchet on this project's own functions has
-  nothing to say about code it did not write
-- a `static inline` helper defined only in a shared header (for example
-  `sand_priv.h`'s `dest_row()`/`mark_rows()`) - clang-tidy's default scope
-  is the file actually being compiled, not headers it pulls in, so a
-  function that only ever lives in a header is invisible to this gate
+| File | Why it is excluded |
+|---|---|
+| `main/apps/sand/tools/crossflow_bench.c` | uses C11 `timespec_get()`/`TIME_UTC`; esp-clang does not expose them under this project's `-std=c11` with the host route's headers, unrelated to the Xtensa target - host gcc compiles it fine (`report_crossflow.sh`) |
+
+Vendored code (`launcher/components/`, `managed_components/`, and the
+vendored Unity under `test/framework/`) is out of scope entirely - a
+ratchet on this project's own functions has nothing to say about code it
+did not write - and is never a source of a coverage gap, since it sits
+outside `launcher/main/`. A `static inline` helper defined only in a
+shared header (for example `sand_priv.h`'s `dest_row()`/`mark_rows()`) is
+still invisible to this gate: clang-tidy's default scope is the file
+actually being compiled, not headers it pulls in.
 
 The gate fails loudly rather than passing quietly past a measurement gap:
-a scan that finds zero functions, or (on a full scan) fewer than half the
-baseline's function count, fails immediately instead of being reported as
-a clean result.
+a scan that finds zero functions, one that finds fewer than half the
+baseline's function count, an unexcluded gap under `launcher/main/`, or
+any `clang-diagnostic-error` (a partial parse can hide functions) all
+fail the run immediately instead of being reported as clean.
 
 ## A ratchet, not a threshold
 
@@ -76,18 +90,24 @@ something above it grew is not treated as a complexity change:
 
 ## Using it
 
+Needs a diagnostics build first - `launcher/build.diag/compile_commands.json`
+is one of the gate's two sources, and a missing one fails with a message
+saying so rather than a stack trace:
+
 ```sh
-python launcher/tools/complexity_gate.py                       # the ratchet (CI default)
-python launcher/tools/complexity_gate.py --update-baseline     # record today's scores on purpose
-python launcher/tools/complexity_gate.py --changed origin/main # only files that changed - fast, local
+./launcher/tools/build_diag_check.sh                            # once, several minutes
+python launcher/tools/complexity_gate.py                        # the ratchet
+python launcher/tools/complexity_gate.py --update-baseline      # record today's scores on purpose
+python launcher/tools/complexity_gate.py --changed origin/main  # only files that changed - still needs the build above
 ```
 
-Wired into CI in `.github/workflows/comment-rules.yml` as its own job (a
-real clang-tidy pass over the whole measured set runs tens of seconds, not
-the sub-second cost of the comment and doc checks beside it) - not into
-the pre-commit hook, which has to stay fast enough to run on every commit.
-`--changed` is the fast path for local use instead: point it at whatever
-ref the branch forked from.
+Wired into CI as a step in `.github/workflows/build-diagnostics.yml`,
+right after that job's own diagnostics build - the compile database it
+depends on is that build's output, and a job in a different workflow file
+cannot see another workflow run's checkout, so the gate cannot live
+anywhere else. Not the pre-commit hook, which has to stay fast enough to
+run on every commit. `--changed` is the fast path for local use instead:
+point it at whatever ref the branch forked from.
 
 clang-tidy is pinned to major 19, resolved the same way
 `scripts/check-format.sh` resolves clang-format: `$CLANG_TIDY` if set,
