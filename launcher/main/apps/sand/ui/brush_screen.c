@@ -191,9 +191,8 @@ brush_screen_size_caption(brush_screen_segment_t seg) {
 }
 
 /* mu_Color from a 0xRRGGBB value, opaque - kept as this file's own copy
- * rather than shared; see app_diagnostics.c's ORIENTATION_GRAVITY_X/Y
- * comment for why a small, independent copy like this is not worth a
- * shared header of its own. */
+ * rather than shared, since a copy this small is not worth a shared
+ * header of its own. */
 static mu_Color
 mu_color_hex(uint32_t rgb) {
     return mu_color((int)((rgb >> 16) & 0xFF), (int)((rgb >> 8) & 0xFF), (int)(rgb & 0xFF), 255);

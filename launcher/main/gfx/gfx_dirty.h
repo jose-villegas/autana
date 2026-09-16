@@ -34,6 +34,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "util/intmath.h"
+
 /* Mirrors gfx.h's GFX_WIDTH/GFX_HEIGHT (BSP_LCD_H_RES/V_RES) as plain
  * literals - this module must stay free of ESP-IDF/BSP headers to compile
  * on a host. gfx.c carries a _Static_assert tying these back together, so
@@ -178,6 +180,18 @@ dirty_leaf_rects(int row, int x0, int y0, int x1, int y1, dirty_leaf_rect_t* out
     return n;
 }
 
+/* Cell `idx`'s full [x0,x1)x[y0,y1) extent from its own (row, col) - the
+ * inner step mark_band() and dirty_mark_all() share when marking a whole
+ * band or the whole grid, as opposed to dirty_mark()'s narrower per-call
+ * extent below. */
+static inline void
+set_cell_full_extent(int idx, int row, int col) {
+    cell_x0[idx] = col * COL_WIDTH;
+    cell_x1[idx] = (col + 1) * COL_WIDTH;
+    cell_y0[idx] = row * STRIP_HEIGHT;
+    cell_y1[idx] = (row + 1) * STRIP_HEIGHT;
+}
+
 /* Marks every cell spanned by an ALREADY-CLIPPED row range, full width
  * and full strip height - mark_band() gets no x information at all, so
  * every column in the affected rows has to be assumed dirty across its
@@ -197,10 +211,7 @@ mark_band(int y0, int y1) {
         for (int col = 0; col < GRID_COLS; col++) {
             const int idx = row * GRID_COLS + col;
             cell_dirty |= (1u << idx);
-            cell_x0[idx] = col * COL_WIDTH;
-            cell_x1[idx] = (col + 1) * COL_WIDTH;
-            cell_y0[idx] = row * STRIP_HEIGHT;
-            cell_y1[idx] = (row + 1) * STRIP_HEIGHT;
+            set_cell_full_extent(idx, row, col);
         }
     }
 }
@@ -217,11 +228,7 @@ dirty_mark_all(void) {
     cell_dirty = (CELL_COUNT >= 32) ? 0xFFFFFFFFu : (1u << CELL_COUNT) - 1u;
     for (int row = 0; row < STRIP_COUNT; row++) {
         for (int col = 0; col < GRID_COLS; col++) {
-            const int idx = row * GRID_COLS + col;
-            cell_x0[idx] = col * COL_WIDTH;
-            cell_x1[idx] = (col + 1) * COL_WIDTH;
-            cell_y0[idx] = row * STRIP_HEIGHT;
-            cell_y1[idx] = (row + 1) * STRIP_HEIGHT;
+            set_cell_full_extent(row * GRID_COLS + col, row, col);
         }
     }
 }
@@ -348,20 +355,6 @@ dirty_row_is_dirty(int row) {
     return (cell_dirty >> (row * GRID_COLS)) & ((1u << GRID_COLS) - 1u);
 }
 
-/* Rounds down/up to an even coordinate - the panel controller only takes a
- * window on even edges (gfx.c's own even_floor()/even_ceil(), duplicated
- * here rather than shared across a device-only boundary: this file has no
- * ESP-IDF dependency and gfx.c's copies are file-static). */
-static inline int
-dirty_even_floor(int v) {
-    return v & ~1;
-}
-
-static inline int
-dirty_even_ceil(int v) {
-    return (v + 1) & ~1;
-}
-
 /* Band mode's own "does this row range need touching" query: true if any
  * cell overlapping [y0, y1) is dirty, with out_x0 and out_x1 the union of
  * those cells' own (already-narrowed, see dirty_mark()) x-extents, rounded
@@ -399,8 +392,8 @@ dirty_band_extent(int y0, int y1, int* out_x0, int* out_x1) {
         return false;
     }
 
-    x0 = dirty_even_floor(x0);
-    x1 = dirty_even_ceil(x1);
+    x0 = even_floor(x0);
+    x1 = even_ceil(x1);
     *out_x0 = x0 < 0 ? 0 : x0;
     *out_x1 = x1 > GFX_DIRTY_WIDTH ? GFX_DIRTY_WIDTH : x1;
     return true;

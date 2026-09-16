@@ -22,8 +22,8 @@
 
 /* The grid row a panel row belongs to, and the reverse: the first/last
  * panel row a grid row occupies. `cell_size` need not divide the panel's
- * own height evenly (app_sand.c's own margin, see its top comment) - these
- * floor/ceil consistently rather than assume it does. */
+ * own height evenly - a caller may reserve a margin below the grid's own
+ * rows - these floor/ceil consistently rather than assume it does. */
 static inline int
 gfx_indexed_panel_row_to_grid_row(int panel_row, int cell_size) {
     return panel_row / cell_size;
@@ -36,10 +36,10 @@ gfx_indexed_grid_row_to_panel_row(int grid_row, int cell_size) {
 
 /* Expands one panel output row from a row of palette-index bytes: pixel x
  * reads `grid_row[x / cell_size]`, looked up in `lut`. `grid_row` may be
- * NULL - a panel row past the grid's own height, the margin app_sand.c's
- * own top comment documents for the RGB565 path - in which case the whole
- * row reads `lut[0]`, the reserved UI/background entry. `out_width` may
- * exceed `grid_w * cell_size`; the remainder past the grid's own width is
+ * NULL - a panel row past the grid's own height, such as a margin a caller
+ * reserves below its grid - in which case the whole row reads `lut[0]`,
+ * the reserved UI/background entry. `out_width` may exceed
+ * `grid_w * cell_size`; the remainder past the grid's own width is
  * `lut[0]` too, the same margin on the other axis. */
 static inline void
 gfx_indexed_expand_row(const uint8_t* grid_row, int grid_w, const gfx_color_t lut[GFX_INDEXED_PALETTE_SIZE],
@@ -59,8 +59,8 @@ gfx_indexed_expand_row(const uint8_t* grid_row, int grid_w, const gfx_color_t lu
 /* One entry per (palette index, Bayer phase): the RGB565 colour that
  * index's dither against the shared 16-colour table resolves to at panel
  * position (x, y), keyed by `index * 16 + (y & 3) * 4 + (x & 3)` - built
- * once, offline (see sand_palette256.h), so expansion never calls
- * gfx_dither_covers() itself. 256 * 16 * 2 bytes = 8 KiB flat. */
+ * once offline, so expansion never calls gfx_dither_covers() itself.
+ * 256 * 16 * 2 bytes = 8 KiB flat. */
 #define GFX_INDEXED_DITHER16_PHASES 16
 
 /* Same as gfx_indexed_expand_row(), but every pixel is one lookup into a
@@ -126,8 +126,8 @@ gfx_indexed_dither16_classify(const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE
  * a send: always, by raw index, when `dither16_on` is false (256 mode, no
  * further quantizing to exploit); by dither CLASS when it is true (16
  * mode) - see gfx_indexed_dither16_classify()'s own comment for why that
- * is exact, not an approximation. The one decision app_sand.c's
- * paint_row_n() makes per cell under GFX_PIXFMT_INDEXED8. */
+ * is exact, not an approximation. The one decision an indexed-mode row
+ * painter makes per cell under GFX_PIXFMT_INDEXED8. */
 static inline bool
 gfx_indexed_cell_changed(uint8_t old_idx, uint8_t new_idx, bool dither16_on,
                          const uint8_t dither_class[GFX_INDEXED_PALETTE_SIZE]) {
@@ -208,10 +208,10 @@ gfx_indexed_cell_dither_changed(uint8_t old_idx, uint8_t new_idx, const gfx_colo
     return cell_table[(int)old_idx * phases + phase] != cell_table[(int)new_idx * phases + phase];
 }
 
-/* Which rule paint_row_n()'s hot loop resolves to, decided once per
- * indexed-mode entry - never per cell, and never by a runtime dither16_on/
- * dither_mode pair re-examined on every visit the way the two hand-written
- * callers (app_sand.c, suite_sand_colour_modes.c) once each did. RAW is 256
+/* Which rule an indexed-mode row painter's hot loop resolves to, decided
+ * once per indexed-mode entry - never per cell, and never by a runtime
+ * dither16_on/dither_mode pair re-examined on every visit the way each
+ * hand-written caller once did. RAW is 256
  * mode; CLASS covers NONE and the two PIXEL modes, all a single 256-entry
  * lookup; the two CELL kinds carry their own phase formula and never touch
  * a class table at all. */

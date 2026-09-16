@@ -43,3 +43,15 @@ im_len(int x, int y) {
 
     return hi + (lo * 2) / 5;
 }
+
+/* Rounds down/up to an even coordinate - the panel controller only takes a
+ * window on even edges. */
+static inline int
+even_floor(int v) {
+    return v & ~1;
+}
+
+static inline int
+even_ceil(int v) {
+    return (v + 1) & ~1;
+}

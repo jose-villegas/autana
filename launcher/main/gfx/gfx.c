@@ -209,16 +209,6 @@ _Static_assert(GFX_WIDTH % 2 == 0 && GFX_HEIGHT % 2 == 0, "panel windows round t
 #define STRIP_BOUNCE_SLOTS       2
 static gfx_color_t* strip_bounce[STRIP_BOUNCE_SLOTS];
 static int strip_bounce_next;
-
-static inline int
-even_floor(int v) {
-    return v & ~1;
-}
-
-static inline int
-even_ceil(int v) {
-    return (v + 1) & ~1;
-}
 #endif
 
 /*

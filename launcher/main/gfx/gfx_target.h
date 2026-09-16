@@ -55,9 +55,9 @@ gfx_target_row(gfx_target_t target, int y) {
 
 /* True if a shape whose own row extent is [y0, y1) has anything at all to
  * draw into this target - the check a caller decides whether to bother
- * drawing with, before paying for the call: app_cube.c's per-band triangle
- * bin and ui.c's per-band command replay both use this to skip work
- * outside the current band rather than discover it clips to nothing. */
+ * drawing with, before paying for the call: a per-band triangle bin and
+ * ui.c's per-band command replay both use this to skip work outside the
+ * current band rather than discover it clips to nothing. */
 static inline bool
 gfx_target_row_range_overlaps(gfx_target_t target, int y0, int y1) {
     return y0 < target.y0 + target.height && y1 > target.y0;

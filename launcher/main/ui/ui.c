@@ -72,6 +72,21 @@ icon_fill_emit(void* ctx_, int x, int y, int w, int h) {
     gfx_fill_rect(x, y, w, h, fc->color);
 }
 
+/* microui colour to the panel's own, alpha dropped - a style works in
+ * microui's colour space and never sees a panel pixel; this is the one
+ * place a command's colour crosses into gfx's. */
+static gfx_color_t
+mu_color_to_gfx(mu_Color c) {
+    return gfx_rgb(((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b);
+}
+
+/* The inverse, opaque - for a caller that only has a packed 0xRRGGBB and
+ * needs an mu_Color to hand to a fill helper. */
+static mu_Color
+mu_color_from_rgb(uint32_t rgb) {
+    return mu_color((int)((rgb >> 16) & 0xFF), (int)((rgb >> 8) & 0xFF), (int)(rgb & 0xFF), 255);
+}
+
 static void
 draw_command(const mu_Command* cmd) {
     const ui_transform_t t = ui_effective_transform();
@@ -86,7 +101,7 @@ draw_command(const mu_Command* cmd) {
                 break;
             }
             const mu_Rect r = ui_transform_rect(t, cmd->rect.rect);
-            gfx_fill_rect(r.x, r.y, r.w, r.h, gfx_rgb(((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b));
+            gfx_fill_rect(r.x, r.y, r.w, r.h, mu_color_to_gfx(c));
             break;
         }
 
@@ -125,8 +140,8 @@ draw_command(const mu_Command* cmd) {
                 /* gfx_text_font_halo() draws the same halo ui_text_passes()'s
                  * 8 unit-offset copies would, in one pass instead of eight -
                  * see its own comment. Ink is still drawn last, unchanged. */
-                const gfx_color_t halo_color = gfx_rgb(((uint32_t)halo.r << 16) | ((uint32_t)halo.g << 8) | halo.b);
-                const gfx_color_t ink_color = gfx_rgb(((uint32_t)ink.r << 16) | ((uint32_t)ink.g << 8) | ink.b);
+                const gfx_color_t halo_color = mu_color_to_gfx(halo);
+                const gfx_color_t ink_color = mu_color_to_gfx(ink);
                 gfx_text_font_halo(mx, my, cmd->text.str, halo_color, scale, quarter, font);
                 gfx_text_font(mx, my, cmd->text.str, ink_color, scale, quarter, font);
                 break;
@@ -136,7 +151,7 @@ draw_command(const mu_Command* cmd) {
             const int n = ui_text_passes(text_style, passes, UI_TEXT_MAX_PASSES);
             for (int i = 0; i < n; i++) {
                 const mu_Color c = passes[i].ink ? ink : halo;
-                const gfx_color_t color = gfx_rgb(((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b);
+                const gfx_color_t color = mu_color_to_gfx(c);
 
                 /* THE HALO OFFSET IS ADDED AFTER THE MAPPING, NOT BEFORE.
              * passes[i].dx/dy is a SCREEN-SPACE offset - see ui_style.h's
@@ -161,7 +176,7 @@ draw_command(const mu_Command* cmd) {
          * an oversight, because nothing in this shell closes a window or
          * collapses a tree yet to ask for them. */
             const mu_Color c = cmd->icon.color;
-            const gfx_color_t color = gfx_rgb(((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b);
+            const gfx_color_t color = mu_color_to_gfx(c);
             if (cmd->icon.id == MU_ICON_CHECK) {
                 const icon_t* icon = &icon_system_table[ICON_SYSTEM_CHECK];
                 icon_fill_ctx_t fc = {.color = color};
@@ -330,8 +345,8 @@ ui_end(uint32_t background_rgb) {
  * Band mode has no framebuffer to hash against, so ui_end()'s whole
  * changed/unchanged question does not apply - every band redraws every
  * frame regardless. What DOES matter is not walking or drawing a command
- * for a band it never reaches, the same reason app_cube.c bins triangles
- * by row range instead of re-rasterizing the whole scene per band.
+ * for a band it never reaches, the same reason a software rasterizer bins
+ * shapes by row range instead of re-rasterizing the whole scene per band.
  */
 
 typedef enum {
@@ -513,9 +528,7 @@ ui_end_for_bands(uint32_t background_rgb) {
         const mu_Container* cnt = ctx.root_list.items[i];
 
         if (background_rgb != UI_NO_BACKGROUND) {
-            const uint32_t rgb = background_rgb;
-            const mu_Color c = mu_color((int)((rgb >> 16) & 0xFF), (int)((rgb >> 8) & 0xFF), (int)(rgb & 0xFF), 255);
-            bin_fill_rect(canvas_physical_rect(cnt), c);
+            bin_fill_rect(canvas_physical_rect(cnt), mu_color_from_rgb(background_rgb));
         }
 
         const char* p = (const char*)cnt->head + cnt->head->base.size;
@@ -543,9 +556,7 @@ ui_end_for_bands(uint32_t background_rgb) {
 
     for (int i = 0; i < extra_rect_count; i++) {
         const ui_extra_rect_t* r = &extra_rects[i];
-        const mu_Color c =
-            mu_color((int)((r->rgb >> 16) & 0xFF), (int)((r->rgb >> 8) & 0xFF), (int)(r->rgb & 0xFF), 255);
-        bin_fill_rect(mu_rect(r->x, r->y, r->w, r->h), c);
+        bin_fill_rect(mu_rect(r->x, r->y, r->w, r->h), mu_color_from_rgb(r->rgb));
     }
     extra_rect_count = 0;
 
@@ -562,8 +573,7 @@ ui_replay_band(int row0, int row1) {
         switch (e->kind) {
             case UI_BAND_ENTRY_COMMAND: draw_command(e->cmd); break;
             case UI_BAND_ENTRY_FILL_RECT:
-                gfx_fill_rect(e->rect.x, e->rect.y, e->rect.w, e->rect.h,
-                              gfx_rgb(((uint32_t)e->color.r << 16) | ((uint32_t)e->color.g << 8) | e->color.b));
+                gfx_fill_rect(e->rect.x, e->rect.y, e->rect.w, e->rect.h, mu_color_to_gfx(e->color));
                 break;
             case UI_BAND_ENTRY_CLIP_RESET: gfx_clear_clip(); break;
         }

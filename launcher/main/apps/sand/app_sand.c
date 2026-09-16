@@ -52,6 +52,7 @@
 #include "../../gfx/gfx.h"
 #include "../../gfx/gfx_font_roles.h"
 #include "../../input/imu.h"
+#include "../../input/imu_rotation.h"
 #include "../../ui/ui.h"
 #include "icons_sand.h"
 #include "material_palette.h"
@@ -316,16 +317,6 @@ static int64_t pour_awake_cells_total, idle_awake_cells_total;
 #endif
 static uint32_t sim_accumulator_q8;
 static uint32_t pour_accumulator_ms;
-
-/*
- * Sensor axes to screen axes. How the QMI8658 is soldered relative to the
- * panel is a board layout fact no datasheet carries, so both facts here
- * come from tilting the board: held upright the sensor reads about +1 g on
- * its X axis and roughly zero on Y, so the chip's X runs down the screen and
- * its Y runs across it pointing left, hence the negation.
- */
-#define GRAVITY_SCREEN_X(s) (-(s)->ay)
-#define GRAVITY_SCREEN_Y(s) ((s)->ax)
 
 /* Setup */
 
@@ -1635,7 +1626,7 @@ read_gravity_input(uint32_t dt_ms, imu_sample_t* sample, int* gx, int* gy, int* 
 
     *rotation = imu_rotation_level(sample);
 
-    tilt_update(&tilt, GRAVITY_SCREEN_X(sample), GRAVITY_SCREEN_Y(sample), sample->az, *rotation, dt_ms);
+    tilt_update(&tilt, imu_gravity_screen_x(sample), imu_gravity_screen_y(sample), sample->az, *rotation, dt_ms);
 
     *gx = tilt_x(&tilt);
     *gy = tilt_y(&tilt);
