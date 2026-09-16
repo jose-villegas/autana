@@ -237,9 +237,8 @@ run says whether the largest contiguous block a device-only allocation
 needs still exists after the addition. Diff `.bss`/`.data` size for
 **every** build variant, not just release; trust
 `heap_caps_get_largest_free_block()` over "total free heap." This class is
-now caught mechanically: `launcher/tools/check_static_ram.py` predicts the
-largest contiguous block from every build's map file and fails `idf.py
-build` if the framebuffer or a real-size grid would no longer fit.
+must be caught by inspecting the map file's largest contiguous block before a
+firmware image is accepted.
 
 When checking memory live rather than at link time, compare
 `heap_caps_get_largest_free_block(MALLOC_CAP_DMA)` only against

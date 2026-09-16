@@ -31,3 +31,12 @@ jobs:
 
       - name: No comment below apps/ names an app
         run: python3 scripts/check_comment_layers.py
+
+      - name: Every documentation citation resolves
+        run: python3 scripts/check_doc_citations.py
+
+      - name: Documentation constants match source
+        run: python3 scripts/check_doc_constants.py
+
+      - name: Documentation names the supported board
+        run: python3 scripts/check_doc_vocabulary.py

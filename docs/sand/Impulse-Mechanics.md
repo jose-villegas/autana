@@ -167,7 +167,7 @@ measurement), not derived from anything physical - see each material's own
 `density`/`dislodge_density` comment in `material.c` for the exact rank.
 
 A dislodged glass pane converts to cullet as it's queued
-(`queue_flying_grain()`), not a flying pane - see `MAT_CULLET`'s own notes
+(`queue_flying_grain()`), not a flying pane - see the cullet material notes
 in `material.h`. Once queued, every entry - wall chunk or ordinary grain -
 flies through the identical pass: same drag, same bounce, same transfer
 rules (`sand_impulse.h`'s own constants: `SAND_IMPULSE_DRAG_POWDER_SHIFT`,
@@ -208,4 +208,3 @@ path - a real divergence, not a stale detail:
   open. Reads as acid *bubbling*, not splashing - the earlier
   displacement-based version (radius 5, always-fires, capped per step)
   is gone; nothing in the tree still calls it that way.
-

@@ -12,11 +12,11 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from code_vocabulary import names  # noqa: E402
 from check_comment_length import EXCLUDED, scan  # noqa: E402
 
 SKIP = ("build", "build.dev", "build.diag", "managed_components")
 CITED = re.compile(r"\b([a-z_][a-z0-9_]{4,})\(\)")
-DEFINED = re.compile(r"\b([a-z_][a-z0-9_]{4,})\s*\(")
 
 # Named in comments as the C library or the vendor SDK spells them, with no
 # definition in this tree to find.
@@ -38,7 +38,7 @@ def main():
                 if name not in FOREIGN:
                     cited.setdefault(name, set()).add(f"{rp}:{c.line}")
 
-    defined = set(DEFINED.findall("\n".join(sources.values())))
+    defined, _ = names(root)
     missing = {n: v for n, v in cited.items() if n not in defined}
     for name, where in sorted(missing.items()):
         for site in sorted(where):
