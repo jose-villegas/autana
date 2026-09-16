@@ -196,6 +196,20 @@ def adjacent(name, number, text):
             re.search(r"\b" + re.escape(name.group()) + r"\b[^|\n]*\|\s*$", before) is not None)
 
 
+def hypothetical(name, number, text):
+    """Whether a nearby value describes a counterfactual setting."""
+    reference = r"(?:`?" + re.escape(name.group()) + r"`?\s*(?:=|is|of)?\s*)?"
+    before = text[:number.start()][-120:]
+    patterns = (
+        r"\b(?:at|with)\s+" + reference + r"$",
+        r"\bsetting\s+(?:it|`?" + re.escape(name.group()) + r"`?)\s+to\s*$",
+        r"\bat\s+a\s+value\s+of\s*$",
+        r"\bif\s+(?:it|`?" + re.escape(name.group()) + r"`?)\s+were\s*$",
+        r"\b(?:any\s+lower\s+than|below|above)\s*$",
+    )
+    return any(re.search(pattern, before, re.I) for pattern in patterns)
+
+
 def unit_for_name(name):
     suffix = name.rsplit("_", 1)[-1].upper()
     return UNIT_SUFFIXES.get(suffix)
@@ -383,6 +397,9 @@ def check(root, verbose=False, docs_ref=None):
                     skipped.append((doc, line, "multiple numbers without an adjacent value"))
                     continue
                 for number in candidates:
+                    if hypothetical(name, number, sentence):
+                        skipped.append((doc, line, "skipped-on-hypothetical"))
+                        continue
                     expected_unit = unit_for_name(name.group())
                     unit = documented_unit(number, sentence)
                     if expected_unit and unit and expected_unit != unit:
