@@ -2,8 +2,7 @@
  * Portable suite: gfx/icons_system.h's ICON_SYSTEM_CHECK - the artwork
  * MU_ICON_CHECK renders from the baked atlas (see ui.c's draw_command()).
  *
- * Same reasoning as suite_sand_icons.c: check_expected_rows below is
- * transcribed BY HAND from icons.h's own icon_check_bitmap picture, not
+ * check_expected_rows below is transcribed BY HAND from icons.h's own icon_check_bitmap picture, not
  * read back from icons_system.h, so a match proves gen_icons.py reproduced
  * known-good pixels rather than merely round-tripping its own packer. This
  * is the independent witness the generated-sources convention in
