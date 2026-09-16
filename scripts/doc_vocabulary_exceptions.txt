@@ -1,3 +1,2 @@
 # doc path<TAB>reason
-docs/notes/Second-Target-Draft.md	Retirement of this old-target draft is in flight.
 docs/sand/Sand-Simulation.md	Rewrite in flight.
