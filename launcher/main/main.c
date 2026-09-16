@@ -204,11 +204,6 @@ app_list_count(void) {
     return apps_registered;
 }
 
-/* Board layout fact; see app_sand.c. Duplicated for clarity. Sharing not
- * covered. */
-#define DISPLAY_GRAVITY_X(s) (-(s)->ay)
-#define DISPLAY_GRAVITY_Y(s) ((s)->ax)
-
 static display_t shell_display;
 
 int
@@ -578,8 +573,8 @@ app_main(void) {
 
             imu_sample_t sample;
             if (imu_ready() && imu_read(&sample)) {
-                const int gx = DISPLAY_GRAVITY_X(&sample);
-                const int gy = DISPLAY_GRAVITY_Y(&sample);
+                const int gx = imu_gravity_screen_x(&sample);
+                const int gy = imu_gravity_screen_y(&sample);
                 if (display_update(&shell_display, gx, gy)) {
                     ui_set_transform(ui_transform_quarter_turn(display_quarter(&shell_display), GFX_WIDTH, GFX_HEIGHT));
                     gfx_request_full_redraw();
