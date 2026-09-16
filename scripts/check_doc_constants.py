@@ -69,12 +69,31 @@ def add(definitions, name, value):
     definitions.setdefault(name, []).append(value)
 
 
-def constants(root):
-    """Return only names with one literal definition in launcher/."""
-    definitions = {}
-    for path in sorted((pathlib.Path(root) / "launcher").rglob("*")):
-        if path.suffix not in {".c", ".h"} or any(part.startswith("build") for part in path.parts):
+def source_files(root):
+    """C sources under launcher/ that the repository tracks. Anything a build
+    or the component manager writes - managed_components/, build*/ - is not
+    this project's definition of a constant, and reading it made the verdict
+    depend on whether the checkout had ever been built."""
+    root = pathlib.Path(root)
+    listed = subprocess.run(["git", "ls-files", "-z", "--", "launcher"], cwd=root,
+                            capture_output=True, text=True, encoding="utf-8")
+    if listed.returncode == 0:
+        paths = (root / name for name in listed.stdout.split("\0") if name)
+    else:
+        paths = (root / "launcher").rglob("*")
+    for path in sorted(paths):
+        parts = path.relative_to(root).parts
+        if path.suffix not in {".c", ".h"} or not path.is_file():
             continue
+        if "managed_components" in parts or any(part.startswith("build") for part in parts):
+            continue
+        yield path
+
+
+def constants(root):
+    """Return only names with one literal definition in the tracked launcher/ sources."""
+    definitions = {}
+    for path in source_files(root):
         text = uncomment(path.read_text(encoding="utf-8", errors="replace"))
         for line in text.splitlines():
             match = DEFINE.match(line)

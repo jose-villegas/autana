@@ -64,6 +64,31 @@ missing_function() LIVE_MISSING missing.sh
         self.assertEqual([(item.line, item.name, item.claimed, item.defined) for item in found],
                          [(2, "LIVE_LIMIT", 16, 32), (3, "LIVE_LIMIT", 16, 32)])
 
+    def test_constant_checker_reads_only_tracked_sources(self):
+        # A build downloads third-party components into managed_components/.
+        # One of them (a rapidjson header) declares `enum { value = 1 }`, which
+        # paired with the prose "the honest value is 0" on any built checkout.
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/example.h", "#define LIVE_LIMIT 32\n")
+            self.write(root, "launcher/managed_components/lib/json.h", "enum { value = 1 };\n")
+            self.write(root, "docs/Guide.md", "the honest value is 0, not a stale one.\n`LIVE_LIMIT` is 16.\n")
+            git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+            subprocess.run(git + ["init", "-q"], cwd=root, check=True)
+            subprocess.run(git + ["add", "launcher/main", "docs"], cwd=root, check=True)
+            subprocess.run(git + ["commit", "-qm", "fixture"], cwd=root, check=True)
+            found = check_doc_constants.check(root)
+        self.assertEqual([(item.name, item.claimed, item.defined) for item in found],
+                         [("LIVE_LIMIT", 16, 32)])
+
+    def test_constant_checker_ignores_managed_components_outside_git(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/managed_components/lib/json.h", "enum { value = 1 };\n")
+            self.write(root, "docs/Guide.md", "the honest value is 0, not a stale one.\n")
+            found = check_doc_constants.check(root)
+        self.assertEqual(found, [])
+
     def test_constant_checker_skips_ambiguous_historical_and_allowlisted_values(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
