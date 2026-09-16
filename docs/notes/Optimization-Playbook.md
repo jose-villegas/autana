@@ -279,6 +279,21 @@ the cost, not that the work was free.
 
 ---
 
+## A cycle count is bound to its ISA, not just its clock
+
+A disassembly-derived cycle count is read off one instruction set's codegen
+shapes. This project's own move to the ESP32-S3 carried a full set of
+cycle counts forward from the RISC-V board it replaced, and every one
+stopped applying — not because the optimization was wrong, but because
+Xtensa's PC-relative literal loads, shift-add addressing and windowed
+calls are different codegen entirely from a flat RISC-V ABI. The
+*mechanism* an optimization rests on ("skip the read entirely") can still
+hold across the swap; the *cycle number* that backed it cannot, and has to
+be re-derived from a fresh disassembly on the new target before it is
+quoted again.
+
+---
+
 ## A benchmark sharing a console with a watchdog is measuring the console
 
 A benchmark loop that never yields, plus a watchdog that prints to the same
