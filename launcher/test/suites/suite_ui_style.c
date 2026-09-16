@@ -88,7 +88,7 @@ test_shading_leaves_alpha_alone(void) {
 
 static void
 test_the_face_is_drawn_first_and_covers_the_whole_rect(void) {
-    ui_span_t s[UI_BEZEL_MAX_SPANS];
+    ui_span_t s[UI_BEZEL_MAX_SPANS] = {0};
     const int n = spans_for(row(), false, s);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(UI_BEZEL_MAX_SPANS, n, "a bezel is a face plus four edges");
@@ -104,7 +104,7 @@ test_the_face_is_drawn_first_and_covers_the_whole_rect(void) {
 
 static void
 test_every_span_stays_inside_the_control(void) {
-    ui_span_t s[UI_BEZEL_MAX_SPANS];
+    ui_span_t s[UI_BEZEL_MAX_SPANS] = {0};
     const int n = spans_for(row(), false, s);
 
     for (int i = 0; i < n; i++) {
@@ -119,7 +119,7 @@ test_every_span_stays_inside_the_control(void) {
 
 static void
 test_a_raised_button_is_lit_from_the_top_left(void) {
-    ui_span_t s[UI_BEZEL_MAX_SPANS];
+    ui_span_t s[UI_BEZEL_MAX_SPANS] = {0};
     spans_for(row(), false, s);
 
     TEST_ASSERT_TRUE_MESSAGE(luma(s[1].color) > luma(s[0].color),
@@ -131,8 +131,8 @@ test_a_raised_button_is_lit_from_the_top_left(void) {
 
 static void
 test_a_sunken_button_swaps_which_edges_are_lit(void) {
-    ui_span_t raised[UI_BEZEL_MAX_SPANS];
-    ui_span_t sunken[UI_BEZEL_MAX_SPANS];
+    ui_span_t raised[UI_BEZEL_MAX_SPANS] = {0};
+    ui_span_t sunken[UI_BEZEL_MAX_SPANS] = {0};
     spans_for(row(), false, raised);
     spans_for(row(), true, sunken);
 
@@ -152,7 +152,7 @@ test_a_sunken_button_swaps_which_edges_are_lit(void) {
 
 static void
 test_the_shadowed_edges_are_drawn_over_the_lit_ones(void) {
-    ui_span_t s[UI_BEZEL_MAX_SPANS];
+    ui_span_t s[UI_BEZEL_MAX_SPANS] = {0};
     spans_for(row(), false, s);
 
     /* The bottom span is full width and comes after the left span, which is
@@ -190,7 +190,7 @@ panel_rect(void) {
 
 static void
 test_panel_face_is_drawn_first_and_covers_the_whole_rect(void) {
-    ui_span_t s[UI_PANEL_MAX_SPANS];
+    ui_span_t s[UI_PANEL_MAX_SPANS] = {0};
     const int n = ui_panel_spans(panel_rect(), PANEL_FACE, PANEL_BORDER, s, UI_PANEL_MAX_SPANS);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(UI_PANEL_MAX_SPANS, n, "a panel is a face plus four border edges");
@@ -204,7 +204,7 @@ test_panel_face_is_drawn_first_and_covers_the_whole_rect(void) {
 
 static void
 test_panel_every_span_stays_inside_the_rect(void) {
-    ui_span_t s[UI_PANEL_MAX_SPANS];
+    ui_span_t s[UI_PANEL_MAX_SPANS] = {0};
     const int n = ui_panel_spans(panel_rect(), PANEL_FACE, PANEL_BORDER, s, UI_PANEL_MAX_SPANS);
 
     for (int i = 0; i < n; i++) {
@@ -219,7 +219,7 @@ test_panel_every_span_stays_inside_the_rect(void) {
 
 static void
 test_panel_border_spans_are_the_border_color(void) {
-    ui_span_t s[UI_PANEL_MAX_SPANS];
+    ui_span_t s[UI_PANEL_MAX_SPANS] = {0};
     ui_panel_spans(panel_rect(), PANEL_FACE, PANEL_BORDER, s, UI_PANEL_MAX_SPANS);
 
     for (int i = 1; i < UI_PANEL_MAX_SPANS; i++) {
@@ -230,7 +230,7 @@ test_panel_border_spans_are_the_border_color(void) {
 
 static void
 test_panel_a_rect_too_small_for_a_border_gets_a_flat_face(void) {
-    ui_span_t s[UI_PANEL_MAX_SPANS];
+    ui_span_t s[UI_PANEL_MAX_SPANS] = {0};
     const int n = ui_panel_spans((mu_Rect){0, 0, 2, 2}, PANEL_FACE, PANEL_BORDER, s, UI_PANEL_MAX_SPANS);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, n,
@@ -241,7 +241,7 @@ test_panel_a_rect_too_small_for_a_border_gets_a_flat_face(void) {
 
 static void
 test_panel_a_zero_sized_rect_produces_nothing(void) {
-    ui_span_t s[UI_PANEL_MAX_SPANS];
+    ui_span_t s[UI_PANEL_MAX_SPANS] = {0};
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(
         0, ui_panel_spans((mu_Rect){4, 4, 0, 20}, PANEL_FACE, PANEL_BORDER, s, UI_PANEL_MAX_SPANS),
@@ -251,7 +251,7 @@ test_panel_a_zero_sized_rect_produces_nothing(void) {
 
 static void
 test_panel_a_buffer_too_small_produces_nothing(void) {
-    ui_span_t s[UI_PANEL_MAX_SPANS];
+    ui_span_t s[UI_PANEL_MAX_SPANS] = {0};
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, ui_panel_spans(panel_rect(), PANEL_FACE, PANEL_BORDER, s, UI_PANEL_MAX_SPANS - 1),
                                   "a half-written panel - a face with some edges missing - looks like "
@@ -436,7 +436,7 @@ test_halo_carries_alpha_through_unchanged(void) {
 
 static void
 test_a_control_too_small_for_a_bezel_gets_a_flat_face(void) {
-    ui_span_t s[UI_BEZEL_MAX_SPANS];
+    ui_span_t s[UI_BEZEL_MAX_SPANS] = {0};
     const int n = ui_bezel_spans((mu_Rect){0, 0, 2, 2}, FACE, false, s, UI_BEZEL_MAX_SPANS);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, n,
@@ -447,7 +447,7 @@ test_a_control_too_small_for_a_bezel_gets_a_flat_face(void) {
 
 static void
 test_a_thin_control_keeps_a_pixel_of_face_between_its_edges(void) {
-    ui_span_t s[UI_BEZEL_MAX_SPANS];
+    ui_span_t s[UI_BEZEL_MAX_SPANS] = {0};
     /* 7px tall: room for two 3px edges is exactly what it does NOT have. */
     const int n = ui_bezel_spans((mu_Rect){0, 0, 200, 7}, FACE, false, s, UI_BEZEL_MAX_SPANS);
 
@@ -460,7 +460,7 @@ test_a_thin_control_keeps_a_pixel_of_face_between_its_edges(void) {
 
 static void
 test_a_zero_sized_control_produces_nothing(void) {
-    ui_span_t s[UI_BEZEL_MAX_SPANS];
+    ui_span_t s[UI_BEZEL_MAX_SPANS] = {0};
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, ui_bezel_spans((mu_Rect){4, 4, 0, 20}, FACE, false, s, UI_BEZEL_MAX_SPANS),
                                   "a rect with no width must produce no spans at all, not a face of "
@@ -470,7 +470,7 @@ test_a_zero_sized_control_produces_nothing(void) {
 
 static void
 test_a_buffer_too_small_produces_nothing(void) {
-    ui_span_t s[UI_BEZEL_MAX_SPANS];
+    ui_span_t s[UI_BEZEL_MAX_SPANS] = {0};
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, ui_bezel_spans(row(), FACE, false, s, UI_BEZEL_MAX_SPANS - 1),
                                   "a half-written bezel - a face with some edges missing - looks like a "
