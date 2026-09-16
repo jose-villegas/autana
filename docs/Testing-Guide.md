@@ -127,7 +127,7 @@ not internal DRAM, so it no longer competes with the sand grid or anything
 else for internal-heap contiguity the way it would on a board without
 PSRAM. There is no automated build-time gate for internal-heap headroom any
 more — the build-time predictor this project once had
-(`launcher/tools/check_static_ram.py`) was written for a board where the
+(the former static-RAM predictor) was written for a board where the
 framebuffer *did* live in internal DRAM, and was retired along with that
 constraint; nothing has replaced it. Watching internal-heap headroom (the
 measured free-heap figure in a device profile, and `HEAPMARK` boot lines on
