@@ -76,6 +76,19 @@ EXCLUDED_MAIN_FILES = {
 
 VENDORED_DIR_NAMES = {"components", "managed_components"}
 
+# Vendored source -> its pristine upstream copy (a pinned submodule). A
+# vendored function is measured only where this project changed its BODY
+# relative to that copy; a function identical to upstream is the upstream
+# author's code and outside this ratchet.
+VENDORED_REFERENCES = {
+    "launcher/components/microui/src/microui.c":
+        "third_party/upstream/microui/src/microui.c",
+    "launcher/components/microui/include/microui.h":
+        "third_party/upstream/microui/src/microui.h",
+    "launcher/components/small3dlib/include/small3dlib.h":
+        "third_party/upstream/small3dlib/small3dlib.h",
+}
+
 # GCC-only Xtensa flags esp-clang's driver does not recognise at all - an
 # unrecognised -f/-m flag is a hard parse error for clang, not a warning,
 # and there is no clang equivalent needed for a syntax-only complexity
@@ -252,6 +265,208 @@ def is_vendored(path_str):
     return False
 
 
+def _blank(text, start, end, keep_newlines=True):
+    return "".join(c if (keep_newlines and c == "\n") else " "
+                   for c in text[start:end])
+
+
+def mask_source(text):
+    """Two same-length views of a C source. `code` has comments and string
+    and character literals blanked; `parse` additionally blanks preprocessor
+    lines, so a brace inside a directive cannot unbalance function bodies.
+    Offsets agree between the two, so a body located in `parse` is read
+    back from `code` with its directives intact."""
+    out = list(text)
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        nxt = text[i + 1] if i + 1 < n else ""
+        if c == "/" and nxt == "*":
+            end = text.find("*/", i + 2)
+            end = n if end < 0 else end + 2
+            out[i:end] = _blank(text, i, end)
+            i = end
+        elif c == "/" and nxt == "/":
+            end = text.find("\n", i)
+            end = n if end < 0 else end
+            out[i:end] = _blank(text, i, end)
+            i = end
+        elif c in "\"'":
+            j = i + 1
+            while j < n and text[j] != c and text[j] != "\n":
+                j += 2 if text[j] == "\\" else 1
+            end = min(j + 1, n)
+            out[i + 1:end - 1] = _blank(text, i + 1, end - 1)
+            i = end
+        else:
+            i += 1
+    code = "".join(out)
+    parse = []
+    continued = False
+    for line in code.splitlines(keepends=True):
+        directive = continued or line.lstrip().startswith("#")
+        parse.append(_blank(line, 0, len(line)) if directive else line)
+        continued = directive and line.rstrip("\r\n").endswith("\\")
+    return code, "".join(parse)
+
+
+IDENT_RE = re.compile(r"[A-Za-z_]\w*$")
+
+
+def function_bodies(text):
+    """Every file-scope function definition in a C source, as
+    name -> body with all whitespace removed. A definition is a file-scope
+    `{` whose previous significant character closes a parameter list; the
+    name is the identifier before that list's `(`. Signature and linkage are
+    deliberately excluded, so changing a function to `static inline`
+    without touching its body does not count as modifying it."""
+    code, parse = mask_source(text)
+    bodies = {}
+    depth = 0
+    for i, ch in enumerate(parse):
+        if ch == "{":
+            if depth == 0:
+                j = i - 1
+                while j >= 0 and parse[j].isspace():
+                    j -= 1
+                if j >= 0 and parse[j] == ")":
+                    k, paren = j, 0
+                    while k >= 0:
+                        if parse[k] == ")":
+                            paren += 1
+                        elif parse[k] == "(":
+                            paren -= 1
+                            if paren == 0:
+                                break
+                        k -= 1
+                    m = IDENT_RE.search(parse[:k].rstrip())
+                    if m:
+                        close, d = i, 0
+                        while close < len(parse):
+                            if parse[close] == "{":
+                                d += 1
+                            elif parse[close] == "}":
+                                d -= 1
+                                if d == 0:
+                                    break
+                            close += 1
+                        bodies[m.group(0)] = "".join(code[i:close + 1].split())
+            depth += 1
+        elif ch == "}":
+            depth = max(depth - 1, 0)
+    return bodies
+
+
+def modified_vendored_functions():
+    """Vendored file -> (names whose body differs from the pinned upstream
+    copy or that upstream lacks, every function name found in our copy).
+    Exits with the init command when a reference submodule is not checked
+    out - a missing reference must never read as "nothing modified"."""
+    result = {}
+    for ours_rel, upstream_rel in VENDORED_REFERENCES.items():
+        upstream = REPO_ROOT / upstream_rel
+        if not upstream.is_file():
+            sys.exit(
+                f"Upstream reference {upstream_rel} is not checked out, so "
+                "vendored modifications cannot be measured. Run: "
+                "git submodule update --init"
+            )
+        ours = function_bodies((REPO_ROOT / ours_rel).read_text(
+            encoding="utf-8", errors="replace"))
+        theirs = function_bodies(upstream.read_text(encoding="utf-8",
+                                                    errors="replace"))
+        modified = {name for name, body in ours.items()
+                    if theirs.get(name) != body}
+        result[ours_rel] = (modified, set(ours))
+    return result
+
+
+INCLUDE_RE = re.compile(r'^\s*#\s*include\s*[<"]([^>"]+)[>"]', re.M)
+
+
+def translation_units_reaching(header, sources):
+    """Measured sources that include `header` directly or through a
+    first-party header that does - a header is scored by clang-tidy only
+    from inside a translation unit that pulls it in."""
+    candidates = [p for p in (LAUNCHER_DIR / "main").rglob("*")
+                  if p.suffix in (".c", ".h")]
+    candidates += [p for p in (LAUNCHER_DIR / "test").rglob("*")
+                   if p.suffix in (".c", ".h")]
+    includes = {}
+    for path in candidates:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        includes[path.resolve()] = {Path(inc).name for inc in INCLUDE_RE.findall(text)}
+    reaching = {header.name}
+    grew = True
+    while grew:
+        grew = False
+        for path, names in includes.items():
+            if path.suffix == ".h" and path.name not in reaching and names & reaching:
+                reaching.add(path.name)
+                grew = True
+    wanted = {str(Path(s).resolve()) for s in sources}
+    return sorted(str(p) for p, names in includes.items()
+                  if p.suffix == ".c" and names & reaching and str(p) in wanted)
+
+
+def scan_vendored(clang_tidy, db_path, sources):
+    """Scores for the vendored functions this project modified, keyed like
+    the first-party scan by (vendored path, name). A header is scored from
+    every translation unit that reaches it and the highest score kept,
+    since each includer's own #defines can change the code compiled. Every
+    function clang-tidy reports in a vendored file must also be found by
+    function_bodies(); a mismatch means the body comparison cannot see what
+    the scan sees, and fails rather than trusting a partial answer."""
+    scores = {}
+    for ours_rel, (modified, found) in modified_vendored_functions().items():
+        path = (REPO_ROOT / ours_rel).resolve()
+        if path.suffix == ".c":
+            units, header_filter = [str(path)], None
+        else:
+            units = translation_units_reaching(path, sources)
+            header_filter = re.escape(path.name)
+        if not units:
+            if modified:
+                sys.exit(f"FAIL: {ours_rel} has modified functions "
+                         f"{sorted(modified)} but no measured file includes it.")
+            continue
+        cmd = [clang_tidy, "-p", str(db_path.parent), "--config-file",
+               str(CLANG_TIDY_CONFIG), "--quiet"]
+        if header_filter:
+            cmd.append(f"--header-filter={header_filter}")
+        proc = subprocess.run(cmd + units, capture_output=True, text=True)
+        errors = find_parse_errors(proc.stdout)
+        if errors:
+            print(f"FAIL: parse error while scoring {ours_rel}:")
+            for file, msg in errors:
+                print(f"  {file or '(no file attributed)'}: {msg}")
+            sys.exit(1)
+        reported = {}
+        for line in proc.stdout.splitlines():
+            m = DIAG_RE.match(line)
+            if not m or Path(m.group("file")).resolve() != path:
+                continue
+            name, score, ln = m.group("name"), int(m.group("score")), int(m.group("line"))
+            if name not in reported or score > reported[name][0]:
+                reported[name] = (score, ln)
+        unseen = sorted(set(reported) - found)
+        if unseen:
+            sys.exit(f"FAIL: clang-tidy scored {unseen} in {ours_rel}, but the "
+                     "body comparison against upstream did not find them - it "
+                     "cannot judge what it cannot see.")
+        for name in modified:
+            if name in reported:
+                scores[(ours_rel, name)] = reported[name]
+        # clang-tidy reports nothing for a function with no control flow, or
+        # one no measured translation unit compiles (a disabled #if). Neither
+        # can be ratcheted, but a modified function must never vanish from
+        # the report because the scan could not score it.
+        for name in sorted(modified - set(reported)):
+            print(f"  {ours_rel}  {name}()  modified, unscored: no control "
+                  "flow, or not compiled in any measured configuration")
+    return scores
+
+
 def inline_response_file(cmd):
     """ESP-IDF's generated compile commands hand most flags to the
     compiler via a GCC-style @"file" response file rather than inline -
@@ -267,10 +482,11 @@ def inline_response_file(cmd):
     return cmd[:m.start()] + rf_text + cmd[m.end():]
 
 
-def build_idf_entries(toolchain_root):
+def build_idf_entries(toolchain_root, vendored=False):
     """launcher/build.diag/compile_commands.json, restricted to this
     project's own main/ and test/ trees (excluding vendored code and
-    apps/*/tools/, which the firmware never links), with the flags esp-idf
+    apps/*/tools/, which the firmware never links) - or, with `vendored`,
+    to only the vendored .c files in VENDORED_REFERENCES - with the flags esp-idf
     generated for xtensa-esp32s3-elf-gcc adjusted for esp-clang: the three
     GCC-only flags it does not recognise stripped, and --sysroot/
     --gcc-toolchain added so its `#include_next` chain into newlib
@@ -289,9 +505,12 @@ def build_idf_entries(toolchain_root):
         except ValueError:
             continue
         parts = rel.parts
-        if not parts or parts[0] not in ("main", "test"):
+        if vendored:
+            if ("launcher/" + rel.as_posix()) not in VENDORED_REFERENCES:
+                continue
+        elif not parts or parts[0] not in ("main", "test"):
             continue
-        if is_vendored(str(rel)) or "tools" in parts:
+        elif is_vendored(str(rel)) or "tools" in parts:
             continue
         cmd = inline_response_file(e.get("command", ""))
         cmd = " ".join(t for t in cmd.split() if t not in BAD_GCC_FLAGS)
@@ -381,10 +600,14 @@ def build_compile_db():
         host_flags, set(idf_entries) | set(host_entries))
 
     all_entries = {**idf_entries, **host_entries, **tools_entries}
+    # Written to the database so clang-tidy can parse them, but never part
+    # of the first-party source list: scan_vendored() scores only the
+    # functions this project modified.
+    vendored_entries = build_idf_entries(toolchain_root, vendored=True)
 
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
     db_json = []
-    for path, cmd in all_entries.items():
+    for path, cmd in {**all_entries, **vendored_entries}.items():
         entry = {"directory": str(LAUNCHER_DIR), "file": path}
         # IDF entries stay a "command" string (built by text surgery on
         # ESP-IDF's own string); host/tools entries are a real argv list
@@ -477,6 +700,13 @@ def write_baseline(path, scores):
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def changed_rel_paths(ref):
+    result = subprocess.run(["git", "-C", str(REPO_ROOT), "diff",
+                              "--name-only", ref],
+                             capture_output=True, text=True, check=True)
+    return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+
 def changed_files(ref, all_sources):
     result = subprocess.run(["git", "-C", str(REPO_ROOT), "diff",
                               "--name-only", ref],
@@ -535,10 +765,19 @@ def main():
 
     if files and not current:
         sys.exit(
-            "clang-tidy scanned {} file(s) and found ZERO functions. That is "
-            "exactly how cognitive_complexity.py went blind - refusing to "
-            "trust it. clang-tidy stderr:\n{}".format(len(files), proc.stderr[-4000:])
+            "clang-tidy scanned {} file(s) and found ZERO functions - an "
+            "empty scan is a broken scan, never a clean result. clang-tidy "
+            "stderr:\n{}".format(len(files), proc.stderr[-4000:])
         )
+
+    vendored_changed = not args.changed or any(
+        rel in changed_rel_paths(args.changed) for rel in VENDORED_REFERENCES)
+    if vendored_changed:
+        vendored = scan_vendored(clang_tidy, db_path, all_sources)
+        print(f"vendored functions modified from upstream and scored: {len(vendored)}")
+        for (rel, name), (score, _) in sorted(vendored.items()):
+            print(f"  {rel}  {name}()  {score}")
+        current.update(vendored)
 
     baseline = load_baseline(args.baseline)
 

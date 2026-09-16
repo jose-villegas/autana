@@ -117,9 +117,22 @@ esp-clang under the ESP-IDF tools root. A different major scores this
 check differently, so anything else is refused unless
 `CLANG_TIDY_ANY_VERSION=1` is set - informational use only, never CI.
 
-Pristine upstream copies of the vendored components are git submodules
-under `third_party/upstream/`, pinned to the upstream commit each vendored
-copy was taken from: `microui` at rxi/microui `0850aba8` (version 2.02),
-and `small3dlib` at drummyfish/small3dlib `6a2cfb5c`. They sit outside
-`launcher/`, so the firmware build never sees them. A worktree or clone
-needs `git submodule update --init` before they are present.
+Vendored code is measured where this project changed it. Pristine upstream
+copies are git submodules under `third_party/upstream/`, pinned to the
+upstream commit each vendored copy was taken from: `microui` at
+rxi/microui `0850aba8` (version 2.02), and `small3dlib` at
+drummyfish/small3dlib `6a2cfb5c`. They sit outside `launcher/`, so the
+firmware build never sees them; a worktree or clone needs
+`git submodule update --init` first, and the gate says so when they are
+missing.
+
+A vendored function is in scope when its BODY differs from the upstream
+copy, or upstream does not have it. Signatures and whitespace are ignored,
+so changing a function's linkage without touching its body does not bring
+it in. Editing any vendored function body brings it into scope on the next
+scan with no list to update. Headers are scored from every measured file
+that includes them, keeping the highest score. A modified function
+clang-tidy cannot score - no control flow, or compiled in no measured
+configuration - is listed as unscored rather than dropped. Every function
+clang-tidy scores in a vendored file must also be found by the body
+comparison, or the gate fails.
