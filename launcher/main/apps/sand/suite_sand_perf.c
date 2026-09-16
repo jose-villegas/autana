@@ -264,7 +264,7 @@ static int perf_unmet_targets;
 
 static void
 perf_guard(const char* name, int64_t measured_us, int64_t ceiling_us) {
-    TEST_ASSERT_LESS_THAN_INT64_MESSAGE(ceiling_us, measured_us, name);
+    TEST_ASSERT_LESS_THAN_MESSAGE((int)ceiling_us, (int)measured_us, name);
 }
 
 static void
