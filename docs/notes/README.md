@@ -39,11 +39,6 @@ the falling-sand app's own discovery narrative, moved out to
 
 ## Not verified on a board
 
-- **[Second-Target-Draft.md](Second-Target-Draft.md)** — what moving to
-  the ESP32-S3 would cost, and which sand findings are the chip's rather
-  than the algorithm's. Written before the board existed, so every row is
-  marked `[spec]`, `[repo]` or `[derived]` and none of it is a board
-  measurement. Read it for the mechanism arguments, not for numbers.
 - **[Image-Kernels-Research.md](Image-Kernels-Research.md)** — literature
   and precedent for real-time blur and edge detection on this hardware:
   packed-RGB565 tricks, running-sum and repeated-box blurs, luminance and
