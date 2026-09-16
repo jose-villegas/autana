@@ -77,6 +77,28 @@ missing_function() LIVE_MISSING missing.sh
             found = check_doc_constants.check(root)
         self.assertEqual(found, [])
 
+    def test_constant_checker_checks_current_claim_beside_a_hypothetical(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/example.h", "#define LIVE_LIMIT 32\n")
+            self.write(root, "docs/Guide.md",
+                       "`LIVE_LIMIT` is 16. At `LIVE_LIMIT` = 8 it would fail.\n")
+            found, skipped = check_doc_constants.check(root, verbose=True)
+        self.assertEqual([(item.name, item.claimed, item.defined) for item in found], [
+            ("LIVE_LIMIT", 16, 32),
+        ])
+        self.assertIn(("docs/Guide.md", 1, "skipped-on-hypothetical"), skipped)
+
+    def test_constant_checker_ignores_a_hypothetical_only_claim(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/example.h", "#define LIVE_LIMIT 32\n")
+            self.write(root, "docs/Guide.md",
+                       "At `LIVE_LIMIT` = 16 the system would fail.\n")
+            found, skipped = check_doc_constants.check(root, verbose=True)
+        self.assertEqual(found, [])
+        self.assertIn(("docs/Guide.md", 1, "skipped-on-hypothetical"), skipped)
+
     def test_constant_checker_compares_matching_units_and_material_table_fields(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
