@@ -11,15 +11,8 @@
 
 #include "display/display.h"
 
-/* One-shot install/enable/read/disable/uninstall, same pattern boot/post.c's
- * check_temperature() already proved safe on this chip - duplicated rather
- * than shared because post.c's version is `static` and tangled with its own
- * POST report() call, and five lines is cheaper to keep independent than to
- * detangle (same reasoning main.c and an app each keep their own copy of
- * the IMU's gravity-axis mapping). Not for every frame - fine for the
- * occasional snapshot device_state_read() is for. */
-static bool
-read_die_temperature(float* out_celsius) {
+bool
+temp_sensor_read_celsius(float* out_celsius) {
     temperature_sensor_handle_t sensor = NULL;
     temperature_sensor_config_t cfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(-10, 80);
     if (temperature_sensor_install(&cfg, &sensor) != ESP_OK) {
@@ -48,7 +41,7 @@ device_state_read(device_state_t* out) {
      * for a value that cannot actually change on this board. */
     out->cpu_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
 
-    out->temp_ok = read_die_temperature(&out->temp_c);
+    out->temp_ok = temp_sensor_read_celsius(&out->temp_c);
 
     out->quarter = display_shell_quarter();
 
