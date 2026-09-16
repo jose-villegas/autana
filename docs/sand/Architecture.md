@@ -65,11 +65,11 @@ crash anything, only sit there as an immovable block.
 | 1 | sand | `KIND_POWDER` | falls | `repose=7` (~35°), `slip=96` |
 | 2 | water | `KIND_LIQUID` | falls | `slip=255` (no resistance) |
 | 3 | stone | `KIND_STATIC` | never | `density=181`, undisplaceable; carries a temperature but never melts or shatters |
-| 4 | gas | `KIND_GAS` | rises | `sight=16`, `decay=32`, `mobility=96` |
+| 4 | gas | `KIND_GAS` | rises | `sight=16`, `decay=6` (longest-lived), `mobility=96` |
 | 5 | fire | `KIND_GAS` | rises | `sight=5`, `decay=96`; a heat source, reacts via the cold pass |
 | 6 | wood | `KIND_STATIC` | never | `density=141`; fuel, does not burn on its own - its variant is burn progress |
-| 7 | steam | `KIND_GAS` | rises | `sight=20`, `mobility=160` (fastest); water that got hot |
-| 8 | smoke | `KIND_GAS` | rises | `sight=24` (widest), `decay=16` (longest-lived); fuel that burned out |
+| 7 | steam | `KIND_GAS` | rises | `sight=20`, `mobility=160`; water that got hot |
+| 8 | smoke | `KIND_GAS` | rises | `sight=24` (widest), `decay=16`; fuel that burned out |
 | 9 | dirt | `KIND_POWDER` | falls | `density=62`; soaks up liquid and dries out again - the state-split variant |
 | 10 | oil | `KIND_LIQUID` | falls | `density=22` (floats on water); fuel, burns only where it meets air |
 | 11 | lava | `KIND_LIQUID` | falls | `density=45`, `decay=0` (**must** stay 0 - a liquid's variant is fill, not life); a heat source |
