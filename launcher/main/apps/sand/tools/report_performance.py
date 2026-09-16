@@ -33,13 +33,13 @@ from datetime import datetime, timezone
 # function's closing brace per line, blank line, next function).
 DEVICE_BUILD_RE = re.compile(r"#ifdef DEVICE_BUILD(.*?)#endif\s*/\*\s*DEVICE_BUILD", re.DOTALL)
 FUNC_RE = re.compile(
-    r"static void (test_\w+)\(void\)\s*\{(.*?)\n\}",
+    r"static void\s+(test_\w+)\(void\)\s*\{(.*?)\n\}",
     re.DOTALL,
 )
 BUDGET_RE = re.compile(r"TEST_ASSERT_LESS_THAN_MESSAGE\(\s*(\w+)\s*,")
 DEFINE_RE = re.compile(r"#define\s+(\w+)\s+(\d+)")
 
-RESULT_RE = re.compile(r"^\S+:\d+:(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
+RESULT_RE = re.compile(r"^\S*:\d+:(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
 
 # A separate line - not part of the result line above - emitted by
 # test/timing.c for every test, on both host and device. Kept separate on
@@ -87,9 +87,9 @@ MEASURE_RE = re.compile(r"device_tests.*(?<![\d.])(\d+)\s*us\b")
 # because the status is the test's own verdict on the number it actually
 # asserted. Five lines of one capture carry two figures this way.
 #
-# A line saying "per step" names its subject; everything else keeps the
-# last-figure rule and the gfx reasoning above.
-PER_STEP_RE = re.compile(r"device_tests.*?(?<![\d.])(\d+)\s*us per step")
+# A line saying "per step" or "for the one step" names its subject;
+# everything else keeps the last-figure rule and the gfx reasoning above.
+PER_STEP_RE = re.compile(r"device_tests.*?(?<![\d.])(\d+)\s*us (?:per step|for the one step)")
 
 
 def parse_budgets(source_path: str) -> dict:
@@ -176,14 +176,19 @@ def parse_capture(capture_path: str):
     for line in text.splitlines():
         mm = PER_STEP_RE.search(line) or MEASURE_RE.search(line)
         if mm:
-            pending_measure = int(mm.group(1))
+            # The first timing line is the headline; a later one is a phase
+            # breakdown ("imp=2 us") that must not replace it.
+            if pending_measure is None:
+                pending_measure = int(mm.group(1))
             continue
         tm = TEST_TIME_RE.match(line.strip())
         if tm:
-            # Keyed by name, not by position relative to the result line -
-            # timing.c always prints this after the PASS/FAIL line, but
-            # nothing here should depend on that staying true.
+            # Keyed by name, not by position relative to the result line.
+            # It still ends the test's timing lines: serial sometimes drops
+            # a result line, and the lost test's figure must not become the
+            # next test's headline.
             test_times[tm.group("name")] = int(tm.group("ms"))
+            pending_measure = None
             continue
         rm = RESULT_RE.match(line.strip())
         if rm and rm.group("name") not in entries:

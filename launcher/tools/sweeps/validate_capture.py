@@ -55,7 +55,7 @@ SENTINEL = "device_tests: sand_step on"
 # A line matching this is a Unity test result - used only to find the last
 # few tests that ran before a panic, which is how the crashing test gets
 # identified without a second capture.
-RESULT_RE = re.compile(r"^\S+:\d+:(?P<name>\w+):(?P<status>PASS|FAIL)")
+RESULT_RE = re.compile(r"^\S*:\d+:(?P<name>\w+):(?P<status>PASS|FAIL)")
 
 # Not fatal by itself, but its presence means an old diag image: the
 # current build disables the task watchdog on purpose, because historically
