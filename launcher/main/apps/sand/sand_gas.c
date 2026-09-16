@@ -41,6 +41,8 @@
  * immortal, same as any other material with decay unset.
  */
 
+#include <stdlib.h>
+
 #include "sand_priv.h"
 
 /* Which materials are gas, as a bitmask over the nibble - see
@@ -227,7 +229,7 @@ build_gas_tables(void) {
 static inline bool
 gas_walk_once(sand_t* s, uint8_t* row, int x, int y, int w, int rdx, int rdy, cell_t grain, uint8_t density) {
     const int up = ring_of(rdx, rdy);
-    const int roll = (int)(rng_next(&s->rng) & 0xFF);
+    const int roll = (int)(sand_rng_next_at(s, x, y, SAND_RNG_SLOT_GAS_WALK) & 0xFF);
 
     const int off = gas_walk_offset[roll];
 
@@ -307,7 +309,8 @@ step_one_gas_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_
      * "off" for a rise-gate means "never rises", which would break every
      * test that places gas and expects a deterministic one-cell move. */
     const int mobility = (s->mobility >= 0) ? s->mobility : mat->mobility;
-    const bool try_moving = jostle != 0 || (int)(rng_next(&s->rng) & 0xFF) < mobility;
+    const bool try_moving =
+        jostle != 0 || (int)(sand_rng_next_at(s, x, y, SAND_RNG_SLOT_GAS_MOBILITY) & 0xFF) < mobility;
 
     bool moved = false;
 
@@ -366,7 +369,7 @@ step_one_gas_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_
  * gas has to work around, not through. */
 static bool
 step_one_gas_row(sand_t* s, int y, int w, int rdx, int rdy, const int* rslide_a, const int* rslide_b, int rx_step,
-                 int rload_dx, int rload_dy, int jostle, bool driven_gas[MATERIAL_MAX][2]) {
+                 int rload_dx, int rload_dy, int jostle, bool driven_gas[MATERIAL_MAX][2], const uint8_t* snapshot) {
     uint8_t* row = s->cells + (size_t)y * (size_t)w;
     uint8_t* prow = dest_row(s, y + rdy);
     uint8_t* arow = dest_row(s, y + rslide_a[1]);
@@ -378,7 +381,7 @@ step_one_gas_row(sand_t* s, int y, int w, int rdx, int rdy, const int* rslide_a,
     bool any = false;
     for (int x = x_from; x != x_to; x += rx_step) {
         const cell_t c = row[x];
-        if (CELL_IS_EMPTY(c) || ((gas_kind_mask >> (c >> 3)) & 1u) == 0u) {
+        if ((snapshot != NULL && c != snapshot[x]) || CELL_IS_EMPTY(c) || ((gas_kind_mask >> (c >> 3)) & 1u) == 0u) {
             continue;
         }
         /* Presence, not movement: a gas cell that neither moves nor decays
@@ -397,6 +400,203 @@ step_one_gas_row(sand_t* s, int y, int w, int rdx, int rdy, const int* rslide_a,
                            driven_gas);
     }
     return any;
+}
+
+#define GAS_STRIPE_H       SAND_BLOCK_H
+#define GAS_SPLIT_MIN_ROWS (4 * GAS_STRIPE_H)
+
+typedef struct {
+    sand_t local;
+    uint8_t* blocks;
+    uint8_t* dirty;
+    uint16_t* x0;
+    uint16_t* x1;
+    bool found_any;
+} gas_stripe_t;
+
+typedef struct {
+    gas_stripe_t* stripe;
+    const int* rslide_a;
+    const int* rslide_b;
+    bool (*driven_gas)[2];
+    int rdx, rdy, rx_step, rload_dx, rload_dy, jostle;
+    int y_step, offset, color, share;
+} gas_phase_t;
+
+_Static_assert(sizeof(gas_phase_t) <= JOB_CTX_MAX, "gas phase must fit JOB_CTX_MAX");
+
+static bool gas_worker_order_reversed;
+
+void
+sand_gas_set_worker_order_for_test(bool reverse) {
+    gas_worker_order_reversed = reverse;
+}
+
+static void
+prepare_gas_stripe(gas_stripe_t* stripe, const sand_t* s) {
+    stripe->local = *s;
+    stripe->local.rng_hashed = true;
+    stripe->found_any = false;
+    if (s->block_state != NULL) {
+        stripe->local.block_state = stripe->blocks;
+        memcpy(stripe->blocks, s->block_state, (size_t)s->block_cols * (size_t)s->block_rows);
+    }
+    if (s->dirty_rows != NULL) {
+        stripe->local.dirty_rows = stripe->dirty;
+        memcpy(stripe->dirty, s->dirty_rows, (size_t)s->h);
+    }
+    if (s->dirty_x0 != NULL && s->dirty_x1 != NULL) {
+        stripe->local.dirty_x0 = stripe->x0;
+        stripe->local.dirty_x1 = stripe->x1;
+        memcpy(stripe->x0, s->dirty_x0, sizeof *stripe->x0 * (size_t)s->h);
+        memcpy(stripe->x1, s->dirty_x1, sizeof *stripe->x1 * (size_t)s->h);
+    }
+}
+
+static void
+merge_gas_stripe(sand_t* s, const gas_stripe_t* stripe) {
+    if (s->block_state != NULL) {
+        for (int i = 0; i < s->block_cols * s->block_rows; i++) {
+            const uint8_t local = stripe->blocks[i];
+            s->block_state[i] &= (uint8_t)(local | ~(BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER));
+            s->block_state[i] |= local & BLOCK_ACTIVE;
+        }
+    }
+    for (int y = 0; y < s->h; y++) {
+        if (s->dirty_rows != NULL) {
+            s->dirty_rows[y] |= stripe->dirty[y];
+        }
+        if (s->dirty_x0 != NULL && s->dirty_x1 != NULL) {
+            if (stripe->x0[y] < s->dirty_x0[y]) {
+                s->dirty_x0[y] = stripe->x0[y];
+            }
+            if (stripe->x1[y] > s->dirty_x1[y]) {
+                s->dirty_x1[y] = stripe->x1[y];
+            }
+        }
+    }
+    s->faller_may_move |= stripe->local.faller_may_move;
+}
+
+static void
+gas_phase_worker(void* arg) {
+    const gas_phase_t* c = arg;
+    gas_stripe_t* stripe = c->stripe;
+    sand_t* s = &stripe->local;
+    int seen = 0;
+
+    for (int k = c->offset == 0 ? 0 : -1; c->offset + k * GAS_STRIPE_H < s->h; k++) {
+        if (((k % 2) + 2) % 2 != c->color) {
+            continue;
+        }
+        if ((seen++ & 1) != c->share) {
+            continue;
+        }
+        const int band0 = c->offset + k * GAS_STRIPE_H;
+        const int band1 = band0 + GAS_STRIPE_H;
+        const int y0 = band0 > 0 ? band0 + 1 : 0;
+        const int y1 = band1 < s->h ? band1 - 1 : s->h;
+        for (int y = c->y_step > 0 ? y0 : y1 - 1; y >= y0 && y < y1; y += c->y_step) {
+            stripe->found_any |= step_one_gas_row(s, y, s->w, c->rdx, c->rdy, c->rslide_a, c->rslide_b, c->rx_step,
+                                                  c->rload_dx, c->rload_dy, c->jostle, c->driven_gas, NULL);
+        }
+    }
+}
+
+static int
+gas_guard_row_list(int h, int offset, int* rows, int max) {
+    int n = 0;
+    for (int k = offset == 0 ? 0 : -1;; k++) {
+        const int boundary = offset + (k + 1) * GAS_STRIPE_H;
+        if (boundary >= h) {
+            break;
+        }
+        if (boundary > 0) {
+            if (rows != NULL && n + 1 < max) {
+                rows[n] = boundary - 1;
+                rows[n + 1] = boundary;
+            }
+            n += 2;
+        }
+    }
+    return n;
+}
+
+static bool
+run_gas_guard_rows(sand_t* s, const gas_phase_t* c, const int* rows, int count, const uint8_t* snapshots) {
+    bool found_any = false;
+    for (int i = 0; i < count; i += 2) {
+        const int above = rows[i];
+        const int below = rows[i + 1];
+        const int first_i = c->y_step > 0 ? i : i + 1;
+        const int second_i = c->y_step > 0 ? i + 1 : i;
+        const int first = c->y_step > 0 ? above : below;
+        const int second = c->y_step > 0 ? below : above;
+        found_any |=
+            step_one_gas_row(s, first, s->w, c->rdx, c->rdy, c->rslide_a, c->rslide_b, c->rx_step, c->rload_dx,
+                             c->rload_dy, c->jostle, c->driven_gas, snapshots + (size_t)first_i * (size_t)s->w);
+        found_any |=
+            step_one_gas_row(s, second, s->w, c->rdx, c->rdy, c->rslide_a, c->rslide_b, c->rx_step, c->rload_dx,
+                             c->rload_dy, c->jostle, c->driven_gas, snapshots + (size_t)second_i * (size_t)s->w);
+    }
+    return found_any;
+}
+
+static bool
+step_gas_stripes(sand_t* s, gas_phase_t* ctx, bool* found_any) {
+    const size_t rows = (size_t)s->h;
+    const size_t blocks = (size_t)s->block_cols * (size_t)s->block_rows;
+    const int guard_count = gas_guard_row_list(s->h, ctx->offset, NULL, 0);
+    gas_stripe_t* stripes = calloc(1, 2 * sizeof *stripes + 8 * rows + 2 * blocks + 2 * rows);
+    int* guard_rows = malloc(sizeof *guard_rows * (size_t)guard_count);
+    uint8_t* snapshots = malloc((size_t)guard_count * (size_t)s->w);
+    if (stripes == NULL || guard_rows == NULL || snapshots == NULL) {
+        free(stripes);
+        free(guard_rows);
+        free(snapshots);
+        return false;
+    }
+
+    uint16_t* spans = (uint16_t*)(stripes + 2);
+    uint8_t* bytes = (uint8_t*)(spans + 4 * rows);
+    for (int i = 0; i < 2; i++) {
+        stripes[i].x0 = spans + (size_t)(2 * i) * rows;
+        stripes[i].x1 = stripes[i].x0 + rows;
+        stripes[i].blocks = bytes + (size_t)i * (blocks + rows);
+        stripes[i].dirty = stripes[i].blocks + blocks;
+    }
+    gas_guard_row_list(s->h, ctx->offset, guard_rows, guard_count);
+    for (int i = 0; i < guard_count; i++) {
+        memcpy(snapshots + (size_t)i * (size_t)s->w, s->cells + (size_t)guard_rows[i] * (size_t)s->w, (size_t)s->w);
+    }
+
+    gas_row_map_live = false;
+    for (int color = 0; color < 2; color++) {
+        prepare_gas_stripe(&stripes[0], s);
+        prepare_gas_stripe(&stripes[1], s);
+        ctx->color = color;
+        const int remote = gas_worker_order_reversed ? 0 : 1;
+        ctx->stripe = &stripes[1];
+        ctx->share = remote;
+        (void)job_run_core1(gas_phase_worker, ctx, sizeof *ctx);
+        ctx->stripe = &stripes[0];
+        ctx->share = 1 - remote;
+        gas_phase_worker(ctx);
+        (void)job_wait(100);
+        for (int i = 0; i < 2; i++) {
+            merge_gas_stripe(s, &stripes[i]);
+            *found_any |= stripes[i].found_any;
+        }
+    }
+    const bool was_hashed = s->rng_hashed;
+    s->rng_hashed = true;
+    *found_any |= run_gas_guard_rows(s, ctx, guard_rows, guard_count, snapshots);
+    s->rng_hashed = was_hashed;
+
+    free(stripes);
+    free(guard_rows);
+    free(snapshots);
+    return true;
 }
 
 /*
@@ -813,9 +1013,26 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     gas_row_map_live = (s->h <= GAS_ROW_MAX);
     memset(gas_row_map.w, 0, sizeof gas_row_map.w);
 
-    for (int y = y_from; y != y_to; y += y_step) {
-        if (step_one_gas_row(s, y, w, rdx, rdy, rslide_a, rslide_b, rx_step, rload_dx, rload_dy, jostle, driven_gas)) {
-            found_any = true;
+    gas_phase_t phase = {
+        .rslide_a = rslide_a,
+        .rslide_b = rslide_b,
+        .driven_gas = driven_gas,
+        .rdx = rdx,
+        .rdy = rdy,
+        .rx_step = rx_step,
+        .rload_dx = rload_dx,
+        .rload_dy = rload_dy,
+        .jostle = jostle,
+        .y_step = y_step,
+        .offset = (s->step_phase & 1) ? GAS_STRIPE_H / 2 : 0,
+    };
+    if (!s->gas_walk || !sand_two_core_step_enabled() || s->h < GAS_SPLIT_MIN_ROWS
+        || !step_gas_stripes(s, &phase, &found_any)) {
+        for (int y = y_from; y != y_to; y += y_step) {
+            if (step_one_gas_row(s, y, w, rdx, rdy, rslide_a, rslide_b, rx_step, rload_dx, rload_dy, jostle, driven_gas,
+                                 NULL)) {
+                found_any = true;
+            }
         }
     }
 

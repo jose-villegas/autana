@@ -1188,17 +1188,17 @@ update can touch another's, in cells:
 | --- | --- | --- |
 | Main sweep (`step_one_grain`, `move_liquid_grain`) | 1 (Chebyshev - every move is one of the eight ring directions) | yes |
 | Liquid cross-flow (`equalise_liquids`, `find_shallowest`) | `SAND_LIQUID_SIGHT`, 8, along a ray that can run diagonally through several rows | yes; private wake and repaint state |
-| Gas walk (`gas_walk_once`) | 1, same shape as the sweep | no (this round) |
+| Gas walk (`gas_walk_once`) | 1, same shape as the sweep | yes; private wake and repaint state |
 | Gas cross-flow (`equalise_gas`) | 8, shares `SAND_LIQUID_SIGHT` | no |
 | Heat conduction to a boiler (`try_heat_transform_given`'s `CONDUCT_REACH`) | 32, a directed walk, not a spread | no |
 | Glass crack flood | up to `CRACK_MAX`, 256 | no |
 | Lava cool-off chain | up to `SAND_LAVA_COOLOFF_MAX_CHAIN`, 8 links, each an arbitrary further cell | no |
 | Explosions and thrown debris (`step_impulses`) | queued, crosses many steps, effectively unbounded | no |
 
-The gravity sweep and liquid cross-flow have fixed cell reaches suitable
-for stripes. Gas, reactions, liquid density sorting and impulses remain
-serial. Reactions mix local rules with conduction and flood walks;
-impulses can reach across the board.
+The gravity sweep, gas walk and liquid cross-flow have fixed cell reaches
+suitable for stripes. Gas cross-flow, reactions, liquid density sorting and
+impulses remain serial. Reactions mix local rules with conduction and flood
+walks; impulses can reach across the board.
 
 ### Stripes, not tiles
 
@@ -1344,18 +1344,30 @@ The device perf suite enables splitting for its own liquid tables;
 `pass_us.liquid_us` there includes both phases, joins, metadata merges and
 guards together.
 
+### Gas walk stripes
+
+The gas walk uses the main sweep's 32-row checkerboard and one guard row on
+each side of a boundary. Gas rises, so its row order is the gravity sweep's
+mirror: for ordinary downward gravity the guard above a boundary runs before
+the one below it. A pre-phase snapshot keeps a gas received at the seam from
+taking a second turn in the guard pass.
+
+Block wakes and dirty spans extend beyond that one-cell guard, so both workers
+write private copies and merge them after each phase. Boards shorter than 128
+rows and scratch allocation failures retain the serial walk.
+
 ### The draw
 
 `sand_rng_next_at(s, x, y, slot)` (`sand_priv.h`) replaces
-`rng_next(&s->rng)` at every call site the sweep reaches -
-`try_scatter()`, `try_slide_impl()`, `liquid_may_move()` - while
-`s->rng_hashed` is armed, which is true during the sweep phases and
-guards, and the liquid cross-flow phases and guards.
+`rng_next(&s->rng)` at every call site a split pass reaches -
+`try_scatter()`, `try_slide_impl()`, `liquid_may_move()`, and the gas
+decay, mobility and walk draws - while `s->rng_hashed` is armed. That is
+true during the sweep, liquid cross-flow and gas-walk phases and guards.
 
 Armed, it hashes `(s->rng_seed_base, s->step_phase, y * s->w + x, slot)`
 through `rng_hash()` (`util/rng.h`); disarmed, it is `rng_next(&s->rng)`
-unchanged, so gas and reactions later the same step retain sequential
-draws, and the whole step with the switch off is unchanged.
+unchanged, so reactions and every serial gas step retain sequential draws,
+and the whole step with the switch off is unchanged.
 
 `slot` is a fixed per-call-site constant (`SAND_RNG_SLOT_*`), not a
 per-cell counter - a cell's scatter roll and its slide roll hash
