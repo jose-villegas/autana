@@ -35,7 +35,7 @@ its own set. Eight files, two jobs:
 - [`../plans/`](../plans) — plans that touch this app. Only
   `Reaction-Doc-Generator-Plan.md`'s brush-blurb phase is still unbuilt.
 - [`../notes/README.md`](../notes/README.md) — the hardware constraints
-  (no PSRAM, the memory budget) this app's numbers are shaped by.
+  (the PSRAM and memory budget) this app's numbers are shaped by.
 - [`../Testing-Guide.md`](../Testing-Guide.md) — how any of this gets
   verified, on host and on device; [`Testing-Sand.md`](Testing-Sand.md)
   is this app's own half of that.
