@@ -41,6 +41,33 @@ DP_FREE_HEAP_SOURCE="internal heap free after gfx_init (HEAPMARK, S3 diag build,
 DP_LARGEST_ALLOC_BYTES=41216
 DP_LARGEST_ALLOC_SOURCE="one sand grid (184x224), unchanged by the port"
 
+# Total PSRAM capacity - not a post-boot free figure the way DP_FREE_HEAP_BYTES
+# is. No post-init free-PSRAM measurement is recorded anywhere in this file, so
+# a test that wants realistic PSRAM headroom charges its own buffers (the
+# framebuffer included) against this pool via heap_caps_malloc, same as device.
+DP_PSRAM_BYTES=8388608
+DP_PSRAM_SOURCE="launcher/sdkconfig.defaults line 4 ('ESP32-S3R8: 8 MB octal PSRAM, 80 MHz'); docs/notes/Board-and-Memory.md board table, PSRAM row"
+
+# Below this many bytes, an allocation that names neither MALLOC_CAP_INTERNAL
+# nor MALLOC_CAP_SPIRAM tries internal RAM before PSRAM; at or above it, PSRAM
+# is tried first. Read directly from the sdkconfig knob, not derived.
+DP_SPIRAM_ALWAYSINTERNAL_BYTES=65536
+DP_SPIRAM_ALWAYSINTERNAL_SOURCE="CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL in launcher/sdkconfig and sdkconfig.defaults, read 2026-09-16"
+
+# One SPI transaction's hard ceiling: the peripheral's own transaction-length
+# register is 18 bits wide (SPI_LL_DMA_MAX_BIT_LEN in ESP-IDF's spi_ll.h), so
+# one spi_transaction_t cannot carry more than this many bytes no matter how
+# many DMA descriptors chain it. Not one of this file's usual three sources
+# (no sdkconfig knob names a SoC register width) - recorded with the fullest
+# provenance available: gfx.c's own panel_draw() names the same constant and
+# figure while chunking sends around it (branch
+# claude/sand-send-glitch-no-continuation, commit 9bb08a20, not yet merged
+# into main), and docs/notes/Display-and-Rendering.md's 80 MHz investigation
+# separately lists "sub-windows under 32 KiB" among the transaction shapes it
+# tried. Not wired to a build gate yet - see the host-limits report for why.
+DP_DMA_MAX_TRANSACTION_BYTES=32768
+DP_DMA_MAX_TRANSACTION_SOURCE="ESP-IDF spi_ll.h SPI_LL_DMA_MAX_BIT_LEN (18-bit transaction-length register); corroborated by gfx.c panel_draw() (branch claude/sand-send-glitch-no-continuation, commit 9bb08a20) and docs/notes/Display-and-Rendering.md's 80 MHz investigation"
+
 # --- toolchain and codegen -------------------------------------------------
 DP_TOOLCHAIN_PREFIX=xtensa-esp32s3-elf
 DP_TOOLCHAIN_SOURCE="ESP-IDF v5.5 tools/tools.json, xtensa-esp-elf esp-14.2.0_20260121"
