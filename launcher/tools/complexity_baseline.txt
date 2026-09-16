@@ -47,6 +47,7 @@
 33	launcher/main/apps/sand/suite_sand_dune_blast.c:563	test_the_vessel_scene_lets_nothing_reach_outside_it
 32	launcher/main/apps/sand/suite_sand_combustion.c:1119	test_a_32_cell_snow_cover_turns_to_ice_in_about_five_minutes
 32	launcher/main/apps/sand/suite_sand_roots.c:459	test_a_rooted_collar_survives_the_bed_shifting_away
+31	launcher/components/small3dlib/include/small3dlib.h:1974	S3L_drawTriangle
 31	launcher/main/apps/sand/suite_sand_scenes.c:1883	build_gunpowder_basin_scene
 30	launcher/main/apps/sand/sand_liquid.c:342	equalise_one_row
 30	launcher/main/apps/sand/sand_plants.c:52	anchored
@@ -530,6 +531,7 @@
 7	launcher/test/suites/suite_gfx_heal.c:124	test_rolling_reaches_every_row_and_wraps
 7	launcher/test/suites/suite_icons.c:221	test_blocks_matches_the_artworks_actual_run_count
 7	launcher/tools/gfx_palette_gen.c:71	gfx_palette_gen_build_index_map
+6	launcher/components/small3dlib/include/small3dlib.h:1412	S3L_asin
 6	launcher/main/apps/diagnostics/app_diagnostics.c:152	diagnostics_frame
 6	launcher/main/apps/diagnostics/app_diagnostics.c:96	draw_toggles_page
 6	launcher/main/apps/sand/app_sand.c:1767	count_awake
