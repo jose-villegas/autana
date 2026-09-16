@@ -248,7 +248,7 @@ full depth instead of re-climbing from 1, the property
 `test_a_sparse_repaint_does_not_band_a_tall_liquid_column` pins. A
 *boundary* cell (this cell touches a different material or air) cannot
 make the same assumption: if the carry does not describe the row one step
-back, the honest value is zero, not whatever a different part of the pool last
+back, the honest value is 0, not whatever a different part of the pool last
 left there. Distrusting the carry on both paths reintroduces re-climb
 banding; trusting it on both paths lets a stale row's saturated value leak
 across a real boundary and, once, rendered an entire settled pool at
