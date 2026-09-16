@@ -8,3 +8,12 @@ docs/Testing-Guide.md	FATAL_ERROR	CMake command.
 docs/Testing-Guide.md	LAUNCHER_SELFTEST	Kconfig symbol before CONFIG expansion.
 docs/Testing-Guide.md	LAUNCHER_DEVELOPMENT	Kconfig symbol before CONFIG expansion.
 docs/Testing-Guide.md	LAUNCHER_RELEASE	Kconfig symbol before CONFIG expansion.
+docs/sand/Adding-a-Material.md	POUR_RADIUS	Rewrite in flight.
+docs/sand/Adding-a-Material.md	ERASE_RADIUS	Rewrite in flight.
+docs/sand/Adding-a-Material.md	MAT_EMBER	Rewrite in flight.
+docs/sand/Architecture.md	gfx/icons.h	Rewrite in flight.
+docs/sand/Sand-Simulation.md	ROOT_DEPTH_MAX	Rewrite in flight.
+docs/sand/Sand-Simulation.md	sand_set_flick	Rewrite in flight.
+docs/sand/Shading-and-Colour.md	mirror_local_depth_row	Rewrite in flight.
+docs/sand/Shading-and-Colour.md	tools/gen_wave_table.c	Rewrite in flight.
+docs/notes/Second-Target-Draft.md	check_static_ram.py	Retirement of this old-target draft is in flight.
