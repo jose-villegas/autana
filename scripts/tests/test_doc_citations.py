@@ -10,6 +10,8 @@ SCRIPTS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
 
 import check_doc_citations  # noqa: E402
+import check_doc_vocabulary  # noqa: E402
+import doc_drift  # noqa: E402
 
 
 class DocCitationTest(unittest.TestCase):
@@ -74,6 +76,31 @@ missing_function() LIVE_MISSING missing.sh
             "doc": "docs/Guide.md", "kind": "function", "line": 1,
             "symbol": "old_name",
         }])
+
+    def test_drift_uses_the_later_review_date(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            self.write(root, "docs/Guide.md", "Guide\n")
+            self.write(root, "launcher/main/example.c", "void live_function(void) {}\n")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            self.write(root, "docs/doc_review_ledger.txt", "docs/Guide.md\t2026-09-17\tchecked\n")
+            rows = doc_drift.report(root, today=__import__("datetime").date(2026, 9, 18))
+        guide = next(row for row in rows if row["doc"] == "docs/Guide.md")
+        self.assertEqual(guide["age"], 1)
+
+    def test_vocabulary_gate_honours_archive_exception(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "scripts/doc_vocabulary.txt", "C6\twrong board\n")
+            self.write(root, "scripts/doc_vocabulary_exceptions.txt", "docs/Archive.md\tarchive\n")
+            self.write(root, "docs/Guide.md", "C6 is current.\n")
+            self.write(root, "docs/Archive.md", "C6 is historical.\n")
+            found = check_doc_vocabulary.check(root)
+        self.assertEqual([(path, term) for path, _, term, _ in found], [("docs/Guide.md", "C6")])
 
     def test_reverse_index_ignores_repeated_function_definition(self):
         with tempfile.TemporaryDirectory() as temp:
