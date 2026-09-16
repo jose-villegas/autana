@@ -56,6 +56,11 @@ CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -g -O1"
 . "$TEST_DIR/../tools/device_profile.sh"
 device_profile_load "" "$TEST_DIR/../tools/device_profiles" || exit 1
 HOST_HEAP_ARENA_BYTES=$(device_profile_require DP_FREE_HEAP_BYTES) || exit 1
+HOST_HEAP_ARENA_PSRAM_BYTES=$(device_profile_require DP_PSRAM_BYTES) || exit 1
+HOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES=$(device_profile_require DP_SPIRAM_ALWAYSINTERNAL_BYTES) || exit 1
+# One list for the test binary and --print-flags, so the complexity gate parses
+# heap_arena.c with every define the real compile has.
+HEAP_ARENA_DEFINES="-DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES=$HOST_HEAP_ARENA_BYTES -DHOST_HEAP_ARENA_PSRAM_BYTES=$HOST_HEAP_ARENA_PSRAM_BYTES -DHOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES=$HOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES"
 
 # The shell's own portable units and their suites. Hardware suites are absent
 # by design - suite_gfx.c would not compile here, which is the point.
@@ -104,6 +109,7 @@ $TEST_DIR/suites/suite_screenshot.c
 $TEST_DIR/suites/suite_build_id.c
 $TEST_DIR/suites/suite_device_state.c
 $TEST_DIR/suites/suite_job.c
+$TEST_DIR/suites/suite_heap_caps.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/gesture.c
 $MAIN_DIR/input/button_fsm.c
@@ -144,6 +150,30 @@ for f in $(find "$MAIN_DIR/apps" -name '*.c' ! -path '*/tools/*' | sort); do
     SOURCES="$SOURCES
 $f"
 done
+
+# Exit here, before touching a compiler, for a caller that only wants the
+# exact file list or flag set this script proves compilable - the clang-tidy
+# complexity gate (tools/complexity_gate.py) builds its compile database
+# from these instead of keeping its own copy, so the two cannot drift apart
+# the way cognitive_complexity.py's own function finder did. -Werror is
+# left out of --print-flags: it is this script's own strictness choice, not
+# a fact about what compiles, and a warning unrelated to complexity should
+# not cost that file its coverage in the gate.
+case "${1:-}" in
+    --print-sources)
+        printf '%s\n' $SOURCES | sed '/^$/d'
+        exit 0
+        ;;
+    --print-flags)
+        printf '%s\n' -std=c11 -Wall -Wextra -Wno-unused-parameter -g -O1 \
+            -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
+            -I "$TEST_DIR/../components/microui/include" \
+            -I "$TEST_DIR/../components/small3dlib/include" \
+            -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
+            $HEAP_ARENA_DEFINES
+        exit 0
+        ;;
+esac
 
 # The hardware-facing app_*.c files are excluded from SOURCES above because
 # they cannot link here - which also meant nothing compiled them at all
@@ -207,7 +237,7 @@ UNITY_OBJ="$BUILD_DIR/unity.o"
 "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
     -I "$TEST_DIR/../components/microui/include" \
     -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
-    -DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES="$HOST_HEAP_ARENA_BYTES" \
+    $HEAP_ARENA_DEFINES \
     $SOURCES "$UNITY_OBJ" -o "$OUT" \
     -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm
 

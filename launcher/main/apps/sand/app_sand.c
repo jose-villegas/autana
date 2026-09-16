@@ -61,6 +61,7 @@
 #include "sand.h"
 #include "sand_colour_state.h"
 #include "sand_heal.h"
+#include "sand_limits.h"
 #include "sand_palette256.h"
 #include "sand_swatch.h"
 #include "sand_ui.h"
@@ -174,13 +175,6 @@ static int cell, grid_w, grid_h, block_cols, block_rows;
  * bands without costing more than a seventh of a full frame. */
 #define SAND_HEAL_BUDGET_PIXELS (GFX_WIDTH * 64)
 static sand_heal_t heal_policy;
-
-#define CELL_MIN                  2 /* finest quality; sets every allocation size */
-#define GRID_W_MAX                (GFX_WIDTH / CELL_MIN)
-#define GRID_H_MAX                (GFX_HEIGHT / CELL_MIN)
-
-#define BLOCK_COLS_MAX            ((GRID_W_MAX + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
-#define BLOCK_ROWS_MAX            ((GRID_H_MAX + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
 
 /* Default pour brush radius, in px - seeds sand_ui_t.radius_px; the value
  * actually in force is whatever the brush screen's slider last set (see

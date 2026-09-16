@@ -39,9 +39,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: release-v5.5
           target: esp32s3
           path: launcher
-          command: idf.py -B build.diag -D SDKCONFIG=build.diag/sdkconfig -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag" build
+          command: >-
+            idf.py -B build.diag -D SDKCONFIG=build.diag/sdkconfig -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag" build
+
+  # Its own job so only the gate fetches the pinned upstream submodules; a
+  # failed fetch from their hosts cannot fail the firmware build.
+  complexity-gate:
+    name: Complexity gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # Same container invocation as its own build: the toolchains exist
+      # only inside ESP-IDF's image, and the compile database names container
+      # paths. esp-clang is an optional ESP-IDF tool, installed here at the
+      # version the baseline was recorded with.
+      - uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: release-v5.5
+          target: esp32s3
+          path: launcher
+          command: >-
+            idf.py -B build.diag -D SDKCONFIG=build.diag/sdkconfig -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag" build
+            && python "$IDF_PATH/tools/idf_tools.py" install esp-clang
+            && cd ..
+            && python3 launcher/tools/complexity_gate.py

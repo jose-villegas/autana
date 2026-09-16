@@ -1,0 +1,6 @@
+[submodule "third_party/upstream/microui"]
+	path = third_party/upstream/microui
+	url = https://github.com/rxi/microui.git
+[submodule "third_party/upstream/small3dlib"]
+	path = third_party/upstream/small3dlib
+	url = https://gitlab.com/drummyfish/small3dlib.git
