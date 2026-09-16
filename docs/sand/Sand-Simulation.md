@@ -1189,7 +1189,7 @@ update can touch another's, in cells:
 | Main sweep (`step_one_grain`, `move_liquid_grain`) | 1 (Chebyshev - every move is one of the eight ring directions) | yes |
 | Liquid cross-flow (`equalise_liquids`, `find_shallowest`) | `SAND_LIQUID_SIGHT`, 8, along a ray that can run diagonally through several rows | yes; private wake and repaint state |
 | Gas walk (`gas_walk_once`) | 1, same shape as the sweep | yes; private wake and repaint state |
-| Gas cross-flow (`equalise_gas`) | 8, shares `SAND_LIQUID_SIGHT` | no |
+| Gas cross-flow (`equalise_gas`) | `material_of(c)->sight`: 5-24 rows across fire (5), gas (16), steam (20), and smoke (24); stripes would need 24-row guards | no |
 | Heat conduction to a boiler (`try_heat_transform_given`'s `CONDUCT_REACH`) | 32, a directed walk, not a spread | no |
 | Glass crack flood | up to `CRACK_MAX`, 256 | no |
 | Lava cool-off chain | up to `SAND_LAVA_COOLOFF_MAX_CHAIN`, 8 links, each an arbitrary further cell | no |
