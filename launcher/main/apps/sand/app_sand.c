@@ -52,6 +52,7 @@
 #include "../../gfx/gfx.h"
 #include "../../gfx/gfx_font_roles.h"
 #include "../../input/imu.h"
+#include "../../input/imu_rotation.h"
 #include "../../ui/ui.h"
 #include "icons_sand.h"
 #include "material_palette.h"
