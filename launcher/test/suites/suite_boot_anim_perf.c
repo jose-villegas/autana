@@ -50,12 +50,10 @@ extern void draw_title(uint32_t now_ms, uint8_t ink);
 
 static const char* TAG = "boot_anim_perf";
 
-/* Each checkpoint freezes now_ms and repeats the frame this many times -
- * not a time-bounded ring buffer the way cube_perf's open-ended natural-
- * rate capture needs one: the workload here is deterministic per
- * checkpoint, so a fixed count is both simpler and exactly as much data as
- * cube_perf's own 128-sample ring ever guarantees anyway. Small enough
- * that seven checkpoints' worth still finishes in well under a minute. */
+/* Each checkpoint freezes now_ms and repeats the frame this many times. The
+ * workload is deterministic per checkpoint, so a fixed count carries as much
+ * data as a time-bounded ring would, and seven checkpoints still finish in
+ * well under a minute. */
 #define SAMPLES_PER_CHECKPOINT 60
 
 typedef struct {
@@ -70,11 +68,9 @@ typedef struct {
     int32_t present_us;
 } frame_sample_t;
 
-/* Heap-allocated per checkpoint, freed right after its own report - the
- * same reason suite_cube_perf.c's samples/stat_scratch are heap, not
- * static: a full selftest run walks every suite in one boot, and a static
- * array here would be permanent .bss cost paid by every suite after this
- * one in the same run, not just while this one is executing. */
+/* Heap, freed after each checkpoint's report: a selftest run walks every
+ * suite in one boot, so a static array would be .bss paid for the whole run,
+ * not just while this suite executes. */
 static frame_sample_t* samples = NULL;
 static int32_t* stat_scratch = NULL;
 

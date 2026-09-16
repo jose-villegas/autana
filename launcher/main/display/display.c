@@ -26,11 +26,10 @@ display_init(display_t* d) {
 
 /* Splits (gx, gy) into the component along quarter `q`'s own "down"
  * direction and the component perpendicular to it - see display.h's top
- * comment. Mirrors the branch structure app_sand.c's old
- * gravity_quarter_turn() used to pick a quarter from scratch: quarters 0/2
- * read gy as the deciding axis and gx as the offender; 1/3 the other way
- * round. `*aligned` is positive when the board is still roughly where
- * quarter `q` expects. */
+ * comment. Mirrors the branch structure of picking a quarter from scratch:
+ * quarters 0/2 read gy as the deciding axis and gx as the offender; 1/3 the
+ * other way round. `*aligned` is positive when the board is still roughly
+ * where quarter `q` expects. */
 static void
 split_gravity(int q, int gx, int gy, int* aligned, int* perp) {
     switch (q) {
