@@ -73,6 +73,62 @@ step_deferred(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     return n;
 }
 
+/* First of the hover frames: position only - see UI_POINTER_HOVER_FRAMES for
+ * why one frame is not enough. A tap resolved within this frame still owes
+ * a down/up pair, fed here so microui sees the same mouse_down-already-clear
+ * frame it resolved fast taps on before. */
+static int
+step_pressed(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
+    p->press_deferred = false;
+    p->dragging = false;
+    p->press_stage = 1;
+    p->press_x = input->x;
+    p->press_y = input->y;
+    int n = emit(out, 0, UI_POINTER_MOVE, p->press_x, p->press_y);
+
+    if (!input->released) {
+        return n;
+    }
+    n = emit(out, n, UI_POINTER_DOWN, p->press_x, p->press_y);
+    n = emit(out, n, UI_POINTER_UP, input->x, input->y);
+    p->press_stage = 0;
+    p->down = false;
+    return n;
+}
+
+static int
+step_hover(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
+    if (p->over_scrollable && !input->released && moved_vertically_past_threshold(p, input)) {
+        return begin_drag(p, input, out, 0);
+    }
+    int n = emit(out, 0, UI_POINTER_MOVE, p->press_x, p->press_y);
+
+    const bool last_hover_frame = (p->press_stage >= UI_POINTER_HOVER_FRAMES);
+    if (last_hover_frame && p->over_scrollable && !input->released) {
+        p->press_stage = 0;
+        p->press_deferred = true;
+    } else if (last_hover_frame) {
+        n = emit(out, n, UI_POINTER_DOWN, p->press_x, p->press_y);
+        p->press_stage = 0;
+        p->down = true;
+    } else {
+        p->press_stage++;
+    }
+
+    if (!input->released) {
+        return n;
+    }
+    /* Lifted mid-sequence. A press that never got its DOWN still owes one,
+     * or the tap vanishes entirely. */
+    if (!p->down) {
+        n = emit(out, n, UI_POINTER_DOWN, p->press_x, p->press_y);
+    }
+    n = emit(out, n, UI_POINTER_UP, input->x, input->y);
+    p->press_stage = 0;
+    p->down = false;
+    return n;
+}
+
 int
 ui_pointer_step(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out, int max) {
     if (max < UI_POINTER_MAX_EVENTS) {
@@ -82,28 +138,7 @@ ui_pointer_step(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out, 
     int n = 0;
 
     if (input->pressed) {
-        p->press_deferred = false;
-        p->dragging = false;
-        /* First of the hover frames: position only. See
-         * UI_POINTER_HOVER_FRAMES for why a press cannot simply be fed
-         * here, and why one such frame is not enough. */
-        p->press_stage = 1;
-        p->press_x = input->x;
-        p->press_y = input->y;
-        n = emit(out, n, UI_POINTER_MOVE, p->press_x, p->press_y);
-
-        if (input->released) {
-            /* Resolved inside one frame - too fast for the hover frames to
-             * play out. Still a real tap, so it still owes a down/up pair,
-             * and feeding both here leaves microui the same
-             * mouse_down-already-clear frame it resolved taps on before
-             * the pointer ever learned to hold. */
-            n = emit(out, n, UI_POINTER_DOWN, p->press_x, p->press_y);
-            n = emit(out, n, UI_POINTER_UP, input->x, input->y);
-            p->press_stage = 0;
-            p->down = false;
-        }
-        return n;
+        return step_pressed(p, input, out);
     }
 
     if (p->dragging) {
@@ -115,34 +150,7 @@ ui_pointer_step(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out, 
     }
 
     if (p->press_stage > 0) {
-        if (p->over_scrollable && !input->released && moved_vertically_past_threshold(p, input)) {
-            return begin_drag(p, input, out, 0);
-        }
-        n = emit(out, n, UI_POINTER_MOVE, p->press_x, p->press_y);
-
-        const bool last_hover_frame = (p->press_stage >= UI_POINTER_HOVER_FRAMES);
-        if (last_hover_frame && p->over_scrollable && !input->released) {
-            p->press_stage = 0;
-            p->press_deferred = true;
-        } else if (last_hover_frame) {
-            n = emit(out, n, UI_POINTER_DOWN, p->press_x, p->press_y);
-            p->press_stage = 0;
-            p->down = true;
-        } else {
-            p->press_stage++;
-        }
-
-        if (input->released) {
-            /* Lifted mid-sequence. A press that never got its DOWN still
-             * owes one, or the tap vanishes entirely. */
-            if (!p->down) {
-                n = emit(out, n, UI_POINTER_DOWN, p->press_x, p->press_y);
-            }
-            n = emit(out, n, UI_POINTER_UP, input->x, input->y);
-            p->press_stage = 0;
-            p->down = false;
-        }
-        return n;
+        return step_hover(p, input, out);
     }
 
     if (input->released) {
