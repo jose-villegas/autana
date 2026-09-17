@@ -375,6 +375,46 @@ log_arm(const arm_result_t* r) {
              (double)r->touched_bands * GFX_WIDTH * GFX_BAND_HEIGHT * sizeof(gfx_color_t) / r->frame_count);
 }
 
+/* Runs the full_fb and band arms for one (orientation, fps) pair, logging
+ * and asserting each, and folds the band arm's replay cost into the
+ * portrait/landscape reference the deferred ratio check at the end
+ * reads. */
+static void
+run_orientation_fps_pair(int quarter, const char* orient_name, bool fps_on, double* portrait_fps_on_replay_us,
+                         double* landscape_fps_on_replay_us, bool* have_landscape_fps_on) {
+    char label[32];
+
+    snprintf(label, sizeof label, "full_fb/%s/fps-%s", orient_name, fps_on ? "on" : "off");
+    arm_result_t full = run_arm(label, false, quarter, fps_on);
+    log_arm(&full);
+
+    snprintf(label, sizeof label, "band/%s/fps-%s", orient_name, fps_on ? "on" : "off");
+    arm_result_t band = run_arm(label, true, quarter, fps_on);
+    log_arm(&band);
+    assert_band_frame_did_real_work(band.frame, band.touched_bands, band.raster_us);
+
+    if (!fps_on) {
+        return;
+    }
+    if (quarter == DISPLAY_PORTRAIT) {
+        *portrait_fps_on_replay_us = arm_replay_us_per_frame(&band);
+        return;
+    }
+    *landscape_fps_on_replay_us = arm_replay_us_per_frame(&band);
+    *have_landscape_fps_on = true;
+
+    /* Measurement only, for the UI editor's placement hints -
+     * no assert: does starting the box's panel row extent on
+     * a band boundary (cube_fps_box_x_override, app_cube.c)
+     * touch fewer bands or replay cheaper than the app's own
+     * centred placement, which rarely lands on one. Reset
+     * right after so no other arm inherits it. */
+    cube_fps_box_x_override = 0;
+    arm_result_t aligned = run_arm("band/landscape/fps-on-aligned", true, quarter, true);
+    log_arm(&aligned);
+    cube_fps_box_x_override = -1;
+}
+
 void
 test_cube_orientation_and_fps_sweep(void) {
     ui_init();
@@ -405,37 +445,8 @@ test_cube_orientation_and_fps_sweep(void) {
              GFX_BAND_HEIGHT);
     for (size_t o = 0; o < sizeof(orientations) / sizeof(orientations[0]); o++) {
         for (size_t f = 0; f < sizeof(fps_states) / sizeof(fps_states[0]); f++) {
-            char label[32];
-
-            snprintf(label, sizeof label, "full_fb/%s/fps-%s", orientations[o].name, fps_states[f] ? "on" : "off");
-            arm_result_t full = run_arm(label, false, orientations[o].quarter, fps_states[f]);
-            log_arm(&full);
-
-            snprintf(label, sizeof label, "band/%s/fps-%s", orientations[o].name, fps_states[f] ? "on" : "off");
-            arm_result_t band = run_arm(label, true, orientations[o].quarter, fps_states[f]);
-            log_arm(&band);
-            assert_band_frame_did_real_work(band.frame, band.touched_bands, band.raster_us);
-
-            if (fps_states[f]) {
-                if (orientations[o].quarter == DISPLAY_PORTRAIT) {
-                    portrait_fps_on_replay_us = arm_replay_us_per_frame(&band);
-                } else {
-                    landscape_fps_on_replay_us = arm_replay_us_per_frame(&band);
-                    have_landscape_fps_on = true;
-
-                    /* Measurement only, for the UI editor's placement hints -
-                     * no assert: does starting the box's panel row extent on
-                     * a band boundary (cube_fps_box_x_override, app_cube.c)
-                     * touch fewer bands or replay cheaper than the app's own
-                     * centred placement, which rarely lands on one. Reset
-                     * right after so no other arm inherits it. */
-                    cube_fps_box_x_override = 0;
-                    arm_result_t aligned =
-                        run_arm("band/landscape/fps-on-aligned", true, orientations[o].quarter, true);
-                    log_arm(&aligned);
-                    cube_fps_box_x_override = -1;
-                }
-            }
+            run_orientation_fps_pair(orientations[o].quarter, orientations[o].name, fps_states[f],
+                                     &portrait_fps_on_replay_us, &landscape_fps_on_replay_us, &have_landscape_fps_on);
         }
     }
 
