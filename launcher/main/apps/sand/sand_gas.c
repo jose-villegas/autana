@@ -1038,7 +1038,7 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
         .rload_dy = rload_dy,
         .jostle = jostle,
         .y_step = y_step,
-        .offset = (s->step_phase & 1) ? GAS_STRIPE_H / 2 : 0,
+        .offset = sand_stripe_offset(s, GAS_STRIPE_H),
     };
     if (!s->gas_walk || !sand_two_core_step_enabled() || s->h < GAS_SPLIT_MIN_ROWS
         || !step_gas_stripes(s, &phase, &found_any)) {
