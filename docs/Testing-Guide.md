@@ -114,7 +114,8 @@ over, for both:
   heap. First-fit with real coalescing, because the rule that bites is
   contiguity, not totals: one grid is 41,216 contiguous bytes, and it fails
   on a heap with 50 KB free whose largest block is 38 KB. Blocks still
-  outstanding when a test ends print a `LEAK` line naming that test —
+  outstanding when a test ends print a `LEAK` line naming that test and fail
+  the host run —
   that is the assert-before-free pattern, which on device leaks a grid and
   starves every later test in the same boot.
 
