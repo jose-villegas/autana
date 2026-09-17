@@ -190,6 +190,72 @@ test_a_grain_falls_one_cell_per_step(void) {
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SAND_EMPTY, sand_at(&s, 3, 2), "and keeps falling on the next step");
 }
 
+static int
+landscape_slide_y(cell_t grain, int gravity_x) {
+    const int motion_x = CELL_MATERIAL(grain) == MAT_GAS ? -gravity_x : gravity_x;
+    const int start_x = motion_x > 0 ? 1 : W - 2;
+
+    fixture();
+    sand_set_scatter(&s, 0);
+    for (int y = 1; y < H - 1; y++) {
+        const int x = start_x + motion_x * y;
+        sand_set(&s, x, y, STONE);
+        sand_set(&s, x, y - 1, STONE);
+        sand_set(&s, x - motion_x, y + 1, STONE);
+    }
+    sand_set(&s, start_x, 1, grain);
+
+    if (CELL_MATERIAL(grain) == MAT_GAS) {
+        sand_set_decay(&s, 0);
+        sand_set_gas_walk(&s, false);
+        sand_step(&s, gravity_x, 0, 255);
+        sand_set_gas_walk(&s, true);
+    } else {
+        sand_step(&s, gravity_x, 0, 255);
+    }
+
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            if (sand_at(&s, x, y) == grain) {
+                return y;
+            }
+        }
+    }
+    return -1;
+}
+
+static void
+test_landscape_sand_slides_at_most_once(void) {
+    for (int gravity_x = -1; gravity_x <= 1; gravity_x += 2) {
+        const int y = landscape_slide_y(SAND, gravity_x);
+        TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(2, y,
+                                              "a forced landscape slide must not take another turn in a later row");
+    }
+}
+
+static void
+test_landscape_gas_slides_at_most_once(void) {
+    for (int gravity_x = -1; gravity_x <= 1; gravity_x += 2) {
+        const int y = landscape_slide_y(GAS, gravity_x);
+        TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(2, y,
+                                              "a forced landscape gas slide must not take another turn in a later row");
+    }
+}
+
+static void
+test_portrait_forced_slide_keeps_its_outcome(void) {
+    fixture();
+    sand_set_scatter(&s, 0);
+    sand_set(&s, 3, 2, STONE);
+    sand_set(&s, 2, 2, STONE);
+    sand_set(&s, 3, 1, SAND);
+
+    sand_step(&s, 0, 1, 255);
+
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SAND, sand_at(&s, 4, 2),
+                                    "a blocked portrait fall must take its only open lower diagonal");
+}
+
 static void
 test_a_grain_rests_on_the_floor(void) {
     fixture();
@@ -826,6 +892,9 @@ run_sand_motion_suite(void) {
     RUN_TEST(test_the_average_direction_tracks_the_true_angle);
     RUN_TEST(test_dithering_still_conserves_grains);
     RUN_TEST(test_a_grain_falls_one_cell_per_step);
+    RUN_TEST(test_landscape_sand_slides_at_most_once);
+    RUN_TEST(test_landscape_gas_slides_at_most_once);
+    RUN_TEST(test_portrait_forced_slide_keeps_its_outcome);
     RUN_TEST(test_a_grain_rests_on_the_floor);
     RUN_TEST(test_a_grain_does_not_fall_through_another);
     RUN_TEST(test_a_grain_slides_off_a_pile);
