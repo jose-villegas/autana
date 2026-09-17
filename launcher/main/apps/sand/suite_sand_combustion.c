@@ -268,6 +268,38 @@ test_open_air_gas_rise_rate_stays_at_its_baseline(void) {
         "the 64-trial, eight-step baseline rises 409 cells; a move outside two percent changes open-air gas");
 }
 
+/* A gas grain sealed in stone on every side but one - shared by every
+ * pocket-exit escape probe in this section, portrait or landscape. */
+static void
+build_sealed_gas_pocket(sand_t* g, int exit_x, int exit_y) {
+    sand_set(g, 3, 3, GAS);
+    for (int y = 2; y <= 4; y++) {
+        for (int x = 2; x <= 4; x++) {
+            if (x != 3 || y != 3) {
+                sand_set(g, x, y, STONE);
+            }
+        }
+    }
+    sand_set(g, exit_x, exit_y, SAND_EMPTY);
+}
+
+/* Steps g up to max_steps times under (gx, gy), stopping the moment a gas
+ * cell appears anywhere in [x0,x1) x [y0,y1) - shared the same way. */
+static bool
+step_until_gas_escapes(sand_t* g, int gx, int gy, int max_steps, int x0, int x1, int y0, int y1) {
+    for (int i = 0; i < max_steps; i++) {
+        sand_step(g, gx, gy, 0);
+        for (int y = y0; y < y1; y++) {
+            for (int x = x0; x < x1; x++) {
+                if (CELL_MATERIAL(sand_at(g, x, y)) == MAT_GAS) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 static void
 test_gas_escapes_through_a_down_diagonal_pocket_exit(void) {
     static char failure_message[64];
@@ -278,29 +310,9 @@ test_gas_escapes_through_a_down_diagonal_pocket_exit(void) {
         sand_set_mobility(&s, 255);
         sand_set_scatter(&s, 0);
 
-        sand_set(&s, 3, 3, GAS);
-        for (int y = 2; y <= 4; y++) {
-            for (int x = 2; x <= 4; x++) {
-                if (x != 3 || y != 3) {
-                    sand_set(&s, x, y, STONE);
-                }
-            }
-        }
-        sand_set(&s, 2, 4, SAND_EMPTY);
+        build_sealed_gas_pocket(&s, 2, 4);
 
-        bool escaped = false;
-        for (int i = 0; i < 10000 && !escaped; i++) {
-            sand_step(&s, 0, 1000, 0);
-            for (int y = 4; y < H; y++) {
-                for (int x = 0; x < W; x++) {
-                    if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_GAS) {
-                        escaped = true;
-                    }
-                }
-            }
-        }
-
-        escaped_seeds += escaped;
+        escaped_seeds += step_until_gas_escapes(&s, 0, 1000, 10000, 0, W, 4, H) ? 1 : 0;
     }
     snprintf(failure_message, sizeof failure_message, "escaped in only %d of 16 seeds", escaped_seeds);
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(12, escaped_seeds, failure_message);
@@ -604,6 +616,31 @@ test_a_confined_gas_pocket_bursts_instead_of_just_catching(void) {
                                          "just fill a core of fire");
 }
 
+/* One stone-ringed fire-beside-gas pocket, centred at x, row 2. */
+static void
+build_confined_gas_pocket(sand_t* g, int x) {
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            if (dx != 0 || dy != 0) {
+                sand_set(g, x + dx, 2 + dy, STONE);
+            }
+        }
+    }
+    sand_set(g, x - 1, 2, FIRE);
+    sand_set(g, x, 2, GAS);
+}
+
+static int
+count_remaining_gas(const sand_t* g, int cw, int ch) {
+    int remaining = 0;
+    for (int y = 0; y < ch; y++) {
+        for (int x = 0; x < cw; x++) {
+            remaining += CELL_MATERIAL(sand_at(g, x, y)) == MAT_GAS;
+        }
+    }
+    return remaining;
+}
+
 static void
 test_confined_gas_blasts_chain_without_losing_a_pocket(void) {
     enum { CELL_COUNT = 6, CELL_SPACING = 40, CW = CELL_COUNT * CELL_SPACING, CH = 5 };
@@ -619,16 +656,7 @@ test_confined_gas_blasts_chain_without_losing_a_pocket(void) {
     sand_enable_impulses(&chain, impulses, CW * CH);
 
     for (int i = 0; i < CELL_COUNT; i++) {
-        const int x = 10 + i * CELL_SPACING;
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                if (dx != 0 || dy != 0) {
-                    sand_set(&chain, x + dx, 2 + dy, STONE);
-                }
-            }
-        }
-        sand_set(&chain, x - 1, 2, FIRE);
-        sand_set(&chain, x, 2, GAS);
+        build_confined_gas_pocket(&chain, 10 + i * CELL_SPACING);
     }
 
     int completed_step = 0;
@@ -636,13 +664,7 @@ test_confined_gas_blasts_chain_without_losing_a_pocket(void) {
         sand_step(&chain, 0, 1000, 0);
         TEST_ASSERT_LESS_OR_EQUAL_UINT_MESSAGE(4, chain.explosions_this_step,
                                                "confined pockets must wait for a later step once the burst cap fills");
-        int remaining = 0;
-        for (int y = 0; y < CH; y++) {
-            for (int x = 0; x < CW; x++) {
-                remaining += CELL_MATERIAL(sand_at(&chain, x, y)) == MAT_GAS;
-            }
-        }
-        if (remaining == 0) {
+        if (count_remaining_gas(&chain, CW, CH) == 0) {
             completed_step = step;
             break;
         }
@@ -1016,6 +1038,33 @@ snow_left_over_soil_at(uint8_t moisture) {
  * cold travelled rather than simply hitting the bottom. This is the
  * REACH-AND-STRENGTH test, not a rate test: how long the slab takes to
  * get there is tuning, and lives in the two period constants. */
+typedef struct {
+    int deepest, shocked;
+} slab_chill_t;
+
+/* The deepest glass row (from slab_top) still holding sub-ambient
+ * temperature, and how many glass cells anywhere in the slab have
+ * reached SAND_SHOCK_COLD. */
+static slab_chill_t
+scan_slab_chill(const sand_t* g, int w2, int h2, int slab_top) {
+    slab_chill_t r = {slab_top - 1, 0};
+    for (int y = slab_top; y < h2; y++) {
+        for (int x = 0; x < w2; x++) {
+            const cell_t c = sand_at(g, x, y);
+            if (CELL_MATERIAL(c) != MAT_GLASS) {
+                continue;
+            }
+            if (CELL_VARIANT(c) < SAND_AMBIENT_HEAT && y > r.deepest) {
+                r.deepest = y;
+            }
+            if (CELL_VARIANT(c) <= SAND_SHOCK_COLD) {
+                r.shocked++;
+            }
+        }
+    }
+    return r;
+}
+
 static void
 test_cold_conducts_deep_into_a_slab(void) {
     const int W2 = 40, H2 = 60;
@@ -1043,22 +1092,8 @@ test_cold_conducts_deep_into_a_slab(void) {
         sand_step(&g, 0, 1000, 0);
     }
 
-    int deepest = slab_top - 1, shocked = 0;
-    for (int y = slab_top; y < H2; y++) {
-        for (int x = 0; x < W2; x++) {
-            const cell_t c = sand_at(&g, x, y);
-            if (CELL_MATERIAL(c) != MAT_GLASS) {
-                continue;
-            }
-            if (CELL_VARIANT(c) < SAND_AMBIENT_HEAT && y > deepest) {
-                deepest = y;
-            }
-            if (CELL_VARIANT(c) <= SAND_SHOCK_COLD) {
-                shocked++;
-            }
-        }
-    }
-    const int depth = deepest - slab_top + 1;
+    const slab_chill_t r = scan_slab_chill(&g, W2, H2, slab_top);
+    const int depth = r.deepest - slab_top + 1;
     free(cells);
 
     /* Measured 11 rows with the walk and 3 without, so this sits between
@@ -1076,7 +1111,7 @@ test_cold_conducts_deep_into_a_slab(void) {
      * at or below that threshold, against 12% when the walk attenuated at
      * every cell - what matters is that glass still arrives cold enough
      * to break. */
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE((W2 * (H2 - slab_top)) / 6, shocked,
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE((W2 * (H2 - slab_top)) / 6, r.shocked,
                                          "a sixth of the slab at least must reach SAND_SHOCK_COLD, or the "
                                          "cold is too shallow for heat below to break the glass");
 }
@@ -1115,6 +1150,51 @@ test_snow_melts_on_wet_soil_but_not_on_dry(void) {
  *
  * 90% and not all, because the rim never crusts. No side walls - they seed up
  * the full height and the front would go sideways. */
+typedef struct {
+    int ice, total;
+} ice_progress_t;
+
+/* Ice and total (ice + still-snow) cell counts across the whole cover. */
+static ice_progress_t
+snow_cover_ice_progress(const sand_t* g, int gh, int x0, int x1) {
+    ice_progress_t p = {0, 0};
+    for (int y = 0; y < gh; y++) {
+        for (int x = x0; x < x1; x++) {
+            const int m = CELL_MATERIAL(sand_at(g, x, y));
+            if (m == MAT_EXTENDED) {
+                p.ice++;
+                p.total++;
+            } else if (m == MAT_SNOW) {
+                p.total++;
+            }
+        }
+    }
+    return p;
+}
+
+typedef struct {
+    int snow, total;
+} skin_census_t;
+
+/* The cover's own top row - the topmost snow-or-ice cell of every column,
+ * open sky above every one of them. */
+static skin_census_t
+snow_cover_skin_census(const sand_t* g, int gh, int x0, int x1) {
+    skin_census_t c = {0, 0};
+    for (int x = x0; x < x1; x++) {
+        for (int y = 0; y < gh; y++) {
+            const int m = CELL_MATERIAL(sand_at(g, x, y));
+            if (m != MAT_SNOW && m != MAT_EXTENDED) {
+                continue;
+            }
+            c.total++;
+            c.snow += (m == MAT_SNOW) ? 1 : 0;
+            break; /* topmost cell of this column only */
+        }
+    }
+    return c;
+}
+
 static void
 test_a_32_cell_snow_cover_turns_to_ice_in_about_five_minutes(void) {
     enum { GW = 56, GH = 40, X0 = 4, X1 = 52, DEPTH = 32 };
@@ -1155,38 +1235,15 @@ test_a_32_cell_snow_cover_turns_to_ice_in_about_five_minutes(void) {
         if (i % SAMPLE_EVERY != 0) {
             continue;
         }
-        int ice = 0, total = 0;
-        for (int y = 0; y < GH; y++) {
-            for (int x = X0; x < X1; x++) {
-                const int m = CELL_MATERIAL(sand_at(&g, x, y));
-                if (m == MAT_EXTENDED) {
-                    ice++;
-                    total++;
-                } else if (m == MAT_SNOW) {
-                    total++;
-                }
-            }
-        }
-        if (total != 0 && ice * 10 >= total * 9) {
+        const ice_progress_t p = snow_cover_ice_progress(&g, GH, X0, X1);
+        if (p.total != 0 && p.ice * 10 >= p.total * 9) {
             almost_at = i;
         }
     }
     /* AND THE SKIN IS STILL SNOW. Ice grows inside the drift; the surface it
      * is growing under does not join it, which is why the ceiling above is
-     * 90% and not everything. The cover's own top row - open sky above every
-     * cell of it. Read BEFORE the frees, not after. */
-    int skin_snow = 0, skin_total = 0;
-    for (int x = X0; x < X1; x++) {
-        for (int y = 0; y < GH; y++) {
-            const int m = CELL_MATERIAL(sand_at(&g, x, y));
-            if (m != MAT_SNOW && m != MAT_EXTENDED) {
-                continue;
-            }
-            skin_total++;
-            skin_snow += (m == MAT_SNOW) ? 1 : 0;
-            break; /* topmost cell of this column only */
-        }
-    }
+     * 90% and not everything. Read BEFORE the frees, not after. */
+    const skin_census_t skin = snow_cover_skin_census(&g, GH, X0, X1);
 
     free(cells);
     free(blocks);
@@ -1202,7 +1259,7 @@ test_a_32_cell_snow_cover_turns_to_ice_in_about_five_minutes(void) {
     TEST_ASSERT_LESS_THAN_INT_MESSAGE(20000, almost_at,
                                       "nor take a quarter hour - the ceiling this pins is about five "
                                       "minutes");
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(skin_total * 3 / 4, skin_snow,
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(skin.total * 3 / 4, skin.snow,
                                          "the drift's own surface must still be snow after the inside has "
                                          "iced - a cell with open space beside it is the rim, and the rim does "
                                          "not thicken a crust forming under it");
@@ -1214,6 +1271,40 @@ test_a_32_cell_snow_cover_turns_to_ice_in_about_five_minutes(void) {
  * A free-standing block tells the two apart: stone under it, air on the other
  * three sides. Measured at 2000 steps, 12 of 12 along the stone and 1 of 12
  * down the open sides, that one widened up from the iced floor. */
+typedef struct {
+    int floor_ice, floor_n, side_ice, side_n;
+} crust_faces_t;
+
+/* Folds one snow/ice cell of the bank into its floor or side tally -
+ * neither if it is not on either face. */
+static void
+note_crust_face_cell(cell_t c, int x, int y, int x0, int x1, int ytop, int ybot, crust_faces_t* f) {
+    if (CELL_MATERIAL(c) != MAT_EXTENDED && CELL_MATERIAL(c) != MAT_SNOW) {
+        return;
+    }
+    const int ice = (CELL_MATERIAL(c) == MAT_EXTENDED) ? 1 : 0;
+    if (y == ybot) {
+        f->floor_n++;
+        f->floor_ice += ice;
+    } else if (y > ytop && (x == x0 || x == x1 - 1)) {
+        f->side_n++;
+        f->side_ice += ice;
+    }
+}
+
+/* Ice/total tallies along the bank's stone-contact floor and its two
+ * open-air sides. */
+static crust_faces_t
+snow_bank_crust_faces(const sand_t* g, int x0, int x1, int ytop, int ybot) {
+    crust_faces_t f = {0, 0, 0, 0};
+    for (int y = ytop; y <= ybot; y++) {
+        for (int x = x0; x < x1; x++) {
+            note_crust_face_cell(sand_at(g, x, y), x, y, x0, x1, ytop, ybot, &f);
+        }
+    }
+    return f;
+}
+
 static void
 test_snow_does_not_crust_against_open_air(void) {
     enum { GW = 32, GH = 32, X0 = 10, X1 = 22, YTOP = 18, YBOT = GH - 2 };
@@ -1243,32 +1334,67 @@ test_snow_does_not_crust_against_open_air(void) {
         sand_step(&g, 0, 1000, 0);
     }
 
-    int floor_ice = 0, floor_n = 0, side_ice = 0, side_n = 0;
-    for (int y = YTOP; y <= YBOT; y++) {
-        for (int x = X0; x < X1; x++) {
-            const cell_t c = sand_at(&g, x, y);
-            if (CELL_MATERIAL(c) != MAT_EXTENDED && CELL_MATERIAL(c) != MAT_SNOW) {
-                continue;
-            }
-            const int ice = (CELL_MATERIAL(c) == MAT_EXTENDED) ? 1 : 0;
-            if (y == YBOT) {
-                floor_n++;
-                floor_ice += ice;
-            } else if (y > YTOP && (x == X0 || x == X1 - 1)) {
-                side_n++;
-                side_ice += ice;
-            }
-        }
-    }
+    const crust_faces_t f = snow_bank_crust_faces(&g, X0, X1, YTOP, YBOT);
     free(cells);
     free(blocks);
 
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(floor_n / 2, floor_ice,
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(f.floor_n / 2, f.floor_ice,
                                          "setup: snow resting on stone must crust along that contact, or the "
                                          "assertion below passes on a bank that never crusted anywhere");
-    TEST_ASSERT_LESS_THAN_INT_MESSAGE(side_n / 3, side_ice,
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(f.side_n / 3, f.side_ice,
                                       "snow with nothing but open air beside it must stay powder - a crust "
                                       "forms where snow meets another material, and air is not one");
+}
+
+/* How many cells (x, y) is from the nearest face of the [x0,x1) x
+ * [ytop,ybot] rectangle. */
+static int
+distance_to_face(int x, int y, int x0, int x1, int ytop, int ybot) {
+    int depth = x - x0;
+    if (x1 - 1 - x < depth) {
+        depth = x1 - 1 - x;
+    }
+    if (y - ytop < depth) {
+        depth = y - ytop;
+    }
+    if (ybot - y < depth) {
+        depth = ybot - y;
+    }
+    return depth;
+}
+
+typedef struct {
+    int ring_ice, ring_total, next_ice, next_total, core_ice, core_total;
+} crust_depth_t;
+
+/* Folds one bank cell at `depth` from the nearest face into the ring
+ * (depth 0), next-layer-in (depth 1) or core (depth >= 3) tally. */
+static void
+note_crust_depth_cell(cell_t c, int depth, crust_depth_t* d) {
+    const int is_ice = (CELL_MATERIAL(c) == MAT_EXTENDED) ? 1 : 0;
+    if (depth == 0) {
+        d->ring_total++;
+        d->ring_ice += is_ice;
+    } else if (depth == 1) {
+        d->next_total++;
+        d->next_ice += is_ice;
+    } else if (depth >= 3) {
+        d->core_total++;
+        d->core_ice += is_ice;
+    }
+}
+
+/* Ice/total tallies by depth from the bank's own faces: the exposed
+ * ring, the layer just behind it, and the core. */
+static crust_depth_t
+snow_bank_crust_by_depth(const sand_t* g, int x0, int x1, int ytop, int ybot) {
+    crust_depth_t d = {0, 0, 0, 0, 0, 0};
+    for (int y = ytop; y <= ybot; y++) {
+        for (int x = x0; x < x1; x++) {
+            note_crust_depth_cell(sand_at(g, x, y), distance_to_face(x, y, x0, x1, ytop, ybot), &d);
+        }
+    }
+    return d;
 }
 
 /* A CRUST STARTS AT THE FACES AND THICKENS INWARD, and at any moment the
@@ -1321,45 +1447,17 @@ test_a_snowbank_crusts_on_its_faces_and_thickens_slowly_inward(void) {
         sand_step(&g, 0, 1000, 0);
     }
 
-    int ring_ice = 0, ring_total = 0;
-    int next_ice = 0, next_total = 0, core_ice = 0, core_total = 0;
-    for (int y = YTOP; y <= YBOT; y++) {
-        for (int x = X0; x < X1; x++) {
-            int depth = x - X0;
-            if (X1 - 1 - x < depth) {
-                depth = X1 - 1 - x;
-            }
-            if (y - YTOP < depth) {
-                depth = y - YTOP;
-            }
-            if (YBOT - y < depth) {
-                depth = YBOT - y;
-            }
-
-            const cell_t c = sand_at(&g, x, y);
-            const int is_ice = (CELL_MATERIAL(c) == MAT_EXTENDED) ? 1 : 0;
-            if (depth == 0) {
-                ring_total++;
-                ring_ice += is_ice;
-            } else if (depth == 1) {
-                next_total++;
-                next_ice += is_ice;
-            } else if (depth >= 3) {
-                core_total++;
-                core_ice += is_ice;
-            }
-        }
-    }
+    const crust_depth_t d = snow_bank_crust_by_depth(&g, X0, X1, YTOP, YBOT);
     free(cells);
     free(blocks);
 
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(ring_total * 3 / 4, ring_ice,
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(d.ring_total * 3 / 4, d.ring_ice,
                                          "setup: the exposed faces of a settled bank must actually crust, or "
                                          "everything below passes on a bank that never iced at all");
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(next_total / 8, next_ice,
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(d.next_total / 8, d.next_ice,
                                          "the layer behind the shell must ice too - a crust thickens inward "
                                          "from the face it started on, it is not frozen at one cell forever");
-    TEST_ASSERT_LESS_THAN_INT_MESSAGE(core_total / 4, core_ice,
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(d.core_total / 4, d.core_ice,
                                       "but the core of a drift must still be mostly powder - a bank iced "
                                       "all the way through is not a crust, it is a block of ice");
 }
@@ -1444,6 +1542,21 @@ test_a_settled_snowbank_crusts_to_ice(void) {
                                   "flight has to cost nothing");
 }
 
+/* Snow cells not currently marked settled. */
+static int
+count_loose_snow(const sand_t* g, int gw, int gh) {
+    int loose = 0;
+    for (int y = 0; y < gh; y++) {
+        for (int x = 0; x < gw; x++) {
+            if (CELL_MATERIAL(sand_at(g, x, y)) != MAT_SNOW) {
+                continue;
+            }
+            loose += cell_settled(g, x, y) ? 0 : 1;
+        }
+    }
+    return loose;
+}
+
 /* AND ONCE AT REST IT STAYS AT REST, whatever is happening thermally under it.
  *
  * The test above makes cell_settled() the gate on crusting, which hands the
@@ -1482,16 +1595,7 @@ test_a_resting_snowbank_stays_settled_over_a_floor_it_chills(void) {
     int first_loose = -1, loose_steps = 0;
     for (int i = 1; i <= WATCH; i++) {
         sand_step(&g, 0, 1000, 0);
-        int loose = 0;
-        for (int y = 0; y < GH; y++) {
-            for (int x = 0; x < GW; x++) {
-                if (CELL_MATERIAL(sand_at(&g, x, y)) != MAT_SNOW) {
-                    continue;
-                }
-                loose += cell_settled(&g, x, y) ? 0 : 1;
-            }
-        }
-        if (loose != 0) {
+        if (count_loose_snow(&g, GW, GH) != 0) {
             loose_steps++;
             if (first_loose < 0) {
                 first_loose = i;
@@ -2253,29 +2357,9 @@ test_gas_escapes_a_pocket_through_a_lower_diagonal_in_landscape(void) {
         sand_set_mobility(&s, 255);
         sand_set_scatter(&s, 0);
 
-        sand_set(&s, 3, 3, GAS);
-        for (int y = 2; y <= 4; y++) {
-            for (int x = 2; x <= 4; x++) {
-                if (x != 3 || y != 3) {
-                    sand_set(&s, x, y, STONE);
-                }
-            }
-        }
-        sand_set(&s, 4, 2, SAND_EMPTY);
+        build_sealed_gas_pocket(&s, 4, 2);
 
-        bool escaped = false;
-        for (int i = 0; i < 10000 && !escaped; i++) {
-            sand_step(&s, 1000, 0, 0);
-            for (int y = 0; y < H; y++) {
-                for (int x = 4; x < W; x++) {
-                    if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_GAS) {
-                        escaped = true;
-                    }
-                }
-            }
-        }
-
-        escaped_seeds += escaped;
+        escaped_seeds += step_until_gas_escapes(&s, 1000, 0, 10000, 4, W, 0, H) ? 1 : 0;
     }
     snprintf(failure_message, sizeof failure_message, "escaped in only %d of 16 seeds", escaped_seeds);
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(12, escaped_seeds, failure_message);
