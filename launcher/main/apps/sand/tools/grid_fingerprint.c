@@ -291,14 +291,32 @@ scene_plant_bed(sand_t* s) {
     }
 }
 
-/* ACID, which appeared nowhere in this file - every scene above ran without
- * one acid cell, so any change to the dissolver or acid rain got "identical
- * to baseline" from a gate that never executed it. The cullet fix
- * shipped on exactly that; deleting it again takes this
- * scene's MAT_SAND from 20 to 0 and moves no other row.
- *
- * One band per outcome, because what the dissolver does interestingly is
- * REFUSE: sand goes fast (200), stone slowly (60), metal barely (1), glass
+/* Glass is immune for having no dissolvable at all; cullet is immune
+ * because it IS glass, and needs its own reject to say so - it shares
+ * MAT_SAND's row. A band that starts going moves the histogram. */
+static cell_t
+acid_bath_dissolve_target(int x) {
+    if (x < 10) {
+        return FP_SAND;
+    }
+    if (x < 20) {
+        return FP_CULLET;
+    }
+    if (x < 30) {
+        return FP_METAL;
+    }
+    if (x < 40) {
+        return FP_GLASS;
+    }
+    if (x < 50) {
+        return FP_STONE;
+    }
+    return FP_WATER; /* the dilution path */
+}
+
+/* ACID, absent from every other scene here, so a dissolver or acid-rain
+ * change would otherwise pass this gate unnoticed. One band per outcome:
+ * sand dissolves fast (200), stone slowly (60), metal barely (1); glass
  * and cullet never. */
 static void
 scene_acid_bath(sand_t* s) {
@@ -310,26 +328,9 @@ scene_acid_bath(sand_t* s) {
         sand_set(s, x, FP_H - 1, FP_STONE);
     }
 
-    /* Glass is immune for having no dissolvable at all; cullet is immune
-     * because it IS glass, and needs its own reject to say so - it shares
-     * MAT_SAND's row. A band that starts going moves the histogram. */
     for (int y = FP_H - 3; y < FP_H - 1; y++) {
         for (int x = 0; x < FP_W; x++) {
-            cell_t target;
-            if (x < 10) {
-                target = FP_SAND;
-            } else if (x < 20) {
-                target = FP_CULLET;
-            } else if (x < 30) {
-                target = FP_METAL;
-            } else if (x < 40) {
-                target = FP_GLASS;
-            } else if (x < 50) {
-                target = FP_STONE;
-            } else {
-                target = FP_WATER; /* the dilution path */
-            }
-            sand_set(s, x, y, target);
+            sand_set(s, x, y, acid_bath_dissolve_target(x));
         }
     }
 
@@ -358,9 +359,7 @@ scene_acid_bath(sand_t* s) {
  * into each other. Each bay is INERT today under one of those
  * mechanisms - which is what lets this scene fail when one changes. */
 static void
-scene_snow_thaw(sand_t* s) {
-    sand_set_soak(s, SAND_SOAK_PER_MATERIAL);
-
+snow_thaw_floor(sand_t* s) {
     for (int x = 0; x < FP_W; x++) {
         sand_set(s, x, FP_H - 1, FP_STONE);
     }
@@ -369,7 +368,10 @@ scene_snow_thaw(sand_t* s) {
             sand_set(s, x, y, FP_STONE);
         }
     }
+}
 
+static void
+snow_thaw_bays(sand_t* s) {
     for (int y = FP_H - 8; y < FP_H - 1; y++) {
         for (int x = 0; x < 15; x++) {
             sand_set(s, x, y, FP_WATER); /* thaws=4 - melts today */
@@ -378,11 +380,14 @@ scene_snow_thaw(sand_t* s) {
             sand_set(s, x, y, FP_WET_DIRT); /* inert today */
         }
     }
+}
 
-    /* Heat held FIVE cells from the snow through a conductor, because today
-     * chilling only ever reaches an immediate neighbour - letting the cold
-     * travel further shows up here as a different row.
-     * Lava rather than a hot pane alone so the source is still hot at 300. */
+/* Heat held FIVE cells from the snow through a conductor, because today
+ * chilling only ever reaches an immediate neighbour - letting the cold
+ * travel further shows up here as a different row.
+ * Lava rather than a hot pane alone so the source is still hot at 300. */
+static void
+snow_thaw_heat_conductor(sand_t* s) {
     for (int x = 32; x < 47; x++) {
         sand_set(s, x, FP_H - 2, FP_LAVA);
         sand_set(s, x, FP_H - 3, FP_HOT_GLASS);
@@ -390,10 +395,13 @@ scene_snow_thaw(sand_t* s) {
             sand_set(s, x, y, FP_STONE);
         }
     }
+}
 
-    /* Settled snow resting ON something convertible: inert today, so turning it to
-     * ice shows up as a different row. Ice below it covers MATX_ICE's own
-     * chills and thaws, which nothing else here reaches. */
+/* Settled snow resting ON something convertible: inert today, so turning it to
+ * ice shows up as a different row. Ice below it covers MATX_ICE's own
+ * chills and thaws, which nothing else here reaches. */
+static void
+snow_thaw_ice_bed(sand_t* s) {
     for (int x = 48; x < FP_W; x++) {
         for (int y = FP_H - 4; y < FP_H - 1; y++) {
             sand_set(s, x, y, FP_STONE);
@@ -402,7 +410,10 @@ scene_snow_thaw(sand_t* s) {
             sand_set(s, x, y, FP_ICE);
         }
     }
+}
 
+static void
+snow_thaw_blanket(sand_t* s) {
     for (int y = FP_H - 16; y < FP_H - 8; y++) {
         for (int x = 0; x < FP_W; x++) {
             if (x % 16 != 15) {
@@ -410,13 +421,27 @@ scene_snow_thaw(sand_t* s) {
             }
         }
     }
+}
 
-    /* Smoke warms (28) whatever it touches, and it starts on the snow. */
+/* Smoke warms (28) whatever it touches, and it starts on the snow. */
+static void
+snow_thaw_smoke(sand_t* s) {
     for (int y = FP_H - 20; y < FP_H - 16; y++) {
         for (int x = 0; x < FP_W; x++) {
             sand_set(s, x, y, FP_SMOKE);
         }
     }
+}
+
+static void
+scene_snow_thaw(sand_t* s) {
+    sand_set_soak(s, SAND_SOAK_PER_MATERIAL);
+    snow_thaw_floor(s);
+    snow_thaw_bays(s);
+    snow_thaw_heat_conductor(s);
+    snow_thaw_ice_bed(s);
+    snow_thaw_blanket(s);
+    snow_thaw_smoke(s);
 }
 
 /* A QUIET snow bank - the only shape that can show the crust rule.
@@ -518,9 +543,7 @@ scene_snow_earth(sand_t* s) {
  * pour at a later step, so a grown bed would still be sprouting when the
  * acid was long spent. The wall keeps the two from quenching each other. */
 static void
-scene_plant_ruin(sand_t* s) {
-    sand_set_soak(s, SAND_SOAK_PER_MATERIAL);
-
+plant_ruin_floor_and_earth(sand_t* s) {
     for (int x = 0; x < FP_W; x++) {
         sand_set(s, x, FP_H - 1, FP_STONE);
     }
@@ -529,6 +552,10 @@ scene_plant_ruin(sand_t* s) {
             sand_set(s, x, y, FP_WET_DIRT);
         }
     }
+}
+
+static void
+plant_ruin_trees(sand_t* s) {
     for (int x = 4; x < FP_W; x += 8) {
         for (int y = FP_H - 14; y < FP_H - 4; y++) {
             sand_set(s, x, y, FP_ROOT);
@@ -539,13 +566,19 @@ scene_plant_ruin(sand_t* s) {
             sand_set(s, x + 1, y, FP_LEAF);
         }
     }
+}
 
+static void
+plant_ruin_wall(sand_t* s) {
     for (int y = 0; y < FP_H; y++) {
         for (int x = FP_W / 2 - 1; x <= FP_W / 2 + 1; x++) {
             sand_set(s, x, y, FP_STONE);
         }
     }
+}
 
+static void
+plant_ruin_acid_and_lava(sand_t* s) {
     for (int y = FP_H - 30; y < FP_H - 24; y++) {
         for (int x = 0; x < FP_W / 2 - 1; x++) {
             sand_set(s, x, y, FP_ACID);
@@ -554,6 +587,15 @@ scene_plant_ruin(sand_t* s) {
             sand_set(s, x, y, FP_LAVA);
         }
     }
+}
+
+static void
+scene_plant_ruin(sand_t* s) {
+    sand_set_soak(s, SAND_SOAK_PER_MATERIAL);
+    plant_ruin_floor_and_earth(s);
+    plant_ruin_trees(s);
+    plant_ruin_wall(s);
+    plant_ruin_acid_and_lava(s);
 }
 
 /* GRAVITY IS PER SCENE, and the six original rows keep the straight-down
