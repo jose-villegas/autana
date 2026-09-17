@@ -1255,8 +1255,10 @@ worth it.
 
 The serial sweep's no-double-move guarantee rests on one property: every
 row's possible destinations were already visited this step, so a grain
-that lands there is never picked up again. That property is per **grid**,
-not per stripe - a stripe boundary sits inside it, not outside it.
+that lands there is never picked up again. On a liquid-free horizontal
+sweep, the row direction and permitted diagonal alternate each step so the
+permitted destination has passed. That property is per **grid**, not per
+stripe - a stripe boundary sits inside it, not outside it.
 
 Two adjacent stripes are always different colours, so one of a stripe's
 two neighbours belongs to whichever phase runs second - and a move that

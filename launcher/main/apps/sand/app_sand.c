@@ -1631,14 +1631,45 @@ read_gravity_input(uint32_t dt_ms, imu_sample_t* sample, int* gx, int* gy, int* 
 }
 
 static void
+handle_detonate_input(const input_t* input) {
+    pour_accumulator_ms = 0; /* do not let held time leak into paint/erase */
+    if (!input->pressed) {
+        return;
+    }
+    const int cx = input->x / cell;
+    const int cy = input->y / cell;
+    sand_explode(&sim, cx, cy, (sand_ui_radius(&ui) + cell / 2) / cell);
+}
+
+static void
+handle_spawn_emitter_input(const input_t* input) {
+    if (!input->pressed) {
+        return;
+    }
+    const int cx = input->x / cell;
+    const int cy = input->y / cell;
+    if (!sand_add_emitter(&sim, cx, cy, brushes[ui.brush])) {
+        ESP_LOGW(TAG, "emitter list full (%d) - tap ignored", SAND_MAX_EMITTERS);
+    }
+}
+
+static void
+apply_pour_step(int cx, int cy) {
+    if (ui.mode == SAND_MODE_ERASE) {
+        sand_erase(&sim, cx, cy, (sand_ui_radius(&ui) + cell / 2) / cell);
+        /* Wider than the sweep above on purpose - see
+         * ERASE_EMITTER_RADIUS_PX's own comment for why a point target
+         * needs more aiming tolerance than an area sweep does. */
+        sand_remove_emitters(&sim, cx, cy, (ERASE_EMITTER_RADIUS_PX + cell / 2) / cell);
+        return;
+    }
+    sand_spawn_cell(&sim, cx, cy, (sand_ui_radius(&ui) + cell / 2) / cell, brushes[ui.brush]);
+}
+
+static void
 handle_pour_input(const input_t* input, uint32_t dt_ms) {
     if (ui.mode == SAND_MODE_DETONATE) {
-        pour_accumulator_ms = 0; /* do not let held time leak into paint/erase */
-        if (input->pressed) {
-            const int cx = input->x / cell;
-            const int cy = input->y / cell;
-            sand_explode(&sim, cx, cy, (sand_ui_radius(&ui) + cell / 2) / cell);
-        }
+        handle_detonate_input(input);
         return;
     }
 
@@ -1648,13 +1679,7 @@ handle_pour_input(const input_t* input, uint32_t dt_ms) {
     }
 
     if (ui.mode == SAND_MODE_PAINT && ui.modes[ui.brush] == BRUSH_SPAWN) {
-        if (input->pressed) {
-            const int cx = input->x / cell;
-            const int cy = input->y / cell;
-            if (!sand_add_emitter(&sim, cx, cy, brushes[ui.brush])) {
-                ESP_LOGW(TAG, "emitter list full (%d) - tap ignored", SAND_MAX_EMITTERS);
-            }
-        }
+        handle_spawn_emitter_input(input);
         return;
     }
 
@@ -1671,15 +1696,7 @@ handle_pour_input(const input_t* input, uint32_t dt_ms) {
     const int cx = input->x / cell;
     const int cy = input->y / cell;
     for (int i = 0; i < applications; i++) {
-        if (ui.mode == SAND_MODE_ERASE) {
-            sand_erase(&sim, cx, cy, (sand_ui_radius(&ui) + cell / 2) / cell);
-            /* Wider than the sweep above on purpose - see
-             * ERASE_EMITTER_RADIUS_PX's own comment for why a point target
-             * needs more aiming tolerance than an area sweep does. */
-            sand_remove_emitters(&sim, cx, cy, (ERASE_EMITTER_RADIUS_PX + cell / 2) / cell);
-        } else {
-            sand_spawn_cell(&sim, cx, cy, (sand_ui_radius(&ui) + cell / 2) / cell, brushes[ui.brush]);
-        }
+        apply_pour_step(cx, cy);
     }
 }
 
