@@ -70,6 +70,44 @@ crossflow_step(crossflow_fixture_t* f, int px, int py, bool split) {
     sand_set_two_core_step(false);
 }
 
+/* One (px,py,phase,trial) case: builds matching serial/split fixtures with
+ * an isolated water transfer across the seam at the phase's own offset,
+ * steps both, and asserts split matches serial in cells, dirty tracking,
+ * and wake blocks. */
+static void
+run_crossflow_seam_trial(int px, int py, int phase, int trial) {
+    const int offset = phase ? SAND_BLOCK_H / 2 : 0;
+    const int delta = trial / 2 - SAND_LIQUID_SIGHT - 1;
+    const int distance = (trial & 1) ? SAND_LIQUID_SIGHT : 1;
+    crossflow_fixture_t* serial = crossflow_fixture();
+    crossflow_fixture_t* split = crossflow_fixture();
+    const int y = 2 * SAND_BLOCK_H + offset + delta;
+    crossflow_fixture_t* fixtures[] = {serial, split};
+    for (int i = 0; i < 2; i++) {
+        sand_t* s = &fixtures[i]->s;
+        s->step_phase = (uint16_t)phase;
+        sand_set(s, 9, y, CELL_MAKE(MAT_WATER, 15));
+        for (int k = 1; k < distance; k++) {
+            sand_set(s, 9 + k * px, y + k * py, CELL_MAKE(MAT_WATER, 14));
+            sand_set(s, 9 + k * px - py, y + k * py + px, CELL_EMPTY);
+        }
+        sand_set(s, 9 + distance * px, y + distance * py, CELL_EMPTY);
+        sand_set(s, 9 + (distance + 1) * px, y + (distance + 1) * py, CELL_EMPTY);
+    }
+    crossflow_step(serial, px, py, false);
+    crossflow_step(split, px, py, true);
+    const bool equal = memcmp(serial->cells, split->cells, sizeof serial->cells) == 0;
+    const bool dirty_equal = memcmp(serial->dirty, split->dirty, sizeof serial->dirty) == 0
+                             && memcmp(serial->x0, split->x0, sizeof serial->x0) == 0
+                             && memcmp(serial->x1, split->x1, sizeof serial->x1) == 0;
+    const bool blocks_equal = memcmp(serial->blocks, split->blocks, sizeof serial->blocks) == 0;
+    free(serial);
+    free(split);
+    TEST_ASSERT_TRUE_MESSAGE(equal, "an isolated transfer may move only once across a seam");
+    TEST_ASSERT_TRUE_MESSAGE(dirty_equal, "split must merge every depth repaint and dirty span");
+    TEST_ASSERT_TRUE_MESSAGE(blocks_equal, "split must merge every wake flag");
+}
+
 static void
 test_crossflow_seam_transfer_matches_serial_in_eight_directions(void) {
     for (int px = -1; px <= 1; px++) {
@@ -78,37 +116,8 @@ test_crossflow_seam_transfer_matches_serial_in_eight_directions(void) {
                 continue;
             }
             for (int phase = 0; phase < 2; phase++) {
-                const int offset = phase ? SAND_BLOCK_H / 2 : 0;
                 for (int trial = 0; trial < 2 * (2 * SAND_LIQUID_SIGHT + 3); trial++) {
-                    const int delta = trial / 2 - SAND_LIQUID_SIGHT - 1;
-                    const int distance = (trial & 1) ? SAND_LIQUID_SIGHT : 1;
-                    crossflow_fixture_t* serial = crossflow_fixture();
-                    crossflow_fixture_t* split = crossflow_fixture();
-                    const int y = 2 * SAND_BLOCK_H + offset + delta;
-                    crossflow_fixture_t* fixtures[] = {serial, split};
-                    for (int i = 0; i < 2; i++) {
-                        sand_t* s = &fixtures[i]->s;
-                        s->step_phase = (uint16_t)phase;
-                        sand_set(s, 9, y, CELL_MAKE(MAT_WATER, 15));
-                        for (int k = 1; k < distance; k++) {
-                            sand_set(s, 9 + k * px, y + k * py, CELL_MAKE(MAT_WATER, 14));
-                            sand_set(s, 9 + k * px - py, y + k * py + px, CELL_EMPTY);
-                        }
-                        sand_set(s, 9 + distance * px, y + distance * py, CELL_EMPTY);
-                        sand_set(s, 9 + (distance + 1) * px, y + (distance + 1) * py, CELL_EMPTY);
-                    }
-                    crossflow_step(serial, px, py, false);
-                    crossflow_step(split, px, py, true);
-                    const bool equal = memcmp(serial->cells, split->cells, sizeof serial->cells) == 0;
-                    const bool dirty_equal = memcmp(serial->dirty, split->dirty, sizeof serial->dirty) == 0
-                                             && memcmp(serial->x0, split->x0, sizeof serial->x0) == 0
-                                             && memcmp(serial->x1, split->x1, sizeof serial->x1) == 0;
-                    const bool blocks_equal = memcmp(serial->blocks, split->blocks, sizeof serial->blocks) == 0;
-                    free(serial);
-                    free(split);
-                    TEST_ASSERT_TRUE_MESSAGE(equal, "an isolated transfer may move only once across a seam");
-                    TEST_ASSERT_TRUE_MESSAGE(dirty_equal, "split must merge every depth repaint and dirty span");
-                    TEST_ASSERT_TRUE_MESSAGE(blocks_equal, "split must merge every wake flag");
+                    run_crossflow_seam_trial(px, py, phase, trial);
                 }
             }
         }
