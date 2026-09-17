@@ -2,12 +2,11 @@
 """Answers exactly one question about a raw device self-test capture: is it
 worth reading at all?
 
-A long sand performance-optimisation session wasted repeated cycles acting
-on captures that looked plausible but measured nothing - a timeout with no
-SELFTEST_COMPLETE, a crash loop, or (worst, because it produced a clean-
+A capture can look plausible and measure nothing - a timeout with no
+SELFTEST_COMPLETE, a crash loop, or (worst, because it produces a clean-
 looking report) an image where the suites never actually ran and the device
-just sat in the launcher printing its idle frame rate. Each of those burned
-a full build+flash+capture cycle before anyone noticed. This tool runs
+just sat in the launcher printing its idle frame rate. Each of those burns
+a full build+flash+capture cycle before anyone notices. This tool runs
 straight after the capture step and before report_performance.py, so a
 worthless capture is rejected with a specific reason instead of turning into
 a plausible-looking table.
@@ -43,7 +42,7 @@ PANIC_TYPE_RE = re.compile(r"panic'ed\s*\(([^)]+)\)")
 
 # One per boot. More than one means the device reset mid-run - a crash
 # loop, not a slow run - which changes what a stall in the capture means.
-BOOT_BANNER = "ESP-ROM:esp32c6"
+BOOT_BANNER = "ESP-ROM:esp32s3"
 
 # Printed once per frame-budget test as it starts. Its absence, with an
 # otherwise unremarkable capture, means the flashed image had the suites
@@ -56,7 +55,7 @@ SENTINEL = "device_tests: sand_step on"
 # A line matching this is a Unity test result - used only to find the last
 # few tests that ran before a panic, which is how the crashing test gets
 # identified without a second capture.
-RESULT_RE = re.compile(r"^\S+:\d+:(?P<name>\w+):(?P<status>PASS|FAIL)")
+RESULT_RE = re.compile(r"^\S*:\d+:(?P<name>\w+):(?P<status>PASS|FAIL)")
 
 # Not fatal by itself, but its presence means an old diag image: the
 # current build disables the task watchdog on purpose, because historically

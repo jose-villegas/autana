@@ -1,4 +1,4 @@
-/*=============================================================================
+/*
  * ui - shared microui integration, for the shell and for apps.
  *
  * Everything an app needs to draw a UI, and nothing about any particular UI.
@@ -12,23 +12,21 @@
  *
  * That command-list model is why microui suits this device. A retained-mode
  * toolkit wants to own the display and the refresh cycle, which fights an app
- * like the cube that owns its own framebuffer. Here we render a list of
- * primitives whenever we like, into whatever we like.
+ * that owns its own drawing. Here we render a list of primitives whenever we
+ * like, into whatever we like.
  *
- * WHY THIS MODULE KNOWS ABOUT DIRTY BANDS
- *
- * Immediate mode rebuilds and repaints the whole UI every frame, which
- * normally means clearing the screen every frame, which marks every band dirty
- * and forces a full 9.6 ms transfer - throwing away the saving that partial
- * updates exist to provide. That is not a launcher problem; it would hit any
- * app that drew a UI.
+ * This module knows about dirty bands because immediate mode rebuilds and
+ * repaints the whole UI every frame, which normally means clearing the screen
+ * every frame, marking every band dirty and forcing a full 9.6 ms transfer -
+ * throwing away the saving partial updates exist to provide. That would hit
+ * any app that drew a UI, not only the launcher.
  *
  * The fix is that an immediate-mode UI is only *rebuilt* every frame, not
  * necessarily *changed*. microui's command list is a complete description of
  * the output, so if it hashes the same as last frame the picture is identical
  * and both the repaint and the transfer can be skipped. A static menu then
  * costs nothing at all.
- *===========================================================================*/
+ */
 #pragma once
 
 #include <stdbool.h>
@@ -36,15 +34,20 @@
 
 #include "app.h"
 #include "gfx/gfx_font.h"
+#include "gfx/icon.h"
 #include "microui.h"
 #include "ui/ui_style.h"
 #include "ui/ui_transform.h"
 
 /* Shared metrics, so the shell and any app UI look like one product. */
-#define UI_TITLE_HEIGHT   56
-#define UI_ROW_HEIGHT     64
-#define UI_ROW_GAP        8
-#define UI_MARGIN         16
+#define UI_TITLE_HEIGHT  56
+#define UI_ROW_HEIGHT    64
+#define UI_ROW_GAP       8
+#define UI_MARGIN        16
+
+/* ui_slider_int()'s knob width - chunky enough for a finger, not tuned
+ * finer than that until Phase 5 puts a screenshot next to the design. */
+#define UI_SLIDER_KNOB_W 40
 
 /* The strip across the top of the home screen, reserved and deliberately
  * empty. It is where status belongs - battery, connection, the clock -
@@ -52,7 +55,7 @@
  * nothing below it. A row of the menu was there before; a status bar and
  * a heading that only ever said "APPS" cannot both have the top of a
  * 448px screen. */
-#define UI_BANNER_HEIGHT  56
+#define UI_BANNER_HEIGHT 56
 
 /* Pass as ui_end()'s background to draw without clearing first - for a UI laid
  * over an app's own output rather than replacing it. */
@@ -61,7 +64,7 @@
 void ui_init(void);
 
 /* The microui context, for building the UI between ui_begin and ui_end. */
-mu_Context *ui_context(void);
+mu_Context* ui_context(void);
 
 /* Start a UI frame: translates touch into the mouse events microui
  * expects, then opens the frame. Also resets the button style to
@@ -69,8 +72,8 @@ mu_Context *ui_context(void);
  * everything else in an immediate-mode UI - a caller that wants a style
  * states it every frame. That matters here because the whole shell
  * shares one mu_Context: without the reset, the launcher opting into a
- * bezel would leave the sand app's overlay buttons bezelled too. */
-void ui_begin(const input_t *input);
+ * bezel would leave the running app's own overlay buttons bezelled too. */
+void ui_begin(const input_t* input);
 
 /* Choose how button frames are drawn for the rest of this frame.
  *
@@ -88,14 +91,25 @@ void ui_set_button_style(ui_button_style_t style);
 void ui_set_text_style(ui_text_style_t style);
 
 /* Choose the font microui measures and draws MU_COMMAND_TEXT with, until
- * this is called again - ui_init() seeds it with gfx_font_ui() so it is
- * never left NULL in normal use. Passing NULL here falls back to
- * gfx_font_ui() rather than storing NULL. Unlike ui_set_text_style() and
- * ui_set_transform() below it, this does NOT need to call
- * ui_invalidate() - see the comment above ui_set_font()'s definition in
- * ui.c for why the font is the one style-like setting here that gets to
- * skip it. */
-void ui_set_font(const gfx_font_t *font);
+ * called again - ui_init() seeds it with gfx_font_ui(). NULL falls back
+ * to gfx_font_ui() rather than being stored. Unlike ui_set_text_style()
+ * and ui_set_transform() below, this does NOT need ui_invalidate() - see
+ * ui_set_font()'s ui.c comment for why. Equivalent to
+ * ui_set_font_scaled(font, GFX_GLYPH_SCALE). */
+void ui_set_font(const gfx_font_t* font);
+
+/* Like ui_set_font(), but at `scale` glyph cells instead of the fixed
+ * GFX_GLYPH_SCALE - see ui_set_font()'s ui.c comment for why carrying the
+ * scale inside the font, rather than a separate render-time setting, is
+ * what lets a screen mix two text sizes without paying ui_invalidate()
+ * every frame. Clamped to at least 1. */
+void ui_set_font_scaled(const gfx_font_t* font, int scale);
+
+/* The width `str` would measure at the CURRENT font and scale - what
+ * ui_set_font()/ui_set_font_scaled() last set. For right-aligning a
+ * string (e.g. against a caption on the same row) without re-deriving
+ * the font role and scale at the call site. */
+int ui_measure_text(const char* str);
 
 /* Choose the transform every command is mapped through before it is
  * drawn - see ui_transform.h for what a transform is and why it is
@@ -111,14 +125,10 @@ void ui_set_font(const gfx_font_t *font);
  * is deliberately unpatched, so there is no per-widget nesting. */
 void ui_set_transform(ui_transform_t t);
 
-/* Increments whenever the canvas shape genuinely changes - currently,
- * whenever ui_set_transform() gets a transform differing from the one
- * in force. Starts at 0, set in ui_init(). THIS IS NOT A CALLBACK,
- * NOBODY SUBSCRIBES TO IT: a cheap number, nothing more - a caller reads
- * it, remembers it, compares a fresh read later. No listeners, no event
- * fired - resist a subscriber list; the value comes from being pulled
- * and diffed on a caller's own schedule, same as `palette_drawn_quarter`
- * in app_sand.c. */
+/* Increments whenever the canvas shape genuinely changes. THIS IS NOT A
+ * CALLBACK, NOBODY SUBSCRIBES TO IT: a caller reads it, remembers it and
+ * compares a fresh read later. Resist a subscriber list - the value comes
+ * from being pulled and diffed on the caller's own schedule. */
 uint32_t ui_layout_generation(void);
 
 /* The logical canvas size: the physical viewport (GFX_WIDTH x GFX_HEIGHT)
@@ -138,27 +148,18 @@ int ui_height(void);
  * canvas rotates. Uncorrected, a rect pins to the first-open
  * orientation, and a bigger later orientation leaves part of the screen
  * uncleared, showing a previous app's frame. */
-int ui_begin_screen(mu_Context *ctx, const char *title, int opt);
+int ui_begin_screen(mu_Context* ctx, const char* title, int opt);
 
-/*---------------------------------------------------------------------------
- * Fixed-width content
- *
- * A canvas under a changing transform holds two different kinds of content.
+/*
  * FILL content - a banner, a status strip - has no natural width of its own
- * and always spans whatever width the canvas currently is; the launcher's
- * banner is the model for this and needs no helper, since mu_layout_row()
- * with a -1 column already does exactly that.
+ * and spans whatever the canvas currently is, which mu_layout_row() with a
+ * -1 column already does. FIXED content - a few large tap targets sized to
+ * what they need to say - should keep that width and centre instead.
  *
- * FIXED content - a small number of large tap targets sized to what they
- * need to say - should stay that width and centre in the canvas rather than
- * stretch to fill it. The sand app's boot menu is the model this
- * generalises: it already centres a hand-placed pair of buttons this way.
- *
- * ui_centered_rect() is the shared primitive for the fixed case. Pure
- * geometry, `canvas_w` taken as a parameter rather than read internally via
- * ui_width() - that is what keeps it host-testable without pulling in
- * gfx.h/BSP, the same split ui_bezel_spans() (ui_style.h) and
- * ui_transform_rect() (ui_transform.h) already use. */
+ * ui_centered_rect() is the shared primitive for the fixed case. `canvas_w`
+ * is a parameter rather than an internal ui_width() call, which is what
+ * keeps it host-testable without pulling in gfx.h/BSP.
+ */
 
 /* A rect `w` wide, `h` tall, horizontally centred within a canvas
  * `canvas_w` wide, at vertical position `y`. Does not clamp `w` to
@@ -166,10 +167,23 @@ int ui_begin_screen(mu_Context *ctx, const char *title, int opt);
  * is a caller bug (a button wider than the screen it is centred on)
  * rather than something to paper over silently here. Clamp at the call
  * site if `w` might ever exceed `canvas_w`. */
-static inline mu_Rect ui_centered_rect(int canvas_w, int w, int h, int y)
-{
-    return (mu_Rect){ (canvas_w - w) / 2, y, w, h };
+static inline mu_Rect
+ui_centered_rect(int canvas_w, int w, int h, int y) {
+    return (mu_Rect){(canvas_w - w) / 2, y, w, h};
 }
+
+/* Draws a baked icons_<name>.h glyph (icon_t) filling `r`, in `color`, via
+ * icon_walk_blocks() - streamed rather than collected, so an icon's run
+ * count no longer bounds artwork. `rows` is separate from `icon` because
+ * icon_t.offset indexes into its own header's blob, not a self-contained
+ * pointer - see gfx/icon.h. */
+void ui_draw_icon(mu_Context* ctx, mu_Rect r, const icon_t* icon, const uint8_t* rows, mu_Color color);
+
+/* An integer-valued slider over the next layout row - shaped like
+ * mu_slider_ex(), but integer: that one's float/"%.2f" thumb is the wrong
+ * shape for a "06 PX" control. Writes through `value`, returns whether it
+ * changed this frame. */
+bool ui_slider_int(mu_Context* ctx, int* value, int lo, int hi, int step);
 
 /* Close the frame and paint it, but only if it would look any different
  * from what is already on screen. Returns whether it drew. It repaints
@@ -189,3 +203,27 @@ bool ui_end(uint32_t background_rgb);
  * its unchanged command list, skip the repaint, and leave the app's
  * last frame on screen. */
 void ui_invalidate(void);
+
+/*
+ * Band mode (gfx.h) has no retained framebuffer, so hash-and-skip does
+ * not apply: every band redraws every frame regardless. Closes the frame
+ * like ui_end() does, but BINS the commands by row range instead of
+ * painting - ui_replay_band() draws a band's own share later. Call once
+ * per frame, before the band loop. Pass UI_NO_BACKGROUND if the caller
+ * already cleared the band itself.
+ */
+void ui_end_for_bands(uint32_t background_rgb);
+
+/* Draws whatever ui_end_for_bands() bin holds that overlaps [row0, row1) -
+ * call once per band, into gfx's current band draw target, after the
+ * app's own band content. Commands replay in the same back-to-front,
+ * within-canvas order ui_end() itself would paint them in. */
+void ui_replay_band(int row0, int row1);
+
+/* Queues a plain opaque rect for the NEXT ui_end_for_bands() call to bin
+ * alongside its own microui commands - for pixels to show in band mode
+ * that were never built through microui, such as the shell's own
+ * home-swipe hint. Drained (and cleared) by that call, so state it every
+ * frame it is wanted. `rgb` is plain 0xRRGGBB, not a gfx_color_t - ui.h
+ * does not otherwise depend on gfx.h. */
+void ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb);

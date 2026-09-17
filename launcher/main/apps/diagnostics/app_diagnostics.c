@@ -1,4 +1,4 @@
-/*=============================================================================
+/*
  * app_diagnostics - shows the POST report on demand, plus a second page of
  * developer-only toggles.
  *
@@ -11,11 +11,9 @@
  * what boot found - the point of opening it is usually to see whether something
  * is failing now.
  *
- * Every check is repeated, including the SD card. That one is interesting: the
- * card and the display share SPI2 on different pins, so the re-run releases the
- * panel, mounts the card, and takes the bus back. Nothing is visible on screen
- * while that happens - the panel goes on refreshing its last frame from its own
- * GRAM - and the report prints how long the round trip took.
+ * Every check is repeated, including the SD card: the re-run just re-mounts
+ * the card on its own dedicated SDMMC bus, independent of the display, and
+ * the report prints how long that round trip took.
  *
  * BOOT pages between the report and the toggle screen, rather than the
  * toggle screen adding a control to the report itself - the report is
@@ -28,19 +26,20 @@
  * one-off control that reads a button directly. Any future developer
  * toggle belongs on this same page as another mu_checkbox() row, not as
  * its own bespoke screen.
- *===========================================================================*/
+ */
 
 #include <stdio.h>
 
 #include "../../app.h"
+#include "../../boot/post_ui.h"
 #include "../../display/display.h"
 #include "../../gfx/gfx.h"
 #include "../../input/imu.h"
-#include "../../boot/post_ui.h"
 #if CONFIG_LAUNCHER_SELFTEST
 #include "../../boot/selftest.h"
 #endif
 #include "../../ui/ui.h"
+#include "ui/toggles_screen.h"
 
 #define PAGE_COUNT     2
 #define COL_BACKGROUND 0x0A0C14
@@ -69,19 +68,8 @@ static int selftest_failures = -1;
 static bool selftest_pending;
 #endif /* CONFIG_LAUNCHER_SELFTEST */
 
-/* Sensor axes to screen axes - the SAME board-layout fact main.c's
- * DISPLAY_GRAVITY_X/Y and app_sand.c's GRAVITY_SCREEN_X/Y already
- * carry, copied rather than shared for the same reason main.c's copy
- * gives: these are small, independent readers of a sensor that only
- * ever answers "which way is down", and forcing a shared one is
- * separate work this toggle does not need. This copy exists so the
- * numbers shown here are the exact gx/gy display_update() actually
- * decides orientation from. */
-#define ORIENTATION_GRAVITY_X(s)  (-(s)->ay)
-#define ORIENTATION_GRAVITY_Y(s)  ( (s)->ax)
-
-static void diagnostics_enter(void)
-{
+static void
+diagnostics_enter(void) {
     /* Always open on the report - the page you came here for by default,
      * and the same screen every time regardless of where a previous visit
      * left off. */
@@ -93,112 +81,64 @@ static void diagnostics_enter(void)
     post_rerun();
 }
 
-static void draw_toggles_page(const input_t *input)
-{
-    mu_Context *ctx = ui_context();
+static void
+draw_toggles_page(const input_t* input) {
+    mu_Context* ctx = ui_context();
     ui_begin(input);
 
-    /* ui_width()/ui_height(), not GFX_WIDTH/GFX_HEIGHT - see ui.h: the
-     * logical canvas swaps dimensions under a quarter-turn transform. */
-    if (ui_begin_screen(ctx, "Developer Toggles",
-                        MU_OPT_NOTITLE | MU_OPT_NORESIZE |
-                        MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-
-        mu_layout_row(ctx, 1, (int[]){ -1 }, gfx_text_height() + 8);
-        mu_text(ctx, "DEVELOPER TOGGLES");
-
-        mu_layout_row(ctx, 1, (int[]){ -1 }, UI_ROW_HEIGHT);
-        int overlay_on = gfx_debug_overlay();
-        mu_checkbox(ctx, "gfx panel-grid overlay", &overlay_on);
-        gfx_set_debug_overlay(overlay_on);
-
-        mu_layout_row(ctx, 1, (int[]){ -1 }, UI_ROW_HEIGHT);
-        int leaf_on = gfx_debug_leaf_overlay();
-        mu_checkbox(ctx, "gfx leaf-rect overlay", &leaf_on);
-        gfx_set_leaf_overlay(leaf_on);
-
-        mu_layout_row(ctx, 1, (int[]){ -1 }, UI_ROW_HEIGHT);
-        int interlace_on = gfx_interlace_enabled();
-        mu_checkbox(ctx, "gfx interlace mode", &interlace_on);
-        gfx_set_interlace(interlace_on);
-
-        mu_layout_row(ctx, 1, (int[]){ -1 }, UI_ROW_HEIGHT);
-        mu_checkbox(ctx, "show orientation", &show_orientation);
-
-        /* Read once per frame, only while the toggle is on - imu_read()
-         * is an I2C transaction, no reason to pay for it on every frame
-         * of a page most visits never enable. Shows three things, not
-         * just the quarter: raw accelerometer counts, derived gx/gy
-         * (what display_update() actually decides from - see
-         * ORIENTATION_GRAVITY_X/Y above), and the shell's current
-         * quarter - so a hold reads as "this orientation gives these
-         * numbers, shell calls it quarter N" in one line, without doing
-         * the arithmetic by hand. */
-        if (show_orientation) {
-            char line[64];
-            mu_layout_row(ctx, 1, (int[]){ -1 }, gfx_text_height() + 4);
-
-            if (imu_ready()) {
-                imu_sample_t sample;
-                if (imu_read(&sample)) {
-                    snprintf(line, sizeof line, "accel ax=%d ay=%d az=%d",
-                             sample.ax, sample.ay, sample.az);
-                    mu_text(ctx, line);
-                    mu_layout_row(ctx, 1, (int[]){ -1 }, gfx_text_height() + 4);
-                    snprintf(line, sizeof line, "gravity gx=%d gy=%d",
-                             ORIENTATION_GRAVITY_X(&sample),
-                             ORIENTATION_GRAVITY_Y(&sample));
-                    mu_text(ctx, line);
-                } else {
-                    mu_text(ctx, "IMU read failed");
-                }
-            } else {
-                mu_text(ctx, "no IMU");
-            }
-
-            mu_layout_row(ctx, 1, (int[]){ -1 }, gfx_text_height() + 4);
-            snprintf(line, sizeof line, "shell quarter=%d",
-                     display_shell_quarter());
-            mu_text(ctx, line);
-        }
-
+    /* imu_read() is an I2C transaction - read only while the checkbox is
+     * already on, not on the frame that turns it on (that frame shows the
+     * previous reading's absence for one repaint and self-corrects the
+     * next), so a page most visits never enable never pays for it. */
+    toggles_screen_state_t state = {
+        .overlay_on = gfx_debug_overlay(),
+        .leaf_on = gfx_debug_leaf_overlay(),
+        .interlace_on = gfx_interlace_enabled(),
+        .fast_clock = shell_system_panel_clock_hz() == GFX_PANEL_CLOCK_FAST_HZ,
+        .send_audit_on = gfx_send_audit(),
+        .show_orientation = show_orientation,
+        .imu_ready = imu_ready(),
+        .shell_quarter = display_shell_quarter(),
 #if CONFIG_LAUNCHER_SELFTEST
-        /* An ACTION, not a persistent toggle like the checkboxes above -
-         * this runs once when tapped rather than reflecting a state the
-         * page tracks continuously. Only FLAGGED here, not run:
-         * selftest_run() itself happens at the top of
-         * diagnostics_frame(), outside this page's own
-         * ui_begin()/ui_end() bracket - see the comment there for why
-         * it cannot run from inside this if-block. */
-        mu_layout_row(ctx, 1, (int[]){ -1 }, UI_ROW_HEIGHT);
-        if (mu_button(ctx, "run self test suite")) {
-            selftest_pending = true;
+        .selftest_failures = selftest_failures,
+#endif
+    };
+
+    if (state.show_orientation && state.imu_ready) {
+        imu_sample_t sample;
+        state.have_sample = imu_read(&sample);
+        if (state.have_sample) {
+            state.accel_ax = sample.ax;
+            state.accel_ay = sample.ay;
+            state.accel_az = sample.az;
+            state.gravity_gx = imu_gravity_screen_x(&sample);
+            state.gravity_gy = imu_gravity_screen_y(&sample);
         }
-
-        mu_layout_row(ctx, 1, (int[]){ -1 }, gfx_text_height() + 4);
-        char selftest_line[48];
-        if (selftest_failures < 0) {
-            snprintf(selftest_line, sizeof selftest_line, "self test: not run yet");
-        } else if (selftest_failures == 0) {
-            snprintf(selftest_line, sizeof selftest_line, "self test: all passed");
-        } else {
-            snprintf(selftest_line, sizeof selftest_line, "self test: %d failure(s)",
-                     selftest_failures);
-        }
-        mu_text(ctx, selftest_line);
-#endif /* CONFIG_LAUNCHER_SELFTEST */
-
-        mu_layout_row(ctx, 1, (int[]){ -1 }, gfx_text_height() + 8);
-        mu_text(ctx, "BOOT for the POST report");
-
-        mu_end_window(ctx);
     }
+
+    const toggles_screen_result_t result = toggles_screen_draw(ctx, &state);
+
+    gfx_set_debug_overlay(result.overlay_on);
+    gfx_set_leaf_overlay(result.leaf_on);
+    gfx_set_interlace(result.interlace_on);
+    shell_set_system_panel_clock_hz(result.fast_clock ? GFX_PANEL_CLOCK_FAST_HZ : GFX_PANEL_CLOCK_SLOW_HZ);
+    gfx_set_send_audit(result.send_audit_on);
+    show_orientation = result.show_orientation;
+#if CONFIG_LAUNCHER_SELFTEST
+    /* Only FLAGGED here, not run: selftest_run() itself happens at the top
+     * of diagnostics_frame(), outside this page's own ui_begin()/ui_end()
+     * bracket - see the comment there for why it cannot run from inside
+     * this call. */
+    if (result.selftest_clicked) {
+        selftest_pending = true;
+    }
+#endif
 
     ui_end(COL_BACKGROUND);
 }
 
-static void diagnostics_frame(uint32_t dt_ms, const input_t *input)
-{
+static void
+diagnostics_frame(uint32_t dt_ms, const input_t* input) {
     (void)dt_ms;
 
 #if CONFIG_LAUNCHER_SELFTEST
@@ -206,11 +146,9 @@ static void diagnostics_frame(uint32_t dt_ms, const input_t *input)
      * opens - never from inside mu_button()'s own if-block in
      * draw_toggles_page(). selftest_run() runs suite_ui.c, whose
      * fixture() calls ui_init()/mu_init() on the same ui_context()
-     * singleton every window in this shell draws through. Running it
-     * synchronously from mu_button()'s if-block used to do that
-     * mid-frame, resetting state ui_end() further down still relied on
-     * - reading like a dead touchscreen until main.c's next periodic
-     * resync. */
+     * singleton every window in this shell draws through; running it
+     * synchronously mid-frame would stomp state ui_end() further down
+     * still relies on. */
     if (selftest_pending) {
         selftest_pending = false;
         selftest_failures = selftest_run();
@@ -218,10 +156,8 @@ static void diagnostics_frame(uint32_t dt_ms, const input_t *input)
          * sequence of quarter-turns ending wherever the LAST test left
          * it, not the board's real orientation - restored here
          * immediately, one frame of latency before draw_toggles_page()
-         * ever opens its own frame, the same deferral gfx_resume()
-         * uses. */
-        ui_set_transform(ui_transform_quarter_turn(
-            display_shell_quarter(), GFX_WIDTH, GFX_HEIGHT));
+         * ever opens its own frame. */
+        ui_set_transform(ui_transform_quarter_turn(display_shell_quarter(), GFX_WIDTH, GFX_HEIGHT));
     }
 #endif /* CONFIG_LAUNCHER_SELFTEST */
 
@@ -246,14 +182,19 @@ static void diagnostics_frame(uint32_t dt_ms, const input_t *input)
     }
 }
 
-static void diagnostics_exit(void) { }
+static void
+diagnostics_exit(void) {}
 
 const app_t app_diagnostics = {
-    .name         = "Diagnostics",
-    .summary      = "Hardware self-test report",
-    .enter        = diagnostics_enter,
-    .frame        = diagnostics_frame,
-    .exit         = diagnostics_exit,
+    .name = "Diagnostics",
+    .summary = "Hardware self-test report",
+    .enter = diagnostics_enter,
+    .frame = diagnostics_frame,
+    .exit = diagnostics_exit,
+    /* No cache of its own beyond ui.c's shared one - see ui_invalidate()'s
+     * own comment for why a repaint replacing the screen out from under it
+     * needs this. */
+    .invalidate = ui_invalidate,
     .home_gesture = true,
 };
 

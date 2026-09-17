@@ -1,18 +1,18 @@
-/*=============================================================================
+/*
  * Implements the RUN_TEST override declared in timing.h.
  *
  * Wraps Unity's own dispatcher (UnityDefaultTestRun) from outside: the timer
  * starts before it and stops after it returns, so nothing here runs inside
  * setUp(), the test body, or tearDown(). That matters because a handful of
  * tests time their own subject with esp_timer_get_time() around a narrower
- * window (a single sand_step(), say) - this must never be what widens that
- * window.
+ * window (one call of the thing under test, say) - this must never be what
+ * widens that window.
  *
  * The elapsed-time line is printed AFTER UnityDefaultTestRun returns, so it
- * never touches the existing "file:line:name:PASS" line - the one two
- * tools (launcher/tools/sweeps/validate_capture.py and
- * launcher/main/apps/sand/tools/report_performance.py) already parse.
- *===========================================================================*/
+ * never touches the existing "file:line:name:PASS" line, which
+ * launcher/tools/sweeps/validate_capture.py and an app's own
+ * performance-report script already parse.
+ */
 #include "timing.h"
 
 #include <stdint.h>
@@ -33,10 +33,10 @@
  * file's own situation, since it is what RUN_TEST now expands to. The real
  * definition lives in Unity's own unity.c/UnityDefaultTestRun and is
  * untouched; this is only the prototype, hand-matched to it. */
-extern void UnityDefaultTestRun(void (*Func)(void), const char *FuncName, const int FuncLineNum);
+extern void UnityDefaultTestRun(void (*Func)(void), const char* FuncName, const int FuncLineNum);
 
-void suite_run_test_timed(void (*func)(void), const char *name, int line)
-{
+void
+suite_run_test_timed(void (*func)(void), const char* name, int line) {
 #ifdef HOST_HEAP_ARENA
     /* Outside the timed window on both ends, same as the timer itself -
      * this must never be what widens it. */
@@ -61,32 +61,25 @@ void suite_run_test_timed(void (*func)(void), const char *name, int line)
 
 #ifdef HOST_HEAP_ARENA
     /* A rise in outstanding blocks means the test freed fewer than it
-     * allocated - the assert-before-free failure mode in
-     * docs/sand/Performance-Tuning-Attempts.md's "recurring failure
-     * modes" (b), which otherwise skips every earlier free() in a fixture
-     * and starves every test that runs after it. Own greppable line, no
+     * allocated. A fixture that asserts before freeing skips
+     * every earlier free() and starves every test that runs after it. Own greppable line, no
      * consumer parses it today, so its shape is free to be whatever reads
      * clearest. */
     size_t blocks_after, bytes_after;
     heap_arena_snapshot(&blocks_after, &bytes_after);
-    if (blocks_after > blocks_before)
-    {
-        printf("LEAK test=%s blocks=%zu bytes=%zu\n", name,
-               blocks_after - blocks_before, bytes_after - bytes_before);
+    if (blocks_after > blocks_before) {
+        printf("LEAK test=%s blocks=%zu bytes=%zu\n", name, blocks_after - blocks_before, bytes_after - bytes_before);
     }
 #endif
 
-    /* Own sentinel line, same key=value shape as selftest.c's
-     * SELFTEST_COMPLETE - a new line rather than an appended suffix, so the
-     * existing result line's format never changes. %lld/int64_t rather than
-     * a narrower width: these range from under a millisecond to the better
-     * part of eight minutes.
+    /* Own sentinel line, same key=value shape as SELFTEST_COMPLETE - a new
+     * line rather than an appended suffix, so the existing result line's
+     * format never changes. int64_t because these range from under a
+     * millisecond to the better part of eight minutes.
      *
-     * peak_bytes is appended only under HOST_HEAP_ARENA, after
-     * elapsed_ms - name= and elapsed_ms= are read by
-     * launcher/tools/sweeps/validate_capture.py and
-     * main/apps/sand/tools/report_performance.py and must not move; a new
-     * field belongs at the end, never between them. */
+     * name= and elapsed_ms= are parsed by the capture-validation and
+     * performance-report scripts and must not move; a new field belongs at
+     * the end, never between them. */
     printf("TEST_TIME name=%s elapsed_ms=%lld"
 #ifdef HOST_HEAP_ARENA
            " peak_bytes=%zu"

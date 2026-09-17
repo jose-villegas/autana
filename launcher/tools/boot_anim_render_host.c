@@ -1,4 +1,4 @@
-/*=============================================================================
+/*
  * boot_anim_render_host - render one frame of the boot animation with the
  * REAL firmware code (boot_anim.c + gfx.c, unmodified drawing logic) on a
  * host build, and write it out as a BMP.
@@ -31,7 +31,7 @@
  * Also prints one line to STDERR - "ORIGIN <x> <y>", the space's own local
  * origin projected through this frame's transform - see the comment at the
  * call site below for why.
- *===========================================================================*/
+ */
 
 #include <stdint.h>
 #include <stdio.h>
@@ -47,8 +47,8 @@
 #include <io.h>
 #endif
 
-int main(int argc, char **argv)
-{
+int
+main(int argc, char** argv) {
     if (argc != 2) {
         fprintf(stderr, "usage: %s <now_ms>\n", argv[0]);
         return 1;
@@ -71,10 +71,9 @@ int main(int argc, char **argv)
 
     /* The space's own local origin (0,0,0 - t=0, zeta=0), projected through
      * this frame's camera+space transform and printed to STDERR (never
-     * stdout, which is the BMP) - kept, as asked, now that a real 3D
-     * transform has nowhere on the JSON side to author a screen position
-     * directly: boot_anim_editor_server.py reads this line and hands it to
-     * the editor as a read-only "where does the origin land" readout. */
+     * stdout, which is the BMP): the JSON side has nowhere to author a
+     * screen position directly, so boot_anim_editor_server.py reads this
+     * line as a read-only "where does the origin land" readout. */
     {
         const boot_anim_view_t view = boot_anim_view(GFX_WIDTH, GFX_HEIGHT, now_ms);
         int ox, oy;
@@ -82,14 +81,14 @@ int main(int argc, char **argv)
         fprintf(stderr, "ORIGIN %d %d\n", ox, oy);
     }
 
-    const gfx_color_t *fb = gfx_framebuffer();
+    const gfx_color_t* fb = gfx_framebuffer();
     const int32_t stride = screenshot_bmp_row_stride(GFX_WIDTH);
 
     uint8_t header[SCREENSHOT_BMP_HEADER_SIZE];
     screenshot_bmp_header(header, GFX_WIDTH, GFX_HEIGHT);
     fwrite(header, 1, sizeof(header), stdout);
 
-    uint8_t *row = calloc(1, (size_t)stride);
+    uint8_t* row = calloc(1, (size_t)stride);
     if (row == NULL) {
         fprintf(stderr, "out of memory\n");
         return 1;
@@ -100,9 +99,9 @@ int main(int argc, char **argv)
     for (int y = GFX_HEIGHT - 1; y >= 0; y--) {
         for (int x = 0; x < GFX_WIDTH; x++) {
             const uint32_t rgb = gfx_color_rgb888(fb[(size_t)y * GFX_WIDTH + x]);
-            row[x * 3 + 0] = (uint8_t)(rgb);          /* B */
-            row[x * 3 + 1] = (uint8_t)(rgb >> 8);     /* G */
-            row[x * 3 + 2] = (uint8_t)(rgb >> 16);    /* R */
+            row[x * 3 + 0] = (uint8_t)(rgb);       /* B */
+            row[x * 3 + 1] = (uint8_t)(rgb >> 8);  /* G */
+            row[x * 3 + 2] = (uint8_t)(rgb >> 16); /* R */
         }
         fwrite(row, 1, (size_t)stride, stdout);
     }

@@ -1,4 +1,4 @@
-/*=============================================================================
+/*
  * sand_plants - tree, root and leaf growth: from a bare seed cell to a
  * branching, thickening trunk with a canopy, fed by soil moisture a root
  * system draws down through itself.
@@ -6,12 +6,11 @@
  * Shares almost no call graph with sand_reactions.c's fire chemistry -
  * nothing here reads pair_bits[]/PAIR_*, calls try_ignite_given(),
  * conduct_heat() or cool_off_chain(), and nothing over there calls a
- * grow/root/sprout/bud/wither function. The two halves used to sit in one
- * 2,870-line file only because both are reaction_t-driven per-cell passes
- * dispatched by the same step_one_reacting_row() (sand_reactions.c) - that
- * dispatch table, and the handful of helpers genuinely needed by BOTH
+ * grow/root/sprout/bud function. Both are reaction_t-driven per-cell
+ * passes dispatched by the same step_one_reacting_row()
+ * (sand_reactions.c); the handful of helpers genuinely needed by BOTH
  * halves (place_cell()/place_reacted(), reaction_dirs, pay_quench_cost(),
- * soil_set_moisture()), live in sand_priv.h instead, the same way sand.c
+ * soil_set_moisture()) live in sand_priv.h instead, the same way sand.c
  * and sand_liquid.c already share what a gravity-ward move and a
  * cross-flow pass both need.
  *
@@ -20,7 +19,7 @@
  * sits between a leaf and the ground. step_one_growing_cell() is the one
  * that actually shapes a tree: height, lean, branch or thicken, then
  * harden a mature run into wood with a canopy on top.
- *===========================================================================*/
+ */
 
 #include "reaction_doc.h"
 #include "sand_priv.h"
@@ -34,14 +33,32 @@ is_kin(cell_t a, cell_t self, const reaction_t* r) {
 
 /* Leaf-to-roots mimic, efficient on crowded boards. Larger bodies shed outer
  * cells. */
-#define SUPPORT_MAX 48
+#define SUPPORT_MAX   48
+
+/* Membership index over body[], which stays a queue because the walk order is
+ * its job. A power of two over SUPPORT_MAX leaves a full body a quarter of the
+ * slots free.
+ *
+ * Asking body[] itself was quadratic: 829,000 comparisons a step on a poured
+ * heap. A scene with plants but nothing falling cannot see it. */
+#define SUPPORT_SLOTS 64
+
+static inline unsigned
+support_slot(uint16_t at) {
+    return (((unsigned)at * 2654435761u) >> 26) & (SUPPORT_SLOTS - 1u);
+}
 
 static bool
 anchored(sand_t* s, int x, int y, int w, int h, cell_t self, const reaction_t* r) {
-    sand_grid_index_t body[SUPPORT_MAX];
+    uint16_t body[SUPPORT_MAX];
+    uint16_t slot[SUPPORT_SLOTS];
+    uint64_t filled = 0;
     int n = 0, head = 0;
 
-    body[n++] = (sand_grid_index_t)((size_t)y * (size_t)w + (size_t)x);
+    const uint16_t seed = (uint16_t)((size_t)y * (size_t)w + (size_t)x);
+    slot[support_slot(seed)] = seed;
+    filled |= (uint64_t)1u << support_slot(seed);
+    body[n++] = seed;
 
     const int down = ring_of(s->last_load_dx, s->last_load_dy);
 
@@ -70,12 +87,19 @@ anchored(sand_t* s, int x, int y, int w, int h, cell_t self, const reaction_t* r
             if (n >= SUPPORT_MAX) {
                 continue; /* too big to finish; treat as loose */
             }
+            unsigned k = support_slot((uint16_t)nat);
             bool known = false;
-            for (int i = 0; i < n && !known; i++) {
-                known = (body[i] == (sand_grid_index_t)nat);
+            while (((filled >> k) & 1u) != 0u) {
+                if (slot[k] == (uint16_t)nat) {
+                    known = true;
+                    break;
+                }
+                k = (k + 1u) & (SUPPORT_SLOTS - 1u);
             }
             if (!known) {
-                body[n++] = (sand_grid_index_t)nat;
+                slot[k] = (uint16_t)nat;
+                filled |= (uint64_t)1u << k;
+                body[n++] = (uint16_t)nat;
             }
         }
     }
@@ -83,7 +107,7 @@ anchored(sand_t* s, int x, int y, int w, int h, cell_t self, const reaction_t* r
 }
 
 bool
-step_one_falling_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
+faller_can_move(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     const int nx = x + s->last_load_dx;
     const int ny = y + s->last_load_dy;
     if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
@@ -94,19 +118,25 @@ step_one_falling_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
     if (!CELL_IS_EMPTY(s->cells[nat])) {
         return false; /* landed */
     }
-    if (anchored(s, x, y, w, h, s->cells[at], r)) {
+    return !anchored(s, x, y, w, h, s->cells[at], r);
+}
+
+bool
+step_one_falling_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
+    if (!faller_can_move(s, x, y, w, h, r)) {
         return false;
     }
+    const int nx = x + s->last_load_dx;
+    const int ny = y + s->last_load_dy;
+    const size_t at = (size_t)y * (size_t)w + (size_t)x;
+    const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
     if ((int)(rng_next(&s->rng) & 0xFF) >= r->falls) {
         return true; /* still falling, just not now */
     }
 
     s->cells[nat] = s->cells[at];
     s->cells[at] = SAND_EMPTY;
-    mark_rows(s, y, y);
-    mark_rows(s, ny, ny);
-    wake_block_and_neighbors(s, x, y);
-    wake_block_and_neighbors(s, nx, ny);
+    mark_move(s, x, y, nx, ny);
     return true;
 }
 
@@ -272,7 +302,7 @@ spend_soil_moisture(sand_t* s, int w, const reaction_t* r, int soil_at, uint8_t 
                     int root_depth) {
     const cell_t soil = s->cells[soil_at];
     s->cells[soil_at] = soil_set_moisture(soil, (uint8_t)(moisture_of(soil, reaction_of(soil)) - amount), 0);
-    mark_rows(s, soil_at / w, soil_at / w);
+    mark_rows(s, soil_at % w, soil_at / w, soil_at / w);
 
     if (r->roots == 0 || contact_at < 0 || root_depth != 0) {
         return;
@@ -352,8 +382,8 @@ step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t
     const cell_t src = s->cells[src_at], dst = s->cells[dst_at];
     s->cells[src_at] = soil_set_moisture(src, (uint8_t)(src_m - 1), (uint8_t)(dst_m + 1));
     s->cells[dst_at] = with_moisture(dst, (uint8_t)(dst_m + 1), reaction_of(dst));
-    mark_rows(s, src_y, src_y);
-    mark_rows(s, dst_y, dst_y);
+    mark_rows(s, src_x, src_y, src_y);
+    mark_rows(s, dst_x, dst_y, dst_y);
     wake_block_and_neighbors(s, src_x, src_y);
     wake_block_and_neighbors(s, dst_x, dst_y);
     return true;
@@ -481,11 +511,16 @@ step_one_drinking_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* 
                                                      * nothing here roots -
                                                      * scratch values */
     const int soil_at = find_water(s, x, y, w, h, r, self, &lift, &contact_at, &root_depth, true);
+    /* FALSE, though a drink is possible: the caller reads this as "soil
+     * moisture was made", and a plant standing in water with no soil under it
+     * makes none. Saying true there kept the growth stages armed off a puddle
+     * nothing could reach. Costs no drinking - this stage is gated on liquid,
+     * not on moisture. */
     if (soil_at < 0) {
-        return true; /* thirsty, but nowhere to put it */
+        return false;
     }
     if ((int)(rng_next(&s->rng) & 0xFF) >= r->drinks) {
-        return true;
+        return false;
     }
 
     pay_quench_cost(s, lx, ly, w);
@@ -493,7 +528,7 @@ step_one_drinking_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* 
     const cell_t soil = s->cells[soil_at];
     const reaction_t* sr = reaction_of(soil);
     s->cells[soil_at] = with_moisture(soil, (uint8_t)(moisture_of(soil, sr) + 1), sr);
-    mark_rows(s, soil_at / w, soil_at / w);
+    mark_rows(s, soil_at % w, soil_at / w, soil_at / w);
     wake_block_and_neighbors(s, soil_at % w, soil_at / w);
     return true;
 }
@@ -662,80 +697,12 @@ shove_aside(sand_t* s, int gx, int gy, int dx, int dy, int w, int h) {
         ex -= dx;
         ey -= dy;
         s->cells[(size_t)ty * (size_t)w + (size_t)tx] = s->cells[(size_t)ey * (size_t)w + (size_t)ex];
-        mark_rows(s, ty, ty);
+        mark_rows(s, tx, ty, ty);
         wake_block_and_neighbors(s, tx, ty);
     }
     s->cells[(size_t)gy * (size_t)w + (size_t)gx] = SAND_EMPTY;
-    mark_rows(s, gy, gy);
+    mark_rows(s, gx, gy, gy);
     wake_block_and_neighbors(s, gx, gy);
-    return true;
-}
-
-/* Cells WITHER without drink or trunk. Touch wood first (8 reads). Dried soil
- * keeps leaves. */
-bool
-step_one_withering_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
-    const size_t at = (size_t)y * (size_t)w + (size_t)x;
-    const cell_t self = s->cells[at];
-
-    if (r->sheltered_by != 0) {
-        for (int d = 0; d < 8; d++) {
-            const int* nd = ring_dir(d);
-            const int nx = x + nd[0], ny = y + nd[1];
-            if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
-                continue;
-            }
-            const cell_t n = s->cells[(size_t)ny * (size_t)w + (size_t)nx];
-            if (!CELL_IS_EMPTY(n) && CELL_MATERIAL(n) == r->sheltered_by) {
-                return false; /* under its tree; it stays */
-            }
-            /* ROOT counts as shelter; `roots_to` matches `find_water()`.
-             * Roots touch wood; else, column rots from bottom. */
-            if (r->roots_to != 0 && n == (cell_t)r->roots_to) {
-                return false;
-            }
-        }
-    }
-
-    /* See lignifying branch. Leaf, no hardens_to, skips reads. */
-    bool attached = false;
-    if (r->hardens_to != 0 && r->clings_to != 0) {
-        for (int d = 0; d < 8; d++) {
-            const int* nd = ring_dir(d);
-            const int nx = x + nd[0], ny = y + nd[1];
-            if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
-                continue;
-            }
-            const cell_t n = s->cells[(size_t)ny * (size_t)w + (size_t)nx];
-            if (!CELL_IS_EMPTY(n) && CELL_MATERIAL(n) == r->clings_to) {
-                attached = true;
-                break;
-            }
-        }
-    }
-
-    int lift = 0, contact_at = -1, root_depth = 0; /* just a reachability
-                                                     * check - nothing here
-                                                     * spends, so nothing
-                                                     * roots */
-    if (find_water(s, x, y, w, h, r, self, &lift, &contact_at, &root_depth, false) >= 0) {
-        return false; /* it can still drink */
-    }
-    if ((int)(rng_next(&s->rng) & 0xFF) >= r->withers) {
-        return false;
-    }
-
-    /* Withering prevents shoot from becoming permanent woody speck. CELL_MAKE
-     * used for wood burn progress. */
-    REACTION_DOC(hardens_to, "if withering but still touching its own hardened trunk");
-    if (attached) {
-        place_cell(s, x, y, at, CELL_MAKE(r->hardens_to, 0));
-        return true;
-    }
-
-    s->cells[at] = SAND_EMPTY;
-    mark_rows(s, y, y);
-    wake_block_and_neighbors(s, x, y);
     return true;
 }
 
@@ -884,7 +851,7 @@ step_one_growing_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
     /* Grow, and spend the water. */
     s->cells[gat] = self;
     latch_content_flags(s, self);
-    mark_rows(s, gy, gy);
+    mark_rows(s, gx, gy, gy);
     wake_block_and_neighbors(s, gx, gy);
 
     spend_soil_moisture(s, w, r, soil_at, 1, contact_at, root_depth);

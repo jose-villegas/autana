@@ -1,60 +1,13 @@
-# Shell/Python scripts must check out with LF, everywhere - Git for Windows
-# left run_tests.sh/run_device_tests.sh stored with CRLF, which is silently
-# harmless on Git Bash/MSYS but makes bash reject the script outright on a
-# real Linux box (GitHub Actions' ubuntu-latest runners): every line ends up
-# with a trailing \r, so `set -eu` becomes `set -eu\r` - an invalid option -
-# and `#!/bin/sh` masks the very first such failure until the interpreter is
-# invoked explicitly. eol=lf overrides the checking-out machine's own
-# core.autocrlf, so this holds regardless of how any one clone is configured.
-*.sh text eol=lf
-*.py text eol=lf
-
-# C sources, for a duller reason than the scripts above: nothing breaks if a
-# .c file is checked out with CRLF. main/ had simply drifted to 18 CRLF files
-# against 45 LF ones with no rule deciding which, and that is not merely
-# untidy. Any tool that rewrites a file whole - a scripted edit, an editor
-# with its own default, a merge driver - silently converts every line it
-# touches, so a three-line change arrives as a diff of the entire file with
-# the three lines somewhere inside it. That happened twice while the startup
-# animation was being written, and cost more to notice than to fix.
+# Every text file is stored and checked out with LF, on every platform.
 #
-# eol=lf overrides the checking-out machine's core.autocrlf, same as above,
-# so this holds however any one clone is configured.
-*.c text eol=lf
-*.h text eol=lf
+# One rule for all of them, not one per extension: a file type without a rule
+# keeps whatever endings the last writer used, so a tool that rewrites it
+# whole turns a one-line change into a whole-file diff. eol=lf overrides each
+# clone's core.autocrlf, and CRLF written by any Windows tool is normalised to
+# LF when staged. Scripts need it most - bash on Linux rejects `set -eu\r` -
+# and generated docs and baselines are diffed byte-for-byte in CI.
+* text=auto eol=lf
 
-# Authored data the tools round-trip, boot_anim_timeline.json above all: it
-# is written back by tools/boot_anim_editor_server.py every time Build &
-# Flash runs, so without this a bake on Windows rewrites all ~320 lines as
-# CRLF and the diff hides which handful of values were actually retuned
-# behind a whole-file change. The server passes newline="\n" itself; this is
-# the belt to that braces, and covers anything else that writes JSON here.
-*.json text eol=lf
-
-# Docs, for the same reason as the scripts above, not the C sources: a doc
-# built by a host tool - report_reactions.sh (main/apps/sand/tools/) is the
-# first, and the only one so far - gets diffed byte-for-byte against a
-# freshly generated copy in CI (`report_reactions.sh --check`). The
-# generator's stdout is plain \n on every platform it runs on, but a doc
-# committed from a Windows checkout carries \r\n unless something stops it -
-# MinGW-built host tools leave stdout in text mode, which rewrites every \n
-# to \r\n on the way out - so a doc generated and committed on Windows is
-# CRLF while the same generator's output on the ubuntu-latest CI runner is
-# LF, and the check fails on every line of every run, forever, independent
-# of whatever the commit actually changed. (docs/sand/Reaction-Table.md hit
-# exactly this.) eol=lf overrides the checking-out machine's own
-# core.autocrlf, so this holds regardless of how any one clone is
-# configured, the same as the two rules above.
-*.md text eol=lf
-
-# Checked-in tool output that is diffed byte-for-byte against a fresh run,
-# the same reason as the docs above - main/apps/sand/tools/
-# fingerprint_baseline.txt is the first. It had no rule at all, so the
-# behaviour gate (report_fingerprint.sh --check) compared an LF baseline
-# against a Windows run's CRLF and failed on every line of every run,
-# independent of whether any grain had actually moved - a gate that cannot
-# pass teaches you to ignore it. The generator now forces its own stdout to
-# binary (grid_fingerprint.c, same as dump_reactions.c); this is the belt to
-# that braces, and covers the baseline arriving CRLF from a clone configured
-# with core.autocrlf=true, which no emitter fix can reach.
-*.txt text eol=lf
+*.png binary
+*.otf binary
+*.xcf binary

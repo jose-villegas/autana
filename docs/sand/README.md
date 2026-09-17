@@ -3,7 +3,7 @@
 The falling-sand app's own documentation folder, referenced by name from
 [`../notes/README.md`](../notes/README.md) since this folder split out of
 the platform notes once there was enough sand-specific material to justify
-its own set. Ten files, three jobs:
+its own set. Eight files, two jobs:
 
 **How it works today:**
 
@@ -18,34 +18,24 @@ its own set. Ten files, three jobs:
 - **[Reaction-Table.md](Reaction-Table.md)** — generated, current
   material-interaction rules. Regenerate with
   `tools/report_reactions.sh`, don't hand-edit the generated region.
+- **[Metal.md](Metal.md)** — metal: smelted out of dirt by lava, and the
+  only material that moves heat a long way.
 - **[Shading-and-Colour.md](Shading-and-Colour.md)** — how a cell's
   material and variant become a pixel, and the traps specific to that.
-- **[Tuning-At-a-Glance.md](Tuning-At-a-Glance.md)** — sand constants and
-  their current values, as a scoreboard rather than prose.
+- **[Testing-Sand.md](Testing-Sand.md)** — the frame-budget capture, its
+  free-heap precondition, and the scoping rules specific to this app.
 
 **How to change it:**
 
 - **[Adding-a-Material.md](Adding-a-Material.md)** — the checklist for
   adding a whole new material.
-- **[Perf-Round-Guide.md](Perf-Round-Guide.md)** — the entry point for a
-  fresh session told to run a sand performance round. Read this first,
-  not the two files below.
-
-**Discovery narratives** (how the above got the way it is, not a
-reference for it):
-
-- **[Simulation-Lessons.md](Simulation-Lessons.md)** — the bugs found and
-  the reasoning behind each fix, from the first performance pass through
-  the sleeping/friction/timestep design that shipped.
-- **[Performance-Tuning-Attempts.md](Performance-Tuning-Attempts.md)** —
-  the chronological record of every real-hardware performance attempt
-  since, numbered in the order they happened.
 
 ## Related
 
-- [`../plans/`](../plans) — not-yet-built plans that touch this app
-  (`Metal-Smelting-Plan.md`, `Reaction-Doc-Generator-Plan.md`).
+- [`../plans/`](../plans) — plans that touch this app. Only
+  `Reaction-Doc-Generator-Plan.md`'s brush-blurb phase is still unbuilt.
 - [`../notes/README.md`](../notes/README.md) — the hardware constraints
-  (no PSRAM, the memory budget) this app's numbers are shaped by.
+  (the PSRAM and memory budget) this app's numbers are shaped by.
 - [`../Testing-Guide.md`](../Testing-Guide.md) — how any of this gets
-  verified, on host and on device.
+  verified, on host and on device; [`Testing-Sand.md`](Testing-Sand.md)
+  is this app's own half of that.

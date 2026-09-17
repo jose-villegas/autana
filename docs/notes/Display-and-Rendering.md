@@ -1,24 +1,33 @@
 # Display and Rendering
 
-Part of the platform notes for the Waveshare ESP32-C6-Touch-AMOLED-1.8 - see
+Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 - see
 [`README.md`](README.md) for the full set. Everything here was verified on the
 actual board or read out of the actual source. See
-[Board-and-Memory.md](Board-and-Memory.md) for the SPI2 wiring and
-time-multiplexing story this builds on.
+[Board-and-Memory.md](Board-and-Memory.md) for the SPI2 wiring this builds on.
+
+Most of the timing figures below were captured before this project's move to
+the ESP32-S3 and have not been re-measured on this board since. The
+bus-bandwidth-bound findings (the QSPI clock analysis, the dirty-region send
+costs) are the most likely to still hold,
+since they are dictated by the QSPI clock and the panel rather than the CPU;
+anything CPU-bound (the cube's rasterize stage in particular) should be
+treated as unconfirmed on this board until re-measured. Numbers are kept
+because the reasoning that produced them still applies - re-verify before
+relying on any specific figure for a decision.
 
 ---
 
 ## Owning panel bring-up
 
 `gfx.c` does not call `bsp_display_new()`. It initialises SPI2, the panel IO and
-the SH8601 itself, keeping `bsp_board_detect()` only for variant detection and
-the reset lines on the IO expander.
+the panel itself, keeping `board_detect()` only for variant detection and the
+reset lines on the (optional) IO expander.
 
-That is not a preference. The BSP holds `panel_handle`, `io_handle` and
-`lcd_spi_initialized` as private statics and offers **no teardown** — they are
-cleaned up only on its own internal failure path. Since `bsp_sdcard_mount()`
-gates on exactly those, a BSP-owned display can never give the bus back, and
-the card becomes untestable the moment the screen comes up.
+That is not a preference. The BSP holds `panel_handle` and `io_handle` as
+private statics and offers no way to reach the init sequence at all — owning
+bring-up is what lets `gfx.c` set its own QSPI clock (`GFX_QSPI_HZ`), the
+transfer queue that strip_bounce relies on, and Waveshare-tuned init commands rather than the
+BSP's defaults.
 
 Owning bring-up costs one thing: Waveshare's `sh8601_lcd_init_cmds` array is a
 private static too. It is nine commands, Apache-2.0, and is copied into `gfx.c`
@@ -28,25 +37,13 @@ Waveshare tuned `0x44`/`0x53`/`0x51` for this panel.
 ```mermaid
 flowchart TB
     subgraph gfx["gfx.c owns the panel"]
-        BD["bsp_board_detect()<br/><i>variant, I2C, reset lines</i>"]
-        BU["panel_bring_up(send_init)"]
-        TD["panel_tear_down()"]
+        BD["board_detect()<br/><i>variant, I2C, reset lines</i>"]
+        BU["panel_bring_up()"]
     end
 
     BD --> BU
-    BU -->|"spi_bus_initialize<br/>esp_lcd_new_panel_io_spi<br/>esp_lcd_new_panel_sh8601"| UP(("display up<br/>SPI2 held"))
-    UP -->|"gfx_suspend() &nbsp;318 us"| TD
-    TD --> FREE(("SPI2 free<br/><i>panel still showing<br/>its last frame</i>"))
-    FREE -->|"bsp_sdcard_mount()"| FREE
-    FREE -->|"gfx_resume(false) &nbsp;605 us"| BU
+    BU -->|"spi_bus_initialize<br/>esp_lcd_new_panel_io_spi<br/>esp_lcd_new_panel_sh8601 / co5300"| UP(("display up<br/>SPI2 held"))
 ```
-
-The framebuffer is untouched by all of this — it is ordinary RAM and has no
-relationship to the bus, so nothing needs redrawing on resume.
-
-One rule: nothing may call `gfx_present()` between suspend and resume. Today
-that is guaranteed structurally, because the only caller is the shell's frame
-loop and the re-run happens inside it, on the same task.
 
 ---
 
@@ -78,8 +75,7 @@ for LVGL that snaps areas to even boundaries. Full-width strips at multiples of
 
 ## Measured performance
 
-Full-screen 368×448, Gouraud-shaded rotating cube, `small3dlib`, no PSRAM, no
-GPU:
+Full-screen 368×448, Gouraud-shaded rotating cube, `small3dlib`, no GPU:
 
 | Stage | Time | Share |
 |---|---|---|
@@ -90,12 +86,19 @@ GPU:
 
 The blit works out to ~13 MB/s effective over QSPI at 40 MHz.
 
+These per-stage figures were captured before the ESP32-S3 port and have not
+been re-measured on this board; Clear and Rasterize are CPU-bound and will not
+carry over as-is to a dual-core Xtensa LX7 at 240 MHz. The blit figure is
+bandwidth-bound on the QSPI clock rather than the CPU (see "The blit is
+bus-bound" below) and so is the more likely of the three to still hold, but it
+too is unconfirmed on this board — treat the whole table as historical,
+unmeasured on this board.
+
 Those cube figures predate a build-flag change and are kept as a record of the
 starting point: the build now uses -O2 rather than -Og (see
 [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md)). An 80 MHz QSPI clock
-was also tried twice since - it would roughly halve the blit row, but both
-times introduced real pixel corruption on device and was reverted; see
-"The blit is bus-bound" below for why.
+roughly halves the blit row, but is outside the panel's rating and corrupts
+partially redrawn frames; see "The blit is bus-bound" below.
 
 Two results worth remembering because they contradict the intuitive guess:
 
@@ -121,38 +124,68 @@ that in. The panel runs at 80 without complaint on the surface:
 | `gfx_present()` | 17,602 us | 9,600 us |
 | Shell framerate | 43.5 fps | 70.0 fps |
 
-Tempting, and tried twice - but **80 MHz is not actually usable on this panel**,
-and both attempts ended the same way: small, corner-shaped pixel corruption on
-real hardware, disappearing when the exact same region was redrawn a moment
-later. Not corrupted data at rest, in other words - a transient race that a
-retry always won.
+**80 MHz is outside the panel's rating** (proven on device, 2026-09-15). The
+CO5300 datasheet, section 6.4 (QSPI write):
 
-The first time was during the per-row prototype below; reverted along with
-that idea, so the clock was not the obvious suspect yet. The second time was
-after the grid-and-gathered-runs design (see "Partial updates" below) had
-fully replaced it and settled - re-tried specifically on the theory that the
-*old* artifacts might have been an artefact of that abandoned prototype's own
-transfer pattern rather than the clock. They were not: the same corner
-corruption came back on the new, unrelated design too, which rules out
-"it was that one prototype" and points at the bus margin itself.
+| Parameter | Datasheet | At 80 MHz | At 40 MHz |
+|---|---|---|---|
+| Clock cycle | >= 20 ns (50 MHz max) | 12.5 ns | 25 ns |
+| Clock high / low | >= 6.5 ns | 6.25 ns | 12.5 ns |
+| CS setup (IDF default, half a clock) | >= 10 ns | 6.25 ns | 12.5 ns |
+| Data setup / hold | >= 4 / 4 ns | +-2.25 ns clock-to-data skew left | +-8.5 ns |
 
-**Root cause, as far as it has been pinned down:** the vendor SH8601 driver's
-`draw_bitmap()` (`esp_lcd_sh8601.c`) sends three separate QSPI transactions per
-call, not one - `LCD_CMD_CASET` (column window), then `LCD_CMD_RASET` (row
-window), then `LCD_CMD_RAMWR` with the pixel data. The panel has to latch both
-address-window commands into its internal counters before the pixel burst
-starts writing into the right place; a corner-shaped corruption is exactly
-what a race between "counters settled" and "burst started" looks like - only
-the first pixels written land wrong. At 80 MHz there is measurably less time
-between the address commands and the burst for that latch to complete.
+On this board every panel pin (SCK GPIO11, D0-D3 GPIO4-7, CS GPIO12) goes
+through the GPIO matrix; the SPI2 IOMUX pins are elsewhere. The S3 cannot
+make anything between 40 and 80 (see below), so 40 is the fastest in-spec
+clock.
 
-This also explains why the *first* prototype tripped over it and the original,
-fixed-full-band-only design never had: the old design called `draw_bitmap()`
-at most 7 times a frame, always with the same handful of fixed windows. Both
-newer designs call it far more often, with a window that changes shape and
-position every time - more rolls of the same rare, clock-margin-dependent
-dice, not a different or worse bug. The race is native to running this panel
-at 80 MHz at all; a higher transaction count just makes it easier to observe.
+**What it looks like.** Sand being poured shows sparse red pixels in
+landscape and thin black lines through moving sand in portrait or while
+tilting; 256-colour mode shows it only at ULTRA quality. 40 MHz is clean.
+The corruption is pattern-dependent, not random noise: re-sending the same
+window next frame fails the same way, and only a send with a different
+window or strip layout (a full redraw, say) heals it. Screenshots never show
+it - see "Panel-link faults are invisible to screenshots" below.
+
+**Why other projects run 80 MHz without seeing it.** Most community code for
+this board runs 40. The ones at 80 redraw whole frames or full-width bands
+every frame, so a bad pixel lives ~16 ms. gfx sends only dirty regions, so a
+bad pixel stays until that region changes.
+
+**Ruled out on device, each hands-on at 80 MHz:**
+
+- 40 mA pad drive (`CONFIG_LAUNCHER_GFX_QSPI_STRONG_PADS`)
+- `cs_ena_pretrans = 1` (18.75 ns CS setup instead of 6.25)
+- window commands (`CASET`/`RASET`) at 40 MHz, pixel data at 80
+- every dirty region sent twice, one present apart
+- no pixel write continued across a held CS (sub-windows under 32 KiB)
+- PSRAM and flash at 80 instead of 120 MHz
+- a software fault: the dev-only send audit (Diagnostics toggle "gfx send
+  audit (logs)") showed every changed pixel sent with correct bytes, and
+  PSRAM reads clean
+
+**Even edges are still required, at either clock.** Corner-shaped stale
+pixels appeared at 40 MHz on the CO5300 and went away once every window was
+rounded outward to even edges (gfx.c, `even_floor()`/`even_ceil()`;
+Waveshare's BSP rounds every flush area the same way). That fix is real, but
+it is not what goes wrong at 80: the older explanation here - a race between
+the panel latching `CASET`/`RASET` and the `RAMWR` burst - is also retired,
+since commands at 40 with pixels at 80 still corrupted.
+
+**Decision.** Both clocks stay: 80 is a large present win (8.2 against
+16.5 ms of bus for a full frame) and safe for a renderer that redraws whole
+frames. So:
+
+- the shell owns a system panel clock, 80 (default) or 40, kept in NVS and
+  set from Developer Toggles until the Settings app exists (see
+  [Settings-App-Plan.md](../plans/Settings-App-Plan.md)); every app starts
+  at it, may force another rate, and gets the system value restored on every
+  app switch - see Launcher-Architecture.md, "The panel clock";
+- gfx heal, opt-in and active only at 80 MHz: a caller marks rows with
+  `gfx_heal_mark()`, and gfx re-sends them as full-width strips with the
+  strip grid shifted each time, under a per-present pixel budget. The app
+  owns the policy - sand heals bands that sent pixels a few presents after
+  they go quiet.
 
 A synthetic cost independently regressed at 80 MHz too, for an unrelated
 reason worth keeping in mind if this is ever revisited: gathering two small,
@@ -168,8 +201,8 @@ cheaper. `GATHER_MAX_PIXELS` and the run-merging thresholds in `gfx.c` are
 tuned against the 40 MHz numbers; they would need re-measuring, not just
 reusing, if the clock ever changes.
 
-**Settled on 40 MHz.** Set by `GFX_QSPI_HZ` in `gfx.h`, along with this
-history - read the comment there before trying 80 again.
+The clock is `GFX_QSPI_HZ` in `gfx.h`, chosen by
+`CONFIG_LAUNCHER_GFX_QSPI_80MHZ`.
 
 An in-between clock looked like the obvious next thing to try - more margin
 than 80, still faster than 40 - and is exactly what 60 MHz was tried as. It
@@ -183,6 +216,17 @@ byte-identical to plain 40, including matching millisecond-since-boot log
 timestamps across independent reboots, because it silently *was* plain 40.
 Every achievable value in this range is one of exactly two clocks; there is
 no third option to chase here.
+
+### Panel-link faults are invisible to screenshots
+
+`screenshot.sh` reads the framebuffer, not the glass, and `main.c` requests
+a full redraw right after a capture - which re-sends every region with a
+different layout and heals whatever the link corrupted. A fault between the
+chip and the panel has to be judged by eye on the device. To tell a software
+fault from a link fault, turn on the dev-only send audit (Diagnostics, "gfx
+send audit (logs)"): it logs whether every changed pixel went out with the
+right bytes. If it did, A/B the link itself - clock, pad drive, PSRAM speed
+- one build at a time.
 
 ### Partial updates: only send the bands that changed
 
@@ -252,7 +296,7 @@ win over strips-only, not just an orientation-independence argument on paper.
 
 (The two-corners comparison specifically flips at 80 MHz - 1,916 us either
 way, since it is fixed-overhead-bound, against a full band that drops to
-about 1,405 us - but that is the clock margin problem covered above, not a
+about 1,405 us - but that is the threshold re-fit covered above, not a
 property of the grid design itself.)
 
 Two bugs surfaced by this that are worth remembering if the design is ever
@@ -292,8 +336,7 @@ Two smaller things fell out of it:
 On the simulation side the same dirty information answers "what needs
 redrawing" as well as "what needs sending", which is the point of the
 [dirty-rect approach](https://80.lv/articles/noita-a-game-based-on-falling-sand-simulation)
-Noita uses. `sand_track_dirty_rows()` records every row a grain left or entered
-- see [`../sand/Simulation-Lessons.md`](../sand/Simulation-Lessons.md).
+Noita uses. `sand_track_dirty_rows()` records every row a grain left or entered.
 
 **A development-only visualizer** makes this concrete on real hardware
 instead of only in synthetic tests, as two fully independent layers, each
@@ -382,7 +425,7 @@ architectural split between the two existing entry points.
 **Consumers stay unaware the split exists.** `gfx_mark_dirty()`,
 `gfx_mark_all_dirty()` and `gfx_region_dirty()` keep their exact names and
 signatures; the actual tracking state and logic moved into
-`main/gfx_dirty.h`, and `gfx.c` implements the three public functions as
+`gfx/gfx_dirty.h`, and `gfx.c` implements the three public functions as
 thin wrappers around it. That header is deliberately *not* a matching
 `.c`/`.h` pair despite being the natural first instinct: `mark_band()` sits
 on `gfx_fill_rect()`/`gfx_pixel()`'s hot path (`gfx_text_scaled()` calls it
@@ -407,7 +450,7 @@ already arrived at `gfx_mark_dirty()` merged, with the gap between them,
 before the leaf layer ever got a chance to see it. Fixed by extracting the
 run-finding and previous/current reconciliation into
 `main/apps/sand/row_runs.c`/`.h` (a portable sibling of `sand.c`/`tilt.c`,
-not a special case wired into `gfx.c`) - `find_row_runs()` mirrors
+not a special case wired into `gfx.c`) - its run finder mirrors
 `gfx.c`'s own `collect_runs_from_mask()`, and `row_runs_reconcile()`
 generalises the old single-range previous/current union to a small diff
 between two short run lists: a current run absorbs every previous run it
@@ -427,6 +470,16 @@ cell-level run-merging correctly (once per run, not once per whole row),
 not from the new leaf layer. The leaf layer's own value is the general,
 caller-invisible capability: it stands ready for any future caller that
 does not do its own run-detection, which was the actual point.
+
+A run being gap-free within a row is not the same as the run being no
+bigger than what changed: every non-empty run in a dirty row was still
+sent whole, so one changed cell in a settled stack re-sent the stack. The
+sim's `dirty_x0`/`dirty_x1` (`sand.h`, see `docs/sand/Architecture.md`'s
+own "Dirty-row and dirty-column tracking") close that - a per-row column
+span, on top of the row bit, that `app_sand.c` clips both the pixel writes
+and the sent rects to. Landscape is where it matters: a grid row runs
+along gravity there, so it is where a run spanning far more than the
+changed cell was most likely to happen.
 
 ### Still untapped
 
@@ -504,38 +557,11 @@ kept here so the reasoning survives to whoever picks one up.
   function. Not started: no concrete motivating case has needed it yet.
 - ~~`LEAF_REFINE_MAX_RUNS` and `ROW_MAX_RUNS` (row_runs.h) are both 2,
   unmeasured.~~ **Measured** - see "The cap sweeps" below. Both stay at 2.
-- **Fixing 80 MHz at the driver level, instead of just not using it.**
-  Raised, not started. The corner-shaped corruption traced back to
-  `panel_sh8601_draw_bitmap()` in
-  `managed_components/waveshare__esp_lcd_sh8601/esp_lcd_sh8601.c` sending
-  `LCD_CMD_CASET`, `LCD_CMD_RASET` and `LCD_CMD_RAMWR` as three separate,
-  back-to-back QSPI transactions with no settle time between them - the
-  theory being that the panel's address counters have not always finished
-  latching the window before the pixel burst starts writing, at the
-  margin 80 MHz leaves (see "The blit is bus-bound" above for the full
-  reasoning and how this was pinned down). Two directions worth trying,
-  neither attempted yet:
-  - **A small delay between the address commands and the burst** - even a
-    handful of dummy cycles or a short explicit wait right before
-    `tx_color()`'s `LCD_CMD_RAMWR` call, if the panel's actual latch time
-    turns out to be the bottleneck rather than the QSPI clock itself.
-    Cheap to try, and would settle whether this is really a clock-margin
-    problem or a missing-delay problem - currently assumed to be the
-    former, not confirmed.
-  - **A second, slower-clocked `esp_lcd_panel_io` on the same SPI2 bus**,
-    used only for `CASET`/`RASET`, with `RAMWR` staying on the fast 80 MHz
-    one - the address commands are a handful of bytes each, so paying
-    40 MHz there costs almost nothing, while the actual pixel burst (the
-    part that is genuinely bandwidth-bound) keeps the full 80 MHz benefit.
-    More invasive: `panel_sh8601_draw_bitmap()` would need to stop being
-    used as-is, since it issues all three commands through one `io`
-    handle - this means either forking the vendor function or bypassing
-    `esp_lcd_panel_draw_bitmap()` for something gfx-specific.
-
-  Either way, `esp_lcd_sh8601.c` lives under `managed_components/`, which
-  the component manager can overwrite on a dependency update - a real fix
-  needs to move into (or be reapplied from) a location this project
-  actually owns, not edited in place and forgotten.
+- ~~Fixing 80 MHz at the driver level.~~ **Tried; no firmware knob makes
+  it clean.** Window commands at 40 MHz with pixels at 80, CS setup, pad
+  drive and sending every region twice were each tried on device - see
+  "The blit is bus-bound" above. The clock is out of the panel's rating, so
+  what remains is concealment: the opt-in heal described there, or 40 MHz.
 - **A tiled (swizzled) framebuffer - parked on purpose, not a next step.**
   Store pixels in fixed NxN tile order instead of scanline order, so a
   whole tile - not just one row of it - is a single contiguous run and
@@ -558,173 +584,26 @@ kept here so the reasoning survives to whoever picks one up.
 - Skipping the launcher's redraw when nothing changed, which would let its bands
   go unsent too.
 
-### The cap sweeps: `LEAF_REFINE_MAX_RUNS`, `ROW_MAX_RUNS`, `GATHER_MAX_PIXELS`
+### The dirty-region caps: swept, and mostly inert
 
-Three tunables this whole layer runs on - two flagged above as never
-measured, one ("tuned against the 40 MHz numbers") measured once but
-never systematically swept the way a later investigation into the sand
-simulation's own block-size constant started doing on real hardware.
-Same question applied here: is the shipped default actually right, or
-just the first value that happened to work?
-
-**`LEAF_REFINE_MAX_RUNS`/`ROW_MAX_RUNS` (both 2) swept to 3 and 4
-together** - they mirror each other by design (`row_runs.h`'s own
-comment). Needed a new device test first: the obvious one (three marks
-in three different cells) turned out to test nothing, because
-`collect_dirty_runs()` separates cells with its own cap
-(`GRID_COLS`, effectively unlimited at 4) - these two caps only govern
-splitting a single *already-merged* run further via the leaf layer.
-Fixed by placing three marks inside three *adjacent* cells instead, so
-`collect_dirty_runs()` merges them into one run before leaf refinement
-(`refine_run()`/`plan_run()`) ever sees it. Measured:
-
-| Cap | two far corners | three far-apart marks (merged run) |
-|---|---|---|
-| 2 (shipped) | 1916us | **872us** |
-| 3 | 1916us | **2881us** |
-| 4 | 1914us | **2870us** |
-
-Raising the cap makes the case it exists to help **3x worse**, not
-better. At cap 2, `refine_run()` gives up (three isolated leaf runs,
-cap of 2 - the same "too fragmented" case `collect_runs_from_mask()`
-already handles) and falls back to `run_box()`'s coarse union - not the
-whole band, just the union of each cell's own already-tight box, still
-skipping whatever is genuinely untouched. That fallback measured
-cheaper than three separately gathered pieces would have: each QSPI
-transaction costs a fixed ~118us regardless of size (see "The blit is
-bus-bound" above), so three small sends pay that fixed cost three times
-over, while one wider merged send pays it once. **Verdict: both stay at
-2.** Nothing here was broken; the guess just happened to already be
-right, for a reason (fixed per-transaction cost) nobody had measured
-against before.
-
-**`GATHER_MAX_PIXELS` (8192) swept to 4096/6144/8192/9216.** The first
-attempt at this one measured nothing real: both existing device tests
-(15x15 and 10x10 marks) are so far under any of these budgets that none
-of them ever approached the actual rejection boundary - a flat result
-across all four values that looked like "no effect" but was really "no
-test exercised the mechanism at all." Needed a new device test sized
-*at* the boundary: a small mark plus a wide one in the same run, the
-wide one's leaf-refined piece landing at a fixed 7360px (5 whole 23px
-leaf columns x 64px strip height - refine_run() reports whole-leaf
-pieces, not a mark's exact width) regardless of which candidate budget
-is active. That piece is over budget at 4096/6144 and under it at
-8192/9216 by construction, giving a genuine reject-vs-accept
-comparison instead of four copies of the same unaffected number:
-
-| Budget | near-budget split (7360px piece) |
-|---|---|
-| 4096 | 2714us (over budget - falls back) |
-| 6144 | 2714us (over budget - falls back) |
-| **8192 (shipped)** | **1716us (under budget - gathers)** |
-| 9216 | 1715us (under budget - gathers) |
-
-Gathering this piece is ~37% cheaper than the coarse-box fallback it
-would otherwise take. 8192 already sits on the correct side of that
-line for a piece this size; raising it further changes nothing here
-(1716 vs 1715 is noise), and the sweep did not test a piece bigger than
-9216 to see if going higher ever helps a larger one. **Verdict: 8192
-stays.** Confirmed rather than assumed, this time - the original "tuned
-against the 40 MHz numbers" claim turned out to be right, but had never
-actually been checked against a case built to sit exactly on the
-boundary it enforces.
-
-Both sweeps automated the same way as the sand block-size one: a
-PowerShell script edits the `#define`, runs the host suite as a gate,
-builds, flashes, captures the self-test output, and restores everything
-in a `finally` block regardless of outcome - see the sand simulation's
-own [`../sand/Simulation-Lessons.md`](../sand/Simulation-Lessons.md) for the sweep-
-tooling bugs that surfaced building the first one (all equally relevant
-here, since it is the same script pattern).
-
-### The re-sweep, 2026-08-28: two of the three caps are inert
-
-Both sweeps above were run against synthetic device tests. Two years of
-app work later - fire flicker, an animated shine, plants, drifting
-smoke and steam, 480-ring thermal scenes - they were re-run against the
-three REAL sand scenes the present-cost tests measure, and the answer
-changed shape completely.
-
-The re-sweep did not need hardware. `gfx_dirty.h` is header-only and
-free of ESP-IDF by design, and `send_one_row()`'s choice is pure logic
-over its state, so the whole decision replays on a host: include the
-real header, reimplement only the twelve-line choice with the two
-`draw_bitmap()` calls replaced by counters, and drive it with
-`suite_sand_scenes.c`'s own scenes, its own `sand_step()` and its own
-`mirror_app_sand_marking()`. It reproduces the device's strip-send
-counters exactly - 76/13, 100/4, 70/0 - which is the only reason to
-trust anything it says about values nobody has flashed.
-
-**`ROW_MAX_RUNS` at 2, 3, 4, 6, 8 crossed with `LEAF_REFINE_MAX_RUNS`
-at 2, 3, 4 - fifteen builds - produced byte-identical counters on all
-three scenes.** Not close: identical. Both have a structural reason,
-not a "the value happens to be right" reason:
-
-- `ROW_MAX_RUNS` cannot matter because a checkerboard row needs 92 runs
-  (so every cap in that range falls back to the full-row span) and a
-  slab row needs one. Real scenes are not in between.
-- `LEAF_REFINE_MAX_RUNS` cannot matter because refinement first needs
-  `run_is_leaf_eligible()`, and a cell marked at its full column width
-  and full strip height is never eligible - which is every cell here.
-
-**`GATHER_MAX_PIXELS` was swept again and declined again, for a
-different reason than last time.** Pixels sent per frame:
-
-| Cap | `gather_buf` | falling sand | lava stress | thermal shock |
-|---:|---:|---:|---:|---:|
-| **8,192** (shipped) | 16 KB | 92,552 | 117,950 | 164,864 |
-| 11,776 | 23 KB | 89,240 | 117,361 | 164,864 |
-| 14,336 | 28 KB | 87,694 | 107,425 | 164,864 |
-| 16,384 | 32 KB | 86,112 | 107,425 | 164,864 |
-| 20,480 | 40 KB | 83,536 | 106,873 | 163,150 |
-| 23,552 (a band) | 46 KB | 83,168 | 105,769 | 161,041 |
-
-Raising it does buy pixels, and it is still the wrong trade: every
-pixel it saves is bought by *gathering* it - a `memcpy` out of the
-framebuffer into a DMA buffer the bus then waits on, where a full band
-is read in place - and `gather_buf` has to grow to match.
-`gfx_init()` logs 67,568 bytes of heap free after the framebuffer and
-the sand app then takes about 41.5 KB for its grid, so 12 KB more is a
-large fraction of what is left, to buy 5-9%. **Verdict: 8192 stays, for
-the second time.** The first sweep kept it because its tests never
-reached the boundary; this one kept it because something else gets more
-for nothing.
-
-### The tracker is at its ceiling, and the win was a missing path
-
-The sharper question is not what the caps buy but what is left to buy.
-An **oracle** - the exact set of cells whose byte changed this frame,
-diffed against a snapshot, marked with no cap of any kind, which no
-implementation can beat - sends 92,552 px/frame against the shipped
-marking's 92,552 on the falling-sand scene, 114,416 against 117,950 on
-lava (-3.0%), and 164,864 against 164,864 on the thermal lattice. The
-dirty-region tracking is **at its ceiling**, not failing: the thermal
-scene's seventy-out-of-seventy whole-band sends are the correct answer
-to a lattice that really does dirty every strip full width and full
-height, every frame.
-
-What was actually missing was a third send path. There were two -
-gather into the fixed buffer, or send the whole 64-row band - and a box
-that spans the **full panel width** needs neither: it is already
-contiguous in the framebuffer, row-major at `GFX_WIDTH` stride, so it
-goes straight out of `fb` at its own height. A full-width box 23 rows
-tall (368x23 is just past `GATHER_MAX_PIXELS`) was being sent as 64.
-`send_partial_band()` in `gfx.c`, and a third strip-send counter beside
-the other two so it is visible in a capture:
-
-| scene | before | after | |
-|---|---:|---:|---:|
-| falling sand | 92,552 px/frame | 83,168 | **-10.1%** |
-| lava stress | 117,950 px/frame | 105,769 | **-10.3%** |
-| thermal shock | 164,864 px/frame | 164,864 | 0.0% |
-
-Zero extra memory, nothing copied - and the same pixel totals the
-extreme row of the `GATHER_MAX_PIXELS` table reaches for 46 KB of DMA
-buffer and a full-frame `memcpy`. It works only because the box carries
-a real sub-strip Y extent, which comes from the per-cell
-`cell_y0`/`cell_y1` boxes `dirty_mark()` narrows through
-`union_cell_y()`, unioned across the run by `run_box()` - the cell
-layer, not the leaf layer, which only refines x.
+`ROW_MAX_RUNS`/`LEAF_REFINE_MAX_RUNS` (2 and 2) and `GATHER_MAX_PIXELS`
+(8192) were swept against both synthetic device tests and the three real
+sand scenes the present-cost tests measure. All three stay at their
+shipped values: the run caps are structurally inert against real scenes
+(a checkerboard row needs the full-row fallback regardless of the cap, a
+slab row needs one run either way, and no real scene falls between those
+two shapes), and raising the pixel cap buys a further 5-9% only by
+growing the DMA gather buffer to match, against roughly 67 KB of free
+heap once the framebuffer and the sand grid are accounted for. The
+dirty-region tracker itself is at its ceiling against an uncapped oracle
+- within 3% of the exact changed-cell ideal on every scene measured - so
+the one real win left was a missing third send path: a box spanning the
+full panel width is already contiguous in the framebuffer and can go out
+directly, rather than through the fixed gather buffer or a full 64-row
+band. That path (`send_partial_band()` in `gfx.c`) cut falling-sand and
+lava-stress present cost by about 10% for zero extra memory; the
+thermal-shock scene, which really does dirty every strip full width and
+full height every frame, was unaffected.
 
 ### A full band has two prices
 
@@ -743,11 +622,13 @@ count does not produce the other.
 ## There is no graphics acceleration
 
 Verified, not assumed. `SOC_PPA_SUPPORTED` is defined **only for the ESP32-P4**
-in ESP-IDF's SoC caps — the C6 has no Pixel Processing Accelerator, no 2D
+in ESP-IDF's SoC caps — this chip has no Pixel Processing Accelerator, no 2D
 blitter, no GPU. `esp_lvgl_port` does ship PPA rotation code and hand-written
-SIMD blend routines, but the PPA path compiles only when `SOC_PPA_SUPPORTED` is
-set, and the SIMD assembly is Xtensa (`_esp32.S`, `_esp32s3.S`), not RISC-V.
-Everything on this chip is scalar C on one core.
+SIMD blend routines for Xtensa (`_esp32.S`, `_esp32s3.S`), so the S3-specific
+SIMD path is present in that dependency, but the PPA path itself still
+compiles only when `SOC_PPA_SUPPORTED` is set, which it is not on the S3
+either. Everything on this chip is scalar C, and only across its two cores if
+something is explicitly split to use both - the render path here is not.
 
 If graphics throughput ever becomes the requirement, that is a board decision:
 the ESP32-P4 has the PPA, PSRAM, *and* a real SDMMC host.
@@ -756,9 +637,7 @@ the ESP32-P4 has the PPA, PSRAM, *and* a real SDMMC host.
 
 ## Related
 
-- [Board-and-Memory.md](Board-and-Memory.md) — the SPI2 wiring and
-  time-multiplexing this all sits on top of.
-- [`../sand/Simulation-Lessons.md`](../sand/Simulation-Lessons.md) — how the sand app makes use
-  of `gfx_mark_dirty()` and the dirty-row machinery.
+- [Board-and-Memory.md](Board-and-Memory.md) — the SPI2 wiring this all sits
+  on top of.
 - [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md) — the -O2 build-flag
   history referenced above.

@@ -8,8 +8,8 @@
  * dangling - its release arrives next frame with `screen` already
  * SAND_UI_PALETTE, resolving to a click on whatever tile the finger
  * happens to lift over. */
-static unsigned open_palette(sand_ui_t *ui, bool touch_in_progress)
-{
+static unsigned
+open_palette(sand_ui_t* ui, bool touch_in_progress) {
     ui->screen = SAND_UI_PALETTE;
     /* Arming it unconditionally was wrong, and cost the common case to
      * protect the rare one: with no finger down there is no dangling
@@ -20,7 +20,7 @@ static unsigned open_palette(sand_ui_t *ui, bool touch_in_progress)
      * genuinely one already owed. */
     ui->swallow_release = touch_in_progress;
     ui->opened_brush = ui->brush;
-    ui->opened_mode  = ui->modes[ui->brush];
+    ui->opened_mode = ui->modes[ui->brush];
     return SAND_UI_OPEN_PALETTE;
 }
 
@@ -28,16 +28,14 @@ static unsigned open_palette(sand_ui_t *ui, bool touch_in_progress)
  * and the accumulator resets that keep the pause from cashing in as a
  * burst of catch-up steps, are app_sand.c's job - see
  * SAND_UI_CLOSE_PALETTE. Asks for the mode label via SAND_UI_SHOW_LABEL
- * only if the brush or its mode actually changed while open. Since
- * cycling no longer confirms on the way past each material, this is the
- * only feedback closing gets, and it should say nothing when there is
- * nothing to confirm. */
-static unsigned close_palette(sand_ui_t *ui)
-{
+ * only if the brush or its mode actually changed while open - the only
+ * feedback closing gets, so it says nothing when there is nothing to
+ * confirm. */
+static unsigned
+close_palette(sand_ui_t* ui) {
     unsigned actions = SAND_UI_CLOSE_PALETTE;
 
-    if (ui->brush != ui->opened_brush ||
-        ui->modes[ui->brush] != ui->opened_mode) {
+    if (ui->brush != ui->opened_brush || ui->modes[ui->brush] != ui->opened_mode) {
         actions |= SAND_UI_SHOW_LABEL;
     }
 
@@ -53,8 +51,8 @@ static unsigned close_palette(sand_ui_t *ui)
  * HIT-TESTS AND WHO DECIDES". What is left is swallow_release's own
  * bookkeeping: disarm it the first frame a finger already down when
  * opened is lifted. */
-static unsigned handle_palette_input(sand_ui_t *ui, const input_t *input)
-{
+static unsigned
+handle_palette_input(sand_ui_t* ui, const input_t* input) {
     /* On the RELEASE, never on the press. Closing on boot.pressed split a
      * single physical press across two screens: the panel closed on the
      * press edge, and the matching release arrived a frame later with
@@ -80,13 +78,13 @@ static unsigned handle_palette_input(sand_ui_t *ui, const input_t *input)
 
 /* What a click on palette tile `index` means - see this function's own
  * doc comment in sand_ui.h for the full contract, and the "WHO
- * HIT-TESTS AND WHO DECIDES" note there for why the hit-test that
- * produces `index` is no longer this module's job. draw_palette() in
+ * HIT-TESTS AND WHO DECIDES" note there for why the hit-test producing
+ * `index` belongs to microui, not this module. draw_palette() in
  * app_sand.c is the only caller, from inside its own per-tile mu_button()
- * loop - which is also why there is no "index hits nothing" branch here:
- * an index this function is ever handed already named a real tile. */
-unsigned sand_ui_tile_clicked(sand_ui_t *ui, int index)
-{
+ * loop, so there is no "index hits nothing" branch here: an index this
+ * function is ever handed already named a real tile. */
+unsigned
+sand_ui_tile_clicked(sand_ui_t* ui, int index) {
     /* Swallow the first click after the panel opens with a finger already
      * down - see `swallow_release`'s own comment on sand_ui_t, and
      * handle_palette_input()'s own comment for the other half of this
@@ -109,8 +107,7 @@ unsigned sand_ui_tile_clicked(sand_ui_t *ui, int index)
         if (!material_can_emit(ui->brushes[ui->brush])) {
             return 0;
         }
-        ui->modes[ui->brush] = (ui->modes[ui->brush] == BRUSH_POUR)
-                                    ? BRUSH_SPAWN : BRUSH_POUR;
+        ui->modes[ui->brush] = (ui->modes[ui->brush] == BRUSH_POUR) ? BRUSH_SPAWN : BRUSH_POUR;
     } else {
         /* A different tile: select it. Its own remembered mode is left
          * exactly as it was - only `mode` resets on selection, the same as
@@ -124,33 +121,115 @@ unsigned sand_ui_tile_clicked(sand_ui_t *ui, int index)
     return SAND_UI_REDRAW_PALETTE;
 }
 
-/* BOOT is not read here at all - its release edge opens the palette from
- * sand_ui_step() itself, and selecting a material happens in
- * handle_palette_input(). What is left is PWR: a plain press cycles
- * PAINT -> ERASE -> DETONATE -> PAINT, because none of the three needs a
- * hold's BUTTON_HOLD_US delay. See sand_mode_t's own comment in
- * sand_ui.h for why DETONATE rides along on this cycle, and app_sand.c's
- * `brushes[]` comment for the fuller reasoning on why BOOT and PWR ended
- * up with the jobs they have. */
-static unsigned handle_brush_input(sand_ui_t *ui, const input_t *input)
-{
-    if (input->power.pressed) {
-        ui->mode = (sand_mode_t)((ui->mode + 1) % SAND_MODE_COUNT);
-        return SAND_UI_SHOW_LABEL;
+/* Opens the brush screen: transitions to SAND_UI_BRUSH and records what
+ * close_brush() needs to compare against. Same swallow_release discipline
+ * as open_palette() and for the same reason - a finger already on the
+ * glass must not resolve into a segment tap - even though PWR itself has
+ * no dangling release of its own to worry about (buttons.h). */
+static unsigned
+open_brush(sand_ui_t* ui, bool touch_in_progress) {
+    ui->screen = SAND_UI_BRUSH;
+    ui->swallow_release = touch_in_progress;
+    ui->opened_sand_mode = ui->mode;
+    ui->opened_radius = ui->radius_px[ui->mode];
+    return SAND_UI_OPEN_BRUSH;
+}
+
+/* Closes the brush screen, the SAND_UI_BRUSH counterpart to
+ * close_palette() - same reasoning: SAND_UI_SHOW_LABEL fires only if the
+ * mode or its radius actually changed while open. */
+static unsigned
+close_brush(sand_ui_t* ui) {
+    unsigned actions = SAND_UI_CLOSE_BRUSH;
+
+    if (ui->mode != ui->opened_sand_mode || ui->radius_px[ui->mode] != ui->opened_radius) {
+        actions |= SAND_UI_SHOW_LABEL;
     }
+
+    ui->screen = SAND_UI_RUNNING;
+    return actions;
+}
+
+/* Only reachable while SAND_UI_BRUSH. PWR has no release edge (buttons.h),
+ * so open and close both read `.pressed` - safe because sand_ui_step()
+ * dispatches on the screen value from the START of the frame, so the
+ * press that opened SAND_UI_BRUSH this call can never also reach this
+ * check in the same call. BOOT is deliberately not read - it belongs to
+ * the palette. Segment/slider taps are decided elsewhere; what is left
+ * is swallow_release's own bookkeeping, mirroring
+ * handle_palette_input(). */
+static unsigned
+handle_brush_screen_input(sand_ui_t* ui, const input_t* input) {
+    if (input->power.pressed) {
+        return close_brush(ui);
+    }
+
+    if (ui->swallow_release && !input->down) {
+        ui->swallow_release = false;
+    }
+
     return 0;
 }
 
-/* One frame's worth of input, dispatched by screen. input->boot.released
- * opens the panel here, on the release edge - the mirror image of
- * handle_palette_input()'s close-on-released (see that comment, and
- * commit faad9bb). Opening on .pressed would leave the matching
- * .released to arrive a frame later resolving to a click on whatever
- * tile is under the finger - see swallow_release's comment on sand_ui_t.
- * input->boot.held is deliberately NOT handled here or anywhere in this
- * module. */
-unsigned sand_ui_step(sand_ui_t *ui, const input_t *input)
-{
+/* What a tap on brush-mode segment `index` means - see this function's own
+ * doc comment in sand_ui.h for the full contract, and "WHO HIT-TESTS AND
+ * WHO DECIDES" for why the hit-test producing `index` is not this
+ * module's job. `index` lines up with sand_mode_t directly - see
+ * brush_screen_segment_t's own comment on the ordering the two share. */
+unsigned
+sand_ui_mode_clicked(sand_ui_t* ui, int index) {
+    if (ui->swallow_release) {
+        return 0;
+    }
+
+    if ((sand_mode_t)index == ui->mode) {
+        return 0;
+    }
+
+    ui->mode = (sand_mode_t)index;
+    return SAND_UI_REDRAW_BRUSH;
+}
+
+/* Clamps to [SAND_UI_RADIUS_MIN, SAND_UI_RADIUS_MAX] and stores into the
+ * CURRENT mode's slot only - see sand_ui_t.radius_px. */
+void
+sand_ui_set_radius(sand_ui_t* ui, uint8_t radius_px) {
+    if (radius_px < SAND_UI_RADIUS_MIN) {
+        radius_px = SAND_UI_RADIUS_MIN;
+    } else if (radius_px > SAND_UI_RADIUS_MAX) {
+        radius_px = SAND_UI_RADIUS_MAX;
+    }
+
+    ui->radius_px[ui->mode] = radius_px;
+}
+
+uint8_t
+sand_ui_radius(const sand_ui_t* ui) {
+    return ui->radius_px[ui->mode];
+}
+
+/* Only reachable while SAND_UI_RUNNING. BOOT opens the palette; PWR opens
+ * the brush screen; both read the edge, never `.held`, for the same
+ * reason open_palette()'s own call site does. */
+static unsigned
+handle_running_input(sand_ui_t* ui, const input_t* input) {
+    if (input->boot.released) {
+        return open_palette(ui, input->down);
+    }
+
+    if (input->power.pressed) {
+        return open_brush(ui, input->down);
+    }
+
+    return 0;
+}
+
+/* One frame's worth of input, dispatched by screen - see this function's
+ * own comment in sand_ui.h. Reading `ui->screen` exactly once, before any
+ * branch can change it, is what keeps the press that opens a panel from
+ * also being read by that panel's own close check in the same call. */
+unsigned
+sand_ui_step(sand_ui_t* ui, const input_t* input) {
     if (ui->screen == SAND_UI_MENU) {
         return 0;
     }
@@ -159,9 +238,9 @@ unsigned sand_ui_step(sand_ui_t *ui, const input_t *input)
         return handle_palette_input(ui, input);
     }
 
-    if (input->boot.released) {
-        return open_palette(ui, input->down);
+    if (ui->screen == SAND_UI_BRUSH) {
+        return handle_brush_screen_input(ui, input);
     }
 
-    return handle_brush_input(ui, input);
+    return handle_running_input(ui, input);
 }

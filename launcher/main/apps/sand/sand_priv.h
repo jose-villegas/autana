@@ -1,4 +1,4 @@
-/*=============================================================================
+/*
  * sand_priv - internals shared across sand.c, sand_liquid.c, sand_gas.c,
  * sand_reactions.c, sand_plants.c and sand_impulse.c.
  *
@@ -17,32 +17,21 @@
  * frame-budget tests in suite_sand_perf.c, which is exactly what would catch it if
  * this ever stopped being true.
  *
- * THE REAL CRITERION FOR WHAT ELSE LIVES HERE, STATED HONESTLY: not every
- * `static` helper in sand.c or sand_impulse.c that could sit here (this
- * header is app-internal and portable either way, so there is no layering
- * reason it could not) does. blocker_normal(), reflect_off_normal() and
- * impulse_drag_of() are here because a test needed to call them directly -
- * the sand test suite (split across suite_sand_*.c) cannot reach a
- * function `static` inside a .c file at all, only ones declared where it can
- * include them, and this header is that place. can_impulse_enter(),
- * can_impulse_enter_gravity_ward() and impulse_gravity_candidates() stay
- * `static` in sand_impulse.c, right next to step_impulses(), because
- * nothing has yet needed to drive one of them in isolation - every existing
- * test reaches them through step_impulses()'s own observable behaviour
- * instead. All six are equally pure - none touches anything this header's
- * own functions do not already touch - so "pure enough to live here" was
- * never the actual test being applied, whatever an earlier version of this
- * comment implied. An adversarial architecture review (bd esp32c6-w2h)
- * named this directly: the three left beside step_impulses() are also the
- * three with a documented history of their own two call sites quietly
- * disagreeing about what they compute (see impulse_gravity_candidates()'s
- * own comment in sand_impulse.c for that history) -
- * exactly the kind of bug a direct test would have caught sooner. Moving
- * them is not this fix: stating the true rule is, so the next helper this
- * file's own history repeats on is moved (or not) on purpose, by whoever
- * next needs to test it directly, rather than by a guess about purity that
- * was never really what decided the first six.
- *===========================================================================*/
+ * THE CRITERION FOR WHAT ELSE LIVES HERE: not purity (this header is
+ * app-internal and portable either way, so nothing structurally stops a
+ * `static` helper from moving here) but whether a test needs to call it
+ * directly. blocker_normal(), reflect_off_normal() and impulse_drag_of() are
+ * here because the sand test suite (suite_sand_*.c) cannot reach a function
+ * `static` inside a .c file, only one declared where it can include it.
+ * can_impulse_enter(), can_impulse_enter_gravity_ward() and
+ * impulse_gravity_candidates() stay `static` in sand_impulse.c, next to
+ * step_impulses(), because nothing has yet needed to drive one in isolation
+ * - despite being equally pure, and despite a documented history of their
+ * own two call sites disagreeing about what they compute (see
+ * impulse_gravity_candidates()'s own comment in sand_impulse.c),
+ * exactly what a direct test would have caught sooner. Move a
+ * helper here when something actually needs to test it directly.
+ */
 #pragma once
 
 #include <stddef.h>
@@ -50,6 +39,46 @@
 #include <string.h>
 
 #include "sand.h"
+#include "util/job.h"
+
+/* One constant per rng draw site inside a checkerboard-parallel pass -
+ * see sand_rng_next_at() below. A fixed slot per site, not a per-cell
+ * counter, is what keeps a draw thread-safe with no shared mutable state:
+ * two cores drawing for two different cells never share an input, and
+ * the same cell's two draws (say, a scatter roll and a slide roll) never
+ * collide because they hash different slots, not different counts. */
+enum {
+    SAND_RNG_SLOT_SCATTER,
+    SAND_RNG_SLOT_SLIDE,
+    SAND_RNG_SLOT_VISCOSITY,
+    SAND_RNG_SLOT_SPLASH,
+    SAND_RNG_SLOT_GAS_DECAY,
+    SAND_RNG_SLOT_GAS_MOBILITY,
+    SAND_RNG_SLOT_GAS_WALK,
+};
+
+/* Draws for (x, y) at `slot` - see the enum above. Sequential and
+ * identical to plain rng_next() unless a checkerboard-parallel pass has
+ * armed s->rng_hashed (sand.h); every other caller, including these same
+ * functions when reactions or gas call them, is untouched. */
+static inline uint32_t
+sand_rng_next_at(sand_t* s, int x, int y, uint32_t slot) {
+    if (!s->rng_hashed) {
+        return rng_next(&s->rng);
+    }
+    return rng_hash(s->rng_seed_base, (uint32_t)s->step_phase, (uint32_t)(y * s->w + x), slot);
+}
+
+static inline bool
+sand_rng_chance_at(sand_t* s, int x, int y, uint32_t slot, int chance) {
+    if (chance <= 0) {
+        return false;
+    }
+    if (chance >= 256) {
+        return true;
+    }
+    return (int)(sand_rng_next_at(s, x, y, slot) & 0xFF) < chance;
+}
 
 /* NULL if off grid; vertical bounds checked per row, not per grain. */
 static inline uint8_t*
@@ -60,29 +89,66 @@ dest_row(const sand_t* s, int y) {
     return s->cells + (size_t)y * (size_t)s->w;
 }
 
+/* Unions [x0,x1] (either order, clipped to the grid) into row y's
+ * changed-column span - a no-op on dirty_x0/dirty_x1 wherever column
+ * tracking was never opted into (sand_track_dirty_cols() not called), so a
+ * row-only caller still gets exactly dirty_rows[y] = 1 as before. */
 static inline void
-mark_rows(sand_t* s, int y0, int y1) {
+mark_row_span(sand_t* s, int y, int x0, int x1) {
+    if ((unsigned)y >= (unsigned)s->h) {
+        return;
+    }
     if (s->dirty_rows != NULL) {
-        if ((unsigned)y0 < (unsigned)s->h) {
-            s->dirty_rows[y0] = 1;
-        }
-        if ((unsigned)y1 < (unsigned)s->h) {
-            s->dirty_rows[y1] = 1;
-        }
+        s->dirty_rows[y] = 1;
+    }
+    if (s->dirty_x0 == NULL || s->dirty_x1 == NULL) {
+        return;
+    }
+    int lo = x0 < x1 ? x0 : x1;
+    int hi = x0 < x1 ? x1 : x0;
+    if (lo < 0) {
+        lo = 0;
+    }
+    if (hi >= s->w) {
+        hi = s->w - 1;
+    }
+    if (lo > hi) {
+        return; /* span was entirely off-grid */
+    }
+    if (lo < (int)s->dirty_x0[y]) {
+        s->dirty_x0[y] = (uint16_t)lo;
+    }
+    if (hi + 1 > (int)s->dirty_x1[y]) {
+        s->dirty_x1[y] = (uint16_t)(hi + 1);
     }
 }
 
-/* Only pour_into()'s was_empty triggers this: the only event that moves
- * a puddle's surface, so the only one that can make LOCAL DEPTH stale.
- * Mass between already-liquid cells never calls it - dirtying for that
- * would repaint a settled reservoir every step something levels out.
- * Marks a BAND, not two points: anything within
- * MATERIAL_LIQUID_DEPTH_BAND of the surface can read differently,
- * further out already saturates. Direction-agnostic, avoiding coupling
- * to app_sand.c's gravity bookkeeping. */
+/* ALSO THE BOARD-CHANGED SIGNAL: a changed cell that is not repainted is a
+ * visible bug, so every writer comes through here. `x` is the one column
+ * that changed in both y0 and y1 - a move that changes column too goes
+ * through mark_move() instead. */
 static inline void
-mark_depth_band(sand_t* s, int y) {
+mark_rows(sand_t* s, int x, int y0, int y1) {
+    s->faller_may_move = true;
+    mark_row_span(s, y0, x, x);
+    if (y1 != y0) {
+        mark_row_span(s, y1, x, x);
+    }
+}
+
+/* Only pour_into()'s was_empty can make LOCAL DEPTH shading stale, within
+ * MATERIAL_LIQUID_DEPTH_BAND either way. The band runs along gravity, same
+ * as the depth count: columns of this row, or whole rows (explicit
+ * full-width spans) otherwise. */
+static inline void
+mark_depth_band(sand_t* s, int x, int y) {
     if (s->dirty_rows == NULL) {
+        return;
+    }
+    const int ax = s->last_load_dx < 0 ? -s->last_load_dx : s->last_load_dx;
+    const int ay = s->last_load_dy < 0 ? -s->last_load_dy : s->last_load_dy;
+    if (ax > ay) {
+        mark_row_span(s, y, x - MATERIAL_LIQUID_DEPTH_BAND, x + MATERIAL_LIQUID_DEPTH_BAND);
         return;
     }
     int y0 = y - MATERIAL_LIQUID_DEPTH_BAND;
@@ -93,8 +159,54 @@ mark_depth_band(sand_t* s, int y) {
     if (y1 >= s->h) {
         y1 = s->h - 1;
     }
-    memset(&s->dirty_rows[y0], 1, (size_t)(y1 - y0 + 1));
+    for (int yy = y0; yy <= y1; yy++) {
+        mark_row_span(s, yy, 0, s->w - 1);
+    }
 }
+
+/* Not sand.h API: a test hook for the gas spread pass's row skip. With it on,
+ * every board a suite already runs becomes a check that no mover moved gas
+ * into a row the skip had written off. Counts rather than aborts, so one
+ * failure does not hide the rest. */
+void sand_gas_row_audit_enable(bool on);
+extern unsigned sand_gas_row_audit_failures;
+extern unsigned sand_gas_row_audit_skippable;
+
+/* Not sand.h API: a test hook for the reaction pass's soak-only skip (see
+ * sand_step_reactions()). Counts every cell the per-row dispatch actually
+ * visits, so a suite can compare it against a bound derived from
+ * BLOCK_LIQUID_NEAR instead of guessing at wall time. Never reset by the
+ * pass itself - a suite that wants a per-step delta zeroes it directly. */
+extern unsigned sand_reactions_cells_dispatched;
+
+/* Test-only override: on, forces every pass to walk the full board even
+ * where soak-only conditions hold, so a suite can diff the fast path's
+ * output against the reference walk on the same board. Off by default. */
+void sand_reactions_force_full_walk(bool on);
+
+/* Not sand.h API: which shape sand_step_reactions() actually took this call -
+ * the soak-only partial walk, or the full one (including an early return
+ * that ran neither). Set unconditionally on every call, so a stale value
+ * never survives past the step that produced it. */
+extern bool sand_reactions_last_was_soak_only;
+
+/* Not sand.h API: test hooks for the liquid cross-flow pass. A move is one
+ * successful transfer out of equalise_one_cell(); a probe is one ray step
+ * find_shallowest() examines looking for somewhere shallower. Never reset by
+ * the pass itself, same convention as sand_reactions_cells_dispatched. */
+extern unsigned sand_liquid_moves;
+extern unsigned sand_liquid_crossflow_probes;
+
+/* Not sand.h API: a liquid grain moving in the MAIN SWEEP's own down-and-
+ * slide (move_liquid_grain(), sand_liquid_move.h) - separate from cross-
+ * flow's sand_liquid_moves above, and the one a settled-looking board with
+ * an uneven, brush-poured surface can keep doing for a long time after
+ * cross-flow itself has gone quiet. */
+extern unsigned sand_liquid_sweep_moves;
+
+/* Not sand.h API: cells considered by the checkerboard sweep's guard rows.
+ * Never reset by the pass itself, so tests can measure a per-step delta. */
+extern unsigned sand_guard_cells_scanned;
 
 #define BLOCK_SETTLED_NEAREST 0x1
 #define BLOCK_SETTLED_OTHER   0x2
@@ -111,6 +223,15 @@ mark_depth_band(sand_t* s, int y) {
 #define BLOCK_HAS_LIQUID      0x8
 #define BLOCK_LIQUID_NEAR     0x10
 
+/* A block holding a cell whose moisture is currently nonzero - the soak-
+ * only walk's alternative to LIQUID_NEAR once the liquid that put the
+ * moisture there is gone, since ambient drying and dirt-to-dirt
+ * percolation (step_one_soaking_cell(), sand_reactions.c) need neither
+ * liquid nor NEAR to keep running. Set wherever a write grants moisture;
+ * cleared only by refresh_moisture_blocks() actually finding none left,
+ * the same "trust it until disproven" shape BLOCK_HAS_LIQUID uses. */
+#define BLOCK_HAS_MOISTURE    0x20
+
 static inline uint16_t
 liquid_mask(void) {
     uint16_t mask = 0;
@@ -122,9 +243,142 @@ liquid_mask(void) {
     return mask;
 }
 
+/* What a liquid could still put moisture INTO: something that drinks it
+ * directly, or ground that soaks. A board holding a liquid and none of these
+ * has no way to make moisture at all, which is what lets the reaction pass
+ * skip a screen of water outright. MAT_EXTENDED joins if any of its sixteen
+ * codes qualifies - the conservative direction.
+ *
+ * CACHED: reactions[]/extended_reactions[] are `const`, read every step. */
+static inline uint16_t
+wettable_mask(void) {
+    static uint16_t mask;
+    static bool ready;
+    if (ready) {
+        return mask;
+    }
+    for (int m = 1; m < MAT_COUNT; m++) {
+        if (reactions[m].soaks != 0 || reactions[m].drinks != 0) {
+            mask |= (uint16_t)(1u << m);
+        }
+    }
+    for (int k = 0; k < MATERIAL_EXTENDED_CODES; k++) {
+        if (extended_reactions[k].soaks != 0 || extended_reactions[k].drinks != 0) {
+            mask |= (uint16_t)(1u << MAT_EXTENDED);
+        }
+    }
+    ready = true;
+    return mask;
+}
+
+/* What could still DRINK a liquid from beyond one cell away: find_water()'s
+ * root-depth search walks stems and soil past a single block, more reach
+ * than BLOCK_LIQUID_NEAR promises (see its own comment above), so its
+ * presence forces the full board walk. Same cache argument as
+ * wettable_mask(). */
+static inline uint16_t
+drinker_mask(void) {
+    static uint16_t mask;
+    static bool ready;
+    if (ready) {
+        return mask;
+    }
+    for (int m = 1; m < MAT_COUNT; m++) {
+        if (reactions[m].drinks != 0) {
+            mask |= (uint16_t)(1u << m);
+        }
+    }
+    for (int k = 0; k < MATERIAL_EXTENDED_CODES; k++) {
+        if (extended_reactions[k].drinks != 0) {
+            mask |= (uint16_t)(1u << MAT_EXTENDED);
+        }
+    }
+    ready = true;
+    return mask;
+}
+
+/* What could still act on a moisture-driven growth stage (grow/sprout/
+ * bud/root-weld) this pass would otherwise defer to may_have_moisture for.
+ * A root's own feed (step_one_rooting_cell()) reaches nearby WET DIRT, not
+ * nearby LIQUID, so it can be several cells past every BLOCK_LIQUID_NEAR
+ * block the soak-only walk would visit - presence, not any one step's own
+ * moisture event, is what has to gate the skip. Same cache argument as
+ * wettable_mask(). */
+static inline uint16_t
+grower_mask(void) {
+    static uint16_t mask;
+    static bool ready;
+    if (ready) {
+        return mask;
+    }
+    for (int m = 1; m < MAT_COUNT; m++) {
+        if (reactions[m].grows != 0 || reactions[m].sprouts != 0 || reactions[m].buds != 0 || reactions[m].roots != 0) {
+            mask |= (uint16_t)(1u << m);
+        }
+    }
+    for (int k = 0; k < MATERIAL_EXTENDED_CODES; k++) {
+        if (extended_reactions[k].grows != 0 || extended_reactions[k].sprouts != 0 || extended_reactions[k].buds != 0
+            || extended_reactions[k].roots != 0) {
+            mask |= (uint16_t)(1u << MAT_EXTENDED);
+        }
+    }
+    ready = true;
+    return mask;
+}
+
+/* A full cell, a foreign material and a wall all refuse mass alike, so this
+ * answers for every liquid at once without being told which one is asking.
+ * Breaks on the first cell that could take mass: a span still moving costs a
+ * handful of loads, not its length. */
+static inline bool
+span_has_no_liquid_room(const uint8_t* row, int x0, int x1, uint16_t is_liquid) {
+    for (int x = x0; x < x1; x++) {
+        const cell_t c = row[x];
+        if (CELL_IS_EMPTY(c)) {
+            return false;
+        }
+        if (((is_liquid >> CELL_MATERIAL(c)) & 1u) != 0 && CELL_VARIANT(c) < MASS_MAX) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static inline int
 block_of(const sand_t* s, int x, int y) {
     return (y / SAND_BLOCK_H) * s->block_cols + (x / SAND_BLOCK_W);
+}
+
+/* Has this cell's block come to rest? The same test sand_block_settled()
+ * makes, by cell rather than by block index. False when sleeping is off,
+ * because then nothing is ever known to be settled and a rule gated on rest
+ * must not fire. */
+static inline bool
+cell_settled(const sand_t* s, int x, int y) {
+    if (s->block_state == NULL) {
+        return false;
+    }
+    return (s->block_state[block_of(s, x, y)] & (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER)) != 0;
+}
+
+/* Is there liquid in this cell's own block or any block touching it?
+ *
+ * NOT s->may_have_liquid, which is board-wide: one water cell anywhere arms
+ * every liquid-adjacent behaviour on the whole grid. BLOCK_LIQUID_NEAR asks
+ * the same question locally.
+ *
+ * SOUND FOR ANY FOUR-NEIGHBOUR TEST: a neighbour is one cell away, so it
+ * lies in this block or one touching it, and NEAR covers exactly that.
+ * Falls back to the flag when block state is off. */
+static inline bool
+liquid_near(const sand_t* s, int x, int y) {
+    if (!s->may_have_liquid) {
+        return false;
+    }
+    if (s->block_state == NULL) {
+        return true;
+    }
+    return (s->block_state[block_of(s, x, y)] & BLOCK_LIQUID_NEAR) != 0;
 }
 
 static inline void
@@ -230,6 +484,21 @@ wake_block_and_neighbors(sand_t* s, int x, int y) {
         }
     }
     s->block_state[by * s->block_cols + bx] |= BLOCK_ACTIVE;
+}
+
+/* Called wherever step_one_soaking_cell() (sand_reactions.c) grants a cell
+ * moisture, at that cell's own coordinates - see BLOCK_HAS_MOISTURE. */
+static inline void
+mark_block_has_moisture(sand_t* s, int x, int y) {
+    if (s->block_state == NULL) {
+        return;
+    }
+    if ((unsigned)x >= (unsigned)s->w || (unsigned)y >= (unsigned)s->h) {
+        return;
+    }
+    const int bx = (int)((unsigned)x / SAND_BLOCK_W);
+    const int by = (int)((unsigned)y / SAND_BLOCK_H);
+    s->block_state[by * s->block_cols + bx] |= BLOCK_HAS_MOISTURE;
 }
 
 /* ONE copy: sand_set()/try_spawn_one() once each carried their own,
@@ -348,9 +617,9 @@ neighbor_smothers(const sand_t* s, int nx, int ny, int w, int h, uint8_t density
  * cardinals and could never fire for a wide pool sealed by a crust (only
  * the cell directly above ever counted). The lid is the three cells
  * centred on anti-gravity - opposite gravity plus its two diagonals -
- * ALL THREE must cover. The two perpendiculars were tried first
- * (five-cell semi-disc) but a hand-drawn wall notches then read as a
- * seal at brush radii 2-4, bursting basins that should hold. */
+ * ALL THREE must cover; the two perpendiculars alone (five-cell
+ * semi-disc) read a hand-drawn wall notch as a seal at brush radii 2-4,
+ * bursting basins that should hold. */
 #define COVER_LID 0x7u
 
 /* Covering is neighbor_smothers(): in bounds, not liquid, denser than
@@ -380,15 +649,14 @@ covered_at(const sand_t* s, int x, int y, int w, int h, uint8_t density) {
 /* One cullet grain, at a random shade from sand's reserved band. Shared by
  * every path that breaks glass - a crack, and a pane knocked loose by an
  * impulse - so they cannot drift apart on which band they land in. */
-static inline cell_t cullet_cell(sand_t *s)
-{
-    return CELL_MAKE(MAT_SAND,
-                     (uint8_t)(SAND_CULLET_BASE + rng_below(&s->rng, SAND_CULLET_SHADES)));
+static inline cell_t
+cullet_cell(sand_t* s) {
+    return CELL_MAKE(MAT_SAND, (uint8_t)(SAND_CULLET_BASE + rng_below(&s->rng, SAND_CULLET_SHADES)));
 }
 
-static inline uint8_t impulse_drag_of(cell_t displaced)
-{
-    const material_t *m = material_of(displaced);
+static inline uint8_t
+impulse_drag_of(cell_t displaced) {
+    const material_t* m = material_of(displaced);
     unsigned d = (unsigned)m->density;
 
     if (m->kind == KIND_LIQUID) {
@@ -409,10 +677,20 @@ clear_content_flags(sand_t* s) {
     s->may_have_temperature = false;
     s->may_have_moisture = false;
     s->may_have_faller = false;
+    /* The pessimistic direction, unlike the flags around it: a board filled
+     * by writing s->cells directly latches no presence either, so this one
+     * being true changes nothing until something says a faller is there. */
+    s->faller_may_move = true;
     s->may_have_heat_holder = false;
 
-    s->may_have_withering = false;
     s->may_have_condenser = false;
+
+    /* EVERY material, and the only one here that starts set. The others gate
+     * work that is merely wasted when the flag is wrong; this one gates work
+     * being SKIPPED, so a false negative loses a reaction. A board filled by
+     * writing s->cells directly - which tests and tools do - latches nothing,
+     * so it starts pessimistic and sand_step_reactions() narrows it. */
+    s->may_have_materials = 0xFFFFu;
 }
 
 static inline void
@@ -429,6 +707,11 @@ latch_content_flags(sand_t* s, cell_t cell) {
     if (mat->kind == KIND_GAS) {
         s->may_have_gas = true;
     }
+    /* One OR, and deliberately no predicate: what this material IMPLIES is
+     * decided in sand_step_reactions() where build_reaction_tables()' table
+     * exists. Duplicating those predicates here is what this replaced, and it
+     * had already drifted into two copies. */
+    s->may_have_materials |= (uint16_t)(1u << CELL_MATERIAL(cell));
     if (cell_is_burning(cell)) {
         s->may_have_burning = true;
     }
@@ -437,9 +720,7 @@ latch_content_flags(sand_t* s, cell_t cell) {
     }
     if (r->falls != 0) {
         s->may_have_faller = true;
-    }
-    if (r->withers != 0) {
-        s->may_have_withering = true;
+        s->faller_may_move = true;
     }
     if (r->condenses != 0) {
         s->may_have_condenser = true;
@@ -455,11 +736,15 @@ latch_content_flags(sand_t* s, cell_t cell) {
     }
 }
 
-/* The four-cardinal-direction table every per-cell reaction pass walks
- * neighbours through - fire chemistry (sand_reactions.c) and tree/root
- * growth (sand_plants.c) both need it, unlike ring_dir()'s 8-way table
- * above, which the gravity-relative powder sweep uses instead. */
-static const int reaction_dirs[4][2] = {
+/* The four cardinals every per-cell reaction pass walks - fire chemistry and
+ * tree growth both need it, unlike ring_dir()'s 8-way table above.
+ *
+ * int8_t, not int, is what fs7 bought: 8 bytes a copy, not 32. `static` pays
+ * one extra copy for the four `#pragma GCC unroll 4` walks in
+ * sand_reactions.c - behind `extern` those pragmas are worth under half as
+ * much. Neither form folds the offsets (objdump: `lb 0(a5)` survives every
+ * unrolled copy), so `extern` is not a way to keep the win. */
+static const int8_t reaction_dirs[4][2] = {
     {0, -1},
     {0, 1},
     {-1, 0},
@@ -477,7 +762,7 @@ static inline void
 place_cell(sand_t* s, int x, int y, size_t at, cell_t c) {
     s->cells[at] = c;
     latch_content_flags(s, c);
-    mark_rows(s, y, y);
+    mark_rows(s, x, y, y);
     wake_block_and_neighbors(s, x, y);
 }
 
@@ -505,7 +790,7 @@ pay_quench_cost(sand_t* s, int nx, int ny, int w) {
     const cell_t n = s->cells[at];
     const int mass = CELL_VARIANT(n) - 1;
     s->cells[at] = (mass > 0) ? CELL_MAKE(CELL_MATERIAL(n), mass) : CELL_EMPTY;
-    mark_rows(s, ny, ny);
+    mark_rows(s, nx, ny, ny);
     wake_block_and_neighbors(s, nx, ny);
 }
 
@@ -541,9 +826,22 @@ soil_set_moisture(cell_t c, uint8_t new_moisture, uint8_t nearby_moisture) {
     return new_moisture != 0 ? with_moisture(c, new_moisture, reaction_of(c)) : soil_dry_out(c, nearby_moisture);
 }
 
+/* Source and destination column marked separately, with no block-wake: the
+ * main sweep's own moved_here bookkeeping (sand.c) already keeps
+ * BLOCK_ACTIVE current for every cell it walks, so waking here would pay
+ * the 3x3 clear a second time for cells the sweep was already visiting. */
+static inline void
+mark_slide(sand_t* s, int x0, int y0, int x1, int y1) {
+    s->faller_may_move = true;
+    mark_row_span(s, y0, x0, x0);
+    if (y1 != y0 || x1 != x0) {
+        mark_row_span(s, y1, x1, x1);
+    }
+}
+
 static inline void
 mark_move(sand_t* s, int x0, int y0, int x1, int y1) {
-    mark_rows(s, y0, y1);
+    mark_slide(s, x0, y0, x1, y1);
     wake_block_and_neighbors(s, x0, y0);
     wake_block_and_neighbors(s, x1, y1);
 }
@@ -569,24 +867,26 @@ tick_decay_at(sand_t* s, uint8_t* row, int x, int y, cell_t* grain, const reacti
     const uint8_t life = cell_code(*grain);
     if (life <= r->lit_from) {
         row[x] = CELL_EMPTY;
-        mark_rows(s, y, y);
+        mark_rows(s, x, y, y);
         wake_block_and_neighbors(s, x, y);
         return false;
     }
 
     *grain = cell_with_code(*grain, (uint8_t)(life - 1));
     row[x] = *grain;
-    mark_rows(s, y, y);
+    mark_rows(s, x, y, y);
     return true;
 }
 
+/* Takes the rate with s->decay already applied, not the material row: a
+ * caller holding it as a per-material fact must not be made to load
+ * materials[] again for it. */
 static inline bool
-tick_decay(sand_t* s, uint8_t* row, int x, int y, cell_t* grain, const material_t* mat, uint8_t mat_id) {
-    const int decay = (s->decay >= 0) ? s->decay : mat->decay;
+tick_decay(sand_t* s, uint8_t* row, int x, int y, cell_t* grain, uint8_t mat_id, int decay) {
     if (decay == 0) {
         return true;
     }
-    const uint32_t r = rng_next(&s->rng);
+    const uint32_t r = sand_rng_next_at(s, x, y, SAND_RNG_SLOT_GAS_DECAY);
     if ((int)(r & 0xFF) >= decay) {
         return true;
     }
@@ -594,102 +894,39 @@ tick_decay(sand_t* s, uint8_t* row, int x, int y, cell_t* grain, const material_
     const uint8_t life = CELL_VARIANT(*grain);
     if (life <= 1) {
         row[x] = CELL_EMPTY;
-        mark_rows(s, y, y);
+        mark_rows(s, x, y, y);
         wake_block_and_neighbors(s, x, y);
         return false;
     }
 
     *grain = CELL_MAKE(mat_id, life - 1);
     row[x] = *grain;
-    mark_rows(s, y, y);
+    mark_rows(s, x, y, y);
     return true;
 }
 
-/* Per-pass volatile gates for sand_step() (bd esp32c6-8zx), default enabled
- * so behaviour is untouched. One binary, five configurations, one boot - a
- * device pass decomposition with no layout difference between
- * configurations, unlike four separate images each drawing their own
- * flash-layout ticket. Defined in sand.c. */
-
-/* OPT-IN, for the reason sand_work_counters.h spells out: development
- * alone puts these in build.diag, the capture build, and an instrument
- * that shifts every measurement is worse than none. CONFIG_LAUNCHER_
- * SAND_PASS_GATES cannot be set without LAUNCHER_DEVELOPMENT, so the
- * guard checks only this option. Kept separate from the work counters: the
- * gates measure TIME, the counters measurably perturb codegen, so one
- * option covering both would perturb exactly what the gates measure. */
-#if CONFIG_LAUNCHER_SAND_PASS_GATES
-extern volatile bool sand_step_gate_main_sweep;
-extern volatile bool sand_step_gate_cross_flow;
-extern volatile bool sand_step_gate_gas;
-extern volatile bool sand_step_gate_reactions;
-
-/* Splits cross-flow itself: this one keeps the per-cell WALK and its liquid
- * mask test and suppresses only the transfer work they lead to, so the walk's
- * own share can be read against the whole pass. Volatile for the same reason
- * the others are, and here it is load-bearing - an `#if` would let the
- * compiler see the work is unreachable and delete the walk with it, which is
- * how a previous code-skip probe in this campaign measured nothing. */
-extern volatile bool sand_step_gate_xflow_body;
-
-/* Splits the main sweep the way sand_step_gate_xflow_body splits cross-flow:
- * keeps step_one_block()'s per-cell walk, suppresses only the
- * step_one_grain() move. Volatile for the same reason - an `#if` would let
- * the compiler prove the walk unreachable and delete it too. */
-extern volatile bool sand_step_gate_sweep_body;
-
-/* Splits the gas pass, which the fire-scene decomposition put at 56% of the
- * app's most expensive scene (bd esp32c6-dp8) while being 1 us on water. Gas
- * has two halves like the liquid passes do - a rise sweep and an equalise -
- * and nothing has ever measured which one costs. */
-extern volatile bool sand_step_gate_gas_rise;
-extern volatile bool sand_step_gate_gas_equalise;
-
-/* Wraps a pass's call site in `if (sand_step_gate_<name>)` when compiled in,
- * and in nothing at all otherwise - a release build's sand_step() has no
- * extra branch to fold away, because there was never a branch there to
- * begin with. */
-#define SAND_STEP_GATE(name)        if (sand_step_gate_##name)
-/* Same idea, ANDed into an existing condition rather than wrapping a bare
- * call - for the one pass (gas) whose call site already has a condition of
- * its own. */
-#define SAND_STEP_GATED(name, cond) (sand_step_gate_##name && (cond))
-#else
-#define SAND_STEP_GATE(name)
-#define SAND_STEP_GATED(name, cond) (cond)
-#endif
-
-/* Defined in sand_reactions.c: the whole of a step's fire-chemistry work
- * for every burning cell (reaction_t.burns - fire and ember today) -
- * ignition of adjacent flammable neighbours, extinguishing by adjacent
- * liquid, burning out via tick_decay() above, (ember only) flaring a
- * flame upward, and now heat conduction through a material like stone
- * (reaction_t.conducts - see conduct_heat() in sand_reactions.c). Called
- * once from sand_step(), after sand_step_gas() finishes and before
- * finalize_settling() - same slot, same reasoning as sand_step_liquids()/
- * sand_step_gas() before it: BLOCK_ACTIVE has to reflect the whole step.
- * Gated on s->may_have_burning alone (not may_have_gas too) - a burning
- * cell is the only actor here; gas is passive fuel with nothing to do on
- * its own.
- *
- * Takes only `s`. It briefly took (gx, gy) too, while boiling walked
- * against gravity to find a liquid's surface; boiling happens at the
- * heat source now and the steam bubbles up by itself, so this pass has
- * no interest in gravity at all. That also restores the original reason
- * may_have_burning is checked INSIDE rather than at the call site:
- * there are no arguments to marshal for a call that will immediately
- * return. */
+/* sand_step_reactions() (sand_reactions.c): a step's fire chemistry,
+ * called after sand_step_gas(), before finalize_settling(). Gated on
+ * may_have_burning alone; takes only `s` - boiling happens at the heat
+ * source, no interest in gravity. */
 void sand_step_reactions(sand_t* s);
 
-/* Defined in sand_plants.c: the tree/root/leaf growth half of what used to
- * be one reactions file - see that file's own top comment. Each is one
- * stage of step_one_reacting_row()'s (sand_reactions.c) per-cell dispatch,
- * called across the file boundary the same way sand_step_reactions() above
- * is called from sand.c. */
-/* Exact lattice-cell count for a disc of radius r (sand_impulse.c). Declared
- * here rather than left static so the suite can check the shipped table
- * against a direct count, which is the only way that table is verified. */
+/* Defined in sand_plants.c: the tree/root/leaf growth stages of
+ * step_one_reacting_row()'s (sand_reactions.c) per-cell dispatch, called
+ * across the file boundary the same way sand_step_reactions() above is
+ * called from sand.c.
+ *
+ * sand_disc_count(): exact lattice-cell count for a disc of radius r
+ * (sand_impulse.c). Declared here rather than left static so the suite
+ * can check the shipped table against a direct count, the only way that
+ * table is verified. */
 int sand_disc_count(int radius);
+
+/* The fall stage's own question, minus the roll and the write. Declared here
+ * rather than left static because may_have_faller is only allowed to be clear
+ * while this answers no everywhere, and a suite cannot check that without
+ * asking the same question the pass asks. */
+bool faller_can_move(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
 
 bool step_one_falling_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
 bool step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
@@ -697,7 +934,6 @@ bool step_one_rooting_cell(sand_t* s, int x, int y, int w, int h, const reaction
 bool step_one_drinking_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t self);
 bool step_one_sprouting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
 bool step_one_budding_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
-bool step_one_withering_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
 bool step_one_growing_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r);
 
 /* A pool's true perpendicular to gravity rarely lines up with a ring
@@ -722,21 +958,19 @@ void sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy);
 
 void sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, const int* slide_b, const int* perp_a,
                    const int* perp_b, int load_dx, int load_dy, int x_step, int jostle);
+void sand_gas_set_worker_order_for_test(bool reverse);
 
 /* The flight pass - explosions, debris, splash pushback - lives in
  * sand_impulse.c since it moves OUTWARD, not gravity-ward. Called once
  * from sand_step(), the same seam sand_step_liquids()/sand_step_gas() use;
  * must run LAST - see sand_impulse.c's own banner. */
-void step_impulses(sand_t *s, int dx, int dy);
+void step_impulses(sand_t* s, int dx, int dy);
 
-/* try_fall_or_scatter()/try_slide() moved here, static inline, same
- * reason as dest_row()/mark_rows(): hottest-path, called once per grain
- * per step. Un-static-ing for sand_gas.c, or inlining the whole chain
- * into both files, each regressed a frame-budget test badly (loses
- * inlining, or duplicates flash). Shipped: _impl versions stay static
- * inline here; sand_gas.c calls thin non-inline wrappers in sand.c,
- * keeping the hot path inlined, at most two flash copies. See
- * docs/sand/Simulation-Lessons.md. */
+/* try_fall_or_scatter()/try_slide() live here, static inline, same
+ * reason as dest_row()/mark_rows(): hottest path, called once per grain
+ * per step. sand_gas.c calls thin non-inline wrappers in sand.c instead
+ * of un-static-ing these or duplicating the chain - both regressed a
+ * frame-budget test (lost inlining, or duplicated flash). */
 
 /* Static materials never yield regardless of density, so a wall stays a
  * wall - the general "yields to denser" rule below has this one
@@ -799,7 +1033,7 @@ try_scatter(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow
         return false;
     }
 
-    const uint32_t r = rng_next(&s->rng);
+    const uint32_t r = sand_rng_next_at(s, x, y, SAND_RNG_SLOT_SCATTER);
     if ((int)(r & 0xFF) >= scatter) {
         return false;
     }
@@ -811,7 +1045,7 @@ try_scatter(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow
         const int ddy = pick_a ? slide_a[1] : slide_b[1];
 
         if (move_to(row, drow, x, x + ddx, w, grain, density)) {
-            mark_rows(s, y, y + ddy);
+            mark_slide(s, x, y, x + ddx, y + ddy);
         }
     }
     return true;
@@ -826,7 +1060,7 @@ try_fall_or_scatter_impl(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, 
     }
 
     if (move_to(row, prow, x, x + dx, w, grain, density)) {
-        mark_rows(s, y, y + dy);
+        mark_slide(s, x, y, x + dx, y + dy);
         return true;
     }
     return false;
@@ -870,11 +1104,11 @@ try_slide_pair(sand_t* s, uint8_t* row, int x, int y, int w, cell_t grain, uint8
     }
 
     if (first_driven && move_to(row, first_row, x, x + first_dx, w, grain, density)) {
-        mark_rows(s, y, y + first_dy);
+        mark_slide(s, x, y, x + first_dx, y + first_dy);
         return true;
     }
     if (second_driven && move_to(row, second_row, x, x + second_dx, w, grain, density)) {
-        mark_rows(s, y, y + second_dy);
+        mark_slide(s, x, y, x + second_dx, y + second_dy);
         return true;
     }
     return false;
@@ -884,7 +1118,7 @@ static inline bool
 try_slide_impl(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int dx,
                int dy, const int* slide_a, const int* slide_b, int load_dx, int load_dy, int jostle, cell_t grain,
                uint8_t driven_row, uint8_t density, const material_t* mat, bool driven[][2]) {
-    const uint32_t r = rng_next(&s->rng);
+    const uint32_t r = sand_rng_next_at(s, x, y, SAND_RNG_SLOT_SLIDE);
 
     uint8_t *first_row, *second_row;
     int first_dx, second_dx;
@@ -898,7 +1132,7 @@ try_slide_impl(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* b
     const bool shaken = jostle > 0 && (int)((r >> 8) & 0xFF) < jostle;
 
     if (!shaken && jostle > 0 && move_to(row, prow, x, x + dx, w, grain, density)) {
-        mark_rows(s, y, y + dy);
+        mark_slide(s, x, y, x + dx, y + dy);
         return true;
     }
 
@@ -908,7 +1142,7 @@ try_slide_impl(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* b
     }
 
     if (shaken && move_to(row, prow, x, x + dx, w, grain, density)) {
-        mark_rows(s, y, y + dy);
+        mark_slide(s, x, y, x + dx, y + dy);
         return true;
     }
 
@@ -948,10 +1182,10 @@ driven_by_gravity(int mx, int my, int gx, int gy, int repose) {
     return (int64_t)descent * 10 > (int64_t)lateral * repose;
 }
 
-/* RSTAGE_BURN_ANY must stay 0: material_first_stage[]/extended_first_stage[]
- * (sand_reactions.c) are zero-initialised .bss, so an unwritten slot lands
- * here - see step_one_reacting_row()'s stage_burn_any: label for why it
- * has to be this stage and not one of the other two burn stages. */
+/* RSTAGE_BURN_ANY must stay 0: the per-material burn plans (sand_reactions.c)
+ * are zero-initialised .bss, so an unwritten slot lands here - see
+ * step_one_reacting_row()'s stage_burn_any: label for why it has to be this
+ * stage and not one of the other two burn stages. */
 enum {
     RSTAGE_BURN_ANY,
     RSTAGE_BURN_ALWAYS,
@@ -960,11 +1194,11 @@ enum {
     RSTAGE_ACID_RAIN,
     RSTAGE_CONDENSE,
     RSTAGE_HEAT_RAMP,
+    RSTAGE_CRUST,
     RSTAGE_CHILL,
     RSTAGE_WARM,
     RSTAGE_SOAK_DRY,
     RSTAGE_FALL,
-    RSTAGE_WITHER,
     RSTAGE_DRINK,
     RSTAGE_ROOT,
     RSTAGE_GROW,
@@ -973,6 +1207,40 @@ enum {
     RSTAGE_END,
     RSTAGE_COUNT
 };
+
+/* What a burning cell is charged before it looks at a single neighbour. Every
+ * field is a property of the MATERIAL and the step's overrides, never of the
+ * cell, so a screen of one material re-derived them all per cell out of two
+ * flash tables. Rebuilt once a step beside the board-wide facts one of them
+ * folds in, so it can never be staler than those.
+ *
+ * `stage` rides along because the dispatch loop indexes a per-material table
+ * to pick a stage anyway: one index answers both. */
+#define BURN_LIT      (1u << 0) /* the reaction burns at its own rate; the material's decay stays 0 */
+#define BURN_SMOTHERS (1u << 1) /* smothered() could find something - the whole gate, board fact included */
+#define BURN_LAVA     (1u << 2) /* a liquid that quenches: the burst roll and the cool-off chain are its alone */
+
+typedef struct {
+    uint8_t stage;
+    uint8_t tick_rate;
+    uint8_t flare;
+    uint8_t flags;
+} burn_plan_t;
+
+/* A power-of-two stride keeps the dispatch loop's index a shift; the byte
+ * array of stages this replaced indexed for free, and a multiply would hand
+ * that saving straight back. */
+_Static_assert(sizeof(burn_plan_t) == 4, "burn_plan_t must stay four bytes");
+
+/* Declared rather than left static so a suite can check the shipped plan
+ * against the material and reaction rows it is derived from - every field
+ * feeds a skip or a rate, so a wrong row loses behaviour silently, and the
+ * eleven fingerprint scenes cannot reach all thirty-two of them.
+ *
+ * sand_smothering_ceiling(): the board fact BURN_SMOTHERS folds in, exposed
+ * for the same reason. Both read what the last sand_step_reactions() built. */
+const burn_plan_t* sand_burn_plan_of(cell_t c);
+uint8_t sand_smothering_ceiling(void);
 
 /* `is_acid_rain_material` gates material-specific stage, not reaction type. */
 static inline uint8_t
@@ -995,6 +1263,12 @@ reaction_first_stage(const reaction_t* r, bool is_acid_rain_material) {
     if (r->heat_ramp != 0) {
         return RSTAGE_HEAT_RAMP;
     }
+    /* BEFORE chills, because stage_chill ends in `continue` and never falls
+     * through - snow chills, so a crust stage after it would be unreachable
+     * for the one material that has it. */
+    if (r->crusts != 0) {
+        return RSTAGE_CRUST;
+    }
     if (r->chills != 0) {
         return RSTAGE_CHILL;
     }
@@ -1006,9 +1280,6 @@ reaction_first_stage(const reaction_t* r, bool is_acid_rain_material) {
     }
     if (r->falls != 0) {
         return RSTAGE_FALL;
-    }
-    if (r->withers != 0) {
-        return RSTAGE_WITHER;
     }
     if (r->drinks != 0) {
         return RSTAGE_DRINK;

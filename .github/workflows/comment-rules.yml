@@ -1,0 +1,53 @@
+name: Comment Rules
+
+# The comment rules docs/C-Style-Guide.md states, measured rather than
+# argued: nothing beside code over 500 characters, no file header over 50
+# lines, no comment naming a function that does not exist, and none below
+# apps/ naming an app.
+# Enforced here so the rules hold for every commit, however it was made.
+#
+# Own workflow file, like the other four, purely so it gets its own badge -
+# GitHub exposes whole-workflow badges and never per-job ones. See
+# host-tests.yml's top comment.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  comment-rules:
+    name: Comment rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Length beside code, and header height
+        run: >
+          python3 scripts/check_comment_length.py
+          --no-banners --limit 500 --header-limit 50 --top 0
+
+      - name: Every function a comment names exists
+        run: python3 scripts/check_comment_symbols.py
+
+      - name: No comment below apps/ names an app
+        run: python3 scripts/check_comment_layers.py
+
+      - name: Every documentation citation resolves
+        run: python3 scripts/check_doc_citations.py
+
+      - name: Documentation constants match source
+        run: python3 scripts/check_doc_constants.py
+
+      - name: Documentation names the supported board
+        run: python3 scripts/check_doc_vocabulary.py
+
+      - name: Every document is reachable from README.md
+        run: python3 scripts/check_doc_index.py
+
+      # Warns, never fails: a changed function a document cites is a reason
+      # to reread that document, not proof it is wrong.
+      - name: Documents citing what this pull request changed
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/doc_citers.py --changed "origin/${{ github.base_ref }}"

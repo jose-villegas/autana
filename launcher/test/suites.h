@@ -1,4 +1,4 @@
-/*=============================================================================
+/*
  * The test suites, shared by both runners.
  *
  * Every suite here is compiled into BOTH:
@@ -19,7 +19,7 @@
  * A portable suite must not include any ESP-IDF or hardware header, so it can
  * link on a host. Suites that need the chip are guarded with DEVICE_BUILD and
  * are simply not compiled into the host runner.
- *===========================================================================*/
+ */
 #pragma once
 
 #include <stdbool.h>
@@ -30,32 +30,27 @@
  * only printf()s a warning to the boot console, so an overflow here reads as
  * a green run that quietly tested less than it claims. Bump this rather than
  * trim suites to fit it. */
-#define SUITE_MAX 64
+#define SUITE_MAX 96
 
 typedef void (*suite_fn)(void);
 
 /* Called by SUITE_REGISTER before main(). */
-void suite_register(const char *name, suite_fn fn);
+void suite_register(const char* name, suite_fn fn);
 
-#define SUITE_REGISTER(fn)                                          \
-    __attribute__((constructor))                                    \
-    static void fn##_register(void) { suite_register(#fn, fn); }
+#define SUITE_REGISTER(fn)                                                                                             \
+    __attribute__((constructor)) static void fn##_register(void) { suite_register(#fn, fn); }
 
 /* Runs every registered suite, in name order so the output is stable. */
 void suites_run_all(void);
 
-/* Runs exactly one registered suite by its exact name - the string SUITE_
- * REGISTER() stringified its own function name into, e.g.
- * "run_boot_anim_perf_suite" or "run_cube_perf_suite". For a targeted run:
- * a perf suite's own report can be minutes behind whatever else registered
- * ahead of it alphabetically (cube_perf alone runs ~40s, sand's own suite
- * much longer), and most of the time only one suite's own output is
- * actually wanted - see screenshot.c's own RUNSUITE console command, the
- * one place this is called from today.
+/* Runs exactly one registered suite by its exact name - the string
+ * SUITE_REGISTER() stringified its own function name into. For a targeted
+ * run: a perf suite's own report can be minutes behind whatever registered
+ * ahead of it alphabetically, and usually only one suite's output is wanted.
  *
  * Returns false (nothing run) if no suite matches `name` exactly, so the
  * caller can report that back rather than silently doing nothing. */
-bool suites_run_one(const char *name);
+bool suites_run_one(const char* name);
 
 /* How many suites did NOT fit and were dropped - see suite_register().
  *

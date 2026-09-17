@@ -27,6 +27,8 @@ launcher/
     │   └── boot_anim_curve.h   GENERATED - see tools/gen_zeta_curve.py
     ├── gfx/            the panel, and the one framebuffer
     │   ├── gfx.{h,c}           owns THE framebuffer, primitives, text
+    │   ├── gfx_mode.h          the mode-grant arithmetic  (host-tested)
+    │   ├── gfx_band.h          the band-ring state machine (host-tested)
     │   ├── gfx_color.h         what a pixel is            (host-tested)
     │   ├── gfx_dirty.h         which bands changed        (host-tested)
     │   ├── gfx_font.h          what a font IS             (host-tested)
@@ -35,7 +37,10 @@ launcher/
     │   └── icons.{h,c}         artwork no font provides   (host-tested)
     ├── ui/             microui integration, shared by the shell and apps
     │   ├── ui.{h,c}
+    │   ├── ui_pointer.{h,c}    input_t -> move/down/up events   (host-tested)
+    │   ├── ui_slider.h         geometry for an integer slider   (host-tested)
     │   ├── ui_style.h          how a control's frame looks (host-tested)
+    │   ├── ui_transform.h      the quarter-turn mapping     (host-tested)
     │   └── ui_launcher.c       the home screen
     ├── input/          the devices a finger reaches
     │   ├── touch.{h,c}         FT5x06 polling task
@@ -77,13 +82,14 @@ below: `main/boot/boot_anim_curve.h` (`tools/gen_zeta_curve.py`),
 `design/fonts/LatinModern/lmroman10-bold.otf`).
 
 `boot_anim_curve.h` holds the zeta function evaluated along the critical
-line. That is not something to compute on a chip with no FPU, and it never
-changes, so `tools/gen_zeta_curve.py` computes it once in double precision
-and the result ships in flash. `boot_anim_image.h` holds the same idea
-applied to a photograph the boot animation crossfades to: no PNG decoder on
-this chip, no PSRAM to decode into, so the pixel data - already rotated into
-panel space and packed into the panel's own byte-swapped RGB565 - ships in
-flash the same way. `font_lmroman_40.h` is the same idea a third time: no
+line. That is not something to compute on this chip at the precision it
+needs - the hardware FPU is single-precision only, and zeta along the
+critical line needs double - and it never changes, so `tools/gen_zeta_curve.py`
+computes it once in double precision on a host and the result ships in
+flash. `boot_anim_image.h` holds the same idea applied to a photograph the
+boot animation crossfades to: there is no PNG decoder in this codebase, so
+the pixel data - already rotated into panel space and packed into the
+panel's own byte-swapped RGB565 - ships in flash the same way. `font_lmroman_40.h` is the same idea a third time: no
 TrueType rasterizer here either, so `gen_font.py` renders the glyphs once on
 a host - at one fixed pixel size, on a common baseline, with a real
 proportional advance table - and the coverage atlas ships in flash.
@@ -193,14 +199,134 @@ Two things the diagram makes obvious that prose does not:
 
 ### 1. There is exactly one framebuffer
 
-368 × 448 × 2 bytes = **322 KiB**, out of roughly 424 KiB of RAM. A second one
-is not affordable, so "who owns the pixels" is settled architecturally rather
-than negotiated per app: `gfx` owns it, everything else draws into it.
+368 × 448 × 2 bytes = **322 KiB**, allocated in PSRAM
+(`BOARD_FRAMEBUFFER_CAPS` in `board.h`), so it does not count against the
+internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)). There is
+room in PSRAM for a second one; there is no time for it. PSRAM is fine to read
+but slow to write in bulk: a double buffer with a per-frame catch-up copy was
+built and measured at 6-15 ms per frame (~22 MB/s PSRAM to PSRAM), dropping
+sand from ~17-20 to 11-12 fps (device, 2026-09-13), and was parked. The panel
+link is the other ceiling: one full frame over QSPI is bandwidth-bound, not
+CPU-bound (see [Display-and-Rendering.md](notes/Display-and-Rendering.md),
+"The blit is bus-bound"), so a second buffer buys nothing on the send side.
+"Who owns the pixels" is therefore settled architecturally rather than
+negotiated per app: `gfx` owns it, everything else draws into it. The
+decision and its measurements are in
+[Autana-Rendering-Roadmap.md](Autana-Rendering-Roadmap.md) (decision B).
 
 This is also why the 3D renderer is small3dlib. It owns no framebuffer — it
 hands back every rasterized pixel through a callback — and with `S3L_Z_BUFFER 0`
 it keeps no depth buffer either, resolving visibility by sorting triangles
 back-to-front. A conventional colour+depth rasterizer would want ~1.3 MB here.
+
+**The rule's shape, not its substance, bends for a full-redraw renderer.**
+`gfx_mode_enter()`/`gfx_mode_exit()` (`gfx.h`) let an app request
+`GFX_LAYOUT_BANDS` at `enter()` instead of the default `GFX_LAYOUT_FULL_FB`:
+gfx frees the PSRAM framebuffer and allocates a 2-slot band ring in internal
+SRAM instead, `GFX_BAND_HEIGHT` rows tall (a compile-time divisor of
+`GFX_HEIGHT`). `exit()` reverses it. There is still exactly one destination
+for pixels at any moment — never both a framebuffer and a band ring —
+`gfx_mode_resolve()` (`gfx_mode.h`) and the ring's own state machine
+(`gfx_band.h`) are pure and host-tested; the cube app (`app_cube.c`) is the
+one app that uses it today. Its `cube_band_mode` runtime switch is on by
+default, so a plain build ships with the band ring.
+
+**Every drawing primitive targets whichever buffer is current, not always
+the framebuffer.** `gfx_target.h` is the shared clip-and-translate
+arithmetic behind `gfx_clear()`, `gfx_fill_rect()`, `gfx_pixel()`, the line,
+dither and blend variants, and text: while a band is being rendered they
+write into that band's own buffer, with an absolute y translated into its
+local rows and the app's own clip rect narrowed to the band's own row
+range. Outside a band render - between frames, or in `GFX_LAYOUT_FULL_FB`
+with no band ring at all - there is no valid target, and `gfx_fb_guard.h`
+backs every one of those same primitives with a check that no-ops instead
+of writing through a NULL pointer: loud (an assertion) on a development
+device build or a host build, silent on release, the same asymmetry
+`gfx_present_guard.h` already uses for its own invariant.
+
+**A UI is built once per frame and replayed per band, not drawn once per
+app.** microui's command list is already a complete description of the
+output (see "Immediate mode versus dirty bands" below); `ui_end_for_bands()`
+bins it by row range instead of painting, and `ui_replay_band()` draws
+whichever commands overlap the band currently being rendered - the same
+shape `app_cube.c` bins triangles in. This is why the shell's own
+home-swipe hint shows in band mode too, rather than being skipped: `main.c`
+queues it (`ui_queue_band_overlay_rect()`) before an app's `frame()` runs,
+since a band-mode app's whole band loop happens inside that one call with
+no chance to draw anything afterward, and whichever `ui_end_for_bands()`
+call happens that frame bins it alongside its own commands.
+`screenshot.c`'s device dump has no band-shaped equivalent - it needs one
+contiguous buffer to stream, which band mode never has - so it still checks
+`gfx_mode_current()->layout` and refuses outright.
+
+**A touched band is redrawn and sent; an untouched one is neither.** The
+panel retains whatever a band last sent it, so `gfx_band_dirty()` (`gfx.c`)
+answers "does this row range need this frame" against `gfx_dirty.h`'s own
+strip/cell tracker - the one a full-fb present already narrows via
+`gfx_mark_dirty()` - rather than a second tracker, since every
+`GFX_BAND_HEIGHT` (16/32/64) divides `STRIP_HEIGHT` (64) evenly. A `false`
+answer means `gfx_band_skip()` instead of drawing: the ring advances but
+nothing is cleared, rendered or sent. `cube_frame_band()` marks the union
+of its previous and current frame's screen bounds dirty before its band
+loop; `ui.c` hashes each band's queued commands and marks only the bands
+whose hash changed. `gfx_invalidate()`, `gfx_mode_enter()` and an
+orientation change force every band, through a flag kept independent of
+`gfx_dirty.h`'s own `all_dirty` so band mode's forced redraw can never
+change what a full-fb present (or `suite_gfx.c`'s fixture) observes. The
+debug overlays (`gfx_set_debug_overlay()`/`gfx_set_leaf_overlay()`, dev
+builds) draw through the same band target now, outlining whichever bands
+were actually sent - a skipped one reads as visibly unoutlined next to its
+touched neighbours.
+
+`GFX_BAND_HEIGHT` is a Kconfig choice (16/32/64 rows, default 32 pending a
+device sweep) rather than a fixed constant; `tools/sweeps/band_height_sweep.sh`
+builds one diagnostics image per height for that sweep.
+
+**A band can hold indices instead of pixels.** `gfx_mode_request_t` carries
+a `pixfmt` alongside layout, resolution and interlace: `GFX_PIXFMT_RGB565`
+is every band user above, `GFX_PIXFMT_INDEXED8` instead has gfx own a
+persistent `grid_w x grid_h` byte image of palette indices in internal RAM
+and a 256-entry RGB565 LUT (`gfx_indexed_image()`/`gfx_indexed_set_lut()`,
+`gfx/gfx_indexed.h`). Consumption is the opposite way round from
+`GFX_PIXFMT_RGB565`'s app-driven `gfx_band_next()`/`gfx_band_submit()` loop:
+the app just writes indices and calls `gfx_present_begin()`/
+`gfx_present_wait()`, the same two calls `GFX_LAYOUT_FULL_FB` already uses,
+and the present task expands whichever dirty strips exist - LUT lookup plus
+a cell-size upscale, or the same lookup dithered against an installed
+16-colour table (`gfx_indexed_set_lut16()`) - into the internal DMA buffers
+already used for a full-fb send. `docs/sand/Shading-and-Colour.md`'s
+"Indexed colour modes" is the one real adopter today. Sends whole dirty
+strips rather than gathering scattered runs the way a full-fb present
+does - a deliberate simplification, not a limit of the pixel format itself.
+
+**Palettes are a gfx concept, not a sand one.** `gfx/gfx_palette.h` is the
+type any app builds or installs a `GFX_PIXFMT_INDEXED8` palette through: a
+name, an entry list, a count, and the UI-reserved-entries-0-15 convention
+(`GFX_PALETTE_UI_ENTRIES`) every such palette shares. `gfx/
+gfx_palette_standard.h` ships a handful of curated ones as `const` data -
+CGA/EGA 16, PICO-8 16, DawnBringer DB16/DB32, a VGA-style default 256, and
+16/256-level grayscale - found by name (`gfx_palette_standard_find()`) or
+listed (`_count()`/`_at()`), for an app that wants indexed rendering
+without building its own study. Choosing one is a runtime call, never a
+Kconfig symbol: an app installs a palette's LUT and reverse map through
+the same `gfx_indexed_set_lut()`/`_set_lut16()` calls regardless of where
+the palette came from.
+
+Building a palette (which colours it holds, weighted however an app
+likes) is app-specific work and stays out of gfx - sand's own budgeted,
+per-material study (`main/apps/sand/tools/shading_palette.c`) is one
+example. What IS shared is the two steps every such palette needs
+afterward: `tools/gfx_palette_gen.h` (host-only, links libm, never in the
+firmware image) builds the 65536-entry reverse index map a colour-to-index
+lookup needs, and the 256 x 16-phase dither table
+`gfx_indexed_expand_row_dither16()` reads, both in OKLab so two palette
+entries near each other do not fight over which colour a search prefers.
+Sand's own generator calls the dither builder directly, generalised out of
+what used to be its own private copy; its reverse index map keeps its own
+per-material-group logic (`gfx_palette_gen`'s plain nearest-search has no
+notion of a material's own budget) and registers the finished LUT as an
+ordinary `gfx_palette_t` (`sand_palette256`, `sand_palette256.h`) once
+built.
 
 ### 2. There is exactly one frame loop, and it belongs to the shell
 
@@ -219,10 +345,11 @@ for the same reason.
 
 ### 3. Apps are callbacks, not processes
 
-One binary, one address space, one core. There is no isolation: a misbehaving
-app can corrupt the shell. That is the accepted trade for instant switching and
-no flash-partition machinery. Worth revisiting only if third-party apps ever
-become a goal.
+One binary, one address space. There is no isolation: a misbehaving app can
+corrupt the shell, and nothing stops a task on either of the chip's two cores
+from touching another app's state. That is the accepted trade for instant
+switching and no flash-partition machinery. Worth revisiting only if
+third-party apps ever become a goal.
 
 ---
 
@@ -232,7 +359,7 @@ Before the loop below ever runs, `app_main()` goes through a fixed order, and
 the order is most of the point:
 
 ```
-post_run_before_display()   the SD card, while SPI2 is still free
+post_run_before_display()   the SD card, on its own independent SDMMC bus
 gfx_init()                  panel up, framebuffer allocated
 post_run_after_display()    the rest of the health check
                             -> a failure holds the screen for 8 s
@@ -260,7 +387,7 @@ Three files, split by what can be tested where:
 
 | | |
 |---|---|
-| `boot_anim_curve.h` | the curve, as a generated table. Zeta cannot be had cheaply on a chip with no FPU, and the curve never changes, so `tools/gen_zeta_curve.py` computes it once in double precision and it ships in flash. |
+| `boot_anim_curve.h` | the curve, as a generated table. Zeta along the critical line needs double precision, and this chip's hardware FPU is single-precision only, so `tools/gen_zeta_curve.py` computes it once in double precision on a host and it ships in flash. The curve never changes either way. |
 | `boot_anim.h` | the projection, the spline, the colour and the timeline - integer arithmetic, no hardware header, so `test/suites/suite_boot_anim.c` checks all of it on a host. |
 | `boot_anim.c` | gfx calls and the loop. |
 
@@ -307,6 +434,53 @@ Currently **~42 fps** on the launcher screen. The blit dominates at ~25 ms; the
 cube app is slower because rasterizing costs ~28 ms on top.
 
 `dt_ms` is clamped to 250 ms so a stall does not make animation jump.
+
+### Apps with `update()`: overlapping the next step with the present
+
+An app that sets `app_t.update` (app.h) is stepped differently: once a frame
+is on screen, the shell begins presenting it, runs `update()` on core 0 while
+a present task on core 1 sends, joins the two with `gfx_present_wait()`, and
+only then calls `frame()` to draw. `update()` may change app state but must
+never call a `gfx_*` function or touch the framebuffer - the buffer it would
+touch may still be mid-send - and a development build asserts that. An app
+that leaves `update` NULL sees none of this: `frame()`, then `gfx_present()`,
+exactly as above. Sand is the first adopter, splitting `sand_update()` (input,
+sim, wake ticks) from `sand_frame()` (drawing) - see `app_sand.c`.
+
+`gfx.h`'s `gfx_present_begin()`/`gfx_present_wait()` are the primitive this
+runs on; `gfx_present()` stays exactly their `begin` then `wait`, so every
+caller that never adopts `update()` is unaffected.
+Presentation runs asynchronously on core 1 by default. The runtime
+`gfx_set_present_async(false)` switch forces the send back onto the caller,
+for an A/B measurement against the overlapped path.
+
+### Full redraw
+
+`gfx_request_full_redraw()` (`gfx.h`) is the one call a transition needs
+instead of composing `gfx_mark_all_dirty()` and `gfx_invalidate()`
+separately - opening or closing an overlay, an orientation change, a
+SCREENSHOT capture, a RUNSUITE run. It marks the whole framebuffer dirty,
+resets partial-clear tracking and forces every band on the next band
+frame, then latches a pending flag: `gfx_full_redraw_pending()` answers
+whether one is outstanding, and `gfx_full_redraw_clear_pending()` ends the
+window. Only sets state and frees nothing, so it is safe to call from
+anywhere on core 0, including an app's own `frame()`.
+
+gfx has no idea an app keeps its own draw cache beyond the framebuffer -
+sand's row-run spans, cube's band-mode coverage bbox. `app_t.invalidate`
+(`app.h`) is the opt-in half: NULL unless an app owns such a cache, called
+once per pending request before the app's next `frame()`. The shell
+(`main.c`'s `apply_pending_full_redraw()`) checks the pending flag at the
+top of a pass, calls the running app's `invalidate()` (or `ui_invalidate()`
+while the launcher is showing) and clears the flag right there - a request
+made inside that very `frame()` call is left pending for the pass that
+follows, not cleared out from under it before ever being read.
+
+The shell calls `gfx_request_full_redraw()` on app enter and exit, an
+orientation change, a SCREENSHOT dump and a completed RUNSUITE run. An app
+may call it itself where the timing is equivalent to its own ad hoc
+marking - sand does, at its overlay's close and at `start_sim()`, both
+already deferring their visible effect to the following `frame()`.
 
 ---
 
@@ -375,11 +549,10 @@ main/apps/sand/
 the one above. An app's `tools/` folder holds tools that reference ONLY that
 app; anything spanning app *and* shell code (a sweep that touches a
 shell-owned header alongside an app one, say) stays in the shared
-`launcher/tools/` instead. `main/apps/sand/tools/block_size_sweep.ps1` is the
-first tenant - it only ever touches `sand.h` - while
-`launcher/tools/sweeps/row_leaf_sweep.ps1`, which sweeps a sand constant
-*and* a `launcher/main/gfx/gfx_dirty.h` constant together, stays shared for exactly that
-reason.
+`launcher/tools/` instead. `main/apps/sand/tools/report_reactions.sh` is one
+tenant - it only ever touches the sand app's own reaction table - while a
+sweep that touched a sand constant *and* a `launcher/main/gfx/gfx_dirty.h`
+constant together would stay shared for exactly that reason.
 
 See `docs/sand/Sand-Simulation.md` for how the pieces above fit together - the
 material system, the water model, and why the liquid logic is split into its
@@ -422,8 +595,8 @@ something to depend on, so the shell sorts before showing the list.
 
 **Bench-only apps** live in `apps/diagnostics/`, excluded by folder when
 `CONFIG_LAUNCHER_DEVELOPMENT` is off — structural rather than a name check.
-Diagnostics re-runs POST, which cycles the audio rail and takes the display off
-SPI2, so it has no business being reachable in a shipped image. See
+Diagnostics re-runs POST, which cycles the audio rail and re-mounts the SD
+card, so it has no business being reachable in a shipped image. See
 [Testing-Guide](Testing-Guide.md#release-builds-contain-no-test-code) — note in
 particular that `REQUIRES` must **not** be gated this way.
 
@@ -500,18 +673,106 @@ reset, the launcher opting in would leave the sand app's overlay buttons
 bezelled too.
 
 One detail worth spelling out, because it is the opposite of what a desktop
-toolkit would do: **the pressed look is on hover, not on focus.** On a mouse,
-hover means "the pointer is near" and focus means "the button is held"; on a
-touchscreen the pointer does not exist until a finger is already on the glass,
-so hover *is* contact. A tap renders `MU_COLOR_BUTTONHOVER` for every frame the
-finger is down and `MU_COLOR_BUTTONFOCUS` for the single frame the press lands
-on, so sinking the bezel only on focus would flash it for one frame out of a
-press lasting dozens.
+toolkit would do: **the pressed look is on hover, not only on focus.** On a
+mouse, hover means "the pointer is near" and focus means "the button is
+held"; on a touchscreen the pointer does not exist until a finger is already
+on the glass, so hover *is* contact.
+
+The pointer holds `DOWN` for the whole press instead of releasing the same
+frame it presses — `ui_pointer.c` is where that policy lives — so
+`MU_COLOR_BUTTONFOCUS` now covers most of a tap on its own —
+microui keeps a control focused for as long as `mouse_down` stays true,
+`MU_OPT_HOLDFOCUS` or not. What still needs hover is the one synthesized
+frame *before* `DOWN` lands (see `feed_input()`'s comment): the pointer is
+on the control but focus has not been taken yet, so a style keyed only on
+focus would render that one frame flat. Keying the bezel off hover as well
+as focus is what keeps it sinking smoothly through the whole gesture instead
+of flashing in on the second frame.
 
 The geometry and the shading are pure functions in the header, the same split
-`icons.h` makes, so `test/suites/suite_ui_style.c` checks the shape on a host
+the former icon helper made, so `test/suites/suite_ui_style.c` checks the shape on a host
 without linking `gfx.c` or even `microui.c` — nobody can eyeball five
 overlapping rectangles reliably.
+
+`ui_style.h` has a flat sibling to the bezel above: `ui_panel_spans()` is a
+face plus a plain border, for a captioned section frame that groups controls
+without inviting a press — a panel outlines a whole screen area, a bezel
+outlines one tap target, and the two would fight if a panel were lit and
+shadowed the same way.
+
+#### Text at more than one size
+
+Every `mu_Font` used to mean the same thing: `gfx_font_ui()` at the
+compile-time `GFX_GLYPH_SCALE`, no exceptions. A screen that puts a small
+caption next to a much larger value or heading needs two sizes on one
+canvas, and the obvious fix — a global scale read at render
+time — would be the same shape as `ui_set_text_style()` above and pay the
+same cost: a scale carried outside the command list changes what gets drawn
+without changing a single byte of it, so `hash_canvas()` cannot see the
+change and skips the repaint, leaving the old size on screen. A screen
+mixing two sizes sets the scale more than once a frame, which would mean
+calling `ui_invalidate()` every frame — permanently defeating the repaint
+skip on exactly the kind of mostly-static panel it exists for.
+
+`ui_set_font()` already gets this right, for the reason its own comment
+gives: a `mu_Font` is baked into every `mu_TextCommand`, so a font change is
+different bytes and the hash sees it unaided. `ui_set_font_scaled(font,
+scale)` carries the scale the same way rather than beside it — `mu_Font`
+points at an interned `{ font, scale }` pair, from a small fixed table in
+`ui.c`, instead of a bare `gfx_font_t`. The same pair always yields the same
+address, so a size change is a different pointer in the command list and
+the hash catches it unaided — no invalidate, no per-frame thrash, and the
+mechanism is the one the file already argues for rather than a second one
+beside it. `ui_set_font(f)` is exactly `ui_set_font_scaled(f,
+GFX_GLYPH_SCALE)`. `ui_measure_text(str)` answers what `str` would measure
+at whatever font and scale are currently set, so a caller right-aligning a
+value like `06 PX` against a caption on the same row does not have to
+re-derive the font role and scale it already set.
+
+#### App-owned artwork, and how it reaches the command list
+
+The former gfx icon header used to hand-draw exactly one glyph — the check mark
+microui's own checkbox needs. The run-length/scale/centre geometry behind
+it was never specific to that shape, so `icon_bitmap_blocks()` generalises
+it into a function taking any 16×16 bitmap in the same one-row-per-scanline
+format; its check-mark wrapper is kept as its own entry point so its maximum
+block count still promises a bound specific to
+that one glyph's own run count. It stays pure geometry, the same split
+`ui_style.h`'s spans use: it returns WHERE the blocks go, not how they
+reach a framebuffer, so it links and is tested on a host with no `gfx.c` or
+`microui.c` involved.
+
+`ui_draw_bitmap(ctx, rect, bitmap, color)` (`ui.c`) is what turns that
+geometry into command-list entries — one `mu_draw_rect()` per run. That is
+the whole reason it exists, rather than an app calling `gfx_fill_rect()`
+straight into the framebuffer for its own icon: artwork painted outside the
+command list is invisible to the repaint hash and survives as a stale smear
+once the control underneath it changes — the same "a style emits commands,
+not pixels" rule above, applied to an app's own artwork instead of a
+control's frame. It also means an app icon needs no new `MU_ICON_*` id and
+no patch to `components/microui/`.
+
+The icons themselves are never the shell's to own. The gfx icon header stays the
+one hand-drawn glyph microui's own checkbox needs — see its own header
+comment for why `MU_ICON_CLOSE`/`COLLAPSED`/`EXPANDED` stay unbuilt, which
+is unrelated to this and still true. An app that wants a funnel, a cross, a
+starburst draws its own bitmaps in its own folder (e.g.
+`apps/sand/icons_sand.h`) and reaches `ui_draw_bitmap()` to put them in its
+own command list. Deleting the app folder deletes its icons with it, per
+"an app is a folder" above.
+
+`ui_slider_int()` (`ui.c`) is built the same way, one layer down:
+`ui/ui_slider.h` is pure geometry — the track, the filled portion and the
+knob rect for a value, and the inverse, a touch x back to a value,
+quantized and clamped — and `ui_slider_int()` turns that into
+`mu_draw_rect()` calls via `ui_panel_spans()`/`ui_bezel_spans()`. Integer
+throughout, deliberately: the design calls for a `06 PX` control, and
+`mu_slider_ex()`'s float value and `"%.2f"` thumb are the wrong shape for
+that. A slider is also the one control that actually needs the pointer to
+hold `DOWN` for the whole press rather than release on the same frame it
+pressed — see "the pressed look is on hover" above for that policy and why
+it lives in `ui_pointer.c`; without it, a drag can only jump to where a
+finger first landed and then goes deaf to everything after.
 
 #### Immediate mode versus dirty bands
 
@@ -562,6 +823,56 @@ Measured: an idle launcher went from 66.7 fps to the 1 kHz tick ceiling,
 because it now paints and sends nothing at all. `test/suites/suite_ui.c` covers
 the independence claim directly - it builds two windows, changes one, and
 asserts the other's bands stay clean.
+
+#### Dimming what is behind a panel (the scrim)
+
+A panel over a paused app reads as pasted on unless whatever is behind it is
+knocked back. The pattern, used by both of the sand app's screens:
+
+1. the panel keeps `UI_NO_BACKGROUND`, so the frozen app stays visible in
+   the gaps rather than being cleared away;
+2. once, when the panel opens, dim the whole canvas —
+   `gfx_fill_rect_blend(0, 0, GFX_WIDTH, GFX_HEIGHT, black, alpha)`;
+3. draw the panel over it, opaque.
+
+No new primitive: `gfx_fill_rect_blend()` already mixes into the destination.
+
+**The rule that makes it work: apply it exactly once per repaint of what is
+underneath, never per frame.** A blend fill *reads* the pixel it writes, and
+the app behind a panel is frozen — nothing repaints it while the panel is up
+— so a second application lands on the first one's own output. Repeat it per
+frame and the backdrop walks toward black while the user sits there.
+`suite_gfx_color.c` pins the arithmetic so the rule cannot quietly rot into a
+comment nobody believes. Cost says the same thing independently: this reads
+every pixel on the panel, which `gfx.h` warns is not what a blend fill is
+for. Once is free; every frame is neither correct nor affordable.
+
+In practice the backdrop is genuinely fresh at exactly two moments — the
+frame the panel opens, and a turn taken while it is open (which repaints the
+app underneath). See `dim_backdrop()` in `apps/sand/app_sand.c`.
+
+**The general form, when once is not enough.** "Once" is a global sequencing
+rule, and those rot. The local version: *whoever repaints a region restores
+the app underneath it first, then re-scrims that region, then draws.* The
+app's own partial-repaint machinery is what makes this affordable — the sand
+app marks the rows it needs and calls `draw_dirty_rows()` rather than
+repainting the grid — so the cost is one panel's worth of rows, not a
+canvas, and only while someone is actually interacting.
+
+That form is strictly more robust and is the **precondition for genuinely
+translucent panels**: a panel you can see through has to be composited over
+fresh pixels every repaint, so it cannot use the once-only shortcut at all.
+The simple version above is the special case that suffices while panels are
+opaque and do not move — nothing ever reveals backdrop that was not scrimmed,
+and nothing repaints backdrop that was. Switch to the general form when
+either of those stops being true.
+
+**Why this one is allowed to paint pixels**, when `ui_style.h` insists a
+style must emit commands: everything in the command list is re-emitted on
+every repaint, and re-emitting is precisely what a scrim must never do. It
+is not part of the picture the hash describes; it is a one-off change to
+what the picture is drawn *on top of*. A scrim expressed as a command would
+be a scrim applied every repaint, which is the bug above.
 
 ### Text and fonts
 
@@ -615,8 +926,27 @@ was deliberately not created, because labels use the UI typeface at a smaller
 | Call `gfx_present()` | **no** — the shell presents |
 | Loop or block or `vTaskDelay` | **no** — return promptly |
 | Keep a framebuffer of its own | **no** — there is only one |
+| Call any `gfx_*` function, or touch the framebuffer, from `update()` | **no** — see below |
 
 Anything expensive belongs in `enter()`, not `frame()`.
+
+### The panel clock
+
+Every app starts at the system panel clock: the user's choice of 80 MHz (the
+default) or 40, kept in NVS by the shell (`shell_set_system_panel_clock_hz()`,
+`app.h`). An app that wants a different rate forces it with
+`gfx_set_panel_clock_hz()`, from `enter()` or an in-app option; that call is
+the only way an app says anything about the clock. When an app starts or
+exits, the shell puts the system value back and resets gfx heal to its
+defaults, so an app never restores either.
+
+80 MHz is past the panel's rated 50 MHz, but it never breaks an app: the worst
+case for an app that redraws only what changed is a stray pixel or thin line
+that stays until that region is sent again. An app that minds opts into gfx
+heal (`gfx_heal_mark()`, `gfx_heal_set_budget()`, `gfx_heal_set_rolling()`),
+which re-sends marked rows as differently cut strips and does nothing at
+40 MHz. The resolution logic is `display/panel_clock.c`, host-tested in
+`suite_panel_clock.c`.
 
 ---
 
@@ -649,14 +979,16 @@ binary, which carries zero `lv_*` symbols.
 Three constraints, all already documented elsewhere in this project, point
 the same direction once put next to each other:
 
-**The memory budget has no room for it.** There is no PSRAM - the whole
-budget is ~424 KiB of internal SRAM, and the framebuffer alone is 322 KiB of
-that (see `docs/notes/Board-and-Memory.md`). LVGL costs roughly **67 KiB**
-before a single widget is allocated - about 16% of the entire chip's memory
-gone before drawing anything. microui needed patching too (upstream sizes
-`mu_Context` for desktop, 256 KiB for the command list alone), but that is a
-one-time struct-layout edit down to a small fixed size, not a standing tax
-on every frame the way a persistent widget tree and style system are.
+**The internal-heap budget is tight even with the framebuffer moved to
+PSRAM.** The framebuffer itself no longer competes with anything for
+internal SRAM - it lives entirely in the board's 8 MB of octal PSRAM (see
+`docs/notes/Board-and-Memory.md`) - but internal (non-PSRAM) free heap is
+still a few hundred KiB, not gigabytes, and a persistent widget tree and
+style system are a standing tax on that pool for the life of the process,
+not a one-time cost. microui needed patching too (upstream sizes `mu_Context`
+for desktop, 256 KiB for the command list alone), but that is a one-time
+struct-layout edit down to a small fixed size, not a standing tax on every
+frame the way a persistent widget tree and style system are.
 
 **This device runs apps that own their entire framebuffer.** The falling-sand
 simulation and the cube renderer each drive the panel directly, on their own
@@ -681,7 +1013,7 @@ other app, rather than reusing it for free.
 **The real cost, for balance:** microui encodes a mouse's interaction model
 (point, then click), and a touchscreen cannot produce that sequence - the
 pointer does not exist until a finger is already down. Every control needs a
-synthesised hover frame to compensate, costing one frame (~24 ms) of input
+synthesised hover frames to compensate, costing two frames (~48 ms) of input
 latency on every tap. That friction is specific to picking an immediate-mode,
 mouse-shaped toolkit; a touch-native widget system would not have it. It was
 worth paying given the three constraints above, but it is a real trade-off,
@@ -707,18 +1039,38 @@ values in trailing comments. They are edited in the header rather than
 overridden from our side because they determine the struct's layout, and two
 translation units disagreeing would corrupt it silently.
 
-**Touch needs a synthesised hover frame.** `mu_update_control()` only
+**Touch needs two synthesised hover frames.** `mu_update_control()` only
 establishes hover on a frame where the button is *not* held, and a control only
 submits once focused — the mouse sequence "point, then click". A touchscreen
 never produces the first half, because the pointer does not exist until a finger
 is already down.
 
-So `feed_input()` delivers a press across two frames: position only, then the
-button-down. One frame of latency, ~24 ms, and taps register every time.
+Two frames, not one, and the second is the one that is easy to miss:
+`mu_mouse_over()` needs `in_hover_root()`, and `mu_begin()` copies `hover_root`
+from the *previous* frame's `next_hover_root`. So the first frame at a new
+position only tells microui which window the finger is in; the second is the
+first that can mark a control hovered; the press follows. `ui_pointer.c` owns
+that policy (`UI_POINTER_HOVER_FRAMES`) and `suite_ui_pointer_microui.c` pins
+it against real microui.
+
+Shipping a press one frame early cost exactly what this passage predicts: the
+pointer held `mouse_down` from the press frame onward, hover was therefore
+never established, nothing took focus, and **every button in the shell drew
+its pressed frame while returning 0** — no app reachable from the launcher.
+The event-list unit tests stayed green throughout, which is why a suite that
+drives real microui now exists.
 
 **This applies to every microui control**, not just buttons — anything reacting
-to a press goes through `mu_update_control()`. Adding a slider or checkbox
-requires nothing new, but reworking input handling means preserving this.
+to a press goes through `mu_update_control()`. Adding a checkbox requires
+nothing new, but reworking input handling means preserving this.
+
+A slider needed one more thing the hover synthesis alone does not give:
+`DOWN` has to stay held for the whole press rather than release on the same
+frame it presses, or a drag can only jump to where a finger first landed and
+then goes deaf to the rest of the gesture. `ui/ui_pointer.c` is where that
+policy actually lives — see "the pressed look is on hover" under "Drawing a
+UI" above — and `ui_slider_int()` is the control that could not exist
+without it.
 
 ---
 

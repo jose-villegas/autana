@@ -1,16 +1,20 @@
-# launcher
+# Autana
 
-[![Host Tests](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/host-tests.yml/badge.svg)](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/host-tests.yml)
-[![Build (Release)](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/build-release.yml/badge.svg)](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/build-release.yml)
-[![Build (Diagnostics)](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/build-diagnostics.yml/badge.svg)](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/build-diagnostics.yml)
-[![Shell Scripts](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/shell-scripts.yml/badge.svg)](https://github.com/jose-villegas/esp32-c6-dev/actions/workflows/shell-scripts.yml)
+[![Host Tests](https://github.com/jose-villegas/autana/actions/workflows/host-tests.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/host-tests.yml)
+[![Build (Release)](https://github.com/jose-villegas/autana/actions/workflows/build-release.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/build-release.yml)
+[![Build (Diagnostics)](https://github.com/jose-villegas/autana/actions/workflows/build-diagnostics.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/build-diagnostics.yml)
+[![Shell Scripts](https://github.com/jose-villegas/autana/actions/workflows/shell-scripts.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/shell-scripts.yml)
+[![Format](https://github.com/jose-villegas/autana/actions/workflows/format.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/format.yml)
 
-A custom app shell for the [Waveshare
-ESP32-C6-Touch-AMOLED-1.8](https://www.waveshare.com/) board — no PSRAM, a
-368×448 AMOLED panel, capacitive touch, and a 6-axis IMU. Everything here
+Autana is a small game engine for ESP32 AMOLED boards, growing out of
+`launcher`, a custom app shell for the [Waveshare
+ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/) board — dual-core
+Xtensa LX7 @ 240 MHz, 8 MB octal PSRAM, a 368×448 AMOLED panel, capacitive
+touch, and a 6-axis IMU. Everything here
 drives the hardware directly rather than through a display framework: LVGL
 ships as a transitive dependency of the board support package but is never
-called, saving the ~67 KiB of RAM it costs before drawing anything.
+called, saving the internal RAM it would otherwise cost before drawing
+anything.
 
 ## What's inside
 
@@ -61,7 +65,7 @@ their own `tools/results/`:
 ~90s environment-activation cost on every call.
 
 `./launcher/tools/screenshot.sh` captures whatever the device currently has
-on screen to an uncompressed `.bmp`, plus a same-named `.json` snapshot of
+on screen to a lossless `.png`, plus a same-named `.json` snapshot of
 device state at that exact frame (sensors, memory, clock), over that same
 serial connection - no SD card, no button on the device, just the running
 firmware and a cable already plugged in. Needs neither `idf.py` nor
@@ -79,13 +83,19 @@ this, not a tour. Start wherever your question is:
 | [`docs/Launcher-Architecture.md`](docs/Launcher-Architecture.md) | How the shell and its apps fit together; the three rules that shape everything; how to add an app; why the UI toolkit is microui, not LVGL. |
 | [`docs/sand/Sand-Simulation.md`](docs/sand/Sand-Simulation.md) | The falling-sand app in depth: materials, the water model, momentum, and the performance numbers behind every design choice. |
 | [`docs/notes/`](docs/notes/README.md) | Board-specific hardware notes: the memory budget, panel and touch gotchas, flashing and recovery. Split by topic - start at the index. |
+| [`docs/C-Style-Guide.md`](docs/C-Style-Guide.md) | The C style: what the formatter decides, what judgment decides, and how the pre-commit hook and CI keep the tree from drifting. |
 | [`docs/Testing-Guide.md`](docs/Testing-Guide.md) | How the host and on-device test suites work, and why release builds carry none of the test code. |
-| [`docs/workflows/Model-Delegation-Workflow.md`](docs/workflows/Model-Delegation-Workflow.md) | Delegating feature implementation to local Ollama models or free-tier models through OmniRoute, with review and verification kept on the driving session. |
+| [`docs/Building-a-Screen.md`](docs/Building-a-Screen.md) | Start here to build or change a UI screen: the loop, the house rules, and how to do what a screen needs. |
+| [`docs/Autana-Rendering-Roadmap.md`](docs/Autana-Rendering-Roadmap.md) | Proposal: the order of investment for the rendering engine and its target games. |
+| [`docs/sand/`](docs/sand/README.md) | The sand app's own doc set - architecture, materials, reactions, shading, testing. |
+| [`docs/plans/`](docs/plans/README.md) | Designs for work not yet built, or built from a written plan. |
+| [`docs/tools/`](docs/tools/README.md) | How the repository's checks work: the complexity gate and documentation drift. |
 
 ## Status
 
 Actively developed, single-maintainer, not affiliated with Waveshare or
 Espressif. Board-specific enough that most of this will not transfer
 directly to other hardware, but the *reasoning* in the docs above — sweep
-order in a cellular automaton, why a data cache assumption doesn't hold on
-this chip, how to keep test code out of a release image — should.
+order in a cellular automaton, checking what memory tiers a chip actually
+has before assuming them, how to keep test code out of a release image —
+should.

@@ -18,16 +18,17 @@ Options:
   --top N       longest offenders to list (default 20; 0 for all)
   --files       list per-file counts instead of individual comments
   --all         include vendored and generated sources (excluded by default)
-  --no-banners  ignore file/section header banners
+  --no-banners  ignore each file's header comment
+  --header-limit N  also fail if any file header is taller than N lines
   --changed REF check only files that differ from REF (the enforcement gate)
   --staged      check only files staged for commit
   --exit-zero   always exit 0, even with violations
 
   --comments-only REF   check nothing about length: assert instead that every
-                        changed file differs from REF in COMMENTS ALONE. The
-                        safety net for a bulk trim, delegated or not - a diff
-                        of thousands of reflowed comments cannot be read, but
-                        it can be proved to have moved no code.
+                        changed file differs from REF in COMMENTS ALONE. Proves
+                        a comment-only change moved no code - a diff of
+                        thousands of reflowed comments cannot be read, but it
+                        can be checked instead.
 """
 
 import os
@@ -40,6 +41,7 @@ import sys
 # report.
 EXCLUDED = (
     "launcher/components/",
+    "launcher/test/framework/",
     "launcher/main/boot/boot_anim_curve.h",
     "launcher/main/boot/boot_anim_image.h",
     "launcher/main/boot/boot_anim_timeline.h",
@@ -54,6 +56,7 @@ class Comment:
         self.kind = kind  # "block" or "line"
         self.raw_lines = []
         self.spans = [(start, end)]
+        self.first = False
 
     @property
     def text(self):
@@ -75,26 +78,33 @@ class Comment:
         return len(self.text)
 
     @property
+    def lines(self):
+        """How tall the comment is. A file header is judged on this rather
+        than on character count, since it describes a whole module and the
+        character rule is aimed at comments beside code."""
+        return len(self.raw_lines)
+
+    @property
     def line_range(self):
         return range(self.line, self.line + len(self.raw_lines))
 
     @property
     def has_rule(self):
-        """Opens with a drawn rule - `/*====`, `//----`. A section header."""
+        """Opens with a drawn rule - `/*====`, `//----`. Decoration this tree
+        does not use; scripts/strip_comment_rules.py finds any that returns."""
         first = self.raw_lines[0].strip()
         return bool(re.match(r"^/\*[=*\-_#]{4,}", first)
                     or re.match(r"^//\s*[=*\-_#]{4,}", first))
 
     @property
     def is_banner(self):
-        """A file or section header, not a comment sitting next to code.
+        """The file's header - its first comment, wherever it sits.
 
-        Only meaningful when the whole file was scanned: `line == 1` reads as
-        "file header" here, but in an edit fragment line 1 is just wherever the
-        fragment starts, which would exempt any comment written at its top.
-        Code holding a fragment wants `has_rule`.
+        Only meaningful when the whole file was scanned. An edit fragment has
+        a first comment too, and it is rarely the file's; code holding a
+        fragment has to find the header on disk.
         """
-        return self.line == 1 or self.has_rule
+        return self.first
 
 
 def scan(path, source):
@@ -164,6 +174,8 @@ def scan(path, source):
             i = end
         else:
             i += 1
+    if comments:
+        comments[0].first = True
     return comments
 
 
@@ -224,8 +236,14 @@ def added_lines(ref, path):
 
 
 def file_at_ref(ref, path):
+    # text=True alone decodes with the platform default (cp1252 on
+    # Windows), which mangles any non-ASCII byte a source file carries (an
+    # em dash, say) into extra characters - harmless for ASCII-only files,
+    # but it makes --comments-only misreport a real code change on one
+    # that isn't. Source files are UTF-8; decode them as such.
     r = subprocess.run(["git", "show", f"{ref}:{path}"],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
     return None if r.returncode else r.stdout
 
 
@@ -261,7 +279,7 @@ def relative_to_root(path):
 
 def main(argv):
     limit, top, per_file, include_all, exit_zero = 300, 20, False, False, False
-    no_banners = False
+    no_banners, header_limit = False, None
     changed_ref, staged, comments_only_ref = None, False, None
     paths = []
     it = iter(argv)
@@ -278,6 +296,8 @@ def main(argv):
             exit_zero = True
         elif arg == "--no-banners":
             no_banners = True
+        elif arg == "--header-limit":
+            header_limit = int(next(it))
         elif arg == "--changed":
             changed_ref = next(it)
         elif arg == "--staged":
@@ -327,6 +347,14 @@ def main(argv):
             found = [c for c in found if touched & set(c.line_range)]
         comments += found
 
+    tall_heads = []
+    if header_limit is not None:
+        tall_heads = sorted([c for c in comments
+                             if c.is_banner and c.lines > header_limit],
+                            key=lambda c: -c.lines)
+        for c in tall_heads:
+            print(f"{c.path}:{c.line}: header is {c.lines} lines")
+
     if no_banners:
         comments = [c for c in comments if not c.is_banner]
 
@@ -361,15 +389,23 @@ def main(argv):
         banners = sum(1 for c in over if c.is_banner)
         print(f"longest         {lengths[-1]} characters"
               f"  (median offender {lengths[len(lengths) // 2]})")
-        print(f"  of those       {banners} file/section header banners,"
+        print(f"  of those       {banners} file headers,"
               f" {len(over) - banners} beside code")
+        # Headers answer to height, not characters - see Comment.lines.
+        heads = [c for c in comments if c.is_banner]
+        if heads:
+            tall = sum(1 for c in heads if c.lines > 50)
+            aim = sum(1 for c in heads if c.lines > 30)
+            tallest = max(c.lines for c in heads)
+            print(f"headers         {len(heads)}  ({aim} over 30 lines,"
+                  f" {tall} over 50, tallest {tallest})")
         print()
         print("were the limit instead:")
         for alt in (200, 300, 400, 600, 800, 1200):
             n = sum(1 for c in comments if c.length > alt)
             print(f"  {alt:5d}  {n:5d} over  ({100.0 * n / total:5.1f}%)")
 
-    return 0 if (exit_zero or not over) else 1
+    return 0 if (exit_zero or not (over or tall_heads)) else 1
 
 
 if __name__ == "__main__":

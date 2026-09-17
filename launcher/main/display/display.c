@@ -1,4 +1,4 @@
-/*=============================================================================
+/*
  * display - see display.h for the module's job and the hysteresis math.
  *
  * A real translation unit rather than static inline in the header (compare
@@ -8,14 +8,14 @@
  * one call depends on where display_update() left `quarter` last time - so
  * it gets the same treatment as gesture.c and tilt.c, the two modules this
  * one is explicitly modelled on.
- *===========================================================================*/
+ */
 
 #include "display/display.h"
 
 #include <stdint.h>
 
-void display_init(display_t *d)
-{
+void
+display_init(display_t* d) {
     /* 0, always - a neutral reset with no opinion about which way the
      * board is actually held. DISPLAY_DEFAULT_QUARTER (display.h) is a
      * physical fact about THIS shell's board, not something a
@@ -26,19 +26,29 @@ void display_init(display_t *d)
 
 /* Splits (gx, gy) into the component along quarter `q`'s own "down"
  * direction and the component perpendicular to it - see display.h's top
- * comment. Mirrors the branch structure app_sand.c's old
- * gravity_quarter_turn() used to pick a quarter from scratch: quarters 0/2
- * read gy as the deciding axis and gx as the offender; 1/3 the other way
- * round. `*aligned` is positive when the board is still roughly where
- * quarter `q` expects. */
-static void split_gravity(int q, int gx, int gy, int *aligned, int *perp)
-{
+ * comment. Mirrors the branch structure of picking a quarter from scratch:
+ * quarters 0/2 read gy as the deciding axis and gx as the offender; 1/3 the
+ * other way round. `*aligned` is positive when the board is still roughly
+ * where quarter `q` expects. */
+static void
+split_gravity(int q, int gx, int gy, int* aligned, int* perp) {
     switch (q) {
-    case 0: *aligned =  gy; *perp = gx; break;   /* down is down */
-    case 2: *aligned = -gy; *perp = gx; break;   /* board upside down */
-    case 3: *aligned =  gx; *perp = gy; break;   /* down is to the right */
-    default: /* 1 */                             /* down is to the left */
-             *aligned = -gx; *perp = gy; break;
+        case 0:
+            *aligned = gy;
+            *perp = gx;
+            break; /* down is down */
+        case 2:
+            *aligned = -gy;
+            *perp = gx;
+            break; /* board upside down */
+        case 3:
+            *aligned = gx;
+            *perp = gy;
+            break;       /* down is to the right */
+        default: /* 1 */ /* down is to the left */
+            *aligned = -gx;
+            *perp = gy;
+            break;
     }
 }
 
@@ -47,16 +57,16 @@ static void split_gravity(int q, int gx, int gy, int *aligned, int *perp)
  * switch. Same sign-to-quarter mapping the old gravity_quarter_turn() used,
  * just entered from whichever quarter is already current instead of
  * recomputed from nothing every call. */
-static int neighbor_quarter(int q, int perp)
-{
+static int
+neighbor_quarter(int q, int perp) {
     if (q == 0 || q == 2) {
         return (perp >= 0) ? 3 : 1;
     }
     return (perp >= 0) ? 0 : 2;
 }
 
-bool display_update(display_t *d, int gx, int gy)
-{
+bool
+display_update(display_t* d, int gx, int gy) {
     int aligned, perp;
     split_gravity(d->quarter, gx, gy, &aligned, &perp);
 
@@ -69,8 +79,7 @@ bool display_update(display_t *d, int gx, int gy)
      * straight through to a switch instead of getting stuck: the right side
      * goes negative while perp_abs stays non-negative, so the "no switch"
      * branch below can never be taken. */
-    if ((int64_t)perp_abs * DISPLAY_HYST_DEN <=
-        (int64_t)aligned * DISPLAY_HYST_NUM) {
+    if ((int64_t)perp_abs * DISPLAY_HYST_DEN <= (int64_t)aligned * DISPLAY_HYST_NUM) {
         return false;
     }
 
@@ -81,7 +90,7 @@ bool display_update(display_t *d, int gx, int gy)
     return true;
 }
 
-int display_quarter(const display_t *d)
-{
+int
+display_quarter(const display_t* d) {
     return d->quarter;
 }

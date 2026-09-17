@@ -1,4 +1,4 @@
-/*=============================================================================
+/*
  * reaction_doc - REACTION_DOC(field, why): says WHERE a reaction_t field's
  * trigger actually lives, at the read site that decides it.
  *
@@ -44,10 +44,9 @@
  * sentence: lower case, no trailing period - see dump_reactions.c's
  * field_docs[]/emit_*() functions for the shape it drops into. "if chilled
  * while hot", not "when CELL_VARIANT(n) <= SAND_SHOCK_COLD".
- *===========================================================================*/
+ */
 #pragma once
 
 #include "material.h"
 
-#define REACTION_DOC(field, why) \
-    ((void)sizeof(((const reaction_t *)0)->field))
+#define REACTION_DOC(field, why) ((void)sizeof(((const reaction_t*)0)->field))

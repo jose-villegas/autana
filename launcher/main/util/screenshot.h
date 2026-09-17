@@ -1,11 +1,11 @@
-/*=============================================================================
+/*
  * screenshot - streaming the current framebuffer to a host script over the
  * console's own serial connection, as an uncompressed 24-bit BMP, together
  * with a JSON dump of device state at that same frame (sensors, memory,
  * clock - see screenshot_dump()'s own comment for the full list).
  *
  * There is no other channel off this board: no SD-card-as-USB-drive, no
- * second data port - only the console, which on this board is the ESP32-C6's
+ * second data port - only the console, which on this board is the ESP32-S3's
  * native USB-Serial/JTAG peripheral (see sdkconfig.defaults' own comment on
  * why - the single USB-C port is wired to that, not to UART0) already
  * carrying boot logs and idf_monitor's output (see boot/post.c's SD-card
@@ -24,12 +24,13 @@
  * screenshot_start()/screenshot_take_request()/screenshot_dump() below are
  * only ever CALLED under CONFIG_LAUNCHER_DEVELOPMENT (see main.c) - a
  * release build has nobody watching the serial console to type SCREENSHOT
- * into, the same reasoning app_sand.c's frame-timing averages are gated on
- * (see docs/Testing-Guide.md's "Development-only instrumentation" section).
+ * into, the same reasoning an app's own developer-only instrumentation
+ * (e.g. rolling frame-timing averages) is gated on (see
+ * docs/Testing-Guide.md's "Development-only instrumentation" section).
  * Declared unconditionally here regardless, the same way the rest of this
  * header stays plain C with no #if of its own - main.c is what decides
  * whether anything ever calls them.
- *===========================================================================*/
+ */
 #pragma once
 
 #include <stdbool.h>
@@ -38,10 +39,10 @@
 
 #include "app.h"
 
-/*-----------------------------------------------------------------------------
+/*
  * BMP encoding - see screenshot.c's write loop for how these two are used
  * together to build one row at a time.
- *---------------------------------------------------------------------------*/
+ */
 
 /* BITMAPFILEHEADER (14 bytes) + BITMAPINFOHEADER (40 bytes), with no pixel
  * data - see screenshot_bmp_header() below. */
@@ -49,8 +50,8 @@
 
 /* Bytes per row once padded to BMP's 4-byte row boundary: width * 3 (24bpp,
  * no alpha), rounded up to the next multiple of 4. */
-static inline int32_t screenshot_bmp_row_stride(int32_t width)
-{
+static inline int32_t
+screenshot_bmp_row_stride(int32_t width) {
     return ((width * 3 + 3) / 4) * 4;
 }
 
@@ -62,65 +63,64 @@ static inline int32_t screenshot_bmp_row_stride(int32_t width)
  * fields - the two agree only by accident on a particular compiler/ABI.
  * `width`/`height` are taken as given: the one caller always passes
  * GFX_WIDTH/GFX_HEIGHT. */
-static inline void screenshot_bmp_header(uint8_t out[SCREENSHOT_BMP_HEADER_SIZE],
-                                         int32_t width, int32_t height)
-{
-    const int32_t  stride      = screenshot_bmp_row_stride(width);
+static inline void
+screenshot_bmp_header(uint8_t out[SCREENSHOT_BMP_HEADER_SIZE], int32_t width, int32_t height) {
+    const int32_t stride = screenshot_bmp_row_stride(width);
     const uint32_t pixel_bytes = (uint32_t)(stride * height);
-    const uint32_t file_size   = SCREENSHOT_BMP_HEADER_SIZE + pixel_bytes;
+    const uint32_t file_size = SCREENSHOT_BMP_HEADER_SIZE + pixel_bytes;
 
     /* BITMAPFILEHEADER, offsets 0..13 */
-    out[0] = 'B'; out[1] = 'M';
+    out[0] = 'B';
+    out[1] = 'M';
     out[2] = (uint8_t)(file_size);
     out[3] = (uint8_t)(file_size >> 8);
     out[4] = (uint8_t)(file_size >> 16);
     out[5] = (uint8_t)(file_size >> 24);
-    out[6] = out[7] = out[8] = out[9] = 0;      /* reserved1, reserved2 */
-    out[10] = SCREENSHOT_BMP_HEADER_SIZE;       /* bfOffBits: pixels start here */
+    out[6] = out[7] = out[8] = out[9] = 0; /* reserved1, reserved2 */
+    out[10] = SCREENSHOT_BMP_HEADER_SIZE;  /* bfOffBits: pixels start here */
     out[11] = out[12] = out[13] = 0;
 
     /* BITMAPINFOHEADER, offsets 14..53 */
-    out[14] = 40; out[15] = out[16] = out[17] = 0;   /* biSize */
+    out[14] = 40;
+    out[15] = out[16] = out[17] = 0; /* biSize */
     out[18] = (uint8_t)(width);
     out[19] = (uint8_t)(width >> 8);
     out[20] = (uint8_t)(width >> 16);
     out[21] = (uint8_t)(width >> 24);
-    out[22] = (uint8_t)(height);                     /* positive: bottom-up rows */
+    out[22] = (uint8_t)(height); /* positive: bottom-up rows */
     out[23] = (uint8_t)(height >> 8);
     out[24] = (uint8_t)(height >> 16);
     out[25] = (uint8_t)(height >> 24);
-    out[26] = 1; out[27] = 0;                        /* biPlanes = 1 */
-    out[28] = 24; out[29] = 0;                       /* biBitCount = 24 */
-    out[30] = out[31] = out[32] = out[33] = 0;       /* biCompression = BI_RGB */
+    out[26] = 1;
+    out[27] = 0; /* biPlanes = 1 */
+    out[28] = 24;
+    out[29] = 0;                               /* biBitCount = 24 */
+    out[30] = out[31] = out[32] = out[33] = 0; /* biCompression = BI_RGB */
     out[34] = (uint8_t)(pixel_bytes);
     out[35] = (uint8_t)(pixel_bytes >> 8);
     out[36] = (uint8_t)(pixel_bytes >> 16);
     out[37] = (uint8_t)(pixel_bytes >> 24);
-    out[38] = out[39] = out[40] = out[41] = 0;       /* biXPelsPerMeter */
-    out[42] = out[43] = out[44] = out[45] = 0;       /* biYPelsPerMeter */
-    out[46] = out[47] = out[48] = out[49] = 0;       /* biClrUsed */
-    out[50] = out[51] = out[52] = out[53] = 0;       /* biClrImportant */
+    out[38] = out[39] = out[40] = out[41] = 0; /* biXPelsPerMeter */
+    out[42] = out[43] = out[44] = out[45] = 0; /* biYPelsPerMeter */
+    out[46] = out[47] = out[48] = out[49] = 0; /* biClrUsed */
+    out[50] = out[51] = out[52] = out[53] = 0; /* biClrImportant */
 }
 
-/*-----------------------------------------------------------------------------
- * Base64 - the console UART carries text (ESP_LOG lines, the REPL a human
- * might be typing into), so the framebuffer's raw bytes cannot go down it
- * unescaped: a stray 0x0A in pixel data would look like a line break, and
- * plenty of byte values are not valid UTF-8 on their own, which is how
- * idf_monitor's own decoding is configured. Base64 is the standard fix -
- * every byte that comes out is printable ASCII - and at 4 output bytes per 3
- * input bytes it costs a third more over the wire than a hex dump would cost
- * two thirds more, which matters at 115200 baud for a 322 KiB frame.
+/*
+ * The console UART carries text, so raw pixel bytes cannot go down it
+ * unescaped: a stray 0x0A reads as a line break, and many byte values are
+ * not valid UTF-8 on their own. Base64 costs a third more over the wire
+ * where a hex dump costs two thirds, which matters at 115200 baud for a
+ * 322 KiB frame.
  *
- * RFC 4648, no line breaks of its own (screenshot.c adds those, one encoded
- * chunk per printed line) and '=' padding for a trailing partial group.
- *---------------------------------------------------------------------------*/
+ * RFC 4648, no line breaks of its own, '=' padding for a partial group.
+ */
 
 /* How many bytes screenshot_base64_encode() writes for `len` input bytes -
  * NOT including a NUL terminator, which callers wanting a C string must
  * budget for separately. */
-static inline int32_t screenshot_base64_encoded_len(int32_t len)
-{
+static inline int32_t
+screenshot_base64_encoded_len(int32_t len) {
     return ((len + 2) / 3) * 4;
 }
 
@@ -132,17 +132,16 @@ static inline int32_t screenshot_base64_encoded_len(int32_t len)
  * needs never occurs for this caller. Tested for a width where it DOES
  * occur (suite_screenshot.c), since a pure function's contract
  * shouldn't depend on its caller. */
-static inline void screenshot_base64_encode(const uint8_t *in, int32_t len, char *out)
-{
-    static const char table[] =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static inline void
+screenshot_base64_encode(const uint8_t* in, int32_t len, char* out) {
+    static const char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
     int32_t i = 0, o = 0;
     for (; i + 3 <= len; i += 3) {
         const uint32_t v = ((uint32_t)in[i] << 16) | ((uint32_t)in[i + 1] << 8) | in[i + 2];
         out[o++] = table[(v >> 18) & 0x3F];
         out[o++] = table[(v >> 12) & 0x3F];
-        out[o++] = table[(v >> 6)  & 0x3F];
+        out[o++] = table[(v >> 6) & 0x3F];
         out[o++] = table[v & 0x3F];
     }
 
@@ -157,14 +156,12 @@ static inline void screenshot_base64_encode(const uint8_t *in, int32_t len, char
         const uint32_t v = ((uint32_t)in[i] << 16) | ((uint32_t)in[i + 1] << 8);
         out[o++] = table[(v >> 18) & 0x3F];
         out[o++] = table[(v >> 12) & 0x3F];
-        out[o++] = table[(v >> 6)  & 0x3F];
+        out[o++] = table[(v >> 6) & 0x3F];
         out[o++] = '=';
     }
 }
 
-/*-----------------------------------------------------------------------------
- * The device-only half - see screenshot.c
- *---------------------------------------------------------------------------*/
+/* The device-only half - see screenshot.c */
 
 /* Starts the background task that listens on the console for a capture
  * request. Call once, from app_main() - the same place and the same
@@ -190,7 +187,7 @@ bool screenshot_take_request(void);
  * frame loop on a different task. Copies the pending suite name into
  * `name_out` (caller-owned, NUL-terminated) and returns true if a
  * RUNSUITE line arrived; false otherwise. */
-bool screenshot_take_runsuite_request(char *name_out, size_t name_out_size);
+bool screenshot_take_runsuite_request(char* name_out, size_t name_out_size);
 #endif
 
 /* Streams the framebuffer to stdout as base64 BMP, then one
@@ -201,4 +198,4 @@ bool screenshot_take_runsuite_request(char *name_out, size_t name_out_size);
  * later. `current_app` lets its OPTIONAL diagnostic_json splice in an
  * "app" key. Call after a frame is drawn, before presenting, so capture
  * matches what's about to appear. */
-void screenshot_dump(const input_t *input, const app_t *current_app);
+void screenshot_dump(const input_t* input, const app_t* current_app);

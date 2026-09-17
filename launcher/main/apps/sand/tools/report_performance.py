@@ -15,8 +15,9 @@ Usage:
 
 Lives under the sand app because sand's report_performance.sh is its only
 caller. Nothing in the parsing is sand-specific - it keys on #ifdef
-DEVICE_BUILD, Unity's TEST_ASSERT_LESS_THAN_MESSAGE and a "device_tests ...
-us" log line - so --source takes any app's suite. If a second app ever grows
+DEVICE_BUILD, a budget call (perf_guard/perf_target, or Unity's
+TEST_ASSERT_LESS_THAN_MESSAGE) and a "device_tests ... us" log line - so
+--source takes any app's suite. If a second app ever grows
 frame-budget tests, this belongs back in the shared tools/ and the move is a
 rename plus one path. Until then, an app's folder holds the tools only that
 app uses, so that deleting the app leaves nothing stranded.
@@ -27,19 +28,25 @@ import sys
 from datetime import datetime, timezone
 
 # A frame-budget test: a `static void test_...(void) { ... }` function body
-# that calls TEST_ASSERT_LESS_THAN_MESSAGE somewhere inside it. Matched
+# that declares a budget somewhere inside it. Matched
 # non-greedily up to the next `static void` or end of the DEVICE_BUILD
 # block, which is good enough for this file's own formatting (one test
 # function's closing brace per line, blank line, next function).
 DEVICE_BUILD_RE = re.compile(r"#ifdef DEVICE_BUILD(.*?)#endif\s*/\*\s*DEVICE_BUILD", re.DOTALL)
 FUNC_RE = re.compile(
-    r"static void (test_\w+)\(void\)\s*\{(.*?)\n\}",
+    r"static void\s+(test_\w+)\(void\)\s*\{(.*?)\n\}",
     re.DOTALL,
 )
-BUDGET_RE = re.compile(r"TEST_ASSERT_LESS_THAN_MESSAGE\(\s*(\w+)\s*,")
+# The budget is the number that fails the test: a guard's or target's
+# ceiling (a target's goal only reports), or a bare assertion's limit.
+BUDGET_RES = (
+    re.compile(r'perf_target\(\s*"[^"]*"\s*,\s*[^,]+,\s*\w+\s*,\s*(\w+)\s*\)'),
+    re.compile(r'perf_guard\(\s*"[^"]*"\s*,\s*[^,]+,\s*(\w+)\s*\)'),
+    re.compile(r"TEST_ASSERT_LESS_THAN_MESSAGE\(\s*(\w+)\s*,"),
+)
 DEFINE_RE = re.compile(r"#define\s+(\w+)\s+(\d+)")
 
-RESULT_RE = re.compile(r"^\S+:\d+:(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
+RESULT_RE = re.compile(r"^\S*:\d+:(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
 
 # A separate line - not part of the result line above - emitted by
 # test/timing.c for every test, on both host and device. Kept separate on
@@ -80,6 +87,24 @@ SELFTEST_COMPLETE_RE = re.compile(r"SELFTEST_COMPLETE(?:\s+failures=(\d+)\s+elap
 # subject is last.
 MEASURE_RE = re.compile(r"device_tests.*(?<![\d.])(\d+)\s*us\b")
 
+# ...but a SAND line puts its subject FIRST: "20190 us per step, worst
+# single step 29644 us". The rule above tabled the worst single step as
+# the per-step cost - a 27100 budget read as missed by 9.4% when the real
+# figure passes it with a quarter to spare, and PASS printed beside that,
+# because the status is the test's own verdict on the number it actually
+# asserted. Five lines of one capture carry two figures this way.
+#
+# A line saying "per step" or "for the one step" names its subject;
+# everything else keeps the last-figure rule and the gfx reasoning above.
+PER_STEP_RE = re.compile(r"device_tests.*?(?<![\d.])(\d+)\s*us (?:per step|for the one step)")
+
+# "frame time, lava stress: sim 92706 us/frame" - one phase of a frame a test
+# splits into sim, mark, present and total before logging its own figure. A
+# phase is never the measurement; a test logging only the split is measured
+# by its total.
+FRAME_TIME_PHASE_RE = re.compile(
+    r"device_tests: frame time, .+?: (?P<phase>sim|mark|present|total) (?P<us>\d+) us/frame")
+
 
 def parse_budgets(source_path: str) -> dict:
     with open(source_path, "r", errors="replace") as f:
@@ -95,7 +120,7 @@ def parse_budgets(source_path: str) -> dict:
 
     budgets = {}
     for name, body in FUNC_RE.findall(device_build_text):
-        m = BUDGET_RE.search(body)
+        m = next((m for m in (rx.search(body) for rx in BUDGET_RES) if m), None)
         if not m:
             continue
         token = m.group(1)
@@ -125,8 +150,8 @@ def make_slow_tests_section(capture: dict, total_ms, top_n: int = 15) -> list:
     frame-budget ones. A test with no declared budget (the sand suite's own
     statistical vent-cap correctness test used to be exactly this: no budget
     of its own, ~7.7 minutes, and the single biggest cost in the whole run,
-    until the mechanism it tested was removed along with it - bd
-    esp32c6-0f2) is otherwise invisible to this report: it never enters
+    until the mechanism it tested was removed along with it) is otherwise
+    invisible to this report: it never enters
     `known`, and the "measured in this capture" table above only lists tests
     with a device_tests log line, which most tests don't print. This is the
     only place that ranks the whole suite.
@@ -162,27 +187,40 @@ def parse_capture(capture_path: str):
     entries = {}  # test name -> {"status", "message", "measured", "elapsed_ms"}
     test_times = {}  # test name -> elapsed_ms, from TEST_TIME lines
     pending_measure = None
+    frame_total = None
     for line in text.splitlines():
-        mm = MEASURE_RE.search(line)
+        phase = FRAME_TIME_PHASE_RE.search(line)
+        if phase:
+            if phase.group("phase") == "total":
+                frame_total = int(phase.group("us"))
+            continue
+        mm = PER_STEP_RE.search(line) or MEASURE_RE.search(line)
         if mm:
-            pending_measure = int(mm.group(1))
+            # The first timing line is the headline; a later one is a phase
+            # breakdown ("imp=2 us") that must not replace it.
+            if pending_measure is None:
+                pending_measure = int(mm.group(1))
             continue
         tm = TEST_TIME_RE.match(line.strip())
         if tm:
-            # Keyed by name, not by position relative to the result line -
-            # timing.c always prints this after the PASS/FAIL line, but
-            # nothing here should depend on that staying true.
+            # Keyed by name, not by position relative to the result line.
+            # It still ends the test's timing lines: serial sometimes drops
+            # a result line, and the lost test's figure must not become the
+            # next test's headline.
             test_times[tm.group("name")] = int(tm.group("ms"))
+            pending_measure = None
+            frame_total = None
             continue
         rm = RESULT_RE.match(line.strip())
         if rm and rm.group("name") not in entries:
             entries[rm.group("name")] = {
                 "status": rm.group("status"),
                 "message": rm.group("message"),
-                "measured": pending_measure,
+                "measured": pending_measure if pending_measure is not None else frame_total,
                 "elapsed_ms": None,
             }
             pending_measure = None
+            frame_total = None
 
     for name, ms in test_times.items():
         if name in entries:

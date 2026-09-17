@@ -22,7 +22,7 @@ set -eu
 TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 MAIN_DIR=$(CDPATH= cd -- "$TEST_DIR/../main" && pwd)
 # Overridable so two runs cannot clobber each other: the build dir holds one
-# host_tests binary, so concurrent runs (parallel agents, a sweep script
+# host_tests binary, so concurrent runs (two terminals, a sweep script
 # running beside a manual run) otherwise race to compile and execute the
 # same file, and a result can end up attributed to a source state that never
 # existed. Defaults to the old path, so nothing that does not set it changes.
@@ -51,11 +51,16 @@ CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -g -O1"
 # Sourced the same way find_cc.sh is, one block above. The cap is a profile
 # field rather than a literal here for the reason device_profile.sh's own
 # header gives: it is a per-chip number, and a second board may join the
-# test family. Selection is $DEVICE_PROFILE, default esp32c6.
+# test family. Selection is $DEVICE_PROFILE, default esp32s3.
 # shellcheck source=../tools/device_profile.sh
 . "$TEST_DIR/../tools/device_profile.sh"
 device_profile_load "" "$TEST_DIR/../tools/device_profiles" || exit 1
 HOST_HEAP_ARENA_BYTES=$(device_profile_require DP_FREE_HEAP_BYTES) || exit 1
+HOST_HEAP_ARENA_PSRAM_BYTES=$(device_profile_require DP_PSRAM_BYTES) || exit 1
+HOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES=$(device_profile_require DP_SPIRAM_ALWAYSINTERNAL_BYTES) || exit 1
+# One list for the test binary and --print-flags, so the complexity gate parses
+# heap_arena.c with every define the real compile has.
+HEAP_ARENA_DEFINES="-DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES=$HOST_HEAP_ARENA_BYTES -DHOST_HEAP_ARENA_PSRAM_BYTES=$HOST_HEAP_ARENA_PSRAM_BYTES -DHOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES=$HOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES"
 
 # The shell's own portable units and their suites. Hardware suites are absent
 # by design - suite_gfx.c would not compile here, which is the point.
@@ -77,20 +82,45 @@ $TEST_DIR/suites/suite_fixed.c
 $TEST_DIR/suites/suite_tween.c
 $TEST_DIR/suites/suite_boot_anim.c
 $TEST_DIR/suites/suite_gfx_dirty.c
+$TEST_DIR/suites/suite_gfx_full_redraw.c
+$TEST_DIR/suites/suite_gfx_present_guard.c
+$TEST_DIR/suites/suite_gfx_fb_guard.c
+$TEST_DIR/suites/suite_gfx_target.c
+$TEST_DIR/suites/suite_gfx_mode.c
+$TEST_DIR/suites/suite_gfx_band.c
+$TEST_DIR/suites/suite_gfx_heal.c
+$TEST_DIR/suites/suite_gfx_indexed.c
+$TEST_DIR/suites/suite_gfx_palette.c
+$TEST_DIR/suites/suite_small3dlib_scissor.c
 $TEST_DIR/suites/suite_gfx_color.c
 $TEST_DIR/suites/suite_gfx_font.c
 $TEST_DIR/suites/suite_gfx_font_roles.c
 $TEST_DIR/suites/suite_icons.c
+$TEST_DIR/suites/suite_icons_system.c
 $TEST_DIR/suites/suite_ui_style.c
 $TEST_DIR/suites/suite_ui_transform.c
 $TEST_DIR/suites/suite_ui_centered_rect.c
+$TEST_DIR/suites/suite_ui_pointer.c
+$TEST_DIR/suites/suite_ui_pointer_microui.c
+$TEST_DIR/suites/suite_ui_slider.c
 $TEST_DIR/suites/suite_display.c
+$TEST_DIR/suites/suite_panel_clock.c
 $TEST_DIR/suites/suite_screenshot.c
+$TEST_DIR/suites/suite_build_id.c
 $TEST_DIR/suites/suite_device_state.c
+$TEST_DIR/suites/suite_job.c
+$TEST_DIR/suites/suite_heap_caps.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/gesture.c
 $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
+$MAIN_DIR/util/job.c
+$MAIN_DIR/display/panel_clock.c
+$MAIN_DIR/ui/ui_build.c
+$MAIN_DIR/ui/ui_pointer.c
+$MAIN_DIR/gfx/gfx_palette_standard.c
+$MAIN_DIR/../tools/gfx_palette_gen.c
+$TEST_DIR/../components/microui/src/microui.c
 "
 
 # App-owned sources, discovered rather than listed, so adding or deleting an
@@ -105,13 +135,14 @@ $MAIN_DIR/display/display.c
 # separable from its wiring, which is the only reason a falling-sand automaton
 # can be tested on a laptop at all.
 #
-# The glob below is one level deep (apps/*/*.c), so an app's own
-# apps/<name>/tools/*.{sh,ps1,py} - its sweep scripts, report generators -
-# is already invisible to it without any special-casing. Worth saying so
-# explicitly: the next reader hitting a two-level-deep tools/ folder that
-# this loop skips should be able to tell that is deliberate, not an
-# oversight this script just hasn't caught up to yet.
-for f in "$MAIN_DIR"/apps/*/*.c; do
+# Recursive, matching main/CMakeLists.txt's own discovered_apps glob and its
+# tools/ exclusion - a screen's drawing code lives one level deeper, in
+# apps/<name>/ui/, so a one-level walk would silently drop it from this
+# runner while the firmware kept building it. apps/<name>/tools/ - sweep
+# scripts, report generators - is excluded the same way CMake excludes it:
+# by folder, not depth, so a future two-level-deep non-tools folder is swept
+# in rather than silently skipped.
+for f in $(find "$MAIN_DIR/apps" -name '*.c' ! -path '*/tools/*' | sort); do
     [ -e "$f" ] || continue
     case "$(basename "$f")" in
         app_*.c) continue ;;
@@ -119,6 +150,30 @@ for f in "$MAIN_DIR"/apps/*/*.c; do
     SOURCES="$SOURCES
 $f"
 done
+
+# Exit here, before touching a compiler, for a caller that only wants the
+# exact file list or flag set this script proves compilable - the clang-tidy
+# complexity gate (tools/complexity_gate.py) builds its compile database
+# from these instead of keeping its own copy, so the two cannot drift apart
+# the way cognitive_complexity.py's own function finder did. -Werror is
+# left out of --print-flags: it is this script's own strictness choice, not
+# a fact about what compiles, and a warning unrelated to complexity should
+# not cost that file its coverage in the gate.
+case "${1:-}" in
+    --print-sources)
+        printf '%s\n' $SOURCES | sed '/^$/d'
+        exit 0
+        ;;
+    --print-flags)
+        printf '%s\n' -std=c11 -Wall -Wextra -Wno-unused-parameter -g -O1 \
+            -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
+            -I "$TEST_DIR/../components/microui/include" \
+            -I "$TEST_DIR/../components/small3dlib/include" \
+            -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
+            $HEAP_ARENA_DEFINES
+        exit 0
+        ;;
+esac
 
 # The hardware-facing app_*.c files are excluded from SOURCES above because
 # they cannot link here - which also meant nothing compiled them at all
@@ -147,7 +202,11 @@ UNITY_OBJ="$BUILD_DIR/unity.o"
 
 # components/microui/include is on the path for ui_style.h's sake: it needs
 # mu_Rect and mu_Color, and those are plain declarations in microui.h with no
-# library behind them. Nothing here links microui.c - see suite_ui_style.c on
+# library behind them. microui.c itself IS linked now, for exactly one suite:
+# suite_ui_pointer_microui.c drives the real widget code, because the event
+# list ui_pointer.c emits can be perfectly correct and still produce a UI in
+# which nothing is clickable - see that file's own comment. Every other
+# suite here still needs only the declarations - see suite_ui_style.c on
 # why a style's geometry was kept free of it.
 #
 # components/small3dlib/include is on the path for boot_anim.h's sake: its
@@ -167,18 +226,18 @@ UNITY_OBJ="$BUILD_DIR/unity.o"
 #
 # --wrap routes the suite's own allocations into heap_arena.c's device-sized
 # arena, so a fixture that asks for more than the board has fails HERE
-# rather than after a flash. Only this runner defines HOST_HEAP_ARENA: the
-# firmware and perf_probe compile the same timing.c with every arena line
-# preprocessed out, which is why the hooks had to be behind one macro rather
-# than merely unused. Note that libc-internal allocations do not route
+# rather than after a flash. Only this runner defines HOST_HEAP_ARENA: any
+# other build compiling the same timing.c gets every arena line preprocessed
+# out, which is why the hooks had to be behind one macro rather than merely
+# unused. Note that libc-internal allocations do not route
 # through --wrap at all (a pointer from strdup() arrives at __wrap_free
 # never having been seen by __wrap_malloc), which is why the arena forwards
 # pointers it does not own instead of trusting every free().
 # shellcheck disable=SC2086
 "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
     -I "$TEST_DIR/../components/microui/include" \
-    -I "$TEST_DIR/../components/small3dlib/include" -include "$TEST_DIR/timing.h" \
-    -DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES="$HOST_HEAP_ARENA_BYTES" \
+    -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
+    $HEAP_ARENA_DEFINES \
     $SOURCES "$UNITY_OBJ" -o "$OUT" \
     -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm
 
@@ -249,7 +308,7 @@ for f in $SU_SOURCES; do
     # shellcheck disable=SC2086
     "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
         -I "$TEST_DIR/../components/microui/include" \
-        -I "$TEST_DIR/../components/small3dlib/include" -include "$TEST_DIR/timing.h" \
+        -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
         -fstack-usage -c "$f" -o "$SU_DIR/$(printf '%02d' "$n")_$base.o" &
     su_pids="$su_pids $!"
     in_batch=$((in_batch + 1))
@@ -271,8 +330,7 @@ fi
 if [ -z "$(find "$SU_DIR" -maxdepth 1 -name '*.su' -print -quit)" ]; then
     echo "no .su stack-usage files were produced by $CC_BIN - it may not" >&2
     echo "support -fstack-usage. This gate exists to catch test fixtures" >&2
-    echo "that would panic-loop the device (see docs/sand/" >&2
-    echo "Performance-Tuning-Attempts.md); refusing to silently pass." >&2
+    echo "that would panic-loop the device; refusing to silently pass." >&2
     exit 1
 fi
 

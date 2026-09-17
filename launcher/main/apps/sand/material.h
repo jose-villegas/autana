@@ -1,4 +1,4 @@
-/*=============================================================================
+/*
  * material - what a cell is made of, and how that makes it behave.
  *
  * Pure data. The simulation reads this table and has no idea what "water" is;
@@ -45,88 +45,72 @@
  * flash: it costs zero RAM. The board has ~12.8 MB of flash spare and ~50 KB of
  * RAM, so anything that can be a constant should be one - including lookups
  * that would otherwise be computed. See material_palette().
- *===========================================================================*/
+ */
 #pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
 
-/*---------------------------------------------------------------------------
- * Cells
- *-------------------------------------------------------------------------*/
+/* Cells */
 
 typedef uint8_t cell_t;
 
 /* A liquid cell holds 1-15; zero is not a very empty cell, it is no cell at
  * all and must be written as CELL_EMPTY, or the material nibble leaves an
  * occupied cell holding nothing. */
-#define CELL_EMPTY          ((cell_t)0)
-#define CELL_MATERIAL(c)    ((uint8_t)((c) >> 4))
-#define CELL_VARIANT(c)     ((uint8_t)((c) & 0x0F))
-#define CELL_MAKE(m, v)     ((cell_t)(((uint8_t)(m) << 4) | ((uint8_t)(v) & 0x0F)))
+#define CELL_EMPTY        ((cell_t)0)
+#define CELL_MATERIAL(c)  ((uint8_t)((c) >> 4))
+#define CELL_VARIANT(c)   ((uint8_t)((c) & 0x0F))
+#define CELL_MAKE(m, v)   ((cell_t)(((uint8_t)(m) << 4) | ((uint8_t)(v) & 0x0F)))
 
 /* Tests nibble for zero variants. */
-#define CELL_IS_EMPTY(c)    (((c) & 0xF0) == 0)
+#define CELL_IS_EMPTY(c)  (((c) & 0xF0) == 0)
 
-#define MATERIAL_VARIANTS   16
+#define MATERIAL_VARIANTS 16
 
 /* STATE determines if nibble holds TONE or MOISTURE. */
 
-
 /* Corrupt cell reads SOIL_MOISTURE_MAX, not unpredictable eighth colour. */
-
-
-
-
 
 /* Tone and moisture in SOIL_SHADES create a luminance ramp from bone-dry to
  * saturated, no unrelated colors. */
-#define SOIL_DRY_TONES      8
-#define SOIL_MOISTURE_MAX   7
+#define SOIL_DRY_TONES    8
+#define SOIL_MOISTURE_MAX 7
 
-#define CELL_MOISTURE(c)                                                 \
-    ((uint8_t)(CELL_VARIANT(c) < SOIL_DRY_TONES                          \
-                   ? 0u                                                  \
-                   : (CELL_VARIANT(c) - (SOIL_DRY_TONES - 1u) >          \
-                              SOIL_MOISTURE_MAX                          \
-                          ? SOIL_MOISTURE_MAX                            \
-                          : CELL_VARIANT(c) - (SOIL_DRY_TONES - 1u))))
+#define CELL_MOISTURE(c)                                                                                               \
+    ((uint8_t)(CELL_VARIANT(c) < SOIL_DRY_TONES ? 0u                                                                   \
+                                                : (CELL_VARIANT(c) - (SOIL_DRY_TONES - 1u) > SOIL_MOISTURE_MAX         \
+                                                       ? SOIL_MOISTURE_MAX                                             \
+                                                       : CELL_VARIANT(c) - (SOIL_DRY_TONES - 1u))))
 
-#define CELL_SOIL_TONE(c)   CELL_VARIANT(c)
+#define CELL_SOIL_TONE(c) CELL_VARIANT(c)
 
 /* NEVER use m == 0; use soil_dry_out() for varied drying. */
-#define CELL_WITH_MOISTURE(c, m)                                          \
-    CELL_MAKE(CELL_MATERIAL(c),                                          \
-              (uint8_t)((SOIL_DRY_TONES - 1u) + ((m) & SOIL_MOISTURE_MAX)))
+#define CELL_WITH_MOISTURE(c, m)                                                                                       \
+    CELL_MAKE(CELL_MATERIAL(c), (uint8_t)((SOIL_DRY_TONES - 1u) + ((m) & SOIL_MOISTURE_MAX)))
 
 /* Caller may ask for m=0 with specific tone. Tone ignored if m > 0. */
-#define CELL_SOIL(mat, tone, m)                                           \
-    CELL_MAKE((mat), (uint8_t)((m) != 0                                  \
-                                    ? (SOIL_DRY_TONES - 1u) +             \
-                                          ((m) & SOIL_MOISTURE_MAX)       \
-                                    : ((tone) & (SOIL_DRY_TONES - 1u))))
+#define CELL_SOIL(mat, tone, m)                                                                                        \
+    CELL_MAKE((mat), (uint8_t)((m) != 0 ? (SOIL_DRY_TONES - 1u) + ((m) & SOIL_MOISTURE_MAX)                            \
+                                        : ((tone) & (SOIL_DRY_TONES - 1u))))
 
-
-#define SAND_AMBIENT_HEAT 3
+#define SAND_AMBIENT_HEAT          3
 
 /* Lives here, not in sand_reactions.c, since the shatter rule, glass's
  * palette (which changes colour at exactly this level, making "will
- * shatter" visible) and the tests all have to agree on it - a private
- * #define once let the number and the colour drift apart. Set to ambient+2,
- * not a more dramatic ambient+4: the glass a snowflake actually touches
- * sits near ambient, several cells from the heat and actively chilled by
- * the snow itself, so ambient+4 asked for heat the scene can never reach. */
-#define SAND_SHOCK_HEAT (SAND_AMBIENT_HEAT + 2)
+ * shatter" visible) and the tests must agree on it - a private #define
+ * would let the number and colour drift apart. Set to ambient+2, not
+ * ambient+4: the glass a snowflake touches sits near ambient, chilled by
+ * the snow itself, so ambient+4 asks for heat the scene never reaches. */
+#define SAND_SHOCK_HEAT            (SAND_AMBIENT_HEAT + 2)
 
-#define SAND_SHOCK_COLD (SAND_AMBIENT_HEAT - 2)
+#define SAND_SHOCK_COLD            (SAND_AMBIENT_HEAT - 2)
 
-#define MASS_MAX 15
+#define MASS_MAX                   15
 
 #define MATERIAL_LIQUID_DEPTH_BAND 24
 
-/*---------------------------------------------------------------------------
- * Materials
- *-------------------------------------------------------------------------*/
+/* Materials */
 
 typedef enum {
     MAT_EMPTY = 0,
@@ -154,33 +138,32 @@ typedef enum {
      * each half already shares one row. Statics get no physics (shared row)
      * or variant (their bits ARE their identity); gunpowder alone escapes
      * both, at the cost of half the range. */
-    MAT_EXTENDED = 15   /* the last nibble value; asserted against
+    MAT_EXTENDED = 15 /* the last nibble value; asserted against
                          * MATERIAL_MAX below, which this enum comes
                          * too early to reference */
 } material_id_t;
 
 /* Unused slots dense, block simulations. */
-#define MATERIAL_MAX 16
+#define MATERIAL_MAX       16
 
 /* Cullet (glass turned to sand) costs no bits: sand's variant is already a
  * shade, so marking "this came from a pane" spends four of sixteen shades,
- * no more. Needed since glass at the ramp's plain top didn't read - one
- * flat colour, and "brightest sand" still looked like sand. Cullet gets a
- * different HUE instead (pale, glass-coloured); the nibble no longer names
- * a fixed colour but which quarter of a shared, slowly-advancing cycle a
- * grain starts at, so a heap shimmers through several pale tints. */
-#define SAND_DUNE_SHADES    12
-#define SAND_CULLET_BASE    SAND_DUNE_SHADES
-#define SAND_CULLET_SHADES  (MATERIAL_VARIANTS - SAND_CULLET_BASE)
+ * no more. Cullet gets a different HUE (pale, glass-coloured) rather than
+ * a fixed shade - a flat colour at the ramp's plain top reads as
+ * "brightest sand", not glass - so the nibble names which quarter of a
+ * shared, slowly-advancing cycle a grain starts at, letting a heap
+ * shimmer through several pale tints. */
+#define SAND_DUNE_SHADES   12
+#define SAND_CULLET_BASE   SAND_DUNE_SHADES
+#define SAND_CULLET_SHADES (MATERIAL_VARIANTS - SAND_CULLET_BASE)
 
 /* Public for tests. Mask use. Quarter-turn alignment. */
-#define CULLET_CYCLE_LEN 16
+#define CULLET_CYCLE_LEN   16
 
 /* PAINTED grain shades limit; sand skips reserved; dirt skips wet (see
  * random_cell() in sand.c). */
-#define MATERIAL_SHADE_SPAN(m)                                            \
-    ((m) == MAT_SAND ? SAND_DUNE_SHADES                                  \
-                      : (m) == MAT_DIRT ? SOIL_DRY_TONES : MATERIAL_VARIANTS)
+#define MATERIAL_SHADE_SPAN(m)                                                                                         \
+    ((m) == MAT_SAND ? SAND_DUNE_SHADES : (m) == MAT_DIRT ? SOIL_DRY_TONES : MATERIAL_VARIANTS)
 
 /* MAT_EXTENDED's lower half: 8 STATIC materials (0xF0-0xF7). GUNPOWDER_BASE
  * uses 0xF8-0xFF. */
@@ -188,29 +171,27 @@ typedef enum {
 
 #define MATERIAL_EXTENDED_CODES 16
 
-_Static_assert(MAT_EXTENDED == MATERIAL_MAX - 1,
-               "the extended range lives in the LAST nibble value, so that "
-               "every ordinary material keeps the id it already had");
-_Static_assert(MAT_COUNT <= MAT_EXTENDED,
-               "an ordinary material has taken the extended range's slot - "
-               "there is no room for both");
+_Static_assert(MAT_EXTENDED == MATERIAL_MAX - 1, "the extended range lives in the LAST nibble value, so that "
+                                                 "every ordinary material keeps the id it already had");
+_Static_assert(MAT_COUNT <= MAT_EXTENDED, "an ordinary material has taken the extended range's slot - "
+                                          "there is no room for both");
 _Static_assert(MATERIAL_EXTENDED_CODES == MATERIAL_VARIANTS,
                "extended_reactions[]/extended_names[] are sized by the "
                "whole low nibble - one entry per byte value 0xF0-0xFF, the "
                "same range CELL_VARIANT() already covers");
 
 typedef enum {
-    KIND_NONE = 0,  /* empty space */
-    KIND_STATIC,    /* never moves; costs nothing, the loop skips it at once */
-    KIND_POWDER,    /* falls, and piles at an angle of repose */
-    KIND_LIQUID,    /* falls, but spreads flat instead of piling */
-    KIND_GAS,       /* rises, and disperses */
+    KIND_NONE = 0, /* empty space */
+    KIND_STATIC,   /* never moves; costs nothing, the loop skips it at once */
+    KIND_POWDER,   /* falls, and piles at an angle of repose */
+    KIND_LIQUID,   /* falls, but spreads flat instead of piling */
+    KIND_GAS,      /* rises, and disperses */
 } material_kind_t;
 
 /* Compact entry avoids cache misses. Single palette source; duplicates cause
  * errors. */
 typedef struct {
-    uint8_t kind;      /* material_kind_t, narrowed - an enum is int-sized */
+    uint8_t kind; /* material_kind_t, narrowed - an enum is int-sized */
 
     uint8_t density;
 
@@ -236,33 +217,32 @@ typedef struct {
     uint8_t sight;
 
     /* Cold: last, avoids cache line push. */
-    const char *name;
+    const char* name;
 } material_t;
 
 /* MAT_EXTENDED expands HOT TABLE to 32 rows. 0xF0-0xF7 static, 0xF8-0xFF
  * POWDER physics. ORDINARY materials duplicated. */
 #define MATERIAL_ROWS 32
 
-_Static_assert(MATERIAL_ROWS == MATERIAL_MAX * 2,
-               "one twin pair per ordinary material plus the extended "
-               "nibble's own pair (static half, gunpowder half) - the hot "
-               "table is exactly twice MATERIAL_MAX rows, never a fixed "
-               "32 that could quietly stop matching it");
+_Static_assert(MATERIAL_ROWS == MATERIAL_MAX * 2, "one twin pair per ordinary material plus the extended "
+                                                  "nibble's own pair (static half, gunpowder half) - the hot "
+                                                  "table is exactly twice MATERIAL_MAX rows, never a fixed "
+                                                  "32 that could quietly stop matching it");
 
 /* MAT_EXTENDED's `+1` is gunpowder, see GUNPOWDER_BASE. */
 #define MATERIAL_ROW(id) ((unsigned)(id) << 1)
 
 extern const material_t materials[MATERIAL_ROWS];
 
-static inline const material_t *material_of(cell_t c)
-{
+static inline const material_t*
+material_of(cell_t c) {
     return &materials[(c) >> 3];
 }
 
 /* Avoids CELL_MATERIAL(cell), use material_of(). MAT_EXTENDED reads as static
  * row, matching old id 15. */
-static inline const material_t *material_by_id(material_id_t m)
-{
+static inline const material_t*
+material_by_id(material_id_t m) {
     return &materials[MATERIAL_ROW(m)];
 }
 
@@ -277,12 +257,10 @@ typedef struct {
 
     /* Zero for every material but gunpowder; nonzero is gunpowder's BLAST
      * RADIUS, read only in step_one_burning_cell() (sand_reactions.c),
-     * never at ignition time. A fully-lit 2x2 (not the rarer 3x3 first
-     * tried) triggers sand_explode() at this radius instead of decaying to
-     * plain fire - see SAND_GUNPOWDER_BLAST_RADIUS for why 16. Earlier
-     * versions blasted the instant a spark touched one grain, which
-     * measured as gunpowder spending nearly every blast on itself - see
-     * docs/sand/Impulse-Mechanics.md. */
+     * never at ignition time. A fully-lit 2x2 triggers sand_explode() at
+     * this radius instead of decaying to plain fire - see
+     * SAND_GUNPOWDER_BLAST_RADIUS for why 16, and
+     * docs/sand/Impulse-Mechanics.md for why not a single-grain spark. */
     uint8_t explodes;
 
     /* Only what touches air burns. */
@@ -398,9 +376,6 @@ typedef struct {
     /* KIND_POWDER falls into empty cells; seeds drop, stems remain upright. */
     uint8_t falls;
 
-    /* "Or wood" keeps foliage on living trees. */
-    uint8_t withers;
-
     /* Hardens to align cells, makes tall stems trunks. Creeper stays soft.
      * Burns as wood, catches fire, rain keeps growth soft. */
     uint8_t hardens_to;
@@ -423,8 +398,6 @@ typedef struct {
      * neighbours doesn't roll (ROOT_SURFACE_MAX). */
     uint8_t roots;
     uint8_t roots_to;
-
-    uint8_t sheltered_by;
 
     uint8_t canopy;
     uint8_t canopy_to;
@@ -452,7 +425,31 @@ typedef struct {
 
     /* MAT_SAND closes loop; glass to sand when shocked. */
     uint8_t shatters_to;
+
+    /* SETTLED-ONLY: a cell at rest slowly becomes crusts_to. Rolled against
+     * CRUST_ROLL_MAX, not the usual 256, because this is the one rate a
+     * whole bank pays at once - only cells with a face on another material
+     * are eligible, a thin skin rather than the whole bank, and even the
+     * fastest expressible rate for a byte field (255) takes over an hour
+     * to convert a 32-cell cover. */
+    uint8_t crusts;
+    uint8_t crusts_to;
+
+    /* NEVER READ. Rounds the row to 64 bytes so reaction_of()'s index is one
+     * shift: at 61 GCC strength-reduces the stride into slli/sub/slli/add,
+     * four ALU ops at every call site. Declared rather than left to the
+     * compiler because sizeof(reaction_t) is this table's documentation
+     * contract - dump_reactions.c insists every byte is exactly one
+     * documented field - and silent padding would be an undocumented hole. */
+    uint8_t stride_pad2;
+    uint8_t stride_pad3;
+    uint8_t stride_pad4;
 } reaction_t;
+
+/* Denominator of the crusts roll. A power of two so the read site masks. */
+#define CRUST_ROLL_MAX 1024
+
+_Static_assert(sizeof(reaction_t) == 64, "reaction_of()'s stride must stay a power of two - resize stride_pad");
 
 /* Zero means acid immune, heat block; check fields. */
 extern const reaction_t reactions[MATERIAL_MAX];
@@ -466,7 +463,7 @@ typedef enum {
     MATX_PLANT,
     MATX_LEAF,
 
-    /* METAL: see docs/plans/Metal-Smelting-Plan.md. Slot 5, now 3. 11 slots
+    /* METAL: see docs/sand/Metal.md. Slot 5, now 3. 11 slots
      * remain. */
     MATX_METAL,
 
@@ -475,18 +472,17 @@ typedef enum {
     MATX_ROOT,
 } material_extended_t;
 
-_Static_assert(MATX_ROOT < MATERIAL_EXTENDED_COUNT,
-               "a static's low nibble must fit in the 0-7 range MATX() now "
-               "masks to - the upper half of the nibble is gunpowder's");
+_Static_assert(MATX_ROOT < MATERIAL_EXTENDED_COUNT, "a static's low nibble must fit in the 0-7 range MATX() now "
+                                                    "masks to - the upper half of the nibble is gunpowder's");
 
-const char *material_name(cell_t c);
+const char* material_name(cell_t c);
 
 /* Masks to 0x07, not 0x0F, to avoid gunpowder's half. */
-#define MATX(k) ((cell_t)((MAT_EXTENDED << 4) | ((k) & 0x07)))
+#define MATX(k)           ((cell_t)((MAT_EXTENDED << 4) | ((k) & 0x07)))
 
 /* GUNPOWDER. MATERIAL_ROWS explains split. MAT_EXTENDED high nibble, low bit
  * 3 set. */
-#define GUNPOWDER_BASE ((cell_t)((MAT_EXTENDED << 4) | 0x08))
+#define GUNPOWDER_BASE    ((cell_t)((MAT_EXTENDED << 4) | 0x08))
 #define GUNPOWDER_CELL(v) ((cell_t)(GUNPOWDER_BASE | ((v) & 0x07)))
 
 _Static_assert((GUNPOWDER_BASE >> 3) == MATERIAL_ROW(MAT_EXTENDED) + 1,
@@ -497,11 +493,11 @@ _Static_assert((GUNPOWDER_BASE >> 3) == MATERIAL_ROW(MAT_EXTENDED) + 1,
 
 /* GUNPOWDER_REACTION's `.tones`/`.moist_max` used here for GUNPOWDER_LIT
  * check. */
-#define GUNPOWDER_TONES 3
+#define GUNPOWDER_TONES     3
 #define GUNPOWDER_MOIST_MAX 4
 
-#define GUNPOWDER_LIT 7
-#define GUNPOWDER_LIT_CELL GUNPOWDER_CELL(GUNPOWDER_LIT)
+#define GUNPOWDER_LIT       7
+#define GUNPOWDER_LIT_CELL  GUNPOWDER_CELL(GUNPOWDER_LIT)
 
 _Static_assert(GUNPOWDER_LIT == GUNPOWDER_TONES + GUNPOWDER_MOIST_MAX,
                "GUNPOWDER_LIT has to sit exactly one past every dry tone "
@@ -516,20 +512,20 @@ _Static_assert(GUNPOWDER_LIT == GUNPOWDER_TONES + GUNPOWDER_MOIST_MAX,
 /* Gunpowder and cell_is_extended() below partition nibble 15: every
  * gunpowder byte tests true here and false there, never both for the same
  * byte, whatever its 3-bit variant. */
-static inline bool cell_is_gunpowder(cell_t c)
-{
+static inline bool
+cell_is_gunpowder(cell_t c) {
     return (c & 0xF8) == GUNPOWDER_BASE;
 }
 
-static inline bool cell_is_extended(cell_t c)
-{
+static inline bool
+cell_is_extended(cell_t c) {
     return (c & 0xF8) == (uint8_t)(MAT_EXTENDED << 4);
 }
 
 /* Cullet shares MAT_SAND's reaction row, so anything true of cullet alone
  * has to be asked per cell rather than read out of reactions[]. */
-static inline bool cell_is_cullet(cell_t c)
-{
+static inline bool
+cell_is_cullet(cell_t c) {
     return CELL_MATERIAL(c) == MAT_SAND && CELL_VARIANT(c) >= SAND_CULLET_BASE;
 }
 
@@ -537,8 +533,8 @@ static inline bool cell_is_cullet(cell_t c)
  * emitted cell and jams forever. See
  * test_the_extended_row_being_static_is_what_emitter_eligibility_leans_on
  * in suite_sand_roots.c. */
-static inline bool material_can_emit(cell_t c)
-{
+static inline bool
+material_can_emit(cell_t c) {
     const uint8_t kind = material_of(c)->kind;
     return kind == KIND_POWDER || kind == KIND_LIQUID || kind == KIND_GAS;
 }
@@ -546,35 +542,32 @@ static inline bool material_can_emit(cell_t c)
 /* GENERIC CELL-CODE HELPERS. Shared 0xF0-0xFF range with extended statics,
  * split by bit 3 (GUNPOWDER_BASE). Unified moisture codec for dirt and
  * gunpowder. Defined before reaction_of()/cell_is_burning(). */
-static inline uint8_t cell_code(cell_t c)
-{
+static inline uint8_t
+cell_code(cell_t c) {
     return cell_is_gunpowder(c) ? (uint8_t)(c & 0x07) : CELL_VARIANT(c);
 }
 
 /* Keeps identity bits, `v` masked to codec width. */
-static inline cell_t cell_with_code(cell_t c, uint8_t v)
-{
-    return cell_is_gunpowder(c)
-               ? (cell_t)((c & 0xF8) | (v & 0x07))
-               : (cell_t)((c & 0xF0) | (v & 0x0F));
+static inline cell_t
+cell_with_code(cell_t c, uint8_t v) {
+    return cell_is_gunpowder(c) ? (cell_t)((c & 0xF8) | (v & 0x07)) : (cell_t)((c & 0xF0) | (v & 0x0F));
 }
-
 
 /* Decodes MAT_EXTENDED. Calls extended_reactions[] by nibble. `burns`:
  * fire/lava. `burn_decay`: lit. `may_have_burning`: critical for reactions. */
 static inline bool cell_is_burning(cell_t c);
 
-static inline const reaction_t *reaction_of(cell_t c)
-{
+static inline const reaction_t*
+reaction_of(cell_t c) {
     if (CELL_MATERIAL(c) == MAT_EXTENDED) {
         return &extended_reactions[CELL_VARIANT(c)];
     }
     return &reactions[CELL_MATERIAL(c)];
 }
 
-static inline bool cell_is_burning(cell_t c)
-{
-    const reaction_t *r = reaction_of(c);
+static inline bool
+cell_is_burning(cell_t c) {
+    const reaction_t* r = reaction_of(c);
     return r->burns != 0 || (r->burn_decay != 0 && cell_code(c) >= r->lit_from);
 }
 
@@ -582,8 +575,8 @@ static inline bool cell_is_burning(cell_t c)
  * + r->moist_max - 1` are moist. Dirt uses `.tones = 8, .moist_max = 7`. See
  * `test_dirt_moisture_macros_and_codec_helpers_agree_on_every_byte`. Macros
  * for dirt; ENGINE uses for reactions. */
-static inline uint8_t moisture_of(cell_t c, const reaction_t *r)
-{
+static inline uint8_t
+moisture_of(cell_t c, const reaction_t* r) {
     const uint8_t code = cell_code(c);
     if (code < r->tones) {
         return 0;
@@ -598,31 +591,29 @@ static inline uint8_t moisture_of(cell_t c, const reaction_t *r)
 }
 
 /* Set m > 0 for WET cell. NEVER use m == 0; see soil_cell() for dry case. */
-static inline cell_t with_moisture(cell_t c, uint8_t m, const reaction_t *r)
-{
+static inline cell_t
+with_moisture(cell_t c, uint8_t m, const reaction_t* r) {
     const uint8_t code = (uint8_t)((uint8_t)(r->tones - 1u) + ((m) > r->moist_max ? r->moist_max : (m)));
     return cell_with_code(c, code);
 }
 
-static inline cell_t soil_cell(cell_t identity, uint8_t tone, uint8_t m,
-                               const reaction_t *r)
-{
-    const uint8_t code =
-        (m != 0) ? (uint8_t)((uint8_t)(r->tones - 1u) + ((m) > r->moist_max ? r->moist_max : (m)))
-                 : (uint8_t)((tone) >= r->tones ? (uint8_t)(r->tones - 1u) : (tone));
+static inline cell_t
+soil_cell(cell_t identity, uint8_t tone, uint8_t m, const reaction_t* r) {
+    const uint8_t code = (m != 0) ? (uint8_t)((uint8_t)(r->tones - 1u) + ((m) > r->moist_max ? r->moist_max : (m)))
+                                  : (uint8_t)((tone) >= r->tones ? (uint8_t)(r->tones - 1u) : (tone));
     return cell_with_code(identity, code);
 }
 
 /* Scales moisture for dry tone; see soil_dry_out(). Needed for non-uniform
  * materials. */
-static inline uint8_t dry_tone_from_moisture(uint8_t m, const reaction_t *r)
-{
+static inline uint8_t
+dry_tone_from_moisture(uint8_t m, const reaction_t* r) {
     return (uint8_t)((m * (uint8_t)(r->tones - 1u)) / r->moist_max);
 }
 
 /* Mask to top five bits to distinguish gunpowder from statics. */
-static inline bool same_species(cell_t a, cell_t b)
-{
+static inline bool
+same_species(cell_t a, cell_t b) {
     if (CELL_MATERIAL(a) == MAT_EXTENDED || CELL_MATERIAL(b) == MAT_EXTENDED) {
         return (a & 0xF8) == (b & 0xF8);
     }
@@ -631,8 +622,8 @@ static inline bool same_species(cell_t a, cell_t b)
 
 /* `spec` is a cell byte. MATERIAL_SHADE_SPAN misses gunpowder; see
  * GUNPOWDER_REACTION in material.c. */
-static inline int material_shade_span_cell(cell_t spec)
-{
+static inline int
+material_shade_span_cell(cell_t spec) {
     if (cell_is_gunpowder(spec)) {
         return reaction_of(spec)->tones;
     }

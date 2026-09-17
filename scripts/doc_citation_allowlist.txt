@@ -1,0 +1,7 @@
+# doc path<TAB>citation<TAB>reason
+docs/plans/*	*	Plans retain proposed and superseded implementation names.
+docs/Launcher-Architecture.md	bsp_display_start	Board support package API.
+docs/notes/Display-and-Rendering.md	spi_ll_master_cal_clock	ESP-IDF private API.
+docs/notes/Display-and-Rendering.md	spi_ll.h	ESP-IDF private header.
+docs/sand/Adding-a-Material.md	probe.c	Example probe source, not shipped.
+docs/Testing-Guide.md	FATAL_ERROR	CMake command.

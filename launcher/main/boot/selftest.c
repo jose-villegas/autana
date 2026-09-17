@@ -1,39 +1,41 @@
-/*=============================================================================
+/*
  * On-device self test.
  *
- * Runs at boot, inside the shipped firmware, before the launcher starts. There
- * is no separate test build: what gets verified is exactly the binary that
- * ships, compiled by the same toolchain with the same options.
+ * Compiled only into a CONFIG_LAUNCHER_SELFTEST build; release carries no
+ * test code. With CONFIG_LAUNCHER_SELFTEST_AUTORUN it runs every registered
+ * suite at boot, before the launcher starts; otherwise suites run on demand
+ * (RUNSUITE on the console, or an on-device toggle).
  *
- * It runs EVERY suite, not just the hardware ones. The portable suites already
- * pass on a host, but passing there only proves the logic is right on a laptop
- * - running them here proves the same code behaves identically built by the
- * RISC-V toolchain and executed on this chip.
+ * The full run includes the portable suites. Passing on a host proves the
+ * logic on a laptop; running them here proves the same code behaves
+ * identically built by the Xtensa toolchain and executed on this chip.
  *
- * Cost is roughly half a second, most of it the DMA tests waiting on real
- * frames, which is cheap enough to pay on every boot for the guarantee that a
- * booting device is a verified device.
- *===========================================================================*/
+ * A full run takes about 18 minutes on the S3 - too long for every boot,
+ * which is why autorun is opt-in.
+ */
 
 #include "boot/selftest.h"
 
 #include <stdio.h>
 
-#include "unity.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "unity.h"
 
 #include "../test/suites.h"
 
-static const char *TAG = "selftest";
+static const char* TAG = "selftest";
 
 /* Unity requires these once per binary. The suites manage their own fixtures,
  * since they all share this program. */
-void setUp(void) { }
-void tearDown(void) { }
+void
+setUp(void) {}
 
-int selftest_run(void)
-{
+void
+tearDown(void) {}
+
+int
+selftest_run(void) {
     const int64_t started = esp_timer_get_time();
 
     ESP_LOGI(TAG, "running self test");
@@ -51,15 +53,13 @@ int selftest_run(void)
      * count so the sentinel below - and every harness that reads it - sees a
      * failed run rather than a green one that tested less than it claims. */
     if (suites_dropped() > 0) {
-        ESP_LOGE(TAG, "%d suite(s) dropped; raise SUITE_MAX in suites.h",
-                 suites_dropped());
+        ESP_LOGE(TAG, "%d suite(s) dropped; raise SUITE_MAX in suites.h", suites_dropped());
         failures += suites_dropped();
     }
 
     /* A sentinel on its own line, so an automated harness can tell a finished
      * run from a board that went quiet mid-test. */
-    printf("\nSELFTEST_COMPLETE failures=%d elapsed_ms=%lld\n",
-           failures, (long long)elapsed_ms);
+    printf("\nSELFTEST_COMPLETE failures=%d elapsed_ms=%lld\n", failures, (long long)elapsed_ms);
     fflush(stdout);
 
     if (failures > 0) {

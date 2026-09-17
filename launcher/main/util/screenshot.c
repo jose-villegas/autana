@@ -1,90 +1,28 @@
-/*=============================================================================
- * screenshot.c - the device-only half: listens on the console for a
- * one-word trigger, and on request walks the live framebuffer through
- * gfx_color_rgb888() and screenshot_base64_encode(), printing the result
- * between marker lines a host script (tools/screenshot.py) reads back out
- * of the same stream idf_monitor/ESP_LOG already use.
+/*
+ * screenshot - the device half: listens on the console for a trigger, then
+ * prints the live framebuffer as base64 between marker lines that
+ * tools/screenshot.py reads back out of the stream idf_monitor already uses.
  *
- * ALSO OWNS RUNSUITE, A SECOND, UNRELATED COMMAND
+ * Also owns RUNSUITE (CONFIG_LAUNCHER_SELFTEST), which runs one named suite
+ * instead of the whole boot-time run. It lives in this file because the
+ * console has room for exactly one blocking reader - a second task reading
+ * the same stream would race it for every byte.
  *
- * CONFIG_LAUNCHER_SELFTEST only: "RUNSUITE <name>" runs exactly one
- * registered suite (suites_run_one() in test/suites.c) instead of
- * suites_run_all()'s everything-at-boot run - the targeted way to see one
- * suite's own report (a perf suite's especially) without waiting through
- * whatever else registered ahead of it alphabetically first. It lives
- * here, in a file otherwise about screenshots, rather than in its own
- * listener, because the console can only have one blocking reader:
- * usb_serial_jtag_vfs_use_driver() below hands this task exclusive,
- * interrupt-driven ownership of stdin, and a second task calling fgetc()
- * on the same stream would race it for every incoming byte. One line
- * listener, two commands - not a generic, registrable dispatch table,
- * since two is what this project actually has today (see CLAUDE.md on
- * designing for hypothetical future requirements).
+ * BOTH COMMANDS ONLY SET A FLAG. main.c's loop does the work, at a frame
+ * boundary. There is no lock on the framebuffer, so a capture - or worse, a
+ * suite that draws and presents on its own - running on this task while the
+ * render loop runs on the main one is two tasks driving one panel.
  *
- * Like SCREENSHOT below, RUNSUITE only ever sets a flag here - see "WHY
- * THE RESULT COMES BACK THROUGH A FLAG" further down, which now covers
- * both commands. Calling suites_run_one() directly from this task once
- * genuinely shipped, and genuinely raced the shell's own frame loop for
- * gfx_present() and the framebuffer's own dirty-tracking state (two
- * tasks, no lock, one panel) - caught by test_partial_clear_erases_
- * only_previous_drawn_region in suite_gfx.c intermittently failing when
- * run through RUNSUITE specifically, never when run as part of the
- * normal boot-time suites_run_all() sequence, which is what pointed at
- * the actual cause.
- *
- * WHY USB-SERIAL-JTAG, NOT UART
- *
- * This board's one USB-C port is the ESP32-C6's own native USB-Serial/JTAG
- * peripheral, not an external bridge chip wired to UART0 - see
- * sdkconfig.defaults' own comment for the full story (Waveshare's docs say
- * so directly, and CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y there is what makes
- * it the primary console channel - the one that is actually read as well as
- * written). Everything below targets that peripheral for exactly the same
- * reason the first version of this file targeted UART0: match whatever the
- * console's own primary channel is, so this listener sees the same bytes
- * idf_monitor does.
- *
- * WHY A TASK, NOT AN ISR OR A POLL IN main.c's LOOP
- *
- * The default console reader (usb_serial_jtag_vfs.c's non-blocking path) is
- * non-blocking by construction - it returns "no data" instantly rather than
- * waiting, which is fine for code that also has other work to do but would
- * mean main.c's render loop busy-polling every frame just to ask "did
- * anyone type SCREENSHOT yet", 40-plus thousand times a minute at this
- * shell's frame rate. screenshot_start() below switches the console fd onto
- * the driver's interrupt-driven reader instead (usb_serial_jtag_vfs_use_driver
- * - the same call ESP-IDF's own esp_console REPL makes internally for this
- * peripheral, for the exact same reason), which is what makes a genuinely
- * blocking read possible, and gives that blocking read its own small task
- * rather than stalling anything else.
- *
- * WHY THE RESULT COMES BACK THROUGH A FLAG, NOT A DIRECT CALL
- *
- * screenshot_task() below could call screenshot_dump() itself the instant
- * the trigger line arrives, but the framebuffer it would be reading is
- * whatever the render loop happens to have half-drawn at that exact
- * instant - there is no lock between the two tasks. Going through
- * screenshot_take_request()/main.c's loop instead means the capture always
- * happens at a clean frame boundary, after step_app() has finished drawing
- * and before gfx_present() sends it - the same reasoning main.c already
- * applies to display_update() (see its own comment on why that runs ahead
- * of step_app() rather than whenever the IMU happens to be read).
- *
- * RUNSUITE needs this even more than SCREENSHOT does. A suite is not a
- * one-shot read of whatever is already on screen - it draws, clears and
- * presents on its own, repeatedly, for however long it runs. Calling
- * suites_run_one() from this task would have it doing exactly that
- * WHILE the shell's own loop is still running step_app()/gfx_present()
- * every frame on the main task, unsynchronised - two tasks racing to
- * write the one framebuffer and drive the one panel handle. Going
- * through screenshot_take_runsuite_request()/main.c's loop instead
- * means the suite runs on the main task itself, with the shell's own
- * drawing for that iteration deferred until it returns - the same
- * "exactly one frame loop, one framebuffer" invariant this project
- * states everywhere else, just not previously enforced for a command
- * that runs one of its own suites.
- *===========================================================================*/
+ * USB-Serial/JTAG, not UART: this board's USB-C is the S3's own peripheral
+ * and the console's primary channel, so this listener sees the bytes
+ * idf_monitor does. Its own task, because screenshot_start() switches the fd
+ * to the driver's interrupt-driven reader, which is what lets a read block
+ * instead of main.c polling every frame.
+ */
 #include "util/screenshot.h"
+
+#include "build_id_generated.h"
+#include "util/build_id.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -100,13 +38,7 @@
 #include "gfx/gfx.h"
 #include "util/device_state.h"
 
-static const char *TAG = "screenshot";
-
-#define SCREENSHOT_TRIGGER "SCREENSHOT"
-
-#if CONFIG_LAUNCHER_SELFTEST
-#define RUNSUITE_TRIGGER "RUNSUITE "
-#endif
+static const char* TAG = "screenshot";
 
 static volatile bool s_request_pending;
 
@@ -132,8 +64,8 @@ static volatile bool s_runsuite_pending;
 static char s_runsuite_name[SCREENSHOT_LINE_MAX];
 #endif
 
-static void screenshot_task(void *arg)
-{
+static void
+screenshot_task(void* arg) {
     (void)arg;
     char line[SCREENSHOT_LINE_MAX];
     int len = 0;
@@ -158,18 +90,21 @@ static void screenshot_task(void *arg)
         if (c == '\n' || c == '\r') {
             if (len > 0) {
                 line[len] = '\0';
-                if (strcmp(line, SCREENSHOT_TRIGGER) == 0) {
+                const build_console_command_t command = build_console_command_parse(line);
+                if (command == BUILD_CONSOLE_SCREENSHOT) {
                     ESP_LOGI(TAG, "trigger received");
                     s_request_pending = true;
 #if CONFIG_LAUNCHER_SELFTEST
-                } else if (strncmp(line, RUNSUITE_TRIGGER,
-                                   strlen(RUNSUITE_TRIGGER)) == 0) {
-                    const char *name = line + strlen(RUNSUITE_TRIGGER);
+                } else if (command == BUILD_CONSOLE_RUNSUITE) {
+                    const char* name = line + sizeof "RUNSUITE " - 1;
                     ESP_LOGI(TAG, "RUNSUITE %s", name);
                     strncpy(s_runsuite_name, name, sizeof(s_runsuite_name) - 1);
                     s_runsuite_name[sizeof(s_runsuite_name) - 1] = '\0';
                     s_runsuite_pending = true;
 #endif
+                } else if (command == BUILD_CONSOLE_BUILD_ID) {
+                    printf("BUILD_ID=%s\n", BUILD_ID);
+                    fflush(stdout);
                 } else {
                     ESP_LOGI(TAG, "ignoring line: '%s'", line);
                 }
@@ -186,8 +121,8 @@ static void screenshot_task(void *arg)
     }
 }
 
-void screenshot_start(void)
-{
+void
+screenshot_start(void) {
     usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
     const esp_err_t err = usb_serial_jtag_driver_install(&cfg);
     if (err != ESP_OK) {
@@ -197,8 +132,7 @@ void screenshot_start(void)
          * leaving the console on its default non-blocking reader, which
          * looks from the host exactly like a request that vanished into
          * nothing rather than a boot-time failure. */
-        ESP_LOGE(TAG, "usb_serial_jtag_driver_install failed: %s - listener not started",
-                 esp_err_to_name(err));
+        ESP_LOGE(TAG, "usb_serial_jtag_driver_install failed: %s - listener not started", esp_err_to_name(err));
         return;
     }
 
@@ -219,23 +153,21 @@ void screenshot_start(void)
      * all its time blocked waiting on bytes nobody is usually sending;
      * when a line does arrive there is nothing time-critical about
      * noticing it a frame or two later. */
-    const BaseType_t created =
-        xTaskCreate(screenshot_task, "screenshot", 3072, NULL, 4, NULL);
+    const BaseType_t created = xTaskCreate(screenshot_task, "screenshot", 3072, NULL, 4, NULL);
     if (created != pdPASS) {
         ESP_LOGE(TAG, "xTaskCreate failed (out of memory?) - listener not started");
         return;
     }
 
 #if CONFIG_LAUNCHER_SELFTEST
-    ESP_LOGI(TAG, "listening for '%s' and '%s<name>' on the console",
-             SCREENSHOT_TRIGGER, RUNSUITE_TRIGGER);
+    ESP_LOGI(TAG, "listening for 'SCREENSHOT', 'BUILDID', and 'RUNSUITE <name>' on the console");
 #else
-    ESP_LOGI(TAG, "listening for '%s' on the console", SCREENSHOT_TRIGGER);
+    ESP_LOGI(TAG, "listening for 'SCREENSHOT' and 'BUILDID' on the console");
 #endif
 }
 
-bool screenshot_take_request(void)
-{
+bool
+screenshot_take_request(void) {
     if (!s_request_pending) {
         return false;
     }
@@ -244,8 +176,8 @@ bool screenshot_take_request(void)
 }
 
 #if CONFIG_LAUNCHER_SELFTEST
-bool screenshot_take_runsuite_request(char *name_out, size_t name_out_size)
-{
+bool
+screenshot_take_runsuite_request(char* name_out, size_t name_out_size) {
     if (!s_runsuite_pending) {
         return false;
     }
@@ -256,24 +188,48 @@ bool screenshot_take_runsuite_request(char *name_out, size_t name_out_size)
 }
 #endif
 
-/* Not stack-local: screenshot_dump() runs on main.c's shell task
- * (3584-byte stack); a 1104-byte row plus 1472-byte base64 would be
- * most of that budget on top of printf/ESP_LOG's own use. Not
- * permanently static either: malloc'd here and freed before returning,
- * so these 2,577 bytes are reserved only for the duration of a capture
- * - static here once competed directly with app_sand.c's grid for the
- * single largest contiguous heap block it needs, the exact failure a
- * --dev build hit opening the sand app. */
-static uint8_t *row;
-static char    *row_b64;   /* +1: NUL, for printf("%s") */
+/* Not stack-local: screenshot_dump() runs on the shell task (3584-byte
+ * stack), and a 1104-byte row plus 1472-byte base64 would be most of that
+ * budget on top of printf/ESP_LOG's own use. Not permanently static either -
+ * held only for the duration of a capture, because static here competes for
+ * the largest contiguous heap block an app may need at runtime. */
+static uint8_t* row;
+static char* row_b64; /* +1: NUL, for printf("%s") */
 
 /* How much room an app's diagnostic_json() fragment is given - see
  * app_t's own comment in app.h for what it may contain. Generous
- * relative to what either existing implementation (app_sand.c's)
- * actually uses, on the same reasoning DEVICE_STATE_JSON_MAX budgets
- * headroom rather than a tight fit - this is a diagnostic path, not
- * one worth re-deriving an exact bound for. */
+ * relative to what any existing implementation actually uses, on the
+ * same reasoning DEVICE_STATE_JSON_MAX budgets headroom rather than a
+ * tight fit - this is a diagnostic path, not one worth re-deriving an
+ * exact bound for. */
 #define APP_DIAGNOSTIC_JSON_MAX 256
+
+/* Protocol lines bypass stdio. The console VFS drops every byte once the
+ * host has not drained the TX ring for 50 ms (TX_FLUSH_TIMEOUT_US in
+ * usb_serial_jtag_vfs.c) - right for logs, fatal for a 660 KB capture,
+ * which lost rows mid-stream on the S3. The driver call below waits
+ * instead. */
+/* No single write may exceed the driver's TX ring (tx_buffer_size in
+ * screenshot_start()): a byte ringbuffer refuses a larger item outright,
+ * however long it is told to wait. */
+#define EMIT_CHUNK_BYTES        128
+
+static void
+emit_bytes(const char* bytes, size_t len) {
+    while (len > 0) {
+        const size_t n = len < EMIT_CHUNK_BYTES ? len : EMIT_CHUNK_BYTES;
+        usb_serial_jtag_write_bytes(bytes, n, portMAX_DELAY);
+        bytes += n;
+        len -= n;
+    }
+}
+
+static void
+emit_line(const char* prefix, const char* payload) {
+    emit_bytes(prefix, strlen(prefix));
+    emit_bytes(payload, strlen(payload));
+    emit_bytes("\n", 1);
+}
 
 /* Prints one SCREENSHOT_STATE: line of plain-text JSON (no base64 -
  * it's already printable ASCII, small enough that base64's reason to
@@ -283,8 +239,8 @@ static char    *row_b64;   /* +1: NUL, for printf("%s") */
  * device_state_format_json() produces a complete object - by
  * overwriting its closing `}` with `,"app":<fragment>}` rather than
  * teaching device_state.h about apps. */
-static void dump_state(const input_t *input, const app_t *current_app)
-{
+static void
+dump_state(const input_t* input, const app_t* current_app) {
     device_state_t state;
     device_state_read(&state);
 
@@ -305,20 +261,25 @@ static void dump_state(const input_t *input, const app_t *current_app)
          * rejects outright, losing the WHOLE line (device state
          * included, not just the app part) rather than only the
          * addition. */
-        if (len > 0 && json[len - 1] == '}' &&
-            len - 1 + strlen(",\"app\":") + strlen(app_json) + 1
-                < sizeof json) {
-            snprintf(json + len - 1, sizeof(json) - (len - 1),
-                     ",\"app\":%s}", app_json);
+        if (len > 0 && json[len - 1] == '}' && len - 1 + strlen(",\"app\":") + strlen(app_json) + 1 < sizeof json) {
+            snprintf(json + len - 1, sizeof(json) - (len - 1), ",\"app\":%s}", app_json);
         }
     }
 
-    printf("SCREENSHOT_STATE:%s\n", json);
+    emit_line("SCREENSHOT_STATE:", json);
 }
 
-void screenshot_dump(const input_t *input, const app_t *current_app)
-{
-    const int32_t  stride      = screenshot_bmp_row_stride(GFX_WIDTH);
+void
+screenshot_dump(const input_t* input, const app_t* current_app) {
+    /* Band mode (gfx.h) has no framebuffer to read - gfx_framebuffer()
+     * would hand back the internal-SRAM band ring's own NULL. Refuse with
+     * a reason on the console rather than crash or stream garbage. */
+    if (gfx_mode_current()->layout != GFX_LAYOUT_FULL_FB) {
+        ESP_LOGW(TAG, "screenshot skipped - the running app has no framebuffer (band mode)");
+        return;
+    }
+
+    const int32_t stride = screenshot_bmp_row_stride(GFX_WIDTH);
     const uint32_t pixel_bytes = (uint32_t)(stride * GFX_HEIGHT);
     const uint32_t total_bytes = SCREENSHOT_BMP_HEADER_SIZE + pixel_bytes;
 
@@ -326,14 +287,15 @@ void screenshot_dump(const input_t *input, const app_t *current_app)
      * below: row/row_b64 are pointers now (see their own declaration
      * comment), so sizeof on them would give the pointer's own size, not
      * the buffer's. */
-    const size_t row_bytes     = (size_t)GFX_WIDTH * 3;
+    const size_t row_bytes = (size_t)GFX_WIDTH * 3;
     const size_t row_b64_bytes = (size_t)GFX_WIDTH * 4 + 1;
 
     row = malloc(row_bytes);
     row_b64 = malloc(row_b64_bytes);
     if (row == NULL || row_b64 == NULL) {
-        ESP_LOGE(TAG, "could not allocate %u+%u-byte row buffers - "
-                      "screenshot skipped; largest free block is %u",
+        ESP_LOGE(TAG,
+                 "could not allocate %u+%u-byte row buffers - "
+                 "screenshot skipped; largest free block is %u",
                  (unsigned)row_bytes, (unsigned)row_b64_bytes,
                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
         free(row);
@@ -345,14 +307,17 @@ void screenshot_dump(const input_t *input, const app_t *current_app)
 
     ESP_LOGI(TAG, "streaming %lu bytes to the console", (unsigned long)total_bytes);
 
-    /* The marker and data lines are plain printf(), not ESP_LOGx: a log
+    /* The marker and data lines go out through emit_line(), not ESP_LOGx: a log
      * line carries a "I (12345) TAG: " prefix (see boot/post.c's
      * report() for an ordinary use of that prefix) that
      * tools/screenshot.py would otherwise have to strip back off before
      * the fixed-prefix match it does on every line - simpler for both
      * ends to keep the protocol's own lines free of it from the
      * start. */
-    printf("SCREENSHOT_BEGIN size=%lu\n", (unsigned long)total_bytes);
+    char begin[32];
+    snprintf(begin, sizeof begin, "SCREENSHOT_BEGIN size=%lu", (unsigned long)total_bytes);
+    fflush(stdout); /* buffered log output must not land inside the stream */
+    emit_line(begin, "");
 
     uint8_t header[SCREENSHOT_BMP_HEADER_SIZE];
     screenshot_bmp_header(header, GFX_WIDTH, GFX_HEIGHT);
@@ -362,14 +327,14 @@ void screenshot_dump(const input_t *input, const app_t *current_app)
     char header_b64[72 + 1];
     screenshot_base64_encode(header, sizeof header, header_b64);
     header_b64[sizeof(header_b64) - 1] = '\0';
-    printf("SCREENSHOT_DATA:%s\n", header_b64);
+    emit_line("SCREENSHOT_DATA:", header_b64);
 
-    const gfx_color_t *fb = gfx_framebuffer();
+    const gfx_color_t* fb = gfx_framebuffer();
 
     /* Bottom-to-top, matching the bottom-up rows screenshot_bmp_header()
      * declares (positive biHeight) - see that function's own comment. */
     for (int32_t y = GFX_HEIGHT - 1; y >= 0; y--) {
-        const gfx_color_t *src_row = fb + (size_t)y * GFX_WIDTH;
+        const gfx_color_t* src_row = fb + (size_t)y * GFX_WIDTH;
         for (int32_t x = 0; x < GFX_WIDTH; x++) {
             /* gfx_color_rgb888() is the panel-format-to-0xRRGGBB conversion
              * gfx_color.h already carries and tests (suite_gfx_color.c) -
@@ -382,13 +347,12 @@ void screenshot_dump(const input_t *input, const app_t *current_app)
         }
         screenshot_base64_encode(row, row_bytes, row_b64);
         row_b64[row_b64_bytes - 1] = '\0';
-        printf("SCREENSHOT_DATA:%s\n", row_b64);
+        emit_line("SCREENSHOT_DATA:", row_b64);
     }
 
     dump_state(input, current_app);
 
-    printf("SCREENSHOT_END\n");
-    fflush(stdout);
+    emit_line("SCREENSHOT_END", "");
 
     free(row);
     free(row_b64);

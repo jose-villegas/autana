@@ -1,15 +1,17 @@
 # Optimization Playbook
 
-Part of the platform notes for the Waveshare ESP32-C6-Touch-AMOLED-1.8 — see
+Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 — see
 [`README.md`](README.md) for the full set.
 
 Everything else in this folder is specific to this board. This file is not —
 it is the general-purpose techniques that came out of optimizing on it,
 written so they travel to a different chip, project, or person. Each one is
-grounded in a real measurement, mostly from
-[`../sand/Performance-Tuning-Attempts.md`](../sand/Performance-Tuning-Attempts.md)
-and [Display-and-Rendering.md](Display-and-Rendering.md), but the lesson
-itself is not about falling sand or this particular display.
+grounded in a real measurement, mostly from this project's sand-simulation
+performance work and [Display-and-Rendering.md](Display-and-Rendering.md),
+but the lesson itself is not about falling sand or this particular display.
+Most of the specific millisecond/fps figures below predate this project's
+move to the ESP32-S3 and have not been re-measured on this board; read them
+as illustrations of the technique's *shape*, not as current numbers.
 
 The one rule everything below serves: **a plausible-sounding explanation for
 where the time goes is not the same as a measured one.**
@@ -37,15 +39,52 @@ than a structural fix does, the cost was structural.**
 
 ## Know what kind of memory you actually have
 
-"Optimize for cache locality" assumes a data cache. This chip has none —
-SRAM is direct-access, so the only data-side lever is touching fewer bytes.
-It does have a real 32 KB **instruction** cache for flash-resident code and
-`const` data: two builds that never touched the hot function measured 3.2 ms
-and 3.9 ms on the same benchmark, purely from unrelated code shifting flash
-layout. Treat differences under ~20% as noise unless they reproduce. Check
-which memory a chip actually has before applying "typical CPU" wisdom — a
-datasheet-advertised secondary region here turned out to be a *slower* one
-meant for deep-sleep wake stubs, not a performance tier.
+"Optimize for cache locality" assumes a data cache, and it is worth checking
+rather than assuming either way: this chip has a real one — 32 KB, 32-byte
+line, 8-way — and a separate 16 KB instruction cache of the same line size
+and associativity for flash-resident code and `const` data. Unrelated code
+shifting flash layout can still move a hot function across cache-line or
+even instruction-cache-set boundaries and change its measured cost with
+nothing about its own bytes having changed; treat differences under ~20% as
+noise unless they reproduce. This project has previously measured that kind
+of flash-layout noise at a low-single-digit-millisecond scale on a
+different chip, but that specific figure has not been re-captured on this
+board and should not be assumed to transfer. Check which memory tiers a
+chip actually has and their real sizes before applying "typical CPU" wisdom
+— a datasheet-advertised secondary region can turn out to be a *slower* one
+meant for a narrow purpose (deep-sleep wake stubs, say), not a performance
+tier, on some chips.
+
+---
+
+## The layout lottery
+
+Flash layout is not a smooth, continuous source of noise — it is
+quantised. A hot function's own compiled bytes can stay byte-identical
+build to build while its *address* moves, pushed across cache-line
+boundaries by unrelated code earlier in the same file growing or
+shrinking. On one target this produced a small number of distinct,
+repeatable value-pairs for a pair of control benchmarks — never a
+continuum — including two different binaries landing the identical pair
+to the microsecond. Reading which pair a control landed in is a sharper
+test than asking whether a delta cleared some percentage threshold.
+
+The fix, where it is worth the cost: pin the hot function's start with an
+alignment attribute — but confirm the object actually links (an
+over-large alignment can collide with a linker script's own section
+start) and confirm the pin is bound to the function and not to some
+unrelated symbol declared between the attribute and its target, which is
+invisible in a source diff and only shows up in `objdump`'s own section
+table. A pin is not free: re-pinning at a coarser line size can cost more
+than it recovers once the surrounding hot path has grown large enough
+that where it starts no longer decides most of its own traffic.
+
+Not every hot path draws this ticket. A separate, bus-bound call boundary
+measured across five different padding-induced addresses moved by at
+most a point and a fraction — fixed per-transfer cost is far less
+sensitive to where its own code starts than a tight, branch-heavy loop
+is. Measure before assuming a function is on the sensitive side of that
+line.
 
 ---
 
@@ -68,10 +107,10 @@ cost is the logic and not the register traffic.
 Fixing one un-inlined boundary can relocate the problem: the now-larger
 caller may itself stop being inlined at *its* own call sites. This does not
 compound forever for free — eventually a function gets folded into every one
-of its call sites and the hot loop stops fitting the 32 KB cache, and the
-technique that had been winning at every prior level makes *everything*
-worse. Measure past the point a technique keeps winning, not just up to the
-first win.
+of its call sites and the hot loop stops fitting the instruction cache
+(16 KB on this chip), and the technique that had been winning at every prior
+level makes *everything* worse. Measure past the point a technique keeps
+winning, not just up to the first win.
 
 A readability refactor is an inlining change too — an early return respelled
 as `if`/`else`, semantics-identical and checksum-identical, cost 14% of a
@@ -198,16 +237,15 @@ run says whether the largest contiguous block a device-only allocation
 needs still exists after the addition. Diff `.bss`/`.data` size for
 **every** build variant, not just release; trust
 `heap_caps_get_largest_free_block()` over "total free heap." This class is
-now caught mechanically: `launcher/tools/check_static_ram.py` predicts the
-largest contiguous block from every build's map file and fails `idf.py
-build` if the framebuffer or a real-size grid would no longer fit.
+must be caught by inspecting the map file's largest contiguous block before a
+firmware image is accepted.
 
 When checking memory live rather than at link time, compare
 `heap_caps_get_largest_free_block(MALLOC_CAP_DMA)` only against
 `heap_caps_get_free_size(MALLOC_CAP_DMA)`, never against
 `esp_get_free_heap_size()` — that sums a second, physically separate DMA
 region no large allocation can ever use, manufacturing a "fragmentation"
-gap that was actually 12 bytes (beads esp32c6-8h2).
+gap that was actually 12 bytes.
 
 ---
 
@@ -223,6 +261,35 @@ completely and barely touched the second. A commit a host bisect clears is
 not necessarily innocent on the target, which may be paying for a different
 line in the same window — confirm the attributed commit against the target
 before trusting it.
+
+A stronger version of the same trap: a change that stops the CPU from
+*executing* work at all — not just reshapes it — can read as an exact
+zero on a host with instruction-level parallelism and still cost several
+percent on an in-order target that spends cycles nearly linearly with
+instruction count. Measured directly with a probe built for the question:
+two builds differing only in whether a block of per-cell work executed at
+all, gated on a `volatile` so both compiled identically apart from one
+data initialiser, showed the host understating the executed cost by
+roughly 2-6x depending on the surrounding workload — a sign error's
+neighbour, not just a magnitude one. Don't retire a candidate that
+demonstrably removes executed work on the strength of a host measurement
+reading zero; that reading means the host's own execution model hides
+the cost, not that the work was free.
+
+---
+
+## A cycle count is bound to its ISA, not just its clock
+
+A disassembly-derived cycle count is read off one instruction set's codegen
+shapes. This project's own move to the ESP32-S3 carried a full set of
+cycle counts forward from the RISC-V board it replaced, and every one <!-- doc-vocabulary: ignore --> <!-- The historical ISA identifies the source of invalid cycle counts. -->
+stopped applying — not because the optimization was wrong, but because
+Xtensa's PC-relative literal loads, shift-add addressing and windowed
+calls are different codegen entirely from a flat RISC-V ABI. The <!-- doc-vocabulary: ignore --> <!-- The historical ABI is the comparison that invalidates the count. -->
+*mechanism* an optimization rests on ("skip the read entirely") can still
+hold across the swap; the *cycle number* that backed it cannot, and has to
+be re-derived from a fresh disassembly on the new target before it is
+quoted again.
 
 ---
 
@@ -285,15 +352,17 @@ axis.
 
 ## A 64-bit divide on a 32-bit core is a library call
 
-RV32IM has a hardware divider for 32-bit operands only; an `int64_t`
+This chip's ALU has a hardware divider for 32-bit operands only; an `int64_t`
 division compiles to a `__divdi3` software call — hundreds of cycles,
 completely invisible at the source line. The boot animation's curve loop ran
 a widening divide helper (`fx_div_round`) twice per spline span, roughly
 four thousand soft-divisions per frame, for operands that provably fit 32
 bits (`i * 4096` tops out near 8 million). One 32-bit divide per span,
 carried incrementally across the loop, produced the same rounding and the
-same values — part of the bundle that took the curve phase from 26.5 ms to
-17.9 ms at the worst checkpoint (`boot_anim.c`, 2026-09-04). The lesson
+same values — part of a bundle measured, on the board this project used
+before its move to the ESP32-S3, to take the curve phase from 26.5 ms to
+17.9 ms at the worst checkpoint (`boot_anim.c`, 2026-09-04); that specific
+timing has not been re-captured on this board. The lesson
 travels as a grep: look for `int64_t` division or modulo — including inside
 innocuous-looking fixed-point helpers — in any hot loop on a 32-bit target,
 then prove the operand range and stay narrow.
@@ -357,10 +426,6 @@ where the three crossfade dips had sat at 12–14 (2026-09-04, measured via
 
 ## Related
 
-- [`../sand/Performance-Tuning-Attempts.md`](../sand/Performance-Tuning-Attempts.md)
-  — the campaign several of the techniques above were extracted from.
-- [`../sand/Tuning-At-a-Glance.md`](../sand/Tuning-At-a-Glance.md) — the
-  visual map of that campaign.
 - [Display-and-Rendering.md](Display-and-Rendering.md) — the dirty-region
   tracking system, another case of the skip-structure lesson above.
 - [Board-and-Memory.md](Board-and-Memory.md) — the memory budget these

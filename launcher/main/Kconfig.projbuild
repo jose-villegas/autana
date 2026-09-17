@@ -76,33 +76,110 @@ menu "Launcher"
             sdkconfig.defaults.diag_autorun on top of sdkconfig.defaults.diag
             for exactly that reason.
 
-    config LAUNCHER_SAND_PASS_GATES
-        bool "Sand: per-pass volatile gates for sand_step()"
-        default n
-        depends on LAUNCHER_DEVELOPMENT
+    choice LAUNCHER_SELFTEST_SCOPE
+        prompt "Which suites the self-test image carries"
+        depends on LAUNCHER_SELFTEST
+        default LAUNCHER_SELFTEST_SCOPE_FULL
         help
-            Compiles in four volatile bools (sand_priv.h) that let a probe
-            disable one of sand_step()'s four passes - main sweep,
-            cross-flow, gas, reactions - at a time without a rebuild.
-            Default true at runtime (every pass on), so behaviour is
-            untouched until a probe flips one off.
+            LAUNCHER_SELFTEST above compiles the suites in; this decides
+            WHICH of them get compiled at all. Scoped around what a run
+            READS rather than around folders - see the two entries below.
 
-            This buys a device pass decomposition - which pass owns a
-            scene's cost - as one binary, five configurations (all passes
-            on, then each disabled in turn), and one capture, with no
-            layout difference between configurations to confound the
-            comparison. Four separately-built stub-each-pass images would
-            each draw their own flash-layout ticket instead.
+            Full is the default and must stay that way: a scope is opt-in
+            precisely so that coverage can never shrink by accident.
 
-            Deliberately NOT paired with the sand work counters, which live
-            in tools/perf_probe/ and are injected into a scratch build by
-            compare_counters.py rather than compiled from this tree. The
-            gates measure TIME on device; the counters cost sand_step_liquids
-            +39 instructions and +120 bytes, measured against the real
-            toolchain, so building both together would perturb exactly the
-            timings the gates exist to produce. Off by default because
-            build.diag is what every frame-budget capture is
-            taken on, and this campaign chases effects too small to risk
-            shifting by default.
+        config LAUNCHER_SELFTEST_SCOPE_FULL
+            bool "Full - every suite"
+            help
+                Every suite in the tree, shell-owned and app-owned alike.
+                This is what run_device_tests.sh and report_test_results.sh
+                want: a gate is only a gate if it runs everything.
+
+        config LAUNCHER_SELFTEST_SCOPE_PERF
+            bool "Perf - sand's frame-budget suite and the scenes it measures"
+            help
+                Only what a sand performance capture reads:
+                suite_sand_perf.c plus the scene builders it calls. Nothing
+                else is compiled, so their .bss and .text are gone from the
+                image - which is what buys back the static-RAM headroom a
+                capture needs.
+
+                It is also a build closer to release layout in the 32 KB
+                instruction cache. That is a better instrument on a
+                fetch-bound workload, but it means absolute numbers from a
+                perf-scoped capture compare only within that capture or
+                other perf-scoped captures, never against an unscoped one.
+
+                NOT a test gate: it drops behaviour coverage on purpose.
+                Never take a merge decision from a perf-scoped run.
+
+    endchoice
+
+    config LAUNCHER_GFX_QSPI_80MHZ
+        bool "Drive the panel's QSPI bus at 80 MHz until a saved choice says otherwise"
+        default y
+        help
+            Halves the time a full frame spends on the bus: 8.2 ms at 80 MHz
+            against 16.5 at 40, and a measured full present of 17.6 ms says
+            there is no software slack left at the lower clock. The display
+            transfer is the largest single cost in a frame, so this is the
+            biggest lever on the board.
+
+            There is no in-between. The 80 MHz source's integer divider
+            (n >= 2 floor) resolves to exactly 40 or 80, so this is a bool
+            rather than a frequency.
+
+            Needs every strip sent from internal DMA RAM, never read in place
+            from PSRAM: DMA from PSRAM shares the PSRAM bus's bandwidth, and at
+            80 MHz the panel receives dropped data (gfx.c, strip_bounce).
+
+            80 MHz is outside the panel's own rating: the CO5300 datasheet
+            (6.4) gives a 50 MHz write maximum, 6.5 ns clock high/low (80
+            gives 6.25) and 10 ns CS setup, and every panel pin reaches it
+            through the GPIO matrix. A renderer that redraws only dirty
+            regions shows the result as stray pixels or thin lines that
+            stay until that region is sent again with a different window
+            layout; a renderer redrawing whole frames hides it within one
+            frame. 40 MHz is clean. Even-edged windows are still required
+            at either clock, but do not make 80 clean.
+
+            The dirty-band thresholds in gfx.h were fitted to 40 MHz timings
+            and are wrong until re-measured - some of the win leaks back
+            otherwise.
+
+    choice LAUNCHER_GFX_BAND_HEIGHT
+        prompt "Band ring height (GFX_LAYOUT_BANDS)"
+        default LAUNCHER_GFX_BAND_HEIGHT_32
+        help
+            Rows per band buffer for a full-redraw renderer's internal-SRAM
+            band ring (gfx.h) - a divisor of 448. 32 is the default absent
+            a device sweep saying otherwise; tools/sweeps/band_height_sweep.sh
+            builds one image per choice for that sweep.
+
+        config LAUNCHER_GFX_BAND_HEIGHT_16
+            bool "16 rows"
+
+        config LAUNCHER_GFX_BAND_HEIGHT_32
+            bool "32 rows"
+
+        config LAUNCHER_GFX_BAND_HEIGHT_64
+            bool "64 rows"
+
+    endchoice
+
+    config LAUNCHER_GFX_QSPI_STRONG_PADS
+        bool "Drive the QSPI pads at 40 mA instead of the 20 mA default"
+        default n
+        help
+            Raises drive capability on the four data lines and the clock,
+            sharpening their edges. Applied after spi_bus_initialize(), which
+            is what configures those pads - set before it and the driver
+            overwrites it.
+
+            Only meaningful alongside the 80 MHz option above: at 40 MHz the
+            link has margin to spare and this changes nothing measurable. At
+            80 it does not clear the partial-redraw corruption described
+            under that option: the clock is out of the panel's spec, which
+            sharper edges cannot fix.
 
 endmenu

@@ -138,10 +138,10 @@ itself.
 ## Non-goals
 
 Nothing here is being built now, including the `post.c` fix, which is
-tracked separately. This is a placeholder for a future session.
+tracked separately. This is a placeholder for future work.
 
 ## Related
 
-- [Testing-Guide.md](Testing-Guide.md) — "Development-only instrumentation
+- [Testing-Guide.md](../Testing-Guide.md) — "Development-only instrumentation
   is its own flag, not SELFTEST": the rule this plan complements rather than
   replaces.

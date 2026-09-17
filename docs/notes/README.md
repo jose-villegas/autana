@@ -1,6 +1,6 @@
 # Platform Notes
 
-Working notes for the Waveshare ESP32-C6-Touch-AMOLED-1.8. Everything here was
+Working notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8. Everything here was
 verified on the actual board or read out of the actual source — nothing is
 copied from a spec sheet unless it is marked as such. Numbers come from boot
 logs and `esp_timer` measurements taken in this repo.
@@ -12,12 +12,13 @@ the falling-sand app's own discovery narrative, moved out to
 [`../sand/`](../sand/) once that folder existed to hold it properly:
 
 - **[Board-and-Memory.md](Board-and-Memory.md)** — the board's hardware
-  inventory, the memory budget with no PSRAM, and the SPI2/SD-card
-  time-multiplexing story.
+  inventory, the memory budget built around the framebuffer living in
+  PSRAM, and why the SD card and the display no longer contend for a bus.
 - **[Display-and-Rendering.md](Display-and-Rendering.md)** — owning the
-  panel directly, the QSPI clock history (including why 80 MHz is not
-  usable and why an intermediate clock does not exist), and the
-  dirty-region tracking that partial screen updates are built on.
+  panel directly, the QSPI clock (80 MHz is outside the panel's rating and
+  corrupts partial redraws, needs the strips sent from internal RAM, and no
+  intermediate clock exists), why screenshots cannot see a panel-link fault,
+  and the dirty-region tracking that partial screen updates are built on.
 - **[Input-and-Sensors.md](Input-and-Sensors.md)** — touch, the IMU's axes
   and its accelerometer/gyroscope split, and the two buttons that are not
   the same kind of device.
@@ -36,13 +37,21 @@ the falling-sand app's own discovery narrative, moved out to
   the gfx debug overlays, and the USB-Serial-JTAG console quirk that breaks
   typing into idf_monitor if you don't know to look for it.
 
+## Not verified on a board
+
+- **[Image-Kernels-Research.md](Image-Kernels-Research.md)** — literature
+  and precedent for real-time blur and edge detection on this hardware:
+  packed-RGB565 tricks, running-sum and repeated-box blurs, luminance and
+  palette representations, ESP-DSP's SIMD, and a ranked list of first
+  experiments. Every cost in it is an estimate; nothing has run on the
+  board.
+
 ## Related
 
 - [`../Launcher-Architecture.md`](../Launcher-Architecture.md) — how the
   shell and its apps are built on top of the hardware facts here.
 - [`../sand/README.md`](../sand/README.md) — the falling-sand app: how it
-  works today (`Sand-Simulation.md`), the discovery narrative behind it
-  (`Simulation-Lessons.md`), and how to add a material
+  works today (`Sand-Simulation.md`) and how to add a material
   (`Adding-a-Material.md`). Its performance numbers and memory choices
   are shaped directly by the constraints here.
 - [`../Testing-Guide.md`](../Testing-Guide.md) — how any of this gets

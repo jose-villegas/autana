@@ -1,4 +1,4 @@
-/*=============================================================================
+/*
  * gesture - recognising touch gestures from input state.
  *
  * Pure logic, deliberately free of hardware and of any screen it might be
@@ -10,7 +10,7 @@
  * which edge the shell currently wants - that mapping is a piece of
  * shell-integration knowledge that belongs in main.c, not here. All this
  * module knows is "an edge", expressed as one of the four values below.
- *===========================================================================*/
+ */
 #pragma once
 
 #include <stdbool.h>
@@ -45,5 +45,4 @@ typedef enum {
  * Requires the finger to still be down, so it fires partway through the swipe
  * rather than on release - waiting for the lift feels sluggish. That also means
  * it must not match on stale coordinates once contact ends. */
-bool gesture_is_home_swipe(const input_t *input, gesture_edge_t edge,
-                            int screen_w, int screen_h);
+bool gesture_is_home_swipe(const input_t* input, gesture_edge_t edge, int screen_w, int screen_h);

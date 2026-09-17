@@ -13,13 +13,19 @@
 #   COM_PORT        serial port the device is on. Default: COM3.
 #   OUT.md          markdown report path. Default:
 #                   main/apps/sand/tools/results/performance_<timestamp>.md
-#   IDF_EXPORT_PS1  path to ESP-IDF's export.ps1. Default: this
-#                   project's usual install location.
+#   IDF_EXPORT_PS1  path to ESP-IDF's export.ps1. Default: the ESP-IDF
+#                   Windows installer's path.
 #   --no-restore    skip rebuilding/reflashing build.release afterward -
 #                   the device is left on build.diag. Restoring costs a
 #                   ~3-4 minute build+flash plus a second ~90s ESP-IDF
 #                   activation on EVERY run; back-to-back candidate
 #                   captures only need it once, at the end of a session.
+#   --perf-scope    build the PERF-SCOPED diag image: only suite_sand_perf
+#                   and the scene builders it calls are compiled in, so the
+#                   run is shorter and static RAM is freed up. Its numbers
+#                   are NOT comparable with an unscoped capture's - the
+#                   layout differs - so scope every capture of a round the
+#                   same way.
 #   --baseline REPORT.md
 #                   after generating the report, run compare_reports.py
 #                   --verdict against this earlier report and print its
@@ -34,12 +40,17 @@
 set -euo pipefail
 
 NO_RESTORE=0
+PERF_SCOPE=0
 BASELINE=""
 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --no-restore)
             NO_RESTORE=1
+            shift
+            ;;
+        --perf-scope)
+            PERF_SCOPE=1
             shift
             ;;
         --baseline)
@@ -160,13 +171,12 @@ extract_measured() {
     ' "$report" 2>/dev/null || true
 }
 
-# The four-command ritual from docs/sand/Perf-Round-Guide.md's "Reading a
-# capture" section, run here instead of left to the operator - it was
-# already being typed by hand five times in two days. Free heap first
-# (a short heap means every frame-budget fixture failed to allocate and
-# the whole capture measured nothing, see the guide's table), then the
-# two liquid-free controls (their value-pair tells a real regression from
-# ordinary flash-layout noise before reading anything else).
+# Run here instead of left to the operator - it was already being typed
+# by hand five times in two days. Free heap first (a short heap means
+# every frame-budget fixture failed to allocate and the whole capture
+# measured nothing), then the two liquid-free controls (their value-pair
+# tells a real regression from ordinary flash-layout noise before reading
+# anything else).
 print_summary() {
     local raw="$1" report="$2"
     echo "=== Summary ==="
@@ -186,7 +196,7 @@ print_summary() {
         if [ -n "$heap" ] && [ "$heap" -lt 50000 ]; then
             echo "WARNING: free heap ($heap bytes) is below ~50,000 - frame-budget"
             echo "fixtures likely failed to allocate their grids and measured"
-            echo "nothing this run. See docs/sand/Perf-Round-Guide.md's free-heap table."
+            echo "nothing this run."
         fi
     fi
     local ctrl v
@@ -205,6 +215,19 @@ print_summary() {
 # and measures nothing. Removing it costs one reconfigure per run, which is
 # noise beside the build, and makes the fragments authoritative again.
 rm -f "$LAUNCHER_DIR/build.diag/sdkconfig"
+
+# One string rather than a literal in the idf.py line below, so --perf-scope
+# only appends a fourth fragment and cannot reorder or drop the three the
+# capture already depends on.
+SDKCONFIG_FRAGMENTS="sdkconfig.defaults;sdkconfig.defaults.diag;sdkconfig.defaults.diag_autorun"
+SCOPE_FLAGS=""
+if [ "$PERF_SCOPE" -eq 1 ]; then
+    SDKCONFIG_FRAGMENTS="$SDKCONFIG_FRAGMENTS;sdkconfig.defaults.diag_perf"
+    SCOPE_FLAGS="CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF"
+    echo "=== PERF SCOPE: behaviour suites are NOT in this image ==="
+    echo "Numbers from this capture compare only against other perf-scoped"
+    echo "captures. Do not diff them against an unscoped report."
+fi
 
 echo "=== Building and flashing build.diag to $COM_PORT ==="
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
@@ -232,7 +255,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
     # tools/report_test_results.sh to layer this file, but not this script,
     # which a2daa87 had already moved into the sand app's own tools folder.
     # The two scripts do the same job and must be changed together.
-    idf.py -B build.diag -D SDKCONFIG_DEFAULTS=\"sdkconfig.defaults;sdkconfig.defaults.diag;sdkconfig.defaults.diag_autorun\" -D SDKCONFIG=build.diag/sdkconfig build
+    idf.py -B build.diag -D SDKCONFIG_DEFAULTS=\"$SDKCONFIG_FRAGMENTS\" -D SDKCONFIG=build.diag/sdkconfig build
     if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
     idf.py -B build.diag -p '$COM_PORT' flash
     exit \$LASTEXITCODE
@@ -241,11 +264,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
 # The generated config is the only honest witness that the fragments took:
 # check the flags the capture actually depends on, and fail loudly here
 # rather than after a 300-second timeout with an empty raw file.
-for flag in CONFIG_LAUNCHER_SELFTEST CONFIG_LAUNCHER_SELFTEST_AUTORUN; do
+for flag in CONFIG_LAUNCHER_SELFTEST CONFIG_LAUNCHER_SELFTEST_AUTORUN $SCOPE_FLAGS; do
     if ! grep -q "^${flag}=y" "$LAUNCHER_DIR/build.diag/sdkconfig"; then
         echo "ERROR: ${flag} is not set in the generated build.diag/sdkconfig -"
         echo "the flashed image would boot without running the suites, and the"
-        echo "capture below would time out with no measurements. Aborting."
+        echo "capture below would time out with no measurements. (For the"
+        echo "SCOPE flag: the image would be built unscoped, and its numbers"
+        echo "would silently not be the ones asked for.) Aborting."
         exit 1
     fi
 done

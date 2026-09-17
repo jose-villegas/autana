@@ -19,8 +19,8 @@
 # hash can still show a human which scene changed and whether the material
 # counts moved with it (they should not, for a pure reordering).
 #
-# --update rewrites the baseline and is DELIBERATELY not something the
-# optimisation loop may call. A loop that can re-record its own baseline
+# --update rewrites the baseline and is DELIBERATELY not something an
+# automated script may call. A loop that can re-record its own baseline
 # has no baseline; recording one is a human act, done when a behavioural
 # change has been reviewed and accepted.
 
@@ -62,11 +62,13 @@ OUT_BIN="$BUILD_DIR/grid_fingerprint"
 
 # The portable half of the app only. app_sand.c and sand_ui.c are the
 # hardware-facing entry points (the apps/<name>/app_*.c convention in
-# CLAUDE.md) and do not belong in a host build; palette.c and row_runs.c
+# docs/Launcher-Architecture.md) and do not belong in a host build;
+# palette.c and row_runs.c
 # are draw-path concerns the grid state does not depend on.
 # shellcheck disable=SC2086
 "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$SAND_DIR" \
     "$SCRIPT_DIR/grid_fingerprint.c" \
+    "$MAIN_DIR/util/job.c" \
     "$SAND_DIR/sand.c" \
     "$SAND_DIR/sand_impulse.c" \
     "$SAND_DIR/sand_reactions.c" \

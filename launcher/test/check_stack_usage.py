@@ -8,16 +8,15 @@ and fails if any function's frame exceeds the device profile's ceiling.
 Why this exists: two device panics in this project's history were "Stack
 protection fault" loops, both caused by a test fixture declaring a huge local
 array - a 4 KB comparison buffer, and later an impulse_t[4096] (24 KB). Both
-passed green on the host, whose stack is megabytes; the ESP32-C6's main task
+passed green on the host, whose stack is megabytes; this board's main task
 stack (CONFIG_ESP_MAIN_TASK_STACK_SIZE) is 3,584 bytes, shared with Unity,
-printf, and the call chain above the fixture. See docs/sand/
-Performance-Tuning-Attempts.md, "Recurring failure modes". The host build
+printf, and the call chain above the fixture. The host build
 cannot reproduce a stack panic - it can only predict one, statically, from
 the frame sizes GCC/Clang already compute for their own prologues. This gate
 is that prediction, run every time the host suite runs.
 
 The ceiling (DP_TEST_FRAME_CEILING_BYTES, see launcher/tools/device_profiles/
-esp32c6.sh) is 1024 bytes: comfortably below the 3,584-byte device stack
+esp32s3.sh) is 1024 bytes: comfortably below the 3,584-byte device stack
 (generous margin given that stack is shared with Unity and the interpreter
 chain above a fixture, not just the fixture's own frame), yet it catches
 both historical panics (24 KB and 4 KB) with two orders of magnitude to
@@ -34,8 +33,8 @@ than absorbed by a higher ceiling is what the worst of them turned out to
 be: an on-stack `unsigned depth[92 * 112]`, 42,848 bytes, nearly twelve
 times the whole device stack, the same species of bug as both historical
 panics. Raising the ceiling to fit what already existed would have hidden
-it; listing each frame instead surfaced it on the gate's first run (bd
-esp32c6-3h9, fixed in 4a17e07).
+it; listing each frame instead surfaced it on the gate's first run
+(fixed in 4a17e07).
 
 This gate is only worth anything if a frame that fits on x86 cannot secretly
 be larger on the target, so that was measured rather than assumed. Compiling
@@ -93,8 +92,8 @@ STACK_FRAME_TOOLCHAIN_TOLERANCE = 0.25
 # value there would licence it to grow all the way back. That has already
 # happened once: this list's worst entry was
 # test_a_submerged_obstacle_casts_a_gravity_aligned_shadow at 42,848 bytes,
-# an on-stack `unsigned depth[92 * 112]` and a genuine device risk (bd
-# esp32c6-3h9, the first thing this gate caught). It was moved to the heap
+# an on-stack `unsigned depth[92 * 112]` and a genuine device risk (the
+# first thing this gate caught). It was moved to the heap
 # in 4a17e07 and now measures 1,632.
 PRE_EXISTING_STACK_DEBT = {
     ("suite_sand_liquid_depth.c",
@@ -110,6 +109,8 @@ PRE_EXISTING_STACK_DEBT = {
     ("suite_sand_liquid_depth.c",
      "test_turning_a_settled_pool_to_landscape_does_not_flash_the_whole_body"):
         1088,
+    ("suite_sand_gunpowder.c",
+     "test_damp_gunpowder_ignites_less_readily_than_dry"): 1040,
 }
 
 
@@ -184,7 +185,7 @@ def main(argv):
                              "files (as produced by -fstack-usage)")
     parser.add_argument("--profile", default=None,
                         help="device profile name (default: $DEVICE_PROFILE "
-                             "or esp32c6)")
+                             "or esp32s3)")
     parser.add_argument("--profile-dir", default=None,
                         help="override the directory profiles are read "
                              "from (default: launcher/tools/device_profiles)")
@@ -271,8 +272,7 @@ def main(argv):
         print("why this matters: the device's main task stack is only %d "
               "bytes (CONFIG_ESP_MAIN_TASK_STACK_SIZE), shared with Unity "
               "and printf - a fixture this large panic-loops the board "
-              "instead of failing a test. See this file's header and "
-              "docs/sand/Performance-Tuning-Attempts.md." % stack_bytes)
+              "instead of failing a test. See this file's header." % stack_bytes)
         return 1
 
     largest = records[0]

@@ -3,7 +3,7 @@
 # Build the launcher's firmware and flash it to the device.
 #
 # Usage:
-#   tools/build_flash.sh [--dev|--diag] [COM_PORT] [IDF_EXPORT]
+#   tools/build_flash.sh [--dev|--diag] [--build-only] [COM_PORT] [IDF_EXPORT]
 #
 #   --dev       build the DEVELOPMENT image instead of the release one, and
 #               leave it on the board: development-only logging and
@@ -13,9 +13,11 @@
 #               leave it on the board: everything --dev gets you, plus the
 #               on-device test suites and Diagnostics' own button for
 #               running them. See below.
+#   --build-only  build and stop: no device needed, nothing flashed.
 #   COM_PORT    serial port the device is on. Default: COM3.
 #   IDF_EXPORT  path to ESP-IDF's export script - export.bat on Windows,
-#               export.sh elsewhere. Default: this project's usual install.
+#               export.sh elsewhere. Default: the ESP-IDF Windows
+#               installer's path.
 #
 # Run from anywhere (it cds to launcher/ itself); double-click from Explorer
 # if .sh is associated with Git Bash, or right-click launcher/tools/ ->
@@ -42,9 +44,8 @@
 # every suite linked in, and run at boot before the shell starts - which is
 # fine on a bench and unwanted just to watch a frame-timing log line or pull
 # a screenshot. Note the Diagnostics app carries its own side effects in
-# EITHER build: entering it re-runs POST, cycling the audio rail and
-# dropping the display off SPI2 mid-session. That is the cost of the way in
-# being compiled at all, not of the test suites.
+# EITHER build: entering it re-runs POST, cycling the audio rail - that is
+# the cost of the way in being compiled at all, not of the test suites.
 #
 # Using either flag means putting that image on the board and leaving it.
 # Nothing else here does that: test/run_device_tests.sh builds and flashes
@@ -60,12 +61,14 @@
 set -euo pipefail
 
 VARIANT=release
+BUILD_ONLY=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --dev)     VARIANT=dev; shift ;;
         -d|--diag) VARIANT=diag; shift ;;
-        -h|--help) sed -n '2,53p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --build-only) BUILD_ONLY=1; shift ;;
+        -h|--help) sed -n '2,59p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         --)        shift; break ;;
         -*)        echo "unknown option: $1" >&2; exit 2 ;;
         *)         break ;;
@@ -84,7 +87,10 @@ else
 fi
 IDF_EXPORT="${2:-$DEFAULT_EXPORT}"
 
-BUILD_DIR="build.$VARIANT"
+case "$VARIANT" in
+    release) BUILD_DIR="build" ;;
+    *)       BUILD_DIR="build.$VARIANT" ;;
+esac
 
 # So a double-clicked window (which closes the instant the script exits)
 # still shows the reason for a failure instead of vanishing on the spot.
@@ -127,6 +133,21 @@ if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/launcher.bin" ]; then
     echo "build reported success but produced no binary at" >&2
     echo "  $LAUNCHER_DIR/$BUILD_DIR/launcher.bin" >&2
     exit 1
+fi
+
+if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt" ]; then
+    echo "build reported success but produced no build id at" >&2
+    echo "  $LAUNCHER_DIR/$BUILD_DIR/build_id.txt" >&2
+    exit 1
+fi
+BUILD_ID=$(tr -d '\r\n' < "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt")
+echo "BUILD_ID=$BUILD_ID"
+
+if [ "$BUILD_ONLY" -eq 1 ]; then
+    # Reaching this line IS the result: nothing is flashed and no device
+    # has to be attached.
+    echo "=== Done - $BUILD_DIR built, nothing flashed ==="
+    exit 0
 fi
 
 echo "=== Flashing to $COM_PORT ==="

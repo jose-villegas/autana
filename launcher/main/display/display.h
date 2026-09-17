@@ -1,66 +1,19 @@
-/*=============================================================================
+/*
  * display - which way is "up", decided once for the whole shell.
  *
- * Orientation is a property of the physical device, not of any one app's
- * panel. Before this existed, app_sand.c derived a quarter turn from gravity
- * purely for its own palette (see its old gravity_quarter_turn()), so the
- * launcher and the boot menus never rotated - nobody told them to. This is
- * the one place that decision gets made, so main.c can apply it once and
- * every UI surface follows.
+ * Orientation belongs to the physical device, not to any one app's panel, so
+ * it is decided here and main.c applies it; every UI surface follows. No IMU,
+ * no gfx, no ui - the gravity vector arrives already read, which is what lets
+ * this link and run on a host.
  *
- * PURE, HOST-TESTABLE, IN THE MANNER OF gesture.c AND tilt.c
- *
- * No IMU, no gfx, no ui: the gravity vector is fed in already read (and, in
- * practice, already smoothed - see input/imu.h and apps/sand/tilt.h for what
- * that looks like) and this module only decides. Applying the decision -
- * calling ui_set_transform() - is main.c's job. Keeping "decide" and "apply"
- * apart is what lets this link and run on a host; see
- * test/suites/suite_display.c.
- *
- * HYSTERESIS IS THE POINT, NOT AN EXTRA
- *
- * The obvious implementation snaps to whichever of gx/gy has the larger
- * magnitude - that is exactly what app_sand.c's old gravity_quarter_turn()
- * did. Its boundary sits at 45 degrees from "up", and a board held near that
- * angle flips the whole UI back and forth every single frame the tilt
- * wobbles across it. Tolerable for a palette panel nobody stares at edge-on;
- * intolerable once the whole shell - launcher included - rotates with it.
- *
- * The fix is a Schmitt trigger, expressed directly in the gravity
- * components rather than in degrees (there is no trig here, and does not
- * need to be - see the arithmetic below). For whichever quarter is
- * CURRENTLY committed, split (gx, gy) into two parts:
- *
- *   aligned        the component along that quarter's own "down" direction -
- *                   positive and large while the board is still held roughly
- *                   the way this quarter expects.
- *   perpendicular   the other component - how far off to the side gravity
- *                   has drifted.
- *
- * A switch away from the current quarter fires once
- *
- *   |perpendicular| * DISPLAY_HYST_DEN  >  aligned * DISPLAY_HYST_NUM
- *
- * DISPLAY_HYST_NUM/DEN = 7/4 = 1.75, a small-integer stand-in for
- * tan(60 degrees) = 1.732 - so leaving a quarter needs the tilt to have
- * drifted about 60 degrees from where that quarter calls "down". (A negative
- * `aligned` - tilt past 90 degrees - satisfies the inequality on its own,
- * since the right side goes negative while the left stays non-negative, so a
- * hard flip clears the threshold in one step rather than getting stuck.)
- *
- * That single ratio, applied relative to whichever quarter is current, is
- * what produces the asymmetric "60 out, 30 back" the task calls for, with no
- * second constant needed: aligned and perpendicular are the same two gravity
- * axes, just relabelled after a switch, because the quarter that was
- * "perpendicular" a moment ago is now the aligned one. So returning to the
- * ORIGINAL quarter needs the tilt back within 30 degrees of it (the
- * complement of 60) even though the code runs the identical comparison
- * against the identical ratio on both sides of the switch - it is just
- * asking the question of whichever quarter happens to be current at the
- * time. A vector parked exactly on the old 45-degree boundary (|gx| == |gy|)
- * satisfies neither the outbound nor the inbound test at either quarter, so
- * it never oscillates.
- *===========================================================================*/
+ * The hysteresis is the module, not a refinement of it. Snapping to whichever
+ * of gx/gy is larger puts the boundary at 45 degrees, where a board held near
+ * that angle flips the whole shell every frame the tilt wobbles across it. A
+ * Schmitt trigger expressed directly in the gravity components replaces it:
+ * DISPLAY_HYST_NUM/DEN is 7/4, a small-integer stand-in for tan(60 degrees),
+ * and applying that one ratio against whichever quarter is current is what
+ * yields "60 degrees out, 30 back" without needing a second constant.
+ */
 #pragma once
 
 #include <stdbool.h>
@@ -94,8 +47,8 @@ typedef struct {
 /* WHAT EACH QUARTER IS, MEASURED NOT DERIVED: which orientation a turn
  * corresponds to is not visible from source - depends on how the case
  * is held versus how the panel's rows/columns are wired - so it was
- * measured (same method as GRAVITY_SCREEN_X/Y in app_sand.c:
- * Diagnostics' "show orientation" toggle, read per hold).
+ * measured, by holding the board each way with a development build's
+ * show-orientation overlay on and reading it off the panel.
  *
  *     0   Portrait               (USB connector to the right)
  *     1   Landscape              (USB connector at the top)
@@ -114,17 +67,17 @@ typedef struct {
  * to its native upright, and the table above confirms that is quarter
  * 1, independent of which edge USB sits on. It was a first guess when
  * written; it no longer is. */
-#define DISPLAY_DEFAULT_QUARTER DISPLAY_LANDSCAPE
+#define DISPLAY_DEFAULT_QUARTER       DISPLAY_LANDSCAPE
 
-void display_init(display_t *d);
+void display_init(display_t* d);
 
 /* Feed the current gravity vector, in whatever consistent units the caller's
  * IMU reading uses (screen X/Y axes, not raw sensor axes - see main.c's own
  * mapping). Returns true when d->quarter actually changed, which is main.c's
  * cue to push a new ui_set_transform(). */
-bool display_update(display_t *d, int gx, int gy);
+bool display_update(display_t* d, int gx, int gy);
 
-int display_quarter(const display_t *d);
+int display_quarter(const display_t* d);
 
 /* The shell's own orientation - the quarter main.c last set the UI
  * transform to. Declared here but defined in main.c, not display.c:

@@ -1,6 +1,6 @@
 # Diagnostics and Debugging
 
-Part of the platform notes for the Waveshare ESP32-C6-Touch-AMOLED-1.8 - see
+Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 - see
 [`README.md`](README.md) for the full set.
 
 What to reach for depends on what is actually wrong. This is organised by
@@ -19,6 +19,7 @@ symptom, not by tool - skim the table, jump to the matching section.
 | Need live logs, or a crash to resolve to file:line | [monitor.sh](#live-logs-and-crash-backtraces---monitorsh) |
 | Typing into `monitor.sh` does nothing | [Console channel](#the-console-is-usb-serial-jtag-not-uart0) / [mintty](#typing-into-monitorsh-under-git-bash--msys2) |
 | A render looks wrong - stale pixels, wrong region sent | [gfx debug overlays](#rendering-looks-wrong---gfx-debug-overlays) |
+| Stray pixels/lines on the glass that a screenshot does not show | [Panel-link faults](Display-and-Rendering.md#panel-link-faults-are-invisible-to-screenshots) |
 | Frame rate / performance seems off | [Performance](#performance-seems-off) |
 | Orientation or the IMU seems wrong | [Orientation and IMU](#orientation-or-the-imu-seems-wrong) |
 | Suspected memory pressure | [Memory](#suspected-memory-pressure) |
@@ -60,7 +61,7 @@ logic rather than about the actual board. See
 ```
 
 Builds the diagnostics variant, flashes it, and runs *every* registered
-suite - portable ones included - actually compiled by the RISC-V toolchain
+suite - portable ones included - actually compiled by the Xtensa toolchain
 and executed on the chip, which a host run cannot vouch for. Needs a
 `CONFIG_LAUNCHER_SELFTEST` build (`build_flash_diag.sh` /
 `build_flash.sh --diag`); see [`../Testing-Guide.md`](../Testing-Guide.md)
@@ -72,7 +73,7 @@ for what that flag carries versus `--dev`.
 ./launcher/tools/screenshot.sh
 ```
 
-Captures whatever is currently on screen as an uncompressed `.bmp`, plus a
+Captures whatever is currently on screen as a lossless `.png`, plus a
 same-named `.json` snapshot of device state at that exact frame - uptime,
 heap (current and low-water mark), CPU clock, on-die temperature,
 orientation, the IMU, and that frame's touch/button state. Good for anything
@@ -81,9 +82,9 @@ against memory/sensor conditions at that instant - see
 `main/util/screenshot.h` and `main/util/device_state.h` for the mechanism
 and the full field list.
 
-- Also writes a same-named `.png` if Pillow is installed (`pip install
-  Pillow`) - the `.bmp` is written either way, the `.png` is just a
-  convenience for viewers that don't read BMP.
+- The device streams a 24bpp BMP over the wire, but `screenshot.py` converts
+  it to PNG in memory (stdlib `zlib`/`struct`, no Pillow) before anything
+  touches disk - the `.bmp` is never written.
 
 - **Development-only** (`--dev` or `--diag` build) - a release build carries
   none of it.
@@ -95,6 +96,11 @@ and the full field list.
   animation.
 - Only one process can hold the serial port at a time - close `monitor.sh`
   first.
+- **Blind to the panel link.** It captures the framebuffer, and the shell
+  requests a full redraw right after, which heals a corrupted panel. Stray
+  pixels or lines seen on the glass but not in the capture are a link fault;
+  see "Panel-link faults are invisible to screenshots" in
+  [`Display-and-Rendering.md`](Display-and-Rendering.md).
 
 To test the listener in isolation from the host script, attach `monitor.sh`
 and type `SCREENSHOT` (then Enter) directly - the firmware logs `screenshot:
@@ -119,11 +125,10 @@ file and line number.
 
 ## The console is USB-Serial-JTAG, not UART0
 
-**This board's single USB-C port is the ESP32-C6's own native USB-Serial/JTAG
-peripheral.** Waveshare's own documentation says so directly: "USB Type-C
-port - ESP32-C6 USB interface, for program flashing and log printing." UART0
-exists on this board too, but only broken out on separate solder pads -
-nothing a USB cable ever reaches.
+**This board's single USB-C port is the ESP32-S3's own native USB-Serial/JTAG
+peripheral**, not an external USB-UART bridge chip. UART0 exists on this
+board too, but only broken out on separate solder pads - nothing a USB cable
+ever reaches.
 
 ESP-IDF's own default for a chip with this peripheral assumes the OTHER
 common board design instead: UART0 as the primary console (read AND

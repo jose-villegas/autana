@@ -1,0 +1,409 @@
+/*
+ * Portable suite: ui_pointer driving REAL microui.
+ *
+ * suite_ui_pointer.c only asserts the event LIST ui_pointer_step()
+ * produces - a list of events matching does not mean microui can resolve
+ * a click from them; only microui itself decides that. This suite links
+ * real microui.c to prove it.
+ *
+ * The mechanism, so nobody re-derives it from scratch: mu_mouse_over() needs
+ * in_hover_root(), and mu_begin() copies hover_root from the PREVIOUS frame's
+ * next_hover_root. mu_update_control() then marks a control hovered only when
+ * the mouse is over it AND mouse_down is clear, and focus is only taken from
+ * a control that is already hovered. So a DOWN fed before hover has settled
+ * lands with nothing hovered, nothing takes focus, and mu_button() renders a
+ * pressed frame while returning 0 forever.
+ *
+ * microui.c is plain C over stdio/stdlib/string, so it links here unchanged -
+ * this is the only suite that links it, and the reason the "nothing here
+ * links microui.c" note in run_tests.sh no longer holds.
+ */
+
+#include <stdlib.h>
+#include <string.h>
+
+#include "suites.h"
+#include "unity.h"
+
+#include "microui.h"
+#include "ui/ui_pointer.h"
+
+#define CANVAS_W 368
+#define CANVAS_H 448
+
+/* A button big enough that no rounding puts the touch point outside it. */
+#define BTN_X    40
+#define BTN_Y    80
+#define BTN_W    280
+#define BTN_H    64
+
+/* Heap, not a file-scope object: a mu_Context is 10,744 bytes, and the
+ * diagnostics build links every suite into firmware, where internal heap
+ * headroom is scarce enough that a second context in .bss would not be
+ * free - something host tests, with a laptop's memory behind them,
+ * cannot notice. Allocated once and reset per test rather than per-test
+ * malloc/free: the runner has no teardown hook to free it in. */
+static mu_Context* ctx;
+static ui_pointer_t pointer;
+
+/* microui measures text through the context; the real shell hands it a font
+ * atlas, and nothing here cares how wide a glyph is. */
+static int
+stub_text_width(mu_Font font, const char* str, int len) {
+    (void)font;
+    return (len < 0 ? (int)strlen(str) : len) * 8;
+}
+
+static int
+stub_text_height(mu_Font font) {
+    (void)font;
+    return 8;
+}
+
+static void
+fixture(void) {
+    if (ctx == NULL) {
+        ctx = malloc(sizeof *ctx);
+        TEST_ASSERT_NOT_NULL(ctx);
+    }
+    memset(ctx, 0, sizeof *ctx);
+    memset(&pointer, 0, sizeof pointer);
+    mu_init(ctx);
+    ctx->text_width = stub_text_width;
+    ctx->text_height = stub_text_height;
+}
+
+/* One frame of the real bridge: translate input_t exactly as ui.c's
+ * feed_input() does, then build a full-screen window holding one button.
+ * Returns whether the button submitted this frame. */
+static bool
+frame(bool down, bool pressed, bool released, int x, int y) {
+    input_t in = {0};
+    in.down = down;
+    in.pressed = pressed;
+    in.released = released;
+    in.x = x;
+    in.y = y;
+
+    ui_pointer_event_t ev[UI_POINTER_MAX_EVENTS];
+    const int n = ui_pointer_step(&pointer, &in, ev, UI_POINTER_MAX_EVENTS);
+    for (int i = 0; i < n; i++) {
+        switch (ev[i].kind) {
+            case UI_POINTER_MOVE: mu_input_mousemove(ctx, ev[i].x, ev[i].y); break;
+            case UI_POINTER_DOWN: mu_input_mousedown(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
+            case UI_POINTER_UP: mu_input_mouseup(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
+            case UI_POINTER_SCROLL: mu_input_scroll(ctx, ev[i].x, ev[i].y); break;
+        }
+    }
+
+    bool submitted = false;
+    mu_begin(ctx);
+    if (mu_begin_window_ex(ctx, "screen", mu_rect(0, 0, CANVAS_W, CANVAS_H),
+                           MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+        mu_layout_set_next(ctx, mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), 0);
+        if (mu_button(ctx, "GO")) {
+            submitted = true;
+        }
+        mu_end_window(ctx);
+    }
+    mu_end(ctx);
+    return submitted;
+}
+
+/* Frames with nothing touching, so the pointer parks off-screen exactly as
+ * it does whenever a finger is not on the glass. */
+static void
+idle_frames(int count) {
+    for (int i = 0; i < count; i++) {
+        frame(false, false, false, 0, 0);
+    }
+}
+
+/* A tap as touch_fsm actually delivers one: a pressed edge, some frames of
+ * being held, then a released edge. */
+static int
+taps_counted(int held_frames) {
+    const int cx = BTN_X + BTN_W / 2;
+    const int cy = BTN_Y + BTN_H / 2;
+    int submits = 0;
+
+    if (frame(true, true, false, cx, cy)) {
+        submits++;
+    }
+    for (int i = 0; i < held_frames; i++) {
+        if (frame(true, false, false, cx, cy)) {
+            submits++;
+        }
+    }
+    if (frame(false, false, true, cx, cy)) {
+        submits++;
+    }
+    return submits;
+}
+
+/* The regression this suite was written for. */
+
+static void
+test_a_tap_submits_the_button_underneath_it(void) {
+    fixture();
+    idle_frames(2);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, taps_counted(4),
+                                  "a tap must submit the button under it exactly once - this is the "
+                                  "assertion a held-DOWN policy broke while every event-list test "
+                                  "stayed green, leaving no app reachable from the launcher");
+}
+
+/* However long the finger rests, one press is one click. Holding must not
+ * re-fire the control it is resting on. */
+static void
+test_holding_does_not_resubmit(void) {
+    fixture();
+    idle_frames(2);
+
+    TEST_ASSERT_EQUAL_INT(1, taps_counted(40));
+}
+
+/* A press and release arriving in the SAME frame cannot click anything - a
+ * property of microui, not a bug here: hover_root does not exist until the
+ * frame after the pointer first moves somewhere, so the first frame at a
+ * position can never resolve a control. Pinned rather than left
+ * undiscovered: ui_pointer_step() still emits the full move/down/up
+ * (suite_ui_pointer.c asserts that) - the click is simply not resolvable,
+ * and only touch_fsm's TOUCH_RELEASE_QUIET_US (60ms) makes it reachable at
+ * all. */
+static void
+test_a_one_frame_tap_cannot_resolve_a_control(void) {
+    fixture();
+    idle_frames(2);
+
+    const int cx = BTN_X + BTN_W / 2;
+    const int cy = BTN_Y + BTN_H / 2;
+    TEST_ASSERT_FALSE_MESSAGE(frame(true, true, true, cx, cy),
+                              "microui has no hover_root for a position it is seeing for the "
+                              "first time, so nothing can take focus on that frame");
+}
+
+static void
+test_a_tap_outside_the_button_submits_nothing(void) {
+    fixture();
+    idle_frames(2);
+
+    int submits = 0;
+    if (frame(true, true, false, 10, 400)) {
+        submits++;
+    }
+    for (int i = 0; i < 4; i++) {
+        if (frame(true, false, false, 10, 400)) {
+            submits++;
+        }
+    }
+    if (frame(false, false, true, 10, 400)) {
+        submits++;
+    }
+
+    TEST_ASSERT_EQUAL_INT(0, submits);
+}
+
+/* The capability the held pointer exists for. */
+
+/* A slider needs mouse_down to persist ACROSS frames - microui only tracks
+ * its value while (mouse_down | mouse_pressed) is set. This is what the
+ * whole hold policy was introduced for, and it must keep working alongside
+ * the hover frames the fix added. */
+static void
+test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap(void) {
+    fixture();
+    idle_frames(2);
+
+    mu_Real value = 0;
+    const int track_x = BTN_X;
+    const int track_w = BTN_W;
+
+    /* Same shape as frame() above, but the control is a slider so the drag
+     * has something that only responds while genuinely held. */
+    int x = track_x + 10;
+    for (int f = 0; f < 12; f++) {
+        input_t in = {0};
+        in.down = true;
+        in.pressed = (f == 0);
+        in.x = x;
+        in.y = BTN_Y + BTN_H / 2;
+
+        ui_pointer_event_t ev[UI_POINTER_MAX_EVENTS];
+        const int n = ui_pointer_step(&pointer, &in, ev, UI_POINTER_MAX_EVENTS);
+        for (int i = 0; i < n; i++) {
+            if (ev[i].kind == UI_POINTER_MOVE) {
+                mu_input_mousemove(ctx, ev[i].x, ev[i].y);
+            } else if (ev[i].kind == UI_POINTER_DOWN) {
+                mu_input_mousedown(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT);
+            } else if (ev[i].kind == UI_POINTER_UP) {
+                mu_input_mouseup(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT);
+            }
+        }
+
+        mu_begin(ctx);
+        if (mu_begin_window_ex(ctx, "screen", mu_rect(0, 0, CANVAS_W, CANVAS_H),
+                               MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+            mu_layout_set_next(ctx, mu_rect(track_x, BTN_Y, track_w, BTN_H), 0);
+            mu_slider(ctx, &value, 0, 100);
+            mu_end_window(ctx);
+        }
+        mu_end(ctx);
+
+        /* Start dragging only once the press has actually landed, so the
+         * movement is a drag and not a series of separate taps. */
+        if (f >= UI_POINTER_HOVER_FRAMES) {
+            x += 15;
+        }
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(value > 0, "dragging must move a slider - microui only tracks one while the "
+                                        "mouse stays down, which is the reason the pointer holds DOWN at all");
+}
+
+/* A screen of rows far taller than the canvas: the shape a list of toggles
+ * takes once it outgrows the glass. */
+
+#define LIST_ROWS  20
+#define LIST_ROW_H 64
+
+/* One frame of a scrollable list, fed exactly as ui.c does, including the
+ * over_scrollable report back after mu_end(). Returns the index of the row
+ * whose button submitted, or -1. */
+static int
+list_frame(bool down, bool pressed, bool released, int x, int y) {
+    input_t in = {0};
+    in.down = down;
+    in.pressed = pressed;
+    in.released = released;
+    in.x = x;
+    in.y = y;
+
+    ui_pointer_event_t ev[UI_POINTER_MAX_EVENTS];
+    const int n = ui_pointer_step(&pointer, &in, ev, UI_POINTER_MAX_EVENTS);
+    for (int i = 0; i < n; i++) {
+        switch (ev[i].kind) {
+            case UI_POINTER_MOVE: mu_input_mousemove(ctx, ev[i].x, ev[i].y); break;
+            case UI_POINTER_DOWN: mu_input_mousedown(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
+            case UI_POINTER_UP: mu_input_mouseup(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
+            case UI_POINTER_SCROLL: mu_input_scroll(ctx, ev[i].x, ev[i].y); break;
+        }
+    }
+
+    int submitted = -1;
+    mu_begin(ctx);
+    if (mu_begin_window_ex(ctx, "list", mu_rect(0, 0, CANVAS_W, CANVAS_H),
+                           MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+        for (int row = 0; row < LIST_ROWS; row++) {
+            char label[8];
+            label[0] = (char)('A' + row);
+            label[1] = '\0';
+            mu_layout_row(ctx, 1, (int[]){-1}, LIST_ROW_H);
+            if (mu_button(ctx, label)) {
+                submitted = row;
+            }
+        }
+        mu_end_window(ctx);
+    }
+    mu_end(ctx);
+    pointer.over_scrollable = ctx->scroll_target != NULL;
+    return submitted;
+}
+
+static void
+list_idle_frames(int count) {
+    for (int i = 0; i < count; i++) {
+        list_frame(false, false, false, 0, 0);
+    }
+}
+
+/* Drags from (x, y0) to (x, y1) in `steps` frames and lifts; returns how many
+ * buttons submitted along the way. */
+static int
+list_drag(int x, int y0, int y1, int steps) {
+    int submits = 0;
+    submits += list_frame(true, true, false, x, y0) >= 0;
+    for (int i = 1; i <= steps; i++) {
+        submits += list_frame(true, false, false, x, y0 + (y1 - y0) * i / steps) >= 0;
+    }
+    submits += list_frame(false, false, true, x, y1) >= 0;
+    return submits;
+}
+
+static int
+list_tap(int x, int y) {
+    int row = -1;
+    int r = list_frame(true, true, false, x, y);
+    row = r >= 0 ? r : row;
+    for (int i = 0; i < 4; i++) {
+        r = list_frame(true, false, false, x, y);
+        row = r >= 0 ? r : row;
+    }
+    r = list_frame(false, false, true, x, y);
+    return r >= 0 ? r : row;
+}
+
+static void
+test_dragging_up_scrolls_the_list_without_pressing_a_row(void) {
+    fixture();
+    list_idle_frames(2);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, list_drag(CANVAS_W / 2, 400, 100, 10), "a scrolling drag presses nothing");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, mu_get_container(ctx, "list")->scroll.y,
+                                         "a drag up must move the content up");
+}
+
+static void
+test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once(void) {
+    fixture();
+    list_idle_frames(2);
+
+    int submits = 0;
+    const int cx = CANVAS_W / 2;
+    const int cy = 5 + LIST_ROW_H / 2;
+    submits += list_frame(true, true, false, cx, cy) >= 0;
+    for (int i = 0; i < 4; i++) {
+        submits += list_frame(true, false, false, cx, cy) >= 0;
+    }
+    const int row = list_frame(false, false, true, cx, cy);
+    submits += row >= 0;
+    list_idle_frames(2);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, submits, "a tap still presses exactly once on content that scrolls");
+    TEST_ASSERT_EQUAL_INT(0, row);
+}
+
+static void
+test_scrolling_stops_at_the_end_and_the_last_row_is_reachable(void) {
+    fixture();
+    list_idle_frames(2);
+
+    for (int i = 0; i < 6; i++) {
+        list_drag(CANVAS_W / 2, 420, 20, 8);
+        list_idle_frames(1);
+    }
+    const mu_Container* cnt = mu_get_container(ctx, "list");
+    const int scroll_after_overshoot = cnt->scroll.y;
+    list_idle_frames(1);
+    const int max_scroll = cnt->content_size.y + 2 * ctx->style->padding - cnt->body.h;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(max_scroll, cnt->scroll.y, "an overshooting drag clamps to the content's end");
+    TEST_ASSERT_EQUAL_INT(scroll_after_overshoot, cnt->scroll.y);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(LIST_ROWS - 1, list_tap(CANVAS_W / 2, CANVAS_H - 40),
+                                  "the bottom of the glass must now hold the last row");
+}
+
+void
+run_ui_pointer_microui_suite(void) {
+    RUN_TEST(test_a_tap_submits_the_button_underneath_it);
+    RUN_TEST(test_holding_does_not_resubmit);
+    RUN_TEST(test_a_one_frame_tap_cannot_resolve_a_control);
+    RUN_TEST(test_a_tap_outside_the_button_submits_nothing);
+    RUN_TEST(test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap);
+    RUN_TEST(test_dragging_up_scrolls_the_list_without_pressing_a_row);
+    RUN_TEST(test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once);
+    RUN_TEST(test_scrolling_stops_at_the_end_and_the_last_row_is_reachable);
+}
+
+SUITE_REGISTER(run_ui_pointer_microui_suite);

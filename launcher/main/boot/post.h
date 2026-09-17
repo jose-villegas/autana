@@ -1,4 +1,4 @@
-/*=============================================================================
+/*
  * post - power-on self test.
  *
  * A health check of the board's hardware, run on every boot in EVERY build,
@@ -8,7 +8,7 @@
  * That distinction is why this is separate from selftest.c:
  *
  *   POST                              test suites
- *   ------------------------------    ------------------------------
+ *
  *   ships in release                  diagnostics builds only
  *   checks hardware presence/health   checks software behaviour
  *   read-only, no side effects        draws to the panel, mutates state
@@ -18,7 +18,7 @@
  * Everything here must stay non-destructive: probing, reading identity
  * registers, reporting. Nothing that changes device state or costs real time,
  * because it runs before the user sees anything.
- *===========================================================================*/
+ */
 #pragma once
 
 #include <stdbool.h>
@@ -26,34 +26,32 @@
 #define POST_MAX_CHECKS 24
 
 typedef enum {
-    POST_REQUIRED,   /* absence means the board is faulty */
-    POST_OPTIONAL,   /* absence is legitimate - a missing SD card, say */
+    POST_REQUIRED, /* absence means the board is faulty */
+    POST_OPTIONAL, /* absence is legitimate - a missing SD card, say */
 } post_severity_t;
 
 typedef struct {
-    const char     *name;
-    bool            ok;
+    const char* name;
+    bool ok;
     post_severity_t severity;
     /* 96 comfortably fits every check's detail string, including
      * check_sdcard_live()'s "<name>, <capacity> MB (live, <n> ms round
      * trip)" in post.c, the longest one - with margin for GCC's own
      * (pessimistic) -Wformat-truncation estimate of that string's maximum
      * length, which came out to 79 bytes. */
-    char            detail[96];
+    char detail[96];
 } post_result_t;
 
-/* POST runs in two phases, because the SD card and the display are wired to
- * different pins on the one SPI2 controller and cannot both hold it.
+/* POST runs in two phases. The SD card is tested first, before gfx_init()
+ * brings the display up - a matter of ordering convenience, not necessity:
+ * the card sits on its own dedicated SDMMC bus, entirely independent of the
+ * display's SPI2, so there is no bus contention to sequence around.
  *
- * Call order matters:
+ * Call order:
  *
- *   post_run_before_display();   // SD card - needs SPI2 free
- *   gfx_init();                  // display takes SPI2
+ *   post_run_before_display();   // SD card
+ *   gfx_init();                  // display
  *   post_run_after_display();    // everything else
- *
- * Testing the card before the display claims the bus means genuinely mounting
- * it, with no teardown and nothing to restore. Doing it later would mean
- * dismantling a running display.
  */
 void post_run_before_display(void);
 
@@ -62,16 +60,14 @@ void post_run_before_display(void);
 bool post_run_after_display(void);
 
 /* Re-runs every check that can be repeated while the shell is live, replacing
- * the retained results.
- *
- * The SD card is the one exception: testing it needs SPI2, which the display
- * holds, and the BSP offers no way to release the display. Its row is carried
- * forward from boot and labelled "(at boot)" rather than silently dropped or
- * presented as fresh. */
+ * the retained results. The SD card is included: it sits on its own SDMMC
+ * bus, entirely independent of the display, so re-testing it live costs
+ * nothing more than a plain mount/unmount - see check_sdcard_live() in
+ * post.c. */
 void post_rerun(void);
 
 /* The results of the last run, retained so they can be shown on screen as well
  * as logged - a board in the field may have no serial cable attached. */
-const post_result_t *post_results(void);
+const post_result_t* post_results(void);
 int post_result_count(void);
 int post_failure_count(void);

@@ -1,63 +1,36 @@
-/*=============================================================================
+/*
  * ui_transform - a 2x3 affine transform for the UI layer, in fixed point.
  *
- * Every rect, icon, clip and text position microui hands to ui.c's
- * draw_command() is expressed in the UI's own LOGICAL coordinates - the ones
- * layout code lays widgets out in. This header is what turns a logical point
- * into the PHYSICAL point that actually lands on the panel, so a caller can
- * rotate (and later scale or translate) the whole UI without any call site
- * knowing: nothing above ui.c ever sees a physical coordinate.
+ * Every rect, icon, clip and text position microui hands to ui.c is in the
+ * UI's own LOGICAL coordinates. This turns a logical point into the PHYSICAL
+ * one that lands on the panel, so the whole UI can be rotated without any call
+ * site knowing: nothing above ui.c ever sees a physical coordinate. Pure
+ * geometry, which is what keeps it linkable on a host.
  *
- * PURE GEOMETRY, SEPARATE FROM DRAWING
+ * Fixed point rather than float: the transform is applied per rect, per glyph
+ * and per icon on every repaint, and integer math keeps every multiply exact
+ * and reproducible across the host and device builds for a shape this
+ * simple. Q16.16 has ample range for a 368x448 panel and ample precision for
+ * rotate, scale, translate.
  *
- * Same split as ui_style.h documents for a bezel: this header only computes
- * WHERE things go, and touches neither gfx.c nor microui.c, so it stays
- * linkable on a host (see test/suites/suite_ui_transform.c). "microui.h" is
- * included for mu_Rect - the same dependency ui_style.h takes and for the
- * same reason - and "gfx/gfx_font.h" for gfx_font_t/gfx_font_advance()
- * (ui_text_glyph0_origin() below needs a font's cell width, not just a
- * rect); gfx_font.h is pure too - no gfx.h, no BSP - so this stays linkable
- * on a host either way.
+ * The type is more general than the backend, and that gap is the trap.
+ * ui_transform_t can express any affine map, shear included, while
+ * gfx_fill_rect() and gfx_set_clip() are axis-aligned only, the dirty tracker
+ * works in axis-aligned grid cells, and gfx_text_turned() knows only quarter
+ * turns. ui_transform_is_axis_preserving() is the boundary between the two,
+ * and the extension point if gfx ever grows a rotated blitter; without it a
+ * caller could push a 30 degree rotation and get silent misrendering back.
  *
- * FIXED POINT, NOT FLOAT
- *
- * This is RISC-V with no FPU. The transform is applied per rect, per glyph
- * and per icon, every repaint, so a software float emulation trap on every
- * multiply is not a cost worth paying for a shape this simple. Q16.16 has
- * plenty of range for a 368x448 panel (the panel's largest coordinate needs
- * only 9 bits) and plenty of precision for a rotate/scale/translate matrix.
- *
- * THE CONTRACT: A GENERAL TYPE, A NARROWER BACKEND
- *
- * ui_transform_t can express any 2x3 affine map - shear included. The
- * renderer underneath it cannot: gfx_fill_rect() and gfx_set_clip() are
- * axis-aligned only, the dirty tracker works in axis-aligned grid cells, and
- * gfx_text_turned() only knows quarter turns. So this renderer can honour
- * rotation by multiples of 90 degrees, translation, and scale - and nothing
- * else. A general matrix invites a caller to push a 30 degree rotation and
- * get silent misrendering back.
- *
- * ui_transform_is_axis_preserving() is the boundary between what the type can
- * express and what the backend can draw. ui.c's draw_command() classifies the
- * transform in force with it before painting a frame; see the comment there
- * for what happens when a transform fails the check. It is also the
- * extension point: if gfx ever grows a rotated blitter, the classifier widens
- * to admit more matrices and nothing above it - not this header, not ui.c's
- * callers - has to change.
- *
- * ROUNDING
- *
- * Every conversion back to an integer pixel rounds to nearest rather than
- * truncating, so a rect mapped and mapped back through ui_transform_invert()
- * lands where it started instead of drifting toward zero by up to a pixel
- * each way - see fp_round() below.
- *===========================================================================*/
+ * Conversions back to an integer pixel round to nearest rather than
+ * truncating, so a rect mapped and inverted lands where it started.
+ */
 #pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
 
 #include "gfx/gfx_font.h"
+#include "gfx/icon.h"
 #include "microui.h"
 #include "util/fixed.h"
 
@@ -74,55 +47,41 @@ typedef struct {
     ui_fp_t a, b, c, d, tx, ty;
 } ui_transform_t;
 
-/*---------------------------------------------------------------------------
- * Fixed-point helpers
+/*
+ * Thin wrappers over util/fixed.h, where the arithmetic and its
+ * floor-vs-round reasoning live: fixed-point multiply is not a UI concept,
+ * and other callers need the same operation at a different shift.
  *
- * Not part of the public shape of this header, but static inline like
- * everything else here so they still link on their own.
- *
- * These are thin wrappers over util/fixed.h, which is where the actual
- * arithmetic and its floor-vs-round reasoning live now - fixed-point
- * multiply/divide is not a UI concept, and sand.c/sand_liquid.c need the
- * same operation at a different shift. UI_FP_SHIFT is simply baked in here
- * as the shift this transform has always used.
- *
- * ui_fp_round() keeps its own name and shape rather than becoming a plain
- * fx_* call: it rounds an already-computed Q16.16 (or, inside ui_fp_mul(),
- * Q32.32) ACCUMULATOR, not a product of two raw operands - ui_transform_point
- * hands it the sum of two Q16.16 products plus a translation, which
- * fx_mul_round()'s two-operand shape has no way to accept. It delegates to
- * fixed.h's fx_round_shift(), the primitive under fx_mul_round() that takes
- * the combined value directly, so the rounding rule itself still lives in
- * one place.
- *-------------------------------------------------------------------------*/
+ * ui_fp_round() keeps its own shape because it rounds an already-computed
+ * ACCUMULATOR, not two raw operands, which fx_mul_round() cannot accept. It
+ * delegates to fx_round_shift(), so the rounding rule lives in one place.
+ */
 
-static inline int64_t ui_fp_round(int64_t v)
-{
+static inline int64_t
+ui_fp_round(int64_t v) {
     return fx_round_shift(v, UI_FP_SHIFT);
 }
 
 /* Multiply two Q16.16 numbers, rounding the result to Q16.16. The product of
  * two Q16.16 ints is implicitly Q32.32; fx_mul_round() brings it back down. */
-static inline ui_fp_t ui_fp_mul(ui_fp_t a, ui_fp_t b)
-{
+static inline ui_fp_t
+ui_fp_mul(ui_fp_t a, ui_fp_t b) {
     return (ui_fp_t)fx_mul_round(a, b, UI_FP_SHIFT);
 }
 
 /* Divide two Q16.16 numbers, rounding the result to Q16.16. `den` must be
  * nonzero - callers here only ever divide by a determinant already checked
  * against zero. */
-static inline ui_fp_t ui_fp_div(ui_fp_t num, ui_fp_t den)
-{
+static inline ui_fp_t
+ui_fp_div(ui_fp_t num, ui_fp_t den) {
     return (ui_fp_t)fx_div_round(num, den, UI_FP_SHIFT);
 }
 
-/*---------------------------------------------------------------------------
- * Construction
- *-------------------------------------------------------------------------*/
+/* Construction */
 
-static inline ui_transform_t ui_transform_identity(void)
-{
-    return (ui_transform_t){ UI_FP_ONE, 0, 0, UI_FP_ONE, 0, 0 };
+static inline ui_transform_t
+ui_transform_identity(void) {
+    return (ui_transform_t){UI_FP_ONE, 0, 0, UI_FP_ONE, 0, 0};
 }
 
 /* Rotation by `turn` quarter turns (mod 4, negative allowed), about a
@@ -133,22 +92,18 @@ static inline ui_transform_t ui_transform_identity(void)
  * viewport_h. Each matrix entry is exactly 0, UI_FP_ONE or -UI_FP_ONE,
  * translations exact integers scaled by UI_FP_ONE - exact in Q16.16, no
  * rounding to compound. */
-static inline ui_transform_t ui_transform_quarter_turn(int turn, int viewport_w,
-                                                        int viewport_h)
-{
+static inline ui_transform_t
+ui_transform_quarter_turn(int turn, int viewport_w, int viewport_h) {
     const int t = ((turn % 4) + 4) % 4;
     const ui_fp_t w = (ui_fp_t)viewport_w << UI_FP_SHIFT;
     const ui_fp_t h = (ui_fp_t)viewport_h << UI_FP_SHIFT;
 
     switch (t) {
-    case 1: /* one quarter turn clockwise */
-        return (ui_transform_t){ 0, UI_FP_ONE, -UI_FP_ONE, 0, w, 0 };
-    case 2: /* half turn */
-        return (ui_transform_t){ -UI_FP_ONE, 0, 0, -UI_FP_ONE, w, h };
-    case 3: /* three quarter turns clockwise (one counter-clockwise) */
-        return (ui_transform_t){ 0, -UI_FP_ONE, UI_FP_ONE, 0, 0, h };
-    default:
-        return ui_transform_identity();
+        case 1: /* one quarter turn clockwise */ return (ui_transform_t){0, UI_FP_ONE, -UI_FP_ONE, 0, w, 0};
+        case 2: /* half turn */ return (ui_transform_t){-UI_FP_ONE, 0, 0, -UI_FP_ONE, w, h};
+        case 3: /* three quarter turns clockwise (one counter-clockwise) */
+            return (ui_transform_t){0, -UI_FP_ONE, UI_FP_ONE, 0, 0, h};
+        default: return ui_transform_identity();
     }
 }
 
@@ -156,16 +111,15 @@ static inline ui_transform_t ui_transform_quarter_turn(int turn, int viewport_w,
  * i.e. the point mapping outer(inner(p)), matrix-multiplied as outer*inner.
  * Read the argument order the way you would read compose(f, g) meaning
  * "f then g". */
-static inline ui_transform_t ui_transform_compose(ui_transform_t inner,
-                                                   ui_transform_t outer)
-{
+static inline ui_transform_t
+ui_transform_compose(ui_transform_t inner, ui_transform_t outer) {
     ui_transform_t out;
-    out.a  = ui_fp_mul(outer.a, inner.a) + ui_fp_mul(outer.c, inner.b);
-    out.c  = ui_fp_mul(outer.a, inner.c) + ui_fp_mul(outer.c, inner.d);
+    out.a = ui_fp_mul(outer.a, inner.a) + ui_fp_mul(outer.c, inner.b);
+    out.c = ui_fp_mul(outer.a, inner.c) + ui_fp_mul(outer.c, inner.d);
     out.tx = ui_fp_mul(outer.a, inner.tx) + ui_fp_mul(outer.c, inner.ty) + outer.tx;
 
-    out.b  = ui_fp_mul(outer.b, inner.a) + ui_fp_mul(outer.d, inner.b);
-    out.d  = ui_fp_mul(outer.b, inner.c) + ui_fp_mul(outer.d, inner.d);
+    out.b = ui_fp_mul(outer.b, inner.a) + ui_fp_mul(outer.d, inner.b);
+    out.d = ui_fp_mul(outer.b, inner.c) + ui_fp_mul(outer.d, inner.d);
     out.ty = ui_fp_mul(outer.b, inner.tx) + ui_fp_mul(outer.d, inner.ty) + outer.ty;
     return out;
 }
@@ -173,8 +127,8 @@ static inline ui_transform_t ui_transform_compose(ui_transform_t inner,
 /* Inverts `t` into `*out`. Returns false, leaving `*out` untouched, if `t` is
  * singular (zero determinant) - a caller pushing a degenerate transform (a
  * zero scale, say) gets told rather than handed nonsense. */
-static inline bool ui_transform_invert(ui_transform_t t, ui_transform_t *out)
-{
+static inline bool
+ui_transform_invert(ui_transform_t t, ui_transform_t* out) {
     const ui_fp_t det = ui_fp_mul(t.a, t.d) - ui_fp_mul(t.b, t.c);
     if (det == 0) {
         return false;
@@ -193,13 +147,10 @@ static inline bool ui_transform_invert(ui_transform_t t, ui_transform_t *out)
     return true;
 }
 
-/*---------------------------------------------------------------------------
- * Application
- *-------------------------------------------------------------------------*/
+/* Application */
 
-static inline void ui_transform_point(ui_transform_t t, int x, int y, int *ox,
-                                      int *oy)
-{
+static inline void
+ui_transform_point(ui_transform_t t, int x, int y, int* ox, int* oy) {
     *ox = (int)ui_fp_round((int64_t)t.a * x + (int64_t)t.c * y + t.tx);
     *oy = (int)ui_fp_round((int64_t)t.b * x + (int64_t)t.d * y + t.ty);
 }
@@ -211,22 +162,60 @@ static inline void ui_transform_point(ui_transform_t t, int x, int y, int *ox,
  * anything ui_transform_is_axis_preserving() accepts, the four mapped
  * corners already form an axis-aligned rectangle, so the bounding box
  * IS the exact mapped shape and nothing is lost. */
-static inline mu_Rect ui_transform_rect(ui_transform_t t, mu_Rect r)
-{
+static inline mu_Rect
+ui_transform_rect(ui_transform_t t, mu_Rect r) {
     int xs[4], ys[4];
-    ui_transform_point(t, r.x,       r.y,       &xs[0], &ys[0]);
-    ui_transform_point(t, r.x + r.w, r.y,       &xs[1], &ys[1]);
-    ui_transform_point(t, r.x,       r.y + r.h, &xs[2], &ys[2]);
+    ui_transform_point(t, r.x, r.y, &xs[0], &ys[0]);
+    ui_transform_point(t, r.x + r.w, r.y, &xs[1], &ys[1]);
+    ui_transform_point(t, r.x, r.y + r.h, &xs[2], &ys[2]);
     ui_transform_point(t, r.x + r.w, r.y + r.h, &xs[3], &ys[3]);
 
     int min_x = xs[0], max_x = xs[0], min_y = ys[0], max_y = ys[0];
     for (int i = 1; i < 4; i++) {
-        if (xs[i] < min_x) min_x = xs[i];
-        if (xs[i] > max_x) max_x = xs[i];
-        if (ys[i] < min_y) min_y = ys[i];
-        if (ys[i] > max_y) max_y = ys[i];
+        if (xs[i] < min_x) {
+            min_x = xs[i];
+        }
+        if (xs[i] > max_x) {
+            max_x = xs[i];
+        }
+        if (ys[i] < min_y) {
+            min_y = ys[i];
+        }
+        if (ys[i] > max_y) {
+            max_y = ys[i];
+        }
     }
-    return (mu_Rect){ min_x, min_y, max_x - min_x, max_y - min_y };
+    return (mu_Rect){min_x, min_y, max_x - min_x, max_y - min_y};
+}
+
+/* icon_walk_blocks()'s callback context, adapted to transform each run
+ * before it reaches the caller's own `emit` - see ui_transform_icon_blocks()
+ * below for why this exists instead of transforming `box` once up front. */
+typedef struct {
+    ui_transform_t t;
+    int box_x, box_y;
+    icon_emit_fn emit;
+    void* ctx;
+} ui_transform_icon_ctx_t;
+
+static inline void
+ui_transform_icon_emit(void* ctx, int x, int y, int w, int h) {
+    const ui_transform_icon_ctx_t* ic = ctx;
+    const mu_Rect local = {ic->box_x + x, ic->box_y + y, w, h};
+    const mu_Rect dst = ui_transform_rect(ic->t, local);
+    ic->emit(ic->ctx, dst.x, dst.y, dst.w, dst.h);
+}
+
+/* icon_walk_blocks() (gfx/icon.h), with each emitted run mapped through `t`
+ * before `emit` sees it, not just the enclosing `box` - transforming only
+ * the box lands it correctly but leaves the glyph inside it upright under
+ * any quarter turn, the bug MU_COMMAND_RECT/_TEXT never had. `box` is
+ * LOGICAL, the same one microui's command carries. */
+static inline void
+ui_transform_icon_blocks(ui_transform_t t, const uint8_t* rows, int iw, int ih, int stride, mu_Rect box,
+                         icon_emit_fn emit, void* ctx) {
+    ui_transform_icon_ctx_t ic = {.t = t, .box_x = box.x, .box_y = box.y, .emit = emit, .ctx = ctx};
+    icon_walk_blocks(rows, iw, ih, stride, box.w, box.h, ui_transform_icon_emit, &ic);
 }
 
 /* Which of gfx_text_turned()'s four quarters `t` represents, for a
@@ -237,12 +226,20 @@ static inline mu_Rect ui_transform_rect(ui_transform_t t, mu_Rect r)
  * a scale). Meaningless if ui_transform_is_axis_preserving(t) is false;
  * callers are expected to check that first, exactly as draw_command()
  * does. */
-static inline int ui_transform_quarter(ui_transform_t t)
-{
-    if (t.a > 0 && t.d > 0) return 0;
-    if (t.b > 0 && t.c < 0) return 1;
-    if (t.a < 0 && t.d < 0) return 2;
-    if (t.b < 0 && t.c > 0) return 3;
+static inline int
+ui_transform_quarter(ui_transform_t t) {
+    if (t.a > 0 && t.d > 0) {
+        return 0;
+    }
+    if (t.b > 0 && t.c < 0) {
+        return 1;
+    }
+    if (t.a < 0 && t.d < 0) {
+        return 2;
+    }
+    if (t.b < 0 && t.c > 0) {
+        return 3;
+    }
     return 0; /* not a rotation at all (e.g. the zero matrix) - identity is
                  the least wrong answer, and is_axis_preserving() would have
                  already rejected this transform anyway. */
@@ -254,10 +251,8 @@ static inline int ui_transform_quarter(ui_transform_t t)
  * Turns 0 and 1 walk FORWARD from the origin, so box's own (x, y)
  * corner already IS where glyph 0 belongs - no correction, none
  * applied. */
-static inline void ui_text_glyph0_origin(const gfx_font_t *font, mu_Rect box,
-                                         int quarter, int scale,
-                                         int *out_x, int *out_y)
-{
+static inline void
+ui_text_glyph0_origin(const gfx_font_t* font, mu_Rect box, int quarter, int scale, int* out_x, int* out_y) {
     *out_x = box.x;
     *out_y = box.y;
     /* Turns 2 and 3 walk BACKWARD, so glyph 0 starts ONE GLYPH CELL in
@@ -283,8 +278,8 @@ static inline void ui_text_glyph0_origin(const gfx_font_t *font, mu_Rect box,
  * swap cleanly (a == d == 0, a 90/270 turn). A shear or arbitrary
  * rotation has a nonzero entry in both columns. `!= 0` rules out a zero
  * scale, not invertible. */
-static inline bool ui_transform_is_axis_preserving(ui_transform_t t)
-{
+static inline bool
+ui_transform_is_axis_preserving(ui_transform_t t) {
     if (t.b == 0 && t.c == 0) {
         return t.a != 0 && t.d != 0;
     }

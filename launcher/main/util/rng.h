@@ -1,4 +1,4 @@
-/*=============================================================================
+/*
  * rng - a small deterministic pseudo-random generator, for anything that wants
  * one.
  *
@@ -6,7 +6,7 @@
  * no state beyond a single word - which matters on a chip with no hardware
  * divider and 424 KiB of RAM. Its statistical quality is nowhere near a
  * cryptographic generator's and it is not meant to be: this is for scattering
- * sand grains and picking shades.
+ * particles and picking shades.
  *
  * NOT for anything security-related. It is trivially predictable from a couple
  * of outputs.
@@ -16,11 +16,11 @@
  * say "shaking flattens this pile" and get the same answer every run, and what
  * makes a bug reproducible from a seed rather than only sometimes.
  *
- * Header-only and inline on purpose. The sand simulation calls this tens of
- * thousands of times a second from its innermost loop, and a function call per
- * draw across a translation-unit boundary would be a real cost - removing that
- * generator from the common path was once worth a factor of two.
- *===========================================================================*/
+ * Header-only and inline on purpose. Callers reach this tens of thousands of
+ * times a second from an innermost loop, where a function call per draw across
+ * a translation-unit boundary is a real cost - measured at a factor of two on
+ * such a loop's common path.
+ */
 #pragma once
 
 #include <stdbool.h>
@@ -34,13 +34,13 @@ typedef struct {
  * state would stay zero and every draw would return zero for ever. Substituted
  * silently rather than rejected, because a caller seeding from a timer that
  * happened to read zero deserves a working generator, not a subtle one. */
-static inline void rng_seed(rng_t *r, uint32_t seed)
-{
+static inline void
+rng_seed(rng_t* r, uint32_t seed) {
     r->state = seed != 0 ? seed : 0x9E3779B9u;
 }
 
-static inline uint32_t rng_next(rng_t *r)
-{
+static inline uint32_t
+rng_next(rng_t* r) {
     uint32_t x = r->state;
 
     x ^= x << 13;
@@ -56,8 +56,8 @@ static inline uint32_t rng_next(rng_t *r)
  * Uses a modulo, so the lowest values are very slightly more likely for bounds
  * that do not divide 2^32. For picking one of six shades that bias is around
  * one part in seven hundred million and nobody is going to see it. */
-static inline int rng_below(rng_t *r, int bound)
-{
+static inline int
+rng_below(rng_t* r, int bound) {
     if (bound <= 0) {
         return 0;
     }
@@ -70,10 +70,10 @@ static inline int rng_below(rng_t *r, int bound)
  * rather than an optimisation: callers express "always" as 256 and "never" as
  * 0, and those have to mean exactly that. A bare `(rng_next(r) & 0xFF) < chance`
  * can never be true 256 times out of 256, so "always" would quietly become
- * "almost always" - the kind of thing that shows up as one grain in a thousand
+ * "almost always" - the kind of thing that shows up as one case in a thousand
  * behaving oddly. */
-static inline bool rng_chance(rng_t *r, int chance)
-{
+static inline bool
+rng_chance(rng_t* r, int chance) {
     if (chance <= 0) {
         return false;
     }
@@ -81,4 +81,28 @@ static inline bool rng_chance(rng_t *r, int chance)
         return true;
     }
     return (int)(rng_next(r) & 0xFF) < chance;
+}
+
+/* A counter-based draw: (seed, a, b, c) always hashes to the same value,
+ * in any order, on any core - what a checkerboard-parallel step needs,
+ * where two same-phase cells may be drawn by either core in either order.
+ * rng_avalanche32() is Skeeto's "lowbias32" finalizer; rng_hash() folds
+ * three values through it so (step, cell, draw-site) never collides. */
+static inline uint32_t
+rng_avalanche32(uint32_t x) {
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return x;
+}
+
+static inline uint32_t
+rng_hash(uint32_t seed, uint32_t a, uint32_t b, uint32_t c) {
+    uint32_t h = rng_avalanche32(seed ^ 0x9E3779B9u);
+    h = rng_avalanche32(h ^ a);
+    h = rng_avalanche32(h ^ b);
+    h = rng_avalanche32(h ^ c);
+    return h;
 }

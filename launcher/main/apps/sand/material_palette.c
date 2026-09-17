@@ -1,4 +1,4 @@
-/*=============================================================================
+/*
  * material_palette - what a material looks like, built once at compile time.
  *
  * Split off material.c's data half (materials[], reactions[] - see that
@@ -15,15 +15,25 @@
  * once, and the alternative is either a table nobody can safely edit, or
  * building it at startup and paying for it in the resource there is least
  * of.
- *===========================================================================*/
+ */
 #include "material_palette.h"
-#include "util/intmath.h" /* see material_set_gravity() below */
+#include "sand_palette256.h" /* see material_palette256_index() below */
+#include "util/intmath.h"    /* see material_set_gravity() below */
 
 /* Channel `sh` of the way from `lo` to `hi`, out of 15. */
 #define LERP_CH(lo, hi, shift, sh)                                                                                     \
     ((((((lo) >> (shift)) & 0xFF) * (15 - (sh)) + (((hi) >> (shift)) & 0xFF) * (sh)) / 15) & 0xFF)
 
-#define LERP(lo, hi, sh)  ((LERP_CH(lo, hi, 16, sh) << 16) | (LERP_CH(lo, hi, 8, sh) << 8) | LERP_CH(lo, hi, 0, sh))
+#define LERP_RGB(lo, hi, sh) ((LERP_CH(lo, hi, 16, sh) << 16) | (LERP_CH(lo, hi, 8, sh) << 8) | LERP_CH(lo, hi, 0, sh))
+
+#ifdef MISRA_SCAN
+/* The tables below expand this a few thousand times, which exhausts the MISRA
+ * addon before it reaches any code. Stubbed for the tables only: LERP goes
+ * back to LERP_RGB below them, so the functions are analysed as written. */
+#define LERP(lo, hi, sh) ((uint32_t)(lo) + (uint32_t)(hi) + (uint32_t)(sh))
+#else
+#define LERP(lo, hi, sh) LERP_RGB(lo, hi, sh)
+#endif
 
 /* glass MAT_GLASS case needs small tilt for finer gradient than palette steps */
 #define LERP8_CH(lo, hi, shift, fr)                                                                                    \
@@ -39,19 +49,18 @@
 /* Wet soil darker, 7 point cap. */
 
 /* Removes slot sharing: variant 0 only needs to be paler than variant 1. */
-#define DIRT_DRY 0x9A7B52
-#define DIRT_WET 0x3A2A18
+#define DIRT_DRY          0x9A7B52
+#define DIRT_WET          0x3A2A18
 
-#define SOIL_SHADES                                                                                                   \
-    GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 0)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 1)),                                       \
-        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 2)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 3)),                                   \
-        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 4)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 5)),                                   \
-        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 6)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 7)),                                   \
-        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 8)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 9)),                                   \
-        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 10)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 11)),                                 \
-        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 12)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 13)),                                 \
-        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 15)), /* variant 14: saturated */                                            \
-        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 15))  /* variant 15: unused - same as 14 */
+#define SOIL_SHADES                                                                                                    \
+    GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 0)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 1)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 2)),  \
+        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 3)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 4)),                                    \
+        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 5)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 6)),                                    \
+        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 7)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 8)),                                    \
+        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 9)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 10)),                                   \
+        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 11)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 12)),                                  \
+        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 13)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 15)), /* variant 14: saturated */      \
+        GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 15)) /* variant 15: unused - same as 14 */
 
 /* Ember ramp: dying char through glowing orange, redder and darker than
  * fire's yellow-white. */
@@ -68,14 +77,21 @@
         WOOD_BURN(7), WOOD_BURN(8), WOOD_BURN(9), WOOD_BURN(10), WOOD_BURN(11), WOOD_BURN(12), WOOD_BURN(13),          \
         WOOD_BURN(14), WOOD_BURN(15)
 
-/* Hot walls appear visibly hot now. */
-#define STONE_FROST   0xCEDCE8
-#define STONE_AMBIENT 0x5F6673
-#define STONE_NEUTRAL 0x8A7466
-#define STONE_GLOW    0x9E3A18
-#define STONE_MOLTEN  0xE8752A
+/* Unlit wood beside a leaf blends live between these two anchors (LERP8 -
+ * see material_wood_leaf_wave() and material_colours()'s MAT_WOOD case).
+ * Both anchored on leaf's own green, not wood's colour - even at rest this
+ * should read as leaf, just a darker shade of it. */
+#define WOOD_LEAF_TINT_LO LERP(0x468F26, 0x000000, 6)
+#define WOOD_LEAF_TINT_HI LERP(0x468F26, 0x8CD24E, 3)
 
-#define STONE_COOL(v) LERP(STONE_FROST, STONE_AMBIENT, ((v) * 15) / (SAND_AMBIENT_HEAT > 0 ? SAND_AMBIENT_HEAT : 1))
+/* Hot walls appear visibly hot now. */
+#define STONE_FROST       0xCEDCE8
+#define STONE_AMBIENT     0x5F6673
+#define STONE_NEUTRAL     0x8A7466
+#define STONE_GLOW        0x9E3A18
+#define STONE_MOLTEN      0xE8752A
+
+#define STONE_COOL(v)     LERP(STONE_FROST, STONE_AMBIENT, ((v) * 15) / (SAND_AMBIENT_HEAT > 0 ? SAND_AMBIENT_HEAT : 1))
 #define STONE_WARM(v)                                                                                                  \
     LERP(STONE_AMBIENT, STONE_NEUTRAL,                                                                                 \
          (((v) - SAND_AMBIENT_HEAT) * 15)                                                                              \
@@ -99,7 +115,16 @@
 /* Shock breaks largest step: material shatters, not cools. Different
  * behaviors should look distinct. */
 
-#define GLASS_FROST   0xD6EEF8
+/* CYAN, and only the cold END of the ramp - the shimmer keeps its own pale
+ * target below, kept separate so a chilling cell doesn't drift toward the
+ * very colour the per-cell shimmer already blends toward. Cyan holds
+ * saturation as it cools, keeping red near 95 rather than washing out
+ * toward white. */
+#define GLASS_FROST   0x5FE6F0
+
+/* Where a cell's per-cell shimmer blends TO. Was GLASS_FROST; kept at that
+ * old value so ambient glass renders exactly as it always has. */
+#define GLASS_SHIMMER 0xD6EEF8
 #define GLASS_AMBIENT 0x2E6B85
 #define GLASS_NEUTRAL 0x8C7E70
 #define GLASS_GLOW    0xC8701E
@@ -142,13 +167,13 @@ _Static_assert(SAND_AMBIENT_HEAT > 0 && SAND_AMBIENT_HEAT < SAND_SHOCK_HEAT && S
  * never calls material_set_cullet_phase() (a host test) still shows the
  * same cullet a running frame does at rest. GLINT is pure white for one
  * phase. */
-#define CULLET_CYCLE_A 0xCFEAF2 /* pale cyan */
-#define CULLET_CYCLE_B 0xD8D0F0 /* lilac */
-#define CULLET_CYCLE_C 0xF0D6DC /* rose */
-#define CULLET_CYCLE_D 0xE2F0D2 /* mint */
+#define CULLET_CYCLE_A      0xCFEAF2 /* pale cyan */
+#define CULLET_CYCLE_B      0xD8D0F0 /* lilac */
+#define CULLET_CYCLE_C      0xF0D6DC /* rose */
+#define CULLET_CYCLE_D      0xE2F0D2 /* mint */
 
 /* What a glinting grain shows: full white, the panel's highest radiance. */
-#define CULLET_GLINT GFX_RGB(0xFFFFFF)
+#define CULLET_GLINT        GFX_RGB(0xFFFFFF)
 
 /* Odds one in 192. Modulo for flexibility. More glints with lower value. */
 #define CULLET_GLINT_ONE_IN 192
@@ -357,7 +382,7 @@ static const gfx_color_t palette[256] = {
     [MAT_EXTENDED * MATERIAL_VARIANTS + MATX_METAL] = GFX_RGB(0x7C8794),    /* Visual
                                                                              * separation.
                                                                              * See
-                                                                             * docs/plans/Metal-Smelting-Plan.md. */
+                                                                             * docs/sand/Metal.md. */
     [MAT_EXTENDED * MATERIAL_VARIANTS + MATX_ROOT] = GFX_RGB(0xBFA58A),     /* root
                                                                              * -
                                                                              * matches
@@ -384,7 +409,7 @@ static const gfx_color_t palette[256] = {
                               * REVISION 2 spent this code on the lit state */
 };
 
-#define GLASS_RGB(v)      ((v) <= SAND_AMBIENT_HEAT ? GLASS_COOL(v) : (v) < SAND_SHOCK_HEAT ? GLASS_WARM(v) : GLASS_HOT(v))
+#define GLASS_RGB(v)        ((v) <= SAND_AMBIENT_HEAT ? GLASS_COOL(v) : (v) < SAND_SHOCK_HEAT ? GLASS_WARM(v) : GLASS_HOT(v))
 
 /* Blends towards ambient, not endpoints like STONE_EDGE_RGB. */
 
@@ -395,21 +420,21 @@ static const gfx_color_t palette[256] = {
 #define GLASS_EDGE_V_RAW(v) ((v) + (((int)(SAND_AMBIENT_HEAT) - (int)(v)) * 10) / 15)
 
 /* Clamped to SAND_SHOCK_HEAT if already HOT. */
-#define GLASS_EDGE_V(v)                                                                                               \
+#define GLASS_EDGE_V(v)                                                                                                \
     (((v) >= SAND_SHOCK_HEAT && GLASS_EDGE_V_RAW(v) < SAND_SHOCK_HEAT) ? SAND_SHOCK_HEAT : GLASS_EDGE_V_RAW(v))
-#define GLASS_EDGE_RGB(v) GLASS_RGB(GLASS_EDGE_V(v))
-#define STONE_EDGE_RGB(v) LERP(STONE_RGB(v), STONE_RGB(SAND_AMBIENT_HEAT), 10)
+#define GLASS_EDGE_RGB(v)    GLASS_RGB(GLASS_EDGE_V(v))
+#define STONE_EDGE_RGB(v)    LERP(STONE_RGB(v), STONE_RGB(SAND_AMBIENT_HEAT), 10)
 
-/* GLASS_FROST via COOL. Mix WARM/HOT for icy blue to muddy yellow-green.
+/* GLASS_SHIMMER via COOL. Mix WARM/HOT for icy blue to muddy yellow-green.
  * White stays, brighter. */
-#define GLASS_GRADIENT_HI(v) ((v) <= SAND_AMBIENT_HEAT ? GLASS_FROST : 0xFFFFFF)
+#define GLASS_GRADIENT_HI(v) ((v) <= SAND_AMBIENT_HEAT ? GLASS_SHIMMER : 0xFFFFFF)
 
-#define STONE_DARK(rgb)     LERP((rgb), 0x000000, 3)
-#define STONE_LIGHT(rgb)    LERP((rgb), 0xFFFFFF, 3)
+#define STONE_DARK(rgb)      LERP((rgb), 0x000000, 3)
+#define STONE_LIGHT(rgb)     LERP((rgb), 0xFFFFFF, 3)
 
-#define STONE_GRAIN(rgb, k) GFX_RGB(LERP(STONE_DARK(rgb), STONE_LIGHT(rgb), (k) * 15 / 7))
+#define STONE_GRAIN(rgb, k)  GFX_RGB(LERP(STONE_DARK(rgb), STONE_LIGHT(rgb), (k) * 15 / 7))
 
-#define STONE_SPECKLE(v, k) STONE_GRAIN(STONE_RGB(v), k)
+#define STONE_SPECKLE(v, k)  STONE_GRAIN(STONE_RGB(v), k)
 
 #define STONE_SPECKLE_ROW(v)                                                                                           \
     {STONE_SPECKLE(v, 0), STONE_SPECKLE(v, 1), STONE_SPECKLE(v, 2), STONE_SPECKLE(v, 3),                               \
@@ -444,25 +469,25 @@ static const gfx_color_t wood_grain[8] = {
  * since real foliage is a messier mix than ice, whose variation is facets on
  * one substance. The stem is deliberately OLIVE rather than green, closer to
  * wood's own colour, since every stem cell is on its way to becoming wood. */
-#define PLANT_DARK        0x495422
-#define PLANT_LIGHT       0x778746
+#define PLANT_DARK         0x495422
+#define PLANT_LIGHT        0x778746
 
 /* Non-uniform green creates half canopy. Now one material. Gold-brown chain
  * removed for cost. */
-#define LEAF_DARK         0x468F26
-#define LEAF_LIGHT        0x8CD24E
+#define LEAF_DARK          0x468F26
+#define LEAF_LIGHT         0x8CD24E
 
-#define ICE_DARK          0x93C9DE
-#define ICE_LIGHT         0xDEF5FD
+#define ICE_DARK           0x93C9DE
+#define ICE_LIGHT          0xDEF5FD
 
 /* Metal: Like ice, minimal movement; position hash varies, simulating uniform
  * surface. */
-#define METAL_DARK        0x7C8794
-#define METAL_LIGHT       0xB9C4D2
+#define METAL_DARK         0x7C8794
+#define METAL_LIGHT        0xB9C4D2
 
 /* ROOT_DARK is pale; ROOT_LIGHT matches METAL_LIGHT for consistency. */
-#define ROOT_DARK         0xBFA58A
-#define ROOT_LIGHT        0xDCC5A8
+#define ROOT_DARK          0xBFA58A
+#define ROOT_LIGHT         0xDCC5A8
 
 /* A root's shade comes from its live neighbour-root count (`depth`, see
  * material_colours()), not a stored age: age would fade fresh tips too, and
@@ -471,16 +496,16 @@ static const gfx_color_t wood_grain[8] = {
  * root, not trunk. The grain's light end needs its OWN old colour
  * (ROOT_OLD_LIGHT), not ROOT_OLD too, or the oldest row's grain collapses to
  * one flat colour - see test_the_right_extended_materials_are_grained. */
-#define ROOT_OLD          0x7A5535
-#define ROOT_OLD_LIGHT    0x976D48
-#define ROOT_SHADES       4
+#define ROOT_OLD           0x7A5535
+#define ROOT_OLD_LIGHT     0x976D48
+#define ROOT_SHADES        4
 
 #define ROOT_STEP(k)       LERP(ROOT_DARK, ROOT_OLD, (k) * 15 / (ROOT_SHADES - 1))
 #define ROOT_STEP_LIGHT(k) LERP(ROOT_LIGHT, ROOT_OLD_LIGHT, (k) * 15 / (ROOT_SHADES - 1))
 
 /* 0 or 1: tip; 2: one child; 3: junction; >3: collar or thicket middle. */
-static inline unsigned root_shade(unsigned n)
-{
+static inline unsigned
+root_shade(unsigned n) {
     return n <= 1u ? 0u : n == 2u ? 1u : n == 3u ? 2u : (ROOT_SHADES - 1u);
 }
 
@@ -492,7 +517,6 @@ static inline unsigned root_shade(unsigned n)
 
 static const gfx_color_t plant_grain[8] = GRAIN8_ROW(PLANT_DARK, PLANT_LIGHT);
 static const gfx_color_t ice_grain[8] = GRAIN8_ROW(ICE_DARK, ICE_LIGHT);
-static const gfx_color_t leaf_grain[8] = GRAIN8_ROW(LEAF_DARK, LEAF_LIGHT);
 static const gfx_color_t metal_grain[8] = GRAIN8_ROW(METAL_DARK, METAL_LIGHT);
 
 /* HATCHED's only effect - lifted off METAL_LIGHT for uniform highlight. */
@@ -512,6 +536,12 @@ static const gfx_color_t stone_edge_speckle[MATERIAL_VARIANTS][8] = {
     STONE_EDGE_ROW(8),  STONE_EDGE_ROW(9),  STONE_EDGE_ROW(10), STONE_EDGE_ROW(11),
     STONE_EDGE_ROW(12), STONE_EDGE_ROW(13), STONE_EDGE_ROW(14), STONE_EDGE_ROW(15),
 };
+
+#ifdef MISRA_SCAN
+/* Last table is behind us - see LERP's own stub above. */
+#undef LERP
+#define LERP(lo, hi, sh) LERP_RGB(lo, hi, sh)
+#endif
 
 /* liquid_spec[mask] corrects a flat fill-level ramp: two rim cells at the
  * same fill level need different shading depending on whether their open
@@ -578,7 +608,7 @@ material_set_gravity(int gx, int gy) {
 }
 
 void
-material_shine_direction(int gx, int gy, int *ux_q8, int *uy_q8) {
+material_shine_direction(int gx, int gy, int* ux_q8, int* uy_q8) {
     const int len = im_len(gx, gy);
     if (len == 0) {
         *ux_q8 = 181;
@@ -587,6 +617,62 @@ material_shine_direction(int gx, int gy, int *ux_q8, int *uy_q8) {
     }
     *ux_q8 = (-(gx + gy) * 181) / len;
     *uy_q8 = ((gx - gy) * 181) / len;
+}
+
+/* Perpendicular to gravity, not a fixed grid axis - so the wood-leaf wind
+ * (material_wood_leaf_wave()) sweeps level on the panel no matter how the
+ * device is held, the same reasoning material_shine_direction() already
+ * uses for its own band. Flat: defaults to grid-x. */
+void
+material_wood_leaf_wind_axis(int gx, int gy, int* ux_q8, int* uy_q8) {
+    const int len = im_len(gx, gy);
+    if (len == 0) {
+        *ux_q8 = 256;
+        *uy_q8 = 0;
+        return;
+    }
+    *ux_q8 = (-gy * 256) / len;
+    *uy_q8 = (gx * 256) / len;
+}
+
+/* Ring order matches sand_priv.h's own ring_dir() (0 = down, clockwise) -
+ * duplicated here since the render path does not reach into simulation
+ * internals for it. */
+static const int8_t wood_leaf_ring[8][2] = {
+    {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1},
+};
+
+/* Recomputing fresh every frame flips right at a tie between neighbouring
+ * ring directions, popping every wood cell whose top5 just changed in one
+ * frame - see Shading-and-Colour.md, "hysteresis hides the seam, it does
+ * not remove it". `*last_down` is the caller's own state, like
+ * glass_last_phase. */
+void
+material_wood_leaf_top5(int gx, int gy, int* last_down, int8_t top5[5][2]) {
+    const int len = im_len(gx, gy);
+    const long margin = len / 4;
+    int down = *last_down & 7;
+    long best = (long)wood_leaf_ring[down][0] * gx + (long)wood_leaf_ring[down][1] * gy;
+    for (int i = 0; i < 8; i++) {
+        const long dot = (long)wood_leaf_ring[i][0] * gx + (long)wood_leaf_ring[i][1] * gy;
+        if (dot > best + margin) {
+            best = dot;
+            down = i;
+        }
+    }
+    *last_down = down;
+
+    const int down_left = (down + 7) & 7;
+    const int down_right = (down + 1) & 7;
+    int n = 0;
+    for (int i = 0; i < 8; i++) {
+        if (i == down || i == down_left || i == down_right) {
+            continue;
+        }
+        top5[n][0] = wood_leaf_ring[i][0];
+        top5[n][1] = wood_leaf_ring[i][1];
+        n++;
+    }
 }
 
 /* Foam is gated by rim curvature instead of a separate motion flag: a still
@@ -636,6 +722,44 @@ static int glass_phase;
 void
 material_set_glass_phase(int phase) {
     glass_phase = phase;
+}
+
+/* A short gust, not a slow ramp - a symmetric triangle read as one broad
+ * pulse. SCREEN_SPAN_MS is a multiple of PERIOD_MS so several bands show
+ * at once. `hash` salts each cell's phase - see glass's own `(hash & 0xFF)
+ * + glass_phase`. */
+#define WOOD_LEAF_WAVE_PERIOD_MS        600u
+#define WOOD_LEAF_WAVE_RISE_MS          60u
+#define WOOD_LEAF_WAVE_FALL_MS          140u
+#define WOOD_LEAF_WAVE_SCREEN_SPAN_MS   4000u
+#define WOOD_LEAF_WAVE_SALT_MS          150u
+
+/* Percent chance a cell actually shows a gust it is otherwise due for -
+ * every eligible cell lighting up together read as one shine sweeping
+ * through, not real wind, which is patchy. Rolled per gust (not once,
+ * ever), so which cells sit one out changes gust to gust. */
+#define WOOD_LEAF_WAVE_ACTIVATE_PERCENT 30u
+
+unsigned
+material_wood_leaf_wave(uint32_t time_ms, int pos, int span, unsigned hash) {
+    const int32_t shift_ms = span != 0 ? (int32_t)(((int64_t)pos * WOOD_LEAF_WAVE_SCREEN_SPAN_MS) / span) : 0;
+    const uint32_t salt_ms = hash % WOOD_LEAF_WAVE_SALT_MS;
+    const uint32_t shifted = time_ms + (uint32_t)shift_ms + salt_ms;
+    const uint32_t m = shifted % WOOD_LEAF_WAVE_PERIOD_MS;
+    if (m >= WOOD_LEAF_WAVE_RISE_MS + WOOD_LEAF_WAVE_FALL_MS) {
+        return 0u;
+    }
+
+    const uint32_t cycle = shifted / WOOD_LEAF_WAVE_PERIOD_MS;
+    if ((hash ^ (cycle * 0x9E3779B1u)) % 100u >= WOOD_LEAF_WAVE_ACTIVATE_PERCENT) {
+        return 0u;
+    }
+
+    if (m < WOOD_LEAF_WAVE_RISE_MS) {
+        return (unsigned)((m * 255u) / WOOD_LEAF_WAVE_RISE_MS);
+    }
+    const uint32_t since_peak = m - WOOD_LEAF_WAVE_RISE_MS;
+    return (unsigned)(255u - (since_peak * 255u) / WOOD_LEAF_WAVE_FALL_MS);
 }
 
 /* No floating point, suitable for water rim cells. See paint_row_n(). */
@@ -734,8 +858,8 @@ material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth, gfx_col
             if (v < SAND_CULLET_BASE) {
                 break;
             }
-            const unsigned i = ((v - SAND_CULLET_BASE) * (CULLET_CYCLE_LEN / SAND_CULLET_SHADES) + cullet_phase) &
-                                (CULLET_CYCLE_LEN - 1);
+            const unsigned i = ((v - SAND_CULLET_BASE) * (CULLET_CYCLE_LEN / SAND_CULLET_SHADES) + cullet_phase)
+                               & (CULLET_CYCLE_LEN - 1);
 
             /* GLINT: Flash white; mix uses hash & phase, not RNG. Rarity
              * controlled by CULLET_GLINT_ONE_IN. */
@@ -759,13 +883,26 @@ material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth, gfx_col
                 return MATERIAL_HATCHED;
             }
 
-            /* Guard-plus-ternary: switch costs 14%, unhinted branch 26% - see
-             * Tuning-At-a-Glance.md. */
-            if (v == MATX_PLANT || v == MATX_LEAF || v == MATX_ICE || v == MATX_ROOT) {
-                out[0] = (v == MATX_PLANT)  ? plant_grain[hash & 7u]
-                         : (v == MATX_LEAF) ? leaf_grain[hash & 7u]
-                         : (v == MATX_ICE)  ? ice_grain[hash & 7u]
-                                            : root_grain[root_shade(depth)][hash & 7u];
+            if (v == MATX_LEAF) {
+                /* depth carries the wave's fraction (0-255) plus one here
+                 * too - the same live sweep MAT_WOOD's near-leaf case
+                 * reads, so a leaf and the wood beside it catch the same
+                 * gust together. No stored grain table: LERP8 needs
+                 * 0xRRGGBB, not a packed gfx_color_t (see GLASS's own
+                 * note on this exact trap). */
+                const unsigned frac = depth != 0 ? depth - 1u : 0u;
+                const uint32_t base = LERP(LEAF_DARK, LEAF_LIGHT, (hash & 7u) * 15 / 7);
+                out[0] = GFX_RGB(LERP8(base, WOOD_LEAF_TINT_HI, frac));
+                out[1] = out[0];
+                out[2] = out[0];
+                return MATERIAL_SPECKLED;
+            }
+
+            /* Guard-plus-ternary: switch costs 14%, unhinted branch 26%. */
+            if (v == MATX_PLANT || v == MATX_ICE || v == MATX_ROOT) {
+                out[0] = (v == MATX_PLANT) ? plant_grain[hash & 7u]
+                         : (v == MATX_ICE) ? ice_grain[hash & 7u]
+                                           : root_grain[root_shade(depth)][hash & 7u];
                 out[1] = out[0];
                 out[2] = out[0];
                 return MATERIAL_SPECKLED;
@@ -800,6 +937,17 @@ material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth, gfx_col
             if (v != 0) {
                 break; /* alight: one flat glow, not grain */
             }
+            if (depth != 0) {
+                /* depth carries the wave's fraction (0-255) plus one, from
+                 * material_wood_leaf_wave() via paint_row_n() - see
+                 * material_wood_near_leaf() in material_palette.h for the
+                 * gate. A live LERP8, not a stored step, so the blend is
+                 * smooth rather than snapping between fixed shades. */
+                out[0] = GFX_RGB(LERP8(WOOD_LEAF_TINT_LO, WOOD_LEAF_TINT_HI, depth - 1u));
+                out[1] = out[0];
+                out[2] = out[0];
+                return MATERIAL_FLAT;
+            }
             out[0] = wood_grain[hash & 7u];
             out[1] = out[0];
             out[2] = out[0];
@@ -816,4 +964,15 @@ material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth, gfx_col
 const gfx_color_t*
 material_palette(void) {
     return palette;
+}
+
+/* One flash read, no search: sand_rgb565_to_index[] is generated straight
+ * from build_palette()'s own per-group OKLab assignment (shading_palette.c,
+ * write_sand_palette_header()), keyed by native (non-byte-swapped) RGB565 -
+ * gfx_color_t is that swapped for the panel (gfx_color.h), so the lookup
+ * key is the same swap native_key() takes in the generator. */
+int
+material_palette256_index(gfx_color_t c) {
+    const uint16_t native = (uint16_t)((c >> 8) | (c << 8));
+    return sand_rgb565_to_index[native];
 }
