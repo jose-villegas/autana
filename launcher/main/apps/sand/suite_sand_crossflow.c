@@ -1,6 +1,7 @@
 #include <stdlib.h>
 
 #include "sand_priv.h"
+#include "suite_sand_common.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -31,6 +32,89 @@ crossflow_fixture(void) {
     f->s.step_phase = 1;
     f->s.liquid_flip = true;
     return f;
+}
+
+enum { SORT_W = 8, SORT_H = 8 };
+
+static void
+sort_fixture(sand_t* s, uint8_t cells[SORT_W * SORT_H]) {
+    sand_init(s, cells, SORT_W, SORT_H, 42u);
+    for (int y = 0; y < SORT_H; y++) {
+        for (int x = 0; x < SORT_W; x++) {
+            const bool border = x == 0 || x == SORT_W - 1 || y == 0 || y == SORT_H - 1;
+            sand_set(s, x, y, border ? STONE : OIL);
+        }
+    }
+    s->step_phase = 2;
+}
+
+static void
+sort_liquids(sand_t* s, int dx, int dy) {
+    const xflow_t flow = {0};
+    sand_step_liquids(s, &flow, dx, dy);
+}
+
+static void
+test_liquid_density_sort_moves_one_landscape_cell(void) {
+    for (int dx = -1; dx <= 1; dx += 2) {
+        uint8_t cells[SORT_W * SORT_H];
+        sand_t s;
+        sort_fixture(&s, cells);
+
+        const int x = dx > 0 ? 1 : SORT_W - 2;
+        sand_set(&s, x, SORT_H / 2, WATER);
+        sort_liquids(&s, dx, 0);
+
+        TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, x + dx, SORT_H / 2)),
+                                      "a denser liquid may sink only one landscape cell per sort pass");
+    }
+}
+
+static void
+test_liquid_density_sort_swaps_a_landscape_boundary_in_every_row(void) {
+    uint8_t cells[SORT_W * SORT_H];
+    sand_t s;
+    sort_fixture(&s, cells);
+
+    for (int y = 1; y < SORT_H - 1; y++) {
+        sand_set(&s, 1, y, WATER);
+    }
+    sort_liquids(&s, 1, 0);
+
+    for (int y = 1; y < SORT_H - 1; y++) {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, 2, y)),
+                                      "every row along a landscape density boundary must swap");
+    }
+}
+
+static void
+test_liquid_density_sort_moves_one_cell_along_a_diagonal(void) {
+    uint8_t cells[SORT_W * SORT_H];
+    sand_t s;
+    sort_fixture(&s, cells);
+    sand_set(&s, 1, 1, WATER);
+
+    sort_liquids(&s, 1, 1);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, 2, 2)),
+                                  "a diagonal density sort must stop the displaced liquid after one ray cell");
+}
+
+static void
+test_liquid_density_sort_keeps_the_portrait_rate(void) {
+    uint8_t cells[SORT_W * SORT_H];
+    sand_t s;
+    sort_fixture(&s, cells);
+
+    for (int x = 1; x < SORT_W - 1; x++) {
+        sand_set(&s, x, 1, WATER);
+    }
+    sort_liquids(&s, 0, 1);
+
+    for (int x = 1; x < SORT_W - 1; x++) {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, x, 2)),
+                                      "portrait density sorting must retain its one-cell rate");
+    }
 }
 
 static void
@@ -198,6 +282,10 @@ test_crossflow_uniform_pool_has_no_stripe_seams(void) {
 
 void
 run_sand_crossflow_suite(void) {
+    RUN_TEST(test_liquid_density_sort_moves_one_landscape_cell);
+    RUN_TEST(test_liquid_density_sort_swaps_a_landscape_boundary_in_every_row);
+    RUN_TEST(test_liquid_density_sort_moves_one_cell_along_a_diagonal);
+    RUN_TEST(test_liquid_density_sort_keeps_the_portrait_rate);
     RUN_TEST(test_split_crossflow_uses_hashed_viscosity);
     RUN_TEST(test_crossflow_seam_transfer_matches_serial_in_eight_directions);
     RUN_TEST(test_crossflow_pool_conserves_mass_and_is_deterministic);
