@@ -50,27 +50,39 @@ gas_rows_teardown(void) {
     free(gr_cells);
 }
 
-/* Walls, standing water and a scatter of gases - the rise sweep's paths
- * divide by what a grain is BLOCKED BY, so a board of open air exercises one
- * of them. Water gives try_bubble() and the walk's buoyancy fallback
- * something to push through, stone and wood something that refuses, and
- * several gases at once give the gas-displaces-gas swap a chance to run. */
 static void
-build_mixed_gas_board(bool burnable) {
+lay_gas_row_floor(void) {
     for (int x = 0; x < GASROW_W; x++) {
         sand_set(&gr, x, GASROW_H - 1, CELL_MAKE(MAT_STONE, 0));
     }
+}
+
+/* Water for try_bubble() and the walk's buoyancy fallback to push
+ * through. */
+static void
+lay_gas_row_water_bed(void) {
     for (int y = GASROW_H - 8; y < GASROW_H - 1; y++) {
         for (int x = 4; x < GASROW_W - 4; x++) {
             sand_set(&gr, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
         }
     }
+}
+
+/* Stone/wood-or-sand pillar pairs for a mover to be BLOCKED BY. */
+static void
+lay_gas_row_pillars(bool burnable) {
     for (int y = 6; y < GASROW_H - 10; y += 5) {
         for (int x = 2; x < GASROW_W - 2; x += 7) {
             sand_set(&gr, x, y, CELL_MAKE(MAT_STONE, 0));
             sand_set(&gr, x + 1, y, CELL_MAKE(burnable ? MAT_WOOD : MAT_SAND, 0));
         }
     }
+}
+
+/* A scatter of gases, several at once, so the gas-displaces-gas swap gets
+ * a chance to run. */
+static void
+scatter_gas_row_gas(bool burnable) {
     for (int y = 3; y < GASROW_H - 3; y += 3) {
         for (int x = 1; x < GASROW_W - 1; x += 4) {
             const material_id_t id = burnable ? MAT_FIRE : (y % 6 == 0) ? MAT_SMOKE : MAT_GAS;
@@ -79,6 +91,19 @@ build_mixed_gas_board(bool burnable) {
             }
         }
     }
+}
+
+/* Walls, standing water and a scatter of gases - the rise sweep's paths
+ * divide by what a grain is BLOCKED BY, so a board of open air exercises one
+ * of them. Water gives try_bubble() and the walk's buoyancy fallback
+ * something to push through, stone and wood something that refuses, and
+ * several gases at once give the gas-displaces-gas swap a chance to run. */
+static void
+build_mixed_gas_board(bool burnable) {
+    lay_gas_row_floor();
+    lay_gas_row_water_bed();
+    lay_gas_row_pillars(burnable);
+    scatter_gas_row_gas(burnable);
 }
 
 static void
