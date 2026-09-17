@@ -1578,7 +1578,7 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     const int64_t sweep_t0 = esp_timer_get_time();
 #endif
     if (sand_two_core_step_enabled() && s->h >= SWEEP_CHECKERBOARD_MIN_ROWS) {
-        const int offset = (s->step_phase & 1) ? SWEEP_STRIPE_H / 2 : 0;
+        const int offset = sand_stripe_offset(s, SWEEP_STRIPE_H);
         const int guard_count = sweep_guard_row_list(s->h, offset, sweep_guard_rows, SWEEP_GUARD_ROW_MAX);
         for (int gi = 0; gi < guard_count; gi++) {
             memcpy(&sweep_guard_snapshot[(size_t)gi * (size_t)w], s->cells + (size_t)sweep_guard_rows[gi] * (size_t)w,
