@@ -687,86 +687,91 @@ equalise_liquids(sand_t* s, const xflow_t* f, int sight, int dx, int dy) {
  * sixteen rows in a step. Gas has always risen in its own pass.
  */
 
+/* One swap per gravity ray per step: a swap moves two cells, and the displaced
+ * heavy cell would otherwise be found again one cell along the ray and pushed
+ * through the whole layer. Chunked so any board fits 32 bytes of stack. */
+enum { RISE_RAYS = 256 };
+
+static int
+liquid_sort_ray_count(const sand_t* s, int dx, int dy) {
+    return (dx == 0) ? s->w : (dy == 0) ? s->h : s->w + s->h - 1;
+}
+
+static int
+liquid_sort_ray(const sand_t* s, int x, int y, int dx, int dy) {
+    if (dx == 0) {
+        return x;
+    }
+    if (dy == 0) {
+        return y;
+    }
+    return (dx == dy) ? x - y + s->h - 1 : x + y;
+}
+
+static bool
+float_one_liquid(sand_t* s, int x, int y, int dx, int dy, uint16_t is_liquid, uint8_t* swapped, int ray) {
+    const int w = s->w, h = s->h;
+    const int ux = x - dx, uy = y - dy;
+    if ((unsigned)ux >= (unsigned)w || (unsigned)uy >= (unsigned)h || ((swapped[ray >> 3] >> (ray & 7)) & 1u) != 0u) {
+        return false;
+    }
+
+    uint8_t* const row = &s->cells[(size_t)y * (size_t)w];
+    uint8_t* const urow = &s->cells[(size_t)uy * (size_t)w];
+    const cell_t me = row[x], above = urow[ux];
+    if (CELL_IS_EMPTY(me) || CELL_IS_EMPTY(above)) {
+        return false;
+    }
+    const uint8_t mine = CELL_MATERIAL(me), theirs = CELL_MATERIAL(above);
+    /* The viscosity roll the ordinary move pays keeps a rise a lazy drift. */
+    if (((is_liquid >> mine) & 1u) == 0 || theirs == mine || ((is_liquid >> theirs) & 1u) == 0
+        || material_by_id((material_id_t)theirs)->density <= material_by_id((material_id_t)mine)->density
+        || (s->may_have_viscous_liquid && !liquid_may_move(s, x, y, mine))) {
+        return false;
+    }
+
+    urow[ux] = me;
+    row[x] = above;
+    swapped[ray >> 3] |= (uint8_t)(1u << (ray & 7));
+    mark_slide(s, x, y, ux, uy);
+    wake_block_and_neighbors(s, x, y);
+    wake_block_and_neighbors(s, ux, uy);
+    return true;
+}
+
+static bool
+float_liquid_row(sand_t* s, int y, int x0, int xstep, int dx, int dy, uint16_t is_liquid, uint8_t* swapped,
+                 int ray_base) {
+    bool moved = false;
+
+    for (int xi = 0; xi < s->w; xi++) {
+        const int x = x0 + xi * xstep;
+        const int ray = liquid_sort_ray(s, x, y, dx, dy);
+        if (ray < ray_base || ray - ray_base >= RISE_RAYS) {
+            continue;
+        }
+        if (float_one_liquid(s, x, y, dx, dy, is_liquid, swapped, ray - ray_base)) {
+            moved = true;
+        }
+    }
+    return moved;
+}
+
 static bool
 float_lighter_liquids(sand_t* s, int dx, int dy) {
     const int w = s->w, h = s->h;
     const uint16_t is_liquid = liquid_mask();
-    bool moved = false;
-
-    /* Visiting order: against gravity, on both axes, so the destination of a
-     * rise is always already visited. Covers tilt and inversion - for a purely
-     * sideways vector one axis is a no-op and the other carries it. */
     const int y0 = (dy > 0) ? 0 : h - 1, ystep = (dy > 0) ? 1 : -1;
     const int x0 = (dx > 0) ? 0 : w - 1, xstep = (dx > 0) ? 1 : -1;
+    const int rays = liquid_sort_ray_count(s, dx, dy);
+    bool moved = false;
+    uint8_t swapped[RISE_RAYS / 8];
 
-    /* ONE SWAP PER COLUMN PER STEP - ordering alone is not enough. A swap
-     * moves two cells: the heavy one displaced drops a row, where the next
-     * row's mover finds it and pushes it down again, so acid sank a whole
-     * column in a step. Gas escapes that because its mover is a material of
-     * its own and does not refill from below; a lighter liquid does.
-     *
-     * Chunked by column so any width fits 32 bytes of stack. */
-    enum { RISE_COLS = 256 };
-
-    uint8_t swapped[RISE_COLS / 8];
-
-    for (int xbase = 0; xbase < w; xbase += RISE_COLS) {
+    for (int ray_base = 0; ray_base < rays; ray_base += RISE_RAYS) {
         memset(swapped, 0, sizeof swapped);
         for (int yi = 0; yi < h; yi++) {
             const int y = y0 + yi * ystep;
-            const int uy = y - dy;
-            if ((unsigned)uy >= (unsigned)h) {
-                continue;
-            }
-            uint8_t* const row = &s->cells[(size_t)y * (size_t)w];
-            uint8_t* const urow = &s->cells[(size_t)uy * (size_t)w];
-
-            for (int xi = 0; xi < w; xi++) {
-                const int x = x0 + xi * xstep;
-                if (x < xbase || x - xbase >= RISE_COLS) {
-                    continue;
-                }
-                const int col = x - xbase;
-                if (((swapped[col >> 3] >> (col & 7)) & 1u) != 0u) {
-                    continue; /* this column has had its one move */
-                }
-                const int ux = x - dx;
-                if ((unsigned)ux >= (unsigned)w) {
-                    continue;
-                }
-                const cell_t me = row[x];
-                if (CELL_IS_EMPTY(me)) {
-                    continue;
-                }
-                const uint8_t mine = CELL_MATERIAL(me);
-                if (((is_liquid >> mine) & 1u) == 0) {
-                    continue;
-                }
-                const cell_t above = urow[ux];
-                if (CELL_IS_EMPTY(above)) {
-                    continue; /* open space - the ordinary fall owns that */
-                }
-                const uint8_t theirs = CELL_MATERIAL(above);
-                if (theirs == mine || ((is_liquid >> theirs) & 1u) == 0) {
-                    continue;
-                }
-                if (material_by_id((material_id_t)theirs)->density <= material_by_id((material_id_t)mine)->density) {
-                    continue; /* nothing to sort: already the right way up */
-                }
-                /* Viscosity, the same roll the ordinary move pays and the same
-             * idea as gas's mobility gate - a rise should be a lazy drift,
-             * not a guaranteed cell every step. Without it this pass sorts
-             * harder than the sinking swap it replaced ever did. */
-                if (s->may_have_viscous_liquid && !liquid_may_move(s, x, y, mine)) {
-                    continue;
-                }
-
-                urow[ux] = me;
-                row[x] = above;
-                swapped[col >> 3] |= (uint8_t)(1u << (col & 7));
-                mark_slide(s, x, y, ux, uy);
-                wake_block_and_neighbors(s, x, y);
-                wake_block_and_neighbors(s, ux, uy);
+            if (float_liquid_row(s, y, x0, xstep, dx, dy, is_liquid, swapped, ray_base)) {
                 moved = true;
             }
         }
