@@ -20,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Length beside code, and header height
         run: >
@@ -43,3 +45,9 @@ jobs:
 
       - name: Every document is reachable from README.md
         run: python3 scripts/check_doc_index.py
+
+      # Warns, never fails: a changed function a document cites is a reason
+      # to reread that document, not proof it is wrong.
+      - name: Documents citing what this pull request changed
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/doc_citers.py --changed "origin/${{ github.base_ref }}"
