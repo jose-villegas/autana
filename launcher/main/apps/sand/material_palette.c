@@ -566,13 +566,26 @@ fx_round_div(int n, int d) {
     return -((-n + d / 2) / d);
 }
 
-/* Only three outward-normal cases can occur here, since there are only two
- * axes: no empty side (or a cancelling pair), one empty side, or two
- * adjacent ones (a diagonal of length sqrt(2)) - so norm_q8 just picks
- * between unit length and 1/sqrt(2) rather than a general vector length.
- * Liquid interior shading (`depth`/`wave`) is walked fresh per cell against
- * the live grid in paint_row_n() instead of here, since gravity's direction
- * alone can't predict a cell's local surroundings ahead of time. */
+/* Positive specular term subtracts from index; see
+ * test_a_liquid_rim_catches_the_light_from_above. */
+static int8_t
+liquid_spec_for_mask(unsigned mask, int ux_q8, int uy_q8) {
+    const int nx = ((mask & MATERIAL_EDGE_RIGHT) ? 1 : 0) - ((mask & MATERIAL_EDGE_LEFT) ? 1 : 0);
+    const int ny = ((mask & MATERIAL_EDGE_DOWN) ? 1 : 0) - ((mask & MATERIAL_EDGE_UP) ? 1 : 0);
+    if (nx == 0 && ny == 0) {
+        return 0;
+    }
+    const int raw_q8 = nx * ux_q8 + ny * uy_q8;
+    const int norm_q8 = (nx != 0 && ny != 0) ? 181 : 256;
+    const int spec_q8 = (raw_q8 * norm_q8) / 256; /* now in [-256,256] */
+    return (int8_t)(-fx_round_div(spec_q8 * SPEC_STRENGTH, 256));
+}
+
+/* Only three outward-normal cases exist here (two axes): no empty side, one,
+ * or two adjacent (diagonal, length sqrt(2)) - so norm_q8 picks only unit
+ * length or 1/sqrt(2). Liquid interior shading is walked per cell in
+ * paint_row_n() instead, since gravity alone cannot predict a cell's
+ * surroundings. */
 void
 material_set_gravity(int gx, int gy) {
     const int len = im_len(gx, gy);
@@ -589,21 +602,7 @@ material_set_gravity(int gx, int gy) {
     const int uy_q8 = (-gy * 256) / len;
 
     for (unsigned mask = 0; mask < MATERIAL_EDGE_MASK_COUNT; mask++) {
-        const int nx = ((mask & MATERIAL_EDGE_RIGHT) ? 1 : 0) - ((mask & MATERIAL_EDGE_LEFT) ? 1 : 0);
-        const int ny = ((mask & MATERIAL_EDGE_DOWN) ? 1 : 0) - ((mask & MATERIAL_EDGE_UP) ? 1 : 0);
-
-        if (nx == 0 && ny == 0) {
-            liquid_spec[mask] = 0;
-            continue;
-        }
-
-        const int raw_q8 = nx * ux_q8 + ny * uy_q8;
-        const int norm_q8 = (nx != 0 && ny != 0) ? 181 : 256;
-        const int spec_q8 = (raw_q8 * norm_q8) / 256; /* now in [-256,256] */
-
-        /* Positive specular term subtracts from index; see
-         * test_a_liquid_rim_catches_the_light_from_above. */
-        liquid_spec[mask] = (int8_t)(-fx_round_div(spec_q8 * SPEC_STRENGTH, 256));
+        liquid_spec[mask] = liquid_spec_for_mask(mask, ux_q8, uy_q8);
     }
 }
 

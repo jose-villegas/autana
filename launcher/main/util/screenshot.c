@@ -65,6 +65,28 @@ static char s_runsuite_name[SCREENSHOT_LINE_MAX];
 #endif
 
 static void
+handle_screenshot_line(const char* line) {
+    const build_console_command_t command = build_console_command_parse(line);
+    if (command == BUILD_CONSOLE_SCREENSHOT) {
+        ESP_LOGI(TAG, "trigger received");
+        s_request_pending = true;
+#if CONFIG_LAUNCHER_SELFTEST
+    } else if (command == BUILD_CONSOLE_RUNSUITE) {
+        const char* name = line + sizeof "RUNSUITE " - 1;
+        ESP_LOGI(TAG, "RUNSUITE %s", name);
+        strncpy(s_runsuite_name, name, sizeof(s_runsuite_name) - 1);
+        s_runsuite_name[sizeof(s_runsuite_name) - 1] = '\0';
+        s_runsuite_pending = true;
+#endif
+    } else if (command == BUILD_CONSOLE_BUILD_ID) {
+        printf("BUILD_ID=%s\n", BUILD_ID);
+        fflush(stdout);
+    } else {
+        ESP_LOGI(TAG, "ignoring line: '%s'", line);
+    }
+}
+
+static void
 screenshot_task(void* arg) {
     (void)arg;
     char line[SCREENSHOT_LINE_MAX];
@@ -90,24 +112,7 @@ screenshot_task(void* arg) {
         if (c == '\n' || c == '\r') {
             if (len > 0) {
                 line[len] = '\0';
-                const build_console_command_t command = build_console_command_parse(line);
-                if (command == BUILD_CONSOLE_SCREENSHOT) {
-                    ESP_LOGI(TAG, "trigger received");
-                    s_request_pending = true;
-#if CONFIG_LAUNCHER_SELFTEST
-                } else if (command == BUILD_CONSOLE_RUNSUITE) {
-                    const char* name = line + sizeof "RUNSUITE " - 1;
-                    ESP_LOGI(TAG, "RUNSUITE %s", name);
-                    strncpy(s_runsuite_name, name, sizeof(s_runsuite_name) - 1);
-                    s_runsuite_name[sizeof(s_runsuite_name) - 1] = '\0';
-                    s_runsuite_pending = true;
-#endif
-                } else if (command == BUILD_CONSOLE_BUILD_ID) {
-                    printf("BUILD_ID=%s\n", BUILD_ID);
-                    fflush(stdout);
-                } else {
-                    ESP_LOGI(TAG, "ignoring line: '%s'", line);
-                }
+                handle_screenshot_line(line);
                 len = 0;
             }
             continue;
