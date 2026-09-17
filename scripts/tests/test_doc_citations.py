@@ -11,6 +11,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import check_doc_citations  # noqa: E402
 import check_doc_constants  # noqa: E402
+import check_doc_index  # noqa: E402
 import check_doc_vocabulary  # noqa: E402
 import doc_drift  # noqa: E402
 
@@ -278,6 +279,56 @@ Acid -->|"dissolvable 110"| Metal
             self.write(root, "docs/Guide.md", "C6 is not the current board.\n")
             found = check_doc_vocabulary.check(root)
         self.assertEqual([(path, term) for path, _, term, _ in found], [("docs/Guide.md", "C6")])
+
+    def test_citation_allowlist_reports_entries_nothing_needs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.fixture(root)
+            self.write(root, "scripts/doc_citation_allowlist.txt",
+                       "# doc\tcitation\treason\n"
+                       "docs/Guide.md\tmissing.h\tstill cited and missing\n"
+                       "docs/Guide.md\tLIVE_MACRO\tresolves now\n"
+                       "docs/Gone.md\told_name\tdocument deleted\n")
+            missing = check_doc_citations.check(root)
+            stale = check_doc_citations.stale_allowlist(root)
+        self.assertNotIn("missing.h", [item.value for item in missing])
+        self.assertEqual([(doc, citation) for _, doc, citation in stale], [
+            ("docs/Guide.md", "LIVE_MACRO"),
+            ("docs/Gone.md", "old_name"),
+        ])
+
+    def test_vocabulary_gate_reports_exception_for_a_clean_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "scripts/doc_vocabulary.txt", "C6\twrong board\n")
+            self.write(root, "scripts/doc_vocabulary_exceptions.txt", "docs/Clean.md\trewritten\n")
+            self.write(root, "docs/Clean.md", "The S3 is current.\n")
+            found = check_doc_vocabulary.check(root)
+        self.assertEqual([(path, term) for path, _, term, _ in found], [
+            ("docs/Clean.md", "stale exception"),
+        ])
+
+    def test_constant_allowlist_reports_entry_the_code_now_agrees_with(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/sizes.h", "#define BLOCK_W 16\n")
+            self.write(root, "docs/Guide.md", "`BLOCK_W` is 16.\n")
+            self.write(root, "scripts/doc_constant_allowlist.txt",
+                       "docs/Guide.md\tBLOCK_W\t16\tused to differ\n")
+            stale = check_doc_constants.stale_allowlist(root)
+        self.assertEqual(stale, [("docs/Guide.md", "BLOCK_W", 16)])
+
+    def test_index_reports_documents_no_link_reaches(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "README.md", "[notes](docs/notes/)\n`docs/Named.md`\n")
+            self.write(root, "docs/notes/README.md", "[Board](Board.md)\n")
+            self.write(root, "docs/notes/Board.md", "[up](../Linked.md#top)\n")
+            self.write(root, "docs/Linked.md", "text\n")
+            self.write(root, "docs/Named.md", "only named in backticks\n")
+            self.write(root, "docs/Orphan.md", "nothing links here\n")
+            orphans = check_doc_index.check(root)
+        self.assertEqual(orphans, ["docs/Named.md", "docs/Orphan.md"])
 
     def test_reverse_index_ignores_repeated_function_definition(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -22,26 +22,35 @@ def exceptions(root):
             if line and not line.startswith("#")}
 
 
+def retired_uses(path, name, retired_terms):
+    found = []
+    previous_escape = False
+    for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        escaped = ESCAPE in line or previous_escape
+        previous_escape = ESCAPE in line
+        if escaped:
+            continue
+        for term, reason in retired_terms:
+            if re.search(r"(?<![A-Za-z0-9-])" + re.escape(term) + r"(?![A-Za-z0-9-])", line,
+                         re.IGNORECASE):
+                found.append((name, number, term, reason))
+    return found
+
+
 def check(root):
     root = pathlib.Path(root)
     skipped = exceptions(root)
     retired_terms = terms(root)
-    found = [(name, 0, STALE_EXCEPTION, "exception entry names no file")
-             for name in sorted(skipped) if not (root / name).is_file()]
+    found = []
+    for name in sorted(skipped):
+        if not (root / name).is_file():
+            found.append((name, 0, STALE_EXCEPTION, "exception entry names no file"))
+        elif not retired_uses(root / name, name, retired_terms):
+            found.append((name, 0, STALE_EXCEPTION, "file no longer uses a retired term"))
     for path in sorted((root / "docs").rglob("*.md")):
         name = path.relative_to(root).as_posix()
-        if name in skipped:
-            continue
-        previous_escape = False
-        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-            escaped = ESCAPE in line or previous_escape
-            previous_escape = ESCAPE in line
-            if escaped:
-                continue
-            for term, reason in retired_terms:
-                if re.search(r"(?<![A-Za-z0-9-])" + re.escape(term) + r"(?![A-Za-z0-9-])", line,
-                             re.IGNORECASE):
-                    found.append((name, number, term, reason))
+        if name not in skipped:
+            found.extend(retired_uses(path, name, retired_terms))
     return found
 
 

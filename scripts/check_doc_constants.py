@@ -208,6 +208,22 @@ def allowlist(root):
     return allowed
 
 
+def stale_allowlist(root):
+    """Allowlist entries whose documented value no longer disagrees with the
+    code, or that no longer appear in their document, as (doc, name, value)."""
+    root = pathlib.Path(root)
+    values = constants(root)
+    stale = []
+    for doc, name, value in sorted(allowlist(root)):
+        path = root / doc
+        text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+        mentioned = re.search(r"\b" + re.escape(name) + r"\b", text) and re.search(
+            r"(?<![\d.])" + str(value) + r"(?![\d.])", text)
+        if values.get(name) == value or not mentioned:
+            stale.append((doc, name, value))
+    return stale
+
+
 def adjacent(name, number, text):
     before = text[:number.start()]
     return (re.search(r"\b" + re.escape(name.group()) + r"\b\s*(?:`)?\s*(?:\(|=|,\s*currently(?:\s+is)?\s+|(?:is|are|currently|at|of)\s+)[^\d]{0,24}$", before) is not None or
@@ -505,6 +521,7 @@ def main(argv):
         return 2
     try:
         result = check(root, verbose, docs_ref)
+        stale = stale_allowlist(root)
     except (subprocess.CalledProcessError, ValueError) as error:
         print(error, file=sys.stderr)
         return 2
@@ -516,9 +533,13 @@ def main(argv):
             print(f"{doc}:{line}: skipped: {reason}")
         for reason in sorted(set(item[2] for item in skipped)):
             print(f"{sum(item[2] == reason for item in skipped)} skipped: {reason}")
+    for doc, name, value in stale:
+        print(f"scripts/doc_constant_allowlist.txt: stale entry {doc} {name} {value}: "
+              "the document no longer disagrees with the code")
     print(f"{len(mismatches)} documentation constant mismatch"
-          f"{'' if len(mismatches) == 1 else 'es'}")
-    return 1 if mismatches else 0
+          f"{'' if len(mismatches) == 1 else 'es'}, {len(stale)} stale allowlist "
+          f"entr{'y' if len(stale) == 1 else 'ies'}")
+    return 1 if mismatches or stale else 0
 
 
 if __name__ == "__main__":

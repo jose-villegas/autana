@@ -85,6 +85,11 @@ this, not a tour. Start wherever your question is:
 | [`docs/notes/`](docs/notes/README.md) | Board-specific hardware notes: the memory budget, panel and touch gotchas, flashing and recovery. Split by topic - start at the index. |
 | [`docs/C-Style-Guide.md`](docs/C-Style-Guide.md) | The C style: what the formatter decides, what judgment decides, and how the pre-commit hook and CI keep the tree from drifting. |
 | [`docs/Testing-Guide.md`](docs/Testing-Guide.md) | How the host and on-device test suites work, and why release builds carry none of the test code. |
+| [`docs/Building-a-Screen.md`](docs/Building-a-Screen.md) | Start here to build or change a UI screen: the loop, the house rules, and how to do what a screen needs. |
+| [`docs/Autana-Rendering-Roadmap.md`](docs/Autana-Rendering-Roadmap.md) | Proposal: the order of investment for the rendering engine and its target games. |
+| [`docs/sand/`](docs/sand/README.md) | The sand app's own doc set - architecture, materials, reactions, shading, testing. |
+| [`docs/plans/`](docs/plans/README.md) | Designs for work not yet built, or built from a written plan. |
+| [`docs/tools/`](docs/tools/README.md) | How the repository's checks work: the complexity gate and documentation drift. |
 
 ## Status
 
