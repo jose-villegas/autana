@@ -105,14 +105,10 @@ test_chevron_left_matches_source_svg_rectangles(void) {
     }
 }
 
-/* A second, independent extraction of the same geometry - built on
- * baked_bit()/icon_system_table lookups rather than on icon_walk_blocks()
- * or its internals - so agreement with the streaming walker below proves
- * the reshape into a callback changed no geometry, not merely that the
- * walker agrees with itself. */
+/* The icon's own drawn-ink scale factor: the largest integer that still
+ * fits (iw,ih) inside (box_w,box_h), floored at 1. */
 static int
-reference_blocks(const icon_t* icon, int box_w, int box_h, icon_rect_t* out, int max) {
-    const int iw = icon->w, ih = icon->h;
+reference_icon_scale(int iw, int ih, int box_w, int box_h) {
     int scale = box_w / iw;
     const int scale_h = box_h / ih;
     if (scale_h < scale) {
@@ -121,27 +117,55 @@ reference_blocks(const icon_t* icon, int box_w, int box_h, icon_rect_t* out, int
     if (scale < 1) {
         scale = 1;
     }
+    return scale;
+}
 
-    int min_x = iw, max_x = -1, min_y = ih, max_y = -1;
+/* Widens [*min_x,*max_x] x [*min_y,*max_y] to include (x,y). */
+static void
+extend_ink_bounds(int x, int y, int* min_x, int* max_x, int* min_y, int* max_y) {
+    if (x < *min_x) {
+        *min_x = x;
+    }
+    if (x > *max_x) {
+        *max_x = x;
+    }
+    if (y < *min_y) {
+        *min_y = y;
+    }
+    if (y > *max_y) {
+        *max_y = y;
+    }
+}
+
+/* Bounding box of the icon's own drawn ink - min/max x and y over every
+ * set bit. */
+static void
+reference_icon_bbox(const icon_t* icon, int iw, int ih, int* min_x, int* max_x, int* min_y, int* max_y) {
+    *min_x = iw;
+    *max_x = -1;
+    *min_y = ih;
+    *max_y = -1;
     for (int y = 0; y < ih; y++) {
         for (int x = 0; x < iw; x++) {
-            if (!baked_bit(icon, x, y)) {
-                continue;
-            }
-            if (x < min_x) {
-                min_x = x;
-            }
-            if (x > max_x) {
-                max_x = x;
-            }
-            if (y < min_y) {
-                min_y = y;
-            }
-            if (y > max_y) {
-                max_y = y;
+            if (baked_bit(icon, x, y)) {
+                extend_ink_bounds(x, y, min_x, max_x, min_y, max_y);
             }
         }
     }
+}
+
+/* A second, independent extraction of the same geometry - built on
+ * baked_bit()/icon_system_table lookups rather than on icon_walk_blocks()
+ * or its internals - so agreement with the streaming walker below proves
+ * the reshape into a callback changed no geometry, not merely that the
+ * walker agrees with itself. */
+static int
+reference_blocks(const icon_t* icon, int box_w, int box_h, icon_rect_t* out, int max) {
+    const int iw = icon->w, ih = icon->h;
+    const int scale = reference_icon_scale(iw, ih, box_w, box_h);
+
+    int min_x, max_x, min_y, max_y;
+    reference_icon_bbox(icon, iw, ih, &min_x, &max_x, &min_y, &max_y);
     TEST_ASSERT_TRUE_MESSAGE(max_x >= 0, "reference extraction found no ink in a baked icon");
 
     const int cw = max_x - min_x + 1;

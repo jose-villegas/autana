@@ -264,6 +264,24 @@ test_coverage_is_monotonic_in_alpha_at_every_cell(void) {
     }
 }
 
+/* At cell (x,y), checks covers(a) && covers(b) == covers(min(a,b)) across
+ * a 17-step sweep of both alphas. */
+static void
+check_covers_both_at_cell(int x, int y) {
+    for (int a = 0; a <= 255; a += 17) {
+        for (int b = 0; b <= 255; b += 17) {
+            const uint8_t lower = (uint8_t)(a < b ? a : b);
+            const bool both = gfx_dither_covers(x, y, (uint8_t)a) && gfx_dither_covers(x, y, (uint8_t)b);
+            const bool via_min = gfx_dither_covers(x, y, lower);
+            TEST_ASSERT_EQUAL_MESSAGE(via_min, both,
+                                      "covers(a) && covers(b) must equal covers(min(a, "
+                                      "b)) at every cell - this is what lets draw_image() "
+                                      "test the lower alpha once instead of testing both "
+                                      "and ANDing");
+        }
+    }
+}
+
 /* Coverage is monotonic in alpha at a fixed cell (proved above), so testing
  * the lower of two alphas must agree with testing each and ANDing - the
  * property a caller folding two gfx_dither_covers() calls into one leans
@@ -275,18 +293,7 @@ static void
 test_covers_both_equals_covers_the_lower_alpha(void) {
     for (int y = 0; y < 4; y++) {
         for (int x = 0; x < 4; x++) {
-            for (int a = 0; a <= 255; a += 17) {
-                for (int b = 0; b <= 255; b += 17) {
-                    const uint8_t lower = (uint8_t)(a < b ? a : b);
-                    const bool both = gfx_dither_covers(x, y, (uint8_t)a) && gfx_dither_covers(x, y, (uint8_t)b);
-                    const bool via_min = gfx_dither_covers(x, y, lower);
-                    TEST_ASSERT_EQUAL_MESSAGE(via_min, both,
-                                              "covers(a) && covers(b) must equal covers(min(a, "
-                                              "b)) at every cell - this is what lets draw_image() "
-                                              "test the lower alpha once instead of testing both "
-                                              "and ANDing");
-                }
-            }
+            check_covers_both_at_cell(x, y);
         }
     }
 }

@@ -26,6 +26,8 @@ const tiltHandle = document.getElementById("tilt-handle");
 const qualitySelect = document.getElementById("quality");
 const renderScaleSelect = document.getElementById("render-scale");
 const simSpeedSelect = document.getElementById("sim-speed");
+const colorModeSelect = document.getElementById("color-mode");
+const ditherModeSelect = document.getElementById("dither-mode");
 const modeButtons = [...document.querySelectorAll(".mode")];
 const fsBtn = document.getElementById("fullscreen-btn");
 const fsTarget = document.getElementById("app");
@@ -33,7 +35,7 @@ const orientationBtn = document.getElementById("orientation-btn");
 
 let Module, web_init, web_step, web_input, web_clear, web_set_brush,
     web_brush_swatch, web_render, web_screen_w, web_screen_h, web_pixels_ptr,
-    web_set_sim_speed;
+    web_set_sim_speed, web_set_color_mode, web_set_dither_mode;
 let screenW = 448, screenH = 368;
 let pixelsPtr = 0;
 let mode = MODE_PAINT;
@@ -288,6 +290,22 @@ simSpeedSelect.addEventListener("change", () => {
   web_set_sim_speed(Math.round(Number(simSpeedSelect.value) * 256));
 });
 
+// COLOUR/DITHER, app_sand.c's own two launch options (see web_sand.c's own
+// color_mode comment) - also no reinit, both apply on the very next
+// web_render() call. Dither only matters once colour is 16, same as the
+// device's own menu (sand_menu_screen_t.show_dither).
+function updateDitherEnabled() {
+  ditherModeSelect.disabled = colorModeSelect.value !== "2";
+}
+colorModeSelect.addEventListener("change", () => {
+  web_set_color_mode(Number(colorModeSelect.value));
+  updateDitherEnabled();
+});
+ditherModeSelect.addEventListener("change", () => {
+  web_set_dither_mode(Number(ditherModeSelect.value));
+});
+updateDitherEnabled();
+
 orientationBtn.addEventListener("click", () => {
   landscape = !landscape;
   orientationBtn.textContent = landscape ? "Portrait" : "Landscape";
@@ -351,6 +369,8 @@ SandModule().then((mod) => {
   web_clear = Module.cwrap("web_clear", null, []);
   web_set_brush = Module.cwrap("web_set_brush", null, ["number"]);
   web_set_sim_speed = Module.cwrap("web_set_sim_speed", null, ["number"]);
+  web_set_color_mode = Module.cwrap("web_set_color_mode", null, ["number"]);
+  web_set_dither_mode = Module.cwrap("web_set_dither_mode", null, ["number"]);
   web_brush_swatch = Module.cwrap("web_brush_swatch", "number", ["number"]);
   web_screen_w = Module.cwrap("web_screen_w", "number", []);
   web_screen_h = Module.cwrap("web_screen_h", "number", []);
@@ -361,6 +381,8 @@ SandModule().then((mod) => {
 
   buildPalette(web_brush_count());
   reinitSim();
+  web_set_color_mode(Number(colorModeSelect.value));
+  web_set_dither_mode(Number(ditherModeSelect.value));
 
   loadingEl.hidden = true;
   requestAnimationFrame(frame);

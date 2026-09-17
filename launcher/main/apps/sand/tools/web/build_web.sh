@@ -42,9 +42,15 @@ if ! command -v emcc >/dev/null 2>&1; then
 fi
 
 # Same portable sources test/run_tests.sh links for the host test runner -
-# see that script's own SOURCES comment. row_runs.c and palette.c are not
-# needed here: this build has no dirty-row tracking and no microui panel to
-# hit-test - see web_sand.c's own top comment for why.
+# see that script's own SOURCES comment. row_runs.c, palette.c, sand_ui.c
+# and sand_heal.c are not needed here: this build has no dirty-row
+# tracking, no microui panel to hit-test, and no SPI heal budget to spend -
+# see web_sand.c's own top comment for why.
+#
+# util/job.c: sand.c/sand_liquid.c/sand_gas.c split their heaviest passes
+# across job_run_core1() unconditionally now - there is no ESP_PLATFORM in
+# this build, so job.c's own portable fallback just runs the job inline on
+# this one core, same as it does for run_tests.sh's host runner.
 SOURCES="
 $SAND_DIR/material.c
 $SAND_DIR/material_palette.c
@@ -55,6 +61,7 @@ $SAND_DIR/sand_gas.c
 $SAND_DIR/sand_reactions.c
 $SAND_DIR/sand_plants.c
 $SAND_DIR/tilt.c
+$MAIN_DIR/util/job.c
 $SCRIPT_DIR/web_sand.c
 "
 

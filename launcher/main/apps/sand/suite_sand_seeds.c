@@ -435,6 +435,26 @@ test_turning_the_board_drops_a_settled_plant(void) {
                              "points");
 }
 
+/* Whether (x, y) touches any non-empty cell in its full 8-neighbourhood.
+ * All EIGHT: a branch grows out at an angle, so the cell it grew from is
+ * diagonally below it and orthogonally it may touch nothing at all. */
+static bool
+touches_any_neighbor(int x, int y) {
+    static const int ox[8] = {1, -1, 0, 0, 1, 1, -1, -1};
+    static const int oy[8] = {0, 0, 1, -1, 1, -1, 1, -1};
+    for (int d = 0; d < 8; d++) {
+        const int nx = x + ox[d];
+        const int ny = y + oy[d];
+        if ((unsigned)nx >= (unsigned)W || (unsigned)ny >= (unsigned)H) {
+            continue;
+        }
+        if (!CELL_IS_EMPTY(sand_at(&s, nx, ny))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* And what a tree grows must NOT fall.
  *
  * The other half of the same rule, and the reason it cannot simply be
@@ -465,27 +485,10 @@ test_a_growing_tree_does_not_shed_what_it_grows(void) {
                     continue;
                 }
                 grown++;
-                /* All EIGHT, because a branch grows out at an angle -
-                 * that is what makes it a branch - so the cell it grew
-                 * from is diagonally below it and orthogonally it may be
-                 * touching nothing at all. Checking four was checking the
-                 * shape a tree does not have. */
-                int touching = 0;
-                for (int d = 0; d < 8; d++) {
-                    static const int ox[8] = {1, -1, 0, 0, 1, 1, -1, -1};
-                    static const int oy[8] = {0, 0, 1, -1, 1, -1, 1, -1};
-                    const int nx = x + ox[d];
-                    const int ny = y + oy[d];
-                    if ((unsigned)nx >= (unsigned)W || (unsigned)ny >= (unsigned)H) {
-                        continue;
-                    }
-                    if (!CELL_IS_EMPTY(sand_at(&s, nx, ny))) {
-                        touching = 1;
-                    }
-                }
-                TEST_ASSERT_TRUE_MESSAGE(touching, "no part of a tree may be floating free - a limb that "
-                                                   "detaches from what grew it is a bug in the falling "
-                                                   "rule, not weather");
+                TEST_ASSERT_TRUE_MESSAGE(touches_any_neighbor(x, y),
+                                         "no part of a tree may be floating free - a limb that "
+                                         "detaches from what grew it is a bug in the falling "
+                                         "rule, not weather");
             }
         }
     }
@@ -804,6 +807,37 @@ test_a_hardened_trunk_is_left_with_foliage(void) {
  * pillar, passes any "is it thick" assert, and looks nothing like a tree.
  * So both ends are measured and compared, rather than one measured and
  * hoped over. */
+typedef struct {
+    int foot, top;
+} trunk_taper_t;
+
+/* Folds row y's wood width into the running foot (widest row anywhere)
+ * and top (widest row in the upper half) maxima. */
+static void
+note_wood_row_width(const sand_t* g, int w, int y, int half_h, trunk_taper_t* t) {
+    int wide = 0;
+    for (int x = 0; x < w; x++) {
+        if (CELL_MATERIAL(sand_at(g, x, y)) == MAT_WOOD) {
+            wide++;
+        }
+    }
+    if (wide > t->foot) {
+        t->foot = wide;
+    }
+    if (y < half_h && wide > t->top) {
+        t->top = wide;
+    }
+}
+
+/* Widest wood row anywhere, against the widest in the top half - folded
+ * into the running maxima in `t`, not reset per call. */
+static void
+update_trunk_taper(const sand_t* g, int w, int h, trunk_taper_t* t) {
+    for (int y = 0; y < h - 2; y++) {
+        note_wood_row_width(g, w, y, (h - 2) / 2, t);
+    }
+}
+
 static void
 test_a_hardened_trunk_is_thicker_at_the_foot(void) {
     fixture();
@@ -817,35 +851,20 @@ test_a_hardened_trunk_is_thicker_at_the_foot(void) {
     }
     sand_set(&s, W / 2, H - 3, MATX(MATX_PLANT));
 
-    int foot = 0, top = 0;
+    trunk_taper_t taper = {0, 0};
     for (int i = 0; i < 3000; i++) {
         for (int x = 0; x < W; x++) {
             sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
         }
         sand_step(&s, 0, 1000, 0);
-
-        /* Widest wood row anywhere, against the widest in the top half. */
-        for (int y = 0; y < H - 2; y++) {
-            int wide = 0;
-            for (int x = 0; x < W; x++) {
-                if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_WOOD) {
-                    wide++;
-                }
-            }
-            if (wide > foot) {
-                foot = wide;
-            }
-            if (y < (H - 2) / 2 && wide > top) {
-                top = wide;
-            }
-        }
+        update_trunk_taper(&s, W, H, &taper);
     }
 
-    TEST_ASSERT_GREATER_THAN_MESSAGE(1, foot,
+    TEST_ASSERT_GREATER_THAN_MESSAGE(1, taper.foot,
                                      "a hardened trunk must be more than one cell wide somewhere - "
                                      "thickening during growth cannot reach a tree that has already "
                                      "hardened, so it has to happen as the wood is laid");
-    TEST_ASSERT_GREATER_THAN_MESSAGE(top, foot,
+    TEST_ASSERT_GREATER_THAN_MESSAGE(taper.top, taper.foot,
                                      "and it must be WIDER at the foot than up in the branches - a "
                                      "trunk of uniform width is a pillar, and passes every assert that "
                                      "only asks whether it is thick");
@@ -861,6 +880,34 @@ test_a_hardened_trunk_is_thicker_at_the_foot(void) {
  * one. */
 #define LIMB_W 30
 #define LIMB_H 26
+
+/* A short trunk with a three-cell limb already heading outward at bx. */
+static void
+build_limb_travel_scene(sand_t* g, int bx) {
+    for (int x = 0; x < LIMB_W; x++) {
+        sand_set(g, x, LIMB_H - 1, STONE);
+        sand_set(g, x, LIMB_H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
+    }
+    for (int y = LIMB_H - 8; y < LIMB_H - 2; y++) {
+        sand_set(g, bx, y, CELL_MAKE(MAT_WOOD, 0));
+    }
+    sand_set(g, bx + 1, LIMB_H - 9, MATX(MATX_PLANT));
+    sand_set(g, bx + 2, LIMB_H - 10, MATX(MATX_PLANT));
+    sand_set(g, bx + 3, LIMB_H - 11, MATX(MATX_PLANT));
+}
+
+/* Furthest column any tree body has reached, folded into *reach. */
+static void
+update_limb_reach(const sand_t* g, int* reach) {
+    for (int y = 0; y < LIMB_H - 2; y++) {
+        for (int x = 0; x < LIMB_W; x++) {
+            const cell_t c = sand_at(g, x, y);
+            if ((c == MATX(MATX_PLANT) || CELL_MATERIAL(c) == MAT_WOOD) && x > *reach) {
+                *reach = x;
+            }
+        }
+    }
+}
 
 static void
 test_a_limb_travels_outward_instead_of_climbing(void) {
@@ -888,16 +935,7 @@ test_a_limb_travels_outward_instead_of_climbing(void) {
         sand_set_decay(&t, SAND_DECAY_PER_MATERIAL);
 
         const int bx = 3;
-        for (int x = 0; x < LIMB_W; x++) {
-            sand_set(&t, x, LIMB_H - 1, STONE);
-            sand_set(&t, x, LIMB_H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-        }
-        for (int y = LIMB_H - 8; y < LIMB_H - 2; y++) {
-            sand_set(&t, bx, y, CELL_MAKE(MAT_WOOD, 0));
-        }
-        sand_set(&t, bx + 1, LIMB_H - 9, MATX(MATX_PLANT));
-        sand_set(&t, bx + 2, LIMB_H - 10, MATX(MATX_PLANT));
-        sand_set(&t, bx + 3, LIMB_H - 11, MATX(MATX_PLANT));
+        build_limb_travel_scene(&t, bx);
 
         int reach = bx + 3;
         for (int i = 0; i < 4000; i++) {
@@ -905,15 +943,7 @@ test_a_limb_travels_outward_instead_of_climbing(void) {
                 sand_set(&t, x, LIMB_H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
             }
             sand_step(&t, 0, 1000, 0);
-
-            for (int y = 0; y < LIMB_H - 2; y++) {
-                for (int x = 0; x < LIMB_W; x++) {
-                    const cell_t c = sand_at(&t, x, y);
-                    if ((c == MATX(MATX_PLANT) || CELL_MATERIAL(c) == MAT_WOOD) && x > reach) {
-                        reach = x;
-                    }
-                }
-            }
+            update_limb_reach(&t, &reach);
         }
         total += reach;
     }
@@ -929,73 +959,78 @@ test_a_limb_travels_outward_instead_of_climbing(void) {
                                      "of its own trunk, and no tree ever puts out a bough");
 }
 
-/* A crowned trunk puts out new growth; a bare one does not - growth
- * comes only from already-crowned wood. The "already in leaf" half is
- * not decoration, it is the bound: a canopy touches a dozen cells of
- * wood, so if bare wood could bud the rate would scale with the trunk
- * and the forest would run away; crowned wood at the head of its trunk
- * is a handful of cells per tree however fat it gets. */
+/* A trunk of wood at cx, H-5..H-3, on a stone floor with dirt at moisture
+ * `moisture` - leafed at (cx+1, H-5) if `leafed`. */
 static void
-test_a_crowned_trunk_buds_and_a_bare_one_does_not(void) {
-    const int cx = W / 2;
-
-    /* Crowned: wood, a leaf on it, wet ground under it. */
+build_trunk_scene(int cx, bool leafed, uint8_t moisture) {
     fixture();
     sand_clear(&s);
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
     for (int x = 0; x < W; x++) {
         sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
+        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, moisture));
     }
     for (int y = H - 5; y < H - 2; y++) {
         sand_set(&s, cx, y, CELL_MAKE(MAT_WOOD, 0));
     }
-    sand_set(&s, cx + 1, H - 5, MATX(MATX_LEAF));
+    if (leafed) {
+        sand_set(&s, cx + 1, H - 5, MATX(MATX_LEAF));
+    }
+}
 
-    int budded = 0;
-    for (int i = 0; i < 4000 && !budded; i++) {
+/* Whether any cell of the default fixture is a growing plant tip. */
+static bool
+board_has_plant(void) {
+    for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
-            sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-        }
-        sand_step(&s, 0, 1000, 0);
-        for (int y = 0; y < H && !budded; y++) {
-            for (int x = 0; x < W; x++) {
-                if (sand_at(&s, x, y) == MATX(MATX_PLANT)) {
-                    budded = 1;
-                    break;
-                }
+            if (sand_at(&s, x, y) == MATX(MATX_PLANT)) {
+                return true;
             }
         }
+    }
+    return false;
+}
+
+/* Rewaters the floor to `moisture` (a pour keeps drying soil topped up)
+ * and steps once. */
+static void
+rewater_floor_and_step(uint8_t moisture) {
+    for (int x = 0; x < W; x++) {
+        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, moisture));
+    }
+    sand_step(&s, 0, 1000, 0);
+}
+
+/* A crowned trunk puts out new growth; a bare one does not - growth
+ * comes only from already-crowned wood. The "already in leaf" half is
+ * the bound: a canopy touches a dozen cells of wood, so if bare wood
+ * could bud the rate would scale with the trunk and the forest would
+ * run away; crowned wood at the head of its trunk is a handful of
+ * cells per tree however fat it gets. */
+static void
+test_a_crowned_trunk_buds_and_a_bare_one_does_not(void) {
+    const int cx = W / 2;
+
+    /* Crowned: wood, a leaf on it, wet ground under it. */
+    build_trunk_scene(cx, true, SOIL_MOISTURE_MAX);
+
+    bool budded = false;
+    for (int i = 0; i < 4000 && !budded; i++) {
+        rewater_floor_and_step(SOIL_MOISTURE_MAX);
+        budded = board_has_plant();
     }
     TEST_ASSERT_TRUE_MESSAGE(budded, "a trunk in leaf and in reach of water must put out new growth - "
                                      "hardening leaves no tip behind, so this is the only way a tree "
                                      "gets any taller");
 
     /* Bare: the same trunk, same water, no leaf on it. */
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-    }
-    for (int y = H - 5; y < H - 2; y++) {
-        sand_set(&s, cx, y, CELL_MAKE(MAT_WOOD, 0));
-    }
+    build_trunk_scene(cx, false, SOIL_MOISTURE_MAX);
 
     for (int i = 0; i < 4000; i++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-        }
-        sand_step(&s, 0, 1000, 0);
-        for (int y = 0; y < H; y++) {
-            for (int x = 0; x < W; x++) {
-                TEST_ASSERT_NOT_EQUAL_MESSAGE(MATX(MATX_PLANT), sand_at(&s, x, y),
-                                              "bare wood must NOT bud - a canopy touches a dozen "
-                                              "cells of trunk, and if every one of them could bud, "
-                                              "the rate would scale with the tree all over again");
-            }
-        }
+        rewater_floor_and_step(SOIL_MOISTURE_MAX);
+        TEST_ASSERT_FALSE_MESSAGE(board_has_plant(), "bare wood must NOT bud - a canopy touches a dozen "
+                                                     "cells of trunk, and if every one of them could bud, "
+                                                     "the rate would scale with the tree all over again");
     }
 
     /* And crowned, but on ground too thin to pay for a limb. A bud costs
@@ -1003,31 +1038,13 @@ test_a_crowned_trunk_buds_and_a_bare_one_does_not(void) {
      * thing here that COMPOUNDS, so what has to bound it is the scarce
      * thing rather than a probability. Priced at one level, buds simply
      * drank the pour and the forest ran away. */
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, 1));
-    }
-    for (int y = H - 5; y < H - 2; y++) {
-        sand_set(&s, cx, y, CELL_MAKE(MAT_WOOD, 0));
-    }
-    sand_set(&s, cx + 1, H - 5, MATX(MATX_LEAF));
+    build_trunk_scene(cx, true, 1);
 
     for (int i = 0; i < 4000; i++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, 1));
-        }
-        sand_step(&s, 0, 1000, 0);
-        for (int y = 0; y < H; y++) {
-            for (int x = 0; x < W; x++) {
-                TEST_ASSERT_NOT_EQUAL_MESSAGE(MATX(MATX_PLANT), sand_at(&s, x, y),
-                                              "a crowned trunk on barely damp ground must NOT bud - "
-                                              "a limb has to be paid for, or the only thing bounding "
-                                              "the one mechanism that compounds is a dice roll");
-            }
-        }
+        rewater_floor_and_step(1);
+        TEST_ASSERT_FALSE_MESSAGE(board_has_plant(), "a crowned trunk on barely damp ground must NOT bud - "
+                                                     "a limb has to be paid for, or the only thing bounding "
+                                                     "the one mechanism that compounds is a dice roll");
     }
 }
 
@@ -1180,6 +1197,20 @@ test_a_plant_on_wet_soil_grows_upward(void) {
  * Water is the whole limit on how far a tree gets, so soil with nothing in
  * it has to stop one. Without this the plant is not a plant, it is a
  * self-replicating material that fills the screen. */
+/* Cells of the default fixture currently a growing plant tip. */
+static int
+count_plant_cells(void) {
+    int n = 0;
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            if (sand_at(&s, x, y) == MATX(MATX_PLANT)) {
+                n++;
+            }
+        }
+    }
+    return n;
+}
+
 static void
 test_a_plant_on_dry_soil_stays_where_it_is(void) {
     fixture();
@@ -1206,14 +1237,7 @@ test_a_plant_on_dry_soil_stays_where_it_is(void) {
     for (int i = 0; i < 400; i++) {
         sand_step(&s, 0, 1000, 0);
 
-        int now = 0;
-        for (int y = 0; y < H; y++) {
-            for (int x = 0; x < W; x++) {
-                if (sand_at(&s, x, y) == MATX(MATX_PLANT)) {
-                    now++;
-                }
-            }
-        }
+        const int now = count_plant_cells();
         if (now > tall) {
             tall = now;
         }
@@ -1305,6 +1329,19 @@ test_the_grain_hash_does_not_stripe(void) {
     }
 }
 
+/* Records `value` into `seen[0..*count)` (capacity 8) if it is new. */
+static void
+note_distinct_value(int value, int seen[8], int* count) {
+    for (int k = 0; k < *count; k++) {
+        if (seen[k] == value) {
+            return;
+        }
+    }
+    if (*count < 8) {
+        seen[(*count)++] = value;
+    }
+}
+
 /* The dithered direction is recorded, and it is not the nearest one.
  *
  * The steady direction must not shift, or a resting pool judged against it
@@ -1325,26 +1362,8 @@ test_a_tilt_between_two_directions_is_dithered_not_snapped(void) {
 
     for (int i = 0; i < 200; i++) {
         sand_step(&s, 400, 1000, 0);
-
-        int found = 0;
-        for (int k = 0; k < steps_seen; k++) {
-            if (step_dx[k] == s.last_step_dx) {
-                found = 1;
-            }
-        }
-        if (!found && steps_seen < 8) {
-            step_dx[steps_seen++] = s.last_step_dx;
-        }
-
-        found = 0;
-        for (int k = 0; k < load_seen; k++) {
-            if (load_dx[k] == s.last_load_dx) {
-                found = 1;
-            }
-        }
-        if (!found && load_seen < 8) {
-            load_dx[load_seen++] = s.last_load_dx;
-        }
+        note_distinct_value(s.last_step_dx, step_dx, &steps_seen);
+        note_distinct_value(s.last_load_dx, load_dx, &load_seen);
     }
 
     TEST_ASSERT_GREATER_THAN_MESSAGE(1, steps_seen,
@@ -1402,6 +1421,19 @@ test_a_stem_that_wanders_still_hardens(void) {
                                        "of two and no tree on a tilted board would ever become a trunk");
 }
 
+/* Whether any cell of the default fixture is foliage. */
+static bool
+board_has_leaf(void) {
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            if (sand_at(&s, x, y) == MATX(MATX_LEAF)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 /* A bare trunk in wet ground buds again - otherwise a tree that lost its
  * foliage to fire, acid or a landslide is a bare post for ever, since
  * hardening consumes the very cells that could grow.
@@ -1429,17 +1461,10 @@ test_a_bare_trunk_in_wet_ground_buds_again(void) {
      * of the trunk as a wandering one-cell thread that never gets thick
      * enough to harden and stop - and MAT_EXTENDED would pass on
      * either. */
-    int budded = 0;
+    bool budded = false;
     for (int i = 0; i < 1500 && !budded; i++) {
         sand_step(&s, 0, 1000, 0);
-        for (int y = 0; y < H && !budded; y++) {
-            for (int x = 0; x < W; x++) {
-                if (sand_at(&s, x, y) == MATX(MATX_LEAF)) {
-                    budded = 1;
-                    break;
-                }
-            }
-        }
+        budded = board_has_leaf();
     }
     TEST_ASSERT_TRUE_MESSAGE(budded, "wood standing in watered soil must put out new growth - without "
                                      "it a tree is a thing that happens once, and anything that takes "

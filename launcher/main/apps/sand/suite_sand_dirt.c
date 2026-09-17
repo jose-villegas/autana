@@ -67,6 +67,45 @@ test_wet_sand_becomes_dirt_and_spends_the_water(void) {
                              "of nothing");
 }
 
+/* Folds row y's wettest dirt cell into *wettest, carried across calls -
+ * *wettest compares against CELL_MOISTURE but stores CELL_VARIANT,
+ * exactly as this test's own claim (variant IS moisture, see material.h)
+ * requires. */
+static void
+note_wettest_dirt_in_row(int y, int* wettest) {
+    for (int x = 0; x < W; x++) {
+        const cell_t c = sand_at(&s, x, y);
+        if (CELL_MATERIAL(c) == MAT_DIRT && CELL_MOISTURE(c) > *wettest) {
+            *wettest = CELL_VARIANT(c);
+        }
+    }
+}
+
+/* Whether row y holds any dirt cell with nonzero moisture. */
+static bool
+row_has_wet_dirt(int y) {
+    for (int x = 0; x < W; x++) {
+        const cell_t c = sand_at(&s, x, y);
+        if (CELL_MATERIAL(c) == MAT_DIRT && CELL_MOISTURE(c) != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Empties every cell of material m on scene g (w x h) - used to strip a
+ * pour back out once it has done its job soaking a bed. */
+static void
+clear_material(sand_t* g, int w, int h, material_id_t m) {
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            if (CELL_MATERIAL(sand_at(g, x, y)) == m) {
+                sand_set(g, x, y, 0);
+            }
+        }
+    }
+}
+
 /* Dirt holds moisture in its variant, and gives it back up.
  *
  * Both halves matter: without soaking there is no wet soil for anything to
@@ -90,34 +129,17 @@ test_dirt_takes_on_moisture_and_dries_out_again(void) {
     int wettest = 0;
     for (int i = 0; i < 400; i++) {
         sand_step(&s, 0, 1000, 0);
-        for (int x = 0; x < W; x++) {
-            const cell_t c = sand_at(&s, x, H - 2);
-            if (CELL_MATERIAL(c) == MAT_DIRT && CELL_MOISTURE(c) > wettest) {
-                wettest = CELL_VARIANT(c);
-            }
-        }
+        note_wettest_dirt_in_row(H - 2, &wettest);
     }
     TEST_ASSERT_TRUE_MESSAGE(wettest > 0, "dirt under water must take moisture on - its variant is how wet "
                                           "it is");
 
     /* Take the water away and let it dry. */
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_WATER) {
-                sand_set(&s, x, y, 0);
-            }
-        }
-    }
-    int still_wet = 1;
+    clear_material(&s, W, H, MAT_WATER);
+    bool still_wet = true;
     for (int i = 0; i < 4000 && still_wet; i++) {
         sand_step(&s, 0, 1000, 0);
-        still_wet = 0;
-        for (int x = 0; x < W; x++) {
-            const cell_t c = sand_at(&s, x, H - 2);
-            if (CELL_MATERIAL(c) == MAT_DIRT && CELL_MOISTURE(c) != 0) {
-                still_wet = 1;
-            }
-        }
+        still_wet = row_has_wet_dirt(H - 2);
     }
     TEST_ASSERT_FALSE_MESSAGE(still_wet, "and with the water gone it must dry back out, or one watering "
                                          "makes a patch fertile for good");
@@ -229,6 +251,21 @@ test_new_dirt_starts_dry_in_a_random_tone(void) {
                                            "fill is exactly the flatness this many tones exist to avoid");
 }
 
+/* Tone of the first dirt cell found scanning columns [x0, x1) top to
+ * bottom, or -1 if there is none. */
+static int
+first_dirt_tone_in_columns(int x0, int x1) {
+    for (int y = 0; y < H; y++) {
+        for (int x = x0; x < x1; x++) {
+            const cell_t c = sand_at(&s, x, y);
+            if (CELL_MATERIAL(c) == MAT_DIRT) {
+                return CELL_SOIL_TONE(c);
+            }
+        }
+    }
+    return -1;
+}
+
 /* A SECOND pour, once the pour clock has moved on, must land on a
  * different band - that is what gives a bank built from several pours its
  * layers.
@@ -242,15 +279,7 @@ test_consecutive_dirt_pours_land_on_different_bands(void) {
     sand_clear(&s);
 
     sand_spawn(&s, 1, H / 2, 1, MAT_DIRT);
-    int first_tone = -1;
-    for (int y = 0; y < H && first_tone < 0; y++) {
-        for (int x = 0; x < W / 2 && first_tone < 0; x++) {
-            const cell_t c = sand_at(&s, x, y);
-            if (CELL_MATERIAL(c) == MAT_DIRT) {
-                first_tone = CELL_SOIL_TONE(c);
-            }
-        }
-    }
+    const int first_tone = first_dirt_tone_in_columns(0, W / 2);
 
     /* One tick of POUR_BAND_SHIFT (sand.c, not exposed here - duplicated
      * by value with this comment tying the two together, the same
@@ -259,15 +288,7 @@ test_consecutive_dirt_pours_land_on_different_bands(void) {
     s.pour_phase = 1u << 6;
 
     sand_spawn(&s, 6, H / 2, 1, MAT_DIRT);
-    int second_tone = -1;
-    for (int y = 0; y < H && second_tone < 0; y++) {
-        for (int x = W / 2; x < W && second_tone < 0; x++) {
-            const cell_t c = sand_at(&s, x, y);
-            if (CELL_MATERIAL(c) == MAT_DIRT) {
-                second_tone = CELL_SOIL_TONE(c);
-            }
-        }
-    }
+    const int second_tone = first_dirt_tone_in_columns(W / 2, W);
 
     TEST_ASSERT_TRUE_MESSAGE(first_tone >= 0 && second_tone >= 0, "both pours must have landed something to compare");
     TEST_ASSERT_NOT_EQUAL_MESSAGE(first_tone, second_tone,
@@ -386,6 +407,57 @@ test_soil_dries_biased_by_the_neighbour_it_just_watered(void) {
 #define DRY_BANK_W 16
 #define DRY_BANK_H 14
 
+/* Whether any dirt cell anywhere on scene g (w x h) still holds
+ * moisture. */
+static bool
+grid_has_wet_dirt(const sand_t* g, int w, int h) {
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            const cell_t c = sand_at(g, x, y);
+            if (CELL_MATERIAL(c) == MAT_DIRT && CELL_MOISTURE(c) != 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* Cell count of dirt at each dry tone on scene g (w x h), and the total
+ * dirt cell count. */
+static int
+tally_dirt_tones(const sand_t* g, int w, int h, int hist[SOIL_DRY_TONES]) {
+    memset(hist, 0, sizeof(int) * SOIL_DRY_TONES);
+    int total = 0;
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            const cell_t c = sand_at(g, x, y);
+            if (CELL_MATERIAL(c) == MAT_DIRT) {
+                hist[CELL_SOIL_TONE(c)]++;
+                total++;
+            }
+        }
+    }
+    return total;
+}
+
+typedef struct {
+    int distinct, commonest;
+} tone_spread_t;
+
+static tone_spread_t
+summarize_tone_histogram(const int hist[SOIL_DRY_TONES]) {
+    tone_spread_t r = {0, 0};
+    for (int i = 0; i < SOIL_DRY_TONES; i++) {
+        if (hist[i] != 0) {
+            r.distinct++;
+        }
+        if (hist[i] > r.commonest) {
+            r.commonest = hist[i];
+        }
+    }
+    return r;
+}
+
 static void
 test_a_watered_bank_does_not_dry_back_to_one_flat_tone(void) {
     uint8_t* grid = malloc((size_t)DRY_BANK_W * DRY_BANK_H);
@@ -408,66 +480,33 @@ test_a_watered_bank_does_not_dry_back_to_one_flat_tone(void) {
     for (int i = 0; i < 3000; i++) {
         sand_step(&t, 0, 1000, 0);
     }
-    for (int y = 0; y < DRY_BANK_H; y++) {
-        for (int x = 0; x < DRY_BANK_W; x++) {
-            if (CELL_MATERIAL(sand_at(&t, x, y)) == MAT_WATER) {
-                sand_set(&t, x, y, 0);
-            }
-        }
-    }
+    clear_material(&t, DRY_BANK_W, DRY_BANK_H, MAT_WATER);
 
     bool wet = true;
     for (int i = 0; i < 40000 && wet; i++) {
         sand_step(&t, 0, 1000, 0);
-        wet = false;
-        for (int y = 0; y < DRY_BANK_H && !wet; y++) {
-            for (int x = 0; x < DRY_BANK_W; x++) {
-                const cell_t c = sand_at(&t, x, y);
-                if (CELL_MATERIAL(c) == MAT_DIRT && CELL_MOISTURE(c) != 0) {
-                    wet = true;
-                    break;
-                }
-            }
-        }
+        wet = grid_has_wet_dirt(&t, DRY_BANK_W, DRY_BANK_H);
     }
     TEST_ASSERT_FALSE_MESSAGE(wet, "the bank has to actually finish drying inside the budget, or "
                                    "everything below this is measuring a half-dry pile");
 
     int hist[SOIL_DRY_TONES];
-    memset(hist, 0, sizeof hist);
-    int total = 0;
-    for (int y = 0; y < DRY_BANK_H; y++) {
-        for (int x = 0; x < DRY_BANK_W; x++) {
-            const cell_t c = sand_at(&t, x, y);
-            if (CELL_MATERIAL(c) == MAT_DIRT) {
-                hist[CELL_SOIL_TONE(c)]++;
-                total++;
-            }
-        }
-    }
-
-    int distinct = 0, commonest = 0;
-    for (int i = 0; i < SOIL_DRY_TONES; i++) {
-        if (hist[i] != 0) {
-            distinct++;
-        }
-        if (hist[i] > commonest) {
-            commonest = hist[i];
-        }
-    }
+    const int total = tally_dirt_tones(&t, DRY_BANK_W, DRY_BANK_H, hist);
+    const tone_spread_t spread = summarize_tone_histogram(hist);
 
     char why[192];
     snprintf(why, sizeof why,
              "%d cells, %d distinct tones, commonest holds %d "
              "(%d/%d/%d/%d/%d/%d/%d/%d)",
-             total, distinct, commonest, hist[0], hist[1], hist[2], hist[3], hist[4], hist[5], hist[6], hist[7]);
+             total, spread.distinct, spread.commonest, hist[0], hist[1], hist[2], hist[3], hist[4], hist[5], hist[6],
+             hist[7]);
     /* THREE tones and no tone holding half the bank: measured on this
      * scene it comes out 27/25/24/3/1/0/0/0 across 80 cells. Tone 6 or 7
      * needs soil that was ALREADY damp to hand to - a far bigger pile
      * than this - so asserting the whole range would be asserting a scene
      * this test does not build. The floor is where a regression lands:
      * lose the imprint and all eighty dry onto tone 0. */
-    TEST_ASSERT_TRUE_MESSAGE(distinct >= 3 && commonest * 2 < total, why);
+    TEST_ASSERT_TRUE_MESSAGE(spread.distinct >= 3 && spread.commonest * 2 < total, why);
 
     free(grid);
 }
@@ -676,6 +715,26 @@ test_soil_a_wetting_front_converts_is_handed_a_real_share(void) {
                              "which makes every cell the front converts a dead end");
 }
 
+/* Shade histogram of every MAT_SAND cell on the default fixture, asserting
+ * along the way that each one landed in the cullet band. */
+static void
+tally_cullet_shades(int shades[MATERIAL_VARIANTS]) {
+    memset(shades, 0, sizeof(int) * MATERIAL_VARIANTS);
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            const cell_t c = sand_at(&s, x, y);
+            if (CELL_MATERIAL(c) != MAT_SAND) {
+                continue;
+            }
+            TEST_ASSERT_TRUE_MESSAGE(CELL_VARIANT(c) >= SAND_CULLET_BASE,
+                                     "sand from a shattered pane must land in the cullet band - "
+                                     "the top of the dune ramp is still the dune ramp, and pale "
+                                     "tan reads as sand rather than as broken glass");
+            shades[CELL_VARIANT(c)]++;
+        }
+    }
+}
+
 /* A shattered pane comes back as CULLET, not as beach.
  *
  * Sand's variant is a shade, so recording a grain's glass origin costs
@@ -703,20 +762,8 @@ test_a_shattered_pane_comes_back_as_cullet(void) {
     }
     TEST_ASSERT_TRUE_MESSAGE(count_cells_of(MAT_SAND) > 0, "the pane has to have actually shattered");
 
-    int shades[MATERIAL_VARIANTS] = {0};
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            const cell_t c = sand_at(&s, x, y);
-            if (CELL_MATERIAL(c) != MAT_SAND) {
-                continue;
-            }
-            TEST_ASSERT_TRUE_MESSAGE(CELL_VARIANT(c) >= SAND_CULLET_BASE,
-                                     "sand from a shattered pane must land in the cullet band - "
-                                     "the top of the dune ramp is still the dune ramp, and pale "
-                                     "tan reads as sand rather than as broken glass");
-            shades[CELL_VARIANT(c)]++;
-        }
-    }
+    int shades[MATERIAL_VARIANTS];
+    tally_cullet_shades(shades);
 
     int distinct = 0;
     for (int v = SAND_CULLET_BASE; v < MATERIAL_VARIANTS; v++) {
@@ -840,6 +887,31 @@ test_cullet_does_not_look_like_sand(void) {
     }
 }
 
+/* Fills every empty cell in [x0,x1) x [y0,y1) with water - keeping a
+ * region held under standing water frame after frame. */
+static void
+keep_submerged(int x0, int x1, int y0, int y1) {
+    for (int x = x0; x < x1; x++) {
+        for (int y = y0; y < y1; y++) {
+            if (CELL_IS_EMPTY(sand_at(&s, x, y))) {
+                sand_set(&s, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+            }
+        }
+    }
+}
+
+/* Whether row y holds any dirt cell saturated to SOIL_MOISTURE_MAX. */
+static bool
+row_has_saturated_dirt(int y) {
+    for (int x = 0; x < W; x++) {
+        const cell_t c = sand_at(&s, x, y);
+        if (CELL_MATERIAL(c) == MAT_DIRT && CELL_MOISTURE(c) == SOIL_MOISTURE_MAX) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Water reaches the BOTTOM of a submerged pile.
  *
  * Diffusion alone cannot: half-the-difference settles into a gradient of
@@ -868,24 +940,12 @@ test_water_percolates_to_the_bottom_of_a_submerged_pile(void) {
      * per cell and the surface only ever holds the maximum. A full bottom
      * row is a water table, and only something that runs downhill without
      * needing a gradient builds one. */
-    int wet_floor = 0;
+    bool wet_floor = false;
     for (int i = 0; i < 1200 && !wet_floor; i++) {
         /* Held under: the pile has standing water on it throughout. */
-        for (int x = 0; x < W; x++) {
-            for (int y = 0; y < 2; y++) {
-                if (CELL_IS_EMPTY(sand_at(&s, x, y))) {
-                    sand_set(&s, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-                }
-            }
-        }
+        keep_submerged(0, W, 0, 2);
         sand_step(&s, 0, 1000, 0);
-
-        for (int x = 0; x < W; x++) {
-            const cell_t c = sand_at(&s, x, H - 2);
-            if (CELL_MATERIAL(c) == MAT_DIRT && CELL_MOISTURE(c) == SOIL_MOISTURE_MAX) {
-                wet_floor = 1;
-            }
-        }
+        wet_floor = row_has_saturated_dirt(H - 2);
     }
     TEST_ASSERT_TRUE_MESSAGE(wet_floor, "the deepest row of a submerged pile must SATURATE - diffusion "
                                         "settles into a gradient of one level per cell and stops there, "
