@@ -783,6 +783,27 @@ sweep_x_order(sand_t* s, int dx) {
     return x_step;
 }
 
+/* Sweep against travel so a grain's destination is already swept and it
+ * cannot move twice. With dy == 0 no row order gives that on its own, so a
+ * liquid-free grid alternates the row order per step and keeps only the
+ * diagonal pointing into swept rows. A grid holding liquid keeps the plain
+ * ascending order: restricting its diagonals stopped poured water reaching
+ * the floor, so there a grain can still slide twice in a step. */
+static void
+choose_sweep_order(const sand_t* s, int dy, const int** slide_a, const int** slide_b, int* y_from, int* y_to,
+                   int* y_step) {
+    const bool landscape_safe_sweep = dy == 0 && !s->may_have_liquid;
+
+    *y_step = (dy != 0) ? -dy : (landscape_safe_sweep && (s->step_phase & 1) ? -1 : 1);
+    *y_from = (*y_step > 0) ? 0 : s->h - 1;
+    *y_to = (*y_step > 0) ? s->h : -1;
+    if (landscape_safe_sweep) {
+        const int* const landscape_slide = ((*slide_a)[1] == -*y_step) ? *slide_a : *slide_b;
+        *slide_a = landscape_slide;
+        *slide_b = landscape_slide;
+    }
+}
+
 /* try_scatter()/pick_slide_order()/try_slide_pair() and _impl forms of
  * try_fall_or_scatter()/try_slide() - grain's turn: fall, then slides with
  * friction and shaking. Moved to sand_priv.h (static inline). See header
@@ -1552,14 +1573,10 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     s->last_step_dx = dx;
     s->last_step_dy = dy;
 
-    compute_driven(sweep_driven, slide_a, slide_b, gx, gy);
+    int y_from, y_to, y_step;
+    choose_sweep_order(s, dy, &slide_a, &slide_b, &y_from, &y_to, &y_step);
 
-    /* Sweep against travel on both axes. Grains move to gravity-ward cells
-     * first, ensuring no grain is revisited. Sweeping the other way causes
-     * grains to be moved repeatedly, teleporting to the floor in one frame. */
-    const int y_from = (dy > 0) ? s->h - 1 : 0;
-    const int y_to = (dy > 0) ? -1 : s->h;
-    const int y_step = (dy > 0) ? -1 : 1;
+    compute_driven(sweep_driven, slide_a, slide_b, gx, gy);
 
     const int x_step = sweep_x_order(s, dx);
 

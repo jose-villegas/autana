@@ -25,6 +25,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "bbox_extend.h"
 #include "sand.h"
 #include "sand_priv.h"
 #include "suite_sand_common.h"
@@ -204,23 +205,6 @@ build_sand_dune_scene(sand_t* s) {
     sand_spawn(s, REAL_W / 2, REAL_H / 4, REAL_W / 5, MAT_SAND);
 }
 
-/* Widens [*min_x,*max_x] x [*min_y,*max_y] to include (x, y). */
-static void
-extend_bounds(int x, int y, int* min_x, int* max_x, int* min_y, int* max_y) {
-    if (x < *min_x) {
-        *min_x = x;
-    }
-    if (x > *max_x) {
-        *max_x = x;
-    }
-    if (y < *min_y) {
-        *min_y = y;
-    }
-    if (y > *max_y) {
-        *max_y = y;
-    }
-}
-
 typedef struct {
     int count;
     int min_x, max_x, min_y, max_y;
@@ -238,7 +222,7 @@ record_footprint(const sand_t* g, uint8_t* footprint, int w, int h) {
             }
             footprint_set(footprint, (size_t)y * (size_t)w + (size_t)x);
             b.count++;
-            extend_bounds(x, y, &b.min_x, &b.max_x, &b.min_y, &b.max_y);
+            bbox_extend_inclusive(x, y, &b.min_x, &b.max_x, &b.min_y, &b.max_y);
         }
     }
     return b;
@@ -634,7 +618,7 @@ material_bbox(const sand_t* g, int w, int h, material_id_t m) {
             if (CELL_MATERIAL(sand_at(g, x, y)) != m) {
                 continue;
             }
-            extend_bounds(x, y, &b.min_x, &b.max_x, &b.min_y, &b.max_y);
+            bbox_extend_inclusive(x, y, &b.min_x, &b.max_x, &b.min_y, &b.max_y);
         }
     }
     return b;
