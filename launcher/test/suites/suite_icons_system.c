@@ -22,6 +22,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "bbox_extend.h"
 #include "gfx/icon.h"
 #include "gfx/icons_system.h"
 
@@ -120,23 +121,6 @@ reference_icon_scale(int iw, int ih, int box_w, int box_h) {
     return scale;
 }
 
-/* Widens [*min_x,*max_x] x [*min_y,*max_y] to include (x,y). */
-static void
-extend_ink_bounds(int x, int y, int* min_x, int* max_x, int* min_y, int* max_y) {
-    if (x < *min_x) {
-        *min_x = x;
-    }
-    if (x > *max_x) {
-        *max_x = x;
-    }
-    if (y < *min_y) {
-        *min_y = y;
-    }
-    if (y > *max_y) {
-        *max_y = y;
-    }
-}
-
 /* Bounding box of the icon's own drawn ink - min/max x and y over every
  * set bit. */
 static void
@@ -148,7 +132,7 @@ reference_icon_bbox(const icon_t* icon, int iw, int ih, int* min_x, int* max_x, 
     for (int y = 0; y < ih; y++) {
         for (int x = 0; x < iw; x++) {
             if (baked_bit(icon, x, y)) {
-                extend_ink_bounds(x, y, min_x, max_x, min_y, max_y);
+                bbox_extend_inclusive(x, y, min_x, max_x, min_y, max_y);
             }
         }
     }
