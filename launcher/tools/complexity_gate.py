@@ -10,12 +10,13 @@ with no double counting. A .c file under launcher/main/ that neither
 source measures, and that is not on EXCLUDED_MAIN_FILES below with a
 reason, fails the gate by name - coverage cannot silently shrink.
 
-The gate FAILS when a function's score rises above its last committed
-baseline, a function absent from the baseline scores above
-NEW_FUNCTION_THRESHOLD, or clang-tidy reports a parse error anywhere - a
-partial parse can hide functions, so it is never accepted quietly. A
-falling score PASSES with a note to lower the baseline - lowering it is
-always an explicit --update-baseline, never automatic. See
+The gate FAILS when a function scores above FAIL_THRESHOLD and either
+rose above its last committed baseline or has no baseline entry, or when
+clang-tidy reports a parse error anywhere - a partial parse can hide
+functions, so it is never accepted quietly. A rise that stays at or under
+FAIL_THRESHOLD only WARNS (a GitHub annotation in CI). A falling score
+PASSES with a note to lower the baseline - lowering it is always an
+explicit --update-baseline, never automatic. See
 docs/tools/Complexity-Gate.md for the coverage accounting and the
 threshold's reasoning.
 
@@ -52,9 +53,9 @@ PINNED_MAJOR = "19"
 # The project's own documented standard (docs/sand/Sand-Simulation.md,
 # "Broken down further") is Sonar's *default* line of 15, not the 25 the
 # standalone check used - every function in main/ was driven under 15 by
-# hand once already. A function with no baseline entry - new, or the
-# renamed half of one - is judged against that same line.
-NEW_FUNCTION_THRESHOLD = 15
+# hand once already. Above it a function may not grow and a new one may not
+# land; at or under it a rise is the reviewer's call, not the gate's.
+FAIL_THRESHOLD = 15
 
 # Below this fraction of the baseline's function count, something broke the
 # scan itself (a flag rejected, a path silently unmatched) rather than the
@@ -797,6 +798,7 @@ def main():
         return 0
 
     failures = []
+    warnings = []
     lowered = []
     for key, (score, line) in sorted(current.items(),
                                       key=lambda kv: (-kv[1][0], kv[0])):
@@ -804,15 +806,14 @@ def main():
         if key in baseline:
             base_score, _ = baseline[key]
             if score > base_score:
-                failures.append(
-                    f"  {rel}:{line}  {name}()  rose from {base_score} to {score}")
+                entry = (rel, line, f"{name}()  rose from {base_score} to {score}")
+                (failures if score > FAIL_THRESHOLD else warnings).append(entry)
             elif score < base_score:
                 lowered.append(
                     f"  {rel}:{line}  {name}()  fell from {base_score} to {score}")
-        elif score > NEW_FUNCTION_THRESHOLD:
+        elif score > FAIL_THRESHOLD:
             failures.append(
-                f"  {rel}:{line}  {name}()  new function scores {score} "
-                f"(> {NEW_FUNCTION_THRESHOLD})")
+                (rel, line, f"{name}()  new function scores {score}"))
 
     stale = sorted(k for k in baseline if k not in current)
 
@@ -826,14 +827,29 @@ def main():
         print(f"{len(stale)} baseline entries no longer matched (renamed or "
               "removed) - harmless, --update-baseline will drop them.")
 
+    if warnings:
+        print(f"\nWARNING: {len(warnings)} function(s) rose, still at or under "
+              f"{FAIL_THRESHOLD}:")
+        report(warnings, "warning")
+
     if failures:
-        print(f"\nFAIL: {len(failures)} function(s) over their ratchet:")
-        for line in failures:
-            print(line)
+        print(f"\nFAIL: {len(failures)} function(s) above {FAIL_THRESHOLD} "
+              "grew or are new:")
+        report(failures, "error")
         return 1
 
-    print(f"\nPASS: {len(current)} function(s) checked, none rose above baseline.")
+    print(f"\nPASS: {len(current)} function(s) checked, none above "
+          f"{FAIL_THRESHOLD} grew.")
     return 0
+
+
+def report(entries, level):
+    """Print each entry, and as a GitHub annotation on that line in CI."""
+    in_ci = os.environ.get("GITHUB_ACTIONS") == "true"
+    for rel, line, text in entries:
+        print(f"  {rel}:{line}  {text}")
+        if in_ci:
+            print(f"::{level} file={rel},line={line}::{text}")
 
 
 if __name__ == "__main__":

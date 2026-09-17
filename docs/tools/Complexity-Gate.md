@@ -3,8 +3,8 @@
 `launcher/tools/complexity_gate.py` measures cognitive complexity with
 clang-tidy's `readability-function-cognitive-complexity` check
 (`launcher/.clang-tidy` holds its configuration) and ratchets every
-first-party function's score against a committed baseline instead of a
-fixed threshold.
+first-party function's score against a committed baseline, failing only
+above a fixed line of 15.
 
 ## The compilation database
 
@@ -64,7 +64,7 @@ baseline's function count, an unexcluded gap under `launcher/main/`, or
 any `clang-diagnostic-error` (a partial parse can hide functions) all
 fail the run immediately instead of being reported as clean.
 
-## A ratchet, not a threshold
+## A ratchet with a fail line
 
 `launcher/tools/complexity_baseline.txt` records every measured
 function's current score, one line per function
@@ -78,11 +78,13 @@ name)**, never by line number, so a function that only moved because
 something above it grew is not treated as a complexity change:
 
 - a function whose score **rose** above its baseline entry fails the gate
+  when the new score is above `FAIL_THRESHOLD` (15); at or under 15 the
+  rise is a warning (a GitHub annotation on the line in CI), left to review
 - a function whose score **fell** passes, with a note - lowering the
   baseline is only ever `--update-baseline`, run by a person on purpose,
   never automatic, so an improvement has to be noticed before it sticks
 - a function with **no baseline entry** (new, or the new half of a
-  rename) is judged against `NEW_FUNCTION_THRESHOLD` (15) instead
+  rename) fails when it scores above `FAIL_THRESHOLD`
 - a baseline entry with **no matching function** (the old half of a
   rename, or a real deletion) is reported as stale and otherwise
   ignored - it costs nothing to leave in the file until the next
