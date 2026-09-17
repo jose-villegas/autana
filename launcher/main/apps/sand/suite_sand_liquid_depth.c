@@ -519,6 +519,104 @@ ray_walk_state_reset(ray_walk_state_t* st) {
     st->ignore_chain_break = false;
 }
 
+typedef struct {
+    bool same;
+    bool cross_row;
+    unsigned src_count;
+} ray_walk_source_t;
+
+/* Resolves the neighbour this column may carry a count from: whether it
+ * holds the same material as `here`, whether reaching it crosses to a
+ * different row, and what count is currently buffered for it. */
+static ray_walk_source_t
+mirror_ray_walk_source(sand_t* g, int cx, int cy, int grid_w, int grid_h, bool vertical_dominant, int row_step,
+                       int hdir, int step, int surf_cy, bool here_liquid, cell_t here, const ray_walk_state_t* st) {
+    ray_walk_source_t src;
+    const int qx = vertical_dominant ? (cx + row_step) : (cx - hdir);
+    const bool qx_ok = (qx >= 0 && qx < grid_w);
+    src.cross_row = vertical_dominant || (step != 0);
+    const bool row_ok = !src.cross_row || (surf_cy >= 0 && surf_cy < grid_h);
+    const cell_t src_cell = (qx_ok && row_ok) ? sand_at(g, qx, src.cross_row ? surf_cy : cy) : (cell_t)0;
+    src.src_count = (qx_ok && row_ok) ? (src.cross_row ? st->prev_row[qx] : st->cur_row[qx]) : 0u;
+    src.same = here_liquid && qx_ok && row_ok && (CELL_MATERIAL(src_cell) == CELL_MATERIAL(here));
+    return src;
+}
+
+/* paint_row_n()'s own count-update decision, mirrored: 0 for anything not
+ * liquid, a climb from the source when it holds the same material, a
+ * reset once this column has already committed to a different source
+ * this pass, or a HOLD's own climb (paint_row_n()'s `carry`) otherwise. */
+static unsigned
+mirror_ray_walk_count(int cx, int cy, bool vertical_dominant, ray_walk_source_t src, bool chain_ok, unsigned ceiling,
+                      bool here_liquid, ray_walk_state_t* st) {
+    if (!here_liquid) {
+        return 0u;
+    }
+    if (src.same) {
+        const unsigned count = src.src_count < ceiling ? src.src_count + 1u : ceiling;
+        if (!vertical_dominant) {
+            st->top_row[cx] = 255u;
+        }
+        return count;
+    }
+    const bool committed = vertical_dominant ? (st->top_row[cx] == (uint8_t)cy) : (st->top_row[cx] != 255u);
+    if (committed) {
+        return 0u;
+    }
+    /* A HOLD may only climb from the neighbour's count when the buffer
+     * really holds that neighbour's count. */
+    const unsigned carry = (src.cross_row && !chain_ok) ? 0u : src.src_count;
+    const unsigned count = carry < ceiling ? carry + 1u : ceiling;
+    st->top_row[cx] = vertical_dominant ? (uint8_t)cy : 0u;
+    return count;
+}
+
+/* paint_row_n()'s own per-cell count/depth update, mirrored, for one
+ * column of the row mirror_ray_walk_row() below is walking. `step` is
+ * that row's own horizontal-error outcome for this column (0, or +-1 off
+ * a cardinal-neighbour row), already resolved by the caller since it is
+ * carried between columns. */
+static void
+mirror_ray_walk_column(sand_t* g, int cx, int cy, int grid_w, int grid_h, bool vertical_dominant, int row_step,
+                       int hdir, int step, int surf_cy, bool chain_ok, unsigned ceiling, unsigned scale_q8,
+                       ray_walk_state_t* st, unsigned depth_out[]) {
+    const cell_t here = sand_at(g, cx, cy);
+    const bool here_liquid = !CELL_IS_EMPTY(here) && material_of(here)->kind == KIND_LIQUID;
+
+    const ray_walk_source_t src = mirror_ray_walk_source(g, cx, cy, grid_w, grid_h, vertical_dominant, row_step, hdir,
+                                                         step, surf_cy, here_liquid, here, st);
+    const unsigned count = mirror_ray_walk_count(cx, cy, vertical_dominant, src, chain_ok, ceiling, here_liquid, st);
+    st->cur_row[cx] = (uint8_t)count;
+
+    const unsigned depth_raw = (count * scale_q8) >> 8;
+    depth_out[cx] = depth_raw < MATERIAL_LIQUID_DEPTH_BAND ? depth_raw : MATERIAL_LIQUID_DEPTH_BAND;
+}
+
+/* The lateral shift a vertical-dominant walk applies when crossing to the
+ * previous row - accumulated slope error resolved for this exact row,
+ * since such a walk never advances one column at a time the way a
+ * horizontal-dominant one does. */
+static int
+mirror_ray_walk_row_step(int cy, int grid_h, bool h_reverse, int vdir, unsigned ax, unsigned ay) {
+    const int xsign = h_reverse ? 1 : -1;
+    const int n = (vdir > 0) ? cy : (grid_h - 1 - cy);
+    const int cum_n = (int)(((long)(n) * (long)ax) / (long)ay);
+    const int cum_n1 = (int)(((long)(n + 1) * (long)ax) / (long)ay);
+    return xsign * (cum_n1 - cum_n);
+}
+
+/* Bresenham-style horizontal-dominant row crossing: accumulates *herr and
+ * returns this column's own row step (0, or +-1 via ysign). */
+static int
+mirror_ray_walk_h_step(int* herr, unsigned ax, unsigned ay, int ysign) {
+    *herr += (int)ay;
+    if (ax == 0u || *herr < (int)ax) {
+        return 0;
+    }
+    *herr -= (int)ax;
+    return ysign;
+}
+
 static void
 mirror_ray_walk_row(sand_t* g, int cy, int grid_w, int grid_h, bool vertical_dominant, bool v_reverse, bool h_reverse,
                     unsigned ax, unsigned ay, unsigned scale_q8, unsigned ceiling, ray_walk_state_t* st,
@@ -530,14 +628,8 @@ mirror_ray_walk_row(sand_t* g, int cy, int grid_w, int grid_h, bool vertical_dom
     /* paint_row_n()'s own local_depth_chain_ok, once per row. */
     const bool chain_ok = st->ignore_chain_break || (st->prev_cy == surf_cy);
 
-    int row_step = 0;
-    if (vertical_dominant && ay > 0u) {
-        const int xsign = h_reverse ? 1 : -1;
-        const int n = (vdir > 0) ? cy : (grid_h - 1 - cy);
-        const int cum_n = (int)(((long)(n) * (long)ax) / (long)ay);
-        const int cum_n1 = (int)(((long)(n + 1) * (long)ax) / (long)ay);
-        row_step = xsign * (cum_n1 - cum_n);
-    }
+    const int row_step =
+        (vertical_dominant && ay > 0u) ? mirror_ray_walk_row_step(cy, grid_h, h_reverse, vdir, ax, ay) : 0;
 
     int herr = 0;
     const int cx_first = h_reverse ? grid_w - 1 : 0;
@@ -545,51 +637,10 @@ mirror_ray_walk_row(sand_t* g, int cy, int grid_w, int grid_h, bool vertical_dom
 
     for (int i = 0; i < grid_w; i++) {
         const int cx = cx_first + i * cx_step;
-        const cell_t here = sand_at(g, cx, cy);
-        const bool here_liquid = !CELL_IS_EMPTY(here) && material_of(here)->kind == KIND_LIQUID;
+        const int step = vertical_dominant ? 0 : mirror_ray_walk_h_step(&herr, ax, ay, ysign);
 
-        int step = 0;
-        if (!vertical_dominant) {
-            herr += (int)ay;
-            if (ax > 0u && herr >= (int)ax) {
-                herr -= (int)ax;
-                step = ysign;
-            }
-        }
-
-        const int qx = vertical_dominant ? (cx + row_step) : (cx - hdir);
-        const bool qx_ok = (qx >= 0 && qx < grid_w);
-        const bool cross_row = vertical_dominant || (step != 0);
-        const bool row_ok = !cross_row || (surf_cy >= 0 && surf_cy < grid_h);
-        const cell_t src_cell = (qx_ok && row_ok) ? sand_at(g, qx, cross_row ? surf_cy : cy) : (cell_t)0;
-        const unsigned src_count = (qx_ok && row_ok) ? (cross_row ? st->prev_row[qx] : st->cur_row[qx]) : 0u;
-        const bool same = here_liquid && qx_ok && row_ok && (CELL_MATERIAL(src_cell) == CELL_MATERIAL(here));
-
-        unsigned count;
-        if (!here_liquid) {
-            count = 0u;
-        } else if (same) {
-            count = src_count < ceiling ? src_count + 1u : ceiling;
-            if (!vertical_dominant) {
-                st->top_row[cx] = 255u;
-            }
-        } else {
-            const bool committed = vertical_dominant ? (st->top_row[cx] == (uint8_t)cy) : (st->top_row[cx] != 255u);
-            if (committed) {
-                count = 0u;
-            } else {
-                /* paint_row_n()'s own `carry`: a HOLD may only climb from
-                 * the neighbour's count when the buffer really holds that
-                 * neighbour's count. */
-                const unsigned carry = (cross_row && !chain_ok) ? 0u : src_count;
-                count = carry < ceiling ? carry + 1u : ceiling;
-                st->top_row[cx] = vertical_dominant ? (uint8_t)cy : 0u;
-            }
-        }
-        st->cur_row[cx] = (uint8_t)count;
-
-        const unsigned depth_raw = (count * scale_q8) >> 8;
-        depth_out[cx] = depth_raw < MATERIAL_LIQUID_DEPTH_BAND ? depth_raw : MATERIAL_LIQUID_DEPTH_BAND;
+        mirror_ray_walk_column(g, cx, cy, grid_w, grid_h, vertical_dominant, row_step, hdir, step, surf_cy, chain_ok,
+                               ceiling, scale_q8, st, depth_out);
     }
 
     for (int i = 0; i < RAY_WALK_STATE_W; i++) {
@@ -1067,6 +1118,27 @@ test_the_horizontal_debounce_survives_open_air_beside_the_pool(void) {
 #define DEPTH_TEST_W 4
 #define DEPTH_TEST_H 80
 
+/* The shallowest row that is now water in EVERY column of the default
+ * fixture's depth test - the new top of the fully-flooded body, not a
+ * single splashed cell still finding its way down - or -1 if there is
+ * none. */
+static int
+depth_test_find_full_row(void) {
+    for (int y = 0; y < DEPTH_TEST_H; y++) {
+        bool full_row = true;
+        for (int x = 0; x < DEPTH_TEST_W; x++) {
+            if (CELL_MATERIAL(sand_at(&fx.depth_test, x, y)) != MAT_WATER) {
+                full_row = false;
+                break;
+            }
+        }
+        if (full_row) {
+            return y;
+        }
+    }
+    return -1;
+}
+
 static void
 test_pouring_onto_a_settled_pool_redirties_a_bounded_band_below(void) {
     uint8_t* depth_test_cells = malloc((size_t)DEPTH_TEST_W * DEPTH_TEST_H);
@@ -1110,23 +1182,8 @@ test_pouring_onto_a_settled_pool_redirties_a_bounded_band_below(void) {
         sand_step(&fx.depth_test, 0, 1000, 0);
     }
 
-    /* The reservoir's NEW surface: the shallowest row that is now water in
-     * EVERY column - the new top of the fully-flooded body, not a single
-     * splashed cell still finding its way down. */
-    int new_surface = -1;
-    for (int y = 0; y < DEPTH_TEST_H; y++) {
-        bool full_row = true;
-        for (int x = 0; x < DEPTH_TEST_W; x++) {
-            if (CELL_MATERIAL(sand_at(&fx.depth_test, x, y)) != MAT_WATER) {
-                full_row = false;
-                break;
-            }
-        }
-        if (full_row) {
-            new_surface = y;
-            break;
-        }
-    }
+    /* The reservoir's NEW surface. */
+    const int new_surface = depth_test_find_full_row();
     TEST_ASSERT_TRUE_MESSAGE(new_surface >= 0, "setup: the pour must actually produce a fully-flooded row, or "
                                                "this test is not exercising the case it claims to");
     TEST_ASSERT_TRUE_MESSAGE(new_surface < fill_top, "setup: the pour must raise the surface above where it started, "
@@ -1471,6 +1528,166 @@ wake_test_row_has_liquid(unsigned mask) {
     return true;
 }
 
+/* Random gravity this frame: near-perfect PORTRAIT (regime stays
+ * vertical-dominant, v_reverse never fires), wobbled by `wobble`. */
+static void
+wake_test_frame_gravity(rng_t* wobble, int f, int* gx, int* gy) {
+    const int phase = f % 90;
+    const int tri = (phase < 45) ? (-40 + (phase * 80) / 45) : (40 - ((phase - 45) * 80) / 45);
+    *gx = tri + (int)rng_below(wobble, 21) - 10;
+    *gy = 950 + (int)rng_below(wobble, 11) - 5;
+}
+
+/* advance_local_depth_wake(), mirrored: whether the wake tick fires this
+ * frame - shared by every reproduction in this file that needs the same
+ * carried-remainder tick (wake_test_run(), band_test_run()). */
+static bool
+local_depth_wake_tick(uint32_t* elapsed_ms, uint32_t dt_ms, uint32_t wake_ms) {
+    *elapsed_ms += dt_ms;
+    if (*elapsed_ms < wake_ms) {
+        return false;
+    }
+    *elapsed_ms -= (*elapsed_ms / wake_ms) * wake_ms;
+    return true;
+}
+
+/* Marks every row of a w x h grid whose occupancy changed since
+ * `prev_occupied` - shared by every reproduction in this file that tracks
+ * occupancy this way (wake_test_run(), band_test_run()). */
+static void
+local_depth_mark_occupancy_dirty(sand_t* g, int w, int h, const bool* prev_occupied, bool* row_dirty) {
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            const bool now = !CELL_IS_EMPTY(sand_at(g, x, y));
+            if (now != prev_occupied[y * w + x]) {
+                row_dirty[y] = true;
+            }
+        }
+    }
+}
+
+/* Whether row y holds a water cell the wake tick's row gate counts. */
+static bool
+wake_test_row_carries_liquid(sand_t* g, int y) {
+    for (int x = 0; x < WAKE_TEST_W; x++) {
+        const cell_t c = sand_at(g, x, y);
+        if (!CELL_IS_EMPTY(c) && CELL_MATERIAL(c) == MAT_WATER) {
+            const unsigned mask = wake_test_edge_mask(g, x, y);
+            if (wake_test_row_has_liquid(mask)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* THE WAKE TICK'S OWN ROW GATE - row_has_liquid[]'s population, recomputed
+ * fresh each frame from the live grid (paint_row_n() recomputes it every
+ * time a row is painted; a row that never gets painted keeps whatever this
+ * cache last decided, exactly like the real array). */
+static void
+wake_test_mark_wake_dirty(sand_t* g, bool wake_fired, bool* row_dirty) {
+    for (int y = 0; y < WAKE_TEST_H; y++) {
+        if (wake_fired && wake_test_row_carries_liquid(g, y)) {
+            row_dirty[y] = true;
+        }
+    }
+}
+
+/* mirror_ray_walk_row()'s own per-cell walk, for every dirty row. */
+static void
+wake_test_walk_dirty_rows(sand_t* g, const bool* row_dirty, bool vdom, bool vrev, bool hrev, unsigned ax, unsigned ay,
+                          unsigned scale_q8, ray_walk_state_t* st, int8_t* displayed_depth) {
+    const bool asc = !vrev;
+    for (int i = 0; i < WAKE_TEST_H; i++) {
+        const int y = asc ? i : (WAKE_TEST_H - 1 - i);
+        if (!row_dirty[y]) {
+            continue;
+        }
+        unsigned row_depth[RAY_WALK_STATE_W];
+        mirror_ray_walk_row(g, y, WAKE_TEST_W, WAKE_TEST_H, vdom, vrev, hrev, ax, ay, scale_q8,
+                            MATERIAL_LIQUID_DEPTH_BAND, st, row_depth);
+        for (int x = 0; x < WAKE_TEST_W; x++) {
+            const cell_t here = sand_at(g, x, y);
+            displayed_depth[y * WAKE_TEST_W + x] = CELL_IS_EMPTY(here) ? -1 : (int8_t)row_depth[x];
+        }
+    }
+}
+
+/* Snapshots a w x h grid's occupancy into `prev_occupied`, for the next
+ * frame's local_depth_mark_occupancy_dirty() call - shared the same way
+ * that helper is. */
+static void
+local_depth_snapshot_occupancy(sand_t* g, int w, int h, bool* prev_occupied) {
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            prev_occupied[y * w + x] = !CELL_IS_EMPTY(sand_at(g, x, y));
+        }
+    }
+}
+
+/* Mean DISPLAYED interior depth this frame - interior only ((mask &
+ * MATERIAL_EDGE_CARDINAL) == 0, the only cells whose depth
+ * material_colours() ever reads) - or -1 if there is no such cell yet. */
+static double
+wake_test_interior_mean_depth(sand_t* g, const int8_t* displayed_depth) {
+    long sum_d = 0;
+    int n = 0;
+    for (int y = 0; y < WAKE_TEST_H; y++) {
+        for (int x = 0; x < WAKE_TEST_W; x++) {
+            const cell_t c = sand_at(g, x, y);
+            if (CELL_IS_EMPTY(c) || CELL_MATERIAL(c) != MAT_WATER) {
+                continue;
+            }
+            if ((wake_test_edge_mask(g, x, y) & MATERIAL_EDGE_CARDINAL) != 0) {
+                continue;
+            }
+            const int d = displayed_depth[y * WAKE_TEST_W + x];
+            if (d < 0) {
+                continue;
+            }
+            sum_d += d;
+            n++;
+        }
+    }
+    return n > 0 ? (double)sum_d / n : -1.0;
+}
+
+/* A RAGGED basin, not one clean rectangle - two separate pours plus a
+ * stub wall, so the settled surface has real grain-level irregularity: a
+ * hand-authored flat pool never flips a cell between rim and interior
+ * classification, so it could never have found this bug. */
+static void
+wake_test_build_scene(sand_t* g) {
+    for (int y = WAKE_TEST_H - 6; y < WAKE_TEST_H; y++) {
+        for (int x = 0; x < WAKE_TEST_W; x++) {
+            sand_set(g, x, y, CELL_MAKE(MAT_STONE, 0));
+        }
+    }
+    sand_spawn(g, WAKE_TEST_W / 3, 6, 5, MAT_WATER);
+    sand_spawn(g, 2 * WAKE_TEST_W / 3, 4, 6, MAT_WATER);
+    for (int y = WAKE_TEST_H - 9; y < WAKE_TEST_H - 8; y++) {
+        sand_set(g, WAKE_TEST_W / 2, y, CELL_MAKE(MAT_STONE, 0));
+    }
+}
+
+/* Folds this frame's mean depth into worst_jump/prev_mean, once
+ * settle_steps has passed - a jump is only ever measured between two
+ * frames that both had at least one qualifying cell. */
+static void
+wake_test_record_jump(double mean, int f, int settle_steps, double* prev_mean, double* worst_jump) {
+    if (mean < 0) {
+        return;
+    }
+    if (f >= settle_steps && *prev_mean >= 0) {
+        const double jump = fabs_double(mean - *prev_mean);
+        if (jump > *worst_jump) {
+            *worst_jump = jump;
+        }
+    }
+    *prev_mean = mean;
+}
+
 /* Returns worst single-frame swing in mean DISPLAYED interior depth. */
 static double
 wake_test_run(int steps) {
@@ -1502,20 +1719,7 @@ wake_test_run(int steps) {
         wake_displayed_depth[i] = -1;
     }
 
-    /* A RAGGED basin, not one clean rectangle - two separate pours plus a
-     * stub wall, so the settled surface has real grain-level irregularity:
-     * a hand-authored flat pool never flips a cell between rim and interior
-     * classification, so it could never have found this bug. */
-    for (int y = WAKE_TEST_H - 6; y < WAKE_TEST_H; y++) {
-        for (int x = 0; x < WAKE_TEST_W; x++) {
-            sand_set(&fx.wake_test_grid, x, y, CELL_MAKE(MAT_STONE, 0));
-        }
-    }
-    sand_spawn(&fx.wake_test_grid, WAKE_TEST_W / 3, 6, 5, MAT_WATER);
-    sand_spawn(&fx.wake_test_grid, 2 * WAKE_TEST_W / 3, 4, 6, MAT_WATER);
-    for (int y = WAKE_TEST_H - 9; y < WAKE_TEST_H - 8; y++) {
-        sand_set(&fx.wake_test_grid, WAKE_TEST_W / 2, y, CELL_MAKE(MAT_STONE, 0));
-    }
+    wake_test_build_scene(&fx.wake_test_grid);
 
     rng_t wobble;
     rng_seed(&wobble, 7u);
@@ -1526,12 +1730,8 @@ wake_test_run(int steps) {
     double prev_mean = -1.0;
 
     for (int f = 0; f < steps; f++) {
-        /* Near-perfect PORTRAIT: regime stays vertical-dominant, v_reverse
-         * never fires. */
-        const int phase = f % 90;
-        const int tri = (phase < 45) ? (-40 + (phase * 80) / 45) : (40 - ((phase - 45) * 80) / 45);
-        const int gx = tri + (int)rng_below(&wobble, 21) - 10;
-        const int gy = 950 + (int)rng_below(&wobble, 11) - 5;
+        int gx, gy;
+        wake_test_frame_gravity(&wobble, f, &gx, &gy);
 
         sand_step(&fx.wake_test_grid, gx, gy, 0);
 
@@ -1539,100 +1739,17 @@ wake_test_run(int steps) {
         unsigned ax, ay, scale_q8;
         ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
 
-        /* advance_local_depth_wake(), mirrored. */
-        wake_elapsed_ms += WAKE_TEST_DT_MS;
-        bool wake_fired = false;
-        if (wake_elapsed_ms >= WAKE_TEST_WAKE_MS) {
-            wake_elapsed_ms -= (wake_elapsed_ms / WAKE_TEST_WAKE_MS) * WAKE_TEST_WAKE_MS;
-            wake_fired = true;
-        }
+        const bool wake_fired = local_depth_wake_tick(&wake_elapsed_ms, WAKE_TEST_DT_MS, WAKE_TEST_WAKE_MS);
 
         bool row_dirty[WAKE_TEST_H] = {0};
-        for (int y = 0; y < WAKE_TEST_H; y++) {
-            for (int x = 0; x < WAKE_TEST_W; x++) {
-                const bool now = !CELL_IS_EMPTY(sand_at(&fx.wake_test_grid, x, y));
-                if (now != wake_prev_occupied[y * WAKE_TEST_W + x]) {
-                    row_dirty[y] = true;
-                }
-            }
-        }
+        local_depth_mark_occupancy_dirty(&fx.wake_test_grid, WAKE_TEST_W, WAKE_TEST_H, wake_prev_occupied, row_dirty);
+        wake_test_mark_wake_dirty(&fx.wake_test_grid, wake_fired, row_dirty);
+        wake_test_walk_dirty_rows(&fx.wake_test_grid, row_dirty, vdom, vrev, hrev, ax, ay, scale_q8, fx_ray,
+                                  wake_displayed_depth);
+        local_depth_snapshot_occupancy(&fx.wake_test_grid, WAKE_TEST_W, WAKE_TEST_H, wake_prev_occupied);
 
-        /* THE WAKE TICK'S OWN ROW GATE - row_has_liquid[]'s population,
-         * recomputed fresh each frame from the live grid (paint_row_n()
-         * recomputes it every time a row is painted; a row that never gets
-         * painted keeps whatever this cache last decided, exactly like the
-         * real array). */
-        for (int y = 0; y < WAKE_TEST_H; y++) {
-            bool has_liquid = false;
-            for (int x = 0; x < WAKE_TEST_W; x++) {
-                const cell_t c = sand_at(&fx.wake_test_grid, x, y);
-                if (!CELL_IS_EMPTY(c) && CELL_MATERIAL(c) == MAT_WATER) {
-                    const unsigned mask = wake_test_edge_mask(&fx.wake_test_grid, x, y);
-                    if (wake_test_row_has_liquid(mask)) {
-                        has_liquid = true;
-                        break;
-                    }
-                }
-            }
-            if (wake_fired && has_liquid) {
-                row_dirty[y] = true;
-            }
-        }
-
-        /* mirror_ray_walk_row()'s own per-cell walk, for every dirty row. */
-        const bool asc = !vrev;
-        for (int i = 0; i < WAKE_TEST_H; i++) {
-            const int y = asc ? i : (WAKE_TEST_H - 1 - i);
-            if (!row_dirty[y]) {
-                continue;
-            }
-            unsigned row_depth[RAY_WALK_STATE_W];
-            mirror_ray_walk_row(&fx.wake_test_grid, y, WAKE_TEST_W, WAKE_TEST_H, vdom, vrev, hrev, ax, ay, scale_q8,
-                                MATERIAL_LIQUID_DEPTH_BAND, fx_ray, row_depth);
-            for (int x = 0; x < WAKE_TEST_W; x++) {
-                const cell_t here = sand_at(&fx.wake_test_grid, x, y);
-                wake_displayed_depth[y * WAKE_TEST_W + x] = CELL_IS_EMPTY(here) ? -1 : (int8_t)row_depth[x];
-            }
-        }
-
-        for (int y = 0; y < WAKE_TEST_H; y++) {
-            for (int x = 0; x < WAKE_TEST_W; x++) {
-                wake_prev_occupied[y * WAKE_TEST_W + x] = !CELL_IS_EMPTY(sand_at(&fx.wake_test_grid, x, y));
-            }
-        }
-
-        /* Measure the DISPLAYED interior mean depth this frame - interior
-         * only (mask & MATERIAL_EDGE_CARDINAL) == 0, the only cells whose
-         * depth material_colours() ever reads. */
-        long sum_d = 0;
-        int n = 0;
-        for (int y = 0; y < WAKE_TEST_H; y++) {
-            for (int x = 0; x < WAKE_TEST_W; x++) {
-                const cell_t c = sand_at(&fx.wake_test_grid, x, y);
-                if (CELL_IS_EMPTY(c) || CELL_MATERIAL(c) != MAT_WATER) {
-                    continue;
-                }
-                if ((wake_test_edge_mask(&fx.wake_test_grid, x, y) & MATERIAL_EDGE_CARDINAL) != 0) {
-                    continue;
-                }
-                const int d = wake_displayed_depth[y * WAKE_TEST_W + x];
-                if (d < 0) {
-                    continue;
-                }
-                sum_d += d;
-                n++;
-            }
-        }
-        if (n > 0) {
-            const double mean = (double)sum_d / n;
-            if (f >= settle_steps && prev_mean >= 0) {
-                const double jump = fabs_double(mean - prev_mean);
-                if (jump > worst_jump) {
-                    worst_jump = jump;
-                }
-            }
-            prev_mean = mean;
-        }
+        const double mean = wake_test_interior_mean_depth(&fx.wake_test_grid, wake_displayed_depth);
+        wake_test_record_jump(mean, f, settle_steps, &prev_mean, &worst_jump);
     }
 
     free(wake_test_cells);
@@ -1690,6 +1807,23 @@ enum {
                                section's own comment for why that matters */
 };
 
+/* One row of the sweep: mirrors THE SATURATING CLIMB (app_sand.c) -
+ * MATERIAL_LIQUID_DEPTH_BAND, not 255. */
+static unsigned
+flip_test_step(int cy, bool same, unsigned char* stable, unsigned char* top_row) {
+    unsigned depth;
+    if (same) {
+        depth = *stable < MATERIAL_LIQUID_DEPTH_BAND ? *stable + 1u : MATERIAL_LIQUID_DEPTH_BAND;
+    } else if (*top_row == (unsigned char)cy) {
+        depth = 0u;
+    } else {
+        depth = *stable < MATERIAL_LIQUID_DEPTH_BAND ? *stable + 1u : MATERIAL_LIQUID_DEPTH_BAND;
+        *top_row = (unsigned char)cy;
+    }
+    *stable = (unsigned char)depth;
+    return depth;
+}
+
 /* Mirrors app_sand.c's col_stable_depth[]/col_top_row[] debounce,
  * generalised for a walk whose direction can REVERSE between frames.
  * `apply_fix` gates only the reset itself, not the flip detection above
@@ -1721,19 +1855,7 @@ flip_test_sweep_column(int top, int bottom, bool v_reverse, bool apply_fix, unsi
          * requests, never a blip. */
         const bool same = neighbour_cy >= top && neighbour_cy <= bottom;
 
-        /* MATERIAL_LIQUID_DEPTH_BAND, not 255 - mirroring THE SATURATING
-         * CLIMB (app_sand.c). Drift risk as warned in material.h. */
-        unsigned depth;
-        if (same) {
-            depth = *stable < MATERIAL_LIQUID_DEPTH_BAND ? *stable + 1u : MATERIAL_LIQUID_DEPTH_BAND;
-        } else if (*top_row == (unsigned char)cy) {
-            depth = 0u;
-        } else {
-            depth = *stable < MATERIAL_LIQUID_DEPTH_BAND ? *stable + 1u : MATERIAL_LIQUID_DEPTH_BAND;
-            *top_row = (unsigned char)cy;
-        }
-        *stable = (unsigned char)depth;
-        depth_out[cy] = depth;
+        depth_out[cy] = flip_test_step(cy, same, stable, top_row);
     }
 }
 
@@ -1831,6 +1953,135 @@ band_test_ceiling(void) {
     return MATERIAL_LIQUID_DEPTH_BAND;
 }
 
+/* Walls all round, and water standing against the +x one for the WHOLE
+ * grid height - the shape a board held at landscape lock puts a pool in,
+ * and the reason the walk's range here is the grid's own height rather
+ * than a settled pool's few dozen cells. */
+static void
+band_test_build_scene(sand_t* g) {
+    for (int y = 0; y < BAND_TEST_H; y++) {
+        sand_set(g, 0, y, CELL_MAKE(MAT_STONE, 0));
+        sand_set(g, BAND_TEST_W - 1, y, CELL_MAKE(MAT_STONE, 0));
+    }
+    for (int x = 0; x < BAND_TEST_W; x++) {
+        sand_set(g, x, 0, CELL_MAKE(MAT_STONE, 0));
+        sand_set(g, x, BAND_TEST_H - 1, CELL_MAKE(MAT_STONE, 0));
+    }
+    for (int y = 1; y < BAND_TEST_H - 1; y++) {
+        for (int x = BAND_TEST_W - 17; x < BAND_TEST_W - 1; x++) {
+            sand_set(g, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+        }
+    }
+}
+
+/* A fresh two-cell pour every 7th frame, so the surface keeps getting
+ * freshly-occupied cells to sparsely repaint alongside the settled pool. */
+static void
+band_test_maybe_reseed(sand_t* g, int f) {
+    if ((f % 7) != 0) {
+        return;
+    }
+    sand_set(g, BAND_TEST_W - 22, 2, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_set(g, BAND_TEST_W - 21, 2, CELL_MAKE(MAT_WATER, MASS_MAX));
+}
+
+/* This frame's gravity: a slow sway across +-115 every 250 frames, a
+ * faster +-30 tremor every 17, and rng wobble on both axes. */
+static void
+band_test_frame_gravity(rng_t* wobble, int f, int* gx, int* gy) {
+    const int sway_phase = f % 250;
+    const int sway = (sway_phase < 125) ? (-115 + (sway_phase * 230) / 125) : (115 - ((sway_phase - 125) * 230) / 125);
+    const int tremor_phase = f % 17;
+    const int tremor = (tremor_phase < 8) ? (-30 + (tremor_phase * 60) / 8) : (30 - ((tremor_phase - 8) * 60) / 9);
+    *gy = sway + tremor + rng_below(wobble, 21) - 10;
+    *gx = 950 + rng_below(wobble, 11) - 5;
+}
+
+/* THE WAKE TICK'S OWN ROW GATE for the band test - any liquid-kind cell,
+ * not water specifically (unlike wake_test_row_carries_liquid(), this
+ * scene never needs the distinction). */
+static void
+band_test_mark_wake_dirty(sand_t* g, bool wake_fired, bool* row_dirty) {
+    if (!wake_fired) {
+        return;
+    }
+    for (int y = 0; y < BAND_TEST_H; y++) {
+        for (int x = 0; x < BAND_TEST_W; x++) {
+            const cell_t c = sand_at(g, x, y);
+            if (!CELL_IS_EMPTY(c) && material_of(c)->kind == KIND_LIQUID) {
+                row_dirty[y] = true;
+                break;
+            }
+        }
+    }
+}
+
+/* mirror_ray_walk_row()'s own per-cell walk, for every dirty row - no -1
+ * empty sentinel, unlike wake_test_walk_dirty_rows(): this scene's own
+ * jump count already skips empty cells by their material, not their
+ * depth. */
+static void
+band_test_walk_dirty_rows(sand_t* g, const bool* row_dirty, bool vdom, bool vrev, bool hrev, unsigned ax, unsigned ay,
+                          unsigned scale_q8, unsigned ceiling, ray_walk_state_t* st, int8_t* displayed_depth) {
+    const bool asc = !vrev;
+    for (int i = 0; i < BAND_TEST_H; i++) {
+        const int cy = asc ? i : (BAND_TEST_H - 1 - i);
+        if (!row_dirty[cy]) {
+            continue;
+        }
+        unsigned row_depth[RAY_WALK_STATE_W];
+        mirror_ray_walk_row(g, cy, BAND_TEST_W, BAND_TEST_H, vdom, vrev, hrev, ax, ay, scale_q8, ceiling, st,
+                            row_depth);
+        for (int x = 0; x < BAND_TEST_W; x++) {
+            displayed_depth[cy * BAND_TEST_W + x] = (int8_t)row_depth[x];
+        }
+    }
+}
+
+/* Whether the vertically adjacent water pair at (x, y-1)/(x, y) is a
+ * "jump": both interior (a rim cell's depth is never read by
+ * material_colours() at all), both displayed with a valid depth, and
+ * differing by more than half the saturating range. */
+static bool
+band_test_is_jump(sand_t* g, const int8_t* displayed_depth, int x, int y) {
+    const cell_t up = sand_at(g, x, y - 1);
+    const cell_t here = sand_at(g, x, y);
+    if (CELL_IS_EMPTY(up) || CELL_IS_EMPTY(here)) {
+        return false;
+    }
+    if (CELL_MATERIAL(up) != MAT_WATER || CELL_MATERIAL(here) != MAT_WATER) {
+        return false;
+    }
+    if ((wake_test_edge_mask(g, x, y - 1) & MATERIAL_EDGE_CARDINAL) != 0
+        || (wake_test_edge_mask(g, x, y) & MATERIAL_EDGE_CARDINAL) != 0) {
+        return false;
+    }
+    const int a = displayed_depth[(y - 1) * BAND_TEST_W + x];
+    const int b = displayed_depth[y * BAND_TEST_W + x];
+    if (a < 0 || b < 0) {
+        return false;
+    }
+    const int diff = a > b ? a - b : b - a;
+    return diff > MATERIAL_LIQUID_DEPTH_BAND / 2;
+}
+
+/* Vertically adjacent interior water pairs whose DISPLAYED depth differs
+ * by more than half the saturating range - a horizontal line drawn across
+ * water whose true depth field is flat along y, this scene's own claim of
+ * a band. */
+static int
+band_test_count_jumps(sand_t* g, const int8_t* displayed_depth) {
+    int jumps = 0;
+    for (int y = 1; y < BAND_TEST_H; y++) {
+        for (int x = 0; x < BAND_TEST_W; x++) {
+            if (band_test_is_jump(g, displayed_depth, x, y)) {
+                jumps++;
+            }
+        }
+    }
+    return jumps;
+}
+
 static int
 band_test_run(void) {
     uint8_t* band_test_cells = malloc((size_t)BAND_TEST_W * BAND_TEST_H);
@@ -1860,23 +2111,7 @@ band_test_run(void) {
         band_displayed_depth[i] = -1;
     }
 
-    /* Walls all round, and water standing against the +x one for the WHOLE
-     * grid height - the shape a board held at landscape lock puts a pool in,
-     * and the reason the walk's range here is the grid's own height rather
-     * than a settled pool's few dozen cells. */
-    for (int y = 0; y < BAND_TEST_H; y++) {
-        sand_set(&fx.band_test_grid, 0, y, CELL_MAKE(MAT_STONE, 0));
-        sand_set(&fx.band_test_grid, BAND_TEST_W - 1, y, CELL_MAKE(MAT_STONE, 0));
-    }
-    for (int x = 0; x < BAND_TEST_W; x++) {
-        sand_set(&fx.band_test_grid, x, 0, CELL_MAKE(MAT_STONE, 0));
-        sand_set(&fx.band_test_grid, x, BAND_TEST_H - 1, CELL_MAKE(MAT_STONE, 0));
-    }
-    for (int y = 1; y < BAND_TEST_H - 1; y++) {
-        for (int x = BAND_TEST_W - 17; x < BAND_TEST_W - 1; x++) {
-            sand_set(&fx.band_test_grid, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    band_test_build_scene(&fx.band_test_grid);
 
     rng_t wobble;
     rng_seed(&wobble, 7u);
@@ -1886,18 +2121,10 @@ band_test_run(void) {
     int worst = 0;
 
     for (int f = 0; f < BAND_TEST_FRAMES; f++) {
-        if ((f % 7) == 0) {
-            sand_set(&fx.band_test_grid, BAND_TEST_W - 22, 2, CELL_MAKE(MAT_WATER, MASS_MAX));
-            sand_set(&fx.band_test_grid, BAND_TEST_W - 21, 2, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
+        band_test_maybe_reseed(&fx.band_test_grid, f);
 
-        const int sway_phase = f % 250;
-        const int sway =
-            (sway_phase < 125) ? (-115 + (sway_phase * 230) / 125) : (115 - ((sway_phase - 125) * 230) / 125);
-        const int tremor_phase = f % 17;
-        const int tremor = (tremor_phase < 8) ? (-30 + (tremor_phase * 60) / 8) : (30 - ((tremor_phase - 8) * 60) / 9);
-        const int gy = sway + tremor + rng_below(&wobble, 21) - 10;
-        const int gx = 950 + rng_below(&wobble, 11) - 5;
+        int gx, gy;
+        band_test_frame_gravity(&wobble, f, &gx, &gy);
 
         sand_step(&fx.band_test_grid, gx, gy, 0);
 
@@ -1905,87 +2132,20 @@ band_test_run(void) {
         unsigned ax, ay, scale_q8;
         ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
 
-        /* advance_local_depth_wake(), mirrored. */
-        wake_elapsed_ms += BAND_TEST_DT_MS;
-        bool wake_fired = false;
-        if (wake_elapsed_ms >= BAND_TEST_WAKE_MS) {
-            wake_elapsed_ms -= (wake_elapsed_ms / BAND_TEST_WAKE_MS) * BAND_TEST_WAKE_MS;
-            wake_fired = true;
-        }
+        const bool wake_fired = local_depth_wake_tick(&wake_elapsed_ms, BAND_TEST_DT_MS, BAND_TEST_WAKE_MS);
 
         bool row_dirty[BAND_TEST_H] = {0};
-        for (int y = 0; y < BAND_TEST_H; y++) {
-            for (int x = 0; x < BAND_TEST_W; x++) {
-                const bool now = !CELL_IS_EMPTY(sand_at(&fx.band_test_grid, x, y));
-                if (now != band_prev_occupied[y * BAND_TEST_W + x]) {
-                    row_dirty[y] = true;
-                }
-            }
-        }
-        if (wake_fired) {
-            for (int y = 0; y < BAND_TEST_H; y++) {
-                for (int x = 0; x < BAND_TEST_W; x++) {
-                    const cell_t c = sand_at(&fx.band_test_grid, x, y);
-                    if (!CELL_IS_EMPTY(c) && material_of(c)->kind == KIND_LIQUID) {
-                        row_dirty[y] = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        const bool asc = !vrev;
-        for (int i = 0; i < BAND_TEST_H; i++) {
-            const int cy = asc ? i : (BAND_TEST_H - 1 - i);
-            if (!row_dirty[cy]) {
-                continue;
-            }
-            unsigned row_depth[RAY_WALK_STATE_W];
-            mirror_ray_walk_row(&fx.band_test_grid, cy, BAND_TEST_W, BAND_TEST_H, vdom, vrev, hrev, ax, ay, scale_q8,
-                                ceiling, fx_ray, row_depth);
-            for (int x = 0; x < BAND_TEST_W; x++) {
-                band_displayed_depth[cy * BAND_TEST_W + x] = (int8_t)row_depth[x];
-            }
-        }
-
-        for (int y = 0; y < BAND_TEST_H; y++) {
-            for (int x = 0; x < BAND_TEST_W; x++) {
-                band_prev_occupied[y * BAND_TEST_W + x] = !CELL_IS_EMPTY(sand_at(&fx.band_test_grid, x, y));
-            }
-        }
+        local_depth_mark_occupancy_dirty(&fx.band_test_grid, BAND_TEST_W, BAND_TEST_H, band_prev_occupied, row_dirty);
+        band_test_mark_wake_dirty(&fx.band_test_grid, wake_fired, row_dirty);
+        band_test_walk_dirty_rows(&fx.band_test_grid, row_dirty, vdom, vrev, hrev, ax, ay, scale_q8, ceiling, fx_ray,
+                                  band_displayed_depth);
+        local_depth_snapshot_occupancy(&fx.band_test_grid, BAND_TEST_W, BAND_TEST_H, band_prev_occupied);
 
         if (f < BAND_TEST_SETTLE) {
             continue;
         }
 
-        int jumps = 0;
-        for (int y = 1; y < BAND_TEST_H; y++) {
-            for (int x = 0; x < BAND_TEST_W; x++) {
-                const cell_t up = sand_at(&fx.band_test_grid, x, y - 1);
-                const cell_t here = sand_at(&fx.band_test_grid, x, y);
-                if (CELL_IS_EMPTY(up) || CELL_IS_EMPTY(here)) {
-                    continue;
-                }
-                if (CELL_MATERIAL(up) != MAT_WATER || CELL_MATERIAL(here) != MAT_WATER) {
-                    continue;
-                }
-                /* Interior only, both of them - a rim cell's depth is never
-                 * read by material_colours() at all. */
-                if ((wake_test_edge_mask(&fx.band_test_grid, x, y - 1) & MATERIAL_EDGE_CARDINAL) != 0
-                    || (wake_test_edge_mask(&fx.band_test_grid, x, y) & MATERIAL_EDGE_CARDINAL) != 0) {
-                    continue;
-                }
-                const int a = band_displayed_depth[(y - 1) * BAND_TEST_W + x];
-                const int b = band_displayed_depth[y * BAND_TEST_W + x];
-                if (a < 0 || b < 0) {
-                    continue;
-                }
-                const int diff = a > b ? a - b : b - a;
-                if (diff > MATERIAL_LIQUID_DEPTH_BAND / 2) {
-                    jumps++;
-                }
-            }
-        }
+        const int jumps = band_test_count_jumps(&fx.band_test_grid, band_displayed_depth);
         if (jumps > worst) {
             worst = jumps;
         }
@@ -2136,6 +2296,24 @@ flash_test_frame_reset(int gx, int gy, int grid_w, int grid_h, bool gate, ray_wa
     }
 }
 
+/* Repaints one dirty row into flash_displayed[], the same walk
+ * flash_test_paint() below runs for every row it finds dirty. */
+static void
+flash_test_paint_row(int cy, bool vdom, bool vrev, bool hrev, unsigned ax, unsigned ay, unsigned scale_q8) {
+    unsigned row_depth[RAY_WALK_STATE_W];
+    flash_test_dirty[cy] = 0;
+    flash_row_has_liquid[cy] = 0;
+    mirror_ray_walk_row(&fx.flash_test_grid, cy, FLASH_TEST_W, FLASH_TEST_H, vdom, vrev, hrev, ax, ay, scale_q8,
+                        MATERIAL_LIQUID_DEPTH_BAND, fx_ray, row_depth);
+    for (int x = 0; x < FLASH_TEST_W; x++) {
+        const cell_t c = sand_at(&fx.flash_test_grid, x, cy);
+        if (!CELL_IS_EMPTY(c) && material_of(c)->kind == KIND_LIQUID) {
+            flash_row_has_liquid[cy] = 1;
+        }
+        flash_displayed[cy * FLASH_TEST_W + x] = (int8_t)row_depth[x];
+    }
+}
+
 /* Leaves flash_displayed[] with LAST-PAINTED depth of every cell. */
 static void
 flash_test_paint(int gx, int gy, bool wake_fired) {
@@ -2153,23 +2331,12 @@ flash_test_paint(int gx, int gy, bool wake_fired) {
 
     memcpy(flash_displayed_prev, flash_displayed, (size_t)FLASH_TEST_W * FLASH_TEST_H * sizeof *flash_displayed);
 
-    unsigned row_depth[RAY_WALK_STATE_W];
     for (int i = 0; i < FLASH_TEST_H; i++) {
         const int cy = vrev ? (FLASH_TEST_H - 1 - i) : i;
         if (!flash_test_dirty[cy]) {
             continue;
         }
-        flash_test_dirty[cy] = 0;
-        flash_row_has_liquid[cy] = 0;
-        mirror_ray_walk_row(&fx.flash_test_grid, cy, FLASH_TEST_W, FLASH_TEST_H, vdom, vrev, hrev, ax, ay, scale_q8,
-                            MATERIAL_LIQUID_DEPTH_BAND, fx_ray, row_depth);
-        for (int x = 0; x < FLASH_TEST_W; x++) {
-            const cell_t c = sand_at(&fx.flash_test_grid, x, cy);
-            if (!CELL_IS_EMPTY(c) && material_of(c)->kind == KIND_LIQUID) {
-                flash_row_has_liquid[cy] = 1;
-            }
-            flash_displayed[cy * FLASH_TEST_W + x] = (int8_t)row_depth[x];
-        }
+        flash_test_paint_row(cy, vdom, vrev, hrev, ax, ay, scale_q8);
     }
 }
 
@@ -2228,14 +2395,30 @@ flash_test_settle(bool guard_chain, bool gate_reset) {
         sand_step(&fx.flash_test_grid, -12, FLASH_TEST_G, 0);
         flash_test_frame_reset(-12, FLASH_TEST_G, FLASH_TEST_W, FLASH_TEST_H, gate_reset, fx_ray, &flash_vdom_prev,
                                &flash_vrev_prev, &flash_hrev_prev, &fired);
-        flash_wake_elapsed_ms += FLASH_TEST_DT_MS;
-        bool wake_fired = false;
-        if (flash_wake_elapsed_ms >= FLASH_TEST_WAKE_MS) {
-            flash_wake_elapsed_ms -= (flash_wake_elapsed_ms / FLASH_TEST_WAKE_MS) * FLASH_TEST_WAKE_MS;
-            wake_fired = true;
-        }
+        const bool wake_fired = local_depth_wake_tick(&flash_wake_elapsed_ms, FLASH_TEST_DT_MS, FLASH_TEST_WAKE_MS);
         flash_test_paint(-12, FLASH_TEST_G, wake_fired);
     }
+}
+
+/* Interior liquid cells whose displayed depth crossed a full shade step
+ * between flash_displayed_prev[] and flash_displayed[] this frame. */
+static int
+flash_test_count_crossed(void) {
+    int crossed = 0;
+    for (int y = 0; y < FLASH_TEST_H; y++) {
+        for (int x = 0; x < FLASH_TEST_W; x++) {
+            const int k = y * FLASH_TEST_W + x;
+            if (flash_displayed[k] < 0 || flash_displayed_prev[k] < 0 || !flash_test_is_interior_liquid(x, y)) {
+                continue;
+            }
+            const int a = flash_displayed_prev[k], b = flash_displayed[k];
+            const int diff = a > b ? a - b : b - a;
+            if (diff > FLASH_TEST_SHADE_STEP) {
+                crossed++;
+            }
+        }
+    }
+    return crossed;
 }
 
 /* THE TURN ITSELF, with the simulation frozen - see this section's own
@@ -2255,28 +2438,10 @@ flash_test_run(bool guard_chain, bool gate_reset) {
 
         flash_test_frame_reset(gx, gy, FLASH_TEST_W, FLASH_TEST_H, gate_reset, fx_ray, &flash_vdom_prev,
                                &flash_vrev_prev, &flash_hrev_prev, &fired);
-        wake_elapsed_ms += FLASH_TEST_DT_MS;
-        bool wake_fired = false;
-        if (wake_elapsed_ms >= FLASH_TEST_WAKE_MS) {
-            wake_elapsed_ms -= (wake_elapsed_ms / FLASH_TEST_WAKE_MS) * FLASH_TEST_WAKE_MS;
-            wake_fired = true;
-        }
+        const bool wake_fired = local_depth_wake_tick(&wake_elapsed_ms, FLASH_TEST_DT_MS, FLASH_TEST_WAKE_MS);
         flash_test_paint(gx, gy, wake_fired);
 
-        int crossed = 0;
-        for (int y = 0; y < FLASH_TEST_H; y++) {
-            for (int x = 0; x < FLASH_TEST_W; x++) {
-                const int k = y * FLASH_TEST_W + x;
-                if (flash_displayed[k] < 0 || flash_displayed_prev[k] < 0 || !flash_test_is_interior_liquid(x, y)) {
-                    continue;
-                }
-                const int a = flash_displayed_prev[k], b = flash_displayed[k];
-                const int diff = a > b ? a - b : b - a;
-                if (diff > FLASH_TEST_SHADE_STEP) {
-                    crossed++;
-                }
-            }
-        }
+        const int crossed = flash_test_count_crossed();
         if (crossed > worst) {
             worst = crossed;
         }
@@ -2328,6 +2493,25 @@ test_turning_a_settled_pool_to_landscape_does_not_flash_the_whole_body(void) {
 
 enum { TREMOR_TEST_FRAMES = 40 };
 
+/* Interior liquid cells whose displayed depth differs between `before` and
+ * the live flash_displayed[]. */
+static int
+tremor_test_count_changed(const int8_t* before) {
+    int diff = 0;
+    for (int y = 0; y < FLASH_TEST_H; y++) {
+        for (int x = 0; x < FLASH_TEST_W; x++) {
+            const int k = y * FLASH_TEST_W + x;
+            if (before[k] < 0 || flash_displayed[k] < 0 || !flash_test_is_interior_liquid(x, y)) {
+                continue;
+            }
+            if (before[k] != flash_displayed[k]) {
+                diff++;
+            }
+        }
+    }
+    return diff;
+}
+
 /* Runs the tremor and reports (a) how many frames fired a reset and (b) how
  * many interior cells' displayed depth differs from what it read before the
  * tremor began. */
@@ -2365,27 +2549,11 @@ tremor_test_run(bool gate_reset, int* resets, int* changed) {
         flash_test_frame_reset(gx, gy, FLASH_TEST_W, FLASH_TEST_H, gate_reset, fx_ray, &flash_vdom_prev,
                                &flash_vrev_prev, &flash_hrev_prev, &fired);
         fires += fired ? 1 : 0;
-        wake_elapsed_ms += FLASH_TEST_DT_MS;
-        bool wake_fired = false;
-        if (wake_elapsed_ms >= FLASH_TEST_WAKE_MS) {
-            wake_elapsed_ms -= (wake_elapsed_ms / FLASH_TEST_WAKE_MS) * FLASH_TEST_WAKE_MS;
-            wake_fired = true;
-        }
+        const bool wake_fired = local_depth_wake_tick(&wake_elapsed_ms, FLASH_TEST_DT_MS, FLASH_TEST_WAKE_MS);
         flash_test_paint(gx, gy, wake_fired);
     }
 
-    int diff = 0;
-    for (int y = 0; y < FLASH_TEST_H; y++) {
-        for (int x = 0; x < FLASH_TEST_W; x++) {
-            const int k = y * FLASH_TEST_W + x;
-            if (before[k] < 0 || flash_displayed[k] < 0 || !flash_test_is_interior_liquid(x, y)) {
-                continue;
-            }
-            if (before[k] != flash_displayed[k]) {
-                diff++;
-            }
-        }
-    }
+    const int diff = tremor_test_count_changed(before);
 
     flash_test_free();
     free(before);
@@ -2487,36 +2655,48 @@ shadow_test_coherent_pass(int gx, int gy, unsigned depth_out[]) {
     }
 }
 
+typedef struct {
+    double tot, mx, my;
+    bool any;
+} shadow_moment_t;
+
+/* Folds one (dx, dy) offset from (sx, sy) into the shadow's depth-deficit
+ * moment, if it lands on a liquid cell inside the measurable interior
+ * with a genuine deficit. */
+static void
+shadow_test_accumulate(const unsigned depth[], int sx, int sy, int dx, int dy, shadow_moment_t* m) {
+    const int x = sx + dx, y = sy + dy;
+    if (x < 2 || y < 2 || x >= SHADOW_TEST_W - 2 || y >= SHADOW_TEST_H - 2) {
+        return;
+    }
+    if (!shadow_test_is_liquid(x, y)) {
+        return;
+    }
+    const int deficit = (int)MATERIAL_LIQUID_DEPTH_BAND - (int)depth[y * SHADOW_TEST_W + x];
+    if (deficit <= 0) {
+        return;
+    }
+    m->any = true;
+    m->tot += deficit;
+    m->mx += (double)dx * deficit;
+    m->my += (double)dy * deficit;
+}
+
 /* FLOATING POINT, DELIBERATELY, for bearing comparison to avoid overflow. */
 static bool
 shadow_test_bearing(const unsigned depth[], int sx, int sy, int gx, int gy, double* bearing_off_by) {
-    double tot = 0.0, mx = 0.0, my = 0.0;
-    bool any = false;
+    shadow_moment_t m = {0.0, 0.0, 0.0, false};
 
     for (int dy = -16; dy <= 16; dy++) {
         for (int dx = -16; dx <= 16; dx++) {
-            const int x = sx + dx, y = sy + dy;
-            if (x < 2 || y < 2 || x >= SHADOW_TEST_W - 2 || y >= SHADOW_TEST_H - 2) {
-                continue;
-            }
-            if (!shadow_test_is_liquid(x, y)) {
-                continue;
-            }
-            const int deficit = (int)MATERIAL_LIQUID_DEPTH_BAND - (int)depth[y * SHADOW_TEST_W + x];
-            if (deficit <= 0) {
-                continue;
-            }
-            any = true;
-            tot += deficit;
-            mx += (double)dx * deficit;
-            my += (double)dy * deficit;
+            shadow_test_accumulate(depth, sx, sy, dx, dy, &m);
         }
     }
-    if (!any || tot == 0.0) {
+    if (!m.any || m.tot == 0.0) {
         return false;
     }
-    mx /= tot;
-    my /= tot;
+    const double mx = m.mx / m.tot;
+    const double my = m.my / m.tot;
 
     const double shadow_bearing = atan2(my, mx) * 180.0 / M_PI;
     const double gravity_bearing = atan2((double)gy, (double)gx) * 180.0 / M_PI;
@@ -2537,45 +2717,48 @@ shadow_test_bearing(const unsigned depth[], int sx, int sy, int gx, int gy, doub
  * comment for the full measured table both designs produce. */
 #define SHADOW_TEST_MAX_BEARING_OFF_BY_DEG 5.0
 
+/* Walls, a full interior of water settled, then one stone obstacle dead
+ * centre - fully submerged, away from every wall by more than this
+ * section's own 16-cell measurement radius, so nothing measured here is
+ * the pool's own wall-distance gradient - re-settled after it is placed. */
+static void
+shadow_test_build_scene(sand_t* g) {
+    for (int y = 0; y < SHADOW_TEST_H; y++) {
+        sand_set(g, 0, y, CELL_MAKE(MAT_STONE, 0));
+        sand_set(g, SHADOW_TEST_W - 1, y, CELL_MAKE(MAT_STONE, 0));
+    }
+    for (int x = 0; x < SHADOW_TEST_W; x++) {
+        sand_set(g, x, 0, CELL_MAKE(MAT_STONE, 0));
+        sand_set(g, x, SHADOW_TEST_H - 1, CELL_MAKE(MAT_STONE, 0));
+    }
+    for (int y = 1; y < SHADOW_TEST_H - 1; y++) {
+        for (int x = 1; x < SHADOW_TEST_W - 1; x++) {
+            sand_set(g, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+        }
+    }
+    for (int i = 0; i < 400; i++) {
+        sand_step(g, 1000, 1000, 0);
+    }
+
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            sand_set(g, SHADOW_TEST_W / 2 + dx, SHADOW_TEST_H / 2 + dy, CELL_MAKE(MAT_STONE, 0));
+        }
+    }
+    for (int i = 0; i < 30; i++) {
+        sand_step(g, 1000, 1000, 0);
+    }
+}
+
 static void
 test_a_submerged_obstacle_casts_a_gravity_aligned_shadow(void) {
-    enum { PW = SHADOW_TEST_W, PH = SHADOW_TEST_H };
+    enum { PW = SHADOW_TEST_W, PH = SHADOW_TEST_H, OX = PW / 2, OY = PH / 2 };
 
     uint8_t* shadow_test_cells = malloc((size_t)PW * PH);
     TEST_ASSERT_NOT_NULL(shadow_test_cells);
     sand_init(&fx.shadow_test_grid, shadow_test_cells, PW, PH, 777u);
 
-    for (int y = 0; y < PH; y++) {
-        sand_set(&fx.shadow_test_grid, 0, y, CELL_MAKE(MAT_STONE, 0));
-        sand_set(&fx.shadow_test_grid, PW - 1, y, CELL_MAKE(MAT_STONE, 0));
-    }
-    for (int x = 0; x < PW; x++) {
-        sand_set(&fx.shadow_test_grid, x, 0, CELL_MAKE(MAT_STONE, 0));
-        sand_set(&fx.shadow_test_grid, x, PH - 1, CELL_MAKE(MAT_STONE, 0));
-    }
-    for (int y = 1; y < PH - 1; y++) {
-        for (int x = 1; x < PW - 1; x++) {
-            sand_set(&fx.shadow_test_grid, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
-    for (int i = 0; i < 400; i++) {
-        sand_step(&fx.shadow_test_grid, 1000, 1000, 0);
-    }
-
-    /* One stone obstacle, fully submerged, dead centre - away from every
-     * wall by more than this test's own 16-cell measurement radius, so
-     * nothing measured here is the pool's own wall-distance gradient (see
-     * this section's own top comment for the confound this avoids). */
-    enum { OX = PW / 2, OY = PH / 2 };
-
-    for (int dy = -1; dy <= 1; dy++) {
-        for (int dx = -1; dx <= 1; dx++) {
-            sand_set(&fx.shadow_test_grid, OX + dx, OY + dy, CELL_MAKE(MAT_STONE, 0));
-        }
-    }
-    for (int i = 0; i < 30; i++) {
-        sand_step(&fx.shadow_test_grid, 1000, 1000, 0);
-    }
+    shadow_test_build_scene(&fx.shadow_test_grid);
 
     if (CELL_MATERIAL(sand_at(&fx.shadow_test_grid, OX, OY)) != MAT_STONE) {
         free(shadow_test_cells);

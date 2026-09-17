@@ -168,6 +168,34 @@ long acid_tank(int sand_rows, int acid_rows);
  * tests it was written for need the same unpacking math. */
 int panel_luminance(gfx_color_t c);
 
+/* Count of cells in [x0,x1) x [y0,y1) on grid g that are a growing tree
+ * body - an MATX_PLANT tip, or hardened MAT_WOOD - the shape every
+ * root/lift/growth test in the split watches spread. */
+int count_tree_body(const sand_t* g, int x0, int x1, int y0, int y1);
+
+/* count_tree_body(), plus a root - for tests where a root joining the
+ * column counts as the growth event too (a rooted collar). */
+int count_tree_body_or_root(const sand_t* g, int x0, int x1, int y0, int y1);
+
+/* Steps g forward under (gx, gy) up to max_steps times, stopping the
+ * moment count_tree_body(g, x0,x1,y0,y1) exceeds baseline. Returns whether
+ * it did - the pass/fail question every lift/reach/buried-root test in the
+ * roots suite reduces to. */
+bool step_until_tree_grows(sand_t* g, int gx, int gy, int max_steps, int baseline, int x0, int x1, int y0, int y1);
+
+/* Same as step_until_tree_grows(), but growth also counts a root joining
+ * the column (count_tree_body_or_root). */
+bool step_until_tree_or_root_grows(sand_t* g, int gx, int gy, int max_steps, int baseline, int x0, int x1, int y0,
+                                   int y1);
+
+/* True if a MATX_ROOT cell exists anywhere in [x0,x1) x [y0,y1) on grid g -
+ * the "has it rooted yet" check shared by the seed/collar tests. */
+bool region_has_root(const sand_t* g, int x0, int x1, int y0, int y1);
+
+/* Count of grid g's blocks not currently settled - the sleep-progress
+ * readout every landscape/water-slope sleeping test in the split polls. */
+int count_awake_blocks(const sand_t* g);
+
 /* A timed test must PIN sand_two_core_step_enabled() rather than trust
  * whatever an earlier suite or test left it at - see
  * test_the_soak_only_skip_matches_the_full_walks_grid_exactly's own history.

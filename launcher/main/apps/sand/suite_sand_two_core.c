@@ -272,6 +272,48 @@ test_two_core_step_does_not_leak_or_fabricate_mass(void) {
     TEST_ASSERT_GREATER_THAN_MESSAGE(before / 2, after, why);
 }
 
+/* Fills occupied[0..h) with each row's non-empty cell count on grid g. */
+static void
+count_occupied_per_row(const sand_t* g, int w, int h, int* occupied) {
+    for (int y = 0; y < h; y++) {
+        int n = 0;
+        for (int x = 0; x < w; x++) {
+            if (!CELL_IS_EMPTY(sand_at(g, x, y))) {
+                n++;
+            }
+        }
+        occupied[y] = n;
+    }
+}
+
+/* True if row y sits within one row of a stripe_half-period boundary. */
+static bool
+row_near_stripe_boundary(int y, int stripe_half) {
+    for (int m = -1; m <= 1; m++) {
+        if (((y + m) % stripe_half) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Folds occupied[]'s row-to-row deltas into the largest seen at a stripe
+ * boundary vs anywhere in the interior - the tile-seam readout below. */
+static void
+worst_row_deltas(const int* occupied, int h, int stripe_half, int* interior_worst, int* boundary_worst) {
+    for (int y = 1; y < h; y++) {
+        const int delta = occupied[y] - occupied[y - 1];
+        const int adelta = delta < 0 ? -delta : delta;
+        if (row_near_stripe_boundary(y, stripe_half)) {
+            if (adelta > *boundary_worst) {
+                *boundary_worst = adelta;
+            }
+        } else if (adelta > *interior_worst) {
+            *interior_worst = adelta;
+        }
+    }
+}
+
 /* THE VISUAL SEAM CHECK: a full-width slab of sand poured above an empty
  * container and left to fall and settle. Every row's final occupancy
  * should follow the pile's own shape, not the stripe grid's - a tile
@@ -307,15 +349,7 @@ test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
 
     int* occupied = malloc(sizeof(int) * (size_t)TC_H);
     TEST_ASSERT_NOT_NULL(occupied);
-    for (int y = 0; y < TC_H; y++) {
-        int n = 0;
-        for (int x = 0; x < TC_W; x++) {
-            if (!CELL_IS_EMPTY(sand_at(&s, x, y))) {
-                n++;
-            }
-        }
-        occupied[y] = n;
-    }
+    count_occupied_per_row(&s, TC_W, TC_H, occupied);
 
     /* Interior baseline: the largest row-to-row change anywhere OUTSIDE a
      * one-row margin of every stripe boundary - the pile's own surface,
@@ -323,23 +357,7 @@ test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
     const int stripe_half = SAND_BLOCK_H / 2;
     int interior_worst = 0;
     int boundary_worst = 0;
-    for (int y = 1; y < TC_H; y++) {
-        const int delta = occupied[y] - occupied[y - 1];
-        const int adelta = delta < 0 ? -delta : delta;
-        bool near_boundary = false;
-        for (int m = -1; m <= 1; m++) {
-            if (((y + m) % stripe_half) == 0) {
-                near_boundary = true;
-            }
-        }
-        if (near_boundary) {
-            if (adelta > boundary_worst) {
-                boundary_worst = adelta;
-            }
-        } else if (adelta > interior_worst) {
-            interior_worst = adelta;
-        }
-    }
+    worst_row_deltas(occupied, TC_H, stripe_half, &interior_worst, &boundary_worst);
 
     free(occupied);
     free(cells);

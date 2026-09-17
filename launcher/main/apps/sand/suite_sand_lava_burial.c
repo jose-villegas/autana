@@ -246,6 +246,36 @@ test_lava_in_a_wall_notch_never_bursts(void) {
                                   "burst here is what blows the side out of every hand-drawn basin");
 }
 
+/* One ring-paint combo at one gravity direction: paints the 8-neighbour
+ * ring per combo's bits, checks cover_mask()/covered_at() against the
+ * independently-built expected mask/lid state, and folds whether this
+ * combo carries a complete lid into *sealed. */
+static void
+check_cover_combo(int cx, int cy, unsigned combo, int anti, unsigned lid_ring_bits, uint8_t density, int* sealed) {
+    for (int i = 0; i < 8; i++) {
+        const int* d = ring_dir(i);
+        sand_set(&s, cx + d[0], cy + d[1], (combo & (1u << i)) ? STONE : CELL_EMPTY);
+    }
+
+    const unsigned mask = cover_mask(&s, cx, cy, W, H, density);
+    unsigned expected = 0;
+    for (int i = 0; i < 3; i++) {
+        if (combo & (1u << ((anti - 1 + i) & 7))) {
+            expected |= 1u << i;
+        }
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE((int)expected, (int)mask,
+                                  "cover_mask() must depend only on the 3 lid ring positions, "
+                                  "read in ring order, and nothing else - not the "
+                                  "perpendiculars, not anything gravity-ward");
+
+    const bool lid_complete = (combo & lid_ring_bits) == lid_ring_bits;
+    TEST_ASSERT_EQUAL_MESSAGE(lid_complete, covered_at(&s, cx, cy, W, H, density),
+                              "covered_at() must be true exactly when all three lid cells "
+                              "are covered, whatever the other five hold");
+    *sealed += lid_complete;
+}
+
 /* THE EXHAUSTIVE SHAPE TABLE. A rule that rotates with gravity and is
  * only ever exercised at one rotation is not really tested, so this
  * drives cover_mask()/covered_at() at all 8 ring directions over all 256
@@ -271,28 +301,7 @@ test_cover_primitive_matches_the_exhaustive_shape_table(void) {
 
         int sealed = 0;
         for (unsigned combo = 0; combo < 256u; combo++) {
-            for (int i = 0; i < 8; i++) {
-                const int* d = ring_dir(i);
-                sand_set(&s, cx + d[0], cy + d[1], (combo & (1u << i)) ? STONE : CELL_EMPTY);
-            }
-
-            const unsigned mask = cover_mask(&s, cx, cy, W, H, density);
-            unsigned expected = 0;
-            for (int i = 0; i < 3; i++) {
-                if (combo & (1u << ((anti - 1 + i) & 7))) {
-                    expected |= 1u << i;
-                }
-            }
-            TEST_ASSERT_EQUAL_INT_MESSAGE((int)expected, (int)mask,
-                                          "cover_mask() must depend only on the 3 lid ring positions, "
-                                          "read in ring order, and nothing else - not the "
-                                          "perpendiculars, not anything gravity-ward");
-
-            const bool lid_complete = (combo & lid_ring_bits) == lid_ring_bits;
-            TEST_ASSERT_EQUAL_MESSAGE(lid_complete, covered_at(&s, cx, cy, W, H, density),
-                                      "covered_at() must be true exactly when all three lid cells "
-                                      "are covered, whatever the other five hold");
-            sealed += lid_complete;
+            check_cover_combo(cx, cy, combo, anti, lid_ring_bits, density, &sealed);
         }
 
         TEST_ASSERT_EQUAL_INT_MESSAGE(32, sealed,

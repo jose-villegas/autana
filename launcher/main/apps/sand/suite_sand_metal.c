@@ -991,6 +991,45 @@ test_a_qualifying_gas_steam_pocket_collapses_into_one_cell(void) {
     TEST_ASSERT_TRUE_MESSAGE(CELL_IS_EMPTY(sand_at(&s, 4, 4)), "and clear the other three corners of the square");
 }
 
+/* Builds the sealed 4x4 stone room [2,5]x[2,5], with a steam/gas pocket at
+ * its centre, ready to force the collapse under sand_step(). */
+static void
+build_sealed_dissolve_room(uint32_t seed) {
+    sand_init(&s, cells, W, H, seed);
+    sand_set_acid_rain(&s, 255);
+    sand_set_condenses(&s, 0);
+    sand_set_mobility(&s, 0);
+
+    for (int x = 2; x <= 5; x++) {
+        sand_set(&s, x, 2, STONE);
+        sand_set(&s, x, 5, STONE);
+    }
+    sand_set(&s, 2, 3, STONE);
+    sand_set(&s, 5, 3, STONE);
+    sand_set(&s, 2, 4, STONE);
+    sand_set(&s, 5, 4, STONE);
+
+    sand_set(&s, 3, 3, STEAM);
+    sand_set(&s, 3, 4, STEAM);
+    sand_set(&s, 4, 3, GAS);
+    sand_set(&s, 4, 4, GAS);
+}
+
+/* Count of stone cells still standing along the sealed room's own ring
+ * [2,5]x[2,5]. */
+static int
+count_room_wall_stone(void) {
+    int n = 0;
+    for (int yy = 2; yy <= 5; yy++) {
+        for (int xx = 2; xx <= 5; xx++) {
+            if ((xx == 2 || xx == 5 || yy == 2 || yy == 5) && CELL_MATERIAL(sand_at(&s, xx, yy)) == MAT_STONE) {
+                n++;
+            }
+        }
+    }
+    return n;
+}
+
 /* Guards step_one_reacting_row()'s found |= FOUND_DISSOLVER report at its
  * acid-rain call site (sand_reactions.c): a collapsing pocket's survivor
  * is written behind the row walk's own scan position, so nothing but that
@@ -1002,24 +1041,7 @@ static void
 test_a_rained_acid_cell_keeps_dissolving_after_the_collapse(void) {
     bool found_acid_seed = false;
     for (unsigned seed = 1u; seed < 64u && !found_acid_seed; seed++) {
-        sand_init(&s, cells, W, H, seed);
-        sand_set_acid_rain(&s, 255);
-        sand_set_condenses(&s, 0);
-        sand_set_mobility(&s, 0);
-
-        for (int x = 2; x <= 5; x++) {
-            sand_set(&s, x, 2, STONE);
-            sand_set(&s, x, 5, STONE);
-        }
-        sand_set(&s, 2, 3, STONE);
-        sand_set(&s, 5, 3, STONE);
-        sand_set(&s, 2, 4, STONE);
-        sand_set(&s, 5, 4, STONE);
-
-        sand_set(&s, 3, 3, STEAM);
-        sand_set(&s, 3, 4, STEAM);
-        sand_set(&s, 4, 3, GAS);
-        sand_set(&s, 4, 4, GAS);
+        build_sealed_dissolve_room(seed);
 
         sand_step(&s, 0, 1000, 0);
 
@@ -1036,14 +1058,7 @@ test_a_rained_acid_cell_keeps_dissolving_after_the_collapse(void) {
         int stone_left = 12;
         for (int i = 0; i < 120 && stone_left == 12; i++) {
             sand_step(&s, 0, 1000, 0);
-            stone_left = 0;
-            for (int yy = 2; yy <= 5; yy++) {
-                for (int xx = 2; xx <= 5; xx++) {
-                    if ((xx == 2 || xx == 5 || yy == 2 || yy == 5) && CELL_MATERIAL(sand_at(&s, xx, yy)) == MAT_STONE) {
-                        stone_left++;
-                    }
-                }
-            }
+            stone_left = count_room_wall_stone();
         }
         TEST_ASSERT_TRUE_MESSAGE(stone_left < 12, "a rained acid cell sealed in a stone room must go on to "
                                                   "dissolve some of that room's walls within 120 further steps - "

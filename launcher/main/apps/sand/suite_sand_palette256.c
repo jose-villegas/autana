@@ -207,6 +207,33 @@ static const scene_case_t scenes[] = {
     {"glass_and_gas", scene_glass_and_gas},
 };
 
+/* Checks that cell (cx,cy) of `row` maps to a valid sand256 index and that
+ * index expands back to the exact LUT colour at every cell size in
+ * `cell_sizes` - the per-cell body of the settled-scene sweep below. */
+static void
+check_settled_cell_maps_and_expands(const uint8_t* row, int cx, int cy, const char* scene_name, const int* cell_sizes,
+                                    size_t n_sizes) {
+    const unsigned hash = material_grain_hash(cx, cy);
+    const unsigned mask = ((cx > 0 && CELL_IS_EMPTY(row[cx - 1])) ? MATERIAL_EDGE_LEFT : 0u)
+                          | ((cx < SCENE_W - 1 && CELL_IS_EMPTY(row[cx + 1])) ? MATERIAL_EDGE_RIGHT : 0u);
+
+    gfx_color_t out[3];
+    material_colours(row[cx], hash, mask, 0u, out);
+    const int idx = material_palette256_index(out[0]);
+
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(SAND_PALETTE_UI_ENTRIES, idx, scene_name);
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(GFX_INDEXED_PALETTE_SIZE, idx, scene_name);
+
+    for (size_t q = 0; q < n_sizes; q++) {
+        gfx_color_t expanded[8];
+        const uint8_t one[1] = {(uint8_t)idx};
+        gfx_indexed_expand_row(one, 1, sand_palette256_lut, cell_sizes[q], expanded, cell_sizes[q]);
+        for (int dx = 0; dx < cell_sizes[q]; dx++) {
+            TEST_ASSERT_EQUAL_HEX16(sand_palette256_lut[idx], expanded[dx]);
+        }
+    }
+}
+
 /* Every settled cell in every scene, at both a fine and a coarse quality's
  * own cell size, maps to a valid sand index and expands back to the exact
  * LUT colour that index names - the integration half of the equivalence,
@@ -214,6 +241,7 @@ static const scene_case_t scenes[] = {
 static void
 test_settled_scenes_map_and_expand_correctly_at_every_quality(void) {
     static const int cell_sizes[] = {2, 4, 8}; /* ULTRA, NORMAL, VERY LOW */
+    const size_t n_sizes = sizeof cell_sizes / sizeof cell_sizes[0];
 
     for (size_t si = 0; si < sizeof scenes / sizeof scenes[0]; si++) {
         sand_init(&scene_sim, scene_grid, SCENE_W, SCENE_H, 0x51EED000u + (uint32_t)si);
@@ -225,25 +253,7 @@ test_settled_scenes_map_and_expand_correctly_at_every_quality(void) {
                 if (CELL_IS_EMPTY(row[cx])) {
                     continue;
                 }
-                const unsigned hash = material_grain_hash(cx, cy);
-                const unsigned mask = ((cx > 0 && CELL_IS_EMPTY(row[cx - 1])) ? MATERIAL_EDGE_LEFT : 0u)
-                                      | ((cx < SCENE_W - 1 && CELL_IS_EMPTY(row[cx + 1])) ? MATERIAL_EDGE_RIGHT : 0u);
-
-                gfx_color_t out[3];
-                material_colours(row[cx], hash, mask, 0u, out);
-                const int idx = material_palette256_index(out[0]);
-
-                TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(SAND_PALETTE_UI_ENTRIES, idx, scenes[si].name);
-                TEST_ASSERT_LESS_THAN_INT_MESSAGE(GFX_INDEXED_PALETTE_SIZE, idx, scenes[si].name);
-
-                for (size_t q = 0; q < sizeof cell_sizes / sizeof cell_sizes[0]; q++) {
-                    gfx_color_t expanded[8];
-                    const uint8_t one[1] = {(uint8_t)idx};
-                    gfx_indexed_expand_row(one, 1, sand_palette256_lut, cell_sizes[q], expanded, cell_sizes[q]);
-                    for (int dx = 0; dx < cell_sizes[q]; dx++) {
-                        TEST_ASSERT_EQUAL_HEX16(sand_palette256_lut[idx], expanded[dx]);
-                    }
-                }
+                check_settled_cell_maps_and_expands(row, cx, cy, scenes[si].name, cell_sizes, n_sizes);
             }
         }
     }

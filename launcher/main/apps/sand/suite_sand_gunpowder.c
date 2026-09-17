@@ -198,6 +198,48 @@ test_gunpowder_falls_and_piles_like_a_powder(void) {
                                      "stall short of it");
 }
 
+/* Fills rows [4,H) with `bed` and drops one grain of `dropped` at (3,3),
+ * then steps the scene 60 times - the shared setup every sink/rest case
+ * below uses. */
+static void
+drop_grain_onto_bed(uint8_t bed, cell_t dropped) {
+    fixture();
+    for (int y = 4; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            sand_set(&s, x, y, bed);
+        }
+    }
+    sand_set(&s, 3, 3, dropped);
+    for (int i = 0; i < 60; i++) {
+        sand_step(&s, 0, 1000, 0);
+    }
+}
+
+/* True if column x=3, rows [0,4), holds a cell whose material is `m` - the
+ * "rests above the bed rather than sinking into it" readout the
+ * sand-onto-gunpowder case uses. */
+static bool
+material_rests_above_bed(uint8_t m) {
+    for (int y = 0; y < 4; y++) {
+        if (CELL_MATERIAL(sand_at(&s, 3, y)) == m) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Same as material_rests_above_bed(), but for gunpowder (not a single
+ * MAT_* value) - the gunpowder-onto-sand case uses this one. */
+static bool
+gunpowder_rests_above_bed(void) {
+    for (int y = 0; y < 4; y++) {
+        if (cell_is_gunpowder(sand_at(&s, 3, y))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Density only settles a contest between a POWDER and a LIQUID. Between
  * two powders at rest it decides nothing: weight is carried through
  * contact, not resolved by density, unless an impulse is involved. Acid
@@ -205,75 +247,28 @@ test_gunpowder_falls_and_piles_like_a_powder(void) {
  * gunpowder, which would confound a plain sinking check. */
 static void
 test_gunpowder_sinks_through_liquids_and_rests_on_and_under_sand(void) {
-    fixture();
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, WATER);
-        }
-    }
-    sand_set(&s, 3, 3, GUNPOWDER_CELL(0));
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    drop_grain_onto_bed(WATER, GUNPOWDER_CELL(0));
     TEST_ASSERT_TRUE_MESSAGE(cell_is_gunpowder(sand_at(&s, 3, H - 1)),
                              "gunpowder is denser than water, so it must sink all the way "
                              "through the pool rather than float on it");
 
-    fixture();
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, OIL);
-        }
-    }
-    sand_set(&s, 3, 3, GUNPOWDER_CELL(0));
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    drop_grain_onto_bed(OIL, GUNPOWDER_CELL(0));
     TEST_ASSERT_TRUE_MESSAGE(cell_is_gunpowder(sand_at(&s, 3, H - 1)), "and through oil, the same reasoning");
 
     /* Sand poured onto a bed of gunpowder must rest ON that bed, never
      * sink into or beneath it. */
-    fixture();
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, GUNPOWDER_CELL(0));
-        }
-    }
-    sand_set(&s, 3, 3, SAND);
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
-    bool sand_above_bed = false;
-    for (int y = 0; y < 4; y++) {
-        if (CELL_MATERIAL(sand_at(&s, 3, y)) == MAT_SAND) {
-            sand_above_bed = true;
-        }
-    }
-    TEST_ASSERT_TRUE_MESSAGE(sand_above_bed, "sand poured onto a bed of gunpowder must rest ON it, not sink "
-                                             "beneath it - powders never displace each other at rest, "
-                                             "regardless of density");
+    drop_grain_onto_bed(GUNPOWDER_CELL(0), SAND);
+    TEST_ASSERT_TRUE_MESSAGE(material_rests_above_bed(MAT_SAND),
+                             "sand poured onto a bed of gunpowder must rest ON it, not sink "
+                             "beneath it - powders never displace each other at rest, "
+                             "regardless of density");
 
     /* And the reverse pour order: gunpowder onto a bed of sand must
      * rest ON that bed in turn - the same mutual-blocking rule either
      * way around. */
-    fixture();
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, SAND);
-        }
-    }
-    sand_set(&s, 3, 3, GUNPOWDER_CELL(0));
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
-    bool gp_above_bed = false;
-    for (int y = 0; y < 4; y++) {
-        if (cell_is_gunpowder(sand_at(&s, 3, y))) {
-            gp_above_bed = true;
-        }
-    }
-    TEST_ASSERT_TRUE_MESSAGE(gp_above_bed, "and gunpowder poured onto a bed of sand must rest ON it too - "
-                                           "the same rule, the other pour order");
+    drop_grain_onto_bed(SAND, GUNPOWDER_CELL(0));
+    TEST_ASSERT_TRUE_MESSAGE(gunpowder_rests_above_bed(), "and gunpowder poured onto a bed of sand must rest ON it "
+                                                          "too - the same rule, the other pour order");
 }
 
 static void

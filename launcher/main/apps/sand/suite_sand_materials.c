@@ -685,6 +685,22 @@ test_a_settled_pool_does_not_flicker(void) {
                                           "visibly changing colour and resettling, over and over");
 }
 
+/* Sum of CELL_VARIANT for material `m` in columns [x0,x1) across every one
+ * of grid `s`'s h rows - the two-sided pool-tilt readout below sums it. */
+static long
+material_variant_sum_in_columns(const sand_t* s, int x0, int x1, int h, material_id_t m) {
+    long total = 0;
+    for (int y = 0; y < h; y++) {
+        for (int x = x0; x < x1; x++) {
+            const cell_t c = sand_at(s, x, y);
+            if (!CELL_IS_EMPTY(c) && CELL_MATERIAL(c) == m) {
+                total += CELL_VARIANT(c);
+            }
+        }
+    }
+    return total;
+}
+
 /* Settles a w x h pool of water under (gx, gy) for `steps` steps, then
  * reports how much its surface tilts: the difference between the total
  * water mass held in the leftmost w/8 columns and the rightmost w/8
@@ -738,21 +754,8 @@ settled_surface_slope_q10(int w, int h, int gx, int gy, int steps) {
     }
 
     const int q = w / 8;
-    long lo = 0, hi = 0;
-    for (int y = 0; y < h; y++) {
-        for (int x = 0; x < q; x++) {
-            const cell_t c = sand_at(&s, x, y);
-            if (!CELL_IS_EMPTY(c) && CELL_MATERIAL(c) == MAT_WATER) {
-                lo += CELL_VARIANT(c);
-            }
-        }
-        for (int x = w - q; x < w; x++) {
-            const cell_t c = sand_at(&s, x, y);
-            if (!CELL_IS_EMPTY(c) && CELL_MATERIAL(c) == MAT_WATER) {
-                hi += CELL_VARIANT(c);
-            }
-        }
-    }
+    const long lo = material_variant_sum_in_columns(&s, 0, q, h, MAT_WATER);
+    const long hi = material_variant_sum_in_columns(&s, w - q, w, h, MAT_WATER);
 
     free(cells);
     free(blocks);
@@ -1007,6 +1010,54 @@ test_a_cascading_impulse_moves_more_than_one_cell(void) {
 #define STIR_W 14
 #define STIR_H 30
 
+/* Builds the stir-basin scene on g: a stone box, a settled dirt bed, and a
+ * settled water pool resting on it. */
+static void
+build_dirt_stir_basin(sand_t* g, int floor_row, int dirt_top, int pool_top) {
+    for (int y = 0; y < STIR_H; y++) {
+        sand_set(g, 0, y, STONE);
+        sand_set(g, STIR_W - 1, y, STONE);
+    }
+    for (int x = 0; x < STIR_W; x++) {
+        sand_set(g, x, floor_row, STONE);
+    }
+    for (int y = dirt_top; y < floor_row; y++) {
+        for (int x = 1; x < STIR_W - 1; x++) {
+            sand_set(g, x, y, CELL_MAKE(MAT_DIRT, 0));
+        }
+    }
+    for (int y = pool_top; y < dirt_top; y++) {
+        for (int x = 1; x < STIR_W - 1; x++) {
+            sand_set(g, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+        }
+    }
+}
+
+/* Fills was_dirt[0..n) with whether each of g's cells currently holds
+ * MAT_DIRT. */
+static void
+mark_dirt_cells(const sand_t* g, int n, bool* was_dirt) {
+    for (int i = 0; i < n; i++) {
+        was_dirt[i] = CELL_MATERIAL(g->cells[i]) == MAT_DIRT;
+    }
+}
+
+/* Counts, against the was_dirt[] snapshot, how many cells stopped being
+ * dirt (left_its_cell) and how many became dirt that were not before
+ * (arrived_elsewhere) - the two ends of the same illegal swap. */
+static void
+count_dirt_movement(const sand_t* g, const bool* was_dirt, int n, int* left_its_cell, int* arrived_elsewhere) {
+    for (int i = 0; i < n; i++) {
+        const bool is_dirt_now = CELL_MATERIAL(g->cells[i]) == MAT_DIRT;
+        if (was_dirt[i] && !is_dirt_now) {
+            (*left_its_cell)++;
+        }
+        if (!was_dirt[i] && is_dirt_now) {
+            (*arrived_elsewhere)++;
+        }
+    }
+}
+
 /* Pouring water over a dirt bed must never move a dirt cell out of
  * position - can_impulse_enter() (sand.c) gates a flying water grain's
  * swap to liquid targets only, so a splash-kicked grain cannot tunnel
@@ -1036,28 +1087,10 @@ test_pouring_water_over_a_dirt_bed_never_moves_a_dirt_cell(void) {
     sand_init(&fx.stir_sim, stir_cells, STIR_W, STIR_H, 0xC0FFEEu);
     sand_enable_impulses(&fx.stir_sim, buf, 4096);
 
-    for (int y = 0; y < STIR_H; y++) {
-        sand_set(&fx.stir_sim, 0, y, STONE);
-        sand_set(&fx.stir_sim, STIR_W - 1, y, STONE);
-    }
-    for (int x = 0; x < STIR_W; x++) {
-        sand_set(&fx.stir_sim, x, FLOOR, STONE);
-    }
-    for (int y = DIRT_TOP; y < FLOOR; y++) {
-        for (int x = 1; x < STIR_W - 1; x++) {
-            sand_set(&fx.stir_sim, x, y, CELL_MAKE(MAT_DIRT, 0));
-        }
-    }
-    for (int y = POOL_TOP; y < DIRT_TOP; y++) {
-        for (int x = 1; x < STIR_W - 1; x++) {
-            sand_set(&fx.stir_sim, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    build_dirt_stir_basin(&fx.stir_sim, FLOOR, DIRT_TOP, POOL_TOP);
 
     bool was_dirt[STIR_W * STIR_H];
-    for (int i = 0; i < STIR_W * STIR_H; i++) {
-        was_dirt[i] = CELL_MATERIAL(fx.stir_sim.cells[i]) == MAT_DIRT;
-    }
+    mark_dirt_cells(&fx.stir_sim, STIR_W * STIR_H, was_dirt);
 
     for (int i = 0; i < POUR_STEPS; i++) {
         sand_spawn(&fx.stir_sim, STREAM_X, 1, 2, MAT_WATER); /* 5-wide stream */
@@ -1067,15 +1100,7 @@ test_pouring_water_over_a_dirt_bed_never_moves_a_dirt_cell(void) {
     free(buf);
 
     int left_its_cell = 0, arrived_elsewhere = 0;
-    for (int i = 0; i < STIR_W * STIR_H; i++) {
-        const bool is_dirt_now = CELL_MATERIAL(fx.stir_sim.cells[i]) == MAT_DIRT;
-        if (was_dirt[i] && !is_dirt_now) {
-            left_its_cell++;
-        }
-        if (!was_dirt[i] && is_dirt_now) {
-            arrived_elsewhere++;
-        }
-    }
+    count_dirt_movement(&fx.stir_sim, was_dirt, STIR_W * STIR_H, &left_its_cell, &arrived_elsewhere);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, left_its_cell,
                                   "pouring water onto the pool over a settled dirt bed must never "

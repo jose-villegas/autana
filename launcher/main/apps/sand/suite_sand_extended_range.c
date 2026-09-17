@@ -77,6 +77,53 @@ test_heat_through_a_pan_lights_oil_rather_than_boiling_it(void) {
                                   "happened at all");
 }
 
+/* Builds the powder-sink scene on the default fixture: a stone floor, a
+ * settled bed of `bed` three rows deep, and a bone-dry row of `dropped`
+ * near the top to fall onto it. */
+static void
+build_powder_sink_scene(uint8_t bed, uint8_t dropped) {
+    for (int x = 0; x < W; x++) {
+        sand_set(&s, x, H - 1, STONE);
+    }
+    for (int y = H - 4; y < H - 1; y++) {
+        for (int x = 0; x < W; x++) {
+            sand_set(&s, x, y,
+                     material_by_id((material_id_t)bed)->kind == KIND_LIQUID ? CELL_MAKE(bed, MASS_MAX)
+                                                                             : CELL_MAKE(bed, 4));
+        }
+    }
+    for (int x = 2; x < W - 2; x++) {
+        /* BONE DRY (variant 0): variant IS moisture for a soil material
+         * (CELL_MOISTURE()), so a wet DIRT grain here could soak/
+         * percolate into the bed below by itself - unrelated to the
+         * displacement rule this test checks, and indistinguishable
+         * from real sinking in this test's own measurement (lowest cell
+         * of dropped's material). Starting bone dry removes that
+         * soaking side channel entirely on both SAND and DIRT, so this
+         * test is only ever sensitive to displacement. */
+        sand_set(&s, x, 1, CELL_MAKE(dropped, 0));
+    }
+}
+
+/* Reports the lowest row still holding `dropped` and the highest row
+ * still holding `bed`, after the scene has settled. */
+static void
+find_dropped_and_bed_extents(uint8_t dropped, uint8_t bed, int* lowest, int* highest_bed) {
+    *lowest = -1;
+    *highest_bed = H;
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            const uint8_t m = CELL_MATERIAL(sand_at(&s, x, y));
+            if (m == dropped && y > *lowest) {
+                *lowest = y;
+            }
+            if (m == bed && y < *highest_bed) {
+                *highest_bed = y;
+            }
+        }
+    }
+}
+
 /* A powder lands ON another powder, and still sinks through a liquid.
  *
  * A grain can push its way down through water or through smoke and cannot
@@ -100,44 +147,14 @@ test_a_powder_lands_on_a_powder_but_sinks_in_a_liquid(void) {
         const uint8_t bed = cases[k].bed, dropped = cases[k].dropped;
         fixture();
         sand_clear(&s);
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, H - 1, STONE);
-        }
-        for (int y = H - 4; y < H - 1; y++) {
-            for (int x = 0; x < W; x++) {
-                sand_set(&s, x, y,
-                         material_by_id((material_id_t)bed)->kind == KIND_LIQUID ? CELL_MAKE(bed, MASS_MAX)
-                                                                                 : CELL_MAKE(bed, 4));
-            }
-        }
-        for (int x = 2; x < W - 2; x++) {
-            /* BONE DRY (variant 0): variant IS moisture for a soil material
-             * (CELL_MOISTURE()), so a wet DIRT grain here could soak/
-             * percolate into the bed below by itself - unrelated to the
-             * displacement rule this test checks, and indistinguishable
-             * from real sinking in this test's own measurement (lowest cell
-             * of dropped's material). Starting bone dry removes that
-             * soaking side channel entirely on both SAND and DIRT, so this
-             * test is only ever sensitive to displacement. */
-            sand_set(&s, x, 1, CELL_MAKE(dropped, 0));
-        }
+        build_powder_sink_scene(bed, dropped);
 
         for (int i = 0; i < 300; i++) {
             sand_step(&s, 0, 1000, 0);
         }
 
-        int lowest = -1, highest_bed = H;
-        for (int y = 0; y < H; y++) {
-            for (int x = 0; x < W; x++) {
-                const uint8_t m = CELL_MATERIAL(sand_at(&s, x, y));
-                if (m == dropped && y > lowest) {
-                    lowest = y;
-                }
-                if (m == bed && y < highest_bed) {
-                    highest_bed = y;
-                }
-            }
-        }
+        int lowest, highest_bed;
+        find_dropped_and_bed_extents(dropped, bed, &lowest, &highest_bed);
 
         char why[160];
         snprintf(why, sizeof why, "%s dropped on %s should %s", material_by_id((material_id_t)dropped)->name,
