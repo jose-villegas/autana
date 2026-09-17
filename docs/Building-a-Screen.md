@@ -75,6 +75,15 @@ These are not style preferences. Each one is a bug that shipped.
 - **Styles are part of the frame's description.** `ui_begin()` resets the
   button style; state what you want every frame.
 
+### Anchoring a fixed rectangle
+
+`ui_anchor_rect()` puts an element pivot on an anchor in its parent. The
+named `UI_ANCHOR_*` points select the parent corner, edge centre or centre;
+the pivot selects the same normalized point within the element. Offsets are
+pixels from that landing point. `ui_rect_inset()` makes a safe area by
+insetting each parent edge. Resolve the rectangle in the upright logical
+canvas, then map it with `ui_transform_rect()`.
+
 ## How to do the things a screen usually needs
 
 ### A control microui does not have
