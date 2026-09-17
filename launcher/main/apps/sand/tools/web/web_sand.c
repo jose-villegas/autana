@@ -47,15 +47,9 @@
 #include "tilt.h"
 #include "util/intmath.h"
 
-/* Duplicated from gfx.h's GFX_WIDTH/GFX_HEIGHT, the same way palette.h
- * already duplicates them - gfx.h drags in bsp/esp-bsp.h, which this file,
- * like every other host-portable module in this app, must never include.
- * The DEVICE's own two dimensions, fixed - used only to size the one pixel
- * buffer this file ever allocates (see `pixels` below), at whichever of the
- * two products is larger (they are in fact equal, 368*448 either way, but
- * nothing here relies on that). What actually varies per web_init() call is
- * `screen_w`/`screen_h` just below - PORTRAIT uses these two numbers
- * unchanged; LANDSCAPE swaps them. */
+/* The panel's size, duplicated from gfx.h because gfx.h pulls in
+ * bsp/esp-bsp.h, which host-portable code never includes. Sizes the one
+ * pixel buffer; screen_w/screen_h hold the current orientation's canvas. */
 #define DEVICE_W         368
 #define DEVICE_H         448
 
@@ -152,16 +146,9 @@ static gfx_color_t* scan_row; /* screen_w entries: gfx_indexed_expand_row*()'s
 static sand_t sim;
 static tilt_t tilt;
 
-/* This orientation's own canvas size - DEVICE_W x DEVICE_H (portrait) or
- * DEVICE_H x DEVICE_W (landscape), set by web_init() below. Everything that
- * used to read the fixed DEVICE_W/H constants directly now reads these instead:
- * the grid's own cell count, web_render()'s row stride and bounds, and the
- * two web_screen_w()/web_screen_h() getters JS sizes its canvas from. A
- * landscape grid is genuinely landscape-shaped (grid_w > grid_h) rather
- * than a portrait grid rotated for display - see web_init()'s own comment
- * for why that is what makes landscape need no other change anywhere:
- * gravity, the tilt pad, and touch input all already work in whichever
- * axes screen_w/screen_h currently mean, unchanged. */
+/* The current orientation's canvas: DEVICE_W x DEVICE_H in portrait,
+ * swapped in landscape, set by web_init(). A landscape grid is
+ * landscape-shaped, so gravity, tilt and touch need no other change. */
 static int screen_w = DEVICE_W, screen_h = DEVICE_H;
 
 static int grid_w, grid_h, cell_px;
@@ -393,17 +380,10 @@ web_brush_swatch(int index) {
     return gfx_color_rgb888(material_palette()[cell_is_extended(c) ? c : CELL_MAKE(CELL_MATERIAL(c), 13)]);
 }
 
-/*---------------------------------------------------------------------------
- * Gravity / tilt
- *
- * `ax`/`ay`/`az` are screen-axis gravity in WEB_COUNTS_PER_G-scaled units -
- * the same shape imu_read() hands app_sand.c's read_gravity_input(). A
- * caller with no real sensor (desktop, or a phone before/without
- * DeviceOrientation permission) should pass (0, WEB_COUNTS_PER_G, 0, 0) every
- * frame - straight down at a steady 1 g - which is exactly app_sand.c's own
- * no-IMU fallback, and tilt_update() adopts a first/steady sample exactly
- * rather than smoothing into it, so there is no startup lurch either way.
- *-------------------------------------------------------------------------*/
+/* `ax`/`ay`/`az` are screen-axis gravity in WEB_COUNTS_PER_G units, the
+ * shape imu_read() gives the app. A caller with no sensor passes
+ * (0, WEB_COUNTS_PER_G, 0, 0) every frame: a steady 1 g down, the app's own
+ * no-IMU fallback. */
 
 /* Exact port of app_sand.c's own gravity_bearing_q16() - a trig-free,
  * monotonic bearing in Q16 quarter-turns, which material_set_glass_phase()
@@ -576,17 +556,10 @@ web_clear(void) {
     }
 }
 
-/*---------------------------------------------------------------------------
- * Render - one flat colour per cell block, full frame every call, but that
- * colour now comes from the real material_colours() (material.c) - the same
- * function app_sand.c's paint_row_n() calls - fed a real edge mask, a real
- * per-cell hash, and a real LOCAL DEPTH for liquids, so a pool of water,
- * lava, oil or acid gets the same depth-graded interior shading the device
- * shows. Still not the full paint_row_n(): the HATCHED/SPECKLED sub-pixel
- * patterns material_colours() also returns (col[1]/col[2], the glass shine
- * sweep, foam dither) are not drawn here - every cell block is filled
- * uniformly with col[0], the body colour. See this file's own top comment.
- *-------------------------------------------------------------------------*/
+/* One colour per cell block, the whole frame every call, from
+ * material_colours() - the function paint_row_n() calls - with a real edge
+ * mask, cell hash and liquid depth: the body colour, or the shine colour
+ * where the travelling shine crosses the cell centre. No sub-cell pattern. */
 
 /* This frame's LOCAL DEPTH scale, in Q8 - see material.h's own comment on
  * material_colours()'s `depth` parameter, and app_sand.c's LOCAL DEPTH
@@ -596,25 +569,11 @@ web_clear(void) {
  * read by web_render() right after. */
 static unsigned local_depth_scale_q8;
 
-/* Fills depth_buf[] with each liquid cell's LOCAL DEPTH, as a RAW STEP
- * COUNT (0..MATERIAL_LIQUID_DEPTH_BAND) - the projection into Q8 true
- * distance (local_depth_scale_q8 above) is applied once, per cell, in
- * web_render(), exactly the way app_sand.c's own local_depth_scale_q8
- * comment describes: "PROJECTED AT COMBINE TIME... a raw count is
- * gravity-agnostic".
- *
- * A MUCH simpler walk than app_sand.c's own paint_row_n() version of this
- * mechanism, for one reason: that one has to survive a SPARSE, cross-frame
- * repaint (only dirty rows redrawn, some frames apart, in whatever order
- * draw_dirty_rows() visits them) - which is the entire reason it carries a
- * double buffer, a hold-then-commit debounce, and a "which row does the
- * buffer actually describe" guard (see its own top comment for the device
- * report - a flooded 45-degree flip - each one fixed). This file redraws
- * the WHOLE grid, EVERY frame, in a single pass that always visits rows (or
- * columns) in surface-to-deep order - so every neighbour this walk reads
- * was already computed earlier in THIS SAME call, always. There is no
- * staleness to debounce against: a boundary cell's depth is 0, immediately,
- * correctly, every time, with no hold-and-see. */
+/* Fills depth_buf[] with each liquid cell's local depth as a raw step count
+ * (0..MATERIAL_LIQUID_DEPTH_BAND); web_render() projects it through
+ * local_depth_scale_q8. Every frame redraws the whole grid surface-to-deep,
+ * so each neighbour read was computed earlier in the same call and nothing
+ * needs debouncing, unlike paint_row_n()'s sparse repaint. */
 static void
 compute_local_depth(void) {
     const int gx = last_gx, gy = last_gy;
