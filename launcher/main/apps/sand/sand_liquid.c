@@ -708,70 +708,146 @@ liquid_sort_ray(const sand_t* s, int x, int y, int dx, int dy) {
     return (dx == dy) ? x - y + s->h - 1 : x + y;
 }
 
-static bool
-float_one_liquid(sand_t* s, int x, int y, int dx, int dy, uint16_t is_liquid, uint8_t* swapped, int ray) {
+typedef struct {
+    sand_t* s;
+    uint8_t* swapped;
+    uint16_t is_liquid;
+    int dx;
+    int dy;
+    int ray_base;
+    int x0;
+    int xstep;
+    int xi_first;
+    int ray_step;
+    int y0;
+    int ystep;
+    int yi_first;
+} liquid_sort_t;
+
+static liquid_sort_t
+liquid_sort_init(sand_t* s, uint8_t* swapped, uint16_t is_liquid, int dx, int dy) {
     const int w = s->w, h = s->h;
-    const int ux = x - dx, uy = y - dy;
-    if ((unsigned)ux >= (unsigned)w || (unsigned)uy >= (unsigned)h || ((swapped[ray >> 3] >> (ray & 7)) & 1u) != 0u) {
-        return false;
+    const int x0 = (dx > 0) ? 0 : w - 1, xstep = (dx > 0) ? 1 : -1;
+
+    return (liquid_sort_t){.s = s,
+                           .swapped = swapped,
+                           .is_liquid = is_liquid,
+                           .dx = dx,
+                           .dy = dy,
+                           .x0 = x0,
+                           .xstep = xstep,
+                           .xi_first = (dx == 0) ? 0 : 1,
+                           .ray_step = (dx == 0)    ? xstep
+                                       : (dy == 0)  ? 0
+                                       : (dx == dy) ? xstep
+                                                    : -xstep,
+                           .y0 = (dy > 0) ? 0 : h - 1,
+                           .ystep = (dy > 0) ? 1 : -1,
+                           .yi_first = (dy == 0) ? 0 : 1};
+}
+
+static void
+liquid_sort_x_bounds(const liquid_sort_t* sort, int first_ray, int xi_first, int ray_step, int* out_lo, int* out_hi) {
+    const int ray_base = sort->ray_base;
+    int xi_lo = xi_first, xi_hi = sort->s->w;
+
+    if (ray_step == 0) {
+        if (first_ray < ray_base || first_ray - ray_base >= RISE_RAYS) {
+            xi_hi = xi_lo;
+        }
+    } else if (ray_step > 0) {
+        const int ray_lo = xi_first + ray_base - first_ray;
+        const int ray_hi = xi_first + ray_base + RISE_RAYS - first_ray;
+        if (xi_lo < ray_lo) {
+            xi_lo = ray_lo;
+        }
+        if (xi_hi > ray_hi) {
+            xi_hi = ray_hi;
+        }
+    } else {
+        const int ray_lo = xi_first + first_ray - ray_base - RISE_RAYS + 1;
+        const int ray_hi = xi_first + first_ray - ray_base + 1;
+        if (xi_lo < ray_lo) {
+            xi_lo = ray_lo;
+        }
+        if (xi_hi > ray_hi) {
+            xi_hi = ray_hi;
+        }
     }
 
-    uint8_t* const row = &s->cells[(size_t)y * (size_t)w];
-    uint8_t* const urow = &s->cells[(size_t)uy * (size_t)w];
-    const cell_t me = row[x], above = urow[ux];
-    if (CELL_IS_EMPTY(me) || CELL_IS_EMPTY(above)) {
-        return false;
-    }
-    const uint8_t mine = CELL_MATERIAL(me), theirs = CELL_MATERIAL(above);
-    /* The viscosity roll the ordinary move pays keeps a rise a lazy drift. */
-    if (((is_liquid >> mine) & 1u) == 0 || theirs == mine || ((is_liquid >> theirs) & 1u) == 0
-        || material_by_id((material_id_t)theirs)->density <= material_by_id((material_id_t)mine)->density
-        || (s->may_have_viscous_liquid && !liquid_may_move(s, x, y, mine))) {
-        return false;
-    }
-
-    urow[ux] = me;
-    row[x] = above;
-    swapped[ray >> 3] |= (uint8_t)(1u << (ray & 7));
-    mark_slide(s, x, y, ux, uy);
-    wake_block_and_neighbors(s, x, y);
-    wake_block_and_neighbors(s, ux, uy);
-    return true;
+    *out_lo = xi_lo;
+    *out_hi = xi_hi;
 }
 
 static bool
-float_liquid_row(sand_t* s, int y, int x0, int xstep, int dx, int dy, uint16_t is_liquid, uint8_t* swapped,
-                 int ray_base) {
+float_liquid_row(const liquid_sort_t* sort, int y) {
+    sand_t* const s = sort->s;
+    uint8_t* const cells = s->cells;
+    uint8_t* const swapped = sort->swapped;
+    const int w = s->w;
+    const uint16_t is_liquid = sort->is_liquid;
+    const int dx = sort->dx, dy = sort->dy;
+    const int ray_base = sort->ray_base;
+    const bool may_have_viscous_liquid = s->may_have_viscous_liquid;
+    const int x0 = sort->x0, xstep = sort->xstep;
+    const int xi_first = sort->xi_first, ray_step = sort->ray_step;
+    const int uy = y - dy;
+
+    uint8_t* const row = &cells[(size_t)y * (size_t)w];
+    uint8_t* const urow = &cells[(size_t)uy * (size_t)w];
+    const int first_x = x0 + xi_first * xstep;
+    const int first_ray = liquid_sort_ray(s, first_x, y, dx, dy);
+    int xi_lo, xi_hi;
+    liquid_sort_x_bounds(sort, first_ray, xi_first, ray_step, &xi_lo, &xi_hi);
+
     bool moved = false;
 
-    for (int xi = 0; xi < s->w; xi++) {
+    for (int xi = xi_lo, ray = first_ray + (xi_lo - xi_first) * ray_step; xi < xi_hi; xi++, ray += ray_step) {
         const int x = x0 + xi * xstep;
-        const int ray = liquid_sort_ray(s, x, y, dx, dy);
-        if (ray < ray_base || ray - ray_base >= RISE_RAYS) {
+        const int ux = x - dx;
+        if (((swapped[(ray - ray_base) >> 3] >> ((ray - ray_base) & 7)) & 1u) != 0u) {
             continue;
         }
-        if (float_one_liquid(s, x, y, dx, dy, is_liquid, swapped, ray - ray_base)) {
-            moved = true;
+        const cell_t me = row[x], above = urow[ux];
+        if (CELL_IS_EMPTY(me) || CELL_IS_EMPTY(above)) {
+            continue;
         }
+        const uint8_t mine = CELL_MATERIAL(me), theirs = CELL_MATERIAL(above);
+        /* The viscosity roll the ordinary move pays keeps a rise a lazy drift. */
+        const bool can_swap =
+            ((is_liquid >> mine) & 1u) != 0 && theirs != mine && ((is_liquid >> theirs) & 1u) != 0
+            && material_by_id((material_id_t)theirs)->density > material_by_id((material_id_t)mine)->density
+            && (!may_have_viscous_liquid || liquid_may_move(s, x, y, mine));
+        if (!can_swap) {
+            continue;
+        }
+
+        urow[ux] = me;
+        row[x] = above;
+        swapped[(ray - ray_base) >> 3] |= (uint8_t)(1u << ((ray - ray_base) & 7));
+        mark_slide(s, x, y, ux, uy);
+        wake_block_and_neighbors(s, x, y);
+        wake_block_and_neighbors(s, ux, uy);
+        moved = true;
     }
     return moved;
 }
 
 static bool
 float_lighter_liquids(sand_t* s, int dx, int dy) {
-    const int w = s->w, h = s->h;
+    const int h = s->h;
     const uint16_t is_liquid = liquid_mask();
-    const int y0 = (dy > 0) ? 0 : h - 1, ystep = (dy > 0) ? 1 : -1;
-    const int x0 = (dx > 0) ? 0 : w - 1, xstep = (dx > 0) ? 1 : -1;
     const int rays = liquid_sort_ray_count(s, dx, dy);
     bool moved = false;
     uint8_t swapped[RISE_RAYS / 8];
+    liquid_sort_t sort = liquid_sort_init(s, swapped, is_liquid, dx, dy);
 
     for (int ray_base = 0; ray_base < rays; ray_base += RISE_RAYS) {
+        sort.ray_base = ray_base;
         memset(swapped, 0, sizeof swapped);
-        for (int yi = 0; yi < h; yi++) {
-            const int y = y0 + yi * ystep;
-            if (float_liquid_row(s, y, x0, xstep, dx, dy, is_liquid, swapped, ray_base)) {
+        for (int yi = sort.yi_first; yi < h; yi++) {
+            const int y = sort.y0 + yi * sort.ystep;
+            if (float_liquid_row(&sort, y)) {
                 moved = true;
             }
         }
