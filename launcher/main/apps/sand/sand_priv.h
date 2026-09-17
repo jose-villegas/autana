@@ -1127,7 +1127,9 @@ try_slide_impl(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* b
     pick_slide_order(r, arow, brow, slide_a, slide_b, driven_row, driven, &first_row, &first_dx, &first_dy,
                      &first_driven, &second_row, &second_dx, &second_dy, &second_driven);
 
-    /* Every slide destination has already been swept. */
+    /* A shaken grain spreads sideways before dropping. Whether that
+     * destination is already swept is the sweep order's business -
+     * choose_sweep_order() (sand.c) states where it holds. */
     const bool shaken = jostle > 0 && (int)((r >> 8) & 0xFF) < jostle;
 
     if (!shaken && jostle > 0 && move_to(row, prow, x, x + dx, w, grain, density)) {
