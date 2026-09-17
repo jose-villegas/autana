@@ -699,68 +699,74 @@ test_a_spent_static_chunk_rests_on_a_powder_bank_instead_of_sinking_forever(void
 #define FAR_SINK_H         (FAR_SINK_DISTANCE + FAR_SINK_BED_DEPTH + 10)
 #define FAR_SINK_SEEDS     40
 
+/* Builds one far-sink scene for `seed`, runs it to rest, and returns how
+ * many rows deep into the bed the thrown chunk penetrated (0 if it stopped
+ * short of the bed entirely). */
+static long
+far_sink_penetration_for_seed(uint8_t* cells, impulse_t* buf, uint32_t seed) {
+    const int bed_y0 = FAR_SINK_DISTANCE;
+    const int bed_y1 = bed_y0 + FAR_SINK_BED_DEPTH - 1;
+    const int floor_row = bed_y1 + 1;
+    sand_t g;
+    memset(cells, 0, (size_t)FAR_SINK_W * FAR_SINK_H);
+    sand_init(&g, cells, FAR_SINK_W, FAR_SINK_H, seed);
+    sand_enable_impulses(&g, buf, FAR_SINK_W * FAR_SINK_H);
+
+    /* The floor sits directly under the bed: with open air beneath it a
+     * bed is a second falling body, free-falling in lockstep with the
+     * chunk chasing it and never actually touched. */
+    for (int x = 0; x < FAR_SINK_W; x++) {
+        sand_set(&g, x, floor_row, STONE);
+    }
+    for (int y = bed_y0; y <= bed_y1; y++) {
+        for (int x = 0; x < FAR_SINK_W; x++) {
+            sand_set(&g, x, y, SAND);
+        }
+    }
+
+    const int mover_x = FAR_SINK_W / 2;
+    sand_set(&g, mover_x, 0, STONE);
+
+    /* DIR_UP can only ever nudge the chunk into open air above where it
+     * started, so every displacement measured here is the drift's own. A
+     * direction that could also displace into the bed lets the push
+     * site's already-correct accounting cover for a broken drift. */
+    enum { DIR_UP = 4 };
+
+    sand_impulse_dislodge(&g, mover_x, 0, DIR_UP, 255, SAND_IMPULSE_SPEED_RAMP);
+
+    /* PAST THE DETERMINISTIC FLIGHT-TIME BOUND - see this file's own
+     * max_lifetime derivation elsewhere for the same reasoning: a
+     * regression back to the unconditional drift can keep this entry
+     * tracked (and sinking) for up to a full ramp's worth of steps
+     * after it enters the bed, on top of the open-air fall it already
+     * took to get there. A shorter budget here (measured directly)
+     * still shows the chunk mid-sink in some seeds under the bug,
+     * understating exactly the depth this test exists to catch. */
+    for (int i = 0; i < FAR_SINK_DISTANCE + 150; i++) {
+        sand_step(&g, 0, 1000, 0);
+    }
+
+    int landed_row = -1;
+    for (int y = 0; y < floor_row && landed_row < 0; y++) {
+        for (int x = 0; x < FAR_SINK_W; x++) {
+            if (CELL_MATERIAL(sand_at(&g, x, y)) == MAT_STONE) {
+                landed_row = y;
+                break;
+            }
+        }
+    }
+    /* landed_row < bed_y0 means the chunk stopped short of the bed
+     * entirely (its own ramp exhausted before it ever arrived) - zero
+     * penetration, nothing to add, rather than a negative figure. */
+    return (landed_row >= bed_y0) ? (landed_row - bed_y0) : 0;
+}
+
 static long
 far_sink_penetration_total(uint8_t* cells, impulse_t* buf) {
     long total = 0;
     for (uint32_t seed = 1; seed <= (uint32_t)FAR_SINK_SEEDS; seed++) {
-        const int bed_y0 = FAR_SINK_DISTANCE;
-        const int bed_y1 = bed_y0 + FAR_SINK_BED_DEPTH - 1;
-        const int floor_row = bed_y1 + 1;
-        sand_t g;
-        memset(cells, 0, (size_t)FAR_SINK_W * FAR_SINK_H);
-        sand_init(&g, cells, FAR_SINK_W, FAR_SINK_H, seed);
-        sand_enable_impulses(&g, buf, FAR_SINK_W * FAR_SINK_H);
-
-        /* The floor sits directly under the bed: with open air beneath it a
-         * bed is a second falling body, free-falling in lockstep with the
-         * chunk chasing it and never actually touched. */
-        for (int x = 0; x < FAR_SINK_W; x++) {
-            sand_set(&g, x, floor_row, STONE);
-        }
-        for (int y = bed_y0; y <= bed_y1; y++) {
-            for (int x = 0; x < FAR_SINK_W; x++) {
-                sand_set(&g, x, y, SAND);
-            }
-        }
-
-        const int mover_x = FAR_SINK_W / 2;
-        sand_set(&g, mover_x, 0, STONE);
-
-        /* DIR_UP can only ever nudge the chunk into open air above where it
-         * started, so every displacement measured here is the drift's own. A
-         * direction that could also displace into the bed lets the push
-         * site's already-correct accounting cover for a broken drift. */
-        enum { DIR_UP = 4 };
-
-        sand_impulse_dislodge(&g, mover_x, 0, DIR_UP, 255, SAND_IMPULSE_SPEED_RAMP);
-
-        /* PAST THE DETERMINISTIC FLIGHT-TIME BOUND - see this file's own
-         * max_lifetime derivation elsewhere for the same reasoning: a
-         * regression back to the unconditional drift can keep this entry
-         * tracked (and sinking) for up to a full ramp's worth of steps
-         * after it enters the bed, on top of the open-air fall it already
-         * took to get there. A shorter budget here (measured directly)
-         * still shows the chunk mid-sink in some seeds under the bug,
-         * understating exactly the depth this test exists to catch. */
-        for (int i = 0; i < FAR_SINK_DISTANCE + 150; i++) {
-            sand_step(&g, 0, 1000, 0);
-        }
-
-        int landed_row = -1;
-        for (int y = 0; y < floor_row && landed_row < 0; y++) {
-            for (int x = 0; x < FAR_SINK_W; x++) {
-                if (CELL_MATERIAL(sand_at(&g, x, y)) == MAT_STONE) {
-                    landed_row = y;
-                    break;
-                }
-            }
-        }
-        /* landed_row < bed_y0 means the chunk stopped short of the bed
-         * entirely (its own ramp exhausted before it ever arrived) - zero
-         * penetration, nothing to add, rather than a negative figure. */
-        if (landed_row >= bed_y0) {
-            total += (landed_row - bed_y0);
-        }
+        total += far_sink_penetration_for_seed(cells, buf, seed);
     }
     return total;
 }
@@ -2229,114 +2235,164 @@ typedef struct {
     bool cand_used[RICOCHET_MAX_TRACK];
 } ricochet_tracker_t;
 
+#define RICOCHET_MAX_BOUNCES 20
+
+/* Builds the ricochet scene on g: a stone box RICOCHET_W x RICOCHET_H
+ * (floor plus side walls), then one explosion at the off-grid blast
+ * centre. */
+static void
+build_ricochet_scene(sand_t* g, uint8_t* cells, impulse_t* buf, uint32_t seed) {
+    memset(cells, 0, (size_t)RICOCHET_W * RICOCHET_H);
+    sand_init(g, cells, RICOCHET_W, RICOCHET_H, seed);
+    sand_enable_impulses(g, buf, RICOCHET_W * RICOCHET_H);
+
+    for (int x = 0; x < RICOCHET_W; x++) {
+        sand_set(g, x, RICOCHET_H - 1, STONE);
+    }
+    for (int y = 0; y < RICOCHET_H; y++) {
+        sand_set(g, 0, y, STONE);
+        sand_set(g, RICOCHET_W - 1, y, STONE);
+    }
+
+    sand_explode(g, RICOCHET_CX, RICOCHET_CY, RICOCHET_RADIUS);
+}
+
+/* Seeds tr->lin from every stone entry the initial explosion queued.
+ * Returns the lineage count. */
+static int
+ricochet_seed_lineages(ricochet_tracker_t* tr, const sand_t* g) {
+    ricochet_lineage_t* const lin = tr->lin;
+    int n_lin = 0;
+    for (int i = 0; i < g->impulse_count && n_lin < RICOCHET_MAX_TRACK; i++) {
+        if (CELL_MATERIAL(g->impulse_buf[i].cell) != MAT_STONE) {
+            continue;
+        }
+        const int idx = g->impulse_buf[i].index;
+        lin[n_lin].alive = true;
+        lin[n_lin].x = idx % RICOCHET_W;
+        lin[n_lin].y = idx / RICOCHET_W;
+        lin[n_lin].dir = g->impulse_buf[i].dir;
+        lin[n_lin].bounces = 0;
+        n_lin++;
+    }
+    return n_lin;
+}
+
+/* Collects this step's currently-tracked stone entries into tr->cand_*.
+ * Returns the candidate count. */
+static int
+ricochet_collect_candidates(ricochet_tracker_t* tr, const sand_t* g) {
+    int n_cand = 0;
+    for (int i = 0; i < g->impulse_count && n_cand < RICOCHET_MAX_TRACK; i++) {
+        if (CELL_MATERIAL(g->impulse_buf[i].cell) != MAT_STONE) {
+            continue;
+        }
+        const int idx = g->impulse_buf[i].index;
+        tr->cand_x[n_cand] = idx % RICOCHET_W;
+        tr->cand_y[n_cand] = idx / RICOCHET_W;
+        tr->cand_dir[n_cand] = g->impulse_buf[i].dir;
+        n_cand++;
+    }
+    return n_cand;
+}
+
+/* Index of the not-yet-claimed candidate nearest lineage `li`, within
+ * RICOCHET_MATCH_RADIUS - or -1 if none is close enough. */
+static int
+ricochet_nearest_candidate(const ricochet_tracker_t* tr, int n_cand, const ricochet_lineage_t* li) {
+    int best = -1, best_d = RICOCHET_MATCH_RADIUS * 4 + 1;
+    for (int ci = 0; ci < n_cand; ci++) {
+        if (tr->cand_used[ci]) {
+            continue;
+        }
+        const int dx = im_abs(tr->cand_x[ci] - li->x);
+        const int dy = im_abs(tr->cand_y[ci] - li->y);
+        if (dx > RICOCHET_MATCH_RADIUS || dy > RICOCHET_MATCH_RADIUS) {
+            continue;
+        }
+        const int d = dx + dy;
+        if (d < best_d) {
+            best_d = d;
+            best = ci;
+        }
+    }
+    return best;
+}
+
+/* Re-acquires every alive lineage against this step's candidates, marking
+ * a direction change as a bounce, and lets a lineage with no plausible
+ * successor go quiet (settled, or lost to re-acquisition). */
+static void
+ricochet_match_lineages(ricochet_tracker_t* tr, int n_lin, int n_cand) {
+    ricochet_lineage_t* const lin = tr->lin;
+    memset(tr->cand_used, 0, sizeof tr->cand_used);
+    for (int li = 0; li < n_lin; li++) {
+        if (!lin[li].alive) {
+            continue;
+        }
+        const int best = ricochet_nearest_candidate(tr, n_cand, &lin[li]);
+        if (best < 0) {
+            lin[li].alive = false;
+            continue;
+        }
+        tr->cand_used[best] = true;
+        if (tr->cand_dir[best] != lin[li].dir) {
+            lin[li].bounces++;
+        }
+        lin[li].x = tr->cand_x[best];
+        lin[li].y = tr->cand_y[best];
+        lin[li].dir = tr->cand_dir[best];
+    }
+}
+
+/* One post-step tracking pass: refreshes candidates, re-acquires every
+ * lineage against them, and flags any candidate nothing claimed. */
+static void
+ricochet_step_once(ricochet_tracker_t* tr, const sand_t* g, int n_lin, int* any_unmatched_new) {
+    const int n_cand = ricochet_collect_candidates(tr, g);
+    ricochet_match_lineages(tr, n_lin, n_cand);
+    for (int ci = 0; ci < n_cand; ci++) {
+        if (!tr->cand_used[ci]) {
+            *any_unmatched_new = 1;
+        }
+    }
+}
+
+/* Folds every lineage's final bounce count into hist[] (capped at
+ * RICOCHET_MAX_BOUNCES) and *total_entries. */
+static void
+ricochet_fold_bounces_into_hist(const ricochet_tracker_t* tr, int n_lin, long hist[RICOCHET_MAX_BOUNCES + 1],
+                                long* total_entries) {
+    for (int li = 0; li < n_lin; li++) {
+        (*total_entries)++;
+        const int bc = tr->lin[li].bounces > RICOCHET_MAX_BOUNCES ? RICOCHET_MAX_BOUNCES : tr->lin[li].bounces;
+        for (int k = 0; k <= bc; k++) {
+            hist[k]++;
+        }
+    }
+}
+
 /* One seed of the ricochet scene, folded into `hist` (hist[k] += 1 for
  * every entry that changed direction at least k times before it stopped
  * being trackable, k = 0..RICOCHET_MAX_BOUNCES) and *total_entries -
  * exactly the measurement this test's own top comment reports. Position-
  * matched across steps, not byte-matched - see that comment for why. */
-#define RICOCHET_MAX_BOUNCES 20
-
 static void
 ricochet_measure_seed(uint8_t* cells, impulse_t* buf, ricochet_tracker_t* tr, uint32_t seed,
                       long hist[RICOCHET_MAX_BOUNCES + 1], long* total_entries, int* any_unmatched_new) {
-    ricochet_lineage_t* const lin = tr->lin;
-    int* const cand_x = tr->cand_x;
-    int* const cand_y = tr->cand_y;
-    int* const cand_dir = tr->cand_dir;
-    bool* const cand_used = tr->cand_used;
     sand_t g;
-    memset(cells, 0, (size_t)RICOCHET_W * RICOCHET_H);
-    sand_init(&g, cells, RICOCHET_W, RICOCHET_H, seed);
-    sand_enable_impulses(&g, buf, RICOCHET_W * RICOCHET_H);
+    build_ricochet_scene(&g, cells, buf, seed);
 
-    for (int x = 0; x < RICOCHET_W; x++) {
-        sand_set(&g, x, RICOCHET_H - 1, STONE);
-    }
-    for (int y = 0; y < RICOCHET_H; y++) {
-        sand_set(&g, 0, y, STONE);
-        sand_set(&g, RICOCHET_W - 1, y, STONE);
-    }
-
-    sand_explode(&g, RICOCHET_CX, RICOCHET_CY, RICOCHET_RADIUS);
-
-    int n_lin = 0;
-    for (int i = 0; i < g.impulse_count && n_lin < RICOCHET_MAX_TRACK; i++) {
-        if (CELL_MATERIAL(g.impulse_buf[i].cell) != MAT_STONE) {
-            continue;
-        }
-        const int idx = g.impulse_buf[i].index;
-        lin[n_lin].alive = true;
-        lin[n_lin].x = idx % RICOCHET_W;
-        lin[n_lin].y = idx / RICOCHET_W;
-        lin[n_lin].dir = g.impulse_buf[i].dir;
-        lin[n_lin].bounces = 0;
-        n_lin++;
-    }
+    const int n_lin = ricochet_seed_lineages(tr, &g);
 
     int steps = 0;
     while (g.impulse_count > 0 && steps < RICOCHET_MAX_STEPS) {
         sand_step(&g, 0, 1000, 0);
         steps++;
-
-        int n_cand = 0;
-        for (int i = 0; i < g.impulse_count && n_cand < RICOCHET_MAX_TRACK; i++) {
-            if (CELL_MATERIAL(g.impulse_buf[i].cell) != MAT_STONE) {
-                continue;
-            }
-            const int idx = g.impulse_buf[i].index;
-            cand_x[n_cand] = idx % RICOCHET_W;
-            cand_y[n_cand] = idx / RICOCHET_W;
-            cand_dir[n_cand] = g.impulse_buf[i].dir;
-            n_cand++;
-        }
-        memset(cand_used, 0, sizeof tr->cand_used);
-
-        for (int li = 0; li < n_lin; li++) {
-            if (!lin[li].alive) {
-                continue;
-            }
-            int best = -1, best_d = RICOCHET_MATCH_RADIUS * 4 + 1;
-            for (int ci = 0; ci < n_cand; ci++) {
-                if (cand_used[ci]) {
-                    continue;
-                }
-                const int dx = im_abs(cand_x[ci] - lin[li].x);
-                const int dy = im_abs(cand_y[ci] - lin[li].y);
-                if (dx > RICOCHET_MATCH_RADIUS || dy > RICOCHET_MATCH_RADIUS) {
-                    continue;
-                }
-                const int d = dx + dy;
-                if (d < best_d) {
-                    best_d = d;
-                    best = ci;
-                }
-            }
-            if (best < 0) {
-                lin[li].alive = false; /* settled, or lost to re-acquisition */
-                continue;
-            }
-            cand_used[best] = true;
-            if (cand_dir[best] != lin[li].dir) {
-                lin[li].bounces++;
-            }
-            lin[li].x = cand_x[best];
-            lin[li].y = cand_y[best];
-            lin[li].dir = cand_dir[best];
-        }
-        for (int ci = 0; ci < n_cand; ci++) {
-            if (!cand_used[ci]) {
-                *any_unmatched_new = 1;
-            }
-        }
+        ricochet_step_once(tr, &g, n_lin, any_unmatched_new);
     }
 
-    for (int li = 0; li < n_lin; li++) {
-        (*total_entries)++;
-        const int bc = lin[li].bounces > RICOCHET_MAX_BOUNCES ? RICOCHET_MAX_BOUNCES : lin[li].bounces;
-        for (int k = 0; k <= bc; k++) {
-            hist[k]++;
-        }
-    }
+    ricochet_fold_bounces_into_hist(tr, n_lin, hist, total_entries);
 }
 
 static void
@@ -2511,30 +2567,30 @@ test_a_thrown_powder_grain_flings_dirt_out_of_the_bank_it_hits(void) {
 #define AIRBORNE_CHUNK_X0 5
 #define AIRBORNE_CHUNK_Y  (AIRBORNE_SURFACE - 6)
 
-/* Sand cells with all eight neighbours genuinely CELL_IS_EMPTY() - see
- * this section's own top comment for why that is a stricter, more
- * specific claim than "outside its original footprint". */
+/* True if the cell at (x,y) has all eight neighbours genuinely
+ * CELL_IS_EMPTY() - see this section's own top comment for why that is a
+ * stricter, more specific claim than "outside its original footprint". */
+static bool
+cell_is_airborne(sand_t* g, int x, int y) {
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            if (dx == 0 && dy == 0) {
+                continue;
+            }
+            if (!CELL_IS_EMPTY(sand_at(g, x + dx, y + dy))) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 static int
 airborne_sand_count(sand_t* g) {
     int n = 0;
     for (int y = 0; y < AIRBORNE_H; y++) {
         for (int x = 0; x < AIRBORNE_W; x++) {
-            if (CELL_MATERIAL(sand_at(g, x, y)) != MAT_SAND) {
-                continue;
-            }
-            bool all_empty = true;
-            for (int dy = -1; dy <= 1 && all_empty; dy++) {
-                for (int dx = -1; dx <= 1; dx++) {
-                    if (dx == 0 && dy == 0) {
-                        continue;
-                    }
-                    if (!CELL_IS_EMPTY(sand_at(g, x + dx, y + dy))) {
-                        all_empty = false;
-                        break;
-                    }
-                }
-            }
-            if (all_empty) {
+            if (CELL_MATERIAL(sand_at(g, x, y)) == MAT_SAND && cell_is_airborne(g, x, y)) {
                 n++;
             }
         }
@@ -2636,43 +2692,43 @@ test_a_stone_chunk_thrown_into_a_sand_bed_launches_sand_airborne(void) {
 #define EJECTA_FAR_SEEDS    60
 #define EJECTA_FAR_DISTANCE 30
 
+/* Builds one far-throw ejecta scene for `seed`, runs it to rest, and
+ * returns the count of dirt cells that ejected outside the wall's own
+ * footprint (ejecta_count_outside(), shared with the near-throw scene
+ * above). */
+static int
+ejecta_far_thrown_powder_for_seed(uint8_t* cells, impulse_t* buf, uint32_t seed) {
+    const int mover_x = EJECTA_FAR_WALL_X - EJECTA_FAR_DISTANCE;
+    sand_t g;
+    memset(cells, 0, (size_t)EJECTA_FAR_W * EJECTA_FAR_H);
+    sand_init(&g, cells, EJECTA_FAR_W, EJECTA_FAR_H, seed);
+    sand_enable_impulses(&g, buf, EJECTA_FAR_W * EJECTA_FAR_H);
+    /* A tall wall, not a bank sharing the open lane's floor: a supported
+     * KIND_POWDER mover correctly settles, so a shared floor lands it
+     * before it covers any distance and measures "no ejecta" even on
+     * fixed code. The wall must span whatever row it has fallen to. */
+    for (int y = 0; y < EJECTA_FAR_H; y++) {
+        for (int x = EJECTA_FAR_WALL_X; x < EJECTA_FAR_WALL_X + EJECTA_FAR_WALL_W; x++) {
+            sand_set(&g, x, y, CELL_MAKE(MAT_DIRT, 0));
+        }
+    }
+    sand_set(&g, mover_x, 0, SAND_FIRST_SHADE);
+
+    enum { DIR_RIGHT = 2 };
+
+    sand_impulse(&g, mover_x, 0, DIR_RIGHT, 255);
+    for (int i = 0; i < 160; i++) {
+        sand_step(&g, 0, 1000, 0);
+    }
+    return ejecta_count_outside(&g, EJECTA_FAR_W, EJECTA_FAR_H, MAT_DIRT, EJECTA_FAR_WALL_X,
+                                EJECTA_FAR_WALL_X + EJECTA_FAR_WALL_W, 0, EJECTA_FAR_H);
+}
+
 static long
 ejecta_far_thrown_powder_total(uint8_t* cells, impulse_t* buf) {
     long total = 0;
     for (uint32_t seed = 1; seed <= (uint32_t)EJECTA_FAR_SEEDS; seed++) {
-        const int mover_x = EJECTA_FAR_WALL_X - EJECTA_FAR_DISTANCE;
-        sand_t g;
-        memset(cells, 0, (size_t)EJECTA_FAR_W * EJECTA_FAR_H);
-        sand_init(&g, cells, EJECTA_FAR_W, EJECTA_FAR_H, seed);
-        sand_enable_impulses(&g, buf, EJECTA_FAR_W * EJECTA_FAR_H);
-        /* A tall wall, not a bank sharing the open lane's floor: a supported
-         * KIND_POWDER mover correctly settles, so a shared floor lands it
-         * before it covers any distance and measures "no ejecta" even on
-         * fixed code. The wall must span whatever row it has fallen to. */
-        for (int y = 0; y < EJECTA_FAR_H; y++) {
-            for (int x = EJECTA_FAR_WALL_X; x < EJECTA_FAR_WALL_X + EJECTA_FAR_WALL_W; x++) {
-                sand_set(&g, x, y, CELL_MAKE(MAT_DIRT, 0));
-            }
-        }
-        sand_set(&g, mover_x, 0, SAND_FIRST_SHADE);
-
-        enum { DIR_RIGHT = 2 };
-
-        sand_impulse(&g, mover_x, 0, DIR_RIGHT, 255);
-        for (int i = 0; i < 160; i++) {
-            sand_step(&g, 0, 1000, 0);
-        }
-        for (int y = 0; y < EJECTA_FAR_H; y++) {
-            for (int x = 0; x < EJECTA_FAR_W; x++) {
-                if (CELL_MATERIAL(sand_at(&g, x, y)) != MAT_DIRT) {
-                    continue;
-                }
-                if (x >= EJECTA_FAR_WALL_X && x < EJECTA_FAR_WALL_X + EJECTA_FAR_WALL_W) {
-                    continue; /* still inside the wall's own footprint */
-                }
-                total++;
-            }
-        }
+        total += ejecta_far_thrown_powder_for_seed(cells, buf, seed);
     }
     return total;
 }
