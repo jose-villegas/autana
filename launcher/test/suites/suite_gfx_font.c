@@ -221,6 +221,24 @@ reference_unit_rect(const gfx_font_t* f, int x, int y, int row, int col, int sca
     *out_y = y + py * scale;
 }
 
+/* Widens the half-open box [*x0,*x1) x [*y0,*y1) to include the unit
+ * rect (ux,uy)-(ux1,uy1). */
+static void
+extend_run_union(int ux, int uy, int ux1, int uy1, int* x0, int* y0, int* x1, int* y1) {
+    if (ux < *x0) {
+        *x0 = ux;
+    }
+    if (uy < *y0) {
+        *y0 = uy;
+    }
+    if (ux1 > *x1) {
+        *x1 = ux1;
+    }
+    if (uy1 > *y1) {
+        *y1 = uy1;
+    }
+}
+
 /* Every unit cell in [col0, col1] at `turn`, unioned, must equal the one
  * rect gfx_font_row_run_rect() returns - exactly, not just in area, or a
  * gap or an off-by-one overlap could slip through unnoticed. */
@@ -237,18 +255,7 @@ assert_run_rect_matches_reference(const gfx_font_t* f, int x, int y, int row, in
             union_x1 = ux1;
             union_y1 = uy1;
         } else {
-            if (ux < union_x0) {
-                union_x0 = ux;
-            }
-            if (uy < union_y0) {
-                union_y0 = uy;
-            }
-            if (ux1 > union_x1) {
-                union_x1 = ux1;
-            }
-            if (uy1 > union_y1) {
-                union_y1 = uy1;
-            }
+            extend_run_union(ux, uy, ux1, uy1, &union_x0, &union_y0, &union_x1, &union_y1);
         }
     }
 

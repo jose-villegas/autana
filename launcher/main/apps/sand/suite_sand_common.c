@@ -261,6 +261,81 @@ panel_luminance(gfx_color_t c) {
     return (int)((299u * r + 587u * g + 114u * b) / 1000u);
 }
 
+int
+count_tree_body(const sand_t* g, int x0, int x1, int y0, int y1) {
+    int n = 0;
+    for (int y = y0; y < y1; y++) {
+        for (int x = x0; x < x1; x++) {
+            const cell_t c = sand_at(g, x, y);
+            if (c == MATX(MATX_PLANT) || CELL_MATERIAL(c) == MAT_WOOD) {
+                n++;
+            }
+        }
+    }
+    return n;
+}
+
+int
+count_tree_body_or_root(const sand_t* g, int x0, int x1, int y0, int y1) {
+    int n = 0;
+    for (int y = y0; y < y1; y++) {
+        for (int x = x0; x < x1; x++) {
+            const cell_t c = sand_at(g, x, y);
+            if (c == MATX(MATX_PLANT) || CELL_MATERIAL(c) == MAT_WOOD || c == MATX(MATX_ROOT)) {
+                n++;
+            }
+        }
+    }
+    return n;
+}
+
+bool
+step_until_tree_grows(sand_t* g, int gx, int gy, int max_steps, int baseline, int x0, int x1, int y0, int y1) {
+    for (int i = 0; i < max_steps; i++) {
+        sand_step(g, gx, gy, 0);
+        if (count_tree_body(g, x0, x1, y0, y1) > baseline) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool
+step_until_tree_or_root_grows(sand_t* g, int gx, int gy, int max_steps, int baseline, int x0, int x1, int y0, int y1) {
+    for (int i = 0; i < max_steps; i++) {
+        sand_step(g, gx, gy, 0);
+        if (count_tree_body_or_root(g, x0, x1, y0, y1) > baseline) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool
+region_has_root(const sand_t* g, int x0, int x1, int y0, int y1) {
+    for (int y = y0; y < y1; y++) {
+        for (int x = x0; x < x1; x++) {
+            if (sand_at(g, x, y) == MATX(MATX_ROOT)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+int
+count_awake_blocks(const sand_t* g) {
+    int n = 0;
+    for (int by = 0; by < g->block_rows; by++) {
+        for (int bx = 0; bx < g->block_cols; bx++) {
+            if (!sand_block_settled(g, bx, by)) {
+                n++;
+            }
+        }
+    }
+    return n;
+}
+
 two_core_scope_t
 two_core_scope_begin(bool two_core) {
     const two_core_scope_t scope = {.before = sand_two_core_step_enabled()};

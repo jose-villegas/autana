@@ -1163,6 +1163,22 @@ test_the_axes_are_there_before_the_curve_starts_climbing(void) {
 
 /* Colour */
 
+/* Checks that hue's RGB has one full channel (255) and one empty channel
+ * (0) - what makes it a point on a fully-saturated hue wheel rather than
+ * a pastel. */
+static void
+check_hue_is_fully_saturated(int hue) {
+    const uint32_t rgb = boot_anim_hue_rgb(hue);
+    const int r = (int)((rgb >> 16) & 0xFF);
+    const int g = (int)((rgb >> 8) & 0xFF);
+    const int b = (int)(rgb & 0xFF);
+    const int hi = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    const int lo = r < g ? (r < b ? r : b) : (g < b ? g : b);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(255, hi, "a hue had no full channel");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, lo, "a hue had no empty channel");
+}
+
 /* Every colour on the wheel is fully saturated: one channel at the top, one
  * at the bottom, the third somewhere between. That is what makes it a hue
  * wheel rather than a set of pastels, and it is what the panel is being shown
@@ -1170,15 +1186,7 @@ test_the_axes_are_there_before_the_curve_starts_climbing(void) {
 static void
 test_every_hue_is_fully_saturated(void) {
     for (int hue = 0; hue < BOOT_ANIM_HUE_TURN; hue++) {
-        const uint32_t rgb = boot_anim_hue_rgb(hue);
-        const int r = (int)((rgb >> 16) & 0xFF);
-        const int g = (int)((rgb >> 8) & 0xFF);
-        const int b = (int)(rgb & 0xFF);
-        const int hi = r > g ? (r > b ? r : b) : (g > b ? g : b);
-        const int lo = r < g ? (r < b ? r : b) : (g < b ? g : b);
-
-        TEST_ASSERT_EQUAL_INT_MESSAGE(255, hi, "a hue had no full channel");
-        TEST_ASSERT_EQUAL_INT_MESSAGE(0, lo, "a hue had no empty channel");
+        check_hue_is_fully_saturated(hue);
     }
 }
 

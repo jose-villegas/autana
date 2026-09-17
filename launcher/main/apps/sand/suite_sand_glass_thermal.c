@@ -569,6 +569,57 @@ test_a_frosted_pane_warms_back_to_room_temperature(void) {
                                   "other way");
 }
 
+/* Builds a vertical GLASS wall at column `wall`, floored in stone, with a
+ * lava pool banked against its left face - the shared scene both the
+ * snow-cracks and no-snow-never-cracks halves below use. */
+static void
+build_lava_glass_wall(int wall) {
+    fixture();
+    sand_clear(&s);
+    for (int x = 0; x < W; x++) {
+        sand_set(&s, x, H - 1, STONE);
+    }
+    for (int y = 1; y < H - 1; y++) {
+        sand_set(&s, wall, y, GLASS);
+    }
+    for (int y = H - 3; y < H - 1; y++) {
+        for (int x = 1; x < wall; x++) {
+            sand_set(&s, x, y, CELL_MAKE(MAT_LAVA, MASS_MAX));
+        }
+    }
+}
+
+/* Steps the scene until the wall cell at (wall, face) reaches
+ * SAND_SHOCK_HEAT, or max_steps runs out first. */
+static void
+soak_wall_face_to_shock_heat(int wall, int face, int max_steps) {
+    for (int i = 0; i < max_steps; i++) {
+        const cell_t c = sand_at(&s, wall, face);
+        if (CELL_MATERIAL(c) == MAT_GLASS && CELL_VARIANT(c) >= SAND_SHOCK_HEAT) {
+            break;
+        }
+        sand_step(&s, 0, 1000, 0);
+    }
+}
+
+/* Tops up snow against the wall's far face every step, up to max_tries,
+ * until sand appears - the wall has cracked. Returns whether it did. */
+static bool
+pour_snow_until_wall_cracks(int wall, int face, int sand_before, int max_tries) {
+    for (int k = 0; k < max_tries; k++) {
+        for (int y = face - 1; y <= face; y++) {
+            if (CELL_IS_EMPTY(sand_at(&s, wall + 1, y))) {
+                sand_set(&s, wall + 1, y, SNOW);
+            }
+        }
+        sand_step(&s, 0, 1000, 0);
+        if (count_cells_of(MAT_SAND) > sand_before) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Lava on one side of a wall, snow on the other: it cracks. Nothing is
  * pre-set here - the heat has to arrive from a real source, through the
  * material, and reach the same cell the snow is touching.
@@ -583,19 +634,7 @@ test_lava_one_side_snow_the_other_cracks_the_wall(void) {
     const int wall = W / 2;
 
     /* --- heat it first ---------------------------------------------- */
-    fixture();
-    sand_clear(&s);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    for (int y = 1; y < H - 1; y++) {
-        sand_set(&s, wall, y, GLASS);
-    }
-    for (int y = H - 3; y < H - 1; y++) {
-        for (int x = 1; x < wall; x++) {
-            sand_set(&s, x, y, CELL_MAKE(MAT_LAVA, MASS_MAX));
-        }
-    }
+    build_lava_glass_wall(wall);
 
     /* Soak until THE CELL THE SNOW WILL TOUCH is hot, not until any glass
      * anywhere is. Waiting on hottest_glass() passes as soon as some cell
@@ -603,14 +642,7 @@ test_lava_one_side_snow_the_other_cracks_the_wall(void) {
      * moment later - a fixture that tests the wrong cell reports on the
      * wrong thing. */
     const int face = H - 2;
-    int i;
-    for (i = 0; i < 4000; i++) {
-        const cell_t c = sand_at(&s, wall, face);
-        if (CELL_MATERIAL(c) == MAT_GLASS && CELL_VARIANT(c) >= SAND_SHOCK_HEAT) {
-            break;
-        }
-        sand_step(&s, 0, 1000, 0);
-    }
+    soak_wall_face_to_shock_heat(wall, face, 4000);
     TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GLASS, CELL_MATERIAL(sand_at(&s, wall, face)),
                                   "fixture check: the wall cell being tested must survive the soak - "
                                   "if lava melted it there is nothing left to shatter");
@@ -627,35 +659,14 @@ test_lava_one_side_snow_the_other_cracks_the_wall(void) {
      * before the reactions pass ever looks at it, which makes a
      * single-placement version of this test a coin flip on the movement
      * RNG rather than a test of shock. */
-    int cracked = 0;
-    for (int k = 0; k < 60 && !cracked; k++) {
-        for (int y = face - 1; y <= face; y++) {
-            if (CELL_IS_EMPTY(sand_at(&s, wall + 1, y))) {
-                sand_set(&s, wall + 1, y, SNOW);
-            }
-        }
-        sand_step(&s, 0, 1000, 0);
-        cracked = count_cells_of(MAT_SAND) > sand_before;
-    }
+    const bool cracked = pour_snow_until_wall_cracks(wall, face, sand_before, 60);
 
     TEST_ASSERT_TRUE_MESSAGE(cracked, "snow banked against a wall that lava has heated from the far side "
                                       "must crack it - the gradient works whichever side the heat came "
                                       "from, which is the whole point of it being a gradient");
 
     /* --- and without snow it never cracks at all --------------------- */
-    fixture();
-    sand_clear(&s);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    for (int y = 1; y < H - 1; y++) {
-        sand_set(&s, wall, y, GLASS);
-    }
-    for (int y = H - 3; y < H - 1; y++) {
-        for (int x = 1; x < wall; x++) {
-            sand_set(&s, x, y, CELL_MAKE(MAT_LAVA, MASS_MAX));
-        }
-    }
+    build_lava_glass_wall(wall);
 
     const int dry_sand_before = count_cells_of(MAT_SAND);
     for (int k = 0; k < 900; k++) {
