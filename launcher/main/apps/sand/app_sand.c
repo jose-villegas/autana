@@ -54,6 +54,7 @@
 #include "../../input/imu.h"
 #include "../../input/imu_rotation.h"
 #include "../../ui/ui.h"
+#include "../../ui/ui_anchor.h"
 #include "icons_sand.h"
 #include "material_palette.h"
 #include "palette.h"
@@ -1530,25 +1531,14 @@ draw_mode_label(int gx, int gy) {
 
     const int turn = gravity_quarter_turn(gx, gy);
 
-    int x, y;
-    switch (turn) {
-        case 0: /* down is down */
-            x = (GFX_WIDTH - span) / 2;
-            y = LABEL_MARGIN;
-            break;
-        case 2: /* board upside down */
-            x = (GFX_WIDTH + span) / 2 - 8 * LABEL_SCALE;
-            y = GFX_HEIGHT - LABEL_MARGIN - tall;
-            break;
-        case 3: /* down is to the right */
-            x = LABEL_MARGIN;
-            y = (GFX_HEIGHT + span) / 2 - 8 * LABEL_SCALE;
-            break;
-        default: /* turn == 1: down is to the left */
-            x = GFX_WIDTH - LABEL_MARGIN - tall;
-            y = (GFX_HEIGHT - span) / 2;
-            break;
-    }
+    const int upright_w = (turn % 2 == 0) ? GFX_WIDTH : GFX_HEIGHT;
+    const int upright_h = (turn % 2 == 0) ? GFX_HEIGHT : GFX_WIDTH;
+    const mu_Rect upright = ui_anchor_rect((mu_Rect){0, 0, upright_w, upright_h}, UI_ANCHOR_TOP, UI_ANCHOR_TOP, 0,
+                                           LABEL_MARGIN, span, tall);
+    const mu_Rect box = ui_transform_rect(ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT), upright);
+    int x = 0;
+    int y = 0;
+    ui_text_glyph0_origin(gfx_font_ui(), box, turn, LABEL_SCALE, &x, &y);
 
     gfx_color_t ink;
     if (ui.mode == SAND_MODE_DETONATE) {
