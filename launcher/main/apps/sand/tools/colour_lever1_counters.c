@@ -160,66 +160,66 @@ static const char* const mode_names[] = {"NONE", "CELL_CHECKER", "CELL_BAYER2", 
 typedef void (*scene_build_fn)(sand_t* s);
 typedef void (*scene_step_fn)(sand_t* s, int step_i);
 
-static void
-run_scene(const char* name, scene_build_fn build, scene_step_fn step, const uint8_t* dither16_class,
-          const uint8_t* checker2_class) {
-    static uint8_t grid[GRID_W * GRID_H];
-    sand_t sim;
-    sand_init(&sim, grid, GRID_W, GRID_H, 0xC0107000u);
-    build(&sim);
+typedef uint16_t repr_grid_t[GRID_W * GRID_H];
 
-    static uint8_t prev_grid[GRID_W * GRID_H], prev_idx256[GRID_W * GRID_H];
-    static uint16_t prev_repr[GFX_DITHER_MODE_COUNT][GRID_W * GRID_H];
-    static uint16_t cur_repr[GFX_DITHER_MODE_COUNT][GRID_W * GRID_H];
-    memset(prev_grid, 0, sizeof prev_grid);
+static void
+init_prev_repr(const uint8_t* grid, const uint8_t* dither16_class, const uint8_t* checker2_class, uint8_t* prev_idx256,
+               repr_grid_t* prev_repr) {
     shade_frame(grid, prev_idx256);
     for (int m = 0; m < GFX_DITHER_MODE_COUNT; m++) {
         represent_frame(prev_idx256, (gfx_dither_mode_t)m, dither16_class, checker2_class, prev_repr[m]);
     }
+}
 
-    long before_total = 0;
-    long after_total[GFX_DITHER_MODE_COUNT] = {0};
-
-    for (int i = 0; i < STEPS; i++) {
-        step(&sim, i);
-
-        static uint8_t cur_idx256[GRID_W * GRID_H];
-        shade_frame(grid, cur_idx256);
-
-        /* BEFORE: today's own reach - any sand-cell byte that moved,
-         * unfiltered by whether the SHADING actually changed. The same
-         * scan as changed_span_cells() below, on uint8_t grid bytes
-         * instead of a uint16_t representative. */
-        long before_row_total = 0;
-        for (int cy = 0; cy < GRID_H; cy++) {
-            int x0 = GRID_W, x1 = 0;
-            for (int cx = 0; cx < GRID_W; cx++) {
-                const int idx = cy * GRID_W + cx;
-                if (grid[idx] == prev_grid[idx]) {
-                    continue;
-                }
-                x0 = cx < x0 ? cx : x0;
-                x1 = cx + 1 > x1 ? cx + 1 : x1;
+/* BEFORE: today's own reach - any sand-cell byte that moved, unfiltered by
+ * whether the SHADING actually changed. The same scan as
+ * changed_span_cells() above, on uint8_t grid bytes instead of a uint16_t
+ * representative. */
+static long
+before_row_span(const uint8_t* grid, const uint8_t* prev_grid) {
+    long total = 0;
+    for (int cy = 0; cy < GRID_H; cy++) {
+        int x0 = GRID_W, x1 = 0;
+        for (int cx = 0; cx < GRID_W; cx++) {
+            const int idx = cy * GRID_W + cx;
+            if (grid[idx] == prev_grid[idx]) {
+                continue;
             }
-            if (x1 > x0) {
-                before_row_total += x1 - x0;
-            }
+            x0 = cx < x0 ? cx : x0;
+            x1 = cx + 1 > x1 ? cx + 1 : x1;
         }
-        before_total += before_row_total;
-
-        for (int m = 0; m < GFX_DITHER_MODE_COUNT; m++) {
-            represent_frame(cur_idx256, (gfx_dither_mode_t)m, dither16_class, checker2_class, cur_repr[m]);
-            after_total[m] += changed_span_cells(cur_repr[m], prev_repr[m]);
-            memcpy(prev_repr[m], cur_repr[m], sizeof prev_repr[m]);
+        if (x1 > x0) {
+            total += x1 - x0;
         }
+    }
+    return total;
+}
 
-        memcpy(prev_grid, grid, sizeof prev_grid);
-        memcpy(prev_idx256, cur_idx256, sizeof prev_idx256);
+static void
+run_scene_step(sand_t* sim, scene_step_fn step, int step_i, const uint8_t* grid, uint8_t* prev_grid,
+               uint8_t* prev_idx256, const uint8_t* dither16_class, const uint8_t* checker2_class,
+               repr_grid_t* prev_repr, repr_grid_t* cur_repr, long* before_total, long* after_total) {
+    step(sim, step_i);
+
+    static uint8_t cur_idx256[GRID_W * GRID_H];
+    shade_frame(grid, cur_idx256);
+    *before_total += before_row_span(grid, prev_grid);
+
+    for (int m = 0; m < GFX_DITHER_MODE_COUNT; m++) {
+        represent_frame(cur_idx256, (gfx_dither_mode_t)m, dither16_class, checker2_class, cur_repr[m]);
+        after_total[m] += changed_span_cells(cur_repr[m], prev_repr[m]);
+        memcpy(prev_repr[m], cur_repr[m], sizeof prev_repr[m]);
     }
 
-    /* RGB565 bytes per cell at NORMAL quality - what gfx.c's present path
-     * would actually queue for a box this size, whichever pixel format the
-     * mode expands to (INDEXED8 still sends RGB565 once expanded). */
+    memcpy(prev_grid, grid, (size_t)(GRID_W * GRID_H));
+    memcpy(prev_idx256, cur_idx256, (size_t)(GRID_W * GRID_H));
+}
+
+/* RGB565 bytes per cell at NORMAL quality - what gfx.c's present path would
+ * actually queue for a box this size, whichever pixel format the mode
+ * expands to (INDEXED8 still sends RGB565 once expanded). */
+static void
+report_scene(const char* name, long before_total, const long* after_total) {
     const double bytes_per_cell = (double)(CELL * CELL) * 2.0;
     const double before_cells = (double)before_total / STEPS;
 
@@ -229,6 +229,31 @@ run_scene(const char* name, scene_build_fn build, scene_step_fn step, const uint
         const double after_cells = (double)after_total[m] / STEPS;
         printf("  after, 16 %-14s: %.1f cells, %.0f bytes\n", mode_names[m], after_cells, after_cells * bytes_per_cell);
     }
+}
+
+static void
+run_scene(const char* name, scene_build_fn build, scene_step_fn step, const uint8_t* dither16_class,
+          const uint8_t* checker2_class) {
+    static uint8_t grid[GRID_W * GRID_H];
+    sand_t sim;
+    sand_init(&sim, grid, GRID_W, GRID_H, 0xC0107000u);
+    build(&sim);
+
+    static uint8_t prev_grid[GRID_W * GRID_H], prev_idx256[GRID_W * GRID_H];
+    static repr_grid_t prev_repr[GFX_DITHER_MODE_COUNT];
+    static repr_grid_t cur_repr[GFX_DITHER_MODE_COUNT];
+    memset(prev_grid, 0, sizeof prev_grid);
+    init_prev_repr(grid, dither16_class, checker2_class, prev_idx256, prev_repr);
+
+    long before_total = 0;
+    long after_total[GFX_DITHER_MODE_COUNT] = {0};
+
+    for (int i = 0; i < STEPS; i++) {
+        run_scene_step(&sim, step, i, grid, prev_grid, prev_idx256, dither16_class, checker2_class, prev_repr, cur_repr,
+                       &before_total, after_total);
+    }
+
+    report_scene(name, before_total, after_total);
 }
 
 int
