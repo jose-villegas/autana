@@ -148,6 +148,38 @@ polar_point(int32_t radius, uint16_t turn, int32_t* re, int32_t* im) {
     *im = (int32_t)(((int64_t)radius * sin_v) >> 15);
 }
 
+/* step == steps closes loop back to step 0, no gap on last edge. */
+static void
+grid_circle_point(int32_t radius, int32_t t, int steps, int step, const boot_anim_view_t* view, S3L_Vec4* cs,
+                  bool* front, int* sx, int* sy) {
+    const int i = (step == steps) ? 0 : step;
+    const uint16_t turn = (uint16_t)(((uint32_t)i * 65536u) / (uint32_t)steps);
+    int32_t re, im;
+    polar_point(radius, turn, &re, &im);
+    *cs = boot_anim_to_camera_space(re, im, t, view);
+    *front = cs->z > BOOT_ANIM_NEAR_Z;
+    *sx = 0;
+    *sy = 0;
+    if (*front) {
+        boot_anim_camera_to_screen(*cs, view->focal, sx, sy);
+    }
+}
+
+static void
+draw_grid_circle_segment(bool prev_front, bool front, int prev_sx, int prev_sy, int sx, int sy, S3L_Vec4 prev_cs,
+                         S3L_Vec4 cs, gfx_color_t c, const boot_anim_view_t* view) {
+    if (prev_front && front) {
+        gfx_line_ex(prev_sx, prev_sy, sx, sy, c, 0u);
+        return;
+    }
+    if (prev_front != front) {
+        int ax, ay, bx, by;
+        if (boot_anim_project_segment_cs(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
+            gfx_line_ex(ax, ay, bx, by, c, 0u);
+        }
+    }
+}
+
 static void
 draw_grid_circle(int32_t radius, int32_t t, gfx_color_t c, int steps, const boot_anim_view_t* view) {
     S3L_Vec4 prev_cs;
@@ -156,27 +188,13 @@ draw_grid_circle(int32_t radius, int32_t t, gfx_color_t c, int steps, const boot
     bool have_prev = false;
 
     for (int step = 0; step <= steps; step++) {
-        /* step == steps closes loop back to step 0, no gap on last edge. */
-        const int i = (step == steps) ? 0 : step;
-        const uint16_t turn = (uint16_t)(((uint32_t)i * 65536u) / (uint32_t)steps);
-        int32_t re, im;
-        polar_point(radius, turn, &re, &im);
-        const S3L_Vec4 cs = boot_anim_to_camera_space(re, im, t, view);
-        const bool front = cs.z > BOOT_ANIM_NEAR_Z;
-        int sx = 0, sy = 0;
-        if (front) {
-            boot_anim_camera_to_screen(cs, view->focal, &sx, &sy);
-        }
+        S3L_Vec4 cs;
+        bool front;
+        int sx, sy;
+        grid_circle_point(radius, t, steps, step, view, &cs, &front, &sx, &sy);
 
         if (have_prev) {
-            if (prev_front && front) {
-                gfx_line_ex(prev_sx, prev_sy, sx, sy, c, 0u);
-            } else if (prev_front != front) {
-                int ax, ay, bx, by;
-                if (boot_anim_project_segment_cs(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
-                    gfx_line_ex(ax, ay, bx, by, c, 0u);
-                }
-            }
+            draw_grid_circle_segment(prev_front, front, prev_sx, prev_sy, sx, sy, prev_cs, cs, c, view);
         }
         prev_cs = cs;
         prev_front = front;
