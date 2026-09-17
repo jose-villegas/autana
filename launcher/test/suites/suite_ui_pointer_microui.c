@@ -41,7 +41,8 @@
  * diagnostics build links every suite into firmware, where internal heap
  * headroom is scarce enough that a second context in .bss would not be
  * free - something host tests, with a laptop's memory behind them,
- * cannot notice. */
+ * cannot notice. Allocated for the suite's run, outside any one test, and
+ * reset by every test's fixture(). */
 static mu_Context* ctx;
 static ui_pointer_t pointer;
 
@@ -61,7 +62,6 @@ stub_text_height(mu_Font font) {
 
 static void
 fixture(void) {
-    ctx = malloc(sizeof *ctx);
     TEST_ASSERT_NOT_NULL(ctx);
     memset(ctx, 0, sizeof *ctx);
     memset(&pointer, 0, sizeof pointer);
@@ -69,19 +69,6 @@ fixture(void) {
     ctx->text_width = stub_text_width;
     ctx->text_height = stub_text_height;
 }
-
-static void
-fixture_free(void) {
-    free(ctx);
-    ctx = NULL;
-}
-
-#define RUN_POINTER_TEST(test)                                                                                         \
-    do {                                                                                                               \
-        fixture();                                                                                                     \
-        RUN_TEST(test);                                                                                                \
-        fixture_free();                                                                                                \
-    } while (0)
 
 /* One frame of the real bridge: translate input_t exactly as ui.c's
  * feed_input() does, then build a full-screen window holding one button.
@@ -155,6 +142,7 @@ taps_counted(int held_frames) {
 
 static void
 test_a_tap_submits_the_button_underneath_it(void) {
+    fixture();
     idle_frames(2);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, taps_counted(4),
@@ -167,6 +155,7 @@ test_a_tap_submits_the_button_underneath_it(void) {
  * re-fire the control it is resting on. */
 static void
 test_holding_does_not_resubmit(void) {
+    fixture();
     idle_frames(2);
 
     TEST_ASSERT_EQUAL_INT(1, taps_counted(40));
@@ -182,6 +171,7 @@ test_holding_does_not_resubmit(void) {
  * all. */
 static void
 test_a_one_frame_tap_cannot_resolve_a_control(void) {
+    fixture();
     idle_frames(2);
 
     const int cx = BTN_X + BTN_W / 2;
@@ -193,6 +183,7 @@ test_a_one_frame_tap_cannot_resolve_a_control(void) {
 
 static void
 test_a_tap_outside_the_button_submits_nothing(void) {
+    fixture();
     idle_frames(2);
 
     int submits = 0;
@@ -219,6 +210,7 @@ test_a_tap_outside_the_button_submits_nothing(void) {
  * the hover frames the fix added. */
 static void
 test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap(void) {
+    fixture();
     idle_frames(2);
 
     mu_Real value = 0;
@@ -351,6 +343,7 @@ list_tap(int x, int y) {
 
 static void
 test_dragging_up_scrolls_the_list_without_pressing_a_row(void) {
+    fixture();
     list_idle_frames(2);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, list_drag(CANVAS_W / 2, 400, 100, 10), "a scrolling drag presses nothing");
@@ -360,6 +353,7 @@ test_dragging_up_scrolls_the_list_without_pressing_a_row(void) {
 
 static void
 test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once(void) {
+    fixture();
     list_idle_frames(2);
 
     int submits = 0;
@@ -379,6 +373,7 @@ test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once(void) {
 
 static void
 test_scrolling_stops_at_the_end_and_the_last_row_is_reachable(void) {
+    fixture();
     list_idle_frames(2);
 
     for (int i = 0; i < 6; i++) {
@@ -398,14 +393,17 @@ test_scrolling_stops_at_the_end_and_the_last_row_is_reachable(void) {
 
 void
 run_ui_pointer_microui_suite(void) {
-    RUN_POINTER_TEST(test_a_tap_submits_the_button_underneath_it);
-    RUN_POINTER_TEST(test_holding_does_not_resubmit);
-    RUN_POINTER_TEST(test_a_one_frame_tap_cannot_resolve_a_control);
-    RUN_POINTER_TEST(test_a_tap_outside_the_button_submits_nothing);
-    RUN_POINTER_TEST(test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap);
-    RUN_POINTER_TEST(test_dragging_up_scrolls_the_list_without_pressing_a_row);
-    RUN_POINTER_TEST(test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once);
-    RUN_POINTER_TEST(test_scrolling_stops_at_the_end_and_the_last_row_is_reachable);
+    ctx = malloc(sizeof *ctx);
+    RUN_TEST(test_a_tap_submits_the_button_underneath_it);
+    RUN_TEST(test_holding_does_not_resubmit);
+    RUN_TEST(test_a_one_frame_tap_cannot_resolve_a_control);
+    RUN_TEST(test_a_tap_outside_the_button_submits_nothing);
+    RUN_TEST(test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap);
+    RUN_TEST(test_dragging_up_scrolls_the_list_without_pressing_a_row);
+    RUN_TEST(test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once);
+    RUN_TEST(test_scrolling_stops_at_the_end_and_the_last_row_is_reachable);
+    free(ctx);
+    ctx = NULL;
 }
 
 SUITE_REGISTER(run_ui_pointer_microui_suite);
