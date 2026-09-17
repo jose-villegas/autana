@@ -1486,42 +1486,44 @@ spend_lit_two_by_two(sand_t* s, int x, int y, int w, int dx, int dy) {
     }
 }
 
-/* grain/rx/plan/row_at are the caller's: the dispatch loop already loaded
- * row[x] and indexed the per-material row to pick the stage, and row is
- * s->cells + y*w. Re-deriving them here cost a reload, the MAT_EXTENDED
- * branch with its table-base materialisation, and a multiply, per burning
- * cell. */
+typedef struct {
+    sand_t* s;
+    uint8_t* row;
+    int y;
+    int w;
+    int h;
+} reaction_row_t;
+
+typedef struct {
+    sand_t* s;
+    const reaction_t* rx;
+    const material_t* mat;
+    cell_t grain;
+    int x;
+    int y;
+} burning_cell_t;
+
+static inline bool
+tick_burning_cell(const reaction_row_t* reaction_row, int x, cell_t* grain, const reaction_t* rx,
+                  const burn_plan_t* plan, uint8_t mat_id) {
+    if ((plan->flags & BURN_LIT) != 0) {
+        return tick_decay_at(reaction_row->s, reaction_row->row, x, reaction_row->y, grain, rx, plan->tick_rate);
+    }
+    return tick_decay(reaction_row->s, reaction_row->row, x, reaction_row->y, grain, mat_id, plan->tick_rate);
+}
+
 static bool
-step_one_burning_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cell_t grain, const reaction_t* rx,
-                      const burn_plan_t* plan, size_t row_at) {
-    const material_t* mat = material_of(grain);
-    const uint8_t mat_id = CELL_MATERIAL(grain);
-    const size_t at = row_at + (size_t)x;
+finish_burning_cell(const burning_cell_t* cell) {
+    sand_t* const s = cell->s;
+    const reaction_t* const rx = cell->rx;
+    const cell_t grain = cell->grain;
+    const int x = cell->x;
+    const int y = cell->y;
+    const int w = s->w;
+    const int h = s->h;
+    const size_t at = (size_t)y * (size_t)w + (size_t)x;
 
-    /* Material burns own rate, decay stays 0, not transient. */
-    const uint8_t plan_flags = plan->flags;
-    const bool lit_state = (plan_flags & BURN_LIT) != 0;
-
-    if (lit_state ? !tick_decay_at(s, row, x, y, &grain, rx, plan->tick_rate)
-                  : !tick_decay(s, row, x, y, &grain, mat_id, plan->tick_rate)) {
-        if (rx->explodes != 0) {
-            REACTION_DOC(
-                explodes,
-                "at burn-out, if it is one corner of a 2x2 that is all lit and the board's blast cooldown has run out");
-            int dx = 0, dy = 0;
-            if (s->impulse_buf != NULL && s->fuse_blast_wait == 0
-                && find_lit_two_by_two(s, x, y, w, h, grain, rx, &dx, &dy)) {
-                s->fuse_blast_wait =
-                    (uint8_t)((s->fuse_cooldown >= 0) ? s->fuse_cooldown : SAND_GUNPOWDER_BLAST_COOLDOWN);
-                spend_lit_two_by_two(s, x, y, w, dx, dy);
-                sand_explode(s, x, y, rx->explodes);
-            } else {
-                place_reacted(s, x, y, at, MAT_FIRE);
-            }
-            return true;
-        }
-        /* MAT_SMOKE, not MAT_STEAM. Avoids confusion. Use hardcoded for
-         * uniform residue; use `smokes_to` if needed. */
+    if (rx->explodes == 0) {
         const uint8_t residue = rx->residue;
         if (residue != 0 && (int)(rng_next(&s->rng) & 0xFF) < residue) {
             place_reacted(s, x, y, at, MAT_SMOKE);
@@ -1529,129 +1531,206 @@ step_one_burning_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cell_
         return true;
     }
 
-    if (s->may_have_liquid) {
-#pragma GCC unroll 4
-        for (int d = 0; d < 4; d++) {
-            const int nx = x + reaction_dirs[d][0];
-            const int ny = y + reaction_dirs[d][1];
-            if (neighbor_quenches(s, nx, ny, w, h)) {
-                const uint8_t quench_to = rx->quench_to;
-                if (lit_state) {
-                    /* Ember needs distinct state. Use `with_moisture()` in
-                     * `place_cell()`. */
-                    if (rx->tones != 0) {
-                        place_cell(s, x, y, at, with_moisture(grain, rx->moist_max, rx));
-                    } else {
-                        row[x] = CELL_MAKE(mat_id, 0);
-                        mark_rows(s, x, y, y);
-                        wake_block_and_neighbors(s, x, y);
-                    }
-                } else if (quench_to != 0) {
-                    uint8_t product = quench_to;
-                    bool leaves_residue = true;
-                    if (mat_id == MAT_FIRE) {
-                        const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
-                        const uint8_t liquid_boils_to = reaction_of(s->cells[nat])->boils_to;
-                        if (liquid_boils_to == MAT_GAS) {
-                            leaves_residue = (int)(rng_next(&s->rng) & 0xFF) < SAND_ACID_QUENCH_RESIDUE_CHANCE;
-                            product =
-                                ((int)(rng_next(&s->rng) & 0xFF) < SAND_ACID_QUENCH_SMOKE_CHANCE) ? MAT_SMOKE : MAT_GAS;
-                        } else {
-                            product = liquid_boils_to ? liquid_boils_to : MAT_STEAM;
-                        }
-                    }
-                    if (leaves_residue) {
-                        place_reacted(s, x, y, at, product);
-                        /* Gated on KIND_LIQUID. Only lava quenches AS liquid. */
-                        if (mat->kind == KIND_LIQUID) {
-                            const int lava_cooloff =
-                                (s->lava_cooloff >= 0) ? s->lava_cooloff : SAND_LAVA_COOLOFF_CHANCE;
-                            cool_off_chain(s, x, y, w, h, product, lava_cooloff);
-                        }
-                    } else {
-                        row[x] = CELL_EMPTY;
-                        mark_rows(s, x, y, y);
-                        wake_block_and_neighbors(s, x, y);
-                    }
-                } else {
-                    row[x] = CELL_EMPTY;
-                    mark_rows(s, x, y, y);
-                    wake_block_and_neighbors(s, x, y);
-                }
-                pay_quench_cost(s, nx, ny, w);
-                return true;
-            }
-        }
+    REACTION_DOC(
+        explodes,
+        "at burn-out, if it is one corner of a 2x2 that is all lit and the board's blast cooldown has run out");
+    int dx = 0, dy = 0;
+    if (s->impulse_buf != NULL && s->fuse_blast_wait == 0 && find_lit_two_by_two(s, x, y, w, h, grain, rx, &dx, &dy)) {
+        s->fuse_blast_wait = (uint8_t)((s->fuse_cooldown >= 0) ? s->fuse_cooldown : SAND_GUNPOWDER_BLAST_COOLDOWN);
+        spend_lit_two_by_two(s, x, y, w, dx, dy);
+        sand_explode(s, x, y, rx->explodes);
+    } else {
+        place_reacted(s, x, y, at, MAT_FIRE);
     }
+    return true;
+}
 
-    /* Covered_at checks lid with cover_mask. */
+static void
+quench_lit_cell(const burning_cell_t* cell) {
+    sand_t* const s = cell->s;
+    const reaction_t* const rx = cell->rx;
+    const cell_t grain = cell->grain;
+    const int x = cell->x;
+    const int y = cell->y;
+    const size_t at = (size_t)y * (size_t)s->w + (size_t)x;
 
-    /* SKIPPED WHOLE when nothing on the board is a denser non-liquid: every
-     * one of smothered()'s four probes would reject, and it draws no random
-     * number, so the skip is RNG-neutral outright rather than by argument.
-     *
-     * Measured: on a full screen of fire this test is reached 41216 times a
-     * step and has NEVER once smothered. */
-    if ((plan_flags & BURN_SMOTHERS) != 0 && smothered(s, x, y, w, h, mat->density)) {
-        row[x] = lit_state ? cell_with_code(grain, 0) : CELL_EMPTY;
-        mark_rows(s, x, y, y);
-        wake_block_and_neighbors(s, x, y);
+    if (rx->tones != 0) {
+        place_cell(s, x, y, at, with_moisture(grain, rx->moist_max, rx));
+        return;
+    }
+    s->cells[at] = CELL_MAKE(CELL_MATERIAL(grain), 0);
+    mark_rows(s, x, y, y);
+    wake_block_and_neighbors(s, x, y);
+}
+
+static bool
+quench_product(const burning_cell_t* cell, int nx, int ny, uint8_t* product) {
+    const int w = cell->s->w;
+    if (CELL_MATERIAL(cell->grain) != MAT_FIRE) {
         return true;
     }
+    const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
+    const uint8_t liquid_boils_to = reaction_of(cell->s->cells[nat])->boils_to;
+    if (liquid_boils_to != MAT_GAS) {
+        *product = liquid_boils_to ? liquid_boils_to : MAT_STEAM;
+        return true;
+    }
+    const bool leaves_residue = (int)(rng_next(&cell->s->rng) & 0xFF) < SAND_ACID_QUENCH_RESIDUE_CHANCE;
+    *product = ((int)(rng_next(&cell->s->rng) & 0xFF) < SAND_ACID_QUENCH_SMOKE_CHANCE) ? MAT_SMOKE : MAT_GAS;
+    return leaves_residue;
+}
 
-    bool acted = false;
+static void
+quench_unlit_cell(const burning_cell_t* cell, int nx, int ny) {
+    sand_t* const s = cell->s;
+    const reaction_t* const rx = cell->rx;
+    const material_t* const mat = cell->mat;
+    const int x = cell->x;
+    const int y = cell->y;
+    const int w = s->w;
+    const size_t at = (size_t)y * (size_t)w + (size_t)x;
+    const uint8_t quench_to = rx->quench_to;
 
-    /* WHOLE-CELL EVENT, NOT PER-NEIGHBOUR PROBE */
+    if (quench_to == 0) {
+        s->cells[at] = CELL_EMPTY;
+        mark_rows(s, x, y, y);
+        wake_block_and_neighbors(s, x, y);
+        return;
+    }
 
-    /* NOT smothered()'s all-4 test - fixes cover_count(), SCREEN cardinal
-     * count, and pool neighbor limits. */
+    uint8_t product = quench_to;
+    if (!quench_product(cell, nx, ny, &product)) {
+        s->cells[at] = CELL_EMPTY;
+        mark_rows(s, x, y, y);
+        wake_block_and_neighbors(s, x, y);
+        return;
+    }
 
-    /* covered_at()'s lid with diagonal crust cells fixes
-     * test_a_wide_pool_under_a_crust_bursts. */
+    place_reacted(s, x, y, at, product);
+    if (mat->kind == KIND_LIQUID) {
+        const int lava_cooloff = (s->lava_cooloff >= 0) ? s->lava_cooloff : SAND_LAVA_COOLOFF_CHANCE;
+        cool_off_chain(s, x, y, w, s->h, product, lava_cooloff);
+    }
+}
 
-    /* NOT GATED ON s->impulse_buf. No fallback needed: sand_explode() is a
-     * no-op with impulses off. */
+static bool
+quench_burning_cell(const burning_cell_t* cell, bool lit_state) {
+    sand_t* const s = cell->s;
+    const int x = cell->x;
+    const int y = cell->y;
+    const int w = s->w;
+    const int h = s->h;
 
-    /* See test_buried_lava_still_becomes_stone_with_impulses_off,
-     * suite_sand_lava_burial.c */
-    const bool is_lava = (plan_flags & BURN_LAVA) != 0;
-    if (is_lava && confined_blast_available(s)) {
-        /* Test at 255 means 'fire on every cell'; 1-in-N complicates testing. */
-        const bool burst_natural = s->lava_burst < 0;
-        const int burst_chance = burst_natural ? SAND_LAVA_BURST_CHANCE : s->lava_burst;
-        if (burst_chance != 0 && (int)(rng_next(&s->rng) & 0xFF) < burst_chance
-            && (!burst_natural || (rng_next(&s->rng) % SAND_LAVA_BURST_GATE) == 0)
-            && covered_at(s, x, y, w, h, mat->density)) {
-            place_reacted(s, x, y, at, rx->quench_to);
-            s->confined_blasts_this_step++;
-            sand_explode(s, x, y, SAND_LAVA_BURST_RADIUS);
-            return true;
+#pragma GCC unroll 4
+    for (int d = 0; d < 4; d++) {
+        const int nx = x + reaction_dirs[d][0];
+        const int ny = y + reaction_dirs[d][1];
+        if (!neighbor_quenches(s, nx, ny, w, h)) {
+            continue;
+        }
+        if (lit_state) {
+            quench_lit_cell(cell);
+        } else {
+            quench_unlit_cell(cell, nx, ny);
+        }
+        pay_quench_cost(s, nx, ny, w);
+        return true;
+    }
+    return false;
+}
+
+static bool
+smother_burning_cell(const burning_cell_t* cell, bool lit_state) {
+    sand_t* const s = cell->s;
+    const material_t* const mat = cell->mat;
+    const int x = cell->x;
+    const int y = cell->y;
+    const int w = s->w;
+    const size_t at = (size_t)y * (size_t)w + (size_t)x;
+
+    if (!smothered(s, x, y, w, s->h, mat->density)) {
+        return false;
+    }
+    s->cells[at] = lit_state ? cell_with_code(cell->grain, 0) : CELL_EMPTY;
+    mark_rows(s, x, y, y);
+    wake_block_and_neighbors(s, x, y);
+    return true;
+}
+
+static bool
+try_lava_burst(const burning_cell_t* cell) {
+    sand_t* const s = cell->s;
+    const reaction_t* const rx = cell->rx;
+    const material_t* const mat = cell->mat;
+    const int x = cell->x;
+    const int y = cell->y;
+    const int w = s->w;
+    const int h = s->h;
+
+    if (!confined_blast_available(s)) {
+        return false;
+    }
+    const bool burst_natural = s->lava_burst < 0;
+    const int burst_chance = burst_natural ? SAND_LAVA_BURST_CHANCE : s->lava_burst;
+    if (burst_chance != 0 && (int)(rng_next(&s->rng) & 0xFF) < burst_chance
+        && (!burst_natural || (rng_next(&s->rng) % SAND_LAVA_BURST_GATE) == 0)
+        && covered_at(s, x, y, w, h, mat->density)) {
+        place_reacted(s, x, y, (size_t)y * (size_t)w + (size_t)x, rx->quench_to);
+        s->confined_blasts_this_step++;
+        sand_explode(s, x, y, SAND_LAVA_BURST_RADIUS);
+        return true;
+    }
+    return false;
+}
+
+typedef enum {
+    BURN_NEIGHBOR_NONE,
+    BURN_NEIGHBOR_ACTED,
+    BURN_NEIGHBOR_SOURCE_QUENCHED,
+} burn_neighbor_result_t;
+
+static burn_neighbor_result_t
+react_burning_heat_neighbor(const burning_cell_t* cell, int nx, int ny, cell_t n, int lava_cooloff) {
+    sand_t* const s = cell->s;
+    const reaction_t* const rx = cell->rx;
+    const material_t* const mat = cell->mat;
+    const int x = cell->x;
+    const int y = cell->y;
+    const int w = s->w;
+    const int h = s->h;
+    const size_t at = (size_t)y * (size_t)w + (size_t)x;
+    const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
+    const uint8_t before_mat = CELL_MATERIAL(n);
+    bool changed = try_heat_transform_given(s, nx, ny, w, h, nat, n);
+    if (!changed && mat->kind == KIND_LIQUID) {
+        const reaction_t* const nr = reaction_of(n);
+        if (nr->melts != 0 && nr->heats_to != 0 && (int)(rng_next(&s->rng) & 0xFF) < nr->melts) {
+            place_reacted(s, nx, ny, nat, nr->heats_to);
+            changed = true;
         }
     }
-
-    /* DO NOT merge with quench or conduct_heat walks - see top comment for
-     * RNG draw reasons. */
-
-    /* HOISTED OUT OF THE LOOP: mat_id fixed, pair_bits[mat_id] reused. */
-
-    /* Host numbers mispredict device; capture settles it. */
-
-    /* TRIGGER A of cool_off_chain(): 0 short-circuits check before loop
-     * starts. */
-    const int lava_cooloff = is_lava ? ((s->lava_cooloff >= 0) ? s->lava_cooloff : SAND_LAVA_COOLOFF_CHANCE) : 0;
-    /* SKIPPED WHOLE when nothing on the board can be paired WITH. On a full
-     * screen of fire that is every cell, every step: measured 41216 walks
-     * all finding nothing, four bounds-checked probes each.
-     *
-     * One flag is enough because pair_bits[mine][theirs] does not depend on
-     * mine - sixteen identical rows - so the question is the same for every
-     * cell doing the looking. RNG-neutral: both draws inside the walk sit
-     * behind a non-zero pair byte. */
-    if ((present_pair_bits & (PAIR_IGNITABLE | PAIR_HEAT_RESPONSIVE)) == 0) {
-        goto pair_done;
+    if (!changed) {
+        return BURN_NEIGHBOR_NONE;
     }
+    if (lava_cooloff != 0 && CELL_MATERIAL(s->cells[nat]) != before_mat
+        && (int)(rng_next(&s->rng) & 0xFF) < lava_cooloff) {
+        place_reacted(s, x, y, at, rx->quench_to);
+        cool_off_chain(s, x, y, w, h, rx->quench_to, lava_cooloff);
+        return BURN_NEIGHBOR_SOURCE_QUENCHED;
+    }
+    return BURN_NEIGHBOR_ACTED;
+}
 
-    const uint8_t* my_pair_row = pair_bits[mat_id];
+static burn_neighbor_result_t
+react_burning_neighbors(const burning_cell_t* cell, int lava_cooloff) {
+    sand_t* const s = cell->s;
+    const int x = cell->x;
+    const int y = cell->y;
+    const int w = s->w;
+    const int h = s->h;
+    const uint8_t* const my_pair_row = pair_bits[CELL_MATERIAL(cell->grain)];
+    bool acted = false;
+
 #pragma GCC unroll 4
     for (int d = 0; d < 4; d++) {
         const int nx = x + reaction_dirs[d][0];
@@ -1669,37 +1748,59 @@ step_one_burning_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cell_
             continue;
         }
         const uint8_t pair = my_pair_row[CELL_MATERIAL(n)];
-        if ((pair & PAIR_IGNITABLE) != 0 && try_ignite_given(s, nx, ny, w, h, nat, n)) {
-            acted = true;
-        }
-        if ((pair & PAIR_HEAT_RESPONSIVE) != 0) {
-            /* Heat-ramping materials store heat. Only CELL_MATERIAL change or
-             * thermal shock triggers `cool_off_chain()`. */
-            const uint8_t before_mat = CELL_MATERIAL(n);
-            bool changed = try_heat_transform_given(s, nx, ny, w, h, nat, n);
-            /* MELTING - LIQUID door opens. See reaction_t.melts. Fire and
-             * lava merge. Check source, neighbors, RNG. Flame near root pays
-             * three checks, avoids stream. */
-            if (!changed && mat->kind == KIND_LIQUID) {
-                const reaction_t* nr = reaction_of(n);
-                if (nr->melts != 0 && nr->heats_to != 0 && (int)(rng_next(&s->rng) & 0xFF) < nr->melts) {
-                    place_reacted(s, nx, ny, nat, nr->heats_to);
-                    changed = true;
-                }
-            }
-            if (changed) {
-                acted = true;
-                if (lava_cooloff != 0 && CELL_MATERIAL(s->cells[nat]) != before_mat
-                    && (int)(rng_next(&s->rng) & 0xFF) < lava_cooloff) {
-                    place_reacted(s, x, y, at, rx->quench_to);
-                    cool_off_chain(s, x, y, w, h, rx->quench_to, lava_cooloff);
-                    return true;
-                }
-            }
+        acted |= (pair & PAIR_IGNITABLE) != 0 && try_ignite_given(s, nx, ny, w, h, nat, n);
+        const burn_neighbor_result_t heat_result = (pair & PAIR_HEAT_RESPONSIVE) != 0
+                                                       ? react_burning_heat_neighbor(cell, nx, ny, n, lava_cooloff)
+                                                       : BURN_NEIGHBOR_NONE;
+        acted |= heat_result != BURN_NEIGHBOR_NONE;
+        if (heat_result == BURN_NEIGHBOR_SOURCE_QUENCHED) {
+            return BURN_NEIGHBOR_SOURCE_QUENCHED;
         }
     }
+    return acted ? BURN_NEIGHBOR_ACTED : BURN_NEIGHBOR_NONE;
+}
 
-pair_done:
+static bool
+step_one_burning_cell(const reaction_row_t* reaction_row, int x, cell_t grain, const reaction_t* rx,
+                      const burn_plan_t* plan) {
+    sand_t* const s = reaction_row->s;
+    const int y = reaction_row->y;
+    const int w = reaction_row->w;
+    const int h = reaction_row->h;
+    const material_t* mat = material_of(grain);
+    const uint8_t mat_id = CELL_MATERIAL(grain);
+    const uint8_t plan_flags = plan->flags;
+    const bool lit_state = (plan_flags & BURN_LIT) != 0;
+
+    if (!tick_burning_cell(reaction_row, x, &grain, rx, plan, mat_id)) {
+        return finish_burning_cell(&(burning_cell_t){s, rx, mat, grain, x, y});
+    }
+
+    if (s->may_have_liquid && quench_burning_cell(&(burning_cell_t){s, rx, mat, grain, x, y}, lit_state)) {
+        return true;
+    }
+
+    if ((plan_flags & BURN_SMOTHERS) != 0
+        && smother_burning_cell(&(burning_cell_t){s, rx, mat, grain, x, y}, lit_state)) {
+        return true;
+    }
+
+    bool acted = false;
+    const bool is_lava = (plan_flags & BURN_LAVA) != 0;
+    if (is_lava && try_lava_burst(&(burning_cell_t){s, rx, mat, grain, x, y})) {
+        return true;
+    }
+
+    const int lava_cooloff = is_lava ? ((s->lava_cooloff >= 0) ? s->lava_cooloff : SAND_LAVA_COOLOFF_CHANCE) : 0;
+    const burn_neighbor_result_t neighbor_result =
+        (present_pair_bits & (PAIR_IGNITABLE | PAIR_HEAT_RESPONSIVE)) != 0
+            ? react_burning_neighbors(&(burning_cell_t){s, rx, mat, grain, x, y}, lava_cooloff)
+            : BURN_NEIGHBOR_NONE;
+    acted |= neighbor_result != BURN_NEIGHBOR_NONE;
+    if (neighbor_result == BURN_NEIGHBOR_SOURCE_QUENCHED) {
+        return true;
+    }
+
     if (conduct_heat(s, x, y, w, h)) {
         acted = true;
     }
@@ -1832,6 +1933,7 @@ static unsigned
 step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
     const size_t row_at = (size_t)y * (size_t)w;
     uint8_t* row = s->cells + row_at;
+    const reaction_row_t reaction_row = {s, row, y, w, h};
 
     static void* const stage_labels[RSTAGE_COUNT] = {
         &&stage_burn_any, &&stage_burn_always, &&stage_burn_check, &&stage_dissolve, &&stage_acid_rain,
@@ -1866,13 +1968,13 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
 
     stage_burn_always:
         found |= FOUND_BURNING;
-        step_one_burning_cell(s, row, x, y, w, h, c, r, plan, row_at);
+        step_one_burning_cell(&reaction_row, x, c, r, plan);
         continue;
 
     stage_burn_check:
         if (cell_code(c) >= r->lit_from) {
             found |= FOUND_BURNING;
-            step_one_burning_cell(s, row, x, y, w, h, c, r, plan, row_at);
+            step_one_burning_cell(&reaction_row, x, c, r, plan);
             continue;
         }
         goto stage_dissolve;
@@ -1880,7 +1982,7 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
     stage_burn_any:
         if (cell_is_burning(c)) {
             found |= FOUND_BURNING;
-            step_one_burning_cell(s, row, x, y, w, h, c, r, plan, row_at);
+            step_one_burning_cell(&reaction_row, x, c, r, plan);
             continue;
         }
 
