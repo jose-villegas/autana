@@ -1315,6 +1315,17 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int w, int dx, int dy, const 
 static int sweep_guard_rows[SWEEP_GUARD_ROW_MAX];
 static uint8_t sweep_guard_snapshot[SWEEP_GUARD_ROW_MAX * GRID_W_MAX];
 
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+/* One bit per column: set where sweep_guard_row() below skips a changed,
+ * non-empty cell. Same slot indexing as sweep_guard_rows[]/
+ * sweep_guard_snapshot above. Dev overlay data only - see
+ * sand_seam_guard_row_count() in sand.h. 322 bytes here. */
+#define SWEEP_STALL_ROW_BYTES ((GRID_W_MAX + 7) / 8)
+static uint8_t sweep_stall_bits[SWEEP_GUARD_ROW_MAX][SWEEP_STALL_ROW_BYTES];
+static int sweep_stall_guard_count;
+static unsigned sweep_stall_total;
+#endif
+
 typedef struct {
     sand_t* s;
     int w, dx, dy, x_step, load_dx, load_dy, jostle;
@@ -1395,11 +1406,15 @@ sweep_guard_row_list(int h, int offset, int* out, int max) {
 }
 
 /* A guard row's own sweep, skipping any column that no longer matches
- * `snapshot` - see run_sweep_guard_rows() for why. An unchanged column
- * gets its ordinary turn. */
+ * `snapshot` - see run_sweep_guard_rows() for why. `slot` is this row's
+ * index into sweep_guard_rows[]/sweep_guard_snapshot, reused for its stall
+ * bits - see sweep_stall_bits' own comment above. */
 static void
 sweep_guard_row(sand_t* s, int y, int w, int dx, int dy, const int* slide_a, const int* slide_b, int x_step,
-                int load_dx, int load_dy, int jostle, uint8_t settled_bit, const uint8_t* snapshot) {
+                int load_dx, int load_dy, int jostle, uint8_t settled_bit, const uint8_t* snapshot, int slot) {
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+    memset(sweep_stall_bits[slot], 0, sizeof sweep_stall_bits[slot]);
+#endif
     if (is_block_row_settled(s, y, settled_bit)) {
         return;
     }
@@ -1414,10 +1429,18 @@ sweep_guard_row(sand_t* s, int y, int w, int dx, int dy, const int* slide_a, con
     const int cx_to = (x_step > 0) ? w : -1;
 
     for (int x = cx_from; x != cx_to; x += x_step) {
-        if (row[x] == snapshot[x] && !CELL_IS_EMPTY(row[x])) {
+        const bool unchanged = row[x] == snapshot[x];
+        if (unchanged && !CELL_IS_EMPTY(row[x])) {
             step_one_grain(s, row, prow, arow, brow, x, y, w, dx, dy, slide_a, slide_b, load_dx, load_dy, jostle,
                            sweep_driven, &dest);
+            continue;
         }
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+        if (!unchanged && !CELL_IS_EMPTY(row[x])) {
+            sweep_stall_bits[slot][x >> 3] |= (uint8_t)(1u << (x & 7));
+            sweep_stall_total++;
+        }
+#endif
     }
 }
 
@@ -1444,9 +1467,9 @@ run_sweep_guard_rows(sand_t* s, int w, int dx, int dy, const int* slide_a, const
         const int second_i = (first == above) ? i + 1 : i;
 
         sweep_guard_row(s, first, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
-                        &snapshot[(size_t)first_i * (size_t)w]);
+                        &snapshot[(size_t)first_i * (size_t)w], first_i);
         sweep_guard_row(s, second, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
-                        &snapshot[(size_t)second_i * (size_t)w]);
+                        &snapshot[(size_t)second_i * (size_t)w], second_i);
     }
 }
 
@@ -1584,6 +1607,10 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
             memcpy(&sweep_guard_snapshot[(size_t)gi * (size_t)w], s->cells + (size_t)sweep_guard_rows[gi] * (size_t)w,
                    (size_t)w);
         }
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+        sweep_stall_guard_count = guard_count;
+        sweep_stall_total = 0;
+#endif
 
         s->rng_hashed = true;
         run_sweep_phase(s, 0, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
@@ -1594,6 +1621,10 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
                              sweep_guard_rows, guard_count, sweep_guard_snapshot);
         s->rng_hashed = false;
     } else {
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+        sweep_stall_guard_count = 0;
+        sweep_stall_total = 0;
+#endif
         sweep_range(s, y_from, y_to, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
                     is_liquid);
     }
@@ -1646,3 +1677,33 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
 
     finalize_settling(s, settled_bit);
 }
+
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+/* See sand.h: the seam-fix bookkeeping from the sand_step() call that just
+ * returned, for a development overlay to draw. */
+int
+sand_seam_guard_row_count(void) {
+    return sweep_stall_guard_count;
+}
+
+int
+sand_seam_guard_row(int i) {
+    if (i < 0 || i >= sweep_stall_guard_count) {
+        return -1;
+    }
+    return sweep_guard_rows[i];
+}
+
+bool
+sand_seam_stalled(int i, int x) {
+    if (i < 0 || i >= sweep_stall_guard_count || x < 0 || x >= GRID_W_MAX) {
+        return false;
+    }
+    return (sweep_stall_bits[i][x >> 3] & (1u << (x & 7))) != 0;
+}
+
+unsigned
+sand_seam_stall_count(void) {
+    return sweep_stall_total;
+}
+#endif
