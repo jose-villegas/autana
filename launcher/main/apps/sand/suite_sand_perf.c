@@ -265,9 +265,9 @@ static bool gas_ab_reporting;
 
 /* Ceilings are worst + max(spread, 2% of worst) across 5 two-core-pinned S3
  * portrait captures, 2026-09-16, build a195574e7177-dirty-diag. Landscape
- * costs 17-37% more; not covered. The present-cost ceilings are not from these
- * captures: present costs ~65% more in every run after the first in a boot,
- * so a ceiling spanning both would guard nothing. */
+ * costs 17-37% more; not covered. The present-cost ceilings follow the same rule
+ * across 3 captures with the panel clock pinned, 2026-09-17, build
+ * 8e32ebfe3968-diag. */
 
 static void
 perf_guard(const char* name, int64_t measured_us, int64_t ceiling_us) {
@@ -2646,7 +2646,7 @@ test_present_cost_against_a_falling_sand_scene(void) {
      * permanently unreachable, and 3% already asks for half the movable part.
      * Bound by different hardware (bus, not flash layout) - do not correct
      * this to 0.9. */
-    perf_target("present: falling sand", mean_us, 9650, 6059);
+    perf_target("present: falling sand", mean_us, 9650, 6340);
 }
 
 /* Present tests run the sim outside their own timer. Neither measures the
@@ -2750,7 +2750,7 @@ test_present_cost_against_the_lava_stress_scene(void) {
     free(row_x1);
     free(row_n);
 
-    perf_guard("present: lava stress", mean_us, 8819);
+    perf_guard("present: lava stress", mean_us, 9797);
 }
 
 static void
@@ -2815,7 +2815,7 @@ test_present_cost_against_the_thermal_shock_scene(void) {
      * this lattice dirties every strip every frame, so an oracle sends the
      * same 164,864 pixels. Watch pixels sent. A failure likely means the
      * scene dirties MORE pixels, not a slower present. */
-    perf_guard("present: thermal shock", mean_us, 10575);
+    perf_guard("present: thermal shock", mean_us, 10655);
 }
 
 /* Present cost with column-precise dirty tracking, against the two scenes
