@@ -36,5 +36,9 @@ main(void) {
         printf("FAIL: %d suite(s) dropped; raise SUITE_MAX in suites.h\n", suites_dropped());
         failures += suites_dropped();
     }
+    if (suite_leaks() > 0) {
+        printf("FAIL: %d test(s) leaked arena blocks\n", suite_leaks());
+        failures += suite_leaks();
+    }
     return failures;
 }
