@@ -115,6 +115,34 @@ nearest_choice(const lab_t* lab, int count16, lab_t target, double* out_cost) {
     return best;
 }
 
+/* Every achievable dither level between entries i and j (the level nearest
+ * the target's least-squares projection onto that segment, plus one on
+ * each side), keeping best/best_cost if one of them wins. */
+static void
+try_dither_pair(const lin_t* lin, int i, int j, lab_t target, lin_t target_lin, double* best_cost,
+                dither_choice_t* best) {
+    const lin_t d = {lin[j].r - lin[i].r, lin[j].g - lin[i].g, lin[j].b - lin[i].b};
+    const double den = d.r * d.r + d.g * d.g + d.b * d.b;
+    if (den <= 0.0) {
+        return;
+    }
+    const double t =
+        ((target_lin.r - lin[i].r) * d.r + (target_lin.g - lin[i].g) * d.g + (target_lin.b - lin[i].b) * d.b) / den;
+    const int centre = (int)lround(t * 16.0);
+    for (int level = centre - 1; level <= centre + 1; level++) {
+        if (level < 1 || level >= 16) {
+            continue;
+        }
+        const double f = (double)level / 16.0;
+        const lin_t mix = {lin[i].r + d.r * f, lin[i].g + d.g * f, lin[i].b + d.b * f};
+        const double e = sqrt(dist2(target, lin_to_lab(mix)));
+        if (e < *best_cost) {
+            *best_cost = e;
+            *best = (dither_choice_t){(uint8_t)i, (uint8_t)j, (uint8_t)level};
+        }
+    }
+}
+
 static dither_choice_t
 choose_dither(const lin_t* lin, const lab_t* lab, int count16, lab_t target, lin_t target_lin) {
     double best_cost;
@@ -122,27 +150,7 @@ choose_dither(const lin_t* lin, const lab_t* lab, int count16, lab_t target, lin
 
     for (int i = 0; i < count16; i++) {
         for (int j = i + 1; j < count16; j++) {
-            const lin_t d = {lin[j].r - lin[i].r, lin[j].g - lin[i].g, lin[j].b - lin[i].b};
-            const double den = d.r * d.r + d.g * d.g + d.b * d.b;
-            if (den <= 0.0) {
-                continue;
-            }
-            const double t =
-                ((target_lin.r - lin[i].r) * d.r + (target_lin.g - lin[i].g) * d.g + (target_lin.b - lin[i].b) * d.b)
-                / den;
-            const int centre = (int)lround(t * 16.0);
-            for (int level = centre - 1; level <= centre + 1; level++) {
-                if (level < 1 || level >= 16) {
-                    continue;
-                }
-                const double f = (double)level / 16.0;
-                const lin_t mix = {lin[i].r + d.r * f, lin[i].g + d.g * f, lin[i].b + d.b * f};
-                const double e = sqrt(dist2(target, lin_to_lab(mix)));
-                if (e < best_cost) {
-                    best_cost = e;
-                    best = (dither_choice_t){(uint8_t)i, (uint8_t)j, (uint8_t)level};
-                }
-            }
+            try_dither_pair(lin, i, j, target, target_lin, &best_cost, &best);
         }
     }
     return best;
