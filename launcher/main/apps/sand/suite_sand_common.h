@@ -191,3 +191,7 @@ bool step_until_tree_or_root_grows(sand_t* g, int gx, int gy, int max_steps, int
 /* True if a MATX_ROOT cell exists anywhere in [x0,x1) x [y0,y1) on grid g -
  * the "has it rooted yet" check shared by the seed/collar tests. */
 bool region_has_root(const sand_t* g, int x0, int x1, int y0, int y1);
+
+/* Count of grid g's blocks not currently settled - the sleep-progress
+ * readout every landscape/water-slope sleeping test in the split polls. */
+int count_awake_blocks(const sand_t* g);

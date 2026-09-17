@@ -695,6 +695,48 @@ time_a_quarter_turn(sand_t* real, int steps, int64_t* worst_out) {
     return per_step;
 }
 
+/* Processes one row of the wood/leaf shading walk: adds tint work into
+ * *sink for every tinted cell and reports whether the row lit at least one
+ * gust-wake cell. On the first full pass (rep == 0) it also folds that
+ * row's wood/leaf/near-leaf counts into the running totals. */
+static int
+wood_leaf_row_pass(const uint8_t* row, const uint8_t* above, const uint8_t* below, int w, int y, int rep,
+                   const int8_t top5[5][2], unsigned* sink, int* wood, int* leaf, int* near_leaf) {
+    int lit = 0;
+    for (int x = 0; x < w; x++) {
+        const unsigned hash = material_grain_hash(x, y);
+        const bool is_leaf = row[x] == MATX(MATX_LEAF);
+        const bool tinted =
+            is_leaf
+            || (row[x] == CELL_MAKE(MAT_WOOD, 0) && material_wood_near_leaf(above, row, below, x, w, top5, hash, 5u));
+        if (tinted) {
+            *sink += material_wood_leaf_wave(rep * 40u, x, w, hash);
+            lit = 1;
+        }
+        if (rep == 0) {
+            if (is_leaf) {
+                (*leaf)++;
+            } else if (row[x] == CELL_MAKE(MAT_WOOD, 0)) {
+                (*wood)++;
+                if (tinted) {
+                    (*near_leaf)++;
+                }
+            }
+        }
+    }
+    return lit;
+}
+
+/* Row y's cell pointer plus its above/below neighbours (NULL past either
+ * edge) for wood_leaf_row_pass(). */
+static void
+wood_leaf_row_window(const uint8_t* big, int w, int h, int y, const uint8_t** row, const uint8_t** above,
+                     const uint8_t** below) {
+    *row = big + (size_t)y * w;
+    *above = (y > 0) ? *row - w : NULL;
+    *below = (y < h - 1) ? *row + w : NULL;
+}
+
 /* paint_row_n() is `static inline` inside app_sand.c and unreachable from
  * here, so no row in this suite exercises the app's paint path - the
  * shading could land measuring "nothing" because nothing was looking. This
@@ -721,31 +763,12 @@ test_the_wood_leaf_shading_on_a_grove(void) {
     const int64_t start = esp_timer_get_time();
     for (int rep = 0; rep < 20; rep++) {
         for (int y = 0; y < REAL_H; y++) {
-            const uint8_t* row = big + (size_t)y * REAL_W;
-            const uint8_t* above = (y > 0) ? row - REAL_W : NULL;
-            const uint8_t* below = (y < REAL_H - 1) ? row + REAL_W : NULL;
-            int lit = 0;
-            for (int x = 0; x < REAL_W; x++) {
-                const unsigned hash = material_grain_hash(x, y);
-                const bool is_leaf = row[x] == MATX(MATX_LEAF);
-                const bool tinted = is_leaf
-                                    || (row[x] == CELL_MAKE(MAT_WOOD, 0)
-                                        && material_wood_near_leaf(above, row, below, x, REAL_W, top5, hash, 5u));
-                if (tinted) {
-                    sink += material_wood_leaf_wave(rep * 40u, x, REAL_W, hash);
-                    lit = 1;
-                }
-                if (rep == 0) {
-                    if (is_leaf) {
-                        leaf++;
-                    } else if (row[x] == CELL_MAKE(MAT_WOOD, 0)) {
-                        wood++;
-                        if (tinted) {
-                            near_leaf++;
-                        }
-                    }
-                }
-            }
+            const uint8_t* row;
+            const uint8_t* above;
+            const uint8_t* below;
+            wood_leaf_row_window(big, REAL_W, REAL_H, y, &row, &above, &below);
+            const int lit =
+                wood_leaf_row_pass(row, above, below, REAL_W, y, rep, top5, &sink, &wood, &leaf, &near_leaf);
             if (rep == 0) {
                 rows_lit += lit;
             }
@@ -2800,6 +2823,64 @@ test_present_cost_against_the_thermal_shock_scene(void) {
  * a pool levelling - both LANDSCAPE, where a row runs ALONG gravity, so a
  * changed cell's row can hold a long, unrelated run the old policy resent. */
 
+/* Clamps row cy's dirty x-span to a one-cell margin, or to the whole row
+ * when nothing narrower was recorded, and resets the span for next frame. */
+static void
+mirror_row_window(int w, int cy, uint16_t* dirty_x0, uint16_t* dirty_x1, int* wx0_out, int* wx1_out) {
+    int wx0 = dirty_x0[cy];
+    int wx1 = dirty_x1[cy];
+    dirty_x0[cy] = (uint16_t)w;
+    dirty_x1[cy] = 0;
+    if (wx0 >= wx1) {
+        wx0 = 0;
+        wx1 = w;
+    } else {
+        wx0 = wx0 > 0 ? wx0 - 1 : 0;
+        wx1 = wx1 < w ? wx1 + 1 : w;
+    }
+    *wx0_out = wx0;
+    *wx1_out = wx1;
+}
+
+/* Fills cur_x0/cur_x1 with row's current empty-material runs, falling back
+ * to one run spanning the row when it holds too many to list. Returns the
+ * run count. */
+static int
+mirror_row_current_runs(const uint8_t* row, int w, uint16_t* cur_x0, uint16_t* cur_x1) {
+    int run_x0[ROW_MAX_RUNS], run_x1[ROW_MAX_RUNS];
+    const int n = row_runs_find(row, w, SAND_EMPTY, run_x0, run_x1);
+    if (n < 0) {
+        int x0, x1;
+        row_runs_span_fallback(row, w, SAND_EMPTY, &x0, &x1);
+        cur_x0[0] = (uint16_t)x0;
+        cur_x1[0] = (uint16_t)x1;
+        return 1;
+    }
+    for (int i = 0; i < n; i++) {
+        cur_x0[i] = (uint16_t)run_x0[i];
+        cur_x1[i] = (uint16_t)run_x1[i];
+    }
+    return n;
+}
+
+/* Marks each reconciled dirty run gfx-dirty, clamped to the row's window,
+ * and tallies the pixels sent when the caller is counting them. */
+static void
+mirror_row_send_dirty(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t* send_x1, int send_n,
+                      int64_t* pixels_sent_accum) {
+    for (int i = 0; i < send_n; i++) {
+        const int sx0 = send_x0[i] > wx0 ? send_x0[i] : wx0;
+        const int sx1 = send_x1[i] < wx1 ? send_x1[i] : wx1;
+        if (sx0 >= sx1) {
+            continue;
+        }
+        gfx_mark_dirty(sx0 * REAL_CELL_PX, cy * REAL_CELL_PX, (sx1 - sx0) * REAL_CELL_PX, REAL_CELL_PX);
+        if (pixels_sent_accum != NULL) {
+            *pixels_sent_accum += (int64_t)(sx1 - sx0) * REAL_CELL_PX * REAL_CELL_PX;
+        }
+    }
+}
+
 static void
 mirror_app_sand_marking_span(const uint8_t* cells, int w, int h, uint8_t* dirty_rows, uint16_t* dirty_x0,
                              uint16_t* dirty_x1, uint16_t* row_x0, uint16_t* row_x1, uint8_t* row_n,
@@ -2810,38 +2891,13 @@ mirror_app_sand_marking_span(const uint8_t* cells, int w, int h, uint8_t* dirty_
         }
         dirty_rows[cy] = 0;
 
-        int wx0 = dirty_x0[cy];
-        int wx1 = dirty_x1[cy];
-        dirty_x0[cy] = (uint16_t)w;
-        dirty_x1[cy] = 0;
-        if (wx0 >= wx1) {
-            wx0 = 0;
-            wx1 = w;
-        } else {
-            wx0 = wx0 > 0 ? wx0 - 1 : 0;
-            wx1 = wx1 < w ? wx1 + 1 : w;
-        }
+        int wx0, wx1;
+        mirror_row_window(w, cy, dirty_x0, dirty_x1, &wx0, &wx1);
 
         const uint8_t* row = &cells[(size_t)cy * w];
 
-        int run_x0[ROW_MAX_RUNS], run_x1[ROW_MAX_RUNS];
-        const int n = row_runs_find(row, w, SAND_EMPTY, run_x0, run_x1);
-
         uint16_t cur_x0[ROW_MAX_RUNS], cur_x1[ROW_MAX_RUNS];
-        int cur_n;
-        if (n < 0) {
-            int x0, x1;
-            row_runs_span_fallback(row, w, SAND_EMPTY, &x0, &x1);
-            cur_x0[0] = (uint16_t)x0;
-            cur_x1[0] = (uint16_t)x1;
-            cur_n = 1;
-        } else {
-            for (int i = 0; i < n; i++) {
-                cur_x0[i] = (uint16_t)run_x0[i];
-                cur_x1[i] = (uint16_t)run_x1[i];
-            }
-            cur_n = n;
-        }
+        const int cur_n = mirror_row_current_runs(row, w, cur_x0, cur_x1);
 
         uint16_t* rprev_x0 = &row_x0[cy * ROW_MAX_RUNS];
         uint16_t* rprev_x1 = &row_x1[cy * ROW_MAX_RUNS];
@@ -2850,17 +2906,7 @@ mirror_app_sand_marking_span(const uint8_t* cells, int w, int h, uint8_t* dirty_
         uint16_t send_x0[2 * ROW_MAX_RUNS], send_x1[2 * ROW_MAX_RUNS];
         const int send_n = row_runs_reconcile(cur_x0, cur_x1, cur_n, rprev_x0, rprev_x1, rprev_n, send_x0, send_x1);
 
-        for (int i = 0; i < send_n; i++) {
-            const int sx0 = send_x0[i] > wx0 ? send_x0[i] : wx0;
-            const int sx1 = send_x1[i] < wx1 ? send_x1[i] : wx1;
-            if (sx0 >= sx1) {
-                continue;
-            }
-            gfx_mark_dirty(sx0 * REAL_CELL_PX, cy * REAL_CELL_PX, (sx1 - sx0) * REAL_CELL_PX, REAL_CELL_PX);
-            if (pixels_sent_accum != NULL) {
-                *pixels_sent_accum += (int64_t)(sx1 - sx0) * REAL_CELL_PX * REAL_CELL_PX;
-            }
-        }
+        mirror_row_send_dirty(cy, wx0, wx1, send_x0, send_x1, send_n, pixels_sent_accum);
 
         for (int i = 0; i < cur_n; i++) {
             rprev_x0[i] = cur_x0[i];
@@ -3041,6 +3087,46 @@ test_present_cost_against_a_landscape_levelling_pool(void) {
 #define BUBBLE_W 41
 #define BUBBLE_H 30
 
+/* Fills [0,w) x [pool_top,h) of g with a full-mass acid pool. */
+static void
+fill_acid_pool(sand_t* g, int w, int pool_top, int h) {
+    for (int y = pool_top; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            sand_set(g, x, y, CELL_MAKE(MAT_ACID, MASS_MAX));
+        }
+    }
+}
+
+/* Counts, in the surface band y < pool_top, how many currently-acid cells
+ * lie left vs right of x = mid. */
+static void
+count_bubbles_by_side(const sand_t* g, int w, int pool_top, int mid, int* left_pops, int* right_pops) {
+    for (int y = 0; y < pool_top; y++) {
+        for (int x = 0; x < w; x++) {
+            if (CELL_MATERIAL(sand_at(g, x, y)) == MAT_ACID) {
+                if (x < mid) {
+                    (*left_pops)++;
+                } else if (x > mid) {
+                    (*right_pops)++;
+                }
+            }
+        }
+    }
+}
+
+/* True once any cell in [0,w) x [0,band_h) currently holds acid. */
+static bool
+band_has_acid(const sand_t* g, int w, int band_h) {
+    for (int y = 0; y < band_h; y++) {
+        for (int x = 0; x < w; x++) {
+            if (CELL_MATERIAL(sand_at(g, x, y)) == MAT_ACID) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 /* acid_bubble() (sand_reactions.c) replaced splash_displace()'s old
  * "landed hard on already-occupied liquid" trigger for acid: a real-scene
  * reproduction found landing events concentrating against whichever wall
@@ -3071,27 +3157,13 @@ test_acid_bubbles_do_not_favour_one_wall(void) {
      * hundreds of steps (same mass, wider footprint), so a fixed "above
      * POOL_TOP" check would end up looking above where the surface once
      * sat, not where it is. */
-    for (int y = POOL_TOP; y < BUBBLE_H; y++) {
-        for (int x = 0; x < BUBBLE_W; x++) {
-            sand_set(&fx.bubble_sim, x, y, CELL_MAKE(MAT_ACID, MASS_MAX));
-        }
-    }
+    fill_acid_pool(&fx.bubble_sim, BUBBLE_W, POOL_TOP, BUBBLE_H);
 
     int left_pops = 0, right_pops = 0;
     const int mid = BUBBLE_W / 2;
     for (int i = 0; i < 300; i++) {
         sand_step(&fx.bubble_sim, 0, 1000, 0);
-        for (int y = 0; y < POOL_TOP; y++) {
-            for (int x = 0; x < BUBBLE_W; x++) {
-                if (CELL_MATERIAL(sand_at(&fx.bubble_sim, x, y)) == MAT_ACID) {
-                    if (x < mid) {
-                        left_pops++;
-                    } else if (x > mid) {
-                        right_pops++;
-                    }
-                }
-            }
-        }
+        count_bubbles_by_side(&fx.bubble_sim, BUBBLE_W, POOL_TOP, mid, &left_pops, &right_pops);
     }
 
     /* Freed BEFORE the assertions: Unity longjmps out of a failure, so a
@@ -3143,11 +3215,7 @@ test_acid_bubbles_still_fire_once_the_block_is_asleep(void) {
     sand_enable_sleeping(&fx.sleepy_bubble_sim, sleepy_bubble_blocks);
     sand_enable_impulses(&fx.sleepy_bubble_sim, sleepy_bubble_buf, 512);
 
-    for (int y = POOL_TOP; y < BUBBLE_H; y++) {
-        for (int x = 0; x < BUBBLE_W; x++) {
-            sand_set(&fx.sleepy_bubble_sim, x, y, CELL_MAKE(MAT_ACID, MASS_MAX));
-        }
-    }
+    fill_acid_pool(&fx.sleepy_bubble_sim, BUBBLE_W, POOL_TOP, BUBBLE_H);
     /* GLASS LID to ensure "must fall asleep" setup check is independent of
      * SAND_ACID_BUBBLE_CHANCE. acid_bubble() rolls only for open space
      * against gravity. Lid prevents acid cell exposure, ensuring pool settles
@@ -3159,14 +3227,7 @@ test_acid_bubbles_still_fire_once_the_block_is_asleep(void) {
     bool asleep = false;
     for (int i = 0; i < 40 && !asleep; i++) {
         sand_step(&fx.sleepy_bubble_sim, 0, 1000, 0);
-        asleep = true;
-        for (int bx = 0; bx < SLEEPY_BLOCK_COLS && asleep; bx++) {
-            for (int by = 0; by < SLEEPY_BLOCK_ROWS && asleep; by++) {
-                if (!sand_block_settled(&fx.sleepy_bubble_sim, bx, by)) {
-                    asleep = false;
-                }
-            }
-        }
+        asleep = count_awake_blocks(&fx.sleepy_bubble_sim) == 0;
     }
     TEST_ASSERT_TRUE_MESSAGE(asleep, "setup: the pool must actually fall asleep within 40 quiet steps, "
                                      "or this test is not exercising the sleeping path it exists to "
@@ -3179,13 +3240,8 @@ test_acid_bubbles_still_fire_once_the_block_is_asleep(void) {
     int pops = 0;
     for (int i = 0; i < 300 && pops == 0; i++) {
         sand_step(&fx.sleepy_bubble_sim, 0, 1000, 0);
-        for (int y = 0; y < POOL_TOP && pops == 0; y++) {
-            for (int x = 0; x < BUBBLE_W; x++) {
-                if (CELL_MATERIAL(sand_at(&fx.sleepy_bubble_sim, x, y)) == MAT_ACID) {
-                    pops++;
-                    break;
-                }
-            }
+        if (band_has_acid(&fx.sleepy_bubble_sim, BUBBLE_W, POOL_TOP)) {
+            pops = 1;
         }
     }
 
@@ -3206,19 +3262,6 @@ test_acid_bubbles_still_fire_once_the_block_is_asleep(void) {
 /* --- water slope: reported gravity-flip drop over a covered slope -------- */
 
 #ifdef DEVICE_BUILD
-
-static int
-water_slope_awake_blocks(const sand_t* s) {
-    int n = 0;
-    for (int by = 0; by < s->block_rows; by++) {
-        for (int bx = 0; bx < s->block_cols; bx++) {
-            if (!sand_block_settled(s, bx, by)) {
-                n++;
-            }
-        }
-    }
-    return n;
-}
 
 static int
 water_slope_liquid_near_blocks(const sand_t* s) {
@@ -3262,7 +3305,7 @@ water_slope_log_step(const char* phase, int step_index, const sand_t* s, unsigne
                    + s->pass_us.reactions_us + s->pass_us.impulses_us),
              (int)s->pass_us.sweep_us, (int)s->pass_us.liquid_us, (int)s->pass_us.float_us, (int)s->pass_us.gas_us,
              (int)s->pass_us.reactions_us, (int)s->pass_us.impulses_us, dispatched_delta, moves_delta, probes_delta,
-             sweep_moves_delta, (int)sand_reactions_last_was_soak_only, water_slope_awake_blocks(s),
+             sweep_moves_delta, (int)sand_reactions_last_was_soak_only, count_awake_blocks(s),
              water_slope_liquid_near_blocks(s));
 }
 
@@ -3326,7 +3369,7 @@ test_submerged_pile_settles_and_logs_the_pass_split(void) {
         const unsigned p0 = sand_liquid_crossflow_probes;
         const unsigned sw0 = sand_liquid_sweep_moves;
         sand_step(&real, LANDSCAPE_GX, 0, 0);
-        const int awake = water_slope_awake_blocks(&real);
+        const int awake = count_awake_blocks(&real);
         if (i % 100 == 0 || i == SUBMERGED_PILE_FULL_SETTLE_STEPS - 1) {
             water_slope_log_step("settle", i, &real, sand_reactions_cells_dispatched - d0, sand_liquid_moves - m0,
                                  sand_liquid_crossflow_probes - p0, sand_liquid_sweep_moves - sw0);
@@ -3336,7 +3379,7 @@ test_submerged_pile_settles_and_logs_the_pass_split(void) {
         }
     }
     const long mass_after = water_slope_water_mass(&real);
-    const int awake_at_end = water_slope_awake_blocks(&real);
+    const int awake_at_end = count_awake_blocks(&real);
 
     free(big);
     free(blocks);

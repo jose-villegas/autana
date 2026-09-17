@@ -322,3 +322,16 @@ region_has_root(const sand_t* g, int x0, int x1, int y0, int y1) {
     }
     return false;
 }
+
+int
+count_awake_blocks(const sand_t* g) {
+    int n = 0;
+    for (int by = 0; by < g->block_rows; by++) {
+        for (int bx = 0; bx < g->block_cols; bx++) {
+            if (!sand_block_settled(g, bx, by)) {
+                n++;
+            }
+        }
+    }
+    return n;
+}
