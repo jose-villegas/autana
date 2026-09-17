@@ -41,8 +41,8 @@
  * diagnostics build links every suite into firmware, where internal heap
  * headroom is scarce enough that a second context in .bss would not be
  * free - something host tests, with a laptop's memory behind them,
- * cannot notice. Allocated once and reset per test rather than per-test
- * malloc/free: the runner has no teardown hook to free it in. */
+ * cannot notice. Allocated for the suite's run, outside any one test, and
+ * reset by every test's fixture(). */
 static mu_Context* ctx;
 static ui_pointer_t pointer;
 
@@ -62,10 +62,7 @@ stub_text_height(mu_Font font) {
 
 static void
 fixture(void) {
-    if (ctx == NULL) {
-        ctx = malloc(sizeof *ctx);
-        TEST_ASSERT_NOT_NULL(ctx);
-    }
+    TEST_ASSERT_NOT_NULL(ctx);
     memset(ctx, 0, sizeof *ctx);
     memset(&pointer, 0, sizeof pointer);
     mu_init(ctx);
@@ -396,6 +393,7 @@ test_scrolling_stops_at_the_end_and_the_last_row_is_reachable(void) {
 
 void
 run_ui_pointer_microui_suite(void) {
+    ctx = malloc(sizeof *ctx);
     RUN_TEST(test_a_tap_submits_the_button_underneath_it);
     RUN_TEST(test_holding_does_not_resubmit);
     RUN_TEST(test_a_one_frame_tap_cannot_resolve_a_control);
@@ -404,6 +402,8 @@ run_ui_pointer_microui_suite(void) {
     RUN_TEST(test_dragging_up_scrolls_the_list_without_pressing_a_row);
     RUN_TEST(test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once);
     RUN_TEST(test_scrolling_stops_at_the_end_and_the_last_row_is_reachable);
+    free(ctx);
+    ctx = NULL;
 }
 
 SUITE_REGISTER(run_ui_pointer_microui_suite);
