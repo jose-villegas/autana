@@ -139,6 +139,43 @@ all_pairs_species_of(cell_t c) {
     return (m < ALL_PAIRS_SKIPPED_ORDINARY) ? m - 1 : m - 2;
 }
 
+/* Marks the unordered pair (m, nb) seen if it is new, bumping *found. */
+static void
+note_pair_contact(bool (*seen)[ALL_PAIRS_SPAWN_COUNT], int m, int nb, int* found) {
+    const int a = m < nb ? m : nb;
+    const int b = m < nb ? nb : m;
+    if (a != b && !seen[a][b]) {
+        seen[a][b] = true;
+        (*found)++;
+    }
+}
+
+/* How many of the ALL_PAIRS_SPAWN_COUNT tiling species touch (right or
+ * down) anywhere in [top, REAL_H). One bit per unordered pair, sized to
+ * the tiling's own index range: an index past ALL_PAIRS_ORDINARY_COUNT
+ * names an extended static or gunpowder, not a material_id_t. */
+static int
+count_all_pairs_contacts(const sand_t* s, int top) {
+    bool(*seen)[ALL_PAIRS_SPAWN_COUNT] = calloc(ALL_PAIRS_SPAWN_COUNT, sizeof *seen);
+    TEST_ASSERT_NOT_NULL_MESSAGE(seen, "the pair-coverage map must fit in what the framebuffer leaves");
+
+    int found = 0;
+    for (int y = top; y < REAL_H; y++) {
+        for (int x = 0; x < REAL_W; x++) {
+            const int m = all_pairs_species_of(sand_at(s, x, y));
+            if (x + 1 < REAL_W) {
+                note_pair_contact(seen, m, all_pairs_species_of(sand_at(s, x + 1, y)), &found);
+            }
+            if (y + 1 < REAL_H) {
+                note_pair_contact(seen, m, all_pairs_species_of(sand_at(s, x, y + 1)), &found);
+            }
+        }
+    }
+
+    free(seen);
+    return found;
+}
+
 /* Every pair of materials really is adjacent somewhere in that scene - a
  * property of the ACTUAL BUILT GRID, not the tiling formula: this test
  * used to compute adjacency from all_pairs_material_at() directly, which
@@ -163,33 +200,8 @@ test_the_mixed_scene_puts_every_material_pair_in_contact(void) {
 
     build_all_pairs_scene(&s);
 
-    /* One bit per unordered pair, sized to the tiling's own index range -
-     * no longer MATERIAL_MAX, since an index past
-     * ALL_PAIRS_ORDINARY_COUNT names an extended static or gunpowder, not
-     * a material_id_t value. */
-    bool(*seen)[ALL_PAIRS_SPAWN_COUNT] = calloc(ALL_PAIRS_SPAWN_COUNT, sizeof *seen);
-    TEST_ASSERT_NOT_NULL_MESSAGE(seen, "the pair-coverage map must fit in what the framebuffer leaves");
+    const int found = count_all_pairs_contacts(&s, top);
 
-    int found = 0;
-    for (int y = top; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            const int m = all_pairs_species_of(sand_at(&s, x, y));
-            const int nb[2] = {
-                x + 1 < REAL_W ? all_pairs_species_of(sand_at(&s, x + 1, y)) : m,
-                y + 1 < REAL_H ? all_pairs_species_of(sand_at(&s, x, y + 1)) : m,
-            };
-            for (int k = 0; k < 2; k++) {
-                const int a = m < nb[k] ? m : nb[k];
-                const int b = m < nb[k] ? nb[k] : m;
-                if (a != b && !seen[a][b]) {
-                    seen[a][b] = true;
-                    found++;
-                }
-            }
-        }
-    }
-
-    free(seen);
     free(big);
     free(blocks);
 
@@ -486,6 +498,56 @@ test_the_smoke_and_steam_scene_stays_a_gas_screen(void) {
                                              "the device test beside it no longer measures");
 }
 
+/* The glass ring: perimeter of lx in [2,7], ly in [2,7]. */
+static void
+build_thermal_shock_ring(sand_t* s, int ox, int oy, int ring_temp) {
+    for (int ly = 2; ly <= 7; ly++) {
+        for (int lx = 2; lx <= 7; lx++) {
+            if (lx != 2 && lx != 7 && ly != 2 && ly != 7) {
+                continue;
+            }
+            sand_set(s, ox + lx, oy + ly, CELL_MAKE(MAT_GLASS, (uint8_t)ring_temp));
+        }
+    }
+}
+
+/* The trigger, outside the box: a U under and beside it. */
+static void
+build_thermal_shock_trigger(sand_t* s, int ox, int oy, cell_t trigger) {
+    for (int ly = 2; ly <= 8; ly++) {
+        sand_set(s, ox + 1, oy + ly, trigger);
+        sand_set(s, ox + 8, oy + ly, trigger);
+    }
+    for (int lx = 2; lx <= 7; lx++) {
+        sand_set(s, ox + lx, oy + 8, trigger);
+    }
+}
+
+/* One glass-ringed compartment of the lattice at tile (tr, tc): the
+ * perimeter ring, its outside trigger and its inside payload - see
+ * build_thermal_shock_scene()'s own comment for the shapes and why. */
+static void
+build_thermal_shock_tile(sand_t* s, int tr, int tc) {
+    const int ox = tc * 9, oy = tr * 9;
+    const bool family_c = (tc < 10);
+    const int ring_temp = 2 + (tc % 3); /* {2,3,4} */
+    build_thermal_shock_ring(s, ox, oy, ring_temp);
+
+    const cell_t trigger = family_c ? CELL_MAKE(MAT_WOOD, MASS_MAX) : MATX(MATX_ICE);
+    build_thermal_shock_trigger(s, ox, oy, trigger);
+
+    /* the payload, inside */
+    const bool low = (tr & 1) != 0;
+    const cell_t payload = family_c ? (low ? MATX(MATX_ICE) : CELL_MAKE(MAT_SNOW, MASS_MAX))
+                                    : (low ? CELL_MAKE(MAT_WOOD, MASS_MAX) : CELL_MAKE(MAT_LAVA, MASS_MAX));
+    const int ly0 = low ? 5 : 3;
+    for (int ly = ly0; ly <= ly0 + 1; ly++) {
+        for (int lx = 3; lx <= 6; lx++) {
+            sand_set(s, ox + lx, oy + ly, payload);
+        }
+    }
+}
+
 /* A lattice of 20x24 glass-walled compartments, each a ring of glass around
  * a payload with the shatter trigger just outside it.
  *
@@ -500,40 +562,7 @@ void
 build_thermal_shock_scene(sand_t* s) {
     for (int tr = 0; tr < 24; tr++) {
         for (int tc = 0; tc < 20; tc++) {
-            const int ox = tc * 9, oy = tr * 9;
-            const bool family_c = (tc < 10);
-            const int ring_temp = 2 + (tc % 3); /* {2,3,4} */
-
-            /* glass ring: perimeter of lx in [2,7], ly in [2,7] */
-            for (int ly = 2; ly <= 7; ly++) {
-                for (int lx = 2; lx <= 7; lx++) {
-                    if (lx != 2 && lx != 7 && ly != 2 && ly != 7) {
-                        continue;
-                    }
-                    sand_set(s, ox + lx, oy + ly, CELL_MAKE(MAT_GLASS, (uint8_t)ring_temp));
-                }
-            }
-
-            /* the trigger, outside the box: a U under and beside it */
-            const cell_t trigger = family_c ? CELL_MAKE(MAT_WOOD, MASS_MAX) : MATX(MATX_ICE);
-            for (int ly = 2; ly <= 8; ly++) {
-                sand_set(s, ox + 1, oy + ly, trigger);
-                sand_set(s, ox + 8, oy + ly, trigger);
-            }
-            for (int lx = 2; lx <= 7; lx++) {
-                sand_set(s, ox + lx, oy + 8, trigger);
-            }
-
-            /* the payload, inside */
-            const bool low = (tr & 1) != 0;
-            const cell_t payload = family_c ? (low ? MATX(MATX_ICE) : CELL_MAKE(MAT_SNOW, MASS_MAX))
-                                            : (low ? CELL_MAKE(MAT_WOOD, MASS_MAX) : CELL_MAKE(MAT_LAVA, MASS_MAX));
-            const int ly0 = low ? 5 : 3;
-            for (int ly = ly0; ly <= ly0 + 1; ly++) {
-                for (int lx = 3; lx <= 6; lx++) {
-                    sand_set(s, ox + lx, oy + ly, payload);
-                }
-            }
+            build_thermal_shock_tile(s, tr, tc);
         }
     }
 }
@@ -558,6 +587,180 @@ ever_cullet_set(uint8_t* mask, size_t idx) {
     const bool was_clear = (mask[idx >> 3] & bit) == 0;
     mask[idx >> 3] |= bit;
     return was_clear;
+}
+
+typedef struct {
+    bool near_chiller, near_burner;
+} shock_neighbors_t;
+
+/* Whether (x, y)'s four cardinal neighbours hold something that chills or
+ * something on fire - the two facts count_shock_preconditions() below
+ * grades each glass cell against. */
+static shock_neighbors_t
+scan_shock_neighbors(const sand_t* s, int x, int y) {
+    static const int dx[4] = {1, -1, 0, 0};
+    static const int dy[4] = {0, 0, 1, -1};
+    shock_neighbors_t nb = {false, false};
+
+    for (int d = 0; d < 4; d++) {
+        const int nx = x + dx[d], ny = y + dy[d];
+        if ((unsigned)nx >= (unsigned)REAL_W || (unsigned)ny >= (unsigned)REAL_H) {
+            continue;
+        }
+        const cell_t n = sand_at(s, nx, ny);
+        if (CELL_IS_EMPTY(n)) {
+            continue;
+        }
+        if (reaction_of(n)->chills != 0) {
+            nb.near_chiller = true;
+        }
+        if (cell_is_burning(n)) {
+            nb.near_burner = true;
+        }
+    }
+    return nb;
+}
+
+typedef struct {
+    int d1, d2;
+} shock_precondition_counts_t;
+
+/* How many glass cells satisfy each shock precondition right now: hot
+ * glass next to something that chills (step_one_cold_cell()'s
+ * precondition, d1) and cold glass next to something burning
+ * (try_heat_transform()'s, d2). */
+static shock_precondition_counts_t
+count_shock_preconditions(const sand_t* s) {
+    shock_precondition_counts_t counts = {0, 0};
+
+    for (int y = 0; y < REAL_H; y++) {
+        for (int x = 0; x < REAL_W; x++) {
+            const cell_t c = sand_at(s, x, y);
+            if (CELL_MATERIAL(c) != MAT_GLASS) {
+                continue;
+            }
+            const int v = CELL_VARIANT(c);
+            const shock_neighbors_t nb = scan_shock_neighbors(s, x, y);
+            if (v >= SAND_SHOCK_HEAT && nb.near_chiller) {
+                counts.d1++;
+            }
+            if (v <= SAND_SHOCK_COLD && nb.near_burner) {
+                counts.d2++;
+            }
+        }
+    }
+    return counts;
+}
+
+/* Sand cells past SAND_CULLET_BASE not already marked in `ever_cullet`,
+ * marking them along the way. Cullet re-fuses near a hot payload and can
+ * crack again, so a live per-step delta can go negative - a mask that
+ * only ever grows keeps "new cullet this step" non-negative. */
+static int
+count_new_cullet(const sand_t* s, uint8_t* ever_cullet) {
+    int new_cullet = 0;
+    for (int y = 0; y < REAL_H; y++) {
+        for (int x = 0; x < REAL_W; x++) {
+            const cell_t c = sand_at(s, x, y);
+            if (CELL_MATERIAL(c) == MAT_SAND && CELL_VARIANT(c) >= SAND_CULLET_BASE
+                && ever_cullet_set(ever_cullet, (size_t)y * REAL_W + (size_t)x)) {
+                new_cullet++;
+            }
+        }
+    }
+    return new_cullet;
+}
+
+typedef struct {
+    int cullet_left, cullet_right;
+    int water, steam, fire, matx_plant, heat_holders;
+    int lava_left;
+} thermal_shock_census_t;
+
+/* Folds one thermal shock lattice cell into the census. */
+static void
+note_thermal_shock_cell(cell_t c, bool left_half, thermal_shock_census_t* census) {
+    const int m = CELL_MATERIAL(c);
+    if (m == MAT_SAND && CELL_VARIANT(c) >= SAND_CULLET_BASE) {
+        if (left_half) {
+            census->cullet_left++;
+        } else {
+            census->cullet_right++;
+        }
+    }
+    if (m == MAT_WATER) {
+        census->water++;
+    } else if (m == MAT_STEAM) {
+        census->steam++;
+    } else if (m == MAT_FIRE) {
+        census->fire++;
+    } else if (m == MAT_LAVA && left_half) {
+        census->lava_left++;
+    }
+    if (cell_is_extended(c) && CELL_VARIANT(c) == MATX_PLANT) {
+        census->matx_plant++;
+    }
+    if (!CELL_IS_EMPTY(c) && reaction_of(c)->heat_ramp != 0) {
+        census->heat_holders++;
+    }
+}
+
+/* One end-of-window scan of the thermal shock lattice, for every count the
+ * test below checks except the per-step ones already folded into
+ * count_shock_preconditions() and count_new_cullet(). */
+static thermal_shock_census_t
+census_thermal_shock_scene(const sand_t* s) {
+    thermal_shock_census_t census = {0};
+    for (int y = 0; y < REAL_H; y++) {
+        for (int x = 0; x < REAL_W; x++) {
+            note_thermal_shock_cell(sand_at(s, x, y), x < REAL_W / 2, &census);
+        }
+    }
+    return census;
+}
+
+typedef struct {
+    int left, right;
+} distinct_tiles_t;
+
+/* Whether tile (tr, tc) has gained at least one cullet cell over the
+ * window. */
+static bool
+tile_has_cullet(const uint8_t* ever_cullet, int tr, int tc) {
+    for (int ly = 0; ly < 9; ly++) {
+        for (int lx = 0; lx < 9; lx++) {
+            const int x = tc * 9 + lx, y = tr * 9 + ly;
+            if (x >= REAL_W || y >= REAL_H) {
+                continue;
+            }
+            if (ever_cullet_get(ever_cullet, (size_t)y * REAL_W + (size_t)x)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* Distinct TILES (of the 240 per half) that have gained at least one
+ * cullet cell over the window - a coarser, per-compartment measure that a
+ * handful of very active tiles cannot satisfy on their own, unlike a raw
+ * cell count. */
+static distinct_tiles_t
+count_distinct_cullet_tiles(const uint8_t* ever_cullet) {
+    distinct_tiles_t distinct = {0, 0};
+    for (int tr = 0; tr < 24; tr++) {
+        for (int tc = 0; tc < 20; tc++) {
+            if (!tile_has_cullet(ever_cullet, tr, tc)) {
+                continue;
+            }
+            if (tc < 10) {
+                distinct.left++;
+            } else {
+                distinct.right++;
+            }
+        }
+    }
+    return distinct;
 }
 
 /* Cold arriving at hot glass (step_one_cold_cell()) and heat arriving at
@@ -594,11 +797,7 @@ test_the_thermal_shock_scene_shatters_in_both_directions(void) {
     build_thermal_shock_scene(&s);
     const int painted = sand_count(&s);
 
-    static const int dx[4] = {1, -1, 0, 0};
-    static const int dy[4] = {0, 0, 1, -1};
-
     int d1_steps_nonzero = 0, d2_steps_nonzero = 0;
-    int sticky_total_before = 0;
     int third_gain[3] = {0, 0, 0};
 
     /* Ten steps, graded by charging each step's new cullet to one third of
@@ -609,132 +808,24 @@ test_the_thermal_shock_scene_shatters_in_both_directions(void) {
     for (int step = 1; step <= 10; step++) {
         sand_step(&s, 0, 1000, 0);
 
-        int d1 = 0, d2 = 0;
-        for (int y = 0; y < REAL_H; y++) {
-            for (int x = 0; x < REAL_W; x++) {
-                const cell_t c = sand_at(&s, x, y);
-                if (CELL_MATERIAL(c) != MAT_GLASS) {
-                    continue;
-                }
-                const int v = CELL_VARIANT(c);
-                bool near_chiller = false, near_burner = false;
-                for (int d = 0; d < 4; d++) {
-                    const int nx = x + dx[d], ny = y + dy[d];
-                    if ((unsigned)nx >= (unsigned)REAL_W || (unsigned)ny >= (unsigned)REAL_H) {
-                        continue;
-                    }
-                    const cell_t n = sand_at(&s, nx, ny);
-                    if (CELL_IS_EMPTY(n)) {
-                        continue;
-                    }
-                    if (reaction_of(n)->chills != 0) {
-                        near_chiller = true;
-                    }
-                    if (cell_is_burning(n)) {
-                        near_burner = true;
-                    }
-                }
-                if (v >= SAND_SHOCK_HEAT && near_chiller) {
-                    d1++;
-                }
-                if (v <= SAND_SHOCK_COLD && near_burner) {
-                    d2++;
-                }
-            }
-        }
-        if (d1 > 0) {
+        const shock_precondition_counts_t counts = count_shock_preconditions(&s);
+        if (counts.d1 > 0) {
             d1_steps_nonzero++;
         }
-        if (d2 > 0) {
+        if (counts.d2 > 0) {
             d2_steps_nonzero++;
         }
 
-        /* Cullet is not inert - sand.heats_to is MAT_GLASS, so a fallen
-         * shard near a hot payload re-fuses and can crack again - and a
-         * live per-step delta goes negative the moment it does, hiding the
-         * churn this scene exists to show. A mask that only ever grows
-         * keeps "new cullet this third" non-negative. */
-        int sticky_total = sticky_total_before;
-        for (int y = 0; y < REAL_H; y++) {
-            for (int x = 0; x < REAL_W; x++) {
-                const cell_t c = sand_at(&s, x, y);
-                if (CELL_MATERIAL(c) == MAT_SAND && CELL_VARIANT(c) >= SAND_CULLET_BASE) {
-                    if (ever_cullet_set(ever_cullet, (size_t)y * REAL_W + (size_t)x)) {
-                        sticky_total++;
-                    }
-                }
-            }
-        }
         int third = step - 1;
         third /= 3;
         if (third > 2) {
             third = 2;
         }
-        third_gain[third] += sticky_total - sticky_total_before;
-        sticky_total_before = sticky_total;
+        third_gain[third] += count_new_cullet(&s, ever_cullet);
     }
 
-    int cullet_left = 0, cullet_right = 0;
-    int water = 0, steam = 0, fire = 0, matx_plant = 0, heat_holders = 0;
-    int lava_left = 0;
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            const cell_t c = sand_at(&s, x, y);
-            const int m = CELL_MATERIAL(c);
-            const bool left_half = x < REAL_W / 2;
-            if (m == MAT_SAND && CELL_VARIANT(c) >= SAND_CULLET_BASE) {
-                if (left_half) {
-                    cullet_left++;
-                } else {
-                    cullet_right++;
-                }
-            }
-            if (m == MAT_WATER) {
-                water++;
-            } else if (m == MAT_STEAM) {
-                steam++;
-            } else if (m == MAT_FIRE) {
-                fire++;
-            } else if (m == MAT_LAVA && left_half) {
-                lava_left++;
-            }
-            if (cell_is_extended(c) && CELL_VARIANT(c) == MATX_PLANT) {
-                matx_plant++;
-            }
-            if (!CELL_IS_EMPTY(c) && reaction_of(c)->heat_ramp != 0) {
-                heat_holders++;
-            }
-        }
-    }
-
-    /* Distinct TILES (of the 240 per half) that have gained at least one
-     * cullet cell over the window - a coarser, per-compartment measure
-     * that a handful of very active tiles cannot satisfy on their own,
-     * unlike the raw cell counts above. */
-    int distinct_left = 0, distinct_right = 0;
-    for (int tr = 0; tr < 24; tr++) {
-        for (int tc = 0; tc < 20; tc++) {
-            bool has_cullet = false;
-            for (int ly = 0; ly < 9 && !has_cullet; ly++) {
-                for (int lx = 0; lx < 9 && !has_cullet; lx++) {
-                    const int x = tc * 9 + lx, y = tr * 9 + ly;
-                    if (x >= REAL_W || y >= REAL_H) {
-                        continue;
-                    }
-                    if (ever_cullet_get(ever_cullet, (size_t)y * REAL_W + (size_t)x)) {
-                        has_cullet = true;
-                    }
-                }
-            }
-            if (has_cullet) {
-                if (tc < 10) {
-                    distinct_left++;
-                } else {
-                    distinct_right++;
-                }
-            }
-        }
-    }
+    const thermal_shock_census_t census = census_thermal_shock_scene(&s);
+    const distinct_tiles_t distinct = count_distinct_cullet_tiles(ever_cullet);
 
     const int sand_count_now = sand_count(&s);
     const bool temperature_flag = s.may_have_temperature;
@@ -758,17 +849,17 @@ test_the_thermal_shock_scene_shatters_in_both_directions(void) {
                                              "separate from its mirror: the two directions are different code "
                                              "and break independently");
 
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(1500, cullet_left,
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(1500, census.cullet_left,
                                              "the left half of the lattice must be producing cullet in "
                                              "quantity, not just in one corner of it");
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(1500, cullet_right,
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(1500, census.cullet_right,
                                              "the right half of the lattice must be producing cullet in "
                                              "quantity, not just in one corner of it");
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(100, distinct_left,
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(100, distinct.left,
                                              "shattering must be spread across many compartments in the left "
                                              "half, not concentrated in a few tiles that happen to be "
                                              "unusually active");
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(100, distinct_right,
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(100, distinct.right,
                                              "shattering must be spread across many compartments in the right "
                                              "half, not concentrated in a few tiles that happen to be "
                                              "unusually active");
@@ -789,7 +880,7 @@ test_the_thermal_shock_scene_shatters_in_both_directions(void) {
                                              "lattice went quiet early and the device benchmark beside this "
                                              "test is measuring a scene that has already settled");
 
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(1000, water,
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(1000, census.water,
                                              "meltwater from ice and snow must still be showing at the end of "
                                              "the window");
     /* LOWERED FROM 800 when cold gained the ability to conduct through a
@@ -798,10 +889,10 @@ test_the_thermal_shock_scene_shatters_in_both_directions(void) {
      * at 774. That is a real consequence of the feature, not a regression -
      * and this floor exists to catch a scene that has gone QUIET, which 774
      * plainly has not. Kept well below the new figure so it still would. */
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(700, steam,
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(700, census.steam,
                                              "steam from meltwater meeting a hot payload must still be "
                                              "showing at the end of the window");
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(2000, fire,
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(2000, census.fire,
                                              "fire escaping broken compartments must still be showing at the "
                                              "end of the window");
 
@@ -819,7 +910,7 @@ test_the_thermal_shock_scene_shatters_in_both_directions(void) {
      * benchmark's pegged frame budget describing the scene it claims to.
      * The plain cell_is_extended(c) form cannot be reused - this scene's own
      * payload is MATX(MATX_ICE), itself an extended cell. */
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, matx_plant,
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, census.matx_plant,
                                   "the thermal shock lattice should not be growing any plants - if "
                                   "it is, the device test's frame budget is no longer measuring "
                                   "the scene it claims to, and the ice payload means the usual "
@@ -833,7 +924,7 @@ test_the_thermal_shock_scene_shatters_in_both_directions(void) {
      * glass-to-lava conversion, never material crossing from the right half.
      * The regression this must still catch measured 123 left-half lava
      * cells by step 40. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(10, lava_left,
+    TEST_ASSERT_LESS_THAN_MESSAGE(10, census.lava_left,
                                   "family C's rings (the left half) must not have melted into lava "
                                   "in bulk inside this window - a small residual is an expected "
                                   "RNG-timing shift (see this assertion's own comment), but this "
@@ -844,10 +935,10 @@ test_the_thermal_shock_scene_shatters_in_both_directions(void) {
      * may_have_temperature and may_have_heat_holder at once, so only
      * pinning all three together proves the warming path is reachable in
      * this scene rather than skipped by a gate that happens to be shut. */
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, steam,
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, census.steam,
                                          "setup for the warming-gate check below: there must be steam on "
                                          "the board for the gate to be worth anything");
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, heat_holders,
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, census.heat_holders,
                                          "setup for the warming-gate check below: there must be cells "
                                          "that can hold a temperature (glass, here) for the gate to be "
                                          "worth anything");
@@ -940,6 +1031,52 @@ build_boiler_scene(sand_t* s) {
     }
 }
 
+typedef struct {
+    int water, steam, stone, burning_wood;
+    int stone_off_ambient, extended;
+    int water_left, water_right;
+} boiler_census_t;
+
+/* Folds one boiler scene cell into the census. */
+static void
+note_boiler_cell(cell_t c, bool left_half, boiler_census_t* census) {
+    const int m = CELL_MATERIAL(c);
+    if (m == MAT_WATER) {
+        census->water++;
+        if (left_half) {
+            census->water_left++;
+        } else {
+            census->water_right++;
+        }
+    } else if (m == MAT_STEAM) {
+        census->steam++;
+    } else if (m == MAT_STONE) {
+        census->stone++;
+        if (CELL_VARIANT(c) != SAND_AMBIENT_HEAT) {
+            census->stone_off_ambient++;
+        }
+    } else if (m == MAT_WOOD && cell_is_burning(c)) {
+        census->burning_wood++;
+    }
+    if (cell_is_extended(c)) {
+        census->extended++;
+    }
+}
+
+/* One scan of the boiler scene for every count the test below checks,
+ * live or at a window boundary - a single reusable shape rather than a
+ * separate loop per snapshot. */
+static boiler_census_t
+census_boiler_scene(const sand_t* s) {
+    boiler_census_t census = {0};
+    for (int y = 0; y < REAL_H; y++) {
+        for (int x = 0; x < REAL_W; x++) {
+            note_boiler_cell(sand_at(s, x, y), x < REAL_W / 2, &census);
+        }
+    }
+    return census;
+}
+
 /* The boiler keeps boiling for the whole window rather than front-loading
  * its output and going quiet. 20 settle steps: at ten the board is still
  * filling with the first flush of steam (295 cells of it), at twenty it
@@ -985,76 +1122,23 @@ test_the_boiler_scene_keeps_boiling_across_the_window(void) {
         sand_step(&s, 0, 1000, 0);
     }
 
-    int water_window_start = 0, steam_window_start = 0;
-    int water_left_start = 0, water_right_start = 0;
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            const int m = CELL_MATERIAL(sand_at(&s, x, y));
-            if (m == MAT_WATER) {
-                water_window_start++;
-                if (x < REAL_W / 2) {
-                    water_left_start++;
-                } else {
-                    water_right_start++;
-                }
-            } else if (m == MAT_STEAM) {
-                steam_window_start++;
-            }
-        }
-    }
+    const boiler_census_t window_start = census_boiler_scene(&s);
     const int count_at_window_start = sand_count(&s);
 
     int water_at_checkpoint[5];
-    water_at_checkpoint[0] = water_window_start;
+    water_at_checkpoint[0] = window_start.water;
     const int checkpoints[4] = {7, 15, 22, 30};
     int next_checkpoint = 0;
 
     for (int i = 1; i <= 30; i++) {
         sand_step(&s, 0, 1000, 0);
         if (next_checkpoint < 4 && i == checkpoints[next_checkpoint]) {
-            int w = 0;
-            for (int y = 0; y < REAL_H; y++) {
-                for (int x = 0; x < REAL_W; x++) {
-                    if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_WATER) {
-                        w++;
-                    }
-                }
-            }
-            water_at_checkpoint[next_checkpoint + 1] = w;
+            water_at_checkpoint[next_checkpoint + 1] = census_boiler_scene(&s).water;
             next_checkpoint++;
         }
     }
 
-    int water = 0, steam = 0, stone = 0, burning_wood = 0;
-    int stone_off_ambient = 0, extended = 0;
-    int water_left = 0, water_right = 0;
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            const cell_t c = sand_at(&s, x, y);
-            const int m = CELL_MATERIAL(c);
-            const bool left_half = x < REAL_W / 2;
-            if (m == MAT_WATER) {
-                water++;
-                if (left_half) {
-                    water_left++;
-                } else {
-                    water_right++;
-                }
-            } else if (m == MAT_STEAM) {
-                steam++;
-            } else if (m == MAT_STONE) {
-                stone++;
-                if (CELL_VARIANT(c) != SAND_AMBIENT_HEAT) {
-                    stone_off_ambient++;
-                }
-            } else if (m == MAT_WOOD && cell_is_burning(c)) {
-                burning_wood++;
-            }
-            if (cell_is_extended(c)) {
-                extended++;
-            }
-        }
-    }
+    const boiler_census_t end = census_boiler_scene(&s);
 
     const int sand_count_now = sand_count(&s);
     const bool temperature_flag = s.may_have_temperature;
@@ -1076,36 +1160,36 @@ test_the_boiler_scene_keeps_boiling_across_the_window(void) {
         TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(12, lost, why);
     }
 
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(5000, water,
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(5000, end.water,
                                              "the basin must not be exhausted by the end of the window - "
                                              "measured, 5158 cells of water are left, 98% of what the window "
                                              "started with (reaction_t.boils makes water resist conducted-heat "
                                              "boiling now, see material.c's own row), which is what makes "
                                              "this a steady state rather than another transient like the "
                                              "thermal shock lattice above");
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(150, steam,
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(150, end.steam,
                                              "steam production must be sustained through to the end of the "
                                              "window");
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(steam_window_start, steam,
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(window_start.steam, end.steam,
                                          "steam must have grown over the measured window, not merely be "
                                          "present - a count that matches the window's starting steam "
                                          "would mean production had already stalled by the time "
                                          "measurement began");
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(200, stone_off_ambient,
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(200, end.stone_off_ambient,
                                              "the slab must be genuinely carrying a temperature by the end of "
                                              "the window - this is the proof that heat is arriving at the "
                                              "water by conduction THROUGH the slab, not by some other route");
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(300, burning_wood,
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(300, end.burning_wood,
                                              "the second burner must still be alight at the end of the "
                                              "window, or the \"two heat sources\" claim this scene makes only "
                                              "holds for part of it");
 
     /* Both halves boil, not just the lava-fed one - the wood-fed half's
      * ember has to be pulling its own weight too. */
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(30, water_left_start - water_left,
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(30, window_start.water_left - end.water_left,
                                              "the left (lava-fed) half of the basin must have lost a real "
                                              "amount of water over the window");
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(30, water_right_start - water_right,
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(30, window_start.water_right - end.water_right,
                                              "the right (wood-fed) half of the basin must have lost a real "
                                              "amount of water over the window - a low loss here would mean "
                                              "the ember burner is not pulling its share and the \"two "
@@ -1130,7 +1214,7 @@ test_the_boiler_scene_keeps_boiling_across_the_window(void) {
     /* Same reasoning as the thermal shock lattice's plant pin above, and
      * the plain cell_is_extended() form works here, unlike there,
      * because this scene paints no extended material at all. */
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, extended,
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, end.extended,
                                   "the boiler scene should not contain any extended cells - if it "
                                   "does, either the scene changed to paint one on purpose (update "
                                   "this test) or something is growing that this benchmark was "
@@ -1139,10 +1223,10 @@ test_the_boiler_scene_keeps_boiling_across_the_window(void) {
     /* The same check on step_one_warming_cell()'s three-part call-site
      * gate as the thermal shock lattice's host test above - the branch a
      * previous tuning round added may_have_heat_holder for. */
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, steam,
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, end.steam,
                                          "setup for the warming-gate check below: there must be steam on "
                                          "the board for the gate to be worth anything");
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, stone,
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, end.stone,
                                          "setup for the warming-gate check below: there must be cells "
                                          "that can hold a temperature (stone, here) for the gate to be "
                                          "worth anything");
@@ -1151,6 +1235,42 @@ test_the_boiler_scene_keeps_boiling_across_the_window(void) {
     TEST_ASSERT_TRUE_MESSAGE(heat_holder_flag, "may_have_heat_holder must be armed by this scene too - see the "
                                                "thermal shock lattice's host test above for why this second "
                                                "flag is not redundant with the first");
+}
+
+/* Canopy: a disc of leaf with woody branch cells threaded through it, so
+ * wood-beside-leaf is common rather than a thin rim. */
+static void
+build_tree_grove_canopy(sand_t* s, int cx, int top) {
+    for (int dy = -TREE_GROVE_CANOPY_R; dy <= TREE_GROVE_CANOPY_R; dy++) {
+        for (int dx = -TREE_GROVE_CANOPY_R; dx <= TREE_GROVE_CANOPY_R; dx++) {
+            if (dx * dx + dy * dy > TREE_GROVE_CANOPY_R * TREE_GROVE_CANOPY_R) {
+                continue;
+            }
+            const int x = cx + dx, y = top + dy;
+            if ((unsigned)x >= (unsigned)REAL_W || (unsigned)y >= (unsigned)REAL_H) {
+                continue;
+            }
+            const bool branch = ((dx + dy) & 3) == 0;
+            sand_set(s, x, y, branch ? CELL_MAKE(MAT_WOOD, 0) : MATX(MATX_LEAF));
+        }
+    }
+}
+
+/* One tree of the grove, tall enough that trunk and canopy land in
+ * different rows - the dirtying is per row, so a tree squashed into a
+ * few rows would understate it. */
+static void
+build_tree_grove_tree(sand_t* s, int t, int ground) {
+    const int cx = (REAL_W * (2 * t + 1)) / (2 * TREE_GROVE_TREES);
+    const int top = ground - TREE_GROVE_HEIGHT;
+
+    for (int y = top; y < ground; y++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            sand_set(s, cx + dx, y, CELL_MAKE(MAT_WOOD, 0));
+        }
+    }
+
+    build_tree_grove_canopy(s, cx, top);
 }
 
 /* Painted rather than grown: this scene exists for the RENDER path, and the
@@ -1171,34 +1291,10 @@ build_tree_grove_scene(sand_t* s) {
         }
     }
 
-    /* Four trees across the width, tall enough that trunk and canopy land in
-     * different rows - the dirtying is per row, so a tree squashed into a few
-     * rows would understate it. */
+    /* Four trees across the width - see build_tree_grove_tree()'s own
+     * comment for why each one is built the way it is. */
     for (int t = 0; t < TREE_GROVE_TREES; t++) {
-        const int cx = (REAL_W * (2 * t + 1)) / (2 * TREE_GROVE_TREES);
-        const int top = ground - TREE_GROVE_HEIGHT;
-
-        for (int y = top; y < ground; y++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                sand_set(s, cx + dx, y, CELL_MAKE(MAT_WOOD, 0));
-            }
-        }
-
-        /* Canopy: a disc of leaf with woody branch cells threaded through it,
-         * so wood-beside-leaf is common rather than a thin rim. */
-        for (int dy = -TREE_GROVE_CANOPY_R; dy <= TREE_GROVE_CANOPY_R; dy++) {
-            for (int dx = -TREE_GROVE_CANOPY_R; dx <= TREE_GROVE_CANOPY_R; dx++) {
-                if (dx * dx + dy * dy > TREE_GROVE_CANOPY_R * TREE_GROVE_CANOPY_R) {
-                    continue;
-                }
-                const int x = cx + dx, y = top + dy;
-                if ((unsigned)x >= (unsigned)REAL_W || (unsigned)y >= (unsigned)REAL_H) {
-                    continue;
-                }
-                const bool branch = ((dx + dy) & 3) == 0;
-                sand_set(s, x, y, branch ? CELL_MAKE(MAT_WOOD, 0) : MATX(MATX_LEAF));
-            }
-        }
+        build_tree_grove_tree(s, t, ground);
     }
 }
 
@@ -1569,6 +1665,51 @@ wet_earth_scan(const sand_t* s, int* water_mass, int* dirt_count, int* moisture_
     *extended_count = ext;
 }
 
+typedef struct {
+    int sand, dirt, water;
+} wet_earth_paint_t;
+
+/* What build_wet_earth_scene() claims to have placed - plain cell counts,
+ * unlike wet_earth_scan()'s water MASS and dirt MOISTURE. */
+static wet_earth_paint_t
+census_wet_earth_paint(const sand_t* s) {
+    wet_earth_paint_t paint = {0};
+    for (int y = 0; y < REAL_H; y++) {
+        for (int x = 0; x < REAL_W; x++) {
+            const int m = CELL_MATERIAL(sand_at(s, x, y));
+            if (m == MAT_SAND) {
+                paint.sand++;
+            } else if (m == MAT_DIRT) {
+                paint.dirt++;
+            } else if (m == MAT_WATER) {
+                paint.water++;
+            }
+        }
+    }
+    return paint;
+}
+
+/* Columns where water rests directly on sand or dirt - the full-width
+ * contact milestone the settle allowance above is chosen against, the
+ * same adjacency the mixed scene's own coverage test uses. */
+static int
+count_wet_earth_touching_columns(const sand_t* s) {
+    int touching = 0;
+    for (int x = 0; x < REAL_W; x++) {
+        for (int y = 0; y < REAL_H - 1; y++) {
+            if (CELL_MATERIAL(sand_at(s, x, y)) != MAT_WATER) {
+                continue;
+            }
+            const int below = CELL_MATERIAL(sand_at(s, x, y + 1));
+            if (below == MAT_SAND || below == MAT_DIRT) {
+                touching++;
+                break;
+            }
+        }
+    }
+    return touching;
+}
+
 /* Counters taken MID-FLIGHT: what a scene is BUILT from is not what it
  * CONTAINS once running.
  *
@@ -1602,42 +1743,13 @@ test_the_wet_earth_scene_keeps_percolating_across_the_window(void) {
     sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
 
     build_wet_earth_scene(&s);
-
-    int painted_sand = 0, painted_dirt = 0, painted_water = 0;
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            const int m = CELL_MATERIAL(sand_at(&s, x, y));
-            if (m == MAT_SAND) {
-                painted_sand++;
-            } else if (m == MAT_DIRT) {
-                painted_dirt++;
-            } else if (m == MAT_WATER) {
-                painted_water++;
-            }
-        }
-    }
+    const wet_earth_paint_t painted = census_wet_earth_paint(&s);
 
     for (int i = 0; i < 35; i++) {
         sand_step(&s, 0, 1000, 0);
     }
 
-    /* The milestone the settle allowance is chosen against - see this
-     * scene's own comment above. Every column that has water resting
-     * directly on earth counts, the same adjacency the mixed scene's own
-     * coverage test uses above. */
-    int touching_columns = 0;
-    for (int x = 0; x < REAL_W; x++) {
-        for (int y = 0; y < REAL_H - 1; y++) {
-            if (CELL_MATERIAL(sand_at(&s, x, y)) != MAT_WATER) {
-                continue;
-            }
-            const int below = CELL_MATERIAL(sand_at(&s, x, y + 1));
-            if (below == MAT_SAND || below == MAT_DIRT) {
-                touching_columns++;
-                break;
-            }
-        }
-    }
+    const int touching_columns = count_wet_earth_touching_columns(&s);
 
     int water_mass[5], dirt_count[5], moisture_sum[5], extended_unused;
     wet_earth_scan(&s, &water_mass[0], &dirt_count[0], &moisture_sum[0], &extended_unused);
@@ -1660,11 +1772,11 @@ test_the_wet_earth_scene_keeps_percolating_across_the_window(void) {
     free(big);
     free(blocks);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(painted_dirt, painted_sand,
+    TEST_ASSERT_EQUAL_INT_MESSAGE(painted.dirt, painted.sand,
                                   "sand and dirt must be painted in exactly equal amounts, or the "
                                   "\"equal contact\" claim in build_wet_earth_scene()'s comment is "
                                   "not actually what this scene does");
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(4000, painted_water,
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(4000, painted.water,
                                              "enough water must be painted to percolate through the bed, not "
                                              "merely wet its surface");
     TEST_ASSERT_EQUAL_INT_MESSAGE(REAL_W, touching_columns,
@@ -1875,6 +1987,82 @@ gunpowder_basin_wall_run(sand_t* s, int fixed, int lo, int hi, bool vertical) {
  * 96/256 leaves it sitting still, rolling every flammable side, more
  * often than it drifts away. */
 
+/* Fill the interior with dry gunpowder - a real pour floods the whole
+ * vessel, notches and bulges alike, which is exactly why the wall discs
+ * are drawn FIRST and this fill is allowed to overwrite whatever bulged
+ * into the interior. The fire cell is placed after, not overwritten. */
+static void
+gunpowder_basin_fill_interior(sand_t* s, int ix0, int ix1, int iy0, int iy1, int fx, int fy) {
+    for (int y = iy0; y < iy1; y++) {
+        for (int x = ix0; x < ix1; x++) {
+            if (x >= fx && x < fx + GUNPOWDER_BASIN_SPARK && y >= fy && y < fy + GUNPOWDER_BASIN_SPARK) {
+                continue;
+            }
+            sand_set(s, x, y, GUNPOWDER_CELL(0));
+        }
+    }
+    for (int y = fy; y < fy + GUNPOWDER_BASIN_SPARK; y++) {
+        for (int x = fx; x < fx + GUNPOWDER_BASIN_SPARK; x++) {
+            sand_set(s, x, y, FIRE);
+        }
+    }
+}
+
+/* Outside, left of the vessel: water, then sand, then dirt, each close
+ * enough for a breached wall or a flung ember to reach. */
+static void
+gunpowder_basin_left_stacks(sand_t* s, int ix0, int iy0, int iy1) {
+    for (int y = iy0; y < iy0 + 15; y++) {
+        for (int x = ix0 - 25; x < ix0 - 5; x++) {
+            sand_set(s, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+        }
+    }
+    for (int y = iy0 + 15; y < iy0 + 30; y++) {
+        for (int x = ix0 - 25; x < ix0 - 5; x++) {
+            sand_set(s, x, y, SAND_FIRST_SHADE);
+        }
+    }
+    for (int y = iy0 + 30; y < iy1; y++) {
+        for (int x = ix0 - 25; x < ix0 - 5; x++) {
+            sand_set(s, x, y, CELL_MAKE(MAT_DIRT, 0));
+        }
+    }
+}
+
+/* Outside, right of the vessel: oil and wood - fuel for escaping fire to
+ * spread into - then acid. */
+static void
+gunpowder_basin_right_stacks(sand_t* s, int ix1, int iy0, int iy1) {
+    for (int y = iy0; y < iy0 + 15; y++) {
+        for (int x = ix1 + 5; x < ix1 + 25; x++) {
+            sand_set(s, x, y, CELL_MAKE(MAT_OIL, MASS_MAX));
+        }
+    }
+    for (int y = iy0 + 15; y < iy0 + 30; y++) {
+        for (int x = ix1 + 5; x < ix1 + 25; x++) {
+            sand_set(s, x, y, CELL_MAKE(MAT_WOOD, 0));
+        }
+    }
+    for (int y = iy0 + 30; y < iy1; y++) {
+        for (int x = ix1 + 5; x < ix1 + 25; x++) {
+            sand_set(s, x, y, CELL_MAKE(MAT_ACID, MASS_MAX));
+        }
+    }
+}
+
+/* Above the open mouth: a metal slab, sitting in the path of the updraft
+ * of fire and thrown material a blast near the top of the pile sends
+ * upward. KIND_STATIC, so resting in open air is not a physics error -
+ * metal never falls in this simulation. */
+static void
+gunpowder_basin_metal_slab(sand_t* s, int fx, int iy0) {
+    for (int y = iy0 - 25; y < iy0 - 10; y++) {
+        for (int x = fx - 10; x < fx + 10; x++) {
+            sand_set(s, x, y, MATX(MATX_METAL));
+        }
+    }
+}
+
 /* A brush-drawn vessel of dry gunpowder, lit near the top, with water,
  * sand, dirt, oil, wood, acid and metal placed within the blast's reach
  * outside the walls - the aftermath cascade is the point, not just the
@@ -1894,25 +2082,7 @@ build_gunpowder_basin_scene(sand_t* s) {
 
     const int fx = ix0 + GUNPOWDER_BASIN_INT_W / 2;
     const int fy = iy0;
-
-    /* Fill the interior with dry gunpowder - a real pour floods the
-     * whole vessel, notches and bulges alike, which is exactly why the
-     * wall discs above are drawn FIRST and this fill is allowed to
-     * overwrite whatever bulged into the interior. The fire cell is
-     * placed after, not overwritten. */
-    for (int y = iy0; y < iy1; y++) {
-        for (int x = ix0; x < ix1; x++) {
-            if (x >= fx && x < fx + GUNPOWDER_BASIN_SPARK && y >= fy && y < fy + GUNPOWDER_BASIN_SPARK) {
-                continue;
-            }
-            sand_set(s, x, y, GUNPOWDER_CELL(0));
-        }
-    }
-    for (int y = fy; y < fy + GUNPOWDER_BASIN_SPARK; y++) {
-        for (int x = fx; x < fx + GUNPOWDER_BASIN_SPARK; x++) {
-            sand_set(s, x, y, FIRE);
-        }
-    }
+    gunpowder_basin_fill_interior(s, ix0, ix1, iy0, iy1, fx, fy);
 
     /* A SHELF UNDER EACH OUTSIDE STACK, drawn before they are painted.
      * Without it the stacks stand on nothing: 900 of their 1,800 cells
@@ -1921,51 +2091,9 @@ build_gunpowder_basin_scene(sand_t* s) {
     gunpowder_basin_wall_run(s, iy1, ix0 - 26, ix0, false);
     gunpowder_basin_wall_run(s, iy1, ix1, ix1 + 26, false);
 
-    /* Outside, left of the vessel: water, then sand, then dirt, each
-     * close enough for a breached wall or a flung ember to reach. */
-    for (int y = iy0; y < iy0 + 15; y++) {
-        for (int x = ix0 - 25; x < ix0 - 5; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
-    for (int y = iy0 + 15; y < iy0 + 30; y++) {
-        for (int x = ix0 - 25; x < ix0 - 5; x++) {
-            sand_set(s, x, y, SAND_FIRST_SHADE);
-        }
-    }
-    for (int y = iy0 + 30; y < iy1; y++) {
-        for (int x = ix0 - 25; x < ix0 - 5; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_DIRT, 0));
-        }
-    }
-
-    /* Outside, right of the vessel: oil and wood - fuel for escaping
-     * fire to spread into - then acid. */
-    for (int y = iy0; y < iy0 + 15; y++) {
-        for (int x = ix1 + 5; x < ix1 + 25; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_OIL, MASS_MAX));
-        }
-    }
-    for (int y = iy0 + 15; y < iy0 + 30; y++) {
-        for (int x = ix1 + 5; x < ix1 + 25; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_WOOD, 0));
-        }
-    }
-    for (int y = iy0 + 30; y < iy1; y++) {
-        for (int x = ix1 + 5; x < ix1 + 25; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_ACID, MASS_MAX));
-        }
-    }
-
-    /* Above the open mouth: a metal slab, sitting in the path of the
-     * updraft of fire and thrown material a blast near the top of the
-     * pile sends upward. KIND_STATIC, so resting in open air is not a
-     * physics error - metal never falls in this simulation. */
-    for (int y = iy0 - 25; y < iy0 - 10; y++) {
-        for (int x = fx - 10; x < fx + 10; x++) {
-            sand_set(s, x, y, MATX(MATX_METAL));
-        }
-    }
+    gunpowder_basin_left_stacks(s, ix0, iy0, iy1);
+    gunpowder_basin_right_stacks(s, ix1, iy0, iy1);
+    gunpowder_basin_metal_slab(s, fx, iy0);
 }
 
 void
@@ -2055,6 +2183,76 @@ test_the_gas_ignition_vessel_logs_blasts_per_step(void) {
 /* GUNPOWDER_BASIN_MEASURED_STEPS moved to suite_sand_scenes.h - the
  * frame-budget test in suite_sand_perf.c needs it too. */
 
+typedef struct {
+    int dry, fire, oil, acid;
+} gunpowder_basin_paint_t;
+
+/* The painted state, before a single step has run - what the builder
+ * claims to have placed. */
+static gunpowder_basin_paint_t
+census_gunpowder_basin_paint(const sand_t* s) {
+    gunpowder_basin_paint_t paint = {0};
+    for (int y = 0; y < REAL_H; y++) {
+        for (int x = 0; x < REAL_W; x++) {
+            const cell_t c = sand_at(s, x, y);
+            if (cell_is_gunpowder(c)) {
+                paint.dry++;
+            }
+            const int m = CELL_MATERIAL(c);
+            if (m == MAT_FIRE) {
+                paint.fire++;
+            } else if (m == MAT_OIL) {
+                paint.oil++;
+            } else if (m == MAT_ACID) {
+                paint.acid++;
+            }
+        }
+    }
+    return paint;
+}
+
+typedef struct {
+    int dry, fire_outside, woodburn, steam, oil, acid, extended_nonmetal;
+} gunpowder_basin_aftermath_t;
+
+/* Folds one gunpowder basin cell into the aftermath census. */
+static void
+note_gunpowder_basin_aftermath_cell(cell_t c, bool inside, gunpowder_basin_aftermath_t* a) {
+    if (cell_is_gunpowder(c) && cell_code(c) != GUNPOWDER_LIT) {
+        a->dry++;
+    }
+    const int m = CELL_MATERIAL(c);
+    if (m == MAT_FIRE && !inside) {
+        a->fire_outside++;
+    } else if (m == MAT_WOOD && cell_is_burning(c)) {
+        a->woodburn++;
+    } else if (m == MAT_STEAM) {
+        a->steam++;
+    } else if (m == MAT_OIL) {
+        a->oil++;
+    } else if (m == MAT_ACID) {
+        a->acid++;
+    }
+    if (cell_is_extended(c) && CELL_VARIANT(c) != MATX_METAL) {
+        a->extended_nonmetal++;
+    }
+}
+
+/* The end-of-window state: how much dry gunpowder is left unlit, how far
+ * the aftermath cascade reached, and whether anything grew that this
+ * benchmark was never meant to measure. */
+static gunpowder_basin_aftermath_t
+census_gunpowder_basin_aftermath(const sand_t* s, int ix0, int ix1, int iy0, int iy1) {
+    gunpowder_basin_aftermath_t a = {0};
+    for (int y = 0; y < REAL_H; y++) {
+        for (int x = 0; x < REAL_W; x++) {
+            const bool inside = (x >= ix0 && x < ix1 && y >= iy0 && y < iy1);
+            note_gunpowder_basin_aftermath_cell(sand_at(s, x, y), inside, &a);
+        }
+    }
+    return a;
+}
+
 /* This scene really does reach the reactions it claims, checked the
  * way this file's other scene tests are: build it through the same
  * function the device test uses, step it the same number of times,
@@ -2104,26 +2302,7 @@ test_the_gunpowder_basin_scene_reaches_the_reactions_it_claims(void) {
     sand_enable_impulses(&s, impulses, GUNPOWDER_BASIN_IMPULSE_MAX);
 
     build_gunpowder_basin_scene(&s);
-
-    /* The painted state, before a single step has run - what the
-     * builder claims to have placed. */
-    int painted_dry = 0, painted_fire = 0, painted_oil = 0, painted_acid = 0;
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            const cell_t c = sand_at(&s, x, y);
-            if (cell_is_gunpowder(c)) {
-                painted_dry++;
-            }
-            const int m = CELL_MATERIAL(c);
-            if (m == MAT_FIRE) {
-                painted_fire++;
-            } else if (m == MAT_OIL) {
-                painted_oil++;
-            } else if (m == MAT_ACID) {
-                painted_acid++;
-            }
-        }
-    }
+    const gunpowder_basin_paint_t painted = census_gunpowder_basin_paint(&s);
 
     /* Every burst resets fuse_blast_wait to its post-burst ceiling (8) -
      * see this test's own top comment for why that makes it a reliable,
@@ -2141,32 +2320,7 @@ test_the_gunpowder_basin_scene_reaches_the_reactions_it_claims(void) {
     const int ix1 = GUNPOWDER_BASIN_INT_X0 + GUNPOWDER_BASIN_INT_W;
     const int iy0 = GUNPOWDER_BASIN_INT_Y0;
     const int iy1 = GUNPOWDER_BASIN_INT_Y0 + GUNPOWDER_BASIN_INT_H;
-    int dry = 0, fire_outside = 0, woodburn = 0, steam = 0, oil = 0, acid = 0;
-    int extended_nonmetal = 0;
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            const cell_t c = sand_at(&s, x, y);
-            if (cell_is_gunpowder(c) && cell_code(c) != GUNPOWDER_LIT) {
-                dry++;
-            }
-            const int m = CELL_MATERIAL(c);
-            const bool inside = (x >= ix0 && x < ix1 && y >= iy0 && y < iy1);
-            if (m == MAT_FIRE && !inside) {
-                fire_outside++;
-            } else if (m == MAT_WOOD && cell_is_burning(c)) {
-                woodburn++;
-            } else if (m == MAT_STEAM) {
-                steam++;
-            } else if (m == MAT_OIL) {
-                oil++;
-            } else if (m == MAT_ACID) {
-                acid++;
-            }
-            if (cell_is_extended(c) && CELL_VARIANT(c) != MATX_METAL) {
-                extended_nonmetal++;
-            }
-        }
-    }
+    const gunpowder_basin_aftermath_t end = census_gunpowder_basin_aftermath(&s, ix0, ix1, iy0, iy1);
 
     free(big);
     free(blocks);
@@ -2177,11 +2331,11 @@ test_the_gunpowder_basin_scene_reaches_the_reactions_it_claims(void) {
              "the basin's gunpowder must be poured full and lit at "
              "exactly one fixed cell before a single step runs - got "
              "%d dry cells and %d fire cells painted",
-             painted_dry, painted_fire);
+             painted.dry, painted.fire);
     TEST_ASSERT_EQUAL_INT_MESSAGE(GUNPOWDER_BASIN_INT_W * GUNPOWDER_BASIN_INT_H
                                       - GUNPOWDER_BASIN_SPARK * GUNPOWDER_BASIN_SPARK,
-                                  painted_dry, why);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(GUNPOWDER_BASIN_SPARK * GUNPOWDER_BASIN_SPARK, painted_fire, why);
+                                  painted.dry, why);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(GUNPOWDER_BASIN_SPARK * GUNPOWDER_BASIN_SPARK, painted.fire, why);
 
     snprintf(why, sizeof why,
              "the pile must chain-detonate across SEVERAL bursts, not "
@@ -2193,34 +2347,34 @@ test_the_gunpowder_basin_scene_reaches_the_reactions_it_claims(void) {
              "the chain must have consumed nearly the whole interior by "
              "the end of the window - %d dry cells are still unlit "
              "out of %d painted",
-             dry, GUNPOWDER_BASIN_INT_W * GUNPOWDER_BASIN_INT_H - 1);
-    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(50, dry, why);
+             end.dry, GUNPOWDER_BASIN_INT_W * GUNPOWDER_BASIN_INT_H - 1);
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(50, end.dry, why);
 
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, fire_outside,
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, end.fire_outside,
                                          "fire must reach past the brush-drawn walls - if none did, "
                                          "this scene is not exercising the aftermath cascade it claims "
                                          "to place fuel outside the vessel for");
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, woodburn,
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, end.woodburn,
                                          "escaping fire must have reached the wood band outside the "
                                          "vessel and set some of it alight");
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, steam,
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, end.steam,
                                          "something must have reached the water band hard enough to "
                                          "boil at least a little of it to steam");
 
     snprintf(why, sizeof why,
              "the oil band must show real consumption by fire, not "
              "merely be present - %d cells left of %d painted",
-             oil, painted_oil);
-    TEST_ASSERT_LESS_THAN_MESSAGE(painted_oil, oil, why);
+             end.oil, painted.oil);
+    TEST_ASSERT_LESS_THAN_MESSAGE(painted.oil, end.oil, why);
 
     snprintf(why, sizeof why,
              "the acid band must show it genuinely took part in "
              "something over the window, not sit inert - %d cells "
              "against %d painted",
-             acid, painted_acid);
-    TEST_ASSERT_NOT_EQUAL_MESSAGE(painted_acid, acid, why);
+             end.acid, painted.acid);
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(painted.acid, end.acid, why);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, extended_nonmetal,
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, end.extended_nonmetal,
                                   "the gunpowder basin scene should not be growing any plants - "
                                   "if it is, the device test's frame budget is no longer "
                                   "measuring the scene it claims to (the metal slab is the only "
@@ -2265,25 +2419,30 @@ filling_basin_run_reach(const sand_t* s) {
     return reach;
 }
 
+/* Folds one non-empty cell into a snowfall_census() tally. */
+static void
+note_snowfall_cell(cell_t c, int* snow, int* ice, int* sand, int* dirt) {
+    if (cell_is_extended(c)) {
+        if (CELL_VARIANT(c) == MATX_ICE) {
+            (*ice)++;
+        }
+    } else if (CELL_MATERIAL(c) == MAT_SNOW) {
+        (*snow)++;
+    } else if (CELL_MATERIAL(c) == MAT_SAND) {
+        (*sand)++;
+    } else if (CELL_MATERIAL(c) == MAT_DIRT) {
+        (*dirt)++;
+    }
+}
+
 static void
 snowfall_census(const sand_t* s, int* snow, int* ice, int* sand, int* dirt) {
     *snow = *ice = *sand = *dirt = 0;
     for (int y = 0; y < REAL_H; y++) {
         for (int x = 0; x < REAL_W; x++) {
             const cell_t c = sand_at(s, x, y);
-            if (CELL_IS_EMPTY(c)) {
-                continue;
-            }
-            if (cell_is_extended(c)) {
-                if (CELL_VARIANT(c) == MATX_ICE) {
-                    (*ice)++;
-                }
-            } else if (CELL_MATERIAL(c) == MAT_SNOW) {
-                (*snow)++;
-            } else if (CELL_MATERIAL(c) == MAT_SAND) {
-                (*sand)++;
-            } else if (CELL_MATERIAL(c) == MAT_DIRT) {
-                (*dirt)++;
+            if (!CELL_IS_EMPTY(c)) {
+                note_snowfall_cell(c, snow, ice, sand, dirt);
             }
         }
     }
@@ -2293,31 +2452,63 @@ typedef struct {
     int plant, leaf, root, dirt, wood, moisture;
 } greenery_t;
 
+/* Folds one non-empty cell into a count_greenery() tally. */
+static void
+note_greenery_cell(cell_t c, greenery_t* g) {
+    if (cell_is_extended(c)) {
+        if (CELL_VARIANT(c) == MATX_PLANT) {
+            g->plant++;
+        } else if (CELL_VARIANT(c) == MATX_LEAF) {
+            g->leaf++;
+        } else if (CELL_VARIANT(c) == MATX_ROOT) {
+            g->root++;
+        }
+    } else if (CELL_MATERIAL(c) == MAT_DIRT) {
+        g->dirt++;
+        g->moisture += moisture_of(c, reaction_of(c));
+    } else if (CELL_MATERIAL(c) == MAT_WOOD) {
+        g->wood++;
+    }
+}
+
 static void
 count_greenery(const sand_t* s, int x0, int x1, greenery_t* g) {
     g->plant = g->leaf = g->root = g->dirt = g->wood = g->moisture = 0;
     for (int y = 0; y < REAL_H; y++) {
         for (int x = x0; x < x1; x++) {
             const cell_t c = sand_at(s, x, y);
-            if (CELL_IS_EMPTY(c)) {
-                continue;
-            }
-            if (cell_is_extended(c)) {
-                if (CELL_VARIANT(c) == MATX_PLANT) {
-                    g->plant++;
-                } else if (CELL_VARIANT(c) == MATX_LEAF) {
-                    g->leaf++;
-                } else if (CELL_VARIANT(c) == MATX_ROOT) {
-                    g->root++;
-                }
-            } else if (CELL_MATERIAL(c) == MAT_DIRT) {
-                g->dirt++;
-                g->moisture += moisture_of(c, reaction_of(c));
-            } else if (CELL_MATERIAL(c) == MAT_WOOD) {
-                g->wood++;
+            if (!CELL_IS_EMPTY(c)) {
+                note_greenery_cell(c, g);
             }
         }
     }
+}
+
+/* Pours acid onto the scene every PLANT_RUIN_ACID_EVERY steps of `steps`,
+ * stepping every time regardless. */
+static void
+plant_ruin_acid_drip(sand_t* s, int steps) {
+    for (int i = 0; i < steps; i++) {
+        if (i % PLANT_RUIN_ACID_EVERY == 0) {
+            plant_ruin_acid_pour(s);
+        }
+        sand_step(s, 0, 1000, 0);
+    }
+}
+
+/* Ordinary (non-extended), non-empty fire cells on the whole scene. */
+static int
+count_fire_on_scene(const sand_t* s) {
+    int fire = 0;
+    for (int y = 0; y < REAL_H; y++) {
+        for (int x = 0; x < REAL_W; x++) {
+            const cell_t c = sand_at(s, x, y);
+            if (!CELL_IS_EMPTY(c) && !cell_is_extended(c) && CELL_MATERIAL(c) == MAT_FIRE) {
+                fire++;
+            }
+        }
+    }
+    return fire;
 }
 
 /* Steps the plant-ruin scene through exactly the schedule the frame-budget
@@ -2335,36 +2526,18 @@ plant_ruin_window(sand_t* s, greenery_t* acid_before, greenery_t* acid_after, gr
         }
         sand_step(s, 0, 1000, 0);
     }
-    for (int i = 0; i < PLANT_RUIN_ACID_LEAD_STEPS; i++) {
-        if (i % PLANT_RUIN_ACID_EVERY == 0) {
-            plant_ruin_acid_pour(s);
-        }
-        sand_step(s, 0, 1000, 0);
-    }
+    plant_ruin_acid_drip(s, PLANT_RUIN_ACID_LEAD_STEPS);
     plant_ruin_lava_pour(s);
 
     count_greenery(s, 0, PLANT_RUIN_WALL_X, acid_before);
     count_greenery(s, lava_x0, REAL_W, lava_before);
 
-    for (int i = 0; i < PLANT_RUIN_MEASURED_STEPS; i++) {
-        if (i % PLANT_RUIN_ACID_EVERY == 0) {
-            plant_ruin_acid_pour(s);
-        }
-        sand_step(s, 0, 1000, 0);
-    }
+    plant_ruin_acid_drip(s, PLANT_RUIN_MEASURED_STEPS);
 
     count_greenery(s, 0, PLANT_RUIN_WALL_X, acid_after);
     count_greenery(s, lava_x0, REAL_W, lava_after);
 
-    *fire = 0;
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            const cell_t c = sand_at(s, x, y);
-            if (!CELL_IS_EMPTY(c) && !cell_is_extended(c) && CELL_MATERIAL(c) == MAT_FIRE) {
-                (*fire)++;
-            }
-        }
-    }
+    *fire = count_fire_on_scene(s);
 }
 
 /* The three interactions this scene exists for really do fire INSIDE the
