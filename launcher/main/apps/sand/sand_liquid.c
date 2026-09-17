@@ -593,7 +593,7 @@ equalise_liquid_stripes(sand_t* s, const xflow_t* flow, int sight, int dx, int d
         stripes[i].dirty = stripes[i].blocks + blocks;
     }
     uint8_t* arrivals = bytes + 2 * (blocks + rows);
-    const int offset = (s->step_phase & 1) ? LIQUID_STRIPE_H / 2 : 0;
+    const int offset = sand_stripe_offset(s, LIQUID_STRIPE_H);
     for (int color = 0; color < 2; color++) {
         prepare_liquid_stripe(&stripes[0], s, arrivals);
         prepare_liquid_stripe(&stripes[1], s, arrivals);
