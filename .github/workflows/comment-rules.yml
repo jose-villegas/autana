@@ -40,3 +40,6 @@ jobs:
 
       - name: Documentation names the supported board
         run: python3 scripts/check_doc_vocabulary.py
+
+      - name: Every document is reachable from README.md
+        run: python3 scripts/check_doc_index.py
