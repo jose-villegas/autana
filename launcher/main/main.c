@@ -22,11 +22,13 @@
 #include "display/display.h"
 #include "display/panel_clock.h"
 #include "gfx/gfx.h"
+#include "gfx/gfx_font_roles.h"
 #include "input/buttons.h"
 #include "input/gesture.h"
 #include "input/imu.h"
 #include "input/touch.h"
 #include "ui/ui.h"
+#include "ui/ui_anchor.h"
 #include "ui/ui_launcher.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -75,38 +77,30 @@ heap_mark(const char* where) {
 #define DISPLAY_SAMPLE_MS 100
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-#define BUILD_MARK_GLYPH 8
-#define BUILD_MARK_TEXT  "D" BUILD_ID_SHORT
-#define BUILD_MARK_CHARS ((int)sizeof(BUILD_MARK_TEXT) - 1)
-#define BUILD_MARK_SIZE  (BUILD_MARK_GLYPH * BUILD_MARK_CHARS)
-#define BUILD_MARK_RGB   0x384054
+#define BUILD_MARK_GLYPH        8
+#define BUILD_MARK_TEXT         "D" BUILD_ID_SHORT
+#define BUILD_MARK_CHARS        ((int)sizeof(BUILD_MARK_TEXT) - 1)
+#define BUILD_MARK_SIZE         (BUILD_MARK_GLYPH * BUILD_MARK_CHARS)
+#define BUILD_MARK_RGB          0x384054
+/* The panel's rounded corners hide more than UI_MARGIN clears along an edge. */
+#define BUILD_MARK_CORNER_SHIFT 32
 
+/* Right-anchored to the upright screen's bottom-right corner, then mapped to
+ * the framebuffer the way the UI's own text is. */
 static void
 draw_build_mark(void) {
     const int quarter = display_shell_quarter();
-    int x = 0;
-    int y = 0;
-    switch (quarter) {
-        case 0:
-            x = GFX_WIDTH - UI_MARGIN - BUILD_MARK_SIZE;
-            y = GFX_HEIGHT - UI_MARGIN - BUILD_MARK_GLYPH;
-            break;
-        case 1:
-            x = UI_MARGIN;
-            y = GFX_HEIGHT - UI_MARGIN - BUILD_MARK_SIZE;
-            break;
-        case 2:
-            x = UI_MARGIN + BUILD_MARK_SIZE - BUILD_MARK_GLYPH;
-            y = UI_MARGIN;
-            break;
-        default:
-            x = GFX_WIDTH - UI_MARGIN - BUILD_MARK_GLYPH;
-            y = UI_MARGIN + BUILD_MARK_SIZE - BUILD_MARK_GLYPH;
-            break;
-    }
+    const int screen_w = (quarter % 2 == 0) ? GFX_WIDTH : GFX_HEIGHT;
+    const int screen_h = (quarter % 2 == 0) ? GFX_HEIGHT : GFX_WIDTH;
+    const mu_Rect upright =
+        ui_anchor_rect((mu_Rect){0, 0, screen_w, screen_h}, UI_ANCHOR_BOTTOM_RIGHT, UI_ANCHOR_BOTTOM_RIGHT,
+                       -UI_MARGIN - BUILD_MARK_CORNER_SHIFT, -UI_MARGIN, BUILD_MARK_SIZE, BUILD_MARK_GLYPH);
+    const mu_Rect box = ui_transform_rect(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT), upright);
 
-    if (gfx_region_dirty(x, y, quarter % 2 == 0 ? BUILD_MARK_SIZE : BUILD_MARK_GLYPH,
-                         quarter % 2 == 0 ? BUILD_MARK_GLYPH : BUILD_MARK_SIZE)) {
+    if (gfx_region_dirty(box.x, box.y, box.w, box.h)) {
+        int x = 0;
+        int y = 0;
+        ui_text_glyph0_origin(gfx_font_ui(), box, quarter, 1, &x, &y);
         gfx_text_turned(x, y, BUILD_MARK_TEXT, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
     }
 }
@@ -246,37 +240,49 @@ sort_apps(void) {
 
 static void
 home_hint_rect(gesture_edge_t edge, int* x, int* y, int* w, int* h) {
-    *x = 0;
-    *y = 0;
-    *w = 0;
-    *h = 0;
+    ui_anchor_t anchor = UI_ANCHOR_TOP_LEFT;
+    int offset_x = 0;
+    int offset_y = 0;
+    int width = 0;
+    int height = 0;
 
     switch (edge) {
         case GESTURE_EDGE_TOP:
-            *w = HOME_HINT_WIDTH;
-            *h = HOME_HINT_HEIGHT;
-            *x = (GFX_WIDTH - *w) / 2;
-            *y = HOME_HINT_MARGIN;
+            anchor = UI_ANCHOR_TOP;
+            offset_x = 0;
+            offset_y = HOME_HINT_MARGIN;
+            width = HOME_HINT_WIDTH;
+            height = HOME_HINT_HEIGHT;
             break;
         case GESTURE_EDGE_BOTTOM:
-            *w = HOME_HINT_WIDTH;
-            *h = HOME_HINT_HEIGHT;
-            *x = (GFX_WIDTH - *w) / 2;
-            *y = GFX_HEIGHT - HOME_HINT_MARGIN - *h;
+            anchor = UI_ANCHOR_BOTTOM;
+            offset_x = 0;
+            offset_y = -HOME_HINT_MARGIN;
+            width = HOME_HINT_WIDTH;
+            height = HOME_HINT_HEIGHT;
             break;
         case GESTURE_EDGE_LEFT:
-            *w = HOME_HINT_HEIGHT;
-            *h = HOME_HINT_WIDTH;
-            *x = HOME_HINT_MARGIN;
-            *y = (GFX_HEIGHT - *h) / 2;
+            anchor = UI_ANCHOR_LEFT;
+            offset_x = HOME_HINT_MARGIN;
+            offset_y = 0;
+            width = HOME_HINT_HEIGHT;
+            height = HOME_HINT_WIDTH;
             break;
         case GESTURE_EDGE_RIGHT:
-            *w = HOME_HINT_HEIGHT;
-            *h = HOME_HINT_WIDTH;
-            *x = GFX_WIDTH - HOME_HINT_MARGIN - *w;
-            *y = (GFX_HEIGHT - *h) / 2;
+            anchor = UI_ANCHOR_RIGHT;
+            offset_x = -HOME_HINT_MARGIN;
+            offset_y = 0;
+            width = HOME_HINT_HEIGHT;
+            height = HOME_HINT_WIDTH;
             break;
     }
+
+    const mu_Rect rect =
+        ui_anchor_rect((mu_Rect){0, 0, GFX_WIDTH, GFX_HEIGHT}, anchor, anchor, offset_x, offset_y, width, height);
+    *x = rect.x;
+    *y = rect.y;
+    *w = rect.w;
+    *h = rect.h;
 }
 
 static void
