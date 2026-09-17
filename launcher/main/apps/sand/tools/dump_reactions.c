@@ -419,105 +419,110 @@ read_whole_file(const char* path) {
     return buf;
 }
 
+static const char*
+skip_ws(const char* p) {
+    while (isspace((unsigned char)*p)) {
+        p++;
+    }
+    return p;
+}
+
+static const char*
+parse_field_name(const char* path, int invocation_no, const char* p, char* field_out) {
+    p = skip_ws(p);
+    const char* field_start = p;
+    while (isalnum((unsigned char)*p) || *p == '_') {
+        p++;
+    }
+    const size_t field_len = (size_t)(p - field_start);
+    if (field_len == 0 || field_len >= CAUSE_FIELD_LEN) {
+        fprintf(stderr, "%s: REACTION_DOC #%d has no plain field name\n", path, invocation_no);
+        exit(1);
+    }
+    memcpy(field_out, field_start, field_len);
+    field_out[field_len] = '\0';
+    return p;
+}
+
+static const char*
+expect_char(const char* path, const char* field, int invocation_no, const char* p, char c, const char* what) {
+    p = skip_ws(p);
+    if (*p != c) {
+        fprintf(stderr, "%s: REACTION_DOC(%s, ...) #%d - %s\n", path, field, invocation_no, what);
+        exit(1);
+    }
+    return p + 1;
+}
+
+static const char*
+parse_clause_text(const char* path, const char* field, int invocation_no, const char* p, char* text_out) {
+    size_t tlen = 0;
+    while (*p != '"') {
+        if (*p == '\0' || *p == '\n') {
+            fprintf(stderr, "%s: REACTION_DOC(%s, ...) #%d - unterminated string literal\n", path, field,
+                    invocation_no);
+            exit(1);
+        }
+        if (*p == '\\' && p[1] != '\0') {
+            p++;
+        }
+        if (tlen + 1 >= CAUSE_TEXT_LEN) {
+            fprintf(stderr, "%s: REACTION_DOC(%s, ...) #%d - clause text longer than %d bytes\n", path, field,
+                    invocation_no, CAUSE_TEXT_LEN - 1);
+            exit(1);
+        }
+        text_out[tlen++] = *p++;
+    }
+    text_out[tlen] = '\0';
+    return p + 1;
+}
+
+static void
+store_cause(const char* path, const char* field, int invocation_no, const char* text) {
+    if (!is_known_field(field)) {
+        fprintf(stderr,
+                "%s: REACTION_DOC(%s, ...) #%d - \"%s\" is not "
+                "a field in field_docs[] (dump_reactions.c) - a typo, "
+                "or field_docs[] needs a row for it\n",
+                path, field, invocation_no, field);
+        exit(1);
+    }
+    if (causes_count >= CAUSE_MAX) {
+        fprintf(stderr,
+                "%s: more than %d REACTION_DOC() invocations - "
+                "raise CAUSE_MAX in dump_reactions.c\n",
+                path, CAUSE_MAX);
+        exit(1);
+    }
+    snprintf(causes[causes_count].field, CAUSE_FIELD_LEN, "%s", field);
+    snprintf(causes[causes_count].text, CAUSE_TEXT_LEN, "%s", text);
+    causes_count++;
+}
+
+static const char*
+parse_one_reaction_doc(const char* path, const char* p, int invocation_no) {
+    p += strlen("REACTION_DOC(");
+    char field[CAUSE_FIELD_LEN];
+    p = parse_field_name(path, invocation_no, p, field);
+    p = expect_char(path, field, invocation_no, p, ',', "expected ',' after the field name");
+    p = expect_char(path, field, invocation_no, p, '"',
+                    "the second argument must be a plain string literal, not an expression");
+    char text[CAUSE_TEXT_LEN];
+    p = parse_clause_text(path, field, invocation_no, p, text);
+    p = expect_char(path, field, invocation_no, p, ')',
+                    "expected ')' right after the string literal (adjacent-literal "
+                    "concatenation is not supported here - write the clause as one literal)");
+    store_cause(path, field, invocation_no, text);
+    return p;
+}
+
 static void
 parse_reaction_docs(const char* path, const char* src) {
     const char* p = src;
     int invocation_no = 0;
     while ((p = strstr(p, "REACTION_DOC(")) != NULL) {
         invocation_no++;
-        p += strlen("REACTION_DOC(");
-        while (isspace((unsigned char)*p)) {
-            p++;
-        }
-        const char* field_start = p;
-        while (isalnum((unsigned char)*p) || *p == '_') {
-            p++;
-        }
-        const size_t field_len = (size_t)(p - field_start);
-        if (field_len == 0 || field_len >= CAUSE_FIELD_LEN) {
-            fprintf(stderr, "%s: REACTION_DOC #%d has no plain field name\n", path, invocation_no);
-            exit(1);
-        }
-        char field[CAUSE_FIELD_LEN];
-        memcpy(field, field_start, field_len);
-        field[field_len] = '\0';
-        while (isspace((unsigned char)*p)) {
-            p++;
-        }
-        if (*p != ',') {
-            fprintf(stderr,
-                    "%s: REACTION_DOC(%s, ...) #%d - expected ',' "
-                    "after the field name\n",
-                    path, field, invocation_no);
-            exit(1);
-        }
-        p++;
-        while (isspace((unsigned char)*p)) {
-            p++;
-        }
-        if (*p != '"') {
-            fprintf(stderr,
-                    "%s: REACTION_DOC(%s, ...) #%d - the second "
-                    "argument must be a plain string literal, not an "
-                    "expression\n",
-                    path, field, invocation_no);
-            exit(1);
-        }
-        p++;
-        char text[CAUSE_TEXT_LEN];
-        size_t tlen = 0;
-        while (*p != '"') {
-            if (*p == '\0' || *p == '\n') {
-                fprintf(stderr,
-                        "%s: REACTION_DOC(%s, ...) #%d - "
-                        "unterminated string literal\n",
-                        path, field, invocation_no);
-                exit(1);
-            }
-            if (*p == '\\' && p[1] != '\0') {
-                p++;
-            }
-            if (tlen + 1 >= CAUSE_TEXT_LEN) {
-                fprintf(stderr,
-                        "%s: REACTION_DOC(%s, ...) #%d - clause "
-                        "text longer than %d bytes\n",
-                        path, field, invocation_no, CAUSE_TEXT_LEN - 1);
-                exit(1);
-            }
-            text[tlen++] = *p++;
-        }
-        p++;
-        text[tlen] = '\0';
-        while (isspace((unsigned char)*p)) {
-            p++;
-        }
-        if (*p != ')') {
-            fprintf(stderr,
-                    "%s: REACTION_DOC(%s, ...) #%d - expected ')' "
-                    "right after the string literal (adjacent-literal "
-                    "concatenation is not supported here - write the "
-                    "clause as one literal)\n",
-                    path, field, invocation_no);
-            exit(1);
-        }
-        if (!is_known_field(field)) {
-            fprintf(stderr,
-                    "%s: REACTION_DOC(%s, ...) #%d - \"%s\" is not "
-                    "a field in field_docs[] (dump_reactions.c) - a typo, "
-                    "or field_docs[] needs a row for it\n",
-                    path, field, invocation_no, field);
-            exit(1);
-        }
-        if (causes_count >= CAUSE_MAX) {
-            fprintf(stderr,
-                    "%s: more than %d REACTION_DOC() invocations - "
-                    "raise CAUSE_MAX in dump_reactions.c\n",
-                    path, CAUSE_MAX);
-            exit(1);
-        }
-        snprintf(causes[causes_count].field, CAUSE_FIELD_LEN, "%s", field);
-        snprintf(causes[causes_count].text, CAUSE_TEXT_LEN, "%s", text);
-        causes_count++;
+        p = parse_one_reaction_doc(path, p, invocation_no);
     }
 }
 
@@ -1662,7 +1667,7 @@ table_rate(const char* word) {
 }
 
 static void
-emit_pairwise_table(void) {
+emit_pairwise_header(void) {
     printf("\n## Pairwise reactions\n\n");
     printf("Generated by walking the RATE field that drives each reaction "
            "and branching on its target, never by walking `*_to` fields - "
@@ -1671,81 +1676,100 @@ emit_pairwise_table(void) {
            "iterating `*_to` alone would silently skip it).\n\n");
     printf("| A | B | becomes | rate | note |\n");
     printf("|---|---|---|---|---|\n");
+}
 
-    char burners[256];
-    join_names(pred_burns, " / ", burners, sizeof(burners));
-    char liquids[256];
-    join_names(pred_kind_liquid, " / ", liquids, sizeof(liquids));
+/* `fizz` is FCHANCE - never silent (see frequency_words[]'s own comment on
+ * why chance-scale fields always print a word) - so adverb() always has
+ * something real to say here. */
+static void
+emit_dissolve_row(size_t i, size_t j) {
+    char becomes[64];
+    if (all_rows[i].r->fizz != 0) {
+        snprintf(becomes, sizeof(becomes), "nothing (%s smoke)", adverb("fizz", all_rows[i].r->fizz));
+    } else {
+        snprintf(becomes, sizeof(becomes), "nothing");
+    }
+    char rate[64];
+    snprintf(rate, sizeof(rate), "%s / %s", table_rate(adverb("dissolves", all_rows[i].r->dissolves)),
+             table_rate(adverb("dissolvable", all_rows[j].r->dissolvable)));
+    print_join_row(all_rows[i].name, all_rows[j].name, becomes, rate, "both rolls must pass");
+}
 
-    for (size_t i = 0; i < all_rows_count; i++) {
-        if (all_rows[i].r->dissolves == 0) {
+static void
+emit_dissolve_targets(size_t i) {
+    for (size_t j = 0; j < all_rows_count; j++) {
+        if (all_rows[j].r->dissolvable == 0) {
             continue;
         }
-        for (size_t j = 0; j < all_rows_count; j++) {
-            if (all_rows[j].r->dissolvable == 0) {
-                continue;
-            }
-            if (all_rows[j].self_id == MAT_WATER || all_rows[j].self_id == MAT_OIL) {
-                continue;
-            }
-            char becomes[64];
-            if (all_rows[i].r->fizz != 0) {
-                /* `fizz` is FCHANCE - never silent (see frequency_words[]'s
-                 * own comment on why chance-scale fields always print a
-                 * word) - so adverb() always has something real to say
-                 * here. */
-                snprintf(becomes, sizeof(becomes), "nothing (%s smoke)", adverb("fizz", all_rows[i].r->fizz));
-            } else {
-                snprintf(becomes, sizeof(becomes), "nothing");
-            }
-            char rate[64];
-            snprintf(rate, sizeof(rate), "%s / %s", table_rate(adverb("dissolves", all_rows[i].r->dissolves)),
-                     table_rate(adverb("dissolvable", all_rows[j].r->dissolvable)));
-            print_join_row(all_rows[i].name, all_rows[j].name, becomes, rate, "both rolls must pass");
+        if (all_rows[j].self_id == MAT_WATER || all_rows[j].self_id == MAT_OIL) {
+            continue;
+        }
+        emit_dissolve_row(i, j);
+    }
+}
+
+static void
+emit_dissolve_pairs(void) {
+    for (size_t i = 0; i < all_rows_count; i++) {
+        if (all_rows[i].r->dissolves != 0) {
+            emit_dissolve_targets(i);
         }
     }
+}
 
-    /* Acid|Water and Acid|Oil: neither is a dissolve past
-     * the shared gate above, so hand-written here rather than walked - but
-     * every number comes from sand.h's own #defines, not typed twice. */
-    {
-        const mrow_t* acid = find_row("Acid");
-        const mrow_t* water = find_row("Water");
-        char rate[64];
-        snprintf(rate, sizeof(rate), "%s / %s", table_rate(adverb("dissolves", acid->r->dissolves)),
-                 table_rate(adverb("dissolvable", water->r->dissolvable)));
+/* Acid|Water: neither is a dissolve past the shared gate above, so
+ * hand-written here rather than walked - but every number comes from
+ * sand.h's own #defines, not typed twice. */
+static void
+emit_acid_water(const mrow_t* acid, const mrow_t* water) {
+    char rate[64];
+    snprintf(rate, sizeof(rate), "%s / %s", table_rate(adverb("dissolves", acid->r->dissolves)),
+             table_rate(adverb("dissolvable", water->r->dissolvable)));
 
-        /* step_one_dissolver_cell()'s MAT_WATER branch: one roll, three
-         * outcomes. water_wins/acid_wins is the unbiased baseline -
-         * SAND_ACID_DILUTE_MASS_BIAS shifts it by local backing at runtime. */
-        const int evaporate = SAND_ACID_DILUTE_EVAPORATE_CHANCE;
-        const int water_wins = SAND_ACID_DILUTE_TO_WATER_CHANCE;
-        const int acid_wins = 256 - evaporate - water_wins;
-        char note[256];
-        snprintf(note, sizeof(note),
-                 "one roll: %d/256 Acid alone boils to Gas; else "
-                 "%d/256 baseline Acid->Water & Water->Steam, or %d/256 "
-                 "baseline Acid->Gas & Water->Acid - shifted by local "
-                 "backing (sand_set_acid_dilute_mass_bias())",
-                 evaporate, water_wins, acid_wins);
-        print_join_row("Acid", "Water", "Gas, or swaps identity with Water", rate, note);
+    /* step_one_dissolver_cell()'s MAT_WATER branch: one roll, three
+     * outcomes. water_wins/acid_wins is the unbiased baseline -
+     * SAND_ACID_DILUTE_MASS_BIAS shifts it by local backing at runtime. */
+    const int evaporate = SAND_ACID_DILUTE_EVAPORATE_CHANCE;
+    const int water_wins = SAND_ACID_DILUTE_TO_WATER_CHANCE;
+    const int acid_wins = 256 - evaporate - water_wins;
+    char note[256];
+    snprintf(note, sizeof(note),
+             "one roll: %d/256 Acid alone boils to Gas; else "
+             "%d/256 baseline Acid->Water & Water->Steam, or %d/256 "
+             "baseline Acid->Gas & Water->Acid - shifted by local "
+             "backing (sand_set_acid_dilute_mass_bias())",
+             evaporate, water_wins, acid_wins);
+    print_join_row("Acid", "Water", "Gas, or swaps identity with Water", rate, note);
+}
 
-        /* MAT_OIL branch: two INDEPENDENT rolls, not the paired
-         * dissolves/fizz roll the generic join above prints - Oil's own
-         * fate and Acid's own fate are decided separately. */
-        const mrow_t* oil = find_row("Oil");
-        snprintf(rate, sizeof(rate), "%s / %s", table_rate(adverb("dissolves", acid->r->dissolves)),
-                 table_rate(adverb("dissolvable", oil->r->dissolvable)));
-        const int oil_to_gas = SAND_ACID_OIL_TO_GAS_CHANCE;
-        const int acid_dies = SAND_ACID_OIL_DEATH_CHANCE;
-        snprintf(note, sizeof(note),
-                 "two independent rolls: %d/256 Oil becomes Gas (else "
-                 "Acid); separately %d/256 the Acid cell dies outright "
-                 "(else it survives and pays a quench cost)",
-                 oil_to_gas, acid_dies);
-        print_join_row("Acid", "Oil", "Oil becomes Gas or Acid; Acid may die too", rate, note);
-    }
+/* Acid|Oil: two INDEPENDENT rolls, not the paired dissolves/fizz roll the
+ * generic join prints - Oil's own fate and Acid's own fate are decided
+ * separately. */
+static void
+emit_acid_oil(const mrow_t* acid, const mrow_t* oil) {
+    char rate[64];
+    snprintf(rate, sizeof(rate), "%s / %s", table_rate(adverb("dissolves", acid->r->dissolves)),
+             table_rate(adverb("dissolvable", oil->r->dissolvable)));
+    const int oil_to_gas = SAND_ACID_OIL_TO_GAS_CHANCE;
+    const int acid_dies = SAND_ACID_OIL_DEATH_CHANCE;
+    char note[256];
+    snprintf(note, sizeof(note),
+             "two independent rolls: %d/256 Oil becomes Gas (else "
+             "Acid); separately %d/256 the Acid cell dies outright "
+             "(else it survives and pays a quench cost)",
+             oil_to_gas, acid_dies);
+    print_join_row("Acid", "Oil", "Oil becomes Gas or Acid; Acid may die too", rate, note);
+}
 
+static void
+emit_acid_water_oil(void) {
+    const mrow_t* acid = find_row("Acid");
+    emit_acid_water(acid, find_row("Water"));
+    emit_acid_oil(acid, find_row("Oil"));
+}
+
+static void
+emit_flammability(const char* burners) {
     for (size_t i = 0; i < all_rows_count; i++) {
         if (all_rows[i].r->flammability == 0) {
             continue;
@@ -1762,10 +1786,13 @@ emit_pairwise_table(void) {
                        table_rate(adverb("flammability", all_rows[i].r->flammability)),
                        all_rows[i].r->needs_air ? "only where it touches air" : "");
     }
+}
 
-    /* heats_to x burns (memoryless and ramped both go through the same
-     * try_heat_transform() trigger - contact with a burning cell, or
-     * through a conductor) */
+/* heats_to x burns (memoryless and ramped both go through the same
+ * try_heat_transform() trigger - contact with a burning cell, or through a
+ * conductor). */
+static void
+emit_heats_to(const char* burners) {
     for (size_t i = 0; i < all_rows_count; i++) {
         if (all_rows[i].r->heats_to == 0) {
             continue;
@@ -1787,8 +1814,10 @@ emit_pairwise_table(void) {
         }
         print_join_row(all_rows[i].name, burners, to_name(all_rows[i].r->heats_to), rate, "or through a conductor");
     }
+}
 
-    /* quench_to x quenching liquids */
+static void
+emit_quench(void) {
     for (size_t i = 0; i < all_rows_count; i++) {
         if (!is_burning_material(all_rows[i].r) && all_rows[i].r->burn_decay == 0) {
             continue;
@@ -1803,8 +1832,10 @@ emit_pairwise_table(void) {
             print_join_row(all_rows[i].name, qbuf, becomes, "on contact", "");
         }
     }
+}
 
-    /* chills x heat_ramp/shatters_to */
+static void
+emit_chills(void) {
     for (size_t i = 0; i < all_rows_count; i++) {
         if (all_rows[i].r->chills == 0) {
             continue;
@@ -1828,41 +1859,61 @@ emit_pairwise_table(void) {
             }
         }
     }
+}
 
-    /* wets x soaks - the wetting family. Four reactions, not a loop over
-     * *_to: see this file's top comment and the plan's own section on it. */
+static void
+emit_soaks_row(size_t i, size_t j) {
+    if (all_rows[j].r->soaks_to != 0) {
+        print_join_row(all_rows[i].name, all_rows[j].name, to_name(all_rows[j].r->soaks_to),
+                       table_rate(adverb("soaks", all_rows[j].r->soaks)), "the liquid pays a unit of its own mass");
+        return;
+    }
+    char becomes[64];
+    snprintf(becomes, sizeof(becomes), "%s, +1 moisture", all_rows[j].name);
+    print_join_row(all_rows[i].name, all_rows[j].name, becomes, table_rate(adverb("soaks", all_rows[j].r->soaks)),
+                   "no material change - soaks_to is 0");
+}
+
+static void
+emit_soaks_for(size_t i) {
+    for (size_t j = 0; j < all_rows_count; j++) {
+        if (all_rows[j].r->soaks != 0) {
+            emit_soaks_row(i, j);
+        }
+    }
+}
+
+/* drinks: a THIRD cell changes (dirt at the root), not the subject and not
+ * the liquid - see reaction_t.drinks. "dirt", not the old hardcoded "soil"
+ * - see pred_soil()'s own comment. */
+static void
+emit_drinks_for(size_t i) {
+    for (size_t j = 0; j < all_rows_count; j++) {
+        if (all_rows[j].r->drinks == 0) {
+            continue;
+        }
+        print_join_row(all_rows[i].name, all_rows[j].name, "the dirt at B's root, +1 moisture",
+                       table_rate(adverb("drinks", all_rows[j].r->drinks)),
+                       "B itself is unchanged - a third cell changes");
+    }
+}
+
+/* wets x soaks - the wetting family. Four reactions, not a loop over *_to:
+ * see this file's top comment and the plan's own section on it. */
+static void
+emit_wets_soaks_drinks(void) {
     for (size_t i = 0; i < all_rows_count; i++) {
         if (all_rows[i].r->wets == 0) {
             continue;
         }
-        for (size_t j = 0; j < all_rows_count; j++) {
-            if (all_rows[j].r->soaks == 0) {
-                continue;
-            }
-            if (all_rows[j].r->soaks_to != 0) {
-                print_join_row(all_rows[i].name, all_rows[j].name, to_name(all_rows[j].r->soaks_to),
-                               table_rate(adverb("soaks", all_rows[j].r->soaks)),
-                               "the liquid pays a unit of its own mass");
-            } else {
-                char becomes[64];
-                snprintf(becomes, sizeof(becomes), "%s, +1 moisture", all_rows[j].name);
-                print_join_row(all_rows[i].name, all_rows[j].name, becomes,
-                               table_rate(adverb("soaks", all_rows[j].r->soaks)), "no material change - soaks_to is 0");
-            }
-        }
-        /* drinks: a THIRD cell changes (dirt at the root), not the
-         * subject and not the liquid - see reaction_t.drinks. "dirt", not
-         * the old hardcoded "soil" - see pred_soil()'s own comment. */
-        for (size_t j = 0; j < all_rows_count; j++) {
-            if (all_rows[j].r->drinks == 0) {
-                continue;
-            }
-            print_join_row(all_rows[i].name, all_rows[j].name, "the dirt at B's root, +1 moisture",
-                           table_rate(adverb("drinks", all_rows[j].r->drinks)),
-                           "B itself is unchanged - a third cell changes");
-        }
+        emit_soaks_for(i);
+        emit_drinks_for(i);
     }
-    /* dries: self-driven, no partner at all. */
+}
+
+/* dries: self-driven, no partner at all. */
+static void
+emit_dries(void) {
     for (size_t i = 0; i < all_rows_count; i++) {
         if (all_rows[i].r->dries == 0) {
             continue;
@@ -1872,8 +1923,11 @@ emit_pairwise_table(void) {
         print_join_row(all_rows[i].name, "(none - self-driven)", becomes,
                        table_rate(adverb("dries", all_rows[i].r->dries)), "");
     }
+}
 
-    /* thaws x any KIND_LIQUID */
+/* thaws x any KIND_LIQUID. */
+static void
+emit_thaws(const char* liquids) {
     for (size_t i = 0; i < all_rows_count; i++) {
         if (all_rows[i].r->thaws == 0) {
             continue;
@@ -1881,6 +1935,26 @@ emit_pairwise_table(void) {
         print_join_row(all_rows[i].name, liquids, to_name(all_rows[i].r->heats_to),
                        table_rate(adverb("thaws", all_rows[i].r->thaws)), "any liquid counts, not water alone");
     }
+}
+
+static void
+emit_pairwise_table(void) {
+    emit_pairwise_header();
+
+    char burners[256];
+    join_names(pred_burns, " / ", burners, sizeof(burners));
+    char liquids[256];
+    join_names(pred_kind_liquid, " / ", liquids, sizeof(liquids));
+
+    emit_dissolve_pairs();
+    emit_acid_water_oil();
+    emit_flammability(burners);
+    emit_heats_to(burners);
+    emit_quench();
+    emit_chills();
+    emit_wets_soaks_drinks();
+    emit_dries();
+    emit_thaws(liquids);
 }
 
 /*
