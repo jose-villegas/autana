@@ -971,6 +971,21 @@ equalise_gas(sand_t* s, const int* perp, int rdx, int rdy) {
     return found_any;
 }
 
+static void
+choose_gas_sweep_order(const sand_t* s, int rdy, const int** slide_a, const int** slide_b, int* y_from, int* y_to,
+                       int* y_step) {
+    const bool landscape_safe_sweep = rdy == 0 && !s->gas_walk;
+
+    *y_step = (rdy != 0) ? -rdy : (landscape_safe_sweep && (s->step_phase & 1) ? -1 : 1);
+    *y_from = (*y_step > 0) ? 0 : s->h - 1;
+    *y_to = (*y_step > 0) ? s->h : -1;
+    if (landscape_safe_sweep) {
+        const int* const landscape_slide = ((*slide_a)[1] == -*y_step) ? *slide_a : *slide_b;
+        *slide_a = landscape_slide;
+        *slide_b = landscape_slide;
+    }
+}
+
 /* The whole step. */
 
 void
@@ -987,6 +1002,11 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     const int rload_dx = -load_dx, rload_dy = -load_dy;
     const int rx_step = -x_step;
 
+    const int* sweep_slide_a = rslide_a;
+    const int* sweep_slide_b = rslide_b;
+    int y_from, y_to, y_step;
+    choose_gas_sweep_order(s, rdy, &sweep_slide_a, &sweep_slide_b, &y_from, &y_to, &y_step);
+
     /* driven_by_gravity()'s descent = m . g dot product is against real
      * gravity - feeding it gas's reversed slide vectors together with
      * the main sweep's forward (gx, gy) would make descent negative for
@@ -998,15 +1018,9 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     bool driven_gas[MATERIAL_MAX][2];
     for (int m = 0; m < MATERIAL_MAX; m++) {
         const int repose = material_by_id((material_id_t)m)->repose;
-        driven_gas[m][0] = driven_by_gravity(rslide_a[0], rslide_a[1], -gx, -gy, repose);
-        driven_gas[m][1] = driven_by_gravity(rslide_b[0], rslide_b[1], -gx, -gy, repose);
+        driven_gas[m][0] = driven_by_gravity(sweep_slide_a[0], sweep_slide_a[1], -gx, -gy, repose);
+        driven_gas[m][1] = driven_by_gravity(sweep_slide_b[0], sweep_slide_b[1], -gx, -gy, repose);
     }
-
-    /* Swept in reverse from the main sweep - see this file's own top
-     * comment for why. */
-    const int y_from = (rdy > 0) ? s->h - 1 : 0;
-    const int y_to = (rdy > 0) ? -1 : s->h;
-    const int y_step = (rdy > 0) ? -1 : 1;
 
     bool found_any = false;
     const int w = s->w;
@@ -1014,8 +1028,8 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     memset(gas_row_map.w, 0, sizeof gas_row_map.w);
 
     gas_phase_t phase = {
-        .rslide_a = rslide_a,
-        .rslide_b = rslide_b,
+        .rslide_a = sweep_slide_a,
+        .rslide_b = sweep_slide_b,
         .driven_gas = driven_gas,
         .rdx = rdx,
         .rdy = rdy,
@@ -1029,8 +1043,8 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     if (!s->gas_walk || !sand_two_core_step_enabled() || s->h < GAS_SPLIT_MIN_ROWS
         || !step_gas_stripes(s, &phase, &found_any)) {
         for (int y = y_from; y != y_to; y += y_step) {
-            if (step_one_gas_row(s, y, w, rdx, rdy, rslide_a, rslide_b, rx_step, rload_dx, rload_dy, jostle, driven_gas,
-                                 NULL)) {
+            if (step_one_gas_row(s, y, w, rdx, rdy, sweep_slide_a, sweep_slide_b, rx_step, rload_dx, rload_dy, jostle,
+                                 driven_gas, NULL)) {
                 found_any = true;
             }
         }
