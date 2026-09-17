@@ -687,6 +687,9 @@ equalise_liquids(sand_t* s, const xflow_t* f, int sight, int dx, int dy) {
  * sixteen rows in a step. Gas has always risen in its own pass.
  */
 
+/* One swap per gravity ray per step: a swap moves two cells, and the displaced
+ * heavy cell would otherwise be found again one cell along the ray and pushed
+ * through the whole layer. Chunked so any board fits 32 bytes of stack. */
 enum { RISE_RAYS = 256 };
 
 static int
@@ -720,6 +723,7 @@ float_one_liquid(sand_t* s, int x, int y, int dx, int dy, uint16_t is_liquid, ui
         return false;
     }
     const uint8_t mine = CELL_MATERIAL(me), theirs = CELL_MATERIAL(above);
+    /* The viscosity roll the ordinary move pays keeps a rise a lazy drift. */
     if (((is_liquid >> mine) & 1u) == 0 || theirs == mine || ((is_liquid >> theirs) & 1u) == 0
         || material_by_id((material_id_t)theirs)->density <= material_by_id((material_id_t)mine)->density
         || (s->may_have_viscous_liquid && !liquid_may_move(s, x, y, mine))) {
