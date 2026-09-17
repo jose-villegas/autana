@@ -35,6 +35,10 @@
  * untouched; this is only the prototype, hand-matched to it. */
 extern void UnityDefaultTestRun(void (*Func)(void), const char* FuncName, const int FuncLineNum);
 
+#ifdef HOST_HEAP_ARENA
+static int leaks;
+#endif
+
 void
 suite_run_test_timed(void (*func)(void), const char* name, int line) {
 #ifdef HOST_HEAP_ARENA
@@ -69,6 +73,7 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
     heap_arena_snapshot(&blocks_after, &bytes_after);
     if (blocks_after > blocks_before) {
         printf("LEAK test=%s blocks=%zu bytes=%zu\n", name, blocks_after - blocks_before, bytes_after - bytes_before);
+        leaks++;
     }
 #endif
 
@@ -91,4 +96,13 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
            heap_arena_peak_bytes()
 #endif
     );
+}
+
+int
+suite_leaks(void) {
+#ifdef HOST_HEAP_ARENA
+    return leaks;
+#else
+    return 0;
+#endif
 }
