@@ -312,6 +312,67 @@ test_foam_moves_between_frames(void) {
                                          "and the animation this test exists to pin is not happening");
 }
 
+/* Fills foamed[phase][hash] for all 8 phases and 8 hashes at mask `mask`. */
+static void
+fill_foam_table(unsigned mask, gfx_color_t plain, bool foamed[8][8]) {
+    for (unsigned phase = 0; phase < 8u; phase++) {
+        material_set_foam_phase(phase);
+        for (unsigned hash = 0; hash < 8u; hash++) {
+            gfx_color_t col[3];
+            material_colours(CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, mask, 255u, col);
+            foamed[phase][hash] = (col[0] != plain);
+        }
+    }
+}
+
+/* Asserts, for every phase at this curvature, that the foaming subset of
+ * the 8 hashes is neither empty nor complete. */
+static void
+assert_foam_not_degenerate(const bool foamed[8][8], unsigned curvature) {
+    for (unsigned phase = 0; phase < 8u; phase++) {
+        unsigned count = 0;
+        for (unsigned hash = 0; hash < 8u; hash++) {
+            if (foamed[phase][hash]) {
+                count++;
+            }
+        }
+
+        char why[192];
+        snprintf(why, sizeof why,
+                 "at curvature %u, phase %u: the foaming subset of all "
+                 "8 hashes must be neither every one of them nor none "
+                 "of them, or the rim is pulsing as a whole instead of "
+                 "shimmering cell by cell",
+                 curvature, phase);
+        TEST_ASSERT_TRUE_MESSAGE(count > 0 && count < 8u, why);
+    }
+}
+
+/* Asserts that every pair of adjacent phases at this curvature produces a
+ * different foaming subset - the property XOR mixing broke. */
+static void
+assert_foam_never_stalls(const bool foamed[8][8], unsigned curvature) {
+    for (unsigned phase = 0; phase < 8u; phase++) {
+        const unsigned next = (phase + 1u) % 8u;
+        bool differs = false;
+        for (unsigned hash = 0; hash < 8u; hash++) {
+            if (foamed[phase][hash] != foamed[next][hash]) {
+                differs = true;
+            }
+        }
+
+        char why[256];
+        snprintf(why, sizeof why,
+                 "at curvature %u, phase %u to phase %u: the foaming "
+                 "set must change - two phases next to each other "
+                 "producing the identical set is exactly the stall "
+                 "XOR mixing introduced, measured as zero changed "
+                 "cells out of 635 on a real sloshing scene",
+                 curvature, phase, next);
+        TEST_ASSERT_TRUE_MESSAGE(differs, why);
+    }
+}
+
 /* THE WINDOW MUST ROTATE, NOT STALL - the property ADD buys and XOR
  * broke. Measured on a real sloshing scene at medium curvature: XOR changed
  * exactly zero of 635 cells' foaming state between adjacent phases - foam
@@ -340,53 +401,9 @@ test_foam_never_stalls_between_frames(void) {
 
     for (unsigned m = 0; m < 3; m++) {
         bool foamed[8][8]; /* [phase][hash] */
-
-        for (unsigned phase = 0; phase < 8u; phase++) {
-            material_set_foam_phase(phase);
-            for (unsigned hash = 0; hash < 8u; hash++) {
-                gfx_color_t col[3];
-                material_colours(CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, masks[m], 255u, col);
-                foamed[phase][hash] = (col[0] != plain);
-            }
-        }
-
-        for (unsigned phase = 0; phase < 8u; phase++) {
-            unsigned count = 0;
-            for (unsigned hash = 0; hash < 8u; hash++) {
-                if (foamed[phase][hash]) {
-                    count++;
-                }
-            }
-
-            char why[192];
-            snprintf(why, sizeof why,
-                     "at curvature %u, phase %u: the foaming subset of all "
-                     "8 hashes must be neither every one of them nor none "
-                     "of them, or the rim is pulsing as a whole instead of "
-                     "shimmering cell by cell",
-                     curvatures[m], phase);
-            TEST_ASSERT_TRUE_MESSAGE(count > 0 && count < 8u, why);
-        }
-
-        for (unsigned phase = 0; phase < 8u; phase++) {
-            const unsigned next = (phase + 1u) % 8u;
-            bool differs = false;
-            for (unsigned hash = 0; hash < 8u; hash++) {
-                if (foamed[phase][hash] != foamed[next][hash]) {
-                    differs = true;
-                }
-            }
-
-            char why[256];
-            snprintf(why, sizeof why,
-                     "at curvature %u, phase %u to phase %u: the foaming "
-                     "set must change - two phases next to each other "
-                     "producing the identical set is exactly the stall "
-                     "XOR mixing introduced, measured as zero changed "
-                     "cells out of 635 on a real sloshing scene",
-                     curvatures[m], phase, next);
-            TEST_ASSERT_TRUE_MESSAGE(differs, why);
-        }
+        fill_foam_table(masks[m], plain, foamed);
+        assert_foam_not_degenerate(foamed, curvatures[m]);
+        assert_foam_never_stalls(foamed, curvatures[m]);
     }
 
     material_set_foam_phase(0); /* leave global state as later tests
