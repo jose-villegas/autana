@@ -22,6 +22,7 @@
 #include "display/display.h"
 #include "display/panel_clock.h"
 #include "gfx/gfx.h"
+#include "gfx/gfx_font_roles.h"
 #include "input/buttons.h"
 #include "input/gesture.h"
 #include "input/imu.h"
@@ -75,38 +76,29 @@ heap_mark(const char* where) {
 #define DISPLAY_SAMPLE_MS 100
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-#define BUILD_MARK_GLYPH 8
-#define BUILD_MARK_TEXT  "D" BUILD_ID_SHORT
-#define BUILD_MARK_CHARS ((int)sizeof(BUILD_MARK_TEXT) - 1)
-#define BUILD_MARK_SIZE  (BUILD_MARK_GLYPH * BUILD_MARK_CHARS)
-#define BUILD_MARK_RGB   0x384054
+#define BUILD_MARK_GLYPH        8
+#define BUILD_MARK_TEXT         "D" BUILD_ID_SHORT
+#define BUILD_MARK_CHARS        ((int)sizeof(BUILD_MARK_TEXT) - 1)
+#define BUILD_MARK_SIZE         (BUILD_MARK_GLYPH * BUILD_MARK_CHARS)
+#define BUILD_MARK_RGB          0x384054
+/* The panel's rounded corners hide more than UI_MARGIN clears along an edge. */
+#define BUILD_MARK_CORNER_SHIFT 32
 
+/* Right-anchored to the upright screen's bottom-right corner, then mapped to
+ * the framebuffer the way the UI's own text is. */
 static void
 draw_build_mark(void) {
     const int quarter = display_shell_quarter();
-    int x = 0;
-    int y = 0;
-    switch (quarter) {
-        case 0:
-            x = GFX_WIDTH - UI_MARGIN - BUILD_MARK_SIZE;
-            y = GFX_HEIGHT - UI_MARGIN - BUILD_MARK_GLYPH;
-            break;
-        case 1:
-            x = UI_MARGIN;
-            y = GFX_HEIGHT - UI_MARGIN - BUILD_MARK_SIZE;
-            break;
-        case 2:
-            x = UI_MARGIN + BUILD_MARK_SIZE - BUILD_MARK_GLYPH;
-            y = UI_MARGIN;
-            break;
-        default:
-            x = GFX_WIDTH - UI_MARGIN - BUILD_MARK_GLYPH;
-            y = UI_MARGIN + BUILD_MARK_SIZE - BUILD_MARK_GLYPH;
-            break;
-    }
+    const int screen_w = (quarter % 2 == 0) ? GFX_WIDTH : GFX_HEIGHT;
+    const int screen_h = (quarter % 2 == 0) ? GFX_HEIGHT : GFX_WIDTH;
+    const mu_Rect upright = {screen_w - UI_MARGIN - BUILD_MARK_CORNER_SHIFT - BUILD_MARK_SIZE,
+                             screen_h - UI_MARGIN - BUILD_MARK_GLYPH, BUILD_MARK_SIZE, BUILD_MARK_GLYPH};
+    const mu_Rect box = ui_transform_rect(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT), upright);
 
-    if (gfx_region_dirty(x, y, quarter % 2 == 0 ? BUILD_MARK_SIZE : BUILD_MARK_GLYPH,
-                         quarter % 2 == 0 ? BUILD_MARK_GLYPH : BUILD_MARK_SIZE)) {
+    if (gfx_region_dirty(box.x, box.y, box.w, box.h)) {
+        int x = 0;
+        int y = 0;
+        ui_text_glyph0_origin(gfx_font_ui(), box, quarter, 1, &x, &y);
         gfx_text_turned(x, y, BUILD_MARK_TEXT, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
     }
 }
