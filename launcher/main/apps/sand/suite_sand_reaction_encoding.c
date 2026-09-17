@@ -334,6 +334,29 @@ test_ice_cracks_hot_glass_and_stays_where_it_is_put(void) {
                                           "block is the whole difference from snow");
 }
 
+typedef struct {
+    int lowest_snow, highest_water;
+} snow_float_extents_t;
+
+/* The deepest row still holding snow and the shallowest row holding
+ * water, on the default fixture - -1/H if there is none of either. */
+static snow_float_extents_t
+snow_float_scan(void) {
+    snow_float_extents_t e = {-1, H};
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            const uint8_t m = CELL_MATERIAL(sand_at(&s, x, y));
+            if (m == MAT_SNOW && y > e.lowest_snow) {
+                e.lowest_snow = y;
+            }
+            if (m == MAT_WATER && y < e.highest_water) {
+                e.highest_water = y;
+            }
+        }
+    }
+    return e;
+}
+
 /* Snow floats, because it is lighter than what it lands on.
  *
  * Not decoration: floating is what puts snow ON TOP of a pool rather than
@@ -358,22 +381,11 @@ test_snow_floats_on_water(void) {
         sand_step(&s, 0, 1000, 0);
     }
 
-    int lowest_snow = -1, highest_water = H;
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            const uint8_t m = CELL_MATERIAL(sand_at(&s, x, y));
-            if (m == MAT_SNOW && y > lowest_snow) {
-                lowest_snow = y;
-            }
-            if (m == MAT_WATER && y < highest_water) {
-                highest_water = y;
-            }
-        }
-    }
+    const snow_float_extents_t e = snow_float_scan();
 
-    TEST_ASSERT_TRUE_MESSAGE(lowest_snow >= 0, "fixture check: some snow has to survive the fall to say anything "
-                                               "about where it ended up");
-    TEST_ASSERT_TRUE_MESSAGE(lowest_snow <= highest_water,
+    TEST_ASSERT_TRUE_MESSAGE(e.lowest_snow >= 0, "fixture check: some snow has to survive the fall to say anything "
+                                                 "about where it ended up");
+    TEST_ASSERT_TRUE_MESSAGE(e.lowest_snow <= e.highest_water,
                              "snow must come to rest on top of the water, not under it - it is "
                              "lighter than water and can_enter() is what makes that true");
 }
@@ -853,6 +865,29 @@ test_oil_mostly_boils_off_into_gas_not_acid(void) {
                                      "into more acid");
 }
 
+/* Column x's outcome, the first step it stops holding oil: marks it done
+ * and tallies whether the acid died outright or was merely chipped by
+ * one, or leaves it alone if it is not yet bitten or already done. */
+static void
+note_oil_bite_outcome(sand_t* g, int x, bool* done, int* died_outright, int* chipped_by_one) {
+    if (done[x]) {
+        return;
+    }
+    const cell_t c0 = sand_at(g, x, 0);
+    const cell_t c1 = sand_at(g, x, 1);
+    if (CELL_MATERIAL(c0) == MAT_OIL || CELL_MATERIAL(c1) == MAT_OIL) {
+        return; /* not bitten yet - still a live sample */
+    }
+    done[x] = true;
+    if (CELL_IS_EMPTY(c0) || CELL_IS_EMPTY(c1)) {
+        (*died_outright)++;
+    }
+    if ((CELL_MATERIAL(c0) == MAT_ACID && CELL_VARIANT(c0) == MASS_MAX - 1)
+        || (CELL_MATERIAL(c1) == MAT_ACID && CELL_VARIANT(c1) == MASS_MAX - 1)) {
+        (*chipped_by_one)++;
+    }
+}
+
 /* Same instant-of-transition sampling as
  * test_oil_mostly_boils_off_into_gas_not_acid above, and for the same
  * reason. */
@@ -868,22 +903,7 @@ test_the_acid_that_ate_oil_can_die_in_a_single_bite(void) {
     for (int i = 0; i < 300; i++) {
         sand_step(&fx.oil_dilute_sim, 0, 1000, 0);
         for (int x = 0; x < OIL_DILUTE_W; x++) {
-            if (done[x]) {
-                continue;
-            }
-            const cell_t c0 = sand_at(&fx.oil_dilute_sim, x, 0);
-            const cell_t c1 = sand_at(&fx.oil_dilute_sim, x, 1);
-            if (CELL_MATERIAL(c0) == MAT_OIL || CELL_MATERIAL(c1) == MAT_OIL) {
-                continue; /* not bitten yet - still a live sample */
-            }
-            done[x] = true;
-            if (CELL_IS_EMPTY(c0) || CELL_IS_EMPTY(c1)) {
-                died_outright++;
-            }
-            if ((CELL_MATERIAL(c0) == MAT_ACID && CELL_VARIANT(c0) == MASS_MAX - 1)
-                || (CELL_MATERIAL(c1) == MAT_ACID && CELL_VARIANT(c1) == MASS_MAX - 1)) {
-                chipped_by_one++;
-            }
+            note_oil_bite_outcome(&fx.oil_dilute_sim, x, done, &died_outright, &chipped_by_one);
         }
     }
 
@@ -1004,6 +1024,50 @@ pour_and_measure_tap_gain(material_id_t pool, material_id_t tap, int bias) {
     return tap_now;
 }
 
+/* The two side walls and floor the contest pours into. */
+static void
+acid_water_contest_build_walls(sand_t* g, int gw, int gh) {
+    for (int x = 0; x < gw; x++) {
+        sand_set(g, x, gh - 1, STONE);
+    }
+    for (int y = 6; y < gh; y++) {
+        sand_set(g, 4, y, STONE);
+        sand_set(g, gw - 5, y, STONE);
+    }
+}
+
+/* One pour tick: fills every empty tap cell (water for the first `wcols`
+ * columns, acid for the rest) and steps once. */
+static void
+acid_water_contest_pour(sand_t* g, int tapw, int tap0, int wcols) {
+    for (int c = 0; c < tapw; c++) {
+        const int x = tap0 + c;
+        if (!CELL_IS_EMPTY(sand_at(g, x, 7))) {
+            continue;
+        }
+        sand_set(g, x, 7, (c < wcols) ? CELL_MAKE(MAT_WATER, MASS_MAX) : CELL_MAKE(MAT_ACID, MASS_MAX));
+    }
+    sand_step(g, 0, 1000, 0);
+}
+
+/* Cell counts of water and acid left on the grid. */
+static void
+acid_water_contest_count(sand_t* g, int gw, int gh, int* water_left, int* acid_left) {
+    int wn = 0, an = 0;
+    for (int y = 0; y < gh; y++) {
+        for (int x = 0; x < gw; x++) {
+            const int m = CELL_MATERIAL(sand_at(g, x, y));
+            if (m == MAT_WATER) {
+                wn++;
+            } else if (m == MAT_ACID) {
+                an++;
+            }
+        }
+    }
+    *water_left = wn;
+    *acid_left = an;
+}
+
 /* Pour water from one tap and acid from the other, splitting a fixed total
  * between them, and see what survives. */
 static void
@@ -1016,43 +1080,18 @@ acid_water_contest(int water_pct, int* water_left, int* acid_left) {
     sand_t g;
     memset(&g, 0, sizeof g);
     sand_init(&g, cells, GW, GH, 5u);
-    for (int x = 0; x < GW; x++) {
-        sand_set(&g, x, GH - 1, STONE);
-    }
-    for (int y = 6; y < GH; y++) {
-        sand_set(&g, 4, y, STONE);
-        sand_set(&g, GW - 5, y, STONE);
-    }
+    acid_water_contest_build_walls(&g, GW, GH);
 
     const int wcols = (TAPW * water_pct + 50) / 100;
     for (int i = 0; i < POUR; i++) {
-        for (int c = 0; c < TAPW; c++) {
-            const int x = TAP0 + c;
-            if (!CELL_IS_EMPTY(sand_at(&g, x, 7))) {
-                continue;
-            }
-            sand_set(&g, x, 7, (c < wcols) ? CELL_MAKE(MAT_WATER, MASS_MAX) : CELL_MAKE(MAT_ACID, MASS_MAX));
-        }
-        sand_step(&g, 0, 1000, 0);
+        acid_water_contest_pour(&g, TAPW, TAP0, wcols);
     }
     for (int i = 0; i < SETTLE; i++) {
         sand_step(&g, 0, 1000, 0);
     }
 
-    int wn = 0, an = 0;
-    for (int y = 0; y < GH; y++) {
-        for (int x = 0; x < GW; x++) {
-            const int m = CELL_MATERIAL(sand_at(&g, x, y));
-            if (m == MAT_WATER) {
-                wn++;
-            } else if (m == MAT_ACID) {
-                an++;
-            }
-        }
-    }
+    acid_water_contest_count(&g, GW, GH, water_left, acid_left);
     free(cells);
-    *water_left = wn;
-    *acid_left = an;
 }
 
 static void
@@ -1168,27 +1207,60 @@ test_every_liquid_declares_a_mobility(void) {
 #define DRAG_W 40
 #define DRAG_H 20
 
+/* Of (x, y)'s four cardinal neighbours, how many are oil. */
+static int
+oil_neighbor_count(sand_t* g, int x, int y) {
+    static const int d[4][2] = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}};
+    int oil = 0;
+    for (int k = 0; k < 4; k++) {
+        if (CELL_MATERIAL(sand_at(g, x + d[k][0], y + d[k][1])) == MAT_OIL) {
+            oil++;
+        }
+    }
+    return oil;
+}
+
 static int
 water_inside_oil(sand_t* g) {
-    static const int d[4][2] = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}};
     int inside = 0;
     for (int y = 1; y < DRAG_H - 1; y++) {
         for (int x = 1; x < DRAG_W - 1; x++) {
             if (CELL_MATERIAL(sand_at(g, x, y)) != MAT_WATER) {
                 continue;
             }
-            int oil = 0;
-            for (int k = 0; k < 4; k++) {
-                if (CELL_MATERIAL(sand_at(g, x + d[k][0], y + d[k][1])) == MAT_OIL) {
-                    oil++;
-                }
-            }
-            if (oil >= 3) {
+            if (oil_neighbor_count(g, x, y) >= 3) {
                 inside++;
             }
         }
     }
     return inside;
+}
+
+/* A thin slick of oil on the floor with water resting on it - the
+ * unstable order, since water is the denser of the two. */
+static void
+drag_test_build_scene(sand_t* g, uint8_t* cells, uint32_t seed) {
+    memset(cells, 0, (size_t)DRAG_W * DRAG_H);
+    sand_init(g, cells, DRAG_W, DRAG_H, seed);
+    sand_set_mobility(g, SAND_MOBILITY_PER_MATERIAL);
+
+    for (int x = 0; x < DRAG_W; x++) {
+        sand_set(g, x, 0, STONE);
+        sand_set(g, x, DRAG_H - 1, STONE);
+    }
+    for (int y = 0; y < DRAG_H; y++) {
+        sand_set(g, 0, y, STONE);
+        sand_set(g, DRAG_W - 1, y, STONE);
+    }
+    for (int x = 1; x < DRAG_W - 1; x++) {
+        sand_set(g, x, DRAG_H - 2, CELL_MAKE(MAT_OIL, MASS_MAX));
+        sand_set(g, x, DRAG_H - 3, CELL_MAKE(MAT_OIL, MASS_MAX));
+    }
+    for (int y = DRAG_H - 7; y <= DRAG_H - 4; y++) {
+        for (int x = 1; x < DRAG_W - 1; x++) {
+            sand_set(g, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+        }
+    }
 }
 
 static void
@@ -1205,29 +1277,7 @@ test_water_does_not_drill_into_oil_when_tilted(void) {
     int total = 0;
 
     for (int k = 0; k < seeds; k++) {
-        memset(drag_cells, 0, (size_t)DRAG_W * DRAG_H);
-        sand_init(&g, drag_cells, DRAG_W, DRAG_H, (uint32_t)(11 + k));
-        sand_set_mobility(&g, SAND_MOBILITY_PER_MATERIAL);
-
-        for (int x = 0; x < DRAG_W; x++) {
-            sand_set(&g, x, 0, STONE);
-            sand_set(&g, x, DRAG_H - 1, STONE);
-        }
-        for (int y = 0; y < DRAG_H; y++) {
-            sand_set(&g, 0, y, STONE);
-            sand_set(&g, DRAG_W - 1, y, STONE);
-        }
-        /* A thin slick of oil on the floor with water resting on it - the
-         * unstable order, since water is the denser of the two. */
-        for (int x = 1; x < DRAG_W - 1; x++) {
-            sand_set(&g, x, DRAG_H - 2, CELL_MAKE(MAT_OIL, MASS_MAX));
-            sand_set(&g, x, DRAG_H - 3, CELL_MAKE(MAT_OIL, MASS_MAX));
-        }
-        for (int y = DRAG_H - 7; y <= DRAG_H - 4; y++) {
-            for (int x = 1; x < DRAG_W - 1; x++) {
-                sand_set(&g, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-            }
-        }
+        drag_test_build_scene(&g, drag_cells, (uint32_t)(11 + k));
 
         for (int i = 0; i < 60; i++) {
             sand_step(&g, 0, 1000, 0);
@@ -1298,6 +1348,21 @@ test_oil_flows_more_slowly_than_water(void) {
                                          "indistinguishable");
 }
 
+/* Material of the first liquid cell found scanning row y0 towards y1
+ * (inclusive), stepping by `dy` - -1 if none. */
+static int
+first_liquid_material_from(int y0, int y1, int dy) {
+    for (int y = y0; dy > 0 ? y <= y1 : y >= y1; y += dy) {
+        for (int x = 0; x < W; x++) {
+            const cell_t c = sand_at(&s, x, y);
+            if (!CELL_IS_EMPTY(c) && material_of(c)->kind == KIND_LIQUID) {
+                return CELL_MATERIAL(c);
+            }
+        }
+    }
+    return -1;
+}
+
 static void
 test_oil_trapped_under_water_floats_to_the_surface(void) {
     fixture();
@@ -1324,25 +1389,8 @@ test_oil_trapped_under_water_floats_to_the_surface(void) {
 
     /* Oil must be above water, not strictly by row, due to half-full cells
      * and non-mixing liquids. */
-    int top = -1, bottom = -1;
-    for (int y = 0; y < H && top < 0; y++) {
-        for (int x = 0; x < W; x++) {
-            const cell_t c = sand_at(&s, x, y);
-            if (!CELL_IS_EMPTY(c) && material_of(c)->kind == KIND_LIQUID) {
-                top = CELL_MATERIAL(c);
-                break;
-            }
-        }
-    }
-    for (int y = H - 1; y >= 0 && bottom < 0; y--) {
-        for (int x = 0; x < W; x++) {
-            const cell_t c = sand_at(&s, x, y);
-            if (!CELL_IS_EMPTY(c) && material_of(c)->kind == KIND_LIQUID) {
-                bottom = CELL_MATERIAL(c);
-                break;
-            }
-        }
-    }
+    const int top = first_liquid_material_from(0, H - 1, 1);
+    const int bottom = first_liquid_material_from(H - 1, 0, -1);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_OIL, top,
                                   "the topmost liquid must be OIL - it started underneath the "
@@ -1707,13 +1755,7 @@ test_falling_lava_does_not_flare(void) {
     bool found_fire = false;
     for (int i = 0; i < H - 1 && !found_fire; i++) {
         sand_step(&s, 0, 1000, 0);
-        for (int y = 0; y < H && !found_fire; y++) {
-            for (int x = 0; x < W; x++) {
-                if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_FIRE) {
-                    found_fire = true;
-                }
-            }
-        }
+        found_fire = count_cells_of(MAT_FIRE) > 0;
     }
 
     TEST_ASSERT_FALSE_MESSAGE(found_fire, "a lava grain in free fall (nothing beneath it, gravity-relative) "
@@ -1730,13 +1772,7 @@ test_falling_lava_does_not_flare(void) {
 
     for (int i = 0; i < 200 && !found_fire; i++) {
         sand_step(&s, 0, 1000, 0);
-        for (int y = 0; y < H && !found_fire; y++) {
-            for (int x = 0; x < W; x++) {
-                if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_FIRE) {
-                    found_fire = true;
-                }
-            }
-        }
+        found_fire = count_cells_of(MAT_FIRE) > 0;
     }
 
     TEST_ASSERT_TRUE_MESSAGE(found_fire, "once the same grain has settled on the floor, it must eventually "
