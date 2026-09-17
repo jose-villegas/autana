@@ -170,6 +170,15 @@ paint_full_frame_full(const uint8_t* grid) {
     }
 }
 
+/* Widens the half-open box [*x0,*x1) x [*y0,*y1) to include cell (cx,cy). */
+static void
+cm_bbox_extend(int cx, int cy, int* x0, int* y0, int* x1, int* y1) {
+    *x0 = cx < *x0 ? cx : *x0;
+    *y0 = cy < *y0 ? cy : *y0;
+    *x1 = cx + 1 > *x1 ? cx + 1 : *x1;
+    *y1 = cy + 1 > *y1 ? cy + 1 : *y1;
+}
+
 /* Unlike paint_full_frame_full(), this ALSO applies lever 1's own
  * suppression. `kind`/`class_table`/`cell_table` are resolved once by the
  * caller, never re-derived per cell. Returns 0 if nothing changed.
@@ -193,10 +202,7 @@ paint_full_frame_indexed(const uint8_t* grid, gfx_indexed_repaint_kind_t kind, c
                 continue;
             }
             img[i] = new_idx;
-            x0 = cx < x0 ? cx : x0;
-            y0 = cy < y0 ? cy : y0;
-            x1 = cx + 1 > x1 ? cx + 1 : x1;
-            y1 = cy + 1 > y1 ? cy + 1 : y1;
+            cm_bbox_extend(cx, cy, &x0, &y0, &x1, &y1);
         }
     }
     if (x1 <= x0 || y1 <= y0) {
@@ -228,10 +234,7 @@ diff_bounding_box(const uint8_t* grid, int* out_x0, int* out_y0, int* out_x1, in
                 continue;
             }
             any = true;
-            x0 = cx < x0 ? cx : x0;
-            y0 = cy < y0 ? cy : y0;
-            x1 = cx + 1 > x1 ? cx + 1 : x1;
-            y1 = cy + 1 > y1 ? cy + 1 : y1;
+            cm_bbox_extend(cx, cy, &x0, &y0, &x1, &y1);
         }
     }
     memcpy(prev_grid, grid, sizeof prev_grid);
@@ -257,6 +260,100 @@ dither_table_for(gfx_dither_mode_t mode) {
     }
 }
 
+/* Enters GFX_PIXFMT_INDEXED8 and resolves the repaint kind/class/cell
+ * table for `mode`/`dither_mode`, mirroring app_sand.c's own
+ * apply_gfx_enter_indexed() - resolved once here, never re-derived per
+ * cell. The three class-table buffers are the caller's, each sized
+ * GFX_INDEXED_PALETTE_SIZE. */
+static gfx_indexed_repaint_kind_t
+measure_mode_enter_indexed(colour_mode_t mode, gfx_dither_mode_t dither_mode, uint8_t* none_class,
+                           uint8_t* dither16_class, uint8_t* checker2_class, const uint8_t** class_table,
+                           const gfx_color_t** cell_table) {
+    gfx_mode_request_t req = {0};
+    req.layout = GFX_LAYOUT_BANDS;
+    req.resolution = GFX_RESOLUTION_FULL;
+    req.pixfmt = GFX_PIXFMT_INDEXED8;
+    req.index_grid_w = CM_GRID_W;
+    req.index_grid_h = CM_GRID_H;
+    req.cell_size = CM_CELL;
+    const gfx_mode_t* granted = gfx_mode_enter(&req);
+    TEST_ASSERT_TRUE_MESSAGE(granted->layout == GFX_LAYOUT_BANDS, "GFX_PIXFMT_INDEXED8 could not be granted");
+    memset(gfx_indexed_image(), 0, (size_t)CM_GRID_W * CM_GRID_H);
+    gfx_indexed_set_lut(sand_palette256_lut);
+    gfx_indexed_set_dither16(mode == CM_MODE_16);
+    if (mode != CM_MODE_16) {
+        return GFX_INDEXED_REPAINT_RAW;
+    }
+    gfx_indexed_set_dither(dither_mode, dither_table_for(dither_mode));
+    switch (dither_mode) {
+        case GFX_DITHER_NONE:
+            gfx_indexed_classify(sand_dither_none_lut, 1, none_class);
+            *class_table = none_class;
+            return GFX_INDEXED_REPAINT_CLASS;
+        case GFX_DITHER_CELL_CHECKER: *cell_table = sand_dither_cell_checker; return GFX_INDEXED_REPAINT_CELL_CHECKER;
+        case GFX_DITHER_CELL_BAYER2: *cell_table = sand_dither_cell_bayer2; return GFX_INDEXED_REPAINT_CELL_BAYER2;
+        case GFX_DITHER_PIXEL_CHECKER2:
+            gfx_indexed_classify(sand_dither_pixel_checker2,
+                                 GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX, checker2_class);
+            *class_table = checker2_class;
+            return GFX_INDEXED_REPAINT_CLASS;
+        case GFX_DITHER_PIXEL_BAYER4:
+        default:
+            gfx_indexed_dither16_classify(sand_palette16_dither_rgb, dither16_class);
+            *class_table = dither16_class;
+            return GFX_INDEXED_REPAINT_CLASS;
+    }
+}
+
+/* One measured frame: advances the scene, then paints and presents it
+ * either the indexed way or the FULL way, tallying draw/present time and
+ * cells marked dirty into the caller's running totals. */
+static void
+measure_mode_frame(sand_t* sim, uint8_t* grid, int i, const colour_scene_t* scene, bool indexed,
+                   gfx_indexed_repaint_kind_t kind, const uint8_t* class_table, const gfx_color_t* cell_table,
+                   int64_t* draw_total, int64_t* present_total, int64_t* cells_marked_total) {
+    if (scene->step != NULL) {
+        scene->step(sim, i);
+    } else {
+        /* Gravity flips along its own (landscape) axis at the midpoint
+         * of the run for scene_mixed_flip's own sake; gas_over_pile and
+         * levelling_pool just keep falling the way they were headed. */
+        const int gx = (i < CM_MEASURED_FRAMES / 2) ? CM_GRAVITY_X : -CM_GRAVITY_X;
+        sand_step(sim, gx, CM_GRAVITY_Y, 0);
+    }
+
+    int dx0, dy0, dx1, dy1;
+    const bool changed = diff_bounding_box(grid, &dx0, &dy0, &dx1, &dy1);
+
+    const int64_t t0 = esp_timer_get_time();
+    if (indexed) {
+        /* Lever 1's own narrower box - some cells diff_bounding_box()
+         * above already called changed dither to the SAME 16-colour
+         * (or, in 256 mode, the same index), so this can be, and often
+         * is, smaller than [dx0,dx1)x[dy0,dy1). */
+        int ix0, iy0, ix1, iy1;
+        const int cells = paint_full_frame_indexed(grid, kind, class_table, cell_table, &ix0, &iy0, &ix1, &iy1);
+        if (cells > 0) {
+            gfx_mark_dirty(ix0 * CM_CELL, iy0 * CM_CELL, (ix1 - ix0) * CM_CELL, (iy1 - iy0) * CM_CELL);
+        }
+        *cells_marked_total += cells;
+    } else {
+        paint_full_frame_full(grid);
+        if (changed) {
+            gfx_mark_dirty(dx0 * CM_CELL, dy0 * CM_CELL, (dx1 - dx0) * CM_CELL, (dy1 - dy0) * CM_CELL);
+            *cells_marked_total += (int64_t)(dx1 - dx0) * (dy1 - dy0);
+        }
+    }
+    const int64_t t1 = esp_timer_get_time();
+
+    gfx_present_begin();
+    gfx_present_wait();
+    const int64_t t2 = esp_timer_get_time();
+
+    *draw_total += t1 - t0;
+    *present_total += t2 - t1;
+}
+
 /* `dither_mode` only matters when `mode` is CM_MODE_16 - FULL and 256 both
  * ignore it. */
 static void
@@ -270,8 +367,6 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t 
     scene->build(&sim);
 
     const bool indexed = mode != CM_MODE_FULL;
-    /* Resolved once here, mirroring app_sand.c's own apply_gfx_enter_
-     * indexed() - never re-derived from `mode`/`dither_mode` per cell. */
     gfx_indexed_repaint_kind_t kind = GFX_INDEXED_REPAINT_RAW;
     static uint8_t none_class[GFX_INDEXED_PALETTE_SIZE];
     static uint8_t dither16_class[GFX_INDEXED_PALETTE_SIZE];
@@ -279,97 +374,16 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t 
     const uint8_t* class_table = NULL;
     const gfx_color_t* cell_table = NULL;
     if (indexed) {
-        gfx_mode_request_t req = {0};
-        req.layout = GFX_LAYOUT_BANDS;
-        req.resolution = GFX_RESOLUTION_FULL;
-        req.pixfmt = GFX_PIXFMT_INDEXED8;
-        req.index_grid_w = CM_GRID_W;
-        req.index_grid_h = CM_GRID_H;
-        req.cell_size = CM_CELL;
-        const gfx_mode_t* granted = gfx_mode_enter(&req);
-        TEST_ASSERT_TRUE_MESSAGE(granted->layout == GFX_LAYOUT_BANDS, "GFX_PIXFMT_INDEXED8 could not be granted");
-        memset(gfx_indexed_image(), 0, (size_t)CM_GRID_W * CM_GRID_H);
-        gfx_indexed_set_lut(sand_palette256_lut);
-        gfx_indexed_set_dither16(mode == CM_MODE_16);
-        if (mode != CM_MODE_16) {
-            kind = GFX_INDEXED_REPAINT_RAW;
-        } else {
-            gfx_indexed_set_dither(dither_mode, dither_table_for(dither_mode));
-            switch (dither_mode) {
-                case GFX_DITHER_NONE:
-                    gfx_indexed_classify(sand_dither_none_lut, 1, none_class);
-                    kind = GFX_INDEXED_REPAINT_CLASS;
-                    class_table = none_class;
-                    break;
-                case GFX_DITHER_CELL_CHECKER:
-                    kind = GFX_INDEXED_REPAINT_CELL_CHECKER;
-                    cell_table = sand_dither_cell_checker;
-                    break;
-                case GFX_DITHER_CELL_BAYER2:
-                    kind = GFX_INDEXED_REPAINT_CELL_BAYER2;
-                    cell_table = sand_dither_cell_bayer2;
-                    break;
-                case GFX_DITHER_PIXEL_CHECKER2:
-                    gfx_indexed_classify(sand_dither_pixel_checker2,
-                                         GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX,
-                                         checker2_class);
-                    kind = GFX_INDEXED_REPAINT_CLASS;
-                    class_table = checker2_class;
-                    break;
-                case GFX_DITHER_PIXEL_BAYER4:
-                default:
-                    gfx_indexed_dither16_classify(sand_palette16_dither_rgb, dither16_class);
-                    kind = GFX_INDEXED_REPAINT_CLASS;
-                    class_table = dither16_class;
-                    break;
-            }
-        }
+        kind = measure_mode_enter_indexed(mode, dither_mode, none_class, dither16_class, checker2_class, &class_table,
+                                          &cell_table);
     }
 
     gfx_reset_strip_send_counts();
     int64_t draw_total = 0, present_total = 0, cells_marked_total = 0;
 
     for (int i = 0; i < CM_MEASURED_FRAMES; i++) {
-        if (scene->step != NULL) {
-            scene->step(&sim, i);
-        } else {
-            /* Gravity flips along its own (landscape) axis at the midpoint
-             * of the run for scene_mixed_flip's own sake; gas_over_pile and
-             * levelling_pool just keep falling the way they were headed. */
-            const int gx = (i < CM_MEASURED_FRAMES / 2) ? CM_GRAVITY_X : -CM_GRAVITY_X;
-            sand_step(&sim, gx, CM_GRAVITY_Y, 0);
-        }
-
-        int dx0, dy0, dx1, dy1;
-        const bool changed = diff_bounding_box(grid, &dx0, &dy0, &dx1, &dy1);
-
-        const int64_t t0 = esp_timer_get_time();
-        if (indexed) {
-            /* Lever 1's own narrower box - some cells diff_bounding_box()
-             * above already called changed dither to the SAME 16-colour
-             * (or, in 256 mode, the same index), so this can be, and often
-             * is, smaller than [dx0,dx1)x[dy0,dy1). */
-            int ix0, iy0, ix1, iy1;
-            const int cells = paint_full_frame_indexed(grid, kind, class_table, cell_table, &ix0, &iy0, &ix1, &iy1);
-            if (cells > 0) {
-                gfx_mark_dirty(ix0 * CM_CELL, iy0 * CM_CELL, (ix1 - ix0) * CM_CELL, (iy1 - iy0) * CM_CELL);
-            }
-            cells_marked_total += cells;
-        } else {
-            paint_full_frame_full(grid);
-            if (changed) {
-                gfx_mark_dirty(dx0 * CM_CELL, dy0 * CM_CELL, (dx1 - dx0) * CM_CELL, (dy1 - dy0) * CM_CELL);
-                cells_marked_total += (int64_t)(dx1 - dx0) * (dy1 - dy0);
-            }
-        }
-        const int64_t t1 = esp_timer_get_time();
-
-        gfx_present_begin();
-        gfx_present_wait();
-        const int64_t t2 = esp_timer_get_time();
-
-        draw_total += t1 - t0;
-        present_total += t2 - t1;
+        measure_mode_frame(&sim, grid, i, scene, indexed, kind, class_table, cell_table, &draw_total, &present_total,
+                           &cells_marked_total);
     }
 
     out->draw_us = draw_total / CM_MEASURED_FRAMES;
