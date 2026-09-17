@@ -1738,6 +1738,44 @@ send_audit_capture(int x0, int y0, int w, int h, const gfx_color_t* buf) {
  * pauses under either and re-primes after: everything is marked dirty and
  * the next present resends it. */
 static void
+send_audit_scan_row(int y) {
+    const gfx_color_t* fb_row = fb + (size_t)y * GFX_WIDTH;
+    const gfx_color_t* shadow_row = send_shadow + (size_t)y * GFX_WIDTH;
+    if (memcmp(fb_row, shadow_row, (size_t)GFX_WIDTH * sizeof(gfx_color_t)) == 0) {
+        return;
+    }
+    for (int x = 0; x < GFX_WIDTH; x++) {
+        if (fb_row[x] == shadow_row[x]) {
+            continue;
+        }
+        if (send_audit_first_x < 0) {
+            send_audit_first_x = x;
+            send_audit_first_y = y;
+        }
+        send_audit_uncovered_px++;
+        /* Resent in full next time, so one gap is counted once. */
+        send_audit_primed = false;
+    }
+}
+
+static void
+send_audit_log_if_due(void) {
+    const int64_t now = esp_timer_get_time();
+    if (now < send_audit_log_at_us || (send_audit_uncovered_px == 0 && send_audit_copy_fault_px == 0)) {
+        return;
+    }
+    send_audit_log_at_us = now + SEND_AUDIT_LOG_US;
+    ESP_LOGW(TAG,
+             "send audit: %lld px on the panel differ from fb (first at %d,%d), %lld px read back wrong from PSRAM",
+             (long long)send_audit_uncovered_px, send_audit_first_x, send_audit_first_y,
+             (long long)send_audit_copy_fault_px);
+    send_audit_uncovered_px = 0;
+    send_audit_copy_fault_px = 0;
+    send_audit_first_x = -1;
+    send_audit_first_y = -1;
+}
+
+static void
 send_audit_check(void) {
     if (send_shadow == NULL) {
         return;
@@ -1753,38 +1791,10 @@ send_audit_check(void) {
     }
 
     for (int y = 0; y < GFX_HEIGHT; y++) {
-        const gfx_color_t* fb_row = fb + (size_t)y * GFX_WIDTH;
-        const gfx_color_t* shadow_row = send_shadow + (size_t)y * GFX_WIDTH;
-        if (memcmp(fb_row, shadow_row, (size_t)GFX_WIDTH * sizeof(gfx_color_t)) == 0) {
-            continue;
-        }
-        for (int x = 0; x < GFX_WIDTH; x++) {
-            if (fb_row[x] == shadow_row[x]) {
-                continue;
-            }
-            if (send_audit_first_x < 0) {
-                send_audit_first_x = x;
-                send_audit_first_y = y;
-            }
-            send_audit_uncovered_px++;
-            /* Resent in full next time, so one gap is counted once. */
-            send_audit_primed = false;
-        }
+        send_audit_scan_row(y);
     }
 
-    const int64_t now = esp_timer_get_time();
-    if (now < send_audit_log_at_us || (send_audit_uncovered_px == 0 && send_audit_copy_fault_px == 0)) {
-        return;
-    }
-    send_audit_log_at_us = now + SEND_AUDIT_LOG_US;
-    ESP_LOGW(TAG,
-             "send audit: %lld px on the panel differ from fb (first at %d,%d), %lld px read back wrong from PSRAM",
-             (long long)send_audit_uncovered_px, send_audit_first_x, send_audit_first_y,
-             (long long)send_audit_copy_fault_px);
-    send_audit_uncovered_px = 0;
-    send_audit_copy_fault_px = 0;
-    send_audit_first_x = -1;
-    send_audit_first_y = -1;
+    send_audit_log_if_due();
 }
 #endif
 
