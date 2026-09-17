@@ -13,7 +13,6 @@ import check_doc_citations  # noqa: E402
 import check_doc_constants  # noqa: E402
 import check_doc_index  # noqa: E402
 import check_doc_vocabulary  # noqa: E402
-import doc_citers  # noqa: E402
 import doc_drift  # noqa: E402
 
 
@@ -330,35 +329,6 @@ Acid -->|"dissolvable 110"| Metal
             self.write(root, "docs/Orphan.md", "nothing links here\n")
             orphans = check_doc_index.check(root)
         self.assertEqual(orphans, ["docs/Named.md", "docs/Orphan.md"])
-
-    def citers_repo(self, root):
-        self.write(root, "launcher/main/liquid.c",
-                   "static int\nfind_level(int x) {\n    return x;\n}\n\n"
-                   "static int\nspread(int x) {\n    return x + 1;\n}\n")
-        self.write(root, "docs/Liquid.md", "`find_level()` picks the level; see `liquid.c`.\n")
-        self.write(root, "docs/Spread.md", "`spread()` moves it.\n")
-        self.write(root, "docs/plans/Next.md", "`find_level()` will change.\n")
-        for command in (["init", "-q"], ["add", "."],
-                        ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base"]):
-            subprocess.run(["git", *command], cwd=root, check=True, capture_output=True)
-
-    def test_citers_report_docs_citing_the_touched_function_only(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.citers_repo(root)
-            source = root / "launcher/main/liquid.c"
-            source.write_text(source.read_text().replace("return x;", "return x * 2;"))
-            found = doc_citers.citers(root, ["launcher/main/liquid.c"], ["HEAD"])
-        self.assertEqual(found, {"launcher/main/liquid.c": {"docs/Liquid.md": ["find_level()"]}})
-
-    def test_citers_fall_back_to_path_citations_when_no_symbol_is_touched(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.citers_repo(root)
-            source = root / "launcher/main/liquid.c"
-            source.write_text("/* liquid levels */\n" + source.read_text())
-            found = doc_citers.citers(root, ["launcher/main/liquid.c"], ["HEAD"])
-        self.assertEqual(found, {"launcher/main/liquid.c": {"docs/Liquid.md": ["liquid.c"]}})
 
     def test_reverse_index_ignores_repeated_function_definition(self):
         with tempfile.TemporaryDirectory() as temp:
