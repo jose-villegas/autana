@@ -3031,22 +3031,6 @@ landscape_front_column(const sand_t* s) {
 }
 
 static int
-landscape_awake_blocks(const sand_t* s) {
-    const int cols = (REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W;
-    const int rows = (REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H;
-    int awake = 0;
-
-    for (int by = 0; by < rows; by++) {
-        for (int bx = 0; bx < cols; bx++) {
-            if (!sand_block_settled(s, bx, by)) {
-                awake++;
-            }
-        }
-    }
-    return awake;
-}
-
-static int
 landscape_material_count(const sand_t* s, material_id_t want) {
     int n = 0;
 
@@ -3243,7 +3227,7 @@ test_the_landscape_beds_sleep_against_the_landscape_floor(void) {
 
     const int shallow = sand_count(&s2);
     const int shallow_front = landscape_front_column(&s2);
-    const int shallow_awake = landscape_awake_blocks(&s2);
+    const int shallow_awake = count_awake_blocks(&s2);
     int ceiling = 0;
     for (int y = 0; y < REAL_H; y++) {
         if (!CELL_IS_EMPTY(sand_at(&s2, 0, y))) {
@@ -3256,7 +3240,7 @@ test_the_landscape_beds_sleep_against_the_landscape_floor(void) {
 
     const int deep = sand_count(&s2);
     const int deep_front = landscape_front_column(&s2);
-    const int deep_awake = landscape_awake_blocks(&s2);
+    const int deep_awake = count_awake_blocks(&s2);
 
     free(big);
     free(blocks);
@@ -3314,14 +3298,14 @@ test_the_landscape_water_pour_keeps_taking_the_board_awake(void) {
         sand_step(&s2, LANDSCAPE_GX, 0, 0);
     }
     const int water_before = landscape_material_count(&s2, MAT_WATER);
-    const int awake_at_open = landscape_awake_blocks(&s2);
+    const int awake_at_open = count_awake_blocks(&s2);
 
     for (int i = 0; i < LANDSCAPE_MEASURED_STEPS; i++) {
         landscape_water_pour(&s2, LANDSCAPE_PRIME_STEPS + i);
         sand_step(&s2, LANDSCAPE_GX, 0, 0);
     }
     const int water_after = landscape_material_count(&s2, MAT_WATER);
-    const int awake_at_close = landscape_awake_blocks(&s2);
+    const int awake_at_close = count_awake_blocks(&s2);
 
     free(big);
     free(blocks);
@@ -3623,7 +3607,7 @@ test_a_submerged_pile_settles_asleep_with_headroom(void) {
     for (int i = 0; i < SUBMERGED_PILE_FULL_SETTLE_STEPS; i++) {
         sand_step(&s2, LANDSCAPE_GX, 0, 0);
     }
-    const int awake = landscape_awake_blocks(&s2);
+    const int awake = count_awake_blocks(&s2);
 
     free(big);
     free(blocks);
