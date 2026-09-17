@@ -783,6 +783,12 @@ sweep_x_order(sand_t* s, int dx) {
     return x_step;
 }
 
+/* Sweep against travel so a grain's destination is already swept and it
+ * cannot move twice. With dy == 0 no row order gives that on its own, so a
+ * liquid-free grid alternates the row order per step and keeps only the
+ * diagonal pointing into swept rows. A grid holding liquid keeps the plain
+ * ascending order: restricting its diagonals stopped poured water reaching
+ * the floor, so there a grain can still slide twice in a step. */
 static void
 choose_sweep_order(const sand_t* s, int dy, const int** slide_a, const int** slide_b, int* y_from, int* y_to,
                    int* y_step) {
