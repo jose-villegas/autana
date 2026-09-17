@@ -195,3 +195,15 @@ bool region_has_root(const sand_t* g, int x0, int x1, int y0, int y1);
 /* Count of grid g's blocks not currently settled - the sleep-progress
  * readout every landscape/water-slope sleeping test in the split polls. */
 int count_awake_blocks(const sand_t* g);
+
+/* A timed test must PIN sand_two_core_step_enabled() rather than trust
+ * whatever an earlier suite or test left it at - see
+ * test_the_soak_only_skip_matches_the_full_walks_grid_exactly's own history.
+ * two_core_scope_begin() sets the mode and remembers what it replaced;
+ * two_core_scope_end() puts that back. */
+typedef struct {
+    bool before;
+} two_core_scope_t;
+
+two_core_scope_t two_core_scope_begin(bool two_core);
+void two_core_scope_end(two_core_scope_t scope);
