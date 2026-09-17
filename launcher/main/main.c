@@ -370,22 +370,47 @@ leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge) {
 }
 
 static void
+step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge) {
+    apply_pending_full_redraw(NULL);
+    const int chosen = ui_launcher_frame(input);
+    if (chosen < 0 || chosen >= apps_registered) {
+        draw_home_hint(exit_edge);
+        return;
+    }
+    *current = apps[chosen];
+    ESP_LOGI(TAG, "Starting %s", (*current)->name);
+    gfx_request_full_redraw();
+    restore_system_display_state();
+    (*current)->enter();
+    frame_ready = false;
+}
+
+/* An app with update(): overlap it with sending the frame drawn last pass
+ * (gfx_present_begin()/_wait(), gfx.h) - skipped while priming (frame_ready
+ * false), since nothing is queued yet. THIS pass's frame() output is
+ * presented the same way, deferred to present_unless_deferred() next
+ * pass. */
+static void
+step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
+    if (current->update == NULL) {
+        current->frame(dt_ms, input);
+        return;
+    }
+    if (frame_ready) {
+        gfx_present_begin();
+        current->update(dt_ms, input);
+        gfx_present_wait();
+    }
+    current->frame(dt_ms, input);
+    frame_ready = true;
+}
+
+static void
 step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
     const gesture_edge_t exit_edge = exit_edge_for_quarter(display_shell_quarter());
 
     if (*current == NULL) {
-        apply_pending_full_redraw(NULL);
-        const int chosen = ui_launcher_frame(input);
-        if (chosen >= 0 && chosen < apps_registered) {
-            *current = apps[chosen];
-            ESP_LOGI(TAG, "Starting %s", (*current)->name);
-            gfx_request_full_redraw();
-            restore_system_display_state();
-            (*current)->enter();
-            frame_ready = false;
-        } else {
-            draw_home_hint(exit_edge);
-        }
+        step_launcher(current, input, exit_edge);
         return;
     }
 
@@ -416,23 +441,7 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
     }
 
     apply_pending_full_redraw(*current);
-
-    /* An app with update(): overlap it with sending the frame drawn last
-     * pass (gfx_present_begin()/_wait(), gfx.h) - skipped while priming
-     * (frame_ready false), since there is nothing to send yet. Presenting
-     * THIS pass's own frame() output is deferred the same way, to the next
-     * pass's begin - see app_main()'s trailing gfx_present(). */
-    if ((*current)->update != NULL) {
-        if (frame_ready) {
-            gfx_present_begin();
-            (*current)->update(dt_ms, input);
-            gfx_present_wait();
-        }
-        (*current)->frame(dt_ms, input);
-        frame_ready = true;
-    } else {
-        (*current)->frame(dt_ms, input);
-    }
+    step_running_app(*current, input, dt_ms);
 
     if ((*current)->home_gesture && gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB) {
         draw_home_hint(exit_edge);
@@ -470,8 +479,10 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
 }
 #endif
 
-void
-app_main(void) {
+/* Park rather than return on graphics failure - returning from app_main
+ * leaves the chip idle and unflashable. */
+static void
+app_boot_init(void) {
     printf("BUILD_ID=%s\n", BUILD_ID);
     fflush(stdout);
     heap_mark("boot");
@@ -482,8 +493,6 @@ app_main(void) {
 
     if (!gfx_init()) {
         ESP_LOGE(TAG, "Graphics failed to start; nothing more to do");
-        /* Park rather than return - returning from app_main leaves the chip
-         * idle and unflashable. */
         while (1) {
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
@@ -531,7 +540,71 @@ app_main(void) {
      * once here before the first frame is built, or the board would
      * start upright and visibly turn into place. */
     ui_set_transform(ui_transform_quarter_turn(display_quarter(&shell_display), GFX_WIDTH, GFX_HEIGHT));
+}
 
+#if CONFIG_LAUNCHER_SELFTEST
+/* See util/screenshot.c for framebuffer contention explanation. */
+static void
+run_pending_selftest_suite(void) {
+    char runsuite_name[64];
+    if (!screenshot_take_runsuite_request(runsuite_name, sizeof runsuite_name)) {
+        return;
+    }
+    if (!suites_run_one(runsuite_name)) {
+        ESP_LOGE(TAG, "no suite named '%s' is registered", runsuite_name);
+    }
+    /* A suite draws, clears and presents on its own, outside the shell's
+     * own dirty tracking - the next real frame must repaint in full rather
+     * than trust whatever a test left behind. */
+    gfx_request_full_redraw();
+}
+#endif
+
+static void
+sample_display_orientation(int64_t now_us, int64_t* next_sample_us) {
+    if (now_us < *next_sample_us) {
+        return;
+    }
+    *next_sample_us = now_us + (int64_t)DISPLAY_SAMPLE_MS * 1000;
+
+    imu_sample_t sample;
+    if (!imu_ready() || !imu_read(&sample)) {
+        return;
+    }
+    const int gx = imu_gravity_screen_x(&sample);
+    const int gy = imu_gravity_screen_y(&sample);
+    if (display_update(&shell_display, gx, gy)) {
+        ui_set_transform(ui_transform_quarter_turn(display_quarter(&shell_display), GFX_WIDTH, GFX_HEIGHT));
+        gfx_request_full_redraw();
+    }
+}
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static void
+run_dev_frame_extras(input_t* input, const app_t* current) {
+    if (gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB) {
+        draw_build_mark();
+    }
+    if (screenshot_take_request()) {
+        screenshot_dump(input, current);
+        gfx_request_full_redraw();
+    }
+}
+#endif
+
+/* An app with update() manages its own present begin/wait inside step_app(),
+ * deferring the frame just drawn to next pass's begin - see its own
+ * comment. Everything else (the launcher included) keeps presenting here,
+ * synchronously, exactly as before. */
+static void
+present_unless_deferred(const app_t* current) {
+    if (current == NULL || current->update == NULL) {
+        gfx_present();
+    }
+}
+
+static void
+app_main_loop(void) {
     const app_t* current = NULL; /* NULL means the launcher is showing */
     input_t input = {0};
     int64_t previous_us = esp_timer_get_time();
@@ -553,55 +626,20 @@ app_main(void) {
         }
 
 #if CONFIG_LAUNCHER_SELFTEST
-        /* See util/screenshot.c for framebuffer contention explanation. */
-        char runsuite_name[64];
-        if (screenshot_take_runsuite_request(runsuite_name, sizeof runsuite_name)) {
-            if (!suites_run_one(runsuite_name)) {
-                ESP_LOGE(TAG, "no suite named '%s' is registered", runsuite_name);
-            }
-            /* A suite draws, clears and presents on its own, outside the
-             * shell's own dirty tracking - the next real frame must repaint
-             * in full rather than trust whatever a test left behind. */
-            gfx_request_full_redraw();
-        }
+        run_pending_selftest_suite();
 #endif
 
         touch_read(&input);
         buttons_read(&input.boot, &input.power);
-
-        if (now_us >= next_display_sample_us) {
-            next_display_sample_us = now_us + (int64_t)DISPLAY_SAMPLE_MS * 1000;
-
-            imu_sample_t sample;
-            if (imu_ready() && imu_read(&sample)) {
-                const int gx = imu_gravity_screen_x(&sample);
-                const int gy = imu_gravity_screen_y(&sample);
-                if (display_update(&shell_display, gx, gy)) {
-                    ui_set_transform(ui_transform_quarter_turn(display_quarter(&shell_display), GFX_WIDTH, GFX_HEIGHT));
-                    gfx_request_full_redraw();
-                }
-            }
-        }
+        sample_display_orientation(now_us, &next_display_sample_us);
 
         step_app(&current, &input, dt_ms);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        if (gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB) {
-            draw_build_mark();
-        }
-        if (screenshot_take_request()) {
-            screenshot_dump(&input, current);
-            gfx_request_full_redraw();
-        }
+        run_dev_frame_extras(&input, current);
 #endif
 
-        /* An app with update() manages its own present begin/wait inside
-         * step_app(), deferring the frame just drawn to next pass's begin -
-         * see its own comment. Everything else (the launcher included)
-         * keeps presenting here, synchronously, exactly as before. */
-        if (current == NULL || current->update == NULL) {
-            gfx_present();
-        }
+        present_unless_deferred(current);
 #if CONFIG_LAUNCHER_DEVELOPMENT
         report_fps(now_us, &fps_window_start, &frames);
 #endif
@@ -609,4 +647,10 @@ app_main(void) {
         /* Yield so the idle task can feed the watchdog. */
         vTaskDelay(1);
     }
+}
+
+void
+app_main(void) {
+    app_boot_init();
+    app_main_loop();
 }
