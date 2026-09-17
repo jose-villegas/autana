@@ -166,6 +166,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites/suite_ui.c"
         "../test/suites/suite_ui_style.c"
         "../test/suites/suite_ui_transform.c"
+        "../test/suites/suite_ui_anchor.c"
         "../test/suites/suite_ui_centered_rect.c"
         "../test/suites/suite_ui_pointer.c"
         "../test/suites/suite_ui_pointer_microui.c"
