@@ -100,6 +100,53 @@ footprint_set(uint8_t* mask, size_t idx) {
     mask[idx >> 3] |= (uint8_t)(1u << (idx & 7));
 }
 
+/* Whether row y (if on-grid) touches the footprint anywhere in [x0, x1]. */
+static bool
+footprint_row_hit(const uint8_t* footprint, int w, int h, int x0, int x1, int y) {
+    if (y < 0 || y >= h) {
+        return false;
+    }
+    for (int xx = x0; xx <= x1; xx++) {
+        if (xx < 0 || xx >= w) {
+            continue;
+        }
+        if (footprint_get(footprint, (size_t)y * (size_t)w + (size_t)xx)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Whether column x (if on-grid) touches the footprint anywhere in
+ * [y0, y1]. */
+static bool
+footprint_col_hit(const uint8_t* footprint, int w, int h, int y0, int y1, int x) {
+    if (x < 0 || x >= w) {
+        return false;
+    }
+    for (int yy = y0; yy <= y1; yy++) {
+        if (yy < 0 || yy >= h) {
+            continue;
+        }
+        if (footprint_get(footprint, (size_t)yy * (size_t)w + (size_t)x)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Whether the Chebyshev ring at radius r around (x, y) - its top/bottom
+ * edges then its left/right edges - touches the footprint anywhere. */
+static bool
+footprint_ring_hit(const uint8_t* footprint, int w, int h, int x, int y, int r) {
+    const int x0 = x - r, x1 = x + r;
+    const int y0 = y - r, y1 = y + r;
+
+    return footprint_row_hit(footprint, w, h, x0, x1, y0) || footprint_row_hit(footprint, w, h, x0, x1, y1)
+           || footprint_col_hit(footprint, w, h, y0 + 1, y1 - 1, x0)
+           || footprint_col_hit(footprint, w, h, y0 + 1, y1 - 1, x1);
+}
+
 /* Distance past the dune's own edge, not from the detonation centre:
  * searches outward in expanding Chebyshev rings against `footprint`
  * rather than flood-filling all 41,216 grid cells when only ~105 queries
@@ -112,32 +159,9 @@ nearest_footprint_distance(const uint8_t* footprint, int w, int h, int x, int y,
     if (footprint_get(footprint, (size_t)y * (size_t)w + (size_t)x)) {
         return 0;
     }
-
     for (int r = 1; r <= cap; r++) {
-        const int x0 = x - r, x1 = x + r;
-        const int y0 = y - r, y1 = y + r;
-
-        for (int xx = x0; xx <= x1; xx++) {
-            if (xx < 0 || xx >= w) {
-                continue;
-            }
-            if (y0 >= 0 && footprint_get(footprint, (size_t)y0 * (size_t)w + (size_t)xx)) {
-                return r;
-            }
-            if (y1 < h && footprint_get(footprint, (size_t)y1 * (size_t)w + (size_t)xx)) {
-                return r;
-            }
-        }
-        for (int yy = y0 + 1; yy <= y1 - 1; yy++) {
-            if (yy < 0 || yy >= h) {
-                continue;
-            }
-            if (x0 >= 0 && footprint_get(footprint, (size_t)yy * (size_t)w + (size_t)x0)) {
-                return r;
-            }
-            if (x1 < w && footprint_get(footprint, (size_t)yy * (size_t)w + (size_t)x1)) {
-                return r;
-            }
+        if (footprint_ring_hit(footprint, w, h, x, y, r)) {
+            return r;
         }
     }
     return cap + 1; /* not found within cap - see this function's own comment */
@@ -178,6 +202,73 @@ nearest_footprint_distance(const uint8_t* footprint, int w, int h, int x, int y,
 static void
 build_sand_dune_scene(sand_t* s) {
     sand_spawn(s, REAL_W / 2, REAL_H / 4, REAL_W / 5, MAT_SAND);
+}
+
+/* Widens [*min_x,*max_x] x [*min_y,*max_y] to include (x, y). */
+static void
+extend_bounds(int x, int y, int* min_x, int* max_x, int* min_y, int* max_y) {
+    if (x < *min_x) {
+        *min_x = x;
+    }
+    if (x > *max_x) {
+        *max_x = x;
+    }
+    if (y < *min_y) {
+        *min_y = y;
+    }
+    if (y > *max_y) {
+        *max_y = y;
+    }
+}
+
+typedef struct {
+    int count;
+    int min_x, max_x, min_y, max_y;
+} footprint_bbox_t;
+
+/* Records every occupied cell of g into `footprint` and returns the
+ * count and bounding box of what it recorded. */
+static footprint_bbox_t
+record_footprint(const sand_t* g, uint8_t* footprint, int w, int h) {
+    footprint_bbox_t b = {0, w, -1, h, -1};
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            if (sand_at(g, x, y) == SAND_EMPTY) {
+                continue;
+            }
+            footprint_set(footprint, (size_t)y * (size_t)w + (size_t)x);
+            b.count++;
+            extend_bounds(x, y, &b.min_x, &b.max_x, &b.min_y, &b.max_y);
+        }
+    }
+    return b;
+}
+
+typedef struct {
+    int outside, max_throw;
+} escape_measure_t;
+
+/* Sand cells now outside the recorded footprint, and the furthest of
+ * them from it by nearest_footprint_distance(). */
+static escape_measure_t
+measure_escape(const sand_t* g, const uint8_t* footprint, int w, int h, int cap) {
+    escape_measure_t m = {0, 0};
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            if (footprint_get(footprint, (size_t)y * (size_t)w + (size_t)x)) {
+                continue; /* inside the original dune - not an escape */
+            }
+            if (CELL_MATERIAL(sand_at(g, x, y)) != MAT_SAND) {
+                continue; /* fire, not a grain - see this test's own comment */
+            }
+            m.outside++;
+            const int d = nearest_footprint_distance(footprint, w, h, x, y, cap);
+            if (d > m.max_throw) {
+                m.max_throw = d;
+            }
+        }
+    }
+    return m;
 }
 
 /* Three numbers - escaped grains, furthest throw, material destroyed -
@@ -223,32 +314,10 @@ test_the_sand_dune_scene_throws_grains_beyond_its_own_footprint(void) {
      * centre" means the centre of what actually settled, which is lower
      * and narrower than where sand_spawn() dropped it, not the drop
      * point itself. */
-    int before = 0;
-    int min_x = REAL_W, max_x = -1, min_y = REAL_H, max_y = -1;
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            const bool occupied = sand_at(&real, x, y) != SAND_EMPTY;
-            if (occupied) {
-                footprint_set(footprint, (size_t)y * REAL_W + x);
-                before++;
-                if (x < min_x) {
-                    min_x = x;
-                }
-                if (x > max_x) {
-                    max_x = x;
-                }
-                if (y < min_y) {
-                    min_y = y;
-                }
-                if (y > max_y) {
-                    max_y = y;
-                }
-            }
-        }
-    }
-
-    const int cx = (min_x + max_x) / 2;
-    const int cy = (min_y + max_y) / 2;
+    const footprint_bbox_t fp = record_footprint(&real, footprint, REAL_W, REAL_H);
+    const int before = fp.count;
+    const int cx = (fp.min_x + fp.max_x) / 2;
+    const int cy = (fp.min_y + fp.max_y) / 2;
 
     /* A settled dune's bounding-box centre sits only ~30 cells above the
      * true floor, so at DUNE_BLAST_RADIUS the blast does not reliably
@@ -274,23 +343,9 @@ test_the_sand_dune_scene_throws_grains_beyond_its_own_footprint(void) {
      * centre: from one fixed interior point, a grain genuinely thrown
      * clear and one that merely slid down the dune's own slope both read
      * as far. */
-    int outside = 0;
-    int max_throw = 0;
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            if (footprint_get(footprint, (size_t)y * REAL_W + x)) {
-                continue; /* inside the original dune - not an escape */
-            }
-            if (CELL_MATERIAL(sand_at(&real, x, y)) != MAT_SAND) {
-                continue; /* fire, not a grain - see this test's own comment */
-            }
-            outside++;
-            const int d = nearest_footprint_distance(footprint, REAL_W, REAL_H, x, y, NEAREST_FOOTPRINT_CAP);
-            if (d > max_throw) {
-                max_throw = d;
-            }
-        }
-    }
+    const escape_measure_t esc = measure_escape(&real, footprint, REAL_W, REAL_H, NEAREST_FOOTPRINT_CAP);
+    const int outside = esc.outside;
+    const int max_throw = esc.max_throw;
     const int after = sand_count(&real);
     const int destroyed = before - after;
 
@@ -407,6 +462,36 @@ empty_within(const sand_t* s, int cx, int cy, int r) {
     return n;
 }
 
+/* Cell count of material `m` anywhere on scene `g` (w x h). */
+static int
+count_material_on_scene(const sand_t* g, int w, int h, material_id_t m) {
+    int n = 0;
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            if (CELL_MATERIAL(sand_at(g, x, y)) == m) {
+                n++;
+            }
+        }
+    }
+    return n;
+}
+
+/* Empties every cell within radius r of (cx, cy) on scene g. */
+static void
+carve_circle_empty(sand_t* g, int w, int h, int cx, int cy, int r) {
+    for (int y = cy - r; y <= cy + r; y++) {
+        for (int x = cx - r; x <= cx + r; x++) {
+            if ((unsigned)x >= (unsigned)w || (unsigned)y >= (unsigned)h) {
+                continue;
+            }
+            const int ddx = x - cx, ddy = y - cy;
+            if (ddx * ddx + ddy * ddy <= r * r) {
+                sand_set(g, x, y, SAND_EMPTY);
+            }
+        }
+    }
+}
+
 static void
 test_the_water_pool_scene_refills_its_own_cavity(void) {
     const size_t cells_len = (size_t)REAL_W * REAL_H;
@@ -435,14 +520,7 @@ test_the_water_pool_scene_refills_its_own_cavity(void) {
     build_dune_beside_water_scene(&real);
     const bool settled = settle_fully(&real, cells_len);
 
-    int water_before = 0;
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            if (CELL_MATERIAL(sand_at(&real, x, y)) == MAT_WATER) {
-                water_before++;
-            }
-        }
-    }
+    const int water_before = count_material_on_scene(&real, REAL_W, REAL_H, MAT_WATER);
 
     /* FOUND, not hardcoded. A fixed row only lands inside the pool for
      * one particular water level, so it becomes a silent precondition on
@@ -471,14 +549,7 @@ test_the_water_pool_scene_refills_its_own_cavity(void) {
 
     const bool centre_refilled = sand_at(&real, cx, cy) != SAND_EMPTY;
 
-    int water_after = 0;
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            if (CELL_MATERIAL(sand_at(&real, x, y)) == MAT_WATER) {
-                water_after++;
-            }
-        }
-    }
+    const int water_after = count_material_on_scene(&real, REAL_W, REAL_H, MAT_WATER);
 
     /* Asking only that the blast's own centre be non-empty cannot fail:
      * an impulse SWAPS two occupied cells, so a packed region never opens
@@ -488,17 +559,7 @@ test_the_water_pool_scene_refills_its_own_cavity(void) {
      * against 32 with liquids immobile, putting the half-count bar
      * between them. */
     const int carve_r = 6;
-    for (int y = cy - carve_r; y <= cy + carve_r; y++) {
-        for (int x = cx - carve_r; x <= cx + carve_r; x++) {
-            if ((unsigned)x >= (unsigned)REAL_W || (unsigned)y >= (unsigned)REAL_H) {
-                continue;
-            }
-            const int ddx = x - cx, ddy = y - cy;
-            if (ddx * ddx + ddy * ddy <= carve_r * carve_r) {
-                sand_set(&real, x, y, SAND_EMPTY);
-            }
-        }
-    }
+    carve_circle_empty(&real, REAL_W, REAL_H, cx, cy, carve_r);
     const int carved_empty = empty_within(&real, cx, cy, carve_r);
     for (int refill_step = 0; refill_step < 100; refill_step++) {
         sand_step(&real, 0, 1000, 0);
@@ -559,6 +620,41 @@ build_dune_in_a_vessel_scene(sand_t* s) {
     sand_spawn(s, REAL_W / 2, REAL_H / 4, REAL_W / 5, MAT_SAND);
 }
 
+typedef struct {
+    int min_x, max_x, min_y, max_y;
+} bbox_t;
+
+/* Bounding box of every cell of material m on scene g - inverted
+ * (min > max) if there is none. */
+static bbox_t
+material_bbox(const sand_t* g, int w, int h, material_id_t m) {
+    bbox_t b = {w, -1, h, -1};
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            if (CELL_MATERIAL(sand_at(g, x, y)) != m) {
+                continue;
+            }
+            extend_bounds(x, y, &b.min_x, &b.max_x, &b.min_y, &b.max_y);
+        }
+    }
+    return b;
+}
+
+/* Non-empty cells anywhere outside the vessel's own margin. */
+static int
+count_occupied_outside_vessel(const sand_t* g, int w, int h, int margin) {
+    int n = 0;
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            const bool outside_vessel = x < margin || x >= w - margin || y < margin || y >= h - margin;
+            if (outside_vessel && sand_at(g, x, y) != SAND_EMPTY) {
+                n++;
+            }
+        }
+    }
+    return n;
+}
+
 static void
 test_the_vessel_scene_lets_nothing_reach_outside_it(void) {
     const size_t cells_len = (size_t)REAL_W * REAL_H;
@@ -589,28 +685,10 @@ test_the_vessel_scene_lets_nothing_reach_outside_it(void) {
 
     /* The dune's own centre, from its SAND footprint specifically - the
      * walls are also "occupied" and would skew a plain min/max scan. */
-    int min_x = REAL_W, max_x = -1, min_y = REAL_H, max_y = -1;
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            if (CELL_MATERIAL(sand_at(&real, x, y)) == MAT_SAND) {
-                if (x < min_x) {
-                    min_x = x;
-                }
-                if (x > max_x) {
-                    max_x = x;
-                }
-                if (y < min_y) {
-                    min_y = y;
-                }
-                if (y > max_y) {
-                    max_y = y;
-                }
-            }
-        }
-    }
-
-    const int cx = (min_x + max_x) / 2;
-    const int cy = (min_y + max_y) / 2;
+    const bbox_t dune = material_bbox(&real, REAL_W, REAL_H, MAT_SAND);
+    const int max_x = dune.max_x;
+    const int cx = (dune.min_x + dune.max_x) / 2;
+    const int cy = (dune.min_y + dune.max_y) / 2;
 
     sand_explode(&real, cx, cy, DUNE_BLAST_RADIUS);
 
@@ -619,16 +697,7 @@ test_the_vessel_scene_lets_nothing_reach_outside_it(void) {
         sand_step(&real, 0, 1000, 0);
     }
 
-    int outside_occupied = 0;
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            const bool outside_vessel =
-                x < VESSEL_MARGIN || x >= REAL_W - VESSEL_MARGIN || y < VESSEL_MARGIN || y >= REAL_H - VESSEL_MARGIN;
-            if (outside_vessel && sand_at(&real, x, y) != SAND_EMPTY) {
-                outside_occupied++;
-            }
-        }
-    }
+    const int outside_occupied = count_occupied_outside_vessel(&real, REAL_W, REAL_H, VESSEL_MARGIN);
 
     free(big);
     free(blocks);
@@ -812,6 +881,47 @@ build_layered_dune_scene(sand_t* s) {
     sand_spawn(s, REAL_W / 2, REAL_H / 4, (REAL_W / 5) / 3, MAT_SAND);
 }
 
+/* Marks seen[CELL_VARIANT(c)] for every MAT_SAND cell anywhere on scene
+ * g. */
+static void
+mark_seen_bands(const sand_t* g, int w, int h, bool seen[SAND_SHADE_COUNT]) {
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            const cell_t c = sand_at(g, x, y);
+            if (CELL_MATERIAL(c) == MAT_SAND) {
+                seen[CELL_VARIANT(c)] = true;
+            }
+        }
+    }
+}
+
+/* Same as mark_seen_bands(), but only for cells outside `footprint`. */
+static void
+mark_seen_bands_outside(const sand_t* g, const uint8_t* footprint, int w, int h, bool seen[SAND_SHADE_COUNT]) {
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            if (footprint_get(footprint, (size_t)y * (size_t)w + (size_t)x)) {
+                continue;
+            }
+            const cell_t c = sand_at(g, x, y);
+            if (CELL_MATERIAL(c) == MAT_SAND) {
+                seen[CELL_VARIANT(c)] = true;
+            }
+        }
+    }
+}
+
+static int
+count_true_flags(const bool arr[], int n) {
+    int c = 0;
+    for (int i = 0; i < n; i++) {
+        if (arr[i]) {
+            c++;
+        }
+    }
+    return c;
+}
+
 /* The base scene above already proves grains escape the footprint; this
  * proves the blast reaches deep enough to mix bands that would otherwise
  * never meet. Counted by distinct shade (CELL_VARIANT), since pours
@@ -851,41 +961,13 @@ test_the_layered_dune_scene_throws_more_than_one_band(void) {
     build_layered_dune_scene(&real);
     const bool settled = settle_fully(&real, cells_len);
 
-    int min_x = REAL_W, max_x = -1, min_y = REAL_H, max_y = -1;
+    const footprint_bbox_t fp = record_footprint(&real, footprint, REAL_W, REAL_H);
     bool seen_variant_before[SAND_SHADE_COUNT] = {false};
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            const cell_t c = sand_at(&real, x, y);
-            const bool occupied = c != SAND_EMPTY;
-            if (occupied) {
-                footprint_set(footprint, (size_t)y * REAL_W + x);
-                if (x < min_x) {
-                    min_x = x;
-                }
-                if (x > max_x) {
-                    max_x = x;
-                }
-                if (y < min_y) {
-                    min_y = y;
-                }
-                if (y > max_y) {
-                    max_y = y;
-                }
-                if (CELL_MATERIAL(c) == MAT_SAND) {
-                    seen_variant_before[CELL_VARIANT(c)] = true;
-                }
-            }
-        }
-    }
-    int distinct_bands = 0;
-    for (int v = 0; v < SAND_SHADE_COUNT; v++) {
-        if (seen_variant_before[v]) {
-            distinct_bands++;
-        }
-    }
+    mark_seen_bands(&real, REAL_W, REAL_H, seen_variant_before);
+    const int distinct_bands = count_true_flags(seen_variant_before, SAND_SHADE_COUNT);
 
-    const int cx = (min_x + max_x) / 2;
-    const int cy = (min_y + max_y) / 2;
+    const int cx = (fp.min_x + fp.max_x) / 2;
+    const int cy = (fp.min_y + fp.max_y) / 2;
 
     sand_explode(&real, cx, cy, DUNE_BLAST_RADIUS);
 
@@ -895,23 +977,8 @@ test_the_layered_dune_scene_throws_more_than_one_band(void) {
     }
 
     bool seen_variant_outside[SAND_SHADE_COUNT] = {false};
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            if (footprint_get(footprint, (size_t)y * REAL_W + x)) {
-                continue;
-            }
-            const cell_t c = sand_at(&real, x, y);
-            if (CELL_MATERIAL(c) == MAT_SAND) {
-                seen_variant_outside[CELL_VARIANT(c)] = true;
-            }
-        }
-    }
-    int distinct_bands_outside = 0;
-    for (int v = 0; v < SAND_SHADE_COUNT; v++) {
-        if (seen_variant_outside[v]) {
-            distinct_bands_outside++;
-        }
-    }
+    mark_seen_bands_outside(&real, footprint, REAL_W, REAL_H, seen_variant_outside);
+    const int distinct_bands_outside = count_true_flags(seen_variant_outside, SAND_SHADE_COUNT);
 
     free(big);
     free(blocks);
