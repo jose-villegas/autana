@@ -190,6 +190,10 @@ Diagnostics app's developer-toggle page (`gfx_set_debug_overlay()` /
 Both are off by default even in a development build, since they draw
 directly over real content.
 
+The sand app carries a similar overlay of its own, for the two-core
+sweep's stripe seams rather than gfx's send/leaf grids - see
+[`../sand/Sand-Simulation.md`](../sand/Sand-Simulation.md#the-seam-fix).
+
 ## Performance seems off
 
 The shell logs frames-per-second on a fixed timer (`report_fps()` in

@@ -24,6 +24,13 @@ typedef struct {
     const char* color;
     const char* dither;
     bool show_dither;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    /* Current value of the seam-overlay checkbox below - see
+     * app_sand.c's draw_seam_overlay(). Development builds only, unlike
+     * show_dither: this is a debug aid, not something a release menu
+     * offers. */
+    bool seam_overlay_on;
+#endif
 } sand_menu_screen_state_t;
 
 /* Which button, if any, this frame's tap landed on - app_sand.c applies at
@@ -33,12 +40,18 @@ typedef struct {
     bool quality_clicked;
     bool color_clicked;
     bool dither_clicked;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    /* Not a click event like the four above - mu_checkbox() mutates this
+     * immediately, so it is the checkbox's new value every frame. */
+    bool seam_overlay_on;
+#endif
 } sand_menu_screen_result_t;
 
 /* How many rows this menu draws for `show_dither` - QUALITY/COLOUR/START
- * plus DITHER once COLOUR is 16. Exposed so sand_menu_screen_start_rect()
- * and this file's own drawing agree on the same centring without either
- * recomputing it differently. */
+ * plus DITHER once COLOUR is 16, plus the seam-overlay checkbox on a
+ * development build. Exposed so sand_menu_screen_start_rect() and this
+ * file's own drawing agree on the same centring without either recomputing
+ * it differently. */
 int sand_menu_screen_row_count(bool show_dither);
 
 /* The START button's own on-screen rect, for a device self-test that taps
