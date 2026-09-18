@@ -47,6 +47,8 @@ extern volatile bool sand_step_gate_sweep_body;
 extern volatile bool sand_step_gate_liquid_equalise;
 extern volatile bool sand_step_gate_liquid_density_sort;
 extern volatile bool sand_step_gate_gas;
+extern volatile bool sand_step_gate_gas_body;
+extern volatile bool sand_step_gate_gas_equalise;
 extern volatile bool sand_step_gate_reaction_local;
 extern volatile bool sand_step_gate_reaction_reach;
 

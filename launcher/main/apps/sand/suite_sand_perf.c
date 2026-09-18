@@ -429,6 +429,8 @@ pass_gates_enable_all(void) {
     sand_step_gate_liquid_equalise = true;
     sand_step_gate_liquid_density_sort = true;
     sand_step_gate_gas = true;
+    sand_step_gate_gas_body = true;
+    sand_step_gate_gas_equalise = true;
     sand_step_gate_reaction_local = true;
     sand_step_gate_reaction_reach = true;
 }
@@ -472,7 +474,8 @@ static void
 report_pass_gate_scene(const char* scene, void (*build)(sand_t*, uint8_t*, uint8_t*), int warmup_steps, int gx,
                        int gy) {
     static const char* const names[] = {
-        "sweep", "sweep body", "liquid equalise", "liquid density sort", "gas", "reaction local", "reaction reach",
+        "sweep",    "sweep body",   "liquid equalise", "liquid density sort", "gas",
+        "gas body", "gas equalise", "reaction local",  "reaction reach",
     };
     volatile bool* const gates[] = {
         &sand_step_gate_sweep,
@@ -480,6 +483,8 @@ report_pass_gate_scene(const char* scene, void (*build)(sand_t*, uint8_t*, uint8
         &sand_step_gate_liquid_equalise,
         &sand_step_gate_liquid_density_sort,
         &sand_step_gate_gas,
+        &sand_step_gate_gas_body,
+        &sand_step_gate_gas_equalise,
         &sand_step_gate_reaction_local,
         &sand_step_gate_reaction_reach,
     };
