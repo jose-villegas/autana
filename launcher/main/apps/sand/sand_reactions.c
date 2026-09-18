@@ -311,7 +311,15 @@ typedef struct {
 
 static react_coord_t react_confined_ignite_defer[REACT_EXPLOSION_DEFER_MAX];
 static uint8_t react_confined_ignite_defer_count;
-static react_coord_t react_lava_burst_defer[REACT_EXPLOSION_DEFER_MAX];
+
+/* A lava entry carries the material it quenches to, for the same reason the
+ * fuse entry carries its radius: the reach pass must not have to ask the
+ * board what a cell was. */
+typedef struct {
+    uint8_t x, y, quench_to;
+} react_lava_defer_t;
+
+static react_lava_defer_t react_lava_burst_defer[REACT_EXPLOSION_DEFER_MAX];
 static uint8_t react_lava_burst_defer_count;
 
 /* A fuse entry carries its RADIUS, not just where it was: by the time the
@@ -331,8 +339,8 @@ static uint8_t react_cooloff_defer_count;
 /* Under 1 KiB total, well inside the sweep's own ~5 KiB guard-snapshot
  * precedent (sand.c) - these hold candidates for events that are already
  * rare and cap-limited, never one entry per cell. */
-_Static_assert(2 * sizeof(react_coord_t) * REACT_EXPLOSION_DEFER_MAX + sizeof(react_fuse_explosion_defer)
-                       + sizeof(react_crack_defer) + sizeof(react_cooloff_defer)
+_Static_assert(sizeof(react_coord_t) * REACT_EXPLOSION_DEFER_MAX + sizeof(react_lava_burst_defer)
+                       + sizeof(react_fuse_explosion_defer) + sizeof(react_crack_defer) + sizeof(react_cooloff_defer)
                    <= 1024,
                "the reaction split's deferred queues must stay small - see the comment above");
 
@@ -345,11 +353,11 @@ queue_confined_ignite(int x, int y) {
 }
 
 static inline void
-queue_lava_burst(int x, int y) {
+queue_lava_burst(int x, int y, uint8_t quench_to) {
     if (react_lava_burst_defer_count >= REACT_EXPLOSION_DEFER_MAX) {
         return;
     }
-    react_lava_burst_defer[react_lava_burst_defer_count++] = (react_coord_t){(uint8_t)x, (uint8_t)y};
+    react_lava_burst_defer[react_lava_burst_defer_count++] = (react_lava_defer_t){(uint8_t)x, (uint8_t)y, quench_to};
 }
 
 static inline void
@@ -1888,11 +1896,34 @@ try_lava_burst(const burning_cell_t* cell) {
  * sand_step_reaction_reach() runs the real check afterward, single core. */
 static bool
 try_lava_burst_or_defer(const burning_cell_t* cell) {
-    if (cell->s->rng_hashed) {
-        queue_lava_burst(cell->x, cell->y);
+    sand_t* const s = cell->s;
+
+    if (!s->rng_hashed) {
+        return try_lava_burst(cell);
+    }
+
+    /* The ROLL happens here, where the serial path rolls, and only a winner
+     * is queued. Deferring every burning lava cell instead would cut the
+     * board's chances from one per cell to the queue's own depth, which is
+     * sixteen - a screen of lava would then almost never burst. The draw is
+     * hashed per cell, so two cores never share it. */
+    const bool burst_natural = s->lava_burst < 0;
+    const int burst_chance = burst_natural ? SAND_LAVA_BURST_CHANCE : s->lava_burst;
+    if (burst_chance == 0 || !sand_rng_chance_at(s, cell->x, cell->y, SAND_RNG_SLOT_REACT_LAVA_BURST, burst_chance)) {
         return false;
     }
-    return try_lava_burst(cell);
+    if (burst_natural
+        && (sand_rng_next_at(s, cell->x, cell->y, SAND_RNG_SLOT_REACT_LAVA_BURST_GATE) % SAND_LAVA_BURST_GATE) != 0) {
+        return false;
+    }
+    if (!covered_at(s, cell->x, cell->y, s->w, s->h, cell->mat->density)) {
+        return false;
+    }
+
+    queue_lava_burst(cell->x, cell->y, cell->rx->quench_to);
+    /* True, as a serial burst returns: the caller must leave this cell alone
+     * so the reach pass still finds the lava it queued. */
+    return true;
 }
 
 typedef enum {
@@ -2626,15 +2657,18 @@ reach_confined_ignitions(sand_t* s) {
 
 static void
 reach_lava_bursts(sand_t* s) {
+    const int w = s->w;
+
     for (uint8_t i = 0; i < react_lava_burst_defer_count; i++) {
+        if (!confined_blast_available(s)) {
+            break;
+        }
         const int x = react_lava_burst_defer[i].x;
         const int y = react_lava_burst_defer[i].y;
-        const cell_t c = sand_at(s, x, y);
-        if (CELL_IS_EMPTY(c) || (sand_burn_plan_of(c)->flags & BURN_LAVA) == 0) {
-            continue;
-        }
-        const burning_cell_t cell = {s, reaction_of(c), material_of(c), c, x, y};
-        (void)try_lava_burst(&cell);
+
+        place_reacted(s, x, y, (size_t)y * (size_t)w + (size_t)x, react_lava_burst_defer[i].quench_to);
+        s->confined_blasts_this_step++;
+        sand_explode(s, x, y, SAND_LAVA_BURST_RADIUS);
     }
     react_lava_burst_defer_count = 0;
 }
