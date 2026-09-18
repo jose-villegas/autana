@@ -94,6 +94,14 @@ static const lag_case_t cases[] = {
     /* Landscape: gravity along x, the shipping orientation. */
     {"water column (landscape)", scene_water_column, 1000, 0},
     {"sand pile (landscape)", scene_sand_pile, 1000, 0},
+    /* A held device never reads an exact axis. These leans are what the
+     * accelerometer actually produces, and the liquid flow's diagonal ray
+     * crosses rows for any of them - the axis-aligned rows above are the
+     * one case where it does not. */
+    {"water column (portrait, 17 deg)", scene_water_column, 300, 1000},
+    {"water column (portrait, 35 deg)", scene_water_column, 700, 1000},
+    {"water pool (portrait, 17 deg)", scene_water_pool, 300, 1000},
+    {"water column (landscape, 17 deg)", scene_water_column, 1000, 300},
 };
 
 /* Mass a cell holds, for the row-mass comparison: a liquid carries its mass in
