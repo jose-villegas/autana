@@ -1287,6 +1287,8 @@ volatile bool sand_step_gate_sweep_body = true;
 volatile bool sand_step_gate_liquid_equalise = true;
 volatile bool sand_step_gate_liquid_density_sort = true;
 volatile bool sand_step_gate_gas = true;
+volatile bool sand_step_gate_gas_body = true;
+volatile bool sand_step_gate_gas_equalise = true;
 volatile bool sand_step_gate_reaction_local = true;
 volatile bool sand_step_gate_reaction_reach = true;
 #endif
