@@ -315,7 +315,7 @@ draw_fps(const input_t* input, bool for_bands) {
  * menu_open's own comment for the one-button-one-screen-level-concern
  * precedent this follows. */
 static void
-draw_menu(const input_t* input, bool for_bands) {
+draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
     mu_Context* ctx = ui_context();
     ui_begin(input);
 
@@ -323,7 +323,7 @@ draw_menu(const input_t* input, bool for_bands) {
         .partial_updates_on = partial_updates,
         .band_mode_on = cube_band_mode,
     };
-    const cube_menu_screen_result_t result = cube_menu_screen_draw(ctx, &state);
+    const cube_menu_screen_result_t result = cube_menu_screen_draw(ctx, &state, dt_ms);
 
     if (result.partial_updates_clicked) {
         partial_updates = !partial_updates;
@@ -602,7 +602,7 @@ cube_frame_band(uint32_t dt_ms, const input_t* input) {
     }
 
     if (menu_open) {
-        draw_menu(input, true);
+        draw_menu(input, true, dt_ms);
     } else {
         draw_fps(input, true);
     }
@@ -676,7 +676,7 @@ cube_frame(uint32_t dt_ms, const input_t* input) {
      * throughput specifically, so counting a frame that only ever drew the
      * menu would blend two unrelated numbers into one misleading reading. */
     if (menu_open) {
-        draw_menu(input, false);
+        draw_menu(input, false, dt_ms);
         return;
     }
 

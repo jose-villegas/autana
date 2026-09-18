@@ -38,6 +38,7 @@
 #include <stdint.h>
 
 #include "app.h"
+#include "build_variant.h"
 
 /*
  * BMP encoding - see screenshot.c's write loop for how these two are used

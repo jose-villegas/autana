@@ -101,8 +101,10 @@ $TEST_DIR/suites/suite_ui_style.c
 $TEST_DIR/suites/suite_ui_transform.c
 $TEST_DIR/suites/suite_ui_anchor.c
 $TEST_DIR/suites/suite_ui_centered_rect.c
+$TEST_DIR/suites/suite_ui_launcher.c
 $TEST_DIR/suites/suite_ui_pointer.c
 $TEST_DIR/suites/suite_ui_pointer_microui.c
+$TEST_DIR/suites/suite_ui_scroll.c
 $TEST_DIR/suites/suite_ui_slider.c
 $TEST_DIR/suites/suite_display.c
 $TEST_DIR/suites/suite_panel_clock.c
@@ -118,7 +120,9 @@ $MAIN_DIR/display/display.c
 $MAIN_DIR/util/job.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/ui/ui_build.c
+$MAIN_DIR/ui/ui_launcher_draw.c
 $MAIN_DIR/ui/ui_pointer.c
+$MAIN_DIR/ui/ui_scroll.c
 $MAIN_DIR/gfx/gfx_palette_standard.c
 $MAIN_DIR/../tools/gfx_palette_gen.c
 $TEST_DIR/../components/microui/src/microui.c

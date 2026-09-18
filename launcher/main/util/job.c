@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "build_variant.h"
+
 #ifdef ESP_PLATFORM
 #include "esp_heap_caps.h"
 #include "esp_log.h"
