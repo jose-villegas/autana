@@ -66,11 +66,6 @@ sand_stripe_count(const sand_t* s) {
     return (s->h + height - 1) / height;
 }
 
-static inline int
-sand_stripe_offset(const sand_t* s) {
-    return (s->step_phase & 1) ? sand_stripe_height(s->h) / 2 : 0;
-}
-
 /* One constant per rng draw site inside a checkerboard-parallel pass -
  * see sand_rng_next_at() below. A fixed slot per site, not a per-cell
  * counter, is what keeps a draw thread-safe with no shared mutable state:
@@ -85,7 +80,19 @@ enum {
     SAND_RNG_SLOT_GAS_DECAY,
     SAND_RNG_SLOT_GAS_MOBILITY,
     SAND_RNG_SLOT_GAS_WALK,
+    SAND_RNG_SLOT_STRIPE,
 };
+
+/* Where this step's stripe boundaries sit, inside the grid's own stripe
+ * height. A boundary's two guard rows stall whatever crossed into them, so a
+ * boundary that only ever takes two positions stalls cells on the same two
+ * screen lines every step and reads as banding. Hashing the step spreads
+ * them over the stripe. */
+static inline int
+sand_stripe_offset(const sand_t* s) {
+    return (int)(rng_hash(s->rng_seed_base, (uint32_t)s->step_phase, 0u, SAND_RNG_SLOT_STRIPE)
+                 % (uint32_t)sand_stripe_height(s->h));
+}
 
 /* Draws for (x, y) at `slot` - see the enum above. Sequential and
  * identical to plain rng_next() unless a checkerboard-parallel pass has
