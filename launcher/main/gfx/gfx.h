@@ -14,6 +14,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "build_variant.h"
+
 #ifdef ESP_PLATFORM
 #include "bsp/esp-bsp.h"
 #endif

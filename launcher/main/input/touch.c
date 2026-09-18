@@ -1,6 +1,8 @@
 #include "input/touch.h"
 #include "input/touch_fsm.h"
 
+#include "build_variant.h"
+
 #include "bsp/esp-bsp.h"
 #include "bsp/touch.h"
 #include "driver/gpio.h"
