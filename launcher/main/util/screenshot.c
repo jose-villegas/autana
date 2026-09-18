@@ -22,6 +22,7 @@
 #include "util/screenshot.h"
 
 #include "build_id_generated.h"
+#include "build_variant.h"
 #include "util/build_id.h"
 
 #include <stdio.h>

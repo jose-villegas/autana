@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 
+#include "build_variant.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 
