@@ -12,7 +12,9 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
+#include "build_variant.h"
 #include "microui.h"
 
 /* One button's label per option row - already formatted ("QUALITY: Nice"),
@@ -69,5 +71,6 @@ mu_Rect sand_menu_screen_row_rect(int row, int rows);
 mu_Rect sand_menu_screen_start_rect(bool show_dither);
 
 /* Draws every row and reports which button this frame's tap landed on.
- * Caller brackets this with ui_begin()/ui_end(). */
-sand_menu_screen_result_t sand_menu_screen_draw(mu_Context* ctx, const sand_menu_screen_state_t* state);
+ * Caller brackets this with ui_begin()/ui_end(). `dt_ms` drives the scroll
+ * view's own momentum, unused while this screen keeps the default (none). */
+sand_menu_screen_result_t sand_menu_screen_draw(mu_Context* ctx, const sand_menu_screen_state_t* state, uint32_t dt_ms);

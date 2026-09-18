@@ -31,6 +31,7 @@
 
 #include "esp_log.h"
 
+#include "build_variant.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_target.h"
 #include "gfx/icons_system.h"

@@ -48,6 +48,7 @@
 #include "esp_timer.h"
 
 #include "../../app.h"
+#include "../../build_variant.h"
 #include "../../display/display.h"
 #include "../../gfx/gfx.h"
 #include "../../gfx/gfx_font_roles.h"
@@ -1825,7 +1826,7 @@ track_pour_split(const input_t* input, int64_t step_us, int64_t draw_us, int awa
 #endif
 
 static void
-draw_menu(const input_t* input) {
+draw_menu(uint32_t dt_ms, const input_t* input) {
     mu_Context* ctx = ui_context();
 
     ui_begin(input);
@@ -1848,7 +1849,7 @@ draw_menu(const input_t* input) {
         .seam_overlay_on = seam_overlay_on,
 #endif
     };
-    const sand_menu_screen_result_t result = sand_menu_screen_draw(ctx, &state);
+    const sand_menu_screen_result_t result = sand_menu_screen_draw(ctx, &state, dt_ms);
 
     if (result.start_clicked) {
         /* Not called here - see pending_start's own comment. */
@@ -2032,7 +2033,7 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
          * future path back to the menu from reintroducing the crash rather
          * than a second place trusting it stays covered. */
         apply_gfx_action(sand_colour_on_enter_menu(&colour_state));
-        draw_menu(input);
+        draw_menu(dt_ms, input);
         return;
     }
 

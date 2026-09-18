@@ -18,6 +18,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "build_variant.h"
 #include "gfx/gfx.h"
 #include "microui.h"
 #include "ui/ui.h"
@@ -109,7 +110,7 @@ menu_content_height(bool show_dither) {
     };
     const input_t input = {0};
     ui_begin(&input);
-    sand_menu_screen_draw(ui_context(), &state);
+    sand_menu_screen_draw(ui_context(), &state, 16);
     mu_end(ui_context());
     return mu_get_container(ui_context(), "Sand Menu")->content_size.y;
 }
