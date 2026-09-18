@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "sand.h"
+#include "sand_priv.h"
 #include "suite_sand_common.h"
 #include "suites.h"
 #include "unity.h"
@@ -15,21 +16,36 @@
 
 _Static_assert(SO_H >= SAND_BLOCK_H * 4, "the seam-overlay suite needs a grid tall enough to engage the checkerboard");
 
-/* Forces the next real sand_step() to run at stripe offset 0, the same
- * throwaway-zero-gravity trick suite_sand_two_core.c's own
+/* One throwaway zero-gravity call, the same trick suite_sand_two_core.c's
  * tc_prime_offset() uses: sand_step() increments step_phase before its
- * free-fall early return, so one no-op call lands the following real step
- * on an even step_phase. */
+ * free-fall early return, so the step after it is the one these tests read. */
 static void
-prime_offset_zero(sand_t* s) {
+prime_step_phase(sand_t* s) {
     sand_step(s, 0, 0, 0);
+}
+
+/* The first boundary of the NEXT step with room for a grain above its guard
+ * row. Boundaries move with the hashed stripe offset, so a test cannot name
+ * a row: it asks where they will be. */
+static int
+so_first_boundary(const sand_t* s) {
+    /* sand_step() advances step_phase before it picks the offset, so the
+     * boundary this reads is the one the NEXT call will use. */
+    sand_t next = *s;
+    next.step_phase++;
+    const int offset = sand_stripe_offset(&next, SAND_BLOCK_H);
+    int boundary = (offset > 0) ? offset : SAND_BLOCK_H;
+    while (boundary < 4) {
+        boundary += SAND_BLOCK_H;
+    }
+    return boundary;
 }
 
 static void
 so_setup(sand_t* s, uint8_t* cells) {
     sand_init(s, cells, SO_W, SO_H, 1u);
     sand_set_scatter(s, 0);
-    prime_offset_zero(s);
+    prime_step_phase(s);
 }
 
 static void
@@ -40,12 +56,12 @@ test_a_grain_crossing_into_a_guard_row_is_reported_as_stalled(void) {
     sand_t s;
     so_setup(&s, cells);
 
-    /* offset 0's first boundary is SAND_BLOCK_H; its guard pair is
-     * (boundary - 1, boundary) - see sweep_guard_row_list() in sand.c. One
-     * interior row above the guard row falls straight into it this step,
-     * exactly the case run_sweep_guard_rows()'s own comment describes. */
+    /* A boundary's guard pair is (boundary - 1, boundary) - see
+     * sweep_guard_row_list() in sand.c. One interior row above the guard row
+     * falls straight into it this step, exactly the case
+     * run_sweep_guard_rows()'s own comment describes. */
     const int x0 = SO_W / 2;
-    const int boundary = SAND_BLOCK_H;
+    const int boundary = so_first_boundary(&s);
     const int guard_row = boundary - 1;
     sand_set(&s, x0, guard_row - 1, SAND);
 
@@ -93,9 +109,10 @@ test_a_step_with_no_boundary_crossing_reports_no_stalls(void) {
     sand_t s;
     so_setup(&s, cells);
 
-    /* Well inside stripe 0's interior at both ends of the fall - neither
-     * row is a guard row, so this step's guard pass has nothing to skip. */
-    sand_set(&s, SO_W / 2, 10, SAND);
+    /* Well inside a stripe's interior at both ends of the fall - neither row
+     * is a guard row, so this step's guard pass has nothing to skip. */
+    const int start_row = so_first_boundary(&s) + 4;
+    sand_set(&s, SO_W / 2, start_row, SAND);
 
     const two_core_scope_t scope = two_core_scope_begin(true);
     sand_step(&s, 0, 1000, 0);
