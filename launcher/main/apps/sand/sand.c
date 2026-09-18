@@ -1040,9 +1040,12 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
          * instead of O(moves) - a skip structure earns its cost only when it
          * is questioned before it is built. */
         saw_liquid |= (unsigned)(ctx->is_liquid >> CELL_MATERIAL(c)) & 1u;
-        if (step_one_grain(ctx->s, ctx->row, ctx->prow, ctx->arow, ctx->brow, x, ctx->y, ctx->w, ctx->dx, ctx->dy,
-                           ctx->slide_a, ctx->slide_b, ctx->load_dx, ctx->load_dy, ctx->jostle, ctx->driven, &dest)) {
-            moved_here = true;
+        SAND_STEP_GATE(sweep_body) {
+            if (step_one_grain(ctx->s, ctx->row, ctx->prow, ctx->arow, ctx->brow, x, ctx->y, ctx->w, ctx->dx, ctx->dy,
+                               ctx->slide_a, ctx->slide_b, ctx->load_dx, ctx->load_dy, ctx->jostle, ctx->driven,
+                               &dest)) {
+                moved_here = true;
+            }
         }
     }
 
@@ -1278,6 +1281,16 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int w, int dx, int dy, const 
  * RNG rather than on ordering. A comparison of the two arms this first. */
 static bool sand_force_hashed_rng_on;
 
+#if CONFIG_LAUNCHER_SAND_PASS_GATES
+volatile bool sand_step_gate_sweep = true;
+volatile bool sand_step_gate_sweep_body = true;
+volatile bool sand_step_gate_liquid_equalise = true;
+volatile bool sand_step_gate_liquid_density_sort = true;
+volatile bool sand_step_gate_gas = true;
+volatile bool sand_step_gate_reaction_local = true;
+volatile bool sand_step_gate_reaction_reach = true;
+#endif
+
 void
 sand_force_hashed_rng(bool on) {
     sand_force_hashed_rng_on = on;
@@ -1404,6 +1417,7 @@ sweep_guard_row(sand_t* s, int y, int w, int dx, int dy, const int* slide_a, con
     for (int x = cx_from; x != cx_to; x += x_step) {
         const bool unchanged = row[x] == snapshot[x];
         if (unchanged && !CELL_IS_EMPTY(row[x])) {
+            SAND_STEP_GATE(sweep_body)
             step_one_grain(s, row, prow, arow, brow, x, y, w, dx, dy, slide_a, slide_b, load_dx, load_dy, jostle,
                            sweep_driven, &dest);
             continue;
@@ -1571,36 +1585,38 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
 #ifdef DEVICE_BUILD
     const int64_t sweep_t0 = esp_timer_get_time();
 #endif
-    if (sand_two_core_step_enabled() && sand_stripe_count(s) >= SAND_STRIPE_SPLIT_MIN_COUNT) {
-        const int stripe_h = sand_stripe_height(s->h);
-        const int offset = sand_stripe_offset(s);
-        const int guard_count = sweep_guard_row_list(s->h, stripe_h, offset, sweep_guard_rows, SWEEP_GUARD_ROW_MAX);
-        for (int gi = 0; gi < guard_count; gi++) {
-            memcpy(&sweep_guard_snapshot[(size_t)gi * (size_t)w], s->cells + (size_t)sweep_guard_rows[gi] * (size_t)w,
-                   (size_t)w);
-        }
+    SAND_STEP_GATE(sweep) {
+        if (sand_two_core_step_enabled() && sand_stripe_count(s) >= SAND_STRIPE_SPLIT_MIN_COUNT) {
+            const int stripe_h = sand_stripe_height(s->h);
+            const int offset = sand_stripe_offset(s);
+            const int guard_count = sweep_guard_row_list(s->h, stripe_h, offset, sweep_guard_rows, SWEEP_GUARD_ROW_MAX);
+            for (int gi = 0; gi < guard_count; gi++) {
+                memcpy(&sweep_guard_snapshot[(size_t)gi * (size_t)w],
+                       s->cells + (size_t)sweep_guard_rows[gi] * (size_t)w, (size_t)w);
+            }
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-        sweep_stall_guard_count = guard_count;
-        sweep_stall_total = 0;
+            sweep_stall_guard_count = guard_count;
+            sweep_stall_total = 0;
 #endif
 
-        s->rng_hashed = true;
-        run_sweep_phase(s, 0, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
-                        y_step, stripe_h, offset);
-        run_sweep_phase(s, 1, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
-                        y_step, stripe_h, offset);
-        run_sweep_guard_rows(s, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, y_step,
-                             sweep_guard_rows, guard_count, sweep_guard_snapshot);
-        s->rng_hashed = false;
-    } else {
+            s->rng_hashed = true;
+            run_sweep_phase(s, 0, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
+                            y_step, stripe_h, offset);
+            run_sweep_phase(s, 1, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
+                            y_step, stripe_h, offset);
+            run_sweep_guard_rows(s, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, y_step,
+                                 sweep_guard_rows, guard_count, sweep_guard_snapshot);
+            s->rng_hashed = false;
+        } else {
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-        sweep_stall_guard_count = 0;
-        sweep_stall_total = 0;
+            sweep_stall_guard_count = 0;
+            sweep_stall_total = 0;
 #endif
-        s->rng_hashed = sand_force_hashed_rng_on;
-        sweep_range(s, y_from, y_to, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
-                    is_liquid);
-        s->rng_hashed = false;
+            s->rng_hashed = sand_force_hashed_rng_on;
+            sweep_range(s, y_from, y_to, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle,
+                        settled_bit, is_liquid);
+            s->rng_hashed = false;
+        }
     }
 #ifdef DEVICE_BUILD
     s->pass_us.sweep_us = esp_timer_get_time() - sweep_t0;
@@ -1616,7 +1632,7 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
      * here, not via sand_step_gas()'s early return. Called every step,
      * skipping avoids marshalling nine arguments if no gas. Flash layout
      * cost. */
-    if (s->may_have_gas) {
+    if (SAND_STEP_GATED(gas, s->may_have_gas)) {
 #ifdef DEVICE_BUILD
         const int64_t gas_t0 = esp_timer_get_time();
 #endif

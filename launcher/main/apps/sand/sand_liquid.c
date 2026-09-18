@@ -904,6 +904,7 @@ sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy) {
 #ifdef DEVICE_BUILD
     const int64_t equalise_t0 = esp_timer_get_time();
 #endif
+    SAND_STEP_GATE(liquid_equalise)
     equalise_liquids(s, &run, SAND_LIQUID_SIGHT, dx, dy);
 #ifdef DEVICE_BUILD
     s->pass_us.liquid_us = esp_timer_get_time() - equalise_t0;
@@ -915,7 +916,8 @@ sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy) {
      * and the answer is the same for all of them. A screen of water - what a
      * liquid scene usually is - therefore pays a popcount, not a pass. */
     const uint16_t liquids_here = s->may_have_materials & liquid_mask();
-    if ((liquids_here & (uint16_t)(liquids_here - 1u)) != 0u && (s->step_phase & (LIQUID_SORT_PERIOD - 1u)) == 0u) {
+    if (SAND_STEP_GATED(liquid_density_sort, (liquids_here & (uint16_t)(liquids_here - 1u)) != 0u
+                                                 && (s->step_phase & (LIQUID_SORT_PERIOD - 1u)) == 0u)) {
 #ifdef DEVICE_BUILD
         const int64_t float_t0 = esp_timer_get_time();
 #endif
