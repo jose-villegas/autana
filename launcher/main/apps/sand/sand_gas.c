@@ -422,6 +422,7 @@ typedef struct {
 _Static_assert(sizeof(gas_phase_t) <= JOB_CTX_MAX, "gas phase must fit JOB_CTX_MAX");
 
 static bool gas_worker_order_reversed;
+unsigned sand_gas_equalise_stripe_runs;
 
 void
 sand_gas_set_worker_order_for_test(bool reverse) {
@@ -925,6 +926,96 @@ equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, 
     return any_gas;
 }
 
+typedef struct {
+    gas_stripe_t* stripe;
+    int px, py, rdx, rdy, x_from, x_to, x_step, stripe_h, offset, color, share;
+    uint16_t is_gas;
+} gas_equalise_phase_t;
+
+_Static_assert(sizeof(gas_equalise_phase_t) <= JOB_CTX_MAX, "gas equalise phase must fit JOB_CTX_MAX");
+
+static void
+gas_equalise_phase_worker(void* arg) {
+    const gas_equalise_phase_t* c = arg;
+    gas_stripe_t* stripe = c->stripe;
+    sand_t* s = &stripe->local;
+    int seen = 0;
+
+    for (int k = c->offset == 0 ? 0 : -1; c->offset + k * c->stripe_h < s->h; k++) {
+        if (((k % 2) + 2) % 2 != c->color) {
+            continue;
+        }
+        if ((seen++ & 1) != c->share) {
+            continue;
+        }
+        const int band0 = c->offset + k * c->stripe_h;
+        const int band1 = band0 + c->stripe_h;
+        const int y0 = band0 > 0 ? band0 + 1 : 0;
+        const int y1 = band1 < s->h ? band1 - 1 : s->h;
+        int clean_run = 0;
+        for (int y = y0; y < y1; y++) {
+            stripe->found_any |= equalise_gas_one_row(s, y, s->w, c->x_from, c->x_to, c->x_step, c->px, c->py, c->rdx,
+                                                      c->rdy, c->is_gas, &clean_run);
+        }
+    }
+}
+
+static bool
+equalise_gas_stripes(sand_t* s, int px, int py, int rdx, int rdy, int x_from, int x_to, int x_step, uint16_t is_gas,
+                     bool* found_any) {
+    const size_t rows = (size_t)s->h;
+    const size_t blocks = (size_t)s->block_cols * (size_t)s->block_rows;
+    const int stripe_h = sand_stripe_height(s->h);
+    const int offset = sand_stripe_offset(s);
+    const int guard_count = gas_guard_row_list(s->h, stripe_h, offset, NULL, 0);
+    gas_stripe_t* stripes = calloc(1, 2 * sizeof *stripes + 8 * rows + 2 * blocks + 2 * rows);
+    int* guard_rows = malloc(sizeof *guard_rows * (size_t)guard_count);
+    if (stripes == NULL || guard_rows == NULL) {
+        free(stripes);
+        free(guard_rows);
+        return false;
+    }
+
+    uint16_t* spans = (uint16_t*)(stripes + 2);
+    uint8_t* bytes = (uint8_t*)(spans + 4 * rows);
+    for (int i = 0; i < 2; i++) {
+        stripes[i].x0 = spans + (size_t)(2 * i) * rows;
+        stripes[i].x1 = stripes[i].x0 + rows;
+        stripes[i].blocks = bytes + (size_t)i * (blocks + rows);
+        stripes[i].dirty = stripes[i].blocks + blocks;
+    }
+    gas_guard_row_list(s->h, stripe_h, offset, guard_rows, guard_count);
+
+    for (int color = 0; color < 2; color++) {
+        prepare_gas_stripe(&stripes[0], s);
+        prepare_gas_stripe(&stripes[1], s);
+        gas_equalise_phase_t ctx = {&stripes[1], px,       py,     rdx,   rdy, x_from, x_to,
+                                    x_step,      stripe_h, offset, color, 1,   is_gas};
+        (void)job_run_core1(gas_equalise_phase_worker, &ctx, sizeof ctx);
+        ctx.stripe = &stripes[0];
+        ctx.share = 0;
+        gas_equalise_phase_worker(&ctx);
+        (void)job_wait(100);
+        for (int i = 0; i < 2; i++) {
+            merge_gas_stripe(s, &stripes[i]);
+            *found_any |= stripes[i].found_any;
+        }
+    }
+
+    int clean_run = 0;
+    const bool was_hashed = s->rng_hashed;
+    s->rng_hashed = true;
+    for (int i = 0; i < guard_count; i++) {
+        const int y = guard_rows[i];
+        *found_any |= equalise_gas_one_row(s, y, s->w, x_from, x_to, x_step, px, py, rdx, rdy, is_gas, &clean_run);
+    }
+    s->rng_hashed = was_hashed;
+    sand_gas_equalise_stripe_runs++;
+    free(stripes);
+    free(guard_rows);
+    return true;
+}
+
 static bool gas_row_audit_on;
 
 void
@@ -976,16 +1067,26 @@ equalise_gas(sand_t* s, const int* perp, int rdx, int rdy) {
     const int x_to = (px > 0) ? -1 : w;
     const int x_step = (px > 0) ? -1 : 1;
 
+    const bool row_crossing = py != 0;
+
     /* Consecutive packed rows immediately behind the sweep pointer. py > 0
      * sweeps y descending while a tilted ray reads downward (increasing y);
      * py < 0 sweeps ascending while the ray reads upward - either way the
      * ray's targets are exactly the rows this count has already crossed. */
     int clean_run = 0;
 
-    for (int y = y_from; y != y_to; y += y_step) {
-        if (equalise_gas_one_row(s, y, w, x_from, x_to, x_step, px, py, rdx, rdy, is_gas, &clean_run)) {
-            found_any = true;
+    if (!sand_two_core_step_enabled() || row_crossing || sand_stripe_count(s) < SAND_STRIPE_SPLIT_MIN_COUNT
+        || !equalise_gas_stripes(s, px, py, rdx, rdy, x_from, x_to, x_step, is_gas, &found_any)) {
+        const bool was_hashed = s->rng_hashed;
+        if (row_crossing && sand_two_core_step_enabled()) {
+            s->rng_hashed = true;
         }
+        for (int y = y_from; y != y_to; y += y_step) {
+            if (equalise_gas_one_row(s, y, w, x_from, x_to, x_step, px, py, rdx, rdy, is_gas, &clean_run)) {
+                found_any = true;
+            }
+        }
+        s->rng_hashed = was_hashed;
     }
     return found_any;
 }
