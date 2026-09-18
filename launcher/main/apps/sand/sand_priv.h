@@ -194,6 +194,10 @@ extern unsigned sand_reactions_cells_dispatched;
  * output against the reference walk on the same board. Off by default. */
 void sand_reactions_force_full_walk(bool on);
 
+/* Test-only: draw through the per-cell hash even on the serial path, so a
+ * serial board and a split board differ only by ordering. */
+void sand_force_hashed_rng(bool on);
+
 /* Not sand.h API: which shape sand_step_reactions() actually took this call -
  * the soak-only partial walk, or the full one (including an early return
  * that ran neither). Set unconditionally on every call, so a stale value
