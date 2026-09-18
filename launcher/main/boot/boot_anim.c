@@ -32,6 +32,7 @@
 #include <string.h>
 
 #include "boot/boot_anim_image.h"
+#include "build_variant.h"
 #include "display/display.h"
 #include "gfx/fonts/font_lmroman_40.h"
 #include "gfx/gfx.h"

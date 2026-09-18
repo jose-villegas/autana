@@ -72,7 +72,7 @@ test_menu_screen_command_list_fits_budget(void) {
 
     const input_t input = {0};
     ui_begin(&input);
-    cube_menu_screen_draw(ui_context(), &state);
+    cube_menu_screen_draw(ui_context(), &state, 16);
     assert_budget("cube menu", end_and_measure());
 }
 

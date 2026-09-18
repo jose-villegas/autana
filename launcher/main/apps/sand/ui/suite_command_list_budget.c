@@ -126,7 +126,7 @@ test_menu_screen_command_list_fits_budget(void) {
 
     const input_t input = {0};
     ui_begin(&input);
-    sand_menu_screen_draw(ui_context(), &state);
+    sand_menu_screen_draw(ui_context(), &state, 16);
     assert_budget("sand menu", end_and_measure());
 }
 

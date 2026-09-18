@@ -32,6 +32,7 @@
 
 #include "../../app.h"
 #include "../../boot/post_ui.h"
+#include "../../build_variant.h"
 #include "../../display/display.h"
 #include "../../gfx/gfx.h"
 #include "../../input/imu.h"

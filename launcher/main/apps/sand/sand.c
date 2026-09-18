@@ -26,6 +26,7 @@
 #include "esp_timer.h"
 #endif
 
+#include "build_variant.h"
 #include "sand_limits.h"
 #include "sand_liquid_move.h"
 #include "util/fixed.h"
@@ -242,9 +243,6 @@ sand_block_settled(const sand_t* s, int bx, int by) {
     return (s->block_state[by * s->block_cols + bx] & (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER)) != 0;
 }
 
-/* sand_enable_impulses() moved to sand_impulse.c - it belongs with its own
- * subsystem, not the grid-access group above it. */
-
 void
 sand_track_dirty_rows(sand_t* s, uint8_t* rows) {
     s->dirty_rows = rows;
@@ -408,11 +406,6 @@ sand_erase(sand_t* s, int cx, int cy, int radius) {
     return removed;
 }
 
-/* The outward-impulse seeding chain (isqrt_floor() through sand_explode())
- * moved to sand_impulse.c - see that file's own banner for why the whole
- * outward-flight subsystem is one file, separate from this one's
- * gravity-ward sweep. */
-
 /*
  * Emitters - see the `emitters` field of sand_t and the EMITTERS section of
  * sand.h for the design. What is here is just list management; the actual
@@ -539,8 +532,6 @@ sand_gravity_direction(int gx, int gy, int* dx, int* dy) {
     }
 }
 
-/* dest_row() is shared with sand_liquid.c and lives in sand_priv.h now. */
-
 /* Counts grains above, capped. Does NOT use sand_at() as it reports
  * out-of-bounds as occupied, making walls solid. Here, off-grid is open sky,
  * not occupied. */
@@ -563,14 +554,6 @@ sand_load_above(const sand_t* s, int x, int y, int dx, int dy) {
     }
     return n;
 }
-
-/* slide_chance() moved to sand_priv.h (still static inline), alongside the
- * rest of the grain-movement primitive stack it is part of - see that
- * header's own comment above can_enter() for why. */
-
-/* driven_by_gravity() - checks if a grain slides in direction (mx, my) given
- * gravity and material's angle of repose, moved to sand_priv.h for use in
- * sand_gas.c. See its comment there for details. */
 
 /* True angle's diagonal lean (0-256). `r` is ratio of smaller to larger
  * component (0-256), 0 on axis, 256 at 45 degrees. Angle position: Rajan's
@@ -744,11 +727,6 @@ sand_set_acid_dilute_mass_bias(sand_t* s, int bias) {
     s->acid_dilute_mass_bias = (bias < 0) ? SAND_ACID_DILUTE_MASS_BIAS_DEFAULT : bias;
 }
 
-/* can_enter()/cell_open()/move_to() moved to sand_priv.h (still static
- * inline) - see header comment for grain-movement stack location.
- * pour_into()/room_in() remain in sand_liquid.c; sand.c movement never splits
- * a grain. */
-
 /* Each slide's tilt for hot table rows depends on direction and angle of
  * repose, computed once per step for all 32 rows (MATERIAL_ROWS) using cell
  * >> 3. Reads directly from `materials[]` instead of material_by_id() to
@@ -803,11 +781,6 @@ choose_sweep_order(const sand_t* s, int dy, const int** slide_a, const int** sli
         *slide_b = landscape_slide;
     }
 }
-
-/* try_scatter()/pick_slide_order()/try_slide_pair() and _impl forms of
- * try_fall_or_scatter()/try_slide() - grain's turn: fall, then slides with
- * friction and shaking. Moved to sand_priv.h (static inline). See header
- * comment for reason and why non-inline calls are defined below. */
 
 /* One bit per materials[] row for the two questions the sweep asks of every
  * cell on the grid, so each reads as a shift out of a word in SRAM instead of
@@ -1230,12 +1203,6 @@ build_xflow(xflow_t* f, int gx, int gy) {
     f->bias_dg_q8 = bx * f->dg[0] + by * f->dg[1];
 }
 
-/* can_impulse_enter() through step_impulses() itself all moved to
- * sand_impulse.c, alongside the seeding half of this subsystem - see that
- * file's own banner. step_impulses() is declared extern in sand_priv.h and
- * called from sand_step() below, the same shape sand_step_liquids()/
- * sand_step_gas() already use. */
-
 /* PINNED at 16, not left to the compiler: an unpinned attribute can bind to
  * whatever definition follows it rather than to this function, letting an
  * unrelated change silently shift sand_step()'s alignment and regress
@@ -1306,10 +1273,30 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int w, int dx, int dy, const 
 
 #define SWEEP_GUARD_ROW_MAX (2 * ((GRID_H_MAX + SAND_STRIPE_H_MIN - 1) / SAND_STRIPE_H_MIN))
 
+/* Hashed draws are armed by a split pass, so a serial step and a split step
+ * of the same scene draw different numbers and their boards diverge on the
+ * RNG rather than on ordering. A comparison of the two arms this first. */
+static bool sand_force_hashed_rng_on;
+
+void
+sand_force_hashed_rng(bool on) {
+    sand_force_hashed_rng_on = on;
+}
+
 static int sweep_guard_rows[SWEEP_GUARD_ROW_MAX];
 static uint8_t sweep_guard_snapshot[SWEEP_GUARD_ROW_MAX * GRID_W_MAX];
 
 _Static_assert(sizeof sweep_guard_snapshot <= 6 * 1024, "guard snapshots must fit the internal-RAM budget");
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+/* One bit per column: set where sweep_guard_row() below skips a changed,
+ * non-empty cell. Same slot indexing as sweep_guard_rows[]/
+ * sweep_guard_snapshot above. Dev overlay data only - see
+ * sand_seam_guard_row_count() in sand.h. 322 bytes here. */
+#define SWEEP_STALL_ROW_BYTES ((GRID_W_MAX + 7) / 8)
+static uint8_t sweep_stall_bits[SWEEP_GUARD_ROW_MAX][SWEEP_STALL_ROW_BYTES];
+static int sweep_stall_guard_count;
+static unsigned sweep_stall_total;
+#endif
 
 typedef struct {
     sand_t* s;
@@ -1392,11 +1379,15 @@ sweep_guard_row_list(int h, int stripe_h, int offset, int* out, int max) {
 }
 
 /* A guard row's own sweep, skipping any column that no longer matches
- * `snapshot` - see run_sweep_guard_rows() for why. An unchanged column
- * gets its ordinary turn. */
+ * `snapshot` - see run_sweep_guard_rows() for why. `slot` is this row's
+ * index into sweep_guard_rows[]/sweep_guard_snapshot, reused for its stall
+ * bits - see sweep_stall_bits' own comment above. */
 static void
 sweep_guard_row(sand_t* s, int y, int w, int dx, int dy, const int* slide_a, const int* slide_b, int x_step,
-                int load_dx, int load_dy, int jostle, uint8_t settled_bit, const uint8_t* snapshot) {
+                int load_dx, int load_dy, int jostle, uint8_t settled_bit, const uint8_t* snapshot, int slot) {
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+    memset(sweep_stall_bits[slot], 0, sizeof sweep_stall_bits[slot]);
+#endif
     if (is_block_row_settled(s, y, settled_bit)) {
         return;
     }
@@ -1411,10 +1402,18 @@ sweep_guard_row(sand_t* s, int y, int w, int dx, int dy, const int* slide_a, con
     const int cx_to = (x_step > 0) ? w : -1;
 
     for (int x = cx_from; x != cx_to; x += x_step) {
-        if (row[x] == snapshot[x] && !CELL_IS_EMPTY(row[x])) {
+        const bool unchanged = row[x] == snapshot[x];
+        if (unchanged && !CELL_IS_EMPTY(row[x])) {
             step_one_grain(s, row, prow, arow, brow, x, y, w, dx, dy, slide_a, slide_b, load_dx, load_dy, jostle,
                            sweep_driven, &dest);
+            continue;
         }
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+        if (!unchanged && !CELL_IS_EMPTY(row[x])) {
+            sweep_stall_bits[slot][x >> 3] |= (uint8_t)(1u << (x & 7));
+            sweep_stall_total++;
+        }
+#endif
     }
 }
 
@@ -1441,9 +1440,9 @@ run_sweep_guard_rows(sand_t* s, int w, int dx, int dy, const int* slide_a, const
         const int second_i = (first == above) ? i + 1 : i;
 
         sweep_guard_row(s, first, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
-                        &snapshot[(size_t)first_i * (size_t)w]);
+                        &snapshot[(size_t)first_i * (size_t)w], first_i);
         sweep_guard_row(s, second, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
-                        &snapshot[(size_t)second_i * (size_t)w]);
+                        &snapshot[(size_t)second_i * (size_t)w], second_i);
     }
 }
 
@@ -1580,6 +1579,10 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
             memcpy(&sweep_guard_snapshot[(size_t)gi * (size_t)w], s->cells + (size_t)sweep_guard_rows[gi] * (size_t)w,
                    (size_t)w);
         }
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+        sweep_stall_guard_count = guard_count;
+        sweep_stall_total = 0;
+#endif
 
         s->rng_hashed = true;
         run_sweep_phase(s, 0, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
@@ -1590,8 +1593,14 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
                              sweep_guard_rows, guard_count, sweep_guard_snapshot);
         s->rng_hashed = false;
     } else {
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+        sweep_stall_guard_count = 0;
+        sweep_stall_total = 0;
+#endif
+        s->rng_hashed = sand_force_hashed_rng_on;
         sweep_range(s, y_from, y_to, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
                     is_liquid);
+        s->rng_hashed = false;
     }
 #ifdef DEVICE_BUILD
     s->pass_us.sweep_us = esp_timer_get_time() - sweep_t0;
@@ -1642,3 +1651,33 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
 
     finalize_settling(s, settled_bit);
 }
+
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+/* See sand.h: the seam-fix bookkeeping from the sand_step() call that just
+ * returned, for a development overlay to draw. */
+int
+sand_seam_guard_row_count(void) {
+    return sweep_stall_guard_count;
+}
+
+int
+sand_seam_guard_row(int i) {
+    if (i < 0 || i >= sweep_stall_guard_count) {
+        return -1;
+    }
+    return sweep_guard_rows[i];
+}
+
+bool
+sand_seam_stalled(int i, int x) {
+    if (i < 0 || i >= sweep_stall_guard_count || x < 0 || x >= GRID_W_MAX) {
+        return false;
+    }
+    return (sweep_stall_bits[i][x >> 3] & (1u << (x & 7))) != 0;
+}
+
+unsigned
+sand_seam_stall_count(void) {
+    return sweep_stall_total;
+}
+#endif

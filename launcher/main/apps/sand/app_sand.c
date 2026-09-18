@@ -48,6 +48,7 @@
 #include "esp_timer.h"
 
 #include "../../app.h"
+#include "../../build_variant.h"
 #include "../../display/display.h"
 #include "../../gfx/gfx.h"
 #include "../../gfx/gfx_font_roles.h"
@@ -315,6 +316,20 @@ static int64_t pour_awake_total, idle_awake_total;
 /* Measure occupied cells in blocks; confirms step_one_row() cost per row, not
  * unit. */
 static int64_t pour_awake_cells_total, idle_awake_cells_total;
+
+/* RAW per-frame step times for a real play-session capture - see
+ * frame_log_sample(). An average would hide the stutter a two-core switch
+ * is being measured for, and so would a ceiling: a heavy scene spends most
+ * of its frames past 65 ms, so the samples are full microseconds. */
+#define FRAME_LOG_RING 32
+static uint32_t frame_log_ring[FRAME_LOG_RING];
+static int frame_log_count;
+static bool frame_log_armed;
+static bool frame_log_last_two_core;
+static int frame_log_last_quality = -1;
+/* The boot menu's "show seam stalls" checkbox - see draw_seam_overlay().
+ * Off by default; picked up at the next sand_enter(), like show_dither. */
+static bool seam_overlay_on;
 #endif
 static uint32_t sim_accumulator_q8;
 static uint32_t pour_accumulator_ms;
@@ -1818,10 +1833,56 @@ track_pour_split(const input_t* input, int64_t step_us, int64_t draw_us, int awa
     pour_frames = idle_frames = 0;
     split_log_at_us = now + 2000000;
 }
+
+/* One line per full ring, so the amortised cost is one snprintf/log call
+ * per FRAME_LOG_RING frames rather than every frame. */
+static void
+frame_log_flush(void) {
+    if (frame_log_count == 0) {
+        return;
+    }
+    char line[FRAME_LOG_RING * 9 + 1] = "";
+    int n = 0;
+    for (int i = 0; i < frame_log_count; i++) {
+        n += snprintf(line + n, sizeof line - (size_t)n, "%lu,", (unsigned long)frame_log_ring[i]);
+    }
+    ESP_LOGI(TAG, "FRAME_US %s", line);
+    frame_log_count = 0;
+}
+
+/* Arms the capture on first call, otherwise flushes whatever the previous
+ * mode/quality had queued before marking the new one - the coordinator's
+ * own boundary between "one minute of this setting" and the next. */
+static void
+frame_log_note_mode_change(void) {
+    if (frame_log_armed) {
+        frame_log_flush();
+    } else {
+        frame_log_armed = true;
+    }
+    frame_log_last_two_core = sand_two_core_step_enabled();
+    frame_log_last_quality = quality;
+    ESP_LOGI(TAG, "FRAME_MODE two_core=%d quality=%s grid=%dx%d t_us=%lld", frame_log_last_two_core,
+             qualities[quality].name, grid_w, grid_h, (long long)esp_timer_get_time());
+}
+
+static void
+frame_log_sample(int64_t frame_us) {
+    if (!frame_log_armed) {
+        return;
+    }
+    if (sand_two_core_step_enabled() != frame_log_last_two_core || quality != frame_log_last_quality) {
+        frame_log_note_mode_change();
+    }
+    frame_log_ring[frame_log_count++] = (uint32_t)(frame_us < 0 ? 0 : frame_us);
+    if (frame_log_count >= FRAME_LOG_RING) {
+        frame_log_flush();
+    }
+}
 #endif
 
 static void
-draw_menu(const input_t* input) {
+draw_menu(uint32_t dt_ms, const input_t* input) {
     mu_Context* ctx = ui_context();
 
     ui_begin(input);
@@ -1834,14 +1895,22 @@ draw_menu(const input_t* input) {
     if (color_mode == SAND_COLOR_16) {
         snprintf(dither_label, sizeof dither_label, "DITHER: %s", dither_names[dither_mode]);
     }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    char two_core_label[24];
+    snprintf(two_core_label, sizeof two_core_label, "TWO-CORE: %s", sand_two_core_step_enabled() ? "On" : "Off");
+#endif
 
     const sand_menu_screen_state_t state = {
         .quality = quality_label,
         .color = color_label,
         .dither = dither_label,
         .show_dither = (color_mode == SAND_COLOR_16),
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        .two_core = two_core_label,
+        .seam_overlay_on = seam_overlay_on,
+#endif
     };
-    const sand_menu_screen_result_t result = sand_menu_screen_draw(ctx, &state);
+    const sand_menu_screen_result_t result = sand_menu_screen_draw(ctx, &state, dt_ms);
 
     if (result.start_clicked) {
         /* Not called here - see pending_start's own comment. */
@@ -1859,6 +1928,16 @@ draw_menu(const input_t* input) {
     if (result.dither_clicked) {
         dither_mode = (gfx_dither_mode_t)((dither_mode + 1) % GFX_DITHER_MODE_COUNT);
     }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (result.two_core_clicked) {
+        /* Takes effect immediately, unlike QUALITY/COLOUR/DITHER: nothing
+         * about the running sim depends on this at start_sim() time, and
+         * the coordinator's capture wants the switch to land mid-visit. */
+        sand_set_two_core_step(!sand_two_core_step_enabled());
+        frame_log_note_mode_change();
+    }
+    seam_overlay_on = result.seam_overlay_on;
+#endif
 
     ui_end(COL_BACKGROUND);
 }
@@ -1937,6 +2016,7 @@ sand_update(uint32_t dt_ms, const input_t* input) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     pending_step_us = esp_timer_get_time() - t0;
     count_awake(&pending_awake_blocks, &pending_awake_cells);
+    frame_log_sample(pending_step_us);
 #endif
 
     /* Local-depth wake, cullet cycle, shine, and the wood-leaf swing each
@@ -1952,6 +2032,58 @@ sand_update(uint32_t dt_ms, const input_t* input) {
     pending_gx = gx;
     pending_gy = gy;
 }
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+#define SEAM_GUARD_ROW_COLOR 0x2FA6FF
+#define SEAM_GUARD_ROW_ALPHA 96
+#define SEAM_STALL_COLOR     0xFF3E5C
+#define SEAM_STALL_ALPHA     224
+
+/* Called from sand_frame() before draw_dirty_rows(): draw_seam_overlay()
+ * below needs every guard row repainted clean before it tints this step's
+ * own, since guard rows move each step (SWEEP_STRIPE_H / 2 alternation)
+ * and nothing else would repaint last step's tint away. */
+static void
+seam_overlay_force_full_redraw(void) {
+    if (seam_overlay_on) {
+        mark_sand_fully_dirty();
+    }
+}
+
+/* Paints sand_step()'s seam bookkeeping (sand.h) over the frame
+ * seam_overlay_force_full_redraw() above just forced fully clean. */
+static void
+draw_seam_overlay(void) {
+    if (!seam_overlay_on) {
+        return;
+    }
+
+    const gfx_color_t guard_color = gfx_rgb(SEAM_GUARD_ROW_COLOR);
+    const gfx_color_t stall_color = gfx_rgb(SEAM_STALL_COLOR);
+    const int guard_rows = sand_seam_guard_row_count();
+
+    for (int i = 0; i < guard_rows; i++) {
+        const int gy = sand_seam_guard_row(i);
+        if (gy < 0) {
+            continue;
+        }
+        const int py = gy * cell;
+        gfx_fill_rect_dither(0, py, grid_w * cell, cell, guard_color, SEAM_GUARD_ROW_ALPHA);
+        for (int x = 0; x < grid_w; x++) {
+            if (sand_seam_stalled(i, x)) {
+                gfx_fill_rect_dither(x * cell, py, cell, cell, stall_color, SEAM_STALL_ALPHA);
+            }
+        }
+        gfx_mark_dirty(0, py, grid_w * cell, cell);
+    }
+
+    char line[32];
+    snprintf(line, sizeof line, "seam stalls: %u", sand_seam_stall_count());
+    const int turn = gravity_quarter_turn(pending_gx, pending_gy);
+    gfx_text_turned(4, 4, line, gfx_rgb(0xFFFFFF), 1, turn);
+    gfx_mark_dirty(0, 0, 160, gfx_text_height() + 8);
+}
+#endif
 
 static void
 sand_frame(uint32_t dt_ms, const input_t* input) {
@@ -1970,7 +2102,7 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
          * future path back to the menu from reintroducing the crash rather
          * than a second place trusting it stays covered. */
         apply_gfx_action(sand_colour_on_enter_menu(&colour_state));
-        draw_menu(input);
+        draw_menu(dt_ms, input);
         return;
     }
 
@@ -2099,6 +2231,10 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
         gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
     }
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    seam_overlay_force_full_redraw();
+#endif
+
     draw_dirty_rows(pending_shine_moved, pending_local_depth_woke, pending_cullet_moved, pending_glass_moved,
                     pending_wood_leaf_moved);
     heal_settled_rows();
@@ -2113,6 +2249,9 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
         if (label_left_ms > 0) {
             draw_mode_label(pending_gx, pending_gy);
         }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        draw_seam_overlay();
+#endif
     } else if (!overlays_skipped_reason_logged) {
         ESP_LOGW(TAG, "COLOUR %s: emitter markers and the mode label do not draw yet - FULL-only for now",
                  color_names[color_mode]);

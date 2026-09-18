@@ -35,12 +35,6 @@
 
 /* --- on the real grid, on the real chip --------------------------------- */
 
-/* REAL_W/REAL_H moved to suite_sand_common.h - reused throughout the
- * scenes/perf/blast portion of the split, well beyond this section. */
-
-/* EMPTY_SHARE_PERCENT moved to suite_sand_scenes.h - the frame-budget
- * equivalent of the test below, in suite_sand_perf.c, needs it too. */
-
 /* Which material lands on cell (x, y) in the all-pairs tiling.
  *
  * Bands cover far less than they look like they do: stacking materials in
@@ -1855,7 +1849,6 @@ test_the_wet_earth_scene_keeps_percolating_across_the_window(void) {
  * app's own buffer is sized APP_IMPULSE_MAX (2048), and this scene should
  * be fighting the same memory ceiling a real device pour actually has,
  * not a looser one a differently-sized test buffer would hide. */
-/* WATER_LAVA_IMPULSE_MAX moved to suite_sand_scenes.h - build_water_over_lava_scene()'s test above and the frame-budget test in suite_sand_perf.c both need it. */
 
 /* sand_set_lava_cooloff()/sand_set_lava_burst() forced to their maximum,
  * the same reasoning the vent-spam scene this replaces gave for forcing
@@ -2180,8 +2173,6 @@ test_the_gas_ignition_vessel_logs_blasts_per_step(void) {
  * under the bar, before a later wave of ordinary fire pulls it back up
  * past 120 - not a reason to prefer the larger window, since 90
  * already clears the bar honestly. */
-/* GUNPOWDER_BASIN_MEASURED_STEPS moved to suite_sand_scenes.h - the
- * frame-budget test in suite_sand_perf.c needs it too. */
 
 typedef struct {
     int dry, fire, oil, acid;
