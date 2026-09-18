@@ -503,8 +503,8 @@ test_the_water_and_fire_scenes_decompose_by_step_pass(void) {
     const two_core_scope_t core = two_core_scope_begin(true);
     report_pass_gate_scene("water", build_water_scene, 10, 0, 1000);
     report_pass_gate_scene("fire", build_fire_scene, FIRE_WARMUP_STEPS, 0, 1000);
-    /* Landscape is the shipping orientation and no longer the same partition:
-     * the liquid pass runs serial when the active ray crosses rows. */
+    /* Landscape is its own partition: the liquid pass runs serial whenever
+     * the active ray crosses rows, which is every landscape flow. */
     report_pass_gate_scene("water landscape", build_water_scene, 10, 1000, 0);
     report_pass_gate_scene("fire landscape", build_fire_scene, FIRE_WARMUP_STEPS, 1000, 0);
     pass_gates_enable_all();
