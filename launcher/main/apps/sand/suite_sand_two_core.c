@@ -433,11 +433,8 @@ test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
     TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(interior_worst + TC_W / 10, boundary_worst, why);
 }
 
-/* sand_step() increments step_phase before picking the stripe offset
- * (half a stripe on an odd phase, 0 on an even one - sand.c), so one
- * free-fall call (gx=gy=0, which returns before touching a single cell)
- * advances the phase without moving anything - letting a test choose
- * which offset the NEXT, real step gets. */
+/* A free-fall step advances the phase without touching a cell, selecting a
+ * different deterministic stripe offset for the next real step. */
 static void
 tc_prime_offset(sand_t* s, int offset) {
     if (offset == 0) {
