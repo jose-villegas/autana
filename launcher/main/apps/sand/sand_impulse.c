@@ -190,7 +190,7 @@ queue_flying_grain(sand_t* s, int x, int y, int dir, int speed, bool allow_dislo
      * before step_impulses()'s own re-acquisition runs, so a stored index
      * can be stale here. */
     for (int existing = 0; existing < s->impulse_count; existing++) {
-        if (s->impulse_buf[existing].index == (uint16_t)at && s->impulse_buf[existing].cell == cell) {
+        if (s->impulse_buf[existing].index == (sand_impulse_index_t)at && s->impulse_buf[existing].cell == cell) {
             return;
         }
     }
@@ -209,7 +209,7 @@ queue_flying_grain(sand_t* s, int x, int y, int dir, int speed, bool allow_dislo
     }
 
     impulse_t* entry = &s->impulse_buf[s->impulse_count++];
-    entry->index = (uint16_t)at;
+    entry->index = (sand_impulse_index_t)at;
     entry->cell = flying;
     entry->dir = (uint8_t)dir;
     entry->speed = (uint8_t)speed;
@@ -403,7 +403,7 @@ impulse_gravity_candidates(int x, int y, int dx, int dy, int cand[3][2]) {
  * (APP_IMPULSE_MAX). Skipped range [kept, self_i) is scratch from emptied
  * entries. */
 static bool
-impulse_index_still_tracked(const sand_t* s, int kept, int self_i, uint16_t index) {
+impulse_index_still_tracked(const sand_t* s, int kept, int self_i, sand_impulse_index_t index) {
     for (int j = 0; j < kept; j++) {
         if (s->impulse_buf[j].index == index) {
             return true;

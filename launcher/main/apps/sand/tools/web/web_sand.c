@@ -97,8 +97,6 @@ static const cell_t brushes[] = {
 #define WEB_MODE_ERASE          1
 #define WEB_MODE_DETONATE       2
 
-#define WEB_IMPULSE_MAX         4096
-
 /* Same constants as app_sand.c's own (see there for the tuning history):
  * the travelling shine's period/speed, and how often water's foam dither
  * phase advances. */
@@ -128,6 +126,7 @@ static gfx_dither_mode_t dither_mode = GFX_DITHER_CELL_BAYER2;
 
 static uint8_t* grid;
 static impulse_t* impulse_buf;
+static int impulse_max;
 static uint8_t* pixels;       /* DEVICE_W * DEVICE_H * 4 bytes, RGBA8888 - see
                               * web_render() below and web_pixels_ptr(),
                               * which is how JS gets at it without needing
@@ -249,7 +248,11 @@ web_init(int cell_px_in, int landscape, int scale) {
 
     grid = malloc((size_t)grid_w * grid_h);
     depth_buf = malloc((size_t)grid_w * grid_h);
-    impulse_buf = malloc((size_t)WEB_IMPULSE_MAX * sizeof(*impulse_buf));
+    /* One entry per cell, so a blast is never capped by the buffer and a
+     * finer grid simply gets a bigger one - the board sizes this against an
+     * internal heap it has to share, and a browser does not. */
+    impulse_max = grid_w * grid_h;
+    impulse_buf = malloc((size_t)impulse_max * sizeof(*impulse_buf));
     /* Used to be allocated once, at a fixed DEVICE_W*DEVICE_H - safe only
      * while every screen size was that same pair. `scale` breaks that, so
      * this is now sized fresh every call - see web_pixels_ptr(). */
@@ -275,7 +278,7 @@ web_init(int cell_px_in, int landscape, int scale) {
      * still applies: it is a real simulation-cost saving in wasm too, and
      * costs nothing this file does not already have room for. */
     if (impulse_buf) {
-        sand_enable_impulses(&sim, impulse_buf, WEB_IMPULSE_MAX);
+        sand_enable_impulses(&sim, impulse_buf, impulse_max);
     }
     tilt_reset(&tilt, WEB_COUNTS_PER_G);
 

@@ -25,8 +25,21 @@ typedef struct sand_s sand_t;
  * whatever is there now. `speed` is both this turn's chance in 256 of
  * moving and how much flight is left (see SAND_IMPULSE_SPEED_RAMP); `ramp`
  * is a per-entry override of its decay rate, ignored for water/acid. */
+/* An impulse stores its cell as a flat index, and the width of that index is
+ * what bounds the grid a flight can cross. Sixteen bits holds every grid this
+ * board can ask for - the finest is 184x224 - and costs two bytes per entry
+ * in a buffer the internal heap has to find room for. A host choosing its own
+ * resolution has neither constraint, and defines SAND_WIDE_GRID_INDEX. */
+#ifdef SAND_WIDE_GRID_INDEX
+typedef uint32_t sand_impulse_index_t;
+#define SAND_IMPULSE_MAX_CELLS INT32_MAX
+#else
+typedef uint16_t sand_impulse_index_t;
+#define SAND_IMPULSE_MAX_CELLS ((int)UINT16_MAX + 1)
+#endif
+
 typedef struct {
-    uint16_t index; /* y*w+x */
+    sand_impulse_index_t index; /* y*w+x, capped by SAND_IMPULSE_MAX_CELLS */
     cell_t cell;
     uint8_t dir; /* ring_dir() index, sand_priv.h */
     uint8_t speed;
