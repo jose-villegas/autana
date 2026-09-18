@@ -656,6 +656,18 @@ bool sand_two_core_step_enabled(void);
  * overrides friction. */
 void sand_step(sand_t* s, int gx, int gy, int jostle);
 
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+/* The guard pass's own skip decision (sand.c, "THE SEAM FIX"), for the
+ * sand_step() call that just returned: guard row count (0 after a
+ * single-core step), each row's index, whether one column stalled, and how
+ * many stalled in total. Dev-only overlay data - see Sand-Simulation.md's
+ * seam section. */
+int sand_seam_guard_row_count(void);
+int sand_seam_guard_row(int i);
+bool sand_seam_stalled(int i, int x);
+unsigned sand_seam_stall_count(void);
+#endif
+
 /* The eight-way quantisation: the NEAREST of the eight directions.
  * Writes the unit direction to (*dx, *dy), or (0, 0) for a zero vector.
  *

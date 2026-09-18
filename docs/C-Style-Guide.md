@@ -119,6 +119,11 @@ shorter prose.
 - **Never the journey.** git log owns "a first attempt...", "an earlier
   version...", "was reverted". `scripts/find_narrative_comments.py` lists
   existing cases.
+- **Never where code went.** A comment naming the file something moved to
+  describes a layout the reader never saw, and it outlives whatever made the
+  move worth mentioning. Say what the thing there now must obey, or delete the
+  comment; the destination is one grep away either way.
+  `find_narrative_comments.py --tombstones` fails on these, and CI runs it.
 
 Keep a comment accurate or delete it - an outdated one is worse than none -
 so update it in the same edit that changes the code it describes.

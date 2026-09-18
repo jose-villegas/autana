@@ -1316,6 +1316,15 @@ What the guard pass still guarantees there, and what the suite checks
 instead, is that the grain count never drifts: nothing is duplicated or
 dropped, only reordered by up to the width of a stripe boundary.
 
+A development build carries an overlay that draws exactly what the guard
+pass above decided: every guard row this step used is tinted blue, and
+every column it skipped because a phase already wrote through it (`sand.h`'s
+`sand_seam_guard_row_count()`/`sand_seam_guard_row()`/`sand_seam_stalled()`/
+`sand_seam_stall_count()`) is marked red on top, with a running stall count
+drawn in the corner. Off by default; the sand app's own boot menu has a
+"show seam stalls" checkbox under `CONFIG_LAUNCHER_DEVELOPMENT` to turn it
+on for the current visit.
+
 ### Liquid cross-flow stripes
 
 Cross-flow uses the shared derived stripe height, with 8 guard rows on each
