@@ -900,6 +900,69 @@ test_landscape_water_column_has_no_row_mass_lag(void) {
                                   "the split landscape water column left liquid mass in a different row than serial");
 }
 
+static int
+tc_first_gas_equalise_boundary(const sand_t* s) {
+    const int stripe_h = sand_stripe_height(s->h);
+    int boundary = sand_stripe_offset(s);
+    while (boundary < 2) {
+        boundary += stripe_h;
+    }
+    return boundary;
+}
+
+static void
+tc_build_gas_equalise_seam(sand_t* s, int boundary) {
+    const int x = TC_W / 2;
+    sand_set_mobility(s, 0);
+    sand_set(s, x, boundary - 2, STONE);
+    sand_set(s, x, boundary - 1, GAS);
+    sand_set(s, x, boundary, GAS);
+}
+
+static void
+tc_step_gas_equalise(sand_t* s, bool two_core) {
+    static const int slide_a[] = {-1, 1};
+    static const int slide_b[] = {1, 1};
+    static const int perp_a[] = {1, 0};
+    static const int perp_b[] = {-1, 0};
+
+    sand_set_two_core_step(two_core);
+    sand_step_gas(s, 0, 1000, 0, 1, slide_a, slide_b, perp_a, perp_b, 0, 1, 1, 0);
+    sand_set_two_core_step(false);
+}
+
+static void
+test_split_gas_equalise_keeps_seam_order(void) {
+    sand_gas_equalise_stripe_runs = 0;
+    for (int phase = 0; phase < SAND_STRIPE_SPLIT_MIN_COUNT; phase++) {
+        uint8_t* serial_cells = malloc((size_t)TC_W * (size_t)TC_H);
+        uint8_t* split_cells = malloc((size_t)TC_W * (size_t)TC_H);
+        TEST_ASSERT_NOT_NULL(serial_cells);
+        TEST_ASSERT_NOT_NULL(split_cells);
+
+        sand_t serial, split;
+        sand_init(&serial, serial_cells, TC_W, TC_H, 1u);
+        sand_init(&split, split_cells, TC_W, TC_H, 1u);
+        serial.step_phase = split.step_phase = (uint16_t)phase;
+        const int boundary = tc_first_gas_equalise_boundary(&serial);
+        TEST_ASSERT_TRUE(boundary < TC_H);
+        tc_build_gas_equalise_seam(&serial, boundary);
+        tc_build_gas_equalise_seam(&split, boundary);
+
+        tc_step_gas_equalise(&serial, false);
+        tc_step_gas_equalise(&split, true);
+
+        char why[160];
+        const bool cells_match = memcmp(serial_cells, split_cells, (size_t)TC_W * (size_t)TC_H) == 0;
+        snprintf(why, sizeof why, "phase %d boundary %d: split gas equalise changed seam order", phase, boundary);
+        free(serial_cells);
+        free(split_cells);
+        TEST_ASSERT_TRUE_MESSAGE(cells_match, why);
+    }
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0, sand_gas_equalise_stripe_runs,
+                                          "portrait gas equalise did not enter its split stripes");
+}
+
 #ifdef DEVICE_BUILD
 typedef struct {
     volatile bool* finished;
@@ -1113,6 +1176,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_reaction_split_is_deterministic_across_seeds);
     RUN_TEST(test_reaction_split_actually_changes_the_draw_stream);
     RUN_TEST(test_landscape_water_column_has_no_row_mass_lag);
+    RUN_TEST(test_split_gas_equalise_keeps_seam_order);
 #ifdef DEVICE_BUILD
     RUN_TEST(test_a_timed_out_job_falls_back_inline);
 #endif
