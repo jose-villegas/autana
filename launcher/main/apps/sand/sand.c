@@ -26,6 +26,7 @@
 #include "esp_timer.h"
 #endif
 
+#include "build_variant.h"
 #include "sand_limits.h"
 #include "sand_liquid_move.h"
 #include "util/fixed.h"

@@ -1,4 +1,5 @@
 #include "gfx/gfx.h"
+#include "build_variant.h"
 #include "gfx/gfx_dirty.h"
 #include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font_roles.h"
