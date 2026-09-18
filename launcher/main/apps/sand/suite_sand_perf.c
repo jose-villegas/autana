@@ -538,9 +538,71 @@ build_quality_water_pour_scene(sand_t* real, uint8_t* big, uint8_t* blocks, int 
     }
 }
 
-static int64_t
-time_two_core_quality_water_pour(const quality_grid_t* quality, bool two_core, int* out_w, int* out_h,
-                                 int* out_stripes) {
+/* A scene the bench builds at any grid size. The split covers the sweep, the
+ * liquid cross-flow and the gas walk; reactions and impulses stay serial, so
+ * how much of a step those four passes hold is the ceiling on what a second
+ * core can buy for that workload. */
+typedef void (*quality_scene_fn)(sand_t* real, uint8_t* big, uint8_t* blocks, int w, int h);
+
+typedef struct {
+    int64_t per_step_us;
+    int64_t parallel_us;
+    int64_t total_us;
+    int stripes;
+} quality_bench_t;
+
+static void
+build_quality_sand_pour_scene(sand_t* real, uint8_t* big, uint8_t* blocks, int w, int h) {
+    sand_init(real, big, w, h, 11u);
+    sand_enable_sleeping(real, blocks);
+
+    for (int y = 0; y < h / 2; y++) {
+        for (int x = w / 4; x < (w * 3) / 4; x++) {
+            sand_set(real, x, y, SAND_FIRST_SHADE);
+        }
+    }
+}
+
+static void
+build_quality_gas_scene(sand_t* real, uint8_t* big, uint8_t* blocks, int w, int h) {
+    sand_init(real, big, w, h, 17u);
+    sand_enable_sleeping(real, blocks);
+
+    for (int y = h / 2; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            sand_set(real, x, y, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
+        }
+    }
+}
+
+static void
+build_quality_fire_scene(sand_t* real, uint8_t* big, uint8_t* blocks, int w, int h) {
+    build_quality_gas_scene(real, big, blocks, w, h);
+    sand_set(real, 0, h / 2, FIRE);
+}
+
+static void
+build_quality_mixed_scene(sand_t* real, uint8_t* big, uint8_t* blocks, int w, int h) {
+    sand_init(real, big, w, h, 23u);
+    sand_enable_sleeping(real, blocks);
+
+    for (int y = 0; y < h / 3; y++) {
+        for (int x = 0; x < w / 2; x++) {
+            sand_set(real, x, y, SAND_FIRST_SHADE);
+        }
+        for (int x = w / 2; x < w; x++) {
+            sand_set(real, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+        }
+    }
+    for (int y = (h * 2) / 3; y < h; y++) {
+        for (int x = w / 4; x < (w * 3) / 4; x++) {
+            sand_set(real, x, y, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
+        }
+    }
+}
+
+static quality_bench_t
+time_two_core_quality_scene(const quality_grid_t* quality, quality_scene_fn build, bool two_core) {
     const int w = GFX_WIDTH / quality->cell;
     const int h = GFX_HEIGHT / quality->cell;
     const size_t block_count =
@@ -551,23 +613,39 @@ time_two_core_quality_water_pour(const quality_grid_t* quality, bool two_core, i
     TEST_ASSERT_NOT_NULL(blocks);
 
     sand_t real;
-    build_quality_water_pour_scene(&real, big, blocks, w, h);
+    build(&real, big, blocks, w, h);
 
+    quality_bench_t out = {0};
     const two_core_scope_t core = two_core_scope_begin(two_core);
     const int steps = 20;
     const int64_t start = esp_timer_get_time();
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, 1000, 0);
+        out.parallel_us += real.pass_us.sweep_us + real.pass_us.liquid_us + real.pass_us.float_us + real.pass_us.gas_us;
+        out.total_us += real.pass_us.sweep_us + real.pass_us.liquid_us + real.pass_us.float_us + real.pass_us.gas_us
+                        + real.pass_us.reactions_us + real.pass_us.impulses_us;
     }
-    const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    out.per_step_us = (esp_timer_get_time() - start) / steps;
     two_core_scope_end(core);
 
-    *out_w = w;
-    *out_h = h;
-    *out_stripes = sand_stripe_count(&real);
+    out.stripes = sand_stripe_count(&real);
     free(big);
     free(blocks);
-    return per_step;
+    return out;
+}
+
+static void
+report_quality_scene(const char* scene, const quality_grid_t* quality, quality_scene_fn build) {
+    const quality_bench_t serial = time_two_core_quality_scene(quality, build, false);
+    const quality_bench_t split = time_two_core_quality_scene(quality, build, true);
+    const long long ratio = serial.per_step_us > 0 ? (split.per_step_us * 100) / serial.per_step_us : 0;
+    const long long share = serial.total_us > 0 ? (serial.parallel_us * 100) / serial.total_us : 0;
+
+    ESP_LOGI("device_tests",
+             "TWO_CORE_WORKLOAD %s %s grid %dx%d stripes %d one-core %lld us two-core %lld us ratio %lld%% "
+             "splittable %lld%%",
+             scene, quality->name, GFX_WIDTH / quality->cell, GFX_HEIGHT / quality->cell, serial.stripes,
+             (long long)serial.per_step_us, (long long)split.per_step_us, ratio, share);
 }
 
 static void
@@ -576,17 +654,21 @@ test_two_core_step_at_every_quality_grid_size(void) {
         {"ULTRA", 2}, {"HIGH", 3}, {"NORMAL", 4}, {"LOW", 6}, {"VERY LOW", 8},
     };
 
-    for (size_t i = 0; i < sizeof qualities / sizeof qualities[0]; i++) {
-        int w, h, stripes;
-        const int64_t serial = time_two_core_quality_water_pour(&qualities[i], false, &w, &h, &stripes);
-        ESP_LOGI("device_tests", "TWO_CORE_QUALITY %s grid %dx%d stripes %d mode one-core: %lld us/step",
-                 qualities[i].name, w, h, stripes, (long long)serial);
+    static const struct {
+        const char* name;
+        quality_scene_fn build;
+    } scenes[] = {
+        {"water-pour", build_quality_water_pour_scene},
+        {"sand-pour", build_quality_sand_pour_scene},
+        {"gas", build_quality_gas_scene},
+        {"fire", build_quality_fire_scene},
+        {"mixed", build_quality_mixed_scene},
+    };
 
-        const int64_t parallel = time_two_core_quality_water_pour(&qualities[i], true, &w, &h, &stripes);
-        ESP_LOGI("device_tests", "TWO_CORE_QUALITY %s grid %dx%d stripes %d mode two-core: %lld us/step",
-                 qualities[i].name, w, h, stripes, (long long)parallel);
-        ESP_LOGI("device_tests", "TWO_CORE_QUALITY %s grid %dx%d two-core/one-core: %lld%%", qualities[i].name, w, h,
-                 serial > 0 ? (long long)((parallel * 100) / serial) : 0);
+    for (size_t si = 0; si < sizeof scenes / sizeof scenes[0]; si++) {
+        for (size_t qi = 0; qi < sizeof qualities / sizeof qualities[0]; qi++) {
+            report_quality_scene(scenes[si].name, &qualities[qi], scenes[si].build);
+        }
     }
 }
 
