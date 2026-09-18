@@ -294,8 +294,7 @@ arm_exhaustive_landing(int y) {
 static bool
 step_one_gas_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int rdx,
                    int rdy, const int* rslide_a, const int* rslide_b, int rload_dx, int rload_dy, int jostle,
-                   bool driven_gas[MATERIAL_MAX][2]) {
-    cell_t grain = row[x];
+                   cell_t grain, bool driven_gas[MATERIAL_MAX][2]) {
     const material_t* mat = material_of(grain);
     const uint8_t mat_id = CELL_MATERIAL(grain);
     const uint8_t density = mat->density;
@@ -397,7 +396,7 @@ step_one_gas_row(sand_t* s, int y, int w, int rdx, int rdy, const int* rslide_a,
             gas_row_arm(y);
         }
         step_one_gas_grain(s, row, prow, arow, brow, x, y, w, rdx, rdy, rslide_a, rslide_b, rload_dx, rload_dy, jostle,
-                           driven_gas);
+                           c, driven_gas);
     }
     return any;
 }
