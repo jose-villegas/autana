@@ -730,6 +730,66 @@ tc_fuse_blast_impulses(bool two_core) {
     return impulses;
 }
 
+/* Lava sealed under stone, with the burst forced certain: covered_at() is
+ * what a burst needs, and the roll must happen per cell. A split that queues
+ * every burning lava cell and rolls later gets only as many chances as the
+ * queue is deep, which a screen of lava exhausts immediately. */
+static int
+tc_lava_burst_impulses(bool two_core) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    TEST_ASSERT_NOT_NULL(cells);
+    impulse_t* buf = malloc((size_t)TC_FUSE_IMPULSE_MAX * sizeof *buf);
+    TEST_ASSERT_NOT_NULL(buf);
+
+    sand_t s;
+    sand_init(&s, cells, TC_W, TC_H, 9u);
+    sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
+    /* The NATURAL burst chance on purpose: forcing it certain would make
+     * every candidate a winner and hide the thing this guards, which is that
+     * a rare roll must be offered to every lava cell rather than to however
+     * many fit in the deferred queue. */
+    sand_enable_impulses(&s, buf, TC_FUSE_IMPULSE_MAX);
+
+    for (int y = TC_H - 40; y < TC_H; y++) {
+        for (int x = 0; x < TC_W; x++) {
+            sand_set(&s, x, y, STONE);
+        }
+    }
+    for (int y = TC_H - 36; y < TC_H - 6; y++) {
+        for (int x = 4; x < TC_W - 4; x++) {
+            sand_set(&s, x, y, CELL_MAKE(MAT_LAVA, MASS_MAX));
+        }
+    }
+
+    sand_set_two_core_step(two_core);
+    int peak = 0;
+    for (int i = 0; i < 20; i++) {
+        sand_step(&s, 0, 1000, 0);
+        if (s.impulse_count > peak) {
+            peak = s.impulse_count;
+        }
+    }
+    sand_set_two_core_step(false);
+
+    free(cells);
+    free(buf);
+    return peak;
+}
+
+static void
+test_a_lava_burst_throws_grains_on_both_cores(void) {
+    const int serial = tc_lava_burst_impulses(false);
+    const int split = tc_lava_burst_impulses(true);
+
+    char why[160];
+    snprintf(why, sizeof why,
+             "serial threw %d grains and the split threw %d: a confined lava burst must survive "
+             "the reach pass",
+             serial, split);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, serial, why);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, split, why);
+}
+
 static void
 test_a_fuse_blast_throws_grains_on_both_cores(void) {
     const int serial = tc_fuse_blast_impulses(false);
@@ -1234,6 +1294,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_two_core_step_matches_serial_fall_distance_at_a_seam);
     RUN_TEST(test_smaller_quality_seams_match_serial);
     RUN_TEST(test_a_fuse_blast_throws_grains_on_both_cores);
+    RUN_TEST(test_a_lava_burst_throws_grains_on_both_cores);
     RUN_TEST(test_settled_guard_rows_do_no_grain_work);
     RUN_TEST(test_two_core_step_conserves_grains_on_a_dense_column_and_pile);
     RUN_TEST(test_reaction_split_matches_serial_on_a_zero_randomness_fire_chain);
