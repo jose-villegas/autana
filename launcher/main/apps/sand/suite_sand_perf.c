@@ -434,7 +434,8 @@ pass_gates_enable_all(void) {
 }
 
 static int64_t
-pass_gate_single_step_us(void (*build)(sand_t*, uint8_t*, uint8_t*), int warmup_steps, volatile bool* gate) {
+pass_gate_single_step_us(void (*build)(sand_t*, uint8_t*, uint8_t*), int warmup_steps, volatile bool* gate, int gx,
+                         int gy) {
     int64_t best = INT64_MAX;
 
     for (int repeat = 0; repeat < 3; repeat++) {
@@ -447,14 +448,14 @@ pass_gate_single_step_us(void (*build)(sand_t*, uint8_t*, uint8_t*), int warmup_
         pass_gates_enable_all();
         build(&real, big, blocks);
         for (int step = 0; step < warmup_steps; step++) {
-            sand_step(&real, 0, 1000, 0);
+            sand_step(&real, gx, gy, 0);
         }
 
         if (gate != NULL) {
             *gate = false;
         }
         const int64_t t0 = esp_timer_get_time();
-        sand_step(&real, 0, 1000, 0);
+        sand_step(&real, gx, gy, 0);
         const int64_t elapsed = esp_timer_get_time() - t0;
         pass_gates_enable_all();
 
@@ -468,7 +469,8 @@ pass_gate_single_step_us(void (*build)(sand_t*, uint8_t*, uint8_t*), int warmup_
 }
 
 static void
-report_pass_gate_scene(const char* scene, void (*build)(sand_t*, uint8_t*, uint8_t*), int warmup_steps) {
+report_pass_gate_scene(const char* scene, void (*build)(sand_t*, uint8_t*, uint8_t*), int warmup_steps, int gx,
+                       int gy) {
     static const char* const names[] = {
         "sweep", "sweep body", "liquid equalise", "liquid density sort", "gas", "reaction local", "reaction reach",
     };
@@ -482,10 +484,10 @@ report_pass_gate_scene(const char* scene, void (*build)(sand_t*, uint8_t*, uint8
         &sand_step_gate_reaction_reach,
     };
 
-    const int64_t whole = pass_gate_single_step_us(build, warmup_steps, NULL);
+    const int64_t whole = pass_gate_single_step_us(build, warmup_steps, NULL, gx, gy);
     ESP_LOGI("device_tests", "pass gates %s: every pass on: %lld us", scene, (long long)whole);
     for (size_t gate = 0; gate < sizeof gates / sizeof gates[0]; gate++) {
-        const int64_t without = pass_gate_single_step_us(build, warmup_steps, gates[gate]);
+        const int64_t without = pass_gate_single_step_us(build, warmup_steps, gates[gate], gx, gy);
         const int64_t cost = whole - without;
         ESP_LOGI("device_tests", "pass gates %s: %s: %lld us", scene, names[gate], (long long)cost);
     }
@@ -494,8 +496,12 @@ report_pass_gate_scene(const char* scene, void (*build)(sand_t*, uint8_t*, uint8
 static void
 test_the_water_and_fire_scenes_decompose_by_step_pass(void) {
     const two_core_scope_t core = two_core_scope_begin(true);
-    report_pass_gate_scene("water", build_water_scene, 10);
-    report_pass_gate_scene("fire", build_fire_scene, FIRE_WARMUP_STEPS);
+    report_pass_gate_scene("water", build_water_scene, 10, 0, 1000);
+    report_pass_gate_scene("fire", build_fire_scene, FIRE_WARMUP_STEPS, 0, 1000);
+    /* Landscape is the shipping orientation and no longer the same partition:
+     * the liquid pass runs serial when the active ray crosses rows. */
+    report_pass_gate_scene("water landscape", build_water_scene, 10, 1000, 0);
+    report_pass_gate_scene("fire landscape", build_fire_scene, FIRE_WARMUP_STEPS, 1000, 0);
     pass_gates_enable_all();
     two_core_scope_end(core);
 }
