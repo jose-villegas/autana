@@ -1229,7 +1229,7 @@ the one it does need.
 
 ```
 gravity down; stripe height = ceil(grid height / 4), clamped to 17-32 rows;
-two phases, alternating colour, offset by half a stripe every step
+two phases, alternating colour, offset across the whole stripe every step
 
   phase A (even stripes)     phase B (odd stripes)
   ┌──────────────┐           ┌──────────────┐
@@ -1252,12 +1252,10 @@ core 1, the rest on the caller's own core, joining before the next phase
 starts - which stripe goes to which core does not matter, since none of
 them touch each other.
 
-The stripe grid's own offset alternates by half a stripe height every
-step (`s->step_phase & 1`), the same idea Margolus-style block automata
-use to keep a boundary from sitting on the same rows long enough to
-become a visible seam - `suite_sand_two_core.c`'s own seam test checks
-exactly this, by histogramming a settled pile's row-to-row occupancy for
-an outlier at stripe-boundary rows.
+`sand_stripe_offset()` hashes the seed and step phase into the full stripe
+height. That spreads guard rows across the stripe instead of repeatedly
+stalling the same screen rows, and `suite_sand_two_core.c` checks that the
+result visits the full range.
 
 Grids yielding fewer than four stripes run the sweep on one core: a
 checkerboard phase needs two same-coloured stripes to divide work between
@@ -1328,14 +1326,22 @@ What the guard pass still guarantees there, and what the suite checks
 instead, is that the grain count never drifts: nothing is duplicated or
 dropped, only reordered by up to the width of a stripe boundary.
 
+A development build carries an overlay that draws exactly what the guard
+pass above decided: every guard row this step used is tinted blue, and
+every column it skipped because a phase already wrote through it (`sand.h`'s
+`sand_seam_guard_row_count()`/`sand_seam_guard_row()`/`sand_seam_stalled()`/
+`sand_seam_stall_count()`) is marked red on top, with a running stall count
+drawn in the corner. Off by default; the sand app's own boot menu has a
+"show seam stalls" checkbox under `CONFIG_LAUNCHER_DEVELOPMENT` to turn it
+on for the current visit.
+
 ### Liquid cross-flow stripes
 
 Cross-flow uses the shared derived stripe height, with 8 guard rows on each
 side of every internal boundary. The guard width matches
 `SAND_LIQUID_SIGHT`, the furthest a cell can read or transfer in one pass.
-The offset alternates between zero and half a stripe height exactly as the
-main sweep's does. Boards yielding fewer than four stripes, and scratch
-allocation failures, fall back to the serial order.
+The offset is shared with the main sweep. Boards yielding fewer than four
+stripes, and scratch allocation failures, fall back to the serial order.
 
 A cell reads or transfers at most 8 rows away, but the bookkeeping
 around it reaches further: depth-repaint marks extend another 24 rows
