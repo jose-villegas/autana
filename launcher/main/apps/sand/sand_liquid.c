@@ -628,6 +628,29 @@ equalise_liquid_stripes(sand_t* s, const xflow_t* flow, int sight, int dx, int d
     return true;
 }
 
+/* Hashed draws stay armed here when a split pass would otherwise have armed
+ * them, so serialising one flow does not also change the numbers it draws. */
+static bool
+equalise_every_row(sand_t* s, const xflow_t* f, int sight, int dx, int dy, uint16_t is_liquid, int y_from, int y_to,
+                   int y_step, int x_step, bool row_crossing) {
+    liquid_work_t work = {0};
+    bool found_any = false;
+    const bool was_hashed = s->rng_hashed;
+
+    if (row_crossing && sand_two_core_step_enabled()) {
+        s->rng_hashed = true;
+    }
+    for (int y = y_from; y != y_to; y += y_step) {
+        if (equalise_one_row(s, y, s->w, x_step, f, dx, dy, sight, is_liquid, &work)) {
+            found_any = true;
+        }
+    }
+    s->rng_hashed = was_hashed;
+    sand_liquid_moves += work.moves;
+    sand_liquid_crossflow_probes += work.probes;
+    return found_any;
+}
+
 static void
 equalise_liquids(sand_t* s, const xflow_t* f, int sight, int dx, int dy) {
     bool found_any = false;
@@ -639,7 +662,6 @@ equalise_liquids(sand_t* s, const xflow_t* f, int sight, int dx, int dy) {
 
     const int px = f->dg[0];
     const int py = f->dg[1];
-    const int w = s->w;
     const int h = s->h;
 
     const uint16_t is_liquid = liquid_mask();
@@ -655,19 +677,9 @@ equalise_liquids(sand_t* s, const xflow_t* f, int sight, int dx, int dy) {
      * cost. */
     if (!sand_two_core_step_enabled() || row_crossing || sand_stripe_count(s) < SAND_STRIPE_SPLIT_MIN_COUNT
         || !equalise_liquid_stripes(s, f, sight, dx, dy, is_liquid, &found_any)) {
-        liquid_work_t work = {0};
-        const bool was_hashed = s->rng_hashed;
-        if (row_crossing && sand_two_core_step_enabled()) {
-            s->rng_hashed = true;
+        if (equalise_every_row(s, f, sight, dx, dy, is_liquid, y_from, y_to, y_step, x_step, row_crossing)) {
+            found_any = true;
         }
-        for (int y = y_from; y != y_to; y += y_step) {
-            if (equalise_one_row(s, y, w, x_step, f, dx, dy, sight, is_liquid, &work)) {
-                found_any = true;
-            }
-        }
-        s->rng_hashed = was_hashed;
-        sand_liquid_moves += work.moves;
-        sand_liquid_crossflow_probes += work.probes;
     }
 
     /* Sound despite the block skipping above: a skipped block has
