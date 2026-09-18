@@ -68,22 +68,10 @@ if [ -z "${PYTHON:-}" ]; then
     exit 1
 fi
 
-# Find the board by its USB identity first: Espressif's built-in USB
-# Serial/JTAG enumerates as VID 0x303A, and the COM number Windows assigns
-# changes between machines and re-plugs. The name guesses stay as a fallback
-# for a USB-UART bridge board.
+# shellcheck source=./find_port.sh
+. "$SCRIPT_DIR/find_port.sh"
 if [ -z "$PORT" ]; then
-    PORT=$("$PYTHON" -c "
-from serial.tools import list_ports
-ports = list_ports.comports()
-hit = [p.device for p in ports if p.vid == 0x303A] or [p.device for p in ports if 'JTAG' in (p.description or '')]
-print(hit[0] if hit else '')
-" 2>/dev/null | tr -d '\r' || true)
-fi
-if [ -z "$PORT" ]; then
-    for candidate in /dev/ttyACM0 /dev/ttyUSB0 /dev/cu.usbmodem*; do
-        if [ -e "$candidate" ]; then PORT="$candidate"; break; fi
-    done
+    PORT=$(find_port) || PORT=""
 fi
 if [ -z "$PORT" ]; then
     echo "no board found: plug it in, or pass -p PORT" >&2
