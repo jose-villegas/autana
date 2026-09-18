@@ -606,10 +606,6 @@ test_stone_speckles_by_position_at_every_temperature(void) {
                               "or a stone wall shimmers");
 }
 
-/* panel_luminance() now lives in suite_sand_common.{c,h} - both this file's
- * cullet/tone tests and the soil-tone test it was originally written for
- * need the same unpacking math. */
-
 /*
  * Each of the four reserved cullet shades (SAND_CULLET_BASE ..
  * MATERIAL_VARIANTS - 1) is a starting point on a shared 16-step colour

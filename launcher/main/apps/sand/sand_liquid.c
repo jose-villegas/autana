@@ -271,9 +271,6 @@ equalise_one_block(sand_t* s, uint8_t* row, int y, int cx_from, int cx_to, int x
                    uint16_t is_liquid, bool* touched, int* touched_x0, int* touched_x1, liquid_work_t* work) {
     bool any_liquid = false;
 
-    /* The diagonal-ray phase this loop used to walk per cell now lives in
-     * equalise_one_row_cell(), derived from x once a cell is known to be
-     * liquid - see its own comment. */
     for (int x = cx_from; x != cx_to; x += x_step) {
         if (equalise_one_row_cell(s, row, x, y, ax_row, dg_row, below_row, w, r, dx, sight, is_liquid, touched,
                                   touched_x0, touched_x1, work)) {
