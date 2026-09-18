@@ -27,6 +27,8 @@ typedef struct {
     const char* dither;
     bool show_dither;
 #if CONFIG_LAUNCHER_DEVELOPMENT
+    /* Pre-formatted like the rows above ("TWO-CORE: On"). */
+    const char* two_core;
     /* Current value of the seam-overlay checkbox below - see
      * app_sand.c's draw_seam_overlay(). Development builds only, unlike
      * show_dither: this is a debug aid, not something a release menu
@@ -43,6 +45,7 @@ typedef struct {
     bool color_clicked;
     bool dither_clicked;
 #if CONFIG_LAUNCHER_DEVELOPMENT
+    bool two_core_clicked;
     /* Not a click event like the four above - mu_checkbox() mutates this
      * immediately, so it is the checkbox's new value every frame. */
     bool seam_overlay_on;
@@ -50,8 +53,8 @@ typedef struct {
 } sand_menu_screen_result_t;
 
 /* How many rows this menu draws for `show_dither` - QUALITY/COLOUR/START
- * plus DITHER once COLOUR is 16, plus the seam-overlay checkbox on a
- * development build. Exposed so sand_menu_screen_row_rect() and this
+ * plus DITHER once COLOUR is 16, plus the TWO-CORE row and the seam-overlay
+ * checkbox on a development build. Exposed so sand_menu_screen_row_rect() and this
  * file's own drawing agree on the same row count without either
  * recomputing it differently. */
 int sand_menu_screen_row_count(bool show_dither);

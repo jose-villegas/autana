@@ -22,6 +22,7 @@
  */
 
 #include "reaction_doc.h"
+#include "sand_limits.h"
 #include "sand_priv.h"
 
 /* PAIR_BITS - classifies neighbour probes, replacing s->heat_mask/s->wet_mask
@@ -139,6 +140,8 @@ touches_air(const sand_t* s, int x, int y, int w, int h) {
 }
 
 static void crack_run(sand_t* s, int x, int y, int w, int h, material_id_t from, material_id_t into);
+static void crack_run_or_defer(sand_t* s, int x, int y, int w, int h, material_id_t from, material_id_t into);
+static void cool_off_chain_or_defer(sand_t* s, int x, int y, int w, int h, uint8_t product, int chance);
 
 static inline bool emit_into_empty_neighbor(sand_t* s, int x, int y, int w, int h, uint8_t spec);
 
@@ -156,6 +159,28 @@ static inline __attribute__((always_inline)) bool try_heat_transform_given(sand_
  * under COLD_REWARM_PERIOD: at a period of 1 the balance ceiling moved 9x. */
 
 #define HEAT_FLAW_CLUMP 5
+
+/* Picks heats_to or flaw_to. s->heat_flaw_seq/is_flawed are step-wide
+ * mutable state shared board-wide - a race for two cores, so a split call
+ * draws its own hashed roll instead: flaws land independently rather than
+ * in fives, a cosmetic loss on the one material with a flaw row. */
+static inline material_id_t
+resolve_heat_flaw_yield(sand_t* s, int nx, int ny, const reaction_t* r) {
+    if (r->flaw_to == 0) {
+        return (material_id_t)r->heats_to;
+    }
+    bool flawed;
+    if (s->rng_hashed) {
+        flawed = sand_rng_chance_at(s, nx, ny, SAND_RNG_SLOT_REACT_FLAW, r->flaw_chance);
+    } else {
+        if (s->heat_flaw_seq % HEAT_FLAW_CLUMP == 0) {
+            s->heat_flaw_is_flawed = (int)(rng_next(&s->rng) & 0xFF) < r->flaw_chance;
+        }
+        s->heat_flaw_seq++;
+        flawed = s->heat_flaw_is_flawed;
+    }
+    return flawed ? (material_id_t)r->flaw_to : (material_id_t)r->heats_to;
+}
 
 /* FORCED INLINE, and that is a performance fix rather than a
  * preference. */
@@ -203,10 +228,10 @@ try_heat_transform_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cel
          * before ramp. */
         REACTION_DOC(shatters_to, "if warmed while badly chilled");
         if (r->shatters_to != 0 && CELL_VARIANT(n) <= SAND_SHOCK_COLD) {
-            crack_run(s, nx, ny, w, h, (material_id_t)CELL_MATERIAL(n), (material_id_t)r->shatters_to);
+            crack_run_or_defer(s, nx, ny, w, h, (material_id_t)CELL_MATERIAL(n), (material_id_t)r->shatters_to);
             return true;
         }
-        if ((int)(rng_next(&s->rng) & 0xFF) >= r->heat_ramp) {
+        if (!sand_rng_chance_at(s, nx, ny, SAND_RNG_SLOT_REACT_HEAT_RAMP, r->heat_ramp)) {
             return false;
         }
         const uint8_t heat = CELL_VARIANT(n);
@@ -231,7 +256,7 @@ try_heat_transform_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cel
     if (r->explodes != 0 && cell_code(n) >= r->lit_from) {
         return false;
     }
-    if ((int)(rng_next(&s->rng) & 0xFF) >= r->heat_chance) {
+    if (!sand_rng_chance_at(s, nx, ny, SAND_RNG_SLOT_REACT_HEAT_CHANCE, r->heat_chance)) {
         return false;
     }
 
@@ -247,7 +272,7 @@ try_heat_transform_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cel
 
         /* Wet ore cracking on first contact, not after warning. */
         REACTION_DOC(spoils_to, "if wet when heat reaches it");
-        if (r->spoils_to != 0 && (int)(rng_next(&s->rng) & 0xFF) < r->spoils_chance) {
+        if (r->spoils_to != 0 && sand_rng_chance_at(s, nx, ny, SAND_RNG_SLOT_REACT_SPOILS, r->spoils_chance)) {
             place_reacted(s, nx, ny, at, (material_id_t)r->spoils_to);
             return true;
         }
@@ -259,20 +284,90 @@ try_heat_transform_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cel
         return true;
     }
 
-    material_id_t yield = (material_id_t)r->heats_to;
-
-    if (r->flaw_to != 0) {
-        if (s->heat_flaw_seq % HEAT_FLAW_CLUMP == 0) {
-            s->heat_flaw_is_flawed = (int)(rng_next(&s->rng) & 0xFF) < r->flaw_chance;
-        }
-        s->heat_flaw_seq++;
-        if (s->heat_flaw_is_flawed) {
-            yield = (material_id_t)r->flaw_to;
-        }
-    }
-
-    place_reacted(s, nx, ny, at, yield);
+    place_reacted(s, nx, ny, at, resolve_heat_flaw_yield(s, nx, ny, r));
     return true;
+}
+
+/* Small fixed queues for the reaction split's LONG-REACH triggers - see
+ * sand_step_reaction_reach() for why conduct_heat()/chilling/dissolving
+ * need none at all. Under 1 KiB total, well below the sweep's own ~5 KiB
+ * guard snapshot (sand.c): cap-limited events, never one entry per cell. */
+#define REACT_EXPLOSION_DEFER_MAX 16
+#define REACT_CRACK_DEFER_MAX     64
+#define REACT_COOLOFF_DEFER_MAX   128
+
+typedef struct {
+    uint8_t x, y;
+} react_coord_t;
+
+typedef struct {
+    uint8_t x, y, from, into;
+} react_crack_defer_t;
+
+typedef struct {
+    uint8_t x, y, product;
+    uint8_t chance;
+} react_cooloff_defer_t;
+
+static react_coord_t react_confined_ignite_defer[REACT_EXPLOSION_DEFER_MAX];
+static uint8_t react_confined_ignite_defer_count;
+static react_coord_t react_lava_burst_defer[REACT_EXPLOSION_DEFER_MAX];
+static uint8_t react_lava_burst_defer_count;
+static react_coord_t react_fuse_explosion_defer[REACT_EXPLOSION_DEFER_MAX];
+static uint8_t react_fuse_explosion_defer_count;
+static react_crack_defer_t react_crack_defer[REACT_CRACK_DEFER_MAX];
+static uint8_t react_crack_defer_count;
+static react_cooloff_defer_t react_cooloff_defer[REACT_COOLOFF_DEFER_MAX];
+static uint8_t react_cooloff_defer_count;
+
+/* Under 1 KiB total, well inside the sweep's own ~5 KiB guard-snapshot
+ * precedent (sand.c) - these hold candidates for events that are already
+ * rare and cap-limited, never one entry per cell. */
+_Static_assert(3 * sizeof(react_coord_t) * REACT_EXPLOSION_DEFER_MAX + sizeof(react_crack_defer)
+                       + sizeof(react_cooloff_defer)
+                   <= 1024,
+               "the reaction split's deferred queues must stay small - see the comment above");
+
+static inline void
+queue_confined_ignite(int x, int y) {
+    if (react_confined_ignite_defer_count >= REACT_EXPLOSION_DEFER_MAX) {
+        return; /* cap-limited already; a dropped candidate just never ignites this step */
+    }
+    react_confined_ignite_defer[react_confined_ignite_defer_count++] = (react_coord_t){(uint8_t)x, (uint8_t)y};
+}
+
+static inline void
+queue_lava_burst(int x, int y) {
+    if (react_lava_burst_defer_count >= REACT_EXPLOSION_DEFER_MAX) {
+        return;
+    }
+    react_lava_burst_defer[react_lava_burst_defer_count++] = (react_coord_t){(uint8_t)x, (uint8_t)y};
+}
+
+static inline void
+queue_fuse_explosion(int x, int y) {
+    if (react_fuse_explosion_defer_count >= REACT_EXPLOSION_DEFER_MAX) {
+        return;
+    }
+    react_fuse_explosion_defer[react_fuse_explosion_defer_count++] = (react_coord_t){(uint8_t)x, (uint8_t)y};
+}
+
+static inline void
+queue_crack_run(int x, int y, material_id_t from, material_id_t into) {
+    if (react_crack_defer_count >= REACT_CRACK_DEFER_MAX) {
+        return; /* a rare hot/cold shock combo overflowing 64 in one step just never cracks this step */
+    }
+    react_crack_defer[react_crack_defer_count++] =
+        (react_crack_defer_t){(uint8_t)x, (uint8_t)y, (uint8_t)from, (uint8_t)into};
+}
+
+static inline void
+queue_cool_off_chain(int x, int y, uint8_t product, int chance) {
+    if (react_cooloff_defer_count >= REACT_COOLOFF_DEFER_MAX) {
+        return; /* the source cell already quenched locally; only the chain's further spread is lost */
+    }
+    react_cooloff_defer[react_cooloff_defer_count++] =
+        (react_cooloff_defer_t){(uint8_t)x, (uint8_t)y, product, (uint8_t)chance};
 }
 
 #define CRACK_MAX 256
@@ -362,6 +457,24 @@ cool_off_chain(sand_t* s, int x, int y, int w, int h, uint8_t product, int chanc
     }
 }
 
+static void
+crack_run_or_defer(sand_t* s, int x, int y, int w, int h, material_id_t from, material_id_t into) {
+    if (s->rng_hashed) {
+        queue_crack_run(x, y, from, into);
+        return;
+    }
+    crack_run(s, x, y, w, h, from, into);
+}
+
+static void
+cool_off_chain_or_defer(sand_t* s, int x, int y, int w, int h, uint8_t product, int chance) {
+    if (s->rng_hashed) {
+        queue_cool_off_chain(x, y, product, chance);
+        return;
+    }
+    cool_off_chain(s, x, y, w, h, product, chance);
+}
+
 /* `#define` used for materials with `dries != 0` */
 #define SOIL_PERCOLATE_CHANCE 15
 
@@ -389,7 +502,7 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
     const unsigned convert_period = (s->soak_convert > 0) ? (unsigned)s->soak_convert : SOAKED_CONVERT_PERIOD;
     if (r->soaked_to != 0 && held >= r->moist_max
         && (((unsigned)s->step_phase + (unsigned)x * 5u + (unsigned)y * 33u) & (convert_period - 1u)) == 0u
-        && (int)(rng_next(&s->rng) & 0xFF) < r->soaked_chance) {
+        && sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_SOAK_CONVERT, r->soaked_chance)) {
         const size_t at = (size_t)y * (size_t)w + (size_t)x;
         place_reacted(s, x, y, at, r->soaked_to);
         return true;
@@ -433,7 +546,7 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
             }
             beside_liquid = true;
 
-            if ((int)(rng_next(&s->rng) & 0xFF) >= soaks) {
+            if (!sand_rng_chance_at(s, nx, ny, SAND_RNG_SLOT_REACT_SOAK_WET_ROLL, soaks)) {
                 continue;
             }
             /* The liquid pays for what was taken out of it. */
@@ -462,7 +575,8 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
     const int spread = soaks;
 
     /* `dries` marks wet; `spread` checked for sinking. */
-    if (r->dries != 0 && held >= 2 && spread != 0 && (int)(rng_next(&s->rng) & 0xFF) < spread) {
+    if (r->dries != 0 && held >= 2 && spread != 0
+        && sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_SOAK_SPREAD_GATE, spread)) {
         for (int d = 0; d < 4; d++) {
             const int nx = x + reaction_dirs[d][0];
             const int ny = y + reaction_dirs[d][1];
@@ -551,8 +665,8 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
                 open[n_open++] = i;
             }
         }
-        if (n_open != 0 && (int)(rng_next(&s->rng) & 0xFF) < SOIL_PERCOLATE_CHANCE) {
-            const int pick = open[rng_below(&s->rng, n_open)];
+        if (n_open != 0 && sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_SOAK_PERCOLATE, SOIL_PERCOLATE_CHANCE)) {
+            const int pick = open[sand_rng_below_at(s, x, y, SAND_RNG_SLOT_REACT_SOAK_PERCOLATE_PICK, n_open)];
             const int* fd = ring_dir(down + (pick == 0 ? 0 : pick == 1 ? 1 : 7));
             const int nx = x + fd[0], ny = y + fd[1];
             const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
@@ -593,7 +707,7 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
         }
     }
 
-    if (r->dries != 0 && held != 0 && (int)(rng_next(&s->rng) & 0xFF) < r->dries) {
+    if (r->dries != 0 && held != 0 && sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_SOAK_DRY, r->dries)) {
         row[x] = soil_set_moisture(c, (uint8_t)(held - 1), 0);
         mark_rows(s, x, y, y);
         wake_block_and_neighbors(s, x, y);
@@ -627,7 +741,7 @@ step_one_warming_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
             if (t + 1 >= MATERIAL_VARIANTS) {
                 continue; /* melting is the ramp's job, not convection's */
             }
-            if ((int)(rng_next(&s->rng) & 0xFF) >= r->warms) {
+            if (!sand_rng_chance_at(s, nx, ny, SAND_RNG_SLOT_REACT_WARM_BANK, r->warms)) {
                 continue;
             }
             s->cells[nat] = CELL_MAKE(CELL_MATERIAL(n), (uint8_t)(t + 1));
@@ -647,12 +761,12 @@ step_one_warming_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
         if (nr->chills == 0 || nr->heats_to == 0 || nr->heat_chance == 0) {
             continue;
         }
-        if ((int)(rng_next(&s->rng) & 0xFF) >= r->warms) {
+        if (!sand_rng_chance_at(s, nx, ny, SAND_RNG_SLOT_REACT_WARM_MELT_GATE, r->warms)) {
             continue;
         }
         /* Snow vital for shock. 1.5s smoke clears snow, risking boiler.
          * Quarter rate minimally impacts ice, doubles snow life. */
-        if ((int)(rng_next(&s->rng) & 0xFF) >= (nr->heat_chance >> 2)) {
+        if (!sand_rng_chance_at(s, nx, ny, SAND_RNG_SLOT_REACT_WARM_MELT, nr->heat_chance >> 2)) {
             continue;
         }
         place_reacted(s, nx, ny, nat, (material_id_t)nr->heats_to);
@@ -863,6 +977,18 @@ step_one_cold_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     return true;
 }
 
+/* The carry walk above reaches up to COLD_REACH cells and stays entirely
+ * serial rather than split: it decides whether to melt the SOURCE cell
+ * before its own contact loop runs, and a deferred carry could only answer
+ * that after the loop had already run for nothing. */
+static bool
+step_one_cold_cell_or_defer(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
+    if (s->rng_hashed) {
+        return false;
+    }
+    return step_one_cold_cell(s, x, y, w, h, r);
+}
+
 #define SPREAD_SHIFT 1
 
 static bool
@@ -900,7 +1026,7 @@ step_one_tempered_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cons
         if (gap > -2 && gap < 2) {
             continue;
         }
-        if ((int)(rng_next(&s->rng) & 0xFF) >= (r->conducts >> SPREAD_SHIFT)) {
+        if (!sand_rng_chance_at(s, nx, ny, SAND_RNG_SLOT_REACT_TEMPER_SPREAD, r->conducts >> SPREAD_SHIFT)) {
             continue;
         }
         s->cells[nat] = CELL_MAKE(CELL_MATERIAL(n), (uint8_t)(gap > 0 ? nt + 1 : nt - 1));
@@ -928,7 +1054,7 @@ step_one_tempered_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cons
             drain = 255u;
         }
     }
-    if (drain == 0 || (unsigned)(rng_next(&s->rng) & 0xFF) >= drain) {
+    if (!sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_TEMPER_DRAIN, (int)drain)) {
         return temp != SAND_AMBIENT_HEAT;
     }
 
@@ -1044,6 +1170,29 @@ confined_blast_available(const sand_t* s) {
 }
 
 static inline bool
+ignite_confined_gas(sand_t* s, int nx, int ny) {
+    if (!confined_blast_available(s)) {
+        return false;
+    }
+    s->confined_blasts_this_step++;
+    sand_explode(s, nx, ny, SAND_GAS_IGNITE_BLAST_RADIUS);
+    return true;
+}
+
+/* The counter above is shared, step-wide state - a race for two cores. A
+ * split call queues the cell and always reports success (bookkeeping only,
+ * see react_burning_neighbors()); sand_step_reaction_reach() resolves the
+ * cap for real, single core, once both phases have joined. */
+static inline bool
+ignite_confined_gas_or_defer(sand_t* s, int nx, int ny) {
+    if (s->rng_hashed) {
+        queue_confined_ignite(nx, ny);
+        return true;
+    }
+    return ignite_confined_gas(s, nx, ny);
+}
+
+static inline bool
 try_ignite_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cell_t n) {
     const reaction_t* r = reaction_of(n);
     if (r->flammability == 0) {
@@ -1073,16 +1222,11 @@ try_ignite_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cell_t n) {
                           shift the RNG stream for scenes that never reach
                           this material's moisture range */
     }
-    if (f < 255 && (int)(rng_next(&s->rng) & 0xFF) >= f) {
+    if (f < 255 && !sand_rng_chance_at(s, nx, ny, SAND_RNG_SLOT_REACT_IGNITE, f)) {
         return false;
     }
     if (s->impulse_buf != NULL && material_of(n)->kind == KIND_GAS && gas_ignite_confined(s, nx, ny, w, h)) {
-        if (!confined_blast_available(s)) {
-            return false;
-        }
-        s->confined_blasts_this_step++;
-        sand_explode(s, nx, ny, SAND_GAS_IGNITE_BLAST_RADIUS);
-        return true;
+        return ignite_confined_gas_or_defer(s, nx, ny);
     }
     const material_id_t becomes = r->ignites_to ? r->ignites_to : MAT_FIRE;
     place_reacted(s, nx, ny, at, becomes);
@@ -1163,7 +1307,7 @@ try_flare(sand_t* s, int x, int y, int w, int h, const material_t* mat, uint8_t 
             return false;
         }
     }
-    if ((int)(rng_next(&s->rng) & 0xFF) >= flare) {
+    if (!sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_FLARE, flare)) {
         return false;
     }
     return emit_against_gravity(s, x, y, w, h, MAT_FIRE);
@@ -1283,6 +1427,18 @@ conduct_heat(sand_t* s, int x, int y, int w, int h) {
     }
 
     return acted;
+}
+
+/* conduct_heat()'s walk reaches up to CONDUCT_REACH cells - never while
+ * s->rng_hashed is armed. sand_step_reaction_reach() re-scans for every
+ * still-burning cell once the local phase has settled, so no queue is
+ * needed here at all. */
+static bool
+conduct_heat_or_defer(sand_t* s, int x, int y, int w, int h) {
+    if (s->rng_hashed) {
+        return false;
+    }
+    return conduct_heat(s, x, y, w, h);
 }
 
 /* ACID BUBBLES - CONTINUOUS, AMBIENT look, not event-specific. */
@@ -1441,6 +1597,21 @@ step_one_dissolver_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, con
     return false;
 }
 
+/* acid_bubble()'s impulse and this walk's own multi-cell water/oil backing
+ * check were never audited for stripe reach, so dissolving is left entirely
+ * serial rather than split - sand_step_reaction_reach() re-scans for every
+ * still-dissolving cell once the local phase has settled. */
+static void
+dissolver_and_bubble_or_defer(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reaction_t* r, bool is_acid) {
+    if (s->rng_hashed) {
+        return;
+    }
+    if (is_acid) {
+        acid_bubble(s, x, y);
+    }
+    step_one_dissolver_cell(s, row, x, y, w, h, r);
+}
+
 /* See reaction_t.explodes, material.h */
 
 /* 2x2, NOT 3x3. Burn-out rolls independent per cell. */
@@ -1512,8 +1683,12 @@ tick_burning_cell(const reaction_row_t* reaction_row, int x, cell_t* grain, cons
     return tick_decay(reaction_row->s, reaction_row->row, x, reaction_row->y, grain, mat_id, plan->tick_rate);
 }
 
-static __attribute__((noinline)) bool
-finish_burning_cell(const burning_cell_t* cell) {
+/* The explosive half of a burn-out - see finish_burning_cell(). Split out
+ * so the common, non-exploding case never carries its weight, and so the
+ * `_or_defer` gate below sits at one small call rather than growing the
+ * caller. */
+static __attribute__((noinline)) void
+finish_exploding_burnout(const burning_cell_t* cell) {
     sand_t* const s = cell->s;
     const reaction_t* const rx = cell->rx;
     const cell_t grain = cell->grain;
@@ -1521,27 +1696,44 @@ finish_burning_cell(const burning_cell_t* cell) {
     const int y = cell->y;
     const int w = s->w;
     const int h = s->h;
-    const size_t at = (size_t)y * (size_t)w + (size_t)x;
-
-    if (rx->explodes == 0) {
-        const uint8_t residue = rx->residue;
-        if (residue != 0 && (int)(rng_next(&s->rng) & 0xFF) < residue) {
-            place_reacted(s, x, y, at, MAT_SMOKE);
-        }
-        return true;
-    }
 
     REACTION_DOC(
         explodes,
         "at burn-out, if it is one corner of a 2x2 that is all lit and the board's blast cooldown has run out");
     int dx = 0, dy = 0;
     if (s->impulse_buf != NULL && s->fuse_blast_wait == 0 && find_lit_two_by_two(s, x, y, w, h, grain, rx, &dx, &dy)) {
-        s->fuse_blast_wait = (uint8_t)((s->fuse_cooldown >= 0) ? s->fuse_cooldown : SAND_GUNPOWDER_BLAST_COOLDOWN);
         spend_lit_two_by_two(s, x, y, w, dx, dy);
-        sand_explode(s, x, y, rx->explodes);
-    } else {
-        place_reacted(s, x, y, at, MAT_FIRE);
+        if (s->rng_hashed) {
+            /* s->fuse_blast_wait is shared, mutable, step-wide state - the
+             * cooldown write and the explosion both move to the serial
+             * reach pass, where only one core is ever running. */
+            queue_fuse_explosion(x, y);
+        } else {
+            s->fuse_blast_wait = (uint8_t)((s->fuse_cooldown >= 0) ? s->fuse_cooldown : SAND_GUNPOWDER_BLAST_COOLDOWN);
+            sand_explode(s, x, y, rx->explodes);
+        }
+        return;
     }
+    place_reacted(s, x, y, (size_t)y * (size_t)w + (size_t)x, MAT_FIRE);
+}
+
+static __attribute__((noinline)) bool
+finish_burning_cell(const burning_cell_t* cell) {
+    const reaction_t* const rx = cell->rx;
+
+    if (rx->explodes == 0) {
+        sand_t* const s = cell->s;
+        const int x = cell->x;
+        const int y = cell->y;
+        const size_t at = (size_t)y * (size_t)s->w + (size_t)x;
+        const uint8_t residue = rx->residue;
+        if (residue != 0 && sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_BURN_RESIDUE, residue)) {
+            place_reacted(s, x, y, at, MAT_SMOKE);
+        }
+        return true;
+    }
+
+    finish_exploding_burnout(cell);
     return true;
 }
 
@@ -1575,8 +1767,11 @@ quench_product(const burning_cell_t* cell, int nx, int ny, uint8_t* product) {
         *product = liquid_boils_to ? liquid_boils_to : MAT_STEAM;
         return true;
     }
-    const bool leaves_residue = (int)(rng_next(&cell->s->rng) & 0xFF) < SAND_ACID_QUENCH_RESIDUE_CHANCE;
-    *product = ((int)(rng_next(&cell->s->rng) & 0xFF) < SAND_ACID_QUENCH_SMOKE_CHANCE) ? MAT_SMOKE : MAT_GAS;
+    const bool leaves_residue =
+        sand_rng_chance_at(cell->s, nx, ny, SAND_RNG_SLOT_REACT_QUENCH_RESIDUE, SAND_ACID_QUENCH_RESIDUE_CHANCE);
+    *product = sand_rng_chance_at(cell->s, nx, ny, SAND_RNG_SLOT_REACT_QUENCH_SMOKE, SAND_ACID_QUENCH_SMOKE_CHANCE)
+                   ? MAT_SMOKE
+                   : MAT_GAS;
     return leaves_residue;
 }
 
@@ -1609,7 +1804,7 @@ quench_unlit_cell(const burning_cell_t* cell, int nx, int ny) {
     place_reacted(s, x, y, at, product);
     if (mat->kind == KIND_LIQUID) {
         const int lava_cooloff = (s->lava_cooloff >= 0) ? s->lava_cooloff : SAND_LAVA_COOLOFF_CHANCE;
-        cool_off_chain(s, x, y, w, s->h, product, lava_cooloff);
+        cool_off_chain_or_defer(s, x, y, w, s->h, product, lava_cooloff);
     }
 }
 
@@ -1678,6 +1873,19 @@ try_lava_burst(const burning_cell_t* cell) {
     return false;
 }
 
+/* try_lava_burst() reads and bumps the shared confined-blast counter and
+ * calls sand_explode() - a stripe-parallel call queues the candidate
+ * instead and reports "did not burst", the same as a roll that missed;
+ * sand_step_reaction_reach() runs the real check afterward, single core. */
+static bool
+try_lava_burst_or_defer(const burning_cell_t* cell) {
+    if (cell->s->rng_hashed) {
+        queue_lava_burst(cell->x, cell->y);
+        return false;
+    }
+    return try_lava_burst(cell);
+}
+
 typedef enum {
     BURN_NEIGHBOR_NONE,
     BURN_NEIGHBOR_ACTED,
@@ -1699,7 +1907,7 @@ react_burning_heat_neighbor(const burning_cell_t* cell, int nx, int ny, cell_t n
     bool changed = try_heat_transform_given(s, nx, ny, w, h, nat, n);
     if (!changed && mat->kind == KIND_LIQUID) {
         const reaction_t* const nr = reaction_of(n);
-        if (nr->melts != 0 && nr->heats_to != 0 && (int)(rng_next(&s->rng) & 0xFF) < nr->melts) {
+        if (nr->melts != 0 && nr->heats_to != 0 && sand_rng_chance_at(s, nx, ny, SAND_RNG_SLOT_REACT_MELT, nr->melts)) {
             place_reacted(s, nx, ny, nat, nr->heats_to);
             changed = true;
         }
@@ -1708,9 +1916,9 @@ react_burning_heat_neighbor(const burning_cell_t* cell, int nx, int ny, cell_t n
         return BURN_NEIGHBOR_NONE;
     }
     if (lava_cooloff != 0 && CELL_MATERIAL(s->cells[nat]) != before_mat
-        && (int)(rng_next(&s->rng) & 0xFF) < lava_cooloff) {
+        && sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_LAVA_COOLOFF_TRIGGER, lava_cooloff)) {
         place_reacted(s, x, y, at, rx->quench_to);
-        cool_off_chain(s, x, y, w, h, rx->quench_to, lava_cooloff);
+        cool_off_chain_or_defer(s, x, y, w, h, rx->quench_to, lava_cooloff);
         return BURN_NEIGHBOR_SOURCE_QUENCHED;
     }
     return BURN_NEIGHBOR_ACTED;
@@ -1784,7 +1992,7 @@ step_one_burning_cell(const reaction_row_t* reaction_row, int x, cell_t grain, c
 
     bool acted = false;
     const bool is_lava = (plan_flags & BURN_LAVA) != 0;
-    if (is_lava && try_lava_burst(&cell)) {
+    if (is_lava && try_lava_burst_or_defer(&cell)) {
         return true;
     }
 
@@ -1797,7 +2005,7 @@ step_one_burning_cell(const reaction_row_t* reaction_row, int x, cell_t grain, c
         return true;
     }
 
-    if (conduct_heat(s, x, y, w, h)) {
+    if (conduct_heat_or_defer(s, x, y, w, h)) {
         acted = true;
     }
 
@@ -1830,7 +2038,7 @@ step_one_condensing_cell(sand_t* s, int x, int y, int w, int h, const reaction_t
     }
 
     const int condenses = (s->condenses >= 0) ? s->condenses : r->condenses;
-    if (condenses == 0 || (int)(rng_next(&s->rng) & 0xFF) >= condenses) {
+    if (!sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_CONDENSE, condenses)) {
         return false;
     }
 
@@ -1879,12 +2087,13 @@ step_one_acid_rain_cell(sand_t* s, int x, int y, int w, int h) {
     }
 
     const int acid_rain = (s->acid_rain >= 0) ? s->acid_rain : SAND_ACID_RAIN_CHANCE;
-    if (acid_rain == 0 || (int)(rng_next(&s->rng) & 0xFF) >= acid_rain) {
+    if (!sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_ACID_RAIN_GATE, acid_rain)) {
         return false;
     }
 
     /* Coin flip, see header for acid probability. */
-    const uint8_t residue = (rng_next(&s->rng) & 1) ? MAT_ACID : MAT_WATER;
+    const uint8_t residue =
+        (sand_rng_next_at(s, x, y, SAND_RNG_SLOT_REACT_ACID_RAIN_RESIDUE) & 1) ? MAT_ACID : MAT_WATER;
     place_reacted(s, x, y, at, residue);
     place_cell(s, x + 1, y, at_r, CELL_EMPTY);
     place_cell(s, x, y + 1, at_d, CELL_EMPTY);
@@ -1986,10 +2195,7 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
             found |= FOUND_DISSOLVER;
             /* MAT_ACID specific - see acid_bubble()'s comment. Future
              * dissolvers may not bubble. */
-            if (CELL_MATERIAL(c) == MAT_ACID) {
-                acid_bubble(s, x, y);
-            }
-            step_one_dissolver_cell(s, row, x, y, w, h, r);
+            dissolver_and_bubble_or_defer(s, row, x, y, w, h, r, CELL_MATERIAL(c) == MAT_ACID);
             continue;
         }
         /* See SAND_ACID_RAIN_CHANCE's comment (sand.h). */
@@ -2039,7 +2245,9 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
         const bool widen_due = ((faces & FACE_CRUST) != 0)
                                && ((phase + (unsigned)x * 5u + (unsigned)y * 33u) & (CRUST_WIDEN_PERIOD - 1u)) == 0u;
         const bool may_crust = seed_due || widen_due;
-        if (may_crust && (int)(rng_next(&s->rng) & (CRUST_ROLL_MAX - 1)) < ((s->crust >= 0) ? s->crust : r->crusts)) {
+        if (may_crust
+            && (int)(sand_rng_next_at(s, x, y, SAND_RNG_SLOT_REACT_CRUST) & (CRUST_ROLL_MAX - 1))
+                   < ((s->crust >= 0) ? s->crust : r->crusts)) {
             REACTION_DOC(crusts_to, "what a settled cell slowly crusts into");
             row[x] = (cell_t)r->crusts_to;
             latch_content_flags(s, row[x]);
@@ -2049,7 +2257,7 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
         /* Falls through: snow that did not crust this step still chills. */
     stage_chill:
         if (r->chills != 0) {
-            if (step_one_cold_cell(s, x, y, w, h, r)) {
+            if (step_one_cold_cell_or_defer(s, x, y, w, h, r)) {
                 found |= FOUND_TEMPERATURE;
             }
             continue;
@@ -2295,6 +2503,259 @@ step_one_reacting_row_liquid_near(sand_t* s, int y, int w, int h) {
     return found;
 }
 
+/* THE LOCAL-RULE SPLIT: every row, minus its stripe boundary, dispatched
+ * through step_one_reacting_row() on whichever core owns it -
+ * run_sweep_stripes()'s own shape (sand.c). NO SNAPSHOT COMPARE: unlike a
+ * grain's move, a reaction never relocates a cell's row. */
+typedef struct {
+    sand_t* s;
+    int w, h, stripe_h, offset, color, share;
+    unsigned* found_out;
+} react_phase_ctx_t;
+
+_Static_assert(sizeof(react_phase_ctx_t) <= JOB_CTX_MAX, "react_phase_ctx_t must fit JOB_CTX_MAX");
+
+/* One stripe band's interior rows - the guard row on each side excluded,
+ * same shape as run_sweep_stripes()'s own inner_y0/inner_y1 (sand.c). */
+static void
+react_run_one_stripe(sand_t* s, int w, int h, int band0, int stripe_h, unsigned* found) {
+    const int y0 = band0 < 0 ? 0 : band0;
+    const int y1 = (band0 + stripe_h > h) ? h : band0 + stripe_h;
+    const int inner_y0 = (y0 > 0) ? y0 + 1 : y0;
+    const int inner_y1 = (y1 < h) ? y1 - 1 : y1;
+    for (int y = inner_y0; y < inner_y1; y++) {
+        *found |= step_one_reacting_row(s, y, w, h, 0, w);
+    }
+}
+
+static void
+react_run_stripes(const react_phase_ctx_t* c) {
+    const int h = c->h;
+    int k = (c->offset == 0) ? 0 : -1;
+    int seen = 0;
+    unsigned found = 0;
+
+    for (;;) {
+        const int band0 = c->offset + k * c->stripe_h;
+        if (band0 >= h) {
+            break;
+        }
+        const int stripe_color = ((k % 2) + 2) % 2;
+        if (stripe_color == c->color) {
+            if ((seen & 1) == c->share) {
+                react_run_one_stripe(c->s, c->w, h, band0, c->stripe_h, &found);
+            }
+            seen++;
+        }
+        k++;
+    }
+    *c->found_out = found;
+}
+
+static void
+react_stripes_worker(void* ctx) {
+    react_run_stripes((const react_phase_ctx_t*)ctx);
+}
+
+/* One checkerboard phase - every stripe of `color`, minus its guard rows -
+ * half on core 1, half here, joined before returning. */
+static unsigned
+react_run_phase(sand_t* s, int color, int w, int h, int stripe_h, int offset) {
+    unsigned found_b = 0;
+    react_phase_ctx_t ctx_b = {s, w, h, stripe_h, offset, color, 1, &found_b};
+    (void)job_run_core1(react_stripes_worker, &ctx_b, sizeof ctx_b);
+
+    unsigned found_a = 0;
+    react_phase_ctx_t ctx_a = {s, w, h, stripe_h, offset, color, 0, &found_a};
+    react_run_stripes(&ctx_a);
+
+    (void)job_wait(100);
+    return found_a | found_b;
+}
+
+#define REACT_GUARD_ROW_MAX (2 * ((GRID_H_MAX + SAND_STRIPE_H_MIN - 1) / SAND_STRIPE_H_MIN))
+
+/* Every guard row this step has - the two rows either side of each stripe
+ * boundary, boundary order. Mirrors sweep_guard_row_list() (sand.c) over
+ * the same stripe_h/offset; reactions have no sweep direction to reorder
+ * for, so unlike that function this list is consumed as-is. */
+static int
+react_guard_row_list(int h, int stripe_h, int offset, int* out, int max) {
+    int k = (offset == 0) ? 0 : -1;
+    int n = 0;
+
+    for (;;) {
+        const int boundary = offset + (k + 1) * stripe_h;
+        if (boundary >= h) {
+            break;
+        }
+        if (boundary > 0) {
+            if (n + 1 < max) {
+                out[n] = boundary - 1;
+                out[n + 1] = boundary;
+            }
+            n += 2;
+        }
+        k++;
+    }
+    return n;
+}
+
+static void
+reach_confined_ignitions(sand_t* s) {
+    const int w = s->w, h = s->h;
+    for (uint8_t i = 0; i < react_confined_ignite_defer_count; i++) {
+        const int x = react_confined_ignite_defer[i].x;
+        const int y = react_confined_ignite_defer[i].y;
+        const cell_t c = sand_at(s, x, y);
+        if (!CELL_IS_EMPTY(c) && material_of(c)->kind == KIND_GAS && gas_ignite_confined(s, x, y, w, h)) {
+            (void)ignite_confined_gas(s, x, y);
+        }
+    }
+    react_confined_ignite_defer_count = 0;
+}
+
+static void
+reach_lava_bursts(sand_t* s) {
+    for (uint8_t i = 0; i < react_lava_burst_defer_count; i++) {
+        const int x = react_lava_burst_defer[i].x;
+        const int y = react_lava_burst_defer[i].y;
+        const cell_t c = sand_at(s, x, y);
+        if (CELL_IS_EMPTY(c) || (sand_burn_plan_of(c)->flags & BURN_LAVA) == 0) {
+            continue;
+        }
+        const burning_cell_t cell = {s, reaction_of(c), material_of(c), c, x, y};
+        (void)try_lava_burst(&cell);
+    }
+    react_lava_burst_defer_count = 0;
+}
+
+static void
+reach_fuse_explosions(sand_t* s) {
+    for (uint8_t i = 0; i < react_fuse_explosion_defer_count; i++) {
+        const int x = react_fuse_explosion_defer[i].x;
+        const int y = react_fuse_explosion_defer[i].y;
+        const cell_t c = sand_at(s, x, y);
+        const reaction_t* rx = CELL_IS_EMPTY(c) ? NULL : reaction_of(c);
+        if (rx == NULL || rx->explodes == 0 || s->fuse_blast_wait != 0) {
+            continue;
+        }
+        s->fuse_blast_wait = (uint8_t)((s->fuse_cooldown >= 0) ? s->fuse_cooldown : SAND_GUNPOWDER_BLAST_COOLDOWN);
+        sand_explode(s, x, y, rx->explodes);
+    }
+    react_fuse_explosion_defer_count = 0;
+}
+
+static void
+reach_cracks_and_cooloffs(sand_t* s) {
+    const int w = s->w, h = s->h;
+    for (uint8_t i = 0; i < react_crack_defer_count; i++) {
+        const react_crack_defer_t* e = &react_crack_defer[i];
+        crack_run(s, e->x, e->y, w, h, (material_id_t)e->from, (material_id_t)e->into);
+    }
+    react_crack_defer_count = 0;
+
+    for (uint8_t i = 0; i < react_cooloff_defer_count; i++) {
+        const react_cooloff_defer_t* e = &react_cooloff_defer[i];
+        cool_off_chain(s, e->x, e->y, w, h, e->product, e->chance);
+    }
+    react_cooloff_defer_count = 0;
+}
+
+/* One cell of the re-scan below - conduct_heat() for a still-burning cell,
+ * or the whole dissolving/chilling stage for a material that entered the
+ * split unable to run either locally. Returns the FOUND_* bits this cell
+ * contributes (never FOUND_BURNING - see the header comment on that mask). */
+static unsigned
+reach_scan_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h) {
+    const cell_t c = row[x];
+    if (CELL_IS_EMPTY(c)) {
+        return 0;
+    }
+    if (cell_is_burning(c)) {
+        (void)conduct_heat(s, x, y, w, h);
+        return 0;
+    }
+    const reaction_t* r = reaction_of(c);
+    if (r->dissolves != 0) {
+        if (CELL_MATERIAL(c) == MAT_ACID) {
+            acid_bubble(s, x, y);
+        }
+        step_one_dissolver_cell(s, row, x, y, w, h, r);
+        return FOUND_DISSOLVER;
+    }
+    if (r->chills != 0 && step_one_cold_cell(s, x, y, w, h, r)) {
+        return FOUND_TEMPERATURE;
+    }
+    return 0;
+}
+
+static unsigned
+reach_rescan(sand_t* s) {
+    const int w = s->w, h = s->h;
+    unsigned found = 0;
+    for (int y = 0; y < h; y++) {
+        uint8_t* const row = s->cells + (size_t)y * (size_t)w;
+        for (int x = 0; x < w; x++) {
+            found |= reach_scan_cell(s, row, x, y, w, h);
+        }
+    }
+    return found;
+}
+
+/* THE SERIAL REACH PASS: every `_or_defer` gate's trigger, resolved once,
+ * single core, after both phases and the guard rows join. Explosions run
+ * first since they can consume a cell outright, before the re-scan sees it. */
+static unsigned
+sand_step_reaction_reach(sand_t* s) {
+    reach_confined_ignitions(s);
+    reach_lava_bursts(s);
+    reach_fuse_explosions(s);
+    reach_cracks_and_cooloffs(s);
+    return reach_rescan(s);
+}
+
+/* Whether this step's reaction pass may split - the sweep's own gate, plus
+ * growers excluded (their own reach was never audited for this) and the
+ * narrower soak-only walk left alone; see sand_step_reactions(). */
+static bool
+reactions_may_split(const sand_t* s, bool soak_only) {
+    return sand_two_core_step_enabled() && !soak_only && sand_stripe_count(s) >= SAND_STRIPE_SPLIT_MIN_COUNT
+           && (s->may_have_materials & grower_mask()) == 0;
+}
+
+/* Every row of the reaction pass, split or not - see reactions_may_split()
+ * for the gate and the two block comments above for what each half does. */
+static unsigned
+run_reaction_rows(sand_t* s, bool soak_only) {
+    const int w = s->w;
+    const int h = s->h;
+    unsigned found = 0;
+
+    if (!reactions_may_split(s, soak_only)) {
+        for (int y = 0; y < h; y++) {
+            found |=
+                soak_only ? step_one_reacting_row_liquid_near(s, y, w, h) : step_one_reacting_row(s, y, w, h, 0, w);
+        }
+        return found;
+    }
+
+    const int stripe_h = sand_stripe_height(h);
+    const int offset = sand_stripe_offset(s);
+    s->rng_hashed = true;
+    found |= react_run_phase(s, 0, w, h, stripe_h, offset);
+    found |= react_run_phase(s, 1, w, h, stripe_h, offset);
+
+    int guard_rows[REACT_GUARD_ROW_MAX];
+    const int guard_count = react_guard_row_list(h, stripe_h, offset, guard_rows, REACT_GUARD_ROW_MAX);
+    for (int gi = 0; gi < guard_count; gi++) {
+        found |= step_one_reacting_row(s, guard_rows[gi], w, h, 0, w);
+    }
+    s->rng_hashed = false;
+
+    return found | sand_step_reaction_reach(s);
+}
+
 void
 sand_step_reactions(sand_t* s) {
     sand_reactions_last_was_soak_only = false;
@@ -2397,13 +2858,7 @@ sand_step_reactions(sand_t* s) {
         s->faller_may_move = false;
     }
 
-    const int w = s->w;
-    const int h = s->h;
-
-    unsigned found = 0;
-    for (int y = 0; y < h; y++) {
-        found |= soak_only ? step_one_reacting_row_liquid_near(s, y, w, h) : step_one_reacting_row(s, y, w, h, 0, w);
-    }
+    const unsigned found = run_reaction_rows(s, soak_only);
 
     if (!(found & FOUND_BURNING)) {
         s->may_have_burning = false;
