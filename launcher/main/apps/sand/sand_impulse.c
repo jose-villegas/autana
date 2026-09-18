@@ -488,7 +488,7 @@ impulse_charge_displacement(sand_t* s, impulse_t* entry, size_t new_index, int d
             }
             if (chosen >= 0) {
                 impulse_t* t = &deferred[(*deferred_transfer_count)++];
-                t->index = (uint16_t)old_index;
+                t->index = (sand_impulse_index_t)old_index;
                 t->cell = displaced;
                 t->dir = (uint8_t)chosen;
                 t->speed = (uint8_t)(((unsigned)impact_speed * SAND_IMPULSE_TRANSFER_KEEP) >> 8);
@@ -511,7 +511,7 @@ impulse_charge_displacement(sand_t* s, impulse_t* entry, size_t new_index, int d
     }
     mark_move(s, (int)((unsigned)old_index % (unsigned)w), (int)((unsigned)old_index / (unsigned)w),
               (int)((unsigned)new_index % (unsigned)w), (int)((unsigned)new_index / (unsigned)w));
-    entry->index = (uint16_t)new_index;
+    entry->index = (sand_impulse_index_t)new_index;
 }
 
 /* The flight pass: every entry in s->impulse_buf either moves one cell
@@ -629,7 +629,7 @@ step_impulses(sand_t* s, int dx, int dy) {
                 }
                 const size_t cat = (size_t)cy * (size_t)w + (size_t)cx;
                 if (s->cells[cat] == entry.cell) {
-                    entry.index = (uint16_t)cat;
+                    entry.index = (sand_impulse_index_t)cat;
                     reacquired = true;
                 }
             }
@@ -657,7 +657,7 @@ step_impulses(sand_t* s, int dx, int dy) {
                         const size_t cat = (size_t)cy * (size_t)w + (size_t)cx;
                         const cell_t found = s->cells[cat];
                         if (!CELL_IS_EMPTY(found) && CELL_MATERIAL(found) == lost_mat) {
-                            entry.index = (uint16_t)cat;
+                            entry.index = (sand_impulse_index_t)cat;
                             entry.cell = found;
                             reacquired = true;
                         }
@@ -780,7 +780,8 @@ step_impulses(sand_t* s, int dx, int dy) {
                 if ((unsigned)bx < (unsigned)w && (unsigned)by < (unsigned)h) {
                     const cell_t blocker = s->cells[(size_t)by * (size_t)w + (size_t)bx];
                     if (!CELL_IS_EMPTY(blocker) && material_of(blocker)->kind == KIND_STATIC) {
-                        const uint16_t block_index = (uint16_t)((size_t)by * (size_t)w + (size_t)bx);
+                        const sand_impulse_index_t block_index =
+                            (sand_impulse_index_t)((size_t)by * (size_t)w + (size_t)bx);
                         if (impulse_index_still_tracked(s, kept, i, block_index)) {
                             s->impulse_buf[kept++] = entry;
                             continue; /* support is itself still in
@@ -916,7 +917,7 @@ step_impulses(sand_t* s, int dx, int dy) {
                     const int relay_slot = SAND_CASCADE_MAX_PER_STEP - 1 - deferred_cascade_count;
                     deferred_cascade_count++;
                     impulse_t* c = &deferred[relay_slot];
-                    c->index = (uint16_t)((size_t)ry * (size_t)w + (size_t)rx);
+                    c->index = (sand_impulse_index_t)((size_t)ry * (size_t)w + (size_t)rx);
                     c->cell = relay_target;
                     c->dir = entry.dir;
                     c->speed = (uint8_t)(entry.speed / SAND_CASCADE_SPEED_DIVISOR);
