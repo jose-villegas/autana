@@ -875,8 +875,33 @@ test_a_timed_out_job_falls_back_inline(void) {
 }
 #endif
 
+/* A boundary that only ever takes two positions stalls cells on the same two
+ * screen lines every step, which reads as banding - see sand_stripe_offset(). */
+static void
+test_stripe_boundaries_spread_over_the_stripe(void) {
+    sand_t s = {0};
+    s.rng_seed_base = 0x51ED5EEDu;
+    s.h = 224; /* a grid tall enough that the stripe is the full SAND_BLOCK_H */
+
+    const int stripe_h = sand_stripe_height(s.h);
+    bool seen[SAND_BLOCK_H] = {false};
+    int distinct = 0;
+    for (int step = 0; step < 64; step++) {
+        s.step_phase = (uint16_t)step;
+        const int offset = sand_stripe_offset(&s);
+        TEST_ASSERT_TRUE_MESSAGE(offset >= 0 && offset < stripe_h, "an offset must land inside the stripe");
+        if (!seen[offset]) {
+            seen[offset] = true;
+            distinct++;
+        }
+    }
+
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(8, distinct, "64 steps must put boundaries on many lines, not the same two");
+}
+
 void
 run_sand_two_core_suite(void) {
+    RUN_TEST(test_stripe_boundaries_spread_over_the_stripe);
     RUN_TEST(test_two_core_step_is_deterministic_across_seeds);
     RUN_TEST(test_split_gas_walk_uses_hashed_rng);
     RUN_TEST(test_split_gas_walk_ignores_worker_order);
