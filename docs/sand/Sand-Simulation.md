@@ -1218,7 +1218,7 @@ boundary handling at all - see [The seam fix](#the-seam-fix) below for
 the one it does need.
 
 ```
-gravity down; stripe height = SWEEP_STRIPE_H (32 rows);
+gravity down; stripe height = ceil(grid height / 4), clamped to 17-32 rows;
 two phases, alternating colour, offset by half a stripe every step
 
   phase A (even stripes)     phase B (odd stripes)
@@ -1234,11 +1234,13 @@ two phases, alternating colour, offset by half a stripe every step
   reach from one can never touch another being swept at once
 ```
 
-`SWEEP_STRIPE_H` is `SAND_BLOCK_H` (32), reusing the sleep-tracking
-grid's own row size rather than inventing a second one. Within a phase,
-half the stripes run on a task pinned to core 1, the rest on the
-caller's own core, joining before the next phase starts - which stripe
-goes to which core does not matter, since none of them touch each other.
+`sand_stripe_height()` derives one height shared by the sweep, liquid
+cross-flow and gas walk. It targets four stripes, clamps the result to
+17-32 rows, and so keeps an interior beyond liquid cross-flow's two
+8-row guards. Within a phase, half the stripes run on a task pinned to
+core 1, the rest on the caller's own core, joining before the next phase
+starts - which stripe goes to which core does not matter, since none of
+them touch each other.
 
 The stripe grid's own offset alternates by half a stripe height every
 step (`s->step_phase & 1`), the same idea Margolus-style block automata
@@ -1247,9 +1249,9 @@ become a visible seam - `suite_sand_two_core.c`'s own seam test checks
 exactly this, by histogramming a settled pile's row-to-row occupancy for
 an outlier at stripe-boundary rows.
 
-Below `SWEEP_CHECKERBOARD_MIN_ROWS` (four stripes' worth) the whole sweep
-just runs on one core - a handful of stripes plus a hop to core 1 is not
-worth it.
+Grids yielding fewer than four stripes run the sweep on one core: a
+checkerboard phase needs two same-coloured stripes to divide work between
+the cores.
 
 ### The seam fix
 
@@ -1318,12 +1320,12 @@ dropped, only reordered by up to the width of a stripe boundary.
 
 ### Liquid cross-flow stripes
 
-Cross-flow uses the same 32-row stripes, with 8 guard rows on each side of
-every internal boundary - `LIQUID_STRIPE_H` is `SAND_BLOCK_H`, and the
-guard width matches `SAND_LIQUID_SIGHT`, the furthest a cell can read or
-transfer in one pass. The offset alternates between 0 and 16 rows exactly
-as the main sweep's does. Boards shorter than 128 rows, and scratch
-allocation failures, fall back to the unchanged serial order.
+Cross-flow uses the shared derived stripe height, with 8 guard rows on each
+side of every internal boundary. The guard width matches
+`SAND_LIQUID_SIGHT`, the furthest a cell can read or transfer in one pass.
+The offset alternates between zero and half a stripe height exactly as the
+main sweep's does. Boards yielding fewer than four stripes, and scratch
+allocation failures, fall back to the serial order.
 
 A cell reads or transfers at most 8 rows away, but the bookkeeping
 around it reaches further: depth-repaint marks extend another 24 rows
@@ -1348,15 +1350,15 @@ guards together.
 
 ### Gas walk stripes
 
-The gas walk uses the main sweep's 32-row checkerboard and one guard row on
-each side of a boundary. Gas rises, so its row order is the gravity sweep's
-mirror: for ordinary downward gravity the guard above a boundary runs before
-the one below it. A pre-phase snapshot keeps a gas received at the seam from
-taking a second turn in the guard pass.
+The gas walk uses the shared checkerboard and one guard row on each side of a
+boundary. Gas rises, so its row order is the gravity sweep's mirror: for
+ordinary downward gravity the guard above a boundary runs before the one
+below it. A pre-phase snapshot keeps a gas received at the seam from taking
+a second turn in the guard pass.
 
 Block wakes and dirty spans extend beyond that one-cell guard, so both workers
-write private copies and merge them after each phase. Boards shorter than 128
-rows and scratch allocation failures retain the serial walk.
+write private copies and merge them after each phase. Boards yielding fewer
+than four stripes and scratch allocation failures retain the serial walk.
 
 ### The draw
 

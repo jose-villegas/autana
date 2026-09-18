@@ -21,10 +21,8 @@
 #define TC_BLOCK_COLS ((TC_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
 #define TC_BLOCK_ROWS ((TC_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
 
-/* Tall enough that the sweep's own checkerboard actually engages
- * (SWEEP_CHECKERBOARD_MIN_ROWS, sand.c) rather than taking its
- * always-serial fallback for a small board. */
-_Static_assert(TC_H >= SAND_BLOCK_H * 4, "the two-core suite needs a grid tall enough to actually split");
+_Static_assert(TC_H >= SAND_STRIPE_H_MIN * SAND_STRIPE_SPLIT_MIN_COUNT,
+               "the two-core suite needs enough stripes to split");
 
 static uint32_t
 tc_hash(const uint8_t* bytes, size_t n) {
@@ -90,6 +88,46 @@ tc_run_and_hash(uint32_t seed, int steps, bool two_core) {
     free(cells);
     free(blocks);
     return h;
+}
+
+static uint32_t
+tc_run_quality_and_hash(int w, int h, uint32_t seed, bool two_core) {
+    const int block_cols = (w + SAND_BLOCK_W - 1) / SAND_BLOCK_W;
+    const int block_rows = (h + SAND_BLOCK_H - 1) / SAND_BLOCK_H;
+    uint8_t* cells = malloc((size_t)w * (size_t)h);
+    uint8_t* blocks = malloc((size_t)block_cols * (size_t)block_rows);
+    TEST_ASSERT_NOT_NULL(cells);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t s;
+    sand_init(&s, cells, w, h, seed);
+    sand_enable_sleeping(&s, blocks);
+
+    rng_t r;
+    rng_seed(&r, seed ^ 0xA5A5A5A5u);
+    static const cell_t picks[] = {SAND, WATER, OIL, GAS, STONE};
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            if (rng_below(&r, 3) == 0) {
+                sand_set(&s, x, y, picks[rng_below(&r, (int)(sizeof picks / sizeof picks[0]))]);
+            }
+        }
+    }
+
+    static const int gx[] = {0, 0, 1000, -1000, 700};
+    static const int gy[] = {1000, -1000, 700, 700, -700};
+    sand_set_two_core_step(two_core);
+    for (int i = 0; i < 40; i++) {
+        const int arm = i % (int)(sizeof gx / sizeof gx[0]);
+        sand_step(&s, gx[arm], gy[arm], 0);
+    }
+    sand_set_two_core_step(false);
+
+    uint32_t result = tc_hash(cells, (size_t)w * (size_t)h);
+    result ^= tc_hash(blocks, (size_t)block_cols * (size_t)block_rows) * 0x9E3779B1u;
+    free(cells);
+    free(blocks);
+    return result;
 }
 
 /* THE DETERMINISM CLAIM: the same seed run twice with two-core stepping
@@ -206,8 +244,7 @@ test_split_gas_walk_ignores_worker_order(void) {
  * now (sand_rng_next_at()), so this is not an equivalence check - it is
  * a sanity check that turning the switch on does not quietly turn it
  * into a no-op that happens to hash the same by never actually
- * splitting anything (which SWEEP_CHECKERBOARD_MIN_ROWS's fallback would
- * do on too small a board). */
+ * splitting anything on a board with too few stripes. */
 static void
 test_two_core_step_actually_changes_the_draw_stream(void) {
     const uint32_t serial = tc_run_and_hash(3u, 40, false);
@@ -218,6 +255,26 @@ test_two_core_step_actually_changes_the_draw_stream(void) {
                                   "board large enough to split - the checkerboard sweep "
                                   "should be drawing from sand_rng_next_at(), not silently "
                                   "falling back to the sequential stream");
+}
+
+static void
+test_two_core_step_changes_the_draw_stream_at_smaller_qualities(void) {
+    static const struct {
+        int w, h;
+    } qualities[] = {{92, 112}, {61, 74}, {46, 56}};
+
+    static const uint32_t seeds[] = {1u, 7u, 42u, 12345u, 99991u, 0xC0FFEEu};
+
+    for (size_t q = 0; q < sizeof qualities / sizeof qualities[0]; q++) {
+        for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
+            const uint32_t serial = tc_run_quality_and_hash(qualities[q].w, qualities[q].h, seeds[i], false);
+            const uint32_t split = tc_run_quality_and_hash(qualities[q].w, qualities[q].h, seeds[i], true);
+            char why[160];
+            snprintf(why, sizeof why, "%dx%d seed %u: two-core stepping did not change the draw stream", qualities[q].w,
+                     qualities[q].h, (unsigned)seeds[i]);
+            TEST_ASSERT_NOT_EQUAL_MESSAGE(serial, split, why);
+        }
+    }
 }
 
 /* MASS-PLAUSIBLE, NOT MASS-CONSERVED: water's own model already
@@ -318,7 +375,7 @@ worst_row_deltas(const int* occupied, int h, int stripe_half, int* interior_wors
  * container and left to fall and settle. Every row's final occupancy
  * should follow the pile's own shape, not the stripe grid's - a tile
  * artifact would show up as a step in occupancy repeating every
- * SWEEP_STRIPE_H/2 rows (the rolling offset's own period), which a
+ * half a stripe height (the rolling offset's own period), which a
  * histogram of row-to-row deltas makes visible without eyeballing a
  * render. */
 static void
@@ -377,7 +434,7 @@ test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
 }
 
 /* sand_step() increments step_phase before picking the stripe offset
- * (SWEEP_STRIPE_H/2 on an odd phase, 0 on an even one - sand.c), so one
+ * (half a stripe on an odd phase, 0 on an even one - sand.c), so one
  * free-fall call (gx=gy=0, which returns before touching a single cell)
  * advances the phase without moving anything - letting a test choose
  * which offset the NEXT, real step gets. */
@@ -562,6 +619,67 @@ test_two_core_step_matches_serial_fall_distance_at_a_seam(void) {
                      "seam moved differently under two-core stepping",
                      gxs[g], gys[g], offset);
             TEST_ASSERT_EQUAL_HEX32_MESSAGE(serial_hash, two_core_hash, why);
+        }
+    }
+}
+
+static void
+tc_assert_quality_seam_matches_serial(int w, int h, int offset, int boundary) {
+    const int block_cols = (w + SAND_BLOCK_W - 1) / SAND_BLOCK_W;
+    const int block_rows = (h + SAND_BLOCK_H - 1) / SAND_BLOCK_H;
+    uint8_t* serial_cells = malloc((size_t)w * (size_t)h);
+    uint8_t* split_cells = malloc((size_t)w * (size_t)h);
+    uint8_t* serial_blocks = malloc((size_t)block_cols * (size_t)block_rows);
+    uint8_t* split_blocks = malloc((size_t)block_cols * (size_t)block_rows);
+    TEST_ASSERT_NOT_NULL(serial_cells);
+    TEST_ASSERT_NOT_NULL(split_cells);
+    TEST_ASSERT_NOT_NULL(serial_blocks);
+    TEST_ASSERT_NOT_NULL(split_blocks);
+
+    sand_t serial, split;
+    sand_init(&serial, serial_cells, w, h, 1u);
+    sand_init(&split, split_cells, w, h, 1u);
+    sand_enable_sleeping(&serial, serial_blocks);
+    sand_enable_sleeping(&split, split_blocks);
+    sand_set_scatter(&serial, 0);
+    sand_set_scatter(&split, 0);
+    tc_prime_offset(&serial, offset);
+    tc_prime_offset(&split, offset);
+    sand_set(&serial, w / 2, boundary, SAND);
+    sand_set(&split, w / 2, boundary, SAND);
+
+    sand_set_two_core_step(false);
+    sand_step(&serial, 0, 1000, 0);
+    sand_set_two_core_step(true);
+    sand_step(&split, 0, 1000, 0);
+    sand_set_two_core_step(false);
+
+    const uint32_t serial_hash = tc_hash(serial_cells, (size_t)w * (size_t)h);
+    const uint32_t split_hash = tc_hash(split_cells, (size_t)w * (size_t)h);
+    free(serial_cells);
+    free(split_cells);
+    free(serial_blocks);
+    free(split_blocks);
+
+    char why[160];
+    snprintf(why, sizeof why, "%dx%d offset %d boundary %d: a seam fall differed from serial", w, h, offset, boundary);
+    TEST_ASSERT_EQUAL_HEX32_MESSAGE(serial_hash, split_hash, why);
+}
+
+static void
+test_smaller_quality_seams_match_serial(void) {
+    static const struct {
+        int w, h;
+    } qualities[] = {{92, 112}, {61, 74}, {46, 56}};
+
+    for (size_t q = 0; q < sizeof qualities / sizeof qualities[0]; q++) {
+        const int stripe_h = sand_stripe_height(qualities[q].h);
+        const int offsets[] = {0, stripe_h / 2};
+        for (size_t o = 0; o < sizeof offsets / sizeof offsets[0]; o++) {
+            for (int boundary = offsets[o] == 0 ? stripe_h : offsets[o]; boundary < qualities[q].h - 1;
+                 boundary += stripe_h) {
+                tc_assert_quality_seam_matches_serial(qualities[q].w, qualities[q].h, offsets[o], boundary);
+            }
         }
     }
 }
@@ -763,10 +881,12 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_split_gas_walk_uses_hashed_rng);
     RUN_TEST(test_split_gas_walk_ignores_worker_order);
     RUN_TEST(test_two_core_step_actually_changes_the_draw_stream);
+    RUN_TEST(test_two_core_step_changes_the_draw_stream_at_smaller_qualities);
     RUN_TEST(test_two_core_step_does_not_leak_or_fabricate_mass);
     RUN_TEST(test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam);
     RUN_TEST(test_two_core_step_never_double_moves_at_a_seam);
     RUN_TEST(test_two_core_step_matches_serial_fall_distance_at_a_seam);
+    RUN_TEST(test_smaller_quality_seams_match_serial);
     RUN_TEST(test_settled_guard_rows_do_no_grain_work);
     RUN_TEST(test_two_core_step_conserves_grains_on_a_dense_column_and_pile);
 #ifdef DEVICE_BUILD
