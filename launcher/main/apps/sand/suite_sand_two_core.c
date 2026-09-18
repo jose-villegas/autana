@@ -681,6 +681,69 @@ test_smaller_quality_seams_match_serial(void) {
     }
 }
 
+#define TC_FUSE_IMPULSE_MAX 2048
+
+/* A lit 2x2 of gunpowder, walled so it cannot fall apart before a corner
+ * burns out - the scene suite_sand_gunpowder.c uses for the blast rule.
+ * The split defers the blast to the serial reach pass, and the cell that
+ * queued it has burned out by the time that pass runs, so a reach that asks
+ * the board what the cell explodes for finds nothing and drops it. */
+static int
+tc_fuse_blast_impulses(bool two_core) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    TEST_ASSERT_NOT_NULL(cells);
+    /* One blast's worth, not one entry per cell: a grid-sized queue is a
+     * quarter megabyte and the host arena models the device heap. */
+    impulse_t* buf = malloc((size_t)TC_FUSE_IMPULSE_MAX * sizeof *buf);
+    TEST_ASSERT_NOT_NULL(buf);
+
+    sand_t s;
+    sand_init(&s, cells, TC_W, TC_H, 5u);
+    sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
+    sand_enable_impulses(&s, buf, TC_FUSE_IMPULSE_MAX);
+
+    for (int x = 0; x < TC_W; x++) {
+        sand_set(&s, x, TC_H - 1, STONE);
+    }
+    sand_set(&s, 2, TC_H - 2, STONE);
+    sand_set(&s, 5, TC_H - 2, STONE);
+    sand_set(&s, 2, TC_H - 3, STONE);
+    sand_set(&s, 5, TC_H - 3, STONE);
+    sand_set(&s, 3, TC_H - 3, GUNPOWDER_LIT_CELL);
+    sand_set(&s, 4, TC_H - 3, GUNPOWDER_LIT_CELL);
+    sand_set(&s, 3, TC_H - 2, GUNPOWDER_LIT_CELL);
+    sand_set(&s, 4, TC_H - 2, GUNPOWDER_LIT_CELL);
+
+    sand_set_two_core_step(two_core);
+    bool burned = false;
+    for (int i = 0; i < 200 && !burned; i++) {
+        sand_step(&s, 0, 1000, 0);
+        burned = !cell_is_gunpowder(sand_at(&s, 3, TC_H - 3)) || !cell_is_gunpowder(sand_at(&s, 4, TC_H - 3))
+                 || !cell_is_gunpowder(sand_at(&s, 3, TC_H - 2)) || !cell_is_gunpowder(sand_at(&s, 4, TC_H - 2));
+    }
+    const int impulses = s.impulse_count;
+    sand_set_two_core_step(false);
+
+    free(cells);
+    free(buf);
+    TEST_ASSERT_TRUE_MESSAGE(burned, "setup: a corner of the lit 2x2 must burn out within the budget");
+    return impulses;
+}
+
+static void
+test_a_fuse_blast_throws_grains_on_both_cores(void) {
+    const int serial = tc_fuse_blast_impulses(false);
+    const int split = tc_fuse_blast_impulses(true);
+
+    char why[160];
+    snprintf(why, sizeof why,
+             "serial threw %d grains and the split threw %d: a deferred blast must survive the "
+             "reach pass",
+             serial, split);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, serial, why);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, split, why);
+}
+
 static void
 test_settled_guard_rows_do_no_grain_work(void) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
@@ -1170,6 +1233,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_two_core_step_never_double_moves_at_a_seam);
     RUN_TEST(test_two_core_step_matches_serial_fall_distance_at_a_seam);
     RUN_TEST(test_smaller_quality_seams_match_serial);
+    RUN_TEST(test_a_fuse_blast_throws_grains_on_both_cores);
     RUN_TEST(test_settled_guard_rows_do_no_grain_work);
     RUN_TEST(test_two_core_step_conserves_grains_on_a_dense_column_and_pile);
     RUN_TEST(test_reaction_split_matches_serial_on_a_zero_randomness_fire_chain);

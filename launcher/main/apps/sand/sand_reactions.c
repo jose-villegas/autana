@@ -313,7 +313,15 @@ static react_coord_t react_confined_ignite_defer[REACT_EXPLOSION_DEFER_MAX];
 static uint8_t react_confined_ignite_defer_count;
 static react_coord_t react_lava_burst_defer[REACT_EXPLOSION_DEFER_MAX];
 static uint8_t react_lava_burst_defer_count;
-static react_coord_t react_fuse_explosion_defer[REACT_EXPLOSION_DEFER_MAX];
+
+/* A fuse entry carries its RADIUS, not just where it was: by the time the
+ * reach pass runs, the cell that queued it has already burned out, so asking
+ * the board again what it explodes for answers nothing. */
+typedef struct {
+    uint8_t x, y, radius;
+} react_blast_t;
+
+static react_blast_t react_fuse_explosion_defer[REACT_EXPLOSION_DEFER_MAX];
 static uint8_t react_fuse_explosion_defer_count;
 static react_crack_defer_t react_crack_defer[REACT_CRACK_DEFER_MAX];
 static uint8_t react_crack_defer_count;
@@ -323,8 +331,8 @@ static uint8_t react_cooloff_defer_count;
 /* Under 1 KiB total, well inside the sweep's own ~5 KiB guard-snapshot
  * precedent (sand.c) - these hold candidates for events that are already
  * rare and cap-limited, never one entry per cell. */
-_Static_assert(3 * sizeof(react_coord_t) * REACT_EXPLOSION_DEFER_MAX + sizeof(react_crack_defer)
-                       + sizeof(react_cooloff_defer)
+_Static_assert(2 * sizeof(react_coord_t) * REACT_EXPLOSION_DEFER_MAX + sizeof(react_fuse_explosion_defer)
+                       + sizeof(react_crack_defer) + sizeof(react_cooloff_defer)
                    <= 1024,
                "the reaction split's deferred queues must stay small - see the comment above");
 
@@ -345,11 +353,12 @@ queue_lava_burst(int x, int y) {
 }
 
 static inline void
-queue_fuse_explosion(int x, int y) {
+queue_fuse_explosion(int x, int y, int radius) {
     if (react_fuse_explosion_defer_count >= REACT_EXPLOSION_DEFER_MAX) {
         return;
     }
-    react_fuse_explosion_defer[react_fuse_explosion_defer_count++] = (react_coord_t){(uint8_t)x, (uint8_t)y};
+    react_fuse_explosion_defer[react_fuse_explosion_defer_count++] =
+        (react_blast_t){(uint8_t)x, (uint8_t)y, (uint8_t)radius};
 }
 
 static inline void
@@ -1707,7 +1716,7 @@ finish_exploding_burnout(const burning_cell_t* cell) {
             /* s->fuse_blast_wait is shared, mutable, step-wide state - the
              * cooldown write and the explosion both move to the serial
              * reach pass, where only one core is ever running. */
-            queue_fuse_explosion(x, y);
+            queue_fuse_explosion(x, y, rx->explodes);
         } else {
             s->fuse_blast_wait = (uint8_t)((s->fuse_cooldown >= 0) ? s->fuse_cooldown : SAND_GUNPOWDER_BLAST_COOLDOWN);
             sand_explode(s, x, y, rx->explodes);
@@ -2635,13 +2644,11 @@ reach_fuse_explosions(sand_t* s) {
     for (uint8_t i = 0; i < react_fuse_explosion_defer_count; i++) {
         const int x = react_fuse_explosion_defer[i].x;
         const int y = react_fuse_explosion_defer[i].y;
-        const cell_t c = sand_at(s, x, y);
-        const reaction_t* rx = CELL_IS_EMPTY(c) ? NULL : reaction_of(c);
-        if (rx == NULL || rx->explodes == 0 || s->fuse_blast_wait != 0) {
+        if (s->fuse_blast_wait != 0) {
             continue;
         }
         s->fuse_blast_wait = (uint8_t)((s->fuse_cooldown >= 0) ? s->fuse_cooldown : SAND_GUNPOWDER_BLAST_COOLDOWN);
-        sand_explode(s, x, y, rx->explodes);
+        sand_explode(s, x, y, react_fuse_explosion_defer[i].radius);
     }
     react_fuse_explosion_defer_count = 0;
 }
