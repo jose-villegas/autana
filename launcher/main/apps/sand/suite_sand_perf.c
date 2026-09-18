@@ -422,6 +422,16 @@ build_fire_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
 #define FIRE_REPEATS      2
 
 #if CONFIG_LAUNCHER_SAND_PASS_GATES
+/* Every KIND_GAS material - gas, fire, steam and smoke - moves through the
+ * same per-grain body, so the gas rows are not a fire result. This scene is
+ * the one that carries steam and smoke. */
+static void
+pass_gate_smoke_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
+    sand_init(real, big, REAL_W, REAL_H, 31u);
+    sand_enable_sleeping(real, blocks);
+    build_smoke_and_steam_scene(real);
+}
+
 static void
 pass_gates_enable_all(void) {
     sand_step_gate_sweep = true;
@@ -505,6 +515,7 @@ test_the_water_and_fire_scenes_decompose_by_step_pass(void) {
     report_pass_gate_scene("fire", build_fire_scene, FIRE_WARMUP_STEPS, 0, 1000);
     /* Landscape is its own partition: the liquid pass runs serial whenever
      * the active ray crosses rows, which is every landscape flow. */
+    report_pass_gate_scene("smoke and steam", pass_gate_smoke_scene, 10, 0, 1000);
     report_pass_gate_scene("water landscape", build_water_scene, 10, 1000, 0);
     report_pass_gate_scene("fire landscape", build_fire_scene, FIRE_WARMUP_STEPS, 1000, 0);
     pass_gates_enable_all();
