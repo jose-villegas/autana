@@ -832,6 +832,74 @@ test_two_core_step_conserves_grains_on_a_dense_column_and_pile(void) {
     }
 }
 
+static int
+tc_water_row_mass(const sand_t* s, int y) {
+    int mass = 0;
+    for (int x = 0; x < TC_W; x++) {
+        const cell_t c = sand_at(s, x, y);
+        if (CELL_MATERIAL(c) == MAT_WATER) {
+            mass += CELL_VARIANT(c);
+        }
+    }
+    return mass;
+}
+
+static void
+test_landscape_water_column_has_no_row_mass_lag(void) {
+    uint8_t* serial_cells = malloc((size_t)TC_W * (size_t)TC_H);
+    uint8_t* split_cells = malloc((size_t)TC_W * (size_t)TC_H);
+    uint8_t* serial_blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    uint8_t* split_blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(serial_cells);
+    TEST_ASSERT_NOT_NULL(split_cells);
+    TEST_ASSERT_NOT_NULL(serial_blocks);
+    TEST_ASSERT_NOT_NULL(split_blocks);
+
+    sand_t serial, split;
+    sand_init(&serial, serial_cells, TC_W, TC_H, 7u);
+    sand_init(&split, split_cells, TC_W, TC_H, 7u);
+    sand_enable_sleeping(&serial, serial_blocks);
+    sand_enable_sleeping(&split, split_blocks);
+    for (int y = 0; y < TC_H / 2; y++) {
+        for (int x = TC_W / 2 - 6; x < TC_W / 2 + 6; x++) {
+            sand_set(&serial, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+            sand_set(&split, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+        }
+    }
+
+    int worst_row_mass = 0;
+    sand_force_hashed_rng(true);
+    for (int step = 0; step < 40; step++) {
+        memcpy(split_cells, serial_cells, (size_t)TC_W * (size_t)TC_H);
+        memcpy(split_blocks, serial_blocks, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+        split.step_phase = serial.step_phase;
+
+        sand_set_two_core_step(true);
+        sand_step(&split, 1000, 0, 0);
+        sand_set_two_core_step(false);
+        sand_step(&serial, 1000, 0, 0);
+
+        for (int y = 0; y < TC_H; y++) {
+            const int split_mass = tc_water_row_mass(&split, y);
+            const int serial_mass = tc_water_row_mass(&serial, y);
+            const int difference = split_mass - serial_mass;
+            const int row_mass = difference < 0 ? -difference : difference;
+            if (row_mass > worst_row_mass) {
+                worst_row_mass = row_mass;
+            }
+        }
+    }
+    sand_force_hashed_rng(false);
+
+    free(serial_cells);
+    free(split_cells);
+    free(serial_blocks);
+    free(split_blocks);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, worst_row_mass,
+                                  "the split landscape water column left liquid mass in a different row than serial");
+}
+
 #ifdef DEVICE_BUILD
 typedef struct {
     volatile bool* finished;
@@ -1044,6 +1112,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_reaction_split_matches_serial_on_a_zero_randomness_fire_chain);
     RUN_TEST(test_reaction_split_is_deterministic_across_seeds);
     RUN_TEST(test_reaction_split_actually_changes_the_draw_stream);
+    RUN_TEST(test_landscape_water_column_has_no_row_mass_lag);
 #ifdef DEVICE_BUILD
     RUN_TEST(test_a_timed_out_job_falls_back_inline);
 #endif
