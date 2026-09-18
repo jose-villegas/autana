@@ -112,6 +112,8 @@ enum {
     SAND_RNG_SLOT_REACT_ACID_RAIN_GATE,
     SAND_RNG_SLOT_REACT_ACID_RAIN_RESIDUE,
     SAND_RNG_SLOT_REACT_CRUST,
+    SAND_RNG_SLOT_REACT_LAVA_BURST,
+    SAND_RNG_SLOT_REACT_LAVA_BURST_GATE,
 };
 
 /* Where this step's stripe boundaries sit, inside the grid's own stripe
