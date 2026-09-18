@@ -31,11 +31,21 @@
 
 typedef void (*lag_scene_fn)(sand_t* s);
 
+/* Gravity runs from (gx0, gy0) to (gx1, gy1) across the steps. A held device
+ * sweeps through angles rather than sitting on one, and the sweep crosses the
+ * lean where build_xflow() swaps which axis is major - the moment the
+ * maintainer sees powder pause. Equal endpoints hold one angle. */
 typedef struct {
     const char* name;
     lag_scene_fn build;
-    int gx, gy;
+    int gx0, gy0;
+    int gx1, gy1;
 } lag_case_t;
+
+static int
+lerp_step(int from, int to, int step, int steps) {
+    return from + ((to - from) * step) / (steps - 1);
+}
 
 static uint8_t cells_before[LAG_W * LAG_H];
 static uint8_t cells_split[LAG_W * LAG_H];
@@ -86,22 +96,27 @@ scene_mixed(sand_t* s) {
 }
 
 static const lag_case_t cases[] = {
-    {"water column", scene_water_column, 0, 1000},
-    {"water pool", scene_water_pool, 0, 1000},
-    {"sand pile", scene_sand_pile, 0, 1000},
-    {"gas rise", scene_gas_rise, 0, 1000},
-    {"sand over water", scene_mixed, 0, 1000},
+    {"water column", scene_water_column, 0, 1000, 0, 1000},
+    {"water pool", scene_water_pool, 0, 1000, 0, 1000},
+    {"sand pile", scene_sand_pile, 0, 1000, 0, 1000},
+    {"gas rise", scene_gas_rise, 0, 1000, 0, 1000},
+    {"sand over water", scene_mixed, 0, 1000, 0, 1000},
     /* Landscape: gravity along x, the shipping orientation. */
-    {"water column (landscape)", scene_water_column, 1000, 0},
-    {"sand pile (landscape)", scene_sand_pile, 1000, 0},
+    {"water column (landscape)", scene_water_column, 1000, 0, 1000, 0},
+    {"sand pile (landscape)", scene_sand_pile, 1000, 0, 1000, 0},
     /* A held device never reads an exact axis. These leans are what the
      * accelerometer actually produces, and the liquid flow's diagonal ray
      * crosses rows for any of them - the axis-aligned rows above are the
      * one case where it does not. */
-    {"water column (portrait, 17 deg)", scene_water_column, 300, 1000},
-    {"water column (portrait, 35 deg)", scene_water_column, 700, 1000},
-    {"water pool (portrait, 17 deg)", scene_water_pool, 300, 1000},
-    {"water column (landscape, 17 deg)", scene_water_column, 1000, 300},
+    {"water column (portrait, 17 deg)", scene_water_column, 300, 1000, 300, 1000},
+    {"water column (portrait, 35 deg)", scene_water_column, 700, 1000, 700, 1000},
+    {"water pool (portrait, 17 deg)", scene_water_pool, 300, 1000, 300, 1000},
+    {"water column (landscape, 17 deg)", scene_water_column, 1000, 300, 1000, 300},
+    /* Turning the device: gravity sweeps portrait to landscape across the
+     * run, crossing every lean between them. */
+    {"water column (turning)", scene_water_column, 0, 1000, 1000, 0},
+    {"water pool (turning)", scene_water_pool, 0, 1000, 1000, 0},
+    {"sand pile (turning)", scene_sand_pile, 0, 1000, 1000, 0},
 };
 
 /* Mass a cell holds, for the row-mass comparison: a liquid carries its mass in
@@ -148,9 +163,11 @@ measure(const lag_case_t* c) {
         split.step_phase = serial.step_phase;
 
         sand_set_two_core_step(true);
-        sand_step(&split, c->gx, c->gy, 0);
+        const int gx = lerp_step(c->gx0, c->gx1, step, LAG_STEPS);
+        const int gy = lerp_step(c->gy0, c->gy1, step, LAG_STEPS);
+        sand_step(&split, gx, gy, 0);
         sand_set_two_core_step(false);
-        sand_step(&serial, c->gx, c->gy, 0);
+        sand_step(&serial, gx, gy, 0);
 
         int cells = 0;
         int row_mass = 0;
