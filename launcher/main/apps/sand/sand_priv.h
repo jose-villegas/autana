@@ -41,6 +41,36 @@
 #include "sand.h"
 #include "util/job.h"
 
+#define SAND_STRIPE_SPLIT_MIN_COUNT 4
+#define SAND_STRIPE_H_MIN           (2 * SAND_LIQUID_SIGHT + 1)
+#define SAND_STRIPE_H_MAX           SAND_BLOCK_H
+
+_Static_assert(SAND_STRIPE_H_MIN > 3, "sweep stripes need an interior beyond two guard rows");
+_Static_assert(SAND_STRIPE_H_MIN > 2 * SAND_LIQUID_SIGHT, "liquid stripes need an interior beyond both guards");
+
+static inline int
+sand_stripe_height(int grid_h) {
+    int height = (grid_h + SAND_STRIPE_SPLIT_MIN_COUNT - 1) / SAND_STRIPE_SPLIT_MIN_COUNT;
+    if (height < SAND_STRIPE_H_MIN) {
+        return SAND_STRIPE_H_MIN;
+    }
+    if (height > SAND_STRIPE_H_MAX) {
+        return SAND_STRIPE_H_MAX;
+    }
+    return height;
+}
+
+static inline int
+sand_stripe_count(const sand_t* s) {
+    const int height = sand_stripe_height(s->h);
+    return (s->h + height - 1) / height;
+}
+
+static inline int
+sand_stripe_offset(const sand_t* s) {
+    return (s->step_phase & 1) ? sand_stripe_height(s->h) / 2 : 0;
+}
+
 /* One constant per rng draw site inside a checkerboard-parallel pass -
  * see sand_rng_next_at() below. A fixed slot per site, not a per-cell
  * counter, is what keeps a draw thread-safe with no shared mutable state:

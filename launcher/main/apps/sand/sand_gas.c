@@ -402,9 +402,6 @@ step_one_gas_row(sand_t* s, int y, int w, int rdx, int rdy, const int* rslide_a,
     return any;
 }
 
-#define GAS_STRIPE_H       SAND_BLOCK_H
-#define GAS_SPLIT_MIN_ROWS (4 * GAS_STRIPE_H)
-
 typedef struct {
     sand_t local;
     uint8_t* blocks;
@@ -420,7 +417,7 @@ typedef struct {
     const int* rslide_b;
     bool (*driven_gas)[2];
     int rdx, rdy, rx_step, rload_dx, rload_dy, jostle;
-    int y_step, offset, color, share;
+    int y_step, stripe_h, offset, color, share;
 } gas_phase_t;
 
 _Static_assert(sizeof(gas_phase_t) <= JOB_CTX_MAX, "gas phase must fit JOB_CTX_MAX");
@@ -485,15 +482,15 @@ gas_phase_worker(void* arg) {
     sand_t* s = &stripe->local;
     int seen = 0;
 
-    for (int k = c->offset == 0 ? 0 : -1; c->offset + k * GAS_STRIPE_H < s->h; k++) {
+    for (int k = c->offset == 0 ? 0 : -1; c->offset + k * c->stripe_h < s->h; k++) {
         if (((k % 2) + 2) % 2 != c->color) {
             continue;
         }
         if ((seen++ & 1) != c->share) {
             continue;
         }
-        const int band0 = c->offset + k * GAS_STRIPE_H;
-        const int band1 = band0 + GAS_STRIPE_H;
+        const int band0 = c->offset + k * c->stripe_h;
+        const int band1 = band0 + c->stripe_h;
         const int y0 = band0 > 0 ? band0 + 1 : 0;
         const int y1 = band1 < s->h ? band1 - 1 : s->h;
         for (int y = c->y_step > 0 ? y0 : y1 - 1; y >= y0 && y < y1; y += c->y_step) {
@@ -504,10 +501,10 @@ gas_phase_worker(void* arg) {
 }
 
 static int
-gas_guard_row_list(int h, int offset, int* rows, int max) {
+gas_guard_row_list(int h, int stripe_h, int offset, int* rows, int max) {
     int n = 0;
     for (int k = offset == 0 ? 0 : -1;; k++) {
-        const int boundary = offset + (k + 1) * GAS_STRIPE_H;
+        const int boundary = offset + (k + 1) * stripe_h;
         if (boundary >= h) {
             break;
         }
@@ -546,7 +543,7 @@ static bool
 step_gas_stripes(sand_t* s, gas_phase_t* ctx, bool* found_any) {
     const size_t rows = (size_t)s->h;
     const size_t blocks = (size_t)s->block_cols * (size_t)s->block_rows;
-    const int guard_count = gas_guard_row_list(s->h, ctx->offset, NULL, 0);
+    const int guard_count = gas_guard_row_list(s->h, ctx->stripe_h, ctx->offset, NULL, 0);
     gas_stripe_t* stripes = calloc(1, 2 * sizeof *stripes + 8 * rows + 2 * blocks + 2 * rows);
     int* guard_rows = malloc(sizeof *guard_rows * (size_t)guard_count);
     uint8_t* snapshots = malloc((size_t)guard_count * (size_t)s->w);
@@ -565,7 +562,7 @@ step_gas_stripes(sand_t* s, gas_phase_t* ctx, bool* found_any) {
         stripes[i].blocks = bytes + (size_t)i * (blocks + rows);
         stripes[i].dirty = stripes[i].blocks + blocks;
     }
-    gas_guard_row_list(s->h, ctx->offset, guard_rows, guard_count);
+    gas_guard_row_list(s->h, ctx->stripe_h, ctx->offset, guard_rows, guard_count);
     for (int i = 0; i < guard_count; i++) {
         memcpy(snapshots + (size_t)i * (size_t)s->w, s->cells + (size_t)guard_rows[i] * (size_t)s->w, (size_t)s->w);
     }
@@ -1038,9 +1035,10 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
         .rload_dy = rload_dy,
         .jostle = jostle,
         .y_step = y_step,
-        .offset = (s->step_phase & 1) ? GAS_STRIPE_H / 2 : 0,
+        .stripe_h = sand_stripe_height(s->h),
+        .offset = sand_stripe_offset(s),
     };
-    if (!s->gas_walk || !sand_two_core_step_enabled() || s->h < GAS_SPLIT_MIN_ROWS
+    if (!s->gas_walk || !sand_two_core_step_enabled() || sand_stripe_count(s) < SAND_STRIPE_SPLIT_MIN_COUNT
         || !step_gas_stripes(s, &phase, &found_any)) {
         for (int y = y_from; y != y_to; y += y_step) {
             if (step_one_gas_row(s, y, w, rdx, rdy, sweep_slide_a, sweep_slide_b, rx_step, rload_dx, rload_dy, jostle,
