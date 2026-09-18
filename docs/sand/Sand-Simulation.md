@@ -1189,16 +1189,26 @@ update can touch another's, in cells:
 | Main sweep (`step_one_grain`, `move_liquid_grain`) | 1 (Chebyshev - every move is one of the eight ring directions) | yes |
 | Liquid cross-flow (`equalise_liquids`, `find_shallowest`) | `SAND_LIQUID_SIGHT`, 8, along a ray that can run diagonally through several rows | yes; private wake and repaint state |
 | Gas walk (`gas_walk_once`) | 1, same shape as the sweep | yes; private wake and repaint state |
+| Reaction local rules (`step_one_reacting_row`'s burn/warm/tempered/crust/soak-dry/condense/acid-rain stages) | 1 | yes; growers on the board disable the split entirely (`reactions_may_split()`, `sand_reactions.c`) |
 | Gas cross-flow (`equalise_gas`) | `material_of(c)->sight`: 5-24 rows across fire (5), gas (16), steam (20), and smoke (24); stripes would need 24-row guards | no |
-| Heat conduction to a boiler (`try_heat_transform_given`'s `CONDUCT_REACH`) | 32, a directed walk, not a spread | no |
-| Glass crack flood | up to `CRACK_MAX`, 256 | no |
-| Lava cool-off chain | up to `SAND_LAVA_COOLOFF_MAX_CHAIN`, 8 links, each an arbitrary further cell | no |
-| Explosions and thrown debris (`step_impulses`) | queued, crosses many steps, effectively unbounded | no |
+| Heat conduction to a boiler (`try_heat_transform_given`'s `CONDUCT_REACH`) | 32, a directed walk, not a spread | no; queue-free - `sand_step_reaction_reach()` re-scans for every still-burning cell |
+| Chilling (`step_one_cold_cell`'s carry walk) and dissolving (acid) | `COLD_REACH`, and acid's own multi-cell backing check | no; same re-scan, left whole rather than split into a local half |
+| Glass crack flood | up to `CRACK_MAX`, 256 | no; a small fixed queue, drained by the reach pass |
+| Lava cool-off chain | up to `SAND_LAVA_COOLOFF_MAX_CHAIN`, 8 links, each an arbitrary further cell | no; same queue mechanism |
+| Explosions (confined gas, lava bursts, fuse chains) and thrown debris (`step_impulses`) | queued, crosses many steps, effectively unbounded | no |
 
-The gravity sweep, gas walk and liquid cross-flow have fixed cell reaches
-suitable for stripes. Gas cross-flow, reactions, liquid density sorting and
-impulses remain serial. Reactions mix local rules with conduction and flood
-walks; impulses can reach across the board.
+The gravity sweep, gas walk, liquid cross-flow and a reacting cell's own
+LOCAL rules have fixed cell reaches suitable for stripes, and now share the
+sweep's own stripe/guard layout rather than a second partitioning
+(`run_reaction_rows()`, `sand_reactions.c`). Gas cross-flow, a reaction's
+long-reach triggers, liquid density sorting and impulses remain serial:
+each long-reach trigger has an `_or_defer` gate at its call site that
+skips it while a stripe or guard row is running and lets a single serial
+pass pick it up once both phases have joined - either by re-scanning the
+board (conduct_heat, chilling, dissolving, all queue-free) or through one
+of a handful of small, cap-limited queues (cracks, cool-off chains, the
+three explosion triggers). See `sand_reactions.c`'s own comment on that
+split for why each was drawn where it was.
 
 ### Stripes, not tiles
 
