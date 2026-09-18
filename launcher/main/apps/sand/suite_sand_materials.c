@@ -496,10 +496,6 @@ test_a_tipped_basin_keeps_its_sand(void) {
  * metal-rod tests much further down) and OIL/LAVA/GLASS/SNOW live in
  * suite_sand_common.{c,h}. */
 
-/* CONDUCT_REACH_TEST/CAP_W/CAP_H moved to suite_sand_common.h - reused far
- * past this section, by conduction/metal-rod tests elsewhere in the
- * split. */
-
 /* How tall a heap the same pour leaves, in cells above the floor. */
 static int
 poured_height(material_id_t m) {
