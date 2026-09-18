@@ -318,9 +318,10 @@ static int64_t pour_awake_cells_total, idle_awake_cells_total;
 
 /* RAW per-frame step times for a real play-session capture - see
  * frame_log_sample(). An average would hide the stutter a two-core switch
- * is being measured for. */
+ * is being measured for, and so would a ceiling: a heavy scene spends most
+ * of its frames past 65 ms, so the samples are full microseconds. */
 #define FRAME_LOG_RING 32
-static uint16_t frame_log_ring[FRAME_LOG_RING];
+static uint32_t frame_log_ring[FRAME_LOG_RING];
 static int frame_log_count;
 static bool frame_log_armed;
 static bool frame_log_last_two_core;
@@ -1836,10 +1837,10 @@ frame_log_flush(void) {
     if (frame_log_count == 0) {
         return;
     }
-    char line[FRAME_LOG_RING * 6 + 1] = "";
+    char line[FRAME_LOG_RING * 9 + 1] = "";
     int n = 0;
     for (int i = 0; i < frame_log_count; i++) {
-        n += snprintf(line + n, sizeof line - (size_t)n, "%u,", frame_log_ring[i]);
+        n += snprintf(line + n, sizeof line - (size_t)n, "%lu,", (unsigned long)frame_log_ring[i]);
     }
     ESP_LOGI(TAG, "FRAME_US %s", line);
     frame_log_count = 0;
@@ -1869,7 +1870,7 @@ frame_log_sample(int64_t frame_us) {
     if (sand_two_core_step_enabled() != frame_log_last_two_core || quality != frame_log_last_quality) {
         frame_log_note_mode_change();
     }
-    frame_log_ring[frame_log_count++] = (uint16_t)(frame_us > 65535 ? 65535 : frame_us);
+    frame_log_ring[frame_log_count++] = (uint32_t)(frame_us < 0 ? 0 : frame_us);
     if (frame_log_count >= FRAME_LOG_RING) {
         frame_log_flush();
     }
