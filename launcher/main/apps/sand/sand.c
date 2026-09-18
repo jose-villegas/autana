@@ -242,9 +242,6 @@ sand_block_settled(const sand_t* s, int bx, int by) {
     return (s->block_state[by * s->block_cols + bx] & (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER)) != 0;
 }
 
-/* sand_enable_impulses() moved to sand_impulse.c - it belongs with its own
- * subsystem, not the grid-access group above it. */
-
 void
 sand_track_dirty_rows(sand_t* s, uint8_t* rows) {
     s->dirty_rows = rows;
@@ -408,11 +405,6 @@ sand_erase(sand_t* s, int cx, int cy, int radius) {
     return removed;
 }
 
-/* The outward-impulse seeding chain (isqrt_floor() through sand_explode())
- * moved to sand_impulse.c - see that file's own banner for why the whole
- * outward-flight subsystem is one file, separate from this one's
- * gravity-ward sweep. */
-
 /*
  * Emitters - see the `emitters` field of sand_t and the EMITTERS section of
  * sand.h for the design. What is here is just list management; the actual
@@ -539,8 +531,6 @@ sand_gravity_direction(int gx, int gy, int* dx, int* dy) {
     }
 }
 
-/* dest_row() is shared with sand_liquid.c and lives in sand_priv.h now. */
-
 /* Counts grains above, capped. Does NOT use sand_at() as it reports
  * out-of-bounds as occupied, making walls solid. Here, off-grid is open sky,
  * not occupied. */
@@ -563,14 +553,6 @@ sand_load_above(const sand_t* s, int x, int y, int dx, int dy) {
     }
     return n;
 }
-
-/* slide_chance() moved to sand_priv.h (still static inline), alongside the
- * rest of the grain-movement primitive stack it is part of - see that
- * header's own comment above can_enter() for why. */
-
-/* driven_by_gravity() - checks if a grain slides in direction (mx, my) given
- * gravity and material's angle of repose, moved to sand_priv.h for use in
- * sand_gas.c. See its comment there for details. */
 
 /* True angle's diagonal lean (0-256). `r` is ratio of smaller to larger
  * component (0-256), 0 on axis, 256 at 45 degrees. Angle position: Rajan's
@@ -744,11 +726,6 @@ sand_set_acid_dilute_mass_bias(sand_t* s, int bias) {
     s->acid_dilute_mass_bias = (bias < 0) ? SAND_ACID_DILUTE_MASS_BIAS_DEFAULT : bias;
 }
 
-/* can_enter()/cell_open()/move_to() moved to sand_priv.h (still static
- * inline) - see header comment for grain-movement stack location.
- * pour_into()/room_in() remain in sand_liquid.c; sand.c movement never splits
- * a grain. */
-
 /* Each slide's tilt for hot table rows depends on direction and angle of
  * repose, computed once per step for all 32 rows (MATERIAL_ROWS) using cell
  * >> 3. Reads directly from `materials[]` instead of material_by_id() to
@@ -803,11 +780,6 @@ choose_sweep_order(const sand_t* s, int dy, const int** slide_a, const int** sli
         *slide_b = landscape_slide;
     }
 }
-
-/* try_scatter()/pick_slide_order()/try_slide_pair() and _impl forms of
- * try_fall_or_scatter()/try_slide() - grain's turn: fall, then slides with
- * friction and shaking. Moved to sand_priv.h (static inline). See header
- * comment for reason and why non-inline calls are defined below. */
 
 /* One bit per materials[] row for the two questions the sweep asks of every
  * cell on the grid, so each reads as a shift out of a word in SRAM instead of
@@ -1229,12 +1201,6 @@ build_xflow(xflow_t* f, int gx, int gy) {
     f->bias_ax_q8 = bx * f->ax[0] + by * f->ax[1];
     f->bias_dg_q8 = bx * f->dg[0] + by * f->dg[1];
 }
-
-/* can_impulse_enter() through step_impulses() itself all moved to
- * sand_impulse.c, alongside the seeding half of this subsystem - see that
- * file's own banner. step_impulses() is declared extern in sand_priv.h and
- * called from sand_step() below, the same shape sand_step_liquids()/
- * sand_step_gas() already use. */
 
 /* PINNED at 16, not left to the compiler: an unpinned attribute can bind to
  * whatever definition follows it rather than to this function, letting an

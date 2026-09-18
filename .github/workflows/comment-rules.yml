@@ -2,8 +2,8 @@ name: Comment Rules
 
 # The comment rules docs/C-Style-Guide.md states, measured rather than
 # argued: nothing beside code over 500 characters, no file header over 50
-# lines, no comment naming a function that does not exist, and none below
-# apps/ naming an app.
+# lines, no comment naming a function that does not exist, none below
+# apps/ naming an app, and none recording where code moved.
 # Enforced here so the rules hold for every commit, however it was made.
 #
 # Own workflow file, like the other four, purely so it gets its own badge -
@@ -33,6 +33,9 @@ jobs:
 
       - name: No comment below apps/ names an app
         run: python3 scripts/check_comment_layers.py
+
+      - name: No comment records where code moved
+        run: python3 scripts/find_narrative_comments.py --tombstones
 
       - name: Every documentation citation resolves
         run: python3 scripts/check_doc_citations.py
