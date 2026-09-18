@@ -1313,6 +1313,16 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int w, int dx, int dy, const 
 #define SWEEP_STRIPE_H      SAND_BLOCK_H
 #define SWEEP_GUARD_ROW_MAX (2 * ((GRID_H_MAX + SWEEP_STRIPE_H - 1) / SWEEP_STRIPE_H))
 
+/* Hashed draws are armed by a split pass, so a serial step and a split step
+ * of the same scene draw different numbers and their boards diverge on the
+ * RNG rather than on ordering. A comparison of the two arms this first. */
+static bool sand_force_hashed_rng_on;
+
+void
+sand_force_hashed_rng(bool on) {
+    sand_force_hashed_rng_on = on;
+}
+
 static int sweep_guard_rows[SWEEP_GUARD_ROW_MAX];
 static uint8_t sweep_guard_snapshot[SWEEP_GUARD_ROW_MAX * GRID_W_MAX];
 
@@ -1626,8 +1636,10 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
         sweep_stall_guard_count = 0;
         sweep_stall_total = 0;
 #endif
+        s->rng_hashed = sand_force_hashed_rng_on;
         sweep_range(s, y_from, y_to, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
                     is_liquid);
+        s->rng_hashed = false;
     }
 #ifdef DEVICE_BUILD
     s->pass_us.sweep_us = esp_timer_get_time() - sweep_t0;
