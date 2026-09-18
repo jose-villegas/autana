@@ -55,7 +55,17 @@ enum {
     SAND_RNG_SLOT_GAS_DECAY,
     SAND_RNG_SLOT_GAS_MOBILITY,
     SAND_RNG_SLOT_GAS_WALK,
+    SAND_RNG_SLOT_STRIPE,
 };
+
+/* Where this step's stripe boundaries sit, 0..stripe_h-1. A boundary's two
+ * guard rows stall whatever crossed into them, so a boundary that only ever
+ * takes two positions stalls cells on the same two screen lines every step
+ * and reads as banding. Hashing the step spreads them over the stripe. */
+static inline int
+sand_stripe_offset(const sand_t* s, int stripe_h) {
+    return (int)(rng_hash(s->rng_seed_base, (uint32_t)s->step_phase, 0u, SAND_RNG_SLOT_STRIPE) % (uint32_t)stripe_h);
+}
 
 /* Draws for (x, y) at `slot` - see the enum above. Sequential and
  * identical to plain rng_next() unless a checkerboard-parallel pass has
