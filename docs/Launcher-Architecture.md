@@ -230,10 +230,9 @@ Two things the diagram makes obvious that prose does not:
 368 × 448 × 2 bytes = **322 KiB**, allocated in PSRAM
 (`BOARD_FRAMEBUFFER_CAPS` in `board.h`), so it does not count against the
 internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)). There is
-room in PSRAM for a second one; there is no time for it. A double buffer with
-a per-frame catch-up copy was built and measured at 6-15 ms per frame (~22
-MB/s PSRAM to PSRAM), dropping sand from ~17-20 to 11-12 fps (device,
-2026-09-13), and was parked. One full frame over QSPI is bandwidth-bound, not
+room in PSRAM for a second one; there is no time for it. A per-frame catch-up
+copy between two PSRAM buffers costs 6-15 ms a frame (~22 MB/s), which takes
+sand from ~17-20 fps to 11-12. One full frame over QSPI is bandwidth-bound, not
 CPU-bound (see [Display-and-Rendering.md](notes/Display-and-Rendering.md),
 "The blit is bus-bound"), so a second buffer buys nothing on the send side
 either. The decision and its measurements are in
@@ -603,8 +602,8 @@ Diagnostics ships in any development build, `--dev` included, not just
 `--diag` — that is what frees the RAM the on-device test suites would
 otherwise hold, letting a `--dev` build reach the gfx debug-overlay
 checkboxes without sand's grid allocation failing for want of heap. Its own
-toggle page still mixes two shapes, but the app itself no longer does:
-the "run self test suite" button and its result line are genuinely
+toggle page mixes two shapes; the app itself does not. The "run self test
+suite" button and its result line are genuinely
 SELFTEST-only (`#if CONFIG_LAUNCHER_SELFTEST` inside `app_diagnostics.c` —
 `selftest_run()` does not exist as a symbol outside a SELFTEST build) and
 compile out of `--dev`, while the POST report and the rest of the toggle
@@ -689,7 +688,7 @@ as focus is what keeps it sinking smoothly through the whole gesture instead
 of flashing in on the second frame.
 
 The geometry and the shading are pure functions in the header, the same split
-the former icon helper made, so `test/suites/suite_ui_style.c` checks the shape on a host
+`icon_bitmap_blocks()` makes, so `test/suites/suite_ui_style.c` checks the shape on a host
 without linking `gfx.c` or even `microui.c` — nobody can eyeball five
 overlapping rectangles reliably.
 
@@ -701,11 +700,8 @@ shadowed the same way.
 
 #### Text at more than one size
 
-Every `mu_Font` used to mean the same thing: `gfx_font_ui()` at the
-compile-time `GFX_GLYPH_SCALE`, no exceptions. A screen that puts a small
-caption next to a much larger value or heading needs two sizes on one
-canvas, and the obvious fix — a global scale read at render
-time — would be the same shape as `ui_set_text_style()` above and pay the
+A screen that puts a small caption next to a much larger value or heading
+needs two sizes on one canvas. A global scale read at render time would be the same shape as `ui_set_text_style()` above and pay the
 same cost: a scale carried outside the command list changes what gets drawn
 without changing a single byte of it, so `hash_canvas()` cannot see the
 change and skips the repaint, leaving the old size on screen. A screen
@@ -730,11 +726,9 @@ re-derive the font role and scale it already set.
 
 #### App-owned artwork, and how it reaches the command list
 
-The former gfx icon header used to hand-draw exactly one glyph — the check mark
-microui's own checkbox needs. The run-length/scale/centre geometry behind
-it was never specific to that shape, so `icon_bitmap_blocks()` generalises
-it into a function taking any 16×16 bitmap in the same one-row-per-scanline
-format; its check-mark wrapper is kept as its own entry point so its maximum
+`icon_bitmap_blocks()` takes any 16×16 bitmap, one row per scanline, and
+answers the run-length/scale/centre geometry a draw needs. The check mark
+microui's own checkbox wants is one caller; its wrapper is kept as its own entry point so its maximum
 block count still promises a bound specific to
 that one glyph's own run count. It stays pure geometry, the same split
 `ui_style.h`'s spans use: it returns WHERE the blocks go, not how they
@@ -979,7 +973,7 @@ Three constraints, all already documented elsewhere in this project, point
 the same direction once put next to each other:
 
 **The internal-heap budget is tight even with the framebuffer moved to
-PSRAM.** The framebuffer itself no longer competes with anything for
+PSRAM.** The framebuffer does not compete for
 internal SRAM - it lives entirely in the board's 8 MB of octal PSRAM (see
 `docs/notes/Board-and-Memory.md`) - but internal (non-PSRAM) free heap is
 still a few hundred KiB, not gigabytes, and a persistent widget tree and
