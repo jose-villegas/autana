@@ -41,6 +41,31 @@
 #include "sand.h"
 #include "util/job.h"
 
+#define SAND_STRIPE_SPLIT_MIN_COUNT 4
+#define SAND_STRIPE_H_MIN           (2 * SAND_LIQUID_SIGHT + 1)
+#define SAND_STRIPE_H_MAX           SAND_BLOCK_H
+
+_Static_assert(SAND_STRIPE_H_MIN > 3, "sweep stripes need an interior beyond two guard rows");
+_Static_assert(SAND_STRIPE_H_MIN > 2 * SAND_LIQUID_SIGHT, "liquid stripes need an interior beyond both guards");
+
+static inline int
+sand_stripe_height(int grid_h) {
+    int height = (grid_h + SAND_STRIPE_SPLIT_MIN_COUNT - 1) / SAND_STRIPE_SPLIT_MIN_COUNT;
+    if (height < SAND_STRIPE_H_MIN) {
+        return SAND_STRIPE_H_MIN;
+    }
+    if (height > SAND_STRIPE_H_MAX) {
+        return SAND_STRIPE_H_MAX;
+    }
+    return height;
+}
+
+static inline int
+sand_stripe_count(const sand_t* s) {
+    const int height = sand_stripe_height(s->h);
+    return (s->h + height - 1) / height;
+}
+
 /* One constant per rng draw site inside a checkerboard-parallel pass -
  * see sand_rng_next_at() below. A fixed slot per site, not a per-cell
  * counter, is what keeps a draw thread-safe with no shared mutable state:
@@ -58,13 +83,15 @@ enum {
     SAND_RNG_SLOT_STRIPE,
 };
 
-/* Where this step's stripe boundaries sit, 0..stripe_h-1. A boundary's two
- * guard rows stall whatever crossed into them, so a boundary that only ever
- * takes two positions stalls cells on the same two screen lines every step
- * and reads as banding. Hashing the step spreads them over the stripe. */
+/* Where this step's stripe boundaries sit, inside the grid's own stripe
+ * height. A boundary's two guard rows stall whatever crossed into them, so a
+ * boundary that only ever takes two positions stalls cells on the same two
+ * screen lines every step and reads as banding. Hashing the step spreads
+ * them over the stripe. */
 static inline int
-sand_stripe_offset(const sand_t* s, int stripe_h) {
-    return (int)(rng_hash(s->rng_seed_base, (uint32_t)s->step_phase, 0u, SAND_RNG_SLOT_STRIPE) % (uint32_t)stripe_h);
+sand_stripe_offset(const sand_t* s) {
+    return (int)(rng_hash(s->rng_seed_base, (uint32_t)s->step_phase, 0u, SAND_RNG_SLOT_STRIPE)
+                 % (uint32_t)sand_stripe_height(s->h));
 }
 
 /* Draws for (x, y) at `slot` - see the enum above. Sequential and
