@@ -564,11 +564,13 @@ liquid_guard_row(int y, int h, int stripe_h, int offset, int sight) {
     return (band0 > 0 && y - band0 < sight) || (band1 < h && band1 - y <= sight);
 }
 
-/* Row stripes cannot preserve source-before-destination order when an active
- * liquid ray crosses rows. */
+/* Row stripes cannot preserve source-before-destination order when the ACTIVE
+ * ray crosses rows, which is what gravity mostly sideways means. A lean short
+ * of that tilts only the diagonal ray, and no tilted or turning scene the
+ * probe measures holds back more than it moves early. */
 static bool
 liquid_flow_changes_rows(const xflow_t* flow) {
-    return flow->ax[1] != 0 || (flow->q_q8 != 0 && flow->dg[1] != 0);
+    return flow->ax[1] != 0;
 }
 
 /* A received mass must not be forwarded when its guard row runs later.

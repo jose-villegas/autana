@@ -317,6 +317,16 @@ static int64_t pour_awake_total, idle_awake_total;
  * unit. */
 static int64_t pour_awake_cells_total, idle_awake_cells_total;
 
+/* RAW per-frame step times for a real play-session capture - see
+ * frame_log_sample(). An average would hide the stutter a two-core switch
+ * is being measured for, and so would a ceiling: a heavy scene spends most
+ * of its frames past 65 ms, so the samples are full microseconds. */
+#define FRAME_LOG_RING 32
+static uint32_t frame_log_ring[FRAME_LOG_RING];
+static int frame_log_count;
+static bool frame_log_armed;
+static bool frame_log_last_two_core;
+static int frame_log_last_quality = -1;
 /* The boot menu's "show seam stalls" checkbox - see draw_seam_overlay().
  * Off by default; picked up at the next sand_enter(), like show_dither. */
 static bool seam_overlay_on;
@@ -1823,6 +1833,52 @@ track_pour_split(const input_t* input, int64_t step_us, int64_t draw_us, int awa
     pour_frames = idle_frames = 0;
     split_log_at_us = now + 2000000;
 }
+
+/* One line per full ring, so the amortised cost is one snprintf/log call
+ * per FRAME_LOG_RING frames rather than every frame. */
+static void
+frame_log_flush(void) {
+    if (frame_log_count == 0) {
+        return;
+    }
+    char line[FRAME_LOG_RING * 9 + 1] = "";
+    int n = 0;
+    for (int i = 0; i < frame_log_count; i++) {
+        n += snprintf(line + n, sizeof line - (size_t)n, "%lu,", (unsigned long)frame_log_ring[i]);
+    }
+    ESP_LOGI(TAG, "FRAME_US %s", line);
+    frame_log_count = 0;
+}
+
+/* Arms the capture on first call, otherwise flushes whatever the previous
+ * mode/quality had queued before marking the new one - the coordinator's
+ * own boundary between "one minute of this setting" and the next. */
+static void
+frame_log_note_mode_change(void) {
+    if (frame_log_armed) {
+        frame_log_flush();
+    } else {
+        frame_log_armed = true;
+    }
+    frame_log_last_two_core = sand_two_core_step_enabled();
+    frame_log_last_quality = quality;
+    ESP_LOGI(TAG, "FRAME_MODE two_core=%d quality=%s grid=%dx%d t_us=%lld", frame_log_last_two_core,
+             qualities[quality].name, grid_w, grid_h, (long long)esp_timer_get_time());
+}
+
+static void
+frame_log_sample(int64_t frame_us) {
+    if (!frame_log_armed) {
+        return;
+    }
+    if (sand_two_core_step_enabled() != frame_log_last_two_core || quality != frame_log_last_quality) {
+        frame_log_note_mode_change();
+    }
+    frame_log_ring[frame_log_count++] = (uint32_t)(frame_us < 0 ? 0 : frame_us);
+    if (frame_log_count >= FRAME_LOG_RING) {
+        frame_log_flush();
+    }
+}
 #endif
 
 static void
@@ -1839,6 +1895,10 @@ draw_menu(uint32_t dt_ms, const input_t* input) {
     if (color_mode == SAND_COLOR_16) {
         snprintf(dither_label, sizeof dither_label, "DITHER: %s", dither_names[dither_mode]);
     }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    char two_core_label[24];
+    snprintf(two_core_label, sizeof two_core_label, "TWO-CORE: %s", sand_two_core_step_enabled() ? "On" : "Off");
+#endif
 
     const sand_menu_screen_state_t state = {
         .quality = quality_label,
@@ -1846,6 +1906,7 @@ draw_menu(uint32_t dt_ms, const input_t* input) {
         .dither = dither_label,
         .show_dither = (color_mode == SAND_COLOR_16),
 #if CONFIG_LAUNCHER_DEVELOPMENT
+        .two_core = two_core_label,
         .seam_overlay_on = seam_overlay_on,
 #endif
     };
@@ -1868,6 +1929,13 @@ draw_menu(uint32_t dt_ms, const input_t* input) {
         dither_mode = (gfx_dither_mode_t)((dither_mode + 1) % GFX_DITHER_MODE_COUNT);
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
+    if (result.two_core_clicked) {
+        /* Takes effect immediately, unlike QUALITY/COLOUR/DITHER: nothing
+         * about the running sim depends on this at start_sim() time, and
+         * the coordinator's capture wants the switch to land mid-visit. */
+        sand_set_two_core_step(!sand_two_core_step_enabled());
+        frame_log_note_mode_change();
+    }
     seam_overlay_on = result.seam_overlay_on;
 #endif
 
@@ -1948,6 +2016,7 @@ sand_update(uint32_t dt_ms, const input_t* input) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     pending_step_us = esp_timer_get_time() - t0;
     count_awake(&pending_awake_blocks, &pending_awake_cells);
+    frame_log_sample(pending_step_us);
 #endif
 
     /* Local-depth wake, cullet cycle, shine, and the wood-leaf swing each
