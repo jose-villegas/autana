@@ -81,6 +81,37 @@ enum {
     SAND_RNG_SLOT_GAS_MOBILITY,
     SAND_RNG_SLOT_GAS_WALK,
     SAND_RNG_SLOT_STRIPE,
+    /* The reaction pass's own local-rule draw sites - see
+     * sand_reactions.c's "Splitting the local rules" section. One slot per
+     * textually distinct roll, never one per function: two rolls for the
+     * same cell in the same step must stay independent. */
+    SAND_RNG_SLOT_REACT_BURN_DECAY,
+    SAND_RNG_SLOT_REACT_BURN_RESIDUE,
+    SAND_RNG_SLOT_REACT_MELT,
+    SAND_RNG_SLOT_REACT_LAVA_COOLOFF_TRIGGER,
+    SAND_RNG_SLOT_REACT_HEAT_RAMP,
+    SAND_RNG_SLOT_REACT_HEAT_CHANCE,
+    SAND_RNG_SLOT_REACT_SPOILS,
+    SAND_RNG_SLOT_REACT_FLAW,
+    SAND_RNG_SLOT_REACT_IGNITE,
+    SAND_RNG_SLOT_REACT_FLARE,
+    SAND_RNG_SLOT_REACT_QUENCH_RESIDUE,
+    SAND_RNG_SLOT_REACT_QUENCH_SMOKE,
+    SAND_RNG_SLOT_REACT_SOAK_CONVERT,
+    SAND_RNG_SLOT_REACT_SOAK_WET_ROLL,
+    SAND_RNG_SLOT_REACT_SOAK_SPREAD_GATE,
+    SAND_RNG_SLOT_REACT_SOAK_PERCOLATE,
+    SAND_RNG_SLOT_REACT_SOAK_PERCOLATE_PICK,
+    SAND_RNG_SLOT_REACT_SOAK_DRY,
+    SAND_RNG_SLOT_REACT_WARM_BANK,
+    SAND_RNG_SLOT_REACT_WARM_MELT_GATE,
+    SAND_RNG_SLOT_REACT_WARM_MELT,
+    SAND_RNG_SLOT_REACT_TEMPER_SPREAD,
+    SAND_RNG_SLOT_REACT_TEMPER_DRAIN,
+    SAND_RNG_SLOT_REACT_CONDENSE,
+    SAND_RNG_SLOT_REACT_ACID_RAIN_GATE,
+    SAND_RNG_SLOT_REACT_ACID_RAIN_RESIDUE,
+    SAND_RNG_SLOT_REACT_CRUST,
 };
 
 /* Where this step's stripe boundaries sit, inside the grid's own stripe
@@ -115,6 +146,17 @@ sand_rng_chance_at(sand_t* s, int x, int y, uint32_t slot, int chance) {
         return true;
     }
     return (int)(sand_rng_next_at(s, x, y, slot) & 0xFF) < chance;
+}
+
+/* rng_below()'s own modulo, drawn through sand_rng_next_at() instead of
+ * rng_next() directly - see that function for what changes and what does
+ * not. */
+static inline int
+sand_rng_below_at(sand_t* s, int x, int y, uint32_t slot, int bound) {
+    if (bound <= 0) {
+        return 0;
+    }
+    return (int)(sand_rng_next_at(s, x, y, slot) % (uint32_t)bound);
 }
 
 /* NULL if off grid; vertical bounds checked per row, not per grain. */
@@ -900,8 +942,7 @@ tick_decay_at(sand_t* s, uint8_t* row, int x, int y, cell_t* grain, const reacti
     if (decay == 0) {
         return true;
     }
-    const uint32_t roll = rng_next(&s->rng);
-    if ((int)(roll & 0xFF) >= decay) {
+    if (!sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_BURN_DECAY, decay)) {
         return true;
     }
 

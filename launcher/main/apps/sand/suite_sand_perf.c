@@ -521,6 +521,75 @@ test_two_core_step_against_the_serial_path_on_three_scenes(void) {
     report_two_core_ab("sand-only", build_full_size_step_scene_sleeping, 1);
 }
 
+typedef struct {
+    const char* name;
+    int cell;
+} quality_grid_t;
+
+static void
+build_quality_water_pour_scene(sand_t* real, uint8_t* big, uint8_t* blocks, int w, int h) {
+    sand_init(real, big, w, h, 11u);
+    sand_enable_sleeping(real, blocks);
+
+    for (int y = 0; y < h / 2; y++) {
+        for (int x = w / 4; x < (w * 3) / 4; x++) {
+            sand_set(real, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+        }
+    }
+}
+
+static int64_t
+time_two_core_quality_water_pour(const quality_grid_t* quality, bool two_core, int* out_w, int* out_h,
+                                 int* out_stripes) {
+    const int w = GFX_WIDTH / quality->cell;
+    const int h = GFX_HEIGHT / quality->cell;
+    const size_t block_count =
+        (size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H);
+    uint8_t* big = malloc((size_t)w * (size_t)h);
+    uint8_t* blocks = malloc(block_count);
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t real;
+    build_quality_water_pour_scene(&real, big, blocks, w, h);
+
+    const two_core_scope_t core = two_core_scope_begin(two_core);
+    const int steps = 20;
+    const int64_t start = esp_timer_get_time();
+    for (int i = 0; i < steps; i++) {
+        sand_step(&real, 0, 1000, 0);
+    }
+    const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
+
+    *out_w = w;
+    *out_h = h;
+    *out_stripes = sand_stripe_count(&real);
+    free(big);
+    free(blocks);
+    return per_step;
+}
+
+static void
+test_two_core_step_at_every_quality_grid_size(void) {
+    static const quality_grid_t qualities[] = {
+        {"ULTRA", 2}, {"HIGH", 3}, {"NORMAL", 4}, {"LOW", 6}, {"VERY LOW", 8},
+    };
+
+    for (size_t i = 0; i < sizeof qualities / sizeof qualities[0]; i++) {
+        int w, h, stripes;
+        const int64_t serial = time_two_core_quality_water_pour(&qualities[i], false, &w, &h, &stripes);
+        ESP_LOGI("device_tests", "TWO_CORE_QUALITY %s grid %dx%d stripes %d mode one-core: %lld us/step",
+                 qualities[i].name, w, h, stripes, (long long)serial);
+
+        const int64_t parallel = time_two_core_quality_water_pour(&qualities[i], true, &w, &h, &stripes);
+        ESP_LOGI("device_tests", "TWO_CORE_QUALITY %s grid %dx%d stripes %d mode two-core: %lld us/step",
+                 qualities[i].name, w, h, stripes, (long long)parallel);
+        ESP_LOGI("device_tests", "TWO_CORE_QUALITY %s grid %dx%d two-core/one-core: %lld%%", qualities[i].name, w, h,
+                 serial > 0 ? (long long)((parallel * 100) / serial) : 0);
+    }
+}
+
 static void
 test_a_screen_of_settled_sand_costs_almost_nothing(void) {
     /* The user-visible complaint this answers: adding lots of sand dropped the
@@ -3781,6 +3850,7 @@ run_sand_perf_suite(void) {
      * ordinary API, so this runs in every diagnostics build. */
     RUN_TEST(test_the_gas_random_walk_against_the_exhaustive_mover);
     RUN_TEST(test_two_core_step_against_the_serial_path_on_three_scenes);
+    RUN_TEST(test_two_core_step_at_every_quality_grid_size);
     RUN_TEST(test_a_gravity_flip_on_every_material_at_once_stays_sane);
     RUN_TEST(test_the_gas_budget_rows_on_the_serial_path);
     /* test_fire_cascading_..._fits_in_the_frame_budget also runs, ambient,

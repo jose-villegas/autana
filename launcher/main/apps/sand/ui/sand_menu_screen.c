@@ -12,7 +12,7 @@ int
 sand_menu_screen_row_count(bool show_dither) {
     int rows = show_dither ? 4 : 3;
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    rows++;
+    rows += 2;
 #endif
     return rows;
 }
@@ -67,6 +67,11 @@ sand_menu_screen_draw(mu_Context* ctx, const sand_menu_screen_state_t* state, ui
         }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
+        ui_flow_row(ctx, &flow, MENU_BTN_W, MENU_BTN_H);
+        if (mu_button(ctx, state->two_core)) {
+            result.two_core_clicked = true;
+        }
+
         ui_flow_row(ctx, &flow, MENU_BTN_W, MENU_BTN_H);
         int seam_overlay_on = result.seam_overlay_on;
         mu_checkbox(ctx, "show seam stalls (dev)", &seam_overlay_on);
