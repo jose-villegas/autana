@@ -19,6 +19,7 @@
 #include "boot/post.h"
 #include "boot/post_ui.h"
 #include "build_id_generated.h"
+#include "build_variant.h"
 #include "display/display.h"
 #include "display/panel_clock.h"
 #include "gfx/gfx.h"
@@ -357,7 +358,7 @@ apply_pending_full_redraw(const app_t* app) {
 }
 
 static void
-leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge) {
+leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint32_t dt_ms) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
     restore_system_display_state();
@@ -367,7 +368,7 @@ leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge) {
     apply_pending_full_redraw(NULL);
     /* Draw it immediately, so the frame presented below is the home screen
      * rather than the app's last one. */
-    ui_launcher_frame(input);
+    ui_launcher_frame(input, dt_ms);
     /* ui_launcher_frame() just repainted its whole rect over the hint
      * strip's band, so this has to run again to put it back - dirty
      * tracking alone will not retry it, since nothing else marks that
@@ -376,9 +377,9 @@ leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge) {
 }
 
 static void
-step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge) {
+step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint32_t dt_ms) {
     apply_pending_full_redraw(NULL);
-    const int chosen = ui_launcher_frame(input);
+    const int chosen = ui_launcher_frame(input, dt_ms);
     if (chosen < 0 || chosen >= apps_registered) {
         draw_home_hint(exit_edge);
         return;
@@ -416,14 +417,14 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
     const gesture_edge_t exit_edge = exit_edge_for_quarter(display_shell_quarter());
 
     if (*current == NULL) {
-        step_launcher(current, input, exit_edge);
+        step_launcher(current, input, exit_edge, dt_ms);
         return;
     }
 
     /* See app_t.home_gesture. Unset apps get no swipe detection or hint
      * strip. */
     if ((*current)->home_gesture && gesture_is_home_swipe(input, exit_edge, GFX_WIDTH, GFX_HEIGHT)) {
-        leave_app(current, input, exit_edge);
+        leave_app(current, input, exit_edge, dt_ms);
         return;
     }
 
@@ -434,7 +435,7 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
      * not the same edge read twice. Checked before frame() runs, so the app
      * never sees the hold that just exited it. */
     if (!(*current)->home_gesture && input->power.held) {
-        leave_app(current, input, exit_edge);
+        leave_app(current, input, exit_edge, dt_ms);
         return;
     }
 

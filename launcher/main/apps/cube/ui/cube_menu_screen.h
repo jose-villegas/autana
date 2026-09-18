@@ -10,6 +10,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "microui.h"
 
@@ -24,5 +25,6 @@ typedef struct {
 } cube_menu_screen_result_t;
 
 /* Draws both toggle rows and the closing hint. Caller brackets this with
- * ui_begin()/ui_end*(). */
-cube_menu_screen_result_t cube_menu_screen_draw(mu_Context* ctx, const cube_menu_screen_state_t* state);
+ * ui_begin()/ui_end*(). `dt_ms` drives the scroll view's own momentum,
+ * unused while this screen keeps the default (none). */
+cube_menu_screen_result_t cube_menu_screen_draw(mu_Context* ctx, const cube_menu_screen_state_t* state, uint32_t dt_ms);

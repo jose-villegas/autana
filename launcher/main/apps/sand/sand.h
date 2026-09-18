@@ -19,6 +19,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "build_variant.h"
 #include "material.h"
 #include "sand_impulse.h"
 #include "util/rng.h"
