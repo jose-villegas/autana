@@ -1048,6 +1048,26 @@ gas_row_audit(const sand_t* s) {
     }
 }
 
+/* Hashed draws stay armed where a split pass would have armed them, so a flow
+ * that falls back to one core does not also change the numbers it draws. */
+static bool
+equalise_gas_every_row(sand_t* s, int px, int py, int rdx, int rdy, uint16_t is_gas, int y_from, int y_to, int y_step,
+                       int x_from, int x_to, int x_step, bool row_crossing, int* clean_run) {
+    bool found_any = false;
+    const bool was_hashed = s->rng_hashed;
+
+    if (row_crossing && sand_two_core_step_enabled()) {
+        s->rng_hashed = true;
+    }
+    for (int y = y_from; y != y_to; y += y_step) {
+        if (equalise_gas_one_row(s, y, s->w, x_from, x_to, x_step, px, py, rdx, rdy, is_gas, clean_run)) {
+            found_any = true;
+        }
+    }
+    s->rng_hashed = was_hashed;
+    return found_any;
+}
+
 static bool
 equalise_gas(sand_t* s, const int* perp, int rdx, int rdy) {
     bool found_any = false;
@@ -1077,16 +1097,10 @@ equalise_gas(sand_t* s, const int* perp, int rdx, int rdy) {
 
     if (!sand_two_core_step_enabled() || row_crossing || sand_stripe_count(s) < SAND_STRIPE_SPLIT_MIN_COUNT
         || !equalise_gas_stripes(s, px, py, rdx, rdy, x_from, x_to, x_step, is_gas, &found_any)) {
-        const bool was_hashed = s->rng_hashed;
-        if (row_crossing && sand_two_core_step_enabled()) {
-            s->rng_hashed = true;
+        if (equalise_gas_every_row(s, px, py, rdx, rdy, is_gas, y_from, y_to, y_step, x_from, x_to, x_step,
+                                   row_crossing, &clean_run)) {
+            found_any = true;
         }
-        for (int y = y_from; y != y_to; y += y_step) {
-            if (equalise_gas_one_row(s, y, w, x_from, x_to, x_step, px, py, rdx, rdy, is_gas, &clean_run)) {
-                found_any = true;
-            }
-        }
-        s->rng_hashed = was_hashed;
     }
     return found_any;
 }
