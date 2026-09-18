@@ -433,11 +433,8 @@ test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
     TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(interior_worst + TC_W / 10, boundary_worst, why);
 }
 
-/* sand_step() increments step_phase before picking the stripe offset
- * (half a stripe on an odd phase, 0 on an even one - sand.c), so one
- * free-fall call (gx=gy=0, which returns before touching a single cell)
- * advances the phase without moving anything - letting a test choose
- * which offset the NEXT, real step gets. */
+/* A free-fall step advances the phase without touching a cell, selecting a
+ * different deterministic stripe offset for the next real step. */
 static void
 tc_prime_offset(sand_t* s, int offset) {
     if (offset == 0) {
@@ -835,6 +832,74 @@ test_two_core_step_conserves_grains_on_a_dense_column_and_pile(void) {
     }
 }
 
+static int
+tc_water_row_mass(const sand_t* s, int y) {
+    int mass = 0;
+    for (int x = 0; x < TC_W; x++) {
+        const cell_t c = sand_at(s, x, y);
+        if (CELL_MATERIAL(c) == MAT_WATER) {
+            mass += CELL_VARIANT(c);
+        }
+    }
+    return mass;
+}
+
+static void
+test_landscape_water_column_has_no_row_mass_lag(void) {
+    uint8_t* serial_cells = malloc((size_t)TC_W * (size_t)TC_H);
+    uint8_t* split_cells = malloc((size_t)TC_W * (size_t)TC_H);
+    uint8_t* serial_blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    uint8_t* split_blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(serial_cells);
+    TEST_ASSERT_NOT_NULL(split_cells);
+    TEST_ASSERT_NOT_NULL(serial_blocks);
+    TEST_ASSERT_NOT_NULL(split_blocks);
+
+    sand_t serial, split;
+    sand_init(&serial, serial_cells, TC_W, TC_H, 7u);
+    sand_init(&split, split_cells, TC_W, TC_H, 7u);
+    sand_enable_sleeping(&serial, serial_blocks);
+    sand_enable_sleeping(&split, split_blocks);
+    for (int y = 0; y < TC_H / 2; y++) {
+        for (int x = TC_W / 2 - 6; x < TC_W / 2 + 6; x++) {
+            sand_set(&serial, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+            sand_set(&split, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+        }
+    }
+
+    int worst_row_mass = 0;
+    sand_force_hashed_rng(true);
+    for (int step = 0; step < 40; step++) {
+        memcpy(split_cells, serial_cells, (size_t)TC_W * (size_t)TC_H);
+        memcpy(split_blocks, serial_blocks, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+        split.step_phase = serial.step_phase;
+
+        sand_set_two_core_step(true);
+        sand_step(&split, 1000, 0, 0);
+        sand_set_two_core_step(false);
+        sand_step(&serial, 1000, 0, 0);
+
+        for (int y = 0; y < TC_H; y++) {
+            const int split_mass = tc_water_row_mass(&split, y);
+            const int serial_mass = tc_water_row_mass(&serial, y);
+            const int difference = split_mass - serial_mass;
+            const int row_mass = difference < 0 ? -difference : difference;
+            if (row_mass > worst_row_mass) {
+                worst_row_mass = row_mass;
+            }
+        }
+    }
+    sand_force_hashed_rng(false);
+
+    free(serial_cells);
+    free(split_cells);
+    free(serial_blocks);
+    free(split_blocks);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, worst_row_mass,
+                                  "the split landscape water column left liquid mass in a different row than serial");
+}
+
 #ifdef DEVICE_BUILD
 typedef struct {
     volatile bool* finished;
@@ -899,6 +964,136 @@ test_stripe_boundaries_spread_over_the_stripe(void) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(8, distinct, "64 steps must put boundaries on many lines, not the same two");
 }
 
+/* THE REACTION SPLIT - sand_step_reactions() called directly, never through
+ * sand_step(), so these tests are about the local-rule split alone and
+ * cannot be confused with the sweep or gas walk's own coverage above. */
+
+/* Isolated fire/gas pairs, never two gas cells touching. GAS ignites free
+ * of randomness (material.c) - but a CONNECTED pocket is not a fair split
+ * vs serial comparison regardless: a cell ignited ahead of the scan
+ * spreads further within the step, and stripe order is not row-major. */
+static void
+rc_build_isolated_fire_gas_pairs(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
+    sand_init(s, cells, w, h, seed);
+
+    rng_t r;
+    rng_seed(&r, seed ^ 0x51ED5EEDu);
+    for (int y = 3; y < h - 3; y += 4) {
+        for (int x = 3; x < w - 3; x += 4) {
+            sand_set(s, x, y, FIRE);
+            static const int dirs[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            const int d = rng_below(&r, 4);
+            sand_set(s, x + dirs[d][0], y + dirs[d][1], GAS);
+        }
+    }
+}
+
+static uint32_t
+rc_run_fire_chain_and_hash(int w, int h, uint32_t seed, int steps, bool two_core) {
+    uint8_t* cells = malloc((size_t)w * (size_t)h);
+    TEST_ASSERT_NOT_NULL(cells);
+
+    sand_t s;
+    rc_build_isolated_fire_gas_pairs(&s, cells, w, h, seed);
+
+    sand_set_two_core_step(two_core);
+    for (int i = 0; i < steps; i++) {
+        sand_step_reactions(&s);
+    }
+    sand_set_two_core_step(false);
+
+    const uint32_t hash = tc_hash(cells, (size_t)w * (size_t)h);
+    free(cells);
+    return hash;
+}
+
+static void
+test_reaction_split_matches_serial_on_a_zero_randomness_fire_chain(void) {
+    static const struct {
+        int w, h;
+    } qualities[] = {{TC_W, TC_H}, {92, 112}, {61, 74}, {46, 56}};
+
+    static const uint32_t seeds[] = {1u, 7u, 42u};
+
+    for (size_t q = 0; q < sizeof qualities / sizeof qualities[0]; q++) {
+        for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
+            const uint32_t serial = rc_run_fire_chain_and_hash(qualities[q].w, qualities[q].h, seeds[i], 30, false);
+            const uint32_t split = rc_run_fire_chain_and_hash(qualities[q].w, qualities[q].h, seeds[i], 30, true);
+            char why[160];
+            snprintf(why, sizeof why, "%dx%d seed %u: a zero-randomness gas fire chain diverged under split reactions",
+                     qualities[q].w, qualities[q].h, (unsigned)seeds[i]);
+            TEST_ASSERT_EQUAL_HEX32_MESSAGE(serial, split, why);
+        }
+    }
+}
+
+/* A scattered mix of every stage the split touches - burning wood,
+ * conducting/heat-ramped stone, chilling snow, a lava/water cool-off pair -
+ * so real chance rolls happen throughout, unlike the zero-randomness scene
+ * above. */
+static void
+rc_build_reaction_heavy_scene(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
+    sand_init(s, cells, w, h, seed);
+
+    rng_t r;
+    rng_seed(&r, seed ^ 0x51ED5EEDu);
+    static const cell_t picks[] = {STONE, WOOD, SNOW, WATER, LAVA};
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            if (rng_below(&r, 4) != 0) {
+                continue;
+            }
+            sand_set(s, x, y, picks[rng_below(&r, (int)(sizeof picks / sizeof picks[0]))]);
+        }
+    }
+    sand_set(s, w / 2, h / 2, FIRE);
+}
+
+static uint32_t
+rc_run_reaction_heavy_and_hash(int w, int h, uint32_t seed, int steps, bool two_core) {
+    uint8_t* cells = malloc((size_t)w * (size_t)h);
+    TEST_ASSERT_NOT_NULL(cells);
+
+    sand_t s;
+    rc_build_reaction_heavy_scene(&s, cells, w, h, seed);
+
+    sand_set_two_core_step(two_core);
+    for (int i = 0; i < steps; i++) {
+        sand_step_reactions(&s);
+    }
+    sand_set_two_core_step(false);
+
+    const uint32_t hash = tc_hash(cells, (size_t)w * (size_t)h);
+    free(cells);
+    return hash;
+}
+
+static void
+test_reaction_split_is_deterministic_across_seeds(void) {
+    static const uint32_t seeds[] = {1u, 7u, 42u, 12345u, 99991u};
+
+    for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
+        const uint32_t first = rc_run_reaction_heavy_and_hash(TC_W, TC_H, seeds[i], 30, true);
+        const uint32_t second = rc_run_reaction_heavy_and_hash(TC_W, TC_H, seeds[i], 30, true);
+        char why[160];
+        snprintf(why, sizeof why,
+                 "seed %u: two runs of the same seed under split reactions must land on the same board",
+                 (unsigned)seeds[i]);
+        TEST_ASSERT_EQUAL_HEX32_MESSAGE(first, second, why);
+    }
+}
+
+static void
+test_reaction_split_actually_changes_the_draw_stream(void) {
+    const uint32_t serial = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, false);
+    const uint32_t split = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, true);
+
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(serial, split,
+                                  "reaction split produced the same hash as serial on a reaction-heavy "
+                                  "board - the local rules should be drawing from sand_rng_next_at(), "
+                                  "not silently falling back to the sequential stream");
+}
+
 void
 run_sand_two_core_suite(void) {
     RUN_TEST(test_stripe_boundaries_spread_over_the_stripe);
@@ -914,6 +1109,10 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_smaller_quality_seams_match_serial);
     RUN_TEST(test_settled_guard_rows_do_no_grain_work);
     RUN_TEST(test_two_core_step_conserves_grains_on_a_dense_column_and_pile);
+    RUN_TEST(test_reaction_split_matches_serial_on_a_zero_randomness_fire_chain);
+    RUN_TEST(test_reaction_split_is_deterministic_across_seeds);
+    RUN_TEST(test_reaction_split_actually_changes_the_draw_stream);
+    RUN_TEST(test_landscape_water_column_has_no_row_mass_lag);
 #ifdef DEVICE_BUILD
     RUN_TEST(test_a_timed_out_job_falls_back_inline);
 #endif

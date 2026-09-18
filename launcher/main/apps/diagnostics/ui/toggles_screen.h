@@ -24,6 +24,7 @@
 
 #include <stdbool.h>
 
+#include "build_variant.h"
 #include "microui.h"
 
 typedef struct {
