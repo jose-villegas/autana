@@ -666,6 +666,26 @@ find_nearest_empty(const sand_t* s, int x, int y, int px, int py, int sight, uin
     return 0;
 }
 
+static inline int
+find_nearest_empty_in_row(const uint8_t* row, int x, int px, int w, int sight, uint8_t gas_id, int* run_len_out) {
+#pragma GCC unroll 4
+    for (int k = 1; k <= sight; k++) {
+        const int sx = x + px * k;
+        if ((unsigned)sx >= (unsigned)w) {
+            return 0;
+        }
+        const cell_t o = row[sx];
+        if (CELL_IS_EMPTY(o)) {
+            return k;
+        }
+        if (CELL_MATERIAL(o) != gas_id) {
+            return 0;
+        }
+    }
+    *run_len_out = sight;
+    return 0;
+}
+
 /* equalise_gas_one_row() sweeps with x_step = -px, so the cell after x
  * sits at x - px and casts a ray revisiting x's ray shifted by one. What
  * find_nearest_empty() found about x's ray is also true of x - px's,
@@ -705,7 +725,8 @@ equalise_gas_one_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_
         } else {
             int scan_len = 0;
 
-            at = find_nearest_empty(s, x, y, px, py, sight, gas_id, &scan_len);
+            at = (py == 0) ? find_nearest_empty_in_row(row, x, px, s->w, sight, gas_id, &scan_len)
+                           : find_nearest_empty(s, x, y, px, py, sight, gas_id, &scan_len);
             /* Only a scan that paid the full `sight` walk is worth
              * remembering - see find_nearest_empty's own comment for why
              * the two early-break cases (the edge of the grid, a wall or
