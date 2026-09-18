@@ -699,6 +699,30 @@ typedef struct {
     int len;
 } gas_run_t;
 
+/* How far ahead the nearest open cell sits along the ray, 0 for none within
+ * `sight`. A run already covering this ray answers without walking it: the
+ * previous cell in the sweep walked - or itself skipped - the very same ray,
+ * so re-walking confirms what carrying the run forward already guarantees.
+ * Only a scan that paid the full walk is worth remembering; the early-break
+ * cases are cheaper to repeat than to cache, as find_nearest_empty() says. */
+static inline int
+gas_gap_ahead(sand_t* s, const uint8_t* row, int x, int y, int px, int py, int sight, uint8_t gas_id, bool carry_ok,
+              gas_run_t* run) {
+    if (carry_ok && run->id == (int)gas_id && run->len >= sight) {
+        return 0;
+    }
+
+    int scan_len = 0;
+    const int at = (py == 0) ? find_nearest_empty_in_row(row, x, px, s->w, sight, gas_id, &scan_len)
+                             : find_nearest_empty(s, x, y, px, py, sight, gas_id, &scan_len);
+
+    if (carry_ok && at == 0 && scan_len == sight) {
+        run->id = (int)gas_id;
+        run->len = scan_len;
+    }
+    return at;
+}
+
 /* One cell's share of spread: hops the whole grain to the nearest open
  * cell along (px, py), if sub-pass 1 could not already move it and a real
  * gap exists. No mass to split - a grain either moves the whole way, or
@@ -715,29 +739,7 @@ equalise_gas_one_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_
     if (!has_room_above(arow, x, rdx, s->w) && neighbour_is_open(nrow, x, px, s->w, gas_id)) {
         int at;
 
-        /* Known, without looking, to return 0: `run` already covers every
-         * cell this scan would walk, courtesy of the previous cell in the
-         * sweep having walked - or itself skipped - the very same ray.
-         * Re-walking it would only confirm what carrying the run forward
-         * already guarantees. */
-        if (carry_ok && run->id == (int)gas_id && run->len >= sight) {
-            at = 0;
-        } else {
-            int scan_len = 0;
-
-            at = (py == 0) ? find_nearest_empty_in_row(row, x, px, s->w, sight, gas_id, &scan_len)
-                           : find_nearest_empty(s, x, y, px, py, sight, gas_id, &scan_len);
-            /* Only a scan that paid the full `sight` walk is worth
-             * remembering - see find_nearest_empty's own comment for why
-             * the two early-break cases (the edge of the grid, a wall or
-             * a different material) are left alone instead: they are
-             * already cheap, so caching them would cost more than just
-             * repeating them next time. */
-            if (carry_ok && at == 0 && scan_len == sight) {
-                run->id = (int)gas_id;
-                run->len = scan_len;
-            }
-        }
+        at = gas_gap_ahead(s, row, x, y, px, py, sight, gas_id, carry_ok, run);
 
         if (at != 0) {
             tx = x + px * at;
