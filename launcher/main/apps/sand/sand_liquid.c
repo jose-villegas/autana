@@ -30,9 +30,6 @@
 unsigned sand_liquid_moves;
 unsigned sand_liquid_crossflow_probes;
 
-#define LIQUID_STRIPE_H       SAND_BLOCK_H
-#define LIQUID_SPLIT_MIN_ROWS (4 * LIQUID_STRIPE_H)
-
 typedef struct {
     unsigned moves, probes;
     const uint8_t* block_read;
@@ -476,12 +473,11 @@ typedef struct {
 typedef struct {
     liquid_stripe_t* stripe;
     const xflow_t* flow;
-    int dx, dy, sight, offset, color, share;
+    int dx, dy, sight, stripe_h, offset, color, share;
     uint16_t is_liquid;
 } liquid_phase_t;
 
 _Static_assert(sizeof(liquid_phase_t) <= JOB_CTX_MAX, "liquid phase must fit JOB_CTX_MAX");
-_Static_assert(LIQUID_STRIPE_H > 2 * SAND_LIQUID_SIGHT, "liquid stripes need an interior beyond both guards");
 
 static void
 prepare_liquid_stripe(liquid_stripe_t* stripe, const sand_t* s, uint8_t* arrivals) {
@@ -543,15 +539,15 @@ liquid_phase_worker(void* arg) {
     const int y_step = c->flow->dg[1] > 0 ? -1 : 1;
     const int x_step = c->flow->dg[0] > 0 ? -1 : 1;
     int seen = 0;
-    for (int k = c->offset == 0 ? 0 : -1; c->offset + k * LIQUID_STRIPE_H < s->h; k++) {
+    for (int k = c->offset == 0 ? 0 : -1; c->offset + k * c->stripe_h < s->h; k++) {
         if (((k % 2) + 2) % 2 != c->color) {
             continue;
         }
         if ((seen++ & 1) != c->share) {
             continue;
         }
-        const int band0 = c->offset + k * LIQUID_STRIPE_H;
-        const int band1 = band0 + LIQUID_STRIPE_H;
+        const int band0 = c->offset + k * c->stripe_h;
+        const int band1 = band0 + c->stripe_h;
         const int y0 = band0 > 0 ? band0 + c->sight : 0;
         const int y1 = band1 < s->h ? band1 - c->sight : s->h;
         for (int y = y_step > 0 ? y0 : y1 - 1; y >= y0 && y < y1; y += y_step) {
@@ -562,9 +558,9 @@ liquid_phase_worker(void* arg) {
 }
 
 static bool
-liquid_guard_row(int y, int h, int offset, int sight) {
-    const int band0 = ((y + LIQUID_STRIPE_H - offset) / LIQUID_STRIPE_H) * LIQUID_STRIPE_H + offset - LIQUID_STRIPE_H;
-    const int band1 = band0 + LIQUID_STRIPE_H;
+liquid_guard_row(int y, int h, int stripe_h, int offset, int sight) {
+    const int band0 = ((y + stripe_h - offset) / stripe_h) * stripe_h + offset - stripe_h;
+    const int band1 = band0 + stripe_h;
     return (band0 > 0 && y - band0 < sight) || (band1 < h && band1 - y <= sight);
 }
 
@@ -577,6 +573,7 @@ equalise_liquid_stripes(sand_t* s, const xflow_t* flow, int sight, int dx, int d
     const size_t rows = (size_t)s->h;
     const size_t blocks = (size_t)s->block_cols * (size_t)s->block_rows;
     const size_t arrival_bytes = rows * (((size_t)s->w + 7) / 8);
+    const int stripe_h = sand_stripe_height(s->h);
     liquid_stripe_t* stripes = calloc(1, 2 * sizeof *stripes + 8 * rows + 2 * blocks + 2 * rows + arrival_bytes);
     if (stripes == NULL) {
         return false;
@@ -590,11 +587,11 @@ equalise_liquid_stripes(sand_t* s, const xflow_t* flow, int sight, int dx, int d
         stripes[i].dirty = stripes[i].blocks + blocks;
     }
     uint8_t* arrivals = bytes + 2 * (blocks + rows);
-    const int offset = sand_stripe_offset(s, LIQUID_STRIPE_H);
+    const int offset = sand_stripe_offset(s);
     for (int color = 0; color < 2; color++) {
         prepare_liquid_stripe(&stripes[0], s, arrivals);
         prepare_liquid_stripe(&stripes[1], s, arrivals);
-        liquid_phase_t ctx = {&stripes[1], flow, dx, dy, sight, offset, color, 1, is_liquid};
+        liquid_phase_t ctx = {&stripes[1], flow, dx, dy, sight, stripe_h, offset, color, 1, is_liquid};
         (void)job_run_core1(liquid_phase_worker, &ctx, sizeof ctx);
         ctx.stripe = &stripes[0];
         ctx.share = 0;
@@ -611,7 +608,7 @@ equalise_liquid_stripes(sand_t* s, const xflow_t* flow, int sight, int dx, int d
     const int y_step = flow->dg[1] > 0 ? -1 : 1;
     const int x_step = flow->dg[0] > 0 ? -1 : 1;
     for (int y = y_step > 0 ? 0 : s->h - 1; y >= 0 && y < s->h; y += y_step) {
-        if (liquid_guard_row(y, s->h, offset, sight)) {
+        if (liquid_guard_row(y, s->h, stripe_h, offset, sight)) {
             *found_any |= equalise_one_row(s, y, s->w, x_step, flow, dx, dy, sight, is_liquid, &guard);
         }
     }
@@ -646,7 +643,7 @@ equalise_liquids(sand_t* s, const xflow_t* f, int sight, int dx, int dy) {
 
     /* See equalise_one_row(). BLOCK_HAS_LIQUID → BLOCK_LIQUID_NEAR. No move
      * cost. */
-    if (!sand_two_core_step_enabled() || h < LIQUID_SPLIT_MIN_ROWS
+    if (!sand_two_core_step_enabled() || sand_stripe_count(s) < SAND_STRIPE_SPLIT_MIN_COUNT
         || !equalise_liquid_stripes(s, f, sight, dx, dy, is_liquid, &found_any)) {
         liquid_work_t work = {0};
         for (int y = y_from; y != y_to; y += y_step) {

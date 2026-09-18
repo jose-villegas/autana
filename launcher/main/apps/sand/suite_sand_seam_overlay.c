@@ -33,10 +33,11 @@ so_first_boundary(const sand_t* s) {
      * boundary this reads is the one the NEXT call will use. */
     sand_t next = *s;
     next.step_phase++;
-    const int offset = sand_stripe_offset(&next, SAND_BLOCK_H);
-    int boundary = (offset > 0) ? offset : SAND_BLOCK_H;
+    const int stripe_h = sand_stripe_height(next.h);
+    const int offset = sand_stripe_offset(&next);
+    int boundary = (offset > 0) ? offset : stripe_h;
     while (boundary < 4) {
-        boundary += SAND_BLOCK_H;
+        boundary += stripe_h;
     }
     return boundary;
 }
