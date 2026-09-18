@@ -138,6 +138,65 @@ typedef struct {
     int first_step;
 } lag_result_t;
 
+typedef struct {
+    int cells, row_mass, held, early;
+} lag_step_t;
+
+/* One step's difference between the two arms, against the board they both
+ * started from: a cell serial moved and the split did not is held back, the
+ * reverse is early, and a row's mass difference is the shape a liquid delay
+ * takes. */
+static lag_step_t
+compare_step(const sand_t* split, const sand_t* serial) {
+    lag_step_t d = {0, 0, 0, 0};
+
+    for (int y = 0; y < LAG_H; y++) {
+        int mass_split = 0, mass_serial = 0;
+        for (int x = 0; x < LAG_W; x++) {
+            const cell_t a = sand_at(split, x, y);
+            const cell_t b = sand_at(serial, x, y);
+            const cell_t was = cells_before[(size_t)y * (size_t)LAG_W + (size_t)x];
+            if (a != b) {
+                d.cells++;
+            }
+            if (b != was && a == was) {
+                d.held++;
+            } else if (a != was && b == was) {
+                d.early++;
+            }
+            mass_split += cell_mass(a);
+            mass_serial += cell_mass(b);
+        }
+        d.row_mass += (mass_split > mass_serial) ? mass_split - mass_serial : mass_serial - mass_split;
+    }
+    return d;
+}
+
+/* A scene's row is the worst any of its steps managed, so a single bad step
+ * is not averaged away by the ones around it. */
+static void
+keep_worst(lag_result_t* out, lag_step_t d, int step) {
+    if (d.cells == 0) {
+        return;
+    }
+    out->steps_differing++;
+    if (out->first_step < 0) {
+        out->first_step = step;
+    }
+    if (d.cells > out->worst_cells) {
+        out->worst_cells = d.cells;
+    }
+    if (d.row_mass > out->worst_row_mass) {
+        out->worst_row_mass = d.row_mass;
+    }
+    if (d.held > out->worst_held) {
+        out->worst_held = d.held;
+    }
+    if (d.early > out->worst_early) {
+        out->worst_early = d.early;
+    }
+}
+
 static lag_result_t
 measure(const lag_case_t* c) {
     sand_t split, serial;
@@ -169,48 +228,7 @@ measure(const lag_case_t* c) {
         sand_set_two_core_step(false);
         sand_step(&serial, gx, gy, 0);
 
-        int cells = 0;
-        int row_mass = 0;
-        int held = 0;
-        int early = 0;
-        for (int y = 0; y < LAG_H; y++) {
-            int mass_split = 0, mass_serial = 0;
-            for (int x = 0; x < LAG_W; x++) {
-                const cell_t a = sand_at(&split, x, y);
-                const cell_t b = sand_at(&serial, x, y);
-                const cell_t was = cells_before[(size_t)y * (size_t)LAG_W + (size_t)x];
-                if (a != b) {
-                    cells++;
-                }
-                if (b != was && a == was) {
-                    held++;
-                } else if (a != was && b == was) {
-                    early++;
-                }
-                mass_split += cell_mass(a);
-                mass_serial += cell_mass(b);
-            }
-            row_mass += (mass_split > mass_serial) ? mass_split - mass_serial : mass_serial - mass_split;
-        }
-
-        if (cells > 0) {
-            out.steps_differing++;
-            if (out.first_step < 0) {
-                out.first_step = step;
-            }
-            if (cells > out.worst_cells) {
-                out.worst_cells = cells;
-            }
-            if (row_mass > out.worst_row_mass) {
-                out.worst_row_mass = row_mass;
-            }
-            if (held > out.worst_held) {
-                out.worst_held = held;
-            }
-            if (early > out.worst_early) {
-                out.worst_early = early;
-            }
-        }
+        keep_worst(&out, compare_step(&split, &serial), step);
     }
     return out;
 }
