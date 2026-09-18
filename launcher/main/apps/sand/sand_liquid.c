@@ -564,6 +564,13 @@ liquid_guard_row(int y, int h, int stripe_h, int offset, int sight) {
     return (band0 > 0 && y - band0 < sight) || (band1 < h && band1 - y <= sight);
 }
 
+/* Row stripes cannot preserve source-before-destination order when an active
+ * liquid ray crosses rows. */
+static bool
+liquid_flow_changes_rows(const xflow_t* flow) {
+    return flow->ax[1] != 0 || (flow->q_q8 != 0 && flow->dg[1] != 0);
+}
+
 /* A received mass must not be forwarded when its guard row runs later.
  * Bytes are padded per row so concurrent stripes never share a bitmap byte,
  * including grids whose width is not a multiple of eight. */
@@ -622,6 +629,7 @@ equalise_liquid_stripes(sand_t* s, const xflow_t* flow, int sight, int dx, int d
 static void
 equalise_liquids(sand_t* s, const xflow_t* f, int sight, int dx, int dy) {
     bool found_any = false;
+    const bool row_crossing = liquid_flow_changes_rows(f);
 
     if (s->block_state != NULL) {
         mark_liquid_neighbourhoods(s);
@@ -643,14 +651,19 @@ equalise_liquids(sand_t* s, const xflow_t* f, int sight, int dx, int dy) {
 
     /* See equalise_one_row(). BLOCK_HAS_LIQUID → BLOCK_LIQUID_NEAR. No move
      * cost. */
-    if (!sand_two_core_step_enabled() || sand_stripe_count(s) < SAND_STRIPE_SPLIT_MIN_COUNT
+    if (!sand_two_core_step_enabled() || row_crossing || sand_stripe_count(s) < SAND_STRIPE_SPLIT_MIN_COUNT
         || !equalise_liquid_stripes(s, f, sight, dx, dy, is_liquid, &found_any)) {
         liquid_work_t work = {0};
+        const bool was_hashed = s->rng_hashed;
+        if (row_crossing && sand_two_core_step_enabled()) {
+            s->rng_hashed = true;
+        }
         for (int y = y_from; y != y_to; y += y_step) {
             if (equalise_one_row(s, y, w, x_step, f, dx, dy, sight, is_liquid, &work)) {
                 found_any = true;
             }
         }
+        s->rng_hashed = was_hashed;
         sand_liquid_moves += work.moves;
         sand_liquid_crossflow_probes += work.probes;
     }
