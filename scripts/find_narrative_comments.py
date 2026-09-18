@@ -2,6 +2,7 @@
 """List comments that narrate how the code got here, worst first.
 
     python scripts/find_narrative_comments.py [--min-chars 300] [--json PATH]
+    python scripts/find_narrative_comments.py --tombstones   fail on any "moved to <file>"
 
 docs/C-Style-Guide.md's first comment rule: a comment states the constraint that holds
 now, never the journey. This finds candidates for that rule by keyword, so it
@@ -26,6 +27,15 @@ SIGNS = re.compile(
     r"this (?:used|was) |earlier|first version|second version|"
     r"now that|since the fix|after the fix)", re.I)
 
+# A comment recording where code went ("moved to sand_priv.h", "now lives in
+# x.c") describes a layout the reader never saw. Narrow enough to fail on:
+# naming a destination file is what makes it a tombstone.
+TOMBSTONE = re.compile(
+    r"\b(?:moved|split|lifted)\s+(?:out\s+)?(?:to|into|from)\s+`?[\w/{},]+\.(?:c|h)\b"
+    r"|\bnow\s+lives\s+in\b"
+    r"|\blives\s+in\s+`?[\w/{},]+\.(?:c|h)`?\s+now\b",
+    re.I)
+
 SKIP = ("managed_components", "components", "build", "build.dev", "build.diag")
 
 
@@ -41,12 +51,30 @@ def find(root, min_chars):
                        "banner": c.is_banner}
 
 
+def tombstones(root):
+    for p in sorted(pathlib.Path(root).rglob("*")):
+        if p.suffix not in (".c", ".h") or any(s in p.parts for s in SKIP):
+            continue
+        text = p.read_text(encoding="utf-8", errors="replace")
+        for c in scan(p.as_posix(), text):
+            if TOMBSTONE.search(" ".join(c.text.split())):
+                yield p.as_posix(), c.line
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("root", nargs="?", default="launcher")
     ap.add_argument("--min-chars", type=int, default=300)
     ap.add_argument("--json")
+    ap.add_argument("--tombstones", action="store_true")
     args = ap.parse_args()
+
+    if args.tombstones:
+        found = list(tombstones(args.root))
+        for path, line in found:
+            print(f"{path}:{line}: comment records where code moved; state the constraint or delete it")
+        print(f"{len(found)} tombstone comment{'' if len(found) == 1 else 's'}")
+        return 1 if found else 0
 
     rows = sorted(find(args.root, args.min_chars), key=lambda r: -r["chars"])
     for r in rows[:25]:

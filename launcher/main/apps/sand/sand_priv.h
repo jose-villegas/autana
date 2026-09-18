@@ -221,6 +221,10 @@ extern unsigned sand_reactions_cells_dispatched;
  * output against the reference walk on the same board. Off by default. */
 void sand_reactions_force_full_walk(bool on);
 
+/* Test-only: draw through the per-cell hash even on the serial path, so a
+ * serial board and a split board differ only by ordering. */
+void sand_force_hashed_rng(bool on);
+
 /* Not sand.h API: which shape sand_step_reactions() actually took this call -
  * the soak-only partial walk, or the full one (including an early return
  * that ran neither). Set unconditionally on every call, so a stale value
@@ -1201,7 +1205,7 @@ bool try_slide(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* b
                int dy, const int* slide_a, const int* slide_b, int load_dx, int load_dy, int jostle, cell_t grain,
                uint8_t driven_row, uint8_t density, const material_t* mat, bool driven[][2]);
 
-/* Moved from sand.c. sand_gas.c uses REVERSED gravity vector. */
+/* The gas walk passes a REVERSED gravity vector. */
 static inline bool
 driven_by_gravity(int mx, int my, int gx, int gy, int repose) {
     const int descent = mx * gx + my * gy;

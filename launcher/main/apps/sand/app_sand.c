@@ -315,6 +315,10 @@ static int64_t pour_awake_total, idle_awake_total;
 /* Measure occupied cells in blocks; confirms step_one_row() cost per row, not
  * unit. */
 static int64_t pour_awake_cells_total, idle_awake_cells_total;
+
+/* The boot menu's "show seam stalls" checkbox - see draw_seam_overlay().
+ * Off by default; picked up at the next sand_enter(), like show_dither. */
+static bool seam_overlay_on;
 #endif
 static uint32_t sim_accumulator_q8;
 static uint32_t pour_accumulator_ms;
@@ -1840,6 +1844,9 @@ draw_menu(const input_t* input) {
         .color = color_label,
         .dither = dither_label,
         .show_dither = (color_mode == SAND_COLOR_16),
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        .seam_overlay_on = seam_overlay_on,
+#endif
     };
     const sand_menu_screen_result_t result = sand_menu_screen_draw(ctx, &state);
 
@@ -1859,6 +1866,9 @@ draw_menu(const input_t* input) {
     if (result.dither_clicked) {
         dither_mode = (gfx_dither_mode_t)((dither_mode + 1) % GFX_DITHER_MODE_COUNT);
     }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    seam_overlay_on = result.seam_overlay_on;
+#endif
 
     ui_end(COL_BACKGROUND);
 }
@@ -1952,6 +1962,58 @@ sand_update(uint32_t dt_ms, const input_t* input) {
     pending_gx = gx;
     pending_gy = gy;
 }
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+#define SEAM_GUARD_ROW_COLOR 0x2FA6FF
+#define SEAM_GUARD_ROW_ALPHA 96
+#define SEAM_STALL_COLOR     0xFF3E5C
+#define SEAM_STALL_ALPHA     224
+
+/* Called from sand_frame() before draw_dirty_rows(): draw_seam_overlay()
+ * below needs every guard row repainted clean before it tints this step's
+ * own, since guard rows move each step (SWEEP_STRIPE_H / 2 alternation)
+ * and nothing else would repaint last step's tint away. */
+static void
+seam_overlay_force_full_redraw(void) {
+    if (seam_overlay_on) {
+        mark_sand_fully_dirty();
+    }
+}
+
+/* Paints sand_step()'s seam bookkeeping (sand.h) over the frame
+ * seam_overlay_force_full_redraw() above just forced fully clean. */
+static void
+draw_seam_overlay(void) {
+    if (!seam_overlay_on) {
+        return;
+    }
+
+    const gfx_color_t guard_color = gfx_rgb(SEAM_GUARD_ROW_COLOR);
+    const gfx_color_t stall_color = gfx_rgb(SEAM_STALL_COLOR);
+    const int guard_rows = sand_seam_guard_row_count();
+
+    for (int i = 0; i < guard_rows; i++) {
+        const int gy = sand_seam_guard_row(i);
+        if (gy < 0) {
+            continue;
+        }
+        const int py = gy * cell;
+        gfx_fill_rect_dither(0, py, grid_w * cell, cell, guard_color, SEAM_GUARD_ROW_ALPHA);
+        for (int x = 0; x < grid_w; x++) {
+            if (sand_seam_stalled(i, x)) {
+                gfx_fill_rect_dither(x * cell, py, cell, cell, stall_color, SEAM_STALL_ALPHA);
+            }
+        }
+        gfx_mark_dirty(0, py, grid_w * cell, cell);
+    }
+
+    char line[32];
+    snprintf(line, sizeof line, "seam stalls: %u", sand_seam_stall_count());
+    const int turn = gravity_quarter_turn(pending_gx, pending_gy);
+    gfx_text_turned(4, 4, line, gfx_rgb(0xFFFFFF), 1, turn);
+    gfx_mark_dirty(0, 0, 160, gfx_text_height() + 8);
+}
+#endif
 
 static void
 sand_frame(uint32_t dt_ms, const input_t* input) {
@@ -2099,6 +2161,10 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
         gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
     }
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    seam_overlay_force_full_redraw();
+#endif
+
     draw_dirty_rows(pending_shine_moved, pending_local_depth_woke, pending_cullet_moved, pending_glass_moved,
                     pending_wood_leaf_moved);
     heal_settled_rows();
@@ -2113,6 +2179,9 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
         if (label_left_ms > 0) {
             draw_mode_label(pending_gx, pending_gy);
         }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        draw_seam_overlay();
+#endif
     } else if (!overlays_skipped_reason_logged) {
         ESP_LOGW(TAG, "COLOUR %s: emitter markers and the mode label do not draw yet - FULL-only for now",
                  color_names[color_mode]);
