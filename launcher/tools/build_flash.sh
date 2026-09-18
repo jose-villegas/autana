@@ -14,7 +14,9 @@
 #               on-device test suites and Diagnostics' own button for
 #               running them. See below.
 #   --build-only  build and stop: no device needed, nothing flashed.
-#   COM_PORT    serial port the device is on. Default: COM3.
+#   COM_PORT    serial port the device is on. Found by USB identity when
+#               omitted, so a plugged-in board needs no argument - see
+#               tools/find_port.sh.
 #   IDF_EXPORT  path to ESP-IDF's export script - export.bat on Windows,
 #               export.sh elsewhere. Default: the ESP-IDF Windows
 #               installer's path.
@@ -75,7 +77,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-COM_PORT="${1:-COM3}"
+COM_PORT="${1:-}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -150,8 +152,19 @@ if [ "$BUILD_ONLY" -eq 1 ]; then
     exit 0
 fi
 
-echo "=== Flashing to $COM_PORT ==="
-idf -B "$BUILD_DIR" -p "$COM_PORT" flash
+# shellcheck source=./find_port.sh
+. "$SCRIPT_DIR/find_port.sh"
+if [ -z "$COM_PORT" ]; then
+    COM_PORT=$(find_port) || COM_PORT=""
+fi
+
+if [ -n "$COM_PORT" ]; then
+    echo "=== Flashing to $COM_PORT ==="
+    idf -B "$BUILD_DIR" -p "$COM_PORT" flash
+else
+    echo "=== Flashing, letting esptool pick the port ==="
+    idf -B "$BUILD_DIR" flash
+fi
 
 case "$VARIANT" in
     dev)
