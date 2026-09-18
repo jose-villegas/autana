@@ -182,4 +182,13 @@ menu "Launcher"
             under that option: the clock is out of the panel's spec, which
             sharper edges cannot fix.
 
+    config LAUNCHER_SAND_PASS_GATES
+        bool "Sand: volatile gates for step-pass decomposition"
+        default n
+        depends on LAUNCHER_DEVELOPMENT
+        help
+            Compiles volatile gates for the sand step passes. A diagnostics
+            measurement can disable one gate for one step without changing
+            the linked image. Every gate starts enabled.
+
 endmenu

@@ -41,6 +41,22 @@
 #include "sand.h"
 #include "util/job.h"
 
+#if CONFIG_LAUNCHER_SAND_PASS_GATES
+extern volatile bool sand_step_gate_sweep;
+extern volatile bool sand_step_gate_sweep_body;
+extern volatile bool sand_step_gate_liquid_equalise;
+extern volatile bool sand_step_gate_liquid_density_sort;
+extern volatile bool sand_step_gate_gas;
+extern volatile bool sand_step_gate_reaction_local;
+extern volatile bool sand_step_gate_reaction_reach;
+
+#define SAND_STEP_GATE(name)        if (sand_step_gate_##name)
+#define SAND_STEP_GATED(name, cond) (sand_step_gate_##name && (cond))
+#else
+#define SAND_STEP_GATE(name)
+#define SAND_STEP_GATED(name, cond) (cond)
+#endif
+
 #define SAND_STRIPE_SPLIT_MIN_COUNT 4
 #define SAND_STRIPE_H_MIN           (2 * SAND_LIQUID_SIGHT + 1)
 #define SAND_STRIPE_H_MAX           SAND_BLOCK_H

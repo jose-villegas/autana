@@ -420,6 +420,86 @@ build_fire_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
  * is not the expensive case anyone is trying to fix. Two keeps it alight. */
 #define FIRE_WARMUP_STEPS 2
 #define FIRE_REPEATS      2
+
+#if CONFIG_LAUNCHER_SAND_PASS_GATES
+static void
+pass_gates_enable_all(void) {
+    sand_step_gate_sweep = true;
+    sand_step_gate_sweep_body = true;
+    sand_step_gate_liquid_equalise = true;
+    sand_step_gate_liquid_density_sort = true;
+    sand_step_gate_gas = true;
+    sand_step_gate_reaction_local = true;
+    sand_step_gate_reaction_reach = true;
+}
+
+static int64_t
+pass_gate_single_step_us(void (*build)(sand_t*, uint8_t*, uint8_t*), int warmup_steps, volatile bool* gate) {
+    int64_t best = INT64_MAX;
+
+    for (int repeat = 0; repeat < 3; repeat++) {
+        uint8_t* big = malloc(REAL_W * REAL_H);
+        uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
+        TEST_ASSERT_NOT_NULL(big);
+        TEST_ASSERT_NOT_NULL(blocks);
+
+        sand_t real;
+        pass_gates_enable_all();
+        build(&real, big, blocks);
+        for (int step = 0; step < warmup_steps; step++) {
+            sand_step(&real, 0, 1000, 0);
+        }
+
+        if (gate != NULL) {
+            *gate = false;
+        }
+        const int64_t t0 = esp_timer_get_time();
+        sand_step(&real, 0, 1000, 0);
+        const int64_t elapsed = esp_timer_get_time() - t0;
+        pass_gates_enable_all();
+
+        free(big);
+        free(blocks);
+        if (elapsed < best) {
+            best = elapsed;
+        }
+    }
+    return best;
+}
+
+static void
+report_pass_gate_scene(const char* scene, void (*build)(sand_t*, uint8_t*, uint8_t*), int warmup_steps) {
+    static const char* const names[] = {
+        "sweep", "sweep body", "liquid equalise", "liquid density sort", "gas", "reaction local", "reaction reach",
+    };
+    volatile bool* const gates[] = {
+        &sand_step_gate_sweep,
+        &sand_step_gate_sweep_body,
+        &sand_step_gate_liquid_equalise,
+        &sand_step_gate_liquid_density_sort,
+        &sand_step_gate_gas,
+        &sand_step_gate_reaction_local,
+        &sand_step_gate_reaction_reach,
+    };
+
+    const int64_t whole = pass_gate_single_step_us(build, warmup_steps, NULL);
+    ESP_LOGI("device_tests", "pass gates %s: every pass on: %lld us", scene, (long long)whole);
+    for (size_t gate = 0; gate < sizeof gates / sizeof gates[0]; gate++) {
+        const int64_t without = pass_gate_single_step_us(build, warmup_steps, gates[gate]);
+        const int64_t cost = whole - without;
+        ESP_LOGI("device_tests", "pass gates %s: %s: %lld us", scene, names[gate], (long long)cost);
+    }
+}
+
+static void
+test_the_water_and_fire_scenes_decompose_by_step_pass(void) {
+    const two_core_scope_t core = two_core_scope_begin(true);
+    report_pass_gate_scene("water", build_water_scene, 10);
+    report_pass_gate_scene("fire", build_fire_scene, FIRE_WARMUP_STEPS);
+    pass_gates_enable_all();
+    two_core_scope_end(core);
+}
+#endif
 #endif /* DEVICE_BUILD */
 
 #endif /* DEVICE_BUILD */
@@ -3927,6 +4007,9 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget);
     RUN_TEST(test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget);
     RUN_TEST(test_a_screen_of_water_fits_in_the_frame_budget);
+#if CONFIG_LAUNCHER_SAND_PASS_GATES
+    RUN_TEST(test_the_water_and_fire_scenes_decompose_by_step_pass);
+#endif
     RUN_TEST(test_the_xtensa_counters_over_three_scenes);
     /* Ungated: the two gas movers compare through sand_set_gas_walk(), an
      * ordinary API, so this runs in every diagnostics build. */

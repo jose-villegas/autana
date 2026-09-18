@@ -2733,9 +2733,11 @@ run_reaction_rows(sand_t* s, bool soak_only) {
     unsigned found = 0;
 
     if (!reactions_may_split(s, soak_only)) {
-        for (int y = 0; y < h; y++) {
-            found |=
-                soak_only ? step_one_reacting_row_liquid_near(s, y, w, h) : step_one_reacting_row(s, y, w, h, 0, w);
+        SAND_STEP_GATE(reaction_local) {
+            for (int y = 0; y < h; y++) {
+                found |=
+                    soak_only ? step_one_reacting_row_liquid_near(s, y, w, h) : step_one_reacting_row(s, y, w, h, 0, w);
+            }
         }
         return found;
     }
@@ -2743,17 +2745,21 @@ run_reaction_rows(sand_t* s, bool soak_only) {
     const int stripe_h = sand_stripe_height(h);
     const int offset = sand_stripe_offset(s);
     s->rng_hashed = true;
-    found |= react_run_phase(s, 0, w, h, stripe_h, offset);
-    found |= react_run_phase(s, 1, w, h, stripe_h, offset);
+    SAND_STEP_GATE(reaction_local) {
+        found |= react_run_phase(s, 0, w, h, stripe_h, offset);
+        found |= react_run_phase(s, 1, w, h, stripe_h, offset);
 
-    int guard_rows[REACT_GUARD_ROW_MAX];
-    const int guard_count = react_guard_row_list(h, stripe_h, offset, guard_rows, REACT_GUARD_ROW_MAX);
-    for (int gi = 0; gi < guard_count; gi++) {
-        found |= step_one_reacting_row(s, guard_rows[gi], w, h, 0, w);
+        int guard_rows[REACT_GUARD_ROW_MAX];
+        const int guard_count = react_guard_row_list(h, stripe_h, offset, guard_rows, REACT_GUARD_ROW_MAX);
+        for (int gi = 0; gi < guard_count; gi++) {
+            found |= step_one_reacting_row(s, guard_rows[gi], w, h, 0, w);
+        }
     }
     s->rng_hashed = false;
 
-    return found | sand_step_reaction_reach(s);
+    SAND_STEP_GATE(reaction_reach)
+    found |= sand_step_reaction_reach(s);
+    return found;
 }
 
 void
