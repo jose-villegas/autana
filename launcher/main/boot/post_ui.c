@@ -31,9 +31,9 @@
  * panel. */
 typedef struct {
     post_layout_t layout;
+    post_lines_t lines;
     ui_transform_t transform;
     int quarter;
-    int next_line;
 } report_pen_t;
 
 static int
@@ -62,11 +62,10 @@ draw_centred(const report_pen_t* pen, mu_Rect where, const char* text, int scale
 
 static bool
 take_line(report_pen_t* pen, mu_Rect* out) {
-    const mu_Rect line = post_layout_line(&pen->layout, pen->next_line);
+    const mu_Rect line = post_layout_take_line(&pen->layout, &pen->lines);
     if (line.w <= 0) {
         return false;
     }
-    pen->next_line++;
     *out = line;
     return true;
 }
@@ -172,10 +171,10 @@ draw_results(report_pen_t* pen, bool failures_only) {
             continue;
         }
 
-        mu_Rect air;
-        if (!draw_entry(pen, r, failed) || !take_line(pen, &air)) {
-            return; /* one blank line of air between entries */
+        if (!draw_entry(pen, r, failed)) {
+            return;
         }
+        post_layout_gap(&pen->layout, &pen->lines);
     }
 }
 
@@ -185,9 +184,9 @@ post_ui_draw_report(const post_ui_report_t* report) {
     const bool upright = quarter % 2 == 0;
     report_pen_t pen = {
         .layout = post_layout(gfx_font_ui(), upright ? GFX_WIDTH : GFX_HEIGHT, upright ? GFX_HEIGHT : GFX_WIDTH),
+        .lines = {0},
         .transform = ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT),
         .quarter = quarter,
-        .next_line = 0,
     };
 
     gfx_clear(gfx_rgb(BG_RGB));

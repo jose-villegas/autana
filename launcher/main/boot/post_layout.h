@@ -67,3 +67,18 @@ mu_Rect post_layout_column(const post_layout_t* l, int column);
 mu_Rect post_layout_line(const post_layout_t* l, int index);
 
 int post_layout_capacity(const post_layout_t* l);
+
+/* One pass down the columns, keeping its place. The layout stays immutable;
+ * this is the only thing that moves. */
+typedef struct {
+    int next;
+} post_lines_t;
+
+/* The line to draw the next run of text on, advancing the pass. Empty once
+ * the columns are full. */
+mu_Rect post_layout_take_line(const post_layout_t* l, post_lines_t* lines);
+
+/* Asks for a blank line - the air between one check and the next. A gap that
+ * would fall at the top of a column is dropped, so every column's first line
+ * carries text. */
+void post_layout_gap(const post_layout_t* l, post_lines_t* lines);

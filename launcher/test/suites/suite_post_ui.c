@@ -168,6 +168,140 @@ test_the_widest_report_line_fits_its_column_in_both_orientations(void) {
     assert_widest_line_fits_a_column(landscape());
 }
 
+/* A report laid out the way the drawer lays one out: each check's text lines
+ * in a run, a gap asked for after each. Records where the first text line of
+ * every column landed, which is what a reader sees as the columns' top edge. */
+typedef struct {
+    int placed;
+    int used_columns;
+    int first_y[POST_LAYOUT_LANDSCAPE_COLUMNS];
+} placement_t;
+
+static int
+column_of(const post_layout_t* l, mu_Rect line) {
+    return (line.x - l->body.x) / (l->column_w + l->column_gap);
+}
+
+static placement_t
+place_report(post_layout_t l, int checks, int lines_each) {
+    placement_t p = {0, 0, {0}};
+    for (int c = 0; c < POST_LAYOUT_LANDSCAPE_COLUMNS; c++) {
+        p.first_y[c] = -1;
+    }
+
+    post_lines_t lines = {0};
+    for (int check = 0; check < checks; check++) {
+        for (int i = 0; i < lines_each; i++) {
+            const mu_Rect line = post_layout_take_line(&l, &lines);
+            if (line.w <= 0) {
+                return p;
+            }
+            TEST_ASSERT_TRUE_MESSAGE(contains(l.body, line), "a placed line escaped the column band");
+
+            const int column = column_of(&l, line);
+            if (p.first_y[column] < 0) {
+                p.first_y[column] = line.y;
+                p.used_columns = column + 1;
+            }
+            p.placed++;
+        }
+        post_layout_gap(&l, &lines);
+    }
+    return p;
+}
+
+static void
+assert_every_column_starts_on_the_top_row(post_layout_t l, int checks, int lines_each) {
+    const placement_t p = place_report(l, checks, lines_each);
+
+    for (int c = 0; c < p.used_columns; c++) {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(l.body.y, p.first_y[c],
+                                      "a column's first text line sits below the body's top row");
+    }
+}
+
+/* Every run length in turn, so the case the sweep is really after - a check
+ * ending exactly on a column's last row, leaving the gap to fall at the top
+ * of the next - is covered wherever the divisors put it. */
+static void
+assert_no_run_length_pushes_a_column_down(post_layout_t l) {
+    for (int lines_each = 1; lines_each <= l.rows; lines_each++) {
+        assert_every_column_starts_on_the_top_row(l, post_layout_capacity(&l), lines_each);
+    }
+}
+
+static void
+test_no_column_starts_on_a_gap_in_either_orientation(void) {
+    assert_no_run_length_pushes_a_column_down(portrait());
+    assert_no_run_length_pushes_a_column_down(landscape());
+}
+
+/* The reported symptom, built on purpose rather than waited for: the pass
+ * filled to a column's last row, so the gap asked for next has nowhere to go
+ * but the following column's first row. Needs a second column to land in, so
+ * portrait reaches it through the sweep above instead. */
+static void
+assert_a_check_ending_on_the_last_row_costs_nothing(post_layout_t l) {
+    if (l.columns < 2) {
+        return;
+    }
+
+    post_lines_t lines = {0};
+    for (int i = 0; i < l.rows; i++) {
+        TEST_ASSERT_GREATER_THAN_INT(0, post_layout_take_line(&l, &lines).w);
+    }
+    post_layout_gap(&l, &lines);
+
+    const mu_Rect first = post_layout_take_line(&l, &lines);
+    TEST_ASSERT_GREATER_THAN_INT(0, first.w);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, column_of(&l, first), "the pass should have moved on to the second column");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(l.body.y, first.y,
+                                  "the gap after a check ending on a column's last row pushed the next column down");
+}
+
+static void
+test_a_check_ending_on_a_column_boundary_does_not_shift_the_next_column(void) {
+    assert_a_check_ending_on_the_last_row_costs_nothing(portrait());
+    assert_a_check_ending_on_the_last_row_costs_nothing(landscape());
+}
+
+/* Swallowing a gap at a column boundary must not cost a line anywhere else:
+ * a report with room to spare still gets every line it asked for. */
+static void
+assert_a_report_that_fits_loses_no_line(post_layout_t l) {
+    const int lines_each = 3;
+    const int checks = post_layout_capacity(&l) / (lines_each + 1);
+    TEST_ASSERT_GREATER_THAN_INT(0, checks);
+
+    const placement_t p = place_report(l, checks, lines_each);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(checks * lines_each, p.placed, "a report that fits lost text lines");
+}
+
+static void
+test_a_report_that_fits_loses_no_line_in_either_orientation(void) {
+    assert_a_report_that_fits_loses_no_line(portrait());
+    assert_a_report_that_fits_loses_no_line(landscape());
+}
+
+/* The pass stops where post_layout_line() does, so the two cannot disagree
+ * about how much the columns hold. */
+static void
+assert_the_pass_stops_at_capacity(post_layout_t l) {
+    post_lines_t lines = {0};
+    int placed = 0;
+    while (post_layout_take_line(&l, &lines).w > 0) {
+        placed++;
+        TEST_ASSERT_LESS_OR_EQUAL_INT(post_layout_capacity(&l), placed);
+    }
+    TEST_ASSERT_EQUAL_INT(post_layout_capacity(&l), placed);
+}
+
+static void
+test_the_pass_places_exactly_the_capacity_in_either_orientation(void) {
+    assert_the_pass_stops_at_capacity(portrait());
+    assert_the_pass_stops_at_capacity(landscape());
+}
+
 static void
 test_the_column_count_follows_the_orientation(void) {
     TEST_ASSERT_EQUAL_INT(POST_LAYOUT_PORTRAIT_COLUMNS, portrait().columns);
@@ -197,6 +331,10 @@ suite_post_ui(void) {
     RUN_TEST(test_the_bands_stack_without_touching_in_both_orientations);
     RUN_TEST(test_the_title_is_horizontally_centred_in_both_orientations);
     RUN_TEST(test_the_widest_report_line_fits_its_column_in_both_orientations);
+    RUN_TEST(test_no_column_starts_on_a_gap_in_either_orientation);
+    RUN_TEST(test_a_check_ending_on_a_column_boundary_does_not_shift_the_next_column);
+    RUN_TEST(test_a_report_that_fits_loses_no_line_in_either_orientation);
+    RUN_TEST(test_the_pass_places_exactly_the_capacity_in_either_orientation);
     RUN_TEST(test_the_column_count_follows_the_orientation);
     RUN_TEST(test_landscape_holds_at_least_as_many_lines_as_portrait);
 }
