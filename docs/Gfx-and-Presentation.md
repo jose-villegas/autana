@@ -291,8 +291,19 @@ angle while the app rows turn in quarters. It holds boot's landscape pose for
 its first 700 ms, since boot knows no orientation, then eases to level.
 Easing never quite arrives and a hand is never still, so the pose is redrawn
 only once it is half a degree from the one on screen, and put exactly level
-once down has held still for 300 ms. On a desk the launcher is idle again; in
-a hand it redraws when the hand moves.
+once down has held still for 300 ms.
+
+It is also never quite still (`ui/ridge_motion.h`, pure and host-tested). It
+**breathes**: every 9 s its rest shape eases toward a smoothed copy of the
+ridge and back to the rigid original. A **wave** 2.5 px high runs along it.
+And the wave has **momentum**: while the device turns, the line lags true
+level, so for that moment the ridge is a slope - the sine of the lag - and
+the wave is pushed down it and coasts on after. All three come in over 1.5 s
+after the line is released; at the hand-over from boot the line is rigid, on
+the photograph. The price is that the launcher draws every frame, and a frame
+in which the ridge moves is close to a full send. `ui_ridge_set_ambient()`
+turns it off, which previews do: without it the launcher is idle whenever it
+is untouched and level.
 
 Cost follows lit pixels: Cerro Autana's ridge at radius 13 lights about
 16,600 of them. A curve spanning the view touches most bands at any pose, so

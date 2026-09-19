@@ -21,6 +21,7 @@
 
 #include "gfx/gfx.h"
 #include "ui/ridge_curve_generated.h"
+#include "ui/ridge_motion.h"
 #include "util/spring_line.h"
 
 #if defined(ESP_PLATFORM)
@@ -30,50 +31,54 @@
 #define RIDGE_ALLOC(bytes) malloc(bytes)
 #endif
 
-#define GLOW_RADIUS_PX    13
-#define GLOW_CORE_PX      3
-#define GLOW_CORE_RGB     0xFFFFFF
-#define GLOW_HALO_RGB     0x38D6E8
+#define GLOW_RADIUS_PX     13
+#define GLOW_CORE_PX       3
+#define GLOW_CORE_RGB      0xFFFFFF
+#define GLOW_HALO_RGB      0x38D6E8
 
 /* A tap flicks the line up; a finger drawn along it plucks it again every
  * STRUM_STEP_PX. Velocities are pixels per spring tick. */
-#define TOUCH_HALF_WIDTH  24
-#define TAP_VELOCITY      (-(SPRING_LINE_ONE * 3 / 2))
-#define STRUM_VELOCITY    (-(SPRING_LINE_ONE / 2))
-#define STRUM_STEP_PX     12
+#define TOUCH_HALF_WIDTH   24
+#define TAP_VELOCITY       (-(SPRING_LINE_ONE * 3 / 2))
+#define STRUM_VELOCITY     (-(SPRING_LINE_ONE / 2))
+#define STRUM_STEP_PX      12
 
 /* Shaking plucks the line at random, harder the harder it is shaken. */
-#define SHAKE_THRESHOLD   48
-#define SHAKE_HALF_WIDTH  16
+#define SHAKE_THRESHOLD    48
+#define SHAKE_HALF_WIDTH   16
+
+/* Breathing and the wave come in over this long once the line is released.
+ * Until then it is rigid: at the hand-over it has to lie on the photograph. */
+#define AMBIENT_FADE_IN_MS 1500
 
 /* How long the line keeps boot's pose before gravity gets it. */
-#define RELEASE_MS        700
+#define RELEASE_MS         700
 
 /* How long the line takes to cover about two thirds of a turn toward level. */
-#define LEVEL_TAU_MS      220
+#define LEVEL_TAU_MS       220
 
 /* Below this share of a g in the screen plane the device is lying too flat
  * for "down" to mean anything, and the line keeps the level it had. Out of
  * 256. */
-#define MIN_TILT_STRENGTH 64
+#define MIN_TILT_STRENGTH  64
 
 /* A pose is redrawn once it is this far, in Q14, from the one on screen:
  * about half a degree. A hand is never still; this is what keeps a held
  * device from redrawing every frame for a change nobody could see. */
-#define POSE_REDRAW_STEP  143
+#define POSE_REDRAW_STEP   143
 
 /* Easing never quite arrives, and the step above would let the line rest
  * half a degree off level. Once down has held within LEVEL_STEADY_STEP (a
  * tenth of a degree) for LEVEL_STEADY_MS - a desk, not a hand - the line is
  * put exactly level and drawn once more. */
-#define LEVEL_STEADY_STEP 29
-#define LEVEL_STEADY_MS   300
+#define LEVEL_STEADY_STEP  29
+#define LEVEL_STEADY_MS    300
 
 /* What becomes of the light the line leaves behind as it moves, out of 256
  * per redraw: 0 wipes it, 255 never does, between is a trail that fades. */
-#define RIDGE_TRAIL       32
+#define RIDGE_TRAIL        32
 
-#define POSE_LANDSCAPE    ((gfx_glow_pose_t){-GFX_GLOW_POSE_ONE, 0})
+#define POSE_LANDSCAPE     ((gfx_glow_pose_t){-GFX_GLOW_POSE_ONE, 0})
 
 typedef struct {
     spring_line_t line;
@@ -82,6 +87,10 @@ typedef struct {
     int32_t offset[RIDGE_CURVE_POINTS];
     int32_t velocity[RIDGE_CURVE_POINTS];
     int16_t heights[RIDGE_CURVE_POINTS];
+    int16_t smooth[RIDGE_CURVE_POINTS];
+    int16_t shape[RIDGE_CURVE_POINTS];
+    ridge_motion_t motion;
+    bool ambient;
     int16_t span_lo[RIDGE_CURVE_POINTS];
     int16_t span_hi[RIDGE_CURVE_POINTS];
     int16_t reach_lo[RIDGE_CURVE_POINTS];
@@ -119,6 +128,9 @@ allocate_once(void) {
     spring_line_init(&ridge->line, ridge->offset, ridge->velocity, RIDGE_CURVE_POINTS);
     gfx_glow_style_set(&ridge->style, GLOW_RADIUS_PX, GLOW_CORE_PX, GLOW_CORE_RGB, GLOW_HALO_RGB);
     memcpy(ridge->heights, ridge_curve_y, sizeof ridge->heights);
+    ridge_motion_smooth(ridge_curve_y, ridge->smooth, ridge->shape, RIDGE_CURVE_POINTS);
+    memcpy(ridge->shape, ridge_curve_y, sizeof ridge->shape);
+    ridge->ambient = true;
     ridge->field = (gfx_glow_field_t){
         .span_lo = ridge->span_lo,
         .span_hi = ridge->span_hi,
@@ -148,6 +160,14 @@ ui_ridge_set_gravity(int gx, int gy, int strength, int shake) {
     if (length > 0) {
         ridge->level.down_x = (int32_t)((int64_t)gx * GFX_GLOW_POSE_ONE / length);
         ridge->level.down_y = (int32_t)((int64_t)gy * GFX_GLOW_POSE_ONE / length);
+    }
+}
+
+void
+ui_ridge_set_ambient(bool on) {
+    allocate_once();
+    if (ridge != NULL) {
+        ridge->ambient = on;
     }
 }
 
@@ -203,6 +223,33 @@ pluck_from_touch(const input_t* input) {
     } else if (abs(x - ridge->last_pluck_x) >= STRUM_STEP_PX) {
         spring_line_poke(&ridge->line, x, TOUCH_HALF_WIDTH, STRUM_VELOCITY);
         ridge->last_pluck_x = x;
+    }
+}
+
+/* How steeply the line runs downhill toward its last column, Q14: the part
+ * of true down that lies along the line, which is nothing once it is level
+ * and most while a turn is still being caught up with. */
+static int32_t
+slope_along_the_line(void) {
+    const int64_t right_x = ridge->pose.down_y;
+    const int64_t right_y = -ridge->pose.down_x;
+    return (int32_t)((ridge->level.down_x * right_x + ridge->level.down_y * right_y) / GFX_GLOW_POSE_ONE);
+}
+
+/* The shape the line rests at this frame: the rigid ridge, breathing and
+ * carrying its wave once released. */
+static void
+shape_this_frame(uint32_t dt_ms) {
+    if (!ridge->ambient || ridge->alive_ms < RELEASE_MS) {
+        memcpy(ridge->shape, ridge_curve_y, sizeof ridge->shape);
+        return;
+    }
+    ridge_motion_advance(&ridge->motion, dt_ms, slope_along_the_line());
+    const uint32_t released_for = ridge->alive_ms - RELEASE_MS;
+    const int gain = released_for >= AMBIENT_FADE_IN_MS ? 256 : (int)(released_for * 256 / AMBIENT_FADE_IN_MS);
+    for (int x = 0; x < RIDGE_CURVE_POINTS; x++) {
+        const int moved = ridge_motion_height(&ridge->motion, ridge_curve_y[x], ridge->smooth[x], x) - ridge_curve_y[x];
+        ridge->shape[x] = (int16_t)(ridge_curve_y[x] + moved * gain / 256);
     }
 }
 
@@ -283,12 +330,11 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     pluck_from_touch(input);
     pluck_from_shaking();
 
-    bool line_moved = false;
-    if (spring_line_advance(&ridge->line, dt_ms) > 0) {
-        int lo, hi;
-        spring_line_apply(&ridge->line, ridge_curve_y, ridge->heights, &lo, &hi);
-        line_moved = hi > lo;
-    }
+    shape_this_frame(dt_ms);
+    spring_line_advance(&ridge->line, dt_ms);
+    int lo, hi;
+    spring_line_apply(&ridge->line, ridge->shape, ridge->heights, &lo, &hi);
+    const bool line_moved = hi > lo;
     if (line_moved) {
         gfx_glow_field_prepare(&ridge->field, ridge->heights, &ridge->style);
     }

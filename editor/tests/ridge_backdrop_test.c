@@ -77,6 +77,10 @@ main(void) {
     }
     ui_set_transform(ui_transform_identity());
 
+    /* Still first: breathing and the wave never rest, and what follows is
+     * about what the launcher costs when nothing moves. */
+    ui_ridge_set_ambient(false);
+
     /* Held upright in portrait from the first frame: down is the panel's +y,
      * a quarter turn from the landscape pose boot hands over in. */
     ui_ridge_set_gravity(0, 4096, 256, 0);
@@ -141,6 +145,31 @@ main(void) {
     expect(!frame(false, false) && !frame(false, false), "and then sends nothing again");
     expect(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) == 0,
            "at rest the screen is the settled one exactly: no trail, and the app rows intact");
+
+    /* Breathing and the wave: the launcher draws on, never strays far from
+     * the ridge, and turned off again is back on the settled screen with
+     * nothing left behind. */
+    ui_ridge_set_ambient(true);
+    int ambient_frames_sending = 0;
+    size_t most_lit = 0;
+    size_t least_lit = PIXELS;
+    for (int i = 0; i < 400; i++) {
+        ambient_frames_sending += frame(false, false);
+        const size_t lit = lit_pixels(gfx_framebuffer());
+        most_lit = lit > most_lit ? lit : most_lit;
+        least_lit = lit < least_lit ? lit : least_lit;
+    }
+    expect(ambient_frames_sending > 300, "with its ambient motion on, the ridge keeps moving");
+    expect(least_lit > lit_pixels(settled) * 8 / 10 && most_lit < lit_pixels(settled) * 12 / 10,
+           "and stays one line of about the same light, not a smear");
+
+    ui_ridge_set_ambient(false);
+    for (int i = 0; i < 40; i++) {
+        frame(false, false);
+    }
+    expect(!frame(false, false), "turned off, the launcher is idle again");
+    expect(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) == 0,
+           "on exactly the settled screen: the motion left nothing behind");
 
     free(settled);
     return failures;

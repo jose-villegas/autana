@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "app.h"
@@ -9,6 +10,11 @@
  * line eases toward level with it; never called, the line keeps boot's
  * landscape pose. */
 void ui_ridge_set_gravity(int gx, int gy, int strength, int shake);
+
+/* Breathing and the wave along the line, on unless turned off. With them the
+ * launcher draws every frame; without, it is idle whenever untouched and
+ * level - for a preview, or a test that needs a still picture. */
+void ui_ridge_set_ambient(bool on);
 
 /* Puts the line at level now, with no easing and no hold after boot - for a
  * caller with no time to pass, such as a preview. */
