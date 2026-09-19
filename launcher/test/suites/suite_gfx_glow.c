@@ -277,7 +277,6 @@ static int16_t posed_spans[4][PANEL_H];
 static int16_t lit_lo[PANEL_H];
 static int16_t lit_hi[PANEL_H];
 static int posed_trail;
-static int posed_trailing;
 
 static gfx_glow_field_t
 posed_field(void) {
@@ -295,8 +294,7 @@ forget_what_was_lit(void) {
 static void
 draw_posed(const gfx_glow_field_t* field, int down_x, int down_y) {
     gfx_glow_draw_posed_rows(whole_panel(), 0, 0, PANEL_W, PANEL_H, PANEL_W, PANEL_H, field, PANEL_W,
-                             (gfx_glow_pose_t){down_x, down_y}, 0, PANEL_H, lit_lo, lit_hi, posed_trail,
-                             &posed_trailing, style);
+                             (gfx_glow_pose_t){down_x, down_y}, 0, PANEL_H, lit_lo, lit_hi, posed_trail, style);
 }
 
 static void
@@ -457,23 +455,33 @@ test_a_fading_trail_dims_then_ends_on_the_clean_picture(void) {
     const int on_the_first_curve_x = PANEL_W - 1 - (heights[10] >> GFX_GLOW_Q_SHIFT);
     const int lit_at_first = brightness(pixels[10 * PANEL_W + on_the_first_curve_x]);
 
-    posed_trailing = 0;
     draw_posed(&field, 0, GFX_GLOW_POSE_ONE);
     const int a_draw_later = brightness(pixels[10 * PANEL_W + on_the_first_curve_x]);
     TEST_ASSERT_TRUE(a_draw_later > 0 && a_draw_later < lit_at_first);
-    TEST_ASSERT_GREATER_THAN_INT(0, posed_trailing);
 
-    int draws = 0;
-    while (posed_trailing > 0 && draws < 200) {
-        posed_trailing = 0;
+    for (int draw_index = 1; draw_index < gfx_glow_trail_draws(200); draw_index++) {
         draw_posed(&field, 0, GFX_GLOW_POSE_ONE);
-        draws++;
     }
-    TEST_ASSERT_LESS_THAN_INT(200, draws);
     TEST_ASSERT_EQUAL_MEMORY(clean, pixels, sizeof(gfx_color_t) * PANEL_W * PANEL_H);
     posed_trail = 0;
     free(clean);
     fixture_end();
+}
+
+static void
+test_trail_draws_is_how_long_white_takes_to_go_black(void) {
+    TEST_ASSERT_EQUAL_INT(0, gfx_glow_trail_draws(0));
+    TEST_ASSERT_EQUAL_INT(0, gfx_glow_trail_draws(255));
+    const int trails[] = {1, 32, 128, 200, 232, 254};
+    for (size_t t = 0; t < sizeof trails / sizeof trails[0]; t++) {
+        gfx_color_t colour = GFX_RGB(0xFFFFFF);
+        int draws = 0;
+        while (colour != GFX_RGB(0x000000) && draws < 10000) {
+            colour = gfx_glow_dim(colour, trails[t]);
+            draws++;
+        }
+        TEST_ASSERT_EQUAL_INT(draws, gfx_glow_trail_draws(trails[t]));
+    }
 }
 
 static void
@@ -511,6 +519,7 @@ suite_gfx_glow(void) {
     RUN_TEST(test_a_turned_curve_keeps_its_width);
     RUN_TEST(test_a_trail_that_is_never_cleared_keeps_where_the_curve_was);
     RUN_TEST(test_a_fading_trail_dims_then_ends_on_the_clean_picture);
+    RUN_TEST(test_trail_draws_is_how_long_white_takes_to_go_black);
     RUN_TEST(test_dimming_a_grey_keeps_it_grey_all_the_way_to_black);
 }
 
