@@ -9,10 +9,11 @@ or a device capture (tools/screenshot.sh writes a PNG plus a .json sidecar).
 ORIENTATION IS DECLARED, NEVER GUESSED. A device capture is always the
 framebuffer the way the panel holds it - 368 x 448 - whatever the shell was
 rotated to at the time; the sidecar's orientation_quarter says which
-rotation that was, and is reported here rather than applied. A host render
-is panel-native too unless it was asked for the read orientation, which
-comes out 448 x 368; such a side needs its quarter stated so it can be
-turned back. Everything is compared in panel coordinates.
+rotation that was, and is reported here rather than applied. State the
+quarter for anything that is a render: a quarter turn comes out 448 x 368
+and is refused without one, and half a turn keeps the panel's own shape
+while still being upside down, which no size can reveal. Everything is
+compared in panel coordinates.
 
 MASKS COVER WHAT THE SHELL DRAWS AND A SCENE DOES NOT - the development
 build's corner mark, the swipe-home strip. They are declared in
@@ -178,15 +179,31 @@ def sidecar_quarter(path):
 
 def to_panel(image, quarter, label):
     """The same frame in panel coordinates, turning a read-orientation image
-    back by the quarter it was rendered at."""
-    if (image.width, image.height) == (PANEL_WIDTH, PANEL_HEIGHT):
-        return image
-    if (image.width, image.height) != (PANEL_HEIGHT, PANEL_WIDTH):
+    back by the quarter it was rendered at.
+
+    Half a turn keeps the panel's own shape, so an image that is already
+    368 x 448 is not proof of anything: a quarter-2 render is that shape and
+    still upside down. Only an undeclared quarter is taken as panel-native,
+    which is what a capture always is."""
+    upright = (image.width, image.height) == (PANEL_WIDTH, PANEL_HEIGHT)
+    turned = (image.width, image.height) == (PANEL_HEIGHT, PANEL_WIDTH)
+    if not upright and not turned:
         raise SystemExit("%s: %dx%d is neither the panel nor a quarter turn of it"
                          % (label, image.width, image.height))
     if quarter is None:
-        raise SystemExit("%s is %dx%d, so it is in the read orientation - say which "
-                         "quarter it was rendered at" % (label, image.width, image.height))
+        if turned:
+            raise SystemExit("%s is %dx%d, so it is in the read orientation - say "
+                             "which quarter it was rendered at"
+                             % (label, image.width, image.height))
+        return image
+    if quarter % 2 == 0 and turned:
+        raise SystemExit("%s is %dx%d, which quarter %d never produces"
+                         % (label, image.width, image.height, quarter))
+    if quarter % 2 == 1 and upright:
+        raise SystemExit("%s is %dx%d, which quarter %d never produces"
+                         % (label, image.width, image.height, quarter))
+    if quarter == 0:
+        return image
 
     rows = []
     for y in range(PANEL_HEIGHT):
@@ -196,11 +213,10 @@ def to_panel(image, quarter, label):
             # pixel came from in the upright logical canvas.
             if quarter == 1:
                 sx, sy = y, PANEL_WIDTH - 1 - x
-            elif quarter == 3:
-                sx, sy = image.width - 1 - y, x
+            elif quarter == 2:
+                sx, sy = PANEL_WIDTH - 1 - x, PANEL_HEIGHT - 1 - y
             else:
-                raise SystemExit("%s: quarter %d is not a turn that changes the shape"
-                                 % (label, quarter))
+                sx, sy = PANEL_HEIGHT - 1 - y, x
             row[x * 3:x * 3 + 3] = image.rows[sy][sx * 3:sx * 3 + 3]
         rows.append(bytes(row))
     return Image(PANEL_WIDTH, PANEL_HEIGHT, rows)
