@@ -158,11 +158,11 @@ grid_circle_point(int32_t radius, int32_t t, int steps, int step, const boot_ani
     int32_t re, im;
     polar_point(radius, turn, &re, &im);
     *cs = boot_anim_to_camera_space(re, im, t, view);
-    *front = cs->z > BOOT_ANIM_NEAR_Z;
+    *front = cs->z > view->near_z;
     *sx = 0;
     *sy = 0;
     if (*front) {
-        boot_anim_camera_to_screen(*cs, view->focal, sx, sy);
+        r3d_camera_to_screen(*cs, view, sx, sy);
     }
 }
 
@@ -175,7 +175,7 @@ draw_grid_circle_segment(bool prev_front, bool front, int prev_sx, int prev_sy, 
     }
     if (prev_front != front) {
         int ax, ay, bx, by;
-        if (boot_anim_project_segment_cs(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
+        if (r3d_project_segment_cs(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
             gfx_line_ex(ax, ay, bx, by, c, 0u);
         }
     }
@@ -237,7 +237,7 @@ draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool da
         const bool draw_segment = !dash || ((step / BOOT_ANIM_GRID_SPOKE_DASH_STEPS) % 2) == 1;
         if (have_prev && draw_segment) {
             int ax, ay, bx, by;
-            if (boot_anim_project_segment_cs(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
+            if (r3d_project_segment_cs(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
                 gfx_line_ex(ax, ay, bx, by, c, 0u);
             }
         }
@@ -251,7 +251,7 @@ draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool da
         polar_point(target, turn, &re, &im);
         const S3L_Vec4 cs = boot_anim_to_camera_space(re, im, 0, view);
         int ax, ay, bx, by;
-        if (boot_anim_project_segment_cs(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
+        if (r3d_project_segment_cs(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
             gfx_line_ex(ax, ay, bx, by, c, 0u);
         }
     }
@@ -495,15 +495,14 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
     S3L_Vec4 ta = boot_anim_to_camera_space(s0.re, s0.im, s0.t, view);
     S3L_Vec4 tb = boot_anim_to_camera_space(s1.re, s1.im, s1.t, view);
     /* Kept in CAMERA space across the loop - see
-     * boot_anim_project_segment_cs() for explanation. */
+     * r3d_project_segment_cs() for explanation. */
     S3L_Vec4 prev_cs = tb;
     /* Cached position for perspective division if prev_front indicates point
-     * in front. Straddling segments use boot_anim_project_segment_cs()'s
-     * clip. */
-    bool prev_front = prev_cs.z > BOOT_ANIM_NEAR_Z;
+     * in front. Straddling segments use r3d_project_segment_cs()'s clip. */
+    bool prev_front = prev_cs.z > view->near_z;
     int prev_sx = 0, prev_sy = 0;
     if (prev_front) {
-        boot_anim_camera_to_screen(prev_cs, view->focal, &prev_sx, &prev_sy);
+        r3d_camera_to_screen(prev_cs, view, &prev_sx, &prev_sy);
     }
     /* GFX_LINE_OPEN's `joined` comment: near-plane skips cause gaps; next
      * segment must skip start pixel. */
@@ -536,13 +535,13 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
             const int32_t t = (limit * step) / steps;
 
             const S3L_Vec4 next_cs = boot_anim_spline_cs(ta, tb, tc, t);
-            const bool next_front = next_cs.z > BOOT_ANIM_NEAR_Z;
+            const bool next_front = next_cs.z > view->near_z;
 
             if (prev_front && next_front) {
                 /* Near-plane clip inapplicable, project one point, reuse
                  * cached one. */
                 int nsx, nsy;
-                boot_anim_camera_to_screen(next_cs, view->focal, &nsx, &nsy);
+                r3d_camera_to_screen(next_cs, view, &nsx, &nsy);
                 draw_stroke(prev_sx, prev_sy, nsx, nsy, span_c, s.width, joined);
                 joined = true;
                 prev_sx = nsx;
@@ -551,7 +550,7 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
                 /* Straddles the near plane - the one case the pairwise
                  * clip exists for. */
                 int ax, ay, bx, by;
-                if (boot_anim_project_segment_cs(prev_cs, next_cs, view, &ax, &ay, &bx, &by)) {
+                if (r3d_project_segment_cs(prev_cs, next_cs, view, &ax, &ay, &bx, &by)) {
                     draw_stroke(ax, ay, bx, by, span_c, s.width, joined);
                     joined = true;
                     if (next_front) {
