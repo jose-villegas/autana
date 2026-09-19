@@ -8,8 +8,8 @@ its own set. Eight files, two jobs:
 **How it works today:**
 
 - **[Sand-Simulation.md](Sand-Simulation.md)** — the app in depth:
-  materials, the liquid model, momentum, chemistry, the performance
-  budget every design choice answers to.
+  materials, the liquid model, gas and fire chemistry, temperature, the
+  two-core sweep, the performance budget every design choice answers to.
 - **[Architecture.md](Architecture.md)** — a single-page map of
   `main/apps/sand/`'s shape (the grid byte, the material table, the file
   split) rather than the reasoning behind it.

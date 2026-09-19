@@ -25,9 +25,9 @@ removing one touches no other file. Currently:
 - **Falling Sand** — a cellular-automaton sandbox with sand, water and
   stone, steered by tilting the board and poured with a touch. The most
   substantial piece of engineering in this repo: a flash-resident material
-  system, a hybrid mass-diffusion water model, gyroscope-driven momentum for
-  a wall-rebound splash, and a device-verified performance budget for every
-  hot path. See `docs/sand/Sand-Simulation.md`.
+  system, a hybrid mass-diffusion water model, one impulse mechanism behind
+  explosions, thrown chunks and water's own splash, and a device-verified
+  performance budget for every hot path. See `docs/sand/Sand-Simulation.md`.
 - **3D Cube** — a Gouraud-shaded software rasterizer, no GPU.
 - **Diagnostics** — a bench tool: a hardware self-test (POST) report plus a
   developer-toggles page; ships in any development build (`--dev` or the
@@ -84,7 +84,7 @@ this, not a tour. Start wherever your question is:
 | [`docs/Building-an-App.md`](docs/Building-an-App.md) | Start here to write an app: the `app_t` endpoints, registration, the lifecycle the shell drives, and the folder convention. |
 | [`docs/Gfx-and-Presentation.md`](docs/Gfx-and-Presentation.md) | How a draw call reaches the panel: the three draw targets, the dirty tracker, the present path, the band ring, heal. |
 | [`docs/Text-and-Fonts.md`](docs/Text-and-Fonts.md) | The two kinds of font, the text calls, font roles, text in a microui screen, and how to add a typeface. |
-| [`docs/sand/Sand-Simulation.md`](docs/sand/Sand-Simulation.md) | The falling-sand app in depth: materials, the water model, momentum, and the performance numbers behind every design choice. |
+| [`docs/sand/Sand-Simulation.md`](docs/sand/Sand-Simulation.md) | The falling-sand app in depth: materials, the water model, gas and fire chemistry, temperature, the two-core sweep, and the performance numbers behind every design choice. |
 | [`docs/notes/`](docs/notes/README.md) | Board-specific hardware notes: the memory budget, panel and touch gotchas, flashing and recovery. Split by topic - start at the index. |
 | [`docs/C-Style-Guide.md`](docs/C-Style-Guide.md) | The C style: what the formatter decides, what judgment decides, and how the pre-commit hook and CI keep the tree from drifting. |
 | [`docs/Testing-Guide.md`](docs/Testing-Guide.md) | How the host and on-device test suites work, how to run one suite on the board, and how to make code testable. |
