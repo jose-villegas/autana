@@ -6,6 +6,9 @@ failures are what a reader actually sees first.
 
 Usage:
     python tools/report_test_results.py <raw_capture.txt> <out.md>
+
+Exit 0 = every test passed, 1 = the report records a failing test (a result
+to read, not an error), 2 = the capture has nothing in it to report on.
 """
 import argparse
 import re
@@ -34,6 +37,14 @@ def main() -> int:
         m = RESULT_RE.match(line.strip())
         if m:
             results.append(m.groupdict())
+
+    if not results:
+        # "0 tests, 0 passed, 0 failed" used to be written out and reported as
+        # success, which is how a capture of an image with no suites in it
+        # read as a clean run. A report of nothing is not a report.
+        print(f"{args.capture_path} contains no test results - nothing ran, so "
+              "there is no report to write.", file=sys.stderr)
+        return 2
 
     complete = COMPLETE_RE.search(text)
     failures_reported = int(complete.group(1)) if complete else None

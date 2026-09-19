@@ -1,80 +1,50 @@
-#!/usr/bin/env bash
+#!/bin/sh
 #
-# One-click boot_anim perf report: build+flash build.diag (autorun OFF, so
-# the shell - and its RUNSUITE listener, see main/util/screenshot.c - comes
-# up in seconds instead of after a full alphabetical suite run), trigger
-# just suite_boot_anim_perf.c via RUNSUITE, capture its output, and write a
+# One-click boot_anim perf report: build+flash the diagnostics image with the
+# suites compiled in but NOT running at boot, so the shell - and its RUNSUITE
+# listener, see main/util/screenshot.c - comes up in seconds; trigger just
+# suite_boot_anim_perf.c via RUNSUITE, capture its output, and write a
 # markdown report of the six-checkpoint breakdown.
 #
-# Needs the RUNSUITE console command - see main/util/screenshot.c and
-# test/suites.c's suites_run_one(). Without it this has nothing to send and
-# would just capture a plain shell boot with no perf data in it.
+# Declaring a suite is what selects that image: see tools/device_report.sh.
 #
 # Usage:
-#   tools/report_boot_anim_perf.sh [COM_PORT] [OUT.md] [IDF_EXPORT_PS1]
+#   tools/report_boot_anim_perf.sh [--no-restore] [COM_PORT] [OUT.md] \
+#       [IDF_EXPORT]
 #
-#   COM_PORT        serial port the device is on. Default: COM3.
-#   OUT.md          markdown report path. Default:
-#                   tools/results/boot_anim_perf_<timestamp>.md
-#   IDF_EXPORT_PS1  path to ESP-IDF's export.ps1. Default: the ESP-IDF
-#                   Windows installer's path.
+#   COM_PORT     serial port the device is on. Found by USB identity when
+#                omitted - see tools/find_port.sh.
+#   OUT.md       markdown report path. Default:
+#                tools/results/boot_anim_perf_<timestamp>.md
+#   IDF_EXPORT   path to ESP-IDF's export script. Default: build_flash.sh's.
+#   --no-restore leave the device on the diagnostics image afterwards.
 #
-# Restores build.release afterward, regardless of outcome - see
-# tools/report_test_results.sh's own top comment for why.
+# Everything this does beyond the declarations below - which image, deleting
+# a build directory's sdkconfig that disagrees, asserting the flags took,
+# capturing, validating, restoring release - is tools/device_report.sh.
 
-set -euo pipefail
+set -eu
 
-COM_PORT="${1:-COM3}"
-OUT_MD="${2:-}"
-IDF_EXPORT_PS1="${3:-C:\\Espressif\\esp-idf-v5.5\\export.ps1}"
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LAUNCHER_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-LAUNCHER_DIR_WIN="$(cd "$LAUNCHER_DIR" && pwd -W 2>/dev/null || echo "$LAUNCHER_DIR")"
+report_name=boot_anim_perf
+report_dir="$SCRIPT_DIR/results"
+report_suite=run_boot_anim_perf_suite
 
-RESULTS_DIR="$SCRIPT_DIR/results"
-mkdir -p "$RESULTS_DIR"
-TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
-if [ -z "$OUT_MD" ]; then
-    OUT_MD="$RESULTS_DIR/boot_anim_perf_$TIMESTAMP.md"
-fi
-RAW_CAPTURE="$RESULTS_DIR/boot_anim_perf_${TIMESTAMP}_raw.txt"
+# A fixed window after the command is sent: no completion marker is generic
+# across suites the way SELFTEST_COMPLETE is for a whole run, so a short
+# timeout truncates the tail of the capture rather than erroring.
+report_timeout=60
 
-cleanup() {
-    local status=$?
-    echo "=== Restoring build.release ==="
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
-        Remove-Item Env:\MSYSTEM -ErrorAction SilentlyContinue
-        & '$IDF_EXPORT_PS1' | Out-Null
-        Set-Location '$LAUNCHER_DIR_WIN'
-        idf.py -B build.release build
-        idf.py -B build.release -p '$COM_PORT' flash
-    " || echo "WARNING: could not restore build.release - device may still be on build.diag"
-    if [ "$status" -ne 0 ]; then
-        echo
-        echo "=== FAILED (exit $status) ==="
-    fi
-    read -r -p "Press Enter to close..." _
+# The header each checkpoint prints before its own breakdown. Without one,
+# the RUNSUITE line never reached a listener, or the suite is not in the
+# image.
+report_sentinel="boot_anim_perf: === BOOT_ANIM PERF"
+
+report_generate() {
+    python "$SCRIPT_DIR/report_boot_anim_perf.py" "$1" "$2"
 }
-trap cleanup EXIT
 
-echo "=== Building and flashing build.diag (autorun OFF) to $COM_PORT ==="
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
-    Remove-Item Env:\MSYSTEM -ErrorAction SilentlyContinue
-    & '$IDF_EXPORT_PS1' | Out-Null
-    Set-Location '$LAUNCHER_DIR_WIN'
-    idf.py -B build.diag -D SDKCONFIG_DEFAULTS=\"sdkconfig.defaults;sdkconfig.defaults.diag\" -D SDKCONFIG=build.diag/sdkconfig build
-    if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
-    idf.py -B build.diag -p '$COM_PORT' flash
-    exit \$LASTEXITCODE
-"
-
-echo "=== Triggering RUNSUITE run_boot_anim_perf_suite and capturing output ==="
-python "$LAUNCHER_DIR/tools/sweeps/capture_runsuite.py" run_boot_anim_perf_suite \
-    "$RAW_CAPTURE" --port "$COM_PORT" --timeout 60
-
-echo "=== Generating boot_anim perf report ==="
-python "$SCRIPT_DIR/report_boot_anim_perf.py" "$RAW_CAPTURE" "$OUT_MD"
-
-echo "=== Report:       $OUT_MD ==="
-echo "=== Raw capture:  $RAW_CAPTURE ==="
+# shellcheck source=./device_report.sh
+. "$SCRIPT_DIR/device_report.sh"
+device_report_run "$@"
