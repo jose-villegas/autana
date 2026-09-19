@@ -286,9 +286,9 @@ gas_is_in_pocket(const sand_t* s) {
     return CELL_MATERIAL(sand_at(s, POCKET_GAS_X, POCKET_GAS_Y)) == MAT_GAS;
 }
 
-/* Runs the pocket for the full step budget whatever the suite's criterion
- * says, so a gas cell that left the pocket without ever being seen at
- * y >= exit is still counted as having left. */
+/* Runs the full step budget whatever either criterion says, so a gas cell
+ * that left the pocket without ever being seen at y >= exit is still
+ * counted as having left. */
 static void
 run_pocket(uint32_t seed, pocket_result_t* out) {
     static uint8_t cells[POCKET_W * POCKET_H];
@@ -425,8 +425,8 @@ main(void) {
     printf("== the sealed pocket, stepped through sand_step() ==\n");
     printf("gas at (%d,%d), one open corner at (%d,%d), mobility %d, %d steps, never cut short\n", POCKET_GAS_X,
            POCKET_GAS_Y, POCKET_EXIT_X, POCKET_EXIT_Y, POCKET_MOBILITY, POCKET_STEPS);
-    printf("`seen` is the suite's own criterion - a gas cell at y >= %d - and `left` is the\n", POCKET_EXIT_Y);
-    printf("step the gas was no longer in the pocket at all\n");
+    printf("`seen` is a gas cell reaching y >= %d, `left` is the gas no longer being in the\n", POCKET_EXIT_Y);
+    printf("pocket at all - a rising gas that got out often never crosses the lower line\n");
     printf("a corner roll is %d in 256 and mobility passes 255 in 256, so the gas should\n", WALK_EXIT_ROLLS);
     printf("reach the corner after %.1f steps on average\n", 65536.0 / (double)(WALK_EXIT_ROLLS * POCKET_MOBILITY));
     printf("%4s  %8s %8s %10s %12s %12s\n", "seed", "seen", "left", "corner", "rolls@origin", "rows after");
