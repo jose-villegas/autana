@@ -278,6 +278,27 @@ the cost, not that the work was free.
 
 ---
 
+## An instruction count is not a cycle count on a pipelined target
+
+The ESP32-S3's performance monitor counts retired instructions, pipeline
+bubbles and stalls beside cycles, so the relation can be read rather than
+assumed. On this board's heaviest simulation scenes (device, 2026-09-19)
+a step costs 1.5-1.8 cycles per retired instruction, pipeline bubbles are
+27-31% of all cycles, and instruction-cache fetch misses are zero — the hot
+loops run from internal RAM. One change cut a scene's instructions per step
+by 9.6% (2,009,071 to 1,816,824) and moved its cycles by +0.4%: bubbles
+not caused by a branch rose from 342,000 to 520,000 a step, and data
+stalls from 7,700 to 104,000.
+
+So an instruction count says whether work was removed, never whether time
+was. Read the bubble and data-stall lines next to it before predicting a
+delta from instructions alone. The two numbers also differ as instruments:
+instructions per step repeat to 0.1% across runs of one image, while cycles
+for the same image have differed by up to 8% between runs — an instruction
+delta is trustworthy at a size where a cycle delta is not.
+
+---
+
 ## A cycle count is bound to its ISA, not just its clock
 
 A disassembly-derived cycle count is read off one instruction set's codegen
