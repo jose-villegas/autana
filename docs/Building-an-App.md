@@ -46,7 +46,7 @@ APP_REGISTER(app_yours);
 |---|---|---|---|
 | `name`, `summary` | yes | - | launcher list text; `name` is also the sort key |
 | `enter()` | yes | once, on launch | reset state, allocate, `gfx_mode_enter()`. May have run before. |
-| `frame(dt_ms, input)` | yes | every pass | draw and return. `dt_ms` is clamped to 250. |
+| `frame(dt_ms, input)` | yes | every pass | draw and return. `dt_ms` is clamped to `FRAME_DT_MAX_MS` (250 ms). |
 | `exit()` | yes | once, on leave | release what `enter()` took, `gfx_mode_exit()` included |
 | `update(dt_ms, input)` | no | every pass, before `frame()` | state only - **no `gfx_*`, no framebuffer**; a dev build asserts it |
 | `invalidate()` | no | once per full-redraw request, before the next `frame()` | reset a draw cache the app keeps beyond the framebuffer |
