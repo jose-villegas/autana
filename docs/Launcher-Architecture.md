@@ -19,6 +19,7 @@ launcher/
 │   ├── gen_zeta_curve.py       generates main/boot/boot_anim_curve.h
 │   ├── gen_boot_anim_timeline.py, gen_boot_anim_image.py, gen_font.py,
 │   │                           gen_gfx_palette_standard.py, gen_icons.py
+│   ├── gen_ui_layout.py        bakes main/ui/<screen>_layout.json into its header
 │   ├── build_flash.sh          build + flash; --dev and --diag variants
 │   └── report_test_results.sh  every suite, pass/fail
 ├── test/               the host runner and the shell's own suites
@@ -62,7 +63,12 @@ launcher/
     │   ├── ui_style.h          how a control's frame looks (host-tested)
     │   ├── ui_transform.h      the quarter-turn mapping     (host-tested)
     │   ├── ui_anchor.h         a rect placed against an edge (host-tested)
-    │   └── ui_launcher.{h,c}   the home screen
+    │   ├── ui_launcher.{h,c}, ui_launcher_draw.c   the home screen
+    │   ├── ui_control_center.{h,c}, ui_control_center_draw.c
+    │   │                       Control Center, over a dimmed home screen
+    │   ├── control_center_layout.json, control_center_layout_generated.h
+    │   │                       its authored rects, and the baked table
+    │   └── system_navigation.{h,c}  which system screen is up (host-tested)
     ├── input/          the devices a finger reaches
     │   ├── touch.{h,c}         FT5x06 polling task
     │   ├── touch_fsm.{h,c}     samples -> press/release    (host-tested)
@@ -102,8 +108,10 @@ and means something different by each:
 
 ## Generated sources
 
-Four generated files live in the tree, each following the same four rules
-below: `main/boot/boot_anim_curve.h` (`tools/gen_zeta_curve.py`),
+Five generated files live in the tree, each following the same four rules
+below: `main/ui/control_center_layout_generated.h` (`tools/gen_ui_layout.py`,
+from `main/ui/control_center_layout.json`, which the host editor in
+[`editor/`](../editor/README.md) edits), `main/boot/boot_anim_curve.h` (`tools/gen_zeta_curve.py`),
 `main/boot/boot_anim_timeline.h` (`tools/gen_boot_anim_timeline.py`, from
 `main/boot/boot_anim_timeline.json`), `main/boot/boot_anim_image.h`
 (`tools/gen_boot_anim_image.py`, from `design/boot/boot.png`), and
@@ -320,8 +328,9 @@ numbers passes both halves by accident.
 
 ## The frame loop
 
-The shell is a two-state machine. `current == NULL` means the launcher is
-showing; anything else is the running app.
+The shell is a two-state machine. `current == NULL` means a system screen is
+showing; anything else is the running app. Which system screen - the launcher
+or Control Center - is `system_navigation_t`'s one field.
 
 ```mermaid
 stateDiagram-v2
@@ -329,6 +338,9 @@ stateDiagram-v2
 
     Launcher --> Launcher: ui_launcher_frame()<br/>draws the app list
     Launcher --> Running: tap an entry<br/><i>app->enter()</i>
+    Launcher --> ControlCenter: swipe in from the logical top
+    ControlCenter --> ControlCenter: ui_control_center_frame()<br/>over the dimmed launcher
+    ControlCenter --> Launcher: swipe in from the logical bottom
 
     Running --> Running: app->frame(dt_ms, input)<br/>+ home hint
     Running --> Launcher: home swipe or PWR long-press<br/><i>app->exit()</i>
@@ -343,6 +355,7 @@ Each iteration:
 touch_read()          latched press/release edges from the polling task
     |
     +-- launcher showing?  ui_launcher_frame()  -> returns chosen app or -1
+    |                      Control Center up?   -> ui_control_center_frame()
     |
     +-- app running?       home swipe or PWR held?  -> exit() and go home
                            otherwise app->frame(dt_ms, input) + home hint
