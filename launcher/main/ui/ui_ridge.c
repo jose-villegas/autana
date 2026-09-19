@@ -76,7 +76,7 @@
 
 /* What becomes of the light the line leaves behind as it moves, out of 256
  * per redraw: 0 wipes it, 255 never does, between is a trail that fades. */
-#define RIDGE_TRAIL        32
+#define RIDGE_TRAIL        226
 
 #define POSE_LANDSCAPE     ((gfx_glow_pose_t){-GFX_GLOW_POSE_ONE, 0})
 
