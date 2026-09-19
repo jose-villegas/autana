@@ -114,8 +114,9 @@ An extended static (`MATX(k)`) cannot have its own `density`, `kind`, or a
 variant of its own - those are the row the hot path reads, shared by all
 eight codes - only its own colour and reaction row. `place_reacted()` is
 how a reaction produces one (a spec is either an ordinary id or a whole
-`MATX(k)` byte); `sand_spawn_cell()`, not `sand_spawn()`, is how a brush
-paints one, since an extended material has no `material_id_t` to name it.
+`MATX(k)` byte); `sand_spawn_cell()` and its thinned sibling
+`sand_spawn_cell_share()`, not `sand_spawn()`, are how a brush paints one,
+since an extended material has no `material_id_t` to name it.
 
 ## The reaction table: a second table for the cold pass
 
@@ -310,6 +311,13 @@ DECIDES": the caller hit-tests through microui, so rotation is free;
 split, including "the PWR press that opens the screen must not also close
 it" (`sand_ui_step()` reads `ui->screen` exactly once per frame, before any
 branch can change it).
+
+**A palette entry is a cell and a share.** `sand_brush_t` (`sand_ui.h`)
+carries what a tile paints plus how much of the pour disc it actually
+fills. Everything is `SAND_SPAWN_SHARE_FULL` except plant, at
+`SAND_BRUSH_SHARE_PLANT`: it spreads on its own, so a solid disc of it is
+a thicket the player cannot undo quickly, and a share rather than a count
+keeps the gesture worth the same at every grid quality.
 
 A third, simpler screen, `ui/sand_menu_screen.c/.h`, draws the boot-time
 START/QUALITY/COLOUR/DITHER menu (`SAND_UI_MENU`, outside `sand_ui_t`

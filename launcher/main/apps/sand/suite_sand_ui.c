@@ -24,11 +24,11 @@
  * KIND_POWDER/KIND_LIQUID (emit-capable), MAT_STONE is KIND_STATIC (not) -
  * see material.c. */
 #define STUB_BRUSH_COUNT 4
-static const cell_t stub_brushes[STUB_BRUSH_COUNT] = {
-    CELL_MAKE(MAT_SAND, 0),  /* 0: emits */
-    CELL_MAKE(MAT_STONE, 0), /* 1: static, cannot emit */
-    CELL_MAKE(MAT_WATER, 0), /* 2: emits */
-    CELL_MAKE(MAT_STONE, 0), /* 3: static, cannot emit */
+static const sand_brush_t stub_brushes[STUB_BRUSH_COUNT] = {
+    SAND_BRUSH_SOLID(CELL_MAKE(MAT_SAND, 0)),  /* 0: emits */
+    SAND_BRUSH_SOLID(CELL_MAKE(MAT_STONE, 0)), /* 1: static, cannot emit */
+    SAND_BRUSH_SOLID(CELL_MAKE(MAT_WATER, 0)), /* 2: emits */
+    SAND_BRUSH_SOLID(CELL_MAKE(MAT_STONE, 0)), /* 3: static, cannot emit */
 };
 
 static uint8_t stub_modes[STUB_BRUSH_COUNT];
