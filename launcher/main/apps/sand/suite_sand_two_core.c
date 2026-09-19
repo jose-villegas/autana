@@ -24,6 +24,36 @@
 _Static_assert(TC_H >= SAND_STRIPE_H_MIN * SAND_STRIPE_SPLIT_MIN_COUNT,
                "the two-core suite needs enough stripes to split");
 
+static void
+test_chunk_colours_separate_every_touching_chunk(void) {
+    static const int qualities[][2] = {
+        {REAL_W, REAL_H}, {REAL_W / SAND_CHUNK_TARGET_CELLS_DIVISOR, REAL_H / SAND_CHUNK_TARGET_CELLS_DIVISOR}};
+
+    for (size_t q = 0; q < sizeof qualities / sizeof qualities[0]; q++) {
+        uint8_t* cells = malloc((size_t)qualities[q][0] * (size_t)qualities[q][1]);
+        TEST_ASSERT_NOT_NULL(cells);
+
+        sand_t sand;
+        sand_init(&sand, cells, qualities[q][0], qualities[q][1], (uint32_t)q);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT(SAND_CHUNK_SIDE_MIN, sand_chunk_side(&sand));
+
+        for (int cy = 0; cy < sand_chunk_rows(&sand); cy++) {
+            for (int cx = 0; cx < sand_chunk_cols(&sand); cx++) {
+                const int color = sand_chunk_color(cx, cy);
+                for (int ny = cy > 0 ? cy - 1 : cy; ny <= cy + 1 && ny < sand_chunk_rows(&sand); ny++) {
+                    for (int nx = cx > 0 ? cx - 1 : cx; nx <= cx + 1 && nx < sand_chunk_cols(&sand); nx++) {
+                        if (nx != cx || ny != cy) {
+                            TEST_ASSERT_NOT_EQUAL_INT(color, sand_chunk_color(nx, ny));
+                        }
+                    }
+                }
+            }
+        }
+
+        free(cells);
+    }
+}
+
 static uint32_t
 tc_hash(const uint8_t* bytes, size_t n) {
     uint32_t h = 2166136261u;
@@ -1282,6 +1312,7 @@ test_reaction_split_actually_changes_the_draw_stream(void) {
 
 void
 run_sand_two_core_suite(void) {
+    RUN_TEST(test_chunk_colours_separate_every_touching_chunk);
     RUN_TEST(test_stripe_boundaries_spread_over_the_stripe);
     RUN_TEST(test_two_core_step_is_deterministic_across_seeds);
     RUN_TEST(test_split_gas_walk_uses_hashed_rng);
