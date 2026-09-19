@@ -30,8 +30,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from check_comment_length import EXCLUDED, scan  # noqa: E402
 
 LOWER = ("launcher/main/boot/", "launcher/main/display/", "launcher/main/gfx/",
-         "launcher/main/input/", "launcher/main/ui/", "launcher/main/util/",
-         "launcher/test/")
+         "launcher/main/input/", "launcher/main/render/", "launcher/main/ui/",
+         "launcher/main/util/", "launcher/test/")
 SKIP = ("build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components")
 
 # The shell's own two files: they switch between apps without knowing one.
