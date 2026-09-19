@@ -892,8 +892,8 @@ compute_driven(bool driven[MATERIAL_ROWS][2], const int* slide_a, const int* sli
 }
 
 /* Sweep column order against travel direction for sand_step(). Alternates
- * when gravity is vertical. Outputs step direction, not range. Uses
- * block_x_order() for block-column sweeping. */
+ * when gravity is vertical. Outputs step direction, not range;
+ * span_x_order() turns it into one. */
 static int
 sweep_x_order(sand_t* s, int dx) {
     int x_step;
@@ -1123,18 +1123,18 @@ compute_settled_bit(sand_t* s, int jostle, int dx, int dy, int load_dx, int load
     return bit;
 }
 
-/* Mirrors sweep_x_order()'s x_from/x_to/x_step based on x_step's sign to
- * align block order with cell order for clarity. */
+/* A half-open [lo, hi) walked in sweep_x_order()'s direction. Block columns
+ * and the cells within one share it, so the two orders cannot drift apart. */
 static void
-block_x_order(int bx_lo, int bx_hi, int x_step, int* bx_from, int* bx_to, int* bx_step) {
+span_x_order(int lo, int hi, int x_step, int* from, int* to, int* step) {
     if (x_step > 0) {
-        *bx_from = bx_lo;
-        *bx_to = bx_hi;
-        *bx_step = 1;
+        *from = lo;
+        *to = hi;
+        *step = 1;
     } else {
-        *bx_from = bx_hi - 1;
-        *bx_to = bx_lo - 1;
-        *bx_step = -1;
+        *from = hi - 1;
+        *to = lo - 1;
+        *step = -1;
     }
 }
 
@@ -1167,20 +1167,14 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
     const int lo = im_max(bx * SAND_BLOCK_W, ctx->x0);
     const int hi = im_min(bx * SAND_BLOCK_W + SAND_BLOCK_W, ctx->x1);
 
-    int cx_from, cx_to;
-    if (ctx->x_step > 0) {
-        cx_from = lo;
-        cx_to = hi;
-    } else {
-        cx_from = hi - 1;
-        cx_to = lo - 1;
-    }
+    int cx_from, cx_to, cx_step;
+    span_x_order(lo, hi, ctx->x_step, &cx_from, &cx_to, &cx_step);
 
     dest_state_t dest = DEST_UNKNOWN;
 
     bool moved_here = false;
     unsigned saw_liquid = 0;
-    for (int x = cx_from; x != cx_to; x += ctx->x_step) {
+    for (int x = cx_from; x != cx_to; x += cx_step) {
         const cell_t c = ctx->row[x];
         if (CELL_IS_EMPTY(c)) {
             continue;
@@ -1238,7 +1232,7 @@ step_one_row(sand_t* s, int y, int x0, int x1, int w, int dx, int dy, const int*
     };
 
     int bx_from, bx_to, bx_step;
-    block_x_order(x0 / SAND_BLOCK_W, (x1 + SAND_BLOCK_W - 1) / SAND_BLOCK_W, x_step, &bx_from, &bx_to, &bx_step);
+    span_x_order(x0 / SAND_BLOCK_W, (x1 + SAND_BLOCK_W - 1) / SAND_BLOCK_W, x_step, &bx_from, &bx_to, &bx_step);
 
     for (int bx = bx_from; bx != bx_to; bx += bx_step) {
         if (settled_bit != 0 && (s->block_state[ctx.by * s->block_cols + bx] & settled_bit)) {
