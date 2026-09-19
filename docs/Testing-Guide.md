@@ -371,7 +371,10 @@ RUNSUITE run_cube_band_perf_suite
 
 Both commands only set a flag; `main.c`'s frame loop does the actual work at
 a frame boundary, since there is no lock on the framebuffer and a second
-task drawing to it while the render loop runs would corrupt the panel. This
+task drawing to it while the render loop runs would corrupt the panel. When
+the suite returns the shell prints `RUNSUITE_COMPLETE name=<suite> found=<0|1>`
+on its own line, so a harness need not guess from a quiet console that the
+run is over. This
 is what makes iterating on one area fast: flash the diag build once, then
 RUNSUITE whichever suite covers what changed, as many times as needed,
 without paying a rebuild-and-reflash cycle per attempt.
@@ -456,7 +459,19 @@ instances run at once.
 python %IDF_PATH%\tools\idf_tools.py install qemu-xtensa   # once
 ./launcher/test/run_qemu_tests.sh --perf-scope             # build + run
 ./launcher/test/run_qemu_tests.sh --perf-scope --icount --no-build
+./launcher/test/run_qemu_tests.sh --suite suite_job --screenshot shot.png
 ```
+
+The last form is the everyday one. It builds the same image without autorun
+(`build.qemu.shell/`), which boots into the shell, and then speaks the
+console protocol a board speaks: `RUNSUITE <name>` for each `--suite`, waited
+out to the `RUNSUITE_COMPLETE` line the shell prints, then `SCREENSHOT`,
+decoded to a PNG and a state `.json` by `tools/screenshot.py`'s own code.
+Boot, one suite and a capture take about a minute and a half, against five
+to nine for a whole autorun. The frame is the firmware's real framebuffer,
+so it is a board-free way to look at a screen. A `CONFIG_LAUNCHER_QEMU`
+image puts that console listener on UART0, the port QEMU exposes; the
+runner reaches it as a local TCP socket.
 
 The image is the autorun diagnostics build with `sdkconfig.defaults.qemu`
 layered last, in its own `build.qemu*/`. That fragment does three things.
