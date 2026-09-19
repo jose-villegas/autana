@@ -77,6 +77,9 @@ heap_mark(const char* where) {
 /* 10 Hz: sufficient for reorientation without lag. */
 #define DISPLAY_SAMPLE_MS 100
 
+/* A stall must not reach an app as one long step. */
+#define FRAME_DT_MAX_MS   250
+
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #define BUILD_MARK_GLYPH        8
 #define BUILD_MARK_TEXT         "D" BUILD_ID_SHORT
@@ -628,8 +631,8 @@ app_main_loop(void) {
         const int64_t now_us = esp_timer_get_time();
         uint32_t dt_ms = (uint32_t)((now_us - previous_us) / 1000);
         previous_us = now_us;
-        if (dt_ms > 250) {
-            dt_ms = 250; /* clamp, so a stall does not jump animation */
+        if (dt_ms > FRAME_DT_MAX_MS) {
+            dt_ms = FRAME_DT_MAX_MS;
         }
 
 #if CONFIG_LAUNCHER_SELFTEST

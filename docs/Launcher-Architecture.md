@@ -431,7 +431,8 @@ vTaskDelay(1)         yield so the idle task can feed the watchdog
 Currently **~42 fps** on the launcher screen. The blit dominates at ~25 ms; the
 cube app is slower because rasterizing costs ~28 ms on top.
 
-`dt_ms` is clamped to 250 ms so a stall does not make animation jump.
+`dt_ms` is clamped to `FRAME_DT_MAX_MS` (250 ms) so a stall does not make
+animation jump.
 
 ### Apps with `update()`: overlapping the next step with the present
 

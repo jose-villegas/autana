@@ -12,9 +12,11 @@ a backticked path, `name()` or MACRO. A change touches a function when a
 changed line lies inside it (git's hunk header names the enclosing function)
 or defines it, and touches a macro whose #define line changed. A document
 citing only the file's path is reported when the change touches no named
-function or macro. Plans are skipped - they keep proposed and superseded
-names on purpose. Nothing here fails: a touched citation is a reason to
-reread the document, not proof it is wrong.
+function or macro. CMake has no functions to name a hunk by, so a CMake change
+touches every ALL_CAPS word on its changed lines and always reports the path.
+Plans are skipped - they keep proposed and superseded names on purpose.
+Nothing here fails: a touched citation is a reason to reread the document,
+not proof it is wrong.
 """
 import os
 import pathlib
@@ -31,6 +33,21 @@ HUNK = re.compile(r"^@@ [^@]* @@ ?(.*)$")
 C_NAME = re.compile(r"^([a-z_][a-z0-9_]*)\s*\(")
 PY_NAME = re.compile(r"^\s*def ([a-z_][a-z0-9_]*)\s*\(")
 MACRO = re.compile(r"^\s*#\s*define\s+([A-Z][A-Z0-9_]+)\b")
+CMAKE_WORD = re.compile(r"\b[A-Z][A-Z0-9_]+\b")
+CMAKE = ".cmake"
+
+
+def is_cmake(source):
+    path = pathlib.PurePosixPath(source)
+    return path.name == "CMakeLists.txt" or path.suffix == CMAKE
+
+
+def language(source):
+    """The suffix names_on() reads a line of `source` by, or None for a file it cannot."""
+    if is_cmake(source):
+        return CMAKE
+    suffix = pathlib.PurePosixPath(source).suffix
+    return suffix if suffix in SOURCE_SUFFIXES else None
 
 
 def names_on(line, suffix):
@@ -42,6 +59,8 @@ def names_on(line, suffix):
         function = C_NAME.match(line)
         macro = MACRO.match(line)
         return ({function.group(1)} if function else set()), ({macro.group(1)} if macro else set())
+    if suffix == CMAKE:
+        return set(), set(CMAKE_WORD.findall(line))
     return set(), set()
 
 
@@ -49,7 +68,7 @@ def touched_names(root, source, diff_args):
     """(functions, macros) a diff of `source` touches."""
     result = subprocess.run(["git", "diff", "-U0", *diff_args, "--", source], cwd=root,
                             capture_output=True, text=True)
-    suffix = pathlib.PurePosixPath(source).suffix
+    suffix = language(source)
     functions, macros = set(), set()
     for line in result.stdout.splitlines():
         hunk = HUNK.match(line)
@@ -73,7 +92,7 @@ def citers(root, sources, diff_args):
     """source -> {doc: sorted citations of what its diff touched}."""
     root = pathlib.Path(root)
     touched = {source: touched_names(root, source, diff_args) for source in sources
-               if pathlib.PurePosixPath(source).suffix in SOURCE_SUFFIXES}
+               if language(source) is not None}
     result = {source: {} for source in touched}
     if not touched:
         return result
@@ -81,7 +100,8 @@ def citers(root, sources, diff_args):
         if citation.doc.startswith("docs/plans/"):
             continue
         for source, (functions, macros) in touched.items():
-            if (citation.kind == "path" and not (functions or macros) and cites_path(citation.value, source) or
+            path_only = is_cmake(source) or not (functions or macros)
+            if (citation.kind == "path" and path_only and cites_path(citation.value, source) or
                     citation.kind == "function" and citation.value in functions or
                     citation.kind == "macro" and citation.value in macros):
                 label = citation.value + "()" if citation.kind == "function" else citation.value
