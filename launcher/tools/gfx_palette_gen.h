@@ -13,7 +13,7 @@
  *
  * Never included from device code - it links libm and is only ever run on
  * a host, the same reason main/apps/sand/tools/ itself is excluded from
- * the firmware image (see docs/Launcher-Architecture.md, "An app is a
+ * the firmware image (see docs/Building-an-App.md, "An app is a
  * folder").
  */
 #pragma once
