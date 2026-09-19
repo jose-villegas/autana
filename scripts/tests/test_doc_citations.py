@@ -364,6 +364,56 @@ Acid -->|"dissolvable 110"| Metal
             found = doc_citers.citers(root, ["launcher/main/liquid.c"], ["HEAD"])
         self.assertEqual(found, {"launcher/main/liquid.c": {"docs/Liquid.md": ["liquid.c"]}})
 
+    def cmake_repo(self, root):
+        self.write(root, "launcher/main/CMakeLists.txt",
+                   "set(app_srcs main.c)\n"
+                   "idf_component_register(SRCS ${app_srcs} WHOLE_ARCHIVE)\n")
+        self.write(root, "docs/Build.md", "`WHOLE_ARCHIVE` keeps unreferenced apps linked.\n")
+        self.write(root, "docs/Glob.md", "Apps are globbed by `main/CMakeLists.txt`.\n")
+        self.write(root, "docs/Other.md", "`CONFIGURE_DEPENDS` re-globs.\n")
+        for command in (["init", "-q"], ["add", "."],
+                        ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base"]):
+            subprocess.run(["git", *command], cwd=root, check=True, capture_output=True)
+
+    def test_citers_report_a_cmake_keyword_on_a_changed_line_and_the_path(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.cmake_repo(root)
+            source = root / "launcher/main/CMakeLists.txt"
+            source.write_text(source.read_text().replace(" WHOLE_ARCHIVE)", ")"))
+            found = doc_citers.citers(root, ["launcher/main/CMakeLists.txt"], ["HEAD"])
+        self.assertEqual(found, {"launcher/main/CMakeLists.txt": {
+            "docs/Build.md": ["WHOLE_ARCHIVE"], "docs/Glob.md": ["main/CMakeLists.txt"]}})
+
+    def test_citers_report_a_script_path_even_when_a_function_is_touched(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/tools/gen_font.py", "def render(size):\n    return size\n")
+            self.write(root, "launcher/tools/flash.sh", "flash() {\n    echo flash\n}\n")
+            self.write(root, "docs/Fonts.md", "Run `tools/gen_font.py`.\n")
+            self.write(root, "docs/Render.md", "`render()` rasterizes.\n")
+            self.write(root, "docs/Flash.md", "Run `flash.sh`.\n")
+            for command in (["init", "-q"], ["add", "."],
+                            ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base"]):
+                subprocess.run(["git", *command], cwd=root, check=True, capture_output=True)
+            script = root / "launcher/tools/gen_font.py"
+            script.write_text(script.read_text().replace("return size", "return size * 2"))
+            shell = root / "launcher/tools/flash.sh"
+            shell.write_text(shell.read_text().replace("echo flash", "echo flashing"))
+            found = doc_citers.citers(root, ["launcher/tools/gen_font.py", "launcher/tools/flash.sh"], ["HEAD"])
+        self.assertEqual(found, {
+            "launcher/tools/gen_font.py": {"docs/Fonts.md": ["tools/gen_font.py"], "docs/Render.md": ["render()"]},
+            "launcher/tools/flash.sh": {"docs/Flash.md": ["flash.sh"]}})
+
+    def test_a_cmake_path_citation_must_exist(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.cmake_repo(root)
+            self.write(root, "docs/Gone.md", "See `tools/CMakeLists.txt`.\n")
+            missing = [c.value for c in check_doc_citations.citations(root)
+                       if c.kind == "path" and not check_doc_citations.path_exists(root, c.value)]
+        self.assertEqual(missing, ["tools/CMakeLists.txt"])
+
     def test_reverse_index_ignores_repeated_function_definition(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

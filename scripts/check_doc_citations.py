@@ -13,7 +13,7 @@ from code_vocabulary import names
 INLINE = re.compile(r"`([^`\n]+)`")
 FUNCTION = re.compile(r"^([a-z][a-z0-9_]*)\(\)$")
 MACRO = re.compile(r"^[A-Z][A-Z0-9_]*$")
-FILE = re.compile(r"^(?:launcher/|apps/|[\w.-]+/)*[\w.-]+\.(?:c|h|py|sh)$")
+FILE = re.compile(r"^(?:launcher/|apps/|[\w.-]+/)*(?:[\w.-]+\.(?:c|h|py|sh|cmake)|CMakeLists\.txt)$")
 SKIP_FENCES = {"sh", "shell", "bash", "console", "text", "output"}
 SKIP = {"build", "build.dev", "build.diag", "managed_components", ".git"}
 FOREIGN_FUNCTIONS = {"exit", "main", "max", "name"}

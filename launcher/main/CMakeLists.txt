@@ -51,7 +51,7 @@ else()
 endif()
 
 # apps/<name>/tools/ holds that app's own host-side tooling (sweep scripts,
-# report generators) - see docs/Launcher-Architecture.md, "An app is a
+# report generators) - see docs/Building-an-App.md, "An app is a
 # folder". It is not firmware. But the glob above is apps/*.c, recursive, so
 # a future .c placed under one of those tools/ folders (a small host-side
 # helper program, say) would be swept in right alongside the app's real

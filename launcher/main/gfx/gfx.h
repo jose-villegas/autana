@@ -3,8 +3,9 @@
  *
  * Everything on this device draws into ONE full-screen RGB565 framebuffer that
  * this module owns. The shell and every app share it; nothing else allocates a
- * buffer of its own. At 368x448x2 that single buffer is 322 KiB of the ~424
- * KiB the chip has, so a second one is not affordable.
+ * buffer of its own. At 368x448x2 it is 322 KiB of PSRAM, and a second one
+ * costs a per-frame PSRAM copy no app can afford - see
+ * docs/Gfx-and-Presentation.md.
  *
  * Colours are given as plain 0xRRGGBB so callers never deal with the panel's
  * byte-swapped RGB565 layout - gfx_rgb() handles that conversion.
