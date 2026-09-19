@@ -1874,6 +1874,7 @@ rc_run_fire_chain_and_hash(int w, int h, uint32_t seed, int steps, bool two_core
 
     sand_t s;
     rc_build_isolated_fire_gas_pairs(&s, cells, w, h, seed);
+    void* scratch = lane_scratch_open(&s);
 
     sand_set_two_core_step(two_core);
     for (int i = 0; i < steps; i++) {
@@ -1882,6 +1883,7 @@ rc_run_fire_chain_and_hash(int w, int h, uint32_t seed, int steps, bool two_core
     sand_set_two_core_step(false);
 
     const uint32_t hash = tc_hash(cells, (size_t)w * (size_t)h);
+    free(scratch);
     free(cells);
     return hash;
 }
@@ -1935,6 +1937,7 @@ rc_run_reaction_heavy_and_hash(int w, int h, uint32_t seed, int steps, bool two_
 
     sand_t s;
     rc_build_reaction_heavy_scene(&s, cells, w, h, seed);
+    void* scratch = lane_scratch_open(&s);
 
     sand_set_two_core_step(two_core);
     for (int i = 0; i < steps; i++) {
@@ -1943,6 +1946,7 @@ rc_run_reaction_heavy_and_hash(int w, int h, uint32_t seed, int steps, bool two_
     sand_set_two_core_step(false);
 
     const uint32_t hash = tc_hash(cells, (size_t)w * (size_t)h);
+    free(scratch);
     free(cells);
     return hash;
 }
@@ -1959,6 +1963,26 @@ test_reaction_split_is_deterministic_across_seeds(void) {
                  "seed %u: two runs of the same seed under split reactions must land on the same board",
                  (unsigned)seeds[i]);
         TEST_ASSERT_EQUAL_HEX32_MESSAGE(first, second, why);
+    }
+}
+
+/* On a host the two workers run one after the other, so which one owns
+ * which half is the only ordering a host can vary - and a board that
+ * depends on it depends on how two real cores interleave. */
+static void
+test_reaction_split_ignores_worker_order(void) {
+    static const uint32_t seeds[] = {1u, 7u, 42u, 12345u, 99991u};
+
+    for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
+        sand_reactions_set_worker_order_for_test(false);
+        const uint32_t ordinary = rc_run_reaction_heavy_and_hash(TC_W, TC_H, seeds[i], 30, true);
+        sand_reactions_set_worker_order_for_test(true);
+        const uint32_t reversed = rc_run_reaction_heavy_and_hash(TC_W, TC_H, seeds[i], 30, true);
+        sand_reactions_set_worker_order_for_test(false);
+        char why[160];
+        snprintf(why, sizeof why, "seed %u: changing which worker owns each half must not change the board",
+                 (unsigned)seeds[i]);
+        TEST_ASSERT_EQUAL_HEX32_MESSAGE(ordinary, reversed, why);
     }
 }
 
@@ -2194,6 +2218,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_two_core_step_conserves_grains_on_a_dense_column_and_pile);
     RUN_TEST(test_reaction_split_matches_serial_on_a_zero_randomness_fire_chain);
     RUN_TEST(test_reaction_split_is_deterministic_across_seeds);
+    RUN_TEST(test_reaction_split_ignores_worker_order);
     RUN_TEST(test_reaction_split_actually_changes_the_draw_stream);
     RUN_TEST(test_landscape_water_column_has_no_line_mass_lag);
     RUN_TEST(test_split_gas_equalise_keeps_seam_order);

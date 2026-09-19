@@ -153,7 +153,12 @@ sand_stamps_disarm(sand_t* s) {
     s->stamps_live = NULL;
 }
 
-#define SAND_LANE_COUNT 2
+#define SAND_LANE_COUNT       2
+
+/* Scratch bytes one lane gets for work it cannot finish inside the chunk it
+ * is stepping and hands to the serial drain after the join. Opaque here: the
+ * one pass that fills it asserts its own queues fit. */
+#define SAND_LANE_DEFER_BYTES 1024
 
 /* The board as one lane of a split pass sees it: shared cells, private
  * metadata. A wake or a repaint reaches past the chunk being stepped, so
@@ -164,6 +169,7 @@ typedef struct {
     uint8_t* dirty;
     uint16_t* x0;
     uint16_t* x1;
+    uint8_t* defer;
 } sand_lane_t;
 
 /* The board's two lanes, wired to its lane scratch, or NULL when it has
@@ -399,6 +405,15 @@ extern unsigned sand_gas_late_arrivals;
  * BLOCK_LIQUID_NEAR instead of guessing at wall time. Never reset by the
  * pass itself - a suite that wants a per-step delta zeroes it directly. */
 extern unsigned sand_reactions_cells_dispatched;
+
+/* Not sand.h API: what a split reaction step put through its per-half
+ * deferred queues. `queued` and `applied` part only where an entry is lost or
+ * applied twice; `peak` is the most one half held in one queue, so a suite
+ * can say how much of a capped queue a scene actually used. Same convention
+ * as the counter above - never reset by the pass. */
+extern unsigned sand_reactions_defer_queued;
+extern unsigned sand_reactions_defer_applied;
+extern unsigned sand_reactions_defer_peak;
 
 /* Test-only override: on, forces every pass to walk the full board even
  * where soak-only conditions hold, so a suite can diff the fast path's
@@ -1208,6 +1223,7 @@ void sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy);
 
 void sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, const int* slide_b, const int* perp_a,
                    const int* perp_b, int load_dx, int load_dy, int x_step, int jostle);
+void sand_reactions_set_worker_order_for_test(bool reverse);
 
 /* The flight pass - explosions, debris, splash pushback - lives in
  * sand_impulse.c since it moves OUTWARD, not gravity-ward. Called once
