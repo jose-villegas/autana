@@ -1,7 +1,8 @@
 # Launcher Architecture
 
 How the shell, the apps and the screen fit together, and why ownership is
-arranged this way. Read this before adding an app or changing the frame loop.
+arranged this way. Read this before changing the frame loop. To write an app,
+start at [Building-an-App.md](Building-an-App.md).
 
 Living document: update it when the structure changes.
 
@@ -18,7 +19,9 @@ launcher/
 │   ├── gen_zeta_curve.py       generates main/boot/boot_anim_curve.h
 │   ├── gen_boot_anim_timeline.py, gen_boot_anim_image.py, gen_font.py,
 │   │                           gen_gfx_palette_standard.py, gen_icons.py
+│   ├── gen_ui_layout.py        bakes main/ui/<screen>_layout.json into its header
 │   ├── build_flash.sh          build + flash; --dev and --diag variants
+│   ├── device_report.sh        the one build-flash-capture-report path
 │   └── report_test_results.sh  every suite, pass/fail
 ├── test/               the host runner and the shell's own suites
 └── main/
@@ -61,7 +64,12 @@ launcher/
     │   ├── ui_style.h          how a control's frame looks (host-tested)
     │   ├── ui_transform.h      the quarter-turn mapping     (host-tested)
     │   ├── ui_anchor.h         a rect placed against an edge (host-tested)
-    │   └── ui_launcher.{h,c}   the home screen
+    │   ├── ui_launcher.{h,c}, ui_launcher_draw.c   the home screen
+    │   ├── ui_control_center.{h,c}, ui_control_center_draw.c
+    │   │                       Control Center, over a dimmed home screen
+    │   ├── control_center_layout.json, control_center_layout_generated.h
+    │   │                       its authored rects, and the baked table
+    │   └── system_navigation.{h,c}  which system screen is up (host-tested)
     ├── input/          the devices a finger reaches
     │   ├── touch.{h,c}         FT5x06 polling task
     │   ├── touch_fsm.{h,c}     samples -> press/release    (host-tested)
@@ -76,7 +84,7 @@ launcher/
     │   ├── device_state.{h,c}  what survives a reboot      (host-tested)
     │   ├── screenshot.{h,c}    the capture listener        (host-tested)
     │   └── build_id.h          which build this is         (host-tested)
-    └── apps/           one folder per app - see "An app is a folder"
+    └── apps/           one folder per app - see Building-an-App.md
         ├── cube/       a software rasterizer
         ├── diagnostics/  bench tool; development builds only
         └── sand/       the falling-sand sandbox
@@ -101,8 +109,10 @@ and means something different by each:
 
 ## Generated sources
 
-Four generated files live in the tree, each following the same four rules
-below: `main/boot/boot_anim_curve.h` (`tools/gen_zeta_curve.py`),
+Five generated files live in the tree, each following the same four rules
+below: `main/ui/control_center_layout_generated.h` (`tools/gen_ui_layout.py`,
+from `main/ui/control_center_layout.json`, which the host editor in
+[`editor/`](../editor/README.md) edits), `main/boot/boot_anim_curve.h` (`tools/gen_zeta_curve.py`),
 `main/boot/boot_anim_timeline.h` (`tools/gen_boot_anim_timeline.py`, from
 `main/boot/boot_anim_timeline.json`), `main/boot/boot_anim_image.h`
 (`tools/gen_boot_anim_image.py`, from `design/boot/boot.png`), and
@@ -125,8 +135,8 @@ proportional advance table - and the coverage atlas ships in flash.
 A font atlas is the one generated artifact whose SIZE is a live design
 constraint rather than a curiosity: at 8 bits of coverage per pixel,
 `font_lmroman_40.h` is 274 KiB, comparable to the photograph. That is what
-makes it worth caring whether a font is referenced at all - see "Text and
-fonts" below.
+makes it worth caring whether a font is referenced at all - see
+[Text-and-Fonts.md](Text-and-Fonts.md#roles).
 
 Four rules, and the last is the one that matters:
 
@@ -238,93 +248,16 @@ CPU-bound (see [Display-and-Rendering.md](notes/Display-and-Rendering.md),
 either. The decision and its measurements are in
 [Autana-Rendering-Roadmap.md](Autana-Rendering-Roadmap.md) (decision B).
 
-"One framebuffer" is really "one destination at a time". An app may ask for a
-different one at `enter()`, and gfx frees whatever the last one was:
-
-```mermaid
-flowchart TB
-    APP["an app's frame()"] --> TGT
-    UIC["ui.c command list"] --> TGT
-    TGT["gfx_target.h<br/>clip and translate"] --> SEL{"gfx_mode_resolve()<br/>exactly one is live"}
-    SEL -->|"GFX_LAYOUT_FULL_FB (default)"| FB["the framebuffer<br/>322 KiB, PSRAM"]
-    SEL -->|"GFX_LAYOUT_BANDS"| BR["2-slot band ring<br/>GFX_BAND_HEIGHT rows, SRAM"]
-    SEL -->|"GFX_PIXFMT_INDEXED8"| IX["index image + 256-entry LUT<br/>SRAM"]
-    FB --> PR["present: dirty strips only"]
-    BR --> PR
-    IX -->|"LUT lookup, upscale, optional dither"| PR
-    PR -->|"QSPI DMA"| PANEL["SH8601 AMOLED"]
-```
-
-| Destination | Asked for by | Used today by |
-|---|---|---|
-| framebuffer | the default | every app that draws pixels |
-| band ring | `gfx_mode_enter(GFX_LAYOUT_BANDS)` | `app_cube.c`, on by default |
-| index image | `gfx_mode_request_t.pixfmt` | the sand app - `docs/sand/Shading-and-Colour.md` |
-
-`gfx_mode_resolve()` (`gfx_mode.h`) and the ring's state machine
-(`gfx_band.h`) are pure and host-tested. `gfx_mode_exit()` reverses whatever
-`enter()` did. `GFX_BAND_HEIGHT` is a Kconfig choice (16/32/64 rows, default
-32 pending a device sweep, always a divisor of `GFX_HEIGHT`);
-`tools/sweeps/band_height_sweep.sh` builds one diagnostics image per height.
+"One framebuffer" is really "one destination at a time": an app may ask for
+a band ring or an index image at `enter()`, and gfx frees the framebuffer
+while it holds one. The targets, the dirty tracker and the present path are
+in [Gfx-and-Presentation.md](Gfx-and-Presentation.md).
 
 This is also why the 3D renderer is small3dlib: it owns no framebuffer - it
 hands back every rasterized pixel through a callback - and with
 `S3L_Z_BUFFER 0` no depth buffer either, resolving visibility by sorting
 triangles back-to-front. A conventional colour+depth rasterizer would want
 ~1.3 MB here.
-
-What follows from having one destination:
-
-- **Primitives target whichever one is live.** `gfx_target.h` carries the
-  clip-and-translate arithmetic behind `gfx_clear()`, `gfx_fill_rect()`,
-  `gfx_pixel()`, the line, dither and blend variants, and text. Between
-  frames there is no valid target at all, so `gfx_fb_guard.h` backs those
-  same primitives with a check that no-ops rather than writing through NULL:
-  loud (an assertion) on a development or host build, silent on release - the
-  asymmetry `gfx_present_guard.h` already uses.
-- **A UI is built once per frame and replayed per band.** microui's command
-  list already describes the whole output, so `ui_end_for_bands()` bins it by
-  row range instead of painting and `ui_replay_band()` draws whichever
-  commands overlap the band being rendered. `main.c` queues the shell's
-  home-swipe hint (`ui_queue_band_overlay_rect()`) *before* an app's
-  `frame()`, since a band-mode app's whole band loop happens inside that one
-  call with no chance to draw afterwards. `screenshot.c` needs one contiguous
-  buffer to stream, which band mode never has, so it refuses outright.
-- **An untouched band is neither redrawn nor sent.** The panel retains what a
-  band last received, so `gfx_band_dirty()` (`gfx.c`) asks `gfx_dirty.h`'s
-  existing strip tracker - not a second one, since every `GFX_BAND_HEIGHT`
-  divides `STRIP_HEIGHT` (64) evenly. A `false` answer means
-  `gfx_band_skip()`: the ring advances, nothing is cleared, rendered or sent.
-  `cube_frame_band()` marks the union of its previous and current bounds;
-  `ui.c` hashes each band's commands and marks only the changed ones.
-  `gfx_invalidate()`, `gfx_mode_enter()` and an orientation change force
-  every band through a flag kept independent of `gfx_dirty.h`'s own
-  `all_dirty`, so a forced band redraw can never change what a full-fb
-  present observes. The debug overlays (dev builds) outline whichever bands
-  were actually sent, so a skipped one reads as visibly unoutlined.
-- **An indexed present is driven by gfx, not the app.** Where a band user
-  runs its own `gfx_band_next()`/`gfx_band_submit()` loop, an indexed app
-  just writes indices and calls `gfx_present_begin()`/`gfx_present_wait()` -
-  the same two calls the default layout uses - and the present task expands
-  whichever dirty strips exist into the DMA buffers. It sends whole dirty
-  strips rather than gathering scattered runs: a deliberate simplification,
-  not a limit of the pixel format.
-
-**Palettes are a gfx concept, not any one app's.** `gfx/gfx_palette.h` is the
-type an app builds or installs a `GFX_PIXFMT_INDEXED8` palette through - a
-name, an entry list, a count, and the reserved-entries-0-15 convention
-(`GFX_PALETTE_UI_ENTRIES`). `gfx/gfx_palette_standard.h` ships curated ones as
-`const` data (CGA/EGA 16, PICO-8 16, DawnBringer DB16/DB32, a VGA-style 256,
-16/256-level grayscale), found by name or listed. Choosing one is always a
-runtime call, never a Kconfig symbol.
-
-Building a palette - which colours it holds, weighted however an app likes -
-is app-specific work and stays out of gfx. What is shared is the two steps
-every palette needs afterwards, both in OKLab so that two nearby entries do
-not fight over which colour a search prefers: `tools/gfx_palette_gen.h`
-(host-only, links libm, never in the firmware image) builds the 65536-entry
-reverse index map a colour-to-index lookup needs, and the 256 x 16-phase
-dither table `gfx_indexed_expand_row_dither16()` reads.
 
 ### 2. There is exactly one frame loop, and it belongs to the shell
 
@@ -396,8 +329,9 @@ numbers passes both halves by accident.
 
 ## The frame loop
 
-The shell is a two-state machine. `current == NULL` means the launcher is
-showing; anything else is the running app.
+The shell is a two-state machine. `current == NULL` means a system screen is
+showing; anything else is the running app. Which system screen - the launcher
+or Control Center - is `system_navigation_t`'s one field.
 
 ```mermaid
 stateDiagram-v2
@@ -405,14 +339,16 @@ stateDiagram-v2
 
     Launcher --> Launcher: ui_launcher_frame()<br/>draws the app list
     Launcher --> Running: tap an entry<br/><i>app->enter()</i>
+    Launcher --> ControlCenter: swipe in from the logical top
+    ControlCenter --> ControlCenter: ui_control_center_frame()<br/>over the dimmed launcher
+    ControlCenter --> Launcher: swipe in from the logical bottom
 
     Running --> Running: app->frame(dt_ms, input)<br/>+ home hint
-    Running --> Launcher: swipe up from bottom<br/><i>app->exit()</i>
+    Running --> Launcher: home swipe or PWR long-press<br/><i>app->exit()</i>
 ```
 
-Only `enter()` and `exit()` run on the transitions, and both run exactly once,
-which is why an app may assume `enter()` has happened before any `frame()` and
-that `exit()` will follow the last one.
+What the shell does on each transition, and which of the two ways home an app
+gets, is in [Building-an-App.md](Building-an-App.md#lifecycle).
 
 Each iteration:
 
@@ -420,8 +356,9 @@ Each iteration:
 touch_read()          latched press/release edges from the polling task
     |
     +-- launcher showing?  ui_launcher_frame()  -> returns chosen app or -1
+    |                      Control Center up?   -> ui_control_center_frame()
     |
-    +-- app running?       gesture_is_home_swipe()?  -> exit() and go home
+    +-- app running?       home swipe or PWR held?  -> exit() and go home
                            otherwise app->frame(dt_ms, input) + home hint
     |
 gfx_present()         blit, and wait for the DMA to drain
@@ -431,154 +368,37 @@ vTaskDelay(1)         yield so the idle task can feed the watchdog
 Currently **~42 fps** on the launcher screen. The blit dominates at ~25 ms; the
 cube app is slower because rasterizing costs ~28 ms on top.
 
-`dt_ms` is clamped to 250 ms so a stall does not make animation jump.
+`dt_ms` is clamped to `FRAME_DT_MAX_MS` (250 ms) so a stall does not make
+animation jump.
 
 ### Apps with `update()`: overlapping the next step with the present
 
-An app that sets `app_t.update` (app.h) is stepped differently: once a frame
-is on screen, the shell begins presenting it, runs `update()` on core 0 while
-a present task on core 1 sends, joins the two with `gfx_present_wait()`, and
-only then calls `frame()` to draw. `update()` may change app state but must
-never call a `gfx_*` function or touch the framebuffer - the buffer it would
-touch may still be mid-send - and a development build asserts that. An app
-that leaves `update` NULL sees none of this: `frame()`, then `gfx_present()`,
-exactly as above. Sand is the first adopter, splitting `sand_update()` (input,
-sim, wake ticks) from `sand_frame()` (drawing) - see `app_sand.c`.
+An app that sets `app_t.update` has the previous frame sent on core 1 while
+`update()` runs on core 0 - the sequence and the app's obligations are in
+[Building-an-App.md](Building-an-App.md#one-pass-of-the-frame-loop).
 
-`gfx.h`'s `gfx_present_begin()`/`gfx_present_wait()` are the primitive this
-runs on; `gfx_present()` stays exactly their `begin` then `wait`, so every
-caller that never adopts `update()` is unaffected.
-Presentation runs asynchronously on core 1 by default. The runtime
-`gfx_set_present_async(false)` switch forces the send back onto the caller,
-for an A/B measurement against the overlapped path.
+The split present underneath it is in
+[Gfx-and-Presentation.md](Gfx-and-Presentation.md#present-who-runs-it).
 
 ### Full redraw
 
-`gfx_request_full_redraw()` (`gfx.h`) is the one call a transition needs
-instead of composing `gfx_mark_all_dirty()` and `gfx_invalidate()`
-separately - opening or closing an overlay, an orientation change, a
-SCREENSHOT capture, a RUNSUITE run. It marks the whole framebuffer dirty,
-resets partial-clear tracking and forces every band on the next band
-frame, then latches a pending flag: `gfx_full_redraw_pending()` answers
-whether one is outstanding, and `gfx_full_redraw_clear_pending()` ends the
-window. Only sets state and frees nothing, so it is safe to call from
-anywhere on core 0, including an app's own `frame()`.
-
-gfx has no idea an app keeps its own draw cache beyond the framebuffer -
-sand's row-run spans, cube's band-mode coverage bbox. `app_t.invalidate`
-(`app.h`) is the opt-in half: NULL unless an app owns such a cache, called
-once per pending request before the app's next `frame()`. The shell
-(`main.c`'s `apply_pending_full_redraw()`) checks the pending flag at the
-top of a pass, calls the running app's `invalidate()` (or `ui_invalidate()`
-while the launcher is showing) and clears the flag right there - a request
-made inside that very `frame()` call is left pending for the pass that
-follows, not cleared out from under it before ever being read.
-
-The shell calls `gfx_request_full_redraw()` on app enter and exit, an
-orientation change, a SCREENSHOT dump and a completed RUNSUITE run. An app
-may call it itself where the timing is equivalent to its own ad hoc
-marking - sand does, at its overlay's close and at `start_sim()`, both
-already deferring their visible effect to the following `frame()`.
+`gfx_request_full_redraw()` marks everything dirty and latches a pending
+flag - see [Gfx-and-Presentation.md](Gfx-and-Presentation.md#repaint-controls).
+gfx has no idea an app keeps its own draw cache beyond the framebuffer.
+`main.c`'s `apply_pending_full_redraw()` checks the pending flag at the top
+of a pass, clears it, and calls the running app's `invalidate()` - or
+`ui_invalidate()` while the launcher is showing. Clearing before the draw
+rather than after is what lets a request made inside that very `frame()` call
+reach the following pass. The app's side is in
+[Building-an-App.md](Building-an-App.md#full-redraw).
 
 ---
 
-## Adding an app
+## Apps
 
-Three steps.
-
-**1. Write `main/apps/<name>/app_<name>.c`** (e.g. `main/apps/sand/app_sand.c`):
-
-```c
-#include "../../app.h"
-#include "../../gfx/gfx.h"
-
-static void yours_enter(void) { /* reset state */ }
-
-static void yours_frame(uint32_t dt_ms, const input_t *input)
-{
-    gfx_clear(gfx_rgb(0x101010));
-    gfx_text(20, 20, "hello", gfx_rgb(0xFFFFFF));
-}
-
-static void yours_exit(void) { /* release what enter() took */ }
-
-/* Exported as the struct, not a pointer to it, so the registry can take its
- * address in a static initializer. */
-const app_t app_yours = {
-    .name    = "Your App",
-    .summary = "what it does",
-    .enter   = yours_enter,
-    .frame   = yours_frame,
-    .exit    = yours_exit,
-};
-```
-
-**2. Register it — from inside its own file:**
-
-```c
-APP_REGISTER(app_yours);
-```
-
-That is the whole registration. There is no central list, and **no other file
-needs editing** — not `main.c`, not `CMakeLists.txt`.
-
-### An app is a folder
-
-Everything an app owns lives in `main/apps/<name>/`:
-
-```
-main/apps/sand/
-├── app_sand.c        entry point: gfx, IMU, frame loop        (NOT host-portable)
-├── material.c/.h     what a cell is made of                    (pure, const data)
-├── tilt.c/.h         accelerometer -> steering direction        (pure)
-├── sand.c/.h         the automaton: grid, movement, friction     (pure)
-├── sand_liquid.c     cross-flow levelling, the wall-rebound splash (pure)
-├── sand_gas.c        rising and dispersing, the reverse-order pass (pure)
-├── sand_reactions.c  fire chemistry: ignition, spread, burnout      (pure)
-├── sand_priv.h       small inline helpers shared by the .c files above
-├── row_runs.c/.h     per-row dirty-span detection and reconciliation (pure)
-├── suite_sand_*.c    tests for the automaton, split by topic (pure + a device block)
-├── suite_row_runs.c  tests for row_runs                                (pure)
-├── suite_tilt.c      tests for the tilt filter                         (pure)
-└── tools/            sand-only host tooling (sweeps, report generators)
-```
-
-`tools/` is not new territory needing its own rule - it follows straight from
-the one above. An app's `tools/` folder holds tools that reference ONLY that
-app; anything spanning app *and* shell code (a sweep that touches a
-shell-owned header alongside an app one, say) stays in the shared
-`launcher/tools/` instead. `main/apps/sand/tools/report_reactions.sh` is one
-tenant - it only ever touches the sand app's own reaction table - while a
-sweep that touched a sand constant *and* a `launcher/main/gfx/gfx_dirty.h`
-constant together would stay shared for exactly that reason.
-
-See `docs/sand/Sand-Simulation.md` for how the pieces above fit together - the
-material system, the water model, and why the liquid logic is split into its
-own file.
-
-Deleting the app is deleting the folder. Its code, its logic and its tests go
-with it, and nothing is left dangling.
-
-Three mechanisms make that true:
-
-- **The build globs `apps/**/*.c`** (with `CONFIGURE_DEPENDS`, so a new folder
-  is picked up without a manual reconfigure).
-- **Apps register themselves.** `APP_REGISTER` emits a constructor into
-  `.init_array`, which ESP-IDF runs before `app_main()`.
-- **The glob excludes `apps/*/tools/`.** That same recursive glob would
-  otherwise sweep an app's host-side tooling into the firmware image right
-  alongside its real sources - and `WHOLE_ARCHIVE` (below) force-links
-  whatever it finds, so a stray `main()` under a `tools/` folder would get
-  compiled into the device build rather than dropped by `--gc-sections`.
-  `launcher/main/CMakeLists.txt` filters `/apps/[^/]*/tools/` out of
-  `discovered_apps` for exactly this reason, structurally rather than by
-  naming each tool.
-
-The naming convention the host test runner relies on: **`app_*.c` is the
-hardware-facing entry point**, and everything else in the folder is portable
-logic it can compile. That split is not bureaucracy — it is what forces an
-app's logic to be separable from its wiring, and it is the only reason a
-falling-sand automaton can be tested on a laptop.
+How to write one - the `app_t` endpoints, registration, lifecycle and the
+folder convention - is [Building-an-App.md](Building-an-App.md). What stays
+here is why the build is shaped the way it is.
 
 > **`WHOLE_ARCHIVE` is load-bearing.** The component becomes `libmain.a`, and a
 > linker only extracts an archive member that resolves an undefined symbol.
@@ -587,9 +407,6 @@ falling-sand automaton can be tested on a laptop.
 > would silently vanish from the menu. Not a link error: a smaller binary and a
 > shorter list. This was caught by the release image shrinking *below* its
 > pre-app size.
-
-Menu order is by name. Constructor order follows link order, which is not
-something to depend on, so the shell sorts before showing the list.
 
 **Bench-only apps** live in `apps/diagnostics/`, excluded by folder when
 `CONFIG_LAUNCHER_DEVELOPMENT` is off — structural rather than a name check.
@@ -612,7 +429,9 @@ DEVELOPMENT-shaped and ship in both. Splitting that surviving DEVELOPMENT
 content into its own Settings app is still open; see
 [Settings-App-Plan.md](plans/Settings-App-Plan.md).
 
-### Drawing a UI, in the shell or in an app
+---
+
+## Drawing a UI, in the shell or in an app
 
 `launcher/main/ui/ui.c` owns the microui integration; `ui_launcher.c` is just one caller.
 An app builds a UI the same way:
@@ -631,7 +450,7 @@ ui_end(UI_NO_BACKGROUND);   /* draw over the app instead of clearing */
 That gets the touch handling - which is not obvious, see the comment on
 `feed_input()` - and the repaint logic below, for free.
 
-#### Styling a control
+### Styling a control
 
 `ui_style.h` decides how a control's frame *looks*, separately from what it
 *is*. Two styles exist for buttons:
@@ -698,33 +517,13 @@ without inviting a press — a panel outlines a whole screen area, a bezel
 outlines one tap target, and the two would fight if a panel were lit and
 shadowed the same way.
 
-#### Text at more than one size
+### Text at more than one size
 
-A screen that puts a small caption next to a much larger value or heading
-needs two sizes on one canvas. A global scale read at render time would be the same shape as `ui_set_text_style()` above and pay the
-same cost: a scale carried outside the command list changes what gets drawn
-without changing a single byte of it, so `hash_canvas()` cannot see the
-change and skips the repaint, leaving the old size on screen. A screen
-mixing two sizes sets the scale more than once a frame, which would mean
-calling `ui_invalidate()` every frame — permanently defeating the repaint
-skip on exactly the kind of mostly-static panel it exists for.
+A font and its scale ride inside every text command, so the repaint hash
+sees a size change unaided; a text style does not. The calls and the reason
+are in [Text-and-Fonts.md](Text-and-Fonts.md#text-in-a-microui-screen).
 
-`ui_set_font()` already gets this right, for the reason its own comment
-gives: a `mu_Font` is baked into every `mu_TextCommand`, so a font change is
-different bytes and the hash sees it unaided. `ui_set_font_scaled(font,
-scale)` carries the scale the same way rather than beside it — `mu_Font`
-points at an interned `{ font, scale }` pair, from a small fixed table in
-`ui.c`, instead of a bare `gfx_font_t`. The same pair always yields the same
-address, so a size change is a different pointer in the command list and
-the hash catches it unaided — no invalidate, no per-frame thrash, and the
-mechanism is the one the file already argues for rather than a second one
-beside it. `ui_set_font(f)` is exactly `ui_set_font_scaled(f,
-GFX_GLYPH_SCALE)`. `ui_measure_text(str)` answers what `str` would measure
-at whatever font and scale are currently set, so a caller right-aligning a
-value like `06 PX` against a caption on the same row does not have to
-re-derive the font role and scale it already set.
-
-#### App-owned artwork, and how it reaches the command list
+### App-owned artwork, and how it reaches the command list
 
 `icon_bitmap_blocks()` takes any 16×16 bitmap, one row per scanline, and
 answers the run-length/scale/centre geometry a draw needs. The check mark
@@ -767,7 +566,7 @@ pressed — see "the pressed look is on hover" above for that policy and why
 it lives in `ui_pointer.c`; without it, a drag can only jump to where a
 finger first landed and then goes deaf to everything after.
 
-#### Immediate mode versus dirty bands
+### Immediate mode versus dirty bands
 
 These fight, and the fight would have hit apps, not just the launcher.
 Immediate mode rebuilds and repaints the UI every frame, which means clearing
@@ -783,7 +582,7 @@ act - you mutate a node, it marks its canvas dirty. Immediate mode throws that
 signal away by construction, so we recover it from the other end: compare
 output where an engine compares intent. Same destination, opposite direction.
 
-#### One window is one canvas
+### One window is one canvas
 
 The canvas split comes free with it. microui already groups commands by root
 container, each with its own rect, so each window is hashed, repainted and
@@ -817,7 +616,7 @@ because it now paints and sends nothing at all. `test/suites/suite_ui.c` covers
 the independence claim directly - it builds two windows, changes one, and
 asserts the other's bands stay clean.
 
-#### Dimming what is behind a panel (the scrim)
+### Dimming what is behind a panel (the scrim)
 
 A panel over a paused app reads as pasted on unless whatever is behind it is
 knocked back. The pattern, used by both of the sand app's screens:
@@ -867,79 +666,12 @@ is not part of the picture the hash describes; it is a one-off change to
 what the picture is drawn *on top of*. A scrim expressed as a command would
 be a scrim applied every repaint, which is the bug above.
 
-### Text and fonts
+---
 
-A font here is a `gfx_font_t` (`gfx/gfx_font.h`): an atlas of glyph bitmaps,
-a cell size, the codepoint range it covers, and an optional per-glyph advance
-table. Two kinds ship, and the difference is `bpp`:
+## Text and fonts
 
-- **1 bit per pixel** - `gfx_font_8x8`, the built-in bitmap. Monospace, and
-  crisp at any integer `scale`, which is why it survives being drawn at 5x.
-- **8 bits per pixel** - a coverage atlas from `tools/gen_font.py`, with real
-  proportional advances. Anti-aliased, and rasterized AT one pixel size:
-  scaling it up resamples and blurs, so it wants `scale` 1.
-
-Drawing is the same call either way (`gfx_text_font()`), which dispatches on
-`bpp` internally; the 8bpp path blends each glyph pixel's coverage into the
-framebuffer through `gfx_fill_rect_blend()`. That is the one fill in `gfx.c`
-that READS the destination - affordable at glyph scale, and deliberately not
-how full-frame compositing works (see `gfx_blit_dither()`, which dithers
-precisely because it is full-frame).
-
-**Ask for a role, not a typeface.** `gfx/gfx_font_roles.h` is the one place
-that says which concrete font plays which part - `gfx_font_ui()` is the UI/
-body-text role, and it is what everything not authored draws with: microui,
-the boot animation's axis labels, the POST report, diagnostics. Call sites
-say what they want; one file says what that currently is, so retyping the UI
-is a one-line edit rather than a grep.
-
-**Roles resolve at compile time, and that is load-bearing.** A coverage atlas
-is 274 KiB, and the linker only drops one nothing references - which is not a
-theory: pointing the boot animation's timeline at the bitmap font made the
-Computer Modern atlas vanish from the map and the image fall by that much. So
-each role is a `static inline` accessor returning a fixed font, and the
-header includes only the font headers for typefaces actually assigned a role.
-A registry resolving a role variable at runtime would reference every
-candidate from one translation unit and force them all to link, in every
-build, whether or not that build ever selects them.
-
-Not everything about text is a role. The boot animation's title typeface is
-an AUTHORED timeline knob (`title_font`/`title_scale`, with a dropdown in the
-editor) - a per-animation choice, not a system-wide one - and a "label" role
-was deliberately not created, because labels use the UI typeface at a smaller
-`scale`, and scale is a call-site argument rather than a role.
-
-### What an app may and may not do
-
-| | |
-|---|---|
-| Draw via `gfx_*`, or straight into `gfx_framebuffer()` | yes |
-| Read `input_t` for touch | yes |
-| Animate using `dt_ms` | yes |
-| Call `gfx_present()` | **no** — the shell presents |
-| Loop or block or `vTaskDelay` | **no** — return promptly |
-| Keep a framebuffer of its own | **no** — there is only one |
-| Call any `gfx_*` function, or touch the framebuffer, from `update()` | **no** — see below |
-
-Anything expensive belongs in `enter()`, not `frame()`.
-
-### The panel clock
-
-Every app starts at the system panel clock: the user's choice of 80 MHz (the
-default) or 40, kept in NVS by the shell (`shell_set_system_panel_clock_hz()`,
-`app.h`). An app that wants a different rate forces it with
-`gfx_set_panel_clock_hz()`, from `enter()` or an in-app option; that call is
-the only way an app says anything about the clock. When an app starts or
-exits, the shell puts the system value back and resets gfx heal to its
-defaults, so an app never restores either.
-
-80 MHz is past the panel's rated 50 MHz, but it never breaks an app: the worst
-case for an app that redraws only what changed is a stray pixel or thin line
-that stays until that region is sent again. An app that minds opts into gfx
-heal (`gfx_heal_mark()`, `gfx_heal_set_budget()`, `gfx_heal_set_rolling()`),
-which re-sends marked rows as differently cut strips and does nothing at
-40 MHz. The resolution logic is `display/panel_clock.c`, host-tested in
-`suite_panel_clock.c`.
+What a font is, the role accessor, how text is drawn and how to add a
+typeface: [Text-and-Fonts.md](Text-and-Fonts.md).
 
 ---
 

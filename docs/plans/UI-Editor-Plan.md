@@ -1,9 +1,9 @@
 # Plan: a UI editor, and the layout format underneath it
 
-**Status**: planned 2026-09-10, not built. Written after the sand app's brush
-screen shipped and a host-side preview of it landed
-([`Sand-Brush-Screen-Plan.md`](Sand-Brush-Screen-Plan.md),
-`apps/sand/tools/brush_screen_preview.c`).
+**Status**: phases 1 to 4 exist for one screen. The editor is
+[`editor/`](../../editor/README.md); Control Center is its one authored
+document and the launcher a preview beside it. The brush screen, the screen
+this plan was written for, is not yet a document.
 
 The objective is a tool where a screen is **authored visually and edited
 again later** - not screenshotted and re-typed. The brush screen should open
@@ -12,6 +12,28 @@ in it as an editable instance. It is a component of the engine direction in
 to the level editor already banked in that roadmap.
 
 ---
+
+## What exists
+
+| piece | where |
+|---|---|
+| authored layout | `launcher/main/ui/<screen>_layout.json`: the screen's name, its elements (`id`, `label`, `interactive`) and one rect per element per orientation |
+| generator | `launcher/tools/gen_ui_layout.py`, one for every screen; every C identifier derives from the JSON's `screen` |
+| baked table | `<screen>_layout_generated.h`, the only form the device links |
+| document | `editor/src/layout_document.{h,cpp}`, one type for every screen, applying the generator's rules |
+| renderer | `editor/runtime/runtime.c`: the firmware's `ui/` and `gfx.c` compiled for the host |
+| shell | `editor/src/main.cpp`: SDL2 + Dear ImGui; hierarchy, both orientations side by side, inspector, undo, explicit save and bake |
+
+A screen becomes editable with three things: its JSON, a draw function taking
+the baked struct (`ui_control_center_draw()` is the model), and an entry in
+`runtime.c` and in `load_system_screens()`. Nothing else in the editor names a
+screen.
+
+The format holds **rects and nothing else**. Of the six layout concepts and
+the text constraint described below, none is expressed yet; every rect is
+absolute per orientation. That was enough for Control Center and will not be
+for a flowed list such as the launcher, which is why the launcher is only
+previewed.
 
 ## This pattern already runs in this repo
 
@@ -116,69 +138,71 @@ That choice also serves the web goal instead of fighting it: the same
 host-portable C compiles under Emscripten, so a browser preview later is the
 same code, not a second implementation of it.
 
-### The shell: raylib, with SDL2 + microui as the near miss
+### The shell: SDL2 + Dear ImGui
 
 Cross-platform makes the *dependency* the deciding question, not the widget
 set.
 
-**raylib + raygui** is the recommendation. Pure C11 - no C++ in a tree that
-has none - one source tree across Windows, Linux and macOS, and it brings
-the whole stack that otherwise has to be assembled: a window, input, a
-texture to blit the framebuffer into, and `raygui` as a single-header
-immediate-mode GUI for property panels. It targets Emscripten first-class,
-so the web build above costs nothing extra. The price is that it is a
-chunkier thing to depend on than the single-purpose libraries vendored in
-`components/` today, so fetch it at configure time rather than checking it
-in.
+**SDL2 + Dear ImGui** is the shell. SDL supplies the window, input and the
+texture the framebuffer is blitted into; Dear ImGui supplies docking, the
+hierarchy, the inspector, menus and text editing. The price is a C++
+toolchain, confined to `editor/`: it links the firmware's C through one C
+header (`editor/include/editor/runtime.h`) and never enters an ESP-IDF
+component graph. All four dependencies are fetched at configure time at a
+pinned tag, never vendored.
 
-**SDL2 + microui** was the close alternative and is worth knowing about. SDL
-is packaged on every platform, microui is already vendored and already
-host-linkable, and the editor would then be built with the very toolkit it
-edits - every gap in `ui/` found by someone using it daily, which is the
-best bug-finding argument available. It loses on how much has to be written:
-microui has no real text input, no file dialogs, no docking, so the editor
-chrome becomes its own project.
+**raylib + raygui** is the pure-C alternative. It makes a first preview
+cheaper, and then the hierarchy, inspector, docking and text input become
+editor chrome to write by hand.
 
-**cimgui + SDL** gives the best editor UX of the three and costs a C++
-toolchain on three platforms. Only worth it if the editor grows ambitious.
+**SDL2 + microui** would build the editor with the toolkit it edits - every
+gap in `ui/` found by daily use. It loses on the same count, harder: microui
+has no real text input, no file dialogs and no docking.
 
 **Build with CMake.** ESP-IDF already uses it, so it is not a new tool for
-anyone on any platform, and both candidate shells ship support for it. The
-editor lives under `tools/`, is never part of the firmware build, and like
-every other host tool here is absent from `idf.py` and from
-`test/run_tests.sh`.
+anyone on any platform. The editor is never part of the firmware build, and
+is absent from `idf.py` and from `test/run_tests.sh`; its own suite is CTest,
+run by `.github/workflows/editor-tests.yml`.
 
 ## Phases
 
-1. **Layout as authored data. No editor.** A screen's JSON, a generator, a
-   baked header, and `brush_screen_layout()` reading the table instead of
-   computing it.
+1. **Layout as authored data.** A screen's JSON, a generator, a baked header,
+   and the screen's draw function reading the table. *Exists for Control
+   Center.*
 
-   **Acceptance: `suite_brush_screen.c` passes untouched, and the baked
-   rects are identical to what the function produces today.** Same discipline
-   the icon baker used - a generator that cannot reproduce known-good output
-   is not ready to produce new output. This phase changes no pixels.
+   For a screen that already computes its rects, the acceptance is that its
+   suite passes untouched and **the baked rects are identical to what the
+   function produced**. Same discipline the icon baker used - a generator
+   that cannot reproduce known-good output is not ready to produce new
+   output. `brush_screen_layout()` is the first such screen.
 
-2. **Validation moves into the generator.** It refuses, at bake time and for
-   every orientation, a layout that overlaps, leaves the canvas, drops a tap
-   target below 44px, or gives a string a box it does not fit in. The host
+2. **Validation in the generator.** It refuses, at bake time and for every
+   orientation, a layout that overlaps, leaves the canvas or drops an
+   interactive element below 44px. *Exists*, mirrored in the document so the
+   editor reports the same problems while dragging. **Not yet: a string in a
+   box it does not fit** - the defect this plan cares most about. The host
    suite keeps its own assertions as the independent witness - the generator
    checking itself is not a test.
 
 3. **The editor shell.** A native window that links the layout and draw code
-   directly and renders both orientations side by side - that is where
-   composition decisions actually get made. No server, no subprocess, no
-   recompile in the preview loop. Loading and saving the JSON is the whole
-   of its file handling at this stage.
+   directly and renders both orientations side by side. No server, no
+   subprocess, no recompile in the preview loop. *Exists.*
 
-4. **Direct manipulation.** Drag and resize in the browser, writing back to
-   the JSON. Deliberately last: it is the least load-bearing part, and a
-   format that only a GUI can produce is a format nobody can review in a
-   diff.
+4. **Direct manipulation.** Drag and resize on the canvas, numeric edits in
+   the inspector, undo and redo, writing back to the JSON. *Exists.* The
+   document writes the file itself, one rect per line, so an edit's diff is
+   the rects that moved: a format only a GUI can produce is a format nobody
+   can review.
 
-5. **A second screen proves the model.** The palette, or the launcher. A
-   format that has only ever expressed one screen has proven nothing about
-   being a format.
+5. **A second screen proves the model.** The brush screen, then the palette.
+   A format that has only ever expressed one screen has proven nothing about
+   being a format, and these two need the stack, fill and text concepts the
+   format still lacks.
+
+6. **Cost overlays.** The panel's bands and dirty cells drawn over the canvas
+   in the user's orientation, optional snapping to them, and a per-element
+   cost hint - the same reactive text costs a hundred times more across
+   bands than along one. Guidance in the tool, never a rule in the format.
 
 ## Considered and rejected
 

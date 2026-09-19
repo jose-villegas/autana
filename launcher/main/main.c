@@ -28,8 +28,10 @@
 #include "input/gesture.h"
 #include "input/imu.h"
 #include "input/touch.h"
+#include "ui/system_navigation.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
+#include "ui/ui_control_center.h"
 #include "ui/ui_launcher.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -76,6 +78,9 @@ heap_mark(const char* where) {
 
 /* 10 Hz: sufficient for reorientation without lag. */
 #define DISPLAY_SAMPLE_MS 100
+
+/* A stall must not reach an app as one long step. */
+#define FRAME_DT_MAX_MS   250
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #define BUILD_MARK_GLYPH        8
@@ -222,6 +227,19 @@ exit_edge_for_quarter(int quarter) {
         GESTURE_EDGE_RIGHT,  /* quarter 3: Landscape upside down */
     };
     return edge_for_quarter[quarter];
+}
+
+/* Control Center opens from the content's logical top, the edge opposite
+ * the one that exits. */
+static gesture_edge_t
+opposite_edge(gesture_edge_t edge) {
+    switch (edge) {
+        case GESTURE_EDGE_TOP: return GESTURE_EDGE_BOTTOM;
+        case GESTURE_EDGE_BOTTOM: return GESTURE_EDGE_TOP;
+        case GESTURE_EDGE_LEFT: return GESTURE_EDGE_RIGHT;
+        case GESTURE_EDGE_RIGHT: return GESTURE_EDGE_LEFT;
+    }
+    return edge;
 }
 
 static void
@@ -376,8 +394,41 @@ leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint3
     draw_home_hint(exit_edge);
 }
 
+static system_navigation_t system_navigation;
+static int control_center_backdrop_quarter;
+
+/* The backdrop is the launcher's own frame under a scrim, drawn once and
+ * then painted over, so anything that replaces the framebuffer or turns the
+ * content has to draw it again. */
+static void
+paint_control_center_backdrop(uint32_t dt_ms) {
+    const input_t no_input = {0};
+    ui_invalidate();
+    ui_launcher_frame(&no_input, dt_ms);
+    ui_control_center_dim_backdrop();
+    ui_invalidate();
+    control_center_backdrop_quarter = display_shell_quarter();
+}
+
+static void
+step_control_center(const input_t* input, uint32_t dt_ms) {
+    const bool redraw_requested = gfx_full_redraw_pending();
+    gfx_full_redraw_clear_pending();
+    if (redraw_requested || control_center_backdrop_quarter != display_shell_quarter()) {
+        paint_control_center_backdrop(dt_ms);
+    }
+    ui_control_center_frame(input);
+}
+
 static void
 step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint32_t dt_ms) {
+    if (system_navigation_step(&system_navigation, input, opposite_edge(exit_edge), exit_edge, GFX_WIDTH, GFX_HEIGHT)) {
+        gfx_request_full_redraw();
+    }
+    if (system_navigation.screen == SYSTEM_SCREEN_CONTROL_CENTER) {
+        step_control_center(input, dt_ms);
+        return;
+    }
     apply_pending_full_redraw(NULL);
     const int chosen = ui_launcher_frame(input, dt_ms);
     if (chosen < 0 || chosen >= apps_registered) {
@@ -492,6 +543,7 @@ static void
 app_boot_init(void) {
     printf("BUILD_ID=%s\n", BUILD_ID);
     fflush(stdout);
+    system_navigation_init(&system_navigation);
     heap_mark("boot");
 
     /* Test SD card during panel use. */
@@ -628,8 +680,8 @@ app_main_loop(void) {
         const int64_t now_us = esp_timer_get_time();
         uint32_t dt_ms = (uint32_t)((now_us - previous_us) / 1000);
         previous_us = now_us;
-        if (dt_ms > 250) {
-            dt_ms = 250; /* clamp, so a stall does not jump animation */
+        if (dt_ms > FRAME_DT_MAX_MS) {
+            dt_ms = FRAME_DT_MAX_MS;
         }
 
 #if CONFIG_LAUNCHER_SELFTEST

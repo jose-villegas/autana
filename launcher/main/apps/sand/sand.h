@@ -344,6 +344,16 @@ int sand_spawn(sand_t* s, int cx, int cy, int radius, material_id_t material);
  * ignored. */
 int sand_spawn_cell(sand_t* s, int cx, int cy, int radius, cell_t spec);
 
+/* Percent of a disc a pour fills. At FULL no roll is drawn at all, so a
+ * full-share pour and sand_spawn_cell() consume identical random numbers. */
+#define SAND_SPAWN_SHARE_FULL 100
+
+/* sand_spawn_cell() thinned: a cell inside the disc is placed only when its
+ * own roll lands under `share_pct`. A share of the disc rather than a fixed
+ * count, so the same gesture seeds the same fraction however fine the grid
+ * is. For a material that spreads on its own, seeding beats packing. */
+int sand_spawn_cell_share(sand_t* s, int cx, int cy, int radius, cell_t spec, int share_pct);
+
 /* Remove all grains and emitters in a disc. Returns number of CELLS removed.
  * Not a mirror of sand_spawn, which only places grains. Also switches off any
  * emitter in the disc to prevent a trap. Emitter removal is not included in

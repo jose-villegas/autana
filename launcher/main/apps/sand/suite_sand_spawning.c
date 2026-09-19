@@ -26,6 +26,7 @@
 
 #include "sand.h"
 #include "sand_priv.h"
+#include "sand_ui.h"
 #include "suite_sand_common.h"
 #include "util/intmath.h"
 
@@ -243,6 +244,133 @@ test_spawning_onto_existing_grains_does_not_double_count(void) {
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, filled, "spawning onto a full disc fills nothing");
     TEST_ASSERT_EQUAL_INT_MESSAGE(after_first, sand_count(&s), "and must not change the grid");
+}
+
+/* --- pouring a share of the disc ---------------------------------------- */
+
+/* Counted the same way the spawn walks it, so no test here states an area
+ * that a radius already decides. */
+static int
+disc_cells(int radius) {
+    int n = 0;
+    for (int dy = -radius; dy <= radius; dy++) {
+        for (int dx = -radius; dx <= radius; dx++) {
+            n += (dx * dx + dy * dy <= radius * radius) ? 1 : 0;
+        }
+    }
+    return n;
+}
+
+/* A pour centred on a grid wide enough that the disc is nowhere clipped,
+ * onto cells cleared first: sand_init() does not clear them. The seed is
+ * scrambled because xorshift32 needs a few draws to leave a small state. */
+static int
+share_pour(uint8_t* grid, int radius, uint32_t seed, cell_t spec, int share_pct) {
+    memset(grid, SAND_EMPTY, (size_t)REAL_W * REAL_H);
+    sand_init(&fx.loc, grid, REAL_W, REAL_H, seed * 2654435761u);
+    return sand_spawn_cell_share(&fx.loc, REAL_W / 2, REAL_H / 2, radius, spec, share_pct);
+}
+
+/* Every cell of the disc is its own roll, so the count is binomial and a
+ * band five standard deviations wide is one no seed reaches by chance -
+ * while still nowhere near the whole disc a pour ignoring the share fills. */
+static void
+test_the_plant_brush_pours_its_share_of_the_disc(void) {
+    const int radius = REAL_W / 4;
+    const int area = disc_cells(radius);
+    const double share = (double)SAND_BRUSH_SHARE_PLANT / SAND_SPAWN_SHARE_FULL;
+    const double expected = area * share;
+    const double band = 5.0 * sqrt(area * share * (1.0 - share));
+
+    uint8_t* grid = malloc((size_t)REAL_W * REAL_H);
+    TEST_ASSERT_NOT_NULL_MESSAGE(grid, "setup");
+
+    for (unsigned seed = 1u; seed <= 8u; seed++) {
+        const int filled = share_pour(grid, radius, (uint32_t)seed, MATX(MATX_PLANT), SAND_BRUSH_SHARE_PLANT);
+
+        char why[256];
+        snprintf(why, sizeof why,
+                 "seed %u planted %d of the disc's %d cells - a %d%% share of it is %.0f, "
+                 "and five standard deviations around that is %.0f to %.0f",
+                 seed, filled, area, SAND_BRUSH_SHARE_PLANT, expected, expected - band, expected + band);
+        TEST_ASSERT_TRUE_MESSAGE(fabs((double)filled - expected) <= band, why);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(filled, sand_count(&fx.loc), why);
+    }
+
+    free(grid);
+}
+
+/* A sparse pour must scatter over the whole disc, not settle onto a lattice
+ * the eye reads as a pattern - so every row and column the disc spans has to
+ * be reachable. At this share a given line is missed with probability
+ * (1 - share)^cells, which is vanishing for all but the few-cell lines at
+ * the disc's very top and bottom; those are what the margin allows for. */
+static void
+test_a_sparse_pour_scatters_across_the_whole_disc(void) {
+    const int radius = REAL_W / 4;
+    const int thin_lines = 2 * (int)(sqrt(2.0 * radius) + 1.0);
+
+    uint8_t* grid = malloc((size_t)REAL_W * REAL_H);
+    TEST_ASSERT_NOT_NULL_MESSAGE(grid, "setup");
+
+    for (unsigned seed = 1u; seed <= 4u; seed++) {
+        share_pour(grid, radius, (uint32_t)seed, MATX(MATX_PLANT), SAND_BRUSH_SHARE_PLANT);
+
+        int rows = 0, cols = 0;
+        for (int d = -radius; d <= radius; d++) {
+            bool in_row = false, in_col = false;
+            for (int e = -radius; e <= radius; e++) {
+                in_row = in_row || sand_at(&fx.loc, REAL_W / 2 + e, REAL_H / 2 + d) != SAND_EMPTY;
+                in_col = in_col || sand_at(&fx.loc, REAL_W / 2 + d, REAL_H / 2 + e) != SAND_EMPTY;
+            }
+            rows += in_row ? 1 : 0;
+            cols += in_col ? 1 : 0;
+        }
+
+        char why[256];
+        snprintf(why, sizeof why,
+                 "seed %u reached %d rows and %d columns of the disc's %d, and at most %d of "
+                 "them are short enough to be missed by chance - a pour clumping onto a "
+                 "lattice is what leaves whole lines empty",
+                 seed, rows, cols, 2 * radius + 1, thin_lines);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(2 * radius + 1 - thin_lines, rows, why);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(2 * radius + 1 - thin_lines, cols, why);
+    }
+
+    free(grid);
+}
+
+/* Spelled out by cell rather than by importing brushes[]: this file cannot
+ * see app_sand.c and should not start to - the same reason
+ * test_material_can_emit_matches_every_brush_by_kind() below spells its own
+ * list out. Plant is in the list too: what thins its pour is the share its
+ * brush entry carries, never the material. */
+static void
+test_a_full_share_fills_the_whole_disc(void) {
+    static const cell_t specs[] = {
+        CELL_MAKE(MAT_SAND, 0), CELL_MAKE(MAT_WATER, 0), CELL_MAKE(MAT_STONE, 0), CELL_MAKE(MAT_GAS, 0),
+        CELL_MAKE(MAT_FIRE, 0), CELL_MAKE(MAT_WOOD, 0),  CELL_MAKE(MAT_OIL, 0),   CELL_MAKE(MAT_LAVA, 0),
+        CELL_MAKE(MAT_ACID, 0), CELL_MAKE(MAT_GLASS, 0), CELL_MAKE(MAT_SNOW, 0),  CELL_MAKE(MAT_DIRT, 0),
+        MATX(MATX_ICE),         MATX(MATX_PLANT),        GUNPOWDER_CELL(0),
+    };
+    const int radius = REAL_W / 4;
+    const int area = disc_cells(radius);
+
+    uint8_t* grid = malloc((size_t)REAL_W * REAL_H);
+    TEST_ASSERT_NOT_NULL_MESSAGE(grid, "setup");
+
+    for (unsigned k = 0; k < sizeof specs / sizeof specs[0]; k++) {
+        const int filled = share_pour(grid, radius, 1u, specs[k], SAND_SPAWN_SHARE_FULL);
+
+        char why[256];
+        snprintf(why, sizeof why,
+                 "%s poured %d of the disc's %d cells at a full share - every brush but the "
+                 "one carrying a share of its own must still land solid",
+                 material_name(specs[k]), filled, area);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(area, filled, why);
+    }
+
+    free(grid);
 }
 
 static void
@@ -860,6 +988,9 @@ run_sand_spawning_suite(void) {
     RUN_TEST(test_spawn_fills_a_disc);
     RUN_TEST(test_spawn_is_clipped_to_the_grid);
     RUN_TEST(test_spawning_onto_existing_grains_does_not_double_count);
+    RUN_TEST(test_the_plant_brush_pours_its_share_of_the_disc);
+    RUN_TEST(test_a_sparse_pour_scatters_across_the_whole_disc);
+    RUN_TEST(test_a_full_share_fills_the_whole_disc);
     RUN_TEST(test_erase_removes_a_disc);
     RUN_TEST(test_erasing_empty_space_removes_nothing);
     RUN_TEST(test_erase_is_clipped_to_the_grid);

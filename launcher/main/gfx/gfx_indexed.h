@@ -285,3 +285,45 @@ gfx_indexed_expand_row_dither_checker2(
         out_row[x] = checker2_rgb[py + px]; /* index 0: reserved background */
     }
 }
+
+/* Everything that decides how an index image reaches the panel. `table` is
+ * the plain 256-colour LUT while `dither16_on` is false, otherwise the one
+ * installed for `dither_mode`, sized as that mode's own comment says. */
+typedef struct {
+    const uint8_t* image;
+    int grid_w, grid_h, cell_size;
+    bool dither16_on;
+    gfx_dither_mode_t dither_mode;
+    const gfx_color_t* table;
+} gfx_indexed_frame_t;
+
+/* Panel row `y` of `frame`, exactly as the present path sends it. The one
+ * place the per-mode choice is made, so a read-back of the panel cannot
+ * drift from what was sent. */
+static inline void
+gfx_indexed_expand_panel_row(const gfx_indexed_frame_t* frame, int y, gfx_color_t* out_row, int out_width) {
+    const int grid_row = gfx_indexed_panel_row_to_grid_row(y, frame->cell_size);
+    const uint8_t* row = grid_row < frame->grid_h ? frame->image + (size_t)grid_row * frame->grid_w : NULL;
+    const int w = frame->grid_w;
+    const int cell = frame->cell_size;
+
+    if (!frame->dither16_on) {
+        gfx_indexed_expand_row(row, w, frame->table, cell, out_row, out_width);
+        return;
+    }
+    switch (frame->dither_mode) {
+        case GFX_DITHER_CELL_CHECKER:
+            gfx_indexed_expand_row_dither_cell(row, w, frame->table, false, cell, grid_row, out_row, out_width);
+            return;
+        case GFX_DITHER_CELL_BAYER2:
+            gfx_indexed_expand_row_dither_cell(row, w, frame->table, true, cell, grid_row, out_row, out_width);
+            return;
+        case GFX_DITHER_PIXEL_CHECKER2:
+            gfx_indexed_expand_row_dither_checker2(row, w, frame->table, cell, y, 0, out_row, out_width);
+            return;
+        case GFX_DITHER_NONE: gfx_indexed_expand_row(row, w, frame->table, cell, out_row, out_width); return;
+        case GFX_DITHER_PIXEL_BAYER4:
+        case GFX_DITHER_MODE_COUNT:
+        default: gfx_indexed_expand_row_dither16(row, w, frame->table, cell, y, 0, out_row, out_width); return;
+    }
+}

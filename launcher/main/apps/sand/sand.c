@@ -485,6 +485,11 @@ sand_spawn(sand_t* s, int cx, int cy, int radius, material_id_t material) {
 
 int
 sand_spawn_cell(sand_t* s, int cx, int cy, int radius, cell_t spec) {
+    return sand_spawn_cell_share(s, cx, cy, radius, spec, SAND_SPAWN_SHARE_FULL);
+}
+
+int
+sand_spawn_cell_share(sand_t* s, int cx, int cy, int radius, cell_t spec, int share_pct) {
     int filled = 0;
     const int r2 = radius * radius;
     /* Once for the whole brushful - see random_cell(). material_shade_span_
@@ -493,13 +498,25 @@ sand_spawn_cell(sand_t* s, int cx, int cy, int radius, cell_t spec) {
      * material_id_t CELL_MATERIAL() could safely extract a span for. */
     const int span = material_shade_span_cell(spec);
     const int band = (int)(((s->pour_phase >> POUR_BAND_SHIFT) * POUR_BAND_STRIDE) % (unsigned)span);
+    /* No roll at all at a full share: a solid pour must draw exactly the
+     * random numbers a share-less one draws, or every scene's outcome
+     * shifts with it. */
+    const bool thinned = share_pct < SAND_SPAWN_SHARE_FULL;
 
     for (int dy = -radius; dy <= radius; dy++) {
         for (int dx = -radius; dx <= radius; dx++) {
             if (dx * dx + dy * dy > r2) {
                 continue;
             }
-            if (try_spawn_one(s, cx + dx, cy + dy, spec, band)) {
+            const int x = cx + dx;
+            const int y = cy + dy;
+            /* Through sand_rng_next_at()'s wrapper rather than the plain
+             * stream: a pour reached inside a checkerboard-parallel pass
+             * would otherwise draw from state two cores share. */
+            if (thinned && sand_rng_below_at(s, x, y, SAND_RNG_SLOT_SPAWN_SHARE, SAND_SPAWN_SHARE_FULL) >= share_pct) {
+                continue;
+            }
+            if (try_spawn_one(s, x, y, spec, band)) {
                 filled++;
             }
         }
