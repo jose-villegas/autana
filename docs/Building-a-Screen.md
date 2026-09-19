@@ -53,6 +53,14 @@ same bug costs a second on a laptop.
 ./launcher/tools/screenshot.sh -o shot.png   # lossless PNG, does not reset
 ```
 
+A screen drawn outside microui can also be rendered on a host, with no board
+and no flash cycle: `launcher/tools/post_ui_render_host.sh` builds the real
+drawing code of the power-on self-test report against `gfx.c` and writes
+that screen in both orientations, the way the board is read, plus its fault
+variant. `boot_anim_render_host.c` beside it does the same for one frame of
+the startup animation. Both stand in the data their screen normally gets -
+a fixture table, a timestamp - so nothing they draw came off hardware.
+
 `idf.py -B build.dev build` is also worth running for anything touching
 device-only files: it is a real cross-compile and catches what host stubs
 cannot.

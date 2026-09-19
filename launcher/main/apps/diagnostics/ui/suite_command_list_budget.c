@@ -11,6 +11,8 @@
  * of this suite measures the fuller page, button and all.
  */
 
+#include <string.h>
+
 #include "suites.h"
 #include "unity.h"
 
@@ -79,9 +81,60 @@ test_toggles_screen_command_list_fits_budget(void) {
     assert_budget("diagnostics developer toggles", end_and_measure());
 }
 
+static bool
+find_text_pos(const char* str, mu_Vec2* out) {
+    mu_Command* cmd = NULL;
+    while (mu_next_command(ui_context(), &cmd)) {
+        if (cmd->type == MU_COMMAND_TEXT && strcmp(cmd->text.str, str) == 0) {
+            *out = cmd->text.pos;
+            return true;
+        }
+    }
+    return false;
+}
+
+static void
+test_a_tap_on_one_toggle_changes_only_that_toggle(void) {
+    fixture();
+    mu_Context* ctx = ui_context();
+
+    const toggles_screen_state_t state = {.overlay_on = true, .interlace_on = true};
+
+    const input_t input = {0};
+    ui_begin(&input);
+    toggles_screen_draw(ctx, &state);
+    mu_end(ctx);
+
+    mu_Vec2 at;
+    TEST_ASSERT_TRUE_MESSAGE(find_text_pos("gfx leaf-rect overlay", &at), "the leaf row's label was never drawn");
+
+    /* microui only focuses a control it already saw hovered, and only
+     * hovers inside the window the previous frame ended over: one frame to
+     * enter the window, one to hover the row, then the press. */
+    mu_input_mousemove(ctx, at.x, at.y);
+    for (int frame = 0; frame < 2; frame++) {
+        mu_begin(ctx);
+        toggles_screen_draw(ctx, &state);
+        mu_end(ctx);
+    }
+
+    mu_input_mousedown(ctx, at.x, at.y, MU_MOUSE_LEFT);
+    mu_begin(ctx);
+    const toggles_screen_result_t result = toggles_screen_draw(ctx, &state);
+    mu_end(ctx);
+
+    TEST_ASSERT_TRUE_MESSAGE(result.leaf_on, "the tapped toggle did not flip");
+    TEST_ASSERT_TRUE_MESSAGE(result.overlay_on, "the row above flipped with it");
+    TEST_ASSERT_TRUE_MESSAGE(result.interlace_on, "the row below flipped with it");
+    TEST_ASSERT_FALSE(result.fast_clock);
+    TEST_ASSERT_FALSE(result.send_audit_on);
+    TEST_ASSERT_FALSE(result.show_orientation);
+}
+
 void
 run_diagnostics_command_list_budget_suite(void) {
     RUN_TEST(test_toggles_screen_command_list_fits_budget);
+    RUN_TEST(test_a_tap_on_one_toggle_changes_only_that_toggle);
 }
 
 SUITE_REGISTER(run_diagnostics_command_list_budget_suite);
