@@ -385,6 +385,14 @@ extern unsigned sand_gas_row_audit_failures;
 extern unsigned sand_gas_row_audit_skippable;
 extern unsigned sand_gas_equalise_runs;
 
+/* Not sand.h API: the gas spread pass's twin of sand_liquid_rank_audit_enable()
+ * below - every hop landing in a chunk ranked after the giver's, which is what
+ * lets the pass reach past a whole chunk with no arrival mark. `reverse_ray`
+ * builds the order against the ray instead, so a caller can see the count it
+ * expects zero from move. */
+void sand_gas_rank_audit_enable(bool on, bool reverse_ray);
+extern unsigned sand_gas_late_arrivals;
+
 /* Not sand.h API: a test hook for the reaction pass's soak-only skip (see
  * sand_step_reactions()). Counts every cell the per-row dispatch actually
  * visits, so a suite can compare it against a bound derived from

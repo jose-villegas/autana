@@ -1198,11 +1198,11 @@ update can touch another's, in cells:
 | Lava cool-off chain | up to `SAND_LAVA_COOLOFF_MAX_CHAIN`, 8 links, each an arbitrary further cell | no; same queue mechanism |
 | Explosions (confined gas, lava bursts, fuse chains) and thrown debris (`step_impulses`) | queued, crosses many steps, effectively unbounded | no |
 
-The gravity sweep, gas walk, liquid cross-flow and a reacting cell's own
-LOCAL rules have fixed cell reaches small enough to split. All four cut the
-board into the same chunks; the sweep and cross-flow take them in a
-schedule ordered against their own travel, the other two in four colours
-(`run_reaction_rows()`, `sand_reactions.c`, for the last). A reaction's
+The gravity sweep, both gas passes, liquid cross-flow and a reacting cell's
+own LOCAL rules have fixed cell reaches small enough to split. All cut the
+board into the same chunks; every one but the reaction rules takes them in a
+schedule ordered against its own travel, those in four colours
+(`run_reaction_rows()`, `sand_reactions.c`). A reaction's
 long-reach triggers, liquid density sorting and impulses remain serial:
 each long-reach trigger has an `_or_defer` gate at its call site that
 skips it while a chunk pass is running and lets a single serial
@@ -1221,9 +1221,8 @@ pass has. Every quality lands on the same small chunk count.
 
 ### Four colours, no boundary handling
 
-Both gas sub-passes and a reacting cell's local rules take those
-chunks in four colour passes. Each chunk takes a colour from its own
-coordinates,
+A reacting cell's local rules take those chunks in four colour passes.
+Each chunk takes a colour from its own coordinates,
 `sand_chunk_color(cx, cy)` = the two parities crossed. Four is the smallest
 colouring in which a colour contains no two chunks sharing an edge OR a
 corner - two is not enough, because sand slides diagonally and a liquid
@@ -1254,7 +1253,7 @@ row-indexed bookkeeping (dirty spans, the changed flag) with no private
 copy. Boards yielding fewer chunk rows than that leaves work for both
 workers run the pass serially.
 
-`sand_chunk_split_ready()` is the gate on those four passes;
+`sand_chunk_split_ready()` is the gate on that pass;
 `blocks_settled_over()` is the one skip every chunk pass shares. A chunk
 whose covering blocks all carry the step's settled bit is dropped before any
 per-row setup, reusing the block-sleeping state the serial sweep already
@@ -1262,8 +1261,8 @@ keeps rather than tracking anything second.
 
 ### The schedule: downstream chunks first
 
-The gravity sweep and liquid cross-flow rank the same chunks into one total
-order instead, through the one runner `sand_chunk_pass_run()` (`sand.c`) that
+The gravity sweep, liquid cross-flow and both gas passes rank the same chunks
+into one total order instead, through the one runner `sand_chunk_pass_run()` (`sand.c`) that
 a pass hands only its travel direction, a per-chunk function and its own
 state. `sand_chunk_order()` (`sand_chunk_sched.[ch]`) counts from the
 downstream end of that direction, so the chunk holding a move's destination is
@@ -1400,28 +1399,45 @@ The device perf suite enables splitting for its own liquid tables;
 
 ### Gas chunks
 
-Both gas sub-passes run on the chunk grid in four colour passes, with no
-guards. The walk's reach is one cell, the sweep's own shape; gas rises, so
-its row order is the gravity sweep's mirror.
+Both gas sub-passes take the same ranked schedule the sweep and cross-flow
+do, each handing `sand_chunk_pass_run()` its own travel direction.
 
-Cross-flow's reach is much longer - up to 24 cells along the perpendicular
-ray - and it splits only while that ray stays inside its own row, which is
-the same condition it already had. A long sideways reach is safe at any
-length because the chunks it crosses into all belong to the same chunk row,
-and a chunk row is owned whole by one worker. A ray that crosses rows runs
-serially rather than widening the chunk side for the rarest case.
+The walk travels the rise direction, which is the gravity sweep's mirror, and
+reaches one cell. That is not the whole of what it does: a draw also goes
+sideways or downstream-ward, into a chunk the order has yet to run, so this
+pass keeps the arrival marks. A grain that crosses a chunk border moves once;
+serial, with no marks, re-picks a grain that walks against its own row order,
+so the two are not cell-for-cell comparable and nothing asks them to be. What
+`suite_sand_two_core.c` does ask is that a packed run of gas in a one-cell
+stone shaft - where the only draw with anywhere to go is the straight rise -
+advances exactly as serial advances it, under each axis pull and over a sweep
+of step phases.
 
-Both sub-passes stamp a grain that lands in another chunk, the same rule as
-the sweep. For the spread, a hop into a chunk still to run would otherwise
-hop again; `suite_sand_two_core.c` holds a lone hop at every chunk column
-seam to serial. The walk cannot be held to serial the same way: it moves in
-every direction, so serial itself re-picks a grain that walks against its
-row order, and across a chunk seam the stamp does not.
+The spread reaches much further, up to the widest `sight` of 24 cells along
+the perpendicular ray, and splits only while that ray stays inside its own
+row. Its travel is the ray, so a hop lands in a chunk already finished - and
+since 24 cells can clear a whole chunk, in the one two along as well, which
+is finished for the same reason: a chunk waits only on chunks further
+downstream, and every chunk upstream waits, through its own neighbour, on the
+running one. So this pass marks no arrivals. `sand_gas_late_arrivals` counts
+what they would have caught, over eight gravities and several seeds, and
+stays at zero; built against the ray instead, the same scenes move it.
 
-Block wakes and dirty spans reach beyond a chunk, so both workers write
-private copies in the same lane scratch the liquid pass uses and merge them
-after each pass. Boards with too few chunk rows for both workers, and boards
-with no lane scratch, retain the serial walk.
+Its travel carries a second component, and it is not where anything moves: a
+cell asks whether the one rise-ward of it is free, and the pass reads rows in
+ascending order whatever the gravity, so the row above has to be settled
+first. An order built on the ray alone splits a chunk column by parity and
+reverses that for half of them, which a seam test catches.
+
+The row map the walk hands the spread is one word-addressed bitmap with no
+lane-private copy, so a split walk turns it off rather than lose bits where
+two lanes arm rows that share a word; the spread then walks every row.
+
+A ray that crosses rows runs serially rather than widening the chunk side for
+the rarest case. Block wakes and dirty spans reach beyond a chunk, so each
+lane writes private copies in the same lane scratch the liquid pass uses and
+merges them at the join. Boards with no lane scratch, and boards
+`sand_chunk_plan()` cannot cut, retain the serial walk.
 
 ### Reaction chunks
 
