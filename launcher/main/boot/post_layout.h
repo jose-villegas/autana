@@ -54,7 +54,7 @@ typedef struct {
     int line_h;
     int rows;       /* report lines one column holds */
     int line_chars; /* characters a line holds before it has to wrap */
-    int gap;        /* blank lines of air between one check and the next */
+    int gap;        /* blank lines between checks - 0 when only that fits */
 } post_layout_t;
 
 /* The layout at an explicit column count and spacing. `screen_w`/`screen_h`
@@ -89,9 +89,9 @@ typedef struct {
  * the columns are full. */
 mu_Rect post_layout_take_line(const post_layout_t* l, post_lines_t* lines);
 
-/* Asks for a blank line - the air between one check and the next. A gap that
- * would fall at the top of a column is dropped, so every column's first line
- * carries text. */
+/* Asks for the air between one check and the next, which is nothing at all
+ * when the report only fits without it. A gap that would fall at the top of
+ * a column is dropped, so every column's first line carries text. */
 void post_layout_gap(const post_layout_t* l, post_lines_t* lines);
 
 /* Asks for `n` lines to be placed together, before any is taken. A check that
@@ -138,8 +138,10 @@ typedef struct {
     void* ctx;
 } post_entries_t;
 
-/* The layout to draw this report with: the fewest columns the whole report
- * fits in, since fewer columns are wider ones and wrap the details less. The
- * orientation's count is a ceiling, not a target. A report that fits nowhere
- * gets the ceiling and is truncated by the drawer, as it always was. */
+/* The layout to draw this report with: the fewest columns it fits in, since
+ * fewer are wider and wrap the details less, and the air between checks only
+ * if it fits with that too. Candidates go air-first - one column with air up
+ * to the ceiling, then the same without - so spacing is bought with a column
+ * before it is given up. Fitting nowhere gets the ceiling and no air, and the
+ * drawer truncates as it always did. */
 post_layout_t post_layout_for_report(const gfx_font_t* font, int screen_w, int screen_h, const post_entries_t* entries);

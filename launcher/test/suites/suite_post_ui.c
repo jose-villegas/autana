@@ -617,6 +617,34 @@ walk_report(const post_layout_t* l, const post_entries_t* entries) {
     return w;
 }
 
+/* Portrait has one column and no room for air between fifteen checks - so it
+ * must drop the air rather than the last three checks. */
+static void
+test_portrait_drops_the_spacing_rather_than_the_last_checks(void) {
+    listed_t list = {REPORT_CHECKS, report_details};
+    const post_entries_t entries = listed_entries(&list, REPORT_CHECKS);
+    const post_layout_t l = post_layout_for_report(gfx_font_ui(), PANEL_SHORT_SIDE, PANEL_LONG_SIDE, &entries);
+
+    TEST_ASSERT_EQUAL_INT(1, l.columns);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, l.gap, "portrait kept spacing it had no room for");
+
+    const report_walk_t w = walk_report(&l, &entries);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(REPORT_CHECKS, w.placed_checks, "portrait still truncates the report");
+}
+
+/* A report with room to spare keeps its air. */
+static void
+test_a_report_that_fits_with_spacing_keeps_it(void) {
+    listed_t list = {2, short_details};
+    const post_entries_t entries = listed_entries(&list, 2);
+    const post_layout_t l = post_layout_for_report(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, &entries);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, l.gap, "a report with room to spare lost its spacing");
+
+    const report_walk_t w = walk_report(&l, &entries);
+    TEST_ASSERT_EQUAL_INT(2, w.placed_checks);
+}
+
 /* One spacing for the whole report, not a decision taken per check. */
 static void
 test_the_spacing_is_uniform_across_a_report(void) {
@@ -664,6 +692,42 @@ test_a_tall_report_in_landscape_takes_the_orientation_ceiling(void) {
                                   "a report that needs every column did not get them");
 }
 
+/* Candidate order: a report that fits in one column only by giving up its
+ * air, but fits in two columns with it, must take the second - air is
+ * preferred over fewer columns, not the other way round. */
+static void
+test_spacing_is_preferred_over_fewer_columns(void) {
+    static const char* const forty[] = {"a detail string of about forty characters"};
+    listed_t list = {1, forty};
+    const int checks = 12;
+    const post_entries_t entries = listed_entries(&list, checks);
+
+    const post_layout_t one_no_gap = post_layout_with(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, 1, 0);
+    const post_layout_t one_gap = post_layout_with(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, 1, 1);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(checks, walk_report(&one_no_gap, &entries).placed_checks,
+                                  "the fixture must fit one column without air, or it proves nothing");
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(checks, walk_report(&one_gap, &entries).placed_checks,
+                                      "the fixture must NOT fit one column with air, or it proves nothing");
+
+    const post_layout_t chosen = post_layout_for_report(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, &entries);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, chosen.gap, "fewer columns was preferred over keeping the air");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(1, chosen.columns, "the air should have been bought with more columns");
+    TEST_ASSERT_EQUAL_INT(checks, walk_report(&chosen, &entries).placed_checks);
+}
+
+/* Nothing fits: the ceiling, no air, and the drawer truncates as it always
+ * did rather than the chooser inventing somewhere to put the overflow. */
+static void
+test_a_report_that_fits_nowhere_gets_the_ceiling_without_spacing(void) {
+    listed_t list = {1, tall_details};
+    const post_entries_t entries = listed_entries(&list, 500);
+    const post_layout_t l = post_layout_for_report(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, &entries);
+
+    TEST_ASSERT_EQUAL_INT(post_layout_max_columns(PANEL_LONG_SIDE, PANEL_SHORT_SIDE), l.columns);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, l.gap, "a report that fits nowhere should not keep spacing");
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(500, walk_report(&l, &entries).placed_checks, "this report cannot fit");
+}
+
 static void
 test_the_column_count_follows_the_orientation(void) {
     TEST_ASSERT_EQUAL_INT(POST_LAYOUT_PORTRAIT_COLUMNS, portrait().columns);
@@ -703,9 +767,13 @@ suite_post_ui(void) {
     RUN_TEST(test_a_single_column_report_never_skips_rows);
     RUN_TEST(test_the_wrap_measure_and_walk_agree_at_every_width);
     RUN_TEST(test_the_wrap_width_is_always_drawable_in_both_orientations);
+    RUN_TEST(test_portrait_drops_the_spacing_rather_than_the_last_checks);
+    RUN_TEST(test_a_report_that_fits_with_spacing_keeps_it);
     RUN_TEST(test_the_spacing_is_uniform_across_a_report);
     RUN_TEST(test_a_short_report_in_landscape_takes_one_wide_column);
     RUN_TEST(test_a_tall_report_in_landscape_takes_the_orientation_ceiling);
+    RUN_TEST(test_spacing_is_preferred_over_fewer_columns);
+    RUN_TEST(test_a_report_that_fits_nowhere_gets_the_ceiling_without_spacing);
     RUN_TEST(test_the_column_count_follows_the_orientation);
     RUN_TEST(test_landscape_holds_at_least_as_many_lines_as_portrait);
 }
