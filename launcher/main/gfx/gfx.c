@@ -1994,6 +1994,35 @@ send_fb_rows(int y0, int y1) {
  * from the index image through the installed LUT, into the same bounce
  * slots, instead of copying pixels already sitting in `fb`. Same return
  * contract as send_fb_rows(). */
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* The strip row send_indexed_rows() should border, or -1 for a clean send.
+ * A file static rather than a parameter: send_heal_strips() takes
+ * send_indexed_rows() as a callback with send_fb_rows()'s signature. */
+static int indexed_overlay_row = -1;
+
+/* The expanded strip in `slot` is a disposable copy, so borders drawn here
+ * never need restoring. Must run before dirty_row_sent() clears the row's
+ * leaf bits. */
+static void
+mark_indexed_strip_overlay(gfx_color_t* slot, int row) {
+    const int y = row * STRIP_HEIGHT;
+    if (debug_overlay_on) {
+        for (int col = 0; col < GRID_COLS; col++) {
+            mark_rect_border(slot + col * COL_WIDTH, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, gfx_rgb(0x00FFFF));
+        }
+    }
+    if (leaf_overlay_on) {
+        const int n =
+            dirty_leaf_rects(row, 0, y, GFX_WIDTH, y + STRIP_HEIGHT, leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
+        for (int i = 0; i < n; i++) {
+            const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
+            gfx_color_t* at = slot + (size_t)(r->y0 - y) * GFX_WIDTH + r->x0;
+            mark_rect_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
+        }
+    }
+}
+#endif
+
 static bool
 send_indexed_rows(int y0, int y1) {
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
@@ -2004,6 +2033,9 @@ send_indexed_rows(int y0, int y1) {
         gfx_indexed_expand_panel_row(&frame, y, slot + (size_t)(y - y0) * GFX_WIDTH, GFX_WIDTH);
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
+    if (indexed_overlay_row >= 0) {
+        mark_indexed_strip_overlay(slot, indexed_overlay_row);
+    }
     dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
 #endif
     const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, slot);
@@ -2165,6 +2197,27 @@ send_one_row(int row, int* queued) {
     }
 }
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* Strip rows whose last send carried overlay borders. A border exists only
+ * in the bytes sent, never in `fb`, so the panel keeps it until its row is
+ * sent again - and the dirty tracker never resends a row nothing changed
+ * in. Outlives the overlay toggles so switching one off still cleans up. */
+static uint32_t overlay_bordered_rows;
+_Static_assert(STRIP_COUNT <= 32, "one bit per strip row");
+
+/* Before the dirty sends, so a row both bordered last present and dirty now
+ * ends up showing only this present's borders. */
+static void
+send_overlay_bordered_rows_clean(bool (*send_rows)(int y0, int y1), int* queued) {
+    for (int row = 0; row < STRIP_COUNT; row++) {
+        if ((overlay_bordered_rows & (1u << row)) && send_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT)) {
+            (*queued)++;
+        }
+    }
+    overlay_bordered_rows = 0;
+}
+#endif
+
 /* Queues this present's heal strips through `send_rows`, after its dirty
  * sends so a strip carries whatever they just put on the panel. */
 static void
@@ -2196,13 +2249,32 @@ send_heal_strips(bool (*send_rows)(int y0, int y1), int* queued) {
 static void
 run_present_indexed(void) {
     int queued = 0;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    /* A dirty row is about to be sent whole anyway, so only rows that went
+     * quiet need the clean resend. */
+    for (int row = 0; row < STRIP_COUNT; row++) {
+        if (dirty_row_is_dirty(row)) {
+            overlay_bordered_rows &= ~(1u << row);
+        }
+    }
+    send_overlay_bordered_rows_clean(send_indexed_rows, &queued);
+#endif
     for (int row = 0; row < STRIP_COUNT; row++) {
         if (!dirty_row_is_dirty(row)) {
             continue;
         }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        if (overlay_any_on()) {
+            overlay_bordered_rows |= 1u << row;
+            indexed_overlay_row = row;
+        }
+#endif
         if (send_indexed_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT)) {
             queued++;
         }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        indexed_overlay_row = -1;
+#endif
         dirty_row_sent(row);
     }
     dirty_frame_sent();
@@ -2235,6 +2307,10 @@ run_present_normal(void) {
 
     uint32_t remaining_cell_dirty = 0;
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    send_overlay_bordered_rows_clean(send_fb_rows, &queued);
+#endif
+
     for (int row = 0; row < STRIP_COUNT; row++) {
         if (!dirty_row_is_dirty(row)) {
             continue; /* unchanged - the panel is still showing it */
@@ -2245,6 +2321,11 @@ run_present_normal(void) {
             continue;
         }
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        if (overlay_any_on()) {
+            overlay_bordered_rows |= 1u << row;
+        }
+#endif
         send_one_row(row, &queued);
         dirty_row_sent(row);
     }
@@ -2649,6 +2730,36 @@ gfx_mode_current(void) {
     return &current_mode;
 }
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* Bands whose last submit carried overlay borders, and whether the band in
+ * hand is being rendered only to take them off again. */
+static uint32_t band_overlay_bordered;
+static bool band_overlay_cleanup_only;
+_Static_assert(GFX_HEIGHT / 16 <= 32, "one bit per band at the smallest GFX_BAND_HEIGHT");
+_Static_assert(GFX_BAND_HEIGHT % LEAF_H == 0, "a leaf must never straddle two bands");
+
+/* Cyan for the band that was sent, green for each leaf marked inside it. */
+static void
+mark_band_overlay(gfx_color_t* buf, int row0, int height) {
+    if (debug_overlay_on) {
+        mark_rect_border(buf, GFX_WIDTH, GFX_WIDTH, height, gfx_rgb(0x00FFFF));
+    }
+    if (leaf_overlay_on) {
+        const int row_first = row0 / STRIP_HEIGHT;
+        const int row_last = (row0 + height - 1) / STRIP_HEIGHT;
+        for (int row = row_first; row <= row_last; row++) {
+            const int n =
+                dirty_leaf_rects(row, 0, row0, GFX_WIDTH, row0 + height, leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
+            for (int i = 0; i < n; i++) {
+                const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
+                gfx_color_t* at = buf + (size_t)(r->y0 - row0) * GFX_WIDTH + r->x0;
+                mark_rect_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
+            }
+        }
+    }
+}
+#endif
+
 void
 gfx_band_frame_begin(void) {
     GFX_PRESENT_GUARD();
@@ -2684,7 +2795,21 @@ gfx_band_dirty(int row0, int row1, int* out_x0, int* out_x1) {
         *out_x1 = GFX_WIDTH;
         return true;
     }
-    return dirty_band_extent(row0, row1, out_x0, out_x1);
+    if (dirty_band_extent(row0, row1, out_x0, out_x1)) {
+        return true;
+    }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    /* A border exists only in the band that was sent, and gfx holds no
+     * copy to resend: the one way to take it off the panel is to have the
+     * app render the band once more. */
+    if (row0 == band_render_row0 && (band_overlay_bordered & (1u << (row0 / band_render_height)))) {
+        band_overlay_cleanup_only = true;
+        *out_x0 = 0;
+        *out_x1 = GFX_WIDTH;
+        return true;
+    }
+#endif
+    return false;
 }
 
 /* The band gfx_band_next() just handed out needs no redraw this frame
@@ -2715,9 +2840,15 @@ gfx_band_next(void) {
          * per-band UI changes) have done their job for gfx_band_dirty();
          * clear them so next frame's marks start from nothing, the same
          * reset a full-fb present gives itself at the end of every frame. */
+        for (int row = 0; row < STRIP_COUNT; row++) {
+            dirty_row_sent(row);
+        }
         dirty_frame_sent();
         return false;
     }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    band_overlay_cleanup_only = false;
+#endif
     band_current_slot = gfx_band_ring_slot(&band_ring);
     band_render_row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
     band_render_height = current_mode.band_height;
@@ -2755,20 +2886,14 @@ gfx_band_submit(void) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_BANDS);
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    /* The same cyan the full-fb overlay borders a sent cell with
-     * (gfx_set_debug_overlay(), send_full_row()) - drawn through the band
-     * draw target, into the buffer about to be sent, so a band
-     * gfx_band_skip() left alone carries no border at all. No per-leaf
-     * breakdown yet (send_full_row()'s green leaves): this is the
-     * band-level "was it sent" signal only. */
-    if (overlay_any_on()) {
-        const gfx_color_t cyan = gfx_rgb(0x00FFFF);
-        const int row0 = band_render_row0;
-        const int row1 = row0 + band_render_height;
-        gfx_line(0, row0, GFX_WIDTH - 1, row0, cyan);
-        gfx_line(0, row1 - 1, GFX_WIDTH - 1, row1 - 1, cyan);
-        gfx_line(0, row0, 0, row1 - 1, cyan);
-        gfx_line(GFX_WIDTH - 1, row0, GFX_WIDTH - 1, row1 - 1, cyan);
+    /* Drawn into the buffer about to be sent. A band submitted only to
+     * clean last frame's borders (gfx_band_dirty()) goes out bare. */
+    const uint32_t band_bit = 1u << (band_render_row0 / band_render_height);
+    if (overlay_any_on() && !band_overlay_cleanup_only) {
+        mark_band_overlay(band_buf[band_current_slot], band_render_row0, band_render_height);
+        band_overlay_bordered |= band_bit;
+    } else {
+        band_overlay_bordered &= ~band_bit;
     }
 #endif
     if (band_snapshot_filling) {
