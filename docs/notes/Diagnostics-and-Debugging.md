@@ -190,12 +190,13 @@ Diagnostics app's developer-toggle page (`gfx_set_debug_overlay()` /
   drawn but never marked dirty) or an over-wide send (marked dirty when it
   should not have been) is visible directly rather than inferred from
   symptoms.
-- **Leaf-grid overlay** - draws the fixed leaf-grid boundaries a gathered
-  send covers, in green, inside whatever the dirty-region overlay already
-  shows - only has an effect with that overlay also on.
+- **Leaf overlay** - outlines, in green, the leaves actually marked dirty
+  this frame. Independent of the dirty-region overlay.
 
 Both are off by default even in a development build, since they draw
-directly over real content.
+directly over real content. A border shows for the one present that sent
+it: the next present resends that strip clean, so what is on screen is
+always the latest present's sends, not an accumulation.
 
 The sand app carries a similar overlay of its own, for the two-core
 sweep's stripe seams rather than gfx's send/leaf grids - see

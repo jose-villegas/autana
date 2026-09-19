@@ -30,6 +30,7 @@ launcher/
     ├── app.h           the shell/app contract
     ├── boot/           runs once each, before the frame loop exists
     │   ├── post.{h,c}          power-on self test
+    │   ├── post_layout.{h,c}   the POST report's geometry   (host-tested)
     │   ├── post_ui.{h,c}       the POST report, on screen
     │   ├── selftest.{h,c}      runs the suites at boot (diagnostics build)
     │   ├── boot_anim.{h,c}     the startup animation  (the .h is host-tested)
