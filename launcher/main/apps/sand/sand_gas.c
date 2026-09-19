@@ -418,23 +418,7 @@ typedef struct {
 
 static gas_worker_t gas_workers[SAND_LANE_COUNT];
 
-typedef struct {
-    gas_worker_t* worker;
-    int rslide_a[2];
-    int rslide_b[2];
-    int rdx, rdy, rx_step, rload_dx, rload_dy, jostle;
-    int y_step, color, share;
-} gas_pass_t;
-
-_Static_assert(sizeof(gas_pass_t) <= JOB_CTX_MAX, "gas pass must fit JOB_CTX_MAX");
-
-static bool gas_worker_order_reversed;
 unsigned sand_gas_equalise_runs;
-
-void
-sand_gas_set_worker_order_for_test(bool reverse) {
-    gas_worker_order_reversed = reverse;
-}
 
 static void
 prepare_gas_worker(gas_worker_t* worker, sand_lane_t* lane, const sand_t* s) {
@@ -443,76 +427,61 @@ prepare_gas_worker(gas_worker_t* worker, sand_lane_t* lane, const sand_t* s) {
     sand_lane_prepare(lane, s);
 }
 
-static void
-step_one_gas_chunk(const gas_pass_t* c, int x0, int x1, int y0, int y1) {
-    gas_worker_t* const worker = c->worker;
-    sand_t* const s = &worker->lane->local;
+typedef struct {
+    sand_lane_t* lanes;
+    bool found_any[SAND_LANE_COUNT];
+    int rslide_a[2];
+    int rslide_b[2];
+    int rdx, rdy, rx_step, rload_dx, rload_dy, jostle;
+    int y_step;
+} gas_pass_t;
 
+/* File-static for the reason sand_chunk_pass_run() gives. */
+static gas_pass_t gas_pass;
+
+static void
+step_one_gas_chunk(void* pass, int lane, int cx, int cy) {
+    gas_pass_t* const c = pass;
+    sand_t* const s = &c->lanes[lane].local;
+    int x0, x1, y0, y1;
+
+    sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
     for (int y = c->y_step > 0 ? y0 : y1 - 1; y >= y0 && y < y1; y += c->y_step) {
-        worker->found_any |= step_one_gas_row(s, y, x0, x1, s->w, c->rdx, c->rdy, c->rslide_a, c->rslide_b, c->rx_step,
-                                              c->rload_dx, c->rload_dy, c->jostle, gas_driven);
+        c->found_any[lane] |= step_one_gas_row(s, y, x0, x1, s->w, c->rdx, c->rdy, c->rslide_a, c->rslide_b, c->rx_step,
+                                               c->rload_dx, c->rload_dy, c->jostle, gas_driven);
     }
 }
 
-static void
-gas_pass_worker(void* arg) {
-    const gas_pass_t* c = arg;
-    const sand_t* const s = &c->worker->lane->local;
-    const int side = sand_chunk_side(s);
-
-    for (int cy = 0; cy < sand_chunk_rows(s); cy++) {
-        if (sand_chunk_share(cy) != c->share) {
-            continue;
-        }
-        int y0, y1;
-        sand_chunk_span(cy, side, s->h, &y0, &y1);
-        for (int cx = 0; cx < sand_chunk_cols(s); cx++) {
-            if (sand_chunk_color(cx, cy) == c->color) {
-                int x0, x1;
-                sand_chunk_span(cx, side, s->w, &x0, &x1);
-                step_one_gas_chunk(c, x0, x1, y0, y1);
-            }
-        }
-    }
-}
-
-/* One worker per share, dispatched in whichever order the test asks for -
- * the result must not depend on which core reaches a chunk first. */
-static void
-run_gas_color(sand_t* s, sand_lane_t* lanes, gas_pass_t* ctx, bool* found_any, int color) {
-    for (int i = 0; i < SAND_LANE_COUNT; i++) {
-        prepare_gas_worker(&gas_workers[i], &lanes[i], s);
-    }
-    ctx->color = color;
-    const int remote = gas_worker_order_reversed ? 0 : 1;
-    ctx->worker = &gas_workers[1];
-    ctx->share = remote;
-    (void)job_run_core1(gas_pass_worker, ctx, sizeof *ctx);
-    ctx->worker = &gas_workers[0];
-    ctx->share = 1 - remote;
-    gas_pass_worker(ctx);
-    (void)job_wait(100);
-
-    for (int i = 0; i < SAND_LANE_COUNT; i++) {
-        sand_lane_merge(s, gas_workers[i].lane);
-        *found_any |= gas_workers[i].found_any;
-    }
-}
-
+/* Travel is the rise direction, so a chunk's rise destinations are settled
+ * before it runs. A walk draw can also go sideways or downstream-ward into a
+ * chunk still to come, which is what the arrival marks catch.
+ *
+ * The row map goes off for the split: it is one word-addressed bitmap with
+ * no lane-private copy, so two lanes arming rows that share a word would
+ * lose bits. gas_row_may_hold() then answers true and the spread pass below
+ * walks every row. */
 static bool
-step_gas_chunks(sand_t* s, gas_pass_t* ctx, bool* found_any) {
-    sand_lane_t* const lanes = sand_lanes(s);
-    if (lanes == NULL) {
+step_gas_chunks(sand_t* s, bool* found_any) {
+    const bool was_live = gas_row_map_live;
+
+    gas_pass.lanes = sand_lanes(s);
+    if (gas_pass.lanes == NULL) {
         return false;
+    }
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        gas_pass.found_any[i] = false;
     }
 
     gas_row_map_live = false;
-    sand_stamps_arm(s);
-    for (int color = 0; color < SAND_CHUNK_COLOR_COUNT; color++) {
-        run_gas_color(s, lanes, ctx, found_any, color);
+    if (!sand_chunk_pass_run(s, gas_pass.rdx, gas_pass.rdy, SAND_CHUNK_PASS_STAMP_CROSSINGS, step_one_gas_chunk,
+                             &gas_pass)) {
+        gas_row_map_live = was_live;
+        return false;
     }
-    sand_stamps_disarm(s);
 
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        *found_any |= gas_pass.found_any[i];
+    }
     return true;
 }
 
@@ -1077,7 +1046,7 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     gas_row_map_live = (s->h <= GAS_ROW_MAX);
     memset(gas_row_map.w, 0, sizeof gas_row_map.w);
 
-    gas_pass_t pass = {
+    gas_pass = (gas_pass_t){
         .rslide_a = {sweep_slide_a[0], sweep_slide_a[1]},
         .rslide_b = {sweep_slide_b[0], sweep_slide_b[1]},
         .rdx = rdx,
@@ -1088,8 +1057,7 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
         .jostle = jostle,
         .y_step = y_step,
     };
-    if (!s->gas_walk || !sand_two_core_step_enabled() || !sand_chunk_split_ready(s)
-        || !step_gas_chunks(s, &pass, &found_any)) {
+    if (!s->gas_walk || !step_gas_chunks(s, &found_any)) {
         for (int y = y_from; y != y_to; y += y_step) {
             if (step_one_gas_row(s, y, 0, w, w, rdx, rdy, sweep_slide_a, sweep_slide_b, rx_step, rload_dx, rload_dy,
                                  jostle, gas_driven)) {

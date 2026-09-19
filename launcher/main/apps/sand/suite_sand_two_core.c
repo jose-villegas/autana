@@ -466,7 +466,7 @@ test_split_gas_walk_uses_hashed_rng(void) {
 }
 
 static uint32_t
-tc_run_gas_walk_and_hash(uint32_t seed, bool reverse_workers) {
+tc_run_gas_and_hash(uint32_t seed, int gx, int gy, int dx, int dy) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
     TEST_ASSERT_NOT_NULL(cells);
 
@@ -484,18 +484,18 @@ tc_run_gas_walk_and_hash(uint32_t seed, bool reverse_workers) {
         }
     }
 
-    static const int slide_a[] = {-1, 1};
-    static const int slide_b[] = {1, 1};
-    static const int perp_a[] = {1, 0};
-    static const int perp_b[] = {-1, 0};
-    sand_gas_set_worker_order_for_test(reverse_workers);
+    /* The same ring picks sand_step() makes for this gravity. */
+    const int ring = ring_of(dx, dy);
+    const int* const slide_a = ring_dir(ring + 7);
+    const int* const slide_b = ring_dir(ring + 1);
+    const int* const perp_a = ring_dir(ring + 2);
+    const int* const perp_b = ring_dir(ring + 6);
     sand_set_two_core_step(true);
     for (int step = 0; step < 20; step++) {
         s.step_phase = (uint16_t)step;
-        sand_step_gas(&s, 0, 1000, 0, 1, slide_a, slide_b, perp_a, perp_b, 0, 1, 1, 0);
+        sand_step_gas(&s, gx, gy, dx, dy, slide_a, slide_b, perp_a, perp_b, 0, 1, 1, 0);
     }
     sand_set_two_core_step(false);
-    sand_gas_set_worker_order_for_test(false);
 
     const uint32_t hash = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
     free(scratch);
@@ -503,14 +503,36 @@ tc_run_gas_walk_and_hash(uint32_t seed, bool reverse_workers) {
     return hash;
 }
 
+/* Both gas passes ride the same schedule, so a gas-heavy board owes the same
+ * answer however the lanes take turns - and under every gravity, since each
+ * turns both passes' travel with it. */
 static void
-test_split_gas_walk_ignores_worker_order(void) {
-    static const uint32_t seeds[] = {1u, 17u, 91u, 0xC0FFEEu};
+test_the_split_gas_passes_ignore_how_their_lanes_interleave(void) {
+    static const sand_chunk_pass_driver_t drivers[TC_DRIVERS] = {
+        SAND_CHUNK_PASS_LANE0_EAGER, SAND_CHUNK_PASS_LANE1_EAGER, SAND_CHUNK_PASS_ALTERNATE};
+    static const uint32_t seeds[] = {1u, 17u, 91u};
+
     for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
-        const uint32_t ordinary = tc_run_gas_walk_and_hash(seeds[i], false);
-        const uint32_t reversed = tc_run_gas_walk_and_hash(seeds[i], true);
-        TEST_ASSERT_EQUAL_HEX32_MESSAGE(ordinary, reversed,
-                                        "changing which worker owns each chunk row must not change the gas walk");
+        const size_t g = i % (sizeof tc_ring / sizeof tc_ring[0]);
+        const int dx = tc_ring[g][0];
+        const int dy = tc_ring[g][1];
+
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_SOLO);
+        const uint32_t solo = tc_run_gas_and_hash(seeds[i], dx * 1000, dy * 1000, dx, dy);
+        uint32_t driven[TC_DRIVERS];
+
+        for (int d = 0; d < TC_DRIVERS; d++) {
+            sand_chunk_pass_set_driver_for_test(drivers[d]);
+            driven[d] = tc_run_gas_and_hash(seeds[i], dx * 1000, dy * 1000, dx, dy);
+        }
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_CORE1);
+
+        for (int d = 0; d < TC_DRIVERS; d++) {
+            char why[160];
+            snprintf(why, sizeof why, "seed %u gravity %d,%d driver %d: a split gas board depended on the interleaving",
+                     (unsigned)seeds[i], dx, dy, (int)drivers[d]);
+            TEST_ASSERT_EQUAL_HEX32_MESSAGE(solo, driven[d], why);
+        }
     }
 }
 
@@ -1182,6 +1204,116 @@ test_a_split_falling_body_of_water_opens_no_gap(void) {
 static void
 test_a_serial_falling_body_of_water_opens_no_gap(void) {
     tc_assert_no_direction_breaks_a_body(WATER, MAT_WATER, false, "a serial water body");
+}
+
+/* A gas body cannot be asked to stay one: a walk draws sideways and downward
+ * too, so it frays whoever steps it. A shaft of stone one cell wide takes
+ * those draws away, leaving the falling body's own claim - a packed run
+ * advances as a chain, not leaving a hole where a border was. Its gas all
+ * sits in one chunk line, so the schedule walks it in serial's own order.
+ *
+ * A rise is one draw in four, so the border only comes into it when the
+ * leading grain and the one behind both draw one. */
+#define TC_SHAFT_PHASES 32
+
+/* sand_force_hashed_rng() reaches the serial sweep, not this pass, and a
+ * split pass arms the hashed draws for itself - so the serial side is armed
+ * here or the two roll different walks and never had an order to compare. */
+static void
+tc_step_gas_under(sand_t* s, int dx, int dy, bool two_core) {
+    const int ring = ring_of(dx, dy);
+    const int* const slide_a = ring_dir(ring + 7);
+    const int* const slide_b = ring_dir(ring + 1);
+    const int* const perp_a = ring_dir(ring + 2);
+    const int* const perp_b = ring_dir(ring + 6);
+
+    /* sweep_x_order()'s answer for this pull, which the gas pass negates. */
+    const int x_step = (dx > 0) ? -1 : 1;
+
+    sand_set_two_core_step(two_core);
+    s->rng_hashed = true;
+    sand_step_gas(s, dx * 1000, dy * 1000, dx, dy, slide_a, slide_b, perp_a, perp_b, dx, dy, x_step, 0);
+    s->rng_hashed = false;
+    sand_set_two_core_step(false);
+}
+
+/* Walls either side of the shaft; gas packs one chunk's worth of it against
+ * the closed gravity-ward end, so the run straddles a border and has open
+ * shaft only ahead of it. Packed and floored, the step's every legal draw is
+ * the straight rise, which is what makes one step comparable at all: a draw
+ * landing downstream moves twice for serial and once here. The leading grain
+ * sits one cell short of a border, since only the two or three behind it
+ * ever get to move. */
+static void
+tc_build_gas_shaft(sand_t* s, int side, int dx, int dy) {
+    const bool vertical = (dy != 0);
+    const int span = vertical ? TC_H : TC_W;
+    const int across = side + side / 2;
+    const int rise = -(vertical ? dy : dx);
+    const int lead = (rise < 0) ? 2 * side - 1 : 2 * side;
+    const int from = (rise < 0) ? lead : 0;
+    const int to = (rise < 0) ? span - 1 : lead;
+
+    for (int along = 0; along < span; along++) {
+        const int x = vertical ? across : along;
+        const int y = vertical ? along : across;
+
+        sand_set(s, x - (vertical ? 1 : 0), y - (vertical ? 0 : 1), STONE);
+        sand_set(s, x + (vertical ? 1 : 0), y + (vertical ? 0 : 1), STONE);
+    }
+    for (int along = from; along <= to; along++) {
+        sand_set(s, vertical ? across : along, vertical ? along : across, GAS);
+    }
+}
+
+static bool
+tc_gas_shaft_matches_serial(int side, int dx, int dy, int phase) {
+    tc_board_t* serial = tc_board_open(TC_W, TC_H, 1);
+    tc_board_t* split = tc_board_open(TC_W, TC_H, 1);
+
+    for (int i = 0; i < 2; i++) {
+        tc_board_t* b = (i == 0) ? serial : split;
+        sand_set_decay(&b->s, 0);
+        tc_build_gas_shaft(&b->s, side, dx, dy);
+        b->s.step_phase = (uint16_t)phase;
+    }
+
+    tc_step_gas_under(&split->s, dx, dy, true);
+    tc_step_gas_under(&serial->s, dx, dy, false);
+
+    const bool match = memcmp(split->cells, serial->cells, (size_t)TC_W * (size_t)TC_H) == 0;
+    tc_board_close(serial);
+    tc_board_close(split);
+    return match;
+}
+
+/* Every pull in one verdict, since which ones part is the evidence: a fixed
+ * pass order holds against the rise for half of them and runs the upstream
+ * chunk of a border first for the other half. Only the four axis pulls - a
+ * diagonal rise has no straight shaft to take the sideways draws away. */
+static void
+test_a_split_rising_body_of_gas_opens_no_gap(void) {
+    static const int pulls[][2] = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
+    const int side = tc_chunk_side_of(TC_W, TC_H);
+    char parted[128] = "";
+    size_t used = 0;
+
+    /* The run has to cross a border, and its shaft has to clear the walls. */
+    TEST_ASSERT_TRUE(2 * side < TC_W);
+    TEST_ASSERT_TRUE(side + side / 2 + 1 < TC_H);
+
+    for (size_t i = 0; i < sizeof pulls / sizeof pulls[0]; i++) {
+        for (int phase = 0; phase < TC_SHAFT_PHASES; phase++) {
+            if (!tc_gas_shaft_matches_serial(side, pulls[i][0], pulls[i][1], phase) && used < sizeof parted - 1) {
+                used +=
+                    (size_t)snprintf(parted + used, sizeof parted - used, " %d,%d@%d", pulls[i][0], pulls[i][1], phase);
+            }
+        }
+    }
+
+    char why[200];
+    snprintf(why, sizeof why, "a split gas shaft left a cell serial did not:%s", parted);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, (int)parted[0], why);
 }
 
 #define TC_FUSE_IMPULSE_MAX 2048
@@ -2005,7 +2137,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_the_split_sweep_ignores_how_its_lanes_interleave);
     RUN_TEST(test_the_split_liquid_pass_ignores_how_its_lanes_interleave);
     RUN_TEST(test_split_gas_walk_uses_hashed_rng);
-    RUN_TEST(test_split_gas_walk_ignores_worker_order);
+    RUN_TEST(test_the_split_gas_passes_ignore_how_their_lanes_interleave);
     RUN_TEST(test_two_core_step_actually_changes_the_draw_stream);
     RUN_TEST(test_two_core_step_changes_the_draw_stream_at_smaller_qualities);
     RUN_TEST(test_two_core_step_does_not_leak_or_fabricate_mass);
@@ -2017,6 +2149,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_a_serial_falling_body_of_sand_opens_no_gap);
     RUN_TEST(test_a_split_falling_body_of_sand_opens_no_gap);
     RUN_TEST(test_a_serial_falling_body_of_water_opens_no_gap);
+    RUN_TEST(test_a_split_rising_body_of_gas_opens_no_gap);
     RUN_TEST(test_a_split_falling_body_of_water_opens_no_gap);
     RUN_TEST(test_a_fuse_blast_throws_grains_on_both_cores);
     RUN_TEST(test_a_lava_burst_throws_grains_on_both_cores);
