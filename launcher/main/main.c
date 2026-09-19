@@ -349,6 +349,15 @@ show_post_failures(void) {
 
 /* --- main --------------------------------------------------------------- */
 
+/* What the boot animation dissolves into: the home screen as its first frame
+ * will draw it, untouched and whole. */
+static void
+paint_launcher_under_boot(void) {
+    const input_t no_input = {0};
+    ui_invalidate();
+    ui_launcher_frame(&no_input, 0);
+}
+
 /* True once frame() has drawn a frame for the current app that update()'s
  * caller has not yet begun presenting - see step_app(). Reset whenever the
  * running app changes, so a freshly entered one always primes first. */
@@ -574,7 +583,19 @@ app_boot_init(void) {
     }
 #endif
 
+    /* The launcher has to exist, turned the way boot draws, before the
+     * animation can dissolve into it. ui_init() resets the transform to
+     * identity, so DISPLAY_DEFAULT_QUARTER is applied here or the board
+     * would start upright and visibly turn into place. */
+    sort_apps();
+    display_init(&shell_display);
+    shell_display.quarter = DISPLAY_DEFAULT_QUARTER;
+    ui_launcher_init();
+    ui_set_transform(ui_transform_quarter_turn(display_quarter(&shell_display), GFX_WIDTH, GFX_HEIGHT));
+
+    boot_anim_set_ending_backdrop(paint_launcher_under_boot);
     boot_anim_run();
+    gfx_request_full_redraw();
     heap_mark("after boot anim");
 
     touch_start();
@@ -586,19 +607,7 @@ app_boot_init(void) {
     if (!imu_init()) {
         ESP_LOGW(TAG, "No IMU - display orientation stays upright");
     }
-    display_init(&shell_display);
-
-    shell_display.quarter = DISPLAY_DEFAULT_QUARTER;
-
-    ui_launcher_init();
     heap_mark("shell ready");
-
-    /* ui_init() above already reset the transform to identity (it has to,
-     * so a stale one from a previous host test can never leak in), so
-     * DISPLAY_DEFAULT_QUARTER is not actually in force yet - apply it
-     * once here before the first frame is built, or the board would
-     * start upright and visibly turn into place. */
-    ui_set_transform(ui_transform_quarter_turn(display_quarter(&shell_display), GFX_WIDTH, GFX_HEIGHT));
 }
 
 #if CONFIG_LAUNCHER_SELFTEST
@@ -673,7 +682,6 @@ app_main_loop(void) {
 #endif
     int64_t next_display_sample_us = previous_us;
 
-    sort_apps();
     ESP_LOGI(TAG, "Ready, %d app%s registered", apps_registered, apps_registered == 1 ? "" : "s");
 
     while (1) {

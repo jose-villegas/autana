@@ -303,14 +303,22 @@ gfx_init()                  panel up, framebuffer allocated
 post_run_after_display()    the rest of the health check
                             -> a failure holds the screen for 8 s
 selftest_run()              diagnostics builds only
-boot_anim_run()             the startup animation, ~3 s
+ui_launcher_init()          the launcher exists, turned the way boot draws
+boot_anim_run()             the startup animation, 5.5 s
 touch_start(), buttons_start()
-ui_launcher_init()
 ```
 
 The animation goes after the health checks, so a board with a fault says so
 before the device does anything decorative, and before touch starts, because
 there is nothing yet for a tap to reach.
+
+It ends by dissolving into the launcher, not by fading to black. For its
+last 700 ms each frame starts from the home screen, painted by the shell
+through `boot_anim_set_ending_backdrop()`, and the photograph and title
+dither away over it. The launcher's ridge lies on the photograph's own, so
+the mountain drops away and leaves its outline, and the last boot frame is
+the launcher's first. `boot/` takes a painter because it knows nothing above
+itself.
 
 It draws three axes - the complex plane zeta's *value* lives in, as a floor,
 and the height *t* up the critical line, straight up - and then plots
