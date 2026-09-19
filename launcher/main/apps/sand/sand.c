@@ -260,7 +260,7 @@ sand_lane_scratch_bytes(int w, int h) {
     const size_t blocks =
         (size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H);
 
-    return SAND_LANE_COUNT * (2 * rows * sizeof(uint16_t) + blocks + rows);
+    return SAND_LANE_COUNT * (2 * rows * sizeof(uint16_t) + blocks + rows + SAND_LANE_DEFER_BYTES);
 }
 
 void
@@ -283,11 +283,14 @@ sand_lanes(sand_t* s) {
     uint16_t* const spans = s->lane_scratch;
     uint8_t* const bytes = (uint8_t*)(spans + (size_t)(2 * SAND_LANE_COUNT) * rows);
 
+    uint8_t* const defer = bytes + (size_t)SAND_LANE_COUNT * (blocks + rows);
+
     for (int i = 0; i < SAND_LANE_COUNT; i++) {
         sand_lane_pair[i].x0 = spans + (size_t)(2 * i) * rows;
         sand_lane_pair[i].x1 = sand_lane_pair[i].x0 + rows;
         sand_lane_pair[i].blocks = bytes + (size_t)i * (blocks + rows);
         sand_lane_pair[i].dirty = sand_lane_pair[i].blocks + blocks;
+        sand_lane_pair[i].defer = defer + (size_t)i * SAND_LANE_DEFER_BYTES;
     }
     return sand_lane_pair;
 }

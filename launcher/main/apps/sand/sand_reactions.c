@@ -290,12 +290,13 @@ try_heat_transform_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cel
 
 /* Small fixed queues for the reaction split's LONG-REACH triggers - see
  * sand_step_reaction_reach() for why conduct_heat()/chilling/dissolving
- * need none at all. Under 1 KiB total, well below the sweep's own ~5 KiB
- * guard snapshot (sand.c): cap-limited events, never one entry per cell. */
+ * need none at all. Cap-limited events, never one entry per cell. */
 #define REACT_EXPLOSION_DEFER_MAX 16
 #define REACT_CRACK_DEFER_MAX     64
 #define REACT_COOLOFF_DEFER_MAX   128
 
+/* Every entry starts with its cell's x then y: the reach pass orders entries
+ * by those two bytes without knowing which queue it is draining. */
 typedef struct {
     uint8_t x, y;
 } react_coord_t;
@@ -309,18 +310,12 @@ typedef struct {
     uint8_t chance;
 } react_cooloff_defer_t;
 
-static react_coord_t react_confined_ignite_defer[REACT_EXPLOSION_DEFER_MAX];
-static uint8_t react_confined_ignite_defer_count;
-
 /* A lava entry carries the material it quenches to, for the same reason the
  * fuse entry carries its radius: the reach pass must not have to ask the
  * board what a cell was. */
 typedef struct {
     uint8_t x, y, quench_to;
 } react_lava_defer_t;
-
-static react_lava_defer_t react_lava_burst_defer[REACT_EXPLOSION_DEFER_MAX];
-static uint8_t react_lava_burst_defer_count;
 
 /* A fuse entry carries its RADIUS, not just where it was: by the time the
  * reach pass runs, the cell that queued it has already burned out, so asking
@@ -329,62 +324,111 @@ typedef struct {
     uint8_t x, y, radius;
 } react_blast_t;
 
-static react_blast_t react_fuse_explosion_defer[REACT_EXPLOSION_DEFER_MAX];
-static uint8_t react_fuse_explosion_defer_count;
-static react_crack_defer_t react_crack_defer[REACT_CRACK_DEFER_MAX];
-static uint8_t react_crack_defer_count;
-static react_cooloff_defer_t react_cooloff_defer[REACT_COOLOFF_DEFER_MAX];
-static uint8_t react_cooloff_defer_count;
+typedef struct {
+    react_coord_t confined_ignite[REACT_EXPLOSION_DEFER_MAX];
+    react_lava_defer_t lava_burst[REACT_EXPLOSION_DEFER_MAX];
+    react_blast_t fuse_explosion[REACT_EXPLOSION_DEFER_MAX];
+    react_crack_defer_t crack[REACT_CRACK_DEFER_MAX];
+    react_cooloff_defer_t cooloff[REACT_COOLOFF_DEFER_MAX];
+    uint8_t confined_ignite_count, lava_burst_count, fuse_explosion_count, crack_count, cooloff_count;
+} react_deferred_t;
 
-/* Under 1 KiB total, well inside the sweep's own ~5 KiB guard-snapshot
- * precedent (sand.c) - these hold candidates for events that are already
- * rare and cap-limited, never one entry per cell. */
-_Static_assert(sizeof(react_coord_t) * REACT_EXPLOSION_DEFER_MAX + sizeof(react_lava_burst_defer)
-                       + sizeof(react_fuse_explosion_defer) + sizeof(react_crack_defer) + sizeof(react_cooloff_defer)
-                   <= 1024,
-               "the reaction split's deferred queues must stay small - see the comment above");
+_Static_assert(sizeof(react_deferred_t) <= SAND_LANE_DEFER_BYTES,
+               "the reaction split's deferred queues must fit one lane's scratch");
+
+/* Test hooks - see sand_priv.h. Never reset by the pass itself. */
+unsigned sand_reactions_defer_queued;
+unsigned sand_reactions_defer_applied;
+unsigned sand_reactions_defer_peak;
+
+/* What one HALF of a split pass accumulates on top of the lane shadow it
+ * writes its wakes and repaints into. Keyed by half, never by the core that
+ * ran it, so which core got there first cannot decide what a full queue
+ * dropped or which bit a shared OR lost. */
+typedef struct {
+    sand_lane_t* lanes;
+    react_deferred_t* deferred[SAND_LANE_COUNT];
+    uint16_t seen[SAND_LANE_COUNT];
+    unsigned dispatched[SAND_LANE_COUNT];
+    unsigned found[SAND_LANE_COUNT];
+} react_pass_t;
+
+/* File-static for the reason sand_chunk_pass_run() gives. `lanes` is
+ * non-NULL only while a split pass's halves are live. */
+static react_pass_t react_pass;
+
+/* Only the counts: lane scratch is caller memory of unknown content, and a
+ * drained queue leaves its entries behind. */
+static void
+react_deferred_reset(react_deferred_t* d) {
+    d->confined_ignite_count = 0;
+    d->lava_burst_count = 0;
+    d->fuse_explosion_count = 0;
+    d->crack_count = 0;
+    d->cooloff_count = 0;
+}
+
+/* Which half a call belongs to, from the only thing it was handed: NULL for
+ * the board itself, which runs serially and needs no queue. */
+static react_deferred_t*
+react_deferred_of(const sand_t* s) {
+    for (int i = 0; react_pass.lanes != NULL && i < SAND_LANE_COUNT; i++) {
+        if (s == &react_pass.lanes[i].local) {
+            return react_pass.deferred[i];
+        }
+    }
+    return NULL;
+}
+
+/* A full queue drops the candidate: every one of these events is cap-limited
+ * already, and the cell that queued it has done its own local work. */
+#define REACT_DEFER(d, queue, cap, entry)                                                                              \
+    do {                                                                                                               \
+        if ((d)->queue##_count < (cap)) {                                                                              \
+            (d)->queue[(d)->queue##_count++] = (entry);                                                                \
+        }                                                                                                              \
+    } while (0)
 
 static inline void
-queue_confined_ignite(int x, int y) {
-    if (react_confined_ignite_defer_count >= REACT_EXPLOSION_DEFER_MAX) {
-        return; /* cap-limited already; a dropped candidate just never ignites this step */
-    }
-    react_confined_ignite_defer[react_confined_ignite_defer_count++] = (react_coord_t){(uint8_t)x, (uint8_t)y};
+queue_confined_ignite(react_deferred_t* d, int x, int y) {
+    REACT_DEFER(d, confined_ignite, REACT_EXPLOSION_DEFER_MAX, ((react_coord_t){(uint8_t)x, (uint8_t)y}));
 }
 
 static inline void
-queue_lava_burst(int x, int y, uint8_t quench_to) {
-    if (react_lava_burst_defer_count >= REACT_EXPLOSION_DEFER_MAX) {
-        return;
-    }
-    react_lava_burst_defer[react_lava_burst_defer_count++] = (react_lava_defer_t){(uint8_t)x, (uint8_t)y, quench_to};
+queue_lava_burst(react_deferred_t* d, int x, int y, uint8_t quench_to) {
+    REACT_DEFER(d, lava_burst, REACT_EXPLOSION_DEFER_MAX, ((react_lava_defer_t){(uint8_t)x, (uint8_t)y, quench_to}));
 }
 
 static inline void
-queue_fuse_explosion(int x, int y, int radius) {
-    if (react_fuse_explosion_defer_count >= REACT_EXPLOSION_DEFER_MAX) {
-        return;
-    }
-    react_fuse_explosion_defer[react_fuse_explosion_defer_count++] =
-        (react_blast_t){(uint8_t)x, (uint8_t)y, (uint8_t)radius};
+queue_fuse_explosion(react_deferred_t* d, int x, int y, int radius) {
+    REACT_DEFER(d, fuse_explosion, REACT_EXPLOSION_DEFER_MAX,
+                ((react_blast_t){(uint8_t)x, (uint8_t)y, (uint8_t)radius}));
 }
 
 static inline void
-queue_crack_run(int x, int y, material_id_t from, material_id_t into) {
-    if (react_crack_defer_count >= REACT_CRACK_DEFER_MAX) {
-        return; /* a rare hot/cold shock combo overflowing 64 in one step just never cracks this step */
-    }
-    react_crack_defer[react_crack_defer_count++] =
-        (react_crack_defer_t){(uint8_t)x, (uint8_t)y, (uint8_t)from, (uint8_t)into};
+queue_crack_run(react_deferred_t* d, int x, int y, material_id_t from, material_id_t into) {
+    REACT_DEFER(d, crack, REACT_CRACK_DEFER_MAX,
+                ((react_crack_defer_t){(uint8_t)x, (uint8_t)y, (uint8_t)from, (uint8_t)into}));
 }
 
 static inline void
-queue_cool_off_chain(int x, int y, uint8_t product, int chance) {
-    if (react_cooloff_defer_count >= REACT_COOLOFF_DEFER_MAX) {
-        return; /* the source cell already quenched locally; only the chain's further spread is lost */
+queue_cool_off_chain(react_deferred_t* d, int x, int y, uint8_t product, int chance) {
+    REACT_DEFER(d, cooloff, REACT_COOLOFF_DEFER_MAX,
+                ((react_cooloff_defer_t){(uint8_t)x, (uint8_t)y, product, (uint8_t)chance}));
+}
+
+/* Both totals are shared, so a half keeps its own until the join. */
+static void
+note_row_walked(const sand_t* s, uint16_t seen, unsigned cells) {
+    for (int i = 0; react_pass.lanes != NULL && i < SAND_LANE_COUNT; i++) {
+        if (s == &react_pass.lanes[i].local) {
+            react_pass.seen[i] |= seen;
+            react_pass.dispatched[i] += cells;
+            return;
+        }
     }
-    react_cooloff_defer[react_cooloff_defer_count++] =
-        (react_cooloff_defer_t){(uint8_t)x, (uint8_t)y, product, (uint8_t)chance};
+    seen_materials |= seen;
+    sand_reactions_cells_dispatched += cells;
 }
 
 #define CRACK_MAX 256
@@ -476,8 +520,9 @@ cool_off_chain(sand_t* s, int x, int y, int w, int h, uint8_t product, int chanc
 
 static void
 crack_run_or_defer(sand_t* s, int x, int y, int w, int h, material_id_t from, material_id_t into) {
-    if (s->rng_hashed) {
-        queue_crack_run(x, y, from, into);
+    react_deferred_t* const d = react_deferred_of(s);
+    if (d != NULL) {
+        queue_crack_run(d, x, y, from, into);
         return;
     }
     crack_run(s, x, y, w, h, from, into);
@@ -485,8 +530,9 @@ crack_run_or_defer(sand_t* s, int x, int y, int w, int h, material_id_t from, ma
 
 static void
 cool_off_chain_or_defer(sand_t* s, int x, int y, int w, int h, uint8_t product, int chance) {
-    if (s->rng_hashed) {
-        queue_cool_off_chain(x, y, product, chance);
+    react_deferred_t* const d = react_deferred_of(s);
+    if (d != NULL) {
+        queue_cool_off_chain(d, x, y, product, chance);
         return;
     }
     cool_off_chain(s, x, y, w, h, product, chance);
@@ -1000,7 +1046,7 @@ step_one_cold_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
  * that after the loop had already run for nothing. */
 static bool
 step_one_cold_cell_or_defer(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
-    if (s->rng_hashed) {
+    if (react_deferred_of(s) != NULL) {
         return false;
     }
     return step_one_cold_cell(s, x, y, w, h, r);
@@ -1202,8 +1248,9 @@ ignite_confined_gas(sand_t* s, int nx, int ny) {
  * cap for real, single core, once both phases have joined. */
 static inline bool
 ignite_confined_gas_or_defer(sand_t* s, int nx, int ny) {
-    if (s->rng_hashed) {
-        queue_confined_ignite(nx, ny);
+    react_deferred_t* const d = react_deferred_of(s);
+    if (d != NULL) {
+        queue_confined_ignite(d, nx, ny);
         return true;
     }
     return ignite_confined_gas(s, nx, ny);
@@ -1446,13 +1493,12 @@ conduct_heat(sand_t* s, int x, int y, int w, int h) {
     return acted;
 }
 
-/* conduct_heat()'s walk reaches up to CONDUCT_REACH cells - never while
- * s->rng_hashed is armed. sand_step_reaction_reach() re-scans for every
- * still-burning cell once the local phase has settled, so no queue is
- * needed here at all. */
+/* conduct_heat()'s walk reaches up to CONDUCT_REACH cells - never from inside
+ * a split half. sand_step_reaction_reach() re-scans for every still-burning
+ * cell once the local pass has settled, so no queue is needed here at all. */
 static bool
 conduct_heat_or_defer(sand_t* s, int x, int y, int w, int h) {
-    if (s->rng_hashed) {
+    if (react_deferred_of(s) != NULL) {
         return false;
     }
     return conduct_heat(s, x, y, w, h);
@@ -1620,7 +1666,7 @@ step_one_dissolver_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, con
  * still-dissolving cell once the local phase has settled. */
 static void
 dissolver_and_bubble_or_defer(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reaction_t* r, bool is_acid) {
-    if (s->rng_hashed) {
+    if (react_deferred_of(s) != NULL) {
         return;
     }
     if (is_acid) {
@@ -1720,11 +1766,12 @@ finish_exploding_burnout(const burning_cell_t* cell) {
     int dx = 0, dy = 0;
     if (s->impulse_buf != NULL && s->fuse_blast_wait == 0 && find_lit_two_by_two(s, x, y, w, h, grain, rx, &dx, &dy)) {
         spend_lit_two_by_two(s, x, y, w, dx, dy);
-        if (s->rng_hashed) {
+        react_deferred_t* const d = react_deferred_of(s);
+        if (d != NULL) {
             /* s->fuse_blast_wait is shared, mutable, step-wide state - the
              * cooldown write and the explosion both move to the serial
              * reach pass, where only one core is ever running. */
-            queue_fuse_explosion(x, y, rx->explodes);
+            queue_fuse_explosion(d, x, y, rx->explodes);
         } else {
             s->fuse_blast_wait = (uint8_t)((s->fuse_cooldown >= 0) ? s->fuse_cooldown : SAND_GUNPOWDER_BLAST_COOLDOWN);
             sand_explode(s, x, y, rx->explodes);
@@ -1897,8 +1944,9 @@ try_lava_burst(const burning_cell_t* cell) {
 static bool
 try_lava_burst_or_defer(const burning_cell_t* cell) {
     sand_t* const s = cell->s;
+    react_deferred_t* const d = react_deferred_of(s);
 
-    if (!s->rng_hashed) {
+    if (d == NULL) {
         return try_lava_burst(cell);
     }
 
@@ -1920,7 +1968,7 @@ try_lava_burst_or_defer(const burning_cell_t* cell) {
         return false;
     }
 
-    queue_lava_burst(cell->x, cell->y, cell->rx->quench_to);
+    queue_lava_burst(d, cell->x, cell->y, cell->rx->quench_to);
     /* True, as a serial burst returns: the caller must leave this cell alone
      * so the reach pass still finds the lava it queued. */
     return true;
@@ -2186,14 +2234,11 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
         &&stage_sprout,   &&stage_bud,         &&stage_end,
     };
 
-    /* Once per call, not per cell: the loop visits every cell of the range,
-     * and a store per cell would tax every pass in every build. */
-    sand_reactions_cells_dispatched += (unsigned)(x_hi - x_lo);
-
     unsigned found = 0;
+    uint16_t seen = 0;
     for (int x = x_lo; x < x_hi; x++) {
         const cell_t c = row[x];
-        seen_materials |= (uint16_t)(1u << CELL_MATERIAL(c));
+        seen |= (uint16_t)(1u << CELL_MATERIAL(c));
         if (CELL_IS_EMPTY(c)) {
             continue;
         }
@@ -2372,6 +2417,7 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
         }
     stage_end:;
     }
+    note_row_walked(s, seen, (unsigned)(x_hi - x_lo));
     return found;
 }
 
@@ -2549,8 +2595,7 @@ step_one_reacting_row_liquid_near(sand_t* s, int y, int w, int h) {
  * and a chunk's neighbours all belong to other colours and other passes. */
 typedef struct {
     sand_t* s;
-    int w, h, color, share;
-    unsigned* found_out;
+    int w, h, color, lane;
 } react_pass_ctx_t;
 
 _Static_assert(sizeof(react_pass_ctx_t) <= JOB_CTX_MAX, "react_pass_ctx_t must fit JOB_CTX_MAX");
@@ -2571,7 +2616,7 @@ react_run_chunks(const react_pass_ctx_t* c) {
     unsigned found = 0;
 
     for (int cy = 0; cy < sand_chunk_rows(c->s); cy++) {
-        if (sand_chunk_share(cy) != c->share) {
+        if (sand_chunk_share(cy) != c->lane) {
             continue;
         }
         int y0, y1;
@@ -2584,7 +2629,7 @@ react_run_chunks(const react_pass_ctx_t* c) {
             }
         }
     }
-    *c->found_out = found;
+    react_pass.found[c->lane] |= found;
 }
 
 static void
@@ -2592,82 +2637,165 @@ react_chunks_worker(void* ctx) {
     react_run_chunks((const react_pass_ctx_t*)ctx);
 }
 
+static bool react_worker_order_reversed;
+
+void
+sand_reactions_set_worker_order_for_test(bool reverse) {
+    react_worker_order_reversed = reverse;
+}
+
 /* One colour's pass, its chunk rows divided between core 1 and here and
- * joined before returning. */
-static unsigned
+ * joined before returning. Each half works through its own lane view, so a
+ * latched flag, a woken block or a dirty row never lands in memory the other
+ * core is writing; nothing but the cells themselves is shared. */
+static void
 react_run_color(sand_t* s, int color, int w, int h) {
-    unsigned found_b = 0;
-    react_pass_ctx_t ctx_b = {s, w, h, color, 1, &found_b};
+    sand_lane_t* const lanes = react_pass.lanes;
+
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        sand_lane_prepare(&lanes[i], s);
+    }
+
+    const int remote = react_worker_order_reversed ? 0 : 1;
+    const react_pass_ctx_t ctx_b = {&lanes[remote].local, w, h, color, remote};
     (void)job_run_core1(react_chunks_worker, &ctx_b, sizeof ctx_b);
 
-    unsigned found_a = 0;
-    react_pass_ctx_t ctx_a = {s, w, h, color, 0, &found_a};
+    const react_pass_ctx_t ctx_a = {&lanes[1 - remote].local, w, h, color, 1 - remote};
     react_run_chunks(&ctx_a);
 
     (void)job_wait(100);
-    return found_a | found_b;
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        sand_lane_merge(s, &lanes[i]);
+    }
+}
+
+/* Row-major over every half's copy of one queue, which is the serial scan's
+ * own order: the drain cannot tell which core queued what, nor in what order
+ * the two ran. */
+static inline unsigned
+react_entry_key(const uint8_t* entry) {
+    return ((unsigned)entry[1] << 8) | entry[0];
+}
+
+static void
+react_sort_row_major(uint8_t* entries, size_t count, size_t size) {
+    uint8_t moving[sizeof(react_cooloff_defer_t)];
+    for (size_t i = 1; i < count; i++) {
+        memcpy(moving, entries + i * size, size);
+        size_t j = i;
+        while (j > 0 && react_entry_key(entries + (j - 1) * size) > react_entry_key(moving)) {
+            memcpy(entries + j * size, entries + (j - 1) * size, size);
+            j--;
+        }
+        memcpy(entries + j * size, moving, size);
+    }
+}
+
+typedef struct {
+    uint8_t* entries[SAND_LANE_COUNT];
+    uint8_t* counts[SAND_LANE_COUNT];
+    uint8_t next[SAND_LANE_COUNT];
+    size_t size;
+} react_drain_t;
+
+#define REACT_DRAIN(queue)                                                                                             \
+    react_drain_begin((uint8_t*)react_pass.deferred[0]->queue, &react_pass.deferred[0]->queue##_count,                 \
+                      (uint8_t*)react_pass.deferred[1]->queue, &react_pass.deferred[1]->queue##_count,                 \
+                      sizeof react_pass.deferred[0]->queue[0])
+
+static react_drain_t
+react_drain_begin(uint8_t* a, uint8_t* a_count, uint8_t* b, uint8_t* b_count, size_t size) {
+    react_drain_t drain = {{a, b}, {a_count, b_count}, {0, 0}, size};
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        const unsigned held = *drain.counts[i];
+        react_sort_row_major(drain.entries[i], held, size);
+        sand_reactions_defer_queued += held;
+        if (held > sand_reactions_defer_peak) {
+            sand_reactions_defer_peak = held;
+        }
+    }
+    return drain;
+}
+
+/* NULL once every half is drained, and the queues are empty again by then. */
+static const void*
+react_drain_next(react_drain_t* drain) {
+    int from = -1;
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        if (drain->next[i] >= *drain->counts[i]) {
+            continue;
+        }
+        if (from < 0
+            || react_entry_key(drain->entries[i] + drain->next[i] * drain->size)
+                   < react_entry_key(drain->entries[from] + drain->next[from] * drain->size)) {
+            from = i;
+        }
+    }
+    if (from < 0) {
+        for (int i = 0; i < SAND_LANE_COUNT; i++) {
+            *drain->counts[i] = 0;
+        }
+        return NULL;
+    }
+    sand_reactions_defer_applied++;
+    return drain->entries[from] + (size_t)drain->next[from]++ * drain->size;
 }
 
 static void
 reach_confined_ignitions(sand_t* s) {
     const int w = s->w, h = s->h;
-    for (uint8_t i = 0; i < react_confined_ignite_defer_count; i++) {
-        const int x = react_confined_ignite_defer[i].x;
-        const int y = react_confined_ignite_defer[i].y;
-        const cell_t c = sand_at(s, x, y);
-        if (!CELL_IS_EMPTY(c) && material_of(c)->kind == KIND_GAS && gas_ignite_confined(s, x, y, w, h)) {
-            (void)ignite_confined_gas(s, x, y);
+    react_drain_t drain = REACT_DRAIN(confined_ignite);
+    const react_coord_t* e;
+    while ((e = react_drain_next(&drain)) != NULL) {
+        const cell_t c = sand_at(s, e->x, e->y);
+        if (!CELL_IS_EMPTY(c) && material_of(c)->kind == KIND_GAS && gas_ignite_confined(s, e->x, e->y, w, h)) {
+            (void)ignite_confined_gas(s, e->x, e->y);
         }
     }
-    react_confined_ignite_defer_count = 0;
 }
 
 static void
 reach_lava_bursts(sand_t* s) {
     const int w = s->w;
-
-    for (uint8_t i = 0; i < react_lava_burst_defer_count; i++) {
+    react_drain_t drain = REACT_DRAIN(lava_burst);
+    const react_lava_defer_t* e;
+    while ((e = react_drain_next(&drain)) != NULL) {
         if (!confined_blast_available(s)) {
-            break;
+            continue;
         }
-        const int x = react_lava_burst_defer[i].x;
-        const int y = react_lava_burst_defer[i].y;
-
-        place_reacted(s, x, y, (size_t)y * (size_t)w + (size_t)x, react_lava_burst_defer[i].quench_to);
+        place_reacted(s, e->x, e->y, (size_t)e->y * (size_t)w + (size_t)e->x, e->quench_to);
         s->confined_blasts_this_step++;
-        sand_explode(s, x, y, SAND_LAVA_BURST_RADIUS);
+        sand_explode(s, e->x, e->y, SAND_LAVA_BURST_RADIUS);
     }
-    react_lava_burst_defer_count = 0;
 }
 
 static void
 reach_fuse_explosions(sand_t* s) {
-    for (uint8_t i = 0; i < react_fuse_explosion_defer_count; i++) {
-        const int x = react_fuse_explosion_defer[i].x;
-        const int y = react_fuse_explosion_defer[i].y;
+    react_drain_t drain = REACT_DRAIN(fuse_explosion);
+    const react_blast_t* e;
+    while ((e = react_drain_next(&drain)) != NULL) {
         if (s->fuse_blast_wait != 0) {
             continue;
         }
         s->fuse_blast_wait = (uint8_t)((s->fuse_cooldown >= 0) ? s->fuse_cooldown : SAND_GUNPOWDER_BLAST_COOLDOWN);
-        sand_explode(s, x, y, react_fuse_explosion_defer[i].radius);
+        sand_explode(s, e->x, e->y, e->radius);
     }
-    react_fuse_explosion_defer_count = 0;
 }
 
 static void
 reach_cracks_and_cooloffs(sand_t* s) {
     const int w = s->w, h = s->h;
-    for (uint8_t i = 0; i < react_crack_defer_count; i++) {
-        const react_crack_defer_t* e = &react_crack_defer[i];
-        crack_run(s, e->x, e->y, w, h, (material_id_t)e->from, (material_id_t)e->into);
+    react_drain_t cracks = REACT_DRAIN(crack);
+    const react_crack_defer_t* crack;
+    while ((crack = react_drain_next(&cracks)) != NULL) {
+        crack_run(s, crack->x, crack->y, w, h, (material_id_t)crack->from, (material_id_t)crack->into);
     }
-    react_crack_defer_count = 0;
 
-    for (uint8_t i = 0; i < react_cooloff_defer_count; i++) {
-        const react_cooloff_defer_t* e = &react_cooloff_defer[i];
-        cool_off_chain(s, e->x, e->y, w, h, e->product, e->chance);
+    react_drain_t cooloffs = REACT_DRAIN(cooloff);
+    const react_cooloff_defer_t* cooloff;
+    while ((cooloff = react_drain_next(&cooloffs)) != NULL) {
+        cool_off_chain(s, cooloff->x, cooloff->y, w, h, cooloff->product, cooloff->chance);
     }
-    react_cooloff_defer_count = 0;
 }
 
 /* One cell of the re-scan below - conduct_heat() for a still-burning cell,
@@ -2712,8 +2840,8 @@ reach_rescan(sand_t* s) {
 }
 
 /* THE SERIAL REACH PASS: every `_or_defer` gate's trigger, resolved once,
- * single core, after both phases and the guard rows join. Explosions run
- * first since they can consume a cell outright, before the re-scan sees it. */
+ * single core, after both halves join. Explosions run first since they can
+ * consume a cell outright, before the re-scan sees it. */
 static unsigned
 sand_step_reaction_reach(sand_t* s) {
     reach_confined_ignitions(s);
@@ -2728,8 +2856,38 @@ sand_step_reaction_reach(sand_t* s) {
  * narrower soak-only walk left alone; see sand_step_reactions(). */
 static bool
 reactions_may_split(const sand_t* s, bool soak_only) {
-    return sand_two_core_step_enabled() && !soak_only && sand_chunk_split_ready(s)
+    return sand_two_core_step_enabled() && !soak_only && s->lane_scratch != NULL && sand_chunk_split_ready(s)
            && (s->may_have_materials & grower_mask()) == 0;
+}
+
+/* False leaves `react_pass` closed and the step to the serial walk, which is
+ * also what makes react_deferred_of() answer NULL for every caller. */
+static bool
+react_pass_open(sand_t* s, bool soak_only) {
+    sand_lane_t* const lanes = reactions_may_split(s, soak_only) ? sand_lanes(s) : NULL;
+
+    if (lanes == NULL) {
+        return false;
+    }
+    react_pass = (react_pass_t){.lanes = lanes};
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        react_pass.deferred[i] = (react_deferred_t*)lanes[i].defer;
+        react_deferred_reset(react_pass.deferred[i]);
+    }
+    return true;
+}
+
+static unsigned
+react_pass_close(void) {
+    unsigned found = 0;
+
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        found |= react_pass.found[i];
+        seen_materials |= react_pass.seen[i];
+        sand_reactions_cells_dispatched += react_pass.dispatched[i];
+    }
+    react_pass.lanes = NULL;
+    return found;
 }
 
 /* Every row of the reaction pass, split or not - see reactions_may_split()
@@ -2740,7 +2898,7 @@ run_reaction_rows(sand_t* s, bool soak_only) {
     const int h = s->h;
     unsigned found = 0;
 
-    if (!reactions_may_split(s, soak_only)) {
+    if (!react_pass_open(s, soak_only)) {
         for (int y = 0; y < h; y++) {
             found |=
                 soak_only ? step_one_reacting_row_liquid_near(s, y, w, h) : step_one_reacting_row(s, y, w, h, 0, w);
@@ -2750,11 +2908,12 @@ run_reaction_rows(sand_t* s, bool soak_only) {
 
     s->rng_hashed = true;
     for (int color = 0; color < SAND_CHUNK_COLOR_COUNT; color++) {
-        found |= react_run_color(s, color, w, h);
+        react_run_color(s, color, w, h);
     }
     s->rng_hashed = false;
 
-    return found | sand_step_reaction_reach(s);
+    found = sand_step_reaction_reach(s);
+    return found | react_pass_close();
 }
 
 void

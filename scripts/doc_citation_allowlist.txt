@@ -5,5 +5,3 @@ docs/notes/Display-and-Rendering.md	spi_ll_master_cal_clock	ESP-IDF private API.
 docs/notes/Display-and-Rendering.md	spi_ll.h	ESP-IDF private header.
 docs/sand/Adding-a-Material.md	probe.c	Example probe source, not shipped.
 docs/Testing-Guide.md	FATAL_ERROR	CMake command.
-docs/Autana-Rendering-Roadmap.md	CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB	ESP-IDF Kconfig symbol, set in launcher/sdkconfig.defaults.
-docs/notes/Board-and-Memory.md	CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB	ESP-IDF Kconfig symbol, set in launcher/sdkconfig.defaults.

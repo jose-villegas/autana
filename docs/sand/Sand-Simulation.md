@@ -1190,7 +1190,7 @@ update can touch another's, in cells:
 | Main sweep (`step_one_grain`, `move_liquid_grain`) | 1 (Chebyshev - every move is one of the eight ring directions) | yes |
 | Liquid cross-flow (`equalise_liquids`, `find_shallowest`) | `SAND_LIQUID_SIGHT`, 8, along a ray that can run diagonally through several rows | yes; private wake and repaint state |
 | Gas walk (`gas_walk_once`) | 1, same shape as the sweep | yes; private wake and repaint state |
-| Reaction local rules (`step_one_reacting_row`'s burn/warm/tempered/crust/soak-dry/condense/acid-rain stages) | 1 | yes, and serial-exact - a reaction never relocates a cell; growers on the board disable the split entirely (`reactions_may_split()`, `sand_reactions.c`) |
+| Reaction local rules (`step_one_reacting_row`'s burn/warm/tempered/crust/soak-dry/condense/acid-rain stages) | 1 | yes, and serial-exact - a reaction never relocates a cell; private wake, repaint and content-flag state; growers on the board disable the split entirely (`reactions_may_split()`, `sand_reactions.c`) |
 | Gas cross-flow (`equalise_gas`) | `material_of(c)->sight`: 5-24 cells across fire (5), gas (16), steam (20), and smoke (24) | only along a ray that stays in its own row - see below |
 | Heat conduction to a boiler (`try_heat_transform_given`'s `CONDUCT_REACH`) | 32, a directed walk, not a spread | no; queue-free - `sand_step_reaction_reach()` re-scans for every still-burning cell |
 | Chilling (`step_one_cold_cell`'s carry walk) and dissolving (acid) | `COLD_REACH`, and acid's own multi-cell backing check | no; same re-scan, left whole rather than split into a local half |
@@ -1211,6 +1211,19 @@ board (conduct_heat, chilling, dissolving, all queue-free) or through one
 of a handful of small, cap-limited queues (cracks, cool-off chains, the
 three explosion triggers). See `sand_reactions.c`'s own comment on that
 split for why each was drawn where it was.
+
+Nothing a half writes besides cells is shared between the two cores. Each
+works through its own `sand_lane_t` view of the board's bookkeeping - content
+flags, block wake state, dirty rows - merged after both return, the shape the
+gas and liquid splits use; a block spans several chunks, so two halves on
+different cores would otherwise share block-state bytes, and an unguarded
+read-modify-write there loses wakes. The deferred queues belong to a half
+too, living in that lane's scratch, and the reach pass drains both merged in
+row-major order. Keyed by half rather than by core, a full queue drops the
+same candidates whichever core ran which half, and the drain cannot see the
+order the cores happened to run in.
+`test_reaction_split_ignores_worker_order` holds that on a host, where the
+only ordering that can be varied is which worker owns which half.
 
 ### The chunks
 
