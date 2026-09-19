@@ -597,6 +597,21 @@ as a generator's input, and a rendered frame is neither that nor something
 anyone reads a diff of. A render with no pin yet says `(not pinned)` and
 passes, so a new scene is not blocked on one.
 
+**A pin only holds where the pixels are integer-exact**, since CI renders on
+a different compiler and C library than anyone's desk. The self-test report,
+the home screen and the boot animation are pinned: `gfx.c` does no float
+maths, and the scroll view's momentum - the one part of the UI that reaches
+the maths library - is switched off at a zero time constant, so it is
+linked but never called. The cube declares `scene_pin=0` and is checked for its
+declared size alone: it draws a frame counter that is a `double` printed
+with `"%.1f"`, and the only reason that reads zero is a run stopping 20 ms
+short of the window that computes it. A scene whose pin can fail for a
+reason nobody changed teaches the reader to ignore the pin.
+
+Every scene is linked against the maths library regardless, last on the
+line: the Windows toolchains fold those functions into libc, so a scene that
+needs one links clean on a laptop and fails only on Linux.
+
 ```sh
 ./launcher/tools/render_all_scenes.sh --update-baseline   # re-pin, deliberately
 ```
