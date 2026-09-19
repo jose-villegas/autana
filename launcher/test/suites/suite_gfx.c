@@ -29,8 +29,12 @@
 #include "esp_timer.h"
 
 #include "board/board.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
+#include "input/touch.h"
+#include "input/touch_fsm.h"
 
 static const char* TAG = "device_tests";
 
@@ -52,6 +56,13 @@ fixture(void) {
 
 static void
 perf_guard(const char* name, int64_t measured_us, int64_t ceiling_us) {
+#if CONFIG_LAUNCHER_QEMU
+    /* A ceiling pegged on the board prices the board's clock, not an
+     * emulator's, so there it is reported and not enforced. */
+    ESP_LOGI("device_tests", "%s: %lld us, board ceiling %lld us not enforced", name, (long long)measured_us,
+             (long long)ceiling_us);
+    return;
+#endif
     TEST_ASSERT_LESS_THAN_MESSAGE((int)ceiling_us, (int)measured_us, name);
 }
 
@@ -99,9 +110,43 @@ test_touch_controller_is_present(void) {
     fixture();
     /* Confirms the I2C bus works and something answers - the host suite can
      * test what samples mean, but never that the controller exists. */
+#if CONFIG_LAUNCHER_QEMU
+    TEST_IGNORE_MESSAGE("no controller exists under QEMU");
+#endif
     const board_variant_t variant = board_detect();
     TEST_ASSERT_NOT_EQUAL_MESSAGE(BOARD_VARIANT_UNKNOWN, variant, "no supported touch controller responded on I2C");
 }
+
+#if CONFIG_LAUNCHER_QEMU
+/* Long enough for a lift to count as one, plus a few polls either side. */
+static input_t
+input_after_polls(void) {
+    vTaskDelay(pdMS_TO_TICKS(TOUCH_RELEASE_QUIET_US / 1000 + 5 * 1000 / TOUCH_POLL_HZ));
+    input_t in = {0};
+    touch_read(&in);
+    return in;
+}
+
+void
+test_an_injected_touch_reaches_the_input_state(void) {
+    fixture();
+    touch_start();
+    touch_inject(false, 0, 0);
+    (void)input_after_polls();
+
+    touch_inject(true, 120, 300);
+    const input_t held = input_after_polls();
+    TEST_ASSERT_TRUE_MESSAGE(held.pressed, "the press edge never arrived");
+    TEST_ASSERT_TRUE(held.down);
+    TEST_ASSERT_EQUAL_INT(120, held.x);
+    TEST_ASSERT_EQUAL_INT(300, held.y);
+
+    touch_inject(false, 120, 300);
+    const input_t lifted = input_after_polls();
+    TEST_ASSERT_TRUE_MESSAGE(lifted.released, "the release edge never arrived");
+    TEST_ASSERT_FALSE(lifted.down);
+}
+#endif
 
 /* --- colour packing ----------------------------------------------------- */
 
@@ -786,9 +831,9 @@ test_an_unchanged_frame_costs_almost_nothing(void) {
      * all clean. 50 us is generous on purpose - the regression it guards
      * against, an unchanged frame sending pixels again, lands in the
      * thousands rather than 10% over. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(50, (int)unchanged,
-                                  "an unchanged frame's cost grew past what a clean dirty-check should "
-                                  "ever take - did it start touching the bus?");
+    perf_guard("an unchanged frame's cost grew past what a clean dirty-check should "
+               "ever take - did it start touching the bus?",
+               unchanged, 50);
 }
 
 /* Splits a full-screen gfx_present() into raw QSPI bus time versus
@@ -850,9 +895,9 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
      * about 4.4% over the observed maximum, tight because the reference
      * itself is this stable - a looser margin here would just be slack that
      * a real regression could hide in. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(3550, (int)one_band,
-                                  "one band alone cost more than its stable observed price - the bus "
-                                  "clock or the QSPI setup may have regressed");
+    perf_guard("one band alone cost more than its stable observed price - the bus "
+               "clock or the QSPI setup may have regressed",
+               one_band, 3550);
 }
 
 /* The ratio tests below take a band presented alone as their reference,
@@ -905,9 +950,9 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
      * 850 us leaves about 11% over the observed maximum: room for that
      * spread plus some, without being loose enough to miss the gather path
      * regressing back towards full-band cost. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(850, (int)narrow,
-                                  "the gathered narrow strip cost more than its observed price - the "
-                                  "gather-copy path may have regressed");
+    perf_guard("the gathered narrow strip cost more than its observed price - the "
+               "gather-copy path may have regressed",
+               narrow, 850);
 }
 
 /* The box is bounded by area, not width alone, specifically so a
@@ -954,9 +999,9 @@ test_a_short_wide_change_costs_less_than_a_full_band(void) {
      * the narrow strip's margin because this test's own captures already
      * moved twice as much - the margin tracks the spread it is guarding,
      * not a fixed percentage. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(700, (int)wide,
-                                  "the gathered wide-short box cost more than its observed price - "
-                                  "the gather-copy path may have regressed");
+    perf_guard("the gathered wide-short box cost more than its observed price - "
+               "the gather-copy path may have regressed",
+               wide, 700);
 }
 
 /* Full width, most of a band's height: 368x48 is far over GATHER_MAX_PIXELS,
@@ -1052,9 +1097,9 @@ test_two_far_corners_cost_less_than_a_full_band(void) {
      * room for the copy-side jitter the single-piece gathers above show.
      * 2,000 us leaves about 4.3% over the observed maximum - tight, to
      * match how tight the reference is. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(2000, (int)two_corners,
-                                  "two far corners cost more than their observed price - one of the "
-                                  "two independent gathers may have regressed");
+    perf_guard("two far corners cost more than their observed price - one of the "
+               "two independent gathers may have regressed",
+               two_corners, 2000);
 }
 
 /* Three separated marks, one more than LEAF_REFINE_MAX_RUNS (gfx_dirty.h)
@@ -1100,9 +1145,9 @@ test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
      * full band is the open question this test measures. The absolute is
      * safe to peg - 869/882/875/877 us across four captures, a 1.5% spread;
      * 980 leaves about 11% over, room for a different fallback shape. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(980, (int)three_marks,
-                                  "three far-apart marks' fallback send cost more than its observed "
-                                  "price");
+    perf_guard("three far-apart marks' fallback send cost more than its observed "
+               "price",
+               three_marks, 980);
 }
 
 /* A small mark plus a wide one in the same coarse run, sized to land the
@@ -1469,6 +1514,9 @@ run_gfx_suite(void) {
     RUN_TEST(test_display_is_up);
     RUN_TEST(test_framebuffer_fits_with_headroom_to_spare);
     RUN_TEST(test_touch_controller_is_present);
+#if CONFIG_LAUNCHER_QEMU
+    RUN_TEST(test_an_injected_touch_reaches_the_input_state);
+#endif
 
     RUN_TEST(test_colour_packing_matches_the_panel_format);
 

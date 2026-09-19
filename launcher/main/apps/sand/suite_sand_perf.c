@@ -271,6 +271,13 @@ static bool gas_ab_reporting;
 
 static void
 perf_guard(const char* name, int64_t measured_us, int64_t ceiling_us) {
+#if CONFIG_LAUNCHER_QEMU
+    /* A ceiling pegged on the board prices the board's clock, not an
+     * emulator's, so there it is reported and not enforced. */
+    ESP_LOGI("device_tests", "%s: %lld us, board ceiling %lld us not enforced", name, (long long)measured_us,
+             (long long)ceiling_us);
+    return;
+#endif
     TEST_ASSERT_LESS_THAN_MESSAGE((int)ceiling_us, (int)measured_us, name);
 }
 
@@ -1430,6 +1437,9 @@ log_mixed_scene_hashes(void) {
 
 static void
 test_the_xtensa_counters_over_three_scenes(void) {
+#if CONFIG_LAUNCHER_QEMU
+    TEST_IGNORE_MESSAGE("QEMU does not model the performance monitor");
+#endif
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, esp_cpu_get_core_id(),
                                   "perfmon counters are per-core; this instrument only means what it "
                                   "says if it counts and reads back on the same core the sand step "

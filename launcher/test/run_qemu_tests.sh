@@ -3,12 +3,17 @@
 # Build the self-test image for Espressif's QEMU and run it with no board.
 #
 #   ./launcher/test/run_qemu_tests.sh [--perf-scope] [--icount] [--no-build]
+#   ./launcher/test/run_qemu_tests.sh --suite <name> [--suite ...] [--screenshot <png>]
 #
 # The image is the diagnostics build with sdkconfig.defaults.qemu layered
 # last, in its own build.qemu/ (build.qemu.perf/ for --perf-scope), so it
 # never reconfigures build/ or build.diag/. qemu_run.py beside this file
 # boots it and reads the console; its header says what a run under emulation
 # can and cannot tell you, and what --icount counts.
+#
+# The first form runs every suite at boot. The second builds the same image
+# without autorun (build.qemu.shell/), which boots into the shell, and asks
+# its console for one suite at a time - seconds each - and for the screen.
 #
 # Needs qemu-xtensa, which ESP-IDF does not install by default:
 #   python %IDF_PATH%\tools\idf_tools.py install qemu-xtensa
@@ -23,23 +28,39 @@ TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 LAUNCHER_DIR=$(CDPATH= cd -- "$TEST_DIR/.." && pwd)
 
 BUILD_DIR=build.qemu
-DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag;sdkconfig.defaults.diag_autorun"
+DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag"
+AUTORUN=1
+PERF=0
 BUILD=1
 RUN_ARGS=""
-for arg in "$@"; do
-    case "$arg" in
-        --perf-scope)
-            BUILD_DIR=build.qemu.perf
-            DEFAULTS="$DEFAULTS;sdkconfig.defaults.diag_perf"
-            ;;
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --perf-scope) PERF=1 ;;
         --icount) RUN_ARGS="$RUN_ARGS --icount" ;;
         --no-build) BUILD=0 ;;
+        --suite | --screenshot)
+            [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
+            AUTORUN=0
+            RUN_ARGS="$RUN_ARGS $1 $2"
+            shift
+            ;;
         *)
             echo "usage: run_qemu_tests.sh [--perf-scope] [--icount] [--no-build]" >&2
+            echo "       run_qemu_tests.sh --suite <name> [--suite ...] [--screenshot <png>]" >&2
             exit 2
             ;;
     esac
+    shift
 done
+if [ "$AUTORUN" = 1 ]; then
+    DEFAULTS="$DEFAULTS;sdkconfig.defaults.diag_autorun"
+else
+    BUILD_DIR=build.qemu.shell
+fi
+if [ "$PERF" = 1 ]; then
+    BUILD_DIR="$BUILD_DIR.perf"
+    DEFAULTS="$DEFAULTS;sdkconfig.defaults.diag_perf"
+fi
 DEFAULTS="$DEFAULTS;sdkconfig.defaults.qemu"
 
 case "$(uname -s)" in

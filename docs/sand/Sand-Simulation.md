@@ -38,9 +38,10 @@ That move is worth stating plainly: the 322 KiB framebuffer now lives
 entirely in PSRAM (`BOARD_FRAMEBUFFER_CAPS`, `board.h`) and no longer
 competes with the sand grid, or anything else, for internal SRAM.
 
-Measured internal (non-PSRAM) free heap after `gfx_init()` is 311,775
-bytes - comfortably more than even a two-byte-per-cell grid at ULTRA
-(82 KB) would need.
+Measured internal (non-PSRAM) free heap after `gfx_init()` is 130,635
+bytes, in blocks of at most 51,200. A two-byte-per-cell grid at ULTRA
+(82 KB) would fit the total but not any one block, so it could not be a
+single contiguous allocation there.
 
 The one-byte encoding predates that move: it was chosen when the
 framebuffer still lived in the same internal pool as everything else,

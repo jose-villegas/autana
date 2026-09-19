@@ -369,7 +369,35 @@ before either one draws anything, so a pixel the two layers share (a leaf
 edge landing on a cell edge, for instance) still restores to its true
 original regardless of draw or restore order. A gathered send
 (`gather_and_send()`) instead draws into the disposable `gather_buf`, so its
-borders are simply never persisted. Declared only under
+borders are simply never persisted.
+
+Borders exist only in the bytes sent, never in the framebuffer, so the panel
+would keep one until its strip is next sent - which, for a region nothing
+changes in again, is never. `send_dirty_rows()` therefore records which
+strip rows went out with an overlay on (`overlay_bordered_rows`), and
+`run_present_normal()` opens the next present by sending each one again, full-width and unbordered, before
+the dirty sends. A border is on the panel for exactly the present that sent
+it; the cost is up to one extra full strip per bordered row per present,
+paid only while an overlay is on (and once more after it is switched off).
+
+`GFX_PIXFMT_INDEXED8` carries both layers too: `run_present_indexed()` sends
+whole dirty strips, but its marking still goes through `dirty_mark()`, so the
+leaves are real. `send_indexed_rows()` draws the borders into the expanded
+bounce slot - a disposable copy, nothing to restore - and the same clean
+resend applies, skipped for a row that is dirty again since that row goes out
+whole anyway.
+
+The app-driven band ring feeds the same tracker through `gfx_mark_dirty()`,
+so `gfx_band_submit()` draws into the band about to be sent: cyan around the
+band for the panel-grid layer, green around each marked leaf for the leaf
+layer (`GFX_BAND_HEIGHT` is a multiple of `LEAF_H`, so a leaf never straddles
+two bands). gfx holds no copy of a band to resend, so the clean-up runs
+through the app: `gfx_band_dirty()` reports a band that was bordered last
+frame as dirty once more, and that submit goes out bare. `gfx_band_next()`
+resets every row's cell boxes and leaf bits at the end of the frame, the
+same reset a full-framebuffer present gives each row it sends.
+
+Declared only under
 `CONFIG_LAUNCHER_DEVELOPMENT`, in both the header and the implementation - not
 just compiled out of a release build, but undefined there: a caller outside a
 development-only file that forgets to guard a call to it fails to compile

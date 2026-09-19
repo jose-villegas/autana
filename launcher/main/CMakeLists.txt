@@ -3,6 +3,7 @@ set(app_srcs
     "main.c"
     "boot/boot_anim.c"
     "boot/post.c"
+    "boot/post_layout.c"
     "boot/post_ui.c"
     "display/display.c"
     "display/panel_clock.c"
@@ -26,6 +27,10 @@ set(app_srcs
     "util/job.c"
     "util/screenshot.c"
 )
+
+if(CONFIG_LAUNCHER_QEMU)
+    list(APPEND app_srcs "gfx/gfx_null_panel.c")
+endif()
 
 # board/board.h binds this target's hardware facts to board_esp32s3.c.
 list(APPEND app_srcs "board/board_esp32s3.c")
@@ -179,6 +184,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites/suite_ui_scroll.c"
         "../test/suites/suite_ui_slider.c"
         "../test/suites/suite_display.c"
+        "../test/suites/suite_post_ui.c"
         "../test/suites/suite_panel_clock.c"
         "../test/suites/suite_screenshot.c"
         "../test/suites/suite_build_id.c"

@@ -108,6 +108,7 @@ $TEST_DIR/suites/suite_ui_pointer_microui.c
 $TEST_DIR/suites/suite_ui_scroll.c
 $TEST_DIR/suites/suite_ui_slider.c
 $TEST_DIR/suites/suite_display.c
+$TEST_DIR/suites/suite_post_ui.c
 $TEST_DIR/suites/suite_panel_clock.c
 $TEST_DIR/suites/suite_screenshot.c
 $TEST_DIR/suites/suite_build_id.c
@@ -118,6 +119,7 @@ $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/gesture.c
 $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
+$MAIN_DIR/boot/post_layout.c
 $MAIN_DIR/util/job.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/ui/ui_build.c
