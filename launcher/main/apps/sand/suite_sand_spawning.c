@@ -285,8 +285,8 @@ test_the_plant_brush_pours_its_share_of_the_disc(void) {
     uint8_t* grid = malloc((size_t)REAL_W * REAL_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(grid, "setup");
 
-    for (uint32_t seed = 1u; seed <= 8u; seed++) {
-        const int filled = share_pour(grid, radius, seed, MATX(MATX_PLANT), SAND_BRUSH_SHARE_PLANT);
+    for (unsigned seed = 1u; seed <= 8u; seed++) {
+        const int filled = share_pour(grid, radius, (uint32_t)seed, MATX(MATX_PLANT), SAND_BRUSH_SHARE_PLANT);
 
         char why[256];
         snprintf(why, sizeof why,
@@ -313,8 +313,8 @@ test_a_sparse_pour_scatters_across_the_whole_disc(void) {
     uint8_t* grid = malloc((size_t)REAL_W * REAL_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(grid, "setup");
 
-    for (uint32_t seed = 1u; seed <= 4u; seed++) {
-        share_pour(grid, radius, seed, MATX(MATX_PLANT), SAND_BRUSH_SHARE_PLANT);
+    for (unsigned seed = 1u; seed <= 4u; seed++) {
+        share_pour(grid, radius, (uint32_t)seed, MATX(MATX_PLANT), SAND_BRUSH_SHARE_PLANT);
 
         int rows = 0, cols = 0;
         for (int d = -radius; d <= radius; d++) {
