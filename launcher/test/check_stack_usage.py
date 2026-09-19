@@ -27,8 +27,8 @@ suite_sand_liquid_depth.c since the suite_sand.c split) - so 1024 is not
 starving anything real, it is just below where the next
 genuine outlier would have to be caught.
 
-Seven functions already exceed it (PRE_EXISTING_STACK_DEBT below), now
-ranging 1,088-1,792 bytes. The reason they are tracked individually rather
+Six host frames already exceed it (PRE_EXISTING_STACK_DEBT below), ranging
+1,088-1,792 bytes, plus one the host never compiles. The reason they are tracked individually rather
 than absorbed by a higher ceiling is what the worst of them turned out to
 be: an on-stack `unsigned depth[92 * 112]`, 42,848 bytes, nearly twelve
 times the whole device stack, the same species of bug as both historical
@@ -36,16 +36,17 @@ panics. Raising the ceiling to fit what already existed would have hidden
 it; listing each frame instead surfaced it on the gate's first run
 (fixed in 4a17e07).
 
-This gate is only worth anything if a frame that fits on x86 cannot secretly
-be larger on the target, so that was measured rather than assumed. Compiling
-the same suites with the ESP RISC-V toolchain and the device profile's own
-flags (check_stack_usage_device.sh, which runs this same checker over the
-target's .su files) gave, across the 411 functions of suite_sand.c present
-in both builds: not one larger on RISC-V than on x86, median 0.40x, worst
-case 0.99x, and no function over the ceiling on device that was not also
-over it here. The host over-estimates - the safe direction for a gate to be
-wrong in. Re-run that script after a toolchain or -O-level change, which is
-the sort of thing that could invert it.
+This gate is only worth as much as a host frame resembles the target's, so
+that was measured rather than assumed. Compiling the same suites with
+xtensa-esp32s3-elf-gcc and the device profile's own flags
+(check_stack_usage_device.sh, which runs this same checker over the target's
+.su files) gave, across the 1,534 functions present in both builds on
+2026-09-19: median 0.50x, but 67 functions LARGER on Xtensa than on x86,
+worst case 1.67x (576 -> 960 bytes). No function was over the ceiling on
+device without also being over it here, bar one only a DEVICE_BUILD
+compiles. The host is therefore an estimate, not an upper bound: a host
+frame near the ceiling is a reason to run that script, as is any toolchain
+or -O-level change.
 
 The profile is the source of truth for the ceiling and the device stack size
 - neither number is hardcoded here. See launcher/tools/device_profile.py.
@@ -63,7 +64,7 @@ import device_profile  # noqa: E402  (path must be set up first)
 
 
 # Pre-existing stack-frame debt against the 3,584-byte device stack, measured
-# once (esp32c6 profile, 2026-09-03) so the gate can land without either
+# once (host frames, 2026-09-03) so the gate can land without either
 # raising the ceiling to match the worst of them or leaving every one of
 # them permanently red. This is NOT a permission slip: each value is the
 # frame size measured when the entry was recorded, and a function only
@@ -109,8 +110,9 @@ PRE_EXISTING_STACK_DEBT = {
     ("suite_sand_liquid_depth.c",
      "test_turning_a_settled_pool_to_landscape_does_not_flash_the_whole_body"):
         1088,
-    ("suite_sand_gunpowder.c",
-     "test_damp_gunpowder_ignites_less_readily_than_dry"): 1040,
+    # DEVICE_BUILD only, so this one is a target frame and the host pass
+    # never sees it.
+    ("suite_boot_anim_perf.c", "run_checkpoint"): 1040,
 }
 
 

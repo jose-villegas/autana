@@ -12,7 +12,9 @@ be showing as logs: a SCREENSHOT_BEGIN line announcing the byte count, one
 SCREENSHOT_DATA: line per base64-encoded chunk, one SCREENSHOT_STATE: line
 of plain-text JSON (device state at that same frame - sensors, memory,
 clock; see screenshot_dump()'s own comment in screenshot.c for the field
-list), and a SCREENSHOT_END line. Anything else on the wire - ordinary
+list), and a SCREENSHOT_END line - or, in place of all of those, one
+SCREENSHOT_REFUSED: line giving the reason, which ends the run at once
+rather than at --timeout. Anything else on the wire - ordinary
 ESP_LOG output, in particular - is ignored rather than treated as an
 error, since the device keeps logging normally while it streams.
 
@@ -44,6 +46,7 @@ import serial
 BEGIN_RE = re.compile(r"^SCREENSHOT_BEGIN size=(\d+)$")
 DATA_PREFIX = "SCREENSHOT_DATA:"
 STATE_PREFIX = "SCREENSHOT_STATE:"
+REFUSED_PREFIX = "SCREENSHOT_REFUSED:"
 END_LINE = "SCREENSHOT_END"
 
 TRIGGER = b"SCREENSHOT\n"
@@ -214,6 +217,11 @@ def main() -> int:
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
                 line = line.rstrip("\r")
+
+                if line.startswith(REFUSED_PREFIX):
+                    print(f"the device refused the capture: "
+                          f"{line[len(REFUSED_PREFIX):]}", file=sys.stderr)
+                    return 3
 
                 if total_size is None:
                     m = BEGIN_RE.match(line)

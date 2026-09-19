@@ -255,6 +255,7 @@ enum {
     SAND_RNG_SLOT_REACT_CRUST,
     SAND_RNG_SLOT_REACT_LAVA_BURST,
     SAND_RNG_SLOT_REACT_LAVA_BURST_GATE,
+    SAND_RNG_SLOT_SPAWN_SHARE,
 };
 
 /* Draws for (x, y) at `slot` - see the enum above. Sequential and

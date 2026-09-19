@@ -19,6 +19,8 @@ up in the report with no changes needed here.
 Usage:
     python main/apps/cube/tools/report_cube_perf.py <raw_capture.txt> <out.md>
 
+Exit 2 means the capture has no run in it to report on.
+
 Lives under the cube app because report_cube_perf.sh is its only caller -
 same convention as sand's own tools/ folder: deleting the app takes its
 tooling with it.
@@ -97,6 +99,13 @@ def main() -> int:
     args = parser.parse_args()
 
     runs = parse_capture(args.capture_path)
+    if not runs:
+        # A header-and-timestamp report over an empty table reads like a
+        # clean run of nothing. A report of nothing is not a report.
+        print(f"{args.capture_path} has no CUBE PERF run headers in it - the "
+              "suite never ran, or the device crashed before it reached one.",
+              file=sys.stderr)
+        return 2
 
     lines = []
     lines.append("# Cube App Performance Report")
@@ -105,68 +114,62 @@ def main() -> int:
     lines.append(f"Source: `{args.capture_path}`")
     lines.append("")
 
-    if not runs:
-        lines.append("> No `cube_perf` run headers found in this capture - "
-                      "the suite may not have run, or the device may have "
-                      "crashed before it reached one.")
-        lines.append("")
-    else:
-        labels = list(runs.keys())
+    labels = list(runs.keys())
 
-        lines.append("## Configuration")
-        lines.append("")
-        lines.append("| Run | HUD | Partial updates | Interlace |")
-        lines.append("|---|:---:|:---:|:---:|")
+    lines.append("## Configuration")
+    lines.append("")
+    lines.append("| Run | HUD | Partial updates | Interlace |")
+    lines.append("|---|:---:|:---:|:---:|")
+    for label in labels:
+        lm = LABEL_RE.fullmatch(label)
+        if lm:
+            lines.append(f"| `{label}` | {lm.group('hud')} | "
+                         f"{lm.group('partial')} | {lm.group('interlace')} |")
+        else:
+            # An older or hand-named label that does not follow the
+            # hud_X_partial_X_interlace_X convention - still worth a
+            # row, just without a decoded configuration to show.
+            lines.append(f"| `{label}` | ? | ? | ? |")
+    lines.append("")
+
+    lines.append("## Comparison (average, us)")
+    lines.append("")
+    lines.append("| Phase | " + " | ".join(f"`{label}`" for label in labels) + " |")
+    lines.append("|---|" + "---:|" * len(labels))
+    for phase in PHASE_ORDER:
+        row = [f"{phase} (us)"]
         for label in labels:
-            lm = LABEL_RE.fullmatch(label)
-            if lm:
-                lines.append(f"| `{label}` | {lm.group('hud')} | "
-                             f"{lm.group('partial')} | {lm.group('interlace')} |")
-            else:
-                # An older or hand-named label that does not follow the
-                # hud_X_partial_X_interlace_X convention - still worth a
-                # row, just without a decoded configuration to show.
-                lines.append(f"| `{label}` | ? | ? | ? |")
-        lines.append("")
+            p = runs[label]["phases"].get(phase)
+            row.append(str(p["avg"]) if p else "?")
+        lines.append("| " + " | ".join(row) + " |")
+    lines.append("")
+    lines.append("| | " + " | ".join(labels) + " |")
+    lines.append("|---|" + "---:|" * len(labels))
+    for stat, stat_label in (("avg", "avg"), ("med", "median"), ("p95", "p95")):
+        row = [f"**Total fps ({stat_label})**"]
+        for label in labels:
+            total = runs[label]["phases"].get("Total")
+            row.append(fps(total[stat]) if total else "?")
+        lines.append("| " + " | ".join(row) + " |")
+    lines.append("")
 
-        lines.append("## Comparison (average, us)")
+    for label in labels:
+        run = runs[label]
+        lines.append(f"## `{label}` ({run['frames']} frames over {run['seconds']}s)")
         lines.append("")
-        lines.append("| Phase | " + " | ".join(f"`{label}`" for label in labels) + " |")
-        lines.append("|---|" + "---:|" * len(labels))
+        lines.append("| Phase | Min (us) | Max (us) | Avg (us) | Median (us) | P95 (us) |")
+        lines.append("|---|---:|---:|---:|---:|---:|")
         for phase in PHASE_ORDER:
-            row = [f"{phase} (us)"]
-            for label in labels:
-                p = runs[label]["phases"].get(phase)
-                row.append(str(p["avg"]) if p else "?")
-            lines.append("| " + " | ".join(row) + " |")
+            p = run["phases"].get(phase)
+            if p is None:
+                lines.append(f"| {phase} | ? | ? | ? | ? | ? |")
+                continue
+            bold = "**" if phase == "Total" else ""
+            lines.append(
+                f"| {bold}{phase}{bold} | {p['min']} | {p['max']} | "
+                f"{p['avg']} | {p['med']} | {p['p95']} |"
+            )
         lines.append("")
-        lines.append("| | " + " | ".join(labels) + " |")
-        lines.append("|---|" + "---:|" * len(labels))
-        for stat, stat_label in (("avg", "avg"), ("med", "median"), ("p95", "p95")):
-            row = [f"**Total fps ({stat_label})**"]
-            for label in labels:
-                total = runs[label]["phases"].get("Total")
-                row.append(fps(total[stat]) if total else "?")
-            lines.append("| " + " | ".join(row) + " |")
-        lines.append("")
-
-        for label in labels:
-            run = runs[label]
-            lines.append(f"## `{label}` ({run['frames']} frames over {run['seconds']}s)")
-            lines.append("")
-            lines.append("| Phase | Min (us) | Max (us) | Avg (us) | Median (us) | P95 (us) |")
-            lines.append("|---|---:|---:|---:|---:|---:|")
-            for phase in PHASE_ORDER:
-                p = run["phases"].get(phase)
-                if p is None:
-                    lines.append(f"| {phase} | ? | ? | ? | ? | ? |")
-                    continue
-                bold = "**" if phase == "Total" else ""
-                lines.append(
-                    f"| {bold}{phase}{bold} | {p['min']} | {p['max']} | "
-                    f"{p['avg']} | {p['med']} | {p['p95']} |"
-                )
-            lines.append("")
 
     with open(args.out_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))

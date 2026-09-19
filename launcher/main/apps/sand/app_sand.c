@@ -219,11 +219,15 @@ _Static_assert((unsigned long)APP_IMPULSE_MAX * sizeof(impulse_t) <= SAND_IMPULS
  * Only paintable materials get a tile - burning wood is a STATE, not a
  * material (reaction_t.burn_decay). Whole CELLS, not ids: an extended
  * material isn't nameable by id alone (MATX() in material.h). */
-static const cell_t brushes[] = {
-    CELL_MAKE(MAT_SAND, 0), CELL_MAKE(MAT_WATER, 0), CELL_MAKE(MAT_STONE, 0), CELL_MAKE(MAT_GAS, 0),
-    CELL_MAKE(MAT_FIRE, 0), CELL_MAKE(MAT_WOOD, 0),  CELL_MAKE(MAT_OIL, 0),   CELL_MAKE(MAT_LAVA, 0),
-    CELL_MAKE(MAT_ACID, 0), CELL_MAKE(MAT_GLASS, 0), CELL_MAKE(MAT_SNOW, 0),  CELL_MAKE(MAT_DIRT, 0),
-    MATX(MATX_ICE),         MATX(MATX_PLANT),        GUNPOWDER_CELL(0), /* dry, tone 0 - see material_brush_color()'s own
+static const sand_brush_t brushes[] = {
+    SAND_BRUSH_SOLID(CELL_MAKE(MAT_SAND, 0)),  SAND_BRUSH_SOLID(CELL_MAKE(MAT_WATER, 0)),
+    SAND_BRUSH_SOLID(CELL_MAKE(MAT_STONE, 0)), SAND_BRUSH_SOLID(CELL_MAKE(MAT_GAS, 0)),
+    SAND_BRUSH_SOLID(CELL_MAKE(MAT_FIRE, 0)),  SAND_BRUSH_SOLID(CELL_MAKE(MAT_WOOD, 0)),
+    SAND_BRUSH_SOLID(CELL_MAKE(MAT_OIL, 0)),   SAND_BRUSH_SOLID(CELL_MAKE(MAT_LAVA, 0)),
+    SAND_BRUSH_SOLID(CELL_MAKE(MAT_ACID, 0)),  SAND_BRUSH_SOLID(CELL_MAKE(MAT_GLASS, 0)),
+    SAND_BRUSH_SOLID(CELL_MAKE(MAT_SNOW, 0)),  SAND_BRUSH_SOLID(CELL_MAKE(MAT_DIRT, 0)),
+    SAND_BRUSH_SOLID(MATX(MATX_ICE)),          SAND_BRUSH_SPARSE(MATX(MATX_PLANT), SAND_BRUSH_SHARE_PLANT),
+    SAND_BRUSH_SOLID(GUNPOWDER_CELL(0)), /* dry, tone 0 - see material_brush_color()'s own
                          * comment (material_palette.h) for why the panel tile itself paints a different code */
 };
 #define BRUSH_COUNT ((int)(sizeof(brushes) / sizeof(brushes[0])))
@@ -693,7 +697,7 @@ sand_app_enter_running_for_test(void) {
     const int previous_mode = color_mode;
     color_mode = SAND_COLOR_FULL;
     start_sim();
-    sand_spawn_cell(&sim, grid_w / 2, grid_h / 2, 3, brushes[0]);
+    sand_spawn_cell(&sim, grid_w / 2, grid_h / 2, 3, brushes[0].cell);
     return previous_mode;
 }
 
@@ -1557,10 +1561,10 @@ draw_mode_label(int gx, int gy) {
     } else if (ui.mode == SAND_MODE_ERASE) {
         text = "ERASE";
     } else if (ui.modes[ui.brush] == BRUSH_SPAWN) {
-        snprintf(text_buf, sizeof text_buf, "%s SOURCE", material_name(brushes[ui.brush]));
+        snprintf(text_buf, sizeof text_buf, "%s SOURCE", material_name(brushes[ui.brush].cell));
         text = text_buf;
     } else {
-        text = material_name(brushes[ui.brush]);
+        text = material_name(brushes[ui.brush].cell);
     }
     const int len = (int)strlen(text);
     const int span = len * 8 * LABEL_SCALE;
@@ -1583,7 +1587,7 @@ draw_mode_label(int gx, int gy) {
     } else if (ui.mode == SAND_MODE_ERASE) {
         ink = gfx_rgb(0xFF8A5C);
     } else {
-        ink = material_brush_color(brushes[ui.brush]);
+        ink = material_brush_color(brushes[ui.brush].cell);
     }
 
     gfx_text_turned(x, y, text, ink, LABEL_SCALE, turn);
@@ -1681,7 +1685,7 @@ handle_spawn_emitter_input(const input_t* input) {
     }
     const int cx = input->x / cell;
     const int cy = input->y / cell;
-    if (!sand_add_emitter(&sim, cx, cy, brushes[ui.brush])) {
+    if (!sand_add_emitter(&sim, cx, cy, brushes[ui.brush].cell)) {
         ESP_LOGW(TAG, "emitter list full (%d) - tap ignored", SAND_MAX_EMITTERS);
     }
 }
@@ -1696,7 +1700,8 @@ apply_pour_step(int cx, int cy) {
         sand_remove_emitters(&sim, cx, cy, (ERASE_EMITTER_RADIUS_PX + cell / 2) / cell);
         return;
     }
-    sand_spawn_cell(&sim, cx, cy, (sand_ui_radius(&ui) + cell / 2) / cell, brushes[ui.brush]);
+    sand_spawn_cell_share(&sim, cx, cy, (sand_ui_radius(&ui) + cell / 2) / cell, brushes[ui.brush].cell,
+                          brushes[ui.brush].share_pct);
 }
 
 static void

@@ -312,7 +312,7 @@ detail behind every row.
 | Internal RAM | 512 KB SRAM: ~296 KiB main heap region + 21 KiB + 32 KiB DRAM at boot; 311,775 bytes free after `gfx_init()` (framebuffer excluded — it lives in PSRAM), largest block ~241 KiB (diag build, device capture, 2026-09-13) | stacks, the DMA gather and strip buffers, and hot per-step buffers (sand's grids, via `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536`) live here; the band ring's buffers will too |
 | PSRAM | 8 MB octal @ 80 MHz (120 MHz experimental); `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps allocations up to 64 KB internal and routes larger ones here; memcpy out ~58 MB/s, in ~47, PSRAM to PSRAM ~22 (device, 2026-09-13) | under decision B this is read-only bulk/cold storage: the one retained framebuffer, textures and levels; it is never the target of a full-screen write or copy; headroom is a non-issue |
 | Data cache | 32 KB, 32-byte line, 8-way; 64 KB measured no gain (device, 2026-09-13) | every PSRAM access — CPU render writes and DMA present reads alike — goes through this cache; see 3.3 |
-| Instruction cache | 16 KB, 32-byte line, 8-way (sdkconfig default); the S3 allows 32 KB, untested | hot loops must fit tighter than the larger option would allow; growing it is a Phase 1 experiment |
+| Instruction cache | 32 KB, 32-byte line, 8-way (`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB`; IDF's default is 16 KB) — the larger size measured 1-11% per sand step (device, 2026-09-13) | costs 16 KB of internal RAM over the default |
 | DMA | GDMA, 3 TX + 3 RX channels; async memcpy supported | strip transfers already DMA; mem-to-mem copies could offload clears — measure, do not assume |
 | Display bus | QSPI, both board revisions share the same 368×448 panel geometry and SPI2 wiring, all through the GPIO matrix; 40 MHz clean, 80 MHz outside the panel's 50 MHz rating | 80 MHz halves present but corrupts partial redraws; full-frame renderers are safe, partial ones need 40 or gfx heal (3.2) |
 | Second processor | ULP-RISC-V and ULP-FSM coprocessors | low-power only, not a render resource — they cannot touch the framebuffer at speed |
@@ -615,8 +615,8 @@ into per-span, per-triangle, or bake-time work:
   reports back what was granted.
 - **Textures column-major for vertical spans** (raycaster) and row-major
   for horizontal ones; 64×64 RGB565 is 8 KB, so a handful live in flash
-  behind the 16 KB icache (32 KB if Phase 1's larger-cache experiment
-  lands) and the hot ones can be copied into RAM at `enter()`.
+  behind the 32 KB icache and the hot ones can be copied into RAM at
+  `enter()`.
 
 ### 3.5 Code shape, the levers this repo already knows
 

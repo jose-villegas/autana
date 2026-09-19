@@ -111,6 +111,7 @@ scale) are free. Ask which kind you are adding before you add it.
 ### Text that must fit
 
 Measure it: `ui_measure_text()`, or `gfx_font_text_width()` in a host test.
+Fonts, scales and text styles are in [`Text-and-Fonts.md`](Text-and-Fonts.md).
 
 ### A list of rows that may overflow
 
@@ -160,6 +161,13 @@ Application artwork lives in the app's own folder so deleting the app
 deletes it. Structural facts only in tests - non-empty, bbox in range, run
 count under the cap, declared symmetries - never assert artwork against the
 code that draws it.
+
+**Icons are always baked assets.** Do not assemble a symbol from
+`mu_draw_rect()` or other drawing primitives inside a renderer. Shared UI
+vocabulary belongs in `design/icons/system.*` and is baked into
+`gfx/icons_system.h`; app-owned symbols use the same generator inside the
+app's folder. Drawing primitives remain appropriate for geometry such as
+panels, tracks and status indicators, not pictograms.
 
 ### A panel over a paused app
 
@@ -211,5 +219,7 @@ fifth icon.
 
 ## Related
 
+- [`Building-an-App.md`](Building-an-App.md) - the app a screen lives in
+- [`Text-and-Fonts.md`](Text-and-Fonts.md) - fonts, scales, text styles
 - [`Launcher-Architecture.md`](Launcher-Architecture.md) - the mechanisms
 - [`Testing-Guide.md`](Testing-Guide.md) - suites, runners, build variants

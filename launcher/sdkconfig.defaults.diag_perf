@@ -1,7 +1,7 @@
 # Perf scope: layered on top of sdkconfig.defaults.diag (and, for a real
-# capture, sdkconfig.defaults.diag_autorun as well) by
-# report_performance.sh --perf-scope. Nothing layers it by default, so an
-# ordinary --diag build still carries every suite.
+# capture, sdkconfig.defaults.diag_autorun as well) by build_flash.sh
+# --perf-scope. Nothing layers it by default, so an ordinary --diag build
+# still carries every suite.
 #
 # It compiles in only what a sand frame-budget capture reads: suite_sand_perf
 # plus the scene builders it calls. That frees static RAM, cuts the

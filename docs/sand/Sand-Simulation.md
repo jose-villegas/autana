@@ -12,7 +12,7 @@ of the same app's shape, with the byte layout, the material table and the
 per-step pipeline diagram this document assumes rather than repeats.
 
 For the app-registration mechanics (how `main/apps/*` plugs into the
-shell), see `docs/Launcher-Architecture.md`. For the hardware constraints
+shell), see `docs/Building-an-App.md`. For the hardware constraints
 underneath everything here, see `docs/notes/README.md`.
 
 ---
@@ -1575,7 +1575,7 @@ headers above.
 
 ## Related
 
-- `docs/Launcher-Architecture.md` - how an app (this one included) plugs
+- `docs/Building-an-App.md` - how an app (this one included) plugs
   into the shell; the folder layout every app follows.
 - `docs/notes/` - the hardware constraints underneath all of this: the
   memory budget, the flash/RAM cache distinction, panel and touch gotchas.
