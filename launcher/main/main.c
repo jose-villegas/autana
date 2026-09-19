@@ -613,9 +613,14 @@ run_pending_selftest_suite(void) {
     if (!screenshot_take_runsuite_request(runsuite_name, sizeof runsuite_name)) {
         return;
     }
-    if (!suites_run_one(runsuite_name)) {
+    const bool found = suites_run_one(runsuite_name);
+    if (!found) {
         ESP_LOGE(TAG, "no suite named '%s' is registered", runsuite_name);
     }
+    /* On its own line, so a harness knows the suite ended without having to
+     * guess from how long the console has been quiet. */
+    printf("\nRUNSUITE_COMPLETE name=%s found=%d\n", runsuite_name, found ? 1 : 0);
+    fflush(stdout);
     /* A suite draws, clears and presents on its own, outside the shell's
      * own dirty tracking - the next real frame must repaint in full rather
      * than trust whatever a test left behind. */

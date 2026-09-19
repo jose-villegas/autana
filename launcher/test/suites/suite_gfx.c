@@ -56,6 +56,13 @@ fixture(void) {
 
 static void
 perf_guard(const char* name, int64_t measured_us, int64_t ceiling_us) {
+#if CONFIG_LAUNCHER_QEMU
+    /* A ceiling pegged on the board prices the board's clock, not an
+     * emulator's, so there it is reported and not enforced. */
+    ESP_LOGI("device_tests", "%s: %lld us, board ceiling %lld us not enforced", name, (long long)measured_us,
+             (long long)ceiling_us);
+    return;
+#endif
     TEST_ASSERT_LESS_THAN_MESSAGE((int)ceiling_us, (int)measured_us, name);
 }
 
@@ -824,9 +831,9 @@ test_an_unchanged_frame_costs_almost_nothing(void) {
      * all clean. 50 us is generous on purpose - the regression it guards
      * against, an unchanged frame sending pixels again, lands in the
      * thousands rather than 10% over. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(50, (int)unchanged,
-                                  "an unchanged frame's cost grew past what a clean dirty-check should "
-                                  "ever take - did it start touching the bus?");
+    perf_guard("an unchanged frame's cost grew past what a clean dirty-check should "
+               "ever take - did it start touching the bus?",
+               unchanged, 50);
 }
 
 /* Splits a full-screen gfx_present() into raw QSPI bus time versus
@@ -888,9 +895,9 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
      * about 4.4% over the observed maximum, tight because the reference
      * itself is this stable - a looser margin here would just be slack that
      * a real regression could hide in. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(3550, (int)one_band,
-                                  "one band alone cost more than its stable observed price - the bus "
-                                  "clock or the QSPI setup may have regressed");
+    perf_guard("one band alone cost more than its stable observed price - the bus "
+               "clock or the QSPI setup may have regressed",
+               one_band, 3550);
 }
 
 /* The ratio tests below take a band presented alone as their reference,
@@ -943,9 +950,9 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
      * 850 us leaves about 11% over the observed maximum: room for that
      * spread plus some, without being loose enough to miss the gather path
      * regressing back towards full-band cost. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(850, (int)narrow,
-                                  "the gathered narrow strip cost more than its observed price - the "
-                                  "gather-copy path may have regressed");
+    perf_guard("the gathered narrow strip cost more than its observed price - the "
+               "gather-copy path may have regressed",
+               narrow, 850);
 }
 
 /* The box is bounded by area, not width alone, specifically so a
@@ -992,9 +999,9 @@ test_a_short_wide_change_costs_less_than_a_full_band(void) {
      * the narrow strip's margin because this test's own captures already
      * moved twice as much - the margin tracks the spread it is guarding,
      * not a fixed percentage. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(700, (int)wide,
-                                  "the gathered wide-short box cost more than its observed price - "
-                                  "the gather-copy path may have regressed");
+    perf_guard("the gathered wide-short box cost more than its observed price - "
+               "the gather-copy path may have regressed",
+               wide, 700);
 }
 
 /* Full width, most of a band's height: 368x48 is far over GATHER_MAX_PIXELS,
@@ -1090,9 +1097,9 @@ test_two_far_corners_cost_less_than_a_full_band(void) {
      * room for the copy-side jitter the single-piece gathers above show.
      * 2,000 us leaves about 4.3% over the observed maximum - tight, to
      * match how tight the reference is. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(2000, (int)two_corners,
-                                  "two far corners cost more than their observed price - one of the "
-                                  "two independent gathers may have regressed");
+    perf_guard("two far corners cost more than their observed price - one of the "
+               "two independent gathers may have regressed",
+               two_corners, 2000);
 }
 
 /* Three separated marks, one more than LEAF_REFINE_MAX_RUNS (gfx_dirty.h)
@@ -1138,9 +1145,9 @@ test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
      * full band is the open question this test measures. The absolute is
      * safe to peg - 869/882/875/877 us across four captures, a 1.5% spread;
      * 980 leaves about 11% over, room for a different fallback shape. */
-    TEST_ASSERT_LESS_THAN_MESSAGE(980, (int)three_marks,
-                                  "three far-apart marks' fallback send cost more than its observed "
-                                  "price");
+    perf_guard("three far-apart marks' fallback send cost more than its observed "
+               "price",
+               three_marks, 980);
 }
 
 /* A small mark plus a wide one in the same coarse run, sized to land the
