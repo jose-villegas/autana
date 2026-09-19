@@ -1,5 +1,6 @@
 """Regression tests for documentation citation tools."""
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -220,7 +221,11 @@ Acid -->|"dissolvable 110"| Metal
             self.write(root, "docs/Guide.md", "Guide\n")
             self.write(root, "launcher/main/example.c", "void live_function(void) {}\n")
             subprocess.run(["git", "add", "."], cwd=root, check=True)
-            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            # The commit date is an input like `today` is: left to the wall
+            # clock it outruns the review date and the age goes negative.
+            committed = "2026-09-10T12:00:00+00:00"
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True,
+                           env={**os.environ, "GIT_AUTHOR_DATE": committed, "GIT_COMMITTER_DATE": committed})
             self.write(root, "docs/doc_review_ledger.txt", "docs/Guide.md\t2026-09-17\tchecked\n")
             rows = doc_drift.report(root, today=__import__("datetime").date(2026, 9, 18))
         guide = next(row for row in rows if row["doc"] == "docs/Guide.md")
