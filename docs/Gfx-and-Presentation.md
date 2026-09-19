@@ -276,9 +276,15 @@ and the panel both simply keep what was written - and a value between dims
 it to `trail`/256 per draw, a tail that fades. With a trail the draw keeps
 whichever of old and new light is brighter: each band overlaps most of the
 last, and would otherwise overwrite its bright core with a dim rim, leaving
-only rim light behind. A fading trail has to be drawn until the call reports
-none left, or it freezes where the curve stopped. The launcher's ridge uses
-0 (`RIDGE_TRAIL`).
+only rim light behind.
+
+A fading tail has to go on being drawn after the curve stops, or it freezes
+there. For how long is counted, not watched for: `gfx_glow_trail_draws()` is
+how many draws take the brightest colour to black at a given `trail`. The
+tail shares its rows with whatever else is drawn on them, so "are any lit
+pixels left" never becomes no - a first version asked that, and the launcher
+never went idle again. The launcher's ridge uses 32 (`RIDGE_TRAIL`), a tail
+two draws long.
 
 The launcher's ridge is a horizon: it follows `input/tilt.h`'s down at any
 angle while the app rows turn in quarters. It holds boot's landscape pose for

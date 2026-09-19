@@ -470,6 +470,23 @@ gfx_glow_dim(gfx_color_t colour, int keep) {
     return (gfx_color_t)((dimmed >> 8) | (dimmed << 8));
 }
 
+/* How many draws dim the brightest colour to black at this `trail`: how long
+ * a fading tail has to go on being drawn after the curve last moved. Counted
+ * and not watched for on the panel, where the tail shares its rows with
+ * whatever else is drawn there and lit pixels that are not its own never
+ * run out. */
+static inline int
+gfx_glow_trail_draws(int trail) {
+    if (trail <= 0 || trail >= 255) {
+        return 0;
+    }
+    int draws = 0;
+    for (uint32_t level = 0x1F; level != 0; level = (level * (uint32_t)trail) >> 8) {
+        draws++;
+    }
+    return draws;
+}
+
 /* How much light a colour is, for telling which of two is brighter. */
 static inline int
 gfx_glow_light(gfx_color_t colour) {
@@ -481,15 +498,13 @@ gfx_glow_light(gfx_color_t colour) {
  * Draws panel rows [row0, row1) of the posed curve. `lit_lo`/`lit_hi` hold,
  * per panel row, the stretch still lit from earlier draws, and `trail` is
  * what becomes of it first: 0 blackens it, 255 leaves it, and between it is
- * dimmed to trail/256 and fades over the following draws. Returns the panel
- * box touched, and adds to `*trailing` the pixels still lit that this draw
- * did not write - a fading trail is unfinished until that is 0.
+ * dimmed to trail/256, a tail that is gone after gfx_glow_trail_draws() more
+ * draws. Returns the panel box touched.
  */
 static inline gfx_glow_box_t
 gfx_glow_draw_posed_rows(gfx_target_t target, int clip_x0, int clip_y0, int clip_x1, int clip_y1, int panel_w,
                          int panel_h, const gfx_glow_field_t* field, int view_h, gfx_glow_pose_t pose, int row0,
-                         int row1, int16_t* lit_lo, int16_t* lit_hi, int trail, int* trailing,
-                         const gfx_glow_style_t* style) {
+                         int row1, int16_t* lit_lo, int16_t* lit_hi, int trail, const gfx_glow_style_t* style) {
     gfx_glow_box_t box = {0, 0, 0, 0};
     const int64_t right_x = pose.down_y;
     const int64_t right_y = -pose.down_x;
@@ -508,7 +523,6 @@ gfx_glow_draw_posed_rows(gfx_target_t target, int clip_x0, int clip_y0, int clip
         gfx_color_t* dst = gfx_target_row(target, py);
         int kept_lo = 0;
         int kept_hi = 0;
-        int kept = 0;
         for (int px = lit_lo[py]; px < lit_hi[py]; px++) {
             if (trail < 255) {
                 dst[px] = trail == 0 ? GFX_RGB(0x000000) : gfx_glow_dim(dst[px], trail);
@@ -516,7 +530,6 @@ gfx_glow_draw_posed_rows(gfx_target_t target, int clip_x0, int clip_y0, int clip
             if (dst[px] != GFX_RGB(0x000000)) {
                 kept_lo = kept_hi > kept_lo ? kept_lo : px;
                 kept_hi = px + 1;
-                kept++;
             }
         }
         if (lit_hi[py] > lit_lo[py]) {
@@ -559,12 +572,10 @@ gfx_glow_draw_posed_rows(gfx_target_t target, int clip_x0, int clip_y0, int clip
             if (trail > 0 && gfx_glow_light(dst[px]) > gfx_glow_light(colour)) {
                 continue;
             }
-            kept -= dst[px] != GFX_RGB(0x000000);
             dst[px] = colour;
             new_lo = new_hi > new_lo ? new_lo : px;
             new_hi = px + 1;
         }
-        *trailing += kept;
         const bool has_kept = kept_hi > kept_lo;
         const bool has_new = new_hi > new_lo;
         lit_lo[py] = (int16_t)(has_kept && (!has_new || kept_lo < new_lo) ? kept_lo : new_lo);
