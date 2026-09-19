@@ -1,7 +1,8 @@
 /*
  * screenshot - the device half: listens on the console for a trigger, then
- * prints the live framebuffer as base64 between marker lines that
- * tools/screenshot.py reads back out of the stream idf_monitor already uses.
+ * prints the frame gfx holds (gfx_read_panel_row()) as base64 between
+ * marker lines that tools/screenshot.py reads back out of the stream
+ * idf_monitor already uses.
  *
  * Also owns RUNSUITE (CONFIG_LAUNCHER_SELFTEST), which runs one named suite
  * instead of the whole boot-time run. It lives in this file because the
@@ -195,10 +196,11 @@ screenshot_take_runsuite_request(char* name_out, size_t name_out_size) {
 #endif
 
 /* Not stack-local: screenshot_dump() runs on the shell task (3584-byte
- * stack), and a 1104-byte row plus 1472-byte base64 would be most of that
- * budget on top of printf/ESP_LOG's own use. Not permanently static either -
+ * stack), and a 736-byte pixel row, its 1104-byte BMP row and 1472 bytes of
+ * base64 would be most of that budget on top of printf/ESP_LOG's own use. Not permanently static either -
  * held only for the duration of a capture, because static here competes for
  * the largest contiguous heap block an app may need at runtime. */
+static gfx_color_t* pixels;
 static uint8_t* row;
 static char* row_b64; /* +1: NUL, for printf("%s") */
 
@@ -275,39 +277,49 @@ dump_state(const input_t* input, const app_t* current_app) {
     emit_line("SCREENSHOT_STATE:", json);
 }
 
+static void
+release_row_buffers(void) {
+    free(pixels);
+    free(row);
+    free(row_b64);
+    pixels = NULL;
+    row = NULL;
+    row_b64 = NULL;
+}
+
+/* Sent in place of the whole capture, so the host stops waiting at once. */
+static void
+refuse(const char* reason) {
+    ESP_LOGW(TAG, "screenshot refused - %s", reason);
+    fflush(stdout);
+    emit_line("SCREENSHOT_REFUSED:", reason);
+    release_row_buffers();
+}
+
 void
 screenshot_dump(const input_t* input, const app_t* current_app) {
-    /* Band mode (gfx.h) has no framebuffer to read - gfx_framebuffer()
-     * would hand back the internal-SRAM band ring's own NULL. Refuse with
-     * a reason on the console rather than crash or stream garbage. */
-    if (gfx_mode_current()->layout != GFX_LAYOUT_FULL_FB) {
-        ESP_LOGW(TAG, "screenshot skipped - the running app has no framebuffer (band mode)");
-        return;
-    }
-
     const int32_t stride = screenshot_bmp_row_stride(GFX_WIDTH);
     const uint32_t pixel_bytes = (uint32_t)(stride * GFX_HEIGHT);
     const uint32_t total_bytes = SCREENSHOT_BMP_HEADER_SIZE + pixel_bytes;
 
-    /* sizes named rather than re-derived from sizeof(row)/sizeof(row_b64)
-     * below: row/row_b64 are pointers now (see their own declaration
-     * comment), so sizeof on them would give the pointer's own size, not
-     * the buffer's. */
+    const size_t pixels_bytes = (size_t)GFX_WIDTH * sizeof(gfx_color_t);
     const size_t row_bytes = (size_t)GFX_WIDTH * 3;
     const size_t row_b64_bytes = (size_t)GFX_WIDTH * 4 + 1;
 
+    pixels = malloc(pixels_bytes);
     row = malloc(row_bytes);
     row_b64 = malloc(row_b64_bytes);
-    if (row == NULL || row_b64 == NULL) {
-        ESP_LOGE(TAG,
-                 "could not allocate %u+%u-byte row buffers - "
-                 "screenshot skipped; largest free block is %u",
-                 (unsigned)row_bytes, (unsigned)row_b64_bytes,
+    if (pixels == NULL || row == NULL || row_b64 == NULL) {
+        char reason[96];
+        snprintf(reason, sizeof reason, "could not allocate %u bytes of row buffers; largest free block is %u",
+                 (unsigned)(pixels_bytes + row_bytes + row_b64_bytes),
                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
-        free(row);
-        free(row_b64);
-        row = NULL;
-        row_b64 = NULL;
+        refuse(reason);
+        return;
+    }
+
+    if (!gfx_read_panel_row(GFX_HEIGHT - 1, pixels)) {
+        refuse("the running app draws in RGB565 bands, so no stored frame exists to read back");
         return;
     }
 
@@ -335,18 +347,16 @@ screenshot_dump(const input_t* input, const app_t* current_app) {
     header_b64[sizeof(header_b64) - 1] = '\0';
     emit_line("SCREENSHOT_DATA:", header_b64);
 
-    const gfx_color_t* fb = gfx_framebuffer();
-
     /* Bottom-to-top, matching the bottom-up rows screenshot_bmp_header()
      * declares (positive biHeight) - see that function's own comment. */
     for (int32_t y = GFX_HEIGHT - 1; y >= 0; y--) {
-        const gfx_color_t* src_row = fb + (size_t)y * GFX_WIDTH;
+        gfx_read_panel_row(y, pixels);
         for (int32_t x = 0; x < GFX_WIDTH; x++) {
             /* gfx_color_rgb888() is the panel-format-to-0xRRGGBB conversion
              * gfx_color.h already carries and tests (suite_gfx_color.c) -
              * reused rather than re-deriving the byte swap and channel
              * widths here. BMP's own pixel order is B, G, R. */
-            const uint32_t rgb = gfx_color_rgb888(src_row[x]);
+            const uint32_t rgb = gfx_color_rgb888(pixels[x]);
             row[x * 3 + 0] = (uint8_t)(rgb);
             row[x * 3 + 1] = (uint8_t)(rgb >> 8);
             row[x * 3 + 2] = (uint8_t)(rgb >> 16);
@@ -360,8 +370,5 @@ screenshot_dump(const input_t* input, const app_t* current_app) {
 
     emit_line("SCREENSHOT_END", "");
 
-    free(row);
-    free(row_b64);
-    row = NULL;
-    row_b64 = NULL;
+    release_row_buffers();
 }

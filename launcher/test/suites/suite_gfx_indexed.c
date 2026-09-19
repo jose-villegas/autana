@@ -563,6 +563,72 @@ test_checker2_stays_in_phase_across_a_band_boundary(void) {
     TEST_ASSERT_EQUAL_HEX16_ARRAY(whole + 5, right, 7);
 }
 
+/* --- the panel row the present path and a screenshot both read ----------- */
+
+static gfx_color_t any_mode_table[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES];
+
+/* Each mode's documented table key at panel pixel (x, y), written out per
+ * pixel rather than through any expander. */
+static gfx_color_t
+expected_pixel(const gfx_indexed_frame_t* frame, int x, int y) {
+    const int gx = x / frame->cell_size;
+    const int gy = y / frame->cell_size;
+    const int idx = (gx < frame->grid_w && gy < frame->grid_h) ? frame->image[gy * frame->grid_w + gx] : 0;
+    const gfx_color_t* t = frame->table;
+
+    if (!frame->dither16_on) {
+        return t[idx];
+    }
+    switch (frame->dither_mode) {
+        case GFX_DITHER_NONE: return t[idx];
+        case GFX_DITHER_CELL_CHECKER: return t[idx * 2 + ((gx + gy) & 1)];
+        case GFX_DITHER_CELL_BAYER2: return t[idx * 4 + (gy & 1) * 2 + (gx & 1)];
+        case GFX_DITHER_PIXEL_CHECKER2: return t[idx * 4 + (y & 1) * 2 + (x & 1)];
+        default: return t[idx * 16 + (y & 3) * 4 + (x & 3)];
+    }
+}
+
+/* 256 colour and every 16-colour pattern, at an odd and an even cell size,
+ * over every panel row including the margins right of and below the grid.
+ * One table serves every mode, so a wrong pattern, or a grid row passed
+ * where a panel row belongs, reads a different entry of it. */
+static void
+test_panel_row_is_its_modes_own_expansion_in_every_colour_mode(void) {
+    for (int i = 0; i < (int)(sizeof any_mode_table / sizeof any_mode_table[0]); i++) {
+        any_mode_table[i] = (gfx_color_t)((uint32_t)i * 2654435761u >> 16);
+    }
+
+    enum { GRID_W = 7, GRID_H = 5, OUT_W = 32 };
+
+    uint8_t image[GRID_W * GRID_H];
+    for (int i = 0; i < GRID_W * GRID_H; i++) {
+        image[i] = (uint8_t)(i * 37 + 11);
+    }
+    static const int cell_sizes[] = {3, 4};
+
+    for (size_t c = 0; c < sizeof cell_sizes / sizeof cell_sizes[0]; c++) {
+        for (int m = -1; m < GFX_DITHER_MODE_COUNT; m++) {
+            const gfx_indexed_frame_t frame = {
+                .image = image,
+                .grid_w = GRID_W,
+                .grid_h = GRID_H,
+                .cell_size = cell_sizes[c],
+                .dither16_on = m >= 0,
+                .dither_mode = m >= 0 ? (gfx_dither_mode_t)m : GFX_DITHER_NONE,
+                .table = any_mode_table,
+            };
+            for (int y = 0; y < (GRID_H + 2) * cell_sizes[c]; y++) {
+                gfx_color_t expected[OUT_W], actual[OUT_W];
+                for (int x = 0; x < OUT_W; x++) {
+                    expected[x] = expected_pixel(&frame, x, y);
+                }
+                gfx_indexed_expand_panel_row(&frame, y, actual, OUT_W);
+                TEST_ASSERT_EQUAL_HEX16_ARRAY(expected, actual, OUT_W);
+            }
+        }
+    }
+}
+
 void
 run_gfx_indexed_suite(void) {
     RUN_TEST(test_every_output_pixel_reads_its_own_cells_lut_entry);
@@ -591,6 +657,7 @@ run_gfx_indexed_suite(void) {
     RUN_TEST(test_repaint_cell_kinds_match_cell_dither_changed);
     RUN_TEST(test_checker2_every_output_pixel_reads_its_own_phase_entry);
     RUN_TEST(test_checker2_stays_in_phase_across_a_band_boundary);
+    RUN_TEST(test_panel_row_is_its_modes_own_expansion_in_every_colour_mode);
 }
 
 SUITE_REGISTER(run_gfx_indexed_suite);

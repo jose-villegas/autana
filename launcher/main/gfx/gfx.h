@@ -415,6 +415,12 @@ void gfx_band_submit(void);
  * gfx_framebuffer() already carries. */
 uint8_t* gfx_indexed_image(void);
 
+/* Panel row `y` of the frame gfx holds now, as the panel shows it once
+ * presented: the framebuffer's row, or the index image expanded exactly as
+ * the present path expands it. False in RGB565 band mode, which keeps no
+ * image once a band is sent. */
+bool gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]);
+
 /* Installs the 256-entry LUT GFX_PIXFMT_INDEXED8 expands through when 16-
  * colour dithering (below) is off. Copied, not referenced: the caller's
  * own table may be `static const` and go out of scope. */
