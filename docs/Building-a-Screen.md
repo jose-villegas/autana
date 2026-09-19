@@ -162,6 +162,13 @@ deletes it. Structural facts only in tests - non-empty, bbox in range, run
 count under the cap, declared symmetries - never assert artwork against the
 code that draws it.
 
+**Icons are always baked assets.** Do not assemble a symbol from
+`mu_draw_rect()` or other drawing primitives inside a renderer. Shared UI
+vocabulary belongs in `design/icons/system.*` and is baked into
+`gfx/icons_system.h`; app-owned symbols use the same generator inside the
+app's folder. Drawing primitives remain appropriate for geometry such as
+panels, tracks and status indicators, not pictograms.
+
 ### A panel over a paused app
 
 1. `ui_end(UI_NO_BACKGROUND)` so the frozen app survives in the gaps.
