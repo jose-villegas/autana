@@ -24,8 +24,10 @@
 _Static_assert(TC_H >= SAND_STRIPE_H_MIN * SAND_STRIPE_SPLIT_MIN_COUNT,
                "the two-core suite needs enough stripes to split");
 
+/* Every chunk claim below has to hold across the app's whole quality range,
+ * not at one size: the board it ships and the smallest one it offers. */
 static void
-test_chunk_colours_separate_every_touching_chunk(void) {
+tc_for_each_quality(void (*check)(const sand_t* s)) {
     static const int qualities[][2] = {
         {REAL_W, REAL_H}, {REAL_W / SAND_CHUNK_TARGET_CELLS_DIVISOR, REAL_H / SAND_CHUNK_TARGET_CELLS_DIVISOR}};
 
@@ -35,23 +37,126 @@ test_chunk_colours_separate_every_touching_chunk(void) {
 
         sand_t sand;
         sand_init(&sand, cells, qualities[q][0], qualities[q][1], (uint32_t)q);
-        TEST_ASSERT_GREATER_OR_EQUAL_INT(SAND_CHUNK_SIDE_MIN, sand_chunk_side(&sand));
+        check(&sand);
+        free(cells);
+    }
+}
 
-        for (int cy = 0; cy < sand_chunk_rows(&sand); cy++) {
-            for (int cx = 0; cx < sand_chunk_cols(&sand); cx++) {
-                const int color = sand_chunk_color(cx, cy);
-                for (int ny = cy > 0 ? cy - 1 : cy; ny <= cy + 1 && ny < sand_chunk_rows(&sand); ny++) {
-                    for (int nx = cx > 0 ? cx - 1 : cx; nx <= cx + 1 && nx < sand_chunk_cols(&sand); nx++) {
-                        if (nx != cx || ny != cy) {
-                            TEST_ASSERT_NOT_EQUAL_INT(color, sand_chunk_color(nx, ny));
-                        }
-                    }
+static const int tc_ring[][2] = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}};
+
+static void
+tc_assert_no_neighbour_shares_colour(const sand_t* s, int cx, int cy) {
+    for (size_t i = 0; i < sizeof tc_ring / sizeof tc_ring[0]; i++) {
+        const int nx = cx + tc_ring[i][0];
+        const int ny = cy + tc_ring[i][1];
+        if ((unsigned)nx >= (unsigned)sand_chunk_cols(s) || (unsigned)ny >= (unsigned)sand_chunk_rows(s)) {
+            continue;
+        }
+        TEST_ASSERT_NOT_EQUAL_INT(sand_chunk_color(cx, cy), sand_chunk_color(nx, ny));
+    }
+}
+
+static void
+tc_check_neighbour_colours_differ(const sand_t* s) {
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(SAND_CHUNK_SIDE_MIN, sand_chunk_side(s));
+    for (int cy = 0; cy < sand_chunk_rows(s); cy++) {
+        for (int cx = 0; cx < sand_chunk_cols(s); cx++) {
+            tc_assert_no_neighbour_shares_colour(s, cx, cy);
+        }
+    }
+}
+
+static void
+test_chunk_colours_separate_every_touching_chunk(void) {
+    tc_for_each_quality(tc_check_neighbour_colours_differ);
+}
+
+static void
+tc_count_chunk_cells(const sand_t* s, uint8_t* seen, int cx, int cy) {
+    int x0, x1, y0, y1;
+    sand_chunk_span(cx, sand_chunk_side(s), s->w, &x0, &x1);
+    sand_chunk_span(cy, sand_chunk_side(s), s->h, &y0, &y1);
+
+    for (int y = y0; y < y1; y++) {
+        for (int x = x0; x < x1; x++) {
+            seen[y * s->w + x]++;
+        }
+    }
+}
+
+/* Four colours are a partition only if between them they cover the board
+ * once: a cell no colour claims is never stepped, and one two colours claim
+ * is stepped twice. */
+static void
+tc_check_colours_cover_every_cell_once(const sand_t* s) {
+    uint8_t* seen = calloc((size_t)s->w * (size_t)s->h, 1);
+    TEST_ASSERT_NOT_NULL(seen);
+
+    for (int color = 0; color < SAND_CHUNK_COLOR_COUNT; color++) {
+        for (int cy = 0; cy < sand_chunk_rows(s); cy++) {
+            for (int cx = 0; cx < sand_chunk_cols(s); cx++) {
+                if (sand_chunk_color(cx, cy) == color) {
+                    tc_count_chunk_cells(s, seen, cx, cy);
                 }
             }
         }
-
-        free(cells);
     }
+
+    for (int i = 0; i < s->w * s->h; i++) {
+        TEST_ASSERT_EQUAL_UINT8(1, seen[i]);
+    }
+    free(seen);
+}
+
+static void
+test_chunk_colours_cover_every_cell_exactly_once(void) {
+    tc_for_each_quality(tc_check_colours_cover_every_cell_once);
+}
+
+static void
+tc_assert_chunk_rows_clear_each_other(const sand_t* s, int a, int b) {
+    int a0, a1, b0, b1;
+    sand_chunk_span(a, sand_chunk_side(s), s->h, &a0, &a1);
+    sand_chunk_span(b, sand_chunk_side(s), s->h, &b0, &b1);
+
+    const int gap = (a0 > b0) ? a0 - b1 : b0 - a1;
+    TEST_ASSERT_GREATER_THAN_INT(SAND_LIQUID_SIGHT, gap);
+}
+
+/* The two claims sand_chunk_share() makes for the chunk rows of one colour:
+ * both workers get some, and no two the workers hold at once come within the
+ * furthest a split pass writes from the cell it is stepping. The second is
+ * what lets a worker write the board's own row-indexed bookkeeping rather
+ * than a private copy. */
+static void
+tc_check_one_colours_workers(const sand_t* s, int row_parity) {
+    int owned[2] = {0, 0};
+
+    for (int a = row_parity; a < sand_chunk_rows(s); a += 2) {
+        owned[sand_chunk_share(a)]++;
+        for (int b = row_parity; b < sand_chunk_rows(s); b += 2) {
+            if (sand_chunk_share(a) != sand_chunk_share(b)) {
+                tc_assert_chunk_rows_clear_each_other(s, a, b);
+            }
+        }
+    }
+
+    if (sand_chunk_split_ready(s)) {
+        TEST_ASSERT_GREATER_THAN_INT(0, owned[0]);
+        TEST_ASSERT_GREATER_THAN_INT(0, owned[1]);
+    }
+}
+
+static void
+tc_check_workers_never_meet_on_a_row(const sand_t* s) {
+    for (int row_parity = 0; row_parity < 2; row_parity++) {
+        tc_check_one_colours_workers(s, row_parity);
+    }
+}
+
+static void
+test_a_colours_two_workers_never_meet_on_a_row(void) {
+    tc_for_each_quality(tc_check_workers_never_meet_on_a_row);
 }
 
 static uint32_t
@@ -1313,6 +1418,8 @@ test_reaction_split_actually_changes_the_draw_stream(void) {
 void
 run_sand_two_core_suite(void) {
     RUN_TEST(test_chunk_colours_separate_every_touching_chunk);
+    RUN_TEST(test_chunk_colours_cover_every_cell_exactly_once);
+    RUN_TEST(test_a_colours_two_workers_never_meet_on_a_row);
     RUN_TEST(test_stripe_boundaries_spread_over_the_stripe);
     RUN_TEST(test_two_core_step_is_deterministic_across_seeds);
     RUN_TEST(test_split_gas_walk_uses_hashed_rng);

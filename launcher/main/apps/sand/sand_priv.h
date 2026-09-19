@@ -99,6 +99,34 @@ sand_chunk_color(int chunk_x, int chunk_y) {
     return ((chunk_y & 1) << 1) | (chunk_x & 1);
 }
 
+/* Half-open cell range of one chunk along either axis. */
+static inline void
+sand_chunk_span(int index, int side, int extent, int* lo, int* hi) {
+    *lo = index * side;
+    *hi = *lo + side;
+    if (*hi > extent) {
+        *hi = extent;
+    }
+}
+
+/* Which of a colour's two workers owns a chunk row. Two rows of one colour
+ * answering the same share are four rows apart, so nothing running at once
+ * shares a grid row: a worker may write row-indexed state - dirty spans, the
+ * board-changed flag - straight into the board with no private copy. */
+static inline int
+sand_chunk_share(int chunk_y) {
+    return (chunk_y >> 1) & 1;
+}
+
+/* One chunk row per (row parity, share) pair, below which a colour leaves a
+ * worker idle and the hop to the second core buys nothing. */
+#define SAND_CHUNK_SPLIT_MIN_ROWS SAND_CHUNK_COLOR_COUNT
+
+static inline bool
+sand_chunk_split_ready(const sand_t* s) {
+    return sand_chunk_rows(s) >= SAND_CHUNK_SPLIT_MIN_ROWS;
+}
+
 /* One constant per rng draw site inside a checkerboard-parallel pass -
  * see sand_rng_next_at() below. A fixed slot per site, not a per-cell
  * counter, is what keeps a draw thread-safe with no shared mutable state:
