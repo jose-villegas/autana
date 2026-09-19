@@ -749,6 +749,50 @@ test_two_core_step_never_double_moves_at_a_seam(void) {
     }
 }
 
+/* THE STAMPED-ARRIVAL CHECK: a liquid cell that crossed a chunk border is
+ * stamped where it landed, so the pass owning the destination must leave it
+ * alone - but that block holds liquid now, and cross-flow searches nowhere
+ * the sweep did not say so. The move has to leave the cell's own block as
+ * well as its chunk, or the block carries the mark from the departure and the
+ * claim holds for the wrong reason. */
+static void
+tc_assert_a_crossing_liquid_marks_where_it_lands(int gx, int gy, int start_x, int start_y, int dest_x, int dest_y) {
+    tc_board_t* b = tc_board_open(TC_W, TC_H, 1);
+    const int cols = b->s.block_cols;
+    const int started = (start_y / SAND_BLOCK_H) * cols + start_x / SAND_BLOCK_W;
+    const int landed = (dest_y / SAND_BLOCK_H) * cols + dest_x / SAND_BLOCK_W;
+
+    sand_set(&b->s, start_x, start_y, WATER);
+    tc_board_step(b, gx, gy, true);
+
+    const cell_t arrived = sand_at(&b->s, dest_x, dest_y);
+    const uint8_t state = b->s.block_state[landed];
+
+    for (int i = 0; i < 4; i++) {
+        tc_board_step(b, gx, gy, true);
+    }
+    const bool still_liquid = b->s.may_have_liquid;
+    tc_board_close(b);
+
+    char why[200];
+    snprintf(why, sizeof why, "water %d,%d -> %d,%d under gravity %d,%d left its new block at state %02x", start_x,
+             start_y, dest_x, dest_y, gx, gy, (unsigned)state);
+    TEST_ASSERT_NOT_EQUAL_INT_MESSAGE(started, landed, why);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(arrived), why);
+    TEST_ASSERT_TRUE_MESSAGE((state & BLOCK_HAS_LIQUID) != 0, why);
+    TEST_ASSERT_TRUE_MESSAGE(still_liquid, why);
+}
+
+static void
+test_a_liquid_stamped_across_a_chunk_border_marks_its_new_block(void) {
+    const int side = tc_chunk_side_of(TC_W, TC_H);
+    const int x = (TC_W / 2 / SAND_BLOCK_W) * SAND_BLOCK_W + SAND_BLOCK_W / 2;
+    const int y = (side / 2 / SAND_BLOCK_H) * SAND_BLOCK_H + SAND_BLOCK_H / 2;
+
+    tc_assert_a_crossing_liquid_marks_where_it_lands(0, 1000, x, side - 1, x, side);
+    tc_assert_a_crossing_liquid_marks_where_it_lands(1000, 0, side - 1, y, side, y);
+}
+
 /* THE SERIAL COMPARISON: with scatter forced to 0 and nothing else on the
  * board, a free fall draws no randomness at all (try_scatter() returns
  * immediately, the primary move needs no roll), so the serial and
@@ -1500,6 +1544,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_two_core_step_does_not_leak_or_fabricate_mass);
     RUN_TEST(test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam);
     RUN_TEST(test_two_core_step_never_double_moves_at_a_seam);
+    RUN_TEST(test_a_liquid_stamped_across_a_chunk_border_marks_its_new_block);
     RUN_TEST(test_two_core_step_matches_serial_fall_distance_at_a_seam);
     RUN_TEST(test_smaller_quality_seams_match_serial);
     RUN_TEST(test_a_fuse_blast_throws_grains_on_both_cores);

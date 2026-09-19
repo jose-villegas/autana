@@ -1049,14 +1049,19 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
     unsigned saw_liquid = 0;
     for (int x = cx_from; x != cx_to; x += ctx->x_step) {
         const cell_t c = ctx->row[x];
-        if (CELL_IS_EMPTY(c) || sand_cell_stamped(ctx->s, x, ctx->y)) {
+        if (CELL_IS_EMPTY(c)) {
             continue;
         }
         /* Accumulated in a register and stored once per block, same shape as
          * moved_here. BLOCK_HAS_LIQUID keeps it true at O(blocks) per step
          * instead of O(moves) - a skip structure earns its cost only when it
-         * is questioned before it is built. */
+         * is questioned before it is built. Counted BEFORE the stamped skip:
+         * a cell that arrived here this pass is still liquid sitting in this
+         * block, and cross-flow looks nowhere the sweep did not mark. */
         saw_liquid |= (unsigned)(ctx->is_liquid >> CELL_MATERIAL(c)) & 1u;
+        if (sand_cell_stamped(ctx->s, x, ctx->y)) {
+            continue;
+        }
         if (step_one_grain(ctx->s, ctx->row, ctx->prow, ctx->arow, ctx->brow, x, ctx->y, ctx->w, ctx->dx, ctx->dy,
                            ctx->slide_a, ctx->slide_b, ctx->load_dx, ctx->load_dy, ctx->jostle, ctx->driven, &dest)) {
             moved_here = true;
