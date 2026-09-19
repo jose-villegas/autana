@@ -76,6 +76,22 @@ menu "Launcher"
             sdkconfig.defaults.diag_autorun on top of sdkconfig.defaults.diag
             for exactly that reason.
 
+    config LAUNCHER_QEMU
+        bool "The image runs under Espressif's QEMU, with no board attached"
+        depends on LAUNCHER_DEVELOPMENT
+        default n
+        help
+            QEMU's esp32s3 machine has no panel, I/O expander or touch
+            controller, so board identification fails and graphics never
+            starts. With this on, an unidentified board gets a null panel
+            instead: a strip counts as sent the moment it is queued, and the
+            framebuffer, the present task and everything drawn through them
+            run as they do on the board.
+
+            Set only by sdkconfig.defaults.qemu, which also carries the
+            flash and console settings QEMU needs. On a board that
+            identifies itself this changes nothing.
+
     choice LAUNCHER_SELFTEST_SCOPE
         prompt "Which suites the self-test image carries"
         depends on LAUNCHER_SELFTEST
