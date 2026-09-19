@@ -1515,13 +1515,15 @@ drive_chunk_pass_lanes_by_hand(void) {
 
 static void
 drive_chunk_pass_lanes(void) {
-    if (job_try_core1(chunk_pass_lane1_worker, NULL, 0)) {
+    const bool by_hand = chunk_pass_driver != SAND_CHUNK_PASS_CORE1 && chunk_pass_driver != SAND_CHUNK_PASS_SOLO;
+
+    if (chunk_pass_driver == SAND_CHUNK_PASS_CORE1 && job_try_core1(chunk_pass_lane1_worker, NULL, 0)) {
         sand_chunk_run_lane(&chunk_sched, 0, CHUNK_PASS_SPIN_LIMIT, chunk_pass_fn, chunk_pass_arg);
         join_chunk_pass_lane1();
-    } else if (chunk_pass_driver == SAND_CHUNK_PASS_SOLO) {
-        sand_chunk_run_rest(&chunk_sched, chunk_pass_fn, chunk_pass_arg);
-    } else {
+    } else if (by_hand) {
         drive_chunk_pass_lanes_by_hand();
+    } else {
+        sand_chunk_run_rest(&chunk_sched, chunk_pass_fn, chunk_pass_arg);
     }
 }
 
