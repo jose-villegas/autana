@@ -584,6 +584,68 @@ A scene that leaves gfx in band mode is refused rather than rendered: the
 band ring retains no frame to read back, the same reason a device capture
 refuses one.
 
+### What each scene's pixels are pinned to
+
+An image of the right size can still be the wrong picture, so every render's
+content hash is pinned in a `<scene>_render_baseline.txt` beside the scene
+that owns it, and `render_all_scenes.sh` fails on a change to the pixels.
+Every render is bit-identical from run to run, which is what makes this
+worth pinning at all.
+
+Hashes rather than committed images: this repository commits a binary only
+as a generator's input, and a rendered frame is neither that nor something
+anyone reads a diff of. A render with no pin yet says `(not pinned)` and
+passes, so a new scene is not blocked on one.
+
+```sh
+./launcher/tools/render_all_scenes.sh --update-baseline   # re-pin, deliberately
+```
+
+Re-pin only after looking at the images and agreeing the pixels should have
+changed. The failure names the file to look at and the command to run.
+
+### The second backend: the real image under QEMU
+
+The same scenes, the real Xtensa binary. `test/run_qemu_tests.sh` builds an
+image that boots into the shell rather than running its suites, and its
+console answers `SCREENSHOT` with the frame - the board tool's own protocol,
+over a socket instead of USB.
+
+```sh
+./launcher/tools/render_qemu.sh -o /tmp/q \
+    --row "<first row>" --row "<second row>"     # capture, then diff
+./launcher/test/run_qemu_tests.sh --touch down,128,224 --touch up,128,224 \
+    --screenshot /tmp/after_tap.png              # tap a row, capture the app
+```
+
+A capture takes about a minute and a half after the build, needs no board
+and no lock, and any number of runs go at once. `render_qemu.sh` reads the
+quarter from the capture's own sidecar, renders the home screen on the host
+at that quarter, and diffs the two with the shell's chrome masked. The rows
+have to be stated: only the image knows what registered itself, and its
+console reports how many, never which.
+
+**A touch goes in as a level, not an event.** `TOUCH <down|up> <x> <y>` on
+the console reaches `touch_inject()`, and the polling task samples it at its
+own rate - so a sample has to be left in place long enough to be seen, and
+there is no acknowledgement to wait for. That is enough to open an app and
+photograph it, which is the only way to see a screen whose app cannot be
+linked on a host at all.
+
+**Two limits worth knowing before comparing anything.**
+
+*`dt` is real elapsed time.* The image runs its own frame loop against a
+clock, so a QEMU run cannot reproduce a scene's declared frame schedule.
+Only a screen that has SETTLED - one whose picture does not depend on how
+many frames it took to get there - compares pixel-exact with a host render.
+The home screen is such a screen. A scene stepped for its animation, the
+cube at a fixed step count, is not: the same step count does not mean the
+same accumulated time.
+
+*There is no IMU, so orientation cannot be injected.* The shell keeps
+`DISPLAY_DEFAULT_QUARTER`, which is landscape, for the whole run. A
+comparison at any other quarter is a host render against a host render.
+
 ### Diffing against a capture
 
 ```sh
@@ -595,7 +657,8 @@ refuses one.
 
 It reports the first differing pixel, how many differ, and writes an image
 with the differences in red and the masked regions in blue. Exit status is
-0 only when nothing differs.
+0 only when nothing differs. Either side may be a host render, a QEMU
+capture or a board capture.
 
 **Orientation is declared, never guessed.** A capture is always
 panel-native whatever the shell was rotated to; its sidecar's
