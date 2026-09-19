@@ -89,6 +89,7 @@ CTest is the single entry point.
 | `editor_navigation.*` (GoogleTest) | the firmware's `system_navigation.c`, all four rotations |
 | `editor_runtime_smoke` (C) | both screens and orientations render; an authored rect reaches the pixels; bad layouts are refused |
 | `ui_layout_generator` (unittest) | the generator's rules, and every checked-in header against its JSON |
+| `editor_ridge_backdrop` (C) | the launcher over its ridge: idle sends nothing, a touch wakes it, and at rest the screen is the settled one exactly |
 | `editor_bake_check` | `autana_editor --check-bake`: the editor's own bake path finds nothing stale |
 
 The window itself - SDL and Dear ImGui glue - has no automated coverage.

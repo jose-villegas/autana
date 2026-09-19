@@ -28,6 +28,7 @@
 #include "render_host.h"
 #include "ui/ui.h"
 #include "ui/ui_launcher.h"
+#include "ui/ui_ridge.h"
 #include "ui/ui_transform.h"
 
 static const app_t fixture_alpha = {.name = "Alpha", .summary = "The first fixture row"};
@@ -87,10 +88,17 @@ options(int argc, char** argv) {
     return true;
 }
 
+/* A render stands for a device held the way it is drawn and already at
+ * rest: down is where that quarter's own down points on the panel, the
+ * backdrop is level with it, and nothing about it depends on the clock. */
 static bool
 setup(int quarter) {
+    static const int down[4][2] = {{0, 1}, {-1, 0}, {0, -1}, {1, 0}};
     ui_launcher_init();
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
+    ui_ridge_set_gravity(down[quarter & 3][0], down[quarter & 3][1], 256, 0);
+    ui_ridge_set_ambient(false);
+    ui_ridge_settle();
     return true;
 }
 
