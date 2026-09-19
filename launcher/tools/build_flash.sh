@@ -117,31 +117,75 @@ idf_init "$LAUNCHER_DIR" "$IDF_EXPORT" "$SCRIPT_DIR"
 
 SDKCONFIG_FRAGMENTS=""
 REQUIRED_FLAGS=""
+FORBIDDEN_FLAGS=""
 BUILD_SDKCONFIG="$LAUNCHER_DIR/$BUILD_DIR/sdkconfig"
+
+# The first way the config on disk contradicts what was asked for, or nothing.
+# Both halves are needed: a flag that must be there catches a fragment that
+# never applied, and a flag that must be ABSENT catches one left behind by a
+# different request into the same build directory - the variant directories
+# are shared, so the previous run's scope outlives it.
+sdkconfig_disagreement() {
+    local config="$1" flag
+    for flag in $REQUIRED_FLAGS; do
+        if ! grep -q "^${flag}=y" "$config"; then
+            echo "$flag is not set"
+            return 0
+        fi
+    done
+    for flag in $FORBIDDEN_FLAGS; do
+        if grep -q "^${flag}=y" "$config"; then
+            echo "$flag is set"
+            return 0
+        fi
+    done
+    return 1
+}
+
 if [ "$VARIANT" != release ]; then
     SDKCONFIG_FRAGMENTS="sdkconfig.defaults;sdkconfig.defaults.$VARIANT"
     REQUIRED_FLAGS="CONFIG_LAUNCHER_DEVELOPMENT"
     if [ "$VARIANT" = diag ]; then
         REQUIRED_FLAGS="$REQUIRED_FLAGS CONFIG_LAUNCHER_SELFTEST"
+        # Neither fragment layered here sets autorun, and both report scripts
+        # layer it into this same build.diag. Whichever ran last, this one is
+        # the interactive image: compiled-in suites that boot fast.
+        FORBIDDEN_FLAGS="CONFIG_LAUNCHER_SELFTEST_AUTORUN"
+    else
+        FORBIDDEN_FLAGS="CONFIG_LAUNCHER_SELFTEST"
     fi
     if [ "$PERF_SCOPE" -eq 1 ]; then
         SDKCONFIG_FRAGMENTS="$SDKCONFIG_FRAGMENTS;sdkconfig.defaults.diag_perf"
         REQUIRED_FLAGS="$REQUIRED_FLAGS CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF"
         echo "=== PERF SCOPE: behaviour suites are NOT in this image ==="
+    elif [ "$VARIANT" = diag ]; then
+        FORBIDDEN_FLAGS="$FORBIDDEN_FLAGS CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF"
     fi
 
     # A generated sdkconfig WINS over the fragments: idf.py applies
-    # SDKCONFIG_DEFAULTS only when it has to CREATE that file, so editing a
-    # fragment never reaches a build directory that already has one. That has
-    # silently defeated three separate flag changes, each producing an image
-    # that looks right and measures nothing. Dropping the file once a fragment
-    # is newer costs one reconfigure and makes the fragments authoritative.
-    for fragment in $(printf '%s' "$SDKCONFIG_FRAGMENTS" | tr ';' ' '); do
-        if [ -f "$BUILD_SDKCONFIG" ] && [ "$LAUNCHER_DIR/$fragment" -nt "$BUILD_SDKCONFIG" ]; then
-            echo "=== $fragment is newer than $BUILD_DIR/sdkconfig - regenerating it ==="
+    # SDKCONFIG_DEFAULTS only when it has to CREATE that file, so an existing
+    # one silently outranks every fragment edit and every fragment this run did
+    # or did not layer. Deleting it whenever it is older than a fragment or
+    # disagrees with the request costs one reconfigure and makes the request
+    # authoritative again. The report scripts delete it unconditionally, so a
+    # run of either after the other pays that reconfigure; a wrong image does
+    # not reach the board.
+    if [ -f "$BUILD_SDKCONFIG" ]; then
+        stale=""
+        for fragment in $(printf '%s' "$SDKCONFIG_FRAGMENTS" | tr ';' ' '); do
+            if [ "$LAUNCHER_DIR/$fragment" -nt "$BUILD_SDKCONFIG" ]; then
+                stale="$fragment is newer"
+                break
+            fi
+        done
+        if [ -z "$stale" ]; then
+            stale="$(sdkconfig_disagreement "$BUILD_SDKCONFIG")" || stale=""
+        fi
+        if [ -n "$stale" ]; then
+            echo "=== $BUILD_DIR/sdkconfig: $stale - regenerating it ==="
             rm -f "$BUILD_SDKCONFIG"
         fi
-    done
+    fi
 fi
 
 echo "=== Building $BUILD_DIR ==="
@@ -172,13 +216,12 @@ else
     # The delete above is not enough on its own: a renamed Kconfig symbol or a
     # dropped fragment leaves a config that exists, builds, flashes, and is
     # simply not the image that was asked for.
-    for flag in $REQUIRED_FLAGS; do
-        if ! grep -q "^${flag}=y" "$BUILD_SDKCONFIG"; then
-            echo "$flag is not set in $BUILD_DIR/sdkconfig - the fragments" >&2
-            echo "did not reach this build, so the image is not the one asked for." >&2
-            exit 1
-        fi
-    done
+    disagreement="$(sdkconfig_disagreement "$BUILD_SDKCONFIG")" || disagreement=""
+    if [ -n "$disagreement" ]; then
+        echo "$BUILD_DIR/sdkconfig: $disagreement - the fragments did not reach" >&2
+        echo "this build, so the image is not the one asked for." >&2
+        exit 1
+    fi
 fi
 
 # A build tool that reports success without producing anything is how this
