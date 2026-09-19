@@ -239,93 +239,16 @@ CPU-bound (see [Display-and-Rendering.md](notes/Display-and-Rendering.md),
 either. The decision and its measurements are in
 [Autana-Rendering-Roadmap.md](Autana-Rendering-Roadmap.md) (decision B).
 
-"One framebuffer" is really "one destination at a time". An app may ask for a
-different one at `enter()`, and gfx frees whatever the last one was:
-
-```mermaid
-flowchart TB
-    APP["an app's frame()"] --> TGT
-    UIC["ui.c command list"] --> TGT
-    TGT["gfx_target.h<br/>clip and translate"] --> SEL{"gfx_mode_resolve()<br/>exactly one is live"}
-    SEL -->|"GFX_LAYOUT_FULL_FB (default)"| FB["the framebuffer<br/>322 KiB, PSRAM"]
-    SEL -->|"GFX_LAYOUT_BANDS"| BR["2-slot band ring<br/>GFX_BAND_HEIGHT rows, SRAM"]
-    SEL -->|"GFX_PIXFMT_INDEXED8"| IX["index image + 256-entry LUT<br/>SRAM"]
-    FB --> PR["present: dirty strips only"]
-    BR --> PR
-    IX -->|"LUT lookup, upscale, optional dither"| PR
-    PR -->|"QSPI DMA"| PANEL["SH8601 AMOLED"]
-```
-
-| Destination | Asked for by | Used today by |
-|---|---|---|
-| framebuffer | the default | every app that draws pixels |
-| band ring | `gfx_mode_enter(GFX_LAYOUT_BANDS)` | `app_cube.c`, on by default |
-| index image | `gfx_mode_request_t.pixfmt` | the sand app - `docs/sand/Shading-and-Colour.md` |
-
-`gfx_mode_resolve()` (`gfx_mode.h`) and the ring's state machine
-(`gfx_band.h`) are pure and host-tested. `gfx_mode_exit()` reverses whatever
-`enter()` did. `GFX_BAND_HEIGHT` is a Kconfig choice (16/32/64 rows, default
-32 pending a device sweep, always a divisor of `GFX_HEIGHT`);
-`tools/sweeps/band_height_sweep.sh` builds one diagnostics image per height.
+"One framebuffer" is really "one destination at a time": an app may ask for
+a band ring or an index image at `enter()`, and gfx frees the framebuffer
+while it holds one. The targets, the dirty tracker and the present path are
+in [Gfx-and-Presentation.md](Gfx-and-Presentation.md).
 
 This is also why the 3D renderer is small3dlib: it owns no framebuffer - it
 hands back every rasterized pixel through a callback - and with
 `S3L_Z_BUFFER 0` no depth buffer either, resolving visibility by sorting
 triangles back-to-front. A conventional colour+depth rasterizer would want
 ~1.3 MB here.
-
-What follows from having one destination:
-
-- **Primitives target whichever one is live.** `gfx_target.h` carries the
-  clip-and-translate arithmetic behind `gfx_clear()`, `gfx_fill_rect()`,
-  `gfx_pixel()`, the line, dither and blend variants, and text. Between
-  frames there is no valid target at all, so `gfx_fb_guard.h` backs those
-  same primitives with a check that no-ops rather than writing through NULL:
-  loud (an assertion) on a development or host build, silent on release - the
-  asymmetry `gfx_present_guard.h` already uses.
-- **A UI is built once per frame and replayed per band.** microui's command
-  list already describes the whole output, so `ui_end_for_bands()` bins it by
-  row range instead of painting and `ui_replay_band()` draws whichever
-  commands overlap the band being rendered. `main.c` queues the shell's
-  home-swipe hint (`ui_queue_band_overlay_rect()`) *before* an app's
-  `frame()`, since a band-mode app's whole band loop happens inside that one
-  call with no chance to draw afterwards. `screenshot.c` needs one contiguous
-  buffer to stream, which band mode never has, so it refuses outright.
-- **An untouched band is neither redrawn nor sent.** The panel retains what a
-  band last received, so `gfx_band_dirty()` (`gfx.c`) asks `gfx_dirty.h`'s
-  existing strip tracker - not a second one, since every `GFX_BAND_HEIGHT`
-  divides `STRIP_HEIGHT` (64) evenly. A `false` answer means
-  `gfx_band_skip()`: the ring advances, nothing is cleared, rendered or sent.
-  `cube_frame_band()` marks the union of its previous and current bounds;
-  `ui.c` hashes each band's commands and marks only the changed ones.
-  `gfx_invalidate()`, `gfx_mode_enter()` and an orientation change force
-  every band through a flag kept independent of `gfx_dirty.h`'s own
-  `all_dirty`, so a forced band redraw can never change what a full-fb
-  present observes. The debug overlays (dev builds) outline whichever bands
-  were actually sent, so a skipped one reads as visibly unoutlined.
-- **An indexed present is driven by gfx, not the app.** Where a band user
-  runs its own `gfx_band_next()`/`gfx_band_submit()` loop, an indexed app
-  just writes indices and calls `gfx_present_begin()`/`gfx_present_wait()` -
-  the same two calls the default layout uses - and the present task expands
-  whichever dirty strips exist into the DMA buffers. It sends whole dirty
-  strips rather than gathering scattered runs: a deliberate simplification,
-  not a limit of the pixel format.
-
-**Palettes are a gfx concept, not any one app's.** `gfx/gfx_palette.h` is the
-type an app builds or installs a `GFX_PIXFMT_INDEXED8` palette through - a
-name, an entry list, a count, and the reserved-entries-0-15 convention
-(`GFX_PALETTE_UI_ENTRIES`). `gfx/gfx_palette_standard.h` ships curated ones as
-`const` data (CGA/EGA 16, PICO-8 16, DawnBringer DB16/DB32, a VGA-style 256,
-16/256-level grayscale), found by name or listed. Choosing one is always a
-runtime call, never a Kconfig symbol.
-
-Building a palette - which colours it holds, weighted however an app likes -
-is app-specific work and stays out of gfx. What is shared is the two steps
-every palette needs afterwards, both in OKLab so that two nearby entries do
-not fight over which colour a search prefers: `tools/gfx_palette_gen.h`
-(host-only, links libm, never in the firmware image) builds the 65536-entry
-reverse index map a colour-to-index lookup needs, and the 256 x 16-phase
-dither table `gfx_indexed_expand_row_dither16()` reads.
 
 ### 2. There is exactly one frame loop, and it belongs to the shell
 
@@ -440,25 +363,13 @@ An app that sets `app_t.update` has the previous frame sent on core 1 while
 `update()` runs on core 0 - the sequence and the app's obligations are in
 [Building-an-App.md](Building-an-App.md#one-pass-of-the-frame-loop).
 
-`gfx.h`'s `gfx_present_begin()`/`gfx_present_wait()` are the primitive this
-runs on; `gfx_present()` stays exactly their `begin` then `wait`, so every
-caller that never adopts `update()` is unaffected.
-Presentation runs asynchronously on core 1 by default. The runtime
-`gfx_set_present_async(false)` switch forces the send back onto the caller,
-for an A/B measurement against the overlapped path.
+The split present underneath it is in
+[Gfx-and-Presentation.md](Gfx-and-Presentation.md#present-who-runs-it).
 
 ### Full redraw
 
-`gfx_request_full_redraw()` (`gfx.h`) is the one call a transition needs
-instead of composing `gfx_mark_all_dirty()` and `gfx_invalidate()`
-separately - opening or closing an overlay, an orientation change, a
-SCREENSHOT capture, a RUNSUITE run. It marks the whole framebuffer dirty,
-resets partial-clear tracking and forces every band on the next band
-frame, then latches a pending flag: `gfx_full_redraw_pending()` answers
-whether one is outstanding, and `gfx_full_redraw_clear_pending()` ends the
-window. Only sets state and frees nothing, so it is safe to call from
-anywhere on core 0, including an app's own `frame()`.
-
+`gfx_request_full_redraw()` marks everything dirty and latches a pending
+flag - see [Gfx-and-Presentation.md](Gfx-and-Presentation.md#repaint-controls).
 gfx has no idea an app keeps its own draw cache beyond the framebuffer.
 `main.c`'s `apply_pending_full_redraw()` checks the pending flag at the top
 of a pass, clears it, and calls the running app's `invalidate()` - or

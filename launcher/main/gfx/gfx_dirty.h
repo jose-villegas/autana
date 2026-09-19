@@ -45,8 +45,8 @@
 #define GFX_DIRTY_HEIGHT 448
 
 /* The frame is sent in full-width bands. Full width matters: it makes each
- * band a contiguous run inside the framebuffer, so the DMA reads it in
- * place with no copy. 448 / 64 = 7 bands exactly. */
+ * band a contiguous run inside the framebuffer, so one memcpy moves it into
+ * a DMA bounce slot with no packing. 448 / 64 = 7 bands exactly. */
 #define STRIP_HEIGHT     64
 #define STRIP_COUNT      (GFX_DIRTY_HEIGHT / STRIP_HEIGHT)
 

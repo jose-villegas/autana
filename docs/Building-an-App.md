@@ -251,5 +251,6 @@ Boot logs `Ready, N apps registered`; launch and leave log `Starting <name>` /
 ## Related
 
 - [`Building-a-Screen.md`](Building-a-Screen.md) - microui screens inside an app
-- [`Launcher-Architecture.md`](Launcher-Architecture.md) - one framebuffer, one frame loop, draw targets
+- [`Gfx-and-Presentation.md`](Gfx-and-Presentation.md) - draw targets, dirty tracking, the present path, heal
+- [`Launcher-Architecture.md`](Launcher-Architecture.md) - why one framebuffer and one frame loop
 - [`Testing-Guide.md`](Testing-Guide.md) - suites, runners, build variants
