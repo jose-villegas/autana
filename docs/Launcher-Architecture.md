@@ -74,6 +74,7 @@ launcher/
     │   │                       its authored rects, and the baked table
     │   ├── ui_ridge.{h,c}      the launcher's backdrop: the ridge, level with the
     │   │                       horizon, waved by touch and shaking
+    │   ├── ridge_motion.h      its breathing, its wave, the wave's momentum (host-tested)
     │   ├── system_navigation.{h,c}  which system screen is up (host-tested)
     │   └── ridge_curve_generated.h  Cerro Autana's ridge, a height per column of
     │                           the boot photograph's frame      (host-tested)
@@ -88,6 +89,7 @@ launcher/
     ├── util/           arithmetic and services that belong to no layer
     │   ├── fixed.h             fixed-point multiply/divide (host-tested)
     │   ├── intmath.h, rng.h, tween.h                       (host-tested)
+    │   ├── trig.h              integer sine and cosine    (host-tested)
     │   ├── spring_line.h       a row of points on springs (host-tested)
     │   ├── job.{h,c}           run a slice on the other core (host-tested)
     │   ├── device_state.{h,c}  what survives a reboot      (host-tested)

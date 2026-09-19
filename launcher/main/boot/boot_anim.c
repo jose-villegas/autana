@@ -145,8 +145,8 @@ units(int n) {
 
 static void
 polar_point(int32_t radius, uint16_t turn, int32_t* re, int32_t* im) {
-    const int32_t cos_v = boot_anim_cos(turn);
-    const int32_t sin_v = boot_anim_sin(turn);
+    const int32_t cos_v = trig_cos(turn);
+    const int32_t sin_v = trig_sin(turn);
     *re = (int32_t)(((int64_t)radius * cos_v) >> 15);
     *im = (int32_t)(((int64_t)radius * sin_v) >> 15);
 }
