@@ -3,7 +3,8 @@
 # Build the launcher's firmware and flash it to the device.
 #
 # Usage:
-#   tools/build_flash.sh [--dev|--diag] [--build-only] [COM_PORT] [IDF_EXPORT]
+#   tools/build_flash.sh [--dev|--diag] [--perf-scope] [--build-only] \
+#                        [COM_PORT] [IDF_EXPORT]
 #
 #   --dev       build the DEVELOPMENT image instead of the release one, and
 #               leave it on the board: development-only logging and
@@ -13,6 +14,11 @@
 #               leave it on the board: everything --dev gets you, plus the
 #               on-device test suites and Diagnostics' own button for
 #               running them. See below.
+#   --perf-scope  with --diag only: layer sdkconfig.defaults.diag_perf, so the
+#               image carries just sand's frame-budget suite and the scenes it
+#               measures. Frees the static RAM a capture needs to instrument
+#               itself; drops behaviour coverage, so never a merge gate, and
+#               its numbers compare only with other perf-scoped captures.
 #   --build-only  build and stop: no device needed, nothing flashed.
 #   COM_PORT    serial port the device is on. Found by USB identity when
 #               omitted, so a plugged-in board needs no argument - see
@@ -64,18 +70,25 @@ set -euo pipefail
 
 VARIANT=release
 BUILD_ONLY=0
+PERF_SCOPE=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --dev)     VARIANT=dev; shift ;;
         -d|--diag) VARIANT=diag; shift ;;
+        --perf-scope) PERF_SCOPE=1; shift ;;
         --build-only) BUILD_ONLY=1; shift ;;
-        -h|--help) sed -n '2,59p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,65p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         --)        shift; break ;;
         -*)        echo "unknown option: $1" >&2; exit 2 ;;
         *)         break ;;
     esac
 done
+
+if [ "$PERF_SCOPE" -eq 1 ] && [ "$VARIANT" != diag ]; then
+    echo "--perf-scope scopes which SUITES are compiled in, so it needs --diag" >&2
+    exit 2
+fi
 
 COM_PORT="${1:-}"
 
@@ -102,6 +115,79 @@ trap 'status=$?; if [ $status -ne 0 ]; then echo; echo "=== FAILED (exit $status
 . "$SCRIPT_DIR/idf.sh"
 idf_init "$LAUNCHER_DIR" "$IDF_EXPORT" "$SCRIPT_DIR"
 
+SDKCONFIG_FRAGMENTS=""
+REQUIRED_FLAGS=""
+FORBIDDEN_FLAGS=""
+BUILD_SDKCONFIG="$LAUNCHER_DIR/$BUILD_DIR/sdkconfig"
+
+# The first way the config on disk contradicts what was asked for, or nothing.
+# Both halves are needed: a flag that must be there catches a fragment that
+# never applied, and a flag that must be ABSENT catches one left behind by a
+# different request into the same build directory - the variant directories
+# are shared, so the previous run's scope outlives it.
+sdkconfig_disagreement() {
+    local config="$1" flag
+    for flag in $REQUIRED_FLAGS; do
+        if ! grep -q "^${flag}=y" "$config"; then
+            echo "$flag is not set"
+            return 0
+        fi
+    done
+    for flag in $FORBIDDEN_FLAGS; do
+        if grep -q "^${flag}=y" "$config"; then
+            echo "$flag is set"
+            return 0
+        fi
+    done
+    return 1
+}
+
+if [ "$VARIANT" != release ]; then
+    SDKCONFIG_FRAGMENTS="sdkconfig.defaults;sdkconfig.defaults.$VARIANT"
+    REQUIRED_FLAGS="CONFIG_LAUNCHER_DEVELOPMENT"
+    if [ "$VARIANT" = diag ]; then
+        REQUIRED_FLAGS="$REQUIRED_FLAGS CONFIG_LAUNCHER_SELFTEST"
+        # Neither fragment layered here sets autorun, and both report scripts
+        # layer it into this same build.diag. Whichever ran last, this one is
+        # the interactive image: compiled-in suites that boot fast.
+        FORBIDDEN_FLAGS="CONFIG_LAUNCHER_SELFTEST_AUTORUN"
+    else
+        FORBIDDEN_FLAGS="CONFIG_LAUNCHER_SELFTEST"
+    fi
+    if [ "$PERF_SCOPE" -eq 1 ]; then
+        SDKCONFIG_FRAGMENTS="$SDKCONFIG_FRAGMENTS;sdkconfig.defaults.diag_perf"
+        REQUIRED_FLAGS="$REQUIRED_FLAGS CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF"
+        echo "=== PERF SCOPE: behaviour suites are NOT in this image ==="
+    elif [ "$VARIANT" = diag ]; then
+        FORBIDDEN_FLAGS="$FORBIDDEN_FLAGS CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF"
+    fi
+
+    # A generated sdkconfig WINS over the fragments: idf.py applies
+    # SDKCONFIG_DEFAULTS only when it has to CREATE that file, so an existing
+    # one silently outranks every fragment edit and every fragment this run did
+    # or did not layer. Deleting it whenever it is older than a fragment or
+    # disagrees with the request costs one reconfigure and makes the request
+    # authoritative again. The report scripts delete it unconditionally, so a
+    # run of either after the other pays that reconfigure; a wrong image does
+    # not reach the board.
+    if [ -f "$BUILD_SDKCONFIG" ]; then
+        stale=""
+        for fragment in $(printf '%s' "$SDKCONFIG_FRAGMENTS" | tr ';' ' '); do
+            if [ "$LAUNCHER_DIR/$fragment" -nt "$BUILD_SDKCONFIG" ]; then
+                stale="$fragment is newer"
+                break
+            fi
+        done
+        if [ -z "$stale" ]; then
+            stale="$(sdkconfig_disagreement "$BUILD_SDKCONFIG")" || stale=""
+        fi
+        if [ -n "$stale" ]; then
+            echo "=== $BUILD_DIR/sdkconfig: $stale - regenerating it ==="
+            rm -f "$BUILD_SDKCONFIG"
+        fi
+    fi
+fi
+
 echo "=== Building $BUILD_DIR ==="
 if [ "$VARIANT" = release ]; then
     idf -B "$BUILD_DIR" build
@@ -122,9 +208,20 @@ else
     # is exactly what idf_shim.bat is for, and what ci_check_idf_sh.sh
     # asserts for the POSIX branch.
     idf -B "$BUILD_DIR" \
-        -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.$VARIANT" \
+        -D SDKCONFIG_DEFAULTS="$SDKCONFIG_FRAGMENTS" \
         -D SDKCONFIG="$BUILD_DIR/sdkconfig" \
         build
+
+    # The generated config is the only honest witness that the fragments took.
+    # The delete above is not enough on its own: a renamed Kconfig symbol or a
+    # dropped fragment leaves a config that exists, builds, flashes, and is
+    # simply not the image that was asked for.
+    disagreement="$(sdkconfig_disagreement "$BUILD_SDKCONFIG")" || disagreement=""
+    if [ -n "$disagreement" ]; then
+        echo "$BUILD_DIR/sdkconfig: $disagreement - the fragments did not reach" >&2
+        echo "this build, so the image is not the one asked for." >&2
+        exit 1
+    fi
 fi
 
 # A build tool that reports success without producing anything is how this
@@ -175,8 +272,13 @@ case "$VARIANT" in
         ;;
     diag)
         echo "=== Done - the DIAGNOSTICS image is on the device ==="
-        echo "    It runs the test suites at boot and adds Diagnostics' own"
-        echo "    button for re-running them."
+        echo "    The test suites are compiled in - Diagnostics' own button runs"
+        echo "    them on demand, since AUTORUN is not layered here."
+        if [ "$PERF_SCOPE" -eq 1 ]; then
+            echo "    PERF-SCOPED: only sand's frame-budget suite and its scenes are"
+            echo "    in there. Its numbers compare only with other perf-scoped"
+            echo "    captures, and it is not a behaviour gate."
+        fi
         echo "    Re-run without --diag to put the release firmware back."
         ;;
     *)
