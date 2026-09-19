@@ -5,15 +5,26 @@ run_qemu_tests.sh builds the image and calls this; it also runs alone against
 a build directory that already exists:
 
     launcher/test/qemu_run.py launcher/build.qemu [--icount] [--timeout S]
-                              [--log FILE] [--idf-path DIR]
+    launcher/test/qemu_run.py launcher/build.qemu.shell --suite run_gfx_suite
+                              [--suite ...] [--screenshot shot.png]
 
 It merges the build's binaries into one flash image, writes the default eFuse
-block ESP-IDF's own `idf.py qemu` uses, starts qemu-system-xtensa -M esp32s3
-with the console in a file, and stops it when SELFTEST_COMPLETE appears.
+block ESP-IDF's own `idf.py qemu` uses, and starts qemu-system-xtensa
+-M esp32s3 with the console on a local TCP socket, which it logs to a file.
+
+With no --suite or --screenshot the image is expected to run its suites by
+itself (CONFIG_LAUNCHER_SELFTEST_AUTORUN) and the run ends at
+SELFTEST_COMPLETE. With either, the image is expected to boot into the shell
+instead: once the console listener is up, each --suite is sent as RUNSUITE
+and waited out to its RUNSUITE_COMPLETE, then --screenshot sends SCREENSHOT
+and writes the frame as a PNG (and its state as .json) the way
+tools/screenshot.py does from a board.
 
 What a run can and cannot say. Pass and fail are real for anything that does
-not read a clock. Wall-clock budgets mean nothing here, and QEMU does not
-model the performance monitor, so those tests fail by construction. With
+not read a clock. A ceiling pegged on the board is reported and not enforced
+in a CONFIG_LAUNCHER_QEMU image, and tests of hardware QEMU lacks (the
+performance monitor, a touch controller that physically answers) skip
+themselves. With
 --icount virtual time advances one nanosecond per executed instruction, so a
 "us per step" line times 1000 is instructions per step: exactly repeatable
 for a step that runs on one core, and within about 1% when two cores share
@@ -25,16 +36,23 @@ Several instances run at once; give each its own build directory copy or
 
 import argparse
 import ast
+import base64
 import binascii
 import glob
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import time
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "tools"))
+import device_profile  # noqa: E402  (path must be set up first)
+
 SENTINEL = "SELFTEST_COMPLETE"
+LISTENING = "listening for 'SCREENSHOT'"
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
@@ -65,6 +83,26 @@ def default_efuse(idf_path):
     sys.exit("qemu_run: no esp32s3 eFuse image in %s" % src_path)
 
 
+# A locally administered address. The image file starts at EFUSE_RD_WR_DIS
+# (0x2C), so EFUSE_RD_MAC_SPI_SYS_0/1 (0x44, 0x48) sit at 0x18: the low four
+# bytes of the MAC first, then the high two, each little-endian.
+QEMU_MAC = bytes.fromhex("02005145 4d55".replace(" ", ""))
+MAC_FILE_OFFSET = 0x44 - 0x2C
+
+
+def efuse_with_mac(image):
+    image = bytearray(image)
+    image[MAC_FILE_OFFSET:MAC_FILE_OFFSET + 4] = QEMU_MAC[2:][::-1]
+    image[MAC_FILE_OFFSET + 4:MAC_FILE_OFFSET + 6] = QEMU_MAC[:2][::-1]
+    return bytes(image)
+
+
+def free_port():
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
 def merge_flash(build_dir, out_path, python):
     with open(os.path.join(build_dir, "flasher_args.json")) as fh:
         args = json.load(fh)
@@ -80,19 +118,116 @@ def merge_flash(build_dir, out_path, python):
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
 
 
-def wait_for_sentinel(proc, log_path, timeout_s):
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        if proc.poll() is not None:
+class Console:
+    """QEMU's serial port over TCP: every byte is logged, lines are matched."""
+
+    def __init__(self, proc, port, log_path, deadline):
+        self.proc = proc
+        self.deadline = deadline
+        self.log = open(log_path, "wb")
+        self.pending = b""
+        self.sock = None
+        while self.sock is None:
+            try:
+                self.sock = socket.create_connection(("127.0.0.1", port), 1.0)
+            except OSError:
+                if proc.poll() is not None or time.monotonic() > deadline:
+                    raise
+                time.sleep(0.2)
+        self.sock.settimeout(1.0)
+
+    def close(self):
+        self.log.close()
+        self.sock.close()
+
+    def send(self, line):
+        self.sock.sendall(line.encode() + b"\n")
+
+    def lines(self):
+        """Complete lines as they arrive, until QEMU exits or time runs out."""
+        while time.monotonic() < self.deadline and self.proc.poll() is None:
+            try:
+                chunk = self.sock.recv(65536)
+            except socket.timeout:
+                continue
+            if not chunk:
+                return
+            self.log.write(chunk)
+            self.log.flush()
+            self.pending += chunk
+            while b"\n" in self.pending:
+                raw, self.pending = self.pending.split(b"\n", 1)
+                text = raw.decode("utf-8", errors="replace").rstrip("\r")
+                yield ANSI.sub("", text)
+
+    def wait_for(self, needle):
+        for line in self.lines():
+            if needle in line:
+                return True
+        return False
+
+
+def take_screenshot(console, out_path):
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "..", "tools"))
+    import screenshot as wire  # noqa: E402  (the board tool's own protocol)
+
+    console.send(wire.TRIGGER.decode().strip())
+    total, chunks, state = None, [], None
+    for line in console.lines():
+        if line.startswith(wire.REFUSED_PREFIX):
+            print("screenshot refused: %s" % line[len(wire.REFUSED_PREFIX):])
             return False
-        try:
-            with open(log_path, "rb") as fh:
-                if SENTINEL.encode() in fh.read():
-                    return True
-        except OSError:
-            pass
-        time.sleep(2.0)
+        begin = wire.BEGIN_RE.match(line)
+        if begin:
+            total = int(begin.group(1))
+        elif total is None:
+            continue
+        elif line.startswith(wire.DATA_PREFIX):
+            chunks.append(line[len(wire.DATA_PREFIX):])
+        elif line.startswith(wire.STATE_PREFIX):
+            state = line[len(wire.STATE_PREFIX):]
+        elif line == wire.END_LINE:
+            bmp = base64.b64decode("".join(chunks))
+            if len(bmp) != total:
+                print("screenshot: decoded %d bytes, device announced %d"
+                      % (len(bmp), total))
+                return False
+            stem = os.path.splitext(out_path)[0]
+            with open(stem + ".png", "wb") as fh:
+                fh.write(wire.bmp_bytes_to_png(bmp))
+            if state is not None:
+                with open(stem + ".json", "w") as fh:
+                    json.dump(json.loads(state), fh, indent=2)
+                    fh.write("\n")
+            print("screenshot: %s.png" % stem)
+            return True
+    print("screenshot: the capture never finished")
     return False
+
+
+def drive_shell(console, suites, screenshot_path):
+    if not console.wait_for(LISTENING):
+        print("the console listener never came up - is this an image that "
+              "boots into the shell (no sdkconfig.defaults.diag_autorun)?")
+        return False
+    time.sleep(0.3)
+    ok = True
+    for name in suites:
+        console.send("RUNSUITE %s" % name)
+        done = "RUNSUITE_COMPLETE name=%s" % name
+        found = None
+        for line in console.lines():
+            if line.startswith(done):
+                found = line.endswith("found=1")
+                break
+        if not found:
+            print("suite %s: %s" % (name, "not registered in this image"
+                                    if found is False else "never completed"))
+            ok = False
+    if screenshot_path:
+        ok = take_screenshot(console, screenshot_path) and ok
+    return ok
 
 
 def summarise(log_path):
@@ -100,6 +235,7 @@ def summarise(log_path):
         text = ANSI.sub("", fh.read().decode("utf-8", errors="replace"))
     text = text.replace("\r", "")
     passed = len(re.findall(r":PASS$", text, flags=re.M))
+    ignored = len(re.findall(r":IGNORE", text))
     failed = re.findall(r"^\S*:\d+:(\w+):FAIL:? ?(.*)$", text, flags=re.M)
     for line in re.findall(r"device_tests: (.*us per step.*)$", text,
                            flags=re.M):
@@ -107,10 +243,9 @@ def summarise(log_path):
     for name, why in failed:
         print("  FAIL %s: %s" % (name, why[:120]))
     sentinel = re.search(r"^%s .*$" % SENTINEL, text, flags=re.M)
-    print("%d passed, %d failed; %s" %
-          (passed, len(failed),
-           sentinel.group(0) if sentinel else "NO %s - the run did not "
-           "finish" % SENTINEL))
+    print("%d passed, %d failed, %d skipped%s" %
+          (passed, len(failed), ignored,
+           "; " + sentinel.group(0) if sentinel else ""))
     return sentinel is not None
 
 
@@ -120,6 +255,11 @@ def main(argv):
     parser.add_argument("--icount", action="store_true",
                         help="count instructions: -icount shift=0")
     parser.add_argument("--timeout", type=int, default=1800)
+    parser.add_argument("--suite", action="append", default=[],
+                        help="run this registered suite by name (repeatable); "
+                             "needs an image that boots into the shell")
+    parser.add_argument("--screenshot", default=None, metavar="PNG",
+                        help="capture the screen once the suites are done")
     parser.add_argument("--workdir", default=None,
                         help="where flash, eFuse and log go "
                              "(default: the build directory)")
@@ -142,11 +282,17 @@ def main(argv):
 
     merge_flash(args.build_dir, flash, python)
     with open(efuse, "wb") as fh:
-        fh.write(default_efuse(args.idf_path))
+        fh.write(efuse_with_mac(default_efuse(args.idf_path)))
     if os.path.exists(log_path):
         os.remove(log_path)
 
-    cmd = [qemu, "-M", "esp32s3", "-m", "32M",
+    # The board's own PSRAM size: QEMU would happily offer more, and a test
+    # that only fits in the surplus would pass here and fail on the board.
+    profile = device_profile.load(None, None)
+    psram_mib = device_profile.require(profile, "DP_PSRAM_BYTES", int) >> 20
+
+    port = free_port()
+    cmd = [qemu, "-M", "esp32s3", "-m", "%dM" % psram_mib,
            "-drive", "file=%s,if=mtd,format=raw" % flash,
            "-drive", "file=%s,if=none,format=raw,id=efuse" % efuse,
            "-global", "driver=nvram.esp32s3.efuse,property=drive,value=efuse",
@@ -154,21 +300,33 @@ def main(argv):
                       "value=true",
            "-global", "driver=ssi_psram,property=is_octal,value=true",
            "-nographic", "-monitor", "none",
-           "-serial", "file:%s" % log_path]
+           "-serial", "tcp:127.0.0.1:%d,server=on,wait=on" % port]
     if args.icount:
         cmd += ["-icount", "shift=0"]
 
     proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL)
+    finished = False
     try:
-        wait_for_sentinel(proc, log_path, args.timeout)
+        console = Console(proc, port, log_path,
+                          time.monotonic() + args.timeout)
+        try:
+            if args.suite or args.screenshot:
+                finished = drive_shell(console, args.suite, args.screenshot)
+            else:
+                finished = console.wait_for(SENTINEL)
+        finally:
+            console.close()
     finally:
         proc.kill()
         proc.wait()
 
     print("console: %s" % log_path)
-    return 0 if summarise(log_path) else 1
+    autorun_ended = summarise(log_path)
+    if not (args.suite or args.screenshot) and not autorun_ended:
+        print("NO %s - the run did not finish" % SENTINEL)
+    return 0 if finished else 1
 
 
 if __name__ == "__main__":
