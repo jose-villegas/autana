@@ -25,10 +25,15 @@
  * gives up a column rather than truncate; a longer detail string wraps. */
 #define POST_LAYOUT_WIDEST_LINE       "[ok] audio codec"
 
-/* Landscape's short side is what forces columns at all; portrait has the
- * height for a single list. */
+/* The MOST columns an orientation will split into - landscape's short side
+ * is what forces any at all, portrait has the height for a single list. A
+ * report uses the fewest it fits in, which is rarely the ceiling. */
 #define POST_LAYOUT_LANDSCAPE_COLUMNS 3
 #define POST_LAYOUT_PORTRAIT_COLUMNS  1
+
+/* The status mark and the space after it: where a check's name begins, and
+ * how far its detail lines are indented. */
+#define POST_LAYOUT_MARK_CHARS        5
 
 /* Report text at 8x8 glyphs: at the UI's own scale the panel holds 23
  * characters, narrower than most of the detail strings. The title takes the
@@ -49,11 +54,17 @@ typedef struct {
     int line_h;
     int rows;       /* report lines one column holds */
     int line_chars; /* characters a line holds before it has to wrap */
+    int gap;        /* blank lines of air between one check and the next */
 } post_layout_t;
 
-/* `screen_w` and `screen_h` are the upright logical canvas; `font` supplies
- * the text metrics both scales above are measured in. */
-post_layout_t post_layout(const gfx_font_t* font, int screen_w, int screen_h);
+/* The layout at an explicit column count and spacing. `screen_w`/`screen_h`
+ * are the upright logical canvas; `font` supplies the metrics both scales
+ * above are measured in. A column count too wide for the canvas is reduced
+ * until POST_LAYOUT_WIDEST_LINE fits. */
+post_layout_t post_layout_with(const gfx_font_t* font, int screen_w, int screen_h, int columns, int gap);
+
+/* The orientation's column ceiling. */
+int post_layout_max_columns(int screen_w, int screen_h);
 
 /* A `text_w` wide run of text, centred in the band each one names. */
 mu_Rect post_layout_title_text(const post_layout_t* l, int text_w);
@@ -113,3 +124,22 @@ post_wrap_line_t post_wrap_next(const char* text, int columns, int* cursor);
 /* The same walk, counted rather than drawn - which is how a check's height
  * is known before a line of it is placed. */
 int post_wrap_count(const char* text, int columns);
+
+/* Report lines a check needs here: its mark-and-name line, plus however many
+ * its detail wraps to at THIS layout's width. Narrower columns wrap more, so
+ * a check's height is a property of the layout, not of the check. */
+int post_layout_entry_height(const post_layout_t* l, const char* detail);
+
+/* The checks a report is about to draw, without committing to how they are
+ * stored - all the layout needs is each one's detail string, to measure. */
+typedef struct {
+    int count;
+    const char* (*detail)(void* ctx, int index);
+    void* ctx;
+} post_entries_t;
+
+/* The layout to draw this report with: the fewest columns the whole report
+ * fits in, since fewer columns are wider ones and wrap the details less. The
+ * orientation's count is a ceiling, not a target. A report that fits nowhere
+ * gets the ceiling and is truncated by the drawer, as it always was. */
+post_layout_t post_layout_for_report(const gfx_font_t* font, int screen_w, int screen_h, const post_entries_t* entries);
