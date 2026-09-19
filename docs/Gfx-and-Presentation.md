@@ -250,6 +250,13 @@ marking.
   are written black, so nothing else has to clear behind a curve that moves
   less than that per frame.
 
+What moves the curve is `util/spring_line.h`: one offset per column, each
+pulled toward rest and toward its neighbours, so a poke travels along the
+curve as a wave and dies away. It is built to go quiet - at rest it
+simulates nothing and `spring_line_apply()` reports no changed columns, so
+the screen costs no draw and no send until touched. `apply` also returns how
+far the curve moved this frame, which is the `erase_px` to draw it with.
+
 Cost follows lit pixels: Cerro Autana's ridge at radius 13 lights about
 16,600 of them. In landscape a column of the view is a row of the panel, so
 a curve spanning the view's width touches every band.
