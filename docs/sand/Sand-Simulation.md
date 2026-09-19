@@ -1198,8 +1198,9 @@ update can touch another's, in cells:
 | Explosions (confined gas, lava bursts, fuse chains) and thrown debris (`step_impulses`) | queued, crosses many steps, effectively unbounded | no |
 
 The gravity sweep, gas walk, liquid cross-flow and a reacting cell's own
-LOCAL rules have fixed cell reaches suitable for stripes, and now share the
-sweep's own stripe/guard layout rather than a second partitioning
+LOCAL rules have fixed cell reaches small enough to split. The sweep runs
+on the four-colour chunk grid below; the gas walk, liquid cross-flow and
+the reaction pass still share the older row-stripe layout
 (`run_reaction_rows()`, `sand_reactions.c`). Gas cross-flow, a reaction's
 long-reach triggers, liquid density sorting and impulses remain serial:
 each long-reach trigger has an `_or_defer` gate at its call site that
@@ -1210,130 +1211,76 @@ of a handful of small, cap-limited queues (cracks, cool-off chains, the
 three explosion triggers). See `sand_reactions.c`'s own comment on that
 split for why each was drawn where it was.
 
-### Stripes, not tiles
+### Four colours, no boundary handling
 
-A 2-colour checkerboard of 2-D tiles was tried on paper first and
-rejected: tiles diagonal to each other share a corner, and a reach of
-even 1 cell can touch that corner from a same-coloured tile on the far
-side of it - exactly the class of bug Noita's own write-up (GDC 2019)
-solves with a 2x2, four-colour scheme and a per-cell "updated this frame"
-stamp.
+A chunk grid is derived from the cell grid: `sand_chunk_side()` targets a
+tenth of the board per chunk and floors the side at `2 * SAND_LIQUID_SIGHT
++ 1`, so a chunk's interior always clears the furthest reach any splittable
+pass has. Every quality lands on the same small chunk count.
 
-Stripes avoid that specific problem outright: a row-stripe has exactly
-two neighbours, above and below, and colouring stripes by index means a
-stripe's only neighbours are always the opposite colour, so two
-same-coloured stripes are always a full stripe height apart - far past
-the sweep's 1-cell reach. That does *not* mean the split needs no
-boundary handling at all - see [The seam fix](#the-seam-fix) below for
-the one it does need.
+Each chunk takes a colour from its own coordinates,
+`sand_chunk_color(cx, cy)` = the two parities crossed. Four is the smallest
+colouring in which a colour contains no two chunks sharing an edge OR a
+corner - two is not enough, because sand slides diagonally and a liquid
+moves along a diagonal ray, so two chunks touching at a corner would be
+exactly where a cell is read and written at once.
 
 ```
-gravity down; stripe height = ceil(grid height / 4), clamped to 17-32 rows;
-two phases, alternating colour, offset across the whole stripe every step
+  colour = (cy & 1) << 1 | (cx & 1); four passes, one colour each
 
-  phase A (even stripes)     phase B (odd stripes)
-  ┌──────────────┐           ┌──────────────┐
-  │ stripe 0 (A) │  swept    │ stripe 0 (A) │  held
-  ├──────────────┤           ├──────────────┤
-  │ stripe 1 (B) │  held     │ stripe 1 (B) │  swept
-  ├──────────────┤           ├──────────────┤
-  │ stripe 2 (A) │  swept    │ stripe 2 (A) │  held
-  └──────────────┘           └──────────────┘
-
-  same-coloured stripes are never adjacent, so a 1-cell
-  reach from one can never touch another being swept at once
+  ┌────┬────┬────┐
+  │ 0  │ 1  │ 0  │   pass 0 runs every 0, then pass 1 every 1, ...
+  ├────┼────┼────┤
+  │ 2  │ 3  │ 2  │   no two chunks of one colour touch, edge or corner,
+  ├────┼────┼────┤   so a 1-cell reach out of a chunk lands in a chunk
+  │ 0  │ 1  │ 0  │   no other worker is in
+  └────┴────┴────┘
 ```
 
-`sand_stripe_height()` derives one height shared by the sweep, liquid
-cross-flow and gas walk. It targets four stripes, clamps the result to
-17-32 rows, and so keeps an interior beyond liquid cross-flow's two
-8-row guards. Within a phase, half the stripes run on a task pinned to
-core 1, the rest on the caller's own core, joining before the next phase
-starts - which stripe goes to which core does not matter, since none of
-them touch each other.
+That is the whole boundary story: there are no guard rows, no guard
+columns, no snapshot comparison and no deferred pass. Four passes over a
+quarter of the board are the same total work as two over a half.
 
-`sand_stripe_offset()` hashes the seed and step phase into the full stripe
-height. That spreads guard rows across the stripe instead of repeatedly
-stalling the same screen rows, and `suite_sand_two_core.c` checks that the
-result visits the full range.
+Within a colour, `sand_chunk_share()` sends whole chunk ROWS to one core or
+the other, alternating - never an arbitrary halving. Two chunk rows of one
+colour answering the same share are four rows apart, so the two workers
+never meet on a grid row, and a worker may write the board's own
+row-indexed bookkeeping (dirty spans, the changed flag) with no private
+copy. Boards yielding fewer chunk rows than that leaves work for both
+workers run the pass serially.
 
-Grids yielding fewer than four stripes run the sweep on one core: a
-checkerboard phase needs two same-coloured stripes to divide work between
-the cores.
+`sand_chunk_split_ready()` is the one gate; `blocks_settled_over()` is the
+one skip. A chunk whose covering blocks all carry the step's settled bit is
+dropped before any per-row setup, reusing the block-sleeping state the
+serial sweep already keeps rather than tracking anything second.
 
-### The seam fix
+### What a pass boundary still costs
 
-The serial sweep's no-double-move guarantee rests on one property: every
-row's possible destinations were already visited this step, so a grain
-that lands there is never picked up again. On a liquid-free horizontal
-sweep, the row direction and permitted diagonal alternate each step so the
-permitted destination has passed. That property is per **grid**, not per
-stripe - a stripe boundary sits inside it, not outside it.
+Exact serial order is out of reach for any fixed pass order, and always
+was. The serial sweep's no-double-move guarantee rests on every possible
+destination having been visited already; a chunk's gravity-ward neighbour
+belongs to another colour, and for half the boundaries that colour runs
+later. Tracing the dependency both ways across two adjacent boundaries
+gives the same contradiction row stripes gave: no order of "all of one
+colour, then all of the next" satisfies both.
 
-Two adjacent stripes are always different colours, so one of a stripe's
-two neighbours belongs to whichever phase runs second - and a move that
-crosses into that neighbour's boundary row lands somewhere that phase has
-not swept yet. Once it does, it finds the just-arrived grain sitting
-there and moves it again: two cells in one step, at roughly half of every
-seam, every step.
+So a grain that crosses into a chunk whose pass has not run is picked up
+once more there. A pass may only hand a grain on to a pass of a HIGHER
+colour, and each hand-on flips exactly one parity, so the worst case is
+one extra move per remaining colour - a grain at a chunk corner can travel
+three cells in the step where it would have travelled one. Nothing is
+duplicated or dropped: a move is a swap, and the grain count is exact.
 
-`run_sweep_stripes()` excludes both boundary rows of every stripe from
-the phases entirely - `step_one_grain()`'s reach is exactly one cell, so
-a boundary row is the only one a move could reach past a stripe's edge,
-and excluding it removes the crossing outright.
+`suite_sand_two_core.c` holds that bound directly, under all four
+axis-aligned gravity directions and both column orders, for an open fall
+and a forced slide alike: one cell deep inside a chunk, never more than the
+hand-on bound at a boundary, and always exactly one grain afterwards. The
+dense-column and settling-slab scenes are checked for grain conservation
+and for a settled pile showing no occupancy outlier at a boundary.
 
-That alone is not the whole fix: an interior row directly beside a guard
-row is still swept **during** its own phase, using the guard row's state
-from before that phase ran. In an unstriped sweep the guard row would
-already have had its own turn by then; here it has not, so a grain that
-the interior row pushes into the guard row gets a second, unwanted move
-once the guard pass finally reaches it.
+Nothing stalls at a boundary any more, so there is nothing for a
+development overlay to draw; the seam overlay and its checkbox are gone.
 
-The guard pass fixes this by snapshotting every guard row's content before
-either phase runs, then comparing: a column that still matches its
-snapshot got no phase-time write and takes its ordinary turn; a column
-that changed already moved once this step, via the interior row beside it,
-and is skipped. That removes the double-move without needing the two
-guard rows' exact place relative to every other boundary in the grid.
-
-Exact serial order is, in fact, provably out of reach for a plain
-two-phase split once three or more stripes are active: tracing the
-dependency chain across two adjacent boundaries shows a middle stripe
-needs to run before the top stripe at one boundary and after the bottom
-stripe at the other - but the top and bottom stripes share a colour and
-are meant to run as a single phase.
-
-No reordering of "all of colour A, then all of colour B" satisfies both
-constraints at once. The per-seam moved stamp above sidesteps the
-contradiction rather than solving it: a safety fix, not an
-order-equivalence one.
-
-What that buys, and what it doesn't. `suite_sand_two_core.c` places a
-lone grain exactly on a seam, under all four axis-aligned gravity
-directions and both stripe offsets, and checks it travels exactly one
-cell in one step, an open fall and a slide alike - and, with scatter
-forced to zero, that this matches the serial path's own fall distance
-exactly. That case has nothing else nearby to contend with, so the guard
-pass's snapshot always matches and the fix is exact.
-
-A dense column or pile crossing several boundaries at once is different:
-the same scatter-zero comparison on a full falling column and a settling
-slab shows the two paths' final boards are **not** byte-identical once a
-contested chain spans more than one seam - exactly the scenario the
-dependency-chain argument above rules out.
-
-What the guard pass still guarantees there, and what the suite checks
-instead, is that the grain count never drifts: nothing is duplicated or
-dropped, only reordered by up to the width of a stripe boundary.
-
-A development build carries an overlay that draws exactly what the guard
-pass above decided: every guard row this step used is tinted blue, and
-every column it skipped because a phase already wrote through it (`sand.h`'s
-`sand_seam_guard_row_count()`/`sand_seam_guard_row()`/`sand_seam_stalled()`/
-`sand_seam_stall_count()`) is marked red on top, with a running stall count
-drawn in the corner. Off by default; the sand app's own boot menu has a
-"show seam stalls" checkbox under `CONFIG_LAUNCHER_DEVELOPMENT` to turn it
-on for the current visit.
 
 ### Liquid cross-flow stripes
 
