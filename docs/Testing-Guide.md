@@ -154,7 +154,7 @@ simply never compiled. `build/launcher.elf` (release) is neither DEVELOPMENT
 nor SELFTEST, so **the Diagnostics app** is out of it too, for a related but
 separate reason: it is gated on `CONFIG_LAUNCHER_DEVELOPMENT`, a strictly
 broader flag than `CONFIG_LAUNCHER_SELFTEST` (see
-[Launcher-Architecture.md](Launcher-Architecture.md#an-app-is-a-folder) and
+[Building-an-App.md](Building-an-App.md#an-app-is-a-folder) and
 `main/CMakeLists.txt`) — it also ships in a `--dev` build, which carries no
 test suites at all.
 
@@ -733,7 +733,7 @@ gfx/ui change can be checked without touching the sand suites at all.
 
 ## Related
 
-- `docs/Launcher-Architecture.md` — how an app plugs into the shell, and the
+- `docs/Building-an-App.md` — how an app plugs into the shell, and the
   folder layout the app-suite convention above assumes.
 - `docs/sand/Sand-Simulation.md` — the sand suite (`suite_sand_*.c`) is the
   largest test suite in this codebase; this is what it is actually testing.
