@@ -30,8 +30,13 @@ centred_text(mu_Rect in, int text_w) {
     return ui_anchor_rect(in, UI_ANCHOR_CENTER, UI_ANCHOR_CENTER, 0, 0, text_w, in.h);
 }
 
+int
+post_layout_max_columns(int screen_w, int screen_h) {
+    return screen_w > screen_h ? POST_LAYOUT_LANDSCAPE_COLUMNS : POST_LAYOUT_PORTRAIT_COLUMNS;
+}
+
 post_layout_t
-post_layout(const gfx_font_t* font, int screen_w, int screen_h) {
+post_layout_with(const gfx_font_t* font, int screen_w, int screen_h, int columns, int gap) {
     post_layout_t l = {0};
 
     const int inset = DISPLAY_PANEL_SAFE_INSET;
@@ -51,10 +56,10 @@ post_layout(const gfx_font_t* font, int screen_w, int screen_h) {
         return l;
     }
 
-    /* The orientation asks for a column count and the canvas vetoes it: a
-     * column too narrow for the widest line costs a column rather than
-     * truncating every line in it. */
-    l.columns = screen_w > screen_h ? POST_LAYOUT_LANDSCAPE_COLUMNS : POST_LAYOUT_PORTRAIT_COLUMNS;
+    /* The caller asks for a column count and the canvas vetoes it: a column
+     * too narrow for the widest line costs a column rather than truncating
+     * every line in it. */
+    l.columns = columns < 1 ? 1 : columns;
     const int widest = gfx_font_text_width(font, POST_LAYOUT_WIDEST_LINE, -1, POST_LAYOUT_REPORT_SCALE);
     while (l.columns > 1 && column_width(l.body.w, l.columns) < widest) {
         l.columns--;
@@ -63,6 +68,7 @@ post_layout(const gfx_font_t* font, int screen_w, int screen_h) {
     l.column_w = column_width(l.body.w, l.columns);
     l.line_chars = l.column_w / l.glyph_w;
     l.rows = l.body.h / l.line_h;
+    l.gap = gap < 0 ? 0 : gap;
     return l;
 }
 
@@ -120,10 +126,10 @@ post_layout_take_line(const post_layout_t* l, post_lines_t* lines) {
  * start that column one line below every other one. */
 void
 post_layout_gap(const post_layout_t* l, post_lines_t* lines) {
-    if (l->rows <= 0 || lines->next % l->rows == 0) {
+    if (l->rows <= 0 || l->gap <= 0 || lines->next % l->rows == 0) {
         return;
     }
-    lines->next++;
+    lines->next += l->gap;
 }
 
 void
@@ -195,4 +201,47 @@ post_wrap_count(const char* text, int columns) {
         lines++;
     }
     return lines;
+}
+
+int
+post_layout_entry_height(const post_layout_t* l, const char* detail) {
+    if (detail == NULL || detail[0] == '\0') {
+        return 1;
+    }
+    return 1 + post_wrap_count(detail, post_layout_wrap_columns(l, POST_LAYOUT_MARK_CHARS));
+}
+
+/* The pass the drawer would walk, counted rather than drawn - so what
+ * "fits" means here cannot drift from where the drawer actually stops. */
+static bool
+report_fits(const post_layout_t* l, const post_entries_t* entries) {
+    const int capacity = post_layout_capacity(l);
+    if (capacity <= 0) {
+        return false;
+    }
+
+    post_lines_t lines = {0};
+    for (int i = 0; i < entries->count; i++) {
+        const int height = post_layout_entry_height(l, entries->detail(entries->ctx, i));
+        post_layout_reserve(l, &lines, height);
+        if (lines.next + height > capacity) {
+            return false;
+        }
+        lines.next += height;
+        post_layout_gap(l, &lines);
+    }
+    return true;
+}
+
+post_layout_t
+post_layout_for_report(const gfx_font_t* font, int screen_w, int screen_h, const post_entries_t* entries) {
+    const int ceiling = post_layout_max_columns(screen_w, screen_h);
+
+    for (int columns = 1; columns <= ceiling; columns++) {
+        const post_layout_t l = post_layout_with(font, screen_w, screen_h, columns, 1);
+        if (report_fits(&l, entries)) {
+            return l;
+        }
+    }
+    return post_layout_with(font, screen_w, screen_h, ceiling, 1);
 }

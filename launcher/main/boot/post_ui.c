@@ -22,10 +22,6 @@
 #define ABSENT_RGB  0x6E778C
 #define DETAIL_RGB  0x8A93A8
 
-/* The status mark and the space after it: the name and every wrapped detail
- * line begin that far into the column. */
-#define MARK_CHARS  5
-
 /* One pass over the results, holding everything that does not change between
  * lines: where the next line goes, and how to get a logical rect onto the
  * panel. */
@@ -96,16 +92,6 @@ draw_wrapped(report_pen_t* pen, int indent, const char* text, gfx_color_t colour
     }
 }
 
-/* What draw_entry() is about to need, so the column can be chosen before any
- * of it is drawn. */
-static int
-entry_lines(const report_pen_t* pen, const post_result_t* r) {
-    if (r->detail[0] == '\0') {
-        return 1;
-    }
-    return 1 + post_wrap_count(r->detail, post_layout_wrap_columns(&pen->layout, MARK_CHARS));
-}
-
 static bool
 draw_entry(report_pen_t* pen, const post_result_t* r, bool failed) {
     const char* mark;
@@ -127,32 +113,67 @@ draw_entry(report_pen_t* pen, const post_result_t* r, bool failed) {
     }
 
     draw_text(pen, row.x, row.y, mark, POST_LAYOUT_REPORT_SCALE, mark_colour);
-    draw_text(pen, row.x + MARK_CHARS * pen->layout.glyph_w, row.y, r->name, POST_LAYOUT_REPORT_SCALE,
+    draw_text(pen, row.x + POST_LAYOUT_MARK_CHARS * pen->layout.glyph_w, row.y, r->name, POST_LAYOUT_REPORT_SCALE,
               gfx_rgb(HEADING_RGB));
 
     if (r->detail[0] == '\0') {
         return true;
     }
-    return draw_wrapped(pen, MARK_CHARS, r->detail, failed ? gfx_rgb(FAIL_RGB) : gfx_rgb(DETAIL_RGB));
+    return draw_wrapped(pen, POST_LAYOUT_MARK_CHARS, r->detail, failed ? gfx_rgb(FAIL_RGB) : gfx_rgb(DETAIL_RGB));
+}
+
+/* An optional peripheral that is simply absent is not a failure, which is
+ * what the boot failure screen filters on. */
+static bool
+is_failure(const post_result_t* r) {
+    return !r->ok && r->severity == POST_REQUIRED;
+}
+
+/* The `index`-th check this report will draw, so the set the layout measures
+ * and the set the drawer walks are the same set by construction. */
+static const post_result_t*
+drawn_result(bool failures_only, int index) {
+    const post_result_t* results = post_results();
+    const int count = post_result_count();
+
+    int seen = 0;
+    for (int i = 0; i < count; i++) {
+        if (failures_only && !is_failure(&results[i])) {
+            continue;
+        }
+        if (seen == index) {
+            return &results[i];
+        }
+        seen++;
+    }
+    return NULL;
+}
+
+static int
+drawn_count(bool failures_only) {
+    int drawn = 0;
+    while (drawn_result(failures_only, drawn) != NULL) {
+        drawn++;
+    }
+    return drawn;
+}
+
+static const char*
+drawn_detail(void* ctx, int index) {
+    const post_result_t* r = drawn_result(*(const bool*)ctx, index);
+    return r != NULL ? r->detail : "";
 }
 
 static void
 draw_results(report_pen_t* pen, bool failures_only) {
-    const post_result_t* results = post_results();
-    const int count = post_result_count();
-
-    for (int i = 0; i < count; i++) {
-        const post_result_t* r = &results[i];
-
-        /* An optional peripheral that is simply absent is not a failure, so
-         * it is skipped when only failures were asked for. */
-        const bool failed = !r->ok && r->severity == POST_REQUIRED;
-        if (failures_only && !failed) {
-            continue;
+    for (int i = 0;; i++) {
+        const post_result_t* r = drawn_result(failures_only, i);
+        if (r == NULL) {
+            return;
         }
 
-        post_layout_reserve(&pen->layout, &pen->lines, entry_lines(pen, r));
-        if (!draw_entry(pen, r, failed)) {
+        post_layout_reserve(&pen->layout, &pen->lines, post_layout_entry_height(&pen->layout, r->detail));
+        if (!draw_entry(pen, r, is_failure(r))) {
             return;
         }
         post_layout_gap(&pen->layout, &pen->lines);
@@ -163,8 +184,16 @@ void
 post_ui_draw_report(const post_ui_report_t* report) {
     const int quarter = ((report->quarter % 4) + 4) % 4;
     const bool upright = quarter % 2 == 0;
+    bool failures_only = report->failures_only;
+
+    const post_entries_t entries = {
+        .count = drawn_count(failures_only),
+        .detail = drawn_detail,
+        .ctx = &failures_only,
+    };
     report_pen_t pen = {
-        .layout = post_layout(gfx_font_ui(), upright ? GFX_WIDTH : GFX_HEIGHT, upright ? GFX_HEIGHT : GFX_WIDTH),
+        .layout = post_layout_for_report(gfx_font_ui(), upright ? GFX_WIDTH : GFX_HEIGHT,
+                                         upright ? GFX_HEIGHT : GFX_WIDTH, &entries),
         .lines = {0},
         .transform = ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT),
         .quarter = quarter,

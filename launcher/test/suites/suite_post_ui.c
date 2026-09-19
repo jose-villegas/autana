@@ -20,14 +20,22 @@
 #define PANEL_SHORT_SIDE 368
 #define PANEL_LONG_SIDE  448
 
+/* The orientation at its column ceiling, with air between checks - what a
+ * report that needs every column gets, and the shape the placement rules
+ * below are all about. */
+static post_layout_t
+at_ceiling(int screen_w, int screen_h) {
+    return post_layout_with(gfx_font_ui(), screen_w, screen_h, post_layout_max_columns(screen_w, screen_h), 1);
+}
+
 static post_layout_t
 portrait(void) {
-    return post_layout(gfx_font_ui(), PANEL_SHORT_SIDE, PANEL_LONG_SIDE);
+    return at_ceiling(PANEL_SHORT_SIDE, PANEL_LONG_SIDE);
 }
 
 static post_layout_t
 landscape(void) {
-    return post_layout(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE);
+    return at_ceiling(PANEL_LONG_SIDE, PANEL_SHORT_SIDE);
 }
 
 static bool
@@ -498,6 +506,164 @@ test_the_wrap_width_is_always_drawable_in_both_orientations(void) {
     assert_the_wrap_width_is_drawable(landscape());
 }
 
+/* Synthetic checks: a list of detail strings, which is all the chooser needs
+ * to measure a report. Nothing here stands in for a board's own answers. */
+typedef struct {
+    int count;
+    const char* const* details;
+} listed_t;
+
+static const char*
+listed_detail(void* ctx, int index) {
+    const listed_t* l = ctx;
+    return l->details[index % l->count];
+}
+
+static post_entries_t
+listed_entries(listed_t* list, int count) {
+    const post_entries_t entries = {.count = count, .detail = listed_detail, .ctx = list};
+    return entries;
+}
+
+/* Detail strings around the length a check's format string produces - short
+ * enough to sit on one line in a full-width column, long enough to wrap in a
+ * narrow one. */
+static const char* const report_details[] = {
+    "SDCARD, 29820 MB (live, 51 ms round trip)",
+    "rev 2, 2 core, wifi ble",
+    "16 MB",
+    "140 KiB free, DMA block 76 KiB",
+    "8 MiB present",
+    "90:70:69:fe:a3:08",
+    "38.5 C",
+    "port 0, SDA 15, SCL 14",
+    "0x20  TCA9554 reset lines",
+    "0x34  AXP2101 power",
+    "0x6b  QMI8658 accel+gyro",
+    "0x51  PCF85063 clock",
+    "0x15  CST820 (V2)",
+    "0x18  ES8311",
+    "368x448 CO5300 + CST820 (V2)",
+};
+
+#define REPORT_CHECKS ((int)(sizeof(report_details) / sizeof(report_details[0])))
+
+/* Long enough that only the narrowest columns hold it in few lines - what a
+ * report needs before it wants every column the orientation allows. */
+static const char* const tall_details[] = {
+    "a detail long enough that it wraps to several lines even across a very wide column indeed",
+};
+
+static const char* const short_details[] = {
+    "absent - unexpected",
+    "no controller answered",
+};
+
+/* Walks the chosen layout the way the drawer walks it, reporting how many
+ * checks got all their lines and how the placed ones were spaced. */
+typedef struct {
+    int placed_checks;
+    int columns_used;
+    int max_same_column_spacing;
+    int min_same_column_spacing;
+} report_walk_t;
+
+static report_walk_t
+walk_report(const post_layout_t* l, const post_entries_t* entries) {
+    report_walk_t w = {0, 0, -1, -1};
+
+    post_lines_t lines = {0};
+    int previous_end = -1;
+    int previous_column = -1;
+
+    for (int i = 0; i < entries->count; i++) {
+        const int height = post_layout_entry_height(l, entries->detail(entries->ctx, i));
+        post_layout_reserve(l, &lines, height);
+
+        mu_Rect first = {0, 0, 0, 0};
+        int placed = 0;
+        for (int line = 0; line < height; line++) {
+            const mu_Rect row = post_layout_take_line(l, &lines);
+            if (row.w <= 0) {
+                break;
+            }
+            if (placed == 0) {
+                first = row;
+            }
+            placed++;
+        }
+        if (placed < height) {
+            return w;
+        }
+
+        const int column = column_of(l, first);
+        const int start = lines.next - height;
+        if (previous_end >= 0 && column == previous_column) {
+            const int spacing = start - previous_end;
+            if (w.min_same_column_spacing < 0 || spacing < w.min_same_column_spacing) {
+                w.min_same_column_spacing = spacing;
+            }
+            if (spacing > w.max_same_column_spacing) {
+                w.max_same_column_spacing = spacing;
+            }
+        }
+        previous_end = lines.next;
+        previous_column = column;
+
+        w.placed_checks++;
+        w.columns_used = column + 1;
+        post_layout_gap(l, &lines);
+    }
+    return w;
+}
+
+/* One spacing for the whole report, not a decision taken per check. */
+static void
+test_the_spacing_is_uniform_across_a_report(void) {
+    listed_t list = {REPORT_CHECKS, report_details};
+
+    const int canvases[][2] = {{PANEL_SHORT_SIDE, PANEL_LONG_SIDE}, {PANEL_LONG_SIDE, PANEL_SHORT_SIDE}};
+    for (int c = 0; c < 2; c++) {
+        const post_entries_t entries = listed_entries(&list, REPORT_CHECKS);
+        const post_layout_t l = post_layout_for_report(gfx_font_ui(), canvases[c][0], canvases[c][1], &entries);
+        const report_walk_t w = walk_report(&l, &entries);
+
+        if (w.min_same_column_spacing < 0) {
+            continue; /* every check started a column of its own */
+        }
+        TEST_ASSERT_EQUAL_INT_MESSAGE(w.min_same_column_spacing, w.max_same_column_spacing,
+                                      "checks in one report were spaced differently");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(l.gap, w.min_same_column_spacing - 0, "the spacing drawn is not the one chosen");
+    }
+}
+
+/* Two failures do not need three narrow columns, and a wide one wraps their
+ * details far less - which is the whole reason to prefer fewer. */
+static void
+test_a_short_report_in_landscape_takes_one_wide_column(void) {
+    listed_t list = {2, short_details};
+    const post_entries_t entries = listed_entries(&list, 2);
+    const post_layout_t chosen = post_layout_for_report(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, &entries);
+    const post_layout_t ceiling = landscape();
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, chosen.columns, "a two-check report was split into columns it did not need");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(ceiling.line_chars, chosen.line_chars, "one column should be the wider one");
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(post_layout_entry_height(&ceiling, short_details[1]),
+                                      post_layout_entry_height(&chosen, short_details[1]),
+                                      "the wider column should wrap the detail into fewer lines");
+}
+
+/* A report tall enough to need them still gets every column. */
+static void
+test_a_tall_report_in_landscape_takes_the_orientation_ceiling(void) {
+    listed_t list = {1, tall_details};
+    const post_entries_t entries = listed_entries(&list, REPORT_CHECKS);
+    const post_layout_t l = post_layout_for_report(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, &entries);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(post_layout_max_columns(PANEL_LONG_SIDE, PANEL_SHORT_SIDE), l.columns,
+                                  "a report that needs every column did not get them");
+}
+
 static void
 test_the_column_count_follows_the_orientation(void) {
     TEST_ASSERT_EQUAL_INT(POST_LAYOUT_PORTRAIT_COLUMNS, portrait().columns);
@@ -537,6 +703,9 @@ suite_post_ui(void) {
     RUN_TEST(test_a_single_column_report_never_skips_rows);
     RUN_TEST(test_the_wrap_measure_and_walk_agree_at_every_width);
     RUN_TEST(test_the_wrap_width_is_always_drawable_in_both_orientations);
+    RUN_TEST(test_the_spacing_is_uniform_across_a_report);
+    RUN_TEST(test_a_short_report_in_landscape_takes_one_wide_column);
+    RUN_TEST(test_a_tall_report_in_landscape_takes_the_orientation_ceiling);
     RUN_TEST(test_the_column_count_follows_the_orientation);
     RUN_TEST(test_landscape_holds_at_least_as_many_lines_as_portrait);
 }
