@@ -270,6 +270,16 @@ is the quarter-turn renderer pixel for pixel. It keeps, per panel row, the
 stretch it lit, and blackens that before drawing the row again, so a curve
 that turns needs nothing clearing behind it either.
 
+What it does with that stretch is the `trail` argument: 0 blackens it, 255
+leaves it - every place the curve has been stays lit, since the framebuffer
+and the panel both simply keep what was written - and a value between dims
+it to `trail`/256 per draw, a tail that fades. With a trail the draw keeps
+whichever of old and new light is brighter: each band overlaps most of the
+last, and would otherwise overwrite its bright core with a dim rim, leaving
+only rim light behind. A fading trail has to be drawn until the call reports
+none left, or it freezes where the curve stopped. The launcher's ridge uses
+0 (`RIDGE_TRAIL`).
+
 The launcher's ridge is a horizon: it follows `input/tilt.h`'s down at any
 angle while the app rows turn in quarters. It holds boot's landscape pose for
 its first 700 ms, since boot knows no orientation, then eases to level.
