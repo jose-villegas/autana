@@ -1190,7 +1190,7 @@ update can touch another's, in cells:
 | Liquid cross-flow (`equalise_liquids`, `find_shallowest`) | `SAND_LIQUID_SIGHT`, 8, along a ray that can run diagonally through several rows | yes; private wake and repaint state |
 | Gas walk (`gas_walk_once`) | 1, same shape as the sweep | yes; private wake and repaint state |
 | Reaction local rules (`step_one_reacting_row`'s burn/warm/tempered/crust/soak-dry/condense/acid-rain stages) | 1 | yes; growers on the board disable the split entirely (`reactions_may_split()`, `sand_reactions.c`) |
-| Gas cross-flow (`equalise_gas`) | `material_of(c)->sight`: 5-24 rows across fire (5), gas (16), steam (20), and smoke (24); stripes would need 24-row guards | no |
+| Gas cross-flow (`equalise_gas`) | `material_of(c)->sight`: 5-24 cells across fire (5), gas (16), steam (20), and smoke (24) | only along a ray that stays in its own row - see below |
 | Heat conduction to a boiler (`try_heat_transform_given`'s `CONDUCT_REACH`) | 32, a directed walk, not a spread | no; queue-free - `sand_step_reaction_reach()` re-scans for every still-burning cell |
 | Chilling (`step_one_cold_cell`'s carry walk) and dissolving (acid) | `COLD_REACH`, and acid's own multi-cell backing check | no; same re-scan, left whole rather than split into a local half |
 | Glass crack flood | up to `CRACK_MAX`, 256 | no; a small fixed queue, drained by the reach pass |
@@ -1198,10 +1198,10 @@ update can touch another's, in cells:
 | Explosions (confined gas, lava bursts, fuse chains) and thrown debris (`step_impulses`) | queued, crosses many steps, effectively unbounded | no |
 
 The gravity sweep, gas walk, liquid cross-flow and a reacting cell's own
-LOCAL rules have fixed cell reaches small enough to split. The sweep runs
-and liquid cross-flow run on the four-colour chunk grid below; the gas walk
-and the reaction pass still share the older row-stripe layout
-(`run_reaction_rows()`, `sand_reactions.c`). Gas cross-flow, a reaction's
+LOCAL rules have fixed cell reaches small enough to split. The sweep,
+liquid cross-flow and both gas sub-passes run on the four-colour chunk grid
+below; the reaction pass still uses the older row-stripe layout
+(`run_reaction_rows()`, `sand_reactions.c`). A reaction's
 long-reach triggers, liquid density sorting and impulses remain serial:
 each long-reach trigger has an `_or_defer` gate at its call site that
 skips it while a stripe or guard row is running and lets a single serial
@@ -1320,17 +1320,22 @@ so its timings measure overhead and changed work, not multicore speedup.
 The device perf suite enables splitting for its own liquid tables;
 `pass_us.liquid_us` there includes every pass, join and metadata merge.
 
-### Gas walk stripes
+### Gas chunks
 
-The gas walk uses the shared checkerboard and one guard row on each side of a
-boundary. Gas rises, so its row order is the gravity sweep's mirror: for
-ordinary downward gravity the guard above a boundary runs before the one
-below it. A pre-phase snapshot keeps a gas received at the seam from taking
-a second turn in the guard pass.
+Both gas sub-passes run on the chunk grid, in the same four colour passes as
+the sweep, with no guards. The walk's reach is one cell, the sweep's own
+shape; gas rises, so its row order is the gravity sweep's mirror.
 
-Block wakes and dirty spans extend beyond that one-cell guard, so both workers
-write private copies and merge them after each phase. Boards yielding fewer
-than four stripes and scratch allocation failures retain the serial walk.
+Cross-flow's reach is much longer - up to 24 cells along the perpendicular
+ray - and it splits only while that ray stays inside its own row, which is
+the same condition it already had. A long sideways reach is safe at any
+length because the chunks it crosses into all belong to the same chunk row,
+and a chunk row is owned whole by one worker. A ray that crosses rows runs
+serially rather than widening the chunk side for the rarest case.
+
+Block wakes and dirty spans reach beyond a chunk, so both workers write
+private copies and merge them after each pass. Boards with too few chunk rows
+for both workers, and scratch allocation failures, retain the serial walk.
 
 ### The draw
 
