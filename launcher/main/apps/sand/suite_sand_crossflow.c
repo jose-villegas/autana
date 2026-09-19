@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "sand_priv.h"
@@ -14,6 +15,7 @@ typedef struct {
     uint8_t blocks[((CF_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (CF_H / SAND_BLOCK_H)];
     uint8_t dirty[CF_H];
     uint16_t x0[CF_H], x1[CF_H];
+    uint8_t stamps[CF_H * ((CF_W + 7) / 8)];
 } crossflow_fixture_t;
 
 static crossflow_fixture_t*
@@ -24,6 +26,8 @@ crossflow_fixture(void) {
     sand_enable_sleeping(&f->s, f->blocks);
     sand_track_dirty_rows(&f->s, f->dirty);
     sand_track_dirty_cols(&f->s, f->x0, f->x1);
+    TEST_ASSERT_EQUAL_UINT((unsigned)sizeof f->stamps, (unsigned)sand_step_stamp_bytes(CF_W, CF_H));
+    sand_enable_step_stamps(&f->s, f->stamps);
     for (int y = 0; y < CF_H; y++) {
         for (int x = 0; x < CF_W; x++) {
             sand_set(&f->s, x, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
@@ -185,10 +189,9 @@ assert_every_change_was_merged(const crossflow_fixture_t* f, const uint8_t* befo
 }
 
 /* One (px,py,phase,trial) case: an isolated water transfer near a chunk
- * boundary, stepped serially and split. A transfer landing in a chunk whose
- * own pass has not run is forwarded once more there, so the two boards need
- * not agree cell for cell. What holds exactly is the mass, and that every
- * change the split made was merged back. */
+ * boundary, stepped serially and split. Mass that lands in a chunk whose own
+ * pass is still to come must not be forwarded again there, so the split
+ * board matches serial cell for cell, repaint for repaint, wake for wake. */
 static void
 run_crossflow_seam_trial(int px, int py, int phase, int trial) {
     const int delta = trial / 2 - SAND_LIQUID_SIGHT - 1;
@@ -216,17 +219,29 @@ run_crossflow_seam_trial(int px, int py, int phase, int trial) {
     crossflow_step(serial, px, py, false);
     crossflow_step(split, px, py, true);
 
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(crossflow_water_mass(serial->cells), crossflow_water_mass(split->cells),
-                                   "a split transfer may move mass, never make or lose it");
+    const unsigned serial_mass = crossflow_water_mass(serial->cells);
+    const unsigned split_mass = crossflow_water_mass(split->cells);
+    const bool equal = memcmp(serial->cells, split->cells, sizeof serial->cells) == 0;
+    const bool dirty_equal = memcmp(serial->dirty, split->dirty, sizeof serial->dirty) == 0
+                             && memcmp(serial->x0, split->x0, sizeof serial->x0) == 0
+                             && memcmp(serial->x1, split->x1, sizeof serial->x1) == 0;
+    const bool blocks_equal = memcmp(serial->blocks, split->blocks, sizeof serial->blocks) == 0;
     assert_every_change_was_merged(split, before);
 
     free(before);
     free(serial);
     free(split);
+    char why[160];
+    snprintf(why, sizeof why, "ray %d,%d phase %d trial %d: an isolated transfer may move only once across a seam", px,
+             py, phase, trial);
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(serial_mass, split_mass, "a split transfer may move mass, never make or lose it");
+    TEST_ASSERT_TRUE_MESSAGE(equal, why);
+    TEST_ASSERT_TRUE_MESSAGE(dirty_equal, "split must merge every depth repaint and dirty span");
+    TEST_ASSERT_TRUE_MESSAGE(blocks_equal, "split must merge every wake flag");
 }
 
 static void
-test_crossflow_seam_transfer_conserves_mass_in_eight_directions(void) {
+test_crossflow_seam_transfer_matches_serial_in_eight_directions(void) {
     for (int px = -1; px <= 1; px++) {
         for (int py = -1; py <= 1; py++) {
             if (px == 0 && py == 0) {
@@ -309,7 +324,7 @@ run_sand_crossflow_suite(void) {
     RUN_TEST(test_liquid_density_sort_moves_one_cell_along_a_diagonal);
     RUN_TEST(test_liquid_density_sort_keeps_the_portrait_rate);
     RUN_TEST(test_split_crossflow_uses_hashed_viscosity);
-    RUN_TEST(test_crossflow_seam_transfer_conserves_mass_in_eight_directions);
+    RUN_TEST(test_crossflow_seam_transfer_matches_serial_in_eight_directions);
     RUN_TEST(test_crossflow_pool_conserves_mass_and_is_deterministic);
     RUN_TEST(test_crossflow_uniform_pool_has_no_chunk_seams);
 }

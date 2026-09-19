@@ -269,6 +269,8 @@ static uint8_t* dirty_rows;    /* GRID_H_MAX bytes: which rows changed -
 static uint8_t* sleep_blocks;  /* BLOCK_COLS_MAX*BLOCK_ROWS_MAX bytes:
                                    * settled blocks to skip - see
                                    * sand_enable_sleeping() */
+static uint8_t* step_stamps;   /* sized for the largest grid - see
+                                   * sand_enable_step_stamps() */
 static impulse_t* impulse_buf; /* APP_IMPULSE_MAX entries: grains in
                                    * flight from DETONATE - see
                                    * sand_enable_impulses(). */
@@ -513,8 +515,9 @@ sand_app_alloc_selfcheck(size_t* out_largest_free, bool* out_impulses_ok) {
     uint16_t* t_dcx0 = malloc(GRID_H_MAX * sizeof(uint16_t));
     uint16_t* t_dcx1 = malloc(GRID_H_MAX * sizeof(uint16_t));
     impulse_t* t_imp = malloc((size_t)APP_IMPULSE_MAX * sizeof(impulse_t));
+    uint8_t* t_stamps = malloc(sand_step_stamp_bytes(GRID_W_MAX, GRID_H_MAX));
 
-    const bool essential_ok = (t_dirty && t_blocks && t_grid && t_x0 && t_x1 && t_n && t_dcx0 && t_dcx1);
+    const bool essential_ok = (t_dirty && t_blocks && t_stamps && t_grid && t_x0 && t_x1 && t_n && t_dcx0 && t_dcx1);
     if (out_impulses_ok) {
         *out_impulses_ok = (t_imp != NULL);
     }
@@ -522,6 +525,7 @@ sand_app_alloc_selfcheck(size_t* out_largest_free, bool* out_impulses_ok) {
         *out_largest_free = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
     }
 
+    free(t_stamps);
     free(t_imp);
     free(t_dcx1);
     free(t_dcx0);
@@ -535,6 +539,32 @@ sand_app_alloc_selfcheck(size_t* out_largest_free, bool* out_impulses_ok) {
 }
 
 #endif /* CONFIG_LAUNCHER_SELFTEST */
+
+/* Allocated after the grid and the blast buffer - see the ordering note in
+ * start_sim(). */
+static bool
+alloc_grid_bookkeeping(void) {
+    if (step_stamps == NULL) {
+        step_stamps = malloc(sand_step_stamp_bytes(GRID_W_MAX, GRID_H_MAX));
+    }
+    if (row_run_x0 == NULL) {
+        row_run_x0 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*row_run_x0));
+    }
+    if (row_run_x1 == NULL) {
+        row_run_x1 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*row_run_x1));
+    }
+    if (row_run_n == NULL) {
+        row_run_n = malloc(GRID_H_MAX * sizeof(*row_run_n));
+    }
+    if (dirty_x0 == NULL) {
+        dirty_x0 = malloc(GRID_H_MAX * sizeof(*dirty_x0));
+    }
+    if (dirty_x1 == NULL) {
+        dirty_x1 = malloc(GRID_H_MAX * sizeof(*dirty_x1));
+    }
+    return step_stamps != NULL && row_run_x0 != NULL && row_run_x1 != NULL && row_run_n != NULL && dirty_x0 != NULL
+           && dirty_x1 != NULL;
+}
 
 static void
 start_sim(void) {
@@ -588,23 +618,8 @@ start_sim(void) {
                      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
         }
     }
-    if (row_run_x0 == NULL) {
-        row_run_x0 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*row_run_x0));
-    }
-    if (row_run_x1 == NULL) {
-        row_run_x1 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*row_run_x1));
-    }
-    if (row_run_n == NULL) {
-        row_run_n = malloc(GRID_H_MAX * sizeof(*row_run_n));
-    }
-    if (dirty_x0 == NULL) {
-        dirty_x0 = malloc(GRID_H_MAX * sizeof(*dirty_x0));
-    }
-    if (dirty_x1 == NULL) {
-        dirty_x1 = malloc(GRID_H_MAX * sizeof(*dirty_x1));
-    }
-    if (grid == NULL || dirty_rows == NULL || sleep_blocks == NULL || row_run_x0 == NULL || row_run_x1 == NULL
-        || row_run_n == NULL || dirty_x0 == NULL || dirty_x1 == NULL) {
+    const bool bookkeeping_ok = alloc_grid_bookkeeping();
+    if (grid == NULL || dirty_rows == NULL || sleep_blocks == NULL || !bookkeeping_ok) {
         ESP_LOGE(TAG,
                  "Could not allocate a %d x %d grid (%d bytes); "
                  "largest free block is %u",
@@ -628,6 +643,7 @@ start_sim(void) {
     sand_track_dirty_cols(&sim, dirty_x0, dirty_x1);
 
     sand_enable_sleeping(&sim, sleep_blocks);
+    sand_enable_step_stamps(&sim, step_stamps);
 
     /* Enabled unconditionally, not just once BOOM is selected, so an
      * allocation failure shows up at start_sim() rather than on the first

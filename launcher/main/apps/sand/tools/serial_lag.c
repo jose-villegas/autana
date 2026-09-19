@@ -53,6 +53,7 @@ static uint8_t cells_split[LAG_W * LAG_H];
 static uint8_t cells_serial[LAG_W * LAG_H];
 static uint8_t blocks_split[((LAG_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((LAG_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)];
 static uint8_t blocks_serial[sizeof blocks_split];
+static uint8_t stamps_split[LAG_H * ((LAG_W + 7) / 8)];
 
 static void
 fill_rect(sand_t* s, int x0, int y0, int x1, int y1, cell_t c) {
@@ -205,6 +206,7 @@ measure(const lag_case_t* c) {
     sand_init(&serial, cells_serial, LAG_W, LAG_H, 7u);
     sand_enable_sleeping(&split, blocks_split);
     sand_enable_sleeping(&serial, blocks_serial);
+    sand_enable_step_stamps(&split, stamps_split);
     c->build(&split);
     c->build(&serial);
     /* Both arms draw through the hash, so the boards differ only by the order

@@ -210,8 +210,10 @@ primitive, `job_run_core1()`/`job_wait()` (`util/job.h`) - one copied
 context, run on core 1 if its worker is idle, otherwise inline. The main
 sweep, the liquid cross-flow pass, both gas sub-passes and a reacting
 cell's own local rules all run over one four-colour chunk grid: four
-passes, one colour each, chunk rows divided between the cores.
-`finalize_settling()` splits by block row instead. Impulses, liquid
+passes, one colour each, chunk rows divided between the cores. A
+caller-owned bitmap, one bit per cell (`sand_enable_step_stamps()`), marks
+a grain that crossed into another chunk so a later colour's pass does not
+move it again. `finalize_settling()` splits by block row instead. Impulses, liquid
 density sorting and a reaction's long-reach triggers stay serial.
 Splitting cost the project its byte-for-byte determinism guarantee - a
 two-core step and the serial path no longer produce the same board for the

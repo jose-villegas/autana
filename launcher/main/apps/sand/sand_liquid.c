@@ -167,6 +167,7 @@ equalise_one_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* below_ro
 
     const bool was_empty = pour_into(&s->cells[(size_t)ty * (size_t)w + (size_t)tx], id, give);
     row[x] = (mass - give > 0) ? CELL_MAKE(id, mass - give) : CELL_EMPTY;
+    sand_stamp_crossing(s, x, y, tx, ty);
     if (was_empty) {
         mark_depth_band(s, tx, ty);
     }
@@ -205,6 +206,12 @@ equalise_one_row_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* ax_r
     const uint8_t id = CELL_MATERIAL(c);
     if (((is_liquid >> id) & 1u) == 0) {
         return false;
+    }
+    /* Mass that arrived from another chunk this pass is not forwarded, and a
+     * cell holds no record of which of its mass arrived: the whole cell
+     * waits. */
+    if (sand_cell_stamped(s, x, y)) {
+        return true;
     }
     /* DERIVED HERE, NOT CARRIED IN, and derived only once the cell is known to
      * be liquid - which ~30% of examined cells are. Walked incrementally by the
@@ -513,6 +520,7 @@ merge_liquid_worker(sand_t* s, const liquid_chunk_t* worker) {
         }
     }
     s->faller_may_move |= worker->local.faller_may_move;
+    s->stamped |= worker->local.stamped;
     sand_liquid_moves += worker->work.moves;
     sand_liquid_crossflow_probes += worker->work.probes;
 }
@@ -594,9 +602,11 @@ equalise_liquid_chunks(sand_t* s, const xflow_t* flow, int sight, int dx, int dy
     }
 
     liquid_pass_t ctx = {NULL, flow, dx, dy, sight, 0, 0, is_liquid};
+    sand_stamps_arm(s);
     for (int color = 0; color < SAND_CHUNK_COLOR_COUNT; color++) {
         run_liquid_color(s, workers, &ctx, found_any, color);
     }
+    sand_stamps_disarm(s);
 
     free(workers);
     return true;

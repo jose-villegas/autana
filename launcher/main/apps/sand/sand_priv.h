@@ -105,6 +105,53 @@ sand_chunk_split_ready(const sand_t* s) {
     return sand_chunk_rows(s) >= SAND_CHUNK_SPLIT_MIN_ROWS;
 }
 
+/* Whole bytes per row: two workers never share a grid row, so they never
+ * share a stamp byte either. */
+static inline size_t
+sand_stamp_stride(int w) {
+    return ((size_t)w + 7) / 8;
+}
+
+static inline bool
+sand_cell_stamped(const sand_t* s, int x, int y) {
+    const uint8_t* const live = s->stamps_live;
+    return live != NULL && ((live[(size_t)y * sand_stamp_stride(s->w) + ((unsigned)x >> 3)] >> (x & 7)) & 1u) != 0;
+}
+
+/* Only a move that leaves its chunk: inside one, the pass's own sweep order
+ * keeps a grain to one move exactly as serial does. Only the mover, at its
+ * destination - a cell it displaced may still take its own move. */
+static inline void
+sand_stamp_crossing(sand_t* s, int x0, int y0, int x1, int y1) {
+    uint8_t* const live = s->stamps_live;
+    if (live == NULL) {
+        return;
+    }
+    const int side = s->stamp_side;
+    if (x0 / side == x1 / side && y0 / side == y1 / side) {
+        return;
+    }
+    live[(size_t)y1 * sand_stamp_stride(s->w) + ((unsigned)x1 >> 3)] |= (uint8_t)(1u << (x1 & 7));
+    s->stamped = true;
+}
+
+/* Bracket one chunk-parallel pass. Stamps are per pass, not per step: serial
+ * lets the next pass move a cell this one already moved. */
+static inline void
+sand_stamps_arm(sand_t* s) {
+    s->stamps_live = s->step_stamps;
+    s->stamp_side = sand_chunk_side(s);
+}
+
+static inline void
+sand_stamps_disarm(sand_t* s) {
+    if (s->stamped) {
+        memset(s->step_stamps, 0, sand_step_stamp_bytes(s->w, s->h));
+        s->stamped = false;
+    }
+    s->stamps_live = NULL;
+}
+
 /* One constant per rng draw site inside a chunk-parallel pass -
  * see sand_rng_next_at() below. A fixed slot per site, not a per-cell
  * counter, is what keeps a draw thread-safe with no shared mutable state:
@@ -942,13 +989,16 @@ soil_set_moisture(cell_t c, uint8_t new_moisture, uint8_t nearby_moisture) {
 /* Source and destination column marked separately, with no block-wake: the
  * main sweep's own moved_here bookkeeping (sand.c) already keeps
  * BLOCK_ACTIVE current for every cell it walks, so waking here would pay
- * the 3x3 clear a second time for cells the sweep was already visiting. */
+ * the 3x3 clear a second time for cells the sweep was already visiting.
+ * Every sweep and gas-walk move reports here, which makes it the one place
+ * a chunk crossing is seen. */
 static inline void
 mark_slide(sand_t* s, int x0, int y0, int x1, int y1) {
     s->faller_may_move = true;
     mark_row_span(s, y0, x0, x0);
     if (y1 != y0 || x1 != x0) {
         mark_row_span(s, y1, x1, x1);
+        sand_stamp_crossing(s, x0, y0, x1, y1);
     }
 }
 

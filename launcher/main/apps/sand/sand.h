@@ -17,6 +17,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "build_variant.h"
@@ -180,6 +181,14 @@ typedef struct sand_s {
     uint8_t* block_state;
     int block_cols, block_rows; /* set once, by sand_init() */
 
+    /* Caller-owned, see sand_enable_step_stamps(). stamps_live is the same
+     * buffer only while a chunk-parallel pass runs, and NULL otherwise, so a
+     * serial pass never reads or writes a bit. */
+    uint8_t* step_stamps;
+    uint8_t* stamps_live;
+    int stamp_side;
+    bool stamped; /* a bit is set, so the pass must clear before it ends */
+
     /* Caller-owned `impulse_max` entries: grains in flight from
      * sand_impulse(). NULL disables the mechanic. `impulse_count` tracks live
      * entries in `impulse_buf`, always <= `impulse_max`. */
@@ -283,6 +292,13 @@ void sand_track_dirty_cols(sand_t* s, uint16_t* x0, uint16_t* x1);
  * NULL disables sleeping. A shake, a gravity change, or sand landing in a
  * block wakes it. */
 void sand_enable_sleeping(sand_t* s, uint8_t* blocks);
+
+/* sand_step_stamp_bytes(w, h) bytes, one bit per cell, caller-owned. A
+ * two-core step runs its chunks in four passes; a grain crossing into a
+ * chunk whose pass is still to come is marked so that pass leaves it. NULL
+ * disables it, and such a grain may then move twice. */
+void sand_enable_step_stamps(sand_t* s, uint8_t* bits);
+size_t sand_step_stamp_bytes(int w, int h);
 
 /* Diagnostic: whether block (bx, by) is settled under dithered direction. Bit
  * layout private to sand.c/sand_priv.h. Used by app_sand.c's count_awake().
