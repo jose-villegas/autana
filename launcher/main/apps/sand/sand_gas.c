@@ -41,8 +41,6 @@
  * immortal, same as any other material with decay unset.
  */
 
-#include <stdlib.h>
-
 #include "sand_priv.h"
 
 /* Which materials are gas, as a bitmask over the nibble - see
@@ -404,20 +402,26 @@ step_one_gas_row(sand_t* s, int y, int x0, int x1, int w, int rdx, int rdy, cons
     return any;
 }
 
+/* driven_by_gravity()'s table for this pass, built against the REVERSED
+ * gravity vector - see sand_step_gas(). File-static so a core-1 half that
+ * misses its join is not reading a frame that has returned, and because the
+ * pass never nests. MATERIAL_MAX, not MATERIAL_ROWS: only KIND_GAS cells
+ * read it, and no gas material lives in MAT_EXTENDED's twin-row range. */
+static bool gas_driven[MATERIAL_MAX][2];
+
+/* Which lane a worker runs in, beside the one flag it accumulates: the job
+ * context is copied, so a worker's own output cannot live in it. */
 typedef struct {
-    sand_t local;
-    uint8_t* blocks;
-    uint8_t* dirty;
-    uint16_t* x0;
-    uint16_t* x1;
+    sand_lane_t* lane;
     bool found_any;
-} gas_chunk_t;
+} gas_worker_t;
+
+static gas_worker_t gas_workers[SAND_LANE_COUNT];
 
 typedef struct {
-    gas_chunk_t* worker;
-    const int* rslide_a;
-    const int* rslide_b;
-    bool (*driven_gas)[2];
+    gas_worker_t* worker;
+    int rslide_a[2];
+    int rslide_b[2];
     int rdx, rdy, rx_step, rload_dx, rload_dy, jostle;
     int y_step, color, share;
 } gas_pass_t;
@@ -433,67 +437,27 @@ sand_gas_set_worker_order_for_test(bool reverse) {
 }
 
 static void
-prepare_gas_worker(gas_chunk_t* worker, const sand_t* s) {
-    worker->local = *s;
-    worker->local.rng_hashed = true;
+prepare_gas_worker(gas_worker_t* worker, sand_lane_t* lane, const sand_t* s) {
+    worker->lane = lane;
     worker->found_any = false;
-    if (s->block_state != NULL) {
-        worker->local.block_state = worker->blocks;
-        memcpy(worker->blocks, s->block_state, (size_t)s->block_cols * (size_t)s->block_rows);
-    }
-    if (s->dirty_rows != NULL) {
-        worker->local.dirty_rows = worker->dirty;
-        memcpy(worker->dirty, s->dirty_rows, (size_t)s->h);
-    }
-    if (s->dirty_x0 != NULL && s->dirty_x1 != NULL) {
-        worker->local.dirty_x0 = worker->x0;
-        worker->local.dirty_x1 = worker->x1;
-        memcpy(worker->x0, s->dirty_x0, sizeof *worker->x0 * (size_t)s->h);
-        memcpy(worker->x1, s->dirty_x1, sizeof *worker->x1 * (size_t)s->h);
-    }
-}
-
-static void
-merge_gas_worker(sand_t* s, const gas_chunk_t* worker) {
-    if (s->block_state != NULL) {
-        for (int i = 0; i < s->block_cols * s->block_rows; i++) {
-            const uint8_t local = worker->blocks[i];
-            s->block_state[i] &= (uint8_t)(local | ~(BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER));
-            s->block_state[i] |= local & BLOCK_ACTIVE;
-        }
-    }
-    for (int y = 0; y < s->h; y++) {
-        if (s->dirty_rows != NULL) {
-            s->dirty_rows[y] |= worker->dirty[y];
-        }
-        if (s->dirty_x0 != NULL && s->dirty_x1 != NULL) {
-            if (worker->x0[y] < s->dirty_x0[y]) {
-                s->dirty_x0[y] = worker->x0[y];
-            }
-            if (worker->x1[y] > s->dirty_x1[y]) {
-                s->dirty_x1[y] = worker->x1[y];
-            }
-        }
-    }
-    s->faller_may_move |= worker->local.faller_may_move;
-    s->stamped |= worker->local.stamped;
+    sand_lane_prepare(lane, s);
 }
 
 static void
 step_one_gas_chunk(const gas_pass_t* c, int x0, int x1, int y0, int y1) {
-    gas_chunk_t* const worker = c->worker;
-    sand_t* const s = &worker->local;
+    gas_worker_t* const worker = c->worker;
+    sand_t* const s = &worker->lane->local;
 
     for (int y = c->y_step > 0 ? y0 : y1 - 1; y >= y0 && y < y1; y += c->y_step) {
         worker->found_any |= step_one_gas_row(s, y, x0, x1, s->w, c->rdx, c->rdy, c->rslide_a, c->rslide_b, c->rx_step,
-                                              c->rload_dx, c->rload_dy, c->jostle, c->driven_gas);
+                                              c->rload_dx, c->rload_dy, c->jostle, gas_driven);
     }
 }
 
 static void
 gas_pass_worker(void* arg) {
     const gas_pass_t* c = arg;
-    const sand_t* const s = &c->worker->local;
+    const sand_t* const s = &c->worker->lane->local;
     const int side = sand_chunk_side(s);
 
     for (int cy = 0; cy < sand_chunk_rows(s); cy++) {
@@ -515,60 +479,40 @@ gas_pass_worker(void* arg) {
 /* One worker per share, dispatched in whichever order the test asks for -
  * the result must not depend on which core reaches a chunk first. */
 static void
-run_gas_color(sand_t* s, gas_chunk_t* workers, gas_pass_t* ctx, bool* found_any, int color) {
-    for (int i = 0; i < 2; i++) {
-        prepare_gas_worker(&workers[i], s);
+run_gas_color(sand_t* s, sand_lane_t* lanes, gas_pass_t* ctx, bool* found_any, int color) {
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        prepare_gas_worker(&gas_workers[i], &lanes[i], s);
     }
     ctx->color = color;
     const int remote = gas_worker_order_reversed ? 0 : 1;
-    ctx->worker = &workers[1];
+    ctx->worker = &gas_workers[1];
     ctx->share = remote;
     (void)job_run_core1(gas_pass_worker, ctx, sizeof *ctx);
-    ctx->worker = &workers[0];
+    ctx->worker = &gas_workers[0];
     ctx->share = 1 - remote;
     gas_pass_worker(ctx);
     (void)job_wait(100);
 
-    for (int i = 0; i < 2; i++) {
-        merge_gas_worker(s, &workers[i]);
-        *found_any |= workers[i].found_any;
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        sand_lane_merge(s, gas_workers[i].lane);
+        *found_any |= gas_workers[i].found_any;
     }
-}
-
-static gas_chunk_t*
-alloc_gas_workers(const sand_t* s) {
-    const size_t rows = (size_t)s->h;
-    const size_t blocks = (size_t)s->block_cols * (size_t)s->block_rows;
-    gas_chunk_t* workers = calloc(1, 2 * sizeof *workers + 8 * rows + 2 * blocks + 2 * rows);
-    if (workers == NULL) {
-        return NULL;
-    }
-    uint16_t* spans = (uint16_t*)(workers + 2);
-    uint8_t* bytes = (uint8_t*)(spans + 4 * rows);
-    for (int i = 0; i < 2; i++) {
-        workers[i].x0 = spans + (size_t)(2 * i) * rows;
-        workers[i].x1 = workers[i].x0 + rows;
-        workers[i].blocks = bytes + (size_t)i * (blocks + rows);
-        workers[i].dirty = workers[i].blocks + blocks;
-    }
-    return workers;
 }
 
 static bool
 step_gas_chunks(sand_t* s, gas_pass_t* ctx, bool* found_any) {
-    gas_chunk_t* workers = alloc_gas_workers(s);
-    if (workers == NULL) {
+    sand_lane_t* const lanes = sand_lanes(s);
+    if (lanes == NULL) {
         return false;
     }
 
     gas_row_map_live = false;
     sand_stamps_arm(s);
     for (int color = 0; color < SAND_CHUNK_COLOR_COUNT; color++) {
-        run_gas_color(s, workers, ctx, found_any, color);
+        run_gas_color(s, lanes, ctx, found_any, color);
     }
     sand_stamps_disarm(s);
 
-    free(workers);
     return true;
 }
 
@@ -908,7 +852,7 @@ equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, 
 }
 
 typedef struct {
-    gas_chunk_t* worker;
+    gas_worker_t* worker;
     int px, py, rdx, rdy, x_step, color, share;
     uint16_t is_gas;
 } gas_equalise_pass_t;
@@ -920,8 +864,8 @@ _Static_assert(sizeof(gas_equalise_pass_t) <= JOB_CTX_MAX, "gas equalise pass mu
  * chunk columns of the same chunk row, which one worker owns in full. */
 static void
 equalise_gas_one_chunk(const gas_equalise_pass_t* c, int x0, int x1, int y0, int y1) {
-    gas_chunk_t* const worker = c->worker;
-    sand_t* const s = &worker->local;
+    gas_worker_t* const worker = c->worker;
+    sand_t* const s = &worker->lane->local;
     const int x_from = (c->x_step > 0) ? x0 : x1 - 1;
     const int x_to = (c->x_step > 0) ? x1 : x0 - 1;
     int clean_run = 0;
@@ -935,7 +879,7 @@ equalise_gas_one_chunk(const gas_equalise_pass_t* c, int x0, int x1, int y0, int
 static void
 gas_equalise_pass_worker(void* arg) {
     const gas_equalise_pass_t* c = arg;
-    const sand_t* const s = &c->worker->local;
+    const sand_t* const s = &c->worker->lane->local;
     const int side = sand_chunk_side(s);
 
     for (int cy = 0; cy < sand_chunk_rows(s); cy++) {
@@ -955,41 +899,40 @@ gas_equalise_pass_worker(void* arg) {
 }
 
 static void
-run_gas_equalise_color(sand_t* s, gas_chunk_t* workers, gas_equalise_pass_t* ctx, bool* found_any, int color) {
-    for (int i = 0; i < 2; i++) {
-        prepare_gas_worker(&workers[i], s);
+run_gas_equalise_color(sand_t* s, sand_lane_t* lanes, gas_equalise_pass_t* ctx, bool* found_any, int color) {
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        prepare_gas_worker(&gas_workers[i], &lanes[i], s);
     }
     ctx->color = color;
-    ctx->worker = &workers[1];
+    ctx->worker = &gas_workers[1];
     ctx->share = 1;
     (void)job_run_core1(gas_equalise_pass_worker, ctx, sizeof *ctx);
-    ctx->worker = &workers[0];
+    ctx->worker = &gas_workers[0];
     ctx->share = 0;
     gas_equalise_pass_worker(ctx);
     (void)job_wait(100);
 
-    for (int i = 0; i < 2; i++) {
-        merge_gas_worker(s, &workers[i]);
-        *found_any |= workers[i].found_any;
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        sand_lane_merge(s, gas_workers[i].lane);
+        *found_any |= gas_workers[i].found_any;
     }
 }
 
 static bool
 equalise_gas_chunks(sand_t* s, int px, int py, int rdx, int rdy, int x_step, uint16_t is_gas, bool* found_any) {
-    gas_chunk_t* workers = alloc_gas_workers(s);
-    if (workers == NULL) {
+    sand_lane_t* const lanes = sand_lanes(s);
+    if (lanes == NULL) {
         return false;
     }
 
     gas_equalise_pass_t ctx = {NULL, px, py, rdx, rdy, x_step, 0, 0, is_gas};
     sand_stamps_arm(s);
     for (int color = 0; color < SAND_CHUNK_COLOR_COUNT; color++) {
-        run_gas_equalise_color(s, workers, &ctx, found_any, color);
+        run_gas_equalise_color(s, lanes, &ctx, found_any, color);
     }
     sand_stamps_disarm(s);
     sand_gas_equalise_runs++;
 
-    free(workers);
     return true;
 }
 
@@ -1122,15 +1065,11 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
      * gravity - feeding it gas's reversed slide vectors together with
      * the main sweep's forward (gx, gy) would make descent negative for
      * every gas slide, unconditionally, so they'd never fire. Built
-     * fresh here against the reversed vector instead. MATERIAL_MAX (16),
-     * not MATERIAL_ROWS (32): this is only ever built/read for KIND_GAS
-     * cells, and no gas material lives in MAT_EXTENDED's twin-row
-     * range. */
-    bool driven_gas[MATERIAL_MAX][2];
+     * fresh here against the reversed vector instead. */
     for (int m = 0; m < MATERIAL_MAX; m++) {
         const int repose = material_by_id((material_id_t)m)->repose;
-        driven_gas[m][0] = driven_by_gravity(sweep_slide_a[0], sweep_slide_a[1], -gx, -gy, repose);
-        driven_gas[m][1] = driven_by_gravity(sweep_slide_b[0], sweep_slide_b[1], -gx, -gy, repose);
+        gas_driven[m][0] = driven_by_gravity(sweep_slide_a[0], sweep_slide_a[1], -gx, -gy, repose);
+        gas_driven[m][1] = driven_by_gravity(sweep_slide_b[0], sweep_slide_b[1], -gx, -gy, repose);
     }
 
     bool found_any = false;
@@ -1139,9 +1078,8 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     memset(gas_row_map.w, 0, sizeof gas_row_map.w);
 
     gas_pass_t pass = {
-        .rslide_a = sweep_slide_a,
-        .rslide_b = sweep_slide_b,
-        .driven_gas = driven_gas,
+        .rslide_a = {sweep_slide_a[0], sweep_slide_a[1]},
+        .rslide_b = {sweep_slide_b[0], sweep_slide_b[1]},
         .rdx = rdx,
         .rdy = rdy,
         .rx_step = rx_step,
@@ -1154,7 +1092,7 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
         || !step_gas_chunks(s, &pass, &found_any)) {
         for (int y = y_from; y != y_to; y += y_step) {
             if (step_one_gas_row(s, y, 0, w, w, rdx, rdy, sweep_slide_a, sweep_slide_b, rx_step, rload_dx, rload_dy,
-                                 jostle, driven_gas)) {
+                                 jostle, gas_driven)) {
                 found_any = true;
             }
         }

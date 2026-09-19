@@ -207,3 +207,8 @@ typedef struct {
 
 two_core_scope_t two_core_scope_begin(bool two_core);
 void two_core_scope_end(two_core_scope_t scope);
+
+/* Arms `g` with lane scratch big enough for its own grid and hands the
+ * block back for the caller to free. A two-core test without it measures
+ * the serial path - see sand_enable_lane_scratch(). */
+void* lane_scratch_open(sand_t* g);

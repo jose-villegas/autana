@@ -11,6 +11,10 @@
 
 #include "util/job.h"
 
+#ifdef HOST_HEAP_ARENA
+#include "heap_arena.h"
+#endif
+
 #ifdef DEVICE_BUILD
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -206,6 +210,7 @@ tc_run_and_hash(uint32_t seed, int steps, bool two_core) {
     sand_t s;
     tc_build_scattered_scene(&s, cells, seed);
     sand_enable_sleeping(&s, blocks);
+    void* scratch = lane_scratch_open(&s);
 
     static const int gx[] = {0, 0, 1000, -1000, 700};
     static const int gy[] = {1000, -1000, 700, 700, -700};
@@ -220,6 +225,7 @@ tc_run_and_hash(uint32_t seed, int steps, bool two_core) {
     uint32_t h = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
     h ^= tc_hash(blocks, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS) * 0x9E3779B1u;
 
+    free(scratch);
     free(cells);
     free(blocks);
     return h;
@@ -237,6 +243,7 @@ tc_run_quality_and_hash(int w, int h, uint32_t seed, bool two_core) {
     sand_t s;
     sand_init(&s, cells, w, h, seed);
     sand_enable_sleeping(&s, blocks);
+    void* scratch = lane_scratch_open(&s);
 
     rng_t r;
     rng_seed(&r, seed ^ 0xA5A5A5A5u);
@@ -260,6 +267,7 @@ tc_run_quality_and_hash(int w, int h, uint32_t seed, bool two_core) {
 
     uint32_t result = tc_hash(cells, (size_t)w * (size_t)h);
     result ^= tc_hash(blocks, (size_t)block_cols * (size_t)block_rows) * 0x9E3779B1u;
+    free(scratch);
     free(cells);
     free(blocks);
     return result;
@@ -306,6 +314,7 @@ test_split_gas_walk_uses_hashed_rng(void) {
 
     sand_t s;
     sand_init(&s, cells, TC_W, TC_H, 91u);
+    void* scratch = lane_scratch_open(&s);
     sand_set_decay(&s, 0);
     for (int y = 1; y < TC_H - 1; y += 3) {
         for (int x = 1; x < TC_W - 1; x += 2) {
@@ -323,6 +332,7 @@ test_split_gas_walk_uses_hashed_rng(void) {
     sand_set_two_core_step(false);
     const rng_t after = s.rng;
 
+    free(scratch);
     free(cells);
     TEST_ASSERT_EQUAL_MEMORY_MESSAGE(&before, &after, sizeof before,
                                      "split gas walk must leave the sequential RNG untouched");
@@ -335,6 +345,7 @@ tc_run_gas_walk_and_hash(uint32_t seed, bool reverse_workers) {
 
     sand_t s;
     sand_init(&s, cells, TC_W, TC_H, seed);
+    void* scratch = lane_scratch_open(&s);
     sand_set_decay(&s, 0);
     rng_t placement;
     rng_seed(&placement, seed ^ 0xA5A5A5A5u);
@@ -360,6 +371,7 @@ tc_run_gas_walk_and_hash(uint32_t seed, bool reverse_workers) {
     sand_gas_set_worker_order_for_test(false);
 
     const uint32_t hash = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
+    free(scratch);
     free(cells);
     return hash;
 }
@@ -428,6 +440,7 @@ test_two_core_step_does_not_leak_or_fabricate_mass(void) {
     sand_t s;
     tc_build_scattered_scene(&s, cells, 17u);
     sand_enable_sleeping(&s, blocks);
+    void* scratch = lane_scratch_open(&s);
 
     long before = 0;
     for (int i = 0; i < TC_W * TC_H; i++) {
@@ -449,6 +462,7 @@ test_two_core_step_does_not_leak_or_fabricate_mass(void) {
         }
     }
 
+    free(scratch);
     free(cells);
     free(blocks);
 
@@ -601,6 +615,7 @@ typedef struct {
     uint8_t* cells;
     uint8_t* blocks;
     uint8_t* stamps;
+    void* scratch;
 } tc_board_t;
 
 static tc_board_t*
@@ -618,6 +633,7 @@ tc_board_open(int w, int h, int phase) {
     sand_init(&b->s, b->cells, w, h, 1u);
     sand_enable_sleeping(&b->s, b->blocks);
     sand_enable_step_stamps(&b->s, b->stamps);
+    b->scratch = lane_scratch_open(&b->s);
     sand_set_scatter(&b->s, 0);
     tc_prime_phase(&b->s, phase);
     return b;
@@ -625,6 +641,7 @@ tc_board_open(int w, int h, int phase) {
 
 static void
 tc_board_close(tc_board_t* b) {
+    free(b->scratch);
     free(b->stamps);
     free(b->blocks);
     free(b->cells);
@@ -1221,6 +1238,7 @@ test_landscape_water_column_has_no_row_mass_lag(void) {
     sand_init(&split, split_cells, TC_W, TC_H, 7u);
     sand_enable_sleeping(&serial, serial_blocks);
     sand_enable_sleeping(&split, split_blocks);
+    void* scratch = lane_scratch_open(&split);
     for (int y = 0; y < TC_H / 2; y++) {
         for (int x = TC_W / 2 - 6; x < TC_W / 2 + 6; x++) {
             sand_set(&serial, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
@@ -1252,6 +1270,7 @@ test_landscape_water_column_has_no_row_mass_lag(void) {
     }
     sand_force_hashed_rng(false);
 
+    free(scratch);
     free(serial_cells);
     free(split_cells);
     free(serial_blocks);
@@ -1299,6 +1318,7 @@ test_split_gas_equalise_keeps_seam_order(void) {
         sand_t serial, split;
         sand_init(&serial, serial_cells, TC_W, TC_H, 1u);
         sand_init(&split, split_cells, TC_W, TC_H, 1u);
+        void* scratch = lane_scratch_open(&split);
         serial.step_phase = split.step_phase = (uint16_t)phase;
         const int boundary = tc_first_gas_equalise_boundary(&serial);
         TEST_ASSERT_TRUE(boundary < TC_H);
@@ -1311,6 +1331,7 @@ test_split_gas_equalise_keeps_seam_order(void) {
         char why[160];
         const bool cells_match = memcmp(serial_cells, split_cells, (size_t)TC_W * (size_t)TC_H) == 0;
         snprintf(why, sizeof why, "phase %d boundary %d: split gas equalise changed seam order", phase, boundary);
+        free(scratch);
         free(serial_cells);
         free(split_cells);
         TEST_ASSERT_TRUE_MESSAGE(cells_match, why);
@@ -1531,6 +1552,197 @@ test_reaction_split_actually_changes_the_draw_stream(void) {
                                   "not silently falling back to the sequential stream");
 }
 
+/* The fluid passes alone, never through sand_step(): the gravity sweep
+ * splits on its own terms and would drown out what this measures. */
+static uint32_t
+tc_run_fluids_and_hash(bool two_core, bool with_scratch) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    uint8_t* stamps = malloc(sand_step_stamp_bytes(TC_W, TC_H));
+    void* scratch = malloc(sand_lane_scratch_bytes(TC_W, TC_H));
+    TEST_ASSERT_NOT_NULL(cells);
+    TEST_ASSERT_NOT_NULL(blocks);
+    TEST_ASSERT_NOT_NULL(stamps);
+    TEST_ASSERT_NOT_NULL(scratch);
+
+    sand_t s;
+    sand_init(&s, cells, TC_W, TC_H, 5u);
+    sand_enable_sleeping(&s, blocks);
+    sand_enable_step_stamps(&s, stamps);
+    sand_enable_lane_scratch(&s, with_scratch ? scratch : NULL);
+    sand_set_decay(&s, 0);
+
+    for (int y = 1; y < TC_H - 1; y++) {
+        for (int x = 1; x < TC_W - 1; x++) {
+            if ((x * 7 + y * 13) % 5 == 0) {
+                sand_set(&s, x, y, CELL_MAKE(MAT_WATER, 1 + (x + y) % 15));
+            } else if ((x * 3 + y * 5) % 11 == 0) {
+                sand_set(&s, x, y, GAS);
+            }
+        }
+    }
+    memset(blocks, BLOCK_HAS_LIQUID, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+
+    static const int slide_a[] = {-1, 1};
+    static const int slide_b[] = {1, 1};
+    static const int perp_a[] = {1, 0};
+    static const int perp_b[] = {-1, 0};
+    const xflow_t flow = {.ax = {1, 0}, .dg = {1, 0}};
+
+    sand_set_two_core_step(two_core);
+    for (int step = 0; step < 12; step++) {
+        s.step_phase = (uint16_t)step;
+        sand_step_liquids(&s, &flow, 0, 1);
+        sand_step_gas(&s, 0, 1000, 0, 1, slide_a, slide_b, perp_a, perp_b, 0, 1, 1, 0);
+    }
+    sand_set_two_core_step(false);
+
+    uint32_t h = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
+    h ^= tc_hash(blocks, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS) * 0x9E3779B1u;
+
+    free(scratch);
+    free(stamps);
+    free(blocks);
+    free(cells);
+    return h;
+}
+
+static void
+test_a_board_without_lane_scratch_steps_its_fluids_serially(void) {
+    const uint32_t serial = tc_run_fluids_and_hash(false, false);
+    const uint32_t unscratched = tc_run_fluids_and_hash(true, false);
+    const uint32_t split = tc_run_fluids_and_hash(true, true);
+
+    TEST_ASSERT_EQUAL_HEX32_MESSAGE(serial, unscratched,
+                                    "two-core stepping without lane scratch must land on the serial board - "
+                                    "there is nowhere for a lane's private bookkeeping to go");
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(serial, split,
+                                  "the same scene WITH lane scratch hashed the same as serial, so it never "
+                                  "split and the comparison above proves nothing");
+}
+
+/* A lane writes its flags into a private copy, so the merge is the only
+ * route back to the board. Every flag the board carries has to take it. */
+static void
+test_a_lane_merge_carries_every_content_flag_back(void) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(cells);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t s;
+    sand_init(&s, cells, TC_W, TC_H, 3u);
+    sand_enable_sleeping(&s, blocks);
+    void* scratch = lane_scratch_open(&s);
+    clear_content_flags(&s);
+    s.may_have_materials = 0;
+    s.faller_may_move = false;
+    blocks[0] = 0;
+
+    sand_lane_t* const lanes = sand_lanes(&s);
+    TEST_ASSERT_NOT_NULL(lanes);
+    sand_lane_prepare(&lanes[0], &s);
+
+    sand_t* const lane = &lanes[0].local;
+    lane->may_have_liquid = true;
+    lane->may_have_gas = true;
+    lane->may_have_burning = true;
+    lane->may_have_dissolver = true;
+    lane->may_have_temperature = true;
+    lane->may_have_moisture = true;
+    lane->may_have_faller = true;
+    lane->may_have_heat_holder = true;
+    lane->may_have_condenser = true;
+    lane->may_have_viscous_liquid = true;
+    lane->may_have_materials = (uint16_t)(1u << MAT_WATER);
+    lane->faller_may_move = true;
+    lanes[0].blocks[0] |= (uint8_t)(BLOCK_HAS_LIQUID | BLOCK_HAS_MOISTURE);
+
+    sand_lane_merge(&s, &lanes[0]);
+
+    const sand_t merged = s;
+    const uint8_t block = blocks[0];
+    free(scratch);
+    free(blocks);
+    free(cells);
+
+    TEST_ASSERT_TRUE_MESSAGE(merged.may_have_liquid, "may_have_liquid must survive the merge");
+    TEST_ASSERT_TRUE_MESSAGE(merged.may_have_gas, "may_have_gas must survive the merge");
+    TEST_ASSERT_TRUE_MESSAGE(merged.may_have_burning, "may_have_burning must survive the merge");
+    TEST_ASSERT_TRUE_MESSAGE(merged.may_have_dissolver, "may_have_dissolver must survive the merge");
+    TEST_ASSERT_TRUE_MESSAGE(merged.may_have_temperature, "may_have_temperature must survive the merge");
+    TEST_ASSERT_TRUE_MESSAGE(merged.may_have_moisture, "may_have_moisture must survive the merge");
+    TEST_ASSERT_TRUE_MESSAGE(merged.may_have_faller, "may_have_faller must survive the merge");
+    TEST_ASSERT_TRUE_MESSAGE(merged.may_have_heat_holder, "may_have_heat_holder must survive the merge");
+    TEST_ASSERT_TRUE_MESSAGE(merged.may_have_condenser, "may_have_condenser must survive the merge");
+    TEST_ASSERT_TRUE_MESSAGE(merged.may_have_viscous_liquid, "may_have_viscous_liquid must survive the merge");
+    TEST_ASSERT_TRUE_MESSAGE(merged.faller_may_move, "faller_may_move must survive the merge");
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE((uint16_t)(1u << MAT_WATER), merged.may_have_materials,
+                                    "may_have_materials must survive the merge");
+    TEST_ASSERT_EQUAL_HEX8_MESSAGE((uint8_t)(BLOCK_HAS_LIQUID | BLOCK_HAS_MOISTURE),
+                                   (uint8_t)(block & (BLOCK_HAS_LIQUID | BLOCK_HAS_MOISTURE)),
+                                   "a block's liquid and moisture bits must survive the merge");
+}
+
+#ifdef HOST_HEAP_ARENA
+/* A frame has no budget for an allocation, and a core-1 half that misses
+ * its join must not be writing into a block the caller has already given
+ * back. Both are the same requirement: the passes allocate nothing. */
+static void
+test_a_split_fluid_step_allocates_nothing(void) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    uint8_t* stamps = malloc(sand_step_stamp_bytes(TC_W, TC_H));
+    TEST_ASSERT_NOT_NULL(cells);
+    TEST_ASSERT_NOT_NULL(blocks);
+    TEST_ASSERT_NOT_NULL(stamps);
+
+    sand_t s;
+    sand_init(&s, cells, TC_W, TC_H, 11u);
+    sand_enable_sleeping(&s, blocks);
+    sand_enable_step_stamps(&s, stamps);
+    void* scratch = lane_scratch_open(&s);
+    sand_set_decay(&s, 0);
+    for (int y = 1; y < TC_H - 1; y++) {
+        for (int x = 1; x < TC_W - 1; x++) {
+            if ((x + y) % 3 == 0) {
+                sand_set(&s, x, y, CELL_MAKE(MAT_WATER, 1 + (x * 5 + y) % 15));
+            } else if ((x + y) % 7 == 0) {
+                sand_set(&s, x, y, GAS);
+            }
+        }
+    }
+    memset(blocks, BLOCK_HAS_LIQUID, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+
+    static const int slide_a[] = {-1, 1};
+    static const int slide_b[] = {1, 1};
+    static const int perp_a[] = {1, 0};
+    static const int perp_b[] = {-1, 0};
+    const xflow_t flow = {.ax = {1, 0}, .dg = {1, 0}};
+
+    size_t outstanding = 0;
+    heap_arena_snapshot(NULL, &outstanding);
+    heap_arena_reset_peak();
+
+    sand_set_two_core_step(true);
+    sand_step_liquids(&s, &flow, 0, 1);
+    sand_step_gas(&s, 0, 1000, 0, 1, slide_a, slide_b, perp_a, perp_b, 0, 1, 1, 0);
+    sand_set_two_core_step(false);
+
+    const size_t peak = heap_arena_peak_bytes();
+
+    free(scratch);
+    free(stamps);
+    free(blocks);
+    free(cells);
+
+    char why[160];
+    snprintf(why, sizeof why, "a split liquid and gas step took the heap from %u to %u bytes", (unsigned)outstanding,
+             (unsigned)peak);
+    TEST_ASSERT_EQUAL_UINT_MESSAGE((unsigned)outstanding, (unsigned)peak, why);
+}
+#endif /* HOST_HEAP_ARENA */
+
 void
 run_sand_two_core_suite(void) {
     RUN_TEST(test_chunk_colours_separate_every_touching_chunk);
@@ -1557,6 +1769,11 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_landscape_water_column_has_no_row_mass_lag);
     RUN_TEST(test_split_gas_equalise_keeps_seam_order);
     RUN_TEST(test_split_gas_equalise_hops_once_across_a_chunk_column);
+    RUN_TEST(test_a_board_without_lane_scratch_steps_its_fluids_serially);
+    RUN_TEST(test_a_lane_merge_carries_every_content_flag_back);
+#ifdef HOST_HEAP_ARENA
+    RUN_TEST(test_a_split_fluid_step_allocates_nothing);
+#endif
 #ifdef DEVICE_BUILD
     RUN_TEST(test_a_timed_out_job_falls_back_inline);
 #endif

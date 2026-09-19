@@ -271,6 +271,8 @@ static uint8_t* sleep_blocks;  /* BLOCK_COLS_MAX*BLOCK_ROWS_MAX bytes:
                                    * sand_enable_sleeping() */
 static uint8_t* step_stamps;   /* sized for the largest grid - see
                                    * sand_enable_step_stamps() */
+static void* lane_scratch;     /* sized for the largest grid - see
+                                   * sand_enable_lane_scratch() */
 static impulse_t* impulse_buf; /* APP_IMPULSE_MAX entries: grains in
                                    * flight from DETONATE - see
                                    * sand_enable_impulses(). */
@@ -516,8 +518,10 @@ sand_app_alloc_selfcheck(size_t* out_largest_free, bool* out_impulses_ok) {
     uint16_t* t_dcx1 = malloc(GRID_H_MAX * sizeof(uint16_t));
     impulse_t* t_imp = malloc((size_t)APP_IMPULSE_MAX * sizeof(impulse_t));
     uint8_t* t_stamps = malloc(sand_step_stamp_bytes(GRID_W_MAX, GRID_H_MAX));
+    void* t_lanes = malloc(sand_lane_scratch_bytes(GRID_W_MAX, GRID_H_MAX));
 
-    const bool essential_ok = (t_dirty && t_blocks && t_stamps && t_grid && t_x0 && t_x1 && t_n && t_dcx0 && t_dcx1);
+    const bool essential_ok =
+        (t_dirty && t_blocks && t_stamps && t_lanes && t_grid && t_x0 && t_x1 && t_n && t_dcx0 && t_dcx1);
     if (out_impulses_ok) {
         *out_impulses_ok = (t_imp != NULL);
     }
@@ -525,6 +529,7 @@ sand_app_alloc_selfcheck(size_t* out_largest_free, bool* out_impulses_ok) {
         *out_largest_free = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
     }
 
+    free(t_lanes);
     free(t_stamps);
     free(t_imp);
     free(t_dcx1);
@@ -547,6 +552,9 @@ alloc_grid_bookkeeping(void) {
     if (step_stamps == NULL) {
         step_stamps = malloc(sand_step_stamp_bytes(GRID_W_MAX, GRID_H_MAX));
     }
+    if (lane_scratch == NULL) {
+        lane_scratch = malloc(sand_lane_scratch_bytes(GRID_W_MAX, GRID_H_MAX));
+    }
     if (row_run_x0 == NULL) {
         row_run_x0 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*row_run_x0));
     }
@@ -562,8 +570,8 @@ alloc_grid_bookkeeping(void) {
     if (dirty_x1 == NULL) {
         dirty_x1 = malloc(GRID_H_MAX * sizeof(*dirty_x1));
     }
-    return step_stamps != NULL && row_run_x0 != NULL && row_run_x1 != NULL && row_run_n != NULL && dirty_x0 != NULL
-           && dirty_x1 != NULL;
+    return step_stamps != NULL && lane_scratch != NULL && row_run_x0 != NULL && row_run_x1 != NULL && row_run_n != NULL
+           && dirty_x0 != NULL && dirty_x1 != NULL;
 }
 
 static void
@@ -644,6 +652,7 @@ start_sim(void) {
 
     sand_enable_sleeping(&sim, sleep_blocks);
     sand_enable_step_stamps(&sim, step_stamps);
+    sand_enable_lane_scratch(&sim, lane_scratch);
 
     /* Enabled unconditionally, not just once BOOM is selected, so an
      * allocation failure shows up at start_sim() rather than on the first

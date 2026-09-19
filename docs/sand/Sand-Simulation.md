@@ -1307,15 +1307,20 @@ four passes, with no guards of its own. `SAND_CHUNK_SIDE_MIN` is
 `2 * SAND_LIQUID_SIGHT + 1` precisely so a chunk's interior clears the
 furthest a cell can read or transfer, which makes a reach out of a chunk land
 in an adjacent chunk - never in another chunk of the same colour. Boards with
-too few chunk rows to give both workers work, and scratch allocation
-failures, fall back to the serial order.
+too few chunk rows to give both workers work, and boards with no lane
+scratch, fall back to the serial order.
 
 A cell reads or transfers at most 8 cells away, but the bookkeeping around it
 reaches further: depth-repaint marks extend another 24 rows from a
 destination, and block wakes clear settled flags across a 3x3 neighbourhood.
 Those writes exceed a chunk, so each worker owns a private copy of the block
-flags, dirty spans, and its own movement and probe counters, merged back in
-at the join.
+flags and dirty spans, plus its own movement and probe counters, merged back
+in at the join.
+
+That private copy lives in caller-owned lane scratch, sized by
+`sand_lane_scratch_bytes()` and handed over once by
+`sand_enable_lane_scratch()`: a pass in the frame loop allocates nothing, and
+nothing a late core-1 half writes through can have been freed under it.
 
 The flow that crosses rows - gravity mostly sideways - splits like any
 other. A partition banded along one axis has no order that keeps source
@@ -1359,8 +1364,9 @@ every direction, so serial itself re-picks a grain that walks against its
 row order, and across a chunk seam the stamp does not.
 
 Block wakes and dirty spans reach beyond a chunk, so both workers write
-private copies and merge them after each pass. Boards with too few chunk rows
-for both workers, and scratch allocation failures, retain the serial walk.
+private copies in the same lane scratch the liquid pass uses and merge them
+after each pass. Boards with too few chunk rows for both workers, and boards
+with no lane scratch, retain the serial walk.
 
 ### Reaction chunks
 

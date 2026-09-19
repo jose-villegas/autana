@@ -207,6 +207,8 @@ measure(const lag_case_t* c) {
     sand_enable_sleeping(&split, blocks_split);
     sand_enable_sleeping(&serial, blocks_serial);
     sand_enable_step_stamps(&split, stamps_split);
+    void* scratch = malloc(sand_lane_scratch_bytes(LAG_W, LAG_H));
+    sand_enable_lane_scratch(&split, scratch);
     c->build(&split);
     c->build(&serial);
     /* Both arms draw through the hash, so the boards differ only by the order
@@ -233,6 +235,7 @@ measure(const lag_case_t* c) {
 
         keep_worst(&out, compare_step(&split, &serial), step);
     }
+    free(scratch);
     return out;
 }
 

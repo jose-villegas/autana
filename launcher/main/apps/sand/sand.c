@@ -176,6 +176,7 @@ sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
     s->stamps_live = NULL;
     s->stamp_side = 0;
     s->stamped = false;
+    s->lane_scratch = NULL;
     s->impulse_buf = NULL;
     s->impulse_max = 0;
     s->impulse_count = 0;
@@ -250,6 +251,120 @@ sand_enable_step_stamps(sand_t* s, uint8_t* bits) {
     if (bits != NULL) {
         memset(bits, 0, sand_step_stamp_bytes(s->w, s->h));
     }
+}
+
+size_t
+sand_lane_scratch_bytes(int w, int h) {
+    const size_t rows = (size_t)h;
+    const size_t blocks =
+        (size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H);
+
+    return SAND_LANE_COUNT * (2 * rows * sizeof(uint16_t) + blocks + rows);
+}
+
+void
+sand_enable_lane_scratch(sand_t* s, void* scratch) {
+    s->lane_scratch = scratch;
+}
+
+/* One pair for every board: the passes that use it never overlap, and a
+ * lane carries a whole sand_t, which is far too much to hand a job context
+ * or to leave on a frame core 1 can outlive. */
+static sand_lane_t sand_lane_pair[SAND_LANE_COUNT];
+
+sand_lane_t*
+sand_lanes(sand_t* s) {
+    if (s->lane_scratch == NULL) {
+        return NULL;
+    }
+    const size_t rows = (size_t)s->h;
+    const size_t blocks = (size_t)s->block_cols * (size_t)s->block_rows;
+    uint16_t* const spans = s->lane_scratch;
+    uint8_t* const bytes = (uint8_t*)(spans + (size_t)(2 * SAND_LANE_COUNT) * rows);
+
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        sand_lane_pair[i].x0 = spans + (size_t)(2 * i) * rows;
+        sand_lane_pair[i].x1 = sand_lane_pair[i].x0 + rows;
+        sand_lane_pair[i].blocks = bytes + (size_t)i * (blocks + rows);
+        sand_lane_pair[i].dirty = sand_lane_pair[i].blocks + blocks;
+    }
+    return sand_lane_pair;
+}
+
+void
+sand_lane_prepare(sand_lane_t* lane, const sand_t* s) {
+    lane->local = *s;
+    lane->local.rng_hashed = true;
+    if (s->block_state != NULL) {
+        lane->local.block_state = lane->blocks;
+        memcpy(lane->blocks, s->block_state, (size_t)s->block_cols * (size_t)s->block_rows);
+    }
+    if (s->dirty_rows != NULL) {
+        lane->local.dirty_rows = lane->dirty;
+        memcpy(lane->dirty, s->dirty_rows, (size_t)s->h);
+    }
+    if (s->dirty_x0 != NULL && s->dirty_x1 != NULL) {
+        lane->local.dirty_x0 = lane->x0;
+        lane->local.dirty_x1 = lane->x1;
+        memcpy(lane->x0, s->dirty_x0, sizeof *lane->x0 * (size_t)s->h);
+        memcpy(lane->x1, s->dirty_x1, sizeof *lane->x1 * (size_t)s->h);
+    }
+}
+
+static void
+merge_lane_content_flags(sand_t* s, const sand_t* lane) {
+    s->may_have_liquid |= lane->may_have_liquid;
+    s->may_have_gas |= lane->may_have_gas;
+    s->may_have_burning |= lane->may_have_burning;
+    s->may_have_dissolver |= lane->may_have_dissolver;
+    s->may_have_temperature |= lane->may_have_temperature;
+    s->may_have_moisture |= lane->may_have_moisture;
+    s->may_have_faller |= lane->may_have_faller;
+    s->may_have_heat_holder |= lane->may_have_heat_holder;
+    s->may_have_condenser |= lane->may_have_condenser;
+    s->may_have_viscous_liquid |= lane->may_have_viscous_liquid;
+    s->may_have_materials |= lane->may_have_materials;
+    s->faller_may_move |= lane->faller_may_move;
+    s->stamped |= lane->stamped;
+}
+
+/* A settled bit survives only where both agree; everything else a lane can
+ * write it only sets. */
+static void
+merge_lane_blocks(sand_t* s, const uint8_t* lane_blocks) {
+    for (int i = 0; i < s->block_cols * s->block_rows; i++) {
+        const uint8_t local = lane_blocks[i];
+        s->block_state[i] &= (uint8_t)(local | ~(BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER));
+        s->block_state[i] |= local & (BLOCK_ACTIVE | BLOCK_HAS_LIQUID | BLOCK_HAS_MOISTURE);
+    }
+}
+
+static void
+merge_lane_spans(sand_t* s, const uint16_t* x0, const uint16_t* x1) {
+    for (int y = 0; y < s->h; y++) {
+        if (x0[y] < s->dirty_x0[y]) {
+            s->dirty_x0[y] = x0[y];
+        }
+        if (x1[y] > s->dirty_x1[y]) {
+            s->dirty_x1[y] = x1[y];
+        }
+    }
+}
+
+void
+sand_lane_merge(sand_t* s, const sand_lane_t* lane) {
+    if (s->block_state != NULL) {
+        merge_lane_blocks(s, lane->blocks);
+    }
+    if (s->dirty_rows != NULL) {
+        for (int y = 0; y < s->h; y++) {
+            s->dirty_rows[y] |= lane->dirty[y];
+        }
+    }
+    if (s->dirty_x0 != NULL && s->dirty_x1 != NULL) {
+        merge_lane_spans(s, lane->x0, lane->x1);
+    }
+    merge_lane_content_flags(s, &lane->local);
 }
 
 bool
