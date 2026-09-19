@@ -111,7 +111,7 @@ over, for both:
   `check_stack_usage.py` fails the run on any function whose frame exceeds
   the profile's ceiling. This is a *static prediction*, not a reproduction:
   the host cannot overflow, so the gate reads the frame sizes the compiler
-  already computed for its own prologues. Seven frames already exceed the
+  already computed for its own prologues. Six host frames already exceed the
   ceiling and are listed as debt in the checker, so a new one still fails
   while the existing ones stay visible rather than silently blessed.
 - **A fixture that allocates more than the board has.** The suite's
@@ -147,6 +147,11 @@ to a gate.
 **These are approximations, and worth knowing where they end.** The stack
 gate checks test code only, one function at a time — it does not sum a call
 chain, so it bounds the worst single frame rather than the deepest path.
+Its frames are the host compiler's: the Xtensa frame is half the size at
+the median but up to 1.67x larger in the worst measured case, so
+`check_stack_usage_device.sh` — the same checker over the target
+compiler's own frames, no device needed — is what to run when a host frame
+nears the ceiling.
 The arena models one process's allocations from a clean start, so it cannot
 show fragmentation inherited from the rest of a real boot. Neither gate
 replaces a device capture. They make a whole class of bug cost a second on
@@ -436,6 +441,50 @@ serial port. Until a lock exists:
 - **A stuck flash can hold the port for tens of minutes.** If a capture or
   flash seems to hang, that is more likely another process still holding
   the port than a genuinely broken board.
+
+---
+
+## QEMU: the device image with no board
+
+Espressif's QEMU has an `esp32s3` machine, and the diagnostics image runs
+its suites under it — the real Xtensa binary, ESP-IDF, FreeRTOS and both
+cores, with no board and therefore no port to share. Any number of
+instances run at once.
+
+```sh
+python %IDF_PATH%\tools\idf_tools.py install qemu-xtensa   # once
+./launcher/test/run_qemu_tests.sh --perf-scope             # build + run
+./launcher/test/run_qemu_tests.sh --perf-scope --icount --no-build
+```
+
+The image is the autorun diagnostics build with `sdkconfig.defaults.qemu`
+layered last, in its own `build.qemu*/`. That fragment does three things.
+It drops the 120 MHz flash configuration, which QEMU's flash model cannot
+follow — such an image resets silently in the second-stage bootloader. It
+moves the console to UART0, the port QEMU exposes. And it sets
+`CONFIG_LAUNCHER_QEMU`: no panel, I/O expander or touch controller exists
+there, so board identification fails, and with that option `gfx.c` gives an
+unidentified board a null panel — a strip counts as sent the moment it is
+queued. The framebuffer, the present task and everything drawn through them
+then run as they do on the board. The same option makes the temperature
+read report failure, because ESP-IDF's driver waits forever on a sensor
+QEMU does not have.
+
+**What a run is evidence of.** Pass and fail, for any test that does not
+read a clock; the perf scope runs to `SELFTEST_COMPLETE` in about five
+minutes. Two kinds of failure are by construction: wall-clock budgets (none
+under `--icount`, where virtual time runs slow), and the performance-monitor
+test, since QEMU does not model the PMU and every counter reads zero. Any
+other failure deserves a look on the board. A run says nothing about the
+panel, touch, the IMU or timing.
+
+**`--icount` counts instructions, never time.** Virtual time then advances
+one nanosecond per executed instruction, so a `us per step` line times 1000
+is instructions per step. A step that runs on one core repeats exactly from
+run to run. A two-core step sums both cores and wanders by up to 1%, since
+the waiting core's spin is counted too. The count answers whether a change
+removed work; on this chip that does not predict whether it removed time
+(see [`notes/Optimization-Playbook.md`](notes/Optimization-Playbook.md)).
 
 ---
 

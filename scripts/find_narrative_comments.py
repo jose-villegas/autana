@@ -36,7 +36,7 @@ TOMBSTONE = re.compile(
     r"|\blives\s+in\s+`?[\w/{},]+\.(?:c|h)`?\s+now\b",
     re.I)
 
-SKIP = ("managed_components", "components", "build", "build.dev", "build.diag")
+SKIP = ("managed_components", "components", "build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf")
 
 
 def find(root, min_chars):
