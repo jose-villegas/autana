@@ -753,6 +753,7 @@ gfx/ui change can be checked without touching the sand suites at all.
 | input | `run_touch_fsm_suite`, `run_gesture_suite`, `run_button_fsm_suite`, `run_tilt_suite` | touch debounce FSM, swipe gestures, button FSM, the tilt filter |
 | boot/POST | `run_boot_anim_suite`, `run_boot_anim_perf_suite` | the small3dlib boot animation and its frame budget. POST itself (`boot/post.c`) has no suite — it runs every boot and is read from its own `POST_COMPLETE` line, not Unity |
 | render | `run_r3d_project_suite` | the camera-space near-plane clip and perspective projection boot and other 3D callers share |
+| render_lab | `run_wire_pipeline_suite`, `run_wire_primitives_suite` | the wireframe transform/near-clip/screen-clip pipeline and the baked plane/cube/sphere/capsule edge lists it draws |
 | cube | `run_cube_perf_suite`, `run_cube_band_perf_suite`, `run_small3dlib_scissor_suite` | the cube app's frame budget, band mode against the full framebuffer across orientations, the rasterizer's row scissor |
 | sand behaviour | 28 suites: `run_sand_*_suite` (25 of them) plus `run_row_runs_suite`, `run_palette_suite`, `run_brush_screen_suite` — see `launcher/main/apps/sand/suite_*.c` | materials, reactions, liquids, gas, dirt/roots, gunpowder, glass thermal, metal, the brush UI and palette picker, dirty-row reconciliation |
 | sand perf | `run_sand_perf_suite` | the 13 frame-budget scenes — see [`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md) |
