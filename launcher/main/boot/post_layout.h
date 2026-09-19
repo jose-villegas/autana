@@ -83,15 +83,15 @@ mu_Rect post_layout_line(const post_layout_t* l, int index);
  * post_layout_line() addresses, and the most a report can ever show. */
 int post_layout_capacity(const post_layout_t* l);
 
-/* The same room measured the way the pass actually spends it: pixels of
- * column, across every column. Air between checks comes out of this, and a
- * row number cannot express it. */
+/* The same room measured the way the pass spends it: pixels of column,
+ * across every column. The air between checks comes out of this, in widths
+ * no whole number of rows can express. */
 int post_layout_capacity_px(const post_layout_t* l);
 
 /* One pass down the columns, keeping its place as a PIXEL offset into the
- * column it is in - the air between checks is measured in pixels, so a row
- * index no longer addresses a line. The layout stays immutable; this is the
- * only thing that moves. */
+ * column it is in: the air between checks is measured in pixels, which no
+ * row index can address. The layout stays immutable; this is the only thing
+ * that moves. */
 typedef struct {
     int column;
     int y;
