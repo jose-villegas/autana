@@ -41,9 +41,13 @@
 #include "sand.h"
 #include "util/job.h"
 
-#define SAND_STRIPE_SPLIT_MIN_COUNT 4
-#define SAND_STRIPE_H_MIN           (2 * SAND_LIQUID_SIGHT + 1)
-#define SAND_STRIPE_H_MAX           SAND_BLOCK_H
+#define SAND_STRIPE_SPLIT_MIN_COUNT     4
+#define SAND_STRIPE_H_MIN               (2 * SAND_LIQUID_SIGHT + 1)
+#define SAND_STRIPE_H_MAX               SAND_BLOCK_H
+
+#define SAND_CHUNK_TARGET_CELLS_DIVISOR 10
+#define SAND_CHUNK_SIDE_MIN             (2 * SAND_LIQUID_SIGHT + 1)
+#define SAND_CHUNK_COLOR_COUNT          (2 * 2)
 
 _Static_assert(SAND_STRIPE_H_MIN > 3, "sweep stripes need an interior beyond two guard rows");
 _Static_assert(SAND_STRIPE_H_MIN > 2 * SAND_LIQUID_SIGHT, "liquid stripes need an interior beyond both guards");
@@ -64,6 +68,35 @@ static inline int
 sand_stripe_count(const sand_t* s) {
     const int height = sand_stripe_height(s->h);
     return (s->h + height - 1) / height;
+}
+
+static inline int
+sand_chunk_side(const sand_t* s) {
+    const int cells_per_chunk = (s->w * s->h) / SAND_CHUNK_TARGET_CELLS_DIVISOR;
+    int side = 1;
+
+    while (side <= cells_per_chunk / side) {
+        side++;
+    }
+    side--;
+    return side < SAND_CHUNK_SIDE_MIN ? SAND_CHUNK_SIDE_MIN : side;
+}
+
+static inline int
+sand_chunk_cols(const sand_t* s) {
+    const int side = sand_chunk_side(s);
+    return (s->w + side - 1) / side;
+}
+
+static inline int
+sand_chunk_rows(const sand_t* s) {
+    const int side = sand_chunk_side(s);
+    return (s->h + side - 1) / side;
+}
+
+static inline int
+sand_chunk_color(int chunk_x, int chunk_y) {
+    return ((chunk_y & 1) << 1) | (chunk_x & 1);
 }
 
 /* One constant per rng draw site inside a checkerboard-parallel pass -
