@@ -57,6 +57,10 @@ device_report_run() {
             return 1
         fi
     done
+    if ! command -v report_generate > /dev/null 2>&1; then
+        echo "ERROR: report_generate() was never declared - see tools/device_report.sh" >&2
+        return 1
+    fi
 
     _dr_restore=1
     while [ $# -gt 0 ]; do
