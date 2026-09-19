@@ -13,6 +13,12 @@ typedef void (*job_fn_t)(void* ctx);
  * ctx_size exceeded JOB_CTX_MAX and fn was not called. */
 bool job_run_core1(job_fn_t fn, const void* ctx, size_t ctx_size);
 
+/* Dispatches to core 1 or not at all: false means the caller must do the work
+ * itself. For a job that blocks on progress the caller makes, where
+ * job_run_core1()'s inline fallback would wait forever. Never true on a
+ * host. */
+bool job_try_core1(job_fn_t fn, const void* ctx, size_t ctx_size);
+
 /* Waits for the dispatched core-1 job. False retains it for a later wait;
  * later jobs run inline in the meantime. */
 bool job_wait(unsigned timeout_ms);
