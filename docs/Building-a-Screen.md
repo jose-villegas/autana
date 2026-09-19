@@ -239,6 +239,8 @@ fifth icon.
 - [`Building-an-App.md`](Building-an-App.md) - the app a screen lives in
 - [`Text-and-Fonts.md`](Text-and-Fonts.md) - fonts, scales, text styles
 - [`Launcher-Architecture.md`](Launcher-Architecture.md) - the mechanisms
-- [`Testing-Guide.md`](Testing-Guide.md) - suites, runners, build variants
+- [`Testing-Guide.md`](Testing-Guide.md) - suites and runners
+- [`Build-Variants.md`](Build-Variants.md) - what release, dev and
+  diagnostics builds carry
 - [`tools/Render-Harness.md`](tools/Render-Harness.md) - rendering a screen
   on a host, and diffing it against a capture
