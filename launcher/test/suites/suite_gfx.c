@@ -1380,6 +1380,87 @@ test_present_overlap_against_serial(void) {
                                           "overlapping update() with present cost noticeably more than serial");
 }
 
+/* --- readback ------------------------------------------------------------ */
+
+static gfx_color_t
+readback_row_colour(int y) {
+    return gfx_rgb(((uint32_t)(y * 37) & 0xFFu) << 16 | ((uint32_t)y & 0xFFu) << 8 | 0x40u);
+}
+
+/* One band-mode frame painting every panel row its own colour, except the
+ * band starting at `skip_row0`, which it skips (-1 skips none). */
+static void
+draw_readback_band_frame(int skip_row0) {
+    gfx_band_frame_begin();
+    while (gfx_band_next()) {
+        const int row0 = gfx_band_row0();
+        int x0, x1;
+        if (row0 == skip_row0 || !gfx_band_dirty(row0, row0 + gfx_band_height(), &x0, &x1)) {
+            gfx_band_skip();
+            continue;
+        }
+        gfx_color_t* buf = gfx_band_buffer();
+        for (int r = 0; r < gfx_band_height(); r++) {
+            for (int x = 0; x < GFX_WIDTH; x++) {
+                buf[r * GFX_WIDTH + x] = readback_row_colour(row0 + r);
+            }
+        }
+        gfx_band_submit();
+    }
+}
+
+static const gfx_mode_t*
+enter_rgb565_band_mode(void) {
+    const gfx_mode_request_t request = {.layout = GFX_LAYOUT_BANDS, .pixfmt = GFX_PIXFMT_RGB565};
+    return gfx_mode_enter(&request);
+}
+
+/* Band mode keeps nothing once a band is sent: the readback waits for one
+ * whole frame, then reads back every row where its band drew it. */
+static void
+test_band_mode_readback_is_the_frame_its_bands_drew(void) {
+    fixture();
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_BANDS, enter_rgb565_band_mode()->layout);
+
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_PENDING, gfx_readback_begin());
+    draw_readback_band_frame(-1);
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
+
+    static gfx_color_t row[GFX_WIDTH];
+    int wrong_rows = 0;
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        gfx_read_panel_row(y, row);
+        for (int x = 0; x < GFX_WIDTH; x++) {
+            if (row[x] != readback_row_colour(y)) {
+                wrong_rows++;
+                break;
+            }
+        }
+    }
+    gfx_readback_end();
+    gfx_mode_exit();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wrong_rows, "rows read back differ from what their band drew");
+}
+
+/* A frame that left a band unsent is not the panel's frame; the readback
+ * stays pending and completes on the next whole frame instead. */
+static void
+test_band_mode_readback_waits_out_a_frame_missing_a_band(void) {
+    fixture();
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_BANDS, enter_rgb565_band_mode()->layout);
+
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_PENDING, gfx_readback_begin());
+    draw_readback_band_frame(GFX_BAND_HEIGHT * 3);
+    const gfx_readback_t after_partial = gfx_readback_begin();
+    draw_readback_band_frame(-1);
+    const gfx_readback_t after_whole = gfx_readback_begin();
+
+    gfx_readback_end();
+    gfx_mode_exit();
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_PENDING, after_partial);
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, after_whole);
+}
+
 void
 run_gfx_suite(void) {
     RUN_TEST(test_present_overlap_against_serial);
@@ -1434,6 +1515,8 @@ run_gfx_suite(void) {
     RUN_TEST(test_a_near_budget_split_crosses_the_gather_threshold);
     RUN_TEST(test_two_marks_in_one_cell_cost_less_than_the_coarse_box);
     RUN_TEST(test_drawing_marks_what_it_touched);
+    RUN_TEST(test_band_mode_readback_is_the_frame_its_bands_drew);
+    RUN_TEST(test_band_mode_readback_waits_out_a_frame_missing_a_band);
 }
 
 SUITE_REGISTER(run_gfx_suite);
