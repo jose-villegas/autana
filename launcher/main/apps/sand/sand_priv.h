@@ -433,10 +433,13 @@ extern unsigned sand_liquid_sweep_moves;
  * Never reset by the pass itself, so tests can measure a per-step delta. */
 extern unsigned sand_sweep_chunks_swept;
 
-/* Which thread a split pass's two lanes run on when no second core takes
- * one. SOLO walks the order once, the rest step both lanes by hand so a test
- * can vary the interleaving; the board must not tell them apart. */
+/* Which threads a split pass's two lanes run on. CORE1 is the shipped
+ * default and the only one that offers lane 1 to a second core; SOLO walks
+ * the order once on this thread even where that core exists, and the rest
+ * step both lanes by hand so a test can vary the interleaving. The board
+ * must not tell any of them apart. */
 typedef enum {
+    SAND_CHUNK_PASS_CORE1,
     SAND_CHUNK_PASS_SOLO,
     SAND_CHUNK_PASS_LANE0_EAGER,
     SAND_CHUNK_PASS_LANE1_EAGER,

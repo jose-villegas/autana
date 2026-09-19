@@ -348,6 +348,7 @@ test_the_split_sweep_ignores_how_its_lanes_interleave(void) {
     static const uint32_t seeds[] = {1u, 7u, 12345u};
 
     for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_SOLO);
         const uint32_t solo = tc_run_and_hash(seeds[i], 40, true);
         uint32_t driven[TC_DRIVERS];
 
@@ -355,7 +356,7 @@ test_the_split_sweep_ignores_how_its_lanes_interleave(void) {
             sand_chunk_pass_set_driver_for_test(drivers[d]);
             driven[d] = tc_run_and_hash(seeds[i], 40, true);
         }
-        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_SOLO);
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_CORE1);
 
         for (int d = 0; d < TC_DRIVERS; d++) {
             char why[160];
@@ -375,6 +376,7 @@ test_the_split_liquid_pass_ignores_how_its_lanes_interleave(void) {
     static const uint32_t seeds[] = {3u, 19u, 65521u};
 
     for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_SOLO);
         const uint32_t solo = tc_run_scene_and_hash(tc_build_liquid_scene, seeds[i], 40, true);
         uint32_t driven[TC_DRIVERS];
 
@@ -382,7 +384,7 @@ test_the_split_liquid_pass_ignores_how_its_lanes_interleave(void) {
             sand_chunk_pass_set_driver_for_test(drivers[d]);
             driven[d] = tc_run_scene_and_hash(tc_build_liquid_scene, seeds[i], 40, true);
         }
-        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_SOLO);
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_CORE1);
 
         for (int d = 0; d < TC_DRIVERS; d++) {
             char why[160];
@@ -392,6 +394,45 @@ test_the_split_liquid_pass_ignores_how_its_lanes_interleave(void) {
         }
     }
 }
+
+#ifdef DEVICE_BUILD
+static void
+tc_no_op_job(void* ctx) {
+    (void)ctx;
+}
+
+/* The claim the schedule exists for, made where a second core really takes
+ * lane 1: the board two cores leave must be the one a single thread walking
+ * the order leaves. Every interleaving a host can stage is a guess at this;
+ * only a real core answers it. The refused dispatch is asserted because a
+ * worker that failed to come up would run both halves solo and agree with
+ * itself. */
+static void
+test_a_core_1_lane_lands_on_the_solo_board(void) {
+    static const uint32_t seeds[] = {1u, 7u, 12345u};
+
+    TEST_ASSERT_TRUE_MESSAGE(job_try_core1(tc_no_op_job, NULL, 0), "no core-1 worker to compare against");
+    TEST_ASSERT_TRUE(job_wait(100));
+
+    for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
+        const uint32_t duo_sweep = tc_run_and_hash(seeds[i], 40, true);
+        const uint32_t duo_liquid = tc_run_scene_and_hash(tc_build_liquid_scene, seeds[i], 40, true);
+
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_SOLO);
+        const uint32_t solo_sweep = tc_run_and_hash(seeds[i], 40, true);
+        const uint32_t solo_liquid = tc_run_scene_and_hash(tc_build_liquid_scene, seeds[i], 40, true);
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_CORE1);
+
+        char why[160];
+        snprintf(why, sizeof why, "seed %u: two cores and the single-thread walk parted on the sweep",
+                 (unsigned)seeds[i]);
+        TEST_ASSERT_EQUAL_HEX32_MESSAGE(solo_sweep, duo_sweep, why);
+        snprintf(why, sizeof why, "seed %u: two cores and the single-thread walk parted on the liquids",
+                 (unsigned)seeds[i]);
+        TEST_ASSERT_EQUAL_HEX32_MESSAGE(solo_liquid, duo_liquid, why);
+    }
+}
+#endif
 
 static void
 test_split_gas_walk_uses_hashed_rng(void) {
@@ -1993,6 +2034,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_a_split_fluid_step_allocates_nothing);
 #endif
 #ifdef DEVICE_BUILD
+    RUN_TEST(test_a_core_1_lane_lands_on_the_solo_board);
     RUN_TEST(test_a_timed_out_job_falls_back_inline);
 #endif
 }
