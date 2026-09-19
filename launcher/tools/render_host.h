@@ -40,9 +40,10 @@ typedef struct {
     input_t input;
 } render_frame_t;
 
-/* A declared touch sample, in the LOGICAL canvas the scene draws in. It
- * holds from `frame` until the next step, so a press and a release are two
- * entries, not one per frame. */
+/* A declared touch sample, in PANEL coordinates - where a finger lands, not
+ * where the rotated canvas puts it, exactly as the touch controller reports
+ * it. It holds from `frame` until the next step, so a press and a release
+ * are two entries, not one per frame. */
 typedef struct {
     int frame;
     bool down;

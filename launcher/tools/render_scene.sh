@@ -95,7 +95,12 @@ render_scene_run() {
         _rs_bin="$_rs_bin.exe"
     fi
 
-    _rs_flags="-I $_rs_launcher/main -I $_rs_launcher/components/microui/include -I $_rs_tools"
+    # test/stubs is the tree's one home for a host stand-in of an IDF
+    # header, shared with check_app_sources.sh: each declares exactly what
+    # the real header is used for, so a scene reaching a call nothing has
+    # stubbed fails at the link rather than compiling into something else.
+    _rs_flags="-I $_rs_launcher/main -I $_rs_launcher/components/microui/include"
+    _rs_flags="$_rs_flags -I $_rs_tools -I $_rs_launcher/test/stubs"
     for _rs_inc in $scene_includes; do
         _rs_flags="$_rs_flags -I $_rs_launcher/$_rs_inc"
     done

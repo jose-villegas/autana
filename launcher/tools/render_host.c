@@ -63,6 +63,13 @@ write_bmp(FILE* out, int quarter, bool panel, render_size_t* size) {
     const ui_transform_t t = ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT);
 
     const gfx_color_t* fb = gfx_framebuffer();
+    if (fb == NULL) {
+        /* Band mode keeps no retained frame to read back, so there is
+         * nothing to write - the same refusal a device capture makes. A
+         * scene wanting an image asks for the full-framebuffer layout. */
+        fprintf(stderr, "no framebuffer to read: the scene left gfx in band mode\n");
+        return false;
+    }
     const int32_t stride = screenshot_bmp_row_stride(out_w);
 
     uint8_t header[SCREENSHOT_BMP_HEADER_SIZE];
