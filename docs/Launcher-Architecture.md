@@ -413,7 +413,7 @@ here is why the build is shaped the way it is.
 `CONFIG_LAUNCHER_DEVELOPMENT` is off — structural rather than a name check.
 Diagnostics re-runs POST, which cycles the audio rail and re-mounts the SD
 card, so it has no business being reachable in a shipped image. See
-[Testing-Guide](Testing-Guide.md#release-builds-contain-no-test-code) — note in
+[Build-Variants](Build-Variants.md#release-builds-contain-no-test-code) — note in
 particular that `REQUIRES` must **not** be gated this way.
 
 Diagnostics ships in any development build, `--dev` included, not just
@@ -808,5 +808,7 @@ without it.
 - `docs/sand/Sand-Simulation.md` — the falling-sand app in depth: materials, the
   water model, momentum, and why its liquid logic is its own file.
 - `docs/Testing-Guide.md` — how to test any of it.
+- `docs/Build-Variants.md` — what release, dev and diagnostics builds each
+  carry, and which flag gates what.
 - `docs/plans/Settings-App-Plan.md` — planned split of the Diagnostics app's
   developer-toggle page into its own Settings app.
