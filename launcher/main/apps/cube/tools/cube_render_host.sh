@@ -32,6 +32,14 @@ main/apps/cube/tools/cube_render_host.c
 "
 scene_includes="components/small3dlib/include"
 scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
+
+# Size-checked but not hash-pinned. The rasterizer is integer throughout,
+# but the frame counter this app draws over it is a double printed with
+# "%.1f", and the only reason it reads 0.0 here is that 30 frames of 16 ms
+# stop 20 ms short of the window that would compute it. A pin would be
+# resting on that margin, and would break on a C library that rounds
+# differently the moment anyone changes the frame count.
+scene_pin=0
 scene_renders="
 landscape|--quarter 1|448x368
 landscape-panel|--quarter 1 --panel|368x448

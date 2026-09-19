@@ -1,6 +1,0 @@
-# What the cube scene's renders hash to, one per line.
-# Re-pinned deliberately, after looking at the images:
-#     ./launcher/main/apps/cube/tools/cube_render_host.sh --update-baseline
-landscape dbfc60cded9af4dc6c1004b7b34bb081bfdba7de50187a8491f8421ab5b395a7
-landscape-panel 0abed8016e3dae39a0de5cbef3f8939f527b5c55a1a114d8cd9c844dd24aed16
-portrait ffb82e6357411debf94abceac38635274db7b7018abf10d89862d694fdf5e22a

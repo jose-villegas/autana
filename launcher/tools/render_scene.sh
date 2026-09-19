@@ -31,6 +31,11 @@
 #                   deliberate act: --update-baseline, after looking at the
 #                   images. A render with no pinned hash yet says so and
 #                   passes.
+#   scene_pin       OPTIONAL, 1 by default. A scene whose pixels are not
+#                   guaranteed identical on every compiler and C library
+#                   declares 0 and says why: it is then checked for its
+#                   declared size only, since a pin that can fail for a
+#                   reason nobody changed teaches the reader to ignore it.
 #
 # POSIX sh, like the rest of this directory.
 
@@ -67,6 +72,7 @@ render_scene_run() {
     done
     : "${scene_includes:=}"
     : "${scene_defines:=}"
+    : "${scene_pin:=1}"
 
     # launcher/, wherever this scene lives: beside tools/render_scene.sh, or
     # further down in an app's own tools/. Found by walking up to the folder
@@ -135,9 +141,16 @@ render_scene_run() {
         _rs_files="$_rs_files $_rs_launcher/$_rs_src"
     done
 
+    # -lm LAST, after the sources, because GNU ld resolves left to right and
+    # would otherwise discard libm before seeing who needed it. The scroll
+    # view's momentum reaches expf() and lroundf(); the Windows toolchains
+    # this repo also builds on fold those into libc and link clean without
+    # it, which is how a scene that needs them reached CI unlinked. Harmless
+    # where libm is already part of libc - run_tests.sh ends its own link
+    # line the same way.
     # shellcheck disable=SC2086
     "$_rs_cc" -std=c11 -Wall -Wextra -Wno-unused-parameter -Wno-unused-function \
-        -Wno-unused-variable -O1 $_rs_flags $scene_defines $_rs_files -o "$_rs_bin" || return 1
+        -Wno-unused-variable -O1 $_rs_flags $scene_defines $_rs_files -o "$_rs_bin" -lm || return 1
 
     _rs_log="$scene_out_dir/render.log"
     _rs_new="$scene_out_dir/baseline.new"
@@ -166,10 +179,12 @@ render_scene_run() {
             printf '%s %s\n' "$_rs_label" "$_rs_hash" >> "$_rs_new"
 
             _rs_pinned=""
-            if [ -f "$scene_baseline" ]; then
+            if [ "$scene_pin" = 1 ] && [ -f "$scene_baseline" ]; then
                 _rs_pinned=$(awk -v l="$_rs_label" '$1 == l { print $2 }' "$scene_baseline")
             fi
-            if [ -z "$_rs_hash" ]; then
+            if [ "$scene_pin" != 1 ]; then
+                echo "ok $scene_name/$_rs_label $_rs_want -> $_rs_path (size only, not pinned)"
+            elif [ -z "$_rs_hash" ]; then
                 echo "ok $scene_name/$_rs_label $_rs_want -> $_rs_path (no sha256 tool; not checked)"
             elif [ -z "$_rs_pinned" ]; then
                 echo "ok $scene_name/$_rs_label $_rs_want -> $_rs_path (not pinned)"
@@ -187,7 +202,9 @@ render_scene_run() {
     } || { rm -f "$_rs_new"; return 1; }
     rm -f "$_rs_log"
 
-    if [ "$_rs_repin" = 1 ]; then
+    if [ "$_rs_repin" = 1 ] && [ "$scene_pin" != 1 ]; then
+        echo "$scene_name declares scene_pin=0; nothing to re-pin"
+    elif [ "$_rs_repin" = 1 ]; then
         # The command as it would be typed from the repository root, not as
         # this machine spells it: an absolute path here would differ per
         # checkout and churn the file.
