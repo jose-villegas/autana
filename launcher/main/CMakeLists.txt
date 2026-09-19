@@ -15,7 +15,10 @@ set(app_srcs
     "input/gesture.c"
     "input/imu.c"
     "ui/ui.c"
+    "ui/system_navigation.c"
     "ui/ui_build.c"
+    "ui/ui_control_center.c"
+    "ui/ui_control_center_draw.c"
     "ui/ui_launcher.c"
     "ui/ui_launcher_draw.c"
     "ui/ui_pointer.c"
@@ -24,6 +27,10 @@ set(app_srcs
     "util/job.c"
     "util/screenshot.c"
 )
+
+if(CONFIG_LAUNCHER_QEMU)
+    list(APPEND app_srcs "gfx/gfx_null_panel.c")
+endif()
 
 # board/board.h binds this target's hardware facts to board_esp32s3.c.
 list(APPEND app_srcs "board/board_esp32s3.c")
@@ -52,7 +59,7 @@ else()
 endif()
 
 # apps/<name>/tools/ holds that app's own host-side tooling (sweep scripts,
-# report generators) - see docs/Launcher-Architecture.md, "An app is a
+# report generators) - see docs/Building-an-App.md, "An app is a
 # folder". It is not firmware. But the glob above is apps/*.c, recursive, so
 # a future .c placed under one of those tools/ folders (a small host-side
 # helper program, say) would be swept in right alongside the app's real
@@ -170,6 +177,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites/suite_ui_style.c"
         "../test/suites/suite_ui_transform.c"
         "../test/suites/suite_ui_anchor.c"
+        "../test/suites/suite_control_center_layout.c"
         "../test/suites/suite_ui_centered_rect.c"
         "../test/suites/suite_ui_pointer.c"
         "../test/suites/suite_ui_pointer_microui.c"

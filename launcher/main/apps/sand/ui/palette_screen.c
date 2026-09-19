@@ -34,7 +34,7 @@ draw_palette_selection_bezel(mu_Context* ctx, mu_Rect r, mu_Color face) {
 
 static void
 draw_palette_badge(mu_Context* ctx, sand_ui_t* ui, int i, int ix, int iy, int iw) {
-    if (!material_can_emit(ui->brushes[i])) {
+    if (!material_can_emit(ui->brushes[i].cell)) {
         return;
     }
     const mu_Color border = mu_color_hex(PALETTE_BADGE_BORDER_COLOR);
@@ -64,10 +64,10 @@ draw_palette_tile(mu_Context* ctx, sand_ui_t* ui, int i, int cols) {
     const int iw = w - 2 * PALETTE_GROUT;
     const int ih = h - 2 * PALETTE_GROUT;
 
-    const mu_Color face = mu_color_hex(gfx_color_rgb888(material_brush_color(ui->brushes[i])));
+    const mu_Color face = mu_color_hex(gfx_color_rgb888(material_brush_color(ui->brushes[i].cell)));
     ctx->style->colors[MU_COLOR_BUTTON] = face;
 
-    const char* name = material_name(ui->brushes[i]);
+    const char* name = material_name(ui->brushes[i].cell);
     mu_layout_set_next(ctx, mu_rect(ix, iy, iw, ih), 0);
     const int clicked = mu_button(ctx, name);
 

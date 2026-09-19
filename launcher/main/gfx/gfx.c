@@ -28,6 +28,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#if CONFIG_LAUNCHER_QEMU
+#include "gfx/gfx_null_panel.h"
+#endif
 #endif
 
 /* Carries GFX_DIRTY_WIDTH/HEIGHT for ESP-IDF independence and aligns with
@@ -124,6 +127,14 @@ band_is_app_driven(void) {
 }
 
 static bool band_frame_force_all;
+
+/* A readback's copy of one whole band-mode frame: gfx_band_submit() fills
+ * it during a frame gfx_readback_begin() forced, since the band ring keeps
+ * nothing once a band is sent. PSRAM, and only while a readback is open. */
+static gfx_color_t* band_snapshot;
+static int band_snapshot_bands;
+static bool band_snapshot_filling;
+static bool band_snapshot_complete;
 
 /* What every pixel-writing primitive below actually draws into: the whole
  * framebuffer, or the band currently being rendered - see gfx_target.h for
@@ -346,8 +357,20 @@ panel_open_co5300(int hz) {
     return esp_lcd_panel_set_gap(panel, BOARD_PANEL_X_GAP, 0);
 }
 
+#if CONFIG_LAUNCHER_QEMU
+static void
+null_panel_strip_done(void) {
+    xSemaphoreGive(strip_sent);
+}
+#endif
+
 static esp_err_t
 panel_open(int hz) {
+#if CONFIG_LAUNCHER_QEMU
+    if (board_variant() == BOARD_VARIANT_UNKNOWN) {
+        return gfx_null_panel_open(hz, null_panel_strip_done, &panel);
+    }
+#endif
     ESP_LOGI(TAG, "panel QSPI at %d MHz", hz / 1000000);
     if (board_variant() == BOARD_VARIANT_CO5300_CST) {
         return panel_open_co5300(hz);
@@ -402,7 +425,9 @@ panel_clock_apply(void) {
         return;
     }
     esp_lcd_panel_del(panel);
-    esp_lcd_panel_io_del(panel_io);
+    if (panel_io != NULL) {
+        esp_lcd_panel_io_del(panel_io);
+    }
     panel = NULL;
     panel_io = NULL;
     if (panel_open(hz) != ESP_OK) {
@@ -420,6 +445,23 @@ panel_bring_up(int hz) {
         return panel_bring_up_co5300(hz);
     }
     return panel_bring_up_sh8601(hz);
+}
+
+static bool
+display_bring_up(int hz) {
+    if (board_detect() == BOARD_VARIANT_UNKNOWN) {
+#if CONFIG_LAUNCHER_QEMU
+        ESP_LOGW(TAG, "No board answered; presenting to a null panel");
+        return panel_open(hz) == ESP_OK;
+#endif
+        ESP_LOGE(TAG, "Could not identify the board");
+        return false;
+    }
+    if (panel_bring_up(hz) != ESP_OK) {
+        ESP_LOGE(TAG, "Could not start the display");
+        return false;
+    }
+    return true;
 }
 #endif /* ESP_PLATFORM - panel plumbing */
 
@@ -450,17 +492,8 @@ present_task_fn(void* arg) {
         return;
     }
 
-    if (board_detect() == BOARD_VARIANT_UNKNOWN) {
-        ESP_LOGE(TAG, "Could not identify the board");
-        present_bringup_ok = false;
-        xSemaphoreGive(present_bringup_sem);
-        vTaskDelete(NULL);
-        return;
-    }
-
     panel_clock_applied_hz = panel_clock_requested_hz;
-    if (panel_bring_up(panel_clock_applied_hz) != ESP_OK) {
-        ESP_LOGE(TAG, "Could not start the display");
+    if (!display_bring_up(panel_clock_applied_hz)) {
         present_bringup_ok = false;
         xSemaphoreGive(present_bringup_sem);
         vTaskDelete(NULL);
@@ -1945,6 +1978,35 @@ send_fb_rows(int y0, int y1) {
  * from the index image through the installed LUT, into the same bounce
  * slots, instead of copying pixels already sitting in `fb`. Same return
  * contract as send_fb_rows(). */
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* The strip row send_indexed_rows() should border, or -1 for a clean send.
+ * A file static rather than a parameter: send_heal_strips() takes
+ * send_indexed_rows() as a callback with send_fb_rows()'s signature. */
+static int indexed_overlay_row = -1;
+
+/* The expanded strip in `slot` is a disposable copy, so borders drawn here
+ * never need restoring. Must run before dirty_row_sent() clears the row's
+ * leaf bits. */
+static void
+mark_indexed_strip_overlay(gfx_color_t* slot, int row) {
+    const int y = row * STRIP_HEIGHT;
+    if (debug_overlay_on) {
+        for (int col = 0; col < GRID_COLS; col++) {
+            mark_rect_border(slot + col * COL_WIDTH, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, gfx_rgb(0x00FFFF));
+        }
+    }
+    if (leaf_overlay_on) {
+        const int n =
+            dirty_leaf_rects(row, 0, y, GFX_WIDTH, y + STRIP_HEIGHT, leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
+        for (int i = 0; i < n; i++) {
+            const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
+            gfx_color_t* at = slot + (size_t)(r->y0 - y) * GFX_WIDTH + r->x0;
+            mark_rect_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
+        }
+    }
+}
+#endif
+
 static bool
 send_indexed_rows(int y0, int y1) {
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
@@ -1955,6 +2017,9 @@ send_indexed_rows(int y0, int y1) {
         gfx_indexed_expand_panel_row(&frame, y, slot + (size_t)(y - y0) * GFX_WIDTH, GFX_WIDTH);
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
+    if (indexed_overlay_row >= 0) {
+        mark_indexed_strip_overlay(slot, indexed_overlay_row);
+    }
     dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
 #endif
     const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, slot);
@@ -2116,6 +2181,27 @@ send_one_row(int row, int* queued) {
     }
 }
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* Strip rows whose last send carried overlay borders. A border exists only
+ * in the bytes sent, never in `fb`, so the panel keeps it until its row is
+ * sent again - and the dirty tracker never resends a row nothing changed
+ * in. Outlives the overlay toggles so switching one off still cleans up. */
+static uint32_t overlay_bordered_rows;
+_Static_assert(STRIP_COUNT <= 32, "one bit per strip row");
+
+/* Before the dirty sends, so a row both bordered last present and dirty now
+ * ends up showing only this present's borders. */
+static void
+send_overlay_bordered_rows_clean(bool (*send_rows)(int y0, int y1), int* queued) {
+    for (int row = 0; row < STRIP_COUNT; row++) {
+        if ((overlay_bordered_rows & (1u << row)) && send_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT)) {
+            (*queued)++;
+        }
+    }
+    overlay_bordered_rows = 0;
+}
+#endif
+
 /* Queues this present's heal strips through `send_rows`, after its dirty
  * sends so a strip carries whatever they just put on the panel. */
 static void
@@ -2147,13 +2233,32 @@ send_heal_strips(bool (*send_rows)(int y0, int y1), int* queued) {
 static void
 run_present_indexed(void) {
     int queued = 0;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    /* A dirty row is about to be sent whole anyway, so only rows that went
+     * quiet need the clean resend. */
+    for (int row = 0; row < STRIP_COUNT; row++) {
+        if (dirty_row_is_dirty(row)) {
+            overlay_bordered_rows &= ~(1u << row);
+        }
+    }
+    send_overlay_bordered_rows_clean(send_indexed_rows, &queued);
+#endif
     for (int row = 0; row < STRIP_COUNT; row++) {
         if (!dirty_row_is_dirty(row)) {
             continue;
         }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        if (overlay_any_on()) {
+            overlay_bordered_rows |= 1u << row;
+            indexed_overlay_row = row;
+        }
+#endif
         if (send_indexed_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT)) {
             queued++;
         }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        indexed_overlay_row = -1;
+#endif
         dirty_row_sent(row);
     }
     dirty_frame_sent();
@@ -2164,6 +2269,34 @@ run_present_indexed(void) {
     if (present_send_failed) {
         mark_all_dirty_now();
     }
+}
+
+/* Sends every dirty strip row this present owns. Returns the cells of the
+ * rows interlace left for the next present, still dirty. */
+static uint32_t
+send_dirty_rows(int* queued) {
+    uint32_t remaining_cell_dirty = 0;
+
+    for (int row = 0; row < STRIP_COUNT; row++) {
+        if (!dirty_row_is_dirty(row)) {
+            continue; /* unchanged - the panel is still showing it */
+        }
+
+        if (interlace_on && (row % 2) != frame_parity) {
+            remaining_cell_dirty |= cell_dirty & (((1u << GRID_COLS) - 1u) << (row * GRID_COLS));
+            continue;
+        }
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        if (overlay_any_on()) {
+            overlay_bordered_rows |= 1u << row;
+        }
+#endif
+        send_one_row(row, queued);
+        dirty_row_sent(row);
+    }
+
+    return remaining_cell_dirty;
 }
 
 /* The real send, run on the present task (async) or on the caller
@@ -2184,21 +2317,11 @@ run_present_normal(void) {
         frame_parity = !frame_parity;
     }
 
-    uint32_t remaining_cell_dirty = 0;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    send_overlay_bordered_rows_clean(send_fb_rows, &queued);
+#endif
 
-    for (int row = 0; row < STRIP_COUNT; row++) {
-        if (!dirty_row_is_dirty(row)) {
-            continue; /* unchanged - the panel is still showing it */
-        }
-
-        if (interlace_on && (row % 2) != frame_parity) {
-            remaining_cell_dirty |= cell_dirty & (((1u << GRID_COLS) - 1u) << (row * GRID_COLS));
-            continue;
-        }
-
-        send_one_row(row, &queued);
-        dirty_row_sent(row);
-    }
+    const uint32_t remaining_cell_dirty = send_dirty_rows(&queued);
 
     dirty_frame_sent();
     if (interlace_on) {
@@ -2475,6 +2598,32 @@ free_indexed_image(void) {
 }
 #endif
 
+static bool
+alloc_band_snapshot(void) {
+    const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+#ifdef ESP_PLATFORM
+    band_snapshot = heap_caps_malloc(bytes, BOARD_FRAMEBUFFER_CAPS);
+#else
+    band_snapshot = malloc(bytes);
+#endif
+    band_snapshot_bands = 0;
+    band_snapshot_filling = false;
+    band_snapshot_complete = false;
+    return band_snapshot != NULL;
+}
+
+static void
+free_band_snapshot(void) {
+#ifdef ESP_PLATFORM
+    heap_caps_free(band_snapshot);
+#else
+    free(band_snapshot);
+#endif
+    band_snapshot = NULL;
+    band_snapshot_filling = false;
+    band_snapshot_complete = false;
+}
+
 static void
 free_band_buffers(void) {
     for (int i = 0; i < GFX_BAND_SLOTS; i++) {
@@ -2574,6 +2723,36 @@ gfx_mode_current(void) {
     return &current_mode;
 }
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* Bands whose last submit carried overlay borders, and whether the band in
+ * hand is being rendered only to take them off again. */
+static uint32_t band_overlay_bordered;
+static bool band_overlay_cleanup_only;
+_Static_assert(GFX_HEIGHT / 16 <= 32, "one bit per band at the smallest GFX_BAND_HEIGHT");
+_Static_assert(GFX_BAND_HEIGHT % LEAF_H == 0, "a leaf must never straddle two bands");
+
+/* Cyan for the band that was sent, green for each leaf marked inside it. */
+static void
+mark_band_overlay(gfx_color_t* buf, int row0, int height) {
+    if (debug_overlay_on) {
+        mark_rect_border(buf, GFX_WIDTH, GFX_WIDTH, height, gfx_rgb(0x00FFFF));
+    }
+    if (leaf_overlay_on) {
+        const int row_first = row0 / STRIP_HEIGHT;
+        const int row_last = (row0 + height - 1) / STRIP_HEIGHT;
+        for (int row = row_first; row <= row_last; row++) {
+            const int n =
+                dirty_leaf_rects(row, 0, row0, GFX_WIDTH, row0 + height, leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
+            for (int i = 0; i < n; i++) {
+                const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
+                gfx_color_t* at = buf + (size_t)(r->y0 - row0) * GFX_WIDTH + r->x0;
+                mark_rect_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
+            }
+        }
+    }
+}
+#endif
+
 void
 gfx_band_frame_begin(void) {
     GFX_PRESENT_GUARD();
@@ -2589,6 +2768,11 @@ gfx_band_frame_begin(void) {
      * gfx_invalidate() call mid-frame (an app's own BOOT-menu toggle, say)
      * must not retroactively force bands this frame already skipped. */
     band_frame_force_all = gfx_band_take_force_all();
+
+    if (band_snapshot != NULL && !band_snapshot_complete) {
+        band_snapshot_bands = 0;
+        band_snapshot_filling = band_frame_force_all;
+    }
 }
 
 /* Band mode's own "does [row0, row1) need touching this frame" query -
@@ -2604,7 +2788,21 @@ gfx_band_dirty(int row0, int row1, int* out_x0, int* out_x1) {
         *out_x1 = GFX_WIDTH;
         return true;
     }
-    return dirty_band_extent(row0, row1, out_x0, out_x1);
+    if (dirty_band_extent(row0, row1, out_x0, out_x1)) {
+        return true;
+    }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    /* A border exists only in the band that was sent, and gfx holds no
+     * copy to resend: the one way to take it off the panel is to have the
+     * app render the band once more. */
+    if (row0 == band_render_row0 && (band_overlay_bordered & (1u << (row0 / band_render_height)))) {
+        band_overlay_cleanup_only = true;
+        *out_x0 = 0;
+        *out_x1 = GFX_WIDTH;
+        return true;
+    }
+#endif
+    return false;
 }
 
 /* The band gfx_band_next() just handed out needs no redraw this frame
@@ -2635,9 +2833,15 @@ gfx_band_next(void) {
          * per-band UI changes) have done their job for gfx_band_dirty();
          * clear them so next frame's marks start from nothing, the same
          * reset a full-fb present gives itself at the end of every frame. */
+        for (int row = 0; row < STRIP_COUNT; row++) {
+            dirty_row_sent(row);
+        }
         dirty_frame_sent();
         return false;
     }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    band_overlay_cleanup_only = false;
+#endif
     band_current_slot = gfx_band_ring_slot(&band_ring);
     band_render_row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
     band_render_height = current_mode.band_height;
@@ -2675,22 +2879,22 @@ gfx_band_submit(void) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_BANDS);
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    /* The same cyan the full-fb overlay borders a sent cell with
-     * (gfx_set_debug_overlay(), send_full_row()) - drawn through the band
-     * draw target, into the buffer about to be sent, so a band
-     * gfx_band_skip() left alone carries no border at all. No per-leaf
-     * breakdown yet (send_full_row()'s green leaves): this is the
-     * band-level "was it sent" signal only. */
-    if (overlay_any_on()) {
-        const gfx_color_t cyan = gfx_rgb(0x00FFFF);
-        const int row0 = band_render_row0;
-        const int row1 = row0 + band_render_height;
-        gfx_line(0, row0, GFX_WIDTH - 1, row0, cyan);
-        gfx_line(0, row1 - 1, GFX_WIDTH - 1, row1 - 1, cyan);
-        gfx_line(0, row0, 0, row1 - 1, cyan);
-        gfx_line(GFX_WIDTH - 1, row0, GFX_WIDTH - 1, row1 - 1, cyan);
+    /* Drawn into the buffer about to be sent. A band submitted only to
+     * clean last frame's borders (gfx_band_dirty()) goes out bare. */
+    const uint32_t band_bit = 1u << (band_render_row0 / band_render_height);
+    if (overlay_any_on() && !band_overlay_cleanup_only) {
+        mark_band_overlay(band_buf[band_current_slot], band_render_row0, band_render_height);
+        band_overlay_bordered |= band_bit;
+    } else {
+        band_overlay_bordered &= ~band_bit;
     }
 #endif
+    if (band_snapshot_filling) {
+        memcpy(band_snapshot + (size_t)band_render_row0 * GFX_WIDTH, band_buf[band_current_slot],
+               (size_t)band_render_height * GFX_WIDTH * sizeof(gfx_color_t));
+        band_snapshot_complete = ++band_snapshot_bands == band_ring.band_count;
+        band_snapshot_filling = !band_snapshot_complete;
+    }
     bool sent = true;
 #ifdef ESP_PLATFORM
     if (gfx_band_ring_must_wait(&band_ring)) {
@@ -2724,19 +2928,40 @@ gfx_indexed_image(void) {
     return indexed_image;
 }
 
-bool
+gfx_readback_t
+gfx_readback_begin(void) {
+    GFX_PRESENT_GUARD();
+    if (!band_is_app_driven()) {
+        return GFX_READBACK_READY;
+    }
+    if (band_snapshot == NULL && !alloc_band_snapshot()) {
+        return GFX_READBACK_UNAVAILABLE;
+    }
+    if (band_snapshot_complete) {
+        return GFX_READBACK_READY;
+    }
+    gfx_band_force_all();
+    return GFX_READBACK_PENDING;
+}
+
+void
 gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]) {
     GFX_PRESENT_GUARD();
     if (current_mode.layout == GFX_LAYOUT_FULL_FB) {
         memcpy(out_row, fb + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
-        return true;
-    }
-    if (current_mode.pixfmt == GFX_PIXFMT_INDEXED8) {
+    } else if (current_mode.pixfmt == GFX_PIXFMT_INDEXED8) {
         const gfx_indexed_frame_t frame = indexed_frame();
         gfx_indexed_expand_panel_row(&frame, y, out_row, GFX_WIDTH);
-        return true;
+    } else {
+        assert(band_snapshot_complete);
+        memcpy(out_row, band_snapshot + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
     }
-    return false;
+}
+
+void
+gfx_readback_end(void) {
+    GFX_PRESENT_GUARD();
+    free_band_snapshot();
 }
 
 void

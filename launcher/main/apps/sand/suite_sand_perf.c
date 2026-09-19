@@ -288,11 +288,10 @@ perf_target(const char* name, int64_t measured_us, int64_t goal_us, int64_t ceil
     }
 }
 
-/* The worst case: every cell on the screen moving at once. Cross-build
- * risk: the same code has measured a 3.2-3.9 ms swing purely from the
- * ESP32-C6's flash cache aligning differently as unrelated code shifts
- * layout - loosen this budget rather than treat one flaky run as a
- * regression if that reappears. */
+/* The worst case: every cell on the screen moving at once. Unrelated code
+ * shifting the flash layout can move this row between builds with no work
+ * changed, so check the control rows before reading a miss here as a
+ * regression. */
 #define FULL_STEP_BUDGET_US 5800
 
 /* Every frame budget in this file targets measured * 0.9, rounded - a

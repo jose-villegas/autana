@@ -3,8 +3,9 @@
  *
  * Everything on this device draws into ONE full-screen RGB565 framebuffer that
  * this module owns. The shell and every app share it; nothing else allocates a
- * buffer of its own. At 368x448x2 that single buffer is 322 KiB of the ~424
- * KiB the chip has, so a second one is not affordable.
+ * buffer of its own. At 368x448x2 it is 322 KiB of PSRAM, and a second one
+ * costs a per-frame PSRAM copy no app can afford - see
+ * docs/Gfx-and-Presentation.md.
  *
  * Colours are given as plain 0xRRGGBB so callers never deal with the panel's
  * byte-swapped RGB565 layout - gfx_rgb() handles that conversion.
@@ -415,11 +416,28 @@ void gfx_band_submit(void);
  * gfx_framebuffer() already carries. */
 uint8_t* gfx_indexed_image(void);
 
-/* Panel row `y` of the frame gfx holds now, as the panel shows it once
- * presented: the framebuffer's row, or the index image expanded exactly as
- * the present path expands it. False in RGB565 band mode, which keeps no
- * image once a band is sent. */
-bool gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]);
+/*
+ * Readback - the frame on the panel, row by row, for a capture. A
+ * framebuffer or index image is readable at once. RGB565 band mode keeps
+ * nothing once a band is sent, so gfx_readback_begin() forces the next
+ * frame to redraw every band and copies each one as it is submitted:
+ * PENDING until that frame has run, then READY. Call it once per frame
+ * until it stops answering PENDING, and pair it with gfx_readback_end().
+ */
+typedef enum {
+    GFX_READBACK_READY,
+    GFX_READBACK_PENDING,
+    GFX_READBACK_UNAVAILABLE, /* band mode, and no room for its snapshot */
+} gfx_readback_t;
+
+gfx_readback_t gfx_readback_begin(void);
+
+/* Panel row `y`, exactly as sent - the index image expanded as the present
+ * path expands it. Only after gfx_readback_begin() answered READY. */
+void gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]);
+
+/* Releases band mode's snapshot, if one was taken; a no-op otherwise. */
+void gfx_readback_end(void);
 
 /* Installs the 256-entry LUT GFX_PIXFMT_INDEXED8 expands through when 16-
  * colour dithering (below) is off. Copied, not referenced: the caller's
