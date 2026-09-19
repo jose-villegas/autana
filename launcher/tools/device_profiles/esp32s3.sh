@@ -46,7 +46,7 @@ DP_LARGEST_ALLOC_SOURCE="one sand grid (184x224), unchanged by the port"
 # a test that wants realistic PSRAM headroom charges its own buffers (the
 # framebuffer included) against this pool via heap_caps_malloc, same as device.
 DP_PSRAM_BYTES=8388608
-DP_PSRAM_SOURCE="launcher/sdkconfig.defaults line 4 ('ESP32-S3R8: 8 MB octal PSRAM, 80 MHz'); docs/notes/Board-and-Memory.md board table, PSRAM row"
+DP_PSRAM_SOURCE="ESP32-S3R8 package, 8 MB octal (launcher/sdkconfig.defaults CONFIG_SPIRAM_MODE_OCT); docs/notes/Board-and-Memory.md board table, PSRAM row"
 
 # Below this many bytes, an allocation that names neither MALLOC_CAP_INTERNAL
 # nor MALLOC_CAP_SPIRAM tries internal RAM before PSRAM; at or above it, PSRAM
@@ -59,14 +59,11 @@ DP_SPIRAM_ALWAYSINTERNAL_SOURCE="CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL in launcher
 # one spi_transaction_t cannot carry more than this many bytes no matter how
 # many DMA descriptors chain it. Not one of this file's usual three sources
 # (no sdkconfig knob names a SoC register width) - recorded with the fullest
-# provenance available: gfx.c's own panel_draw() names the same constant and
-# figure while chunking sends around it (branch
-# claude/sand-send-glitch-no-continuation, commit 9bb08a20, not yet merged
-# into main), and docs/notes/Display-and-Rendering.md's 80 MHz investigation
-# separately lists "sub-windows under 32 KiB" among the transaction shapes it
-# tried. Not wired to a build gate yet - see the host-limits report for why.
+# provenance available: docs/notes/Display-and-Rendering.md's 80 MHz
+# investigation lists "sub-windows under 32 KiB" among the transaction shapes
+# it tried. Not wired to a build gate yet.
 DP_DMA_MAX_TRANSACTION_BYTES=32768
-DP_DMA_MAX_TRANSACTION_SOURCE="ESP-IDF spi_ll.h SPI_LL_DMA_MAX_BIT_LEN (18-bit transaction-length register); corroborated by gfx.c panel_draw() (branch claude/sand-send-glitch-no-continuation, commit 9bb08a20) and docs/notes/Display-and-Rendering.md's 80 MHz investigation"
+DP_DMA_MAX_TRANSACTION_SOURCE="ESP-IDF spi_ll.h SPI_LL_DMA_MAX_BIT_LEN (18-bit transaction-length register); corroborated by docs/notes/Display-and-Rendering.md's 80 MHz investigation"
 
 # --- toolchain and codegen -------------------------------------------------
 DP_TOOLCHAIN_PREFIX=xtensa-esp32s3-elf
@@ -97,7 +94,7 @@ DP_CODEGEN_SOURCE="launcher/build.dev/compile_commands.json, sand_reactions.c en
 DP_ICACHE_BYTES=32768
 DP_ICACHE_LINE_BYTES=32
 DP_ICACHE_WAYS=8
-DP_ICACHE_SOURCE="launcher/sdkconfig.defaults: CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB, _LINE_32B, _8WAYS (data cache: _DATA_CACHE_32KB, _LINE_32B, _8WAYS), read from a real S3 build, 2026-09-13"
+DP_ICACHE_SOURCE="launcher/sdkconfig.defaults sets CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB; _LINE_32B and _8WAYS (data cache: _DATA_CACHE_32KB, _LINE_32B, _8WAYS) are IDF defaults read from the generated launcher/sdkconfig of a real S3 build, 2026-09-13"
 
 # --- QEMU route ------------------------------------------------------------
 # Espressif's QEMU fork models the S3 directly, so the primary route here is

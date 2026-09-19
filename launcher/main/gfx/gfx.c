@@ -20,6 +20,7 @@
 #include "esp_check.h"
 #include "esp_heap_caps.h"
 #include "esp_lcd_co5300.h"
+#include "esp_lcd_panel_interface.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_sh8601.h"
@@ -354,8 +355,38 @@ panel_open_co5300(int hz) {
     return esp_lcd_panel_set_gap(panel, BOARD_PANEL_X_GAP, 0);
 }
 
+#if CONFIG_LAUNCHER_QEMU
+/* Stands in for a panel where none exists: a strip is "sent" the moment it
+ * is queued, so everything above the link runs as it does on the board. */
+static esp_err_t
+null_panel_draw_bitmap(esp_lcd_panel_t* self, int x0, int y0, int x1, int y1, const void* pixels) {
+    xSemaphoreGive(strip_sent);
+    return ESP_OK;
+}
+
+static esp_err_t
+null_panel_del(esp_lcd_panel_t* self) {
+    return ESP_OK;
+}
+
+static esp_err_t
+panel_open_null(void) {
+    static esp_lcd_panel_t null_panel = {
+        .draw_bitmap = null_panel_draw_bitmap,
+        .del = null_panel_del,
+    };
+    panel = &null_panel;
+    return ESP_OK;
+}
+#endif
+
 static esp_err_t
 panel_open(int hz) {
+#if CONFIG_LAUNCHER_QEMU
+    if (board_variant() == BOARD_VARIANT_UNKNOWN) {
+        return panel_open_null();
+    }
+#endif
     ESP_LOGI(TAG, "panel QSPI at %d MHz", hz / 1000000);
     if (board_variant() == BOARD_VARIANT_CO5300_CST) {
         return panel_open_co5300(hz);
@@ -410,7 +441,9 @@ panel_clock_apply(void) {
         return;
     }
     esp_lcd_panel_del(panel);
-    esp_lcd_panel_io_del(panel_io);
+    if (panel_io != NULL) {
+        esp_lcd_panel_io_del(panel_io);
+    }
     panel = NULL;
     panel_io = NULL;
     if (panel_open(hz) != ESP_OK) {
@@ -428,6 +461,23 @@ panel_bring_up(int hz) {
         return panel_bring_up_co5300(hz);
     }
     return panel_bring_up_sh8601(hz);
+}
+
+static bool
+display_bring_up(int hz) {
+    if (board_detect() == BOARD_VARIANT_UNKNOWN) {
+#if CONFIG_LAUNCHER_QEMU
+        ESP_LOGW(TAG, "No board answered; presenting to a null panel");
+        return panel_open(hz) == ESP_OK;
+#endif
+        ESP_LOGE(TAG, "Could not identify the board");
+        return false;
+    }
+    if (panel_bring_up(hz) != ESP_OK) {
+        ESP_LOGE(TAG, "Could not start the display");
+        return false;
+    }
+    return true;
 }
 #endif /* ESP_PLATFORM - panel plumbing */
 
@@ -458,17 +508,8 @@ present_task_fn(void* arg) {
         return;
     }
 
-    if (board_detect() == BOARD_VARIANT_UNKNOWN) {
-        ESP_LOGE(TAG, "Could not identify the board");
-        present_bringup_ok = false;
-        xSemaphoreGive(present_bringup_sem);
-        vTaskDelete(NULL);
-        return;
-    }
-
     panel_clock_applied_hz = panel_clock_requested_hz;
-    if (panel_bring_up(panel_clock_applied_hz) != ESP_OK) {
-        ESP_LOGE(TAG, "Could not start the display");
+    if (!display_bring_up(panel_clock_applied_hz)) {
         present_bringup_ok = false;
         xSemaphoreGive(present_bringup_sem);
         vTaskDelete(NULL);

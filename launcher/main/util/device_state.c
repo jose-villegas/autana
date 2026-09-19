@@ -13,6 +13,10 @@
 
 temp_sensor_status_t
 temp_sensor_read_celsius(float* out_celsius) {
+#if CONFIG_LAUNCHER_QEMU
+    /* QEMU has no such sensor, and ESP-IDF's driver waits on it forever. */
+    return TEMP_SENSOR_READ_FAILED;
+#endif
     temperature_sensor_handle_t sensor = NULL;
     temperature_sensor_config_t cfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(-10, 80);
     if (temperature_sensor_install(&cfg, &sensor) != ESP_OK) {
