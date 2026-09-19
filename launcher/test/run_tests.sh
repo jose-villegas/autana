@@ -79,6 +79,7 @@ $TEST_DIR/suites/suite_gesture.c
 $TEST_DIR/suites/suite_button_fsm.c
 $TEST_DIR/suites/suite_rng.c
 $TEST_DIR/suites/suite_fixed.c
+$TEST_DIR/suites/suite_tilt.c
 $TEST_DIR/suites/suite_tween.c
 $TEST_DIR/suites/suite_spring_line.c
 $TEST_DIR/suites/suite_boot_anim.c
@@ -119,6 +120,7 @@ $TEST_DIR/suites/suite_job.c
 $TEST_DIR/suites/suite_heap_caps.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/gesture.c
+$MAIN_DIR/input/tilt.c
 $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/util/job.c

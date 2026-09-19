@@ -81,7 +81,8 @@ launcher/
     │   ├── gesture.{h,c}       swipe recognition           (host-tested)
     │   ├── buttons.{h,c}       the power button
     │   ├── button_fsm.{h,c}    presses -> short/long       (host-tested)
-    │   └── imu.{h,c}, imu_rotation.h  the 6-axis IMU
+    │   ├── imu.{h,c}, imu_rotation.h  the 6-axis IMU
+    │   └── tilt.{h,c}          IMU counts -> down, strength, shake (host-tested)
     ├── util/           arithmetic and services that belong to no layer
     │   ├── fixed.h             fixed-point multiply/divide (host-tested)
     │   ├── intmath.h, rng.h, tween.h                       (host-tested)
