@@ -180,6 +180,22 @@ panels, tracks and status indicators, not pictograms.
 On close, force a full repaint of the app underneath and reset any
 accumulators the pause built up.
 
+### A screen over a backdrop that is drawn
+
+`ui_end_over(paint_backdrop)` is `ui_end()` for a backdrop that is a picture
+and not a colour; the launcher's ridge (`ui/ui_ridge.c`) is the model.
+
+1. `paint_backdrop` paints the whole screen. It is called only when the UI
+   itself changed, and every canvas is then painted over it.
+2. A backdrop that animates draws its own changed part **before**
+   `ui_end_over()`. That dirties the screen under an unchanged UI, which is
+   put back on top with no backdrop call.
+3. At rest it must draw nothing. A backdrop that redraws an identical frame
+   dirties the screen, and the launcher stops being free while idle.
+4. React to the raw `input_t`, mapped with `ui_to_logical()`, not to
+   microui's pointer: `ui_pointer` holds a press back until it knows a tap
+   from a scroll, which is a frame or two too late for feedback.
+
 ### Knowing what a screen costs
 
 `MU_COMMANDLIST_SIZE` is 8 KiB and everything drawn spends it - roughly 250
