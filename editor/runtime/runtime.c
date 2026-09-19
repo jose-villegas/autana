@@ -13,6 +13,7 @@
 #include "ui/ui.h"
 #include "ui/ui_control_center.h"
 #include "ui/ui_launcher.h"
+#include "ui/ui_ridge.h"
 #include "ui/ui_transform.h"
 
 #define LANDSCAPE_QUARTER 1
@@ -139,6 +140,11 @@ editor_runtime_render(editor_screen_t screen, const editor_layout_t* layout, uin
     if (layout != NULL && !layout_fits(screen, layout, width, height)) {
         return false;
     }
+
+    /* A preview stands for a device held the way it is drawn, already
+     * settled: down is the panel's -x in landscape and its +y in portrait. */
+    ui_ridge_set_gravity(landscape ? -1 : 0, landscape ? 0 : 1, 256, 0);
+    ui_ridge_settle();
 
     const input_t no_input = {0};
     ui_set_transform(landscape ? ui_transform_quarter_turn(LANDSCAPE_QUARTER, GFX_WIDTH, GFX_HEIGHT)

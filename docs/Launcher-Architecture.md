@@ -71,7 +71,8 @@ launcher/
     │   │                       Control Center, over a dimmed home screen
     │   ├── control_center_layout.json, control_center_layout_generated.h
     │   │                       its authored rects, and the baked table
-    │   ├── ui_ridge.{h,c}      the launcher's backdrop: the ridge, waved by touch
+    │   ├── ui_ridge.{h,c}      the launcher's backdrop: the ridge, level with the
+    │   │                       horizon, waved by touch and shaking
     │   ├── system_navigation.{h,c}  which system screen is up (host-tested)
     │   └── ridge_curve_generated.h  Cerro Autana's ridge, a height per column of
     │                           the boot photograph's frame      (host-tested)
