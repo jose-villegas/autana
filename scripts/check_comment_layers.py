@@ -32,7 +32,7 @@ from check_comment_length import EXCLUDED, scan  # noqa: E402
 LOWER = ("launcher/main/boot/", "launcher/main/display/", "launcher/main/gfx/",
          "launcher/main/input/", "launcher/main/ui/", "launcher/main/util/",
          "launcher/test/")
-SKIP = ("build", "build.dev", "build.diag", "managed_components")
+SKIP = ("build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "managed_components")
 
 # The shell's own two files: they switch between apps without knowing one.
 SHELL = ("launcher/main/app.h", "launcher/main/main.c")
