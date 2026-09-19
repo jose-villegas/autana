@@ -1263,17 +1263,36 @@ later. Tracing the dependency both ways across two adjacent boundaries
 gives a contradiction: no order of "all of one colour, then all of the
 next" satisfies both.
 
-So a grain that crosses into a chunk whose pass has not run is picked up
-once more there. A pass may only hand a grain on to a pass of a HIGHER
-colour, and each hand-on flips exactly one parity, so the worst case is
-one extra move per remaining colour - a grain at a chunk corner can travel
-three cells in the step where it would have travelled one. Nothing is
-duplicated or dropped: a move is a swap, and the grain count is exact.
+Left alone, a grain that crosses into a chunk whose pass has not run would
+be picked up once more there, and at a chunk corner handed on twice -
+three cells in the step where serial moves it one. The **step stamp**
+stops that, the per-cell "moved this frame" mark Noita uses: one bit per
+cell (`sand_enable_step_stamps()`, caller-owned beside the settled blocks,
+a byte per eight cells of a row). While a chunk pass runs, a move whose
+destination lies in another chunk sets the destination's bit, and a pass
+skips a stamped cell rather than picking it up.
 
-`suite_sand_two_core.c` holds that bound directly, under all four
-axis-aligned gravity directions and both column orders, for an open fall
-and a forced slide alike: one cell deep inside a chunk, never more than the
-hand-on bound at a boundary, and always exactly one grain afterwards. The
+Only a crossing is stamped, and only the mover. Inside a chunk the pass's
+own sweep order already holds a grain to one move, exactly as serial does,
+so within-chunk behaviour is serial's; a cell a mover displaces - water
+lifted by sinking sand - is never stamped, and keeps its own move. Stamps
+last one PASS, not one step: serial lets cross-flow move a cell the sweep
+just moved, so each pass clears its bits (one `memset`, and only if it set
+any) before the next arms. A serial pass never reads or writes a bit - the
+buffer is only reachable through `stamps_live`, which is set for exactly
+the span of a chunk pass.
+
+What remains is ordering, not double moves: a destination whose own chunk
+has not run yet may still be occupied where serial had already emptied it,
+so dense scenes still differ from serial (`tools/report_serial_lag.sh`).
+Nothing is duplicated or dropped: a move is a swap, and the grain count is
+exact.
+
+`suite_sand_two_core.c` holds the single move directly: a lone grain of sand
+or water falls exactly one cell, and a forced slide at most one, both sides
+of every chunk-row boundary under the four axis gravities, and around every
+interior chunk corner under all eight. At every smaller quality the same
+seams and corners must match a serial step board for board. The
 dense-column and settling-slab scenes are checked for grain conservation
 and for a settled pile showing no occupancy outlier at a boundary.
 
@@ -1302,15 +1321,15 @@ The flow that crosses rows - gravity mostly sideways - splits like any
 other. A partition banded along one axis has no order that keeps source
 before destination for it; a chunk is bounded on both axes and needs none.
 
-Mass a cell receives from a chunk whose pass ran earlier is forwarded once
-more by the chunk it landed in, so an isolated transfer near a boundary is no
-longer serial-exact. What holds exactly is the mass, the repaint and the
-wake: `suite_sand_crossflow.c` steps an isolated transfer near a boundary in
-all eight ray directions and checks the split total against the serial total
-cell for cell in mass, and that every cell the split changed came back
-through the merge into its row's repaint span and out of its block's settled
-bits. Pools are checked for conservation, determinism and levelling across a
-boundary.
+Liquids move mass, not cells, and a transfer can merge into mass already
+there, so the stamp's rule becomes: a cell that received mass from another
+chunk this pass is not forwarded again. The cell keeps no record of which
+part of its mass arrived, so the whole cell waits - mass that was already
+there loses its move for this pass where serial would have moved it first.
+`suite_sand_crossflow.c` steps an isolated transfer near a boundary in all
+eight ray directions and requires the split board to match serial cell for
+cell, repaint for repaint and wake for wake. Pools are checked for
+conservation, determinism and levelling across a boundary.
 
 `tools/report_crossflow.sh` measures the liquid pass on host using the
 shared water-slope and submerged-pile builders; every other pass stays
@@ -1331,6 +1350,13 @@ the same condition it already had. A long sideways reach is safe at any
 length because the chunks it crosses into all belong to the same chunk row,
 and a chunk row is owned whole by one worker. A ray that crosses rows runs
 serially rather than widening the chunk side for the rarest case.
+
+Both sub-passes stamp a grain that lands in another chunk, the same rule as
+the sweep. For the spread, a hop into a chunk still to run would otherwise
+hop again; `suite_sand_two_core.c` holds a lone hop at every chunk column
+seam to serial. The walk cannot be held to serial the same way: it moves in
+every direction, so serial itself re-picks a grain that walks against its
+row order, and across a chunk seam the stamp does not.
 
 Block wakes and dirty spans reach beyond a chunk, so both workers write
 private copies and merge them after each pass. Boards with too few chunk rows

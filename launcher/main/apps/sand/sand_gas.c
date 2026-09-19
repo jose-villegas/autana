@@ -395,6 +395,9 @@ step_one_gas_row(sand_t* s, int y, int x0, int x1, int w, int rdx, int rdy, cons
             any = true;
             gas_row_arm(y);
         }
+        if (sand_cell_stamped(s, x, y)) {
+            continue;
+        }
         step_one_gas_grain(s, row, prow, arow, brow, x, y, w, rdx, rdy, rslide_a, rslide_b, rload_dx, rload_dy, jostle,
                            c, driven_gas);
     }
@@ -473,6 +476,7 @@ merge_gas_worker(sand_t* s, const gas_chunk_t* worker) {
         }
     }
     s->faller_may_move |= worker->local.faller_may_move;
+    s->stamped |= worker->local.stamped;
 }
 
 static void
@@ -558,9 +562,11 @@ step_gas_chunks(sand_t* s, gas_pass_t* ctx, bool* found_any) {
     }
 
     gas_row_map_live = false;
+    sand_stamps_arm(s);
     for (int color = 0; color < SAND_CHUNK_COLOR_COUNT; color++) {
         run_gas_color(s, workers, ctx, found_any, color);
     }
+    sand_stamps_disarm(s);
 
     free(workers);
     return true;
@@ -742,6 +748,7 @@ equalise_gas_one_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_
 
     s->cells[(size_t)ty * (size_t)w + (size_t)tx] = grain;
     row[x] = CELL_EMPTY;
+    sand_stamp_crossing(s, x, y, tx, ty);
 
     *stayed_in_row = (py == 0);
     if (*stayed_in_row) {
@@ -784,6 +791,10 @@ equalise_gas_one_row_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const ui
          * holds, it is not gas, so it cannot extend a gas run either. */
         run->id = -1;
         return false;
+    }
+    if (sand_cell_stamped(s, x, y)) {
+        run->id = -1;
+        return true;
     }
 
     /* Per-material now, not a pass-wide constant - see material.h's own
@@ -971,9 +982,11 @@ equalise_gas_chunks(sand_t* s, int px, int py, int rdx, int rdy, int x_step, uin
     }
 
     gas_equalise_pass_t ctx = {NULL, px, py, rdx, rdy, x_step, 0, 0, is_gas};
+    sand_stamps_arm(s);
     for (int color = 0; color < SAND_CHUNK_COLOR_COUNT; color++) {
         run_gas_equalise_color(s, workers, &ctx, found_any, color);
     }
+    sand_stamps_disarm(s);
     sand_gas_equalise_runs++;
 
     free(workers);

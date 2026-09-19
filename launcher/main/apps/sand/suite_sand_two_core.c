@@ -593,26 +593,60 @@ tc_chunk_side_of(int w, int h) {
     return side;
 }
 
-/* How far a lone grain may travel in one step. A pass can only hand a grain
- * on to a pass of a higher colour, so a grain landing in a chunk whose own
- * pass has not run gets one more move for each colour still to come. Landing
- * inside its own chunk there is no hand-on at all, and the travel is the
- * serial sweep's single cell. */
-static int
-tc_max_travel(const sand_t* s, int x, int y, int dx, int dy) {
-    const int side = sand_chunk_side(s);
-    const bool leaves_chunk = (x + dx) / side != x / side || (y + dy) / side != y / side;
-    return leaves_chunk ? SAND_CHUNK_COLOR_COUNT - 1 : 1;
+/* A lone-grain board as the app runs it: sleeping and step stamps on, and
+ * scatter off so a fall draws no randomness. On the heap for the stack
+ * ceiling above. */
+typedef struct {
+    sand_t s;
+    uint8_t* cells;
+    uint8_t* blocks;
+    uint8_t* stamps;
+} tc_board_t;
+
+static tc_board_t*
+tc_board_open(int w, int h, int phase) {
+    tc_board_t* b = malloc(sizeof *b);
+    TEST_ASSERT_NOT_NULL(b);
+    b->cells = malloc((size_t)w * (size_t)h);
+    b->blocks =
+        malloc((size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    b->stamps = malloc(sand_step_stamp_bytes(w, h));
+    TEST_ASSERT_NOT_NULL(b->cells);
+    TEST_ASSERT_NOT_NULL(b->blocks);
+    TEST_ASSERT_NOT_NULL(b->stamps);
+
+    sand_init(&b->s, b->cells, w, h, 1u);
+    sand_enable_sleeping(&b->s, b->blocks);
+    sand_enable_step_stamps(&b->s, b->stamps);
+    sand_set_scatter(&b->s, 0);
+    tc_prime_phase(&b->s, phase);
+    return b;
 }
 
-/* Chebyshev distance from (x, y) to the board's only occupied cell. */
+static void
+tc_board_close(tc_board_t* b) {
+    free(b->stamps);
+    free(b->blocks);
+    free(b->cells);
+    free(b);
+}
+
+static void
+tc_board_step(tc_board_t* b, int gx, int gy, bool two_core) {
+    sand_set_two_core_step(two_core);
+    sand_step(&b->s, gx, gy, 0);
+    sand_set_two_core_step(false);
+}
+
+/* Chebyshev distance from (x, y) to the board's only cell of `material`. */
 static int
-tc_lone_grain_travel(const sand_t* s, int x, int y) {
+tc_grain_travel(const sand_t* s, int x, int y, material_id_t material) {
     int travel = -1;
 
     for (int gy = 0; gy < s->h; gy++) {
         for (int gx = 0; gx < s->w; gx++) {
-            if (CELL_IS_EMPTY(sand_at(s, gx, gy))) {
+            const cell_t c = sand_at(s, gx, gy);
+            if (CELL_IS_EMPTY(c) || CELL_MATERIAL(c) != material) {
                 continue;
             }
             TEST_ASSERT_EQUAL_INT_MESSAGE(-1, travel, "a lone grain must still be a lone grain after a step");
@@ -624,113 +658,94 @@ tc_lone_grain_travel(const sand_t* s, int x, int y) {
     return travel;
 }
 
-/* THE DOUBLE-MOVE CHECK: a lone grain with nothing to block it leaves its
- * cell and travels no further than the colour it lands in allows - one cell
- * deep inside a chunk, and never more than a hand-on at a chunk boundary. */
+/* THE DOUBLE-MOVE CHECK: a lone grain with nothing to block it moves exactly
+ * one cell in one step, as the serial sweep moves it. A grain that crosses
+ * into a chunk whose own pass is still to come must not be picked up there
+ * again - and at a corner it could otherwise be handed on twice. */
 static void
-tc_assert_free_fall_travel_is_bounded(int phase, int gx, int gy, int start_y, bool two_core) {
-    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
-    sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 1u);
-    sand_enable_sleeping(&s, blocks);
-    sand_set_scatter(&s, 0); /* a deterministic, driftless fall */
-    tc_prime_phase(&s, phase);
-
-    const int start_x = TC_W / 2;
-    sand_set(&s, start_x, start_y, SAND);
-
-    sand_set_two_core_step(two_core);
-    sand_step(&s, gx, gy, 0);
-    sand_set_two_core_step(false);
-
-    int dx, dy;
-    sand_gravity_direction(gx, gy, &dx, &dy);
-    const int travel = tc_lone_grain_travel(&s, start_x, start_y);
-    const int most = two_core ? tc_max_travel(&s, start_x, start_y, dx, dy) : 1;
-
-    free(cells);
-    free(blocks);
+tc_assert_free_fall_moves_one_cell(int phase, int gx, int gy, int start_x, int start_y, cell_t grain) {
+    tc_board_t* b = tc_board_open(TC_W, TC_H, phase);
+    sand_set(&b->s, start_x, start_y, grain);
+    tc_board_step(b, gx, gy, true);
+    const int travel = tc_grain_travel(&b->s, start_x, start_y, CELL_MATERIAL(grain));
+    tc_board_close(b);
 
     char why[200];
-    snprintf(why, sizeof why, "a lone grain at row %d (phase %d, gravity %d,%d, two_core=%d) travelled %d cells",
-             start_y, phase, gx, gy, (int)two_core, travel);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, travel > 0 ? 1 : 0, why);
-    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(most, travel, why);
+    snprintf(why, sizeof why, "material %d at %d,%d (phase %d, gravity %d,%d) travelled %d cells in one split step",
+             (int)CELL_MATERIAL(grain), start_x, start_y, phase, gx, gy, travel);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, travel, why);
 }
 
-/* A slide can move a grain diagonally even under horizontal gravity (see
+/* A slide can move a grain diagonally even under axis gravity (see
  * Sand-Simulation.md's reach table), which is the other way a chunk can be
- * left - so this blocks the straight-ahead cell and holds the resulting
- * slide to the same bound. */
+ * left - so this blocks the straight-ahead cell and holds the slide to the
+ * same single cell. */
 static void
-tc_assert_forced_slide_travel_is_bounded(int phase, int gx, int gy, int start_y, bool two_core) {
-    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
-    sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 1u);
-    sand_enable_sleeping(&s, blocks);
-    tc_prime_phase(&s, phase);
-
-    const int start_x = TC_W / 2;
+tc_assert_forced_slide_moves_at_most_one_cell(int phase, int gx, int gy, int start_x, int start_y) {
+    tc_board_t* b = tc_board_open(TC_W, TC_H, phase);
     int dx, dy;
     sand_gravity_direction(gx, gy, &dx, &dy);
-    sand_set(&s, start_x + dx, start_y + dy, STONE);
-    sand_set(&s, start_x, start_y, SAND);
-
-    sand_set_two_core_step(two_core);
-    sand_step(&s, gx, gy, 0);
-    sand_set_two_core_step(false);
-
-    int found_y = -1;
-    for (int y = 0; y < TC_H; y++) {
-        for (int x = 0; x < TC_W; x++) {
-            const cell_t c = sand_at(&s, x, y);
-            if (!CELL_IS_EMPTY(c) && CELL_MATERIAL(c) == MAT_SAND) {
-                found_y = y;
-            }
-        }
-    }
-    const int most = two_core ? tc_max_travel(&s, start_x, start_y, dx, dy) : 1;
-
-    free(cells);
-    free(blocks);
+    sand_set(&b->s, start_x + dx, start_y + dy, STONE);
+    sand_set(&b->s, start_x, start_y, SAND);
+    tc_board_step(b, gx, gy, true);
+    const int travel = tc_grain_travel(&b->s, start_x, start_y, MAT_SAND);
+    tc_board_close(b);
 
     char why[200];
-    snprintf(why, sizeof why, "a lone grain slid too far at row %d (phase %d, gravity %d,%d, two_core=%d)", start_y,
-             phase, gx, gy, (int)two_core);
-    TEST_ASSERT_TRUE_MESSAGE(found_y >= 0, why);
-    const int row_delta = found_y - start_y;
-    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(most, row_delta < 0 ? -row_delta : row_delta, why);
+    snprintf(why, sizeof why, "a lone grain at %d,%d (phase %d, gravity %d,%d) slid %d cells in one split step",
+             start_x, start_y, phase, gx, gy, travel);
+    TEST_ASSERT_TRUE_MESSAGE(travel >= 0, why);
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(1, travel, why);
 }
 
-/* Every internal chunk boundary this grid has, for both column orders - see
- * tc_prime_phase() - plus a row deep inside a chunk as the control. All four
- * axis-aligned gravity directions, since a boundary is the same kind of
- * place whichever way is down. */
 static void
-test_two_core_step_never_double_moves_at_a_seam(void) {
-    static const int gxs[] = {0, 0, 1000, -1000};
-    static const int gys[] = {1000, -1000, 0, 0};
+tc_assert_one_cell_at(int phase, int gx, int gy, int x, int y) {
+    tc_assert_free_fall_moves_one_cell(phase, gx, gy, x, y, SAND);
+    tc_assert_free_fall_moves_one_cell(phase, gx, gy, x, y, WATER);
+    tc_assert_forced_slide_moves_at_most_one_cell(phase, gx, gy, x, y);
+}
 
-    const int side = tc_chunk_side_of(TC_W, TC_H);
-
-    for (int phase = 0; phase < 2; phase++) {
-        for (int boundary = side; boundary < TC_H - side; boundary += side) {
-            const int rows[] = {boundary - 2, boundary - 1, boundary, boundary + 1, boundary - side / 2};
-            for (size_t r = 0; r < sizeof rows / sizeof rows[0]; r++) {
-                for (size_t g = 0; g < sizeof gxs / sizeof gxs[0]; g++) {
-                    tc_assert_free_fall_travel_is_bounded(phase, gxs[g], gys[g], rows[r], true);
-                    tc_assert_forced_slide_travel_is_bounded(phase, gxs[g], gys[g], rows[r], true);
+/* Both sides of every chunk-row boundary, with a row deep inside a chunk as
+ * the control, under the four axis gravities. */
+static void
+tc_assert_row_seams_move_one_cell(int phase, int side) {
+    for (int boundary = side; boundary < TC_H; boundary += side) {
+        const int rows[] = {boundary - 2, boundary - 1, boundary, boundary + 1, boundary - side / 2};
+        for (size_t r = 0; r < sizeof rows / sizeof rows[0]; r++) {
+            for (size_t g = 0; g < sizeof tc_ring / sizeof tc_ring[0]; g++) {
+                if (tc_ring[g][0] == 0 || tc_ring[g][1] == 0) {
+                    tc_assert_one_cell_at(phase, tc_ring[g][0] * 1000, tc_ring[g][1] * 1000, TC_W / 2, rows[r]);
                 }
             }
         }
+    }
+}
+
+/* Every cell within two of every interior chunk corner, under all eight
+ * gravities: the worst case, where a grain could cross into one chunk still
+ * to run and from it into another. */
+static void
+tc_assert_corners_move_one_cell(int phase, int side) {
+    for (int cy = side; cy < TC_H; cy += side) {
+        for (int cx = side; cx < TC_W; cx += side) {
+            for (int oy = -2; oy < 2; oy++) {
+                for (int ox = -2; ox < 2; ox++) {
+                    for (size_t g = 0; g < sizeof tc_ring / sizeof tc_ring[0]; g++) {
+                        tc_assert_one_cell_at(phase, tc_ring[g][0] * 1000, tc_ring[g][1] * 1000, cx + ox, cy + oy);
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void
+test_two_core_step_never_double_moves_at_a_seam(void) {
+    const int side = tc_chunk_side_of(TC_W, TC_H);
+
+    for (int phase = 0; phase < 2; phase++) {
+        tc_assert_row_seams_move_one_cell(phase, side);
+        tc_assert_corners_move_one_cell(phase, side);
     }
 }
 
@@ -794,55 +809,60 @@ test_two_core_step_matches_serial_fall_distance_at_a_seam(void) {
     }
 }
 
+/* A zero-randomness lone grain stepped serially and split on the same board.
+ * Both boards carry stamps; the serial step must not read them. */
 static void
-tc_assert_quality_seam_matches_serial(int w, int h, int offset, int boundary) {
-    const int block_cols = (w + SAND_BLOCK_W - 1) / SAND_BLOCK_W;
-    const int block_rows = (h + SAND_BLOCK_H - 1) / SAND_BLOCK_H;
-    uint8_t* serial_cells = malloc((size_t)w * (size_t)h);
-    uint8_t* split_cells = malloc((size_t)w * (size_t)h);
-    uint8_t* serial_blocks = malloc((size_t)block_cols * (size_t)block_rows);
-    uint8_t* split_blocks = malloc((size_t)block_cols * (size_t)block_rows);
-    TEST_ASSERT_NOT_NULL(serial_cells);
-    TEST_ASSERT_NOT_NULL(split_cells);
-    TEST_ASSERT_NOT_NULL(serial_blocks);
-    TEST_ASSERT_NOT_NULL(split_blocks);
+tc_assert_quality_fall_matches_serial(int w, int h, int phase, int x, int y, int gx, int gy) {
+    tc_board_t* serial = tc_board_open(w, h, phase);
+    tc_board_t* split = tc_board_open(w, h, phase);
+    sand_set(&serial->s, x, y, SAND);
+    sand_set(&split->s, x, y, SAND);
 
-    sand_t serial, split;
-    sand_init(&serial, serial_cells, w, h, 1u);
-    sand_init(&split, split_cells, w, h, 1u);
-    sand_enable_sleeping(&serial, serial_blocks);
-    sand_enable_sleeping(&split, split_blocks);
-    sand_set_scatter(&serial, 0);
-    sand_set_scatter(&split, 0);
-    tc_prime_phase(&serial, offset);
-    tc_prime_phase(&split, offset);
-    sand_set(&serial, w / 2, boundary, SAND);
-    sand_set(&split, w / 2, boundary, SAND);
+    tc_board_step(serial, gx, gy, false);
+    tc_board_step(split, gx, gy, true);
 
-    sand_set_two_core_step(false);
-    sand_step(&serial, 0, 1000, 0);
-    sand_set_two_core_step(true);
-    sand_step(&split, 0, 1000, 0);
-    sand_set_two_core_step(false);
-
-    const uint32_t serial_hash = tc_hash(serial_cells, (size_t)w * (size_t)h);
-    const uint32_t split_hash = tc_hash(split_cells, (size_t)w * (size_t)h);
-    free(serial_cells);
-    free(split_cells);
-    free(serial_blocks);
-    free(split_blocks);
+    const uint32_t serial_hash = tc_hash(serial->cells, (size_t)w * (size_t)h);
+    const uint32_t split_hash = tc_hash(split->cells, (size_t)w * (size_t)h);
+    tc_board_close(serial);
+    tc_board_close(split);
 
     char why[160];
-    snprintf(why, sizeof why, "%dx%d phase %d row %d: a fall from a chunk's first row differed from serial", w, h,
-             offset, boundary);
+    snprintf(why, sizeof why, "%dx%d phase %d grain %d,%d gravity %d,%d: a seam fall differed from serial", w, h, phase,
+             x, y, gx, gy);
     TEST_ASSERT_EQUAL_HEX32_MESSAGE(serial_hash, split_hash, why);
 }
 
-/* A grain on a chunk's FIRST row falls within that chunk, so no pass hands
- * it on and the split must match serial exactly - at every quality the app
- * offers, not just the one it ships. */
 static void
-test_smaller_quality_chunk_starts_match_serial(void) {
+tc_assert_quality_row_seams_match_serial(int w, int h, int side, int phase) {
+    for (int boundary = side; boundary < h; boundary += side) {
+        for (int y = boundary - 2; y <= boundary + 1 && y < h; y++) {
+            tc_assert_quality_fall_matches_serial(w, h, phase, w / 2, y, 0, 1000);
+            tc_assert_quality_fall_matches_serial(w, h, phase, w / 2, y, 0, -1000);
+        }
+    }
+}
+
+static void
+tc_assert_quality_corners_match_serial(int w, int h, int side, int phase) {
+    for (int cy = side; cy < h; cy += side) {
+        for (int cx = side; cx < w; cx += side) {
+            for (int oy = -2; oy < 2; oy++) {
+                for (int ox = -2; ox < 2; ox++) {
+                    for (size_t g = 0; g < sizeof tc_ring / sizeof tc_ring[0]; g++) {
+                        tc_assert_quality_fall_matches_serial(w, h, phase, cx + ox, cy + oy, tc_ring[g][0] * 1000,
+                                                              tc_ring[g][1] * 1000);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* Every chunk seam and corner at every smaller quality the app offers must
+ * fall exactly as serial - where a grain leaves its chunk as much as where it
+ * stays inside one. */
+static void
+test_smaller_quality_seams_match_serial(void) {
     static const struct {
         int w, h;
     } qualities[] = {{92, 112}, {61, 74}, {46, 56}};
@@ -850,9 +870,8 @@ test_smaller_quality_chunk_starts_match_serial(void) {
     for (size_t q = 0; q < sizeof qualities / sizeof qualities[0]; q++) {
         const int side = tc_chunk_side_of(qualities[q].w, qualities[q].h);
         for (int phase = 0; phase < 2; phase++) {
-            for (int row = side; row < qualities[q].h - 1; row += side) {
-                tc_assert_quality_seam_matches_serial(qualities[q].w, qualities[q].h, phase, row);
-            }
+            tc_assert_quality_row_seams_match_serial(qualities[q].w, qualities[q].h, side, phase);
+            tc_assert_quality_corners_match_serial(qualities[q].w, qualities[q].h, side, phase);
         }
     }
 }
@@ -1256,6 +1275,48 @@ test_split_gas_equalise_keeps_seam_order(void) {
                                           "portrait gas equalise did not enter its split passes");
 }
 
+/* A lone gas grain under a ceiling, which the walk leaves alone (mobility 0)
+ * and the spread hops one cell sideways. */
+static void
+tc_assert_gas_hop_matches_serial(int x, int y, bool flip) {
+    tc_board_t* serial = tc_board_open(TC_W, TC_H, 1);
+    tc_board_t* split = tc_board_open(TC_W, TC_H, 1);
+    tc_board_t* boards[] = {serial, split};
+    for (int i = 0; i < 2; i++) {
+        sand_set_mobility(&boards[i]->s, 0);
+        for (int cx = 0; cx < TC_W; cx++) {
+            sand_set(&boards[i]->s, cx, y - 1, STONE);
+        }
+        sand_set(&boards[i]->s, x, y, GAS);
+        boards[i]->s.gas_flip = flip;
+    }
+
+    tc_step_gas_equalise(&serial->s, false);
+    tc_step_gas_equalise(&split->s, true);
+
+    const bool cells_match = memcmp(serial->cells, split->cells, (size_t)TC_W * (size_t)TC_H) == 0;
+    tc_board_close(serial);
+    tc_board_close(split);
+
+    char why[160];
+    snprintf(why, sizeof why, "gas at %d,%d (flip %d): a split spread hop differed from serial", x, y, (int)flip);
+    TEST_ASSERT_TRUE_MESSAGE(cells_match, why);
+}
+
+/* A hop that lands in a chunk whose own pass is still to come must not be
+ * taken again there. Both sides of every chunk column seam, both ways. */
+static void
+test_split_gas_equalise_hops_once_across_a_chunk_column(void) {
+    const int side = tc_chunk_side_of(TC_W, TC_H);
+
+    for (int boundary = side; boundary < TC_W; boundary += side) {
+        for (int x = boundary - 1; x <= boundary; x++) {
+            tc_assert_gas_hop_matches_serial(x, side / 2, false);
+            tc_assert_gas_hop_matches_serial(x, side / 2, true);
+        }
+    }
+}
+
 #ifdef DEVICE_BUILD
 typedef struct {
     volatile bool* finished;
@@ -1440,7 +1501,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam);
     RUN_TEST(test_two_core_step_never_double_moves_at_a_seam);
     RUN_TEST(test_two_core_step_matches_serial_fall_distance_at_a_seam);
-    RUN_TEST(test_smaller_quality_chunk_starts_match_serial);
+    RUN_TEST(test_smaller_quality_seams_match_serial);
     RUN_TEST(test_a_fuse_blast_throws_grains_on_both_cores);
     RUN_TEST(test_a_lava_burst_throws_grains_on_both_cores);
     RUN_TEST(test_a_settled_chunk_does_no_row_work);
@@ -1450,6 +1511,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_reaction_split_actually_changes_the_draw_stream);
     RUN_TEST(test_landscape_water_column_has_no_row_mass_lag);
     RUN_TEST(test_split_gas_equalise_keeps_seam_order);
+    RUN_TEST(test_split_gas_equalise_hops_once_across_a_chunk_column);
 #ifdef DEVICE_BUILD
     RUN_TEST(test_a_timed_out_job_falls_back_inline);
 #endif

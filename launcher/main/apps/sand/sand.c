@@ -172,6 +172,10 @@ sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
     s->dirty_x0 = NULL;
     s->dirty_x1 = NULL;
     s->block_state = NULL;
+    s->step_stamps = NULL;
+    s->stamps_live = NULL;
+    s->stamp_side = 0;
+    s->stamped = false;
     s->impulse_buf = NULL;
     s->impulse_max = 0;
     s->impulse_count = 0;
@@ -233,6 +237,19 @@ sand_enable_sleeping(sand_t* s, uint8_t* blocks) {
     }
     s->last_load_dx = 0;
     s->last_load_dy = 0;
+}
+
+size_t
+sand_step_stamp_bytes(int w, int h) {
+    return (size_t)h * sand_stamp_stride(w);
+}
+
+void
+sand_enable_step_stamps(sand_t* s, uint8_t* bits) {
+    s->step_stamps = bits;
+    if (bits != NULL) {
+        memset(bits, 0, sand_step_stamp_bytes(s->w, s->h));
+    }
 }
 
 bool
@@ -1032,7 +1049,7 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
     unsigned saw_liquid = 0;
     for (int x = cx_from; x != cx_to; x += ctx->x_step) {
         const cell_t c = ctx->row[x];
-        if (CELL_IS_EMPTY(c)) {
+        if (CELL_IS_EMPTY(c) || sand_cell_stamped(ctx->s, x, ctx->y)) {
             continue;
         }
         /* Accumulated in a register and stored once per block, same shape as
@@ -1470,9 +1487,11 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
         };
 
         s->rng_hashed = true;
+        sand_stamps_arm(s);
         for (int color = 0; color < SAND_CHUNK_COLOR_COUNT; color++) {
             run_sweep_color(&ctx, color);
         }
+        sand_stamps_disarm(s);
         s->rng_hashed = false;
     } else {
         s->rng_hashed = sand_force_hashed_rng_on;
