@@ -45,11 +45,9 @@
 #include "freertos/task.h"
 
 #include "gfx/gfx.h"
-#include "util/device_state.h"
-#if CONFIG_LAUNCHER_QEMU
 #include "input/imu.h"
 #include "input/touch.h"
-#endif
+#include "util/device_state.h"
 
 static const char* TAG = "screenshot";
 
@@ -77,43 +75,9 @@ static volatile bool s_runsuite_pending;
 static char s_runsuite_name[SCREENSHOT_LINE_MAX];
 #endif
 
-#if CONFIG_LAUNCHER_QEMU
-/* Input for an image with no touch controller or IMU behind it. Each is
- * acknowledged on its own line, so a host can pace a gesture on the device's
- * word instead of on a guess at how fast emulated time is running. */
-static bool
-handle_injection_line(build_console_command_t command, const char* line) {
-    if (command == BUILD_CONSOLE_TOUCH) {
-        bool down = false;
-        int x = 0, y = 0;
-        const bool ok = build_console_parse_touch(line, &down, &x, &y);
-        if (ok) {
-            touch_inject(down, x, y);
-        }
-        printf("TOUCH_%s\n", ok ? "OK" : "REJECTED");
-    } else if (command == BUILD_CONSOLE_IMU) {
-        int ax = 0, ay = 0, az = 0;
-        const bool ok = build_console_parse_imu(line, &ax, &ay, &az);
-        if (ok) {
-            imu_inject(&(imu_sample_t){.ax = (int16_t)ax, .ay = (int16_t)ay, .az = (int16_t)az});
-        }
-        printf("IMU_%s\n", ok ? "OK" : "REJECTED");
-    } else {
-        return false;
-    }
-    fflush(stdout);
-    return true;
-}
-#endif
-
 static void
 handle_screenshot_line(const char* line) {
     const build_console_command_t command = build_console_command_parse(line);
-#if CONFIG_LAUNCHER_QEMU
-    if (handle_injection_line(command, line)) {
-        return;
-    }
-#endif
     if (command == BUILD_CONSOLE_SCREENSHOT) {
         ESP_LOGI(TAG, "trigger received");
         s_request_pending = true;
@@ -128,6 +92,29 @@ handle_screenshot_line(const char* line) {
     } else if (command == BUILD_CONSOLE_BUILD_ID) {
         printf("BUILD_ID=%s\n", BUILD_ID);
         fflush(stdout);
+#if CONFIG_LAUNCHER_QEMU
+    } else if (command == BUILD_CONSOLE_TOUCH) {
+        /* The one console verb that does NOT set a flag for the frame loop:
+         * what it writes is a LEVEL the polling task samples at its own
+         * rate, which is the contract touch_inject() is built for, and the
+         * state machine below it derives the edges. Where a controller
+         * answers there is no stand-in to write to, which is why this
+         * follows that function's own gating rather than the listener's. */
+        bool down = false;
+        int x = 0, y = 0;
+        if (build_console_touch_parse(line, &down, &x, &y)) {
+            touch_inject(down, x, y);
+        } else {
+            ESP_LOGW(TAG, "TOUCH wants <down|up> <x> <y>: '%s'", line);
+        }
+    } else if (command == BUILD_CONSOLE_IMU) {
+        int ax = 0, ay = 0, az = 0;
+        if (build_console_imu_parse(line, &ax, &ay, &az)) {
+            imu_inject(&(imu_sample_t){.ax = (int16_t)ax, .ay = (int16_t)ay, .az = (int16_t)az});
+        } else {
+            ESP_LOGW(TAG, "IMU wants <ax> <ay> <az> in raw counts: '%s'", line);
+        }
+#endif
     } else {
         ESP_LOGI(TAG, "ignoring line: '%s'", line);
     }
@@ -241,6 +228,9 @@ screenshot_start(void) {
     ESP_LOGI(TAG, "listening for 'SCREENSHOT', 'BUILDID', and 'RUNSUITE <name>' on the console");
 #else
     ESP_LOGI(TAG, "listening for 'SCREENSHOT' and 'BUILDID' on the console");
+#endif
+#if CONFIG_LAUNCHER_QEMU
+    ESP_LOGI(TAG, "and for 'TOUCH <down|up> <x> <y>' and 'IMU <ax> <ay> <az>', which no board needs");
 #endif
 }
 

@@ -6,7 +6,8 @@ a build directory that already exists:
 
     launcher/test/qemu_run.py launcher/build.qemu [--icount] [--timeout S]
     launcher/test/qemu_run.py launcher/build.qemu.shell --suite run_gfx_suite
-                              [--suite ...] [--screenshot shot.png]
+                              [--suite ...] [--touch down,184,224 --touch up,184,224]
+                              [--screenshot shot.png]
 
 It merges the build's binaries into one flash image, writes the default eFuse
 block ESP-IDF's own `idf.py qemu` uses, and starts qemu-system-xtensa
@@ -16,19 +17,19 @@ With no --suite or --screenshot the image is expected to run its suites by
 itself (CONFIG_LAUNCHER_SELFTEST_AUTORUN) and the run ends at
 SELFTEST_COMPLETE. With either, the image is expected to boot into the shell
 instead: once the console listener is up, each --suite is sent as RUNSUITE
-and waited out to its RUNSUITE_COMPLETE, then --screenshot sends SCREENSHOT
-and writes the frame as a PNG (and its state as .json) the way
-tools/screenshot.py does from a board.
+and waited out to its RUNSUITE_COMPLETE, each --touch is left on the screen
+in turn, and then --screenshot sends SCREENSHOT and writes the frame as a
+PNG (and its state as .json) the way tools/screenshot.py does from a board.
 
---do drives that same image as a user would, one ordered step at a time:
+--do drives that same image as a user would, one ordered step at a time, and
+runs after the --suite and --touch options and before --screenshot:
 
-    --do "tap 130 220" --do "screenshot app.png" --do "tilt 0 -4096 0"
-    --do "swipe 2 224 160 224" --do "screenshot home.png"
+    --do "tap 180 95" --do "wait 2500" --do "screenshot cube.png"
+    --do "tilt 0 -4096 0" --do "swipe 184 446 184 200"
 
-A tap or swipe goes in as TOUCH lines and a tilt as an IMU line; the image
-answers each on its own line and the step waits for that. Leave --icount
-off for this: emulated time then runs far slower than the host's, and a
-press is timed in the emulated clock.
+A tap or swipe goes in as TOUCH lines and a tilt as an IMU line. Leave
+--icount off for this: emulated time then runs far slower than the host's,
+and how long a press lasts is counted in the emulated clock.
 
 What a run can and cannot say. Pass and fail are real for anything that does
 not read a clock. A ceiling pegged on the board is reported and not enforced
@@ -216,6 +217,13 @@ def take_screenshot(console, out_path):
     return False
 
 
+# A sample is a LEVEL the image's polling task picks up on its own schedule,
+# so each one is left in place long enough to be seen and acted on. There is
+# no acknowledgement to wait for instead: see the touch verb's own comment in
+# util/screenshot.c for why it sets no flag.
+TOUCH_SETTLE_S = 0.6
+
+
 def run_suite(console, name):
     console.send("RUNSUITE %s" % name)
     done = "RUNSUITE_COMPLETE name=%s" % name
@@ -229,45 +237,32 @@ def run_suite(console, name):
     return False
 
 
-def inject(console, line, ack):
-    """One input line, waited out to the device's own acknowledgement."""
-    console.send(line)
-    for seen in console.lines():
-        if seen == ack + "_OK":
-            return True
-        if seen == ack + "_REJECTED":
-            break
-    print("the device did not accept %r" % line)
-    return False
-
-
-# Host seconds. A press has to span several 10 ms polls and a lift needs
-# TOUCH_RELEASE_QUIET_US of quiet, in EMULATED time - which runs slower than
-# the host's under load, so these are several times what a board would need.
-PRESS_S = 0.4
-SETTLE_S = 0.6
+# A swipe is this many samples, each left in place long enough to be polled.
 SWIPE_POINTS = 12
 SWIPE_POINT_S = 0.08
 
 
+def touch(console, state, x, y):
+    console.send("TOUCH %s %d %d" % (state, x, y))
+    return True
+
+
 def touch_tap(console, x, y):
-    ok = inject(console, "TOUCH DOWN %d %d" % (x, y), "TOUCH")
-    time.sleep(PRESS_S)
-    ok = inject(console, "TOUCH UP", "TOUCH") and ok
-    time.sleep(SETTLE_S)
-    return ok
+    touch(console, "down", x, y)
+    time.sleep(TOUCH_SETTLE_S)
+    touch(console, "up", x, y)
+    time.sleep(TOUCH_SETTLE_S)
+    return True
 
 
 def touch_swipe(console, x0, y0, x1, y1):
-    ok = True
     for i in range(SWIPE_POINTS + 1):
-        x = x0 + (x1 - x0) * i // SWIPE_POINTS
-        y = y0 + (y1 - y0) * i // SWIPE_POINTS
-        ok = inject(console, "TOUCH DOWN %d %d" % (x, y), "TOUCH") and ok
+        touch(console, "down", x0 + (x1 - x0) * i // SWIPE_POINTS,
+              y0 + (y1 - y0) * i // SWIPE_POINTS)
         time.sleep(SWIPE_POINT_S)
-    ok = inject(console, "TOUCH UP", "TOUCH") and ok
-    time.sleep(SETTLE_S)
-    return ok
+    touch(console, "up", x1, y1)
+    time.sleep(TOUCH_SETTLE_S)
+    return True
 
 
 def run_action(console, action):
@@ -278,12 +273,18 @@ def run_action(console, action):
             return run_suite(console, args[0])
         if verb == "screenshot" and len(args) == 1:
             return take_screenshot(console, args[0])
+        if verb == "touch" and len(args) == 3 and args[0] in ("down", "up"):
+            touch(console, args[0], int(args[1]), int(args[2]))
+            time.sleep(TOUCH_SETTLE_S)
+            return True
         if verb == "tap" and len(args) == 2:
             return touch_tap(console, *map(int, args))
         if verb == "swipe" and len(args) == 4:
             return touch_swipe(console, *map(int, args))
         if verb == "tilt" and len(args) == 3:
-            return inject(console, "IMU %d %d %d" % tuple(map(int, args)), "IMU")
+            console.send("IMU %d %d %d" % tuple(map(int, args)))
+            time.sleep(TOUCH_SETTLE_S)
+            return True
         if verb == "wait" and len(args) == 1:
             time.sleep(int(args[0]) / 1000.0)
             return True
@@ -333,13 +334,21 @@ def main(argv):
     parser.add_argument("--suite", action="append", default=[],
                         help="run this registered suite by name (repeatable); "
                              "needs an image that boots into the shell")
-    parser.add_argument("--screenshot", default=None, metavar="PNG",
-                        help="capture the screen once everything else is done")
+    parser.add_argument("--touch", action="append", default=[],
+                        metavar="down|up,X,Y",
+                        help="leave this touch sample in place, in panel "
+                             "coordinates (repeatable, in order); needs a "
+                             "CONFIG_LAUNCHER_QEMU image, where no controller "
+                             "answers and a stand-in reports it instead")
     parser.add_argument("--do", action="append", default=[], metavar="ACTION",
                         help="one step, in order (repeatable): 'suite NAME', "
-                             "'tap X Y', 'swipe X0 Y0 X1 Y1', 'tilt AX AY AZ', "
-                             "'wait MS', 'screenshot PNG'. Pixels are the "
-                             "panel's own, tilt is raw accelerometer counts")
+                             "'tap X Y', 'swipe X0 Y0 X1 Y1', 'touch down|up "
+                             "X Y', 'tilt AX AY AZ', 'wait MS', 'screenshot "
+                             "PNG'. Pixels are the panel's own, tilt is raw "
+                             "accelerometer counts, 4096 to the g")
+    parser.add_argument("--screenshot", default=None, metavar="PNG",
+                        help="capture the screen once the suites and touches "
+                             "are done")
     parser.add_argument("--workdir", default=None,
                         help="where flash, eFuse and log go "
                              "(default: the build directory)")
@@ -349,7 +358,9 @@ def main(argv):
                                                r"C:\Espressif\esp-idf-v5.5"))
     args = parser.parse_args(argv)
 
-    actions = ["suite %s" % name for name in args.suite] + args.do
+    actions = ["suite %s" % name for name in args.suite]
+    actions += ["touch " + spec.replace(",", " ") for spec in args.touch]
+    actions += args.do
     if args.screenshot:
         actions.append("screenshot %s" % args.screenshot)
 
