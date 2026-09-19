@@ -268,19 +268,55 @@ test_open_air_gas_rise_rate_stays_at_its_baseline(void) {
         "the 64-trial, eight-step baseline rises 409 cells; a move outside two percent changes open-air gas");
 }
 
+/* The pocket's interior is one cell, and an escape check has to know which
+ * one: a region chosen by hand measures where the gas drifted afterwards,
+ * not whether it got out. Named here so the builder and the check cannot
+ * disagree about it. */
+enum { POCKET_INSIDE_X = 3, POCKET_INSIDE_Y = 3, POCKET_WALL = 1 };
+
 /* A gas grain sealed in stone on every side but one - shared by every
  * pocket-exit escape probe in this section, portrait or landscape. */
 static void
 build_sealed_gas_pocket(sand_t* g, int exit_x, int exit_y) {
-    sand_set(g, 3, 3, GAS);
-    for (int y = 2; y <= 4; y++) {
-        for (int x = 2; x <= 4; x++) {
-            if (x != 3 || y != 3) {
+    sand_set(g, POCKET_INSIDE_X, POCKET_INSIDE_Y, GAS);
+    for (int y = POCKET_INSIDE_Y - POCKET_WALL; y <= POCKET_INSIDE_Y + POCKET_WALL; y++) {
+        for (int x = POCKET_INSIDE_X - POCKET_WALL; x <= POCKET_INSIDE_X + POCKET_WALL; x++) {
+            if (x != POCKET_INSIDE_X || y != POCKET_INSIDE_Y) {
                 sand_set(g, x, y, STONE);
             }
         }
     }
     sand_set(g, exit_x, exit_y, SAND_EMPTY);
+}
+
+/* Presence outside, not absence inside: stated the other way round, a
+ * grain that had decayed away would satisfy it with nothing having
+ * escaped. */
+static bool
+gas_is_outside_the_pocket(const sand_t* g) {
+    for (int y = 0; y < g->h; y++) {
+        for (int x = 0; x < g->w; x++) {
+            if (x == POCKET_INSIDE_X && y == POCKET_INSIDE_Y) {
+                continue;
+            }
+            if (CELL_MATERIAL(sand_at(g, x, y)) == MAT_GAS) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* The step the gas first stood outside the pocket, or 0 within max_steps. */
+static int
+steps_until_gas_leaves_the_pocket(sand_t* g, int gx, int gy, int max_steps) {
+    for (int i = 1; i <= max_steps; i++) {
+        sand_step(g, gx, gy, 0);
+        if (gas_is_outside_the_pocket(g)) {
+            return i;
+        }
+    }
+    return 0;
 }
 
 /* Steps g up to max_steps times under (gx, gy), stopping the moment a gas
@@ -300,6 +336,12 @@ step_until_gas_escapes(sand_t* g, int gx, int gy, int max_steps, int x0, int x1,
     return false;
 }
 
+/* Reaching the open corner needs a mobility roll and a lower-diagonal
+ * direction roll, and the same step can walk the grain straight back in:
+ * 0.0057 per step. A seed is still inside after this many with probability
+ * 1e-10, so every seed must get out, not most. */
+enum { POCKET_ESCAPE_STEPS = 4000 };
+
 static void
 test_gas_escapes_through_a_down_diagonal_pocket_exit(void) {
     static char failure_message[64];
@@ -312,10 +354,10 @@ test_gas_escapes_through_a_down_diagonal_pocket_exit(void) {
 
         build_sealed_gas_pocket(&s, 2, 4);
 
-        escaped_seeds += step_until_gas_escapes(&s, 0, 1000, 10000, 0, W, 4, H) ? 1 : 0;
+        escaped_seeds += (steps_until_gas_leaves_the_pocket(&s, 0, 1000, POCKET_ESCAPE_STEPS) != 0) ? 1 : 0;
     }
-    snprintf(failure_message, sizeof failure_message, "escaped in only %d of 16 seeds", escaped_seeds);
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(12, escaped_seeds, failure_message);
+    snprintf(failure_message, sizeof failure_message, "only %d of 16 seeds left the pocket", escaped_seeds);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(16, escaped_seeds, failure_message);
 }
 
 static void
