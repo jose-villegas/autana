@@ -659,9 +659,10 @@ gfx/ui change can be checked without touching the sand suites at all.
    (which links no suites) can see it. Allocate anything large in
    `fixture()` instead, as `suite_sand_liquid_depth.c` already does, and run
    `tools/build_diag_check.sh` before pushing rather than finding out from a
-   pull request — there is no automated gate on this any more (see "A
-   diagnostics build can be scoped" above), so the check is `idf.py -B
-   build.diag size` read by eye, not a pass/fail script. The `.bss` reading
+   pull request — nothing gates this automatically
+   ([`Build-Variants.md`](Build-Variants.md#a-diagnostics-build-can-be-scoped)),
+   so the check is `idf.py -B build.diag size` read by eye, not a pass/fail
+   script. The `.bss` reading
    is the eyeball half of that script; the pass/fail half is the complexity
    ratchet it runs first, in seconds, before the build
    (`docs/tools/Complexity-Gate.md`).
