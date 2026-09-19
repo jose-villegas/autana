@@ -3,7 +3,8 @@
 # Build the self-test image for Espressif's QEMU and run it with no board.
 #
 #   ./launcher/test/run_qemu_tests.sh [--perf-scope] [--icount] [--no-build]
-#   ./launcher/test/run_qemu_tests.sh --suite <name> [--suite ...] [--screenshot <png>]
+#   ./launcher/test/run_qemu_tests.sh --suite <name> [--suite ...] \
+#                                     [--touch <down|up>,<x>,<y> ...] [--screenshot <png>]
 #
 # The image is the diagnostics build with sdkconfig.defaults.qemu layered
 # last, in its own build.qemu/ (build.qemu.perf/ for --perf-scope), so it
@@ -13,7 +14,8 @@
 #
 # The first form runs every suite at boot. The second builds the same image
 # without autorun (build.qemu.shell/), which boots into the shell, and asks
-# its console for one suite at a time - seconds each - and for the screen.
+# its console for one suite at a time - seconds each - for a touch to be put
+# on the screen, and for the screen itself.
 #
 # Needs qemu-xtensa, which ESP-IDF does not install by default:
 #   python %IDF_PATH%\tools\idf_tools.py install qemu-xtensa
@@ -38,7 +40,7 @@ while [ $# -gt 0 ]; do
         --perf-scope) PERF=1 ;;
         --icount) RUN_ARGS="$RUN_ARGS --icount" ;;
         --no-build) BUILD=0 ;;
-        --suite | --screenshot)
+        --suite | --touch | --screenshot)
             [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
             AUTORUN=0
             RUN_ARGS="$RUN_ARGS $1 $2"
