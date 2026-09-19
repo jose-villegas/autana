@@ -20,6 +20,7 @@ launcher/
 │   ├── gen_boot_anim_timeline.py, gen_boot_anim_image.py, gen_font.py,
 │   │                           gen_gfx_palette_standard.py, gen_icons.py
 │   ├── build_flash.sh          build + flash; --dev and --diag variants
+│   ├── device_report.sh        the one build-flash-capture-report path
 │   └── report_test_results.sh  every suite, pass/fail
 ├── test/               the host runner and the shell's own suites
 └── main/

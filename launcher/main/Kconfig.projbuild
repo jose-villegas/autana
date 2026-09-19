@@ -71,10 +71,11 @@ menu "Launcher"
             paying that cost on every boot of an interactive diagnostics
             session - just to check the POST report or flip a toggle - makes
             the build too slow to use for anything else. Turn this on only
-            for an automated harness that needs the suites to run themselves,
-            such as tools/report_test_results.sh, which layers
+            for an automated harness that needs the suites to run
+            themselves: build_flash.sh --diag --autorun layers
             sdkconfig.defaults.diag_autorun on top of sdkconfig.defaults.diag
-            for exactly that reason.
+            for exactly that reason, and every report script that captures a
+            whole run goes through it.
 
     choice LAUNCHER_SELFTEST_SCOPE
         prompt "Which suites the self-test image carries"
