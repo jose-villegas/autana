@@ -15,6 +15,9 @@
 #include "bsp/esp-bsp.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
+#if CONFIG_LAUNCHER_QEMU
+#include "freertos/FreeRTOS.h"
+#endif
 
 static const char* TAG = "imu";
 
@@ -63,6 +66,19 @@ read_regs(uint8_t reg, uint8_t* out, size_t len) {
     return i2c_master_transmit_receive(dev, &reg, 1, out, len, QMI8658_TIMEOUT_MS) == ESP_OK;
 }
 
+#if CONFIG_LAUNCHER_QEMU
+static bool injected;
+static imu_sample_t injected_sample = {.ax = IMU_COUNTS_PER_G};
+static portMUX_TYPE injected_lock = portMUX_INITIALIZER_UNLOCKED;
+
+void
+imu_inject(const imu_sample_t* sample) {
+    portENTER_CRITICAL(&injected_lock);
+    injected_sample = *sample;
+    portEXIT_CRITICAL(&injected_lock);
+}
+#endif
+
 bool
 imu_init(void) {
     if (ready) {
@@ -91,6 +107,12 @@ imu_init(void) {
      * otherwise be handed a stream of writes it never asked for. */
     uint8_t who = 0;
     if (!read_regs(REG_WHO_AM_I, &who, 1)) {
+#if CONFIG_LAUNCHER_QEMU
+        ESP_LOGW(TAG, "No sensor at 0x%02x; samples come from imu_inject()", BOARD_IMU_I2C_ADDR);
+        injected = true;
+        ready = true;
+        return true;
+#endif
         ESP_LOGE(TAG, "No response from 0x%02x", BOARD_IMU_I2C_ADDR);
         return false;
     }
@@ -126,6 +148,14 @@ imu_read(imu_sample_t* out) {
     if (!ready) {
         return false;
     }
+#if CONFIG_LAUNCHER_QEMU
+    if (injected) {
+        portENTER_CRITICAL(&injected_lock);
+        *out = injected_sample;
+        portEXIT_CRITICAL(&injected_lock);
+        return true;
+    }
+#endif
 
     /* One twelve-byte burst rather than six word reads. Beyond being faster, it
      * guarantees all six axes come from the same sample - reading them
