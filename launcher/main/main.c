@@ -17,6 +17,7 @@
 #include "app.h"
 #include "boot/boot_anim.h"
 #include "boot/post.h"
+#include "boot/post_layout.h"
 #include "boot/post_ui.h"
 #include "build_id_generated.h"
 #include "build_variant.h"
@@ -334,13 +335,16 @@ static void
 show_post_failures(void) {
     ESP_LOGE(TAG, "POST failed - showing report");
 
-    gfx_clear(gfx_rgb(0x0A0C14));
-    gfx_text(10, 10, "HARDWARE FAULT", gfx_rgb(0xFF5C5C));
-
-    int y = 10 + gfx_text_height() + 10;
-    y = post_ui_draw(y, true);
-
-    gfx_text_scaled(10, y + 12, "touch to continue", gfx_rgb(0x8A93A8), 1);
+    /* No gravity reading has arrived this early, so the report is drawn at
+     * the orientation the board is normally held at rather than at the
+     * unset one. */
+    const post_ui_report_t report = {
+        .title = POST_LAYOUT_FAULT_TITLE,
+        .footer = POST_LAYOUT_FAULT_FOOTER,
+        .quarter = DISPLAY_DEFAULT_QUARTER,
+        .failures_only = true,
+    };
+    post_ui_draw_report(&report);
     gfx_present();
 
     /* Long timeout for manual action, short for unattended use. */
