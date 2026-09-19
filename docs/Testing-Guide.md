@@ -705,7 +705,10 @@ gfx/ui change can be checked without touching the sand suites at all.
    `tools/build_diag_check.sh` before pushing rather than finding out from a
    pull request — there is no automated gate on this any more (see "A
    diagnostics build can be scoped" above), so the check is `idf.py -B
-   build.diag size` read by eye, not a pass/fail script.
+   build.diag size` read by eye, not a pass/fail script. The `.bss` reading
+   is the eyeball half of that script; the pass/fail half is the complexity
+   ratchet it runs first, in seconds, before the build
+   (`docs/tools/Complexity-Gate.md`).
 
    One trap makes a local measurement lie: **a local `build.diag` keeps
    whatever scope it was last configured with**. A leftover
