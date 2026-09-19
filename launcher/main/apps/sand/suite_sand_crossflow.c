@@ -186,9 +186,9 @@ assert_every_change_was_merged(const crossflow_fixture_t* f, const uint8_t* befo
 
 /* One (px,py,phase,trial) case: an isolated water transfer near a chunk
  * boundary, stepped serially and split. A transfer landing in a chunk whose
- * own pass has not run is forwarded once more there, so the two boards no
- * longer have to agree cell for cell - what still holds exactly is the mass,
- * and that every change the split made was merged back. */
+ * own pass has not run is forwarded once more there, so the two boards need
+ * not agree cell for cell. What holds exactly is the mass, and that every
+ * change the split made was merged back. */
 static void
 run_crossflow_seam_trial(int px, int py, int phase, int trial) {
     const int delta = trial / 2 - SAND_LIQUID_SIGHT - 1;
@@ -276,7 +276,7 @@ test_crossflow_pool_conserves_mass_and_is_deterministic(void) {
 }
 
 static void
-test_crossflow_uniform_pool_has_no_stripe_seams(void) {
+test_crossflow_uniform_pool_has_no_chunk_seams(void) {
     crossflow_fixture_t* f = crossflow_fixture();
     for (int y = 0; y < CF_H; y++) {
         sand_set(&f->s, 9, y, CELL_MAKE(MAT_WATER, 1 + y % 15));
@@ -311,7 +311,7 @@ run_sand_crossflow_suite(void) {
     RUN_TEST(test_split_crossflow_uses_hashed_viscosity);
     RUN_TEST(test_crossflow_seam_transfer_conserves_mass_in_eight_directions);
     RUN_TEST(test_crossflow_pool_conserves_mass_and_is_deterministic);
-    RUN_TEST(test_crossflow_uniform_pool_has_no_stripe_seams);
+    RUN_TEST(test_crossflow_uniform_pool_has_no_chunk_seams);
 }
 
 SUITE_REGISTER(run_sand_crossflow_suite);

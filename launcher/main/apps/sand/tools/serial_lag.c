@@ -1,18 +1,19 @@
 /*
  * serial_lag - how far a two-core step falls behind a serial one.
  *
- * The two-core split defers work at a stripe boundary: a cell that crossed
- * into a guard row is skipped, and the liquid pass holds back mass that
- * arrived during the phases. A deferral only matters when SERIAL would have
- * done something different in the same step, and that is what this measures:
- * the same scene, from the same seed, stepped twice - once split, once serial
- * - compared cell for cell after every step.
+ * The two-core split reorders work at a chunk boundary: a cell handed into a
+ * chunk whose pass has not run gets one more move there, and every long-reach
+ * trigger is deferred to a serial pass. That only matters when SERIAL would
+ * have done something different in the same step, and that is what this
+ * measures: the same scene, from the same seed, stepped twice - once split,
+ * once serial - compared cell for cell after every step.
  *
  * Each step starts from the same board, because the two paths are not
- * order-equivalent (see Sand-Simulation.md's "The seam fix") and left to run
- * on they diverge into two valid but different worlds. One step from one
- * state isolates what the split defers: cells it left where serial moved
- * them, and for liquids the mass that sits in a different row.
+ * order-equivalent (see Sand-Simulation.md's "What a pass boundary still
+ * costs") and left to run on they diverge into two valid but different
+ * worlds. One step from one state isolates what the split changes: cells it
+ * left where serial moved them, and for liquids the mass that sits in a
+ * different row.
  *
  * Build and run: main/apps/sand/tools/report_serial_lag.sh
  */
@@ -62,7 +63,7 @@ fill_rect(sand_t* s, int x0, int y0, int x1, int y1, cell_t c) {
     }
 }
 
-/* A column of water falling across every stripe boundary: the case the
+/* A column of water falling across every chunk boundary: the case the
  * maintainer sees break up on the device. */
 static void
 scene_water_column(sand_t* s) {

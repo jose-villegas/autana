@@ -1,5 +1,5 @@
-/* Portable checks for the checkerboard-parallel sweep: deterministic,
- * mass-conserving, and without a stripe seam. Host jobs run inline. */
+/* Portable checks for the four-colour chunk passes: deterministic,
+ * mass-conserving, and without a chunk seam. Host jobs run inline. */
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -21,8 +21,8 @@
 #define TC_BLOCK_COLS ((TC_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
 #define TC_BLOCK_ROWS ((TC_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
 
-_Static_assert(TC_H >= SAND_STRIPE_H_MIN * SAND_STRIPE_SPLIT_MIN_COUNT,
-               "the two-core suite needs enough stripes to split");
+_Static_assert(TC_H >= SAND_CHUNK_SIDE_MIN * SAND_CHUNK_SPLIT_MIN_ROWS,
+               "the two-core suite needs enough chunk rows to split");
 
 /* Every chunk claim below has to hold across the app's whole quality range,
  * not at one size: the board it ships and the smallest one it offers. */
@@ -171,7 +171,7 @@ tc_hash(const uint8_t* bytes, size_t n) {
 
 /* A mixed, seed-varied scatter: powders, two liquids of different
  * density, a gas and a static, at a random third of the grid each - so
- * every stripe, on both sides of every boundary, has something to move,
+ * every chunk, on both sides of every boundary, has something to move,
  * settle or touch as liquid as the seed changes. */
 static void
 tc_build_scattered_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
@@ -194,8 +194,8 @@ tc_build_scattered_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
 }
 
 /* Runs `steps` of the scene under a small rotation of gravity vectors -
- * not just straight down - so the stripe grid's rolling offset (sand.c)
- * actually alternates and every boundary is crossed both ways. */
+ * not just straight down - so a chunk boundary is crossed both ways and in
+ * both axes. */
 static uint32_t
 tc_run_and_hash(uint32_t seed, int steps, bool two_core) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
@@ -267,7 +267,7 @@ tc_run_quality_and_hash(int w, int h, uint32_t seed, bool two_core) {
 
 /* THE DETERMINISM CLAIM: the same seed run twice with two-core stepping
  * on must land on the same board both times. Nothing in sand_rng_next_at()
- * or run_sweep_stripes() (sand.c) reads wall-clock time, thread identity
+ * or the chunk passes (sand.c) read wall-clock time, thread identity
  * or any state a real second core could have left different between two
  * otherwise-identical runs, so two host runs standing in for "device run
  * once, host run once" is the whole guarantee, not a weaker stand-in for
@@ -288,7 +288,7 @@ tc_assert_seed_is_deterministic(uint32_t seed, int steps) {
 static void
 test_two_core_step_is_deterministic_across_seeds(void) {
     /* Different seeds, not the same board re-run: a single arrangement
-     * could look deterministic by accident of where its own stripe
+     * could look deterministic by accident of where its own chunk
      * boundaries happen to land - see
      * test_a_passing_test_may_be_passing_by_arrangement's own reasoning
      * elsewhere in this tree. */
@@ -371,7 +371,7 @@ test_split_gas_walk_ignores_worker_order(void) {
         const uint32_t ordinary = tc_run_gas_walk_and_hash(seeds[i], false);
         const uint32_t reversed = tc_run_gas_walk_and_hash(seeds[i], true);
         TEST_ASSERT_EQUAL_HEX32_MESSAGE(ordinary, reversed,
-                                        "changing which worker owns each stripe must not change the gas walk");
+                                        "changing which worker owns each chunk row must not change the gas walk");
     }
 }
 
@@ -379,7 +379,7 @@ test_split_gas_walk_ignores_worker_order(void) {
  * now (sand_rng_next_at()), so this is not an equivalence check - it is
  * a sanity check that turning the switch on does not quietly turn it
  * into a no-op that happens to hash the same by never actually
- * splitting anything on a board with too few stripes. */
+ * splitting anything on a board with too few chunk rows. */
 static void
 test_two_core_step_actually_changes_the_draw_stream(void) {
     const uint32_t serial = tc_run_and_hash(3u, 40, false);
@@ -387,7 +387,7 @@ test_two_core_step_actually_changes_the_draw_stream(void) {
 
     TEST_ASSERT_NOT_EQUAL_MESSAGE(serial, two_core,
                                   "two-core stepping produced the same hash as serial on a "
-                                  "board large enough to split - the checkerboard sweep "
+                                  "board large enough to split - the chunk sweep "
                                   "should be drawing from sand_rng_next_at(), not silently "
                                   "falling back to the sequential stream");
 }
@@ -478,25 +478,25 @@ count_occupied_per_row(const sand_t* g, int w, int h, int* occupied) {
     }
 }
 
-/* True if row y sits within one row of a stripe_half-period boundary. */
+/* True if row y sits within one row of a chunk boundary. */
 static bool
-row_near_stripe_boundary(int y, int stripe_half) {
+row_near_chunk_boundary(int y, int side) {
     for (int m = -1; m <= 1; m++) {
-        if (((y + m) % stripe_half) == 0) {
+        if (((y + m) % side) == 0) {
             return true;
         }
     }
     return false;
 }
 
-/* Folds occupied[]'s row-to-row deltas into the largest seen at a stripe
+/* Folds occupied[]'s row-to-row deltas into the largest seen at a chunk
  * boundary vs anywhere in the interior - the tile-seam readout below. */
 static void
-worst_row_deltas(const int* occupied, int h, int stripe_half, int* interior_worst, int* boundary_worst) {
+worst_row_deltas(const int* occupied, int h, int side, int* interior_worst, int* boundary_worst) {
     for (int y = 1; y < h; y++) {
         const int delta = occupied[y] - occupied[y - 1];
         const int adelta = delta < 0 ? -delta : delta;
-        if (row_near_stripe_boundary(y, stripe_half)) {
+        if (row_near_chunk_boundary(y, side)) {
             if (adelta > *boundary_worst) {
                 *boundary_worst = adelta;
             }
@@ -508,10 +508,9 @@ worst_row_deltas(const int* occupied, int h, int stripe_half, int* interior_wors
 
 /* THE VISUAL SEAM CHECK: a full-width slab of sand poured above an empty
  * container and left to fall and settle. Every row's final occupancy
- * should follow the pile's own shape, not the stripe grid's - a tile
- * artifact would show up as a step in occupancy repeating every
- * half a stripe height (the rolling offset's own period), which a
- * histogram of row-to-row deltas makes visible without eyeballing a
+ * should follow the pile's own shape, not the chunk grid's - a tile
+ * artifact would show up as a step in occupancy repeating every chunk side,
+ * which a histogram of row-to-row deltas makes visible without eyeballing a
  * render. */
 static void
 test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
@@ -544,12 +543,11 @@ test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
     count_occupied_per_row(&s, TC_W, TC_H, occupied);
 
     /* Interior baseline: the largest row-to-row change anywhere OUTSIDE a
-     * one-row margin of every stripe boundary - the pile's own surface,
+     * one-row margin of every chunk boundary - the pile's own surface,
      * which is not flat, sets this. */
-    const int stripe_half = SAND_BLOCK_H / 2;
     int interior_worst = 0;
     int boundary_worst = 0;
-    worst_row_deltas(occupied, TC_H, stripe_half, &interior_worst, &boundary_worst);
+    worst_row_deltas(occupied, TC_H, sand_chunk_side(&s), &interior_worst, &boundary_worst);
 
     free(occupied);
     free(cells);
@@ -557,7 +555,7 @@ test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
 
     char why[220];
     snprintf(why, sizeof why,
-             "a settled pile's row-to-row occupancy jumped more at a stripe "
+             "a settled pile's row-to-row occupancy jumped more at a chunk "
              "boundary (%d) than anywhere in the interior (%d) - that is "
              "what a baked-in tile seam looks like",
              boundary_worst, interior_worst);
@@ -835,23 +833,25 @@ tc_assert_quality_seam_matches_serial(int w, int h, int offset, int boundary) {
     free(split_blocks);
 
     char why[160];
-    snprintf(why, sizeof why, "%dx%d offset %d boundary %d: a seam fall differed from serial", w, h, offset, boundary);
+    snprintf(why, sizeof why, "%dx%d phase %d row %d: a fall from a chunk's first row differed from serial", w, h,
+             offset, boundary);
     TEST_ASSERT_EQUAL_HEX32_MESSAGE(serial_hash, split_hash, why);
 }
 
+/* A grain on a chunk's FIRST row falls within that chunk, so no pass hands
+ * it on and the split must match serial exactly - at every quality the app
+ * offers, not just the one it ships. */
 static void
-test_smaller_quality_seams_match_serial(void) {
+test_smaller_quality_chunk_starts_match_serial(void) {
     static const struct {
         int w, h;
     } qualities[] = {{92, 112}, {61, 74}, {46, 56}};
 
     for (size_t q = 0; q < sizeof qualities / sizeof qualities[0]; q++) {
-        const int stripe_h = sand_stripe_height(qualities[q].h);
-        const int offsets[] = {0, stripe_h / 2};
-        for (size_t o = 0; o < sizeof offsets / sizeof offsets[0]; o++) {
-            for (int boundary = offsets[o] == 0 ? stripe_h : offsets[o]; boundary < qualities[q].h - 1;
-                 boundary += stripe_h) {
-                tc_assert_quality_seam_matches_serial(qualities[q].w, qualities[q].h, offsets[o], boundary);
+        const int side = tc_chunk_side_of(qualities[q].w, qualities[q].h);
+        for (int phase = 0; phase < 2; phase++) {
+            for (int row = side; row < qualities[q].h - 1; row += side) {
+                tc_assert_quality_seam_matches_serial(qualities[q].w, qualities[q].h, phase, row);
             }
         }
     }
@@ -1024,10 +1024,10 @@ tc_build_bordered_box(sand_t* s) {
     }
 }
 
-/* A single, unbroken column of touching grains spanning every stripe in
- * the grid - unlike tc_assert_free_fall_moves_one_cell's lone grain, each
- * cell's upstream neighbour is occupied too, so a guard row here starts
- * genuinely contested rather than empty. */
+/* A single, unbroken column of touching grains spanning every chunk row in
+ * the grid - unlike the lone grain above, each cell's upstream neighbour is
+ * occupied too, so a boundary here starts genuinely contested rather than
+ * empty. */
 static void
 tc_build_falling_column(sand_t* s) {
     tc_build_bordered_box(s);
@@ -1088,13 +1088,12 @@ tc_run_zero_rng_and_hash(void (*build)(sand_t*), int steps, int gx, int gy, int 
     return h;
 }
 
-/* A dense column and pile, where a guard row's neighbour is never empty,
- * so a phase-time move there truly contends with something. Not a
- * hash-identity check: three-plus stripes provably cannot reproduce
- * serial order exactly once a contested chain spans more than one
- * boundary - see "The seam fix" in Sand-Simulation.md. This checks the
- * part that must still hold - the grain count - which a double-move or a
- * dropped cell would break. */
+/* A dense column and pile, where a boundary cell's neighbour is never
+ * empty, so a move there truly contends with something. Not a hash-identity
+ * check: no fixed pass order can reproduce serial order across a boundary -
+ * see "What a pass boundary still costs" in Sand-Simulation.md. This checks
+ * the part that must still hold - the grain count - which a double-move or
+ * a dropped cell would break. */
 static void
 test_two_core_step_conserves_grains_on_a_dense_column_and_pile(void) {
     static const int gxs[] = {0, 0, 1000, -1000};
@@ -1297,30 +1296,6 @@ test_a_timed_out_job_falls_back_inline(void) {
 }
 #endif
 
-/* A boundary that only ever takes two positions stalls cells on the same two
- * screen lines every step, which reads as banding - see sand_stripe_offset(). */
-static void
-test_stripe_boundaries_spread_over_the_stripe(void) {
-    sand_t s = {0};
-    s.rng_seed_base = 0x51ED5EEDu;
-    s.h = 224; /* a grid tall enough that the stripe is the full SAND_BLOCK_H */
-
-    const int stripe_h = sand_stripe_height(s.h);
-    bool seen[SAND_BLOCK_H] = {false};
-    int distinct = 0;
-    for (int step = 0; step < 64; step++) {
-        s.step_phase = (uint16_t)step;
-        const int offset = sand_stripe_offset(&s);
-        TEST_ASSERT_TRUE_MESSAGE(offset >= 0 && offset < stripe_h, "an offset must land inside the stripe");
-        if (!seen[offset]) {
-            seen[offset] = true;
-            distinct++;
-        }
-    }
-
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(8, distinct, "64 steps must put boundaries on many lines, not the same two");
-}
-
 /* THE REACTION SPLIT - sand_step_reactions() called directly, never through
  * sand_step(), so these tests are about the local-rule split alone and
  * cannot be confused with the sweep or gas walk's own coverage above. */
@@ -1328,7 +1303,7 @@ test_stripe_boundaries_spread_over_the_stripe(void) {
 /* Isolated fire/gas pairs, never two gas cells touching. GAS ignites free
  * of randomness (material.c) - but a CONNECTED pocket is not a fair split
  * vs serial comparison regardless: a cell ignited ahead of the scan
- * spreads further within the step, and stripe order is not row-major. */
+ * spreads further within the step, and chunk order is not row-major. */
 static void
 rc_build_isolated_fire_gas_pairs(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
     sand_init(s, cells, w, h, seed);
@@ -1456,7 +1431,6 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_chunk_colours_separate_every_touching_chunk);
     RUN_TEST(test_chunk_colours_cover_every_cell_exactly_once);
     RUN_TEST(test_a_colours_two_workers_never_meet_on_a_row);
-    RUN_TEST(test_stripe_boundaries_spread_over_the_stripe);
     RUN_TEST(test_two_core_step_is_deterministic_across_seeds);
     RUN_TEST(test_split_gas_walk_uses_hashed_rng);
     RUN_TEST(test_split_gas_walk_ignores_worker_order);
@@ -1466,7 +1440,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam);
     RUN_TEST(test_two_core_step_never_double_moves_at_a_seam);
     RUN_TEST(test_two_core_step_matches_serial_fall_distance_at_a_seam);
-    RUN_TEST(test_smaller_quality_seams_match_serial);
+    RUN_TEST(test_smaller_quality_chunk_starts_match_serial);
     RUN_TEST(test_a_fuse_blast_throws_grains_on_both_cores);
     RUN_TEST(test_a_lava_burst_throws_grains_on_both_cores);
     RUN_TEST(test_a_settled_chunk_does_no_row_work);
