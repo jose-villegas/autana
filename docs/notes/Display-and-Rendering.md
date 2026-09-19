@@ -637,6 +637,8 @@ the ESP32-P4 has the PPA, PSRAM, *and* a real SDMMC host.
 
 ## Related
 
+- [../Gfx-and-Presentation.md](../Gfx-and-Presentation.md) — the mechanisms as
+  they stand today; this page is the measurements and bugs behind them.
 - [Board-and-Memory.md](Board-and-Memory.md) — the SPI2 wiring this all sits
   on top of.
 - [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md) — the -O2 build-flag
