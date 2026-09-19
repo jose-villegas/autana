@@ -245,7 +245,7 @@ first_walk_roll(const uint32_t* draws, int n) {
 }
 
 typedef struct {
-    int detect_step;   /* the suite's own criterion: gas anywhere at y >= exit */
+    int detect_step;   /* first step with a gas cell anywhere at y >= exit */
     int breakout_step; /* first step that left the gas outside the pocket */
     int exit_hits;     /* direction rolls that picked the open corner */
     int steps_run;
@@ -286,6 +286,50 @@ gas_is_in_pocket(const sand_t* s) {
     return CELL_MATERIAL(sand_at(s, POCKET_GAS_X, POCKET_GAS_Y)) == MAT_GAS;
 }
 
+static void
+record_origin_roll(pocket_result_t* out, const uint32_t* draws, int n) {
+    const int roll = first_walk_roll(draws, n);
+
+    out->steps_at_origin++;
+    if (roll < 0) {
+        return;
+    }
+    out->origin_walk_hist[roll]++;
+    out->origin_walks++;
+    if (roll < WALK_EXIT_ROLLS) {
+        out->exit_hits++;
+    }
+}
+
+static void
+widen_rows_after_breakout(pocket_result_t* out, int y) {
+    if (y < 0) {
+        return;
+    }
+    if (y < out->min_y_after_breakout) {
+        out->min_y_after_breakout = y;
+    }
+    if (y > out->max_y_after_breakout) {
+        out->max_y_after_breakout = y;
+    }
+}
+
+/* Both criteria, every step: the step the gas stopped being in the pocket,
+ * and the step it was first seen at y >= exit. They are not the same step,
+ * which is the whole point of printing them side by side. */
+static void
+note_where_the_gas_is(pocket_result_t* out, const sand_t* s, int step) {
+    if (out->breakout_step == 0 && gas_is_in_pocket(s) == 0) {
+        out->breakout_step = step;
+    }
+    if (out->breakout_step != 0) {
+        widen_rows_after_breakout(out, gas_row(s));
+    }
+    if (out->detect_step == 0 && gas_at_or_below_exit(s) != 0) {
+        out->detect_step = step;
+    }
+}
+
 /* Runs the full step budget whatever either criterion says, so a gas cell
  * that left the pocket without ever being seen at y >= exit is still
  * counted as having left. */
@@ -312,35 +356,28 @@ run_pocket(uint32_t seed, pocket_result_t* out) {
         if (n < 0) {
             out->bad_steps++;
         } else if (started_in_pocket != 0) {
-            const int roll = first_walk_roll(draws, n);
-            out->steps_at_origin++;
-            if (roll >= 0) {
-                out->origin_walk_hist[roll]++;
-                out->origin_walks++;
-                if (roll < WALK_EXIT_ROLLS) {
-                    out->exit_hits++;
-                }
-            }
+            record_origin_roll(out, draws, n);
         }
+        note_where_the_gas_is(out, &s, step);
+    }
+}
 
-        if (gas_is_in_pocket(&s) == 0 && out->breakout_step == 0) {
-            out->breakout_step = step;
+static void
+hist_range(const uint32_t* counts, uint32_t* lowest, uint32_t* highest) {
+    *lowest = 0xFFFFFFFFu;
+    *highest = 0;
+    for (int i = 0; i < 256; i++) {
+        if (counts[i] < *lowest) {
+            *lowest = counts[i];
         }
-        if (out->breakout_step != 0) {
-            const int y = gas_row(&s);
-            if (y >= 0) {
-                out->min_y_after_breakout = (y < out->min_y_after_breakout) ? y : out->min_y_after_breakout;
-                out->max_y_after_breakout = (y > out->max_y_after_breakout) ? y : out->max_y_after_breakout;
-            }
-        }
-        if (out->detect_step == 0 && gas_at_or_below_exit(&s) != 0) {
-            out->detect_step = step;
+        if (counts[i] > *highest) {
+            *highest = counts[i];
         }
     }
 }
 
 static void
-print_stream_sections(void) {
+print_byte_section(void) {
     static uint32_t low[256];
     static uint32_t high[256];
 
@@ -348,30 +385,42 @@ print_stream_sections(void) {
     printf("%4s  %10s %10s %10s  %10s %10s %10s\n", "seed", "low-min", "low-max", "low-chi2", "high-min", "high-max",
            "high-chi2");
     for (uint32_t seed = 1; seed <= POCKET_SEEDS; seed++) {
-        byte_histograms(seed, low, high);
-        uint32_t lo_min = 0xFFFFFFFFu;
+        uint32_t lo_min = 0;
         uint32_t lo_max = 0;
-        uint32_t hi_min = 0xFFFFFFFFu;
+        uint32_t hi_min = 0;
         uint32_t hi_max = 0;
-        for (int i = 0; i < 256; i++) {
-            lo_min = (low[i] < lo_min) ? low[i] : lo_min;
-            lo_max = (low[i] > lo_max) ? low[i] : lo_max;
-            hi_min = (high[i] < hi_min) ? high[i] : hi_min;
-            hi_max = (high[i] > hi_max) ? high[i] : hi_max;
-        }
+        byte_histograms(seed, low, high);
+        hist_range(low, &lo_min, &lo_max);
+        hist_range(high, &hi_min, &hi_max);
         printf("%4u  %10u %10u %10.1f  %10u %10u %10.1f\n", seed, lo_min, lo_max,
                chi_square_flat(low, 256, (double)STREAM_DRAWS), hi_min, hi_max,
                chi_square_flat(high, 256, (double)STREAM_DRAWS));
     }
     printf("255 degrees of freedom: a flat byte sits near 255, p=0.001 at 330.5\n\n");
+}
 
+static const char*
+period_label(int p) {
+    if (p < 0) {
+        return "out of memory";
+    }
+    if (p == 0) {
+        return "none";
+    }
+    return "REPEATS";
+}
+
+static void
+print_period_section(void) {
     printf("== low-byte period, searched to %d over a %d-draw window ==\n", PERIOD_LIMIT, PERIOD_WINDOW);
     for (uint32_t seed = 1; seed <= POCKET_SEEDS; seed++) {
-        const int p = low_byte_period(seed);
-        printf("  seed %2u: %s\n", seed, (p == 0) ? "none" : (p < 0) ? "out of memory" : "REPEATS");
+        printf("  seed %2u: %s\n", seed, period_label(low_byte_period(seed)));
     }
     printf("\n");
+}
 
+static void
+print_joint_section(void) {
     printf("== joint distribution, high nibble of each byte, 16x16 bins ==\n");
     printf("%4s  %14s %16s %14s  %18s\n", "seed", "low_n,low_n+1", "high_n,high_n+1", "low_n,high_n",
            "low_n,low_n+2 (step)");
@@ -380,7 +429,10 @@ print_stream_sections(void) {
                joint_chi_square(seed, 1, 24, 24), joint_chi_square(seed, 0, 0, 24), joint_chi_square(seed, 2, 0, 0));
     }
     printf("low_n,high_n is the same draw against itself, not a pair - the column is a control\n\n");
+}
 
+static void
+print_conditional_section(void) {
     printf("== a lower-diagonal roll, asked of the raw stream ==\n");
     printf("any low byte under %d; the expected rate is %d/256 = %.6f\n", WALK_LOWER_DIAGONALS, WALK_LOWER_DIAGONALS,
            (double)WALK_LOWER_DIAGONALS / 256.0);
@@ -395,33 +447,76 @@ print_stream_sections(void) {
         printf("%4u  %16.6f %16.6f  %16.6f %16.6f\n", seed, p1, c1, p2, c2);
     }
     printf("\n");
+}
 
-    printf("== the hashed draw, cell (%d,%d), step counter 0..65535 ==\n", POCKET_GAS_X, POCKET_GAS_Y);
-    printf("%4s  %10s %10s %10s %16s\n", "seed", "low-min", "low-max", "low-chi2", "joint-chi2");
+static void
+print_hashed_section(void) {
     static uint32_t hashed_low[256];
     static uint32_t hashed_joint[256];
     const uint32_t cell = (uint32_t)(POCKET_GAS_Y * POCKET_W + POCKET_GAS_X);
+
+    printf("== the hashed draw, cell (%d,%d), step counter 0..65535 ==\n", POCKET_GAS_X, POCKET_GAS_Y);
+    printf("%4s  %10s %10s %10s %16s\n", "seed", "low-min", "low-max", "low-chi2", "joint-chi2");
     for (uint32_t seed = 1; seed <= POCKET_SEEDS; seed++) {
-        hashed_histograms(seed, cell, SAND_RNG_SLOT_GAS_WALK, hashed_low, hashed_joint);
-        uint32_t lo_min = 0xFFFFFFFFu;
+        uint32_t lo_min = 0;
         uint32_t lo_max = 0;
-        for (int i = 0; i < 256; i++) {
-            lo_min = (hashed_low[i] < lo_min) ? hashed_low[i] : lo_min;
-            lo_max = (hashed_low[i] > lo_max) ? hashed_low[i] : lo_max;
-        }
+        hashed_histograms(seed, cell, SAND_RNG_SLOT_GAS_WALK, hashed_low, hashed_joint);
+        hist_range(hashed_low, &lo_min, &lo_max);
         printf("%4u  %10u %10u %10.1f %16.1f\n", seed, lo_min, lo_max, chi_square_flat(hashed_low, 256, 65535.0),
                chi_square_flat(hashed_joint, 256, 65535.0));
     }
     printf("\n");
 }
 
-int
-main(void) {
-    printf("generator: xorshift32, shifts (13, 17, 5), 32-bit state - launcher/main/util/rng.h\n");
-    printf("rng_chance(), rng_below() and sand_rng_chance_at() all read the LOW bits\n\n");
+/* The stream half of the report, in the order it prints. Each entry owns
+ * its own heading and footer, so the order here is the only thing that
+ * decides the layout. */
+static void (*const stream_sections[])(void) = {
+    print_byte_section, print_period_section, print_joint_section, print_conditional_section, print_hashed_section,
+};
 
-    print_stream_sections();
+static void
+print_stream_sections(void) {
+    for (size_t i = 0; i < sizeof stream_sections / sizeof *stream_sections; i++) {
+        stream_sections[i]();
+    }
+}
 
+/* "never" rather than a zero, so a column of step numbers cannot be read
+ * as one that happened at step zero. */
+static void
+format_step(char* out, size_t n, int step) {
+    if (step == 0) {
+        snprintf(out, n, "%s", "never");
+        return;
+    }
+    snprintf(out, n, "%d", step);
+}
+
+static void
+format_rows(char* out, size_t n, const pocket_result_t* r) {
+    if (r->max_y_after_breakout < 0) {
+        snprintf(out, n, "%s", "-");
+        return;
+    }
+    snprintf(out, n, "%d..%d", r->min_y_after_breakout, r->max_y_after_breakout);
+}
+
+static void
+print_pocket_row(uint32_t seed, const pocket_result_t* r) {
+    char seen[16];
+    char left[16];
+    char rows[16];
+
+    format_step(seen, sizeof seen, r->detect_step);
+    format_step(left, sizeof left, r->breakout_step);
+    format_rows(rows, sizeof rows, r);
+    printf("%4u  %8s %8s %10d %12u %12s%s\n", seed, seen, left, r->exit_hits, r->origin_walks, rows,
+           (r->bad_steps != 0) ? "  UNACCOUNTED DRAWS" : "");
+}
+
+static void
+print_pocket_table(pocket_result_t* results) {
     printf("== the sealed pocket, stepped through sand_step() ==\n");
     printf("gas at (%d,%d), one open corner at (%d,%d), mobility %d, %d steps, never cut short\n", POCKET_GAS_X,
            POCKET_GAS_Y, POCKET_EXIT_X, POCKET_EXIT_Y, POCKET_MOBILITY, POCKET_STEPS);
@@ -430,46 +525,43 @@ main(void) {
     printf("a corner roll is %d in 256 and mobility passes 255 in 256, so the gas should\n", WALK_EXIT_ROLLS);
     printf("reach the corner after %.1f steps on average\n", 65536.0 / (double)(WALK_EXIT_ROLLS * POCKET_MOBILITY));
     printf("%4s  %8s %8s %10s %12s %12s\n", "seed", "seen", "left", "corner", "rolls@origin", "rows after");
-    static pocket_result_t results[POCKET_SEEDS + 1];
     for (uint32_t seed = 1; seed <= POCKET_SEEDS; seed++) {
         run_pocket(seed, &results[seed]);
-        const pocket_result_t* r = &results[seed];
-        char seen[16];
-        char left[16];
-        char rows[16];
-        snprintf(seen, sizeof seen, "%s", "never");
-        if (r->detect_step != 0) {
-            snprintf(seen, sizeof seen, "%d", r->detect_step);
-        }
-        snprintf(left, sizeof left, "%s", "never");
-        if (r->breakout_step != 0) {
-            snprintf(left, sizeof left, "%d", r->breakout_step);
-        }
-        snprintf(rows, sizeof rows, "%s", "-");
-        if (r->max_y_after_breakout >= 0) {
-            snprintf(rows, sizeof rows, "%d..%d", r->min_y_after_breakout, r->max_y_after_breakout);
-        }
-        printf("%4u  %8s %8s %10d %12u %12s%s\n", seed, seen, left, r->exit_hits, r->origin_walks, rows,
-               (r->bad_steps != 0) ? "  UNACCOUNTED DRAWS" : "");
+        print_pocket_row(seed, &results[seed]);
     }
     printf("\n");
+}
 
-    /* Pooled across seeds, and in 16 bins rather than 256: a single seed
-     * leaves the pocket after a few dozen rolls, which is far too few for
-     * a per-seed statistic to say anything. */
+static void
+bin_by_sixteen(const uint32_t* hist, uint32_t* bins) {
+    memset(bins, 0, sizeof(uint32_t) * 16);
+    for (int v = 0; v < 256; v++) {
+        bins[v >> 4] += hist[v];
+    }
+}
+
+/* Pooled across seeds, and in 16 bins rather than 256: a single seed
+ * leaves the pocket after a few dozen rolls, which is far too few for a
+ * per-seed statistic to say anything. */
+static void
+print_pooled_line(const pocket_result_t* results) {
     uint32_t pooled[16];
-    uint32_t pooled_total = 0;
+    uint32_t total = 0;
+
     memset(pooled, 0, sizeof pooled);
     for (uint32_t seed = 1; seed <= POCKET_SEEDS; seed++) {
         for (int v = 0; v < 256; v++) {
             pooled[v >> 4] += results[seed].origin_walk_hist[v];
-            pooled_total += results[seed].origin_walk_hist[v];
+            total += results[seed].origin_walk_hist[v];
         }
     }
-    printf("pooled over every seed: %u rolls, 16-bin chi2 %.1f (15 degrees of freedom, p=0.001 at 37.7)\n",
-           pooled_total, chi_square_flat(pooled, 16, (double)pooled_total));
+    printf("pooled over every seed: %u rolls, 16-bin chi2 %.1f (15 degrees of freedom, p=0.001 at 37.7)\n", total,
+           chi_square_flat(pooled, 16, (double)total));
     printf("\n");
+}
 
+static void
+print_bin_table(const pocket_result_t* results) {
     printf("== direction rolls drawn while the gas sat in the pocket, 16 bins of 16 ==\n");
     printf("%4s %8s", "seed", "rolls");
     for (int b = 0; b < 16; b++) {
@@ -477,19 +569,19 @@ main(void) {
     }
     printf("\n");
     for (uint32_t seed = 1; seed <= POCKET_SEEDS; seed++) {
-        printf("%4u %8u", seed, results[seed].origin_walks);
         uint32_t bins[16];
-        memset(bins, 0, sizeof bins);
-        for (int v = 0; v < 256; v++) {
-            bins[v >> 4] += results[seed].origin_walk_hist[v];
-        }
+        bin_by_sixteen(results[seed].origin_walk_hist, bins);
+        printf("%4u %8u", seed, results[seed].origin_walks);
         for (int b = 0; b < 16; b++) {
             printf(" %5u", bins[b]);
         }
         printf("\n");
     }
     printf("\n");
+}
 
+static void
+print_low_roll_table(const pocket_result_t* results) {
     printf("== the same rolls, values 0..7 ==\n");
     printf("%4s", "seed");
     for (int v = 0; v < 8; v++) {
@@ -503,6 +595,20 @@ main(void) {
         }
         printf("\n");
     }
+}
+
+int
+main(void) {
+    static pocket_result_t results[POCKET_SEEDS + 1];
+
+    printf("generator: xorshift32, shifts (13, 17, 5), 32-bit state - launcher/main/util/rng.h\n");
+    printf("rng_chance(), rng_below() and sand_rng_chance_at() all read the LOW bits\n\n");
+
+    print_stream_sections();
+    print_pocket_table(results);
+    print_pooled_line(results);
+    print_bin_table(results);
+    print_low_roll_table(results);
 
     return 0;
 }
