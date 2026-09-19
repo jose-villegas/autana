@@ -75,6 +75,13 @@ EXCLUDED_MAIN_FILES = {
         "- host gcc compiles it fine (report_crossflow.sh).",
 }
 
+# A file only a build VARIANT compiles is in no diagnostics compile database,
+# so it is measured with the command of a sibling in the same folder - the
+# flags it would have had - rather than excused from the gate.
+VARIANT_ONLY_FILES = {
+    "main/gfx/gfx_null_panel.c": "main/gfx/gfx.c",  # CONFIG_LAUNCHER_QEMU
+}
+
 VENDORED_DIR_NAMES = {"components", "managed_components"}
 
 # Vendored source -> its pristine upstream copy (a pinned submodule). A
@@ -518,6 +525,21 @@ def build_idf_entries(toolchain_root, vendored=False):
         cmd += (f' --sysroot="{sysroot}" --gcc-toolchain="{toolchain_root}"'
                 ' -Wno-unknown-warning-option -Wno-string-plus-int')
         entries[str(path.resolve())] = cmd
+    if not vendored:
+        for rel, sibling_rel in VARIANT_ONLY_FILES.items():
+            sibling = str((LAUNCHER_DIR / sibling_rel).resolve())
+            target = str((LAUNCHER_DIR / rel).resolve())
+            if sibling not in entries or target in entries:
+                continue
+            # Same folder, so only the file name differs - after either
+            # separator, since a Windows database writes backslashes.
+            borrowed, swaps = re.subn(
+                r"(?<=[\\/])" + re.escape(Path(sibling_rel).name) + r"(?!\w)",
+                lambda _m: Path(rel).name, entries[sibling])
+            if swaps == 0:
+                sys.exit(f"{sibling_rel}'s compile command does not name it; "
+                         f"cannot borrow it for {rel}")
+            entries[target] = borrowed
     return entries
 
 
