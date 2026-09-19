@@ -2543,102 +2543,69 @@ step_one_reacting_row_liquid_near(sand_t* s, int y, int w, int h) {
     return found;
 }
 
-/* THE LOCAL-RULE SPLIT: every row, minus its stripe boundary, dispatched
- * through step_one_reacting_row() on whichever core owns it -
- * run_sweep_stripes()'s own shape (sand.c). NO SNAPSHOT COMPARE: unlike a
- * grain's move, a reaction never relocates a cell's row. */
+/* THE LOCAL-RULE SPLIT: every chunk of one colour dispatched through
+ * step_one_reacting_row() on whichever core owns it - the sweep's own shape
+ * (sand.c). No boundary handling of any kind: a reaction reaches one cell,
+ * and a chunk's neighbours all belong to other colours and other passes. */
 typedef struct {
     sand_t* s;
-    int w, h, stripe_h, offset, color, share;
+    int w, h, color, share;
     unsigned* found_out;
-} react_phase_ctx_t;
+} react_pass_ctx_t;
 
-_Static_assert(sizeof(react_phase_ctx_t) <= JOB_CTX_MAX, "react_phase_ctx_t must fit JOB_CTX_MAX");
+_Static_assert(sizeof(react_pass_ctx_t) <= JOB_CTX_MAX, "react_pass_ctx_t must fit JOB_CTX_MAX");
 
-/* One stripe band's interior rows - the guard row on each side excluded,
- * same shape as run_sweep_stripes()'s own inner_y0/inner_y1 (sand.c). */
-static void
-react_run_one_stripe(sand_t* s, int w, int h, int band0, int stripe_h, unsigned* found) {
-    const int y0 = band0 < 0 ? 0 : band0;
-    const int y1 = (band0 + stripe_h > h) ? h : band0 + stripe_h;
-    const int inner_y0 = (y0 > 0) ? y0 + 1 : y0;
-    const int inner_y1 = (y1 < h) ? y1 - 1 : y1;
-    for (int y = inner_y0; y < inner_y1; y++) {
-        *found |= step_one_reacting_row(s, y, w, h, 0, w);
+static unsigned
+react_run_one_chunk(sand_t* s, int w, int h, int x0, int x1, int y0, int y1) {
+    unsigned found = 0;
+
+    for (int y = y0; y < y1; y++) {
+        found |= step_one_reacting_row(s, y, w, h, x0, x1);
     }
+    return found;
 }
 
 static void
-react_run_stripes(const react_phase_ctx_t* c) {
-    const int h = c->h;
-    int k = (c->offset == 0) ? 0 : -1;
-    int seen = 0;
+react_run_chunks(const react_pass_ctx_t* c) {
+    const int side = sand_chunk_side(c->s);
     unsigned found = 0;
 
-    for (;;) {
-        const int band0 = c->offset + k * c->stripe_h;
-        if (band0 >= h) {
-            break;
+    for (int cy = 0; cy < sand_chunk_rows(c->s); cy++) {
+        if (sand_chunk_share(cy) != c->share) {
+            continue;
         }
-        const int stripe_color = ((k % 2) + 2) % 2;
-        if (stripe_color == c->color) {
-            if ((seen & 1) == c->share) {
-                react_run_one_stripe(c->s, c->w, h, band0, c->stripe_h, &found);
+        int y0, y1;
+        sand_chunk_span(cy, side, c->h, &y0, &y1);
+        for (int cx = 0; cx < sand_chunk_cols(c->s); cx++) {
+            if (sand_chunk_color(cx, cy) == c->color) {
+                int x0, x1;
+                sand_chunk_span(cx, side, c->w, &x0, &x1);
+                found |= react_run_one_chunk(c->s, c->w, c->h, x0, x1, y0, y1);
             }
-            seen++;
         }
-        k++;
     }
     *c->found_out = found;
 }
 
 static void
-react_stripes_worker(void* ctx) {
-    react_run_stripes((const react_phase_ctx_t*)ctx);
+react_chunks_worker(void* ctx) {
+    react_run_chunks((const react_pass_ctx_t*)ctx);
 }
 
-/* One checkerboard phase - every stripe of `color`, minus its guard rows -
- * half on core 1, half here, joined before returning. */
+/* One colour's pass, its chunk rows divided between core 1 and here and
+ * joined before returning. */
 static unsigned
-react_run_phase(sand_t* s, int color, int w, int h, int stripe_h, int offset) {
+react_run_color(sand_t* s, int color, int w, int h) {
     unsigned found_b = 0;
-    react_phase_ctx_t ctx_b = {s, w, h, stripe_h, offset, color, 1, &found_b};
-    (void)job_run_core1(react_stripes_worker, &ctx_b, sizeof ctx_b);
+    react_pass_ctx_t ctx_b = {s, w, h, color, 1, &found_b};
+    (void)job_run_core1(react_chunks_worker, &ctx_b, sizeof ctx_b);
 
     unsigned found_a = 0;
-    react_phase_ctx_t ctx_a = {s, w, h, stripe_h, offset, color, 0, &found_a};
-    react_run_stripes(&ctx_a);
+    react_pass_ctx_t ctx_a = {s, w, h, color, 0, &found_a};
+    react_run_chunks(&ctx_a);
 
     (void)job_wait(100);
     return found_a | found_b;
-}
-
-#define REACT_GUARD_ROW_MAX (2 * ((GRID_H_MAX + SAND_STRIPE_H_MIN - 1) / SAND_STRIPE_H_MIN))
-
-/* Every guard row this step has - the two rows either side of each stripe
- * boundary, boundary order. Mirrors sweep_guard_row_list() (sand.c) over
- * the same stripe_h/offset; reactions have no sweep direction to reorder
- * for, so unlike that function this list is consumed as-is. */
-static int
-react_guard_row_list(int h, int stripe_h, int offset, int* out, int max) {
-    int k = (offset == 0) ? 0 : -1;
-    int n = 0;
-
-    for (;;) {
-        const int boundary = offset + (k + 1) * stripe_h;
-        if (boundary >= h) {
-            break;
-        }
-        if (boundary > 0) {
-            if (n + 1 < max) {
-                out[n] = boundary - 1;
-                out[n + 1] = boundary;
-            }
-            n += 2;
-        }
-        k++;
-    }
-    return n;
 }
 
 static void
@@ -2761,7 +2728,7 @@ sand_step_reaction_reach(sand_t* s) {
  * narrower soak-only walk left alone; see sand_step_reactions(). */
 static bool
 reactions_may_split(const sand_t* s, bool soak_only) {
-    return sand_two_core_step_enabled() && !soak_only && sand_stripe_count(s) >= SAND_STRIPE_SPLIT_MIN_COUNT
+    return sand_two_core_step_enabled() && !soak_only && sand_chunk_split_ready(s)
            && (s->may_have_materials & grower_mask()) == 0;
 }
 
@@ -2781,16 +2748,9 @@ run_reaction_rows(sand_t* s, bool soak_only) {
         return found;
     }
 
-    const int stripe_h = sand_stripe_height(h);
-    const int offset = sand_stripe_offset(s);
     s->rng_hashed = true;
-    found |= react_run_phase(s, 0, w, h, stripe_h, offset);
-    found |= react_run_phase(s, 1, w, h, stripe_h, offset);
-
-    int guard_rows[REACT_GUARD_ROW_MAX];
-    const int guard_count = react_guard_row_list(h, stripe_h, offset, guard_rows, REACT_GUARD_ROW_MAX);
-    for (int gi = 0; gi < guard_count; gi++) {
-        found |= step_one_reacting_row(s, guard_rows[gi], w, h, 0, w);
+    for (int color = 0; color < SAND_CHUNK_COLOR_COUNT; color++) {
+        found |= react_run_color(s, color, w, h);
     }
     s->rng_hashed = false;
 

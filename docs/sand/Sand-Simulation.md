@@ -1189,7 +1189,7 @@ update can touch another's, in cells:
 | Main sweep (`step_one_grain`, `move_liquid_grain`) | 1 (Chebyshev - every move is one of the eight ring directions) | yes |
 | Liquid cross-flow (`equalise_liquids`, `find_shallowest`) | `SAND_LIQUID_SIGHT`, 8, along a ray that can run diagonally through several rows | yes; private wake and repaint state |
 | Gas walk (`gas_walk_once`) | 1, same shape as the sweep | yes; private wake and repaint state |
-| Reaction local rules (`step_one_reacting_row`'s burn/warm/tempered/crust/soak-dry/condense/acid-rain stages) | 1 | yes; growers on the board disable the split entirely (`reactions_may_split()`, `sand_reactions.c`) |
+| Reaction local rules (`step_one_reacting_row`'s burn/warm/tempered/crust/soak-dry/condense/acid-rain stages) | 1 | yes, and serial-exact - a reaction never relocates a cell; growers on the board disable the split entirely (`reactions_may_split()`, `sand_reactions.c`) |
 | Gas cross-flow (`equalise_gas`) | `material_of(c)->sight`: 5-24 cells across fire (5), gas (16), steam (20), and smoke (24) | only along a ray that stays in its own row - see below |
 | Heat conduction to a boiler (`try_heat_transform_given`'s `CONDUCT_REACH`) | 32, a directed walk, not a spread | no; queue-free - `sand_step_reaction_reach()` re-scans for every still-burning cell |
 | Chilling (`step_one_cold_cell`'s carry walk) and dissolving (acid) | `COLD_REACH`, and acid's own multi-cell backing check | no; same re-scan, left whole rather than split into a local half |
@@ -1198,14 +1198,13 @@ update can touch another's, in cells:
 | Explosions (confined gas, lava bursts, fuse chains) and thrown debris (`step_impulses`) | queued, crosses many steps, effectively unbounded | no |
 
 The gravity sweep, gas walk, liquid cross-flow and a reacting cell's own
-LOCAL rules have fixed cell reaches small enough to split. The sweep,
-liquid cross-flow and both gas sub-passes run on the four-colour chunk grid
-below; the reaction pass still uses the older row-stripe layout
-(`run_reaction_rows()`, `sand_reactions.c`). A reaction's
+LOCAL rules have fixed cell reaches small enough to split, and all four run
+on the four-colour chunk grid below (`run_reaction_rows()`,
+`sand_reactions.c`, for the last). A reaction's
 long-reach triggers, liquid density sorting and impulses remain serial:
 each long-reach trigger has an `_or_defer` gate at its call site that
-skips it while a stripe or guard row is running and lets a single serial
-pass pick it up once both phases have joined - either by re-scanning the
+skips it while a chunk pass is running and lets a single serial
+pass pick it up once every colour has joined - either by re-scanning the
 board (conduct_heat, chilling, dissolving, all queue-free) or through one
 of a handful of small, cap-limited queues (cracks, cool-off chains, the
 three explosion triggers). See `sand_reactions.c`'s own comment on that
@@ -1336,6 +1335,16 @@ serially rather than widening the chunk side for the rarest case.
 Block wakes and dirty spans reach beyond a chunk, so both workers write
 private copies and merge them after each pass. Boards with too few chunk rows
 for both workers, and scratch allocation failures, retain the serial walk.
+
+### Reaction chunks
+
+A reaction reads and writes one cell away and never relocates a cell, so its
+local rules take the chunk grid with nothing added: four passes, no guards,
+no snapshot. That makes it the one split pass still exact against the serial
+order, which `suite_sand_two_core.c` checks on a zero-randomness fire chain.
+
+Growers still disable the split outright - their own reach was never audited
+for it - and the narrower soak-only walk is left serial.
 
 ### The draw
 
