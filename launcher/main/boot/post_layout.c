@@ -105,3 +105,23 @@ int
 post_layout_capacity(const post_layout_t* l) {
     return l->columns * l->rows;
 }
+
+mu_Rect
+post_layout_take_line(const post_layout_t* l, post_lines_t* lines) {
+    const mu_Rect line = post_layout_line(l, lines->next);
+    if (line.w > 0) {
+        lines->next++;
+    }
+    return line;
+}
+
+/* A column break already reads as a break, so a gap that would land on a
+ * column's first row is dropped rather than drawn: spending the row would
+ * start that column one line below every other one. */
+void
+post_layout_gap(const post_layout_t* l, post_lines_t* lines) {
+    if (l->rows <= 0 || lines->next % l->rows == 0) {
+        return;
+    }
+    lines->next++;
+}
