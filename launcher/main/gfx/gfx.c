@@ -1159,6 +1159,8 @@ gfx_glow_curve(const int16_t* y_q4, int count, int x0, int x1, int quarter_turns
         return;
     }
     const gfx_target_t target = current_target();
+    x0 = im_max(x0, 0);
+    x1 = im_min(x1, count);
     for (int chunk = x0; chunk < x1; chunk += GFX_GLOW_CHUNK) {
         const gfx_glow_box_t box =
             gfx_glow_draw_columns(target, clip.x0, clip.y0, clip.x1, clip.y1, GFX_WIDTH, GFX_HEIGHT, y_q4, count, chunk,

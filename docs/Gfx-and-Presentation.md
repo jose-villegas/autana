@@ -256,6 +256,8 @@ curve as a wave and dies away. It is built to go quiet - at rest it
 simulates nothing and `spring_line_apply()` reports no changed columns, so
 the screen costs no draw and no send until touched. `apply` also returns how
 far the curve moved this frame, which is the `erase_px` to draw it with.
+`ui/ui_ridge.c` puts the two together as the launcher's backdrop, under the
+app rows by way of `ui_end_over()`.
 
 Cost follows lit pixels: Cerro Autana's ridge at radius 13 lights about
 16,600 of them. In landscape a column of the view is a row of the panel, so
