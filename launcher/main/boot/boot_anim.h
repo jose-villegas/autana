@@ -974,6 +974,13 @@ boot_anim_finale_reach(uint32_t now_ms) {
  * reimplementation. See tools/boot_anim_render_host.c. */
 void boot_anim_draw_frame(uint32_t now_ms);
 
+/* What the picture dissolves INTO. Unset, the last frames fade to black and
+ * whatever follows cuts in. Set, each of them starts from `paint`'s picture
+ * of the screen that follows, and the photograph and title dither away over
+ * it. The caller paints it because boot/ knows nothing above itself. */
+typedef void (*boot_anim_backdrop_fn)(void);
+void boot_anim_set_ending_backdrop(boot_anim_backdrop_fn paint);
+
 #ifdef ESP_PLATFORM
 /* Runs pre-boot, post-gfx_init(). Yields frames for watchdog. Device-only:
  * adds real wall clock and gfx_present() to real panel. */
