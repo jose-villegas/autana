@@ -57,6 +57,10 @@ target_include_directories(editor_runtime
         ${LAUNCHER_DIR}/main
         ${LAUNCHER_DIR}/components/microui/include
 )
+# ui_scroll.c's momentum uses expf(); only MinGW links libm unasked.
+if(NOT WIN32)
+    target_link_libraries(editor_runtime PUBLIC m)
+endif()
 target_compile_definitions(editor_runtime PRIVATE
     CONFIG_LAUNCHER_DEVELOPMENT=0
 )
