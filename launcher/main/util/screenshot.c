@@ -46,6 +46,10 @@
 
 #include "gfx/gfx.h"
 #include "util/device_state.h"
+#if CONFIG_LAUNCHER_QEMU
+#include "input/imu.h"
+#include "input/touch.h"
+#endif
 
 static const char* TAG = "screenshot";
 
@@ -73,9 +77,43 @@ static volatile bool s_runsuite_pending;
 static char s_runsuite_name[SCREENSHOT_LINE_MAX];
 #endif
 
+#if CONFIG_LAUNCHER_QEMU
+/* Input for an image with no touch controller or IMU behind it. Each is
+ * acknowledged on its own line, so a host can pace a gesture on the device's
+ * word instead of on a guess at how fast emulated time is running. */
+static bool
+handle_injection_line(build_console_command_t command, const char* line) {
+    if (command == BUILD_CONSOLE_TOUCH) {
+        bool down = false;
+        int x = 0, y = 0;
+        const bool ok = build_console_parse_touch(line, &down, &x, &y);
+        if (ok) {
+            touch_inject(down, x, y);
+        }
+        printf("TOUCH_%s\n", ok ? "OK" : "REJECTED");
+    } else if (command == BUILD_CONSOLE_IMU) {
+        int ax = 0, ay = 0, az = 0;
+        const bool ok = build_console_parse_imu(line, &ax, &ay, &az);
+        if (ok) {
+            imu_inject(&(imu_sample_t){.ax = (int16_t)ax, .ay = (int16_t)ay, .az = (int16_t)az});
+        }
+        printf("IMU_%s\n", ok ? "OK" : "REJECTED");
+    } else {
+        return false;
+    }
+    fflush(stdout);
+    return true;
+}
+#endif
+
 static void
 handle_screenshot_line(const char* line) {
     const build_console_command_t command = build_console_command_parse(line);
+#if CONFIG_LAUNCHER_QEMU
+    if (handle_injection_line(command, line)) {
+        return;
+    }
+#endif
     if (command == BUILD_CONSOLE_SCREENSHOT) {
         ESP_LOGI(TAG, "trigger received");
         s_request_pending = true;
