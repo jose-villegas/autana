@@ -70,44 +70,19 @@ take_line(report_pen_t* pen, mu_Rect* out) {
     return true;
 }
 
-/* How much of `text` fits on one line of `columns` width, breaking at the
- * last space that still fits - or the whole line, if no such space exists.
- * That fallback is a hard break for a single token longer than the line, so
- * a pathological string still renders rather than looping forever. */
-static int
-line_break_length(const char* text, int columns) {
-    const int len = (int)strlen(text);
-    if (len <= columns) {
-        return len;
-    }
-
-    int brk = columns;
-    while (brk > 0 && text[brk] != ' ') {
-        brk--;
-    }
-    return brk > 0 ? brk : columns;
-}
-
 /* Draws `text` down as many report lines as it needs, indented `indent`
- * characters into each. False once the columns are full. */
+ * characters into each. False once the columns are full. Walks the same
+ * wrap the height was measured with, so the two cannot disagree. */
 static bool
 draw_wrapped(report_pen_t* pen, int indent, const char* text, gfx_color_t colour) {
-    char line[64];
+    char line[POST_WRAP_MAX_CHARS + 1];
+    const int columns = post_layout_wrap_columns(&pen->layout, indent);
 
-    int columns = pen->layout.line_chars - indent;
-    if (columns > (int)sizeof(line) - 1) {
-        columns = (int)sizeof(line) - 1;
-    }
-    if (columns < 1) {
-        columns = 1;
-    }
-
-    while (*text != '\0') {
-        while (*text == ' ') {
-            text++; /* skip the break we just consumed */
-        }
-        if (*text == '\0') {
-            break;
+    int cursor = 0;
+    for (;;) {
+        const post_wrap_line_t wrapped = post_wrap_next(text, columns, &cursor);
+        if (wrapped.len <= 0) {
+            return true;
         }
 
         mu_Rect row;
@@ -115,15 +90,20 @@ draw_wrapped(report_pen_t* pen, int indent, const char* text, gfx_color_t colour
             return false;
         }
 
-        const int take = line_break_length(text, columns);
-        memcpy(line, text, (size_t)take);
-        line[take] = '\0';
+        memcpy(line, text + wrapped.start, (size_t)wrapped.len);
+        line[wrapped.len] = '\0';
         draw_text(pen, row.x + indent * pen->layout.glyph_w, row.y, line, POST_LAYOUT_REPORT_SCALE, colour);
-
-        text += take;
     }
+}
 
-    return true;
+/* What draw_entry() is about to need, so the column can be chosen before any
+ * of it is drawn. */
+static int
+entry_lines(const report_pen_t* pen, const post_result_t* r) {
+    if (r->detail[0] == '\0') {
+        return 1;
+    }
+    return 1 + post_wrap_count(r->detail, post_layout_wrap_columns(&pen->layout, MARK_CHARS));
 }
 
 static bool
@@ -171,6 +151,7 @@ draw_results(report_pen_t* pen, bool failures_only) {
             continue;
         }
 
+        post_layout_reserve(&pen->layout, &pen->lines, entry_lines(pen, r));
         if (!draw_entry(pen, r, failed)) {
             return;
         }

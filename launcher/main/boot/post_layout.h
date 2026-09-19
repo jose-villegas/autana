@@ -82,3 +82,34 @@ mu_Rect post_layout_take_line(const post_layout_t* l, post_lines_t* lines);
  * would fall at the top of a column is dropped, so every column's first line
  * carries text. */
 void post_layout_gap(const post_layout_t* l, post_lines_t* lines);
+
+/* Asks for `n` lines to be placed together, before any is taken. A check that
+ * does not fit what is left of the column starts the next one instead, so its
+ * detail is never orphaned at a column's head under no name. One taller than
+ * a whole column starts at a column top and splits. Nothing moves with no
+ * column left to move into. */
+void post_layout_reserve(const post_layout_t* l, post_lines_t* lines, int n);
+
+/* The longest wrapped line the drawer copies out in one piece. Both the
+ * measure and the draw take their width from post_layout_wrap_columns(), so
+ * neither can ask for more than the other can render. */
+#define POST_WRAP_MAX_CHARS 63
+
+/* Characters a line holds `indent` characters into a column. */
+int post_layout_wrap_columns(const post_layout_t* l, int indent);
+
+/* One wrapped line: `len` characters from `start` in the text. */
+typedef struct {
+    int start;
+    int len;
+} post_wrap_line_t;
+
+/* Walks `text` one wrapped line at a time at `columns` wide, breaking at the
+ * last space that still fits and hard-breaking a token longer than the line -
+ * so a pathological string still renders rather than looping forever. Start
+ * `cursor` at 0; a returned `len` of 0 ends the walk. */
+post_wrap_line_t post_wrap_next(const char* text, int columns, int* cursor);
+
+/* The same walk, counted rather than drawn - which is how a check's height
+ * is known before a line of it is placed. */
+int post_wrap_count(const char* text, int columns);

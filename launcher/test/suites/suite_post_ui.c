@@ -191,6 +191,7 @@ place_report(post_layout_t l, int checks, int lines_each) {
 
     post_lines_t lines = {0};
     for (int check = 0; check < checks; check++) {
+        post_layout_reserve(&l, &lines, lines_each);
         for (int i = 0; i < lines_each; i++) {
             const mu_Rect line = post_layout_take_line(&l, &lines);
             if (line.w <= 0) {
@@ -302,6 +303,201 @@ test_the_pass_places_exactly_the_capacity_in_either_orientation(void) {
     assert_the_pass_stops_at_capacity(landscape());
 }
 
+/* One check placed the way the drawer places one: its height reserved, then
+ * its lines taken. */
+typedef struct {
+    mu_Rect first;
+    mu_Rect last;
+    int placed;
+} entry_placement_t;
+
+static entry_placement_t
+place_entry(const post_layout_t* l, post_lines_t* lines, int height) {
+    entry_placement_t e = {{0, 0, 0, 0}, {0, 0, 0, 0}, 0};
+
+    post_layout_reserve(l, lines, height);
+    for (int i = 0; i < height; i++) {
+        const mu_Rect line = post_layout_take_line(l, lines);
+        if (line.w <= 0) {
+            break;
+        }
+        if (e.placed == 0) {
+            e.first = line;
+        }
+        e.last = line;
+        e.placed++;
+    }
+    return e;
+}
+
+/* Fills the pass to exactly `remaining` rows short of the column's end. */
+static post_lines_t
+filled_to_remainder(const post_layout_t* l, int remaining) {
+    post_lines_t lines = {0};
+    for (int i = 0; i < l->rows - remaining; i++) {
+        TEST_ASSERT_GREATER_THAN_INT(0, post_layout_take_line(l, &lines).w);
+    }
+    return lines;
+}
+
+/* A check one line taller than the column has left for it: it belongs at the
+ * top of the next column, and the rows it skipped stay empty. */
+static void
+assert_a_check_that_does_not_fit_moves_whole(post_layout_t l) {
+    if (l.columns < 2) {
+        return; /* nowhere to move to - see the single-column test */
+    }
+
+    for (int height = 2; height <= l.rows; height++) {
+        post_lines_t lines = filled_to_remainder(&l, height - 1);
+        const entry_placement_t e = place_entry(&l, &lines, height);
+
+        TEST_ASSERT_EQUAL_INT_MESSAGE(height, e.placed, "the moved check lost lines");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(1, column_of(&l, e.first), "a check that did not fit stayed in the full column");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(l.body.y, e.first.y, "the moved check did not start at the column top");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(column_of(&l, e.first), column_of(&l, e.last), "the moved check still split");
+    }
+}
+
+static void
+test_a_check_that_does_not_fit_the_remainder_moves_whole_to_the_next_column(void) {
+    assert_a_check_that_does_not_fit_moves_whole(portrait());
+    assert_a_check_that_does_not_fit_moves_whole(landscape());
+}
+
+/* A check with exactly the room it needs stays where it is - the rule must
+ * not spend a column break it does not owe. */
+static void
+assert_a_check_that_exactly_fits_stays(post_layout_t l) {
+    for (int height = 1; height <= l.rows; height++) {
+        post_lines_t lines = filled_to_remainder(&l, height);
+        const entry_placement_t e = place_entry(&l, &lines, height);
+
+        TEST_ASSERT_EQUAL_INT(height, e.placed);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, column_of(&l, e.first), "a check that fitted was moved anyway");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(l.body.y + (l.rows - height) * l.line_h, e.first.y,
+                                      "a check that fitted did not start where the column had left off");
+    }
+}
+
+static void
+test_a_check_that_exactly_fits_stays_in_its_column(void) {
+    assert_a_check_that_exactly_fits_stays(portrait());
+    assert_a_check_that_exactly_fits_stays(landscape());
+}
+
+/* Taller than any column, so it cannot be kept whole: it starts at a column
+ * top and runs on from there. */
+static void
+assert_a_check_taller_than_a_column_starts_at_a_top(post_layout_t l) {
+    if (l.columns < 2) {
+        return;
+    }
+
+    post_lines_t lines = {0};
+    TEST_ASSERT_GREATER_THAN_INT(0, post_layout_take_line(&l, &lines).w); /* off a column top */
+
+    const entry_placement_t e = place_entry(&l, &lines, l.rows + 1);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(l.rows + 1, e.placed, "the over-tall check lost lines");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(l.body.y, e.first.y, "an over-tall check did not start at a column top");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(column_of(&l, e.first) + 1, column_of(&l, e.last),
+                                  "an over-tall check should run into the next column");
+}
+
+static void
+test_a_check_taller_than_a_column_starts_at_a_column_top_and_splits(void) {
+    assert_a_check_taller_than_a_column_starts_at_a_top(landscape());
+}
+
+/* Portrait has one column, so there is never a next one to move into: the
+ * rule must leave the pass exactly where it found it rather than skip to a
+ * top that does not exist and drop the rest of the report. */
+static void
+test_a_single_column_report_never_skips_rows(void) {
+    post_layout_t l = portrait();
+    TEST_ASSERT_EQUAL_INT(1, l.columns);
+
+    for (int height = 1; height <= l.rows; height++) {
+        post_lines_t lines = filled_to_remainder(&l, height - 1);
+        const int before = lines.next;
+        post_layout_reserve(&l, &lines, height);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(before, lines.next, "a single-column report skipped rows it could have used");
+    }
+}
+
+static const char* const wrap_samples[] = {
+    "",
+    "a",
+    "short",
+    "aa:bb:cc:dd:ee:ff",
+    "rev 0, 2 core, wifi ble ",
+    "183 KiB free, DMA block 180 KiB",
+    "0x20  TCA9554 reset lines",
+    "port 0, SDA 15, SCL 14",
+    "SD64G, 59640 MB, mounted and released",
+    "supercalifragilisticexpialidocious",
+    "  leading and  doubled   spaces  ",
+    POST_LAYOUT_WIDEST_LINE,
+};
+
+/* The count and the walk are the same routine, so a drawer that walks it
+ * consumes exactly the lines the measure promised - and the walk covers the
+ * whole string, dropping nothing but the spaces it breaks on. */
+static void
+assert_the_wrap_walk_matches_its_count(const char* text, int columns) {
+    int cursor = 0;
+    int emitted = 0;
+
+    for (;;) {
+        const post_wrap_line_t line = post_wrap_next(text, columns, &cursor);
+        if (line.len <= 0) {
+            break;
+        }
+        TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, line.len, "a wrapped line made no progress");
+        TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(columns, line.len, "a wrapped line ran past the column");
+        TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE((int)strlen(text), line.start + line.len, "a wrapped line ran past it");
+        emitted++;
+        TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE((int)strlen(text), emitted, "the wrap walk did not terminate");
+    }
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(emitted, post_wrap_count(text, columns), "the measure and the walk disagree");
+
+    while (text[cursor] == ' ') {
+        cursor++;
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE((int)strlen(text), cursor, "the wrap walk left part of the string unplaced");
+}
+
+static void
+test_the_wrap_measure_and_walk_agree_at_every_width(void) {
+    const int widest = landscape().line_chars > portrait().line_chars ? landscape().line_chars : portrait().line_chars;
+
+    for (size_t s = 0; s < sizeof(wrap_samples) / sizeof(wrap_samples[0]); s++) {
+        for (int columns = 1; columns <= widest; columns++) {
+            assert_the_wrap_walk_matches_its_count(wrap_samples[s], columns);
+        }
+    }
+}
+
+/* The width a detail is measured at is the width it is drawn at, and never
+ * wider than the drawer's own line buffer. */
+static void
+assert_the_wrap_width_is_drawable(post_layout_t l) {
+    for (int indent = 0; indent <= l.line_chars + 1; indent++) {
+        const int columns = post_layout_wrap_columns(&l, indent);
+        TEST_ASSERT_GREATER_THAN_INT(0, columns);
+        TEST_ASSERT_LESS_OR_EQUAL_INT(POST_WRAP_MAX_CHARS, columns);
+        TEST_ASSERT_LESS_OR_EQUAL_INT(l.line_chars, columns);
+    }
+}
+
+static void
+test_the_wrap_width_is_always_drawable_in_both_orientations(void) {
+    assert_the_wrap_width_is_drawable(portrait());
+    assert_the_wrap_width_is_drawable(landscape());
+}
+
 static void
 test_the_column_count_follows_the_orientation(void) {
     TEST_ASSERT_EQUAL_INT(POST_LAYOUT_PORTRAIT_COLUMNS, portrait().columns);
@@ -335,6 +531,12 @@ suite_post_ui(void) {
     RUN_TEST(test_a_check_ending_on_a_column_boundary_does_not_shift_the_next_column);
     RUN_TEST(test_a_report_that_fits_loses_no_line_in_either_orientation);
     RUN_TEST(test_the_pass_places_exactly_the_capacity_in_either_orientation);
+    RUN_TEST(test_a_check_that_does_not_fit_the_remainder_moves_whole_to_the_next_column);
+    RUN_TEST(test_a_check_that_exactly_fits_stays_in_its_column);
+    RUN_TEST(test_a_check_taller_than_a_column_starts_at_a_column_top_and_splits);
+    RUN_TEST(test_a_single_column_report_never_skips_rows);
+    RUN_TEST(test_the_wrap_measure_and_walk_agree_at_every_width);
+    RUN_TEST(test_the_wrap_width_is_always_drawable_in_both_orientations);
     RUN_TEST(test_the_column_count_follows_the_orientation);
     RUN_TEST(test_landscape_holds_at_least_as_many_lines_as_portrait);
 }
