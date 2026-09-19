@@ -11,9 +11,12 @@ A citation is what check_doc_citations.py already reads out of a document:
 a backticked path, `name()` or MACRO. A change touches a function when a
 changed line lies inside it (git's hunk header names the enclosing function)
 or defines it, and touches a macro whose #define line changed. A document
-citing only the file's path is reported when the change touches no named
-function or macro. CMake has no functions to name a hunk by, so a CMake change
-touches every ALL_CAPS word on its changed lines and always reports the path.
+citing only a C file's path is reported when the change touches no named
+function or macro. A script or CMake file always reports its path citers:
+documents cite a tool by its path and describe what running it does, so a
+change inside one of its functions is still theirs to reread. CMake has no
+functions to name a hunk by, so a CMake change also touches every ALL_CAPS
+word on its changed lines.
 Plans are skipped - they keep proposed and superseded names on purpose.
 Nothing here fails: a touched citation is a reason to reread the document,
 not proof it is wrong.
@@ -35,6 +38,8 @@ PY_NAME = re.compile(r"^\s*def ([a-z_][a-z0-9_]*)\s*\(")
 MACRO = re.compile(r"^\s*#\s*define\s+([A-Z][A-Z0-9_]+)\b")
 CMAKE_WORD = re.compile(r"\b[A-Z][A-Z0-9_]+\b")
 CMAKE = ".cmake"
+# Cited by path for what running them does, so a path citer is always told.
+PATH_CITED_LANGUAGES = {".py", ".sh", CMAKE}
 
 
 def is_cmake(source):
@@ -100,7 +105,7 @@ def citers(root, sources, diff_args):
         if citation.doc.startswith("docs/plans/"):
             continue
         for source, (functions, macros) in touched.items():
-            path_only = is_cmake(source) or not (functions or macros)
+            path_only = language(source) in PATH_CITED_LANGUAGES or not (functions or macros)
             if (citation.kind == "path" and path_only and cites_path(citation.value, source) or
                     citation.kind == "function" and citation.value in functions or
                     citation.kind == "macro" and citation.value in macros):

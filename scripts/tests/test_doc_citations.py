@@ -381,6 +381,26 @@ Acid -->|"dissolvable 110"| Metal
         self.assertEqual(found, {"launcher/main/CMakeLists.txt": {
             "docs/Build.md": ["WHOLE_ARCHIVE"], "docs/Glob.md": ["main/CMakeLists.txt"]}})
 
+    def test_citers_report_a_script_path_even_when_a_function_is_touched(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/tools/gen_font.py", "def render(size):\n    return size\n")
+            self.write(root, "launcher/tools/flash.sh", "flash() {\n    echo flash\n}\n")
+            self.write(root, "docs/Fonts.md", "Run `tools/gen_font.py`.\n")
+            self.write(root, "docs/Render.md", "`render()` rasterizes.\n")
+            self.write(root, "docs/Flash.md", "Run `flash.sh`.\n")
+            for command in (["init", "-q"], ["add", "."],
+                            ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base"]):
+                subprocess.run(["git", *command], cwd=root, check=True, capture_output=True)
+            script = root / "launcher/tools/gen_font.py"
+            script.write_text(script.read_text().replace("return size", "return size * 2"))
+            shell = root / "launcher/tools/flash.sh"
+            shell.write_text(shell.read_text().replace("echo flash", "echo flashing"))
+            found = doc_citers.citers(root, ["launcher/tools/gen_font.py", "launcher/tools/flash.sh"], ["HEAD"])
+        self.assertEqual(found, {
+            "launcher/tools/gen_font.py": {"docs/Fonts.md": ["tools/gen_font.py"], "docs/Render.md": ["render()"]},
+            "launcher/tools/flash.sh": {"docs/Flash.md": ["flash.sh"]}})
+
     def test_a_cmake_path_citation_must_exist(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
