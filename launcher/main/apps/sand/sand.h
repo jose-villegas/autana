@@ -52,7 +52,7 @@ typedef struct sand_s {
     rng_t rng; /* seeded explicitly, so every run repeats exactly */
     /* The same seed, kept aside for sand_rng_next_at()'s hashed draws -
      * see sand_two_core_step_enabled() (below) and sand_priv.h. rng_hashed
-     * is true only while a checkerboard-parallel pass is actually running,
+     * is true only while a chunk-parallel pass is actually running,
      * so every other draw in a step still advances the sequential stream
      * above, unaffected. */
     uint32_t rng_seed_base;
@@ -646,9 +646,10 @@ void sand_set_gas_walk(sand_t* s, bool on);
 #define SAND_MOBILITY_PER_MATERIAL (-1)
 
 /* Global: one core-1 worker serves all boards. Splits the gravity sweep,
- * liquid cross-flow and independent block scans. Movement uses hashed
- * draws and guarded stripes; serial remains the host default and the
- * fingerprint reference. Device builds enable splitting by default. */
+ * liquid cross-flow, gas, reactions and independent block scans over a
+ * four-colour chunk grid. Movement uses hashed draws; serial remains the
+ * host default and the fingerprint reference. Device builds enable
+ * splitting by default. */
 void sand_set_two_core_step(bool on);
 bool sand_two_core_step_enabled(void);
 

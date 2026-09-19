@@ -41,34 +41,12 @@
 #include "sand.h"
 #include "util/job.h"
 
-#define SAND_STRIPE_SPLIT_MIN_COUNT     4
-#define SAND_STRIPE_H_MIN               (2 * SAND_LIQUID_SIGHT + 1)
-#define SAND_STRIPE_H_MAX               SAND_BLOCK_H
-
 #define SAND_CHUNK_TARGET_CELLS_DIVISOR 10
 #define SAND_CHUNK_SIDE_MIN             (2 * SAND_LIQUID_SIGHT + 1)
 #define SAND_CHUNK_COLOR_COUNT          (2 * 2)
 
-_Static_assert(SAND_STRIPE_H_MIN > 3, "sweep stripes need an interior beyond two guard rows");
-_Static_assert(SAND_STRIPE_H_MIN > 2 * SAND_LIQUID_SIGHT, "liquid stripes need an interior beyond both guards");
-
-static inline int
-sand_stripe_height(int grid_h) {
-    int height = (grid_h + SAND_STRIPE_SPLIT_MIN_COUNT - 1) / SAND_STRIPE_SPLIT_MIN_COUNT;
-    if (height < SAND_STRIPE_H_MIN) {
-        return SAND_STRIPE_H_MIN;
-    }
-    if (height > SAND_STRIPE_H_MAX) {
-        return SAND_STRIPE_H_MAX;
-    }
-    return height;
-}
-
-static inline int
-sand_stripe_count(const sand_t* s) {
-    const int height = sand_stripe_height(s->h);
-    return (s->h + height - 1) / height;
-}
+_Static_assert(SAND_CHUNK_SIDE_MIN > 2 * SAND_LIQUID_SIGHT,
+               "a chunk must clear the furthest a split pass reads or transfers");
 
 static inline int
 sand_chunk_side(const sand_t* s) {
@@ -127,7 +105,7 @@ sand_chunk_split_ready(const sand_t* s) {
     return sand_chunk_rows(s) >= SAND_CHUNK_SPLIT_MIN_ROWS;
 }
 
-/* One constant per rng draw site inside a checkerboard-parallel pass -
+/* One constant per rng draw site inside a chunk-parallel pass -
  * see sand_rng_next_at() below. A fixed slot per site, not a per-cell
  * counter, is what keeps a draw thread-safe with no shared mutable state:
  * two cores drawing for two different cells never share an input, and
@@ -141,7 +119,6 @@ enum {
     SAND_RNG_SLOT_GAS_DECAY,
     SAND_RNG_SLOT_GAS_MOBILITY,
     SAND_RNG_SLOT_GAS_WALK,
-    SAND_RNG_SLOT_STRIPE,
     /* The reaction pass's own local-rule draw sites - see
      * sand_reactions.c's "Splitting the local rules" section. One slot per
      * textually distinct roll, never one per function: two rolls for the
@@ -177,19 +154,8 @@ enum {
     SAND_RNG_SLOT_REACT_LAVA_BURST_GATE,
 };
 
-/* Where this step's stripe boundaries sit, inside the grid's own stripe
- * height. A boundary's two guard rows stall whatever crossed into them, so a
- * boundary that only ever takes two positions stalls cells on the same two
- * screen lines every step and reads as banding. Hashing the step spreads
- * them over the stripe. */
-static inline int
-sand_stripe_offset(const sand_t* s) {
-    return (int)(rng_hash(s->rng_seed_base, (uint32_t)s->step_phase, 0u, SAND_RNG_SLOT_STRIPE)
-                 % (uint32_t)sand_stripe_height(s->h));
-}
-
 /* Draws for (x, y) at `slot` - see the enum above. Sequential and
- * identical to plain rng_next() unless a checkerboard-parallel pass has
+ * identical to plain rng_next() unless a chunk-parallel pass has
  * armed s->rng_hashed (sand.h); every other caller, including these same
  * functions when reactions or gas call them, is untouched. */
 static inline uint32_t

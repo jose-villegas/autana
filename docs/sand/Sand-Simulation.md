@@ -1156,7 +1156,7 @@ which is what the bitmask above avoids paying per cell. See
 [Optimization-Playbook.md](../notes/Optimization-Playbook.md#know-what-kind-of-memory-you-actually-have)
 for the cache sizes and the general lesson.
 
-## Two cores: a checkerboard sweep, and what stays serial
+## Two cores: four-colour chunk updates, and what stays serial
 
 The device's own `present()` overlaps with `sand_step()` on the other
 core already - see `docs/Launcher-Architecture.md`. Splitting the step
@@ -1260,8 +1260,8 @@ was. The serial sweep's no-double-move guarantee rests on every possible
 destination having been visited already; a chunk's gravity-ward neighbour
 belongs to another colour, and for half the boundaries that colour runs
 later. Tracing the dependency both ways across two adjacent boundaries
-gives the same contradiction row stripes gave: no order of "all of one
-colour, then all of the next" satisfies both.
+gives a contradiction: no order of "all of one colour, then all of the
+next" satisfies both.
 
 So a grain that crosses into a chunk whose pass has not run is picked up
 once more there. A pass may only hand a grain on to a pass of a HIGHER
@@ -1298,9 +1298,9 @@ Those writes exceed a chunk, so each worker owns a private copy of the block
 flags, dirty spans, and its own movement and probe counters, merged back in
 at the join.
 
-The flow that crosses rows - gravity mostly sideways - splits like any other
-now. Row stripes could not preserve source-before-destination order for it
-and had to serialise it; a chunk is two-dimensional and has no such axis.
+The flow that crosses rows - gravity mostly sideways - splits like any
+other. A partition banded along one axis has no order that keeps source
+before destination for it; a chunk is bounded on both axes and needs none.
 
 Mass a cell receives from a chunk whose pass ran earlier is forwarded once
 more by the chunk it landed in, so an isolated transfer near a boundary is no

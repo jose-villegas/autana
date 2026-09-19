@@ -797,8 +797,8 @@ static uint16_t sweep_cell_liquid_mask;
 static bool sweep_tables_ready;
 
 /* Rebuilt fresh every step by compute_driven(), never carried across one -
- * FILE-STATIC rather than a local of sand_step(), so a checkerboard-
- * parallel dispatch's core-1 half can read it without a
+ * FILE-STATIC rather than a local of sand_step(), so a chunk-parallel
+ * dispatch's core-1 half can read it without a
  * dangling pointer into a caller's stack frame that a timed-out join may
  * have already returned from. */
 static bool sweep_driven[MATERIAL_ROWS][2];

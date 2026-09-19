@@ -1615,7 +1615,7 @@ step_one_dissolver_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, con
 }
 
 /* acid_bubble()'s impulse and this walk's own multi-cell water/oil backing
- * check were never audited for stripe reach, so dissolving is left entirely
+ * check were never audited for a chunk's reach, so dissolving is left entirely
  * serial rather than split - sand_step_reaction_reach() re-scans for every
  * still-dissolving cell once the local phase has settled. */
 static void
@@ -1891,7 +1891,7 @@ try_lava_burst(const burning_cell_t* cell) {
 }
 
 /* try_lava_burst() reads and bumps the shared confined-blast counter and
- * calls sand_explode() - a stripe-parallel call queues the candidate
+ * calls sand_explode() - a chunk-parallel call queues the candidate
  * instead and reports "did not burst", the same as a roll that missed;
  * sand_step_reaction_reach() runs the real check afterward, single core. */
 static bool

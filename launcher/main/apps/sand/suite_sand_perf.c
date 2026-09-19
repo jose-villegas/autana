@@ -467,7 +467,7 @@ test_the_gas_random_walk_against_the_exhaustive_mover(void) {
 
 /* A/B against the plain serial step, same shape as the gas mover
  * comparison above. `gy` lets an arm fall fresh rather than flip a
- * settled pile - the checkerboard sweep this switch parallelises has
+ * settled pile - the chunk sweep this switch parallelises has
  * nothing to split once a board is asleep. No budget asserted. */
 static void
 time_two_core_arm(void (*build)(sand_t*, uint8_t*, uint8_t*), int gy, bool two_core, int64_t* out_per_step) {
@@ -506,7 +506,7 @@ report_two_core_ab(const char* scene, void (*build)(sand_t*, uint8_t*, uint8_t*)
 }
 
 /* build_full_size_step_scene() takes no blocks buffer; the sand-only arm
- * needs one wired anyway, since settled_bit still gates a stripe's work
+ * needs one wired anyway, since settled_bit still gates a chunk's work
  * under two-core stepping the same as it does serial. */
 static void
 build_full_size_step_scene_sleeping(sand_t* real, uint8_t* big, uint8_t* blocks) {
@@ -548,7 +548,7 @@ typedef struct {
     int64_t per_step_us;
     int64_t parallel_us;
     int64_t total_us;
-    int stripes;
+    int chunks;
 } quality_bench_t;
 
 static void
@@ -628,7 +628,7 @@ time_two_core_quality_scene(const quality_grid_t* quality, quality_scene_fn buil
     out.per_step_us = (esp_timer_get_time() - start) / steps;
     two_core_scope_end(core);
 
-    out.stripes = sand_stripe_count(&real);
+    out.chunks = sand_chunk_rows(&real) * sand_chunk_cols(&real);
     free(big);
     free(blocks);
     return out;
@@ -642,9 +642,9 @@ report_quality_scene(const char* scene, const quality_grid_t* quality, quality_s
     const long long share = serial.total_us > 0 ? (serial.parallel_us * 100) / serial.total_us : 0;
 
     ESP_LOGI("device_tests",
-             "TWO_CORE_WORKLOAD %s %s grid %dx%d stripes %d one-core %lld us two-core %lld us ratio %lld%% "
+             "TWO_CORE_WORKLOAD %s %s grid %dx%d chunks %d one-core %lld us two-core %lld us ratio %lld%% "
              "splittable %lld%%",
-             scene, quality->name, GFX_WIDTH / quality->cell, GFX_HEIGHT / quality->cell, serial.stripes,
+             scene, quality->name, GFX_WIDTH / quality->cell, GFX_HEIGHT / quality->cell, serial.chunks,
              (long long)serial.per_step_us, (long long)split.per_step_us, ratio, share);
 }
 
@@ -3987,7 +3987,7 @@ run_sand_perf_suite(void) {
 
     const bool two_core_before = sand_two_core_step_enabled();
     sand_set_two_core_step(true);
-    ESP_LOGI("device_tests", "liquid pass tables: two-core stripes enabled");
+    ESP_LOGI("device_tests", "liquid pass tables: two-core chunks enabled");
     RUN_TEST(test_submerged_pile_settles_and_logs_the_pass_split);
     RUN_TEST(test_water_slope_pouring_water_logs_the_pass_split);
     RUN_TEST(test_water_slope_controls_log_the_pass_split);
