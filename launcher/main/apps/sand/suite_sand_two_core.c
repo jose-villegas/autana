@@ -1270,6 +1270,12 @@ tc_step_gas_under(sand_t* s, int dx, int dy, bool two_core) {
     sand_set_two_core_step(false);
 }
 
+/* One cell in the shaft's own frame - down its length, and across it. */
+static void
+tc_shaft_set(sand_t* s, bool vertical, int along, int across, cell_t c) {
+    sand_set(s, vertical ? across : along, vertical ? along : across, c);
+}
+
 /* Walls either side of the shaft; gas packs one chunk's worth of it against
  * the closed gravity-ward end, so the run straddles a border and has open
  * shaft only ahead of it. Packed and floored, the step's every legal draw is
@@ -1288,14 +1294,11 @@ tc_build_gas_shaft(sand_t* s, int side, int dx, int dy) {
     const int to = (rise < 0) ? span - 1 : lead;
 
     for (int along = 0; along < span; along++) {
-        const int x = vertical ? across : along;
-        const int y = vertical ? along : across;
-
-        sand_set(s, x - (vertical ? 1 : 0), y - (vertical ? 0 : 1), STONE);
-        sand_set(s, x + (vertical ? 1 : 0), y + (vertical ? 0 : 1), STONE);
+        tc_shaft_set(s, vertical, along, across - 1, STONE);
+        tc_shaft_set(s, vertical, along, across + 1, STONE);
     }
     for (int along = from; along <= to; along++) {
-        sand_set(s, vertical ? across : along, vertical ? along : across, GAS);
+        tc_shaft_set(s, vertical, along, across, GAS);
     }
 }
 
