@@ -4,6 +4,10 @@ name: Host Tests
 # ESP-IDF, seconds to run. Split into its own workflow file (not a job
 # alongside the build workflows) purely so it gets its own status badge -
 # GitHub only exposes whole-workflow badges, never per-job ones.
+#
+# The render scenes run here rather than under editor-tests.yml: they are
+# the same plain-gcc build this job already has, and they need neither
+# CMake nor anything fetched.
 
 on:
   push:
@@ -17,3 +21,4 @@ jobs:
       - uses: actions/checkout@v4
       - run: bash launcher/test/run_tests.sh
       - run: bash launcher/main/apps/sand/tools/report_reactions.sh --check
+      - run: sh launcher/tools/render_all_scenes.sh
