@@ -152,6 +152,30 @@ sand_stamps_disarm(sand_t* s) {
     s->stamps_live = NULL;
 }
 
+#define SAND_LANE_COUNT 2
+
+/* The board as one lane of a split pass sees it: shared cells, private
+ * metadata. A wake or a repaint reaches past the chunk being stepped, so
+ * every such write lands in the arrays below and is merged at the join. */
+typedef struct {
+    sand_t local;
+    uint8_t* blocks;
+    uint8_t* dirty;
+    uint16_t* x0;
+    uint16_t* x1;
+} sand_lane_t;
+
+/* The board's two lanes, wired to its lane scratch, or NULL when it has
+ * none. The pair outlives any pass on purpose: a core-1 half that misses
+ * its join must not be writing into a frame that has already returned. */
+sand_lane_t* sand_lanes(sand_t* s);
+
+void sand_lane_prepare(sand_lane_t* lane, const sand_t* s);
+
+/* Merged by OR alone, which is exact because a pass only ever sets these
+ * flags - see latch_content_flags() and the BLOCK_* bits below. */
+void sand_lane_merge(sand_t* s, const sand_lane_t* lane);
+
 /* One constant per rng draw site inside a chunk-parallel pass -
  * see sand_rng_next_at() below. A fixed slot per site, not a per-cell
  * counter, is what keeps a draw thread-safe with no shared mutable state:

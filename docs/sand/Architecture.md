@@ -213,7 +213,10 @@ cell's own local rules all run over one four-colour chunk grid: four
 passes, one colour each, chunk rows divided between the cores. A
 caller-owned bitmap, one bit per cell (`sand_enable_step_stamps()`), marks
 a grain that crossed into another chunk so a later colour's pass does not
-move it again. `finalize_settling()` splits by block row instead. Impulses, liquid
+move it again, and a second caller-owned block
+(`sand_enable_lane_scratch()`) holds the private bookkeeping each lane
+merges back at the join, so no pass allocates.
+`finalize_settling()` splits by block row instead. Impulses, liquid
 density sorting and a reaction's long-reach triggers stay serial.
 Splitting cost the project its byte-for-byte determinism guarantee - a
 two-core step and the serial path no longer produce the same board for the

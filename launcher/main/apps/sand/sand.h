@@ -189,6 +189,9 @@ typedef struct sand_s {
     int stamp_side;
     bool stamped; /* a bit is set, so the pass must clear before it ends */
 
+    /* Caller-owned, see sand_enable_lane_scratch(). */
+    void* lane_scratch;
+
     /* Caller-owned `impulse_max` entries: grains in flight from
      * sand_impulse(). NULL disables the mechanic. `impulse_count` tracks live
      * entries in `impulse_buf`, always <= `impulse_max`. */
@@ -299,6 +302,13 @@ void sand_enable_sleeping(sand_t* s, uint8_t* blocks);
  * disables it, and such a grain may then move twice. */
 void sand_enable_step_stamps(sand_t* s, uint8_t* bits);
 size_t sand_step_stamp_bytes(int w, int h);
+
+/* sand_lane_scratch_bytes(w, h) bytes, caller-owned: the private block flags
+ * and dirty spans each of a two-core pass's two lanes works in and merges
+ * back at the join. NULL leaves every such pass running serial, so a caller
+ * that cannot spare the memory still gets a correct board. */
+void sand_enable_lane_scratch(sand_t* s, void* scratch);
+size_t sand_lane_scratch_bytes(int w, int h);
 
 /* Diagnostic: whether block (bx, by) is settled under dithered direction. Bit
  * layout private to sand.c/sand_priv.h. Used by app_sand.c's count_awake().

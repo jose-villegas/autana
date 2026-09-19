@@ -16,7 +16,14 @@ typedef struct {
     uint8_t dirty[CF_H];
     uint16_t x0[CF_H], x1[CF_H];
     uint8_t stamps[CF_H * ((CF_W + 7) / 8)];
+    void* scratch;
 } crossflow_fixture_t;
+
+static void
+crossflow_free(crossflow_fixture_t* f) {
+    free(f->scratch);
+    free(f);
+}
 
 static crossflow_fixture_t*
 crossflow_fixture(void) {
@@ -28,6 +35,7 @@ crossflow_fixture(void) {
     sand_track_dirty_cols(&f->s, f->x0, f->x1);
     TEST_ASSERT_EQUAL_UINT((unsigned)sizeof f->stamps, (unsigned)sand_step_stamp_bytes(CF_W, CF_H));
     sand_enable_step_stamps(&f->s, f->stamps);
+    f->scratch = lane_scratch_open(&f->s);
     for (int y = 0; y < CF_H; y++) {
         for (int x = 0; x < CF_W; x++) {
             sand_set(&f->s, x, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
@@ -137,7 +145,7 @@ test_split_crossflow_uses_hashed_viscosity(void) {
     sand_step_liquids(&f->s, &flow, 1, 0);
     sand_set_two_core_step(false);
     const rng_t after = f->s.rng;
-    free(f);
+    crossflow_free(f);
     TEST_ASSERT_EQUAL_MEMORY_MESSAGE(&before, &after, sizeof before,
                                      "split cross-flow must leave the sequential RNG untouched");
 }
@@ -229,8 +237,8 @@ run_crossflow_seam_trial(int px, int py, int phase, int trial) {
     assert_every_change_was_merged(split, before);
 
     free(before);
-    free(serial);
-    free(split);
+    crossflow_free(serial);
+    crossflow_free(split);
     char why[160];
     snprintf(why, sizeof why, "ray %d,%d phase %d trial %d: an isolated transfer may move only once across a seam", px,
              py, phase, trial);
@@ -285,9 +293,9 @@ test_crossflow_pool_conserves_mass_and_is_deterministic(void) {
         TEST_ASSERT_EQUAL_MEMORY(a->cells, b->cells, sizeof a->cells);
         TEST_ASSERT_EQUAL_MEMORY(a->blocks, b->blocks, sizeof a->blocks);
     }
-    free(a);
-    free(b);
-    free(serial);
+    crossflow_free(a);
+    crossflow_free(b);
+    crossflow_free(serial);
 }
 
 static void
@@ -311,7 +319,7 @@ test_crossflow_uniform_pool_has_no_chunk_seams(void) {
         }
     }
     const unsigned after = crossflow_water_mass(f->cells);
-    free(f);
+    crossflow_free(f);
     TEST_ASSERT_EQUAL_UINT(mass, after);
     TEST_ASSERT_LESS_OR_EQUAL_UINT_MESSAGE(1, max_jump,
                                            "neighboring rows, including seams, must level to within one mass unit");

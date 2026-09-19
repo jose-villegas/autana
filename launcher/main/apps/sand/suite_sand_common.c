@@ -347,3 +347,11 @@ void
 two_core_scope_end(two_core_scope_t scope) {
     sand_set_two_core_step(scope.before);
 }
+
+void*
+lane_scratch_open(sand_t* g) {
+    void* scratch = malloc(sand_lane_scratch_bytes(g->w, g->h));
+    TEST_ASSERT_NOT_NULL(scratch);
+    sand_enable_lane_scratch(g, scratch);
+    return scratch;
+}
