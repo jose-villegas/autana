@@ -123,9 +123,9 @@ the cleanest way to tell a firmware-side problem from a host-script one.
 Attaches to the console without paying ESP-IDF's ~90s environment-activation
 cost. Picks up whichever `launcher/build*/launcher.elf` was most recently
 built automatically - `idf.py build`, `build_flash.sh`,
-`build_flash_dev.sh` and `build_flash_diag.sh` each write to a differently
-named directory (`build/`, `build.release/`, `build.dev/`, `build.diag/`),
-so there is no single fixed default to guess; pass `-e path/to/other.elf` to
+`build_flash_dev.sh` and `build_flash_diag.sh` write to differently named
+directories (`build/` for release, `build.dev/`, `build.diag/`), so there is
+no single fixed default to guess; pass `-e path/to/other.elf` to
 pin a specific one. Passing the right `.elf` matters for more than
 bookkeeping - it carries the debug symbols that turn a crash address into a
 file and line number.
@@ -218,8 +218,8 @@ awake-cell counts) logged periodically - see
 generator. The cube app has a dedicated on-device performance suite
 (`main/apps/cube/suite_cube_perf.c`) for phase-by-phase timing (logic /
 rasterise / HUD / present) against a 60fps budget, run the same way as any
-other on-device suite (see [above](#does-it-still-hold-on-the-real-chip---on-device-suite))
-- it has no separate host-side report script of its own yet.
+other on-device suite (see [above](#does-it-still-hold-on-the-real-chip---on-device-suite));
+`main/apps/cube/tools/report_cube_perf.sh` is its host-side report.
 
 ## Orientation or the IMU seems wrong
 

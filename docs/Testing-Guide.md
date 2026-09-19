@@ -26,16 +26,22 @@ the point, not the number.)
 **On Windows**, `idf.py` cannot run under Git Bash, so the build/flash
 half of that second script refuses. Either collect from what is already
 on the board (`run_device_tests.sh --no-flash` - collection is plain
-Python and works fine here), or use a wrapper, which is a `.sh` that
-shells out to PowerShell:
+Python and works fine here), or use a wrapper, which is a `.sh` reaching
+ESP-IDF through `tools/idf.sh`:
 
 ```sh
 ./launcher/tools/report_test_results.sh                    # pass/fail for every suite  -> tools/results/
 ./launcher/main/apps/sand/tools/report_performance.sh       # frame-budget numbers       -> its own tools/results/
 ```
 
-Both build and flash the diagnostics variant, capture the run, write a
-markdown report, and restore `build.release` afterwards.
+Both declare what they want and hand the work to
+`launcher/tools/device_report.sh`, which builds and flashes the diagnostics
+variant through `build_flash.sh --diag --autorun`, captures the run,
+validates the capture, writes a markdown report, and reflashes the release
+firmware afterwards unless given `--no-restore`. A report script differs from
+its siblings only in what it declares — capture timeout, which suite,
+sentinel, reporter, output location — so a build flag cannot reach one of
+them and miss another.
 
 The second builds the diagnostics variant, flashes it, collects results over
 the console and exits non-zero on failure — so it works in CI. On Windows,
