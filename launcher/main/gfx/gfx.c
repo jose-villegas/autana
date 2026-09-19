@@ -20,7 +20,6 @@
 #include "esp_check.h"
 #include "esp_heap_caps.h"
 #include "esp_lcd_co5300.h"
-#include "esp_lcd_panel_interface.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_sh8601.h"
@@ -29,6 +28,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#if CONFIG_LAUNCHER_QEMU
+#include "gfx/gfx_null_panel.h"
+#endif
 #endif
 
 /* Carries GFX_DIRTY_WIDTH/HEIGHT for ESP-IDF independence and aligns with
@@ -356,27 +358,9 @@ panel_open_co5300(int hz) {
 }
 
 #if CONFIG_LAUNCHER_QEMU
-/* Stands in for a panel where none exists: a strip is "sent" the moment it
- * is queued, so everything above the link runs as it does on the board. */
-static esp_err_t
-null_panel_draw_bitmap(esp_lcd_panel_t* self, int x0, int y0, int x1, int y1, const void* pixels) {
+static void
+null_panel_strip_done(void) {
     xSemaphoreGive(strip_sent);
-    return ESP_OK;
-}
-
-static esp_err_t
-null_panel_del(esp_lcd_panel_t* self) {
-    return ESP_OK;
-}
-
-static esp_err_t
-panel_open_null(void) {
-    static esp_lcd_panel_t null_panel = {
-        .draw_bitmap = null_panel_draw_bitmap,
-        .del = null_panel_del,
-    };
-    panel = &null_panel;
-    return ESP_OK;
 }
 #endif
 
@@ -384,7 +368,7 @@ static esp_err_t
 panel_open(int hz) {
 #if CONFIG_LAUNCHER_QEMU
     if (board_variant() == BOARD_VARIANT_UNKNOWN) {
-        return panel_open_null();
+        return gfx_null_panel_open(hz, null_panel_strip_done, &panel);
     }
 #endif
     ESP_LOGI(TAG, "panel QSPI at %d MHz", hz / 1000000);

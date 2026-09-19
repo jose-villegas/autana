@@ -29,8 +29,12 @@
 #include "esp_timer.h"
 
 #include "board/board.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
+#include "input/touch.h"
+#include "input/touch_fsm.h"
 
 static const char* TAG = "device_tests";
 
@@ -99,9 +103,43 @@ test_touch_controller_is_present(void) {
     fixture();
     /* Confirms the I2C bus works and something answers - the host suite can
      * test what samples mean, but never that the controller exists. */
+#if CONFIG_LAUNCHER_QEMU
+    TEST_IGNORE_MESSAGE("no controller exists under QEMU");
+#endif
     const board_variant_t variant = board_detect();
     TEST_ASSERT_NOT_EQUAL_MESSAGE(BOARD_VARIANT_UNKNOWN, variant, "no supported touch controller responded on I2C");
 }
+
+#if CONFIG_LAUNCHER_QEMU
+/* Long enough for a lift to count as one, plus a few polls either side. */
+static input_t
+input_after_polls(void) {
+    vTaskDelay(pdMS_TO_TICKS(TOUCH_RELEASE_QUIET_US / 1000 + 5 * 1000 / TOUCH_POLL_HZ));
+    input_t in = {0};
+    touch_read(&in);
+    return in;
+}
+
+void
+test_an_injected_touch_reaches_the_input_state(void) {
+    fixture();
+    touch_start();
+    touch_inject(false, 0, 0);
+    (void)input_after_polls();
+
+    touch_inject(true, 120, 300);
+    const input_t held = input_after_polls();
+    TEST_ASSERT_TRUE_MESSAGE(held.pressed, "the press edge never arrived");
+    TEST_ASSERT_TRUE(held.down);
+    TEST_ASSERT_EQUAL_INT(120, held.x);
+    TEST_ASSERT_EQUAL_INT(300, held.y);
+
+    touch_inject(false, 120, 300);
+    const input_t lifted = input_after_polls();
+    TEST_ASSERT_TRUE_MESSAGE(lifted.released, "the release edge never arrived");
+    TEST_ASSERT_FALSE(lifted.down);
+}
+#endif
 
 /* --- colour packing ----------------------------------------------------- */
 
@@ -1469,6 +1507,9 @@ run_gfx_suite(void) {
     RUN_TEST(test_display_is_up);
     RUN_TEST(test_framebuffer_fits_with_headroom_to_spare);
     RUN_TEST(test_touch_controller_is_present);
+#if CONFIG_LAUNCHER_QEMU
+    RUN_TEST(test_an_injected_touch_reaches_the_input_state);
+#endif
 
     RUN_TEST(test_colour_packing_matches_the_panel_format);
 
