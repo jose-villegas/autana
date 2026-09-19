@@ -47,6 +47,7 @@ add_library(editor_runtime STATIC
     ${LAUNCHER_DIR}/main/ui/ui_launcher.c
     ${LAUNCHER_DIR}/main/ui/ui_launcher_draw.c
     ${LAUNCHER_DIR}/main/ui/ui_pointer.c
+    ${LAUNCHER_DIR}/main/ui/ui_ridge.c
     ${LAUNCHER_DIR}/main/ui/ui_scroll.c
     ${LAUNCHER_DIR}/components/microui/src/microui.c
 )
@@ -197,6 +198,15 @@ if(BUILD_TESTING)
     add_executable(editor_runtime_smoke tests/runtime_smoke.c)
     target_link_libraries(editor_runtime_smoke PRIVATE editor_runtime)
     add_test(NAME editor_runtime_smoke COMMAND editor_runtime_smoke)
+
+    add_executable(editor_ridge_backdrop_test tests/ridge_backdrop_test.c)
+    target_include_directories(editor_ridge_backdrop_test PRIVATE
+        runtime/host
+        ${LAUNCHER_DIR}/main
+        ${LAUNCHER_DIR}/components/microui/include
+    )
+    target_link_libraries(editor_ridge_backdrop_test PRIVATE editor_runtime)
+    add_test(NAME editor_ridge_backdrop COMMAND editor_ridge_backdrop_test)
 
     add_executable(editor_layout_document_test tests/layout_document_test.cpp)
     target_link_libraries(editor_layout_document_test PRIVATE editor_document GTest::gmock_main)

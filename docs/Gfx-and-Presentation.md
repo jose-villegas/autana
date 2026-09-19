@@ -222,6 +222,94 @@ Building one is the app's work - see
 every palette then needs, the colour -> index map and the dither table, are
 `tools/gfx_palette_gen.h`: host-only, in OKLab, never in the firmware image.
 
+## Glow curves
+
+`gfx_glow_curve()` draws a curve as light: every pixel within a radius is
+coloured by its **true distance** to the curve. The curve is a height per
+column (Q4) of a view frame turned a number of quarter turns into the panel,
+so one `int16_t` array carries a displaced, waving copy of it. The arithmetic
+is `gfx_glow.h`, pure and host-tested; `gfx.c` adds guards, target and dirty
+marking.
+
+- **Why true distance.** A vertical falloff scaled by the local slope costs a
+  fraction as much and lights a spike above a plateau beside every cliff: it
+  measures to the cliff's tangent line, not to where the cliff ends. Each
+  pixel instead searches the columns beside it, stopping as soon as a column
+  is further across than the best distance found.
+- **No square root per pixel.** The search compares squared distances; the
+  ramp index comes from one 256-byte table read at two scales.
+- **A style is a baked ramp** (`gfx_glow_style_set()`, about 2 KiB): 64 steps
+  of distance, once per cell of the 4x4 Bayer matrix. Each phase rounds the
+  same 8-bit colour to RGB565 at a different threshold, which is what turns
+  the 32 levels a glow fades through from bands into a gradient. Changing
+  colour or radius rebuilds the ramp; drawing never blends or reads back.
+- **The caller says which columns moved.** Only `[x0, x1)` is redrawn, and
+  dirty boxes are marked per 16 columns, so a local ripple costs a local
+  redraw and a local send. A curve at rest should not be drawn at all.
+- **It wipes its own trail.** Rows within `erase_px` beyond the light's reach
+  are written black, so nothing else has to clear behind a curve that moves
+  less than that per frame.
+
+What moves the curve is `util/spring_line.h`: one offset per column, each
+pulled toward rest and toward its neighbours, so a poke travels along the
+curve as a wave and dies away. It is built to go quiet - at rest it
+simulates nothing and `spring_line_apply()` reports no changed columns, so
+the screen costs no draw and no send until touched. `apply` also returns how
+far the curve moved this frame, which is the `erase_px` to draw it with.
+`ui/ui_ridge.c` puts the two together as the launcher's backdrop, under the
+app rows by way of `ui_end_over()`.
+
+**At any angle.** `gfx_glow_curve_posed()` draws the same curve turned to a
+*pose*: where the view frame's down points on the panel, a Q14 unit vector,
+so a gravity reading is a pose with no angle or arctangent in between. A
+turned curve is no longer a height per panel column, so it walks panel rows
+and asks of each pixel where it lies in the view frame - an add per pixel,
+along only the stretch of the row that can reach the curve's band, against a
+`gfx_glow_field_t` prepared once per change of the curve. The landscape pose
+is the quarter-turn renderer pixel for pixel. It keeps, per panel row, the
+stretch it lit, and blackens that before drawing the row again, so a curve
+that turns needs nothing clearing behind it either.
+
+What it does with that stretch is the `trail` argument: 0 blackens it, 255
+leaves it - every place the curve has been stays lit, since the framebuffer
+and the panel both simply keep what was written - and a value between dims
+it to `trail`/256 per draw, a tail that fades. With a trail the draw keeps
+whichever of old and new light is brighter: each band overlaps most of the
+last, and would otherwise overwrite its bright core with a dim rim, leaving
+only rim light behind.
+
+A fading tail has to go on being drawn after the curve stops, or it freezes
+there. For how long is counted, not watched for: `gfx_glow_trail_draws()` is
+how many draws take the brightest colour to black at a given `trail`. The
+tail shares its rows with whatever else is drawn on them, so "are any lit
+pixels left" never becomes no - a first version asked that, and the launcher
+never went idle again. The launcher's ridge uses 226 (`RIDGE_TRAIL`), a tail
+16 draws long - about a quarter of a second. At 32 it lasted two draws and
+could not be seen.
+
+The launcher's ridge is a horizon: it follows `input/tilt.h`'s down at any
+angle while the app rows turn in quarters. It holds boot's landscape pose for
+its first 700 ms, since boot knows no orientation, then eases to level.
+Easing never quite arrives and a hand is never still, so the pose is redrawn
+only once it is half a degree from the one on screen, and put exactly level
+once down has held still for 300 ms.
+
+It is also never quite still (`ui/ridge_motion.h`, pure and host-tested). It
+**breathes**: every 9 s its rest shape eases toward a smoothed copy of the
+ridge and back to the rigid original. A **wave** 2.5 px high runs along it.
+And the wave has **momentum**: while the device turns, the line lags true
+level, so for that moment the ridge is a slope - the sine of the lag - and
+the wave is pushed down it and coasts on after. All three come in over 1.5 s
+after the line is released; at the hand-over from boot the line is rigid, on
+the photograph. The price is that the launcher draws every frame, and a frame
+in which the ridge moves is close to a full send. `ui_ridge_set_ambient()`
+turns it off, which previews do: without it the launcher is idle whenever it
+is untouched and level.
+
+Cost follows lit pixels: Cerro Autana's ridge at radius 13 lights about
+16,600 of them. A curve spanning the view touches most bands at any pose, so
+a frame in which it moves is close to a full send.
+
 ## Panel clock and heal
 
 | | `GFX_PANEL_CLOCK_SLOW_HZ` (40 MHz) | `GFX_PANEL_CLOCK_FAST_HZ` (80 MHz) |

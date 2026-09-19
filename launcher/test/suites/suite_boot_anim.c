@@ -147,14 +147,14 @@ test_samples_are_clamped_rather_than_read_out_of_range(void) {
 
 static void
 test_the_quarter_wave_starts_at_zero_and_ends_at_one(void) {
-    TEST_ASSERT_EQUAL_INT(0, boot_anim_sin_quarter[0]);
-    TEST_ASSERT_EQUAL_INT(32767, boot_anim_sin_quarter[64]);
+    TEST_ASSERT_EQUAL_INT(0, trig_sin_quarter[0]);
+    TEST_ASSERT_EQUAL_INT(32767, trig_sin_quarter[64]);
 }
 
 static void
 test_the_quarter_wave_rises_all_the_way(void) {
     for (int i = 1; i < 65; i++) {
-        TEST_ASSERT_TRUE_MESSAGE(boot_anim_sin_quarter[i] > boot_anim_sin_quarter[i - 1],
+        TEST_ASSERT_TRUE_MESSAGE(trig_sin_quarter[i] > trig_sin_quarter[i - 1],
                                  "the quarter wave must increase at every step - a dip means a "
                                  "transposed or mistyped entry");
     }
@@ -162,13 +162,13 @@ test_the_quarter_wave_rises_all_the_way(void) {
 
 /* The identity that pins every entry down at once, checked across the full
  * turn rather than just the arc the camera actually uses - a general-purpose
- * table should hold everywhere, and this is what makes boot_anim_sin()/cos()
+ * table should hold everywhere, and this is what makes trig_sin()/cos()
  * safe to reuse for anything else that turns up needing one. */
 static void
 test_sin_squared_plus_cos_squared_is_one(void) {
     for (uint32_t phase = 0; phase < 65536; phase += 7) {
-        const int64_t s = boot_anim_sin((uint16_t)phase);
-        const int64_t c = boot_anim_cos((uint16_t)phase);
+        const int64_t s = trig_sin((uint16_t)phase);
+        const int64_t c = trig_cos((uint16_t)phase);
         const int64_t sum = s * s + c * c;
         const int64_t one = (int64_t)32767 * 32767;
 
@@ -179,11 +179,11 @@ test_sin_squared_plus_cos_squared_is_one(void) {
 
 static void
 test_the_quarter_points_are_exact(void) {
-    TEST_ASSERT_EQUAL_INT(0, boot_anim_sin(0));
-    TEST_ASSERT_EQUAL_INT(32767, boot_anim_sin(16384));
-    TEST_ASSERT_EQUAL_INT(0, boot_anim_sin(32768));
-    TEST_ASSERT_EQUAL_INT(-32767, boot_anim_sin(49152));
-    TEST_ASSERT_EQUAL_INT(32767, boot_anim_cos(0));
+    TEST_ASSERT_EQUAL_INT(0, trig_sin(0));
+    TEST_ASSERT_EQUAL_INT(32767, trig_sin(16384));
+    TEST_ASSERT_EQUAL_INT(0, trig_sin(32768));
+    TEST_ASSERT_EQUAL_INT(-32767, trig_sin(49152));
+    TEST_ASSERT_EQUAL_INT(32767, trig_cos(0));
 }
 
 /* A moment safely after the curve finishes (pen saturates at 2500ms) but

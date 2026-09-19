@@ -58,6 +58,7 @@ boot_anim_unused_pixel(S3L_PixelInfo* pixel) {
 #include "boot/boot_anim_timeline.h"
 #include "gfx/gfx_font.h"
 #include "util/intmath.h"
+#include "util/trig.h"
 #include "util/tween.h"
 
 #define BOOT_ANIM_Q   12
@@ -152,54 +153,6 @@ boot_anim_timeline_sample(uint32_t now_ms) {
     s.camera = boot_anim_lerp_transform(ca, cb, u8);
     s.space = boot_anim_lerp_transform(sa, sb, u8);
     return s;
-}
-
-/*
- * Trigonometry
- *
- * The sine table and the two functions on it serve the title's own wobble
- * and wave (boot_anim_title_wobble(), boot_anim_title_wave()) alone.
- * small3dlib owns the camera's rotation entirely.
- */
-
-static const int16_t boot_anim_sin_quarter[65] = {
-    0,     804,   1608,  2410,  3212,  4011,  4808,  5602,  6393,  7179,  7962,  8739,  9512,
-    10278, 11039, 11793, 12539, 13279, 14010, 14732, 15446, 16151, 16846, 17530, 18204, 18868,
-    19519, 20159, 20787, 21403, 22005, 22594, 23170, 23731, 24279, 24811, 25329, 25832, 26319,
-    26790, 27245, 27683, 28105, 28510, 28898, 29268, 29621, 29956, 30273, 30571, 30852, 31113,
-    31356, 31580, 31785, 31971, 32137, 32285, 32412, 32521, 32609, 32678, 32728, 32757, 32767,
-};
-
-/* Interpolated, not snapped. Table: 256 steps, 1.4 degrees. Snapping errors
- * compound. */
-static inline int32_t
-boot_anim_sin_quadrant(uint32_t r) {
-    const uint32_t i = r >> 8;
-    if (i >= 64) {
-        return boot_anim_sin_quarter[64];
-    }
-    const int32_t a = boot_anim_sin_quarter[i];
-    const int32_t b = boot_anim_sin_quarter[i + 1];
-    return a + (((b - a) * (int32_t)(r & 0xFF)) >> 8);
-}
-
-/* sin of a 16-bit phase (65536 == one turn), Q15. */
-static inline int32_t
-boot_anim_sin(uint16_t phase) {
-    const uint32_t quadrant = (uint32_t)phase >> 14;
-    const uint32_t rest = (uint32_t)phase & 0x3FFF;
-
-    switch (quadrant) {
-        case 0: return boot_anim_sin_quadrant(rest);
-        case 1: return boot_anim_sin_quadrant(16384u - rest);
-        case 2: return -boot_anim_sin_quadrant(rest);
-        default: return -boot_anim_sin_quadrant(16384u - rest);
-    }
-}
-
-static inline int32_t
-boot_anim_cos(uint16_t phase) {
-    return boot_anim_sin((uint16_t)(phase + 16384u));
 }
 
 /*
@@ -400,7 +353,7 @@ boot_anim_wave_height(int32_t r_q12, uint32_t now_ms, int32_t amp_q12, int32_t w
 
     /* Wraps mod 65536 by uint16_t truncation */
     const uint16_t phase = (uint16_t)(space_phase - time_phase);
-    const int32_t sin_q15 = boot_anim_sin(phase);
+    const int32_t sin_q15 = trig_sin(phase);
 
     const int32_t amp_zeta_q12 = (int32_t)(((int64_t)amp_q12 * sin_q15) >> 15);
 
@@ -692,7 +645,7 @@ boot_anim_title_wobble(int32_t d_q12) {
     const uint16_t phase = (uint16_t)((d2_q12 * BOOT_ANIM_TITLE_TURNS_PHASE) >> BOOT_ANIM_Q);
 
     const int32_t amp = (BOOT_ANIM_TITLE_AMPLITUDE_PX * d_q12) >> BOOT_ANIM_Q;
-    return (int)((amp * boot_anim_sin(phase)) >> 15);
+    return (int)((amp * trig_sin(phase)) >> 15);
 }
 
 typedef struct {
@@ -713,7 +666,7 @@ boot_anim_title_wave(int i, uint32_t now_ms) {
     const uint32_t t = (now_ms + (uint32_t)i * BOOT_ANIM_TITLE_WAVE_STAGGER_MS) % BOOT_ANIM_TITLE_WAVE_PERIOD_MS;
     const uint16_t phase = (uint16_t)((t * 65536u) / BOOT_ANIM_TITLE_WAVE_PERIOD_MS);
     const int32_t amp = (BOOT_ANIM_TITLE_WAVE_AMPLITUDE_PX * boot_anim_title_wave_reach(now_ms)) / 255;
-    return (int)((amp * boot_anim_sin(phase)) >> 15);
+    return (int)((amp * trig_sin(phase)) >> 15);
 }
 
 /* Row starts at a FIXED BOOT_ANIM_TITLE_VIEW_X/Y, not read live: the
@@ -973,6 +926,13 @@ boot_anim_finale_reach(uint32_t now_ms) {
  * and read gfx_framebuffer() back - the real firmware picture, not a
  * reimplementation. See tools/boot_anim_render_host.c. */
 void boot_anim_draw_frame(uint32_t now_ms);
+
+/* What the picture dissolves INTO. Unset, the last frames fade to black and
+ * whatever follows cuts in. Set, each of them starts from `paint`'s picture
+ * of the screen that follows, and the photograph and title dither away over
+ * it. The caller paints it because boot/ knows nothing above itself. */
+typedef void (*boot_anim_backdrop_fn)(void);
+void boot_anim_set_ending_backdrop(boot_anim_backdrop_fn paint);
 
 #ifdef ESP_PLATFORM
 /* Runs pre-boot, post-gfx_init(). Yields frames for watchdog. Device-only:

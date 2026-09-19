@@ -274,7 +274,7 @@
 10	launcher/main/apps/sand/suite_sand_spawning.c:610	test_a_running_water_emitter_accumulates_mass_on_the_floor
 10	launcher/main/apps/sand/suite_sand_swatch.c:39	test_the_same_spec_col_row_return_the_same_cell_every_call
 10	launcher/main/apps/sand/suite_sand_two_core.c:491	test_two_core_step_never_double_moves_at_a_seam
-10	launcher/main/apps/sand/tilt.c:102	tilt_update
+10	launcher/main/input/tilt.c:102	tilt_update
 10	launcher/main/apps/sand/tools/brush_screen_preview.c:201	draw_screen
 10	launcher/main/apps/sand/tools/dump_reactions.c:1772	emit_flammability
 10	launcher/main/apps/sand/tools/dump_reactions.c:1450	emit_regrow
@@ -530,7 +530,7 @@
 7	launcher/main/apps/sand/suite_sand_spawning.c:416	test_emitted_water_produces_a_continuing_stream
 7	launcher/main/apps/sand/suite_sand_tone.c:722	test_cullet_never_dresses_as_beach
 7	launcher/main/apps/sand/suite_sand_two_core.c:159	tc_run_gas_walk_and_hash
-7	launcher/main/apps/sand/suite_tilt.c:122	test_noise_is_attenuated_when_the_board_is_still
+7	launcher/test/suites/suite_tilt.c:122	test_noise_is_attenuated_when_the_board_is_still
 7	launcher/main/apps/sand/tools/dump_reactions.c:1342	emit_wet
 7	launcher/main/apps/sand/tools/grid_fingerprint.c:122	scene_dry_fall
 7	launcher/main/apps/sand/tools/grid_fingerprint.c:249	scene_wet_earth
@@ -678,7 +678,7 @@
 6	launcher/main/apps/sand/suite_sand_two_core.c:277	count_occupied_per_row
 6	launcher/main/apps/sand/suite_sand_two_core.c:44	tc_build_scattered_scene
 6	launcher/main/apps/sand/suite_sand_two_core.c:685	test_two_core_step_conserves_grains_on_a_dense_column_and_pile
-6	launcher/main/apps/sand/tilt.c:12	isqrt64
+6	launcher/main/input/tilt.c:12	isqrt64
 6	launcher/main/apps/sand/tools/colour_lever1_counters.c:114	represent_frame
 6	launcher/main/apps/sand/tools/dump_reactions.c:1028	build_colored_list
 6	launcher/main/apps/sand/tools/dump_reactions.c:1699	emit_dissolve_targets
@@ -1177,9 +1177,9 @@
 3	launcher/main/apps/sand/suite_sand_two_core.c:570	test_settled_guard_rows_do_no_grain_work
 3	launcher/main/apps/sand/suite_sand_two_core.c:130	test_split_gas_walk_uses_hashed_rng
 3	launcher/main/apps/sand/suite_sand_two_core.c:514	test_two_core_step_matches_serial_fall_distance_at_a_seam
-3	launcher/main/apps/sand/suite_tilt.c:340	test_shaking_fades_rather_than_switching_off
-3	launcher/main/apps/sand/suite_tilt.c:314	test_shaking_registers_as_shaking
-3	launcher/main/apps/sand/tilt.c:196	tilt_shake
+3	launcher/test/suites/suite_tilt.c:340	test_shaking_fades_rather_than_switching_off
+3	launcher/test/suites/suite_tilt.c:314	test_shaking_registers_as_shaking
+3	launcher/main/input/tilt.c:196	tilt_shake
 3	launcher/main/apps/sand/tools/brush_screen_preview.c:175	draw_slider
 3	launcher/main/apps/sand/tools/brush_screen_preview.c:134	draw_text
 3	launcher/main/apps/sand/tools/dump_reactions.c:592	adverb_for
@@ -1402,8 +1402,8 @@
 2	launcher/main/apps/sand/suite_sand_seeds.c:218	test_a_settled_plant_lets_the_reaction_pass_stand_down
 2	launcher/main/apps/sand/suite_sand_spawning.c:697	test_the_emitter_cap_is_respected
 2	launcher/main/apps/sand/suite_sand_two_core.c:602	tc_build_bordered_box
-2	launcher/main/apps/sand/suite_tilt.c:80	test_smoothing_is_independent_of_framerate
-2	launcher/main/apps/sand/tilt.c:182	tilt_strength
+2	launcher/test/suites/suite_tilt.c:80	test_smoothing_is_independent_of_framerate
+2	launcher/main/input/tilt.c:182	tilt_strength
 2	launcher/main/apps/sand/tools/dump_reactions.c:606	chance_bucket_for
 2	launcher/main/apps/sand/tools/dump_reactions.c:1298	emit_boils
 2	launcher/main/apps/sand/tools/dump_reactions.c:1402	emit_condense
