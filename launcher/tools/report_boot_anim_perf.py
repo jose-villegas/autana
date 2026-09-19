@@ -21,6 +21,8 @@ the report with no changes needed here.
 Usage:
     python tools/report_boot_anim_perf.py <raw_capture.txt> <out.md>
 
+Exit 2 means the capture has no checkpoint in it to report on.
+
 Lives in tools/, not test/suites/, the same convention gen_boot_anim_
 timeline.py and gen_boot_anim_image.py already follow for boot_anim's own
 host-side tooling - it is not app-owned the way cube's report generator is.
@@ -135,6 +137,14 @@ def main() -> int:
     args = parser.parse_args()
 
     runs, order, duplicates = parse_capture(args.capture_path)
+    if not runs:
+        # A header-and-timestamp report over an empty table reads like a
+        # clean run of nothing. A report of nothing is not a report.
+        print(f"{args.capture_path} has no BOOT_ANIM PERF run headers in it - "
+              "the RUNSUITE line never reached a listener, the suite is not "
+              "in this image, or the device crashed before the first "
+              "checkpoint.", file=sys.stderr)
+        return 2
 
     lines = []
     lines.append("# Boot Animation Performance Report")
@@ -143,82 +153,74 @@ def main() -> int:
     lines.append(f"Source: `{args.capture_path}`")
     lines.append("")
 
-    gaps = []
-    if not runs:
-        lines.append("> No `boot_anim_perf` run headers found in this capture - "
-                      "the suite may not have run (RUNSUITE run_boot_anim_perf_suite "
-                      "not sent, or CONFIG_LAUNCHER_SELFTEST off), or the device may "
-                      "have crashed before it reached one.")
+    gaps = incomplete_labels(runs, order)
+    if gaps or duplicates:
+        lines.append("## Warnings")
         lines.append("")
-    else:
-        gaps = incomplete_labels(runs, order)
-        if gaps or duplicates:
-            lines.append("## Warnings")
-            lines.append("")
-            for label, missing_phases in gaps:
-                msg = (f"`{label}` is missing {', '.join(missing_phases)} - "
-                       f"the capture was likely cut off before this checkpoint "
-                       f"finished logging; treat its numbers below as incomplete, "
-                       f"not zero.")
-                lines.append(f"- {msg}")
-                print(f"WARNING: {msg}", file=sys.stderr)
-            for label in duplicates:
-                msg = (f"`{label}` had more than one BOOT_ANIM PERF header in "
-                       f"this capture - only the LAST occurrence is reported "
-                       f"below, earlier ones were discarded.")
-                lines.append(f"- {msg}")
-                print(f"WARNING: {msg}", file=sys.stderr)
-            lines.append("")
-        lines.append("## Checkpoints")
+        for label, missing_phases in gaps:
+            msg = (f"`{label}` is missing {', '.join(missing_phases)} - "
+                   f"the capture was likely cut off before this checkpoint "
+                   f"finished logging; treat its numbers below as incomplete, "
+                   f"not zero.")
+            lines.append(f"- {msg}")
+            print(f"WARNING: {msg}", file=sys.stderr)
+        for label in duplicates:
+            msg = (f"`{label}` had more than one BOOT_ANIM PERF header in "
+                   f"this capture - only the LAST occurrence is reported "
+                   f"below, earlier ones were discarded.")
+            lines.append(f"- {msg}")
+            print(f"WARNING: {msg}", file=sys.stderr)
         lines.append("")
-        lines.append("| Checkpoint | now_ms | samples |")
-        lines.append("|---|---:|---:|")
-        for label in order:
-            run = runs[label]
-            lines.append(f"| `{label}` | {run['now_ms']} | {run['samples']} |")
-        lines.append("")
+    lines.append("## Checkpoints")
+    lines.append("")
+    lines.append("| Checkpoint | now_ms | samples |")
+    lines.append("|---|---:|---:|")
+    for label in order:
+        run = runs[label]
+        lines.append(f"| `{label}` | {run['now_ms']} | {run['samples']} |")
+    lines.append("")
 
-        lines.append("## Comparison (average, us)")
+    lines.append("## Comparison (average, us)")
+    lines.append("")
+    lines.append("| Phase | " + " | ".join(f"`{label}`" for label in order) + " |")
+    lines.append("|---|" + "---:|" * len(order))
+    for phase in PHASE_ORDER:
+        row = [f"{phase} (us)"]
+        for label in order:
+            p = runs[label]["phases"].get(phase)
+            row.append(str(p["avg"]) if p else "?")
+        lines.append("| " + " | ".join(row) + " |")
+    lines.append("")
+    lines.append("| | " + " | ".join(order) + " |")
+    lines.append("|---|" + "---:|" * len(order))
+    for stat, stat_label in (("avg", "avg"), ("med", "median"), ("p95", "p95")):
+        row = [f"**Total fps ({stat_label})**"]
+        for label in order:
+            total = runs[label]["phases"].get("Total")
+            row.append(fps(total[stat]) if total and stat in total else "?")
+        lines.append("| " + " | ".join(row) + " |")
+    lines.append("")
+
+    for label in order:
+        run = runs[label]
+        lines.append(f"## `{label}` (now_ms={run['now_ms']}, {run['samples']} samples)")
         lines.append("")
-        lines.append("| Phase | " + " | ".join(f"`{label}`" for label in order) + " |")
-        lines.append("|---|" + "---:|" * len(order))
+        lines.append("| Phase | Min (us) | Max (us) | Avg (us) | Median (us) | P95 (us) |")
+        lines.append("|---|---:|---:|---:|---:|---:|")
         for phase in PHASE_ORDER:
-            row = [f"{phase} (us)"]
-            for label in order:
-                p = runs[label]["phases"].get(phase)
-                row.append(str(p["avg"]) if p else "?")
-            lines.append("| " + " | ".join(row) + " |")
+            p = run["phases"].get(phase)
+            if p is None:
+                lines.append(f"| {phase} | ? | ? | ? | ? | ? |")
+                continue
+            bold = "**" if phase == "Total" else ""
+            if phase in FULL_PHASES:
+                lines.append(
+                    f"| {bold}{phase}{bold} | {p['min']} | {p['max']} | "
+                    f"{p['avg']} | {p['med']} | {p['p95']} |"
+                )
+            else:
+                lines.append(f"| {phase} | - | - | {p['avg']} | - | - |")
         lines.append("")
-        lines.append("| | " + " | ".join(order) + " |")
-        lines.append("|---|" + "---:|" * len(order))
-        for stat, stat_label in (("avg", "avg"), ("med", "median"), ("p95", "p95")):
-            row = [f"**Total fps ({stat_label})**"]
-            for label in order:
-                total = runs[label]["phases"].get("Total")
-                row.append(fps(total[stat]) if total and stat in total else "?")
-            lines.append("| " + " | ".join(row) + " |")
-        lines.append("")
-
-        for label in order:
-            run = runs[label]
-            lines.append(f"## `{label}` (now_ms={run['now_ms']}, {run['samples']} samples)")
-            lines.append("")
-            lines.append("| Phase | Min (us) | Max (us) | Avg (us) | Median (us) | P95 (us) |")
-            lines.append("|---|---:|---:|---:|---:|---:|")
-            for phase in PHASE_ORDER:
-                p = run["phases"].get(phase)
-                if p is None:
-                    lines.append(f"| {phase} | ? | ? | ? | ? | ? |")
-                    continue
-                bold = "**" if phase == "Total" else ""
-                if phase in FULL_PHASES:
-                    lines.append(
-                        f"| {bold}{phase}{bold} | {p['min']} | {p['max']} | "
-                        f"{p['avg']} | {p['med']} | {p['p95']} |"
-                    )
-                else:
-                    lines.append(f"| {phase} | - | - | {p['avg']} | - | - |")
-            lines.append("")
 
     with open(args.out_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
