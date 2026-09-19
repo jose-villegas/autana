@@ -1,0 +1,20 @@
+# Layered last, over sdkconfig.defaults.diag and .diag_autorun (and
+# .diag_perf for the perf scope), to build an image Espressif's QEMU can run
+# with no board: qemu-system-xtensa -M esp32s3. See docs/Testing-Guide.md.
+
+# QEMU models a plain quad flash: no high-performance mode, no
+# dummy-cycle-aware bootloader, no 120 MHz timing. An image built with those
+# resets in the second-stage bootloader before printing anything.
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR=n
+CONFIG_BOOTLOADER_FLASH_DC_AWARE=n
+CONFIG_SPI_FLASH_HPM_DIS=y
+CONFIG_IDF_EXPERIMENTAL_FEATURES=n
+
+# QEMU exposes UART0 as its serial port, not the USB-Serial-JTAG console
+# the board uses.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+
+# No panel answers, so graphics presents to a null panel.
+CONFIG_LAUNCHER_QEMU=y

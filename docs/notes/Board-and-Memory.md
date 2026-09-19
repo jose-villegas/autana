@@ -120,13 +120,14 @@ resolve intersecting geometry — but for convex solids it is correct.
 
 Instruction and data cache are not a separate resource from the internal
 heap above — IDF's ESP32-S3 defaults reserve 16 KiB (instruction, 8-way) +
-32 KiB (data, 8-way) out of the same internal SRAM. A larger Kconfig choice
-exists on this chip, but a device sweep found it not worth the heap it
-costs sand: doubling the instruction cache to 32 KiB bought 1-11% per step,
-and a 64 KiB data cache bought nothing, since sand's grids live in internal
-SRAM and are already direct-access rather than cached (see
+32 KiB (data, 8-way) out of the same internal SRAM. This board ships a 32 KiB
+instruction cache instead (`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB` in
+`launcher/sdkconfig.defaults`): a device sweep measured 1-11% per sand step
+for the extra 16 KiB of internal RAM. The data cache stays at the default,
+because 64 KiB bought nothing — sand's grids live in internal SRAM and are
+already direct-access rather than cached (see
 [`../Autana-Rendering-Roadmap.md`](../Autana-Rendering-Roadmap.md) §3.3,
-device measurement, 2026-09-13). The board ships IDF's defaults.
+device measurement, 2026-09-13).
 
 ### Static growth still taxes the internal heap
 
