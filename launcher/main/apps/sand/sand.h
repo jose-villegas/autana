@@ -268,10 +268,10 @@ typedef struct sand_s {
         int64_t impulses_us;
     } pass_us;
 
-    /* Steps whose gravity sweep gave up on one of its two lanes, cumulative
+    /* Steps where a split pass gave up on one of its two lanes, cumulative
      * so a log line can read a delta. Not an error - the caller finishes the
-     * board alone - but it costs that step its second core. */
-    unsigned sweep_lane_aborts;
+     * board alone - but it costs that pass its second core. */
+    unsigned split_lane_aborts;
 #endif
 } sand_t;
 

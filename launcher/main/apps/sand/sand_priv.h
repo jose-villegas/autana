@@ -181,18 +181,32 @@ void sand_lane_merge(sand_t* s, const sand_lane_t* lane);
  * present, and a cut that fits. */
 bool sand_chunk_pass_ready(const sand_t* s);
 
+/* Whether a pass needs the arrival marks: only one that can hand a cell on
+ * again in the same pass, which an order built against its own travel
+ * already rules out. */
+typedef enum {
+    SAND_CHUNK_PASS_NO_STAMPS,
+    SAND_CHUNK_PASS_STAMP_CROSSINGS,
+} sand_chunk_pass_stamps_t;
+
 /* Runs `fn` once per chunk over both lanes, ordered by the pass's travel
  * direction (tx, ty) so a chunk waits for every neighbour its transfers can
- * reach. Arms the hashed rng and the crossing stamps, prepares and merges
- * the lanes; a pass's own counters are its business. False means nothing
- * ran and the caller must walk the board itself.
+ * reach. Arms the hashed rng, prepares and merges the lanes; a pass's own
+ * counters are its business. False means nothing ran and the caller must
+ * walk the board itself.
  *
  * `pass` must point at file-static storage: a lane that misses its join is
  * still reading through it once the caller's frame has returned. */
-bool sand_chunk_pass_run(sand_t* s, int tx, int ty, sand_chunk_fn_t fn, void* pass);
+bool sand_chunk_pass_run(sand_t* s, int tx, int ty, sand_chunk_pass_stamps_t stamps, sand_chunk_fn_t fn, void* pass);
 
 /* The cell range of the chunk `fn` was handed. */
 void sand_chunk_pass_cells(int cx, int cy, int* x0, int* x1, int* y0, int* y1);
+
+/* Whether the chunk holding (x1, y1) runs after the chunk holding (x0, y0)
+ * in the pass on the schedule - what an order built against a pass's travel
+ * rules out for everything that pass writes. Only meaningful while
+ * sand_chunk_pass_run() is running. */
+bool sand_chunk_pass_ranks_later(int x0, int y0, int x1, int y1);
 
 /* One constant per rng draw site inside a chunk-parallel pass -
  * see sand_rng_next_at() below. A fixed slot per site, not a per-cell
@@ -398,6 +412,14 @@ extern bool sand_reactions_last_was_soak_only;
  * the pass itself, same convention as sand_reactions_cells_dispatched. */
 extern unsigned sand_liquid_moves;
 extern unsigned sand_liquid_crossflow_probes;
+
+/* Not sand.h API: a test hook for cross-flow's chunk order. With it on, a
+ * split pass counts every transfer landing in a chunk ranked after the
+ * giver's - the case the order exists to rule out, and what allows the pass
+ * to forward mass with no per-cell arrival mark. Same convention as the
+ * counters above: never reset by the pass itself. */
+void sand_liquid_rank_audit_enable(bool on);
+extern unsigned sand_liquid_late_arrivals;
 
 /* Not sand.h API: a liquid grain moving in the MAIN SWEEP's own down-and-
  * slide (move_liquid_grain(), sand_liquid_move.h) - separate from cross-
