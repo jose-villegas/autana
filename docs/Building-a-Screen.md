@@ -111,6 +111,7 @@ scale) are free. Ask which kind you are adding before you add it.
 ### Text that must fit
 
 Measure it: `ui_measure_text()`, or `gfx_font_text_width()` in a host test.
+Fonts, scales and text styles are in [`Text-and-Fonts.md`](Text-and-Fonts.md).
 
 ### A list of rows that may overflow
 
@@ -212,5 +213,6 @@ fifth icon.
 ## Related
 
 - [`Building-an-App.md`](Building-an-App.md) - the app a screen lives in
+- [`Text-and-Fonts.md`](Text-and-Fonts.md) - fonts, scales, text styles
 - [`Launcher-Architecture.md`](Launcher-Architecture.md) - the mechanisms
 - [`Testing-Guide.md`](Testing-Guide.md) - suites, runners, build variants

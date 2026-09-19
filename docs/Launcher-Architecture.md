@@ -126,8 +126,8 @@ proportional advance table - and the coverage atlas ships in flash.
 A font atlas is the one generated artifact whose SIZE is a live design
 constraint rather than a curiosity: at 8 bits of coverage per pixel,
 `font_lmroman_40.h` is 274 KiB, comparable to the photograph. That is what
-makes it worth caring whether a font is referenced at all - see "Text and
-fonts" below.
+makes it worth caring whether a font is referenced at all - see
+[Text-and-Fonts.md](Text-and-Fonts.md#roles).
 
 Four rules, and the last is the one that matters:
 
@@ -505,29 +505,9 @@ shadowed the same way.
 
 ### Text at more than one size
 
-A screen that puts a small caption next to a much larger value or heading
-needs two sizes on one canvas. A global scale read at render time would be the same shape as `ui_set_text_style()` above and pay the
-same cost: a scale carried outside the command list changes what gets drawn
-without changing a single byte of it, so `hash_canvas()` cannot see the
-change and skips the repaint, leaving the old size on screen. A screen
-mixing two sizes sets the scale more than once a frame, which would mean
-calling `ui_invalidate()` every frame — permanently defeating the repaint
-skip on exactly the kind of mostly-static panel it exists for.
-
-`ui_set_font()` already gets this right, for the reason its own comment
-gives: a `mu_Font` is baked into every `mu_TextCommand`, so a font change is
-different bytes and the hash sees it unaided. `ui_set_font_scaled(font,
-scale)` carries the scale the same way rather than beside it — `mu_Font`
-points at an interned `{ font, scale }` pair, from a small fixed table in
-`ui.c`, instead of a bare `gfx_font_t`. The same pair always yields the same
-address, so a size change is a different pointer in the command list and
-the hash catches it unaided — no invalidate, no per-frame thrash, and the
-mechanism is the one the file already argues for rather than a second one
-beside it. `ui_set_font(f)` is exactly `ui_set_font_scaled(f,
-GFX_GLYPH_SCALE)`. `ui_measure_text(str)` answers what `str` would measure
-at whatever font and scale are currently set, so a caller right-aligning a
-value like `06 PX` against a caption on the same row does not have to
-re-derive the font role and scale it already set.
+A font and its scale ride inside every text command, so the repaint hash
+sees a size change unaided; a text style does not. The calls and the reason
+are in [Text-and-Fonts.md](Text-and-Fonts.md#text-in-a-microui-screen).
 
 ### App-owned artwork, and how it reaches the command list
 
@@ -676,45 +656,8 @@ be a scrim applied every repaint, which is the bug above.
 
 ## Text and fonts
 
-A font here is a `gfx_font_t` (`gfx/gfx_font.h`): an atlas of glyph bitmaps,
-a cell size, the codepoint range it covers, and an optional per-glyph advance
-table. Two kinds ship, and the difference is `bpp`:
-
-- **1 bit per pixel** - `gfx_font_8x8`, the built-in bitmap. Monospace, and
-  crisp at any integer `scale`, which is why it survives being drawn at 5x.
-- **8 bits per pixel** - a coverage atlas from `tools/gen_font.py`, with real
-  proportional advances. Anti-aliased, and rasterized AT one pixel size:
-  scaling it up resamples and blurs, so it wants `scale` 1.
-
-Drawing is the same call either way (`gfx_text_font()`), which dispatches on
-`bpp` internally; the 8bpp path blends each glyph pixel's coverage into the
-framebuffer through `gfx_fill_rect_blend()`. That is the one fill in `gfx.c`
-that READS the destination - affordable at glyph scale, and deliberately not
-how full-frame compositing works (see `gfx_blit_dither()`, which dithers
-precisely because it is full-frame).
-
-**Ask for a role, not a typeface.** `gfx/gfx_font_roles.h` is the one place
-that says which concrete font plays which part - `gfx_font_ui()` is the UI/
-body-text role, and it is what everything not authored draws with: microui,
-the boot animation's axis labels, the POST report, diagnostics. Call sites
-say what they want; one file says what that currently is, so retyping the UI
-is a one-line edit rather than a grep.
-
-**Roles resolve at compile time, and that is load-bearing.** A coverage atlas
-is 274 KiB, and the linker only drops one nothing references - which is not a
-theory: pointing the boot animation's timeline at the bitmap font made the
-Computer Modern atlas vanish from the map and the image fall by that much. So
-each role is a `static inline` accessor returning a fixed font, and the
-header includes only the font headers for typefaces actually assigned a role.
-A registry resolving a role variable at runtime would reference every
-candidate from one translation unit and force them all to link, in every
-build, whether or not that build ever selects them.
-
-Not everything about text is a role. The boot animation's title typeface is
-an AUTHORED timeline knob (`title_font`/`title_scale`, with a dropdown in the
-editor) - a per-animation choice, not a system-wide one - and a "label" role
-was deliberately not created, because labels use the UI typeface at a smaller
-`scale`, and scale is a call-site argument rather than a role.
+What a font is, the role accessor, how text is drawn and how to add a
+typeface: [Text-and-Fonts.md](Text-and-Fonts.md).
 
 ---
 
