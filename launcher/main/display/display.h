@@ -18,14 +18,20 @@
 
 #include <stdbool.h>
 
+/* The cover glass hides roughly this many pixels along every edge of the
+ * panel, and more where the corners round off - a development build's hash
+ * mark drawn flush to the edge came back unreadable. Anything meant to be
+ * read insets by at least this much. Measured on the board. */
+#define DISPLAY_PANEL_SAFE_INSET 15
+
 /* tan(60 deg) = 1.732..., approximated as a small integer ratio so the
  * hysteresis test is exact integer (cross-multiplied) arithmetic - no
  * division, no float, no rounding to reason about. See this header's
  * top comment for why one ratio, applied relative to whichever quarter
  * is currently committed, is enough to give both the 60-degrees-out and
  * the 30-degrees-back behaviour. */
-#define DISPLAY_HYST_NUM 7
-#define DISPLAY_HYST_DEN 4
+#define DISPLAY_HYST_NUM         7
+#define DISPLAY_HYST_DEN         4
 
 typedef struct {
     /* Which quarter turn currently reads as "upright" - numbered the
