@@ -111,6 +111,12 @@ yet the ratchet has no database to read and runs after that build instead;
 the database is also the previous build's, so a `.c` file added since then
 fails the ratchet as unmeasured until a build catches the database up.
 
+A file only a build variant compiles - `gfx/gfx_null_panel.c`, which exists
+for `CONFIG_LAUNCHER_QEMU` alone - is in no diagnostics database at all.
+`VARIANT_ONLY_FILES` names a sibling in the same folder whose compile command
+it borrows, so such a file is measured with the flags it would have had
+rather than excused.
+
 In CI the gate is its own job in `.github/workflows/build-diagnostics.yml`,
 the only one that fetches the upstream submodules. It runs inside the ESP-IDF
 container, in the same command as its own diagnostics build: the
