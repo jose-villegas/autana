@@ -133,13 +133,13 @@ core 1         [ send band k, shape only ][ send band k+1 ]...
 
 ```
 Internal SRAM, ~296 KiB main heap region (+21 KiB +32 KiB DRAM at boot);
-311,775 bytes free after gfx_init(), framebuffer excluded, largest block
-~241 KiB (diag build, device capture, 2026-09-13 — Board-and-Memory.md)
+130,635 bytes free after gfx_init(), framebuffer excluded, largest block
+50 KiB (diag build, device capture, 2026-09-16 — Board-and-Memory.md)
 
-[ stacks, RTOS, DMA gather buffer ~16 KiB ][ headroom for hot buffers —
-  Phase 1's sand-grid relocation, and the band ring's band buffers
-  (64-row / 47 KiB each) for full-redraw renderers — up to the ~241 KiB
-  largest block ][ free ]
+[ stacks, RTOS, DMA gather buffer 17 KiB, two 47 KiB strip buffers ]
+[ headroom for hot buffers — sand's grids, and any further band buffer
+  (64-row / 47 KiB each) for full-redraw renderers — in blocks of at most
+  50 KiB ][ free ]
 
 PSRAM, 8 MB octal @ 80 MHz — the framebuffer is a rounding error here
 
@@ -309,7 +309,7 @@ detail behind every row.
 | FPU | single-precision hardware; `double` is software-emulated | float32 is fine per vertex/object; `double` stays banned on the device (decision A) |
 | SIMD | PIE 128-bit (16×8 / 8×16 lanes), inline asm only | any vector path sits behind a scalar reference implementation with a test asserting identical output (decision A) |
 | Integer mul/div | hardware, pipelined 32-bit mul and div; **64-bit div is a library call** | `__divdi3` and signed `/ 2^n` stay banned in hot loops (playbook items 7 and 11) |
-| Internal RAM | 512 KB SRAM: ~296 KiB main heap region + 21 KiB + 32 KiB DRAM at boot; 311,775 bytes free after `gfx_init()` (framebuffer excluded — it lives in PSRAM), largest block ~241 KiB (diag build, device capture, 2026-09-13) | stacks, the DMA gather and strip buffers, and hot per-step buffers (sand's grids, via `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536`) live here; the band ring's buffers will too |
+| Internal RAM | 512 KB SRAM: ~296 KiB main heap region + 21 KiB + 32 KiB DRAM at boot; 130,635 bytes free after `gfx_init()` (framebuffer excluded — it lives in PSRAM), largest block 50 KiB (diag build, device capture, 2026-09-16) | stacks, the DMA gather and strip buffers, and hot per-step buffers (sand's grids, via `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536`) live here; the band ring's buffers will too |
 | PSRAM | 8 MB octal @ 80 MHz (120 MHz experimental); `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps allocations up to 64 KB internal and routes larger ones here; memcpy out ~58 MB/s, in ~47, PSRAM to PSRAM ~22 (device, 2026-09-13) | under decision B this is read-only bulk/cold storage: the one retained framebuffer, textures and levels; it is never the target of a full-screen write or copy; headroom is a non-issue |
 | Data cache | 32 KB, 32-byte line, 8-way; 64 KB measured no gain (device, 2026-09-13) | every PSRAM access — CPU render writes and DMA present reads alike — goes through this cache; see 3.3 |
 | Instruction cache | 32 KB, 32-byte line, 8-way (`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB`; IDF's default is 16 KB) — the larger size measured 1-11% per sand step (device, 2026-09-13) | costs 16 KB of internal RAM over the default |
@@ -330,8 +330,8 @@ The two numbers to carry in your head for the S3:
   the band ring), but that does not raise this per-core ceiling; it
   removes present's competition for it.
 - **Memory: internal vs. PSRAM, with a cache in between.** Internal SRAM
-  (~296 KiB main region, 311,775 bytes free after `gfx_init()`, largest
-  block ~241 KiB) holds stacks and the DMA gather buffer, and is the
+  (~296 KiB main region, 130,635 bytes free after `gfx_init()`, largest
+  block 50 KiB) holds stacks and the DMA gather buffer, and is the
   candidate home for hot buffers if Phase 1 moves them there, plus the
   band ring's own band buffers (64 rows / 47 KiB each) for full-redraw
   renderers. PSRAM (8 MB) holds the one retained framebuffer (322 KiB),

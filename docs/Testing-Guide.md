@@ -101,8 +101,9 @@ one suite at a time via RUNSUITE or as a full boot-time run.
 ### The host runner enforces two of the device's limits
 
 The host has megabytes of stack and gigabytes of heap; the board has 3,584
-bytes of main task stack and 184,171 bytes of internal heap free after
-`gfx_init()` (172,147 once the shell is ready). Two classes of bug lived in
+bytes of main task stack and 130,635 bytes of internal heap free after
+`gfx_init()` (117,219 once the shell is ready), in blocks no larger than
+51,200. Two classes of bug lived in
 that gap, and each one cost a build-flash-capture cycle to find — twice
 over, for both:
 
