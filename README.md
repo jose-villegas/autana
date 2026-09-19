@@ -52,8 +52,8 @@ idf.py -p <PORT> flash monitor
 ```
 
 `idf.py` cannot run under Git Bash, so on Windows use the wrappers below -
-`.sh` scripts that shell out to PowerShell and write a markdown report into
-their own `tools/results/`:
+`.sh` scripts that reach ESP-IDF through `launcher/tools/idf.sh` and write a
+markdown report into their own `tools/results/`:
 
 ```bash
 ./launcher/tools/build_flash.sh        # build + flash the release firmware

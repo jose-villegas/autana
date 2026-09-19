@@ -3,8 +3,8 @@
 # Build the launcher's firmware and flash it to the device.
 #
 # Usage:
-#   tools/build_flash.sh [--dev|--diag] [--perf-scope] [--build-only] \
-#                        [COM_PORT] [IDF_EXPORT]
+#   tools/build_flash.sh [--dev|--diag] [--autorun] [--perf-scope] \
+#                        [--build-only] [COM_PORT] [IDF_EXPORT]
 #
 #   --dev       build the DEVELOPMENT image instead of the release one, and
 #               leave it on the board: development-only logging and
@@ -14,11 +14,18 @@
 #               leave it on the board: everything --dev gets you, plus the
 #               on-device test suites and Diagnostics' own button for
 #               running them. See below.
+#   --autorun   with --diag only: layer sdkconfig.defaults.diag_autorun, so
+#               the suites run at boot instead of waiting for Diagnostics'
+#               button. A serial capture of SELFTEST_COMPLETE needs this;
+#               interactive use does not, and pays a full suite run per boot
+#               for it. Without the flag AUTORUN must be ABSENT, so a build
+#               directory left behind by a capture is regenerated here.
 #   --perf-scope  with --diag only: layer sdkconfig.defaults.diag_perf, so the
-#               image carries just sand's frame-budget suite and the scenes it
-#               measures. Frees the static RAM a capture needs to instrument
-#               itself; drops behaviour coverage, so never a merge gate, and
-#               its numbers compare only with other perf-scoped captures.
+#               image carries just the frame-budget suite one app declares and
+#               the scenes it measures. Frees the static RAM a capture needs to
+#               instrument itself; drops behaviour coverage, so never a merge
+#               gate, and its numbers compare only with other perf-scoped
+#               captures.
 #   --build-only  build and stop: no device needed, nothing flashed.
 #   COM_PORT    serial port the device is on. Found by USB identity when
 #               omitted, so a plugged-in board needs no argument - see
@@ -60,25 +67,27 @@
 # the diagnostics variant too, but refuses outright under Git Bash (idf.py
 # exits successfully without building there, which would silently collect
 # stale results - see its own comment), and it exists to read test output
-# back rather than to leave you on the image. tools/report_test_results.sh
-# does flash it from Git Bash, and then re-flashes build.release in an EXIT
-# trap by design. All three are right about their own jobs; none of them is
-# "put this image on the device and leave it there", which is what these
-# flags are for.
+# back rather than to leave you on the image. The report scripts call this
+# one with --diag --autorun and then call it again for the release image in
+# an EXIT trap, by design - see tools/device_report.sh. All three are right
+# about their own jobs; none of them is "put this image on the device and
+# leave it there", which is what these flags are for.
 
 set -euo pipefail
 
 VARIANT=release
 BUILD_ONLY=0
 PERF_SCOPE=0
+AUTORUN=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --dev)     VARIANT=dev; shift ;;
         -d|--diag) VARIANT=diag; shift ;;
+        --autorun) AUTORUN=1; shift ;;
         --perf-scope) PERF_SCOPE=1; shift ;;
         --build-only) BUILD_ONLY=1; shift ;;
-        -h|--help) sed -n '2,65p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,74p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         --)        shift; break ;;
         -*)        echo "unknown option: $1" >&2; exit 2 ;;
         *)         break ;;
@@ -87,6 +96,11 @@ done
 
 if [ "$PERF_SCOPE" -eq 1 ] && [ "$VARIANT" != diag ]; then
     echo "--perf-scope scopes which SUITES are compiled in, so it needs --diag" >&2
+    exit 2
+fi
+
+if [ "$AUTORUN" -eq 1 ] && [ "$VARIANT" != diag ]; then
+    echo "--autorun runs the SUITES at boot, so it needs --diag" >&2
     exit 2
 fi
 
@@ -109,7 +123,7 @@ esac
 
 # So a double-clicked window (which closes the instant the script exits)
 # still shows the reason for a failure instead of vanishing on the spot.
-trap 'status=$?; if [ $status -ne 0 ]; then echo; echo "=== FAILED (exit $status) ==="; read -r -p "Press Enter to close..." _; fi' EXIT
+trap 'status=$?; if [ $status -ne 0 ]; then echo; echo "=== FAILED (exit $status) ==="; read -r -p "Press Enter to close..." _ || true; fi' EXIT
 
 # shellcheck source=./idf.sh
 . "$SCRIPT_DIR/idf.sh"
@@ -147,10 +161,15 @@ if [ "$VARIANT" != release ]; then
     REQUIRED_FLAGS="CONFIG_LAUNCHER_DEVELOPMENT"
     if [ "$VARIANT" = diag ]; then
         REQUIRED_FLAGS="$REQUIRED_FLAGS CONFIG_LAUNCHER_SELFTEST"
-        # Neither fragment layered here sets autorun, and both report scripts
-        # layer it into this same build.diag. Whichever ran last, this one is
-        # the interactive image: compiled-in suites that boot fast.
-        FORBIDDEN_FLAGS="CONFIG_LAUNCHER_SELFTEST_AUTORUN"
+        # Autorun is the only difference between the interactive diag image
+        # and the one a capture needs, and both land in the same build.diag.
+        # Whichever ran last, the request decides which one is on disk here.
+        if [ "$AUTORUN" -eq 1 ]; then
+            SDKCONFIG_FRAGMENTS="$SDKCONFIG_FRAGMENTS;sdkconfig.defaults.diag_autorun"
+            REQUIRED_FLAGS="$REQUIRED_FLAGS CONFIG_LAUNCHER_SELFTEST_AUTORUN"
+        else
+            FORBIDDEN_FLAGS="CONFIG_LAUNCHER_SELFTEST_AUTORUN"
+        fi
     else
         FORBIDDEN_FLAGS="CONFIG_LAUNCHER_SELFTEST"
     fi
@@ -167,9 +186,9 @@ if [ "$VARIANT" != release ]; then
     # one silently outranks every fragment edit and every fragment this run did
     # or did not layer. Deleting it whenever it is older than a fragment or
     # disagrees with the request costs one reconfigure and makes the request
-    # authoritative again. The report scripts delete it unconditionally, so a
-    # run of either after the other pays that reconfigure; a wrong image does
-    # not reach the board.
+    # authoritative again. Every request for a device image comes through here,
+    # so switching between two of them into one build directory pays that
+    # reconfigure and a wrong image does not reach the board.
     if [ -f "$BUILD_SDKCONFIG" ]; then
         stale=""
         for fragment in $(printf '%s' "$SDKCONFIG_FRAGMENTS" | tr ';' ' '); do
@@ -189,6 +208,18 @@ if [ "$VARIANT" != release ]; then
 fi
 
 echo "=== Building $BUILD_DIR ==="
+if [ -n "$REQUIRED_FLAGS" ]; then
+    # Said out loud, not only on failure: which flags a request demands is
+    # the thing that drifted silently twice, and a capture's log is where
+    # anyone looks afterwards to find out what was actually built.
+    # Unquoted on purpose: one space between flags however they were built up.
+    # shellcheck disable=SC2086
+    echo "=== $BUILD_DIR/sdkconfig must have:" $REQUIRED_FLAGS "==="
+    if [ -n "${FORBIDDEN_FLAGS# }" ]; then
+        # shellcheck disable=SC2086
+        echo "===   and must not have:" $FORBIDDEN_FLAGS "==="
+    fi
+fi
 if [ "$VARIANT" = release ]; then
     idf -B "$BUILD_DIR" build
 else
@@ -199,9 +230,9 @@ else
     # - and cheerfully produces a build.dev or build.diag image with none of
     # it in there. It can even look like it worked, if that build directory's
     # own CMakeCache.txt is left over from a run that did pass the flag.
-    # SDKCONFIG_DEFAULTS alone does not fix it. (Learned in
-    # tools/report_test_results.sh, where the silent version of this cost a
-    # capture with no measurements in it.)
+    # SDKCONFIG_DEFAULTS alone does not fix it. (Learned in the report path,
+    # where the silent version of this cost a capture with no measurements
+    # in it.)
     #
     # The semicolon inside SDKCONFIG_DEFAULTS reaches idf.py intact on
     # Windows too: passing arguments through the shim without mangling them
@@ -272,8 +303,14 @@ case "$VARIANT" in
         ;;
     diag)
         echo "=== Done - the DIAGNOSTICS image is on the device ==="
-        echo "    The test suites are compiled in - Diagnostics' own button runs"
-        echo "    them on demand, since AUTORUN is not layered here."
+        if [ "$AUTORUN" -eq 1 ]; then
+            echo "    AUTORUN is layered: every compiled-in suite runs at boot,"
+            echo "    before the shell comes up, and the run ends in a"
+            echo "    SELFTEST_COMPLETE line on the console."
+        else
+            echo "    The test suites are compiled in - Diagnostics' own button runs"
+            echo "    them on demand, since AUTORUN is not layered here."
+        fi
         if [ "$PERF_SCOPE" -eq 1 ]; then
             echo "    PERF-SCOPED: only sand's frame-budget suite and its scenes are"
             echo "    in there. Its numbers compare only with other perf-scoped"
