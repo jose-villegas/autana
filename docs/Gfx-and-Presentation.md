@@ -283,8 +283,9 @@ there. For how long is counted, not watched for: `gfx_glow_trail_draws()` is
 how many draws take the brightest colour to black at a given `trail`. The
 tail shares its rows with whatever else is drawn on them, so "are any lit
 pixels left" never becomes no - a first version asked that, and the launcher
-never went idle again. The launcher's ridge uses 32 (`RIDGE_TRAIL`), a tail
-two draws long.
+never went idle again. The launcher's ridge uses 226 (`RIDGE_TRAIL`), a tail
+16 draws long - about a quarter of a second. At 32 it lasted two draws and
+could not be seen.
 
 The launcher's ridge is a horizon: it follows `input/tilt.h`'s down at any
 angle while the app rows turn in quarters. It holds boot's landscape pose for
