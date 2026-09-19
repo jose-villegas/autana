@@ -66,7 +66,7 @@ A screen built through microui is rendered the same way, driven over
 several frames with a declared synthetic touch. Declaring a scene for your
 own screen is two files, and diffing one against a device capture is one
 command - both in
-[`Testing-Guide.md`](Testing-Guide.md)'s host render harness section. Every
+[`tools/Render-Harness.md`](tools/Render-Harness.md). Every
 scene stands in the data its screen normally gets - a fixture table, a
 timestamp - so nothing a render shows came off hardware.
 
@@ -240,3 +240,5 @@ fifth icon.
 - [`Text-and-Fonts.md`](Text-and-Fonts.md) - fonts, scales, text styles
 - [`Launcher-Architecture.md`](Launcher-Architecture.md) - the mechanisms
 - [`Testing-Guide.md`](Testing-Guide.md) - suites, runners, build variants
+- [`tools/Render-Harness.md`](tools/Render-Harness.md) - rendering a screen
+  on a host, and diffing it against a capture
