@@ -13,10 +13,15 @@
  *
  * The list is a FIXTURE: three invented entries with no callbacks, because
  * the shell is what owns the registry and this is not the shell. Nothing
- * drawn here came from a registered app.
+ * drawn here came from a registered app. `--row <label>`, repeatable,
+ * replaces it with the rows a caller states - what a comparison against a
+ * real image's home screen needs, since only that image knows what it
+ * registered.
  */
 
 #include <stddef.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "app.h"
 #include "gfx/gfx.h"
@@ -31,14 +36,20 @@ static const app_t fixture_gamma = {.name = "Gamma", .summary = "The third fixtu
 
 static const app_t* const fixture[] = {&fixture_alpha, &fixture_beta, &fixture_gamma};
 
+#define ROWS_MAX 16
+
+static app_t stated[ROWS_MAX];
+static const app_t* stated_list[ROWS_MAX];
+static int stated_count;
+
 const app_t* const*
 app_list(void) {
-    return fixture;
+    return stated_count > 0 ? stated_list : fixture;
 }
 
 int
 app_list_count(void) {
-    return (int)(sizeof(fixture) / sizeof(fixture[0]));
+    return stated_count > 0 ? stated_count : (int)(sizeof(fixture) / sizeof(fixture[0]));
 }
 
 void
@@ -49,14 +60,33 @@ app_register(const app_t* app) {
 /* A press at the centre of the panel, held across two frames so
  * ui_pointer.c's synthesized hover has landed by the time the picture is
  * taken, then released. Panel coordinates, as a finger reports them: which
- * row that lands on is whatever the layout puts under the middle. */
+ * row that lands on is whatever the layout puts under the middle. Nothing
+ * is pressed before frame 2, so `--frames 2` is the settled screen with no
+ * finger on it - the state a capture of an idle device is in. */
 static const render_input_step_t touch[] = {
-    {1, true, GFX_WIDTH / 2, GFX_HEIGHT / 2},
+    {2, true, GFX_WIDTH / 2, GFX_HEIGHT / 2},
     {4, false, GFX_WIDTH / 2, GFX_HEIGHT / 2},
 };
 
 /* The screen's own init seeds the transform, so the turn is stated after
  * it: stated first, it would be the one that got overwritten. */
+static bool
+options(int argc, char** argv) {
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--row") != 0 || i + 1 >= argc) {
+            return false;
+        }
+        if (stated_count >= ROWS_MAX) {
+            fprintf(stderr, "at most %d rows\n", ROWS_MAX);
+            return false;
+        }
+        stated[stated_count].name = argv[++i];
+        stated_list[stated_count] = &stated[stated_count];
+        stated_count++;
+    }
+    return true;
+}
+
 static bool
 setup(int quarter) {
     ui_launcher_init();
@@ -77,6 +107,7 @@ const render_scene_t render_scene = {
     .dt_ms = 16,
     .input = touch,
     .input_count = (int)(sizeof(touch) / sizeof(touch[0])),
+    .options = options,
     .setup = setup,
     .draw = draw,
 };
