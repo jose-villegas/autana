@@ -469,9 +469,11 @@ out to the `RUNSUITE_COMPLETE` line the shell prints, then `SCREENSHOT`,
 decoded to a PNG and a state `.json` by `tools/screenshot.py`'s own code.
 Boot, one suite and a capture take about a minute and a half, against five
 to nine for a whole autorun. The frame is the firmware's real framebuffer,
-so it is a board-free way to look at a screen. A `CONFIG_LAUNCHER_QEMU`
-image puts that console listener on UART0, the port QEMU exposes; the
-runner reaches it as a local TCP socket.
+so it is a board-free way to look at a screen, and the second backend the
+render harness diffs a host render against
+([`tools/Render-Harness.md`](tools/Render-Harness.md)). A
+`CONFIG_LAUNCHER_QEMU` image puts that console listener on UART0, the port
+QEMU exposes; the runner reaches it as a local TCP socket.
 
 The image is the autorun diagnostics build with `sdkconfig.defaults.qemu`
 layered last, in its own `build.qemu*/`. That fragment does three things.
@@ -499,10 +501,9 @@ The option also makes the temperature read report failure, because
 ESP-IDF's driver waits forever on a sensor QEMU does not have.
 
 **Driving the shell.** The console listener of such an image also takes
-`TOUCH DOWN <x> <y>`, `TOUCH UP` and `IMU <ax> <ay> <az>` (panel pixels; raw
-accelerometer counts, 4096 to the g), answering each with its own `_OK` or
-`_REJECTED` line. `qemu_run.py --do` strings them into what a user does, one
-ordered step at a time:
+`TOUCH <down|up> <x> <y>` and `IMU <ax> <ay> <az>` (panel pixels; raw
+accelerometer counts, 4096 to the g). `qemu_run.py --do` strings them into
+what a user does, one ordered step at a time:
 
 ```sh
 python launcher/test/qemu_run.py launcher/build.qemu.shell \
@@ -539,6 +540,26 @@ run to run. A two-core step sums both cores and wanders by up to 1%, since
 the waiting core's spin is counted too. The count answers whether a change
 removed work; on this chip that does not predict whether it removed time
 (see [`notes/Optimization-Playbook.md`](notes/Optimization-Playbook.md)).
+
+---
+
+## The host render harness: real drawing code, real pixels, no board
+
+The firmware's drawing code compiles on a host, so a screen can be rendered
+into an image without a flash cycle, and the pixels of every declared scene
+are pinned against change.
+
+```sh
+./launcher/tools/render_all_scenes.sh          # every scene, and the standing check
+```
+
+Reach for it to judge a layout, prove a screen still draws what it drew, or
+diff a render against a device capture. **It is never a perf oracle:** host
+wall-clock says nothing about what the work costs on the chip.
+
+[`tools/Render-Harness.md`](tools/Render-Harness.md) is the manual - declaring
+a scene, frames and synthetic touch, the pins, the QEMU backend, and
+`render_diff.sh`.
 
 ---
 
@@ -853,6 +874,8 @@ gfx/ui change can be checked without touching the sand suites at all.
   largest test suite in this codebase; this is what it is actually testing.
 - `docs/sand/Testing-Sand.md` — the sand app's own frame-budget capture,
   its free-heap precondition, and the perf-scope trade-off.
+- `docs/tools/Render-Harness.md` — rendering a real screen on a host,
+  pinning its pixels, and diffing it against a capture.
 - `docs/notes/` — the hardware constraints behind the device-only
   performance tests. Start at `docs/notes/README.md`.
 - `docs/plans/Settings-App-Plan.md` — the Diagnostics app itself now follows the

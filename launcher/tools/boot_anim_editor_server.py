@@ -39,13 +39,15 @@ else here.
      tools/gen_boot_anim_timeline.py against it. A validation failure there
      (curve still drawing when the fade starts, etc.) is reported back as a
      400 with the generator's own message.
-  3. Compile tools/boot_anim_render_host.c + main/gfx/gfx.c +
-     main/boot/boot_anim.c, with the scratch directory (holding the DRAFT
-     boot_anim_timeline.h from step 2) and components/small3dlib/include
-     (the camera/space transform math boot_anim.h now builds on) on the
-     include path, the scratch one AHEAD of `main` so it shadows the real
-     committed header without ever touching it. A compile failure is
-     reported back as a 500 with the compiler's own stderr.
+  3. Compile tools/boot_anim_render_host.c + tools/render_host.c +
+     main/gfx/gfx.c + main/boot/boot_anim.c, with the scratch directory
+     (holding the DRAFT boot_anim_timeline.h from step 2),
+     components/small3dlib/include (the camera/space transform math
+     boot_anim.h builds on) and components/microui/include (the rect type
+     the shared renderer's rotation is written in) on the include path, the
+     scratch one AHEAD of `main` so it shadows the real committed header
+     without ever touching it. A compile failure is reported back as a 500
+     with the compiler's own stderr.
   4. Run the (cached or freshly built) binary with the requested `ms` and
      stream its stdout - a BMP - back as the response body, with the
      origin readout it printed to stderr (see boot_anim_render_host.c's
@@ -90,6 +92,7 @@ TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 LAUNCHER_DIR = os.path.dirname(TOOLS_DIR)
 MAIN_DIR = os.path.join(LAUNCHER_DIR, "main")
 SMALL3DLIB_DIR = os.path.join(LAUNCHER_DIR, "components", "small3dlib", "include")
+MICROUI_DIR = os.path.join(LAUNCHER_DIR, "components", "microui", "include")
 EDITOR_HTML = os.path.join(TOOLS_DIR, "boot_anim_editor.html")
 GENERATOR = os.path.join(TOOLS_DIR, "gen_boot_anim_timeline.py")
 
@@ -172,9 +175,8 @@ WATCHED_SOURCE_DIRS = (
 
 # Listed NON-recursively (see _watched_source_paths()) - unlike the above,
 # tools/ also holds results/screenshots/sweeps/__pycache__ subdirectories
-# (sweep/report scratch output, not source), so recursing here the same
-# way would work but for the wrong reason - only boot_anim_render_host.c
-# actually lives directly in this one.
+# (sweep/report scratch output, not source), and every source this build
+# compiles from here sits directly in it.
 WATCHED_TOP_LEVEL_DIRS = (TOOLS_DIR,)
 
 # boot_anim_timeline.h under main/boot is the one file in that directory
@@ -421,6 +423,7 @@ class Renderer:
 
         sources = [
             os.path.join(TOOLS_DIR, "boot_anim_render_host.c"),
+            os.path.join(TOOLS_DIR, "render_host.c"),
             os.path.join(MAIN_DIR, "gfx", "gfx.c"),
             os.path.join(MAIN_DIR, "boot", "boot_anim.c"),
         ]
@@ -429,6 +432,7 @@ class Renderer:
             "-Wno-unused-parameter", "-Wno-unused-function",
             "-Wno-unused-variable", "-O1",
             "-I", self.scratch, "-I", MAIN_DIR, "-I", SMALL3DLIB_DIR,
+            "-I", MICROUI_DIR, "-I", TOOLS_DIR,
             *sources, "-o", self.binary,
         ]
         cc_result = subprocess.run(cmd, capture_output=True, text=True)

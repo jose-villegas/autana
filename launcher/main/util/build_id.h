@@ -48,32 +48,44 @@ build_console_command_parse(const char* line) {
     return BUILD_CONSOLE_NONE;
 }
 
-/* "TOUCH DOWN <x> <y>" in panel pixels, or "TOUCH UP". False leaves the
- * outputs alone. */
+/* Reads `TOUCH <down|up> <x> <y>` into its three parts, in panel
+ * coordinates. Returns false and writes nothing for a malformed line: a
+ * caller acts on a whole sample or on none of it, never on half of one.
+ * Coordinates are not range-checked here - the panel's size is not this
+ * header's to know, and a sample past the edge is a caller's question. */
 static inline bool
-build_console_parse_touch(const char* line, bool* down, int* x, int* y) {
-    if (strcmp(line, "TOUCH UP") == 0) {
-        *down = false;
-        return true;
-    }
-    int px = 0, py = 0;
-    char trailing = 0;
-    if (sscanf(line, "TOUCH DOWN %d %d%c", &px, &py, &trailing) != 2 || px < 0 || py < 0) {
+build_console_touch_parse(const char* line, bool* down, int* x, int* y) {
+    const char* rest = line + sizeof "TOUCH " - 1;
+    char state[5];
+    int px, py;
+
+    if (sscanf(rest, "%4s %d %d", state, &px, &py) != 3) {
         return false;
     }
-    *down = true;
+    if (strcmp(state, "down") == 0) {
+        *down = true;
+    } else if (strcmp(state, "up") == 0) {
+        *down = false;
+    } else {
+        return false;
+    }
     *x = px;
     *y = py;
     return true;
 }
 
-/* "IMU <ax> <ay> <az>", the accelerometer in raw counts. */
+/* Reads `IMU <ax> <ay> <az>`, the accelerometer in raw counts. False, and
+ * nothing written, for a malformed line or a count the sensor's 16 bits
+ * could not give. */
 static inline bool
-build_console_parse_imu(const char* line, int* ax, int* ay, int* az) {
-    int a = 0, b = 0, c = 0;
-    char trailing = 0;
-    if (sscanf(line, "IMU %d %d %d%c", &a, &b, &c, &trailing) != 3 || a < INT16_MIN || a > INT16_MAX || b < INT16_MIN
-        || b > INT16_MAX || c < INT16_MIN || c > INT16_MAX) {
+build_console_imu_parse(const char* line, int* ax, int* ay, int* az) {
+    int a, b, c;
+    char trailing;
+
+    if (sscanf(line + sizeof "IMU " - 1, "%d %d %d%c", &a, &b, &c, &trailing) != 3) {
+        return false;
+    }
+    if (a < INT16_MIN || a > INT16_MAX || b < INT16_MIN || b > INT16_MAX || c < INT16_MIN || c > INT16_MAX) {
         return false;
     }
     *ax = a;
