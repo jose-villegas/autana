@@ -52,16 +52,18 @@ typedef struct {
     int column_gap;
     int glyph_w;
     int line_h;
-    int rows;       /* report lines one column holds */
+    int rows;       /* text lines a column holds with nothing between them */
     int line_chars; /* characters a line holds before it has to wrap */
-    int gap;        /* blank lines between checks - 0 when only that fits */
+    int gap;        /* PIXELS of air between checks, 0 to one line_h */
 } post_layout_t;
 
 /* The layout at an explicit column count and spacing. `screen_w`/`screen_h`
  * are the upright logical canvas; `font` supplies the metrics both scales
  * above are measured in. A column count too wide for the canvas is reduced
- * until POST_LAYOUT_WIDEST_LINE fits. */
-post_layout_t post_layout_with(const gfx_font_t* font, int screen_w, int screen_h, int columns, int gap);
+ * until POST_LAYOUT_WIDEST_LINE fits. Without a footer, that band takes no
+ * height at all and the columns get it. */
+post_layout_t post_layout_with(const gfx_font_t* font, int screen_w, int screen_h, int columns, int gap,
+                               bool has_footer);
 
 /* The orientation's column ceiling. */
 int post_layout_max_columns(int screen_w, int screen_h);
@@ -77,12 +79,22 @@ mu_Rect post_layout_column(const post_layout_t* l, int column);
  * next. Empty once the columns are full, which is the drawer's cue to stop. */
 mu_Rect post_layout_line(const post_layout_t* l, int index);
 
+/* Text lines the columns hold with nothing between them - what
+ * post_layout_line() addresses, and the most a report can ever show. */
 int post_layout_capacity(const post_layout_t* l);
 
-/* One pass down the columns, keeping its place. The layout stays immutable;
- * this is the only thing that moves. */
+/* The same room measured the way the pass actually spends it: pixels of
+ * column, across every column. Air between checks comes out of this, and a
+ * row number cannot express it. */
+int post_layout_capacity_px(const post_layout_t* l);
+
+/* One pass down the columns, keeping its place as a PIXEL offset into the
+ * column it is in - the air between checks is measured in pixels, so a row
+ * index no longer addresses a line. The layout stays immutable; this is the
+ * only thing that moves. */
 typedef struct {
-    int next;
+    int column;
+    int y;
 } post_lines_t;
 
 /* The line to draw the next run of text on, advancing the pass. Empty once
@@ -136,12 +148,12 @@ typedef struct {
     int count;
     const char* (*detail)(void* ctx, int index);
     void* ctx;
+    bool has_footer;
 } post_entries_t;
 
-/* The layout to draw this report with: the fewest columns it fits in, since
- * fewer are wider and wrap the details less, and the air between checks only
- * if it fits with that too. Candidates go air-first - one column with air up
- * to the ceiling, then the same without - so spacing is bought with a column
- * before it is given up. Fitting nowhere gets the ceiling and no air, and the
- * drawer truncates as it always did. */
+/* The layout to draw this report with: the fewest columns it fits in with a
+ * full line of air between checks, since fewer columns are wider ones and
+ * wrap the details less. Where no column count affords that, every column is
+ * used and the air shrinks to the widest uniform pixel gap that still fits -
+ * air thinner than a line beats dropping checks off the end. */
 post_layout_t post_layout_for_report(const gfx_font_t* font, int screen_w, int screen_h, const post_entries_t* entries);

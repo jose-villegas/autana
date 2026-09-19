@@ -190,6 +190,7 @@ post_ui_draw_report(const post_ui_report_t* report) {
         .count = drawn_count(failures_only),
         .detail = drawn_detail,
         .ctx = &failures_only,
+        .has_footer = report->footer != NULL,
     };
     report_pen_t pen = {
         .layout = post_layout_for_report(gfx_font_ui(), upright ? GFX_WIDTH : GFX_HEIGHT,

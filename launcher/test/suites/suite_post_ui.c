@@ -20,12 +20,17 @@
 #define PANEL_SHORT_SIDE 368
 #define PANEL_LONG_SIDE  448
 
-/* The orientation at its column ceiling, with air between checks - what a
- * report that needs every column gets, and the shape the placement rules
- * below are all about. */
+/* `columns` columns with a whole line of air between checks - the widest gap
+ * the layout ever gives, and the one every rule below is stated against. */
+static post_layout_t
+full_gap_layout(int screen_w, int screen_h, int columns) {
+    const post_layout_t plain = post_layout_with(gfx_font_ui(), screen_w, screen_h, columns, 0, true);
+    return post_layout_with(gfx_font_ui(), screen_w, screen_h, columns, plain.line_h, true);
+}
+
 static post_layout_t
 at_ceiling(int screen_w, int screen_h) {
-    return post_layout_with(gfx_font_ui(), screen_w, screen_h, post_layout_max_columns(screen_w, screen_h), 1);
+    return full_gap_layout(screen_w, screen_h, post_layout_max_columns(screen_w, screen_h));
 }
 
 static post_layout_t
@@ -197,7 +202,7 @@ place_report(post_layout_t l, int checks, int lines_each) {
         p.first_y[c] = -1;
     }
 
-    post_lines_t lines = {0};
+    post_lines_t lines = {0, 0};
     for (int check = 0; check < checks; check++) {
         post_layout_reserve(&l, &lines, lines_each);
         for (int i = 0; i < lines_each; i++) {
@@ -255,7 +260,7 @@ assert_a_check_ending_on_the_last_row_costs_nothing(post_layout_t l) {
         return;
     }
 
-    post_lines_t lines = {0};
+    post_lines_t lines = {0, 0};
     for (int i = 0; i < l.rows; i++) {
         TEST_ASSERT_GREATER_THAN_INT(0, post_layout_take_line(&l, &lines).w);
     }
@@ -296,7 +301,7 @@ test_a_report_that_fits_loses_no_line_in_either_orientation(void) {
  * about how much the columns hold. */
 static void
 assert_the_pass_stops_at_capacity(post_layout_t l) {
-    post_lines_t lines = {0};
+    post_lines_t lines = {0, 0};
     int placed = 0;
     while (post_layout_take_line(&l, &lines).w > 0) {
         placed++;
@@ -341,7 +346,7 @@ place_entry(const post_layout_t* l, post_lines_t* lines, int height) {
 /* Fills the pass to exactly `remaining` rows short of the column's end. */
 static post_lines_t
 filled_to_remainder(const post_layout_t* l, int remaining) {
-    post_lines_t lines = {0};
+    post_lines_t lines = {0, 0};
     for (int i = 0; i < l->rows - remaining; i++) {
         TEST_ASSERT_GREATER_THAN_INT(0, post_layout_take_line(l, &lines).w);
     }
@@ -402,7 +407,7 @@ assert_a_check_taller_than_a_column_starts_at_a_top(post_layout_t l) {
         return;
     }
 
-    post_lines_t lines = {0};
+    post_lines_t lines = {0, 0};
     TEST_ASSERT_GREATER_THAN_INT(0, post_layout_take_line(&l, &lines).w); /* off a column top */
 
     const entry_placement_t e = place_entry(&l, &lines, l.rows + 1);
@@ -428,9 +433,10 @@ test_a_single_column_report_never_skips_rows(void) {
 
     for (int height = 1; height <= l.rows; height++) {
         post_lines_t lines = filled_to_remainder(&l, height - 1);
-        const int before = lines.next;
+        const post_lines_t before = lines;
         post_layout_reserve(&l, &lines, height);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(before, lines.next, "a single-column report skipped rows it could have used");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(before.column, lines.column, "a single-column report changed column");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(before.y, lines.y, "a single-column report skipped rows it could have used");
     }
 }
 
@@ -568,11 +574,45 @@ typedef struct {
     int min_same_column_spacing;
 } report_walk_t;
 
+/* One check's lines, taken the way the drawer takes them. `placed` short of
+ * the height asked for means the columns ran out mid-check. */
+typedef struct {
+    mu_Rect first;
+    int placed;
+} taken_entry_t;
+
+static taken_entry_t
+take_entry(const post_layout_t* l, post_lines_t* lines, int height) {
+    taken_entry_t e = {{0, 0, 0, 0}, 0};
+
+    for (int line = 0; line < height; line++) {
+        const mu_Rect row = post_layout_take_line(l, lines);
+        if (row.w <= 0) {
+            break;
+        }
+        if (e.placed == 0) {
+            e.first = row;
+        }
+        e.placed++;
+    }
+    return e;
+}
+
+static void
+record_spacing(report_walk_t* w, int spacing) {
+    if (w->min_same_column_spacing < 0 || spacing < w->min_same_column_spacing) {
+        w->min_same_column_spacing = spacing;
+    }
+    if (spacing > w->max_same_column_spacing) {
+        w->max_same_column_spacing = spacing;
+    }
+}
+
 static report_walk_t
 walk_report(const post_layout_t* l, const post_entries_t* entries) {
     report_walk_t w = {0, 0, -1, -1};
 
-    post_lines_t lines = {0};
+    post_lines_t lines = {0, 0};
     int previous_end = -1;
     int previous_column = -1;
 
@@ -580,34 +620,16 @@ walk_report(const post_layout_t* l, const post_entries_t* entries) {
         const int height = post_layout_entry_height(l, entries->detail(entries->ctx, i));
         post_layout_reserve(l, &lines, height);
 
-        mu_Rect first = {0, 0, 0, 0};
-        int placed = 0;
-        for (int line = 0; line < height; line++) {
-            const mu_Rect row = post_layout_take_line(l, &lines);
-            if (row.w <= 0) {
-                break;
-            }
-            if (placed == 0) {
-                first = row;
-            }
-            placed++;
-        }
-        if (placed < height) {
+        const taken_entry_t e = take_entry(l, &lines, height);
+        if (e.placed < height) {
             return w;
         }
 
-        const int column = column_of(l, first);
-        const int start = lines.next - height;
+        const int column = column_of(l, e.first);
         if (previous_end >= 0 && column == previous_column) {
-            const int spacing = start - previous_end;
-            if (w.min_same_column_spacing < 0 || spacing < w.min_same_column_spacing) {
-                w.min_same_column_spacing = spacing;
-            }
-            if (spacing > w.max_same_column_spacing) {
-                w.max_same_column_spacing = spacing;
-            }
+            record_spacing(&w, e.first.y - previous_end);
         }
-        previous_end = lines.next;
+        previous_end = l->body.y + lines.y;
         previous_column = column;
 
         w.placed_checks++;
@@ -615,54 +637,6 @@ walk_report(const post_layout_t* l, const post_entries_t* entries) {
         post_layout_gap(l, &lines);
     }
     return w;
-}
-
-/* Portrait has one column and no room for air between fifteen checks - so it
- * must drop the air rather than the last three checks. */
-static void
-test_portrait_drops_the_spacing_rather_than_the_last_checks(void) {
-    listed_t list = {REPORT_CHECKS, report_details};
-    const post_entries_t entries = listed_entries(&list, REPORT_CHECKS);
-    const post_layout_t l = post_layout_for_report(gfx_font_ui(), PANEL_SHORT_SIDE, PANEL_LONG_SIDE, &entries);
-
-    TEST_ASSERT_EQUAL_INT(1, l.columns);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, l.gap, "portrait kept spacing it had no room for");
-
-    const report_walk_t w = walk_report(&l, &entries);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(REPORT_CHECKS, w.placed_checks, "portrait still truncates the report");
-}
-
-/* A report with room to spare keeps its air. */
-static void
-test_a_report_that_fits_with_spacing_keeps_it(void) {
-    listed_t list = {2, short_details};
-    const post_entries_t entries = listed_entries(&list, 2);
-    const post_layout_t l = post_layout_for_report(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, &entries);
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, l.gap, "a report with room to spare lost its spacing");
-
-    const report_walk_t w = walk_report(&l, &entries);
-    TEST_ASSERT_EQUAL_INT(2, w.placed_checks);
-}
-
-/* One spacing for the whole report, not a decision taken per check. */
-static void
-test_the_spacing_is_uniform_across_a_report(void) {
-    listed_t list = {REPORT_CHECKS, report_details};
-
-    const int canvases[][2] = {{PANEL_SHORT_SIDE, PANEL_LONG_SIDE}, {PANEL_LONG_SIDE, PANEL_SHORT_SIDE}};
-    for (int c = 0; c < 2; c++) {
-        const post_entries_t entries = listed_entries(&list, REPORT_CHECKS);
-        const post_layout_t l = post_layout_for_report(gfx_font_ui(), canvases[c][0], canvases[c][1], &entries);
-        const report_walk_t w = walk_report(&l, &entries);
-
-        if (w.min_same_column_spacing < 0) {
-            continue; /* every check started a column of its own */
-        }
-        TEST_ASSERT_EQUAL_INT_MESSAGE(w.min_same_column_spacing, w.max_same_column_spacing,
-                                      "checks in one report were spaced differently");
-        TEST_ASSERT_EQUAL_INT_MESSAGE(l.gap, w.min_same_column_spacing - 0, "the spacing drawn is not the one chosen");
-    }
 }
 
 /* Two failures do not need three narrow columns, and a wide one wraps their
@@ -702,30 +676,136 @@ test_spacing_is_preferred_over_fewer_columns(void) {
     const int checks = 12;
     const post_entries_t entries = listed_entries(&list, checks);
 
-    const post_layout_t one_no_gap = post_layout_with(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, 1, 0);
-    const post_layout_t one_gap = post_layout_with(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, 1, 1);
+    const post_layout_t one_no_gap = post_layout_with(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, 1, 0, false);
+    const post_layout_t one_gap = full_gap_layout(PANEL_LONG_SIDE, PANEL_SHORT_SIDE, 1);
     TEST_ASSERT_EQUAL_INT_MESSAGE(checks, walk_report(&one_no_gap, &entries).placed_checks,
                                   "the fixture must fit one column without air, or it proves nothing");
     TEST_ASSERT_LESS_THAN_INT_MESSAGE(checks, walk_report(&one_gap, &entries).placed_checks,
                                       "the fixture must NOT fit one column with air, or it proves nothing");
 
     const post_layout_t chosen = post_layout_for_report(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, &entries);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, chosen.gap, "fewer columns was preferred over keeping the air");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(chosen.line_h, chosen.gap, "fewer columns was preferred over keeping the air");
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(1, chosen.columns, "the air should have been bought with more columns");
     TEST_ASSERT_EQUAL_INT(checks, walk_report(&chosen, &entries).placed_checks);
 }
 
-/* Nothing fits: the ceiling, no air, and the drawer truncates as it always
- * did rather than the chooser inventing somewhere to put the overflow. */
+static post_layout_t
+chosen_for(int screen_w, int screen_h, const post_entries_t* entries) {
+    return post_layout_for_report(gfx_font_ui(), screen_w, screen_h, entries);
+}
+
+/* A pixel gap can overshoot where a row index could not: the last line's
+ * bottom edge has to stay inside the band, whatever gap was chosen. */
 static void
-test_a_report_that_fits_nowhere_gets_the_ceiling_without_spacing(void) {
+assert_every_placed_line_ends_inside_the_body(const post_layout_t* l, const post_entries_t* entries) {
+    post_lines_t lines = {0, 0};
+    int seen = 0;
+
+    for (int i = 0; i < entries->count; i++) {
+        const int height = post_layout_entry_height(l, entries->detail(entries->ctx, i));
+        post_layout_reserve(l, &lines, height);
+        for (int line = 0; line < height; line++) {
+            const mu_Rect row = post_layout_take_line(l, &lines);
+            if (row.w <= 0) {
+                break;
+            }
+            TEST_ASSERT_TRUE_MESSAGE(contains(l->body, row), "a placed line ran past the column band");
+            TEST_ASSERT_TRUE_MESSAGE(contains(l->safe, row), "a placed line ran outside the readable inset");
+            seen++;
+        }
+        post_layout_gap(l, &lines);
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, seen);
+}
+
+static void
+test_no_placed_line_ends_outside_the_body_in_either_orientation(void) {
+    listed_t list = {REPORT_CHECKS, report_details};
+
+    const int canvases[][2] = {{PANEL_SHORT_SIDE, PANEL_LONG_SIDE}, {PANEL_LONG_SIDE, PANEL_SHORT_SIDE}};
+    for (int c = 0; c < 2; c++) {
+        const post_entries_t entries = listed_entries(&list, REPORT_CHECKS);
+        const post_layout_t l = chosen_for(canvases[c][0], canvases[c][1], &entries);
+        assert_every_placed_line_ends_inside_the_body(&l, &entries);
+    }
+}
+
+/* Room to spare buys a whole line of air, not a fraction of one. */
+static void
+test_a_report_with_room_gets_a_full_line_of_air(void) {
+    listed_t list = {2, short_details};
+    const post_entries_t entries = listed_entries(&list, 2);
+    const post_layout_t l = chosen_for(PANEL_LONG_SIDE, PANEL_SHORT_SIDE, &entries);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(l.line_h, l.gap, "a report with room to spare did not get a full line of air");
+}
+
+/* Portrait cannot afford a full line between fifteen checks, so the air
+ * thins rather than the report losing its tail - and it thins to the very
+ * widest gap that still fits, which is what both sides of this assert. */
+static void
+test_portrait_takes_the_widest_gap_that_still_fits(void) {
+    listed_t list = {REPORT_CHECKS, report_details};
+    const post_entries_t entries = listed_entries(&list, REPORT_CHECKS);
+    const post_layout_t l = chosen_for(PANEL_SHORT_SIDE, PANEL_LONG_SIDE, &entries);
+
+    TEST_ASSERT_EQUAL_INT(1, l.columns);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, l.gap, "portrait gave up its air entirely");
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(l.line_h, l.gap, "portrait should not have afforded a full line");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(REPORT_CHECKS, walk_report(&l, &entries).placed_checks,
+                                  "portrait still truncates the report");
+
+    const post_layout_t wider =
+        post_layout_with(gfx_font_ui(), PANEL_SHORT_SIDE, PANEL_LONG_SIDE, l.columns, l.gap + 1, entries.has_footer);
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(REPORT_CHECKS, walk_report(&wider, &entries).placed_checks,
+                                      "one pixel more of air would have fitted too - the gap chosen was not the "
+                                      "widest");
+}
+
+/* Whatever gap was chosen, every check in a column is spaced by it. */
+static void
+test_the_chosen_gap_is_uniform_within_a_report(void) {
+    listed_t list = {REPORT_CHECKS, report_details};
+
+    const int canvases[][2] = {{PANEL_SHORT_SIDE, PANEL_LONG_SIDE}, {PANEL_LONG_SIDE, PANEL_SHORT_SIDE}};
+    for (int c = 0; c < 2; c++) {
+        const post_entries_t entries = listed_entries(&list, REPORT_CHECKS);
+        const post_layout_t l = chosen_for(canvases[c][0], canvases[c][1], &entries);
+        const report_walk_t w = walk_report(&l, &entries);
+
+        if (w.min_same_column_spacing < 0) {
+            continue;
+        }
+        TEST_ASSERT_EQUAL_INT_MESSAGE(w.min_same_column_spacing, w.max_same_column_spacing,
+                                      "checks in one report were spaced differently");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(l.gap, w.min_same_column_spacing, "the spacing drawn is not the one chosen");
+    }
+}
+
+/* No slack at all leaves no air to give. */
+static void
+test_a_report_with_no_slack_gets_no_air(void) {
     listed_t list = {1, tall_details};
     const post_entries_t entries = listed_entries(&list, 500);
-    const post_layout_t l = post_layout_for_report(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, &entries);
+    const post_layout_t l = chosen_for(PANEL_LONG_SIDE, PANEL_SHORT_SIDE, &entries);
 
     TEST_ASSERT_EQUAL_INT(post_layout_max_columns(PANEL_LONG_SIDE, PANEL_SHORT_SIDE), l.columns);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, l.gap, "a report that fits nowhere should not keep spacing");
-    TEST_ASSERT_LESS_THAN_INT_MESSAGE(500, walk_report(&l, &entries).placed_checks, "this report cannot fit");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, l.gap, "a report that fits nowhere should keep no air");
+}
+
+/* A band with nothing in it takes no height, and the columns get what it
+ * would have held - which is what lets portrait carry every check. */
+static void
+test_a_report_without_a_footer_gives_that_band_to_the_columns(void) {
+    const int ceiling = post_layout_max_columns(PANEL_SHORT_SIDE, PANEL_LONG_SIDE);
+    const post_layout_t with = post_layout_with(gfx_font_ui(), PANEL_SHORT_SIDE, PANEL_LONG_SIDE, ceiling, 0, true);
+    const post_layout_t without = post_layout_with(gfx_font_ui(), PANEL_SHORT_SIDE, PANEL_LONG_SIDE, ceiling, 0, false);
+
+    TEST_ASSERT_GREATER_THAN_INT(0, with.footer.h);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, without.footer.h, "an empty footer band still took height");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(with.body.h, without.body.h, "the columns did not get the freed band");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(with.safe.y + with.safe.h, without.body.y + without.body.h,
+                                  "the columns should reach the readable inset's own bottom edge");
 }
 
 static void
@@ -767,13 +847,15 @@ suite_post_ui(void) {
     RUN_TEST(test_a_single_column_report_never_skips_rows);
     RUN_TEST(test_the_wrap_measure_and_walk_agree_at_every_width);
     RUN_TEST(test_the_wrap_width_is_always_drawable_in_both_orientations);
-    RUN_TEST(test_portrait_drops_the_spacing_rather_than_the_last_checks);
-    RUN_TEST(test_a_report_that_fits_with_spacing_keeps_it);
-    RUN_TEST(test_the_spacing_is_uniform_across_a_report);
     RUN_TEST(test_a_short_report_in_landscape_takes_one_wide_column);
     RUN_TEST(test_a_tall_report_in_landscape_takes_the_orientation_ceiling);
     RUN_TEST(test_spacing_is_preferred_over_fewer_columns);
-    RUN_TEST(test_a_report_that_fits_nowhere_gets_the_ceiling_without_spacing);
+    RUN_TEST(test_no_placed_line_ends_outside_the_body_in_either_orientation);
+    RUN_TEST(test_a_report_with_room_gets_a_full_line_of_air);
+    RUN_TEST(test_portrait_takes_the_widest_gap_that_still_fits);
+    RUN_TEST(test_the_chosen_gap_is_uniform_within_a_report);
+    RUN_TEST(test_a_report_with_no_slack_gets_no_air);
+    RUN_TEST(test_a_report_without_a_footer_gives_that_band_to_the_columns);
     RUN_TEST(test_the_column_count_follows_the_orientation);
     RUN_TEST(test_landscape_holds_at_least_as_many_lines_as_portrait);
 }
