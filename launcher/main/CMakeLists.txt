@@ -160,6 +160,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites/suite_boot_anim_perf.c"
         "../test/suites/suite_fixed.c"
         "../test/suites/suite_tween.c"
+        "../test/suites/suite_spring_line.c"
         "../test/suites/suite_gfx.c"
         "../test/suites/suite_gfx_dirty.c"
         "../test/suites/suite_gfx_heal.c"

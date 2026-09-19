@@ -84,6 +84,7 @@ launcher/
     ├── util/           arithmetic and services that belong to no layer
     │   ├── fixed.h             fixed-point multiply/divide (host-tested)
     │   ├── intmath.h, rng.h, tween.h                       (host-tested)
+    │   ├── spring_line.h       a row of points on springs (host-tested)
     │   ├── job.{h,c}           run a slice on the other core (host-tested)
     │   ├── device_state.{h,c}  what survives a reboot      (host-tested)
     │   ├── screenshot.{h,c}    the capture listener        (host-tested)

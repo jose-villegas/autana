@@ -80,6 +80,7 @@ $TEST_DIR/suites/suite_button_fsm.c
 $TEST_DIR/suites/suite_rng.c
 $TEST_DIR/suites/suite_fixed.c
 $TEST_DIR/suites/suite_tween.c
+$TEST_DIR/suites/suite_spring_line.c
 $TEST_DIR/suites/suite_boot_anim.c
 $TEST_DIR/suites/suite_gfx_dirty.c
 $TEST_DIR/suites/suite_gfx_full_redraw.c
