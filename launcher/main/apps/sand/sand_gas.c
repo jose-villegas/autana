@@ -409,23 +409,7 @@ step_one_gas_row(sand_t* s, int y, int x0, int x1, int w, int rdx, int rdy, cons
  * read it, and no gas material lives in MAT_EXTENDED's twin-row range. */
 static bool gas_driven[MATERIAL_MAX][2];
 
-/* Which lane a worker runs in, beside the one flag it accumulates: the job
- * context is copied, so a worker's own output cannot live in it. */
-typedef struct {
-    sand_lane_t* lane;
-    bool found_any;
-} gas_worker_t;
-
-static gas_worker_t gas_workers[SAND_LANE_COUNT];
-
 unsigned sand_gas_equalise_runs;
-
-static void
-prepare_gas_worker(gas_worker_t* worker, sand_lane_t* lane, const sand_t* s) {
-    worker->lane = lane;
-    worker->found_any = false;
-    sand_lane_prepare(lane, s);
-}
 
 typedef struct {
     sand_lane_t* lanes;
@@ -613,6 +597,16 @@ gas_gap_ahead(sand_t* s, const uint8_t* row, int x, int y, int px, int py, int s
     return at;
 }
 
+/* A hop into a chunk the schedule has not run yet, which the order this
+ * pass travels on rules out. NULL unless a caller asked to be told,
+ * so a hop pays one null test and nothing else. */
+static inline void
+note_gas_late_arrival(unsigned* late, int x, int y, int tx, int ty) {
+    if (late != NULL && sand_chunk_pass_ranks_later(x, y, tx, ty)) {
+        (*late)++;
+    }
+}
+
 /* One cell's share of spread: hops the whole grain to the nearest open
  * cell along (px, py), if sub-pass 1 could not already move it and a real
  * gap exists. No mass to split - a grain either moves the whole way, or
@@ -622,7 +616,7 @@ gas_gap_ahead(sand_t* s, const uint8_t* row, int x, int y, int px, int py, int s
 static inline bool
 equalise_gas_one_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_t* nrow, int x, int y, int px, int py,
                       int rdx, int rdy, int sight, uint8_t gas_id, cell_t grain, bool* stayed_in_row, int* touched_x,
-                      bool carry_ok, gas_run_t* run) {
+                      bool carry_ok, gas_run_t* run, unsigned* late) {
     bool moved = false;
     int tx = 0, ty = 0;
 
@@ -661,7 +655,7 @@ equalise_gas_one_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_
 
     s->cells[(size_t)ty * (size_t)w + (size_t)tx] = grain;
     row[x] = CELL_EMPTY;
-    sand_stamp_crossing(s, x, y, tx, ty);
+    note_gas_late_arrival(late, x, y, tx, ty);
 
     *stayed_in_row = (py == 0);
     if (*stayed_in_row) {
@@ -689,7 +683,7 @@ gas_union_touched_x(bool* touched, int* x0, int* x1, int lo, int hi) {
 static inline bool
 equalise_gas_one_row_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_t* nrow, int x, int y, int px,
                           int py, int rdx, int rdy, uint16_t is_gas, bool* touched, int* touched_x0, int* touched_x1,
-                          bool carry_ok, gas_run_t* run) {
+                          bool carry_ok, gas_run_t* run, unsigned* late) {
     const cell_t c = row[x];
     if (CELL_IS_EMPTY(c)) {
         /* Nothing here for a future ray to pass through as "the same gas"
@@ -705,11 +699,6 @@ equalise_gas_one_row_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const ui
         run->id = -1;
         return false;
     }
-    if (sand_cell_stamped(s, x, y)) {
-        run->id = -1;
-        return true;
-    }
-
     /* Per-material now, not a pass-wide constant - see material.h's own
      * comment on `sight` for why: two materials can share this pass (gas,
      * fire) and disperse by different amounts. material_of(c), not
@@ -721,7 +710,7 @@ equalise_gas_one_row_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const ui
     bool stayed_in_row = false;
     int tx = 0;
     if (equalise_gas_one_cell(s, row, arow, nrow, x, y, px, py, rdx, rdy, sight, id, c, &stayed_in_row, &tx, carry_ok,
-                              run)
+                              run, late)
         && stayed_in_row) {
         gas_union_touched_x(touched, touched_x0, touched_x1, x < tx ? x : tx, x > tx ? x : tx);
     }
@@ -763,7 +752,7 @@ row_is_packed(const uint8_t* row, int w, uint16_t is_gas, bool* any_gas, int* ma
  * alone is the pass's cheap-skip for now. */
 static bool
 equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, int px, int py, int rdx, int rdy,
-                     uint16_t is_gas, int* clean_run) {
+                     uint16_t is_gas, int* clean_run, unsigned* late) {
     uint8_t* row = s->cells + (size_t)y * (size_t)w;
     /* Both fixed for the whole row - see has_room_above()'s comment. */
     const uint8_t* const arow = dest_row(s, y + rdy);
@@ -805,7 +794,7 @@ equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, 
 
     for (int x = x_from; x != x_to; x += x_step) {
         if (equalise_gas_one_row_cell(s, row, arow, nrow, x, y, px, py, rdx, rdy, is_gas, &touched, &touched_x0,
-                                      &touched_x1, carry_ok, &run)) {
+                                      &touched_x1, carry_ok, &run, late)) {
             any_gas = true;
         }
     }
@@ -821,87 +810,74 @@ equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, 
 }
 
 typedef struct {
-    gas_worker_t* worker;
-    int px, py, rdx, rdy, x_step, color, share;
+    sand_lane_t* lanes;
+    bool found_any[SAND_LANE_COUNT];
+    unsigned late[SAND_LANE_COUNT];
+    bool count_late;
+    int px, py, rdx, rdy, x_step;
     uint16_t is_gas;
 } gas_equalise_pass_t;
 
-_Static_assert(sizeof(gas_equalise_pass_t) <= JOB_CTX_MAX, "gas equalise pass must fit JOB_CTX_MAX");
+/* File-static for the reason sand_chunk_pass_run() gives. */
+static gas_equalise_pass_t gas_equalise_pass;
 
-/* The split only ever runs with a ray that stays inside its own row (see
- * equalise_gas()), so the walk's long sight reaches sideways only - across
- * chunk columns of the same chunk row, which one worker owns in full. */
 static void
-equalise_gas_one_chunk(const gas_equalise_pass_t* c, int x0, int x1, int y0, int y1) {
-    gas_worker_t* const worker = c->worker;
-    sand_t* const s = &worker->lane->local;
+equalise_gas_one_chunk(void* pass, int lane, int cx, int cy) {
+    gas_equalise_pass_t* const c = pass;
+    sand_t* const s = &c->lanes[lane].local;
+    int x0, x1, y0, y1;
+
+    sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
     const int x_from = (c->x_step > 0) ? x0 : x1 - 1;
     const int x_to = (c->x_step > 0) ? x1 : x0 - 1;
     int clean_run = 0;
 
     for (int y = y0; y < y1; y++) {
-        worker->found_any |= equalise_gas_one_row(s, y, s->w, x_from, x_to, c->x_step, c->px, c->py, c->rdx, c->rdy,
-                                                  c->is_gas, &clean_run);
+        c->found_any[lane] |= equalise_gas_one_row(s, y, s->w, x_from, x_to, c->x_step, c->px, c->py, c->rdx, c->rdy,
+                                                   c->is_gas, &clean_run, c->count_late ? &c->late[lane] : NULL);
     }
 }
 
-static void
-gas_equalise_pass_worker(void* arg) {
-    const gas_equalise_pass_t* c = arg;
-    const sand_t* const s = &c->worker->lane->local;
-    const int side = sand_chunk_side(s);
+/* Counted only when a caller asks - see sand_gas_rank_audit_enable(). */
+unsigned sand_gas_late_arrivals;
 
-    for (int cy = 0; cy < sand_chunk_rows(s); cy++) {
-        if (sand_chunk_share(cy) != c->share) {
-            continue;
-        }
-        int y0, y1;
-        sand_chunk_span(cy, side, s->h, &y0, &y1);
-        for (int cx = 0; cx < sand_chunk_cols(s); cx++) {
-            if (sand_chunk_color(cx, cy) == c->color) {
-                int x0, x1;
-                sand_chunk_span(cx, side, s->w, &x0, &x1);
-                equalise_gas_one_chunk(c, x0, x1, y0, y1);
-            }
-        }
-    }
+static bool gas_rank_audit_on;
+static bool gas_rank_audit_reversed;
+
+void
+sand_gas_rank_audit_enable(bool on, bool reverse_ray) {
+    gas_rank_audit_on = on;
+    gas_rank_audit_reversed = reverse_ray;
 }
 
-static void
-run_gas_equalise_color(sand_t* s, sand_lane_t* lanes, gas_equalise_pass_t* ctx, bool* found_any, int color) {
-    for (int i = 0; i < SAND_LANE_COUNT; i++) {
-        prepare_gas_worker(&gas_workers[i], &lanes[i], s);
-    }
-    ctx->color = color;
-    ctx->worker = &gas_workers[1];
-    ctx->share = 1;
-    (void)job_run_core1(gas_equalise_pass_worker, ctx, sizeof *ctx);
-    ctx->worker = &gas_workers[0];
-    ctx->share = 0;
-    gas_equalise_pass_worker(ctx);
-    (void)job_wait(100);
-
-    for (int i = 0; i < SAND_LANE_COUNT; i++) {
-        sand_lane_merge(s, gas_workers[i].lane);
-        *found_any |= gas_workers[i].found_any;
-    }
-}
-
+/* Travel is the ray, so the chunk a hop lands in is finished - the one two
+ * along too, since every chunk further downstream ran before it. The -1 down
+ * the other axis is not where anything moves: this pass reads rows ascending
+ * whatever the gravity, and an order built on the ray alone reverses that for
+ * half of every chunk column. Late arrivals are counted, not stamped. */
 static bool
 equalise_gas_chunks(sand_t* s, int px, int py, int rdx, int rdy, int x_step, uint16_t is_gas, bool* found_any) {
-    sand_lane_t* const lanes = sand_lanes(s);
-    if (lanes == NULL) {
+    gas_equalise_pass = (gas_equalise_pass_t){.lanes = sand_lanes(s),
+                                              .count_late = gas_rank_audit_on,
+                                              .px = px,
+                                              .py = py,
+                                              .rdx = rdx,
+                                              .rdy = rdy,
+                                              .x_step = x_step,
+                                              .is_gas = is_gas};
+    if (gas_equalise_pass.lanes == NULL) {
+        return false;
+    }
+    const int tx = gas_rank_audit_reversed ? -px : px;
+    if (!sand_chunk_pass_run(s, tx, -1, SAND_CHUNK_PASS_NO_STAMPS, equalise_gas_one_chunk, &gas_equalise_pass)) {
         return false;
     }
 
-    gas_equalise_pass_t ctx = {NULL, px, py, rdx, rdy, x_step, 0, 0, is_gas};
-    sand_stamps_arm(s);
-    for (int color = 0; color < SAND_CHUNK_COLOR_COUNT; color++) {
-        run_gas_equalise_color(s, lanes, &ctx, found_any, color);
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        *found_any |= gas_equalise_pass.found_any[i];
+        sand_gas_late_arrivals += gas_equalise_pass.late[i];
     }
-    sand_stamps_disarm(s);
     sand_gas_equalise_runs++;
-
     return true;
 }
 
@@ -949,7 +925,7 @@ equalise_gas_every_row(sand_t* s, int px, int py, int rdx, int rdy, uint16_t is_
         s->rng_hashed = true;
     }
     for (int y = y_from; y != y_to; y += y_step) {
-        if (equalise_gas_one_row(s, y, s->w, x_from, x_to, x_step, px, py, rdx, rdy, is_gas, clean_run)) {
+        if (equalise_gas_one_row(s, y, s->w, x_from, x_to, x_step, px, py, rdx, rdy, is_gas, clean_run, NULL)) {
             found_any = true;
         }
     }
@@ -984,8 +960,7 @@ equalise_gas(sand_t* s, const int* perp, int rdx, int rdy) {
      * ray's targets are exactly the rows this count has already crossed. */
     int clean_run = 0;
 
-    if (!sand_two_core_step_enabled() || row_crossing || !sand_chunk_split_ready(s)
-        || !equalise_gas_chunks(s, px, py, rdx, rdy, x_step, is_gas, &found_any)) {
+    if (row_crossing || !equalise_gas_chunks(s, px, py, rdx, rdy, x_step, is_gas, &found_any)) {
         if (equalise_gas_every_row(s, px, py, rdx, rdy, is_gas, y_from, y_to, y_step, x_from, x_to, x_step,
                                    row_crossing, &clean_run)) {
             found_any = true;

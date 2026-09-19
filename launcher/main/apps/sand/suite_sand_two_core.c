@@ -536,6 +536,39 @@ test_the_split_gas_passes_ignore_how_their_lanes_interleave(void) {
     }
 }
 
+/* WHAT LETS THE SPREAD HOP PAST A WHOLE CHUNK WITH NO ARRIVAL MARK: the hop
+ * runs along the ray, the chunk order runs against it, so the chunk a hop
+ * lands in is one already finished - the one two along as well. Nothing else
+ * keeps a grain to one hop per pass, which is why this counts rather than
+ * samples, and why it also runs with the order reversed. */
+static void
+test_split_gas_spread_never_hops_into_a_chunk_ranked_later(void) {
+    static const uint32_t seeds[] = {1u, 17u, 91u};
+    const unsigned runs_before = sand_gas_equalise_runs;
+    unsigned count[2];
+
+    for (int reversed = 0; reversed < 2; reversed++) {
+        sand_gas_late_arrivals = 0;
+        sand_gas_rank_audit_enable(true, reversed != 0);
+        for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
+            for (size_t g = 0; g < sizeof tc_ring / sizeof tc_ring[0]; g++) {
+                const int dx = tc_ring[g][0];
+                const int dy = tc_ring[g][1];
+                (void)tc_run_gas_and_hash(seeds[i], dx * 1000, dy * 1000, dx, dy);
+            }
+        }
+        sand_gas_rank_audit_enable(false, false);
+        count[reversed] = sand_gas_late_arrivals;
+    }
+
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(runs_before, sand_gas_equalise_runs,
+                                          "the scenes must enter the split spread for the count to mean anything");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0, count[0], "gas spread hopped into a chunk its own pass had yet to run");
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0, count[1],
+                                          "with the order built against the ray the count must move, or it "
+                                          "is counting nothing");
+}
+
 /* The serial and two-core paths draw from genuinely different streams
  * now (sand_rng_next_at()), so this is not an equivalence check - it is
  * a sanity check that turning the switch on does not quietly turn it
@@ -2137,6 +2170,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_the_split_sweep_ignores_how_its_lanes_interleave);
     RUN_TEST(test_the_split_liquid_pass_ignores_how_its_lanes_interleave);
     RUN_TEST(test_split_gas_walk_uses_hashed_rng);
+    RUN_TEST(test_split_gas_spread_never_hops_into_a_chunk_ranked_later);
     RUN_TEST(test_the_split_gas_passes_ignore_how_their_lanes_interleave);
     RUN_TEST(test_two_core_step_actually_changes_the_draw_stream);
     RUN_TEST(test_two_core_step_changes_the_draw_stream_at_smaller_qualities);
