@@ -1,0 +1,29 @@
+/*
+ * render_lab_scene - what a scene provides so app_render_lab.c can host any
+ * number of them behind one HUD, one BOOT menu and one scene picker.
+ *
+ * The app owns gfx_mode_enter()/exit(), the layout switch, BOOT handling,
+ * the menu, the fps counter, draw_fps(), the orientation-generation check
+ * and the band loop with ui_replay_band(). A scene owns only its own
+ * geometry, pose, clear colour and coverage/dirty marking.
+ */
+#pragma once
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "gfx/gfx.h"
+
+typedef struct {
+    const char* name;
+    void (*enter)(void); /* allocate, reset pose; layout is already entered */
+
+    /* Outside band mode, advances by dt_ms and draws. In band mode
+     * (band_mode_active) it only advances and bins, for frame_band() below
+     * to draw per touched band right after. */
+    void (*frame)(uint32_t dt_ms, bool band_mode_active);
+
+    void (*frame_band)(gfx_color_t* buf, int row0, int row1); /* band mode: draws [row0, row1) into buf */
+    void (*exit)(void);                                       /* free what enter() allocated */
+    void (*invalidate)(void);                                 /* forget last-frame coverage */
+} render_lab_scene_t;

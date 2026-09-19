@@ -726,7 +726,7 @@ and `suite_gfx_band.c` (portable) cover the mode-grant arithmetic and the
 band-ring state machine the same way, including `gfx_mode.h`/`gfx_band.h`
 directly; `gfx.c`'s own allocation and DMA-send side of `gfx_mode_enter()`/
 `gfx_band_submit()` needs real device memory, so it is exercised instead by
-`main/apps/cube/suite_cube_band_perf.c` (device-only), which times the cube's
+`main/apps/render_lab/suite_cube_band_perf.c` (device-only), which times the cube's
 band-mode path against its full-fb path on the same scene.
 
 Still untested: `ui_launcher.c`'s microui integration and the small3dlib
@@ -752,7 +752,7 @@ gfx/ui change can be checked without touching the sand suites at all.
 | ui | `run_ui_suite`, `run_ui_pointer_suite`, `run_ui_pointer_microui_suite`, `run_ui_slider_suite`, `suite_ui_style`, `suite_ui_transform`, `suite_ui_centered_rect` | microui integration, pointer/widget hit-testing, style tokens, rotation transforms |
 | input | `run_touch_fsm_suite`, `run_gesture_suite`, `run_button_fsm_suite`, `run_tilt_suite` | touch debounce FSM, swipe gestures, button FSM, the tilt filter |
 | boot/POST | `run_boot_anim_suite`, `run_boot_anim_perf_suite` | the small3dlib boot animation and its frame budget. POST itself (`boot/post.c`) has no suite — it runs every boot and is read from its own `POST_COMPLETE` line, not Unity |
-| cube | `run_cube_perf_suite`, `run_cube_band_perf_suite`, `run_small3dlib_scissor_suite` | the cube app's frame budget, band mode against the full framebuffer across orientations, the rasterizer's row scissor |
+| render lab | `run_cube_perf_suite`, `run_cube_band_perf_suite`, `run_small3dlib_scissor_suite` | the cube scene's frame budget, band mode against the full framebuffer across orientations, the rasterizer's row scissor |
 | sand behaviour | 28 suites: `run_sand_*_suite` (25 of them) plus `run_row_runs_suite`, `run_palette_suite`, `run_brush_screen_suite` — see `launcher/main/apps/sand/suite_*.c` | materials, reactions, liquids, gas, dirt/roots, gunpowder, glass thermal, metal, the brush UI and palette picker, dirty-row reconciliation |
 | sand perf | `run_sand_perf_suite` | the 13 frame-budget scenes — see [`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md) |
 | shell/util | `suite_fixed`, `suite_tween`, `run_rng_suite`, `suite_device_state` | fixed-point math, tweening, RNG, the device-state JSON `screenshot.py` reads |

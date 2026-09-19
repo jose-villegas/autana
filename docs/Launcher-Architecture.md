@@ -214,7 +214,7 @@ flowchart TB
     SHELL["main.c<br/><i>the one frame loop</i>"]
     SHELL -->|"is it a home swipe?"| GEST["gesture.c"]
     SHELL -->|"launcher showing"| UI["ui_launcher.c<br/><i>microui command list</i>"]
-    SHELL -->|"app running"| APP["apps/app_cube.c<br/><i>small3dlib</i>"]
+    SHELL -->|"app running"| APP["apps/app_render_lab.c<br/><i>small3dlib</i>"]
 
     UI --> FB
     APP --> FB

@@ -136,8 +136,10 @@ $TEST_DIR/../components/microui/src/microui.c
 #
 # The convention: inside main/apps/<name>/, the file named app_*.c is the
 # hardware-facing entry point - it talks to gfx, the IMU and the frame loop, so
-# it cannot link on a host. Everything else in the folder is portable logic and
-# is compiled in, along with any suite_*.c beside it.
+# it cannot link on a host. A scene_*.c (render_lab's own scenes) is the same
+# kind of file, drawing straight into gfx rather than through the app's own
+# hosted calls. Everything else in the folder is portable logic and is
+# compiled in, along with any suite_*.c beside it.
 #
 # That split is not bureaucracy: it is what forces an app's logic to be
 # separable from its wiring, which is the only reason a falling-sand automaton
@@ -153,7 +155,7 @@ $TEST_DIR/../components/microui/src/microui.c
 for f in $(find "$MAIN_DIR/apps" -name '*.c' ! -path '*/tools/*' | sort); do
     [ -e "$f" ] || continue
     case "$(basename "$f")" in
-        app_*.c) continue ;;
+        app_*.c | scene_*.c) continue ;;
     esac
     SOURCES="$SOURCES
 $f"

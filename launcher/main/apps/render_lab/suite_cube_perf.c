@@ -28,7 +28,7 @@
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 
-/* app_cube.c's own toggle - each test sets this explicitly (see
+/* scene_cube.c's own toggle - each test sets this explicitly (see
  * run_perf_capture()'s with_partial parameter) rather than trusting
  * whatever a stray BOOT-menu press left it at, since which state it is in
  * is exactly what several of these tests compare. */
@@ -36,16 +36,15 @@ extern bool partial_updates;
 
 /* This suite measures full-framebuffer phases, independent of the app's
  * current runtime selection. */
-extern bool cube_band_mode;
+extern bool render_lab_band_mode;
 static bool saved_band_mode;
 
-/* app_cube.c's three per-frame phases plus its enter/exit, exposed for this
- * suite. NOT S3L_newFrame()/S3L_drawScene() directly: small3dlib.h defines
- * real, non-static functions once configured and included, so a second
- * #include here would redefine them and fail to link. Going through these
- * exercises the code cube_frame() runs, not a hand-copy that could drift. */
-extern void cube_enter(void);
-extern void cube_exit(void);
+/* app_render_lab.c's enter/exit and scene_cube.c's three per-frame phases.
+ * NOT S3L_newFrame()/S3L_drawScene() directly: small3dlib.h defines real,
+ * non-static functions once configured, so a second #include here would
+ * redefine them and fail to link. */
+extern void render_lab_enter(void);
+extern void render_lab_exit(void);
 extern void cube_update_rotation(uint32_t dt_ms);
 extern void cube_clear_frame(void);
 extern void cube_rasterize_frame(void);
@@ -174,9 +173,9 @@ cube_perf_fixture(void) {
     ui_init();
 
     /* Use the app's own enter to set up cube, scene, etc. */
-    saved_band_mode = cube_band_mode;
-    cube_band_mode = false;
-    cube_enter();
+    saved_band_mode = render_lab_band_mode;
+    render_lab_band_mode = false;
+    render_lab_enter();
 
     /* Neither partial_updates nor gfx_set_interlace() is forced here -
      * run_perf_capture() sets both explicitly from its own parameters
@@ -203,8 +202,8 @@ cube_perf_fixture(void) {
 
 static void
 cube_perf_teardown(void) {
-    cube_exit();
-    cube_band_mode = saved_band_mode;
+    render_lab_exit();
+    render_lab_band_mode = saved_band_mode;
 
     /* gfx_set_interlace() is gfx.c-global state, not app-scoped like
      * partial_clear - left on, it leaks into every suite that runs after
@@ -351,7 +350,7 @@ run_perf_variant(bool with_hud, bool with_partial, bool with_interlace) {
     run_perf_capture(label, with_hud, with_partial, with_interlace);
 }
 
-/* Baseline: everything this branch adds turned on, matching app_cube.c's
+/* Baseline: everything this branch adds turned on, matching scene_cube.c's
  * own real defaults (partial_updates starts true; interlace is a
  * diagnostics-only toggle, off unless a developer turns it on). */
 void

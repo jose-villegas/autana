@@ -1,6 +1,6 @@
 """Regression tests for this app's perf reporter.
 
-    python -m unittest discover -s launcher/main/apps/cube/tools/tests
+    python -m unittest discover -s launcher/main/apps/render_lab/tools/tests
 
 A capture with no run in it must FAIL rather than turn into a report that is
 a timestamp over an empty table.
