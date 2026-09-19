@@ -180,7 +180,7 @@ frames. So:
   set from Developer Toggles until the Settings app exists (see
   [Settings-App-Plan.md](../plans/Settings-App-Plan.md)); every app starts
   at it, may force another rate, and gets the system value restored on every
-  app switch - see Launcher-Architecture.md, "The panel clock";
+  app switch - see Building-an-App.md, "What the shell resets for you";
 - gfx heal, opt-in and active only at 80 MHz: a caller marks rows with
   `gfx_heal_mark()`, and gfx re-sends them as full-width strips with the
   strip grid shifted each time, under a per-present pixel budget. The app

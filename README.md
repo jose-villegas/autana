@@ -80,7 +80,8 @@ this, not a tour. Start wherever your question is:
 
 | | |
 |---|---|
-| [`docs/Launcher-Architecture.md`](docs/Launcher-Architecture.md) | How the shell and its apps fit together; the three rules that shape everything; how to add an app; why the UI toolkit is microui, not LVGL. |
+| [`docs/Launcher-Architecture.md`](docs/Launcher-Architecture.md) | How the shell and its apps fit together; the three rules that shape everything; why the UI toolkit is microui, not LVGL. |
+| [`docs/Building-an-App.md`](docs/Building-an-App.md) | Start here to write an app: the `app_t` endpoints, registration, the lifecycle the shell drives, and the folder convention. |
 | [`docs/sand/Sand-Simulation.md`](docs/sand/Sand-Simulation.md) | The falling-sand app in depth: materials, the water model, momentum, and the performance numbers behind every design choice. |
 | [`docs/notes/`](docs/notes/README.md) | Board-specific hardware notes: the memory budget, panel and touch gotchas, flashing and recovery. Split by topic - start at the index. |
 | [`docs/C-Style-Guide.md`](docs/C-Style-Guide.md) | The C style: what the formatter decides, what judgment decides, and how the pre-commit hook and CI keep the tree from drifting. |

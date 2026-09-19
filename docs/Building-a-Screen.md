@@ -211,5 +211,6 @@ fifth icon.
 
 ## Related
 
+- [`Building-an-App.md`](Building-an-App.md) - the app a screen lives in
 - [`Launcher-Architecture.md`](Launcher-Architecture.md) - the mechanisms
 - [`Testing-Guide.md`](Testing-Guide.md) - suites, runners, build variants
