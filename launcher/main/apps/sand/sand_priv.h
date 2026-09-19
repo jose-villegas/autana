@@ -177,6 +177,23 @@ void sand_lane_prepare(sand_lane_t* lane, const sand_t* s);
  * flags - see latch_content_flags() and the BLOCK_* bits below. */
 void sand_lane_merge(sand_t* s, const sand_lane_t* lane);
 
+/* Whether a split pass can run at all: two-core stepping on, lane scratch
+ * present, and a cut that fits. */
+bool sand_chunk_pass_ready(const sand_t* s);
+
+/* Runs `fn` once per chunk over both lanes, ordered by the pass's travel
+ * direction (tx, ty) so a chunk waits for every neighbour its transfers can
+ * reach. Arms the hashed rng and the crossing stamps, prepares and merges
+ * the lanes; a pass's own counters are its business. False means nothing
+ * ran and the caller must walk the board itself.
+ *
+ * `pass` must point at file-static storage: a lane that misses its join is
+ * still reading through it once the caller's frame has returned. */
+bool sand_chunk_pass_run(sand_t* s, int tx, int ty, sand_chunk_fn_t fn, void* pass);
+
+/* The cell range of the chunk `fn` was handed. */
+void sand_chunk_pass_cells(int cx, int cy, int* x0, int* x1, int* y0, int* y1);
+
 /* One constant per rng draw site inside a chunk-parallel pass -
  * see sand_rng_next_at() below. A fixed slot per site, not a per-cell
  * counter, is what keeps a draw thread-safe with no shared mutable state:
@@ -393,17 +410,17 @@ extern unsigned sand_liquid_sweep_moves;
  * Never reset by the pass itself, so tests can measure a per-step delta. */
 extern unsigned sand_sweep_chunks_swept;
 
-/* Which thread the gravity sweep's two lanes run on when no second core
- * takes one. SOLO walks the order once, the rest step both lanes by hand so
- * a test can vary the interleaving; the board must not tell them apart. */
+/* Which thread a split pass's two lanes run on when no second core takes
+ * one. SOLO walks the order once, the rest step both lanes by hand so a test
+ * can vary the interleaving; the board must not tell them apart. */
 typedef enum {
-    SAND_SWEEP_SOLO,
-    SAND_SWEEP_LANE0_EAGER,
-    SAND_SWEEP_LANE1_EAGER,
-    SAND_SWEEP_ALTERNATE,
-} sand_sweep_driver_t;
+    SAND_CHUNK_PASS_SOLO,
+    SAND_CHUNK_PASS_LANE0_EAGER,
+    SAND_CHUNK_PASS_LANE1_EAGER,
+    SAND_CHUNK_PASS_ALTERNATE,
+} sand_chunk_pass_driver_t;
 
-void sand_sweep_set_driver_for_test(sand_sweep_driver_t driver);
+void sand_chunk_pass_set_driver_for_test(sand_chunk_pass_driver_t driver);
 
 #define BLOCK_SETTLED_NEAREST 0x1
 #define BLOCK_SETTLED_OTHER   0x2

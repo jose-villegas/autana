@@ -316,8 +316,8 @@ test_two_core_step_is_deterministic_across_seeds(void) {
  * which is the only way to vary the turns deliberately. */
 static void
 test_the_split_sweep_ignores_how_its_lanes_interleave(void) {
-    static const sand_sweep_driver_t drivers[TC_DRIVERS] = {SAND_SWEEP_LANE0_EAGER, SAND_SWEEP_LANE1_EAGER,
-                                                            SAND_SWEEP_ALTERNATE};
+    static const sand_chunk_pass_driver_t drivers[TC_DRIVERS] = {
+        SAND_CHUNK_PASS_LANE0_EAGER, SAND_CHUNK_PASS_LANE1_EAGER, SAND_CHUNK_PASS_ALTERNATE};
     static const uint32_t seeds[] = {1u, 7u, 12345u};
 
     for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
@@ -325,10 +325,10 @@ test_the_split_sweep_ignores_how_its_lanes_interleave(void) {
         uint32_t driven[TC_DRIVERS];
 
         for (int d = 0; d < TC_DRIVERS; d++) {
-            sand_sweep_set_driver_for_test(drivers[d]);
+            sand_chunk_pass_set_driver_for_test(drivers[d]);
             driven[d] = tc_run_and_hash(seeds[i], 40, true);
         }
-        sand_sweep_set_driver_for_test(SAND_SWEEP_SOLO);
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_SOLO);
 
         for (int d = 0; d < TC_DRIVERS; d++) {
             char why[160];
