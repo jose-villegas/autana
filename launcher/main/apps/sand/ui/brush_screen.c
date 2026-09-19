@@ -270,7 +270,7 @@ draw_brush_header(mu_Context* ctx, sand_ui_t* ui, const brush_screen_layout_t* l
     ui_set_font_scaled(gfx_font_ui(), BRUSH_SCREEN_CAPTION_SCALE);
 
     draw_brush_panel(ctx, lay->header_panel);
-    draw_brush_swatch(ctx, lay->swatch, ui->brushes[ui->brush]);
+    draw_brush_swatch(ctx, lay->swatch, ui->brushes[ui->brush].cell);
     draw_brush_text(ctx, lay->material_caption, BRUSH_SCREEN_MATERIAL_CAPTION, mu_color_hex(BRUSH_CAPTION_COLOR),
                     BRUSH_SCREEN_CAPTION_SCALE, -1);
 
@@ -278,7 +278,7 @@ draw_brush_header(mu_Context* ctx, sand_ui_t* ui, const brush_screen_layout_t* l
      * brush carries) doesn't fit it in the name rect at the narrower
      * of the two real canvases - drop a size at a time rather than let
      * draw_brush_text()'s clip cut the tail off a real material name. */
-    const char* name = material_name(ui->brushes[ui->brush]);
+    const char* name = material_name(ui->brushes[ui->brush].cell);
     int name_scale = 4;
     for (; name_scale > 1; name_scale--) {
         ui_set_font_scaled(gfx_font_ui(), name_scale);

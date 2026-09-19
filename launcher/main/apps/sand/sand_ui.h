@@ -47,6 +47,25 @@
 
 #include "../../app.h"
 #include "material.h"
+#include "sand.h"
+
+/* Plant spreads on its own, so a full disc of it is a thicket that takes
+ * far longer to die back than it took to paint. A share, not a count:
+ * a finer grid fits more cells in the same finger-width circle. */
+#define SAND_BRUSH_SHARE_PLANT 10
+
+/* One palette entry: what it paints and how much of the brush disc it
+ * actually fills. `share_pct` is SAND_SPAWN_SHARE_FULL (sand.h) for
+ * everything that should land solid, which is every entry but one. */
+typedef struct {
+    cell_t cell;
+    uint8_t share_pct;
+} sand_brush_t;
+
+/* Brush-table entries, so a table states which of the two each entry is
+ * rather than repeating a number. */
+#define SAND_BRUSH_SOLID(cell_)              {(cell_), SAND_SPAWN_SHARE_FULL}
+#define SAND_BRUSH_SPARSE(cell_, share_pct_) {(cell_), (share_pct_)}
 
 /* Which brush mode: pour, or a persistent source - toggled by tapping the
  * already-selected tile in the palette (see handle_palette_input() in
@@ -94,8 +113,8 @@ typedef enum {
 typedef struct {
     /* Caller-owned, exactly as sand_t borrows `cells` - this module never
      * sees app_sand.c's tables, only points at them. */
-    const cell_t* brushes; /* brush_count cells, indexed by `brush` */
-    uint8_t* modes;        /* brush_count entries, BRUSH_POUR/BRUSH_SPAWN */
+    const sand_brush_t* brushes; /* brush_count entries, indexed by `brush` */
+    uint8_t* modes;              /* brush_count entries, BRUSH_POUR/BRUSH_SPAWN */
     int brush_count;
 
     sand_ui_screen_t screen;
