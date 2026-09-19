@@ -23,6 +23,14 @@
         { "name": "checkbox_on", "source": "svg", "file": "checkbox-on.svg",
           "upstream": "checkbox-on", "commit": "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c" },
         { "name": "home", "source": "svg", "file": "home.svg",
-          "upstream": "home", "commit": "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c" }
+          "upstream": "home", "commit": "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c" },
+        { "name": "wifi", "source": "svg", "file": "wifi.svg",
+          "upstream": "wifi", "commit": "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c" },
+        { "name": "gamepad", "source": "svg", "file": "gamepad.svg",
+          "upstream": "gamepad", "commit": "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c" },
+        { "name": "monitor", "source": "svg", "file": "monitor.svg",
+          "upstream": "monitor", "commit": "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c" },
+        { "name": "plus", "source": "svg", "file": "plus.svg",
+          "upstream": "plus", "commit": "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c" }
     ]
 }

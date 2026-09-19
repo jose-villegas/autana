@@ -100,6 +100,7 @@ $TEST_DIR/suites/suite_icons_system.c
 $TEST_DIR/suites/suite_ui_style.c
 $TEST_DIR/suites/suite_ui_transform.c
 $TEST_DIR/suites/suite_ui_anchor.c
+$TEST_DIR/suites/suite_control_center_layout.c
 $TEST_DIR/suites/suite_ui_centered_rect.c
 $TEST_DIR/suites/suite_ui_launcher.c
 $TEST_DIR/suites/suite_ui_pointer.c

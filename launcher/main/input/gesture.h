@@ -45,4 +45,10 @@ typedef enum {
  * Requires the finger to still be down, so it fires partway through the swipe
  * rather than on release - waiting for the lift feels sluggish. That also means
  * it must not match on stale coordinates once contact ends. */
-bool gesture_is_home_swipe(const input_t* input, gesture_edge_t edge, int screen_w, int screen_h);
+bool gesture_is_edge_swipe(const input_t* input, gesture_edge_t edge, int screen_w, int screen_h);
+
+/* The edge swipe that leaves an app, named for the caller that means that. */
+static inline bool
+gesture_is_home_swipe(const input_t* input, gesture_edge_t edge, int screen_w, int screen_h) {
+    return gesture_is_edge_swipe(input, edge, screen_w, screen_h);
+}
