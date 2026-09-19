@@ -182,6 +182,7 @@ sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
     s->impulse_count = 0;
 #ifdef DEVICE_BUILD
     s->impulse_cap_hits = 0;
+    s->sweep_lane_aborts = 0;
 #endif
     s->splash_chance = SAND_SPLASH_CHANCE_START;
     s->splash_radius_water = SAND_SPLASH_RADIUS_WATER;
@@ -1396,7 +1397,7 @@ blocks_settled_over(const sand_t* s, int x0, int x1, int y0, int y1, uint8_t set
 
 /* The gravity sweep's own inner loop, over the columns [x0, x1) of the rows
  * [y0, y1) in y_step order - shared by the plain serial call below and every
- * chunk a four-colour dispatch hands to either core. */
+ * chunk a lane takes off the schedule. */
 static void
 sweep_range(sand_t* s, int y0, int y1, int y_step, int x0, int x1, int w, int dx, int dy, const int* slide_a,
             const int* slide_b, int x_step, int load_dx, int load_dy, int jostle, uint8_t settled_bit,
@@ -1430,77 +1431,151 @@ sand_force_hashed_rng(bool on) {
     sand_force_hashed_rng_on = on;
 }
 
-/* Chunks this step's sweep did not skip. Both workers add to it with no
- * lock, so only zero is exact - which is all the settled-board test asks. */
+/* Chunks this step's sweep did not skip, counted per lane and summed once
+ * both have joined. */
 unsigned sand_sweep_chunks_swept;
 
 typedef struct {
-    sand_t* s;
+    sand_lane_t* lanes;
     int w, dx, dy, x_step, load_dx, load_dy, jostle;
     int slide_a[2], slide_b[2];
     uint16_t is_liquid;
     uint8_t settled_bit;
     int y_step;
-    int color;
-    int share;
-} sweep_chunk_ctx_t;
+    unsigned swept[SAND_LANE_COUNT];
+} sweep_pass_t;
 
-_Static_assert(sizeof(sweep_chunk_ctx_t) <= JOB_CTX_MAX, "sweep_chunk_ctx_t must fit JOB_CTX_MAX");
+/* A split pass's whole working state, file-static rather than a frame of
+ * sand_step(): a lane that misses its join keeps writing here, and a frame
+ * the caller has already returned from would be gone. Passes never overlap,
+ * so the cut and the schedule are shared between them. */
+static sweep_pass_t sweep_pass;
+static sand_chunk_plan_t chunk_plan;
+static sand_chunk_sched_t chunk_sched;
+
+/* A spin is one poll of up to eight neighbour bytes, so this outlasts by a
+ * wide margin the chunk a lane waits on, and still bounds the wait: past it
+ * the caller finishes the board alone. */
+#define SWEEP_SPIN_LIMIT 20000u
+#define SWEEP_JOIN_MS    100u
 
 static void
-sweep_one_chunk(const sweep_chunk_ctx_t* c, int x0, int x1, int y0, int y1) {
-    if (blocks_settled_over(c->s, x0, x1, y0, y1, c->settled_bit)) {
+sweep_one_chunk(void* pass, int lane, int cx, int cy) {
+    sweep_pass_t* const c = pass;
+    sand_t* const view = &c->lanes[lane].local;
+    int x0, x1, y0, y1;
+
+    sand_chunk_cells(&chunk_plan, cx, cy, &x0, &x1, &y0, &y1);
+    if (blocks_settled_over(view, x0, x1, y0, y1, c->settled_bit)) {
         return;
     }
-    sand_sweep_chunks_swept++;
+    c->swept[lane]++;
 
     const int from = (c->y_step > 0) ? y0 : y1 - 1;
     const int to = (c->y_step > 0) ? y1 : y0 - 1;
-    sweep_range(c->s, from, to, c->y_step, x0, x1, c->w, c->dx, c->dy, c->slide_a, c->slide_b, c->x_step, c->load_dx,
+    sweep_range(view, from, to, c->y_step, x0, x1, c->w, c->dx, c->dy, c->slide_a, c->slide_b, c->x_step, c->load_dx,
                 c->load_dy, c->jostle, c->settled_bit, c->is_liquid);
 }
 
-/* Every chunk of `c->color` this worker owns. A chunk's neighbours - edge
- * and corner alike - carry another colour and so run in another pass, which
- * is what leaves a move out of a chunk nothing to guard against: no other
- * worker is reading or writing where it lands. */
 static void
-run_sweep_chunks(const sweep_chunk_ctx_t* c) {
-    const sand_t* const s = c->s;
-    const int side = sand_chunk_side(s);
+sweep_lane1_worker(void* ctx) {
+    (void)ctx;
+    sand_chunk_run_lane(&chunk_sched, 1, SWEEP_SPIN_LIMIT, sweep_one_chunk, &sweep_pass);
+}
 
-    for (int cy = 0; cy < sand_chunk_rows(s); cy++) {
-        if (sand_chunk_share(cy) != c->share) {
-            continue;
-        }
-        int y0, y1;
-        sand_chunk_span(cy, side, s->h, &y0, &y1);
-        for (int cx = 0; cx < sand_chunk_cols(s); cx++) {
-            if (sand_chunk_color(cx, cy) == c->color) {
-                int x0, x1;
-                sand_chunk_span(cx, side, s->w, &x0, &x1);
-                sweep_one_chunk(c, x0, x1, y0, y1);
-            }
-        }
+/* A failed wait means core 1 is still inside a chunk: a few chunks left
+ * unswept for one step is recoverable, two threads in neighbouring chunks is
+ * not, so the rest of the board waits for the next step instead. */
+static void
+join_sweep_lane1(void) {
+    if (job_wait(SWEEP_JOIN_MS)) {
+        sand_chunk_run_rest(&chunk_sched, sweep_one_chunk, &sweep_pass);
+        return;
+    }
+    chunk_sched.abort = 1;
+    if (job_wait(SWEEP_JOIN_MS)) {
+        sand_chunk_run_rest(&chunk_sched, sweep_one_chunk, &sweep_pass);
     }
 }
 
-static void
-sweep_chunk_worker(void* ctx) {
-    run_sweep_chunks((const sweep_chunk_ctx_t*)ctx);
+static sand_sweep_driver_t sweep_driver;
+
+void
+sand_sweep_set_driver_for_test(sand_sweep_driver_t driver) {
+    sweep_driver = driver;
 }
 
-/* One colour's pass, its chunk rows divided between core 1 and here and
- * joined before returning. sand_chunk_share() decides which rows go where,
- * not an arbitrary halving: the two workers must never meet on a grid row. */
+static bool
+step_one_sweep_round(int round) {
+    if (sweep_driver == SAND_SWEEP_ALTERNATE) {
+        const bool first = sand_chunk_step_lane(&chunk_sched, round & 1, sweep_one_chunk, &sweep_pass);
+        return sand_chunk_step_lane(&chunk_sched, 1 - (round & 1), sweep_one_chunk, &sweep_pass) || first;
+    }
+
+    const int eager = (sweep_driver == SAND_SWEEP_LANE1_EAGER) ? 1 : 0;
+    bool moved = false;
+    while (sand_chunk_step_lane(&chunk_sched, eager, sweep_one_chunk, &sweep_pass)) {
+        moved = true;
+    }
+    return sand_chunk_step_lane(&chunk_sched, 1 - eager, sweep_one_chunk, &sweep_pass) || moved;
+}
+
+/* One thread standing in for two, so a test can ask whether the board the
+ * schedule produces depends on how the lanes interleave. */
 static void
-run_sweep_color(sweep_chunk_ctx_t* ctx, int color) {
-    ctx->color = color;
-    ctx->share = 1;
-    (void)job_run_core1(sweep_chunk_worker, ctx, sizeof *ctx);
-    ctx->share = 0;
-    run_sweep_chunks(ctx);
-    (void)job_wait(100);
+drive_sweep_lanes_by_hand(void) {
+    for (int round = 0; round < 2 * SAND_CHUNKS_MAX && step_one_sweep_round(round); round++) {}
+    sand_chunk_run_rest(&chunk_sched, sweep_one_chunk, &sweep_pass);
+}
+
+static void
+drive_sweep_lanes(void) {
+    if (job_try_core1(sweep_lane1_worker, NULL, 0)) {
+        sand_chunk_run_lane(&chunk_sched, 0, SWEEP_SPIN_LIMIT, sweep_one_chunk, &sweep_pass);
+        join_sweep_lane1();
+    } else if (sweep_driver == SAND_SWEEP_SOLO) {
+        sand_chunk_run_rest(&chunk_sched, sweep_one_chunk, &sweep_pass);
+    } else {
+        drive_sweep_lanes_by_hand();
+    }
+}
+
+/* The cut and the order this step's sweep runs in, or false to stay
+ * single-lane. Travel is the dithered direction the sweep itself uses, so
+ * the chunk holding a move's destination is always settled first. */
+static bool
+plan_sweep_split(sand_t* s, int dx, int dy) {
+    if (!sand_chunk_plan(&chunk_plan, s->w, s->h, sand_chunk_side(s), 0, 0) || sand_lanes(s) == NULL) {
+        return false;
+    }
+    sand_chunk_order(&chunk_sched.order, chunk_plan.cols, chunk_plan.rows, im_sign(dx), im_sign(dy), s->step_phase);
+    chunk_sched.cols = chunk_plan.cols;
+    chunk_sched.rows = chunk_plan.rows;
+    sand_chunk_sched_reset(&chunk_sched);
+    return true;
+}
+
+static void
+run_sweep_split(sand_t* s) {
+    sand_lane_t* const lanes = sweep_pass.lanes;
+
+    s->rng_hashed = true;
+    sand_stamps_arm(s);
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        sand_lane_prepare(&lanes[i], s);
+    }
+
+    drive_sweep_lanes();
+
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        sand_lane_merge(s, &lanes[i]);
+        sand_sweep_chunks_swept += sweep_pass.swept[i];
+    }
+#ifdef DEVICE_BUILD
+    s->sweep_lane_aborts += (chunk_sched.abort != 0);
+#endif
+    sand_stamps_disarm(s);
+    s->rng_hashed = false;
 }
 
 __attribute__((aligned(16))) void
@@ -1589,9 +1664,9 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
 #ifdef DEVICE_BUILD
     const int64_t sweep_t0 = esp_timer_get_time();
 #endif
-    if (sand_two_core_step_enabled() && sand_chunk_split_ready(s)) {
-        sweep_chunk_ctx_t ctx = {
-            .s = s,
+    if (sand_two_core_step_enabled() && plan_sweep_split(s, dx, dy)) {
+        sweep_pass = (sweep_pass_t){
+            .lanes = sand_lanes(s),
             .w = w,
             .dx = dx,
             .dy = dy,
@@ -1605,14 +1680,7 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
             .settled_bit = settled_bit,
             .y_step = y_step,
         };
-
-        s->rng_hashed = true;
-        sand_stamps_arm(s);
-        for (int color = 0; color < SAND_CHUNK_COLOR_COUNT; color++) {
-            run_sweep_color(&ctx, color);
-        }
-        sand_stamps_disarm(s);
-        s->rng_hashed = false;
+        run_sweep_split(s);
     } else {
         s->rng_hashed = sand_force_hashed_rng_on;
         sweep_range(s, y_from, y_to, y_step, 0, w, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle,

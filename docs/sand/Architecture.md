@@ -175,7 +175,7 @@ flowchart TD
     Dith --> Sweep["Main gravity sweep
 step_one_row() per row
 (sand + water's DOWN move)
-four-colour chunk passes across cores"]
+chunks on a gravity-ordered schedule, two lanes"]
     Sweep --> Liq["sand_step_liquids()
 cross-flow + wall rebound
 chunk-split across cores"]
@@ -209,23 +209,26 @@ Most of these passes can split across both cores through the same
 primitive, `job_run_core1()`/`job_wait()` (`util/job.h`) - one copied
 context, run on core 1 if its worker is idle, otherwise inline. The main
 sweep, the liquid cross-flow pass, both gas sub-passes and a reacting
-cell's own local rules all run over one four-colour chunk grid: four
-passes, one colour each, chunk rows divided between the cores. A
+cell's own local rules all cut the board into one grid of square chunks.
+The sweep ranks those chunks downstream-first for this step's travel
+direction (`sand_chunk_sched.[ch]`) and lets two lanes walk that order,
+each chunk waiting on the 8-neighbours ahead of it; the other three take
+four passes, one colour each, chunk rows divided between the cores. A
 caller-owned bitmap, one bit per cell (`sand_enable_step_stamps()`), marks
-a grain that crossed into another chunk so a later colour's pass does not
-move it again, and a second caller-owned block
+a grain that crossed into another chunk so a pass still to reach it does
+not move it again, and a second caller-owned block
 (`sand_enable_lane_scratch()`) holds the private bookkeeping each lane
 merges back at the join, so no pass allocates.
 `finalize_settling()` splits by block row instead. Impulses, liquid
 density sorting and a reaction's long-reach triggers stay serial.
 Splitting cost the project its byte-for-byte determinism guarantee - a
-two-core step and the serial path no longer produce the same board for the
+two-core step and the serial path do not produce the same board for the
 same seed - and bought back a narrower one: a two-core step is itself
 deterministic, repeatable from (seed, step, cell, draw slot) alone,
 checked by its own suite rather than against the serial path. See
-[Sand-Simulation.md's "Two cores" section](Sand-Simulation.md#two-cores-four-colour-chunk-updates-and-what-stays-serial)
-for the colouring argument, the reach table that decides what can split at
-all, and why the rest cannot.
+[Sand-Simulation.md's "Two cores" section](Sand-Simulation.md#two-cores-chunk-parallel-passes-and-what-stays-serial)
+for the schedule and the colouring argument, the reach table that decides
+what can split at all, and why the rest cannot.
 
 ## Block and row sleeping
 
