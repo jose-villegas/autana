@@ -1431,6 +1431,131 @@ sand_force_hashed_rng(bool on) {
     sand_force_hashed_rng_on = on;
 }
 
+/* The cut, the order and the callback one split pass runs on, file-static
+ * rather than a frame of its caller: a lane that misses its join keeps
+ * reading here, and a frame the caller has already returned from would be
+ * gone. Passes never overlap, so one set serves them all. */
+static sand_chunk_plan_t chunk_plan;
+static sand_chunk_sched_t chunk_sched;
+static sand_chunk_fn_t chunk_pass_fn;
+static void* chunk_pass_arg;
+
+/* A spin is one poll of up to eight neighbour bytes, so this outlasts by a
+ * wide margin the chunk a lane waits on, and still bounds the wait: past it
+ * the caller finishes the board alone. */
+#define CHUNK_PASS_SPIN_LIMIT 20000u
+#define CHUNK_PASS_JOIN_MS    100u
+
+void
+sand_chunk_pass_cells(int cx, int cy, int* x0, int* x1, int* y0, int* y1) {
+    sand_chunk_cells(&chunk_plan, cx, cy, x0, x1, y0, y1);
+}
+
+static void
+chunk_pass_lane1_worker(void* ctx) {
+    (void)ctx;
+    sand_chunk_run_lane(&chunk_sched, 1, CHUNK_PASS_SPIN_LIMIT, chunk_pass_fn, chunk_pass_arg);
+}
+
+/* A failed wait means core 1 is still inside a chunk: a few chunks left
+ * unstepped for one step is recoverable, two threads in neighbouring chunks
+ * is not, so the rest of the board waits for the next step instead. */
+static void
+join_chunk_pass_lane1(void) {
+    if (job_wait(CHUNK_PASS_JOIN_MS)) {
+        sand_chunk_run_rest(&chunk_sched, chunk_pass_fn, chunk_pass_arg);
+        return;
+    }
+    chunk_sched.abort = 1;
+    if (job_wait(CHUNK_PASS_JOIN_MS)) {
+        sand_chunk_run_rest(&chunk_sched, chunk_pass_fn, chunk_pass_arg);
+    }
+}
+
+static sand_chunk_pass_driver_t chunk_pass_driver;
+
+void
+sand_chunk_pass_set_driver_for_test(sand_chunk_pass_driver_t driver) {
+    chunk_pass_driver = driver;
+}
+
+static bool
+step_one_chunk_pass_round(int round) {
+    if (chunk_pass_driver == SAND_CHUNK_PASS_ALTERNATE) {
+        const bool first = sand_chunk_step_lane(&chunk_sched, round & 1, chunk_pass_fn, chunk_pass_arg);
+        return sand_chunk_step_lane(&chunk_sched, 1 - (round & 1), chunk_pass_fn, chunk_pass_arg) || first;
+    }
+
+    const int eager = (chunk_pass_driver == SAND_CHUNK_PASS_LANE1_EAGER) ? 1 : 0;
+    bool moved = false;
+    while (sand_chunk_step_lane(&chunk_sched, eager, chunk_pass_fn, chunk_pass_arg)) {
+        moved = true;
+    }
+    return sand_chunk_step_lane(&chunk_sched, 1 - eager, chunk_pass_fn, chunk_pass_arg) || moved;
+}
+
+/* One thread standing in for two, so a test can ask whether the board the
+ * schedule produces depends on how the lanes interleave. */
+static void
+drive_chunk_pass_lanes_by_hand(void) {
+    for (int round = 0; round < 2 * SAND_CHUNKS_MAX && step_one_chunk_pass_round(round); round++) {}
+    sand_chunk_run_rest(&chunk_sched, chunk_pass_fn, chunk_pass_arg);
+}
+
+static void
+drive_chunk_pass_lanes(void) {
+    if (job_try_core1(chunk_pass_lane1_worker, NULL, 0)) {
+        sand_chunk_run_lane(&chunk_sched, 0, CHUNK_PASS_SPIN_LIMIT, chunk_pass_fn, chunk_pass_arg);
+        join_chunk_pass_lane1();
+    } else if (chunk_pass_driver == SAND_CHUNK_PASS_SOLO) {
+        sand_chunk_run_rest(&chunk_sched, chunk_pass_fn, chunk_pass_arg);
+    } else {
+        drive_chunk_pass_lanes_by_hand();
+    }
+}
+
+bool
+sand_chunk_pass_ready(const sand_t* s) {
+    sand_chunk_plan_t fits;
+
+    return sand_two_core_step_enabled() && s->lane_scratch != NULL
+           && sand_chunk_plan(&fits, s->w, s->h, sand_chunk_side(s), 0, 0);
+}
+
+bool
+sand_chunk_pass_run(sand_t* s, int tx, int ty, sand_chunk_fn_t fn, void* pass) {
+    sand_lane_t* const lanes = sand_lanes(s);
+
+    if (!sand_chunk_pass_ready(s) || lanes == NULL) {
+        return false;
+    }
+    (void)sand_chunk_plan(&chunk_plan, s->w, s->h, sand_chunk_side(s), 0, 0);
+    sand_chunk_order(&chunk_sched.order, chunk_plan.cols, chunk_plan.rows, tx, ty, s->step_phase);
+    chunk_sched.cols = chunk_plan.cols;
+    chunk_sched.rows = chunk_plan.rows;
+    sand_chunk_sched_reset(&chunk_sched);
+    chunk_pass_fn = fn;
+    chunk_pass_arg = pass;
+
+    s->rng_hashed = true;
+    sand_stamps_arm(s);
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        sand_lane_prepare(&lanes[i], s);
+    }
+
+    drive_chunk_pass_lanes();
+
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        sand_lane_merge(s, &lanes[i]);
+    }
+#ifdef DEVICE_BUILD
+    s->sweep_lane_aborts += (chunk_sched.abort != 0);
+#endif
+    sand_stamps_disarm(s);
+    s->rng_hashed = false;
+    return true;
+}
+
 /* Chunks this step's sweep did not skip, counted per lane and summed once
  * both have joined. */
 unsigned sand_sweep_chunks_swept;
@@ -1445,19 +1570,7 @@ typedef struct {
     unsigned swept[SAND_LANE_COUNT];
 } sweep_pass_t;
 
-/* A split pass's whole working state, file-static rather than a frame of
- * sand_step(): a lane that misses its join keeps writing here, and a frame
- * the caller has already returned from would be gone. Passes never overlap,
- * so the cut and the schedule are shared between them. */
 static sweep_pass_t sweep_pass;
-static sand_chunk_plan_t chunk_plan;
-static sand_chunk_sched_t chunk_sched;
-
-/* A spin is one poll of up to eight neighbour bytes, so this outlasts by a
- * wide margin the chunk a lane waits on, and still bounds the wait: past it
- * the caller finishes the board alone. */
-#define SWEEP_SPIN_LIMIT 20000u
-#define SWEEP_JOIN_MS    100u
 
 static void
 sweep_one_chunk(void* pass, int lane, int cx, int cy) {
@@ -1465,7 +1578,7 @@ sweep_one_chunk(void* pass, int lane, int cx, int cy) {
     sand_t* const view = &c->lanes[lane].local;
     int x0, x1, y0, y1;
 
-    sand_chunk_cells(&chunk_plan, cx, cy, &x0, &x1, &y0, &y1);
+    sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
     if (blocks_settled_over(view, x0, x1, y0, y1, c->settled_bit)) {
         return;
     }
@@ -1477,105 +1590,16 @@ sweep_one_chunk(void* pass, int lane, int cx, int cy) {
                 c->load_dy, c->jostle, c->settled_bit, c->is_liquid);
 }
 
+/* Travel is the dithered direction the sweep itself uses, so the chunk
+ * holding a move's destination is always settled first. */
 static void
-sweep_lane1_worker(void* ctx) {
-    (void)ctx;
-    sand_chunk_run_lane(&chunk_sched, 1, SWEEP_SPIN_LIMIT, sweep_one_chunk, &sweep_pass);
-}
-
-/* A failed wait means core 1 is still inside a chunk: a few chunks left
- * unswept for one step is recoverable, two threads in neighbouring chunks is
- * not, so the rest of the board waits for the next step instead. */
-static void
-join_sweep_lane1(void) {
-    if (job_wait(SWEEP_JOIN_MS)) {
-        sand_chunk_run_rest(&chunk_sched, sweep_one_chunk, &sweep_pass);
+run_sweep_split(sand_t* s, int dx, int dy) {
+    if (!sand_chunk_pass_run(s, im_sign(dx), im_sign(dy), sweep_one_chunk, &sweep_pass)) {
         return;
     }
-    chunk_sched.abort = 1;
-    if (job_wait(SWEEP_JOIN_MS)) {
-        sand_chunk_run_rest(&chunk_sched, sweep_one_chunk, &sweep_pass);
-    }
-}
-
-static sand_sweep_driver_t sweep_driver;
-
-void
-sand_sweep_set_driver_for_test(sand_sweep_driver_t driver) {
-    sweep_driver = driver;
-}
-
-static bool
-step_one_sweep_round(int round) {
-    if (sweep_driver == SAND_SWEEP_ALTERNATE) {
-        const bool first = sand_chunk_step_lane(&chunk_sched, round & 1, sweep_one_chunk, &sweep_pass);
-        return sand_chunk_step_lane(&chunk_sched, 1 - (round & 1), sweep_one_chunk, &sweep_pass) || first;
-    }
-
-    const int eager = (sweep_driver == SAND_SWEEP_LANE1_EAGER) ? 1 : 0;
-    bool moved = false;
-    while (sand_chunk_step_lane(&chunk_sched, eager, sweep_one_chunk, &sweep_pass)) {
-        moved = true;
-    }
-    return sand_chunk_step_lane(&chunk_sched, 1 - eager, sweep_one_chunk, &sweep_pass) || moved;
-}
-
-/* One thread standing in for two, so a test can ask whether the board the
- * schedule produces depends on how the lanes interleave. */
-static void
-drive_sweep_lanes_by_hand(void) {
-    for (int round = 0; round < 2 * SAND_CHUNKS_MAX && step_one_sweep_round(round); round++) {}
-    sand_chunk_run_rest(&chunk_sched, sweep_one_chunk, &sweep_pass);
-}
-
-static void
-drive_sweep_lanes(void) {
-    if (job_try_core1(sweep_lane1_worker, NULL, 0)) {
-        sand_chunk_run_lane(&chunk_sched, 0, SWEEP_SPIN_LIMIT, sweep_one_chunk, &sweep_pass);
-        join_sweep_lane1();
-    } else if (sweep_driver == SAND_SWEEP_SOLO) {
-        sand_chunk_run_rest(&chunk_sched, sweep_one_chunk, &sweep_pass);
-    } else {
-        drive_sweep_lanes_by_hand();
-    }
-}
-
-/* The cut and the order this step's sweep runs in, or false to stay
- * single-lane. Travel is the dithered direction the sweep itself uses, so
- * the chunk holding a move's destination is always settled first. */
-static bool
-plan_sweep_split(sand_t* s, int dx, int dy) {
-    if (!sand_chunk_plan(&chunk_plan, s->w, s->h, sand_chunk_side(s), 0, 0) || sand_lanes(s) == NULL) {
-        return false;
-    }
-    sand_chunk_order(&chunk_sched.order, chunk_plan.cols, chunk_plan.rows, im_sign(dx), im_sign(dy), s->step_phase);
-    chunk_sched.cols = chunk_plan.cols;
-    chunk_sched.rows = chunk_plan.rows;
-    sand_chunk_sched_reset(&chunk_sched);
-    return true;
-}
-
-static void
-run_sweep_split(sand_t* s) {
-    sand_lane_t* const lanes = sweep_pass.lanes;
-
-    s->rng_hashed = true;
-    sand_stamps_arm(s);
     for (int i = 0; i < SAND_LANE_COUNT; i++) {
-        sand_lane_prepare(&lanes[i], s);
-    }
-
-    drive_sweep_lanes();
-
-    for (int i = 0; i < SAND_LANE_COUNT; i++) {
-        sand_lane_merge(s, &lanes[i]);
         sand_sweep_chunks_swept += sweep_pass.swept[i];
     }
-#ifdef DEVICE_BUILD
-    s->sweep_lane_aborts += (chunk_sched.abort != 0);
-#endif
-    sand_stamps_disarm(s);
-    s->rng_hashed = false;
 }
 
 __attribute__((aligned(16))) void
@@ -1664,7 +1688,7 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
 #ifdef DEVICE_BUILD
     const int64_t sweep_t0 = esp_timer_get_time();
 #endif
-    if (sand_two_core_step_enabled() && plan_sweep_split(s, dx, dy)) {
+    if (sand_chunk_pass_ready(s)) {
         sweep_pass = (sweep_pass_t){
             .lanes = sand_lanes(s),
             .w = w,
@@ -1680,7 +1704,7 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
             .settled_bit = settled_bit,
             .y_step = y_step,
         };
-        run_sweep_split(s);
+        run_sweep_split(s, dx, dy);
     } else {
         s->rng_hashed = sand_force_hashed_rng_on;
         sweep_range(s, y_from, y_to, y_step, 0, w, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle,

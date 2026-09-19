@@ -1282,7 +1282,7 @@ flags and dirty spans in the same lane scratch cross-flow uses - merged at
 the join. A board with no lane scratch, or one `sand_chunk_plan()` cannot cut
 at least two chunks each way, keeps the serial sweep.
 
-A lane that polls past `SWEEP_SPIN_LIMIT` without its next chunk coming free
+A lane that polls past `CHUNK_PASS_SPIN_LIMIT` without its next chunk coming free
 gives up where it is and the caller finishes the board; that costs the step
 its second core and nothing else. A join that times out is different: core 1
 is still inside a chunk, so the remaining chunks are left for the next step
