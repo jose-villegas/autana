@@ -16,7 +16,8 @@ function or macro. A script or CMake file always reports its path citers:
 documents cite a tool by its path and describe what running it does, so a
 change inside one of its functions is still theirs to reread. CMake has no
 functions to name a hunk by, so a CMake change also touches every ALL_CAPS
-word on its changed lines.
+word on its changed lines. A file whose diff is empty touches nothing, so
+not even its path is reported.
 Plans are skipped - they keep proposed and superseded names on purpose.
 Nothing here fails: a touched citation is a reason to reread the document,
 not proof it is wrong.
@@ -70,9 +71,11 @@ def names_on(line, suffix):
 
 
 def touched_names(root, source, diff_args):
-    """(functions, macros) a diff of `source` touches."""
+    """(functions, macros) a diff of `source` touches, or None when the diff is empty."""
     result = subprocess.run(["git", "diff", "-U0", *diff_args, "--", source], cwd=root,
                             capture_output=True, text=True)
+    if not result.stdout.strip():
+        return None
     suffix = language(source)
     functions, macros = set(), set()
     for line in result.stdout.splitlines():
@@ -98,6 +101,7 @@ def citers(root, sources, diff_args):
     root = pathlib.Path(root)
     touched = {source: touched_names(root, source, diff_args) for source in sources
                if language(source) is not None}
+    touched = {source: names for source, names in touched.items() if names is not None}
     result = {source: {} for source in touched}
     if not touched:
         return result

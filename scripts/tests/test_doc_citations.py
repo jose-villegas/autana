@@ -364,6 +364,13 @@ Acid -->|"dissolvable 110"| Metal
             found = doc_citers.citers(root, ["launcher/main/liquid.c"], ["HEAD"])
         self.assertEqual(found, {"launcher/main/liquid.c": {"docs/Liquid.md": ["liquid.c"]}})
 
+    def test_citers_skip_a_source_whose_diff_is_empty(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.citers_repo(root)
+            found = doc_citers.citers(root, ["launcher/main/liquid.c"], ["HEAD"])
+        self.assertEqual(found, {})
+
     def cmake_repo(self, root):
         self.write(root, "launcher/main/CMakeLists.txt",
                    "set(app_srcs main.c)\n"
@@ -384,6 +391,13 @@ Acid -->|"dissolvable 110"| Metal
             found = doc_citers.citers(root, ["launcher/main/CMakeLists.txt"], ["HEAD"])
         self.assertEqual(found, {"launcher/main/CMakeLists.txt": {
             "docs/Build.md": ["WHOLE_ARCHIVE"], "docs/Glob.md": ["main/CMakeLists.txt"]}})
+
+    def test_citers_skip_a_cmake_file_whose_diff_is_empty(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.cmake_repo(root)
+            found = doc_citers.citers(root, ["launcher/main/CMakeLists.txt"], ["HEAD"])
+        self.assertEqual(found, {})
 
     def test_citers_report_a_script_path_even_when_a_function_is_touched(self):
         with tempfile.TemporaryDirectory() as temp:
