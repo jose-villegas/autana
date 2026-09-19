@@ -373,9 +373,9 @@ borders are simply never persisted.
 
 Borders exist only in the bytes sent, never in the framebuffer, so the panel
 would keep one until its strip is next sent - which, for a region nothing
-changes in again, is never. `run_present_normal()` therefore remembers which
-strip rows went out with an overlay on (`overlay_bordered_rows`) and opens
-the next present by sending each one again, full-width and unbordered, before
+changes in again, is never. `send_dirty_rows()` therefore records which
+strip rows went out with an overlay on (`overlay_bordered_rows`), and
+`run_present_normal()` opens the next present by sending each one again, full-width and unbordered, before
 the dirty sends. A border is on the panel for exactly the present that sent
 it; the cost is up to one extra full strip per bordered row per present,
 paid only while an overlay is on (and once more after it is switched off).
