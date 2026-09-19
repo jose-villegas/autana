@@ -101,8 +101,9 @@ one suite at a time via RUNSUITE or as a full boot-time run.
 ### The host runner enforces two of the device's limits
 
 The host has megabytes of stack and gigabytes of heap; the board has 3,584
-bytes of main task stack and 184,171 bytes of internal heap free after
-`gfx_init()` (172,147 once the shell is ready). Two classes of bug lived in
+bytes of main task stack and 130,635 bytes of internal heap free after
+`gfx_init()` (117,219 once the shell is ready), in blocks no larger than
+51,200. Two classes of bug lived in
 that gap, and each one cost a build-flash-capture cycle to find — twice
 over, for both:
 
@@ -464,23 +465,37 @@ follow — such an image resets silently in the second-stage bootloader. It
 moves the console to UART0, the port QEMU exposes. And it sets
 `CONFIG_LAUNCHER_QEMU`: no panel, I/O expander or touch controller exists
 there, so board identification fails, and with that option `gfx.c` gives an
-unidentified board a null panel — a strip counts as sent the moment it is
-queued. The framebuffer, the present task and everything drawn through them
-then run as they do on the board. The same option makes the temperature
-read report failure, because ESP-IDF's driver waits forever on a sensor
-QEMU does not have.
+unidentified board a null panel (`gfx_null_panel.c`). It keeps the one
+property of the link the code above depends on: a strip occupies the bus
+for its own transfer time at the current panel clock, one strip after
+another, and only then counts as sent. The framebuffer, the present task and
+everything drawn through them run as they do on the board, and costs keep
+their order — a narrow window cheaper than a band, a band cheaper than a
+frame, nothing sent costing nothing.
+
+Touch gets the same treatment: where no controller answers, `touch.c`
+installs a stand-in behind the same driver interface, and `touch_inject()`
+sets what it reports. The sample still travels the polling task and the
+touch state machine to `touch_read()`, so a test can drive input end to end.
+The option also makes the temperature read report failure, because
+ESP-IDF's driver waits forever on a sensor QEMU does not have.
 
 **What a run is evidence of.** Pass and fail, for any test that does not
-read a clock; the perf scope runs to `SELFTEST_COMPLETE` in about five
-minutes. Two kinds of failure are by construction: wall-clock budgets (none
-under `--icount`, where virtual time runs slow), and the performance-monitor
-test, since QEMU does not model the PMU and every counter reads zero. Any
-other failure deserves a look on the board. A run says nothing about the
-panel, touch, the IMU or timing.
+read a clock; the full scope runs to `SELFTEST_COMPLETE` in about nine
+minutes, the perf scope in five. Prefer `--icount` for it: emulated code
+runs several times slower than the chip in real time, so without it
+ceilings pegged on the board fail on the CPU half of their cost. Two kinds
+of failure remain by construction — the performance-monitor test, since
+QEMU does not model the PMU and every counter reads zero, and the test that
+a touch controller physically answers, which skips itself. Any other
+failure deserves a look on the board. A run says nothing about the real
+panel, the real touch controller, the IMU or timing.
 
 **`--icount` counts instructions, never time.** Virtual time then advances
 one nanosecond per executed instruction, so a `us per step` line times 1000
-is instructions per step. A step that runs on one core repeats exactly from
+is instructions per step — for a measurement that sends nothing, since time
+spent waiting on the null panel's modelled bus passes with no instructions
+behind it. A step that runs on one core repeats exactly from
 run to run. A two-core step sums both cores and wanders by up to 1%, since
 the waiting core's spin is counted too. The count answers whether a change
 removed work; on this chip that does not predict whether it removed time

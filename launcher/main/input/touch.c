@@ -48,6 +48,44 @@ on_touch_int(esp_lcd_touch_handle_t tp) {
     report_pending = true;
 }
 
+#if CONFIG_LAUNCHER_QEMU
+/* A controller with no chip behind it: it reports whatever touch_inject()
+ * last set, through the same driver interface a real one answers. */
+static volatile bool injected_down;
+static volatile uint16_t injected_x, injected_y;
+
+static esp_err_t
+injected_read_data(esp_lcd_touch_handle_t tp) {
+    (void)tp;
+    return ESP_OK;
+}
+
+static bool
+injected_get_xy(esp_lcd_touch_handle_t tp, uint16_t* x, uint16_t* y, uint16_t* strength, uint8_t* point_num,
+                uint8_t max_point_num) {
+    (void)tp;
+    (void)strength;
+    (void)max_point_num;
+    *point_num = injected_down ? 1 : 0;
+    x[0] = injected_x;
+    y[0] = injected_y;
+    return injected_down;
+}
+
+static esp_lcd_touch_t injected_panel = {
+    .read_data = injected_read_data,
+    .get_xy = injected_get_xy,
+};
+
+void
+touch_inject(bool down, int x, int y) {
+    injected_x = (uint16_t)x;
+    injected_y = (uint16_t)y;
+    injected_down = down;
+    report_pending = true;
+}
+#endif
+
 static void
 poll_once(void) {
     bool have_point = false;
@@ -99,11 +137,22 @@ touch_task(void* arg) {
 
 void
 touch_start(void) {
+    static bool started;
+    if (started) {
+        return;
+    }
+    started = true;
+
     touch_fsm_init(&fsm);
 
     if (bsp_touch_new(NULL, &panel) != ESP_OK) {
+#if CONFIG_LAUNCHER_QEMU
+        ESP_LOGW(TAG, "No touch controller; input comes from touch_inject()");
+        panel = &injected_panel;
+#else
         ESP_LOGW(TAG, "Touch controller unavailable; input will not work");
         panel = NULL;
+#endif
     } else if (esp_lcd_touch_register_interrupt_callback(panel, on_touch_int) != ESP_OK) {
         ESP_LOGW(TAG, "No touch interrupt; falling back to sampling INT's level");
     }

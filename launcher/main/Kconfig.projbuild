@@ -85,9 +85,11 @@ menu "Launcher"
             QEMU's esp32s3 machine has no panel, I/O expander or touch
             controller, so board identification fails and graphics never
             starts. With this on, an unidentified board gets a null panel
-            instead: a strip counts as sent the moment it is queued, and the
-            framebuffer, the present task and everything drawn through them
-            run as they do on the board.
+            instead: a strip counts as sent once its transfer time at the
+            panel clock has passed, and the framebuffer, the present task
+            and everything drawn through them run as they do on the board.
+            A missing touch controller is likewise replaced by one that
+            reports what touch_inject() sets.
 
             Set only by sdkconfig.defaults.qemu, which also carries the
             flash and console settings QEMU needs. On a board that
