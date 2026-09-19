@@ -6,7 +6,8 @@ a build directory that already exists:
 
     launcher/test/qemu_run.py launcher/build.qemu [--icount] [--timeout S]
     launcher/test/qemu_run.py launcher/build.qemu.shell --suite run_gfx_suite
-                              [--suite ...] [--screenshot shot.png]
+                              [--suite ...] [--touch down,184,224 --touch up,184,224]
+                              [--screenshot shot.png]
 
 It merges the build's binaries into one flash image, writes the default eFuse
 block ESP-IDF's own `idf.py qemu` uses, and starts qemu-system-xtensa
@@ -16,9 +17,9 @@ With no --suite or --screenshot the image is expected to run its suites by
 itself (CONFIG_LAUNCHER_SELFTEST_AUTORUN) and the run ends at
 SELFTEST_COMPLETE. With either, the image is expected to boot into the shell
 instead: once the console listener is up, each --suite is sent as RUNSUITE
-and waited out to its RUNSUITE_COMPLETE, then --screenshot sends SCREENSHOT
-and writes the frame as a PNG (and its state as .json) the way
-tools/screenshot.py does from a board.
+and waited out to its RUNSUITE_COMPLETE, each --touch is left on the screen
+in turn, and then --screenshot sends SCREENSHOT and writes the frame as a
+PNG (and its state as .json) the way tools/screenshot.py does from a board.
 
 What a run can and cannot say. Pass and fail are real for anything that does
 not read a clock. A ceiling pegged on the board is reported and not enforced
@@ -206,7 +207,21 @@ def take_screenshot(console, out_path):
     return False
 
 
-def drive_shell(console, suites, screenshot_path):
+# A sample is a LEVEL the image's polling task picks up on its own schedule,
+# so each one is left in place long enough to be seen and acted on. There is
+# no acknowledgement to wait for instead: see the touch verb's own comment in
+# util/screenshot.c for why it sets no flag.
+TOUCH_SETTLE_S = 0.6
+
+
+def send_touches(console, touches):
+    for spec in touches:
+        state, x, y = spec.split(",")
+        console.send("TOUCH %s %s %s" % (state.strip(), x.strip(), y.strip()))
+        time.sleep(TOUCH_SETTLE_S)
+
+
+def drive_shell(console, suites, touches, screenshot_path):
     if not console.wait_for(LISTENING):
         print("the console listener never came up - is this an image that "
               "boots into the shell (no sdkconfig.defaults.diag_autorun)?")
@@ -225,6 +240,7 @@ def drive_shell(console, suites, screenshot_path):
             print("suite %s: %s" % (name, "not registered in this image"
                                     if found is False else "never completed"))
             ok = False
+    send_touches(console, touches)
     if screenshot_path:
         ok = take_screenshot(console, screenshot_path) and ok
     return ok
@@ -258,8 +274,15 @@ def main(argv):
     parser.add_argument("--suite", action="append", default=[],
                         help="run this registered suite by name (repeatable); "
                              "needs an image that boots into the shell")
+    parser.add_argument("--touch", action="append", default=[],
+                        metavar="down|up,X,Y",
+                        help="leave this touch sample in place, in panel "
+                             "coordinates (repeatable, in order); needs a "
+                             "CONFIG_LAUNCHER_QEMU image, where no controller "
+                             "answers and a stand-in reports it instead")
     parser.add_argument("--screenshot", default=None, metavar="PNG",
-                        help="capture the screen once the suites are done")
+                        help="capture the screen once the suites and touches "
+                             "are done")
     parser.add_argument("--workdir", default=None,
                         help="where flash, eFuse and log go "
                              "(default: the build directory)")
@@ -312,8 +335,9 @@ def main(argv):
         console = Console(proc, port, log_path,
                           time.monotonic() + args.timeout)
         try:
-            if args.suite or args.screenshot:
-                finished = drive_shell(console, args.suite, args.screenshot)
+            if args.suite or args.touch or args.screenshot:
+                finished = drive_shell(console, args.suite, args.touch,
+                                       args.screenshot)
             else:
                 finished = console.wait_for(SENTINEL)
         finally:
@@ -324,7 +348,7 @@ def main(argv):
 
     print("console: %s" % log_path)
     autorun_ended = summarise(log_path)
-    if not (args.suite or args.screenshot) and not autorun_ended:
+    if not (args.suite or args.touch or args.screenshot) and not autorun_ended:
         print("NO %s - the run did not finish" % SENTINEL)
     return 0 if finished else 1
 
