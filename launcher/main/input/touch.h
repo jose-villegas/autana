@@ -17,9 +17,16 @@
  * the controller says it has data). */
 #define TOUCH_POLL_HZ 100
 
-/* Starts the polling task. Safe to call if the panel is missing: reads simply
- * report nothing rather than failing. */
+/* Starts the polling task, once; later calls do nothing. Safe to call if the
+ * panel is missing: reads simply report nothing rather than failing. */
 void touch_start(void);
+
+#if CONFIG_LAUNCHER_QEMU
+/* Where no controller answers, sets what the stand-in controller reports
+ * from now on, in panel coordinates. The sample still travels the polling
+ * task and the touch state machine to reach touch_read(). */
+void touch_inject(bool down, int x, int y);
+#endif
 
 /* Copies the accumulated state into `out` and clears the latched edges, so
  * each press and release is reported exactly once. */

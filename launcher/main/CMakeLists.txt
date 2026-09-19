@@ -24,6 +24,10 @@ set(app_srcs
     "util/screenshot.c"
 )
 
+if(CONFIG_LAUNCHER_QEMU)
+    list(APPEND app_srcs "gfx/gfx_null_panel.c")
+endif()
+
 # board/board.h binds this target's hardware facts to board_esp32s3.c.
 list(APPEND app_srcs "board/board_esp32s3.c")
 
