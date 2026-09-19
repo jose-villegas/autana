@@ -20,6 +20,7 @@ launcher/
 │   ├── gen_boot_anim_timeline.py, gen_boot_anim_image.py, gen_font.py,
 │   │                           gen_gfx_palette_standard.py, gen_icons.py
 │   ├── gen_ui_layout.py        bakes main/ui/<screen>_layout.json into its header
+│   ├── gen_ridge_curve.py      bakes design/boot/ridge.png into main/ui/ridge_curve_generated.h
 │   ├── build_flash.sh          build + flash; --dev and --diag variants
 │   ├── device_report.sh        the one build-flash-capture-report path
 │   └── report_test_results.sh  every suite, pass/fail
@@ -69,7 +70,9 @@ launcher/
     │   │                       Control Center, over a dimmed home screen
     │   ├── control_center_layout.json, control_center_layout_generated.h
     │   │                       its authored rects, and the baked table
-    │   └── system_navigation.{h,c}  which system screen is up (host-tested)
+    │   ├── system_navigation.{h,c}  which system screen is up (host-tested)
+    │   └── ridge_curve_generated.h  Cerro Autana's ridge, a height per column of
+    │                           the boot photograph's frame      (host-tested)
     ├── input/          the devices a finger reaches
     │   ├── touch.{h,c}         FT5x06 polling task
     │   ├── touch_fsm.{h,c}     samples -> press/release    (host-tested)
@@ -109,10 +112,12 @@ and means something different by each:
 
 ## Generated sources
 
-Five generated files live in the tree, each following the same four rules
+Six generated files live in the tree, each following the same four rules
 below: `main/ui/control_center_layout_generated.h` (`tools/gen_ui_layout.py`,
 from `main/ui/control_center_layout.json`, which the host editor in
-[`editor/`](../editor/README.md) edits), `main/boot/boot_anim_curve.h` (`tools/gen_zeta_curve.py`),
+[`editor/`](../editor/README.md) edits), `main/ui/ridge_curve_generated.h`
+(`tools/gen_ridge_curve.py`, from `design/boot/ridge.png`, the ridge of
+`design/boot/boot.png` drawn as a line in the same frame), `main/boot/boot_anim_curve.h` (`tools/gen_zeta_curve.py`),
 `main/boot/boot_anim_timeline.h` (`tools/gen_boot_anim_timeline.py`, from
 `main/boot/boot_anim_timeline.json`), `main/boot/boot_anim_image.h`
 (`tools/gen_boot_anim_image.py`, from `design/boot/boot.png`), and
