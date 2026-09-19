@@ -100,8 +100,8 @@ and the full field list.
   framebuffer; its frame is rebuilt row by row through the same expansion
   the present path sends. An app drawing in RGB565 bands keeps no image at
   all, so the capture forces one full redraw and copies each band into a
-  temporary PSRAM snapshot as it is sent. If that cannot happen (no PSRAM
-  room, or the app stops drawing), the device answers `SCREENSHOT_REFUSED:`
+  temporary PSRAM snapshot as it is sent. If that cannot happen (the
+  snapshot does not fit, or the app stops drawing), the device answers `SCREENSHOT_REFUSED:`
   with the reason and the script exits at once.
 - **Blind to the panel link.** It captures the framebuffer, and the shell
   requests a full redraw right after, which heals a corrupted panel. Stray
