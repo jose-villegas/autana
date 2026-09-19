@@ -11,20 +11,20 @@
 # host pass is the gate; this is how you check the gate is still telling
 # the truth.
 #
-# It compiles the app suites for the target with -fstack-usage, using the
+# It compiles every suite for the target with -fstack-usage, using the
 # device profile's own ISA and codegen flags, and runs the same
 # check_stack_usage.py over the result. No device, no flash, no idf.py -
-# the sand test suite (suite_sand_*.c) is portable C, so the cross
-# compiler alone is enough to get real target frames.
+# the suites are portable C, so the cross compiler alone is enough to get
+# real target frames.
 #
-# WHY THIS IS WORTH RUNNING: the host gate is only useful if a frame that
-# fits on x86 cannot secretly be larger on RISC-V. Measured 2026-09-03 over
-# the 411 functions of the sand test suite (suite_sand_*.c) present in
-# both builds: not one had a larger frame on RISC-V than on x86 (median 0.40x, worst case 0.99x), and
-# no function crossed the ceiling on device without also crossing it on the
-# host. The host is a conservative over-estimate, which is the safe
-# direction for a gate to be wrong in. Re-run this after a toolchain or
-# -O-level change, which is the kind of thing that could invert it.
+# WHY THIS IS WORTH RUNNING: the host gate assumes a frame that fits on x86
+# is not much larger on the target. Measured 2026-09-19 with
+# xtensa-esp32s3-elf-gcc over the 1,534 functions present in both builds:
+# median 0.50x, but 67 are LARGER on Xtensa, worst 1.67x (576 -> 960 bytes,
+# suite_gfx_font.c's glyph_run_boxes tests). Nothing crossed the ceiling here
+# that the host had not also flagged, except code only a DEVICE_BUILD
+# compiles. So the host is an estimate, not a bound - re-run this after a
+# toolchain or -O-level change, and whenever a host frame nears the ceiling.
 #
 # POSIX sh, same portability reasoning as run_tests.sh.
 
@@ -46,9 +46,11 @@ PREFIX=$(device_profile_require DP_TOOLCHAIN_PREFIX) || exit 1
 CC_BIN=$(command -v "$PREFIX-gcc" || true)
 if [ -z "$CC_BIN" ]; then
     # Not on PATH under Git Bash unless the IDF environment was activated,
-    # which costs ~90s and is not worth paying just to read frame sizes.
-    for c in "$HOME/.espressif/tools/$PREFIX"/*/"$PREFIX"/bin/"$PREFIX-gcc.exe" \
-             "$HOME/.espressif/tools/$PREFIX"/*/"$PREFIX"/bin/"$PREFIX-gcc"; do
+    # which costs ~90s and is not worth paying just to read frame sizes. The
+    # tool directory is not named after the prefix: IDF ships every Xtensa
+    # chip's driver in one xtensa-esp-elf install.
+    for c in "$HOME/.espressif/tools"/*/*/*/bin/"$PREFIX-gcc.exe" \
+             "$HOME/.espressif/tools"/*/*/*/bin/"$PREFIX-gcc"; do
         [ -x "$c" ] && CC_BIN="$c" && break
     done
 fi
@@ -63,21 +65,31 @@ mkdir -p "$BUILD_DIR"
 
 # -ffreestanding because there is no target libc startup involved here: this
 # only ever compiles, never links. DEVICE_BUILD matches what the device
-# selftest compiles the suites with, so the frames measured are the ones
-# that actually run on the board.
-for f in "$MAIN_DIR"/apps/*/suite_*.c; do
-    [ -e "$f" ] || continue
-    base=$(basename "$f" .c)
+# selftest compiles the suites with; a suite whose DEVICE_BUILD half needs
+# ESP-IDF headers is measured as the host sees it instead, and one that
+# needs them either way is outside the host gate too, so it is skipped aloud.
+compile_suite() {
     # shellcheck disable=SC2086
     "$CC_BIN" $STD_FLAG $ARCH_FLAGS $CODEGEN_FLAGS -ffreestanding \
         -Wall -Wextra -Wno-unused-parameter -g \
-        -DDEVICE_BUILD -DCONFIG_LAUNCHER_DEVELOPMENT=1 \
+        $1 -DCONFIG_LAUNCHER_DEVELOPMENT=1 \
         -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
         -I "$TEST_DIR/stubs" \
         -I "$TEST_DIR/../components/microui/include" \
         -I "$TEST_DIR/../components/small3dlib/include" \
         -include "$TEST_DIR/timing.h" \
-        -fstack-usage -c "$f" -o "$BUILD_DIR/$base.o"
+        -fstack-usage -c "$2" -o "$BUILD_DIR/$(basename "$2" .c).o" 2>/dev/null
+}
+
+for f in "$MAIN_DIR"/apps/*/suite_*.c "$TEST_DIR"/suites/suite_*.c; do
+    [ -e "$f" ] || continue
+    if compile_suite -DDEVICE_BUILD "$f"; then
+        continue
+    elif compile_suite "" "$f"; then
+        echo "portable half only (DEVICE_BUILD needs ESP-IDF headers): $(basename "$f")"
+    else
+        echo "skipped (needs ESP-IDF headers): $(basename "$f")"
+    fi
 done
 
 if [ -z "$(find "$BUILD_DIR" -maxdepth 1 -name '*.su' -print -quit)" ]; then

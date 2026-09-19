@@ -105,7 +105,7 @@ over, for both:
   `check_stack_usage.py` fails the run on any function whose frame exceeds
   the profile's ceiling. This is a *static prediction*, not a reproduction:
   the host cannot overflow, so the gate reads the frame sizes the compiler
-  already computed for its own prologues. Seven frames already exceed the
+  already computed for its own prologues. Six host frames already exceed the
   ceiling and are listed as debt in the checker, so a new one still fails
   while the existing ones stay visible rather than silently blessed.
 - **A fixture that allocates more than the board has.** The suite's
@@ -141,6 +141,11 @@ to a gate.
 **These are approximations, and worth knowing where they end.** The stack
 gate checks test code only, one function at a time — it does not sum a call
 chain, so it bounds the worst single frame rather than the deepest path.
+Its frames are the host compiler's: the Xtensa frame is half the size at
+the median but up to 1.67x larger in the worst measured case, so
+`check_stack_usage_device.sh` — the same checker over the target
+compiler's own frames, no device needed — is what to run when a host frame
+nears the ceiling.
 The arena models one process's allocations from a clean start, so it cannot
 show fragmentation inherited from the rest of a real boot. Neither gate
 replaces a device capture. They make a whole class of bug cost a second on
