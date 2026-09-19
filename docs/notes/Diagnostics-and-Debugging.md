@@ -96,11 +96,13 @@ and the full field list.
   animation.
 - Only one process can hold the serial port at a time - close `monitor.sh`
   first.
-- **Every colour mode, but not RGB565 band mode.** An indexed-colour app
-  (256 or 16 colours) keeps no framebuffer; its frame is rebuilt row by row
-  through the same expansion the present path sends. An app drawing in
-  RGB565 bands keeps no image at all, so the device answers
-  `SCREENSHOT_REFUSED:` with the reason and the script exits at once.
+- **Every render mode.** An indexed-colour app (256 or 16 colours) keeps no
+  framebuffer; its frame is rebuilt row by row through the same expansion
+  the present path sends. An app drawing in RGB565 bands keeps no image at
+  all, so the capture forces one full redraw and copies each band into a
+  temporary PSRAM snapshot as it is sent. If that cannot happen (the
+  snapshot does not fit, or the app stops drawing), the device answers `SCREENSHOT_REFUSED:`
+  with the reason and the script exits at once.
 - **Blind to the panel link.** It captures the framebuffer, and the shell
   requests a full redraw right after, which heals a corrupted panel. Stray
   pixels or lines seen on the glass but not in the capture are a link fault;
@@ -121,9 +123,9 @@ the cleanest way to tell a firmware-side problem from a host-script one.
 Attaches to the console without paying ESP-IDF's ~90s environment-activation
 cost. Picks up whichever `launcher/build*/launcher.elf` was most recently
 built automatically - `idf.py build`, `build_flash.sh`,
-`build_flash_dev.sh` and `build_flash_diag.sh` each write to a differently
-named directory (`build/`, `build.release/`, `build.dev/`, `build.diag/`),
-so there is no single fixed default to guess; pass `-e path/to/other.elf` to
+`build_flash_dev.sh` and `build_flash_diag.sh` write to differently named
+directories (`build/` for release, `build.dev/`, `build.diag/`), so there is
+no single fixed default to guess; pass `-e path/to/other.elf` to
 pin a specific one. Passing the right `.elf` matters for more than
 bookkeeping - it carries the debug symbols that turn a crash address into a
 file and line number.
@@ -188,12 +190,13 @@ Diagnostics app's developer-toggle page (`gfx_set_debug_overlay()` /
   drawn but never marked dirty) or an over-wide send (marked dirty when it
   should not have been) is visible directly rather than inferred from
   symptoms.
-- **Leaf-grid overlay** - draws the fixed leaf-grid boundaries a gathered
-  send covers, in green, inside whatever the dirty-region overlay already
-  shows - only has an effect with that overlay also on.
+- **Leaf overlay** - outlines, in green, the leaves actually marked dirty
+  this frame. Independent of the dirty-region overlay.
 
 Both are off by default even in a development build, since they draw
-directly over real content.
+directly over real content. A border shows for the one present that sent
+it: the next present resends that strip clean, so what is on screen is
+always the latest present's sends, not an accumulation.
 
 The sand app carries a similar overlay of its own, for the two-core
 sweep's stripe seams rather than gfx's send/leaf grids - see
@@ -216,8 +219,8 @@ awake-cell counts) logged periodically - see
 generator. The cube app has a dedicated on-device performance suite
 (`main/apps/cube/suite_cube_perf.c`) for phase-by-phase timing (logic /
 rasterise / HUD / present) against a 60fps budget, run the same way as any
-other on-device suite (see [above](#does-it-still-hold-on-the-real-chip---on-device-suite))
-- it has no separate host-side report script of its own yet.
+other on-device suite (see [above](#does-it-still-hold-on-the-real-chip---on-device-suite));
+`main/apps/cube/tools/report_cube_perf.sh` is its host-side report.
 
 ## Orientation or the IMU seems wrong
 

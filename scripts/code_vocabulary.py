@@ -2,7 +2,7 @@
 import pathlib
 import re
 
-SKIP = {"build", "build.dev", "build.diag", "managed_components", ".git"}
+SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "managed_components", ".git"}
 SOURCE_SUFFIXES = {".c", ".h", ".py"}
 FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]{4,})\s*\(")
 MACRO = re.compile(r"^\s*#\s*define\s+([A-Z][A-Z0-9_]+)\b", re.M)

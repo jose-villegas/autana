@@ -31,8 +31,9 @@ done
 
 # --- find the ELF, if -e didn't already say -------------------------------
 # There is no one build directory: plain `idf.py build` (the README's own
-# Quick Start) uses build/, tools/build_flash.sh uses build.release/ or
-# build.diag/, and test/run_device_tests.sh always uses build.diag/. A fixed
+# Quick Start) and tools/build_flash.sh both use build/ for release, but that
+# script's variants use build.dev/ and build.diag/, and
+# test/run_device_tests.sh always uses build.diag/. A fixed
 # default can only match one of those - it used to be build/, which silently
 # broke `./monitor.sh` for anyone who had only ever built through
 # build_flash.sh, with an error that gave no hint the ELF existed one
@@ -91,7 +92,7 @@ fi
 if [ -z "$ELF" ] || [ ! -f "$ELF" ]; then
     echo "No launcher.elf found under $ROOT/launcher/build*/" >&2
     echo "Build it first: cd launcher && idf.py build" >&2
-    echo "  (or tools/build_flash.sh, which builds into build.release/ or build.diag/)" >&2
+    echo "  (or tools/build_flash.sh, which builds into build/, build.dev/ or build.diag/)" >&2
     exit 1
 fi
 

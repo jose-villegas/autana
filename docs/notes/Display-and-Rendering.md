@@ -180,7 +180,7 @@ frames. So:
   set from Developer Toggles until the Settings app exists (see
   [Settings-App-Plan.md](../plans/Settings-App-Plan.md)); every app starts
   at it, may force another rate, and gets the system value restored on every
-  app switch - see Launcher-Architecture.md, "The panel clock";
+  app switch - see Building-an-App.md, "What the shell resets for you";
 - gfx heal, opt-in and active only at 80 MHz: a caller marks rows with
   `gfx_heal_mark()`, and gfx re-sends them as full-width strips with the
   strip grid shifted each time, under a per-present pixel budget. The app
@@ -369,7 +369,35 @@ before either one draws anything, so a pixel the two layers share (a leaf
 edge landing on a cell edge, for instance) still restores to its true
 original regardless of draw or restore order. A gathered send
 (`gather_and_send()`) instead draws into the disposable `gather_buf`, so its
-borders are simply never persisted. Declared only under
+borders are simply never persisted.
+
+Borders exist only in the bytes sent, never in the framebuffer, so the panel
+would keep one until its strip is next sent - which, for a region nothing
+changes in again, is never. `send_dirty_rows()` therefore records which
+strip rows went out with an overlay on (`overlay_bordered_rows`), and
+`run_present_normal()` opens the next present by sending each one again, full-width and unbordered, before
+the dirty sends. A border is on the panel for exactly the present that sent
+it; the cost is up to one extra full strip per bordered row per present,
+paid only while an overlay is on (and once more after it is switched off).
+
+`GFX_PIXFMT_INDEXED8` carries both layers too: `run_present_indexed()` sends
+whole dirty strips, but its marking still goes through `dirty_mark()`, so the
+leaves are real. `send_indexed_rows()` draws the borders into the expanded
+bounce slot - a disposable copy, nothing to restore - and the same clean
+resend applies, skipped for a row that is dirty again since that row goes out
+whole anyway.
+
+The app-driven band ring feeds the same tracker through `gfx_mark_dirty()`,
+so `gfx_band_submit()` draws into the band about to be sent: cyan around the
+band for the panel-grid layer, green around each marked leaf for the leaf
+layer (`GFX_BAND_HEIGHT` is a multiple of `LEAF_H`, so a leaf never straddles
+two bands). gfx holds no copy of a band to resend, so the clean-up runs
+through the app: `gfx_band_dirty()` reports a band that was bordered last
+frame as dirty once more, and that submit goes out bare. `gfx_band_next()`
+resets every row's cell boxes and leaf bits at the end of the frame, the
+same reset a full-framebuffer present gives each row it sends.
+
+Declared only under
 `CONFIG_LAUNCHER_DEVELOPMENT`, in both the header and the implementation - not
 just compiled out of a release build, but undefined there: a caller outside a
 development-only file that forgets to guard a call to it fails to compile
@@ -637,6 +665,8 @@ the ESP32-P4 has the PPA, PSRAM, *and* a real SDMMC host.
 
 ## Related
 
+- [../Gfx-and-Presentation.md](../Gfx-and-Presentation.md) — the mechanisms as
+  they stand today; this page is the measurements and bugs behind them.
 - [Board-and-Memory.md](Board-and-Memory.md) — the SPI2 wiring this all sits
   on top of.
 - [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md) — the -O2 build-flag

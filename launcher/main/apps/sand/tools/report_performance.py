@@ -13,6 +13,8 @@ Usage:
     python main/apps/sand/tools/report_performance.py <raw_capture.txt> <out.md> \
         --source main/apps/<app>/suite_<app>.c
 
+Exit 2 means the capture has nothing in it to report on.
+
 Lives under the sand app because sand's report_performance.sh is its only
 caller. Nothing in the parsing is sand-specific - it keys on #ifdef
 DEVICE_BUILD, a budget call (perf_guard/perf_target, or Unity's
@@ -259,6 +261,13 @@ def main() -> int:
     for source in args.source:
         budgets.update(parse_budgets(source))
     capture, total_ms = parse_capture(args.capture_path)
+
+    if not capture:
+        # An empty table under a timestamp reads like a clean run of nothing.
+        # A report of nothing is not a report.
+        print(f"{args.capture_path} contains no test results - nothing ran, so "
+              "there is no report to write.", file=sys.stderr)
+        return 2
 
     # Only tests that both declare a budget AND actually ran this capture -
     # a test present in one but not the other is worth surfacing, not

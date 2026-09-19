@@ -12,7 +12,7 @@ predicted by it:
   global read at render time would have needed invalidating on every size
   change, and a screen mixing two sizes hits that every frame, permanently
   defeating the repaint skip. See
-  [`Launcher-Architecture.md`](../Launcher-Architecture.md#text-at-more-than-one-size)
+  [`Launcher-Architecture.md`](../Text-and-Fonts.md#text-in-a-microui-screen)
   for the full argument, already written up beside `ui_set_font()` in
   `ui.c` before this plan even reused it.
 - **The size caption reads `POUR SIZE`, not `POUR BRUSH SIZE`.** At 368px

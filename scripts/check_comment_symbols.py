@@ -15,7 +15,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from code_vocabulary import names  # noqa: E402
 from check_comment_length import EXCLUDED, scan  # noqa: E402
 
-SKIP = ("build", "build.dev", "build.diag", "managed_components")
+SKIP = ("build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "managed_components")
 CITED = re.compile(r"\b([a-z_][a-z0-9_]{4,})\(\)")
 
 # Named in comments as the C library or the vendor SDK spells them, with no

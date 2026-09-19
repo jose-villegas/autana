@@ -97,11 +97,25 @@ is one of the gate's two sources, and a missing one fails with a message
 saying so rather than a stack trace:
 
 ```sh
-./launcher/tools/build_diag_check.sh                            # once, several minutes
+./launcher/tools/build_diag_check.sh                            # ratchet, then the build - several minutes
 python launcher/tools/complexity_gate.py                        # the ratchet
 python launcher/tools/complexity_gate.py --update-baseline      # record today's scores on purpose
 python launcher/tools/complexity_gate.py --changed origin/main  # only files that changed - still needs the build above
 ```
+
+`build_diag_check.sh` runs `--changed origin/main` itself before it starts
+the build, and a failing ratchet stops it there - the two halves CI's
+Build (Diagnostics) workflow decides are one local command. Point it at a
+different ref with `COMPLEXITY_GATE_BASE`. With no `build.diag` on disk
+yet the ratchet has no database to read and runs after that build instead;
+the database is also the previous build's, so a `.c` file added since then
+fails the ratchet as unmeasured until a build catches the database up.
+
+A file only a build variant compiles - `gfx/gfx_null_panel.c`, which exists
+for `CONFIG_LAUNCHER_QEMU` alone - is in no diagnostics database at all.
+`VARIANT_ONLY_FILES` names a sibling in the same folder whose compile command
+it borrows, so such a file is measured with the flags it would have had
+rather than excused.
 
 In CI the gate is its own job in `.github/workflows/build-diagnostics.yml`,
 the only one that fetches the upstream submodules. It runs inside the ESP-IDF

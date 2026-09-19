@@ -26,16 +26,22 @@ the point, not the number.)
 **On Windows**, `idf.py` cannot run under Git Bash, so the build/flash
 half of that second script refuses. Either collect from what is already
 on the board (`run_device_tests.sh --no-flash` - collection is plain
-Python and works fine here), or use a wrapper, which is a `.sh` that
-shells out to PowerShell:
+Python and works fine here), or use a wrapper, which is a `.sh` reaching
+ESP-IDF through `tools/idf.sh`:
 
 ```sh
 ./launcher/tools/report_test_results.sh                    # pass/fail for every suite  -> tools/results/
 ./launcher/main/apps/sand/tools/report_performance.sh       # frame-budget numbers       -> its own tools/results/
 ```
 
-Both build and flash the diagnostics variant, capture the run, write a
-markdown report, and restore `build.release` afterwards.
+Both declare what they want and hand the work to
+`launcher/tools/device_report.sh`, which builds and flashes the diagnostics
+variant through `build_flash.sh --diag --autorun`, captures the run,
+validates the capture, writes a markdown report, and reflashes the release
+firmware afterwards unless given `--no-restore`. A report script differs from
+its siblings only in what it declares — capture timeout, which suite,
+sentinel, reporter, output location — so a build flag cannot reach one of
+them and miss another.
 
 The second builds the diagnostics variant, flashes it, collects results over
 the console and exits non-zero on failure — so it works in CI. On Windows,
@@ -95,8 +101,9 @@ one suite at a time via RUNSUITE or as a full boot-time run.
 ### The host runner enforces two of the device's limits
 
 The host has megabytes of stack and gigabytes of heap; the board has 3,584
-bytes of main task stack and 184,171 bytes of internal heap free after
-`gfx_init()` (172,147 once the shell is ready). Two classes of bug lived in
+bytes of main task stack and 130,635 bytes of internal heap free after
+`gfx_init()` (117,219 once the shell is ready), in blocks no larger than
+51,200. Two classes of bug lived in
 that gap, and each one cost a build-flash-capture cycle to find — twice
 over, for both:
 
@@ -105,7 +112,7 @@ over, for both:
   `check_stack_usage.py` fails the run on any function whose frame exceeds
   the profile's ceiling. This is a *static prediction*, not a reproduction:
   the host cannot overflow, so the gate reads the frame sizes the compiler
-  already computed for its own prologues. Seven frames already exceed the
+  already computed for its own prologues. Six host frames already exceed the
   ceiling and are listed as debt in the checker, so a new one still fails
   while the existing ones stay visible rather than silently blessed.
 - **A fixture that allocates more than the board has.** The suite's
@@ -141,6 +148,11 @@ to a gate.
 **These are approximations, and worth knowing where they end.** The stack
 gate checks test code only, one function at a time — it does not sum a call
 chain, so it bounds the worst single frame rather than the deepest path.
+Its frames are the host compiler's: the Xtensa frame is half the size at
+the median but up to 1.67x larger in the worst measured case, so
+`check_stack_usage_device.sh` — the same checker over the target
+compiler's own frames, no device needed — is what to run when a host frame
+nears the ceiling.
 The arena models one process's allocations from a clean start, so it cannot
 show fragmentation inherited from the rest of a real boot. Neither gate
 replaces a device capture. They make a whole class of bug cost a second on
@@ -154,7 +166,7 @@ simply never compiled. `build/launcher.elf` (release) is neither DEVELOPMENT
 nor SELFTEST, so **the Diagnostics app** is out of it too, for a related but
 separate reason: it is gated on `CONFIG_LAUNCHER_DEVELOPMENT`, a strictly
 broader flag than `CONFIG_LAUNCHER_SELFTEST` (see
-[Launcher-Architecture.md](Launcher-Architecture.md#an-app-is-a-folder) and
+[Building-an-App.md](Building-an-App.md#an-app-is-a-folder) and
 `main/CMakeLists.txt`) — it also ships in a `--dev` build, which carries no
 test suites at all.
 
@@ -217,6 +229,8 @@ its `.text` *and* its `.bss`, which is what buys the run time back.
 
 ```sh
 bash launcher/main/apps/sand/tools/report_performance.sh --perf-scope
+# the image alone, left on the board, with no capture taken:
+bash launcher/tools/build_flash.sh --diag --perf-scope
 # by hand, the fragment simply appends to the usual three:
 idf.py -B build.diag.<yours> \
   -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag;sdkconfig.defaults.diag_autorun;sdkconfig.defaults.diag_perf" \
@@ -428,6 +442,64 @@ serial port. Until a lock exists:
 - **A stuck flash can hold the port for tens of minutes.** If a capture or
   flash seems to hang, that is more likely another process still holding
   the port than a genuinely broken board.
+
+---
+
+## QEMU: the device image with no board
+
+Espressif's QEMU has an `esp32s3` machine, and the diagnostics image runs
+its suites under it — the real Xtensa binary, ESP-IDF, FreeRTOS and both
+cores, with no board and therefore no port to share. Any number of
+instances run at once.
+
+```sh
+python %IDF_PATH%\tools\idf_tools.py install qemu-xtensa   # once
+./launcher/test/run_qemu_tests.sh --perf-scope             # build + run
+./launcher/test/run_qemu_tests.sh --perf-scope --icount --no-build
+```
+
+The image is the autorun diagnostics build with `sdkconfig.defaults.qemu`
+layered last, in its own `build.qemu*/`. That fragment does three things.
+It drops the 120 MHz flash configuration, which QEMU's flash model cannot
+follow — such an image resets silently in the second-stage bootloader. It
+moves the console to UART0, the port QEMU exposes. And it sets
+`CONFIG_LAUNCHER_QEMU`: no panel, I/O expander or touch controller exists
+there, so board identification fails, and with that option `gfx.c` gives an
+unidentified board a null panel (`gfx_null_panel.c`). It keeps the one
+property of the link the code above depends on: a strip occupies the bus
+for its own transfer time at the current panel clock, one strip after
+another, and only then counts as sent. The framebuffer, the present task and
+everything drawn through them run as they do on the board, and costs keep
+their order — a narrow window cheaper than a band, a band cheaper than a
+frame, nothing sent costing nothing.
+
+Touch gets the same treatment: where no controller answers, `touch.c`
+installs a stand-in behind the same driver interface, and `touch_inject()`
+sets what it reports. The sample still travels the polling task and the
+touch state machine to `touch_read()`, so a test can drive input end to end.
+The option also makes the temperature read report failure, because
+ESP-IDF's driver waits forever on a sensor QEMU does not have.
+
+**What a run is evidence of.** Pass and fail, for any test that does not
+read a clock; the full scope runs to `SELFTEST_COMPLETE` in about nine
+minutes, the perf scope in five. Prefer `--icount` for it: emulated code
+runs several times slower than the chip in real time, so without it
+ceilings pegged on the board fail on the CPU half of their cost. Two kinds
+of failure remain by construction — the performance-monitor test, since
+QEMU does not model the PMU and every counter reads zero, and the test that
+a touch controller physically answers, which skips itself. Any other
+failure deserves a look on the board. A run says nothing about the real
+panel, the real touch controller, the IMU or timing.
+
+**`--icount` counts instructions, never time.** Virtual time then advances
+one nanosecond per executed instruction, so a `us per step` line times 1000
+is instructions per step — for a measurement that sends nothing, since time
+spent waiting on the null panel's modelled bus passes with no instructions
+behind it. A step that runs on one core repeats exactly from
+run to run. A two-core step sums both cores and wanders by up to 1%, since
+the waiting core's spin is counted too. The count answers whether a change
+removed work; on this chip that does not predict whether it removed time
+(see [`notes/Optimization-Playbook.md`](notes/Optimization-Playbook.md)).
 
 ---
 
@@ -705,7 +777,10 @@ gfx/ui change can be checked without touching the sand suites at all.
    `tools/build_diag_check.sh` before pushing rather than finding out from a
    pull request — there is no automated gate on this any more (see "A
    diagnostics build can be scoped" above), so the check is `idf.py -B
-   build.diag size` read by eye, not a pass/fail script.
+   build.diag size` read by eye, not a pass/fail script. The `.bss` reading
+   is the eyeball half of that script; the pass/fail half is the complexity
+   ratchet it runs first, in seconds, before the build
+   (`docs/tools/Complexity-Gate.md`).
 
    One trap makes a local measurement lie: **a local `build.diag` keeps
    whatever scope it was last configured with**. A leftover
@@ -733,7 +808,7 @@ gfx/ui change can be checked without touching the sand suites at all.
 
 ## Related
 
-- `docs/Launcher-Architecture.md` — how an app plugs into the shell, and the
+- `docs/Building-an-App.md` — how an app plugs into the shell, and the
   folder layout the app-suite convention above assumes.
 - `docs/sand/Sand-Simulation.md` — the sand suite (`suite_sand_*.c`) is the
   largest test suite in this codebase; this is what it is actually testing.

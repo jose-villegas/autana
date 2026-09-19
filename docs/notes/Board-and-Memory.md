@@ -94,7 +94,8 @@ are the framebuffer's only claim on internal DRAM.
 
 | Measurement | Value | Source |
 |---|---|---|
-| Internal (non-PSRAM) free heap after `gfx_init()` | **311,775 bytes** | `launcher/tools/device_profiles/esp32s3.sh`'s `DP_FREE_HEAP_BYTES`, device capture on the diagnostics build, 2026-09-13 |
+| Internal (non-PSRAM) free heap after `gfx_init()` | **130,635 bytes** | `launcher/tools/device_profiles/esp32s3.sh`'s `DP_FREE_HEAP_BYTES`, device capture on the diagnostics build, 2026-09-16 |
+| Largest free block in it | **51,200 bytes** | `DP_LARGEST_FREE_BLOCK_BYTES`, same capture - `gfx_init()` holds a 17 KB gather buffer and two 47 KB strip buffers in this pool |
 
 That figure already excludes the framebuffer, since the framebuffer no longer
 competes for it — it is the headroom left for everything else (task stacks,
@@ -120,13 +121,14 @@ resolve intersecting geometry — but for convex solids it is correct.
 
 Instruction and data cache are not a separate resource from the internal
 heap above — IDF's ESP32-S3 defaults reserve 16 KiB (instruction, 8-way) +
-32 KiB (data, 8-way) out of the same internal SRAM. A larger Kconfig choice
-exists on this chip, but a device sweep found it not worth the heap it
-costs sand: doubling the instruction cache to 32 KiB bought 1-11% per step,
-and a 64 KiB data cache bought nothing, since sand's grids live in internal
-SRAM and are already direct-access rather than cached (see
+32 KiB (data, 8-way) out of the same internal SRAM. This board ships a 32 KiB
+instruction cache instead (`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB` in
+`launcher/sdkconfig.defaults`): a device sweep measured 1-11% per sand step
+for the extra 16 KiB of internal RAM. The data cache stays at the default,
+because 64 KiB bought nothing — sand's grids live in internal SRAM and are
+already direct-access rather than cached (see
 [`../Autana-Rendering-Roadmap.md`](../Autana-Rendering-Roadmap.md) §3.3,
-device measurement, 2026-09-13). The board ships IDF's defaults.
+device measurement, 2026-09-13).
 
 ### Static growth still taxes the internal heap
 
