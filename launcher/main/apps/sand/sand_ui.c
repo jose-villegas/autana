@@ -104,7 +104,7 @@ sand_ui_tile_clicked(sand_ui_t* ui, int index) {
          * has no mode to toggle into, so this does nothing rather than
          * silently flip a bit nothing ever reads (see
          * material_can_emit()). */
-        if (!material_can_emit(ui->brushes[ui->brush])) {
+        if (!material_can_emit(ui->brushes[ui->brush].cell)) {
             return 0;
         }
         ui->modes[ui->brush] = (ui->modes[ui->brush] == BRUSH_POUR) ? BRUSH_SPAWN : BRUSH_POUR;
