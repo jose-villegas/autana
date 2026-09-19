@@ -19,9 +19,8 @@
 #include <stdbool.h>
 
 /* The cover glass hides roughly this many pixels along every edge of the
- * panel, and more where the corners round off - a development build's hash
- * mark drawn flush to the edge came back unreadable. Anything meant to be
- * read insets by at least this much. Measured on the board. */
+ * panel, and more where the corners round off. Anything meant to be read
+ * insets by at least this much. Measured on the board. */
 #define DISPLAY_PANEL_SAFE_INSET 15
 
 /* tan(60 deg) = 1.732..., approximated as a small integer ratio so the
