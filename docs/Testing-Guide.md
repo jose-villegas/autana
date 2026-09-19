@@ -345,7 +345,7 @@ that refuses to.
 
 A diag build (`CONFIG_LAUNCHER_SELFTEST` on, `AUTORUN` off) listens on the
 USB serial console for two commands, both handled in
-`launcher/main/util/screenshot.c`. `SCREENSHOT` dumps the live framebuffer;
+`launcher/main/util/screenshot.c`. `SCREENSHOT` dumps the frame on screen;
 `RUNSUITE <suite_function_name>` runs exactly that one registered suite and
 prints its result — **with no rebuild and no reflash**:
 

@@ -96,6 +96,11 @@ and the full field list.
   animation.
 - Only one process can hold the serial port at a time - close `monitor.sh`
   first.
+- **Every colour mode, but not RGB565 band mode.** An indexed-colour app
+  (256 or 16 colours) keeps no framebuffer; its frame is rebuilt row by row
+  through the same expansion the present path sends. An app drawing in
+  RGB565 bands keeps no image at all, so the device answers
+  `SCREENSHOT_REFUSED:` with the reason and the script exits at once.
 - **Blind to the panel link.** It captures the framebuffer, and the shell
   requests a full redraw right after, which heals a corrupted panel. Stray
   pixels or lines seen on the glass but not in the capture are a link fault;
