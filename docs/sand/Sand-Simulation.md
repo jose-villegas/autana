@@ -1199,8 +1199,8 @@ update can touch another's, in cells:
 
 The gravity sweep, gas walk, liquid cross-flow and a reacting cell's own
 LOCAL rules have fixed cell reaches small enough to split. The sweep runs
-on the four-colour chunk grid below; the gas walk, liquid cross-flow and
-the reaction pass still share the older row-stripe layout
+and liquid cross-flow run on the four-colour chunk grid below; the gas walk
+and the reaction pass still share the older row-stripe layout
 (`run_reaction_rows()`, `sand_reactions.c`). Gas cross-flow, a reaction's
 long-reach triggers, liquid density sorting and impulses remain serial:
 each long-reach trigger has an `_or_defer` gate at its call site that
@@ -1282,34 +1282,43 @@ Nothing stalls at a boundary any more, so there is nothing for a
 development overlay to draw; the seam overlay and its checkbox are gone.
 
 
-### Liquid cross-flow stripes
+### Liquid cross-flow chunks
 
-Cross-flow uses the shared derived stripe height, with 8 guard rows on each
-side of every internal boundary. The guard width matches
-`SAND_LIQUID_SIGHT`, the furthest a cell can read or transfer in one pass.
-The offset is shared with the main sweep. Boards yielding fewer than four
-stripes, and scratch allocation failures, fall back to the serial order.
+Cross-flow runs on the same four-colour chunk grid as the sweep, in the same
+four passes, with no guards of its own. `SAND_CHUNK_SIDE_MIN` is
+`2 * SAND_LIQUID_SIGHT + 1` precisely so a chunk's interior clears the
+furthest a cell can read or transfer, which makes a reach out of a chunk land
+in an adjacent chunk - never in another chunk of the same colour. Boards with
+too few chunk rows to give both workers work, and scratch allocation
+failures, fall back to the serial order.
 
-A cell reads or transfers at most 8 rows away, but the bookkeeping
-around it reaches further: depth-repaint marks extend another 24 rows
-from a destination, and block wakes clear settled flags across a 3x3
-neighbourhood. Those writes exceed the cell guards, so each worker owns a
-private copy of the block flags, dirty spans, and its own movement and
-probe counters, merged back in at the join.
+A cell reads or transfers at most 8 cells away, but the bookkeeping around it
+reaches further: depth-repaint marks extend another 24 rows from a
+destination, and block wakes clear settled flags across a 3x3 neighbourhood.
+Those writes exceed a chunk, so each worker owns a private copy of the block
+flags, dirty spans, and its own movement and probe counters, merged back in
+at the join.
 
-An arrival bitmap prevents the guard pass from forwarding mass a cell
-only just received during the phase it ran in. Isolated seam transfers
-are serial-exact; contested pools can redistribute differently between
-the two paths and are checked instead for exact mass conservation,
-deterministic output, and no persistent seam jumps.
+The flow that crosses rows - gravity mostly sideways - splits like any other
+now. Row stripes could not preserve source-before-destination order for it
+and had to serialise it; a chunk is two-dimensional and has no such axis.
+
+Mass a cell receives from a chunk whose pass ran earlier is forwarded once
+more by the chunk it landed in, so an isolated transfer near a boundary is no
+longer serial-exact. What holds exactly is the mass, the repaint and the
+wake: `suite_sand_crossflow.c` steps an isolated transfer near a boundary in
+all eight ray directions and checks the split total against the serial total
+cell for cell in mass, and that every cell the split changed came back
+through the merge into its row's repaint span and out of its block's settled
+bits. Pools are checked for conservation, determinism and levelling across a
+boundary.
 
 `tools/report_crossflow.sh` measures the liquid pass on host using the
 shared water-slope and submerged-pile builders; every other pass stays
 serial in that comparison, and the host worker itself dispatches inline,
 so its timings measure overhead and changed work, not multicore speedup.
 The device perf suite enables splitting for its own liquid tables;
-`pass_us.liquid_us` there includes both phases, joins, metadata merges and
-guards together.
+`pass_us.liquid_us` there includes every pass, join and metadata merge.
 
 ### Gas walk stripes
 
