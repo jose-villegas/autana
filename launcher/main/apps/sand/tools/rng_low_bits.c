@@ -35,6 +35,7 @@
 
 #include "material.h"
 #include "sand.h"
+#include "sand_priv.h"
 #include "util/rng.h"
 
 /* The suite's own sealed-pocket geometry on the suite's own 8x8 grid: a
@@ -172,6 +173,23 @@ conditional_rates(uint32_t seed, int decimate, double* unconditional, double* gi
     }
     *unconditional = (double)hits / (double)total;
     *given_mobility_passes = (cond_total != 0) ? (double)cond_hits / (double)cond_total : 0.0;
+}
+
+/* The hashed draw a checkerboard-parallel pass substitutes for the
+ * sequential stream: the same cell and slot every step, with only the step
+ * counter moving. Its low byte is what sand_rng_chance_at() reads, so a
+ * counter walking by one must not walk the bottom eight bits with it. */
+static void
+hashed_histograms(uint32_t seed, uint32_t cell, uint32_t slot, uint32_t* low, uint32_t* joint) {
+    memset(low, 0, sizeof(uint32_t) * 256);
+    memset(joint, 0, sizeof(uint32_t) * 256);
+    uint32_t prev = rng_hash(seed, 0u, cell, slot) & 0xFFu;
+    for (uint32_t phase = 1; phase <= 0xFFFFu; phase++) {
+        const uint32_t cur = rng_hash(seed, phase, cell, slot) & 0xFFu;
+        low[cur]++;
+        joint[(prev >> 4) * 16u + (cur >> 4)]++;
+        prev = cur;
+    }
 }
 
 static void
@@ -375,6 +393,24 @@ print_stream_sections(void) {
         conditional_rates(seed, 1, &p1, &c1);
         conditional_rates(seed, 2, &p2, &c2);
         printf("%4u  %16.6f %16.6f  %16.6f %16.6f\n", seed, p1, c1, p2, c2);
+    }
+    printf("\n");
+
+    printf("== the hashed draw, cell (%d,%d), step counter 0..65535 ==\n", POCKET_GAS_X, POCKET_GAS_Y);
+    printf("%4s  %10s %10s %10s %16s\n", "seed", "low-min", "low-max", "low-chi2", "joint-chi2");
+    static uint32_t hashed_low[256];
+    static uint32_t hashed_joint[256];
+    const uint32_t cell = (uint32_t)(POCKET_GAS_Y * POCKET_W + POCKET_GAS_X);
+    for (uint32_t seed = 1; seed <= POCKET_SEEDS; seed++) {
+        hashed_histograms(seed, cell, SAND_RNG_SLOT_GAS_WALK, hashed_low, hashed_joint);
+        uint32_t lo_min = 0xFFFFFFFFu;
+        uint32_t lo_max = 0;
+        for (int i = 0; i < 256; i++) {
+            lo_min = (hashed_low[i] < lo_min) ? hashed_low[i] : lo_min;
+            lo_max = (hashed_low[i] > lo_max) ? hashed_low[i] : lo_max;
+        }
+        printf("%4u  %10u %10u %10.1f %16.1f\n", seed, lo_min, lo_max, chi_square_flat(hashed_low, 256, 65535.0),
+               chi_square_flat(hashed_joint, 256, 65535.0));
     }
     printf("\n");
 }
