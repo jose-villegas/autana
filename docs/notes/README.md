@@ -56,3 +56,5 @@ the falling-sand app's own discovery narrative, moved out to
   are shaped directly by the constraints here.
 - [`../Testing-Guide.md`](../Testing-Guide.md) — how any of this gets
   verified on real hardware.
+- [`../Build-Variants.md`](../Build-Variants.md) — which image carries the
+  instrumentation these pages tell you to read.

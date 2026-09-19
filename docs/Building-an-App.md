@@ -253,4 +253,6 @@ Boot logs `Ready, N apps registered`; launch and leave log `Starting <name>` /
 - [`Building-a-Screen.md`](Building-a-Screen.md) - microui screens inside an app
 - [`Gfx-and-Presentation.md`](Gfx-and-Presentation.md) - draw targets, dirty tracking, the present path, heal
 - [`Launcher-Architecture.md`](Launcher-Architecture.md) - why one framebuffer and one frame loop
-- [`Testing-Guide.md`](Testing-Guide.md) - suites, runners, build variants
+- [`Testing-Guide.md`](Testing-Guide.md) - suites and runners
+- [`Build-Variants.md`](Build-Variants.md) - what release, dev and
+  diagnostics builds carry, and which flag gates what
