@@ -367,20 +367,20 @@ step_one_gas_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_
  * else was either already handled by the main sweep or is a static wall
  * gas has to work around, not through. */
 static bool
-step_one_gas_row(sand_t* s, int y, int w, int rdx, int rdy, const int* rslide_a, const int* rslide_b, int rx_step,
-                 int rload_dx, int rload_dy, int jostle, bool driven_gas[MATERIAL_MAX][2], const uint8_t* snapshot) {
+step_one_gas_row(sand_t* s, int y, int x0, int x1, int w, int rdx, int rdy, const int* rslide_a, const int* rslide_b,
+                 int rx_step, int rload_dx, int rload_dy, int jostle, bool driven_gas[MATERIAL_MAX][2]) {
     uint8_t* row = s->cells + (size_t)y * (size_t)w;
     uint8_t* prow = dest_row(s, y + rdy);
     uint8_t* arow = dest_row(s, y + rslide_a[1]);
     uint8_t* brow = dest_row(s, y + rslide_b[1]);
 
-    const int x_from = (rx_step > 0) ? 0 : w - 1;
-    const int x_to = (rx_step > 0) ? w : -1;
+    const int x_from = (rx_step > 0) ? x0 : x1 - 1;
+    const int x_to = (rx_step > 0) ? x1 : x0 - 1;
 
     bool any = false;
     for (int x = x_from; x != x_to; x += rx_step) {
         const cell_t c = row[x];
-        if ((snapshot != NULL && c != snapshot[x]) || CELL_IS_EMPTY(c) || ((gas_kind_mask >> (c >> 3)) & 1u) == 0u) {
+        if (CELL_IS_EMPTY(c) || ((gas_kind_mask >> (c >> 3)) & 1u) == 0u) {
             continue;
         }
         /* Presence, not movement: a gas cell that neither moves nor decays
@@ -408,21 +408,21 @@ typedef struct {
     uint16_t* x0;
     uint16_t* x1;
     bool found_any;
-} gas_stripe_t;
+} gas_chunk_t;
 
 typedef struct {
-    gas_stripe_t* stripe;
+    gas_chunk_t* worker;
     const int* rslide_a;
     const int* rslide_b;
     bool (*driven_gas)[2];
     int rdx, rdy, rx_step, rload_dx, rload_dy, jostle;
-    int y_step, stripe_h, offset, color, share;
-} gas_phase_t;
+    int y_step, color, share;
+} gas_pass_t;
 
-_Static_assert(sizeof(gas_phase_t) <= JOB_CTX_MAX, "gas phase must fit JOB_CTX_MAX");
+_Static_assert(sizeof(gas_pass_t) <= JOB_CTX_MAX, "gas pass must fit JOB_CTX_MAX");
 
 static bool gas_worker_order_reversed;
-unsigned sand_gas_equalise_stripe_runs;
+unsigned sand_gas_equalise_runs;
 
 void
 sand_gas_set_worker_order_for_test(bool reverse) {
@@ -430,169 +430,139 @@ sand_gas_set_worker_order_for_test(bool reverse) {
 }
 
 static void
-prepare_gas_stripe(gas_stripe_t* stripe, const sand_t* s) {
-    stripe->local = *s;
-    stripe->local.rng_hashed = true;
-    stripe->found_any = false;
+prepare_gas_worker(gas_chunk_t* worker, const sand_t* s) {
+    worker->local = *s;
+    worker->local.rng_hashed = true;
+    worker->found_any = false;
     if (s->block_state != NULL) {
-        stripe->local.block_state = stripe->blocks;
-        memcpy(stripe->blocks, s->block_state, (size_t)s->block_cols * (size_t)s->block_rows);
+        worker->local.block_state = worker->blocks;
+        memcpy(worker->blocks, s->block_state, (size_t)s->block_cols * (size_t)s->block_rows);
     }
     if (s->dirty_rows != NULL) {
-        stripe->local.dirty_rows = stripe->dirty;
-        memcpy(stripe->dirty, s->dirty_rows, (size_t)s->h);
+        worker->local.dirty_rows = worker->dirty;
+        memcpy(worker->dirty, s->dirty_rows, (size_t)s->h);
     }
     if (s->dirty_x0 != NULL && s->dirty_x1 != NULL) {
-        stripe->local.dirty_x0 = stripe->x0;
-        stripe->local.dirty_x1 = stripe->x1;
-        memcpy(stripe->x0, s->dirty_x0, sizeof *stripe->x0 * (size_t)s->h);
-        memcpy(stripe->x1, s->dirty_x1, sizeof *stripe->x1 * (size_t)s->h);
+        worker->local.dirty_x0 = worker->x0;
+        worker->local.dirty_x1 = worker->x1;
+        memcpy(worker->x0, s->dirty_x0, sizeof *worker->x0 * (size_t)s->h);
+        memcpy(worker->x1, s->dirty_x1, sizeof *worker->x1 * (size_t)s->h);
     }
 }
 
 static void
-merge_gas_stripe(sand_t* s, const gas_stripe_t* stripe) {
+merge_gas_worker(sand_t* s, const gas_chunk_t* worker) {
     if (s->block_state != NULL) {
         for (int i = 0; i < s->block_cols * s->block_rows; i++) {
-            const uint8_t local = stripe->blocks[i];
+            const uint8_t local = worker->blocks[i];
             s->block_state[i] &= (uint8_t)(local | ~(BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER));
             s->block_state[i] |= local & BLOCK_ACTIVE;
         }
     }
     for (int y = 0; y < s->h; y++) {
         if (s->dirty_rows != NULL) {
-            s->dirty_rows[y] |= stripe->dirty[y];
+            s->dirty_rows[y] |= worker->dirty[y];
         }
         if (s->dirty_x0 != NULL && s->dirty_x1 != NULL) {
-            if (stripe->x0[y] < s->dirty_x0[y]) {
-                s->dirty_x0[y] = stripe->x0[y];
+            if (worker->x0[y] < s->dirty_x0[y]) {
+                s->dirty_x0[y] = worker->x0[y];
             }
-            if (stripe->x1[y] > s->dirty_x1[y]) {
-                s->dirty_x1[y] = stripe->x1[y];
+            if (worker->x1[y] > s->dirty_x1[y]) {
+                s->dirty_x1[y] = worker->x1[y];
             }
         }
     }
-    s->faller_may_move |= stripe->local.faller_may_move;
+    s->faller_may_move |= worker->local.faller_may_move;
 }
 
 static void
-gas_phase_worker(void* arg) {
-    const gas_phase_t* c = arg;
-    gas_stripe_t* stripe = c->stripe;
-    sand_t* s = &stripe->local;
-    int seen = 0;
+step_one_gas_chunk(const gas_pass_t* c, int x0, int x1, int y0, int y1) {
+    gas_chunk_t* const worker = c->worker;
+    sand_t* const s = &worker->local;
 
-    for (int k = c->offset == 0 ? 0 : -1; c->offset + k * c->stripe_h < s->h; k++) {
-        if (((k % 2) + 2) % 2 != c->color) {
-            continue;
-        }
-        if ((seen++ & 1) != c->share) {
-            continue;
-        }
-        const int band0 = c->offset + k * c->stripe_h;
-        const int band1 = band0 + c->stripe_h;
-        const int y0 = band0 > 0 ? band0 + 1 : 0;
-        const int y1 = band1 < s->h ? band1 - 1 : s->h;
-        for (int y = c->y_step > 0 ? y0 : y1 - 1; y >= y0 && y < y1; y += c->y_step) {
-            stripe->found_any |= step_one_gas_row(s, y, s->w, c->rdx, c->rdy, c->rslide_a, c->rslide_b, c->rx_step,
-                                                  c->rload_dx, c->rload_dy, c->jostle, c->driven_gas, NULL);
-        }
+    for (int y = c->y_step > 0 ? y0 : y1 - 1; y >= y0 && y < y1; y += c->y_step) {
+        worker->found_any |= step_one_gas_row(s, y, x0, x1, s->w, c->rdx, c->rdy, c->rslide_a, c->rslide_b, c->rx_step,
+                                              c->rload_dx, c->rload_dy, c->jostle, c->driven_gas);
     }
 }
 
-static int
-gas_guard_row_list(int h, int stripe_h, int offset, int* rows, int max) {
-    int n = 0;
-    for (int k = offset == 0 ? 0 : -1;; k++) {
-        const int boundary = offset + (k + 1) * stripe_h;
-        if (boundary >= h) {
-            break;
+static void
+gas_pass_worker(void* arg) {
+    const gas_pass_t* c = arg;
+    const sand_t* const s = &c->worker->local;
+    const int side = sand_chunk_side(s);
+
+    for (int cy = 0; cy < sand_chunk_rows(s); cy++) {
+        if (sand_chunk_share(cy) != c->share) {
+            continue;
         }
-        if (boundary > 0) {
-            if (rows != NULL && n + 1 < max) {
-                rows[n] = boundary - 1;
-                rows[n + 1] = boundary;
+        int y0, y1;
+        sand_chunk_span(cy, side, s->h, &y0, &y1);
+        for (int cx = 0; cx < sand_chunk_cols(s); cx++) {
+            if (sand_chunk_color(cx, cy) == c->color) {
+                int x0, x1;
+                sand_chunk_span(cx, side, s->w, &x0, &x1);
+                step_one_gas_chunk(c, x0, x1, y0, y1);
             }
-            n += 2;
         }
     }
-    return n;
 }
 
-static bool
-run_gas_guard_rows(sand_t* s, const gas_phase_t* c, const int* rows, int count, const uint8_t* snapshots) {
-    bool found_any = false;
-    for (int i = 0; i < count; i += 2) {
-        const int above = rows[i];
-        const int below = rows[i + 1];
-        const int first_i = c->y_step > 0 ? i : i + 1;
-        const int second_i = c->y_step > 0 ? i + 1 : i;
-        const int first = c->y_step > 0 ? above : below;
-        const int second = c->y_step > 0 ? below : above;
-        found_any |=
-            step_one_gas_row(s, first, s->w, c->rdx, c->rdy, c->rslide_a, c->rslide_b, c->rx_step, c->rload_dx,
-                             c->rload_dy, c->jostle, c->driven_gas, snapshots + (size_t)first_i * (size_t)s->w);
-        found_any |=
-            step_one_gas_row(s, second, s->w, c->rdx, c->rdy, c->rslide_a, c->rslide_b, c->rx_step, c->rload_dx,
-                             c->rload_dy, c->jostle, c->driven_gas, snapshots + (size_t)second_i * (size_t)s->w);
+/* One worker per share, dispatched in whichever order the test asks for -
+ * the result must not depend on which core reaches a chunk first. */
+static void
+run_gas_color(sand_t* s, gas_chunk_t* workers, gas_pass_t* ctx, bool* found_any, int color) {
+    for (int i = 0; i < 2; i++) {
+        prepare_gas_worker(&workers[i], s);
     }
-    return found_any;
+    ctx->color = color;
+    const int remote = gas_worker_order_reversed ? 0 : 1;
+    ctx->worker = &workers[1];
+    ctx->share = remote;
+    (void)job_run_core1(gas_pass_worker, ctx, sizeof *ctx);
+    ctx->worker = &workers[0];
+    ctx->share = 1 - remote;
+    gas_pass_worker(ctx);
+    (void)job_wait(100);
+
+    for (int i = 0; i < 2; i++) {
+        merge_gas_worker(s, &workers[i]);
+        *found_any |= workers[i].found_any;
+    }
 }
 
-static bool
-step_gas_stripes(sand_t* s, gas_phase_t* ctx, bool* found_any) {
+static gas_chunk_t*
+alloc_gas_workers(const sand_t* s) {
     const size_t rows = (size_t)s->h;
     const size_t blocks = (size_t)s->block_cols * (size_t)s->block_rows;
-    const int guard_count = gas_guard_row_list(s->h, ctx->stripe_h, ctx->offset, NULL, 0);
-    gas_stripe_t* stripes = calloc(1, 2 * sizeof *stripes + 8 * rows + 2 * blocks + 2 * rows);
-    int* guard_rows = malloc(sizeof *guard_rows * (size_t)guard_count);
-    uint8_t* snapshots = malloc((size_t)guard_count * (size_t)s->w);
-    if (stripes == NULL || guard_rows == NULL || snapshots == NULL) {
-        free(stripes);
-        free(guard_rows);
-        free(snapshots);
+    gas_chunk_t* workers = calloc(1, 2 * sizeof *workers + 8 * rows + 2 * blocks + 2 * rows);
+    if (workers == NULL) {
+        return NULL;
+    }
+    uint16_t* spans = (uint16_t*)(workers + 2);
+    uint8_t* bytes = (uint8_t*)(spans + 4 * rows);
+    for (int i = 0; i < 2; i++) {
+        workers[i].x0 = spans + (size_t)(2 * i) * rows;
+        workers[i].x1 = workers[i].x0 + rows;
+        workers[i].blocks = bytes + (size_t)i * (blocks + rows);
+        workers[i].dirty = workers[i].blocks + blocks;
+    }
+    return workers;
+}
+
+static bool
+step_gas_chunks(sand_t* s, gas_pass_t* ctx, bool* found_any) {
+    gas_chunk_t* workers = alloc_gas_workers(s);
+    if (workers == NULL) {
         return false;
     }
 
-    uint16_t* spans = (uint16_t*)(stripes + 2);
-    uint8_t* bytes = (uint8_t*)(spans + 4 * rows);
-    for (int i = 0; i < 2; i++) {
-        stripes[i].x0 = spans + (size_t)(2 * i) * rows;
-        stripes[i].x1 = stripes[i].x0 + rows;
-        stripes[i].blocks = bytes + (size_t)i * (blocks + rows);
-        stripes[i].dirty = stripes[i].blocks + blocks;
-    }
-    gas_guard_row_list(s->h, ctx->stripe_h, ctx->offset, guard_rows, guard_count);
-    for (int i = 0; i < guard_count; i++) {
-        memcpy(snapshots + (size_t)i * (size_t)s->w, s->cells + (size_t)guard_rows[i] * (size_t)s->w, (size_t)s->w);
-    }
-
     gas_row_map_live = false;
-    for (int color = 0; color < 2; color++) {
-        prepare_gas_stripe(&stripes[0], s);
-        prepare_gas_stripe(&stripes[1], s);
-        ctx->color = color;
-        const int remote = gas_worker_order_reversed ? 0 : 1;
-        ctx->stripe = &stripes[1];
-        ctx->share = remote;
-        (void)job_run_core1(gas_phase_worker, ctx, sizeof *ctx);
-        ctx->stripe = &stripes[0];
-        ctx->share = 1 - remote;
-        gas_phase_worker(ctx);
-        (void)job_wait(100);
-        for (int i = 0; i < 2; i++) {
-            merge_gas_stripe(s, &stripes[i]);
-            *found_any |= stripes[i].found_any;
-        }
+    for (int color = 0; color < SAND_CHUNK_COLOR_COUNT; color++) {
+        run_gas_color(s, workers, ctx, found_any, color);
     }
-    const bool was_hashed = s->rng_hashed;
-    s->rng_hashed = true;
-    *found_any |= run_gas_guard_rows(s, ctx, guard_rows, guard_count, snapshots);
-    s->rng_hashed = was_hashed;
 
-    free(stripes);
-    free(guard_rows);
-    free(snapshots);
+    free(workers);
     return true;
 }
 
@@ -927,92 +897,86 @@ equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, 
 }
 
 typedef struct {
-    gas_stripe_t* stripe;
-    int px, py, rdx, rdy, x_from, x_to, x_step, stripe_h, offset, color, share;
+    gas_chunk_t* worker;
+    int px, py, rdx, rdy, x_step, color, share;
     uint16_t is_gas;
-} gas_equalise_phase_t;
+} gas_equalise_pass_t;
 
-_Static_assert(sizeof(gas_equalise_phase_t) <= JOB_CTX_MAX, "gas equalise phase must fit JOB_CTX_MAX");
+_Static_assert(sizeof(gas_equalise_pass_t) <= JOB_CTX_MAX, "gas equalise pass must fit JOB_CTX_MAX");
+
+/* The split only ever runs with a ray that stays inside its own row (see
+ * equalise_gas()), so the walk's long sight reaches sideways only - across
+ * chunk columns of the same chunk row, which one worker owns in full. */
+static void
+equalise_gas_one_chunk(const gas_equalise_pass_t* c, int x0, int x1, int y0, int y1) {
+    gas_chunk_t* const worker = c->worker;
+    sand_t* const s = &worker->local;
+    const int x_from = (c->x_step > 0) ? x0 : x1 - 1;
+    const int x_to = (c->x_step > 0) ? x1 : x0 - 1;
+    int clean_run = 0;
+
+    for (int y = y0; y < y1; y++) {
+        worker->found_any |= equalise_gas_one_row(s, y, s->w, x_from, x_to, c->x_step, c->px, c->py, c->rdx, c->rdy,
+                                                  c->is_gas, &clean_run);
+    }
+}
 
 static void
-gas_equalise_phase_worker(void* arg) {
-    const gas_equalise_phase_t* c = arg;
-    gas_stripe_t* stripe = c->stripe;
-    sand_t* s = &stripe->local;
-    int seen = 0;
+gas_equalise_pass_worker(void* arg) {
+    const gas_equalise_pass_t* c = arg;
+    const sand_t* const s = &c->worker->local;
+    const int side = sand_chunk_side(s);
 
-    for (int k = c->offset == 0 ? 0 : -1; c->offset + k * c->stripe_h < s->h; k++) {
-        if (((k % 2) + 2) % 2 != c->color) {
+    for (int cy = 0; cy < sand_chunk_rows(s); cy++) {
+        if (sand_chunk_share(cy) != c->share) {
             continue;
         }
-        if ((seen++ & 1) != c->share) {
-            continue;
-        }
-        const int band0 = c->offset + k * c->stripe_h;
-        const int band1 = band0 + c->stripe_h;
-        const int y0 = band0 > 0 ? band0 + 1 : 0;
-        const int y1 = band1 < s->h ? band1 - 1 : s->h;
-        int clean_run = 0;
-        for (int y = y0; y < y1; y++) {
-            stripe->found_any |= equalise_gas_one_row(s, y, s->w, c->x_from, c->x_to, c->x_step, c->px, c->py, c->rdx,
-                                                      c->rdy, c->is_gas, &clean_run);
+        int y0, y1;
+        sand_chunk_span(cy, side, s->h, &y0, &y1);
+        for (int cx = 0; cx < sand_chunk_cols(s); cx++) {
+            if (sand_chunk_color(cx, cy) == c->color) {
+                int x0, x1;
+                sand_chunk_span(cx, side, s->w, &x0, &x1);
+                equalise_gas_one_chunk(c, x0, x1, y0, y1);
+            }
         }
     }
 }
 
+static void
+run_gas_equalise_color(sand_t* s, gas_chunk_t* workers, gas_equalise_pass_t* ctx, bool* found_any, int color) {
+    for (int i = 0; i < 2; i++) {
+        prepare_gas_worker(&workers[i], s);
+    }
+    ctx->color = color;
+    ctx->worker = &workers[1];
+    ctx->share = 1;
+    (void)job_run_core1(gas_equalise_pass_worker, ctx, sizeof *ctx);
+    ctx->worker = &workers[0];
+    ctx->share = 0;
+    gas_equalise_pass_worker(ctx);
+    (void)job_wait(100);
+
+    for (int i = 0; i < 2; i++) {
+        merge_gas_worker(s, &workers[i]);
+        *found_any |= workers[i].found_any;
+    }
+}
+
 static bool
-equalise_gas_stripes(sand_t* s, int px, int py, int rdx, int rdy, int x_from, int x_to, int x_step, uint16_t is_gas,
-                     bool* found_any) {
-    const size_t rows = (size_t)s->h;
-    const size_t blocks = (size_t)s->block_cols * (size_t)s->block_rows;
-    const int stripe_h = sand_stripe_height(s->h);
-    const int offset = sand_stripe_offset(s);
-    const int guard_count = gas_guard_row_list(s->h, stripe_h, offset, NULL, 0);
-    gas_stripe_t* stripes = calloc(1, 2 * sizeof *stripes + 8 * rows + 2 * blocks + 2 * rows);
-    int* guard_rows = malloc(sizeof *guard_rows * (size_t)guard_count);
-    if (stripes == NULL || guard_rows == NULL) {
-        free(stripes);
-        free(guard_rows);
+equalise_gas_chunks(sand_t* s, int px, int py, int rdx, int rdy, int x_step, uint16_t is_gas, bool* found_any) {
+    gas_chunk_t* workers = alloc_gas_workers(s);
+    if (workers == NULL) {
         return false;
     }
 
-    uint16_t* spans = (uint16_t*)(stripes + 2);
-    uint8_t* bytes = (uint8_t*)(spans + 4 * rows);
-    for (int i = 0; i < 2; i++) {
-        stripes[i].x0 = spans + (size_t)(2 * i) * rows;
-        stripes[i].x1 = stripes[i].x0 + rows;
-        stripes[i].blocks = bytes + (size_t)i * (blocks + rows);
-        stripes[i].dirty = stripes[i].blocks + blocks;
+    gas_equalise_pass_t ctx = {NULL, px, py, rdx, rdy, x_step, 0, 0, is_gas};
+    for (int color = 0; color < SAND_CHUNK_COLOR_COUNT; color++) {
+        run_gas_equalise_color(s, workers, &ctx, found_any, color);
     }
-    gas_guard_row_list(s->h, stripe_h, offset, guard_rows, guard_count);
+    sand_gas_equalise_runs++;
 
-    for (int color = 0; color < 2; color++) {
-        prepare_gas_stripe(&stripes[0], s);
-        prepare_gas_stripe(&stripes[1], s);
-        gas_equalise_phase_t ctx = {&stripes[1], px,       py,     rdx,   rdy, x_from, x_to,
-                                    x_step,      stripe_h, offset, color, 1,   is_gas};
-        (void)job_run_core1(gas_equalise_phase_worker, &ctx, sizeof ctx);
-        ctx.stripe = &stripes[0];
-        ctx.share = 0;
-        gas_equalise_phase_worker(&ctx);
-        (void)job_wait(100);
-        for (int i = 0; i < 2; i++) {
-            merge_gas_stripe(s, &stripes[i]);
-            *found_any |= stripes[i].found_any;
-        }
-    }
-
-    int clean_run = 0;
-    const bool was_hashed = s->rng_hashed;
-    s->rng_hashed = true;
-    for (int i = 0; i < guard_count; i++) {
-        const int y = guard_rows[i];
-        *found_any |= equalise_gas_one_row(s, y, s->w, x_from, x_to, x_step, px, py, rdx, rdy, is_gas, &clean_run);
-    }
-    s->rng_hashed = was_hashed;
-    sand_gas_equalise_stripe_runs++;
-    free(stripes);
-    free(guard_rows);
+    free(workers);
     return true;
 }
 
@@ -1095,8 +1059,8 @@ equalise_gas(sand_t* s, const int* perp, int rdx, int rdy) {
      * ray's targets are exactly the rows this count has already crossed. */
     int clean_run = 0;
 
-    if (!sand_two_core_step_enabled() || row_crossing || sand_stripe_count(s) < SAND_STRIPE_SPLIT_MIN_COUNT
-        || !equalise_gas_stripes(s, px, py, rdx, rdy, x_from, x_to, x_step, is_gas, &found_any)) {
+    if (!sand_two_core_step_enabled() || row_crossing || !sand_chunk_split_ready(s)
+        || !equalise_gas_chunks(s, px, py, rdx, rdy, x_step, is_gas, &found_any)) {
         if (equalise_gas_every_row(s, px, py, rdx, rdy, is_gas, y_from, y_to, y_step, x_from, x_to, x_step,
                                    row_crossing, &clean_run)) {
             found_any = true;
@@ -1161,7 +1125,7 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     gas_row_map_live = (s->h <= GAS_ROW_MAX);
     memset(gas_row_map.w, 0, sizeof gas_row_map.w);
 
-    gas_phase_t phase = {
+    gas_pass_t pass = {
         .rslide_a = sweep_slide_a,
         .rslide_b = sweep_slide_b,
         .driven_gas = driven_gas,
@@ -1172,14 +1136,12 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
         .rload_dy = rload_dy,
         .jostle = jostle,
         .y_step = y_step,
-        .stripe_h = sand_stripe_height(s->h),
-        .offset = sand_stripe_offset(s),
     };
-    if (!s->gas_walk || !sand_two_core_step_enabled() || sand_stripe_count(s) < SAND_STRIPE_SPLIT_MIN_COUNT
-        || !step_gas_stripes(s, &phase, &found_any)) {
+    if (!s->gas_walk || !sand_two_core_step_enabled() || !sand_chunk_split_ready(s)
+        || !step_gas_chunks(s, &pass, &found_any)) {
         for (int y = y_from; y != y_to; y += y_step) {
-            if (step_one_gas_row(s, y, w, rdx, rdy, sweep_slide_a, sweep_slide_b, rx_step, rload_dx, rload_dy, jostle,
-                                 driven_gas, NULL)) {
+            if (step_one_gas_row(s, y, 0, w, w, rdx, rdy, sweep_slide_a, sweep_slide_b, rx_step, rload_dx, rload_dy,
+                                 jostle, driven_gas)) {
                 found_any = true;
             }
         }

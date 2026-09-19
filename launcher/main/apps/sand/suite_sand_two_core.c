@@ -1201,12 +1201,7 @@ test_landscape_water_column_has_no_row_mass_lag(void) {
 
 static int
 tc_first_gas_equalise_boundary(const sand_t* s) {
-    const int stripe_h = sand_stripe_height(s->h);
-    int boundary = sand_stripe_offset(s);
-    while (boundary < 2) {
-        boundary += stripe_h;
-    }
-    return boundary;
+    return sand_chunk_side(s);
 }
 
 static void
@@ -1232,8 +1227,8 @@ tc_step_gas_equalise(sand_t* s, bool two_core) {
 
 static void
 test_split_gas_equalise_keeps_seam_order(void) {
-    sand_gas_equalise_stripe_runs = 0;
-    for (int phase = 0; phase < SAND_STRIPE_SPLIT_MIN_COUNT; phase++) {
+    sand_gas_equalise_runs = 0;
+    for (int phase = 0; phase < SAND_CHUNK_COLOR_COUNT; phase++) {
         uint8_t* serial_cells = malloc((size_t)TC_W * (size_t)TC_H);
         uint8_t* split_cells = malloc((size_t)TC_W * (size_t)TC_H);
         TEST_ASSERT_NOT_NULL(serial_cells);
@@ -1258,8 +1253,8 @@ test_split_gas_equalise_keeps_seam_order(void) {
         free(split_cells);
         TEST_ASSERT_TRUE_MESSAGE(cells_match, why);
     }
-    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0, sand_gas_equalise_stripe_runs,
-                                          "portrait gas equalise did not enter its split stripes");
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0, sand_gas_equalise_runs,
+                                          "portrait gas equalise did not enter its split passes");
 }
 
 #ifdef DEVICE_BUILD
