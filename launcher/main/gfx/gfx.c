@@ -87,6 +87,35 @@ static gfx_color_t indexed_dither_pixel_checker2[GFX_INDEXED_PALETTE_SIZE * GFX_
                                                  * GFX_INDEXED_CHECKER2_CHUNK_PX];
 static gfx_color_t indexed_dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES];
 
+static const gfx_color_t*
+indexed_active_table(void) {
+    if (!indexed_dither16_on) {
+        return indexed_lut256;
+    }
+    switch (indexed_dither_mode) {
+        case GFX_DITHER_NONE: return indexed_dither_none_lut;
+        case GFX_DITHER_CELL_CHECKER: return indexed_dither_cell_checker;
+        case GFX_DITHER_CELL_BAYER2: return indexed_dither_cell_bayer2;
+        case GFX_DITHER_PIXEL_CHECKER2: return indexed_dither_pixel_checker2;
+        case GFX_DITHER_PIXEL_BAYER4:
+        case GFX_DITHER_MODE_COUNT:
+        default: return indexed_dither16_rgb;
+    }
+}
+
+static gfx_indexed_frame_t
+indexed_frame(void) {
+    return (gfx_indexed_frame_t){
+        .image = indexed_image,
+        .grid_w = indexed_grid_w,
+        .grid_h = indexed_grid_h,
+        .cell_size = indexed_cell_size,
+        .dither16_on = indexed_dither16_on,
+        .dither_mode = indexed_dither_mode,
+        .table = indexed_active_table(),
+    };
+}
+
 /* True only for the RGB565 band mode, where an app's own frame() drives
  * gfx_band_next()/_submit() itself - see gfx_present_begin() below. */
 static inline bool
@@ -1912,36 +1941,6 @@ send_fb_rows(int y0, int y1) {
     return false;
 }
 
-/* One indexed row through whichever of the five GFX_DITHER_* modes is
- * installed - the present-task half of gfx_indexed_set_dither(). */
-static void
-expand_indexed_row(const uint8_t* row_ptr, int grid_row, int y, gfx_color_t* out_row) {
-    switch (indexed_dither_mode) {
-        case GFX_DITHER_CELL_CHECKER:
-            gfx_indexed_expand_row_dither_cell(row_ptr, indexed_grid_w, indexed_dither_cell_checker, false,
-                                               indexed_cell_size, grid_row, out_row, GFX_WIDTH);
-            return;
-        case GFX_DITHER_CELL_BAYER2:
-            gfx_indexed_expand_row_dither_cell(row_ptr, indexed_grid_w, indexed_dither_cell_bayer2, true,
-                                               indexed_cell_size, grid_row, out_row, GFX_WIDTH);
-            return;
-        case GFX_DITHER_PIXEL_CHECKER2:
-            gfx_indexed_expand_row_dither_checker2(row_ptr, indexed_grid_w, indexed_dither_pixel_checker2,
-                                                   indexed_cell_size, y, 0, out_row, GFX_WIDTH);
-            return;
-        case GFX_DITHER_NONE:
-            gfx_indexed_expand_row(row_ptr, indexed_grid_w, indexed_dither_none_lut, indexed_cell_size, out_row,
-                                   GFX_WIDTH);
-            return;
-        case GFX_DITHER_PIXEL_BAYER4:
-        case GFX_DITHER_MODE_COUNT:
-        default:
-            gfx_indexed_expand_row_dither16(row_ptr, indexed_grid_w, indexed_dither16_rgb, indexed_cell_size, y, 0,
-                                            out_row, GFX_WIDTH);
-            return;
-    }
-}
-
 /* send_fb_rows()'s GFX_PIXFMT_INDEXED8 counterpart: expands rows [y0, y1)
  * from the index image through the installed LUT, into the same bounce
  * slots, instead of copying pixels already sitting in `fb`. Same return
@@ -1951,15 +1950,9 @@ send_indexed_rows(int y0, int y1) {
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
     strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
 
+    const gfx_indexed_frame_t frame = indexed_frame();
     for (int y = y0; y < y1; y++) {
-        const int grid_row = gfx_indexed_panel_row_to_grid_row(y, indexed_cell_size);
-        const uint8_t* row_ptr = (grid_row < indexed_grid_h) ? indexed_image + (size_t)grid_row * indexed_grid_w : NULL;
-        gfx_color_t* out_row = slot + (size_t)(y - y0) * GFX_WIDTH;
-        if (indexed_dither16_on) {
-            expand_indexed_row(row_ptr, grid_row, y, out_row);
-        } else {
-            gfx_indexed_expand_row(row_ptr, indexed_grid_w, indexed_lut256, indexed_cell_size, out_row, GFX_WIDTH);
-        }
+        gfx_indexed_expand_panel_row(&frame, y, slot + (size_t)(y - y0) * GFX_WIDTH, GFX_WIDTH);
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
     dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
@@ -2729,6 +2722,21 @@ uint8_t*
 gfx_indexed_image(void) {
     GFX_PRESENT_GUARD();
     return indexed_image;
+}
+
+bool
+gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]) {
+    GFX_PRESENT_GUARD();
+    if (current_mode.layout == GFX_LAYOUT_FULL_FB) {
+        memcpy(out_row, fb + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
+        return true;
+    }
+    if (current_mode.pixfmt == GFX_PIXFMT_INDEXED8) {
+        const gfx_indexed_frame_t frame = indexed_frame();
+        gfx_indexed_expand_panel_row(&frame, y, out_row, GFX_WIDTH);
+        return true;
+    }
+    return false;
 }
 
 void
