@@ -62,10 +62,10 @@ completion, with no timings in it at all.
 
 On this board that failure mode is gone. The framebuffer lives in PSRAM,
 not internal DRAM, so it no longer competes with the sand grid for
-internal-heap contiguity, and the measured internal heap free after
-`gfx_init()` is 184,171 bytes (172,147 once the shell is ready) - more
-than four sand grids' worth of contiguous headroom. Memory is not a
-constraint for this suite any more. Still worth grepping a raw capture
+internal-heap contiguity. It is not roomy either: the measured internal
+heap free after `gfx_init()` is 130,635 bytes (117,219 once the shell is
+ready), and its largest block is 51,200 - one 41,216-byte sand grid fits,
+a second contiguous one does not. Still worth grepping a raw capture
 for `free heap after framebuffer` if a report ever comes back with zero
 timings, since a heap short for an unrelated reason (a leak in an earlier
 suite, a scoped build's own footprint) would look the same.

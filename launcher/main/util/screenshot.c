@@ -18,7 +18,9 @@
  * and the console's primary channel, so this listener sees the bytes
  * idf_monitor does. Its own task, because screenshot_start() switches the fd
  * to the driver's interrupt-driven reader, which is what lets a read block
- * instead of main.c polling every frame.
+ * instead of main.c polling every frame. A CONFIG_LAUNCHER_QEMU image has
+ * its console on UART0 instead, the one port the emulator exposes, and the
+ * same calls are made on that driver.
  */
 #include "util/screenshot.h"
 
@@ -30,8 +32,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if CONFIG_LAUNCHER_QEMU
+#include "driver/uart.h"
+#include "driver/uart_vfs.h"
+#else
 #include "driver/usb_serial_jtag.h"
 #include "driver/usb_serial_jtag_vfs.h"
+#endif
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -128,10 +135,48 @@ screenshot_task(void* arg) {
     }
 }
 
-void
-screenshot_start(void) {
+/* Line endings stay LF, untranslated: screenshot_task() accepts either
+ * terminator itself, and translating would turn one keypress's '\r' into
+ * two line endings. */
+#if CONFIG_LAUNCHER_QEMU
+#define CONSOLE_UART        ((uart_port_t)CONFIG_ESP_CONSOLE_UART_NUM)
+#define CONSOLE_UART_RX_BUF 256
+
+static esp_err_t
+console_driver_install(void) {
+    const esp_err_t err = uart_driver_install(CONSOLE_UART, CONSOLE_UART_RX_BUF, 0, 0, NULL, 0);
+    if (err == ESP_OK) {
+        uart_vfs_dev_use_driver(CONSOLE_UART);
+        uart_vfs_dev_port_set_rx_line_endings(CONSOLE_UART, ESP_LINE_ENDINGS_LF);
+    }
+    return err;
+}
+
+static void
+console_write(const char* bytes, size_t len) {
+    uart_write_bytes(CONSOLE_UART, bytes, len);
+}
+#else
+static esp_err_t
+console_driver_install(void) {
     usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
     const esp_err_t err = usb_serial_jtag_driver_install(&cfg);
+    if (err == ESP_OK) {
+        usb_serial_jtag_vfs_use_driver();
+        usb_serial_jtag_vfs_set_rx_line_endings(ESP_LINE_ENDINGS_LF);
+    }
+    return err;
+}
+
+static void
+console_write(const char* bytes, size_t len) {
+    usb_serial_jtag_write_bytes(bytes, len, portMAX_DELAY);
+}
+#endif
+
+void
+screenshot_start(void) {
+    const esp_err_t err = console_driver_install();
     if (err != ESP_OK) {
         /* The one most worth calling out by name: this is what happens
          * if something else already installed this driver before
@@ -139,21 +184,9 @@ screenshot_start(void) {
          * leaving the console on its default non-blocking reader, which
          * looks from the host exactly like a request that vanished into
          * nothing rather than a boot-time failure. */
-        ESP_LOGE(TAG, "usb_serial_jtag_driver_install failed: %s - listener not started", esp_err_to_name(err));
+        ESP_LOGE(TAG, "console driver install failed: %s - listener not started", esp_err_to_name(err));
         return;
     }
-
-    usb_serial_jtag_vfs_use_driver();
-
-    /* Either terminator accepted on the way in - see screenshot_task()'s
-     * own comment on why '\r' is treated the same as '\n' there. Left at
-     * LF here (no translation) rather than switched to CR/CRLF:
-     * translating would only rewrite '\r' into '\n' before
-     * screenshot_task() ever sees it, which the task already does
-     * itself, and leaving translation off means a stray '\r' from
-     * either source arrives unchanged instead of being silently turned
-     * into two line endings for one keypress. */
-    usb_serial_jtag_vfs_set_rx_line_endings(ESP_LINE_ENDINGS_LF);
 
     /* Runs at a low priority (below touch/buttons - see input/touch.c,
      * input/buttons.c for their own 6/5) since it spends essentially
@@ -226,7 +259,7 @@ static void
 emit_bytes(const char* bytes, size_t len) {
     while (len > 0) {
         const size_t n = len < EMIT_CHUNK_BYTES ? len : EMIT_CHUNK_BYTES;
-        usb_serial_jtag_write_bytes(bytes, n, portMAX_DELAY);
+        console_write(bytes, n);
         bytes += n;
         len -= n;
     }

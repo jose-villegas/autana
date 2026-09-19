@@ -31,6 +31,7 @@
 #include <stdio.h>
 
 #include "../../app.h"
+#include "../../boot/post_layout.h"
 #include "../../boot/post_ui.h"
 #include "../../build_variant.h"
 #include "../../display/display.h"
@@ -177,7 +178,8 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
     /* Redrawn every frame rather than cached: the shell owns the framebuffer
      * and the previous app may have left anything in it. */
     if (page == 0) {
-        post_ui_draw_report("POWER-ON SELF TEST");
+        const post_ui_report_t report = {.title = POST_LAYOUT_TITLE, .quarter = display_shell_quarter()};
+        post_ui_draw_report(&report);
     } else {
         draw_toggles_page(input);
     }
