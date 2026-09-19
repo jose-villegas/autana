@@ -51,6 +51,7 @@ launcher/
     │   ├── gfx_indexed.h       paletted pixels            (host-tested)
     │   ├── gfx_palette*.{h,c}  the standard palette       (host-tested)
     │   ├── gfx_target.h        where a draw call lands    (host-tested)
+    │   ├── gfx_glow.h          a curve drawn as light     (host-tested)
     │   ├── gfx_full_redraw.h   when everything must repaint (host-tested)
     │   ├── gfx_heal.h          repairing a torn band      (host-tested)
     │   ├── gfx_fb_guard.h, gfx_present_guard.h  misuse traps (host-tested)

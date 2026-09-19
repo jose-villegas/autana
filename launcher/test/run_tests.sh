@@ -93,6 +93,7 @@ $TEST_DIR/suites/suite_gfx_indexed.c
 $TEST_DIR/suites/suite_gfx_palette.c
 $TEST_DIR/suites/suite_small3dlib_scissor.c
 $TEST_DIR/suites/suite_gfx_color.c
+$TEST_DIR/suites/suite_gfx_glow.c
 $TEST_DIR/suites/suite_gfx_font.c
 $TEST_DIR/suites/suite_gfx_font_roles.c
 $TEST_DIR/suites/suite_icons.c
