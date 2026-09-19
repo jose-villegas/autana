@@ -1,16 +1,22 @@
 #include "toggles_screen.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #include "build_variant.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 
+/* mu_checkbox() takes its id from the state pointer, and `v` sits at the
+ * same stack address for every row: without an id scope per row, all rows
+ * share one id and a click on one toggles them all. */
 static void
 draw_toggle_row(mu_Context* ctx, const char* label, bool* value) {
     mu_layout_row(ctx, 1, (int[]){-1}, UI_ROW_HEIGHT);
     int v = *value;
+    mu_push_id(ctx, label, (int)strlen(label));
     mu_checkbox(ctx, label, &v);
+    mu_pop_id(ctx);
     *value = v;
 }
 
