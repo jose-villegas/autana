@@ -53,13 +53,22 @@ same bug costs a second on a laptop.
 ./launcher/tools/screenshot.sh -o shot.png   # lossless PNG, does not reset
 ```
 
-A screen drawn outside microui can also be rendered on a host, with no board
-and no flash cycle: `launcher/tools/post_ui_render_host.sh` builds the real
-drawing code of the power-on self-test report against `gfx.c` and writes
-that screen in both orientations, the way the board is read, plus its fault
-variant. `boot_anim_render_host.c` beside it does the same for one frame of
-the startup animation. Both stand in the data their screen normally gets -
-a fixture table, a timestamp - so nothing they draw came off hardware.
+A screen can also be rendered on a host, with no board and no flash cycle,
+through the real drawing code and the real `gfx.c`:
+
+```sh
+./launcher/tools/render_all_scenes.sh        # every declared scene
+./launcher/tools/post_ui_render_host.sh      # one of them
+./launcher/tools/render_diff.sh shot.png /tmp/post/landscape-panel.bmp
+```
+
+A screen built through microui is rendered the same way, driven over
+several frames with a declared synthetic touch. Declaring a scene for your
+own screen is two files, and diffing one against a device capture is one
+command - both in
+[`tools/Render-Harness.md`](tools/Render-Harness.md). Every
+scene stands in the data its screen normally gets - a fixture table, a
+timestamp - so nothing a render shows came off hardware.
 
 `idf.py -B build.dev build` is also worth running for anything touching
 device-only files: it is a real cross-compile and catches what host stubs
@@ -231,3 +240,5 @@ fifth icon.
 - [`Text-and-Fonts.md`](Text-and-Fonts.md) - fonts, scales, text styles
 - [`Launcher-Architecture.md`](Launcher-Architecture.md) - the mechanisms
 - [`Testing-Guide.md`](Testing-Guide.md) - suites, runners, build variants
+- [`tools/Render-Harness.md`](tools/Render-Harness.md) - rendering a screen
+  on a host, and diffing it against a capture

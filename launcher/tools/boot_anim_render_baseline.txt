@@ -1,0 +1,6 @@
+# What the boot_anim scene's renders hash to, one per line.
+# Re-pinned deliberately, after looking at the images:
+#     ./launcher/tools/boot_anim_render_host.sh --update-baseline
+early e38acff9a5ecc102e7bb830b8defcb20a0deac84cab1c84663f77ac01c3a841d
+middle a0cabc9c057089a7447c85c9c68a34d02c8a9f4aedca31a3bde5ef0483119fd7
+late 3cc1e4dd07c990590f54357c63ad18071c3de4756e772849d58d0df5b55696c4
