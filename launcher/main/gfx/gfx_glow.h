@@ -342,3 +342,192 @@ gfx_glow_draw_columns(gfx_target_t target, int clip_x0, int clip_y0, int clip_x1
     }
     return box;
 }
+
+/*
+ * The curve at any angle. A pose is where the view frame's DOWN points on
+ * the panel, a unit vector in Q14, and both frames turn about their centres;
+ * down = (-1, 0) is quarter turn 1, pixel for pixel. A turned curve is not a
+ * height per panel column, so this walks panel rows and asks of each pixel
+ * where it lies in the view frame.
+ */
+
+#define GFX_GLOW_POSE_ONE (1 << 14)
+
+typedef struct {
+    int32_t down_x, down_y;
+} gfx_glow_pose_t;
+
+/* What every pixel's distance is measured against: per column, the span it
+ * covers and the rows its light can reach. The caller owns the four arrays,
+ * `count` long; prepared once per change of the curve. */
+typedef struct {
+    int16_t* span_lo;
+    int16_t* span_hi;
+    int16_t* reach_lo;
+    int16_t* reach_hi;
+    int count;
+    int band_lo, band_hi; /* the reach of the whole curve, Q4 */
+} gfx_glow_field_t;
+
+static inline void
+gfx_glow_field_prepare(gfx_glow_field_t* field, const int16_t* y, const gfx_glow_style_t* style) {
+    for (int x = 0; x < field->count; x++) {
+        int lo, hi;
+        gfx_glow_column_span(y, field->count, x, &lo, &hi);
+        field->span_lo[x] = (int16_t)lo;
+        field->span_hi[x] = (int16_t)hi;
+    }
+    field->band_lo = INT32_MAX;
+    field->band_hi = INT32_MIN;
+    for (int x = 0; x < field->count; x++) {
+        int lo = INT32_MAX;
+        int hi = INT32_MIN;
+        for (int k = -style->radius; k <= style->radius; k++) {
+            const int j = x + k;
+            if (j < 0 || j >= field->count) {
+                continue;
+            }
+            const int chord = style->chord[k < 0 ? -k : k];
+            lo = field->span_lo[j] - chord < lo ? field->span_lo[j] - chord : lo;
+            hi = field->span_hi[j] + chord > hi ? field->span_hi[j] + chord : hi;
+        }
+        field->reach_lo[x] = (int16_t)lo;
+        field->reach_hi[x] = (int16_t)hi;
+        field->band_lo = lo < field->band_lo ? lo : field->band_lo;
+        field->band_hi = hi > field->band_hi ? hi : field->band_hi;
+    }
+}
+
+/* gfx_glow_distance2() for a point that is not on a column's centre. */
+static inline int
+gfx_glow_field_distance2(const gfx_glow_field_t* field, int radius, int vx, int vy) {
+    const int own = vx >> GFX_GLOW_Q_SHIFT;
+    const int off = vx - (own * GFX_GLOW_ONE + GFX_GLOW_ONE / 2);
+    const int off_abs = off < 0 ? -off : off;
+    int best = INT32_MAX;
+    for (int k = 0; k <= radius; k++) {
+        const int nearest = k * GFX_GLOW_ONE - off_abs;
+        if (nearest > 0 && nearest * nearest >= best) {
+            break;
+        }
+        for (int side = -1; side <= 1; side += 2) {
+            const int j = own + side * k;
+            if (j >= 0 && j < field->count) {
+                const int across = side * k * GFX_GLOW_ONE - off;
+                const int up = gfx_glow_outside(vy, field->span_lo[j], field->span_hi[j]);
+                const int d2 = across * across + up * up;
+                best = d2 < best ? d2 : best;
+            }
+            if (k == 0) {
+                break;
+            }
+        }
+    }
+    return best;
+}
+
+static inline int64_t
+gfx_glow_div_floor(int64_t n, int64_t d) {
+    const int64_t q = n / d;
+    return (n % d != 0 && ((n < 0) != (d < 0))) ? q - 1 : q;
+}
+
+/* Narrows [*a, *b) to the p for which lo <= v0 + p * step < hi. Empty comes
+ * back as *b <= *a. */
+static inline void
+gfx_glow_narrow(int64_t v0, int64_t step, int64_t lo, int64_t hi, int* a, int* b) {
+    if (step == 0) {
+        if (v0 < lo || v0 >= hi) {
+            *b = *a;
+        }
+        return;
+    }
+    /* first p at or past one bound, last p before the other */
+    const int64_t enter = step > 0 ? lo - v0 : hi - 1 - v0;
+    const int64_t leave = step > 0 ? hi - 1 - v0 : lo - v0;
+    const int64_t first = -gfx_glow_div_floor(-enter, step);
+    const int64_t last = gfx_glow_div_floor(leave, step);
+    if (first > *a) {
+        *a = first > *b ? *b : (int)first;
+    }
+    if (last + 1 < *b) {
+        *b = last + 1 < *a ? *a : (int)(last + 1);
+    }
+}
+
+/*
+ * Draws panel rows [row0, row1) of the posed curve. `lit_lo`/`lit_hi` hold,
+ * per panel row, the stretch lit the last time that row was drawn: it is
+ * blackened first and then rewritten, which is what lets the curve turn and
+ * wave with nothing else clearing behind it. Returns the panel box touched.
+ */
+static inline gfx_glow_box_t
+gfx_glow_draw_posed_rows(gfx_target_t target, int clip_x0, int clip_y0, int clip_x1, int clip_y1, int panel_w,
+                         int panel_h, const gfx_glow_field_t* field, int view_h, gfx_glow_pose_t pose, int row0,
+                         int row1, int16_t* lit_lo, int16_t* lit_hi, const gfx_glow_style_t* style) {
+    gfx_glow_box_t box = {0, 0, 0, 0};
+    const int64_t right_x = pose.down_y;
+    const int64_t right_y = -pose.down_x;
+    /* Centres doubled, so that a half pixel stays an integer. */
+    const int64_t view_cx2 = field->count - 1;
+    const int64_t view_cy2 = view_h - 1;
+    const int64_t half_q14 = GFX_GLOW_POSE_ONE / 2;
+    const int to_q4 = 14 - GFX_GLOW_Q_SHIFT;
+
+    row0 = row0 < clip_y0 ? clip_y0 : row0;
+    row0 = row0 < target.y0 ? target.y0 : row0;
+    row1 = row1 > clip_y1 ? clip_y1 : row1;
+    row1 = row1 > target.y0 + target.height ? target.y0 + target.height : row1;
+
+    for (int py = row0; py < row1; py++) {
+        gfx_color_t* dst = gfx_target_row(target, py);
+        for (int px = lit_lo[py]; px < lit_hi[py]; px++) {
+            dst[px] = GFX_RGB(0x000000);
+        }
+        if (lit_hi[py] > lit_lo[py]) {
+            gfx_glow_box_add(&box, lit_lo[py], py);
+            gfx_glow_box_add(&box, lit_hi[py] - 1, py);
+        }
+
+        /* The view position of this row's pixel 0 centre, Q14, and its step. */
+        const int64_t dx2 = -(int64_t)(panel_w - 1);
+        const int64_t dy2 = 2 * (int64_t)py - (panel_h - 1);
+        const int64_t vx0 = (view_cx2 * GFX_GLOW_POSE_ONE + dx2 * right_x + dy2 * right_y) / 2 + half_q14;
+        const int64_t vy0 = (view_cy2 * GFX_GLOW_POSE_ONE + dx2 * pose.down_x + dy2 * pose.down_y) / 2 + half_q14;
+
+        int a = clip_x0 < 0 ? 0 : clip_x0;
+        int b = clip_x1 > panel_w ? panel_w : clip_x1;
+        gfx_glow_narrow(vx0, right_x, 0, (int64_t)field->count << 14, &a, &b);
+        gfx_glow_narrow(vy0, pose.down_x, (int64_t)field->band_lo << to_q4, ((int64_t)field->band_hi << to_q4) + 1, &a,
+                        &b);
+
+        int new_lo = 0;
+        int new_hi = 0;
+        int64_t vx = vx0 + a * right_x;
+        int64_t vy = vy0 + a * pose.down_x;
+        for (int px = a; px < b; px++, vx += right_x, vy += pose.down_x) {
+            const int x_q4 = (int)(vx >> to_q4);
+            const int y_q4 = (int)(vy >> to_q4);
+            const int column = x_q4 >> GFX_GLOW_Q_SHIFT;
+            if (column < 0 || column >= field->count || y_q4 < field->reach_lo[column]
+                || y_q4 > field->reach_hi[column]) {
+                continue;
+            }
+            const gfx_color_t colour =
+                gfx_glow_colour(style, gfx_glow_field_distance2(field, style->radius, x_q4, y_q4), px, py);
+            if (colour == GFX_RGB(0x000000)) {
+                continue;
+            }
+            dst[px] = colour;
+            new_lo = new_hi > new_lo ? new_lo : px;
+            new_hi = px + 1;
+        }
+        lit_lo[py] = (int16_t)new_lo;
+        lit_hi[py] = (int16_t)new_hi;
+        if (new_hi > new_lo) {
+            gfx_glow_box_add(&box, new_lo, py);
+            gfx_glow_box_add(&box, new_hi - 1, py);
+        }
+    }
+    return box;
+}

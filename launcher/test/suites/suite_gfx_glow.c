@@ -270,6 +270,149 @@ test_clip_and_a_band_target_bound_the_writes(void) {
     fixture_end();
 }
 
+/* The curve at any angle. The view frame of these tests is the panel turned
+ * a quarter: PANEL_H columns, PANEL_W tall. */
+
+static int16_t posed_spans[4][PANEL_H];
+static int16_t lit_lo[PANEL_H];
+static int16_t lit_hi[PANEL_H];
+
+static gfx_glow_field_t
+posed_field(void) {
+    gfx_glow_field_t field = {posed_spans[0], posed_spans[1], posed_spans[2], posed_spans[3], PANEL_H, 0, 0};
+    gfx_glow_field_prepare(&field, heights, style);
+    return field;
+}
+
+static void
+forget_what_was_lit(void) {
+    memset(lit_lo, 0, sizeof lit_lo);
+    memset(lit_hi, 0, sizeof lit_hi);
+}
+
+static void
+draw_posed(const gfx_glow_field_t* field, int down_x, int down_y) {
+    gfx_glow_draw_posed_rows(whole_panel(), 0, 0, PANEL_W, PANEL_H, PANEL_W, PANEL_H, field, PANEL_W,
+                             (gfx_glow_pose_t){down_x, down_y}, 0, PANEL_H, lit_lo, lit_hi, style);
+}
+
+static void
+wavy_curve_for_the_turned_view(void) {
+    for (int x = 0; x < PANEL_H; x++) {
+        heights[x] = (int16_t)((40 + ((x / 9) % 2 ? 11 : -7) + x / 5) * GFX_GLOW_ONE + 5);
+    }
+}
+
+static void
+blacken_untouched(gfx_color_t* image) {
+    for (int i = 0; i < PANEL_W * PANEL_H; i++) {
+        if (image[i] == UNTOUCHED) {
+            image[i] = GFX_RGB(0x000000);
+        }
+    }
+}
+
+static void
+test_the_landscape_pose_is_the_quarter_turn_pixel_for_pixel(void) {
+    fixture_begin();
+    wavy_curve_for_the_turned_view();
+    draw(whole_panel(), PANEL_H, GFX_GLOW_CHUNK, 1, 0);
+    gfx_color_t* by_columns = malloc(sizeof(gfx_color_t) * PANEL_W * PANEL_H);
+    TEST_ASSERT_NOT_NULL(by_columns);
+    memcpy(by_columns, pixels, sizeof(gfx_color_t) * PANEL_W * PANEL_H);
+    blacken_untouched(by_columns);
+
+    for (int i = 0; i < PANEL_W * PANEL_H; i++) {
+        pixels[i] = UNTOUCHED;
+    }
+    const gfx_glow_field_t field = posed_field();
+    forget_what_was_lit();
+    draw_posed(&field, -GFX_GLOW_POSE_ONE, 0);
+    blacken_untouched(pixels);
+    TEST_ASSERT_EQUAL_MEMORY(by_columns, pixels, sizeof(gfx_color_t) * PANEL_W * PANEL_H);
+    free(by_columns);
+    fixture_end();
+}
+
+static void
+test_narrow_keeps_exactly_the_steps_inside_the_bounds(void) {
+    const int64_t steps[] = {-16384, -11585, -3, -1, 0, 1, 7, 11585, 16384};
+    for (size_t s = 0; s < sizeof steps / sizeof steps[0]; s++) {
+        for (int64_t v0 = -40000; v0 <= 40000; v0 += 9973) {
+            int a = 3;
+            int b = 90;
+            gfx_glow_narrow(v0, steps[s], -5000, 20000, &a, &b);
+            for (int p = 3; p < 90; p++) {
+                const int64_t v = v0 + p * steps[s];
+                const bool inside = v >= -5000 && v < 20000;
+                TEST_ASSERT_EQUAL_INT(inside, p >= a && p < b);
+            }
+        }
+    }
+}
+
+/* 0.6, 0.8 and the like are exact Q14 unit vectors only approximately; what
+ * matters is that the same pose draws the same picture however it got there. */
+static void
+test_turning_leaves_no_trail(void) {
+    fixture_begin();
+    wavy_curve_for_the_turned_view();
+    const gfx_glow_field_t field = posed_field();
+    const int poses[][2] = {{-16384, 0}, {-13107, 9830}, {0, 16384}, {11585, 11585}, {16384, 0}, {-9830, -13107}};
+    gfx_color_t* fresh = malloc(sizeof(gfx_color_t) * PANEL_W * PANEL_H);
+    TEST_ASSERT_NOT_NULL(fresh);
+
+    for (int i = 0; i < PANEL_W * PANEL_H; i++) {
+        pixels[i] = GFX_RGB(0x000000);
+    }
+    forget_what_was_lit();
+    for (size_t p = 0; p < sizeof poses / sizeof poses[0]; p++) {
+        draw_posed(&field, poses[p][0], poses[p][1]);
+
+        gfx_color_t* turned = pixels;
+        int16_t kept_lo[PANEL_H];
+        int16_t kept_hi[PANEL_H];
+        memcpy(kept_lo, lit_lo, sizeof kept_lo);
+        memcpy(kept_hi, lit_hi, sizeof kept_hi);
+        pixels = fresh;
+        for (int i = 0; i < PANEL_W * PANEL_H; i++) {
+            pixels[i] = GFX_RGB(0x000000);
+        }
+        forget_what_was_lit();
+        draw_posed(&field, poses[p][0], poses[p][1]);
+        pixels = turned;
+        memcpy(lit_lo, kept_lo, sizeof kept_lo);
+        memcpy(lit_hi, kept_hi, sizeof kept_hi);
+
+        TEST_ASSERT_EQUAL_MEMORY(fresh, pixels, sizeof(gfx_color_t) * PANEL_W * PANEL_H);
+    }
+    free(fresh);
+    fixture_end();
+}
+
+static void
+test_a_turned_curve_keeps_its_width(void) {
+    fixture_begin();
+    for (int x = 0; x < PANEL_H; x++) {
+        heights[x] = (int16_t)(48 * GFX_GLOW_ONE);
+    }
+    const gfx_glow_field_t field = posed_field();
+    for (int i = 0; i < PANEL_W * PANEL_H; i++) {
+        pixels[i] = GFX_RGB(0x000000);
+    }
+    forget_what_was_lit();
+    /* Down at 45 degrees: the flat curve is a diagonal through the panel's
+     * centre, and light reaches RADIUS across it, not RADIUS along a row. */
+    draw_posed(&field, -11585, 11585);
+    const int cx = PANEL_W / 2;
+    const int cy = PANEL_H / 2;
+    TEST_ASSERT_TRUE(lit(cx, cy));
+    TEST_ASSERT_TRUE(lit(cx + (RADIUS - 2) * 7 / 10, cy - (RADIUS - 2) * 7 / 10));
+    TEST_ASSERT_FALSE(lit(cx + (RADIUS + 3) * 7 / 10 + 1, cy - (RADIUS + 3) * 7 / 10 - 1));
+    TEST_ASSERT_TRUE(lit(cx + 12, cy + 12));
+    fixture_end();
+}
+
 void
 suite_gfx_glow(void) {
     RUN_TEST(test_turning_into_the_panel_matches_ui_transform);
@@ -284,6 +427,10 @@ suite_gfx_glow(void) {
     RUN_TEST(test_the_reported_box_covers_exactly_what_was_written);
     RUN_TEST(test_a_quarter_turn_draws_the_same_curve_turned);
     RUN_TEST(test_clip_and_a_band_target_bound_the_writes);
+    RUN_TEST(test_the_landscape_pose_is_the_quarter_turn_pixel_for_pixel);
+    RUN_TEST(test_narrow_keeps_exactly_the_steps_inside_the_bounds);
+    RUN_TEST(test_turning_leaves_no_trail);
+    RUN_TEST(test_a_turned_curve_keeps_its_width);
 }
 
 SUITE_REGISTER(suite_gfx_glow);

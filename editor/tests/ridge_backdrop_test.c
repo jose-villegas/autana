@@ -15,13 +15,14 @@
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 #include "ui/ui_launcher.h"
+#include "ui/ui_ridge.h"
 #include "ui/ui_transform.h"
 
 #define FRAME_MS       16
 #define FRAMES_TO_REST 600
 #define PIXELS         ((size_t)GFX_WIDTH * GFX_HEIGHT)
 
-/* Below the app rows and beside the ridge's left slope, in portrait. */
+/* Below the app rows, in portrait. */
 #define TOUCH_X        60
 #define TOUCH_Y        400
 
@@ -75,16 +76,52 @@ main(void) {
         return 1;
     }
     ui_set_transform(ui_transform_identity());
+
+    /* Held upright in portrait from the first frame: down is the panel's +y,
+     * a quarter turn from the landscape pose boot hands over in. */
+    ui_ridge_set_gravity(0, 4096, 256, 0);
     frame(false, false);
     frame(false, false);
+    gfx_color_t* as_boot_left_it = snapshot();
+    if (as_boot_left_it == NULL) {
+        return 1;
+    }
+    expect(as_boot_left_it[0] == 0, "the backdrop is black, so an AMOLED pixel is off");
+    expect(lit_pixels(as_boot_left_it) > 8000, "the ridge and the app rows are drawn");
+
+    int held_frames_sending = 0;
+    for (int i = 0; i < 30; i++) {
+        held_frames_sending += frame(false, false);
+    }
+    expect(held_frames_sending == 0, "the line keeps boot's pose at first, whatever gravity says");
+
+    /* Near the end the pose moves less per frame than is worth redrawing, so
+     * quiet frames come in runs before it has arrived: only a long run means
+     * it has stopped. */
+    int turning_frames = 0;
+    int frames_until_level = 0;
+    int quiet_run = 0;
+    while (frames_until_level < FRAMES_TO_REST && quiet_run < 60) {
+        const bool sends = frame(false, false);
+        turning_frames += sends;
+        quiet_run = sends || turning_frames == 0 ? 0 : quiet_run + 1;
+        frames_until_level++;
+    }
+    expect(turning_frames > 10, "then it turns toward level over many frames, not in one jump");
+    expect(frames_until_level < FRAMES_TO_REST, "and stops turning");
+    expect(memcmp(as_boot_left_it, gfx_framebuffer(), PIXELS * sizeof *as_boot_left_it) != 0, "the line has turned");
+    free(as_boot_left_it);
 
     gfx_color_t* settled = snapshot();
     if (settled == NULL) {
         return 1;
     }
-    expect(settled[0] == 0, "the backdrop is black, so an AMOLED pixel is off");
-    expect(lit_pixels(settled) > 8000, "the ridge and the app rows are drawn");
-    expect(!frame(false, false), "an idle launcher sends nothing");
+    ui_ridge_settle();
+    ui_invalidate();
+    frame(false, false);
+    expect(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) == 0,
+           "where it stopped is exactly level, not merely close, and turning left no trail");
+    expect(!frame(false, false), "a level, untouched launcher sends nothing");
 
     expect(frame(true, true), "a touch sets the ridge moving on the frame it lands");
     frame(true, false);

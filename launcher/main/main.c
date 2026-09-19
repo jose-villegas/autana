@@ -27,12 +27,15 @@
 #include "input/buttons.h"
 #include "input/gesture.h"
 #include "input/imu.h"
+#include "input/imu_rotation.h"
+#include "input/tilt.h"
 #include "input/touch.h"
 #include "ui/system_navigation.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
 #include "ui/ui_control_center.h"
 #include "ui/ui_launcher.h"
+#include "ui/ui_ridge.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "util/screenshot.h"
@@ -429,6 +432,22 @@ step_control_center(const input_t* input, uint32_t dt_ms) {
     ui_control_center_frame(input);
 }
 
+static tilt_t launcher_tilt;
+
+/* The launcher's backdrop keeps level with the horizon, so it needs gravity
+ * every frame, not at the orientation logic's own slower pace. */
+static void
+feed_launcher_gravity(uint32_t dt_ms) {
+    imu_sample_t sample;
+    if (!imu_ready() || !imu_read(&sample)) {
+        return;
+    }
+    tilt_update(&launcher_tilt, imu_gravity_screen_x(&sample), imu_gravity_screen_y(&sample), sample.az,
+                imu_rotation_level(&sample), dt_ms);
+    ui_ridge_set_gravity(tilt_x(&launcher_tilt), tilt_y(&launcher_tilt), tilt_strength(&launcher_tilt),
+                         tilt_shake(&launcher_tilt));
+}
+
 static void
 step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint32_t dt_ms) {
     if (system_navigation_step(&system_navigation, input, opposite_edge(exit_edge), exit_edge, GFX_WIDTH, GFX_HEIGHT)) {
@@ -439,6 +458,7 @@ step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, u
         return;
     }
     apply_pending_full_redraw(NULL);
+    feed_launcher_gravity(dt_ms);
     const int chosen = ui_launcher_frame(input, dt_ms);
     if (chosen < 0 || chosen >= apps_registered) {
         draw_home_hint(exit_edge);
@@ -553,6 +573,7 @@ app_boot_init(void) {
     printf("BUILD_ID=%s\n", BUILD_ID);
     fflush(stdout);
     system_navigation_init(&system_navigation);
+    tilt_reset(&launcher_tilt, IMU_COUNTS_PER_G);
     heap_mark("boot");
 
     /* Test SD card during panel use. */

@@ -259,9 +259,28 @@ far the curve moved this frame, which is the `erase_px` to draw it with.
 `ui/ui_ridge.c` puts the two together as the launcher's backdrop, under the
 app rows by way of `ui_end_over()`.
 
+**At any angle.** `gfx_glow_curve_posed()` draws the same curve turned to a
+*pose*: where the view frame's down points on the panel, a Q14 unit vector,
+so a gravity reading is a pose with no angle or arctangent in between. A
+turned curve is no longer a height per panel column, so it walks panel rows
+and asks of each pixel where it lies in the view frame - an add per pixel,
+along only the stretch of the row that can reach the curve's band, against a
+`gfx_glow_field_t` prepared once per change of the curve. The landscape pose
+is the quarter-turn renderer pixel for pixel. It keeps, per panel row, the
+stretch it lit, and blackens that before drawing the row again, so a curve
+that turns needs nothing clearing behind it either.
+
+The launcher's ridge is a horizon: it follows `input/tilt.h`'s down at any
+angle while the app rows turn in quarters. It holds boot's landscape pose for
+its first 700 ms, since boot knows no orientation, then eases to level.
+Easing never quite arrives and a hand is never still, so the pose is redrawn
+only once it is half a degree from the one on screen, and put exactly level
+once down has held still for 300 ms. On a desk the launcher is idle again; in
+a hand it redraws when the hand moves.
+
 Cost follows lit pixels: Cerro Autana's ridge at radius 13 lights about
-16,600 of them. In landscape a column of the view is a row of the panel, so
-a curve spanning the view's width touches every band.
+16,600 of them. A curve spanning the view touches most bands at any pose, so
+a frame in which it moves is close to a full send.
 
 ## Panel clock and heal
 
