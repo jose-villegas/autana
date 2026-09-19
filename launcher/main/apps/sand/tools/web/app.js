@@ -29,13 +29,17 @@ const simSpeedSelect = document.getElementById("sim-speed");
 const colorModeSelect = document.getElementById("color-mode");
 const ditherModeSelect = document.getElementById("dither-mode");
 const modeButtons = [...document.querySelectorAll(".mode")];
+const brushSizeInput = document.getElementById("brush-size");
+const brushSizeCaption = document.getElementById("brush-size-caption");
+const brushSizeValue = document.getElementById("brush-size-value");
 const fsBtn = document.getElementById("fullscreen-btn");
 const fsTarget = document.getElementById("app");
 const orientationBtn = document.getElementById("orientation-btn");
 
 let Module, web_init, web_step, web_input, web_clear, web_set_brush,
     web_brush_swatch, web_render, web_screen_w, web_screen_h, web_pixels_ptr,
-    web_set_sim_speed, web_set_color_mode, web_set_dither_mode;
+    web_set_sim_speed, web_set_color_mode, web_set_dither_mode,
+    web_set_radius, web_radius;
 let screenW = 448, screenH = 368;
 let pixelsPtr = 0;
 let mode = MODE_PAINT;
@@ -79,10 +83,28 @@ function buildPalette(count) {
   }
 }
 
+// Same captions as the device's brush screen (brush_screen.c's
+// SIZE_CAPTIONS), indexed by mode.
+const SIZE_CAPTIONS = ["Pour size", "Erase size", "Boom size"];
+
+// Each mode remembers its own radius (web_sand.c's radius_px[]), so the
+// slider re-reads the wasm side whenever the mode changes.
+function syncBrushSize() {
+  brushSizeCaption.textContent = SIZE_CAPTIONS[mode];
+  if (web_radius) brushSizeInput.value = web_radius(mode);
+  brushSizeValue.textContent = `${brushSizeInput.value} px`;
+}
+
+brushSizeInput.addEventListener("input", () => {
+  if (web_set_radius) web_set_radius(mode, Number(brushSizeInput.value));
+  syncBrushSize();
+});
+
 function setMode(next) {
   mode = next;
   modeButtons.forEach((b) => b.classList.toggle(
     "active", Number(b.dataset.mode) === mode));
+  syncBrushSize();
 }
 modeButtons.forEach((b) =>
   b.addEventListener("click", () => setMode(Number(b.dataset.mode))));
@@ -371,6 +393,8 @@ SandModule().then((mod) => {
   web_set_sim_speed = Module.cwrap("web_set_sim_speed", null, ["number"]);
   web_set_color_mode = Module.cwrap("web_set_color_mode", null, ["number"]);
   web_set_dither_mode = Module.cwrap("web_set_dither_mode", null, ["number"]);
+  web_set_radius = Module.cwrap("web_set_radius", "number", ["number", "number"]);
+  web_radius = Module.cwrap("web_radius", "number", ["number"]);
   web_brush_swatch = Module.cwrap("web_brush_swatch", "number", ["number"]);
   web_screen_w = Module.cwrap("web_screen_w", "number", []);
   web_screen_h = Module.cwrap("web_screen_h", "number", []);
@@ -383,6 +407,7 @@ SandModule().then((mod) => {
   reinitSim();
   web_set_color_mode(Number(colorModeSelect.value));
   web_set_dither_mode(Number(ditherModeSelect.value));
+  syncBrushSize();
 
   loadingEl.hidden = true;
   requestAnimationFrame(frame);

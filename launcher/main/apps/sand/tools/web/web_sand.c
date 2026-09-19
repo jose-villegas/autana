@@ -73,11 +73,9 @@ static const cell_t brushes[] = {
 };
 #define BRUSH_COUNT             ((int)(sizeof(brushes) / sizeof(brushes[0])))
 
-/* Same gesture radii as app_sand.c's own POUR_RADIUS_PX/ERASE_RADIUS_PX/
- * ERASE_EMITTER_RADIUS_PX/DETONATE_RADIUS_PX - see that file's own (much
- * longer) comments on each for why these particular numbers, if the
- * history ever matters here too. Pixels, not cells, for the same reason: a
- * brush should stay the same physical size on screen at every quality. */
+/* Same values as app_sand.c's own. Pixels, not cells: a brush keeps its
+ * on-screen size at every quality. POUR/ERASE/DETONATE seed radius_px[];
+ * ERASE_EMITTER stays fixed. */
 #define POUR_RADIUS_PX          10
 #define ERASE_RADIUS_PX         16
 #define ERASE_EMITTER_RADIUS_PX 32
@@ -96,6 +94,11 @@ static const cell_t brushes[] = {
 #define WEB_MODE_PAINT          0
 #define WEB_MODE_ERASE          1
 #define WEB_MODE_DETONATE       2
+#define WEB_MODE_COUNT          3
+
+/* Same bounds as sand_ui.h's SAND_UI_RADIUS_MIN/MAX - see web_set_radius(). */
+#define WEB_RADIUS_MIN          2
+#define WEB_RADIUS_MAX          64
 
 /* Same constants as app_sand.c's own (see there for the tuning history):
  * the travelling shine's period/speed, and how often water's foam dither
@@ -152,6 +155,16 @@ static int screen_w = DEVICE_W, screen_h = DEVICE_H;
 
 static int grid_w, grid_h, cell_px;
 static int brush_index;
+
+/* One remembered radius per mode, in px - same shape and defaults as
+ * sand_ui_t.radius_px. Outlives web_init(): a quality or orientation change
+ * rebuilds the grid, not the user's chosen brush size. */
+static int radius_px[WEB_MODE_COUNT] = {
+    [WEB_MODE_PAINT] = POUR_RADIUS_PX,
+    [WEB_MODE_ERASE] = ERASE_RADIUS_PX,
+    [WEB_MODE_DETONATE] = DETONATE_RADIUS_PX,
+};
+
 static uint32_t sim_accumulator_q8;
 static uint32_t pour_accumulator_ms;
 
@@ -336,6 +349,33 @@ web_set_brush(int index) {
     }
 }
 
+/* Clamps to [WEB_RADIUS_MIN, WEB_RADIUS_MAX] and stores into `mode`'s slot
+ * only, same contract as sand_ui_set_radius(). Returns the stored value so
+ * JS can show what was actually kept. */
+EMSCRIPTEN_KEEPALIVE
+int
+web_set_radius(int mode, int px) {
+    if (mode < 0 || mode >= WEB_MODE_COUNT) {
+        return 0;
+    }
+    if (px < WEB_RADIUS_MIN) {
+        px = WEB_RADIUS_MIN;
+    } else if (px > WEB_RADIUS_MAX) {
+        px = WEB_RADIUS_MAX;
+    }
+    radius_px[mode] = px;
+    return px;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int
+web_radius(int mode) {
+    if (mode < 0 || mode >= WEB_MODE_COUNT) {
+        return 0;
+    }
+    return radius_px[mode];
+}
+
 /* `speed_q8` is Q8 (256 = 1x) - JS sends Math.round(multiplier * 256), so
  * this file stays free of float math, same as everything else here. No
  * reinit needed: unlike quality/scale/orientation this touches no buffer,
@@ -511,7 +551,7 @@ web_input(int mode, int down, int pressed, int source, int x_px, int y_px, uint3
         if (pressed) {
             const int cx = x_px / cell_px;
             const int cy = y_px / cell_px;
-            sand_explode(&sim, cx, cy, (DETONATE_RADIUS_PX + cell_px / 2) / cell_px);
+            sand_explode(&sim, cx, cy, (radius_px[WEB_MODE_DETONATE] + cell_px / 2) / cell_px);
         }
         return;
     }
@@ -543,10 +583,10 @@ web_input(int mode, int down, int pressed, int source, int x_px, int y_px, uint3
     const int cy = y_px / cell_px;
     for (int i = 0; i < applications; i++) {
         if (mode == WEB_MODE_ERASE) {
-            sand_erase(&sim, cx, cy, (ERASE_RADIUS_PX + cell_px / 2) / cell_px);
+            sand_erase(&sim, cx, cy, (radius_px[WEB_MODE_ERASE] + cell_px / 2) / cell_px);
             sand_remove_emitters(&sim, cx, cy, (ERASE_EMITTER_RADIUS_PX + cell_px / 2) / cell_px);
         } else {
-            sand_spawn_cell(&sim, cx, cy, (POUR_RADIUS_PX + cell_px / 2) / cell_px, brushes[brush_index]);
+            sand_spawn_cell(&sim, cx, cy, (radius_px[WEB_MODE_PAINT] + cell_px / 2) / cell_px, brushes[brush_index]);
         }
     }
 }
