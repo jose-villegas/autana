@@ -276,6 +276,8 @@ test_clip_and_a_band_target_bound_the_writes(void) {
 static int16_t posed_spans[4][PANEL_H];
 static int16_t lit_lo[PANEL_H];
 static int16_t lit_hi[PANEL_H];
+static int posed_trail;
+static int posed_trailing;
 
 static gfx_glow_field_t
 posed_field(void) {
@@ -293,7 +295,8 @@ forget_what_was_lit(void) {
 static void
 draw_posed(const gfx_glow_field_t* field, int down_x, int down_y) {
     gfx_glow_draw_posed_rows(whole_panel(), 0, 0, PANEL_W, PANEL_H, PANEL_W, PANEL_H, field, PANEL_W,
-                             (gfx_glow_pose_t){down_x, down_y}, 0, PANEL_H, lit_lo, lit_hi, style);
+                             (gfx_glow_pose_t){down_x, down_y}, 0, PANEL_H, lit_lo, lit_hi, posed_trail,
+                             &posed_trailing, style);
 }
 
 static void
@@ -413,6 +416,81 @@ test_a_turned_curve_keeps_its_width(void) {
     fixture_end();
 }
 
+static void
+clear_panel_and_forget(void) {
+    for (int i = 0; i < PANEL_W * PANEL_H; i++) {
+        pixels[i] = GFX_RGB(0x000000);
+    }
+    forget_what_was_lit();
+}
+
+static void
+test_a_trail_that_is_never_cleared_keeps_where_the_curve_was(void) {
+    fixture_begin();
+    wavy_curve_for_the_turned_view();
+    const gfx_glow_field_t field = posed_field();
+    clear_panel_and_forget();
+    posed_trail = 255;
+    draw_posed(&field, -GFX_GLOW_POSE_ONE, 0);
+    const int on_the_first_curve_x = PANEL_W - 1 - (heights[10] >> GFX_GLOW_Q_SHIFT);
+    const gfx_color_t core = pixels[10 * PANEL_W + on_the_first_curve_x];
+    draw_posed(&field, 0, GFX_GLOW_POSE_ONE);
+    TEST_ASSERT_EQUAL_HEX16(core, pixels[10 * PANEL_W + on_the_first_curve_x]);
+    posed_trail = 0;
+    fixture_end();
+}
+
+static void
+test_a_fading_trail_dims_then_ends_on_the_clean_picture(void) {
+    fixture_begin();
+    wavy_curve_for_the_turned_view();
+    const gfx_glow_field_t field = posed_field();
+    gfx_color_t* clean = malloc(sizeof(gfx_color_t) * PANEL_W * PANEL_H);
+    TEST_ASSERT_NOT_NULL(clean);
+    clear_panel_and_forget();
+    draw_posed(&field, 0, GFX_GLOW_POSE_ONE);
+    memcpy(clean, pixels, sizeof(gfx_color_t) * PANEL_W * PANEL_H);
+
+    clear_panel_and_forget();
+    posed_trail = 200;
+    draw_posed(&field, -GFX_GLOW_POSE_ONE, 0);
+    const int on_the_first_curve_x = PANEL_W - 1 - (heights[10] >> GFX_GLOW_Q_SHIFT);
+    const int lit_at_first = brightness(pixels[10 * PANEL_W + on_the_first_curve_x]);
+
+    posed_trailing = 0;
+    draw_posed(&field, 0, GFX_GLOW_POSE_ONE);
+    const int a_draw_later = brightness(pixels[10 * PANEL_W + on_the_first_curve_x]);
+    TEST_ASSERT_TRUE(a_draw_later > 0 && a_draw_later < lit_at_first);
+    TEST_ASSERT_GREATER_THAN_INT(0, posed_trailing);
+
+    int draws = 0;
+    while (posed_trailing > 0 && draws < 200) {
+        posed_trailing = 0;
+        draw_posed(&field, 0, GFX_GLOW_POSE_ONE);
+        draws++;
+    }
+    TEST_ASSERT_LESS_THAN_INT(200, draws);
+    TEST_ASSERT_EQUAL_MEMORY(clean, pixels, sizeof(gfx_color_t) * PANEL_W * PANEL_H);
+    posed_trail = 0;
+    free(clean);
+    fixture_end();
+}
+
+static void
+test_dimming_a_grey_keeps_it_grey_all_the_way_to_black(void) {
+    gfx_color_t colour = GFX_RGB(0xFFFFFF);
+    for (int i = 0; i < 100 && colour != GFX_RGB(0x000000); i++) {
+        colour = gfx_glow_dim(colour, 220);
+        const uint32_t rgb = gfx_color_rgb888(colour);
+        const int r = (int)(rgb >> 16);
+        const int g = (int)((rgb >> 8) & 0xFF);
+        const int b = (int)(rgb & 0xFF);
+        TEST_ASSERT_INT_WITHIN(8, r, g);
+        TEST_ASSERT_EQUAL_INT(r, b);
+    }
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x000000), colour);
+}
+
 void
 suite_gfx_glow(void) {
     RUN_TEST(test_turning_into_the_panel_matches_ui_transform);
@@ -431,6 +509,9 @@ suite_gfx_glow(void) {
     RUN_TEST(test_narrow_keeps_exactly_the_steps_inside_the_bounds);
     RUN_TEST(test_turning_leaves_no_trail);
     RUN_TEST(test_a_turned_curve_keeps_its_width);
+    RUN_TEST(test_a_trail_that_is_never_cleared_keeps_where_the_curve_was);
+    RUN_TEST(test_a_fading_trail_dims_then_ends_on_the_clean_picture);
+    RUN_TEST(test_dimming_a_grey_keeps_it_grey_all_the_way_to_black);
 }
 
 SUITE_REGISTER(suite_gfx_glow);

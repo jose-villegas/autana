@@ -1155,22 +1155,24 @@ gfx_glow_curve(const int16_t* y_q4, int count, int x0, int x1, int quarter_turns
     }
 }
 
-void
+int
 gfx_glow_curve_posed(const gfx_glow_field_t* field, int view_h, gfx_glow_pose_t pose, int16_t* lit_lo, int16_t* lit_hi,
-                     const gfx_glow_style_t* style) {
+                     int trail, const gfx_glow_style_t* style) {
     GFX_PRESENT_GUARD();
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
-        return;
+        return 0;
     }
     const gfx_target_t target = current_target();
+    int trailing = 0;
     for (int row = 0; row < GFX_HEIGHT; row += GFX_GLOW_CHUNK) {
         const gfx_glow_box_t box =
             gfx_glow_draw_posed_rows(target, clip.x0, clip.y0, clip.x1, clip.y1, GFX_WIDTH, GFX_HEIGHT, field, view_h,
-                                     pose, row, row + GFX_GLOW_CHUNK, lit_lo, lit_hi, style);
+                                     pose, row, row + GFX_GLOW_CHUNK, lit_lo, lit_hi, trail, &trailing, style);
         if (!band_render_active && box.x1 > box.x0) {
             gfx_mark_dirty(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
         }
     }
+    return trailing;
 }
 
 /* Cheap by construction, not by luck: alpha is one value for the whole

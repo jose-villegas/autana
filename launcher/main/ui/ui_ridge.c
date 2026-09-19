@@ -69,6 +69,10 @@
 #define LEVEL_STEADY_STEP 29
 #define LEVEL_STEADY_MS   300
 
+/* What becomes of the light the line leaves behind as it moves, out of 256
+ * per redraw: 0 wipes it, 255 never does, between is a trail that fades. */
+#define RIDGE_TRAIL       0
+
 #define POSE_LANDSCAPE    ((gfx_glow_pose_t){-GFX_GLOW_POSE_ONE, 0})
 
 typedef struct {
@@ -93,6 +97,7 @@ typedef struct {
     uint32_t shake_seed;
     int shake;
     int last_pluck_x;
+    int trailing;
 } ridge_t;
 
 static ridge_t* ridge;
@@ -159,7 +164,8 @@ ui_ridge_settle(void) {
 
 static void
 draw_ridge(void) {
-    gfx_glow_curve_posed(&ridge->field, RIDGE_CURVE_VIEW_H, ridge->pose, ridge->lit_lo, ridge->lit_hi, &ridge->style);
+    ridge->trailing = gfx_glow_curve_posed(&ridge->field, RIDGE_CURVE_VIEW_H, ridge->pose, ridge->lit_lo, ridge->lit_hi,
+                                           RIDGE_TRAIL, &ridge->style);
     ridge->pose_on_screen = ridge->pose;
 }
 
@@ -287,7 +293,10 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
         gfx_glow_field_prepare(&ridge->field, ridge->heights, &ridge->style);
     }
     const bool settles_now = arrived && !poses_within(ridge->pose, ridge->pose_on_screen, 1);
-    if (line_moved || settles_now || pose_moved_enough_to_see()) {
+    /* A trail that fades is drawn until it is gone, or it would freeze where
+     * the line stopped. One that never fades has nothing to finish. */
+    const bool trail_fading = RIDGE_TRAIL > 0 && RIDGE_TRAIL < 255 && ridge->trailing > 0;
+    if (line_moved || settles_now || trail_fading || pose_moved_enough_to_see()) {
         draw_ridge();
     }
 }

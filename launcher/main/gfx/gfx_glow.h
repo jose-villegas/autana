@@ -18,6 +18,7 @@
  */
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "gfx/gfx_color.h"
@@ -455,16 +456,40 @@ gfx_glow_narrow(int64_t v0, int64_t step, int64_t lo, int64_t hi, int* a, int* b
     }
 }
 
+/* A colour dimmed to `keep`/256 of itself, each channel rounded down so
+ * that repeated dimming reaches black rather than sticking one step above.
+ * Green is dimmed at red and blue's five bits: at its own six it outlives
+ * them, and a white trail fades through green. */
+static inline gfx_color_t
+gfx_glow_dim(gfx_color_t colour, int keep) {
+    const uint32_t c = (uint16_t)((colour >> 8) | (colour << 8));
+    const uint32_t r = (((c >> 11) & 0x1F) * (uint32_t)keep) >> 8;
+    const uint32_t g5 = (((c >> 6) & 0x1F) * (uint32_t)keep) >> 8;
+    const uint32_t b = ((c & 0x1F) * (uint32_t)keep) >> 8;
+    const uint32_t dimmed = (r << 11) | (g5 << 6) | ((g5 >> 4) << 5) | b;
+    return (gfx_color_t)((dimmed >> 8) | (dimmed << 8));
+}
+
+/* How much light a colour is, for telling which of two is brighter. */
+static inline int
+gfx_glow_light(gfx_color_t colour) {
+    const uint32_t c = (uint16_t)((colour >> 8) | (colour << 8));
+    return (int)(((c >> 11) & 0x1F) * 2 + ((c >> 5) & 0x3F) + (c & 0x1F) * 2);
+}
+
 /*
  * Draws panel rows [row0, row1) of the posed curve. `lit_lo`/`lit_hi` hold,
- * per panel row, the stretch lit the last time that row was drawn: it is
- * blackened first and then rewritten, which is what lets the curve turn and
- * wave with nothing else clearing behind it. Returns the panel box touched.
+ * per panel row, the stretch still lit from earlier draws, and `trail` is
+ * what becomes of it first: 0 blackens it, 255 leaves it, and between it is
+ * dimmed to trail/256 and fades over the following draws. Returns the panel
+ * box touched, and adds to `*trailing` the pixels still lit that this draw
+ * did not write - a fading trail is unfinished until that is 0.
  */
 static inline gfx_glow_box_t
 gfx_glow_draw_posed_rows(gfx_target_t target, int clip_x0, int clip_y0, int clip_x1, int clip_y1, int panel_w,
                          int panel_h, const gfx_glow_field_t* field, int view_h, gfx_glow_pose_t pose, int row0,
-                         int row1, int16_t* lit_lo, int16_t* lit_hi, const gfx_glow_style_t* style) {
+                         int row1, int16_t* lit_lo, int16_t* lit_hi, int trail, int* trailing,
+                         const gfx_glow_style_t* style) {
     gfx_glow_box_t box = {0, 0, 0, 0};
     const int64_t right_x = pose.down_y;
     const int64_t right_y = -pose.down_x;
@@ -481,8 +506,18 @@ gfx_glow_draw_posed_rows(gfx_target_t target, int clip_x0, int clip_y0, int clip
 
     for (int py = row0; py < row1; py++) {
         gfx_color_t* dst = gfx_target_row(target, py);
+        int kept_lo = 0;
+        int kept_hi = 0;
+        int kept = 0;
         for (int px = lit_lo[py]; px < lit_hi[py]; px++) {
-            dst[px] = GFX_RGB(0x000000);
+            if (trail < 255) {
+                dst[px] = trail == 0 ? GFX_RGB(0x000000) : gfx_glow_dim(dst[px], trail);
+            }
+            if (dst[px] != GFX_RGB(0x000000)) {
+                kept_lo = kept_hi > kept_lo ? kept_lo : px;
+                kept_hi = px + 1;
+                kept++;
+            }
         }
         if (lit_hi[py] > lit_lo[py]) {
             gfx_glow_box_add(&box, lit_lo[py], py);
@@ -518,12 +553,22 @@ gfx_glow_draw_posed_rows(gfx_target_t target, int clip_x0, int clip_y0, int clip
             if (colour == GFX_RGB(0x000000)) {
                 continue;
             }
+            /* Each new band overlaps most of the last, and would overwrite its
+             * bright core with a dim rim: what was left behind would be rim
+             * light only. A trail keeps whichever is brighter. */
+            if (trail > 0 && gfx_glow_light(dst[px]) > gfx_glow_light(colour)) {
+                continue;
+            }
+            kept -= dst[px] != GFX_RGB(0x000000);
             dst[px] = colour;
             new_lo = new_hi > new_lo ? new_lo : px;
             new_hi = px + 1;
         }
-        lit_lo[py] = (int16_t)new_lo;
-        lit_hi[py] = (int16_t)new_hi;
+        *trailing += kept;
+        const bool has_kept = kept_hi > kept_lo;
+        const bool has_new = new_hi > new_lo;
+        lit_lo[py] = (int16_t)(has_kept && (!has_new || kept_lo < new_lo) ? kept_lo : new_lo);
+        lit_hi[py] = (int16_t)(has_kept && (!has_new || kept_hi > new_hi) ? kept_hi : new_hi);
         if (new_hi > new_lo) {
             gfx_glow_box_add(&box, new_lo, py);
             gfx_glow_box_add(&box, new_hi - 1, py);
