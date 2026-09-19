@@ -237,11 +237,13 @@ post_layout_t
 post_layout_for_report(const gfx_font_t* font, int screen_w, int screen_h, const post_entries_t* entries) {
     const int ceiling = post_layout_max_columns(screen_w, screen_h);
 
-    for (int columns = 1; columns <= ceiling; columns++) {
-        const post_layout_t l = post_layout_with(font, screen_w, screen_h, columns, 1);
-        if (report_fits(&l, entries)) {
-            return l;
+    for (int gap = 1; gap >= 0; gap--) {
+        for (int columns = 1; columns <= ceiling; columns++) {
+            const post_layout_t l = post_layout_with(font, screen_w, screen_h, columns, gap);
+            if (report_fits(&l, entries)) {
+                return l;
+            }
         }
     }
-    return post_layout_with(font, screen_w, screen_h, ceiling, 1);
+    return post_layout_with(font, screen_w, screen_h, ceiling, 0);
 }
