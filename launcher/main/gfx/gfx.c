@@ -125,6 +125,14 @@ band_is_app_driven(void) {
 
 static bool band_frame_force_all;
 
+/* A readback's copy of one whole band-mode frame: gfx_band_submit() fills
+ * it during a frame gfx_readback_begin() forced, since the band ring keeps
+ * nothing once a band is sent. PSRAM, and only while a readback is open. */
+static gfx_color_t* band_snapshot;
+static int band_snapshot_bands;
+static bool band_snapshot_filling;
+static bool band_snapshot_complete;
+
 /* What every pixel-writing primitive below actually draws into: the whole
  * framebuffer, or the band currently being rendered - see gfx_target.h for
  * why a target carries its own row range rather than every primitive
@@ -2475,6 +2483,32 @@ free_indexed_image(void) {
 }
 #endif
 
+static bool
+alloc_band_snapshot(void) {
+    const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+#ifdef ESP_PLATFORM
+    band_snapshot = heap_caps_malloc(bytes, BOARD_FRAMEBUFFER_CAPS);
+#else
+    band_snapshot = malloc(bytes);
+#endif
+    band_snapshot_bands = 0;
+    band_snapshot_filling = false;
+    band_snapshot_complete = false;
+    return band_snapshot != NULL;
+}
+
+static void
+free_band_snapshot(void) {
+#ifdef ESP_PLATFORM
+    heap_caps_free(band_snapshot);
+#else
+    free(band_snapshot);
+#endif
+    band_snapshot = NULL;
+    band_snapshot_filling = false;
+    band_snapshot_complete = false;
+}
+
 static void
 free_band_buffers(void) {
     for (int i = 0; i < GFX_BAND_SLOTS; i++) {
@@ -2589,6 +2623,11 @@ gfx_band_frame_begin(void) {
      * gfx_invalidate() call mid-frame (an app's own BOOT-menu toggle, say)
      * must not retroactively force bands this frame already skipped. */
     band_frame_force_all = gfx_band_take_force_all();
+
+    if (band_snapshot != NULL && !band_snapshot_complete) {
+        band_snapshot_bands = 0;
+        band_snapshot_filling = band_frame_force_all;
+    }
 }
 
 /* Band mode's own "does [row0, row1) need touching this frame" query -
@@ -2691,6 +2730,12 @@ gfx_band_submit(void) {
         gfx_line(GFX_WIDTH - 1, row0, GFX_WIDTH - 1, row1 - 1, cyan);
     }
 #endif
+    if (band_snapshot_filling) {
+        memcpy(band_snapshot + (size_t)band_render_row0 * GFX_WIDTH, band_buf[band_current_slot],
+               (size_t)band_render_height * GFX_WIDTH * sizeof(gfx_color_t));
+        band_snapshot_complete = ++band_snapshot_bands == band_ring.band_count;
+        band_snapshot_filling = !band_snapshot_complete;
+    }
     bool sent = true;
 #ifdef ESP_PLATFORM
     if (gfx_band_ring_must_wait(&band_ring)) {
@@ -2724,19 +2769,40 @@ gfx_indexed_image(void) {
     return indexed_image;
 }
 
-bool
+gfx_readback_t
+gfx_readback_begin(void) {
+    GFX_PRESENT_GUARD();
+    if (!band_is_app_driven()) {
+        return GFX_READBACK_READY;
+    }
+    if (band_snapshot == NULL && !alloc_band_snapshot()) {
+        return GFX_READBACK_UNAVAILABLE;
+    }
+    if (band_snapshot_complete) {
+        return GFX_READBACK_READY;
+    }
+    gfx_band_force_all();
+    return GFX_READBACK_PENDING;
+}
+
+void
 gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]) {
     GFX_PRESENT_GUARD();
     if (current_mode.layout == GFX_LAYOUT_FULL_FB) {
         memcpy(out_row, fb + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
-        return true;
-    }
-    if (current_mode.pixfmt == GFX_PIXFMT_INDEXED8) {
+    } else if (current_mode.pixfmt == GFX_PIXFMT_INDEXED8) {
         const gfx_indexed_frame_t frame = indexed_frame();
         gfx_indexed_expand_panel_row(&frame, y, out_row, GFX_WIDTH);
-        return true;
+    } else {
+        assert(band_snapshot_complete);
+        memcpy(out_row, band_snapshot + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
     }
-    return false;
+}
+
+void
+gfx_readback_end(void) {
+    GFX_PRESENT_GUARD();
+    free_band_snapshot();
 }
 
 void

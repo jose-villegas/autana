@@ -278,7 +278,8 @@ dump_state(const input_t* input, const app_t* current_app) {
 }
 
 static void
-release_row_buffers(void) {
+end_capture(void) {
+    gfx_readback_end();
     free(pixels);
     free(row);
     free(row_b64);
@@ -293,11 +294,41 @@ refuse(const char* reason) {
     ESP_LOGW(TAG, "screenshot refused - %s", reason);
     fflush(stdout);
     emit_line("SCREENSHOT_REFUSED:", reason);
-    release_row_buffers();
+    end_capture();
+}
+
+/* How many frames a band-mode capture waits for the app to draw a whole
+ * frame before giving up - an app that stops calling gfx_band_next(). */
+#define READBACK_PENDING_FRAMES_MAX 60
+
+static int s_readback_pending_frames;
+
+/* True once the frame is readable. Otherwise asks again next frame, or
+ * refuses once that has gone on too long. */
+static bool
+readback_ready(void) {
+    switch (gfx_readback_begin()) {
+        case GFX_READBACK_READY: s_readback_pending_frames = 0; return true;
+        case GFX_READBACK_UNAVAILABLE:
+            refuse("band mode, and no room in PSRAM for a snapshot of the frame");
+            return false;
+        case GFX_READBACK_PENDING: break;
+    }
+    if (++s_readback_pending_frames > READBACK_PENDING_FRAMES_MAX) {
+        s_readback_pending_frames = 0;
+        refuse("band mode, and the app drew no complete frame to copy");
+        return false;
+    }
+    s_request_pending = true;
+    return false;
 }
 
 void
 screenshot_dump(const input_t* input, const app_t* current_app) {
+    if (!readback_ready()) {
+        return;
+    }
+
     const int32_t stride = screenshot_bmp_row_stride(GFX_WIDTH);
     const uint32_t pixel_bytes = (uint32_t)(stride * GFX_HEIGHT);
     const uint32_t total_bytes = SCREENSHOT_BMP_HEADER_SIZE + pixel_bytes;
@@ -315,11 +346,6 @@ screenshot_dump(const input_t* input, const app_t* current_app) {
                  (unsigned)(pixels_bytes + row_bytes + row_b64_bytes),
                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
         refuse(reason);
-        return;
-    }
-
-    if (!gfx_read_panel_row(GFX_HEIGHT - 1, pixels)) {
-        refuse("the running app draws in RGB565 bands, so no stored frame exists to read back");
         return;
     }
 
@@ -370,5 +396,5 @@ screenshot_dump(const input_t* input, const app_t* current_app) {
 
     emit_line("SCREENSHOT_END", "");
 
-    release_row_buffers();
+    end_capture();
 }
