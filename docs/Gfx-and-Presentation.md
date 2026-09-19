@@ -49,11 +49,11 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 | Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole |
 | Content kept between frames | yes | **no** - a band is gone once sent | yes |
 | For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette |
-| Used by | launcher, diagnostics | cube | sand |
+| Used by | launcher, diagnostics | render lab | sand |
 
 - `gfx_mode_enter()` asserts the mode is `GFX_LAYOUT_FULL_FB`: modes do not nest.
 - A failed allocation grants nothing: the returned mode is still
-  `GFX_LAYOUT_FULL_FB`. Check the grant, as `app_cube.c` does.
+  `GFX_LAYOUT_FULL_FB`. Check the grant, as `app_render_lab.c` does.
 - Only `GFX_RESOLUTION_FULL` without interlace renders today. The other
   request fields grant correctly and nothing consumes them.
 - `GFX_BAND_HEIGHT` is 16, 32 or 64 rows by Kconfig, default 32, and always

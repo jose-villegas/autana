@@ -25,12 +25,12 @@
 
 static bool initialized;
 
-static const app_t preview_cube = {.name = "3D Cube", .summary = "Real-time 3D rendering"};
+static const app_t preview_render_lab = {.name = "Render Lab", .summary = "Software rendering experiments"};
 static const app_t preview_diagnostics = {.name = "Diagnostics", .summary = "Device status"};
 static const app_t preview_sand = {.name = "Falling Sand", .summary = "Particle simulation"};
 
 static const app_t* const preview_apps[] = {
-    &preview_cube,
+    &preview_render_lab,
     &preview_diagnostics,
     &preview_sand,
 };

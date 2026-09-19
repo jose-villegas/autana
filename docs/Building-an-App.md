@@ -219,6 +219,7 @@ cube's band bbox.
 ```
 main/apps/<name>/
 ├── app_<name>.c      entry point: hardware, gfx, state ownership   (NOT host-portable)
+├── scene_*.c         a hardware-facing render target the app hosts (NOT host-portable)
 ├── *.c / *.h         the app's logic                                (pure, host-tested)
 ├── suite_*.c         its tests - SUITE_REGISTER, same self-registration
 ├── ui/               one file per screen - see Building-a-Screen.md
@@ -228,6 +229,7 @@ main/apps/<name>/
 | Path pattern | Firmware | Host test runner |
 |---|---|---|
 | `app_*.c` | yes | no - compiled against stubs by `check_app_sources.sh` |
+| `scene_*.c` | yes | no - same treatment as `app_*.c` |
 | other `*.c` | yes | yes |
 | `suite_*.c` | only `CONFIG_LAUNCHER_SELFTEST` builds | yes |
 | `tools/**` | never | never |
