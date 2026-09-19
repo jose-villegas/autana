@@ -3476,14 +3476,14 @@ water_slope_log_step(const char* phase, int step_index, const sand_t* s, unsigne
                      unsigned moves_delta, unsigned probes_delta, unsigned sweep_moves_delta) {
     ESP_LOGI("device_tests",
              "%-8s %3d tot=%5d sweep=%4d liq=%4d flt=%3d gas=%3d react=%4d imp=%3d dispatch=%5u xmoves=%4u "
-             "xprobes=%5u smoves=%4u soak=%d awake=%3d liqnear=%3d",
+             "xprobes=%5u smoves=%4u soak=%d awake=%3d liqnear=%3d aborts=%3u",
              phase, step_index,
              (int)(s->pass_us.sweep_us + s->pass_us.liquid_us + s->pass_us.float_us + s->pass_us.gas_us
                    + s->pass_us.reactions_us + s->pass_us.impulses_us),
              (int)s->pass_us.sweep_us, (int)s->pass_us.liquid_us, (int)s->pass_us.float_us, (int)s->pass_us.gas_us,
              (int)s->pass_us.reactions_us, (int)s->pass_us.impulses_us, dispatched_delta, moves_delta, probes_delta,
              sweep_moves_delta, (int)sand_reactions_last_was_soak_only, count_awake_blocks(s),
-             water_slope_liquid_near_blocks(s));
+             water_slope_liquid_near_blocks(s), s->sweep_lane_aborts);
 }
 
 static void

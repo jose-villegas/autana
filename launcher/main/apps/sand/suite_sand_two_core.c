@@ -1,4 +1,5 @@
-/* Portable checks for the four-colour chunk passes: deterministic,
+/* Portable checks for the chunk-parallel passes - the gravity sweep on its
+ * schedule, cross-flow, gas and reactions in four colours: deterministic,
  * mass-conserving, and without a chunk seam. Host jobs run inline. */
 #include <stdio.h>
 #include <stdlib.h>
@@ -304,6 +305,37 @@ test_two_core_step_is_deterministic_across_seeds(void) {
 
     for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
         tc_assert_seed_is_deterministic(seeds[i], 40);
+    }
+}
+
+#define TC_DRIVERS 3
+
+/* A chunk's lane is its position's parity whoever executes it, and lane-keyed
+ * state is what a chunk's sweep writes into, so the board a schedule produces
+ * cannot depend on how the two lanes take turns. Driven on one thread here,
+ * which is the only way to vary the turns deliberately. */
+static void
+test_the_split_sweep_ignores_how_its_lanes_interleave(void) {
+    static const sand_sweep_driver_t drivers[TC_DRIVERS] = {SAND_SWEEP_LANE0_EAGER, SAND_SWEEP_LANE1_EAGER,
+                                                            SAND_SWEEP_ALTERNATE};
+    static const uint32_t seeds[] = {1u, 7u, 12345u};
+
+    for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
+        const uint32_t solo = tc_run_and_hash(seeds[i], 40, true);
+        uint32_t driven[TC_DRIVERS];
+
+        for (int d = 0; d < TC_DRIVERS; d++) {
+            sand_sweep_set_driver_for_test(drivers[d]);
+            driven[d] = tc_run_and_hash(seeds[i], 40, true);
+        }
+        sand_sweep_set_driver_for_test(SAND_SWEEP_SOLO);
+
+        for (int d = 0; d < TC_DRIVERS; d++) {
+            char why[160];
+            snprintf(why, sizeof why, "seed %u driver %d: the split sweep's board depended on the lane interleaving",
+                     (unsigned)seeds[i], (int)drivers[d]);
+            TEST_ASSERT_EQUAL_HEX32_MESSAGE(solo, driven[d], why);
+        }
     }
 }
 
@@ -766,12 +798,11 @@ test_two_core_step_never_double_moves_at_a_seam(void) {
     }
 }
 
-/* THE STAMPED-ARRIVAL CHECK: a liquid cell that crossed a chunk border is
- * stamped where it landed, so the pass owning the destination must leave it
- * alone - but that block holds liquid now, and cross-flow searches nowhere
- * the sweep did not say so. The move has to leave the cell's own block as
- * well as its chunk, or the block carries the mark from the departure and the
- * claim holds for the wrong reason. */
+/* THE CROSSING-ARRIVAL CHECK: a liquid moving with gravity lands in a chunk
+ * the schedule swept first, so its new block's own BLOCK_HAS_LIQUID is a step
+ * behind. Cross-flow's gate is BLOCK_LIQUID_NEAR, which the block it left -
+ * an 8-neighbour of this one - covers. The move has to leave the cell's own
+ * block too, or that mark is the departure's own. */
 static void
 tc_assert_a_crossing_liquid_marks_where_it_lands(int gx, int gy, int start_x, int start_y, int dest_x, int dest_y) {
     tc_board_t* b = tc_board_open(TC_W, TC_H, 1);
@@ -796,12 +827,12 @@ tc_assert_a_crossing_liquid_marks_where_it_lands(int gx, int gy, int start_x, in
              start_y, dest_x, dest_y, gx, gy, (unsigned)state);
     TEST_ASSERT_NOT_EQUAL_INT_MESSAGE(started, landed, why);
     TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(arrived), why);
-    TEST_ASSERT_TRUE_MESSAGE((state & BLOCK_HAS_LIQUID) != 0, why);
+    TEST_ASSERT_TRUE_MESSAGE((state & BLOCK_LIQUID_NEAR) != 0, why);
     TEST_ASSERT_TRUE_MESSAGE(still_liquid, why);
 }
 
 static void
-test_a_liquid_stamped_across_a_chunk_border_marks_its_new_block(void) {
+test_a_liquid_crossing_a_chunk_border_stays_in_cross_flow_reach(void) {
     const int side = tc_chunk_side_of(TC_W, TC_H);
     const int x = (TC_W / 2 / SAND_BLOCK_W) * SAND_BLOCK_W + SAND_BLOCK_W / 2;
     const int y = (side / 2 / SAND_BLOCK_H) * SAND_BLOCK_H + SAND_BLOCK_H / 2;
@@ -837,6 +868,7 @@ test_two_core_step_matches_serial_fall_distance_at_a_seam(void) {
             sand_init(&two_core_s, two_core_cells, TC_W, TC_H, 1u);
             sand_enable_sleeping(&serial_s, serial_blocks);
             sand_enable_sleeping(&two_core_s, two_core_blocks);
+            void* scratch = lane_scratch_open(&two_core_s);
             sand_set_scatter(&serial_s, 0);
             sand_set_scatter(&two_core_s, 0);
             tc_prime_phase(&serial_s, offset);
@@ -855,6 +887,7 @@ test_two_core_step_matches_serial_fall_distance_at_a_seam(void) {
             const uint32_t serial_hash = tc_hash(serial_cells, (size_t)TC_W * (size_t)TC_H);
             const uint32_t two_core_hash = tc_hash(two_core_cells, (size_t)TC_W * (size_t)TC_H);
 
+            free(scratch);
             free(serial_cells);
             free(two_core_cells);
             free(serial_blocks);
@@ -935,6 +968,125 @@ test_smaller_quality_seams_match_serial(void) {
             tc_assert_quality_corners_match_serial(qualities[q].w, qualities[q].h, side, phase);
         }
     }
+}
+
+#define TC_BODY_SIDE      48
+#define TC_BODY_STEPS_MAX 40
+
+/* A solid square straddling the first chunk border on both axes, so it is
+ * astride one for every step it can travel. */
+static void
+tc_build_solid_body(sand_t* s, int side, cell_t fill, int* out_x0, int* out_y0) {
+    const int x0 = side - TC_BODY_SIDE / 2;
+    const int y0 = side - TC_BODY_SIDE / 2;
+
+    for (int y = y0; y < y0 + TC_BODY_SIDE; y++) {
+        for (int x = x0; x < x0 + TC_BODY_SIDE; x++) {
+            sand_set(s, x, y, fill);
+        }
+    }
+    *out_x0 = x0;
+    *out_y0 = y0;
+}
+
+/* How far the body can travel before an edge of it reaches a wall, where it
+ * would stop being a body in free fall. */
+static int
+tc_body_steps(int x0, int y0, int tx, int ty) {
+    const int room_x = (tx > 0) ? TC_W - 1 - (x0 + TC_BODY_SIDE) : (tx < 0) ? x0 - 1 : TC_BODY_STEPS_MAX;
+    const int room_y = (ty > 0) ? TC_H - 1 - (y0 + TC_BODY_SIDE) : (ty < 0) ? y0 - 1 : TC_BODY_STEPS_MAX;
+    const int room = (room_x < room_y) ? room_x : room_y;
+
+    return (room < TC_BODY_STEPS_MAX) ? room : TC_BODY_STEPS_MAX;
+}
+
+typedef struct {
+    int count, x0, y0, x1, y1;
+} tc_extent_t;
+
+static void
+tc_extent_add(tc_extent_t* e, int x, int y) {
+    e->count++;
+    e->x0 = (x < e->x0) ? x : e->x0;
+    e->y0 = (y < e->y0) ? y : e->y0;
+    e->x1 = (x > e->x1) ? x : e->x1;
+    e->y1 = (y > e->y1) ? y : e->y1;
+}
+
+/* Still solid exactly when the cells fill their own bounding box: a gap
+ * opened on a chunk border stretches that box without adding a cell. */
+static bool
+tc_body_is_solid(const sand_t* s, material_id_t material) {
+    tc_extent_t e = {0, s->w, s->h, -1, -1};
+
+    for (int y = 0; y < s->h; y++) {
+        for (int x = 0; x < s->w; x++) {
+            const cell_t c = sand_at(s, x, y);
+            if (!CELL_IS_EMPTY(c) && CELL_MATERIAL(c) == material) {
+                tc_extent_add(&e, x, y);
+            }
+        }
+    }
+    return e.count == TC_BODY_SIDE * TC_BODY_SIDE && e.x1 - e.x0 + 1 == TC_BODY_SIDE && e.y1 - e.y0 + 1 == TC_BODY_SIDE;
+}
+
+/* The step at which the body first stopped being one, or -1. */
+static int
+tc_body_breaks_at(cell_t fill, material_id_t material, int tx, int ty, bool two_core) {
+    const int side = tc_chunk_side_of(TC_W, TC_H);
+    tc_board_t* b = tc_board_open(TC_W, TC_H, 1);
+    int x0, y0, broke = -1;
+
+    tc_build_solid_body(&b->s, side, fill, &x0, &y0);
+    const int steps = tc_body_steps(x0, y0, tx, ty);
+    for (int i = 0; i < steps && broke < 0; i++) {
+        tc_board_step(b, tx * 1000, ty * 1000, two_core);
+        if (!tc_body_is_solid(&b->s, material)) {
+            broke = i;
+        }
+    }
+    tc_board_close(b);
+    return broke;
+}
+
+/* Every direction in one verdict, since which ones break is the evidence:
+ * a fixed pass order holds against travel for half of them and runs the
+ * upstream chunk of a border first for the other half. */
+static void
+tc_assert_no_direction_breaks_a_body(cell_t fill, material_id_t material, bool two_core, const char* what) {
+    char broke[128] = "";
+    size_t used = 0;
+
+    for (size_t g = 0; g < sizeof tc_ring / sizeof tc_ring[0]; g++) {
+        const int at = tc_body_breaks_at(fill, material, tc_ring[g][0], tc_ring[g][1], two_core);
+        if (at >= 0 && used < sizeof broke - 1) {
+            used += (size_t)snprintf(broke + used, sizeof broke - used, " %d,%d@%d", tc_ring[g][0], tc_ring[g][1], at);
+        }
+    }
+
+    char why[200];
+    snprintf(why, sizeof why, "%s opened a gap under gravity:%s", what, broke);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, (int)broke[0], why);
+}
+
+static void
+test_a_split_falling_body_of_sand_opens_no_gap(void) {
+    tc_assert_no_direction_breaks_a_body(SAND, MAT_SAND, true, "a split sand body");
+}
+
+static void
+test_a_serial_falling_body_of_sand_opens_no_gap(void) {
+    tc_assert_no_direction_breaks_a_body(SAND, MAT_SAND, false, "a serial sand body");
+}
+
+static void
+test_a_split_falling_body_of_water_opens_no_gap(void) {
+    tc_assert_no_direction_breaks_a_body(WATER, MAT_WATER, true, "a split water body");
+}
+
+static void
+test_a_serial_falling_body_of_water_opens_no_gap(void) {
+    tc_assert_no_direction_breaks_a_body(WATER, MAT_WATER, false, "a serial water body");
 }
 
 #define TC_FUSE_IMPULSE_MAX 2048
@@ -1070,6 +1222,7 @@ test_a_settled_chunk_does_no_row_work(void) {
     sand_t s;
     sand_init(&s, cells, TC_W, TC_H, 1u);
     sand_enable_sleeping(&s, blocks);
+    void* scratch = lane_scratch_open(&s);
     for (int y = 0; y < TC_H; y++) {
         for (int x = 0; x < TC_W; x++) {
             sand_set(&s, x, y, STONE);
@@ -1082,6 +1235,7 @@ test_a_settled_chunk_does_no_row_work(void) {
     sand_step(&s, 0, 1000, 0);
     sand_set_two_core_step(false);
 
+    free(scratch);
     free(cells);
     free(blocks);
 
@@ -1140,6 +1294,7 @@ tc_run_zero_rng_and_hash(void (*build)(sand_t*), int steps, int gx, int gy, int 
     sand_t s;
     sand_init(&s, cells, TC_W, TC_H, 1u);
     sand_enable_sleeping(&s, blocks);
+    void* scratch = lane_scratch_open(&s);
     sand_set_scatter(&s, 0);
     tc_prime_phase(&s, offset);
     build(&s);
@@ -1163,6 +1318,7 @@ tc_run_zero_rng_and_hash(void (*build)(sand_t*), int steps, int gx, int gy, int 
         *out_n = n;
     }
 
+    free(scratch);
     free(cells);
     free(blocks);
     return h;
@@ -1749,6 +1905,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_chunk_colours_cover_every_cell_exactly_once);
     RUN_TEST(test_a_colours_two_workers_never_meet_on_a_row);
     RUN_TEST(test_two_core_step_is_deterministic_across_seeds);
+    RUN_TEST(test_the_split_sweep_ignores_how_its_lanes_interleave);
     RUN_TEST(test_split_gas_walk_uses_hashed_rng);
     RUN_TEST(test_split_gas_walk_ignores_worker_order);
     RUN_TEST(test_two_core_step_actually_changes_the_draw_stream);
@@ -1756,9 +1913,13 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_two_core_step_does_not_leak_or_fabricate_mass);
     RUN_TEST(test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam);
     RUN_TEST(test_two_core_step_never_double_moves_at_a_seam);
-    RUN_TEST(test_a_liquid_stamped_across_a_chunk_border_marks_its_new_block);
+    RUN_TEST(test_a_liquid_crossing_a_chunk_border_stays_in_cross_flow_reach);
     RUN_TEST(test_two_core_step_matches_serial_fall_distance_at_a_seam);
     RUN_TEST(test_smaller_quality_seams_match_serial);
+    RUN_TEST(test_a_serial_falling_body_of_sand_opens_no_gap);
+    RUN_TEST(test_a_split_falling_body_of_sand_opens_no_gap);
+    RUN_TEST(test_a_serial_falling_body_of_water_opens_no_gap);
+    RUN_TEST(test_a_split_falling_body_of_water_opens_no_gap);
     RUN_TEST(test_a_fuse_blast_throws_grains_on_both_cores);
     RUN_TEST(test_a_lava_burst_throws_grains_on_both_cores);
     RUN_TEST(test_a_settled_chunk_does_no_row_work);

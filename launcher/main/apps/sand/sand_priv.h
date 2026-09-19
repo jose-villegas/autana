@@ -39,6 +39,7 @@
 #include <string.h>
 
 #include "sand.h"
+#include "sand_chunk_sched.h"
 #include "util/job.h"
 
 #define SAND_CHUNK_TARGET_CELLS_DIVISOR 10
@@ -391,6 +392,18 @@ extern unsigned sand_liquid_sweep_moves;
 /* Not sand.h API: chunks the sweep stepped rather than skipped whole.
  * Never reset by the pass itself, so tests can measure a per-step delta. */
 extern unsigned sand_sweep_chunks_swept;
+
+/* Which thread the gravity sweep's two lanes run on when no second core
+ * takes one. SOLO walks the order once, the rest step both lanes by hand so
+ * a test can vary the interleaving; the board must not tell them apart. */
+typedef enum {
+    SAND_SWEEP_SOLO,
+    SAND_SWEEP_LANE0_EAGER,
+    SAND_SWEEP_LANE1_EAGER,
+    SAND_SWEEP_ALTERNATE,
+} sand_sweep_driver_t;
+
+void sand_sweep_set_driver_for_test(sand_sweep_driver_t driver);
 
 #define BLOCK_SETTLED_NEAREST 0x1
 #define BLOCK_SETTLED_OTHER   0x2
