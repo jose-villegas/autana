@@ -125,3 +125,74 @@ post_layout_gap(const post_layout_t* l, post_lines_t* lines) {
     }
     lines->next++;
 }
+
+void
+post_layout_reserve(const post_layout_t* l, post_lines_t* lines, int n) {
+    if (l->rows <= 0 || n <= 0) {
+        return;
+    }
+
+    const int row = lines->next % l->rows;
+    if (row == 0 || n <= l->rows - row) {
+        return;
+    }
+
+    /* Past the last column there is nowhere better to go, and skipping the
+     * rows that are left would cost the report more than the break saves. */
+    const int next_top = lines->next + (l->rows - row);
+    if (next_top >= post_layout_capacity(l)) {
+        return;
+    }
+    lines->next = next_top;
+}
+
+int
+post_layout_wrap_columns(const post_layout_t* l, int indent) {
+    int columns = l->line_chars - indent;
+    if (columns > POST_WRAP_MAX_CHARS) {
+        columns = POST_WRAP_MAX_CHARS;
+    }
+    return columns < 1 ? 1 : columns;
+}
+
+post_wrap_line_t
+post_wrap_next(const char* text, int columns, int* cursor) {
+    if (columns < 1) {
+        columns = 1;
+    }
+
+    int at = *cursor;
+    while (text[at] == ' ') {
+        at++; /* the break the previous line consumed */
+    }
+
+    post_wrap_line_t line = {at, 0};
+    if (text[at] == '\0') {
+        *cursor = at;
+        return line;
+    }
+
+    while (text[at + line.len] != '\0' && line.len < columns) {
+        line.len++;
+    }
+    if (text[at + line.len] != '\0') {
+        int brk = columns;
+        while (brk > 0 && text[at + brk] != ' ') {
+            brk--;
+        }
+        line.len = brk > 0 ? brk : columns;
+    }
+
+    *cursor = at + line.len;
+    return line;
+}
+
+int
+post_wrap_count(const char* text, int columns) {
+    int cursor = 0;
+    int lines = 0;
+    while (post_wrap_next(text, columns, &cursor).len > 0) {
+        lines++;
+    }
+    return lines;
+}
