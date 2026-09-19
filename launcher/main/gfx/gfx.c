@@ -2287,6 +2287,34 @@ run_present_indexed(void) {
     }
 }
 
+/* Sends every dirty strip row this present owns. Returns the cells of the
+ * rows interlace left for the next present, still dirty. */
+static uint32_t
+send_dirty_rows(int* queued) {
+    uint32_t remaining_cell_dirty = 0;
+
+    for (int row = 0; row < STRIP_COUNT; row++) {
+        if (!dirty_row_is_dirty(row)) {
+            continue; /* unchanged - the panel is still showing it */
+        }
+
+        if (interlace_on && (row % 2) != frame_parity) {
+            remaining_cell_dirty |= cell_dirty & (((1u << GRID_COLS) - 1u) << (row * GRID_COLS));
+            continue;
+        }
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        if (overlay_any_on()) {
+            overlay_bordered_rows |= 1u << row;
+        }
+#endif
+        send_one_row(row, queued);
+        dirty_row_sent(row);
+    }
+
+    return remaining_cell_dirty;
+}
+
 /* The real send, run on the present task (async) or on the caller
  * (gfx_set_present_async(false)) - either way, on whichever core called it,
  * since strip_sent is an ordinary FreeRTOS semaphore and the panel's own
@@ -2305,30 +2333,11 @@ run_present_normal(void) {
         frame_parity = !frame_parity;
     }
 
-    uint32_t remaining_cell_dirty = 0;
-
 #if CONFIG_LAUNCHER_DEVELOPMENT
     send_overlay_bordered_rows_clean(send_fb_rows, &queued);
 #endif
 
-    for (int row = 0; row < STRIP_COUNT; row++) {
-        if (!dirty_row_is_dirty(row)) {
-            continue; /* unchanged - the panel is still showing it */
-        }
-
-        if (interlace_on && (row % 2) != frame_parity) {
-            remaining_cell_dirty |= cell_dirty & (((1u << GRID_COLS) - 1u) << (row * GRID_COLS));
-            continue;
-        }
-
-#if CONFIG_LAUNCHER_DEVELOPMENT
-        if (overlay_any_on()) {
-            overlay_bordered_rows |= 1u << row;
-        }
-#endif
-        send_one_row(row, &queued);
-        dirty_row_sent(row);
-    }
+    const uint32_t remaining_cell_dirty = send_dirty_rows(&queued);
 
     dirty_frame_sent();
     if (interlace_on) {
