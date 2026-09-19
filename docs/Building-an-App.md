@@ -64,9 +64,10 @@ flowchart LR
     REG -->|"app_main(): sort by name"| LIST["launcher list"]
 ```
 
-- Registration happens before `app_main()`, into a fixed array: no allocation,
-  no failure path. The 17th app is dropped with an error log.
-- Constructor order is link order, so the shell sorts by `name`.
+- `app_register()` runs before `app_main()`, into a fixed array of `APP_MAX`
+  (16): no allocation, no failure path. One app too many is dropped with an
+  error log.
+- Constructor order is link order, so `sort_apps()` orders by `name`.
 - `WHOLE_ARCHIVE` is what keeps an app nothing references by name in the
   image. Without it the app vanishes from the list with no link error.
 - Anything may read the registry: `app_list()`, `app_list_count()`.
@@ -91,12 +92,13 @@ stateDiagram-v2
     Running --> Running: update() / frame()
 ```
 
-What the shell does on each transition, in order:
+What the shell does on each transition, in order - `step_launcher()` on
+launch, `leave_app()` on leave:
 
 | Launch | Leave |
 |---|---|
 | `gfx_request_full_redraw()` | `exit()` |
-| panel clock -> system value, heal -> defaults | panel clock -> system value, heal -> defaults |
+| `restore_system_display_state()` | `restore_system_display_state()` |
 | `enter()` | `gfx_request_full_redraw()` |
 | next pass: `invalidate()`, then the first `frame()` | launcher drawn and presented the same pass |
 
@@ -105,6 +107,10 @@ last. The pass that leaves calls neither `update()` nor `frame()`, so the app
 never sees the input that closed it.
 
 ## One pass of the frame loop
+
+`app_main_loop()` reads input and clamps `dt_ms`, `step_app()` decides between
+leaving and stepping, `step_running_app()` picks one of the two shapes below
+and `present_unless_deferred()` presents for the first.
 
 Without `update()` - the shell presents synchronously after `frame()`:
 
@@ -146,7 +152,8 @@ drawn yet. Sand is the adopter - `sand_update()` steps the sim,
 
 ## Input
 
-`input_t` arrives in `frame()` and `update()`; an app polls nothing.
+`input_t` arrives in `frame()` and `update()`; an app polls nothing. The
+button fields are `button_t`, from `input/buttons.h`.
 
 | Field | Meaning |
 |---|---|
@@ -163,9 +170,11 @@ drawn yet. Sand is the adopter - `sand_update()` steps the sim,
 | `true` | swipe in from the content's bottom edge (follows rotation); shell draws the hint strip | shell |
 | `false` | PWR long-press (`power.held`); a short PWR press still reaches the app | shell, no hint |
 
-Leave it `false` only when the app's own input is a drag near a screen edge -
-sand does. An app cannot ask the shell to leave; every exit is one of the two
-rows above.
+`step_app()` checks both before the app runs: `gesture_is_home_swipe()`
+against the edge `exit_edge_for_quarter()` names, or `power.held`. Leave
+`home_gesture` `false` only when the app's own input is a drag near a screen
+edge - sand does. An app cannot ask the shell to leave; every exit is one of
+the two rows above.
 
 ## Rules
 
@@ -186,7 +195,7 @@ every app heap; allocate in `enter()`, free in `exit()`.
 
 ### What the shell resets for you
 
-On every launch and leave: the panel clock goes back to the system value
+On every launch and leave, `restore_system_display_state()`: the panel clock goes back to the system value
 (`shell_system_panel_clock_hz()`, the user's 80 or 40 MHz choice, kept in NVS)
 and gfx heal goes back to its defaults. The gfx mode is **not** reset - that is
 `exit()`'s job.
@@ -198,7 +207,8 @@ An app that minds a stray pixel at 80 MHz opts into heal: `gfx_heal_mark()`,
 ### Full redraw
 
 `gfx_request_full_redraw()` marks everything dirty and latches a flag. At the
-top of the next pass the shell clears the flag and calls `invalidate()`. A
+top of the next pass `apply_pending_full_redraw()` clears the flag and calls
+`invalidate()`. A
 request made inside `frame()` is served the following pass. The shell requests
 one on launch, leave, an orientation change, a screenshot and a self-test run.
 Implement `invalidate()` only for a cache gfx cannot see - sand's row runs,
