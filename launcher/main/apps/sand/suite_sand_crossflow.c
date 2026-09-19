@@ -298,31 +298,136 @@ test_crossflow_pool_conserves_mass_and_is_deterministic(void) {
     crossflow_free(serial);
 }
 
-static void
-test_crossflow_uniform_pool_has_no_chunk_seams(void) {
-    crossflow_fixture_t* f = crossflow_fixture();
-    for (int y = 0; y < CF_H; y++) {
-        sand_set(&f->s, 9, y, CELL_MAKE(MAT_WATER, 1 + y % 15));
+enum { CF_LINE_SHORT = 19, CF_LINE_LONG = 150 };
+
+/* A line of liquid laid ALONG the ray in a stone field, long enough to cross
+ * several chunk borders. Nothing off the line can be read or written: every
+ * probe and every transfer runs along the ray, and the one cell the pass
+ * reads off it - the gravity-ward neighbour - is perpendicular here, so it
+ * is stone. That is what makes the levelled line comparable to serial's
+ * exactly rather than approximately. */
+static int
+crossflow_line(crossflow_fixture_t* f, int px, int py, int* x0, int* y0) {
+    const int len = (px != 0) ? CF_LINE_SHORT : CF_LINE_LONG;
+    const int lo = (px != 0) ? 40 : 4;
+
+    *x0 = (px > 0) ? 0 : (px < 0) ? len - 1 : 9;
+    *y0 = (py == 0) ? 80 : (py > 0) ? lo : lo + len - 1;
+    for (int i = 0; i < len; i++) {
+        sand_set(&f->s, *x0 + i * px, *y0 + i * py, CELL_MAKE(MAT_WATER, (uint8_t)(1 + i % 15)));
     }
-    const unsigned mass = crossflow_water_mass(f->cells);
+    return len;
+}
+
+enum {
+    CF_FAULT_MASS = 1u,   /* the line did not keep the mass it started with */
+    CF_FAULT_STEP = 2u,   /* levelled, but with a step left at a border    */
+    CF_FAULT_SERIAL = 4u, /* levelled, but not where serial put the mass   */
+};
+
+/* Reported rather than asserted per ray, so one direction failing does not
+ * hide what the other seven did. */
+static unsigned
+crossflow_level_faults(int px, int py) {
+    crossflow_fixture_t* split = crossflow_fixture();
+    crossflow_fixture_t* serial = crossflow_fixture();
+    int x0, y0;
+    const int len = crossflow_line(split, px, py, &x0, &y0);
+
+    (void)crossflow_line(serial, px, py, &x0, &y0);
+    const unsigned mass = crossflow_water_mass(split->cells);
+
     for (int step = 0; step < 600; step++) {
-        f->s.step_phase = (uint16_t)step;
-        crossflow_step(f, 0, 1, true);
+        split->s.step_phase = serial->s.step_phase = (uint16_t)step;
+        crossflow_step(split, px, py, true);
+        crossflow_step(serial, px, py, false);
     }
-    unsigned max_jump = 0;
-    for (int y = 1; y < CF_H; y++) {
-        const int level = CELL_VARIANT(f->cells[y * CF_W + 9]);
-        const int above = CELL_VARIANT(f->cells[(y - 1) * CF_W + 9]);
-        const unsigned jump = (unsigned)abs(level - above);
-        if (jump > max_jump) {
-            max_jump = jump;
+
+    unsigned faults = 0;
+    int previous = 0;
+    for (int i = 0; i < len; i++) {
+        const size_t at = (size_t)(y0 + i * py) * (size_t)CF_W + (size_t)(x0 + i * px);
+        const int level = CELL_VARIANT(split->cells[at]);
+
+        if (i > 0 && abs(level - previous) > 1) {
+            faults |= CF_FAULT_STEP;
+        }
+        if (level != CELL_VARIANT(serial->cells[at])) {
+            faults |= CF_FAULT_SERIAL;
+        }
+        previous = level;
+    }
+    if (crossflow_water_mass(split->cells) != mass) {
+        faults |= CF_FAULT_MASS;
+    }
+    crossflow_free(split);
+    crossflow_free(serial);
+    return faults;
+}
+
+static void
+test_crossflow_levels_a_line_across_every_border(void) {
+    char report[256] = "";
+    size_t used = 0;
+    int faulty = 0;
+
+    for (int px = -1; px <= 1; px++) {
+        for (int py = -1; py <= 1; py++) {
+            if (px == 0 && py == 0) {
+                continue;
+            }
+            const unsigned faults = crossflow_level_faults(px, py);
+            if (faults == 0) {
+                continue;
+            }
+            faulty++;
+            used += (size_t)snprintf(report + used, sizeof report - used, " ray %d,%d faults %u", px, py, faults);
         }
     }
-    const unsigned after = crossflow_water_mass(f->cells);
-    crossflow_free(f);
-    TEST_ASSERT_EQUAL_UINT(mass, after);
-    TEST_ASSERT_LESS_OR_EQUAL_UINT_MESSAGE(1, max_jump,
-                                           "neighboring rows, including seams, must level to within one mass unit");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, faulty, report);
+}
+
+static crossflow_fixture_t*
+crossflow_seeded_pool(uint32_t seed) {
+    crossflow_fixture_t* f = crossflow_fixture();
+    rng_t placement;
+
+    rng_seed(&placement, seed);
+    for (int y = 1; y < CF_H - 1; y++) {
+        for (int x = 1; x < CF_W - 1; x++) {
+            sand_set(&f->s, x, y, CELL_MAKE(MAT_WATER, (uint8_t)(1 + rng_below(&placement, 15))));
+        }
+    }
+    return f;
+}
+
+/* WHAT LETS CROSS-FLOW FORWARD MASS WITH NO ARRIVAL MARK: a transfer runs
+ * along the ray, the chunk order runs against it, so the chunk a transfer
+ * lands in is always one already finished. Nothing else keeps a grain to one
+ * move per pass, which is why this counts rather than samples. */
+static void
+test_crossflow_never_gives_to_a_chunk_ranked_later(void) {
+    static const int rays[][2] = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}, {1, 1}, {-1, -1}, {-1, 1}, {1, -1}};
+    static const uint32_t seeds[] = {1u, 7u, 42u, 12345u};
+    const unsigned moves_before = sand_liquid_moves;
+
+    sand_liquid_late_arrivals = 0;
+    sand_liquid_rank_audit_enable(true);
+    for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
+        crossflow_fixture_t* f = crossflow_seeded_pool(seeds[i]);
+        for (int step = 0; step < 64; step++) {
+            const int* ray = rays[step % 8];
+            f->s.step_phase = (uint16_t)step;
+            crossflow_step(f, ray[0], ray[1], true);
+        }
+        crossflow_free(f);
+    }
+    sand_liquid_rank_audit_enable(false);
+
+    const unsigned late = sand_liquid_late_arrivals;
+    const unsigned moves = sand_liquid_moves - moves_before;
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0, moves, "the scenes must transfer mass for the count to mean anything");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0, late, "cross-flow gave mass to a chunk its own pass had yet to run");
 }
 
 void
@@ -334,7 +439,8 @@ run_sand_crossflow_suite(void) {
     RUN_TEST(test_split_crossflow_uses_hashed_viscosity);
     RUN_TEST(test_crossflow_seam_transfer_matches_serial_in_eight_directions);
     RUN_TEST(test_crossflow_pool_conserves_mass_and_is_deterministic);
-    RUN_TEST(test_crossflow_uniform_pool_has_no_chunk_seams);
+    RUN_TEST(test_crossflow_levels_a_line_across_every_border);
+    RUN_TEST(test_crossflow_never_gives_to_a_chunk_ranked_later);
 }
 
 SUITE_REGISTER(run_sand_crossflow_suite);

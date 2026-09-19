@@ -178,7 +178,7 @@ step_one_row() per row
 chunks on a gravity-ordered schedule, two lanes"]
     Sweep --> Liq["sand_step_liquids()
 cross-flow + wall rebound
-chunk-split across cores"]
+chunks on a ray-ordered schedule, two lanes"]
     Liq --> GasCheck{"may_have_gas?"}
     GasCheck -- yes --> Gas["sand_step_gas()
 rise + disperse
@@ -210,13 +210,15 @@ primitive, `job_run_core1()`/`job_wait()` (`util/job.h`) - one copied
 context, run on core 1 if its worker is idle, otherwise inline. The main
 sweep, the liquid cross-flow pass, both gas sub-passes and a reacting
 cell's own local rules all cut the board into one grid of square chunks.
-The sweep ranks those chunks downstream-first for this step's travel
-direction (`sand_chunk_sched.[ch]`) and lets two lanes walk that order,
-each chunk waiting on the 8-neighbours ahead of it; the other three take
-four passes, one colour each, chunk rows divided between the cores. A
-caller-owned bitmap, one bit per cell (`sand_enable_step_stamps()`), marks
-a grain that crossed into another chunk so a pass still to reach it does
-not move it again, and a second caller-owned block
+The sweep and cross-flow rank those chunks downstream-first for their own
+travel direction (`sand_chunk_sched.[ch]`) and lets two lanes walk that
+order through one shared runner, each chunk waiting on the 8-neighbours
+ahead of it; the other two take four passes, one colour each, chunk rows
+divided between the cores. A caller-owned bitmap, one bit per cell
+(`sand_enable_step_stamps()`), marks a grain that crossed into another
+chunk so a pass still to reach it does not move it again - only for a
+pass whose own order does not already rule that out - and a second
+caller-owned block
 (`sand_enable_lane_scratch()`) holds the private bookkeeping each lane
 merges back at the join, so no pass allocates.
 `finalize_settling()` splits by block row instead. Impulses, liquid

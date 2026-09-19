@@ -1199,13 +1199,13 @@ update can touch another's, in cells:
 
 The gravity sweep, gas walk, liquid cross-flow and a reacting cell's own
 LOCAL rules have fixed cell reaches small enough to split. All four cut the
-board into the same chunks; the sweep takes them in a gravity-ordered
-schedule, the other three in four colours (`run_reaction_rows()`,
-`sand_reactions.c`, for the last). A reaction's
+board into the same chunks; the sweep and cross-flow take them in a
+schedule ordered against their own travel, the other two in four colours
+(`run_reaction_rows()`, `sand_reactions.c`, for the last). A reaction's
 long-reach triggers, liquid density sorting and impulses remain serial:
 each long-reach trigger has an `_or_defer` gate at its call site that
 skips it while a chunk pass is running and lets a single serial
-pass pick it up once every colour has joined - either by re-scanning the
+pass pick it up once the split passes have joined - either by re-scanning the
 board (conduct_heat, chilling, dissolving, all queue-free) or through one
 of a handful of small, cap-limited queues (cracks, cool-off chains, the
 three explosion triggers). See `sand_reactions.c`'s own comment on that
@@ -1220,7 +1220,7 @@ pass has. Every quality lands on the same small chunk count.
 
 ### Four colours, no boundary handling
 
-Cross-flow, both gas sub-passes and a reacting cell's local rules take those
+Both gas sub-passes and a reacting cell's local rules take those
 chunks in four colour passes. Each chunk takes a colour from its own
 coordinates,
 `sand_chunk_color(cx, cy)` = the two parities crossed. Four is the smallest
@@ -1259,35 +1259,39 @@ whose covering blocks all carry the step's settled bit is dropped before any
 per-row setup, reusing the block-sleeping state the serial sweep already
 keeps rather than tracking anything second.
 
-### The sweep's schedule: downstream chunks first
+### The schedule: downstream chunks first
 
-The gravity sweep ranks the same chunks into one total order instead.
-`sand_chunk_order()` (`sand_chunk_sched.[ch]`) counts from the downstream end
-of this step's dithered travel direction, so the chunk holding a move's
-destination is settled by the time the source chunk runs - the same reason a
-serial sweep runs against travel, one level up. Within a line across travel,
-the shape a pile or pool surface takes, it alternates by the line index's
-parity: no move crosses a border inside such a line, so alternating is what
-lets both lanes work it instead of queueing on one chain.
+The gravity sweep and liquid cross-flow rank the same chunks into one total
+order instead, through the one runner `sand_chunk_pass_run()` (`sand.c`) that
+a pass hands only its travel direction, a per-chunk function and its own
+state. `sand_chunk_order()` (`sand_chunk_sched.[ch]`) counts from the
+downstream end of that direction, so the chunk holding a move's destination is
+settled by the time the source chunk runs - the same reason a serial pass runs
+against travel, one level up. Within a line across travel, the shape a pile or
+pool surface takes, it alternates by the line index's parity: no move crosses
+a border inside such a line, so alternating is what lets both lanes work it
+instead of queueing on one chain.
 
 Two lanes walk that order, lane 0 from position 0 and lane 1 from position 1,
 each advancing by two. A chunk waits until every 8-neighbour ranked ahead of
 it is done, so any two chunks that can reach one cell are sequenced and the
 board equals a single-threaded walk of the order whatever the timing was. A
 chunk's lane is its POSITION's parity, never the core that reaches it, so one
-thread walking the order produces the bytes two threads do.
+thread walking the order produces the bytes two threads do. Four hand-driven
+interleavings (`sand_chunk_pass_set_driver_for_test()`) are what a test uses
+to hold both passes to that.
 
-Each lane sweeps through its own `sand_t` view - shared cells, private block
-flags and dirty spans in the same lane scratch cross-flow uses - merged at
-the join. A board with no lane scratch, or one `sand_chunk_plan()` cannot cut
-at least two chunks each way, keeps the serial sweep.
+Each lane works through its own `sand_t` view - shared cells, private block
+flags and dirty spans in caller-owned lane scratch - merged at the join. A
+board with no lane scratch, or one `sand_chunk_plan()` cannot cut into at
+least two chunks each way, stays serial.
 
 A lane that polls past `CHUNK_PASS_SPIN_LIMIT` without its next chunk coming free
 gives up where it is and the caller finishes the board; that costs the step
 its second core and nothing else. A join that times out is different: core 1
 is still inside a chunk, so the remaining chunks are left for the next step
 rather than risk two threads in neighbouring ones. A development build counts
-those steps in `sand_t.sweep_lane_aborts`.
+those steps in `sand_t.split_lane_aborts`.
 
 ### What a pass boundary still costs
 
@@ -1304,9 +1308,10 @@ once more there, and at a chunk corner handed on twice - three cells in the
 step where serial moves it one. The **step stamp**
 stops that, the per-cell "moved this frame" mark Noita uses: one bit per
 cell (`sand_enable_step_stamps()`, caller-owned beside the settled blocks,
-a byte per eight cells of a row). While a chunk pass runs, a move whose
-destination lies in another chunk sets the destination's bit, and a pass
-skips a stamped cell rather than picking it up.
+a byte per eight cells of a row). A pass that asks for stamps marks the
+destination of every move that leaves its chunk, and skips a stamped cell
+rather than picking it up. A pass whose own travel order already rules out
+a second move asks for none.
 
 Only a crossing is stamped, and only the mover. Inside a chunk the pass's
 own sweep order already holds a grain to one move, exactly as serial does,
@@ -1331,7 +1336,8 @@ seams and corners must match a serial step board for board. A solid body of
 sand or water wide enough to straddle a chunk border on both axes must still
 fill its own bounding box after every step of a free fall, under all eight
 gravities, and the serial path passes that same check. The board a split
-sweep lands on is held identical across four hand-driven lane interleavings.
+sweep lands on, and the board a mostly-liquid scene lands on, are both held
+identical across four hand-driven lane interleavings.
 The dense-column and settling-slab scenes are checked for grain conservation
 and for a settled pile showing no occupancy outlier at a boundary.
 
@@ -1341,13 +1347,17 @@ development overlay to draw; the seam overlay and its checkbox are gone.
 
 ### Liquid cross-flow chunks
 
-Cross-flow takes the chunk grid in four colour passes, with no guards of its
-own. `SAND_CHUNK_SIDE_MIN` is
-`2 * SAND_LIQUID_SIGHT + 1` precisely so a chunk's interior clears the
-furthest a cell can read or transfer, which makes a reach out of a chunk land
-in an adjacent chunk - never in another chunk of the same colour. Boards with
-too few chunk rows to give both workers work, and boards with no lane
-scratch, fall back to the serial order.
+Cross-flow takes the chunk grid on the same schedule the sweep does, with no
+guards of its own. Its travel direction is the ray mass moves along,
+`xflow_t.dg`: a cell gives only toward `+ray`, at most `SAND_LIQUID_SIGHT`
+cells, and both rays a cell can pick run along one or both of `dg`'s own
+signs, so an order counted from the `dg` end puts every possible recipient in
+a chunk already finished. `SAND_CHUNK_SIDE_MIN` is `2 * SAND_LIQUID_SIGHT + 1`
+precisely so a chunk's interior clears the furthest a cell can read or
+transfer, which makes a reach out of a chunk land in an adjacent one - the
+8-neighbourhood the schedule sequences. Boards with no lane scratch, and
+boards `sand_chunk_plan()` cannot cut into at least two chunks each way, fall
+back to the serial order.
 
 A cell reads or transfers at most 8 cells away, but the bookkeeping around it
 reaches further: depth-repaint marks extend another 24 rows from a
@@ -1366,14 +1376,19 @@ other. A partition banded along one axis has no order that keeps source
 before destination for it; a chunk is bounded on both axes and needs none.
 
 Liquids move mass, not cells, and a transfer can merge into mass already
-there, so the stamp's rule becomes: a cell that received mass from another
-chunk this pass is not forwarded again. The cell keeps no record of which
-part of its mass arrived, so the whole cell waits - mass that was already
-there loses its move for this pass where serial would have moved it first.
-`suite_sand_crossflow.c` steps an isolated transfer near a boundary in all
-eight ray directions and requires the split board to match serial cell for
-cell, repaint for repaint and wake for wake. Pools are checked for
-conservation, determinism and levelling across a boundary.
+there, so a cell holds no record of which part of its mass arrived. Nothing
+needs one: the recipient's chunk is finished, so it cannot forward what it
+was given, and no arrival is marked at all.
+
+`suite_sand_crossflow.c` counts what that rests on - a transfer landing in a
+chunk ranked after the giver's, over rotating gravity and several seeded
+pools, which must stay at zero. It also steps an isolated transfer near a
+boundary in all eight ray directions and requires the split board to match
+serial cell for cell, repaint for repaint and wake for wake; and it levels a
+line of liquid laid along each of the eight rays across several chunk
+borders, which must end with no step of more than one mass unit anywhere and
+with the same masses serial reaches. Pools are checked for conservation and
+determinism.
 
 `tools/report_crossflow.sh` measures the liquid pass on host using the
 shared water-slope and submerged-pile builders; every other pass stays

@@ -182,7 +182,7 @@ sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
     s->impulse_count = 0;
 #ifdef DEVICE_BUILD
     s->impulse_cap_hits = 0;
-    s->sweep_lane_aborts = 0;
+    s->split_lane_aborts = 0;
 #endif
     s->splash_chance = SAND_SPLASH_CHANCE_START;
     s->splash_radius_water = SAND_SPLASH_RADIUS_WATER;
@@ -1523,7 +1523,16 @@ sand_chunk_pass_ready(const sand_t* s) {
 }
 
 bool
-sand_chunk_pass_run(sand_t* s, int tx, int ty, sand_chunk_fn_t fn, void* pass) {
+sand_chunk_pass_ranks_later(int x0, int y0, int x1, int y1) {
+    const int side = chunk_plan.side;
+    const int from = ((y0 + chunk_plan.off_y) / side) * chunk_plan.cols + (x0 + chunk_plan.off_x) / side;
+    const int to = ((y1 + chunk_plan.off_y) / side) * chunk_plan.cols + (x1 + chunk_plan.off_x) / side;
+
+    return chunk_sched.order.rank[to] > chunk_sched.order.rank[from];
+}
+
+bool
+sand_chunk_pass_run(sand_t* s, int tx, int ty, sand_chunk_pass_stamps_t stamps, sand_chunk_fn_t fn, void* pass) {
     sand_lane_t* const lanes = sand_lanes(s);
 
     if (!sand_chunk_pass_ready(s) || lanes == NULL) {
@@ -1538,7 +1547,9 @@ sand_chunk_pass_run(sand_t* s, int tx, int ty, sand_chunk_fn_t fn, void* pass) {
     chunk_pass_arg = pass;
 
     s->rng_hashed = true;
-    sand_stamps_arm(s);
+    if (stamps == SAND_CHUNK_PASS_STAMP_CROSSINGS) {
+        sand_stamps_arm(s);
+    }
     for (int i = 0; i < SAND_LANE_COUNT; i++) {
         sand_lane_prepare(&lanes[i], s);
     }
@@ -1549,9 +1560,11 @@ sand_chunk_pass_run(sand_t* s, int tx, int ty, sand_chunk_fn_t fn, void* pass) {
         sand_lane_merge(s, &lanes[i]);
     }
 #ifdef DEVICE_BUILD
-    s->sweep_lane_aborts += (chunk_sched.abort != 0);
+    s->split_lane_aborts += (chunk_sched.abort != 0);
 #endif
-    sand_stamps_disarm(s);
+    if (stamps == SAND_CHUNK_PASS_STAMP_CROSSINGS) {
+        sand_stamps_disarm(s);
+    }
     s->rng_hashed = false;
     return true;
 }
@@ -1594,7 +1607,8 @@ sweep_one_chunk(void* pass, int lane, int cx, int cy) {
  * holding a move's destination is always settled first. */
 static void
 run_sweep_split(sand_t* s, int dx, int dy) {
-    if (!sand_chunk_pass_run(s, im_sign(dx), im_sign(dy), sweep_one_chunk, &sweep_pass)) {
+    if (!sand_chunk_pass_run(s, im_sign(dx), im_sign(dy), SAND_CHUNK_PASS_STAMP_CROSSINGS, sweep_one_chunk,
+                             &sweep_pass)) {
         return;
     }
     for (int i = 0; i < SAND_LANE_COUNT; i++) {

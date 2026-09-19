@@ -3483,7 +3483,7 @@ water_slope_log_step(const char* phase, int step_index, const sand_t* s, unsigne
              (int)s->pass_us.sweep_us, (int)s->pass_us.liquid_us, (int)s->pass_us.float_us, (int)s->pass_us.gas_us,
              (int)s->pass_us.reactions_us, (int)s->pass_us.impulses_us, dispatched_delta, moves_delta, probes_delta,
              sweep_moves_delta, (int)sand_reactions_last_was_soak_only, count_awake_blocks(s),
-             water_slope_liquid_near_blocks(s), s->sweep_lane_aborts);
+             water_slope_liquid_near_blocks(s), s->split_lane_aborts);
 }
 
 static void

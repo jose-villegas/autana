@@ -28,10 +28,19 @@
 /* See sand_priv.h. */
 unsigned sand_liquid_moves;
 unsigned sand_liquid_crossflow_probes;
+unsigned sand_liquid_late_arrivals;
+
+static bool liquid_rank_audit_on;
+
+void
+sand_liquid_rank_audit_enable(bool on) {
+    liquid_rank_audit_on = on;
+}
 
 typedef struct {
-    unsigned moves, probes;
+    unsigned moves, probes, late;
     const uint8_t* block_read;
+    bool count_late;
 } liquid_work_t;
 
 /* Everything that is NOT gravity-ward, and so cannot live in that sweep. */
@@ -117,6 +126,13 @@ find_shallowest(const sand_t* s, int x, int y, int px, int py, int sight, uint8_
     return mine - best;
 }
 
+static inline void
+note_late_arrival(liquid_work_t* work, int x, int y, int tx, int ty) {
+    if (work->count_late && sand_chunk_pass_ranks_later(x, y, tx, ty)) {
+        work->late++;
+    }
+}
+
 /* Returns transfer status and row confinement; sets `*touched_x` if confined.
  * BOTH PROBE ROWS ARE PASSED IN, not derived: the caller resolved them once
  * for the whole row walk. Deriving them here cost a multiply and a reload of
@@ -165,11 +181,11 @@ equalise_one_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* below_ro
 
     const bool was_empty = pour_into(&s->cells[(size_t)ty * (size_t)w + (size_t)tx], id, give);
     row[x] = (mass - give > 0) ? CELL_MAKE(id, mass - give) : CELL_EMPTY;
-    sand_stamp_crossing(s, x, y, tx, ty);
     if (was_empty) {
         mark_depth_band(s, tx, ty);
     }
     work->moves++;
+    note_late_arrival(work, x, y, tx, ty);
 
     *stayed_in_row = (ty == y);
     if (*stayed_in_row) {
@@ -204,12 +220,6 @@ equalise_one_row_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* ax_r
     const uint8_t id = CELL_MATERIAL(c);
     if (((is_liquid >> id) & 1u) == 0) {
         return false;
-    }
-    /* Mass that arrived from another chunk this pass is not forwarded, and a
-     * cell holds no record of which of its mass arrived: the whole cell
-     * waits. */
-    if (sand_cell_stamped(s, x, y)) {
-        return true;
     }
     /* DERIVED HERE, NOT CARRIED IN, and derived only once the cell is known to
      * be liquid - which ~30% of examined cells are. Walked incrementally by the
@@ -454,114 +464,72 @@ mark_liquid_neighbourhoods(sand_t* s) {
     mark_liquid_neighbourhoods_range(s, 0, s->block_rows);
 }
 
-/* The counters and the found flag a lane accumulates, beside the lane it
- * runs in. File-static below for the reason sand_lanes() gives: the job
- * context is copied, so a worker's own output cannot live in it. */
+/* The counters and the found flag one lane accumulates. */
 typedef struct {
-    sand_lane_t* lane;
     liquid_work_t work;
     bool found_any;
-} liquid_worker_t;
-
-static liquid_worker_t liquid_workers[SAND_LANE_COUNT];
+} liquid_lane_t;
 
 typedef struct {
-    liquid_worker_t* worker;
+    sand_lane_t* lanes;
+    liquid_lane_t per_lane[SAND_LANE_COUNT];
     xflow_t flow;
-    int dx, dy, sight, color, share;
+    int dx, dy, sight;
     uint16_t is_liquid;
 } liquid_pass_t;
 
-_Static_assert(sizeof(liquid_pass_t) <= JOB_CTX_MAX, "liquid pass must fit JOB_CTX_MAX");
+/* File-static for the reason sand_chunk_pass_run() gives. */
+static liquid_pass_t liquid_pass;
 
+/* A chunk's interior clears SAND_LIQUID_SIGHT on every side, and a transfer
+ * only ever runs along the ray, into a chunk the order has already settled.
+ * Sleep decisions come from the pass's immutable flag snapshot; wake and
+ * repaint writes reach well past one cell and stay private until the join. */
 static void
-prepare_liquid_worker(liquid_worker_t* worker, sand_lane_t* lane, const sand_t* s) {
-    worker->lane = lane;
-    worker->work = (liquid_work_t){.block_read = s->block_state};
-    worker->found_any = false;
-    sand_lane_prepare(lane, s);
-}
+equalise_one_chunk(void* pass, int lane, int cx, int cy) {
+    liquid_pass_t* const c = pass;
+    sand_t* const s = &c->lanes[lane].local;
+    liquid_lane_t* const own = &c->per_lane[lane];
+    int x0, x1, y0, y1;
 
-static void
-merge_liquid_worker(sand_t* s, const liquid_worker_t* worker) {
-    sand_lane_merge(s, worker->lane);
-    sand_liquid_moves += worker->work.moves;
-    sand_liquid_crossflow_probes += worker->work.probes;
-}
+    sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
 
-/* A chunk's interior clears SAND_LIQUID_SIGHT on every side, so no cell this
- * reads or transfers to belongs to a chunk of the same colour. Sleep
- * decisions come from the pass's immutable flag snapshot; wake and repaint
- * writes reach well past one cell and stay private until the join. */
-static void
-equalise_one_chunk(const liquid_pass_t* c, int x0, int x1, int y0, int y1) {
-    liquid_worker_t* const worker = c->worker;
-    sand_t* const s = &worker->lane->local;
     const int y_step = c->flow.dg[1] > 0 ? -1 : 1;
     const int x_step = c->flow.dg[0] > 0 ? -1 : 1;
 
     for (int y = y_step > 0 ? y0 : y1 - 1; y >= y0 && y < y1; y += y_step) {
-        worker->found_any |=
-            equalise_one_row(s, y, x0, x1, s->w, x_step, &c->flow, c->dx, c->dy, c->sight, c->is_liquid, &worker->work);
-    }
-}
-
-static void
-liquid_pass_worker(void* arg) {
-    const liquid_pass_t* c = arg;
-    const sand_t* const s = &c->worker->lane->local;
-    const int side = sand_chunk_side(s);
-
-    for (int cy = 0; cy < sand_chunk_rows(s); cy++) {
-        if (sand_chunk_share(cy) != c->share) {
-            continue;
-        }
-        int y0, y1;
-        sand_chunk_span(cy, side, s->h, &y0, &y1);
-        for (int cx = 0; cx < sand_chunk_cols(s); cx++) {
-            if (sand_chunk_color(cx, cy) == c->color) {
-                int x0, x1;
-                sand_chunk_span(cx, side, s->w, &x0, &x1);
-                equalise_one_chunk(c, x0, x1, y0, y1);
-            }
-        }
-    }
-}
-
-static void
-run_liquid_color(sand_t* s, sand_lane_t* lanes, liquid_pass_t* ctx, bool* found_any, int color) {
-    for (int i = 0; i < SAND_LANE_COUNT; i++) {
-        prepare_liquid_worker(&liquid_workers[i], &lanes[i], s);
-    }
-    ctx->color = color;
-    ctx->worker = &liquid_workers[1];
-    ctx->share = 1;
-    (void)job_run_core1(liquid_pass_worker, ctx, sizeof *ctx);
-    ctx->worker = &liquid_workers[0];
-    ctx->share = 0;
-    liquid_pass_worker(ctx);
-    (void)job_wait(100);
-
-    for (int i = 0; i < SAND_LANE_COUNT; i++) {
-        merge_liquid_worker(s, &liquid_workers[i]);
-        *found_any |= liquid_workers[i].found_any;
+        own->found_any |=
+            equalise_one_row(s, y, x0, x1, s->w, x_step, &c->flow, c->dx, c->dy, c->sight, c->is_liquid, &own->work);
     }
 }
 
 static bool
 equalise_liquid_chunks(sand_t* s, const xflow_t* flow, int sight, int dx, int dy, uint16_t is_liquid, bool* found_any) {
     sand_lane_t* const lanes = sand_lanes(s);
-    if (lanes == NULL) {
+
+    if (lanes == NULL || !sand_chunk_pass_ready(s)) {
+        return false;
+    }
+    liquid_pass =
+        (liquid_pass_t){.lanes = lanes, .flow = *flow, .dx = dx, .dy = dy, .sight = sight, .is_liquid = is_liquid};
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        liquid_pass.per_lane[i].work.block_read = s->block_state;
+        liquid_pass.per_lane[i].work.count_late = liquid_rank_audit_on;
+    }
+
+    /* Travel is the ray mass moves along, so the chunk a transfer lands in
+     * has already run and will not forward it again. */
+    if (!sand_chunk_pass_run(s, flow->dg[0], flow->dg[1], SAND_CHUNK_PASS_NO_STAMPS, equalise_one_chunk,
+                             &liquid_pass)) {
         return false;
     }
 
-    liquid_pass_t ctx = {NULL, *flow, dx, dy, sight, 0, 0, is_liquid};
-    sand_stamps_arm(s);
-    for (int color = 0; color < SAND_CHUNK_COLOR_COUNT; color++) {
-        run_liquid_color(s, lanes, &ctx, found_any, color);
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        sand_liquid_moves += liquid_pass.per_lane[i].work.moves;
+        sand_liquid_crossflow_probes += liquid_pass.per_lane[i].work.probes;
+        sand_liquid_late_arrivals += liquid_pass.per_lane[i].work.late;
+        *found_any |= liquid_pass.per_lane[i].found_any;
     }
-    sand_stamps_disarm(s);
-
     return true;
 }
 
@@ -604,8 +572,7 @@ equalise_liquids(sand_t* s, const xflow_t* f, int sight, int dx, int dy) {
 
     /* See equalise_one_row(). BLOCK_HAS_LIQUID → BLOCK_LIQUID_NEAR. No move
      * cost. */
-    if (!sand_two_core_step_enabled() || !sand_chunk_split_ready(s)
-        || !equalise_liquid_chunks(s, f, sight, dx, dy, is_liquid, &found_any)) {
+    if (!equalise_liquid_chunks(s, f, sight, dx, dy, is_liquid, &found_any)) {
         if (equalise_every_row(s, f, sight, dx, dy, is_liquid, y_from, y_to, y_step, x_step)) {
             found_any = true;
         }

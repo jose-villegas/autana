@@ -198,18 +198,40 @@ tc_build_scattered_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
     }
 }
 
+/* Mostly liquid, at every mass a cell can hold: cross-flow has somewhere to
+ * move mass on every ray, which a board of full cells never gives it. */
+static void
+tc_build_liquid_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
+    sand_init(s, cells, TC_W, TC_H, seed);
+
+    rng_t r;
+    rng_seed(&r, seed ^ 0x5A5A5A5Au);
+
+    for (int y = 0; y < TC_H; y++) {
+        for (int x = 0; x < TC_W; x++) {
+            const int pick = rng_below(&r, 8);
+            if (pick == 0) {
+                sand_set(s, x, y, STONE);
+            } else if (pick < 6) {
+                const material_id_t id = (pick < 5) ? MAT_WATER : MAT_OIL;
+                sand_set(s, x, y, CELL_MAKE(id, (uint8_t)(1 + rng_below(&r, MASS_MAX))));
+            }
+        }
+    }
+}
+
 /* Runs `steps` of the scene under a small rotation of gravity vectors -
  * not just straight down - so a chunk boundary is crossed both ways and in
  * both axes. */
 static uint32_t
-tc_run_and_hash(uint32_t seed, int steps, bool two_core) {
+tc_run_scene_and_hash(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed, int steps, bool two_core) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
     uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
     sand_t s;
-    tc_build_scattered_scene(&s, cells, seed);
+    build(&s, cells, seed);
     sand_enable_sleeping(&s, blocks);
     void* scratch = lane_scratch_open(&s);
 
@@ -230,6 +252,11 @@ tc_run_and_hash(uint32_t seed, int steps, bool two_core) {
     free(cells);
     free(blocks);
     return h;
+}
+
+static uint32_t
+tc_run_and_hash(uint32_t seed, int steps, bool two_core) {
+    return tc_run_scene_and_hash(tc_build_scattered_scene, seed, steps, two_core);
 }
 
 static uint32_t
@@ -333,6 +360,33 @@ test_the_split_sweep_ignores_how_its_lanes_interleave(void) {
         for (int d = 0; d < TC_DRIVERS; d++) {
             char why[160];
             snprintf(why, sizeof why, "seed %u driver %d: the split sweep's board depended on the lane interleaving",
+                     (unsigned)seeds[i], (int)drivers[d]);
+            TEST_ASSERT_EQUAL_HEX32_MESSAGE(solo, driven[d], why);
+        }
+    }
+}
+
+/* Cross-flow rides the same schedule, so a mostly-liquid board owes the same
+ * answer. Rotating gravity turns the pass's own travel direction with it. */
+static void
+test_the_split_liquid_pass_ignores_how_its_lanes_interleave(void) {
+    static const sand_chunk_pass_driver_t drivers[TC_DRIVERS] = {
+        SAND_CHUNK_PASS_LANE0_EAGER, SAND_CHUNK_PASS_LANE1_EAGER, SAND_CHUNK_PASS_ALTERNATE};
+    static const uint32_t seeds[] = {3u, 19u, 65521u};
+
+    for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
+        const uint32_t solo = tc_run_scene_and_hash(tc_build_liquid_scene, seeds[i], 40, true);
+        uint32_t driven[TC_DRIVERS];
+
+        for (int d = 0; d < TC_DRIVERS; d++) {
+            sand_chunk_pass_set_driver_for_test(drivers[d]);
+            driven[d] = tc_run_scene_and_hash(tc_build_liquid_scene, seeds[i], 40, true);
+        }
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_SOLO);
+
+        for (int d = 0; d < TC_DRIVERS; d++) {
+            char why[160];
+            snprintf(why, sizeof why, "seed %u driver %d: a split liquid board depended on the lane interleaving",
                      (unsigned)seeds[i], (int)drivers[d]);
             TEST_ASSERT_EQUAL_HEX32_MESSAGE(solo, driven[d], why);
         }
@@ -1366,10 +1420,13 @@ test_two_core_step_conserves_grains_on_a_dense_column_and_pile(void) {
     }
 }
 
+/* ACROSS gravity, which under a landscape pull means a column: along it, a
+ * fall moves mass within one line and a chunk border that stalled would
+ * leave no trace at all. */
 static int
-tc_water_row_mass(const sand_t* s, int y) {
+tc_water_column_mass(const sand_t* s, int x) {
     int mass = 0;
-    for (int x = 0; x < TC_W; x++) {
+    for (int y = 0; y < TC_H; y++) {
         const cell_t c = sand_at(s, x, y);
         if (CELL_MATERIAL(c) == MAT_WATER) {
             mass += CELL_VARIANT(c);
@@ -1379,7 +1436,7 @@ tc_water_row_mass(const sand_t* s, int y) {
 }
 
 static void
-test_landscape_water_column_has_no_row_mass_lag(void) {
+test_landscape_water_column_has_no_line_mass_lag(void) {
     uint8_t* serial_cells = malloc((size_t)TC_W * (size_t)TC_H);
     uint8_t* split_cells = malloc((size_t)TC_W * (size_t)TC_H);
     uint8_t* serial_blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
@@ -1402,7 +1459,7 @@ test_landscape_water_column_has_no_row_mass_lag(void) {
         }
     }
 
-    int worst_row_mass = 0;
+    int worst_line_mass = 0;
     sand_force_hashed_rng(true);
     for (int step = 0; step < 40; step++) {
         memcpy(split_cells, serial_cells, (size_t)TC_W * (size_t)TC_H);
@@ -1414,13 +1471,11 @@ test_landscape_water_column_has_no_row_mass_lag(void) {
         sand_set_two_core_step(false);
         sand_step(&serial, 1000, 0, 0);
 
-        for (int y = 0; y < TC_H; y++) {
-            const int split_mass = tc_water_row_mass(&split, y);
-            const int serial_mass = tc_water_row_mass(&serial, y);
-            const int difference = split_mass - serial_mass;
-            const int row_mass = difference < 0 ? -difference : difference;
-            if (row_mass > worst_row_mass) {
-                worst_row_mass = row_mass;
+        for (int x = 0; x < TC_W; x++) {
+            const int difference = tc_water_column_mass(&split, x) - tc_water_column_mass(&serial, x);
+            const int line_mass = difference < 0 ? -difference : difference;
+            if (line_mass > worst_line_mass) {
+                worst_line_mass = line_mass;
             }
         }
     }
@@ -1432,8 +1487,9 @@ test_landscape_water_column_has_no_row_mass_lag(void) {
     free(serial_blocks);
     free(split_blocks);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, worst_row_mass,
-                                  "the split landscape water column left liquid mass in a different row than serial");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, worst_line_mass,
+                                  "the split landscape water column left liquid mass in a different column "
+                                  "than serial");
 }
 
 static int
@@ -1906,6 +1962,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_a_colours_two_workers_never_meet_on_a_row);
     RUN_TEST(test_two_core_step_is_deterministic_across_seeds);
     RUN_TEST(test_the_split_sweep_ignores_how_its_lanes_interleave);
+    RUN_TEST(test_the_split_liquid_pass_ignores_how_its_lanes_interleave);
     RUN_TEST(test_split_gas_walk_uses_hashed_rng);
     RUN_TEST(test_split_gas_walk_ignores_worker_order);
     RUN_TEST(test_two_core_step_actually_changes_the_draw_stream);
@@ -1927,7 +1984,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_reaction_split_matches_serial_on_a_zero_randomness_fire_chain);
     RUN_TEST(test_reaction_split_is_deterministic_across_seeds);
     RUN_TEST(test_reaction_split_actually_changes_the_draw_stream);
-    RUN_TEST(test_landscape_water_column_has_no_row_mass_lag);
+    RUN_TEST(test_landscape_water_column_has_no_line_mass_lag);
     RUN_TEST(test_split_gas_equalise_keeps_seam_order);
     RUN_TEST(test_split_gas_equalise_hops_once_across_a_chunk_column);
     RUN_TEST(test_a_board_without_lane_scratch_steps_its_fluids_serially);
