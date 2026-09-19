@@ -12,8 +12,10 @@ block ESP-IDF's own `idf.py qemu` uses, starts qemu-system-xtensa -M esp32s3
 with the console in a file, and stops it when SELFTEST_COMPLETE appears.
 
 What a run can and cannot say. Pass and fail are real for anything that does
-not read a clock. Wall-clock budgets mean nothing here, and QEMU does not
-model the performance monitor, so those tests fail by construction. With
+not read a clock. A ceiling pegged on the board is reported and not enforced
+in a CONFIG_LAUNCHER_QEMU image, and tests of hardware QEMU lacks (the
+performance monitor, a touch controller that physically answers) skip
+themselves. With
 --icount virtual time advances one nanosecond per executed instruction, so a
 "us per step" line times 1000 is instructions per step: exactly repeatable
 for a step that runs on one core, and within about 1% when two cores share
@@ -33,6 +35,10 @@ import re
 import subprocess
 import sys
 import time
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "tools"))
+import device_profile  # noqa: E402  (path must be set up first)
 
 SENTINEL = "SELFTEST_COMPLETE"
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -63,6 +69,20 @@ def default_efuse(idf_path):
                     and getattr(inner.func, "attr", "") == "unhexlify"):
                 return binascii.unhexlify(inner.args[0].value)
     sys.exit("qemu_run: no esp32s3 eFuse image in %s" % src_path)
+
+
+# A locally administered address. The image file starts at EFUSE_RD_WR_DIS
+# (0x2C), so EFUSE_RD_MAC_SPI_SYS_0/1 (0x44, 0x48) sit at 0x18: the low four
+# bytes of the MAC first, then the high two, each little-endian.
+QEMU_MAC = bytes.fromhex("02005145 4d55".replace(" ", ""))
+MAC_FILE_OFFSET = 0x44 - 0x2C
+
+
+def efuse_with_mac(image):
+    image = bytearray(image)
+    image[MAC_FILE_OFFSET:MAC_FILE_OFFSET + 4] = QEMU_MAC[2:][::-1]
+    image[MAC_FILE_OFFSET + 4:MAC_FILE_OFFSET + 6] = QEMU_MAC[:2][::-1]
+    return bytes(image)
 
 
 def merge_flash(build_dir, out_path, python):
@@ -100,6 +120,7 @@ def summarise(log_path):
         text = ANSI.sub("", fh.read().decode("utf-8", errors="replace"))
     text = text.replace("\r", "")
     passed = len(re.findall(r":PASS$", text, flags=re.M))
+    ignored = len(re.findall(r":IGNORE", text))
     failed = re.findall(r"^\S*:\d+:(\w+):FAIL:? ?(.*)$", text, flags=re.M)
     for line in re.findall(r"device_tests: (.*us per step.*)$", text,
                            flags=re.M):
@@ -107,8 +128,8 @@ def summarise(log_path):
     for name, why in failed:
         print("  FAIL %s: %s" % (name, why[:120]))
     sentinel = re.search(r"^%s .*$" % SENTINEL, text, flags=re.M)
-    print("%d passed, %d failed; %s" %
-          (passed, len(failed),
+    print("%d passed, %d failed, %d skipped; %s" %
+          (passed, len(failed), ignored,
            sentinel.group(0) if sentinel else "NO %s - the run did not "
            "finish" % SENTINEL))
     return sentinel is not None
@@ -142,11 +163,16 @@ def main(argv):
 
     merge_flash(args.build_dir, flash, python)
     with open(efuse, "wb") as fh:
-        fh.write(default_efuse(args.idf_path))
+        fh.write(efuse_with_mac(default_efuse(args.idf_path)))
     if os.path.exists(log_path):
         os.remove(log_path)
 
-    cmd = [qemu, "-M", "esp32s3", "-m", "32M",
+    # The board's own PSRAM size: QEMU would happily offer more, and a test
+    # that only fits in the surplus would pass here and fail on the board.
+    profile = device_profile.load(None, None)
+    psram_mib = device_profile.require(profile, "DP_PSRAM_BYTES", int) >> 20
+
+    cmd = [qemu, "-M", "esp32s3", "-m", "%dM" % psram_mib,
            "-drive", "file=%s,if=mtd,format=raw" % flash,
            "-drive", "file=%s,if=none,format=raw,id=efuse" % efuse,
            "-global", "driver=nvram.esp32s3.efuse,property=drive,value=efuse",
