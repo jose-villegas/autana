@@ -48,6 +48,7 @@ OUT_BIN="$BUILD_DIR/rng_low_bits"
     "$SCRIPT_DIR/rng_low_bits.c" \
     "$MAIN_DIR/util/job.c" \
     "$SAND_DIR/sand.c" \
+    "$SAND_DIR/sand_chunk_sched.c" \
     "$SAND_DIR/sand_impulse.c" \
     "$SAND_DIR/sand_reactions.c" \
     "$SAND_DIR/sand_plants.c" \
