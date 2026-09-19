@@ -24,6 +24,13 @@
 #   scene_defines   OPTIONAL extra compiler flags
 #   scene_out_dir   OPTIONAL; the default is results/render/<name> under the
 #                   nearest tools/ folder above the scene script
+#   scene_baseline  OPTIONAL; the default is <name>_render_baseline.txt
+#                   beside the scene script. Each render's content hash is
+#                   checked against it, so a change to the pixels fails the
+#                   run instead of passing unseen. Re-pinning is a
+#                   deliberate act: --update-baseline, after looking at the
+#                   images. A render with no pinned hash yet says so and
+#                   passes.
 #
 # POSIX sh, like the rest of this directory.
 
@@ -35,6 +42,18 @@ render_scene_to_native() {
         cygpath -w "$1"
     else
         printf '%s' "$1"
+    fi
+}
+
+# Empty where the platform has neither, which turns the pinned-hash check
+# into a notice rather than a silent pass - see render_scene_run() below.
+render_scene_sha256() {
+    if command -v sha256sum > /dev/null 2>&1; then
+        sha256sum "$1" | cut -d' ' -f1
+    elif command -v shasum > /dev/null 2>&1; then
+        shasum -a 256 "$1" | cut -d' ' -f1
+    else
+        printf ''
     fi
 }
 
@@ -72,12 +91,18 @@ render_scene_run() {
     done
     : "${scene_out_dir:=$_rs_owner/results/render/$scene_name}"
 
+    _rs_repin=0
     while [ $# -gt 0 ]; do
         case "$1" in
             -o) scene_out_dir="$2"; shift 2 ;;
-            *) echo "usage: $0 [-o <dir>]" >&2; return 2 ;;
+            --update-baseline) _rs_repin=1; shift ;;
+            *) echo "usage: $0 [-o <dir>] [--update-baseline]" >&2; return 2 ;;
         esac
     done
+
+    # Beside the scene that owns it, so deleting an app takes its pinned
+    # hashes with it.
+    : "${scene_baseline:=$_rs_here/${scene_name}_render_baseline.txt}"
 
     # shellcheck source=./find_cc.sh
     . "$_rs_tools/find_cc.sh"
@@ -115,6 +140,8 @@ render_scene_run() {
         -Wno-unused-variable -O1 $_rs_flags $scene_defines $_rs_files -o "$_rs_bin" || return 1
 
     _rs_log="$scene_out_dir/render.log"
+    _rs_new="$scene_out_dir/baseline.new"
+    : > "$_rs_new"
     echo "$scene_renders" | {
         while IFS= read -r _rs_line; do
             [ -n "$_rs_line" ] || continue
@@ -135,10 +162,46 @@ render_scene_run() {
                 echo "FAIL $scene_name/$_rs_label: wrote ${_rs_said:-nothing}, declared $_rs_want" >&2
                 exit 1
             fi
-            echo "ok $scene_name/$_rs_label $_rs_want -> $_rs_path"
+            _rs_hash=$(render_scene_sha256 "$_rs_path")
+            printf '%s %s\n' "$_rs_label" "$_rs_hash" >> "$_rs_new"
+
+            _rs_pinned=""
+            if [ -f "$scene_baseline" ]; then
+                _rs_pinned=$(awk -v l="$_rs_label" '$1 == l { print $2 }' "$scene_baseline")
+            fi
+            if [ -z "$_rs_hash" ]; then
+                echo "ok $scene_name/$_rs_label $_rs_want -> $_rs_path (no sha256 tool; not checked)"
+            elif [ -z "$_rs_pinned" ]; then
+                echo "ok $scene_name/$_rs_label $_rs_want -> $_rs_path (not pinned)"
+            elif [ "$_rs_pinned" != "$_rs_hash" ]; then
+                echo "FAIL $scene_name/$_rs_label: the pixels changed" >&2
+                echo "  pinned $_rs_pinned" >&2
+                echo "  now    $_rs_hash" >&2
+                echo "  Look at $_rs_path. If the change is wanted, re-pin with" >&2
+                echo "  $0 --update-baseline" >&2
+                exit 1
+            else
+                echo "ok $scene_name/$_rs_label $_rs_want -> $_rs_path (pinned)"
+            fi
         done
-    } || return 1
+    } || { rm -f "$_rs_new"; return 1; }
     rm -f "$_rs_log"
+
+    if [ "$_rs_repin" = 1 ]; then
+        # The command as it would be typed from the repository root, not as
+        # this machine spells it: an absolute path here would differ per
+        # checkout and churn the file.
+        _rs_root=$(dirname "$_rs_launcher")
+        _rs_self=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/$(basename "$0")
+        {
+            echo "# What the $scene_name scene's renders hash to, one per line."
+            echo "# Re-pinned deliberately, after looking at the images:"
+            echo "#     ./${_rs_self#"$_rs_root"/} --update-baseline"
+            cat "$_rs_new"
+        } > "$scene_baseline"
+        echo "re-pinned $scene_baseline"
+    fi
+    rm -f "$_rs_new"
 
     # A .png beside each BMP when Python and Pillow happen to be installed.
     # Neither is a dependency, and nothing here installs one.

@@ -12,9 +12,14 @@
 # scenes with it.
 #
 # Self-checking without Python: each scene script compares what the binary
-# says it wrote against the size that scene declared, and this fails on the
-# first scene that fails. A missing compiler is the one thing that is not a
-# failure here, the same way test/check_app_sources.sh treats it.
+# says it wrote against the size that scene declared AND against the content
+# hash pinned beside that scene, and this fails on the first scene that
+# fails. A missing compiler is the one thing that is not a failure here, the
+# same way test/check_app_sources.sh treats it.
+#
+# --update-baseline re-pins every scene's hashes. It is a deliberate act:
+# run it only after looking at the images and agreeing the pixels should
+# have changed.
 #
 # With -o, each scene writes into its own subdirectory of that directory
 # instead of the results/render/ folder beside it.
@@ -27,10 +32,12 @@ TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 LAUNCHER_DIR=$(CDPATH= cd -- "$TOOLS_DIR/.." && pwd)
 
 OUT_ROOT=""
+SCENE_ARGS=""
 while [ $# -gt 0 ]; do
     case "$1" in
         -o) OUT_ROOT="$2"; shift 2 ;;
-        *) echo "usage: $0 [-o <dir>]" >&2; exit 2 ;;
+        --update-baseline) SCENE_ARGS="--update-baseline"; shift ;;
+        *) echo "usage: $0 [-o <dir>] [--update-baseline]" >&2; exit 2 ;;
     esac
 done
 
@@ -54,10 +61,11 @@ count=0
 for scene in $scenes; do
     name=$(basename "$scene" _render_host.sh)
     echo "--- $name"
+    # shellcheck disable=SC2086
     if [ -n "$OUT_ROOT" ]; then
-        sh "$scene" -o "$OUT_ROOT/$name"
+        sh "$scene" -o "$OUT_ROOT/$name" $SCENE_ARGS
     else
-        sh "$scene"
+        sh "$scene" $SCENE_ARGS
     fi
     count=$((count + 1))
 done
