@@ -4,6 +4,7 @@
 #include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font_roles.h"
 #include "gfx/gfx_full_redraw.h"
+#include "gfx/gfx_glow.h"
 #include "gfx/gfx_heal.h"
 #include "gfx/gfx_present_guard.h"
 #include "gfx/gfx_target.h"
@@ -1147,6 +1148,24 @@ gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha
 
     if (!band_render_active) {
         mark_band(y0, y1);
+    }
+}
+
+void
+gfx_glow_curve(const int16_t* y_q4, int count, int x0, int x1, int quarter_turns, int erase_px,
+               const gfx_glow_style_t* style) {
+    GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
+    const gfx_target_t target = current_target();
+    for (int chunk = x0; chunk < x1; chunk += GFX_GLOW_CHUNK) {
+        const gfx_glow_box_t box =
+            gfx_glow_draw_columns(target, clip.x0, clip.y0, clip.x1, clip.y1, GFX_WIDTH, GFX_HEIGHT, y_q4, count, chunk,
+                                  im_min(chunk + GFX_GLOW_CHUNK, x1), quarter_turns, erase_px, style);
+        if (!band_render_active && box.x1 > box.x0) {
+            gfx_mark_dirty(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
+        }
     }
 }
 

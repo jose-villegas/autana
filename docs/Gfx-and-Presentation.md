@@ -222,6 +222,38 @@ Building one is the app's work - see
 every palette then needs, the colour -> index map and the dither table, are
 `tools/gfx_palette_gen.h`: host-only, in OKLab, never in the firmware image.
 
+## Glow curves
+
+`gfx_glow_curve()` draws a curve as light: every pixel within a radius is
+coloured by its **true distance** to the curve. The curve is a height per
+column (Q4) of a view frame turned a number of quarter turns into the panel,
+so one `int16_t` array carries a displaced, waving copy of it. The arithmetic
+is `gfx_glow.h`, pure and host-tested; `gfx.c` adds guards, target and dirty
+marking.
+
+- **Why true distance.** A vertical falloff scaled by the local slope costs a
+  fraction as much and lights a spike above a plateau beside every cliff: it
+  measures to the cliff's tangent line, not to where the cliff ends. Each
+  pixel instead searches the columns beside it, stopping as soon as a column
+  is further across than the best distance found.
+- **No square root per pixel.** The search compares squared distances; the
+  ramp index comes from one 256-byte table read at two scales.
+- **A style is a baked ramp** (`gfx_glow_style_set()`, about 2 KiB): 64 steps
+  of distance, once per cell of the 4x4 Bayer matrix. Each phase rounds the
+  same 8-bit colour to RGB565 at a different threshold, which is what turns
+  the 32 levels a glow fades through from bands into a gradient. Changing
+  colour or radius rebuilds the ramp; drawing never blends or reads back.
+- **The caller says which columns moved.** Only `[x0, x1)` is redrawn, and
+  dirty boxes are marked per 16 columns, so a local ripple costs a local
+  redraw and a local send. A curve at rest should not be drawn at all.
+- **It wipes its own trail.** Rows within `erase_px` beyond the light's reach
+  are written black, so nothing else has to clear behind a curve that moves
+  less than that per frame.
+
+Cost follows lit pixels: Cerro Autana's ridge at radius 13 lights about
+16,600 of them. In landscape a column of the view is a row of the panel, so
+a curve spanning the view's width touches every band.
+
 ## Panel clock and heal
 
 | | `GFX_PANEL_CLOCK_SLOW_HZ` (40 MHz) | `GFX_PANEL_CLOCK_FAST_HZ` (80 MHz) |

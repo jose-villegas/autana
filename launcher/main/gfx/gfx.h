@@ -25,6 +25,7 @@
 #include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font.h"
 #include "gfx/gfx_font_roles.h"
+#include "gfx/gfx_glow.h"
 #include "gfx/gfx_indexed.h"
 #include "gfx/gfx_mode.h"
 
@@ -195,6 +196,13 @@ void gfx_line(int x0, int y0, int x1, int y1, gfx_color_t color);
 #define GFX_LINE_OPEN (1u << 1)
 
 void gfx_line_ex(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags);
+
+/* A curve drawn as light - see gfx_glow.h. `y_q4` is a height per column of
+ * a frame turned `quarter_turns` into the panel. Only columns [x0, x1) are
+ * redrawn; what they cover is replaced, and `erase_px` beyond the light's
+ * reach blackened. */
+void gfx_glow_curve(const int16_t* y_q4, int count, int x0, int x1, int quarter_turns, int erase_px,
+                    const gfx_glow_style_t* style);
 
 /* Draws at GFX_GLYPH_SCALE - the size the UI is laid out around. */
 void gfx_text(int x, int y, const char* text, gfx_color_t color);
