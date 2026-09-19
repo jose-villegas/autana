@@ -1269,6 +1269,26 @@ test_reaction_split_is_deterministic_across_seeds(void) {
     }
 }
 
+/* On a host the two workers run one after the other, so which one owns
+ * which stripes is the only ordering a host can vary - and a board that
+ * depends on it depends on how two real cores interleave. */
+static void
+test_reaction_split_ignores_worker_order(void) {
+    static const uint32_t seeds[] = {1u, 7u, 42u, 12345u, 99991u};
+
+    for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
+        sand_reactions_set_worker_order_for_test(false);
+        const uint32_t ordinary = rc_run_reaction_heavy_and_hash(TC_W, TC_H, seeds[i], 30, true);
+        sand_reactions_set_worker_order_for_test(true);
+        const uint32_t reversed = rc_run_reaction_heavy_and_hash(TC_W, TC_H, seeds[i], 30, true);
+        sand_reactions_set_worker_order_for_test(false);
+        char why[160];
+        snprintf(why, sizeof why, "seed %u: changing which worker owns each stripe must not change the board",
+                 (unsigned)seeds[i]);
+        TEST_ASSERT_EQUAL_HEX32_MESSAGE(ordinary, reversed, why);
+    }
+}
+
 static void
 test_reaction_split_actually_changes_the_draw_stream(void) {
     const uint32_t serial = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, false);
@@ -1299,6 +1319,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_two_core_step_conserves_grains_on_a_dense_column_and_pile);
     RUN_TEST(test_reaction_split_matches_serial_on_a_zero_randomness_fire_chain);
     RUN_TEST(test_reaction_split_is_deterministic_across_seeds);
+    RUN_TEST(test_reaction_split_ignores_worker_order);
     RUN_TEST(test_reaction_split_actually_changes_the_draw_stream);
     RUN_TEST(test_landscape_water_column_has_no_row_mass_lag);
     RUN_TEST(test_split_gas_equalise_keeps_seam_order);
