@@ -94,8 +94,7 @@ trace_primary(r3d_vec3f_t origin, r3d_vec3f_t dir, int x, int y) {
 }
 
 void
-rt_cornell_camera_init(rt_cornell_camera_t* cam, int width, int height, int quarter) {
-    const r3d_viewport_t viewport = {.width = width, .height = height, .quarter = quarter};
+rt_cornell_camera_init(rt_cornell_camera_t* cam, r3d_viewport_t viewport) {
     r3d_ray_camera_init(cam, CAMERA_POS, CAMERA_FORWARD, CAMERA_RIGHT, CAMERA_UP, CAMERA_HALF_FOV_SHORT_TAN, viewport);
 }
 
