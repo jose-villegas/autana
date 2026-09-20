@@ -11,8 +11,7 @@
 #include "ui/ui_launcher.h"
 
 #include "ui/ui.h"
-
-#define COL_BACKGROUND 0x0A0C14
+#include "ui/ui_ridge.h"
 
 int
 ui_launcher_frame(const input_t* input, uint32_t dt_ms) {
@@ -20,11 +19,12 @@ ui_launcher_frame(const input_t* input, uint32_t dt_ms) {
 
     ui_begin(input);
     const int chosen = ui_launcher_draw(ctx, dt_ms);
+    ui_ridge_step(input, dt_ms);
 
-    /* Repaints only if the menu actually looks different from what is already
-     * on screen - so a home screen nobody is touching costs no bus time at
-     * all, rather than resending 322 KiB of identical pixels every frame. */
-    ui_end(COL_BACKGROUND);
+    /* Repaints only what looks different from what is already on screen, so
+     * a home screen nobody is touching, its ridge at rest, costs no bus time
+     * at all. */
+    ui_end_over(ui_ridge_paint);
 
     return chosen;
 }

@@ -41,7 +41,7 @@ depends entirely on the material sitting in that row:
 
 Reusing one nibble for several jobs is deliberate: the alternative is a
 second byte per cell, and this app has no RAM to spare for that. See
-[`Sand-Simulation.md`](Sand-Simulation.md#the-grid-is-one-byte-per-cell-and-always-will-be)
+[`Sand-Simulation.md`](Sand-Simulation.md#the-grid-is-one-byte-per-cell)
 for the budget.
 
 Id 15 (`MAT_EXTENDED`) is not an ordinary material - a cell carrying it

@@ -55,6 +55,10 @@ extern uint64_t canvas_hash[MU_CONTAINERPOOL_SIZE];
  * rect()/command_row_range() (ui.c) map through it. */
 ui_transform_t ui_effective_transform(void);
 
+/* A point on the panel as the logical canvas sees it - what a raw input_t
+ * touch needs before it means anything to a screen. */
+void ui_to_logical(int x, int y, int* lx, int* ly);
+
 /* The (font, scale) pair `font` was interned as by ui_set_font_scaled(), or
  * the shell default if `font` is NULL (asked for before ui_init() has run).
  * draw_command() and command_row_range() (ui.c) both need this to know what

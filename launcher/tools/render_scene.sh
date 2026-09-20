@@ -188,6 +188,8 @@ render_scene_run() {
                 echo "ok $scene_name/$_rs_label $_rs_want -> $_rs_path (no sha256 tool; not checked)"
             elif [ -z "$_rs_pinned" ]; then
                 echo "ok $scene_name/$_rs_label $_rs_want -> $_rs_path (not pinned)"
+            elif [ "$_rs_pinned" != "$_rs_hash" ] && [ "$_rs_repin" = 1 ]; then
+                echo "ok $scene_name/$_rs_label $_rs_want -> $_rs_path (changed; re-pinning)"
             elif [ "$_rs_pinned" != "$_rs_hash" ]; then
                 echo "FAIL $scene_name/$_rs_label: the pixels changed" >&2
                 echo "  pinned $_rs_pinned" >&2

@@ -163,7 +163,8 @@ only one leaves it feeling broken in the other.
 **Noise and abruptness.** The sensor reports a few hundred counts of jitter on
 a board sitting still, and a real tilt arrives as a step change. The fix is an
 exponential moving average - a lerp toward the reading rather than a jump to it
-(`main/apps/sand/tilt.c`). Two details matter more than the lerp:
+(`main/input/tilt.c`, shared by anything that follows gravity). Two details
+matter more than the lerp:
 
 - Define it by a **time constant**, not a per-frame fraction. "Move 10% each
   frame" changes meaning the moment the framerate does, and this project's has

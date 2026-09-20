@@ -1,4 +1,4 @@
-#include "tilt.h"
+#include "input/tilt.h"
 
 #include "util/intmath.h"
 
@@ -158,7 +158,7 @@ tilt_update(tilt_t* t, int gx, int gy, int gz, int rotation, uint32_t dt_ms) {
     /* Interpolate the time constant itself. Still hands get heavy smoothing, a
      * moving board gets a short one, and everything between is proportional
      * rather than a switch - a threshold here would just move the rigidity from
-     * the sand to the filter.
+     * whatever follows the tilt to the filter.
      *
      * Safe only because the trust gate above has already thrown out the samples
      * where "moving" meant "being shoved" rather than "being turned". */

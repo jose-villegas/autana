@@ -195,6 +195,13 @@ bool ui_slider_int(mu_Context* ctx, int* value, int lo, int hi, int step);
  * already there. */
 bool ui_end(uint32_t background_rgb);
 
+/* ui_end() over a backdrop that is drawn, not a colour. `paint_backdrop`
+ * paints the whole screen and is called only when the UI itself changed; a
+ * backdrop that animates draws its own changes before this call, and the
+ * unchanged UI is put back over them. Full framebuffer only. */
+typedef void (*ui_backdrop_fn)(void);
+bool ui_end_over(ui_backdrop_fn paint_backdrop);
+
 /* Declare that the framebuffer no longer holds this UI's output, so the
  * next ui_end() must repaint even if the UI is unchanged. Needed
  * whenever something has replaced the screen without going through gfx
