@@ -406,14 +406,14 @@ extern unsigned sand_gas_late_arrivals;
  * pass itself - a suite that wants a per-step delta zeroes it directly. */
 extern unsigned sand_reactions_cells_dispatched;
 
-/* Not sand.h API: what a split reaction step put through its per-half
- * deferred queues. `queued` and `applied` part only where an entry is lost or
- * applied twice; `peak` is the most one half held in one queue, so a suite
- * can say how much of a capped queue a scene actually used. Same convention
- * as the counter above - never reset by the pass. */
-extern unsigned sand_reactions_defer_queued;
+/* Not sand.h API: what a split reaction step put through its per-lane
+ * deferred queues. The `queued` total and `applied` part only where an entry
+ * is lost or applied twice. `peak_q8` is the fullest any one lane's queue
+ * got, in 1/256 of that queue's own cap, so 256 means one filled and
+ * candidates were dropped. Never reset by the pass. */
+extern unsigned sand_reactions_defer_queued[SAND_LANE_COUNT];
 extern unsigned sand_reactions_defer_applied;
-extern unsigned sand_reactions_defer_peak;
+extern unsigned sand_reactions_defer_peak_q8;
 
 /* Test-only override: on, forces every pass to walk the full board even
  * where soak-only conditions hold, so a suite can diff the fast path's
@@ -1223,7 +1223,6 @@ void sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy);
 
 void sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, const int* slide_b, const int* perp_a,
                    const int* perp_b, int load_dx, int load_dy, int x_step, int jostle);
-void sand_reactions_set_worker_order_for_test(bool reverse);
 
 /* The flight pass - explosions, debris, splash pushback - lives in
  * sand_impulse.c since it moves OUTWARD, not gravity-ward. Called once

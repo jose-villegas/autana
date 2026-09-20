@@ -302,9 +302,9 @@ void sand_track_dirty_cols(sand_t* s, uint16_t* x0, uint16_t* x1);
 void sand_enable_sleeping(sand_t* s, uint8_t* blocks);
 
 /* sand_step_stamp_bytes(w, h) bytes, one bit per cell, caller-owned. A
- * two-core step runs its chunks in four passes; a grain crossing into a
- * chunk whose pass is still to come is marked so that pass leaves it. NULL
- * disables it, and such a grain may then move twice. */
+ * two-core step takes its chunks one after another; a grain crossing into a
+ * chunk still to run is marked so that chunk leaves it. NULL disables it,
+ * and such a grain may then move twice. */
 void sand_enable_step_stamps(sand_t* s, uint8_t* bits);
 size_t sand_step_stamp_bytes(int w, int h);
 
