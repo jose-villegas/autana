@@ -2602,6 +2602,7 @@ react_one_chunk(void* pass, int lane, int cx, int cy) {
 
     sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
     for (int y = y0; y < y1; y++) {
+        sand_chunk_work_add(x1 - x0);
         found |= step_one_reacting_row(s, y, s->w, s->h, x0, x1);
     }
     c->found[lane] |= found;

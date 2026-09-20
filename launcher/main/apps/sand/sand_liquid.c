@@ -498,6 +498,7 @@ equalise_one_chunk(void* pass, int lane, int cx, int cy) {
     const int x_step = c->flow.dg[0] > 0 ? -1 : 1;
 
     for (int y = y_step > 0 ? y0 : y1 - 1; y >= y0 && y < y1; y += y_step) {
+        sand_chunk_work_add(x1 - x0);
         own->found_any |=
             equalise_one_row(s, y, x0, x1, s->w, x_step, &c->flow, c->dx, c->dy, c->sight, c->is_liquid, &own->work);
     }

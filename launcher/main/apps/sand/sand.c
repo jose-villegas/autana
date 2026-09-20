@@ -1435,6 +1435,7 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int x0, int x1, int w, int dx
                 continue;
             }
         }
+        sand_chunk_work_add(x1 - x0);
         step_one_row(s, y, x0, x1, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
                      is_liquid, sweep_driven);
     }
@@ -1465,9 +1466,22 @@ static void* chunk_pass_arg;
 #define CHUNK_PASS_SPIN_LIMIT 20000u
 #define CHUNK_PASS_JOIN_MS    100u
 
+unsigned sand_chunk_work[SAND_CHUNKS_MAX];
+int sand_chunk_work_at = -1;
+static bool chunk_work_on;
+
+void
+sand_chunk_work_enable(bool on) {
+    chunk_work_on = on;
+    sand_chunk_work_at = -1;
+}
+
 void
 sand_chunk_pass_cells(int cx, int cy, int* x0, int* x1, int* y0, int* y1) {
     sand_chunk_cells(&chunk_plan, cx, cy, x0, x1, y0, y1);
+    if (chunk_work_on) {
+        sand_chunk_work_at = cy * chunk_plan.cols + cx;
+    }
 }
 
 static void
@@ -1616,6 +1630,7 @@ sand_chunk_pass_run(sand_t* s, int tx, int ty, sand_chunk_pass_stamps_t stamps, 
 
     const uint32_t rng_at_prepare = s->rng.state;
     drive_chunk_pass_lanes();
+    sand_chunk_work_at = -1;
     count_sequential_draws(rng_at_prepare, s->rng.state);
 
     for (int i = 0; i < SAND_LANE_COUNT; i++) {

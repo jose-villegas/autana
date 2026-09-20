@@ -431,6 +431,7 @@ step_one_gas_chunk(void* pass, int lane, int cx, int cy) {
 
     sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
     for (int y = c->y_step > 0 ? y0 : y1 - 1; y >= y0 && y < y1; y += c->y_step) {
+        sand_chunk_work_add(x1 - x0);
         c->found_any[lane] |= step_one_gas_row(s, y, x0, x1, s->w, c->rdx, c->rdy, c->rslide_a, c->rslide_b, c->rx_step,
                                                c->rload_dx, c->rload_dy, c->jostle, gas_driven);
     }
@@ -833,6 +834,7 @@ equalise_gas_one_chunk(void* pass, int lane, int cx, int cy) {
     int clean_run = 0;
 
     for (int y = y0; y < y1; y++) {
+        sand_chunk_work_add(x1 - x0);
         c->found_any[lane] |= equalise_gas_one_row(s, y, s->w, x_from, x_to, c->x_step, c->px, c->py, c->rdx, c->rdy,
                                                    c->is_gas, &clean_run, c->count_late ? &c->late[lane] : NULL);
     }

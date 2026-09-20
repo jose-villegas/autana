@@ -440,6 +440,24 @@ extern unsigned sand_liquid_sweep_moves;
  * Never reset by the pass itself, so tests can measure a per-step delta. */
 extern unsigned sand_sweep_chunks_swept;
 
+/* Not sand.h API: cells each chunk's passes dispatched, by chunk index, and
+ * the chunk being charged, or -1. Rows a whole-chunk or block-row skip drops
+ * are not charged, which is the whole point: a plan's own areas are fixed,
+ * what a layout is ranked on is the work a board actually has. One global
+ * charging point means only a single-lane walk can attribute a row to a
+ * chunk. Armed by sand_chunk_work_enable(); never reset by a pass. */
+extern unsigned sand_chunk_work[SAND_CHUNKS_MAX];
+extern int sand_chunk_work_at;
+
+void sand_chunk_work_enable(bool on);
+
+static inline void
+sand_chunk_work_add(int cells) {
+    if (sand_chunk_work_at >= 0) {
+        sand_chunk_work[sand_chunk_work_at] += (unsigned)cells;
+    }
+}
+
 /* Not sand.h API: draws a chunk-parallel pass took from the sequential stream
  * rather than through sand_rng_next_at(). A lane holds its own copy of the
  * board, so such a draw advances a stream the join throws away - both lanes
