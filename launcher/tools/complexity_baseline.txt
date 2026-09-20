@@ -86,7 +86,6 @@
 14	launcher/main/apps/sand/tools/serial_lag.c:152	compare_step
 14	launcher/main/apps/sand/tools/shading_palette.c:245	enumerate_glass_cullet
 14	launcher/main/apps/sand/tools/shading_palette.c:1086	greedy_grow_palette
-14	launcher/main/apps/sand/ui/sand_menu_screen.c:32	sand_menu_screen_draw
 14	launcher/main/boot/boot_anim.c:219	draw_grid_spoke
 14	launcher/main/ui/ui.c:92	draw_command
 14	launcher/test/suites/suite_gfx_indexed.c:252	run_incremental_matches_full_reexpansion
@@ -172,7 +171,7 @@
 12	launcher/main/apps/sand/tools/shading_palette.c:630	paint_cell_block
 12	launcher/main/apps/sand/tools/shading_palette.c:923	plan_next
 12	launcher/main/apps/sand/tools/shading_palette.c:1538	write_png
-12	launcher/main/gfx/gfx.c:2234	run_present_indexed
+12	launcher/main/apps/sand/ui/sand_menu_screen.c:32	sand_menu_screen_draw
 12	launcher/main/util/screenshot.c:99	screenshot_task
 12	launcher/test/suites/suite_gfx_font.c:347	sim_walk_runs
 12	launcher/test/suites/suite_gfx_font.c:307	test_row_run_rect_never_leaves_the_characters_own_row_extent
@@ -233,7 +232,6 @@
 10	launcher/main/apps/sand/sand.c:1257	finalize_settling_range
 10	launcher/main/apps/sand/sand.c:78	random_cell
 10	launcher/main/apps/sand/sand_gas.c:973	choose_gas_sweep_order
-10	launcher/main/apps/sand/sand_gas.c:937	equalise_gas
 10	launcher/main/apps/sand/sand_plants.c:490	step_one_drinking_cell
 10	launcher/main/apps/sand/suite_palette.c:127	check_hit_round_trips_against_tile_rect_for_every_tile
 10	launcher/main/apps/sand/suite_sand_chunk_sched.c:120	cs_sweep
@@ -304,8 +302,8 @@
 10	launcher/test/suites/suite_icons_system.c:147	reference_blocks
 10	launcher/test/suites/suite_post_ui.c:199	place_report
 9	launcher/main/apps/cube/ui/cube_menu_screen.c:14	cube_menu_screen_draw
-9	launcher/main/apps/sand/app_sand.c:1556	draw_mode_label
 9	launcher/main/apps/sand/sand.c:1416	sweep_range
+9	launcher/main/apps/sand/sand_gas.c:937	equalise_gas
 9	launcher/main/apps/sand/sand_gas.c:617	equalise_gas_one_cell
 9	launcher/main/apps/sand/sand_gas.c:754	equalise_gas_one_row
 9	launcher/main/apps/sand/sand_gas.c:899	gas_row_audit
@@ -383,6 +381,7 @@
 8	launcher/main/apps/cube/suite_cube_band_perf.c:195	band_frame
 8	launcher/main/apps/sand/app_sand.c:555	alloc_grid_bookkeeping
 8	launcher/main/apps/sand/app_sand.c:1782	count_occupied_in_block
+8	launcher/main/apps/sand/app_sand.c:1556	draw_mode_label
 8	launcher/main/apps/sand/app_sand.c:1377	row_paint_span
 8	launcher/main/apps/sand/material_palette.c:572	liquid_spec_for_mask
 8	launcher/main/apps/sand/row_runs.c:50	absorb_overlapping
@@ -486,7 +485,6 @@
 8	launcher/test/heap_arena.c:290	arena_pool_release
 7	launcher/main/apps/cube/app_cube.c:640	cube_frame
 7	launcher/main/apps/sand/app_sand.c:363	apply_gfx_enter_indexed
-7	launcher/main/apps/sand/app_sand.c:1912	draw_menu
 7	launcher/main/apps/sand/app_sand.c:1708	handle_pour_input
 7	launcher/main/apps/sand/material_palette.c:650	material_wood_leaf_top5
 7	launcher/main/apps/sand/sand.c:1394	blocks_settled_over
@@ -584,9 +582,9 @@
 7	launcher/main/apps/sand/tools/shading_palette.c:1673	write_swatches
 7	launcher/main/boot/boot_anim.c:444	draw_heads
 7	launcher/main/boot/post_layout.c:243	report_fits
-7	launcher/main/gfx/gfx.c:2878	gfx_band_submit
 7	launcher/main/gfx/gfx.c:1709	gfx_set_leaf_overlay
 7	launcher/main/gfx/gfx.c:2736	mark_band_overlay
+7	launcher/main/gfx/gfx.c:2234	run_present_indexed
 7	launcher/main/input/buttons.c:85	pmu_init
 7	launcher/main/ui/ui_build.c:415	ui_slider_int
 7	launcher/test/heap_arena.c:157	arena_pool_effective_cap
@@ -795,6 +793,7 @@
 5	launcher/main/apps/cube/suite_cube_band_perf.c:128	capture
 5	launcher/main/apps/cube/suite_cube_band_perf.c:74	compute_stats
 5	launcher/main/apps/cube/suite_cube_perf.c:144	compute_stats
+5	launcher/main/apps/sand/app_sand.c:1912	draw_menu
 5	launcher/main/apps/sand/app_sand.c:1897	frame_log_sample
 5	launcher/main/apps/sand/palette.c:99	palette_label_origin
 5	launcher/main/apps/sand/sand.c:1520	drive_chunk_pass_lanes
@@ -914,7 +913,6 @@
 5	launcher/main/boot/post_ui.c:73	draw_wrapped
 5	launcher/main/boot/post_ui.c:184	post_ui_draw_report
 5	launcher/main/display/display.c:61	neighbor_quarter
-5	launcher/main/gfx/gfx.c:2821	gfx_band_next
 5	launcher/main/gfx/gfx.c:856	gfx_pixel
 5	launcher/main/gfx/gfx.c:481	present_task_fn
 5	launcher/main/gfx/gfx.c:1842	send_audit_check
@@ -1107,6 +1105,7 @@
 4	launcher/main/boot/boot_anim.c:424	draw_disc
 4	launcher/main/boot/post_layout.c:142	post_layout_take_line
 4	launcher/main/gfx/gfx.c:2785	gfx_band_dirty
+4	launcher/main/gfx/gfx.c:2878	gfx_band_submit
 4	launcher/main/gfx/gfx.c:2932	gfx_readback_begin
 4	launcher/main/gfx/gfx.c:796	gfx_set_clip
 4	launcher/main/gfx/gfx.c:1878	note_send_failure
@@ -1116,10 +1115,8 @@
 4	launcher/main/gfx/gfx.c:1784	send_audit_capture
 4	launcher/main/gfx/gfx.c:2208	send_heal_strips
 4	launcher/main/gfx/gfx.c:2195	send_overlay_bordered_rows_clean
-4	launcher/main/input/touch.c:139	touch_start
 4	launcher/main/main.c:632	sample_display_orientation
 4	launcher/main/main.c:247	sort_apps
-4	launcher/main/main.c:428	step_launcher
 4	launcher/main/ui/system_navigation.c:9	system_navigation_step
 4	launcher/main/ui/ui.c:503	mark_changed_ui_bands
 4	launcher/main/ui/ui_build.c:462	ui_begin_screen
@@ -1400,20 +1397,20 @@
 3	launcher/main/boot/selftest.c:38	selftest_run
 3	launcher/main/gfx/gfx.c:2534	alloc_band_buffers
 3	launcher/main/gfx/gfx.c:1346	draw_glyph_font_halo
+3	launcher/main/gfx/gfx.c:2821	gfx_band_next
 3	launcher/main/gfx/gfx.c:1605	gfx_get_strip_send_counts
 3	launcher/main/gfx/gfx.c:2948	gfx_read_panel_row
 3	launcher/main/gfx/gfx.c:1754	gfx_set_send_audit
 3	launcher/main/gfx/gfx.c:1529	gfx_text_font_dither
-3	launcher/main/gfx/gfx.c:422	panel_clock_apply
 3	launcher/main/gfx/gfx.c:1825	send_audit_log_if_due
 3	launcher/main/gfx/gfx.c:2011	send_indexed_rows
 3	launcher/main/gfx/gfx_null_panel.c:95	gfx_null_panel_open
 3	launcher/main/gfx/gfx_palette_standard.c:61	gfx_palette_standard_find
 3	launcher/main/input/buttons.c:176	poll_once
 3	launcher/main/input/gesture.c:4	gesture_is_edge_swipe
+3	launcher/main/input/touch.c:139	touch_start
 3	launcher/main/main.c:675	app_main_loop
 3	launcher/main/main.c:98	draw_build_mark
-3	launcher/main/main.c:611	run_pending_selftest_suite
 3	launcher/main/ui/ui.c:209	paint_canvas
 3	launcher/main/ui/ui_build.c:141	styled_draw_frame
 3	launcher/main/ui/ui_launcher_draw.c:38	draw_app_rows
@@ -1647,6 +1644,7 @@
 2	launcher/main/gfx/gfx.c:1628	mark_rect_border
 2	launcher/main/gfx/gfx.c:401	panel_bring_up_co5300
 2	launcher/main/gfx/gfx.c:383	panel_bring_up_sh8601
+2	launcher/main/gfx/gfx.c:422	panel_clock_apply
 2	launcher/main/gfx/gfx.c:334	panel_open_co5300
 2	launcher/main/gfx/gfx.c:1659	restore_border
 2	launcher/main/gfx/gfx.c:1646	save_border
@@ -1659,7 +1657,9 @@
 2	launcher/main/main.c:668	present_unless_deferred
 2	launcher/main/main.c:516	report_fps
 2	launcher/main/main.c:652	run_dev_frame_extras
+2	launcher/main/main.c:611	run_pending_selftest_suite
 2	launcher/main/main.c:418	step_control_center
+2	launcher/main/main.c:428	step_launcher
 2	launcher/main/main.c:456	step_running_app
 2	launcher/main/ui/ui_build.c:183	ui_set_font_scaled
 2	launcher/main/ui/ui_build.c:205	ui_set_transform
