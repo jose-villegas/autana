@@ -283,6 +283,7 @@ scene_wire_invalidate(void) {
 
 const render_lab_scene_t scene_wire_plane = {
     .name = "Wire Plane",
+    .key = "plane",
     .enter = scene_wire_plane_enter,
     .frame = scene_wire_frame,
     .frame_band = scene_wire_frame_band,
@@ -293,6 +294,7 @@ const render_lab_scene_t scene_wire_plane = {
 
 const render_lab_scene_t scene_wire_cube = {
     .name = "Wire Cube",
+    .key = "cube",
     .enter = scene_wire_cube_enter,
     .frame = scene_wire_frame,
     .frame_band = scene_wire_frame_band,
@@ -303,6 +305,7 @@ const render_lab_scene_t scene_wire_cube = {
 
 const render_lab_scene_t scene_wire_sphere = {
     .name = "Wire Sphere",
+    .key = "sphere",
     .enter = scene_wire_sphere_enter,
     .frame = scene_wire_frame,
     .frame_band = scene_wire_frame_band,
@@ -313,6 +316,7 @@ const render_lab_scene_t scene_wire_sphere = {
 
 const render_lab_scene_t scene_wire_capsule = {
     .name = "Wire Capsule",
+    .key = "capsule",
     .enter = scene_wire_capsule_enter,
     .frame = scene_wire_frame,
     .frame_band = scene_wire_frame_band,

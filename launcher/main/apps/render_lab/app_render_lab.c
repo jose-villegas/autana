@@ -11,6 +11,7 @@
  */
 
 #include <stdint.h>
+#include <string.h>
 
 #include "../../app.h"
 #include "../../gfx/gfx.h"
@@ -35,12 +36,23 @@ static const render_lab_scene_t* const scenes[] = {
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
 
-/* current_scene_index's own re-entry seed - 0 (the cube) by default. Set
- * directly by wire_render_host.c to start on a chosen scene with no menu
- * interaction, and kept in sync by the scene-cycle button below so a normal
- * re-entry still resumes wherever the user left it. Read only at enter(),
- * the same contract render_lab_band_mode below documents. */
-int render_lab_start_scene_index;
+/* current_scene_index's own re-entry seed, a scene's key - NULL (the cube)
+ * by default. Read only at enter(), the same contract render_lab_band_mode
+ * below documents. */
+const char* render_lab_start_scene_key;
+
+/* Unknown or unset resolves to the first scene, never a hard error. */
+static int
+scene_index_for_key(const char* key) {
+    if (key != NULL) {
+        for (int i = 0; i < SCENE_COUNT; i++) {
+            if (strcmp(scenes[i]->key, key) == 0) {
+                return i;
+            }
+        }
+    }
+    return 0;
+}
 
 static const render_lab_scene_t*
 current_scene(void) {
@@ -134,7 +146,7 @@ enter_layout(void) {
 
 void
 render_lab_enter(void) {
-    current_scene_index = render_lab_start_scene_index;
+    current_scene_index = scene_index_for_key(render_lab_start_scene_key);
     enter_layout();
     current_scene()->enter();
     scene_title_remaining_ms = SCENE_TITLE_MS;
@@ -166,7 +178,7 @@ static void
 switch_to_next_scene(void) {
     current_scene()->exit();
     current_scene_index = (current_scene_index + 1) % SCENE_COUNT;
-    render_lab_start_scene_index = current_scene_index; /* keeps a later re-entry on this same scene */
+    render_lab_start_scene_key = current_scene()->key; /* keeps a later re-entry on this same scene */
     switch_layout(); /* the new scene's needs_full_framebuffer may differ from the old one's */
     current_scene()->enter();
     scene_title_remaining_ms = SCENE_TITLE_MS;
