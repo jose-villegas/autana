@@ -44,7 +44,6 @@
 
 #define SAND_CHUNK_TARGET_CELLS_DIVISOR 10
 #define SAND_CHUNK_SIDE_MIN             (2 * SAND_LIQUID_SIGHT + 1)
-#define SAND_CHUNK_COLOR_COUNT          (2 * 2)
 
 _Static_assert(SAND_CHUNK_SIDE_MIN > 2 * SAND_LIQUID_SIGHT,
                "a chunk must clear the furthest a split pass reads or transfers");
@@ -73,41 +72,8 @@ sand_chunk_rows(const sand_t* s) {
     return (s->h + side - 1) / side;
 }
 
-static inline int
-sand_chunk_color(int chunk_x, int chunk_y) {
-    return ((chunk_y & 1) << 1) | (chunk_x & 1);
-}
-
-/* Half-open cell range of one chunk along either axis. */
-static inline void
-sand_chunk_span(int index, int side, int extent, int* lo, int* hi) {
-    *lo = index * side;
-    *hi = *lo + side;
-    if (*hi > extent) {
-        *hi = extent;
-    }
-}
-
-/* Which of a colour's two workers owns a chunk row. Two rows of one colour
- * answering the same share are four rows apart, so nothing running at once
- * shares a grid row: a worker may write row-indexed state - dirty spans, the
- * board-changed flag - straight into the board with no private copy. */
-static inline int
-sand_chunk_share(int chunk_y) {
-    return (chunk_y >> 1) & 1;
-}
-
-/* One chunk row per (row parity, share) pair, below which a colour leaves a
- * worker idle and the hop to the second core buys nothing. */
-#define SAND_CHUNK_SPLIT_MIN_ROWS SAND_CHUNK_COLOR_COUNT
-
-static inline bool
-sand_chunk_split_ready(const sand_t* s) {
-    return sand_chunk_rows(s) >= SAND_CHUNK_SPLIT_MIN_ROWS;
-}
-
-/* Whole bytes per row: two workers never share a grid row, so they never
- * share a stamp byte either. */
+/* Whole bytes per row. A byte holds eight adjacent columns and two lanes are
+ * never within a chunk side of each other, so they never share one. */
 static inline size_t
 sand_stamp_stride(int w) {
     return ((size_t)w + 7) / 8;

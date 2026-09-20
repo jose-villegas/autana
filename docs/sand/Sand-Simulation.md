@@ -1272,13 +1272,15 @@ those steps in `sand_t.split_lane_aborts`.
 
 ### What a pass boundary still costs
 
-Exact serial order is out of reach for a fixed colouring. The serial sweep's
-no-double-move guarantee rests on every possible destination having been
-visited already; a chunk's gravity-ward neighbour belongs to another colour,
-and for half the boundaries that colour runs later. Tracing the dependency
-both ways across two adjacent boundaries gives a contradiction: no order of
-"all of one colour, then all of the next" satisfies both. Ranking the chunks
-by travel is what buys the sweep that guarantee back.
+A fixed colouring of the chunks - every chunk taking a pass number from its
+own coordinates, no two touching chunks in one pass - was tried and cannot
+give exact serial order. The serial sweep's no-double-move guarantee rests
+on every possible destination having been visited already; a chunk's
+gravity-ward neighbour belongs to another colour, and for half the
+boundaries that colour runs later. Tracing the dependency both ways across
+two adjacent boundaries gives a contradiction: no order of "all of one
+colour, then all of the next" satisfies both. Ranking the chunks by travel
+is what buys the sweep that guarantee back.
 
 A grain that crosses into a chunk whose pass has not run would be picked up
 once more there, and at a chunk corner handed on twice - three cells in the
@@ -1419,12 +1421,18 @@ merges them at the join. Boards with no lane scratch, and boards
 ### Reaction chunks
 
 A reaction reads and writes one cell away and never relocates a cell, so its
-local rules take the chunk grid with nothing added: four passes, no guards,
-no snapshot. That makes it the one split pass still exact against the serial
-order, which `suite_sand_two_core.c` checks on a zero-randomness fire chain.
+local rules take the schedule with nothing added: no guards, no snapshot, no
+arrival marks. Travel is the serial scan's own row-ascending order rather
+than a direction anything moves in. That makes it the one split pass still
+exact against the serial order, which `suite_sand_two_core.c` checks on a
+zero-randomness fire chain.
 
-Growers still disable the split outright - their own reach was never audited
-for it - and the narrower soak-only walk is left serial.
+Growers and drinkers disable the split outright - `find_water()` reaches
+tens of cells, far past the one a chunk's halo covers, and every plant stage
+still draws from the sequential stream - and the narrower soak-only walk is
+left serial. The gate reads the board's material mask BEFORE the pass clears
+it, which is the only point in the step where the mask still describes what
+is actually there.
 
 ### The draw
 

@@ -211,11 +211,10 @@ primitive, `job_run_core1()`/`job_wait()` (`util/job.h`) - one copied
 context, run on core 1 if its worker is idle, otherwise inline. The main
 sweep, the liquid cross-flow pass, both gas sub-passes and a reacting
 cell's own local rules all cut the board into one grid of square chunks.
-The sweep and cross-flow rank those chunks downstream-first for their own
+Each ranks those chunks downstream-first for its own
 travel direction (`sand_chunk_sched.[ch]`) and lets two lanes walk that
 order through one shared runner, each chunk waiting on the 8-neighbours
-ahead of it; the other two take four passes, one colour each, chunk rows
-divided between the cores. A caller-owned bitmap, one bit per cell
+ahead of it. A caller-owned bitmap, one bit per cell
 (`sand_enable_step_stamps()`), marks a grain that crossed into another
 chunk so a pass still to reach it does not move it again - only for a
 pass whose own order does not already rule that out - and a second
@@ -230,7 +229,7 @@ same seed - and bought back a narrower one: a two-core step is itself
 deterministic, repeatable from (seed, step, cell, draw slot) alone,
 checked by its own suite rather than against the serial path. See
 [Sand-Simulation.md's "Two cores" section](Sand-Simulation.md#two-cores-chunk-parallel-passes-and-what-stays-serial)
-for the schedule and the colouring argument, the reach table that decides
+for the schedule and why a fixed colouring was rejected, the reach table that decides
 what can split at all, and why the rest cannot.
 
 ## Block and row sleeping

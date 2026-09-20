@@ -545,9 +545,10 @@ build_quality_water_pour_scene(sand_t* real, uint8_t* big, uint8_t* blocks, int 
 }
 
 /* A scene the bench builds at any grid size. The split covers the sweep, the
- * liquid cross-flow and the gas walk; reactions and impulses stay serial, so
- * how much of a step those four passes hold is the ceiling on what a second
- * core can buy for that workload. */
+ * liquid cross-flow, the gas walk and a reacting cell's local rules;
+ * impulses and the long-reach triggers stay serial, so how much of a step
+ * the split passes hold is the ceiling on what a second core can buy for
+ * that workload. */
 typedef void (*quality_scene_fn)(sand_t* real, uint8_t* big, uint8_t* blocks, int w, int h);
 
 typedef struct {

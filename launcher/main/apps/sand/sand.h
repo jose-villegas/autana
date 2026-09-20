@@ -687,10 +687,10 @@ void sand_set_gas_walk(sand_t* s, bool on);
 #define SAND_MOBILITY_PER_MATERIAL (-1)
 
 /* Global: one core-1 worker serves all boards. Splits the gravity sweep,
- * liquid cross-flow, gas, reactions and independent block scans over a
- * four-colour chunk grid. Movement uses hashed draws; serial remains the
- * host default and the fingerprint reference. Device builds enable
- * splitting by default. */
+ * liquid cross-flow, gas, reactions and independent block scans over a grid
+ * of square chunks. Movement uses hashed draws; serial remains the host
+ * default and the fingerprint reference. Device builds enable splitting by
+ * default. */
 void sand_set_two_core_step(bool on);
 bool sand_two_core_step_enabled(void);
 
