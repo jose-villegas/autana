@@ -79,6 +79,7 @@ $TEST_DIR/suites/suite_gesture.c
 $TEST_DIR/suites/suite_button_fsm.c
 $TEST_DIR/suites/suite_rng.c
 $TEST_DIR/suites/suite_fixed.c
+$TEST_DIR/suites/suite_frame_cost.c
 $TEST_DIR/suites/suite_tilt.c
 $TEST_DIR/suites/suite_tune.c
 $TEST_DIR/suites/suite_tween.c

@@ -22,6 +22,7 @@
 #include "gfx/gfx.h"
 #include "ui/ridge_curve_generated.h"
 #include "ui/ridge_motion.h"
+#include "util/frame_cost.h"
 #include "util/spring_line.h"
 #include "util/tune.h"
 
@@ -186,10 +187,12 @@ glow_is_mapped(void) {
 /* What a draw measures distance against, for the line as it now stands. */
 static void
 prepare_light(void) {
+    FRAME_COST_BEGIN(began);
     gfx_glow_field_prepare(&ridge->field, ridge->heights, &ridge->style);
     if (glow_is_mapped()) {
         gfx_glow_map_build(&ridge->map, &ridge->field, &ridge->style);
     }
+    FRAME_COST_END(began, "ridge.light");
 }
 
 /* The glow's ramp and the smoothed shape are tables built from tunables, so
@@ -285,9 +288,11 @@ ui_ridge_settle(void) {
 
 static void
 draw_ridge(void) {
+    FRAME_COST_BEGIN(began);
     gfx_glow_curve_posed(&ridge->field, glow_is_mapped() ? &ridge->map : NULL, RIDGE_CURVE_VIEW_H, ridge->pose,
                          ridge->lit_lo, ridge->lit_hi, ridge_trail, &ridge->style);
     ridge->pose_on_screen = ridge->pose;
+    FRAME_COST_END(began, "ridge.draw");
 }
 
 void
@@ -430,6 +435,7 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     if (ridge == NULL) {
         return;
     }
+    FRAME_COST_BEGIN(began);
     bool retuned = false;
 #if TUNE_ENABLED
     if (tune_generation() != ridge->tuned_at) {
@@ -456,6 +462,7 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     spring_line_advance(&ridge->line, dt_ms);
     int lo, hi;
     spring_line_apply(&ridge->line, ridge->shape, ridge->heights, &lo, &hi);
+    FRAME_COST_END(began, "ridge.move");
     const bool line_moved = hi > lo;
     if (line_moved) {
         prepare_light();
