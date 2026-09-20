@@ -167,7 +167,7 @@ test_a_shadowed_floor_point_is_darker_than_a_lit_one_at_the_same_distance(void) 
 static void
 sample_rgb(int width, int height, int quarter, int x, int y, int* r, int* g, int* b) {
     rt_cornell_camera_t cam;
-    rt_cornell_camera_init(&cam, width, height, quarter);
+    rt_cornell_camera_init(&cam, (r3d_viewport_t){width, height, quarter});
     gfx_color_t* row = malloc(sizeof(*row) * (size_t)width);
 
     rt_cornell_render_row(&cam, y, row);
@@ -320,7 +320,7 @@ static void
 test_render_pixel_matches_render_row(void) {
     const int width = 40, height = 30;
     rt_cornell_camera_t cam;
-    rt_cornell_camera_init(&cam, width, height, 1);
+    rt_cornell_camera_init(&cam, (r3d_viewport_t){width, height, 1});
 
     gfx_color_t row[40];
     rt_cornell_render_row(&cam, 17, row);
@@ -335,7 +335,7 @@ static void
 test_render_row_writes_exactly_width_pixels(void) {
     const int width = 40, height = 30;
     rt_cornell_camera_t cam;
-    rt_cornell_camera_init(&cam, width, height, 0);
+    rt_cornell_camera_init(&cam, (r3d_viewport_t){width, height, 0});
 
     gfx_color_t buf[41];
     const gfx_color_t canary = (gfx_color_t)0xBEEF;

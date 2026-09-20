@@ -15,10 +15,10 @@
 
 typedef r3d_ray_camera_t rt_cornell_camera_t;
 
-/* Builds the camera once per render. `width`/`height` are the physical
- * canvas (GFX_WIDTH/GFX_HEIGHT); `quarter` (0..3) is display_shell_quarter(),
- * read by the caller so this stays a pure function of its arguments. */
-void rt_cornell_camera_init(rt_cornell_camera_t* cam, int width, int height, int quarter);
+/* Builds the camera once per render. `viewport` is the PHYSICAL canvas and
+ * the shell's quarter, read by the caller so this stays a pure function of
+ * its arguments. */
+void rt_cornell_camera_init(rt_cornell_camera_t* cam, r3d_viewport_t viewport);
 
 /* One physical pixel, for a caller tracing in an order of its own. */
 gfx_color_t rt_cornell_render_pixel(const rt_cornell_camera_t* cam, int x, int y);
