@@ -37,6 +37,7 @@
 #include "ui/ui_control_center.h"
 #include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"
+#include "util/frame_cost.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "util/screenshot.h"
@@ -563,6 +564,10 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
         const double per_s = 1000000.0 / (double)since;
         ESP_LOGI(TAG, "%.1f fps, %.1f drawn/s, touch %.1f points/s %.1f moved/s", (double)*frames * per_s,
                  (double)drawn * per_s, (double)points * per_s, (double)moved * per_s);
+        char cost[160];
+        if (frame_cost_take_report(*frames, cost, sizeof cost) > 0) {
+            ESP_LOGI(TAG, "ms/frame avg/worst: %s", cost);
+        }
         *frames = 0;
         drawn = 0;
         *window_start = now_us;
@@ -697,7 +702,9 @@ run_dev_frame_extras(input_t* input, const app_t* current) {
 static void
 present_unless_deferred(const app_t* current) {
     if (current == NULL || current->update == NULL) {
+        FRAME_COST_BEGIN(began);
         gfx_present();
+        FRAME_COST_END(began, "present");
     }
 }
 
@@ -721,6 +728,7 @@ app_main_loop(void) {
         if (dt_ms > FRAME_DT_MAX_MS) {
             dt_ms = FRAME_DT_MAX_MS;
         }
+        FRAME_COST_BEGIN(rest_began);
 
 #if CONFIG_LAUNCHER_SELFTEST
         run_pending_selftest_suite();
@@ -740,6 +748,7 @@ app_main_loop(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
         report_fps(now_us, &fps_window_start, &frames);
 #endif
+        FRAME_COST_END(rest_began, "frame.rest");
 
         /* Yield so the idle task can feed the watchdog. */
         vTaskDelay(1);

@@ -13,6 +13,7 @@
 
 #include "gfx/gfx_glow.h"
 #include "ui/ui_transform.h"
+#include "util/trig.h"
 
 #define PANEL_W   96
 #define PANEL_H   80
@@ -277,10 +278,15 @@ static int16_t posed_spans[4][PANEL_H];
 static int16_t lit_lo[PANEL_H];
 static int16_t lit_hi[PANEL_H];
 static int posed_trail;
+static const gfx_glow_map_t* posed_map;
 
 static gfx_glow_field_t
 posed_field(void) {
-    gfx_glow_field_t field = {posed_spans[0], posed_spans[1], posed_spans[2], posed_spans[3], PANEL_H, 0, 0};
+    gfx_glow_field_t field = {.span_lo = posed_spans[0],
+                              .span_hi = posed_spans[1],
+                              .reach_lo = posed_spans[2],
+                              .reach_hi = posed_spans[3],
+                              .count = PANEL_H};
     gfx_glow_field_prepare(&field, heights, style);
     return field;
 }
@@ -293,7 +299,7 @@ forget_what_was_lit(void) {
 
 static void
 draw_posed(const gfx_glow_field_t* field, int down_x, int down_y) {
-    gfx_glow_draw_posed_rows(whole_panel(), 0, 0, PANEL_W, PANEL_H, PANEL_W, PANEL_H, field, PANEL_W,
+    gfx_glow_draw_posed_rows(whole_panel(), 0, 0, PANEL_W, PANEL_H, PANEL_W, PANEL_H, field, posed_map, PANEL_W,
                              (gfx_glow_pose_t){down_x, down_y}, 0, PANEL_H, lit_lo, lit_hi, posed_trail, style);
 }
 
@@ -422,6 +428,127 @@ clear_panel_and_forget(void) {
     forget_what_was_lit();
 }
 
+/* The narrowed walk pinned to an un-narrowed truth: every panel pixel,
+ * evaluated directly against the per-column reach test with no narrowing at
+ * all, at a wide sweep of poses. */
+
+static void
+cliff_curve_for_the_turned_view(void) {
+    for (int x = 0; x < PANEL_H; x++) {
+        const int row = x < 30 ? 15 : (x < 34 ? 15 + (x - 30) * 55 : 235);
+        heights[x] = (int16_t)(row * GFX_GLOW_ONE);
+    }
+}
+
+static void
+runs_off_both_ends_curve_for_the_turned_view(void) {
+    for (int x = 0; x < PANEL_H; x++) {
+        heights[x] = (int16_t)((-24 + x * 3) * GFX_GLOW_ONE);
+    }
+}
+
+/* Not exactly unit-length Q14 poses only approximately; what matters is the
+ * same integer arithmetic the code itself would do with them. */
+static gfx_glow_pose_t
+normalized_pose(int32_t dx, int32_t dy) {
+    const int64_t len = (int64_t)gfx_glow_isqrt((uint32_t)(dx * dx + dy * dy));
+    if (len == 0) {
+        return (gfx_glow_pose_t){GFX_GLOW_POSE_ONE, 0};
+    }
+    return (gfx_glow_pose_t){(int32_t)((int64_t)dx * GFX_GLOW_POSE_ONE / len),
+                             (int32_t)((int64_t)dy * GFX_GLOW_POSE_ONE / len)};
+}
+
+static gfx_color_t
+truth_pixel(const gfx_glow_field_t* field, int view_h, gfx_glow_pose_t pose, int px, int py) {
+    /* The same single division gfx_glow_draw_posed_rows() does, at pixel 0
+     * of the row, then pure integer steps to px - not a fresh division at
+     * px, which truncates differently and would not be the same truth. */
+    const int64_t right_x = pose.down_y;
+    const int64_t right_y = -pose.down_x;
+    const int64_t half_q14 = GFX_GLOW_POSE_ONE / 2;
+    const int to_q4 = 14 - GFX_GLOW_Q_SHIFT;
+    const int64_t dx2_0 = -(int64_t)(PANEL_W - 1);
+    const int64_t dy2 = 2 * (int64_t)py - (PANEL_H - 1);
+    const int64_t vx0 =
+        ((int64_t)(field->count - 1) * GFX_GLOW_POSE_ONE + dx2_0 * right_x + dy2 * right_y) / 2 + half_q14;
+    const int64_t vy0 =
+        ((int64_t)(view_h - 1) * GFX_GLOW_POSE_ONE + dx2_0 * pose.down_x + dy2 * pose.down_y) / 2 + half_q14;
+    const int64_t vx = vx0 + (int64_t)px * right_x;
+    const int64_t vy = vy0 + (int64_t)px * pose.down_x;
+    const int x_q4 = (int)(vx >> to_q4);
+    const int y_q4 = (int)(vy >> to_q4);
+    const int column = x_q4 >> GFX_GLOW_Q_SHIFT;
+    if (column < 0 || column >= field->count || y_q4 < field->reach_lo[column] || y_q4 > field->reach_hi[column]) {
+        return GFX_RGB(0x000000);
+    }
+    return gfx_glow_colour(style, gfx_glow_posed_distance2(field, posed_map, style->radius, x_q4, y_q4), px, py);
+}
+
+static void
+assert_draw_matches_truth(const gfx_glow_field_t* field, gfx_glow_pose_t pose) {
+    static gfx_color_t truth[PANEL_W * PANEL_H];
+    for (int py = 0; py < PANEL_H; py++) {
+        for (int px = 0; px < PANEL_W; px++) {
+            truth[py * PANEL_W + px] = truth_pixel(field, PANEL_W, pose, px, py);
+        }
+    }
+    clear_panel_and_forget();
+    draw_posed(field, pose.down_x, pose.down_y);
+    TEST_ASSERT_EQUAL_MEMORY(truth, pixels, sizeof truth);
+}
+
+static void
+assert_curve_matches_truth_at_every_pose(void) {
+    const gfx_glow_field_t field = posed_field();
+    const int32_t axis[][2] = {
+        {GFX_GLOW_POSE_ONE, 0}, {-GFX_GLOW_POSE_ONE, 0}, {0, GFX_GLOW_POSE_ONE}, {0, -GFX_GLOW_POSE_ONE}};
+    for (size_t i = 0; i < sizeof axis / sizeof axis[0]; i++) {
+        assert_draw_matches_truth(&field, (gfx_glow_pose_t){axis[i][0], axis[i][1]});
+    }
+    const int32_t diag[][2] = {{11585, 11585}, {11585, -11585}, {-11585, 11585}, {-11585, -11585}};
+    for (size_t i = 0; i < sizeof diag / sizeof diag[0]; i++) {
+        assert_draw_matches_truth(&field, (gfx_glow_pose_t){diag[i][0], diag[i][1]});
+    }
+    /* (16384, 0) nudged by one unit each way, and (3, 16383)-like near-axis
+     * poses, renormalised close to a Q14 unit vector. */
+    const int32_t awkward[][2] = {
+        {16384, 1}, {16384, -1}, {-16384, 1}, {-16384, -1}, {1, 16384}, {-1, 16384}, {1, -16384}, {-1, -16384},
+        {3, 16383}, {-3, 16383}, {3, -16383}, {-3, -16383}, {16383, 3}, {16383, -3}, {-16383, 3}, {-16383, -3},
+    };
+    for (size_t i = 0; i < sizeof awkward / sizeof awkward[0]; i++) {
+        assert_draw_matches_truth(&field, normalized_pose(awkward[i][0], awkward[i][1]));
+    }
+    for (int i = 0; i < 32; i++) {
+        const uint16_t phase = (uint16_t)(i * 65536u / 32);
+        assert_draw_matches_truth(&field, normalized_pose(trig_cos(phase), trig_sin(phase)));
+    }
+}
+
+static void
+test_the_narrowed_walk_matches_every_pixel_searched_on_a_smooth_curve(void) {
+    fixture_begin();
+    wavy_curve_for_the_turned_view();
+    assert_curve_matches_truth_at_every_pose();
+    fixture_end();
+}
+
+static void
+test_the_narrowed_walk_matches_every_pixel_searched_at_a_cliff(void) {
+    fixture_begin();
+    cliff_curve_for_the_turned_view();
+    assert_curve_matches_truth_at_every_pose();
+    fixture_end();
+}
+
+static void
+test_the_narrowed_walk_matches_every_pixel_searched_off_both_ends_of_the_panel(void) {
+    fixture_begin();
+    runs_off_both_ends_curve_for_the_turned_view();
+    assert_curve_matches_truth_at_every_pose();
+    fixture_end();
+}
+
 static void
 test_a_trail_that_is_never_cleared_keeps_where_the_curve_was(void) {
     fixture_begin();
@@ -499,12 +626,193 @@ test_dimming_a_grey_keeps_it_grey_all_the_way_to_black(void) {
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x000000), colour);
 }
 
+/* 0x30C0FF sums to 495; rounding to RGB565 moves it a little by phase. */
+#define FULL_HALO_AT_LEAST 470
+
+static int
+phases_lit(int i) {
+    int count = 0;
+    for (int phase = 0; phase < GFX_GLOW_PHASES; phase++) {
+        count += style->ramp[phase][i] != GFX_RGB(0x000000);
+    }
+    return count;
+}
+
+/* One step of light is a stipple: past the core a pixel is the halo colour
+ * at full or it is black, and fewer of them are lit the further out. */
+static void
+test_one_step_of_light_is_lit_or_black_and_thins_toward_the_rim(void) {
+    fixture_begin();
+    gfx_glow_style_set_stepped(style, RADIUS, 2, 0xFFFFFF, 0x30C0FF, 1);
+    const int past_the_core = GFX_GLOW_RAMP_SIZE * 2 / RADIUS + 1;
+
+    for (int i = past_the_core; i < GFX_GLOW_RAMP_SIZE; i++) {
+        for (int phase = 0; phase < GFX_GLOW_PHASES; phase++) {
+            const gfx_color_t c = style->ramp[phase][i];
+            TEST_ASSERT_TRUE(c == GFX_RGB(0x000000) || brightness(c) > FULL_HALO_AT_LEAST);
+        }
+        TEST_ASSERT_TRUE(phases_lit(i) <= phases_lit(i - 1));
+    }
+    TEST_ASSERT_TRUE(phases_lit(past_the_core) > phases_lit(GFX_GLOW_RAMP_SIZE / 2));
+    TEST_ASSERT_TRUE(phases_lit(GFX_GLOW_RAMP_SIZE / 2) > 0);
+    TEST_ASSERT_EQUAL_INT(0, phases_lit(GFX_GLOW_RAMP_SIZE - 1));
+    fixture_end();
+}
+
+static void
+test_no_steps_is_the_smooth_ramp(void) {
+    fixture_begin();
+    gfx_glow_style_t* stepped = malloc(sizeof *stepped);
+    TEST_ASSERT_NOT_NULL(stepped);
+    gfx_glow_style_set_stepped(stepped, RADIUS, 2, 0xFFFFFF, 0x30C0FF, 0);
+    TEST_ASSERT_EQUAL_MEMORY(style->ramp, stepped->ramp, sizeof style->ramp);
+    free(stepped);
+    fixture_end();
+}
+
+/* The map of the curve's light. */
+
+#define MAP_COLS ((PANEL_H + GFX_GLOW_MAP_CELL - 1) / GFX_GLOW_MAP_CELL)
+#define MAP_ROWS 64
+
+static uint16_t* map_cells;
+static int32_t map_row_f[MAP_COLS];
+static int32_t map_row_z[MAP_COLS];
+static int16_t map_row_v[MAP_COLS];
+
+static gfx_glow_map_t
+built_map(const gfx_glow_field_t* field) {
+    gfx_glow_map_t map = {map_cells, map_row_f, map_row_z, map_row_v, MAP_COLS, MAP_ROWS, 0, 0, 0};
+    gfx_glow_map_build(&map, field, style);
+    return map;
+}
+
+/* How far, in the map's units, a cell's centre row is from the curve within
+ * that cell's own columns: what the first pass raises a parabola from. */
+static int
+up_to_the_curve_in_cell(const gfx_glow_field_t* field, int cell, int centre) {
+    int nearest = INT32_MAX;
+    for (int j = cell * GFX_GLOW_MAP_CELL; j < (cell + 1) * GFX_GLOW_MAP_CELL && j < field->count; j++) {
+        const int up =
+            gfx_glow_outside(centre, field->span_lo[j], field->span_hi[j]) >> (GFX_GLOW_Q_SHIFT - GFX_GLOW_MAP_Q);
+        nearest = up < nearest ? up : nearest;
+    }
+    return nearest;
+}
+
+/* A cell's value worked out the slow way: every column tried. */
+static uint16_t
+brute_force_cell(const gfx_glow_field_t* field, const gfx_glow_map_t* map, int row, int cell) {
+    const int step = GFX_GLOW_MAP_CELL << GFX_GLOW_MAP_Q;
+    const int reach = (RADIUS + GFX_GLOW_MAP_CELL) << GFX_GLOW_MAP_Q;
+    const int centre =
+        ((map->origin_y + row * GFX_GLOW_MAP_CELL) << GFX_GLOW_Q_SHIFT) + (GFX_GLOW_MAP_CELL << GFX_GLOW_Q_SHIFT) / 2;
+    int64_t best = map->far;
+    for (int other = 0; other < MAP_COLS; other++) {
+        const int up = up_to_the_curve_in_cell(field, other, centre);
+        if (up >= reach) {
+            continue;
+        }
+        const int64_t d2 = (int64_t)step * step * (cell - other) * (cell - other) + (int64_t)up * up;
+        best = d2 < best ? d2 : best;
+    }
+    return (uint16_t)best;
+}
+
+/* The second pass is a lower envelope worked out in one sweep. Its answer is
+ * checked against trying every column, for every cell. */
+static void
+test_the_map_is_the_brute_force_distance_in_every_cell(void) {
+    fixture_begin();
+    map_cells = malloc(sizeof(uint16_t) * MAP_COLS * MAP_ROWS);
+    TEST_ASSERT_NOT_NULL(map_cells);
+    wavy_curve_for_the_turned_view();
+    const gfx_glow_field_t field = posed_field();
+    const gfx_glow_map_t map = built_map(&field);
+    TEST_ASSERT_GREATER_THAN_INT(8, map.lit_rows);
+
+    for (int row = 0; row < map.lit_rows; row++) {
+        for (int c = 0; c < MAP_COLS; c++) {
+            TEST_ASSERT_EQUAL_UINT16(brute_force_cell(&field, &map, row, c), map.cells[row * MAP_COLS + c]);
+        }
+    }
+    free(map_cells);
+    fixture_end();
+}
+
+static void
+test_a_mapped_draw_is_the_searched_one_on_the_line_and_close_to_it_around(void) {
+    fixture_begin();
+    map_cells = malloc(sizeof(uint16_t) * MAP_COLS * MAP_ROWS);
+    gfx_color_t* searched = malloc(sizeof(gfx_color_t) * PANEL_W * PANEL_H);
+    TEST_ASSERT_NOT_NULL(map_cells);
+    TEST_ASSERT_NOT_NULL(searched);
+    wavy_curve_for_the_turned_view();
+    const gfx_glow_field_t field = posed_field();
+    const gfx_glow_map_t map = built_map(&field);
+    const int poses[][2] = {{-16384, 0}, {-13107, 9830}, {0, 16384}, {11585, 11585}};
+
+    for (size_t p = 0; p < sizeof poses / sizeof poses[0]; p++) {
+        clear_panel_and_forget();
+        draw_posed(&field, poses[p][0], poses[p][1]);
+        memcpy(searched, pixels, sizeof(gfx_color_t) * PANEL_W * PANEL_H);
+
+        clear_panel_and_forget();
+        posed_map = &map;
+        draw_posed(&field, poses[p][0], poses[p][1]);
+        posed_map = NULL;
+
+        int brightest_pixels_that_differ = 0;
+        long total_difference = 0;
+        long lit_pixels = 0;
+        for (int i = 0; i < PANEL_W * PANEL_H; i++) {
+            const int difference = abs(brightness(searched[i]) - brightness(pixels[i]));
+            TEST_ASSERT_LESS_THAN_INT(80, difference);
+            total_difference += difference;
+            lit_pixels += searched[i] != GFX_RGB(0x000000);
+            /* within the searched window the two are one code path */
+            brightest_pixels_that_differ += brightness(searched[i]) > 500 && difference != 0;
+        }
+        TEST_ASSERT_EQUAL_INT(0, brightest_pixels_that_differ);
+        TEST_ASSERT_GREATER_THAN_INT(500, (int)lit_pixels);
+        TEST_ASSERT_LESS_THAN_INT(8, (int)(total_difference / lit_pixels));
+    }
+    free(searched);
+    free(map_cells);
+    fixture_end();
+}
+
+static void
+test_outside_the_maps_rows_there_is_no_light(void) {
+    fixture_begin();
+    map_cells = malloc(sizeof(uint16_t) * MAP_COLS * MAP_ROWS);
+    TEST_ASSERT_NOT_NULL(map_cells);
+    for (int x = 0; x < PANEL_H; x++) {
+        heights[x] = (int16_t)(48 * GFX_GLOW_ONE);
+    }
+    const gfx_glow_field_t field = posed_field();
+    const gfx_glow_map_t map = built_map(&field);
+    const int far_q8 = (int)map.far << (2 * (GFX_GLOW_Q_SHIFT - GFX_GLOW_MAP_Q));
+    TEST_ASSERT_EQUAL_INT(far_q8, gfx_glow_map_distance2(&map, 20 * GFX_GLOW_ONE, 2 * GFX_GLOW_ONE));
+    TEST_ASSERT_EQUAL_INT(far_q8, gfx_glow_map_distance2(&map, 20 * GFX_GLOW_ONE, 94 * GFX_GLOW_ONE));
+    /* and on the curve, in the middle of the map, there is none to go */
+    TEST_ASSERT_LESS_THAN_INT(2 * GFX_GLOW_ONE * 2 * GFX_GLOW_ONE,
+                              gfx_glow_map_distance2(&map, 40 * GFX_GLOW_ONE, 48 * GFX_GLOW_ONE));
+    /* past either end of the curve the end cells stand, rather than a read out of bounds */
+    TEST_ASSERT_TRUE(gfx_glow_map_distance2(&map, -50 * GFX_GLOW_ONE, 48 * GFX_GLOW_ONE) < far_q8);
+    TEST_ASSERT_TRUE(gfx_glow_map_distance2(&map, (PANEL_H + 50) * GFX_GLOW_ONE, 48 * GFX_GLOW_ONE) < far_q8);
+    free(map_cells);
+    fixture_end();
+}
+
 void
 suite_gfx_glow(void) {
     RUN_TEST(test_turning_into_the_panel_matches_ui_transform);
     RUN_TEST(test_ramp_index_runs_from_the_curve_to_the_rim_without_a_square_root);
     RUN_TEST(test_every_phase_fades_from_the_core_colour_to_black);
     RUN_TEST(test_phases_round_one_colour_at_different_thresholds);
+    RUN_TEST(test_one_step_of_light_is_lit_or_black_and_thins_toward_the_rim);
+    RUN_TEST(test_no_steps_is_the_smooth_ramp);
     RUN_TEST(test_a_flat_curve_lights_its_radius_and_no_further);
     RUN_TEST(test_a_cliff_lights_nothing_far_above_the_plateau);
     RUN_TEST(test_on_a_diagonal_the_radius_is_measured_across_the_line);
@@ -517,10 +825,16 @@ suite_gfx_glow(void) {
     RUN_TEST(test_narrow_keeps_exactly_the_steps_inside_the_bounds);
     RUN_TEST(test_turning_leaves_no_trail);
     RUN_TEST(test_a_turned_curve_keeps_its_width);
+    RUN_TEST(test_the_narrowed_walk_matches_every_pixel_searched_on_a_smooth_curve);
+    RUN_TEST(test_the_narrowed_walk_matches_every_pixel_searched_at_a_cliff);
+    RUN_TEST(test_the_narrowed_walk_matches_every_pixel_searched_off_both_ends_of_the_panel);
     RUN_TEST(test_a_trail_that_is_never_cleared_keeps_where_the_curve_was);
     RUN_TEST(test_a_fading_trail_dims_then_ends_on_the_clean_picture);
     RUN_TEST(test_trail_draws_is_how_long_white_takes_to_go_black);
     RUN_TEST(test_dimming_a_grey_keeps_it_grey_all_the_way_to_black);
+    RUN_TEST(test_the_map_is_the_brute_force_distance_in_every_cell);
+    RUN_TEST(test_a_mapped_draw_is_the_searched_one_on_the_line_and_close_to_it_around);
+    RUN_TEST(test_outside_the_maps_rows_there_is_no_light);
 }
 
 SUITE_REGISTER(suite_gfx_glow);

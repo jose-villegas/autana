@@ -79,11 +79,14 @@ $TEST_DIR/suites/suite_gesture.c
 $TEST_DIR/suites/suite_button_fsm.c
 $TEST_DIR/suites/suite_rng.c
 $TEST_DIR/suites/suite_fixed.c
+$TEST_DIR/suites/suite_frame_cost.c
 $TEST_DIR/suites/suite_tilt.c
+$TEST_DIR/suites/suite_tune.c
 $TEST_DIR/suites/suite_tween.c
 $TEST_DIR/suites/suite_spring_line.c
 $TEST_DIR/suites/suite_boot_anim.c
 $TEST_DIR/suites/suite_r3d_project.c
+$TEST_DIR/suites/suite_r3d_camera.c
 $TEST_DIR/suites/suite_gfx_dirty.c
 $TEST_DIR/suites/suite_gfx_full_redraw.c
 $TEST_DIR/suites/suite_gfx_present_guard.c
@@ -108,6 +111,7 @@ $TEST_DIR/suites/suite_control_center_layout.c
 $TEST_DIR/suites/suite_ui_centered_rect.c
 $TEST_DIR/suites/suite_ridge_curve.c
 $TEST_DIR/suites/suite_ridge_motion.c
+$TEST_DIR/suites/suite_ridge_pose.c
 $TEST_DIR/suites/suite_ui_launcher.c
 $TEST_DIR/suites/suite_ui_pointer.c
 $TEST_DIR/suites/suite_ui_pointer_microui.c
@@ -128,6 +132,7 @@ $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/post_layout.c
 $MAIN_DIR/util/job.c
+$MAIN_DIR/util/tune.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/ui/ui_build.c
 $MAIN_DIR/ui/ui_launcher_draw.c

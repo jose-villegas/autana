@@ -38,7 +38,9 @@ launcher/
     │   ├── boot_anim_image.h   GENERATED - see tools/gen_boot_anim_image.py
     │   └── boot_anim_timeline.h GENERATED - from boot_anim_timeline.json
     ├── render/         3D transform, clip and projection shared by boot and apps
-    │   └── r3d_project.h       camera-space near clip, perspective (host-tested)
+    │   ├── r3d_project.h       camera-space near clip, perspective (host-tested)
+    │   ├── r3d_camera.h        camera description, upright roll, viewport fit (host-tested)
+    │   └── r3d_ray.h           float ray camera for a tracer        (host-tested)
     ├── board/          the one board's pins and peripherals
     │   ├── board.h             what any board must provide
     │   └── board_esp32s3.c     this board's answer
@@ -92,6 +94,7 @@ launcher/
     │   ├── fixed.h             fixed-point multiply/divide (host-tested)
     │   ├── intmath.h, rng.h, tween.h                       (host-tested)
     │   ├── trig.h              integer sine and cosine    (host-tested)
+    │   ├── tune.{h,c}          numbers changed live over the console, dev builds (host-tested)
     │   ├── spring_line.h       a row of points on springs (host-tested)
     │   ├── job.{h,c}           run a slice on the other core (host-tested)
     │   ├── device_state.{h,c}  what survives a reboot      (host-tested)
@@ -344,6 +347,7 @@ Three files, split by what can be tested where:
 | `boot_anim_curve.h` | the curve, as a generated table. Zeta along the critical line needs double precision, and this chip's hardware FPU is single-precision only, so `tools/gen_zeta_curve.py` computes it once in double precision on a host and it ships in flash. The curve never changes either way. |
 | `boot_anim.h` | the spline, the colour and the timeline - integer arithmetic, no hardware header, so `test/suites/suite_boot_anim.c` checks all of it on a host. |
 | `render/r3d_project.h` | the general camera-space near-plane clip and perspective projection, shared with a caller drawing something other than this timeline - `test/suites/suite_r3d_project.c` checks it on a host. |
+| `render/r3d_camera.h` | the camera description `boot_anim_view()` builds and the viewport fit it reads centre/scale from, shared with a caller building its own camera - `test/suites/suite_r3d_camera.c` checks it on a host. |
 | `boot_anim.c` | gfx calls and the loop. |
 
 The suite checks the shipped table against the mathematics rather than against
@@ -442,7 +446,8 @@ particular that `REQUIRES` must **not** be gated this way.
 Diagnostics ships in any development build, `--dev` included, not just
 `--diag` — that is what frees the RAM the on-device test suites would
 otherwise hold, letting a `--dev` build reach the gfx debug-overlay
-checkboxes without sand's grid allocation failing for want of heap. Its own
+checkboxes without an app's large internal allocations failing for want of
+heap. Its own
 toggle page mixes two shapes; the app itself does not. The "run self test
 suite" button and its result line are genuinely
 SELFTEST-only (`#if CONFIG_LAUNCHER_SELFTEST` inside `app_diagnostics.c` —
@@ -510,7 +515,7 @@ all of it.
 that wants a style states it every frame. That is the immediate-mode reading —
 style is part of the frame's description, like everything else — and it is load
 bearing here, because the whole shell shares one `mu_Context`: without the
-reset, the launcher opting in would leave the sand app's overlay buttons
+reset, the launcher opting in would leave a running app's own buttons
 bezelled too.
 
 One detail worth spelling out, because it is the opposite of what a desktop
@@ -670,10 +675,9 @@ app underneath). See `dim_backdrop()` in `apps/sand/app_sand.c`.
 **The general form, when once is not enough.** "Once" is a global sequencing
 rule, and those rot. The local version: *whoever repaints a region restores
 the app underneath it first, then re-scrims that region, then draws.* The
-app's own partial-repaint machinery is what makes this affordable — the sand
-app marks the rows it needs and calls `draw_dirty_rows()` rather than
-repainting the grid — so the cost is one panel's worth of rows, not a
-canvas, and only while someone is actually interacting.
+app's own partial-repaint machinery is what makes this affordable, so the
+cost is one panel's worth of repaint, not a whole canvas, and only while
+someone is actually interacting.
 
 That form is strictly more robust and is the **precondition for genuinely
 translucent panels**: a panel you can see through has to be composited over

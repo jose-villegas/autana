@@ -243,6 +243,13 @@ marking.
   same 8-bit colour to RGB565 at a different threshold, which is what turns
   the 32 levels a glow fades through from bands into a gradient. Changing
   colour or radius rebuilds the ramp; drawing never blends or reads back.
+- **A stippled halo is the same ramp, baked differently.**
+  `gfx_glow_style_set_stepped()` holds the light to a number of equal levels
+  and lets the phase's threshold decide the remainder, so with one step a
+  pixel past the core is the halo colour or black, and fewer are lit the
+  further out. It is a look, not a saving: a draw does the same work and
+  sends the same pixels either way. The launcher's ridge reads it from
+  `ridge.glow_steps`, none being the smooth halo.
 - **The caller says which columns moved.** Only `[x0, x1)` is redrawn, and
   dirty boxes are marked per 16 columns, so a local ripple costs a local
   redraw and a local send. A curve at rest should not be drawn at all.
@@ -264,8 +271,17 @@ app rows by way of `ui_end_over()`.
 so a gravity reading is a pose with no angle or arctangent in between. A
 turned curve is no longer a height per panel column, so it walks panel rows
 and asks of each pixel where it lies in the view frame - an add per pixel,
-along only the stretch of the row that can reach the curve's band, against a
-`gfx_glow_field_t` prepared once per change of the curve. The landscape pose
+against a `gfx_glow_field_t` prepared once per change of the curve. It asks
+only where light can fall. A row that crosses fewer than
+`GFX_GLOW_FEW_COLUMNS` view columns - the curve running along the panel's
+rows - is narrowed once, to the exact reach of those columns. Any other row
+is walked in blocks of `GFX_GLOW_ROW_BLOCK` pixels, and a block is skipped
+when the view positions of its two ends show that no column under it can be
+lit: adds, shifts and compares against the reach of chunks of columns, since
+a 64-bit division is a library call on this chip and one per block cost more
+than the pixels it saved. Counted under QEMU's `--icount`, a level ridge at
+radius 13 draws in 6.9 million instructions a frame in landscape and 7.0 in
+portrait; walking the curve's whole band took 10.8 and 9.2. The landscape pose
 is the quarter-turn renderer pixel for pixel. It keeps, per panel row, the
 stretch it lit, and blackens that before drawing the row again, so a curve
 that turns needs nothing clearing behind it either.
@@ -278,14 +294,44 @@ whichever of old and new light is brighter: each band overlaps most of the
 last, and would otherwise overwrite its bright core with a dim rim, leaving
 only rim light behind.
 
+The trail lives nowhere but the framebuffer itself: it is the light already
+there, dimmed and drawn over, so whatever repaints the panel underneath it -
+a UI that changed and asked for its backdrop again, a turn of the UI, any
+full redraw - wipes it, and it has to grow back over the following draws. It
+also needs a framebuffer to read, so a trail is not available in band mode.
+
 A fading tail has to go on being drawn after the curve stops, or it freezes
 there. For how long is counted, not watched for: `gfx_glow_trail_draws()` is
 how many draws take the brightest colour to black at a given `trail`. The
 tail shares its rows with whatever else is drawn on them, so "are any lit
 pixels left" never becomes no - a first version asked that, and the launcher
-never went idle again. The launcher's ridge uses 226 (`RIDGE_TRAIL`), a tail
+never went idle again. The launcher's ridge uses 226 (`ridge.trail`), a tail
 16 draws long - about a quarter of a second. At 32 it lasted two draws and
 could not be seen.
+
+**A map of the light, so that drawing is a lookup.** Searching beside every
+pixel costs in proportion to the radius, and so does the number of pixels, so
+a wide glow cost its radius squared: from radius 13 to 31 the lit area grew
+2.4 times and the work 4.3 times. The distance to the curve does not depend on
+how it is turned, only on its shape, so a `gfx_glow_map_t` holds it, worked
+out once per shape in the curve's own frame by an exact two-pass transform
+(vertical distances, then the lower envelope of the parabolas they raise,
+after Felzenszwalb and Huttenlocher) whose cost is the map's area whatever
+the radius. A draw then reads four cells and blends them; turning the curve
+costs no distance work at all. The map holds *squared* distance, which is
+what the ramp is indexed by and which blends almost exactly, at one cell to
+two pixels each way, since a glow is smooth. The line itself is not, so
+within 5 px of it a draw still searches, over a window that small: there the
+mapped picture is the searched one bit for bit, and around it they differ by
+under half a percent of full light on average. Measured on a host, a mapped
+frame costs the same at every radius; at 31 it is 3.7 times less work than
+searching when the shape moved and 6.2 times when the curve only turned.
+Under a radius of about 10 the map's fixed cost is more than the search it
+saves, and the launcher's ridge switches by radius. The ridge's map is about
+125 KiB, in PSRAM with the rest of its state.
+
+None of this touches the other cost. Every lit pixel is still written and
+sent, and that grows with the radius however the light is worked out.
 
 The launcher's ridge is a horizon: it follows `input/tilt.h`'s down at any
 angle while the app rows turn in quarters. It holds boot's landscape pose for
@@ -299,9 +345,10 @@ It is also never quite still (`ui/ridge_motion.h`, pure and host-tested). It
 ridge and back to the rigid original. A **wave** 2.5 px high runs along it.
 And the wave has **momentum**: while the device turns, the line lags true
 level, so for that moment the ridge is a slope - the sine of the lag - and
-the wave is pushed down it and coasts on after. All three come in over 1.5 s
-after the line is released; at the hand-over from boot the line is rigid, on
-the photograph. The price is that the launcher draws every frame, and a frame
+the wave is pushed down it and coasts on after. All three come in over 4 s
+after the line is released (`ridge.ambient_ease_ms`), slowly at first and
+slowly into full, so the stiff line loosens rather than starts; at the
+hand-over from boot the line is rigid, on the photograph. The price is that the launcher draws every frame, and a frame
 in which the ridge moves is close to a full send. `ui_ridge_set_ambient()`
 turns it off, which previews do: without it the launcher is idle whenever it
 is untouched and level.
@@ -377,6 +424,35 @@ Then `gfx_read_panel_row()` per row, and always `gfx_readback_end()`.
 | (both overlays) | every present path; a border lasts one present, then its strip is resent clean - in band mode, by `gfx_band_dirty()` asking the app for the band once more |
 | `gfx_get_strip_send_counts()` | full / gathered / partial counts since the last reset |
 | `gfx_get_bytes_sent()`, `gfx_get_heal_bytes_sent()` | bytes queued, and heal's share |
+
+**Where a frame's time goes.** `util/frame_cost.h` brackets a stage of a frame
+and charges its microseconds to a name:
+
+```c
+FRAME_COST_BEGIN(began);
+draw_the_thing();
+FRAME_COST_END(began, "thing.draw");
+```
+
+Every 1.5 s, under the shell's fps line, the console prints each name's
+average milliseconds per frame over the window and the worst single bracket,
+then the total those averages add up to (the numbers below show the line's
+shape and are not measurements):
+
+```
+ms/frame avg/worst: ui.build 0.41/0.6  ridge.light 2.10/2.4  ridge.draw 3.02/4.1  ui.paint 1.20/9.8  present 8.31/16.6  frame.rest 0.90/1.4 | total 15.94
+```
+
+Charges are exclusive: a bracket nested inside another - `ridge.draw` inside
+`ui.paint` on a frame where the UI changed - is taken out of the outer one,
+so nothing is counted twice. `frame.rest` is one whole-iteration bracket
+around the frame loop's body; being exclusive of everything else, it is
+whatever no other bracket claimed. A stage that did not run in a window is
+not listed. A bracket is two clock reads, about a microsecond each: around a
+stage, never around a pixel. There are `FRAME_COST_SLOTS` (12) names; a
+report flags a further one with ` +N dropped`, and a charge from any task but
+the frame loop's own with ` +N foreign`. On a host and in release the
+brackets compile to nothing.
 
 ## Related
 

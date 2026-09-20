@@ -15,6 +15,12 @@
 #define CENTRE    100
 #define MAX_TICKS 5000
 
+/* This suite's own fixture, not what ships - the numbers these assertions
+ * were written against. */
+#define TENSION   200
+#define STIFFNESS 2
+#define DAMPING   4
+
 static int32_t* offset;
 static int32_t* velocity;
 static spring_line_t line;
@@ -25,7 +31,7 @@ fixture_begin(void) {
     velocity = malloc(sizeof(int32_t) * COLUMNS);
     TEST_ASSERT_NOT_NULL(offset);
     TEST_ASSERT_NOT_NULL(velocity);
-    spring_line_init(&line, offset, velocity, COLUMNS);
+    spring_line_init(&line, offset, velocity, COLUMNS, TENSION, STIFFNESS, DAMPING);
 }
 
 static void

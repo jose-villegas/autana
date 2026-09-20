@@ -12,19 +12,24 @@
 
 #include "ui/ui.h"
 #include "ui/ui_ridge.h"
+#include "util/frame_cost.h"
 
 int
 ui_launcher_frame(const input_t* input, uint32_t dt_ms) {
     mu_Context* ctx = ui_context();
 
+    FRAME_COST_BEGIN(built_from);
     ui_begin(input);
     const int chosen = ui_launcher_draw(ctx, dt_ms);
+    FRAME_COST_END(built_from, "ui.build");
     ui_ridge_step(input, dt_ms);
 
     /* Repaints only what looks different from what is already on screen, so
      * a home screen nobody is touching, its ridge at rest, costs no bus time
      * at all. */
+    FRAME_COST_BEGIN(painted_from);
     ui_end_over(ui_ridge_paint);
+    FRAME_COST_END(painted_from, "ui.paint");
 
     return chosen;
 }

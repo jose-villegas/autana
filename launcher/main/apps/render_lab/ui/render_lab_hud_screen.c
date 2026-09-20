@@ -66,7 +66,7 @@ render_lab_hud_screen_draw(mu_Context* ctx, const render_lab_hud_screen_state_t*
 
     if (ui_begin_screen(ctx, "Render Lab HUD", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
         char fps_line[16];
-        snprintf(fps_line, sizeof fps_line, "%.1f fps", state->fps_value);
+        snprintf(fps_line, sizeof fps_line, "%5.1f fps", state->fps_value);
 
         const int x = state->fps_box_x_override >= 0 ? state->fps_box_x_override : HUD_INSET_PX;
         const mu_Rect fps_box = draw_text_box(ctx, fps_line, x, HUD_INSET_PX);
