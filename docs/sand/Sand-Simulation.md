@@ -1287,6 +1287,35 @@ whose covering blocks all carry the step's settled bit is dropped before any
 per-row setup, reusing the block-sleeping state the serial sweep already
 keeps rather than tracking anything second.
 
+### Whether a pass is shared at all
+
+The same question answers whether a pass is worth splitting in the first
+place. `sand_chunk_pass_ready()` charges each chunk of that pass's plan the
+cells it covers, or nothing where `blocks_settled_over()` says it is asleep,
+and feeds those to `sand_chunk_makespan()` - the runner's own rule with a
+number in place of the work. A pass is shared only when two things hold:
+
+- at least `SAND_CHUNK_SPLIT_MIN_AWAKE_CELLS` are awake, because the
+  prepare, merge, dispatch and join are paid whatever the lanes find: a
+  settled board steps in 95 us serial and 148 split at ULTRA, 56 and 110 at
+  HIGH, 39 and 109 at NORMAL;
+- and the modelled two-lane span comes in under
+  `SAND_CHUNK_SPLIT_SPAN_SHARE_PERCENT` of walking those chunks one after
+  another, because the chunk walk itself costs 1.09 to 1.28 of the row-major
+  sweep before either lane has done anything.
+
+Under either, the pass takes its serial row-major path - not a one-lane walk
+of the schedule, which would pay the chunk order for nothing. The model
+agrees with the board on the shape of the answer: a two-column cut across a
+y-travelling pass spans 100 per cent, and that cut measured 1.19 of one core
+in portrait, while every cut that models about 50 per cent measured a win.
+
+It is a pure function of block state at the pass's start, so the host and the
+board decide alike and so does either core. `sand_chunk_share_for_test()`
+pins it either way, which is how a test that means to measure the split path
+says so; `sand_split_dispatches` counts the passes that were actually shared,
+which is how it checks it was heard.
+
 ### The schedule: downstream chunks first
 
 Every split pass ranks the chunks
@@ -1371,8 +1400,8 @@ identical across four hand-driven lane interleavings.
 The dense-column and settling-slab scenes are checked for grain conservation
 and for a settled pile showing no occupancy outlier at a boundary.
 
-Nothing stalls at a boundary any more, so there is nothing for a
-development overlay to draw; the seam overlay and its checkbox are gone.
+There is no development overlay for chunk boundaries: nothing stalls at one,
+so there would be nothing to draw.
 
 
 ### Liquid cross-flow chunks

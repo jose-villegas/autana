@@ -33,6 +33,15 @@ writes a markdown table; `compare_reports.py` diffs two such reports, and
 `report_performance.sh --baseline <report>.md`/`--no-restore` run that
 comparison as part of a capture.
 
+A timed fixture opens `board_bookkeeping_open()` (`suite_sand_common.c`) on
+its grid, which gives it what `alloc_grid_bookkeeping()` (`app_sand.c`) gives
+a shipped board: dirty rows and columns, step stamps, lane scratch, and block
+state where the scene brought none. Without the last two no pass is ever
+ready to split, so the row times one core however many it asked for. What a
+scene is made of stays the fixture's own business. A frame-budget board is
+held to that by `test_a_frame_budget_board_really_reaches_the_split_path`,
+which fails unless a busy full-size step dispatches at least one split pass.
+
 Three rules keep a reading honest:
 
 - **Only within-capture comparisons are trustworthy.** Two separately
