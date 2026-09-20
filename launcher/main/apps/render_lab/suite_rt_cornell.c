@@ -13,6 +13,7 @@
 #include "unity.h"
 
 #include "rt_cornell.h"
+#include "rt_refine.h"
 
 /* Ray/plane */
 
@@ -270,6 +271,67 @@ test_quarter_1_moves_the_red_wall_to_the_edge_the_roll_says_it_should(void) {
     TEST_ASSERT_TRUE_MESSAGE(g > r + 15 && g > b + 15, "and the green wall on its right");
 }
 
+/* Refinement order */
+
+/* Sizes that are not multiples of the first step, so the lattice's ragged
+ * right and bottom edges are part of what is counted. */
+static void
+check_every_pixel_is_traced_exactly_once(int width, int height) {
+    uint8_t* visits = calloc((size_t)width * (size_t)height, 1);
+    int passes = 0;
+
+    for (int step = RT_REFINE_FIRST_STEP; step != 0; step = rt_refine_next_step(step)) {
+        passes++;
+        TEST_ASSERT_EQUAL_INT(passes, rt_refine_pass_number(step));
+        for (int y = 0; y < height; y += step) {
+            for (int x = 0; x < width; x += step) {
+                if (rt_refine_is_new(x, y, step)) {
+                    visits[y * width + x]++;
+                }
+            }
+        }
+    }
+
+    TEST_ASSERT_EQUAL_INT(RT_REFINE_PASSES, passes);
+    for (int i = 0; i < width * height; i++) {
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, visits[i], "a pixel was skipped or traced twice");
+    }
+    free(visits);
+}
+
+static void
+test_refinement_traces_every_pixel_exactly_once(void) {
+    check_every_pixel_is_traced_exactly_once(37, 23);
+    check_every_pixel_is_traced_exactly_once(16, 9);
+    check_every_pixel_is_traced_exactly_once(5, 3);
+}
+
+static void
+test_first_pass_is_one_pixel_in_sixty_four(void) {
+    const int width = 64, height = 48;
+    int traced = 0;
+
+    for (int y = 0; y < height; y += RT_REFINE_FIRST_STEP) {
+        for (int x = 0; x < width; x += RT_REFINE_FIRST_STEP) {
+            traced += rt_refine_is_new(x, y, RT_REFINE_FIRST_STEP) ? 1 : 0;
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(width * height / 64, traced);
+}
+
+static void
+test_render_pixel_matches_render_row(void) {
+    const int width = 40, height = 30;
+    rt_cornell_camera_t cam;
+    rt_cornell_camera_init(&cam, width, height, 1);
+
+    gfx_color_t row[40];
+    rt_cornell_render_row(&cam, 17, row);
+    for (int x = 0; x < width; x += 7) {
+        TEST_ASSERT_EQUAL_HEX16(row[x], rt_cornell_render_pixel(&cam, x, 17));
+    }
+}
+
 /* Row canary */
 
 static void
@@ -306,6 +368,9 @@ run_rt_cornell_suite(void) {
     RUN_TEST(test_picture_sanity_at_64x48);
     RUN_TEST(test_quarter_1_moves_the_red_wall_to_the_edge_the_roll_says_it_should);
 
+    RUN_TEST(test_refinement_traces_every_pixel_exactly_once);
+    RUN_TEST(test_first_pass_is_one_pixel_in_sixty_four);
+    RUN_TEST(test_render_pixel_matches_render_row);
     RUN_TEST(test_render_row_writes_exactly_width_pixels);
 }
 

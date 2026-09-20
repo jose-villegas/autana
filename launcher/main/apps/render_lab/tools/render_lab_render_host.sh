@@ -65,9 +65,11 @@ wirecube-landscape|--quarter 1 --scene cube|448x368
 capsule-landscape|--quarter 1 --scene capsule|448x368
 plane-title-fading|--quarter 1 --scene plane --frames 110|448x368
 plane-title-gone|--quarter 1 --scene plane --frames 140|448x368
-cornell-landscape|--quarter 1 --scene cornell --frames 32|448x368
-cornell-portrait|--quarter 0 --scene cornell --frames 32|368x448
-cornell-partial|--quarter 1 --scene cornell --frames 15|448x368
+cornell-landscape|--quarter 1 --scene cornell --frames 40|448x368
+cornell-portrait|--quarter 0 --scene cornell --frames 40|368x448
+cornell-pass1|--quarter 1 --scene cornell --frames 2|448x368
+cornell-pass2|--quarter 1 --scene cornell --frames 5|448x368
+cornell-pass3|--quarter 1 --scene cornell --frames 9|448x368
 "
 
 # shellcheck source=../../../../tools/render_scene.sh

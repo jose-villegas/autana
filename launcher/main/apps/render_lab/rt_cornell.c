@@ -436,11 +436,16 @@ rt_cornell_camera_init(rt_cornell_camera_t* cam, int width, int height, int quar
     cam->eff_height = (quarter & 1) ? width : height;
 }
 
+gfx_color_t
+rt_cornell_render_pixel(const rt_cornell_camera_t* cam, int x, int y) {
+    int ex, ey;
+    physical_to_logical(cam, x, y, &ex, &ey);
+    return trace_primary(cam->origin, camera_ray_dir(cam, ex, ey), x, y);
+}
+
 void
 rt_cornell_render_row(const rt_cornell_camera_t* cam, int y, gfx_color_t* out_row) {
     for (int x = 0; x < cam->width; x++) {
-        int ex, ey;
-        physical_to_logical(cam, x, y, &ex, &ey);
-        out_row[x] = trace_primary(cam->origin, camera_ray_dir(cam, ex, ey), x, y);
+        out_row[x] = rt_cornell_render_pixel(cam, x, y);
     }
 }

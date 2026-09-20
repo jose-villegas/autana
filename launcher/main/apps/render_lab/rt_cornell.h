@@ -55,4 +55,7 @@ typedef struct {
 void rt_cornell_camera_init(rt_cornell_camera_t* cam, int width, int height, int quarter);
 
 /* Traces row `y`'s `cam->width` pixels into `out_row`. */
+/* One physical pixel, for a caller tracing in an order of its own. */
+gfx_color_t rt_cornell_render_pixel(const rt_cornell_camera_t* cam, int x, int y);
+
 void rt_cornell_render_row(const rt_cornell_camera_t* cam, int y, gfx_color_t* out_row);
