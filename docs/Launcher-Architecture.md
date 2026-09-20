@@ -445,7 +445,8 @@ particular that `REQUIRES` must **not** be gated this way.
 Diagnostics ships in any development build, `--dev` included, not just
 `--diag` — that is what frees the RAM the on-device test suites would
 otherwise hold, letting a `--dev` build reach the gfx debug-overlay
-checkboxes without sand's grid allocation failing for want of heap. Its own
+checkboxes without an app's large internal allocations failing for want of
+heap. Its own
 toggle page mixes two shapes; the app itself does not. The "run self test
 suite" button and its result line are genuinely
 SELFTEST-only (`#if CONFIG_LAUNCHER_SELFTEST` inside `app_diagnostics.c` —
@@ -513,7 +514,7 @@ all of it.
 that wants a style states it every frame. That is the immediate-mode reading —
 style is part of the frame's description, like everything else — and it is load
 bearing here, because the whole shell shares one `mu_Context`: without the
-reset, the launcher opting in would leave the sand app's overlay buttons
+reset, the launcher opting in would leave a running app's own buttons
 bezelled too.
 
 One detail worth spelling out, because it is the opposite of what a desktop
@@ -673,10 +674,9 @@ app underneath). See `dim_backdrop()` in `apps/sand/app_sand.c`.
 **The general form, when once is not enough.** "Once" is a global sequencing
 rule, and those rot. The local version: *whoever repaints a region restores
 the app underneath it first, then re-scrims that region, then draws.* The
-app's own partial-repaint machinery is what makes this affordable — the sand
-app marks the rows it needs and calls `draw_dirty_rows()` rather than
-repainting the grid — so the cost is one panel's worth of rows, not a
-canvas, and only while someone is actually interacting.
+app's own partial-repaint machinery is what makes this affordable, so the
+cost is one panel's worth of repaint, not a whole canvas, and only while
+someone is actually interacting.
 
 That form is strictly more robust and is the **precondition for genuinely
 translucent panels**: a panel you can see through has to be composited over
