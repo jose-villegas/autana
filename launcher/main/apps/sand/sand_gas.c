@@ -361,24 +361,49 @@ step_one_gas_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_
     return moved;
 }
 
+/* driven_by_gravity()'s table for this pass, built against the REVERSED
+ * gravity vector - see sand_step_gas(). File-static so a core-1 half that
+ * misses its join is not reading a frame that has returned, and because the
+ * pass never nests. MATERIAL_MAX, not MATERIAL_ROWS: only KIND_GAS cells
+ * read it, and no gas material lives in MAT_EXTENDED's twin-row range. */
+static bool gas_driven[MATERIAL_MAX][2];
+
+typedef struct {
+    sand_lane_t* lanes;
+    bool found_any[SAND_LANE_COUNT];
+    int rslide_a[2];
+    int rslide_b[2];
+    int rdx, rdy, rx_step, rload_dx, rload_dy, jostle;
+    int y_step;
+} gas_pass_t;
+
+/* What one row of the walk needs and the span around it already knows: the
+ * three rows a gas cell can reach, its stamp bits, and the columns the caller
+ * owns. Carried rather than re-derived, for the reason sweep_ctx_t (sand.c)
+ * is - a span cut into pieces pays this once per piece per row. */
+typedef struct {
+    uint8_t *row, *prow, *arow, *brow;
+    const uint8_t* stamp_row;
+    int y, x0, x1;
+} gas_row_t;
+
 /* One row of the reversed sweep - only gas cells are dispatched; everything
  * else was either already handled by the main sweep or is a static wall
  * gas has to work around, not through. */
 static bool
-step_one_gas_row(sand_t* s, int y, int x0, int x1, int w, int rdx, int rdy, const int* rslide_a, const int* rslide_b,
-                 int rx_step, int rload_dx, int rload_dy, int jostle, bool driven_gas[MATERIAL_MAX][2]) {
-    uint8_t* row = s->cells + (size_t)y * (size_t)w;
-    uint8_t* prow = dest_row(s, y + rdy);
-    uint8_t* arow = dest_row(s, y + rslide_a[1]);
-    uint8_t* brow = dest_row(s, y + rslide_b[1]);
+step_one_gas_row(sand_t* s, const gas_row_t* r, const gas_pass_t* c) {
+    uint8_t* const row = r->row;
+    const int y = r->y;
+    const int w = s->w;
+    const int rx_step = c->rx_step;
 
-    const int x_from = (rx_step > 0) ? x0 : x1 - 1;
-    const int x_to = (rx_step > 0) ? x1 : x0 - 1;
+    const int x_from = (rx_step > 0) ? r->x0 : r->x1 - 1;
+    const int x_to = (rx_step > 0) ? r->x1 : r->x0 - 1;
 
     bool any = false;
     for (int x = x_from; x != x_to; x += rx_step) {
-        const cell_t c = row[x];
-        if (CELL_IS_EMPTY(c) || ((gas_kind_mask >> (c >> 3)) & 1u) == 0u) {
+        const cell_t cell = row[x];
+        if (CELL_IS_EMPTY(cell) || ((gas_kind_mask >> (cell >> 3)) & 1u) == 0u) {
             continue;
         }
         /* Presence, not movement: a gas cell that neither moves nor decays
@@ -393,32 +418,51 @@ step_one_gas_row(sand_t* s, int y, int x0, int x1, int w, int rdx, int rdy, cons
             any = true;
             gas_row_arm(y);
         }
-        if (sand_cell_stamped(s, x, y)) {
+        if (sand_row_cell_stamped(r->stamp_row, x)) {
             continue;
         }
-        step_one_gas_grain(s, row, prow, arow, brow, x, y, w, rdx, rdy, rslide_a, rslide_b, rload_dx, rload_dy, jostle,
-                           c, driven_gas);
+        step_one_gas_grain(s, row, r->prow, r->arow, r->brow, x, y, w, c->rdx, c->rdy, c->rslide_a, c->rslide_b,
+                           c->rload_dx, c->rload_dy, c->jostle, cell, gas_driven);
     }
     return any;
 }
 
-/* driven_by_gravity()'s table for this pass, built against the REVERSED
- * gravity vector - see sand_step_gas(). File-static so a core-1 half that
- * misses its join is not reading a frame that has returned, and because the
- * pass never nests. MATERIAL_MAX, not MATERIAL_ROWS: only KIND_GAS cells
- * read it, and no gas material lives in MAT_EXTENDED's twin-row range. */
-static bool gas_driven[MATERIAL_MAX][2];
+/* The gas walk's own row loop, over [x0, x1) of the rows between `from` and
+ * `to` - shared by the serial walk and every chunk a lane takes off the
+ * schedule, the same way sweep_range() (sand.c) is shared. */
+static bool
+gas_sweep_range(sand_t* s, const gas_pass_t* c, int from, int to, int x0, int x1) {
+    const int w = s->w;
+    const int h = s->h;
+    const int a_dy = c->rslide_a[1];
+    const int b_dy = c->rslide_b[1];
+    const int p_off = c->rdy * w;
+    const int a_off = a_dy * w;
+    const int b_off = b_dy * w;
+    const int row_step = c->y_step * w;
+    int row_at = from * w;
+    bool any = false;
+
+    for (int y = from; y != to; y += c->y_step, row_at += row_step) {
+        uint8_t* const row = s->cells + row_at;
+        const gas_row_t r = {
+            .row = row,
+            .prow = dest_row_stepped(row, y + c->rdy, h, p_off),
+            .arow = dest_row_stepped(row, y + a_dy, h, a_off),
+            .brow = dest_row_stepped(row, y + b_dy, h, b_off),
+            .stamp_row = sand_stamp_row(s, y),
+            .y = y,
+            .x0 = x0,
+            .x1 = x1,
+        };
+
+        sand_chunk_work_add(x1 - x0);
+        any |= step_one_gas_row(s, &r, c);
+    }
+    return any;
+}
 
 unsigned sand_gas_equalise_runs;
-
-typedef struct {
-    sand_lane_t* lanes;
-    bool found_any[SAND_LANE_COUNT];
-    int rslide_a[2];
-    int rslide_b[2];
-    int rdx, rdy, rx_step, rload_dx, rload_dy, jostle;
-    int y_step;
-} gas_pass_t;
 
 /* File-static for the reason sand_chunk_pass_run() gives. */
 static gas_pass_t gas_pass;
@@ -430,11 +474,9 @@ step_one_gas_chunk(void* pass, int lane, int cx, int cy) {
     int x0, x1, y0, y1;
 
     sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
-    for (int y = c->y_step > 0 ? y0 : y1 - 1; y >= y0 && y < y1; y += c->y_step) {
-        sand_chunk_work_add(x1 - x0);
-        c->found_any[lane] |= step_one_gas_row(s, y, x0, x1, s->w, c->rdx, c->rdy, c->rslide_a, c->rslide_b, c->rx_step,
-                                               c->rload_dx, c->rload_dy, c->jostle, gas_driven);
-    }
+    const int from = (c->y_step > 0) ? y0 : y1 - 1;
+    const int to = (c->y_step > 0) ? y1 : y0 - 1;
+    c->found_any[lane] |= gas_sweep_range(s, c, from, to, x0, x1);
 }
 
 /* Travel is the rise direction, so a chunk's rise destinations are settled
@@ -1038,12 +1080,7 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     if (!s->gas_walk || !step_gas_chunks(s, &found_any)) {
         const bool was_hashed = s->rng_hashed;
         s->rng_hashed = was_hashed || sand_rng_forced_hashed();
-        for (int y = y_from; y != y_to; y += y_step) {
-            if (step_one_gas_row(s, y, 0, w, w, rdx, rdy, sweep_slide_a, sweep_slide_b, rx_step, rload_dx, rload_dy,
-                                 jostle, gas_driven)) {
-                found_any = true;
-            }
-        }
+        found_any |= gas_sweep_range(s, &gas_pass, y_from, y_to, 0, w);
         s->rng_hashed = was_hashed;
     }
 
