@@ -45,6 +45,7 @@
 #include "freertos/task.h"
 
 #include "gfx/gfx.h"
+#include "input/imu.h"
 #include "input/touch.h"
 #include "util/device_state.h"
 
@@ -105,6 +106,13 @@ handle_screenshot_line(const char* line) {
             touch_inject(down, x, y);
         } else {
             ESP_LOGW(TAG, "TOUCH wants <down|up> <x> <y>: '%s'", line);
+        }
+    } else if (command == BUILD_CONSOLE_IMU) {
+        int ax = 0, ay = 0, az = 0;
+        if (build_console_imu_parse(line, &ax, &ay, &az)) {
+            imu_inject(&(imu_sample_t){.ax = (int16_t)ax, .ay = (int16_t)ay, .az = (int16_t)az});
+        } else {
+            ESP_LOGW(TAG, "IMU wants <ax> <ay> <az> in raw counts: '%s'", line);
         }
 #endif
     } else {
@@ -222,7 +230,7 @@ screenshot_start(void) {
     ESP_LOGI(TAG, "listening for 'SCREENSHOT' and 'BUILDID' on the console");
 #endif
 #if CONFIG_LAUNCHER_QEMU
-    ESP_LOGI(TAG, "and for 'TOUCH <down|up> <x> <y>', which no board needs");
+    ESP_LOGI(TAG, "and for 'TOUCH <down|up> <x> <y>' and 'IMU <ax> <ay> <az>', which no board needs");
 #endif
 }
 

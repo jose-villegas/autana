@@ -21,6 +21,16 @@ and waited out to its RUNSUITE_COMPLETE, each --touch is left on the screen
 in turn, and then --screenshot sends SCREENSHOT and writes the frame as a
 PNG (and its state as .json) the way tools/screenshot.py does from a board.
 
+--do drives that same image as a user would, one ordered step at a time, and
+runs after the --suite and --touch options and before --screenshot:
+
+    --do "tap 180 95" --do "wait 2500" --do "screenshot cube.png"
+    --do "tilt 0 -4096 0" --do "swipe 184 446 184 200"
+
+A tap or swipe goes in as TOUCH lines and a tilt as an IMU line. Leave
+--icount off for this: emulated time then runs far slower than the host's,
+and how long a press lasts is counted in the emulated clock.
+
 What a run can and cannot say. Pass and fail are real for anything that does
 not read a clock. A ceiling pegged on the board is reported and not enforced
 in a CONFIG_LAUNCHER_QEMU image, and tests of hardware QEMU lacks (the
@@ -214,35 +224,85 @@ def take_screenshot(console, out_path):
 TOUCH_SETTLE_S = 0.6
 
 
-def send_touches(console, touches):
-    for spec in touches:
-        state, x, y = spec.split(",")
-        console.send("TOUCH %s %s %s" % (state.strip(), x.strip(), y.strip()))
-        time.sleep(TOUCH_SETTLE_S)
+def run_suite(console, name):
+    console.send("RUNSUITE %s" % name)
+    done = "RUNSUITE_COMPLETE name=%s" % name
+    for line in console.lines():
+        if line.startswith(done):
+            if line.endswith("found=1"):
+                return True
+            print("suite %s: not registered in this image" % name)
+            return False
+    print("suite %s: never completed" % name)
+    return False
 
 
-def drive_shell(console, suites, touches, screenshot_path):
+# A swipe is this many samples, each left in place long enough to be polled.
+SWIPE_POINTS = 12
+SWIPE_POINT_S = 0.08
+
+
+def touch(console, state, x, y):
+    console.send("TOUCH %s %d %d" % (state, x, y))
+    return True
+
+
+def touch_tap(console, x, y):
+    touch(console, "down", x, y)
+    time.sleep(TOUCH_SETTLE_S)
+    touch(console, "up", x, y)
+    time.sleep(TOUCH_SETTLE_S)
+    return True
+
+
+def touch_swipe(console, x0, y0, x1, y1):
+    for i in range(SWIPE_POINTS + 1):
+        touch(console, "down", x0 + (x1 - x0) * i // SWIPE_POINTS,
+              y0 + (y1 - y0) * i // SWIPE_POINTS)
+        time.sleep(SWIPE_POINT_S)
+    touch(console, "up", x1, y1)
+    time.sleep(TOUCH_SETTLE_S)
+    return True
+
+
+def run_action(console, action):
+    words = action.split()
+    verb, args = words[0], words[1:]
+    try:
+        if verb == "suite" and len(args) == 1:
+            return run_suite(console, args[0])
+        if verb == "screenshot" and len(args) == 1:
+            return take_screenshot(console, args[0])
+        if verb == "touch" and len(args) == 3 and args[0] in ("down", "up"):
+            touch(console, args[0], int(args[1]), int(args[2]))
+            time.sleep(TOUCH_SETTLE_S)
+            return True
+        if verb == "tap" and len(args) == 2:
+            return touch_tap(console, *map(int, args))
+        if verb == "swipe" and len(args) == 4:
+            return touch_swipe(console, *map(int, args))
+        if verb == "tilt" and len(args) == 3:
+            console.send("IMU %d %d %d" % tuple(map(int, args)))
+            time.sleep(TOUCH_SETTLE_S)
+            return True
+        if verb == "wait" and len(args) == 1:
+            time.sleep(int(args[0]) / 1000.0)
+            return True
+    except ValueError:
+        pass
+    print("not an action: %r" % action)
+    return False
+
+
+def drive_shell(console, actions):
     if not console.wait_for(LISTENING):
         print("the console listener never came up - is this an image that "
               "boots into the shell (no sdkconfig.defaults.diag_autorun)?")
         return False
     time.sleep(0.3)
     ok = True
-    for name in suites:
-        console.send("RUNSUITE %s" % name)
-        done = "RUNSUITE_COMPLETE name=%s" % name
-        found = None
-        for line in console.lines():
-            if line.startswith(done):
-                found = line.endswith("found=1")
-                break
-        if not found:
-            print("suite %s: %s" % (name, "not registered in this image"
-                                    if found is False else "never completed"))
-            ok = False
-    send_touches(console, touches)
-    if screenshot_path:
-        ok = take_screenshot(console, screenshot_path) and ok
+    for action in actions:
+        ok = run_action(console, action) and ok
     return ok
 
 
@@ -280,6 +340,12 @@ def main(argv):
                              "coordinates (repeatable, in order); needs a "
                              "CONFIG_LAUNCHER_QEMU image, where no controller "
                              "answers and a stand-in reports it instead")
+    parser.add_argument("--do", action="append", default=[], metavar="ACTION",
+                        help="one step, in order (repeatable): 'suite NAME', "
+                             "'tap X Y', 'swipe X0 Y0 X1 Y1', 'touch down|up "
+                             "X Y', 'tilt AX AY AZ', 'wait MS', 'screenshot "
+                             "PNG'. Pixels are the panel's own, tilt is raw "
+                             "accelerometer counts, 4096 to the g")
     parser.add_argument("--screenshot", default=None, metavar="PNG",
                         help="capture the screen once the suites and touches "
                              "are done")
@@ -291,6 +357,12 @@ def main(argv):
                         default=os.environ.get("IDF_PATH",
                                                r"C:\Espressif\esp-idf-v5.5"))
     args = parser.parse_args(argv)
+
+    actions = ["suite %s" % name for name in args.suite]
+    actions += ["touch " + spec.replace(",", " ") for spec in args.touch]
+    actions += args.do
+    if args.screenshot:
+        actions.append("screenshot %s" % args.screenshot)
 
     workdir = args.workdir or args.build_dir
     os.makedirs(workdir, exist_ok=True)
@@ -335,9 +407,8 @@ def main(argv):
         console = Console(proc, port, log_path,
                           time.monotonic() + args.timeout)
         try:
-            if args.suite or args.touch or args.screenshot:
-                finished = drive_shell(console, args.suite, args.touch,
-                                       args.screenshot)
+            if actions:
+                finished = drive_shell(console, actions)
             else:
                 finished = console.wait_for(SENTINEL)
         finally:
@@ -348,7 +419,7 @@ def main(argv):
 
     print("console: %s" % log_path)
     autorun_ended = summarise(log_path)
-    if not (args.suite or args.touch or args.screenshot) and not autorun_ended:
+    if not actions and not autorun_ended:
         print("NO %s - the run did not finish" % SENTINEL)
     return 0 if finished else 1
 
