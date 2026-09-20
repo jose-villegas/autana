@@ -153,14 +153,9 @@ console_task(void* arg) {
     }
 }
 
-/* Built from console_shared()'s own registered names, so a verb whose
- * CONSOLE_VERB() this build does not link (RUNSUITE outside SELFTEST,
- * TOUCH/IMU outside QEMU) is never claimed here either. SCREENSHOT is
- * always named first regardless of where it falls in the registry's name
- * order: launcher/test/qemu_run.py knows the console is up by matching the
- * literal substring "listening for 'SCREENSHOT'" in this line, and every
- * build that reaches this function has SCREENSHOT registered
- * (console_screenshot.c, development builds only - see console.h). */
+/* Names what registered, so a verb this build does not link is not claimed.
+ * SCREENSHOT goes first whatever its place in name order: a host script
+ * knows the console is up by the text "listening for 'SCREENSHOT'". */
 static void
 log_listening(void) {
     char line[192];
