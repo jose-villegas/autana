@@ -712,7 +712,7 @@ test_two_core_step_at_every_quality_grid_size(void) {
  */
 
 #define SWEEP_STEPS 12
-#define SWEEP_SIDES 8
+#define SWEEP_SIDES 5
 #define SWEEP_SEED  11u
 
 typedef struct {
@@ -721,20 +721,21 @@ typedef struct {
     int sides[SWEEP_SIDES][2]; /* a {0, 0} entry ends the list */
 } sweep_quality_t;
 
-/* Round two, from the board's own round-one microseconds: the winners were
- * 17 cells across the direction of travel and long along it, so each list
- * walks the length at a fixed 17 and then transposes that shape, keeping the
- * shipped side and round one's winner so the rounds stay comparable. Landscape
- * travels along x and portrait along y, which is why both shapes are here.
- * 37x17 at ULTRA is 5x14 and does not fit SAND_CHUNKS_MAX. */
+/* Both cuts a quality now ships, the square one they replaced, and the same
+ * two widths at twice the chunk height - which is what asks whether the
+ * 17-cell height every winner so far has is the floor doing the work or a
+ * height that happens to win. A finer cut at 17 is not on the list because
+ * SAND_CHUNKS_MAX leaves no room for one: ULTRA at 17 rows deep has 14 chunk
+ * rows, so four chunk columns is already 56 of the 64. */
 static const sweep_quality_t sweep_qualities[] = {
-    {"ULTRA", 184, 224, {{47, 17}, {62, 17}, {92, 17}, {45, 45}, {17, 45}, {17, 56}, {17, 75}}},
-    {"HIGH", 122, 149, {{25, 17}, {34, 17}, {41, 17}, {61, 17}, {30, 30}, {17, 30}, {17, 38}, {17, 50}}},
-    {"NORMAL", 92, 112, {{17, 17}, {23, 17}, {31, 17}, {46, 17}, {22, 22}, {17, 23}, {17, 28}, {17, 38}}},
-    /* Two apiece: at these grids every layout round one tried was slower
-     * than one core, and these exist only to confirm that it stays so. */
-    {"LOW", 61, 74, {{17, 17}, {22, 17}}},
-    {"VERY LOW", 46, 56, {{17, 17}, {20, 17}}},
+    {"ULTRA", 184, 224, {{92, 17}, {47, 17}, {45, 45}, {92, 34}, {47, 34}}},
+    {"HIGH", 122, 149, {{61, 17}, {25, 17}, {30, 30}, {61, 34}, {25, 34}}},
+    {"NORMAL", 92, 112, {{46, 17}, {23, 17}, {22, 22}, {46, 34}, {23, 34}}},
+    /* Three apiece: at these grids every layout measured so far was slower
+     * than one core, which is why they ship serial, and these exist only to
+     * confirm that it stays so. */
+    {"LOW", 61, 74, {{30, 17}, {17, 17}, {30, 34}}},
+    {"VERY LOW", 46, 56, {{23, 17}, {17, 17}, {23, 28}}},
 };
 
 /* Portable, so an unplannable cut fails on a laptop: the board would fall
@@ -758,6 +759,91 @@ test_every_swept_chunk_layout_is_one_the_planner_takes(void) {
     }
 }
 
+/* Every side each quality now ships, so a cut can never leave the sweep's own
+ * list without the comparison it is ranked against going with it. */
+static void
+test_the_sweep_measures_both_cuts_every_quality_ships(void) {
+    for (size_t qi = 0; qi < sizeof sweep_qualities / sizeof sweep_qualities[0]; qi++) {
+        const sweep_quality_t* const q = &sweep_qualities[qi];
+
+        for (int travel = 0; travel < SAND_CHUNK_TRAVEL_CLASSES; travel++) {
+            int side_x, side_y, found = 0;
+            char why[160];
+
+            sand_chunk_table_sides(q->w, q->h, (sand_chunk_travel_t)travel, &side_x, &side_y);
+            for (int di = 0; di < SWEEP_SIDES && q->sides[di][0] != 0; di++) {
+                found += (q->sides[di][0] == side_x && q->sides[di][1] == side_y);
+            }
+            snprintf(why, sizeof why, "%s class %d: the shipped %dx%d is not on the sweep's own list", q->name, travel,
+                     side_x, side_y);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(1, found, why);
+        }
+    }
+}
+
+static int
+sweep_cells_of(const sand_t* s, material_id_t material) {
+    int n = 0;
+
+    for (int i = 0; i < s->w * s->h; i++) {
+        const cell_t c = s->cells[i];
+        n += (!CELL_IS_EMPTY(c) && CELL_MATERIAL(c) == material);
+    }
+    return n;
+}
+
+/* A benchmark has to be shown to run what it claims to measure. The open
+ * block must still be climbing through the measured window, and the sealed
+ * box must hold a saturated pocket through it - the two halves of a gas step,
+ * a walk with somewhere to go and a spread with nothing but gaps to hunt. */
+static void
+test_the_sweeps_gas_scenes_put_work_in_both_gas_passes(void) {
+    static const int gx[] = {0, 1000};
+    static const int gy[] = {1000, 0};
+
+    enum { GW = 92, GH = 112 };
+
+    for (size_t g = 0; g < sizeof gx / sizeof gx[0]; g++) {
+        uint8_t* column = malloc(GW * GH);
+        uint8_t* box = malloc(GW * GH);
+        uint8_t* before = malloc(GW * GH);
+        TEST_ASSERT_NOT_NULL(column);
+        TEST_ASSERT_NOT_NULL(box);
+        TEST_ASSERT_NOT_NULL(before);
+
+        sand_t cs, bs;
+        sand_init(&cs, column, GW, GH, SWEEP_SEED);
+        sand_init(&bs, box, GW, GH, SWEEP_SEED);
+        const int cw = build_layout_gas_column_scene(&cs);
+        const int bw = build_layout_gas_box_scene(&bs);
+        const int cells_before = sweep_cells_of(&cs, MAT_GAS);
+        const int packed_before = sweep_cells_of(&bs, MAT_GAS);
+
+        for (int i = 0; i < cw; i++) {
+            sand_step(&cs, gx[g], gy[g], 0);
+        }
+        for (int i = 0; i < bw; i++) {
+            sand_step(&bs, gx[g], gy[g], 0);
+        }
+        memcpy(before, column, GW * GH);
+        for (int i = 0; i < SWEEP_STEPS; i++) {
+            sand_step(&cs, gx[g], gy[g], 0);
+            sand_step(&bs, gx[g], gy[g], 0);
+        }
+
+        char why[160];
+        snprintf(why, sizeof why, "gravity %d,%d", gx[g], gy[g]);
+        TEST_ASSERT_TRUE_MESSAGE(memcmp(before, column, GW * GH) != 0, why);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(cells_before, sweep_cells_of(&cs, MAT_GAS), why);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(packed_before, sweep_cells_of(&bs, MAT_GAS), why);
+        TEST_ASSERT_GREATER_THAN_INT_MESSAGE(GW * GH / 2, packed_before, why);
+
+        free(before);
+        free(box);
+        free(column);
+    }
+}
+
 #ifdef DEVICE_BUILD
 
 typedef struct {
@@ -772,10 +858,17 @@ typedef struct {
     int (*build)(sand_t*);
 } sweep_scene_t;
 
+/* The last two put work in the gas walk and the gas spread, which round two
+ * left unmeasured - its scenes had no gas in them, so the two gas passes were
+ * ranked on nothing. */
 static const sweep_scene_t sweep_scenes[] = {
-    {"mixed-flip", build_layout_mixed_flip_scene},         {"water", build_layout_water_scene},
-    {"sand-only", build_layout_sand_only_scene},           {"settling-pile", build_layout_settling_pile_scene},
+    {"mixed-flip", build_layout_mixed_flip_scene},
+    {"water", build_layout_water_scene},
+    {"sand-only", build_layout_sand_only_scene},
+    {"settling-pile", build_layout_settling_pile_scene},
     {"levelling-pool", build_layout_levelling_pool_scene},
+    {"gas-column", build_layout_gas_column_scene},
+    {"gas-box", build_layout_gas_box_scene},
 };
 
 typedef struct {
@@ -915,6 +1008,15 @@ sweep_floor_arm(const sweep_quality_t* q, bool two_core, int* out_settle_steps) 
     sweep_board_open(&b, q->w, q->h);
     (void)build_layout_settling_pile_scene(&b.s);
 
+    /* The shipped cut, named rather than left to the table: this pulls
+     * gravity, so the class is the one every quality's second column holds,
+     * and a side asked for by name is also what carries the two smallest
+     * grids past SAND_CHUNK_SPLIT_MIN_CELLS - without it the split arm here
+     * would be a second serial arm. */
+    int side_x, side_y;
+    sand_chunk_table_sides(q->w, q->h, SAND_CHUNK_TRAVEL_OTHER, &side_x, &side_y);
+    TEST_ASSERT_TRUE(sand_chunk_side_for_test(side_x, side_y));
+
     const two_core_scope_t core = two_core_scope_begin(two_core);
     const int settled_in = sweep_floor_settle(&b, (size_t)q->w * (size_t)q->h);
     const int64_t start = esp_timer_get_time();
@@ -924,6 +1026,7 @@ sweep_floor_arm(const sweep_quality_t* q, bool two_core, int* out_settle_steps) 
     const int64_t per_step = (esp_timer_get_time() - start) / SWEEP_FLOOR_STEPS;
     two_core_scope_end(core);
     collect_core1_lane();
+    (void)sand_chunk_side_for_test(0, 0);
 
     sweep_board_close(&b);
     if (settled_in > *out_settle_steps) {
@@ -941,7 +1044,6 @@ static void
 sweep_floor(const sweep_quality_t* q) {
     int settle_steps = 0;
 
-    (void)sand_chunk_side_for_test(0, 0);
     const int64_t serial = sweep_floor_arm(q, false, &settle_steps);
     const int64_t split = sweep_floor_arm(q, true, &settle_steps);
 
@@ -4276,6 +4378,8 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_the_soak_only_skip_matches_the_full_walks_grid_exactly);
     RUN_TEST(test_the_soak_only_skip_hash_survives_ambient_two_core_state);
     RUN_TEST(test_every_swept_chunk_layout_is_one_the_planner_takes);
+    RUN_TEST(test_the_sweep_measures_both_cuts_every_quality_ships);
+    RUN_TEST(test_the_sweeps_gas_scenes_put_work_in_both_gas_passes);
 
 #ifdef DEVICE_BUILD
     /* Every budget test below pins its own mode now, so this is provenance,
