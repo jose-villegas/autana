@@ -84,6 +84,7 @@ $TEST_DIR/suites/suite_tween.c
 $TEST_DIR/suites/suite_spring_line.c
 $TEST_DIR/suites/suite_boot_anim.c
 $TEST_DIR/suites/suite_r3d_project.c
+$TEST_DIR/suites/suite_r3d_camera.c
 $TEST_DIR/suites/suite_gfx_dirty.c
 $TEST_DIR/suites/suite_gfx_full_redraw.c
 $TEST_DIR/suites/suite_gfx_present_guard.c

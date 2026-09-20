@@ -25,13 +25,13 @@
 #define LIGHT_HALF_X              0.24f
 #define LIGHT_HALF_Z              0.24f
 #define LIGHT_CENTER_Z            1.0f
-#define LIGHT_POS                 ((rt_vec3_t){0.0f, ROOM_HEIGHT - 0.05f, LIGHT_CENTER_Z})
+#define LIGHT_POS                 ((r3d_vec3f_t){0.0f, ROOM_HEIGHT - 0.05f, LIGHT_CENTER_Z})
 #define LIGHT_EMISSIVE_RGB        0xFFF6E0u
 
-#define WALL_WHITE                ((rt_vec3_t){0.76f, 0.75f, 0.74f})
-#define WALL_RED                  ((rt_vec3_t){0.63f, 0.065f, 0.05f})
-#define WALL_GREEN                ((rt_vec3_t){0.14f, 0.45f, 0.091f})
-#define BOX_ALBEDO                ((rt_vec3_t){0.78f, 0.78f, 0.75f})
+#define WALL_WHITE                ((r3d_vec3f_t){0.76f, 0.75f, 0.74f})
+#define WALL_RED                  ((r3d_vec3f_t){0.63f, 0.065f, 0.05f})
+#define WALL_GREEN                ((r3d_vec3f_t){0.14f, 0.45f, 0.091f})
+#define BOX_ALBEDO                ((r3d_vec3f_t){0.78f, 0.78f, 0.75f})
 
 /* sin/cos of 17 degrees, computed once here rather than by a trig call on
  * every ray/box test. */
@@ -42,47 +42,22 @@
 #define LIGHT_INTENSITY           2.0f
 #define SHADOW_BIAS               0.001f
 
-#define CAMERA_POS                ((rt_vec3_t){0.0f, 1.0f, -2.6f})
-#define CAMERA_FORWARD            ((rt_vec3_t){0.0f, 0.0f, 1.0f})
-#define CAMERA_RIGHT              ((rt_vec3_t){1.0f, 0.0f, 0.0f}) /* +X is the green wall's side */
-#define CAMERA_UP                 ((rt_vec3_t){0.0f, 1.0f, 0.0f})
+#define CAMERA_POS                ((r3d_vec3f_t){0.0f, 1.0f, -2.6f})
+#define CAMERA_FORWARD            ((r3d_vec3f_t){0.0f, 0.0f, 1.0f})
+#define CAMERA_RIGHT              ((r3d_vec3f_t){1.0f, 0.0f, 0.0f}) /* +X is the green wall's side */
+#define CAMERA_UP                 ((r3d_vec3f_t){0.0f, 1.0f, 0.0f})
 /* The room's open front, 1 unit either side of the axis, just fits the
  * screen's SHORTER axis from CAMERA_POS, so neither box is ever cropped; the
  * longer axis sees a little past the room. */
 #define CAMERA_HALF_FOV_SHORT_TAN (1.04f / 2.6f)
 
-static rt_vec3_t
-vec3_add(rt_vec3_t a, rt_vec3_t b) {
-    return (rt_vec3_t){a.x + b.x, a.y + b.y, a.z + b.z};
-}
-
-static rt_vec3_t
-vec3_sub(rt_vec3_t a, rt_vec3_t b) {
-    return (rt_vec3_t){a.x - b.x, a.y - b.y, a.z - b.z};
-}
-
-static rt_vec3_t
-vec3_scale(rt_vec3_t a, float s) {
-    return (rt_vec3_t){a.x * s, a.y * s, a.z * s};
-}
-
-static float
-vec3_dot(rt_vec3_t a, rt_vec3_t b) {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-static rt_vec3_t
-vec3_normalize(rt_vec3_t a) {
-    return vec3_scale(a, 1.0f / sqrtf(vec3_dot(a, a)));
-}
-
 bool
-rt_intersect_plane(rt_vec3_t origin, rt_vec3_t dir, rt_plane_t plane, float* t) {
-    const float denom = vec3_dot(dir, plane.normal);
+rt_intersect_plane(r3d_vec3f_t origin, r3d_vec3f_t dir, rt_plane_t plane, float* t) {
+    const float denom = r3d_vec3f_dot(dir, plane.normal);
     if (fabsf(denom) < RT_EPSILON) {
         return false;
     }
-    const float candidate = vec3_dot(vec3_sub(plane.point, origin), plane.normal) / denom;
+    const float candidate = r3d_vec3f_dot(r3d_vec3f_sub(plane.point, origin), plane.normal) / denom;
     if (candidate <= RT_EPSILON) {
         return false;
     }
@@ -92,18 +67,18 @@ rt_intersect_plane(rt_vec3_t origin, rt_vec3_t dir, rt_plane_t plane, float* t) 
 
 /* Rotates `v` from world space into `box`'s own frame (v treated as a
  * direction; the caller subtracts box->center first for a position). */
-static rt_vec3_t
-box_to_local(rt_vec3_t v, const rt_box_t* box) {
-    return (rt_vec3_t){
+static r3d_vec3f_t
+box_to_local(r3d_vec3f_t v, const rt_box_t* box) {
+    return (r3d_vec3f_t){
         v.x * box->cos_yaw + v.z * box->sin_yaw,
         v.y,
         -v.x * box->sin_yaw + v.z * box->cos_yaw,
     };
 }
 
-static rt_vec3_t
+static r3d_vec3f_t
 box_normal_to_world(int axis, float sign, const rt_box_t* box) {
-    rt_vec3_t local = {0.0f, 0.0f, 0.0f};
+    r3d_vec3f_t local = {0.0f, 0.0f, 0.0f};
     if (axis == 0) {
         local.x = sign;
     } else if (axis == 1) {
@@ -111,7 +86,7 @@ box_normal_to_world(int axis, float sign, const rt_box_t* box) {
     } else {
         local.z = sign;
     }
-    return (rt_vec3_t){
+    return (r3d_vec3f_t){
         local.x * box->cos_yaw - local.z * box->sin_yaw,
         local.y,
         local.x * box->sin_yaw + local.z * box->cos_yaw,
@@ -158,7 +133,7 @@ slab_axis(int axis, float o, float d, float half, rt_slab_result_t* out) {
 }
 
 static bool
-box_local_slabs(rt_vec3_t o, rt_vec3_t d, rt_vec3_t half, rt_slab_result_t* out) {
+box_local_slabs(r3d_vec3f_t o, r3d_vec3f_t d, r3d_vec3f_t half, rt_slab_result_t* out) {
     out->t_min = -RT_MAX_T;
     out->t_max = RT_MAX_T;
     out->min_axis = -1;
@@ -174,9 +149,9 @@ box_local_slabs(rt_vec3_t o, rt_vec3_t d, rt_vec3_t half, rt_slab_result_t* out)
 }
 
 bool
-rt_intersect_box(rt_vec3_t origin, rt_vec3_t dir, const rt_box_t* box, float* t_hit, rt_vec3_t* out_normal) {
-    const rt_vec3_t local_origin = box_to_local(vec3_sub(origin, box->center), box);
-    const rt_vec3_t local_dir = box_to_local(dir, box);
+rt_intersect_box(r3d_vec3f_t origin, r3d_vec3f_t dir, const rt_box_t* box, float* t_hit, r3d_vec3f_t* out_normal) {
+    const r3d_vec3f_t local_origin = box_to_local(r3d_vec3f_sub(origin, box->center), box);
+    const r3d_vec3f_t local_dir = box_to_local(dir, box);
 
     rt_slab_result_t slabs;
     if (!box_local_slabs(local_origin, local_dir, box->half_extent, &slabs)) {
@@ -211,10 +186,10 @@ rt_intersect_box(rt_vec3_t origin, rt_vec3_t dir, const rt_box_t* box, float* t_
  * are on whichever two axes `normal` is not aligned with, in ascending
  * axis order. */
 typedef struct {
-    rt_vec3_t normal;
+    r3d_vec3f_t normal;
     float d;
     float min1, max1, min2, max2;
-    rt_vec3_t albedo;
+    r3d_vec3f_t albedo;
 } rt_wall_t;
 
 static const rt_wall_t light_quad = {
@@ -238,7 +213,7 @@ static const rt_box_t boxes[] = {
 #define BOX_COUNT ((int)(sizeof(boxes) / sizeof(boxes[0])))
 
 static bool
-wall_bounds_ok(rt_vec3_t p, const rt_wall_t* w) {
+wall_bounds_ok(r3d_vec3f_t p, const rt_wall_t* w) {
     float c1, c2;
     if (w->normal.x != 0.0f) {
         c1 = p.y;
@@ -254,13 +229,13 @@ wall_bounds_ok(rt_vec3_t p, const rt_wall_t* w) {
 }
 
 static bool
-intersect_wall(rt_vec3_t origin, rt_vec3_t dir, const rt_wall_t* w, float* t, rt_vec3_t* normal) {
-    const rt_plane_t plane = {vec3_scale(w->normal, w->d), w->normal};
+intersect_wall(r3d_vec3f_t origin, r3d_vec3f_t dir, const rt_wall_t* w, float* t, r3d_vec3f_t* normal) {
+    const rt_plane_t plane = {r3d_vec3f_scale(w->normal, w->d), w->normal};
     float hit_t;
     if (!rt_intersect_plane(origin, dir, plane, &hit_t)) {
         return false;
     }
-    if (!wall_bounds_ok(vec3_add(origin, vec3_scale(dir, hit_t)), w)) {
+    if (!wall_bounds_ok(r3d_vec3f_add(origin, r3d_vec3f_scale(dir, hit_t)), w)) {
         return false;
     }
     *t = hit_t;
@@ -270,17 +245,17 @@ intersect_wall(rt_vec3_t origin, rt_vec3_t dir, const rt_wall_t* w, float* t, rt
 
 typedef struct {
     float t;
-    rt_vec3_t point, normal, albedo;
+    r3d_vec3f_t point, normal, albedo;
     bool is_light;
 } rt_hit_t;
 
 static bool
-scene_intersect(rt_vec3_t origin, rt_vec3_t dir, rt_hit_t* hit) {
+scene_intersect(r3d_vec3f_t origin, r3d_vec3f_t dir, rt_hit_t* hit) {
     bool found = false;
     hit->t = RT_MAX_T;
 
     float t;
-    rt_vec3_t n;
+    r3d_vec3f_t n;
     if (intersect_wall(origin, dir, &light_quad, &t, &n) && t < hit->t) {
         *hit = (rt_hit_t){t, {0, 0, 0}, n, {0, 0, 0}, true};
         found = true;
@@ -292,7 +267,7 @@ scene_intersect(rt_vec3_t origin, rt_vec3_t dir, rt_hit_t* hit) {
         }
     }
     for (int i = 0; i < BOX_COUNT; i++) {
-        rt_vec3_t bn;
+        r3d_vec3f_t bn;
         float bt;
         if (rt_intersect_box(origin, dir, &boxes[i], &bt, &bn) && bt < hit->t) {
             *hit = (rt_hit_t){bt, {0, 0, 0}, bn, BOX_ALBEDO, false};
@@ -301,7 +276,7 @@ scene_intersect(rt_vec3_t origin, rt_vec3_t dir, rt_hit_t* hit) {
     }
 
     if (found) {
-        hit->point = vec3_add(origin, vec3_scale(dir, hit->t));
+        hit->point = r3d_vec3f_add(origin, r3d_vec3f_scale(dir, hit->t));
     }
     return found;
 }
@@ -309,10 +284,10 @@ scene_intersect(rt_vec3_t origin, rt_vec3_t dir, rt_hit_t* hit) {
 /* Boxes only: the room's own walls bound a convex interior, so a straight
  * line between two points already inside it can never cross one. */
 static bool
-scene_occluded(rt_vec3_t origin, rt_vec3_t dir, float max_t) {
+scene_occluded(r3d_vec3f_t origin, r3d_vec3f_t dir, float max_t) {
     for (int i = 0; i < BOX_COUNT; i++) {
         float t;
-        rt_vec3_t n;
+        r3d_vec3f_t n;
         if (rt_intersect_box(origin, dir, &boxes[i], &t, &n) && t < max_t) {
             return true;
         }
@@ -320,18 +295,18 @@ scene_occluded(rt_vec3_t origin, rt_vec3_t dir, float max_t) {
     return false;
 }
 
-static rt_vec3_t
-shade_point(rt_vec3_t point, rt_vec3_t normal, rt_vec3_t albedo) {
-    const rt_vec3_t to_light = vec3_sub(LIGHT_POS, point);
-    const float dist = sqrtf(vec3_dot(to_light, to_light));
-    const rt_vec3_t light_dir = vec3_scale(to_light, 1.0f / dist);
+static r3d_vec3f_t
+shade_point(r3d_vec3f_t point, r3d_vec3f_t normal, r3d_vec3f_t albedo) {
+    const r3d_vec3f_t to_light = r3d_vec3f_sub(LIGHT_POS, point);
+    const float dist = sqrtf(r3d_vec3f_dot(to_light, to_light));
+    const r3d_vec3f_t light_dir = r3d_vec3f_scale(to_light, 1.0f / dist);
 
-    float diffuse = vec3_dot(normal, light_dir);
+    float diffuse = r3d_vec3f_dot(normal, light_dir);
     if (diffuse < 0.0f) {
         diffuse = 0.0f;
     }
     if (diffuse > 0.0f) {
-        const rt_vec3_t shadow_origin = vec3_add(point, vec3_scale(normal, SHADOW_BIAS));
+        const r3d_vec3f_t shadow_origin = r3d_vec3f_add(point, r3d_vec3f_scale(normal, SHADOW_BIAS));
         if (scene_occluded(shadow_origin, light_dir, dist - SHADOW_BIAS)) {
             diffuse = 0.0f;
         }
@@ -341,7 +316,7 @@ shade_point(rt_vec3_t point, rt_vec3_t normal, rt_vec3_t albedo) {
     if (brightness > 1.0f) {
         brightness = 1.0f;
     }
-    return vec3_scale(albedo, brightness);
+    return r3d_vec3f_scale(albedo, brightness);
 }
 
 /* A smooth wall crosses only a handful of 5-bit levels, which shows as
@@ -362,7 +337,7 @@ quantize_channel(float v, uint32_t max_level, float threshold) {
 }
 
 static gfx_color_t
-to_gfx_color(rt_vec3_t c, int x, int y) {
+to_gfx_color(r3d_vec3f_t c, int x, int y) {
     const float threshold = ((float)bayer4[y & 3][x & 3] + 0.5f) / 16.0f;
     const uint32_t rgb565 = (quantize_channel(c.x, 31, threshold) << 11) | (quantize_channel(c.y, 63, threshold) << 5)
                             | quantize_channel(c.z, 31, threshold);
@@ -370,7 +345,7 @@ to_gfx_color(rt_vec3_t c, int x, int y) {
 }
 
 static gfx_color_t
-trace_primary(rt_vec3_t origin, rt_vec3_t dir, int x, int y) {
+trace_primary(r3d_vec3f_t origin, r3d_vec3f_t dir, int x, int y) {
     rt_hit_t hit;
     if (!scene_intersect(origin, dir, &hit)) {
         return GFX_RGB(0x000000u);
@@ -381,71 +356,20 @@ trace_primary(rt_vec3_t origin, rt_vec3_t dir, int x, int y) {
     return to_gfx_color(shade_point(hit.point, hit.normal, hit.albedo), x, y);
 }
 
-/* Maps a physical canvas pixel to the pixel it represents in the upright,
- * quarter-rotated view - the inverse of the same rotation
- * ui_transform_quarter_turn()/write_bmp() apply when reading this canvas
- * back out at that quarter, worked out by hand for the four cases rather
- * than pulled in as a UI-layer dependency. */
-static void
-physical_to_logical(const rt_cornell_camera_t* cam, int px, int py, int* ex, int* ey) {
-    switch (cam->quarter) {
-        case 1:
-            *ex = py;
-            *ey = cam->width - 1 - px;
-            break;
-        case 2:
-            *ex = cam->width - 1 - px;
-            *ey = cam->height - 1 - py;
-            break;
-        case 3:
-            *ex = cam->height - 1 - py;
-            *ey = px;
-            break;
-        default:
-            *ex = px;
-            *ey = py;
-            break;
-    }
-}
-
-static rt_vec3_t
-camera_ray_dir(const rt_cornell_camera_t* cam, int ex, int ey) {
-    const float ndc_x = ((float)ex + 0.5f) / (float)cam->eff_width * 2.0f - 1.0f;
-    const float ndc_y = 1.0f - ((float)ey + 0.5f) / (float)cam->eff_height * 2.0f;
-    const float aspect = (float)cam->eff_width / (float)cam->eff_height;
-    const float half_w = aspect >= 1.0f ? cam->half_fov_short_tan * aspect : cam->half_fov_short_tan;
-    const float half_h = aspect >= 1.0f ? cam->half_fov_short_tan : cam->half_fov_short_tan / aspect;
-
-    rt_vec3_t dir = cam->forward;
-    dir = vec3_add(dir, vec3_scale(cam->right, ndc_x * half_w));
-    dir = vec3_add(dir, vec3_scale(cam->up, ndc_y * half_h));
-    return vec3_normalize(dir);
-}
-
 void
 rt_cornell_camera_init(rt_cornell_camera_t* cam, int width, int height, int quarter) {
-    cam->origin = CAMERA_POS;
-    cam->forward = CAMERA_FORWARD;
-    cam->right = CAMERA_RIGHT;
-    cam->up = CAMERA_UP;
-    cam->half_fov_short_tan = CAMERA_HALF_FOV_SHORT_TAN;
-    cam->width = width;
-    cam->height = height;
-    cam->quarter = quarter;
-    cam->eff_width = (quarter & 1) ? height : width;
-    cam->eff_height = (quarter & 1) ? width : height;
+    const r3d_viewport_t viewport = {.width = width, .height = height, .quarter = quarter};
+    r3d_ray_camera_init(cam, CAMERA_POS, CAMERA_FORWARD, CAMERA_RIGHT, CAMERA_UP, CAMERA_HALF_FOV_SHORT_TAN, viewport);
 }
 
 gfx_color_t
 rt_cornell_render_pixel(const rt_cornell_camera_t* cam, int x, int y) {
-    int ex, ey;
-    physical_to_logical(cam, x, y, &ex, &ey);
-    return trace_primary(cam->origin, camera_ray_dir(cam, ex, ey), x, y);
+    return trace_primary(cam->origin, r3d_ray_direction(cam, x, y), x, y);
 }
 
 void
 rt_cornell_render_row(const rt_cornell_camera_t* cam, int y, gfx_color_t* out_row) {
-    for (int x = 0; x < cam->width; x++) {
+    for (int x = 0; x < cam->viewport.width; x++) {
         out_row[x] = rt_cornell_render_pixel(cam, x, y);
     }
 }

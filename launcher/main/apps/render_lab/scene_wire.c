@@ -14,6 +14,7 @@
 
 #include "../../display/display.h"
 #include "../../gfx/gfx.h"
+#include "render/r3d_camera.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
 #include "wire_pipeline.h"
@@ -108,8 +109,8 @@ scene_wire_capsule_enter(void) {
 
 /* The mesh spins about its own vertical axis under a fixed camera, so the
  * camera's pitch and roll never compose with the orbit angle. A scene draws
- * in the panel's native frame, so the roll is what keeps the mesh's up on
- * the shell's current up. */
+ * in the panel's native frame, so the roll r3d_camera_upright() applies is
+ * what keeps the mesh's up on the shell's current up. */
 void
 wire_advance_pose(uint32_t dt_ms) {
     elapsed_ms += dt_ms;
@@ -118,24 +119,15 @@ wire_advance_pose(uint32_t dt_ms) {
     S3L_transform3DInit(&world);
     world.rotation.y = (S3L_Unit)(((uint64_t)elapsed_ms * S3L_F / WIRE_ORBIT_PERIOD_MS) % S3L_F);
 
-    S3L_Transform3D camera;
-    S3L_transform3DInit(&camera);
-    camera.translation.y = (current_orbit_distance * WIRE_ELEVATION_SIN) / S3L_F;
-    camera.translation.z = -(current_orbit_distance * WIRE_ELEVATION_COS) / S3L_F;
-    camera.rotation.x = -WIRE_ELEVATION_ANGLE;
-    camera.rotation.z = -display_shell_quarter() * (S3L_F / 4);
+    r3d_camera_t camera = {.focal = WIRE_FOCAL_LENGTH, .near_z = R3D_NEAR_Z};
+    S3L_transform3DInit(&camera.pose);
+    camera.pose.translation.y = (current_orbit_distance * WIRE_ELEVATION_SIN) / S3L_F;
+    camera.pose.translation.z = -(current_orbit_distance * WIRE_ELEVATION_COS) / S3L_F;
+    camera.pose.rotation.x = -WIRE_ELEVATION_ANGLE;
+    camera = r3d_camera_upright(camera, display_shell_quarter());
 
-    S3L_Mat4 world_mat, camera_mat;
-    S3L_makeWorldMatrix(world, world_mat);
-    S3L_makeCameraMatrix(camera, camera_mat);
-    S3L_mat4Xmat4(world_mat, camera_mat);
-
-    S3L_mat4Copy(world_mat, current_view.matrix);
-    current_view.focal = WIRE_FOCAL_LENGTH;
-    current_view.near_z = R3D_NEAR_Z;
-    current_view.center_x = GFX_WIDTH / 2;
-    current_view.center_y = GFX_HEIGHT / 2;
-    current_view.scale = GFX_WIDTH / 2;
+    const r3d_viewport_t viewport = {.width = GFX_WIDTH, .height = GFX_HEIGHT, .quarter = 0};
+    current_view = r3d_camera_view(camera, world, viewport);
 }
 
 /* Exposed for suite_wire_perf.c to time separately - the vertex stage. */
