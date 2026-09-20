@@ -165,6 +165,7 @@ raytrace_status(void) {
 
 const render_lab_scene_t scene_raytrace = {
     .name = "Cornell Box",
+    .key = "cornell",
     .enter = scene_raytrace_enter,
     .frame = scene_raytrace_frame,
     .frame_band = NULL,
