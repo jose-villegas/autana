@@ -13,9 +13,12 @@
 #include "rt_cornell.h"
 
 #include <math.h>
+#include <stddef.h>
 
 #include "rt_cornell_scene.h"
 #include "rt_geometry.h"
+#include "rt_refine.h"
+#include "util/job.h"
 
 #define LIGHT_EMISSIVE_RGB        0xFFF6E0u
 
@@ -108,4 +111,58 @@ rt_cornell_render_row(const rt_cornell_camera_t* cam, int y, gfx_color_t* out_ro
     for (int x = 0; x < cam->viewport.width; x++) {
         out_row[x] = rt_cornell_render_pixel(cam, x, y);
     }
+}
+
+static void
+fill_lattice_block(gfx_color_t* fb, int width, int height, int x, int y, int step, gfx_color_t color) {
+    const int w = x + step > width ? width - x : step;
+    const int h = y + step > height ? height - y : step;
+
+    for (int row = 0; row < h; row++) {
+        gfx_color_t* dst = fb + (size_t)(y + row) * width + x;
+        for (int col = 0; col < w; col++) {
+            dst[col] = color;
+        }
+    }
+}
+
+void
+rt_cornell_render_rows(const rt_cornell_camera_t* cam, gfx_color_t* fb, int y0, int y1, int step) {
+    const int width = cam->viewport.width;
+    const int height = cam->viewport.height;
+
+    for (int y = y0; y < y1; y += step) {
+        for (int x = 0; x < width; x += step) {
+            if (!rt_refine_is_new(x, y, step)) {
+                continue;
+            }
+            fill_lattice_block(fb, width, height, x, y, step, rt_cornell_render_pixel(cam, x, y));
+        }
+    }
+}
+
+typedef struct {
+    const rt_cornell_camera_t* cam;
+    gfx_color_t* fb;
+    int y0, y1, step;
+} lattice_row_job_t;
+
+_Static_assert(sizeof(lattice_row_job_t) <= JOB_CTX_MAX, "lattice_row_job_t must fit JOB_CTX_MAX");
+
+static void
+lattice_row_job_worker(void* ctx) {
+    const lattice_row_job_t* job = ctx;
+    rt_cornell_render_rows(job->cam, job->fb, job->y0, job->y1, job->step);
+}
+
+int
+rt_cornell_render_lattice_budget(const rt_cornell_camera_t* cam, gfx_color_t* fb, int y0, int step, int pixel_budget) {
+    const int end_y = rt_refine_lattice_range_end(cam->viewport.width, cam->viewport.height, y0, step, pixel_budget);
+    const int mid_y = rt_refine_split_mid(y0, end_y, step);
+    const lattice_row_job_t job = {cam, fb, y0, mid_y, step};
+
+    (void)job_run_core1(lattice_row_job_worker, &job, sizeof job);
+    rt_cornell_render_rows(cam, fb, mid_y, end_y, step);
+    (void)job_wait(100);
+    return end_y;
 }

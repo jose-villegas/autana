@@ -69,42 +69,11 @@ scene_raytrace_invalidate(void) {
 }
 
 static void
-fill_block(gfx_color_t* fb, int x, int y, gfx_color_t color) {
-    const int w = x + step > GFX_WIDTH ? GFX_WIDTH - x : step;
-    const int h = y + step > GFX_HEIGHT ? GFX_HEIGHT - y : step;
-
-    for (int row = 0; row < h; row++) {
-        gfx_color_t* dst = fb + (size_t)(y + row) * GFX_WIDTH + x;
-        for (int col = 0; col < w; col++) {
-            dst[col] = color;
-        }
-    }
-}
-
-static int
-trace_lattice_row(gfx_color_t* fb, int y) {
-    int traced = 0;
-
-    for (int x = 0; x < GFX_WIDTH; x += step) {
-        if (!rt_refine_is_new(x, y, step)) {
-            continue;
-        }
-        fill_block(fb, x, y, rt_cornell_render_pixel(&camera, x, y));
-        traced++;
-    }
-    return traced;
-}
-
-static void
 draw_next_lattice_rows(void) {
     gfx_color_t* fb = gfx_framebuffer();
     const int first_y = next_y;
-    int traced = 0;
 
-    while (next_y < GFX_HEIGHT && traced < pixel_budget.value) {
-        traced += trace_lattice_row(fb, next_y);
-        next_y += step;
-    }
+    next_y = rt_cornell_render_lattice_budget(&camera, fb, next_y, step, pixel_budget.value);
 
     const int end_y = next_y < GFX_HEIGHT ? next_y : GFX_HEIGHT;
     gfx_mark_dirty(0, first_y, GFX_WIDTH, end_y - first_y);

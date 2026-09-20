@@ -16,6 +16,7 @@
 #include "rt_cornell_scene.h"
 #include "rt_geometry.h"
 #include "rt_refine.h"
+#include "util/job.h"
 
 #define RT_PATH_MAX_DEPTH   3
 #define RT_PATH_SHADOW_BIAS 0.001f
@@ -357,32 +358,50 @@ seed_pixel(const rt_cornell_camera_t* cam, rt_path_accum_px_t* accum, int width,
     return rt_path_resolve(*px, x, y);
 }
 
-static int
+static void
 seed_lattice_row(const rt_cornell_camera_t* cam, rt_path_target_t target, int y, int step) {
-    int traced = 0;
-
     for (int x = 0; x < target.width; x += step) {
         if (!rt_refine_is_new(x, y, step)) {
             continue;
         }
         const gfx_color_t color = seed_pixel(cam, target.accum, target.width, x, y);
         fill_block(target.fb, target.width, target.height, x, y, step, color);
-        traced++;
     }
-    return traced;
+}
+
+void
+rt_path_seed_rows(const rt_cornell_camera_t* cam, rt_path_target_t target, int y0, int y1, int step) {
+    for (int y = y0; y < y1; y += step) {
+        seed_lattice_row(cam, target, y, step);
+    }
+}
+
+typedef struct {
+    const rt_cornell_camera_t* cam;
+    rt_path_target_t target;
+    int y0, y1, step;
+} seed_row_job_t;
+
+_Static_assert(sizeof(seed_row_job_t) <= JOB_CTX_MAX, "seed_row_job_t must fit JOB_CTX_MAX");
+
+static void
+seed_row_job_worker(void* ctx) {
+    const seed_row_job_t* job = ctx;
+    rt_path_seed_rows(job->cam, job->target, job->y0, job->y1, job->step);
 }
 
 static rt_path_span_t
 advance_seeding(rt_path_schedule_t* sch, const rt_cornell_camera_t* cam, rt_path_target_t target, int pixel_budget) {
     const int first_y = sch->seed_y;
-    int traced = 0;
+    const int end_y = rt_refine_lattice_range_end(target.width, target.height, first_y, sch->step, pixel_budget);
+    const int mid_y = rt_refine_split_mid(first_y, end_y, sch->step);
+    const seed_row_job_t job = {cam, target, first_y, mid_y, sch->step};
 
-    while (sch->seed_y < target.height && traced < pixel_budget) {
-        traced += seed_lattice_row(cam, target, sch->seed_y, sch->step);
-        sch->seed_y += sch->step;
-    }
-    const int end_y = sch->seed_y < target.height ? sch->seed_y : target.height;
+    (void)job_run_core1(seed_row_job_worker, &job, sizeof job);
+    rt_path_seed_rows(cam, target, mid_y, end_y, sch->step);
+    (void)job_wait(100);
 
+    sch->seed_y = end_y;
     if (sch->seed_y >= target.height) {
         sch->step = rt_refine_next_step(sch->step);
         sch->seed_y = 0;
@@ -393,28 +412,50 @@ advance_seeding(rt_path_schedule_t* sch, const rt_cornell_camera_t* cam, rt_path
     return (rt_path_span_t){first_y, end_y};
 }
 
-static rt_path_span_t
-advance_sweep(rt_path_schedule_t* sch, const rt_cornell_camera_t* cam, rt_path_target_t target, int pixel_budget) {
-    const uint32_t n = sch->spp + 1; /* the sample this sweep folds in */
-    const int first_y = sch->sweep_y;
-    int traced = 0;
-
-    while (sch->sweep_y < target.height && traced < pixel_budget) {
-        const int y = sch->sweep_y;
+void
+rt_path_sweep_rows(const rt_cornell_camera_t* cam, rt_path_target_t target, int y0, int y1, uint32_t n) {
+    for (int y = y0; y < y1; y++) {
         for (int x = 0; x < target.width; x++) {
             const r3d_vec3f_t sample = rt_path_sample(cam, x, y, n);
             rt_path_accum_px_t* px = &target.accum[(size_t)y * target.width + x];
             rt_path_accum_add(px, sample, n);
             target.fb[(size_t)y * target.width + x] = rt_path_resolve(*px, x, y);
         }
-        traced += target.width;
-        sch->sweep_y++;
     }
-    const int end_y = sch->sweep_y < target.height ? sch->sweep_y : target.height;
+}
 
-    if (sch->sweep_y >= target.height) {
+typedef struct {
+    const rt_cornell_camera_t* cam;
+    rt_path_target_t target;
+    int y0, y1;
+    uint32_t n;
+} sweep_row_job_t;
+
+_Static_assert(sizeof(sweep_row_job_t) <= JOB_CTX_MAX, "sweep_row_job_t must fit JOB_CTX_MAX");
+
+static void
+sweep_row_job_worker(void* ctx) {
+    const sweep_row_job_t* job = ctx;
+    rt_path_sweep_rows(job->cam, job->target, job->y0, job->y1, job->n);
+}
+
+static rt_path_span_t
+advance_sweep(rt_path_schedule_t* sch, const rt_cornell_camera_t* cam, rt_path_target_t target, int pixel_budget) {
+    const uint32_t n = sch->spp + 1; /* the sample this sweep folds in */
+    const int first_y = sch->sweep_y;
+    const int end_y = rt_refine_uniform_range_end(target.height, first_y, target.width, pixel_budget);
+    const int mid_y = rt_refine_split_mid(first_y, end_y, 1);
+    const sweep_row_job_t job = {cam, target, first_y, mid_y, n};
+
+    (void)job_run_core1(sweep_row_job_worker, &job, sizeof job);
+    rt_path_sweep_rows(cam, target, mid_y, end_y, n);
+    (void)job_wait(100);
+
+    if (end_y >= target.height) {
         sch->spp = n;
         sch->sweep_y = 0;
+    } else {
+        sch->sweep_y = end_y;
     }
     return (rt_path_span_t){first_y, end_y};
 }

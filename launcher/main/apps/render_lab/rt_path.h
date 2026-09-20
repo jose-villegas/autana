@@ -109,6 +109,17 @@ typedef struct {
     int y0, y1;
 } rt_path_span_t;
 
+/* The seed pass's own per-row work: every new lattice pixel in [y0, y1) at
+ * `step`, folded into `target.accum` when there is one. A step-aligned
+ * split of [y0, y1), traced as two calls, draws the same picture as one -
+ * what lets rt_path_schedule_advance() split it across two cores. */
+void rt_path_seed_rows(const rt_cornell_camera_t* cam, rt_path_target_t target, int y0, int y1, int step);
+
+/* The accumulate pass's own per-row work: folds path sample `n` into every
+ * pixel of rows [y0, y1), full width. Splits the same way
+ * rt_path_seed_rows() does. */
+void rt_path_sweep_rows(const rt_cornell_camera_t* cam, rt_path_target_t target, int y0, int y1, uint32_t n);
+
 /* Traces up to `pixel_budget` pixels' worth of work into `target.fb`,
  * resolving through `target.accum` when there is one: rt_refine.h's
  * coarse-to-fine lattice while seeding, then whole rows, top to bottom,
