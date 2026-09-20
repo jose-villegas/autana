@@ -456,6 +456,150 @@ gfx_glow_narrow(int64_t v0, int64_t step, int64_t lo, int64_t hi, int* a, int* b
     }
 }
 
+/*
+ * A map of the curve's light, so that drawing is a lookup. Searching beside
+ * every pixel costs the radius, and so does the pixel count: a wide glow
+ * cost its radius squared. Distance depends on the curve's shape and not on
+ * how it is turned, so it is worked out once per shape, in the curve's own
+ * frame, by an exact two-pass transform that costs the map's area whatever
+ * the radius. Turning the curve then costs no distance work at all.
+ */
+
+/* One cell to this many pixels each way: a glow is smooth. The line itself
+ * is not, so within GFX_GLOW_MAP_EXACT_PX of it a draw still searches, over
+ * a window that small. */
+#define GFX_GLOW_MAP_CELL     2
+#define GFX_GLOW_MAP_EXACT_PX 5
+
+/* A cell holds squared distance, which is what the ramp is indexed by and
+ * interpolates almost exactly, in quarter pixels squared. */
+#define GFX_GLOW_MAP_Q        2
+
+typedef struct {
+    uint16_t* cells; /* cols * rows, the caller's */
+    int32_t* row_f;  /* scratch, cols long each */
+    int32_t* row_z;
+    int16_t* row_v;
+    int cols, rows; /* what `cells` has room for */
+    int lit_rows;   /* how many of them the last build filled: the band's */
+    int origin_y;   /* view row of the top of cell row 0, set by the build */
+    uint16_t far;   /* what a cell out of the light's reach holds */
+} gfx_glow_map_t;
+
+static inline int
+gfx_glow_map_cols(int count) {
+    return (count + GFX_GLOW_MAP_CELL - 1) / GFX_GLOW_MAP_CELL;
+}
+
+/* One row of the second pass: the lower envelope of the parabolas that the
+ * first pass's vertical distances raise, after Felzenszwalb and
+ * Huttenlocher, in integers. `step2` is the squared width of a cell. */
+static inline void
+gfx_glow_map_row(const gfx_glow_map_t* map, uint16_t* out, int step2) {
+    int hulls = 0;
+    for (int q = 0; q < map->cols; q++) {
+        if (map->row_f[q] >= map->far) {
+            continue;
+        }
+        const int64_t own = (int64_t)map->row_f[q] + (int64_t)step2 * q * q;
+        int64_t meet = 0;
+        while (hulls > 0) {
+            const int v = map->row_v[hulls - 1];
+            const int64_t other = (int64_t)map->row_f[v] + (int64_t)step2 * v * v;
+            meet = gfx_glow_div_floor(own - other, (int64_t)2 * step2 * (q - v));
+            if (meet > map->row_z[hulls - 1]) {
+                break;
+            }
+            hulls--;
+        }
+        map->row_v[hulls] = (int16_t)q;
+        map->row_z[hulls] = hulls == 0 ? INT32_MIN : (int32_t)meet;
+        hulls++;
+    }
+    int k = 0;
+    for (int p = 0; p < map->cols; p++) {
+        if (hulls == 0) {
+            out[p] = map->far;
+            continue;
+        }
+        while (k + 1 < hulls && map->row_z[k + 1] < p) {
+            k++;
+        }
+        const int v = map->row_v[k];
+        const int64_t d2 = (int64_t)step2 * (p - v) * (p - v) + map->row_f[v];
+        out[p] = d2 < map->far ? (uint16_t)d2 : map->far;
+    }
+}
+
+static inline void
+gfx_glow_map_build(gfx_glow_map_t* map, const gfx_glow_field_t* field, const gfx_glow_style_t* style) {
+    const int to_map = GFX_GLOW_Q_SHIFT - GFX_GLOW_MAP_Q;
+    const int reach = (style->radius + GFX_GLOW_MAP_CELL) << GFX_GLOW_MAP_Q;
+    const int step = GFX_GLOW_MAP_CELL << GFX_GLOW_MAP_Q;
+    map->far = (uint16_t)(reach * reach);
+    map->origin_y = (field->band_lo >> GFX_GLOW_Q_SHIFT) - GFX_GLOW_MAP_CELL;
+    const int band_px = ((field->band_hi - field->band_lo) >> GFX_GLOW_Q_SHIFT) + 3 * GFX_GLOW_MAP_CELL;
+    const int band_rows = band_px / GFX_GLOW_MAP_CELL + 1;
+    map->lit_rows = band_rows < map->rows ? band_rows : map->rows;
+
+    for (int row = 0; row < map->lit_rows; row++) {
+        const int top = (map->origin_y + row * GFX_GLOW_MAP_CELL) << GFX_GLOW_Q_SHIFT;
+        const int centre = top + (GFX_GLOW_MAP_CELL << GFX_GLOW_Q_SHIFT) / 2;
+        for (int c = 0; c < map->cols; c++) {
+            int nearest = INT32_MAX;
+            for (int j = c * GFX_GLOW_MAP_CELL; j < (c + 1) * GFX_GLOW_MAP_CELL && j < field->count; j++) {
+                const int up = gfx_glow_outside(centre, field->span_lo[j], field->span_hi[j]) >> to_map;
+                nearest = up < nearest ? up : nearest;
+            }
+            map->row_f[c] = nearest < reach ? nearest * nearest : map->far;
+        }
+        gfx_glow_map_row(map, map->cells + (size_t)row * map->cols, step * step);
+    }
+}
+
+/* Squared distance at a view position, Q8 like gfx_glow_distance2(), from
+ * the four cells around it. Above and below the map there is no light; past
+ * either end the end cells stand. */
+static inline int
+gfx_glow_map_distance2(const gfx_glow_map_t* map, int x_q4, int y_q4) {
+    const int cell_q4 = GFX_GLOW_MAP_CELL << GFX_GLOW_Q_SHIFT;
+    const int to_q8 = 2 * (GFX_GLOW_Q_SHIFT - GFX_GLOW_MAP_Q);
+    const int u = x_q4 - cell_q4 / 2;
+    const int v = y_q4 - (map->origin_y << GFX_GLOW_Q_SHIFT) - cell_q4 / 2;
+    int cy = v / cell_q4;
+    if (v < 0 || cy + 1 >= map->lit_rows) {
+        return (int)map->far << to_q8;
+    }
+    int cx = u < 0 ? 0 : u / cell_q4;
+    int fx = u < 0 ? 0 : u % cell_q4;
+    if (cx + 1 >= map->cols) {
+        cx = map->cols - 2;
+        fx = cell_q4;
+    }
+    const int fy = v % cell_q4;
+    const uint16_t* upper = map->cells + (size_t)cy * map->cols + cx;
+    const uint16_t* lower = upper + map->cols;
+    const int along_upper = upper[0] * (cell_q4 - fx) + upper[1] * fx;
+    const int along_lower = lower[0] * (cell_q4 - fx) + lower[1] * fx;
+    const int64_t blended = (int64_t)along_upper * (cell_q4 - fy) + (int64_t)along_lower * fy;
+    return (int)(blended / (cell_q4 * cell_q4)) << to_q8;
+}
+
+/* The distance a posed draw colours a pixel by: from the map where there is
+ * one and the pixel is clear of the line, searched otherwise. */
+static inline int
+gfx_glow_posed_distance2(const gfx_glow_field_t* field, const gfx_glow_map_t* map, int radius, int x_q4, int y_q4) {
+    if (map == NULL) {
+        return gfx_glow_field_distance2(field, radius, x_q4, y_q4);
+    }
+    const int exact = GFX_GLOW_MAP_EXACT_PX * GFX_GLOW_ONE;
+    const int mapped = gfx_glow_map_distance2(map, x_q4, y_q4);
+    if (mapped >= exact * exact) {
+        return mapped;
+    }
+    return gfx_glow_field_distance2(field, GFX_GLOW_MAP_EXACT_PX + 1, x_q4, y_q4);
+}
+
 /* A colour dimmed to `keep`/256 of itself, each channel rounded down so
  * that repeated dimming reaches black rather than sticking one step above.
  * Green is dimmed at red and blue's five bits: at its own six it outlives
@@ -499,12 +643,14 @@ gfx_glow_light(gfx_color_t colour) {
  * per panel row, the stretch still lit from earlier draws, and `trail` is
  * what becomes of it first: 0 blackens it, 255 leaves it, and between it is
  * dimmed to trail/256, a tail that is gone after gfx_glow_trail_draws() more
- * draws. Returns the panel box touched.
+ * draws. `map` is the curve's gfx_glow_map_t, or NULL to search for every
+ * pixel. Returns the panel box touched.
  */
 static inline gfx_glow_box_t
 gfx_glow_draw_posed_rows(gfx_target_t target, int clip_x0, int clip_y0, int clip_x1, int clip_y1, int panel_w,
-                         int panel_h, const gfx_glow_field_t* field, int view_h, gfx_glow_pose_t pose, int row0,
-                         int row1, int16_t* lit_lo, int16_t* lit_hi, int trail, const gfx_glow_style_t* style) {
+                         int panel_h, const gfx_glow_field_t* field, const gfx_glow_map_t* map, int view_h,
+                         gfx_glow_pose_t pose, int row0, int row1, int16_t* lit_lo, int16_t* lit_hi, int trail,
+                         const gfx_glow_style_t* style) {
     gfx_glow_box_t box = {0, 0, 0, 0};
     const int64_t right_x = pose.down_y;
     const int64_t right_y = -pose.down_x;
@@ -562,7 +708,7 @@ gfx_glow_draw_posed_rows(gfx_target_t target, int clip_x0, int clip_y0, int clip
                 continue;
             }
             const gfx_color_t colour =
-                gfx_glow_colour(style, gfx_glow_field_distance2(field, style->radius, x_q4, y_q4), px, py);
+                gfx_glow_colour(style, gfx_glow_posed_distance2(field, map, style->radius, x_q4, y_q4), px, py);
             if (colour == GFX_RGB(0x000000)) {
                 continue;
             }

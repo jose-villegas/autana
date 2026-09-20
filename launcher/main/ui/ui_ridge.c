@@ -60,15 +60,15 @@ TUNE_INT(spring_damping, 4);
 /* ridge_motion.h's, by the names a developer types. */
 TUNE_INT(breath_ms, 9000);
 TUNE_INT(breath_depth, 200);
-TUNE_INT(breath_smooth, RIDGE_SMOOTH_RADIUS);
+TUNE_INT(breath_smooth, 20);
 TUNE_INT(wave_height, 40);
 TUNE_INT(wave_length, 170);
 TUNE_INT(wave_period_ms, 2600);
-TUNE_INT(tilt_push, 96);
-TUNE_INT(tilt_coast_ms, 900);
+TUNE_INT(tilt_push, 200);
+TUNE_INT(tilt_coast_ms, 2000);
 
 /* How long the line takes to cover about two thirds of a turn toward level. */
-TUNE_INT(level_tau_ms, 220);
+TUNE_INT(level_tau_ms, 1200);
 
 /* Shaking plucks the line at random, harder the harder it is shaken. */
 #define SHAKE_THRESHOLD    48
@@ -103,6 +103,12 @@ TUNE_INT(level_tau_ms, 220);
 #define RIDGE_EXTRA        88
 #define RIDGE_COLUMNS      (RIDGE_CURVE_POINTS + 2 * RIDGE_EXTRA)
 
+/* The glow is drawn from a map of its light - see gfx_glow.h. Below this
+ * radius the map's fixed cost is more than the search it saves. */
+#define MAP_FROM_RADIUS    10
+#define MAP_COLS           ((RIDGE_COLUMNS + GFX_GLOW_MAP_CELL - 1) / GFX_GLOW_MAP_CELL)
+#define MAP_ROWS           200
+
 #define POSE_LANDSCAPE     ((gfx_glow_pose_t){-GFX_GLOW_POSE_ONE, 0})
 
 typedef struct {
@@ -122,6 +128,11 @@ typedef struct {
     int16_t span_hi[RIDGE_COLUMNS];
     int16_t reach_lo[RIDGE_COLUMNS];
     int16_t reach_hi[RIDGE_COLUMNS];
+    gfx_glow_map_t map;
+    uint16_t map_cells[MAP_COLS * MAP_ROWS];
+    int32_t map_row_f[MAP_COLS];
+    int32_t map_row_z[MAP_COLS];
+    int16_t map_row_v[MAP_COLS];
     int16_t lit_lo[GFX_HEIGHT];
     int16_t lit_hi[GFX_HEIGHT];
     gfx_glow_pose_t pose;
@@ -163,6 +174,20 @@ register_tunables(void) {
     TUNE_REGISTER("launcher.level_tau_ms", level_tau_ms, 10, 5000);
 }
 
+static bool
+glow_is_mapped(void) {
+    return glow_radius >= MAP_FROM_RADIUS;
+}
+
+/* What a draw measures distance against, for the line as it now stands. */
+static void
+prepare_light(void) {
+    gfx_glow_field_prepare(&ridge->field, ridge->heights, &ridge->style);
+    if (glow_is_mapped()) {
+        gfx_glow_map_build(&ridge->map, &ridge->field, &ridge->style);
+    }
+}
+
 /* The glow's ramp and the smoothed shape are tables built from tunables, so
  * they are built again when one changes; everything else is read each frame. */
 static void
@@ -170,7 +195,7 @@ bake_what_is_tuned(void) {
     gfx_glow_style_set(&ridge->style, glow_radius, glow_core, (uint32_t)glow_core_rgb, (uint32_t)glow_halo_rgb);
     ridge_motion_smooth(ridge->rigid, ridge->smooth, ridge->shape, RIDGE_COLUMNS, breath_smooth);
     memcpy(ridge->shape, ridge->heights, sizeof ridge->shape);
-    gfx_glow_field_prepare(&ridge->field, ridge->heights, &ridge->style);
+    prepare_light();
 #if TUNE_ENABLED
     ridge->tuned_at = tune_generation();
 #endif
@@ -200,6 +225,14 @@ allocate_once(void) {
         .reach_lo = ridge->reach_lo,
         .reach_hi = ridge->reach_hi,
         .count = RIDGE_COLUMNS,
+    };
+    ridge->map = (gfx_glow_map_t){
+        .cells = ridge->map_cells,
+        .row_f = ridge->map_row_f,
+        .row_z = ridge->map_row_z,
+        .row_v = ridge->map_row_v,
+        .cols = MAP_COLS,
+        .rows = MAP_ROWS,
     };
     bake_what_is_tuned();
     ridge->pose = POSE_LANDSCAPE;
@@ -247,8 +280,8 @@ ui_ridge_settle(void) {
 
 static void
 draw_ridge(void) {
-    gfx_glow_curve_posed(&ridge->field, RIDGE_CURVE_VIEW_H, ridge->pose, ridge->lit_lo, ridge->lit_hi, ridge_trail,
-                         &ridge->style);
+    gfx_glow_curve_posed(&ridge->field, glow_is_mapped() ? &ridge->map : NULL, RIDGE_CURVE_VIEW_H, ridge->pose,
+                         ridge->lit_lo, ridge->lit_hi, ridge_trail, &ridge->style);
     ridge->pose_on_screen = ridge->pose;
 }
 
@@ -420,7 +453,7 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     spring_line_apply(&ridge->line, ridge->shape, ridge->heights, &lo, &hi);
     const bool line_moved = hi > lo;
     if (line_moved) {
-        gfx_glow_field_prepare(&ridge->field, ridge->heights, &ridge->style);
+        prepare_light();
     }
     const bool settles_now = arrived && !poses_within(ridge->pose, ridge->pose_on_screen, 1);
     /* A tail that fades is drawn until it is gone, or it would freeze where

@@ -277,6 +277,7 @@ static int16_t posed_spans[4][PANEL_H];
 static int16_t lit_lo[PANEL_H];
 static int16_t lit_hi[PANEL_H];
 static int posed_trail;
+static const gfx_glow_map_t* posed_map;
 
 static gfx_glow_field_t
 posed_field(void) {
@@ -293,7 +294,7 @@ forget_what_was_lit(void) {
 
 static void
 draw_posed(const gfx_glow_field_t* field, int down_x, int down_y) {
-    gfx_glow_draw_posed_rows(whole_panel(), 0, 0, PANEL_W, PANEL_H, PANEL_W, PANEL_H, field, PANEL_W,
+    gfx_glow_draw_posed_rows(whole_panel(), 0, 0, PANEL_W, PANEL_H, PANEL_W, PANEL_H, field, posed_map, PANEL_W,
                              (gfx_glow_pose_t){down_x, down_y}, 0, PANEL_H, lit_lo, lit_hi, posed_trail, style);
 }
 
@@ -499,6 +500,141 @@ test_dimming_a_grey_keeps_it_grey_all_the_way_to_black(void) {
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x000000), colour);
 }
 
+/* The map of the curve's light. */
+
+#define MAP_COLS ((PANEL_H + GFX_GLOW_MAP_CELL - 1) / GFX_GLOW_MAP_CELL)
+#define MAP_ROWS 64
+
+static uint16_t* map_cells;
+static int32_t map_row_f[MAP_COLS];
+static int32_t map_row_z[MAP_COLS];
+static int16_t map_row_v[MAP_COLS];
+
+static gfx_glow_map_t
+built_map(const gfx_glow_field_t* field) {
+    gfx_glow_map_t map = {map_cells, map_row_f, map_row_z, map_row_v, MAP_COLS, MAP_ROWS, 0, 0, 0};
+    gfx_glow_map_build(&map, field, style);
+    return map;
+}
+
+/* How far, in the map's units, a cell's centre row is from the curve within
+ * that cell's own columns: what the first pass raises a parabola from. */
+static int
+up_to_the_curve_in_cell(const gfx_glow_field_t* field, int cell, int centre) {
+    int nearest = INT32_MAX;
+    for (int j = cell * GFX_GLOW_MAP_CELL; j < (cell + 1) * GFX_GLOW_MAP_CELL && j < field->count; j++) {
+        const int up =
+            gfx_glow_outside(centre, field->span_lo[j], field->span_hi[j]) >> (GFX_GLOW_Q_SHIFT - GFX_GLOW_MAP_Q);
+        nearest = up < nearest ? up : nearest;
+    }
+    return nearest;
+}
+
+/* A cell's value worked out the slow way: every column tried. */
+static uint16_t
+brute_force_cell(const gfx_glow_field_t* field, const gfx_glow_map_t* map, int row, int cell) {
+    const int step = GFX_GLOW_MAP_CELL << GFX_GLOW_MAP_Q;
+    const int reach = (RADIUS + GFX_GLOW_MAP_CELL) << GFX_GLOW_MAP_Q;
+    const int centre =
+        ((map->origin_y + row * GFX_GLOW_MAP_CELL) << GFX_GLOW_Q_SHIFT) + (GFX_GLOW_MAP_CELL << GFX_GLOW_Q_SHIFT) / 2;
+    int64_t best = map->far;
+    for (int other = 0; other < MAP_COLS; other++) {
+        const int up = up_to_the_curve_in_cell(field, other, centre);
+        if (up >= reach) {
+            continue;
+        }
+        const int64_t d2 = (int64_t)step * step * (cell - other) * (cell - other) + (int64_t)up * up;
+        best = d2 < best ? d2 : best;
+    }
+    return (uint16_t)best;
+}
+
+/* The second pass is a lower envelope worked out in one sweep. Its answer is
+ * checked against trying every column, for every cell. */
+static void
+test_the_map_is_the_brute_force_distance_in_every_cell(void) {
+    fixture_begin();
+    map_cells = malloc(sizeof(uint16_t) * MAP_COLS * MAP_ROWS);
+    TEST_ASSERT_NOT_NULL(map_cells);
+    wavy_curve_for_the_turned_view();
+    const gfx_glow_field_t field = posed_field();
+    const gfx_glow_map_t map = built_map(&field);
+    TEST_ASSERT_GREATER_THAN_INT(8, map.lit_rows);
+
+    for (int row = 0; row < map.lit_rows; row++) {
+        for (int c = 0; c < MAP_COLS; c++) {
+            TEST_ASSERT_EQUAL_UINT16(brute_force_cell(&field, &map, row, c), map.cells[row * MAP_COLS + c]);
+        }
+    }
+    free(map_cells);
+    fixture_end();
+}
+
+static void
+test_a_mapped_draw_is_the_searched_one_on_the_line_and_close_to_it_around(void) {
+    fixture_begin();
+    map_cells = malloc(sizeof(uint16_t) * MAP_COLS * MAP_ROWS);
+    gfx_color_t* searched = malloc(sizeof(gfx_color_t) * PANEL_W * PANEL_H);
+    TEST_ASSERT_NOT_NULL(map_cells);
+    TEST_ASSERT_NOT_NULL(searched);
+    wavy_curve_for_the_turned_view();
+    const gfx_glow_field_t field = posed_field();
+    const gfx_glow_map_t map = built_map(&field);
+    const int poses[][2] = {{-16384, 0}, {-13107, 9830}, {0, 16384}, {11585, 11585}};
+
+    for (size_t p = 0; p < sizeof poses / sizeof poses[0]; p++) {
+        clear_panel_and_forget();
+        draw_posed(&field, poses[p][0], poses[p][1]);
+        memcpy(searched, pixels, sizeof(gfx_color_t) * PANEL_W * PANEL_H);
+
+        clear_panel_and_forget();
+        posed_map = &map;
+        draw_posed(&field, poses[p][0], poses[p][1]);
+        posed_map = NULL;
+
+        int brightest_pixels_that_differ = 0;
+        long total_difference = 0;
+        long lit_pixels = 0;
+        for (int i = 0; i < PANEL_W * PANEL_H; i++) {
+            const int difference = abs(brightness(searched[i]) - brightness(pixels[i]));
+            TEST_ASSERT_LESS_THAN_INT(80, difference);
+            total_difference += difference;
+            lit_pixels += searched[i] != GFX_RGB(0x000000);
+            /* within the searched window the two are one code path */
+            brightest_pixels_that_differ += brightness(searched[i]) > 500 && difference != 0;
+        }
+        TEST_ASSERT_EQUAL_INT(0, brightest_pixels_that_differ);
+        TEST_ASSERT_GREATER_THAN_INT(500, (int)lit_pixels);
+        TEST_ASSERT_LESS_THAN_INT(8, (int)(total_difference / lit_pixels));
+    }
+    free(searched);
+    free(map_cells);
+    fixture_end();
+}
+
+static void
+test_outside_the_maps_rows_there_is_no_light(void) {
+    fixture_begin();
+    map_cells = malloc(sizeof(uint16_t) * MAP_COLS * MAP_ROWS);
+    TEST_ASSERT_NOT_NULL(map_cells);
+    for (int x = 0; x < PANEL_H; x++) {
+        heights[x] = (int16_t)(48 * GFX_GLOW_ONE);
+    }
+    const gfx_glow_field_t field = posed_field();
+    const gfx_glow_map_t map = built_map(&field);
+    const int far_q8 = (int)map.far << (2 * (GFX_GLOW_Q_SHIFT - GFX_GLOW_MAP_Q));
+    TEST_ASSERT_EQUAL_INT(far_q8, gfx_glow_map_distance2(&map, 20 * GFX_GLOW_ONE, 2 * GFX_GLOW_ONE));
+    TEST_ASSERT_EQUAL_INT(far_q8, gfx_glow_map_distance2(&map, 20 * GFX_GLOW_ONE, 94 * GFX_GLOW_ONE));
+    /* and on the curve, in the middle of the map, there is none to go */
+    TEST_ASSERT_LESS_THAN_INT(2 * GFX_GLOW_ONE * 2 * GFX_GLOW_ONE,
+                              gfx_glow_map_distance2(&map, 40 * GFX_GLOW_ONE, 48 * GFX_GLOW_ONE));
+    /* past either end of the curve the end cells stand, rather than a read out of bounds */
+    TEST_ASSERT_TRUE(gfx_glow_map_distance2(&map, -50 * GFX_GLOW_ONE, 48 * GFX_GLOW_ONE) < far_q8);
+    TEST_ASSERT_TRUE(gfx_glow_map_distance2(&map, (PANEL_H + 50) * GFX_GLOW_ONE, 48 * GFX_GLOW_ONE) < far_q8);
+    free(map_cells);
+    fixture_end();
+}
+
 void
 suite_gfx_glow(void) {
     RUN_TEST(test_turning_into_the_panel_matches_ui_transform);
@@ -521,6 +657,9 @@ suite_gfx_glow(void) {
     RUN_TEST(test_a_fading_trail_dims_then_ends_on_the_clean_picture);
     RUN_TEST(test_trail_draws_is_how_long_white_takes_to_go_black);
     RUN_TEST(test_dimming_a_grey_keeps_it_grey_all_the_way_to_black);
+    RUN_TEST(test_the_map_is_the_brute_force_distance_in_every_cell);
+    RUN_TEST(test_a_mapped_draw_is_the_searched_one_on_the_line_and_close_to_it_around);
+    RUN_TEST(test_outside_the_maps_rows_there_is_no_light);
 }
 
 SUITE_REGISTER(suite_gfx_glow);
