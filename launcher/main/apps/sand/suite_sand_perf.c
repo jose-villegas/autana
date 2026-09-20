@@ -773,16 +773,10 @@ sweep_board_close(sweep_board_t* b) {
     free(b->cells);
 }
 
-/* The scene is painted with the split off, so both arms start on the same
- * board; the warm-up runs in the arm, because a board settled by one lane is
- * not the board two lanes settle and that difference is part of what is
- * being measured. */
-/* THE THREE ARMS, and why there are three. An instruction count sums both
- * cores, so the two-lane arm is charged for whatever the other core does
- * while it waits - a bounded spin, or its idle task. It can never show a
- * win, whatever the layout. The one-thread walk of the same order can: it
- * is what the chunking costs, and the host pre-filter says how much of it
- * two lanes overlap. */
+/* The scene is painted with the split off, so every arm starts on the same
+ * board, and the warm-up runs inside the arm: a board settled by one lane is
+ * not the board two lanes settle. A split arm's instruction count sums both
+ * cores, so only the solo arm prices the chunking itself. */
 typedef enum {
     SWEEP_ARM_SERIAL,
     SWEEP_ARM_SOLO,
