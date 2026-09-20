@@ -294,6 +294,12 @@ whichever of old and new light is brighter: each band overlaps most of the
 last, and would otherwise overwrite its bright core with a dim rim, leaving
 only rim light behind.
 
+The trail lives nowhere but the framebuffer itself: it is the light already
+there, dimmed and drawn over, so whatever repaints the panel underneath it -
+a UI that changed and asked for its backdrop again, a turn of the UI, any
+full redraw - wipes it, and it has to grow back over the following draws. It
+also needs a framebuffer to read, so a trail is not available in band mode.
+
 A fading tail has to go on being drawn after the curve stops, or it freezes
 there. For how long is counted, not watched for: `gfx_glow_trail_draws()` is
 how many draws take the brightest colour to black at a given `trail`. The

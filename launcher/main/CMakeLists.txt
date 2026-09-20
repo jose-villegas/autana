@@ -174,6 +174,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites/suite_tune.c"
         "../test/suites/suite_tween.c"
         "../test/suites/suite_ridge_motion.c"
+        "../test/suites/suite_ridge_pose.c"
         "../test/suites/suite_spring_line.c"
         "../test/suites/suite_gfx.c"
         "../test/suites/suite_gfx_dirty.c"

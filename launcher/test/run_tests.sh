@@ -110,6 +110,7 @@ $TEST_DIR/suites/suite_control_center_layout.c
 $TEST_DIR/suites/suite_ui_centered_rect.c
 $TEST_DIR/suites/suite_ridge_curve.c
 $TEST_DIR/suites/suite_ridge_motion.c
+$TEST_DIR/suites/suite_ridge_pose.c
 $TEST_DIR/suites/suite_ui_launcher.c
 $TEST_DIR/suites/suite_ui_pointer.c
 $TEST_DIR/suites/suite_ui_pointer_microui.c
