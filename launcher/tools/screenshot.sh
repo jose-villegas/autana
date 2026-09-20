@@ -4,7 +4,8 @@
 # serial connection - no SD card, no button on the device: this script sends
 # the request and receives the image itself, together with a same-named
 # .json snapshot of device state at that exact frame (sensors, memory,
-# clock - see screenshot_dump()'s own comment in main/util/screenshot.c).
+# clock - see console_screenshot_dump()'s own comment in
+# main/console/console_screenshot.c).
 # The device streams a 24bpp BMP over the wire, but screenshot.py converts
 # it to a lossless .png in memory (stdlib zlib/struct, no Pillow) and that
 # .png is the only image this writes - any extension given to -o/--out is
