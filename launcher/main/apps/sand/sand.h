@@ -223,6 +223,13 @@ typedef struct sand_s {
     uint16_t heat_flaw_seq;
     bool heat_flaw_is_flawed;
 
+    /* Which BLOCK_SETTLED_* bit this step reads, or 0 where the caller
+     * enabled no sleeping - it depends on how this step's direction compares
+     * with the one the board settled under, and more than one pass asks.
+     * Declared against the direction fields below, which is also where the
+     * struct already had a hole to put it in. */
+    uint8_t settled_bit;
+
     int last_load_dx, last_load_dy;
 
     /* The dithered direction, unlike last_load_d{x,y}'s nearest direction -

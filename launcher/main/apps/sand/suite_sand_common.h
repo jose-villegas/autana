@@ -19,6 +19,7 @@
 
 #include "material_palette.h"
 #include "sand.h"
+#include "sand_priv.h" /* sand_chunk_share_t - a scope below pins it */
 
 /* Big enough for every case here, small enough to write out by hand. */
 #define W 8
@@ -211,9 +212,12 @@ void two_core_scope_end(two_core_scope_t scope);
 
 /* A pass the shipped step runs on one core has to be asked for by name, or a
  * test of its split path steps the serial walk twice and compares it with
- * itself. `also` is the SAND_SPLIT_* bits to add for the scope's span. */
+ * itself. `also` is the SAND_SPLIT_* bits to add for the scope's span. The
+ * scope pins sharing on for the same reason: a fixture too quiet or too
+ * coarsely cut to fill two lanes is handed the serial walk otherwise. */
 typedef struct {
     unsigned before;
+    sand_chunk_share_t share;
 } split_passes_scope_t;
 
 split_passes_scope_t split_passes_scope_begin(unsigned also);

@@ -244,10 +244,41 @@ extern unsigned sand_split_passes;
 /* Returns the mask it replaced, so a caller can put that back. */
 unsigned sand_split_passes_for_test(unsigned mask);
 
+/* Below this many awake cells, a pass gives a second core less than the four
+ * passes of prepare, merge, dispatch and join cost to reach it: a settled
+ * ULTRA board steps in 95 us on one core and 148 split, HIGH 56 and 110,
+ * NORMAL 39 and 109. Whole chunks are charged, so this is a little over one
+ * chunk of the widest cut any quality ships. */
+#define SAND_CHUNK_SPLIT_MIN_AWAKE_CELLS    1600
+
+/* And the awake chunks have to divide: the span two lanes model must come
+ * this far under walking them one after another, because walking a board as
+ * chunks costs 1.09 to 1.28 of the row-major sweep before either lane has
+ * done anything (QEMU --icount, ULTRA, every cut and scene measured). Under
+ * this share, halving the work still pays for that; over it, a pour into a
+ * settled board or a single falling column pays it for nothing. */
+#define SAND_CHUNK_SPLIT_SPAN_SHARE_PERCENT 75
+
 /* Whether this pass can split on this board: the pass is one that ships
  * split, two-core stepping is on, lane scratch is present, the grid is worth
- * dividing, and its class's cut fits. */
+ * dividing, its class's cut fits, and enough of the board is awake in enough
+ * places to keep two lanes busy. */
 bool sand_chunk_pass_ready(const sand_t* s, sand_split_pass_t pass, int tx, int ty);
+
+/* Pins the last of those questions, so a test measuring the split path is
+ * not handed the serial one by a board that happens to be quiet - and so the
+ * decision itself can be tested from both sides. Returns what it replaced. */
+typedef enum {
+    SAND_CHUNK_SHARE_AUTO,
+    SAND_CHUNK_SHARE_ALWAYS,
+    SAND_CHUNK_SHARE_NEVER,
+} sand_chunk_share_t;
+
+sand_chunk_share_t sand_chunk_share_for_test(sand_chunk_share_t mode);
+
+/* Split passes actually dispatched, counted where one starts. Never reset by
+ * the sand code: a test zeroes it and reads it back. */
+extern unsigned sand_split_dispatches;
 
 /* Whether a pass needs the arrival marks: only one that can hand a cell on
  * again in the same pass, which an order built against its own travel

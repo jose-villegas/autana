@@ -352,13 +352,15 @@ two_core_scope_end(two_core_scope_t scope) {
 
 split_passes_scope_t
 split_passes_scope_begin(unsigned also) {
-    const split_passes_scope_t scope = {.before = sand_split_passes_for_test(sand_split_passes | also)};
+    const split_passes_scope_t scope = {.before = sand_split_passes_for_test(sand_split_passes | also),
+                                        .share = sand_chunk_share_for_test(SAND_CHUNK_SHARE_ALWAYS)};
     return scope;
 }
 
 void
 split_passes_scope_end(split_passes_scope_t scope) {
     (void)sand_split_passes_for_test(scope.before);
+    (void)sand_chunk_share_for_test(scope.share);
 }
 
 void*

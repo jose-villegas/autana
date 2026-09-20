@@ -198,6 +198,9 @@ sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
      * never zero. */
     s->block_cols = (w + SAND_BLOCK_W - 1) / SAND_BLOCK_W;
     s->block_rows = (h + SAND_BLOCK_H - 1) / SAND_BLOCK_H;
+    /* A reused sand_t must not carry a settled bit into a board with no block
+     * state behind it - everything that reads one indexes that. */
+    s->settled_bit = 0;
     s->last_load_dx = 0;
     s->last_load_dy = 0;
     s->last_step_dx = 0;
@@ -1619,6 +1622,54 @@ sand_split_passes_for_test(unsigned mask) {
     return before;
 }
 
+static sand_chunk_share_t chunk_share_mode;
+
+sand_chunk_share_t
+sand_chunk_share_for_test(sand_chunk_share_t mode) {
+    const sand_chunk_share_t before = chunk_share_mode;
+
+    chunk_share_mode = mode;
+    return before;
+}
+
+/* The cells each chunk of `p` would hand a lane, charged whole: a chunk with
+ * one block awake is a chunk a lane has to walk. `cost` takes one entry per
+ * chunk, so the caller's array is SAND_CHUNKS_MAX long. */
+static int
+chunk_awake_costs(const sand_t* s, const sand_chunk_plan_t* p, int* cost) {
+    int total = 0;
+
+    for (int cy = 0; cy < p->rows; cy++) {
+        for (int cx = 0; cx < p->cols; cx++) {
+            int x0, x1, y0, y1;
+
+            sand_chunk_cells(p, cx, cy, &x0, &x1, &y0, &y1);
+            const int awake = blocks_settled_over(s, x0, x1, y0, y1, s->settled_bit) ? 0 : (x1 - x0) * (y1 - y0);
+            cost[cy * p->cols + cx] = awake;
+            total += awake;
+        }
+    }
+    return total;
+}
+
+/* Whether what is awake can keep two lanes busy enough to be worth handing
+ * them. The schedule's own span model answers it: awake chunks forming a
+ * chain along travel - a falling column, a pour into a settled board - model
+ * a span no shorter than walking them one after another, and are better swept
+ * row-major, which costs nothing to order and nothing to join. */
+static bool
+chunk_pass_divides(const sand_t* s, const sand_chunk_plan_t* p, int tx, int ty) {
+    int cost[SAND_CHUNKS_MAX];
+    sand_chunk_order_t order;
+
+    const int awake = chunk_awake_costs(s, p, cost);
+    if (awake < SAND_CHUNK_SPLIT_MIN_AWAKE_CELLS) {
+        return false;
+    }
+    sand_chunk_order(&order, p->cols, p->rows, tx, ty, s->step_phase);
+    return sand_chunk_makespan(&order, p->cols, p->rows, cost) * 100 <= awake * SAND_CHUNK_SPLIT_SPAN_SHARE_PERCENT;
+}
+
 bool
 sand_chunk_pass_ready(const sand_t* s, sand_split_pass_t pass, int tx, int ty) {
     sand_chunk_plan_t fits;
@@ -1631,7 +1682,13 @@ sand_chunk_pass_ready(const sand_t* s, sand_split_pass_t pass, int tx, int ty) {
         return false;
     }
     sand_chunk_sides(s, sand_chunk_travel_of(tx, ty), &side_x, &side_y);
-    return sand_chunk_plan(&fits, s->w, s->h, side_x, side_y, 0, 0);
+    if (!sand_chunk_plan(&fits, s->w, s->h, side_x, side_y, 0, 0)) {
+        return false;
+    }
+    if (chunk_share_mode != SAND_CHUNK_SHARE_AUTO) {
+        return chunk_share_mode == SAND_CHUNK_SHARE_ALWAYS;
+    }
+    return chunk_pass_divides(s, &fits, tx, ty);
 }
 
 int sand_chunk_side_forced[2];
@@ -1691,6 +1748,7 @@ sand_chunk_pass_run(sand_t* s, sand_split_pass_t pass_id, int tx, int ty, sand_c
     if (!sand_chunk_pass_ready(s, pass_id, tx, ty) || lanes == NULL) {
         return false;
     }
+    sand_split_dispatches++;
     sand_chunk_sides(s, sand_chunk_travel_of(tx, ty), &side_x, &side_y);
     (void)sand_chunk_plan(&chunk_plan, s->w, s->h, side_x, side_y, 0, 0);
     sand_chunk_order(&chunk_sched.order, chunk_plan.cols, chunk_plan.rows, tx, ty, s->step_phase);
@@ -1726,6 +1784,8 @@ sand_chunk_pass_run(sand_t* s, sand_split_pass_t pass_id, int tx, int ty, sand_c
     s->rng_hashed = false;
     return true;
 }
+
+unsigned sand_split_dispatches;
 
 /* Chunks this step's sweep did not skip, counted per lane and summed once
  * both have joined. */
@@ -1816,6 +1876,8 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     const int* slide_b = ring_dir(i + 1);
 
     const uint8_t settled_bit = compute_settled_bit(s, jostle, dx, dy, load_dx, load_dy);
+
+    s->settled_bit = settled_bit;
 
     /* A body held up under one gravity can be loose under the next, and a turn
      * that moves no cell marks no row - so mark_rows() cannot be what re-arms
