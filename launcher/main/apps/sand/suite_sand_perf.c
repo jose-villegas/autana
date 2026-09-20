@@ -698,6 +698,8 @@ test_two_core_step_at_every_quality_grid_size(void) {
     }
 }
 
+#endif /* DEVICE_BUILD */
+
 /* --- the chunk layout sweep ---------------------------------------------- *
  *
  * One machine-readable line per (quality, side pair, scene, orientation,
@@ -710,8 +712,53 @@ test_two_core_step_at_every_quality_grid_size(void) {
  */
 
 #define SWEEP_STEPS 12
-#define SWEEP_SIDES 5
+#define SWEEP_SIDES 8
 #define SWEEP_SEED  11u
+
+typedef struct {
+    const char* name;
+    int w, h;
+    int sides[SWEEP_SIDES][2]; /* a {0, 0} entry ends the list */
+} sweep_quality_t;
+
+/* Round two, from the board's own round-one microseconds: the winners were
+ * 17 cells across the direction of travel and long along it, so each list
+ * walks the length at a fixed 17 and then transposes that shape, keeping the
+ * shipped side and round one's winner so the rounds stay comparable. Landscape
+ * travels along x and portrait along y, which is why both shapes are here.
+ * 37x17 at ULTRA is 5x14 and does not fit SAND_CHUNKS_MAX. */
+static const sweep_quality_t sweep_qualities[] = {
+    {"ULTRA", 184, 224, {{47, 17}, {62, 17}, {92, 17}, {45, 45}, {17, 45}, {17, 56}, {17, 75}}},
+    {"HIGH", 122, 149, {{25, 17}, {34, 17}, {41, 17}, {61, 17}, {30, 30}, {17, 30}, {17, 38}, {17, 50}}},
+    {"NORMAL", 92, 112, {{17, 17}, {23, 17}, {31, 17}, {46, 17}, {22, 22}, {17, 23}, {17, 28}, {17, 38}}},
+    /* Two apiece: at these grids every layout round one tried was slower
+     * than one core, and these exist only to confirm that it stays so. */
+    {"LOW", 61, 74, {{17, 17}, {22, 17}}},
+    {"VERY LOW", 46, 56, {{17, 17}, {20, 17}}},
+};
+
+/* Portable, so an unplannable cut fails on a laptop: the board would fall
+ * back to one lane and the line would read as a measurement of the side it
+ * asked for. */
+static void
+test_every_swept_chunk_layout_is_one_the_planner_takes(void) {
+    for (size_t qi = 0; qi < sizeof sweep_qualities / sizeof sweep_qualities[0]; qi++) {
+        const sweep_quality_t* const q = &sweep_qualities[qi];
+
+        for (int di = 0; di < SWEEP_SIDES && q->sides[di][0] != 0; di++) {
+            sand_chunk_plan_t plan;
+            char why[160];
+
+            snprintf(why, sizeof why, "%s %dx%d: %dx%d is not a cut sand_chunk_plan() takes", q->name, q->w, q->h,
+                     q->sides[di][0], q->sides[di][1]);
+            TEST_ASSERT_TRUE_MESSAGE(q->sides[di][0] >= SAND_CHUNK_SIDE_MIN && q->sides[di][1] >= SAND_CHUNK_SIDE_MIN,
+                                     why);
+            TEST_ASSERT_TRUE_MESSAGE(sand_chunk_plan(&plan, q->w, q->h, q->sides[di][0], q->sides[di][1], 0, 0), why);
+        }
+    }
+}
+
+#ifdef DEVICE_BUILD
 
 typedef struct {
     const char* name;
@@ -730,14 +777,6 @@ static const sweep_scene_t sweep_scenes[] = {
     {"sand-only", build_layout_sand_only_scene},           {"settling-pile", build_layout_settling_pile_scene},
     {"levelling-pool", build_layout_levelling_pool_scene},
 };
-
-typedef struct {
-    const char* name;
-    int w, h;
-    int sides[SWEEP_SIDES][2]; /* the host pre-filter's shortlist, plus the
-                                * side the rule picks and the one it used to
-                                * - a {0, 0} entry ends the list */
-} sweep_quality_t;
 
 typedef struct {
     sand_t s;
@@ -776,14 +815,29 @@ sweep_board_close(sweep_board_t* b) {
 /* The scene is painted with the split off, so every arm starts on the same
  * board, and the warm-up runs inside the arm: a board settled by one lane is
  * not the board two lanes settle. A split arm's instruction count sums both
- * cores, so only the solo arm prices the chunking itself. */
+ * cores, so only the solo arm prices the chunking itself. The hashed arm
+ * takes the split's per-cell draws down the serial walk, so the hash is
+ * priced apart from the chunking that needs it. */
 typedef enum {
     SWEEP_ARM_SERIAL,
+    SWEEP_ARM_SERIAL_HASHED,
     SWEEP_ARM_SOLO,
     SWEEP_ARM_SPLIT,
 } sweep_arm_t;
 
-static const char* const sweep_arm_names[] = {"serial", "solo", "split"};
+static const char* const sweep_arm_names[] = {"serial", "serial-hashed", "solo", "split"};
+
+typedef struct {
+    int64_t sweep, liquid, gas, react;
+} sweep_pass_us_t;
+
+static void
+sweep_pass_add(sweep_pass_us_t* into, const sand_t* s) {
+    into->sweep += s->pass_us.sweep_us;
+    into->liquid += s->pass_us.liquid_us + s->pass_us.float_us;
+    into->gas += s->pass_us.gas_us;
+    into->react += s->pass_us.reactions_us;
+}
 
 static void
 sweep_cell(const sweep_quality_t* q, const sweep_scene_t* sc, const int* side, const sweep_orient_t* o,
@@ -795,33 +849,109 @@ sweep_cell(const sweep_quality_t* q, const sweep_scene_t* sc, const int* side, c
     const int warm = sc->build(&b.s);
     const int chunks = sand_chunk_cols(&b.s) * sand_chunk_rows(&b.s);
 
-    const two_core_scope_t core = two_core_scope_begin(arm != SWEEP_ARM_SERIAL);
+    const two_core_scope_t core = two_core_scope_begin(arm >= SWEEP_ARM_SOLO);
+    sand_force_hashed_rng(arm == SWEEP_ARM_SERIAL_HASHED);
     sand_chunk_pass_set_driver_for_test(arm == SWEEP_ARM_SOLO ? SAND_CHUNK_PASS_SOLO : SAND_CHUNK_PASS_CORE1);
     for (int i = 0; i < warm; i++) {
         sand_step(&b.s, o->gx, o->gy, 0);
     }
     b.s.split_lane_aborts = 0;
+    sweep_pass_us_t pass = {0};
     const int64_t start = esp_timer_get_time();
     for (int i = 0; i < SWEEP_STEPS; i++) {
         sand_step(&b.s, o->gx, o->gy, 0);
+        sweep_pass_add(&pass, &b.s);
     }
-    const int64_t per_step = (esp_timer_get_time() - start) / SWEEP_STEPS;
+    const int64_t took = esp_timer_get_time() - start;
     sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_CORE1);
+    sand_force_hashed_rng(false);
     two_core_scope_end(core);
     collect_core1_lane();
 
+    const int64_t per_step = took / SWEEP_STEPS;
+    const int64_t timed = pass.sweep + pass.liquid + pass.gas + pass.react;
+    const int64_t other = (took > timed) ? took - timed : 0;
+
     ESP_LOGI("device_tests",
              "CHUNK_SWEEP quality=%s grid=%dx%d side=%dx%d scene=%s orient=%s arm=%s us_per_step=%lld aborts=%u "
-             "chunks=%d",
+             "chunks=%d sweep_us=%lld liquid_us=%lld gas_us=%lld react_us=%lld other_us=%lld",
              q->name, q->w, q->h, side[0], side[1], sc->name, o->name, sweep_arm_names[arm], (long long)per_step,
-             b.s.split_lane_aborts, chunks);
+             b.s.split_lane_aborts, chunks, (long long)(pass.sweep / SWEEP_STEPS),
+             (long long)(pass.liquid / SWEEP_STEPS), (long long)(pass.gas / SWEEP_STEPS),
+             (long long)(pass.react / SWEEP_STEPS), (long long)(other / SWEEP_STEPS));
 
     (void)sand_chunk_side_for_test(0, 0);
     sweep_board_close(&b);
 }
 
+/* Settled is a grid that stopped changing, not a step count: a pile takes
+ * many times longer to come to rest at the largest grid than the smallest,
+ * and a count generous at one end reads the other still moving. Measured
+ * under emulation, 240 steps left the middle grid at 70 times its own floor. */
+#define SWEEP_FLOOR_QUIET 8
+#define SWEEP_FLOOR_CAP   4000
+#define SWEEP_FLOOR_STEPS 40
+
+static int
+sweep_floor_settle(sweep_board_t* b, size_t cells) {
+    uint32_t last = 0;
+    int quiet = 0;
+    int steps = 0;
+
+    while (steps < SWEEP_FLOOR_CAP && quiet < SWEEP_FLOOR_QUIET) {
+        sand_step(&b->s, 0, 1000, 0);
+        const uint32_t now = grid_hash(b->cells, cells);
+        quiet = (now == last) ? quiet + 1 : 0;
+        last = now;
+        steps++;
+    }
+    return steps;
+}
+
+static int64_t
+sweep_floor_arm(const sweep_quality_t* q, bool two_core, int* out_settle_steps) {
+    sweep_board_t b;
+
+    sweep_board_open(&b, q->w, q->h);
+    (void)build_layout_settling_pile_scene(&b.s);
+
+    const two_core_scope_t core = two_core_scope_begin(two_core);
+    const int settled_in = sweep_floor_settle(&b, (size_t)q->w * (size_t)q->h);
+    const int64_t start = esp_timer_get_time();
+    for (int i = 0; i < SWEEP_FLOOR_STEPS; i++) {
+        sand_step(&b.s, 0, 1000, 0);
+    }
+    const int64_t per_step = (esp_timer_get_time() - start) / SWEEP_FLOOR_STEPS;
+    two_core_scope_end(core);
+    collect_core1_lane();
+
+    sweep_board_close(&b);
+    if (settled_in > *out_settle_steps) {
+        *out_settle_steps = settled_in;
+    }
+    return per_step;
+}
+
+/* On the shipped side, not a swept one: this is the price of involving the
+ * second core at all - four passes of prepare, merge, dispatch and join, and
+ * the stamp clear - against a board with nothing left to hand it.
+ * settle_steps at the cap means the pile never came to rest, so the two
+ * numbers beside it are a transient and not the floor. */
+static void
+sweep_floor(const sweep_quality_t* q) {
+    int settle_steps = 0;
+
+    (void)sand_chunk_side_for_test(0, 0);
+    const int64_t serial = sweep_floor_arm(q, false, &settle_steps);
+    const int64_t split = sweep_floor_arm(q, true, &settle_steps);
+
+    ESP_LOGI("device_tests", "CHUNK_SWEEP_FLOOR quality=%s serial_us=%lld split_us=%lld settle_steps=%d", q->name,
+             (long long)serial, (long long)split, settle_steps);
+}
+
 static void
 sweep_quality(const sweep_quality_t* q) {
+    sweep_floor(q);
     for (int si = 0; si < (int)(sizeof sweep_scenes / sizeof sweep_scenes[0]); si++) {
         for (int di = 0; di < SWEEP_SIDES && q->sides[di][0] != 0; di++) {
             for (int oi = 0; oi < (int)(sizeof sweep_orients / sizeof sweep_orients[0]); oi++) {
@@ -834,37 +964,41 @@ sweep_quality(const sweep_quality_t* q) {
     ESP_LOGI("device_tests", "CHUNK_SWEEP_COMPLETE quality=%s", q->name);
 }
 
-/* The shortlists main/apps/sand/tools/report_chunk_layout.sh produced, each
- * carrying the side the rule picks for that grid and the one a divisor of ten
- * used to, so a rerun reads the change as well as the ranking. */
+/* By name, so reordering the table cannot quietly swap what a suite sweeps. */
+static void
+sweep_quality_named(const char* name) {
+    for (size_t i = 0; i < sizeof sweep_qualities / sizeof sweep_qualities[0]; i++) {
+        if (strcmp(sweep_qualities[i].name, name) == 0) {
+            sweep_quality(&sweep_qualities[i]);
+            return;
+        }
+    }
+    TEST_FAIL_MESSAGE("no swept quality by that name");
+}
+
 static void
 test_chunk_sweep_ultra(void) {
-    static const sweep_quality_t q = {"ULTRA", 184, 224, {{47, 36}, {47, 17}, {62, 17}, {64, 64}, {45, 45}}};
-    sweep_quality(&q);
+    sweep_quality_named("ULTRA");
 }
 
 static void
 test_chunk_sweep_high(void) {
-    static const sweep_quality_t q = {"HIGH", 122, 149, {{25, 17}, {34, 17}, {25, 28}, {42, 42}, {30, 30}}};
-    sweep_quality(&q);
+    sweep_quality_named("HIGH");
 }
 
 static void
 test_chunk_sweep_normal(void) {
-    static const sweep_quality_t q = {"NORMAL", 92, 112, {{22, 24}, {17, 24}, {17, 17}, {32, 32}, {22, 22}}};
-    sweep_quality(&q);
+    sweep_quality_named("NORMAL");
 }
 
 static void
 test_chunk_sweep_low(void) {
-    static const sweep_quality_t q = {"LOW", 61, 74, {{17, 17}, {19, 17}, {21, 17}, {22, 17}, {21, 21}}};
-    sweep_quality(&q);
+    sweep_quality_named("LOW");
 }
 
 static void
 test_chunk_sweep_very_low(void) {
-    static const sweep_quality_t q = {"VERY LOW", 46, 56, {{17, 17}, {18, 17}, {19, 17}, {20, 17}, {0, 0}}};
-    sweep_quality(&q);
+    sweep_quality_named("VERY LOW");
 }
 
 static void
@@ -4141,6 +4275,7 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_the_soak_only_skip_dispatches_far_fewer_cells_than_a_full_walk);
     RUN_TEST(test_the_soak_only_skip_matches_the_full_walks_grid_exactly);
     RUN_TEST(test_the_soak_only_skip_hash_survives_ambient_two_core_state);
+    RUN_TEST(test_every_swept_chunk_layout_is_one_the_planner_takes);
 
 #ifdef DEVICE_BUILD
     /* Every budget test below pins its own mode now, so this is provenance,
