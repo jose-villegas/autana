@@ -1,14 +1,14 @@
 /*
  * r3d_ray - a float ray camera: origin plus an orthonormal forward/right/up
- * basis, and the physical-pixel-to-direction math a ray tracer needs. This
- * is what rt_cornell.c's physical_to_logical()/camera_ray_dir() did by
- * hand: the quarter-turn physical-to-upright mapping and fitting the lens
- * to a viewport's SHORTER axis, both shared with r3d_viewport_t.
+ * basis, and the direction of the ray through a physical pixel - the
+ * quarter-turn physical-to-upright mapping and a lens fitted to the
+ * viewport's SHORTER axis, on the same r3d_viewport_t a rasteriser uses.
  *
- * Single-precision throughout on purpose - a ray camera's pose is not
- * exactly representable in S3L_F units - so a `.c` including this carries
- * `#pragma GCC diagnostic error "-Wdouble-promotion"` itself. No converter
- * to or from the fixed-point r3d_camera_t: nothing calls one yet.
+ * SINGLE PRECISION ONLY. The FPU this runs on has no double, so one stray
+ * promotion costs an order of magnitude; a .c including this carries
+ * `#pragma GCC diagnostic error "-Wdouble-promotion"` itself, since a pragma
+ * in a header would bind every includer. The pose is float rather than
+ * S3L_F units because a caller's numbers need not be representable there.
  */
 #pragma once
 
@@ -63,9 +63,9 @@ r3d_ray_camera_init(r3d_ray_camera_t* cam, r3d_vec3f_t origin, r3d_vec3f_t forwa
     cam->viewport = viewport;
 }
 
-/* The inverse of the rotation ui_transform_quarter_turn()/write_bmp() apply
- * when reading a physical canvas back out at `viewport.quarter` - worked out
- * by hand for the four cases rather than pulled in as a UI-layer dependency. */
+/* The inverse of ui_transform_quarter_turn(): where in the upright picture
+ * a physical pixel lands once the panel is read at `viewport.quarter`.
+ * Spelled out here rather than included, since render/ sits below ui/. */
 static inline void
 r3d_physical_to_upright(r3d_viewport_t viewport, int px, int py, int* ux, int* uy) {
     switch (viewport.quarter) {
