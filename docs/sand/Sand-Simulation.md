@@ -1263,10 +1263,17 @@ The plan is rebuilt per pass, so one landscape step cuts its gravity sweep
 plan the arming pass runs on, and cleared when it ends, so a mark can never be
 read under a cut it was not written under.
 
+Below `SAND_CHUNK_SPLIT_MIN_CELLS`, NORMAL's own grid, the shipped step keeps
+every pass on one core: LOW's 61x74 measured 1.04-1.32 of a serial step on the
+board and VERY LOW's 46x56 1.27-1.32, at every cut tried. `sand_chunk_pass_ready()`
+is where that is asked, so no pass can miss it.
+
 `sand_chunk_plan()` takes a side per axis rather than one square side, and
 `sand_chunk_side_for_test()` overrides either (0 keeps the table's side for
 that axis, a side under the floor is refused) so a measurement can rank
-layouts. A cut the grid cannot take - one chunk on an axis, or more than
+layouts. A forced side also carries a board past the floor above, which is
+what lets the seam tests keep running on the small grids. A cut the grid
+cannot take - one chunk on an axis, or more than
 `SAND_CHUNKS_MAX` - falls back to one lane, whichever chose it. The host
 pre-filter (`main/apps/sand/tools/report_chunk_layout.sh`) ranks candidates by
 how evenly they divide a board's work before any of them is timed; see

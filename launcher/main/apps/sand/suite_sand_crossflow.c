@@ -46,6 +46,30 @@ crossflow_fixture(void) {
     return f;
 }
 
+/* This grid sits under SAND_CHUNK_SPLIT_MIN_CELLS, so a split arm here has
+ * to ask for the cut. The floor cut is what the table gives this grid in
+ * either travel class, so the borders the scenes aim at are the shipped
+ * ones. */
+typedef struct {
+    two_core_scope_t core;
+} cf_split_t;
+
+static cf_split_t
+cf_split_begin(void) {
+    cf_split_t on;
+
+    on.core = two_core_scope_begin(true);
+    TEST_ASSERT_TRUE_MESSAGE(sand_chunk_side_for_test(SAND_CHUNK_SIDE_MIN, SAND_CHUNK_SIDE_MIN),
+                             "the floor cut must be one this grid takes");
+    return on;
+}
+
+static void
+cf_split_end(cf_split_t on) {
+    (void)sand_chunk_side_for_test(0, 0);
+    two_core_scope_end(on.core);
+}
+
 enum { SORT_W = 8, SORT_H = 8 };
 
 static void
@@ -141,9 +165,9 @@ test_split_crossflow_uses_hashed_viscosity(void) {
     f->s.mobility = 128;
     const rng_t before = f->s.rng;
     const xflow_t flow = {.ax = {0, 1}, .dg = {0, 1}};
-    sand_set_two_core_step(true);
+    const cf_split_t on = cf_split_begin();
     sand_step_liquids(&f->s, &flow, 1, 0);
-    sand_set_two_core_step(false);
+    cf_split_end(on);
     const rng_t after = f->s.rng;
     crossflow_free(f);
     TEST_ASSERT_EQUAL_MEMORY_MESSAGE(&before, &after, sizeof before,
@@ -161,9 +185,14 @@ crossflow_step(crossflow_fixture_t* f, int px, int py, bool split) {
     }
     f->s.last_load_dx = -py;
     f->s.last_load_dy = px;
-    sand_set_two_core_step(split);
+    if (!split) {
+        sand_step_liquids(&f->s, &flow, -py, px);
+        return;
+    }
+
+    const cf_split_t on = cf_split_begin();
     sand_step_liquids(&f->s, &flow, -py, px);
-    sand_set_two_core_step(false);
+    cf_split_end(on);
 }
 
 static unsigned

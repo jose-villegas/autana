@@ -33,9 +33,10 @@ static const int tc_ring[][2] = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-
 
 /* The seam scenes place cells by one side on BOTH axes and sweep every
  * gravity, so the borders they aim at must not move with the travel class:
- * they force a square cut. A square side near a twentieth of the board keeps
- * the chunk count, and so the scene count, where it was. Paired with
- * tc_release_square_side(). */
+ * they force a square cut, and the force is what also carries the smaller
+ * grids past SAND_CHUNK_SPLIT_MIN_CELLS. A square side near a twentieth of
+ * the board keeps the chunk count, and so the scene count, where it was.
+ * Paired with tc_release_square_side(). */
 static int
 tc_force_square_side(int w, int h) {
     const int target = (w * h) / 20;
@@ -495,22 +496,50 @@ test_two_core_step_actually_changes_the_draw_stream(void) {
                                   "falling back to the sequential stream");
 }
 
+/* The smallest grid the shipped step still splits. */
 static void
-test_two_core_step_changes_the_draw_stream_at_smaller_qualities(void) {
-    static const struct {
-        int w, h;
-    } qualities[] = {{92, 112}, {61, 74}, {46, 56}};
-
+test_two_core_step_changes_the_draw_stream_at_the_smallest_split_quality(void) {
     static const uint32_t seeds[] = {1u, 7u, 42u, 12345u, 99991u, 0xC0FFEEu};
 
+    for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
+        const uint32_t serial = tc_run_quality_and_hash(92, 112, seeds[i], false);
+        const uint32_t split = tc_run_quality_and_hash(92, 112, seeds[i], true);
+        char why[160];
+        snprintf(why, sizeof why, "92x112 seed %u: two-core stepping did not change the draw stream",
+                 (unsigned)seeds[i]);
+        TEST_ASSERT_NOT_EQUAL_MESSAGE(serial, split, why);
+    }
+}
+
+/* Under SAND_CHUNK_SPLIT_MIN_CELLS the second core costs more than it buys,
+ * so asking for it changes nothing - and a forced side still gets it, which
+ * is what keeps the seam scenes on these grids worth running. */
+static void
+test_a_grid_under_the_split_floor_steps_serially_unless_a_side_is_forced(void) {
+    static const struct {
+        int w, h;
+    } qualities[] = {{61, 74}, {46, 56}};
+
+    static const uint32_t seeds[] = {1u, 7u, 42u, 12345u};
+
     for (size_t q = 0; q < sizeof qualities / sizeof qualities[0]; q++) {
+        const int w = qualities[q].w;
+        const int h = qualities[q].h;
+
+        TEST_ASSERT_LESS_THAN_INT_MESSAGE(SAND_CHUNK_SPLIT_MIN_CELLS, w * h, "this grid must sit under the floor");
         for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
-            const uint32_t serial = tc_run_quality_and_hash(qualities[q].w, qualities[q].h, seeds[i], false);
-            const uint32_t split = tc_run_quality_and_hash(qualities[q].w, qualities[q].h, seeds[i], true);
+            const uint32_t serial = tc_run_quality_and_hash(w, h, seeds[i], false);
             char why[160];
-            snprintf(why, sizeof why, "%dx%d seed %u: two-core stepping did not change the draw stream", qualities[q].w,
-                     qualities[q].h, (unsigned)seeds[i]);
-            TEST_ASSERT_NOT_EQUAL_MESSAGE(serial, split, why);
+
+            snprintf(why, sizeof why, "%dx%d seed %u: a grid under the floor split anyway", w, h, (unsigned)seeds[i]);
+            TEST_ASSERT_EQUAL_HEX32_MESSAGE(serial, tc_run_quality_and_hash(w, h, seeds[i], true), why);
+
+            const int side = tc_force_square_side(w, h);
+            const uint32_t forced = tc_run_quality_and_hash(w, h, seeds[i], true);
+            tc_release_square_side();
+            snprintf(why, sizeof why, "%dx%d side %d seed %u: a forced side did not reach the split", w, h, side,
+                     (unsigned)seeds[i]);
+            TEST_ASSERT_NOT_EQUAL_MESSAGE(serial, forced, why);
         }
     }
 }
@@ -2681,7 +2710,8 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_split_gas_spread_never_hops_into_a_chunk_ranked_later);
     RUN_TEST(test_the_split_gas_passes_ignore_how_their_lanes_interleave);
     RUN_TEST(test_two_core_step_actually_changes_the_draw_stream);
-    RUN_TEST(test_two_core_step_changes_the_draw_stream_at_smaller_qualities);
+    RUN_TEST(test_two_core_step_changes_the_draw_stream_at_the_smallest_split_quality);
+    RUN_TEST(test_a_grid_under_the_split_floor_steps_serially_unless_a_side_is_forced);
     RUN_TEST(test_two_core_step_does_not_leak_or_fabricate_mass);
     RUN_TEST(test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam);
     RUN_TEST(test_two_core_step_never_double_moves_at_a_seam);

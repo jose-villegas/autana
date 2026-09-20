@@ -69,10 +69,17 @@ void sand_chunk_table_sides(int w, int h, sand_chunk_travel_t travel, int* side_
 /* Not sand.h API: a measurement's own chunk side per axis, in cells, or 0 on
  * an axis for the table. Set through sand_chunk_side_for_test(), which is what
  * enforces SAND_CHUNK_SIDE_MIN; a cut that does not fit falls back to one lane
- * exactly as a table entry's own would. */
+ * exactly as a table entry's own would. A forced side also carries a board past
+ * SAND_CHUNK_SPLIT_MIN_CELLS, so a test can split a grid the shipped step
+ * would not. */
 extern int sand_chunk_side_forced[2];
 
 bool sand_chunk_side_for_test(int side_x, int side_y);
+
+static inline bool
+sand_chunk_side_is_forced(void) {
+    return sand_chunk_side_forced[0] != 0 || sand_chunk_side_forced[1] != 0;
+}
 
 static inline void
 sand_chunk_sides(const sand_t* s, sand_chunk_travel_t travel, int* side_x, int* side_y) {
@@ -195,8 +202,14 @@ void sand_lane_prepare(sand_lane_t* lane, const sand_t* s);
  * flags - see latch_content_flags() and the BLOCK_* bits below. */
 void sand_lane_merge(sand_t* s, const sand_lane_t* lane);
 
+/* Below this a step is quicker on one core whatever the cut: 61x74 measured
+ * 1.04-1.32 of a serial step on the board and 46x56 1.27-1.32, while 92x112
+ * and up win. A forced side is a measurement asking for the split, and gets
+ * it on any grid. */
+#define SAND_CHUNK_SPLIT_MIN_CELLS (92 * 112)
+
 /* Whether a split pass can run at all: two-core stepping on, lane scratch
- * present, and its class's cut fits. */
+ * present, a grid worth dividing, and its class's cut fits. */
 bool sand_chunk_pass_ready(const sand_t* s, int tx, int ty);
 
 /* Whether a pass needs the arrival marks: only one that can hand a cell on
