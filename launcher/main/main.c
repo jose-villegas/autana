@@ -728,6 +728,7 @@ app_main_loop(void) {
         if (dt_ms > FRAME_DT_MAX_MS) {
             dt_ms = FRAME_DT_MAX_MS;
         }
+        FRAME_COST_BEGIN(rest_began);
 
 #if CONFIG_LAUNCHER_SELFTEST
         run_pending_selftest_suite();
@@ -747,6 +748,7 @@ app_main_loop(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
         report_fps(now_us, &fps_window_start, &frames);
 #endif
+        FRAME_COST_END(rest_began, "frame.rest");
 
         /* Yield so the idle task can feed the watchdog. */
         vTaskDelay(1);
