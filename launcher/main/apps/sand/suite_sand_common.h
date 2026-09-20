@@ -213,3 +213,8 @@ void two_core_scope_end(two_core_scope_t scope);
  * block back for the caller to free. A two-core test without it measures
  * the serial path - see sand_enable_lane_scratch(). */
 void* lane_scratch_open(sand_t* g);
+
+/* A lane whose join timed out is still inside the board, so a scene ending on
+ * one hands the next a core still writing into memory about to be freed and
+ * handed back. Waits it out before anything reads what it wrote. */
+void collect_core1_lane(void);

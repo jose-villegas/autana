@@ -20,15 +20,18 @@
 
 #include "sand.h"
 #include "sand_priv.h"
-
-#define CL_SAND       SAND_FIRST_SHADE
-#define CL_STONE      CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT)
-#define CL_WATER      CELL_MAKE(MAT_WATER, MASS_MAX)
+#include "suite_sand_scenes.h"
 
 #define STEPS         16
-#define SETTLE_STEPS  200
 #define AXIS_SAMPLES  6
 #define SHORTLIST_MAX 4
+
+/* Unity comes in with the shared scene builders and wants both. */
+void
+setUp(void) {}
+
+void
+tearDown(void) {}
 
 typedef struct {
     const char* name;
@@ -89,100 +92,21 @@ board_close(board_t* b) {
 
 /* --- scenes ---------------------------------------------------------------
  *
- * The first three mirror what the frame-budget suite measures, rebuilt here
- * because its own builders are fixed at one grid. The last two are the shapes
- * a layout is most likely to divide badly: work confined to one line.
+ * suite_sand_scenes.c's layout set, so this tool and the emulated sweep rank
+ * and measure the same five boards.
  */
 
-static void
-fill(sand_t* s, int x0, int x1, int y0, int y1, cell_t c) {
-    for (int y = y0; y < y1; y++) {
-        for (int x = x0; x < x1; x++) {
-            sand_set(s, x, y, c);
-        }
-    }
-}
-
-static void
-build_mixed_flip(board_t* b, int w, int h) {
-    board_open(b, w, h, 17u);
-
-    const int sand_x1 = (w * 3) / 10;
-    const int water_x0 = w - (w * 3) / 10;
-    fill(&b->s, 0, sand_x1, h / 2, h, CL_SAND);
-    fill(&b->s, water_x0, w, h / 2, h, CL_WATER);
-    for (int y = 0; y < h; y++) {
-        const int off = (y * (water_x0 - sand_x1 - 1)) / (h - 1);
-        sand_set(&b->s, sand_x1 + off, y, CL_STONE);
-        sand_set(&b->s, water_x0 - 1 - off, y, CL_STONE);
-    }
-    for (int i = 0; i < SETTLE_STEPS; i++) {
-        sand_step(&b->s, 0, 1000, 0);
-    }
-}
-
-static void
-build_water(board_t* b, int w, int h) {
-    board_open(b, w, h, 11u);
-    fill(&b->s, w / 4, (w * 3) / 4, 0, h / 2, CL_WATER);
-}
-
-static void
-build_sand_only(board_t* b, int w, int h) {
-    board_open(b, w, h, 99u);
-    for (int y = 0; y < h / 2; y++) {
-        for (int x = 0; x < w; x++) {
-            if (((x + y) & 1) == 0) {
-                sand_set(&b->s, x, y, CL_SAND);
-            }
-        }
-    }
-}
-
-/* Poured and left until only its surface still moves: most chunks asleep,
- * and the ones that are not lie along one line across gravity. */
-static void
-build_settling_pile(board_t* b, int w, int h) {
-    board_open(b, w, h, 5u);
-    fill(&b->s, w / 4, (w * 3) / 4, h / 3, h, CL_SAND);
-    for (int i = 0; i < SETTLE_STEPS; i++) {
-        sand_step(&b->s, 0, 1000, 0);
-    }
-}
-
-/* A basin of water whose surface is uneven, so cross-flow has somewhere to
- * move mass on every ray and the work is a band, not a block. */
-static void
-build_levelling_pool(board_t* b, int w, int h) {
-    board_open(b, w, h, 7u);
-    fill(&b->s, 1, w - 1, (h * 2) / 3, h, CL_WATER);
-    fill(&b->s, 0, 1, 0, h, CL_STONE);
-    fill(&b->s, w - 1, w, 0, h, CL_STONE);
-    fill(&b->s, 0, w, h - 1, h, CL_STONE);
-    fill(&b->s, w / 3, (w * 2) / 3, h / 2, (h * 2) / 3, CL_WATER);
-    for (int i = 0; i < SETTLE_STEPS / 4; i++) {
-        sand_step(&b->s, 0, 1000, 0);
-    }
-}
-
-typedef void (*build_fn)(board_t*, int, int);
+typedef int (*build_fn)(sand_t*);
 
 typedef struct {
     const char* name;
     build_fn build;
-    int warm; /* steps under the measured gravity before counting starts */
 } scene_t;
 
-/* The first three are measured on the transient - a board still collapsing,
- * or turned onto a new down. The last two are warmed in the orientation they
- * are measured in, because what they are for is a board whose work has
- * already shrunk to a surface. */
 static const scene_t scenes[] = {
-    {"mixed-flip", build_mixed_flip, 0},
-    {"water", build_water, 0},
-    {"sand-only", build_sand_only, 0},
-    {"settling-pile", build_settling_pile, SETTLE_STEPS},
-    {"levelling-pool", build_levelling_pool, SETTLE_STEPS},
+    {"mixed-flip", build_layout_mixed_flip_scene},         {"water", build_layout_water_scene},
+    {"sand-only", build_layout_sand_only_scene},           {"settling-pile", build_layout_settling_pile_scene},
+    {"levelling-pool", build_layout_levelling_pool_scene},
 };
 
 #define QUALITIES ((int)(sizeof qualities / sizeof qualities[0]))
@@ -223,14 +147,15 @@ measure(const quality_t* q, const scene_t* sc, const gravity_t* g, int side_x, i
     }
     out->chunks = plan.cols * plan.rows;
 
-    sc->build(&b, q->w, q->h);
+    board_open(&b, q->w, q->h, 11u);
+    const int warm = sc->build(&b.s);
     if (!sand_chunk_side_for_test(side_x, side_y)) {
         fprintf(stderr, "chunk_layout: %dx%d refused\n", side_x, side_y);
         exit(1);
     }
     sand_set_two_core_step(true);
     sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_SOLO);
-    for (int i = 0; i < sc->warm; i++) {
+    for (int i = 0; i < warm; i++) {
         sand_step(&b.s, g->gx, g->gy, 0);
     }
     sand_chunk_work_enable(true);

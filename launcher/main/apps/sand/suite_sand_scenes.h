@@ -67,6 +67,17 @@ void build_all_pairs_scene(sand_t* s);
  * ceiling first. */
 #define ALL_PAIRS_IMPULSE_MAX 2048
 
+/* The layout set: five boards painted to whatever grid the sand_t already
+ * carries, so a chunk cut can be ranked at every quality. Shared because the
+ * host pre-filter and the emulated sweep must rank and measure the same
+ * board, or the shortlist means nothing. Each returns the steps to run under
+ * the measured gravity first - 0 where the transient is the point. */
+int build_layout_mixed_flip_scene(sand_t* s);
+int build_layout_water_scene(sand_t* s);
+int build_layout_sand_only_scene(sand_t* s);
+int build_layout_settling_pile_scene(sand_t* s);
+int build_layout_levelling_pool_scene(sand_t* s);
+
 void build_four_liquid_scene(sand_t* s);
 void build_lava_stress_scene(sand_t* s);
 void build_smoke_and_steam_scene(sand_t* s);

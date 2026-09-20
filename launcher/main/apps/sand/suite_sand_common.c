@@ -12,6 +12,7 @@
 
 #include "sand.h"
 #include "suite_sand_common.h"
+#include "util/job.h"
 
 sand_t s;
 uint8_t cells[W * H];
@@ -354,4 +355,10 @@ lane_scratch_open(sand_t* g) {
     TEST_ASSERT_NOT_NULL(scratch);
     sand_enable_lane_scratch(g, scratch);
     return scratch;
+}
+
+void
+collect_core1_lane(void) {
+    for (int tries = 0; tries < 20 && !job_wait(100); tries++) {}
+    TEST_ASSERT_TRUE_MESSAGE(job_wait(0), "a core-1 lane never came back");
 }
