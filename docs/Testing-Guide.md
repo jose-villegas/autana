@@ -134,20 +134,22 @@ over, for both:
   `malloc`/`calloc`/`realloc`/`free` are redirected (`-Wl,--wrap=`) into
   `heap_arena.c`, a first-fit arena exactly the size of the device's free
   heap. First-fit with real coalescing, because the rule that bites is
-  contiguity, not totals: one grid is 41,216 contiguous bytes, and it fails
-  on a heap with 50 KB free whose largest block is 38 KB. Blocks still
-  outstanding when a test ends print a `LEAK` line naming that test and fail
-  the host run —
-  that is the assert-before-free pattern, which on device leaks a grid and
-  starves every later test in the same boot.
+  contiguity, not totals: the largest single request a device profile
+  records (`DP_LARGEST_ALLOC_BYTES`) is tens of kilobytes, and one that size
+  fails on a heap holding more free bytes than that with no single block big
+  enough to hold it. Blocks still outstanding when a test ends print a
+  `LEAK` line naming that test and fail the host run — that is the
+  assert-before-free pattern, which on device leaks that block and starves
+  every later test in the same boot.
 
-Both numbers come from `launcher/tools/device_profiles/<chip>.sh`, selected
+Those numbers come from `launcher/tools/device_profiles/<chip>.sh`, selected
 by `$DEVICE_PROFILE` (default `esp32s3`), each carrying its own provenance.
 
 The framebuffer lives in PSRAM
 (`BOARD_FRAMEBUFFER_CAPS = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT`), not
-internal DRAM, so it does not compete with the sand grid or anything else
-for internal-heap contiguity the way it would on a board without PSRAM.
+internal DRAM, so it does not compete with an app's large internal
+allocations for internal-heap contiguity the way it would on a board
+without PSRAM.
 Nothing gates internal-heap headroom at build time: a predictor for it
 answers a question only a board whose framebuffer sits in internal DRAM
 asks. Watching that headroom (the measured free-heap figure in a device
@@ -236,9 +238,9 @@ without paying a rebuild-and-reflash cycle per attempt.
 3. **The full self-test before a merge** — `report_test_results.sh` or
    `run_device_tests.sh`, full scope, autorun, unattended. About 18 minutes
    on this board; treat it as the gate, not the everyday loop.
-4. **Know which suites cover which area** so a sand-free change (gfx, ui)
-   can be checked without waiting on the sand suites at all — see the table
-   below.
+4. **Know which suites cover which area** so a change to shell code (gfx,
+   ui) can be checked without waiting on an app's suites at all — see the
+   table below.
 
 ### Two device-only traps
 
@@ -272,12 +274,13 @@ yet a tuned number.
 
 ### Measure landscape first
 
-Landscape is this project's shipping orientation — gravity moves within a
-fixed grid rather than the grid rotating, so a portrait-tuned scene or
-scenario measures the wrong thing. A portrait-only benchmark has hidden
-real costs before: rotated UI drawing, and (in the sand app) grid rows
-running along gravity instead of across it. When a new perf test or
-benchmark scene is added, build its landscape case first.
+Landscape is this project's shipping orientation, so a portrait-tuned scene
+or scenario measures the wrong thing. Rotation is not free and not
+symmetric: the panel's scan order is fixed, so a rotated screen draws
+through a transform, and code that walks its own data along one axis meets
+the other orientation's memory order. A portrait-only benchmark hides both
+costs. When a new perf test or benchmark scene is added, build its
+landscape case first.
 
 ---
 
@@ -635,8 +638,8 @@ against.
 ## Which suites cover which area
 
 Built by grepping every `SUITE_REGISTER` call site (63 suites when written). Use
-this to pick which RUNSUITE commands cover a change, and to know a sand-free
-gfx/ui change can be checked without touching the sand suites at all.
+this to pick which RUNSUITE commands cover a change, and to know a gfx/ui
+change can be checked without touching an app's suites at all.
 
 | Area | Suites | Covers |
 |---|---|---|
@@ -646,8 +649,8 @@ gfx/ui change can be checked without touching the sand suites at all.
 | boot/POST | `run_boot_anim_suite`, `run_boot_anim_perf_suite` | the small3dlib boot animation and its frame budget. POST itself (`boot/post.c`) has no suite — it runs every boot and is read from its own `POST_COMPLETE` line, not Unity |
 | render | `run_r3d_project_suite` | the camera-space near-plane clip and perspective projection boot and other 3D callers share |
 | render lab | `run_cube_perf_suite`, `run_cube_band_perf_suite`, `run_small3dlib_scissor_suite`, `run_wire_pipeline_suite`, `run_wire_primitives_suite`, `run_wire_perf_suite`, `run_rt_cornell_suite` | the cube scene's frame budget, band mode against the full framebuffer across orientations, the rasterizer's row scissor; the wireframe transform/near-clip/screen-clip pipeline and the baked plane/cube/sphere/capsule edge lists it draws; the wire scenes' frame budget by primitive, layout and orientation; the Cornell box ray tracer's ray/plane and ray/box intersection, its shadow ray and its picture at several sizes and quarters |
-| sand behaviour | 28 suites: `run_sand_*_suite` (25 of them) plus `run_row_runs_suite`, `run_palette_suite`, `run_brush_screen_suite` — see `launcher/main/apps/sand/suite_*.c` | materials, reactions, liquids, gas, dirt/roots, gunpowder, glass thermal, metal, the brush UI and palette picker, dirty-row reconciliation |
-| sand perf | `run_sand_perf_suite` | the 13 frame-budget scenes — see [`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md) |
+| sand behaviour | `run_sand_*_suite` plus `run_row_runs_suite`, `run_palette_suite`, `run_brush_screen_suite` — see `launcher/main/apps/sand/suite_*.c` | materials, reactions, liquids, gas, dirt/roots, gunpowder, glass thermal, metal, the brush UI and palette picker, dirty-row reconciliation |
+| sand perf | `run_sand_perf_suite` | the app's frame-budget scenes — see [`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md) |
 | shell/util | `suite_fixed`, `suite_tween`, `run_rng_suite`, `suite_device_state` | fixed-point math, tweening, RNG, the device-state JSON `screenshot.py` reads |
 
 ---
@@ -673,15 +676,17 @@ gfx/ui change can be checked without touching the sand suites at all.
    (see "A diagnostics build can be scoped").
 4. Guard anything needing hardware with `#ifdef DEVICE_BUILD`, including its
    `RUN_TEST` line. A suite can be portable and still have a device-only
-   section — the sand suite (`suite_sand_*.c`) runs its rules on a host and
-   its performance checks (`suite_sand_perf.c`) only on the chip.
+   section — `suite_job.c` runs every one of its tests on both, and fences
+   the one assertion that holds only on a host, where a job runs inline
+   instead of on a second core.
 5. **Keep big fixtures off `.bss`.** A suite's file-scope objects are
    firmware static data in a diagnostics build, charged against the same
    internal-heap budget as everything else in that build. A microui context
    added to a suite this way once cost 10,744 bytes of `.bss` on its own.
    Neither the host runner (a laptop's memory behind it) nor a release build
    (which links no suites) can see it. Allocate anything large in
-   `fixture()` instead, as `suite_sand_liquid_depth.c` already does, and run
+   `fixture()` or in the suite's own run function instead, as
+   `suite_ui_pointer_microui.c` does with its context, and run
    `tools/build_diag_check.sh` before pushing rather than finding out from a
    pull request — nothing gates this automatically
    ([`Build-Variants.md`](Build-Variants.md#a-diagnostics-build-can-be-scoped)),
