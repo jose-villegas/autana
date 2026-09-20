@@ -26,7 +26,7 @@ splash_displace(sand_t* s, int x, int y, uint8_t mat_id) {
     }
     /* sand_impulse() below appends to one shared, board-wide queue with no
      * lock - fine for the single core this always ran on, unsafe for two
-     * cores appending at once. A checkerboard-parallel dispatch (sand.c)
+     * cores appending at once. A chunk-parallel dispatch (sand.c)
      * arms rng_hashed for exactly this window, so a splash simply does
      * not fire while one is running, rather than risk the queue. */
     if (s->rng_hashed) {

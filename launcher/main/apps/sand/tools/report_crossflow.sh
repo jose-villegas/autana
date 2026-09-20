@@ -12,7 +12,7 @@ mkdir -p "$BUILD_DIR"
     -I "$LAUNCHER_DIR/main" -I "$SAND_DIR" -I "$LAUNCHER_DIR/test" -I "$LAUNCHER_DIR/test/framework" \
     "$SCRIPT_DIR/crossflow_bench.c" "$SAND_DIR/suite_sand_scenes.c" "$SAND_DIR/suite_sand_common.c" \
     "$LAUNCHER_DIR/test/framework/unity.c" "$LAUNCHER_DIR/test/suites.c" \
-    "$SAND_DIR/sand.c" "$LAUNCHER_DIR/main/util/job.c" "$SAND_DIR/sand_impulse.c" \
+    "$SAND_DIR/sand.c" "$SAND_DIR/sand_chunk_sched.c" "$LAUNCHER_DIR/main/util/job.c" "$SAND_DIR/sand_impulse.c" \
     "$SAND_DIR/sand_reactions.c" "$SAND_DIR/sand_plants.c" "$SAND_DIR/sand_gas.c" \
     "$SAND_DIR/sand_liquid.c" "$SAND_DIR/material.c" \
     -Wl,--wrap=sand_step_liquids -lm -o "$BUILD_DIR/crossflow_bench"

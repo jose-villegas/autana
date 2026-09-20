@@ -173,12 +173,22 @@ for the full mechanism and every constant's reasoning.
 flowchart TD
     Start(["sand_step(s, gx, gy, jostle)"]) --> Mom["build_sweep_tables()\nemit_from_emitters()"]
     Mom --> Dith["dithered gravity direction\n(free fall -> early return)"]
-    Dith --> Sweep["Main gravity sweep\nstep_one_row() per row\n(sand + water's DOWN move)\ncheckerboard-split across cores\nabove SWEEP_CHECKERBOARD_MIN_ROWS"]
-    Sweep --> Liq["sand_step_liquids()\ncross-flow + wall rebound\nstriped across cores above LIQUID_SPLIT_MIN_ROWS"]
+    Dith --> Sweep["Main gravity sweep
+step_one_row() per row
+(sand + water's DOWN move)
+chunks on a gravity-ordered schedule, two lanes"]
+    Sweep --> Liq["sand_step_liquids()
+cross-flow + wall rebound
+chunks on a ray-ordered schedule, two lanes"]
     Liq --> GasCheck{"may_have_gas?"}
-    GasCheck -- yes --> Gas["sand_step_gas()\nrise + disperse"]
+    GasCheck -- yes --> Gas["sand_step_gas()
+rise + disperse
+chunk-split across cores"]
     GasCheck -- no --> React
-    Gas --> React["sand_step_reactions(s)\nignite / extinguish / smother /\nburn out / conduct heat / flare"]
+    Gas --> React["sand_step_reactions(s)
+ignite / extinguish / smother /
+burn out / conduct heat / flare
+local rules chunk-split across cores"]
     React --> Imp["step_impulses(s, dx, dy)\nexplosions, thrown chunks, splash pushback"]
     Imp --> Fin["finalize_settling()\nBLOCK_ACTIVE -> settled bits\nsplit across cores above FINALIZE_SETTLING_SPLIT_MIN_BLOCK_ROWS"]
     Fin --> End(["done"])
@@ -196,21 +206,31 @@ before `finalize_settling()` runs**, because `BLOCK_ACTIVE` has to reflect
 the *whole* step, not just whichever pass ran first. If you add a pass, it
 goes here too, before `finalize_settling()`, not after.
 
-Three of these passes can split across both cores through the same
+Most of these passes can split across both cores through the same
 primitive, `job_run_core1()`/`job_wait()` (`util/job.h`) - one copied
-context, run on core 1 if its worker is idle, otherwise inline: the main
-sweep (as two checkerboard-coloured phases of row-stripes, each phase half
-on core 1), the liquid cross-flow pass (the same stripe idea, gated
-separately), and `finalize_settling()` itself (split by block row). Gas,
-reactions and impulses stay serial. Splitting cost the project its
-byte-for-byte determinism guarantee - a two-core step and the serial path
-no longer produce the same board for the same seed - and bought back a
-narrower one: a two-core step is itself deterministic, repeatable from
-(seed, step, cell, draw slot) alone, checked by its own suite rather than
-against the serial path. See
-[Sand-Simulation.md's "Two cores" section](Sand-Simulation.md#two-cores-a-checkerboard-sweep-and-what-stays-serial)
-for the seam-safety argument, the reach table that decides what can split
-at all, and why gas/reactions/impulses cannot (yet).
+context, run on core 1 if its worker is idle, otherwise inline. The main
+sweep, the liquid cross-flow pass, both gas sub-passes and a reacting
+cell's own local rules all cut the board into one grid of square chunks.
+Each ranks those chunks downstream-first for its own
+travel direction (`sand_chunk_sched.[ch]`) and lets two lanes walk that
+order through one shared runner, each chunk waiting on the 8-neighbours
+ahead of it. A caller-owned bitmap, one bit per cell
+(`sand_enable_step_stamps()`), marks a grain that crossed into another
+chunk so a pass still to reach it does not move it again - only for a
+pass whose own order does not already rule that out - and a second
+caller-owned block
+(`sand_enable_lane_scratch()`) holds the private bookkeeping each lane
+merges back at the join, so no pass allocates.
+`finalize_settling()` splits by block row instead. Impulses, liquid
+density sorting and a reaction's long-reach triggers stay serial.
+Splitting cost the project its byte-for-byte determinism guarantee - a
+two-core step and the serial path do not produce the same board for the
+same seed - and bought back a narrower one: a two-core step is itself
+deterministic, repeatable from (seed, step, cell, draw slot) alone,
+checked by its own suite rather than against the serial path. See
+[Sand-Simulation.md's "Two cores" section](Sand-Simulation.md#two-cores-chunk-parallel-passes-and-what-stays-serial)
+for the schedule and why a fixed colouring was rejected, the reach table that decides
+what can split at all, and why the rest cannot.
 
 ## Block and row sleeping
 

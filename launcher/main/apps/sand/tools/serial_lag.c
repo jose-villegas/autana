@@ -1,18 +1,19 @@
 /*
  * serial_lag - how far a two-core step falls behind a serial one.
  *
- * The two-core split defers work at a stripe boundary: a cell that crossed
- * into a guard row is skipped, and the liquid pass holds back mass that
- * arrived during the phases. A deferral only matters when SERIAL would have
- * done something different in the same step, and that is what this measures:
- * the same scene, from the same seed, stepped twice - once split, once serial
- * - compared cell for cell after every step.
+ * The two-core split reorders work at a chunk boundary: a cell handed into a
+ * chunk whose pass has not run gets one more move there, and every long-reach
+ * trigger is deferred to a serial pass. That only matters when SERIAL would
+ * have done something different in the same step, and that is what this
+ * measures: the same scene, from the same seed, stepped twice - once split,
+ * once serial - compared cell for cell after every step.
  *
  * Each step starts from the same board, because the two paths are not
- * order-equivalent (see Sand-Simulation.md's "The seam fix") and left to run
- * on they diverge into two valid but different worlds. One step from one
- * state isolates what the split defers: cells it left where serial moved
- * them, and for liquids the mass that sits in a different row.
+ * order-equivalent (see Sand-Simulation.md's "What a pass boundary still
+ * costs") and left to run on they diverge into two valid but different
+ * worlds. One step from one state isolates what the split changes: cells it
+ * left where serial moved them, and for liquids the mass that sits in a
+ * different row.
  *
  * Build and run: main/apps/sand/tools/report_serial_lag.sh
  */
@@ -52,6 +53,7 @@ static uint8_t cells_split[LAG_W * LAG_H];
 static uint8_t cells_serial[LAG_W * LAG_H];
 static uint8_t blocks_split[((LAG_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((LAG_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)];
 static uint8_t blocks_serial[sizeof blocks_split];
+static uint8_t stamps_split[LAG_H * ((LAG_W + 7) / 8)];
 
 static void
 fill_rect(sand_t* s, int x0, int y0, int x1, int y1, cell_t c) {
@@ -62,7 +64,7 @@ fill_rect(sand_t* s, int x0, int y0, int x1, int y1, cell_t c) {
     }
 }
 
-/* A column of water falling across every stripe boundary: the case the
+/* A column of water falling across every chunk boundary: the case the
  * maintainer sees break up on the device. */
 static void
 scene_water_column(sand_t* s) {
@@ -204,6 +206,9 @@ measure(const lag_case_t* c) {
     sand_init(&serial, cells_serial, LAG_W, LAG_H, 7u);
     sand_enable_sleeping(&split, blocks_split);
     sand_enable_sleeping(&serial, blocks_serial);
+    sand_enable_step_stamps(&split, stamps_split);
+    void* scratch = malloc(sand_lane_scratch_bytes(LAG_W, LAG_H));
+    sand_enable_lane_scratch(&split, scratch);
     c->build(&split);
     c->build(&serial);
     /* Both arms draw through the hash, so the boards differ only by the order
@@ -230,6 +235,7 @@ measure(const lag_case_t* c) {
 
         keep_worst(&out, compare_step(&split, &serial), step);
     }
+    free(scratch);
     return out;
 }
 

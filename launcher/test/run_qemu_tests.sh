@@ -5,6 +5,7 @@
 #   ./launcher/test/run_qemu_tests.sh [--perf-scope] [--icount] [--no-build]
 #   ./launcher/test/run_qemu_tests.sh --suite <name> [--suite ...] \
 #                                     [--touch <down|up>,<x>,<y> ...] [--screenshot <png>]
+#   ./launcher/test/run_qemu_tests.sh --perf-scope --suite <name> --build-only
 #
 # The image is the diagnostics build with sdkconfig.defaults.qemu layered
 # last, in its own build.qemu/ (build.qemu.perf/ for --perf-scope), so it
@@ -34,12 +35,16 @@ DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag"
 AUTORUN=1
 PERF=0
 BUILD=1
+RUN=1
 RUN_ARGS=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --perf-scope) PERF=1 ;;
         --icount) RUN_ARGS="$RUN_ARGS --icount" ;;
         --no-build) BUILD=0 ;;
+        # One image serves however many instances a driver then starts
+        # against it by hand, each with its own qemu_run.py --workdir.
+        --build-only) RUN=0 ;;
         --suite | --touch | --do | --screenshot)
             [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
             AUTORUN=0
@@ -47,7 +52,7 @@ while [ $# -gt 0 ]; do
             shift
             ;;
         *)
-            echo "usage: run_qemu_tests.sh [--perf-scope] [--icount] [--no-build]" >&2
+            echo "usage: run_qemu_tests.sh [--perf-scope] [--icount] [--no-build] [--build-only]" >&2
             echo "       run_qemu_tests.sh --suite <name> [--suite ...] [--screenshot <png>]" >&2
             exit 2
             ;;
@@ -84,6 +89,11 @@ fi
 if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/launcher.bin" ]; then
     echo "no image at $LAUNCHER_DIR/$BUILD_DIR/launcher.bin" >&2
     exit 1
+fi
+
+if [ "$RUN" = 0 ]; then
+    echo "$LAUNCHER_DIR/$BUILD_DIR"
+    exit 0
 fi
 
 PYTHON=$(command -v python3 || command -v python || true)

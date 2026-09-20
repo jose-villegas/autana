@@ -198,10 +198,6 @@ directly over real content. A border shows for the one present that sent
 it: the next present resends that strip clean, so what is on screen is
 always the latest present's sends, not an accumulation.
 
-The sand app carries a similar overlay of its own, for the two-core
-sweep's stripe seams rather than gfx's send/leaf grids - see
-[`../sand/Sand-Simulation.md`](../sand/Sand-Simulation.md#the-seam-fix).
-
 ## Performance seems off
 
 The shell logs frames-per-second on a fixed timer (`report_fps()` in

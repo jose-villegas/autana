@@ -172,11 +172,22 @@ sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
     s->dirty_x0 = NULL;
     s->dirty_x1 = NULL;
     s->block_state = NULL;
+    s->step_stamps = NULL;
+    s->stamps_live = NULL;
+    s->stamp_side_x = 0;
+    s->stamp_side_y = 0;
+    s->stamped = false;
+    s->lane_scratch = NULL;
     s->impulse_buf = NULL;
     s->impulse_max = 0;
     s->impulse_count = 0;
+    /* Cleared again at the top of every sand_step(), but a caller driving one
+     * pass at a time never reaches that line and would read its own frame. */
+    s->explosions_this_step = 0;
+    s->confined_blasts_this_step = 0;
 #ifdef DEVICE_BUILD
     s->impulse_cap_hits = 0;
+    s->split_lane_aborts = 0;
 #endif
     s->splash_chance = SAND_SPLASH_CHANCE_START;
     s->splash_radius_water = SAND_SPLASH_RADIUS_WATER;
@@ -187,6 +198,9 @@ sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
      * never zero. */
     s->block_cols = (w + SAND_BLOCK_W - 1) / SAND_BLOCK_W;
     s->block_rows = (h + SAND_BLOCK_H - 1) / SAND_BLOCK_H;
+    /* A reused sand_t must not carry a settled bit into a board with no block
+     * state behind it - everything that reads one indexes that. */
+    s->settled_bit = 0;
     s->last_load_dx = 0;
     s->last_load_dy = 0;
     s->last_step_dx = 0;
@@ -233,6 +247,136 @@ sand_enable_sleeping(sand_t* s, uint8_t* blocks) {
     }
     s->last_load_dx = 0;
     s->last_load_dy = 0;
+}
+
+size_t
+sand_step_stamp_bytes(int w, int h) {
+    return (size_t)h * sand_stamp_stride(w);
+}
+
+void
+sand_enable_step_stamps(sand_t* s, uint8_t* bits) {
+    s->step_stamps = bits;
+    if (bits != NULL) {
+        memset(bits, 0, sand_step_stamp_bytes(s->w, s->h));
+    }
+}
+
+size_t
+sand_lane_scratch_bytes(int w, int h) {
+    const size_t rows = (size_t)h;
+    const size_t blocks =
+        (size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H);
+
+    return SAND_LANE_COUNT * (2 * rows * sizeof(uint16_t) + blocks + rows + SAND_LANE_DEFER_BYTES);
+}
+
+void
+sand_enable_lane_scratch(sand_t* s, void* scratch) {
+    s->lane_scratch = scratch;
+}
+
+/* One pair for every board: the passes that use it never overlap, and a
+ * lane carries a whole sand_t, which is far too much to hand a job context
+ * or to leave on a frame core 1 can outlive. */
+static sand_lane_t sand_lane_pair[SAND_LANE_COUNT];
+
+sand_lane_t*
+sand_lanes(sand_t* s) {
+    if (s->lane_scratch == NULL) {
+        return NULL;
+    }
+    const size_t rows = (size_t)s->h;
+    const size_t blocks = (size_t)s->block_cols * (size_t)s->block_rows;
+    uint16_t* const spans = s->lane_scratch;
+    uint8_t* const bytes = (uint8_t*)(spans + (size_t)(2 * SAND_LANE_COUNT) * rows);
+
+    uint8_t* const defer = bytes + (size_t)SAND_LANE_COUNT * (blocks + rows);
+
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        sand_lane_pair[i].x0 = spans + (size_t)(2 * i) * rows;
+        sand_lane_pair[i].x1 = sand_lane_pair[i].x0 + rows;
+        sand_lane_pair[i].blocks = bytes + (size_t)i * (blocks + rows);
+        sand_lane_pair[i].dirty = sand_lane_pair[i].blocks + blocks;
+        sand_lane_pair[i].defer = defer + (size_t)i * SAND_LANE_DEFER_BYTES;
+    }
+    return sand_lane_pair;
+}
+
+void
+sand_lane_prepare(sand_lane_t* lane, const sand_t* s) {
+    lane->local = *s;
+    lane->local.rng_hashed = true;
+    if (s->block_state != NULL) {
+        lane->local.block_state = lane->blocks;
+        memcpy(lane->blocks, s->block_state, (size_t)s->block_cols * (size_t)s->block_rows);
+    }
+    if (s->dirty_rows != NULL) {
+        lane->local.dirty_rows = lane->dirty;
+        memcpy(lane->dirty, s->dirty_rows, (size_t)s->h);
+    }
+    if (s->dirty_x0 != NULL && s->dirty_x1 != NULL) {
+        lane->local.dirty_x0 = lane->x0;
+        lane->local.dirty_x1 = lane->x1;
+        memcpy(lane->x0, s->dirty_x0, sizeof *lane->x0 * (size_t)s->h);
+        memcpy(lane->x1, s->dirty_x1, sizeof *lane->x1 * (size_t)s->h);
+    }
+}
+
+static void
+merge_lane_content_flags(sand_t* s, const sand_t* lane) {
+    s->may_have_liquid |= lane->may_have_liquid;
+    s->may_have_gas |= lane->may_have_gas;
+    s->may_have_burning |= lane->may_have_burning;
+    s->may_have_dissolver |= lane->may_have_dissolver;
+    s->may_have_temperature |= lane->may_have_temperature;
+    s->may_have_moisture |= lane->may_have_moisture;
+    s->may_have_faller |= lane->may_have_faller;
+    s->may_have_heat_holder |= lane->may_have_heat_holder;
+    s->may_have_condenser |= lane->may_have_condenser;
+    s->may_have_viscous_liquid |= lane->may_have_viscous_liquid;
+    s->may_have_materials |= lane->may_have_materials;
+    s->faller_may_move |= lane->faller_may_move;
+    s->stamped |= lane->stamped;
+}
+
+/* A settled bit survives only where both agree; everything else a lane can
+ * write it only sets. */
+static void
+merge_lane_blocks(sand_t* s, const uint8_t* lane_blocks) {
+    for (int i = 0; i < s->block_cols * s->block_rows; i++) {
+        const uint8_t local = lane_blocks[i];
+        s->block_state[i] &= (uint8_t)(local | ~(BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER));
+        s->block_state[i] |= local & (BLOCK_ACTIVE | BLOCK_HAS_LIQUID | BLOCK_HAS_MOISTURE);
+    }
+}
+
+static void
+merge_lane_spans(sand_t* s, const uint16_t* x0, const uint16_t* x1) {
+    for (int y = 0; y < s->h; y++) {
+        if (x0[y] < s->dirty_x0[y]) {
+            s->dirty_x0[y] = x0[y];
+        }
+        if (x1[y] > s->dirty_x1[y]) {
+            s->dirty_x1[y] = x1[y];
+        }
+    }
+}
+
+void
+sand_lane_merge(sand_t* s, const sand_lane_t* lane) {
+    if (s->block_state != NULL) {
+        merge_lane_blocks(s, lane->blocks);
+    }
+    if (s->dirty_rows != NULL) {
+        for (int y = 0; y < s->h; y++) {
+            s->dirty_rows[y] |= lane->dirty[y];
+        }
+    }
+    if (s->dirty_x0 != NULL && s->dirty_x1 != NULL) {
+        merge_lane_spans(s, lane->x0, lane->x1);
+    }
+    merge_lane_content_flags(s, &lane->local);
 }
 
 bool
@@ -759,8 +903,8 @@ compute_driven(bool driven[MATERIAL_ROWS][2], const int* slide_a, const int* sli
 }
 
 /* Sweep column order against travel direction for sand_step(). Alternates
- * when gravity is vertical. Outputs step direction, not range. Uses
- * block_x_order() for block-column sweeping. */
+ * when gravity is vertical. Outputs step direction, not range;
+ * span_x_order() turns it into one. */
 static int
 sweep_x_order(sand_t* s, int dx) {
     int x_step;
@@ -814,8 +958,8 @@ static uint16_t sweep_cell_liquid_mask;
 static bool sweep_tables_ready;
 
 /* Rebuilt fresh every step by compute_driven(), never carried across one -
- * FILE-STATIC rather than a local of sand_step(), so a checkerboard-
- * parallel dispatch's core-1 half can read it without a
+ * FILE-STATIC rather than a local of sand_step(), so a chunk-parallel
+ * dispatch's core-1 half can read it without a
  * dangling pointer into a caller's stack frame that a timed-out join may
  * have already returned from. */
 static bool sweep_driven[MATERIAL_ROWS][2];
@@ -990,36 +1134,46 @@ compute_settled_bit(sand_t* s, int jostle, int dx, int dy, int load_dx, int load
     return bit;
 }
 
-/* Mirrors sweep_x_order()'s x_from/x_to/x_step based on x_step's sign to
- * align block order with cell order for clarity. */
+/* A half-open [lo, hi) walked in sweep_x_order()'s direction. Block columns
+ * and the cells within one share it, so the two orders cannot drift apart. */
 static void
-block_x_order(int block_cols, int x_step, int* bx_from, int* bx_to, int* bx_step) {
+span_x_order(int lo, int hi, int x_step, int* from, int* to, int* step) {
     if (x_step > 0) {
-        *bx_from = 0;
-        *bx_to = block_cols;
-        *bx_step = 1;
+        *from = lo;
+        *to = hi;
+        *step = 1;
     } else {
-        *bx_from = block_cols - 1;
-        *bx_to = -1;
-        *bx_step = -1;
+        *from = hi - 1;
+        *to = lo - 1;
+        *step = -1;
     }
 }
 
-/* step_one_block() parameters bundled into a struct for efficiency. Reduced
- * call arguments to two (this and bx) to avoid register overflow. Flat list
- * caused performance regression on RISC-V hardware with 8 registers. */
+/* Two arguments, this and bx: a flat parameter list regressed on RISC-V,
+ * which has eight registers to overflow. Everything past the six fields at
+ * the top holds for a whole sweep_range() span and is written once there -
+ * what a row spends before it reaches a cell is paid once per piece the span
+ * cuts that grid row into. */
 typedef struct {
-    sand_t* s;
     uint8_t *row, *prow, *arow, *brow;
-    int y, w, dx, dy, x_step;
+    const uint8_t* stamp_row;
+    int y, by;
+
+    sand_t* s;
+    int w, dx, dy, x_step;
     const int *slide_a, *slide_b;
     int load_dx, load_dy, jostle;
-    int by;
+    /* The caller's own columns. A block at either end of them is swept over
+     * its overlap with the range, not over the whole block. */
+    int x0, x1;
+    /* The block columns overlapping [x0, x1), walked in x_step's direction. */
+    int bx_from, bx_to, bx_step;
     /* Materials are liquid as a bitmask over the nibble, similar to
      * sand_liquid.c's liquid_mask(): the sweep checks if a cell is liquid to
      * maintain BLOCK_HAS_LIQUID, using a shift-and-mask on a register for
      * efficiency. */
     uint16_t is_liquid;
+    uint8_t settled_bit;
     bool (*driven)[2];
 } sweep_ctx_t;
 
@@ -1028,26 +1182,17 @@ typedef struct {
  * block_state is disabled. */
 static void
 step_one_block(const sweep_ctx_t* ctx, int bx) {
-    int lo = bx * SAND_BLOCK_W;
-    int hi = lo + SAND_BLOCK_W;
-    if (hi > ctx->w) {
-        hi = ctx->w;
-    }
+    const int lo = im_max(bx * SAND_BLOCK_W, ctx->x0);
+    const int hi = im_min(bx * SAND_BLOCK_W + SAND_BLOCK_W, ctx->x1);
 
-    int cx_from, cx_to;
-    if (ctx->x_step > 0) {
-        cx_from = lo;
-        cx_to = hi;
-    } else {
-        cx_from = hi - 1;
-        cx_to = lo - 1;
-    }
+    int cx_from, cx_to, cx_step;
+    span_x_order(lo, hi, ctx->x_step, &cx_from, &cx_to, &cx_step);
 
     dest_state_t dest = DEST_UNKNOWN;
 
     bool moved_here = false;
     unsigned saw_liquid = 0;
-    for (int x = cx_from; x != cx_to; x += ctx->x_step) {
+    for (int x = cx_from; x != cx_to; x += cx_step) {
         const cell_t c = ctx->row[x];
         if (CELL_IS_EMPTY(c)) {
             continue;
@@ -1055,8 +1200,13 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
         /* Accumulated in a register and stored once per block, same shape as
          * moved_here. BLOCK_HAS_LIQUID keeps it true at O(blocks) per step
          * instead of O(moves) - a skip structure earns its cost only when it
-         * is questioned before it is built. */
+         * is questioned before it is built. Counted BEFORE the stamped skip:
+         * a cell that arrived here this pass is still liquid sitting in this
+         * block, and cross-flow looks nowhere the sweep did not mark. */
         saw_liquid |= (unsigned)(ctx->is_liquid >> CELL_MATERIAL(c)) & 1u;
+        if (sand_row_cell_stamped(ctx->stamp_row, x)) {
+            continue;
+        }
         if (step_one_grain(ctx->s, ctx->row, ctx->prow, ctx->arow, ctx->brow, x, ctx->y, ctx->w, ctx->dx, ctx->dy,
                            ctx->slide_a, ctx->slide_b, ctx->load_dx, ctx->load_dy, ctx->jostle, ctx->driven, &dest)) {
             moved_here = true;
@@ -1073,37 +1223,12 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
  * settled_bit set, no work needed. When sleeping disabled (block_state NULL),
  * settled_bit 0, no skips, same as cell-by-cell walk. */
 static void
-step_one_row(sand_t* s, int y, int w, int dx, int dy, const int* slide_a, const int* slide_b, int x_step, int load_dx,
-             int load_dy, int jostle, uint8_t settled_bit, uint16_t is_liquid, bool driven[MATERIAL_ROWS][2]) {
-    sweep_ctx_t ctx = {
-        .s = s,
-        .row = s->cells + (size_t)y * (size_t)w,
-        .prow = dest_row(s, y + dy),
-        .arow = dest_row(s, y + slide_a[1]),
-        .brow = dest_row(s, y + slide_b[1]),
-        .y = y,
-        .w = w,
-        .dx = dx,
-        .dy = dy,
-        .x_step = x_step,
-        .slide_a = slide_a,
-        .slide_b = slide_b,
-        .load_dx = load_dx,
-        .load_dy = load_dy,
-        .jostle = jostle,
-        .by = y / SAND_BLOCK_H,
-        .is_liquid = is_liquid,
-        .driven = driven,
-    };
-
-    int bx_from, bx_to, bx_step;
-    block_x_order(s->block_cols, x_step, &bx_from, &bx_to, &bx_step);
-
-    for (int bx = bx_from; bx != bx_to; bx += bx_step) {
-        if (settled_bit != 0 && (s->block_state[ctx.by * s->block_cols + bx] & settled_bit)) {
+step_one_row(const sweep_ctx_t* ctx) {
+    for (int bx = ctx->bx_from; bx != ctx->bx_to; bx += ctx->bx_step) {
+        if (ctx->settled_bit != 0 && (ctx->s->block_state[ctx->by * ctx->s->block_cols + bx] & ctx->settled_bit)) {
             continue;
         }
-        step_one_block(&ctx, bx);
+        step_one_block(ctx, bx);
     }
 }
 
@@ -1248,47 +1373,94 @@ viscous_liquid_possible(const sand_t* s) {
     return false;
 }
 
+/* Whether every block overlapping [x0, x1) x [y0, y1) already carries
+ * `settled_bit`. Blocks reaching past that rectangle count too: a settled
+ * answer then holds for strictly more than the caller asked about, which is
+ * the safe direction for a skip. */
 static bool
-is_block_row_settled(const sand_t* s, int y, uint8_t settled_bit) {
+blocks_settled_over(const sand_t* s, int x0, int x1, int y0, int y1, uint8_t settled_bit) {
     if (settled_bit == 0) {
         return false;
     }
-    const int by = y / SAND_BLOCK_H;
-    const uint8_t* const brow = &s->block_state[(size_t)by * (size_t)s->block_cols];
-    for (int bx = 0; bx < s->block_cols; bx++) {
-        if ((brow[bx] & settled_bit) == 0) {
-            return false;
+    const int bx1 = (x1 - 1) / SAND_BLOCK_W;
+    const int by1 = (y1 - 1) / SAND_BLOCK_H;
+
+    for (int by = y0 / SAND_BLOCK_H; by <= by1; by++) {
+        const uint8_t* const brow = &s->block_state[(size_t)by * (size_t)s->block_cols];
+        for (int bx = x0 / SAND_BLOCK_W; bx <= bx1; bx++) {
+            if ((brow[bx] & settled_bit) == 0) {
+                return false;
+            }
         }
     }
     return true;
 }
 
-/* The gravity sweep's own inner loop, restricted to [y0, y1) in y_step
- * order - shared by the plain serial call below and every stripe a
- * checkerboard-parallel dispatch hands to either core. */
+/* The gravity sweep's own inner loop, over the columns [x0, x1) of the rows
+ * [y0, y1) in y_step order - shared by the plain serial call below and every
+ * chunk a lane takes off the schedule. A grain reaches three rows a fixed
+ * distance from its own, so the stride carries them and only the grid edge
+ * is asked about per row. */
 static void
-sweep_range(sand_t* s, int y0, int y1, int y_step, int w, int dx, int dy, const int* slide_a, const int* slide_b,
-            int x_step, int load_dx, int load_dy, int jostle, uint8_t settled_bit, uint16_t is_liquid) {
+sweep_range(sand_t* s, int y0, int y1, int y_step, int x0, int x1, int w, int dx, int dy, const int* slide_a,
+            const int* slide_b, int x_step, int load_dx, int load_dy, int jostle, uint8_t settled_bit,
+            uint16_t is_liquid) {
+    sweep_ctx_t ctx = {
+        .s = s,
+        .w = w,
+        .dx = dx,
+        .dy = dy,
+        .x_step = x_step,
+        .slide_a = slide_a,
+        .slide_b = slide_b,
+        .load_dx = load_dx,
+        .load_dy = load_dy,
+        .jostle = jostle,
+        .x0 = x0,
+        .x1 = x1,
+        .is_liquid = is_liquid,
+        .settled_bit = settled_bit,
+        .driven = sweep_driven,
+    };
+    span_x_order(x0 / SAND_BLOCK_W, (x1 + SAND_BLOCK_W - 1) / SAND_BLOCK_W, x_step, &ctx.bx_from, &ctx.bx_to,
+                 &ctx.bx_step);
+
+    const int h = s->h;
+    const int a_dy = slide_a[1];
+    const int b_dy = slide_b[1];
+    const int p_off = dy * w;
+    const int a_off = a_dy * w;
+    const int b_off = b_dy * w;
+    const int row_step = y_step * w;
+    int row_at = y0 * w;
+
     int scanned_by = -1;
     bool block_row_settled = false;
 
-    for (int y = y0; y != y1; y += y_step) {
+    for (int y = y0; y != y1; y += y_step, row_at += row_step) {
+        const int by = y / SAND_BLOCK_H;
         if (settled_bit != 0) {
-            const int by = y / SAND_BLOCK_H;
             if (by != scanned_by) {
                 scanned_by = by;
-                block_row_settled = is_block_row_settled(s, y, settled_bit);
+                block_row_settled = blocks_settled_over(s, x0, x1, y, y + 1, settled_bit);
             }
             if (block_row_settled) {
                 continue;
             }
         }
-        step_one_row(s, y, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
-                     sweep_driven);
+        sand_chunk_work_add(x1 - x0);
+
+        uint8_t* const row = s->cells + row_at;
+        ctx.row = row;
+        ctx.prow = dest_row_stepped(row, y + dy, h, p_off);
+        ctx.arow = dest_row_stepped(row, y + a_dy, h, a_off);
+        ctx.brow = dest_row_stepped(row, y + b_dy, h, b_off);
+        ctx.stamp_row = sand_stamp_row(s, y);
+        ctx.y = y;
+        ctx.by = by;
+        step_one_row(&ctx);
     }
 }
-
-#define SWEEP_GUARD_ROW_MAX (2 * ((GRID_H_MAX + SAND_STRIPE_H_MIN - 1) / SAND_STRIPE_H_MIN))
 
 /* Hashed draws are armed by a split pass, so a serial step and a split step
  * of the same scene draw different numbers and their boards diverge on the
@@ -1300,205 +1472,366 @@ sand_force_hashed_rng(bool on) {
     sand_force_hashed_rng_on = on;
 }
 
-static int sweep_guard_rows[SWEEP_GUARD_ROW_MAX];
-static uint8_t sweep_guard_snapshot[SWEEP_GUARD_ROW_MAX * GRID_W_MAX];
+bool
+sand_rng_forced_hashed(void) {
+    return sand_force_hashed_rng_on;
+}
 
-_Static_assert(sizeof sweep_guard_snapshot <= 6 * 1024, "guard snapshots must fit the internal-RAM budget");
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-/* One bit per column: set where sweep_guard_row() below skips a changed,
- * non-empty cell. Same slot indexing as sweep_guard_rows[]/
- * sweep_guard_snapshot above. Dev overlay data only - see
- * sand_seam_guard_row_count() in sand.h. 322 bytes here. */
-#define SWEEP_STALL_ROW_BYTES ((GRID_W_MAX + 7) / 8)
-static uint8_t sweep_stall_bits[SWEEP_GUARD_ROW_MAX][SWEEP_STALL_ROW_BYTES];
-static int sweep_stall_guard_count;
-static unsigned sweep_stall_total;
+/* The cut, the order and the callback one split pass runs on, file-static
+ * rather than a frame of its caller: a lane that misses its join keeps
+ * reading here, and a frame the caller has already returned from would be
+ * gone. Passes never overlap, so one set serves them all. */
+static sand_chunk_plan_t chunk_plan;
+static sand_chunk_sched_t chunk_sched;
+static sand_chunk_fn_t chunk_pass_fn;
+static void* chunk_pass_arg;
+
+/* A spin is one poll of up to eight neighbour bytes, so this outlasts by a
+ * wide margin the chunk a lane waits on, and still bounds the wait: past it
+ * the caller finishes the board alone. */
+#define CHUNK_PASS_SPIN_LIMIT 20000u
+#define CHUNK_PASS_JOIN_MS    100u
+
+unsigned sand_chunk_work[SAND_CHUNKS_MAX];
+int sand_chunk_work_at = -1;
+static bool chunk_work_on;
+
+void
+sand_chunk_work_enable(bool on) {
+    chunk_work_on = on;
+    sand_chunk_work_at = -1;
+}
+
+void
+sand_chunk_pass_cells(int cx, int cy, int* x0, int* x1, int* y0, int* y1) {
+    sand_chunk_cells(&chunk_plan, cx, cy, x0, x1, y0, y1);
+    if (chunk_work_on) {
+        sand_chunk_work_at = cy * chunk_plan.cols + cx;
+    }
+}
+
+static void
+chunk_pass_lane1_worker(void* ctx) {
+    (void)ctx;
+    sand_chunk_run_lane(&chunk_sched, 1, CHUNK_PASS_SPIN_LIMIT, chunk_pass_fn, chunk_pass_arg);
+}
+
+/* A failed wait means core 1 is still inside a chunk: a few chunks left
+ * unstepped for one step is recoverable, two threads in neighbouring chunks
+ * is not, so the rest of the board waits for the next step instead. */
+static void
+join_chunk_pass_lane1(void) {
+    if (job_wait(CHUNK_PASS_JOIN_MS)) {
+        sand_chunk_run_rest(&chunk_sched, chunk_pass_fn, chunk_pass_arg);
+        return;
+    }
+    chunk_sched.abort = 1;
+    if (job_wait(CHUNK_PASS_JOIN_MS)) {
+        sand_chunk_run_rest(&chunk_sched, chunk_pass_fn, chunk_pass_arg);
+    }
+}
+
+static sand_chunk_pass_driver_t chunk_pass_driver;
+
+void
+sand_chunk_pass_set_driver_for_test(sand_chunk_pass_driver_t driver) {
+    chunk_pass_driver = driver;
+}
+
+static bool
+step_one_chunk_pass_round(int round) {
+    if (chunk_pass_driver == SAND_CHUNK_PASS_ALTERNATE) {
+        const bool first = sand_chunk_step_lane(&chunk_sched, round & 1, chunk_pass_fn, chunk_pass_arg);
+        return sand_chunk_step_lane(&chunk_sched, 1 - (round & 1), chunk_pass_fn, chunk_pass_arg) || first;
+    }
+
+    const int eager = (chunk_pass_driver == SAND_CHUNK_PASS_LANE1_EAGER) ? 1 : 0;
+    bool moved = false;
+    while (sand_chunk_step_lane(&chunk_sched, eager, chunk_pass_fn, chunk_pass_arg)) {
+        moved = true;
+    }
+    return sand_chunk_step_lane(&chunk_sched, 1 - eager, chunk_pass_fn, chunk_pass_arg) || moved;
+}
+
+/* One thread standing in for two, so a test can ask whether the board the
+ * schedule produces depends on how the lanes interleave. */
+static void
+drive_chunk_pass_lanes_by_hand(void) {
+    for (int round = 0; round < 2 * SAND_CHUNKS_MAX && step_one_chunk_pass_round(round); round++) {}
+    sand_chunk_run_rest(&chunk_sched, chunk_pass_fn, chunk_pass_arg);
+}
+
+static void
+drive_chunk_pass_lanes(void) {
+    const bool by_hand = chunk_pass_driver != SAND_CHUNK_PASS_CORE1 && chunk_pass_driver != SAND_CHUNK_PASS_SOLO;
+
+    if (chunk_pass_driver == SAND_CHUNK_PASS_CORE1 && job_try_core1(chunk_pass_lane1_worker, NULL, 0)) {
+        sand_chunk_run_lane(&chunk_sched, 0, CHUNK_PASS_SPIN_LIMIT, chunk_pass_fn, chunk_pass_arg);
+        join_chunk_pass_lane1();
+    } else if (by_hand) {
+        drive_chunk_pass_lanes_by_hand();
+    } else {
+        sand_chunk_run_rest(&chunk_sched, chunk_pass_fn, chunk_pass_arg);
+    }
+}
+
+/* Two-core over one-core on the board per class, geomean of five scenes,
+ * landscape/portrait gravity, against the square cut each beats:
+ *   ULTRA  92x17 0.77/1.19 | 47x17 0.81/0.93 | 45x45 1.00/0.94
+ *   HIGH   61x17 0.81/1.20 | 25x17 0.85/0.88 | 30x30 1.02/0.96
+ *   NORMAL 46x17 0.85/1.22 | 23x17 0.89/0.97 | 22x22 1.03/0.98
+ * The last two grids never beat one core at any cut, so their rows only
+ * reach a step that forced its own side. */
+static const struct {
+    int w, h;
+    int side[SAND_CHUNK_TRAVEL_CLASSES][2];
+} chunk_layouts[] = {
+    {184, 224, {{92, SAND_CHUNK_SIDE_MIN}, {47, SAND_CHUNK_SIDE_MIN}}},
+    {122, 149, {{61, SAND_CHUNK_SIDE_MIN}, {25, SAND_CHUNK_SIDE_MIN}}},
+    {92, 112, {{46, SAND_CHUNK_SIDE_MIN}, {23, SAND_CHUNK_SIDE_MIN}}},
+    {61, 74, {{30, SAND_CHUNK_SIDE_MIN}, {SAND_CHUNK_SIDE_MIN, SAND_CHUNK_SIDE_MIN}}},
+    {46, 56, {{23, SAND_CHUNK_SIDE_MIN}, {SAND_CHUNK_SIDE_MIN, SAND_CHUNK_SIDE_MIN}}},
+};
+
+/* Off the table - a test grid, or a quality this board does not offer - the
+ * shape of the rows themselves: half the width along x-travel and a quarter
+ * of it otherwise, one chunk floor tall, clamped to that floor. Whether the
+ * grid takes the cut at all stays sand_chunk_plan()'s answer. */
+void
+sand_chunk_table_sides(int w, int h, sand_chunk_travel_t travel, int* side_x, int* side_y) {
+    for (size_t i = 0; i < sizeof chunk_layouts / sizeof chunk_layouts[0]; i++) {
+        if (chunk_layouts[i].w == w && chunk_layouts[i].h == h) {
+            *side_x = chunk_layouts[i].side[travel][0];
+            *side_y = chunk_layouts[i].side[travel][1];
+            return;
+        }
+    }
+
+    const int wide = (travel == SAND_CHUNK_TRAVEL_X) ? w / 2 : w / 4;
+    *side_x = wide < SAND_CHUNK_SIDE_MIN ? SAND_CHUNK_SIDE_MIN : wide;
+    *side_y = SAND_CHUNK_SIDE_MIN;
+}
+
+unsigned sand_split_passes = SAND_SPLIT_PASSES_SHIPPED;
+
+unsigned
+sand_split_passes_for_test(unsigned mask) {
+    const unsigned before = sand_split_passes;
+
+    sand_split_passes = mask;
+    return before;
+}
+
+static sand_chunk_share_t chunk_share_mode;
+
+sand_chunk_share_t
+sand_chunk_share_for_test(sand_chunk_share_t mode) {
+    const sand_chunk_share_t before = chunk_share_mode;
+
+    chunk_share_mode = mode;
+    return before;
+}
+
+/* The cells each chunk of `p` would hand a lane, charged whole: a chunk with
+ * one block awake is a chunk a lane has to walk. `cost` takes one entry per
+ * chunk, so the caller's array is SAND_CHUNKS_MAX long. */
+static int
+chunk_awake_costs(const sand_t* s, const sand_chunk_plan_t* p, int* cost) {
+    int total = 0;
+
+    for (int cy = 0; cy < p->rows; cy++) {
+        for (int cx = 0; cx < p->cols; cx++) {
+            int x0, x1, y0, y1;
+
+            sand_chunk_cells(p, cx, cy, &x0, &x1, &y0, &y1);
+            const int awake = blocks_settled_over(s, x0, x1, y0, y1, s->settled_bit) ? 0 : (x1 - x0) * (y1 - y0);
+            cost[cy * p->cols + cx] = awake;
+            total += awake;
+        }
+    }
+    return total;
+}
+
+/* Whether what is awake can keep two lanes busy enough to be worth handing
+ * them. The schedule's own span model answers it: awake chunks forming a
+ * chain along travel - a falling column, a pour into a settled board - model
+ * a span no shorter than walking them one after another, and are better swept
+ * row-major, which costs nothing to order and nothing to join. */
+static bool
+chunk_pass_divides(const sand_t* s, const sand_chunk_plan_t* p, int tx, int ty) {
+    int cost[SAND_CHUNKS_MAX];
+    sand_chunk_order_t order;
+
+    const int awake = chunk_awake_costs(s, p, cost);
+    if (awake < SAND_CHUNK_SPLIT_MIN_AWAKE_CELLS) {
+        return false;
+    }
+    sand_chunk_order(&order, p->cols, p->rows, tx, ty, s->step_phase);
+    return sand_chunk_makespan(&order, p->cols, p->rows, cost) * 100 <= awake * SAND_CHUNK_SPLIT_SPAN_SHARE_PERCENT;
+}
+
+bool
+sand_chunk_pass_ready(const sand_t* s, sand_split_pass_t pass, int tx, int ty) {
+    sand_chunk_plan_t fits;
+    int side_x, side_y;
+
+    if (!sand_two_core_step_enabled() || (sand_split_passes & (unsigned)pass) == 0 || s->lane_scratch == NULL) {
+        return false;
+    }
+    if (s->w * s->h < SAND_CHUNK_SPLIT_MIN_CELLS && !sand_chunk_side_is_forced()) {
+        return false;
+    }
+    sand_chunk_sides(s, sand_chunk_travel_of(tx, ty), &side_x, &side_y);
+    if (!sand_chunk_plan(&fits, s->w, s->h, side_x, side_y, 0, 0)) {
+        return false;
+    }
+    if (chunk_share_mode != SAND_CHUNK_SHARE_AUTO) {
+        return chunk_share_mode == SAND_CHUNK_SHARE_ALWAYS;
+    }
+    return chunk_pass_divides(s, &fits, tx, ty);
+}
+
+int sand_chunk_side_forced[2];
+
+/* Refuses a side the liquid passes would read straight through, and leaves
+ * the override as it was: a sweep that silently ran at the minimum instead of
+ * what was asked for would be recorded as a measurement of the asked-for
+ * side. */
+bool
+sand_chunk_side_for_test(int side_x, int side_y) {
+    if ((side_x != 0 && side_x < SAND_CHUNK_SIDE_MIN) || (side_y != 0 && side_y < SAND_CHUNK_SIDE_MIN)) {
+        return false;
+    }
+    sand_chunk_side_forced[0] = side_x;
+    sand_chunk_side_forced[1] = side_y;
+    return true;
+}
+
+unsigned sand_split_sequential_draws;
+
+/* xorshift32 is a bijection, so replaying it from the state a pass started on
+ * recovers exactly how many draws were taken from it. Bounded because an
+ * unreachable state would otherwise never terminate. */
+#define SEQUENTIAL_DRAW_SCAN_MAX 65536u
+
+static void
+count_sequential_draws(uint32_t before, uint32_t after) {
+    if (after == before) {
+        return;
+    }
+    rng_t replay = {before};
+    for (unsigned n = 1; n <= SEQUENTIAL_DRAW_SCAN_MAX; n++) {
+        if (rng_next(&replay) == after) {
+            sand_split_sequential_draws += n;
+            return;
+        }
+    }
+    sand_split_sequential_draws += SEQUENTIAL_DRAW_SCAN_MAX;
+}
+
+bool
+sand_chunk_pass_ranks_later(int x0, int y0, int x1, int y1) {
+    const int sx = chunk_plan.side_x;
+    const int sy = chunk_plan.side_y;
+    const int from = ((y0 + chunk_plan.off_y) / sy) * chunk_plan.cols + (x0 + chunk_plan.off_x) / sx;
+    const int to = ((y1 + chunk_plan.off_y) / sy) * chunk_plan.cols + (x1 + chunk_plan.off_x) / sx;
+
+    return chunk_sched.order.rank[to] > chunk_sched.order.rank[from];
+}
+
+bool
+sand_chunk_pass_run(sand_t* s, sand_split_pass_t pass_id, int tx, int ty, sand_chunk_pass_stamps_t stamps,
+                    sand_chunk_fn_t fn, void* pass) {
+    sand_lane_t* const lanes = sand_lanes(s);
+    int side_x, side_y;
+
+    if (!sand_chunk_pass_ready(s, pass_id, tx, ty) || lanes == NULL) {
+        return false;
+    }
+    sand_split_dispatches[sand_split_slot_of(pass_id)]++;
+    sand_chunk_sides(s, sand_chunk_travel_of(tx, ty), &side_x, &side_y);
+    (void)sand_chunk_plan(&chunk_plan, s->w, s->h, side_x, side_y, 0, 0);
+    sand_chunk_order(&chunk_sched.order, chunk_plan.cols, chunk_plan.rows, tx, ty, s->step_phase);
+    chunk_sched.cols = chunk_plan.cols;
+    chunk_sched.rows = chunk_plan.rows;
+    sand_chunk_sched_reset(&chunk_sched);
+    chunk_pass_fn = fn;
+    chunk_pass_arg = pass;
+
+    s->rng_hashed = true;
+    if (stamps == SAND_CHUNK_PASS_STAMP_CROSSINGS) {
+        sand_stamps_arm(s, chunk_plan.side_x, chunk_plan.side_y);
+    }
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        sand_lane_prepare(&lanes[i], s);
+    }
+
+    const uint32_t rng_at_prepare = s->rng.state;
+    drive_chunk_pass_lanes();
+    sand_chunk_work_at = -1;
+    count_sequential_draws(rng_at_prepare, s->rng.state);
+
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        count_sequential_draws(rng_at_prepare, lanes[i].local.rng.state);
+        sand_lane_merge(s, &lanes[i]);
+    }
+#ifdef DEVICE_BUILD
+    s->split_lane_aborts += (chunk_sched.abort != 0);
 #endif
+    if (stamps == SAND_CHUNK_PASS_STAMP_CROSSINGS) {
+        sand_stamps_disarm(s);
+    }
+    s->rng_hashed = false;
+    return true;
+}
+
+unsigned sand_split_dispatches[SAND_SPLIT_SLOTS];
+
+/* Chunks this step's sweep did not skip, counted per lane and summed once
+ * both have joined. */
+unsigned sand_sweep_chunks_swept;
 
 typedef struct {
-    sand_t* s;
+    sand_lane_t* lanes;
     int w, dx, dy, x_step, load_dx, load_dy, jostle;
     int slide_a[2], slide_b[2];
     uint16_t is_liquid;
     uint8_t settled_bit;
     int y_step;
-    int stripe_h;
-    int offset;
-    int color;
-    int share;
-} sweep_phase_ctx_t;
+    unsigned swept[SAND_LANE_COUNT];
+} sweep_pass_t;
 
-_Static_assert(sizeof(sweep_phase_ctx_t) <= JOB_CTX_MAX, "sweep_phase_ctx_t must fit JOB_CTX_MAX");
+static sweep_pass_t sweep_pass;
 
-/* Every stripe of `c->color` matching `c->share`, swept in y_step order,
- * MINUS the one row on each side touching a real neighbour stripe - see
- * run_sweep_guard_rows() for why. Two same-coloured stripes are never
- * within one stripe height of each other, so nothing here is touched by
- * whichever call is handling the other share right now. */
 static void
-run_sweep_stripes(const sweep_phase_ctx_t* c) {
-    const int h = c->s->h;
-    int k = (c->offset == 0) ? 0 : -1;
-    int seen = 0;
+sweep_one_chunk(void* pass, int lane, int cx, int cy) {
+    sweep_pass_t* const c = pass;
+    sand_t* const view = &c->lanes[lane].local;
+    int x0, x1, y0, y1;
 
-    for (;;) {
-        const int band0 = c->offset + k * c->stripe_h;
-        if (band0 >= h) {
-            break;
-        }
-        int y0 = band0 < 0 ? 0 : band0;
-        int y1 = band0 + c->stripe_h;
-        if (y1 > h) {
-            y1 = h;
-        }
-        const int stripe_color = ((k % 2) + 2) % 2;
-        if (stripe_color == c->color) {
-            if ((seen & 1) == c->share) {
-                const int inner_y0 = (y0 > 0) ? y0 + 1 : y0;
-                const int inner_y1 = (y1 < h) ? y1 - 1 : y1;
-                if (inner_y0 < inner_y1) {
-                    const int sy_from = (c->y_step > 0) ? inner_y0 : inner_y1 - 1;
-                    const int sy_to = (c->y_step > 0) ? inner_y1 : inner_y0 - 1;
-                    sweep_range(c->s, sy_from, sy_to, c->y_step, c->w, c->dx, c->dy, c->slide_a, c->slide_b, c->x_step,
-                                c->load_dx, c->load_dy, c->jostle, c->settled_bit, c->is_liquid);
-                }
-            }
-            seen++;
-        }
-        k++;
-    }
-}
-
-/* Every guard row this step has, boundary order (not yet sweep order -
- * callers that care about that reorder the pair themselves). Returns the
- * count; writes into `out` (capacity `max`) when `out` is non-NULL, so
- * the same walk both sizes the list and fills it. */
-static int
-sweep_guard_row_list(int h, int stripe_h, int offset, int* out, int max) {
-    int k = (offset == 0) ? 0 : -1;
-    int n = 0;
-
-    for (;;) {
-        const int boundary = offset + (k + 1) * stripe_h;
-        if (boundary >= h) {
-            break;
-        }
-        if (boundary > 0) {
-            if (out != NULL && n + 1 < max) {
-                out[n] = boundary - 1;
-                out[n + 1] = boundary;
-            }
-            n += 2;
-        }
-        k++;
-    }
-    return n;
-}
-
-/* A guard row's own sweep, skipping any column that no longer matches
- * `snapshot` - see run_sweep_guard_rows() for why. `slot` is this row's
- * index into sweep_guard_rows[]/sweep_guard_snapshot, reused for its stall
- * bits - see sweep_stall_bits' own comment above. */
-static void
-sweep_guard_row(sand_t* s, int y, int w, int dx, int dy, const int* slide_a, const int* slide_b, int x_step,
-                int load_dx, int load_dy, int jostle, uint8_t settled_bit, const uint8_t* snapshot, int slot) {
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-    memset(sweep_stall_bits[slot], 0, sizeof sweep_stall_bits[slot]);
-#endif
-    if (is_block_row_settled(s, y, settled_bit)) {
+    sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
+    if (blocks_settled_over(view, x0, x1, y0, y1, c->settled_bit)) {
         return;
     }
-    sand_guard_cells_scanned += (unsigned)w;
-    uint8_t* const row = s->cells + (size_t)y * (size_t)w;
-    uint8_t* const prow = dest_row(s, y + dy);
-    uint8_t* const arow = dest_row(s, y + slide_a[1]);
-    uint8_t* const brow = dest_row(s, y + slide_b[1]);
-    dest_state_t dest = DEST_UNKNOWN;
+    c->swept[lane]++;
 
-    const int cx_from = (x_step > 0) ? 0 : w - 1;
-    const int cx_to = (x_step > 0) ? w : -1;
+    const int from = (c->y_step > 0) ? y0 : y1 - 1;
+    const int to = (c->y_step > 0) ? y1 : y0 - 1;
+    sweep_range(view, from, to, c->y_step, x0, x1, c->w, c->dx, c->dy, c->slide_a, c->slide_b, c->x_step, c->load_dx,
+                c->load_dy, c->jostle, c->settled_bit, c->is_liquid);
+}
 
-    for (int x = cx_from; x != cx_to; x += x_step) {
-        const bool unchanged = row[x] == snapshot[x];
-        if (unchanged && !CELL_IS_EMPTY(row[x])) {
-            step_one_grain(s, row, prow, arow, brow, x, y, w, dx, dy, slide_a, slide_b, load_dx, load_dy, jostle,
-                           sweep_driven, &dest);
-            continue;
-        }
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-        if (!unchanged && !CELL_IS_EMPTY(row[x])) {
-            sweep_stall_bits[slot][x >> 3] |= (uint8_t)(1u << (x & 7));
-            sweep_stall_total++;
-        }
-#endif
+/* Travel is the dithered direction the sweep itself uses, so the chunk
+ * holding a move's destination is always settled first. */
+static void
+run_sweep_split(sand_t* s, int dx, int dy) {
+    if (!sand_chunk_pass_run(s, SAND_SPLIT_SWEEP, im_sign(dx), im_sign(dy), SAND_CHUNK_PASS_STAMP_CROSSINGS,
+                             sweep_one_chunk, &sweep_pass)) {
+        return;
     }
-}
-
-unsigned sand_guard_cells_scanned;
-
-/* THE SEAM FIX: a move out of a stripe's boundary row, or from the
- * interior row beside one, can land in a not-yet-swept neighbour and be
- * found and moved again once it is. `snapshot` - each guard row's
- * content from before either phase ran - lets sweep_guard_row() tell "a
- * phase-time move already landed here" from "still what the step
- * started with," which stops the double move without needing every
- * guard row in serial order - see Sand-Simulation.md for what that
- * costs. */
-static void
-run_sweep_guard_rows(sand_t* s, int w, int dx, int dy, const int* slide_a, const int* slide_b, int x_step, int load_dx,
-                     int load_dy, int jostle, uint8_t settled_bit, int y_step, const int* guard_rows, int guard_count,
-                     const uint8_t* snapshot) {
-    for (int i = 0; i < guard_count; i += 2) {
-        const int above = guard_rows[i];
-        const int below = guard_rows[i + 1];
-        const int first = (y_step > 0) ? above : below;
-        const int second = (y_step > 0) ? below : above;
-        const int first_i = (first == above) ? i : i + 1;
-        const int second_i = (first == above) ? i + 1 : i;
-
-        sweep_guard_row(s, first, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
-                        &snapshot[(size_t)first_i * (size_t)w], first_i);
-        sweep_guard_row(s, second, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
-                        &snapshot[(size_t)second_i * (size_t)w], second_i);
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        sand_sweep_chunks_swept += sweep_pass.swept[i];
     }
-}
-
-static void
-sweep_phase_worker(void* ctx) {
-    run_sweep_stripes((const sweep_phase_ctx_t*)ctx);
-}
-
-/* Runs one checkerboard phase - every stripe of `color`, minus its guard
- * rows - half on core 1, half here, joining before returning. See
- * run_sweep_guard_rows() for where the excluded rows get their turn. */
-static void
-run_sweep_phase(sand_t* s, int color, int w, int dx, int dy, const int* slide_a, const int* slide_b, int x_step,
-                int load_dx, int load_dy, int jostle, uint8_t settled_bit, uint16_t is_liquid, int y_step, int stripe_h,
-                int offset) {
-    sweep_phase_ctx_t ctx = {
-        .s = s,
-        .w = w,
-        .dx = dx,
-        .dy = dy,
-        .x_step = x_step,
-        .load_dx = load_dx,
-        .load_dy = load_dy,
-        .jostle = jostle,
-        .slide_a = {slide_a[0], slide_a[1]},
-        .slide_b = {slide_b[0], slide_b[1]},
-        .is_liquid = is_liquid,
-        .settled_bit = settled_bit,
-        .y_step = y_step,
-        .stripe_h = stripe_h,
-        .offset = offset,
-        .color = color,
-        .share = 1,
-    };
-
-    (void)job_run_core1(sweep_phase_worker, &ctx, sizeof ctx);
-    ctx.share = 0;
-    run_sweep_stripes(&ctx);
-    (void)job_wait(100);
 }
 
 __attribute__((aligned(16))) void
@@ -1544,6 +1877,8 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
 
     const uint8_t settled_bit = compute_settled_bit(s, jostle, dx, dy, load_dx, load_dy);
 
+    s->settled_bit = settled_bit;
+
     /* A body held up under one gravity can be loose under the next, and a turn
      * that moves no cell marks no row - so mark_rows() cannot be what re-arms
      * the fall pass here. */
@@ -1583,40 +1918,31 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
 
     /* Hashed draws (sand_rng_next_at(), sand_priv.h) are armed for exactly
      * this window, never longer - gas and reactions later this step must
-     * still draw from the plain sequential stream. Fewer than four stripes
-     * leave a checkerboard phase without enough work to amortise core 1. */
+     * still draw from the plain sequential stream. */
 #ifdef DEVICE_BUILD
     const int64_t sweep_t0 = esp_timer_get_time();
 #endif
-    if (sand_two_core_step_enabled() && sand_stripe_count(s) >= SAND_STRIPE_SPLIT_MIN_COUNT) {
-        const int stripe_h = sand_stripe_height(s->h);
-        const int offset = sand_stripe_offset(s);
-        const int guard_count = sweep_guard_row_list(s->h, stripe_h, offset, sweep_guard_rows, SWEEP_GUARD_ROW_MAX);
-        for (int gi = 0; gi < guard_count; gi++) {
-            memcpy(&sweep_guard_snapshot[(size_t)gi * (size_t)w], s->cells + (size_t)sweep_guard_rows[gi] * (size_t)w,
-                   (size_t)w);
-        }
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-        sweep_stall_guard_count = guard_count;
-        sweep_stall_total = 0;
-#endif
-
-        s->rng_hashed = true;
-        run_sweep_phase(s, 0, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
-                        y_step, stripe_h, offset);
-        run_sweep_phase(s, 1, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, is_liquid,
-                        y_step, stripe_h, offset);
-        run_sweep_guard_rows(s, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit, y_step,
-                             sweep_guard_rows, guard_count, sweep_guard_snapshot);
-        s->rng_hashed = false;
+    if (sand_chunk_pass_ready(s, SAND_SPLIT_SWEEP, im_sign(dx), im_sign(dy))) {
+        sweep_pass = (sweep_pass_t){
+            .lanes = sand_lanes(s),
+            .w = w,
+            .dx = dx,
+            .dy = dy,
+            .x_step = x_step,
+            .load_dx = load_dx,
+            .load_dy = load_dy,
+            .jostle = jostle,
+            .slide_a = {slide_a[0], slide_a[1]},
+            .slide_b = {slide_b[0], slide_b[1]},
+            .is_liquid = is_liquid,
+            .settled_bit = settled_bit,
+            .y_step = y_step,
+        };
+        run_sweep_split(s, dx, dy);
     } else {
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-        sweep_stall_guard_count = 0;
-        sweep_stall_total = 0;
-#endif
         s->rng_hashed = sand_force_hashed_rng_on;
-        sweep_range(s, y_from, y_to, y_step, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
-                    is_liquid);
+        sweep_range(s, y_from, y_to, y_step, 0, w, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle,
+                    settled_bit, is_liquid);
         s->rng_hashed = false;
     }
 #ifdef DEVICE_BUILD
@@ -1668,33 +1994,3 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
 
     finalize_settling(s, settled_bit);
 }
-
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-/* See sand.h: the seam-fix bookkeeping from the sand_step() call that just
- * returned, for a development overlay to draw. */
-int
-sand_seam_guard_row_count(void) {
-    return sweep_stall_guard_count;
-}
-
-int
-sand_seam_guard_row(int i) {
-    if (i < 0 || i >= sweep_stall_guard_count) {
-        return -1;
-    }
-    return sweep_guard_rows[i];
-}
-
-bool
-sand_seam_stalled(int i, int x) {
-    if (i < 0 || i >= sweep_stall_guard_count || x < 0 || x >= GRID_W_MAX) {
-        return false;
-    }
-    return (sweep_stall_bits[i][x >> 3] & (1u << (x & 7))) != 0;
-}
-
-unsigned
-sand_seam_stall_count(void) {
-    return sweep_stall_total;
-}
-#endif

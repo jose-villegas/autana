@@ -273,6 +273,10 @@ static uint8_t* dirty_rows;    /* GRID_H_MAX bytes: which rows changed -
 static uint8_t* sleep_blocks;  /* BLOCK_COLS_MAX*BLOCK_ROWS_MAX bytes:
                                    * settled blocks to skip - see
                                    * sand_enable_sleeping() */
+static uint8_t* step_stamps;   /* sized for the largest grid - see
+                                   * sand_enable_step_stamps() */
+static void* lane_scratch;     /* sized for the largest grid - see
+                                   * sand_enable_lane_scratch() */
 static impulse_t* impulse_buf; /* APP_IMPULSE_MAX entries: grains in
                                    * flight from DETONATE - see
                                    * sand_enable_impulses(). */
@@ -331,9 +335,6 @@ static int frame_log_count;
 static bool frame_log_armed;
 static bool frame_log_last_two_core;
 static int frame_log_last_quality = -1;
-/* The boot menu's "show seam stalls" checkbox - see draw_seam_overlay().
- * Off by default; picked up at the next sand_enter(), like show_dither. */
-static bool seam_overlay_on;
 #endif
 static uint32_t sim_accumulator_q8;
 static uint32_t pour_accumulator_ms;
@@ -520,8 +521,11 @@ sand_app_alloc_selfcheck(size_t* out_largest_free, bool* out_impulses_ok) {
     uint16_t* t_dcx0 = malloc(GRID_H_MAX * sizeof(uint16_t));
     uint16_t* t_dcx1 = malloc(GRID_H_MAX * sizeof(uint16_t));
     impulse_t* t_imp = malloc((size_t)APP_IMPULSE_MAX * sizeof(impulse_t));
+    uint8_t* t_stamps = malloc(sand_step_stamp_bytes(GRID_W_MAX, GRID_H_MAX));
+    void* t_lanes = malloc(sand_lane_scratch_bytes(GRID_W_MAX, GRID_H_MAX));
 
-    const bool essential_ok = (t_dirty && t_blocks && t_grid && t_x0 && t_x1 && t_n && t_dcx0 && t_dcx1);
+    const bool essential_ok =
+        (t_dirty && t_blocks && t_stamps && t_lanes && t_grid && t_x0 && t_x1 && t_n && t_dcx0 && t_dcx1);
     if (out_impulses_ok) {
         *out_impulses_ok = (t_imp != NULL);
     }
@@ -529,6 +533,8 @@ sand_app_alloc_selfcheck(size_t* out_largest_free, bool* out_impulses_ok) {
         *out_largest_free = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
     }
 
+    free(t_lanes);
+    free(t_stamps);
     free(t_imp);
     free(t_dcx1);
     free(t_dcx0);
@@ -542,6 +548,35 @@ sand_app_alloc_selfcheck(size_t* out_largest_free, bool* out_impulses_ok) {
 }
 
 #endif /* CONFIG_LAUNCHER_SELFTEST */
+
+/* Allocated after the grid and the blast buffer - see the ordering note in
+ * start_sim(). */
+static bool
+alloc_grid_bookkeeping(void) {
+    if (step_stamps == NULL) {
+        step_stamps = malloc(sand_step_stamp_bytes(GRID_W_MAX, GRID_H_MAX));
+    }
+    if (lane_scratch == NULL) {
+        lane_scratch = malloc(sand_lane_scratch_bytes(GRID_W_MAX, GRID_H_MAX));
+    }
+    if (row_run_x0 == NULL) {
+        row_run_x0 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*row_run_x0));
+    }
+    if (row_run_x1 == NULL) {
+        row_run_x1 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*row_run_x1));
+    }
+    if (row_run_n == NULL) {
+        row_run_n = malloc(GRID_H_MAX * sizeof(*row_run_n));
+    }
+    if (dirty_x0 == NULL) {
+        dirty_x0 = malloc(GRID_H_MAX * sizeof(*dirty_x0));
+    }
+    if (dirty_x1 == NULL) {
+        dirty_x1 = malloc(GRID_H_MAX * sizeof(*dirty_x1));
+    }
+    return step_stamps != NULL && lane_scratch != NULL && row_run_x0 != NULL && row_run_x1 != NULL && row_run_n != NULL
+           && dirty_x0 != NULL && dirty_x1 != NULL;
+}
 
 static void
 start_sim(void) {
@@ -595,23 +630,8 @@ start_sim(void) {
                      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
         }
     }
-    if (row_run_x0 == NULL) {
-        row_run_x0 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*row_run_x0));
-    }
-    if (row_run_x1 == NULL) {
-        row_run_x1 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*row_run_x1));
-    }
-    if (row_run_n == NULL) {
-        row_run_n = malloc(GRID_H_MAX * sizeof(*row_run_n));
-    }
-    if (dirty_x0 == NULL) {
-        dirty_x0 = malloc(GRID_H_MAX * sizeof(*dirty_x0));
-    }
-    if (dirty_x1 == NULL) {
-        dirty_x1 = malloc(GRID_H_MAX * sizeof(*dirty_x1));
-    }
-    if (grid == NULL || dirty_rows == NULL || sleep_blocks == NULL || row_run_x0 == NULL || row_run_x1 == NULL
-        || row_run_n == NULL || dirty_x0 == NULL || dirty_x1 == NULL) {
+    const bool bookkeeping_ok = alloc_grid_bookkeeping();
+    if (grid == NULL || dirty_rows == NULL || sleep_blocks == NULL || !bookkeeping_ok) {
         ESP_LOGE(TAG,
                  "Could not allocate a %d x %d grid (%d bytes); "
                  "largest free block is %u",
@@ -635,6 +655,8 @@ start_sim(void) {
     sand_track_dirty_cols(&sim, dirty_x0, dirty_x1);
 
     sand_enable_sleeping(&sim, sleep_blocks);
+    sand_enable_step_stamps(&sim, step_stamps);
+    sand_enable_lane_scratch(&sim, lane_scratch);
 
     /* Enabled unconditionally, not just once BOOM is selected, so an
      * allocation failure shows up at start_sim() rather than on the first
@@ -1912,7 +1934,6 @@ draw_menu(uint32_t dt_ms, const input_t* input) {
         .show_dither = (color_mode == SAND_COLOR_16),
 #if CONFIG_LAUNCHER_DEVELOPMENT
         .two_core = two_core_label,
-        .seam_overlay_on = seam_overlay_on,
 #endif
     };
     const sand_menu_screen_result_t result = sand_menu_screen_draw(ctx, &state, dt_ms);
@@ -1941,7 +1962,6 @@ draw_menu(uint32_t dt_ms, const input_t* input) {
         sand_set_two_core_step(!sand_two_core_step_enabled());
         frame_log_note_mode_change();
     }
-    seam_overlay_on = result.seam_overlay_on;
 #endif
 
     ui_end(COL_BACKGROUND);
@@ -2037,58 +2057,6 @@ sand_update(uint32_t dt_ms, const input_t* input) {
     pending_gx = gx;
     pending_gy = gy;
 }
-
-#if CONFIG_LAUNCHER_DEVELOPMENT
-#define SEAM_GUARD_ROW_COLOR 0x2FA6FF
-#define SEAM_GUARD_ROW_ALPHA 96
-#define SEAM_STALL_COLOR     0xFF3E5C
-#define SEAM_STALL_ALPHA     224
-
-/* Called from sand_frame() before draw_dirty_rows(): draw_seam_overlay()
- * below needs every guard row repainted clean before it tints this step's
- * own, since guard rows move each step (SWEEP_STRIPE_H / 2 alternation)
- * and nothing else would repaint last step's tint away. */
-static void
-seam_overlay_force_full_redraw(void) {
-    if (seam_overlay_on) {
-        mark_sand_fully_dirty();
-    }
-}
-
-/* Paints sand_step()'s seam bookkeeping (sand.h) over the frame
- * seam_overlay_force_full_redraw() above just forced fully clean. */
-static void
-draw_seam_overlay(void) {
-    if (!seam_overlay_on) {
-        return;
-    }
-
-    const gfx_color_t guard_color = gfx_rgb(SEAM_GUARD_ROW_COLOR);
-    const gfx_color_t stall_color = gfx_rgb(SEAM_STALL_COLOR);
-    const int guard_rows = sand_seam_guard_row_count();
-
-    for (int i = 0; i < guard_rows; i++) {
-        const int gy = sand_seam_guard_row(i);
-        if (gy < 0) {
-            continue;
-        }
-        const int py = gy * cell;
-        gfx_fill_rect_dither(0, py, grid_w * cell, cell, guard_color, SEAM_GUARD_ROW_ALPHA);
-        for (int x = 0; x < grid_w; x++) {
-            if (sand_seam_stalled(i, x)) {
-                gfx_fill_rect_dither(x * cell, py, cell, cell, stall_color, SEAM_STALL_ALPHA);
-            }
-        }
-        gfx_mark_dirty(0, py, grid_w * cell, cell);
-    }
-
-    char line[32];
-    snprintf(line, sizeof line, "seam stalls: %u", sand_seam_stall_count());
-    const int turn = gravity_quarter_turn(pending_gx, pending_gy);
-    gfx_text_turned(4, 4, line, gfx_rgb(0xFFFFFF), 1, turn);
-    gfx_mark_dirty(0, 0, 160, gfx_text_height() + 8);
-}
-#endif
 
 static void
 sand_frame(uint32_t dt_ms, const input_t* input) {
@@ -2236,10 +2204,6 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
         gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
     }
 
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    seam_overlay_force_full_redraw();
-#endif
-
     draw_dirty_rows(pending_shine_moved, pending_local_depth_woke, pending_cullet_moved, pending_glass_moved,
                     pending_wood_leaf_moved);
     heal_settled_rows();
@@ -2254,9 +2218,6 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
         if (label_left_ms > 0) {
             draw_mode_label(pending_gx, pending_gy);
         }
-#if CONFIG_LAUNCHER_DEVELOPMENT
-        draw_seam_overlay();
-#endif
     } else if (!overlays_skipped_reason_logged) {
         ESP_LOGW(TAG, "COLOUR %s: emitter markers and the mode label do not draw yet - FULL-only for now",
                  color_names[color_mode]);

@@ -384,11 +384,29 @@ panel, the real touch controller, the IMU or timing.
 one nanosecond per executed instruction, so a `us per step` line times 1000
 is instructions per step — for a measurement that sends nothing, since time
 spent waiting on the null panel's modelled bus passes with no instructions
-behind it. A step that runs on one core repeats exactly from
-run to run. A two-core step sums both cores and wanders by up to 1%, since
-the waiting core's spin is counted too. The count answers whether a change
-removed work; on this chip that does not predict whether it removed time
-(see [`notes/Optimization-Playbook.md`](notes/Optimization-Playbook.md)).
+behind it. A step that runs on one core repeats run to run, and keeps
+repeating while the host is busy: across five concurrent instances on a
+32-thread desktop, one-core measurements moved at most 1.05%, and three in
+four were identical to the digit.
+
+**A step shared between two cores cannot be ranked this way at all.** The
+count sums both cores, so the second one is charged for whatever it does
+while it waits — its bounded spin, or its idle task. That is a two-core
+floor unrelated to the work: it barely moves between a step doing full work
+and one with almost nothing left to do, and under host load such
+measurements moved by up to 25%. Measure the same work order walked by one
+thread instead, and take the two-core verdict from the board. The count
+answers whether a change removed work; on this chip that does not predict
+whether it removed time (see
+[`notes/Optimization-Playbook.md`](notes/Optimization-Playbook.md)).
+
+**Instances are independent.** Each `qemu_run.py --workdir` holds its own
+flash image, eFuse file and console log, and the build directory is only
+read, so `run_qemu_tests.sh --build-only` builds the image once for a
+driver that then launches several against it. How many to run at once is a
+question about whose desktop this is, not about the runner. An app-level
+measurement built on all three of these facts is in
+[`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md).
 
 ---
 

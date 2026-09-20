@@ -15,32 +15,33 @@
 
 #include "sand_priv.h"
 
-#include <stdlib.h>
-
 #ifdef DEVICE_BUILD
 #include "esp_timer.h"
 #endif
 
 #include "sand_liquid_move.h"
 #include "util/fixed.h"
+#include "util/intmath.h"
 
 /* See liquid_mask() in sand_priv.h */
 
 /* See sand_priv.h. */
 unsigned sand_liquid_moves;
 unsigned sand_liquid_crossflow_probes;
+unsigned sand_liquid_late_arrivals;
+
+static bool liquid_rank_audit_on;
+
+void
+sand_liquid_rank_audit_enable(bool on) {
+    liquid_rank_audit_on = on;
+}
 
 typedef struct {
-    unsigned moves, probes;
+    unsigned moves, probes, late;
     const uint8_t* block_read;
-    uint8_t* arrivals;
-    bool guard;
+    bool count_late;
 } liquid_work_t;
-
-static inline size_t
-arrival_byte(const sand_t* s, int x, int y) {
-    return (size_t)y * (((size_t)s->w + 7) / 8) + (unsigned)x / 8;
-}
 
 /* Everything that is NOT gravity-ward, and so cannot live in that sweep. */
 
@@ -125,6 +126,13 @@ find_shallowest(const sand_t* s, int x, int y, int px, int py, int sight, uint8_
     return mine - best;
 }
 
+static inline void
+note_late_arrival(liquid_work_t* work, int x, int y, int tx, int ty) {
+    if (work->count_late && sand_chunk_pass_ranks_later(x, y, tx, ty)) {
+        work->late++;
+    }
+}
+
 /* Returns transfer status and row confinement; sets `*touched_x` if confined.
  * BOTH PROBE ROWS ARE PASSED IN, not derived: the caller resolved them once
  * for the whole row walk. Deriving them here cost a multiply and a reload of
@@ -177,9 +185,7 @@ equalise_one_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* below_ro
         mark_depth_band(s, tx, ty);
     }
     work->moves++;
-    if (work->arrivals != NULL && ty != y) {
-        work->arrivals[arrival_byte(s, tx, ty)] |= (uint8_t)(1u << (tx & 7));
-    }
+    note_late_arrival(work, x, y, tx, ty);
 
     *stayed_in_row = (ty == y);
     if (*stayed_in_row) {
@@ -215,10 +221,6 @@ equalise_one_row_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* ax_r
     if (((is_liquid >> id) & 1u) == 0) {
         return false;
     }
-    if (work->guard && (work->arrivals[arrival_byte(s, x, y)] & (1u << (x & 7))) != 0) {
-        return true;
-    }
-
     /* DERIVED HERE, NOT CARRIED IN, and derived only once the cell is known to
      * be liquid - which ~30% of examined cells are. Walked incrementally by the
      * caller it cost an add, a mask and a spilled load/store for every cell
@@ -333,8 +335,8 @@ diagonal_row(const sand_t* s, int y, const xflow_t* r, const uint8_t* ax_row) {
 }
 
 static bool
-equalise_one_row(sand_t* s, int y, int w, int x_step, const xflow_t* r, int dx, int dy, int sight, uint16_t is_liquid,
-                 liquid_work_t* work) {
+equalise_one_row(sand_t* s, int y, int x0, int x1, int w, int x_step, const xflow_t* r, int dx, int dy, int sight,
+                 uint16_t is_liquid, liquid_work_t* work) {
     uint8_t* row = s->cells + (size_t)y * (size_t)w;
 
     const uint8_t* const ax_row = dest_row(s, y + r->ax[1]);
@@ -347,15 +349,17 @@ equalise_one_row(sand_t* s, int y, int w, int x_step, const xflow_t* r, int dx, 
 
     const uint8_t* blocks = work->block_read != NULL ? work->block_read : s->block_state;
     const uint8_t* brow = blocks != NULL ? blocks + (size_t)((unsigned)y / SAND_BLOCK_H) * (size_t)s->block_cols : NULL;
-    const int bx_from = (x_step > 0) ? 0 : s->block_cols - 1;
-    const int bx_to = (x_step > 0) ? s->block_cols : -1;
+    const int bx_lo = x0 / SAND_BLOCK_W;
+    const int bx_hi = (x1 + SAND_BLOCK_W - 1) / SAND_BLOCK_W;
+    const int bx_from = (x_step > 0) ? bx_lo : bx_hi - 1;
+    const int bx_to = (x_step > 0) ? bx_hi : bx_lo - 1;
 
     for (int bx = bx_from; bx != bx_to; bx += x_step) {
         if (brow != NULL && (brow[bx] & BLOCK_LIQUID_NEAR) == 0) {
             continue;
         }
-        const int lo = bx * SAND_BLOCK_W;
-        const int hi = (lo + SAND_BLOCK_W < w) ? lo + SAND_BLOCK_W : w;
+        const int lo = im_max(bx * SAND_BLOCK_W, x0);
+        const int hi = im_min(bx * SAND_BLOCK_W + SAND_BLOCK_W, x1);
 
         /* A block the main sweep left settled had no arrival from gravity OR
          * a prior cross-flow transfer last step - either wakes it directly
@@ -460,188 +464,86 @@ mark_liquid_neighbourhoods(sand_t* s) {
     mark_liquid_neighbourhoods_range(s, 0, s->block_rows);
 }
 
+/* The counters and the found flag one lane accumulates. */
 typedef struct {
-    sand_t local;
     liquid_work_t work;
-    uint8_t* blocks;
-    uint8_t* dirty;
-    uint16_t* x0;
-    uint16_t* x1;
     bool found_any;
-} liquid_stripe_t;
+} liquid_lane_t;
 
 typedef struct {
-    liquid_stripe_t* stripe;
-    const xflow_t* flow;
-    int dx, dy, sight, stripe_h, offset, color, share;
+    sand_lane_t* lanes;
+    liquid_lane_t per_lane[SAND_LANE_COUNT];
+    xflow_t flow;
+    int dx, dy, sight;
     uint16_t is_liquid;
-} liquid_phase_t;
+} liquid_pass_t;
 
-_Static_assert(sizeof(liquid_phase_t) <= JOB_CTX_MAX, "liquid phase must fit JOB_CTX_MAX");
+/* File-static for the reason sand_chunk_pass_run() gives. */
+static liquid_pass_t liquid_pass;
 
+/* A chunk's interior clears SAND_LIQUID_SIGHT on every side, and a transfer
+ * only ever runs along the ray, into a chunk the order has already settled.
+ * Sleep decisions come from the pass's immutable flag snapshot; wake and
+ * repaint writes reach well past one cell and stay private until the join. */
 static void
-prepare_liquid_stripe(liquid_stripe_t* stripe, const sand_t* s, uint8_t* arrivals) {
-    stripe->local = *s;
-    stripe->local.rng_hashed = true;
-    stripe->work = (liquid_work_t){.block_read = s->block_state, .arrivals = arrivals};
-    stripe->found_any = false;
-    if (s->block_state != NULL) {
-        stripe->local.block_state = stripe->blocks;
-        memcpy(stripe->blocks, s->block_state, (size_t)s->block_cols * (size_t)s->block_rows);
-    }
-    if (s->dirty_rows != NULL) {
-        stripe->local.dirty_rows = stripe->dirty;
-        memcpy(stripe->dirty, s->dirty_rows, (size_t)s->h);
-    }
-    if (s->dirty_x0 != NULL && s->dirty_x1 != NULL) {
-        stripe->local.dirty_x0 = stripe->x0;
-        stripe->local.dirty_x1 = stripe->x1;
-        memcpy(stripe->x0, s->dirty_x0, sizeof *stripe->x0 * (size_t)s->h);
-        memcpy(stripe->x1, s->dirty_x1, sizeof *stripe->x1 * (size_t)s->h);
-    }
-}
+equalise_one_chunk(void* pass, int lane, int cx, int cy) {
+    liquid_pass_t* const c = pass;
+    sand_t* const s = &c->lanes[lane].local;
+    liquid_lane_t* const own = &c->per_lane[lane];
+    int x0, x1, y0, y1;
 
-static void
-merge_liquid_stripe(sand_t* s, const liquid_stripe_t* stripe) {
-    if (s->block_state != NULL) {
-        for (int i = 0; i < s->block_cols * s->block_rows; i++) {
-            const uint8_t local = stripe->blocks[i];
-            s->block_state[i] &= (uint8_t)(local | ~(BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER));
-            s->block_state[i] |= local & BLOCK_ACTIVE;
-        }
-    }
-    for (int y = 0; y < s->h; y++) {
-        if (s->dirty_rows != NULL) {
-            s->dirty_rows[y] |= stripe->dirty[y];
-        }
-        if (s->dirty_x0 != NULL && s->dirty_x1 != NULL) {
-            if (stripe->x0[y] < s->dirty_x0[y]) {
-                s->dirty_x0[y] = stripe->x0[y];
-            }
-            if (stripe->x1[y] > s->dirty_x1[y]) {
-                s->dirty_x1[y] = stripe->x1[y];
-            }
-        }
-    }
-    s->faller_may_move |= stripe->local.faller_may_move;
-    sand_liquid_moves += stripe->work.moves;
-    sand_liquid_crossflow_probes += stripe->work.probes;
-}
+    sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
 
-/* Eight guard rows keep every cell access inside its stripe. Sleep decisions
- * use the phase's immutable flags; wake and repaint writes are private until
- * join because their reach exceeds the cell guards. */
-static void
-liquid_phase_worker(void* arg) {
-    const liquid_phase_t* c = arg;
-    liquid_stripe_t* stripe = c->stripe;
-    sand_t* s = &stripe->local;
-    const int y_step = c->flow->dg[1] > 0 ? -1 : 1;
-    const int x_step = c->flow->dg[0] > 0 ? -1 : 1;
-    int seen = 0;
-    for (int k = c->offset == 0 ? 0 : -1; c->offset + k * c->stripe_h < s->h; k++) {
-        if (((k % 2) + 2) % 2 != c->color) {
-            continue;
-        }
-        if ((seen++ & 1) != c->share) {
-            continue;
-        }
-        const int band0 = c->offset + k * c->stripe_h;
-        const int band1 = band0 + c->stripe_h;
-        const int y0 = band0 > 0 ? band0 + c->sight : 0;
-        const int y1 = band1 < s->h ? band1 - c->sight : s->h;
-        for (int y = y_step > 0 ? y0 : y1 - 1; y >= y0 && y < y1; y += y_step) {
-            stripe->found_any |=
-                equalise_one_row(s, y, s->w, x_step, c->flow, c->dx, c->dy, c->sight, c->is_liquid, &stripe->work);
-        }
+    const int y_step = c->flow.dg[1] > 0 ? -1 : 1;
+    const int x_step = c->flow.dg[0] > 0 ? -1 : 1;
+
+    for (int y = y_step > 0 ? y0 : y1 - 1; y >= y0 && y < y1; y += y_step) {
+        sand_chunk_work_add(x1 - x0);
+        own->found_any |=
+            equalise_one_row(s, y, x0, x1, s->w, x_step, &c->flow, c->dx, c->dy, c->sight, c->is_liquid, &own->work);
     }
 }
 
 static bool
-liquid_guard_row(int y, int h, int stripe_h, int offset, int sight) {
-    const int band0 = ((y + stripe_h - offset) / stripe_h) * stripe_h + offset - stripe_h;
-    const int band1 = band0 + stripe_h;
-    return (band0 > 0 && y - band0 < sight) || (band1 < h && band1 - y <= sight);
-}
+equalise_liquid_chunks(sand_t* s, const xflow_t* flow, int sight, int dx, int dy, uint16_t is_liquid, bool* found_any) {
+    sand_lane_t* const lanes = sand_lanes(s);
 
-/* Row stripes cannot preserve source-before-destination order when the ACTIVE
- * ray crosses rows, which is what gravity mostly sideways means. A lean short
- * of that tilts only the diagonal ray, and no tilted or turning scene the
- * probe measures holds back more than it moves early. */
-static bool
-liquid_flow_changes_rows(const xflow_t* flow) {
-    return flow->ax[1] != 0;
-}
-
-/* A received mass must not be forwarded when its guard row runs later.
- * Bytes are padded per row so concurrent stripes never share a bitmap byte,
- * including grids whose width is not a multiple of eight. */
-static bool
-equalise_liquid_stripes(sand_t* s, const xflow_t* flow, int sight, int dx, int dy, uint16_t is_liquid,
-                        bool* found_any) {
-    const size_t rows = (size_t)s->h;
-    const size_t blocks = (size_t)s->block_cols * (size_t)s->block_rows;
-    const size_t arrival_bytes = rows * (((size_t)s->w + 7) / 8);
-    const int stripe_h = sand_stripe_height(s->h);
-    liquid_stripe_t* stripes = calloc(1, 2 * sizeof *stripes + 8 * rows + 2 * blocks + 2 * rows + arrival_bytes);
-    if (stripes == NULL) {
+    if (lanes == NULL || !sand_chunk_pass_ready(s, SAND_SPLIT_CROSSFLOW, flow->dg[0], flow->dg[1])) {
         return false;
     }
-    uint16_t* spans = (uint16_t*)(stripes + 2);
-    uint8_t* bytes = (uint8_t*)(spans + 4 * rows);
-    for (int i = 0; i < 2; i++) {
-        stripes[i].x0 = spans + (size_t)(2 * i) * rows;
-        stripes[i].x1 = stripes[i].x0 + rows;
-        stripes[i].blocks = bytes + (size_t)i * (blocks + rows);
-        stripes[i].dirty = stripes[i].blocks + blocks;
+    liquid_pass =
+        (liquid_pass_t){.lanes = lanes, .flow = *flow, .dx = dx, .dy = dy, .sight = sight, .is_liquid = is_liquid};
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        liquid_pass.per_lane[i].work.block_read = s->block_state;
+        liquid_pass.per_lane[i].work.count_late = liquid_rank_audit_on;
     }
-    uint8_t* arrivals = bytes + 2 * (blocks + rows);
-    const int offset = sand_stripe_offset(s);
-    for (int color = 0; color < 2; color++) {
-        prepare_liquid_stripe(&stripes[0], s, arrivals);
-        prepare_liquid_stripe(&stripes[1], s, arrivals);
-        liquid_phase_t ctx = {&stripes[1], flow, dx, dy, sight, stripe_h, offset, color, 1, is_liquid};
-        (void)job_run_core1(liquid_phase_worker, &ctx, sizeof ctx);
-        ctx.stripe = &stripes[0];
-        ctx.share = 0;
-        liquid_phase_worker(&ctx);
-        (void)job_wait(100);
-        for (int i = 0; i < 2; i++) {
-            merge_liquid_stripe(s, &stripes[i]);
-            *found_any |= stripes[i].found_any;
-        }
+
+    /* Travel is the ray mass moves along, so the chunk a transfer lands in
+     * has already run and will not forward it again. */
+    if (!sand_chunk_pass_run(s, SAND_SPLIT_CROSSFLOW, flow->dg[0], flow->dg[1], SAND_CHUNK_PASS_NO_STAMPS,
+                             equalise_one_chunk, &liquid_pass)) {
+        return false;
     }
-    liquid_work_t guard = {.arrivals = arrivals, .guard = true};
-    const bool was_hashed = s->rng_hashed;
-    s->rng_hashed = true;
-    const int y_step = flow->dg[1] > 0 ? -1 : 1;
-    const int x_step = flow->dg[0] > 0 ? -1 : 1;
-    for (int y = y_step > 0 ? 0 : s->h - 1; y >= 0 && y < s->h; y += y_step) {
-        if (liquid_guard_row(y, s->h, stripe_h, offset, sight)) {
-            *found_any |= equalise_one_row(s, y, s->w, x_step, flow, dx, dy, sight, is_liquid, &guard);
-        }
+
+    for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        sand_liquid_moves += liquid_pass.per_lane[i].work.moves;
+        sand_liquid_crossflow_probes += liquid_pass.per_lane[i].work.probes;
+        sand_liquid_late_arrivals += liquid_pass.per_lane[i].work.late;
+        *found_any |= liquid_pass.per_lane[i].found_any;
     }
-    s->rng_hashed = was_hashed;
-    sand_liquid_moves += guard.moves;
-    sand_liquid_crossflow_probes += guard.probes;
-    free(stripes);
     return true;
 }
 
-/* Hashed draws stay armed here when a split pass would otherwise have armed
- * them, so serialising one flow does not also change the numbers it draws. */
 static bool
 equalise_every_row(sand_t* s, const xflow_t* f, int sight, int dx, int dy, uint16_t is_liquid, int y_from, int y_to,
-                   int y_step, int x_step, bool row_crossing) {
+                   int y_step, int x_step) {
     liquid_work_t work = {0};
     bool found_any = false;
     const bool was_hashed = s->rng_hashed;
 
-    if (row_crossing && sand_two_core_step_enabled()) {
-        s->rng_hashed = true;
-    }
+    s->rng_hashed = was_hashed || sand_rng_forced_hashed();
     for (int y = y_from; y != y_to; y += y_step) {
-        if (equalise_one_row(s, y, s->w, x_step, f, dx, dy, sight, is_liquid, &work)) {
+        if (equalise_one_row(s, y, 0, s->w, s->w, x_step, f, dx, dy, sight, is_liquid, &work)) {
             found_any = true;
         }
     }
@@ -654,7 +556,6 @@ equalise_every_row(sand_t* s, const xflow_t* f, int sight, int dx, int dy, uint1
 static void
 equalise_liquids(sand_t* s, const xflow_t* f, int sight, int dx, int dy) {
     bool found_any = false;
-    const bool row_crossing = liquid_flow_changes_rows(f);
 
     if (s->block_state != NULL) {
         mark_liquid_neighbourhoods(s);
@@ -675,9 +576,8 @@ equalise_liquids(sand_t* s, const xflow_t* f, int sight, int dx, int dy) {
 
     /* See equalise_one_row(). BLOCK_HAS_LIQUID → BLOCK_LIQUID_NEAR. No move
      * cost. */
-    if (!sand_two_core_step_enabled() || row_crossing || sand_stripe_count(s) < SAND_STRIPE_SPLIT_MIN_COUNT
-        || !equalise_liquid_stripes(s, f, sight, dx, dy, is_liquid, &found_any)) {
-        if (equalise_every_row(s, f, sight, dx, dy, is_liquid, y_from, y_to, y_step, x_step, row_crossing)) {
+    if (!equalise_liquid_chunks(s, f, sight, dx, dy, is_liquid, &found_any)) {
+        if (equalise_every_row(s, f, sight, dx, dy, is_liquid, y_from, y_to, y_step, x_step)) {
             found_any = true;
         }
     }

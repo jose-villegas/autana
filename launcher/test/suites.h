@@ -34,11 +34,18 @@
 
 typedef void (*suite_fn)(void);
 
-/* Called by SUITE_REGISTER before main(). */
+/* Called by the SUITE_REGISTER macros before main(). `on_request` keeps a
+ * suite out of suites_run_all() while leaving suites_run_one() able to find
+ * it: a sweep measured in hours belongs to whoever asks for it by name, not
+ * to every boot of every image that carries it. */
 void suite_register(const char* name, suite_fn fn);
+void suite_register_on_request(const char* name, suite_fn fn);
 
 #define SUITE_REGISTER(fn)                                                                                             \
     __attribute__((constructor)) static void fn##_register(void) { suite_register(#fn, fn); }
+
+#define SUITE_REGISTER_ON_REQUEST(fn)                                                                                  \
+    __attribute__((constructor)) static void fn##_register(void) { suite_register_on_request(#fn, fn); }
 
 /* Runs every registered suite, in name order so the output is stable. */
 void suites_run_all(void);

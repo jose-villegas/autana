@@ -17,6 +17,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "build_variant.h"
@@ -52,7 +53,7 @@ typedef struct sand_s {
     rng_t rng; /* seeded explicitly, so every run repeats exactly */
     /* The same seed, kept aside for sand_rng_next_at()'s hashed draws -
      * see sand_two_core_step_enabled() (below) and sand_priv.h. rng_hashed
-     * is true only while a checkerboard-parallel pass is actually running,
+     * is true only while a chunk-parallel pass is actually running,
      * so every other draw in a step still advances the sequential stream
      * above, unaffected. */
     uint32_t rng_seed_base;
@@ -180,6 +181,17 @@ typedef struct sand_s {
     uint8_t* block_state;
     int block_cols, block_rows; /* set once, by sand_init() */
 
+    /* Caller-owned, see sand_enable_step_stamps(). stamps_live is the same
+     * buffer only while a chunk-parallel pass runs, and NULL otherwise, so a
+     * serial pass never reads or writes a bit. */
+    uint8_t* step_stamps;
+    uint8_t* stamps_live;
+    int stamp_side_x, stamp_side_y;
+    bool stamped; /* a bit is set, so the pass must clear before it ends */
+
+    /* Caller-owned, see sand_enable_lane_scratch(). */
+    void* lane_scratch;
+
     /* Caller-owned `impulse_max` entries: grains in flight from
      * sand_impulse(). NULL disables the mechanic. `impulse_count` tracks live
      * entries in `impulse_buf`, always <= `impulse_max`. */
@@ -210,6 +222,13 @@ typedef struct sand_s {
      * decides run of HEAT_FLAW_CLUMP. */
     uint16_t heat_flaw_seq;
     bool heat_flaw_is_flawed;
+
+    /* Which BLOCK_SETTLED_* bit this step reads, or 0 where the caller
+     * enabled no sleeping - it depends on how this step's direction compares
+     * with the one the board settled under, and more than one pass asks.
+     * Declared against the direction fields below, which is also where the
+     * struct already had a hole to put it in. */
+    uint8_t settled_bit;
 
     int last_load_dx, last_load_dy;
 
@@ -255,6 +274,11 @@ typedef struct sand_s {
         int64_t reactions_us;
         int64_t impulses_us;
     } pass_us;
+
+    /* Steps where a split pass gave up on one of its two lanes, cumulative
+     * so a log line can read a delta. Not an error - the caller finishes the
+     * board alone - but it costs that pass its second core. */
+    unsigned split_lane_aborts;
 #endif
 } sand_t;
 
@@ -283,6 +307,20 @@ void sand_track_dirty_cols(sand_t* s, uint16_t* x0, uint16_t* x1);
  * NULL disables sleeping. A shake, a gravity change, or sand landing in a
  * block wakes it. */
 void sand_enable_sleeping(sand_t* s, uint8_t* blocks);
+
+/* sand_step_stamp_bytes(w, h) bytes, one bit per cell, caller-owned. A
+ * two-core step takes its chunks one after another; a grain crossing into a
+ * chunk still to run is marked so that chunk leaves it. NULL disables it,
+ * and such a grain may then move twice. */
+void sand_enable_step_stamps(sand_t* s, uint8_t* bits);
+size_t sand_step_stamp_bytes(int w, int h);
+
+/* sand_lane_scratch_bytes(w, h) bytes, caller-owned: the private block flags,
+ * dirty spans and deferred work each of a two-core pass's two lanes fills and
+ * merges back at the join. NULL leaves every such pass running serial, so a
+ * caller that cannot spare the memory still gets a correct board. */
+void sand_enable_lane_scratch(sand_t* s, void* scratch);
+size_t sand_lane_scratch_bytes(int w, int h);
 
 /* Diagnostic: whether block (bx, by) is settled under dithered direction. Bit
  * layout private to sand.c/sand_priv.h. Used by app_sand.c's count_awake().
@@ -656,9 +694,10 @@ void sand_set_gas_walk(sand_t* s, bool on);
 #define SAND_MOBILITY_PER_MATERIAL (-1)
 
 /* Global: one core-1 worker serves all boards. Splits the gravity sweep,
- * liquid cross-flow and independent block scans. Movement uses hashed
- * draws and guarded stripes; serial remains the host default and the
- * fingerprint reference. Device builds enable splitting by default. */
+ * liquid cross-flow, gas, reactions and independent block scans over a grid
+ * of square chunks. Movement uses hashed draws; serial remains the host
+ * default and the fingerprint reference. Device builds enable splitting by
+ * default. */
 void sand_set_two_core_step(bool on);
 bool sand_two_core_step_enabled(void);
 
@@ -666,18 +705,6 @@ bool sand_two_core_step_enabled(void);
  * vector means free fall. `jostle` (0-255) makes grains slide sideways and
  * overrides friction. */
 void sand_step(sand_t* s, int gx, int gy, int jostle);
-
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-/* The guard pass's own skip decision (sand.c, "THE SEAM FIX"), for the
- * sand_step() call that just returned: guard row count (0 after a
- * single-core step), each row's index, whether one column stalled, and how
- * many stalled in total. Dev-only overlay data - see Sand-Simulation.md's
- * seam section. */
-int sand_seam_guard_row_count(void);
-int sand_seam_guard_row(int i);
-bool sand_seam_stalled(int i, int x);
-unsigned sand_seam_stall_count(void);
-#endif
 
 /* The eight-way quantisation: the NEAREST of the eight directions.
  * Writes the unit direction to (*dx, *dy), or (0, 0) for a zero vector.

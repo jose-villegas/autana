@@ -11,7 +11,9 @@
 #include "unity.h"
 
 #include "sand.h"
+#include "sand_priv.h"
 #include "suite_sand_common.h"
+#include "util/job.h"
 
 sand_t s;
 uint8_t cells[W * H];
@@ -346,4 +348,84 @@ two_core_scope_begin(bool two_core) {
 void
 two_core_scope_end(two_core_scope_t scope) {
     sand_set_two_core_step(scope.before);
+}
+
+split_passes_scope_t
+split_passes_scope_begin(unsigned also) {
+    const split_passes_scope_t scope = {.before = sand_split_passes_for_test(sand_split_passes | also),
+                                        .share = sand_chunk_share_for_test(SAND_CHUNK_SHARE_ALWAYS)};
+    return scope;
+}
+
+void
+split_passes_scope_end(split_passes_scope_t scope) {
+    (void)sand_split_passes_for_test(scope.before);
+    (void)sand_chunk_share_for_test(scope.share);
+}
+
+void*
+lane_scratch_open(sand_t* g) {
+    void* scratch = malloc(sand_lane_scratch_bytes(g->w, g->h));
+    TEST_ASSERT_NOT_NULL(scratch);
+    sand_enable_lane_scratch(g, scratch);
+    return scratch;
+}
+
+/* malloc'd rather than static for the reason every other wide fixture here
+ * is: on the device these are DIRAM the heap would otherwise never get. */
+static struct {
+    uint8_t* blocks;
+    uint8_t* dirty;
+    uint16_t* x0;
+    uint16_t* x1;
+    uint8_t* stamps;
+    void* scratch;
+} bookkeeping;
+
+void
+board_bookkeeping_open(sand_t* g) {
+    board_bookkeeping_close();
+
+    bookkeeping.dirty = malloc((size_t)g->h);
+    bookkeeping.x0 = malloc(sizeof *bookkeeping.x0 * (size_t)g->h);
+    bookkeeping.x1 = malloc(sizeof *bookkeeping.x1 * (size_t)g->h);
+    bookkeeping.stamps = malloc(sand_step_stamp_bytes(g->w, g->h));
+    TEST_ASSERT_NOT_NULL(bookkeeping.dirty);
+    TEST_ASSERT_NOT_NULL(bookkeeping.x0);
+    TEST_ASSERT_NOT_NULL(bookkeeping.x1);
+    TEST_ASSERT_NOT_NULL(bookkeeping.stamps);
+
+    /* A scene that brought its own block buffer keeps it: two would leave the
+     * board reading one and the scene's own asserts the other. */
+    if (g->block_state == NULL) {
+        bookkeeping.blocks = malloc((size_t)g->block_cols * (size_t)g->block_rows);
+        TEST_ASSERT_NOT_NULL(bookkeeping.blocks);
+        sand_enable_sleeping(g, bookkeeping.blocks);
+    }
+    sand_track_dirty_rows(g, bookkeeping.dirty);
+    sand_track_dirty_cols(g, bookkeeping.x0, bookkeeping.x1);
+    sand_enable_step_stamps(g, bookkeeping.stamps);
+    bookkeeping.scratch = lane_scratch_open(g);
+}
+
+/* Collects core 1 first: a lane whose join timed out is still writing into
+ * the scratch this is about to hand back to malloc(). */
+void
+board_bookkeeping_close(void) {
+    if (bookkeeping.scratch != NULL) {
+        collect_core1_lane();
+    }
+    free(bookkeeping.scratch);
+    free(bookkeeping.stamps);
+    free(bookkeeping.x1);
+    free(bookkeeping.x0);
+    free(bookkeeping.dirty);
+    free(bookkeeping.blocks);
+    memset(&bookkeeping, 0, sizeof bookkeeping);
+}
+
+void
+collect_core1_lane(void) {
+    for (int tries = 0; tries < 20 && !job_wait(100); tries++) {}
+    TEST_ASSERT_TRUE_MESSAGE(job_wait(0), "a core-1 lane never came back");
 }

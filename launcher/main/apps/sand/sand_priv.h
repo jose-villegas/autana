@@ -39,34 +39,298 @@
 #include <string.h>
 
 #include "sand.h"
+#include "sand_chunk_sched.h"
 #include "util/job.h"
 
-#define SAND_STRIPE_SPLIT_MIN_COUNT 4
-#define SAND_STRIPE_H_MIN           (2 * SAND_LIQUID_SIGHT + 1)
-#define SAND_STRIPE_H_MAX           SAND_BLOCK_H
+#define SAND_CHUNK_SIDE_MIN (2 * SAND_LIQUID_SIGHT + 1)
 
-_Static_assert(SAND_STRIPE_H_MIN > 3, "sweep stripes need an interior beyond two guard rows");
-_Static_assert(SAND_STRIPE_H_MIN > 2 * SAND_LIQUID_SIGHT, "liquid stripes need an interior beyond both guards");
+_Static_assert(SAND_CHUNK_SIDE_MIN > 2 * SAND_LIQUID_SIGHT,
+               "a chunk must clear the furthest a split pass reads or transfers");
 
-static inline int
-sand_stripe_height(int grid_h) {
-    int height = (grid_h + SAND_STRIPE_SPLIT_MIN_COUNT - 1) / SAND_STRIPE_SPLIT_MIN_COUNT;
-    if (height < SAND_STRIPE_H_MIN) {
-        return SAND_STRIPE_H_MIN;
+/* A step travelling along x alone takes chunks long across x; every other
+ * travel is slower on that shape, so the two are planned apart. A travel
+ * component that encodes scan order rather than motion puts its pass in the
+ * second class, which is where a pass nothing has measured belongs. */
+typedef enum {
+    SAND_CHUNK_TRAVEL_X,
+    SAND_CHUNK_TRAVEL_OTHER,
+    SAND_CHUNK_TRAVEL_CLASSES,
+} sand_chunk_travel_t;
+
+static inline sand_chunk_travel_t
+sand_chunk_travel_of(int tx, int ty) {
+    (void)tx;
+    return (ty == 0) ? SAND_CHUNK_TRAVEL_X : SAND_CHUNK_TRAVEL_OTHER;
+}
+
+/* The cut a w x h grid takes for a travel class, before any override. */
+void sand_chunk_table_sides(int w, int h, sand_chunk_travel_t travel, int* side_x, int* side_y);
+
+/* Not sand.h API: a measurement's own chunk side per axis, in cells, or 0 on
+ * an axis for the table. Set through sand_chunk_side_for_test(), which is what
+ * enforces SAND_CHUNK_SIDE_MIN; a cut that does not fit falls back to one lane
+ * exactly as a table entry's own would. A forced side also carries a board past
+ * SAND_CHUNK_SPLIT_MIN_CELLS, so a test can split a grid the shipped step
+ * would not. */
+extern int sand_chunk_side_forced[2];
+
+bool sand_chunk_side_for_test(int side_x, int side_y);
+
+static inline bool
+sand_chunk_side_is_forced(void) {
+    return sand_chunk_side_forced[0] != 0 || sand_chunk_side_forced[1] != 0;
+}
+
+static inline void
+sand_chunk_sides(const sand_t* s, sand_chunk_travel_t travel, int* side_x, int* side_y) {
+    sand_chunk_table_sides(s->w, s->h, travel, side_x, side_y);
+    if (sand_chunk_side_forced[0] != 0) {
+        *side_x = sand_chunk_side_forced[0];
     }
-    if (height > SAND_STRIPE_H_MAX) {
-        return SAND_STRIPE_H_MAX;
+    if (sand_chunk_side_forced[1] != 0) {
+        *side_y = sand_chunk_side_forced[1];
     }
-    return height;
 }
 
 static inline int
-sand_stripe_count(const sand_t* s) {
-    const int height = sand_stripe_height(s->h);
-    return (s->h + height - 1) / height;
+sand_chunk_side_x(const sand_t* s, sand_chunk_travel_t travel) {
+    int side_x, side_y;
+
+    sand_chunk_sides(s, travel, &side_x, &side_y);
+    return side_x;
 }
 
-/* One constant per rng draw site inside a checkerboard-parallel pass -
+static inline int
+sand_chunk_side_y(const sand_t* s, sand_chunk_travel_t travel) {
+    int side_x, side_y;
+
+    sand_chunk_sides(s, travel, &side_x, &side_y);
+    return side_y;
+}
+
+static inline int
+sand_chunk_cols(const sand_t* s, sand_chunk_travel_t travel) {
+    const int side = sand_chunk_side_x(s, travel);
+    return (s->w + side - 1) / side;
+}
+
+static inline int
+sand_chunk_rows(const sand_t* s, sand_chunk_travel_t travel) {
+    const int side = sand_chunk_side_y(s, travel);
+    return (s->h + side - 1) / side;
+}
+
+/* Whole bytes per row. A byte holds eight adjacent columns and two lanes are
+ * never within a chunk side of each other, so they never share one. */
+static inline size_t
+sand_stamp_stride(int w) {
+    return ((size_t)w + 7) / 8;
+}
+
+static inline bool
+sand_cell_stamped(const sand_t* s, int x, int y) {
+    const uint8_t* const live = s->stamps_live;
+    return live != NULL && ((live[(size_t)y * sand_stamp_stride(s->w) + ((unsigned)x >> 3)] >> (x & 7)) & 1u) != 0;
+}
+
+/* One row's stamp bits, NULL when no pass has armed any - for a walk that
+ * would otherwise re-derive the row's offset once per cell it looks at. The
+ * bits themselves are read fresh: a crossing lands ahead of the walk. */
+static inline const uint8_t*
+sand_stamp_row(const sand_t* s, int y) {
+    const uint8_t* const live = s->stamps_live;
+
+    return (live != NULL) ? live + (size_t)y * sand_stamp_stride(s->w) : NULL;
+}
+
+static inline bool
+sand_row_cell_stamped(const uint8_t* stamp_row, int x) {
+    return stamp_row != NULL && ((stamp_row[(unsigned)x >> 3] >> (x & 7)) & 1u) != 0;
+}
+
+/* Only a move that leaves its chunk: inside one, the pass's own sweep order
+ * keeps a grain to one move exactly as serial does. Only the mover, at its
+ * destination - a cell it displaced may still take its own move. */
+static inline void
+sand_stamp_crossing(sand_t* s, int x0, int y0, int x1, int y1) {
+    uint8_t* const live = s->stamps_live;
+    if (live == NULL) {
+        return;
+    }
+    if (x0 / s->stamp_side_x == x1 / s->stamp_side_x && y0 / s->stamp_side_y == y1 / s->stamp_side_y) {
+        return;
+    }
+    live[(size_t)y1 * sand_stamp_stride(s->w) + ((unsigned)x1 >> 3)] |= (uint8_t)(1u << (x1 & 7));
+    s->stamped = true;
+}
+
+/* Bracket one chunk-parallel pass, taking the sides of the plan that pass is
+ * running on: two passes of one step can be cut differently, and a mark left
+ * by one would name another chunk under the other. Stamps are per pass, not
+ * per step, for a second reason: serial lets the next pass move a cell this
+ * one already moved. */
+static inline void
+sand_stamps_arm(sand_t* s, int side_x, int side_y) {
+    s->stamps_live = s->step_stamps;
+    s->stamp_side_x = side_x;
+    s->stamp_side_y = side_y;
+}
+
+static inline void
+sand_stamps_disarm(sand_t* s) {
+    if (s->stamped) {
+        memset(s->step_stamps, 0, sand_step_stamp_bytes(s->w, s->h));
+        s->stamped = false;
+    }
+    s->stamps_live = NULL;
+    s->stamp_side_x = 0;
+    s->stamp_side_y = 0;
+}
+
+#define SAND_LANE_COUNT       2
+
+/* Scratch bytes one lane gets for work it cannot finish inside the chunk it
+ * is stepping and hands to the serial drain after the join. Opaque here: the
+ * one pass that fills it asserts its own queues fit. */
+#define SAND_LANE_DEFER_BYTES 1024
+
+/* The board as one lane of a split pass sees it: shared cells, private
+ * metadata. A wake or a repaint reaches past the chunk being stepped, so
+ * every such write lands in the arrays below and is merged at the join. */
+typedef struct {
+    sand_t local;
+    uint8_t* blocks;
+    uint8_t* dirty;
+    uint16_t* x0;
+    uint16_t* x1;
+    uint8_t* defer;
+} sand_lane_t;
+
+/* The board's two lanes, wired to its lane scratch, or NULL when it has
+ * none. The pair outlives any pass on purpose: a core-1 half that misses
+ * its join must not be writing into a frame that has already returned. */
+sand_lane_t* sand_lanes(sand_t* s);
+
+void sand_lane_prepare(sand_lane_t* lane, const sand_t* s);
+
+/* Merged by OR alone, which is exact because a pass only ever sets these
+ * flags - see latch_content_flags() and the BLOCK_* bits below. */
+void sand_lane_merge(sand_t* s, const sand_lane_t* lane);
+
+/* Below this a step is quicker on one core whatever the cut: 61x74 measured
+ * 1.04-1.32 of a serial step on the board and 46x56 1.27-1.32, while 92x112
+ * and up win. A forced side is a measurement asking for the split, and gets
+ * it on any grid. */
+#define SAND_CHUNK_SPLIT_MIN_CELLS (92 * 112)
+
+/* One index per splittable pass, so a per-pass array needs no mapping table
+ * and the mask below is one shift away. */
+typedef enum {
+    SAND_SPLIT_SLOT_SWEEP,
+    SAND_SPLIT_SLOT_CROSSFLOW,
+    SAND_SPLIT_SLOT_GAS_WALK,
+    SAND_SPLIT_SLOT_GAS_SPREAD,
+    SAND_SPLIT_SLOT_REACTIONS,
+    SAND_SPLIT_SLOTS,
+} sand_split_slot_t;
+
+/* Which passes the shipped step splits. Cross-flow is out: measured on the
+ * board its split runs 0.87-1.27 of its own serial walk, mostly over 1.0, at
+ * every layout, where the gravity sweep runs 0.65-0.80. The split path stays
+ * - the per-row setup it repeats per chunk is the next thing to go, and that
+ * may turn the number round. */
+typedef enum {
+    SAND_SPLIT_SWEEP = 1u << SAND_SPLIT_SLOT_SWEEP,
+    SAND_SPLIT_CROSSFLOW = 1u << SAND_SPLIT_SLOT_CROSSFLOW,
+    SAND_SPLIT_GAS_WALK = 1u << SAND_SPLIT_SLOT_GAS_WALK,
+    SAND_SPLIT_GAS_SPREAD = 1u << SAND_SPLIT_SLOT_GAS_SPREAD,
+    SAND_SPLIT_REACTIONS = 1u << SAND_SPLIT_SLOT_REACTIONS,
+} sand_split_pass_t;
+
+static inline int
+sand_split_slot_of(sand_split_pass_t pass) {
+    int slot = 0;
+
+    for (unsigned bit = (unsigned)pass; bit > 1u; bit >>= 1) {
+        slot++;
+    }
+    return slot;
+}
+
+#define SAND_SPLIT_PASSES_SHIPPED                                                                                      \
+    (SAND_SPLIT_SWEEP | SAND_SPLIT_GAS_WALK | SAND_SPLIT_GAS_SPREAD | SAND_SPLIT_REACTIONS)
+
+extern unsigned sand_split_passes;
+
+/* Returns the mask it replaced, so a caller can put that back. */
+unsigned sand_split_passes_for_test(unsigned mask);
+
+/* Below this many awake cells, a pass gives a second core less than the four
+ * passes of prepare, merge, dispatch and join cost to reach it: a settled
+ * ULTRA board steps in 95 us on one core and 148 split, HIGH 56 and 110,
+ * NORMAL 39 and 109. Whole chunks are charged, so this is a little over one
+ * chunk of the widest cut any quality ships. */
+#define SAND_CHUNK_SPLIT_MIN_AWAKE_CELLS    1600
+
+/* And the awake chunks have to divide: the span two lanes model must come
+ * this far under walking them one after another, because walking a board as
+ * chunks costs 1.09 to 1.28 of the row-major sweep before either lane has
+ * done anything (QEMU --icount, ULTRA, every cut and scene measured). Under
+ * this share, halving the work still pays for that; over it, a pour into a
+ * settled board or a single falling column pays it for nothing. */
+#define SAND_CHUNK_SPLIT_SPAN_SHARE_PERCENT 75
+
+/* Whether this pass can split on this board: the pass is one that ships
+ * split, two-core stepping is on, lane scratch is present, the grid is worth
+ * dividing, its class's cut fits, and enough of the board is awake in enough
+ * places to keep two lanes busy. */
+bool sand_chunk_pass_ready(const sand_t* s, sand_split_pass_t pass, int tx, int ty);
+
+/* Pins the last of those questions, so a test measuring the split path is
+ * not handed the serial one by a board that happens to be quiet - and so the
+ * decision itself can be tested from both sides. Returns what it replaced. */
+typedef enum {
+    SAND_CHUNK_SHARE_AUTO,
+    SAND_CHUNK_SHARE_ALWAYS,
+    SAND_CHUNK_SHARE_NEVER,
+} sand_chunk_share_t;
+
+sand_chunk_share_t sand_chunk_share_for_test(sand_chunk_share_t mode);
+
+/* Split passes actually dispatched, counted where one starts, per pass so
+ * that which passes were shared is a thing a test can say and not only how
+ * many. Never reset by the sand code: a test zeroes it and reads it back. */
+extern unsigned sand_split_dispatches[SAND_SPLIT_SLOTS];
+
+/* Whether a pass needs the arrival marks: only one that can hand a cell on
+ * again in the same pass, which an order built against its own travel
+ * already rules out. */
+typedef enum {
+    SAND_CHUNK_PASS_NO_STAMPS,
+    SAND_CHUNK_PASS_STAMP_CROSSINGS,
+} sand_chunk_pass_stamps_t;
+
+/* Runs `fn` once per chunk over both lanes, ordered by the pass's travel
+ * direction (tx, ty) so a chunk waits for every neighbour its transfers can
+ * reach. Arms the hashed rng, prepares and merges the lanes; a pass's own
+ * counters are its business. False means nothing ran and the caller must
+ * walk the board itself.
+ *
+ * `pass` must point at file-static storage: a lane that misses its join is
+ * still reading through it once the caller's frame has returned. */
+bool sand_chunk_pass_run(sand_t* s, sand_split_pass_t pass_id, int tx, int ty, sand_chunk_pass_stamps_t stamps,
+                         sand_chunk_fn_t fn, void* pass);
+
+/* The cell range of the chunk `fn` was handed. */
+void sand_chunk_pass_cells(int cx, int cy, int* x0, int* x1, int* y0, int* y1);
+
+/* Whether the chunk holding (x1, y1) runs after the chunk holding (x0, y0)
+ * in the pass on the schedule - what an order built against a pass's travel
+ * rules out for everything that pass writes. Only meaningful while
+ * sand_chunk_pass_run() is running. */
+bool sand_chunk_pass_ranks_later(int x0, int y0, int x1, int y1);
+
+/* One constant per rng draw site inside a chunk-parallel pass -
  * see sand_rng_next_at() below. A fixed slot per site, not a per-cell
  * counter, is what keeps a draw thread-safe with no shared mutable state:
  * two cores drawing for two different cells never share an input, and
@@ -80,7 +344,6 @@ enum {
     SAND_RNG_SLOT_GAS_DECAY,
     SAND_RNG_SLOT_GAS_MOBILITY,
     SAND_RNG_SLOT_GAS_WALK,
-    SAND_RNG_SLOT_STRIPE,
     /* The reaction pass's own local-rule draw sites - see
      * sand_reactions.c's "Splitting the local rules" section. One slot per
      * textually distinct roll, never one per function: two rolls for the
@@ -117,19 +380,8 @@ enum {
     SAND_RNG_SLOT_SPAWN_SHARE,
 };
 
-/* Where this step's stripe boundaries sit, inside the grid's own stripe
- * height. A boundary's two guard rows stall whatever crossed into them, so a
- * boundary that only ever takes two positions stalls cells on the same two
- * screen lines every step and reads as banding. Hashing the step spreads
- * them over the stripe. */
-static inline int
-sand_stripe_offset(const sand_t* s) {
-    return (int)(rng_hash(s->rng_seed_base, (uint32_t)s->step_phase, 0u, SAND_RNG_SLOT_STRIPE)
-                 % (uint32_t)sand_stripe_height(s->h));
-}
-
 /* Draws for (x, y) at `slot` - see the enum above. Sequential and
- * identical to plain rng_next() unless a checkerboard-parallel pass has
+ * identical to plain rng_next() unless a chunk-parallel pass has
  * armed s->rng_hashed (sand.h); every other caller, including these same
  * functions when reactions or gas call them, is untouched. */
 static inline uint32_t
@@ -169,6 +421,13 @@ dest_row(const sand_t* s, int y) {
         return NULL;
     }
     return s->cells + (size_t)y * (size_t)s->w;
+}
+
+/* dest_row()'s answer for a row a fixed `off` bytes from one the caller
+ * already holds - same NULL off the grid, without the multiply. */
+static inline uint8_t*
+dest_row_stepped(uint8_t* row, int y, int h, int off) {
+    return ((unsigned)y < (unsigned)h) ? row + off : NULL;
 }
 
 /* Unions [x0,x1] (either order, clipped to the grid) into row y's
@@ -253,7 +512,15 @@ mark_depth_band(sand_t* s, int x, int y) {
 void sand_gas_row_audit_enable(bool on);
 extern unsigned sand_gas_row_audit_failures;
 extern unsigned sand_gas_row_audit_skippable;
-extern unsigned sand_gas_equalise_stripe_runs;
+extern unsigned sand_gas_equalise_runs;
+
+/* Not sand.h API: the gas spread pass's twin of sand_liquid_rank_audit_enable()
+ * below - every hop landing in a chunk ranked after the giver's, which is what
+ * lets the pass reach past a whole chunk with no arrival mark. `reverse_ray`
+ * builds the order against the ray instead, so a caller can see the count it
+ * expects zero from move. */
+void sand_gas_rank_audit_enable(bool on, bool reverse_ray);
+extern unsigned sand_gas_late_arrivals;
 
 /* Not sand.h API: a test hook for the reaction pass's soak-only skip (see
  * sand_step_reactions()). Counts every cell the per-row dispatch actually
@@ -262,14 +529,26 @@ extern unsigned sand_gas_equalise_stripe_runs;
  * pass itself - a suite that wants a per-step delta zeroes it directly. */
 extern unsigned sand_reactions_cells_dispatched;
 
+/* Not sand.h API: what a split reaction step put through its per-lane
+ * deferred queues. The `queued` total and `applied` part only where an entry
+ * is lost or applied twice. `peak_q8` is the fullest any one lane's queue
+ * got, in 1/256 of that queue's own cap, so 256 means one filled and
+ * candidates were dropped. Never reset by the pass. */
+extern unsigned sand_reactions_defer_queued[SAND_LANE_COUNT];
+extern unsigned sand_reactions_defer_applied;
+extern unsigned sand_reactions_defer_peak_q8;
+
 /* Test-only override: on, forces every pass to walk the full board even
  * where soak-only conditions hold, so a suite can diff the fast path's
  * output against the reference walk on the same board. Off by default. */
 void sand_reactions_force_full_walk(bool on);
 
 /* Test-only: draw through the per-cell hash even on the serial path, so a
- * serial board and a split board differ only by ordering. */
+ * serial board and a split board differ only by ordering. A serial walk asks
+ * the second function rather than sand_chunk_pass_ready(), which is false
+ * exactly when the override is the only thing that could arm the hash. */
 void sand_force_hashed_rng(bool on);
+bool sand_rng_forced_hashed(void);
 
 /* Not sand.h API: which shape sand_step_reactions() actually took this call -
  * the soak-only partial walk, or the full one (including an early return
@@ -284,6 +563,14 @@ extern bool sand_reactions_last_was_soak_only;
 extern unsigned sand_liquid_moves;
 extern unsigned sand_liquid_crossflow_probes;
 
+/* Not sand.h API: a test hook for cross-flow's chunk order. With it on, a
+ * split pass counts every transfer landing in a chunk ranked after the
+ * giver's - the case the order exists to rule out, and what allows the pass
+ * to forward mass with no per-cell arrival mark. Same convention as the
+ * counters above: never reset by the pass itself. */
+void sand_liquid_rank_audit_enable(bool on);
+extern unsigned sand_liquid_late_arrivals;
+
 /* Not sand.h API: a liquid grain moving in the MAIN SWEEP's own down-and-
  * slide (move_liquid_grain(), sand_liquid_move.h) - separate from cross-
  * flow's sand_liquid_moves above, and the one a settled-looking board with
@@ -291,9 +578,49 @@ extern unsigned sand_liquid_crossflow_probes;
  * cross-flow itself has gone quiet. */
 extern unsigned sand_liquid_sweep_moves;
 
-/* Not sand.h API: cells considered by the checkerboard sweep's guard rows.
+/* Not sand.h API: chunks the sweep stepped rather than skipped whole.
  * Never reset by the pass itself, so tests can measure a per-step delta. */
-extern unsigned sand_guard_cells_scanned;
+extern unsigned sand_sweep_chunks_swept;
+
+/* Not sand.h API: cells each chunk's passes dispatched, by chunk index, and
+ * the chunk being charged, or -1. Rows a whole-chunk or block-row skip drops
+ * are not charged, which is the whole point: a plan's own areas are fixed,
+ * what a layout is ranked on is the work a board actually has. One global
+ * charging point means only a single-lane walk can attribute a row to a
+ * chunk. Armed by sand_chunk_work_enable(); never reset by a pass. */
+extern unsigned sand_chunk_work[SAND_CHUNKS_MAX];
+extern int sand_chunk_work_at;
+
+void sand_chunk_work_enable(bool on);
+
+static inline void
+sand_chunk_work_add(int cells) {
+    if (sand_chunk_work_at >= 0) {
+        sand_chunk_work[sand_chunk_work_at] += (unsigned)cells;
+    }
+}
+
+/* Not sand.h API: draws a chunk-parallel pass took from the sequential stream
+ * rather than through sand_rng_next_at(). A lane holds its own copy of the
+ * board, so such a draw advances a stream the join throws away - both lanes
+ * replay it, and comparing one lane against two cannot see it. Expected zero;
+ * never reset by the pass itself. */
+extern unsigned sand_split_sequential_draws;
+
+/* Which threads a split pass's two lanes run on. CORE1 is the shipped
+ * default and the only one that offers lane 1 to a second core; SOLO walks
+ * the order once on this thread even where that core exists, and the rest
+ * step both lanes by hand so a test can vary the interleaving. The board
+ * must not tell any of them apart. */
+typedef enum {
+    SAND_CHUNK_PASS_CORE1,
+    SAND_CHUNK_PASS_SOLO,
+    SAND_CHUNK_PASS_LANE0_EAGER,
+    SAND_CHUNK_PASS_LANE1_EAGER,
+    SAND_CHUNK_PASS_ALTERNATE,
+} sand_chunk_pass_driver_t;
+
+void sand_chunk_pass_set_driver_for_test(sand_chunk_pass_driver_t driver);
 
 #define BLOCK_SETTLED_NEAREST 0x1
 #define BLOCK_SETTLED_OTHER   0x2
@@ -916,13 +1243,16 @@ soil_set_moisture(cell_t c, uint8_t new_moisture, uint8_t nearby_moisture) {
 /* Source and destination column marked separately, with no block-wake: the
  * main sweep's own moved_here bookkeeping (sand.c) already keeps
  * BLOCK_ACTIVE current for every cell it walks, so waking here would pay
- * the 3x3 clear a second time for cells the sweep was already visiting. */
+ * the 3x3 clear a second time for cells the sweep was already visiting.
+ * Every sweep and gas-walk move reports here, which makes it the one place
+ * a chunk crossing is seen. */
 static inline void
 mark_slide(sand_t* s, int x0, int y0, int x1, int y1) {
     s->faller_may_move = true;
     mark_row_span(s, y0, x0, x0);
     if (y1 != y0 || x1 != x0) {
         mark_row_span(s, y1, x1, x1);
+        sand_stamp_crossing(s, x0, y0, x1, y1);
     }
 }
 
@@ -1044,8 +1374,6 @@ void sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy);
 
 void sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, const int* slide_b, const int* perp_a,
                    const int* perp_b, int load_dx, int load_dy, int x_step, int jostle);
-void sand_gas_set_worker_order_for_test(bool reverse);
-void sand_reactions_set_worker_order_for_test(bool reverse);
 
 /* The flight pass - explosions, debris, splash pushback - lives in
  * sand_impulse.c since it moves OUTWARD, not gravity-ward. Called once

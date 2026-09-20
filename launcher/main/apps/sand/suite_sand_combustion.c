@@ -683,6 +683,51 @@ count_remaining_gas(const sand_t* g, int cw, int ch) {
     return remaining;
 }
 
+/* More confined gas pockets than one step's blast cap allows, driven by the
+ * reaction pass alone: how many burst is exactly what the cap decides, so a
+ * board built on a frame the caller left dirty lands somewhere else. */
+static uint32_t
+burst_board_from_frame(uint8_t fill) {
+    enum { BW = 6 * 40, BH = 5, BURST_STEPS = 3 };
+
+    static uint8_t cells[BW * BH];
+    static impulse_t impulses[BW * BH];
+
+    sand_t s;
+    memset(&s, fill, sizeof s);
+    sand_init(&s, cells, BW, BH, 29u);
+    sand_set_mobility(&s, 0);
+    sand_enable_impulses(&s, impulses, BW * BH);
+    for (int i = 0; i < 6; i++) {
+        build_confined_gas_pocket(&s, 10 + i * 40);
+    }
+    for (int i = 0; i < BURST_STEPS; i++) {
+        s.step_phase = (uint16_t)i;
+        sand_step_reactions(&s);
+    }
+
+    uint32_t hash = 2166136261u;
+    for (int i = 0; i < BW * BH; i++) {
+        hash ^= cells[i];
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
+static void
+test_a_reaction_driven_board_does_not_read_the_callers_frame(void) {
+    sand_t s;
+    static uint8_t cells[16 * 16];
+
+    TEST_ASSERT_EQUAL_HEX32_MESSAGE(burst_board_from_frame(0x00), burst_board_from_frame(0xFF),
+                                    "the pockets burst differently on a dirty frame than on a clean one");
+
+    memset(&s, 0xA5, sizeof s);
+    sand_init(&s, cells, 16, 16, 1u);
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, s.explosions_this_step, "sand_init() left the explosion count unset");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, s.confined_blasts_this_step, "sand_init() left the blast cap unset");
+}
+
 static void
 test_confined_gas_blasts_chain_without_losing_a_pocket(void) {
     enum { CELL_COUNT = 6, CELL_SPACING = 40, CW = CELL_COUNT * CELL_SPACING, CH = 5 };
@@ -2429,6 +2474,7 @@ run_sand_combustion_suite(void) {
     RUN_TEST(test_tilted_equalise_still_spreads_a_packed_row_under_the_sight_bound);
     RUN_TEST(test_fire_ignites_an_adjacent_flammable_neighbour);
     RUN_TEST(test_a_confined_gas_pocket_bursts_instead_of_just_catching);
+    RUN_TEST(test_a_reaction_driven_board_does_not_read_the_callers_frame);
     RUN_TEST(test_confined_gas_blasts_chain_without_losing_a_pocket);
     RUN_TEST(test_an_open_gas_pocket_still_just_catches_fire);
     RUN_TEST(test_extinguishing_wins_over_igniting);

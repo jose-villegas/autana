@@ -4,7 +4,8 @@ Everything about verifying the sand app on real hardware that is specific
 to this app, split out of [`../Testing-Guide.md`](../Testing-Guide.md)
 (read that first for the host/device split, RUNSUITE, and the general
 practice). This page is the sand-only half: the frame-budget capture, the
-free-heap precondition it depends on, and how to read what it prints.
+free-heap precondition it depends on, how to read what it prints, and the
+chunk layout sweep that picks the app's two-core geometry.
 
 ---
 
@@ -31,6 +32,15 @@ flashes the diagnostics variant, captures the frame-budget suite's run and
 writes a markdown table; `compare_reports.py` diffs two such reports, and
 `report_performance.sh --baseline <report>.md`/`--no-restore` run that
 comparison as part of a capture.
+
+A timed fixture opens `board_bookkeeping_open()` (`suite_sand_common.c`) on
+its grid, which gives it what `alloc_grid_bookkeeping()` (`app_sand.c`) gives
+a shipped board: dirty rows and columns, step stamps, lane scratch, and block
+state where the scene brought none. Without the last two no pass is ever
+ready to split, so the row times one core however many it asked for. What a
+scene is made of stays the fixture's own business. A frame-budget board is
+held to that by `test_a_frame_budget_board_really_reaches_the_split_path`,
+which fails unless a busy full-size step dispatches at least one split pass.
 
 Three rules keep a reading honest:
 
@@ -99,6 +109,101 @@ bash launcher/main/apps/sand/tools/report_performance.sh --perf-scope
 
 Use scoping for perf captures only, not for a merge decision - the full
 self-test is what gates a merge, and it runs unscoped by construction.
+
+## The chunk layout sweep
+
+The two-core chunk geometry is measured rather than reasoned out: the
+`(side_x, side_y)` pair each quality grid cuts a pass into, per travel
+class, and the grid size below which every pass stays on one core. The
+shipped answers are in [`Sand-Simulation.md`](Sand-Simulation.md#the-chunks);
+this is how a round of measuring produces them.
+
+It runs in three places; each says more than the one before it, and costs
+more to run.
+
+**Host pre-filter.** `launcher/main/apps/sand/tools/report_chunk_layout.sh`,
+about 15 s. It walks the real split path on one lane, charges each chunk the
+cells its passes dispatched, and ranks how evenly a layout divides a board's
+work. That produces a shortlist of side pairs per quality and nothing else:
+no time of any kind.
+
+**QEMU.** One instance per quality against one perf-scope image, all from
+the sweep driver in `.dev/scripts/`:
+
+```sh
+.dev/scripts/qemu-sweep.sh --instances 5
+```
+
+It prices the chunking itself, through the one-thread arm. The two-lane arm
+is readable there only for its abort count, because an instruction count
+sums both cores - see
+[`../Testing-Guide.md`](../Testing-Guide.md#qemu-the-device-image-with-no-board)
+for why, and for what several instances at once cost each other.
+
+**The board.** The only stage that says whether the second core wins. Five
+on-request suites, one per quality, live in the perf-scope diagnostics
+image and run by name:
+
+```
+RUNSUITE run_chunk_sweep_ultra_suite
+RUNSUITE run_chunk_sweep_high_suite
+RUNSUITE run_chunk_sweep_normal_suite
+RUNSUITE run_chunk_sweep_low_suite
+RUNSUITE run_chunk_sweep_very_low_suite
+```
+
+On request means no autorun pays for them: a full self-test never runs a
+sweep it was not asked for.
+
+### The four arms
+
+Every cell is measured four ways, named in the line's `arm=` field:
+
+- `serial` - the plain one-core walk, which is what a split has to beat.
+- `serial-hashed` - that same walk drawing the split's per-cell hash, so
+  the hash is priced apart from the chunking that needs it.
+- `solo` - the chunk order walked by one thread, which is the chunking's
+  own cost with no second core in it.
+- `split` - the real two-lane step.
+
+### What it prints
+
+One `CHUNK_SWEEP` line per cell, with the fields `quality=`, `grid=`,
+`side=`, `scene=`, `orient=`, `arm=`, `us_per_step=`, `aborts=`, `chunks=`,
+`sweep_us=`, `liquid_us=`, `gas_us=`, `react_us=` and `other_us=`. The last
+five break one step down by pass, so a layout that helps the liquid passes
+and hurts the gas pass is visible instead of averaged into one number.
+
+Each quality opens with a `CHUNK_SWEEP_FLOOR` line - `quality=`,
+`serial_us=`, `split_us=`, `settle_steps=` - a settled pile stepped serial
+against split on the shipped side, which is what involving the second core
+costs before any work is handed to it. `settle_steps` is how many steps the
+pile needed to stop changing; at the cap it never came to rest, and the two
+numbers beside it are a transient rather than a floor. A quality closes
+with `CHUNK_SWEEP_COMPLETE`.
+
+Under `--icount` a `us_per_step` field times 1000 is instructions per step.
+On the board it is microseconds.
+
+### The lists, and what a round costs
+
+Each quality's side list carries both cuts that quality ships and the
+square cut they replaced, so a round stays comparable with the one before
+it; `test_the_sweep_measures_both_cuts_every_quality_ships` fails if a
+shipped cut is missing from the list it is ranked against.
+
+The scene list ends in a gas pair - an open block still climbing through
+the measured window, and a sealed box whose gas has packed against a wall -
+so the gas walk and the gas spread are each ranked on work they really do,
+which `test_the_sweeps_gas_scenes_put_work_in_both_gas_passes` checks on a
+host.
+
+A quality's cell count is its side list times the scene list times two
+orientations times four arms; `sweep_qualities`, `sweep_scenes` and
+`sweep_orients` in `suite_sand_perf.c` are those lists, and reading them
+beats any count written here. As an order of magnitude, a quality carrying
+five sides is a few hundred cells, at roughly 0.8 s of board time each - so
+one quality is minutes on the board, and longer under emulation.
 
 ## The frame-budget tests
 
