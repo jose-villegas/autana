@@ -4,23 +4,42 @@ Changing a number on a running device, by name, with no build and no flash.
 For a constant that is judged by eye - how long a trail lasts, how high a
 wave is - where each guess otherwise costs a build and a flash.
 
+`autana` alone opens a console session with the device, and everything below
+works in it without the prefix:
+
+```
+autana> tune wave                 # the tunables whose names contain "wave"
+autana> ridge_trail               # show one
+autana> ridge_trail 200           # change it: on the screen a frame later
+autana> glow_halo_rgb 0xFF7A2A
+autana> save                      # write the device's values into the source
+autana> flash dev
+```
+
+Each is also a command of its own, for a script or a single change:
+
 ```sh
 autana tune                       # every tunable, its value and its range
-autana tune wave                  # only the names containing "wave"
 autana get ridge_trail
-autana set ridge_trail 200        # on the screen a frame later
-autana set glow_halo_rgb 0xFF7A2A
+autana set ridge_trail 200
+autana save
 ```
 
 A name may drop its prefix when that is unambiguous: `ridge_trail` for
 `launcher.ridge_trail`. `autana` is the maintainer's terminal command; it
 calls `.dev/scripts/device/device.py send`, which takes the device lock like
-everything else that touches the board.
+everything else that touches the board. A console session takes the lock for
+each line and lets go, so the board stays free between two of them.
 
-**Development builds only, and nothing is kept.** A release build has no
-listener, no registry and no names: the same declaration compiles to a plain
-constant there. A value set here is gone at the next reboot. The source stays
-the truth - write a value you like back into it.
+**Development builds only, and the device keeps nothing.** A release build
+has no listener, no registry and no names: the same declaration compiles to
+a plain constant there, and a value set on a device is gone at its next
+reboot. The source stays the truth, and `save` is what puts a session's
+values into it: it asks the device for every tunable and rewrites the
+initial value in the `TUNE_INT` line each was declared with, in the worktree
+it is run from - those lines only, byte for byte otherwise. What it wrote is
+an ordinary diff to review and commit, and the next build, release included,
+is made with it.
 
 ## How it works
 
