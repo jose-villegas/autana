@@ -134,7 +134,7 @@ sample_straight_down(float x, float z) {
         .forward = {0.0f, -1.0f, 0.0f},
         .right = {1.0f, 0.0f, 0.0f},
         .up = {0.0f, 0.0f, 1.0f},
-        .half_fov_y_tan = 0.001f,
+        .half_fov_short_tan = 0.001f,
         .width = 1,
         .height = 1,
         .eff_width = 1,
@@ -181,33 +181,54 @@ sample_rgb(int width, int height, int quarter, int x, int y, int* r, int* g, int
     free(row);
 }
 
+/* A point in the upright picture, as a fraction of the SHORTER axis's half
+ * extent from the centre - the room's open front spans about -1..1 on both
+ * axes whatever the canvas's shape, so these samples do not move with it. */
+static void
+room_point(int eff_width, int eff_height, float fx, float fy, int* x, int* y) {
+    const float half_short = (float)(eff_width < eff_height ? eff_width : eff_height) * 0.5f;
+    *x = (int)((float)eff_width * 0.5f + fx * half_short);
+    *y = (int)((float)eff_height * 0.5f - fy * half_short);
+}
+
+#define LEFT_WALL_FX  (-0.75f)
+#define RIGHT_WALL_FX 0.75f
+#define BACK_WALL_FY  0.35f
+#define LIGHT_FY      0.67f /* the ceiling light's centre, 3.6 units from the camera */
+
 static void
 check_walls_and_back_wall(int width, int height) {
-    int r, g, b;
+    int r, g, b, x, y;
 
-    sample_rgb(width, height, 0, width / 20 + 2, height / 2, &r, &g, &b);
+    room_point(width, height, LEFT_WALL_FX, 0.0f, &x, &y);
+    sample_rgb(width, height, 0, x, y, &r, &g, &b);
     TEST_ASSERT_TRUE_MESSAGE(r > g + 30 && r > b + 30, "the left wall must read red-dominant");
 
-    sample_rgb(width, height, 0, width - (width / 20 + 3), height / 2, &r, &g, &b);
+    room_point(width, height, RIGHT_WALL_FX, 0.0f, &x, &y);
+    sample_rgb(width, height, 0, x, y, &r, &g, &b);
     TEST_ASSERT_TRUE_MESSAGE(g > r + 15 && g > b + 15, "the right wall must read green-dominant");
 
-    sample_rgb(width, height, 0, width / 2, height * 3 / 10, &r, &g, &b);
+    room_point(width, height, 0.0f, BACK_WALL_FY, &x, &y);
+    sample_rgb(width, height, 0, x, y, &r, &g, &b);
     const int max_c = r > g ? (r > b ? r : b) : (g > b ? g : b);
     const int min_c = r < g ? (r < b ? r : b) : (g < b ? g : b);
     TEST_ASSERT_TRUE_MESSAGE(max_c - min_c < 15, "the back wall must read grey: channels within tolerance");
 }
 
 static void
-check_light_is_brightest_in_its_row(int width, int height, int light_row) {
-    int r, g, b;
+check_light_is_brightest_in_its_row(int width, int height) {
+    int r, g, b, x, y;
 
-    sample_rgb(width, height, 0, width / 2, light_row, &r, &g, &b);
+    room_point(width, height, 0.0f, LIGHT_FY, &x, &y);
+    sample_rgb(width, height, 0, x, y, &r, &g, &b);
     const int center_lum = r + g + b;
 
-    sample_rgb(width, height, 0, width / 9, light_row, &r, &g, &b);
+    room_point(width, height, -0.45f, LIGHT_FY, &x, &y);
+    sample_rgb(width, height, 0, x, y, &r, &g, &b);
     const int left_lum = r + g + b;
 
-    sample_rgb(width, height, 0, width - width / 9, light_row, &r, &g, &b);
+    room_point(width, height, 0.45f, LIGHT_FY, &x, &y);
+    sample_rgb(width, height, 0, x, y, &r, &g, &b);
     const int right_lum = r + g + b;
 
     TEST_ASSERT_TRUE_MESSAGE(center_lum > left_lum + 100 && center_lum > right_lum + 100,
@@ -217,35 +238,36 @@ check_light_is_brightest_in_its_row(int width, int height, int light_row) {
 static void
 test_picture_sanity_at_92x112(void) {
     check_walls_and_back_wall(92, 112);
-    check_light_is_brightest_in_its_row(92, 112, 8);
+    check_light_is_brightest_in_its_row(92, 112);
 }
 
 static void
 test_picture_sanity_at_64x48(void) {
     check_walls_and_back_wall(64, 48);
-    check_light_is_brightest_in_its_row(64, 48, 3);
+    check_light_is_brightest_in_its_row(64, 48);
 }
 
 static void
 test_quarter_1_moves_the_red_wall_to_the_edge_the_roll_says_it_should(void) {
     /* rt_cornell_render_row() draws into the PHYSICAL canvas, pre-rotated so
      * a later read-out at `quarter` (render_host.c's write_bmp(), the same
-     * convention ui_transform_quarter_turn() uses) comes out upright. A
-     * logical (upright) point that reads red at quarter 0 - where physical
-     * and logical coincide - must map to a physical pixel that still reads
-     * red at quarter 1, via that same read-out rotation run backwards. */
+     * convention ui_transform_quarter_turn() uses) comes out upright. At
+     * quarter 1 the upright picture is height x width, and a point on its
+     * left wall must still read red at the physical pixel that read-out
+     * rotation, run backwards, lands it on. */
     const int width = 92, height = 112;
-    const int logical_x = width / 20 + 2, logical_y = height / 2;
-    int r, g, b;
+    int r, g, b, logical_x, logical_y;
 
-    sample_rgb(width, height, 0, logical_x, logical_y, &r, &g, &b);
-    TEST_ASSERT_TRUE(r > g + 30 && r > b + 30);
-
+    room_point(height, width, LEFT_WALL_FX, 0.0f, &logical_x, &logical_y);
     const int physical_x = width - 1 - logical_y;
     const int physical_y = logical_x;
     sample_rgb(width, height, 1, physical_x, physical_y, &r, &g, &b);
     TEST_ASSERT_TRUE_MESSAGE(r > g + 30 && r > b + 30,
                              "the roll must keep the red wall on the upright image's left edge");
+
+    room_point(height, width, RIGHT_WALL_FX, 0.0f, &logical_x, &logical_y);
+    sample_rgb(width, height, 1, width - 1 - logical_y, logical_x, &r, &g, &b);
+    TEST_ASSERT_TRUE_MESSAGE(g > r + 15 && g > b + 15, "and the green wall on its right");
 }
 
 /* Row canary */

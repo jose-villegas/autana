@@ -81,6 +81,11 @@ scene_title_alpha(void) {
 static bool menu_open;
 static render_lab_mode_switch_t mode_switch;
 
+/* A scene change can change the layout, and the menu that asks for one runs
+ * mid-frame, with a band frame possibly about to begin - so it is taken at
+ * the top of the next frame, as the layout toggle is. */
+static bool scene_switch_pending;
+
 /* What gfx actually granted at enter() - not simply render_lab_band_mode,
  * which is only the request: gfx falls back to GFX_LAYOUT_FULL_FB if the
  * band ring fails to allocate, and render_lab_frame() has to follow the
@@ -140,6 +145,7 @@ render_lab_enter(void) {
      * since last frame" on the very first frame back here. */
     menu_open = false;
     mode_switch.pending = false;
+    scene_switch_pending = false;
     last_layout_generation = ui_layout_generation();
 }
 
@@ -149,6 +155,16 @@ switch_layout(void) {
     gfx_mode_exit();
     enter_layout();
     ui_invalidate();
+}
+
+static void
+switch_to_next_scene(void) {
+    current_scene()->exit();
+    current_scene_index = (current_scene_index + 1) % SCENE_COUNT;
+    render_lab_start_scene_index = current_scene_index; /* keeps a later re-entry on this same scene */
+    switch_layout(); /* the new scene's needs_full_framebuffer may differ from the old one's */
+    current_scene()->enter();
+    scene_title_remaining_ms = SCENE_TITLE_MS;
 }
 
 /* The persistent HUD: the scene and, over it, the fps line - nothing else
@@ -218,12 +234,7 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
         render_lab_mode_switch_request(&mode_switch);
     }
     if (result.next_scene_clicked) {
-        current_scene()->exit();
-        current_scene_index = (current_scene_index + 1) % SCENE_COUNT;
-        render_lab_start_scene_index = current_scene_index; /* keeps a later re-entry on this same scene */
-        switch_layout(); /* the new scene's needs_full_framebuffer may differ from the old one's */
-        current_scene()->enter();
-        scene_title_remaining_ms = SCENE_TITLE_MS;
+        scene_switch_pending = true;
     }
 
     /* Modeled on app_sand.c's own draw_menu(): one full-screen OPAQUE
@@ -254,6 +265,7 @@ update_scene_title(uint32_t dt_ms) {
     scene_title_remaining_ms = scene_title_remaining_ms > dt_ms ? scene_title_remaining_ms - dt_ms : 0;
     if (scene_title_remaining_ms == 0) {
         gfx_invalidate();
+        current_scene()->invalidate();
     }
 }
 
@@ -344,6 +356,10 @@ static void
 render_lab_frame(uint32_t dt_ms, const input_t* input) {
     if (render_lab_mode_switch_take(&mode_switch)) {
         switch_layout();
+    }
+    if (scene_switch_pending) {
+        scene_switch_pending = false;
+        switch_to_next_scene();
     }
 
     /* BOOT opens/closes the menu, rather than flipping a toggle directly.

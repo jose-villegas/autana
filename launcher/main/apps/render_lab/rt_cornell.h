@@ -43,7 +43,7 @@ bool rt_intersect_box(rt_vec3_t origin, rt_vec3_t dir, const rt_box_t* box, floa
 
 typedef struct {
     rt_vec3_t origin, forward, right, up;
-    float half_fov_y_tan;
+    float half_fov_short_tan;
     int width, height;         /* the physical canvas rt_cornell_render_row() fills */
     int eff_width, eff_height; /* width/height swapped at an odd quarter - see .c */
     int quarter;
