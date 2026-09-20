@@ -1542,6 +1542,28 @@ sand_chunk_pass_ready(const sand_t* s) {
            && sand_chunk_plan(&fits, s->w, s->h, sand_chunk_side(s), 0, 0);
 }
 
+unsigned sand_split_sequential_draws;
+
+/* xorshift32 is a bijection, so replaying it from the state a pass started on
+ * recovers exactly how many draws were taken from it. Bounded because an
+ * unreachable state would otherwise never terminate. */
+#define SEQUENTIAL_DRAW_SCAN_MAX 65536u
+
+static void
+count_sequential_draws(uint32_t before, uint32_t after) {
+    if (after == before) {
+        return;
+    }
+    rng_t replay = {before};
+    for (unsigned n = 1; n <= SEQUENTIAL_DRAW_SCAN_MAX; n++) {
+        if (rng_next(&replay) == after) {
+            sand_split_sequential_draws += n;
+            return;
+        }
+    }
+    sand_split_sequential_draws += SEQUENTIAL_DRAW_SCAN_MAX;
+}
+
 bool
 sand_chunk_pass_ranks_later(int x0, int y0, int x1, int y1) {
     const int side = chunk_plan.side;
@@ -1574,9 +1596,12 @@ sand_chunk_pass_run(sand_t* s, int tx, int ty, sand_chunk_pass_stamps_t stamps, 
         sand_lane_prepare(&lanes[i], s);
     }
 
+    const uint32_t rng_at_prepare = s->rng.state;
     drive_chunk_pass_lanes();
+    count_sequential_draws(rng_at_prepare, s->rng.state);
 
     for (int i = 0; i < SAND_LANE_COUNT; i++) {
+        count_sequential_draws(rng_at_prepare, lanes[i].local.rng.state);
         sand_lane_merge(s, &lanes[i]);
     }
 #ifdef DEVICE_BUILD

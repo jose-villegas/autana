@@ -422,6 +422,13 @@ extern unsigned sand_liquid_sweep_moves;
  * Never reset by the pass itself, so tests can measure a per-step delta. */
 extern unsigned sand_sweep_chunks_swept;
 
+/* Not sand.h API: draws a chunk-parallel pass took from the sequential stream
+ * rather than through sand_rng_next_at(). A lane holds its own copy of the
+ * board, so such a draw advances a stream the join throws away - both lanes
+ * replay it, and comparing one lane against two cannot see it. Expected zero;
+ * never reset by the pass itself. */
+extern unsigned sand_split_sequential_draws;
+
 /* Which threads a split pass's two lanes run on. CORE1 is the shipped
  * default and the only one that offers lane 1 to a second core; SOLO walks
  * the order once on this thread even where that core exists, and the rest
