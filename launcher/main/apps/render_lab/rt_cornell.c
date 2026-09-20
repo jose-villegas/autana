@@ -73,8 +73,8 @@ quantize_channel(float v, uint32_t max_level, float threshold) {
     return level > max_level ? max_level : level;
 }
 
-static gfx_color_t
-to_gfx_color(r3d_vec3f_t c, int x, int y) {
+gfx_color_t
+rt_cornell_dither_quantize(r3d_vec3f_t c, int x, int y) {
     const float threshold = ((float)bayer4[y & 3][x & 3] + 0.5f) / 16.0f;
     return gfx_color_rgb565((uint8_t)quantize_channel(c.x, 31, threshold),
                             (uint8_t)quantize_channel(c.y, 63, threshold),
@@ -90,7 +90,7 @@ trace_primary(r3d_vec3f_t origin, r3d_vec3f_t dir, int x, int y) {
     if (hit.is_light) {
         return GFX_RGB(LIGHT_EMISSIVE_RGB);
     }
-    return to_gfx_color(shade_point(hit.point, hit.normal, hit.albedo), x, y);
+    return rt_cornell_dither_quantize(shade_point(hit.point, hit.normal, hit.albedo), x, y);
 }
 
 void
