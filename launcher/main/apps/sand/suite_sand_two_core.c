@@ -1973,6 +1973,29 @@ test_reaction_split_is_deterministic_across_seeds(void) {
 }
 
 #ifdef DEVICE_BUILD
+/* The same claim as the queue twin below, on the scene where every stage the
+ * split touches runs with real chance rolls rather than a fixed chain. */
+static void
+test_a_core_1_reaction_lane_lands_on_the_solo_heavy_board(void) {
+    static const uint32_t seeds[] = {1u, 7u, 42u};
+
+    TEST_ASSERT_TRUE_MESSAGE(job_try_core1(tc_no_op_job, NULL, 0), "no core-1 worker to compare against");
+    TEST_ASSERT_TRUE(job_wait(100));
+
+    for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_CORE1);
+        const uint32_t duo = rc_run_reaction_heavy_and_hash(TC_W, TC_H, seeds[i], 30, true);
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_SOLO);
+        const uint32_t solo = rc_run_reaction_heavy_and_hash(TC_W, TC_H, seeds[i], 30, true);
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_CORE1);
+
+        char why[160];
+        snprintf(why, sizeof why, "seed %u: two cores and the single-thread walk parted on a reacting board",
+                 (unsigned)seeds[i]);
+        TEST_ASSERT_EQUAL_HEX32_MESSAGE(solo, duo, why);
+    }
+}
+
 /* The twin of test_a_core_1_lane_lands_on_the_solo_board(), for the pass
  * whose lanes hand work to each other through queues rather than through
  * cells: both lanes fill a queue, and the drain after the join must not be
@@ -2264,6 +2287,7 @@ run_sand_two_core_suite(void) {
 #endif
 #ifdef DEVICE_BUILD
     RUN_TEST(test_a_core_1_lane_lands_on_the_solo_board);
+    RUN_TEST(test_a_core_1_reaction_lane_lands_on_the_solo_heavy_board);
     RUN_TEST(test_a_core_1_reaction_lane_lands_on_the_solo_board);
     RUN_TEST(test_a_timed_out_job_falls_back_inline);
 #endif

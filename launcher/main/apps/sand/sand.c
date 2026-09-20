@@ -180,6 +180,10 @@ sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
     s->impulse_buf = NULL;
     s->impulse_max = 0;
     s->impulse_count = 0;
+    /* Cleared again at the top of every sand_step(), but a caller driving one
+     * pass at a time never reaches that line and would read its own frame. */
+    s->explosions_this_step = 0;
+    s->confined_blasts_this_step = 0;
 #ifdef DEVICE_BUILD
     s->impulse_cap_hits = 0;
     s->split_lane_aborts = 0;
