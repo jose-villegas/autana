@@ -1591,12 +1591,22 @@ sand_chunk_table_sides(int w, int h, sand_chunk_travel_t travel, int* side_x, in
     *side_y = SAND_CHUNK_SIDE_MIN;
 }
 
+unsigned sand_split_passes = SAND_SPLIT_PASSES_SHIPPED;
+
+unsigned
+sand_split_passes_for_test(unsigned mask) {
+    const unsigned before = sand_split_passes;
+
+    sand_split_passes = mask;
+    return before;
+}
+
 bool
-sand_chunk_pass_ready(const sand_t* s, int tx, int ty) {
+sand_chunk_pass_ready(const sand_t* s, sand_split_pass_t pass, int tx, int ty) {
     sand_chunk_plan_t fits;
     int side_x, side_y;
 
-    if (!sand_two_core_step_enabled() || s->lane_scratch == NULL) {
+    if (!sand_two_core_step_enabled() || (sand_split_passes & (unsigned)pass) == 0 || s->lane_scratch == NULL) {
         return false;
     }
     if (s->w * s->h < SAND_CHUNK_SPLIT_MIN_CELLS && !sand_chunk_side_is_forced()) {
@@ -1655,11 +1665,12 @@ sand_chunk_pass_ranks_later(int x0, int y0, int x1, int y1) {
 }
 
 bool
-sand_chunk_pass_run(sand_t* s, int tx, int ty, sand_chunk_pass_stamps_t stamps, sand_chunk_fn_t fn, void* pass) {
+sand_chunk_pass_run(sand_t* s, sand_split_pass_t pass_id, int tx, int ty, sand_chunk_pass_stamps_t stamps,
+                    sand_chunk_fn_t fn, void* pass) {
     sand_lane_t* const lanes = sand_lanes(s);
     int side_x, side_y;
 
-    if (!sand_chunk_pass_ready(s, tx, ty) || lanes == NULL) {
+    if (!sand_chunk_pass_ready(s, pass_id, tx, ty) || lanes == NULL) {
         return false;
     }
     sand_chunk_sides(s, sand_chunk_travel_of(tx, ty), &side_x, &side_y);
@@ -1736,8 +1747,8 @@ sweep_one_chunk(void* pass, int lane, int cx, int cy) {
  * holding a move's destination is always settled first. */
 static void
 run_sweep_split(sand_t* s, int dx, int dy) {
-    if (!sand_chunk_pass_run(s, im_sign(dx), im_sign(dy), SAND_CHUNK_PASS_STAMP_CROSSINGS, sweep_one_chunk,
-                             &sweep_pass)) {
+    if (!sand_chunk_pass_run(s, SAND_SPLIT_SWEEP, im_sign(dx), im_sign(dy), SAND_CHUNK_PASS_STAMP_CROSSINGS,
+                             sweep_one_chunk, &sweep_pass)) {
         return;
     }
     for (int i = 0; i < SAND_LANE_COUNT; i++) {
@@ -1831,7 +1842,7 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
 #ifdef DEVICE_BUILD
     const int64_t sweep_t0 = esp_timer_get_time();
 #endif
-    if (sand_chunk_pass_ready(s, im_sign(dx), im_sign(dy))) {
+    if (sand_chunk_pass_ready(s, SAND_SPLIT_SWEEP, im_sign(dx), im_sign(dy))) {
         sweep_pass = (sweep_pass_t){
             .lanes = sand_lanes(s),
             .w = w,

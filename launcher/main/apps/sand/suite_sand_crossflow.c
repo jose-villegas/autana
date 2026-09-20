@@ -46,12 +46,13 @@ crossflow_fixture(void) {
     return f;
 }
 
-/* This grid sits under SAND_CHUNK_SPLIT_MIN_CELLS, so a split arm here has
- * to ask for the cut. The floor cut is what the table gives this grid in
- * either travel class, so the borders the scenes aim at are the shipped
- * ones. */
+/* This grid sits under SAND_CHUNK_SPLIT_MIN_CELLS and cross-flow ships
+ * serial besides, so a split arm here has to ask for the cut and for the
+ * pass. The floor cut is what the table gives this grid in either travel
+ * class, so the borders the scenes aim at are the shipped ones. */
 typedef struct {
     two_core_scope_t core;
+    split_passes_scope_t passes;
 } cf_split_t;
 
 static cf_split_t
@@ -59,6 +60,7 @@ cf_split_begin(void) {
     cf_split_t on;
 
     on.core = two_core_scope_begin(true);
+    on.passes = split_passes_scope_begin(SAND_SPLIT_CROSSFLOW);
     TEST_ASSERT_TRUE_MESSAGE(sand_chunk_side_for_test(SAND_CHUNK_SIDE_MIN, SAND_CHUNK_SIDE_MIN),
                              "the floor cut must be one this grid takes");
     return on;
@@ -67,6 +69,7 @@ cf_split_begin(void) {
 static void
 cf_split_end(cf_split_t on) {
     (void)sand_chunk_side_for_test(0, 0);
+    split_passes_scope_end(on.passes);
     two_core_scope_end(on.core);
 }
 
@@ -153,9 +156,13 @@ test_liquid_density_sort_keeps_the_portrait_rate(void) {
     }
 }
 
-static void
-test_split_crossflow_uses_hashed_viscosity(void) {
+/* A viscous pool: the viscosity roll is cross-flow's one draw, and a split
+ * pass takes it from the hashed stream, so whether the sequential RNG moved
+ * is whether this pass ran on one lane or two. */
+static bool
+crossflow_viscous_drew_sequentially(bool two_core, bool ask_for_the_split) {
     crossflow_fixture_t* f = crossflow_fixture();
+
     for (int y = 2; y < CF_H - 2; y += 4) {
         sand_set(&f->s, 9, y, CELL_MAKE(MAT_OIL, 15));
         sand_set(&f->s, 9, y + 1, CELL_MAKE(MAT_OIL, 3));
@@ -163,15 +170,36 @@ test_split_crossflow_uses_hashed_viscosity(void) {
     memset(f->blocks, BLOCK_HAS_LIQUID, sizeof f->blocks);
     f->s.may_have_viscous_liquid = true;
     f->s.mobility = 128;
+
     const rng_t before = f->s.rng;
     const xflow_t flow = {.ax = {0, 1}, .dg = {0, 1}};
-    const cf_split_t on = cf_split_begin();
+    const two_core_scope_t core = two_core_scope_begin(two_core);
+    const split_passes_scope_t passes = split_passes_scope_begin(ask_for_the_split ? SAND_SPLIT_CROSSFLOW : 0u);
+    TEST_ASSERT_TRUE(sand_chunk_side_for_test(SAND_CHUNK_SIDE_MIN, SAND_CHUNK_SIDE_MIN));
     sand_step_liquids(&f->s, &flow, 1, 0);
-    cf_split_end(on);
-    const rng_t after = f->s.rng;
+    (void)sand_chunk_side_for_test(0, 0);
+    split_passes_scope_end(passes);
+    two_core_scope_end(core);
+
+    const bool moved = memcmp(&before, &f->s.rng, sizeof before) != 0;
     crossflow_free(f);
-    TEST_ASSERT_EQUAL_MEMORY_MESSAGE(&before, &after, sizeof before,
-                                     "split cross-flow must leave the sequential RNG untouched");
+    return moved;
+}
+
+/* Cross-flow is the one splittable pass the shipped step keeps on one core.
+ * The middle arm is also what every split arm in this file rests on: if
+ * asking changed nothing they would all compare the serial walk with
+ * itself. */
+static void
+test_split_crossflow_runs_only_when_asked_for_and_then_hashes_its_draws(void) {
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, SAND_SPLIT_PASSES_SHIPPED & SAND_SPLIT_CROSSFLOW,
+                                   "the shipped mask must leave cross-flow serial");
+    TEST_ASSERT_TRUE_MESSAGE(crossflow_viscous_drew_sequentially(false, false),
+                             "a serial walk's viscosity roll must come off the sequential stream");
+    TEST_ASSERT_TRUE_MESSAGE(crossflow_viscous_drew_sequentially(true, false),
+                             "two-core stepping split cross-flow without being asked");
+    TEST_ASSERT_FALSE_MESSAGE(crossflow_viscous_drew_sequentially(true, true),
+                              "split cross-flow must leave the sequential RNG untouched");
 }
 
 static void
@@ -465,7 +493,7 @@ run_sand_crossflow_suite(void) {
     RUN_TEST(test_liquid_density_sort_swaps_a_landscape_boundary_in_every_row);
     RUN_TEST(test_liquid_density_sort_moves_one_cell_along_a_diagonal);
     RUN_TEST(test_liquid_density_sort_keeps_the_portrait_rate);
-    RUN_TEST(test_split_crossflow_uses_hashed_viscosity);
+    RUN_TEST(test_split_crossflow_runs_only_when_asked_for_and_then_hashes_its_draws);
     RUN_TEST(test_crossflow_seam_transfer_matches_serial_in_eight_directions);
     RUN_TEST(test_crossflow_pool_conserves_mass_and_is_deterministic);
     RUN_TEST(test_crossflow_levels_a_line_across_every_border);

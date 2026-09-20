@@ -209,6 +209,16 @@ typedef struct {
 two_core_scope_t two_core_scope_begin(bool two_core);
 void two_core_scope_end(two_core_scope_t scope);
 
+/* A pass the shipped step runs on one core has to be asked for by name, or a
+ * test of its split path steps the serial walk twice and compares it with
+ * itself. `also` is the SAND_SPLIT_* bits to add for the scope's span. */
+typedef struct {
+    unsigned before;
+} split_passes_scope_t;
+
+split_passes_scope_t split_passes_scope_begin(unsigned also);
+void split_passes_scope_end(split_passes_scope_t scope);
+
 /* Arms `g` with lane scratch big enough for its own grid and hands the
  * block back for the caller to free. A two-core test without it measures
  * the serial path - see sand_enable_lane_scratch(). */

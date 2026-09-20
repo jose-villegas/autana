@@ -208,9 +208,31 @@ void sand_lane_merge(sand_t* s, const sand_lane_t* lane);
  * it on any grid. */
 #define SAND_CHUNK_SPLIT_MIN_CELLS (92 * 112)
 
-/* Whether a split pass can run at all: two-core stepping on, lane scratch
- * present, a grid worth dividing, and its class's cut fits. */
-bool sand_chunk_pass_ready(const sand_t* s, int tx, int ty);
+/* Which passes the shipped step splits. Cross-flow is out: measured on the
+ * board its split runs 0.87-1.27 of its own serial walk, mostly over 1.0, at
+ * every layout, where the gravity sweep runs 0.65-0.80. The split path stays
+ * - the per-row setup it repeats per chunk is the next thing to go, and that
+ * may turn the number round. */
+typedef enum {
+    SAND_SPLIT_SWEEP = 1u << 0,
+    SAND_SPLIT_CROSSFLOW = 1u << 1,
+    SAND_SPLIT_GAS_WALK = 1u << 2,
+    SAND_SPLIT_GAS_SPREAD = 1u << 3,
+    SAND_SPLIT_REACTIONS = 1u << 4,
+} sand_split_pass_t;
+
+#define SAND_SPLIT_PASSES_SHIPPED                                                                                      \
+    (SAND_SPLIT_SWEEP | SAND_SPLIT_GAS_WALK | SAND_SPLIT_GAS_SPREAD | SAND_SPLIT_REACTIONS)
+
+extern unsigned sand_split_passes;
+
+/* Returns the mask it replaced, so a caller can put that back. */
+unsigned sand_split_passes_for_test(unsigned mask);
+
+/* Whether this pass can split on this board: the pass is one that ships
+ * split, two-core stepping is on, lane scratch is present, the grid is worth
+ * dividing, and its class's cut fits. */
+bool sand_chunk_pass_ready(const sand_t* s, sand_split_pass_t pass, int tx, int ty);
 
 /* Whether a pass needs the arrival marks: only one that can hand a cell on
  * again in the same pass, which an order built against its own travel
@@ -228,7 +250,8 @@ typedef enum {
  *
  * `pass` must point at file-static storage: a lane that misses its join is
  * still reading through it once the caller's frame has returned. */
-bool sand_chunk_pass_run(sand_t* s, int tx, int ty, sand_chunk_pass_stamps_t stamps, sand_chunk_fn_t fn, void* pass);
+bool sand_chunk_pass_run(sand_t* s, sand_split_pass_t pass_id, int tx, int ty, sand_chunk_pass_stamps_t stamps,
+                         sand_chunk_fn_t fn, void* pass);
 
 /* The cell range of the chunk `fn` was handed. */
 void sand_chunk_pass_cells(int cx, int cy, int* x0, int* x1, int* y0, int* y1);
