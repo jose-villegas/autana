@@ -30,6 +30,8 @@ main/apps/render_lab/scene_wire.c
 main/apps/render_lab/scene_raytrace.c
 main/apps/render_lab/wire_pipeline.c
 main/apps/render_lab/rt_cornell.c
+main/apps/render_lab/rt_cornell_scene.c
+main/apps/render_lab/rt_geometry.c
 main/apps/render_lab/render_lab_mode_switch.c
 main/apps/render_lab/ui/render_lab_hud_screen.c
 main/apps/render_lab/ui/render_lab_menu_screen.c

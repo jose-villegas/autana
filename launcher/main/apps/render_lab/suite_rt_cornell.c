@@ -13,6 +13,7 @@
 #include "unity.h"
 
 #include "rt_cornell.h"
+#include "rt_geometry.h"
 #include "rt_refine.h"
 
 /* Ray/plane */
