@@ -31,6 +31,7 @@ extern int render_lab_start_scene_index;
 #define SCENE_WIRE_CAPSULE 4
 
 static const app_t* registered;
+static int shell_quarter;
 
 void
 app_register(const app_t* app) {
@@ -72,6 +73,11 @@ options(int argc, char** argv) {
     return false;
 }
 
+int
+display_shell_quarter(void) {
+    return shell_quarter;
+}
+
 static bool
 setup(int quarter) {
     if (registered == NULL || registered->enter == NULL || registered->frame == NULL) {
@@ -79,6 +85,7 @@ setup(int quarter) {
         return false;
     }
     render_lab_band_mode = false;
+    shell_quarter = quarter;
     ui_init();
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
     registered->enter();

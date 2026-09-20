@@ -59,6 +59,8 @@ sphere-landscape|--quarter 1 --scene sphere|448x368
 sphere-portrait|--quarter 0 --scene sphere|368x448
 cube-landscape|--quarter 1 --scene cube|448x368
 capsule-landscape|--quarter 1 --scene capsule|448x368
+plane-title-fading|--quarter 1 --scene plane --frames 110|448x368
+plane-title-gone|--quarter 1 --scene plane --frames 140|448x368
 "
 
 # shellcheck source=../../../../tools/render_scene.sh
