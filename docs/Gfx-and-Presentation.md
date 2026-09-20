@@ -410,6 +410,30 @@ Then `gfx_read_panel_row()` per row, and always `gfx_readback_end()`.
 | `gfx_get_strip_send_counts()` | full / gathered / partial counts since the last reset |
 | `gfx_get_bytes_sent()`, `gfx_get_heal_bytes_sent()` | bytes queued, and heal's share |
 
+**Where a frame's time goes.** `util/frame_cost.h` brackets a stage of a frame
+and charges its microseconds to a name:
+
+```c
+FRAME_COST_BEGIN(began);
+draw_the_thing();
+FRAME_COST_END(began, "thing.draw");
+```
+
+Every 1.5 s, under the shell's fps line, the console prints each name's
+average milliseconds per frame over the window and the worst single bracket
+(the numbers below show the line's shape and are not measurements):
+
+```
+ms/frame avg/worst: ui.build 0.41/0.6  ridge.move 0.35/0.5  ridge.light 2.10/2.4  ridge.draw 3.02/4.1  ui.paint 1.20/9.8  present 8.31/16.6
+```
+
+A stage that did not run in a window is not listed. `ui.paint` includes the
+backdrop's own draw on a frame where the UI changed, so it overlaps
+`ridge.draw` there. A bracket is two clock reads, about a microsecond each:
+around a stage, never around a pixel. There are `FRAME_COST_SLOTS` (12)
+names; one more is dropped. On a host and in release the brackets compile to
+nothing.
+
 ## Related
 
 - [`Building-an-App.md`](Building-an-App.md) - when the shell presents, and `update()`
