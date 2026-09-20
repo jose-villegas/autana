@@ -341,8 +341,31 @@ Touch gets the same treatment: where no controller answers, `touch.c`
 installs a stand-in behind the same driver interface, and `touch_inject()`
 sets what it reports. The sample still travels the polling task and the
 touch state machine to `touch_read()`, so a test can drive input end to end.
+The IMU likewise: with no sensor answering, `imu_init()` succeeds and
+`imu_read()` returns what `imu_inject()` last set - held upright and still
+until then, so the shell picks portrait as it would in a hand.
 The option also makes the temperature read report failure, because
 ESP-IDF's driver waits forever on a sensor QEMU does not have.
+
+**Driving the shell.** The console listener of such an image also takes
+`TOUCH <down|up> <x> <y>` and `IMU <ax> <ay> <az>` (panel pixels; raw
+accelerometer counts, 4096 to the g). `qemu_run.py --do` strings them into
+what a user does, one ordered step at a time:
+
+```sh
+python launcher/test/qemu_run.py launcher/build.qemu.shell \
+  --do "tap 180 95" --do "wait 2500" --do "screenshot cube.png" \
+  --do "tilt 0 -4096 0" --do "wait 2500" --do "screenshot landscape.png" \
+  --do "swipe 184 446 184 200" --do "screenshot home.png"
+```
+
+That opens an app from the launcher, turns the board on its side and swipes
+home, about a minute with no board - the boot animation, the frame loop,
+the launcher, entering and leaving an app and the rotation, none of which a
+suite reaches. Leave `--icount` off: a press is timed in the emulated clock,
+which then runs far slower than the host's. An app that does not set
+`home_gesture` ignores the swipe here as it does on the board, and the PWR
+button has no stand-in, so such an app cannot be left.
 
 **What a run is evidence of.** Pass and fail, for any test that does not
 read a clock; the full scope runs to `SELFTEST_COMPLETE` in about nine

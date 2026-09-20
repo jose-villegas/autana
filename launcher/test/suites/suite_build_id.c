@@ -79,6 +79,26 @@ test_a_touch_line_fits_the_console_buffer(void) {
     TEST_ASSERT_TRUE(written > 0 && written < (int)sizeof line);
 }
 
+static void
+test_an_imu_line_carries_its_sample(void) {
+    int ax = 0, ay = 0, az = 0;
+    TEST_ASSERT_EQUAL(BUILD_CONSOLE_IMU, build_console_command_parse("IMU 4096 -12 0"));
+    TEST_ASSERT_TRUE(build_console_imu_parse("IMU 4096 -12 0", &ax, &ay, &az));
+    TEST_ASSERT_EQUAL_INT(4096, ax);
+    TEST_ASSERT_EQUAL_INT(-12, ay);
+    TEST_ASSERT_EQUAL_INT(0, az);
+}
+
+static void
+test_a_malformed_imu_line_changes_nothing(void) {
+    int ax = 7, ay = 8, az = 9;
+    TEST_ASSERT_FALSE(build_console_imu_parse("IMU 4096 0", &ax, &ay, &az));
+    TEST_ASSERT_FALSE(build_console_imu_parse("IMU 1 2 3 4", &ax, &ay, &az));
+    TEST_ASSERT_FALSE_MESSAGE(build_console_imu_parse("IMU 40000 0 0", &ax, &ay, &az),
+                              "a count past int16 is not a sample the sensor could give");
+    TEST_ASSERT_TRUE_MESSAGE(ax == 7 && ay == 8 && az == 9, "a rejected line must leave the outputs alone");
+}
+
 void
 suite_build_id(void) {
     RUN_TEST(test_format_clean_release);
@@ -89,6 +109,8 @@ suite_build_id(void) {
     RUN_TEST(test_touch_line_carries_its_sample);
     RUN_TEST(test_a_malformed_touch_line_changes_nothing);
     RUN_TEST(test_a_touch_line_fits_the_console_buffer);
+    RUN_TEST(test_an_imu_line_carries_its_sample);
+    RUN_TEST(test_a_malformed_imu_line_changes_nothing);
 }
 
 SUITE_REGISTER(suite_build_id)
