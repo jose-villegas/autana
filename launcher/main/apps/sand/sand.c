@@ -1393,13 +1393,6 @@ blocks_settled_over(const sand_t* s, int x0, int x1, int y0, int y1, uint8_t set
     return true;
 }
 
-/* dest_row()'s answer for a row a fixed `off` bytes from one the caller
- * already holds - same NULL off the grid, without the multiply. */
-static inline uint8_t*
-dest_row_stepped(uint8_t* row, int y, int h, int off) {
-    return ((unsigned)y < (unsigned)h) ? row + off : NULL;
-}
-
 /* The gravity sweep's own inner loop, over the columns [x0, x1) of the rows
  * [y0, y1) in y_step order - shared by the plain serial call below and every
  * chunk a lane takes off the schedule. A grain reaches three rows a fixed

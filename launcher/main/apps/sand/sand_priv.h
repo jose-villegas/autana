@@ -370,6 +370,13 @@ dest_row(const sand_t* s, int y) {
     return s->cells + (size_t)y * (size_t)s->w;
 }
 
+/* dest_row()'s answer for a row a fixed `off` bytes from one the caller
+ * already holds - same NULL off the grid, without the multiply. */
+static inline uint8_t*
+dest_row_stepped(uint8_t* row, int y, int h, int off) {
+    return ((unsigned)y < (unsigned)h) ? row + off : NULL;
+}
+
 /* Unions [x0,x1] (either order, clipped to the grid) into row y's
  * changed-column span - a no-op on dirty_x0/dirty_x1 wherever column
  * tracking was never opted into (sand_track_dirty_cols() not called), so a
