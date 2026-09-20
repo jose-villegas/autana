@@ -42,7 +42,11 @@
 #include "sand_chunk_sched.h"
 #include "util/job.h"
 
-#define SAND_CHUNK_TARGET_CELLS_DIVISOR 10
+/* Chunks per board, near enough: the side is the square root of the board
+ * over this, floored at SAND_CHUNK_SIDE_MIN. Twenty, not ten, from the
+ * layout sweep - a 12-chunk cut leaves one lane idle for a third of a step
+ * and the finer cut buys far more overlap than the extra dispatch costs. */
+#define SAND_CHUNK_TARGET_CELLS_DIVISOR 20
 #define SAND_CHUNK_SIDE_MIN             (2 * SAND_LIQUID_SIGHT + 1)
 
 _Static_assert(SAND_CHUNK_SIDE_MIN > 2 * SAND_LIQUID_SIGHT,

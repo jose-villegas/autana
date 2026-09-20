@@ -510,11 +510,51 @@ panel, the real touch controller, the IMU or timing.
 one nanosecond per executed instruction, so a `us per step` line times 1000
 is instructions per step — for a measurement that sends nothing, since time
 spent waiting on the null panel's modelled bus passes with no instructions
-behind it. A step that runs on one core repeats exactly from
-run to run. A two-core step sums both cores and wanders by up to 1%, since
-the waiting core's spin is counted too. The count answers whether a change
-removed work; on this chip that does not predict whether it removed time
-(see [`notes/Optimization-Playbook.md`](notes/Optimization-Playbook.md)).
+behind it. A step that runs on one core repeats exactly from run to run:
+across five concurrent instances on a 32-thread desktop, the one-core arms
+of the chunk sweep below moved at most 1.05%, and three in four cells were
+identical to the digit.
+
+**A two-core step cannot be measured this way at all.** The count sums both
+cores, so the second one is charged for whatever it does while it waits —
+its bounded spin, or its idle task. The sweep's split arm reads eight times
+its serial arm and barely moves between a board doing full work and a
+settled pile doing almost none, which is a fixed two-core floor rather than
+anything about the step; under host load the same cells moved by up to 25%.
+Rank a split pass on the same order walked by one thread
+(`SAND_CHUNK_PASS_SOLO`) and read the split arm only for its abort count.
+The count answers whether a change removed work; on this chip that does not
+predict whether it removed time (see
+[`notes/Optimization-Playbook.md`](notes/Optimization-Playbook.md)).
+
+### The chunk layout sweep
+
+Which chunk geometry the sand app cuts a board into was chosen from
+measurement, in two stages.
+
+```sh
+./launcher/main/apps/sand/tools/report_chunk_layout.sh   # host, ~15 s
+.dev/scripts/qemu-sweep.sh --instances 5                 # five QEMU, ~3 min
+```
+
+The first runs every quality grid, scene, gravity class and legal side pair
+through the real split path on one lane, charges each chunk the cells its
+passes dispatched, and feeds those to the scheduler's own two-lane span. It
+exists to keep the second stage small: it shortlists at most four side pairs
+per quality.
+
+The second builds one perf-scope image and runs one QEMU instance per
+quality against it, each with its own `--workdir` — the flash image, the
+eFuse file and the console log all live there, and the build directory is
+only read. Every cell is measured three ways: the plain serial walk, the
+same chunk order walked by one thread, and the real two-lane split. Five
+instances take about three minutes against six on one, and five is well
+short of what the machine has for a reason: it is somebody's desktop.
+
+Neither stage produces milliseconds. The host stage ranks how evenly a
+layout divides a board's work; the emulated stage prices the chunking
+itself. Whether a second core wins is the board's answer, from
+`launcher/main/apps/sand/tools/report_performance.sh --perf-scope`.
 
 ---
 
