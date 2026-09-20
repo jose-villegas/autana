@@ -406,7 +406,6 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     if (ridge == NULL) {
         return;
     }
-    FRAME_COST_BEGIN(began);
     const bool retuned = TUNE_GENERATION(ridge) != ridge->tuned_at;
     if (retuned) {
         bake_what_is_tuned();
@@ -430,7 +429,6 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     spring_line_advance(&ridge->line, dt_ms);
     int lo, hi;
     spring_line_apply(&ridge->line, ridge->shape, ridge->heights, &lo, &hi);
-    FRAME_COST_END(began, "ridge.move");
     const bool line_moved = hi > lo;
     if (line_moved) {
         prepare_light();
