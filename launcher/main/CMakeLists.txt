@@ -27,6 +27,7 @@ set(app_srcs
     "ui/ui_scroll.c"
     "util/device_state.c"
     "util/job.c"
+    "util/tune.c"
     "util/screenshot.c"
 )
 
@@ -167,6 +168,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites/suite_boot_anim_perf.c"
         "../test/suites/suite_fixed.c"
         "../test/suites/suite_tilt.c"
+        "../test/suites/suite_tune.c"
         "../test/suites/suite_tween.c"
         "../test/suites/suite_ridge_motion.c"
         "../test/suites/suite_spring_line.c"

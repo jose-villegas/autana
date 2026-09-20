@@ -80,6 +80,7 @@ $TEST_DIR/suites/suite_button_fsm.c
 $TEST_DIR/suites/suite_rng.c
 $TEST_DIR/suites/suite_fixed.c
 $TEST_DIR/suites/suite_tilt.c
+$TEST_DIR/suites/suite_tune.c
 $TEST_DIR/suites/suite_tween.c
 $TEST_DIR/suites/suite_spring_line.c
 $TEST_DIR/suites/suite_boot_anim.c
@@ -127,6 +128,7 @@ $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/post_layout.c
 $MAIN_DIR/util/job.c
+$MAIN_DIR/util/tune.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/ui/ui_build.c
 $MAIN_DIR/ui/ui_launcher_draw.c
