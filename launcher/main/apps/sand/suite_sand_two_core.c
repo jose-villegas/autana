@@ -866,14 +866,19 @@ tc_assert_a_crossing_liquid_marks_where_it_lands(int gx, int gy, int start_x, in
     TEST_ASSERT_TRUE_MESSAGE(still_liquid, why);
 }
 
+/* The crossing has to leave the cell's own block as well as its chunk, so
+ * this picks a side whose borders land on block borders rather than taking
+ * whatever the shipped rule gives - which need not divide by either. */
 static void
 test_a_liquid_crossing_a_chunk_border_stays_in_cross_flow_reach(void) {
-    const int side = tc_chunk_side_of(TC_W, TC_H);
+    const int side = 2 * SAND_BLOCK_H; /* a multiple of both block axes */
     const int x = (TC_W / 2 / SAND_BLOCK_W) * SAND_BLOCK_W + SAND_BLOCK_W / 2;
     const int y = (side / 2 / SAND_BLOCK_H) * SAND_BLOCK_H + SAND_BLOCK_H / 2;
 
+    TEST_ASSERT_TRUE_MESSAGE(sand_chunk_side_for_test(side, side), "the crossing side must clear the chunk floor");
     tc_assert_a_crossing_liquid_marks_where_it_lands(0, 1000, x, side - 1, x, side);
     tc_assert_a_crossing_liquid_marks_where_it_lands(1000, 0, side - 1, y, side, y);
+    (void)sand_chunk_side_for_test(0, 0);
 }
 
 /* THE SERIAL COMPARISON: with scatter forced to 0 and nothing else on the

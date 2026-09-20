@@ -734,8 +734,9 @@ static const sweep_scene_t sweep_scenes[] = {
 typedef struct {
     const char* name;
     int w, h;
-    int sides[SWEEP_SIDES][2]; /* the host pre-filter's shortlist, then the
-                                * side that ships - a {0, 0} entry ends it */
+    int sides[SWEEP_SIDES][2]; /* the host pre-filter's shortlist, plus the
+                                * side the rule picks and the one it used to
+                                * - a {0, 0} entry ends the list */
 } sweep_quality_t;
 
 typedef struct {
@@ -840,22 +841,23 @@ sweep_quality(const sweep_quality_t* q) {
 }
 
 /* The shortlists main/apps/sand/tools/report_chunk_layout.sh produced, each
- * followed by the side the shipped rule picks for that grid. */
+ * carrying the side the rule picks for that grid and the one a divisor of ten
+ * used to, so a rerun reads the change as well as the ranking. */
 static void
 test_chunk_sweep_ultra(void) {
-    static const sweep_quality_t q = {"ULTRA", 184, 224, {{32, 36}, {47, 17}, {47, 36}, {62, 17}, {64, 64}}};
+    static const sweep_quality_t q = {"ULTRA", 184, 224, {{47, 36}, {47, 17}, {62, 17}, {64, 64}, {45, 45}}};
     sweep_quality(&q);
 }
 
 static void
 test_chunk_sweep_high(void) {
-    static const sweep_quality_t q = {"HIGH", 122, 149, {{25, 17}, {34, 17}, {25, 28}, {17, 28}, {42, 42}}};
+    static const sweep_quality_t q = {"HIGH", 122, 149, {{25, 17}, {34, 17}, {25, 28}, {42, 42}, {30, 30}}};
     sweep_quality(&q);
 }
 
 static void
 test_chunk_sweep_normal(void) {
-    static const sweep_quality_t q = {"NORMAL", 92, 112, {{22, 24}, {17, 24}, {22, 17}, {17, 17}, {32, 32}}};
+    static const sweep_quality_t q = {"NORMAL", 92, 112, {{22, 24}, {17, 24}, {17, 17}, {32, 32}, {22, 22}}};
     sweep_quality(&q);
 }
 

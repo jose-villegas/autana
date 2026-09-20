@@ -1227,9 +1227,19 @@ lanes' queues to nine tenths of a cap in one step and counts what comes out.
 ### The chunks
 
 A chunk grid is derived from the cell grid: `sand_chunk_side_rule()` targets a
-tenth of the board per chunk and floors the side at `2 * SAND_LIQUID_SIGHT
+twentieth of the board per chunk and floors the side at `2 * SAND_LIQUID_SIGHT
 + 1`, so a chunk's interior always clears the furthest reach any splittable
-pass has. Every quality lands on the same small chunk count.
+pass has. ULTRA lands on 25 chunks, VERY LOW on 12.
+
+The divisor is twenty from a measured sweep, not chosen. At ten every quality
+cut to twelve chunks, and a twelve-chunk board leaves one lane idle for a
+third of a landscape step: the host pre-filter
+(`main/apps/sand/tools/report_chunk_layout.sh`) scores ULTRA's old 64-cell
+side at 0.678 of a serial walk's span against 0.515 for the 45-cell side it
+takes now, where 0.500 is two lanes never idle. The finer cut costs more
+dispatch - the same order walked on one thread is 20% over a plain serial
+walk at ULTRA, against 13% for the old one - and buys more than it costs at
+every quality. See `docs/Testing-Guide.md` for the sweep and how to rerun it.
 
 `sand_chunk_plan()` takes a side per axis rather than one square side, and
 `sand_chunk_side_for_test()` overrides either (0 keeps the rule, a side under
