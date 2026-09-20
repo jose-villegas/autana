@@ -1279,7 +1279,8 @@ cannot take - one chunk on an axis, or more than
 `SAND_CHUNKS_MAX` - falls back to one lane, whichever chose it. The host
 pre-filter (`main/apps/sand/tools/report_chunk_layout.sh`) ranks candidates by
 how evenly they divide a board's work before any of them is timed; see
-`docs/Testing-Guide.md` for the sweep and how to rerun it.
+[`Testing-Sand.md`](Testing-Sand.md#the-chunk-layout-sweep) for the sweep
+and how to rerun it.
 
 `blocks_settled_over()` is the one skip every chunk pass shares. A chunk
 whose covering blocks all carry the step's settled bit is dropped before any

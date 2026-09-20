@@ -382,65 +382,29 @@ panel, the real touch controller, the IMU or timing.
 one nanosecond per executed instruction, so a `us per step` line times 1000
 is instructions per step — for a measurement that sends nothing, since time
 spent waiting on the null panel's modelled bus passes with no instructions
-behind it. A step that runs on one core repeats exactly from run to run:
-across five concurrent instances on a 32-thread desktop, the one-core arms
-of the chunk sweep below moved at most 1.05%, and three in four cells were
-identical to the digit.
+behind it. A step that runs on one core repeats run to run, and keeps
+repeating while the host is busy: across five concurrent instances on a
+32-thread desktop, one-core measurements moved at most 1.05%, and three in
+four were identical to the digit.
 
-**A two-core step cannot be measured this way at all.** The count sums both
-cores, so the second one is charged for whatever it does while it waits —
-its bounded spin, or its idle task. The sweep's split arm reads eight times
-its serial arm and barely moves between a board doing full work and a
-settled pile doing almost none, which is a fixed two-core floor rather than
-anything about the step; under host load the same cells moved by up to 25%.
-Rank a split pass on the same order walked by one thread
-(`SAND_CHUNK_PASS_SOLO`) and read the split arm only for its abort count.
-The count answers whether a change removed work; on this chip that does not
-predict whether it removed time (see
+**A step shared between two cores cannot be ranked this way at all.** The
+count sums both cores, so the second one is charged for whatever it does
+while it waits — its bounded spin, or its idle task. That is a two-core
+floor unrelated to the work: it barely moves between a step doing full work
+and one with almost nothing left to do, and under host load such
+measurements moved by up to 25%. Measure the same work order walked by one
+thread instead, and take the two-core verdict from the board. The count
+answers whether a change removed work; on this chip that does not predict
+whether it removed time (see
 [`notes/Optimization-Playbook.md`](notes/Optimization-Playbook.md)).
 
-### The chunk layout sweep
-
-Which chunk geometry the sand app cuts a board into was chosen from
-measurement, in two stages.
-
-```sh
-./launcher/main/apps/sand/tools/report_chunk_layout.sh   # host, ~15 s
-.dev/scripts/qemu-sweep.sh --instances 5                 # one QEMU per quality
-```
-
-The first runs every quality grid, scene, gravity class and legal side pair
-through the real split path on one lane, charges each chunk the cells its
-passes dispatched, and feeds those to the scheduler's own two-lane span. It
-exists to keep the second stage small, by shortlisting a handful of side
-pairs per quality; a later round's list comes from the previous round's own
-measurements instead.
-
-The second builds one perf-scope image and runs one QEMU instance per
-quality against it, each with its own `--workdir` — the flash image, the
-eFuse file and the console log all live there, and the build directory is
-only read. Every cell is measured four ways: the plain serial walk, that
-same walk drawing the split's per-cell hash, the chunk order walked by one
-thread, and the real two-lane split. Each line carries the step broken down
-by pass, and each quality opens with a `CHUNK_SWEEP_FLOOR` line — a settled
-board stepped serial against split, which is what involving the second core
-costs before any work is handed to it. One instance per quality is well
-short of what the machine has for a reason: it is somebody's desktop.
-
-A quality's side list always holds both cuts that quality ships and the
-square cut they replaced, so every round stays comparable with the one
-before it; `test_the_sweep_measures_both_cuts_every_quality_ships` is what
-holds it there. Seven scenes at five sides, two orientations and four arms
-is 280 cells a quality, and a cell costs around 0.8 s of board time. The
-last two scenes are the gas pair — an open block still climbing through the
-measured window, and a sealed box whose gas has packed against a wall — so
-the gas walk and the gas spread can be judged per pass the way the liquid
-passes already are.
-
-Neither stage produces milliseconds. The host stage ranks how evenly a
-layout divides a board's work; the emulated stage prices the chunking
-itself. Whether a second core wins is the board's answer, from
-`launcher/main/apps/sand/tools/report_performance.sh --perf-scope`.
+**Instances are independent.** Each `qemu_run.py --workdir` holds its own
+flash image, eFuse file and console log, and the build directory is only
+read, so `run_qemu_tests.sh --build-only` builds the image once for a
+driver that then launches several against it. How many to run at once is a
+question about whose desktop this is, not about the runner. An app-level
+measurement built on all three of these facts is in
+[`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md).
 
 ---
 

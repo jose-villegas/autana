@@ -23,7 +23,8 @@ its own set. Eight files, two jobs:
 - **[Shading-and-Colour.md](Shading-and-Colour.md)** — how a cell's
   material and variant become a pixel, and the traps specific to that.
 - **[Testing-Sand.md](Testing-Sand.md)** — the frame-budget capture, its
-  free-heap precondition, and the scoping rules specific to this app.
+  free-heap precondition, the scoping rules specific to this app, and the
+  chunk layout sweep behind the two-core geometry.
 
 **How to change it:**
 
