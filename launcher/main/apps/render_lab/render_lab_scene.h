@@ -26,4 +26,8 @@ typedef struct {
     void (*frame_band)(gfx_color_t* buf, int row0, int row1); /* band mode: draws [row0, row1) into buf */
     void (*exit)(void);                                       /* free what enter() allocated */
     void (*invalidate)(void);                                 /* forget last-frame coverage */
+
+    /* A short status string shown after the scene name on the HUD line -
+     * vertex/edge counts, say. NULL (the cube's default) shows nothing extra. */
+    const char* (*status)(void);
 } render_lab_scene_t;

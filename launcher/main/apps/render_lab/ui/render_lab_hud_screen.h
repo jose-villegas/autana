@@ -14,6 +14,10 @@ typedef struct {
     double fps_value;
     const char* scene_name;
 
+    /* Extra text between the name and the fps reading - a scene's vertex/edge
+     * counts, say. NULL shows the name and fps alone. */
+    const char* status;
+
     /* -1 centres the box - see draw_overlay_box()'s own comment
      * (render_lab_hud_screen.c) for why a perf test wants to move it
      * instead. */

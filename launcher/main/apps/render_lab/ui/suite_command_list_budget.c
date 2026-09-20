@@ -49,11 +49,15 @@ static void
 test_hud_screen_command_list_fits_budget(void) {
     fixture();
 
-    /* Worst case: the widest fps_line string "%s  %.1f fps" can produce. */
+    /* Worst case: the widest fps_line string "%s  %s  %.1f fps" can produce -
+     * "Wire Capsule" is the longest scene name, "1024v 2048e" the widest
+     * status a wire scene reports (wire_primitives_generated.h's own
+     * 1024/2048 mesh-wide caps). */
     const render_lab_hud_screen_state_t state = {
         .fps_value = 999.9,
         .fps_box_x_override = -1,
-        .scene_name = "Gouraud Cube",
+        .scene_name = "Wire Capsule",
+        .status = "1024v 2048e",
     };
 
     const input_t input = {0};
