@@ -83,6 +83,7 @@ $TEST_DIR/suites/suite_tilt.c
 $TEST_DIR/suites/suite_tween.c
 $TEST_DIR/suites/suite_spring_line.c
 $TEST_DIR/suites/suite_boot_anim.c
+$TEST_DIR/suites/suite_r3d_project.c
 $TEST_DIR/suites/suite_gfx_dirty.c
 $TEST_DIR/suites/suite_gfx_full_redraw.c
 $TEST_DIR/suites/suite_gfx_present_guard.c
@@ -142,8 +143,10 @@ $TEST_DIR/../components/microui/src/microui.c
 #
 # The convention: inside main/apps/<name>/, the file named app_*.c is the
 # hardware-facing entry point - it talks to gfx, the IMU and the frame loop, so
-# it cannot link on a host. Everything else in the folder is portable logic and
-# is compiled in, along with any suite_*.c beside it.
+# it cannot link on a host. A scene_*.c is the same kind of file: one of
+# several hardware-facing renderers an app hosts behind its single app_*.c.
+# Everything else in the folder is portable logic and is
+# compiled in, along with any suite_*.c beside it.
 #
 # That split is not bureaucracy: it is what forces an app's logic to be
 # separable from its wiring, which is the only reason a falling-sand automaton
@@ -159,7 +162,7 @@ $TEST_DIR/../components/microui/src/microui.c
 for f in $(find "$MAIN_DIR/apps" -name '*.c' ! -path '*/tools/*' | sort); do
     [ -e "$f" ] || continue
     case "$(basename "$f")" in
-        app_*.c) continue ;;
+        app_*.c | scene_*.c) continue ;;
     esac
     SOURCES="$SOURCES
 $f"

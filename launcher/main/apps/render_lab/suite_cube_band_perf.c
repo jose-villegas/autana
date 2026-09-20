@@ -30,13 +30,13 @@
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
 
-/* app_cube.c's own toggle and lifecycle, exposed the same way
+/* app_render_lab.c's own toggle and lifecycle, exposed the same way
  * suite_cube_perf.c already relies on. */
-extern bool cube_band_mode;
-extern bool partial_updates;
-extern int cube_fps_box_x_override;
-extern void cube_enter(void);
-extern void cube_exit(void);
+extern bool render_lab_band_mode;
+extern bool render_lab_partial_updates;
+extern int render_lab_fps_box_x_override;
+extern void render_lab_enter(void);
+extern void render_lab_exit(void);
 extern void cube_update_rotation(uint32_t dt_ms);
 extern void cube_clear_frame(void);
 extern void cube_rasterize_frame(void);
@@ -185,11 +185,10 @@ full_fb_frame(uint32_t dt_ms) {
     gfx_present();
 }
 
-/* cube_frame_band()'s own shape, rebuilt from the pieces app_cube.c exposes
- * (its own clear_band() is file-static). cube_transform_and_bin() must run
- * once per frame, before the band loop - it also marks the cube's own
- * coverage dirty (its own comment), the only reason gfx_band_dirty() below
- * ever returns true for a rotating cube. draw_fps(for_bands=true) builds
+/* render_lab_frame_band()'s own shape, rebuilt from scene_cube.c's exposed
+ * pieces. cube_transform_and_bin() must run once per frame, before the
+ * band loop - it also marks the cube's own coverage dirty, the only reason
+ * gfx_band_dirty() below ever returns true. draw_fps(for_bands=true) builds
  * the HUD's commands once, for ui_replay_band() to bin per band below. */
 static void
 band_frame(uint32_t dt_ms) {
@@ -239,8 +238,8 @@ band_frame(uint32_t dt_ms) {
 
 void
 test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
-    ui_init(); /* cube_enter() reads ui_layout_generation(); see suite_cube_perf.c's fixture */
-    const bool saved_band_mode = cube_band_mode;
+    ui_init(); /* render_lab_enter() reads ui_layout_generation(); see suite_cube_perf.c's fixture */
+    const bool saved_band_mode = render_lab_band_mode;
 
     samples = malloc(sizeof(int32_t) * MAX_SAMPLES);
     TEST_ASSERT_NOT_NULL_MESSAGE(samples, "need a sample buffer for the band-vs-full-fb capture");
@@ -248,32 +247,32 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     /* Full redraw every frame, matching band mode's own shape - not the
      * app's real default, which would let partial updates skip most of the
      * clear and present. */
-    partial_updates = false;
+    render_lab_partial_updates = false;
     run_fps_on = true;
-    cube_band_mode = false;
-    cube_enter();
+    render_lab_band_mode = false;
+    render_lab_enter();
     capture(full_fb_frame, SAMPLE_MS);
-    cube_exit();
+    render_lab_exit();
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, sample_count, "no full-fb frames captured");
     const int full_fb_n = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES;
     const stats_t full_fb_stats = compute_stats(full_fb_n);
 
-    cube_band_mode = true;
+    render_lab_band_mode = true;
     replay_us_accum = 0;
     replay_band_count = 0;
     touched_band_count = 0;
     skipped_band_count = 0;
     raster_us_accum = 0;
-    cube_enter();
+    render_lab_enter();
     capture(band_frame, SAMPLE_MS);
-    cube_exit();
+    render_lab_exit();
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, sample_count, "no band-mode frames captured");
     const int band_n = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES;
     const stats_t band_stats = compute_stats(band_n);
     const double band_bytes_per_frame =
         (double)touched_band_count * GFX_WIDTH * GFX_BAND_HEIGHT * sizeof(gfx_color_t) / sample_count;
 
-    cube_band_mode = saved_band_mode;
+    render_lab_band_mode = saved_band_mode;
 
     ESP_LOGI(TAG, "=== CUBE BAND VS FULL-FB (%ds each, band height %d, fps counter on in both) ===", SAMPLE_SECONDS,
              GFX_BAND_HEIGHT);
@@ -338,10 +337,10 @@ run_arm(const char* label, bool band_mode, int quarter, bool fps_on) {
     skipped_band_count = 0;
     raster_us_accum = 0;
 
-    cube_band_mode = band_mode;
-    cube_enter();
+    render_lab_band_mode = band_mode;
+    render_lab_enter();
     capture(band_mode ? band_frame : full_fb_frame, ORIENTATION_SAMPLE_MS);
-    cube_exit();
+    render_lab_exit();
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, sample_count, "no frames captured for this arm");
 
     arm_result_t r = {
@@ -405,23 +404,23 @@ run_orientation_fps_pair(int quarter, const char* orient_name, bool fps_on, doub
 
     /* Measurement only, for the UI editor's placement hints -
      * no assert: does starting the box's panel row extent on
-     * a band boundary (cube_fps_box_x_override, app_cube.c)
-     * touch fewer bands or replay cheaper than the app's own
-     * centred placement, which rarely lands on one. Reset
-     * right after so no other arm inherits it. */
-    cube_fps_box_x_override = 0;
+     * a band boundary (render_lab_fps_box_x_override) touch
+     * fewer bands or replay cheaper than the app's own inset
+     * placement, which does not land on one. Reset right after
+     * so no other arm inherits it. */
+    render_lab_fps_box_x_override = 0;
     arm_result_t aligned = run_arm("band/landscape/fps-on-aligned", true, quarter, true);
     log_arm(&aligned);
-    cube_fps_box_x_override = -1;
+    render_lab_fps_box_x_override = -1;
 }
 
 void
 test_cube_orientation_and_fps_sweep(void) {
     ui_init();
-    const bool saved_band_mode = cube_band_mode;
+    const bool saved_band_mode = render_lab_band_mode;
     samples = malloc(sizeof(int32_t) * MAX_SAMPLES);
     TEST_ASSERT_NOT_NULL_MESSAGE(samples, "need a sample buffer for the orientation/fps sweep");
-    partial_updates = false;
+    render_lab_partial_updates = false;
 
     static const struct {
         const char* name;
@@ -450,7 +449,7 @@ test_cube_orientation_and_fps_sweep(void) {
         }
     }
 
-    cube_band_mode = saved_band_mode;
+    render_lab_band_mode = saved_band_mode;
     ui_set_transform(ui_transform_identity());
 
     /* Deferred to here, after every arm above has already logged - a

@@ -123,9 +123,9 @@ test code costing ~4%. (Those figures are from the -Og era; the conclusion is
 unchanged at -O2, only the numbers moved.)
 
 It is not. Release registers one app and diagnostics registers two, so the two
-builds were drawing a different number of buttons. Registering `app_cube` twice
-in a release build reproduces 40.0 fps exactly — the entire difference is one
-microui button.
+builds were drawing a different number of buttons. Registering `app_render_lab`
+twice in a release build reproduces 40.0 fps exactly — the entire difference is
+one microui button.
 
 The suites only ever run at boot; nothing test-related executes in the frame
 loop. What the diagnostics build actually costs:
