@@ -135,12 +135,11 @@ over, for both:
   `heap_arena.c`, a first-fit arena exactly the size of the device's free
   heap. First-fit with real coalescing, because the rule that bites is
   contiguity, not totals: the largest single request a device profile
-  records (`DP_LARGEST_ALLOC_BYTES`) is tens of kilobytes, and one that size
-  fails on a heap holding more free bytes than that with no single block big
-  enough to hold it. Blocks still outstanding when a test ends print a
-  `LEAK` line naming that test and fail the host run — that is the
-  assert-before-free pattern, which on device leaks that block and starves
-  every later test in the same boot.
+  records (`DP_LARGEST_ALLOC_BYTES`) is tens of kilobytes, and it fails on a
+  heap with 50 KB free whose largest block is 38 KB. Blocks still
+  outstanding when a test ends print a `LEAK` line naming that test and fail
+  the host run — that is the assert-before-free pattern, which on device
+  leaks that block and starves every later test in the same boot.
 
 Those numbers come from `launcher/tools/device_profiles/<chip>.sh`, selected
 by `$DEVICE_PROFILE` (default `esp32s3`), each carrying its own provenance.
