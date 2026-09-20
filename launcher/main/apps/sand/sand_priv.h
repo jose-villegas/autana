@@ -298,9 +298,8 @@ typedef enum {
 sand_chunk_share_t sand_chunk_share_for_test(sand_chunk_share_t mode);
 
 /* Split passes actually dispatched, counted where one starts, per pass so
- * that "the sweep stayed on one core but the gas walk split" is a thing a
- * test can say. Never reset by the sand code: a test zeroes it and reads it
- * back. */
+ * that which passes were shared is a thing a test can say and not only how
+ * many. Never reset by the sand code: a test zeroes it and reads it back. */
 extern unsigned sand_split_dispatches[SAND_SPLIT_SLOTS];
 
 /* Whether a pass needs the arrival marks: only one that can hand a cell on

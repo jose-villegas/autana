@@ -523,10 +523,9 @@ time_two_core_arm(void (*build)(sand_t*, uint8_t*, uint8_t*), int gy, bool two_c
     void* scratch = lane_scratch_open(&real);
 
     const two_core_scope_t core = two_core_scope_begin(two_core);
-    /* What this row prices is the split, so the split arm asks for it: the
-     * liquid scenes here travel along y, where the shipped rule keeps the
-     * sweep on one core and the row would otherwise read serial against
-     * serial. */
+    /* What this row prices is the split, so the split arm asks for it by
+     * name: a scene the shipped decision declines would otherwise read
+     * serial against serial. */
     const sand_chunk_share_t share =
         sand_chunk_share_for_test(two_core ? SAND_CHUNK_SHARE_ALWAYS : SAND_CHUNK_SHARE_AUTO);
     const int steps = 20;
@@ -678,8 +677,7 @@ time_two_core_quality_scene(const quality_grid_t* quality, quality_scene_fn buil
 
     quality_bench_t out = {0};
     const two_core_scope_t core = two_core_scope_begin(two_core);
-    /* Same reason as time_two_core_arm(): these all travel along y, and two
-     * of the scenes hold liquid. */
+    /* Same reason as time_two_core_arm(). */
     const sand_chunk_share_t share =
         sand_chunk_share_for_test(two_core ? SAND_CHUNK_SHARE_ALWAYS : SAND_CHUNK_SHARE_AUTO);
     const int steps = 20;

@@ -1670,15 +1670,6 @@ chunk_pass_divides(const sand_t* s, const sand_chunk_plan_t* p, int tx, int ty) 
     return sand_chunk_makespan(&order, p->cols, p->rows, cost) * 100 <= awake * SAND_CHUNK_SPLIT_SPAN_SHARE_PERCENT;
 }
 
-/* Two cores lose a liquid board whose step does not travel along x. The board
- * measured 18584 us on a screen-wide water collapse against 15005 swept
- * row-major, and 16187 against 14117 on a filling basin, while every
- * landscape scene ran 0.75-0.89 of serial. */
-static bool
-sweep_stays_on_one_core(const sand_t* s, sand_split_pass_t pass, int tx, int ty) {
-    return pass == SAND_SPLIT_SWEEP && sand_chunk_travel_of(tx, ty) != SAND_CHUNK_TRAVEL_X && s->may_have_liquid;
-}
-
 bool
 sand_chunk_pass_ready(const sand_t* s, sand_split_pass_t pass, int tx, int ty) {
     sand_chunk_plan_t fits;
@@ -1696,9 +1687,6 @@ sand_chunk_pass_ready(const sand_t* s, sand_split_pass_t pass, int tx, int ty) {
     }
     if (chunk_share_mode != SAND_CHUNK_SHARE_AUTO) {
         return chunk_share_mode == SAND_CHUNK_SHARE_ALWAYS;
-    }
-    if (sweep_stays_on_one_core(s, pass, tx, ty)) {
-        return false;
     }
     return chunk_pass_divides(s, &fits, tx, ty);
 }
