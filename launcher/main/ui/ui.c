@@ -267,16 +267,19 @@ canvas_physical_rect(const mu_Container* cnt) {
 /* Which canvases changed. Also repaint one whose bands are already dirty:
  * something has drawn underneath it this frame, so its pixels are gone
  * however unchanged its own description is. */
+static bool
+canvas_itself_changed(const mu_Container* cnt) {
+    const int slot = (int)(cnt - ctx.containers);
+    return invalidated || slot < 0 || slot >= MU_CONTAINERPOOL_SIZE || hash_canvas(cnt) != canvas_hash[slot];
+}
+
 static void
 mark_changed_canvases(int n, bool* repaint) {
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
         const mu_Container* cnt = ctx.root_list.items[i];
-        const int slot = (int)(cnt - ctx.containers);
-        const uint64_t h = hash_canvas(cnt);
         const mu_Rect phys = canvas_physical_rect(cnt);
 
-        if (invalidated || slot < 0 || slot >= MU_CONTAINERPOOL_SIZE || h != canvas_hash[slot]
-            || gfx_region_dirty(phys.x, phys.y, phys.w, phys.h)) {
+        if (canvas_itself_changed(cnt) || gfx_region_dirty(phys.x, phys.y, phys.w, phys.h)) {
             repaint[i] = true;
         }
     }
@@ -344,6 +347,41 @@ ui_end(uint32_t background_rgb) {
     mark_changed_canvases(n, repaint);
     propagate_repaint_over_overlaps(n, repaint);
     const bool drew = repaint_marked_canvases(n, repaint, background_rgb);
+
+    invalidated = false;
+    return drew;
+}
+
+/* A backdrop is shared by every canvas, so once the UI itself has changed
+ * it is painted once and every canvas goes over it. A UI that is unchanged
+ * and only drawn under - the backdrop animating - is painted back on top
+ * with no backdrop call: whoever drew under it has already drawn that part. */
+bool
+ui_end_over(ui_backdrop_fn paint_backdrop) {
+    mu_end(&ctx);
+    pointer.over_scrollable = ctx.scroll_target != NULL;
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    report_command_list_high_water(ctx.command_list.idx);
+#endif
+
+    const int n = ctx.root_list.idx;
+    bool repaint[MU_ROOTLIST_SIZE] = {false};
+    bool ui_changed = false;
+    for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
+        ui_changed = ui_changed || canvas_itself_changed(ctx.root_list.items[i]);
+    }
+
+    if (ui_changed) {
+        paint_backdrop();
+        for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
+            repaint[i] = true;
+        }
+    } else {
+        mark_changed_canvases(n, repaint);
+        propagate_repaint_over_overlaps(n, repaint);
+    }
+    const bool drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND);
 
     invalidated = false;
     return drew;

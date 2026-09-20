@@ -59,6 +59,8 @@ _Static_assert(sizeof(boot_anim_image) == (size_t)GFX_WIDTH * GFX_HEIGHT * sizeo
 static const char* TAG = "boot_anim";
 #endif
 
+static boot_anim_backdrop_fn ending_backdrop;
+
 #define COL_BG      GFX_RGB(0x000000)
 #define COL_WHITE   GFX_RGB(0xFFFFFF)
 
@@ -143,8 +145,8 @@ units(int n) {
 
 static void
 polar_point(int32_t radius, uint16_t turn, int32_t* re, int32_t* im) {
-    const int32_t cos_v = boot_anim_cos(turn);
-    const int32_t sin_v = boot_anim_sin(turn);
+    const int32_t cos_v = trig_cos(turn);
+    const int32_t sin_v = trig_sin(turn);
     *re = (int32_t)(((int64_t)radius * cos_v) >> 15);
     *im = (int32_t)(((int64_t)radius * sin_v) >> 15);
 }
@@ -600,7 +602,11 @@ title_glyph_origin(int view_x, int view_y, int glyph_w, int glyph_h, int* panel_
  * backwards for fading to black. */
 void
 draw_title(uint32_t now_ms, uint8_t ink) {
-    const gfx_color_t c = gfx_color_mix(COL_BG, COL_WHITE, ink);
+    /* Over black a title fades by darkening. Over the screen that follows,
+     * darkening would leave black letters on it, so it dithers away at full
+     * colour, the same way the photograph under it does. */
+    const bool dissolve = ending_backdrop != NULL && ink < 255;
+    const gfx_color_t c = dissolve ? COL_WHITE : gfx_color_mix(COL_BG, COL_WHITE, ink);
     /* See BOOT_ANIM_TITLE_FONT. Default 0 uses 40px Computer Modern; 1 uses
      * 8x8 bitmap. Use gfx_font_ui() for flexibility. gfx_font_lmroman_40 for
      * linker drop. */
@@ -621,10 +627,16 @@ draw_title(uint32_t now_ms, uint8_t ink) {
         if (has_shadow) {
             int shadow_dx, shadow_dy;
             boot_anim_title_shadow_offset(BOOT_ANIM_TITLE_SHADOW_DX, BOOT_ANIM_TITLE_SHADOW_DY, &shadow_dx, &shadow_dy);
+            const uint8_t shadow_alpha =
+                dissolve ? (uint8_t)(BOOT_ANIM_TITLE_SHADOW_ALPHA * ink / 255) : BOOT_ANIM_TITLE_SHADOW_ALPHA;
             gfx_text_font_dither(px + shadow_dx, py + shadow_dy, one, COL_BG, BOOT_ANIM_TITLE_SCALE, DISPLAY_LANDSCAPE,
-                                 font, BOOT_ANIM_TITLE_SHADOW_ALPHA);
+                                 font, shadow_alpha);
         }
-        gfx_text_font(px, py, one, c, BOOT_ANIM_TITLE_SCALE, DISPLAY_LANDSCAPE, font);
+        if (dissolve) {
+            gfx_text_font_dither(px, py, one, c, BOOT_ANIM_TITLE_SCALE, DISPLAY_LANDSCAPE, font, ink);
+        } else {
+            gfx_text_font(px, py, one, c, BOOT_ANIM_TITLE_SCALE, DISPLAY_LANDSCAPE, font);
+        }
     }
 }
 
@@ -666,6 +678,11 @@ boot_anim_clear_frame(void) {
 }
 
 void
+boot_anim_set_ending_backdrop(boot_anim_backdrop_fn paint) {
+    ending_backdrop = paint;
+}
+
+void
 boot_anim_draw_frame(uint32_t now_ms) {
     const uint8_t ink = boot_anim_ink(now_ms);
     const uint8_t reveal = boot_anim_image_reveal(now_ms);
@@ -673,7 +690,11 @@ boot_anim_draw_frame(uint32_t now_ms) {
 
     const boot_anim_view_t view = boot_anim_view(GFX_WIDTH, GFX_HEIGHT, now_ms);
 
-    boot_anim_clear_frame();
+    if (ending_backdrop != NULL && ink < 255) {
+        ending_backdrop();
+    } else {
+        boot_anim_clear_frame();
+    }
 
     /* Gated like title. Full coverage skips draw_image(). See boot_anim.h. */
     if (scene > 0) {

@@ -297,8 +297,8 @@ ui_init(void) {
  * under a translating transform, logical "off-screen" is not necessarily
  * (-1, -1) either, so the park needs the same inverse as a real touch to
  * stay outside whatever the logical canvas currently is. */
-static void
-to_logical(int x, int y, int* lx, int* ly) {
+void
+ui_to_logical(int x, int y, int* lx, int* ly) {
     ui_transform_t inv;
     if (!ui_transform_invert(ui_effective_transform(), &inv)) {
         /* Unreachable in practice: ui_effective_transform() is always
@@ -320,7 +320,7 @@ to_logical(int x, int y, int* lx, int* ly) {
 static void
 replay_pointer_event(const ui_pointer_event_t* e) {
     int lx, ly;
-    to_logical(e->x, e->y, &lx, &ly);
+    ui_to_logical(e->x, e->y, &lx, &ly);
 
     switch (e->kind) {
         case UI_POINTER_MOVE: mu_input_mousemove(&ctx, lx, ly); break;
@@ -329,7 +329,7 @@ replay_pointer_event(const ui_pointer_event_t* e) {
         case UI_POINTER_SCROLL: {
             /* A distance, not a point: only the transform's turn applies. */
             int ox, oy;
-            to_logical(0, 0, &ox, &oy);
+            ui_to_logical(0, 0, &ox, &oy);
             mu_input_scroll(&ctx, lx - ox, ly - oy);
             break;
         }
@@ -362,7 +362,7 @@ static mu_Rect
 logical_viewport(void) {
     ui_transform_t inv;
     if (!ui_transform_invert(ui_effective_transform(), &inv)) {
-        /* See to_logical()'s identical fallback above: unreachable while
+        /* See ui_to_logical()'s identical fallback above: unreachable while
          * ui_effective_transform() only ever returns identity or a
          * transform that already passed ui_transform_is_axis_preserving(),
          * both of which are invertible by construction. */

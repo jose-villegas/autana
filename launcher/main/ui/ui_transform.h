@@ -147,6 +147,17 @@ ui_transform_invert(ui_transform_t t, ui_transform_t* out) {
     return true;
 }
 
+/* Which ui_transform_quarter_turn() this is, 0 to 3, or 0 for a transform
+ * that is not one - for a renderer that turns its own pixels, like
+ * gfx_glow_curve(), rather than going through ui_transform_rect(). */
+static inline int
+ui_transform_quarter_turns(ui_transform_t t) {
+    if (t.a == 0 && t.d == 0) {
+        return t.b > 0 ? 1 : 3;
+    }
+    return t.a < 0 ? 2 : 0;
+}
+
 /* Application */
 
 static inline void

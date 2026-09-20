@@ -10,7 +10,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "tilt.h"
+#include "input/tilt.h"
 
 /* Roughly 1 g in the units the QMI8658 reports, which is what the filter sees
  * in the app. The exact value does not matter - the filter is unit-agnostic -
@@ -44,7 +44,7 @@ test_the_first_sample_is_adopted_exactly(void) {
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1000, tilt_x(&t),
                                   "the filter must start at the first reading, not ramp up from zero - "
-                                  "otherwise the sand visibly swings into place when the app opens");
+                                  "otherwise whatever follows it visibly swings into place on its first frame");
     TEST_ASSERT_EQUAL_INT_MESSAGE(ONE_G, tilt_y(&t), "likewise for y");
 }
 
@@ -71,8 +71,8 @@ test_it_converges_when_the_reading_is_held(void) {
     hold(ONE_G, 0, 0, 14, 2000);
 
     TEST_ASSERT_INT_WITHIN_MESSAGE(ONE_G / 50, ONE_G, tilt_x(&t),
-                                   "a held reading must eventually be reached, or the sand would never "
-                                   "quite point where the board does");
+                                   "a held reading must eventually be reached, or down would never "
+                                   "quite point where the board says it does");
     TEST_ASSERT_INT_WITHIN_MESSAGE(ONE_G / 50, 0, tilt_y(&t), "likewise for y");
 }
 
@@ -137,7 +137,7 @@ test_noise_is_attenuated_when_the_board_is_still(void) {
 
     TEST_ASSERT_LESS_THAN_MESSAGE(60, worst,
                                   "noise of +/-300 must come out several times smaller, or a board "
-                                  "sitting on a desk will have visibly fidgeting sand");
+                                  "sitting on a desk will visibly fidget");
 }
 
 static void
@@ -185,7 +185,7 @@ test_a_shove_is_not_mistaken_for_gravity(void) {
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(settled, tilt_y(&t),
                                   "a reading whose magnitude is far from one g must be ignored, or "
-                                  "picking the device up throws the sand across the screen");
+                                  "picking the device up throws whatever follows gravity across the screen");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, tilt_x(&t), "likewise for x");
 }
 
@@ -212,8 +212,9 @@ test_free_fall_is_reported_rather_than_estimated(void) {
     /* Everything near zero: nothing is holding the device up. */
     tilt_update(&t, 10, 10, 10, 0, 14);
 
-    TEST_ASSERT_TRUE_MESSAGE(tilt_in_free_fall(&t), "free fall is not an untrustworthy reading to be ignored - it is a "
-                                                    "real state, and sand should hang rather than settle");
+    TEST_ASSERT_TRUE_MESSAGE(tilt_in_free_fall(&t),
+                             "free fall is not an untrustworthy reading to be ignored - it is a "
+                             "real state, and what follows gravity should hang rather than settle");
 }
 
 /* --- a device lying flat ------------------------------------------------- */
@@ -224,8 +225,8 @@ test_flow_is_full_when_the_screen_is_upright(void) {
     tilt_update(&t, 0, ONE_G, 0, 0, 14);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(256, tilt_strength(&t),
-                                  "held upright, all of gravity is in the plane and the sand should run "
-                                  "at full speed");
+                                  "held upright, all of gravity is in the plane and what it drives should "
+                                  "run at full speed");
 }
 
 static void
@@ -233,7 +234,7 @@ test_flow_falls_away_as_the_device_is_laid_flat(void) {
     /* The reported behaviour: setting the device down stopped the simulation
      * in a single frame, which reads as a crash rather than as settling.
      *
-     * Sand SHOULD stop on a level tray. What it must not do is stop abruptly,
+     * Motion SHOULD stop on a level board. What it must not do is stop abruptly,
      * so what matters here is that the rate declines through the middle rather
      * than switching. */
     int previous = 257;
@@ -278,7 +279,7 @@ test_free_fall_stops_the_flow_even_on_a_stale_estimate(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, tilt_strength(&t),
                                   "free fall deliberately holds the last estimate rather than following "
                                   "the reading, so the flow has to be zeroed explicitly - otherwise the "
-                                  "sand keeps pouring all the way down");
+                                  "caller keeps running all the way down");
 }
 
 /* --- rotating is not shaking --------------------------------------------- */
@@ -307,7 +308,7 @@ test_turning_the_board_does_not_read_as_shaking(void) {
 
     TEST_ASSERT_LESS_THAN_MESSAGE(40, tilt_shake(&t),
                                   "turning the board is not shaking it - reading shake off the gyro is "
-                                  "what threw the sand at the walls every time the device was rotated");
+                                  "what threw everything at the walls every time the device was rotated");
 }
 
 static void

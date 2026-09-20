@@ -1,6 +1,7 @@
 /*
  * tilt - turning raw accelerometer counts into a direction worth steering
- * sand with.
+ * something with: which way is down in the plane of the screen, how hard,
+ * and how much the device is being shaken.
  *
  * Pure logic, no sensor and no clock: samples and elapsed time are passed in,
  * so the whole thing is testable on a host.
@@ -37,7 +38,8 @@
  * is pushing the device and the reading is mostly that. Below
  * FREE_FALL nothing is supporting it at all. Wide on purpose: the cost
  * of rejecting a good sample is a few milliseconds of staleness, and
- * the cost of accepting a bad one is sand thrown across the screen. */
+ * the cost of accepting a bad one is whatever follows gravity thrown across
+ * the screen. */
 #define TILT_TRUST_LO_PCT   70
 #define TILT_TRUST_HI_PCT   130
 #define TILT_FREE_FALL_PCT  30
@@ -74,26 +76,25 @@ void tilt_reset(tilt_t* t, int counts_per_g);
  * needed: without it a flat device looks identical to free fall.
  * `rotation` is 0-255 from the GYROSCOPE, setting only how quickly the
  * filter tracks; deliberately not what shaking is read from. The first
- * sample after a reset is adopted exactly, so the sand does not
- * visibly swing into place when the app opens. */
+ * sample after a reset is adopted exactly, so whatever follows it does
+ * not visibly swing into place on its first frame. */
 void tilt_update(tilt_t* t, int gx, int gy, int gz, int rotation, uint32_t dt_ms);
 
-/* The direction sand should flow, in input units. */
+/* Which way is down in the screen plane, in input units. */
 int tilt_x(const tilt_t* t);
 int tilt_y(const tilt_t* t);
 
 /* How much of a g lies in the screen plane, as 0-256 - which is sin of
- * the tilt away from flat, and therefore how hard the sand is being
- * driven. The caller should scale its simulation rate by this. Full
- * upright, sand runs at full speed; laid flat it coasts to a stop
- * instead of freezing mid-frame. Zero in free fall, where nothing is
- * driving anything. */
+ * the tilt away from flat, and therefore how hard gravity drives anything
+ * in that plane. A caller simulating it should scale its rate by this:
+ * upright it runs at full speed, laid flat it coasts to a stop instead of
+ * freezing mid-frame. Zero in free fall, where nothing drives anything. */
 int tilt_strength(const tilt_t* t);
 
 /* How hard the device is being shaken, 0-255, from linear acceleration rather
  * than rotation. Turning the board smoothly reads as nothing at all. */
 int tilt_shake(const tilt_t* t);
 
-/* True when nothing is supporting the device. The caller should stop the
- * simulation: in free fall sand does not settle, it hangs. */
+/* True when nothing is supporting the device. A caller simulating gravity
+ * should stop: in free fall nothing settles, it hangs. */
 bool tilt_in_free_fall(const tilt_t* t);

@@ -89,9 +89,9 @@ runtime default floor move together; setting only one silently no-ops
    removing dead log calls changes inlining decisions and can expose latent
    warnings in code that has nothing to do with logging.
 5. **Verify with `nm`/string-diffing**, the same "verified rather than
-   assumed" convention `Testing-Guide.md`'s SELFTEST/DEVELOPMENT section
+   assumed" convention `Build-Variants.md`'s SELFTEST/DEVELOPMENT section
    already uses.
-6. **Document the policy in `Testing-Guide.md`**, alongside "Development-only
+6. **Document the policy in `Build-Variants.md`**, alongside "Development-only
    instrumentation is its own flag, not SELFTEST": `CONFIG_LAUNCHER_DEVELOPMENT`
    gates whole dev-only subsystems; `CONFIG_LOG_MAXIMUM_LEVEL` gates log
    severity project-wide. A bare log line inside an otherwise-always-on
@@ -142,6 +142,6 @@ tracked separately. This is a placeholder for future work.
 
 ## Related
 
-- [Testing-Guide.md](../Testing-Guide.md) — "Development-only instrumentation
-  is its own flag, not SELFTEST": the rule this plan complements rather than
-  replaces.
+- [Build-Variants.md](../Build-Variants.md#development-only-instrumentation-is-its-own-flag-not-selftest)
+  — "Development-only instrumentation is its own flag, not SELFTEST": the
+  rule this plan complements rather than replaces.
