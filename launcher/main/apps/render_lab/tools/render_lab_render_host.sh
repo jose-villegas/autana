@@ -33,6 +33,7 @@ main/apps/render_lab/rt_cornell.c
 main/apps/render_lab/rt_cornell_scene.c
 main/apps/render_lab/rt_geometry.c
 main/apps/render_lab/rt_path.c
+main/util/job.c
 main/apps/render_lab/render_lab_mode_switch.c
 main/apps/render_lab/ui/render_lab_hud_screen.c
 main/apps/render_lab/ui/render_lab_menu_screen.c
