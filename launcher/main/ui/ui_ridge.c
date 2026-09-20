@@ -22,6 +22,7 @@
 #include "gfx/gfx.h"
 #include "ui/ridge_curve_generated.h"
 #include "ui/ridge_motion.h"
+#include "ui/ridge_pose.h"
 #include "util/frame_cost.h"
 #include "util/spring_line.h"
 #include "util/tune.h"
@@ -106,9 +107,7 @@ TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 #define RIDGE_EXTRA       88
 #define RIDGE_COLUMNS     (RIDGE_CURVE_POINTS + 2 * RIDGE_EXTRA)
 
-/* The glow is drawn from a map of its light - see gfx_glow.h. Below this
- * radius the map's fixed cost is more than the search it saves. */
-#define MAP_FROM_RADIUS   10
+/* The glow is drawn from a map of its light - see gfx_glow.h. */
 #define MAP_COLS          ((RIDGE_COLUMNS + GFX_GLOW_MAP_CELL - 1) / GFX_GLOW_MAP_CELL)
 #define MAP_ROWS          200
 
@@ -138,11 +137,8 @@ typedef struct {
     int16_t map_row_v[MAP_COLS];
     int16_t lit_lo[GFX_HEIGHT];
     int16_t lit_hi[GFX_HEIGHT];
-    gfx_glow_pose_t pose;
+    ridge_pose_t attitude;
     gfx_glow_pose_t pose_on_screen;
-    gfx_glow_pose_t level;
-    gfx_glow_pose_t steady_level;
-    uint32_t steady_ms;
     uint32_t alive_ms;
     uint32_t shake_seed;
     int shake;
@@ -153,17 +149,12 @@ typedef struct {
 static ridge_t* ridge;
 static bool allocation_tried;
 
-static bool
-glow_is_mapped(void) {
-    return glow_radius >= MAP_FROM_RADIUS;
-}
-
 /* What a draw measures distance against, for the line as it now stands. */
 static void
 prepare_light(void) {
     FRAME_COST_BEGIN(began);
     gfx_glow_field_prepare(&ridge->field, ridge->heights, &ridge->style);
-    if (glow_is_mapped()) {
+    if (gfx_glow_map_worth_it(glow_radius)) {
         gfx_glow_map_build(&ridge->map, &ridge->field, &ridge->style);
     }
     FRAME_COST_END(began, "ridge.light");
@@ -194,7 +185,8 @@ allocate_once(void) {
         return;
     }
     memset(ridge, 0, sizeof *ridge);
-    spring_line_init(&ridge->line, ridge->offset, ridge->velocity, RIDGE_COLUMNS);
+    spring_line_init(&ridge->line, ridge->offset, ridge->velocity, RIDGE_COLUMNS, spring_tension, spring_stiffness,
+                     spring_damping);
     ridge_motion_extend(ridge_curve_y, RIDGE_CURVE_POINTS, ridge->rigid, RIDGE_EXTRA);
     memcpy(ridge->heights, ridge->rigid, sizeof ridge->heights);
     ridge->ambient = true;
@@ -214,10 +206,10 @@ allocate_once(void) {
         .rows = MAP_ROWS,
     };
     bake_what_is_tuned();
-    ridge->pose = POSE_LANDSCAPE;
+    ridge->attitude.pose = POSE_LANDSCAPE;
     ridge->pose_on_screen = POSE_LANDSCAPE;
-    ridge->level = POSE_LANDSCAPE;
-    ridge->steady_level = POSE_LANDSCAPE;
+    ridge->attitude.level = POSE_LANDSCAPE;
+    ridge->attitude.steady_level = POSE_LANDSCAPE;
     ridge->shake_seed = 0x9E3779B9u;
 }
 
@@ -228,14 +220,7 @@ ui_ridge_set_gravity(int gx, int gy, int strength, int shake) {
         return;
     }
     ridge->shake = shake;
-    if (strength < MIN_TILT_STRENGTH) {
-        return;
-    }
-    const int64_t length = (int64_t)gfx_glow_isqrt((uint32_t)(gx * gx + gy * gy));
-    if (length > 0) {
-        ridge->level.down_x = (int32_t)((int64_t)gx * GFX_GLOW_POSE_ONE / length);
-        ridge->level.down_y = (int32_t)((int64_t)gy * GFX_GLOW_POSE_ONE / length);
-    }
+    ridge->attitude.level = ridge_pose_level_from_gravity(ridge->attitude.level, gx, gy, strength, MIN_TILT_STRENGTH);
 }
 
 void
@@ -251,18 +236,18 @@ ui_ridge_settle(void) {
     allocate_once();
     if (ridge != NULL) {
         ridge->alive_ms = (uint32_t)boot_hold_ms;
-        ridge->pose = ridge->level;
-        ridge->steady_level = ridge->level;
-        ridge->steady_ms = LEVEL_STEADY_MS;
+        ridge->attitude.pose = ridge->attitude.level;
+        ridge->attitude.steady_level = ridge->attitude.level;
+        ridge->attitude.steady_ms = LEVEL_STEADY_MS;
     }
 }
 
 static void
 draw_ridge(void) {
     FRAME_COST_BEGIN(began);
-    gfx_glow_curve_posed(&ridge->field, glow_is_mapped() ? &ridge->map : NULL, RIDGE_CURVE_VIEW_H, ridge->pose,
-                         ridge->lit_lo, ridge->lit_hi, trail, &ridge->style);
-    ridge->pose_on_screen = ridge->pose;
+    gfx_glow_curve_posed(&ridge->field, gfx_glow_map_worth_it(glow_radius) ? &ridge->map : NULL, RIDGE_CURVE_VIEW_H,
+                         ridge->attitude.pose, ridge->lit_lo, ridge->lit_hi, trail, &ridge->style);
+    ridge->pose_on_screen = ridge->attitude.pose;
     FRAME_COST_END(began, "ridge.draw");
 }
 
@@ -278,22 +263,13 @@ ui_ridge_paint(void) {
     draw_ridge();
 }
 
-/* Which ridge column lies under a point of the panel, at the current pose. */
-static int
-column_under(int panel_x, int panel_y) {
-    const int64_t right_x = ridge->pose.down_y;
-    const int64_t right_y = -ridge->pose.down_x;
-    const int64_t dx2 = 2 * (int64_t)panel_x - (GFX_WIDTH - 1);
-    const int64_t dy2 = 2 * (int64_t)panel_y - (GFX_HEIGHT - 1);
-    return (int)((RIDGE_COLUMNS - 1 + (dx2 * right_x + dy2 * right_y) / GFX_GLOW_POSE_ONE) / 2);
-}
-
 static void
 pluck_from_touch(const input_t* input) {
     if (!input->down) {
         return;
     }
-    const int x = column_under(input->x, input->y);
+    const int x =
+        ridge_pose_column_under(ridge->attitude.pose, GFX_WIDTH, GFX_HEIGHT, RIDGE_COLUMNS, input->x, input->y);
     if (input->pressed) {
         spring_line_poke(&ridge->line, x, pluck_width, -(int32_t)((int64_t)SPRING_LINE_ONE * pluck_tap / 1000));
         ridge->last_pluck_x = x;
@@ -301,16 +277,6 @@ pluck_from_touch(const input_t* input) {
         spring_line_poke(&ridge->line, x, pluck_width, -(int32_t)((int64_t)SPRING_LINE_ONE * pluck_strum / 1000));
         ridge->last_pluck_x = x;
     }
-}
-
-/* How steeply the line runs downhill toward its last column, Q14: the part
- * of true down that lies along the line, which is nothing once it is level
- * and most while a turn is still being caught up with. */
-static int32_t
-slope_along_the_line(void) {
-    const int64_t right_x = ridge->pose.down_y;
-    const int64_t right_y = -ridge->pose.down_x;
-    return (int32_t)((ridge->level.down_x * right_x + ridge->level.down_y * right_y) / GFX_GLOW_POSE_ONE);
 }
 
 /* The shape the line rests at this frame: the rigid ridge, breathing and
@@ -330,7 +296,7 @@ shape_this_frame(uint32_t dt_ms) {
         .push = tilt_push,
         .coast_ms = tilt_coast_ms,
     };
-    ridge_motion_advance(&ridge->motion, &params, dt_ms, slope_along_the_line());
+    ridge_motion_advance(&ridge->motion, &params, dt_ms, ridge_pose_slope(&ridge->attitude));
     const uint32_t released_for = ridge->alive_ms - (uint32_t)boot_hold_ms;
     const int gain = ridge_motion_ease_in(released_for, (uint32_t)ambient_ease_ms);
     for (int x = 0; x < RIDGE_COLUMNS; x++) {
@@ -351,53 +317,9 @@ pluck_from_shaking(void) {
     spring_line_poke(&ridge->line, x, SHAKE_HALF_WIDTH, up_or_down * (SPRING_LINE_ONE / 128) * ridge->shake);
 }
 
-/* Eases the pose toward `target` and keeps it a unit vector. A blend of two
- * opposed poses lies on the line through both and renormalises straight back
- * to where it started, so it would never turn; it is pushed sideways first. */
-static void
-ease_pose(gfx_glow_pose_t target, uint32_t dt_ms) {
-    const int32_t share = (int32_t)(dt_ms * 256 / ((uint32_t)level_tau_ms + dt_ms));
-    const int64_t facing =
-        ((int64_t)ridge->pose.down_x * target.down_x + (int64_t)ridge->pose.down_y * target.down_y) / GFX_GLOW_POSE_ONE;
-    int32_t x = ridge->pose.down_x + (target.down_x - ridge->pose.down_x) * share / 256;
-    int32_t y = ridge->pose.down_y + (target.down_y - ridge->pose.down_y) * share / 256;
-    if (facing < -(GFX_GLOW_POSE_ONE - GFX_GLOW_POSE_ONE / 64)) {
-        x += ridge->pose.down_y * share / 256;
-        y -= ridge->pose.down_x * share / 256;
-    }
-    const int64_t length = (int64_t)gfx_glow_isqrt((uint32_t)(x * x + y * y));
-    if (length == 0) {
-        return;
-    }
-    ridge->pose.down_x = (int32_t)((int64_t)x * GFX_GLOW_POSE_ONE / length);
-    ridge->pose.down_y = (int32_t)((int64_t)y * GFX_GLOW_POSE_ONE / length);
-}
-
-static bool
-poses_within(gfx_glow_pose_t a, gfx_glow_pose_t b, int step) {
-    return abs(a.down_x - b.down_x) < step && abs(a.down_y - b.down_y) < step;
-}
-
-/* Where the pose is heading: boot's pose until released, then level - the
- * level down settled on once it has been steady, so that a resting line is
- * not chasing sensor noise. */
-static gfx_glow_pose_t
-pose_target(uint32_t dt_ms) {
-    if (ridge->alive_ms < (uint32_t)boot_hold_ms) {
-        return POSE_LANDSCAPE;
-    }
-    if (poses_within(ridge->level, ridge->steady_level, LEVEL_STEADY_STEP)) {
-        ridge->steady_ms = ridge->steady_ms < LEVEL_STEADY_MS ? ridge->steady_ms + dt_ms : LEVEL_STEADY_MS;
-    } else {
-        ridge->steady_level = ridge->level;
-        ridge->steady_ms = 0;
-    }
-    return ridge->steady_ms >= LEVEL_STEADY_MS ? ridge->steady_level : ridge->level;
-}
-
 static bool
 pose_moved_enough_to_see(void) {
-    return !poses_within(ridge->pose, ridge->pose_on_screen, POSE_REDRAW_STEP);
+    return !ridge_pose_within(ridge->attitude.pose, ridge->pose_on_screen, POSE_REDRAW_STEP);
 }
 
 void
@@ -415,12 +337,9 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     ridge->line.damping = spring_damping;
 
     ridge->alive_ms += dt_ms;
-    const gfx_glow_pose_t target = pose_target(dt_ms);
-    ease_pose(target, dt_ms);
-    const bool arrived = ridge->steady_ms >= LEVEL_STEADY_MS && poses_within(ridge->pose, target, POSE_REDRAW_STEP);
-    if (arrived) {
-        ridge->pose = target;
-    }
+    const bool arrived =
+        ridge_pose_advance(&ridge->attitude, dt_ms, ridge->alive_ms, (uint32_t)boot_hold_ms, POSE_LANDSCAPE,
+                           level_tau_ms, LEVEL_STEADY_STEP, LEVEL_STEADY_MS, POSE_REDRAW_STEP);
 
     pluck_from_touch(input);
     pluck_from_shaking();
@@ -433,7 +352,7 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     if (line_moved) {
         prepare_light();
     }
-    const bool settles_now = arrived && !poses_within(ridge->pose, ridge->pose_on_screen, 1);
+    const bool settles_now = arrived && !ridge_pose_within(ridge->attitude.pose, ridge->pose_on_screen, 1);
     /* A tail that fades is drawn until it is gone, or it would freeze where
      * the line stopped. */
     const bool moved = line_moved || settles_now || retuned || pose_moved_enough_to_see();

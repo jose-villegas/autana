@@ -27,16 +27,6 @@ typedef struct {
     int coast_ms;          /* momentum loses 1/coast_ms of itself per ms */
 } ridge_motion_params_t;
 
-/* A brace initialiser, so it serves a static as well as a local. */
-#define RIDGE_MOTION_DEFAULTS                                                                                          \
-    {.breath_ms = 9000,                                                                                                \
-     .breath_depth = 200,                                                                                              \
-     .wave_height_q4 = 40,                                                                                             \
-     .wave_length = 170,                                                                                               \
-     .wave_passes_in_ms = 2600,                                                                                        \
-     .push = 96,                                                                                                       \
-     .coast_ms = 900}
-
 /* How far the smoothed shape looks to either side, in columns, by default,
  * and how many times over: three box passes are close to a Gaussian. */
 #define RIDGE_SMOOTH_RADIUS 20

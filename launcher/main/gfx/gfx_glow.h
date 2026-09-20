@@ -522,12 +522,20 @@ gfx_glow_narrow(int64_t v0, int64_t step, int64_t lo, int64_t hi, int* a, int* b
 /* One cell to this many pixels each way: a glow is smooth. The line itself
  * is not, so within GFX_GLOW_MAP_EXACT_PX of it a draw still searches, over
  * a window that small. */
-#define GFX_GLOW_MAP_CELL     2
-#define GFX_GLOW_MAP_EXACT_PX 5
+#define GFX_GLOW_MAP_CELL        2
+#define GFX_GLOW_MAP_EXACT_PX    5
 
 /* A cell holds squared distance, which is what the ramp is indexed by and
  * interpolates almost exactly, in quarter pixels squared. */
-#define GFX_GLOW_MAP_Q        2
+#define GFX_GLOW_MAP_Q           2
+
+/* Below this radius the map's fixed cost is more than the search it saves. */
+#define GFX_GLOW_MAP_FROM_RADIUS 10
+
+static inline bool
+gfx_glow_map_worth_it(int radius_px) {
+    return radius_px >= GFX_GLOW_MAP_FROM_RADIUS;
+}
 
 typedef struct {
     uint16_t* cells; /* cols * rows, the caller's */

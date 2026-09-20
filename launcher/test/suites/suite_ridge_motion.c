@@ -13,7 +13,17 @@
 
 #define COLUMNS 300
 
-static const ridge_motion_params_t params = RIDGE_MOTION_DEFAULTS;
+/* This suite's own fixture: not what ships (`TUNE(ridge, ...)` in
+ * ui_ridge.c), just the numbers these assertions were written against. */
+static const ridge_motion_params_t params = {
+    .breath_ms = 9000,
+    .breath_depth = 200,
+    .wave_height_q4 = 40,
+    .wave_length = 170,
+    .wave_passes_in_ms = 2600,
+    .push = 96,
+    .coast_ms = 900,
+};
 
 /* Where the wave crosses zero going down, in the first wavelength. Its
  * crest is a plateau a dozen columns wide once rounded to whole Q4, and the
