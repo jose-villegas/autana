@@ -78,28 +78,41 @@ tc_hash(const uint8_t* bytes, size_t n) {
     return h;
 }
 
-/* A mixed, seed-varied scatter: powders, two liquids of different
- * density, a gas and a static, at a random third of the grid each - so
- * every chunk, on both sides of every boundary, has something to move,
- * settle or touch as liquid as the seed changes. */
 static void
-tc_build_scattered_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
+tc_scatter(sand_t* s, uint8_t* cells, uint32_t seed, const cell_t* picks, int count) {
     sand_init(s, cells, TC_W, TC_H, seed);
 
     rng_t r;
     rng_seed(&r, seed ^ 0xA5A5A5A5u);
-
-    static const cell_t picks[] = {SAND, WATER, OIL, GAS, STONE};
 
     for (int y = 0; y < TC_H; y++) {
         for (int x = 0; x < TC_W; x++) {
             if (rng_below(&r, 3) != 0) {
                 continue;
             }
-            const cell_t pick = picks[rng_below(&r, (int)(sizeof picks / sizeof picks[0]))];
-            sand_set(s, x, y, pick);
+            sand_set(s, x, y, picks[rng_below(&r, count)]);
         }
     }
+}
+
+/* A mixed, seed-varied scatter: powders, two liquids of different
+ * density, a gas and a static, at a random third of the grid each - so
+ * every chunk, on both sides of every boundary, has something to move,
+ * settle or touch as liquid as the seed changes. */
+static void
+tc_build_scattered_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
+    static const cell_t picks[] = {SAND, WATER, OIL, GAS, STONE};
+
+    tc_scatter(s, cells, seed, picks, (int)(sizeof picks / sizeof picks[0]));
+}
+
+/* The same mix with both liquids left out, so a board just as busy asks the
+ * sweep's liquid rule the other way. */
+static void
+tc_build_dry_scattered_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
+    static const cell_t picks[] = {SAND, SAND, GAS, STONE};
+
+    tc_scatter(s, cells, seed, picks, (int)(sizeof picks / sizeof picks[0]));
 }
 
 /* Mostly liquid, at every mass a cell can hold: cross-flow has somewhere to
@@ -124,6 +137,18 @@ tc_build_liquid_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
     }
 }
 
+/* A split arm on a scene that holds liquid would sweep on one core for every
+ * gravity but the two along x, and then agree with the serial arm for the
+ * wrong reason. Such an arm asks for the split by name; this is what says it
+ * was given it. */
+static void
+tc_assert_split_arm_swept_split(unsigned before, bool two_core) {
+    if (two_core) {
+        TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(before, sand_split_dispatches[SAND_SPLIT_SLOT_SWEEP],
+                                              "a split arm swept every one of its steps on one core");
+    }
+}
+
 /* Runs `steps` of the scene under a small rotation of gravity vectors -
  * not just straight down - so a chunk boundary is crossed both ways and in
  * both axes. */
@@ -142,13 +167,18 @@ tc_run_scene_and_hash(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed,
     static const int gx[] = {0, 0, 1000, -1000, 700};
     static const int gy[] = {1000, -1000, 700, 700, -700};
 
+    const unsigned swept_before = sand_split_dispatches[SAND_SPLIT_SLOT_SWEEP];
+    const sand_chunk_share_t share =
+        sand_chunk_share_for_test(two_core ? SAND_CHUNK_SHARE_ALWAYS : SAND_CHUNK_SHARE_AUTO);
     sand_set_two_core_step(two_core);
     for (int i = 0; i < steps; i++) {
         const int arm = i % (int)(sizeof gx / sizeof gx[0]);
         sand_step(&s, gx[arm], gy[arm], 0);
     }
     sand_set_two_core_step(false);
+    (void)sand_chunk_share_for_test(share);
     tc_collect_core1(); /* restore the shipped default */
+    tc_assert_split_arm_swept_split(swept_before, two_core);
 
     uint32_t h = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
     h ^= tc_hash(blocks, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS) * 0x9E3779B1u;
@@ -191,12 +221,17 @@ tc_run_quality_and_hash(int w, int h, uint32_t seed, bool two_core) {
 
     static const int gx[] = {0, 0, 1000, -1000, 700};
     static const int gy[] = {1000, -1000, 700, 700, -700};
+    /* Same reason as tc_run_scene_and_hash(); not checked, because half the
+     * grids below sit under the floor on purpose and are meant to decline. */
+    const sand_chunk_share_t share =
+        sand_chunk_share_for_test(two_core ? SAND_CHUNK_SHARE_ALWAYS : SAND_CHUNK_SHARE_AUTO);
     sand_set_two_core_step(two_core);
     for (int i = 0; i < 40; i++) {
         const int arm = i % (int)(sizeof gx / sizeof gx[0]);
         sand_step(&s, gx[arm], gy[arm], 0);
     }
     sand_set_two_core_step(false);
+    (void)sand_chunk_share_for_test(share);
     tc_collect_core1();
 
     uint32_t result = tc_hash(cells, (size_t)w * (size_t)h);
@@ -573,11 +608,15 @@ test_two_core_step_does_not_leak_or_fabricate_mass(void) {
         }
     }
 
+    const unsigned swept_before = sand_split_dispatches[SAND_SPLIT_SLOT_SWEEP];
+    const split_passes_scope_t split = split_passes_scope_begin(0u);
     sand_set_two_core_step(true);
     for (int i = 0; i < 60; i++) {
         sand_step(&s, 0, 1000, 0);
     }
     sand_set_two_core_step(false);
+    split_passes_scope_end(split);
+    tc_assert_split_arm_swept_split(swept_before, true);
 
     long after = 0;
     for (int i = 0; i < TC_W * TC_H; i++) {
@@ -762,15 +801,15 @@ static void
 tc_board_step(tc_board_t* b, int gx, int gy, bool two_core) {
     const sand_chunk_share_t share =
         sand_chunk_share_for_test(two_core ? SAND_CHUNK_SHARE_ALWAYS : SAND_CHUNK_SHARE_AUTO);
-    const unsigned before = sand_split_dispatches;
+    const unsigned before = sand_split_dispatches[SAND_SPLIT_SLOT_SWEEP];
 
     sand_set_two_core_step(two_core);
     sand_step(&b->s, gx, gy, 0);
     sand_set_two_core_step(false);
     (void)sand_chunk_share_for_test(share);
     if (two_core) {
-        TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(before, sand_split_dispatches,
-                                              "a split step dispatched no split pass at all");
+        TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(before, sand_split_dispatches[SAND_SPLIT_SLOT_SWEEP],
+                                              "a split step swept on one core");
     }
 }
 
@@ -2509,6 +2548,8 @@ test_a_step_hands_the_next_pass_no_marks_whatever_it_was_cut_by(void) {
     sand_enable_step_stamps(s, stamps);
     void* scratch = lane_scratch_open(s);
 
+    const unsigned swept_before = sand_split_dispatches[SAND_SPLIT_SLOT_SWEEP];
+    const split_passes_scope_t split = split_passes_scope_begin(0u);
     sand_set_two_core_step(true);
     for (int i = 0; i < 12; i++) {
         const int arm = i % (int)(sizeof gx / sizeof gx[0]);
@@ -2524,7 +2565,9 @@ test_a_step_hands_the_next_pass_no_marks_whatever_it_was_cut_by(void) {
         }
     }
     sand_set_two_core_step(false);
+    split_passes_scope_end(split);
     tc_collect_core1();
+    tc_assert_split_arm_swept_split(swept_before, true);
 
     free(scratch);
     free(s);
@@ -2722,14 +2765,20 @@ test_the_hashed_draw_override_leaves_nothing_behind(void) {
                                      "the reaction board changed after the override had been on and off again");
 }
 
+/* What one step of `build` dispatched and how much of the board was still
+ * awake when it ended, so a caller can show it was asking the question it
+ * meant to. */
+typedef struct {
+    unsigned total;
+    unsigned per_pass[SAND_SPLIT_SLOTS];
+    int awake_blocks;
+} tc_dispatch_t;
+
 /* Split passes one step of `build` dispatches, on a board armed the way the
  * app arms one. Blocks and marks both matter: without block state nothing is
- * ever settled, and without marks no pass is ready at all. `out_awake_blocks`
- * takes how much of the board was still awake when the step ended, so a
- * caller can show it was asking the question it meant to. */
-static unsigned
-tc_dispatches_for(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed, int settle_steps, int gx, int gy,
-                  int* out_awake_blocks) {
+ * ever settled, and without marks no pass is ready at all. */
+static tc_dispatch_t
+tc_dispatches_for(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed, int settle_steps, int gx, int gy) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
     uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
     uint8_t* stamps = malloc(sand_step_stamp_bytes(TC_W, TC_H));
@@ -2743,16 +2792,18 @@ tc_dispatches_for(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed, int
     sand_enable_step_stamps(&s, stamps);
     void* scratch = lane_scratch_open(&s);
 
+    tc_dispatch_t out = {0};
     const two_core_scope_t core = two_core_scope_begin(true);
     for (int i = 0; i < settle_steps; i++) {
         sand_step(&s, gx, gy, 0);
     }
-    sand_split_dispatches = 0;
+    memset(sand_split_dispatches, 0, sizeof sand_split_dispatches);
     sand_step(&s, gx, gy, 0);
-    const unsigned dispatched = sand_split_dispatches;
-    if (out_awake_blocks != NULL) {
-        *out_awake_blocks = count_awake_blocks(&s);
+    for (int slot = 0; slot < SAND_SPLIT_SLOTS; slot++) {
+        out.per_pass[slot] = sand_split_dispatches[slot];
+        out.total += sand_split_dispatches[slot];
     }
+    out.awake_blocks = count_awake_blocks(&s);
     two_core_scope_end(core);
     tc_collect_core1();
 
@@ -2760,7 +2811,7 @@ tc_dispatches_for(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed, int
     free(stamps);
     free(blocks);
     free(cells);
-    return dispatched;
+    return out;
 }
 
 /* A board that comes to rest and stays there: there is nothing for a lane to
@@ -2793,43 +2844,80 @@ tc_build_falling_column_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
 
 static void
 test_a_settled_board_keeps_its_passes_on_one_core(void) {
-    int awake = -1;
+    const tc_dispatch_t settled = tc_dispatches_for(tc_build_settled_slab_scene, 11u, 8, 0, 1000);
 
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, tc_dispatches_for(tc_build_settled_slab_scene, 11u, 8, 0, 1000, &awake),
-                                   "a board with nothing awake must dispatch no split pass at all");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, awake, "and the board must really have been asleep, or the test proves nothing");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, settled.total, "a board with nothing awake must dispatch no split pass at all");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, settled.awake_blocks,
+                                  "and the board must really have been asleep, or the test proves nothing");
 }
 
 static void
 test_a_single_falling_column_keeps_its_passes_on_one_core(void) {
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, tc_dispatches_for(tc_build_falling_column_scene, 11u, 12, 0, 1000, NULL),
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, tc_dispatches_for(tc_build_falling_column_scene, 11u, 12, 0, 1000).total,
                                    "awake chunks in one line along travel are a chain, not two lanes");
 }
 
 static void
 test_a_full_board_still_shares_its_passes(void) {
-    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0u, tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 0, 1000, NULL),
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0u, tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 0, 1000).total,
                                           "a board busy everywhere must still reach the split path");
 }
 
+/* THE LIQUID RULE: a board that may hold liquid sweeps on one core unless the
+ * step travels along x. The gas walk beside it splits either way, which is
+ * what says the sweep was declined by the rule rather than by a quiet
+ * board. */
+static void
+test_a_liquid_board_sweeps_on_one_core_unless_the_step_travels_along_x(void) {
+    const tc_dispatch_t down = tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 0, 1000);
+    const tc_dispatch_t across = tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 1000, 0);
+
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, down.per_pass[SAND_SPLIT_SLOT_SWEEP],
+                                   "a liquid board travelling along y must keep its sweep on one core");
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0u, down.per_pass[SAND_SPLIT_SLOT_GAS_WALK],
+                                          "the same step's gas walk must still split, or the board was merely quiet");
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0u, across.per_pass[SAND_SPLIT_SLOT_SWEEP],
+                                          "the same board travelling along x must still share its sweep");
+}
+
+static void
+test_a_liquid_free_board_shares_its_sweep_whichever_way_it_travels(void) {
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(
+        0u, tc_dispatches_for(tc_build_dry_scattered_scene, 3u, 2, 0, 1000).per_pass[SAND_SPLIT_SLOT_SWEEP],
+        "a busy board with no liquid on it must share its sweep along y too");
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(
+        0u, tc_dispatches_for(tc_build_dry_scattered_scene, 3u, 2, 1000, 0).per_pass[SAND_SPLIT_SLOT_SWEEP],
+        "and along x");
+}
+
+static void
+tc_assert_same_dispatch(tc_dispatch_t want, tc_dispatch_t got, const char* why) {
+    for (int slot = 0; slot < SAND_SPLIT_SLOTS; slot++) {
+        TEST_ASSERT_EQUAL_UINT_MESSAGE(want.per_pass[slot], got.per_pass[slot], why);
+    }
+}
+
 /* The decision reads board state only, so it cannot depend on which thread
- * ran the lanes last time or on how many times it has been asked. */
+ * ran the lanes last time or on how many times it has been asked - pass by
+ * pass, since a sweep that flipped and a gas walk that flipped back would
+ * leave a total unmoved. */
 static void
 test_the_sharing_decision_is_the_same_whoever_drove_the_lanes(void) {
     static const sand_chunk_pass_driver_t drivers[] = {SAND_CHUNK_PASS_CORE1, SAND_CHUNK_PASS_SOLO,
                                                        SAND_CHUNK_PASS_ALTERNATE, SAND_CHUNK_PASS_LANE1_EAGER};
-    const unsigned busy = tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 0, 1000, NULL);
+    const tc_dispatch_t liquid = tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 0, 1000);
+    const tc_dispatch_t dry = tc_dispatches_for(tc_build_dry_scattered_scene, 3u, 2, 0, 1000);
+    const tc_dispatch_t settled = tc_dispatches_for(tc_build_settled_slab_scene, 11u, 8, 0, 1000);
 
     for (size_t i = 0; i < sizeof drivers / sizeof drivers[0]; i++) {
         char why[160];
 
         sand_chunk_pass_set_driver_for_test(drivers[i]);
         for (int again = 0; again < 2; again++) {
-            snprintf(why, sizeof why, "driver %d, run %d dispatched a different number of split passes", (int)i, again);
-            TEST_ASSERT_EQUAL_UINT_MESSAGE(busy, tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 0, 1000, NULL),
-                                           why);
-            TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, tc_dispatches_for(tc_build_settled_slab_scene, 11u, 8, 0, 1000, NULL),
-                                           why);
+            snprintf(why, sizeof why, "driver %d, run %d shared a different set of split passes", (int)i, again);
+            tc_assert_same_dispatch(liquid, tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 0, 1000), why);
+            tc_assert_same_dispatch(dry, tc_dispatches_for(tc_build_dry_scattered_scene, 3u, 2, 0, 1000), why);
+            tc_assert_same_dispatch(settled, tc_dispatches_for(tc_build_settled_slab_scene, 11u, 8, 0, 1000), why);
         }
     }
     sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_CORE1);
@@ -2884,6 +2972,8 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_a_settled_board_keeps_its_passes_on_one_core);
     RUN_TEST(test_a_single_falling_column_keeps_its_passes_on_one_core);
     RUN_TEST(test_a_full_board_still_shares_its_passes);
+    RUN_TEST(test_a_liquid_board_sweeps_on_one_core_unless_the_step_travels_along_x);
+    RUN_TEST(test_a_liquid_free_board_shares_its_sweep_whichever_way_it_travels);
     RUN_TEST(test_the_sharing_decision_is_the_same_whoever_drove_the_lanes);
 #ifdef HOST_HEAP_ARENA
     RUN_TEST(test_a_split_fluid_step_allocates_nothing);

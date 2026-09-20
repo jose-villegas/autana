@@ -369,16 +369,16 @@ test_a_frame_budget_board_really_reaches_the_split_path(void) {
     board_bookkeeping_open(&real);
 
     const two_core_scope_t core = two_core_scope_begin(true);
-    sand_split_dispatches = 0;
+    memset(sand_split_dispatches, 0, sizeof sand_split_dispatches);
     sand_step(&real, 0, 1000, 0);
-    const unsigned dispatched = sand_split_dispatches;
+    const unsigned dispatched = sand_split_dispatches[SAND_SPLIT_SLOT_SWEEP];
     two_core_scope_end(core);
 
     board_bookkeeping_close();
     free(big);
 
     TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0u, dispatched,
-                                          "a frame-budget fixture must arm a board its passes can be split over");
+                                          "a frame-budget fixture must arm a board its sweep can be split over");
 }
 
 static void
@@ -523,12 +523,19 @@ time_two_core_arm(void (*build)(sand_t*, uint8_t*, uint8_t*), int gy, bool two_c
     void* scratch = lane_scratch_open(&real);
 
     const two_core_scope_t core = two_core_scope_begin(two_core);
+    /* What this row prices is the split, so the split arm asks for it: the
+     * liquid scenes here travel along y, where the shipped rule keeps the
+     * sweep on one core and the row would otherwise read serial against
+     * serial. */
+    const sand_chunk_share_t share =
+        sand_chunk_share_for_test(two_core ? SAND_CHUNK_SHARE_ALWAYS : SAND_CHUNK_SHARE_AUTO);
     const int steps = 20;
     const int64_t start = esp_timer_get_time();
     for (int i = 0; i < steps; i++) {
         sand_step(&real, 0, gy, 0);
     }
     *out_per_step = (esp_timer_get_time() - start) / steps;
+    (void)sand_chunk_share_for_test(share);
     two_core_scope_end(core);
     collect_core1_lane();
 
@@ -671,6 +678,10 @@ time_two_core_quality_scene(const quality_grid_t* quality, quality_scene_fn buil
 
     quality_bench_t out = {0};
     const two_core_scope_t core = two_core_scope_begin(two_core);
+    /* Same reason as time_two_core_arm(): these all travel along y, and two
+     * of the scenes hold liquid. */
+    const sand_chunk_share_t share =
+        sand_chunk_share_for_test(two_core ? SAND_CHUNK_SHARE_ALWAYS : SAND_CHUNK_SHARE_AUTO);
     const int steps = 20;
     const int64_t start = esp_timer_get_time();
     for (int i = 0; i < steps; i++) {
@@ -680,6 +691,7 @@ time_two_core_quality_scene(const quality_grid_t* quality, quality_scene_fn buil
                         + real.pass_us.reactions_us + real.pass_us.impulses_us;
     }
     out.per_step_us = (esp_timer_get_time() - start) / steps;
+    (void)sand_chunk_share_for_test(share);
     two_core_scope_end(core);
     collect_core1_lane();
 

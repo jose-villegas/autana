@@ -223,18 +223,39 @@ void sand_lane_merge(sand_t* s, const sand_lane_t* lane);
  * it on any grid. */
 #define SAND_CHUNK_SPLIT_MIN_CELLS (92 * 112)
 
+/* One index per splittable pass, so a per-pass array needs no mapping table
+ * and the mask below is one shift away. */
+typedef enum {
+    SAND_SPLIT_SLOT_SWEEP,
+    SAND_SPLIT_SLOT_CROSSFLOW,
+    SAND_SPLIT_SLOT_GAS_WALK,
+    SAND_SPLIT_SLOT_GAS_SPREAD,
+    SAND_SPLIT_SLOT_REACTIONS,
+    SAND_SPLIT_SLOTS,
+} sand_split_slot_t;
+
 /* Which passes the shipped step splits. Cross-flow is out: measured on the
  * board its split runs 0.87-1.27 of its own serial walk, mostly over 1.0, at
  * every layout, where the gravity sweep runs 0.65-0.80. The split path stays
  * - the per-row setup it repeats per chunk is the next thing to go, and that
  * may turn the number round. */
 typedef enum {
-    SAND_SPLIT_SWEEP = 1u << 0,
-    SAND_SPLIT_CROSSFLOW = 1u << 1,
-    SAND_SPLIT_GAS_WALK = 1u << 2,
-    SAND_SPLIT_GAS_SPREAD = 1u << 3,
-    SAND_SPLIT_REACTIONS = 1u << 4,
+    SAND_SPLIT_SWEEP = 1u << SAND_SPLIT_SLOT_SWEEP,
+    SAND_SPLIT_CROSSFLOW = 1u << SAND_SPLIT_SLOT_CROSSFLOW,
+    SAND_SPLIT_GAS_WALK = 1u << SAND_SPLIT_SLOT_GAS_WALK,
+    SAND_SPLIT_GAS_SPREAD = 1u << SAND_SPLIT_SLOT_GAS_SPREAD,
+    SAND_SPLIT_REACTIONS = 1u << SAND_SPLIT_SLOT_REACTIONS,
 } sand_split_pass_t;
+
+static inline int
+sand_split_slot_of(sand_split_pass_t pass) {
+    int slot = 0;
+
+    for (unsigned bit = (unsigned)pass; bit > 1u; bit >>= 1) {
+        slot++;
+    }
+    return slot;
+}
 
 #define SAND_SPLIT_PASSES_SHIPPED                                                                                      \
     (SAND_SPLIT_SWEEP | SAND_SPLIT_GAS_WALK | SAND_SPLIT_GAS_SPREAD | SAND_SPLIT_REACTIONS)
@@ -276,9 +297,11 @@ typedef enum {
 
 sand_chunk_share_t sand_chunk_share_for_test(sand_chunk_share_t mode);
 
-/* Split passes actually dispatched, counted where one starts. Never reset by
- * the sand code: a test zeroes it and reads it back. */
-extern unsigned sand_split_dispatches;
+/* Split passes actually dispatched, counted where one starts, per pass so
+ * that "the sweep stayed on one core but the gas walk split" is a thing a
+ * test can say. Never reset by the sand code: a test zeroes it and reads it
+ * back. */
+extern unsigned sand_split_dispatches[SAND_SPLIT_SLOTS];
 
 /* Whether a pass needs the arrival marks: only one that can hand a cell on
  * again in the same pass, which an order built against its own travel

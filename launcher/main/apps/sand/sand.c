@@ -1670,6 +1670,15 @@ chunk_pass_divides(const sand_t* s, const sand_chunk_plan_t* p, int tx, int ty) 
     return sand_chunk_makespan(&order, p->cols, p->rows, cost) * 100 <= awake * SAND_CHUNK_SPLIT_SPAN_SHARE_PERCENT;
 }
 
+/* Two cores lose a liquid board whose step does not travel along x. The board
+ * measured 18584 us on a screen-wide water collapse against 15005 swept
+ * row-major, and 16187 against 14117 on a filling basin, while every
+ * landscape scene ran 0.75-0.89 of serial. */
+static bool
+sweep_stays_on_one_core(const sand_t* s, sand_split_pass_t pass, int tx, int ty) {
+    return pass == SAND_SPLIT_SWEEP && sand_chunk_travel_of(tx, ty) != SAND_CHUNK_TRAVEL_X && s->may_have_liquid;
+}
+
 bool
 sand_chunk_pass_ready(const sand_t* s, sand_split_pass_t pass, int tx, int ty) {
     sand_chunk_plan_t fits;
@@ -1687,6 +1696,9 @@ sand_chunk_pass_ready(const sand_t* s, sand_split_pass_t pass, int tx, int ty) {
     }
     if (chunk_share_mode != SAND_CHUNK_SHARE_AUTO) {
         return chunk_share_mode == SAND_CHUNK_SHARE_ALWAYS;
+    }
+    if (sweep_stays_on_one_core(s, pass, tx, ty)) {
+        return false;
     }
     return chunk_pass_divides(s, &fits, tx, ty);
 }
@@ -1748,7 +1760,7 @@ sand_chunk_pass_run(sand_t* s, sand_split_pass_t pass_id, int tx, int ty, sand_c
     if (!sand_chunk_pass_ready(s, pass_id, tx, ty) || lanes == NULL) {
         return false;
     }
-    sand_split_dispatches++;
+    sand_split_dispatches[sand_split_slot_of(pass_id)]++;
     sand_chunk_sides(s, sand_chunk_travel_of(tx, ty), &side_x, &side_y);
     (void)sand_chunk_plan(&chunk_plan, s->w, s->h, side_x, side_y, 0, 0);
     sand_chunk_order(&chunk_sched.order, chunk_plan.cols, chunk_plan.rows, tx, ty, s->step_phase);
@@ -1785,7 +1797,7 @@ sand_chunk_pass_run(sand_t* s, sand_split_pass_t pass_id, int tx, int ty, sand_c
     return true;
 }
 
-unsigned sand_split_dispatches;
+unsigned sand_split_dispatches[SAND_SPLIT_SLOTS];
 
 /* Chunks this step's sweep did not skip, counted per lane and summed once
  * both have joined. */
