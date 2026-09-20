@@ -7,9 +7,9 @@
 #
 #   ./launcher/main/apps/render_lab/tools/render_lab_pinned_render_host.sh [-o <dir>]
 #
-# The Cornell box is float throughout and is left out here: Render-Harness.md
-# only pins where the pixels are integer-exact, and this app's float scene
-# does not qualify.
+# Both Cornell box scenes are float throughout and are left out here:
+# Render-Harness.md only pins where the pixels are integer-exact. Their
+# sources still build, since app_render_lab.c links every scene it lists.
 #
 # Everything beyond the declarations below is
 # launcher/tools/render_scene.sh, shared with render_lab_render_host.sh.
@@ -28,10 +28,12 @@ main/apps/render_lab/app_render_lab.c
 main/apps/render_lab/scene_cube.c
 main/apps/render_lab/scene_wire.c
 main/apps/render_lab/scene_raytrace.c
+main/apps/render_lab/scene_pathtrace.c
 main/apps/render_lab/wire_pipeline.c
 main/apps/render_lab/rt_cornell.c
 main/apps/render_lab/rt_cornell_scene.c
 main/apps/render_lab/rt_geometry.c
+main/apps/render_lab/rt_path.c
 main/apps/render_lab/render_lab_mode_switch.c
 main/apps/render_lab/ui/render_lab_hud_screen.c
 main/apps/render_lab/ui/render_lab_menu_screen.c
