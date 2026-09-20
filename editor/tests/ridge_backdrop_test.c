@@ -181,7 +181,7 @@ main(void) {
     /* A number set over the console is on the screen a frame later, and set
      * back, so is the picture. */
     const size_t lit_at_13 = lit_pixels(settled);
-    expect(tune_handle_line("SET launcher.glow_radius 26", count_ok) && replies_ok == 1,
+    expect(tune_handle_line("SET ridge.glow_radius 26", count_ok) && replies_ok == 1,
            "the ridge's tunables are registered once it has drawn");
     for (int i = 0; i < 40; i++) {
         frame(false, false);
@@ -189,7 +189,7 @@ main(void) {
     /* About 6000 more; most of what is lit is the app rows, which hide much
      * of the glow behind them. */
     expect(lit_pixels(gfx_framebuffer()) > lit_at_13 + 4000, "a wider glow lights more of the screen");
-    tune_handle_line("SET launcher.glow_radius 13", count_ok);
+    tune_handle_line("SET ridge.glow_radius 13", count_ok);
     for (int i = 0; i < 40; i++) {
         frame(false, false);
     }

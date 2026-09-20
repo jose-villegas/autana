@@ -8,57 +8,69 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define REPLY_MAX 96
+#define REPLY_MAX 112
 
-static tune_entry_t entries[TUNE_MAX];
-static int entry_count;
-static uint32_t generation;
+static tune_registry_t shared;
 
-static tune_entry_t*
-find(const char* name) {
-    for (int i = 0; i < entry_count; i++) {
-        if (strcmp(entries[i].name, name) == 0) {
-            return &entries[i];
+tune_registry_t*
+tune_shared(void) {
+    return &shared;
+}
+
+bool
+tune_handle_line(const char* line, tune_reply_fn reply) {
+    return tune_registry_handle_line(&shared, line, reply);
+}
+
+static bool
+listed_in(const tune_entry_t* list, const tune_entry_t* entry) {
+    for (; list != NULL; list = list->next) {
+        if (list == entry) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const tune_entry_t*
+tune_find(const tune_registry_t* registry, const char* name) {
+    for (const tune_entry_t* entry = registry->first; entry != NULL; entry = entry->next) {
+        if (strcmp(entry->name, name) == 0) {
+            return entry;
         }
     }
     return NULL;
 }
 
 bool
-tune_register(const char* name, int32_t* value, int32_t low, int32_t high) {
-    if (strlen(name) > TUNE_NAME_MAX) {
+tune_register(tune_registry_t* registry, tune_entry_t* entry) {
+    if (listed_in(registry->first, entry)) {
+        return true;
+    }
+    if (listed_in(registry->clashed, entry)) {
         return false;
     }
-    tune_entry_t* entry = find(name);
-    if (entry == NULL) {
-        if (entry_count == TUNE_MAX) {
-            return false;
-        }
-        entry = &entries[entry_count++];
+    if (tune_find(registry, entry->name) != NULL) {
+        entry->next = registry->clashed;
+        registry->clashed = entry;
+        return false;
     }
-    *entry = (tune_entry_t){name, value, low, high};
+    tune_entry_t** link = &registry->first;
+    while (*link != NULL && strcmp((*link)->name, entry->name) < 0) {
+        link = &(*link)->next;
+    }
+    entry->next = *link;
+    *link = entry;
     return true;
 }
 
 int
-tune_count(void) {
-    return entry_count;
-}
-
-const tune_entry_t*
-tune_at(int index) {
-    return index >= 0 && index < entry_count ? &entries[index] : NULL;
-}
-
-uint32_t
-tune_generation(void) {
-    return generation;
-}
-
-void
-tune_reset(void) {
-    entry_count = 0;
-    generation = 0;
+tune_count(const tune_registry_t* registry) {
+    int count = 0;
+    for (const tune_entry_t* entry = registry->first; entry != NULL; entry = entry->next) {
+        count++;
+    }
+    return count;
 }
 
 static void
@@ -76,20 +88,32 @@ reply_error(tune_reply_fn reply, const char* reason, const char* about) {
 }
 
 static void
-list_all(tune_reply_fn reply) {
+list_all(const tune_registry_t* registry, tune_reply_fn reply) {
     char line[REPLY_MAX];
-    for (int i = 0; i < entry_count; i++) {
-        snprintf(line, sizeof line, "TUNE %s=%ld min=%ld max=%ld", entries[i].name, (long)*entries[i].value,
-                 (long)entries[i].low, (long)entries[i].high);
+    for (const tune_entry_t* entry = registry->first; entry != NULL; entry = entry->next) {
+        snprintf(line, sizeof line, "TUNE %s=%ld min=%ld max=%ld default=%ld", entry->name, (long)*entry->value,
+                 (long)entry->low, (long)entry->high, (long)entry->initial);
         reply(line);
     }
-    snprintf(line, sizeof line, "TUNE_END count=%d", entry_count);
+    for (const tune_entry_t* entry = registry->clashed; entry != NULL; entry = entry->next) {
+        reply_error(reply, "clash", entry->name);
+    }
+    snprintf(line, sizeof line, "TUNE_END count=%d", tune_count(registry));
     reply(line);
+}
+
+static void
+change(const tune_entry_t* entry, int32_t value, tune_reply_fn reply) {
+    *entry->value = value;
+    if (entry->owner != NULL) {
+        entry->owner->generation++;
+    }
+    reply_value(reply, entry);
 }
 
 /* `rest` is what follows "SET ": a name, one space, a whole number. */
 static void
-set_from(const char* rest, tune_reply_fn reply) {
+set_from(const tune_registry_t* registry, const char* rest, tune_reply_fn reply) {
     char name[TUNE_NAME_MAX + 1];
     const char* space = strchr(rest, ' ');
     if (space == NULL || space == rest || (size_t)(space - rest) > TUNE_NAME_MAX) {
@@ -99,7 +123,7 @@ set_from(const char* rest, tune_reply_fn reply) {
     memcpy(name, rest, (size_t)(space - rest));
     name[space - rest] = '\0';
 
-    tune_entry_t* entry = find(name);
+    const tune_entry_t* entry = tune_find(registry, name);
     if (entry == NULL) {
         reply_error(reply, "unknown", name);
         return;
@@ -116,28 +140,41 @@ set_from(const char* rest, tune_reply_fn reply) {
         reply_error(reply, "range", range);
         return;
     }
-    *entry->value = (int32_t)value;
-    generation++;
-    reply_value(reply, entry);
+    change(entry, (int32_t)value, reply);
+}
+
+/* A name alone after its verb: what GET and RESET take. */
+static const tune_entry_t*
+named(const tune_registry_t* registry, const char* name, tune_reply_fn reply) {
+    const tune_entry_t* entry = tune_find(registry, name);
+    if (entry == NULL) {
+        reply_error(reply, "unknown", name);
+    }
+    return entry;
 }
 
 bool
-tune_handle_line(const char* line, tune_reply_fn reply) {
+tune_registry_handle_line(tune_registry_t* registry, const char* line, tune_reply_fn reply) {
     if (strcmp(line, "TUNE") == 0) {
-        list_all(reply);
+        list_all(registry, reply);
         return true;
     }
     if (strncmp(line, "GET ", 4) == 0) {
-        const tune_entry_t* entry = find(line + 4);
-        if (entry == NULL) {
-            reply_error(reply, "unknown", line + 4);
-        } else {
+        const tune_entry_t* entry = named(registry, line + 4, reply);
+        if (entry != NULL) {
             reply_value(reply, entry);
         }
         return true;
     }
+    if (strncmp(line, "RESET ", 6) == 0) {
+        const tune_entry_t* entry = named(registry, line + 6, reply);
+        if (entry != NULL) {
+            change(entry, entry->initial, reply);
+        }
+        return true;
+    }
     if (strncmp(line, "SET ", 4) == 0) {
-        set_from(line + 4, reply);
+        set_from(registry, line + 4, reply);
         return true;
     }
     return false;

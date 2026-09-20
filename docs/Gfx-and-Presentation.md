@@ -249,7 +249,7 @@ marking.
   pixel past the core is the halo colour or black, and fewer are lit the
   further out. It is a look, not a saving: a draw does the same work and
   sends the same pixels either way. The launcher's ridge reads it from
-  `launcher.glow_steps`, none being the smooth halo.
+  `ridge.glow_steps`, none being the smooth halo.
 - **The caller says which columns moved.** Only `[x0, x1)` is redrawn, and
   dirty boxes are marked per 16 columns, so a local ripple costs a local
   redraw and a local send. A curve at rest should not be drawn at all.
@@ -290,7 +290,7 @@ there. For how long is counted, not watched for: `gfx_glow_trail_draws()` is
 how many draws take the brightest colour to black at a given `trail`. The
 tail shares its rows with whatever else is drawn on them, so "are any lit
 pixels left" never becomes no - a first version asked that, and the launcher
-never went idle again. The launcher's ridge uses 226 (`launcher.ridge_trail`), a tail
+never went idle again. The launcher's ridge uses 226 (`ridge.trail`), a tail
 16 draws long - about a quarter of a second. At 32 it lasted two draws and
 could not be seen.
 
@@ -331,7 +331,7 @@ ridge and back to the rigid original. A **wave** 2.5 px high runs along it.
 And the wave has **momentum**: while the device turns, the line lags true
 level, so for that moment the ridge is a slope - the sine of the lag - and
 the wave is pushed down it and coasts on after. All three come in over 4 s
-after the line is released (`launcher.ambient_ease_ms`), slowly at first and
+after the line is released (`ridge.ambient_ease_ms`), slowly at first and
 slowly into full, so the stiff line loosens rather than starts; at the
 hand-over from boot the line is rigid, on the photograph. The price is that the launcher draws every frame, and a frame
 in which the ridge moves is close to a full send. `ui_ridge_set_ambient()`
