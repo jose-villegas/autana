@@ -106,10 +106,28 @@ gfx_glow_lerp_channel(uint32_t from, uint32_t to, uint32_t t_q8, int shift) {
     return (a * (256 - t_q8) + b * t_q8) >> 8;
 }
 
+/* Light held to `steps` equal levels, the remainder decided by this phase's
+ * threshold, so the falloff shows as a stipple that thins toward the rim
+ * rather than as a smooth fade. No steps leaves it smooth. */
+static inline uint32_t
+gfx_glow_stepped_light(uint32_t light_q8, uint32_t steps, uint32_t phase) {
+    if (steps == 0) {
+        return light_q8;
+    }
+    const uint32_t scaled_q4 = (light_q8 * steps * GFX_GLOW_PHASES) >> 8;
+    const uint32_t level = (scaled_q4 + phase) >> GFX_GLOW_Q_SHIFT;
+    return (level > steps ? steps : level) * 256 / steps;
+}
+
 /* Light falls off as (1 - d/r)^2, `core_rgb` on the curve fading to
- * `halo_rgb` over the first `core_px`, and to black at `radius_px`. */
+ * `halo_rgb` over the first `core_px`, and to black at `radius_px`, in
+ * `steps` levels of stipple or smoothly for none. */
 static inline void
-gfx_glow_style_set(gfx_glow_style_t* style, int radius_px, int core_px, uint32_t core_rgb, uint32_t halo_rgb) {
+gfx_glow_style_set_stepped(gfx_glow_style_t* style, int radius_px, int core_px, uint32_t core_rgb, uint32_t halo_rgb,
+                           int steps) {
+    if (steps < 0) {
+        steps = 0;
+    }
     if (radius_px < 1) {
         radius_px = 1;
     }
@@ -136,17 +154,22 @@ gfx_glow_style_set(gfx_glow_style_t* style, int radius_px, int core_px, uint32_t
     for (int i = 0; i < GFX_GLOW_RAMP_SIZE; i++) {
         const uint32_t t_q8 = (uint32_t)i * 256 / GFX_GLOW_RAMP_SIZE;
         const uint32_t rest = 256 - t_q8;
-        const uint32_t light_q8 = (rest * rest) >> 8;
         const uint32_t halo_q8 = t_q8 < core_t_q8 ? t_q8 * 256 / core_t_q8 : 256;
-        const uint32_t r = (gfx_glow_lerp_channel(core_rgb, halo_rgb, halo_q8, 16) * light_q8) >> 8;
-        const uint32_t g = (gfx_glow_lerp_channel(core_rgb, halo_rgb, halo_q8, 8) * light_q8) >> 8;
-        const uint32_t b = (gfx_glow_lerp_channel(core_rgb, halo_rgb, halo_q8, 0) * light_q8) >> 8;
         for (uint32_t phase = 0; phase < GFX_GLOW_PHASES; phase++) {
+            const uint32_t light_q8 = gfx_glow_stepped_light((rest * rest) >> 8, (uint32_t)steps, phase);
+            const uint32_t r = (gfx_glow_lerp_channel(core_rgb, halo_rgb, halo_q8, 16) * light_q8) >> 8;
+            const uint32_t g = (gfx_glow_lerp_channel(core_rgb, halo_rgb, halo_q8, 8) * light_q8) >> 8;
+            const uint32_t b = (gfx_glow_lerp_channel(core_rgb, halo_rgb, halo_q8, 0) * light_q8) >> 8;
             const uint32_t rgb565 = (gfx_glow_quantise(r, 31, phase) << 11) | (gfx_glow_quantise(g, 63, phase) << 5)
                                     | gfx_glow_quantise(b, 31, phase);
             style->ramp[phase][i] = (gfx_color_t)((rgb565 >> 8) | (rgb565 << 8));
         }
     }
+}
+
+static inline void
+gfx_glow_style_set(gfx_glow_style_t* style, int radius_px, int core_px, uint32_t core_rgb, uint32_t halo_rgb) {
+    gfx_glow_style_set_stepped(style, radius_px, core_px, core_rgb, halo_rgb, 0);
 }
 
 /* What a column covers vertically: the curve runs straight between column

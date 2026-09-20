@@ -500,6 +500,50 @@ test_dimming_a_grey_keeps_it_grey_all_the_way_to_black(void) {
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x000000), colour);
 }
 
+/* 0x30C0FF sums to 495; rounding to RGB565 moves it a little by phase. */
+#define FULL_HALO_AT_LEAST 470
+
+static int
+phases_lit(int i) {
+    int count = 0;
+    for (int phase = 0; phase < GFX_GLOW_PHASES; phase++) {
+        count += style->ramp[phase][i] != GFX_RGB(0x000000);
+    }
+    return count;
+}
+
+/* One step of light is a stipple: past the core a pixel is the halo colour
+ * at full or it is black, and fewer of them are lit the further out. */
+static void
+test_one_step_of_light_is_lit_or_black_and_thins_toward_the_rim(void) {
+    fixture_begin();
+    gfx_glow_style_set_stepped(style, RADIUS, 2, 0xFFFFFF, 0x30C0FF, 1);
+    const int past_the_core = GFX_GLOW_RAMP_SIZE * 2 / RADIUS + 1;
+
+    for (int i = past_the_core; i < GFX_GLOW_RAMP_SIZE; i++) {
+        for (int phase = 0; phase < GFX_GLOW_PHASES; phase++) {
+            const gfx_color_t c = style->ramp[phase][i];
+            TEST_ASSERT_TRUE(c == GFX_RGB(0x000000) || brightness(c) > FULL_HALO_AT_LEAST);
+        }
+        TEST_ASSERT_TRUE(phases_lit(i) <= phases_lit(i - 1));
+    }
+    TEST_ASSERT_TRUE(phases_lit(past_the_core) > phases_lit(GFX_GLOW_RAMP_SIZE / 2));
+    TEST_ASSERT_TRUE(phases_lit(GFX_GLOW_RAMP_SIZE / 2) > 0);
+    TEST_ASSERT_EQUAL_INT(0, phases_lit(GFX_GLOW_RAMP_SIZE - 1));
+    fixture_end();
+}
+
+static void
+test_no_steps_is_the_smooth_ramp(void) {
+    fixture_begin();
+    gfx_glow_style_t* stepped = malloc(sizeof *stepped);
+    TEST_ASSERT_NOT_NULL(stepped);
+    gfx_glow_style_set_stepped(stepped, RADIUS, 2, 0xFFFFFF, 0x30C0FF, 0);
+    TEST_ASSERT_EQUAL_MEMORY(style->ramp, stepped->ramp, sizeof style->ramp);
+    free(stepped);
+    fixture_end();
+}
+
 /* The map of the curve's light. */
 
 #define MAP_COLS ((PANEL_H + GFX_GLOW_MAP_CELL - 1) / GFX_GLOW_MAP_CELL)
@@ -641,6 +685,8 @@ suite_gfx_glow(void) {
     RUN_TEST(test_ramp_index_runs_from_the_curve_to_the_rim_without_a_square_root);
     RUN_TEST(test_every_phase_fades_from_the_core_colour_to_black);
     RUN_TEST(test_phases_round_one_colour_at_different_thresholds);
+    RUN_TEST(test_one_step_of_light_is_lit_or_black_and_thins_toward_the_rim);
+    RUN_TEST(test_no_steps_is_the_smooth_ramp);
     RUN_TEST(test_a_flat_curve_lights_its_radius_and_no_further);
     RUN_TEST(test_a_cliff_lights_nothing_far_above_the_plateau);
     RUN_TEST(test_on_a_diagonal_the_radius_is_measured_across_the_line);
