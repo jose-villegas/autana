@@ -332,6 +332,7 @@ test_a_full_size_step_fits_in_the_frame_budget(void) {
 
     sand_t real;
     build_full_size_step_scene(&real, big);
+    board_bookkeeping_open(&real);
     const int grains = sand_count(&real);
 
     const two_core_scope_t core = two_core_scope_begin(true);
@@ -347,9 +348,37 @@ test_a_full_size_step_fits_in_the_frame_budget(void) {
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(grains, sand_count(&real), "the full-size grid must conserve grains too");
 
+    board_bookkeeping_close();
     free(big);
 
     perf_target("full-size step", per_step, FULL_STEP_BUDGET_US, 7432);
+}
+
+/* A frame-budget fixture that asks for two cores and measures one reads as a
+ * two-core number and is not one - which is what every fixture here did
+ * before it armed a board the way a shipped one is armed. A busy full-size
+ * step has to reach the split path, and a count of dispatches says so
+ * without a clock. */
+static void
+test_a_frame_budget_board_really_reaches_the_split_path(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    TEST_ASSERT_NOT_NULL(big);
+
+    sand_t real;
+    build_full_size_step_scene(&real, big);
+    board_bookkeeping_open(&real);
+
+    const two_core_scope_t core = two_core_scope_begin(true);
+    sand_split_dispatches = 0;
+    sand_step(&real, 0, 1000, 0);
+    const unsigned dispatched = sand_split_dispatches;
+    two_core_scope_end(core);
+
+    board_bookkeeping_close();
+    free(big);
+
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0u, dispatched,
+                                          "a frame-budget fixture must arm a board its passes can be split over");
 }
 
 static void
@@ -375,6 +404,7 @@ water_scene_us_per_step(void) {
 
     sand_t real;
     build_water_scene(&real, big, blocks);
+    board_bookkeeping_open(&real);
 
     const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = esp_timer_get_time();
@@ -385,6 +415,7 @@ water_scene_us_per_step(void) {
     const int64_t per_step = (esp_timer_get_time() - start) / steps;
     two_core_scope_end(core);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
     return per_step;
@@ -1152,6 +1183,7 @@ test_a_screen_of_settled_sand_costs_almost_nothing(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 5u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
 
     /* Every cell full, so nothing can move anywhere. */
     for (int y = 0; y < REAL_H; y++) {
@@ -1173,6 +1205,7 @@ test_a_screen_of_settled_sand_costs_almost_nothing(void) {
     ESP_LOGI("device_tests", "settled %dx%d grid: %lld us per step", REAL_W, REAL_H, (long long)per_step);
 
     const int grains = sand_count(&real);
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -1194,6 +1227,7 @@ test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 13u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
 
     /* A big pour: the middle half of the screen's width, filled from the
      * floor up to half the screen's height - wide enough to span many
@@ -1228,6 +1262,7 @@ test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget(void) {
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(grains, sand_count(&real), "flipping gravity must conserve grains too");
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -1266,6 +1301,7 @@ test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 17u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
 
     /* About 40% of the grid, full width, resting on the floor - the user's
      * own "fill the screen to about 40% with water in portrait". */
@@ -1309,6 +1345,7 @@ test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget(void) {
 
     const int mass_after = settled_pool_total_mass(&real, REAL_W, REAL_H);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -1480,6 +1517,7 @@ test_pouring_water_onto_a_plant_bed_costs_more_than_steady_growth(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 11u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_soak(&real, SAND_SOAK_PER_MATERIAL);
     build_plant_bed_scene(&real);
     for (int i = 0; i < PLANT_BED_SETTLE_STEPS; i++) {
@@ -1516,6 +1554,7 @@ test_pouring_water_onto_a_plant_bed_costs_more_than_steady_growth(void) {
              (long long)steady, steps, (long long)poured, (long long)(poured - steady),
              steady > 0 ? (long long)(((poured - steady) * 100) / steady) : 0);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 }
@@ -1530,6 +1569,7 @@ test_a_growing_plant_bed_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 11u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_soak(&real, SAND_SOAK_PER_MATERIAL);
     build_plant_bed_scene(&real);
 
@@ -1551,6 +1591,7 @@ test_a_growing_plant_bed_fits_in_the_frame_budget(void) {
 
     ESP_LOGI("device_tests", "growing plant bed, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -1569,6 +1610,7 @@ test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 23u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
 
     build_campfire_scene(&real);
 
@@ -1589,6 +1631,7 @@ test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
 
     ESP_LOGI("device_tests", "campfire on a sand bed, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -1613,6 +1656,7 @@ test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 31u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
 
     build_smoke_and_steam_scene(&real);
     const int total = REAL_W * REAL_H;
@@ -1631,6 +1675,7 @@ test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget(void) {
      * no-PSRAM heap. */
     const int count = sand_count(&real);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -1656,6 +1701,7 @@ test_turning_a_half_screen_of_gas_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 31u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
 
     /* 40% of the grid, full width, against the ceiling - where gas ends up. */
     for (int y = 0; y < (REAL_H * 2) / 5; y++) {
@@ -1682,6 +1728,7 @@ test_turning_a_half_screen_of_gas_fits_in_the_frame_budget(void) {
 
     const int after = sand_count(&real);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -1702,6 +1749,7 @@ test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget(void) {
 
     sand_t real;
     build_mixed_gravity_flip_scene(&real, big, blocks);
+    board_bookkeeping_open(&real);
 
     /* Flip - straight up instead of straight down. */
     const two_core_scope_t core = two_core_scope_begin(true);
@@ -1724,6 +1772,7 @@ test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget(void) {
      * Asserting it here once leaked ~41 KB - the failure's longjmp skipped
      * the frees below it. */
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -1936,6 +1985,7 @@ test_a_gravity_flip_on_every_material_at_once_stays_sane(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 23u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
     sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
@@ -1972,6 +2022,7 @@ test_a_gravity_flip_on_every_material_at_once_stays_sane(void) {
              "%dx%d: %lld us per step",
              REAL_W, REAL_H, (long long)per_step);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
     free(impulses);
@@ -1996,6 +2047,7 @@ test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget(void) 
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 17u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
 
     for (int y = 0; y < REAL_H; y++) {
         for (int x = 0; x < REAL_W; x++) {
@@ -2025,6 +2077,7 @@ test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget(void) 
                                       "actually measuring the worst case it claims to");
     }
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -2059,6 +2112,7 @@ test_a_full_screen_of_fire_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 19u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
 
     for (int y = 0; y < REAL_H; y++) {
         for (int x = 0; x < REAL_W; x++) {
@@ -2086,6 +2140,7 @@ test_a_full_screen_of_fire_fits_in_the_frame_budget(void) {
                                   "displace, ignite, or smother anything - the count must not "
                                   "drift");
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -2110,6 +2165,7 @@ test_four_liquids_reacting_at_once_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 29u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
     sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
@@ -2136,6 +2192,7 @@ test_four_liquids_reacting_at_once_fits_in_the_frame_budget(void) {
              "us per step",
              REAL_W, REAL_H, (long long)per_step);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -2155,6 +2212,7 @@ test_the_lava_stress_scene_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 37u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
     sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
@@ -2194,6 +2252,7 @@ test_the_lava_stress_scene_fits_in_the_frame_budget(void) {
     log_pass_split("lava stress scene", steps, real.impulse_max, pass_totals, pass_peak, peak_impulses,
                    real.impulse_cap_hits);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -2212,6 +2271,7 @@ test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 31u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
 
     build_smoke_and_steam_scene(&real);
     const int total = REAL_W * REAL_H;
@@ -2237,6 +2297,7 @@ test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget(void) {
      * heap. */
     const int count = sand_count(&real);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -2273,6 +2334,7 @@ test_the_thermal_shock_scene_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 41u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
     sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
@@ -2293,6 +2355,7 @@ test_the_thermal_shock_scene_fits_in_the_frame_budget(void) {
              "step",
              REAL_W, REAL_H, (long long)per_step);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -2309,6 +2372,7 @@ test_the_boiler_scene_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 43u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
     sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
@@ -2330,6 +2394,7 @@ test_the_boiler_scene_fits_in_the_frame_budget(void) {
 
     ESP_LOGI("device_tests", "boiler scene, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -2358,6 +2423,7 @@ test_the_wet_earth_scene_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 53u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
     sand_set_soak(&real, SAND_SOAK_PER_MATERIAL);
@@ -2380,6 +2446,7 @@ test_the_wet_earth_scene_fits_in_the_frame_budget(void) {
 
     ESP_LOGI("device_tests", "wet earth scene, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -2407,6 +2474,7 @@ test_the_water_over_lava_scene_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 59u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
     sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
@@ -2425,6 +2493,7 @@ test_the_water_over_lava_scene_fits_in_the_frame_budget(void) {
 
     ESP_LOGI("device_tests", "water over lava scene, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
     free(impulses);
@@ -2532,6 +2601,7 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 61u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
     sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
@@ -2568,6 +2638,7 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
     log_pass_split("gunpowder basin scene", steps, real.impulse_max, pass_totals, pass_peak, peak_impulses,
                    real.impulse_cap_hits);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
     free(impulses);
@@ -2623,6 +2694,7 @@ test_the_plant_ruin_scene_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 11u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
     sand_set_soak(&real, SAND_SOAK_PER_MATERIAL);
@@ -2666,6 +2738,7 @@ test_the_plant_ruin_scene_fits_in_the_frame_budget(void) {
              "worst single step %lld us",
              REAL_W, REAL_H, (long long)per_step, (long long)worst);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -2691,6 +2764,7 @@ test_the_filling_basin_scene_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 17u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
     sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
@@ -2726,6 +2800,7 @@ test_the_filling_basin_scene_fits_in_the_frame_budget(void) {
              "worst single step %lld us",
              REAL_W, REAL_H, (long long)per_step, (long long)worst);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -2752,6 +2827,7 @@ test_the_snowfall_scene_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 23u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
     sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
@@ -2785,6 +2861,7 @@ test_the_snowfall_scene_fits_in_the_frame_budget(void) {
              "worst single step %lld us",
              REAL_W, REAL_H, (long long)per_step, (long long)worst);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -2809,6 +2886,7 @@ test_pouring_the_plant_brush_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 11u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_soak(&real, SAND_SOAK_PER_MATERIAL);
     build_plant_pour_scene(&real);
 
@@ -2837,6 +2915,7 @@ test_pouring_the_plant_brush_fits_in_the_frame_budget(void) {
              "worst single step %lld us",
              REAL_W, REAL_H, (long long)per_step, (long long)worst);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -2857,6 +2936,7 @@ test_a_settled_plant_garden_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 11u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_soak(&real, SAND_SOAK_PER_MATERIAL);
     build_dry_plant_heap_scene(&real);
 
@@ -2879,6 +2959,7 @@ test_a_settled_plant_garden_fits_in_the_frame_budget(void) {
 
     ESP_LOGI("device_tests", "settled plant garden, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -2900,6 +2981,7 @@ test_a_finished_tree_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 11u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_soak(&real, SAND_SOAK_PER_MATERIAL);
     build_plant_bed_scene(&real);
 
@@ -2918,6 +3000,7 @@ test_a_finished_tree_fits_in_the_frame_budget(void) {
 
     ESP_LOGI("device_tests", "finished tree, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -2982,6 +3065,7 @@ test_pouring_water_into_a_landscape_sand_bed_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 29u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
     sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
@@ -2995,6 +3079,7 @@ test_pouring_water_into_a_landscape_sand_bed_fits_in_the_frame_budget(void) {
              "us per step, worst single step %lld us",
              REAL_W, REAL_H, (long long)per_step, (long long)worst);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -3014,6 +3099,7 @@ test_pouring_water_into_a_deep_landscape_bed_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 29u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
     sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
@@ -3027,6 +3113,7 @@ test_pouring_water_into_a_deep_landscape_bed_fits_in_the_frame_budget(void) {
              "%lld us per step, worst single step %lld us",
              REAL_W, REAL_H, (long long)per_step, (long long)worst);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -3046,6 +3133,7 @@ test_pouring_sand_onto_a_landscape_sand_bed_fits_in_the_frame_budget(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 29u);
     sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
     sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
     sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
@@ -3059,6 +3147,7 @@ test_pouring_sand_onto_a_landscape_sand_bed_fits_in_the_frame_budget(void) {
              "per step, worst single step %lld us",
              REAL_W, REAL_H, (long long)per_step, (long long)worst);
 
+    board_bookkeeping_close();
     free(big);
     free(blocks);
 
@@ -3263,6 +3352,7 @@ test_present_cost_against_a_falling_sand_scene(void) {
 
     sand_t real;
     build_falling_sand_present_scene(&real, big, dirty_rows, row_x0, row_x1, row_n);
+    board_bookkeeping_open(&real);
 
     int full_bands = 0, gathered = 0, partial_bands = 0;
     const int measured_steps = 20;
@@ -3277,6 +3367,7 @@ test_present_cost_against_a_falling_sand_scene(void) {
              "strip-sends)",
              REAL_W, REAL_H, (long long)mean_us, measured_steps, full_bands, gathered, partial_bands);
 
+    board_bookkeeping_close();
     free(big);
     free(dirty_rows);
     free(row_x0);
@@ -4388,6 +4479,7 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_the_sweeps_gas_scenes_put_work_in_both_gas_passes);
 
 #ifdef DEVICE_BUILD
+    RUN_TEST(test_a_frame_budget_board_really_reaches_the_split_path);
     /* Every budget test below pins its own mode now, so this is provenance,
      * not a dependency: whatever two_core_step_on was already at suite
      * entry - the ESP_PLATFORM boot default, or whatever the last suite
