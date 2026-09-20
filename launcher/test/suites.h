@@ -30,7 +30,7 @@
  * only printf()s a warning to the boot console, so an overflow here reads as
  * a green run that quietly tested less than it claims. Bump this rather than
  * trim suites to fit it. */
-#define SUITE_MAX 96
+#define SUITE_MAX 128
 
 typedef void (*suite_fn)(void);
 
