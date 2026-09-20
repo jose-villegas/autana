@@ -110,7 +110,7 @@ mechanism and the full field list.
   [`Display-and-Rendering.md`](Display-and-Rendering.md).
 
 To test the listener in isolation from the host script, attach `monitor.sh`
-and type `SCREENSHOT` (then Enter) directly - the firmware logs `screenshot:
+and type `screenshot` (then Enter) directly - the firmware logs `screenshot:
 trigger received` (or `ignoring line: '...'` if something else arrived),
 the cleanest way to tell a firmware-side problem from a host-script one.
 
@@ -260,7 +260,7 @@ Two ways to see raw sensor readings without adding any code:
   `CONFIG_LAUNCHER_DEVELOPMENT` and `CONFIG_LAUNCHER_SELFTEST` actually
   gate, and the three build variants (release/dev/diag).
 - [`../Testing-Guide.md`](../Testing-Guide.md) - the host and device test
-  runners, and RUNSUITE.
+  runners, and runsuite.
 - [`../Launcher-Architecture.md`](../Launcher-Architecture.md) - the
   Diagnostics app (DEVELOPMENT-gated as a whole, with the self-test runner
   alone narrowed to SELFTEST), and its still-open split into a Settings app.

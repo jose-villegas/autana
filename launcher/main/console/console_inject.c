@@ -42,5 +42,5 @@ console_verb_imu(const char* args, console_reply_fn reply) {
     }
 }
 
-CONSOLE_VERB(TOUCH, 14, console_verb_touch)
-CONSOLE_VERB(IMU, 20, console_verb_imu)
+CONSOLE_VERB(touch, 14, console_verb_touch)
+CONSOLE_VERB(imu, 20, console_verb_imu)

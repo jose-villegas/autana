@@ -32,7 +32,7 @@ console_verb_freeze(const char* args, console_reply_fn reply) {
     console_latch_set(&command, "f");
 }
 
-CONSOLE_VERB(FREEZE, 0, console_verb_freeze)
+CONSOLE_VERB(freeze, 0, console_verb_freeze)
 
 static void
 console_verb_resume(const char* args, console_reply_fn reply) {
@@ -41,7 +41,7 @@ console_verb_resume(const char* args, console_reply_fn reply) {
     console_latch_set(&command, "r");
 }
 
-CONSOLE_VERB(RESUME, 0, console_verb_resume)
+CONSOLE_VERB(resume, 0, console_verb_resume)
 
 /* STEP with nothing after it is STEP 1. */
 static void
@@ -53,7 +53,7 @@ console_verb_step(const char* args, console_reply_fn reply) {
     console_latch_set(&command, line);
 }
 
-CONSOLE_VERB(STEP, STEP_ARGS_MAX, console_verb_step)
+CONSOLE_VERB(step, STEP_ARGS_MAX, console_verb_step)
 
 static int
 step_credit(const char* digits) {

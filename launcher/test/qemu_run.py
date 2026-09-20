@@ -63,7 +63,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 import device_profile  # noqa: E402  (path must be set up first)
 
 SENTINEL = "SELFTEST_COMPLETE"
-LISTENING = "listening for 'SCREENSHOT'"
+LISTENING = "listening for 'screenshot'"
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 

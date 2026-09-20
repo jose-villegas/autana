@@ -111,7 +111,7 @@ changed. The failure names the file to look at and the command to run.
 
 The same scenes, the real Xtensa binary. `test/run_qemu_tests.sh` builds an
 image that boots into the shell rather than running its suites, and its
-console answers `SCREENSHOT` with the frame - the board tool's own protocol,
+console answers `screenshot` with the frame - the board tool's own protocol,
 over a socket instead of USB.
 
 ```sh
@@ -179,7 +179,7 @@ chrome moves, that file has to move with it.
 ## Related
 
 - [`../Testing-Guide.md`](../Testing-Guide.md) - the host and device test
-  runners, RUNSUITE, and the QEMU suite run this harness's second backend
+  runners, runsuite, and the QEMU suite run this harness's second backend
   borrows its image from.
 - [`../Building-a-Screen.md`](../Building-a-Screen.md) - building the screen
   a scene renders.

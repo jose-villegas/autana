@@ -17,4 +17,4 @@ console_verb_buildid(const char* args, console_reply_fn reply) {
     fflush(stdout);
 }
 
-CONSOLE_VERB(BUILDID, 0, console_verb_buildid)
+CONSOLE_VERB(buildid, 0, console_verb_buildid)

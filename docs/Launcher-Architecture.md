@@ -109,11 +109,11 @@ launcher/
     │   ├── console_verbs.{h,c}    the registry and line dispatch (host-tested)
     │   ├── console_latch.h        a verb's request for the frame loop (host-tested)
     │   ├── console.{h,c}          driver install, the one reader task
-    │   ├── console_buildid.c      BUILDID
+    │   ├── console_buildid.c      buildid
     │   ├── console_tune.c         SET, GET, RESET, TUNE - forwards to util/tune
-    │   ├── console_freeze.{h,c}   FREEZE, RESUME, STEP - holds the frame loop
-    │   ├── console_screenshot.{h,c}  SCREENSHOT
-    │   ├── console_runsuite.{h,c}    RUNSUITE, CONFIG_LAUNCHER_SELFTEST only
+    │   ├── console_freeze.{h,c}   freeze, resume, step - holds the frame loop
+    │   ├── console_screenshot.{h,c}  screenshot
+    │   ├── console_runsuite.{h,c}    runsuite, CONFIG_LAUNCHER_SELFTEST only
     │   └── console_inject.c, console_inject_parse.h  TOUCH/IMU, CONFIG_LAUNCHER_QEMU only (host-tested)
     └── apps/           one folder per app - see Building-an-App.md
         ├── render_lab/ a software rasterizer, wireframe and ray-traced scenes

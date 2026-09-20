@@ -46,7 +46,7 @@ console_verb_tune(const char* args, console_reply_fn reply) {
 /* GET/RESET take a name alone (TUNE_NAME_MAX); SET also takes a value, an
  * int32_t's longest text ("-2147483648", 11 chars); bare TUNE takes
  * nothing. */
-CONSOLE_VERB(SET, TUNE_NAME_MAX + 1 + 11, console_verb_set)
-CONSOLE_VERB(GET, TUNE_NAME_MAX, console_verb_get)
-CONSOLE_VERB(RESET, TUNE_NAME_MAX, console_verb_reset)
-CONSOLE_VERB(TUNE, 0, console_verb_tune)
+CONSOLE_VERB(set, TUNE_NAME_MAX + 1 + 11, console_verb_set)
+CONSOLE_VERB(get, TUNE_NAME_MAX, console_verb_get)
+CONSOLE_VERB(reset, TUNE_NAME_MAX, console_verb_reset)
+CONSOLE_VERB(tune, 0, console_verb_tune)
