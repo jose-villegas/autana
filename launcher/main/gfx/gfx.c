@@ -1631,6 +1631,12 @@ static int dev_strips_sent_partial;
 static int64_t dev_bytes_sent;
 static int64_t dev_heal_bytes_sent;
 
+/* esp_lcd_panel_draw_bitmap() calls queued, one per call rather than one per
+ * byte like dev_bytes_sent - a gathered row that splits into more than one
+ * leaf-refined box queues more than one, which dev_strips_sent_gathered's
+ * per-row count cannot show. Not reset by gfx_present(). */
+static int dev_transfers_sent;
+
 void
 gfx_reset_strip_send_counts(void) {
     dev_strips_sent_full = 0;
@@ -1638,6 +1644,7 @@ gfx_reset_strip_send_counts(void) {
     dev_strips_sent_partial = 0;
     dev_bytes_sent = 0;
     dev_heal_bytes_sent = 0;
+    dev_transfers_sent = 0;
 }
 
 void
@@ -1661,6 +1668,11 @@ gfx_get_heal_bytes_sent(void) {
 int64_t
 gfx_get_bytes_sent(void) {
     return dev_bytes_sent;
+}
+
+int
+gfx_get_transfer_count(void) {
+    return dev_transfers_sent;
 }
 
 static void
@@ -1984,6 +1996,7 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
 #endif
 #if CONFIG_LAUNCHER_DEVELOPMENT
     dev_bytes_sent += (int64_t)w * h * sizeof(gfx_color_t);
+    dev_transfers_sent++;
 #endif
     const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, x0, y0, x1, y1, gather_buf);
     if (err != ESP_OK) {
@@ -2004,6 +2017,7 @@ send_fb_rows(int y0, int y1) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     send_audit_capture(0, y0, GFX_WIDTH, y1 - y0, slot);
     dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
+    dev_transfers_sent++;
 #endif
     const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, slot);
     if (err == ESP_OK) {
@@ -2060,6 +2074,7 @@ send_indexed_rows(int y0, int y1) {
         mark_indexed_strip_overlay(slot, indexed_overlay_row);
     }
     dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
+    dev_transfers_sent++;
 #endif
     const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, slot);
     if (err == ESP_OK) {

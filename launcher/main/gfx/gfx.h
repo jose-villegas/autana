@@ -543,6 +543,11 @@ int64_t gfx_get_bytes_sent(void);
 /* The part of gfx_get_bytes_sent() that heal strips added. */
 int64_t gfx_get_heal_bytes_sent(void);
 
+/* esp_lcd_panel_draw_bitmap() calls queued since the last
+ * gfx_reset_strip_send_counts() - a transfer COUNT, where
+ * gfx_get_bytes_sent() is a transfer VOLUME. */
+int gfx_get_transfer_count(void);
+
 /* Test-only: every strip of the framebuffer sent as a full band, bypassing
  * every dirty-tracking decision gfx_present() makes - the bus-time side of
  * a full present. */

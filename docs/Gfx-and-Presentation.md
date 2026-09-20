@@ -424,6 +424,7 @@ Then `gfx_read_panel_row()` per row, and always `gfx_readback_end()`.
 | (both overlays) | every present path; a border lasts one present, then its strip is resent clean - in band mode, by `gfx_band_dirty()` asking the app for the band once more |
 | `gfx_get_strip_send_counts()` | full / gathered / partial counts since the last reset |
 | `gfx_get_bytes_sent()`, `gfx_get_heal_bytes_sent()` | bytes queued, and heal's share |
+| `gfx_get_transfer_count()` | `esp_lcd_panel_draw_bitmap()` calls queued since the last reset |
 
 **Where a frame's time goes.** `util/frame_cost.h` brackets a stage of a frame
 and charges its microseconds to a name:
