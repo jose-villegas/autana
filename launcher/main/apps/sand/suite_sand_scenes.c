@@ -292,6 +292,36 @@ build_layout_levelling_pool_scene(sand_t* s) {
     return LAYOUT_SETTLE_STEPS;
 }
 
+#define LAYOUT_GAS_LIFE CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1)
+
+/* A block of gas in the open with nothing to pack against: it climbs for the
+ * whole measured window whichever way the measurement pulls, so the rise walk
+ * carries the step and the spread pass has room on every ray. Unwarmed, since
+ * the climb is the point. */
+int
+build_layout_gas_column_scene(sand_t* s) {
+    layout_fill(s, s->w / 3, (s->w * 2) / 3, s->h / 3, (s->h * 2) / 3, LAYOUT_GAS_LIFE);
+    return 0;
+}
+
+/* The other end: a sealed box the measurement's own gravity turns, filled
+ * but for a band, left until the gas has packed against whichever wall is
+ * rise-ward. A saturated pocket is where the walk finds nothing and the
+ * spread pass does the hunting. */
+int
+build_layout_gas_box_scene(sand_t* s) {
+    const int w = s->w;
+    const int h = s->h;
+    const cell_t stone = CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT);
+
+    layout_fill(s, 1, w - 1, 1 + h / 4, h - 1, LAYOUT_GAS_LIFE);
+    layout_fill(s, 0, 1, 0, h, stone);
+    layout_fill(s, w - 1, w, 0, h, stone);
+    layout_fill(s, 0, w, 0, 1, stone);
+    layout_fill(s, 0, w, h - 1, h, stone);
+    return LAYOUT_SETTLE_STEPS;
+}
+
 /* Four liquids of different density, painted upside down. In their own
  * settled order - lava at the bottom, oil on top - each layer finds its
  * level within a few steps and the interfaces that were doing the reacting

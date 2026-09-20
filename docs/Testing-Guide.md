@@ -427,6 +427,16 @@ board stepped serial against split, which is what involving the second core
 costs before any work is handed to it. One instance per quality is well
 short of what the machine has for a reason: it is somebody's desktop.
 
+A quality's side list always holds both cuts that quality ships and the
+square cut they replaced, so every round stays comparable with the one
+before it; `test_the_sweep_measures_both_cuts_every_quality_ships` is what
+holds it there. Seven scenes at five sides, two orientations and four arms
+is 280 cells a quality, and a cell costs around 0.8 s of board time. The
+last two scenes are the gas pair — an open block still climbing through the
+measured window, and a sealed box whose gas has packed against a wall — so
+the gas walk and the gas spread can be judged per pass the way the liquid
+passes already are.
+
 Neither stage produces milliseconds. The host stage ranks how evenly a
 layout divides a board's work; the emulated stage prices the chunking
 itself. Whether a second core wins is the board's answer, from
