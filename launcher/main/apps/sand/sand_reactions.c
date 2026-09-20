@@ -2828,7 +2828,7 @@ reactions_rules_allow_split(const sand_t* s, bool soak_only) {
 
 static bool
 reactions_may_split(const sand_t* s, bool soak_only) {
-    return reactions_rules_allow_split(s, soak_only) && sand_chunk_pass_ready(s);
+    return reactions_rules_allow_split(s, soak_only) && sand_chunk_pass_ready(s, 0, -1);
 }
 
 static bool

@@ -508,7 +508,7 @@ static bool
 equalise_liquid_chunks(sand_t* s, const xflow_t* flow, int sight, int dx, int dy, uint16_t is_liquid, bool* found_any) {
     sand_lane_t* const lanes = sand_lanes(s);
 
-    if (lanes == NULL || !sand_chunk_pass_ready(s)) {
+    if (lanes == NULL || !sand_chunk_pass_ready(s, flow->dg[0], flow->dg[1])) {
         return false;
     }
     liquid_pass =

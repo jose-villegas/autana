@@ -1226,27 +1226,51 @@ lanes' queues to nine tenths of a cap in one step and counts what comes out.
 
 ### The chunks
 
-A chunk grid is derived from the cell grid: `sand_chunk_side_rule()` targets a
-twentieth of the board per chunk and floors the side at `2 * SAND_LIQUID_SIGHT
-+ 1`, so a chunk's interior always clears the furthest reach any splittable
-pass has. ULTRA lands on 25 chunks, VERY LOW on 12.
+A chunk grid is derived from the cell grid and from the direction the pass
+being planned travels. `sand_chunk_travel_of()` puts a pass in one of two
+classes - travelling along x alone, or anything else - and
+`sand_chunk_table_sides()` gives a `(side_x, side_y)` pair per grid per class:
 
-The divisor is twenty from a measured sweep, not chosen. At ten every quality
-cut to twelve chunks, and a twelve-chunk board leaves one lane idle for a
-third of a landscape step: the host pre-filter
-(`main/apps/sand/tools/report_chunk_layout.sh`) scores ULTRA's old 64-cell
-side at 0.678 of a serial walk's span against 0.515 for the 45-cell side it
-takes now, where 0.500 is two lanes never idle. The finer cut costs more
-dispatch - the same order walked on one thread is 20% over a plain serial
-walk at ULTRA, against 13% for the old one - and buys more than it costs at
-every quality. See `docs/Testing-Guide.md` for the sweep and how to rerun it.
+| grid | along x | anything else |
+|---|---|---|
+| ULTRA 184x224 | 92x17 | 47x17 |
+| HIGH 122x149 | 61x17 | 25x17 |
+| NORMAL 92x112 | 46x17 | 23x17 |
+| LOW 61x74 | 30x17 | 17x17 |
+| VERY LOW 46x56 | 23x17 | 17x17 |
+
+The 17 is `SAND_CHUNK_SIDE_MIN`, `2 * SAND_LIQUID_SIGHT + 1`, so a chunk's
+interior always clears the furthest reach any splittable pass has. A grid not
+in the table - a test board - takes half its width along x and a quarter of it
+otherwise, one floor tall, clamped to the floor.
+
+The pairs are the board's own microseconds, two cores over one, geomean of
+five scenes, against the square cut each replaced: ULTRA 0.77 landscape and
+0.93 portrait against 1.00 and 0.94 for 45x45, HIGH 0.81 and 0.88 against 1.02
+and 0.96 for 30x30, NORMAL 0.85 and 0.97 against 1.03 and 0.98 for 22x22. A
+step travelling along x wants chunks long across x and every other travel is
+slower on that shape, which is why the two classes exist at all: ULTRA's 92x17
+is 0.77 of serial in landscape and 1.19 in portrait.
+
+A pass whose travel encodes scan order rather than motion - gas spread's
+`(px, -1)`, a reaction pass's `(0, -1)` - falls in the second class, because
+`sand_chunk_travel_of()` reads the y component alone. That is the conservative
+answer: neither pass has been measured apart from the sweep, and the second
+class is the shape the measured passes lose least on.
+
+The plan is rebuilt per pass, so one landscape step cuts its gravity sweep
+92x17 and its gas spread 47x17. Step stamps are armed with the sides of the
+plan the arming pass runs on, and cleared when it ends, so a mark can never be
+read under a cut it was not written under.
 
 `sand_chunk_plan()` takes a side per axis rather than one square side, and
-`sand_chunk_side_for_test()` overrides either (0 keeps the rule, a side under
-the floor is refused) so a measurement can rank layouts. The two axes are not
-interchangeable: landscape gravity runs along x, and the order's parallelism
-lies across travel. A cut the grid cannot take - one chunk on an axis, or more
-than `SAND_CHUNKS_MAX` - falls back to one lane, whichever chose it.
+`sand_chunk_side_for_test()` overrides either (0 keeps the table's side for
+that axis, a side under the floor is refused) so a measurement can rank
+layouts. A cut the grid cannot take - one chunk on an axis, or more than
+`SAND_CHUNKS_MAX` - falls back to one lane, whichever chose it. The host
+pre-filter (`main/apps/sand/tools/report_chunk_layout.sh`) ranks candidates by
+how evenly they divide a board's work before any of them is timed; see
+`docs/Testing-Guide.md` for the sweep and how to rerun it.
 
 `blocks_settled_over()` is the one skip every chunk pass shares. A chunk
 whose covering blocks all carry the step's settled bit is dropped before any
