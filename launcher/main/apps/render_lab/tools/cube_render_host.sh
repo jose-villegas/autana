@@ -25,11 +25,14 @@ main/ui/ui_pointer.c
 main/ui/ui_scroll.c
 main/apps/render_lab/app_render_lab.c
 main/apps/render_lab/scene_cube.c
+main/apps/render_lab/scene_wire.c
+main/apps/render_lab/wire_pipeline.c
 main/apps/render_lab/render_lab_mode_switch.c
 main/apps/render_lab/ui/render_lab_hud_screen.c
 main/apps/render_lab/ui/render_lab_menu_screen.c
 components/microui/src/microui.c
 main/apps/render_lab/tools/cube_render_host.c
+main/apps/render_lab/tools/render_lab_render_host_heap.c
 "
 scene_includes="components/small3dlib/include"
 scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"

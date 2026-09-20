@@ -23,13 +23,24 @@
 #define BACKGROUND_RGB 0x0A0C14
 
 extern const render_lab_scene_t scene_cube;
+extern const render_lab_scene_t scene_wire_plane;
+extern const render_lab_scene_t scene_wire_cube;
+extern const render_lab_scene_t scene_wire_sphere;
+extern const render_lab_scene_t scene_wire_capsule;
 extern bool partial_updates; /* scene_cube.c's toggle - this menu's own concern is only offering it */
 
 static const render_lab_scene_t* const scenes[] = {
-    &scene_cube,
+    &scene_cube, &scene_wire_plane, &scene_wire_cube, &scene_wire_sphere, &scene_wire_capsule,
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
+
+/* current_scene_index's own re-entry seed - 0 (the cube) by default. Set
+ * directly by wire_render_host.c to start on a chosen scene with no menu
+ * interaction, and kept in sync by the scene-cycle button below so a normal
+ * re-entry still resumes wherever the user left it. Read only at enter(),
+ * the same contract render_lab_band_mode below documents. */
+int render_lab_start_scene_index;
 
 static const render_lab_scene_t*
 current_scene(void) {
@@ -97,6 +108,7 @@ enter_layout(void) {
 void
 render_lab_enter(void) {
     enter_layout();
+    current_scene_index = render_lab_start_scene_index;
     current_scene()->enter();
 
     fps_frame_count = 0;
@@ -135,6 +147,7 @@ draw_fps(const input_t* input, bool for_bands) {
         .fps_value = fps_value,
         .fps_box_x_override = render_lab_fps_box_x_override,
         .scene_name = current_scene()->name,
+        .status = current_scene()->status != NULL ? current_scene()->status() : NULL,
     };
     render_lab_hud_screen_draw(ctx, &state);
 
@@ -185,6 +198,7 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
     if (result.next_scene_clicked) {
         current_scene()->exit();
         current_scene_index = (current_scene_index + 1) % SCENE_COUNT;
+        render_lab_start_scene_index = current_scene_index; /* keeps a later re-entry on this same scene */
         current_scene()->enter();
         gfx_set_partial_clear(false);
         gfx_invalidate();
