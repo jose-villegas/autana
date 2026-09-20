@@ -30,6 +30,7 @@
 #include "render_lab_scene.h"
 #include "rt_cornell.h"
 #include "rt_path.h"
+#include "rt_pixel_budget.h"
 #include "rt_refine.h"
 
 #define TARGET_FRAME_MS     30
@@ -41,7 +42,7 @@ static rt_cornell_camera_t camera;
 static int current_quarter;
 static rt_path_schedule_t schedule;
 static rt_path_accum_px_t* accum; /* NULL: the allocation failed, direct light only */
-static int pixels_per_frame;
+static rt_pixel_budget_t pixel_budget;
 
 static void
 clear_accum(void) {
@@ -57,7 +58,7 @@ static void
 restart_render(void) {
     rt_path_schedule_reset(&schedule);
     clear_accum();
-    pixels_per_frame = PIXEL_BUDGET_GROWTH;
+    pixel_budget = rt_pixel_budget_init(PIXEL_BUDGET_GROWTH, PIXEL_BUDGET_MIN, PIXEL_BUDGET_MAX, TARGET_FRAME_MS);
 }
 
 static void
@@ -87,21 +88,6 @@ scene_pathtrace_invalidate(void) {
     restart_render();
 }
 
-/* dt_ms is the whole previous frame, the panel transfer included, so a
- * sweep that dirties many rows per traced pixel slows itself down - same
- * reasoning as scene_raytrace.c's own adapt_pixel_budget(). */
-static void
-adapt_pixel_budget(uint32_t last_dt_ms) {
-    if (last_dt_ms > TARGET_FRAME_MS) {
-        pixels_per_frame /= 2;
-        if (pixels_per_frame < PIXEL_BUDGET_MIN) {
-            pixels_per_frame = PIXEL_BUDGET_MIN;
-        }
-    } else if (pixels_per_frame < PIXEL_BUDGET_MAX) {
-        pixels_per_frame += PIXEL_BUDGET_GROWTH;
-    }
-}
-
 static void
 scene_pathtrace_frame(uint32_t dt_ms, bool band_mode_active) {
     assert(!band_mode_active); /* needs_full_framebuffer keeps the app out of band mode for this scene */
@@ -113,10 +99,12 @@ scene_pathtrace_frame(uint32_t dt_ms, bool band_mode_active) {
         restart_render();
     }
 
-    adapt_pixel_budget(dt_ms);
+    /* dt_ms is the whole previous frame, the panel transfer included, so a
+     * sweep that dirties many rows per traced pixel slows itself down. */
+    rt_pixel_budget_adapt(&pixel_budget, dt_ms);
 
     const rt_path_target_t target = {gfx_framebuffer(), accum, GFX_WIDTH, GFX_HEIGHT};
-    const rt_path_span_t span = rt_path_schedule_advance(&schedule, &camera, target, pixels_per_frame);
+    const rt_path_span_t span = rt_path_schedule_advance(&schedule, &camera, target, pixel_budget.value);
     if (span.y1 > span.y0) {
         gfx_mark_dirty(0, span.y0, GFX_WIDTH, span.y1 - span.y0);
     }
