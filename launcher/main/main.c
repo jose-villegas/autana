@@ -41,6 +41,7 @@
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "console/console.h"
+#include "console/console_freeze.h"
 #include "console/console_screenshot.h"
 #endif
 
@@ -739,6 +740,18 @@ app_main_loop(void) {
         touch_read(&input);
         buttons_read(&input.boot, &input.power);
         sample_display_orientation(now_us, &next_display_sample_us);
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        /* After the reads above on purpose: a held device still answers
+         * the console and still latches an orientation change's own full
+         * redraw, so the STEP that follows a rotation draws the frame that
+         * rotation asked for. */
+        if (!console_freeze_frame_allowed()) {
+            FRAME_COST_END(rest_began, "frame.rest");
+            vTaskDelay(1);
+            continue;
+        }
+#endif
 
         step_app(&current, &input, dt_ms);
 

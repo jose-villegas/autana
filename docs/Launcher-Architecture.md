@@ -111,6 +111,7 @@ launcher/
     │   ├── console.{h,c}          driver install, the one reader task
     │   ├── console_buildid.c      BUILDID
     │   ├── console_tune.c         SET, GET, RESET, TUNE - forwards to util/tune
+    │   ├── console_freeze.{h,c}   FREEZE, RESUME, STEP - holds the frame loop
     │   ├── console_screenshot.{h,c}  SCREENSHOT
     │   ├── console_runsuite.{h,c}    RUNSUITE, CONFIG_LAUNCHER_SELFTEST only
     │   └── console_inject.c, console_inject_parse.h  TOUCH/IMU, CONFIG_LAUNCHER_QEMU only (host-tested)
