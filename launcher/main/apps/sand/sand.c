@@ -1559,7 +1559,8 @@ drive_chunk_pass_lanes(void) {
  *   ULTRA  92x17 0.77/1.19 | 47x17 0.81/0.93 | 45x45 1.00/0.94
  *   HIGH   61x17 0.81/1.20 | 25x17 0.85/0.88 | 30x30 1.02/0.96
  *   NORMAL 46x17 0.85/1.22 | 23x17 0.89/0.97 | 22x22 1.03/0.98
- * The last two grids never beat one core at any cut. */
+ * The last two grids never beat one core at any cut, so their rows only
+ * reach a step that forced its own side. */
 static const struct {
     int w, h;
     int side[SAND_CHUNK_TRAVEL_CLASSES][2];
@@ -1596,6 +1597,9 @@ sand_chunk_pass_ready(const sand_t* s, int tx, int ty) {
     int side_x, side_y;
 
     if (!sand_two_core_step_enabled() || s->lane_scratch == NULL) {
+        return false;
+    }
+    if (s->w * s->h < SAND_CHUNK_SPLIT_MIN_CELLS && !sand_chunk_side_is_forced()) {
         return false;
     }
     sand_chunk_sides(s, sand_chunk_travel_of(tx, ty), &side_x, &side_y);
