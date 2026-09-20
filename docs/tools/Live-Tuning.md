@@ -26,10 +26,11 @@ autana save
 ```
 
 A name may drop its owner when that is unambiguous: `trail` for
-`ridge.trail`. `autana` is the maintainer's terminal command; it
-calls `.dev/scripts/device/device.py send`, which takes the device lock like
-everything else that touches the board. A console session takes the lock for
-each line and lets go, so the board stays free between two of them.
+`ridge.trail`. `autana` is the terminal command - every command it takes is
+in [Autana-CLI.md](Autana-CLI.md). It calls `scripts/device/device.py send`,
+which takes the device lock like everything else that touches the board. A
+console session takes the lock for each line and lets go, so the board stays
+free between two of them.
 
 **Development builds only, and the device keeps nothing.** A release build
 has no listener, no registry and no names: the same declaration compiles to
@@ -45,7 +46,7 @@ is made with it.
 
 ```mermaid
 flowchart LR
-    T["autana set trail 200"] --> D["device.py send<br/><i>lock, port</i>"]
+    T["autana set trail 200"] --> D["scripts/device/device.py send<br/><i>lock, port</i>"]
     D -->|"SET ridge.trail 200"| C["console listener<br/><i>main/console/console.c</i>"]
     C --> S["SET verb<br/><i>console/console_tune.c</i>"]
     S --> R["tune_handle_line()<br/><i>util/tune.c</i>"]
