@@ -23,6 +23,7 @@
  * same calls are made on that driver.
  */
 #include "util/screenshot.h"
+#include "util/tune.h"
 
 #include "build_id_generated.h"
 #include "build_variant.h"
@@ -75,8 +76,23 @@ static volatile bool s_runsuite_pending;
 static char s_runsuite_name[SCREENSHOT_LINE_MAX];
 #endif
 
+#if TUNE_ENABLED
+static void
+reply_on_the_console(const char* line) {
+    printf("%s\n", line);
+    fflush(stdout);
+}
+#endif
+
 static void
 handle_screenshot_line(const char* line) {
+#if TUNE_ENABLED
+    /* Answered from this task: a SET is one aligned word written, and what
+     * reads it takes it up on its next frame. */
+    if (tune_handle_line(line, reply_on_the_console)) {
+        return;
+    }
+#endif
     const build_console_command_t command = build_console_command_parse(line);
     if (command == BUILD_CONSOLE_SCREENSHOT) {
         ESP_LOGI(TAG, "trigger received");
@@ -225,9 +241,9 @@ screenshot_start(void) {
     }
 
 #if CONFIG_LAUNCHER_SELFTEST
-    ESP_LOGI(TAG, "listening for 'SCREENSHOT', 'BUILDID', and 'RUNSUITE <name>' on the console");
+    ESP_LOGI(TAG, "listening for 'SCREENSHOT', 'BUILDID', 'RUNSUITE <name>', and 'SET'/'GET'/'TUNE' on the console");
 #else
-    ESP_LOGI(TAG, "listening for 'SCREENSHOT' and 'BUILDID' on the console");
+    ESP_LOGI(TAG, "listening for 'SCREENSHOT', 'BUILDID', and 'SET'/'GET'/'TUNE' on the console");
 #endif
 #if CONFIG_LAUNCHER_QEMU
     ESP_LOGI(TAG, "and for 'TOUCH <down|up> <x> <y>' and 'IMU <ax> <ay> <az>', which no board needs");

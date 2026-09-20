@@ -26,7 +26,9 @@ set(app_srcs
     "ui/ui_ridge.c"
     "ui/ui_scroll.c"
     "util/device_state.c"
+    "util/frame_cost.c"
     "util/job.c"
+    "util/tune.c"
     "util/screenshot.c"
 )
 
@@ -168,9 +170,12 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites/suite_r3d_camera.c"
         "../test/suites/suite_boot_anim_perf.c"
         "../test/suites/suite_fixed.c"
+        "../test/suites/suite_frame_cost.c"
         "../test/suites/suite_tilt.c"
+        "../test/suites/suite_tune.c"
         "../test/suites/suite_tween.c"
         "../test/suites/suite_ridge_motion.c"
+        "../test/suites/suite_ridge_pose.c"
         "../test/suites/suite_spring_line.c"
         "../test/suites/suite_gfx.c"
         "../test/suites/suite_gfx_dirty.c"
