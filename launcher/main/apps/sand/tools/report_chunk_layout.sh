@@ -50,7 +50,12 @@ OUT_BIN="$BUILD_DIR/chunk_layout"
 # a reason for this tool to link it.
 # shellcheck disable=SC2086
 "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$SAND_DIR" \
+    -I "$LAUNCHER_DIR/test" -I "$LAUNCHER_DIR/test/framework" \
     "$SCRIPT_DIR/chunk_layout.c" \
+    "$SAND_DIR/suite_sand_scenes.c" \
+    "$SAND_DIR/suite_sand_common.c" \
+    "$LAUNCHER_DIR/test/framework/unity.c" \
+    "$LAUNCHER_DIR/test/suites.c" \
     "$MAIN_DIR/util/job.c" \
     "$SAND_DIR/sand.c" \
     "$SAND_DIR/sand_chunk_sched.c" \
@@ -60,7 +65,7 @@ OUT_BIN="$BUILD_DIR/chunk_layout"
     "$SAND_DIR/sand_gas.c" \
     "$SAND_DIR/sand_liquid.c" \
     "$SAND_DIR/material.c" \
-    -o "$OUT_BIN"
+    -lm -o "$OUT_BIN"
 
 # MinGW appends .exe; elsewhere the plain name is produced.
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"

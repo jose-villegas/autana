@@ -479,11 +479,17 @@ static void
 time_two_core_arm(void (*build)(sand_t*, uint8_t*, uint8_t*), int gy, bool two_core, int64_t* out_per_step) {
     uint8_t* big = malloc(REAL_W * REAL_H);
     uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
+    uint8_t* stamps = malloc(sand_step_stamp_bytes(REAL_W, REAL_H));
     TEST_ASSERT_NOT_NULL(big);
     TEST_ASSERT_NOT_NULL(blocks);
+    TEST_ASSERT_NOT_NULL(stamps);
 
     sand_t real;
     build(&real, big, blocks);
+    /* Without these the split path is never ready and both arms time the
+     * serial walk, so the comparison reads as no gain from a second core. */
+    sand_enable_step_stamps(&real, stamps);
+    void* scratch = lane_scratch_open(&real);
 
     const two_core_scope_t core = two_core_scope_begin(two_core);
     const int steps = 20;
@@ -493,7 +499,10 @@ time_two_core_arm(void (*build)(sand_t*, uint8_t*, uint8_t*), int gy, bool two_c
     }
     *out_per_step = (esp_timer_get_time() - start) / steps;
     two_core_scope_end(core);
+    collect_core1_lane();
 
+    free(scratch);
+    free(stamps);
     free(big);
     free(blocks);
 }
@@ -619,8 +628,15 @@ time_two_core_quality_scene(const quality_grid_t* quality, quality_scene_fn buil
     TEST_ASSERT_NOT_NULL(big);
     TEST_ASSERT_NOT_NULL(blocks);
 
+    uint8_t* stamps = malloc(sand_step_stamp_bytes(w, h));
+    TEST_ASSERT_NOT_NULL(stamps);
+
     sand_t real;
     build(&real, big, blocks, w, h);
+    /* Same reason as time_two_core_arm() above: no stamps and no lane
+     * scratch means no split path to time. */
+    sand_enable_step_stamps(&real, stamps);
+    void* scratch = lane_scratch_open(&real);
 
     quality_bench_t out = {0};
     const two_core_scope_t core = two_core_scope_begin(two_core);
@@ -634,8 +650,11 @@ time_two_core_quality_scene(const quality_grid_t* quality, quality_scene_fn buil
     }
     out.per_step_us = (esp_timer_get_time() - start) / steps;
     two_core_scope_end(core);
+    collect_core1_lane();
 
     out.chunks = sand_chunk_rows(&real) * sand_chunk_cols(&real);
+    free(scratch);
+    free(stamps);
     free(big);
     free(blocks);
     return out;
@@ -678,6 +697,210 @@ test_two_core_step_at_every_quality_grid_size(void) {
         }
     }
 }
+
+/* --- the chunk layout sweep ---------------------------------------------- *
+ *
+ * One machine-readable line per (quality, side pair, scene, orientation,
+ * arm). Registered on request, one suite per quality, because five instances
+ * of an emulator is how the grid gets measured in an evening and because no
+ * boot of any image should pay for it uninvited.
+ *
+ * Under --icount a "us per step" line times 1000 is instructions per step,
+ * not microseconds. The sweep RANKS layouts; it prices nothing.
+ */
+
+#define SWEEP_STEPS 12
+#define SWEEP_SIDES 5
+#define SWEEP_SEED  11u
+
+typedef struct {
+    const char* name;
+    int gx, gy;
+} sweep_orient_t;
+
+static const sweep_orient_t sweep_orients[] = {{"landscape", 1000, 0}, {"portrait", 0, 1000}};
+
+typedef struct {
+    const char* name;
+    int (*build)(sand_t*);
+} sweep_scene_t;
+
+static const sweep_scene_t sweep_scenes[] = {
+    {"mixed-flip", build_layout_mixed_flip_scene},         {"water", build_layout_water_scene},
+    {"sand-only", build_layout_sand_only_scene},           {"settling-pile", build_layout_settling_pile_scene},
+    {"levelling-pool", build_layout_levelling_pool_scene},
+};
+
+typedef struct {
+    const char* name;
+    int w, h;
+    int sides[SWEEP_SIDES][2]; /* the host pre-filter's shortlist, then the
+                                * side that ships - a {0, 0} entry ends it */
+} sweep_quality_t;
+
+typedef struct {
+    sand_t s;
+    uint8_t* cells;
+    uint8_t* blocks;
+    uint8_t* stamps;
+    void* scratch;
+} sweep_board_t;
+
+static void
+sweep_board_open(sweep_board_t* b, int w, int h) {
+    const size_t blocks =
+        (size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H);
+
+    b->cells = malloc((size_t)w * (size_t)h);
+    b->blocks = malloc(blocks);
+    b->stamps = malloc(sand_step_stamp_bytes(w, h));
+    TEST_ASSERT_NOT_NULL(b->cells);
+    TEST_ASSERT_NOT_NULL(b->blocks);
+    TEST_ASSERT_NOT_NULL(b->stamps);
+
+    sand_init(&b->s, b->cells, w, h, SWEEP_SEED);
+    sand_enable_sleeping(&b->s, b->blocks);
+    sand_enable_step_stamps(&b->s, b->stamps);
+    b->scratch = lane_scratch_open(&b->s);
+}
+
+static void
+sweep_board_close(sweep_board_t* b) {
+    free(b->scratch);
+    free(b->stamps);
+    free(b->blocks);
+    free(b->cells);
+}
+
+/* The scene is painted with the split off, so both arms start on the same
+ * board; the warm-up runs in the arm, because a board settled by one lane is
+ * not the board two lanes settle and that difference is part of what is
+ * being measured. */
+/* THE THREE ARMS, and why there are three. An instruction count sums both
+ * cores, so the two-lane arm is charged for whatever the other core does
+ * while it waits - a bounded spin, or its idle task. It can never show a
+ * win, whatever the layout. The one-thread walk of the same order can: it
+ * is what the chunking costs, and the host pre-filter says how much of it
+ * two lanes overlap. */
+typedef enum {
+    SWEEP_ARM_SERIAL,
+    SWEEP_ARM_SOLO,
+    SWEEP_ARM_SPLIT,
+} sweep_arm_t;
+
+static const char* const sweep_arm_names[] = {"serial", "solo", "split"};
+
+static void
+sweep_cell(const sweep_quality_t* q, const sweep_scene_t* sc, const int* side, const sweep_orient_t* o,
+           sweep_arm_t arm) {
+    sweep_board_t b;
+
+    sweep_board_open(&b, q->w, q->h);
+    TEST_ASSERT_TRUE_MESSAGE(sand_chunk_side_for_test(side[0], side[1]), "every swept side must clear the floor");
+    const int warm = sc->build(&b.s);
+    const int chunks = sand_chunk_cols(&b.s) * sand_chunk_rows(&b.s);
+
+    const two_core_scope_t core = two_core_scope_begin(arm != SWEEP_ARM_SERIAL);
+    sand_chunk_pass_set_driver_for_test(arm == SWEEP_ARM_SOLO ? SAND_CHUNK_PASS_SOLO : SAND_CHUNK_PASS_CORE1);
+    for (int i = 0; i < warm; i++) {
+        sand_step(&b.s, o->gx, o->gy, 0);
+    }
+    b.s.split_lane_aborts = 0;
+    const int64_t start = esp_timer_get_time();
+    for (int i = 0; i < SWEEP_STEPS; i++) {
+        sand_step(&b.s, o->gx, o->gy, 0);
+    }
+    const int64_t per_step = (esp_timer_get_time() - start) / SWEEP_STEPS;
+    sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_CORE1);
+    two_core_scope_end(core);
+    collect_core1_lane();
+
+    ESP_LOGI("device_tests",
+             "CHUNK_SWEEP quality=%s grid=%dx%d side=%dx%d scene=%s orient=%s arm=%s us_per_step=%lld aborts=%u "
+             "chunks=%d",
+             q->name, q->w, q->h, side[0], side[1], sc->name, o->name, sweep_arm_names[arm], (long long)per_step,
+             b.s.split_lane_aborts, chunks);
+
+    (void)sand_chunk_side_for_test(0, 0);
+    sweep_board_close(&b);
+}
+
+static void
+sweep_quality(const sweep_quality_t* q) {
+    for (int si = 0; si < (int)(sizeof sweep_scenes / sizeof sweep_scenes[0]); si++) {
+        for (int di = 0; di < SWEEP_SIDES && q->sides[di][0] != 0; di++) {
+            for (int oi = 0; oi < (int)(sizeof sweep_orients / sizeof sweep_orients[0]); oi++) {
+                for (int a = 0; a <= (int)SWEEP_ARM_SPLIT; a++) {
+                    sweep_cell(q, &sweep_scenes[si], q->sides[di], &sweep_orients[oi], (sweep_arm_t)a);
+                }
+            }
+        }
+    }
+    ESP_LOGI("device_tests", "CHUNK_SWEEP_COMPLETE quality=%s", q->name);
+}
+
+/* The shortlists main/apps/sand/tools/report_chunk_layout.sh produced, each
+ * followed by the side the shipped rule picks for that grid. */
+static void
+test_chunk_sweep_ultra(void) {
+    static const sweep_quality_t q = {"ULTRA", 184, 224, {{32, 36}, {47, 17}, {47, 36}, {62, 17}, {64, 64}}};
+    sweep_quality(&q);
+}
+
+static void
+test_chunk_sweep_high(void) {
+    static const sweep_quality_t q = {"HIGH", 122, 149, {{25, 17}, {34, 17}, {25, 28}, {17, 28}, {42, 42}}};
+    sweep_quality(&q);
+}
+
+static void
+test_chunk_sweep_normal(void) {
+    static const sweep_quality_t q = {"NORMAL", 92, 112, {{22, 24}, {17, 24}, {22, 17}, {17, 17}, {32, 32}}};
+    sweep_quality(&q);
+}
+
+static void
+test_chunk_sweep_low(void) {
+    static const sweep_quality_t q = {"LOW", 61, 74, {{17, 17}, {19, 17}, {21, 17}, {22, 17}, {21, 21}}};
+    sweep_quality(&q);
+}
+
+static void
+test_chunk_sweep_very_low(void) {
+    static const sweep_quality_t q = {"VERY LOW", 46, 56, {{17, 17}, {18, 17}, {19, 17}, {20, 17}, {0, 0}}};
+    sweep_quality(&q);
+}
+
+static void
+run_chunk_sweep_ultra_suite(void) {
+    RUN_TEST(test_chunk_sweep_ultra);
+}
+
+static void
+run_chunk_sweep_high_suite(void) {
+    RUN_TEST(test_chunk_sweep_high);
+}
+
+static void
+run_chunk_sweep_normal_suite(void) {
+    RUN_TEST(test_chunk_sweep_normal);
+}
+
+static void
+run_chunk_sweep_low_suite(void) {
+    RUN_TEST(test_chunk_sweep_low);
+}
+
+static void
+run_chunk_sweep_very_low_suite(void) {
+    RUN_TEST(test_chunk_sweep_very_low);
+}
+
+SUITE_REGISTER_ON_REQUEST(run_chunk_sweep_ultra_suite);
+SUITE_REGISTER_ON_REQUEST(run_chunk_sweep_high_suite);
+SUITE_REGISTER_ON_REQUEST(run_chunk_sweep_normal_suite);
+SUITE_REGISTER_ON_REQUEST(run_chunk_sweep_low_suite);
+SUITE_REGISTER_ON_REQUEST(run_chunk_sweep_very_low_suite);
 
 static void
 test_a_screen_of_settled_sand_costs_almost_nothing(void) {

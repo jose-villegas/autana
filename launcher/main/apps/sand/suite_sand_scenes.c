@@ -216,6 +216,82 @@ test_the_mixed_scene_puts_every_material_pair_in_contact(void) {
  * they do. Three device rounds once went into optimising a function the
  * failing benchmark never called. */
 
+/* --- the layout set ------------------------------------------------------ */
+
+#define LAYOUT_SETTLE_STEPS 30
+
+static void
+layout_fill(sand_t* s, int x0, int x1, int y0, int y1, cell_t c) {
+    for (int y = y0; y < y1; y++) {
+        for (int x = x0; x < x1; x++) {
+            sand_set(s, x, y, c);
+        }
+    }
+}
+
+int
+build_layout_mixed_flip_scene(sand_t* s) {
+    const int w = s->w;
+    const int h = s->h;
+    const int sand_x1 = (w * 3) / 10;
+    const int water_x0 = w - (w * 3) / 10;
+
+    layout_fill(s, 0, sand_x1, h / 2, h, SAND_FIRST_SHADE);
+    layout_fill(s, water_x0, w, h / 2, h, CELL_MAKE(MAT_WATER, MASS_MAX));
+    for (int y = 0; y < h; y++) {
+        const int off = (y * (water_x0 - sand_x1 - 1)) / (h - 1);
+        sand_set(s, sand_x1 + off, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
+        sand_set(s, water_x0 - 1 - off, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
+    }
+    for (int i = 0; i < LAYOUT_SETTLE_STEPS; i++) {
+        sand_step(s, 0, 1000, 0);
+    }
+    return 0;
+}
+
+int
+build_layout_water_scene(sand_t* s) {
+    layout_fill(s, s->w / 4, (s->w * 3) / 4, 0, s->h / 2, CELL_MAKE(MAT_WATER, MASS_MAX));
+    return 0;
+}
+
+int
+build_layout_sand_only_scene(sand_t* s) {
+    for (int y = 0; y < s->h / 2; y++) {
+        for (int x = 0; x < s->w; x++) {
+            if (((x + y) & 1) == 0) {
+                sand_set(s, x, y, SAND_FIRST_SHADE);
+            }
+        }
+    }
+    return 0;
+}
+
+/* Poured and left until only its surface still moves. Warmed in whatever
+ * orientation it is measured in: a pile settled under one down and read under
+ * another is a gravity flip, which the mixed scene already covers. */
+int
+build_layout_settling_pile_scene(sand_t* s) {
+    layout_fill(s, s->w / 4, (s->w * 3) / 4, s->h / 3, s->h, SAND_FIRST_SHADE);
+    return LAYOUT_SETTLE_STEPS;
+}
+
+/* A walled basin with a mound on its surface, so cross-flow has somewhere to
+ * move mass on every ray and the work is a band rather than a block. */
+int
+build_layout_levelling_pool_scene(sand_t* s) {
+    const int w = s->w;
+    const int h = s->h;
+    const cell_t stone = CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT);
+
+    layout_fill(s, 1, w - 1, (h * 2) / 3, h, CELL_MAKE(MAT_WATER, MASS_MAX));
+    layout_fill(s, 0, 1, 0, h, stone);
+    layout_fill(s, w - 1, w, 0, h, stone);
+    layout_fill(s, 0, w, h - 1, h, stone);
+    layout_fill(s, w / 3, (w * 2) / 3, h / 2, (h * 2) / 3, CELL_MAKE(MAT_WATER, MASS_MAX));
+    return LAYOUT_SETTLE_STEPS;
+}
+
 /* Four liquids of different density, painted upside down. In their own
  * settled order - lava at the bottom, oil on top - each layer finds its
  * level within a few steps and the interfaces that were doing the reacting
