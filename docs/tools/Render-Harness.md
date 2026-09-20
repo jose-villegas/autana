@@ -17,7 +17,7 @@ draw, and what synthetic touch to feed them.
 ./launcher/tools/render_all_scenes.sh          # every scene, and the standing check
 ./launcher/tools/post_ui_render_host.sh        # one scene, into its own results/render/
 ./launcher/tools/launcher_home_render_host.sh -o /tmp/home
-./launcher/main/apps/cube/tools/cube_render_host.sh
+./launcher/main/apps/render_lab/tools/render_lab_render_host.sh
 ```
 
 Each writes a 24bpp BMP per declared render, plus a PNG beside it when
@@ -90,7 +90,7 @@ a different compiler and C library than anyone's desk. The self-test report,
 the home screen and the boot animation are pinned: `gfx.c` does no float
 maths, and the scroll view's momentum - the one part of the UI that reaches
 the maths library - is switched off at a zero time constant, so it is
-linked but never called. The cube declares `scene_pin=0` and is checked for its
+linked but never called. Render Lab declares `scene_pin=0` and is checked for its
 declared size alone: it draws a frame counter that is a `double` printed
 with `"%.1f"`, and the only reason that reads zero is a run stopping 20 ms
 short of the window that computes it. A scene whose pin can fail for a
@@ -141,8 +141,8 @@ linked on a host at all.
 clock, so a QEMU run cannot reproduce a scene's declared frame schedule.
 Only a screen that has SETTLED - one whose picture does not depend on how
 many frames it took to get there - compares pixel-exact with a host render.
-The home screen is such a screen. A scene stepped for its animation, the
-cube at a fixed step count, is not: the same step count does not mean the
+The home screen is such a screen. A scene stepped for its animation, a
+Render Lab scene at a fixed step count, is not: the same step count does not mean the
 same accumulated time.
 
 *There is no IMU, so orientation cannot be injected.* The shell keeps

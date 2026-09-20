@@ -28,7 +28,8 @@ removing one touches no other file. Currently:
   system, a hybrid mass-diffusion water model, one impulse mechanism behind
   explosions, thrown chunks and water's own splash, and a device-verified
   performance budget for every hot path. See `docs/sand/Sand-Simulation.md`.
-- **3D Cube** — a Gouraud-shaded software rasterizer, no GPU.
+- **Render Lab** — software-rendering experiments, no GPU: a Gouraud-shaded
+  rotating cube and wireframe primitives.
 - **Diagnostics** — a bench tool: a hardware self-test (POST) report plus a
   developer-toggles page; ships in any development build (`--dev` or the
   diagnostics build), never release. The on-device self-test *runner* on
