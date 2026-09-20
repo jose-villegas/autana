@@ -111,7 +111,7 @@ set_from(const char* rest, tune_reply_fn reply) {
         return;
     }
     if (value < entry->low || value > entry->high) {
-        char range[48];
+        char range[TUNE_NAME_MAX + sizeof " takes -2147483648..-2147483648"];
         snprintf(range, sizeof range, "%s takes %ld..%ld", name, (long)entry->low, (long)entry->high);
         reply_error(reply, "range", range);
         return;
