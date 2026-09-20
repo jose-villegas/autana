@@ -78,23 +78,29 @@
  * per redraw: 0 wipes it, 255 never does, between is a trail that fades. */
 #define RIDGE_TRAIL        226
 
+/* The line is longer than the frame it was drawn in: at a diagonal it has to
+ * span the panel's diagonal, 580 px, with its glow, or its ends show. */
+#define RIDGE_EXTRA        88
+#define RIDGE_COLUMNS      (RIDGE_CURVE_POINTS + 2 * RIDGE_EXTRA)
+
 #define POSE_LANDSCAPE     ((gfx_glow_pose_t){-GFX_GLOW_POSE_ONE, 0})
 
 typedef struct {
     spring_line_t line;
     gfx_glow_style_t style;
     gfx_glow_field_t field;
-    int32_t offset[RIDGE_CURVE_POINTS];
-    int32_t velocity[RIDGE_CURVE_POINTS];
-    int16_t heights[RIDGE_CURVE_POINTS];
-    int16_t smooth[RIDGE_CURVE_POINTS];
-    int16_t shape[RIDGE_CURVE_POINTS];
+    int32_t offset[RIDGE_COLUMNS];
+    int32_t velocity[RIDGE_COLUMNS];
+    int16_t rigid[RIDGE_COLUMNS];
+    int16_t heights[RIDGE_COLUMNS];
+    int16_t smooth[RIDGE_COLUMNS];
+    int16_t shape[RIDGE_COLUMNS];
     ridge_motion_t motion;
     bool ambient;
-    int16_t span_lo[RIDGE_CURVE_POINTS];
-    int16_t span_hi[RIDGE_CURVE_POINTS];
-    int16_t reach_lo[RIDGE_CURVE_POINTS];
-    int16_t reach_hi[RIDGE_CURVE_POINTS];
+    int16_t span_lo[RIDGE_COLUMNS];
+    int16_t span_hi[RIDGE_COLUMNS];
+    int16_t reach_lo[RIDGE_COLUMNS];
+    int16_t reach_hi[RIDGE_COLUMNS];
     int16_t lit_lo[GFX_HEIGHT];
     int16_t lit_hi[GFX_HEIGHT];
     gfx_glow_pose_t pose;
@@ -125,18 +131,19 @@ allocate_once(void) {
         return;
     }
     memset(ridge, 0, sizeof *ridge);
-    spring_line_init(&ridge->line, ridge->offset, ridge->velocity, RIDGE_CURVE_POINTS);
+    spring_line_init(&ridge->line, ridge->offset, ridge->velocity, RIDGE_COLUMNS);
     gfx_glow_style_set(&ridge->style, GLOW_RADIUS_PX, GLOW_CORE_PX, GLOW_CORE_RGB, GLOW_HALO_RGB);
-    memcpy(ridge->heights, ridge_curve_y, sizeof ridge->heights);
-    ridge_motion_smooth(ridge_curve_y, ridge->smooth, ridge->shape, RIDGE_CURVE_POINTS);
-    memcpy(ridge->shape, ridge_curve_y, sizeof ridge->shape);
+    ridge_motion_extend(ridge_curve_y, RIDGE_CURVE_POINTS, ridge->rigid, RIDGE_EXTRA);
+    memcpy(ridge->heights, ridge->rigid, sizeof ridge->heights);
+    ridge_motion_smooth(ridge->rigid, ridge->smooth, ridge->shape, RIDGE_COLUMNS);
+    memcpy(ridge->shape, ridge->rigid, sizeof ridge->shape);
     ridge->ambient = true;
     ridge->field = (gfx_glow_field_t){
         .span_lo = ridge->span_lo,
         .span_hi = ridge->span_hi,
         .reach_lo = ridge->reach_lo,
         .reach_hi = ridge->reach_hi,
-        .count = RIDGE_CURVE_POINTS,
+        .count = RIDGE_COLUMNS,
     };
     gfx_glow_field_prepare(&ridge->field, ridge->heights, &ridge->style);
     ridge->pose = POSE_LANDSCAPE;
@@ -208,7 +215,7 @@ column_under(int panel_x, int panel_y) {
     const int64_t right_y = -ridge->pose.down_x;
     const int64_t dx2 = 2 * (int64_t)panel_x - (GFX_WIDTH - 1);
     const int64_t dy2 = 2 * (int64_t)panel_y - (GFX_HEIGHT - 1);
-    return (int)((RIDGE_CURVE_POINTS - 1 + (dx2 * right_x + dy2 * right_y) / GFX_GLOW_POSE_ONE) / 2);
+    return (int)((RIDGE_COLUMNS - 1 + (dx2 * right_x + dy2 * right_y) / GFX_GLOW_POSE_ONE) / 2);
 }
 
 static void
@@ -241,15 +248,15 @@ slope_along_the_line(void) {
 static void
 shape_this_frame(uint32_t dt_ms) {
     if (!ridge->ambient || ridge->alive_ms < RELEASE_MS) {
-        memcpy(ridge->shape, ridge_curve_y, sizeof ridge->shape);
+        memcpy(ridge->shape, ridge->rigid, sizeof ridge->shape);
         return;
     }
     ridge_motion_advance(&ridge->motion, dt_ms, slope_along_the_line());
     const uint32_t released_for = ridge->alive_ms - RELEASE_MS;
     const int gain = released_for >= AMBIENT_FADE_IN_MS ? 256 : (int)(released_for * 256 / AMBIENT_FADE_IN_MS);
-    for (int x = 0; x < RIDGE_CURVE_POINTS; x++) {
-        const int moved = ridge_motion_height(&ridge->motion, ridge_curve_y[x], ridge->smooth[x], x) - ridge_curve_y[x];
-        ridge->shape[x] = (int16_t)(ridge_curve_y[x] + moved * gain / 256);
+    for (int x = 0; x < RIDGE_COLUMNS; x++) {
+        const int moved = ridge_motion_height(&ridge->motion, ridge->rigid[x], ridge->smooth[x], x) - ridge->rigid[x];
+        ridge->shape[x] = (int16_t)(ridge->rigid[x] + moved * gain / 256);
     }
 }
 
@@ -259,7 +266,7 @@ pluck_from_shaking(void) {
         return;
     }
     ridge->shake_seed = ridge->shake_seed * 1664525u + 1013904223u;
-    const int x = (int)((ridge->shake_seed >> 8) % RIDGE_CURVE_POINTS);
+    const int x = (int)((ridge->shake_seed >> 8) % RIDGE_COLUMNS);
     const int32_t up_or_down = (ridge->shake_seed & 0x80u) ? 1 : -1;
     spring_line_poke(&ridge->line, x, SHAKE_HALF_WIDTH, up_or_down * (SPRING_LINE_ONE / 128) * ridge->shake);
 }
