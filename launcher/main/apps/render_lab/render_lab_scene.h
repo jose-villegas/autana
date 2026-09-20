@@ -30,4 +30,9 @@ typedef struct {
     /* A short status string shown after the scene name on the HUD line -
      * vertex/edge counts, say. NULL (the cube's default) shows nothing extra. */
     const char* (*status)(void);
+
+    /* True for a scene with a retained, progressively-filled picture: the
+     * app grants GFX_LAYOUT_FULL_FB regardless of render_lab_band_mode, and
+     * never calls frame_band(), which such a scene may leave NULL. */
+    bool needs_full_framebuffer;
 } render_lab_scene_t;
