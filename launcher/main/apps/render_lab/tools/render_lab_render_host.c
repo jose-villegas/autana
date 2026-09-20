@@ -1,10 +1,13 @@
 /*
- * wire_render_host - this app itself, entered and stepped on a host, started
- * on a chosen wire scene via render_lab_start_scene_index.
+ * render_lab_render_host - this app itself, entered and stepped on a host,
+ * started on the scene --scene names.
  *
- * A render_host.h scene, the same shape cube_render_host.c uses: the real
- * enter()/frame(), the real gfx and ui layers, no board, no IDF header, no
- * clock or finger but the harness's own.
+ * A render_host.h scene: the real enter()/frame(), the real gfx and ui
+ * layers, no board, no IDF header, no clock or finger but the harness's own.
+ * app_*.c is excluded from the host test runner as hardware-facing, but it
+ * asks nothing of the board, so the shell-owned functions below stand in - a
+ * registry of exactly the app that registered itself, the shell's quarter,
+ * and no frame loop at all.
  */
 
 #include <stdbool.h>
@@ -19,12 +22,11 @@
 #include "ui/ui_transform.h"
 
 /* The band ring keeps no retained frame for render_host.c to read back, so
- * this asks for the full-framebuffer layout, the same reason
- * cube_render_host.c does. render_lab_start_scene_index picks the scene;
- * see app_render_lab.c's scenes[] table for what each index means. */
+ * setup() asks for the full-framebuffer layout. */
 extern bool render_lab_band_mode;
 extern int render_lab_start_scene_index;
 
+#define SCENE_GOURAUD      0
 #define SCENE_WIRE_PLANE   1
 #define SCENE_WIRE_CUBE    2
 #define SCENE_WIRE_SPHERE  3
@@ -55,7 +57,9 @@ options(int argc, char** argv) {
             continue;
         }
         const char* name = argv[i + 1];
-        if (strcmp(name, "plane") == 0) {
+        if (strcmp(name, "gouraud") == 0) {
+            render_lab_start_scene_index = SCENE_GOURAUD;
+        } else if (strcmp(name, "plane") == 0) {
             render_lab_start_scene_index = SCENE_WIRE_PLANE;
         } else if (strcmp(name, "cube") == 0) {
             render_lab_start_scene_index = SCENE_WIRE_CUBE;
@@ -69,7 +73,7 @@ options(int argc, char** argv) {
         }
         return true;
     }
-    fprintf(stderr, "wire_render_host needs --scene plane|cube|sphere|capsule\n");
+    fprintf(stderr, "render_lab_render_host needs --scene gouraud|plane|cube|sphere|capsule\n");
     return false;
 }
 
@@ -98,7 +102,7 @@ draw(const render_frame_t* frame) {
 }
 
 const render_scene_t render_scene = {
-    .name = "wire",
+    .name = "render_lab",
     .quarter = 1,
     .frames = 30,
     .dt_ms = 16,

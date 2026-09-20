@@ -14,11 +14,11 @@
 
 #include "../../display/display.h"
 #include "../../gfx/gfx.h"
+#include "render_lab.h"
 #include "render_lab_scene.h"
 #include "wire_pipeline.h"
 #include "wire_primitives_generated.h"
 
-#define BACKGROUND_RGB       0x0A0C14
 #define WIRE_LINE_RGB        0x4FD1FF
 
 #define WIRE_ORBIT_PERIOD_MS 12000
@@ -29,8 +29,6 @@
 #define WIRE_ELEVATION_COS   443
 #define WIRE_ELEVATION_ANGLE (S3L_F / 12)
 #define WIRE_FOCAL_LENGTH    (S3L_F)
-
-extern bool partial_updates; /* scene_cube.c's toggle - shared across every render_lab scene */
 
 static const wire_mesh_t* current_mesh;
 static wire_cs_vertex_t* cs_vertices;
@@ -43,8 +41,7 @@ static uint32_t elapsed_ms;
 static r3d_view_t current_view;
 static S3L_Unit current_orbit_distance;
 
-static int prev_bbox_x0, prev_bbox_y0, prev_bbox_x1, prev_bbox_y1;
-static bool prev_bbox_valid;
+static render_lab_coverage_t last_coverage;
 
 /* `orbit_distance` is chosen per mesh (the one-line wrappers below) so a
  * primitive four times another's size still fills most of the screen -
@@ -55,7 +52,7 @@ wire_enter(const wire_mesh_t* mesh, S3L_Unit orbit_distance) {
     current_mesh = mesh;
     current_orbit_distance = orbit_distance;
     elapsed_ms = 0;
-    prev_bbox_valid = false;
+    last_coverage.valid = false;
 
     cs_vertices = heap_caps_malloc(sizeof(*cs_vertices) * mesh->vertex_count, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     segments = heap_caps_malloc(sizeof(*segments) * mesh->edge_count, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -174,23 +171,12 @@ wire_mark_bbox_dirty(void) {
             gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
             need_failure_clear = false;
         }
-        prev_bbox_valid = false;
+        last_coverage.valid = false;
         return;
     }
 
-    if (prev_bbox_valid) {
-        gfx_mark_dirty(prev_bbox_x0, prev_bbox_y0, prev_bbox_x1 - prev_bbox_x0, prev_bbox_y1 - prev_bbox_y0);
-    }
-
-    const bool have_bbox = frame.segment_count > 0;
-    if (have_bbox) {
-        gfx_mark_dirty(frame.bbox_x0, frame.bbox_y0, frame.bbox_x1 - frame.bbox_x0, frame.bbox_y1 - frame.bbox_y0);
-        prev_bbox_x0 = frame.bbox_x0;
-        prev_bbox_y0 = frame.bbox_y0;
-        prev_bbox_x1 = frame.bbox_x1;
-        prev_bbox_y1 = frame.bbox_y1;
-    }
-    prev_bbox_valid = have_bbox;
+    render_lab_coverage_mark(&last_coverage, frame.segment_count > 0, frame.bbox_x0, frame.bbox_y0, frame.bbox_x1,
+                             frame.bbox_y1);
 }
 
 static void
@@ -198,8 +184,8 @@ wire_clear_frame(void) {
     /* Same technique as cube_clear_frame(): gfx_set_partial_clear() delegates
      * bounding-box erase and dirty marking of previous-frame bounds to
      * gfx_clear() itself. */
-    gfx_set_partial_clear(partial_updates);
-    gfx_clear(gfx_rgb(BACKGROUND_RGB));
+    gfx_set_partial_clear(render_lab_partial_updates);
+    gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
 }
 
 /* Exposed for suite_wire_perf.c to time separately - full-framebuffer clear
@@ -219,30 +205,13 @@ wire_draw_full(void) {
     }
 }
 
-/* Fills an entire band buffer with the background colour - band mode has no
- * accumulated framebuffer to erase a bounding box out of, so every band is a
- * full redraw regardless of partial_updates, the same reason
- * scene_cube.c's own clear_band() does this. Two pixels per store. */
-static void
-wire_clear_band(gfx_color_t* buf, int height) {
-    const gfx_color_t color = gfx_rgb(BACKGROUND_RGB);
-    const uint32_t pair = ((uint32_t)color << 16) | color;
-    uint32_t* words = (uint32_t*)buf;
-    const int count = (GFX_WIDTH * height) / 2;
-
-    for (int i = 0; i < count; i++) {
-        words[i] = pair;
-    }
-}
-
-/* Exposed for suite_wire_perf.c to time separately - clears the band then
- * draws only the segments overlapping [row0, row1). gfx_line() writes
- * through gfx's current target, which is `buf` while a band is open
- * (gfx.c's current_target()), so nothing here touches `buf` directly except
- * to clear it. */
+/* Exposed for suite_wire_perf.c to time separately - draws only the
+ * segments overlapping [row0, row1). gfx_line() writes through gfx's current
+ * target, which is `buf` while a band is open (gfx.c's current_target()), so
+ * nothing here touches `buf` directly. */
 void
 wire_draw_band(gfx_color_t* buf, int row0, int row1) {
-    wire_clear_band(buf, row1 - row0);
+    (void)buf;
     if (!alloc_ok) {
         return;
     }
@@ -317,7 +286,7 @@ scene_wire_frame_band(gfx_color_t* buf, int row0, int row1) {
 
 static void
 scene_wire_invalidate(void) {
-    prev_bbox_valid = false;
+    last_coverage.valid = false;
 }
 
 const render_lab_scene_t scene_wire_plane = {

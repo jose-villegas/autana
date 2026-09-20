@@ -33,7 +33,7 @@
 /* app_render_lab.c's own toggle and lifecycle, exposed the same way
  * suite_cube_perf.c already relies on. */
 extern bool render_lab_band_mode;
-extern bool partial_updates;
+extern bool render_lab_partial_updates;
 extern int render_lab_fps_box_x_override;
 extern void render_lab_enter(void);
 extern void render_lab_exit(void);
@@ -247,7 +247,7 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     /* Full redraw every frame, matching band mode's own shape - not the
      * app's real default, which would let partial updates skip most of the
      * clear and present. */
-    partial_updates = false;
+    render_lab_partial_updates = false;
     run_fps_on = true;
     render_lab_band_mode = false;
     render_lab_enter();
@@ -420,7 +420,7 @@ test_cube_orientation_and_fps_sweep(void) {
     const bool saved_band_mode = render_lab_band_mode;
     samples = malloc(sizeof(int32_t) * MAX_SAMPLES);
     TEST_ASSERT_NOT_NULL_MESSAGE(samples, "need a sample buffer for the orientation/fps sweep");
-    partial_updates = false;
+    render_lab_partial_updates = false;
 
     static const struct {
         const char* name;

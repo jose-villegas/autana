@@ -32,7 +32,7 @@
  * run_perf_capture()'s with_partial parameter) rather than trusting
  * whatever a stray BOOT-menu press left it at, since which state it is in
  * is exactly what several of these tests compare. */
-extern bool partial_updates;
+extern bool render_lab_partial_updates;
 
 /* This suite measures full-framebuffer phases, independent of the app's
  * current runtime selection. */
@@ -177,7 +177,7 @@ cube_perf_fixture(void) {
     render_lab_band_mode = false;
     render_lab_enter();
 
-    /* Neither partial_updates nor gfx_set_interlace() is forced here -
+    /* Neither render_lab_partial_updates nor gfx_set_interlace() is forced here -
      * run_perf_capture() sets both explicitly from its own parameters
      * right after this returns, since which state each is in is exactly
      * the thing being compared from one test to the next. */
@@ -230,7 +230,7 @@ static const input_t null_input = {0};
 static void
 run_perf_capture(const char* label, bool with_hud, bool with_partial, bool with_interlace) {
     cube_perf_fixture();
-    partial_updates = with_partial;
+    render_lab_partial_updates = with_partial;
     gfx_set_interlace(with_interlace);
 
     int64_t test_start = esp_timer_get_time();
@@ -351,7 +351,7 @@ run_perf_variant(bool with_hud, bool with_partial, bool with_interlace) {
 }
 
 /* Baseline: everything this branch adds turned on, matching scene_cube.c's
- * own real defaults (partial_updates starts true; interlace is a
+ * own real defaults (render_lab_partial_updates starts true; interlace is a
  * diagnostics-only toggle, off unless a developer turns it on). */
 void
 test_cube_performance_baseline(void) {
@@ -367,7 +367,7 @@ test_cube_performance_no_hud(void) {
     TEST_PASS();
 }
 
-/* Isolates partial_updates: a full gfx_clear() and a full-frame present
+/* Isolates render_lab_partial_updates: a full gfx_clear() and a full-frame present
  * every frame, same as any other app that never turns it on. This is the
  * branch's actual headline optimization, so Logic (the clear) and Present
  * (what gfx_present() finds dirty) are both expected to move. */
@@ -379,7 +379,7 @@ test_cube_performance_no_partial(void) {
 
 /* Isolates interlace: gfx_present() skips half the dirty strips each
  * frame, sending the other half next frame instead - Present should drop
- * accordingly with partial_updates still on underneath it. */
+ * accordingly with render_lab_partial_updates still on underneath it. */
 void
 test_cube_performance_interlaced(void) {
     run_perf_variant(true, true, true);

@@ -43,6 +43,7 @@ extern bool wire_do_project(void);
 extern void wire_draw_full(void);
 extern void wire_draw_band(gfx_color_t* buf, int row0, int row1);
 extern void wire_mark_bbox_dirty(void);
+extern void render_lab_clear_band(gfx_color_t* buf, int height);
 extern int wire_vertex_count(void);
 extern int wire_edge_count(void);
 extern int wire_segment_count(void);
@@ -154,6 +155,7 @@ run_band_frame(wire_totals_t* t, uint32_t dt_ms) {
 
         gfx_color_t* buf = gfx_band_buffer();
         const int64_t d0 = esp_timer_get_time();
+        render_lab_clear_band(buf, height);
         wire_draw_band(buf, row0, row0 + height);
         t->draw_us += esp_timer_get_time() - d0;
 

@@ -15,19 +15,18 @@
 #include "../../app.h"
 #include "../../gfx/gfx.h"
 #include "../../ui/ui.h"
+#include "render_lab.h"
 #include "render_lab_mode_switch.h"
 #include "render_lab_scene.h"
 #include "ui/render_lab_hud_screen.h"
 #include "ui/render_lab_menu_screen.h"
-
-#define BACKGROUND_RGB 0x0A0C14
 
 extern const render_lab_scene_t scene_cube;
 extern const render_lab_scene_t scene_wire_plane;
 extern const render_lab_scene_t scene_wire_cube;
 extern const render_lab_scene_t scene_wire_sphere;
 extern const render_lab_scene_t scene_wire_capsule;
-extern bool partial_updates; /* scene_cube.c's toggle - this menu's own concern is only offering it */
+bool render_lab_partial_updates = true;
 
 static const render_lab_scene_t* const scenes[] = {
     &scene_cube, &scene_wire_plane, &scene_wire_cube, &scene_wire_sphere, &scene_wire_capsule,
@@ -192,14 +191,14 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
     ui_begin(input);
 
     const render_lab_menu_screen_state_t state = {
-        .partial_updates_on = partial_updates,
+        .partial_updates_on = render_lab_partial_updates,
         .band_mode_on = render_lab_band_mode,
         .scene_name = current_scene()->name,
     };
     const render_lab_menu_screen_result_t result = render_lab_menu_screen_draw(ctx, &state, dt_ms);
 
     if (result.partial_updates_clicked) {
-        partial_updates = !partial_updates;
+        render_lab_partial_updates = !render_lab_partial_updates;
 
         /* Same reason render_lab_frame()'s BOOT handling forces this on
          * every open/close of this menu: flipping the toggle mid-visit
@@ -222,7 +221,7 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
     }
 
     /* Modeled on app_sand.c's own draw_menu(): one full-screen OPAQUE
-     * window (BACKGROUND_RGB, not UI_NO_BACKGROUND), because
+     * window (RENDER_LAB_BACKGROUND_RGB, not UI_NO_BACKGROUND), because
      * render_lab_frame() does not draw the scene at all while menu_open is
      * true. In band mode render_lab_clear_band() already filled the whole
      * band with this same colour, so the finishing call there passes
@@ -230,7 +229,7 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
     if (for_bands) {
         ui_end_for_bands(UI_NO_BACKGROUND);
     } else {
-        ui_end(BACKGROUND_RGB);
+        ui_end(RENDER_LAB_BACKGROUND_RGB);
     }
 }
 
@@ -264,13 +263,10 @@ update_fps_counter(uint32_t dt_ms) {
     }
 }
 
-/* Fills an entire band buffer with the background colour - used only for
- * the menu's own backdrop in band mode; a scene's frame_band() clears its
- * own share as part of drawing it. Two pixels per store, the same trick
- * gfx_clear() uses. */
-static void
+/* Two pixels per store, the same trick gfx_clear() uses. */
+void
 render_lab_clear_band(gfx_color_t* buf, int height) {
-    const gfx_color_t color = gfx_rgb(BACKGROUND_RGB);
+    const gfx_color_t color = gfx_rgb(RENDER_LAB_BACKGROUND_RGB);
     const uint32_t pair = ((uint32_t)color << 16) | color;
     uint32_t* words = (uint32_t*)buf;
     const int count = (GFX_WIDTH * height) / 2;
@@ -278,6 +274,18 @@ render_lab_clear_band(gfx_color_t* buf, int height) {
     for (int i = 0; i < count; i++) {
         words[i] = pair;
     }
+}
+
+void
+render_lab_coverage_mark(render_lab_coverage_t* last, bool have, int x0, int y0, int x1, int y1) {
+    if (last->valid) {
+        gfx_mark_dirty(last->x0, last->y0, last->x1 - last->x0, last->y1 - last->y0);
+    }
+    if (have) {
+        gfx_mark_dirty(x0, y0, x1 - x0, y1 - y0);
+        *last = (render_lab_coverage_t){x0, y0, x1, y1, true};
+    }
+    last->valid = have;
 }
 
 /* The band-mode frame: the fps counter and BOOT menu are built once
@@ -317,9 +325,8 @@ render_lab_frame_band(uint32_t dt_ms, const input_t* input) {
         (void)touched_x1;
 
         gfx_color_t* buf = gfx_band_buffer();
-        if (menu_open) {
-            render_lab_clear_band(buf, height);
-        } else {
+        render_lab_clear_band(buf, height);
+        if (!menu_open) {
             current_scene()->frame_band(buf, row0, row0 + height);
         }
         ui_replay_band(row0, row0 + height);
