@@ -9,7 +9,7 @@ Living document: update it when the approach changes.
 |---|---|
 | How do I run the tests? | [Running them](#running-them) |
 | Why two runners, and what does each prove? | [Two runners, one set of suites](#two-runners-one-set-of-suites) |
-| One suite on the board, no rebuild | [RUNSUITE: the everyday device loop](#runsuite-the-everyday-device-loop) |
+| One suite on the board, no rebuild | [runsuite: the everyday device loop](#runsuite-the-everyday-device-loop) |
 | No board free, or no board at all | [QEMU: the device image with no board](#qemu-the-device-image-with-no-board) |
 | Is the board itself working? | [POST is a third thing](#post-is-a-third-thing) |
 | How do I make this code testable? | [Making things testable](#making-things-testable) |
@@ -99,7 +99,7 @@ flowchart LR
     end
 
     S1 & S2 --> HOST["test/host_main.c<br/><b>host runner</b><br/>&lt;1 s, run constantly"]
-    S1 & S2 & S3 --> DEV["main/boot/selftest.c<br/><b>SELFTEST build</b><br/>RUNSUITE: one suite, seconds<br/>full run: ~18 min"]
+    S1 & S2 & S3 --> DEV["main/boot/selftest.c<br/><b>SELFTEST build</b><br/>runsuite: one suite, seconds<br/>full run: ~18 min"]
 ```
 
 **The host runner is the TDD loop.** Under a second, so red-green-refactor is
@@ -111,7 +111,7 @@ the portable ones. That is deliberate: passing on a laptop only proves the logic
 right on x86, whereas running on-target proves the same source behaves
 identically built by the Xtensa toolchain and executed on this chip. It
 never runs in a release image - only in a SELFTEST build, either one suite
-at a time via RUNSUITE or as a full boot-time run.
+at a time via runsuite or as a full boot-time run.
 
 ### The host runner enforces two of the device's limits
 
@@ -202,19 +202,19 @@ on a clean build directory, which is what makes it a trap.
 
 ---
 
-## RUNSUITE: the everyday device loop
+## runsuite: the everyday device loop
 
 A diag build (`CONFIG_LAUNCHER_SELFTEST` on, `AUTORUN` off) listens on the
 USB serial console for two verbs, dispatched from `launcher/main/console/console.c`
-to `console_screenshot.c` and `console_runsuite.c` respectively. `SCREENSHOT`
-dumps the frame on screen; `RUNSUITE <suite_function_name>` runs exactly that
+to `console_screenshot.c` and `console_runsuite.c` respectively. `screenshot`
+dumps the frame on screen; `runsuite <suite_function_name>` runs exactly that
 one registered suite and
 prints its result — **with no rebuild and no reflash**:
 
 ```
-RUNSUITE run_gfx_suite
-RUNSUITE run_sand_perf_suite
-RUNSUITE run_cube_band_perf_suite
+runsuite run_gfx_suite
+runsuite run_sand_perf_suite
+runsuite run_cube_band_perf_suite
 ```
 
 Both commands only set a flag; `main.c`'s frame loop does the actual work at
@@ -224,12 +224,12 @@ the suite returns the shell prints `RUNSUITE_COMPLETE name=<suite> found=<0|1>`
 on its own line, so a harness need not guess from a quiet console that the
 run is over. This
 is what makes iterating on one area fast: flash the diag build once, then
-RUNSUITE whichever suite covers what changed, as many times as needed,
+runsuite whichever suite covers what changed, as many times as needed,
 without paying a rebuild-and-reflash cycle per attempt.
 
 ### Recommended practice
 
-1. **During development**, RUNSUITE the suites for the area you touched, on
+1. **During development**, runsuite the suites for the area you touched, on
    a normal diag build (SELFTEST on, AUTORUN off, full scope).
 2. **Scoped builds for perf captures only** — see
    [`Build-Variants.md`](Build-Variants.md#a-diagnostics-build-can-be-scoped)
@@ -314,8 +314,8 @@ python %IDF_PATH%\tools\idf_tools.py install qemu-xtensa   # once
 
 The last form is the everyday one. It builds the same image without autorun
 (`build.qemu.shell/`), which boots into the shell, and then speaks the
-console protocol a board speaks: `RUNSUITE <name>` for each `--suite`, waited
-out to the `RUNSUITE_COMPLETE` line the shell prints, then `SCREENSHOT`,
+console protocol a board speaks: `runsuite <name>` for each `--suite`, waited
+out to the `RUNSUITE_COMPLETE` line the shell prints, then `screenshot`,
 decoded to a PNG and a state `.json` by `tools/screenshot.py`'s own code.
 Boot, one suite and a capture take about a minute and a half, against five
 to nine for a whole autorun. The frame is the firmware's real framebuffer,
@@ -442,7 +442,7 @@ different rules.
 | Ships in release | **yes** | diagnostics (SELFTEST) builds only |
 | Asks | "is this **board** working?" | "is this **code** correct?" |
 | Side effects | none — probe and report | draws to the panel, mutates state |
-| Cost | ~95 ms | RUNSUITE: seconds; full self-test: ~18 min |
+| Cost | ~95 ms | runsuite: seconds; full self-test: ~18 min |
 | A failure means | this unit is faulty | this code is wrong |
 
 It probes each I2C peripheral, checks flash size, heap headroom, MAC validity
@@ -656,7 +656,7 @@ against.
 ## Which suites cover which area
 
 Built by grepping every `SUITE_REGISTER` call site (63 suites when written). Use
-this to pick which RUNSUITE commands cover a change, and to know a gfx/ui
+this to pick which runsuite commands cover a change, and to know a gfx/ui
 change can be checked without touching an app's suites at all.
 
 | Area | Suites | Covers |
@@ -689,7 +689,7 @@ change can be checked without touching an app's suites at all.
    `CMakeLists.txt` and `run_tests.sh`. A new suite joins the full scope
    automatically, is picked up by the table above the next time it is
    regenerated, and can be run alone right away with
-   `RUNSUITE run_<name>_suite` on an already-flashed diag build; if a perf
+   `runsuite run_<name>_suite` on an already-flashed diag build; if a perf
    capture needs it, add it to the perf list in `main/CMakeLists.txt` too
    (see "A diagnostics build can be scoped").
 4. Guard anything needing hardware with `#ifdef DEVICE_BUILD`, including its

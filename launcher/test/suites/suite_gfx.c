@@ -1240,6 +1240,35 @@ test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
     perf_guard("two marks in one cell", two_marks, 2976);
 }
 
+/* The drawing calls narrow the dirty region themselves - no app-side
+ * gfx_mark_dirty() anywhere in this test, unlike the two above. Text is
+ * where it is worth proving: a glyph reaches the tracker as a handful of
+ * run-box fills a few pixels wide each (draw_glyph_font()), so a readout
+ * in one corner either dirties its own box or dirties every column of the
+ * strips it sits in, and nothing between. No perf_guard: this states a
+ * relationship, and a ceiling here would be a number nobody measured on
+ * the board. */
+static void
+test_a_corner_label_costs_less_than_its_rows_full_width(void) {
+    fixture();
+
+    gfx_clear(gfx_rgb(0x000000));
+    (void)time_present();
+
+    gfx_fill_rect(0, 0, GFX_WIDTH, 64, gfx_rgb(0x406020));
+    const int64_t full_band = time_present();
+
+    /* 4 glyphs at GFX_GLYPH_SCALE is 64 px wide and 16 tall - inside one
+     * 92 px column, well inside one strip. */
+    gfx_text(8, 8, "59.7", gfx_rgb(0xFFFFFF));
+    const int64_t label = time_present();
+
+    ESP_LOGI(TAG, "present: full band %lld us, corner label %lld us", (long long)full_band, (long long)label);
+
+    TEST_ASSERT_LESS_THAN_MESSAGE((int)full_band, (int)label,
+                                  "a label in one corner must cost less than sending its rows full width");
+}
+
 static void
 test_drawing_marks_what_it_touched(void) {
     fixture();
@@ -1562,6 +1591,7 @@ run_gfx_suite(void) {
     RUN_TEST(test_three_far_apart_marks_falls_back_at_the_current_cap);
     RUN_TEST(test_a_near_budget_split_crosses_the_gather_threshold);
     RUN_TEST(test_two_marks_in_one_cell_cost_less_than_the_coarse_box);
+    RUN_TEST(test_a_corner_label_costs_less_than_its_rows_full_width);
     RUN_TEST(test_drawing_marks_what_it_touched);
     RUN_TEST(test_band_mode_readback_is_the_frame_its_bands_drew);
     RUN_TEST(test_band_mode_readback_waits_out_a_frame_missing_a_band);

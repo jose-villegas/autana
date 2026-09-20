@@ -78,7 +78,7 @@ handle_tunes(const char* args, console_reply_fn reply) {
 }
 
 static console_registry_t registry;
-static console_verb_t alpha_verb, beta_verb, set_verb, settle_verb, tune_verb, tunes_verb;
+static console_verb_t alpha_verb, beta_verb, set_verb, settle_verb, tune_verb, tunes_verb, lower_set_verb;
 
 static void
 fixture(void) {
@@ -92,6 +92,7 @@ fixture(void) {
     settle_verb = (console_verb_t){"SETTLE", handle_settle, NULL};
     tune_verb = (console_verb_t){"TUNE", handle_tune, NULL};
     tunes_verb = (console_verb_t){"TUNES", handle_tunes, NULL};
+    lower_set_verb = (console_verb_t){"set", handle_alpha, NULL};
 }
 
 static bool
@@ -147,6 +148,51 @@ test_a_verb_does_not_swallow_a_longer_word_that_starts_with_its_name(void) {
     TEST_ASSERT_EQUAL_STRING("SET", last_verb);
     TEST_ASSERT_TRUE(say("TUNE"));
     TEST_ASSERT_EQUAL_STRING("TUNE", last_verb);
+}
+
+/* The registered name and the typed line are matched folded, so the
+ * lowercase name a person types and the uppercase one a harness has
+ * always sent reach the same verb. */
+static void
+test_a_verb_answers_whatever_case_it_is_typed_in(void) {
+    fixture();
+    TEST_ASSERT_TRUE(console_register(&registry, &alpha_verb));
+
+    TEST_ASSERT_TRUE(say("alpha one two"));
+    TEST_ASSERT_EQUAL_STRING("ALPHA", last_verb);
+    TEST_ASSERT_EQUAL_STRING("one two", last_args);
+
+    TEST_ASSERT_TRUE(say("AlPhA"));
+    TEST_ASSERT_EQUAL_STRING("ALPHA", last_verb);
+    TEST_ASSERT_EQUAL_STRING("", last_args);
+}
+
+/* Two names that differ only in case are one name, so the second is the
+ * clash console_register() already refuses - otherwise it would register
+ * and then never be reached, since the first one matches every line. */
+static void
+test_a_name_already_taken_in_another_case_is_refused(void) {
+    fixture();
+    TEST_ASSERT_TRUE(console_register(&registry, &set_verb));
+    TEST_ASSERT_FALSE(console_register(&registry, &lower_set_verb));
+    TEST_ASSERT_EQUAL_INT(1, registry_count(&registry));
+
+    TEST_ASSERT_TRUE(say("set a 1"));
+    TEST_ASSERT_EQUAL_STRING("SET", last_verb);
+}
+
+/* The longer-word rule holds across case too: folding must not turn
+ * "settle" into a line SET answers. */
+static void
+test_the_longer_word_rule_holds_across_case(void) {
+    fixture();
+    TEST_ASSERT_TRUE(console_register(&registry, &set_verb));
+    TEST_ASSERT_TRUE(console_register(&registry, &settle_verb));
+
+    TEST_ASSERT_TRUE(say("settle now"));
+    TEST_ASSERT_EQUAL_STRING("SETTLE", last_verb);
+    TEST_ASSERT_TRUE(say("Set a 1"));
+    TEST_ASSERT_EQUAL_STRING("SET", last_verb);
 }
 
 static void
@@ -324,6 +370,9 @@ suite_console(void) {
     RUN_TEST(test_exact_name_matches);
     RUN_TEST(test_name_plus_space_carries_args_without_the_verb_or_the_space);
     RUN_TEST(test_a_verb_does_not_swallow_a_longer_word_that_starts_with_its_name);
+    RUN_TEST(test_a_verb_answers_whatever_case_it_is_typed_in);
+    RUN_TEST(test_a_name_already_taken_in_another_case_is_refused);
+    RUN_TEST(test_the_longer_word_rule_holds_across_case);
     RUN_TEST(test_an_unknown_line_is_left_alone);
     RUN_TEST(test_registration_order_does_not_change_dispatch_or_listing_order);
     RUN_TEST(test_a_name_declared_twice_stays_with_the_first);

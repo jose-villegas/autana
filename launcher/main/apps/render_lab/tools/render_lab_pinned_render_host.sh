@@ -20,6 +20,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=render_lab_pinned
 scene_sources="
 main/gfx/gfx.c
+main/util/tune.c
 main/ui/ui.c
 main/ui/ui_build.c
 main/ui/ui_pointer.c

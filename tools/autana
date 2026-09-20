@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#
+# autana - the terminal command. scripts/autana/autana.py is all of it; this
+# finds a Python for it. scripts/add-tools-to-path.sh puts this folder on PATH.
+here=$(cd "$(dirname "$0")/.." && pwd -P)
+python="$HOME/.espressif/python_env/idf5.5_py3.14_env/Scripts/python.exe"
+[ -x "$python" ] || python=$(command -v python3 || command -v python)
+exec "$python" "$here/scripts/autana/autana.py" "$@"

@@ -36,7 +36,7 @@ console_verb_screenshot(const char* args, console_reply_fn reply) {
     console_latch_set(&screenshot_latch, "");
 }
 
-CONSOLE_VERB(SCREENSHOT, 0, console_verb_screenshot)
+CONSOLE_VERB(screenshot, 0, console_verb_screenshot)
 
 bool
 console_screenshot_take_request(void) {

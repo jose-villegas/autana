@@ -3,8 +3,8 @@
  * standalone, ESP-IDF-free module.
  *
  * Header-only, all functions static (some static inline), by necessity, not
- * by convenience: mark_band() sits on gfx_fill_rect()/gfx_pixel()'s hot
- * path - gfx_text_scaled() alone calls it once per set font pixel - and
+ * by convenience: the marking calls sit on the drawing primitives' hot
+ * path - an 8bpp or dithered glyph marks once per set font pixel - and
  * routing that through a real cross-translation-unit call once cost about
  * 5% of the launcher's framerate (see docs/notes/Display-and-Rendering.md's
  * "Partial updates"). A traditional .c/.h split would put mark_band() back
