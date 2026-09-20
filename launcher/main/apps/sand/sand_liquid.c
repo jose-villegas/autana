@@ -508,7 +508,7 @@ static bool
 equalise_liquid_chunks(sand_t* s, const xflow_t* flow, int sight, int dx, int dy, uint16_t is_liquid, bool* found_any) {
     sand_lane_t* const lanes = sand_lanes(s);
 
-    if (lanes == NULL || !sand_chunk_pass_ready(s, flow->dg[0], flow->dg[1])) {
+    if (lanes == NULL || !sand_chunk_pass_ready(s, SAND_SPLIT_CROSSFLOW, flow->dg[0], flow->dg[1])) {
         return false;
     }
     liquid_pass =
@@ -520,8 +520,8 @@ equalise_liquid_chunks(sand_t* s, const xflow_t* flow, int sight, int dx, int dy
 
     /* Travel is the ray mass moves along, so the chunk a transfer lands in
      * has already run and will not forward it again. */
-    if (!sand_chunk_pass_run(s, flow->dg[0], flow->dg[1], SAND_CHUNK_PASS_NO_STAMPS, equalise_one_chunk,
-                             &liquid_pass)) {
+    if (!sand_chunk_pass_run(s, SAND_SPLIT_CROSSFLOW, flow->dg[0], flow->dg[1], SAND_CHUNK_PASS_NO_STAMPS,
+                             equalise_one_chunk, &liquid_pass)) {
         return false;
     }
 

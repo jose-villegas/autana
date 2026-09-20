@@ -458,8 +458,8 @@ step_gas_chunks(sand_t* s, bool* found_any) {
     }
 
     gas_row_map_live = false;
-    if (!sand_chunk_pass_run(s, gas_pass.rdx, gas_pass.rdy, SAND_CHUNK_PASS_STAMP_CROSSINGS, step_one_gas_chunk,
-                             &gas_pass)) {
+    if (!sand_chunk_pass_run(s, SAND_SPLIT_GAS_WALK, gas_pass.rdx, gas_pass.rdy, SAND_CHUNK_PASS_STAMP_CROSSINGS,
+                             step_one_gas_chunk, &gas_pass)) {
         gas_row_map_live = was_live;
         return false;
     }
@@ -871,7 +871,8 @@ equalise_gas_chunks(sand_t* s, int px, int py, int rdx, int rdy, int x_step, uin
         return false;
     }
     const int tx = gas_rank_audit_reversed ? -px : px;
-    if (!sand_chunk_pass_run(s, tx, -1, SAND_CHUNK_PASS_NO_STAMPS, equalise_gas_one_chunk, &gas_equalise_pass)) {
+    if (!sand_chunk_pass_run(s, SAND_SPLIT_GAS_SPREAD, tx, -1, SAND_CHUNK_PASS_NO_STAMPS, equalise_gas_one_chunk,
+                             &gas_equalise_pass)) {
         return false;
     }
 

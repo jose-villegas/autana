@@ -350,6 +350,17 @@ two_core_scope_end(two_core_scope_t scope) {
     sand_set_two_core_step(scope.before);
 }
 
+split_passes_scope_t
+split_passes_scope_begin(unsigned also) {
+    const split_passes_scope_t scope = {.before = sand_split_passes_for_test(sand_split_passes | also)};
+    return scope;
+}
+
+void
+split_passes_scope_end(split_passes_scope_t scope) {
+    (void)sand_split_passes_for_test(scope.before);
+}
+
 void*
 lane_scratch_open(sand_t* g) {
     void* scratch = malloc(sand_lane_scratch_bytes(g->w, g->h));

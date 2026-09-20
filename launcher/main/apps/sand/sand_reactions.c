@@ -2626,7 +2626,7 @@ react_run_split(sand_t* s) {
         react_pass.deferred[i] = (react_deferred_t*)lanes[i].defer;
         react_deferred_reset(react_pass.deferred[i]);
     }
-    if (!sand_chunk_pass_run(s, 0, -1, SAND_CHUNK_PASS_NO_STAMPS, react_one_chunk, &react_pass)) {
+    if (!sand_chunk_pass_run(s, SAND_SPLIT_REACTIONS, 0, -1, SAND_CHUNK_PASS_NO_STAMPS, react_one_chunk, &react_pass)) {
         react_pass.lanes = NULL;
         return false;
     }
@@ -2828,7 +2828,7 @@ reactions_rules_allow_split(const sand_t* s, bool soak_only) {
 
 static bool
 reactions_may_split(const sand_t* s, bool soak_only) {
-    return reactions_rules_allow_split(s, soak_only) && sand_chunk_pass_ready(s, 0, -1);
+    return reactions_rules_allow_split(s, soak_only) && sand_chunk_pass_ready(s, SAND_SPLIT_REACTIONS, 0, -1);
 }
 
 static bool

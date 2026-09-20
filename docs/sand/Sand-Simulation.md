@@ -1199,9 +1199,11 @@ update can touch another's, in cells:
 | Explosions (confined gas, lava bursts, fuse chains) and thrown debris (`step_impulses`) | queued, crosses many steps, effectively unbounded | no |
 
 The gravity sweep, both gas passes, liquid cross-flow and a reacting cell's
-own LOCAL rules have fixed cell reaches small enough to split. All cut the
-board into the same chunks and take them in the same schedule, ordered
-against each pass's own travel. A reaction's
+own LOCAL rules have fixed cell reaches small enough to split. All take the
+same schedule, ordered against each pass's own travel, and each is cut to the
+shape that travel wants. Whether a pass ships split is a separate question
+from whether it can be: cross-flow can, and does not - see "Liquid cross-flow
+chunks" below. A reaction's
 long-reach triggers, liquid density sorting and impulses remain serial:
 each long-reach trigger has an `_or_defer` gate at its call site that
 skips it while a chunk pass is running and lets a single serial
@@ -1373,6 +1375,21 @@ development overlay to draw; the seam overlay and its checkbox are gone.
 
 
 ### Liquid cross-flow chunks
+
+**The shipped step runs cross-flow on one core.** Measured on the board, its
+split takes 0.87-1.27 of its own serial walk - mostly over 1.0 - at every
+layout tried, while the gravity sweep takes 0.65-0.80. `sand_split_passes` is
+the mask that says so: one bit per splittable pass, `SAND_SPLIT_PASSES_SHIPPED`
+holding every bit but `SAND_SPLIT_CROSSFLOW`, asked in
+`sand_chunk_pass_ready()` beside the other gates. A mask rather than a named
+constant per pass because the round that produced these numbers measured
+per-pass time, so per-pass is the unit the next verdict will come in too, and
+because the shipped set then reads in one place. `sand_split_passes_for_test()`
+turns a bit on for a scope and hands back what it replaced.
+
+The split path below stays, and its tests turn the bit on explicitly: what the
+pass repeats per chunk is a row setup a serial walk does once per row, and
+removing that is what may turn the number round.
 
 Cross-flow takes the chunk grid on the same schedule the sweep does, with no
 guards of its own. Its travel direction is the ray mass moves along,

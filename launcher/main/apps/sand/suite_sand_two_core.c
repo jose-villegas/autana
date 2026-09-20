@@ -284,6 +284,7 @@ test_the_split_liquid_pass_ignores_how_its_lanes_interleave(void) {
     static const sand_chunk_pass_driver_t drivers[TC_DRIVERS] = {
         SAND_CHUNK_PASS_LANE0_EAGER, SAND_CHUNK_PASS_LANE1_EAGER, SAND_CHUNK_PASS_ALTERNATE};
     static const uint32_t seeds[] = {3u, 19u, 65521u};
+    const split_passes_scope_t crossflow = split_passes_scope_begin(SAND_SPLIT_CROSSFLOW);
 
     for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
         sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_SOLO);
@@ -303,6 +304,7 @@ test_the_split_liquid_pass_ignores_how_its_lanes_interleave(void) {
             TEST_ASSERT_EQUAL_HEX32_MESSAGE(solo, driven[d], why);
         }
     }
+    split_passes_scope_end(crossflow);
 }
 
 #ifdef DEVICE_BUILD
@@ -320,6 +322,7 @@ tc_no_op_job(void* ctx) {
 static void
 test_a_core_1_lane_lands_on_the_solo_board(void) {
     static const uint32_t seeds[] = {1u, 7u, 12345u};
+    const split_passes_scope_t crossflow = split_passes_scope_begin(SAND_SPLIT_CROSSFLOW);
 
     TEST_ASSERT_TRUE_MESSAGE(job_try_core1(tc_no_op_job, NULL, 0), "no core-1 worker to compare against");
     TEST_ASSERT_TRUE(job_wait(100));
@@ -341,6 +344,7 @@ test_a_core_1_lane_lands_on_the_solo_board(void) {
                  (unsigned)seeds[i]);
         TEST_ASSERT_EQUAL_HEX32_MESSAGE(solo_liquid, duo_liquid, why);
     }
+    split_passes_scope_end(crossflow);
 }
 #endif
 
