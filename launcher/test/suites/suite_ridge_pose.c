@@ -21,6 +21,14 @@
 #define REDRAW_STEP    100
 #define DT_MS          16u
 
+static const ridge_pose_params_t fixture_params = {
+    .hold_ms = HOLD_MS,
+    .tau_ms = TAU_MS,
+    .steady_step = STEADY_STEP,
+    .steady_hold_ms = STEADY_HOLD_MS,
+    .redraw_step = REDRAW_STEP,
+};
+
 static gfx_glow_pose_t
 normalized_pose(int32_t dx, int32_t dy) {
     const int64_t len = (int64_t)gfx_glow_isqrt((uint32_t)(dx * dx + dy * dy));
@@ -59,11 +67,12 @@ test_a_quarter_turn_arrives_and_stops(void) {
         .steady_level = target,
         .steady_ms = STEADY_HOLD_MS,
     };
+    ridge_pose_params_t params = fixture_params;
+    params.boot_pose = target;
     bool arrived = false;
     int frame = 0;
     for (; frame < 1000 && !arrived; frame++) {
-        arrived = ridge_pose_advance(&rp, DT_MS, HOLD_MS + 1, HOLD_MS, target, TAU_MS, STEADY_STEP, STEADY_HOLD_MS,
-                                     REDRAW_STEP);
+        arrived = ridge_pose_advance(&rp, &params, DT_MS, HOLD_MS + 1);
     }
     TEST_ASSERT_TRUE_MESSAGE(arrived, "never arrived");
     TEST_ASSERT_GREATER_THAN_INT(3, frame);
@@ -71,7 +80,7 @@ test_a_quarter_turn_arrives_and_stops(void) {
     TEST_ASSERT_EQUAL_INT32(target.down_y, rp.pose.down_y);
 
     for (int i = 0; i < 20; i++) {
-        ridge_pose_advance(&rp, DT_MS, HOLD_MS + 1, HOLD_MS, target, TAU_MS, STEADY_STEP, STEADY_HOLD_MS, REDRAW_STEP);
+        ridge_pose_advance(&rp, &params, DT_MS, HOLD_MS + 1);
         TEST_ASSERT_EQUAL_INT32(target.down_x, rp.pose.down_x);
         TEST_ASSERT_EQUAL_INT32(target.down_y, rp.pose.down_y);
     }
@@ -80,11 +89,12 @@ test_a_quarter_turn_arrives_and_stops(void) {
 static void
 assert_half_turn_between_exactly_opposed_poses_arrives(gfx_glow_pose_t start, gfx_glow_pose_t target) {
     ridge_pose_t rp = {.pose = start, .level = target, .steady_level = target, .steady_ms = STEADY_HOLD_MS};
+    ridge_pose_params_t params = fixture_params;
+    params.boot_pose = target;
     bool moved = false;
     bool arrived = false;
     for (int frame = 0; frame < 2000 && !arrived; frame++) {
-        arrived = ridge_pose_advance(&rp, DT_MS, HOLD_MS + 1, HOLD_MS, target, TAU_MS, STEADY_STEP, STEADY_HOLD_MS,
-                                     REDRAW_STEP);
+        arrived = ridge_pose_advance(&rp, &params, DT_MS, HOLD_MS + 1);
         moved = moved || rp.pose.down_x != start.down_x || rp.pose.down_y != start.down_y;
     }
     TEST_ASSERT_TRUE_MESSAGE(moved, "the opposed pose never turned");
@@ -106,16 +116,18 @@ test_the_pose_does_not_move_before_hold_ms_and_does_after(void) {
     const gfx_glow_pose_t boot_pose = normalized_pose(11585, 11585);
     const gfx_glow_pose_t level = (gfx_glow_pose_t){0, GFX_GLOW_POSE_ONE};
     ridge_pose_t rp = {.pose = boot_pose, .level = level, .steady_level = level, .steady_ms = STEADY_HOLD_MS};
+    ridge_pose_params_t params = fixture_params;
+    params.boot_pose = boot_pose;
 
     for (uint32_t alive = 0; alive < HOLD_MS; alive += DT_MS) {
-        ridge_pose_advance(&rp, DT_MS, alive, HOLD_MS, boot_pose, TAU_MS, STEADY_STEP, STEADY_HOLD_MS, REDRAW_STEP);
+        ridge_pose_advance(&rp, &params, DT_MS, alive);
         TEST_ASSERT_EQUAL_INT32(boot_pose.down_x, rp.pose.down_x);
         TEST_ASSERT_EQUAL_INT32(boot_pose.down_y, rp.pose.down_y);
     }
 
     bool moved = false;
     for (uint32_t alive = HOLD_MS; alive < HOLD_MS + 2000 && !moved; alive += DT_MS) {
-        ridge_pose_advance(&rp, DT_MS, alive, HOLD_MS, boot_pose, TAU_MS, STEADY_STEP, STEADY_HOLD_MS, REDRAW_STEP);
+        ridge_pose_advance(&rp, &params, DT_MS, alive);
         moved = rp.pose.down_x != boot_pose.down_x || rp.pose.down_y != boot_pose.down_y;
     }
     TEST_ASSERT_TRUE_MESSAGE(moved, "gravity never took hold after the boot hold");
@@ -142,10 +154,11 @@ test_once_steady_the_pose_is_exactly_the_target_not_merely_close(void) {
         .steady_level = target,
         .steady_ms = STEADY_HOLD_MS,
     };
+    ridge_pose_params_t params = fixture_params;
+    params.boot_pose = target;
     TEST_ASSERT_TRUE(rp.pose.down_x != target.down_x);
 
-    const bool arrived =
-        ridge_pose_advance(&rp, DT_MS, HOLD_MS + 1, HOLD_MS, target, TAU_MS, STEADY_STEP, STEADY_HOLD_MS, REDRAW_STEP);
+    const bool arrived = ridge_pose_advance(&rp, &params, DT_MS, HOLD_MS + 1);
     TEST_ASSERT_TRUE(arrived);
     TEST_ASSERT_EQUAL_INT32(target.down_x, rp.pose.down_x);
     TEST_ASSERT_EQUAL_INT32(target.down_y, rp.pose.down_y);
@@ -156,11 +169,12 @@ test_a_jittering_target_never_triggers_the_snap(void) {
     const gfx_glow_pose_t a = (gfx_glow_pose_t){GFX_GLOW_POSE_ONE, 0};
     const gfx_glow_pose_t b = (gfx_glow_pose_t){0, GFX_GLOW_POSE_ONE};
     ridge_pose_t rp = {.pose = a, .level = a, .steady_level = a, .steady_ms = 0};
+    ridge_pose_params_t params = fixture_params;
+    params.boot_pose = a;
     bool ever_arrived = false;
     for (int frame = 0; frame < 500; frame++) {
         rp.level = (frame % 2 == 0) ? a : b;
-        const bool arrived =
-            ridge_pose_advance(&rp, DT_MS, HOLD_MS + 1, HOLD_MS, a, TAU_MS, STEADY_STEP, STEADY_HOLD_MS, REDRAW_STEP);
+        const bool arrived = ridge_pose_advance(&rp, &params, DT_MS, HOLD_MS + 1);
         ever_arrived = ever_arrived || arrived;
     }
     TEST_ASSERT_FALSE_MESSAGE(ever_arrived, "a jittering target snapped anyway");
@@ -170,8 +184,10 @@ static void
 test_at_rest_with_a_steady_target_nothing_drifts(void) {
     const gfx_glow_pose_t target = normalized_pose(-9000, 5000);
     ridge_pose_t rp = {.pose = target, .level = target, .steady_level = target, .steady_ms = STEADY_HOLD_MS};
+    ridge_pose_params_t params = fixture_params;
+    params.boot_pose = target;
     for (int frame = 0; frame < 5000; frame++) {
-        ridge_pose_advance(&rp, DT_MS, HOLD_MS + 1, HOLD_MS, target, TAU_MS, STEADY_STEP, STEADY_HOLD_MS, REDRAW_STEP);
+        ridge_pose_advance(&rp, &params, DT_MS, HOLD_MS + 1);
         TEST_ASSERT_EQUAL_INT32(target.down_x, rp.pose.down_x);
         TEST_ASSERT_EQUAL_INT32(target.down_y, rp.pose.down_y);
     }

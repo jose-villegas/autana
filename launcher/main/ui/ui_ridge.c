@@ -337,9 +337,15 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     ridge->line.damping = spring_damping;
 
     ridge->alive_ms += dt_ms;
-    const bool arrived =
-        ridge_pose_advance(&ridge->attitude, dt_ms, ridge->alive_ms, (uint32_t)boot_hold_ms, POSE_LANDSCAPE,
-                           level_tau_ms, LEVEL_STEADY_STEP, LEVEL_STEADY_MS, POSE_REDRAW_STEP);
+    const ridge_pose_params_t pose_params = {
+        .boot_pose = POSE_LANDSCAPE,
+        .hold_ms = (uint32_t)boot_hold_ms,
+        .tau_ms = level_tau_ms,
+        .steady_step = LEVEL_STEADY_STEP,
+        .steady_hold_ms = LEVEL_STEADY_MS,
+        .redraw_step = POSE_REDRAW_STEP,
+    };
+    const bool arrived = ridge_pose_advance(&ridge->attitude, &pose_params, dt_ms, ridge->alive_ms);
 
     pluck_from_touch(input);
     pluck_from_shaking();

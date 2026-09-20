@@ -22,6 +22,16 @@ typedef struct {
     uint32_t steady_ms;
 } ridge_pose_t;
 
+/* What a caller decides once and the maths reads every frame. */
+typedef struct {
+    gfx_glow_pose_t boot_pose; /* held until hold_ms has passed */
+    uint32_t hold_ms;
+    int tau_ms;              /* how long the pose takes to cover about two thirds of a turn */
+    int steady_step;         /* a level within this of the last one counts as holding still, Q14 */
+    uint32_t steady_hold_ms; /* and for this long it has settled */
+    int redraw_step;         /* a pose within this of its target has arrived, Q14 */
+} ridge_pose_params_t;
+
 static inline bool
 ridge_pose_within(gfx_glow_pose_t a, gfx_glow_pose_t b, int step) {
     return abs(a.down_x - b.down_x) < step && abs(a.down_y - b.down_y) < step;
@@ -72,18 +82,17 @@ ridge_pose_ease(ridge_pose_t* rp, gfx_glow_pose_t target, uint32_t dt_ms, int ta
  * then the level down settled on once it has held within `steady_step` for
  * `steady_hold_ms` - so a resting line is not chasing sensor noise. */
 static inline gfx_glow_pose_t
-ridge_pose_target(ridge_pose_t* rp, uint32_t dt_ms, uint32_t alive_ms, uint32_t hold_ms, gfx_glow_pose_t boot_pose,
-                  int steady_step, uint32_t steady_hold_ms) {
-    if (alive_ms < hold_ms) {
-        return boot_pose;
+ridge_pose_target(ridge_pose_t* rp, const ridge_pose_params_t* params, uint32_t dt_ms, uint32_t alive_ms) {
+    if (alive_ms < params->hold_ms) {
+        return params->boot_pose;
     }
-    if (ridge_pose_within(rp->level, rp->steady_level, steady_step)) {
-        rp->steady_ms = rp->steady_ms < steady_hold_ms ? rp->steady_ms + dt_ms : steady_hold_ms;
+    if (ridge_pose_within(rp->level, rp->steady_level, params->steady_step)) {
+        rp->steady_ms = rp->steady_ms < params->steady_hold_ms ? rp->steady_ms + dt_ms : params->steady_hold_ms;
     } else {
         rp->steady_level = rp->level;
         rp->steady_ms = 0;
     }
-    return rp->steady_ms >= steady_hold_ms ? rp->steady_level : rp->level;
+    return rp->steady_ms >= params->steady_hold_ms ? rp->steady_level : rp->level;
 }
 
 /* One frame of `ridge_pose_target` then `ridge_pose_ease`, snapped to the
@@ -91,12 +100,11 @@ ridge_pose_target(ridge_pose_t* rp, uint32_t dt_ms, uint32_t alive_ms, uint32_t 
  * of it - easing never quite arriving would otherwise leave the line a
  * fraction of a degree off level forever. Returns whether it snapped. */
 static inline bool
-ridge_pose_advance(ridge_pose_t* rp, uint32_t dt_ms, uint32_t alive_ms, uint32_t hold_ms, gfx_glow_pose_t boot_pose,
-                   int tau_ms, int steady_step, uint32_t steady_hold_ms, int redraw_step) {
-    const gfx_glow_pose_t target =
-        ridge_pose_target(rp, dt_ms, alive_ms, hold_ms, boot_pose, steady_step, steady_hold_ms);
-    ridge_pose_ease(rp, target, dt_ms, tau_ms);
-    const bool arrived = rp->steady_ms >= steady_hold_ms && ridge_pose_within(rp->pose, target, redraw_step);
+ridge_pose_advance(ridge_pose_t* rp, const ridge_pose_params_t* params, uint32_t dt_ms, uint32_t alive_ms) {
+    const gfx_glow_pose_t target = ridge_pose_target(rp, params, dt_ms, alive_ms);
+    ridge_pose_ease(rp, target, dt_ms, params->tau_ms);
+    const bool arrived =
+        rp->steady_ms >= params->steady_hold_ms && ridge_pose_within(rp->pose, target, params->redraw_step);
     if (arrived) {
         rp->pose = target;
     }
