@@ -19,6 +19,7 @@
 
 #include "material_palette.h"
 #include "sand.h"
+#include "sand_priv.h" /* sand_chunk_share_t - a scope below pins it */
 
 /* Big enough for every case here, small enough to write out by hand. */
 #define W 8
@@ -104,6 +105,7 @@ extern sand_t wide;
 #define LAVA               CELL_MAKE(MAT_LAVA, 8)
 #define GLASS              CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT)
 #define SNOW               CELL_MAKE(MAT_SNOW, 8)
+#define ACID               CELL_MAKE(MAT_ACID, 8)
 
 /* Resets the default fixture (s/cells) via sand_init(). */
 void fixture(void);
@@ -207,3 +209,36 @@ typedef struct {
 
 two_core_scope_t two_core_scope_begin(bool two_core);
 void two_core_scope_end(two_core_scope_t scope);
+
+/* A pass the shipped step runs on one core has to be asked for by name, or a
+ * test of its split path steps the serial walk twice and compares it with
+ * itself. `also` is the SAND_SPLIT_* bits to add for the scope's span. The
+ * scope pins sharing on for the same reason: a fixture too quiet or too
+ * coarsely cut to fill two lanes is handed the serial walk otherwise. */
+typedef struct {
+    unsigned before;
+    sand_chunk_share_t share;
+} split_passes_scope_t;
+
+split_passes_scope_t split_passes_scope_begin(unsigned also);
+void split_passes_scope_end(split_passes_scope_t scope);
+
+/* Arms `g` with lane scratch big enough for its own grid and hands the
+ * block back for the caller to free. A two-core test without it measures
+ * the serial path - see sand_enable_lane_scratch(). */
+void* lane_scratch_open(sand_t* g);
+
+/* Everything app_sand.c's alloc_grid_bookkeeping() gives a shipped board -
+ * sleeping, dirty rows and columns, step stamps, lane scratch - against a
+ * grid already sand_init()ed. A timed fixture without the last two measures
+ * the serial path however many cores it asked for. What a scene is MADE of
+ * stays the caller's: that is each test's own statement.
+ *
+ * One board at a time, the rule `fx` follows. */
+void board_bookkeeping_open(sand_t* g);
+void board_bookkeeping_close(void);
+
+/* A lane whose join timed out is still inside the board, so a scene ending on
+ * one hands the next a core still writing into memory about to be freed and
+ * handed back. Waits it out before anything reads what it wrote. */
+void collect_core1_lane(void);

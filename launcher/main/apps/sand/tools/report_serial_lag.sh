@@ -3,10 +3,11 @@
 # Build and run serial_lag.c: how far a two-core step falls behind a serial
 # one, per scene, cell for cell.
 #
-# The split defers work at a stripe boundary; that only matters where serial
-# would have done something different in the same step. This prints that
-# difference, so a seam fix can be judged by whether the numbers fall rather
-# than by how a pour looks - see serial_lag.c's own top comment.
+# The split reorders work at a chunk boundary and defers every long-reach
+# trigger; that only matters where serial would have done something different
+# in the same step. This prints that difference, so a partition change can be
+# judged by whether the numbers fall rather than by how a pour looks - see
+# serial_lag.c's own top comment.
 #
 # Usage:
 #   main/apps/sand/tools/report_serial_lag.sh
@@ -56,6 +57,7 @@ OUT_BIN="$BUILD_DIR/serial_lag"
     "$SCRIPT_DIR/serial_lag.c" \
     "$MAIN_DIR/util/job.c" \
     "$SAND_DIR/sand.c" \
+    "$SAND_DIR/sand_chunk_sched.c" \
     "$SAND_DIR/sand_impulse.c" \
     "$SAND_DIR/sand_reactions.c" \
     "$SAND_DIR/sand_plants.c" \

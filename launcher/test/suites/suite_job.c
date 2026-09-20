@@ -1,10 +1,16 @@
 /* Portable suite: core-1 jobs execute inline on a host. */
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "suites.h"
 #include "unity.h"
 
 #include "util/job.h"
+
+#ifdef DEVICE_BUILD
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#endif
 
 typedef struct {
     int value;
@@ -84,12 +90,68 @@ test_the_context_limit_accepts_its_boundary_and_rejects_the_next_byte(void) {
     TEST_ASSERT_EQUAL_INT(1, job_test_calls);
 }
 
+#ifndef DEVICE_BUILD
+/* The contract a caller whose job blocks on the caller's own progress relies
+ * on: no core 1, no run at all. Inline is what it must never be. */
+static void
+test_a_host_try_refuses_rather_than_running_inline(void) {
+    job_test_calls = 0;
+
+    TEST_ASSERT_FALSE(job_try_core1(job_test_count, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0, job_test_calls);
+    TEST_ASSERT_TRUE(job_wait(0));
+}
+#endif
+
+#ifdef DEVICE_BUILD
+typedef struct {
+    volatile bool* finished;
+} job_slow_ctx_t;
+
+static void
+job_test_slow(void* ctx) {
+    const job_slow_ctx_t* const work = ctx;
+    vTaskDelay(pdMS_TO_TICKS(20));
+    *work->finished = true;
+}
+
+static void
+test_a_try_on_an_idle_worker_reaches_core_1(void) {
+    volatile bool finished = false;
+    const job_slow_ctx_t slow = {.finished = &finished};
+
+    TEST_ASSERT_TRUE(job_try_core1(job_test_slow, &slow, sizeof slow));
+    TEST_ASSERT_TRUE(job_wait(100));
+    TEST_ASSERT_TRUE(finished);
+}
+
+static void
+test_a_try_refuses_while_a_job_is_outstanding(void) {
+    volatile bool finished = false;
+    const job_slow_ctx_t slow = {.finished = &finished};
+
+    job_test_calls = 0;
+    TEST_ASSERT_TRUE(job_try_core1(job_test_slow, &slow, sizeof slow));
+    TEST_ASSERT_FALSE(job_try_core1(job_test_count, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0, job_test_calls);
+    TEST_ASSERT_TRUE(job_wait(100));
+    TEST_ASSERT_TRUE(finished);
+}
+#endif
+
 void
 suite_job(void) {
     RUN_TEST(test_a_host_job_runs_inline_and_waits);
     RUN_TEST(test_a_job_callback_cannot_change_the_callers_context);
     RUN_TEST(test_consecutive_host_jobs_run_inline);
     RUN_TEST(test_the_context_limit_accepts_its_boundary_and_rejects_the_next_byte);
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_a_host_try_refuses_rather_than_running_inline);
+#endif
+#ifdef DEVICE_BUILD
+    RUN_TEST(test_a_try_on_an_idle_worker_reaches_core_1);
+    RUN_TEST(test_a_try_refuses_while_a_job_is_outstanding);
+#endif
 }
 
 SUITE_REGISTER(suite_job)

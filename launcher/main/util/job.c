@@ -109,17 +109,10 @@ job_timeout_ticks(unsigned timeout_ms) {
     return timeout_ms != 0 && ticks == 0 ? 1 : ticks;
 }
 
-bool
-job_run_core1(job_fn_t fn, const void* ctx, size_t ctx_size) {
-    assert(fn != NULL);
-    assert(ctx != NULL || ctx_size == 0);
-    if (ctx_size > JOB_CTX_MAX) {
-        return false;
-    }
-
+static bool
+job_dispatch(job_fn_t fn, const void* ctx, size_t ctx_size) {
     if (!job_bring_up() || job_waits_for_core || !job_reap_finished()) {
-        job_call_inline(fn, ctx, ctx_size);
-        return true;
+        return false;
     }
 
     if (ctx_size != 0) {
@@ -130,6 +123,27 @@ job_run_core1(job_fn_t fn, const void* ctx, size_t ctx_size) {
     job_waits_for_core = true;
     xTaskNotifyGive(job_task_handle);
     return true;
+}
+
+bool
+job_run_core1(job_fn_t fn, const void* ctx, size_t ctx_size) {
+    assert(fn != NULL);
+    assert(ctx != NULL || ctx_size == 0);
+    if (ctx_size > JOB_CTX_MAX) {
+        return false;
+    }
+
+    if (!job_dispatch(fn, ctx, ctx_size)) {
+        job_call_inline(fn, ctx, ctx_size);
+    }
+    return true;
+}
+
+bool
+job_try_core1(job_fn_t fn, const void* ctx, size_t ctx_size) {
+    assert(fn != NULL);
+    assert(ctx != NULL || ctx_size == 0);
+    return ctx_size <= JOB_CTX_MAX && job_dispatch(fn, ctx, ctx_size);
 }
 
 bool
@@ -173,6 +187,14 @@ job_run_core1(job_fn_t fn, const void* ctx, size_t ctx_size) {
     }
     fn(copy);
     return true;
+}
+
+bool
+job_try_core1(job_fn_t fn, const void* ctx, size_t ctx_size) {
+    (void)fn;
+    (void)ctx;
+    (void)ctx_size;
+    return false;
 }
 
 bool

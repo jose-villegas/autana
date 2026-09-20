@@ -1157,7 +1157,7 @@ which is what the bitmask above avoids paying per cell. See
 [Optimization-Playbook.md](../notes/Optimization-Playbook.md#know-what-kind-of-memory-you-actually-have)
 for the cache sizes and the general lesson.
 
-## Two cores: a checkerboard sweep, and what stays serial
+## Two cores: chunk-parallel passes, and what stays serial
 
 The device's own `present()` overlaps with `sand_step()` on the other
 core already - see `docs/Launcher-Architecture.md`. Splitting the step
@@ -1190,205 +1190,348 @@ update can touch another's, in cells:
 | Main sweep (`step_one_grain`, `move_liquid_grain`) | 1 (Chebyshev - every move is one of the eight ring directions) | yes |
 | Liquid cross-flow (`equalise_liquids`, `find_shallowest`) | `SAND_LIQUID_SIGHT`, 8, along a ray that can run diagonally through several rows | yes; private wake and repaint state |
 | Gas walk (`gas_walk_once`) | 1, same shape as the sweep | yes; private wake and repaint state |
-| Reaction local rules (`step_one_reacting_row`'s burn/warm/tempered/crust/soak-dry/condense/acid-rain stages) | 1 | yes; private wake, repaint and content-flag state; growers on the board disable the split entirely (`reactions_may_split()`, `sand_reactions.c`) |
-| Gas cross-flow (`equalise_gas`) | `material_of(c)->sight`: 5-24 rows across fire (5), gas (16), steam (20), and smoke (24); stripes would need 24-row guards | no |
+| Reaction local rules (`step_one_reacting_row`'s burn/warm/tempered/crust/soak-dry/condense/acid-rain stages) | 1 | yes, and serial-exact - a reaction never relocates a cell; private wake, repaint and content-flag state; growers on the board disable the split entirely (`reactions_may_split()`, `sand_reactions.c`) |
+| Gas cross-flow (`equalise_gas`) | `material_of(c)->sight`: 5-24 cells across fire (5), gas (16), steam (20), and smoke (24) | only along a ray that stays in its own row - see below |
 | Heat conduction to a boiler (`try_heat_transform_given`'s `CONDUCT_REACH`) | 32, a directed walk, not a spread | no; queue-free - `sand_step_reaction_reach()` re-scans for every still-burning cell |
 | Chilling (`step_one_cold_cell`'s carry walk) and dissolving (acid) | `COLD_REACH`, and acid's own multi-cell backing check | no; same re-scan, left whole rather than split into a local half |
 | Glass crack flood | up to `CRACK_MAX`, 256 | no; a small fixed queue, drained by the reach pass |
 | Lava cool-off chain | up to `SAND_LAVA_COOLOFF_MAX_CHAIN`, 8 links, each an arbitrary further cell | no; same queue mechanism |
 | Explosions (confined gas, lava bursts, fuse chains) and thrown debris (`step_impulses`) | queued, crosses many steps, effectively unbounded | no |
 
-The gravity sweep, gas walk, liquid cross-flow and a reacting cell's own
-LOCAL rules have fixed cell reaches suitable for stripes, and now share the
-sweep's own stripe/guard layout rather than a second partitioning
-(`run_reaction_rows()`, `sand_reactions.c`). Gas cross-flow, a reaction's
+The gravity sweep, both gas passes, liquid cross-flow and a reacting cell's
+own LOCAL rules have fixed cell reaches small enough to split. All take the
+same schedule, ordered against each pass's own travel, and each is cut to the
+shape that travel wants. Whether a pass ships split is a separate question
+from whether it can be: cross-flow can, and does not - see "Liquid cross-flow
+chunks" below. A reaction's
 long-reach triggers, liquid density sorting and impulses remain serial:
 each long-reach trigger has an `_or_defer` gate at its call site that
-skips it while a stripe or guard row is running and lets a single serial
-pass pick it up once both phases have joined - either by re-scanning the
+skips it while a chunk pass is running and lets a single serial
+pass pick it up once the split passes have joined - either by re-scanning the
 board (conduct_heat, chilling, dissolving, all queue-free) or through one
 of a handful of small, cap-limited queues (cracks, cool-off chains, the
 three explosion triggers). See `sand_reactions.c`'s own comment on that
 split for why each was drawn where it was.
 
-Nothing a phase writes besides cells is shared between the two cores. Each
-stripe set works on a shadow of the board's bookkeeping - content flags,
-block wake state, dirty rows - joined after both cores return, the shape the
-gas and liquid splits use; a block is 32 rows tall, so two stripes on
-different cores always share block-state bytes, and an unguarded
-read-modify-write there loses wakes. The queues belong to a stripe set too,
-with a third set for the guard rows, and the reach pass drains all three
-merged in row-major order. Keyed by stripe set rather than by core, a full
-queue drops the same candidates whichever core ran which set, and the drain
-cannot see the order the cores happened to run in.
-`test_reaction_split_ignores_worker_order` holds that on a host, where the
-only ordering that can be varied is which worker owns which stripes.
+Nothing a lane writes besides cells is shared between the two cores. Each
+works through its own `sand_lane_t` view of the board's bookkeeping - content
+flags, block wake state, dirty rows - merged after both return; a block spans
+several chunks, so two lanes on different cores would otherwise share
+block-state bytes, and an unguarded read-modify-write there loses wakes. The
+deferred queues belong to a lane too, living in that lane's scratch, and the
+reach pass drains both merged in row-major order, the serial scan's own.
+Keyed by lane rather than by core, a full queue drops the same candidates
+whichever core ran which lane, and the drain cannot see the order the cores
+happened to run in.
+`test_every_deferred_reaction_effect_is_applied_exactly_once` loads both
+lanes' queues to nine tenths of a cap in one step and counts what comes out.
 
-### Stripes, not tiles
+### The chunks
 
-A 2-colour checkerboard of 2-D tiles was tried on paper first and
-rejected: tiles diagonal to each other share a corner, and a reach of
-even 1 cell can touch that corner from a same-coloured tile on the far
-side of it - exactly the class of bug Noita's own write-up (GDC 2019)
-solves with a 2x2, four-colour scheme and a per-cell "updated this frame"
-stamp.
+A chunk grid is derived from the cell grid and from the direction the pass
+being planned travels. `sand_chunk_travel_of()` puts a pass in one of two
+classes - travelling along x alone, or anything else - and
+`sand_chunk_table_sides()` gives a `(side_x, side_y)` pair per grid per class:
 
-Stripes avoid that specific problem outright: a row-stripe has exactly
-two neighbours, above and below, and colouring stripes by index means a
-stripe's only neighbours are always the opposite colour, so two
-same-coloured stripes are always a full stripe height apart - far past
-the sweep's 1-cell reach. That does *not* mean the split needs no
-boundary handling at all - see [The seam fix](#the-seam-fix) below for
-the one it does need.
+| grid | along x | anything else |
+|---|---|---|
+| ULTRA 184x224 | 92x17 | 47x17 |
+| HIGH 122x149 | 61x17 | 25x17 |
+| NORMAL 92x112 | 46x17 | 23x17 |
+| LOW 61x74 | 30x17 | 17x17 |
+| VERY LOW 46x56 | 23x17 | 17x17 |
 
-```
-gravity down; stripe height = ceil(grid height / 4), clamped to 17-32 rows;
-two phases, alternating colour, offset across the whole stripe every step
+The 17 is `SAND_CHUNK_SIDE_MIN`, `2 * SAND_LIQUID_SIGHT + 1`, so a chunk's
+interior always clears the furthest reach any splittable pass has. A grid not
+in the table - a test board - takes half its width along x and a quarter of it
+otherwise, one floor tall, clamped to the floor.
 
-  phase A (even stripes)     phase B (odd stripes)
-  ┌──────────────┐           ┌──────────────┐
-  │ stripe 0 (A) │  swept    │ stripe 0 (A) │  held
-  ├──────────────┤           ├──────────────┤
-  │ stripe 1 (B) │  held     │ stripe 1 (B) │  swept
-  ├──────────────┤           ├──────────────┤
-  │ stripe 2 (A) │  swept    │ stripe 2 (A) │  held
-  └──────────────┘           └──────────────┘
+The pairs are the board's own microseconds, two cores over one, geomean of
+five scenes, against the square cut each replaced: ULTRA 0.77 landscape and
+0.93 portrait against 1.00 and 0.94 for 45x45, HIGH 0.81 and 0.88 against 1.02
+and 0.96 for 30x30, NORMAL 0.85 and 0.97 against 1.03 and 0.98 for 22x22. A
+step travelling along x wants chunks long across x and every other travel is
+slower on that shape, which is why the two classes exist at all: ULTRA's 92x17
+is 0.77 of serial in landscape and 1.19 in portrait.
 
-  same-coloured stripes are never adjacent, so a 1-cell
-  reach from one can never touch another being swept at once
-```
+A pass whose travel encodes scan order rather than motion - gas spread's
+`(px, -1)`, a reaction pass's `(0, -1)` - falls in the second class, because
+`sand_chunk_travel_of()` reads the y component alone. That is the conservative
+answer: neither pass has been measured apart from the sweep, and the second
+class is the shape the measured passes lose least on.
 
-`sand_stripe_height()` derives one height shared by the sweep, liquid
-cross-flow and gas walk. It targets four stripes, clamps the result to
-17-32 rows, and so keeps an interior beyond liquid cross-flow's two
-8-row guards. Within a phase, half the stripes run on a task pinned to
-core 1, the rest on the caller's own core, joining before the next phase
-starts - which stripe goes to which core does not matter, since none of
-them touch each other.
+The plan is rebuilt per pass, so one landscape step cuts its gravity sweep
+92x17 and its gas spread 47x17. Step stamps are armed with the sides of the
+plan the arming pass runs on, and cleared when it ends, so a mark can never be
+read under a cut it was not written under.
 
-`sand_stripe_offset()` hashes the seed and step phase into the full stripe
-height. That spreads guard rows across the stripe instead of repeatedly
-stalling the same screen rows, and `suite_sand_two_core.c` checks that the
-result visits the full range.
+Below `SAND_CHUNK_SPLIT_MIN_CELLS`, NORMAL's own grid, the shipped step keeps
+every pass on one core: LOW's 61x74 measured 1.04-1.32 of a serial step on the
+board and VERY LOW's 46x56 1.27-1.32, at every cut tried. `sand_chunk_pass_ready()`
+is where that is asked, so no pass can miss it.
 
-Grids yielding fewer than four stripes run the sweep on one core: a
-checkerboard phase needs two same-coloured stripes to divide work between
-the cores.
+`sand_chunk_plan()` takes a side per axis rather than one square side, and
+`sand_chunk_side_for_test()` overrides either (0 keeps the table's side for
+that axis, a side under the floor is refused) so a measurement can rank
+layouts. A forced side also carries a board past the floor above, which is
+what lets the seam tests keep running on the small grids. A cut the grid
+cannot take - one chunk on an axis, or more than
+`SAND_CHUNKS_MAX` - falls back to one lane, whichever chose it. The host
+pre-filter (`main/apps/sand/tools/report_chunk_layout.sh`) ranks candidates by
+how evenly they divide a board's work before any of them is timed; see
+[`Testing-Sand.md`](Testing-Sand.md#the-chunk-layout-sweep) for the sweep
+and how to rerun it.
 
-### The seam fix
+`blocks_settled_over()` is the one skip every chunk pass shares. A chunk
+whose covering blocks all carry the step's settled bit is dropped before any
+per-row setup, reusing the block-sleeping state the serial sweep already
+keeps rather than tracking anything second.
 
-The serial sweep's no-double-move guarantee rests on one property: every
-row's possible destinations were already visited this step, so a grain
-that lands there is never picked up again. On a liquid-free horizontal
-sweep, the row direction and permitted diagonal alternate each step so the
-permitted destination has passed. That property is per **grid**, not per
-stripe - a stripe boundary sits inside it, not outside it.
+### Whether a pass is shared at all
 
-Two adjacent stripes are always different colours, so one of a stripe's
-two neighbours belongs to whichever phase runs second - and a move that
-crosses into that neighbour's boundary row lands somewhere that phase has
-not swept yet. Once it does, it finds the just-arrived grain sitting
-there and moves it again: two cells in one step, at roughly half of every
-seam, every step.
+The same question answers whether a pass is worth splitting in the first
+place. `sand_chunk_pass_ready()` charges each chunk of that pass's plan the
+cells it covers, or nothing where `blocks_settled_over()` says it is asleep,
+and feeds those to `sand_chunk_makespan()` - the runner's own rule with a
+number in place of the work. A pass is shared only when two things hold:
 
-`run_sweep_stripes()` excludes both boundary rows of every stripe from
-the phases entirely - `step_one_grain()`'s reach is exactly one cell, so
-a boundary row is the only one a move could reach past a stripe's edge,
-and excluding it removes the crossing outright.
+- at least `SAND_CHUNK_SPLIT_MIN_AWAKE_CELLS` are awake, because the
+  prepare, merge, dispatch and join are paid whatever the lanes find: a
+  settled board steps in 95 us serial and 148 split at ULTRA, 56 and 110 at
+  HIGH, 39 and 109 at NORMAL;
+- and the modelled two-lane span comes in under
+  `SAND_CHUNK_SPLIT_SPAN_SHARE_PERCENT` of walking those chunks one after
+  another, because the chunk walk itself costs 1.09 to 1.28 of the row-major
+  sweep before either lane has done anything.
 
-That alone is not the whole fix: an interior row directly beside a guard
-row is still swept **during** its own phase, using the guard row's state
-from before that phase ran. In an unstriped sweep the guard row would
-already have had its own turn by then; here it has not, so a grain that
-the interior row pushes into the guard row gets a second, unwanted move
-once the guard pass finally reaches it.
+Under either, the pass takes its serial row-major path - not a one-lane walk
+of the schedule, which would pay the chunk order for nothing. The model
+agrees with the board on the shape of the answer: a two-column cut across a
+y-travelling pass spans 100 per cent, and that cut measured 1.19 of one core
+in portrait, while every cut that models about 50 per cent measured a win.
 
-The guard pass fixes this by snapshotting every guard row's content before
-either phase runs, then comparing: a column that still matches its
-snapshot got no phase-time write and takes its ordinary turn; a column
-that changed already moved once this step, via the interior row beside it,
-and is skipped. That removes the double-move without needing the two
-guard rows' exact place relative to every other boundary in the grid.
+Both conditions are a pure function of block state at the pass's start, so
+the host and the board decide alike and so does either core.
+`sand_chunk_share_for_test()` pins the decision either way, which is how a
+test that means to measure the split path says so; `sand_split_dispatches`
+counts the passes that were actually shared, one counter per pass, which is
+how it checks it was heard and which pass heard it.
 
-Exact serial order is, in fact, provably out of reach for a plain
-two-phase split once three or more stripes are active: tracing the
-dependency chain across two adjacent boundaries shows a middle stripe
-needs to run before the top stripe at one boundary and after the bottom
-stripe at the other - but the top and bottom stripes share a colour and
-are meant to run as a single phase.
+### The schedule: downstream chunks first
 
-No reordering of "all of colour A, then all of colour B" satisfies both
-constraints at once. The per-seam moved stamp above sidesteps the
-contradiction rather than solving it: a safety fix, not an
-order-equivalence one.
+Every split pass ranks the chunks
+into one total order, through the one runner `sand_chunk_pass_run()` (`sand.c`) that
+a pass hands only its travel direction, a per-chunk function and its own
+state. `sand_chunk_order()` (`sand_chunk_sched.[ch]`) counts from the
+downstream end of that direction, so the chunk holding a move's destination is
+settled by the time the source chunk runs - the same reason a serial pass runs
+against travel, one level up. Within a line across travel, the shape a pile or
+pool surface takes, it alternates by the line index's parity: no move crosses
+a border inside such a line, so alternating is what lets both lanes work it
+instead of queueing on one chain.
 
-What that buys, and what it doesn't. `suite_sand_two_core.c` places a
-lone grain exactly on a seam, under all four axis-aligned gravity
-directions and both stripe offsets, and checks it travels exactly one
-cell in one step, an open fall and a slide alike - and, with scatter
-forced to zero, that this matches the serial path's own fall distance
-exactly. That case has nothing else nearby to contend with, so the guard
-pass's snapshot always matches and the fix is exact.
+Two lanes walk that order, lane 0 from position 0 and lane 1 from position 1,
+each advancing by two. A chunk waits until every 8-neighbour ranked ahead of
+it is done, so any two chunks that can reach one cell are sequenced and the
+board equals a single-threaded walk of the order whatever the timing was. A
+chunk's lane is its POSITION's parity, never the core that reaches it, so one
+thread walking the order produces the bytes two threads do. Four hand-driven
+interleavings (`sand_chunk_pass_set_driver_for_test()`) are what a test uses
+to hold both passes to that.
 
-A dense column or pile crossing several boundaries at once is different:
-the same scatter-zero comparison on a full falling column and a settling
-slab shows the two paths' final boards are **not** byte-identical once a
-contested chain spans more than one seam - exactly the scenario the
-dependency-chain argument above rules out.
+Each lane works through its own `sand_t` view - shared cells, private block
+flags and dirty spans in caller-owned lane scratch - merged at the join. A
+board with no lane scratch, or one `sand_chunk_plan()` cannot cut into at
+least two chunks each way, stays serial.
 
-What the guard pass still guarantees there, and what the suite checks
-instead, is that the grain count never drifts: nothing is duplicated or
-dropped, only reordered by up to the width of a stripe boundary.
+A lane that polls past `CHUNK_PASS_SPIN_LIMIT` without its next chunk coming free
+gives up where it is and the caller finishes the board; that costs the step
+its second core and nothing else. A join that times out is different: core 1
+is still inside a chunk, so the remaining chunks are left for the next step
+rather than risk two threads in neighbouring ones. A development build counts
+those steps in `sand_t.split_lane_aborts`.
 
-A development build carries an overlay that draws exactly what the guard
-pass above decided: every guard row this step used is tinted blue, and
-every column it skipped because a phase already wrote through it (`sand.h`'s
-`sand_seam_guard_row_count()`/`sand_seam_guard_row()`/`sand_seam_stalled()`/
-`sand_seam_stall_count()`) is marked red on top, with a running stall count
-drawn in the corner. Off by default; the sand app's own boot menu has a
-"show seam stalls" checkbox under `CONFIG_LAUNCHER_DEVELOPMENT` to turn it
-on for the current visit.
+### What a pass boundary still costs
 
-### Liquid cross-flow stripes
+A fixed colouring of the chunks - every chunk taking a pass number from its
+own coordinates, no two touching chunks in one pass - was tried and cannot
+give exact serial order. The serial sweep's no-double-move guarantee rests
+on every possible destination having been visited already; a chunk's
+gravity-ward neighbour belongs to another colour, and for half the
+boundaries that colour runs later. Tracing the dependency both ways across
+two adjacent boundaries gives a contradiction: no order of "all of one
+colour, then all of the next" satisfies both. Ranking the chunks by travel
+is what buys the sweep that guarantee back.
 
-Cross-flow uses the shared derived stripe height, with 8 guard rows on each
-side of every internal boundary. The guard width matches
-`SAND_LIQUID_SIGHT`, the furthest a cell can read or transfer in one pass.
-The offset is shared with the main sweep. Boards yielding fewer than four
-stripes, and scratch allocation failures, fall back to the serial order.
+A grain that crosses into a chunk whose pass has not run would be picked up
+once more there, and at a chunk corner handed on twice - three cells in the
+step where serial moves it one. The **step stamp**
+stops that, the per-cell "moved this frame" mark Noita uses: one bit per
+cell (`sand_enable_step_stamps()`, caller-owned beside the settled blocks,
+a byte per eight cells of a row). A pass that asks for stamps marks the
+destination of every move that leaves its chunk, and skips a stamped cell
+rather than picking it up. A pass whose own travel order already rules out
+a second move asks for none.
 
-A cell reads or transfers at most 8 rows away, but the bookkeeping
-around it reaches further: depth-repaint marks extend another 24 rows
-from a destination, and block wakes clear settled flags across a 3x3
-neighbourhood. Those writes exceed the cell guards, so each worker owns a
-private copy of the block flags, dirty spans, and its own movement and
-probe counters, merged back in at the join.
+Only a crossing is stamped, and only the mover. Inside a chunk the pass's
+own sweep order already holds a grain to one move, exactly as serial does,
+so within-chunk behaviour is serial's; a cell a mover displaces - water
+lifted by sinking sand - is never stamped, and keeps its own move. Stamps
+last one PASS, not one step: serial lets cross-flow move a cell the sweep
+just moved, so each pass clears its bits (one `memset`, and only if it set
+any) before the next arms. A serial pass never reads or writes a bit - the
+buffer is only reachable through `stamps_live`, which is set for exactly
+the span of a chunk pass.
 
-An arrival bitmap prevents the guard pass from forwarding mass a cell
-only just received during the phase it ran in. Isolated seam transfers
-are serial-exact; contested pools can redistribute differently between
-the two paths and are checked instead for exact mass conservation,
-deterministic output, and no persistent seam jumps.
+What remains is ordering, not double moves: a chunk pass reads a board its
+serial counterpart had already moved differently, so dense scenes still
+differ from serial (`tools/report_serial_lag.sh`). Nothing is duplicated or
+dropped: a move is a swap, and the grain count is exact.
+
+`suite_sand_two_core.c` holds the single move directly: a lone grain of sand
+or water falls exactly one cell, and a forced slide at most one, both sides
+of every chunk-row boundary under the four axis gravities, and around every
+interior chunk corner under all eight. At every smaller quality the same
+seams and corners must match a serial step board for board. A solid body of
+sand or water wide enough to straddle a chunk border on both axes must still
+fill its own bounding box after every step of a free fall, under all eight
+gravities, and the serial path passes that same check. The board a split
+sweep lands on, and the board a mostly-liquid scene lands on, are both held
+identical across four hand-driven lane interleavings.
+The dense-column and settling-slab scenes are checked for grain conservation
+and for a settled pile showing no occupancy outlier at a boundary. Each split
+arm pins the share on and checks that the sweep's own dispatch counter rose:
+an arm that named itself split and then swept serially would agree with the
+serial arm for the wrong reason.
+
+There is no development overlay for chunk boundaries: nothing stalls at one,
+so there would be nothing to draw.
+
+
+### Liquid cross-flow chunks
+
+**The shipped step runs cross-flow on one core.** Measured on the board, its
+split takes 0.87-1.27 of its own serial walk - mostly over 1.0 - at every
+layout tried, while the gravity sweep takes 0.65-0.80. `sand_split_passes` is
+the mask that says so: one bit per splittable pass, `SAND_SPLIT_PASSES_SHIPPED`
+holding every bit but `SAND_SPLIT_CROSSFLOW`, asked in
+`sand_chunk_pass_ready()` beside the other gates. A mask rather than a named
+constant per pass because the round that produced these numbers measured
+per-pass time, so per-pass is the unit the next verdict will come in too, and
+because the shipped set then reads in one place. `sand_split_passes_for_test()`
+turns a bit on for a scope and hands back what it replaced.
+
+The split path below stays, and its tests turn the bit on explicitly: what the
+pass repeats per chunk is a row setup a serial walk does once per row, and
+removing that is what may turn the number round.
+
+Cross-flow takes the chunk grid on the same schedule the sweep does, with no
+guards of its own. Its travel direction is the ray mass moves along,
+`xflow_t.dg`: a cell gives only toward `+ray`, at most `SAND_LIQUID_SIGHT`
+cells, and both rays a cell can pick run along one or both of `dg`'s own
+signs, so an order counted from the `dg` end puts every possible recipient in
+a chunk already finished. `SAND_CHUNK_SIDE_MIN` is `2 * SAND_LIQUID_SIGHT + 1`
+precisely so a chunk's interior clears the furthest a cell can read or
+transfer, which makes a reach out of a chunk land in an adjacent one - the
+8-neighbourhood the schedule sequences. Boards with no lane scratch, and
+boards `sand_chunk_plan()` cannot cut into at least two chunks each way, fall
+back to the serial order.
+
+A cell reads or transfers at most 8 cells away, but the bookkeeping around it
+reaches further: depth-repaint marks extend another 24 rows from a
+destination, and block wakes clear settled flags across a 3x3 neighbourhood.
+Those writes exceed a chunk, so each worker owns a private copy of the block
+flags and dirty spans, plus its own movement and probe counters, merged back
+in at the join.
+
+That private copy lives in caller-owned lane scratch, sized by
+`sand_lane_scratch_bytes()` and handed over once by
+`sand_enable_lane_scratch()`: a pass in the frame loop allocates nothing, and
+nothing a late core-1 half writes through can have been freed under it.
+
+The flow that crosses rows - gravity mostly sideways - splits like any
+other. A partition banded along one axis has no order that keeps source
+before destination for it; a chunk is bounded on both axes and needs none.
+
+Liquids move mass, not cells, and a transfer can merge into mass already
+there, so a cell holds no record of which part of its mass arrived. Nothing
+needs one: the recipient's chunk is finished, so it cannot forward what it
+was given, and no arrival is marked at all.
+
+`suite_sand_crossflow.c` counts what that rests on - a transfer landing in a
+chunk ranked after the giver's, over rotating gravity and several seeded
+pools, which must stay at zero. It also steps an isolated transfer near a
+boundary in all eight ray directions and requires the split board to match
+serial cell for cell, repaint for repaint and wake for wake; and it levels a
+line of liquid laid along each of the eight rays across several chunk
+borders, which must end with no step of more than one mass unit anywhere and
+with the same masses serial reaches. Pools are checked for conservation and
+determinism.
 
 `tools/report_crossflow.sh` measures the liquid pass on host using the
 shared water-slope and submerged-pile builders; every other pass stays
 serial in that comparison, and the host worker itself dispatches inline,
 so its timings measure overhead and changed work, not multicore speedup.
 The device perf suite enables splitting for its own liquid tables;
-`pass_us.liquid_us` there includes both phases, joins, metadata merges and
-guards together.
+`pass_us.liquid_us` there includes every pass, join and metadata merge.
 
-### Gas walk stripes
+### Gas chunks
 
-The gas walk uses the shared checkerboard and one guard row on each side of a
-boundary. Gas rises, so its row order is the gravity sweep's mirror: for
-ordinary downward gravity the guard above a boundary runs before the one
-below it. A pre-phase snapshot keeps a gas received at the seam from taking
-a second turn in the guard pass.
+Both gas sub-passes take the same ranked schedule the sweep and cross-flow
+do, each handing `sand_chunk_pass_run()` its own travel direction.
 
-Block wakes and dirty spans extend beyond that one-cell guard, so both workers
-write private copies and merge them after each phase. Boards yielding fewer
-than four stripes and scratch allocation failures retain the serial walk.
+The walk travels the rise direction, which is the gravity sweep's mirror, and
+reaches one cell. That is not the whole of what it does: a draw also goes
+sideways or downstream-ward, into a chunk the order has yet to run, so this
+pass keeps the arrival marks. A grain that crosses a chunk border moves once;
+serial, with no marks, re-picks a grain that walks against its own row order,
+so the two are not cell-for-cell comparable and nothing asks them to be. What
+`suite_sand_two_core.c` does ask is that a packed run of gas in a one-cell
+stone shaft - where the only draw with anywhere to go is the straight rise -
+advances exactly as serial advances it, under each axis pull and over a sweep
+of step phases.
+
+The spread reaches much further, up to the widest `sight` of 24 cells along
+the perpendicular ray, and splits only while that ray stays inside its own
+row. Its travel is the ray, so a hop lands in a chunk already finished - and
+since 24 cells can clear a whole chunk, in the one two along as well, which
+is finished for the same reason: a chunk waits only on chunks further
+downstream, and every chunk upstream waits, through its own neighbour, on the
+running one. So this pass marks no arrivals. `sand_gas_late_arrivals` counts
+what they would have caught, over eight gravities and several seeds, and
+stays at zero; built against the ray instead, the same scenes move it.
+
+Its travel carries a second component, and it is not where anything moves: a
+cell asks whether the one rise-ward of it is free, and the pass reads rows in
+ascending order whatever the gravity, so the row above has to be settled
+first. An order built on the ray alone splits a chunk column by parity and
+reverses that for half of them, which a seam test catches.
+
+The row map the walk hands the spread is one word-addressed bitmap with no
+lane-private copy, so a split walk turns it off rather than lose bits where
+two lanes arm rows that share a word; the spread then walks every row.
+
+A ray that crosses rows runs serially rather than widening the chunk side for
+the rarest case. Block wakes and dirty spans reach beyond a chunk, so each
+lane writes private copies in the same lane scratch the liquid pass uses and
+merges them at the join. Boards with no lane scratch, and boards
+`sand_chunk_plan()` cannot cut, retain the serial walk.
+
+### Reaction chunks
+
+A reaction reads and writes one cell away and never relocates a cell, so its
+local rules take the schedule with nothing added: no guards, no snapshot, no
+arrival marks. Travel is the serial scan's own row-ascending order rather
+than a direction anything moves in. That makes it the one split pass still
+exact against the serial order, which `suite_sand_two_core.c` checks on a
+zero-randomness fire chain.
+
+Growers and drinkers disable the split outright - `find_water()` reaches
+tens of cells, far past the one a chunk's halo covers, and every plant stage
+still draws from the sequential stream - and the narrower soak-only walk is
+left serial. The gate reads the board's material mask BEFORE the pass clears
+it, which is the only point in the step where the mask still describes what
+is actually there.
 
 ### The draw
 
