@@ -2831,6 +2831,11 @@ reactions_may_split(const sand_t* s, bool soak_only) {
     return reactions_rules_allow_split(s, soak_only) && sand_chunk_pass_ready(s);
 }
 
+static bool
+reactions_hash_serial(const sand_t* s, bool soak_only) {
+    return sand_rng_forced_hashed() && reactions_rules_allow_split(s, soak_only);
+}
+
 static unsigned
 react_pass_close(void) {
     unsigned found = 0;
@@ -2945,7 +2950,7 @@ sand_step_reactions(sand_t* s) {
                            && (s->may_have_materials & drinker_mask()) == 0 && s->block_state != NULL;
     sand_reactions_last_was_soak_only = soak_only;
     const bool may_split = reactions_may_split(s, soak_only);
-    const bool hash_serial = sand_rng_forced_hashed() && reactions_rules_allow_split(s, soak_only);
+    const bool hash_serial = reactions_hash_serial(s, soak_only);
     if (soak_only) {
         refresh_moisture_blocks(s);
     }

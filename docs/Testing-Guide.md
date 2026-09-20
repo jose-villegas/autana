@@ -406,21 +406,25 @@ measurement, in two stages.
 
 ```sh
 ./launcher/main/apps/sand/tools/report_chunk_layout.sh   # host, ~15 s
-.dev/scripts/qemu-sweep.sh --instances 5                 # five QEMU, ~3 min
+.dev/scripts/qemu-sweep.sh --instances 5                 # one QEMU per quality
 ```
 
 The first runs every quality grid, scene, gravity class and legal side pair
 through the real split path on one lane, charges each chunk the cells its
 passes dispatched, and feeds those to the scheduler's own two-lane span. It
-exists to keep the second stage small: it shortlists at most four side pairs
-per quality.
+exists to keep the second stage small, by shortlisting a handful of side
+pairs per quality; a later round's list comes from the previous round's own
+measurements instead.
 
 The second builds one perf-scope image and runs one QEMU instance per
 quality against it, each with its own `--workdir` — the flash image, the
 eFuse file and the console log all live there, and the build directory is
-only read. Every cell is measured three ways: the plain serial walk, the
-same chunk order walked by one thread, and the real two-lane split. Five
-instances take about three minutes against six on one, and five is well
+only read. Every cell is measured four ways: the plain serial walk, that
+same walk drawing the split's per-cell hash, the chunk order walked by one
+thread, and the real two-lane split. Each line carries the step broken down
+by pass, and each quality opens with a `CHUNK_SWEEP_FLOOR` line — a settled
+board stepped serial against split, which is what involving the second core
+costs before any work is handed to it. One instance per quality is well
 short of what the machine has for a reason: it is somebody's desktop.
 
 Neither stage produces milliseconds. The host stage ranks how evenly a
