@@ -204,10 +204,11 @@ void gfx_line_ex(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned fla
 void gfx_glow_curve(const int16_t* y_q4, int count, int x0, int x1, int quarter_turns, int erase_px,
                     const gfx_glow_style_t* style);
 
-/* The same curve at any angle - see gfx_glow.h for a pose, a field and
- * `trail`. `lit_lo`/`lit_hi` are GFX_HEIGHT long and the caller's. */
-void gfx_glow_curve_posed(const gfx_glow_field_t* field, int view_h, gfx_glow_pose_t pose, int16_t* lit_lo,
-                          int16_t* lit_hi, int trail, const gfx_glow_style_t* style);
+/* The same curve at any angle - see gfx_glow.h for a pose, a field, a map
+ * and `trail`. `map` may be NULL. `lit_lo`/`lit_hi` are GFX_HEIGHT long and
+ * the caller's. */
+void gfx_glow_curve_posed(const gfx_glow_field_t* field, const gfx_glow_map_t* map, int view_h, gfx_glow_pose_t pose,
+                          int16_t* lit_lo, int16_t* lit_hi, int trail, const gfx_glow_style_t* style);
 
 /* Draws at GFX_GLYPH_SCALE - the size the UI is laid out around. */
 void gfx_text(int x, int y, const char* text, gfx_color_t color);

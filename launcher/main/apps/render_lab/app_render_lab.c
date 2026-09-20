@@ -11,6 +11,7 @@
  */
 
 #include <stdint.h>
+#include <string.h>
 
 #include "../../app.h"
 #include "../../gfx/gfx.h"
@@ -26,20 +27,32 @@ extern const render_lab_scene_t scene_wire_plane;
 extern const render_lab_scene_t scene_wire_cube;
 extern const render_lab_scene_t scene_wire_sphere;
 extern const render_lab_scene_t scene_wire_capsule;
+extern const render_lab_scene_t scene_raytrace;
 bool render_lab_partial_updates = true;
 
 static const render_lab_scene_t* const scenes[] = {
-    &scene_cube, &scene_wire_plane, &scene_wire_cube, &scene_wire_sphere, &scene_wire_capsule,
+    &scene_cube, &scene_wire_plane, &scene_wire_cube, &scene_wire_sphere, &scene_wire_capsule, &scene_raytrace,
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
 
-/* current_scene_index's own re-entry seed - 0 (the cube) by default. Set
- * directly by wire_render_host.c to start on a chosen scene with no menu
- * interaction, and kept in sync by the scene-cycle button below so a normal
- * re-entry still resumes wherever the user left it. Read only at enter(),
- * the same contract render_lab_band_mode below documents. */
-int render_lab_start_scene_index;
+/* current_scene_index's own re-entry seed, a scene's key - NULL (the cube)
+ * by default. Read only at enter(), the same contract render_lab_band_mode
+ * below documents. */
+const char* render_lab_start_scene_key;
+
+/* Unknown or unset resolves to the first scene, never a hard error. */
+static int
+scene_index_for_key(const char* key) {
+    if (key != NULL) {
+        for (int i = 0; i < SCENE_COUNT; i++) {
+            if (strcmp(scenes[i]->key, key) == 0) {
+                return i;
+            }
+        }
+    }
+    return 0;
+}
 
 static const render_lab_scene_t*
 current_scene(void) {
@@ -51,6 +64,11 @@ current_scene(void) {
  * suite_cube_band_perf.c. Read only at enter(), so flipping it mid-visit
  * needs a re-entry to take hold. */
 bool render_lab_band_mode = true;
+
+/* Hides the fps/title overlay draw_fps() builds - on by default. A render
+ * host pin needs it off: the fps line is a double formatted with "%.1f",
+ * which a pin cannot rely on across compilers. Read every frame. */
+bool render_lab_show_hud = true;
 
 /* -1 (default) leaves the fps box at its corner inset. Any other value pins
  * the box's own logical x there instead - a test-only hook
@@ -80,6 +98,11 @@ scene_title_alpha(void) {
 static bool menu_open;
 static render_lab_mode_switch_t mode_switch;
 
+/* A scene change can change the layout, and the menu that asks for one runs
+ * mid-frame, with a band frame possibly about to begin - so it is taken at
+ * the top of the next frame, as the layout toggle is. */
+static bool scene_switch_pending;
+
 /* What gfx actually granted at enter() - not simply render_lab_band_mode,
  * which is only the request: gfx falls back to GFX_LAYOUT_FULL_FB if the
  * band ring fails to allocate, and render_lab_frame() has to follow the
@@ -102,10 +125,14 @@ static double fps_value;
  * why that forces a full clear rather than a partial one. */
 static uint32_t last_layout_generation;
 
+/* current_scene_index must already name the scene about to run: a scene
+ * with needs_full_framebuffer set (render_lab_scene.h) overrides
+ * render_lab_band_mode, so the request depends on which scene this is. */
 static void
 enter_layout(void) {
+    const bool bands = render_lab_band_mode && !current_scene()->needs_full_framebuffer;
     const gfx_mode_request_t mode_request = {
-        .layout = render_lab_band_mode ? GFX_LAYOUT_BANDS : GFX_LAYOUT_FULL_FB,
+        .layout = bands ? GFX_LAYOUT_BANDS : GFX_LAYOUT_FULL_FB,
         .resolution = GFX_RESOLUTION_FULL,
         .interlace_x = false,
         .interlace_y = false,
@@ -119,8 +146,8 @@ enter_layout(void) {
 
 void
 render_lab_enter(void) {
+    current_scene_index = scene_index_for_key(render_lab_start_scene_key);
     enter_layout();
-    current_scene_index = render_lab_start_scene_index;
     current_scene()->enter();
     scene_title_remaining_ms = SCENE_TITLE_MS;
 
@@ -135,6 +162,7 @@ render_lab_enter(void) {
      * since last frame" on the very first frame back here. */
     menu_open = false;
     mode_switch.pending = false;
+    scene_switch_pending = false;
     last_layout_generation = ui_layout_generation();
 }
 
@@ -144,6 +172,16 @@ switch_layout(void) {
     gfx_mode_exit();
     enter_layout();
     ui_invalidate();
+}
+
+static void
+switch_to_next_scene(void) {
+    current_scene()->exit();
+    current_scene_index = (current_scene_index + 1) % SCENE_COUNT;
+    render_lab_start_scene_key = current_scene()->key; /* keeps a later re-entry on this same scene */
+    switch_layout(); /* the new scene's needs_full_framebuffer may differ from the old one's */
+    current_scene()->enter();
+    scene_title_remaining_ms = SCENE_TITLE_MS;
 }
 
 /* The persistent HUD: the scene and, over it, the fps line - nothing else
@@ -205,19 +243,15 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
          * resets the partial clear cache. */
         gfx_invalidate();
     }
-    if (result.band_mode_clicked) {
+    /* A scene with needs_full_framebuffer set overrides the request either
+     * way, so toggling it here would only cost a layout re-entry with
+     * nothing for the user to see - the button simply does nothing. */
+    if (result.band_mode_clicked && !current_scene()->needs_full_framebuffer) {
         render_lab_band_mode = !render_lab_band_mode;
         render_lab_mode_switch_request(&mode_switch);
     }
     if (result.next_scene_clicked) {
-        current_scene()->exit();
-        current_scene_index = (current_scene_index + 1) % SCENE_COUNT;
-        render_lab_start_scene_index = current_scene_index; /* keeps a later re-entry on this same scene */
-        current_scene()->enter();
-        scene_title_remaining_ms = SCENE_TITLE_MS;
-        gfx_set_partial_clear(false);
-        gfx_invalidate();
-        ui_invalidate();
+        scene_switch_pending = true;
     }
 
     /* Modeled on app_sand.c's own draw_menu(): one full-screen OPAQUE
@@ -248,6 +282,7 @@ update_scene_title(uint32_t dt_ms) {
     scene_title_remaining_ms = scene_title_remaining_ms > dt_ms ? scene_title_remaining_ms - dt_ms : 0;
     if (scene_title_remaining_ms == 0) {
         gfx_invalidate();
+        current_scene()->invalidate();
     }
 }
 
@@ -301,7 +336,7 @@ render_lab_frame_band(uint32_t dt_ms, const input_t* input) {
 
     if (menu_open) {
         draw_menu(input, true, dt_ms);
-    } else {
+    } else if (render_lab_show_hud) {
         draw_fps(input, true);
     }
 
@@ -338,6 +373,10 @@ static void
 render_lab_frame(uint32_t dt_ms, const input_t* input) {
     if (render_lab_mode_switch_take(&mode_switch)) {
         switch_layout();
+    }
+    if (scene_switch_pending) {
+        scene_switch_pending = false;
+        switch_to_next_scene();
     }
 
     /* BOOT opens/closes the menu, rather than flipping a toggle directly.
@@ -377,7 +416,9 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
 
     update_fps_counter(dt_ms);
     current_scene()->frame(dt_ms, false);
-    draw_fps(input, false);
+    if (render_lab_show_hud) {
+        draw_fps(input, false);
+    }
 }
 
 void

@@ -5,7 +5,7 @@
 #   ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh [-o <dir>]
 #
 # Each declared render starts on one scene (--scene) via
-# render_lab_start_scene_index and steps 16 ms frames, full-framebuffer
+# render_lab_start_scene_key and steps 16 ms frames, full-framebuffer
 # layout. Landscape is the shipping orientation, so it leads; a panel-native
 # render is the shape tools/render_diff.sh compares a device capture against.
 #
@@ -26,7 +26,11 @@ main/ui/ui_scroll.c
 main/apps/render_lab/app_render_lab.c
 main/apps/render_lab/scene_cube.c
 main/apps/render_lab/scene_wire.c
+main/apps/render_lab/scene_raytrace.c
 main/apps/render_lab/wire_pipeline.c
+main/apps/render_lab/rt_cornell.c
+main/apps/render_lab/rt_cornell_scene.c
+main/apps/render_lab/rt_geometry.c
 main/apps/render_lab/render_lab_mode_switch.c
 main/apps/render_lab/ui/render_lab_hud_screen.c
 main/apps/render_lab/ui/render_lab_menu_screen.c
@@ -63,6 +67,11 @@ wirecube-landscape|--quarter 1 --scene cube|448x368
 capsule-landscape|--quarter 1 --scene capsule|448x368
 plane-title-fading|--quarter 1 --scene plane --frames 110|448x368
 plane-title-gone|--quarter 1 --scene plane --frames 140|448x368
+cornell-landscape|--quarter 1 --scene cornell --frames 40|448x368
+cornell-portrait|--quarter 0 --scene cornell --frames 40|368x448
+cornell-pass1|--quarter 1 --scene cornell --frames 2|448x368
+cornell-pass2|--quarter 1 --scene cornell --frames 5|448x368
+cornell-pass3|--quarter 1 --scene cornell --frames 9|448x368
 "
 
 # shellcheck source=../../../../tools/render_scene.sh

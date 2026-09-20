@@ -15,7 +15,8 @@
 #include "gfx/gfx.h"
 
 typedef struct {
-    const char* name;
+    const char* name;    /* shown on the HUD and the menu's scene picker */
+    const char* key;     /* short, stable, lowercase - a start request names one of these */
     void (*enter)(void); /* allocate, reset pose; layout is already entered */
 
     /* Outside band mode, advances by dt_ms and draws. In band mode
@@ -30,4 +31,9 @@ typedef struct {
     /* A short status string shown after the scene name on the HUD line -
      * vertex/edge counts, say. NULL (the cube's default) shows nothing extra. */
     const char* (*status)(void);
+
+    /* True for a scene with a retained, progressively-filled picture: the
+     * app grants GFX_LAYOUT_FULL_FB regardless of render_lab_band_mode, and
+     * never calls frame_band(), which such a scene may leave NULL. */
+    bool needs_full_framebuffer;
 } render_lab_scene_t;

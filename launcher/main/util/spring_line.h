@@ -61,14 +61,15 @@ typedef struct {
 } spring_line_t;
 
 static inline void
-spring_line_init(spring_line_t* line, int32_t* offset, int32_t* velocity, int count) {
+spring_line_init(spring_line_t* line, int32_t* offset, int32_t* velocity, int count, int tension, int stiffness,
+                 int damping) {
     *line = (spring_line_t){
         .offset = offset,
         .velocity = velocity,
         .count = count,
-        .tension = 200,
-        .stiffness = 2,
-        .damping = 4,
+        .tension = tension,
+        .stiffness = stiffness,
+        .damping = damping,
     };
     for (int x = 0; x < count; x++) {
         offset[x] = 0;

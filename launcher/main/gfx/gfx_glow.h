@@ -106,10 +106,28 @@ gfx_glow_lerp_channel(uint32_t from, uint32_t to, uint32_t t_q8, int shift) {
     return (a * (256 - t_q8) + b * t_q8) >> 8;
 }
 
+/* Light held to `steps` equal levels, the remainder decided by this phase's
+ * threshold, so the falloff shows as a stipple that thins toward the rim
+ * rather than as a smooth fade. No steps leaves it smooth. */
+static inline uint32_t
+gfx_glow_stepped_light(uint32_t light_q8, uint32_t steps, uint32_t phase) {
+    if (steps == 0) {
+        return light_q8;
+    }
+    const uint32_t scaled_q4 = (light_q8 * steps * GFX_GLOW_PHASES) >> 8;
+    const uint32_t level = (scaled_q4 + phase) >> GFX_GLOW_Q_SHIFT;
+    return (level > steps ? steps : level) * 256 / steps;
+}
+
 /* Light falls off as (1 - d/r)^2, `core_rgb` on the curve fading to
- * `halo_rgb` over the first `core_px`, and to black at `radius_px`. */
+ * `halo_rgb` over the first `core_px`, and to black at `radius_px`, in
+ * `steps` levels of stipple or smoothly for none. */
 static inline void
-gfx_glow_style_set(gfx_glow_style_t* style, int radius_px, int core_px, uint32_t core_rgb, uint32_t halo_rgb) {
+gfx_glow_style_set_stepped(gfx_glow_style_t* style, int radius_px, int core_px, uint32_t core_rgb, uint32_t halo_rgb,
+                           int steps) {
+    if (steps < 0) {
+        steps = 0;
+    }
     if (radius_px < 1) {
         radius_px = 1;
     }
@@ -136,17 +154,22 @@ gfx_glow_style_set(gfx_glow_style_t* style, int radius_px, int core_px, uint32_t
     for (int i = 0; i < GFX_GLOW_RAMP_SIZE; i++) {
         const uint32_t t_q8 = (uint32_t)i * 256 / GFX_GLOW_RAMP_SIZE;
         const uint32_t rest = 256 - t_q8;
-        const uint32_t light_q8 = (rest * rest) >> 8;
         const uint32_t halo_q8 = t_q8 < core_t_q8 ? t_q8 * 256 / core_t_q8 : 256;
-        const uint32_t r = (gfx_glow_lerp_channel(core_rgb, halo_rgb, halo_q8, 16) * light_q8) >> 8;
-        const uint32_t g = (gfx_glow_lerp_channel(core_rgb, halo_rgb, halo_q8, 8) * light_q8) >> 8;
-        const uint32_t b = (gfx_glow_lerp_channel(core_rgb, halo_rgb, halo_q8, 0) * light_q8) >> 8;
         for (uint32_t phase = 0; phase < GFX_GLOW_PHASES; phase++) {
+            const uint32_t light_q8 = gfx_glow_stepped_light((rest * rest) >> 8, (uint32_t)steps, phase);
+            const uint32_t r = (gfx_glow_lerp_channel(core_rgb, halo_rgb, halo_q8, 16) * light_q8) >> 8;
+            const uint32_t g = (gfx_glow_lerp_channel(core_rgb, halo_rgb, halo_q8, 8) * light_q8) >> 8;
+            const uint32_t b = (gfx_glow_lerp_channel(core_rgb, halo_rgb, halo_q8, 0) * light_q8) >> 8;
             const uint32_t rgb565 = (gfx_glow_quantise(r, 31, phase) << 11) | (gfx_glow_quantise(g, 63, phase) << 5)
                                     | gfx_glow_quantise(b, 31, phase);
             style->ramp[phase][i] = (gfx_color_t)((rgb565 >> 8) | (rgb565 << 8));
         }
     }
+}
+
+static inline void
+gfx_glow_style_set(gfx_glow_style_t* style, int radius_px, int core_px, uint32_t core_rgb, uint32_t halo_rgb) {
+    gfx_glow_style_set_stepped(style, radius_px, core_px, core_rgb, halo_rgb, 0);
 }
 
 /* What a column covers vertically: the curve runs straight between column
@@ -352,7 +375,16 @@ gfx_glow_draw_columns(gfx_target_t target, int clip_x0, int clip_y0, int clip_x1
  * where it lies in the view frame.
  */
 
-#define GFX_GLOW_POSE_ONE (1 << 14)
+#define GFX_GLOW_POSE_ONE     (1 << 14)
+
+/* A posed row is walked in blocks of this many pixels, and a block is skipped
+ * when no column under it can be lit at the rows it crosses. What a block is
+ * tested against is the reach of whole chunks of columns, at most
+ * GFX_GLOW_REACH_CHUNKS of them however long the curve: all of it adds,
+ * shifts and compares, since a 64-bit division is a library call here and
+ * one per block cost more than the pixels it saved. */
+#define GFX_GLOW_ROW_BLOCK    16
+#define GFX_GLOW_REACH_CHUNKS 64
 
 typedef struct {
     int32_t down_x, down_y;
@@ -368,7 +400,28 @@ typedef struct {
     int16_t* reach_hi;
     int count;
     int band_lo, band_hi; /* the reach of the whole curve, Q4 */
+    int chunk_shift;      /* a chunk is 1 << chunk_shift columns */
+    int16_t chunk_lo[GFX_GLOW_REACH_CHUNKS];
+    int16_t chunk_hi[GFX_GLOW_REACH_CHUNKS];
 } gfx_glow_field_t;
+
+/* The reach of each chunk of columns as one range, for gfx_glow_block_can_be_lit(). */
+static inline void
+gfx_glow_field_chunk(gfx_glow_field_t* field) {
+    field->chunk_shift = 4;
+    while (((field->count - 1) >> field->chunk_shift) >= GFX_GLOW_REACH_CHUNKS) {
+        field->chunk_shift++;
+    }
+    for (int c = 0; c < GFX_GLOW_REACH_CHUNKS; c++) {
+        field->chunk_lo[c] = INT16_MAX;
+        field->chunk_hi[c] = INT16_MIN;
+    }
+    for (int x = 0; x < field->count; x++) {
+        const int c = x >> field->chunk_shift;
+        field->chunk_lo[c] = field->reach_lo[x] < field->chunk_lo[c] ? field->reach_lo[x] : field->chunk_lo[c];
+        field->chunk_hi[c] = field->reach_hi[x] > field->chunk_hi[c] ? field->reach_hi[x] : field->chunk_hi[c];
+    }
+}
 
 static inline void
 gfx_glow_field_prepare(gfx_glow_field_t* field, const int16_t* y, const gfx_glow_style_t* style) {
@@ -397,6 +450,7 @@ gfx_glow_field_prepare(gfx_glow_field_t* field, const int16_t* y, const gfx_glow
         field->band_lo = lo < field->band_lo ? lo : field->band_lo;
         field->band_hi = hi > field->band_hi ? hi : field->band_hi;
     }
+    gfx_glow_field_chunk(field);
 }
 
 /* gfx_glow_distance2() for a point that is not on a column's centre. */
@@ -456,6 +510,158 @@ gfx_glow_narrow(int64_t v0, int64_t step, int64_t lo, int64_t hi, int* a, int* b
     }
 }
 
+/*
+ * A map of the curve's light, so that drawing is a lookup. Searching beside
+ * every pixel costs the radius, and so does the pixel count: a wide glow
+ * cost its radius squared. Distance depends on the curve's shape and not on
+ * how it is turned, so it is worked out once per shape, in the curve's own
+ * frame, by an exact two-pass transform that costs the map's area whatever
+ * the radius. Turning the curve then costs no distance work at all.
+ */
+
+/* One cell to this many pixels each way: a glow is smooth. The line itself
+ * is not, so within GFX_GLOW_MAP_EXACT_PX of it a draw still searches, over
+ * a window that small. */
+#define GFX_GLOW_MAP_CELL        2
+#define GFX_GLOW_MAP_EXACT_PX    5
+
+/* A cell holds squared distance, which is what the ramp is indexed by and
+ * interpolates almost exactly, in quarter pixels squared. */
+#define GFX_GLOW_MAP_Q           2
+
+/* Below this radius the map's fixed cost is more than the search it saves. */
+#define GFX_GLOW_MAP_FROM_RADIUS 10
+
+static inline bool
+gfx_glow_map_worth_it(int radius_px) {
+    return radius_px >= GFX_GLOW_MAP_FROM_RADIUS;
+}
+
+typedef struct {
+    uint16_t* cells; /* cols * rows, the caller's */
+    int32_t* row_f;  /* scratch, cols long each */
+    int32_t* row_z;
+    int16_t* row_v;
+    int cols, rows; /* what `cells` has room for */
+    int lit_rows;   /* how many of them the last build filled: the band's */
+    int origin_y;   /* view row of the top of cell row 0, set by the build */
+    uint16_t far;   /* what a cell out of the light's reach holds */
+} gfx_glow_map_t;
+
+static inline int
+gfx_glow_map_cols(int count) {
+    return (count + GFX_GLOW_MAP_CELL - 1) / GFX_GLOW_MAP_CELL;
+}
+
+/* One row of the second pass: the lower envelope of the parabolas that the
+ * first pass's vertical distances raise, after Felzenszwalb and
+ * Huttenlocher, in integers. `step2` is the squared width of a cell. */
+static inline void
+gfx_glow_map_row(const gfx_glow_map_t* map, uint16_t* out, int step2) {
+    int hulls = 0;
+    for (int q = 0; q < map->cols; q++) {
+        if (map->row_f[q] >= map->far) {
+            continue;
+        }
+        const int64_t own = (int64_t)map->row_f[q] + (int64_t)step2 * q * q;
+        int64_t meet = 0;
+        while (hulls > 0) {
+            const int v = map->row_v[hulls - 1];
+            const int64_t other = (int64_t)map->row_f[v] + (int64_t)step2 * v * v;
+            meet = gfx_glow_div_floor(own - other, (int64_t)2 * step2 * (q - v));
+            if (meet > map->row_z[hulls - 1]) {
+                break;
+            }
+            hulls--;
+        }
+        map->row_v[hulls] = (int16_t)q;
+        map->row_z[hulls] = hulls == 0 ? INT32_MIN : (int32_t)meet;
+        hulls++;
+    }
+    int k = 0;
+    for (int p = 0; p < map->cols; p++) {
+        if (hulls == 0) {
+            out[p] = map->far;
+            continue;
+        }
+        while (k + 1 < hulls && map->row_z[k + 1] < p) {
+            k++;
+        }
+        const int v = map->row_v[k];
+        const int64_t d2 = (int64_t)step2 * (p - v) * (p - v) + map->row_f[v];
+        out[p] = d2 < map->far ? (uint16_t)d2 : map->far;
+    }
+}
+
+static inline void
+gfx_glow_map_build(gfx_glow_map_t* map, const gfx_glow_field_t* field, const gfx_glow_style_t* style) {
+    const int to_map = GFX_GLOW_Q_SHIFT - GFX_GLOW_MAP_Q;
+    const int reach = (style->radius + GFX_GLOW_MAP_CELL) << GFX_GLOW_MAP_Q;
+    const int step = GFX_GLOW_MAP_CELL << GFX_GLOW_MAP_Q;
+    map->far = (uint16_t)(reach * reach);
+    map->origin_y = (field->band_lo >> GFX_GLOW_Q_SHIFT) - GFX_GLOW_MAP_CELL;
+    const int band_px = ((field->band_hi - field->band_lo) >> GFX_GLOW_Q_SHIFT) + 3 * GFX_GLOW_MAP_CELL;
+    const int band_rows = band_px / GFX_GLOW_MAP_CELL + 1;
+    map->lit_rows = band_rows < map->rows ? band_rows : map->rows;
+
+    for (int row = 0; row < map->lit_rows; row++) {
+        const int top = (map->origin_y + row * GFX_GLOW_MAP_CELL) << GFX_GLOW_Q_SHIFT;
+        const int centre = top + (GFX_GLOW_MAP_CELL << GFX_GLOW_Q_SHIFT) / 2;
+        for (int c = 0; c < map->cols; c++) {
+            int nearest = INT32_MAX;
+            for (int j = c * GFX_GLOW_MAP_CELL; j < (c + 1) * GFX_GLOW_MAP_CELL && j < field->count; j++) {
+                const int up = gfx_glow_outside(centre, field->span_lo[j], field->span_hi[j]) >> to_map;
+                nearest = up < nearest ? up : nearest;
+            }
+            map->row_f[c] = nearest < reach ? nearest * nearest : map->far;
+        }
+        gfx_glow_map_row(map, map->cells + (size_t)row * map->cols, step * step);
+    }
+}
+
+/* Squared distance at a view position, Q8 like gfx_glow_distance2(), from
+ * the four cells around it. Above and below the map there is no light; past
+ * either end the end cells stand. */
+static inline int
+gfx_glow_map_distance2(const gfx_glow_map_t* map, int x_q4, int y_q4) {
+    const int cell_q4 = GFX_GLOW_MAP_CELL << GFX_GLOW_Q_SHIFT;
+    const int to_q8 = 2 * (GFX_GLOW_Q_SHIFT - GFX_GLOW_MAP_Q);
+    const int u = x_q4 - cell_q4 / 2;
+    const int v = y_q4 - (map->origin_y << GFX_GLOW_Q_SHIFT) - cell_q4 / 2;
+    int cy = v / cell_q4;
+    if (v < 0 || cy + 1 >= map->lit_rows) {
+        return (int)map->far << to_q8;
+    }
+    int cx = u < 0 ? 0 : u / cell_q4;
+    int fx = u < 0 ? 0 : u % cell_q4;
+    if (cx + 1 >= map->cols) {
+        cx = map->cols - 2;
+        fx = cell_q4;
+    }
+    const int fy = v % cell_q4;
+    const uint16_t* upper = map->cells + (size_t)cy * map->cols + cx;
+    const uint16_t* lower = upper + map->cols;
+    const int along_upper = upper[0] * (cell_q4 - fx) + upper[1] * fx;
+    const int along_lower = lower[0] * (cell_q4 - fx) + lower[1] * fx;
+    const int64_t blended = (int64_t)along_upper * (cell_q4 - fy) + (int64_t)along_lower * fy;
+    return (int)(blended / (cell_q4 * cell_q4)) << to_q8;
+}
+
+/* The distance a posed draw colours a pixel by: from the map where there is
+ * one and the pixel is clear of the line, searched otherwise. */
+static inline int
+gfx_glow_posed_distance2(const gfx_glow_field_t* field, const gfx_glow_map_t* map, int radius, int x_q4, int y_q4) {
+    if (map == NULL) {
+        return gfx_glow_field_distance2(field, radius, x_q4, y_q4);
+    }
+    const int exact = GFX_GLOW_MAP_EXACT_PX * GFX_GLOW_ONE;
+    const int mapped = gfx_glow_map_distance2(map, x_q4, y_q4);
+    if (mapped >= exact * exact) {
+        return mapped;
+    }
+    return gfx_glow_field_distance2(field, GFX_GLOW_MAP_EXACT_PX + 1, x_q4, y_q4);
+}
+
 /* A colour dimmed to `keep`/256 of itself, each channel rounded down so
  * that repeated dimming reaches black rather than sticking one step above.
  * Green is dimmed at red and blue's five bits: at its own six it outlives
@@ -494,17 +700,114 @@ gfx_glow_light(gfx_color_t colour) {
     return (int)(((c >> 11) & 0x1F) * 2 + ((c >> 5) & 0x3F) + (c & 0x1F) * 2);
 }
 
+/* Colours [a, b) of one panel row against the exact per-column reach test -
+ * the truth a caller's superset is narrowed toward. Folds into new_lo/new_hi
+ * so several calls across one row still cover its whole lit span. */
+static inline void
+gfx_glow_posed_row_light(gfx_color_t* dst, const gfx_glow_field_t* field, const gfx_glow_map_t* map,
+                         const gfx_glow_style_t* style, int trail, int py, int to_q4, int64_t vx, int64_t vy,
+                         int64_t right_x, int64_t down_x, int a, int b, int* new_lo, int* new_hi) {
+    for (int px = a; px < b; px++, vx += right_x, vy += down_x) {
+        const int x_q4 = (int)(vx >> to_q4);
+        const int y_q4 = (int)(vy >> to_q4);
+        const int column = x_q4 >> GFX_GLOW_Q_SHIFT;
+        if (column < 0 || column >= field->count || y_q4 < field->reach_lo[column] || y_q4 > field->reach_hi[column]) {
+            continue;
+        }
+        const gfx_color_t colour =
+            gfx_glow_colour(style, gfx_glow_posed_distance2(field, map, style->radius, x_q4, y_q4), px, py);
+        if (colour == GFX_RGB(0x000000)) {
+            continue;
+        }
+        /* Each new band overlaps most of the last, and would overwrite its
+         * bright core with a dim rim: what was left behind would be rim
+         * light only. A trail keeps whichever is brighter. */
+        if (trail > 0 && gfx_glow_light(dst[px]) > gfx_glow_light(colour)) {
+            continue;
+        }
+        dst[px] = colour;
+        *new_lo = *new_hi > *new_lo ? *new_lo : px;
+        *new_hi = px + 1;
+    }
+}
+
+/* A row that crosses only a few view columns - the curve running along the
+ * panel's rows, or nearly - is narrowed once, to the exact reach of just
+ * those columns: tighter than any block, for one division a row. */
+#define GFX_GLOW_FEW_COLUMNS 4
+
+static inline void
+gfx_glow_posed_row_few_columns(gfx_color_t* dst, const gfx_glow_field_t* field, const gfx_glow_map_t* map,
+                               const gfx_glow_style_t* style, int trail, int py, int to_q4, int64_t vx0, int64_t vy0,
+                               int64_t right_x, int64_t down_x, int col_lo, int col_hi, int a, int b, int* new_lo,
+                               int* new_hi) {
+    int lo = field->reach_lo[col_lo];
+    int hi = field->reach_hi[col_lo];
+    for (int x = col_lo + 1; x <= col_hi; x++) {
+        lo = field->reach_lo[x] < lo ? field->reach_lo[x] : lo;
+        hi = field->reach_hi[x] > hi ? field->reach_hi[x] : hi;
+    }
+    gfx_glow_narrow(vy0, down_x, (int64_t)lo << to_q4, ((int64_t)hi + 1) << to_q4, &a, &b);
+    if (b > a) {
+        gfx_glow_posed_row_light(dst, field, map, style, trail, py, to_q4, vx0 + (int64_t)a * right_x,
+                                 vy0 + (int64_t)a * down_x, right_x, down_x, a, b, new_lo, new_hi);
+    }
+}
+
+/* Whether any pixel of a row between two of its pixels can be lit, from
+ * their view positions alone. View x and view y both run one way along a row
+ * and a shift keeps their order, so every pixel between lies in the columns
+ * and the rows between the two ends: nothing outside the reach of those
+ * columns' chunks can pass the per-column test. */
+static inline bool
+gfx_glow_block_can_be_lit(const gfx_glow_field_t* field, int to_q4, int64_t vx_a, int64_t vx_b, int64_t vy_a,
+                          int64_t vy_b) {
+    const int shift = 14 + field->chunk_shift;
+    const int chunk_a = (int)(vx_a >> shift);
+    const int chunk_b = (int)(vx_b >> shift);
+    const int y_a = (int)(vy_a >> to_q4);
+    const int y_b = (int)(vy_b >> to_q4);
+    const int y_lo = y_a < y_b ? y_a : y_b;
+    const int y_hi = y_a < y_b ? y_b : y_a;
+    for (int c = chunk_a < chunk_b ? chunk_a : chunk_b; c <= (chunk_a < chunk_b ? chunk_b : chunk_a); c++) {
+        if (y_hi >= field->chunk_lo[c] && y_lo <= field->chunk_hi[c]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static inline void
+gfx_glow_posed_row_blocks(gfx_color_t* dst, const gfx_glow_field_t* field, const gfx_glow_map_t* map,
+                          const gfx_glow_style_t* style, int trail, int py, int to_q4, int64_t vx0, int64_t vy0,
+                          int64_t right_x, int64_t down_x, int a, int b, int* new_lo, int* new_hi) {
+    int64_t vx = vx0 + (int64_t)a * right_x;
+    int64_t vy = vy0 + (int64_t)a * down_x;
+    for (int p = a; p < b; p += GFX_GLOW_ROW_BLOCK) {
+        const int q = p + GFX_GLOW_ROW_BLOCK < b ? p + GFX_GLOW_ROW_BLOCK : b;
+        const int64_t last = q - 1 - p;
+        if (gfx_glow_block_can_be_lit(field, to_q4, vx, vx + last * right_x, vy, vy + last * down_x)) {
+            gfx_glow_posed_row_light(dst, field, map, style, trail, py, to_q4, vx, vy, right_x, down_x, p, q, new_lo,
+                                     new_hi);
+        }
+        vx += GFX_GLOW_ROW_BLOCK * right_x;
+        vy += GFX_GLOW_ROW_BLOCK * down_x;
+    }
+}
+
 /*
  * Draws panel rows [row0, row1) of the posed curve. `lit_lo`/`lit_hi` hold,
  * per panel row, the stretch still lit from earlier draws, and `trail` is
  * what becomes of it first: 0 blackens it, 255 leaves it, and between it is
  * dimmed to trail/256, a tail that is gone after gfx_glow_trail_draws() more
- * draws. Returns the panel box touched.
+ * draws. `map` is the curve's gfx_glow_map_t, or NULL to search for every
+ * pixel. Returns the panel box touched.
  */
 static inline gfx_glow_box_t
 gfx_glow_draw_posed_rows(gfx_target_t target, int clip_x0, int clip_y0, int clip_x1, int clip_y1, int panel_w,
-                         int panel_h, const gfx_glow_field_t* field, int view_h, gfx_glow_pose_t pose, int row0,
-                         int row1, int16_t* lit_lo, int16_t* lit_hi, int trail, const gfx_glow_style_t* style) {
+                         int panel_h, const gfx_glow_field_t* field, const gfx_glow_map_t* map, int view_h,
+                         gfx_glow_pose_t pose, int row0, int row1, int16_t* lit_lo, int16_t* lit_hi, int trail,
+                         const gfx_glow_style_t* style) {
     gfx_glow_box_t box = {0, 0, 0, 0};
     const int64_t right_x = pose.down_y;
     const int64_t right_y = -pose.down_x;
@@ -546,35 +849,21 @@ gfx_glow_draw_posed_rows(gfx_target_t target, int clip_x0, int clip_y0, int clip
         int a = clip_x0 < 0 ? 0 : clip_x0;
         int b = clip_x1 > panel_w ? panel_w : clip_x1;
         gfx_glow_narrow(vx0, right_x, 0, (int64_t)field->count << 14, &a, &b);
-        gfx_glow_narrow(vy0, pose.down_x, (int64_t)field->band_lo << to_q4, ((int64_t)field->band_hi << to_q4) + 1, &a,
-                        &b);
 
         int new_lo = 0;
         int new_hi = 0;
-        int64_t vx = vx0 + a * right_x;
-        int64_t vy = vy0 + a * pose.down_x;
-        for (int px = a; px < b; px++, vx += right_x, vy += pose.down_x) {
-            const int x_q4 = (int)(vx >> to_q4);
-            const int y_q4 = (int)(vy >> to_q4);
-            const int column = x_q4 >> GFX_GLOW_Q_SHIFT;
-            if (column < 0 || column >= field->count || y_q4 < field->reach_lo[column]
-                || y_q4 > field->reach_hi[column]) {
-                continue;
+        if (a < b) {
+            const int col_a = (int)((vx0 + (int64_t)a * right_x) >> 14);
+            const int col_b = (int)((vx0 + (int64_t)(b - 1) * right_x) >> 14);
+            const int col_lo = col_a < col_b ? col_a : col_b;
+            const int col_hi = col_a < col_b ? col_b : col_a;
+            if (col_hi - col_lo < GFX_GLOW_FEW_COLUMNS) {
+                gfx_glow_posed_row_few_columns(dst, field, map, style, trail, py, to_q4, vx0, vy0, right_x, pose.down_x,
+                                               col_lo, col_hi, a, b, &new_lo, &new_hi);
+            } else {
+                gfx_glow_posed_row_blocks(dst, field, map, style, trail, py, to_q4, vx0, vy0, right_x, pose.down_x, a,
+                                          b, &new_lo, &new_hi);
             }
-            const gfx_color_t colour =
-                gfx_glow_colour(style, gfx_glow_field_distance2(field, style->radius, x_q4, y_q4), px, py);
-            if (colour == GFX_RGB(0x000000)) {
-                continue;
-            }
-            /* Each new band overlaps most of the last, and would overwrite its
-             * bright core with a dim rim: what was left behind would be rim
-             * light only. A trail keeps whichever is brighter. */
-            if (trail > 0 && gfx_glow_light(dst[px]) > gfx_glow_light(colour)) {
-                continue;
-            }
-            dst[px] = colour;
-            new_lo = new_hi > new_lo ? new_lo : px;
-            new_hi = px + 1;
         }
         const bool has_kept = kept_hi > kept_lo;
         const bool has_new = new_hi > new_lo;

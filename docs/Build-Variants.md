@@ -179,6 +179,15 @@ severity, project-wide, with no per-call-site `#if` needed — this project
 just doesn't split that ceiling per build variant yet. See
 [Log-Level-Plan.md](plans/Log-Level-Plan.md).
 
+A FRAME_COST bracket (`util/frame_cost.h`) names a stage of the frame -
+something the shell or a screen does once per frame - and stays in the
+source, compiled out of release the same as everything else in this section.
+A bracket put inside a stage to answer one question is scaffolding instead:
+it leaves with the measurement it was for, the same as any switch that turns
+a phase of work off to see what it cost. The first kind may stay because it
+only reads a clock - the code that ships is the code that was measured,
+minus two clock reads per stage.
+
 ## The Kconfig trap in REQUIRES
 
 One thing must **not** be gated on `CONFIG_LAUNCHER_SELFTEST`: the `unity`
