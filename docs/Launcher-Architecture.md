@@ -56,11 +56,13 @@ launcher/
     │   ├── gfx_indexed.h       paletted pixels            (host-tested)
     │   ├── gfx_palette*.{h,c}  the standard palette       (host-tested)
     │   ├── gfx_target.h        where a draw call lands    (host-tested)
+    │   ├── gfx_null_panel.{h,c}  a panel with nothing behind it, for QEMU
     │   ├── gfx_glow.h          a curve drawn as light     (host-tested)
     │   ├── gfx_full_redraw.h   when everything must repaint (host-tested)
     │   ├── gfx_heal.h          repairing a torn band      (host-tested)
     │   ├── gfx_fb_guard.h, gfx_present_guard.h  misuse traps (host-tested)
     │   ├── gfx_font.h          what a font IS             (host-tested)
+    │   ├── font8x8_basic.h     the built-in 8x8 glyphs
     │   ├── gfx_font_roles.h    which font plays which part (host-tested)
     │   ├── fonts/              GENERATED - see tools/gen_font.py
     │   └── icon.h, icons_system.h  artwork no font provides (host-tested)
@@ -71,6 +73,8 @@ launcher/
     │   ├── ui_style.h          how a control's frame looks (host-tested)
     │   ├── ui_transform.h      the quarter-turn mapping     (host-tested)
     │   ├── ui_anchor.h         a rect placed against an edge (host-tested)
+    │   ├── ui_scroll.{h,c}     a screen with more rows than fit (host-tested)
+    │   ├── ridge_pose.h        the ridge's pose from gravity (host-tested)
     │   ├── ui_launcher.{h,c}, ui_launcher_draw.c   the home screen
     │   ├── ui_control_center.{h,c}, ui_control_center_draw.c
     │   │                       Control Center, over a dimmed home screen
@@ -97,6 +101,7 @@ launcher/
     │   ├── tune.{h,c}          numbers changed live over the console, dev builds (host-tested)
     │   ├── spring_line.h       a row of points on springs (host-tested)
     │   ├── job.{h,c}           run a slice on the other core (host-tested)
+    │   ├── frame_cost.{h,c}    where a frame's time goes, by name (host-tested)
     │   ├── device_state.{h,c}  what survives a reboot      (host-tested)
     │   ├── screenshot.h        BMP header + base64, pure   (host-tested)
     │   └── build_id.h          which build this is         (host-tested)
@@ -110,7 +115,7 @@ launcher/
     │   ├── console_runsuite.{h,c}    RUNSUITE, CONFIG_LAUNCHER_SELFTEST only
     │   └── console_inject.c, console_inject_parse.h  TOUCH/IMU, CONFIG_LAUNCHER_QEMU only (host-tested)
     └── apps/           one folder per app - see Building-an-App.md
-        ├── cube/       a software rasterizer
+        ├── render_lab/ a software rasterizer, wireframe and ray-traced scenes
         ├── diagnostics/  bench tool; development builds only
         └── sand/       the falling-sand sandbox
 ```
@@ -134,8 +139,9 @@ and means something different by each:
 
 ## Generated sources
 
-Six generated files live in the tree, each following the same four rules
-below: `main/ui/control_center_layout_generated.h` (`tools/gen_ui_layout.py`,
+Generated files live throughout the tree, each following the same rules
+below — grep for `GENERATED FILE` to list them, since apps add their own. The
+shell's own are `main/ui/control_center_layout_generated.h` (`tools/gen_ui_layout.py`,
 from `main/ui/control_center_layout.json`, which the host editor in
 [`editor/`](../editor/README.md) edits), `main/ui/ridge_curve_generated.h`
 (`tools/gen_ridge_curve.py`, from `design/boot/ridge.png`, the ridge of
@@ -144,7 +150,8 @@ from `main/ui/control_center_layout.json`, which the host editor in
 `main/boot/boot_anim_timeline.json`), `main/boot/boot_anim_image.h`
 (`tools/gen_boot_anim_image.py`, from `design/boot/boot.png`), and
 `main/gfx/fonts/font_lmroman_40.h` (`tools/gen_font.py`, from
-`design/fonts/LatinModern/lmroman10-bold.otf`).
+`design/fonts/LatinModern/lmroman10-bold.otf`),
+`main/gfx/gfx_palette_standard_generated.h` and `main/gfx/icons_system.h`.
 
 `boot_anim_curve.h` holds the zeta function evaluated along the critical
 line. That is not something to compute on this chip at the precision it
@@ -165,7 +172,7 @@ constraint rather than a curiosity: at 8 bits of coverage per pixel,
 makes it worth caring whether a font is referenced at all - see
 [Text-and-Fonts.md](Text-and-Fonts.md#roles).
 
-Four rules, and the last is the one that matters:
+Five rules, and the fourth is the one that matters:
 
 **The generator lives in `tools/`, the output in the tree it belongs to.**
 Generated output is checked in, not built. A build-time generator would put
@@ -192,8 +199,10 @@ by accident. `boot_anim_image.h` has no underlying math to check pixel
 content against - its independent check is instead two `_Static_assert`s in
 `boot_anim.c` pinning the shipped array's shape to the panel's own
 `GFX_WIDTH`/`GFX_HEIGHT`, plus real visual verification through
-`tools/boot_anim_editor_server.py`'s render view (the same workflow used for
-every other render-affecting change in this tree). A font atlas has no math
+`tools/boot_anim_editor_server.py`'s render view (the general path for a
+render-affecting change is a `*_render_host.sh` harness diffed against its
+`*_render_baseline.txt` with `tools/render_diff.sh` — see
+[Render-Harness.md](tools/Render-Harness.md)). A font atlas has no math
 to check either, and its independent check is that the shipped METRICS are
 used for real: `suite_boot_anim.c` lays the title out with whichever font
 the timeline actually authors and asserts the letters land where summing
@@ -325,6 +334,8 @@ selftest_run()              diagnostics builds only
 ui_launcher_init()          the launcher exists, turned the way boot draws
 boot_anim_run()             the startup animation, 5.5 s
 touch_start(), buttons_start()
+console_start()             the serial verbs
+imu_init()
 ```
 
 The animation goes after the health checks, so a board with a fault says so
@@ -353,16 +364,15 @@ Three files, split by what can be tested where:
 
 | | |
 |---|---|
-| `boot_anim_curve.h` | the curve, as a generated table. Zeta along the critical line needs double precision, and this chip's hardware FPU is single-precision only, so `tools/gen_zeta_curve.py` computes it once in double precision on a host and it ships in flash. The curve never changes either way. |
+| `boot_anim_curve.h` | the curve, as a generated table - see [Generated sources](#generated-sources) for why it is baked on a host. |
 | `boot_anim.h` | the spline, the colour and the timeline - integer arithmetic, no hardware header, so `test/suites/suite_boot_anim.c` checks all of it on a host. |
 | `render/r3d_project.h` | the general camera-space near-plane clip and perspective projection, shared with a caller drawing something other than this timeline - `test/suites/suite_r3d_project.c` checks it on a host. |
 | `render/r3d_camera.h` | the camera description `boot_anim_view()` builds and the viewport fit it reads centre/scale from, shared with a caller building its own camera - `test/suites/suite_r3d_camera.c` checks it on a host. |
 | `boot_anim.c` | gfx calls and the loop. |
 
 The suite checks the shipped table against the mathematics rather than against
-itself: the curve must reach the axis at each of the five known zero heights,
-and must stay well clear of it everywhere else. No table of plausible-looking
-numbers passes both halves by accident.
+the generator - the fourth rule under [Generated
+sources](#generated-sources).
 
 ## The frame loop
 
@@ -402,8 +412,9 @@ gfx_present()         blit, and wait for the DMA to drain
 vTaskDelay(1)         yield so the idle task can feed the watchdog
 ```
 
-Currently **~42 fps** on the launcher screen. The blit dominates at ~25 ms; the
-cube app is slower because rasterizing costs ~28 ms on top.
+The blit dominates the frame - `gfx.h`'s QSPI note gives the bus time a full
+frame costs, and a scene that rasterizes into the framebuffer adds its own on
+top.
 
 `dt_ms` is clamped to `FRAME_DT_MAX_MS` (250 ms) so a stall does not make
 animation jump.
@@ -442,8 +453,7 @@ here is why the build is shaped the way it is.
 > Since nothing references an app by name any more — the entire point — the
 > object would never be extracted, its constructor would never run, and the app
 > would silently vanish from the menu. Not a link error: a smaller binary and a
-> shorter list. This was caught by the release image shrinking *below* its
-> pre-app size.
+> shorter list.
 
 **Bench-only apps** live in `apps/diagnostics/`, excluded by folder when
 `CONFIG_LAUNCHER_DEVELOPMENT` is off — structural rather than a name check.
@@ -545,7 +555,7 @@ as focus is what keeps it sinking smoothly through the whole gesture instead
 of flashing in on the second frame.
 
 The geometry and the shading are pure functions in the header, the same split
-`icon_bitmap_blocks()` makes, so `test/suites/suite_ui_style.c` checks the shape on a host
+`icon_walk_blocks()` makes, so `test/suites/suite_ui_style.c` checks the shape on a host
 without linking `gfx.c` or even `microui.c` — nobody can eyeball five
 overlapping rectangles reliably.
 
@@ -563,17 +573,15 @@ are in [Text-and-Fonts.md](Text-and-Fonts.md#text-in-a-microui-screen).
 
 ### App-owned artwork, and how it reaches the command list
 
-`icon_bitmap_blocks()` takes any 16×16 bitmap, one row per scanline, and
-answers the run-length/scale/centre geometry a draw needs. The check mark
-microui's own checkbox wants is one caller; its wrapper is kept as its own entry point so its maximum
-block count still promises a bound specific to
-that one glyph's own run count. It stays pure geometry, the same split
-`ui_style.h`'s spans use: it returns WHERE the blocks go, not how they
-reach a framebuffer, so it links and is tested on a host with no `gfx.c` or
-`microui.c` involved.
+`icon_walk_blocks()` (`gfx/icon.h`) fits an icon's row bytes to a destination
+box and emits each horizontal run to a callback, so the per-draw stack is
+O(1) in the icon's size; a per-icon bound is the baked `blocks` field of
+`icon_t`. It stays pure geometry, the same split `ui_style.h`'s spans use: it
+says WHERE the blocks go, not how they reach a framebuffer, so it links and
+is tested on a host with no `gfx.c` or `microui.c` involved.
 
-`ui_draw_bitmap(ctx, rect, bitmap, color)` (`ui.c`) is what turns that
-geometry into command-list entries — one `mu_draw_rect()` per run. That is
+`ui_draw_icon(ctx, r, icon, rows, color)` (`ui/ui.h`) is what turns those
+runs into command-list entries — one `mu_draw_rect()` per run. That is
 the whole reason it exists, rather than an app calling `gfx_fill_rect()`
 straight into the framebuffer for its own icon: artwork painted outside the
 command list is invisible to the repaint hash and survives as a stale smear
@@ -582,21 +590,22 @@ not pixels" rule above, applied to an app's own artwork instead of a
 control's frame. It also means an app icon needs no new `MU_ICON_*` id and
 no patch to `components/microui/`.
 
-The icons themselves are never the shell's to own. The gfx icon header stays the
-one hand-drawn glyph microui's own checkbox needs — see its own header
-comment for why `MU_ICON_CLOSE`/`COLLAPSED`/`EXPANDED` stay unbuilt, which
-is unrelated to this and still true. An app that wants a funnel, a cross, a
+The icons themselves are never the shell's to own. The system atlas stays
+what the shell itself needs: `MU_ICON_CHECK` maps to `ICON_SYSTEM_CHECK` in
+`gfx/icons_system.h`, and the other three microui icons stay a centred-square
+placeholder — see the comment on `MU_COMMAND_ICON` in `ui.c` for why that is
+deliberate. An app that wants a funnel, a cross, a
 starburst draws its own bitmaps in its own folder (e.g.
-`apps/sand/icons_sand.h`) and reaches `ui_draw_bitmap()` to put them in its
+`apps/sand/icons_sand.h`) and reaches `ui_draw_icon()` to put them in its
 own command list. Deleting the app folder deletes its icons with it, per
 "an app is a folder" above.
 
-`ui_slider_int()` (`ui.c`) is built the same way, one layer down:
+`ui_slider_int()` (`ui/ui_build.c`) is built the same way, one layer down:
 `ui/ui_slider.h` is pure geometry — the track, the filled portion and the
 knob rect for a value, and the inverse, a touch x back to a value,
 quantized and clamped — and `ui_slider_int()` turns that into
 `mu_draw_rect()` calls via `ui_panel_spans()`/`ui_bezel_spans()`. Integer
-throughout, deliberately: the design calls for a `06 PX` control, and
+throughout, deliberately: these are whole-unit settings, and
 `mu_slider_ex()`'s float value and `"%.2f"` thumb are the wrong shape for
 that. A slider is also the one control that actually needs the pointer to
 hold `DOWN` for the whole press rather than release on the same frame it
@@ -649,15 +658,16 @@ Two rules that have to be respected:
   UI must be told its pixels are gone. Otherwise it compares an unchanged
   command list, skips, and leaves the app's last frame on screen.
 
-Measured: an idle launcher went from 66.7 fps to the 1 kHz tick ceiling,
-because it now paints and sends nothing at all. `test/suites/suite_ui.c` covers
+A screen whose command list does not change paints and sends nothing at all,
+and reaches the tick ceiling - the launcher does so with
+`ui_ridge_set_ambient()` off. `test/suites/suite_ui.c` covers
 the independence claim directly - it builds two windows, changes one, and
 asserts the other's bands stay clean.
 
 ### Dimming what is behind a panel (the scrim)
 
 A panel over a paused app reads as pasted on unless whatever is behind it is
-knocked back. The pattern, used by both of the sand app's screens:
+knocked back. The pattern, used by two of the sand app's screens:
 
 1. the panel keeps `UI_NO_BACKGROUND`, so the frozen app stays visible in
    the gaps rather than being cleared away;
@@ -735,8 +745,7 @@ LVGL is present in the build - it is a transitive dependency of the Waveshare
 BSP package, `main/idf_component.yml` pulls that in for the display and touch
 drivers - but nothing here calls into it. `gfx.c` drives the panel directly
 (`esp_lcd_new_panel_sh8601`, not `bsp_display_new()`/`bsp_display_start()`),
-so it never runs; confirmed rather than assumed by checking the linked
-binary, which carries zero `lv_*` symbols.
+so it never runs, and the linked binary carries zero `lv_*` symbols.
 
 Three constraints, all already documented elsewhere in this project, point
 the same direction once put next to each other:
@@ -747,13 +756,13 @@ internal SRAM - it lives entirely in the board's 8 MB of octal PSRAM (see
 `docs/notes/Board-and-Memory.md`) - but internal (non-PSRAM) free heap is
 still a few hundred KiB, not gigabytes, and a persistent widget tree and
 style system are a standing tax on that pool for the life of the process,
-not a one-time cost. microui needed patching too (upstream sizes `mu_Context`
-for desktop, 256 KiB for the command list alone), but that is a one-time
-struct-layout edit down to a small fixed size, not a standing tax on every
-frame the way a persistent widget tree and style system are.
+not a one-time cost. microui needed patching too - see "The vendored header
+is patched" below - but that is a one-time struct-layout edit down to a small
+fixed size, not a standing tax the way a persistent widget tree and style
+system are.
 
 **This device runs apps that own their entire framebuffer.** The falling-sand
-simulation and the cube renderer each drive the panel directly, on their own
+simulation and Render Lab each drive the panel directly, on their own
 schedule, with no widget tree in between. A retained-mode toolkit wants to
 own the display and the refresh cycle - exactly what those apps already do
 for themselves. microui's command-list model asks for nothing: it turns a UI
@@ -763,20 +772,21 @@ like. It composes with an app that owns its own frame loop; a retained-mode
 toolkit would compete with it for the same job.
 
 **The whole render pipeline here is built around skipping unchanged frames**,
-because a full transfer costs ~17 ms (measured: 16,998 us of bus time, the
-frame being 94% bus-bound - see `gfx.h`) and most frames do not need one. An
+because a full transfer is bus-bound and costs most of a frame - see
+[Display-and-Rendering.md](notes/Display-and-Rendering.md), "The blit is
+bus-bound" - and most frames do not need one. An
 immediate-mode command list is exactly the shape that trick needs - see
 [Immediate mode versus dirty bands](#immediate-mode-versus-dirty-bands)
-below for the mechanism. LVGL has its own separate invalidation and redraw
+above for the mechanism. LVGL has its own separate invalidation and redraw
 system, built around owning the display - adopting it would mean reconciling
 two damage-tracking systems, or replacing the one already built for every
 other app, rather than reusing it for free.
 
 **The real cost, for balance:** microui encodes a mouse's interaction model
 (point, then click), and a touchscreen cannot produce that sequence - the
-pointer does not exist until a finger is already down. Every control needs a
-synthesised hover frames to compensate, costing two frames (~48 ms) of input
-latency on every tap. That friction is specific to picking an immediate-mode,
+pointer does not exist until a finger is already down. Every control needs
+synthesised hover frames to compensate - `UI_POINTER_HOVER_FRAMES`
+(`ui/ui_pointer.h`) of input latency on every tap. That friction is specific to picking an immediate-mode,
 mouse-shaped toolkit; a touch-native widget system would not have it. It was
 worth paying given the three constraints above, but it is a real trade-off,
 not a free win.
@@ -787,10 +797,8 @@ microui is immediate-mode and draws nothing itself: each frame it turns the UI
 description into a list of rectangles, text and icons, and `ui_launcher.c` walks
 that list painting into the framebuffer.
 
-That command-list model is why it suits this device. A retained-mode toolkit
-wants to own the display and the refresh cycle, which fights an app like the
-cube that renders its own frames. Here the shell renders primitives whenever it
-likes, into whatever it likes.
+That command-list model is why it suits this device - see [Why microui, not
+LVGL](#why-microui-not-lvgl) above for the argument.
 
 ### Two things to know before touching it
 
@@ -815,12 +823,12 @@ first that can mark a control hovered; the press follows. `ui_pointer.c` owns
 that policy (`UI_POINTER_HOVER_FRAMES`) and `suite_ui_pointer_microui.c` pins
 it against real microui.
 
-Shipping a press one frame early cost exactly what this passage predicts: the
-pointer held `mouse_down` from the press frame onward, hover was therefore
-never established, nothing took focus, and **every button in the shell drew
-its pressed frame while returning 0** — no app reachable from the launcher.
-The event-list unit tests stayed green throughout, which is why a suite that
-drives real microui now exists.
+A press shipped one frame early holds `mouse_down` from the press frame
+onward, so hover is never established, nothing takes focus, and **every
+button in the shell draws its pressed frame while returning 0** — no app
+reachable from the launcher. Event-list unit tests cannot catch this, since
+hover establishment is microui's own state, which is why
+`suite_ui_pointer_microui.c` drives real microui.
 
 **This applies to every microui control**, not just buttons — anything reacting
 to a press goes through `mu_update_control()`. Adding a checkbox requires

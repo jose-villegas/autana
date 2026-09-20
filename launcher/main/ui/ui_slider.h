@@ -4,7 +4,7 @@
  *
  * Same split ui_style.h makes, for the same reason: WHERE things go is a
  * host-testable question, HOW they get onto the framebuffer is not -
- * ui_slider_int() in ui.c turns this into mu_draw_rect() calls via
+ * ui_slider_int() in ui_build.c turns this into mu_draw_rect() calls via
  * ui_panel_spans()/ui_bezel_spans(). Nothing here calls a microui function -
  * mu_rect() is a real function in microui.c, so rects below are compound
  * literals, which is what keeps this header linkable on its own.
