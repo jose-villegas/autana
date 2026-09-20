@@ -6,13 +6,14 @@ script reading a serial port directly does not - the same reasoning
 test/collect_device_results.py's own top comment gives for the identical
 split there.
 
-Sends the trigger word over the console UART (see util/screenshot.c) and
-reads the response back out of the same stream idf_monitor would otherwise
-be showing as logs: a SCREENSHOT_BEGIN line announcing the byte count, one
-SCREENSHOT_DATA: line per base64-encoded chunk, one SCREENSHOT_STATE: line
-of plain-text JSON (device state at that same frame - sensors, memory,
-clock; see screenshot_dump()'s own comment in screenshot.c for the field
-list), and a SCREENSHOT_END line - or, in place of all of those, one
+Sends the trigger word over the console UART (see main/console/console.c)
+and reads the response back out of the same stream idf_monitor would
+otherwise be showing as logs: a SCREENSHOT_BEGIN line announcing the byte
+count, one SCREENSHOT_DATA: line per base64-encoded chunk, one
+SCREENSHOT_STATE: line of plain-text JSON (device state at that same frame
+- sensors, memory, clock; see console_screenshot_dump()'s own comment in
+main/console/console_screenshot.c for the field list), and a
+SCREENSHOT_END line - or, in place of all of those, one
 SCREENSHOT_REFUSED: line giving the reason, which ends the run at once
 rather than at --timeout. Anything else on the wire - ordinary
 ESP_LOG output, in particular - is ignored rather than treated as an

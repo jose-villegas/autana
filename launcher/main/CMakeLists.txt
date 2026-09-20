@@ -29,11 +29,31 @@ set(app_srcs
     "util/frame_cost.c"
     "util/job.c"
     "util/tune.c"
-    "util/screenshot.c"
 )
 
 if(CONFIG_LAUNCHER_QEMU)
     list(APPEND app_srcs "gfx/gfx_null_panel.c")
+endif()
+
+# The console listener: a release image has nobody watching the serial
+# console to type a verb into (see console/console.h), so a release build
+# compiles none of console/*.c - no reader task, no registry, no verbs.
+# RUNSUITE and TOUCH/IMU narrow further still, to the one build variant
+# each actually answers on.
+if(CONFIG_LAUNCHER_DEVELOPMENT)
+    list(APPEND app_srcs
+        "console/console_verbs.c"
+        "console/console.c"
+        "console/console_buildid.c"
+        "console/console_tune.c"
+        "console/console_screenshot.c"
+    )
+endif()
+if(CONFIG_LAUNCHER_SELFTEST)
+    list(APPEND app_srcs "console/console_runsuite.c")
+endif()
+if(CONFIG_LAUNCHER_QEMU AND CONFIG_LAUNCHER_DEVELOPMENT)
+    list(APPEND app_srcs "console/console_inject.c")
 endif()
 
 # board/board.h binds this target's hardware facts to board_esp32s3.c.
@@ -173,6 +193,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites/suite_frame_cost.c"
         "../test/suites/suite_tilt.c"
         "../test/suites/suite_tune.c"
+        "../test/suites/suite_console.c"
         "../test/suites/suite_tween.c"
         "../test/suites/suite_ridge_motion.c"
         "../test/suites/suite_ridge_pose.c"

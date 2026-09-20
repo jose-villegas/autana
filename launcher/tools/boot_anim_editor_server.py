@@ -150,10 +150,9 @@ PAYLOAD_KEYS = ("timing", "camera_focal", "grid_step_m", "wave_height_m",
 # forgotten entry would silently go back to never invalidating for that
 # one file, the same bug this exists to fix. A narrower version of this
 # same mistake, walking only main/boot|gfx|util, missed it again -
-# boot_anim_render_host.c pulls in util/screenshot.h, which pulls in
-# main/app.h (for app_t/input_t - see screenshot_dump()'s own signature),
-# which pulls in main/input/buttons.h, none of them under those three
-# subdirectories. The whole of MAIN_DIR (~80 files, trivial to stat every
+# render_host.h pulls in main/app.h (for app_t/input_t), which pulls in
+# main/input/buttons.h, neither of them under those three subdirectories.
+# The whole of MAIN_DIR (~80 files, trivial to stat every
 # render) is the actual honest answer to "everything under here MIGHT be
 # a compile dependency, so watch all of it" rather than trying to name
 # every subdirectory this build's own transitive #includes happen to

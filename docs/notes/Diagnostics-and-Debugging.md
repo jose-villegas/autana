@@ -79,8 +79,8 @@ heap (current and low-water mark), CPU clock, on-die temperature,
 orientation, the IMU, and that frame's touch/button state. Good for anything
 where you need to see the actual pixels, or correlate a visual glitch
 against memory/sensor conditions at that instant - see
-`main/util/screenshot.h` and `main/util/device_state.h` for the mechanism
-and the full field list.
+`main/console/console_screenshot.c` and `main/util/device_state.h` for the
+mechanism and the full field list.
 
 - The device streams a 24bpp BMP over the wire, but `screenshot.py` converts
   it to PNG in memory (stdlib `zlib`/`struct`, no Pillow) before anything
