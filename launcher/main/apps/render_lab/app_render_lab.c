@@ -28,10 +28,12 @@ extern const render_lab_scene_t scene_wire_cube;
 extern const render_lab_scene_t scene_wire_sphere;
 extern const render_lab_scene_t scene_wire_capsule;
 extern const render_lab_scene_t scene_raytrace;
+extern const render_lab_scene_t scene_pathtrace;
 bool render_lab_partial_updates = true;
 
 static const render_lab_scene_t* const scenes[] = {
-    &scene_cube, &scene_wire_plane, &scene_wire_cube, &scene_wire_sphere, &scene_wire_capsule, &scene_raytrace,
+    &scene_cube,         &scene_wire_plane, &scene_wire_cube, &scene_wire_sphere,
+    &scene_wire_capsule, &scene_raytrace,   &scene_pathtrace,
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
