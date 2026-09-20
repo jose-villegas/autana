@@ -47,28 +47,28 @@ TUNE_INT(ridge_trail, 226);
 /* A tap flicks the line up; a finger drawn along it plucks it again every
  * STRUM_STEP_PX. Thousandths of a pixel per spring tick, over pluck_width
  * columns to either side. */
-TUNE_INT(pluck_tap, 1500);
-TUNE_INT(pluck_strum, 500);
-TUNE_INT(pluck_width, 24);
+TUNE_INT(pluck_tap, 8000);
+TUNE_INT(pluck_strum, 8000);
+TUNE_INT(pluck_width, 32);
 #define STRUM_STEP_PX 12
 
 /* The spring's own three, out of 256 - see spring_line.h. */
-TUNE_INT(spring_tension, 200);
-TUNE_INT(spring_stiffness, 2);
-TUNE_INT(spring_damping, 4);
+TUNE_INT(spring_tension, 64);
+TUNE_INT(spring_stiffness, 4);
+TUNE_INT(spring_damping, 2);
 
 /* ridge_motion.h's, by the names a developer types. */
-TUNE_INT(breath_ms, 9000);
-TUNE_INT(breath_depth, 200);
+TUNE_INT(breath_ms, 5000);
+TUNE_INT(breath_depth, 164);
 TUNE_INT(breath_smooth, 20);
-TUNE_INT(wave_height, 40);
-TUNE_INT(wave_length, 170);
+TUNE_INT(wave_height, 300);
+TUNE_INT(wave_length, 164);
 TUNE_INT(wave_period_ms, 2600);
-TUNE_INT(tilt_push, 200);
+TUNE_INT(tilt_push, 350);
 TUNE_INT(tilt_coast_ms, 2000);
 
 /* How long the line takes to cover about two thirds of a turn toward level. */
-TUNE_INT(level_tau_ms, 1200);
+TUNE_INT(level_tau_ms, 700);
 
 /* Shaking plucks the line at random, harder the harder it is shaken. */
 #define SHAKE_THRESHOLD    48
