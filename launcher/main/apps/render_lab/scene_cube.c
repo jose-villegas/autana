@@ -13,6 +13,7 @@
 #include <stdint.h>
 
 #include "../../gfx/gfx.h"
+#include "render_lab.h"
 #include "render_lab_scene.h"
 
 /* small3dlib config - must precede its include. */
@@ -36,8 +37,6 @@
 #define SPIN_PERIOD_Y_MS    4000
 #define SPIN_PERIOD_X_MS    7000
 
-#define BACKGROUND_RGB      0x0A0C14
-
 static const S3L_Unit cube_vertices[] = {S3L_CUBE_VERTICES(S3L_F)};
 static const S3L_Index cube_triangles[] = {S3L_CUBE_TRIANGLES};
 
@@ -58,17 +57,8 @@ static S3L_Model3D cube;
 static S3L_Scene scene;
 static uint32_t elapsed_ms;
 
-/* The toggle this scene exists to demonstrate: whether cube_clear_frame()
- * clears the whole framebuffer every frame or only the pixels the cube
- * touches, via gfx_mark_dirty() instead of gfx_clear()'s implicit
- * "everything changed". On by default - the partial-clear path is what
- * this scene showcases. Exposed so suite_cube_perf.c can force this true
- * in its fixture, so a stray leftover toggle can never silently skew a
- * perf run, and so app_render_lab.c's menu can offer it as a toggle. */
-bool partial_updates = true;
-
 /* This frame's drawn-pixel bounds, accumulated by shade_pixel() while
- * partial_updates is on - reset to an empty range at the top of
+ * render_lab_partial_updates is on - reset to an empty range at the top of
  * cube_rasterize_frame(), widened by every covered pixel small3dlib
  * reports. */
 static int frame_x0, frame_y0, frame_x1, frame_y1;
@@ -80,8 +70,7 @@ static int frame_x0, frame_y0, frame_x1, frame_y1;
  * nothing there overlaps this frame. */
 static int cube_bbox_x0, cube_bbox_y0, cube_bbox_x1, cube_bbox_y1;
 static bool cube_bbox_valid;
-static int prev_cube_bbox_x0, prev_cube_bbox_y0, prev_cube_bbox_x1, prev_cube_bbox_y1;
-static bool prev_cube_bbox_valid;
+static render_lab_coverage_t last_coverage;
 
 /* Set only while cube_rasterize_band() runs; NULL otherwise, when
  * shade_pixel() writes into gfx_framebuffer() as before. small3dlib
@@ -131,10 +120,10 @@ shade_pixel(S3L_PixelInfo* pixel) {
 
     gfx_framebuffer()[pixel->y * GFX_WIDTH + pixel->x] = color;
 
-    /* Only tracked in partial_updates mode - cube_rasterize_frame() is the
+    /* Only tracked in render_lab_partial_updates mode - cube_rasterize_frame() is the
      * sole reader, and there is no reason to pay for it on every one of the
      * tens of thousands of pixels a frame otherwise covers. */
-    if (partial_updates) {
+    if (render_lab_partial_updates) {
         if (pixel->x < frame_x0) {
             frame_x0 = pixel->x;
         }
@@ -162,8 +151,8 @@ void
 cube_clear_frame(void) {
     /* gfx_set_partial_clear() delegates bounding-box erase and dirty marking
      * of previous-frame bounds directly to gfx_clear(). */
-    gfx_set_partial_clear(partial_updates);
-    gfx_clear(gfx_rgb(BACKGROUND_RGB));
+    gfx_set_partial_clear(render_lab_partial_updates);
+    gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
 }
 
 /* Exposed (suite_cube_perf.c) so the perf suite can time this without
@@ -174,7 +163,7 @@ cube_clear_frame(void) {
  * fail to link. */
 void
 cube_rasterize_frame(void) {
-    if (partial_updates) {
+    if (render_lab_partial_updates) {
         frame_x0 = GFX_WIDTH;
         frame_y0 = GFX_HEIGHT;
         frame_x1 = 0;
@@ -191,31 +180,13 @@ cube_rasterize_frame(void) {
     S3L_newFrame();       /* resets the triangle sorter */
     S3L_drawScene(scene); /* calls shade_pixel() for every covered pixel */
 
-    if (partial_updates) {
+    if (render_lab_partial_updates) {
         /* shade_pixel() wrote straight into gfx_framebuffer(), which gfx
          * cannot see - this is the one gfx_mark_dirty() call that tells it
          * what actually changed this frame. */
         if (frame_x1 > frame_x0 && frame_y1 > frame_y0) {
             gfx_mark_dirty(frame_x0, frame_y0, frame_x1 - frame_x0, frame_y1 - frame_y0);
         }
-    }
-}
-
-/* Fills an entire band buffer with the background colour - the band ring
- * has no accumulated framebuffer to clear a bounding box out of, so every
- * band is a full redraw regardless of partial_updates: gfx_clear()'s own
- * partial path never fires without gfx_present()'s bookkeeping, which
- * band mode's no-op present (gfx.c) never runs. Two pixels per store, the
- * same trick cube_clear_frame()'s own gfx_clear() uses. */
-static void
-clear_band(gfx_color_t* buf, int height) {
-    const gfx_color_t color = gfx_rgb(BACKGROUND_RGB);
-    const uint32_t pair = ((uint32_t)color << 16) | color;
-    uint32_t* words = (uint32_t*)buf;
-    const int count = (GFX_WIDTH * height) / 2;
-
-    for (int i = 0; i < count; i++) {
-        words[i] = pair;
     }
 }
 
@@ -330,18 +301,7 @@ cube_transform_and_bin(void) {
      * erasing even though nothing there overlaps this frame's own bbox,
      * and every band-mode caller of this function needs both boxes marked
      * the same way. */
-    if (prev_cube_bbox_valid) {
-        gfx_mark_dirty(prev_cube_bbox_x0, prev_cube_bbox_y0, prev_cube_bbox_x1 - prev_cube_bbox_x0,
-                       prev_cube_bbox_y1 - prev_cube_bbox_y0);
-    }
-    if (cube_bbox_valid) {
-        gfx_mark_dirty(cube_bbox_x0, cube_bbox_y0, cube_bbox_x1 - cube_bbox_x0, cube_bbox_y1 - cube_bbox_y0);
-    }
-    prev_cube_bbox_x0 = cube_bbox_x0;
-    prev_cube_bbox_y0 = cube_bbox_y0;
-    prev_cube_bbox_x1 = cube_bbox_x1;
-    prev_cube_bbox_y1 = cube_bbox_y1;
-    prev_cube_bbox_valid = cube_bbox_valid;
+    render_lab_coverage_mark(&last_coverage, cube_bbox_valid, cube_bbox_x0, cube_bbox_y0, cube_bbox_x1, cube_bbox_y1);
 }
 
 /* Draws only the bin's triangles that overlap [row0, row1) into `buf`,
@@ -385,7 +345,7 @@ scene_cube_enter(void) {
     scene.camera.focalLength = CAMERA_FOCAL_LENGTH;
 
     elapsed_ms = 0;
-    prev_cube_bbox_valid = false; /* a stale box from a previous visit is not really "last frame" */
+    last_coverage.valid = false; /* a stale box from a previous visit is not really "last frame" */
 }
 
 static void
@@ -401,7 +361,6 @@ scene_cube_frame(uint32_t dt_ms, bool band_mode_active) {
 
 static void
 scene_cube_frame_band(gfx_color_t* buf, int row0, int row1) {
-    clear_band(buf, row1 - row0);
     cube_rasterize_band(buf, row0, row1);
 }
 
@@ -412,7 +371,7 @@ scene_cube_exit(void) {
 
 static void
 scene_cube_invalidate(void) {
-    prev_cube_bbox_valid = false;
+    last_coverage.valid = false;
 }
 
 const render_lab_scene_t scene_cube = {

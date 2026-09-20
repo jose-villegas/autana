@@ -1,13 +1,13 @@
 #!/bin/sh
 #
-# Render the wire scenes on a host, with no board and no flash cycle.
+# Render this app's scenes on a host, with no board and no flash cycle.
 #
-#   ./launcher/main/apps/render_lab/tools/wire_render_host.sh [-o <dir>]
+#   ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh [-o <dir>]
 #
-# Each declared render starts on one wire primitive (--scene) via
+# Each declared render starts on one scene (--scene) via
 # render_lab_start_scene_index and steps 16 ms frames, full-framebuffer
-# layout, the same shape cube_render_host.sh uses. Landscape leads -
-# Testing-Guide.md's "measure landscape first".
+# layout. Landscape is the shipping orientation, so it leads; a panel-native
+# render is the shape tools/render_diff.sh compares a device capture against.
 #
 # Everything beyond the declarations below - finding a compiler, building,
 # checking each image against its declared size, converting to PNG - is
@@ -16,7 +16,7 @@
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-scene_name=wire
+scene_name=render_lab
 scene_sources="
 main/gfx/gfx.c
 main/ui/ui.c
@@ -31,7 +31,7 @@ main/apps/render_lab/render_lab_mode_switch.c
 main/apps/render_lab/ui/render_lab_hud_screen.c
 main/apps/render_lab/ui/render_lab_menu_screen.c
 components/microui/src/microui.c
-main/apps/render_lab/tools/wire_render_host.c
+main/apps/render_lab/tools/render_lab_render_host.c
 main/apps/render_lab/tools/render_lab_render_host_heap.c
 "
 scene_includes="components/small3dlib/include"
@@ -47,17 +47,19 @@ scene_includes="components/small3dlib/include"
 # render_lab_render_host_heap.c is a plain pass-through instead.
 scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
 
-# Integer end to end, but not hash-pinned for the same reason
-# cube_render_host.sh gives: the fps readout is a double printed with
-# "%.1f", and 30 frames of 16 ms stop 20 ms short of the window that
-# computes it, so it reads 0.0 regardless of anything this scene draws.
+# Size-checked but not hash-pinned. The scenes are integer throughout, but
+# the fps readout drawn over them is a double printed with "%.1f", and a pin
+# would rest on a C library's rounding.
 scene_pin=0
 scene_renders="
+gouraud-landscape|--quarter 1 --scene gouraud|448x368
+gouraud-landscape-panel|--quarter 1 --panel --scene gouraud|368x448
+gouraud-portrait|--quarter 0 --scene gouraud|368x448
 plane-landscape|--quarter 1 --scene plane|448x368
 plane-portrait|--quarter 0 --scene plane|368x448
 sphere-landscape|--quarter 1 --scene sphere|448x368
 sphere-portrait|--quarter 0 --scene sphere|368x448
-cube-landscape|--quarter 1 --scene cube|448x368
+wirecube-landscape|--quarter 1 --scene cube|448x368
 capsule-landscape|--quarter 1 --scene capsule|448x368
 plane-title-fading|--quarter 1 --scene plane --frames 110|448x368
 plane-title-gone|--quarter 1 --scene plane --frames 140|448x368
