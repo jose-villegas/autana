@@ -361,6 +361,13 @@ suites' static footprint threatening its grid allocation:
   only ever touched by `mark_band()` legitimately shows no green at all;
   that is a consequence of the design, not a gap in the overlay.
 
+Either layer's borders mark one frame's sends and are gone by the next, and
+a device at framerate never holds one long enough to read. `FREEZE`,
+`STEP [n]` and `RESUME` over the console (`console/console_freeze.c`) hold
+the frame loop between passes, so a frame can be looked at, captured with
+`SCREENSHOT`, and advanced one at a time. A held pass still reads touch,
+buttons and the IMU, so an orientation change latches its own full redraw
+for whichever `STEP` comes next.
 
 A full-width send straight out of the framebuffer (`send_full_row()`) has no
 disposable scratch copy to draw into, so turning either layer on there means

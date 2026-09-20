@@ -45,6 +45,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/console_verbs.c"
         "console/console.c"
         "console/console_buildid.c"
+        "console/console_freeze.c"
         "console/console_tune.c"
         "console/console_screenshot.c"
     )
