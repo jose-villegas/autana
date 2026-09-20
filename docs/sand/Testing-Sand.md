@@ -2,27 +2,27 @@
 
 Everything about verifying the sand app on real hardware that is specific
 to this app, split out of [`../Testing-Guide.md`](../Testing-Guide.md)
-(read that first for the host/device split, RUNSUITE, and the general
+(read that first for the host/device split, runsuite, and the general
 practice). This page is the sand-only half: the frame-budget capture, the
 free-heap precondition it depends on, how to read what it prints, and the
 chunk layout sweep that picks the app's two-core geometry.
 
 ---
 
-## Everyday loop: RUNSUITE, not a capture
+## Everyday loop: runsuite, not a capture
 
 A diag build (`CONFIG_LAUNCHER_SELFTEST` on, `AUTORUN` off) listens on the
 USB serial console. Sending
 
 ```
-RUNSUITE run_sand_perf_suite
+runsuite run_sand_perf_suite
 ```
 
 runs the sand frame-budget suite alone, on the board already flashed, with
 no rebuild and no reflash. Any other sand suite works the same way -
 `run_sand_materials_suite`, `run_sand_combustion_suite`, and so on; see
 `docs/Testing-Guide.md`'s suite table for the full list. This is the loop
-while working on a material or a perf change: RUNSUITE the suite for the
+while working on a material or a perf change: runsuite the suite for the
 area touched, and reserve a full capture for a merge decision.
 
 ## Capturing a frame-budget report
@@ -145,11 +145,11 @@ on-request suites, one per quality, live in the perf-scope diagnostics
 image and run by name:
 
 ```
-RUNSUITE run_chunk_sweep_ultra_suite
-RUNSUITE run_chunk_sweep_high_suite
-RUNSUITE run_chunk_sweep_normal_suite
-RUNSUITE run_chunk_sweep_low_suite
-RUNSUITE run_chunk_sweep_very_low_suite
+runsuite run_chunk_sweep_ultra_suite
+runsuite run_chunk_sweep_high_suite
+runsuite run_chunk_sweep_normal_suite
+runsuite run_chunk_sweep_low_suite
+runsuite run_chunk_sweep_very_low_suite
 ```
 
 On request means no autorun pays for them: a full self-test never runs a
@@ -218,6 +218,6 @@ where it does.
 ## Related
 
 - [`../Testing-Guide.md`](../Testing-Guide.md) - the host/device split,
-  RUNSUITE, the two device-only traps, and the suite-to-area table.
+  runsuite, the two device-only traps, and the suite-to-area table.
 - [`Architecture.md`](Architecture.md) - the app's own shape: the grid,
   the material tables, the step pipeline.
