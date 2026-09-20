@@ -53,13 +53,26 @@ current_scene(void) {
  * needs a re-entry to take hold. */
 bool render_lab_band_mode = true;
 
-/* -1 (default): draw_overlay_box() centers the fps box as normal, same as
- * ever. Any other value pins the box's own logical x there instead - a
- * test-only hook (suite_cube_band_perf.c) for measuring the UI cost of a
- * box whose PANEL row extent (a 90-degree turn maps logical x onto panel
- * rows) starts on a band boundary rather than wherever centering lands
- * it, without touching the app's own default layout. */
+/* -1 (default) leaves the fps box at its corner inset. Any other value pins
+ * the box's own logical x there instead - a test-only hook
+ * (suite_cube_band_perf.c) for measuring the UI cost of a box whose PANEL
+ * row extent (a 90-degree turn maps logical x onto panel rows) starts on a
+ * band boundary rather than wherever the inset lands it. */
 int render_lab_fps_box_x_override = -1;
+
+/* How long a scene's name stays on screen after the scene is entered. The
+ * BOOT menu shows the name at any time, so the HUD does not keep it. */
+#define SCENE_TITLE_MS      2000
+#define SCENE_TITLE_FADE_MS 500
+static uint32_t scene_title_remaining_ms;
+
+static uint8_t
+scene_title_alpha(void) {
+    if (scene_title_remaining_ms >= SCENE_TITLE_FADE_MS) {
+        return 255;
+    }
+    return (uint8_t)(scene_title_remaining_ms * 255 / SCENE_TITLE_FADE_MS);
+}
 
 /* Whether the BOOT-opened menu is showing instead of the current scene -
  * the normal view renders only the scene and the fps counter, everything
@@ -110,6 +123,7 @@ render_lab_enter(void) {
     enter_layout();
     current_scene_index = render_lab_start_scene_index;
     current_scene()->enter();
+    scene_title_remaining_ms = SCENE_TITLE_MS;
 
     fps_frame_count = 0;
     fps_window_elapsed_ms = 0;
@@ -146,7 +160,8 @@ draw_fps(const input_t* input, bool for_bands) {
     const render_lab_hud_screen_state_t state = {
         .fps_value = fps_value,
         .fps_box_x_override = render_lab_fps_box_x_override,
-        .scene_name = current_scene()->name,
+        .scene_title = current_scene()->name,
+        .scene_title_alpha = scene_title_alpha(),
         .status = current_scene()->status != NULL ? current_scene()->status() : NULL,
     };
     render_lab_hud_screen_draw(ctx, &state);
@@ -200,6 +215,7 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
         current_scene_index = (current_scene_index + 1) % SCENE_COUNT;
         render_lab_start_scene_index = current_scene_index; /* keeps a later re-entry on this same scene */
         current_scene()->enter();
+        scene_title_remaining_ms = SCENE_TITLE_MS;
         gfx_set_partial_clear(false);
         gfx_invalidate();
         ui_invalidate();
@@ -223,8 +239,22 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
  * same reason report_fps() in main.c windows instead of reporting per
  * frame. Shared by both render paths so the readout means the same thing
  * in either mode. */
+/* No scene erases the title's box, so the frame it expires on is redrawn in
+ * full. */
+static void
+update_scene_title(uint32_t dt_ms) {
+    if (scene_title_remaining_ms == 0) {
+        return;
+    }
+    scene_title_remaining_ms = scene_title_remaining_ms > dt_ms ? scene_title_remaining_ms - dt_ms : 0;
+    if (scene_title_remaining_ms == 0) {
+        gfx_invalidate();
+    }
+}
+
 static void
 update_fps_counter(uint32_t dt_ms) {
+    update_scene_title(dt_ms);
     fps_frame_count++;
     fps_window_elapsed_ms += dt_ms;
     if (fps_window_elapsed_ms >= FPS_WINDOW_MS) {

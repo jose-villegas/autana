@@ -15,36 +15,41 @@ mu_color_hex(uint32_t rgb) {
     return mu_color((int)((rgb >> 16) & 0xFF), (int)((rgb >> 8) & 0xFF), (int)(rgb & 0xFF), 255);
 }
 
+/* The panel's bezel hides about 15 px along every edge. */
+#define HUD_INSET_PX    16
+#define HUD_LINE_GAP_PX 4
+
 /* mu_text() draws only its own ink. Under partial_updates a scene only
  * erases its OWN last bounding box, never this one, so old text the
  * repainted line doesn't overdraw would stay on screen without this opaque
  * backing - painted through the same mu command list already hashed, at
  * no cost on frames where nothing changed. */
 static mu_Rect
-draw_overlay_box(mu_Context* ctx, int w, int h, int x_override, int y) {
-    mu_Rect box = ui_centered_rect(ui_width(), w, h, y);
-    if (x_override >= 0) {
-        box.x = x_override;
-    }
+draw_text_box(mu_Context* ctx, const char* text, int x, int y) {
+    const mu_Rect box = mu_rect(x, y, gfx_text_width(text, -1) + 8, gfx_text_height() + 4);
     mu_draw_rect(ctx, box, mu_color_hex(RENDER_LAB_HUD_BACKGROUND_RGB));
+    mu_layout_set_next(ctx, box, 0);
+    mu_text(ctx, text);
     return box;
 }
 
-/* Appended to the fps line, a scene's vertex/edge text can overflow the
- * panel width - so it gets its own narrower box stacked right below,
- * leaving the fps line above at the position it already had. */
-#define STATUS_GAP_PX 4
-
+/* Centred on the row under the fps and status lines, whether or not the
+ * scene has a status, so the title never moves between scenes. The box stays
+ * opaque while the ink fades: a dithered box would leave the pixels it no
+ * longer covers showing last frame's title wherever no scene erases them. */
 static void
-draw_status_line(mu_Context* ctx, const char* status, mu_Rect fps_box) {
-    if (status == NULL) {
+draw_scene_title(mu_Context* ctx, const char* title, uint8_t alpha) {
+    if (alpha == 0) {
         return;
     }
-    const int sw = gfx_text_width(status, -1);
-    const int sh = gfx_text_height() + 4;
-    const mu_Rect box = draw_overlay_box(ctx, sw + 8, sh, -1, fps_box.y + fps_box.h + STATUS_GAP_PX);
-    mu_layout_set_next(ctx, box, 0);
-    mu_text(ctx, status);
+    const int w = gfx_text_width(title, -1) + 8;
+    const int h = gfx_text_height() + 4;
+    const mu_Rect box = ui_centered_rect(ui_width(), w, h, HUD_INSET_PX + 2 * (h + HUD_LINE_GAP_PX));
+    mu_draw_rect(ctx, box, mu_color_hex(RENDER_LAB_HUD_BACKGROUND_RGB));
+
+    mu_Color ink = ctx->style->colors[MU_COLOR_TEXT];
+    ink.a = alpha;
+    mu_draw_text(ctx, ctx->style->font, title, -1, mu_vec2(box.x + 4, box.y + 2), ink);
 }
 
 void
@@ -56,16 +61,15 @@ render_lab_hud_screen_draw(mu_Context* ctx, const render_lab_hud_screen_state_t*
     ui_set_text_style(UI_TEXT_OUTLINED);
 
     if (ui_begin_screen(ctx, "Render Lab HUD", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        char fps_line[48];
-        snprintf(fps_line, sizeof fps_line, "%s  %.1f fps", state->scene_name, state->fps_value);
-        const int tw = gfx_text_width(fps_line, -1);
-        const int th = gfx_text_height() + 4;
+        char fps_line[16];
+        snprintf(fps_line, sizeof fps_line, "%.1f fps", state->fps_value);
 
-        const mu_Rect box = draw_overlay_box(ctx, tw + 8, th, state->fps_box_x_override, 2);
-        mu_layout_set_next(ctx, box, 0);
-        mu_text(ctx, fps_line);
-
-        draw_status_line(ctx, state->status, box);
+        const int x = state->fps_box_x_override >= 0 ? state->fps_box_x_override : HUD_INSET_PX;
+        const mu_Rect fps_box = draw_text_box(ctx, fps_line, x, HUD_INSET_PX);
+        if (state->status != NULL) {
+            draw_text_box(ctx, state->status, x, fps_box.y + fps_box.h + HUD_LINE_GAP_PX);
+        }
+        draw_scene_title(ctx, state->scene_title, state->scene_title_alpha);
 
         mu_end_window(ctx);
     }

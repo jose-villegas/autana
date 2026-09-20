@@ -12,27 +12,23 @@
 
 #include "esp_heap_caps.h"
 
+#include "../../display/display.h"
 #include "../../gfx/gfx.h"
 #include "render_lab_scene.h"
 #include "wire_pipeline.h"
 #include "wire_primitives_generated.h"
 
-#define BACKGROUND_RGB         0x0A0C14
-#define WIRE_LINE_RGB          0x4FD1FF
+#define BACKGROUND_RGB       0x0A0C14
+#define WIRE_LINE_RGB        0x4FD1FF
 
-#define WIRE_ORBIT_PERIOD_MS   12000
+#define WIRE_ORBIT_PERIOD_MS 12000
 
-/* Camera height and roll are a fixed fraction of the orbit distance below,
- * not their own constants - every mesh then frames the same way regardless
- * of its own physical size. Roll (rotation.z) is a quarter turn: the scene
- * draws into gfx's native panel frame, and the shipping (landscape) read
- * applies a turn of its own (ui_transform_quarter_turn) that this cancels,
- * the same reason gfx_text_turned() takes an explicit turn - confirmed by
- * looking at wire_render_host's own landscape PNGs. */
-#define WIRE_CAMERA_HEIGHT_NUM 1
-#define WIRE_CAMERA_HEIGHT_DEN 8
-#define WIRE_CAMERA_ROLL       (-S3L_F / 4)
-#define WIRE_FOCAL_LENGTH      (S3L_F)
+/* Elevation of the camera above the mesh's own horizon, as sin/cos in
+ * S3L_F units and as a small3dlib angle (S3L_F is one turn): 30 degrees. */
+#define WIRE_ELEVATION_SIN   (S3L_F / 2)
+#define WIRE_ELEVATION_COS   443
+#define WIRE_ELEVATION_ANGLE (S3L_F / 12)
+#define WIRE_FOCAL_LENGTH    (S3L_F)
 
 extern bool partial_updates; /* scene_cube.c's toggle - shared across every render_lab scene */
 
@@ -90,54 +86,47 @@ wire_exit(void) {
     current_mesh = NULL;
 }
 
-/* Each distance was tuned by eye through wire_render_host.sh against that
- * primitive's own extent (plane half-size 2048, cube half-extent 512,
- * sphere/capsule radius 1024) until it filled most of the screen without
- * crossing the near plane in the default orbit. */
+/* Each distance is set against that primitive's bounding radius as it
+ * spins, so it fills the panel's narrow axis without reaching the near
+ * plane. */
 static void
 scene_wire_plane_enter(void) {
-    wire_enter(&wire_plane_mesh, 6 * S3L_F);
+    wire_enter(&wire_plane_mesh, 8 * S3L_F);
 }
 
 static void
 scene_wire_cube_enter(void) {
-    wire_enter(&wire_cube_mesh, 2 * S3L_F);
+    wire_enter(&wire_cube_mesh, 7 * S3L_F / 2);
 }
 
 static void
 scene_wire_sphere_enter(void) {
-    wire_enter(&wire_sphere_mesh, 3 * S3L_F);
+    wire_enter(&wire_sphere_mesh, 4 * S3L_F);
 }
 
 static void
 scene_wire_capsule_enter(void) {
-    wire_enter(&wire_capsule_mesh, 6 * S3L_F);
+    wire_enter(&wire_capsule_mesh, 7 * S3L_F);
 }
 
-/* Orbiting the mesh in azimuth at a fixed height above it is what reads as
- * "looking slightly down" - the object sits below the camera's own eye
- * line, so perspective alone puts it in the lower part of the view with no
- * separate downward tilt needed. elapsed_ms drives the one angle that
- * changes, the same integer-only shape cube_update_rotation() and
- * boot_anim_view() use. center/scale per the task: screen centre,
- * GFX_WIDTH / 2. */
+/* The mesh spins about its own vertical axis under a fixed camera, so the
+ * camera's pitch and roll never compose with the orbit angle. A scene draws
+ * in the panel's native frame, so the roll is what keeps the mesh's up on
+ * the shell's current up. */
 void
 wire_advance_pose(uint32_t dt_ms) {
     elapsed_ms += dt_ms;
 
-    const S3L_Unit azimuth = (S3L_Unit)(((uint64_t)elapsed_ms * S3L_F / WIRE_ORBIT_PERIOD_MS) % S3L_F);
-    const S3L_Unit height = (current_orbit_distance * WIRE_CAMERA_HEIGHT_NUM) / WIRE_CAMERA_HEIGHT_DEN;
-
     S3L_Transform3D world;
     S3L_transform3DInit(&world);
+    world.rotation.y = (S3L_Unit)(((uint64_t)elapsed_ms * S3L_F / WIRE_ORBIT_PERIOD_MS) % S3L_F);
 
     S3L_Transform3D camera;
     S3L_transform3DInit(&camera);
-    camera.translation.x = (S3L_sin(azimuth) * current_orbit_distance) / S3L_F;
-    camera.translation.y = height;
-    camera.translation.z = -(S3L_cos(azimuth) * current_orbit_distance) / S3L_F;
-    camera.rotation.y = -azimuth;
-    camera.rotation.z = WIRE_CAMERA_ROLL;
+    camera.translation.y = (current_orbit_distance * WIRE_ELEVATION_SIN) / S3L_F;
+    camera.translation.z = -(current_orbit_distance * WIRE_ELEVATION_COS) / S3L_F;
+    camera.rotation.x = -WIRE_ELEVATION_ANGLE;
+    camera.rotation.z = -display_shell_quarter() * (S3L_F / 4);
 
     S3L_Mat4 world_mat, camera_mat;
     S3L_makeWorldMatrix(world, world_mat);

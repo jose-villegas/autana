@@ -405,8 +405,8 @@ run_orientation_fps_pair(int quarter, const char* orient_name, bool fps_on, doub
     /* Measurement only, for the UI editor's placement hints -
      * no assert: does starting the box's panel row extent on
      * a band boundary (render_lab_fps_box_x_override) touch
-     * fewer bands or replay cheaper than the app's own centred
-     * placement, which rarely lands on one. Reset right after
+     * fewer bands or replay cheaper than the app's own inset
+     * placement, which does not land on one. Reset right after
      * so no other arm inherits it. */
     render_lab_fps_box_x_override = 0;
     arm_result_t aligned = run_arm("band/landscape/fps-on-aligned", true, quarter, true);
