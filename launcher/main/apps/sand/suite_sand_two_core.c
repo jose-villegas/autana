@@ -31,6 +31,32 @@ _Static_assert(TC_H >= 2 * SAND_CHUNK_SIDE_MIN && TC_W >= 2 * SAND_CHUNK_SIDE_MI
 
 static const int tc_ring[][2] = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}};
 
+/* The seam scenes place cells by one side on BOTH axes and sweep every
+ * gravity, so the borders they aim at must not move with the travel class:
+ * they force a square cut. A square side near a twentieth of the board keeps
+ * the chunk count, and so the scene count, where it was. Paired with
+ * tc_release_square_side(). */
+static int
+tc_force_square_side(int w, int h) {
+    const int target = (w * h) / 20;
+    int side = 1;
+
+    while (side <= target / side) {
+        side++;
+    }
+    side--;
+    if (side < SAND_CHUNK_SIDE_MIN) {
+        side = SAND_CHUNK_SIDE_MIN;
+    }
+    TEST_ASSERT_TRUE_MESSAGE(sand_chunk_side_for_test(side, side), "the seam scenes' square cut must clear the floor");
+    return side;
+}
+
+static void
+tc_release_square_side(void) {
+    (void)sand_chunk_side_for_test(0, 0);
+}
+
 /* A lane whose join timed out is still inside the board, so a scene that ends
  * on one hands the next scene a core still writing into memory this one is
  * about to free and malloc() is about to hand back. Every scene below
@@ -626,7 +652,7 @@ test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
      * which is not flat, sets this. */
     int interior_worst = 0;
     int boundary_worst = 0;
-    worst_row_deltas(occupied, TC_H, sand_chunk_side_y(&s), &interior_worst, &boundary_worst);
+    worst_row_deltas(occupied, TC_H, sand_chunk_side_y(&s, SAND_CHUNK_TRAVEL_OTHER), &interior_worst, &boundary_worst);
 
     free(occupied);
     free(cells);
@@ -652,26 +678,6 @@ tc_prime_phase(sand_t* s, int phase) {
     if (phase == 0) {
         sand_step(s, 0, 0, 0);
     }
-}
-
-/* A sand_t is too large a frame for a test that also holds fixtures - see
- * this suite's own stack ceiling - so the probe this needs lives on the
- * heap. */
-static int
-tc_chunk_side_of(int w, int h) {
-    uint8_t* cells = malloc((size_t)w * (size_t)h);
-    sand_t* probe = malloc(sizeof *probe);
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(probe);
-
-    sand_init(probe, cells, w, h, 0u);
-    const int side = sand_chunk_side_x(probe);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(side, sand_chunk_side_y(probe),
-                                  "the seam scenes below place cells by one side on both axes");
-
-    free(probe);
-    free(cells);
-    return side;
 }
 
 /* A lone-grain board as the app runs it: sleeping and step stamps on, and
@@ -825,12 +831,13 @@ tc_assert_corners_move_one_cell(int phase, int side) {
 
 static void
 test_two_core_step_never_double_moves_at_a_seam(void) {
-    const int side = tc_chunk_side_of(TC_W, TC_H);
+    const int side = tc_force_square_side(TC_W, TC_H);
 
     for (int phase = 0; phase < 2; phase++) {
         tc_assert_row_seams_move_one_cell(phase, side);
         tc_assert_corners_move_one_cell(phase, side);
     }
+    tc_release_square_side();
 }
 
 /* THE CROSSING-ARRIVAL CHECK: a liquid moving with gravity lands in a chunk
@@ -1002,11 +1009,12 @@ test_smaller_quality_seams_match_serial(void) {
     } qualities[] = {{92, 112}, {61, 74}, {46, 56}};
 
     for (size_t q = 0; q < sizeof qualities / sizeof qualities[0]; q++) {
-        const int side = tc_chunk_side_of(qualities[q].w, qualities[q].h);
+        const int side = tc_force_square_side(qualities[q].w, qualities[q].h);
         for (int phase = 0; phase < 2; phase++) {
             tc_assert_quality_row_seams_match_serial(qualities[q].w, qualities[q].h, side, phase);
             tc_assert_quality_corners_match_serial(qualities[q].w, qualities[q].h, side, phase);
         }
+        tc_release_square_side();
     }
 }
 
@@ -1073,7 +1081,7 @@ tc_body_is_solid(const sand_t* s, material_id_t material) {
 /* The step at which the body first stopped being one, or -1. */
 static int
 tc_body_breaks_at(cell_t fill, material_id_t material, int tx, int ty, bool two_core) {
-    const int side = tc_chunk_side_of(TC_W, TC_H);
+    const int side = tc_force_square_side(TC_W, TC_H);
     tc_board_t* b = tc_board_open(TC_W, TC_H, 1);
     int x0, y0, broke = -1;
 
@@ -1086,6 +1094,7 @@ tc_body_breaks_at(cell_t fill, material_id_t material, int tx, int ty, bool two_
         }
     }
     tc_board_close(b);
+    tc_release_square_side();
     return broke;
 }
 
@@ -1220,7 +1229,7 @@ tc_gas_shaft_matches_serial(int side, int dx, int dy, int phase) {
 static void
 test_a_split_rising_body_of_gas_opens_no_gap(void) {
     static const int pulls[][2] = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
-    const int side = tc_chunk_side_of(TC_W, TC_H);
+    const int side = tc_force_square_side(TC_W, TC_H);
     char parted[128] = "";
     size_t used = 0;
 
@@ -1236,6 +1245,8 @@ test_a_split_rising_body_of_gas_opens_no_gap(void) {
             }
         }
     }
+
+    tc_release_square_side();
 
     char why[200];
     snprintf(why, sizeof why, "a split gas shaft left a cell serial did not:%s", parted);
@@ -1594,7 +1605,7 @@ test_landscape_water_column_has_no_line_mass_lag(void) {
 
 static int
 tc_first_gas_equalise_boundary(const sand_t* s) {
-    return sand_chunk_side_y(s);
+    return sand_chunk_side_y(s, SAND_CHUNK_TRAVEL_OTHER);
 }
 
 static void
@@ -1684,7 +1695,7 @@ tc_assert_gas_hop_matches_serial(int x, int y, bool flip) {
  * taken again there. Both sides of every chunk column seam, both ways. */
 static void
 test_split_gas_equalise_hops_once_across_a_chunk_column(void) {
-    const int side = tc_chunk_side_of(TC_W, TC_H);
+    const int side = tc_force_square_side(TC_W, TC_H);
 
     for (int boundary = side; boundary < TC_W; boundary += side) {
         for (int x = boundary - 1; x <= boundary; x++) {
@@ -1692,6 +1703,7 @@ test_split_gas_equalise_hops_once_across_a_chunk_column(void) {
             tc_assert_gas_hop_matches_serial(x, side / 2, true);
         }
     }
+    tc_release_square_side();
 }
 
 #ifdef DEVICE_BUILD
@@ -2307,6 +2319,169 @@ tc_assert_cut_is_used(int side_x, int side_y) {
     TEST_ASSERT_EQUAL_UINT_MESSAGE(want, swept, why);
 }
 
+/* The cut each shipped grid takes, per travel class - sand.c's table said
+ * back, so an edit to it has to be meant. The last two grids stay serial
+ * under SAND_CHUNK_SPLIT_MIN_CELLS and only a forced side reaches their
+ * rows. */
+static void
+test_each_quality_grid_takes_the_cut_its_travel_class_asks_for(void) {
+    static const struct {
+        int w, h;
+        int along_x[2], other[2];
+    } want[] = {
+        {184, 224, {92, 17}, {47, 17}}, {122, 149, {61, 17}, {25, 17}}, {92, 112, {46, 17}, {23, 17}},
+        {61, 74, {30, 17}, {17, 17}},   {46, 56, {23, 17}, {17, 17}},
+    };
+
+    for (size_t i = 0; i < sizeof want / sizeof want[0]; i++) {
+        for (int travel = 0; travel < SAND_CHUNK_TRAVEL_CLASSES; travel++) {
+            const int* const expect = (travel == SAND_CHUNK_TRAVEL_X) ? want[i].along_x : want[i].other;
+            sand_chunk_plan_t plan;
+            int side_x, side_y;
+            char why[160];
+
+            sand_chunk_table_sides(want[i].w, want[i].h, (sand_chunk_travel_t)travel, &side_x, &side_y);
+            snprintf(why, sizeof why, "%dx%d class %d: the table gave %dx%d, not %dx%d", want[i].w, want[i].h, travel,
+                     side_x, side_y, expect[0], expect[1]);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(expect[0], side_x, why);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(expect[1], side_y, why);
+            TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(SAND_CHUNK_SIDE_MIN, side_x, why);
+            TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(SAND_CHUNK_SIDE_MIN, side_y, why);
+            snprintf(why, sizeof why, "%dx%d class %d: %dx%d is not a cut sand_chunk_plan() takes", want[i].w,
+                     want[i].h, travel, side_x, side_y);
+            TEST_ASSERT_TRUE_MESSAGE(sand_chunk_plan(&plan, want[i].w, want[i].h, side_x, side_y, 0, 0), why);
+        }
+    }
+}
+
+/* Only the sign of the y component decides, so a pass whose travel carries a
+ * scan-order component lands in the second class however it moves. */
+static void
+test_only_a_step_travelling_along_x_alone_takes_the_long_cut(void) {
+    TEST_ASSERT_EQUAL_INT(SAND_CHUNK_TRAVEL_X, sand_chunk_travel_of(1, 0));
+    TEST_ASSERT_EQUAL_INT(SAND_CHUNK_TRAVEL_X, sand_chunk_travel_of(-1, 0));
+    TEST_ASSERT_EQUAL_INT(SAND_CHUNK_TRAVEL_OTHER, sand_chunk_travel_of(0, 1));
+    TEST_ASSERT_EQUAL_INT(SAND_CHUNK_TRAVEL_OTHER, sand_chunk_travel_of(0, -1));
+    TEST_ASSERT_EQUAL_INT(SAND_CHUNK_TRAVEL_OTHER, sand_chunk_travel_of(1, 1));
+    TEST_ASSERT_EQUAL_INT(SAND_CHUNK_TRAVEL_OTHER, sand_chunk_travel_of(-1, -1));
+}
+
+static void
+tc_assert_forced_sides(const sand_t* probe, int force_x, int force_y, int want_x, int want_y) {
+    for (int travel = 0; travel < SAND_CHUNK_TRAVEL_CLASSES; travel++) {
+        int table_x, table_y, side_x, side_y;
+        char why[160];
+
+        sand_chunk_table_sides(probe->w, probe->h, (sand_chunk_travel_t)travel, &table_x, &table_y);
+        TEST_ASSERT_TRUE(sand_chunk_side_for_test(force_x, force_y));
+        sand_chunk_sides(probe, (sand_chunk_travel_t)travel, &side_x, &side_y);
+        (void)sand_chunk_side_for_test(0, 0);
+
+        snprintf(why, sizeof why, "class %d: forcing %dx%d gave %dx%d over the table's %dx%d", travel, force_x, force_y,
+                 side_x, side_y, table_x, table_y);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(want_x != 0 ? want_x : table_x, side_x, why);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(want_y != 0 ? want_y : table_y, side_y, why);
+    }
+}
+
+/* An axis left at 0 keeps the table's own side, so a measurement can move
+ * one axis without restating the other. */
+static void
+test_a_forced_chunk_side_beats_the_table_on_either_axis(void) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    sand_t* probe = malloc(sizeof *probe);
+    TEST_ASSERT_NOT_NULL(cells);
+    TEST_ASSERT_NOT_NULL(probe);
+    sand_init(probe, cells, TC_W, TC_H, 0u);
+
+    tc_assert_forced_sides(probe, 33, 0, 33, 0);
+    tc_assert_forced_sides(probe, 0, 29, 0, 29);
+    tc_assert_forced_sides(probe, 33, 29, 33, 29);
+
+    free(probe);
+    free(cells);
+}
+
+/* A mark written under one pass's cut names another pass's chunk under a cut
+ * of a different shape, so nothing may survive a pass boundary. */
+static void
+test_a_stamp_is_never_read_under_a_cut_it_was_not_written_under(void) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    uint8_t* stamps = malloc(sand_step_stamp_bytes(TC_W, TC_H));
+    sand_t* s = malloc(sizeof *s);
+    TEST_ASSERT_NOT_NULL(cells);
+    TEST_ASSERT_NOT_NULL(stamps);
+    TEST_ASSERT_NOT_NULL(s);
+
+    sand_init(s, cells, TC_W, TC_H, 0u);
+    sand_enable_step_stamps(s, stamps);
+
+    int wide_x, wide_y, narrow_x, narrow_y;
+    sand_chunk_table_sides(TC_W, TC_H, SAND_CHUNK_TRAVEL_X, &wide_x, &wide_y);
+    sand_chunk_table_sides(TC_W, TC_H, SAND_CHUNK_TRAVEL_OTHER, &narrow_x, &narrow_y);
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(wide_x, narrow_x, "this board must cut its two classes differently to mean anything");
+
+    sand_stamps_arm(s, wide_x, wide_y);
+    sand_stamp_crossing(s, wide_x - 1, 0, wide_x, 0);
+    TEST_ASSERT_TRUE_MESSAGE(sand_cell_stamped(s, wide_x, 0), "a crossing of the wide cut must mark where it landed");
+    sand_stamp_crossing(s, narrow_x - 1, 0, narrow_x, 0);
+    TEST_ASSERT_FALSE_MESSAGE(sand_cell_stamped(s, narrow_x, 0),
+                              "a move inside one wide chunk is no crossing and must leave no mark");
+    sand_stamps_disarm(s);
+
+    sand_stamps_arm(s, narrow_x, narrow_y);
+    TEST_ASSERT_FALSE_MESSAGE(sand_cell_stamped(s, wide_x, 0), "a mark written under one cut was honoured under "
+                                                               "another");
+    sand_stamp_crossing(s, narrow_x - 1, 0, narrow_x, 0);
+    TEST_ASSERT_TRUE_MESSAGE(sand_cell_stamped(s, narrow_x, 0), "the same move is a crossing under the narrow cut");
+    sand_stamps_disarm(s);
+
+    free(s);
+    free(stamps);
+    free(cells);
+}
+
+/* A landscape step cuts its sweep one way and its gas spread another, so a
+ * pass that armed the marks and never cleared them would hand the next cut a
+ * mark naming a chunk it does not have. */
+static void
+test_a_step_hands_the_next_pass_no_marks_whatever_it_was_cut_by(void) {
+    static const int gx[] = {1000, 0, 700};
+    static const int gy[] = {0, 1000, 700};
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    uint8_t* stamps = malloc(sand_step_stamp_bytes(TC_W, TC_H));
+    sand_t* s = malloc(sizeof *s);
+    TEST_ASSERT_NOT_NULL(cells);
+    TEST_ASSERT_NOT_NULL(stamps);
+    TEST_ASSERT_NOT_NULL(s);
+
+    tc_build_scattered_scene(s, cells, 11u);
+    sand_enable_step_stamps(s, stamps);
+    void* scratch = lane_scratch_open(s);
+
+    sand_set_two_core_step(true);
+    for (int i = 0; i < 12; i++) {
+        const int arm = i % (int)(sizeof gx / sizeof gx[0]);
+        char why[160];
+
+        sand_step(s, gx[arm], gy[arm], 0);
+        snprintf(why, sizeof why, "step %d under gravity %d,%d left the marks armed", i, gx[arm], gy[arm]);
+        TEST_ASSERT_NULL_MESSAGE(s->stamps_live, why);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, s->stamp_side_x, why);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, s->stamp_side_y, why);
+        for (size_t b = 0; b < sand_step_stamp_bytes(TC_W, TC_H); b++) {
+            TEST_ASSERT_EQUAL_HEX8_MESSAGE(0, stamps[b], why);
+        }
+    }
+    sand_set_two_core_step(false);
+    tc_collect_core1();
+
+    free(scratch);
+    free(s);
+    free(stamps);
+    free(cells);
+}
+
 static void
 test_a_chosen_chunk_side_is_the_cut_every_split_pass_runs(void) {
     TEST_ASSERT_FALSE_MESSAGE(sand_chunk_side_for_test(SAND_CHUNK_SIDE_MIN - 1, SAND_CHUNK_SIDE_MIN),
@@ -2533,6 +2708,11 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_no_split_pass_draws_from_the_sequential_stream);
     RUN_TEST(test_forced_hashed_draws_move_a_serial_board_and_repeat);
     RUN_TEST(test_the_hashed_draw_override_leaves_nothing_behind);
+    RUN_TEST(test_each_quality_grid_takes_the_cut_its_travel_class_asks_for);
+    RUN_TEST(test_only_a_step_travelling_along_x_alone_takes_the_long_cut);
+    RUN_TEST(test_a_forced_chunk_side_beats_the_table_on_either_axis);
+    RUN_TEST(test_a_stamp_is_never_read_under_a_cut_it_was_not_written_under);
+    RUN_TEST(test_a_step_hands_the_next_pass_no_marks_whatever_it_was_cut_by);
     RUN_TEST(test_a_chosen_chunk_side_is_the_cut_every_split_pass_runs);
     RUN_TEST(test_a_chunk_side_the_grid_cannot_take_falls_back_to_one_lane);
     RUN_TEST(test_a_board_without_lane_scratch_steps_its_fluids_serially);

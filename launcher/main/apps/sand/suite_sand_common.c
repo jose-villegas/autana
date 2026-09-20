@@ -11,6 +11,7 @@
 #include "unity.h"
 
 #include "sand.h"
+#include "sand_priv.h"
 #include "suite_sand_common.h"
 #include "util/job.h"
 

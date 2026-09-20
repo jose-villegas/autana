@@ -42,55 +42,74 @@
 #include "sand_chunk_sched.h"
 #include "util/job.h"
 
-/* Chunks per board, near enough: the side is the square root of the board
- * over this, floored at SAND_CHUNK_SIDE_MIN. Twenty, not ten, from the
- * layout sweep - a 12-chunk cut leaves one lane idle for a third of a step
- * and the finer cut buys far more overlap than the extra dispatch costs. */
-#define SAND_CHUNK_TARGET_CELLS_DIVISOR 20
-#define SAND_CHUNK_SIDE_MIN             (2 * SAND_LIQUID_SIGHT + 1)
+#define SAND_CHUNK_SIDE_MIN (2 * SAND_LIQUID_SIGHT + 1)
 
 _Static_assert(SAND_CHUNK_SIDE_MIN > 2 * SAND_LIQUID_SIGHT,
                "a chunk must clear the furthest a split pass reads or transfers");
 
-static inline int
-sand_chunk_side_rule(const sand_t* s) {
-    const int cells_per_chunk = (s->w * s->h) / SAND_CHUNK_TARGET_CELLS_DIVISOR;
-    int side = 1;
+/* A step travelling along x alone takes chunks long across x; every other
+ * travel is slower on that shape, so the two are planned apart. A travel
+ * component that encodes scan order rather than motion puts its pass in the
+ * second class, which is where a pass nothing has measured belongs. */
+typedef enum {
+    SAND_CHUNK_TRAVEL_X,
+    SAND_CHUNK_TRAVEL_OTHER,
+    SAND_CHUNK_TRAVEL_CLASSES,
+} sand_chunk_travel_t;
 
-    while (side <= cells_per_chunk / side) {
-        side++;
-    }
-    side--;
-    return side < SAND_CHUNK_SIDE_MIN ? SAND_CHUNK_SIDE_MIN : side;
+static inline sand_chunk_travel_t
+sand_chunk_travel_of(int tx, int ty) {
+    (void)tx;
+    return (ty == 0) ? SAND_CHUNK_TRAVEL_X : SAND_CHUNK_TRAVEL_OTHER;
 }
 
+/* The cut a w x h grid takes for a travel class, before any override. */
+void sand_chunk_table_sides(int w, int h, sand_chunk_travel_t travel, int* side_x, int* side_y);
+
 /* Not sand.h API: a measurement's own chunk side per axis, in cells, or 0 on
- * an axis for the rule above. Set through sand_chunk_side_for_test(), which
- * is what enforces SAND_CHUNK_SIDE_MIN; a cut that does not fit falls back to
- * one lane exactly as the rule's own does. */
+ * an axis for the table. Set through sand_chunk_side_for_test(), which is what
+ * enforces SAND_CHUNK_SIDE_MIN; a cut that does not fit falls back to one lane
+ * exactly as a table entry's own would. */
 extern int sand_chunk_side_forced[2];
 
 bool sand_chunk_side_for_test(int side_x, int side_y);
 
-static inline int
-sand_chunk_side_x(const sand_t* s) {
-    return sand_chunk_side_forced[0] != 0 ? sand_chunk_side_forced[0] : sand_chunk_side_rule(s);
+static inline void
+sand_chunk_sides(const sand_t* s, sand_chunk_travel_t travel, int* side_x, int* side_y) {
+    sand_chunk_table_sides(s->w, s->h, travel, side_x, side_y);
+    if (sand_chunk_side_forced[0] != 0) {
+        *side_x = sand_chunk_side_forced[0];
+    }
+    if (sand_chunk_side_forced[1] != 0) {
+        *side_y = sand_chunk_side_forced[1];
+    }
 }
 
 static inline int
-sand_chunk_side_y(const sand_t* s) {
-    return sand_chunk_side_forced[1] != 0 ? sand_chunk_side_forced[1] : sand_chunk_side_rule(s);
+sand_chunk_side_x(const sand_t* s, sand_chunk_travel_t travel) {
+    int side_x, side_y;
+
+    sand_chunk_sides(s, travel, &side_x, &side_y);
+    return side_x;
 }
 
 static inline int
-sand_chunk_cols(const sand_t* s) {
-    const int side = sand_chunk_side_x(s);
+sand_chunk_side_y(const sand_t* s, sand_chunk_travel_t travel) {
+    int side_x, side_y;
+
+    sand_chunk_sides(s, travel, &side_x, &side_y);
+    return side_y;
+}
+
+static inline int
+sand_chunk_cols(const sand_t* s, sand_chunk_travel_t travel) {
+    const int side = sand_chunk_side_x(s, travel);
     return (s->w + side - 1) / side;
 }
 
 static inline int
-sand_chunk_rows(const sand_t* s) {
-    const int side = sand_chunk_side_y(s);
+sand_chunk_rows(const sand_t* s, sand_chunk_travel_t travel) {
+    const int side = sand_chunk_side_y(s, travel);
     return (s->h + side - 1) / side;
 }
 
@@ -123,13 +142,16 @@ sand_stamp_crossing(sand_t* s, int x0, int y0, int x1, int y1) {
     s->stamped = true;
 }
 
-/* Bracket one chunk-parallel pass. Stamps are per pass, not per step: serial
- * lets the next pass move a cell this one already moved. */
+/* Bracket one chunk-parallel pass, taking the sides of the plan that pass is
+ * running on: two passes of one step can be cut differently, and a mark left
+ * by one would name another chunk under the other. Stamps are per pass, not
+ * per step, for a second reason: serial lets the next pass move a cell this
+ * one already moved. */
 static inline void
-sand_stamps_arm(sand_t* s) {
+sand_stamps_arm(sand_t* s, int side_x, int side_y) {
     s->stamps_live = s->step_stamps;
-    s->stamp_side_x = sand_chunk_side_x(s);
-    s->stamp_side_y = sand_chunk_side_y(s);
+    s->stamp_side_x = side_x;
+    s->stamp_side_y = side_y;
 }
 
 static inline void
@@ -139,6 +161,8 @@ sand_stamps_disarm(sand_t* s) {
         s->stamped = false;
     }
     s->stamps_live = NULL;
+    s->stamp_side_x = 0;
+    s->stamp_side_y = 0;
 }
 
 #define SAND_LANE_COUNT       2
@@ -172,8 +196,8 @@ void sand_lane_prepare(sand_lane_t* lane, const sand_t* s);
 void sand_lane_merge(sand_t* s, const sand_lane_t* lane);
 
 /* Whether a split pass can run at all: two-core stepping on, lane scratch
- * present, and a cut that fits. */
-bool sand_chunk_pass_ready(const sand_t* s);
+ * present, and its class's cut fits. */
+bool sand_chunk_pass_ready(const sand_t* s, int tx, int ty);
 
 /* Whether a pass needs the arrival marks: only one that can hand a cell on
  * again in the same pass, which an order built against its own travel

@@ -213,11 +213,11 @@ insert_side(int* out, int n, int side) {
 }
 
 /* Every legal side from the floor to half the axis, thinned to AXIS_SAMPLES so
- * a quality's cross-product stays small, plus the side that ships so the table
+ * a quality's cross-product stays small, plus the sides that ship so the table
  * reads against today rather than only against itself. Whether a pair plans at
  * all is sand_chunk_plan()'s answer, taken per pair rather than per axis. */
 static int
-axis_sides(int extent, int rule, int* out) {
+axis_sides(int extent, const int* keep, int n_keep, int* out) {
     const int hi = extent / 2;
     int n = 0;
 
@@ -228,24 +228,12 @@ axis_sides(int extent, int rule, int* out) {
     for (int i = 0; i < AXIS_SAMPLES; i++) {
         n = insert_side(out, n, SAND_CHUNK_SIDE_MIN + ((hi - SAND_CHUNK_SIDE_MIN) * i) / (AXIS_SAMPLES - 1));
     }
-    if (rule <= hi && rule >= SAND_CHUNK_SIDE_MIN) {
-        n = insert_side(out, n, rule);
+    for (int i = 0; i < n_keep; i++) {
+        if (keep[i] <= hi && keep[i] >= SAND_CHUNK_SIDE_MIN) {
+            n = insert_side(out, n, keep[i]);
+        }
     }
     return n;
-}
-
-/* sand_chunk_side_rule() takes a board; this is the same arithmetic on a
- * grid size, so the table can name the shipped side without building one. */
-static int
-rule_side(int w, int h) {
-    const int cells_per_chunk = (w * h) / SAND_CHUNK_TARGET_CELLS_DIVISOR;
-    int side = 1;
-
-    while (side <= cells_per_chunk / side) {
-        side++;
-    }
-    side--;
-    return side < SAND_CHUNK_SIDE_MIN ? SAND_CHUNK_SIDE_MIN : side;
 }
 
 /* --- the report ----------------------------------------------------------- */
@@ -319,7 +307,20 @@ measure_layout(const quality_t* q, int side_x, int side_y, layout_t* out) {
 }
 
 static void
-print_shortlist(const quality_t* q, int rule, const layout_t* found, int n) {
+print_shipped_rank(const char* travel, int side_x, int side_y, const layout_t* found, int n) {
+    for (int i = 0; i < n; i++) {
+        if (found[i].side_x == side_x && found[i].side_y == side_y) {
+            printf("\nShipped along %s, `%dx%d`: %d chunks, landscape %.3f, all gravities %.3f, ranked %d of %d\n",
+                   travel, side_x, side_y, found[i].chunks, found[i].landscape, found[i].balance, i + 1, n);
+            return;
+        }
+    }
+    printf("\nShipped along %s, `%dx%d`, is not a cut this grid takes - it falls back to one lane.\n", travel, side_x,
+           side_y);
+}
+
+static void
+print_shortlist(const quality_t* q, const int* ship, const layout_t* found, int n) {
     printf("\nShortlist for %s (landscape weighted double):\n\n", q->name);
     if (n == 0) {
         printf("- no side pair this grid can be cut by plans at all\n");
@@ -329,27 +330,26 @@ print_shortlist(const quality_t* q, int rule, const layout_t* found, int n) {
         printf("- `%dx%d` - %d chunks, landscape %.3f, all gravities %.3f\n", found[i].side_x, found[i].side_y,
                found[i].chunks, found[i].landscape, found[i].balance);
     }
-    for (int i = 0; i < n; i++) {
-        if (found[i].side_x == rule && found[i].side_y == rule) {
-            printf("\nShipped `%dx%d` for comparison: %d chunks, landscape %.3f, all gravities %.3f, "
-                   "ranked %d of %d\n",
-                   rule, rule, found[i].chunks, found[i].landscape, found[i].balance, i + 1, n);
-            return;
-        }
-    }
-    printf("\nShipped `%dx%d` is not a cut this grid takes - it falls back to one lane.\n", rule, rule);
+    print_shipped_rank("x", ship[0], ship[1], found, n);
+    print_shipped_rank("anything else", ship[2], ship[3], found, n);
 }
 
 static void
 report_quality(const quality_t* q) {
-    const int rule = rule_side(q->w, q->h);
-    int sx[AXIS_SAMPLES + 1], sy[AXIS_SAMPLES + 1];
-    const int nx = axis_sides(q->w, rule, sx);
-    const int ny = axis_sides(q->h, rule, sy);
-    layout_t found[(AXIS_SAMPLES + 1) * (AXIS_SAMPLES + 1)];
+    int ship[4];
+    sand_chunk_table_sides(q->w, q->h, SAND_CHUNK_TRAVEL_X, &ship[0], &ship[1]);
+    sand_chunk_table_sides(q->w, q->h, SAND_CHUNK_TRAVEL_OTHER, &ship[2], &ship[3]);
+
+    const int keep_x[] = {ship[0], ship[2]};
+    const int keep_y[] = {ship[1], ship[3]};
+    int sx[AXIS_SAMPLES + 2], sy[AXIS_SAMPLES + 2];
+    const int nx = axis_sides(q->w, keep_x, 2, sx);
+    const int ny = axis_sides(q->h, keep_y, 2, sy);
+    layout_t found[(AXIS_SAMPLES + 2) * (AXIS_SAMPLES + 2)];
     int n_found = 0;
 
-    printf("\n## %s - %d x %d cells, shipped side %d\n\n", q->name, q->w, q->h, rule);
+    printf("\n## %s - %d x %d cells, shipped %dx%d along x, %dx%d otherwise\n\n", q->name, q->w, q->h, ship[0], ship[1],
+           ship[2], ship[3]);
     printf("| side | chunks | scene | gravity | work | makespan | balance | awake/step |\n");
     printf("|---|---|---|---|---|---|---|---|\n");
 
@@ -359,7 +359,7 @@ report_quality(const quality_t* q) {
         }
     }
     qsort(found, (size_t)n_found, sizeof found[0], by_landscape_then_balance);
-    print_shortlist(q, rule, found, n_found);
+    print_shortlist(q, ship, found, n_found);
 }
 
 int

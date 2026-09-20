@@ -1554,12 +1554,52 @@ drive_chunk_pass_lanes(void) {
     }
 }
 
-bool
-sand_chunk_pass_ready(const sand_t* s) {
-    sand_chunk_plan_t fits;
+/* Two-core over one-core on the board per class, geomean of five scenes,
+ * landscape/portrait gravity, against the square cut each beats:
+ *   ULTRA  92x17 0.77/1.19 | 47x17 0.81/0.93 | 45x45 1.00/0.94
+ *   HIGH   61x17 0.81/1.20 | 25x17 0.85/0.88 | 30x30 1.02/0.96
+ *   NORMAL 46x17 0.85/1.22 | 23x17 0.89/0.97 | 22x22 1.03/0.98
+ * The last two grids never beat one core at any cut. */
+static const struct {
+    int w, h;
+    int side[SAND_CHUNK_TRAVEL_CLASSES][2];
+} chunk_layouts[] = {
+    {184, 224, {{92, SAND_CHUNK_SIDE_MIN}, {47, SAND_CHUNK_SIDE_MIN}}},
+    {122, 149, {{61, SAND_CHUNK_SIDE_MIN}, {25, SAND_CHUNK_SIDE_MIN}}},
+    {92, 112, {{46, SAND_CHUNK_SIDE_MIN}, {23, SAND_CHUNK_SIDE_MIN}}},
+    {61, 74, {{30, SAND_CHUNK_SIDE_MIN}, {SAND_CHUNK_SIDE_MIN, SAND_CHUNK_SIDE_MIN}}},
+    {46, 56, {{23, SAND_CHUNK_SIDE_MIN}, {SAND_CHUNK_SIDE_MIN, SAND_CHUNK_SIDE_MIN}}},
+};
 
-    return sand_two_core_step_enabled() && s->lane_scratch != NULL
-           && sand_chunk_plan(&fits, s->w, s->h, sand_chunk_side_x(s), sand_chunk_side_y(s), 0, 0);
+/* Off the table - a test grid, or a quality this board does not offer - the
+ * shape of the rows themselves: half the width along x-travel and a quarter
+ * of it otherwise, one chunk floor tall, clamped to that floor. Whether the
+ * grid takes the cut at all stays sand_chunk_plan()'s answer. */
+void
+sand_chunk_table_sides(int w, int h, sand_chunk_travel_t travel, int* side_x, int* side_y) {
+    for (size_t i = 0; i < sizeof chunk_layouts / sizeof chunk_layouts[0]; i++) {
+        if (chunk_layouts[i].w == w && chunk_layouts[i].h == h) {
+            *side_x = chunk_layouts[i].side[travel][0];
+            *side_y = chunk_layouts[i].side[travel][1];
+            return;
+        }
+    }
+
+    const int wide = (travel == SAND_CHUNK_TRAVEL_X) ? w / 2 : w / 4;
+    *side_x = wide < SAND_CHUNK_SIDE_MIN ? SAND_CHUNK_SIDE_MIN : wide;
+    *side_y = SAND_CHUNK_SIDE_MIN;
+}
+
+bool
+sand_chunk_pass_ready(const sand_t* s, int tx, int ty) {
+    sand_chunk_plan_t fits;
+    int side_x, side_y;
+
+    if (!sand_two_core_step_enabled() || s->lane_scratch == NULL) {
+        return false;
+    }
+    sand_chunk_sides(s, sand_chunk_travel_of(tx, ty), &side_x, &side_y);
+    return sand_chunk_plan(&fits, s->w, s->h, side_x, side_y, 0, 0);
 }
 
 int sand_chunk_side_forced[2];
@@ -1613,11 +1653,13 @@ sand_chunk_pass_ranks_later(int x0, int y0, int x1, int y1) {
 bool
 sand_chunk_pass_run(sand_t* s, int tx, int ty, sand_chunk_pass_stamps_t stamps, sand_chunk_fn_t fn, void* pass) {
     sand_lane_t* const lanes = sand_lanes(s);
+    int side_x, side_y;
 
-    if (!sand_chunk_pass_ready(s) || lanes == NULL) {
+    if (!sand_chunk_pass_ready(s, tx, ty) || lanes == NULL) {
         return false;
     }
-    (void)sand_chunk_plan(&chunk_plan, s->w, s->h, sand_chunk_side_x(s), sand_chunk_side_y(s), 0, 0);
+    sand_chunk_sides(s, sand_chunk_travel_of(tx, ty), &side_x, &side_y);
+    (void)sand_chunk_plan(&chunk_plan, s->w, s->h, side_x, side_y, 0, 0);
     sand_chunk_order(&chunk_sched.order, chunk_plan.cols, chunk_plan.rows, tx, ty, s->step_phase);
     chunk_sched.cols = chunk_plan.cols;
     chunk_sched.rows = chunk_plan.rows;
@@ -1627,7 +1669,7 @@ sand_chunk_pass_run(sand_t* s, int tx, int ty, sand_chunk_pass_stamps_t stamps, 
 
     s->rng_hashed = true;
     if (stamps == SAND_CHUNK_PASS_STAMP_CROSSINGS) {
-        sand_stamps_arm(s);
+        sand_stamps_arm(s, chunk_plan.side_x, chunk_plan.side_y);
     }
     for (int i = 0; i < SAND_LANE_COUNT; i++) {
         sand_lane_prepare(&lanes[i], s);
@@ -1785,7 +1827,7 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
 #ifdef DEVICE_BUILD
     const int64_t sweep_t0 = esp_timer_get_time();
 #endif
-    if (sand_chunk_pass_ready(s)) {
+    if (sand_chunk_pass_ready(s, im_sign(dx), im_sign(dy))) {
         sweep_pass = (sweep_pass_t){
             .lanes = sand_lanes(s),
             .w = w,

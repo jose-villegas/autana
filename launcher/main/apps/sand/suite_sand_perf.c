@@ -652,7 +652,7 @@ time_two_core_quality_scene(const quality_grid_t* quality, quality_scene_fn buil
     two_core_scope_end(core);
     collect_core1_lane();
 
-    out.chunks = sand_chunk_rows(&real) * sand_chunk_cols(&real);
+    out.chunks = sand_chunk_rows(&real, SAND_CHUNK_TRAVEL_OTHER) * sand_chunk_cols(&real, SAND_CHUNK_TRAVEL_OTHER);
     free(scratch);
     free(stamps);
     free(big);
@@ -847,7 +847,7 @@ sweep_cell(const sweep_quality_t* q, const sweep_scene_t* sc, const int* side, c
     sweep_board_open(&b, q->w, q->h);
     TEST_ASSERT_TRUE_MESSAGE(sand_chunk_side_for_test(side[0], side[1]), "every swept side must clear the floor");
     const int warm = sc->build(&b.s);
-    const int chunks = sand_chunk_cols(&b.s) * sand_chunk_rows(&b.s);
+    const int chunks = ((q->w + side[0] - 1) / side[0]) * ((q->h + side[1] - 1) / side[1]);
 
     const two_core_scope_t core = two_core_scope_begin(arm >= SWEEP_ARM_SOLO);
     sand_force_hashed_rng(arm == SWEEP_ARM_SERIAL_HASHED);
