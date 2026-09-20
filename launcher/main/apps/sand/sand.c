@@ -1153,6 +1153,7 @@ span_x_order(int lo, int hi, int x_step, int* from, int* to, int* step) {
  * cuts that grid row into. */
 typedef struct {
     uint8_t *row, *prow, *arow, *brow;
+    const uint8_t* stamp_row;
     int y, by;
 
     sand_t* s;
@@ -1200,7 +1201,7 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
          * a cell that arrived here this pass is still liquid sitting in this
          * block, and cross-flow looks nowhere the sweep did not mark. */
         saw_liquid |= (unsigned)(ctx->is_liquid >> CELL_MATERIAL(c)) & 1u;
-        if (sand_cell_stamped(ctx->s, x, ctx->y)) {
+        if (sand_row_cell_stamped(ctx->stamp_row, x)) {
             continue;
         }
         if (step_one_grain(ctx->s, ctx->row, ctx->prow, ctx->arow, ctx->brow, x, ctx->y, ctx->w, ctx->dx, ctx->dy,
@@ -1458,6 +1459,7 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int x0, int x1, int w, int dx
         ctx.prow = dest_row_stepped(row, y + dy, h, p_off);
         ctx.arow = dest_row_stepped(row, y + a_dy, h, a_off);
         ctx.brow = dest_row_stepped(row, y + b_dy, h, b_off);
+        ctx.stamp_row = sand_stamp_row(s, y);
         ctx.y = y;
         ctx.by = by;
         step_one_row(&ctx);

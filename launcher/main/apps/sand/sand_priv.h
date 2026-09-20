@@ -133,6 +133,21 @@ sand_cell_stamped(const sand_t* s, int x, int y) {
     return live != NULL && ((live[(size_t)y * sand_stamp_stride(s->w) + ((unsigned)x >> 3)] >> (x & 7)) & 1u) != 0;
 }
 
+/* One row's stamp bits, NULL when no pass has armed any - for a walk that
+ * would otherwise re-derive the row's offset once per cell it looks at. The
+ * bits themselves are read fresh: a crossing lands ahead of the walk. */
+static inline const uint8_t*
+sand_stamp_row(const sand_t* s, int y) {
+    const uint8_t* const live = s->stamps_live;
+
+    return (live != NULL) ? live + (size_t)y * sand_stamp_stride(s->w) : NULL;
+}
+
+static inline bool
+sand_row_cell_stamped(const uint8_t* stamp_row, int x) {
+    return stamp_row != NULL && ((stamp_row[(unsigned)x >> 3] >> (x & 7)) & 1u) != 0;
+}
+
 /* Only a move that leaves its chunk: inside one, the pass's own sweep order
  * keeps a grain to one move exactly as serial does. Only the mover, at its
  * destination - a cell it displaced may still take its own move. */
