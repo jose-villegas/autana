@@ -31,6 +31,7 @@ extern int render_lab_start_scene_index;
 #define SCENE_WIRE_CUBE    2
 #define SCENE_WIRE_SPHERE  3
 #define SCENE_WIRE_CAPSULE 4
+#define SCENE_CORNELL      5
 
 static const app_t* registered;
 static int shell_quarter;
@@ -67,13 +68,15 @@ options(int argc, char** argv) {
             render_lab_start_scene_index = SCENE_WIRE_SPHERE;
         } else if (strcmp(name, "capsule") == 0) {
             render_lab_start_scene_index = SCENE_WIRE_CAPSULE;
+        } else if (strcmp(name, "cornell") == 0) {
+            render_lab_start_scene_index = SCENE_CORNELL;
         } else {
             fprintf(stderr, "unknown --scene %s\n", name);
             return false;
         }
         return true;
     }
-    fprintf(stderr, "render_lab_render_host needs --scene gouraud|plane|cube|sphere|capsule\n");
+    fprintf(stderr, "render_lab_render_host needs --scene gouraud|plane|cube|sphere|capsule|cornell\n");
     return false;
 }
 

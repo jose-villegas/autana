@@ -26,10 +26,11 @@ extern const render_lab_scene_t scene_wire_plane;
 extern const render_lab_scene_t scene_wire_cube;
 extern const render_lab_scene_t scene_wire_sphere;
 extern const render_lab_scene_t scene_wire_capsule;
+extern const render_lab_scene_t scene_raytrace;
 bool render_lab_partial_updates = true;
 
 static const render_lab_scene_t* const scenes[] = {
-    &scene_cube, &scene_wire_plane, &scene_wire_cube, &scene_wire_sphere, &scene_wire_capsule,
+    &scene_cube, &scene_wire_plane, &scene_wire_cube, &scene_wire_sphere, &scene_wire_capsule, &scene_raytrace,
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
@@ -102,10 +103,14 @@ static double fps_value;
  * why that forces a full clear rather than a partial one. */
 static uint32_t last_layout_generation;
 
+/* current_scene_index must already name the scene about to run: a scene
+ * with needs_full_framebuffer set (render_lab_scene.h) overrides
+ * render_lab_band_mode, so the request depends on which scene this is. */
 static void
 enter_layout(void) {
+    const bool bands = render_lab_band_mode && !current_scene()->needs_full_framebuffer;
     const gfx_mode_request_t mode_request = {
-        .layout = render_lab_band_mode ? GFX_LAYOUT_BANDS : GFX_LAYOUT_FULL_FB,
+        .layout = bands ? GFX_LAYOUT_BANDS : GFX_LAYOUT_FULL_FB,
         .resolution = GFX_RESOLUTION_FULL,
         .interlace_x = false,
         .interlace_y = false,
@@ -119,8 +124,8 @@ enter_layout(void) {
 
 void
 render_lab_enter(void) {
-    enter_layout();
     current_scene_index = render_lab_start_scene_index;
+    enter_layout();
     current_scene()->enter();
     scene_title_remaining_ms = SCENE_TITLE_MS;
 
@@ -205,7 +210,10 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
          * resets the partial clear cache. */
         gfx_invalidate();
     }
-    if (result.band_mode_clicked) {
+    /* A scene with needs_full_framebuffer set overrides the request either
+     * way, so toggling it here would only cost a layout re-entry with
+     * nothing for the user to see - the button simply does nothing. */
+    if (result.band_mode_clicked && !current_scene()->needs_full_framebuffer) {
         render_lab_band_mode = !render_lab_band_mode;
         render_lab_mode_switch_request(&mode_switch);
     }
@@ -213,11 +221,9 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
         current_scene()->exit();
         current_scene_index = (current_scene_index + 1) % SCENE_COUNT;
         render_lab_start_scene_index = current_scene_index; /* keeps a later re-entry on this same scene */
+        switch_layout(); /* the new scene's needs_full_framebuffer may differ from the old one's */
         current_scene()->enter();
         scene_title_remaining_ms = SCENE_TITLE_MS;
-        gfx_set_partial_clear(false);
-        gfx_invalidate();
-        ui_invalidate();
     }
 
     /* Modeled on app_sand.c's own draw_menu(): one full-screen OPAQUE
