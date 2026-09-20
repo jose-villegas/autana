@@ -37,6 +37,8 @@ launcher/
     │   ├── boot_anim_curve.h   GENERATED - see tools/gen_zeta_curve.py
     │   ├── boot_anim_image.h   GENERATED - see tools/gen_boot_anim_image.py
     │   └── boot_anim_timeline.h GENERATED - from boot_anim_timeline.json
+    ├── render/         3D transform, clip and projection shared by boot and apps
+    │   └── r3d_project.h       camera-space near clip, perspective (host-tested)
     ├── board/          the one board's pins and peripherals
     │   ├── board.h             what any board must provide
     │   └── board_esp32s3.c     this board's answer
@@ -227,7 +229,7 @@ flowchart TB
     SHELL["main.c<br/><i>the one frame loop</i>"]
     SHELL -->|"is it a home swipe?"| GEST["gesture.c"]
     SHELL -->|"launcher showing"| UI["ui_launcher.c<br/><i>microui command list</i>"]
-    SHELL -->|"app running"| APP["apps/app_cube.c<br/><i>small3dlib</i>"]
+    SHELL -->|"app running"| APP["apps/app_render_lab.c<br/><i>small3dlib</i>"]
 
     UI --> FB
     APP --> FB
@@ -341,7 +343,8 @@ Three files, split by what can be tested where:
 | | |
 |---|---|
 | `boot_anim_curve.h` | the curve, as a generated table. Zeta along the critical line needs double precision, and this chip's hardware FPU is single-precision only, so `tools/gen_zeta_curve.py` computes it once in double precision on a host and it ships in flash. The curve never changes either way. |
-| `boot_anim.h` | the projection, the spline, the colour and the timeline - integer arithmetic, no hardware header, so `test/suites/suite_boot_anim.c` checks all of it on a host. |
+| `boot_anim.h` | the spline, the colour and the timeline - integer arithmetic, no hardware header, so `test/suites/suite_boot_anim.c` checks all of it on a host. |
+| `render/r3d_project.h` | the general camera-space near-plane clip and perspective projection, shared with a caller drawing something other than this timeline - `test/suites/suite_r3d_project.c` checks it on a host. |
 | `boot_anim.c` | gfx calls and the loop. |
 
 The suite checks the shipped table against the mathematics rather than against

@@ -41,7 +41,7 @@
   includer. This is that handling: internal linkage per TU is what a header-
   only library needs to be safely included more than once in one binary,
   with zero behavior change - see boot_anim.h's own top comment for why. The
-  original app_cube.c usage (a single TU) is unaffected either way.
+  original app_render_lab.c usage (a single TU) is unaffected either way.
 
   --------------------
 
