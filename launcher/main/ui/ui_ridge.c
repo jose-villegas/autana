@@ -5,7 +5,7 @@
  * The ridge is the one the boot animation's photograph ends on, in the same
  * frame, and the launcher's first frames hold it in boot's landscape pose, so
  * the hand-over leaves the outline where the mountain was. Boot knows no
- * orientation; only after RELEASE_MS does the line give in to gravity and
+ * orientation; only after boot_hold_ms does the line give in to gravity and
  * ease round to true level, which it then keeps at any angle while the app
  * rows turn in quarters.
  *
@@ -73,45 +73,44 @@ TUNE_INT(tilt_coast_ms, 2000);
 TUNE_INT(level_tau_ms, 700);
 
 /* Shaking plucks the line at random, harder the harder it is shaken. */
-#define SHAKE_THRESHOLD    48
-#define SHAKE_HALF_WIDTH   16
+#define SHAKE_THRESHOLD  48
+#define SHAKE_HALF_WIDTH 16
 
-/* Breathing and the wave come in over this long once the line is released.
- * Until then it is rigid: at the hand-over it has to lie on the photograph. */
-#define AMBIENT_FADE_IN_MS 1500
-
-/* How long the line keeps boot's pose before gravity gets it. */
-#define RELEASE_MS         700
+/* How long the line keeps boot's pose before gravity gets it, and how long
+ * breathing and the wave then take to come in. Until released it is rigid:
+ * at the hand-over it has to lie on the photograph. */
+TUNE_INT(boot_hold_ms, 700);
+TUNE_INT(ambient_ease_ms, 4000);
 
 /* Below this share of a g in the screen plane the device is lying too flat
  * for "down" to mean anything, and the line keeps the level it had. Out of
  * 256. */
-#define MIN_TILT_STRENGTH  64
+#define MIN_TILT_STRENGTH 64
 
 /* A pose is redrawn once it is this far, in Q14, from the one on screen:
  * about half a degree. A hand is never still; this is what keeps a held
  * device from redrawing every frame for a change nobody could see. */
-#define POSE_REDRAW_STEP   143
+#define POSE_REDRAW_STEP  143
 
 /* Easing never quite arrives, and the step above would let the line rest
  * half a degree off level. Once down has held within LEVEL_STEADY_STEP (a
  * tenth of a degree) for LEVEL_STEADY_MS - a desk, not a hand - the line is
  * put exactly level and drawn once more. */
-#define LEVEL_STEADY_STEP  29
-#define LEVEL_STEADY_MS    300
+#define LEVEL_STEADY_STEP 29
+#define LEVEL_STEADY_MS   300
 
 /* The line is longer than the frame it was drawn in: at a diagonal it has to
  * span the panel's diagonal, 580 px, with its glow, or its ends show. */
-#define RIDGE_EXTRA        88
-#define RIDGE_COLUMNS      (RIDGE_CURVE_POINTS + 2 * RIDGE_EXTRA)
+#define RIDGE_EXTRA       88
+#define RIDGE_COLUMNS     (RIDGE_CURVE_POINTS + 2 * RIDGE_EXTRA)
 
 /* The glow is drawn from a map of its light - see gfx_glow.h. Below this
  * radius the map's fixed cost is more than the search it saves. */
-#define MAP_FROM_RADIUS    10
-#define MAP_COLS           ((RIDGE_COLUMNS + GFX_GLOW_MAP_CELL - 1) / GFX_GLOW_MAP_CELL)
-#define MAP_ROWS           200
+#define MAP_FROM_RADIUS   10
+#define MAP_COLS          ((RIDGE_COLUMNS + GFX_GLOW_MAP_CELL - 1) / GFX_GLOW_MAP_CELL)
+#define MAP_ROWS          200
 
-#define POSE_LANDSCAPE     ((gfx_glow_pose_t){-GFX_GLOW_POSE_ONE, 0})
+#define POSE_LANDSCAPE    ((gfx_glow_pose_t){-GFX_GLOW_POSE_ONE, 0})
 
 typedef struct {
     spring_line_t line;
@@ -174,6 +173,8 @@ register_tunables(void) {
     TUNE_REGISTER("launcher.wave_period_ms", wave_period_ms, 100, 60000);
     TUNE_REGISTER("launcher.tilt_push", tilt_push, 0, 1000);
     TUNE_REGISTER("launcher.tilt_coast_ms", tilt_coast_ms, 50, 10000);
+    TUNE_REGISTER("launcher.boot_hold_ms", boot_hold_ms, 0, 10000);
+    TUNE_REGISTER("launcher.ambient_ease_ms", ambient_ease_ms, 0, 30000);
     TUNE_REGISTER("launcher.level_tau_ms", level_tau_ms, 10, 5000);
 }
 
@@ -275,7 +276,7 @@ void
 ui_ridge_settle(void) {
     allocate_once();
     if (ridge != NULL) {
-        ridge->alive_ms = RELEASE_MS;
+        ridge->alive_ms = (uint32_t)boot_hold_ms;
         ridge->pose = ridge->level;
         ridge->steady_level = ridge->level;
         ridge->steady_ms = LEVEL_STEADY_MS;
@@ -340,7 +341,7 @@ slope_along_the_line(void) {
  * carrying its wave once released. */
 static void
 shape_this_frame(uint32_t dt_ms) {
-    if (!ridge->ambient || ridge->alive_ms < RELEASE_MS) {
+    if (!ridge->ambient || ridge->alive_ms < (uint32_t)boot_hold_ms) {
         memcpy(ridge->shape, ridge->rigid, sizeof ridge->shape);
         return;
     }
@@ -354,8 +355,8 @@ shape_this_frame(uint32_t dt_ms) {
         .coast_ms = tilt_coast_ms,
     };
     ridge_motion_advance(&ridge->motion, &params, dt_ms, slope_along_the_line());
-    const uint32_t released_for = ridge->alive_ms - RELEASE_MS;
-    const int gain = released_for >= AMBIENT_FADE_IN_MS ? 256 : (int)(released_for * 256 / AMBIENT_FADE_IN_MS);
+    const uint32_t released_for = ridge->alive_ms - (uint32_t)boot_hold_ms;
+    const int gain = ridge_motion_ease_in(released_for, (uint32_t)ambient_ease_ms);
     for (int x = 0; x < RIDGE_COLUMNS; x++) {
         const int moved =
             ridge_motion_height(&ridge->motion, &params, ridge->rigid[x], ridge->smooth[x], x) - ridge->rigid[x];
@@ -406,7 +407,7 @@ poses_within(gfx_glow_pose_t a, gfx_glow_pose_t b, int step) {
  * not chasing sensor noise. */
 static gfx_glow_pose_t
 pose_target(uint32_t dt_ms) {
-    if (ridge->alive_ms < RELEASE_MS) {
+    if (ridge->alive_ms < (uint32_t)boot_hold_ms) {
         return POSE_LANDSCAPE;
     }
     if (poses_within(ridge->level, ridge->steady_level, LEVEL_STEADY_STEP)) {

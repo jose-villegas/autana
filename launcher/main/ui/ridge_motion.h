@@ -76,6 +76,18 @@ ridge_motion_advance(ridge_motion_t* motion, const ridge_motion_params_t* params
     motion->wave_phase_q8 += (uint32_t)((own_speed_q8 + momentum) * (int64_t)dt_ms);
 }
 
+/* How much of its motion the line has, out of 256, `elapsed_ms` into taking
+ * `over_ms` to come by all of it: slow away from stiff and slow into full, so
+ * neither end of the hand-over shows as a start or a stop. */
+static inline int
+ridge_motion_ease_in(uint32_t elapsed_ms, uint32_t over_ms) {
+    if (over_ms == 0 || elapsed_ms >= over_ms) {
+        return 256;
+    }
+    const int64_t t = (int64_t)elapsed_ms * 256 / over_ms;
+    return (int)((t * t * (3 * 256 - 2 * t)) >> 16);
+}
+
 /* How far toward the smoothed shape, 0 to the depth: nothing at the top of
  * each breath, so the ridge is its rigid self once a breath. */
 static inline int
