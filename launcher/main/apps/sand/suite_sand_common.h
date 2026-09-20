@@ -104,6 +104,7 @@ extern sand_t wide;
 #define LAVA               CELL_MAKE(MAT_LAVA, 8)
 #define GLASS              CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT)
 #define SNOW               CELL_MAKE(MAT_SNOW, 8)
+#define ACID               CELL_MAKE(MAT_ACID, 8)
 
 /* Resets the default fixture (s/cells) via sand_init(). */
 void fixture(void);

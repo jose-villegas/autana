@@ -337,9 +337,9 @@ _Static_assert(sizeof(react_deferred_t) <= SAND_LANE_DEFER_BYTES,
                "the reaction split's deferred queues must fit one lane's scratch");
 
 /* Test hooks - see sand_priv.h. Never reset by the pass itself. */
-unsigned sand_reactions_defer_queued;
+unsigned sand_reactions_defer_queued[SAND_LANE_COUNT];
 unsigned sand_reactions_defer_applied;
-unsigned sand_reactions_defer_peak;
+unsigned sand_reactions_defer_peak_q8;
 
 /* What one HALF of a split pass accumulates on top of the lane shadow it
  * writes its wakes and repaints into. Keyed by half, never by the core that
@@ -2589,84 +2589,47 @@ step_one_reacting_row_liquid_near(sand_t* s, int y, int w, int h) {
     return found;
 }
 
-/* THE LOCAL-RULE SPLIT: every chunk of one colour dispatched through
- * step_one_reacting_row() on whichever core owns it - the sweep's own shape
- * (sand.c). No boundary handling of any kind: a reaction reaches one cell,
- * and a chunk's neighbours all belong to other colours and other passes. */
-typedef struct {
-    sand_t* s;
-    int w, h, color, lane;
-} react_pass_ctx_t;
-
-_Static_assert(sizeof(react_pass_ctx_t) <= JOB_CTX_MAX, "react_pass_ctx_t must fit JOB_CTX_MAX");
-
-static unsigned
-react_run_one_chunk(sand_t* s, int w, int h, int x0, int x1, int y0, int y1) {
+/* THE LOCAL-RULE SPLIT: one chunk of the schedule, dispatched through
+ * step_one_reacting_row() on whichever lane owns it. No boundary handling of
+ * any kind: a reaction reaches one cell, so the only chunks it can touch are
+ * the eight around it, and the order sequences every one of them. */
+static void
+react_one_chunk(void* pass, int lane, int cx, int cy) {
+    react_pass_t* const c = pass;
+    sand_t* const s = &c->lanes[lane].local;
+    int x0, x1, y0, y1;
     unsigned found = 0;
 
+    sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
     for (int y = y0; y < y1; y++) {
-        found |= step_one_reacting_row(s, y, w, h, x0, x1);
+        found |= step_one_reacting_row(s, y, s->w, s->h, x0, x1);
     }
-    return found;
+    c->found[lane] |= found;
 }
 
-static void
-react_run_chunks(const react_pass_ctx_t* c) {
-    const int side = sand_chunk_side(c->s);
-    unsigned found = 0;
+/* Travel is not motion - a reaction relocates nothing, so no cell can be
+ * handed on twice and the pass needs no arrival marks. What the direction
+ * encodes is the serial scan's own order, rows ascending, so the board a
+ * split step leaves is the board a single thread walking the order leaves.
+ *
+ * False means nothing ran and the caller must walk the board itself. */
+static bool
+react_run_split(sand_t* s) {
+    sand_lane_t* const lanes = sand_lanes(s);
 
-    for (int cy = 0; cy < sand_chunk_rows(c->s); cy++) {
-        if (sand_chunk_share(cy) != c->lane) {
-            continue;
-        }
-        int y0, y1;
-        sand_chunk_span(cy, side, c->h, &y0, &y1);
-        for (int cx = 0; cx < sand_chunk_cols(c->s); cx++) {
-            if (sand_chunk_color(cx, cy) == c->color) {
-                int x0, x1;
-                sand_chunk_span(cx, side, c->w, &x0, &x1);
-                found |= react_run_one_chunk(c->s, c->w, c->h, x0, x1, y0, y1);
-            }
-        }
+    if (lanes == NULL) {
+        return false;
     }
-    react_pass.found[c->lane] |= found;
-}
-
-static void
-react_chunks_worker(void* ctx) {
-    react_run_chunks((const react_pass_ctx_t*)ctx);
-}
-
-static bool react_worker_order_reversed;
-
-void
-sand_reactions_set_worker_order_for_test(bool reverse) {
-    react_worker_order_reversed = reverse;
-}
-
-/* One colour's pass, its chunk rows divided between core 1 and here and
- * joined before returning. Each half works through its own lane view, so a
- * latched flag, a woken block or a dirty row never lands in memory the other
- * core is writing; nothing but the cells themselves is shared. */
-static void
-react_run_color(sand_t* s, int color, int w, int h) {
-    sand_lane_t* const lanes = react_pass.lanes;
-
+    react_pass = (react_pass_t){.lanes = lanes};
     for (int i = 0; i < SAND_LANE_COUNT; i++) {
-        sand_lane_prepare(&lanes[i], s);
+        react_pass.deferred[i] = (react_deferred_t*)lanes[i].defer;
+        react_deferred_reset(react_pass.deferred[i]);
     }
-
-    const int remote = react_worker_order_reversed ? 0 : 1;
-    const react_pass_ctx_t ctx_b = {&lanes[remote].local, w, h, color, remote};
-    (void)job_run_core1(react_chunks_worker, &ctx_b, sizeof ctx_b);
-
-    const react_pass_ctx_t ctx_a = {&lanes[1 - remote].local, w, h, color, 1 - remote};
-    react_run_chunks(&ctx_a);
-
-    (void)job_wait(100);
-    for (int i = 0; i < SAND_LANE_COUNT; i++) {
-        sand_lane_merge(s, &lanes[i]);
+    if (!sand_chunk_pass_run(s, 0, -1, SAND_CHUNK_PASS_NO_STAMPS, react_one_chunk, &react_pass)) {
+        react_pass.lanes = NULL;
+        return false;
     }
+    return true;
 }
 
 /* Row-major over every half's copy of one queue, which is the serial scan's
@@ -2698,20 +2661,21 @@ typedef struct {
     size_t size;
 } react_drain_t;
 
-#define REACT_DRAIN(queue)                                                                                             \
+#define REACT_DRAIN(queue, cap)                                                                                        \
     react_drain_begin((uint8_t*)react_pass.deferred[0]->queue, &react_pass.deferred[0]->queue##_count,                 \
                       (uint8_t*)react_pass.deferred[1]->queue, &react_pass.deferred[1]->queue##_count,                 \
-                      sizeof react_pass.deferred[0]->queue[0])
+                      sizeof react_pass.deferred[0]->queue[0], (cap))
 
 static react_drain_t
-react_drain_begin(uint8_t* a, uint8_t* a_count, uint8_t* b, uint8_t* b_count, size_t size) {
+react_drain_begin(uint8_t* a, uint8_t* a_count, uint8_t* b, uint8_t* b_count, size_t size, unsigned cap) {
     react_drain_t drain = {{a, b}, {a_count, b_count}, {0, 0}, size};
     for (int i = 0; i < SAND_LANE_COUNT; i++) {
         const unsigned held = *drain.counts[i];
         react_sort_row_major(drain.entries[i], held, size);
-        sand_reactions_defer_queued += held;
-        if (held > sand_reactions_defer_peak) {
-            sand_reactions_defer_peak = held;
+        sand_reactions_defer_queued[i] += held;
+        const unsigned fill_q8 = held * 256u / cap;
+        if (fill_q8 > sand_reactions_defer_peak_q8) {
+            sand_reactions_defer_peak_q8 = fill_q8;
         }
     }
     return drain;
@@ -2744,7 +2708,7 @@ react_drain_next(react_drain_t* drain) {
 static void
 reach_confined_ignitions(sand_t* s) {
     const int w = s->w, h = s->h;
-    react_drain_t drain = REACT_DRAIN(confined_ignite);
+    react_drain_t drain = REACT_DRAIN(confined_ignite, REACT_EXPLOSION_DEFER_MAX);
     const react_coord_t* e;
     while ((e = react_drain_next(&drain)) != NULL) {
         const cell_t c = sand_at(s, e->x, e->y);
@@ -2757,7 +2721,7 @@ reach_confined_ignitions(sand_t* s) {
 static void
 reach_lava_bursts(sand_t* s) {
     const int w = s->w;
-    react_drain_t drain = REACT_DRAIN(lava_burst);
+    react_drain_t drain = REACT_DRAIN(lava_burst, REACT_EXPLOSION_DEFER_MAX);
     const react_lava_defer_t* e;
     while ((e = react_drain_next(&drain)) != NULL) {
         if (!confined_blast_available(s)) {
@@ -2771,7 +2735,7 @@ reach_lava_bursts(sand_t* s) {
 
 static void
 reach_fuse_explosions(sand_t* s) {
-    react_drain_t drain = REACT_DRAIN(fuse_explosion);
+    react_drain_t drain = REACT_DRAIN(fuse_explosion, REACT_EXPLOSION_DEFER_MAX);
     const react_blast_t* e;
     while ((e = react_drain_next(&drain)) != NULL) {
         if (s->fuse_blast_wait != 0) {
@@ -2785,13 +2749,13 @@ reach_fuse_explosions(sand_t* s) {
 static void
 reach_cracks_and_cooloffs(sand_t* s) {
     const int w = s->w, h = s->h;
-    react_drain_t cracks = REACT_DRAIN(crack);
+    react_drain_t cracks = REACT_DRAIN(crack, REACT_CRACK_DEFER_MAX);
     const react_crack_defer_t* crack;
     while ((crack = react_drain_next(&cracks)) != NULL) {
         crack_run(s, crack->x, crack->y, w, h, (material_id_t)crack->from, (material_id_t)crack->into);
     }
 
-    react_drain_t cooloffs = REACT_DRAIN(cooloff);
+    react_drain_t cooloffs = REACT_DRAIN(cooloff, REACT_COOLOFF_DEFER_MAX);
     const react_cooloff_defer_t* cooloff;
     while ((cooloff = react_drain_next(&cooloffs)) != NULL) {
         cool_off_chain(s, cooloff->x, cooloff->y, w, h, cooloff->product, cooloff->chance);
@@ -2851,30 +2815,14 @@ sand_step_reaction_reach(sand_t* s) {
     return reach_rescan(s);
 }
 
-/* Whether this step's reaction pass may split - the sweep's own gate, plus
- * growers excluded (their own reach was never audited for this) and the
- * narrower soak-only walk left alone; see sand_step_reactions(). */
+/* Whether this step's reaction pass may split. MUST BE ASKED BEFORE the pass
+ * clears may_have_materials: growers and drinkers are excluded because
+ * find_water() reaches tens of cells, far past the one a chunk's halo covers,
+ * and their stages still draw from the sequential stream. The narrower
+ * soak-only walk is left alone; see sand_step_reactions(). */
 static bool
 reactions_may_split(const sand_t* s, bool soak_only) {
-    return sand_two_core_step_enabled() && !soak_only && s->lane_scratch != NULL && sand_chunk_split_ready(s)
-           && (s->may_have_materials & grower_mask()) == 0;
-}
-
-/* False leaves `react_pass` closed and the step to the serial walk, which is
- * also what makes react_deferred_of() answer NULL for every caller. */
-static bool
-react_pass_open(sand_t* s, bool soak_only) {
-    sand_lane_t* const lanes = reactions_may_split(s, soak_only) ? sand_lanes(s) : NULL;
-
-    if (lanes == NULL) {
-        return false;
-    }
-    react_pass = (react_pass_t){.lanes = lanes};
-    for (int i = 0; i < SAND_LANE_COUNT; i++) {
-        react_pass.deferred[i] = (react_deferred_t*)lanes[i].defer;
-        react_deferred_reset(react_pass.deferred[i]);
-    }
-    return true;
+    return !soak_only && sand_chunk_pass_ready(s) && (s->may_have_materials & (grower_mask() | drinker_mask())) == 0;
 }
 
 static unsigned
@@ -2890,29 +2838,27 @@ react_pass_close(void) {
     return found;
 }
 
-/* Every row of the reaction pass, split or not - see reactions_may_split()
- * for the gate and the two block comments above for what each half does. */
 static unsigned
-run_reaction_rows(sand_t* s, bool soak_only) {
+react_walk_every_row(sand_t* s, bool soak_only) {
     const int w = s->w;
     const int h = s->h;
     unsigned found = 0;
 
-    if (!react_pass_open(s, soak_only)) {
-        for (int y = 0; y < h; y++) {
-            found |=
-                soak_only ? step_one_reacting_row_liquid_near(s, y, w, h) : step_one_reacting_row(s, y, w, h, 0, w);
-        }
-        return found;
+    for (int y = 0; y < h; y++) {
+        found |= soak_only ? step_one_reacting_row_liquid_near(s, y, w, h) : step_one_reacting_row(s, y, w, h, 0, w);
+    }
+    return found;
+}
+
+/* Every row of the reaction pass, split or not - see reactions_may_split()
+ * for the gate and the two block comments above for what each half does. */
+static unsigned
+run_reaction_rows(sand_t* s, bool soak_only, bool may_split) {
+    if (!may_split || !react_run_split(s)) {
+        return react_walk_every_row(s, soak_only);
     }
 
-    s->rng_hashed = true;
-    for (int color = 0; color < SAND_CHUNK_COLOR_COUNT; color++) {
-        react_run_color(s, color, w, h);
-    }
-    s->rng_hashed = false;
-
-    found = sand_step_reaction_reach(s);
+    const unsigned found = sand_step_reaction_reach(s);
     return found | react_pass_close();
 }
 
@@ -2988,6 +2934,7 @@ sand_step_reactions(sand_t* s) {
                            && (s->may_have_liquid || s->may_have_moisture)
                            && (s->may_have_materials & drinker_mask()) == 0 && s->block_state != NULL;
     sand_reactions_last_was_soak_only = soak_only;
+    const bool may_split = reactions_may_split(s, soak_only);
     if (soak_only) {
         refresh_moisture_blocks(s);
     }
@@ -3018,7 +2965,7 @@ sand_step_reactions(sand_t* s) {
         s->faller_may_move = false;
     }
 
-    const unsigned found = run_reaction_rows(s, soak_only);
+    const unsigned found = run_reaction_rows(s, soak_only, may_split);
 
     if (!(found & FOUND_BURNING)) {
         s->may_have_burning = false;

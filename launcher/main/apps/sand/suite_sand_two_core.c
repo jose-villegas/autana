@@ -164,6 +164,16 @@ test_a_colours_two_workers_never_meet_on_a_row(void) {
     tc_for_each_quality(tc_check_workers_never_meet_on_a_row);
 }
 
+/* A lane whose join timed out is still inside the board, so a scene that ends
+ * on one hands the next scene a core still writing into memory this one is
+ * about to free and malloc() is about to hand back. Every scene below
+ * collects it before reading what it wrote. */
+static void
+tc_collect_core1(void) {
+    for (int tries = 0; tries < 20 && !job_wait(100); tries++) {}
+    TEST_ASSERT_TRUE_MESSAGE(job_wait(0), "a core-1 lane never came back");
+}
+
 static uint32_t
 tc_hash(const uint8_t* bytes, size_t n) {
     uint32_t h = 2166136261u;
@@ -243,7 +253,8 @@ tc_run_scene_and_hash(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed,
         const int arm = i % (int)(sizeof gx / sizeof gx[0]);
         sand_step(&s, gx[arm], gy[arm], 0);
     }
-    sand_set_two_core_step(false); /* restore the shipped default */
+    sand_set_two_core_step(false);
+    tc_collect_core1(); /* restore the shipped default */
 
     uint32_t h = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
     h ^= tc_hash(blocks, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS) * 0x9E3779B1u;
@@ -292,6 +303,7 @@ tc_run_quality_and_hash(int w, int h, uint32_t seed, bool two_core) {
         sand_step(&s, gx[arm], gy[arm], 0);
     }
     sand_set_two_core_step(false);
+    tc_collect_core1();
 
     uint32_t result = tc_hash(cells, (size_t)w * (size_t)h);
     result ^= tc_hash(blocks, (size_t)block_cols * (size_t)block_rows) * 0x9E3779B1u;
@@ -1567,6 +1579,7 @@ tc_run_zero_rng_and_hash(void (*build)(sand_t*), int steps, int gx, int gy, int 
         sand_step(&s, gx, gy, 0);
     }
     sand_set_two_core_step(false);
+    tc_collect_core1();
 
     uint32_t h = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
     h ^= tc_hash(blocks, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS) * 0x9E3779B1u;
@@ -1881,6 +1894,7 @@ rc_run_fire_chain_and_hash(int w, int h, uint32_t seed, int steps, bool two_core
         sand_step_reactions(&s);
     }
     sand_set_two_core_step(false);
+    tc_collect_core1();
 
     const uint32_t hash = tc_hash(cells, (size_t)w * (size_t)h);
     free(scratch);
@@ -1908,17 +1922,19 @@ test_reaction_split_matches_serial_on_a_zero_randomness_fire_chain(void) {
     }
 }
 
-/* A scattered mix of every stage the split touches - burning wood,
- * conducting/heat-ramped stone, chilling snow, a lava/water cool-off pair -
- * so real chance rolls happen throughout, unlike the zero-randomness scene
- * above. */
+/* A scattered mix of every stage the split touches - burning oil and gas,
+ * conducting/heat-ramped stone and glass, acid dissolving, a lava/water
+ * cool-off pair - so real chance rolls happen throughout, unlike the
+ * zero-randomness scene above. No plant and nothing that becomes one: a
+ * grower or a drinker on the board turns the split off, so a scene holding
+ * one would measure the serial walk instead. */
 static void
 rc_build_reaction_heavy_scene(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
     sand_init(s, cells, w, h, seed);
 
     rng_t r;
     rng_seed(&r, seed ^ 0x51ED5EEDu);
-    static const cell_t picks[] = {STONE, WOOD, SNOW, WATER, LAVA};
+    static const cell_t picks[] = {STONE, GLASS, OIL, GAS, WATER, LAVA, ACID};
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             if (rng_below(&r, 4) != 0) {
@@ -1930,25 +1946,144 @@ rc_build_reaction_heavy_scene(sand_t* s, uint8_t* cells, int w, int h, uint32_t 
     sand_set(s, w / 2, h / 2, FIRE);
 }
 
+/* Block sleeping and dirty rows are on because they are what a lane keeps
+ * privately: with them off the hash could not tell a lane's own shadow from
+ * one shared with the other core. */
 static uint32_t
 rc_run_reaction_heavy_and_hash(int w, int h, uint32_t seed, int steps, bool two_core) {
+    const size_t blocks =
+        (size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H);
     uint8_t* cells = malloc((size_t)w * (size_t)h);
+    uint8_t* block_state = malloc(blocks);
+    uint8_t* rows = malloc((size_t)h);
     TEST_ASSERT_NOT_NULL(cells);
+    TEST_ASSERT_NOT_NULL(block_state);
+    TEST_ASSERT_NOT_NULL(rows);
 
     sand_t s;
     rc_build_reaction_heavy_scene(&s, cells, w, h, seed);
+    sand_enable_sleeping(&s, block_state);
+    sand_track_dirty_rows(&s, rows);
     void* scratch = lane_scratch_open(&s);
+
+    /* Gravity turns under the pass without the sweep running: a reaction
+     * emits, percolates and reads its lid along the settled direction, so a
+     * fixed one would only ever exercise one of them. */
+    static const int8_t down[][2] = {{0, 1}, {1, 0}, {0, -1}, {-1, 0}, {1, 1}};
 
     sand_set_two_core_step(two_core);
     for (int i = 0; i < steps; i++) {
+        const int arm = i % (int)(sizeof down / sizeof down[0]);
+        s.last_load_dx = down[arm][0];
+        s.last_load_dy = down[arm][1];
+        s.last_step_dx = down[arm][0];
+        s.last_step_dy = down[arm][1];
+        s.step_phase = (uint16_t)i;
         sand_step_reactions(&s);
     }
     sand_set_two_core_step(false);
+    tc_collect_core1();
 
-    const uint32_t hash = tc_hash(cells, (size_t)w * (size_t)h);
+    uint32_t hash = tc_hash(cells, (size_t)w * (size_t)h);
+    hash ^= tc_hash(block_state, blocks) * 0x9E3779B1u;
+    hash ^= tc_hash(rows, (size_t)h) * 0x85EBCA6Bu;
+    free(scratch);
+    free(rows);
+    free(block_state);
+    free(cells);
+    return hash;
+}
+
+/* Every chunk of the board with deferred work to hand over in one step: a
+ * lava grain beside water queues a cool-off chain the moment it quenches,
+ * and cold glass beside fire queues a crack run on first contact. Spaced so
+ * neither lane's queue fills - a full one drops candidates, and then nothing
+ * could be counted. */
+#define RC_STORM_SPACING 14
+
+static void
+rc_paint_deferred_storm(sand_t* s) {
+    for (int y = 2; y < TC_H - 6; y += RC_STORM_SPACING) {
+        for (int x = 2; x < TC_W - 2; x += RC_STORM_SPACING) {
+            sand_set(s, x, y, LAVA);
+            sand_set(s, x + 1, y, WATER);
+        }
+    }
+    /* The crack queue is half the cool-off queue's depth, so its pairs are
+     * spread twice as thin to keep both lanes the same distance from full. */
+    for (int y = 6; y < TC_H - 2; y += 2 * RC_STORM_SPACING) {
+        for (int x = 2; x < TC_W - 2; x += 2 * RC_STORM_SPACING) {
+            sand_set(s, x, y, CELL_MAKE(MAT_GLASS, 0));
+            sand_set(s, x + 1, y, FIRE);
+        }
+    }
+}
+
+/* A board starts pessimistic about what it holds, so its first reaction step
+ * always walks serially; the scene is repainted on a cleared board for the
+ * split step this measures. */
+static uint32_t
+rc_run_deferred_storm_and_hash(sand_chunk_pass_driver_t driver) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    TEST_ASSERT_NOT_NULL(cells);
+
+    sand_t s;
+    sand_init(&s, cells, TC_W, TC_H, 9u);
+    void* scratch = lane_scratch_open(&s);
+    rc_paint_deferred_storm(&s);
+
+    sand_set_two_core_step(true);
+    sand_chunk_pass_set_driver_for_test(driver);
+    sand_step_reactions(&s);
+    memset(cells, CELL_EMPTY, (size_t)TC_W * (size_t)TC_H);
+    rc_paint_deferred_storm(&s);
+    sand_step_reactions(&s);
+    sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_CORE1);
+    sand_set_two_core_step(false);
+    tc_collect_core1();
+
+    const uint32_t hash = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
     free(scratch);
     free(cells);
     return hash;
+}
+
+/* The claim the per-lane queues rest on: both lanes really do queue, no
+ * entry is lost or run twice, and no queue reached its cap - past the cap
+ * the pass drops candidates and the count would no longer mean anything. */
+static void
+test_every_deferred_reaction_effect_is_applied_exactly_once(void) {
+    sand_reactions_defer_queued[0] = 0;
+    sand_reactions_defer_queued[1] = 0;
+    sand_reactions_defer_applied = 0;
+    sand_reactions_defer_peak_q8 = 0;
+
+    const uint32_t solo = rc_run_deferred_storm_and_hash(SAND_CHUNK_PASS_SOLO);
+    const unsigned queued = sand_reactions_defer_queued[0] + sand_reactions_defer_queued[1];
+
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0, sand_reactions_defer_queued[0], "lane 0 deferred nothing to stress");
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0, sand_reactions_defer_queued[1], "lane 1 deferred nothing to stress");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(queued, sand_reactions_defer_applied,
+                                   "a deferred reaction effect was lost or applied twice");
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(128u, sand_reactions_defer_peak_q8,
+                                          "no queue got half full, so this scene is not stressing them");
+    TEST_ASSERT_LESS_THAN_UINT_MESSAGE(256u, sand_reactions_defer_peak_q8,
+                                       "a lane's queue filled, so the drop policy - not the drain - decided the board");
+
+    static const sand_chunk_pass_driver_t drivers[TC_DRIVERS] = {
+        SAND_CHUNK_PASS_LANE0_EAGER, SAND_CHUNK_PASS_LANE1_EAGER, SAND_CHUNK_PASS_ALTERNATE};
+    for (int d = 0; d < TC_DRIVERS; d++) {
+        sand_reactions_defer_queued[0] = 0;
+        sand_reactions_defer_queued[1] = 0;
+        sand_reactions_defer_applied = 0;
+        const uint32_t driven = rc_run_deferred_storm_and_hash(drivers[d]);
+        char why[160];
+        snprintf(why, sizeof why, "driver %d: the deferred storm's board depended on the lane interleaving",
+                 (int)drivers[d]);
+        TEST_ASSERT_EQUAL_HEX32_MESSAGE(solo, driven, why);
+        TEST_ASSERT_EQUAL_UINT_MESSAGE(queued, sand_reactions_defer_queued[0] + sand_reactions_defer_queued[1], why);
+        TEST_ASSERT_EQUAL_UINT_MESSAGE(queued, sand_reactions_defer_applied, why);
+    }
 }
 
 static void
@@ -1966,23 +2101,53 @@ test_reaction_split_is_deterministic_across_seeds(void) {
     }
 }
 
-/* On a host the two workers run one after the other, so which one owns
- * which half is the only ordering a host can vary - and a board that
- * depends on it depends on how two real cores interleave. */
+#ifdef DEVICE_BUILD
+/* The twin of test_a_core_1_lane_lands_on_the_solo_board(), for the pass
+ * whose lanes hand work to each other through queues rather than through
+ * cells: both lanes fill a queue, and the drain after the join must not be
+ * able to tell which core filled which. Every interleaving a host can stage
+ * is a guess at this; only a real core answers it. */
 static void
-test_reaction_split_ignores_worker_order(void) {
+test_a_core_1_reaction_lane_lands_on_the_solo_board(void) {
+    TEST_ASSERT_TRUE_MESSAGE(job_try_core1(tc_no_op_job, NULL, 0), "no core-1 worker to compare against");
+    TEST_ASSERT_TRUE(job_wait(100));
+
+    for (int round = 0; round < 3; round++) {
+        const uint32_t duo = rc_run_deferred_storm_and_hash(SAND_CHUNK_PASS_CORE1);
+        const uint32_t solo = rc_run_deferred_storm_and_hash(SAND_CHUNK_PASS_SOLO);
+        TEST_ASSERT_EQUAL_HEX32_MESSAGE(solo, duo,
+                                        "two cores and the single-thread walk parted on the deferred "
+                                        "queues");
+    }
+}
+#endif
+
+/* The reaction pass rides the same schedule, so a reacting board owes the
+ * same answer as the sweep and the fluids: the queues and the shadows belong
+ * to a lane, and a lane is a position's parity whoever executes it. */
+static void
+test_the_split_reaction_pass_ignores_how_its_lanes_interleave(void) {
+    static const sand_chunk_pass_driver_t drivers[TC_DRIVERS] = {
+        SAND_CHUNK_PASS_LANE0_EAGER, SAND_CHUNK_PASS_LANE1_EAGER, SAND_CHUNK_PASS_ALTERNATE};
     static const uint32_t seeds[] = {1u, 7u, 42u, 12345u, 99991u};
 
     for (size_t i = 0; i < sizeof seeds / sizeof seeds[0]; i++) {
-        sand_reactions_set_worker_order_for_test(false);
-        const uint32_t ordinary = rc_run_reaction_heavy_and_hash(TC_W, TC_H, seeds[i], 30, true);
-        sand_reactions_set_worker_order_for_test(true);
-        const uint32_t reversed = rc_run_reaction_heavy_and_hash(TC_W, TC_H, seeds[i], 30, true);
-        sand_reactions_set_worker_order_for_test(false);
-        char why[160];
-        snprintf(why, sizeof why, "seed %u: changing which worker owns each half must not change the board",
-                 (unsigned)seeds[i]);
-        TEST_ASSERT_EQUAL_HEX32_MESSAGE(ordinary, reversed, why);
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_SOLO);
+        const uint32_t solo = rc_run_reaction_heavy_and_hash(TC_W, TC_H, seeds[i], 30, true);
+        uint32_t driven[TC_DRIVERS];
+
+        for (int d = 0; d < TC_DRIVERS; d++) {
+            sand_chunk_pass_set_driver_for_test(drivers[d]);
+            driven[d] = rc_run_reaction_heavy_and_hash(TC_W, TC_H, seeds[i], 30, true);
+        }
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_CORE1);
+
+        for (int d = 0; d < TC_DRIVERS; d++) {
+            char why[160];
+            snprintf(why, sizeof why, "seed %u driver %d: a split reacting board depended on the lane interleaving",
+                     (unsigned)seeds[i], (int)drivers[d]);
+            TEST_ASSERT_EQUAL_HEX32_MESSAGE(solo, driven[d], why);
+        }
     }
 }
 
@@ -2218,7 +2383,8 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_two_core_step_conserves_grains_on_a_dense_column_and_pile);
     RUN_TEST(test_reaction_split_matches_serial_on_a_zero_randomness_fire_chain);
     RUN_TEST(test_reaction_split_is_deterministic_across_seeds);
-    RUN_TEST(test_reaction_split_ignores_worker_order);
+    RUN_TEST(test_every_deferred_reaction_effect_is_applied_exactly_once);
+    RUN_TEST(test_the_split_reaction_pass_ignores_how_its_lanes_interleave);
     RUN_TEST(test_reaction_split_actually_changes_the_draw_stream);
     RUN_TEST(test_landscape_water_column_has_no_line_mass_lag);
     RUN_TEST(test_split_gas_equalise_keeps_seam_order);
@@ -2230,6 +2396,7 @@ run_sand_two_core_suite(void) {
 #endif
 #ifdef DEVICE_BUILD
     RUN_TEST(test_a_core_1_lane_lands_on_the_solo_board);
+    RUN_TEST(test_a_core_1_reaction_lane_lands_on_the_solo_board);
     RUN_TEST(test_a_timed_out_job_falls_back_inline);
 #endif
 }

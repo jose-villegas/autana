@@ -1200,9 +1200,8 @@ update can touch another's, in cells:
 
 The gravity sweep, both gas passes, liquid cross-flow and a reacting cell's
 own LOCAL rules have fixed cell reaches small enough to split. All cut the
-board into the same chunks; every one but the reaction rules takes them in a
-schedule ordered against its own travel, those in four colours
-(`run_reaction_rows()`, `sand_reactions.c`). A reaction's
+board into the same chunks and take them in the same schedule, ordered
+against each pass's own travel. A reaction's
 long-reach triggers, liquid density sorting and impulses remain serial:
 each long-reach trigger has an `_or_defer` gate at its call site that
 skips it while a chunk pass is running and lets a single serial
@@ -1212,18 +1211,18 @@ of a handful of small, cap-limited queues (cracks, cool-off chains, the
 three explosion triggers). See `sand_reactions.c`'s own comment on that
 split for why each was drawn where it was.
 
-Nothing a half writes besides cells is shared between the two cores. Each
+Nothing a lane writes besides cells is shared between the two cores. Each
 works through its own `sand_lane_t` view of the board's bookkeeping - content
-flags, block wake state, dirty rows - merged after both return, the shape the
-gas and liquid splits use; a block spans several chunks, so two halves on
-different cores would otherwise share block-state bytes, and an unguarded
-read-modify-write there loses wakes. The deferred queues belong to a half
-too, living in that lane's scratch, and the reach pass drains both merged in
-row-major order. Keyed by half rather than by core, a full queue drops the
-same candidates whichever core ran which half, and the drain cannot see the
-order the cores happened to run in.
-`test_reaction_split_ignores_worker_order` holds that on a host, where the
-only ordering that can be varied is which worker owns which half.
+flags, block wake state, dirty rows - merged after both return; a block spans
+several chunks, so two lanes on different cores would otherwise share
+block-state bytes, and an unguarded read-modify-write there loses wakes. The
+deferred queues belong to a lane too, living in that lane's scratch, and the
+reach pass drains both merged in row-major order, the serial scan's own.
+Keyed by lane rather than by core, a full queue drops the same candidates
+whichever core ran which lane, and the drain cannot see the order the cores
+happened to run in.
+`test_every_deferred_reaction_effect_is_applied_exactly_once` loads both
+lanes' queues to nine tenths of a cap in one step and counts what comes out.
 
 ### The chunks
 
@@ -1232,41 +1231,6 @@ tenth of the board per chunk and floors the side at `2 * SAND_LIQUID_SIGHT
 + 1`, so a chunk's interior always clears the furthest reach any splittable
 pass has. Every quality lands on the same small chunk count.
 
-### Four colours, no boundary handling
-
-A reacting cell's local rules take those chunks in four colour passes.
-Each chunk takes a colour from its own coordinates,
-`sand_chunk_color(cx, cy)` = the two parities crossed. Four is the smallest
-colouring in which a colour contains no two chunks sharing an edge OR a
-corner - two is not enough, because sand slides diagonally and a liquid
-moves along a diagonal ray, so two chunks touching at a corner would be
-exactly where a cell is read and written at once.
-
-```
-  colour = (cy & 1) << 1 | (cx & 1); four passes, one colour each
-
-  ┌────┬────┬────┐
-  │ 0  │ 1  │ 0  │   pass 0 runs every 0, then pass 1 every 1, ...
-  ├────┼────┼────┤
-  │ 2  │ 3  │ 2  │   no two chunks of one colour touch, edge or corner,
-  ├────┼────┼────┤   so a 1-cell reach out of a chunk lands in a chunk
-  │ 0  │ 1  │ 0  │   no other worker is in
-  └────┴────┴────┘
-```
-
-That is the whole boundary story: there are no guard rows, no guard
-columns, no snapshot comparison and no deferred pass. Four passes over a
-quarter of the board are the same total work as two over a half.
-
-Within a colour, `sand_chunk_share()` sends whole chunk ROWS to one core or
-the other, alternating - never an arbitrary halving. Two chunk rows of one
-colour answering the same share are four rows apart, so the two workers
-never meet on a grid row, and a worker may write the board's own
-row-indexed bookkeeping (dirty spans, the changed flag) with no private
-copy. Boards yielding fewer chunk rows than that leaves work for both
-workers run the pass serially.
-
-`sand_chunk_split_ready()` is the gate on that pass;
 `blocks_settled_over()` is the one skip every chunk pass shares. A chunk
 whose covering blocks all carry the step's settled bit is dropped before any
 per-row setup, reusing the block-sleeping state the serial sweep already
@@ -1274,8 +1238,8 @@ keeps rather than tracking anything second.
 
 ### The schedule: downstream chunks first
 
-The gravity sweep, liquid cross-flow and both gas passes rank the same chunks
-into one total order instead, through the one runner `sand_chunk_pass_run()` (`sand.c`) that
+Every split pass ranks the chunks
+into one total order, through the one runner `sand_chunk_pass_run()` (`sand.c`) that
 a pass hands only its travel direction, a per-chunk function and its own
 state. `sand_chunk_order()` (`sand_chunk_sched.[ch]`) counts from the
 downstream end of that direction, so the chunk holding a move's destination is
