@@ -330,9 +330,10 @@ It is also never quite still (`ui/ridge_motion.h`, pure and host-tested). It
 ridge and back to the rigid original. A **wave** 2.5 px high runs along it.
 And the wave has **momentum**: while the device turns, the line lags true
 level, so for that moment the ridge is a slope - the sine of the lag - and
-the wave is pushed down it and coasts on after. All three come in over 1.5 s
-after the line is released; at the hand-over from boot the line is rigid, on
-the photograph. The price is that the launcher draws every frame, and a frame
+the wave is pushed down it and coasts on after. All three come in over 4 s
+after the line is released (`launcher.ambient_ease_ms`), slowly at first and
+slowly into full, so the stiff line loosens rather than starts; at the
+hand-over from boot the line is rigid, on the photograph. The price is that the launcher draws every frame, and a frame
 in which the ridge moves is close to a full send. `ui_ridge_set_ambient()`
 turns it off, which previews do: without it the launcher is idle whenever it
 is untouched and level.

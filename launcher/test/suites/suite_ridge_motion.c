@@ -208,6 +208,25 @@ test_extending_by_nothing_is_a_copy(void) {
     TEST_ASSERT_EQUAL_INT16_ARRAY(in, out, 5);
 }
 
+static void
+test_easing_in_starts_and_ends_gently_and_is_half_way_at_half_time(void) {
+    TEST_ASSERT_EQUAL_INT(0, ridge_motion_ease_in(0, 4000));
+    TEST_ASSERT_EQUAL_INT(128, ridge_motion_ease_in(2000, 4000));
+    TEST_ASSERT_EQUAL_INT(256, ridge_motion_ease_in(4000, 4000));
+    TEST_ASSERT_EQUAL_INT(256, ridge_motion_ease_in(9000, 4000));
+    TEST_ASSERT_EQUAL_INT(256, ridge_motion_ease_in(0, 0));
+
+    const int first_tenth = ridge_motion_ease_in(400, 4000);
+    const int middle_tenth = ridge_motion_ease_in(2200, 4000) - ridge_motion_ease_in(1800, 4000);
+    const int last_tenth = 256 - ridge_motion_ease_in(3600, 4000);
+    TEST_ASSERT_TRUE(first_tenth * 3 < middle_tenth);
+    TEST_ASSERT_TRUE(last_tenth * 3 < middle_tenth);
+
+    for (uint32_t ms = 1; ms <= 4000; ms++) {
+        TEST_ASSERT_TRUE(ridge_motion_ease_in(ms, 4000) >= ridge_motion_ease_in(ms - 1, 4000));
+    }
+}
+
 void
 suite_ridge_motion(void) {
     RUN_TEST(test_a_breath_starts_rigid_swells_and_comes_back_rigid);
@@ -220,6 +239,7 @@ suite_ridge_motion(void) {
     RUN_TEST(test_smoothing_leaves_a_flat_line_alone_and_rounds_a_step);
     RUN_TEST(test_extending_keeps_the_middle_and_runs_each_end_out_level);
     RUN_TEST(test_extending_by_nothing_is_a_copy);
+    RUN_TEST(test_easing_in_starts_and_ends_gently_and_is_half_way_at_half_time);
 }
 
 SUITE_REGISTER(suite_ridge_motion);
