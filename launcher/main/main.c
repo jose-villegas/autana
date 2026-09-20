@@ -28,12 +28,15 @@
 #include "input/buttons.h"
 #include "input/gesture.h"
 #include "input/imu.h"
+#include "input/imu_rotation.h"
+#include "input/tilt.h"
 #include "input/touch.h"
 #include "ui/system_navigation.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
 #include "ui/ui_control_center.h"
 #include "ui/ui_launcher.h"
+#include "ui/ui_ridge.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "util/screenshot.h"
@@ -353,6 +356,15 @@ show_post_failures(void) {
 
 /* --- main --------------------------------------------------------------- */
 
+/* What the boot animation dissolves into: the home screen as its first frame
+ * will draw it, untouched and whole. */
+static void
+paint_launcher_under_boot(void) {
+    const input_t no_input = {0};
+    ui_invalidate();
+    ui_launcher_frame(&no_input, 0);
+}
+
 /* True once frame() has drawn a frame for the current app that update()'s
  * caller has not yet begun presenting - see step_app(). Reset whenever the
  * running app changes, so a freshly entered one always primes first. */
@@ -424,6 +436,22 @@ step_control_center(const input_t* input, uint32_t dt_ms) {
     ui_control_center_frame(input);
 }
 
+static tilt_t launcher_tilt;
+
+/* The launcher's backdrop keeps level with the horizon, so it needs gravity
+ * every frame, not at the orientation logic's own slower pace. */
+static void
+feed_launcher_gravity(uint32_t dt_ms) {
+    imu_sample_t sample;
+    if (!imu_ready() || !imu_read(&sample)) {
+        return;
+    }
+    tilt_update(&launcher_tilt, imu_gravity_screen_x(&sample), imu_gravity_screen_y(&sample), sample.az,
+                imu_rotation_level(&sample), dt_ms);
+    ui_ridge_set_gravity(tilt_x(&launcher_tilt), tilt_y(&launcher_tilt), tilt_strength(&launcher_tilt),
+                         tilt_shake(&launcher_tilt));
+}
+
 static void
 step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint32_t dt_ms) {
     if (system_navigation_step(&system_navigation, input, opposite_edge(exit_edge), exit_edge, GFX_WIDTH, GFX_HEIGHT)) {
@@ -434,6 +462,7 @@ step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, u
         return;
     }
     apply_pending_full_redraw(NULL);
+    feed_launcher_gravity(dt_ms);
     const int chosen = ui_launcher_frame(input, dt_ms);
     if (chosen < 0 || chosen >= apps_registered) {
         draw_home_hint(exit_edge);
@@ -548,6 +577,7 @@ app_boot_init(void) {
     printf("BUILD_ID=%s\n", BUILD_ID);
     fflush(stdout);
     system_navigation_init(&system_navigation);
+    tilt_reset(&launcher_tilt, IMU_COUNTS_PER_G);
     heap_mark("boot");
 
     /* Test SD card during panel use. */
@@ -578,7 +608,19 @@ app_boot_init(void) {
     }
 #endif
 
+    /* The launcher has to exist, turned the way boot draws, before the
+     * animation can dissolve into it. ui_init() resets the transform to
+     * identity, so DISPLAY_DEFAULT_QUARTER is applied here or the board
+     * would start upright and visibly turn into place. */
+    sort_apps();
+    display_init(&shell_display);
+    shell_display.quarter = DISPLAY_DEFAULT_QUARTER;
+    ui_launcher_init();
+    ui_set_transform(ui_transform_quarter_turn(display_quarter(&shell_display), GFX_WIDTH, GFX_HEIGHT));
+
+    boot_anim_set_ending_backdrop(paint_launcher_under_boot);
     boot_anim_run();
+    gfx_request_full_redraw();
     heap_mark("after boot anim");
 
     touch_start();
@@ -590,19 +632,7 @@ app_boot_init(void) {
     if (!imu_init()) {
         ESP_LOGW(TAG, "No IMU - display orientation stays upright");
     }
-    display_init(&shell_display);
-
-    shell_display.quarter = DISPLAY_DEFAULT_QUARTER;
-
-    ui_launcher_init();
     heap_mark("shell ready");
-
-    /* ui_init() above already reset the transform to identity (it has to,
-     * so a stale one from a previous host test can never leak in), so
-     * DISPLAY_DEFAULT_QUARTER is not actually in force yet - apply it
-     * once here before the first frame is built, or the board would
-     * start upright and visibly turn into place. */
-    ui_set_transform(ui_transform_quarter_turn(display_quarter(&shell_display), GFX_WIDTH, GFX_HEIGHT));
 }
 
 #if CONFIG_LAUNCHER_SELFTEST
@@ -682,7 +712,6 @@ app_main_loop(void) {
 #endif
     int64_t next_display_sample_us = previous_us;
 
-    sort_apps();
     ESP_LOGI(TAG, "Ready, %d app%s registered", apps_registered, apps_registered == 1 ? "" : "s");
 
     while (1) {

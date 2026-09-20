@@ -1,0 +1,31 @@
+{
+  "_comment": [
+    "Regions the shell paints on the device that a scene render has no reason to contain.",
+    "Every rect is in PANEL coordinates (368 x 448), keyed by the quarter turn the shell",
+    "was drawn at, and is deliberately larger than the thing it covers: a mask may only",
+    "ever hide more than it must. They are DECLARED here, not measured off an image - if",
+    "the chrome moves, this file is what has to move with it.",
+    "Provenance: main.c's HOME_HINT_WIDTH/HEIGHT/MARGIN and its BUILD_MARK_* constants,",
+    "both resolved through ui_anchor_rect() against the 368 x 448 panel.",
+    "The build mark's width follows the length of the short build id, which differs per",
+    "build; the rects below hold a mark of up to twelve glyphs."
+  ],
+  "home_hint": {
+    "covers": "main.c draw_home_hint() - the swipe-home strip, drawn for an app that opted into the gesture. The edge it sits on follows the swipe, so all four are masked.",
+    "quarters": {
+      "0": [[116, 2, 136, 20], [116, 426, 136, 20], [2, 156, 20, 136], [346, 156, 20, 136]],
+      "1": [[116, 2, 136, 20], [116, 426, 136, 20], [2, 156, 20, 136], [346, 156, 20, 136]],
+      "2": [[116, 2, 136, 20], [116, 426, 136, 20], [2, 156, 20, 136], [346, 156, 20, 136]],
+      "3": [[116, 2, 136, 20], [116, 426, 136, 20], [2, 156, 20, 136], [346, 156, 20, 136]]
+    }
+  },
+  "build_mark": {
+    "covers": "main.c draw_build_mark() - the short build id in the corner of a development image. Release builds never draw it.",
+    "quarters": {
+      "0": [[208, 416, 152, 24]],
+      "1": [[4, 288, 28, 120]],
+      "2": [[8, 8, 152, 24]],
+      "3": [[336, 40, 28, 120]]
+    }
+  }
+}

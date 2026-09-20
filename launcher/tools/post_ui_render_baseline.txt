@@ -1,0 +1,7 @@
+# What the post_ui scene's renders hash to, one per line.
+# Re-pinned deliberately, after looking at the images:
+#     ./launcher/tools/post_ui_render_host.sh --update-baseline
+landscape 30ce0b4a28a2a39ec9ae56833a75ff8b8756e3002a460f2bfb94ab187d11c607
+landscape-panel 74b01d3a0755dac960e36c979a157ef65ce351575ae4ae7212af26ed139981e6
+portrait 9270c8fdf7cac9a7d1099ddd8429e3e6e044c5f3ebce2b7f932898708af0afff
+landscape-fault 0636e505fdca8b41fb04218cca77b10996e16eb3744771e0ea7839aacda8daa7

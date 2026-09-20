@@ -5,6 +5,21 @@ before adding a test or deciding something "can't be tested".
 
 Living document: update it when the approach changes.
 
+| your question | read |
+|---|---|
+| How do I run the tests? | [Running them](#running-them) |
+| Why two runners, and what does each prove? | [Two runners, one set of suites](#two-runners-one-set-of-suites) |
+| One suite on the board, no rebuild | [RUNSUITE: the everyday device loop](#runsuite-the-everyday-device-loop) |
+| No board free, or no board at all | [QEMU: the device image with no board](#qemu-the-device-image-with-no-board) |
+| Is the board itself working? | [POST is a third thing](#post-is-a-third-thing) |
+| How do I make this code testable? | [Making things testable](#making-things-testable) |
+| Which suite covers what I changed? | [Which suites cover which area](#which-suites-cover-which-area) |
+| I am adding a suite | [Adding a suite](#adding-a-suite) |
+| What do RELEASE, DEVELOPMENT and SELFTEST gate? | [`Build-Variants.md`](Build-Variants.md) |
+| I want to see a screen without flashing | [`tools/Render-Harness.md`](tools/Render-Harness.md) |
+| CI says my function is too complex | [`tools/Complexity-Gate.md`](tools/Complexity-Gate.md) |
+| Sand frame-budget numbers | [`sand/Testing-Sand.md`](sand/Testing-Sand.md) |
+
 ---
 
 ## Running them
@@ -95,8 +110,8 @@ sustains. It runs the portable suites only.
 the portable ones. That is deliberate: passing on a laptop only proves the logic is
 right on x86, whereas running on-target proves the same source behaves
 identically built by the Xtensa toolchain and executed on this chip. It
-never runs in a release image (below) - only in a SELFTEST build, either
-one suite at a time via RUNSUITE or as a full boot-time run.
+never runs in a release image - only in a SELFTEST build, either one suite
+at a time via RUNSUITE or as a full boot-time run.
 
 ### The host runner enforces two of the device's limits
 
@@ -129,17 +144,15 @@ over, for both:
 Both numbers come from `launcher/tools/device_profiles/<chip>.sh`, selected
 by `$DEVICE_PROFILE` (default `esp32s3`), each carrying its own provenance.
 
-Memory is not the constraint it once was on this board. The framebuffer
-lives in PSRAM (`BOARD_FRAMEBUFFER_CAPS = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT`),
-not internal DRAM, so it no longer competes with the sand grid or anything
-else for internal-heap contiguity the way it would on a board without
-PSRAM. There is no automated build-time gate for internal-heap headroom any
-more — the build-time predictor this project once had
-(the former static-RAM predictor) was written for a board where the
-framebuffer *did* live in internal DRAM, and was retired along with that
-constraint; nothing has replaced it. Watching internal-heap headroom (the
-measured free-heap figure in a device profile, and `HEAPMARK` boot lines on
-a dev build) is a manual habit now, not an enforced one.
+The framebuffer lives in PSRAM
+(`BOARD_FRAMEBUFFER_CAPS = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT`), not
+internal DRAM, so it does not compete with the sand grid or anything else
+for internal-heap contiguity the way it would on a board without PSRAM.
+Nothing gates internal-heap headroom at build time: a predictor for it
+answers a question only a board whose framebuffer sits in internal DRAM
+asks. Watching that headroom (the measured free-heap figure in a device
+profile, and `HEAPMARK` boot lines on a dev build) is a manual habit, not an
+enforced one.
 Nothing hardcodes a chip's constants, so a second board is a new profile
 rather than an edit everywhere; a profile field that has never been
 measured is the literal `unmeasured`, and both loaders refuse to hand one
@@ -160,198 +173,31 @@ a laptop instead of a capture cycle, which is the entire claim.
 
 ### Release builds contain no test code
 
-`CONFIG_LAUNCHER_SELFTEST` defaults **off**, and the CMake conditional leaves
-the suites and the runner out of the build entirely — not `#ifdef`-ed out,
-simply never compiled. `build/launcher.elf` (release) is neither DEVELOPMENT
-nor SELFTEST, so **the Diagnostics app** is out of it too, for a related but
-separate reason: it is gated on `CONFIG_LAUNCHER_DEVELOPMENT`, a strictly
-broader flag than `CONFIG_LAUNCHER_SELFTEST` (see
-[Building-an-App.md](Building-an-App.md#an-app-is-a-folder) and
-`main/CMakeLists.txt`) — it also ships in a `--dev` build, which carries no
-test suites at all.
-
-Verified rather than assumed, by counting symbols in the two images:
-
-```sh
-xtensa-esp32s3-elf-nm build/launcher.elf      | grep -ci 'unity\|suite_\|selftest\|app_diagnostics'   # 0
-xtensa-esp32s3-elf-nm build.diag/launcher.elf | grep -ci 'unity\|suite_\|selftest\|app_diagnostics'   # 39
-```
-
-`build/launcher.elf` is still release, so this check is unaffected by
-Diagnostics moving to DEVELOPMENT — `app_diagnostics` stays at 0 there
-either way. What changed is the reason it belongs in the same count as
-`unity`/`suite_`/`selftest`: not because the app is selftest-shaped (most of
-it never was), but because release is neither DEVELOPMENT nor SELFTEST, so
-every one of those symbols is absent from it regardless of which of the two
-flags actually gates it.
-
-That matters for more than size. The suites draw to the framebuffer and drive
-the panel, which is fine in diagnostics and unacceptable in a product; and test
-hooks in a shipped image are a liability rather than a feature.
-
-The **Diagnostics app** is a bench tool: entering it re-runs POST, which
-cycles the audio power rail and re-mounts the SD card live (both while the
-display keeps running undisturbed, since neither shares its bus).
-Reasonable while debugging, not something to leave reachable in a shipped
-product — hence DEVELOPMENT, not left ungated. The boot POST still runs in
-release — only this way *in* is compiled out. The self-test *runner* inside
-Diagnostics (the button, its result line, the `selftest_run()` call) is
-narrower still: gated on `CONFIG_LAUNCHER_SELFTEST` specifically, inside
-`app_diagnostics.c`, because `selftest_run()` is not even a linkable symbol
-outside a SELFTEST build (`boot/selftest.c` is only added to `app_srcs`
-under `CONFIG_LAUNCHER_SELFTEST` — see `main/CMakeLists.txt`).
+`CONFIG_LAUNCHER_SELFTEST` defaults off and the suites are simply never
+compiled into a release image — not `#ifdef`-ed out. Verified by counting
+symbols in the two `.elf` files rather than assumed.
+[`Build-Variants.md`](Build-Variants.md#release-builds-contain-no-test-code)
 
 ### A diagnostics build can be scoped
 
-A diagnostics build compiles **every** suite. The full run measured on
-2026-09-14 was 1,098 tests in about 18 minutes of device run (about 6-7 of those minutes in the sand
-frame-budget suite alone; every other suite runs in seconds to a minute).
-Perf-scoped compiles only 3 of them - `suite_sand_perf.c`,
-`suite_sand_scenes.c`, `suite_sand_common.c` - so a sand performance
-capture, which reads a dozen rows out of the full run, does not pay for
-every other suite too.
-
-Scoping used to buy back static RAM, on a board where the framebuffer
-shared internal DRAM with `.bss`. On this board the framebuffer lives in
-PSRAM instead, so scoping no longer saves memory — it only saves run time
-and build time, and it changes the image's layout in the 32 KB instruction
-cache, which is why a scoped capture's numbers compare only with other
-scoped captures, never with an unscoped run.
-
-`CONFIG_LAUNCHER_SELFTEST` says whether the suites are compiled in;
-`CONFIG_LAUNCHER_SELFTEST_SCOPE_*` says **which**. Excluding a suite removes
-its `.text` *and* its `.bss`, which is what buys the run time back.
-
-| scope | fragment | carries | for |
-|---|---|---|---|
-| Full — the default | none | every suite, shell-owned and app-owned | every gate: `run_device_tests.sh`, `report_test_results.sh` |
-| Perf | `sdkconfig.defaults.diag_perf` | `suite_sand_perf.c` + `suite_sand_scenes.c` + `suite_sand_common.c` | a sand frame-budget capture |
-
-```sh
-bash launcher/main/apps/sand/tools/report_performance.sh --perf-scope
-# the image alone, left on the board, with no capture taken:
-bash launcher/tools/build_flash.sh --diag --perf-scope
-# by hand, the fragment simply appends to the usual three:
-idf.py -B build.diag.<yours> \
-  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag;sdkconfig.defaults.diag_autorun;sdkconfig.defaults.diag_perf" \
-  -D SDKCONFIG=build.diag.<yours>/sdkconfig build
-```
-
-Scoped around **what a run reads**, not around folders — which is why the
-perf list is written out in `main/CMakeLists.txt` rather than matched by a
-pattern. The rows in `suite_sand_perf.c` are built by the scene builders in
-`suite_sand_scenes.c` and the fixtures in `suite_sand_common.c`, neither of
-which is named `_perf`; `suite_cube_perf.c` and `suite_boot_anim_perf.c` are
-named `_perf` and are read by nobody in a sand round.
-
-Four things hold this together:
-
-- **Full is the default and stays globbed.** A scope only ever narrows, and
-  only when named, so coverage cannot shrink by accident.
-- **Both ways of getting it wrong are loud.** A scope member that no longer
-  exists (renamed, deleted with its app) fails the CMake *configure* with a
-  `FATAL_ERROR`. An in-scope suite calling a builder from an out-of-scope
-  file fails the *link* — builders are ordinary called symbols and nothing
-  stubs them.
-- **The scenes suite comes along because its builders do,** and its own tests
-  then check that the scenes the perf rows measure are still the scenes they
-  claim to be.
-- **Release is untouched.** Both scope symbols live under `LAUNCHER_SELFTEST`,
-  itself under `LAUNCHER_DEVELOPMENT`; a release config resolves neither, and
-  the suites were never in that image to scope.
-
-A perf-scoped build is **not a gate**: it drops behaviour coverage on purpose.
-Never take a merge decision from one, and never diff its numbers against an
-unscoped capture's — different scope, different layout.
+A diagnostics build compiles every suite; the perf scope compiles three, for
+a sand frame-budget capture. A scoped build is an instrument and never a
+gate, and its numbers compare only with other scoped captures.
+[`Build-Variants.md`](Build-Variants.md#a-diagnostics-build-can-be-scoped)
 
 ### Development-only instrumentation is its own flag, not SELFTEST
 
-`CONFIG_LAUNCHER_SELFTEST` answers "does this build carry the test suites."
-It does not answer "is this a development build" — that is a broader
-question, and `CONFIG_LAUNCHER_DEVELOPMENT` answers it instead.
-
-This project does not do telemetry. Nobody downstream ever reads a frame
-counter or a step-timing average; the only audience for that kind of number
-is a developer at the device or watching its serial console while working on
-it. So anything built purely for that audience — rolling averages, per-frame
-timers, a summary logged on exit — is pure cost in a release image: flash for
-the strings and the accounting, cycles for the bookkeeping, for output that
-helps nobody. It gets guarded by `CONFIG_LAUNCHER_DEVELOPMENT`, the same way
-test code is guarded by `CONFIG_LAUNCHER_SELFTEST` — see `app_sand.c`'s frame
-timing for the pattern.
-
-The two are related but not the same flag, because they answer different
-questions and can genuinely diverge:
-
-- `LAUNCHER_SELFTEST` `select`s `LAUNCHER_DEVELOPMENT` — a build carrying the
-  test suites is a development build by definition, so turning on SELFTEST
-  turns on DEVELOPMENT for free.
-- The reverse is not forced. A build can want the profiling and logging
-  without the test suites — watching real frame timings without also paying
-  for Unity and the suites' own footprint.
-
-Both live under one Kconfig `choice` (`main/Kconfig.projbuild`) alongside
-`LAUNCHER_RELEASE`, so exactly one is ever true and neither is "off by
-omission." Checking `CONFIG_LAUNCHER_DEVELOPMENT` means "not a release
-build," not "development, or maybe some other thing nobody named yet."
-
-**The rule going forward:** guard anything whose only reader is a developer —
-a log line, a rolling average, a debug overlay — with
-`CONFIG_LAUNCHER_DEVELOPMENT`. Guard the test suites themselves, and anything
-that only makes sense alongside them, with `CONFIG_LAUNCHER_SELFTEST`. Neither
-belongs ungated, and neither belongs gated on the other one just because they
-currently happen to travel together in `build.diag/`.
-
-A bare log line specifically has a second, complementary mechanism worth
-knowing about: ESP-IDF's own `CONFIG_LOG_MAXIMUM_LEVEL` compiles
-`ESP_LOGI`/`ESP_LOGW`/etc. calls out of the binary entirely above a given
-severity, project-wide, with no per-call-site `#if` needed — this project
-just doesn't split that ceiling per build variant yet. See
-[Log-Level-Plan.md](plans/Log-Level-Plan.md).
+Guard anything whose only reader is a developer — a log line, a rolling
+average, a debug overlay — with `CONFIG_LAUNCHER_DEVELOPMENT`. Guard the test
+suites, and only those, with `CONFIG_LAUNCHER_SELFTEST`.
+[`Build-Variants.md`](Build-Variants.md#development-only-instrumentation-is-its-own-flag-not-selftest)
 
 ### The Kconfig trap in REQUIRES
 
-One thing must **not** be gated on `CONFIG_LAUNCHER_SELFTEST`: the `unity`
-entry in `REQUIRES`.
-
-ESP-IDF expands component requirements in an early pass where `CONFIG_*` is not
-yet defined, so a Kconfig-gated `REQUIRES` silently evaluates false and does
-nothing. `SRCS` and `target_compile_definitions` are evaluated in a later pass
-and *do* work — which makes the failure genuinely confusing: the test sources
-get compiled, `DEVICE_BUILD` is defined, and every one of them fails with
-`fatal error: unity.h: No such file or directory`.
-
-Worse, it only shows up on a **clean** build directory. An incremental build
-already has a `sdkconfig`, so it appears to work — meaning this can sit latent
-until CI, or until someone deletes `build.diag/`.
-
-So `unity` is listed unconditionally. That costs release nothing: IDF puts unity
-in the component graph either way, `REQUIRES` only decides whether `main` can
-see its headers, and with no test sources compiled nothing references it and
-`--gc-sections` drops it. Confirmed — the release binary is byte-for-byte the
-same size with and without the entry.
-
-```sh
-idf.py build                          # build/       release, no test code
-./test/run_device_tests.sh            # build.diag/  firmware + suites
-```
-
-The two use separate build directories so each keeps its own `sdkconfig` and
-running the tests can never silently reconfigure your normal build.
-
-This is the norm, not a compromise. Unit tests verify *units* - `touch_fsm.c`
-compiles from identical sources with identical flags in both variants, and
-linking a test framework beside it cannot change how it behaves. Verifying an
-*image* is a separate activity (POST, functional tests, checksums) that unit
-tests were never doing in either build.
-
-If anything the direction favours release: the diagnostics variant carries more
-code and less free RAM, so a suite passing there leaves release with more
-headroom, not less.
-
-A failing self test is logged, not fatal — the harness reads the result from
-the console, and a board that still boots is easier to investigate than one
-that refuses to.
+`unity` stays unconditional in `REQUIRES`. A Kconfig-gated `REQUIRES` is
+expanded before `CONFIG_*` exists, so it silently evaluates false — and only
+on a clean build directory, which is what makes it a trap.
+[`Build-Variants.md`](Build-Variants.md#the-kconfig-trap-in-requires)
 
 ---
 
@@ -383,9 +229,10 @@ without paying a rebuild-and-reflash cycle per attempt.
 
 1. **During development**, RUNSUITE the suites for the area you touched, on
    a normal diag build (SELFTEST on, AUTORUN off, full scope).
-2. **Scoped builds for perf captures only** — see "A diagnostics build can
-   be scoped" above and [`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md)
-   for the sand-specific capture.
+2. **Scoped builds for perf captures only** — see
+   [`Build-Variants.md`](Build-Variants.md#a-diagnostics-build-can-be-scoped)
+   and [`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md) for the
+   sand-specific capture.
 3. **The full self-test before a merge** — `report_test_results.sh` or
    `run_device_tests.sh`, full scope, autorun, unattended. About 18 minutes
    on this board; treat it as the gate, not the everyday loop.
@@ -412,10 +259,10 @@ what the device build does differently, not about test logic:
 
 ### Perf tests assert sanity, not just log
 
-A test that only logs a number and never asserts on it is decoration: it
-was true once that a band-render test passed while band mode rendered
-nothing at all, because nothing in the test checked that any bytes were
-actually sent. Assert something cheap and real alongside the number —
+A test that only logs a number and never asserts on it is decoration: a
+band-render test passed while band mode rendered nothing at all, because
+nothing in the test checked that any bytes were actually sent. Assert
+something cheap and real alongside the number —
 bytes transferred greater than zero, a frame time not impossibly fast — so
 a silently-broken code path fails loudly instead of producing a clean log
 line for work that never happened. `test_present_overlap_against_serial`
@@ -469,9 +316,11 @@ out to the `RUNSUITE_COMPLETE` line the shell prints, then `SCREENSHOT`,
 decoded to a PNG and a state `.json` by `tools/screenshot.py`'s own code.
 Boot, one suite and a capture take about a minute and a half, against five
 to nine for a whole autorun. The frame is the firmware's real framebuffer,
-so it is a board-free way to look at a screen. A `CONFIG_LAUNCHER_QEMU`
-image puts that console listener on UART0, the port QEMU exposes; the
-runner reaches it as a local TCP socket.
+so it is a board-free way to look at a screen, and the second backend the
+render harness diffs a host render against
+([`tools/Render-Harness.md`](tools/Render-Harness.md)). A
+`CONFIG_LAUNCHER_QEMU` image puts that console listener on UART0, the port
+QEMU exposes; the runner reaches it as a local TCP socket.
 
 The image is the autorun diagnostics build with `sdkconfig.defaults.qemu`
 layered last, in its own `build.qemu*/`. That fragment does three things.
@@ -492,8 +341,31 @@ Touch gets the same treatment: where no controller answers, `touch.c`
 installs a stand-in behind the same driver interface, and `touch_inject()`
 sets what it reports. The sample still travels the polling task and the
 touch state machine to `touch_read()`, so a test can drive input end to end.
+The IMU likewise: with no sensor answering, `imu_init()` succeeds and
+`imu_read()` returns what `imu_inject()` last set - held upright and still
+until then, so the shell picks portrait as it would in a hand.
 The option also makes the temperature read report failure, because
 ESP-IDF's driver waits forever on a sensor QEMU does not have.
+
+**Driving the shell.** The console listener of such an image also takes
+`TOUCH <down|up> <x> <y>` and `IMU <ax> <ay> <az>` (panel pixels; raw
+accelerometer counts, 4096 to the g). `qemu_run.py --do` strings them into
+what a user does, one ordered step at a time:
+
+```sh
+python launcher/test/qemu_run.py launcher/build.qemu.shell \
+  --do "tap 180 95" --do "wait 2500" --do "screenshot cube.png" \
+  --do "tilt 0 -4096 0" --do "wait 2500" --do "screenshot landscape.png" \
+  --do "swipe 184 446 184 200" --do "screenshot home.png"
+```
+
+That opens an app from the launcher, turns the board on its side and swipes
+home, about a minute with no board - the boot animation, the frame loop,
+the launcher, entering and leaving an app and the rotation, none of which a
+suite reaches. Leave `--icount` off: a press is timed in the emulated clock,
+which then runs far slower than the host's. An app that does not set
+`home_gesture` ignores the swipe here as it does on the board, and the PWR
+button has no stand-in, so such an app cannot be left.
 
 **What a run is evidence of.** Pass and fail, for any test that does not
 read a clock; the full scope runs to `SELFTEST_COMPLETE` in about nine
@@ -555,6 +427,26 @@ Neither stage produces milliseconds. The host stage ranks how evenly a
 layout divides a board's work; the emulated stage prices the chunking
 itself. Whether a second core wins is the board's answer, from
 `launcher/main/apps/sand/tools/report_performance.sh --perf-scope`.
+
+---
+
+## The host render harness: real drawing code, real pixels, no board
+
+The firmware's drawing code compiles on a host, so a screen can be rendered
+into an image without a flash cycle, and the pixels of every declared scene
+are pinned against change.
+
+```sh
+./launcher/tools/render_all_scenes.sh          # every scene, and the standing check
+```
+
+Reach for it to judge a layout, prove a screen still draws what it drew, or
+diff a render against a device capture. **It is never a perf oracle:** host
+wall-clock says nothing about what the work costs on the chip.
+
+[`tools/Render-Harness.md`](tools/Render-Harness.md) is the manual - declaring
+a scene, frames and synthetic touch, the pins, the QEMU backend, and
+`render_diff.sh`.
 
 ---
 
@@ -766,7 +658,7 @@ and `suite_gfx_band.c` (portable) cover the mode-grant arithmetic and the
 band-ring state machine the same way, including `gfx_mode.h`/`gfx_band.h`
 directly; `gfx.c`'s own allocation and DMA-send side of `gfx_mode_enter()`/
 `gfx_band_submit()` needs real device memory, so it is exercised instead by
-`main/apps/cube/suite_cube_band_perf.c` (device-only), which times the cube's
+`main/apps/render_lab/suite_cube_band_perf.c` (device-only), which times the cube's
 band-mode path against its full-fb path on the same scene.
 
 Still untested: `ui_launcher.c`'s microui integration and the small3dlib
@@ -792,7 +684,8 @@ gfx/ui change can be checked without touching the sand suites at all.
 | ui | `run_ui_suite`, `run_ui_pointer_suite`, `run_ui_pointer_microui_suite`, `run_ui_slider_suite`, `suite_ui_style`, `suite_ui_transform`, `suite_ui_centered_rect` | microui integration, pointer/widget hit-testing, style tokens, rotation transforms |
 | input | `run_touch_fsm_suite`, `run_gesture_suite`, `run_button_fsm_suite`, `run_tilt_suite` | touch debounce FSM, swipe gestures, button FSM, the tilt filter |
 | boot/POST | `run_boot_anim_suite`, `run_boot_anim_perf_suite` | the small3dlib boot animation and its frame budget. POST itself (`boot/post.c`) has no suite — it runs every boot and is read from its own `POST_COMPLETE` line, not Unity |
-| cube | `run_cube_perf_suite`, `run_cube_band_perf_suite`, `run_small3dlib_scissor_suite` | the cube app's frame budget, band mode against the full framebuffer across orientations, the rasterizer's row scissor |
+| render | `run_r3d_project_suite` | the camera-space near-plane clip and perspective projection boot and other 3D callers share |
+| render lab | `run_cube_perf_suite`, `run_cube_band_perf_suite`, `run_small3dlib_scissor_suite`, `run_wire_pipeline_suite`, `run_wire_primitives_suite`, `run_wire_perf_suite` | the cube scene's frame budget, band mode against the full framebuffer across orientations, the rasterizer's row scissor; the wireframe transform/near-clip/screen-clip pipeline and the baked plane/cube/sphere/capsule edge lists it draws; the wire scenes' frame budget by primitive, layout and orientation |
 | sand behaviour | 28 suites: `run_sand_*_suite` (25 of them) plus `run_row_runs_suite`, `run_palette_suite`, `run_brush_screen_suite` — see `launcher/main/apps/sand/suite_*.c` | materials, reactions, liquids, gas, dirt/roots, gunpowder, glass thermal, metal, the brush UI and palette picker, dirty-row reconciliation |
 | sand perf | `run_sand_perf_suite` | the 13 frame-budget scenes — see [`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md) |
 | shell/util | `suite_fixed`, `suite_tween`, `run_rng_suite`, `suite_device_state` | fixed-point math, tweening, RNG, the device-state JSON `screenshot.py` reads |
@@ -830,9 +723,10 @@ gfx/ui change can be checked without touching the sand suites at all.
    (which links no suites) can see it. Allocate anything large in
    `fixture()` instead, as `suite_sand_liquid_depth.c` already does, and run
    `tools/build_diag_check.sh` before pushing rather than finding out from a
-   pull request — there is no automated gate on this any more (see "A
-   diagnostics build can be scoped" above), so the check is `idf.py -B
-   build.diag size` read by eye, not a pass/fail script. The `.bss` reading
+   pull request — nothing gates this automatically
+   ([`Build-Variants.md`](Build-Variants.md#a-diagnostics-build-can-be-scoped)),
+   so the check is `idf.py -B build.diag size` read by eye, not a pass/fail
+   script. The `.bss` reading
    is the eyeball half of that script; the pass/fail half is the complexity
    ratchet it runs first, in seconds, before the build
    (`docs/tools/Complexity-Gate.md`).
@@ -863,19 +757,17 @@ gfx/ui change can be checked without touching the sand suites at all.
 
 ## Related
 
+- `docs/Build-Variants.md` — what RELEASE, DEVELOPMENT and SELFTEST each
+  gate, the scope choice, and the `REQUIRES` trap.
 - `docs/Building-an-App.md` — how an app plugs into the shell, and the
   folder layout the app-suite convention above assumes.
 - `docs/sand/Sand-Simulation.md` — the sand suite (`suite_sand_*.c`) is the
   largest test suite in this codebase; this is what it is actually testing.
 - `docs/sand/Testing-Sand.md` — the sand app's own frame-budget capture,
   its free-heap precondition, and the perf-scope trade-off.
+- `docs/tools/Render-Harness.md` — rendering a real screen on a host,
+  pinning its pixels, and diffing it against a capture.
 - `docs/notes/` — the hardware constraints behind the device-only
   performance tests. Start at `docs/notes/README.md`.
-- `docs/plans/Settings-App-Plan.md` — the Diagnostics app itself now follows the
-  DEVELOPMENT/SELFTEST split this guide documents (whole app on
-  DEVELOPMENT, the self-test runner alone on SELFTEST); what remains open
-  is extracting its surviving DEVELOPMENT-only rows into their own Settings
-  app, and the SELFTEST/"diagnostics" naming mismatch this guide describes.
-- `docs/plans/Log-Level-Plan.md` — planned compile-time log-severity ceiling per
-  build variant, complementing the DEVELOPMENT/SELFTEST split above rather
-  than replacing it.
+- `docs/plans/` — the two plans that build on the DEVELOPMENT/SELFTEST
+  split are listed in `docs/Build-Variants.md`'s own Related.

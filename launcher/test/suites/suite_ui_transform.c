@@ -507,6 +507,15 @@ test_invert_fails_on_a_singular_matrix(void) {
     TEST_ASSERT_FALSE_MESSAGE(ui_transform_invert(all_zero, &out), "the zero matrix is singular");
 }
 
+static void
+test_quarter_turns_reads_back_the_turn_a_transform_was_built_from(void) {
+    for (int turn = -4; turn <= 7; turn++) {
+        const ui_transform_t t = ui_transform_quarter_turn(turn, 368, 448);
+        TEST_ASSERT_EQUAL_INT(((turn % 4) + 4) % 4, ui_transform_quarter_turns(t));
+    }
+    TEST_ASSERT_EQUAL_INT(0, ui_transform_quarter_turns(ui_transform_identity()));
+}
+
 void
 suite_ui_transform(void) {
     RUN_TEST(test_identity_maps_every_point_to_itself);
@@ -534,6 +543,7 @@ suite_ui_transform(void) {
     RUN_TEST(test_axis_preserving_rejects_a_shear);
     RUN_TEST(test_axis_preserving_rejects_a_non_90_degree_rotation);
     RUN_TEST(test_invert_fails_on_a_singular_matrix);
+    RUN_TEST(test_quarter_turns_reads_back_the_turn_a_transform_was_built_from);
 }
 
 SUITE_REGISTER(suite_ui_transform);

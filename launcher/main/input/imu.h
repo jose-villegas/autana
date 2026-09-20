@@ -45,6 +45,12 @@ bool imu_ready(void);
 /* Reads all six axes. Returns false on a bus error, leaving `out` untouched. */
 bool imu_read(imu_sample_t* out);
 
+#if CONFIG_LAUNCHER_QEMU
+/* Where no sensor answers, imu_init() succeeds anyway and imu_read() returns
+ * what this last set - held upright and still until it is called. */
+void imu_inject(const imu_sample_t* sample);
+#endif
+
 /* Sensor axes to screen axes: how the QMI8658 is soldered relative to the
  * panel is a board layout fact no datasheet carries, so both facts here come
  * from tilting the board - held upright the sensor reads about +1 g on its

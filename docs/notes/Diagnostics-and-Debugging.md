@@ -64,7 +64,7 @@ Builds the diagnostics variant, flashes it, and runs *every* registered
 suite - portable ones included - actually compiled by the Xtensa toolchain
 and executed on the chip, which a host run cannot vouch for. Needs a
 `CONFIG_LAUNCHER_SELFTEST` build (`build_flash_diag.sh` /
-`build_flash.sh --diag`); see [`../Testing-Guide.md`](../Testing-Guide.md)
+`build_flash.sh --diag`); see [`../Build-Variants.md`](../Build-Variants.md)
 for what that flag carries versus `--dev`.
 
 ## What does the screen look like right now? - `screenshot.sh`
@@ -205,18 +205,20 @@ The shell logs frames-per-second on a fixed timer (`report_fps()` in
 gated behind `CONFIG_LAUNCHER_DEVELOPMENT` the way other instrumentation is
 (worth knowing if you go looking for it and expect it gated the same way as
 everything else on this page - see the note in
-[`../Testing-Guide.md`](../Testing-Guide.md) on what should be gated and
-why). `monitor.sh` shows it directly, no special build needed.
+[`../Build-Variants.md`](../Build-Variants.md#development-only-instrumentation-is-its-own-flag-not-selftest)
+on what should be gated and why). `monitor.sh` shows it directly, no special
+build needed.
 
 For anything deeper than an fps number: `app_sand.c` carries its own
 `CONFIG_LAUNCHER_DEVELOPMENT`-gated rolling averages (step/draw timing,
 awake-cell counts) logged periodically - see
 `main/apps/sand/tools/report_performance.sh` for the host-side report
-generator. The cube app has a dedicated on-device performance suite
-(`main/apps/cube/suite_cube_perf.c`) for phase-by-phase timing (logic /
-rasterise / HUD / present) against a 60fps budget, run the same way as any
-other on-device suite (see [above](#does-it-still-hold-on-the-real-chip---on-device-suite));
-`main/apps/cube/tools/report_cube_perf.sh` is its host-side report.
+generator. The render lab app's cube scene has a dedicated on-device
+performance suite (`main/apps/render_lab/suite_cube_perf.c`) for
+phase-by-phase timing (logic / rasterise / HUD / present) against a 60fps
+budget, run the same way as any other on-device suite (see
+[above](#does-it-still-hold-on-the-real-chip---on-device-suite));
+`main/apps/render_lab/tools/report_cube_perf.sh` is its host-side report.
 
 ## Orientation or the IMU seems wrong
 
@@ -254,9 +256,11 @@ Two ways to see raw sensor readings without adding any code:
 
 ## Related
 
-- [`../Testing-Guide.md`](../Testing-Guide.md) - what
+- [`../Build-Variants.md`](../Build-Variants.md) - what
   `CONFIG_LAUNCHER_DEVELOPMENT` and `CONFIG_LAUNCHER_SELFTEST` actually
   gate, and the three build variants (release/dev/diag).
+- [`../Testing-Guide.md`](../Testing-Guide.md) - the host and device test
+  runners, and RUNSUITE.
 - [`../Launcher-Architecture.md`](../Launcher-Architecture.md) - the
   Diagnostics app (DEVELOPMENT-gated as a whole, with the self-test runner
   alone narrowed to SELFTEST), and its still-open split into a Settings app.
