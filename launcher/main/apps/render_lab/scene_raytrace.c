@@ -110,9 +110,9 @@ raytrace_status(void) {
     static char buf[24];
 
     if (next_row < GFX_HEIGHT) {
-        snprintf(buf, sizeof buf, "row %d/%d", next_row, GFX_HEIGHT);
+        snprintf(buf, sizeof buf, "row  %3d/%d", next_row, GFX_HEIGHT);
     } else {
-        snprintf(buf, sizeof buf, "done %u.%u s", elapsed_ms / 1000, (elapsed_ms / 100) % 10);
+        snprintf(buf, sizeof buf, "done %3u.%u s", (unsigned)(elapsed_ms / 1000), (unsigned)((elapsed_ms / 100) % 10));
     }
     return buf;
 }

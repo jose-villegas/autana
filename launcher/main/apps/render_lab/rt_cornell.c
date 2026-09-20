@@ -15,38 +15,41 @@
 
 #include <math.h>
 
-#define RT_EPSILON            0.0001f
-#define RT_MAX_T              100.0f
+#define RT_EPSILON                0.0001f
+#define RT_MAX_T                  100.0f
 
-#define ROOM_HALF_X           1.0f
-#define ROOM_HEIGHT           2.0f
-#define ROOM_DEPTH            2.0f
+#define ROOM_HALF_X               1.0f
+#define ROOM_HEIGHT               2.0f
+#define ROOM_DEPTH                2.0f
 
-#define LIGHT_HALF_X          0.24f
-#define LIGHT_HALF_Z          0.24f
-#define LIGHT_CENTER_Z        1.0f
-#define LIGHT_POS             ((rt_vec3_t){0.0f, ROOM_HEIGHT - 0.05f, LIGHT_CENTER_Z})
-#define LIGHT_EMISSIVE_RGB    0xFFF6E0u
+#define LIGHT_HALF_X              0.24f
+#define LIGHT_HALF_Z              0.24f
+#define LIGHT_CENTER_Z            1.0f
+#define LIGHT_POS                 ((rt_vec3_t){0.0f, ROOM_HEIGHT - 0.05f, LIGHT_CENTER_Z})
+#define LIGHT_EMISSIVE_RGB        0xFFF6E0u
 
-#define WALL_WHITE            ((rt_vec3_t){0.76f, 0.75f, 0.74f})
-#define WALL_RED              ((rt_vec3_t){0.63f, 0.065f, 0.05f})
-#define WALL_GREEN            ((rt_vec3_t){0.14f, 0.45f, 0.091f})
-#define BOX_ALBEDO            ((rt_vec3_t){0.78f, 0.78f, 0.75f})
+#define WALL_WHITE                ((rt_vec3_t){0.76f, 0.75f, 0.74f})
+#define WALL_RED                  ((rt_vec3_t){0.63f, 0.065f, 0.05f})
+#define WALL_GREEN                ((rt_vec3_t){0.14f, 0.45f, 0.091f})
+#define BOX_ALBEDO                ((rt_vec3_t){0.78f, 0.78f, 0.75f})
 
 /* sin/cos of 17 degrees, computed once here rather than by a trig call on
  * every ray/box test. */
-#define BOX_YAW_SIN           0.29237170472f
-#define BOX_YAW_COS           0.95630475596f
+#define BOX_YAW_SIN               0.29237170472f
+#define BOX_YAW_COS               0.95630475596f
 
-#define AMBIENT               0.26f
-#define LIGHT_INTENSITY       2.0f
-#define SHADOW_BIAS           0.001f
+#define AMBIENT                   0.26f
+#define LIGHT_INTENSITY           2.0f
+#define SHADOW_BIAS               0.001f
 
-#define CAMERA_POS            ((rt_vec3_t){0.0f, 1.0f, -1.6f})
-#define CAMERA_FORWARD        ((rt_vec3_t){0.0f, 0.0f, 1.0f})
-#define CAMERA_RIGHT          ((rt_vec3_t){1.0f, 0.0f, 0.0f}) /* +X is the green wall's side */
-#define CAMERA_UP             ((rt_vec3_t){0.0f, 1.0f, 0.0f})
-#define CAMERA_HALF_FOV_Y_TAN 0.44f
+#define CAMERA_POS                ((rt_vec3_t){0.0f, 1.0f, -2.6f})
+#define CAMERA_FORWARD            ((rt_vec3_t){0.0f, 0.0f, 1.0f})
+#define CAMERA_RIGHT              ((rt_vec3_t){1.0f, 0.0f, 0.0f}) /* +X is the green wall's side */
+#define CAMERA_UP                 ((rt_vec3_t){0.0f, 1.0f, 0.0f})
+/* The room's open front, 1 unit either side of the axis, just fits the
+ * screen's SHORTER axis from CAMERA_POS, so neither box is ever cropped; the
+ * longer axis sees a little past the room. */
+#define CAMERA_HALF_FOV_SHORT_TAN (1.04f / 2.6f)
 
 static rt_vec3_t
 vec3_add(rt_vec3_t a, rt_vec3_t b) {
@@ -341,25 +344,33 @@ shade_point(rt_vec3_t point, rt_vec3_t normal, rt_vec3_t albedo) {
     return vec3_scale(albedo, brightness);
 }
 
+/* A smooth wall crosses only a handful of 5-bit levels, which shows as
+ * contour bands; an ordered threshold per pixel before truncating trades them
+ * for a fixed pattern the eye averages. */
+static const uint8_t bayer4[4][4] = {{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
+
 static uint32_t
-clamp_channel(float v) {
+quantize_channel(float v, uint32_t max_level, float threshold) {
     if (v <= 0.0f) {
         return 0;
     }
     if (v >= 1.0f) {
-        return 255;
+        return max_level;
     }
-    return (uint32_t)(v * 255.0f + 0.5f);
+    const uint32_t level = (uint32_t)(v * (float)max_level + threshold);
+    return level > max_level ? max_level : level;
 }
 
 static gfx_color_t
-to_gfx_color(rt_vec3_t c) {
-    const uint32_t rgb = (clamp_channel(c.x) << 16) | (clamp_channel(c.y) << 8) | clamp_channel(c.z);
-    return GFX_RGB(rgb);
+to_gfx_color(rt_vec3_t c, int x, int y) {
+    const float threshold = ((float)bayer4[y & 3][x & 3] + 0.5f) / 16.0f;
+    const uint32_t rgb565 = (quantize_channel(c.x, 31, threshold) << 11) | (quantize_channel(c.y, 63, threshold) << 5)
+                            | quantize_channel(c.z, 31, threshold);
+    return (gfx_color_t)((rgb565 >> 8) | (rgb565 << 8));
 }
 
 static gfx_color_t
-trace_primary(rt_vec3_t origin, rt_vec3_t dir) {
+trace_primary(rt_vec3_t origin, rt_vec3_t dir, int x, int y) {
     rt_hit_t hit;
     if (!scene_intersect(origin, dir, &hit)) {
         return GFX_RGB(0x000000u);
@@ -367,7 +378,7 @@ trace_primary(rt_vec3_t origin, rt_vec3_t dir) {
     if (hit.is_light) {
         return GFX_RGB(LIGHT_EMISSIVE_RGB);
     }
-    return to_gfx_color(shade_point(hit.point, hit.normal, hit.albedo));
+    return to_gfx_color(shade_point(hit.point, hit.normal, hit.albedo), x, y);
 }
 
 /* Maps a physical canvas pixel to the pixel it represents in the upright,
@@ -402,8 +413,8 @@ camera_ray_dir(const rt_cornell_camera_t* cam, int ex, int ey) {
     const float ndc_x = ((float)ex + 0.5f) / (float)cam->eff_width * 2.0f - 1.0f;
     const float ndc_y = 1.0f - ((float)ey + 0.5f) / (float)cam->eff_height * 2.0f;
     const float aspect = (float)cam->eff_width / (float)cam->eff_height;
-    const float half_h = cam->half_fov_y_tan;
-    const float half_w = half_h * aspect;
+    const float half_w = aspect >= 1.0f ? cam->half_fov_short_tan * aspect : cam->half_fov_short_tan;
+    const float half_h = aspect >= 1.0f ? cam->half_fov_short_tan : cam->half_fov_short_tan / aspect;
 
     rt_vec3_t dir = cam->forward;
     dir = vec3_add(dir, vec3_scale(cam->right, ndc_x * half_w));
@@ -417,7 +428,7 @@ rt_cornell_camera_init(rt_cornell_camera_t* cam, int width, int height, int quar
     cam->forward = CAMERA_FORWARD;
     cam->right = CAMERA_RIGHT;
     cam->up = CAMERA_UP;
-    cam->half_fov_y_tan = CAMERA_HALF_FOV_Y_TAN;
+    cam->half_fov_short_tan = CAMERA_HALF_FOV_SHORT_TAN;
     cam->width = width;
     cam->height = height;
     cam->quarter = quarter;
@@ -430,6 +441,6 @@ rt_cornell_render_row(const rt_cornell_camera_t* cam, int y, gfx_color_t* out_ro
     for (int x = 0; x < cam->width; x++) {
         int ex, ey;
         physical_to_logical(cam, x, y, &ex, &ey);
-        out_row[x] = trace_primary(cam->origin, camera_ray_dir(cam, ex, ey));
+        out_row[x] = trace_primary(cam->origin, camera_ray_dir(cam, ex, ey), x, y);
     }
 }
