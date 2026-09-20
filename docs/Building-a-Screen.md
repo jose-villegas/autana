@@ -53,13 +53,22 @@ same bug costs a second on a laptop.
 ./launcher/tools/screenshot.sh -o shot.png   # lossless PNG, does not reset
 ```
 
-A screen drawn outside microui can also be rendered on a host, with no board
-and no flash cycle: `launcher/tools/post_ui_render_host.sh` builds the real
-drawing code of the power-on self-test report against `gfx.c` and writes
-that screen in both orientations, the way the board is read, plus its fault
-variant. `boot_anim_render_host.c` beside it does the same for one frame of
-the startup animation. Both stand in the data their screen normally gets -
-a fixture table, a timestamp - so nothing they draw came off hardware.
+A screen can also be rendered on a host, with no board and no flash cycle,
+through the real drawing code and the real `gfx.c`:
+
+```sh
+./launcher/tools/render_all_scenes.sh        # every declared scene
+./launcher/tools/post_ui_render_host.sh      # one of them
+./launcher/tools/render_diff.sh shot.png /tmp/post/landscape-panel.bmp
+```
+
+A screen built through microui is rendered the same way, driven over
+several frames with a declared synthetic touch. Declaring a scene for your
+own screen is two files, and diffing one against a device capture is one
+command - both in
+[`tools/Render-Harness.md`](tools/Render-Harness.md). Every
+scene stands in the data its screen normally gets - a fixture table, a
+timestamp - so nothing a render shows came off hardware.
 
 `idf.py -B build.dev build` is also worth running for anything touching
 device-only files: it is a real cross-compile and catches what host stubs
@@ -188,6 +197,22 @@ panels, tracks and status indicators, not pictograms.
 On close, force a full repaint of the app underneath and reset any
 accumulators the pause built up.
 
+### A screen over a backdrop that is drawn
+
+`ui_end_over(paint_backdrop)` is `ui_end()` for a backdrop that is a picture
+and not a colour; the launcher's ridge (`ui/ui_ridge.c`) is the model.
+
+1. `paint_backdrop` paints the whole screen. It is called only when the UI
+   itself changed, and every canvas is then painted over it.
+2. A backdrop that animates draws its own changed part **before**
+   `ui_end_over()`. That dirties the screen under an unchanged UI, which is
+   put back on top with no backdrop call.
+3. At rest it must draw nothing. A backdrop that redraws an identical frame
+   dirties the screen, and the launcher stops being free while idle.
+4. React to the raw `input_t`, mapped with `ui_to_logical()`, not to
+   microui's pointer: `ui_pointer` holds a press back until it knows a tap
+   from a scroll, which is a frame or two too late for feedback.
+
 ### Knowing what a screen costs
 
 `MU_COMMANDLIST_SIZE` is 8 KiB and everything drawn spends it - roughly 250
@@ -230,4 +255,8 @@ fifth icon.
 - [`Building-an-App.md`](Building-an-App.md) - the app a screen lives in
 - [`Text-and-Fonts.md`](Text-and-Fonts.md) - fonts, scales, text styles
 - [`Launcher-Architecture.md`](Launcher-Architecture.md) - the mechanisms
-- [`Testing-Guide.md`](Testing-Guide.md) - suites, runners, build variants
+- [`Testing-Guide.md`](Testing-Guide.md) - suites and runners
+- [`Build-Variants.md`](Build-Variants.md) - what release, dev and
+  diagnostics builds carry
+- [`tools/Render-Harness.md`](tools/Render-Harness.md) - rendering a screen
+  on a host, and diffing it against a capture

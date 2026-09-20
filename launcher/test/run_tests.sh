@@ -79,8 +79,11 @@ $TEST_DIR/suites/suite_gesture.c
 $TEST_DIR/suites/suite_button_fsm.c
 $TEST_DIR/suites/suite_rng.c
 $TEST_DIR/suites/suite_fixed.c
+$TEST_DIR/suites/suite_tilt.c
 $TEST_DIR/suites/suite_tween.c
+$TEST_DIR/suites/suite_spring_line.c
 $TEST_DIR/suites/suite_boot_anim.c
+$TEST_DIR/suites/suite_r3d_project.c
 $TEST_DIR/suites/suite_gfx_dirty.c
 $TEST_DIR/suites/suite_gfx_full_redraw.c
 $TEST_DIR/suites/suite_gfx_present_guard.c
@@ -93,6 +96,7 @@ $TEST_DIR/suites/suite_gfx_indexed.c
 $TEST_DIR/suites/suite_gfx_palette.c
 $TEST_DIR/suites/suite_small3dlib_scissor.c
 $TEST_DIR/suites/suite_gfx_color.c
+$TEST_DIR/suites/suite_gfx_glow.c
 $TEST_DIR/suites/suite_gfx_font.c
 $TEST_DIR/suites/suite_gfx_font_roles.c
 $TEST_DIR/suites/suite_icons.c
@@ -102,6 +106,8 @@ $TEST_DIR/suites/suite_ui_transform.c
 $TEST_DIR/suites/suite_ui_anchor.c
 $TEST_DIR/suites/suite_control_center_layout.c
 $TEST_DIR/suites/suite_ui_centered_rect.c
+$TEST_DIR/suites/suite_ridge_curve.c
+$TEST_DIR/suites/suite_ridge_motion.c
 $TEST_DIR/suites/suite_ui_launcher.c
 $TEST_DIR/suites/suite_ui_pointer.c
 $TEST_DIR/suites/suite_ui_pointer_microui.c
@@ -117,6 +123,7 @@ $TEST_DIR/suites/suite_job.c
 $TEST_DIR/suites/suite_heap_caps.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/gesture.c
+$MAIN_DIR/input/tilt.c
 $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/post_layout.c
@@ -136,8 +143,10 @@ $TEST_DIR/../components/microui/src/microui.c
 #
 # The convention: inside main/apps/<name>/, the file named app_*.c is the
 # hardware-facing entry point - it talks to gfx, the IMU and the frame loop, so
-# it cannot link on a host. Everything else in the folder is portable logic and
-# is compiled in, along with any suite_*.c beside it.
+# it cannot link on a host. A scene_*.c is the same kind of file: one of
+# several hardware-facing renderers an app hosts behind its single app_*.c.
+# Everything else in the folder is portable logic and is
+# compiled in, along with any suite_*.c beside it.
 #
 # That split is not bureaucracy: it is what forces an app's logic to be
 # separable from its wiring, which is the only reason a falling-sand automaton
@@ -153,7 +162,7 @@ $TEST_DIR/../components/microui/src/microui.c
 for f in $(find "$MAIN_DIR/apps" -name '*.c' ! -path '*/tools/*' | sort); do
     [ -e "$f" ] || continue
     case "$(basename "$f")" in
-        app_*.c) continue ;;
+        app_*.c | scene_*.c) continue ;;
     esac
     SOURCES="$SOURCES
 $f"

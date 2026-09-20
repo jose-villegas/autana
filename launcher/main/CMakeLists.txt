@@ -14,6 +14,7 @@ set(app_srcs
     "input/buttons.c"
     "input/gesture.c"
     "input/imu.c"
+    "input/tilt.c"
     "ui/ui.c"
     "ui/system_navigation.c"
     "ui/ui_build.c"
@@ -22,6 +23,7 @@ set(app_srcs
     "ui/ui_launcher.c"
     "ui/ui_launcher_draw.c"
     "ui/ui_pointer.c"
+    "ui/ui_ridge.c"
     "ui/ui_scroll.c"
     "util/device_state.c"
     "util/job.c"
@@ -162,13 +164,18 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites/suite_button_fsm.c"
         "../test/suites/suite_rng.c"
         "../test/suites/suite_boot_anim.c"
+        "../test/suites/suite_r3d_project.c"
         "../test/suites/suite_boot_anim_perf.c"
         "../test/suites/suite_fixed.c"
+        "../test/suites/suite_tilt.c"
         "../test/suites/suite_tween.c"
+        "../test/suites/suite_ridge_motion.c"
+        "../test/suites/suite_spring_line.c"
         "../test/suites/suite_gfx.c"
         "../test/suites/suite_gfx_dirty.c"
         "../test/suites/suite_gfx_heal.c"
         "../test/suites/suite_gfx_color.c"
+        "../test/suites/suite_gfx_glow.c"
         "../test/suites/suite_gfx_font.c"
         "../test/suites/suite_gfx_font_roles.c"
         "../test/suites/suite_icons.c"
@@ -221,7 +228,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
                 message(FATAL_ERROR
                     "LAUNCHER_SELFTEST_SCOPE_PERF names a suite that does not "
                     "exist: ${suite_src}. Fix the list in main/CMakeLists.txt "
-                    "(and docs/Testing-Guide.md) - a scope that silently "
+                    "(and docs/Build-Variants.md) - a scope that silently "
                     "measures less than it claims is worse than no scope.")
             endif()
         endforeach()

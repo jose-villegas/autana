@@ -147,14 +147,14 @@ test_samples_are_clamped_rather_than_read_out_of_range(void) {
 
 static void
 test_the_quarter_wave_starts_at_zero_and_ends_at_one(void) {
-    TEST_ASSERT_EQUAL_INT(0, boot_anim_sin_quarter[0]);
-    TEST_ASSERT_EQUAL_INT(32767, boot_anim_sin_quarter[64]);
+    TEST_ASSERT_EQUAL_INT(0, trig_sin_quarter[0]);
+    TEST_ASSERT_EQUAL_INT(32767, trig_sin_quarter[64]);
 }
 
 static void
 test_the_quarter_wave_rises_all_the_way(void) {
     for (int i = 1; i < 65; i++) {
-        TEST_ASSERT_TRUE_MESSAGE(boot_anim_sin_quarter[i] > boot_anim_sin_quarter[i - 1],
+        TEST_ASSERT_TRUE_MESSAGE(trig_sin_quarter[i] > trig_sin_quarter[i - 1],
                                  "the quarter wave must increase at every step - a dip means a "
                                  "transposed or mistyped entry");
     }
@@ -162,13 +162,13 @@ test_the_quarter_wave_rises_all_the_way(void) {
 
 /* The identity that pins every entry down at once, checked across the full
  * turn rather than just the arc the camera actually uses - a general-purpose
- * table should hold everywhere, and this is what makes boot_anim_sin()/cos()
+ * table should hold everywhere, and this is what makes trig_sin()/cos()
  * safe to reuse for anything else that turns up needing one. */
 static void
 test_sin_squared_plus_cos_squared_is_one(void) {
     for (uint32_t phase = 0; phase < 65536; phase += 7) {
-        const int64_t s = boot_anim_sin((uint16_t)phase);
-        const int64_t c = boot_anim_cos((uint16_t)phase);
+        const int64_t s = trig_sin((uint16_t)phase);
+        const int64_t c = trig_cos((uint16_t)phase);
         const int64_t sum = s * s + c * c;
         const int64_t one = (int64_t)32767 * 32767;
 
@@ -179,11 +179,11 @@ test_sin_squared_plus_cos_squared_is_one(void) {
 
 static void
 test_the_quarter_points_are_exact(void) {
-    TEST_ASSERT_EQUAL_INT(0, boot_anim_sin(0));
-    TEST_ASSERT_EQUAL_INT(32767, boot_anim_sin(16384));
-    TEST_ASSERT_EQUAL_INT(0, boot_anim_sin(32768));
-    TEST_ASSERT_EQUAL_INT(-32767, boot_anim_sin(49152));
-    TEST_ASSERT_EQUAL_INT(32767, boot_anim_cos(0));
+    TEST_ASSERT_EQUAL_INT(0, trig_sin(0));
+    TEST_ASSERT_EQUAL_INT(32767, trig_sin(16384));
+    TEST_ASSERT_EQUAL_INT(0, trig_sin(32768));
+    TEST_ASSERT_EQUAL_INT(-32767, trig_sin(49152));
+    TEST_ASSERT_EQUAL_INT(32767, trig_cos(0));
 }
 
 /* A moment safely after the curve finishes (pen saturates at 2500ms) but
@@ -202,6 +202,10 @@ identity_view(S3L_Unit focal) {
     boot_anim_view_t v;
     S3L_mat4Init(v.matrix);
     v.focal = focal;
+    v.near_z = R3D_NEAR_Z;
+    v.center_x = PANEL_W / 2;
+    v.center_y = PANEL_H / 2;
+    v.scale = PANEL_W / 2;
     return v;
 }
 
@@ -254,7 +258,7 @@ test_a_point_further_from_the_camera_projects_smaller(void) {
  * behind the near plane, rather than projecting it to an ordinary-looking
  * but geometrically nonsense screen position. `im_q12 = 408` sits exactly
  * ON the boundary - under an identity transform
- * BOOT_ANIM_ZETA_TO_S3L(408) = 51 = BOOT_ANIM_NEAR_Z - so this exercises
+ * BOOT_ANIM_ZETA_TO_S3L(408) = 51 = R3D_NEAR_Z - so this exercises
  * the `<=`, which a `<` typo would still pass anywhere further back. */
 static void
 test_project_point_rejects_a_point_at_the_near_plane(void) {
@@ -269,28 +273,28 @@ test_project_point_rejects_a_point_at_the_near_plane(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(-1, y, "a rejected point's output y must be left untouched");
 }
 
-/* The OTHER early-out in boot_anim_project_segment_cs() besides the clip
- * itself (see test_project_segment_cs_clips_asymmetric_coordinates below
- * for that branch): a segment with BOTH endpoints at or behind the near
- * plane has nothing in front of the camera to draw at all, and must
- * return false outright rather than clip against itself. */
+/* The OTHER early-out in r3d_project_segment_cs() besides the clip itself
+ * (see test_project_segment_cs_clips_asymmetric_coordinates below for that
+ * branch): a segment with BOTH endpoints at or behind the near plane has
+ * nothing in front of the camera to draw at all, and must return false
+ * outright rather than clip against itself. */
 static void
 test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
     const boot_anim_view_t view = identity_view(S3L_F);
     const S3L_Vec4 p0 = {100, 200, 0, S3L_F};
-    const S3L_Vec4 p1 = {-100, -200, BOOT_ANIM_NEAR_Z, S3L_F};
+    const S3L_Vec4 p1 = {-100, -200, R3D_NEAR_Z, S3L_F};
     int ax, ay, bx, by;
 
-    const bool ok = boot_anim_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by);
+    const bool ok = r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by);
 
     TEST_ASSERT_FALSE_MESSAGE(ok, "a segment with both endpoints at or behind the near plane "
                                   "should be rejected entirely, not clipped against itself");
 }
 
-/* boot_anim_project_segment_cs()'s near-plane clip at asymmetric,
- * non-clean-fraction-of-512 coordinates, precision-sensitive at Q16
- * (boot_anim.h). Verified against an independent double-precision
- * reference, not the function under test.
+/* r3d_project_segment_cs()'s near-plane clip at asymmetric,
+ * non-clean-fraction-of-512 coordinates, precision-sensitive at Q16.
+ * Verified against an independent double-precision reference, not the
+ * function under test.
  *
  *   clip fraction = 86/496 = 0.17338...
  *   tolerance (20px) contains the Q16 error (7px, 0px) while rejecting
@@ -298,22 +302,22 @@ test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
 static void
 test_project_segment_cs_clips_asymmetric_coordinates(void) {
     const boot_anim_view_t view = identity_view(S3L_F);
-    const S3L_Vec4 p0 = {-300123, 250009, BOOT_ANIM_NEAR_Z - 86, S3L_F};
-    const S3L_Vec4 p1 = {401777, -180321, BOOT_ANIM_NEAR_Z + 410, S3L_F};
+    const S3L_Vec4 p0 = {-300123, 250009, R3D_NEAR_Z - 86, S3L_F};
+    const S3L_Vec4 p1 = {401777, -180321, R3D_NEAR_Z + 410, S3L_F};
 
     int ax, ay, bx, by;
-    TEST_ASSERT_TRUE_MESSAGE(boot_anim_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by),
+    TEST_ASSERT_TRUE_MESSAGE(r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by),
                              "a segment with one endpoint in front of the near plane should "
                              "always project");
 
     /* Double-precision reference for the clip itself: p0 is BEHIND, so
      * IT is what gets replaced by the near-plane crossing point. */
-    const double frac = (double)(BOOT_ANIM_NEAR_Z - p0.z) / (double)(p1.z - p0.z);
+    const double frac = (double)(R3D_NEAR_Z - p0.z) / (double)(p1.z - p0.z);
     const double exact_x = p0.x + (p1.x - p0.x) * frac;
     const double exact_y = p0.y + (p1.y - p0.y) * frac;
     int ex, ey;
-    const S3L_Vec4 exact_clip = {(S3L_Unit)exact_x, (S3L_Unit)exact_y, BOOT_ANIM_NEAR_Z, S3L_F};
-    boot_anim_camera_to_screen(exact_clip, view.focal, &ex, &ey);
+    const S3L_Vec4 exact_clip = {(S3L_Unit)exact_x, (S3L_Unit)exact_y, R3D_NEAR_Z, S3L_F};
+    r3d_camera_to_screen(exact_clip, &view, &ex, &ey);
 
     const int tolerance = 20;
     TEST_ASSERT_INT_WITHIN_MESSAGE(tolerance, ex, ax,
@@ -330,7 +334,7 @@ test_project_segment_cs_clips_asymmetric_coordinates(void) {
      * above did. */
     int fx, fy;
     S3L_Vec4 p1_copy = p1;
-    boot_anim_camera_to_screen(p1_copy, view.focal, &fx, &fy);
+    r3d_camera_to_screen(p1_copy, &view, &fx, &fy);
     TEST_ASSERT_EQUAL_INT_MESSAGE(fx, bx,
                                   "the untouched (already in front) endpoint should project "
                                   "identically whether reached through the clipping path or not");
@@ -360,7 +364,7 @@ test_spoke_reveal_target_hits_its_endpoints_exactly(void) {
  * advancing in roughly equal steps as `reach` does is the algebraic
  * property that guarantees it, since screen position is itself roughly
  * proportional to 1/target under a perspective projection (see
- * boot_anim_camera_to_screen()).
+ * r3d_camera_to_screen()).
  *
  * Bounded as a difference-of-differences rather than by exact equality:
  * the reach-to-r0 knot and integer rounding both perturb it. */
@@ -912,7 +916,7 @@ static void
 test_curve_lod_steps_keeps_full_detail_when_the_probe_cannot_project(void) {
     const boot_anim_view_t view = identity_view(S3L_F);
     const S3L_Vec4 a = {40, 40, 0, S3L_F};
-    const S3L_Vec4 c = {41, 40, BOOT_ANIM_NEAR_Z - 1, S3L_F};
+    const S3L_Vec4 c = {41, 40, R3D_NEAR_Z - 1, S3L_F};
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(BOOT_ANIM_SPLINE_STEPS, boot_anim_curve_lod_steps(a, c, &view),
                                   "a span the probe cannot project at all must default to full "

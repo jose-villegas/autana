@@ -33,13 +33,13 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "input/tilt.h" /* TILT_TAU_*_MS - the turn below follows the real
+                       * filter shape rather than a straight line */
 #include "material_palette.h"
 #include "sand.h"
 #include "sand_priv.h"
 #include "suite_sand_common.h"
 #include "suite_sand_scenes.h"
-#include "tilt.h" /* TILT_TAU_*_MS - the turn below follows the real
-                       * filter shape rather than a straight line */
 #include "util/intmath.h"
 
 #define REAL_BLOCK_COLS ((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Turns a raw device capture into a markdown report of suite_boot_anim_
-perf.c's per-checkpoint frame breakdown - the same idea as main/apps/cube/
-tools/report_cube_perf.py, but for boot_anim's own suite, whose output shape
-is different enough (only Total/Image/Present carry a full min/max/avg/med/
-p95 breakdown; Clear/Floor/Axes/Curve/Zeros/Title are logged as an average
-only, to keep six checkpoints' worth of console output from scrolling past
-what a 300s capture window can hold) that it needs its own parser rather
-than reusing cube's.
+perf.c's per-checkpoint frame breakdown - the same idea as
+main/apps/render_lab/tools/report_cube_perf.py, but for boot_anim's own
+suite, whose output shape is different enough (only Total/Image/Present
+carry a full min/max/avg/med/p95 breakdown; Clear/Floor/Axes/Curve/Zeros/
+Title are logged as an average only, to keep six checkpoints' worth of
+console output from scrolling past what a 300s capture window can hold)
+that it needs its own parser rather than reusing cube's.
 
 ESP_LOGI is the only persistent output a DEVICE_BUILD suite has here (no
 mounted filesystem - see report_cube_perf.py's own comment on why), so this

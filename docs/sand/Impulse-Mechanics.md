@@ -22,8 +22,8 @@ is condensed into this page's "Lessons worth keeping" section below.
 
 ## It is a picture of a physics, not a physics
 
-Same rule [`Sand-Simulation.md`](Sand-Simulation.md#momentum-and-the-wall-rebound-splash) sets for
-tilt momentum: there is no per-cell velocity, because a byte-per-cell grid
+Same rule [`Sand-Simulation.md`](Sand-Simulation.md#the-grid-is-one-byte-per-cell) sets for
+the grid itself: there is no per-cell velocity, because a byte-per-cell grid
 at 41,216 cells can't afford a second field just for things that are
 usually standing still. A "flying" grain is a caller-provided list of
 `{index, cell, dir, speed, ramp}` entries (`impulse_t`, `sand_impulse.h`),

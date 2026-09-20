@@ -45,6 +45,8 @@
 #include "freertos/task.h"
 
 #include "gfx/gfx.h"
+#include "input/imu.h"
+#include "input/touch.h"
 #include "util/device_state.h"
 
 static const char* TAG = "screenshot";
@@ -90,6 +92,29 @@ handle_screenshot_line(const char* line) {
     } else if (command == BUILD_CONSOLE_BUILD_ID) {
         printf("BUILD_ID=%s\n", BUILD_ID);
         fflush(stdout);
+#if CONFIG_LAUNCHER_QEMU
+    } else if (command == BUILD_CONSOLE_TOUCH) {
+        /* The one console verb that does NOT set a flag for the frame loop:
+         * what it writes is a LEVEL the polling task samples at its own
+         * rate, which is the contract touch_inject() is built for, and the
+         * state machine below it derives the edges. Where a controller
+         * answers there is no stand-in to write to, which is why this
+         * follows that function's own gating rather than the listener's. */
+        bool down = false;
+        int x = 0, y = 0;
+        if (build_console_touch_parse(line, &down, &x, &y)) {
+            touch_inject(down, x, y);
+        } else {
+            ESP_LOGW(TAG, "TOUCH wants <down|up> <x> <y>: '%s'", line);
+        }
+    } else if (command == BUILD_CONSOLE_IMU) {
+        int ax = 0, ay = 0, az = 0;
+        if (build_console_imu_parse(line, &ax, &ay, &az)) {
+            imu_inject(&(imu_sample_t){.ax = (int16_t)ax, .ay = (int16_t)ay, .az = (int16_t)az});
+        } else {
+            ESP_LOGW(TAG, "IMU wants <ax> <ay> <az> in raw counts: '%s'", line);
+        }
+#endif
     } else {
         ESP_LOGI(TAG, "ignoring line: '%s'", line);
     }
@@ -203,6 +228,9 @@ screenshot_start(void) {
     ESP_LOGI(TAG, "listening for 'SCREENSHOT', 'BUILDID', and 'RUNSUITE <name>' on the console");
 #else
     ESP_LOGI(TAG, "listening for 'SCREENSHOT' and 'BUILDID' on the console");
+#endif
+#if CONFIG_LAUNCHER_QEMU
+    ESP_LOGI(TAG, "and for 'TOUCH <down|up> <x> <y>' and 'IMU <ax> <ay> <az>', which no board needs");
 #endif
 }
 

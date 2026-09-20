@@ -1,7 +1,7 @@
 # Plan: split Diagnostics into a Settings app, then unify SELFTEST/diagnostics naming
 
 **Status**: planned, not built. Written 2026-08-30, out of the conversation
-that added `tools/build_flash_dev.sh` (see [Testing-Guide.md](../Testing-Guide.md)
+that added `tools/build_flash_dev.sh` (see [Build-Variants.md](../Build-Variants.md)
 and `main/Kconfig.projbuild`) and noticed the seam this plan closes.
 
 **2026-09-02 update**: step 1 below did not land as written. The maintainer's
@@ -56,7 +56,7 @@ page, gated at two different granularities:
   gfx dirty-region overlay checkbox, the gfx leaf-grid overlay checkbox, the
   interlace-mode checkbox, and the show orientation toggle with its
   accel/gravity/quarter readout) - is `CONFIG_LAUNCHER_DEVELOPMENT`-shaped by
-  the project's own stated rule (Testing-Guide.md, "Development-only
+  the project's own stated rule (Build-Variants.md, "Development-only
   instrumentation is its own flag, not SELFTEST"): none of it needs the test
   suites, all of it is exactly "meant for someone AT the device or watching
   its serial console while working on it" - and, as of 2026-09-02, that is

@@ -20,6 +20,7 @@ launcher/
 │   ├── gen_boot_anim_timeline.py, gen_boot_anim_image.py, gen_font.py,
 │   │                           gen_gfx_palette_standard.py, gen_icons.py
 │   ├── gen_ui_layout.py        bakes main/ui/<screen>_layout.json into its header
+│   ├── gen_ridge_curve.py      bakes design/boot/ridge.png into main/ui/ridge_curve_generated.h
 │   ├── build_flash.sh          build + flash; --dev and --diag variants
 │   ├── device_report.sh        the one build-flash-capture-report path
 │   └── report_test_results.sh  every suite, pass/fail
@@ -36,6 +37,8 @@ launcher/
     │   ├── boot_anim_curve.h   GENERATED - see tools/gen_zeta_curve.py
     │   ├── boot_anim_image.h   GENERATED - see tools/gen_boot_anim_image.py
     │   └── boot_anim_timeline.h GENERATED - from boot_anim_timeline.json
+    ├── render/         3D transform, clip and projection shared by boot and apps
+    │   └── r3d_project.h       camera-space near clip, perspective (host-tested)
     ├── board/          the one board's pins and peripherals
     │   ├── board.h             what any board must provide
     │   └── board_esp32s3.c     this board's answer
@@ -51,6 +54,7 @@ launcher/
     │   ├── gfx_indexed.h       paletted pixels            (host-tested)
     │   ├── gfx_palette*.{h,c}  the standard palette       (host-tested)
     │   ├── gfx_target.h        where a draw call lands    (host-tested)
+    │   ├── gfx_glow.h          a curve drawn as light     (host-tested)
     │   ├── gfx_full_redraw.h   when everything must repaint (host-tested)
     │   ├── gfx_heal.h          repairing a torn band      (host-tested)
     │   ├── gfx_fb_guard.h, gfx_present_guard.h  misuse traps (host-tested)
@@ -70,17 +74,25 @@ launcher/
     │   │                       Control Center, over a dimmed home screen
     │   ├── control_center_layout.json, control_center_layout_generated.h
     │   │                       its authored rects, and the baked table
-    │   └── system_navigation.{h,c}  which system screen is up (host-tested)
+    │   ├── ui_ridge.{h,c}      the launcher's backdrop: the ridge, level with the
+    │   │                       horizon, waved by touch and shaking
+    │   ├── ridge_motion.h      its breathing, its wave, the wave's momentum (host-tested)
+    │   ├── system_navigation.{h,c}  which system screen is up (host-tested)
+    │   └── ridge_curve_generated.h  Cerro Autana's ridge, a height per column of
+    │                           the boot photograph's frame      (host-tested)
     ├── input/          the devices a finger reaches
     │   ├── touch.{h,c}         FT5x06 polling task
     │   ├── touch_fsm.{h,c}     samples -> press/release    (host-tested)
     │   ├── gesture.{h,c}       swipe recognition           (host-tested)
     │   ├── buttons.{h,c}       the power button
     │   ├── button_fsm.{h,c}    presses -> short/long       (host-tested)
-    │   └── imu.{h,c}, imu_rotation.h  the 6-axis IMU
+    │   ├── imu.{h,c}, imu_rotation.h  the 6-axis IMU
+    │   └── tilt.{h,c}          IMU counts -> down, strength, shake (host-tested)
     ├── util/           arithmetic and services that belong to no layer
     │   ├── fixed.h             fixed-point multiply/divide (host-tested)
     │   ├── intmath.h, rng.h, tween.h                       (host-tested)
+    │   ├── trig.h              integer sine and cosine    (host-tested)
+    │   ├── spring_line.h       a row of points on springs (host-tested)
     │   ├── job.{h,c}           run a slice on the other core (host-tested)
     │   ├── device_state.{h,c}  what survives a reboot      (host-tested)
     │   ├── screenshot.{h,c}    the capture listener        (host-tested)
@@ -110,10 +122,12 @@ and means something different by each:
 
 ## Generated sources
 
-Five generated files live in the tree, each following the same four rules
+Six generated files live in the tree, each following the same four rules
 below: `main/ui/control_center_layout_generated.h` (`tools/gen_ui_layout.py`,
 from `main/ui/control_center_layout.json`, which the host editor in
-[`editor/`](../editor/README.md) edits), `main/boot/boot_anim_curve.h` (`tools/gen_zeta_curve.py`),
+[`editor/`](../editor/README.md) edits), `main/ui/ridge_curve_generated.h`
+(`tools/gen_ridge_curve.py`, from `design/boot/ridge.png`, the ridge of
+`design/boot/boot.png` drawn as a line in the same frame), `main/boot/boot_anim_curve.h` (`tools/gen_zeta_curve.py`),
 `main/boot/boot_anim_timeline.h` (`tools/gen_boot_anim_timeline.py`, from
 `main/boot/boot_anim_timeline.json`), `main/boot/boot_anim_image.h`
 (`tools/gen_boot_anim_image.py`, from `design/boot/boot.png`), and
@@ -214,7 +228,7 @@ flowchart TB
     SHELL["main.c<br/><i>the one frame loop</i>"]
     SHELL -->|"is it a home swipe?"| GEST["gesture.c"]
     SHELL -->|"launcher showing"| UI["ui_launcher.c<br/><i>microui command list</i>"]
-    SHELL -->|"app running"| APP["apps/app_cube.c<br/><i>small3dlib</i>"]
+    SHELL -->|"app running"| APP["apps/app_render_lab.c<br/><i>small3dlib</i>"]
 
     UI --> FB
     APP --> FB
@@ -296,14 +310,22 @@ gfx_init()                  panel up, framebuffer allocated
 post_run_after_display()    the rest of the health check
                             -> a failure holds the screen for 8 s
 selftest_run()              diagnostics builds only
-boot_anim_run()             the startup animation, ~3 s
+ui_launcher_init()          the launcher exists, turned the way boot draws
+boot_anim_run()             the startup animation, 5.5 s
 touch_start(), buttons_start()
-ui_launcher_init()
 ```
 
 The animation goes after the health checks, so a board with a fault says so
 before the device does anything decorative, and before touch starts, because
 there is nothing yet for a tap to reach.
+
+It ends by dissolving into the launcher, not by fading to black. For its
+last 700 ms each frame starts from the home screen, painted by the shell
+through `boot_anim_set_ending_backdrop()`, and the photograph and title
+dither away over it. The launcher's ridge lies on the photograph's own, so
+the mountain drops away and leaves its outline, and the last boot frame is
+the launcher's first. `boot/` takes a painter because it knows nothing above
+itself.
 
 It draws three axes - the complex plane zeta's *value* lives in, as a floor,
 and the height *t* up the critical line, straight up - and then plots
@@ -320,7 +342,8 @@ Three files, split by what can be tested where:
 | | |
 |---|---|
 | `boot_anim_curve.h` | the curve, as a generated table. Zeta along the critical line needs double precision, and this chip's hardware FPU is single-precision only, so `tools/gen_zeta_curve.py` computes it once in double precision on a host and it ships in flash. The curve never changes either way. |
-| `boot_anim.h` | the projection, the spline, the colour and the timeline - integer arithmetic, no hardware header, so `test/suites/suite_boot_anim.c` checks all of it on a host. |
+| `boot_anim.h` | the spline, the colour and the timeline - integer arithmetic, no hardware header, so `test/suites/suite_boot_anim.c` checks all of it on a host. |
+| `render/r3d_project.h` | the general camera-space near-plane clip and perspective projection, shared with a caller drawing something other than this timeline - `test/suites/suite_r3d_project.c` checks it on a host. |
 | `boot_anim.c` | gfx calls and the loop. |
 
 The suite checks the shipped table against the mathematics rather than against
@@ -413,7 +436,7 @@ here is why the build is shaped the way it is.
 `CONFIG_LAUNCHER_DEVELOPMENT` is off — structural rather than a name check.
 Diagnostics re-runs POST, which cycles the audio rail and re-mounts the SD
 card, so it has no business being reachable in a shipped image. See
-[Testing-Guide](Testing-Guide.md#release-builds-contain-no-test-code) — note in
+[Build-Variants](Build-Variants.md#release-builds-contain-no-test-code) — note in
 particular that `REQUIRES` must **not** be gated this way.
 
 Diagnostics ships in any development build, `--dev` included, not just
@@ -808,5 +831,7 @@ without it.
 - `docs/sand/Sand-Simulation.md` — the falling-sand app in depth: materials, the
   water model, momentum, and why its liquid logic is its own file.
 - `docs/Testing-Guide.md` — how to test any of it.
+- `docs/Build-Variants.md` — what release, dev and diagnostics builds each
+  carry, and which flag gates what.
 - `docs/plans/Settings-App-Plan.md` — planned split of the Diagnostics app's
   developer-toggle page into its own Settings app.
