@@ -9,6 +9,7 @@
 #include "gfx/gfx_present_guard.h"
 #include "gfx/gfx_target.h"
 #include "util/intmath.h"
+#include "util/tune.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -686,6 +687,28 @@ mark_all_dirty_now(void) {
     prev_bbox_valid = false;
 }
 
+TUNE_OWNER(gfx);
+
+/* 1 hands the tracker the box a fill has already clipped; 0 claims only
+ * its rows, every column at full width, which is all mark_band() can
+ * express. The band path's skip test (dirty_band_extent(), gfx_dirty.h)
+ * reads a cell's narrowed y as well as its x, so a band no narrowed cell
+ * overlaps is skipped - SET gfx.tight_fill_marks 0 separates that from a
+ * fault in an app's own marking, on the device, without a reflash. */
+TUNE(gfx, tight_fill_marks, 1, 0, 1);
+
+/* What every rect and blit primitive marks with. A release build folds
+ * tight_fill_marks to the constant 1 (util/tune.h), so the branch and
+ * mark_band() call below cost nothing there. */
+static inline void
+mark_fill(int x0, int y0, int x1, int y1) {
+    if (tight_fill_marks) {
+        dirty_mark(x0, y0, x1 - x0, y1 - y0);
+    } else {
+        mark_band(y0, y1);
+    }
+}
+
 /* gfx_dirty.h header-only for inlining mark_band(); thin wrappers for gfx.h
  * API. */
 void
@@ -1049,7 +1072,10 @@ gfx_fill_rect(int x, int y, int w, int h, gfx_color_t color) {
     gfx_target_fill_rect(current_target(), clip.x0, clip.y0, clip.x1, clip.y1, x, y, w, h, color, &x0, &y0, &x1, &y1);
 
     if (!band_render_active) {
-        mark_band(y0, y1); /* already clipped above */
+        /* Already clipped above, in panel coordinates. It matters most for
+         * text: a glyph is drawn as a handful of run boxes through here
+         * (draw_glyph_font()), each a few pixels wide. */
+        mark_fill(x0, y0, x1, y1);
     }
 }
 
@@ -1096,7 +1122,11 @@ gfx_fill_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t alph
     }
 
     if (!band_render_active) {
-        mark_band(y0, y1);
+        /* Dithering skips pixels inside the box, so this over-marks
+         * within it and never outside it. One dithered glyph pixel comes
+         * through here as a scale x scale box
+         * (draw_glyph_font_dither()). */
+        mark_fill(x0, y0, x1, y1);
     }
 }
 
@@ -1131,7 +1161,9 @@ gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha
     }
 
     if (!band_render_active) {
-        mark_band(y0, y1);
+        /* An 8bpp font draws one coverage pixel per call through here
+         * (draw_rotated_font_pixel_blend()). */
+        mark_fill(x0, y0, x1, y1);
     }
 }
 

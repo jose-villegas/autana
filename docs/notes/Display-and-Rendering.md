@@ -361,6 +361,7 @@ suites' static footprint threatening its grid allocation:
   only ever touched by `mark_band()` legitimately shows no green at all;
   that is a consequence of the design, not a gap in the overlay.
 
+
 A full-width send straight out of the framebuffer (`send_full_row()`) has no
 disposable scratch copy to draw into, so turning either layer on there means
 saving the exact pixels about to be overwritten, drawing, sending
@@ -444,20 +445,23 @@ marks 65 px apart inside one 92 px cell measured **1,960 us against
 3,405 us** for the coarse box spanning both.
 
 **`mark_band()`'s cheap path is untouched by any of this** - it never
-reads or writes the leaf state, so an app that clears and redraws the
-whole screen (microui, the cube) pays nothing extra. Only `gfx_mark_dirty()`
-- the tight-box path - ever engages the leaf layer, which is the literal
-form the "should be optional" requirement took: not a runtime toggle, an
-architectural split between the two existing entry points.
+reads or writes the leaf state, so a caller that only ever knows rows
+(`gfx_pixel()`) pays nothing extra. Only the tight-box path ever engages
+the leaf layer, which is the literal form the "should be optional"
+requirement took: not a runtime toggle, an architectural split between the
+two existing entry points. The rect and blit primitives sit on the
+tight-box side - they have already clipped a real box by the time they
+mark, so keeping it costs nothing and is what stops a corner readout from
+dirtying its strips full width.
 
 **Consumers stay unaware the split exists.** `gfx_mark_dirty()`,
 `gfx_mark_all_dirty()` and `gfx_region_dirty()` keep their exact names and
 signatures; the actual tracking state and logic moved into
 `gfx/gfx_dirty.h`, and `gfx.c` implements the three public functions as
 thin wrappers around it. That header is deliberately *not* a matching
-`.c`/`.h` pair despite being the natural first instinct: `mark_band()` sits
-on `gfx_fill_rect()`/`gfx_pixel()`'s hot path (`gfx_text_scaled()` calls it
-once per set font pixel), and routing it through a real cross-translation-
+`.c`/`.h` pair despite being the natural first instinct: marking sits on
+the drawing primitives' hot path (an 8bpp or dithered glyph marks once per
+set font pixel), and routing it through a real cross-translation-
 unit call once already cost about 5% of the launcher's framerate - the
 regression this project measured and fixed once, earlier in this same
 section. A separate `.c` file would put it right back behind exactly that

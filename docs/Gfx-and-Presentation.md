@@ -61,8 +61,13 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 
 ## Dirty tracking
 
-`gfx_dirty.h`: header-only and static, so `mark_band()` inlines into the fill
-and pixel hot paths. One tracker serves all three modes.
+`gfx_dirty.h`: header-only and static, so marking inlines into the fill and
+pixel hot paths. One tracker serves all three modes.
+
+Two ways in. `dirty_mark()` takes a real box and may narrow a cell; the
+rect and blit primitives use it, so a glyph dirties the glyph. `mark_band()`
+takes rows only and has to claim every column at full width - what
+`gfx_pixel()` and `gfx_clear()`'s full path are left with.
 
 ```
          92 px (COL_WIDTH)
@@ -81,7 +86,7 @@ and pixel hot paths. One tracker serves all three modes.
 |---|---|---|---|
 | strip | 368 x `STRIP_HEIGHT` (64), `STRIP_COUNT` = 7 | - | - |
 | cell | `COL_WIDTH` (92) x 64, `GRID_COLS` = 4 per strip | one bit + a box | every mark |
-| leaf | `LEAF_W` (23) x `LEAF_H` (16) | one bit | `gfx_mark_dirty()` with a real box only |
+| leaf | `LEAF_W` (23) x `LEAF_H` (16) | one bit | a real box only - never `mark_band()` |
 
 | Caller | What it must do |
 |---|---|
