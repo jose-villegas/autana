@@ -1146,24 +1146,30 @@ span_x_order(int lo, int hi, int x_step, int* from, int* to, int* step) {
     }
 }
 
-/* step_one_block() parameters bundled into a struct for efficiency. Reduced
- * call arguments to two (this and bx) to avoid register overflow. Flat list
- * caused performance regression on RISC-V hardware with 8 registers. */
+/* Two arguments, this and bx: a flat parameter list regressed on RISC-V,
+ * which has eight registers to overflow. Everything past the six fields at
+ * the top holds for a whole sweep_range() span and is written once there -
+ * what a row spends before it reaches a cell is paid once per piece the span
+ * cuts that grid row into. */
 typedef struct {
-    sand_t* s;
     uint8_t *row, *prow, *arow, *brow;
-    int y, w, dx, dy, x_step;
+    int y, by;
+
+    sand_t* s;
+    int w, dx, dy, x_step;
     const int *slide_a, *slide_b;
     int load_dx, load_dy, jostle;
-    int by;
     /* The caller's own columns. A block at either end of them is swept over
      * its overlap with the range, not over the whole block. */
     int x0, x1;
+    /* The block columns overlapping [x0, x1), walked in x_step's direction. */
+    int bx_from, bx_to, bx_step;
     /* Materials are liquid as a bitmask over the nibble, similar to
      * sand_liquid.c's liquid_mask(): the sweep checks if a cell is liquid to
      * maintain BLOCK_HAS_LIQUID, using a shift-and-mask on a register for
      * efficiency. */
     uint16_t is_liquid;
+    uint8_t settled_bit;
     bool (*driven)[2];
 } sweep_ctx_t;
 
@@ -1213,40 +1219,12 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
  * settled_bit set, no work needed. When sleeping disabled (block_state NULL),
  * settled_bit 0, no skips, same as cell-by-cell walk. */
 static void
-step_one_row(sand_t* s, int y, int x0, int x1, int w, int dx, int dy, const int* slide_a, const int* slide_b,
-             int x_step, int load_dx, int load_dy, int jostle, uint8_t settled_bit, uint16_t is_liquid,
-             bool driven[MATERIAL_ROWS][2]) {
-    sweep_ctx_t ctx = {
-        .s = s,
-        .row = s->cells + (size_t)y * (size_t)w,
-        .prow = dest_row(s, y + dy),
-        .arow = dest_row(s, y + slide_a[1]),
-        .brow = dest_row(s, y + slide_b[1]),
-        .y = y,
-        .w = w,
-        .dx = dx,
-        .dy = dy,
-        .x_step = x_step,
-        .slide_a = slide_a,
-        .slide_b = slide_b,
-        .load_dx = load_dx,
-        .load_dy = load_dy,
-        .jostle = jostle,
-        .by = y / SAND_BLOCK_H,
-        .x0 = x0,
-        .x1 = x1,
-        .is_liquid = is_liquid,
-        .driven = driven,
-    };
-
-    int bx_from, bx_to, bx_step;
-    span_x_order(x0 / SAND_BLOCK_W, (x1 + SAND_BLOCK_W - 1) / SAND_BLOCK_W, x_step, &bx_from, &bx_to, &bx_step);
-
-    for (int bx = bx_from; bx != bx_to; bx += bx_step) {
-        if (settled_bit != 0 && (s->block_state[ctx.by * s->block_cols + bx] & settled_bit)) {
+step_one_row(const sweep_ctx_t* ctx) {
+    for (int bx = ctx->bx_from; bx != ctx->bx_to; bx += ctx->bx_step) {
+        if (ctx->settled_bit != 0 && (ctx->s->block_state[ctx->by * ctx->s->block_cols + bx] & ctx->settled_bit)) {
             continue;
         }
-        step_one_block(&ctx, bx);
+        step_one_block(ctx, bx);
     }
 }
 
@@ -1414,19 +1392,57 @@ blocks_settled_over(const sand_t* s, int x0, int x1, int y0, int y1, uint8_t set
     return true;
 }
 
+/* dest_row()'s answer for a row a fixed `off` bytes from one the caller
+ * already holds - same NULL off the grid, without the multiply. */
+static inline uint8_t*
+dest_row_stepped(uint8_t* row, int y, int h, int off) {
+    return ((unsigned)y < (unsigned)h) ? row + off : NULL;
+}
+
 /* The gravity sweep's own inner loop, over the columns [x0, x1) of the rows
  * [y0, y1) in y_step order - shared by the plain serial call below and every
- * chunk a lane takes off the schedule. */
+ * chunk a lane takes off the schedule. A grain reaches three rows a fixed
+ * distance from its own, so the stride carries them and only the grid edge
+ * is asked about per row. */
 static void
 sweep_range(sand_t* s, int y0, int y1, int y_step, int x0, int x1, int w, int dx, int dy, const int* slide_a,
             const int* slide_b, int x_step, int load_dx, int load_dy, int jostle, uint8_t settled_bit,
             uint16_t is_liquid) {
+    sweep_ctx_t ctx = {
+        .s = s,
+        .w = w,
+        .dx = dx,
+        .dy = dy,
+        .x_step = x_step,
+        .slide_a = slide_a,
+        .slide_b = slide_b,
+        .load_dx = load_dx,
+        .load_dy = load_dy,
+        .jostle = jostle,
+        .x0 = x0,
+        .x1 = x1,
+        .is_liquid = is_liquid,
+        .settled_bit = settled_bit,
+        .driven = sweep_driven,
+    };
+    span_x_order(x0 / SAND_BLOCK_W, (x1 + SAND_BLOCK_W - 1) / SAND_BLOCK_W, x_step, &ctx.bx_from, &ctx.bx_to,
+                 &ctx.bx_step);
+
+    const int h = s->h;
+    const int a_dy = slide_a[1];
+    const int b_dy = slide_b[1];
+    const int p_off = dy * w;
+    const int a_off = a_dy * w;
+    const int b_off = b_dy * w;
+    const int row_step = y_step * w;
+    int row_at = y0 * w;
+
     int scanned_by = -1;
     bool block_row_settled = false;
 
-    for (int y = y0; y != y1; y += y_step) {
+    for (int y = y0; y != y1; y += y_step, row_at += row_step) {
+        const int by = y / SAND_BLOCK_H;
         if (settled_bit != 0) {
-            const int by = y / SAND_BLOCK_H;
             if (by != scanned_by) {
                 scanned_by = by;
                 block_row_settled = blocks_settled_over(s, x0, x1, y, y + 1, settled_bit);
@@ -1436,8 +1452,15 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int x0, int x1, int w, int dx
             }
         }
         sand_chunk_work_add(x1 - x0);
-        step_one_row(s, y, x0, x1, w, dx, dy, slide_a, slide_b, x_step, load_dx, load_dy, jostle, settled_bit,
-                     is_liquid, sweep_driven);
+
+        uint8_t* const row = s->cells + row_at;
+        ctx.row = row;
+        ctx.prow = dest_row_stepped(row, y + dy, h, p_off);
+        ctx.arow = dest_row_stepped(row, y + a_dy, h, a_off);
+        ctx.brow = dest_row_stepped(row, y + b_dy, h, b_off);
+        ctx.y = y;
+        ctx.by = by;
+        step_one_row(&ctx);
     }
 }
 
