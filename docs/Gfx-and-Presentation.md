@@ -287,6 +287,30 @@ never went idle again. The launcher's ridge uses 226 (`launcher.ridge_trail`), a
 16 draws long - about a quarter of a second. At 32 it lasted two draws and
 could not be seen.
 
+**A map of the light, so that drawing is a lookup.** Searching beside every
+pixel costs in proportion to the radius, and so does the number of pixels, so
+a wide glow cost its radius squared: from radius 13 to 31 the lit area grew
+2.4 times and the work 4.3 times. The distance to the curve does not depend on
+how it is turned, only on its shape, so a `gfx_glow_map_t` holds it, worked
+out once per shape in the curve's own frame by an exact two-pass transform
+(vertical distances, then the lower envelope of the parabolas they raise,
+after Felzenszwalb and Huttenlocher) whose cost is the map's area whatever
+the radius. A draw then reads four cells and blends them; turning the curve
+costs no distance work at all. The map holds *squared* distance, which is
+what the ramp is indexed by and which blends almost exactly, at one cell to
+two pixels each way, since a glow is smooth. The line itself is not, so
+within 5 px of it a draw still searches, over a window that small: there the
+mapped picture is the searched one bit for bit, and around it they differ by
+under half a percent of full light on average. Measured on a host, a mapped
+frame costs the same at every radius; at 31 it is 3.7 times less work than
+searching when the shape moved and 6.2 times when the curve only turned.
+Under a radius of about 10 the map's fixed cost is more than the search it
+saves, and the launcher's ridge switches by radius. The ridge's map is about
+125 KiB, in PSRAM with the rest of its state.
+
+None of this touches the other cost. Every lit pixel is still written and
+sent, and that grows with the radius however the light is worked out.
+
 The launcher's ridge is a horizon: it follows `input/tilt.h`'s down at any
 angle while the app rows turn in quarters. It holds boot's landscape pose for
 its first 700 ms, since boot knows no orientation, then eases to level.
