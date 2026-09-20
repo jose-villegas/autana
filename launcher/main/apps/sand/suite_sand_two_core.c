@@ -754,11 +754,24 @@ tc_board_close(tc_board_t* b) {
     free(b);
 }
 
+/* The seam and body scenes put one small shape on an otherwise empty board,
+ * which is too little awake to be worth two lanes - so a split step here asks
+ * for them by name and checks it was given them. A serial run would pass
+ * every seam assertion below for the wrong reason. */
 static void
 tc_board_step(tc_board_t* b, int gx, int gy, bool two_core) {
+    const sand_chunk_share_t share =
+        sand_chunk_share_for_test(two_core ? SAND_CHUNK_SHARE_ALWAYS : SAND_CHUNK_SHARE_AUTO);
+    const unsigned before = sand_split_dispatches;
+
     sand_set_two_core_step(two_core);
     sand_step(&b->s, gx, gy, 0);
     sand_set_two_core_step(false);
+    (void)sand_chunk_share_for_test(share);
+    if (two_core) {
+        TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(before, sand_split_dispatches,
+                                              "a split step dispatched no split pass at all");
+    }
 }
 
 /* Chebyshev distance from (x, y) to the board's only cell of `material`. */
@@ -2318,7 +2331,9 @@ tc_build_gas_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
 
 /* Chunks one step's sweep stepped. No block state, so nothing is settled and
  * the sweep visits every chunk of the plan - the count is the cut the pass
- * itself ran on, not what a helper says the cut would be. */
+ * itself ran on, not what a helper says the cut would be. Sharing is pinned
+ * on because the question here is which cut ran, not whether a cut this
+ * coarse is worth two lanes; a plan the grid cannot take still returns 0. */
 static unsigned
 tc_chunks_swept_at(int side_x, int side_y) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
@@ -2330,9 +2345,11 @@ tc_chunks_swept_at(int side_x, int side_y) {
 
     TEST_ASSERT_TRUE_MESSAGE(sand_chunk_side_for_test(side_x, side_y), "a side at or over the minimum must be taken");
     const unsigned before = sand_sweep_chunks_swept;
+    const sand_chunk_share_t share = sand_chunk_share_for_test(SAND_CHUNK_SHARE_ALWAYS);
     sand_set_two_core_step(true);
     sand_step(&s, 0, 1000, 0);
     sand_set_two_core_step(false);
+    (void)sand_chunk_share_for_test(share);
     tc_collect_core1();
     (void)sand_chunk_side_for_test(0, 0);
 
@@ -2705,6 +2722,119 @@ test_the_hashed_draw_override_leaves_nothing_behind(void) {
                                      "the reaction board changed after the override had been on and off again");
 }
 
+/* Split passes one step of `build` dispatches, on a board armed the way the
+ * app arms one. Blocks and marks both matter: without block state nothing is
+ * ever settled, and without marks no pass is ready at all. `out_awake_blocks`
+ * takes how much of the board was still awake when the step ended, so a
+ * caller can show it was asking the question it meant to. */
+static unsigned
+tc_dispatches_for(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed, int settle_steps, int gx, int gy,
+                  int* out_awake_blocks) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    uint8_t* stamps = malloc(sand_step_stamp_bytes(TC_W, TC_H));
+    TEST_ASSERT_NOT_NULL(cells);
+    TEST_ASSERT_NOT_NULL(blocks);
+    TEST_ASSERT_NOT_NULL(stamps);
+
+    sand_t s;
+    build(&s, cells, seed);
+    sand_enable_sleeping(&s, blocks);
+    sand_enable_step_stamps(&s, stamps);
+    void* scratch = lane_scratch_open(&s);
+
+    const two_core_scope_t core = two_core_scope_begin(true);
+    for (int i = 0; i < settle_steps; i++) {
+        sand_step(&s, gx, gy, 0);
+    }
+    sand_split_dispatches = 0;
+    sand_step(&s, gx, gy, 0);
+    const unsigned dispatched = sand_split_dispatches;
+    if (out_awake_blocks != NULL) {
+        *out_awake_blocks = count_awake_blocks(&s);
+    }
+    two_core_scope_end(core);
+    tc_collect_core1();
+
+    free(scratch);
+    free(stamps);
+    free(blocks);
+    free(cells);
+    return dispatched;
+}
+
+/* A board that comes to rest and stays there: there is nothing for a lane to
+ * take, so every pass pays prepare, merge, dispatch and join for a walk that
+ * finds nothing. Stone rather than a sand pile - a poured pile of this size
+ * still has grains trickling down its faces after eight hundred steps, so it
+ * is not the case this is about. */
+static void
+tc_build_settled_slab_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
+    sand_init(s, cells, TC_W, TC_H, seed);
+    for (int y = TC_H / 3; y < TC_H; y++) {
+        for (int x = TC_W / 4; x < (TC_W * 3) / 4; x++) {
+            sand_set(s, x, y, STONE);
+        }
+    }
+}
+
+/* One narrow column of sand falling down an otherwise empty board - awake
+ * chunks in a single chunk column, which is a chain along travel whatever the
+ * cut, so two lanes have nothing to overlap. */
+static void
+tc_build_falling_column_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
+    sand_init(s, cells, TC_W, TC_H, seed);
+    for (int y = 0; y < TC_H / 8; y++) {
+        for (int x = TC_W / 2 - 2; x < TC_W / 2 + 2; x++) {
+            sand_set(s, x, y, SAND);
+        }
+    }
+}
+
+static void
+test_a_settled_board_keeps_its_passes_on_one_core(void) {
+    int awake = -1;
+
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, tc_dispatches_for(tc_build_settled_slab_scene, 11u, 8, 0, 1000, &awake),
+                                   "a board with nothing awake must dispatch no split pass at all");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, awake, "and the board must really have been asleep, or the test proves nothing");
+}
+
+static void
+test_a_single_falling_column_keeps_its_passes_on_one_core(void) {
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, tc_dispatches_for(tc_build_falling_column_scene, 11u, 12, 0, 1000, NULL),
+                                   "awake chunks in one line along travel are a chain, not two lanes");
+}
+
+static void
+test_a_full_board_still_shares_its_passes(void) {
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0u, tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 0, 1000, NULL),
+                                          "a board busy everywhere must still reach the split path");
+}
+
+/* The decision reads board state only, so it cannot depend on which thread
+ * ran the lanes last time or on how many times it has been asked. */
+static void
+test_the_sharing_decision_is_the_same_whoever_drove_the_lanes(void) {
+    static const sand_chunk_pass_driver_t drivers[] = {SAND_CHUNK_PASS_CORE1, SAND_CHUNK_PASS_SOLO,
+                                                       SAND_CHUNK_PASS_ALTERNATE, SAND_CHUNK_PASS_LANE1_EAGER};
+    const unsigned busy = tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 0, 1000, NULL);
+
+    for (size_t i = 0; i < sizeof drivers / sizeof drivers[0]; i++) {
+        char why[160];
+
+        sand_chunk_pass_set_driver_for_test(drivers[i]);
+        for (int again = 0; again < 2; again++) {
+            snprintf(why, sizeof why, "driver %d, run %d dispatched a different number of split passes", (int)i, again);
+            TEST_ASSERT_EQUAL_UINT_MESSAGE(busy, tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 0, 1000, NULL),
+                                           why);
+            TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, tc_dispatches_for(tc_build_settled_slab_scene, 11u, 8, 0, 1000, NULL),
+                                           why);
+        }
+    }
+    sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_CORE1);
+}
+
 void
 run_sand_two_core_suite(void) {
     RUN_TEST(test_two_core_step_is_deterministic_across_seeds);
@@ -2751,6 +2881,10 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_a_chunk_side_the_grid_cannot_take_falls_back_to_one_lane);
     RUN_TEST(test_a_board_without_lane_scratch_steps_its_fluids_serially);
     RUN_TEST(test_a_lane_merge_carries_every_content_flag_back);
+    RUN_TEST(test_a_settled_board_keeps_its_passes_on_one_core);
+    RUN_TEST(test_a_single_falling_column_keeps_its_passes_on_one_core);
+    RUN_TEST(test_a_full_board_still_shares_its_passes);
+    RUN_TEST(test_the_sharing_decision_is_the_same_whoever_drove_the_lanes);
 #ifdef HOST_HEAP_ARENA
     RUN_TEST(test_a_split_fluid_step_allocates_nothing);
 #endif

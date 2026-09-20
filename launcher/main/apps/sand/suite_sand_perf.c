@@ -943,6 +943,11 @@ sweep_cell(const sweep_quality_t* q, const sweep_scene_t* sc, const int* side, c
     const int chunks = ((q->w + side[0] - 1) / side[0]) * ((q->h + side[1] - 1) / side[1]);
 
     const two_core_scope_t core = two_core_scope_begin(arm >= SWEEP_ARM_SOLO);
+    /* The cut is what this sweep ranks, so a chunk arm measures the chunks it
+     * asked for: left to decide, a scene quiet enough or cut coarsely enough
+     * to fill one lane takes the serial walk and the row reads as a
+     * measurement of a layout nothing ran on. */
+    const sand_chunk_share_t share = sand_chunk_share_for_test(SAND_CHUNK_SHARE_ALWAYS);
     sand_force_hashed_rng(arm == SWEEP_ARM_SERIAL_HASHED);
     sand_chunk_pass_set_driver_for_test(arm == SWEEP_ARM_SOLO ? SAND_CHUNK_PASS_SOLO : SAND_CHUNK_PASS_CORE1);
     for (int i = 0; i < warm; i++) {
@@ -958,6 +963,7 @@ sweep_cell(const sweep_quality_t* q, const sweep_scene_t* sc, const int* side, c
     const int64_t took = esp_timer_get_time() - start;
     sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_CORE1);
     sand_force_hashed_rng(false);
+    (void)sand_chunk_share_for_test(share);
     two_core_scope_end(core);
     collect_core1_lane();
 
