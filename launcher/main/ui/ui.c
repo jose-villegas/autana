@@ -137,6 +137,15 @@ draw_command(const mu_Command* cmd) {
             int mx, my;
             ui_text_glyph0_origin(font, box, quarter, scale, &mx, &my);
 
+            /* A text colour's alpha is dithered coverage. No halo has a
+             * dithered form, so a fading string is drawn as ink alone. */
+            if (ink.a < 255) {
+                if (ink.a > 0) {
+                    gfx_text_font_dither(mx, my, cmd->text.str, mu_color_to_gfx(ink), scale, quarter, font, ink.a);
+                }
+                break;
+            }
+
             if (text_style == UI_TEXT_OUTLINED && font->bpp == 1) {
                 /* gfx_text_font_halo() draws the same halo ui_text_passes()'s
                  * 8 unit-offset copies would, in one pass instead of eight -
