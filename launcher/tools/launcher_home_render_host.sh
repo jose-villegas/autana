@@ -26,6 +26,7 @@ main/ui/ui_launcher_draw.c
 main/ui/ui_pointer.c
 main/ui/ui_ridge.c
 main/ui/ui_scroll.c
+main/util/tune.c
 components/microui/src/microui.c
 tools/launcher_home_render_host.c
 "

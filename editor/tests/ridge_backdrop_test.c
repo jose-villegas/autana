@@ -17,6 +17,7 @@
 #include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"
 #include "ui/ui_transform.h"
+#include "util/tune.h"
 
 #define FRAME_MS       16
 #define FRAMES_TO_REST 600
@@ -27,6 +28,12 @@
 #define TOUCH_Y        400
 
 static int failures;
+static int replies_ok;
+
+static void
+count_ok(const char* line) {
+    replies_ok += strncmp(line, "TUNE_OK ", 8) == 0;
+}
 
 static void
 expect(bool ok, const char* what) {
@@ -170,6 +177,25 @@ main(void) {
     expect(!frame(false, false), "turned off, the launcher is idle again");
     expect(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) == 0,
            "on exactly the settled screen: the motion left nothing behind");
+
+    /* A number set over the console is on the screen a frame later, and set
+     * back, so is the picture. */
+    const size_t lit_at_13 = lit_pixels(settled);
+    expect(tune_handle_line("SET launcher.glow_radius 26", count_ok) && replies_ok == 1,
+           "the ridge's tunables are registered once it has drawn");
+    for (int i = 0; i < 40; i++) {
+        frame(false, false);
+    }
+    /* About 6000 more; most of what is lit is the app rows, which hide much
+     * of the glow behind them. */
+    expect(lit_pixels(gfx_framebuffer()) > lit_at_13 + 4000, "a wider glow lights more of the screen");
+    tune_handle_line("SET launcher.glow_radius 13", count_ok);
+    for (int i = 0; i < 40; i++) {
+        frame(false, false);
+    }
+    expect(!frame(false, false), "and the launcher is idle again after a retune");
+    expect(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) == 0,
+           "set back, the screen is the settled one exactly");
 
     free(settled);
     return failures;

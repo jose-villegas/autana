@@ -5,8 +5,9 @@
  * device turns the line lags true level, the ridge is for that moment a
  * slope, and the wave is pushed down it and coasts on after.
  *
- * Pure: time and the slope are passed in, heights come out. Q4 heights, as
- * gfx_glow.h takes them; phases are trig.h's, 65536 to the turn.
+ * Pure: time, the slope and how much of each are passed in, heights come
+ * out. Q4 heights, as gfx_glow.h takes them; phases are trig.h's, 65536 to
+ * the turn.
  */
 #pragma once
 
@@ -14,27 +15,35 @@
 
 #include "util/trig.h"
 
-/* One breath, and how far toward the smoothed shape it goes, out of 256. */
-#define RIDGE_BREATH_MS         9000
-#define RIDGE_BREATH_DEPTH      200
+/* How much of each. Passed in rather than compiled in because these are
+ * judged by eye, on the device, and a caller may be changing them live. */
+typedef struct {
+    int breath_ms;    /* one breath */
+    int breath_depth; /* how far toward the smoothed shape, out of 256 */
+    int wave_height_q4;
+    int wave_length;       /* columns */
+    int wave_passes_in_ms; /* how long one wave takes to pass a point, unpushed */
+    int push;              /* Q8 phase per ms of momentum a slope of 1.0 adds per ms */
+    int coast_ms;          /* momentum loses 1/coast_ms of itself per ms */
+} ridge_motion_params_t;
 
-/* How far the smoothed shape looks to either side, in columns, and how many
- * times over: three box passes are close to a Gaussian. */
-#define RIDGE_SMOOTH_RADIUS     20
-#define RIDGE_SMOOTH_PASSES     3
+/* A brace initialiser, so it serves a static as well as a local. */
+#define RIDGE_MOTION_DEFAULTS                                                                                          \
+    {.breath_ms = 9000,                                                                                                \
+     .breath_depth = 200,                                                                                              \
+     .wave_height_q4 = 40,                                                                                             \
+     .wave_length = 170,                                                                                               \
+     .wave_passes_in_ms = 2600,                                                                                        \
+     .push = 96,                                                                                                       \
+     .coast_ms = 900}
 
-/* The wave: height in Q4, length in columns, and how long one takes to pass
- * a point with no slope pushing it. */
-#define RIDGE_WAVE_HEIGHT_Q4    40
-#define RIDGE_WAVE_LENGTH       170
-#define RIDGE_WAVE_PASSES_IN_MS 2600
+/* How far the smoothed shape looks to either side, in columns, by default,
+ * and how many times over: three box passes are close to a Gaussian. */
+#define RIDGE_SMOOTH_RADIUS 20
+#define RIDGE_SMOOTH_PASSES 3
 
-/* Momentum is wave speed, in Q8 phase per millisecond. A slope of 1.0 (Q14)
- * adds RIDGE_PUSH of it per millisecond, and it loses 1/RIDGE_COAST_MS of
- * itself per millisecond, so it coasts for about that long. */
-#define RIDGE_PUSH              96
-#define RIDGE_COAST_MS          900
-#define RIDGE_SPEED_MAX         (120 << 8)
+/* Momentum is wave speed, in Q8 phase per millisecond. */
+#define RIDGE_SPEED_MAX     (120 << 8)
 
 typedef struct {
     uint32_t breath_ms;
@@ -45,14 +54,15 @@ typedef struct {
 /* `slope_q14` is how steeply the ridge runs downhill toward its last column,
  * -1.0 to 1.0: the sine of the angle between where the line is and level. */
 static inline void
-ridge_motion_advance(ridge_motion_t* motion, uint32_t dt_ms, int32_t slope_q14) {
-    motion->breath_ms = (motion->breath_ms + dt_ms) % RIDGE_BREATH_MS;
+ridge_motion_advance(ridge_motion_t* motion, const ridge_motion_params_t* params, uint32_t dt_ms, int32_t slope_q14) {
+    const uint32_t breath_ms = params->breath_ms > 0 ? (uint32_t)params->breath_ms : 1;
+    motion->breath_ms = (motion->breath_ms + dt_ms) % breath_ms;
 
     int64_t momentum = motion->momentum_q8;
-    momentum += (int64_t)slope_q14 * RIDGE_PUSH * (int64_t)dt_ms / 16384;
+    momentum += (int64_t)slope_q14 * params->push * (int64_t)dt_ms / 16384;
     /* A share of a small momentum rounds to nothing, and the wave would run
      * a little fast for ever after one tilt: it always loses at least 1. */
-    int64_t lost = momentum * (int64_t)dt_ms / RIDGE_COAST_MS;
+    int64_t lost = momentum * (int64_t)dt_ms / (params->coast_ms > 0 ? params->coast_ms : 1);
     if (lost == 0 && momentum != 0 && dt_ms > 0) {
         lost = momentum > 0 ? 1 : -1;
     }
@@ -61,30 +71,33 @@ ridge_motion_advance(ridge_motion_t* motion, uint32_t dt_ms, int32_t slope_q14) 
     momentum = momentum < -RIDGE_SPEED_MAX ? -RIDGE_SPEED_MAX : momentum;
     motion->momentum_q8 = (int32_t)momentum;
 
-    const int64_t own_speed_q8 = ((int64_t)65536 << 8) / RIDGE_WAVE_PASSES_IN_MS;
+    const int64_t passes_in_ms = params->wave_passes_in_ms > 0 ? params->wave_passes_in_ms : 1;
+    const int64_t own_speed_q8 = ((int64_t)65536 << 8) / passes_in_ms;
     motion->wave_phase_q8 += (uint32_t)((own_speed_q8 + momentum) * (int64_t)dt_ms);
 }
 
-/* How far toward the smoothed shape, 0 to RIDGE_BREATH_DEPTH: nothing at the
- * top of each breath, so the ridge is its rigid self once a breath. */
+/* How far toward the smoothed shape, 0 to the depth: nothing at the top of
+ * each breath, so the ridge is its rigid self once a breath. */
 static inline int
-ridge_motion_breath(const ridge_motion_t* motion) {
-    const uint16_t phase = (uint16_t)((uint64_t)motion->breath_ms * 65536 / RIDGE_BREATH_MS);
+ridge_motion_breath(const ridge_motion_t* motion, const ridge_motion_params_t* params) {
+    const uint64_t breath_ms = params->breath_ms > 0 ? (uint64_t)params->breath_ms : 1;
+    const uint16_t phase = (uint16_t)((uint64_t)motion->breath_ms * 65536 / breath_ms);
     const int32_t out = 32767 - trig_cos(phase); /* 0 .. 65534 */
-    return (int)((int64_t)out * RIDGE_BREATH_DEPTH / 65534);
+    return (int)((int64_t)out * params->breath_depth / 65534);
 }
 
 static inline int
-ridge_motion_wave(const ridge_motion_t* motion, int x) {
-    const uint32_t along = (uint32_t)x * (65536u / RIDGE_WAVE_LENGTH);
+ridge_motion_wave(const ridge_motion_t* motion, const ridge_motion_params_t* params, int x) {
+    const uint32_t length = params->wave_length > 0 ? (uint32_t)params->wave_length : 1;
+    const uint32_t along = (uint32_t)x * (65536u / length);
     const uint16_t phase = (uint16_t)((motion->wave_phase_q8 >> 8) - along);
-    return (int)(trig_sin(phase) * RIDGE_WAVE_HEIGHT_Q4 / 32767);
+    return (int)(trig_sin(phase) * params->wave_height_q4 / 32767);
 }
 
 static inline int16_t
-ridge_motion_height(const ridge_motion_t* motion, int rigid, int smooth, int x) {
-    const int breathed = rigid + (smooth - rigid) * ridge_motion_breath(motion) / 256;
-    return (int16_t)(breathed + ridge_motion_wave(motion, x));
+ridge_motion_height(const ridge_motion_t* motion, const ridge_motion_params_t* params, int rigid, int smooth, int x) {
+    const int breathed = rigid + (smooth - rigid) * ridge_motion_breath(motion, params) / 256;
+    return (int16_t)(breathed + ridge_motion_wave(motion, params, x));
 }
 
 /* How many columns the slope at an end is read over. */
@@ -114,20 +127,24 @@ ridge_motion_extend(const int16_t* in, int count, int16_t* out, int extra) {
     }
 }
 
-/* `out` is `in` smoothed; `scratch` is `count` long too. The ends repeat
- * their last value, so a flat line stays exactly where it is. */
+/* `out` is `in` smoothed over `radius` columns to either side; `scratch` is
+ * `count` long too. The ends repeat their last value, so a flat line stays
+ * exactly where it is. */
 static inline void
-ridge_motion_smooth(const int16_t* in, int16_t* out, int16_t* scratch, int count) {
+ridge_motion_smooth(const int16_t* in, int16_t* out, int16_t* scratch, int count, int radius) {
     const int16_t* from = in;
+    if (radius < 0) {
+        radius = 0;
+    }
     for (int pass = 0; pass < RIDGE_SMOOTH_PASSES; pass++) {
         int16_t* to = (pass % 2 == 0) ? out : scratch;
         for (int x = 0; x < count; x++) {
             int32_t sum = 0;
-            for (int k = -RIDGE_SMOOTH_RADIUS; k <= RIDGE_SMOOTH_RADIUS; k++) {
+            for (int k = -radius; k <= radius; k++) {
                 const int j = x + k < 0 ? 0 : (x + k >= count ? count - 1 : x + k);
                 sum += from[j];
             }
-            to[x] = (int16_t)(sum / (2 * RIDGE_SMOOTH_RADIUS + 1));
+            to[x] = (int16_t)(sum / (2 * radius + 1));
         }
         from = to;
     }
