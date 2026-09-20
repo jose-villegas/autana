@@ -198,6 +198,31 @@ test_expanding_a_colour_twice_is_idempotent(void) {
     }
 }
 
+/* --- gfx_color_rgb565 ----------------------------------------------------- */
+
+/* Each 0xRRGGBB below has its 8-bit channels chosen as a multiple of 8 (R/B)
+ * or 4 (G), the same convention this file's own top comment explains, so
+ * GFX_RGB's own 8-bit-to-565 truncation lands on exactly r5/g6/b5. */
+static void
+test_rgb565_matches_gfx_rgb_for_already_quantised_channels(void) {
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x000000), gfx_color_rgb565(0, 0, 0));
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xF8FCF8), gfx_color_rgb565(31, 63, 31));
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x30C878), gfx_color_rgb565(6, 50, 15));
+}
+
+/* Bit replication is exact on the way back down too: gfx_color_rgb888()'s
+ * own 8-bit channel, shifted back to its original width, must reproduce the
+ * channel gfx_color_rgb565() was packed from. */
+static void
+test_rgb565_round_trips_through_rgb888(void) {
+    const gfx_color_t packed = gfx_color_rgb565(19, 40, 7);
+    const uint32_t rgb = gfx_color_rgb888(packed);
+
+    TEST_ASSERT_EQUAL_UINT8(19, (uint8_t)(((rgb >> 16) & 0xFFu) >> 3));
+    TEST_ASSERT_EQUAL_UINT8(40, (uint8_t)(((rgb >> 8) & 0xFFu) >> 2));
+    TEST_ASSERT_EQUAL_UINT8(7, (uint8_t)((rgb & 0xFFu) >> 3));
+}
+
 /*
  * gfx_dither_covers() directly, which suite_gfx.c's device fills only ever
  * reach through a real framebuffer.
@@ -343,6 +368,8 @@ run_gfx_color_suite(void) {
     RUN_TEST(test_adding_never_makes_a_channel_darker);
     RUN_TEST(test_round_trip_is_exact_for_a_spread_of_colours);
     RUN_TEST(test_expanding_a_colour_twice_is_idempotent);
+    RUN_TEST(test_rgb565_matches_gfx_rgb_for_already_quantised_channels);
+    RUN_TEST(test_rgb565_round_trips_through_rgb888);
     RUN_TEST(test_dither_level_agrees_with_covers_at_every_alpha_and_cell);
     RUN_TEST(test_alpha_zero_never_covers);
     RUN_TEST(test_alpha_255_always_covers);

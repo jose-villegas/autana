@@ -5,7 +5,7 @@
 #   ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh [-o <dir>]
 #
 # Each declared render starts on one scene (--scene) via
-# render_lab_start_scene_index and steps 16 ms frames, full-framebuffer
+# render_lab_start_scene_key and steps 16 ms frames, full-framebuffer
 # layout. Landscape is the shipping orientation, so it leads; a panel-native
 # render is the shape tools/render_diff.sh compares a device capture against.
 #
@@ -29,6 +29,8 @@ main/apps/render_lab/scene_wire.c
 main/apps/render_lab/scene_raytrace.c
 main/apps/render_lab/wire_pipeline.c
 main/apps/render_lab/rt_cornell.c
+main/apps/render_lab/rt_cornell_scene.c
+main/apps/render_lab/rt_geometry.c
 main/apps/render_lab/render_lab_mode_switch.c
 main/apps/render_lab/ui/render_lab_hud_screen.c
 main/apps/render_lab/ui/render_lab_menu_screen.c

@@ -15,7 +15,8 @@
 #include "gfx/gfx.h"
 
 typedef struct {
-    const char* name;
+    const char* name;    /* shown on the HUD and the menu's scene picker */
+    const char* key;     /* short, stable, lowercase - a start request names one of these */
     void (*enter)(void); /* allocate, reset pose; layout is already entered */
 
     /* Outside band mode, advances by dt_ms and draws. In band mode

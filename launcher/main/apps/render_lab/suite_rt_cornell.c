@@ -13,6 +13,7 @@
 #include "unity.h"
 
 #include "rt_cornell.h"
+#include "rt_geometry.h"
 #include "rt_refine.h"
 
 /* Ray/plane */
@@ -20,8 +21,8 @@
 static void
 test_plane_hit_reports_the_correct_distance(void) {
     const rt_plane_t plane = {{0.0f, 0.0f, 5.0f}, {0.0f, 0.0f, -1.0f}};
-    const rt_vec3_t origin = {0.0f, 0.0f, 0.0f};
-    const rt_vec3_t dir = {0.0f, 0.0f, 1.0f};
+    const r3d_vec3f_t origin = {0.0f, 0.0f, 0.0f};
+    const r3d_vec3f_t dir = {0.0f, 0.0f, 1.0f};
     float t;
 
     TEST_ASSERT_TRUE(rt_intersect_plane(origin, dir, plane, &t));
@@ -31,8 +32,8 @@ test_plane_hit_reports_the_correct_distance(void) {
 static void
 test_plane_miss_when_the_ray_is_parallel(void) {
     const rt_plane_t plane = {{0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}};
-    const rt_vec3_t origin = {0.0f, 0.0f, 0.0f};
-    const rt_vec3_t dir = {1.0f, 0.0f, 0.0f};
+    const r3d_vec3f_t origin = {0.0f, 0.0f, 0.0f};
+    const r3d_vec3f_t dir = {1.0f, 0.0f, 0.0f};
     float t;
 
     TEST_ASSERT_FALSE(rt_intersect_plane(origin, dir, plane, &t));
@@ -41,8 +42,8 @@ test_plane_miss_when_the_ray_is_parallel(void) {
 static void
 test_plane_miss_when_the_crossing_is_behind_the_origin(void) {
     const rt_plane_t plane = {{0.0f, 0.0f, -5.0f}, {0.0f, 0.0f, -1.0f}};
-    const rt_vec3_t origin = {0.0f, 0.0f, 0.0f};
-    const rt_vec3_t dir = {0.0f, 0.0f, 1.0f};
+    const r3d_vec3f_t origin = {0.0f, 0.0f, 0.0f};
+    const r3d_vec3f_t dir = {0.0f, 0.0f, 1.0f};
     float t;
 
     TEST_ASSERT_FALSE(rt_intersect_plane(origin, dir, plane, &t));
@@ -53,10 +54,10 @@ test_plane_miss_when_the_crossing_is_behind_the_origin(void) {
 static void
 test_box_hit_from_outside_reports_the_entry_face(void) {
     const rt_box_t box = {{0.0f, 0.0f, 5.0f}, {1.0f, 1.0f, 1.0f}, 0.0f, 1.0f};
-    const rt_vec3_t origin = {0.0f, 0.0f, 0.0f};
-    const rt_vec3_t dir = {0.0f, 0.0f, 1.0f};
+    const r3d_vec3f_t origin = {0.0f, 0.0f, 0.0f};
+    const r3d_vec3f_t dir = {0.0f, 0.0f, 1.0f};
     float t;
-    rt_vec3_t n;
+    r3d_vec3f_t n;
 
     TEST_ASSERT_TRUE(rt_intersect_box(origin, dir, &box, &t, &n));
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 4.0f, t);
@@ -66,10 +67,10 @@ test_box_hit_from_outside_reports_the_entry_face(void) {
 static void
 test_box_miss_when_the_ray_passes_beside_it(void) {
     const rt_box_t box = {{0.0f, 0.0f, 5.0f}, {1.0f, 1.0f, 1.0f}, 0.0f, 1.0f};
-    const rt_vec3_t origin = {5.0f, 0.0f, 0.0f};
-    const rt_vec3_t dir = {0.0f, 0.0f, 1.0f};
+    const r3d_vec3f_t origin = {5.0f, 0.0f, 0.0f};
+    const r3d_vec3f_t dir = {0.0f, 0.0f, 1.0f};
     float t;
-    rt_vec3_t n;
+    r3d_vec3f_t n;
 
     TEST_ASSERT_FALSE(rt_intersect_box(origin, dir, &box, &t, &n));
 }
@@ -77,10 +78,10 @@ test_box_miss_when_the_ray_passes_beside_it(void) {
 static void
 test_box_ray_starting_inside_reports_the_exit_face(void) {
     const rt_box_t box = {{0.0f, 0.0f, 5.0f}, {1.0f, 1.0f, 1.0f}, 0.0f, 1.0f};
-    const rt_vec3_t origin = {0.0f, 0.0f, 5.0f}; /* dead centre, inside */
-    const rt_vec3_t dir = {0.0f, 0.0f, 1.0f};
+    const r3d_vec3f_t origin = {0.0f, 0.0f, 5.0f}; /* dead centre, inside */
+    const r3d_vec3f_t dir = {0.0f, 0.0f, 1.0f};
     float t;
-    rt_vec3_t n;
+    r3d_vec3f_t n;
 
     TEST_ASSERT_TRUE(rt_intersect_box(origin, dir, &box, &t, &n));
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, t);
@@ -90,10 +91,10 @@ test_box_ray_starting_inside_reports_the_exit_face(void) {
 static void
 test_box_ray_parallel_to_a_slab_still_hits_through_the_other_axes(void) {
     const rt_box_t box = {{0.0f, 0.0f, 5.0f}, {1.0f, 1.0f, 1.0f}, 0.0f, 1.0f};
-    const rt_vec3_t origin = {-3.0f, 0.5f, 5.0f}; /* y=0.5 is inside [-1,1]; dir.y == 0 */
-    const rt_vec3_t dir = {1.0f, 0.0f, 0.0f};
+    const r3d_vec3f_t origin = {-3.0f, 0.5f, 5.0f}; /* y=0.5 is inside [-1,1]; dir.y == 0 */
+    const r3d_vec3f_t dir = {1.0f, 0.0f, 0.0f};
     float t;
-    rt_vec3_t n;
+    r3d_vec3f_t n;
 
     TEST_ASSERT_TRUE(rt_intersect_box(origin, dir, &box, &t, &n));
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 2.0f, t); /* -3 + 2 == -1, the box's -X face */
@@ -102,10 +103,10 @@ test_box_ray_parallel_to_a_slab_still_hits_through_the_other_axes(void) {
 static void
 test_box_ray_parallel_to_a_slab_and_outside_it_misses(void) {
     const rt_box_t box = {{0.0f, 0.0f, 5.0f}, {1.0f, 1.0f, 1.0f}, 0.0f, 1.0f};
-    const rt_vec3_t origin = {-3.0f, 5.0f, 5.0f}; /* y=5 is outside [-1,1]; dir.y == 0 */
-    const rt_vec3_t dir = {1.0f, 0.0f, 0.0f};
+    const r3d_vec3f_t origin = {-3.0f, 5.0f, 5.0f}; /* y=5 is outside [-1,1]; dir.y == 0 */
+    const r3d_vec3f_t dir = {1.0f, 0.0f, 0.0f};
     float t;
-    rt_vec3_t n;
+    r3d_vec3f_t n;
 
     TEST_ASSERT_FALSE(rt_intersect_box(origin, dir, &box, &t, &n));
 }
@@ -117,10 +118,10 @@ test_a_rotated_box_is_hit_where_the_unrotated_box_would_miss(void) {
     const float sin45 = 0.70710678f, cos45 = 0.70710678f;
     const rt_box_t unrotated = {{0.0f, 0.0f, 5.0f}, {1.0f, 1.0f, 1.0f}, 0.0f, 1.0f};
     const rt_box_t rotated = {{0.0f, 0.0f, 5.0f}, {1.0f, 1.0f, 1.0f}, sin45, cos45};
-    const rt_vec3_t origin = {1.3f, 0.0f, 0.0f};
-    const rt_vec3_t dir = {0.0f, 0.0f, 1.0f};
+    const r3d_vec3f_t origin = {1.3f, 0.0f, 0.0f};
+    const r3d_vec3f_t dir = {0.0f, 0.0f, 1.0f};
     float t;
-    rt_vec3_t n;
+    r3d_vec3f_t n;
 
     TEST_ASSERT_FALSE(rt_intersect_box(origin, dir, &unrotated, &t, &n));
     TEST_ASSERT_TRUE(rt_intersect_box(origin, dir, &rotated, &t, &n));
@@ -136,11 +137,7 @@ sample_straight_down(float x, float z) {
         .right = {1.0f, 0.0f, 0.0f},
         .up = {0.0f, 0.0f, 1.0f},
         .half_fov_short_tan = 0.001f,
-        .width = 1,
-        .height = 1,
-        .eff_width = 1,
-        .eff_height = 1,
-        .quarter = 0,
+        .viewport = {.width = 1, .height = 1, .quarter = 0},
     };
     gfx_color_t px;
     rt_cornell_render_row(&cam, 0, &px);
@@ -170,7 +167,7 @@ test_a_shadowed_floor_point_is_darker_than_a_lit_one_at_the_same_distance(void) 
 static void
 sample_rgb(int width, int height, int quarter, int x, int y, int* r, int* g, int* b) {
     rt_cornell_camera_t cam;
-    rt_cornell_camera_init(&cam, width, height, quarter);
+    rt_cornell_camera_init(&cam, (r3d_viewport_t){width, height, quarter});
     gfx_color_t* row = malloc(sizeof(*row) * (size_t)width);
 
     rt_cornell_render_row(&cam, y, row);
@@ -323,7 +320,7 @@ static void
 test_render_pixel_matches_render_row(void) {
     const int width = 40, height = 30;
     rt_cornell_camera_t cam;
-    rt_cornell_camera_init(&cam, width, height, 1);
+    rt_cornell_camera_init(&cam, (r3d_viewport_t){width, height, 1});
 
     gfx_color_t row[40];
     rt_cornell_render_row(&cam, 17, row);
@@ -338,7 +335,7 @@ static void
 test_render_row_writes_exactly_width_pixels(void) {
     const int width = 40, height = 30;
     rt_cornell_camera_t cam;
-    rt_cornell_camera_init(&cam, width, height, 0);
+    rt_cornell_camera_init(&cam, (r3d_viewport_t){width, height, 0});
 
     gfx_color_t buf[41];
     const gfx_color_t canary = (gfx_color_t)0xBEEF;
