@@ -626,7 +626,7 @@ test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
      * which is not flat, sets this. */
     int interior_worst = 0;
     int boundary_worst = 0;
-    worst_row_deltas(occupied, TC_H, sand_chunk_side(&s), &interior_worst, &boundary_worst);
+    worst_row_deltas(occupied, TC_H, sand_chunk_side_y(&s), &interior_worst, &boundary_worst);
 
     free(occupied);
     free(cells);
@@ -665,7 +665,9 @@ tc_chunk_side_of(int w, int h) {
     TEST_ASSERT_NOT_NULL(probe);
 
     sand_init(probe, cells, w, h, 0u);
-    const int side = sand_chunk_side(probe);
+    const int side = sand_chunk_side_x(probe);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(side, sand_chunk_side_y(probe),
+                                  "the seam scenes below place cells by one side on both axes");
 
     free(probe);
     free(cells);
@@ -1587,7 +1589,7 @@ test_landscape_water_column_has_no_line_mass_lag(void) {
 
 static int
 tc_first_gas_equalise_boundary(const sand_t* s) {
-    return sand_chunk_side(s);
+    return sand_chunk_side_y(s);
 }
 
 static void
@@ -2264,6 +2266,69 @@ tc_build_gas_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
     sand_set(s, TC_W / 2, TC_H / 2, FIRE);
 }
 
+/* Chunks one step's sweep stepped. No block state, so nothing is settled and
+ * the sweep visits every chunk of the plan - the count is the cut the pass
+ * itself ran on, not what a helper says the cut would be. */
+static unsigned
+tc_chunks_swept_at(int side_x, int side_y) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    TEST_ASSERT_NOT_NULL(cells);
+
+    sand_t s;
+    tc_build_scattered_scene(&s, cells, 5u);
+    void* scratch = lane_scratch_open(&s);
+
+    TEST_ASSERT_TRUE_MESSAGE(sand_chunk_side_for_test(side_x, side_y), "a side at or over the minimum must be taken");
+    const unsigned before = sand_sweep_chunks_swept;
+    sand_set_two_core_step(true);
+    sand_step(&s, 0, 1000, 0);
+    sand_set_two_core_step(false);
+    tc_collect_core1();
+    (void)sand_chunk_side_for_test(0, 0);
+
+    free(scratch);
+    free(cells);
+    return sand_sweep_chunks_swept - before;
+}
+
+static void
+tc_assert_cut_is_used(int side_x, int side_y) {
+    const unsigned want = (unsigned)(((TC_W + side_x - 1) / side_x) * ((TC_H + side_y - 1) / side_y));
+    const unsigned swept = tc_chunks_swept_at(side_x, side_y);
+    char why[160];
+
+    snprintf(why, sizeof why, "side %dx%d: the sweep stepped %u chunk(s), not the %u the cut has", side_x, side_y,
+             swept, want);
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(want, swept, why);
+}
+
+static void
+test_a_chosen_chunk_side_is_the_cut_every_split_pass_runs(void) {
+    TEST_ASSERT_FALSE_MESSAGE(sand_chunk_side_for_test(SAND_CHUNK_SIDE_MIN - 1, SAND_CHUNK_SIDE_MIN),
+                              "a side under the minimum must be refused");
+    TEST_ASSERT_FALSE_MESSAGE(sand_chunk_side_for_test(SAND_CHUNK_SIDE_MIN, SAND_CHUNK_SIDE_MIN - 1),
+                              "a side under the minimum must be refused on either axis");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_chunk_side_forced[0], "a refused side must leave the override alone");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_chunk_side_forced[1], "a refused side must leave the override alone");
+
+    tc_assert_cut_is_used(32, 32);
+    tc_assert_cut_is_used(46, 28);
+    tc_assert_cut_is_used(23, 56);
+    tc_assert_cut_is_used(TC_W / 2, TC_H / 2);
+}
+
+/* Both refusals sand_chunk_plan() makes, which the shipped rule can also
+ * reach: one axis cut into a single chunk, and a cut past SAND_CHUNKS_MAX. */
+static void
+test_a_chunk_side_the_grid_cannot_take_falls_back_to_one_lane(void) {
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, tc_chunks_swept_at(TC_W, TC_H / 2), "one column of chunks must stay serial");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, tc_chunks_swept_at(TC_W / 2, TC_H), "one row of chunks must stay serial");
+    TEST_ASSERT_GREATER_THAN_INT(SAND_CHUNKS_MAX, ((TC_W + SAND_CHUNK_SIDE_MIN - 1) / SAND_CHUNK_SIDE_MIN)
+                                                      * ((TC_H + SAND_CHUNK_SIDE_MIN - 1) / SAND_CHUNK_SIDE_MIN));
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, tc_chunks_swept_at(SAND_CHUNK_SIDE_MIN, SAND_CHUNK_SIDE_MIN),
+                                   "a cut past SAND_CHUNKS_MAX must stay serial");
+}
+
 static void
 tc_assert_no_sequential_draws(const char* scene) {
     char why[256];
@@ -2339,6 +2404,8 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_split_gas_equalise_keeps_seam_order);
     RUN_TEST(test_split_gas_equalise_hops_once_across_a_chunk_column);
     RUN_TEST(test_no_split_pass_draws_from_the_sequential_stream);
+    RUN_TEST(test_a_chosen_chunk_side_is_the_cut_every_split_pass_runs);
+    RUN_TEST(test_a_chunk_side_the_grid_cannot_take_falls_back_to_one_lane);
     RUN_TEST(test_a_board_without_lane_scratch_steps_its_fluids_serially);
     RUN_TEST(test_a_lane_merge_carries_every_content_flag_back);
 #ifdef HOST_HEAP_ARENA

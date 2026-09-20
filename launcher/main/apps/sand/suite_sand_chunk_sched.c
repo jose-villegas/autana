@@ -23,8 +23,11 @@
 #define CS_INTERLEAVES 6
 #define CS_LINE_COST   10
 
-static const int cs_grids[][3] = {
-    {184, 224, 35}, {122, 149, 23}, {92, 112, 17}, {61, 74, 17}, {46, 56, 17},
+/* Grid, then the side on each axis. The last two are non-square, both ways
+ * round: a cut wider than it is tall and one taller than it is wide. */
+static const int cs_grids[][4] = {
+    {184, 224, 35, 35}, {122, 149, 23, 23}, {92, 112, 17, 17}, {61, 74, 17, 17},
+    {46, 56, 17, 17},   {92, 112, 31, 17},  {92, 112, 17, 37},
 };
 
 static const int cs_dirs[][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
@@ -71,7 +74,7 @@ fixture(void) {
 }
 
 static void
-cs_offset(int which, int side, int* off_x, int* off_y) {
+cs_offset(int which, int side_x, int side_y, int* off_x, int* off_y) {
     switch (which) {
         case 1:
             *off_x = 1;
@@ -79,15 +82,15 @@ cs_offset(int which, int side, int* off_x, int* off_y) {
             break;
         case 2:
             *off_x = 0;
-            *off_y = side - 1;
+            *off_y = side_y - 1;
             break;
         case 3:
-            *off_x = side / 2;
-            *off_y = side / 3;
+            *off_x = side_x / 2;
+            *off_y = side_y / 3;
             break;
         case 4:
-            *off_x = side - 1;
-            *off_y = side - 1;
+            *off_x = side_x - 1;
+            *off_y = side_y - 1;
             break;
         default:
             *off_x = 0;
@@ -98,12 +101,14 @@ cs_offset(int which, int side, int* off_x, int* off_y) {
 
 static void
 cs_build(cs_case_t* c, int grid, int which_off) {
-    const int side = cs_grids[grid][2];
+    const int side_x = cs_grids[grid][2];
+    const int side_y = cs_grids[grid][3];
     int off_x, off_y;
 
-    cs_offset(which_off, side, &off_x, &off_y);
-    TEST_ASSERT_TRUE_MESSAGE(sand_chunk_plan(&c->plan, cs_grids[grid][0], cs_grids[grid][1], side, off_x, off_y),
-                             "every grid and offset this suite sweeps must plan");
+    cs_offset(which_off, side_x, side_y, &off_x, &off_y);
+    TEST_ASSERT_TRUE_MESSAGE(
+        sand_chunk_plan(&c->plan, cs_grids[grid][0], cs_grids[grid][1], side_x, side_y, off_x, off_y),
+        "every grid and offset this suite sweeps must plan");
 }
 
 static void
@@ -112,8 +117,8 @@ cs_set_pass(cs_case_t* c, int dir, unsigned phase) {
     c->ty = cs_dirs[dir][1];
     c->phase = phase;
     sand_chunk_order(&c->order, c->plan.cols, c->plan.rows, c->tx, c->ty, phase);
-    snprintf(c->label, sizeof c->label, "%dx%d/%d off %d,%d dir %d,%d phase %u", c->plan.w, c->plan.h, c->plan.side,
-             c->plan.off_x, c->plan.off_y, c->tx, c->ty, phase);
+    snprintf(c->label, sizeof c->label, "%dx%d/%dx%d off %d,%d dir %d,%d phase %u", c->plan.w, c->plan.h,
+             c->plan.side_x, c->plan.side_y, c->plan.off_x, c->plan.off_y, c->tx, c->ty, phase);
 }
 
 static void
@@ -163,10 +168,10 @@ cs_tally_chunk(const cs_case_t* c, uint8_t* seen, int cx, int cy, const char* la
     sand_chunk_cells(&c->plan, cx, cy, &x0, &x1, &y0, &y1);
 
     if (cx > 0 && cx < c->plan.cols - 1) {
-        TEST_ASSERT_EQUAL_INT_MESSAGE(c->plan.side, x1 - x0, label);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(c->plan.side_x, x1 - x0, label);
     }
     if (cy > 0 && cy < c->plan.rows - 1) {
-        TEST_ASSERT_EQUAL_INT_MESSAGE(c->plan.side, y1 - y0, label);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(c->plan.side_y, y1 - y0, label);
     }
     for (int y = y0; y < y1; y++) {
         for (int x = x0; x < x1; x++) {
@@ -201,8 +206,8 @@ test_the_cut_gives_every_cell_to_exactly_one_chunk(void) {
             char label[48];
 
             cs_build(&c, g, oi);
-            snprintf(label, sizeof label, "%dx%d/%d off %d,%d", c.plan.w, c.plan.h, c.plan.side, c.plan.off_x,
-                     c.plan.off_y);
+            snprintf(label, sizeof label, "%dx%d/%dx%d off %d,%d", c.plan.w, c.plan.h, c.plan.side_x, c.plan.side_y,
+                     c.plan.off_x, c.plan.off_y);
             TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(2, c.plan.cols, label);
             TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(2, c.plan.rows, label);
             TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(SAND_CHUNKS_MAX, c.plan.cols * c.plan.rows, label);

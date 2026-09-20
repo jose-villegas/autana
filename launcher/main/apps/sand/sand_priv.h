@@ -49,7 +49,7 @@ _Static_assert(SAND_CHUNK_SIDE_MIN > 2 * SAND_LIQUID_SIGHT,
                "a chunk must clear the furthest a split pass reads or transfers");
 
 static inline int
-sand_chunk_side(const sand_t* s) {
+sand_chunk_side_rule(const sand_t* s) {
     const int cells_per_chunk = (s->w * s->h) / SAND_CHUNK_TARGET_CELLS_DIVISOR;
     int side = 1;
 
@@ -60,15 +60,33 @@ sand_chunk_side(const sand_t* s) {
     return side < SAND_CHUNK_SIDE_MIN ? SAND_CHUNK_SIDE_MIN : side;
 }
 
+/* Not sand.h API: a measurement's own chunk side per axis, in cells, or 0 on
+ * an axis for the rule above. Set through sand_chunk_side_for_test(), which
+ * is what enforces SAND_CHUNK_SIDE_MIN; a cut that does not fit falls back to
+ * one lane exactly as the rule's own does. */
+extern int sand_chunk_side_forced[2];
+
+bool sand_chunk_side_for_test(int side_x, int side_y);
+
+static inline int
+sand_chunk_side_x(const sand_t* s) {
+    return sand_chunk_side_forced[0] != 0 ? sand_chunk_side_forced[0] : sand_chunk_side_rule(s);
+}
+
+static inline int
+sand_chunk_side_y(const sand_t* s) {
+    return sand_chunk_side_forced[1] != 0 ? sand_chunk_side_forced[1] : sand_chunk_side_rule(s);
+}
+
 static inline int
 sand_chunk_cols(const sand_t* s) {
-    const int side = sand_chunk_side(s);
+    const int side = sand_chunk_side_x(s);
     return (s->w + side - 1) / side;
 }
 
 static inline int
 sand_chunk_rows(const sand_t* s) {
-    const int side = sand_chunk_side(s);
+    const int side = sand_chunk_side_y(s);
     return (s->h + side - 1) / side;
 }
 
@@ -94,8 +112,7 @@ sand_stamp_crossing(sand_t* s, int x0, int y0, int x1, int y1) {
     if (live == NULL) {
         return;
     }
-    const int side = s->stamp_side;
-    if (x0 / side == x1 / side && y0 / side == y1 / side) {
+    if (x0 / s->stamp_side_x == x1 / s->stamp_side_x && y0 / s->stamp_side_y == y1 / s->stamp_side_y) {
         return;
     }
     live[(size_t)y1 * sand_stamp_stride(s->w) + ((unsigned)x1 >> 3)] |= (uint8_t)(1u << (x1 & 7));
@@ -107,7 +124,8 @@ sand_stamp_crossing(sand_t* s, int x0, int y0, int x1, int y1) {
 static inline void
 sand_stamps_arm(sand_t* s) {
     s->stamps_live = s->step_stamps;
-    s->stamp_side = sand_chunk_side(s);
+    s->stamp_side_x = sand_chunk_side_x(s);
+    s->stamp_side_y = sand_chunk_side_y(s);
 }
 
 static inline void
