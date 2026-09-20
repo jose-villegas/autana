@@ -106,8 +106,8 @@ tc_build_scattered_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
     tc_scatter(s, cells, seed, picks, (int)(sizeof picks / sizeof picks[0]));
 }
 
-/* The same mix with both liquids left out, so a board just as busy asks the
- * sweep's liquid rule the other way. */
+/* The same mix with both liquids left out, so a board just as busy carries
+ * none of the liquid bookkeeping. */
 static void
 tc_build_dry_scattered_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
     static const cell_t picks[] = {SAND, SAND, GAS, STONE};
@@ -137,10 +137,9 @@ tc_build_liquid_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
     }
 }
 
-/* A split arm on a scene that holds liquid would sweep on one core for every
- * gravity but the two along x, and then agree with the serial arm for the
- * wrong reason. Such an arm asks for the split by name; this is what says it
- * was given it. */
+/* An arm that named itself split and then swept on one core would agree with
+ * the serial arm for the wrong reason. Such an arm asks for the split by
+ * name; this is what says it was given it. */
 static void
 tc_assert_split_arm_swept_split(unsigned before, bool two_core) {
     if (two_core) {
@@ -2863,31 +2862,16 @@ test_a_full_board_still_shares_its_passes(void) {
                                           "a board busy everywhere must still reach the split path");
 }
 
-/* THE LIQUID RULE: a board that may hold liquid sweeps on one core unless the
- * step travels along x. The gas walk beside it splits either way, which is
- * what says the sweep was declined by the rule rather than by a quiet
- * board. */
 static void
-test_a_liquid_board_sweeps_on_one_core_unless_the_step_travels_along_x(void) {
-    const tc_dispatch_t down = tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 0, 1000);
-    const tc_dispatch_t across = tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 1000, 0);
-
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, down.per_pass[SAND_SPLIT_SLOT_SWEEP],
-                                   "a liquid board travelling along y must keep its sweep on one core");
-    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0u, down.per_pass[SAND_SPLIT_SLOT_GAS_WALK],
-                                          "the same step's gas walk must still split, or the board was merely quiet");
-    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0u, across.per_pass[SAND_SPLIT_SLOT_SWEEP],
-                                          "the same board travelling along x must still share its sweep");
-}
-
-static void
-test_a_liquid_free_board_shares_its_sweep_whichever_way_it_travels(void) {
+test_a_busy_board_shares_its_sweep_whichever_way_it_travels(void) {
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(
+        0u, tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 0, 1000).per_pass[SAND_SPLIT_SLOT_SWEEP],
+        "a board busy everywhere must share its sweep along y");
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(
+        0u, tc_dispatches_for(tc_build_scattered_scene, 3u, 2, 1000, 0).per_pass[SAND_SPLIT_SLOT_SWEEP], "and along x");
     TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(
         0u, tc_dispatches_for(tc_build_dry_scattered_scene, 3u, 2, 0, 1000).per_pass[SAND_SPLIT_SLOT_SWEEP],
-        "a busy board with no liquid on it must share its sweep along y too");
-    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(
-        0u, tc_dispatches_for(tc_build_dry_scattered_scene, 3u, 2, 1000, 0).per_pass[SAND_SPLIT_SLOT_SWEEP],
-        "and along x");
+        "and so must one with no liquid on it");
 }
 
 static void
@@ -2972,8 +2956,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_a_settled_board_keeps_its_passes_on_one_core);
     RUN_TEST(test_a_single_falling_column_keeps_its_passes_on_one_core);
     RUN_TEST(test_a_full_board_still_shares_its_passes);
-    RUN_TEST(test_a_liquid_board_sweeps_on_one_core_unless_the_step_travels_along_x);
-    RUN_TEST(test_a_liquid_free_board_shares_its_sweep_whichever_way_it_travels);
+    RUN_TEST(test_a_busy_board_shares_its_sweep_whichever_way_it_travels);
     RUN_TEST(test_the_sharing_decision_is_the_same_whoever_drove_the_lanes);
 #ifdef HOST_HEAP_ARENA
     RUN_TEST(test_a_split_fluid_step_allocates_nothing);

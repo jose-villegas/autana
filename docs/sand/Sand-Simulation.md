@@ -1310,25 +1310,12 @@ agrees with the board on the shape of the answer: a two-column cut across a
 y-travelling pass spans 100 per cent, and that cut measured 1.19 of one core
 in portrait, while every cut that models about 50 per cent measured a win.
 
-One pass has a third condition the model does not reach. The gravity sweep
-stays on one core whenever the board may hold liquid and the step does not
-travel along x - `s->may_have_liquid`, the same board-wide flag the sweep's
-own row order already asks, read once before the pass starts. The model
-likes these boards: they are awake everywhere and their chunks divide. The
-board does not. Against the same scenes swept row-major, a screen-wide water
-collapse cost 18584 us split and 15005 serial, a filling basin 16187 against
-14117, and an all-material gravity flip 85285 - while in landscape the same
-water scene's sweep ran 0.76 of serial, and portrait sand, fire and gas still
-win. Only the sweep, and only that travel: the gas walk, the gas spread and
-the reaction pass are unchanged, and a landscape liquid board still shares
-its sweep.
-
-Both are a pure function of board state at the pass's start, so the host and
-the board decide alike and so does either core. `sand_chunk_share_for_test()`
-pins the decision either way, which is how a test that means to measure the
-split path says so; `sand_split_dispatches` counts the passes that were
-actually shared, one counter per pass, which is how it checks it was heard
-and which pass heard it.
+Both conditions are a pure function of block state at the pass's start, so
+the host and the board decide alike and so does either core.
+`sand_chunk_share_for_test()` pins the decision either way, which is how a
+test that means to measure the split path says so; `sand_split_dispatches`
+counts the passes that were actually shared, one counter per pass, which is
+how it checks it was heard and which pass heard it.
 
 ### The schedule: downstream chunks first
 
@@ -1412,11 +1399,10 @@ gravities, and the serial path passes that same check. The board a split
 sweep lands on, and the board a mostly-liquid scene lands on, are both held
 identical across four hand-driven lane interleavings.
 The dense-column and settling-slab scenes are checked for grain conservation
-and for a settled pile showing no occupancy outlier at a boundary. Almost
-every liquid scene there travels along y, where the shipped rule sweeps on
-one core, so each split arm pins the share on and checks that the sweep's own
-dispatch counter rose: a split arm that had swept serially would agree with
-the serial arm for the wrong reason.
+and for a settled pile showing no occupancy outlier at a boundary. Each split
+arm pins the share on and checks that the sweep's own dispatch counter rose:
+an arm that named itself split and then swept serially would agree with the
+serial arm for the wrong reason.
 
 There is no development overlay for chunk boundaries: nothing stalls at one,
 so there would be nothing to draw.
