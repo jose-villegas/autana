@@ -24,14 +24,8 @@
 /* The band ring keeps no retained frame for render_host.c to read back, so
  * setup() asks for the full-framebuffer layout. */
 extern bool render_lab_band_mode;
-extern int render_lab_start_scene_index;
-
-#define SCENE_GOURAUD      0
-#define SCENE_WIRE_PLANE   1
-#define SCENE_WIRE_CUBE    2
-#define SCENE_WIRE_SPHERE  3
-#define SCENE_WIRE_CAPSULE 4
-#define SCENE_CORNELL      5
+extern bool render_lab_show_hud;
+extern const char* render_lab_start_scene_key;
 
 static const app_t* registered;
 static int shell_quarter;
@@ -51,33 +45,24 @@ app_list_count(void) {
     return registered != NULL ? 1 : 0;
 }
 
+/* Which names are valid is app_render_lab.c's own knowledge (each scene's
+ * .key, render_lab_scene.h) - this only hands the string through. */
 static bool
 options(int argc, char** argv) {
+    bool have_scene = false;
     for (int i = 0; i < argc; i++) {
-        if (strcmp(argv[i], "--scene") != 0 || i + 1 >= argc) {
-            continue;
+        if (strcmp(argv[i], "--no-hud") == 0) {
+            render_lab_show_hud = false;
+        } else if (strcmp(argv[i], "--scene") == 0 && i + 1 < argc) {
+            render_lab_start_scene_key = argv[i + 1];
+            have_scene = true;
+            i++;
         }
-        const char* name = argv[i + 1];
-        if (strcmp(name, "gouraud") == 0) {
-            render_lab_start_scene_index = SCENE_GOURAUD;
-        } else if (strcmp(name, "plane") == 0) {
-            render_lab_start_scene_index = SCENE_WIRE_PLANE;
-        } else if (strcmp(name, "cube") == 0) {
-            render_lab_start_scene_index = SCENE_WIRE_CUBE;
-        } else if (strcmp(name, "sphere") == 0) {
-            render_lab_start_scene_index = SCENE_WIRE_SPHERE;
-        } else if (strcmp(name, "capsule") == 0) {
-            render_lab_start_scene_index = SCENE_WIRE_CAPSULE;
-        } else if (strcmp(name, "cornell") == 0) {
-            render_lab_start_scene_index = SCENE_CORNELL;
-        } else {
-            fprintf(stderr, "unknown --scene %s\n", name);
-            return false;
-        }
-        return true;
     }
-    fprintf(stderr, "render_lab_render_host needs --scene gouraud|plane|cube|sphere|capsule|cornell\n");
-    return false;
+    if (!have_scene) {
+        fprintf(stderr, "render_lab_render_host needs --scene <key>\n");
+    }
+    return have_scene;
 }
 
 int

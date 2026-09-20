@@ -29,13 +29,13 @@
 
 /* app_render_lab.c's own lifecycle and toggles. */
 extern bool render_lab_band_mode;
-extern int render_lab_start_scene_index;
+extern const char* render_lab_start_scene_key;
 extern void render_lab_enter(void);
 extern void render_lab_exit(void);
 extern void draw_fps(const input_t* input, bool for_bands);
 
 /* scene_wire.c's exposed phases - one implementation shared by every wire
- * primitive, operating on whichever mesh render_lab_start_scene_index
+ * primitive, operating on whichever mesh render_lab_start_scene_key
  * selected at the last render_lab_enter(). */
 extern void wire_advance_pose(uint32_t dt_ms);
 extern void wire_do_transform(void);
@@ -51,29 +51,14 @@ extern int64_t wire_line_pixel_estimate(void);
 
 static const char* TAG = "wire_perf";
 
-#define SAMPLE_MS          1500
-
-/* app_render_lab.c's scenes[] table order: cube is 0, the four wire
- * primitives follow it in the order app_render_lab.c adds them. */
-#define SCENE_WIRE_PLANE   1
-#define SCENE_WIRE_CUBE    2
-#define SCENE_WIRE_SPHERE  3
-#define SCENE_WIRE_CAPSULE 4
+#define SAMPLE_MS 1500
 
 /* Nothing pressed, no touch - draw_fps() dereferences this unconditionally. */
 static const input_t null_input = {0};
 
-typedef struct {
-    const char* name;
-    int scene_index;
-} wire_primitive_t;
-
-static const wire_primitive_t primitives[] = {
-    {"plane", SCENE_WIRE_PLANE},
-    {"cube", SCENE_WIRE_CUBE},
-    {"sphere", SCENE_WIRE_SPHERE},
-    {"capsule", SCENE_WIRE_CAPSULE},
-};
+/* Each name is also its scene's own render_lab_scene_t.key - the wire
+ * primitives' log label and their start key are the same word. */
+static const char* const primitives[] = {"plane", "cube", "sphere", "capsule"};
 
 static const struct {
     const char* name;
@@ -222,10 +207,10 @@ assert_row_sane(const wire_totals_t* t) {
 }
 
 static void
-run_combo(const char* primitive_name, int scene_index, bool band_mode, const char* orient_name, int quarter) {
+run_combo(const char* scene_key, bool band_mode, const char* orient_name, int quarter) {
     const size_t free_before = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
 
-    render_lab_start_scene_index = scene_index;
+    render_lab_start_scene_key = scene_key;
     render_lab_band_mode = band_mode;
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
     render_lab_enter();
@@ -238,7 +223,7 @@ run_combo(const char* primitive_name, int scene_index, bool band_mode, const cha
     render_lab_exit();
     const size_t free_after = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
 
-    log_row(primitive_name, band_mode ? "band" : "full_fb", orient_name, &t, vertex_count, edge_count);
+    log_row(scene_key, band_mode ? "band" : "full_fb", orient_name, &t, vertex_count, edge_count);
     assert_row_sane(&t);
     TEST_ASSERT_EQUAL_INT_MESSAGE((int)free_before, (int)free_after,
                                   "scene_wire.c's scratch buffers were not fully freed on exit");
@@ -248,21 +233,19 @@ void
 test_wire_frame_budget_by_primitive_layout_orientation(void) {
     ui_init(); /* render_lab_enter() reads ui_layout_generation(); see suite_cube_perf.c's fixture */
     const bool saved_band_mode = render_lab_band_mode;
-    const int saved_scene_index = render_lab_start_scene_index;
+    const char* saved_scene_key = render_lab_start_scene_key;
 
     ESP_LOGI(TAG, "=== WIRE FRAME BUDGET (%dms/combo, band height %d) ===", SAMPLE_MS, GFX_BAND_HEIGHT);
 
     for (size_t p = 0; p < sizeof(primitives) / sizeof(primitives[0]); p++) {
         for (size_t o = 0; o < sizeof(orientations) / sizeof(orientations[0]); o++) {
-            run_combo(primitives[p].name, primitives[p].scene_index, false, orientations[o].name,
-                      orientations[o].quarter);
-            run_combo(primitives[p].name, primitives[p].scene_index, true, orientations[o].name,
-                      orientations[o].quarter);
+            run_combo(primitives[p], false, orientations[o].name, orientations[o].quarter);
+            run_combo(primitives[p], true, orientations[o].name, orientations[o].quarter);
         }
     }
 
     render_lab_band_mode = saved_band_mode;
-    render_lab_start_scene_index = saved_scene_index;
+    render_lab_start_scene_key = saved_scene_key;
     ui_set_transform(ui_transform_identity());
 
     TEST_PASS();

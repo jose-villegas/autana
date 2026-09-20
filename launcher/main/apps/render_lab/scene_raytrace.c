@@ -48,7 +48,7 @@ scene_raytrace_enter(void) {
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
 
     current_quarter = display_shell_quarter();
-    rt_cornell_camera_init(&camera, GFX_WIDTH, GFX_HEIGHT, current_quarter);
+    rt_cornell_camera_init(&camera, (r3d_viewport_t){GFX_WIDTH, GFX_HEIGHT, current_quarter});
     restart_render();
 }
 
@@ -135,7 +135,7 @@ scene_raytrace_frame(uint32_t dt_ms, bool band_mode_active) {
     const int quarter = display_shell_quarter();
     if (quarter != current_quarter) {
         current_quarter = quarter;
-        rt_cornell_camera_init(&camera, GFX_WIDTH, GFX_HEIGHT, quarter);
+        rt_cornell_camera_init(&camera, (r3d_viewport_t){GFX_WIDTH, GFX_HEIGHT, quarter});
         restart_render();
     }
 
@@ -165,6 +165,7 @@ raytrace_status(void) {
 
 const render_lab_scene_t scene_raytrace = {
     .name = "Cornell Box",
+    .key = "cornell",
     .enter = scene_raytrace_enter,
     .frame = scene_raytrace_frame,
     .frame_band = NULL,

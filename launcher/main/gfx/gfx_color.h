@@ -31,6 +31,16 @@ typedef uint16_t gfx_color_t;
  * layout. Usable in a constant expression. */
 #define GFX_RGB(rgb) ((gfx_color_t)((GFX_RGB565(rgb) >> 8) | (GFX_RGB565(rgb) << 8)))
 
+/* The panel colour for three already-quantised channels (5, 6, 5 bits) -
+ * what GFX_RGB does after its own 8-bit-to-565 truncation, for a caller
+ * (a dithered tracer, say) that quantised its own channels and only needs
+ * the packing and the panel's byte swap. */
+static inline gfx_color_t
+gfx_color_rgb565(uint8_t r5, uint8_t g6, uint8_t b5) {
+    const uint16_t native = (uint16_t)(((uint16_t)r5 << 11) | ((uint16_t)g6 << 5) | b5);
+    return (gfx_color_t)((native >> 8) | (native << 8));
+}
+
 /* Blend `a` toward `b`. t is 0..255, 0 all `a`, 255 all `b`. A gfx_color_t
  * is RGB565 with bytes swapped (see GFX_RGB above), not RGB565 itself, so
  * blending means swapping to native RGB565, unpacking R5/G6/B5, blending,

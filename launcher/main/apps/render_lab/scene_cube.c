@@ -376,6 +376,7 @@ scene_cube_invalidate(void) {
 
 const render_lab_scene_t scene_cube = {
     .name = "Gouraud Cube",
+    .key = "gouraud",
     .enter = scene_cube_enter,
     .frame = scene_cube_frame,
     .frame_band = scene_cube_frame_band,
