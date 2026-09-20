@@ -40,3 +40,57 @@ rt_refine_pass_number(int step) {
     }
     return pass;
 }
+
+/* How many pixels tracing row `y` at `step` draws over a row `width` wide -
+ * what rt_refine_is_new() sums to for one row, priced before any pixel in
+ * it is actually traced. */
+static inline int
+rt_refine_row_cost(int width, int y, int step) {
+    int cost = 0;
+    for (int x = 0; x < width; x += step) {
+        if (rt_refine_is_new(x, y, step)) {
+            cost++;
+        }
+    }
+    return cost;
+}
+
+/* The row just past a `pixel_budget`-limited lattice range from `y0`: whole
+ * rows on `step`'s stride, priced by rt_refine_row_cost(), until their sum
+ * reaches `pixel_budget` or `height`. Pure - a caller splits the range
+ * after this returns, never during. */
+static inline int
+rt_refine_lattice_range_end(int width, int height, int y0, int step, int pixel_budget) {
+    int y = y0;
+    int traced = 0;
+
+    while (y < height && traced < pixel_budget) {
+        traced += rt_refine_row_cost(width, y, step);
+        y += step;
+    }
+    return y;
+}
+
+/* The same range-end rule for a pass whose every row costs the same
+ * `row_cost` pixels - a full-width sweep, not a lattice. */
+static inline int
+rt_refine_uniform_range_end(int height, int y0, int row_cost, int pixel_budget) {
+    int y = y0;
+    int traced = 0;
+
+    while (y < height && traced < pixel_budget) {
+        traced += row_cost;
+        y++;
+    }
+    return y;
+}
+
+/* The row [y0, y1) - on `step`'s stride - splits at, so two independent
+ * traces of [y0, mid) and [mid, y1) cover the same rows as one trace of the
+ * whole range, each exactly once. Degenerate at zero or one row: the first
+ * half comes back empty rather than off-lattice. */
+static inline int
+rt_refine_split_mid(int y0, int y1, int step) {
+    const int rows = (y1 - y0) / step;
+    return y0 + (rows / 2) * step;
+}
