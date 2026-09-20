@@ -76,9 +76,9 @@ quantize_channel(float v, uint32_t max_level, float threshold) {
 static gfx_color_t
 to_gfx_color(r3d_vec3f_t c, int x, int y) {
     const float threshold = ((float)bayer4[y & 3][x & 3] + 0.5f) / 16.0f;
-    const uint32_t rgb565 = (quantize_channel(c.x, 31, threshold) << 11) | (quantize_channel(c.y, 63, threshold) << 5)
-                            | quantize_channel(c.z, 31, threshold);
-    return (gfx_color_t)((rgb565 >> 8) | (rgb565 << 8));
+    return gfx_color_rgb565((uint8_t)quantize_channel(c.x, 31, threshold),
+                            (uint8_t)quantize_channel(c.y, 63, threshold),
+                            (uint8_t)quantize_channel(c.z, 31, threshold));
 }
 
 static gfx_color_t
