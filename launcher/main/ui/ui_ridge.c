@@ -23,6 +23,7 @@
 #include "ui/ridge_curve_generated.h"
 #include "ui/ridge_motion.h"
 #include "util/spring_line.h"
+#include "util/tune.h"
 
 #if defined(ESP_PLATFORM)
 #include "esp_heap_caps.h"
@@ -31,17 +32,43 @@
 #define RIDGE_ALLOC(bytes) malloc(bytes)
 #endif
 
-#define GLOW_RADIUS_PX     13
-#define GLOW_CORE_PX       3
-#define GLOW_CORE_RGB      0xFFFFFF
-#define GLOW_HALO_RGB      0x38D6E8
+/* What is judged by eye is a tunable: a development build changes these on
+ * the running device ("SET launcher.ridge_trail 200"), a release build
+ * compiles them in. The values here are the ones that ship. */
+TUNE_INT(glow_radius, 13);
+TUNE_INT(glow_core, 3);
+TUNE_INT(glow_core_rgb, 0xFFFFFF);
+TUNE_INT(glow_halo_rgb, 0x38D6E8);
+
+/* What becomes of the light the line leaves behind as it moves, out of 256
+ * per redraw: 0 wipes it, 255 never does, between is a trail that fades. */
+TUNE_INT(ridge_trail, 226);
 
 /* A tap flicks the line up; a finger drawn along it plucks it again every
- * STRUM_STEP_PX. Velocities are pixels per spring tick. */
-#define TOUCH_HALF_WIDTH   24
-#define TAP_VELOCITY       (-(SPRING_LINE_ONE * 3 / 2))
-#define STRUM_VELOCITY     (-(SPRING_LINE_ONE / 2))
-#define STRUM_STEP_PX      12
+ * STRUM_STEP_PX. Thousandths of a pixel per spring tick, over pluck_width
+ * columns to either side. */
+TUNE_INT(pluck_tap, 1500);
+TUNE_INT(pluck_strum, 500);
+TUNE_INT(pluck_width, 24);
+#define STRUM_STEP_PX 12
+
+/* The spring's own three, out of 256 - see spring_line.h. */
+TUNE_INT(spring_tension, 200);
+TUNE_INT(spring_stiffness, 2);
+TUNE_INT(spring_damping, 4);
+
+/* ridge_motion.h's, by the names a developer types. */
+TUNE_INT(breath_ms, 9000);
+TUNE_INT(breath_depth, 200);
+TUNE_INT(breath_smooth, RIDGE_SMOOTH_RADIUS);
+TUNE_INT(wave_height, 40);
+TUNE_INT(wave_length, 170);
+TUNE_INT(wave_period_ms, 2600);
+TUNE_INT(tilt_push, 96);
+TUNE_INT(tilt_coast_ms, 900);
+
+/* How long the line takes to cover about two thirds of a turn toward level. */
+TUNE_INT(level_tau_ms, 220);
 
 /* Shaking plucks the line at random, harder the harder it is shaken. */
 #define SHAKE_THRESHOLD    48
@@ -53,9 +80,6 @@
 
 /* How long the line keeps boot's pose before gravity gets it. */
 #define RELEASE_MS         700
-
-/* How long the line takes to cover about two thirds of a turn toward level. */
-#define LEVEL_TAU_MS       220
 
 /* Below this share of a g in the screen plane the device is lying too flat
  * for "down" to mean anything, and the line keeps the level it had. Out of
@@ -73,10 +97,6 @@
  * put exactly level and drawn once more. */
 #define LEVEL_STEADY_STEP  29
 #define LEVEL_STEADY_MS    300
-
-/* What becomes of the light the line leaves behind as it moves, out of 256
- * per redraw: 0 wipes it, 255 never does, between is a trail that fades. */
-#define RIDGE_TRAIL        226
 
 /* The line is longer than the frame it was drawn in: at a diagonal it has to
  * span the panel's diagonal, 580 px, with its glow, or its ends show. */
@@ -96,6 +116,7 @@ typedef struct {
     int16_t smooth[RIDGE_COLUMNS];
     int16_t shape[RIDGE_COLUMNS];
     ridge_motion_t motion;
+    uint32_t tuned_at;
     bool ambient;
     int16_t span_lo[RIDGE_COLUMNS];
     int16_t span_hi[RIDGE_COLUMNS];
@@ -118,6 +139,43 @@ typedef struct {
 static ridge_t* ridge;
 static bool allocation_tried;
 
+static void
+register_tunables(void) {
+    TUNE_REGISTER("launcher.ridge_trail", ridge_trail, 0, 255);
+    TUNE_REGISTER("launcher.glow_radius", glow_radius, 1, GFX_GLOW_MAX_RADIUS);
+    TUNE_REGISTER("launcher.glow_core", glow_core, 1, GFX_GLOW_MAX_RADIUS);
+    TUNE_REGISTER("launcher.glow_core_rgb", glow_core_rgb, 0, 0xFFFFFF);
+    TUNE_REGISTER("launcher.glow_halo_rgb", glow_halo_rgb, 0, 0xFFFFFF);
+    TUNE_REGISTER("launcher.pluck_tap", pluck_tap, 0, 8000);
+    TUNE_REGISTER("launcher.pluck_strum", pluck_strum, 0, 8000);
+    TUNE_REGISTER("launcher.pluck_width", pluck_width, 2, 80);
+    TUNE_REGISTER("launcher.spring_tension", spring_tension, 0, 250);
+    TUNE_REGISTER("launcher.spring_stiffness", spring_stiffness, 1, 64);
+    TUNE_REGISTER("launcher.spring_damping", spring_damping, 0, 64);
+    TUNE_REGISTER("launcher.breath_ms", breath_ms, 500, 60000);
+    TUNE_REGISTER("launcher.breath_depth", breath_depth, 0, 256);
+    TUNE_REGISTER("launcher.breath_smooth", breath_smooth, 0, 60);
+    TUNE_REGISTER("launcher.wave_height", wave_height, 0, 400);
+    TUNE_REGISTER("launcher.wave_length", wave_length, 8, 1000);
+    TUNE_REGISTER("launcher.wave_period_ms", wave_period_ms, 100, 60000);
+    TUNE_REGISTER("launcher.tilt_push", tilt_push, 0, 1000);
+    TUNE_REGISTER("launcher.tilt_coast_ms", tilt_coast_ms, 50, 10000);
+    TUNE_REGISTER("launcher.level_tau_ms", level_tau_ms, 10, 5000);
+}
+
+/* The glow's ramp and the smoothed shape are tables built from tunables, so
+ * they are built again when one changes; everything else is read each frame. */
+static void
+bake_what_is_tuned(void) {
+    gfx_glow_style_set(&ridge->style, glow_radius, glow_core, (uint32_t)glow_core_rgb, (uint32_t)glow_halo_rgb);
+    ridge_motion_smooth(ridge->rigid, ridge->smooth, ridge->shape, RIDGE_COLUMNS, breath_smooth);
+    memcpy(ridge->shape, ridge->heights, sizeof ridge->shape);
+    gfx_glow_field_prepare(&ridge->field, ridge->heights, &ridge->style);
+#if TUNE_ENABLED
+    ridge->tuned_at = tune_generation();
+#endif
+}
+
 /* On first use rather than at boot, so the memory is not taken from a boot
  * that never reaches the launcher. Without it the backdrop is plain black. */
 static void
@@ -132,11 +190,9 @@ allocate_once(void) {
     }
     memset(ridge, 0, sizeof *ridge);
     spring_line_init(&ridge->line, ridge->offset, ridge->velocity, RIDGE_COLUMNS);
-    gfx_glow_style_set(&ridge->style, GLOW_RADIUS_PX, GLOW_CORE_PX, GLOW_CORE_RGB, GLOW_HALO_RGB);
+    register_tunables();
     ridge_motion_extend(ridge_curve_y, RIDGE_CURVE_POINTS, ridge->rigid, RIDGE_EXTRA);
     memcpy(ridge->heights, ridge->rigid, sizeof ridge->heights);
-    ridge_motion_smooth(ridge->rigid, ridge->smooth, ridge->shape, RIDGE_COLUMNS);
-    memcpy(ridge->shape, ridge->rigid, sizeof ridge->shape);
     ridge->ambient = true;
     ridge->field = (gfx_glow_field_t){
         .span_lo = ridge->span_lo,
@@ -145,7 +201,7 @@ allocate_once(void) {
         .reach_hi = ridge->reach_hi,
         .count = RIDGE_COLUMNS,
     };
-    gfx_glow_field_prepare(&ridge->field, ridge->heights, &ridge->style);
+    bake_what_is_tuned();
     ridge->pose = POSE_LANDSCAPE;
     ridge->pose_on_screen = POSE_LANDSCAPE;
     ridge->level = POSE_LANDSCAPE;
@@ -191,7 +247,7 @@ ui_ridge_settle(void) {
 
 static void
 draw_ridge(void) {
-    gfx_glow_curve_posed(&ridge->field, RIDGE_CURVE_VIEW_H, ridge->pose, ridge->lit_lo, ridge->lit_hi, RIDGE_TRAIL,
+    gfx_glow_curve_posed(&ridge->field, RIDGE_CURVE_VIEW_H, ridge->pose, ridge->lit_lo, ridge->lit_hi, ridge_trail,
                          &ridge->style);
     ridge->pose_on_screen = ridge->pose;
 }
@@ -225,10 +281,10 @@ pluck_from_touch(const input_t* input) {
     }
     const int x = column_under(input->x, input->y);
     if (input->pressed) {
-        spring_line_poke(&ridge->line, x, TOUCH_HALF_WIDTH, TAP_VELOCITY);
+        spring_line_poke(&ridge->line, x, pluck_width, -(int32_t)((int64_t)SPRING_LINE_ONE * pluck_tap / 1000));
         ridge->last_pluck_x = x;
     } else if (abs(x - ridge->last_pluck_x) >= STRUM_STEP_PX) {
-        spring_line_poke(&ridge->line, x, TOUCH_HALF_WIDTH, STRUM_VELOCITY);
+        spring_line_poke(&ridge->line, x, pluck_width, -(int32_t)((int64_t)SPRING_LINE_ONE * pluck_strum / 1000));
         ridge->last_pluck_x = x;
     }
 }
@@ -251,11 +307,21 @@ shape_this_frame(uint32_t dt_ms) {
         memcpy(ridge->shape, ridge->rigid, sizeof ridge->shape);
         return;
     }
-    ridge_motion_advance(&ridge->motion, dt_ms, slope_along_the_line());
+    const ridge_motion_params_t params = {
+        .breath_ms = breath_ms,
+        .breath_depth = breath_depth,
+        .wave_height_q4 = wave_height,
+        .wave_length = wave_length,
+        .wave_passes_in_ms = wave_period_ms,
+        .push = tilt_push,
+        .coast_ms = tilt_coast_ms,
+    };
+    ridge_motion_advance(&ridge->motion, &params, dt_ms, slope_along_the_line());
     const uint32_t released_for = ridge->alive_ms - RELEASE_MS;
     const int gain = released_for >= AMBIENT_FADE_IN_MS ? 256 : (int)(released_for * 256 / AMBIENT_FADE_IN_MS);
     for (int x = 0; x < RIDGE_COLUMNS; x++) {
-        const int moved = ridge_motion_height(&ridge->motion, ridge->rigid[x], ridge->smooth[x], x) - ridge->rigid[x];
+        const int moved =
+            ridge_motion_height(&ridge->motion, &params, ridge->rigid[x], ridge->smooth[x], x) - ridge->rigid[x];
         ridge->shape[x] = (int16_t)(ridge->rigid[x] + moved * gain / 256);
     }
 }
@@ -276,7 +342,7 @@ pluck_from_shaking(void) {
  * to where it started, so it would never turn; it is pushed sideways first. */
 static void
 ease_pose(gfx_glow_pose_t target, uint32_t dt_ms) {
-    const int32_t share = (int32_t)(dt_ms * 256 / (LEVEL_TAU_MS + dt_ms));
+    const int32_t share = (int32_t)(dt_ms * 256 / ((uint32_t)level_tau_ms + dt_ms));
     const int64_t facing =
         ((int64_t)ridge->pose.down_x * target.down_x + (int64_t)ridge->pose.down_y * target.down_y) / GFX_GLOW_POSE_ONE;
     int32_t x = ridge->pose.down_x + (target.down_x - ridge->pose.down_x) * share / 256;
@@ -326,6 +392,17 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     if (ridge == NULL) {
         return;
     }
+    bool retuned = false;
+#if TUNE_ENABLED
+    if (tune_generation() != ridge->tuned_at) {
+        bake_what_is_tuned();
+        retuned = true;
+    }
+#endif
+    ridge->line.tension = spring_tension;
+    ridge->line.stiffness = spring_stiffness;
+    ridge->line.damping = spring_damping;
+
     ridge->alive_ms += dt_ms;
     const gfx_glow_pose_t target = pose_target(dt_ms);
     ease_pose(target, dt_ms);
@@ -348,9 +425,9 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     const bool settles_now = arrived && !poses_within(ridge->pose, ridge->pose_on_screen, 1);
     /* A tail that fades is drawn until it is gone, or it would freeze where
      * the line stopped. */
-    const bool moved = line_moved || settles_now || pose_moved_enough_to_see();
+    const bool moved = line_moved || settles_now || retuned || pose_moved_enough_to_see();
     if (moved) {
-        ridge->fade_draws_left = gfx_glow_trail_draws(RIDGE_TRAIL);
+        ridge->fade_draws_left = gfx_glow_trail_draws(ridge_trail);
     } else if (ridge->fade_draws_left > 0) {
         ridge->fade_draws_left--;
     }
