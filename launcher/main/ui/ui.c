@@ -89,6 +89,77 @@ mu_color_from_rgb(uint32_t rgb) {
 }
 
 static void
+draw_text_command(const mu_Command* cmd, ui_transform_t t) {
+    const mu_Color ink = cmd->text.color;
+    const mu_Color halo = ui_text_halo(ink);
+    const ui_font_scaled_t fs = ui_resolve_font_scaled(cmd->text.font);
+    const gfx_font_t* font = fs.font;
+    const int scale = fs.scale;
+    const int quarter = ui_transform_quarter(t);
+
+    /* WHY THE WHOLE STRING'S BOX IS MAPPED, NOT ITS ORIGIN: every
+     * other command maps its rect through ui_transform_rect(), proven
+     * exact under any quarter turn. A point does not commute with
+     * "walk N glyphs, take the far edge" under rotation, so mapping
+     * just the origin and walking per-glyph from there drifts a
+     * string off at quarter turns 1-3. Mapping the LOGICAL box
+     * instead - the same one used to size it - keeps it exact, like
+     * every other command. */
+    const int tw = gfx_font_text_width(font, cmd->text.str, -1, scale);
+    const int th = gfx_font_height(font, scale);
+    const mu_Rect box = ui_transform_rect(t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
+
+    /* gfx_text_font()'s (x, y) is the FIRST GLYPH's cell, not a
+     * corner of the box - see ui_text_glyph0_origin()'s own comment
+     * (ui_transform.h) for the full derivation. Extracted there, not
+     * kept inline, so it's testable against a synthetic proportional
+     * font on a host - a port of the same origin math an app's own
+     * label-drawing code solves for itself, ported rather than called
+     * directly because ui/ sits below apps/, so reaching into an
+     * app's source would be a backwards layering dependency. */
+    int mx, my;
+    ui_text_glyph0_origin(font, box, quarter, scale, &mx, &my);
+
+    /* A text colour's alpha is dithered coverage. No halo has a
+     * dithered form, so a fading string is drawn as ink alone. */
+    if (ink.a < 255) {
+        if (ink.a > 0) {
+            gfx_text_font_dither(mx, my, cmd->text.str, mu_color_to_gfx(ink), scale, quarter, font, ink.a);
+        }
+        return;
+    }
+
+    if (text_style == UI_TEXT_OUTLINED && font->bpp == 1) {
+        /* gfx_text_font_halo() draws the same halo ui_text_passes()'s
+         * 8 unit-offset copies would, in one pass instead of eight -
+         * see its own comment. Ink is still drawn last, unchanged. */
+        const gfx_color_t halo_color = mu_color_to_gfx(halo);
+        const gfx_color_t ink_color = mu_color_to_gfx(ink);
+        gfx_text_font_halo(mx, my, cmd->text.str, halo_color, scale, quarter, font);
+        gfx_text_font(mx, my, cmd->text.str, ink_color, scale, quarter, font);
+        return;
+    }
+
+    ui_text_pass_t passes[UI_TEXT_MAX_PASSES];
+    const int n = ui_text_passes(text_style, passes, UI_TEXT_MAX_PASSES);
+    for (int i = 0; i < n; i++) {
+        const mu_Color c = passes[i].ink ? ink : halo;
+        const gfx_color_t color = mu_color_to_gfx(c);
+
+        /* THE HALO OFFSET IS ADDED AFTER THE MAPPING, NOT BEFORE.
+         * passes[i].dx/dy is a SCREEN-SPACE offset - see ui_style.h's
+         * OUTLINED/SHADOWED passes, which sit a halo a fixed pixel
+         * count from the glyph on the panel. (mx, my) already IS a
+         * screen position. Transforming (dx, dy) itself would instead
+         * rotate the halo with the glyph: a shadow meant to fall
+         * down-and-right on screen would fall down-and-right in
+         * LOGICAL space instead - a different physical direction once
+         * turn is nonzero. */
+        gfx_text_font(mx + passes[i].dx, my + passes[i].dy, cmd->text.str, color, scale, quarter, font);
+    }
+}
+
+static void
 draw_command(const mu_Command* cmd) {
     const ui_transform_t t = ui_effective_transform();
 
@@ -106,76 +177,7 @@ draw_command(const mu_Command* cmd) {
             break;
         }
 
-        case MU_COMMAND_TEXT: {
-            const mu_Color ink = cmd->text.color;
-            const mu_Color halo = ui_text_halo(ink);
-            const ui_font_scaled_t fs = ui_resolve_font_scaled(cmd->text.font);
-            const gfx_font_t* font = fs.font;
-            const int scale = fs.scale;
-            const int quarter = ui_transform_quarter(t);
-
-            /* WHY THE WHOLE STRING'S BOX IS MAPPED, NOT ITS ORIGIN: every
-         * other command maps its rect through ui_transform_rect(), proven
-         * exact under any quarter turn. A point does not commute with
-         * "walk N glyphs, take the far edge" under rotation, so mapping
-         * just the origin and walking per-glyph from there drifts a
-         * string off at quarter turns 1-3. Mapping the LOGICAL box
-         * instead - the same one used to size it - keeps it exact, like
-         * every other command. */
-            const int tw = gfx_font_text_width(font, cmd->text.str, -1, scale);
-            const int th = gfx_font_height(font, scale);
-            const mu_Rect box = ui_transform_rect(t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
-
-            /* gfx_text_font()'s (x, y) is the FIRST GLYPH's cell, not a
-         * corner of the box - see ui_text_glyph0_origin()'s own comment
-         * (ui_transform.h) for the full derivation. Extracted there, not
-         * kept inline, so it's testable against a synthetic proportional
-         * font on a host - a port of the same origin math an app's own
-         * label-drawing code solves for itself, ported rather than called
-         * directly because ui/ sits below apps/, so reaching into an
-         * app's source would be a backwards layering dependency. */
-            int mx, my;
-            ui_text_glyph0_origin(font, box, quarter, scale, &mx, &my);
-
-            /* A text colour's alpha is dithered coverage. No halo has a
-             * dithered form, so a fading string is drawn as ink alone. */
-            if (ink.a < 255) {
-                if (ink.a > 0) {
-                    gfx_text_font_dither(mx, my, cmd->text.str, mu_color_to_gfx(ink), scale, quarter, font, ink.a);
-                }
-                break;
-            }
-
-            if (text_style == UI_TEXT_OUTLINED && font->bpp == 1) {
-                /* gfx_text_font_halo() draws the same halo ui_text_passes()'s
-                 * 8 unit-offset copies would, in one pass instead of eight -
-                 * see its own comment. Ink is still drawn last, unchanged. */
-                const gfx_color_t halo_color = mu_color_to_gfx(halo);
-                const gfx_color_t ink_color = mu_color_to_gfx(ink);
-                gfx_text_font_halo(mx, my, cmd->text.str, halo_color, scale, quarter, font);
-                gfx_text_font(mx, my, cmd->text.str, ink_color, scale, quarter, font);
-                break;
-            }
-
-            ui_text_pass_t passes[UI_TEXT_MAX_PASSES];
-            const int n = ui_text_passes(text_style, passes, UI_TEXT_MAX_PASSES);
-            for (int i = 0; i < n; i++) {
-                const mu_Color c = passes[i].ink ? ink : halo;
-                const gfx_color_t color = mu_color_to_gfx(c);
-
-                /* THE HALO OFFSET IS ADDED AFTER THE MAPPING, NOT BEFORE.
-             * passes[i].dx/dy is a SCREEN-SPACE offset - see ui_style.h's
-             * OUTLINED/SHADOWED passes, which sit a halo a fixed pixel
-             * count from the glyph on the panel. (mx, my) already IS a
-             * screen position. Transforming (dx, dy) itself would instead
-             * rotate the halo with the glyph: a shadow meant to fall
-             * down-and-right on screen would fall down-and-right in
-             * LOGICAL space instead - a different physical direction once
-             * turn is nonzero. */
-                gfx_text_font(mx + passes[i].dx, my + passes[i].dy, cmd->text.str, color, scale, quarter, font);
-            }
-            break;
-        }
+        case MU_COMMAND_TEXT: draw_text_command(cmd, t); break;
 
         case MU_COMMAND_ICON: {
             /* microui's icons are close/check/collapsed/expanded. MU_ICON_CHECK
