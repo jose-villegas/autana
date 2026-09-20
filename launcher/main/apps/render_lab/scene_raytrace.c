@@ -20,6 +20,7 @@
 #include "render_lab.h"
 #include "render_lab_scene.h"
 #include "rt_cornell.h"
+#include "rt_pixel_budget.h"
 #include "rt_refine.h"
 
 #define TARGET_FRAME_MS     30
@@ -31,14 +32,14 @@ static rt_cornell_camera_t camera;
 static int current_quarter;
 static int step;   /* this pass's lattice spacing; 0 once the picture is done */
 static int next_y; /* the next lattice row this pass has not traced */
-static int pixels_per_frame;
+static rt_pixel_budget_t pixel_budget;
 static uint32_t elapsed_ms;
 
 static void
 restart_render(void) {
     step = RT_REFINE_FIRST_STEP;
     next_y = 0;
-    pixels_per_frame = PIXEL_BUDGET_GROWTH;
+    pixel_budget = rt_pixel_budget_init(PIXEL_BUDGET_GROWTH, PIXEL_BUDGET_MIN, PIXEL_BUDGET_MAX, TARGET_FRAME_MS);
     elapsed_ms = 0;
 }
 
@@ -65,20 +66,6 @@ scene_raytrace_exit(void) {
 static void
 scene_raytrace_invalidate(void) {
     restart_render();
-}
-
-/* dt_ms is the whole previous frame, the panel transfer included, so a
- * coarse pass that dirties many rows per traced pixel slows itself down. */
-static void
-adapt_pixel_budget(uint32_t last_dt_ms) {
-    if (last_dt_ms > TARGET_FRAME_MS) {
-        pixels_per_frame /= 2;
-        if (pixels_per_frame < PIXEL_BUDGET_MIN) {
-            pixels_per_frame = PIXEL_BUDGET_MIN;
-        }
-    } else if (pixels_per_frame < PIXEL_BUDGET_MAX) {
-        pixels_per_frame += PIXEL_BUDGET_GROWTH;
-    }
 }
 
 static void
@@ -114,7 +101,7 @@ draw_next_lattice_rows(void) {
     const int first_y = next_y;
     int traced = 0;
 
-    while (next_y < GFX_HEIGHT && traced < pixels_per_frame) {
+    while (next_y < GFX_HEIGHT && traced < pixel_budget.value) {
         traced += trace_lattice_row(fb, next_y);
         next_y += step;
     }
@@ -143,7 +130,9 @@ scene_raytrace_frame(uint32_t dt_ms, bool band_mode_active) {
         return; /* done: nothing left to draw, nothing left to cost */
     }
 
-    adapt_pixel_budget(dt_ms);
+    /* dt_ms is the whole previous frame, the panel transfer included, so a
+     * coarse pass that dirties many rows per traced pixel slows itself down. */
+    rt_pixel_budget_adapt(&pixel_budget, dt_ms);
     draw_next_lattice_rows();
     elapsed_ms += dt_ms;
 }

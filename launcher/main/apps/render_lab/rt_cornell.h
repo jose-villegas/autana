@@ -25,3 +25,9 @@ gfx_color_t rt_cornell_render_pixel(const rt_cornell_camera_t* cam, int x, int y
 
 /* Traces row `y`'s `cam->viewport.width` pixels into `out_row`. */
 void rt_cornell_render_row(const rt_cornell_camera_t* cam, int y, gfx_color_t* out_row);
+
+/* The ordered-dither quantize this scene resolves a linear colour through -
+ * shared with rt_path.c so both scenes read the picture off one dithering
+ * rule rather than two that could drift apart. `linear` channels above 1.0
+ * clamp at the brightest level rather than wrapping. */
+gfx_color_t rt_cornell_dither_quantize(r3d_vec3f_t linear, int x, int y);
