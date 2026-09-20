@@ -2247,6 +2247,64 @@ test_a_split_fluid_step_allocates_nothing(void) {
 }
 #endif /* HOST_HEAP_ARENA */
 
+/* Mostly gas, walled and lit, so the walk and the equalise pass both have
+ * somewhere to go - the mixed scene's scattered grains never fill a shaft. */
+static void
+tc_build_gas_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
+    sand_init(s, cells, TC_W, TC_H, seed);
+
+    rng_t r;
+    rng_seed(&r, seed ^ 0x3C3C3C3Cu);
+
+    for (int y = TC_H / 4; y < TC_H; y++) {
+        for (int x = 0; x < TC_W; x++) {
+            sand_set(s, x, y, (rng_below(&r, 16) == 0) ? STONE : GAS);
+        }
+    }
+    sand_set(s, TC_W / 2, TC_H / 2, FIRE);
+}
+
+static void
+tc_assert_no_sequential_draws(const char* scene) {
+    char why[256];
+
+    snprintf(why, sizeof why,
+             "%s: a chunk-parallel pass took %u draw(s) from the sequential stream. "
+             "A lane's board copy holds that stream and the join drops it, so both "
+             "lanes replay the same numbers - use sand_rng_next_at() with a slot "
+             "of its own at the site",
+             scene, sand_split_sequential_draws);
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, sand_split_sequential_draws, why);
+}
+
+/* Neither arm of a one-core-against-two comparison can see this: both run
+ * lanes, so both replay the discarded stream identically. Only a count of the
+ * draws themselves says whether a split pass has one. */
+static void
+test_no_split_pass_draws_from_the_sequential_stream(void) {
+    static const struct {
+        const char* name;
+        void (*build)(sand_t*, uint8_t*, uint32_t);
+    } scenes[] = {
+        {"mixed", tc_build_scattered_scene},
+        {"liquid", tc_build_liquid_scene},
+        {"gas", tc_build_gas_scene},
+    };
+
+    for (size_t i = 0; i < sizeof scenes / sizeof scenes[0]; i++) {
+        const unsigned swept_before = sand_sweep_chunks_swept;
+        sand_split_sequential_draws = 0;
+        (void)tc_run_scene_and_hash(scenes[i].build, 3u, 30, true);
+        TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(swept_before, sand_sweep_chunks_swept,
+                                              "the scene never took the split path, so zero proves nothing");
+        tc_assert_no_sequential_draws(scenes[i].name);
+    }
+
+    sand_split_sequential_draws = 0;
+    (void)rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, true);
+    tc_assert_no_sequential_draws("reaction-heavy");
+}
+
 void
 run_sand_two_core_suite(void) {
     RUN_TEST(test_two_core_step_is_deterministic_across_seeds);
@@ -2280,6 +2338,7 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_landscape_water_column_has_no_line_mass_lag);
     RUN_TEST(test_split_gas_equalise_keeps_seam_order);
     RUN_TEST(test_split_gas_equalise_hops_once_across_a_chunk_column);
+    RUN_TEST(test_no_split_pass_draws_from_the_sequential_stream);
     RUN_TEST(test_a_board_without_lane_scratch_steps_its_fluids_serially);
     RUN_TEST(test_a_lane_merge_carries_every_content_flag_back);
 #ifdef HOST_HEAP_ARENA
