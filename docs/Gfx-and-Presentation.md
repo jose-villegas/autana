@@ -271,8 +271,17 @@ app rows by way of `ui_end_over()`.
 so a gravity reading is a pose with no angle or arctangent in between. A
 turned curve is no longer a height per panel column, so it walks panel rows
 and asks of each pixel where it lies in the view frame - an add per pixel,
-along only the stretch of the row that can reach the curve's band, against a
-`gfx_glow_field_t` prepared once per change of the curve. The landscape pose
+against a `gfx_glow_field_t` prepared once per change of the curve. It asks
+only where light can fall. A row that crosses fewer than
+`GFX_GLOW_FEW_COLUMNS` view columns - the curve running along the panel's
+rows - is narrowed once, to the exact reach of those columns. Any other row
+is walked in blocks of `GFX_GLOW_ROW_BLOCK` pixels, and a block is skipped
+when the view positions of its two ends show that no column under it can be
+lit: adds, shifts and compares against the reach of chunks of columns, since
+a 64-bit division is a library call on this chip and one per block cost more
+than the pixels it saved. Counted under QEMU's `--icount`, a level ridge at
+radius 13 draws in 6.9 million instructions a frame in landscape and 7.0 in
+portrait; walking the curve's whole band took 10.8 and 9.2. The landscape pose
 is the quarter-turn renderer pixel for pixel. It keeps, per panel row, the
 stretch it lit, and blackens that before drawing the row again, so a curve
 that turns needs nothing clearing behind it either.

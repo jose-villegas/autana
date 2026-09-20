@@ -375,7 +375,16 @@ gfx_glow_draw_columns(gfx_target_t target, int clip_x0, int clip_y0, int clip_x1
  * where it lies in the view frame.
  */
 
-#define GFX_GLOW_POSE_ONE (1 << 14)
+#define GFX_GLOW_POSE_ONE     (1 << 14)
+
+/* A posed row is walked in blocks of this many pixels, and a block is skipped
+ * when no column under it can be lit at the rows it crosses. What a block is
+ * tested against is the reach of whole chunks of columns, at most
+ * GFX_GLOW_REACH_CHUNKS of them however long the curve: all of it adds,
+ * shifts and compares, since a 64-bit division is a library call here and
+ * one per block cost more than the pixels it saved. */
+#define GFX_GLOW_ROW_BLOCK    16
+#define GFX_GLOW_REACH_CHUNKS 64
 
 typedef struct {
     int32_t down_x, down_y;
@@ -391,7 +400,28 @@ typedef struct {
     int16_t* reach_hi;
     int count;
     int band_lo, band_hi; /* the reach of the whole curve, Q4 */
+    int chunk_shift;      /* a chunk is 1 << chunk_shift columns */
+    int16_t chunk_lo[GFX_GLOW_REACH_CHUNKS];
+    int16_t chunk_hi[GFX_GLOW_REACH_CHUNKS];
 } gfx_glow_field_t;
+
+/* The reach of each chunk of columns as one range, for gfx_glow_block_can_be_lit(). */
+static inline void
+gfx_glow_field_chunk(gfx_glow_field_t* field) {
+    field->chunk_shift = 4;
+    while (((field->count - 1) >> field->chunk_shift) >= GFX_GLOW_REACH_CHUNKS) {
+        field->chunk_shift++;
+    }
+    for (int c = 0; c < GFX_GLOW_REACH_CHUNKS; c++) {
+        field->chunk_lo[c] = INT16_MAX;
+        field->chunk_hi[c] = INT16_MIN;
+    }
+    for (int x = 0; x < field->count; x++) {
+        const int c = x >> field->chunk_shift;
+        field->chunk_lo[c] = field->reach_lo[x] < field->chunk_lo[c] ? field->reach_lo[x] : field->chunk_lo[c];
+        field->chunk_hi[c] = field->reach_hi[x] > field->chunk_hi[c] ? field->reach_hi[x] : field->chunk_hi[c];
+    }
+}
 
 static inline void
 gfx_glow_field_prepare(gfx_glow_field_t* field, const int16_t* y, const gfx_glow_style_t* style) {
@@ -420,6 +450,7 @@ gfx_glow_field_prepare(gfx_glow_field_t* field, const int16_t* y, const gfx_glow
         field->band_lo = lo < field->band_lo ? lo : field->band_lo;
         field->band_hi = hi > field->band_hi ? hi : field->band_hi;
     }
+    gfx_glow_field_chunk(field);
 }
 
 /* gfx_glow_distance2() for a point that is not on a column's centre. */
@@ -661,6 +692,101 @@ gfx_glow_light(gfx_color_t colour) {
     return (int)(((c >> 11) & 0x1F) * 2 + ((c >> 5) & 0x3F) + (c & 0x1F) * 2);
 }
 
+/* Colours [a, b) of one panel row against the exact per-column reach test -
+ * the truth a caller's superset is narrowed toward. Folds into new_lo/new_hi
+ * so several calls across one row still cover its whole lit span. */
+static inline void
+gfx_glow_posed_row_light(gfx_color_t* dst, const gfx_glow_field_t* field, const gfx_glow_map_t* map,
+                         const gfx_glow_style_t* style, int trail, int py, int to_q4, int64_t vx, int64_t vy,
+                         int64_t right_x, int64_t down_x, int a, int b, int* new_lo, int* new_hi) {
+    for (int px = a; px < b; px++, vx += right_x, vy += down_x) {
+        const int x_q4 = (int)(vx >> to_q4);
+        const int y_q4 = (int)(vy >> to_q4);
+        const int column = x_q4 >> GFX_GLOW_Q_SHIFT;
+        if (column < 0 || column >= field->count || y_q4 < field->reach_lo[column] || y_q4 > field->reach_hi[column]) {
+            continue;
+        }
+        const gfx_color_t colour =
+            gfx_glow_colour(style, gfx_glow_posed_distance2(field, map, style->radius, x_q4, y_q4), px, py);
+        if (colour == GFX_RGB(0x000000)) {
+            continue;
+        }
+        /* Each new band overlaps most of the last, and would overwrite its
+         * bright core with a dim rim: what was left behind would be rim
+         * light only. A trail keeps whichever is brighter. */
+        if (trail > 0 && gfx_glow_light(dst[px]) > gfx_glow_light(colour)) {
+            continue;
+        }
+        dst[px] = colour;
+        *new_lo = *new_hi > *new_lo ? *new_lo : px;
+        *new_hi = px + 1;
+    }
+}
+
+/* A row that crosses only a few view columns - the curve running along the
+ * panel's rows, or nearly - is narrowed once, to the exact reach of just
+ * those columns: tighter than any block, for one division a row. */
+#define GFX_GLOW_FEW_COLUMNS 4
+
+static inline void
+gfx_glow_posed_row_few_columns(gfx_color_t* dst, const gfx_glow_field_t* field, const gfx_glow_map_t* map,
+                               const gfx_glow_style_t* style, int trail, int py, int to_q4, int64_t vx0, int64_t vy0,
+                               int64_t right_x, int64_t down_x, int col_lo, int col_hi, int a, int b, int* new_lo,
+                               int* new_hi) {
+    int lo = field->reach_lo[col_lo];
+    int hi = field->reach_hi[col_lo];
+    for (int x = col_lo + 1; x <= col_hi; x++) {
+        lo = field->reach_lo[x] < lo ? field->reach_lo[x] : lo;
+        hi = field->reach_hi[x] > hi ? field->reach_hi[x] : hi;
+    }
+    gfx_glow_narrow(vy0, down_x, (int64_t)lo << to_q4, ((int64_t)hi + 1) << to_q4, &a, &b);
+    if (b > a) {
+        gfx_glow_posed_row_light(dst, field, map, style, trail, py, to_q4, vx0 + (int64_t)a * right_x,
+                                 vy0 + (int64_t)a * down_x, right_x, down_x, a, b, new_lo, new_hi);
+    }
+}
+
+/* Whether any pixel of a row between two of its pixels can be lit, from
+ * their view positions alone. View x and view y both run one way along a row
+ * and a shift keeps their order, so every pixel between lies in the columns
+ * and the rows between the two ends: nothing outside the reach of those
+ * columns' chunks can pass the per-column test. */
+static inline bool
+gfx_glow_block_can_be_lit(const gfx_glow_field_t* field, int to_q4, int64_t vx_a, int64_t vx_b, int64_t vy_a,
+                          int64_t vy_b) {
+    const int shift = 14 + field->chunk_shift;
+    const int chunk_a = (int)(vx_a >> shift);
+    const int chunk_b = (int)(vx_b >> shift);
+    const int y_a = (int)(vy_a >> to_q4);
+    const int y_b = (int)(vy_b >> to_q4);
+    const int y_lo = y_a < y_b ? y_a : y_b;
+    const int y_hi = y_a < y_b ? y_b : y_a;
+    for (int c = chunk_a < chunk_b ? chunk_a : chunk_b; c <= (chunk_a < chunk_b ? chunk_b : chunk_a); c++) {
+        if (y_hi >= field->chunk_lo[c] && y_lo <= field->chunk_hi[c]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static inline void
+gfx_glow_posed_row_blocks(gfx_color_t* dst, const gfx_glow_field_t* field, const gfx_glow_map_t* map,
+                          const gfx_glow_style_t* style, int trail, int py, int to_q4, int64_t vx0, int64_t vy0,
+                          int64_t right_x, int64_t down_x, int a, int b, int* new_lo, int* new_hi) {
+    int64_t vx = vx0 + (int64_t)a * right_x;
+    int64_t vy = vy0 + (int64_t)a * down_x;
+    for (int p = a; p < b; p += GFX_GLOW_ROW_BLOCK) {
+        const int q = p + GFX_GLOW_ROW_BLOCK < b ? p + GFX_GLOW_ROW_BLOCK : b;
+        const int64_t last = q - 1 - p;
+        if (gfx_glow_block_can_be_lit(field, to_q4, vx, vx + last * right_x, vy, vy + last * down_x)) {
+            gfx_glow_posed_row_light(dst, field, map, style, trail, py, to_q4, vx, vy, right_x, down_x, p, q, new_lo,
+                                     new_hi);
+        }
+        vx += GFX_GLOW_ROW_BLOCK * right_x;
+        vy += GFX_GLOW_ROW_BLOCK * down_x;
+    }
+}
+
 /*
  * Draws panel rows [row0, row1) of the posed curve. `lit_lo`/`lit_hi` hold,
  * per panel row, the stretch still lit from earlier draws, and `trail` is
@@ -715,35 +841,21 @@ gfx_glow_draw_posed_rows(gfx_target_t target, int clip_x0, int clip_y0, int clip
         int a = clip_x0 < 0 ? 0 : clip_x0;
         int b = clip_x1 > panel_w ? panel_w : clip_x1;
         gfx_glow_narrow(vx0, right_x, 0, (int64_t)field->count << 14, &a, &b);
-        gfx_glow_narrow(vy0, pose.down_x, (int64_t)field->band_lo << to_q4, ((int64_t)field->band_hi << to_q4) + 1, &a,
-                        &b);
 
         int new_lo = 0;
         int new_hi = 0;
-        int64_t vx = vx0 + a * right_x;
-        int64_t vy = vy0 + a * pose.down_x;
-        for (int px = a; px < b; px++, vx += right_x, vy += pose.down_x) {
-            const int x_q4 = (int)(vx >> to_q4);
-            const int y_q4 = (int)(vy >> to_q4);
-            const int column = x_q4 >> GFX_GLOW_Q_SHIFT;
-            if (column < 0 || column >= field->count || y_q4 < field->reach_lo[column]
-                || y_q4 > field->reach_hi[column]) {
-                continue;
+        if (a < b) {
+            const int col_a = (int)((vx0 + (int64_t)a * right_x) >> 14);
+            const int col_b = (int)((vx0 + (int64_t)(b - 1) * right_x) >> 14);
+            const int col_lo = col_a < col_b ? col_a : col_b;
+            const int col_hi = col_a < col_b ? col_b : col_a;
+            if (col_hi - col_lo < GFX_GLOW_FEW_COLUMNS) {
+                gfx_glow_posed_row_few_columns(dst, field, map, style, trail, py, to_q4, vx0, vy0, right_x, pose.down_x,
+                                               col_lo, col_hi, a, b, &new_lo, &new_hi);
+            } else {
+                gfx_glow_posed_row_blocks(dst, field, map, style, trail, py, to_q4, vx0, vy0, right_x, pose.down_x, a,
+                                          b, &new_lo, &new_hi);
             }
-            const gfx_color_t colour =
-                gfx_glow_colour(style, gfx_glow_posed_distance2(field, map, style->radius, x_q4, y_q4), px, py);
-            if (colour == GFX_RGB(0x000000)) {
-                continue;
-            }
-            /* Each new band overlaps most of the last, and would overwrite its
-             * bright core with a dim rim: what was left behind would be rim
-             * light only. A trail keeps whichever is brighter. */
-            if (trail > 0 && gfx_glow_light(dst[px]) > gfx_glow_light(colour)) {
-                continue;
-            }
-            dst[px] = colour;
-            new_lo = new_hi > new_lo ? new_lo : px;
-            new_hi = px + 1;
         }
         const bool has_kept = kept_hi > kept_lo;
         const bool has_new = new_hi > new_lo;

@@ -13,6 +13,7 @@
 
 #include "gfx/gfx_glow.h"
 #include "ui/ui_transform.h"
+#include "util/trig.h"
 
 #define PANEL_W   96
 #define PANEL_H   80
@@ -281,7 +282,11 @@ static const gfx_glow_map_t* posed_map;
 
 static gfx_glow_field_t
 posed_field(void) {
-    gfx_glow_field_t field = {posed_spans[0], posed_spans[1], posed_spans[2], posed_spans[3], PANEL_H, 0, 0};
+    gfx_glow_field_t field = {.span_lo = posed_spans[0],
+                              .span_hi = posed_spans[1],
+                              .reach_lo = posed_spans[2],
+                              .reach_hi = posed_spans[3],
+                              .count = PANEL_H};
     gfx_glow_field_prepare(&field, heights, style);
     return field;
 }
@@ -421,6 +426,127 @@ clear_panel_and_forget(void) {
         pixels[i] = GFX_RGB(0x000000);
     }
     forget_what_was_lit();
+}
+
+/* The narrowed walk pinned to an un-narrowed truth: every panel pixel,
+ * evaluated directly against the per-column reach test with no narrowing at
+ * all, at a wide sweep of poses. */
+
+static void
+cliff_curve_for_the_turned_view(void) {
+    for (int x = 0; x < PANEL_H; x++) {
+        const int row = x < 30 ? 15 : (x < 34 ? 15 + (x - 30) * 55 : 235);
+        heights[x] = (int16_t)(row * GFX_GLOW_ONE);
+    }
+}
+
+static void
+runs_off_both_ends_curve_for_the_turned_view(void) {
+    for (int x = 0; x < PANEL_H; x++) {
+        heights[x] = (int16_t)((-24 + x * 3) * GFX_GLOW_ONE);
+    }
+}
+
+/* Not exactly unit-length Q14 poses only approximately; what matters is the
+ * same integer arithmetic the code itself would do with them. */
+static gfx_glow_pose_t
+normalized_pose(int32_t dx, int32_t dy) {
+    const int64_t len = (int64_t)gfx_glow_isqrt((uint32_t)(dx * dx + dy * dy));
+    if (len == 0) {
+        return (gfx_glow_pose_t){GFX_GLOW_POSE_ONE, 0};
+    }
+    return (gfx_glow_pose_t){(int32_t)((int64_t)dx * GFX_GLOW_POSE_ONE / len),
+                             (int32_t)((int64_t)dy * GFX_GLOW_POSE_ONE / len)};
+}
+
+static gfx_color_t
+truth_pixel(const gfx_glow_field_t* field, int view_h, gfx_glow_pose_t pose, int px, int py) {
+    /* The same single division gfx_glow_draw_posed_rows() does, at pixel 0
+     * of the row, then pure integer steps to px - not a fresh division at
+     * px, which truncates differently and would not be the same truth. */
+    const int64_t right_x = pose.down_y;
+    const int64_t right_y = -pose.down_x;
+    const int64_t half_q14 = GFX_GLOW_POSE_ONE / 2;
+    const int to_q4 = 14 - GFX_GLOW_Q_SHIFT;
+    const int64_t dx2_0 = -(int64_t)(PANEL_W - 1);
+    const int64_t dy2 = 2 * (int64_t)py - (PANEL_H - 1);
+    const int64_t vx0 =
+        ((int64_t)(field->count - 1) * GFX_GLOW_POSE_ONE + dx2_0 * right_x + dy2 * right_y) / 2 + half_q14;
+    const int64_t vy0 =
+        ((int64_t)(view_h - 1) * GFX_GLOW_POSE_ONE + dx2_0 * pose.down_x + dy2 * pose.down_y) / 2 + half_q14;
+    const int64_t vx = vx0 + (int64_t)px * right_x;
+    const int64_t vy = vy0 + (int64_t)px * pose.down_x;
+    const int x_q4 = (int)(vx >> to_q4);
+    const int y_q4 = (int)(vy >> to_q4);
+    const int column = x_q4 >> GFX_GLOW_Q_SHIFT;
+    if (column < 0 || column >= field->count || y_q4 < field->reach_lo[column] || y_q4 > field->reach_hi[column]) {
+        return GFX_RGB(0x000000);
+    }
+    return gfx_glow_colour(style, gfx_glow_posed_distance2(field, posed_map, style->radius, x_q4, y_q4), px, py);
+}
+
+static void
+assert_draw_matches_truth(const gfx_glow_field_t* field, gfx_glow_pose_t pose) {
+    static gfx_color_t truth[PANEL_W * PANEL_H];
+    for (int py = 0; py < PANEL_H; py++) {
+        for (int px = 0; px < PANEL_W; px++) {
+            truth[py * PANEL_W + px] = truth_pixel(field, PANEL_W, pose, px, py);
+        }
+    }
+    clear_panel_and_forget();
+    draw_posed(field, pose.down_x, pose.down_y);
+    TEST_ASSERT_EQUAL_MEMORY(truth, pixels, sizeof truth);
+}
+
+static void
+assert_curve_matches_truth_at_every_pose(void) {
+    const gfx_glow_field_t field = posed_field();
+    const int32_t axis[][2] = {
+        {GFX_GLOW_POSE_ONE, 0}, {-GFX_GLOW_POSE_ONE, 0}, {0, GFX_GLOW_POSE_ONE}, {0, -GFX_GLOW_POSE_ONE}};
+    for (size_t i = 0; i < sizeof axis / sizeof axis[0]; i++) {
+        assert_draw_matches_truth(&field, (gfx_glow_pose_t){axis[i][0], axis[i][1]});
+    }
+    const int32_t diag[][2] = {{11585, 11585}, {11585, -11585}, {-11585, 11585}, {-11585, -11585}};
+    for (size_t i = 0; i < sizeof diag / sizeof diag[0]; i++) {
+        assert_draw_matches_truth(&field, (gfx_glow_pose_t){diag[i][0], diag[i][1]});
+    }
+    /* (16384, 0) nudged by one unit each way, and (3, 16383)-like near-axis
+     * poses, renormalised close to a Q14 unit vector. */
+    const int32_t awkward[][2] = {
+        {16384, 1}, {16384, -1}, {-16384, 1}, {-16384, -1}, {1, 16384}, {-1, 16384}, {1, -16384}, {-1, -16384},
+        {3, 16383}, {-3, 16383}, {3, -16383}, {-3, -16383}, {16383, 3}, {16383, -3}, {-16383, 3}, {-16383, -3},
+    };
+    for (size_t i = 0; i < sizeof awkward / sizeof awkward[0]; i++) {
+        assert_draw_matches_truth(&field, normalized_pose(awkward[i][0], awkward[i][1]));
+    }
+    for (int i = 0; i < 32; i++) {
+        const uint16_t phase = (uint16_t)(i * 65536u / 32);
+        assert_draw_matches_truth(&field, normalized_pose(trig_cos(phase), trig_sin(phase)));
+    }
+}
+
+static void
+test_the_narrowed_walk_matches_every_pixel_searched_on_a_smooth_curve(void) {
+    fixture_begin();
+    wavy_curve_for_the_turned_view();
+    assert_curve_matches_truth_at_every_pose();
+    fixture_end();
+}
+
+static void
+test_the_narrowed_walk_matches_every_pixel_searched_at_a_cliff(void) {
+    fixture_begin();
+    cliff_curve_for_the_turned_view();
+    assert_curve_matches_truth_at_every_pose();
+    fixture_end();
+}
+
+static void
+test_the_narrowed_walk_matches_every_pixel_searched_off_both_ends_of_the_panel(void) {
+    fixture_begin();
+    runs_off_both_ends_curve_for_the_turned_view();
+    assert_curve_matches_truth_at_every_pose();
+    fixture_end();
 }
 
 static void
@@ -699,6 +825,9 @@ suite_gfx_glow(void) {
     RUN_TEST(test_narrow_keeps_exactly_the_steps_inside_the_bounds);
     RUN_TEST(test_turning_leaves_no_trail);
     RUN_TEST(test_a_turned_curve_keeps_its_width);
+    RUN_TEST(test_the_narrowed_walk_matches_every_pixel_searched_on_a_smooth_curve);
+    RUN_TEST(test_the_narrowed_walk_matches_every_pixel_searched_at_a_cliff);
+    RUN_TEST(test_the_narrowed_walk_matches_every_pixel_searched_off_both_ends_of_the_panel);
     RUN_TEST(test_a_trail_that_is_never_cleared_keeps_where_the_curve_was);
     RUN_TEST(test_a_fading_trail_dims_then_ends_on_the_clean_picture);
     RUN_TEST(test_trail_draws_is_how_long_white_takes_to_go_black);
