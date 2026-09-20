@@ -2375,6 +2375,128 @@ test_no_split_pass_draws_from_the_sequential_stream(void) {
     tc_assert_no_sequential_draws("reaction-heavy");
 }
 
+/* Cross-flow alone: no lane scratch, so the pass stays serial, and no gas,
+ * whose busier draws would decide the hash on their own. The viscosity roll
+ * is its one hashed draw, and a saturated pool under an uneven surface is
+ * what gives cross-flow anything to roll for. */
+static uint32_t
+tc_run_crossflow_and_hash(void) {
+    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
+    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(cells);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t s;
+    sand_init(&s, cells, TC_W, TC_H, 5u);
+    sand_enable_sleeping(&s, blocks);
+    for (int y = TC_H / 3; y < TC_H; y++) {
+        for (int x = 0; x < TC_W; x++) {
+            sand_set(&s, x, y, CELL_MAKE(MAT_OIL, MASS_MAX));
+        }
+    }
+    for (int x = 0; x < TC_W; x++) {
+        sand_set(&s, x, TC_H / 3 - 1, CELL_MAKE(MAT_OIL, (uint8_t)(1 + (x * 7) % MASS_MAX)));
+    }
+    memset(blocks, BLOCK_HAS_LIQUID, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    /* Pinned strictly between 0 and 255, the two values that skip the roll,
+     * and set by hand because sand_step() is what derives the flag. */
+    sand_set_mobility(&s, 128);
+    s.may_have_viscous_liquid = true;
+
+    const xflow_t flow = {.ax = {1, 0}, .dg = {1, 0}};
+    for (int step = 0; step < 12; step++) {
+        s.step_phase = (uint16_t)step;
+        sand_step_liquids(&s, &flow, 0, 1);
+    }
+
+    const uint32_t hash = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
+    free(cells);
+    free(blocks);
+    return hash;
+}
+
+static void
+tc_assert_override_moves_and_repeats(const char* what, uint32_t plain, uint32_t forced, uint32_t again) {
+    char why[200];
+
+    snprintf(why, sizeof why, "%s: forced hashed draws left the serial board where the plain stream left it", what);
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(plain, forced, why);
+    snprintf(why, sizeof why, "%s: two forced-hashed serial runs must land on the same board", what);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(forced, again, why);
+}
+
+/* What the sweep's serial-hashed arm has to be worth measuring: the override
+ * must reach every pass, not only the gravity sweep. The last two rows are
+ * what say so - a whole step hashes its sweep either way, while the fluids
+ * and reaction runners step their pass alone. */
+static void
+test_forced_hashed_draws_move_a_serial_board_and_repeat(void) {
+    static const struct {
+        const char* name;
+        void (*build)(sand_t*, uint8_t*, uint32_t);
+    } scenes[] = {
+        {"mixed", tc_build_scattered_scene},
+        {"liquid", tc_build_liquid_scene},
+        {"gas", tc_build_gas_scene},
+    };
+
+    for (size_t i = 0; i < sizeof scenes / sizeof scenes[0]; i++) {
+        const uint32_t plain = tc_run_scene_and_hash(scenes[i].build, 3u, 30, false);
+        sand_force_hashed_rng(true);
+        const uint32_t forced = tc_run_scene_and_hash(scenes[i].build, 3u, 30, false);
+        const uint32_t again = tc_run_scene_and_hash(scenes[i].build, 3u, 30, false);
+        sand_force_hashed_rng(false);
+        tc_assert_override_moves_and_repeats(scenes[i].name, plain, forced, again);
+    }
+
+    const uint32_t fluids = tc_run_fluids_and_hash(false, true);
+    sand_force_hashed_rng(true);
+    const uint32_t fluids_forced = tc_run_fluids_and_hash(false, true);
+    const uint32_t fluids_again = tc_run_fluids_and_hash(false, true);
+    sand_force_hashed_rng(false);
+    tc_assert_override_moves_and_repeats("fluids", fluids, fluids_forced, fluids_again);
+
+    const uint32_t crossflow = tc_run_crossflow_and_hash();
+    sand_force_hashed_rng(true);
+    const uint32_t crossflow_forced = tc_run_crossflow_and_hash();
+    const uint32_t crossflow_again = tc_run_crossflow_and_hash();
+    sand_force_hashed_rng(false);
+    tc_assert_override_moves_and_repeats("cross-flow", crossflow, crossflow_forced, crossflow_again);
+
+    const uint32_t reacted = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, false);
+    sand_force_hashed_rng(true);
+    const uint32_t reacted_forced = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, false);
+    const uint32_t reacted_again = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, false);
+    sand_force_hashed_rng(false);
+    tc_assert_override_moves_and_repeats("reaction-heavy", reacted, reacted_forced, reacted_again);
+}
+
+/* The other half of the same claim, and the one the shipped board depends
+ * on: armed and disarmed, the override leaves nothing behind. */
+static void
+test_the_hashed_draw_override_leaves_nothing_behind(void) {
+    const uint32_t mixed = tc_run_scene_and_hash(tc_build_scattered_scene, 3u, 30, false);
+    const uint32_t fluids = tc_run_fluids_and_hash(false, true);
+    const uint32_t crossflow = tc_run_crossflow_and_hash();
+    const uint32_t reacted = rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, false);
+
+    sand_force_hashed_rng(true);
+    (void)tc_run_scene_and_hash(tc_build_scattered_scene, 3u, 30, false);
+    (void)tc_run_fluids_and_hash(false, true);
+    (void)tc_run_crossflow_and_hash();
+    (void)rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, false);
+    sand_force_hashed_rng(false);
+
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(mixed, tc_run_scene_and_hash(tc_build_scattered_scene, 3u, 30, false),
+                                     "the mixed board changed after the override had been on and off again");
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(fluids, tc_run_fluids_and_hash(false, true),
+                                     "the fluid board changed after the override had been on and off again");
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(crossflow, tc_run_crossflow_and_hash(),
+                                     "the cross-flow board changed after the override had been on and off again");
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(reacted, rc_run_reaction_heavy_and_hash(TC_W, TC_H, 3u, 30, false),
+                                     "the reaction board changed after the override had been on and off again");
+}
+
 void
 run_sand_two_core_suite(void) {
     RUN_TEST(test_two_core_step_is_deterministic_across_seeds);
@@ -2409,6 +2531,8 @@ run_sand_two_core_suite(void) {
     RUN_TEST(test_split_gas_equalise_keeps_seam_order);
     RUN_TEST(test_split_gas_equalise_hops_once_across_a_chunk_column);
     RUN_TEST(test_no_split_pass_draws_from_the_sequential_stream);
+    RUN_TEST(test_forced_hashed_draws_move_a_serial_board_and_repeat);
+    RUN_TEST(test_the_hashed_draw_override_leaves_nothing_behind);
     RUN_TEST(test_a_chosen_chunk_side_is_the_cut_every_split_pass_runs);
     RUN_TEST(test_a_chunk_side_the_grid_cannot_take_falls_back_to_one_lane);
     RUN_TEST(test_a_board_without_lane_scratch_steps_its_fluids_serially);

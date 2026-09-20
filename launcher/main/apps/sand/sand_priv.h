@@ -409,8 +409,11 @@ extern unsigned sand_reactions_defer_peak_q8;
 void sand_reactions_force_full_walk(bool on);
 
 /* Test-only: draw through the per-cell hash even on the serial path, so a
- * serial board and a split board differ only by ordering. */
+ * serial board and a split board differ only by ordering. A serial walk asks
+ * the second function rather than sand_chunk_pass_ready(), which is false
+ * exactly when the override is the only thing that could arm the hash. */
 void sand_force_hashed_rng(bool on);
+bool sand_rng_forced_hashed(void);
 
 /* Not sand.h API: which shape sand_step_reactions() actually took this call -
  * the soak-only partial walk, or the full one (including an early return
