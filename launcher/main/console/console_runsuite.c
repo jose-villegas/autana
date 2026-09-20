@@ -26,7 +26,7 @@ console_verb_runsuite(const char* args, console_reply_fn reply) {
  * (suite_control_center_layout, 27 chars) - bump this rather than trim a
  * name to fit it, the same reasoning suites.h's own SUITE_MAX comment
  * gives. */
-CONSOLE_VERB(RUNSUITE, 38, console_verb_runsuite)
+CONSOLE_VERB(runsuite, 38, console_verb_runsuite)
 
 bool
 console_runsuite_take_request(char* name_out, size_t name_out_size) {

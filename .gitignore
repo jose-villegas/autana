@@ -133,3 +133,8 @@ $RECYCLE.BIN/
 # The host editor fetches its dependencies into its own build directory.
 /editor/build*/
 /editor/imgui.ini
+
+### autana CLI
+# Where scripts/device/device.py writes a session's log and manifest when
+# AUTANA_RECORDS names nowhere else - see docs/tools/Autana-CLI.md.
+.records/

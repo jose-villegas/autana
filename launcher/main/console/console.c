@@ -154,14 +154,15 @@ console_task(void* arg) {
 }
 
 /* Names what registered, so a verb this build does not link is not claimed.
- * SCREENSHOT goes first whatever its place in name order: a host script
- * knows the console is up by the text "listening for 'SCREENSHOT'". */
+ * screenshot goes first whatever its place in name order: a host script
+ * knows the console is up by the text "listening for 'screenshot'"
+ * (launcher/test/qemu_run.py). */
 static void
 log_listening(void) {
     char line[192];
-    int n = snprintf(line, sizeof line, "listening for 'SCREENSHOT'");
+    int n = snprintf(line, sizeof line, "listening for 'screenshot'");
     for (const console_verb_t* entry = shared.first; entry != NULL && n < (int)sizeof line; entry = entry->next) {
-        if (strcmp(entry->name, "SCREENSHOT") == 0) {
+        if (strcmp(entry->name, "screenshot") == 0) {
             continue;
         }
         n += snprintf(line + n, sizeof(line) - (size_t)n, ", '%s'", entry->name);

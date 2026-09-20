@@ -383,7 +383,7 @@ for the mechanism.
 
 [`../Testing-Guide.md`](../Testing-Guide.md) is the host/device split and
 the general practice; [`Testing-Sand.md`](Testing-Sand.md) is this app's
-own half of it - the frame-budget capture, `RUNSUITE`, how to read a
+own half of it - the frame-budget capture, `runsuite`, how to read a
 result, and the current state of `suite_sand_perf.c`'s frame-budget tests
 on this board. Don't duplicate numbers here: a captured budget is a fact
 about one build on one board at one point in time, and the last full
@@ -406,4 +406,4 @@ capture is always the honest source for it, not this page.
 - [`Impulse-Mechanics.md`](Impulse-Mechanics.md) - explosions, thrown
   chunks, a liquid's own splash: one mechanism, three call sites.
 - [`Testing-Sand.md`](Testing-Sand.md) - this app's own half of the test
-  guide: frame-budget captures, `RUNSUITE`, and scoping a diagnostics build.
+  guide: frame-budget captures, `runsuite`, and scoping a diagnostics build.
