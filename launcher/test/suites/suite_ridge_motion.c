@@ -166,6 +166,43 @@ test_smoothing_leaves_a_flat_line_alone_and_rounds_a_step(void) {
     free(in);
 }
 
+static void
+test_extending_keeps_the_middle_and_runs_each_end_out_level(void) {
+    enum { COUNT = 100, EXTRA = 40 };
+
+    int16_t in[COUNT];
+    int16_t out[COUNT + 2 * EXTRA];
+    for (int x = 0; x < COUNT; x++) {
+        in[x] = (int16_t)(3000 - 20 * x); /* rises steadily toward the last column */
+    }
+    ridge_motion_extend(in, COUNT, out, EXTRA);
+
+    for (int x = 0; x < COUNT; x++) {
+        TEST_ASSERT_EQUAL_INT16(in[x], out[EXTRA + x]);
+    }
+    /* Each end carries on the way it was going: down to the left, up to the
+     * right, a whole step at first and none by the end. */
+    TEST_ASSERT_INT_WITHIN(3, 20, out[EXTRA - 1] - out[EXTRA]);
+    TEST_ASSERT_INT_WITHIN(3, -20, out[EXTRA + COUNT] - out[EXTRA + COUNT - 1]);
+    TEST_ASSERT_INT_WITHIN(1, 0, out[0] - out[1]);
+    TEST_ASSERT_INT_WITHIN(1, 0, out[COUNT + 2 * EXTRA - 1] - out[COUNT + 2 * EXTRA - 2]);
+    for (int k = 1; k < EXTRA; k++) {
+        TEST_ASSERT_TRUE(out[EXTRA - k - 1] >= out[EXTRA - k]);
+        TEST_ASSERT_TRUE(out[EXTRA + COUNT - 1 + k + 1] <= out[EXTRA + COUNT - 1 + k]);
+    }
+    /* A slope eased to nothing over EXTRA columns covers half what it would
+     * have at full tilt. */
+    TEST_ASSERT_INT_WITHIN(12, 20 * EXTRA / 2, out[0] - in[0]);
+}
+
+static void
+test_extending_by_nothing_is_a_copy(void) {
+    int16_t in[5] = {5, 4, 3, 2, 1};
+    int16_t out[5] = {0};
+    ridge_motion_extend(in, 5, out, 0);
+    TEST_ASSERT_EQUAL_INT16_ARRAY(in, out, 5);
+}
+
 void
 suite_ridge_motion(void) {
     RUN_TEST(test_a_breath_starts_rigid_swells_and_comes_back_rigid);
@@ -176,6 +213,8 @@ suite_ridge_motion(void) {
     RUN_TEST(test_a_slope_the_other_way_can_turn_the_wave_back);
     RUN_TEST(test_momentum_is_bounded_however_long_the_slope_lasts);
     RUN_TEST(test_smoothing_leaves_a_flat_line_alone_and_rounds_a_step);
+    RUN_TEST(test_extending_keeps_the_middle_and_runs_each_end_out_level);
+    RUN_TEST(test_extending_by_nothing_is_a_copy);
 }
 
 SUITE_REGISTER(suite_ridge_motion);

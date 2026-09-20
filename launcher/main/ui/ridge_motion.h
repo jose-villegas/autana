@@ -87,6 +87,33 @@ ridge_motion_height(const ridge_motion_t* motion, int rigid, int smooth, int x) 
     return (int16_t)(breathed + ridge_motion_wave(motion, x));
 }
 
+/* How many columns the slope at an end is read over. */
+#define RIDGE_END_SLOPE_SPAN 12
+
+/* `out`, `count + 2 * extra` long, is `in` with `extra` more columns at each
+ * end: each end carries on at the slope it had and eases level, the way a
+ * slope runs out into a plain. Turned to a diagonal the line has to span the
+ * panel's diagonal, which is longer than the frame it was drawn in. The
+ * middle is `in` exactly, and stays centred. */
+static inline void
+ridge_motion_extend(const int16_t* in, int count, int16_t* out, int extra) {
+    for (int x = 0; x < count; x++) {
+        out[extra + x] = in[x];
+    }
+    const int span = count > RIDGE_END_SLOPE_SPAN ? RIDGE_END_SLOPE_SPAN : count - 1;
+    if (extra <= 0 || span <= 0) {
+        return;
+    }
+    const int left_per_span = in[0] - in[span];
+    const int right_per_span = in[count - 1] - in[count - 1 - span];
+    for (int k = 1; k <= extra; k++) {
+        /* k columns out at a slope falling linearly to nothing at `extra`. */
+        const int64_t run = (int64_t)k * (2 * extra - k);
+        out[extra - k] = (int16_t)(in[0] + left_per_span * run / ((int64_t)2 * extra * span));
+        out[extra + count - 1 + k] = (int16_t)(in[count - 1] + right_per_span * run / ((int64_t)2 * extra * span));
+    }
+}
+
 /* `out` is `in` smoothed; `scratch` is `count` long too. The ends repeat
  * their last value, so a flat line stays exactly where it is. */
 static inline void
