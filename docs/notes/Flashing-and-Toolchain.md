@@ -44,7 +44,8 @@ hard_reset` uses the same non-functional RTS reset, so it stays in download
 mode, silent, running nothing. **Unplug and replug normally** (no BOOT) to
 start the app.
 
-If it vanishes from USB entirely — no COM port, no `VID_303A` device — check
+If it vanishes from USB entirely — no COM port, no device at vendor ID
+`0x303A` — check
 the cable first, then the PWR button: this board's power is managed by an
 **AXP2101 PMIC**, so a long press cuts system power.
 
