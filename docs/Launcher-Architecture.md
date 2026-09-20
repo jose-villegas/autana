@@ -98,8 +98,17 @@ launcher/
     │   ├── spring_line.h       a row of points on springs (host-tested)
     │   ├── job.{h,c}           run a slice on the other core (host-tested)
     │   ├── device_state.{h,c}  what survives a reboot      (host-tested)
-    │   ├── screenshot.{h,c}    the capture listener        (host-tested)
+    │   ├── screenshot.h        BMP header + base64, pure   (host-tested)
     │   └── build_id.h          which build this is         (host-tested)
+    ├── console/        the console listener, dev builds only - one verb per file
+    │   ├── console_verbs.{h,c}    the registry and line dispatch (host-tested)
+    │   ├── console_latch.h        a verb's request for the frame loop (host-tested)
+    │   ├── console.{h,c}          driver install, the one reader task
+    │   ├── console_buildid.c      BUILDID
+    │   ├── console_tune.c         SET, GET, RESET, TUNE - forwards to util/tune
+    │   ├── console_screenshot.{h,c}  SCREENSHOT
+    │   ├── console_runsuite.{h,c}    RUNSUITE, CONFIG_LAUNCHER_SELFTEST only
+    │   └── console_inject.c, console_inject_parse.h  TOUCH/IMU, CONFIG_LAUNCHER_QEMU only (host-tested)
     └── apps/           one folder per app - see Building-an-App.md
         ├── cube/       a software rasterizer
         ├── diagnostics/  bench tool; development builds only

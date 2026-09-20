@@ -1,48 +1,20 @@
 /*
- * screenshot - streaming the current framebuffer to a host script over the
- * console's own serial connection, as an uncompressed 24-bit BMP, together
- * with a JSON dump of device state at that same frame (sensors, memory,
- * clock - see screenshot_dump()'s own comment for the full list).
+ * screenshot - the byte-exact pieces of a framebuffer-as-BMP capture: the
+ * BMP header and the base64 encoding below, pure arithmetic with no BSP, no
+ * USB and no framebuffer - built and checked on a host (see
+ * test/suites/suite_screenshot.c).
  *
- * There is no other channel off this board: no SD-card-as-USB-drive, no
- * second data port - only the console, which on this board is the ESP32-S3's
- * native USB-Serial/JTAG peripheral (see sdkconfig.defaults' own comment on
- * why - the single USB-C port is wired to that, not to UART0) already
- * carrying boot logs and idf_monitor's output (see boot/post.c's SD-card
- * notes for the OTHER shared-channel story on this board; this one shares a
- * single link, not a bus). So a screenshot triggered from a host script has
- * to travel down that same connection, threaded between whatever else is
- * being logged - see screenshot.c's own top comment for how.
- *
- * Split the way gfx_color.h/gfx.c and ui_style.h/ui.c are: the byte-exact BMP
- * header and the base64 encoding below are pure arithmetic - no BSP, no USB,
- * no framebuffer - so they can be built and checked on a host (see
- * test/suites/suite_screenshot.c). Actually listening on the console and
- * walking the live framebuffer needs the device; that part is screenshot.c,
- * never compiled for a host build.
- *
- * screenshot_start()/screenshot_take_request()/screenshot_dump() below are
- * only ever CALLED under CONFIG_LAUNCHER_DEVELOPMENT (see main.c) - a
- * release build has nobody watching the serial console to type SCREENSHOT
- * into, the same reasoning an app's own developer-only instrumentation
- * (e.g. rolling frame-timing averages) is gated on (see
- * docs/Build-Variants.md's "Development-only instrumentation" section).
- * Declared unconditionally here regardless, the same way the rest of this
- * header stays plain C with no #if of its own - main.c is what decides
- * whether anything ever calls them.
+ * The console listener and the live framebuffer walk are a higher layer,
+ * console/console_screenshot.c, since that reaches into gfx and an app's
+ * own diagnostic_json().
  */
 #pragma once
 
-#include <stdbool.h>
-#include <stddef.h>
 #include <stdint.h>
 
-#include "app.h"
-#include "build_variant.h"
-
 /*
- * BMP encoding - see screenshot.c's write loop for how these two are used
- * together to build one row at a time.
+ * BMP encoding - see console_screenshot.c's write loop for how these two
+ * are used together to build one row at a time.
  */
 
 /* BITMAPFILEHEADER (14 bytes) + BITMAPINFOHEADER (40 bytes), with no pixel
@@ -126,13 +98,13 @@ screenshot_base64_encoded_len(int32_t len) {
 }
 
 /* Encodes `len` bytes at `in` into `out`, which must hold at least
- * screenshot_base64_encoded_len(len) bytes. Does not NUL-terminate. Pure
- * - no chunking state between calls - which lets screenshot.c call it
- * once per BMP row: every row is a multiple of 3 bytes, so each call
- * ends on a clean group boundary, and the '=' padding a partial group
- * needs never occurs for this caller. Tested for a width where it DOES
- * occur (suite_screenshot.c), since a pure function's contract
- * shouldn't depend on its caller. */
+ * screenshot_base64_encoded_len(len) bytes. Does not NUL-terminate. Pure -
+ * no chunking state between calls - which lets a caller call it once per
+ * BMP row: every row is a multiple of 3 bytes, so each call ends on a
+ * clean group boundary and the '=' padding a partial group needs never
+ * occurs for that caller. Tested for a width where it DOES occur
+ * (suite_screenshot.c), since a pure function's contract shouldn't depend
+ * on its caller. */
 static inline void
 screenshot_base64_encode(const uint8_t* in, int32_t len, char* out) {
     static const char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -161,42 +133,3 @@ screenshot_base64_encode(const uint8_t* in, int32_t len, char* out) {
         out[o++] = '=';
     }
 }
-
-/* The device-only half - see screenshot.c */
-
-/* Starts the background task that listens on the console for a capture
- * request. Call once, from app_main() - the same place and the same
- * pattern as touch_start()/buttons_start(): a small dedicated task the shell
- * never talks to directly, its result read back out through the accessor
- * below instead. */
-void screenshot_start(void);
-
-/* Reads and clears whether the listener task has seen a request since
- * the last call - the same "read and consume once per frame" contract
- * buttons_read() already uses (see input/buttons.h), and for the same
- * reason: main.c's loop is the only place that should act on a request,
- * and only once per request, however many frames it takes main.c to get
- * back around to checking. */
-bool screenshot_take_request(void);
-
-#if CONFIG_LAUNCHER_SELFTEST
-/* Same "read and consume once per frame" contract as
- * screenshot_take_request() above, for a RUNSUITE line - see
- * screenshot.c's "WHY THE RESULT COMES BACK THROUGH A FLAG" for why a
- * suite run needs this even more: suites_run_one() draws, clears, and
- * presents repeatedly, and must never interleave with the shell's own
- * frame loop on a different task. Copies the pending suite name into
- * `name_out` (caller-owned, NUL-terminated) and returns true if a
- * RUNSUITE line arrived; false otherwise. */
-bool screenshot_take_runsuite_request(char* name_out, size_t name_out_size);
-#endif
-
-/* Streams the framebuffer to stdout as base64 BMP, then one
- * SCREENSHOT_STATE: line of JSON device state from the same frame -
- * framed between SCREENSHOT_BEGIN/END lines a host script greps for.
- * `input` is passed in rather than read fresh, so touch/button fields
- * describe the exact frame the image does, not what the listener saw
- * later. `current_app` lets its OPTIONAL diagnostic_json splice in an
- * "app" key. Call after a frame is drawn, before presenting, so capture
- * matches what's about to appear. */
-void screenshot_dump(const input_t* input, const app_t* current_app);

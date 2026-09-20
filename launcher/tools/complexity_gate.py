@@ -80,6 +80,7 @@ EXCLUDED_MAIN_FILES = {
 # flags it would have had - rather than excused from the gate.
 VARIANT_ONLY_FILES = {
     "main/gfx/gfx_null_panel.c": "main/gfx/gfx.c",  # CONFIG_LAUNCHER_QEMU
+    "main/console/console_inject.c": "main/console/console.c",  # CONFIG_LAUNCHER_QEMU
 }
 
 VENDORED_DIR_NAMES = {"components", "managed_components"}

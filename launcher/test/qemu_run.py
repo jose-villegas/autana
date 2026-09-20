@@ -219,8 +219,8 @@ def take_screenshot(console, out_path):
 
 # A sample is a LEVEL the image's polling task picks up on its own schedule,
 # so each one is left in place long enough to be seen and acted on. There is
-# no acknowledgement to wait for instead: see the touch verb's own comment in
-# util/screenshot.c for why it sets no flag.
+# no acknowledgement to wait for instead: see main/console/console_inject.c's
+# own top comment for why it sets no flag.
 TOUCH_SETTLE_S = 0.6
 
 
