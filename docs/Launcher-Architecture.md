@@ -94,6 +94,7 @@ launcher/
     │   ├── fixed.h             fixed-point multiply/divide (host-tested)
     │   ├── intmath.h, rng.h, tween.h                       (host-tested)
     │   ├── trig.h              integer sine and cosine    (host-tested)
+    │   ├── tune.{h,c}          numbers changed live over the console, dev builds (host-tested)
     │   ├── spring_line.h       a row of points on springs (host-tested)
     │   ├── job.{h,c}           run a slice on the other core (host-tested)
     │   ├── device_state.{h,c}  what survives a reboot      (host-tested)
