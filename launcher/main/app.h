@@ -81,9 +81,10 @@ typedef struct {
     bool home_gesture;
 
     /* Opt-in, like home_gesture above: NULL unless an app sets it. If
-     * set, called only from screenshot_dump() (CONFIG_LAUNCHER_DEVELOPMENT
-     * builds only) to let the running app attach its own state to a
-     * screenshot capture - a JSON OBJECT fragment (starting with `{`,
+     * set, called only from console_screenshot_dump()
+     * (CONFIG_LAUNCHER_DEVELOPMENT builds only) to let the running app
+     * attach its own state to a screenshot capture - a JSON OBJECT fragment
+     * (starting with `{`,
      * ending with `}`, no trailing comma) written into `out` (at most
      * `len` bytes, NUL-terminated). Spliced into the capture's
      * device-state JSON as a new "app" key. Diagnostic only - nothing

@@ -40,11 +40,13 @@
 #include "util/frame_cost.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-#include "util/screenshot.h"
+#include "console/console.h"
+#include "console/console_screenshot.h"
 #endif
 
 #if CONFIG_LAUNCHER_SELFTEST
 #include "boot/selftest.h"
+#include "console/console_runsuite.h"
 #include "suites.h"
 #endif
 
@@ -631,7 +633,7 @@ app_boot_init(void) {
     touch_start();
     buttons_start();
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    screenshot_start();
+    console_start();
 #endif
 
     if (!imu_init()) {
@@ -641,11 +643,11 @@ app_boot_init(void) {
 }
 
 #if CONFIG_LAUNCHER_SELFTEST
-/* See util/screenshot.c for framebuffer contention explanation. */
+/* See console/console.c for framebuffer contention explanation. */
 static void
 run_pending_selftest_suite(void) {
     char runsuite_name[64];
-    if (!screenshot_take_runsuite_request(runsuite_name, sizeof runsuite_name)) {
+    if (!console_runsuite_take_request(runsuite_name, sizeof runsuite_name)) {
         return;
     }
     const bool found = suites_run_one(runsuite_name);
@@ -688,8 +690,8 @@ run_dev_frame_extras(input_t* input, const app_t* current) {
     if (gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB) {
         draw_build_mark();
     }
-    if (screenshot_take_request()) {
-        screenshot_dump(input, current);
+    if (console_screenshot_take_request()) {
+        console_screenshot_dump(input, current);
         gfx_request_full_redraw();
     }
 }

@@ -46,8 +46,9 @@ is made with it.
 ```mermaid
 flowchart LR
     T["autana set trail 200"] --> D["device.py send<br/><i>lock, port</i>"]
-    D -->|"SET ridge.trail 200"| C["console listener<br/><i>util/screenshot.c</i>"]
-    C --> R["tune_handle_line()<br/><i>util/tune.c</i>"]
+    D -->|"SET ridge.trail 200"| C["console listener<br/><i>main/console/console.c</i>"]
+    C --> S["SET verb<br/><i>console/console_tune.c</i>"]
+    S --> R["tune_handle_line()<br/><i>util/tune.c</i>"]
     R -->|"writes the int32_t"| V["the tunable, read<br/>by its owner each frame"]
     R -->|"TUNE_OK ridge.trail=200"| D
 ```
@@ -84,7 +85,8 @@ TUNE(ridge, trail, 226, 0, 255);      /* where the #define was: `trail` */
   boot. On a release build it is an `enum` constant and nothing else, so the
   code that reads it is the same in both and release pays nothing.
 - The compiler refuses a value outside its own range and a name over 32
-  characters (`<owner>.<what>`; a `SET` line has to fit the console's 48).
+  characters (`<owner>.<what>`; a `SET` line has to fit the console's
+  `CONSOLE_LINE_MAX`, 49).
 - The registry is a list threaded through the entries, so there is no table
   to outgrow. Two declarations of one name are a mistake: the first keeps the
   name and `TUNE` reports the clash.

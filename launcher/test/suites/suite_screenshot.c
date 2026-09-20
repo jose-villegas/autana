@@ -1,7 +1,7 @@
 /*
  * Portable suite: screenshot_bmp_header/screenshot_bmp_row_stride - the pure
- * byte layout of the BMP screenshot_capture() (screenshot.c, device-only)
- * writes.
+ * byte layout of the BMP console_screenshot_dump()
+ * (console/console_screenshot.c, device-only) writes.
  *
  * Every expected byte below is spelled out by hand against the
  * BITMAPFILEHEADER/BITMAPINFOHEADER field order rather than derived from the
@@ -68,8 +68,8 @@ test_header_dimensions_and_bit_depth(void) {
     TEST_ASSERT_EQUAL_UINT32(368, width);
 
     /* biHeight is POSITIVE - a negative value in a real BMP would mean
-     * top-down rows, which is not what screenshot_capture()'s write loop
-     * produces (it walks y from GFX_HEIGHT-1 down to 0, i.e. bottom-up). */
+     * top-down rows, which is not what console_screenshot_dump()'s write
+     * loop produces (it walks y from GFX_HEIGHT-1 down to 0, bottom-up). */
     const uint32_t height = (uint32_t)header[22] | ((uint32_t)header[23] << 8) | ((uint32_t)header[24] << 16)
                             | ((uint32_t)header[25] << 24);
     TEST_ASSERT_EQUAL_UINT32(448, height);
@@ -162,7 +162,7 @@ test_encode_a_multi_group_string(void) {
 
 static void
 test_encode_two_clean_groups_matches_encoding_them_together(void) {
-    /* The property screenshot_dump() actually leans on: encoding "foobar"
+    /* The property console_screenshot_dump() actually leans on: encoding "foobar"
      * as two independent 3-byte calls ("foo" then "bar") must produce the
      * same bytes, in order, as encoding it as one 6-byte call - see
      * screenshot_base64_encode()'s own comment on why a BMP row boundary
