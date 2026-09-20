@@ -1451,6 +1451,11 @@ sand_force_hashed_rng(bool on) {
     sand_force_hashed_rng_on = on;
 }
 
+bool
+sand_rng_forced_hashed(void) {
+    return sand_force_hashed_rng_on;
+}
+
 /* The cut, the order and the callback one split pass runs on, file-static
  * rather than a frame of its caller: a lane that misses its join keeps
  * reading here, and a frame the caller has already returned from would be

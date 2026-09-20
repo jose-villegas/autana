@@ -2816,14 +2816,19 @@ sand_step_reaction_reach(sand_t* s) {
     return reach_rescan(s);
 }
 
-/* Whether this step's reaction pass may split. MUST BE ASKED BEFORE the pass
- * clears may_have_materials: growers and drinkers are excluded because
- * find_water() reaches tens of cells, far past the one a chunk's halo covers,
- * and their stages still draw from the sequential stream. The narrower
- * soak-only walk is left alone; see sand_step_reactions(). */
+/* MUST BE ASKED BEFORE the pass clears may_have_materials: growers and
+ * drinkers are excluded because find_water() reaches tens of cells, far past
+ * the one a chunk's halo covers, and their stages still draw from the
+ * sequential stream. Kept apart from the board's own readiness below so a
+ * serial walk can ask which draws a split would have hashed. */
+static bool
+reactions_rules_allow_split(const sand_t* s, bool soak_only) {
+    return !soak_only && (s->may_have_materials & (grower_mask() | drinker_mask())) == 0;
+}
+
 static bool
 reactions_may_split(const sand_t* s, bool soak_only) {
-    return !soak_only && sand_chunk_pass_ready(s) && (s->may_have_materials & (grower_mask() | drinker_mask())) == 0;
+    return reactions_rules_allow_split(s, soak_only) && sand_chunk_pass_ready(s);
 }
 
 static unsigned
@@ -2854,9 +2859,13 @@ react_walk_every_row(sand_t* s, bool soak_only) {
 /* Every row of the reaction pass, split or not - see reactions_may_split()
  * for the gate and the two block comments above for what each half does. */
 static unsigned
-run_reaction_rows(sand_t* s, bool soak_only, bool may_split) {
+run_reaction_rows(sand_t* s, bool soak_only, bool may_split, bool hash_serial) {
     if (!may_split || !react_run_split(s)) {
-        return react_walk_every_row(s, soak_only);
+        const bool was_hashed = s->rng_hashed;
+        s->rng_hashed = was_hashed || hash_serial;
+        const unsigned walked = react_walk_every_row(s, soak_only);
+        s->rng_hashed = was_hashed;
+        return walked;
     }
 
     const unsigned found = sand_step_reaction_reach(s);
@@ -2936,6 +2945,7 @@ sand_step_reactions(sand_t* s) {
                            && (s->may_have_materials & drinker_mask()) == 0 && s->block_state != NULL;
     sand_reactions_last_was_soak_only = soak_only;
     const bool may_split = reactions_may_split(s, soak_only);
+    const bool hash_serial = sand_rng_forced_hashed() && reactions_rules_allow_split(s, soak_only);
     if (soak_only) {
         refresh_moisture_blocks(s);
     }
@@ -2966,7 +2976,7 @@ sand_step_reactions(sand_t* s) {
         s->faller_may_move = false;
     }
 
-    const unsigned found = run_reaction_rows(s, soak_only, may_split);
+    const unsigned found = run_reaction_rows(s, soak_only, may_split, hash_serial);
 
     if (!(found & FOUND_BURNING)) {
         s->may_have_burning = false;

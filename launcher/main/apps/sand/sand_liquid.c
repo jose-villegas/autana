@@ -539,12 +539,15 @@ equalise_every_row(sand_t* s, const xflow_t* f, int sight, int dx, int dy, uint1
                    int y_step, int x_step) {
     liquid_work_t work = {0};
     bool found_any = false;
+    const bool was_hashed = s->rng_hashed;
 
+    s->rng_hashed = was_hashed || sand_rng_forced_hashed();
     for (int y = y_from; y != y_to; y += y_step) {
         if (equalise_one_row(s, y, 0, s->w, s->w, x_step, f, dx, dy, sight, is_liquid, &work)) {
             found_any = true;
         }
     }
+    s->rng_hashed = was_hashed;
     sand_liquid_moves += work.moves;
     sand_liquid_crossflow_probes += work.probes;
     return found_any;

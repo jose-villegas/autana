@@ -923,7 +923,7 @@ equalise_gas_every_row(sand_t* s, int px, int py, int rdx, int rdy, uint16_t is_
     bool found_any = false;
     const bool was_hashed = s->rng_hashed;
 
-    if (row_crossing && sand_two_core_step_enabled()) {
+    if (sand_rng_forced_hashed() || (row_crossing && sand_two_core_step_enabled())) {
         s->rng_hashed = true;
     }
     for (int y = y_from; y != y_to; y += y_step) {
@@ -1035,12 +1035,15 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
         .y_step = y_step,
     };
     if (!s->gas_walk || !step_gas_chunks(s, &found_any)) {
+        const bool was_hashed = s->rng_hashed;
+        s->rng_hashed = was_hashed || sand_rng_forced_hashed();
         for (int y = y_from; y != y_to; y += y_step) {
             if (step_one_gas_row(s, y, 0, w, w, rdx, rdy, sweep_slide_a, sweep_slide_b, rx_step, rload_dx, rload_dy,
                                  jostle, gas_driven)) {
                 found_any = true;
             }
         }
+        s->rng_hashed = was_hashed;
     }
 
     if (gas_row_audit_on) {
