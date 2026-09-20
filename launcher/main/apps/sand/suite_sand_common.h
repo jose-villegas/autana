@@ -228,6 +228,16 @@ void split_passes_scope_end(split_passes_scope_t scope);
  * the serial path - see sand_enable_lane_scratch(). */
 void* lane_scratch_open(sand_t* g);
 
+/* Everything app_sand.c's alloc_grid_bookkeeping() gives a shipped board -
+ * sleeping, dirty rows and columns, step stamps, lane scratch - against a
+ * grid already sand_init()ed. A timed fixture without the last two measures
+ * the serial path however many cores it asked for. What a scene is MADE of
+ * stays the caller's: that is each test's own statement.
+ *
+ * One board at a time, the rule `fx` follows. */
+void board_bookkeeping_open(sand_t* g);
+void board_bookkeeping_close(void);
+
 /* A lane whose join timed out is still inside the board, so a scene ending on
  * one hands the next a core still writing into memory about to be freed and
  * handed back. Waits it out before anything reads what it wrote. */
