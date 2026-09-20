@@ -243,6 +243,13 @@ marking.
   same 8-bit colour to RGB565 at a different threshold, which is what turns
   the 32 levels a glow fades through from bands into a gradient. Changing
   colour or radius rebuilds the ramp; drawing never blends or reads back.
+- **A stippled halo is the same ramp, baked differently.**
+  `gfx_glow_style_set_stepped()` holds the light to a number of equal levels
+  and lets the phase's threshold decide the remainder, so with one step a
+  pixel past the core is the halo colour or black, and fewer are lit the
+  further out. It is a look, not a saving: a draw does the same work and
+  sends the same pixels either way. The launcher's ridge reads it from
+  `launcher.glow_steps`, none being the smooth halo.
 - **The caller says which columns moved.** Only `[x0, x1)` is redrawn, and
   dirty boxes are marked per 16 columns, so a local ripple costs a local
   redraw and a local send. A curve at rest should not be drawn at all.

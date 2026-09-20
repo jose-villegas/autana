@@ -39,6 +39,8 @@ TUNE_INT(glow_radius, 13);
 TUNE_INT(glow_core, 3);
 TUNE_INT(glow_core_rgb, 0xFFFFFF);
 TUNE_INT(glow_halo_rgb, 0x38D6E8);
+/* Levels of stippled light in the halo; none is a smooth one. */
+TUNE_INT(glow_steps, 0);
 
 /* What becomes of the light the line leaves behind as it moves, out of 256
  * per redraw: 0 wipes it, 255 never does, between is a trail that fades. */
@@ -157,6 +159,7 @@ register_tunables(void) {
     TUNE_REGISTER("launcher.glow_core", glow_core, 1, GFX_GLOW_MAX_RADIUS);
     TUNE_REGISTER("launcher.glow_core_rgb", glow_core_rgb, 0, 0xFFFFFF);
     TUNE_REGISTER("launcher.glow_halo_rgb", glow_halo_rgb, 0, 0xFFFFFF);
+    TUNE_REGISTER("launcher.glow_steps", glow_steps, 0, 16);
     TUNE_REGISTER("launcher.pluck_tap", pluck_tap, 0, 8000);
     TUNE_REGISTER("launcher.pluck_strum", pluck_strum, 0, 8000);
     TUNE_REGISTER("launcher.pluck_width", pluck_width, 2, 80);
@@ -192,7 +195,8 @@ prepare_light(void) {
  * they are built again when one changes; everything else is read each frame. */
 static void
 bake_what_is_tuned(void) {
-    gfx_glow_style_set(&ridge->style, glow_radius, glow_core, (uint32_t)glow_core_rgb, (uint32_t)glow_halo_rgb);
+    gfx_glow_style_set_stepped(&ridge->style, glow_radius, glow_core, (uint32_t)glow_core_rgb, (uint32_t)glow_halo_rgb,
+                               glow_steps);
     ridge_motion_smooth(ridge->rigid, ridge->smooth, ridge->shape, RIDGE_COLUMNS, breath_smooth);
     memcpy(ridge->shape, ridge->heights, sizeof ridge->shape);
     prepare_light();
