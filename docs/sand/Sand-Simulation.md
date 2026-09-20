@@ -1226,10 +1226,17 @@ lanes' queues to nine tenths of a cap in one step and counts what comes out.
 
 ### The chunks
 
-A chunk grid is derived from the cell grid: `sand_chunk_side()` targets a
+A chunk grid is derived from the cell grid: `sand_chunk_side_rule()` targets a
 tenth of the board per chunk and floors the side at `2 * SAND_LIQUID_SIGHT
 + 1`, so a chunk's interior always clears the furthest reach any splittable
 pass has. Every quality lands on the same small chunk count.
+
+`sand_chunk_plan()` takes a side per axis rather than one square side, and
+`sand_chunk_side_for_test()` overrides either (0 keeps the rule, a side under
+the floor is refused) so a measurement can rank layouts. The two axes are not
+interchangeable: landscape gravity runs along x, and the order's parallelism
+lies across travel. A cut the grid cannot take - one chunk on an axis, or more
+than `SAND_CHUNKS_MAX` - falls back to one lane, whichever chose it.
 
 `blocks_settled_over()` is the one skip every chunk pass shares. A chunk
 whose covering blocks all carry the step's settled bit is dropped before any

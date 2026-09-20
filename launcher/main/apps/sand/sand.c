@@ -174,7 +174,8 @@ sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
     s->block_state = NULL;
     s->step_stamps = NULL;
     s->stamps_live = NULL;
-    s->stamp_side = 0;
+    s->stamp_side_x = 0;
+    s->stamp_side_y = 0;
     s->stamped = false;
     s->lane_scratch = NULL;
     s->impulse_buf = NULL;
@@ -1539,7 +1540,23 @@ sand_chunk_pass_ready(const sand_t* s) {
     sand_chunk_plan_t fits;
 
     return sand_two_core_step_enabled() && s->lane_scratch != NULL
-           && sand_chunk_plan(&fits, s->w, s->h, sand_chunk_side(s), 0, 0);
+           && sand_chunk_plan(&fits, s->w, s->h, sand_chunk_side_x(s), sand_chunk_side_y(s), 0, 0);
+}
+
+int sand_chunk_side_forced[2];
+
+/* Refuses a side the liquid passes would read straight through, and leaves
+ * the override as it was: a sweep that silently ran at the minimum instead of
+ * what was asked for would be recorded as a measurement of the asked-for
+ * side. */
+bool
+sand_chunk_side_for_test(int side_x, int side_y) {
+    if ((side_x != 0 && side_x < SAND_CHUNK_SIDE_MIN) || (side_y != 0 && side_y < SAND_CHUNK_SIDE_MIN)) {
+        return false;
+    }
+    sand_chunk_side_forced[0] = side_x;
+    sand_chunk_side_forced[1] = side_y;
+    return true;
 }
 
 unsigned sand_split_sequential_draws;
@@ -1566,9 +1583,10 @@ count_sequential_draws(uint32_t before, uint32_t after) {
 
 bool
 sand_chunk_pass_ranks_later(int x0, int y0, int x1, int y1) {
-    const int side = chunk_plan.side;
-    const int from = ((y0 + chunk_plan.off_y) / side) * chunk_plan.cols + (x0 + chunk_plan.off_x) / side;
-    const int to = ((y1 + chunk_plan.off_y) / side) * chunk_plan.cols + (x1 + chunk_plan.off_x) / side;
+    const int sx = chunk_plan.side_x;
+    const int sy = chunk_plan.side_y;
+    const int from = ((y0 + chunk_plan.off_y) / sy) * chunk_plan.cols + (x0 + chunk_plan.off_x) / sx;
+    const int to = ((y1 + chunk_plan.off_y) / sy) * chunk_plan.cols + (x1 + chunk_plan.off_x) / sx;
 
     return chunk_sched.order.rank[to] > chunk_sched.order.rank[from];
 }
@@ -1580,7 +1598,7 @@ sand_chunk_pass_run(sand_t* s, int tx, int ty, sand_chunk_pass_stamps_t stamps, 
     if (!sand_chunk_pass_ready(s) || lanes == NULL) {
         return false;
     }
-    (void)sand_chunk_plan(&chunk_plan, s->w, s->h, sand_chunk_side(s), 0, 0);
+    (void)sand_chunk_plan(&chunk_plan, s->w, s->h, sand_chunk_side_x(s), sand_chunk_side_y(s), 0, 0);
     sand_chunk_order(&chunk_sched.order, chunk_plan.cols, chunk_plan.rows, tx, ty, s->step_phase);
     chunk_sched.cols = chunk_plan.cols;
     chunk_sched.rows = chunk_plan.rows;

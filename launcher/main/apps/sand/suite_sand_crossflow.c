@@ -209,7 +209,7 @@ run_crossflow_seam_trial(int px, int py, int phase, int trial) {
     uint8_t* before = malloc(CF_W * CF_H);
     TEST_ASSERT_NOT_NULL(before);
 
-    const int y = 2 * sand_chunk_side(&split->s) + delta;
+    const int y = 2 * sand_chunk_side_y(&split->s) + delta;
     crossflow_fixture_t* fixtures[] = {serial, split};
     for (int i = 0; i < 2; i++) {
         sand_t* s = &fixtures[i]->s;

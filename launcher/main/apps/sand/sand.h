@@ -186,7 +186,7 @@ typedef struct sand_s {
      * serial pass never reads or writes a bit. */
     uint8_t* step_stamps;
     uint8_t* stamps_live;
-    int stamp_side;
+    int stamp_side_x, stamp_side_y;
     bool stamped; /* a bit is set, so the pass must clear before it ends */
 
     /* Caller-owned, see sand_enable_lane_scratch(). */

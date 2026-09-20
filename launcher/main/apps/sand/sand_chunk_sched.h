@@ -1,5 +1,5 @@
 /*
- * A gravity-ordered schedule for the square chunks one pass is cut into:
+ * A gravity-ordered schedule for the chunks one pass is cut into:
  * the geometry (which cells a chunk owns), one total order over the chunks
  * built from that pass's travel direction, and a two-lane runner over it.
  *
@@ -23,18 +23,17 @@
 #define SAND_CHUNKS_MAX 64
 
 typedef struct {
-    int w, h;         /* grid, cells */
-    int side;         /* chunk side, cells */
-    int off_x, off_y; /* origin offset, each in [0, side) */
-    int cols, rows;   /* chunk counts, cols * rows <= SAND_CHUNKS_MAX */
+    int w, h;           /* grid, cells */
+    int side_x, side_y; /* chunk side per axis, cells */
+    int off_x, off_y;   /* origin offset, each in [0, side of that axis) */
+    int cols, rows;     /* chunk counts, cols * rows <= SAND_CHUNKS_MAX */
 } sand_chunk_plan_t;
 
-/* Cuts a w x h grid into `side`-wide chunks whose borders sit at
- * k * side - off. A non-zero offset makes the first chunk short, and the
- * last may be short too; every other chunk is a full side. Returns false -
- * the caller stays single-lane - when the counts exceed SAND_CHUNKS_MAX or
- * either falls below 2. */
-bool sand_chunk_plan(sand_chunk_plan_t* p, int w, int h, int side, int off_x, int off_y);
+/* Cuts a w x h grid into side_x by side_y chunks whose borders sit at
+ * k * side - off per axis. A non-zero offset makes the first chunk short, and
+ * the last may be too. Returns false - the caller stays single-lane - when the
+ * counts exceed SAND_CHUNKS_MAX or either falls below 2. */
+bool sand_chunk_plan(sand_chunk_plan_t* p, int w, int h, int side_x, int side_y, int off_x, int off_y);
 
 /* Half-open cell ranges of one chunk, clipped to the grid. */
 void sand_chunk_cells(const sand_chunk_plan_t* p, int cx, int cy, int* x0, int* x1, int* y0, int* y1);

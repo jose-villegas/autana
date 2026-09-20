@@ -6,23 +6,24 @@ chunk_count(int extent, int side, int off) {
 }
 
 bool
-sand_chunk_plan(sand_chunk_plan_t* p, int w, int h, int side, int off_x, int off_y) {
-    if (w < 1 || h < 1 || side < 1) {
+sand_chunk_plan(sand_chunk_plan_t* p, int w, int h, int side_x, int side_y, int off_x, int off_y) {
+    if (w < 1 || h < 1 || side_x < 1 || side_y < 1) {
         return false;
     }
-    if (off_x < 0 || off_x >= side || off_y < 0 || off_y >= side) {
+    if (off_x < 0 || off_x >= side_x || off_y < 0 || off_y >= side_y) {
         return false;
     }
 
-    const int cols = chunk_count(w, side, off_x);
-    const int rows = chunk_count(h, side, off_y);
+    const int cols = chunk_count(w, side_x, off_x);
+    const int rows = chunk_count(h, side_y, off_y);
     if (cols < 2 || rows < 2 || cols * rows > SAND_CHUNKS_MAX) {
         return false;
     }
 
     p->w = w;
     p->h = h;
-    p->side = side;
+    p->side_x = side_x;
+    p->side_y = side_y;
     p->off_x = off_x;
     p->off_y = off_y;
     p->cols = cols;
@@ -47,8 +48,8 @@ chunk_span(int c, int side, int off, int extent, int* a, int* b) {
 
 void
 sand_chunk_cells(const sand_chunk_plan_t* p, int cx, int cy, int* x0, int* x1, int* y0, int* y1) {
-    chunk_span(cx, p->side, p->off_x, p->w, x0, x1);
-    chunk_span(cy, p->side, p->off_y, p->h, y0, y1);
+    chunk_span(cx, p->side_x, p->off_x, p->w, x0, x1);
+    chunk_span(cy, p->side_y, p->off_y, p->h, y0, y1);
 }
 
 /* Turns an index counted from an axis's downstream end into a coordinate. */
