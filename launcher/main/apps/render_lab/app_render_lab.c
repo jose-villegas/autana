@@ -53,6 +53,11 @@ current_scene(void) {
  * needs a re-entry to take hold. */
 bool render_lab_band_mode = true;
 
+/* Hides the fps/title overlay draw_fps() builds - on by default. A render
+ * host pin needs it off: the fps line is a double formatted with "%.1f",
+ * which a pin cannot rely on across compilers. Read every frame. */
+bool render_lab_show_hud = true;
+
 /* -1 (default) leaves the fps box at its corner inset. Any other value pins
  * the box's own logical x there instead - a test-only hook
  * (suite_cube_band_perf.c) for measuring the UI cost of a box whose PANEL
@@ -319,7 +324,7 @@ render_lab_frame_band(uint32_t dt_ms, const input_t* input) {
 
     if (menu_open) {
         draw_menu(input, true, dt_ms);
-    } else {
+    } else if (render_lab_show_hud) {
         draw_fps(input, true);
     }
 
@@ -399,7 +404,9 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
 
     update_fps_counter(dt_ms);
     current_scene()->frame(dt_ms, false);
-    draw_fps(input, false);
+    if (render_lab_show_hud) {
+        draw_fps(input, false);
+    }
 }
 
 void

@@ -24,6 +24,7 @@
 /* The band ring keeps no retained frame for render_host.c to read back, so
  * setup() asks for the full-framebuffer layout. */
 extern bool render_lab_band_mode;
+extern bool render_lab_show_hud;
 extern int render_lab_start_scene_index;
 
 #define SCENE_GOURAUD      0
@@ -52,32 +53,44 @@ app_list_count(void) {
 }
 
 static bool
-options(int argc, char** argv) {
-    for (int i = 0; i < argc; i++) {
-        if (strcmp(argv[i], "--scene") != 0 || i + 1 >= argc) {
-            continue;
-        }
-        const char* name = argv[i + 1];
-        if (strcmp(name, "gouraud") == 0) {
-            render_lab_start_scene_index = SCENE_GOURAUD;
-        } else if (strcmp(name, "plane") == 0) {
-            render_lab_start_scene_index = SCENE_WIRE_PLANE;
-        } else if (strcmp(name, "cube") == 0) {
-            render_lab_start_scene_index = SCENE_WIRE_CUBE;
-        } else if (strcmp(name, "sphere") == 0) {
-            render_lab_start_scene_index = SCENE_WIRE_SPHERE;
-        } else if (strcmp(name, "capsule") == 0) {
-            render_lab_start_scene_index = SCENE_WIRE_CAPSULE;
-        } else if (strcmp(name, "cornell") == 0) {
-            render_lab_start_scene_index = SCENE_CORNELL;
-        } else {
-            fprintf(stderr, "unknown --scene %s\n", name);
-            return false;
-        }
-        return true;
+scene_named(const char* name) {
+    if (strcmp(name, "gouraud") == 0) {
+        render_lab_start_scene_index = SCENE_GOURAUD;
+    } else if (strcmp(name, "plane") == 0) {
+        render_lab_start_scene_index = SCENE_WIRE_PLANE;
+    } else if (strcmp(name, "cube") == 0) {
+        render_lab_start_scene_index = SCENE_WIRE_CUBE;
+    } else if (strcmp(name, "sphere") == 0) {
+        render_lab_start_scene_index = SCENE_WIRE_SPHERE;
+    } else if (strcmp(name, "capsule") == 0) {
+        render_lab_start_scene_index = SCENE_WIRE_CAPSULE;
+    } else if (strcmp(name, "cornell") == 0) {
+        render_lab_start_scene_index = SCENE_CORNELL;
+    } else {
+        fprintf(stderr, "unknown --scene %s\n", name);
+        return false;
     }
-    fprintf(stderr, "render_lab_render_host needs --scene gouraud|plane|cube|sphere|capsule|cornell\n");
-    return false;
+    return true;
+}
+
+static bool
+options(int argc, char** argv) {
+    bool have_scene = false;
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--no-hud") == 0) {
+            render_lab_show_hud = false;
+        } else if (strcmp(argv[i], "--scene") == 0 && i + 1 < argc) {
+            if (!scene_named(argv[i + 1])) {
+                return false;
+            }
+            have_scene = true;
+            i++;
+        }
+    }
+    if (!have_scene) {
+        fprintf(stderr, "render_lab_render_host needs --scene gouraud|plane|cube|sphere|capsule|cornell\n");
+    }
+    return have_scene;
 }
 
 int
