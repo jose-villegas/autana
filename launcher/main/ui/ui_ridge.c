@@ -34,44 +34,45 @@
 #endif
 
 /* What is judged by eye is a tunable: a development build changes these on
- * the running device ("SET launcher.ridge_trail 200"), a release build
- * compiles them in. The values here are the ones that ship. */
-TUNE_INT(glow_radius, 13);
-TUNE_INT(glow_core, 3);
-TUNE_INT(glow_core_rgb, 0xFFFFFF);
-TUNE_INT(glow_halo_rgb, 0x38D6E8);
+ * the running device ("SET ridge.trail 200"), a release build compiles them
+ * in. The values here are the ones that ship. */
+TUNE_OWNER(ridge);
+TUNE(ridge, glow_radius, 13, 1, GFX_GLOW_MAX_RADIUS);
+TUNE(ridge, glow_core, 3, 1, GFX_GLOW_MAX_RADIUS);
+TUNE(ridge, glow_core_rgb, 0xFFFFFF, 0, 0xFFFFFF);
+TUNE(ridge, glow_halo_rgb, 0x38D6E8, 0, 0xFFFFFF);
 /* Levels of stippled light in the halo; none is a smooth one. */
-TUNE_INT(glow_steps, 0);
+TUNE(ridge, glow_steps, 0, 0, 16);
 
 /* What becomes of the light the line leaves behind as it moves, out of 256
  * per redraw: 0 wipes it, 255 never does, between is a trail that fades. */
-TUNE_INT(ridge_trail, 226);
+TUNE(ridge, trail, 226, 0, 255);
 
 /* A tap flicks the line up; a finger drawn along it plucks it again every
  * STRUM_STEP_PX. Thousandths of a pixel per spring tick, over pluck_width
  * columns to either side. */
-TUNE_INT(pluck_tap, 8000);
-TUNE_INT(pluck_strum, 8000);
-TUNE_INT(pluck_width, 32);
+TUNE(ridge, pluck_tap, 8000, 0, 8000);
+TUNE(ridge, pluck_strum, 8000, 0, 8000);
+TUNE(ridge, pluck_width, 32, 2, 80);
 #define STRUM_STEP_PX 12
 
 /* The spring's own three, out of 256 - see spring_line.h. */
-TUNE_INT(spring_tension, 64);
-TUNE_INT(spring_stiffness, 4);
-TUNE_INT(spring_damping, 2);
+TUNE(ridge, spring_tension, 64, 0, 250);
+TUNE(ridge, spring_stiffness, 4, 1, 64);
+TUNE(ridge, spring_damping, 2, 0, 64);
 
 /* ridge_motion.h's, by the names a developer types. */
-TUNE_INT(breath_ms, 5000);
-TUNE_INT(breath_depth, 164);
-TUNE_INT(breath_smooth, 20);
-TUNE_INT(wave_height, 300);
-TUNE_INT(wave_length, 164);
-TUNE_INT(wave_period_ms, 2600);
-TUNE_INT(tilt_push, 350);
-TUNE_INT(tilt_coast_ms, 2000);
+TUNE(ridge, breath_ms, 5000, 500, 60000);
+TUNE(ridge, breath_depth, 164, 0, 256);
+TUNE(ridge, breath_smooth, 20, 0, 60);
+TUNE(ridge, wave_height, 300, 0, 400);
+TUNE(ridge, wave_length, 164, 8, 1000);
+TUNE(ridge, wave_period_ms, 2600, 100, 60000);
+TUNE(ridge, tilt_push, 350, 0, 1000);
+TUNE(ridge, tilt_coast_ms, 2000, 50, 10000);
 
 /* How long the line takes to cover about two thirds of a turn toward level. */
-TUNE_INT(level_tau_ms, 700);
+TUNE(ridge, level_tau_ms, 700, 10, 5000);
 
 /* Shaking plucks the line at random, harder the harder it is shaken. */
 #define SHAKE_THRESHOLD  48
@@ -80,8 +81,8 @@ TUNE_INT(level_tau_ms, 700);
 /* How long the line keeps boot's pose before gravity gets it, and how long
  * breathing and the wave then take to come in. Until released it is rigid:
  * at the hand-over it has to lie on the photograph. */
-TUNE_INT(boot_hold_ms, 700);
-TUNE_INT(ambient_ease_ms, 4000);
+TUNE(ridge, boot_hold_ms, 700, 0, 10000);
+TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 
 /* Below this share of a g in the screen plane the device is lying too flat
  * for "down" to mean anything, and the line keeps the level it had. Out of
@@ -152,33 +153,6 @@ typedef struct {
 static ridge_t* ridge;
 static bool allocation_tried;
 
-static void
-register_tunables(void) {
-    TUNE_REGISTER("launcher.ridge_trail", ridge_trail, 0, 255);
-    TUNE_REGISTER("launcher.glow_radius", glow_radius, 1, GFX_GLOW_MAX_RADIUS);
-    TUNE_REGISTER("launcher.glow_core", glow_core, 1, GFX_GLOW_MAX_RADIUS);
-    TUNE_REGISTER("launcher.glow_core_rgb", glow_core_rgb, 0, 0xFFFFFF);
-    TUNE_REGISTER("launcher.glow_halo_rgb", glow_halo_rgb, 0, 0xFFFFFF);
-    TUNE_REGISTER("launcher.glow_steps", glow_steps, 0, 16);
-    TUNE_REGISTER("launcher.pluck_tap", pluck_tap, 0, 8000);
-    TUNE_REGISTER("launcher.pluck_strum", pluck_strum, 0, 8000);
-    TUNE_REGISTER("launcher.pluck_width", pluck_width, 2, 80);
-    TUNE_REGISTER("launcher.spring_tension", spring_tension, 0, 250);
-    TUNE_REGISTER("launcher.spring_stiffness", spring_stiffness, 1, 64);
-    TUNE_REGISTER("launcher.spring_damping", spring_damping, 0, 64);
-    TUNE_REGISTER("launcher.breath_ms", breath_ms, 500, 60000);
-    TUNE_REGISTER("launcher.breath_depth", breath_depth, 0, 256);
-    TUNE_REGISTER("launcher.breath_smooth", breath_smooth, 0, 60);
-    TUNE_REGISTER("launcher.wave_height", wave_height, 0, 400);
-    TUNE_REGISTER("launcher.wave_length", wave_length, 8, 1000);
-    TUNE_REGISTER("launcher.wave_period_ms", wave_period_ms, 100, 60000);
-    TUNE_REGISTER("launcher.tilt_push", tilt_push, 0, 1000);
-    TUNE_REGISTER("launcher.tilt_coast_ms", tilt_coast_ms, 50, 10000);
-    TUNE_REGISTER("launcher.boot_hold_ms", boot_hold_ms, 0, 10000);
-    TUNE_REGISTER("launcher.ambient_ease_ms", ambient_ease_ms, 0, 30000);
-    TUNE_REGISTER("launcher.level_tau_ms", level_tau_ms, 10, 5000);
-}
-
 static bool
 glow_is_mapped(void) {
     return glow_radius >= MAP_FROM_RADIUS;
@@ -204,9 +178,7 @@ bake_what_is_tuned(void) {
     ridge_motion_smooth(ridge->rigid, ridge->smooth, ridge->shape, RIDGE_COLUMNS, breath_smooth);
     memcpy(ridge->shape, ridge->heights, sizeof ridge->shape);
     prepare_light();
-#if TUNE_ENABLED
-    ridge->tuned_at = tune_generation();
-#endif
+    ridge->tuned_at = TUNE_GENERATION(ridge);
 }
 
 /* On first use rather than at boot, so the memory is not taken from a boot
@@ -223,7 +195,6 @@ allocate_once(void) {
     }
     memset(ridge, 0, sizeof *ridge);
     spring_line_init(&ridge->line, ridge->offset, ridge->velocity, RIDGE_COLUMNS);
-    register_tunables();
     ridge_motion_extend(ridge_curve_y, RIDGE_CURVE_POINTS, ridge->rigid, RIDGE_EXTRA);
     memcpy(ridge->heights, ridge->rigid, sizeof ridge->heights);
     ridge->ambient = true;
@@ -290,7 +261,7 @@ static void
 draw_ridge(void) {
     FRAME_COST_BEGIN(began);
     gfx_glow_curve_posed(&ridge->field, glow_is_mapped() ? &ridge->map : NULL, RIDGE_CURVE_VIEW_H, ridge->pose,
-                         ridge->lit_lo, ridge->lit_hi, ridge_trail, &ridge->style);
+                         ridge->lit_lo, ridge->lit_hi, trail, &ridge->style);
     ridge->pose_on_screen = ridge->pose;
     FRAME_COST_END(began, "ridge.draw");
 }
@@ -436,13 +407,10 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
         return;
     }
     FRAME_COST_BEGIN(began);
-    bool retuned = false;
-#if TUNE_ENABLED
-    if (tune_generation() != ridge->tuned_at) {
+    const bool retuned = TUNE_GENERATION(ridge) != ridge->tuned_at;
+    if (retuned) {
         bake_what_is_tuned();
-        retuned = true;
     }
-#endif
     ridge->line.tension = spring_tension;
     ridge->line.stiffness = spring_stiffness;
     ridge->line.damping = spring_damping;
@@ -472,7 +440,7 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
      * the line stopped. */
     const bool moved = line_moved || settles_now || retuned || pose_moved_enough_to_see();
     if (moved) {
-        ridge->fade_draws_left = gfx_glow_trail_draws(ridge_trail);
+        ridge->fade_draws_left = gfx_glow_trail_draws(trail);
     } else if (ridge->fade_draws_left > 0) {
         ridge->fade_draws_left--;
     }
