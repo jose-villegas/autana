@@ -194,6 +194,36 @@ sand_chunk_run_lane(sand_chunk_sched_t* k, int lane, unsigned spin_limit, sand_c
     }
 }
 
+int
+sand_chunk_makespan(const sand_chunk_order_t* o, int cols, int rows, const int* cost) {
+    int finish[SAND_CHUNKS_MAX] = {0};
+    int lane_idle[2] = {0, 0};
+    int span = 0;
+
+    for (int pos = 0; pos < o->count; pos++) {
+        const int idx = o->at[pos];
+        const int cx = idx % cols;
+        const int cy = idx / cols;
+        int start = lane_idle[pos & 1];
+
+        for (int n = 0; n < 8; n++) {
+            const int nx = cx + chunk_ring[n][0];
+            const int ny = cy + chunk_ring[n][1];
+            if ((unsigned)nx >= (unsigned)cols || (unsigned)ny >= (unsigned)rows) {
+                continue;
+            }
+            const int r = o->rank[ny * cols + nx];
+            if (r < pos && finish[r] > start) {
+                start = finish[r];
+            }
+        }
+        finish[pos] = start + cost[idx];
+        lane_idle[pos & 1] = finish[pos];
+        span = (finish[pos] > span) ? finish[pos] : span;
+    }
+    return span;
+}
+
 void
 sand_chunk_run_rest(sand_chunk_sched_t* k, sand_chunk_fn_t fn, void* pass) {
     for (int pos = 0; pos < k->order.count; pos++) {

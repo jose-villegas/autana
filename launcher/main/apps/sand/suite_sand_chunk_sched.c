@@ -447,32 +447,9 @@ test_one_lane_alone_aborts_and_the_rest_finishes_the_board(void) {
 
 /* --- makespan ------------------------------------------------------------- */
 
-/* A chunk starts at the later of its lane going idle and its lower-ranked
- * neighbours finishing - the schedule's own rule with a cost per chunk in
- * place of real work. */
 static int
 cs_makespan(const cs_case_t* c, const int* cost) {
-    int finish[SAND_CHUNKS_MAX] = {0};
-    int lane_idle[2] = {0, 0};
-    int span = 0;
-
-    for (int pos = 0; pos < c->order.count; pos++) {
-        const int idx = c->order.at[pos];
-        int nb[8];
-        const int n = cs_neighbours(c->plan.cols, c->plan.rows, idx % c->plan.cols, idx / c->plan.cols, nb);
-        int start = lane_idle[pos & 1];
-
-        for (int i = 0; i < n; i++) {
-            const int r = c->order.rank[nb[i]];
-            if (r < pos && finish[r] > start) {
-                start = finish[r];
-            }
-        }
-        finish[pos] = start + cost[idx];
-        lane_idle[pos & 1] = finish[pos];
-        span = (finish[pos] > span) ? finish[pos] : span;
-    }
-    return span;
+    return sand_chunk_makespan(&c->order, c->plan.cols, c->plan.rows, cost);
 }
 
 static void
