@@ -40,7 +40,7 @@ while [ $# -gt 0 ]; do
         --perf-scope) PERF=1 ;;
         --icount) RUN_ARGS="$RUN_ARGS --icount" ;;
         --no-build) BUILD=0 ;;
-        --suite | --touch | --screenshot)
+        --suite | --touch | --do | --screenshot)
             [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
             AUTORUN=0
             RUN_ARGS="$RUN_ARGS $1 $2"
