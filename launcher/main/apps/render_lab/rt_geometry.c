@@ -11,6 +11,7 @@
 #include "rt_geometry.h"
 
 #include <math.h>
+#include <stddef.h>
 
 #define RT_EPSILON 0.0001f
 #define RT_MAX_T   100.0f
