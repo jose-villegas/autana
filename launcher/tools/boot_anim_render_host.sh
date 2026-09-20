@@ -19,6 +19,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=boot_anim
 scene_sources="
 main/gfx/gfx.c
+main/util/tune.c
 main/boot/boot_anim.c
 tools/boot_anim_render_host.c
 "
