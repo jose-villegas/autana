@@ -17,11 +17,11 @@ what any particular name means, so a new variant added to the suite shows
 up in the report with no changes needed here.
 
 Usage:
-    python main/apps/cube/tools/report_cube_perf.py <raw_capture.txt> <out.md>
+    python main/apps/render_lab/tools/report_cube_perf.py <raw_capture.txt> <out.md>
 
 Exit 2 means the capture has no run in it to report on.
 
-Lives under the cube app because report_cube_perf.sh is its only caller -
+Lives under render_lab because report_cube_perf.sh is its only caller -
 same convention as sand's own tools/ folder: deleting the app takes its
 tooling with it.
 """

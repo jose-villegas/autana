@@ -57,6 +57,7 @@ boot_anim_unused_pixel(S3L_PixelInfo* pixel) {
 #include "boot/boot_anim_curve.h"
 #include "boot/boot_anim_timeline.h"
 #include "gfx/gfx_font.h"
+#include "render/r3d_project.h"
 #include "util/intmath.h"
 #include "util/trig.h"
 #include "util/tween.h"
@@ -191,11 +192,11 @@ boot_anim_t_to_s3l(int32_t t_q8) {
     return (t_q8 * BOOT_ANIM_T_TO_S3L_Q8) >> 8;
 }
 
-/* see boot_anim_view() below; S3L_perspectiveDivide() needs focal length */
-typedef struct {
-    S3L_Mat4 matrix;
-    S3L_Unit focal;
-} boot_anim_view_t;
+/* The general camera-space clip and perspective projection this needs live
+ * in render/r3d_project.h, shared with a caller drawing something other
+ * than this timeline; boot_anim_view_t is the r3d_view_t that environment
+ * takes, plus whatever boot_anim_view() below fills it with each frame. */
+typedef r3d_view_t boot_anim_view_t;
 
 static inline boot_anim_view_t
 boot_anim_view(int w, int h, uint32_t now_ms) {
@@ -212,6 +213,10 @@ boot_anim_view(int w, int h, uint32_t now_ms) {
     boot_anim_view_t v;
     S3L_mat4Copy(space_mat, v.matrix);
     v.focal = BOOT_ANIM_CAMERA_FOCAL;
+    v.near_z = R3D_NEAR_Z; /* a small fraction of a meter here */
+    v.center_x = S3L_HALF_RESOLUTION_X;
+    v.center_y = S3L_HALF_RESOLUTION_Y;
+    v.scale = S3L_HALF_RESOLUTION_X; /* both axes scale by the X half */
     return v;
 }
 
@@ -225,84 +230,31 @@ boot_anim_to_camera_space(int32_t re_q12, int32_t im_q12, int32_t t_q8, const bo
     p.z = BOOT_ANIM_ZETA_TO_S3L(im_q12);
     p.w = S3L_F;
 
-    S3L_vec3Xmat4(&p, (S3L_Unit(*)[4])view->matrix);
-    return p;
-}
-
-static inline void
-boot_anim_camera_to_screen(S3L_Vec4 p, S3L_Unit focal, int* screen_x, int* screen_y) {
-    p.z = S3L_nonZero(p.z);
-    S3L_perspectiveDivide(&p, focal);
-
-    /* NOT S3L_mapProjectionPlaneToScreen(): its S3L_ScreenCoord defaults
-     * to int16_t, and S3L_USE_WIDER_TYPES would widen S3L_Unit itself to
-     * int64_t everywhere - a real cost with no native 64-bit ALU. This
-     * repeats its formula but with just the multiply done in int64_t: a
-     * near-camera point's already-divided p.x/p.y can be large enough to
-     * overflow a 32-bit product here even though the final on/off-panel
-     * result never does - gfx.c's clip_line() leans on the same trick. */
-    *screen_x = (int)(S3L_HALF_RESOLUTION_X + ((int64_t)p.x * S3L_HALF_RESOLUTION_X) / S3L_F);
-    *screen_y = (int)(S3L_HALF_RESOLUTION_Y - ((int64_t)p.y * S3L_HALF_RESOLUTION_X) / S3L_F);
+    return r3d_to_camera_space(p, view);
 }
 
 static inline void
 boot_anim_project(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view, int* screen_x,
                   int* screen_y) {
     const S3L_Vec4 p = boot_anim_to_camera_space(re_q12, im_q12, t_q8, view);
-    boot_anim_camera_to_screen(p, view->focal, screen_x, screen_y);
+    r3d_camera_to_screen(p, view, screen_x, screen_y);
 }
-
-/* Small fraction of a meter - see boot_anim_project_segment_cs() */
-#define BOOT_ANIM_NEAR_Z (S3L_F / 10)
 
 /* Draws if point is in front; checks visibility, avoids invalid coordinates. */
 static inline bool
 boot_anim_project_point(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view, int* screen_x,
                         int* screen_y) {
     const S3L_Vec4 p = boot_anim_to_camera_space(re_q12, im_q12, t_q8, view);
-    if (p.z <= BOOT_ANIM_NEAR_Z) {
-        return false;
-    }
-    boot_anim_camera_to_screen(p, view->focal, screen_x, screen_y);
-    return true;
+    return r3d_project_point_cs(p, view, screen_x, screen_y);
 }
 
-/* Clips to near plane; avoids screen wrap. Returns false if segment is at or
- * behind the plane. */
-static inline bool
-boot_anim_project_segment_cs(S3L_Vec4 p0, S3L_Vec4 p1, const boot_anim_view_t* view, int* ax, int* ay, int* bx,
-                             int* by) {
-    const bool front0 = p0.z > BOOT_ANIM_NEAR_Z;
-    const bool front1 = p1.z > BOOT_ANIM_NEAR_Z;
-
-    if (!front0 && !front1) {
-        return false;
-    }
-
-    if (front0 != front1) {
-        /* Replace endpoint with crossing point using linear interpolation in
-         * camera space. */
-        S3L_Vec4* behind = front0 ? &p1 : &p0;
-        const S3L_Vec4* front = front0 ? &p0 : &p1;
-        const int64_t frac_q16 = ((int64_t)(BOOT_ANIM_NEAR_Z - behind->z) << 16) / (front->z - behind->z);
-
-        behind->x += (int32_t)(((int64_t)(front->x - behind->x) * frac_q16) >> 16);
-        behind->y += (int32_t)(((int64_t)(front->y - behind->y) * frac_q16) >> 16);
-        behind->z = BOOT_ANIM_NEAR_Z;
-    }
-
-    boot_anim_camera_to_screen(p0, view->focal, ax, ay);
-    boot_anim_camera_to_screen(p1, view->focal, bx, by);
-    return true;
-}
-
-/* See boot_anim_project_segment_cs() for clipping. draw_curve() keeps points
- * in camera space. */
+/* See r3d_project_segment_cs() for clipping. draw_curve() keeps points in
+ * camera space. */
 static inline bool
 boot_anim_project_segment(int32_t re0, int32_t im0, int32_t t0, int32_t re1, int32_t im1, int32_t t1,
                           const boot_anim_view_t* view, int* ax, int* ay, int* bx, int* by) {
-    return boot_anim_project_segment_cs(boot_anim_to_camera_space(re0, im0, t0, view),
-                                        boot_anim_to_camera_space(re1, im1, t1, view), view, ax, ay, bx, by);
+    return r3d_project_segment_cs(boot_anim_to_camera_space(re0, im0, t0, view),
+                                  boot_anim_to_camera_space(re1, im1, t1, view), view, ax, ay, bx, by);
 }
 
 /*
@@ -433,7 +385,7 @@ boot_anim_spline_cs(S3L_Vec4 c0, S3L_Vec4 c1, S3L_Vec4 c2, int32_t t_q12) {
 
 static inline bool
 boot_anim_screen_chord_lt(S3L_Vec4 a, S3L_Vec4 c, const boot_anim_view_t* view, int32_t px) {
-    if (a.z <= BOOT_ANIM_NEAR_Z || c.z <= BOOT_ANIM_NEAR_Z) {
+    if (a.z <= view->near_z || c.z <= view->near_z) {
         return false;
     }
     const int32_t dx = im_abs((int)(a.x - c.x));

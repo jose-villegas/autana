@@ -231,7 +231,7 @@ Three things fall out of that table:
    2026-09-13). The bus is not what puts our cube below that.
 2. **Their per-pixel cost is roughly an order of magnitude lower.** A flat
    span is a run of stores, two pixels per 32-bit write. Our `shade_pixel()`
-   (`launcher/main/apps/cube/app_cube.c:123-152`) does nine multiplies,
+   (`launcher/main/apps/render_lab/scene_cube.c:112-151`) does nine multiplies,
    three shifts, three clamps and a colour pack per pixel, inside the
    callback small3dlib invokes once per pixel with freshly computed
    barycentrics. The cube's 12 triangles cover far more pixels than a few

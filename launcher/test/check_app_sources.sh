@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# Compile-check the hardware-facing app_*.c files on the host.
+# Compile-check the hardware-facing app_*.c and scene_*.c files on the host.
 #
 # WHY THIS EXISTS
 #
-# run_tests.sh deliberately skips every apps/<name>/app_*.c: those are the
-# files that talk to gfx, the IMU and the frame loop, so they cannot link
-# on a laptop and there is nothing to run. That is the right call for
+# run_tests.sh deliberately skips every apps/<name>/app_*.c and scene_*.c:
+# those are the files that talk to gfx, the IMU and the frame loop, so they
+# cannot link on a laptop and there is nothing to run. That is the right call for
 # TESTING and it left a hole in CHECKING - the files were not compiled at
 # all, by anything, until a full ESP-IDF build on the device.
 #
@@ -60,7 +60,7 @@ done
 
 status=0
 found=0
-for f in "$MAIN_DIR"/apps/*/app_*.c; do
+for f in "$MAIN_DIR"/apps/*/app_*.c "$MAIN_DIR"/apps/*/scene_*.c; do
     [ -e "$f" ] || continue
     found=$((found + 1))
     # shellcheck disable=SC2086

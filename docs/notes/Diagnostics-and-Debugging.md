@@ -217,11 +217,12 @@ For anything deeper than an fps number: `app_sand.c` carries its own
 `CONFIG_LAUNCHER_DEVELOPMENT`-gated rolling averages (step/draw timing,
 awake-cell counts) logged periodically - see
 `main/apps/sand/tools/report_performance.sh` for the host-side report
-generator. The cube app has a dedicated on-device performance suite
-(`main/apps/cube/suite_cube_perf.c`) for phase-by-phase timing (logic /
-rasterise / HUD / present) against a 60fps budget, run the same way as any
-other on-device suite (see [above](#does-it-still-hold-on-the-real-chip---on-device-suite));
-`main/apps/cube/tools/report_cube_perf.sh` is its host-side report.
+generator. The render lab app's cube scene has a dedicated on-device
+performance suite (`main/apps/render_lab/suite_cube_perf.c`) for
+phase-by-phase timing (logic / rasterise / HUD / present) against a 60fps
+budget, run the same way as any other on-device suite (see
+[above](#does-it-still-hold-on-the-real-chip---on-device-suite));
+`main/apps/render_lab/tools/report_cube_perf.sh` is its host-side report.
 
 ## Orientation or the IMU seems wrong
 

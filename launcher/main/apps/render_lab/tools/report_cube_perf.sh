@@ -7,13 +7,13 @@
 # run rather than one assertion per test - that it needs its own parser.
 #
 # Usage:
-#   main/apps/cube/tools/report_cube_perf.sh [--no-restore] [COM_PORT] \
+#   main/apps/render_lab/tools/report_cube_perf.sh [--no-restore] [COM_PORT] \
 #       [OUT.md] [IDF_EXPORT]
 #
 #   COM_PORT     serial port the device is on. Found by USB identity when
 #                omitted - see tools/find_port.sh.
 #   OUT.md       markdown report path. Default:
-#                main/apps/cube/tools/results/cube_perf_<timestamp>.md
+#                main/apps/render_lab/tools/results/cube_perf_<timestamp>.md
 #   IDF_EXPORT   path to ESP-IDF's export script. Default: build_flash.sh's.
 #   --no-restore leave the device on the diagnostics image afterwards.
 #
@@ -24,12 +24,12 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-# tools -> cube -> apps -> main -> launcher.
+# tools -> render_lab -> apps -> main -> launcher.
 LAUNCHER_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../../.." && pwd)
 
 report_name=cube_perf
-# The app's own results dir - deleting main/apps/cube/ takes its scratch
-# output with it too, same as sand's.
+# The app's own results dir - deleting main/apps/render_lab/ takes its
+# scratch output with it too, same as sand's.
 report_dir="$SCRIPT_DIR/results"
 report_suite=""
 

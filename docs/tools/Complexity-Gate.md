@@ -16,7 +16,7 @@ file counted twice:
 - **The diagnostics build's own database**,
   `launcher/build.diag/compile_commands.json` - real esp32s3 flags,
   restricted to `launcher/main/` and `launcher/test/`. This is what
-  reaches hardware-facing files: `app_sand.c`, `app_cube.c`,
+  reaches hardware-facing files: `app_sand.c`, `app_render_lab.c`,
   `app_diagnostics.c`, `main.c`, `gfx/gfx.c`, `ui/ui.c`,
   `ui/ui_launcher.c`, `board/board_esp32s3.c`, `boot/*.c`,
   `input/buttons.c`, `input/imu.c`, `input/touch.c`,
