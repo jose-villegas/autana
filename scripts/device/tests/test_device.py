@@ -698,6 +698,178 @@ class BatchTests(unittest.TestCase):
             self.run_batch(perf_scope=True, script_text="--diag --dev")
 
 
+class HardResetViaRtsTests(unittest.TestCase):
+    """The reset pulse selftest() issues on an already-open connection -
+    RTS high then low, DTR held low throughout for a normal boot."""
+
+    def test_pulses_rts_and_leaves_dtr_low(self):
+        connection = mock.Mock()
+        with mock.patch.object(device.time, "sleep") as slept:
+            device.hard_reset_via_rts(connection)
+        self.assertFalse(connection.dtr)
+        self.assertFalse(connection.rts)
+        slept.assert_called_once_with(device.RESET_PULSE_S)
+
+
+class DecodeCrashAddressesTests(unittest.TestCase):
+    """decode_crash_addresses() turns a Backtrace line into addr2line's
+    output, the same symbolication idf_monitor gets for free when handed
+    a .elf."""
+
+    def test_no_crash_line_needs_no_addr2line(self):
+        with mock.patch.object(device, "toolchain_addr2line",
+                               side_effect=AssertionError("must not be called")):
+            self.assertEqual(device.decode_crash_addresses(b"ordinary log output\n", Path("x.elf")), [])
+
+    def test_a_missing_toolchain_yields_nothing(self):
+        data = b"Backtrace:0x400d1234:0x3ffb1f80\n"
+        with mock.patch.object(device, "toolchain_addr2line", return_value=None):
+            self.assertEqual(device.decode_crash_addresses(data, Path("x.elf")), [])
+
+    def test_addresses_on_a_backtrace_line_are_decoded_once_each(self):
+        data = b"Backtrace:0x400d1234:0x3ffb1f80 0x400d1234:0x3ffb1fa0\n"
+        result = mock.Mock(stdout="main.c:42\n")
+        with mock.patch.object(device, "toolchain_addr2line", return_value=Path("addr2line")), \
+             mock.patch.object(device.subprocess, "run", return_value=result) as run:
+            decoded = device.decode_crash_addresses(data, Path("x.elf"))
+        self.assertEqual(decoded, ["main.c:42"])
+        command = run.call_args[0][0]
+        self.assertEqual(command.count("0x400d1234"), 1)
+
+
+class SelftestTests(unittest.TestCase):
+    """selftest() flashes diag+autorun under one held lock, then resets on
+    the already-open connection and captures until SELFTEST_COMPLETE."""
+
+    def run_selftest(self, perf_scope=False):
+        calls = {"flash_extra_flags": None, "held_lock": None, "reset": False}
+
+        class FakeLock:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *unused):
+                return False
+
+        def fake_flash(args, store, port, held_lock=None, extra_flags=()):
+            calls["flash_extra_flags"] = list(extra_flags)
+            calls["held_lock"] = held_lock
+            return "abc123-diag"
+
+        connection = FakeConnection([b"free heap after framebuffer: 123456 bytes\n",
+                                     b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\n"])
+
+        def fake_reset(conn):
+            calls["reset"] = True
+            self.assertIs(conn, connection)
+
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory) / "wt"
+            (worktree / "launcher" / "tools").mkdir(parents=True)
+            root = Path(directory) / "records"
+            args = Namespace(owner="agent", purpose="autana selftest", wait=0,
+                             worktree=str(worktree), suite=None, out=None, perf_scope=perf_scope,
+                             max_seconds=5, idle_seconds=None)
+            store = mock.Mock()
+            store.acquire.return_value = {"log": "", "token": "token"}
+            with mock.patch.object(device, "flash", fake_flash), \
+                 mock.patch.object(device, "hard_reset_via_rts", fake_reset), \
+                 mock.patch.object(device, "open_serial", return_value=connection), \
+                 mock.patch.object(device, "wait_for_port"), \
+                 mock.patch.object(device, "records_root", return_value=root), \
+                 mock.patch.object(device, "git_commit", return_value="deadbeef"):
+                code = device.selftest(args, store, "COM5")
+                entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
+        return code, calls, entry
+
+    def test_flashes_diag_with_autorun_under_the_batch_lock(self):
+        code, calls, entry = self.run_selftest()
+        self.assertEqual(code, 0)
+        self.assertEqual(calls["flash_extra_flags"], ["--autorun"])
+        self.assertIsNotNone(calls["held_lock"])
+
+    def test_perf_scope_is_passed_to_the_build(self):
+        _, calls, _ = self.run_selftest(perf_scope=True)
+        self.assertEqual(sorted(calls["flash_extra_flags"]), ["--autorun", "--perf-scope"])
+
+    def test_resets_on_the_same_open_connection_before_capturing(self):
+        _, calls, _ = self.run_selftest()
+        self.assertTrue(calls["reset"])
+
+    def test_records_the_selftest_command_and_build_id(self):
+        _, _, entry = self.run_selftest()
+        self.assertEqual(entry["command"], "selftest")
+        self.assertEqual(entry["build_id"], "abc123-diag")
+        self.assertIsNone(entry["error"])
+
+    def test_a_failing_run_is_reported_but_still_records_cleanly(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory) / "wt"
+            (worktree / "launcher" / "tools").mkdir(parents=True)
+            root = Path(directory) / "records"
+            connection = FakeConnection([
+                b":1:test_one:FAIL: boom\nSELFTEST_COMPLETE failures=1 elapsed_ms=10\n",
+            ])
+            args = Namespace(owner="agent", purpose="autana selftest", wait=0,
+                             worktree=str(worktree), suite=None, out=None, perf_scope=False,
+                             max_seconds=5, idle_seconds=None)
+            store = mock.Mock()
+            store.acquire.return_value = {"log": "", "token": "token"}
+            with mock.patch.object(device, "flash", return_value="abc123-diag"), \
+                 mock.patch.object(device, "hard_reset_via_rts"), \
+                 mock.patch.object(device, "open_serial", return_value=connection), \
+                 mock.patch.object(device, "wait_for_port"), \
+                 mock.patch.object(device, "records_root", return_value=root), \
+                 mock.patch.object(device, "git_commit", return_value="deadbeef"):
+                code = device.selftest(args, store, "COM5")
+        self.assertEqual(code, 1)
+
+
+class SelftestSuiteModeTests(unittest.TestCase):
+    """selftest() with --suite: build WITHOUT autorun and delegate to
+    run_suite() under the same lock - device_report.sh's RUNSUITE-based
+    reports (report_boot_anim_perf.sh) need exactly this."""
+
+    def run_selftest_suite(self):
+        calls = {"flash_extra_flags": None, "run_suite": None}
+
+        def fake_flash(args, store, port, held_lock=None, extra_flags=()):
+            calls["flash_extra_flags"] = list(extra_flags)
+            return "abc123-diag"
+
+        def fake_run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
+            calls["run_suite"] = (args.suite, args.out, held_lock, worktree, commit)
+            return 0
+
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory) / "wt"
+            (worktree / "launcher" / "tools").mkdir(parents=True)
+            args = Namespace(owner="agent", purpose="p", wait=0, worktree=str(worktree),
+                             suite="run_boot_anim_perf_suite", out="raw.txt", perf_scope=False,
+                             max_seconds=60, idle_seconds=None)
+            store = mock.Mock()
+            store.acquire.return_value = {"log": "", "token": "token"}
+            with mock.patch.object(device, "flash", fake_flash), \
+                 mock.patch.object(device, "run_suite", fake_run_suite), \
+                 mock.patch.object(device, "git_commit", return_value="deadbeef"):
+                code = device.selftest(args, store, "COM5")
+        return code, calls
+
+    def test_builds_without_autorun(self):
+        code, calls = self.run_selftest_suite()
+        self.assertEqual(code, 0)
+        self.assertEqual(calls["flash_extra_flags"], [])
+
+    def test_delegates_to_run_suite_under_the_same_lock_with_the_given_out_path(self):
+        _, calls = self.run_selftest_suite()
+        suite, out, held_lock, worktree, commit = calls["run_suite"]
+        self.assertEqual(suite, "run_boot_anim_perf_suite")
+        self.assertEqual(out, "raw.txt")
+        self.assertIsNotNone(held_lock)
+        self.assertTrue(worktree.endswith("wt"))
+        self.assertEqual(commit, "deadbeef")
+
+
 class ScreenshotCommandTests(unittest.TestCase):
     """device.screenshot() under a faked serial port, driving the real
     launcher/tools/screenshot.py decode - see that module's own tests
