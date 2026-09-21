@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Fail when a file outside scripts/device/ opens the board's serial port,
-or a document names a script retired in favour of the `autana` CLI.
+or a document names a board script this tree no longer has.
 
     python scripts/gates/check_device_access.py
 
@@ -11,9 +11,8 @@ opens pyserial's `Serial(`, invokes `idf_monitor`/`idf.py monitor`, or shells
 out to `esptool` bypasses that lock, so two sessions can fight over one port.
 `ALLOWLIST` is the explicit, small list of exceptions (QEMU is not the board).
 
-A retired script named in a document is a dead pointer - see
-`RETIRED_SCRIPTS` for the list and `docs/tools/Autana-CLI.md` for what
-replaced each one.
+A document naming one of `RETIRED_SCRIPTS` points at a file that does not
+exist; the board is reached through `autana`, docs/tools/Autana-CLI.md.
 """
 import pathlib
 import re
@@ -42,9 +41,13 @@ SERIAL_IMPORT_RE = re.compile(r"^\s*(import serial\b|from serial\b)", re.MULTILI
 IDF_MONITOR_RE = re.compile(r"\bidf_monitor\.py\b|\bidf_monitor_main\b|\bidf(\.py)?\b[^\n#]*\bmonitor\b")
 ESPTOOL_PY_RE = re.compile(r'"-m",\s*"esptool"|\besptool_main\b|^\s*import esptool\b', re.MULTILINE)
 ESPTOOL_SH_RE = re.compile(r"(?<![\w./-])esptool(\.py)?\b")
+# Flashing opens the port exactly like monitoring does - `idf ... flash` /
+# `idf.py ... flash` bypasses the device lock the same way an unwrapped
+# `idf.py ... monitor` would, unless it is build_flash.sh's own invocation,
+# which refuses to run without AUTANA_DEVICE_LOCK_TOKEN (allowlisted below).
+IDF_FLASH_RE = re.compile(r"\bidf(\.py)?\b[^\n#]*\bflash\b")
 
-# A line that only prints text (an echo/printf, or a Python string literal
-# assigned to nothing executable) is not an invocation - build_flash.sh's own
+# A line that only prints text is not an invocation - build_flash.sh's own
 # "letting esptool pick the port" status line is exactly this shape.
 PRINT_LINE_RE = re.compile(r'^\s*(echo|printf)\b')
 
@@ -73,7 +76,7 @@ def is_comment_or_print(path, line):
     return bool(PRINT_LINE_RE.match(line))
 
 
-#  scripts/device/ is the one place allowed to touch the port at all;
+# scripts/device/ is the one place allowed to touch the port at all;
 # scripts/gates/ is exempt too - a gate's own source and tests describe and
 # exercise these exact patterns as data, never run them against hardware.
 EXEMPT_PREFIXES = ("scripts/device/", "scripts/gates/")
@@ -98,6 +101,8 @@ def serial_port_openers(root):
                 found.append(Violation(path, number, "invokes idf_monitor"))
             elif ESPTOOL_PY_RE.search(line):
                 found.append(Violation(path, number, "invokes esptool"))
+            elif IDF_FLASH_RE.search(line):
+                found.append(Violation(path, number, "invokes idf/idf.py flash"))
     for path in tracked_files(root, ["*.sh"]):
         if path.startswith(EXEMPT_PREFIXES) or not (root / path).is_file():
             continue
@@ -109,6 +114,8 @@ def serial_port_openers(root):
                 found.append(Violation(path, number, "invokes idf_monitor"))
             elif ESPTOOL_SH_RE.search(line):
                 found.append(Violation(path, number, "invokes esptool"))
+            elif IDF_FLASH_RE.search(line):
+                found.append(Violation(path, number, "invokes idf/idf.py flash"))
     return found
 
 
@@ -131,14 +138,29 @@ def allowlist(root):
 RETIRED_WORD_RE = re.compile(
     r"(?<![A-Za-z0-9_.])(" + "|".join(re.escape(name) for name in RETIRED_SCRIPTS) + r")(?![A-Za-z0-9_])")
 
+# Extensions this scan never reads as text - a binary that happens to
+# contain these bytes is not a "mention" in the sense this check cares
+# about, and decoding one as UTF-8 is wasted work at best.
+BINARY_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".bmp", ".otf", ".ttf",
+                     ".woff", ".woff2", ".xcf", ".bin", ".elf", ".o", ".a", ".exe",
+                     ".dll", ".pyc", ".gz", ".zip", ".wav", ".mp3", ".mp4"}
+
 
 def retired_script_mentions(root):
-    """Every (doc, line, name) where a tracked document names a retired
-    script - the exact list device_report.sh and autana now replace."""
+    """Every (path, line, name) where a tracked text file names one of
+    `RETIRED_SCRIPTS`. Every tracked file, not only docs: a stale name has
+    turned up in CI workflow comments and .gitignore too. scripts/gates/ is
+    exempt, the same self-reference reason serial_port_openers() already
+    exempts it for."""
     root = pathlib.Path(root)
     found = []
-    for path in tracked_files(root, ["*.md"]):
-        text = (root / path).read_text(encoding="utf-8", errors="replace")
+    for path in tracked_files(root, []):
+        if path.startswith("scripts/gates/") or pathlib.PurePosixPath(path).suffix.lower() in BINARY_EXTENSIONS:
+            continue
+        full = root / path
+        if not full.is_file():
+            continue
+        text = full.read_text(encoding="utf-8", errors="replace")
         for number, line in enumerate(text.splitlines(), 1):
             for match in RETIRED_WORD_RE.finditer(line):
                 found.append(Violation(path, number, f"names retired script {match.group(1)}"))

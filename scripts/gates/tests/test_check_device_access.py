@@ -99,6 +99,37 @@ class DeviceAccessTest(unittest.TestCase):
             openers, _ = check_device_access.check(root)
         self.assertEqual(openers, [])
 
+    def test_an_idf_flash_invocation_is_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/tools/rogue_flash.sh",
+                      '#!/bin/sh\nidf -B build -p "$COM_PORT" flash\n')
+            self.commit(root, "launcher")
+            openers, _ = check_device_access.check(root)
+        self.assertEqual(len(openers), 1)
+        self.assertIn("flash", openers[0].reason)
+
+    def test_build_flash_sh_itself_needs_the_allowlist(self):
+        # It genuinely invokes `idf ... flash` - only its own runtime check
+        # (AUTANA_DEVICE_LOCK_TOKEN) makes that safe, which this gate cannot
+        # see; without the allowlist entry it is correctly flagged.
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/tools/build_flash.sh",
+                      '#!/bin/sh\nidf -B "$BUILD_DIR" -p "$COM_PORT" flash\n')
+            self.commit(root, "launcher")
+            openers, _ = check_device_access.check(root)
+        self.assertEqual(len(openers), 1)
+
+    def test_an_idf_flash_mention_inside_an_echo_string_is_not_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/tools/guidance.sh",
+                      '#!/bin/sh\necho "Flash with: idf.py -B build -p COM3 flash"\n')
+            self.commit(root, "launcher")
+            openers, _ = check_device_access.check(root)
+        self.assertEqual(openers, [])
+
     def test_an_idf_monitor_script_invocation_is_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
@@ -130,6 +161,36 @@ class DeviceAccessTest(unittest.TestCase):
             _, retired = check_device_access.check(root)
         self.assertEqual(len(retired), 1)
         self.assertIn("screenshot.sh", retired[0].reason)
+
+    def test_a_non_markdown_tracked_file_is_also_scanned(self):
+        # A stale name turned up in a CI workflow comment and .gitignore,
+        # neither of which is a .md file.
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, ".gitignore", "# from test/run_device_tests.sh\nbuild.diag/\n")
+            self.commit(root, ".gitignore")
+            _, retired = check_device_access.check(root)
+        self.assertEqual(len(retired), 1)
+        self.assertIn("run_device_tests.sh", retired[0].reason)
+
+    def test_a_binary_file_is_not_read_as_text(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            target = root / "design" / "boot.png"
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b"\x89PNG\r\n\x1a\nscreenshot.sh" * 4)
+            self.commit(root, "design")
+            _, retired = check_device_access.check(root)
+        self.assertEqual(retired, [])
+
+    def test_scripts_gates_is_exempt_from_the_retired_name_scan_too(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "scripts/gates/check_device_access.py",
+                      "RETIRED_SCRIPTS = ('screenshot.sh', 'monitor.sh')\n")
+            self.commit(root, "scripts")
+            _, retired = check_device_access.check(root)
+        self.assertEqual(retired, [])
 
     def test_a_doc_naming_the_replacement_command_is_not_flagged(self):
         with tempfile.TemporaryDirectory() as temp:

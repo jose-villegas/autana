@@ -6,8 +6,8 @@ name: Comment Rules
 # apps/ naming an app, and none recording where code moved. Alongside it,
 # the tree-wide invariants documentation and tooling must hold: every
 # citation resolves, constants match source, and nothing outside
-# scripts/device/ opens the board's serial port or names a script the
-# `autana` CLI retired.
+# scripts/device/ opens the board's serial port or names one of the board
+# scripts the tree no longer has.
 # Enforced here so the rules hold for every commit, however it was made.
 #
 # Own workflow file, like the other four, purely so it gets its own badge -
