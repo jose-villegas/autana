@@ -1,8 +1,9 @@
 # Diagnostics variant: the firmware plus the on-device test suites.
 #
-# Used by test/run_device_tests.sh, which builds it into its own directory so
-# it never overwrites the normal build. Not for shipping - the suites draw to
-# the panel and add test code to the image.
+# Used by `tools/build_flash.sh --diag` (autana's own `flash diag` and
+# `selftest`), which builds it into its own directory so it never overwrites
+# the normal build. Not for shipping - the suites draw to the panel and add
+# test code to the image.
 #
 # CONFIG_LAUNCHER_SELFTEST depends on CONFIG_LAUNCHER_DEVELOPMENT (see
 # Kconfig.projbuild), so this file must set both - Kconfig will not turn the

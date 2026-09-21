@@ -90,6 +90,13 @@ import tempfile
 
 TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 LAUNCHER_DIR = os.path.dirname(TOOLS_DIR)
+ENGINE_DIR = os.path.dirname(LAUNCHER_DIR)
+
+# The device lock, the same one every autana verb takes - build_and_flash()
+# below is this tool's own board access and must queue behind it rather
+# than fight it for the port.
+sys.path.insert(0, os.path.join(ENGINE_DIR, "scripts", "device"))
+import device  # noqa: E402
 MAIN_DIR = os.path.join(LAUNCHER_DIR, "main")
 SMALL3DLIB_DIR = os.path.join(LAUNCHER_DIR, "components", "small3dlib", "include")
 MICROUI_DIR = os.path.join(LAUNCHER_DIR, "components", "microui", "include")
@@ -574,10 +581,20 @@ class Renderer:
         # would otherwise hang this request forever - see its own comment
         # on the `|| true` that makes stdin-at-EOF there a no-op, not a
         # reported failure.
-        proc = subprocess.run(
-            [bash, script_for_bash, port],
-            cwd=LAUNCHER_DIR, stdin=subprocess.DEVNULL,
-            capture_output=True, text=True, timeout=BUILD_FLASH_TIMEOUT_S)
+        #
+        # Held for the whole build+flash, same as every other autana verb -
+        # build_flash.sh itself refuses to flash without the token this
+        # puts in AUTANA_DEVICE_LOCK_TOKEN, so a second flash (an agent's,
+        # or another /build_flash request) cannot land mid-write.
+        store = device.device_lock.LockStore()
+        with device.HeldLock(store, port, "boot-anim-editor", "boot anim preview flash",
+                             wait=300) as held:
+            environment = os.environ.copy()
+            environment["AUTANA_DEVICE_LOCK_TOKEN"] = held.held["token"]
+            proc = subprocess.run(
+                [bash, script_for_bash, port],
+                cwd=LAUNCHER_DIR, stdin=subprocess.DEVNULL, env=environment,
+                capture_output=True, text=True, timeout=BUILD_FLASH_TIMEOUT_S)
         log = proc.stdout + proc.stderr
         if proc.returncode != 0:
             if "No such file or directory" in log and script_for_bash in log:

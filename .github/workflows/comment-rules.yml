@@ -3,7 +3,11 @@ name: Comment Rules
 # The comment rules docs/C-Style-Guide.md states, measured rather than
 # argued: nothing beside code over 500 characters, no file header over 50
 # lines, no comment naming a function that does not exist, none below
-# apps/ naming an app, and none recording where code moved.
+# apps/ naming an app, and none recording where code moved. Alongside it,
+# the tree-wide invariants documentation and tooling must hold: every
+# citation resolves, constants match source, and nothing outside
+# scripts/device/ opens the board's serial port or names one of the board
+# scripts the tree no longer has.
 # Enforced here so the rules hold for every commit, however it was made.
 #
 # Own workflow file, like the other four, purely so it gets its own badge -
@@ -48,6 +52,9 @@ jobs:
 
       - name: Every document is reachable from README.md
         run: python3 scripts/gates/check_doc_index.py
+
+      - name: The board is reached only through scripts/device/
+        run: python3 scripts/gates/check_device_access.py
 
       # Warns, never fails: a changed function a document cites is a reason
       # to reread that document, not proof it is wrong.

@@ -219,7 +219,7 @@ no third option to chase here.
 
 ### Panel-link faults are invisible to screenshots
 
-`screenshot.sh` reads the framebuffer, not the glass, and `main.c` requests
+`autana screenshot` reads the framebuffer, not the glass, and `main.c` requests
 a full redraw right after a capture - which re-sends every region with a
 different layout and heals whatever the link corrupted. A fault between the
 chip and the panel has to be judged by eye on the device. To tell a software

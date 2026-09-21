@@ -15,9 +15,9 @@ symptom, not by tool - skim the table, jump to the matching section.
 | Board is unresponsive / will not flash | [Board won't boot](#board-wont-boot-or-wont-flash) |
 | Logic might be wrong in code you're writing | [Host test suite](#is-the-logic-right---host-test-suite) - sub-second loop |
 | Passes on host, not sure it holds on the real chip | [On-device test suite](#does-it-still-hold-on-the-real-chip---on-device-suite) |
-| Need to see exactly what's on screen right now | [Screenshot + device state](#what-does-the-screen-look-like-right-now---screenshotsh) |
-| Need live logs, or a crash to resolve to file:line | [monitor.sh](#live-logs-and-crash-backtraces---monitorsh) |
-| Typing into `monitor.sh` does nothing | [Console channel](#the-console-is-usb-serial-jtag-not-uart0) / [mintty](#typing-into-monitorsh-under-git-bash--msys2) |
+| Need to see exactly what's on screen right now | [Screenshot + device state](#what-does-the-screen-look-like-right-now---autana-screenshot) |
+| Need live logs, or a crash to resolve to file:line | [autana monitor](#live-logs-and-crash-backtraces---autana-monitor) |
+| Need to send the board a command | [Sending the board a line](#sending-the-board-a-line) |
 | A render looks wrong - stale pixels, wrong region sent | [gfx debug overlays](#rendering-looks-wrong---gfx-debug-overlays) |
 | Stray pixels/lines on the glass that a screenshot does not show | [Panel-link faults](Display-and-Rendering.md#panel-link-faults-are-invisible-to-screenshots) |
 | Frame rate / performance seems off | [Performance](#performance-seems-off) |
@@ -56,21 +56,21 @@ logic rather than about the actual board. See
 ## Does it still hold on the real chip? - on-device suite
 
 ```bash
-./launcher/test/run_device_tests.sh              # build, flash, collect results
+autana selftest                                   # build, flash, run every suite
 ./launcher/tools/report_test_results.sh           # same, plus a markdown report
 ```
 
 Builds the diagnostics variant, flashes it, and runs *every* registered
 suite - portable ones included - actually compiled by the Xtensa toolchain
 and executed on the chip, which a host run cannot vouch for. Needs a
-`CONFIG_LAUNCHER_SELFTEST` build (`build_flash_diag.sh` /
-`build_flash.sh --diag`); see [`../Build-Variants.md`](../Build-Variants.md)
-for what that flag carries versus `--dev`.
+`CONFIG_LAUNCHER_SELFTEST` build; see
+[`../Build-Variants.md`](../Build-Variants.md) for what that flag carries
+versus `--dev`.
 
-## What does the screen look like right now? - `screenshot.sh`
+## What does the screen look like right now? - `autana screenshot`
 
 ```bash
-./launcher/tools/screenshot.sh
+autana screenshot
 ```
 
 Captures whatever is currently on screen as a lossless `.png`, plus a
@@ -82,53 +82,46 @@ against memory/sensor conditions at that instant - see
 `main/console/console_screenshot.c` and `main/util/device_state.h` for the
 mechanism and the full field list.
 
-- The device streams a 24bpp BMP over the wire, but `screenshot.py` converts
-  it to PNG in memory (stdlib `zlib`/`struct`, no Pillow) before anything
-  touches disk - the `.bmp` is never written.
+- The device streams a 24bpp BMP over the wire, decoded to PNG in memory
+  (stdlib `zlib`/`struct`, no Pillow) before anything touches disk - the
+  `.bmp` is never written.
 
 - **Development-only** (`--dev` or `--diag` build) - a release build carries
   none of it.
 - **Slow by design**: a full 368x448 frame is roughly 650 KB of base64 over
-  115200 baud, taking the better part of a minute. The script prints
-  progress every few seconds so this does not read as a hang.
+  115200 baud, taking the better part of a minute. `autana screenshot`
+  prints progress every few seconds so this does not read as a hang.
 - **Does not reset the board** - opens the port with DTR/RTS held low so a
   capture shows whatever app was already running, not a restarted boot
   animation.
-- Only one process can hold the serial port at a time - close `monitor.sh`
-  first.
+- Takes the device lock, so it queues behind whatever else already holds
+  the board rather than fighting it for the port.
 - **Every render mode.** An indexed-colour app (256 or 16 colours) keeps no
   framebuffer; its frame is rebuilt row by row through the same expansion
   the present path sends. An app drawing in RGB565 bands keeps no image at
   all, so the capture forces one full redraw and copies each band into a
   temporary PSRAM snapshot as it is sent. If that cannot happen (the
   snapshot does not fit, or the app stops drawing), the device answers `SCREENSHOT_REFUSED:`
-  with the reason and the script exits at once.
+  with the reason and the command exits at once.
 - **Blind to the panel link.** It captures the framebuffer, and the shell
   requests a full redraw right after, which heals a corrupted panel. Stray
   pixels or lines seen on the glass but not in the capture are a link fault;
   see "Panel-link faults are invisible to screenshots" in
   [`Display-and-Rendering.md`](Display-and-Rendering.md).
 
-To test the listener in isolation from the host script, attach `monitor.sh`
-and type `screenshot` (then Enter) directly - the firmware logs `screenshot:
-trigger received` (or `ignoring line: '...'` if something else arrived),
-the cleanest way to tell a firmware-side problem from a host-script one.
-
-## Live logs and crash backtraces - `monitor.sh`
+## Live logs and crash backtraces - `autana monitor`
 
 ```bash
-./monitor.sh
+autana monitor
 ```
 
-Attaches to the console without paying ESP-IDF's ~90s environment-activation
-cost. Picks up whichever `launcher/build*/launcher.elf` was most recently
-built automatically - `idf.py build`, `build_flash.sh`,
-`build_flash_dev.sh` and `build_flash_diag.sh` write to differently named
-directories (`build/` for release, `build.dev/`, `build.diag/`), so there is
-no single fixed default to guess; pass `-e path/to/other.elf` to
-pin a specific one. Passing the right `.elf` matters for more than
-bookkeeping - it carries the debug symbols that turn a crash address into a
-file and line number.
+Streams the console for a while (60 seconds when no argument is given), and
+decodes any crash address it sees against an ELF's symbols - the build
+directory whose own `build_id.txt` matches the capture's `BUILD_ID`, or
+`--elf path/to/other.elf` to pin a specific one. Passing the right `.elf`
+matters for more than bookkeeping - it carries the debug symbols that turn
+a crash address into a file and line number. See
+[`../tools/Autana-CLI.md`](../tools/Autana-CLI.md).
 
 ## The console is USB-Serial-JTAG, not UART0
 
@@ -144,7 +137,7 @@ written), USB-Serial-JTAG as a write-only secondary mirror (see
 describes this exact mismatch and names the fix). Left at that default,
 logging over the one cable this board actually has looks completely normal -
 every line shows up as expected - while anything sent the OTHER direction (a
-typed idf_monitor command, `screenshot.sh`'s trigger, anything) goes
+typed idf_monitor command, `autana screenshot`'s trigger, anything) goes
 nowhere: console reads only ever come from the primary channel, and
 USB-Serial-JTAG was only ever the secondary.
 
@@ -162,22 +155,11 @@ fixed has the wrong choice baked into its own `sdkconfig`; delete the
 directory and rebuild rather than expecting `sdkconfig.defaults` alone to
 retroactively fix one that already exists.
 
-## Typing into `monitor.sh` under Git Bash / MSYS2
+## Sending the board a line
 
-idf_monitor.py's keypress capture on Windows uses `msvcrt`, which needs a
-real Win32 console. Raw mintty (the terminal Git Bash / MSYS2 opens) is its
-own pty emulation, not one - so keystrokes can silently fail to reach
-idf_monitor at all unless the session is wrapped in `winpty`. Modern Git for
-Windows usually does this automatically; if typing into a running
-`monitor.sh` session produces no reaction whatsoever, try:
-
-```bash
-winpty sh monitor.sh -e launcher/build.dev/launcher.elf
-```
-
-idf_monitor also does not locally echo what you type, working or not - do
-not expect characters to visibly appear as you type them either way; watch
-the device's own log response instead.
+`autana monitor` only reads. To send, start a session with `autana` and
+type a verb there (`help` lists them); each line takes the device lock,
+sends, and lets go.
 
 ## Rendering looks wrong - gfx debug overlays
 
@@ -206,7 +188,7 @@ gated behind `CONFIG_LAUNCHER_DEVELOPMENT` the way other instrumentation is
 (worth knowing if you go looking for it and expect it gated the same way as
 everything else on this page - see the note in
 [`../Build-Variants.md`](../Build-Variants.md#development-only-instrumentation-is-its-own-flag-not-selftest)
-on what should be gated and why). `monitor.sh` shows it directly, no special
+on what should be gated and why). `autana monitor` shows it directly, no special
 build needed.
 
 For anything deeper than an fps number: `app_sand.c` carries its own
@@ -228,7 +210,7 @@ Two ways to see raw sensor readings without adding any code:
   shows the raw accelerometer counts, the derived gx/gy display orientation
   is actually computed from, and the shell's current quarter-turn, all at
   once, so a physical hold can be pinned to an exact number.
-- **A `screenshot.sh` capture's `.json`** - the `imu` object (raw
+- **An `autana screenshot` capture's `.json`** - the `imu` object (raw
   accelerometer + gyroscope counts) and `orientation_quarter` field are a
   snapshot at one specific frame, useful when the question is "what was the
   board reading at the moment this visual bug happened" rather than a live
@@ -247,7 +229,7 @@ Two ways to see raw sensor readings without adding any code:
   at each boot phase, plus one heap block map where the framebuffer lands.
   This is the fastest way to tell a static-footprint problem from an
   allocation-order one, and it is what settled that question in one boot.
-- **A `screenshot.sh` capture's `.json`** - `heap_free_bytes` (current) and
+- **An `autana screenshot` capture's `.json`** - `heap_free_bytes` (current) and
   `heap_min_free_bytes` (the low-water mark since boot - shows a transient
   allocation that already freed again, which `heap_free_bytes` alone
   cannot).
@@ -267,4 +249,4 @@ Two ways to see raw sensor readings without adding any code:
 - [`../plans/Settings-App-Plan.md`](../plans/Settings-App-Plan.md) - that open split,
   and the SELFTEST/"diagnostics" naming mismatch it would resolve.
 - [`Flashing-and-Toolchain.md`](Flashing-and-Toolchain.md) - board recovery,
-  and the toolchain details `monitor.sh` depends on.
+  and the toolchain details `autana monitor`'s crash decoding depends on.
