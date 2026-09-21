@@ -2,7 +2,8 @@
  * console - see console.h. The device half: installs whichever serial
  * driver this build's console runs on, then blocks a dedicated task on it
  * for one verb line at a time, matched against console_shared()'s
- * registry.
+ * registry. A line nothing there claims is latched instead of logged -
+ * see console_app_line.h for what the frame loop does with it.
  *
  * Every verb this dispatches to only sets a flag or writes a small reply -
  * none of them draw, none call into gfx or an app. That split matters most
@@ -12,6 +13,8 @@
  * render loop runs on the main one would be two tasks driving one panel.
  */
 #include "console/console.h"
+#include "console/console_app_line.h"
+#include "console/console_latch.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -34,6 +37,16 @@ static console_registry_t shared;
 console_registry_t*
 console_shared(void) {
     return &shared;
+}
+
+/* A line no registered verb claimed - see console_app_line.h's own comment
+ * for why this task only ever latches one, never decides whether an app
+ * wants it. */
+static console_latch_t app_line_latch;
+
+bool
+console_take_unclaimed_line(char* out, size_t out_size) {
+    return console_latch_take(&app_line_latch, out, out_size);
 }
 
 void
@@ -147,8 +160,8 @@ console_task(void* arg) {
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
-        if (console_append_char(line, &len, c) && !console_registry_handle_line(&shared, line, console_reply_stdio)) {
-            ESP_LOGI(TAG, "ignoring line: '%s'", line);
+        if (console_append_char(line, &len, c)) {
+            console_dispatch_or_latch(&shared, line, console_reply_stdio, &app_line_latch);
         }
     }
 }

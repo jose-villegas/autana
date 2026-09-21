@@ -90,6 +90,15 @@ typedef struct {
      * device-state JSON as a new "app" key. Diagnostic only - nothing
      * about the app's own behaviour depends on this. */
     void (*diagnostic_json)(char* out, size_t len);
+
+    /* Opt-in, like diagnostic_json above: NULL unless an app sets it, and
+     * called only on CONFIG_LAUNCHER_DEVELOPMENT builds. A console line no
+     * registered verb (console/console_verbs.h) claimed reaches the
+     * running app through this, at most once per frame - return true to
+     * claim it, false to leave it unclaimed (logged and dropped, same as
+     * an app with no callback at all). Runs on the frame loop, not the
+     * console's own reader task, so a reply can printf() directly. */
+    bool (*console_line)(const char* line);
 } app_t;
 
 /*

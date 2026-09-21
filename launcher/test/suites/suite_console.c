@@ -1,9 +1,10 @@
 /*
- * Portable suite: console_verbs (dispatch, registration discipline) and
- * console_latch (the frame-loop handoff), driven here with a registry and
- * latches this suite owns - never console_shared(), which only a device
- * build's CONSOLE_VERB() entries ever touch. Also the TOUCH/IMU parsers
- * (console_inject_parse.h), moved here from suite_build_id.c.
+ * Portable suite: console_verbs (dispatch, registration discipline),
+ * console_latch (the frame-loop handoff) and console_app_line (an
+ * unclaimed line's route to the running app), driven here with a registry
+ * and latches this suite owns - never console_shared(), which only a
+ * device build's CONSOLE_VERB() entries ever touch. Also the TOUCH/IMU
+ * parsers (console_inject_parse.h), moved here from suite_build_id.c.
  */
 
 #include <stdio.h>
@@ -12,6 +13,8 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "app.h"
+#include "console/console_app_line.h"
 #include "console/console_inject_parse.h"
 #include "console/console_latch.h"
 #include "console/console_verbs.h"
@@ -306,6 +309,67 @@ test_taking_into_a_smaller_buffer_truncates_too(void) {
     TEST_ASSERT_EQUAL_STRING("abc", small);
 }
 
+/* console_dispatch_or_latch() is what console.c's reader task actually
+ * calls for every line - registry first, so a verb an app also happens to
+ * spell the same way still wins and never even reaches the latch. */
+static void
+test_dispatch_or_latch_prefers_a_registered_verb_over_latching(void) {
+    fixture();
+    TEST_ASSERT_TRUE(console_register(&registry, &alpha_verb));
+    console_latch_t unclaimed = {0};
+
+    TEST_ASSERT_TRUE(console_dispatch_or_latch(&registry, "ALPHA", collect, &unclaimed));
+    TEST_ASSERT_EQUAL_STRING("ALPHA", last_verb);
+    TEST_ASSERT_FALSE_MESSAGE(unclaimed.pending, "a verb that claimed the line must never reach the latch");
+}
+
+static void
+test_dispatch_or_latch_latches_a_line_no_verb_claims(void) {
+    fixture();
+    TEST_ASSERT_TRUE(console_register(&registry, &alpha_verb));
+    console_latch_t unclaimed = {0};
+    char out[CONSOLE_ARGS_MAX];
+
+    TEST_ASSERT_FALSE(console_dispatch_or_latch(&registry, "counts", collect, &unclaimed));
+    TEST_ASSERT_TRUE(console_latch_take(&unclaimed, out, sizeof out));
+    TEST_ASSERT_EQUAL_STRING("counts", out);
+}
+
+static char captured_app_line[64];
+static bool app_line_claims;
+
+static bool
+fake_app_console_line(const char* line) {
+    strncpy(captured_app_line, line, sizeof captured_app_line - 1);
+    captured_app_line[sizeof captured_app_line - 1] = '\0';
+    return app_line_claims;
+}
+
+/* console_app_line_offer() is the frame loop's own half - what main.c calls
+ * once it has taken the latch above. */
+static void
+test_app_line_offer_reaches_a_running_apps_callback(void) {
+    app_line_claims = true;
+    captured_app_line[0] = '\0';
+    const app_t app = {.console_line = fake_app_console_line};
+
+    TEST_ASSERT_TRUE(console_app_line_offer(&app, "counts"));
+    TEST_ASSERT_EQUAL_STRING("counts", captured_app_line);
+}
+
+static void
+test_app_line_offer_is_false_without_an_app_a_callback_or_a_claim(void) {
+    app_line_claims = true;
+    TEST_ASSERT_FALSE_MESSAGE(console_app_line_offer(NULL, "counts"), "no app is running");
+
+    const app_t no_callback = {0};
+    TEST_ASSERT_FALSE_MESSAGE(console_app_line_offer(&no_callback, "counts"), "the app set no console_line");
+
+    app_line_claims = false;
+    const app_t declines = {.console_line = fake_app_console_line};
+    TEST_ASSERT_FALSE_MESSAGE(console_app_line_offer(&declines, "counts"), "the callback itself declined it");
+}
+
 static void
 test_touch_line_carries_its_sample(void) {
     bool down = false;
@@ -382,6 +446,10 @@ suite_console(void) {
     RUN_TEST(test_a_second_set_before_a_take_keeps_the_newer_args);
     RUN_TEST(test_a_latch_truncates_args_that_do_not_fit_without_overflowing);
     RUN_TEST(test_taking_into_a_smaller_buffer_truncates_too);
+    RUN_TEST(test_dispatch_or_latch_prefers_a_registered_verb_over_latching);
+    RUN_TEST(test_dispatch_or_latch_latches_a_line_no_verb_claims);
+    RUN_TEST(test_app_line_offer_reaches_a_running_apps_callback);
+    RUN_TEST(test_app_line_offer_is_false_without_an_app_a_callback_or_a_claim);
     RUN_TEST(test_touch_line_carries_its_sample);
     RUN_TEST(test_a_malformed_touch_line_changes_nothing);
     RUN_TEST(test_a_touch_line_fits_the_console_line);
