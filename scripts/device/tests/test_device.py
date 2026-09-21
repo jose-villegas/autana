@@ -601,7 +601,7 @@ class RunSuiteRecordsWorktreeTests(unittest.TestCase):
                  mock.patch.object(device.Path, "cwd", return_value=Path("C:/some/worktree")):
                 device.run_suite(args, store, "COM5")
             entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
-        self.assertEqual(entry["worktree"], "C:\\some\\worktree")
+        self.assertEqual(entry["worktree"], str(Path("C:/some/worktree")))
 
 
 class BatchTests(unittest.TestCase):
