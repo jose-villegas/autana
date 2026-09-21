@@ -1,1 +1,3 @@
 # path<TAB>YYYY-MM-DD<TAB>optional review note
+docs/sand/Architecture.md	2026-09-21	PR #337 round 2: reviewed against the declared console prefix contract, accurate
+docs/Building-an-App.md	2026-09-21	PR #337 round 2: reviewed against the declared console prefix contract, accurate
