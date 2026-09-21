@@ -17,7 +17,7 @@ symptom, not by tool - skim the table, jump to the matching section.
 | Passes on host, not sure it holds on the real chip | [On-device test suite](#does-it-still-hold-on-the-real-chip---on-device-suite) |
 | Need to see exactly what's on screen right now | [Screenshot + device state](#what-does-the-screen-look-like-right-now---autana-screenshot) |
 | Need live logs, or a crash to resolve to file:line | [autana monitor](#live-logs-and-crash-backtraces---autana-monitor) |
-| Typing into `autana monitor` does nothing | [Console channel](#the-console-is-usb-serial-jtag-not-uart0) / [mintty](#typing-into-autana-monitor-under-git-bash--msys2) |
+| Need to send the board a command | [Sending the board a line](#sending-the-board-a-line) |
 | A render looks wrong - stale pixels, wrong region sent | [gfx debug overlays](#rendering-looks-wrong---gfx-debug-overlays) |
 | Stray pixels/lines on the glass that a screenshot does not show | [Panel-link faults](Display-and-Rendering.md#panel-link-faults-are-invisible-to-screenshots) |
 | Frame rate / performance seems off | [Performance](#performance-seems-off) |
@@ -109,12 +109,6 @@ mechanism and the full field list.
   see "Panel-link faults are invisible to screenshots" in
   [`Display-and-Rendering.md`](Display-and-Rendering.md).
 
-To test the listener in isolation from the decoder, run `autana` (with no
-arguments) for an interactive session and type `screenshot` there - the
-firmware logs `screenshot: trigger received` (or `ignoring line: '...'` if
-something else arrived) on the same console `autana monitor` reads, the
-cleanest way to tell a firmware-side problem from a host-side one.
-
 ## Live logs and crash backtraces - `autana monitor`
 
 ```bash
@@ -122,10 +116,11 @@ autana monitor
 ```
 
 Streams the console for a while (60 seconds when no argument is given), and
-decodes any crash address it sees against an ELF's symbols - the newest
-build in this worktree, or `--elf path/to/other.elf` to pin a specific one.
-Passing the right `.elf` matters for more than bookkeeping - it carries the
-debug symbols that turn a crash address into a file and line number. See
+decodes any crash address it sees against an ELF's symbols - the build
+directory whose own `build_id.txt` matches the capture's `BUILD_ID`, or
+`--elf path/to/other.elf` to pin a specific one. Passing the right `.elf`
+matters for more than bookkeeping - it carries the debug symbols that turn
+a crash address into a file and line number. See
 [`../tools/Autana-CLI.md`](../tools/Autana-CLI.md).
 
 ## The console is USB-Serial-JTAG, not UART0
@@ -160,14 +155,11 @@ fixed has the wrong choice baked into its own `sdkconfig`; delete the
 directory and rebuild rather than expecting `sdkconfig.defaults` alone to
 retroactively fix one that already exists.
 
-## Typing into `autana monitor` under Git Bash / MSYS2
+## Sending the board a line
 
-`autana monitor` only reads - it never forwards a keypress to the board.
-Reach for `autana`'s own console session (`autana`, then a verb like `tune`,
-`screenshot` or `touch`) to send something, or the interactive `autana`
-session's `help` for the full list; each line there takes the device lock,
-sends, and lets go, so there is no keypress-capture path to trip over the
-way idf_monitor's raw-terminal mode could under mintty.
+`autana monitor` only reads. To send, start a session with `autana` and
+type a verb there (`help` lists them); each line takes the device lock,
+sends, and lets go.
 
 ## Rendering looks wrong - gfx debug overlays
 

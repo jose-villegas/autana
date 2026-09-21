@@ -24,9 +24,9 @@ reconfigures another:
 
 | image | flags | built by | directory |
 |---|---|---|---|
-| release | neither | `idf.py build`, `tools/build_flash.sh` | `build/` |
-| dev | DEVELOPMENT | `tools/build_flash.sh --dev` | `build.dev/` |
-| diagnostics | DEVELOPMENT + SELFTEST | `tools/build_flash.sh --diag`, `autana selftest` | `build.diag/` |
+| release | neither | `idf.py build`, `autana flash rel` | `build/` |
+| dev | DEVELOPMENT | `autana flash dev` | `build.dev/` |
+| diagnostics | DEVELOPMENT + SELFTEST | `autana flash diag`, `autana selftest` | `build.diag/` |
 
 ---
 
@@ -98,7 +98,7 @@ its `.text` *and* its `.bss`, which is what buys the run time back.
 ```sh
 bash launcher/main/apps/sand/tools/report_performance.sh --perf-scope
 # the image alone, left on the board, with no capture taken:
-bash launcher/tools/build_flash.sh --diag --perf-scope
+autana flash diag --perf-scope
 # by hand, the fragment simply appends to the usual three:
 idf.py -B build.diag.<yours> \
   -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag;sdkconfig.defaults.diag_autorun;sdkconfig.defaults.diag_perf" \
