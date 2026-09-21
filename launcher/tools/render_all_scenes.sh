@@ -24,6 +24,9 @@
 # With -o, each scene writes into its own subdirectory of that directory
 # instead of the results/render/ folder beside it.
 #
+# --video asks every scene to also write each render's frames to an AVI
+# beside its BMP; it does not change what gets pinned.
+#
 # POSIX sh, like the rest of this directory.
 
 set -eu
@@ -36,8 +39,9 @@ SCENE_ARGS=""
 while [ $# -gt 0 ]; do
     case "$1" in
         -o) OUT_ROOT="$2"; shift 2 ;;
-        --update-baseline) SCENE_ARGS="--update-baseline"; shift ;;
-        *) echo "usage: $0 [-o <dir>] [--update-baseline]" >&2; exit 2 ;;
+        --update-baseline) SCENE_ARGS="$SCENE_ARGS --update-baseline"; shift ;;
+        --video) SCENE_ARGS="$SCENE_ARGS --video"; shift ;;
+        *) echo "usage: $0 [-o <dir>] [--update-baseline] [--video]" >&2; exit 2 ;;
     esac
 done
 

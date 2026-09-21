@@ -107,6 +107,35 @@ needs one links clean on a laptop and fails only on Linux.
 Re-pin only after looking at the images and agreeing the pixels should have
 changed. The failure names the file to look at and the command to run.
 
+## Video
+
+A BMP is one frame. `--video PATH` (`render_video.h`/`.c`) appends every
+drawn frame instead, into an uncompressed RIFF AVI - so motion, a
+transition, or a scene's settle time can be judged without a flash cycle,
+the same reason the rest of this harness exists. The frame rate is
+`1000 / --dt`, exact as a rational, not rounded. `-o` keeps working
+unchanged alongside `--video`, or on its own.
+
+```sh
+./launcher/tools/boot_anim_render_host.sh --video   # every scene's script takes this,
+                                                     # writing <label>.avi beside <label>.bmp
+python launcher/tools/check_avi.py out.avi ...      # re-reads the header and index and
+                                                     # checks frame count, size and rate agree
+```
+
+RIFF AVI 1.0 keeps its total size in a 32-bit field, so a run whose video
+would pass 1 GB is refused before anything is drawn, with the frame count
+that does fit stated in the refusal. `--video` never changes what a scene's
+BMP pins: the same bytes are written whether or not it is given, so it adds
+no baseline of its own.
+
+A scene animates a `--video` run the way it animates any multi-frame
+render: `boot_anim_render_host.c`'s `<now_ms>` is where the first frame
+starts, and each later frame adds that frame's own `elapsed_ms` to it, the
+harness's usual per-frame schedule. Like every other render this harness
+writes, a video's frames are drawn from a scene's own fixture data - never a
+reading from any board.
+
 ## The second backend: the real image under QEMU
 
 The same scenes, the real Xtensa binary. `test/run_qemu_tests.sh` builds an

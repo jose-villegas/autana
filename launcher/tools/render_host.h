@@ -17,6 +17,9 @@
  *     --frames N    how many frames to draw before the last one is written
  *     --dt N        milliseconds per frame
  *     -o PATH       output file (default: stdout)
+ *     --video PATH  also append every drawn frame to an uncompressed AVI at
+ *                   PATH, in the same orientation the BMP gets - see
+ *                   render_video.h
  *
  * A scene stands in the data its screen normally gets - a fixture table, a
  * timestamp - so nothing rendered here is a reading from any board.
