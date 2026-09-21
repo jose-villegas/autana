@@ -1,16 +1,22 @@
 #!/bin/sh
 #
 # Installed by scripts/install-git-hooks.sh (which points core.hooksPath at
-# this directory). Deliberately a two-line dispatch: the logic lives in a
-# .sh file so CI's shell linting sees it. core.hooksPath is one path shared
-# by every worktree of a clone, so this same file also runs in trees that
-# have no scripts/gates/ - it skips rather than fails when that's the case.
+# this directory). Deliberately a thin dispatch: the logic for each check
+# lives in its own .sh file under scripts/gates/ so CI's shell linting sees
+# it. core.hooksPath is one path shared by every worktree of a clone, so
+# this same file also runs in trees that have no scripts/gates/ - each step
+# skips rather than fails when its script is missing.
 
-script="$(git rev-parse --show-toplevel)/scripts/gates/check-format-staged.sh"
+ROOT="$(git rev-parse --show-toplevel)"
+status=0
 
-if [ ! -x "$script" ]; then
-	echo "pre-commit: format check skipped, this tree has no scripts/gates/check-format-staged.sh" >&2
-	exit 0
-fi
+for script in check-format-staged.sh check-mermaid-staged.sh; do
+	path="$ROOT/scripts/gates/$script"
+	if [ ! -x "$path" ]; then
+		echo "pre-commit: $script skipped, this tree has no scripts/gates/$script" >&2
+		continue
+	fi
+	"$path" || status=$?
+done
 
-exec "$script"
+exit "$status"
