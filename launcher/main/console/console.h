@@ -46,9 +46,5 @@ void console_emit_line(const char* prefix, const char* payload);
  * own console_emit_line() above. */
 void console_reply_stdio(const char* line);
 
-/* True once per line no registered verb claimed, with `out` filled - the
- * same "read and consume once per frame" contract
- * console_screenshot_take_request() uses, for the frame loop to offer to
- * whichever app is running (console/console_app_line.h, main.c). False,
- * with `out` untouched, otherwise. */
+/* True once per unclaimed line, `out` filled; false with `out` untouched. */
 bool console_take_unclaimed_line(char* out, size_t out_size);

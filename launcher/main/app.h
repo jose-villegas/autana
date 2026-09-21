@@ -16,6 +16,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "console/console_verbs.h"
 #include "input/buttons.h"
 
 /* Touch state for the current frame.
@@ -36,6 +37,33 @@ typedef struct {
     button_t boot;
     button_t power;
 } input_t;
+
+/* An app's own console command - docs/tools/Autana-CLI.md's "Adding a
+ * command from an app". The shell matches `prefix` as a whole word
+ * (console_word_match()) and passes `handle` only what follows it. */
+typedef struct {
+    const char* prefix;
+    bool (*handle)(const char* args);
+} app_console_t;
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* APP_CONSOLE() (a top-level declaration, before the app's own app_t) plus
+ * APP_CONSOLE_PTR(handler) (that app_t's `.console = `) are the only
+ * sanctioned way to fill one: two macros because the checks below are
+ * declarations, which cannot sit inside app_t's own constant initializer. */
+#define APP_CONSOLE(prefix, handler)                                                                                   \
+    _Static_assert(sizeof(prefix) > 1, "APP_CONSOLE needs a non-empty prefix");                                        \
+    _Static_assert(sizeof(prefix) < CONSOLE_LINE_MAX, "the prefix plus a space must fit CONSOLE_LINE_MAX");            \
+    static const app_console_t handler##_console = {(prefix), (handler)}
+#define APP_CONSOLE_PTR(handler) (&handler##_console)
+#else
+/* static inline: unused and uncalled, so an optimizing linker drops it and
+ * `handler` behind it, without the -Wunused-function a plain static would
+ * draw for a handler an app still defines unconditionally. */
+#define APP_CONSOLE(prefix, handler)                                                                                   \
+    static inline void handler##_console_unused(void) { (void)(handler); }
+#define APP_CONSOLE_PTR(handler) NULL
+#endif
 
 typedef struct {
     const char* name;
@@ -91,14 +119,9 @@ typedef struct {
      * about the app's own behaviour depends on this. */
     void (*diagnostic_json)(char* out, size_t len);
 
-    /* Opt-in, like diagnostic_json above: NULL unless an app sets it, and
-     * called only on CONFIG_LAUNCHER_DEVELOPMENT builds. A console line no
-     * registered verb (console/console_verbs.h) claimed reaches the
-     * running app through this, at most once per frame - return true to
-     * claim it, false to leave it unclaimed (logged and dropped, same as
-     * an app with no callback at all). Runs on the frame loop, not the
-     * console's own reader task, so a reply can printf() directly. */
-    bool (*console_line)(const char* line);
+    /* Opt-in, NULL unless an app declares one with APP_CONSOLE_PTR() above.
+     * See docs/tools/Autana-CLI.md's "Adding a command from an app". */
+    const app_console_t* console;
 } app_t;
 
 /*

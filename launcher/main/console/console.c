@@ -2,8 +2,8 @@
  * console - see console.h. The device half: installs whichever serial
  * driver this build's console runs on, then blocks a dedicated task on it
  * for one verb line at a time, matched against console_shared()'s
- * registry. A line nothing there claims is latched instead of logged -
- * see console_app_line.h for what the frame loop does with it.
+ * registry. A line nothing there claims is queued for the frame loop
+ * (console_take_unclaimed_line()) instead of being logged and dropped.
  *
  * Every verb this dispatches to only sets a flag or writes a small reply -
  * none of them draw, none call into gfx or an app. That split matters most
@@ -13,7 +13,6 @@
  * render loop runs on the main one would be two tasks driving one panel.
  */
 #include "console/console.h"
-#include "console/console_app_line.h"
 #include "console/console_latch.h"
 
 #include <stdio.h>
@@ -28,6 +27,7 @@
 #endif
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/task.h"
 
 static const char* TAG = "console";
@@ -39,14 +39,27 @@ console_shared(void) {
     return &shared;
 }
 
-/* A line no registered verb claimed - see console_app_line.h's own comment
- * for why this task only ever latches one, never decides whether an app
- * wants it. */
-static console_latch_t app_line_latch;
+/* Lines no registered verb claimed, for the frame loop to drain - a queue,
+ * not a latch: unlike FREEZE/STEP or SCREENSHOT's own single pending
+ * request, an app command is one of a stream, and losing one silently to a
+ * newer one overwriting it is not the same trade a "what should the frame
+ * loop do next" latch makes. Depth 4 costs 4*CONSOLE_LINE_MAX bytes of
+ * static RAM. */
+#define APP_LINE_QUEUE_LEN 4
+
+static QueueHandle_t app_line_queue;
 
 bool
 console_take_unclaimed_line(char* out, size_t out_size) {
-    return console_latch_take(&app_line_latch, out, out_size);
+    if (app_line_queue == NULL) {
+        return false;
+    }
+    char item[CONSOLE_LINE_MAX];
+    if (xQueueReceive(app_line_queue, item, 0) != pdTRUE) {
+        return false;
+    }
+    console_latch_copy(out, out_size, item);
+    return true;
 }
 
 void
@@ -121,28 +134,11 @@ console_emit_line(const char* prefix, const char* payload) {
     emit_bytes("\n", 1);
 }
 
-/* Appends `c` to `line` (tracked by `*len`), returning true once it
- * completes one. */
-static bool
-console_append_char(char* line, int* len, int c) {
-    /* Either terminator ends a line: monitor.sh's Enter key may send '\r'
-     * or '\n', depending on platform. */
-    if (c == '\n' || c == '\r') {
-        if (*len == 0) {
-            return false;
-        }
-        line[*len] = '\0';
-        *len = 0;
-        return true;
+static void
+queue_unclaimed_line(const char* line) {
+    if (app_line_queue == NULL || xQueueSend(app_line_queue, line, 0) != pdTRUE) {
+        ESP_LOGW(TAG, "dropped line: '%s'", line);
     }
-    /* Dropped by resetting `*len`, not by growing the buffer: a line over
-     * CONSOLE_LINE_MAX cannot match any verb regardless. */
-    if (*len < CONSOLE_LINE_MAX - 1) {
-        line[(*len)++] = (char)c;
-    } else {
-        *len = 0;
-    }
-    return false;
 }
 
 static void
@@ -150,6 +146,7 @@ console_task(void* arg) {
     (void)arg;
     char line[CONSOLE_LINE_MAX];
     int len = 0;
+    bool overflowed = false;
 
     while (1) {
         const int c = fgetc(stdin);
@@ -160,8 +157,9 @@ console_task(void* arg) {
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
-        if (console_append_char(line, &len, c)) {
-            console_dispatch_or_latch(&shared, line, console_reply_stdio, &app_line_latch);
+        if (console_append_char(line, &len, &overflowed, c)
+            && !console_registry_handle_line(&shared, line, console_reply_stdio)) {
+            queue_unclaimed_line(line);
         }
     }
 }
@@ -185,6 +183,11 @@ log_listening(void) {
 
 void
 console_start(void) {
+    app_line_queue = xQueueCreate(APP_LINE_QUEUE_LEN, CONSOLE_LINE_MAX);
+    if (app_line_queue == NULL) {
+        ESP_LOGE(TAG, "xQueueCreate failed (out of memory?) - app lines will be dropped");
+    }
+
     const esp_err_t err = console_driver_install();
     if (err != ESP_OK) {
         /* The one most worth calling out by name: this is what happens if
