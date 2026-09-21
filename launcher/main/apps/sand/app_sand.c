@@ -2279,19 +2279,19 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
 }
 #endif /* CONFIG_LAUNCHER_SELFTEST */
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
 static void
 sand_diagnostic_json(char* out, size_t len) {
     snprintf(out, len, "{\"tilt_x\":%d,\"tilt_y\":%d}", tilt_x(&tilt), tilt_y(&tilt));
 }
+#endif /* CONFIG_LAUNCHER_DEVELOPMENT */
 
-/* app_t's own console_line (app.h): "counts" - the console's own way to
- * pour a grid's worth of tally without a screenshot's base64 round trip. One
- * COUNTS line per present material, skipping the ones with nothing on the
- * board. Reply is free here (frame loop, not the console's reader task) -
- * see docs/tools/Autana-CLI.md's "An app's own verbs". */
+/* "sand counts": the grid's per-material tally as text, without a
+ * screenshot's base64 round trip. `args` is what follows APP_CONSOLE's own
+ * "sand " prefix below, never the prefix itself. */
 static bool
-sand_console_line(const char* line) {
-    if (strcmp(line, "counts") != 0) {
+sand_console_line(const char* args) {
+    if (strcmp(args, "counts") != 0) {
         return false;
     }
     int counts[MATERIAL_MAX];
@@ -2302,9 +2302,12 @@ sand_console_line(const char* line) {
         }
         printf("COUNTS %s=%d\n", material_by_id((material_id_t)m)->name, counts[m]);
     }
+    printf("COUNTS_END\n");
     fflush(stdout);
     return true;
 }
+
+APP_CONSOLE("sand", sand_console_line);
 
 /* gfx_request_full_redraw()'s app half (app.h): the row-run spans and
  * dirty-column tracker gfx cannot see, plus the overlay's own UI canvas
@@ -2325,8 +2328,10 @@ const app_t app_sand = {
     .update = sand_update,
     .exit = sand_exit,
     .invalidate = sand_invalidate,
+#if CONFIG_LAUNCHER_DEVELOPMENT
     .diagnostic_json = sand_diagnostic_json,
-    .console_line = sand_console_line,
+#endif
+    .console = APP_CONSOLE_PTR(sand_console_line),
 };
 
 APP_REGISTER(app_sand);
