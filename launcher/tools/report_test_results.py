@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Turns a raw device self-test capture (see tools/sweeps/capture_selftest.py)
-into a markdown report: a summary line, every failure with its assertion
-message, and the full pass/fail list tucked into a collapsible section so the
-failures are what a reader actually sees first.
+"""Turns a raw device self-test capture (see scripts/device/device.py's own
+`selftest`) into a markdown report: a summary line, every failure with its
+assertion message, and the full pass/fail list tucked into a collapsible
+section so the failures are what a reader actually sees first.
 
 Usage:
     python tools/report_test_results.py <raw_capture.txt> <out.md>
@@ -25,7 +25,7 @@ COMPLETE_RE = re.compile(r"SELFTEST_COMPLETE failures=(\d+) elapsed_ms=(\d+)")
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("capture_path", help="Raw capture from capture_selftest.py")
+    parser.add_argument("capture_path", help="Raw capture from scripts/device/device.py selftest")
     parser.add_argument("out_path", help="Markdown file to write")
     args = parser.parse_args()
 

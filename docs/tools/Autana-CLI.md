@@ -20,9 +20,11 @@ autana> buildid
 | | |
 |---|---|
 | `autana flash [rel\|dev\|diag] [--quiet]` | Build and flash the worktree you are standing in, `dev` when the variant is omitted. Output streams to the terminal; `--quiet` leaves it in the log file only. |
-| `autana monitor [seconds]` | Print what the board says, for 60 seconds when omitted. |
+| `autana monitor [seconds] [--elf PATH]` | Print what the board says, for 60 seconds when omitted. Any crash address seen is decoded against `PATH`'s symbols - the newest build in this worktree when `PATH` is omitted. |
 | `autana suite <name> [seconds]` | Run one registered suite and print what it prints. |
 | `autana suite list [text]` | The suites this worktree registers, read from its sources; `[text]` keeps the names containing it. |
+| `autana selftest [seconds]` | Build the diagnostics+autorun image and run every suite this worktree registers, on the device - 3000 seconds when omitted; can take minutes. |
+| `autana batch <suite> [<suite> ...] [--runs N] [--perf-scope] [--variant rel\|dev\|diag]` | Flash once and capture the given suites `--runs` times (3 when omitted) under one lock, so no other session can flash between two captures of the same image; writes one summary across every run. |
 | `autana tune [text]` | The numbers a development build lets you change, with their ranges; `[text]` keeps the names containing it. |
 | `autana tune <name>` | One of them, when the name is exactly one tunable's own (owner optional when unambiguous); the same filtered listing as `[text]` otherwise. |
 | `autana tune <name> <value>` | Change one on the running device. |
@@ -36,6 +38,10 @@ autana> buildid
 | `autana imu <ax> <ay> <az>` | Stand in for the IMU, raw accelerometer counts. |
 | `autana buildid` | The `BUILD_ID` the board answers with, so what is running can be checked against what was flashed. |
 | `autana id` | The name this `autana` holds the board under, and its pid: `autana-cli@<pid in base36>`. |
+| `autana status` | Who, if anyone, holds the board right now, and who else is waiting. |
+| `autana release <token>` | Release a lock this session holds, before its own command would have - the token is what that command printed when it acquired it. |
+| `autana hand <note>` | Reserve the board for a maintainer sitting at it; `autana` refuses new work against it until `take-back`. |
+| `autana take-back` | Clear a reservation `hand` made, freeing the board again. |
 | `autana help` | The same list. |
 
 Inside a session the `autana` prefix is dropped, but tuning stays explicit -

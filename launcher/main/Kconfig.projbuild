@@ -50,7 +50,7 @@ menu "Launcher"
 
             Turn this on through the diagnostics build rather than by hand:
 
-                ./test/run_device_tests.sh
+                autana selftest
 
             which builds this variant into its own directory, flashes it,
             collects the results over the serial console and exits non-zero if
@@ -113,7 +113,7 @@ menu "Launcher"
             bool "Full - every suite"
             help
                 Every suite in the tree, shell-owned and app-owned alike.
-                This is what run_device_tests.sh and report_test_results.sh
+                This is what autana selftest and report_test_results.sh
                 want: a gate is only a gate if it runs everything.
 
         config LAUNCHER_SELFTEST_SCOPE_PERF

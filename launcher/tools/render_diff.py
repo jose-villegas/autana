@@ -4,7 +4,7 @@
                    [--mask NAME ...] [--out diff.png]
 
 Either side may be a host render (tools/render_scene.sh writes 24bpp BMPs)
-or a device capture (tools/screenshot.sh writes a PNG plus a .json sidecar).
+or a device capture (autana screenshot writes a PNG plus a .json sidecar).
 
 ORIENTATION IS DECLARED, NEVER GUESSED. A device capture is always the
 framebuffer the way the panel holds it - 368 x 448 - whatever the shell was

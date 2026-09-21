@@ -5,10 +5,8 @@
 # re-plugs, so a script that hard-codes one stops being a single click the
 # first time the board enumerates somewhere else.
 #
-# Pulled out of screenshot.sh, which needed it first, so the flash scripts
-# find the board the same way rather than through a hand-copied twin - the
-# standing idiom here is a sourced helper, see tools/find_cc.sh and
-# tools/idf.sh.
+# A sourced helper, not a hand-copied twin in each caller - the standing
+# idiom here, see tools/find_cc.sh and tools/idf.sh.
 #
 # Usage - source this file and call find_port():
 #
@@ -21,8 +19,7 @@
 # board, which has no such identity to match.
 #
 # pyserial lives in ESP-IDF's environment, so that interpreter is preferred
-# over whatever python is on PATH - the same search test/run_device_tests.sh
-# uses for collect_device_results.py.
+# over whatever python is on PATH.
 
 find_port_python() {
     _fp_python=$(command -v python3 || command -v python || true)

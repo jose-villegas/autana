@@ -238,7 +238,7 @@ def parse_capture(capture_path: str):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("capture_path", help="Raw capture from capture_selftest.py")
+    parser.add_argument("capture_path", help="Raw capture from scripts/device/device.py selftest")
     parser.add_argument("out_path", help="Markdown file to write")
     # Required, not defaulted to any one app's suite: the parsing above keys
     # only on generic patterns (#ifdef DEVICE_BUILD, Unity's
