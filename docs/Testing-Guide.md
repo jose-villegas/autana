@@ -560,6 +560,8 @@ TEST_ASSERT_FALSE_MESSAGE(second.pressed,
 That message is what a future reader sees at the moment of failure, which is
 exactly when they need it.
 
+**Python tool tests live in a `tests/` subfolder** beside the code they test, even when there is only one test file.
+
 ---
 
 ## The loop
