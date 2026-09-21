@@ -63,18 +63,39 @@ console_register(console_registry_t* registry, console_verb_t* verb) {
 }
 
 bool
+console_word_match(const char* line, const char* name, const char** args) {
+    const size_t n = strlen(name);
+    if (name_ncmp(line, name, n) != 0) {
+        return false;
+    }
+    if (line[n] == '\0') {
+        *args = line + n;
+        return true;
+    }
+    if (line[n] == ' ') {
+        *args = line + n + 1;
+        return true;
+    }
+    return false;
+}
+
+bool
 console_registry_handle_line(console_registry_t* registry, const char* line, console_reply_fn reply) {
     for (const console_verb_t* entry = registry->first; entry != NULL; entry = entry->next) {
-        const size_t n = strlen(entry->name);
-        if (name_ncmp(line, entry->name, n) != 0) {
-            continue;
-        }
-        if (line[n] == '\0') {
-            entry->handle("", reply);
+        const char* args;
+        if (console_word_match(line, entry->name, &args)) {
+            entry->handle(args, reply);
             return true;
         }
-        if (line[n] == ' ') {
-            entry->handle(line + n + 1, reply);
+    }
+    return false;
+}
+
+bool
+console_name_in(const char* name, const char* const* others, int count, int* at) {
+    for (int i = 0; i < count; i++) {
+        if (name_cmp(name, others[i]) == 0) {
+            *at = i;
             return true;
         }
     }

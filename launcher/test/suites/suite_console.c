@@ -1,10 +1,10 @@
 /*
- * Portable suite: console_verbs (dispatch, registration discipline),
- * console_latch (the frame-loop handoff) and console_app_line (an
- * unclaimed line's route to the running app), driven here with a registry
- * and latches this suite owns - never console_shared(), which only a
- * device build's CONSOLE_VERB() entries ever touch. Also the TOUCH/IMU
- * parsers (console_inject_parse.h), moved here from suite_build_id.c.
+ * Portable suite: console_verbs (dispatch, registration discipline,
+ * console_word_match(), console_name_in(), the line assembler) and
+ * console_latch (the frame-loop handoff), driven here with a registry and
+ * latches this suite owns - never console_shared(), which only a device
+ * build's CONSOLE_VERB() entries ever touch. Also the TOUCH/IMU parsers
+ * (console_inject_parse.h), moved here from suite_build_id.c.
  */
 
 #include <stdio.h>
@@ -13,8 +13,6 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "app.h"
-#include "console/console_app_line.h"
 #include "console/console_inject_parse.h"
 #include "console/console_latch.h"
 #include "console/console_verbs.h"
@@ -309,65 +307,117 @@ test_taking_into_a_smaller_buffer_truncates_too(void) {
     TEST_ASSERT_EQUAL_STRING("abc", small);
 }
 
-/* console_dispatch_or_latch() is what console.c's reader task actually
- * calls for every line - registry first, so a verb an app also happens to
- * spell the same way still wins and never even reaches the latch. */
+/* console_word_match() is console_registry_handle_line()'s own matcher,
+ * exported so main.c can match an app's console prefix the same way. */
 static void
-test_dispatch_or_latch_prefers_a_registered_verb_over_latching(void) {
-    fixture();
-    TEST_ASSERT_TRUE(console_register(&registry, &alpha_verb));
-    console_latch_t unclaimed = {0};
+test_word_match_carries_what_follows_the_name(void) {
+    const char* args;
 
-    TEST_ASSERT_TRUE(console_dispatch_or_latch(&registry, "ALPHA", collect, &unclaimed));
-    TEST_ASSERT_EQUAL_STRING("ALPHA", last_verb);
-    TEST_ASSERT_FALSE_MESSAGE(unclaimed.pending, "a verb that claimed the line must never reach the latch");
+    TEST_ASSERT_TRUE(console_word_match("sand counts", "sand", &args));
+    TEST_ASSERT_EQUAL_STRING("counts", args);
+
+    TEST_ASSERT_TRUE(console_word_match("sand", "sand", &args));
+    TEST_ASSERT_EQUAL_STRING("", args);
+
+    TEST_ASSERT_FALSE(console_word_match("sandbox", "sand", &args));
+    TEST_ASSERT_FALSE(console_word_match("san", "sand", &args));
 }
 
 static void
-test_dispatch_or_latch_latches_a_line_no_verb_claims(void) {
-    fixture();
-    TEST_ASSERT_TRUE(console_register(&registry, &alpha_verb));
-    console_latch_t unclaimed = {0};
-    char out[CONSOLE_ARGS_MAX];
-
-    TEST_ASSERT_FALSE(console_dispatch_or_latch(&registry, "counts", collect, &unclaimed));
-    TEST_ASSERT_TRUE(console_latch_take(&unclaimed, out, sizeof out));
-    TEST_ASSERT_EQUAL_STRING("counts", out);
+test_word_match_folds_case(void) {
+    const char* args;
+    TEST_ASSERT_TRUE(console_word_match("SAND counts", "sand", &args));
+    TEST_ASSERT_EQUAL_STRING("counts", args);
 }
 
-static char captured_app_line[64];
-static bool app_line_claims;
-
-static bool
-fake_app_console_line(const char* line) {
-    strncpy(captured_app_line, line, sizeof captured_app_line - 1);
-    captured_app_line[sizeof captured_app_line - 1] = '\0';
-    return app_line_claims;
-}
-
-/* console_app_line_offer() is the frame loop's own half - what main.c calls
- * once it has taken the latch above. */
+/* console_name_in() is the boot-time clash check's own primitive
+ * (main.c): a verb's name and an app's prefix, or two apps' own prefixes,
+ * must never fold to the same word. */
 static void
-test_app_line_offer_reaches_a_running_apps_callback(void) {
-    app_line_claims = true;
-    captured_app_line[0] = '\0';
-    const app_t app = {.console_line = fake_app_console_line};
+test_name_in_finds_a_case_insensitive_match(void) {
+    const char* others[] = {"freeze", "screenshot", "set"};
+    int at = -1;
 
-    TEST_ASSERT_TRUE(console_app_line_offer(&app, "counts"));
-    TEST_ASSERT_EQUAL_STRING("counts", captured_app_line);
+    TEST_ASSERT_TRUE(console_name_in("SET", others, 3, &at));
+    TEST_ASSERT_EQUAL_INT(2, at);
 }
 
 static void
-test_app_line_offer_is_false_without_an_app_a_callback_or_a_claim(void) {
-    app_line_claims = true;
-    TEST_ASSERT_FALSE_MESSAGE(console_app_line_offer(NULL, "counts"), "no app is running");
+test_name_in_is_false_over_a_clean_set(void) {
+    const char* others[] = {"freeze", "screenshot", "set"};
+    int at = -1;
 
-    const app_t no_callback = {0};
-    TEST_ASSERT_FALSE_MESSAGE(console_app_line_offer(&no_callback, "counts"), "the app set no console_line");
+    TEST_ASSERT_FALSE(console_name_in("sand", others, 3, &at));
+}
 
-    app_line_claims = false;
-    const app_t declines = {.console_line = fake_app_console_line};
-    TEST_ASSERT_FALSE_MESSAGE(console_app_line_offer(&declines, "counts"), "the callback itself declined it");
+static void
+test_name_in_finds_a_clash_between_two_apps(void) {
+    const char* prefixes[] = {"sand", "render"};
+    int at = -1;
+
+    TEST_ASSERT_TRUE(console_name_in("Render", prefixes, 2, &at));
+    TEST_ASSERT_EQUAL_INT(1, at);
+}
+
+/* console_append_char() with the CONSOLE_LINE_MAX its own doc comment
+ * describes: an over-long line must not leak a spurious short line made of
+ * its own tail. */
+static void
+test_append_char_delivers_one_line_at_a_time(void) {
+    char line[CONSOLE_LINE_MAX];
+    int len = 0;
+    bool overflowed = false;
+
+    TEST_ASSERT_FALSE(console_append_char(line, &len, &overflowed, 'a'));
+    TEST_ASSERT_FALSE(console_append_char(line, &len, &overflowed, 'b'));
+    TEST_ASSERT_TRUE(console_append_char(line, &len, &overflowed, '\n'));
+    TEST_ASSERT_EQUAL_STRING("ab", line);
+}
+
+static void
+test_append_char_ignores_a_bare_terminator(void) {
+    char line[CONSOLE_LINE_MAX];
+    int len = 0;
+    bool overflowed = false;
+
+    TEST_ASSERT_FALSE(console_append_char(line, &len, &overflowed, '\n'));
+    TEST_ASSERT_FALSE(console_append_char(line, &len, &overflowed, '\r'));
+}
+
+static void
+test_append_char_discards_an_overflowing_line_and_its_terminator(void) {
+    char line[CONSOLE_LINE_MAX];
+    int len = 0;
+    bool overflowed = false;
+
+    for (int i = 0; i < CONSOLE_LINE_MAX + 10; i++) {
+        TEST_ASSERT_FALSE_MESSAGE(console_append_char(line, &len, &overflowed, 'x'), "no line completes mid-overflow");
+    }
+    TEST_ASSERT_TRUE_MESSAGE(overflowed, "a line past CONSOLE_LINE_MAX-1 must be marked overflowed");
+    TEST_ASSERT_FALSE_MESSAGE(console_append_char(line, &len, &overflowed, '\n'),
+                              "the overflowing line's own terminator must not complete it either");
+    TEST_ASSERT_FALSE_MESSAGE(overflowed, "the next line starts clean");
+}
+
+/* The bug this guards: resetting `*len` mid-overflow without discarding
+ * what follows turned an over-long line's tail into a short line of its
+ * own, delivered as if typed on purpose - with no terminator for the
+ * original line ever seen at all. */
+static void
+test_append_char_the_tail_after_an_overflow_is_not_a_line_of_its_own(void) {
+    char line[CONSOLE_LINE_MAX];
+    int len = 0;
+    bool overflowed = false;
+
+    for (int i = 0; i < CONSOLE_LINE_MAX - 1; i++) {
+        console_append_char(line, &len, &overflowed, 'x');
+    }
+    console_append_char(line, &len, &overflowed, 'x'); /* this one overflows it */
+
+    TEST_ASSERT_FALSE(console_append_char(line, &len, &overflowed, 'o'));
+    TEST_ASSERT_FALSE(console_append_char(line, &len, &overflowed, 'k'));
+    TEST_ASSERT_FALSE_MESSAGE(console_append_char(line, &len, &overflowed, '\n'),
+                              "'ok' is the overflowing line's own tail, never a line of its own");
 }
 
 static void
@@ -446,10 +496,15 @@ suite_console(void) {
     RUN_TEST(test_a_second_set_before_a_take_keeps_the_newer_args);
     RUN_TEST(test_a_latch_truncates_args_that_do_not_fit_without_overflowing);
     RUN_TEST(test_taking_into_a_smaller_buffer_truncates_too);
-    RUN_TEST(test_dispatch_or_latch_prefers_a_registered_verb_over_latching);
-    RUN_TEST(test_dispatch_or_latch_latches_a_line_no_verb_claims);
-    RUN_TEST(test_app_line_offer_reaches_a_running_apps_callback);
-    RUN_TEST(test_app_line_offer_is_false_without_an_app_a_callback_or_a_claim);
+    RUN_TEST(test_word_match_carries_what_follows_the_name);
+    RUN_TEST(test_word_match_folds_case);
+    RUN_TEST(test_name_in_finds_a_case_insensitive_match);
+    RUN_TEST(test_name_in_is_false_over_a_clean_set);
+    RUN_TEST(test_name_in_finds_a_clash_between_two_apps);
+    RUN_TEST(test_append_char_delivers_one_line_at_a_time);
+    RUN_TEST(test_append_char_ignores_a_bare_terminator);
+    RUN_TEST(test_append_char_discards_an_overflowing_line_and_its_terminator);
+    RUN_TEST(test_append_char_the_tail_after_an_overflow_is_not_a_line_of_its_own);
     RUN_TEST(test_touch_line_carries_its_sample);
     RUN_TEST(test_a_malformed_touch_line_changes_nothing);
     RUN_TEST(test_a_touch_line_fits_the_console_line);
