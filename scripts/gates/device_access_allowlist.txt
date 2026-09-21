@@ -1,0 +1,2 @@
+# path<TAB>reason
+launcher/test/qemu_run.py	Drives QEMU's own console over a TCP socket, never the board's serial port.
