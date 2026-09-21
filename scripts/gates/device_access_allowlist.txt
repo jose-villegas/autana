@@ -1,2 +1,3 @@
 # path<TAB>reason
 launcher/test/qemu_run.py	Drives QEMU's own console over a TCP socket, never the board's serial port.
+launcher/tools/build_flash.sh	Flashes only under device.py's AUTANA_DEVICE_LOCK_TOKEN; refuses without it.
