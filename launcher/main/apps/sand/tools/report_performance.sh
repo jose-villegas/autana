@@ -8,13 +8,12 @@
 #
 # Usage:
 #   main/apps/sand/tools/report_performance.sh [--no-restore] [--perf-scope] \
-#       [--baseline REPORT.md] [COM_PORT] [OUT.md] [IDF_EXPORT]
+#       [--baseline REPORT.md] [COM_PORT] [OUT.md]
 #
 #   COM_PORT     serial port the device is on. Found by USB identity when
-#                omitted - see tools/find_port.sh.
+#                omitted - see scripts/device/device.py.
 #   OUT.md       markdown report path. Default:
 #                main/apps/sand/tools/results/performance_<timestamp>.md
-#   IDF_EXPORT   path to ESP-IDF's export script. Default: build_flash.sh's.
 #   --no-restore skip rebuilding and reflashing the release firmware
 #                afterward. Restoring costs a build+flash on EVERY run;
 #                back-to-back candidate captures only need it once, at the

@@ -81,18 +81,11 @@ OUT_BIN="$BUILD_DIR/brush_screen_preview"
 
 "$OUT_BIN" "$BUILD_DIR"
 
-# pyserial lives in ESP-IDF's environment - screenshot.py imports it at
-# module scope even though bmp_bytes_to_png() itself never touches a serial
-# port, so the search below mirrors tools/screenshot.sh's own: prefer
-# whatever's on PATH, but let the ESP-IDF env win if the bare PATH lookup has
-# no pyserial.
+# screenshot.py's bmp_bytes_to_png() is standard library only (zlib/struct,
+# no Pillow, no pyserial) - any Python 3 on PATH runs it.
 PYTHON=$(command -v python3 || command -v python || true)
-for candidate in "$HOME/.espressif/python_env"/idf*_env/bin/python \
-                 "$HOME/.espressif/python_env"/idf*_env/Scripts/python.exe; do
-    [ -x "$candidate" ] && ! "$PYTHON" -c "import serial" >/dev/null 2>&1 && PYTHON="$candidate"
-done
 if [ -z "${PYTHON:-}" ]; then
-    echo "no Python found (need pyserial, for screenshot.py's bmp_bytes_to_png - ESP-IDF's own environment has it)" >&2
+    echo "no Python found (need Python 3, for screenshot.py's bmp_bytes_to_png)" >&2
     exit 1
 fi
 

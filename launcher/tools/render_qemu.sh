@@ -10,7 +10,7 @@
 # Xtensa image instead of a host build. The capture itself is entirely
 # test/run_qemu_tests.sh's - it builds the no-autorun image in
 # build.qemu.shell/, boots it, asks its console for the screen and writes a
-# PNG plus a state .json exactly as tools/screenshot.sh does from a board.
+# PNG plus a state .json exactly as autana screenshot does from a board.
 # Nothing here re-implements any of that.
 #
 # With one or more --row, the home screen is also rendered on the host with

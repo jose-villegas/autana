@@ -182,7 +182,7 @@ comparison at any other quarter is a host render against a host render.
 ## Diffing against a capture
 
 ```sh
-./launcher/tools/screenshot.sh -o shot.png                  # --dev build only
+autana screenshot -o shot.png                                # --dev build only
 ./launcher/tools/post_ui_render_host.sh -o /tmp/post
 ./launcher/tools/render_diff.sh shot.png /tmp/post/landscape-panel.bmp \
     --mask build_mark --mask home_hint --out /tmp/diff.png

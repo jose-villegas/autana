@@ -23,7 +23,7 @@ def default_root():
 
 def process_alive(pid):
     """Only a pid that demonstrably does not exist counts as dead. Every other
-    outcome answers alive: this decides whether one agent may take the board
+    outcome answers alive: this decides whether one owner may take the board
     from another, and a wrongly reclaimed lock corrupts somebody's capture
     while a wrongly held one only waits out its heartbeat."""
     if pid == os.getpid():
@@ -55,7 +55,7 @@ def windows_process_alive(pid, kernel32=None):
     """Never os.kill(pid, 0) on Windows: signal 0 there is CTRL_C_EVENT, so
     CPython calls GenerateConsoleCtrlEvent and treats the pid as a console
     process group. For a process on another console that fails with
-    ERROR_INVALID_PARAMETER - a live agent reads as dead and its lock is
+    ERROR_INVALID_PARAMETER - a live holder reads as dead and its lock is
     taken - and for one sharing the caller's console it delivers Ctrl+C.
     Asks the process table instead: a pid that cannot be opened for any
     reason but access denied is gone, and an opened one is alive until it

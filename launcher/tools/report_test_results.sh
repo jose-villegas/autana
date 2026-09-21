@@ -4,13 +4,12 @@
 # capture the boot-time run of every suite, write a markdown results report.
 #
 # Usage:
-#   tools/report_test_results.sh [--no-restore] [COM_PORT] [OUT.md] [IDF_EXPORT]
+#   tools/report_test_results.sh [--no-restore] [COM_PORT] [OUT.md]
 #
 #   COM_PORT     serial port the device is on. Found by USB identity when
-#                omitted - see tools/find_port.sh.
+#                omitted - see scripts/device/device.py.
 #   OUT.md       markdown report path. Default:
 #                tools/results/test_results_<timestamp>.md
-#   IDF_EXPORT   path to ESP-IDF's export script. Default: build_flash.sh's.
 #   --no-restore leave the device on the diagnostics image afterwards.
 #
 # CAPTURE_TIMEOUT overrides the capture window. 3000s, not the 300 this

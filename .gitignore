@@ -70,7 +70,7 @@ __pycache__/
 
 ### ESP-IDF
 build/
-# Variant build directories, e.g. build.diag from test/run_device_tests.sh.
+# Variant build directories, e.g. build.diag from `autana flash diag`.
 # Each variant keeps its own sdkconfig so it never disturbs the normal build.
 build.*/
 managed_components/
@@ -99,7 +99,7 @@ launcher/main/apps/*/tools/results/
 # directory, so a MISRA run leaves these in main/ - see tools/misra_check.sh.
 *.dump
 
-# Captured .bmp files from tools/screenshot.sh - scratch output, not
+# Captured screenshots saved here by hand - scratch output, not
 # something to commit.
 launcher/tools/screenshots/
 

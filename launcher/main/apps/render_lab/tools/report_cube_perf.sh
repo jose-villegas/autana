@@ -8,13 +8,12 @@
 #
 # Usage:
 #   main/apps/render_lab/tools/report_cube_perf.sh [--no-restore] [COM_PORT] \
-#       [OUT.md] [IDF_EXPORT]
+#       [OUT.md]
 #
 #   COM_PORT     serial port the device is on. Found by USB identity when
-#                omitted - see tools/find_port.sh.
+#                omitted - see scripts/device/device.py.
 #   OUT.md       markdown report path. Default:
 #                main/apps/render_lab/tools/results/cube_perf_<timestamp>.md
-#   IDF_EXPORT   path to ESP-IDF's export script. Default: build_flash.sh's.
 #   --no-restore leave the device on the diagnostics image afterwards.
 #
 # Everything this does beyond the declarations below - which image, deleting
@@ -34,7 +33,7 @@ report_dir="$SCRIPT_DIR/results"
 report_suite=""
 
 # cube_perf alone runs three 10s captures plus a quick interlaced one - well
-# past run_device_tests.sh's normal ~1s, so this needs real headroom.
+# past a suite's normal ~1s, so this needs real headroom.
 report_timeout=300
 
 # The header each variant prints before its own breakdown. Without one, the
