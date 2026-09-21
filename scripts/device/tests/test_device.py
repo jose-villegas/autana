@@ -220,6 +220,19 @@ class DeviceTests(unittest.TestCase):
         self.assertFalse(complete)
         self.assertEqual(found, ["TUNE a=1 min=0 max=2", "TUNE_EN"])
 
+    def test_replies_to_an_empty_reply_captures_every_line_and_never_completes(self):
+        """autana console's own forwarding case: an app's reply prefix
+        (COUNTS, ...) is not known here, so every line counts and nothing
+        ends the answer early - the caller reads out its own window."""
+        data = b"I (1) shell: frame 16 ms\nCOUNTS Sand=12\nCOUNTS_END\n"
+        found, complete = device.replies_to(data, "", [])
+        self.assertFalse(complete)
+        self.assertEqual(found, ["I (1) shell: frame 16 ms", "COUNTS Sand=12", "COUNTS_END"])
+
+    def test_replies_to_an_empty_reply_skips_blank_lines(self):
+        found, unused_complete = device.replies_to(b"\nCOUNTS Sand=12\n\n", "", [])
+        self.assertEqual(found, ["COUNTS Sand=12"])
+
     def send_args(self, line):
         return Namespace(owner="agent", purpose="send", wait=0, line=line, reply="TUNE",
                          until=["TUNE_OK", "TUNE_ERR", "TUNE_END"], seconds=1, optional=False)
@@ -252,6 +265,21 @@ class DeviceTests(unittest.TestCase):
              mock.patch.object(device, "wait_for_port"):
             with self.assertRaisesRegex(RuntimeError, "needs a development build"):
                 device.send(self.send_args("TUNE"), store, "COM5")
+
+    def test_send_forwards_a_console_line_and_prints_everything_seen(self):
+        """autana console's own case (autana.py's console()): the reply
+        prefix an app chooses is not known here, so this reads out the
+        whole window rather than matching one prefix."""
+        connection = FakeConnection([b"COUNTS Sand=12\n", b"COUNTS_END\n"])
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        args = Namespace(owner="agent", purpose="send", wait=0, line="sand counts",
+                         reply="", until=[], seconds=0.05, optional=True)
+        with mock.patch.object(device, "open_serial", return_value=connection), \
+             mock.patch.object(device, "wait_for_port"), mock.patch("builtins.print") as printed:
+            status = device.send(args, store, "COM5")
+        self.assertEqual(status, 0)
+        printed.assert_called_once_with("COUNTS Sand=12\nCOUNTS_END")
 
     def test_send_optional_treats_silence_as_success(self):
         """TOUCH/IMU answer only when something is wrong - a timeout with

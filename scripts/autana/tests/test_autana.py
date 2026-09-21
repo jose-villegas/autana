@@ -270,15 +270,23 @@ class ConsoleRoutingTests(unittest.TestCase):
             self.run_console(["touch down 10 20"])
         fake.assert_called_once_with(["down", "10", "20"])
 
-    def test_a_bare_tunable_name_is_not_understood(self):
-        with mock.patch("builtins.print") as printed:
-            self.run_console(["trail"])
-        printed.assert_any_call("not understood - 'help' lists what is")
+    def test_a_line_no_autana_command_recognises_is_forwarded_to_the_device(self):
+        with mock.patch.object(autana, "send", return_value=(0, ["COUNTS Sand=12"])) as sent, \
+             mock.patch("builtins.print") as printed:
+            self.run_console(["sand counts"])
+        sent.assert_called_once_with("sand counts", reply="", purpose="autana console sand", optional=True)
+        printed.assert_any_call("COUNTS Sand=12")
 
-    def test_a_bare_tunable_name_with_a_value_is_also_not_understood(self):
-        with mock.patch("builtins.print") as printed:
+    def test_a_forwarded_line_with_no_reply_says_sent(self):
+        with mock.patch.object(autana, "send", return_value=(0, [])), mock.patch("builtins.print") as printed:
             self.run_console(["trail 200"])
-        printed.assert_any_call("not understood - 'help' lists what is")
+        printed.assert_any_call("sent")
+
+    def test_a_forwarded_lines_several_reply_lines_are_joined(self):
+        with mock.patch.object(autana, "send", return_value=(0, ["COUNTS Sand=12", "COUNTS Water=3"])), \
+             mock.patch("builtins.print") as printed:
+            self.run_console(["sand counts"])
+        printed.assert_any_call("COUNTS Sand=12\nCOUNTS Water=3")
 
     def test_tune_with_a_name_is_still_the_way_to_reach_a_tunable(self):
         fake = mock.Mock(return_value=0)
