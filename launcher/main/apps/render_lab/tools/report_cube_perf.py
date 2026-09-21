@@ -94,7 +94,7 @@ LABEL_RE = re.compile(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("capture_path", help="Raw capture from tools/sweeps/capture_selftest.py")
+    parser.add_argument("capture_path", help="Raw capture from scripts/device/device.py selftest")
     parser.add_argument("out_path", help="Markdown file to write")
     args = parser.parse_args()
 

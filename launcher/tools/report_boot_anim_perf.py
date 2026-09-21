@@ -111,12 +111,13 @@ def parse_capture(capture_path: str):
 
 def incomplete_labels(runs, order):
     """Labels whose run is missing one or more of PHASE_ORDER's lines - a
-    capture that was cut off (timeout, device reset, a too-short --timeout on
-    tools/sweeps/capture_runsuite.py) mid-checkpoint would otherwise produce a
-    report that LOOKS complete: every table still renders, just with a "?" in
-    a cell here and there that is easy to read as "this phase cost nothing"
-    rather than "this line never arrived". Surfaced as an explicit warning
-    instead, both to stdout and in the report itself."""
+    capture that was cut off (timeout, device reset, a too-short
+    --max-seconds on device.py's own run-suite/selftest) mid-checkpoint
+    would otherwise produce a report that LOOKS complete: every table still
+    renders, just with a "?" in a cell here and there that is easy to read
+    as "this phase cost nothing" rather than "this line never arrived".
+    Surfaced as an explicit warning instead, both to stdout and in the
+    report itself."""
     missing = []
     for label in order:
         have = set(runs[label]["phases"].keys())

@@ -27,9 +27,11 @@
 #               gate, and its numbers compare only with other perf-scoped
 #               captures.
 #   --build-only  build and stop: no device needed, nothing flashed.
-#   COM_PORT    serial port the device is on. Found by USB identity when
-#               omitted, so a plugged-in board needs no argument - see
-#               tools/find_port.sh.
+#   COM_PORT    the port to flash. Flashing itself needs AUTANA_DEVICE_LOCK_TOKEN
+#               in the environment - device.py's own `flash`/`selftest`/`batch`
+#               set it after taking the device lock, and pass this worktree's
+#               port; run `autana flash rel|dev|diag` rather than this script
+#               directly. --build-only needs neither the token nor a port.
 #   IDF_EXPORT  path to ESP-IDF's export script - export.bat on Windows,
 #               export.sh elsewhere. Default: the ESP-IDF Windows
 #               installer's path.
@@ -63,15 +65,11 @@
 # the cost of the way in being compiled at all, not of the test suites.
 #
 # Using either flag means putting that image on the board and leaving it.
-# Nothing else here does that: test/run_device_tests.sh builds and flashes
-# the diagnostics variant too, but refuses outright under Git Bash (idf.py
-# exits successfully without building there, which would silently collect
-# stale results - see its own comment), and it exists to read test output
-# back rather than to leave you on the image. The report scripts call this
-# one with --diag --autorun and then call it again for the release image in
-# an EXIT trap, by design - see tools/device_report.sh. All three are right
-# about their own jobs; none of them is "put this image on the device and
-# leave it there", which is what these flags are for.
+# Nothing else here does that: `autana selftest` and the report scripts
+# flash the diagnostics variant too, but to read test output back, and the
+# report scripts restore release afterwards - see tools/device_report.sh.
+# Neither is "put this image on the device and leave it there", which is
+# what these flags are for.
 
 set -euo pipefail
 
@@ -256,9 +254,8 @@ else
 fi
 
 # A build tool that reports success without producing anything is how this
-# project once flashed and measured code it had never built (see
-# test/run_device_tests.sh's own note). The exit status is not enough on its
-# own, so confirm the artifact is really there.
+# project once flashed and measured code it had never built. The exit
+# status is not enough on its own, so confirm the artifact is really there.
 if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/launcher.bin" ]; then
     echo "build reported success but produced no binary at" >&2
     echo "  $LAUNCHER_DIR/$BUILD_DIR/launcher.bin" >&2
@@ -280,19 +277,23 @@ if [ "$BUILD_ONLY" -eq 1 ]; then
     exit 0
 fi
 
-# shellcheck source=./find_port.sh
-. "$SCRIPT_DIR/find_port.sh"
+# Flashing touches the one shared board, so it needs the device lock - this
+# refuses without proof one is held, rather than opening the port itself
+# and risking two writers. device.py sets AUTANA_DEVICE_LOCK_TOKEN (and
+# passes COM_PORT) once it holds the lock; nothing else should set it.
+if [ -z "${AUTANA_DEVICE_LOCK_TOKEN:-}" ]; then
+    echo "ERROR: flashing needs the device lock." >&2
+    echo "Run 'autana flash rel|dev|diag' instead of this script directly," >&2
+    echo "or pass --build-only, which needs neither the lock nor a device." >&2
+    exit 1
+fi
 if [ -z "$COM_PORT" ]; then
-    COM_PORT=$(find_port) || COM_PORT=""
+    echo "ERROR: no COM_PORT given - device.py always passes one under the lock." >&2
+    exit 1
 fi
 
-if [ -n "$COM_PORT" ]; then
-    echo "=== Flashing to $COM_PORT ==="
-    idf -B "$BUILD_DIR" -p "$COM_PORT" flash
-else
-    echo "=== Flashing, letting esptool pick the port ==="
-    idf -B "$BUILD_DIR" flash
-fi
+echo "=== Flashing to $COM_PORT ==="
+idf -B "$BUILD_DIR" -p "$COM_PORT" flash
 
 case "$VARIANT" in
     dev)

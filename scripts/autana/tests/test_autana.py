@@ -167,6 +167,146 @@ class ScreenshotCommandTests(unittest.TestCase):
         called.assert_not_called()
 
 
+class FlashCommandTests(unittest.TestCase):
+    def test_perf_scope_is_forwarded(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana, "git", return_value=""), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.flash(["diag", "--quiet", "--perf-scope"])
+        command = called.call_args[0][0]
+        self.assertIn("--perf-scope", command)
+
+    def test_no_perf_scope_flag_is_not_forwarded(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana, "git", return_value=""), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.flash(["diag", "--quiet"])
+        command = called.call_args[0][0]
+        self.assertNotIn("--perf-scope", command)
+
+
+class MonitorCommandTests(unittest.TestCase):
+    """autana monitor forwards to `device.py listen`, which matches the
+    capture's own BUILD_ID to a build directory itself when --elf is not
+    given - autana no longer guesses an ELF by file mtime."""
+
+    def test_no_elf_given_omits_the_flag_entirely(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.monitor([])
+        self.assertNotIn("--elf", called.call_args[0][0])
+
+    def test_an_explicit_elf_is_passed_through_as_is(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.monitor(["30", "--elf", "mine.elf"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--seconds") + 1], "30.0")
+        self.assertEqual(command[command.index("--elf") + 1], "mine.elf")
+
+    def test_elf_with_no_value_is_rejected(self):
+        with self.assertRaises(SystemExit):
+            autana.monitor(["--elf"])
+
+
+class SelftestCommandTests(unittest.TestCase):
+    def test_builds_the_device_selftest_invocation(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            code = autana.selftest([])
+        self.assertEqual(code, 0)
+        command = called.call_args[0][0]
+        self.assertIn("selftest", command)
+        self.assertEqual(command[command.index("--worktree") + 1], "C:/wt")
+        self.assertEqual(command[command.index("--max-seconds") + 1], "3000.0")
+
+    def test_a_seconds_argument_is_forwarded(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.selftest(["120"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--max-seconds") + 1], "120.0")
+
+
+class BatchCommandTests(unittest.TestCase):
+    def test_one_suite_defaults_runs_and_is_always_diag(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            code = autana.batch(["run_sand_perf_suite"])
+        self.assertEqual(code, 0)
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--suite") + 1], "run_sand_perf_suite")
+        self.assertEqual(command[command.index("--runs") + 1], "3")
+        self.assertEqual(command[command.index("--variant") + 1], "diag")
+        self.assertNotIn("--perf-scope", command)
+
+    def test_several_suites_each_get_their_own_flag(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.batch(["run_sand_perf_suite", "run_gfx_suite", "--runs", "5", "--perf-scope"])
+        command = called.call_args[0][0]
+        self.assertEqual(command.count("--suite"), 2)
+        self.assertEqual(command[command.index("--runs") + 1], "5")
+        self.assertIn("--perf-scope", command)
+
+    def test_no_variant_option_exists(self):
+        # A suite only exists to run in the diagnostics image - offering a
+        # variant choice here would only ever have one real answer.
+        with self.assertRaises(SystemExit):
+            autana.batch(["run_sand_perf_suite", "--variant", "dev"])
+
+    def test_no_suite_is_rejected(self):
+        with self.assertRaises(SystemExit):
+            autana.batch(["--runs", "3"])
+
+    def test_an_unknown_flag_is_rejected(self):
+        with self.assertRaises(SystemExit):
+            autana.batch(["run_sand_perf_suite", "--bogus"])
+
+
+class LockCommandTests(unittest.TestCase):
+    """status/release/hand/take-back: thin pass-throughs to device.py's own
+    lock-level commands."""
+
+    def test_status_takes_no_arguments_and_calls_device(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            code = autana.status([])
+        self.assertEqual(code, 0)
+        self.assertIn("status", called.call_args[0][0])
+
+    def test_status_rejects_arguments(self):
+        with self.assertRaises(SystemExit):
+            autana.status(["extra"])
+
+    def test_release_forwards_the_token(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.release(["deadbeef"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--token") + 1], "deadbeef")
+
+    def test_release_needs_exactly_a_token(self):
+        with self.assertRaises(SystemExit):
+            autana.release([])
+
+    def test_hand_joins_its_words_into_one_note(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.hand(["checking", "the", "panel"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--note") + 1], "checking the panel")
+
+    def test_hand_needs_a_note(self):
+        with self.assertRaises(SystemExit):
+            autana.hand([])
+
+    def test_take_back_takes_no_arguments(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            code = autana.take_back([])
+        self.assertEqual(code, 0)
+        self.assertIn("take-back", called.call_args[0][0])
+
+    def test_take_back_rejects_arguments(self):
+        with self.assertRaises(SystemExit):
+            autana.take_back(["extra"])
+
+
 class TuneCommandTests(unittest.TestCase):
     """Tuning is no longer implicit - `tune` and its subforms are the only
     way to a tunable, on the command line and in the console alike."""

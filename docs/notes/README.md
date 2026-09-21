@@ -33,9 +33,9 @@ the falling-sand app's own discovery narrative, moved out to
   boundaries, and more.
 - **[Diagnostics-and-Debugging.md](Diagnostics-and-Debugging.md)** — which
   tool to reach for depending on the symptom: the host and on-device test
-  suites, `screenshot.sh`'s image-plus-device-state capture, `monitor.sh`,
-  the gfx debug overlays, and the USB-Serial-JTAG console quirk that breaks
-  typing into idf_monitor if you don't know to look for it.
+  suites, `autana screenshot`'s image-plus-device-state capture,
+  `autana monitor`, the gfx debug overlays, and the USB-Serial-JTAG console
+  quirk that breaks typing into idf_monitor if you don't know to look for it.
 
 ## Not verified on a board
 

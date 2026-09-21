@@ -10,9 +10,12 @@
 #   tools/sweeps/band_height_sweep.sh 16|32|64 [IDF_EXPORT]
 #
 # Leaves build.diag.bh<N>/launcher.bin built. Flash and capture it with the
-# tools this tree already has:
+# tools this tree already has - a band-height build is not one of autana's
+# own variants, so flash it directly and then hand the already-running shell
+# to device.py's own run-suite, which takes the device lock:
 #   idf.py -B build.diag.bh<N> -p COM3 flash
-#   tools/sweeps/capture_runsuite.py run_cube_band_perf_suite out.txt --port COM3
+#   python scripts/device/device.py --owner <you> run-suite run_cube_band_perf_suite \
+#       --out out.txt --purpose "band height $N"
 # out.txt's "CUBE BAND VS FULL-FB" line has present/rasterize timing for
 # both arms; boot's own HEAPMARK lines (main.c) have the largest free block.
 set -euo pipefail
@@ -60,4 +63,4 @@ fi
 
 echo "=== Done - $BUILD_DIR built, nothing flashed ==="
 echo "Flash with:   idf.py -B $BUILD_DIR -p COM3 flash"
-echo "Capture with: tools/sweeps/capture_runsuite.py run_cube_band_perf_suite $BUILD_DIR.out.txt --port COM3"
+echo "Capture with: python scripts/device/device.py --owner <you> run-suite run_cube_band_perf_suite --out $BUILD_DIR.out.txt"

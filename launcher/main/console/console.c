@@ -112,8 +112,8 @@ console_emit_line(const char* prefix, const char* payload) {
  * completes one. */
 static bool
 console_append_char(char* line, int* len, int c) {
-    /* Either terminator ends a line: monitor.sh's Enter key may send '\r'
-     * or '\n', depending on platform. */
+    /* Either terminator ends a line: a host terminal's Enter key may send
+     * '\r' or '\n', depending on platform. */
     if (c == '\n' || c == '\r') {
         if (*len == 0) {
             return false;

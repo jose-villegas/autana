@@ -9,14 +9,12 @@
 # Declaring a suite is what selects that image: see tools/device_report.sh.
 #
 # Usage:
-#   tools/report_boot_anim_perf.sh [--no-restore] [COM_PORT] [OUT.md] \
-#       [IDF_EXPORT]
+#   tools/report_boot_anim_perf.sh [--no-restore] [COM_PORT] [OUT.md]
 #
 #   COM_PORT     serial port the device is on. Found by USB identity when
-#                omitted - see tools/find_port.sh.
+#                omitted - see scripts/device/device.py.
 #   OUT.md       markdown report path. Default:
 #                tools/results/boot_anim_perf_<timestamp>.md
-#   IDF_EXPORT   path to ESP-IDF's export script. Default: build_flash.sh's.
 #   --no-restore leave the device on the diagnostics image afterwards.
 #
 # Everything this does beyond the declarations below - which image, deleting
