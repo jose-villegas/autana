@@ -94,23 +94,64 @@ PATH installer sets it to `.dev/records/device` when a `.dev` checkout sits
 beside this one, which is where this project keeps and tracks its device
 history.
 
-## An app's own verbs
+## Adding a command from an app
 
-The commands above are the CLI's, and cover most of what the console
-answers directly: `screenshot`, `freeze`, `resume`, `step`, `touch`, `imu`
-and the tuning verbs all go through `device.py`'s lock the same way. A verb
-the CLI has no command for - `runsuite` among them, since `autana suite`
-already runs one and reports the result - is still only a line away: type
-it in an interactive session, or extend `autana` here. The verbs themselves
-are a separate list, one file each under `launcher/main/console/`.
+The commands above are the CLI's own; the verbs they send (`screenshot`,
+`freeze`, `set`, ...) are a separate list, one file each under
+`launcher/main/console/`. An app can answer commands of its own without
+joining that list:
 
-An app can answer its own commands too, without joining that list: set
-`console_line` in its `app_t` (`launcher/main/app.h`). A line none of the
-verbs above claims reaches the running app's callback instead of being
-logged and dropped - match the line, act, and return true to claim it.
-Built-in verbs still take precedence, so an app can never shadow one, and
-an unclaimed line only ever reaches whichever app is currently running,
-never the launcher. The callback runs on the frame loop, not the console's
-own reader task, so it can `printf()` a reply directly. Sending one is the
-same as any other line: type it in an interactive `autana` session. An app
-that adds a command documents it itself - see `docs/sand/` for `counts`.
+1. Declare a prefix with `APP_CONSOLE()`, once, before the app's own
+   `app_t` - it is mandatory, checked at compile time, and checked again at
+   boot against every verb and every other app's prefix, so two commands
+   can never claim the same line:
+
+   ```c
+   static bool
+   app_example_console(const char* args) {
+       if (strcmp(args, "status") != 0) {
+           return false;
+       }
+       printf("STATUS ok\n");
+       return true;
+   }
+
+   APP_CONSOLE("example", app_example_console);
+
+   const app_t app_example = {
+       .name = "Example",
+       ...
+       .console = APP_CONSOLE_PTR(app_example_console),
+   };
+   ```
+
+   No `#if CONFIG_LAUNCHER_DEVELOPMENT` needed anywhere in the app -
+   `APP_CONSOLE_PTR()` is `NULL` in a release build, and the handler goes
+   with it.
+2. The shell matches the prefix, a whole word, and calls the handler with
+   only what follows it (`args`, `""` for a bare prefix) - never the prefix
+   itself. `example status` above is typed in full; the handler only ever
+   sees `"status"`.
+3. Reply with `printf()` - a line starting with the command's name in
+   capitals. A reply of more than one line ends with a `<NAME>_END` line,
+   the way `SCREENSHOT_END` does, so a caller need not wait out a timeout to
+   know it has everything; a single-line reply needs no terminator.
+4. Return `true` to claim it.
+
+Send it the same way as any built-in verb: type it in an interactive
+`autana` session.
+
+A few rules that follow from the shape above:
+
+- A registered verb always wins, so an app can never shadow one; a clash
+  between a prefix and a verb, or between two apps' own prefixes, fails the
+  boot loudly rather than silently losing one of them.
+- A line whose prefix belongs to an app that is not the one running gets an
+  explicit `NOTRUNNING_ERR <prefix>` reply, not silence.
+- The handler runs on the frame loop, after the app's own `frame()`, so it
+  sees settled state - and still runs while the frame loop is frozen
+  (`autana freeze`), the obvious use being freeze, inspect, step.
+- Lines arriving faster than frames queue up to 4; a fifth before the frame
+  loop catches up is dropped and logged.
+
+An app that adds a command documents it itself.
