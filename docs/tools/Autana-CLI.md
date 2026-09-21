@@ -19,12 +19,12 @@ autana> buildid
 
 | | |
 |---|---|
-| `autana flash [rel\|dev\|diag] [--quiet]` | Build and flash the worktree you are standing in, `dev` when the variant is omitted. Output streams to the terminal; `--quiet` leaves it in the log file only. |
-| `autana monitor [seconds] [--elf PATH]` | Print what the board says, for 60 seconds when omitted. Any crash address seen is decoded against `PATH`'s symbols - the newest build in this worktree when `PATH` is omitted. |
+| `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope]` | Build and flash the worktree you are standing in, `dev` when the variant is omitted. Output streams to the terminal; `--quiet` leaves it in the log file only. `--perf-scope`, with `diag`, builds the perf-scoped image and leaves it on the board with no suite run. |
+| `autana monitor [seconds] [--elf PATH]` | Print what the board says, for 60 seconds when omitted. Any crash address seen is decoded against `PATH`'s symbols; with no `PATH`, the build directory whose own `build_id.txt` matches the capture's `BUILD_ID`, if one does. |
 | `autana suite <name> [seconds]` | Run one registered suite and print what it prints. |
 | `autana suite list [text]` | The suites this worktree registers, read from its sources; `[text]` keeps the names containing it. |
 | `autana selftest [seconds]` | Build the diagnostics+autorun image and run every suite this worktree registers, on the device - 3000 seconds when omitted; can take minutes. |
-| `autana batch <suite> [<suite> ...] [--runs N] [--perf-scope] [--variant rel\|dev\|diag]` | Flash once and capture the given suites `--runs` times (3 when omitted) under one lock, so no other session can flash between two captures of the same image; writes one summary across every run. |
+| `autana batch <suite> [<suite> ...] [--runs N] [--perf-scope]` | Flash the diagnostics image once and capture the given suites `--runs` times (3 when omitted) under one lock, so no other session can flash between two captures of the same image; writes one summary across every run. |
 | `autana tune [text]` | The numbers a development build lets you change, with their ranges; `[text]` keeps the names containing it. |
 | `autana tune <name>` | One of them, when the name is exactly one tunable's own (owner optional when unambiguous); the same filtered listing as `[text]` otherwise. |
 | `autana tune <name> <value>` | Change one on the running device. |

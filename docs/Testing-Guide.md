@@ -38,12 +38,9 @@ that changes a file. So a slow individual test is rarely what to optimise;
 the two rebuilds are. (Measured on one Windows machine - treat the ratio as
 the point, not the number.)
 
-`autana selftest` builds and flashes the diagnostics+autorun variant and
-captures the run under the device lock - it works from Git Bash on Windows
-the same way `autana flash` does, since both go through
-`scripts/device/device.py`'s own Git-for-Windows `bash.exe` rather than
-`idf.py` directly. For a markdown report instead of a pass/fail line, use
-one of the report scripts:
+`autana selftest` builds, flashes and runs every suite under the device
+lock, from any shell including Git Bash. For a markdown report instead of
+a pass/fail line, use one of the report scripts:
 
 ```sh
 ./launcher/tools/report_test_results.sh                    # pass/fail for every suite  -> tools/results/
@@ -280,15 +277,9 @@ landscape case first.
 
 ## One board, one port
 
-There is no device lock yet, and several agents can share one board's one
-serial port. Until a lock exists:
-
-- **Never flash while another process holds the port.** Check for a
-  running `esptool`/`idf.py`/capture process before starting a build-and-
-  flash script.
-- **A stuck flash can hold the port for tens of minutes.** If a capture or
-  flash seems to hang, that is more likely another process still holding
-  the port than a genuinely broken board.
+Every board operation goes through `autana`, which queues on the device
+lock rather than fighting for the port; `autana status` shows who holds
+it. See [Device-Lock.md](tools/Device-Lock.md).
 
 ---
 

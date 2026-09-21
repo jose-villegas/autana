@@ -6,21 +6,20 @@ pyserial command. The tool finds the board by USB Serial/JTAG VID `0x303A`,
 not a fixed COM number, and opens it at 115200 with DTR and RTS low.
 
 Day-to-day interactive use goes through `tools/autana` ([Autana-CLI.md](Autana-CLI.md))
-- `autana flash`, `monitor`, `suite`, `selftest`, `batch`, `tune`,
-`screenshot`, `status`, `release`, `hand`, `take-back` and the rest all call
-`device.py` for the lock and the port. This doc covers `device.py` itself:
-its own command-line shape, what an agent's delegated task calls directly
-with its own `--owner`/`--purpose` rather than `autana`'s generated one, and
-recovery when a lock will not let go.
+- every `autana` command calls `device.py` for the lock and the port. This
+doc covers `device.py` itself: its own command-line shape, what an agent's
+delegated task calls directly with its own `--owner`/`--purpose` rather
+than `autana`'s generated one, and recovery when a lock will not let go.
 
 Run the tool with ESP-IDF's Python (the `python.exe` under
 `%USERPROFILE%\.espressif\python_env\idf<version>_py<version>_env\Scripts\`
 on Windows), so its pyserial installation is available; the examples below
 write it as `python`.
-It works the same from PowerShell, cmd or Git Bash: `flash` and `batch` run
-`build_flash.sh` with Git for Windows' own `bash.exe`, never whatever `bash`
-is first on `PATH` - from a native shell that is WSL's launcher, which strips
-the backslashes out of the script path and could not run ESP-IDF anyway.
+It works the same from PowerShell, cmd or Git Bash: `flash`, `batch`, and
+`selftest` run `build_flash.sh` with Git for Windows' own `bash.exe`, never
+whatever `bash` is first on `PATH` - from a native shell that is WSL's
+launcher, which strips the backslashes out of the script path and could
+not run ESP-IDF anyway.
 
 Every command but `report` takes `--owner` (defaults to
 `AUTANA_DEVICE_OWNER`) and its own `--purpose` (each subcommand has a
@@ -72,10 +71,9 @@ A measurement is `batch`: it takes the lock ONCE, builds and flashes once,
 captures every suite `--runs` times, and writes one summary across all runs.
 Holding the board for the whole sequence means no other agent can flash
 between two captures of the same image, and the command blocks until it is
-done, so nothing needs a model to wait on a capture. `autana batch <suite>
-[<suite> ...] [--runs N] [--perf-scope] [--variant rel|dev|diag]` calls it
-the same way; a delegated task with its own `--owner`/`--purpose` calls
-`device.py batch` directly:
+done, so nothing needs a model to wait on a capture. `autana batch` calls
+it the same way ([Autana-CLI.md](Autana-CLI.md)); a delegated task with its
+own `--owner`/`--purpose` calls `device.py batch` directly:
 
 ```powershell
 python scripts/device/device.py --owner agent-a batch --worktree C:\path\to\engine --suite run_sand_perf_suite --suite run_gfx_suite --runs 3
@@ -87,16 +85,21 @@ result CHANGED between runs of the image - a test that flaps on one binary is
 a finding, not noise; the tests that failed in every run; and each
 `PERF TARGET` per run. A capture that errors is recorded and the batch
 continues; only a failed build or flash stops it. `--perf-scope` builds the
-perf-scoped image and is refused when the worktree's `build_flash.sh` has no
-such option, rather than silently building the full image.
+perf-scoped image; build_flash.sh itself refuses an unsupported flag rather
+than silently building the full image. `--out PATH` writes the one raw
+capture to `PATH` instead of the default path - only with exactly one
+`--suite` and `--runs 1`, which is how `device_report.sh`'s RUNSUITE-scoped
+reports (report_boot_anim_perf.sh) call it.
 
-`flash`, `run-suite`, `selftest`, and `listen` take the lock before they
-touch the board, keep it through their whole operation, and renew it every
-30 seconds. `selftest` builds the diagnostics image and captures one run -
-every suite at boot (autorun), or one suite via `--suite` - the same
-build-then-capture-under-one-lock `batch` uses per run; `autana selftest`
-calls it for the full-run case, and `launcher/tools/device_report.sh`'s
-report scripts call it directly for both. The
+`flash`, `run-suite`, `selftest`, `batch`, and `listen` take the lock before
+they touch the board, keep it through their whole operation, and renew it
+every 30 seconds. `selftest` builds the diagnostics+autorun image and
+captures the boot-time run of every registered suite until
+SELFTEST_COMPLETE; `autana selftest` calls it, and so does
+`launcher/tools/device_report.sh` for a report with no single named suite
+(report_test_results.sh and the frame-budget reports) - its RUNSUITE-scoped
+report calls `batch --suite X --runs 1 --out PATH` instead, the same
+build-then-capture-under-one-lock shape scoped to one suite and run. The
 default wait is ten minutes; pass `--wait 0` to return immediately when the
 board is busy. `flash` resets with esptool, then compares the boot
 `BUILD_ID` with `launcher/build.<variant>/build_id.txt`. Until an engine build

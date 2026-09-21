@@ -244,7 +244,7 @@ own folder: `"../../gfx/gfx.h"`, `"../../ui/ui.h"`.
 ```sh
 ./launcher/test/run_tests.sh          # host suites
 ./launcher/test/check_app_sources.sh  # compiles app_*.c without a device
-./launcher/tools/build_flash.sh --dev # then look for the app in the list
+autana flash dev                      # then look for the app in the list
 ```
 
 Boot logs `Ready, N apps registered`; launch and leave log `Starting <name>` /

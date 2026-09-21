@@ -26,8 +26,8 @@ capture's output gets only the PNG. This is genuinely lossless, not just
 smaller - PNG's compression is DEFLATE, the same as zlib/gzip, so every pixel
 round-trips exactly; this is not JPEG. Standard library only (zlib +
 struct), no Pillow - Pillow is not installed in the ESP-IDF python env this
-script actually runs under, so depending on it used to mean silently getting
-no image at all. write_capture() also writes a same-named .json beside the
+module actually runs under, so depending on it would silently produce no
+image at all. write_capture() also writes a same-named .json beside the
 .png if a SCREENSHOT_STATE: line arrived.
 """
 
@@ -123,9 +123,9 @@ def read_screenshot(port, timeout, on_status=None):
     (png_bytes, state_json_or_None).
 
     `port` is only read from and written to - opening it (including the
-    DTR/RTS dance that keeps the board from resetting, see main()'s own
-    comment) and closing it stay the caller's, since a capture is one thing
-    to do on a connection already open under whatever the caller's own
+    DTR/RTS setup that keeps the board from resetting, see device.py's
+    open_serial()) and closing it stay the caller's, since a capture is one
+    thing to do on a connection already open under whatever the caller's own
     reason for holding it is (a bare port here, the device lock there).
     Raises ScreenshotRefused if the device refuses, RuntimeError if a
     complete capture never arrives within `timeout`. `on_status(message)` is

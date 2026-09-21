@@ -5,21 +5,11 @@
 # variable or a small function the caller declares first, so a report script
 # holds declarations and no procedure of its own.
 #
-# WHY THIS EXISTS
-#
-# There were four scripts doing this job, each carrying its own copy of the
-# sdkconfig fragment list, the stale-config removal, the flag assertion and
-# the capture call. Two of them diverged on a build flag twice - SDKCONFIG
-# once, CONFIG_LAUNCHER_SELFTEST_AUTORUN once - and both times the symptom
-# was a capture that measured nothing rather than an error. A second copy of
-# this procedure is the bug; do not write one.
-#
-# The build and capture are both `scripts/device/device.py selftest` -
-# see its own docstring for the report_suite="" (boot-time, autorun) vs
-# report_suite=<name> (RUNSUITE) split, which this file's own report_suite
-# just forwards. One held lock covers the whole build+capture, the same
-# device lock every other board access goes through - see
-# docs/tools/Autana-CLI.md and docs/tools/Device-Lock.md.
+# Every report script shares this one procedure rather than carrying its
+# own copy of the build flags and the capture call - a second copy
+# drifting out of sync from this one would surface as a capture that
+# measures nothing rather than as an error. A second copy of this
+# procedure is the bug; do not write one.
 #
 # WHAT A CALLER DECLARES
 #
@@ -102,8 +92,6 @@ device_report_run() {
     fi
     _dr_raw="$report_dir/${report_name}_${_dr_stamp}_raw.txt"
 
-    # Installed only once the board is about to be written to: nothing needs
-    # restoring before that, and a wrong port should not cost a release build.
     _dr_do_restore="$_dr_restore"
     trap device_report_finish EXIT
 
@@ -119,17 +107,20 @@ device_report_run() {
 }
 
 # Build+flash and capture are one held-lock call, scripts/device/device.py's
-# own `selftest` - see its own docstring for what report_suite="" vs a name
-# builds and captures. No port lookup here: device.py finds the board by USB
-# identity itself and reports clearly when none or several are plugged in;
-# COM_PORT, when given, is passed through rather than searched for.
+# own `selftest` (report_suite="", every suite at boot) or `batch --runs 1`
+# (report_suite=<name>, one suite via RUNSUITE - the same build-then-
+# capture-under-one-lock shape, scoped to a single suite and run). COM_PORT,
+# when given, is passed through; otherwise device.py finds the board by its
+# USB identity.
 device_report_capture() {
-    set -- --owner "$_dr_owner" selftest --worktree "$_dr_worktree" --out "$_dr_raw" \
-           --max-seconds "$report_timeout" --purpose "device_report $report_name"
     if [ -n "$report_suite" ]; then
-        set -- "$@" --suite "$report_suite"
+        set -- --owner "$_dr_owner" batch --worktree "$_dr_worktree" --suite "$report_suite" \
+               --runs 1 --out "$_dr_raw" --max-seconds "$report_timeout" \
+               --purpose "device_report $report_name"
         echo "=== Building and capturing RUNSUITE $report_suite ==="
     else
+        set -- --owner "$_dr_owner" selftest --worktree "$_dr_worktree" --out "$_dr_raw" \
+               --max-seconds "$report_timeout" --purpose "device_report $report_name"
         echo "=== Building and capturing the self-test run ==="
     fi
     if [ -n "$_dr_port" ]; then

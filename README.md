@@ -45,7 +45,8 @@ Requires [ESP-IDF](https://docs.espressif.com/projects/esp-idf/) v5.5+.
 
 ```bash
 cd launcher && idf.py build            # release — no test code, ships to the board
-idf.py -p <PORT> flash monitor
+autana flash rel                       # flash it - works from any shell, including Git Bash
+autana monitor                         # print what it says
 
 ./launcher/test/run_tests.sh           # host tests, portable suites, <1 s
 autana selftest                        # builds the diagnostics variant, flashes it,
@@ -54,13 +55,13 @@ autana selftest                        # builds the diagnostics variant, flashes
 
 Everything that touches the board - flashing, the console, a suite run, a
 screenshot - goes through the `autana` command, one terminal command
-covering all of it; see [`docs/tools/Autana-CLI.md`](docs/tools/Autana-CLI.md).
-`idf.py` itself cannot run under Git Bash, so on Windows use the wrappers
-below - `.sh` scripts that reach ESP-IDF through `launcher/tools/idf.sh` and
-write a markdown report into their own `tools/results/`:
+covering all of it, taking a device lock so two sessions never fight over
+the port; see [`docs/tools/Autana-CLI.md`](docs/tools/Autana-CLI.md). For a
+markdown report instead of a pass/fail line, use the wrappers below - `.sh`
+scripts that write into their own `tools/results/`:
 
 ```bash
-./launcher/tools/build_flash.sh        # build + flash the release firmware
+autana flash rel                       # build + flash the release firmware
 ./launcher/tools/report_test_results.sh # every suite, pass/fail
 ./launcher/main/apps/sand/tools/report_performance.sh  # frame-budget numbers
 ```
@@ -74,7 +75,7 @@ a lossless `.png`, plus a same-named `.json` snapshot of device state at
 that exact frame (sensors, memory, clock), over that same serial connection
 - no SD card, no button on the device, just the running firmware and a
 cable already plugged in. Needs neither `idf.py` nor PowerShell.
-Development-only (`build_flash_dev.sh` / `build_flash.sh --diag`) - a
+Development-only (`autana flash dev` / `autana flash diag`) - a
 release build carries none of it, see
 [`docs/Build-Variants.md`](docs/Build-Variants.md).
 
