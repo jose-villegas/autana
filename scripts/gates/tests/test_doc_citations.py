@@ -100,7 +100,7 @@ missing_function() LIVE_MISSING missing.sh
             self.write(root, "docs/Guide.md",
                        "`AMBIGUOUS` is 1.\n`LIVE_LIMIT` was 16.\n"
                        "`LIVE_LIMIT` is 16.\n`LIVE_LIMIT` is 8. <!-- doc-constants: ignore -->\n")
-            self.write(root, "scripts/doc_constant_allowlist.txt",
+            self.write(root, "scripts/gates/doc_constant_allowlist.txt",
                        "docs/Guide.md\tLIVE_LIMIT\t16\tdeliberate exception\n")
             found = check_doc_constants.check(root)
         self.assertEqual(found, [])
@@ -248,8 +248,8 @@ Acid -->|"dissolvable 110"| Metal
     def test_vocabulary_gate_honours_archive_exception(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.write(root, "scripts/doc_vocabulary.txt", "C6\twrong board\n")
-            self.write(root, "scripts/doc_vocabulary_exceptions.txt", "docs/Archive.md\tarchive\n")
+            self.write(root, "scripts/gates/doc_vocabulary.txt", "C6\twrong board\n")
+            self.write(root, "scripts/gates/doc_vocabulary_exceptions.txt", "docs/Archive.md\tarchive\n")
             self.write(root, "docs/Guide.md", "C6 is current.\n")
             self.write(root, "docs/Archive.md", "C6 is historical.\n")
             found = check_doc_vocabulary.check(root)
@@ -258,7 +258,7 @@ Acid -->|"dissolvable 110"| Metal
     def test_vocabulary_gate_honours_inline_and_previous_line_escapes(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.write(root, "scripts/doc_vocabulary.txt", "C6\twrong board\n")
+            self.write(root, "scripts/gates/doc_vocabulary.txt", "C6\twrong board\n")
             self.write(root, "docs/Guide.md",
                        "C6 is historical. <!-- doc-vocabulary: ignore -->\n"
                        "<!-- doc-vocabulary: ignore -->\n"
@@ -269,8 +269,8 @@ Acid -->|"dissolvable 110"| Metal
     def test_vocabulary_gate_reports_stale_exception(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.write(root, "scripts/doc_vocabulary.txt", "C6\twrong board\n")
-            self.write(root, "scripts/doc_vocabulary_exceptions.txt",
+            self.write(root, "scripts/gates/doc_vocabulary.txt", "C6\twrong board\n")
+            self.write(root, "scripts/gates/doc_vocabulary_exceptions.txt",
                        "docs/Deleted.md\tobsolete exception\n")
             found = check_doc_vocabulary.check(root)
         self.assertEqual([(path, term) for path, _, term, _ in found], [
@@ -280,7 +280,7 @@ Acid -->|"dissolvable 110"| Metal
     def test_vocabulary_gate_reports_unescaped_retired_term(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.write(root, "scripts/doc_vocabulary.txt", "C6\twrong board\n")
+            self.write(root, "scripts/gates/doc_vocabulary.txt", "C6\twrong board\n")
             self.write(root, "docs/Guide.md", "C6 is not the current board.\n")
             found = check_doc_vocabulary.check(root)
         self.assertEqual([(path, term) for path, _, term, _ in found], [("docs/Guide.md", "C6")])
@@ -289,7 +289,7 @@ Acid -->|"dissolvable 110"| Metal
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.fixture(root)
-            self.write(root, "scripts/doc_citation_allowlist.txt",
+            self.write(root, "scripts/gates/doc_citation_allowlist.txt",
                        "# doc\tcitation\treason\n"
                        "docs/Guide.md\tmissing.h\tstill cited and missing\n"
                        "docs/Guide.md\tLIVE_MACRO\tresolves now\n"
@@ -305,8 +305,8 @@ Acid -->|"dissolvable 110"| Metal
     def test_vocabulary_gate_reports_exception_for_a_clean_file(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.write(root, "scripts/doc_vocabulary.txt", "C6\twrong board\n")
-            self.write(root, "scripts/doc_vocabulary_exceptions.txt", "docs/Clean.md\trewritten\n")
+            self.write(root, "scripts/gates/doc_vocabulary.txt", "C6\twrong board\n")
+            self.write(root, "scripts/gates/doc_vocabulary_exceptions.txt", "docs/Clean.md\trewritten\n")
             self.write(root, "docs/Clean.md", "The S3 is current.\n")
             found = check_doc_vocabulary.check(root)
         self.assertEqual([(path, term) for path, _, term, _ in found], [
@@ -318,7 +318,7 @@ Acid -->|"dissolvable 110"| Metal
             root = pathlib.Path(temp)
             self.write(root, "launcher/main/sizes.h", "#define BLOCK_W 16\n")
             self.write(root, "docs/Guide.md", "`BLOCK_W` is 16.\n")
-            self.write(root, "scripts/doc_constant_allowlist.txt",
+            self.write(root, "scripts/gates/doc_constant_allowlist.txt",
                        "docs/Guide.md\tBLOCK_W\t16\tused to differ\n")
             stale = check_doc_constants.stale_allowlist(root)
         self.assertEqual(stale, [("docs/Guide.md", "BLOCK_W", 16)])

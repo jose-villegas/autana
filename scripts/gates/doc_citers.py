@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Which documents cite what a change touched.
 
-    python scripts/doc_citers.py FILE...          docs citing what each file's
-                                                  uncommitted change touches
-    python scripts/doc_citers.py --changed REF    warn for docs citing what the
-                                                  diff since REF touches, when
-                                                  that diff leaves them alone
+    python scripts/gates/doc_citers.py FILE...          docs citing what each file's
+                                                        uncommitted change touches
+    python scripts/gates/doc_citers.py --changed REF    warn for docs citing what the
+                                                        diff since REF touches, when
+                                                        that diff leaves them alone
 
 A citation is what check_doc_citations.py already reads out of a document:
 a backticked path, `name()` or MACRO. A change touches a function when a

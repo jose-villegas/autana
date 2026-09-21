@@ -91,7 +91,7 @@ class Comment:
     @property
     def has_rule(self):
         """Opens with a drawn rule - `/*====`, `//----`. Decoration this tree
-        does not use; scripts/strip_comment_rules.py finds any that returns."""
+        does not use; scripts/gates/strip_comment_rules.py finds any that returns."""
         first = self.raw_lines[0].strip()
         return bool(re.match(r"^/\*[=*\-_#]{4,}", first)
                     or re.match(r"^//\s*[=*\-_#]{4,}", first))

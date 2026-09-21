@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Fail when documentation gives an unambiguous integer constant a wrong value.
 
-    python scripts/check_doc_constants.py [--root ROOT] [--docs-ref REF] [--verbose]
+    python scripts/gates/check_doc_constants.py [--root ROOT] [--docs-ref REF] [--verbose]
 
 Put ``<!-- doc-constants: ignore -->`` on a line to retain a deliberate
 historical value. The allowlist is doc, name, claimed value, and reason,
-separated by tabs in scripts/doc_constant_allowlist.txt.
+separated by tabs in scripts/gates/doc_constant_allowlist.txt.
 """
 import pathlib
 import re
@@ -192,7 +192,7 @@ def table_values(root):
 
 
 def allowlist(root):
-    path = pathlib.Path(root) / "scripts/doc_constant_allowlist.txt"
+    path = pathlib.Path(root) / "scripts/gates/doc_constant_allowlist.txt"
     allowed = set()
     if not path.exists():
         return allowed
@@ -534,7 +534,7 @@ def main(argv):
         for reason in sorted(set(item[2] for item in skipped)):
             print(f"{sum(item[2] == reason for item in skipped)} skipped: {reason}")
     for doc, name, value in stale:
-        print(f"scripts/doc_constant_allowlist.txt: stale entry {doc} {name} {value}: "
+        print(f"scripts/gates/doc_constant_allowlist.txt: stale entry {doc} {name} {value}: "
               "the document no longer disagrees with the code")
     print(f"{len(mismatches)} documentation constant mismatch"
           f"{'' if len(mismatches) == 1 else 'es'}, {len(stale)} stale allowlist "

@@ -25,32 +25,32 @@ jobs:
 
       - name: Length beside code, and header height
         run: >
-          python3 scripts/check_comment_length.py
+          python3 scripts/gates/check_comment_length.py
           --no-banners --limit 500 --header-limit 50 --top 0
 
       - name: Every function a comment names exists
-        run: python3 scripts/check_comment_symbols.py
+        run: python3 scripts/gates/check_comment_symbols.py
 
       - name: No comment below apps/ names an app
-        run: python3 scripts/check_comment_layers.py
+        run: python3 scripts/gates/check_comment_layers.py
 
       - name: No comment records where code moved
-        run: python3 scripts/find_narrative_comments.py --tombstones
+        run: python3 scripts/gates/find_narrative_comments.py --tombstones
 
       - name: Every documentation citation resolves
-        run: python3 scripts/check_doc_citations.py
+        run: python3 scripts/gates/check_doc_citations.py
 
       - name: Documentation constants match source
-        run: python3 scripts/check_doc_constants.py
+        run: python3 scripts/gates/check_doc_constants.py
 
       - name: Documentation names the supported board
-        run: python3 scripts/check_doc_vocabulary.py
+        run: python3 scripts/gates/check_doc_vocabulary.py
 
       - name: Every document is reachable from README.md
-        run: python3 scripts/check_doc_index.py
+        run: python3 scripts/gates/check_doc_index.py
 
       # Warns, never fails: a changed function a document cites is a reason
       # to reread that document, not proof it is wrong.
       - name: Documents citing what this pull request changed
         if: github.event_name == 'pull_request'
-        run: python3 scripts/doc_citers.py --changed "origin/${{ github.base_ref }}"
+        run: python3 scripts/gates/doc_citers.py --changed "origin/${{ github.base_ref }}"

@@ -131,7 +131,7 @@ fast enough to run on every commit. `--changed` is the fast path for local
 use instead: point it at whatever ref the branch forked from.
 
 clang-tidy is pinned to major 19, resolved the same way
-`scripts/check-format.sh` resolves clang-format: `$CLANG_TIDY` if set,
+`scripts/gates/check-format.sh` resolves clang-format: `$CLANG_TIDY` if set,
 then `clang-tidy-19` or `clang-tidy` on `PATH`, then ESP-IDF's bundled
 esp-clang under the ESP-IDF tools root. A different major scores this
 check differently, so anything else is refused unless

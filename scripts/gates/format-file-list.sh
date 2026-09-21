@@ -6,9 +6,9 @@
 # this is the file list.
 #
 # Usage:
-#   scripts/format-file-list.sh                  # every tracked first-party file
-#   scripts/format-file-list.sh <path> [...]     # only those paths that qualify
-#   ... | scripts/format-file-list.sh --stdin    # same, paths one per line
+#   scripts/gates/format-file-list.sh                  # every tracked first-party file
+#   scripts/gates/format-file-list.sh <path> [...]     # only those paths that qualify
+#   ... | scripts/gates/format-file-list.sh --stdin    # same, paths one per line
 #
 # The filtering forms print nothing (and still succeed) when no path
 # qualifies, which is what lets a caller run it over an arbitrary commit's
@@ -32,7 +32,7 @@
 
 set -eu
 
-REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 
 qualifies() {
     path="$1"
