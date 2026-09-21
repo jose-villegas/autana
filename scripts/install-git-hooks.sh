@@ -95,5 +95,5 @@ for hook in "$HOOKS_DIR"/*; do
 done
 echo ""
 echo "The pre-commit hook checks that staged C and header files are formatted"
-echo "(scripts/check-format-staged.sh). It needs clang-format 19 - see"
+echo "(scripts/gates/check-format-staged.sh). It needs clang-format 19 - see"
 echo "docs/C-Style-Guide.md. Undo with: scripts/install-git-hooks.sh --remove"

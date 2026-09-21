@@ -1,6 +1,6 @@
 # Documentation drift
 
-`python scripts/doc_drift.py --top 20` ranks every tracked Markdown document
+`python scripts/gates/doc_drift.py --top 20` ranks every tracked Markdown document
 by its age plus the number of cited source files changed since it was last
 written. `--stale-days 30` instead lists every document untouched for at least
 that many days, including documents that cite no code. It is a review queue,

@@ -53,14 +53,14 @@ and anything absent is that style's default.
 Run the checker on every first-party C or header file a change touches:
 
 ```sh
-scripts/check-format.sh --check path/to/file.c path/to/file.h
+scripts/gates/check-format.sh --check path/to/file.c path/to/file.h
 ```
 
 Format named files only. Do not aim the formatter at the whole repository or
 at vendored/generated sources:
 
 ```sh
-scripts/check-format.sh path/to/file.c path/to/file.h
+scripts/gates/check-format.sh path/to/file.c path/to/file.h
 ```
 
 ### One formatter version
@@ -77,15 +77,15 @@ cost of reformatting files you did not touch.
 
 ### Where the rules are checked
 
-Three places, one file list. `scripts/format-file-list.sh` defines which files
-the rules apply to - vendored trees by path, generated files by the
+Three places, one file list. `scripts/gates/format-file-list.sh` defines which
+files the rules apply to - vendored trees by path, generated files by the
 `GENERATED FILE` marker they carry - so the hook and CI cannot disagree about
 what is in scope.
 
 ```sh
 scripts/install-git-hooks.sh          # opt in to the pre-commit hook
 scripts/install-git-hooks.sh --status # is it active in this clone?
-scripts/format-file-list.sh | xargs scripts/check-format.sh --check  # what CI runs
+scripts/gates/format-file-list.sh | xargs scripts/gates/check-format.sh --check  # what CI runs
 ```
 
 The pre-commit hook checks the *staged content* of the C and header files in a
@@ -117,7 +117,7 @@ shorter prose.
   fact, a measured number that is the evidence, a decision someone would
   otherwise undo. Most of the time it is not needed.
 - **Never the journey.** git log owns "a first attempt...", "an earlier
-  version...", "was reverted". `scripts/find_narrative_comments.py` lists
+  version...", "was reverted". `scripts/gates/find_narrative_comments.py` lists
   existing cases.
 - **Never where code went.** A comment naming the file something moved to
   describes a layout the reader never saw, and it outlives whatever made the
@@ -165,14 +165,14 @@ grid of cells and a font really does have a glyph cell. State the constraint
 itself instead: how large the block is, or how often the call happens.
 
 ```sh
-scripts/check-comment-length.sh                 # whole repo, 20 worst listed
-scripts/check-comment-length.sh --changed main  # only comments a change touches
-scripts/check-comment-length.sh --files         # per-file counts
+scripts/gates/check-comment-length.sh                 # whole repo, 20 worst listed
+scripts/gates/check-comment-length.sh --changed main  # only comments a change touches
+scripts/gates/check-comment-length.sh --files         # per-file counts
 ```
 
 `.github/workflows/comment-rules.yml` holds the tree to all three checks on
 every push: length beside code and header height
-(`scripts/check_comment_length.py`), every cited function existing
+(`scripts/gates/check_comment_length.py`), every cited function existing
 (`check_comment_symbols.py`), and no app named below `apps/`
 (`check_comment_layers.py`). The last two take their vocabulary from the tree
 itself, so neither needs updating when code moves.

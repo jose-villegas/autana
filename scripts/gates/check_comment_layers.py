@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail on a comment below `apps/` that names a particular app.
 
-    python scripts/check_comment_layers.py [--context]
+    python scripts/gates/check_comment_layers.py [--context]
 
 An app is a folder designed to be deleted whole, so a comment in a lower layer
 naming one is a dangling reference by construction: delete the app and the

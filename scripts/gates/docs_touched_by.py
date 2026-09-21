@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """List documentation citations for symbols changed since a base revision.
 
-    python scripts/docs_touched_by.py <base-ref> [--json]
+    python scripts/gates/docs_touched_by.py <base-ref> [--json]
 """
 import json
 import pathlib

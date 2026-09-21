@@ -1,12 +1,12 @@
 # The C format for this repository, as deviations from clang-format's LLVM
 # style. Anything absent here is that style's default, so this file lists
 # only what was actually decided - see docs/C-Style-Guide.md for the prose
-# and scripts/format-file-list.sh for which files it applies to.
+# and scripts/gates/format-file-list.sh for which files it applies to.
 #
 # clang-format 19.1.x and no other major version. The versions disagree
 # about C on this tree (20 and 21 each reformat files 19 leaves alone), and
 # a file of deviations leans on one version's defaults, so the pin is what
-# makes it reproducible: scripts/check-format.sh enforces it and
+# makes it reproducible: scripts/gates/check-format.sh enforces it and
 # .github/workflows/format.yml installs it.
 #
 # No `Language:` key, deliberately: clang-format 19 handles C and C++ under
