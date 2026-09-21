@@ -341,6 +341,12 @@ void sand_set(sand_t* s, int x, int y, cell_t cell);
 
 int sand_count(const sand_t* s);
 
+/* Tallies every cell's material into `counts[MATERIAL_MAX]`, indexed by
+ * material_id_t. MAT_EXTENDED's slot holds every extended cell (ice, plant,
+ * gunpowder, ...) together, regardless of which sub-type. For a console
+ * diagnostic - see the app that reports it for the command. */
+void sand_material_counts(const sand_t* s, int counts[MATERIAL_MAX]);
+
 /* Fill a disc with `material`, at random variants. Returns how many cells it
  * filled, which is less than the disc's area when it overlaps the edge or
  * anything already there. */
