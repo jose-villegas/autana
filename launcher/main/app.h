@@ -16,7 +16,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "console/console_verbs.h"
 #include "input/buttons.h"
 
 /* Touch state for the current frame.
@@ -49,11 +48,13 @@ typedef struct {
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* APP_CONSOLE() (a top-level declaration, before the app's own app_t) plus
  * APP_CONSOLE_PTR(handler) (that app_t's `.console = `) are the only
- * sanctioned way to fill one: two macros because the checks below are
- * declarations, which cannot sit inside app_t's own constant initializer. */
+ * sanctioned way to fill one: two macros because the assert below is a
+ * declaration, which cannot sit inside app_t's own constant initializer.
+ * A clash and an over-long prefix are both checked at boot instead
+ * (console_find_clash(), main.c) - this app.h stays clear of console/, so
+ * an app pulls in only what it names. */
 #define APP_CONSOLE(prefix, handler)                                                                                   \
     _Static_assert(sizeof(prefix) > 1, "APP_CONSOLE needs a non-empty prefix");                                        \
-    _Static_assert(sizeof(prefix) < CONSOLE_LINE_MAX, "the prefix plus a space must fit CONSOLE_LINE_MAX");            \
     static const app_console_t handler##_console = {(prefix), (handler)}
 #define APP_CONSOLE_PTR(handler) (&handler##_console)
 #else

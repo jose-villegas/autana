@@ -1,6 +1,6 @@
 /*
  * Portable suite: console_verbs (dispatch, registration discipline,
- * console_word_match(), console_name_in(), the line assembler) and
+ * console_word_match(), console_find_clash(), the line assembler) and
  * console_latch (the frame-loop handoff), driven here with a registry and
  * latches this suite owns - never console_shared(), which only a device
  * build's CONSOLE_VERB() entries ever touch. Also the TOUCH/IMU parsers
@@ -313,50 +313,85 @@ static void
 test_word_match_carries_what_follows_the_name(void) {
     const char* args;
 
-    TEST_ASSERT_TRUE(console_word_match("sand counts", "sand", &args));
-    TEST_ASSERT_EQUAL_STRING("counts", args);
+    TEST_ASSERT_TRUE(console_word_match("example status", "example", &args));
+    TEST_ASSERT_EQUAL_STRING("status", args);
 
-    TEST_ASSERT_TRUE(console_word_match("sand", "sand", &args));
+    TEST_ASSERT_TRUE(console_word_match("example", "example", &args));
     TEST_ASSERT_EQUAL_STRING("", args);
 
-    TEST_ASSERT_FALSE(console_word_match("sandbox", "sand", &args));
-    TEST_ASSERT_FALSE(console_word_match("san", "sand", &args));
+    TEST_ASSERT_FALSE(console_word_match("examples", "example", &args));
+    TEST_ASSERT_FALSE(console_word_match("exa", "example", &args));
 }
 
 static void
 test_word_match_folds_case(void) {
     const char* args;
-    TEST_ASSERT_TRUE(console_word_match("SAND counts", "sand", &args));
-    TEST_ASSERT_EQUAL_STRING("counts", args);
+    TEST_ASSERT_TRUE(console_word_match("EXAMPLE status", "example", &args));
+    TEST_ASSERT_EQUAL_STRING("status", args);
 }
 
-/* console_name_in() is the boot-time clash check's own primitive
+/* console_find_clash() is the boot-time clash check's own primitive
  * (main.c): a verb's name and an app's prefix, or two apps' own prefixes,
- * must never fold to the same word. */
+ * must never fold to the same word; a prefix must carry no space of its
+ * own and fit CONSOLE_LINE_MAX. */
 static void
-test_name_in_finds_a_case_insensitive_match(void) {
-    const char* others[] = {"freeze", "screenshot", "set"};
-    int at = -1;
+test_find_clash_finds_an_app_prefix_that_folds_to_a_registered_verb(void) {
+    fixture();
+    TEST_ASSERT_TRUE(console_register(&registry, &alpha_verb));
+    const char* prefixes[] = {"alpha"};
+    const char* from = NULL;
+    const char* other = NULL;
 
-    TEST_ASSERT_TRUE(console_name_in("SET", others, 3, &at));
-    TEST_ASSERT_EQUAL_INT(2, at);
+    TEST_ASSERT_EQUAL_INT(CONSOLE_CLASH_VERB, console_find_clash(&registry, prefixes, 1, &from, &other));
+    TEST_ASSERT_EQUAL_STRING("alpha", from);
+    TEST_ASSERT_EQUAL_STRING("ALPHA", other);
 }
 
 static void
-test_name_in_is_false_over_a_clean_set(void) {
-    const char* others[] = {"freeze", "screenshot", "set"};
-    int at = -1;
+test_find_clash_finds_two_app_prefixes_that_fold_together(void) {
+    fixture();
+    const char* prefixes[] = {"widget", "Widget"};
+    const char* from = NULL;
+    const char* other = NULL;
 
-    TEST_ASSERT_FALSE(console_name_in("sand", others, 3, &at));
+    TEST_ASSERT_EQUAL_INT(CONSOLE_CLASH_APP, console_find_clash(&registry, prefixes, 2, &from, &other));
+    TEST_ASSERT_EQUAL_STRING("Widget", from);
+    TEST_ASSERT_EQUAL_STRING("widget", other);
 }
 
 static void
-test_name_in_finds_a_clash_between_two_apps(void) {
-    const char* prefixes[] = {"sand", "render"};
-    int at = -1;
+test_find_clash_is_none_over_a_clean_set(void) {
+    fixture();
+    TEST_ASSERT_TRUE(console_register(&registry, &alpha_verb));
+    const char* prefixes[] = {"widget", "gadget"};
+    const char* from = NULL;
+    const char* other = NULL;
 
-    TEST_ASSERT_TRUE(console_name_in("Render", prefixes, 2, &at));
-    TEST_ASSERT_EQUAL_INT(1, at);
+    TEST_ASSERT_EQUAL_INT(CONSOLE_CLASH_NONE, console_find_clash(&registry, prefixes, 2, &from, &other));
+}
+
+static void
+test_find_clash_rejects_a_prefix_with_a_space(void) {
+    fixture();
+    const char* prefixes[] = {"set tool"};
+    const char* from = NULL;
+    const char* other = NULL;
+
+    TEST_ASSERT_EQUAL_INT(CONSOLE_CLASH_SPACE, console_find_clash(&registry, prefixes, 1, &from, &other));
+    TEST_ASSERT_EQUAL_STRING("set tool", from);
+}
+
+static void
+test_find_clash_rejects_a_prefix_too_long_for_console_line_max(void) {
+    fixture();
+    char long_prefix[CONSOLE_LINE_MAX + 1];
+    memset(long_prefix, 'x', sizeof long_prefix - 1);
+    long_prefix[sizeof long_prefix - 1] = '\0';
+    const char* prefixes[] = {long_prefix};
+    const char* from = NULL;
+    const char* other = NULL;
+
+    TEST_ASSERT_EQUAL_INT(CONSOLE_CLASH_LENGTH, console_find_clash(&registry, prefixes, 1, &from, &other));
 }
 
 /* console_append_char() with the CONSOLE_LINE_MAX its own doc comment
@@ -399,10 +434,7 @@ test_append_char_discards_an_overflowing_line_and_its_terminator(void) {
     TEST_ASSERT_FALSE_MESSAGE(overflowed, "the next line starts clean");
 }
 
-/* The bug this guards: resetting `*len` mid-overflow without discarding
- * what follows turned an over-long line's tail into a short line of its
- * own, delivered as if typed on purpose - with no terminator for the
- * original line ever seen at all. */
+/* An over-long line's tail is never delivered as a line of its own. */
 static void
 test_append_char_the_tail_after_an_overflow_is_not_a_line_of_its_own(void) {
     char line[CONSOLE_LINE_MAX];
@@ -498,9 +530,11 @@ suite_console(void) {
     RUN_TEST(test_taking_into_a_smaller_buffer_truncates_too);
     RUN_TEST(test_word_match_carries_what_follows_the_name);
     RUN_TEST(test_word_match_folds_case);
-    RUN_TEST(test_name_in_finds_a_case_insensitive_match);
-    RUN_TEST(test_name_in_is_false_over_a_clean_set);
-    RUN_TEST(test_name_in_finds_a_clash_between_two_apps);
+    RUN_TEST(test_find_clash_finds_an_app_prefix_that_folds_to_a_registered_verb);
+    RUN_TEST(test_find_clash_finds_two_app_prefixes_that_fold_together);
+    RUN_TEST(test_find_clash_is_none_over_a_clean_set);
+    RUN_TEST(test_find_clash_rejects_a_prefix_with_a_space);
+    RUN_TEST(test_find_clash_rejects_a_prefix_too_long_for_console_line_max);
     RUN_TEST(test_append_char_delivers_one_line_at_a_time);
     RUN_TEST(test_append_char_ignores_a_bare_terminator);
     RUN_TEST(test_append_char_discards_an_overflowing_line_and_its_terminator);

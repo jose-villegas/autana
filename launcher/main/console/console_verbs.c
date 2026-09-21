@@ -91,13 +91,32 @@ console_registry_handle_line(console_registry_t* registry, const char* line, con
     return false;
 }
 
-bool
-console_name_in(const char* name, const char* const* others, int count, int* at) {
-    for (int i = 0; i < count; i++) {
-        if (name_cmp(name, others[i]) == 0) {
-            *at = i;
-            return true;
+console_clash_t
+console_find_clash(const console_registry_t* verbs, const char* const* prefixes, int n, const char** from,
+                   const char** other) {
+    for (int i = 0; i < n; i++) {
+        if (strchr(prefixes[i], ' ') != NULL) {
+            *from = prefixes[i];
+            return CONSOLE_CLASH_SPACE;
+        }
+        if (strlen(prefixes[i]) + 1 >= CONSOLE_LINE_MAX) {
+            *from = prefixes[i];
+            return CONSOLE_CLASH_LENGTH;
+        }
+        for (const console_verb_t* v = verbs->first; v != NULL; v = v->next) {
+            if (name_cmp(v->name, prefixes[i]) == 0) {
+                *from = prefixes[i];
+                *other = v->name;
+                return CONSOLE_CLASH_VERB;
+            }
+        }
+        for (int j = 0; j < i; j++) {
+            if (name_cmp(prefixes[j], prefixes[i]) == 0) {
+                *from = prefixes[i];
+                *other = prefixes[j];
+                return CONSOLE_CLASH_APP;
+            }
         }
     }
-    return false;
+    return CONSOLE_CLASH_NONE;
 }
