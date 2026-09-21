@@ -578,8 +578,11 @@ CONSOLE_HELP = """  tune [text]              list the tunables (names containing
 def console(_args=None):
     """A session with the device: each line takes the lock, asks, and lets go,
     so the board is free for anything else between two of them. A bare word
-    is only ever an autana command or a device console verb - never an
-    implicit tunable lookup; `tune <name>` is the only way to one."""
+    is either an autana command (which includes the device's own built-in
+    verbs, now exposed directly - see COMMANDS) or forwarded to the device
+    as a line verbatim, the same way an app's own console command is
+    reached; `tune <name>` is still the only way to a tunable, never an
+    implicit lookup of a bare name."""
     print("autana console - 'help' for the commands, 'quit' to leave")
     while True:
         try:
@@ -599,7 +602,8 @@ def console(_args=None):
             elif verb in COMMANDS and verb != "console":
                 COMMANDS[verb](rest)
             else:
-                print("not understood - 'help' lists what is")
+                _, replies = send(line, reply="", purpose=f"autana console {verb}", optional=True)
+                print("\n".join(replies) if replies else "sent")
         except SystemExit as stop:
             # a command's own refusal ends that command, not the session
             if stop.code not in (0, None):
