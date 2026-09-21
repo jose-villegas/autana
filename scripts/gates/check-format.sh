@@ -10,7 +10,7 @@
 #   check-format.sh --which                       # print the clang-format this repo would use
 #
 # Pass files, never directories, and never the whole repository -
-# scripts/format-file-list.sh decides which files these rules apply to.
+# scripts/gates/format-file-list.sh decides which files these rules apply to.
 
 set -euo pipefail
 

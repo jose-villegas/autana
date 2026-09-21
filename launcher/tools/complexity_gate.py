@@ -193,7 +193,7 @@ def resolve_clang_tidy():
     if not allow_any:
         sys.exit(
             f"Found clang-tidy {major} ({candidate}), but this gate pins "
-            f"{PINNED_MAJOR}.x, the same major scripts/check-format.sh pins "
+            f"{PINNED_MAJOR}.x, the same major scripts/gates/check-format.sh pins "
             "clang-format to and for the same reason: different majors score "
             "this check differently. Set CLANG_TIDY_ANY_VERSION=1 to run "
             "anyway (informational only - CI always uses the pinned major)."

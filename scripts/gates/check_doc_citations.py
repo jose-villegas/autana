@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail when a documentation citation no longer resolves in this tree.
 
-    python scripts/check_doc_citations.py [--root ROOT]
+    python scripts/gates/check_doc_citations.py [--root ROOT]
 """
 import pathlib
 import re
@@ -71,7 +71,7 @@ def citations(root):
                                    "macro", text)
 
 
-ALLOWLIST = "scripts/doc_citation_allowlist.txt"
+ALLOWLIST = "scripts/gates/doc_citation_allowlist.txt"
 PLANS = ("docs/plans/*", "*")
 
 

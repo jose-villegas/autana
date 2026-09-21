@@ -6,7 +6,7 @@
 # hand and so CI's shell linting covers it - a file named `pre-commit` has no
 # .sh extension and would be linted by nothing.
 #
-#   scripts/check-format-staged.sh
+#   scripts/gates/check-format-staged.sh
 #
 # It checks the staged CONTENT of each file, not the working copy. A file
 # staged in part - `git add -p`, or a later edit after `git add` - is judged
@@ -21,7 +21,7 @@
 
 set -eu
 
-REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$REPO_ROOT"
 
 # ACMR: added, copied, modified, renamed. A deleted file has nothing to
@@ -29,12 +29,12 @@ cd "$REPO_ROOT"
 staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.c' '*.h')
 [ -n "$staged" ] || exit 0
 
-files=$(printf '%s\n' "$staged" | scripts/format-file-list.sh --stdin)
+files=$(printf '%s\n' "$staged" | scripts/gates/format-file-list.sh --stdin)
 [ -n "$files" ] || exit 0
 
 # Resolved once, so a version problem is reported once rather than per file.
 # check-format.sh owns finding it and refusing a wrong major.
-if ! CLANG_FORMAT=$(scripts/check-format.sh --which); then
+if ! CLANG_FORMAT=$(scripts/gates/check-format.sh --which); then
     echo "" >&2
     echo "Cannot check formatting, so nothing was verified. Fix the above, or" >&2
     echo "commit with --no-verify if you have a reason to skip the check." >&2
@@ -64,7 +64,7 @@ printf '%s' "$offenders" | while IFS= read -r file; do
 done
 echo "" >&2
 echo "Format them and stage the result:" >&2
-printf '  scripts/check-format.sh' >&2
+printf '  scripts/gates/check-format.sh' >&2
 printf '%s' "$offenders" | while IFS= read -r file; do
     [ -n "$file" ] || continue
     printf ' %s' "$file" >&2
