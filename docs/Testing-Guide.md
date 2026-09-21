@@ -26,7 +26,7 @@ Living document: update it when the approach changes.
 
 ```sh
 ./launcher/test/run_tests.sh          # portable suites, on this machine, ~40 s
-./launcher/test/run_device_tests.sh   # every suite, on the board, host-triggered
+autana selftest                       # every suite, on the board, build+flash+run
 ```
 
 **Where those 40 seconds go, because it is not the tests.** All of the
@@ -38,11 +38,12 @@ that changes a file. So a slow individual test is rarely what to optimise;
 the two rebuilds are. (Measured on one Windows machine - treat the ratio as
 the point, not the number.)
 
-**On Windows**, `idf.py` cannot run under Git Bash, so the build/flash
-half of that second script refuses. Either collect from what is already
-on the board (`run_device_tests.sh --no-flash` - collection is plain
-Python and works fine here), or use a wrapper, which is a `.sh` reaching
-ESP-IDF through `tools/idf.sh`:
+`autana selftest` builds and flashes the diagnostics+autorun variant and
+captures the run under the device lock - it works from Git Bash on Windows
+the same way `autana flash` does, since both go through
+`scripts/device/device.py`'s own Git-for-Windows `bash.exe` rather than
+`idf.py` directly. For a markdown report instead of a pass/fail line, use
+one of the report scripts:
 
 ```sh
 ./launcher/tools/report_test_results.sh                    # pass/fail for every suite  -> tools/results/
@@ -50,19 +51,12 @@ ESP-IDF through `tools/idf.sh`:
 ```
 
 Both declare what they want and hand the work to
-`launcher/tools/device_report.sh`, which builds and flashes the diagnostics
-variant through `build_flash.sh --diag --autorun`, captures the run,
-validates the capture, writes a markdown report, and reflashes the release
-firmware afterwards unless given `--no-restore`. A report script differs from
-its siblings only in what it declares — capture timeout, which suite,
-sentinel, reporter, output location — so a build flag cannot reach one of
-them and miss another.
-
-The second builds the diagnostics variant, flashes it, collects results over
-the console and exits non-zero on failure — so it works in CI. On Windows,
-ESP-IDF cannot be driven from Git Bash, so build and flash from PowerShell and
-then use `--no-flash` to collect; the script says so rather than silently
-reporting stale results.
+`launcher/tools/device_report.sh`, which calls `device.py selftest` to build
+the diagnostics variant, capture the run and write a markdown report under
+one held lock, then reflashes the release firmware afterwards unless given
+`--no-restore`. A report script differs from its siblings only in what it
+declares — capture timeout, which suite, sentinel, reporter, output location
+— so a build flag cannot reach one of them and miss another.
 
 POSIX sh — works under Git Bash or MSYS on Windows and natively on Linux and
 macOS. It finds a compiler via `$CC`, then `PATH`, then the location winget
@@ -236,7 +230,7 @@ without paying a rebuild-and-reflash cycle per attempt.
    and [`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md) for the
    sand-specific capture.
 3. **The full self-test before a merge** — `report_test_results.sh` or
-   `run_device_tests.sh`, full scope, autorun, unattended. About 18 minutes
+   `autana selftest`, full scope, autorun, unattended. About 18 minutes
    on this board; treat it as the gate, not the everyday loop.
 4. **Know which suites cover which area** so a change to shell code (gfx,
    ui) can be checked without waiting on an app's suites at all — see the

@@ -63,15 +63,14 @@
 # the cost of the way in being compiled at all, not of the test suites.
 #
 # Using either flag means putting that image on the board and leaving it.
-# Nothing else here does that: test/run_device_tests.sh builds and flashes
-# the diagnostics variant too, but refuses outright under Git Bash (idf.py
-# exits successfully without building there, which would silently collect
-# stale results - see its own comment), and it exists to read test output
-# back rather than to leave you on the image. The report scripts call this
-# one with --diag --autorun and then call it again for the release image in
-# an EXIT trap, by design - see tools/device_report.sh. All three are right
-# about their own jobs; none of them is "put this image on the device and
-# leave it there", which is what these flags are for.
+# Nothing else here does that: scripts/device/device.py's own `selftest`
+# builds and flashes the diagnostics variant too (this script, under the
+# device lock), but exists to read test output back rather than to leave you
+# on the image. The report scripts call this one with --diag --autorun and
+# then call it again for the release image in an EXIT trap, by design - see
+# tools/device_report.sh. Both are right about their own jobs; neither is
+# "put this image on the device and leave it there", which is what these
+# flags are for.
 
 set -euo pipefail
 
@@ -256,9 +255,8 @@ else
 fi
 
 # A build tool that reports success without producing anything is how this
-# project once flashed and measured code it had never built (see
-# test/run_device_tests.sh's own note). The exit status is not enough on its
-# own, so confirm the artifact is really there.
+# project once flashed and measured code it had never built. The exit
+# status is not enough on its own, so confirm the artifact is really there.
 if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/launcher.bin" ]; then
     echo "build reported success but produced no binary at" >&2
     echo "  $LAUNCHER_DIR/$BUILD_DIR/launcher.bin" >&2

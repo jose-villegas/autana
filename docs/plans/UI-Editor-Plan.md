@@ -119,11 +119,11 @@ scale" would let you draw those same bugs, visually, and call it a design.
 Two decisions, and the first one forces the second.
 
 **Native, cross-platform, not a web page.** The tools in this tree are POSIX
-sh so they run "under Git Bash or MSYS on Windows, and natively on Linux and
-macOS" (`tools/screenshot.sh`'s own header). The editor holds to the same
-bar: one source tree, three platforms, nothing Windows-specific. Web stays a
-*target* - something the engine may one day be built for - never the way the
-editor draws itself.
+sh, and run the same way under Git Bash or MSYS on Windows and natively on
+Linux and macOS - `tools/build_flash.sh`'s own header states the same bar
+for the build. The editor holds to it too: one source tree, three
+platforms, nothing Windows-specific. Web stays a *target* - something the
+engine may one day be built for - never the way the editor draws itself.
 
 **It links the firmware's host-portable C in-process**, rather than spawning
 a renderer and reading back an image. `boot_anim_editor_server.py` spawns

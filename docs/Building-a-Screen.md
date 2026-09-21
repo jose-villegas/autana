@@ -49,8 +49,8 @@ same bug costs a second on a laptop.
 ```sh
 ./launcher/test/run_tests.sh          # host suites, <1 s - the TDD loop
 ./launcher/test/check_app_sources.sh  # compiles app_*.c against host stubs
-./launcher/tools/build_flash.sh --dev # --dev, always: screenshot.sh needs it
-./launcher/tools/screenshot.sh -o shot.png   # lossless PNG, does not reset
+./launcher/tools/build_flash.sh --dev # --dev, always: autana screenshot needs it
+autana screenshot -o shot.png                # lossless PNG, does not reset
 ```
 
 A screen can also be rendered on a host, with no board and no flash cycle,
