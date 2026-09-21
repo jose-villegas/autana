@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Rewrite drawn-rule comments as plain style(9) blocks, keeping the prose.
 
-    python scripts/strip_comment_rules.py [--check] [root]
+    python scripts/gates/strip_comment_rules.py [--check] [root]
 
 A `/*====` or `/*----` rule is decoration: OpenBSD style(9) has three comment
 shapes and none of them draws one. Every word of prose survives; only the rule

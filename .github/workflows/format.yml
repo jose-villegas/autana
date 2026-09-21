@@ -31,7 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Same version scripts/check-format.sh pins. Keep the two in step:
+      # Same version scripts/gates/check-format.sh pins. Keep the two in step:
       # PINNED_MAJOR there, this line here.
       - name: Install clang-format 19
         run: pip install 'clang-format==19.1.7'
@@ -39,15 +39,15 @@ jobs:
       - name: Which clang-format, and which files
         run: |
           set -eu
-          scripts/check-format.sh --which
+          scripts/gates/check-format.sh --which
           clang-format --version
-          echo "Files checked: $(scripts/format-file-list.sh | wc -l)"
+          echo "Files checked: $(scripts/gates/format-file-list.sh | wc -l)"
 
-      # scripts/format-file-list.sh is the same list the hook filters against,
+      # scripts/gates/format-file-list.sh is the same list the hook filters against,
       # so a file cannot be gated here and skipped there. Vendored and
       # generated sources are excluded by it, not by this workflow.
       - name: Every first-party C and header file is formatted
-        run: scripts/format-file-list.sh | xargs scripts/check-format.sh --check
+        run: scripts/gates/format-file-list.sh | xargs scripts/gates/check-format.sh --check
 
   line-endings:
     name: LF line endings

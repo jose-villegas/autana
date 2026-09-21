@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail on a comment naming a function that does not exist.
 
-    python scripts/check_comment_symbols.py [root]
+    python scripts/gates/check_comment_symbols.py [root]
 
 A trim that garbles a cited name leaves a comment pointing at nothing, which
 is worse than the long comment it replaced. Anything written as `name()` in a

@@ -2,7 +2,7 @@
 """Fail when a tracked document under docs/ cannot be reached by following
 Markdown links from the repository's README.md.
 
-    python scripts/check_doc_index.py [--root ROOT]
+    python scripts/gates/check_doc_index.py [--root ROOT]
 
 A link to a folder reaches that folder's README.md. Only real links count -
 a path written in backticks names a document, it does not index it.

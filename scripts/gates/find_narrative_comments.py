@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """List comments that narrate how the code got here, worst first.
 
-    python scripts/find_narrative_comments.py [--min-chars 300] [--json PATH]
-    python scripts/find_narrative_comments.py --tombstones   fail on any "moved to <file>"
+    python scripts/gates/find_narrative_comments.py [--min-chars 300] [--json PATH]
+    python scripts/gates/find_narrative_comments.py --tombstones   fail on any "moved to <file>"
 
 docs/C-Style-Guide.md's first comment rule: a comment states the constraint that holds
 now, never the journey. This finds candidates for that rule by keyword, so it

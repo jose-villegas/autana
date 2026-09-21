@@ -9,13 +9,13 @@ STALE_EXCEPTION = "stale exception"
 
 
 def terms(root):
-    path = pathlib.Path(root) / "scripts/doc_vocabulary.txt"
+    path = pathlib.Path(root) / "scripts/gates/doc_vocabulary.txt"
     return [(fields[0], fields[1]) for line in path.read_text(encoding="utf-8").splitlines()
             if line and not line.startswith("#") for fields in [line.split("\t", 1)]]
 
 
 def exceptions(root):
-    path = pathlib.Path(root) / "scripts/doc_vocabulary_exceptions.txt"
+    path = pathlib.Path(root) / "scripts/gates/doc_vocabulary_exceptions.txt"
     if not path.exists():
         return set()
     return {line.split("\t", 1)[0] for line in path.read_text(encoding="utf-8").splitlines()
