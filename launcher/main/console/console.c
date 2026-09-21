@@ -39,12 +39,9 @@ console_shared(void) {
     return &shared;
 }
 
-/* Lines no registered verb claimed, for the frame loop to drain - a queue,
- * not a latch: unlike FREEZE/STEP or SCREENSHOT's own single pending
- * request, an app command is one of a stream, and losing one silently to a
- * newer one overwriting it is not the same trade a "what should the frame
- * loop do next" latch makes. Depth 4 costs 4*CONSOLE_LINE_MAX bytes of
- * static RAM. */
+/* A queue, not a latch: app lines are a stream, and a newer one must not
+ * silently overwrite an older one. Its storage comes from the heap at
+ * console_start(). */
 #define APP_LINE_QUEUE_LEN 4
 
 static QueueHandle_t app_line_queue;

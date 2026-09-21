@@ -30,13 +30,10 @@
  * CONSOLE_VERB(SET, ...) call, which is what this bound is sized for. */
 #define CONSOLE_LINE_MAX (4 + TUNE_NAME_MAX + 1 + 11 + 1)
 
-/* Assembles one line at a time from a byte stream (console.c's reader
- * task): true once `line` holds a complete one, NUL-terminated. A line
- * longer than CONSOLE_LINE_MAX-1 sets `*overflowed` and discards every
- * byte, including its own terminator, up to the next \n or \r - resetting
- * `*len` mid-line and continuing to collect (the earlier behaviour) turns
- * an over-long line's tail into a short line of its own, which now reaches
- * a registered verb or an app as if it had been typed on purpose. */
+/* Assembles one line from a byte stream: true once `line` holds a complete
+ * one. A line longer than CONSOLE_LINE_MAX-1 sets `*overflowed` and is
+ * discarded up to and including its terminator, so its tail never arrives
+ * as a line of its own. */
 static inline bool
 console_append_char(char* line, int* len, bool* overflowed, int c) {
     /* Either terminator ends a line: monitor.sh's Enter key may send '\r'
@@ -99,10 +96,23 @@ bool console_word_match(const char* line, const char* name, const char** args);
  * False, with no handler called, if nothing matched. */
 bool console_registry_handle_line(console_registry_t* registry, const char* line, console_reply_fn reply);
 
-/* True if `name` equals any of `others[0..count)`, folded like
- * console_word_match(); `*at` is the first match's index. For the
- * boot-time check that no two console words can ever claim one line. */
-bool console_name_in(const char* name, const char* const* others, int count, int* at);
+typedef enum {
+    CONSOLE_CLASH_NONE = 0,
+    CONSOLE_CLASH_SPACE,  /* a prefix contains a space of its own */
+    CONSOLE_CLASH_LENGTH, /* a prefix plus one space does not fit CONSOLE_LINE_MAX */
+    CONSOLE_CLASH_VERB,   /* a prefix equals a registered verb, folded */
+    CONSOLE_CLASH_APP,    /* two app prefixes equal each other, folded */
+} console_clash_t;
+
+/* The boot-time check that no two console words can ever claim one line:
+ * walks `verbs`'s own linked list directly rather than a fixed-size copy
+ * that could silently drop one. A prefix with a space is rejected on its
+ * own - console_word_match() treats a prefix as one word, so "set tool"
+ * would never fully match; "set" would claim the line first. `*from`/
+ * `*other` are the offending prefix and, where there is one, what it
+ * clashes with. */
+console_clash_t console_find_clash(const console_registry_t* verbs, const char* const* prefixes, int n,
+                                   const char** from, const char** other);
 
 /* Defined in console.c: the one registry every CONSOLE_VERB() below joins,
  * and the device's own line dispatch answers from. Declared here, not in

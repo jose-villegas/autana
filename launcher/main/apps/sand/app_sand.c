@@ -2287,8 +2287,7 @@ sand_diagnostic_json(char* out, size_t len) {
 #endif /* CONFIG_LAUNCHER_DEVELOPMENT */
 
 /* "sand counts": the grid's per-material tally as text, without a
- * screenshot's base64 round trip. `args` is what follows APP_CONSOLE's own
- * "sand " prefix below, never the prefix itself. */
+ * screenshot's base64 round trip. */
 static bool
 sand_console_line(const char* args) {
     if (strcmp(args, "counts") != 0) {
@@ -2300,9 +2299,9 @@ sand_console_line(const char* args) {
         if (counts[m] == 0) {
             continue;
         }
-        printf("COUNTS %s=%d\n", material_by_id((material_id_t)m)->name, counts[m]);
+        printf("SAND %s=%d\n", material_by_id((material_id_t)m)->name, counts[m]);
     }
-    printf("COUNTS_END\n");
+    printf("SAND_END\n");
     fflush(stdout);
     return true;
 }
