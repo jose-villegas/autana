@@ -86,7 +86,7 @@ Every command that touches the board goes through `device.py`, which takes
 the device lock first, so two sessions cannot drive one board at once.
 `autana monitor` shows who is waiting; `autana id` names this session in
 that queue. The lock lives in the system temp folder, so it is one lock per
-machine rather than one per checkout. See `.dev/docs/workflows/Device-Lock.md`.
+machine rather than one per checkout. See [Device-Lock.md](Device-Lock.md).
 
 Each session writes a log and a manifest. `AUTANA_RECORDS` names where;
 unset, they land in the checkout's own gitignored `.records/device`. The
