@@ -7,9 +7,9 @@ not a fixed COM number, and opens it at 115200 with DTR and RTS low.
 
 Day-to-day interactive use goes through `tools/autana` ([Autana-CLI.md](Autana-CLI.md))
 - every `autana` command calls `device.py` for the lock and the port. This
-doc covers `device.py` itself: its own command-line shape, what an agent's
-delegated task calls directly with its own `--owner`/`--purpose` rather
-than `autana`'s generated one, and recovery when a lock will not let go.
+doc covers `device.py` itself: its own command-line shape, for a script
+that names its own `--owner`/`--purpose` rather than `autana`'s generated
+one, and recovery when a lock will not let go.
 
 Run the tool with ESP-IDF's Python (the `python.exe` under
 `%USERPROFILE%\.espressif\python_env\idf<version>_py<version>_env\Scripts\`
@@ -28,9 +28,9 @@ capture` - override it to say why on a shared board).
 
 ```powershell
 python scripts/device/device.py status
-python scripts/device/device.py --owner agent-a flash --variant dev --worktree C:\path\to\engine
-python scripts/device/device.py --owner agent-a run-suite sand --expect-build-id 0123456789ab-dev
-python scripts/device/device.py --owner agent-a listen --seconds 30
+python scripts/device/device.py --owner sam flash --variant dev --worktree C:\path\to\engine
+python scripts/device/device.py --owner sam run-suite sand --expect-build-id 0123456789ab-dev
+python scripts/device/device.py --owner sam listen --seconds 30
 ```
 
 ### Talking to a running device: `send`
@@ -69,14 +69,14 @@ port itself.
 
 A measurement is `batch`: it takes the lock ONCE, builds and flashes once,
 captures every suite `--runs` times, and writes one summary across all runs.
-Holding the board for the whole sequence means no other agent can flash
+Holding the board for the whole sequence means nobody else can flash
 between two captures of the same image, and the command blocks until it is
-done, so nothing needs a model to wait on a capture. `autana batch` calls
+done. `autana batch` calls
 it the same way ([Autana-CLI.md](Autana-CLI.md)); a delegated task with its
 own `--owner`/`--purpose` calls `device.py batch` directly:
 
 ```powershell
-python scripts/device/device.py --owner agent-a batch --worktree C:\path\to\engine --suite run_sand_perf_suite --suite run_gfx_suite --runs 3
+python scripts/device/device.py --owner sam batch --worktree C:\path\to\engine --suite run_sand_perf_suite --suite run_gfx_suite --runs 3
 ```
 
 The summary (`<HHMMSS>_batch_<owner>.md` in the day's records folder) shows,
@@ -127,8 +127,8 @@ does); pass `--out <path>` on any of the three commands to write exactly
 there instead, uncompressed, e.g.:
 
 ```powershell
-python scripts/device/device.py --owner agent-a run-suite sand --out C:\Temp\sand.log
-python scripts/device/device.py --owner agent-a listen --seconds 30 --out C:\Temp\listen.log
+python scripts/device/device.py --owner sam run-suite sand --out C:\Temp\sand.log
+python scripts/device/device.py --owner sam listen --seconds 30 --out C:\Temp\listen.log
 ```
 
 Every invocation - default path or explicit `--out`, success or failure -
@@ -151,7 +151,7 @@ never failed over this. Rebuild a report for any existing capture without
 re-running anything:
 
 ```powershell
-python scripts/device/device.py report .records/device/20260916/153113_runsuite-run_sand_perf_suite_agent.log
+python scripts/device/device.py report .records/device/20260916/153113_runsuite-run_sand_perf_suite_sam.log
 ```
 
 `report` touches no lock and no port - it only reads a capture and
@@ -173,8 +173,8 @@ winning the lock a command also waits for the serial port itself to come
 free, since a previous holder's reader can outlive its lock.
 
 `device.py --owner <owner> release --token <token>` releases a lock this
-agent holds without touching the board - useful when a task decides it's
-done early and wants to free the port for the next waiter immediately rather
+owner holds without touching the board - useful when a run finishes
+early and wants to free the port for the next waiter immediately rather
 than waiting out a command's own lifetime. `autana release <token>` calls it
 the same way.
 
@@ -182,13 +182,13 @@ For inspection or emergency recovery, use the lower-level command:
 
 ```powershell
 python scripts/device/device_lock.py --port COM5 status
-python scripts/device/device_lock.py --port COM5 acquire --owner agent-a --purpose investigate --wait 60
+python scripts/device/device_lock.py --port COM5 acquire --owner sam --purpose investigate --wait 60
 python scripts/device/device_lock.py --port COM5 heartbeat --token <token>
 python scripts/device/device_lock.py --port COM5 release --token <token>
 ```
 
 The acquire result prints the token as JSON. Releasing requires that token, so
-one agent cannot release another agent's active lock.
+one owner cannot release another owner's active lock.
 
 When the maintainer needs the board, record the reservation before using it -
 `autana hand <note>`, or `hand-to-human` directly for an active lock's own
@@ -198,7 +198,7 @@ token:
 python scripts/device/device.py --owner maintainer hand-to-human --token <token> --note "checking the panel"
 ```
 
-When an agent holds the board, its token releases that lock before the command
+When a session holds the board, its token releases that lock before the command
 creates the human reservation. Without an active lock, omit `--token` (what
 `autana hand` always does). The reservation appears in `status` and prevents
 future acquisitions. After the maintainer is done, clear it explicitly -
@@ -215,7 +215,5 @@ This clears the reservation and prints the resulting lock status. The lower-leve
 
 - [Autana-CLI.md](Autana-CLI.md) - the interactive `autana` command built on
   top of this lock.
-- `.dev/docs/workflows/Agent-Workflow.md` - the standing rule that any agent
-  uses the board only through `device.py`, never the serial port directly.
 - `.dev/docs/notes/Device-Workflow.md` - the one board, its port, and a
   measurement trap a device suite already caused once.

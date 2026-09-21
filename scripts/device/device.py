@@ -185,7 +185,7 @@ PORT_WAIT_SECONDS = 600
 def wait_for_port(port, seconds=PORT_WAIT_SECONDS, opener=None, sleep=time.sleep,
                   now=time.monotonic):
     """The lock arbitrates intent; the OS owns the port, and the two disagree
-    whenever a previous holder's reader outlives its lock - an agent that
+    whenever a previous holder's reader outlives its lock - a caller that
     queued fairly then fails on a port it was promised, which reads as a flaky
     board. Waiting is the right answer: this caller already won its turn, a
     straggler drains in seconds, and a port nobody ever frees still reports
@@ -706,8 +706,8 @@ def screenshot(args, store, port):
 def batch(args, store, port):
     """Flash once and capture every suite `runs` times under ONE lock, then
     write one summary across all runs. Holding the board for the whole
-    sequence is the point: another agent cannot flash between two captures
-    of this image, and nothing here needs a model to wait on a capture. A
+    sequence is the point: nobody else can flash between two captures
+    of this image. A
     capture that errors is recorded and the batch continues; only a failed
     build or flash stops it."""
     extra_flags = ["--perf-scope"] if args.perf_scope else []
