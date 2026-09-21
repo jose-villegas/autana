@@ -304,14 +304,16 @@ def board_holder(device):
     return ""
 
 
-def send(line, reply="TUNE", purpose="autana tune", optional=False, seconds=None):
+def send(line, reply="TUNE", purpose="autana tune", optional=False, seconds=None, until=None):
     """One console line to the device, under the lock. Returns (exit code,
-    reply lines). `reply` is what the answer's lines start with, and also
-    what ends the answer for a verb that replies once - util/tune's three
-    endings are device.py's default and need no saying. `optional` is for a
-    verb that answers only when something is wrong (TOUCH, IMU): a timeout
-    with nothing seen is success, not "no reply", since silence is that
-    verb's normal happy path."""
+    reply lines). `reply` is what the answer's lines start with. `until` are
+    the prefixes that end the answer - one reply-line verb needs only
+    `[reply]` itself (device.py's default when `until` is omitted; util/tune's
+    three endings are its own default for `reply="TUNE"`), a multi-line one
+    (an app's own command) passes `[<PREFIX>_END, <PREFIX>_ERR]`. `optional`
+    is for a verb that answers only when something is wrong (TOUCH, IMU): a
+    timeout with nothing seen is success, not "no reply", since silence is
+    that verb's normal happy path."""
     device = device_tool()
     holder = board_holder(device)
     if holder:
@@ -324,7 +326,9 @@ def send(line, reply="TUNE", purpose="autana tune", optional=False, seconds=None
     command = [sys.executable, str(device), "--owner", owner(), "--wait", str(SEND_WAIT_S), "send", line,
                "--purpose", purpose]
     if reply != "TUNE":
-        command += ["--reply", reply, "--until", reply]
+        command += ["--reply", reply]
+        for one_until in until if until is not None else [reply]:
+            command += ["--until", one_until]
     if optional:
         command.append("--optional")
     if seconds is not None:
@@ -575,13 +579,27 @@ CONSOLE_HELP = """  tune [text]              list the tunables (names containing
   help, quit"""
 
 
+def forward(line, verb):
+    """A line no autana command recognises, sent to the device as typed -
+    the maintainer's rule that every board operation goes through autana,
+    for an app's own command (docs/tools/Autana-CLI.md's "Adding a command
+    from an app") same as any built-in one. The reply prefix is the line's
+    own first word in capitals: an app's reply always starts with its own
+    prefix, so this returns as soon as `<PREFIX>_END`/`<PREFIX>_ERR`
+    arrives rather than waiting out send()'s own window - a raw verb with
+    no dedicated autana command of its own (runsuite, today) falls back to
+    that window, since nothing then completes early."""
+    reply = verb.upper()
+    _, replies = send(line, reply=reply, until=[reply + "_END", reply + "_ERR"],
+                      purpose=f"autana console {verb}", optional=True)
+    return replies
+
+
 def console(_args=None):
     """A session with the device: each line takes the lock, asks, and lets go,
     so the board is free for anything else between two of them. A bare word
-    is either an autana command (which includes the device's own built-in
-    verbs, now exposed directly - see COMMANDS) or forwarded to the device
-    as a line verbatim, the same way an app's own console command is
-    reached; `tune <name>` is still the only way to a tunable, never an
+    is an autana command, or the whole line is sent to the device as typed
+    (forward()); `tune <name>` is the only way to a tunable, never an
     implicit lookup of a bare name."""
     print("autana console - 'help' for the commands, 'quit' to leave")
     while True:
@@ -602,7 +620,7 @@ def console(_args=None):
             elif verb in COMMANDS and verb != "console":
                 COMMANDS[verb](rest)
             else:
-                _, replies = send(line, reply="", purpose=f"autana console {verb}", optional=True)
+                replies = forward(line, verb)
                 print("\n".join(replies) if replies else "sent")
         except SystemExit as stop:
             # a command's own refusal ends that command, not the session
@@ -622,7 +640,12 @@ def main():
         print(__doc__.strip())
         sys.exit(0)
     if sys.argv[1] not in COMMANDS:
-        sys.exit(__doc__.strip())
+        # A one-shot the same as a forwarded line in a session (forward()'s
+        # own docstring) - every board operation goes through autana, not
+        # only the ones with a command of their own.
+        replies = forward(" ".join(sys.argv[1:]), sys.argv[1])
+        print("\n".join(replies) if replies else "sent")
+        sys.exit(0)
     sys.exit(COMMANDS[sys.argv[1]](sys.argv[2:]))
 
 
