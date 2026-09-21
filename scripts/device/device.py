@@ -617,7 +617,9 @@ def replies_to(data, reply, until):
 
     A reply is everything from `reply` to the end of its line: the console
     also carries the firmware's own log lines, and a reply can come out
-    behind a log prefix. `until` are the prefixes that end an answer.
+    behind a log prefix. `until` are the prefixes that end an answer -
+    autana console forwards a line under the app's own prefix in capitals,
+    the same convention every built-in verb's own reply already follows.
     """
     found = []
     for raw in data.split(b"\n"):
@@ -641,7 +643,11 @@ def send(args, store, port):
     (TOUCH, IMU): a timeout with nothing seen is success, not "no reply" -
     silence is that verb's normal happy path, so whatever partial match was
     found (possibly nothing) is printed and this returns 0 rather than
-    raising.
+    raising. autana console forwards a line the same optional way, with
+    `args.reply` set to the line's own first word in capitals - an app's
+    own command always replies under its own prefix, so this still
+    completes as soon as `<PREFIX>_END`/`<PREFIX>_ERR` arrives rather than
+    waiting out the window.
     """
     data = bytearray()
     found = []

@@ -37,6 +37,35 @@ typedef struct {
     button_t power;
 } input_t;
 
+/* An app's own console command - docs/tools/Autana-CLI.md's "Adding a
+ * command from an app". The shell matches `prefix` as a whole word
+ * (console_word_match()) and passes `handle` only what follows it. */
+typedef struct {
+    const char* prefix;
+    bool (*handle)(const char* args);
+} app_console_t;
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* APP_CONSOLE() (a top-level declaration, before the app's own app_t) plus
+ * APP_CONSOLE_PTR(handler) (that app_t's `.console = `) are the only
+ * sanctioned way to fill one: two macros because the assert below is a
+ * declaration, which cannot sit inside app_t's own constant initializer.
+ * A clash and an over-long prefix are both checked at boot instead
+ * (console_find_clash(), main.c) - this app.h stays clear of console/, so
+ * an app pulls in only what it names. */
+#define APP_CONSOLE(prefix, handler)                                                                                   \
+    _Static_assert(sizeof(prefix) > 1, "APP_CONSOLE needs a non-empty prefix");                                        \
+    static const app_console_t handler##_console = {(prefix), (handler)}
+#define APP_CONSOLE_PTR(handler) (&handler##_console)
+#else
+/* static inline: unused and uncalled, so an optimizing linker drops it and
+ * `handler` behind it, without the -Wunused-function a plain static would
+ * draw for a handler an app still defines unconditionally. */
+#define APP_CONSOLE(prefix, handler)                                                                                   \
+    static inline void handler##_console_unused(void) { (void)(handler); }
+#define APP_CONSOLE_PTR(handler) NULL
+#endif
+
 typedef struct {
     const char* name;
     const char* summary; /* one line, shown in the launcher list */
@@ -90,6 +119,10 @@ typedef struct {
      * device-state JSON as a new "app" key. Diagnostic only - nothing
      * about the app's own behaviour depends on this. */
     void (*diagnostic_json)(char* out, size_t len);
+
+    /* Opt-in, NULL unless an app declares one with APP_CONSOLE_PTR() above.
+     * See docs/tools/Autana-CLI.md's "Adding a command from an app". */
+    const app_console_t* console;
 } app_t;
 
 /*
