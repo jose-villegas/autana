@@ -434,6 +434,33 @@ test_erase_marks_the_rows_it_emptied(void) {
 }
 
 static void
+test_material_counts_tallies_every_cell_by_material(void) {
+    fixture();
+    sand_set(&s, 0, 0, WATER);
+    sand_set(&s, 1, 0, WATER);
+    sand_set(&s, 2, 0, STONE);
+
+    int counts[MATERIAL_MAX];
+    sand_material_counts(&s, counts);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, counts[MAT_WATER], "two cells were set to water");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, counts[MAT_STONE], "one cell was set to stone");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(W * H - 3, counts[MAT_EMPTY], "every other cell is still empty");
+}
+
+static void
+test_material_counts_lumps_every_extended_submaterial_together(void) {
+    fixture();
+    sand_set(&s, 0, 0, MATX(MATX_ICE));
+    sand_set(&s, 1, 0, MATX(MATX_METAL));
+
+    int counts[MATERIAL_MAX];
+    sand_material_counts(&s, counts);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, counts[MAT_EXTENDED], "ice and metal are both MAT_EXTENDED cells");
+}
+
+static void
 test_spawned_grains_use_the_full_range_of_shades(void) {
     fixture();
 
@@ -995,6 +1022,8 @@ run_sand_spawning_suite(void) {
     RUN_TEST(test_erasing_empty_space_removes_nothing);
     RUN_TEST(test_erase_is_clipped_to_the_grid);
     RUN_TEST(test_erase_marks_the_rows_it_emptied);
+    RUN_TEST(test_material_counts_tallies_every_cell_by_material);
+    RUN_TEST(test_material_counts_lumps_every_extended_submaterial_together);
     RUN_TEST(test_spawned_grains_use_the_full_range_of_shades);
     RUN_TEST(test_an_emitter_fills_its_own_cell_when_empty);
     RUN_TEST(test_an_emitter_does_not_overwrite_an_occupied_cell);

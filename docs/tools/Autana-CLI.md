@@ -45,8 +45,8 @@ autana> buildid
 | `autana help` | The same list. |
 
 Inside a session the `autana` prefix is dropped, but tuning stays explicit -
-a bare word is either one of the commands above or a device console verb
-(`screenshot`, `freeze`, ...), never an implicit tunable lookup:
+a bare word is one of the commands above, or the whole line is sent to the
+board as typed - never an implicit tunable lookup:
 
 ```
 autana> tune wave
@@ -100,13 +100,67 @@ PATH installer sets it to `.dev/records/device` when a `.dev` checkout sits
 beside this one, which is where this project keeps and tracks its device
 history.
 
-## An app's own verbs
+## Adding a command from an app
 
-The commands above are the CLI's, and cover most of what the console
-answers directly: `screenshot`, `freeze`, `resume`, `step`, `touch`, `imu`
-and the tuning verbs all go through `device.py`'s lock the same way. A verb
-the CLI has no command for - `runsuite` among them, since `autana suite`
-already runs one and reports the result - is still only a line away: type
-it in an interactive session, or extend `autana` here. The verbs themselves
-are a separate list, one file each under `launcher/main/console/`, and an
-app that adds its own documents them itself.
+The commands above are the CLI's own; the verbs they send (`screenshot`,
+`freeze`, `set`, ...) are a separate list, one file each under
+`launcher/main/console/`. An app can answer commands of its own without
+joining that list:
+
+1. Declare a prefix with `APP_CONSOLE()`, once, before the app's own
+   `app_t` - non-empty and checked at compile time; a clash with a verb or
+   another app's prefix, or a prefix carrying a space of its own, is
+   checked again at boot, so two commands can never claim the same line:
+
+   ```c
+   static bool
+   app_example_console(const char* args) {
+       if (strcmp(args, "status") != 0) {
+           return false;
+       }
+       printf("EXAMPLE status=ok\n");
+       printf("EXAMPLE_END\n");
+       return true;
+   }
+
+   APP_CONSOLE("example", app_example_console);
+
+   const app_t app_example = {
+       .name = "Example",
+       ...
+       .console = APP_CONSOLE_PTR(app_example_console),
+   };
+   ```
+
+   No `#if CONFIG_LAUNCHER_DEVELOPMENT` needed anywhere in the app -
+   `APP_CONSOLE_PTR()` is `NULL` in a release build, and the handler goes
+   with it.
+2. The shell matches the prefix, a whole word, and calls the handler with
+   only what follows it (`args`, `""` for a bare prefix) - never the prefix
+   itself. `example status` above is typed in full; the handler only ever
+   sees `"status"`.
+3. Reply with `printf()`: every line starts with the prefix in capitals,
+   and the last one is `<PREFIX>_END` - autana returns as soon as that line
+   arrives rather than waiting out a timeout, the same way `TUNE_END`
+   already lets `autana tune` return early.
+4. Return `true` to claim it. Returning `false` need not reply itself - the
+   shell sends `<PREFIX>_ERR not handled` on the handler's behalf.
+
+Send it the same way as any built-in verb, one-shot (`autana example
+status`) or typed inside a session (`example status`).
+
+A few rules that follow from the shape above:
+
+- A registered verb always wins, so an app can never shadow one; a clash
+  between a prefix and a verb, or between two apps' own prefixes, fails the
+  boot loudly rather than silently losing one of them.
+- A line whose prefix belongs to an app that is not the one running gets
+  `<PREFIX>_ERR not running`, not silence.
+- The handler runs on the frame loop, after the app's own `frame()`, so it
+  sees settled state - and still runs while the frame loop is frozen
+  (`autana freeze`), the obvious use being freeze, inspect, step.
+- Lines arriving faster than frames queue, up to `APP_LINE_QUEUE_LEN`
+  (`console.c`); one past that is dropped and logged on the device side,
+  with no reply at all - the caller sees whatever the short window catches.
+
+An app that adds a command documents it itself.

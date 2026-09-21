@@ -53,6 +53,14 @@ class SendCommandBuildingTests(unittest.TestCase):
         self.assertEqual(command[command.index("--reply") + 1], "BUILD_ID")
         self.assertEqual(command[command.index("--until") + 1], "BUILD_ID")
 
+    def test_an_explicit_until_list_overrides_the_reply_default(self):
+        """An app's own command (forward()) ends on either of two lines,
+        not one - a multi-line reply's _END, or its _ERR."""
+        autana.send("EXAMPLE status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"])
+        command = self.last_send_command()
+        untils = [command[i + 1] for i, word in enumerate(command) if word == "--until"]
+        self.assertEqual(untils, ["EXAMPLE_END", "EXAMPLE_ERR"])
+
     def test_optional_and_seconds_are_forwarded(self):
         autana.send("TOUCH down 1 2", reply="TOUCH", optional=True, seconds=0.5)
         command = self.last_send_command()
@@ -410,15 +418,26 @@ class ConsoleRoutingTests(unittest.TestCase):
             self.run_console(["touch down 10 20"])
         fake.assert_called_once_with(["down", "10", "20"])
 
-    def test_a_bare_tunable_name_is_not_understood(self):
-        with mock.patch("builtins.print") as printed:
-            self.run_console(["trail"])
-        printed.assert_any_call("not understood - 'help' lists what is")
+    def test_a_line_no_autana_command_recognises_is_forwarded_to_the_device(self):
+        """The reply prefix autana asks for is the line's own first word in
+        capitals - an app's own reply always starts with its own prefix."""
+        with mock.patch.object(autana, "send", return_value=(0, ["EXAMPLE status=ok", "EXAMPLE_END"])) as sent, \
+             mock.patch("builtins.print") as printed:
+            self.run_console(["example status"])
+        sent.assert_called_once_with("example status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"],
+                                     purpose="autana console example", optional=True)
+        printed.assert_any_call("EXAMPLE status=ok\nEXAMPLE_END")
 
-    def test_a_bare_tunable_name_with_a_value_is_also_not_understood(self):
-        with mock.patch("builtins.print") as printed:
+    def test_a_forwarded_line_with_no_reply_says_sent(self):
+        with mock.patch.object(autana, "send", return_value=(0, [])), mock.patch("builtins.print") as printed:
             self.run_console(["trail 200"])
-        printed.assert_any_call("not understood - 'help' lists what is")
+        printed.assert_any_call("sent")
+
+    def test_a_forwarded_lines_several_reply_lines_are_joined(self):
+        with mock.patch.object(autana, "send", return_value=(0, ["EXAMPLE alpha=1", "EXAMPLE beta=2", "EXAMPLE_END"])), \
+             mock.patch("builtins.print") as printed:
+            self.run_console(["example status"])
+        printed.assert_any_call("EXAMPLE alpha=1\nEXAMPLE beta=2\nEXAMPLE_END")
 
     def test_tune_with_a_name_is_still_the_way_to_reach_a_tunable(self):
         fake = mock.Mock(return_value=0)
@@ -433,6 +452,36 @@ class ConsoleRoutingTests(unittest.TestCase):
             code = autana.console()
         self.assertEqual(code, 0)
         fake.assert_not_called()
+
+
+class OneShotForwardingTests(unittest.TestCase):
+    """The maintainer's rule (every board operation goes through autana)
+    applies to a one-shot invocation the same as a session line - main()
+    forwards a first argument no COMMANDS entry recognises rather than
+    refusing it."""
+
+    def run_main(self, argv):
+        with mock.patch.object(autana.sys, "argv", ["autana", *argv]):
+            with self.assertRaises(SystemExit) as stop:
+                autana.main()
+        return stop.exception.code
+
+    def test_an_unrecognised_first_argument_is_forwarded_to_the_device(self):
+        with mock.patch.object(autana, "send", return_value=(0, ["EXAMPLE status=ok", "EXAMPLE_END"])) as sent, \
+             mock.patch("builtins.print") as printed:
+            code = self.run_main(["example", "status"])
+        sent.assert_called_once_with("example status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"],
+                                     purpose="autana console example", optional=True)
+        printed.assert_any_call("EXAMPLE status=ok\nEXAMPLE_END")
+        self.assertEqual(code, 0)
+
+    def test_a_recognised_command_is_still_dispatched_directly(self):
+        fake = mock.Mock(return_value=0)
+        with mock.patch.dict(autana.COMMANDS, {"buildid": fake}), \
+             mock.patch.object(autana, "send") as sent:
+            self.run_main(["buildid"])
+        fake.assert_called_once_with([])
+        sent.assert_not_called()
 
 
 if __name__ == "__main__":

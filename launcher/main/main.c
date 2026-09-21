@@ -11,6 +11,7 @@
  * BOOT button - see docs/notes/Flashing-and-Toolchain.md.
  */
 
+#include <ctype.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -43,6 +44,7 @@
 #include "console/console.h"
 #include "console/console_freeze.h"
 #include "console/console_screenshot.h"
+#include "console/console_verbs.h"
 #endif
 
 #if CONFIG_LAUNCHER_SELFTEST
@@ -578,6 +580,43 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
 }
 #endif
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static void
+park_forever(void) {
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+/* Two lines can never both be reached once a verb and an app's prefix, or
+ * two apps' own prefixes, read the same - loud here, at boot, rather than
+ * silently losing one of them to whichever an unclaimed line happens to
+ * match first. */
+static void
+check_console_prefix_clashes(void) {
+    const char* app_prefixes[APP_MAX];
+    int app_count = 0;
+    for (int i = 0; i < apps_registered; i++) {
+        if (apps[i]->console != NULL) {
+            app_prefixes[app_count++] = apps[i]->console->prefix;
+        }
+    }
+
+    const char* from;
+    const char* other;
+    switch (console_find_clash(console_shared(), app_prefixes, app_count, &from, &other)) {
+        case CONSOLE_CLASH_NONE: return;
+        case CONSOLE_CLASH_SPACE: ESP_LOGE(TAG, "console prefix '%s' contains a space", from); break;
+        case CONSOLE_CLASH_LENGTH:
+            ESP_LOGE(TAG, "console prefix '%s' plus a space does not fit CONSOLE_LINE_MAX", from);
+            break;
+        case CONSOLE_CLASH_VERB:
+        case CONSOLE_CLASH_APP: ESP_LOGE(TAG, "console prefix '%s' clashes with '%s'", from, other); break;
+    }
+    park_forever();
+}
+#endif
+
 /* Park rather than return on graphics failure - returning from app_main
  * leaves the chip idle and unflashable. */
 static void
@@ -621,6 +660,9 @@ app_boot_init(void) {
      * identity, so DISPLAY_DEFAULT_QUARTER is applied here or the board
      * would start upright and visibly turn into place. */
     sort_apps();
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    check_console_prefix_clashes();
+#endif
     display_init(&shell_display);
     shell_display.quarter = DISPLAY_DEFAULT_QUARTER;
     ui_launcher_init();
@@ -686,6 +728,55 @@ sample_display_orientation(int64_t now_us, int64_t* next_sample_us) {
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
+/* `<PREFIX>_ERR <reason>` - the app's own prefix in capitals, like a
+ * verb's own TUNE_ERR, so a caller matching `<PREFIX>_ERR`
+ * (docs/tools/Autana-CLI.md) recognises either failure below the same way
+ * it recognises a completed reply. */
+static void
+reply_app_err(const char* prefix, const char* reason) {
+    char upper[CONSOLE_LINE_MAX];
+    size_t i = 0;
+    for (; prefix[i] != '\0' && i < sizeof(upper) - 1; i++) {
+        upper[i] = (char)toupper((unsigned char)prefix[i]);
+    }
+    upper[i] = '\0';
+    printf("%s_ERR %s\n", upper, reason);
+    fflush(stdout);
+}
+
+/* Takes at most one line no verb claimed and routes it by prefix: to
+ * `current` if its own prefix matches (a reply_app_err() "not handled" if
+ * its handler then declines `args`), a reply_app_err() "not running" if
+ * some other app's prefix matches, logged otherwise. */
+static void
+offer_console_line(const app_t* current) {
+    char line[CONSOLE_LINE_MAX];
+    if (!console_take_unclaimed_line(line, sizeof line)) {
+        return;
+    }
+
+    for (int i = 0; i < apps_registered; i++) {
+        const app_t* app = apps[i];
+        if (app->console == NULL) {
+            continue;
+        }
+        const char* args;
+        if (!console_word_match(line, app->console->prefix, &args)) {
+            continue;
+        }
+        if (app != current) {
+            reply_app_err(app->console->prefix, "not running");
+            return;
+        }
+        if (!app->console->handle(args)) {
+            reply_app_err(app->console->prefix, "not handled");
+        }
+        return;
+    }
+
+    ESP_LOGI(TAG, "ignoring line: '%s'", line);
+}
+
 static void
 run_dev_frame_extras(input_t* input, const app_t* current) {
     if (gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB) {
@@ -695,6 +786,7 @@ run_dev_frame_extras(input_t* input, const app_t* current) {
         console_screenshot_dump(input, current);
         gfx_request_full_redraw();
     }
+    offer_console_line(current);
 }
 #endif
 
@@ -747,6 +839,10 @@ app_main_loop(void) {
          * redraw, so the STEP that follows a rotation draws the frame that
          * rotation asked for. */
         if (!console_freeze_frame_allowed()) {
+            /* Held frames never reach run_dev_frame_extras() below, so a
+             * frozen board still answers a command here - the obvious use
+             * is freeze, inspect, step. */
+            offer_console_line(current);
             FRAME_COST_END(rest_began, "frame.rest");
             vTaskDelay(1);
             continue;

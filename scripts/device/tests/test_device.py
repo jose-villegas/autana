@@ -253,6 +253,33 @@ class DeviceTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "needs a development build"):
                 device.send(self.send_args("TUNE"), store, "COM5")
 
+    def test_send_forwards_an_app_command_and_completes_on_its_own_end_line(self):
+        """autana console's own case (autana.py's console()): an app's
+        reply always starts with its own prefix in capitals, so send()
+        completes as soon as that prefix's own _END arrives rather than
+        waiting out the window."""
+        connection = FakeConnection([b"EXAMPLE status=ok\n", b"EXAMPLE_END\n"])
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        args = Namespace(owner="agent", purpose="send", wait=0, line="example status",
+                         reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], seconds=1, optional=True)
+        with mock.patch.object(device, "open_serial", return_value=connection), \
+             mock.patch.object(device, "wait_for_port"), mock.patch("builtins.print") as printed:
+            status = device.send(args, store, "COM5")
+        self.assertEqual(status, 0)
+        printed.assert_called_once_with("EXAMPLE status=ok\nEXAMPLE_END")
+
+    def test_send_forwards_an_app_command_and_fails_on_its_own_err_line(self):
+        connection = FakeConnection([b"EXAMPLE_ERR not running\n"])
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        args = Namespace(owner="agent", purpose="send", wait=0, line="example status",
+                         reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], seconds=1, optional=True)
+        with mock.patch.object(device, "open_serial", return_value=connection), \
+             mock.patch.object(device, "wait_for_port"), mock.patch("builtins.print"):
+            status = device.send(args, store, "COM5")
+        self.assertEqual(status, 1)
+
     def test_send_optional_treats_silence_as_success(self):
         """TOUCH/IMU answer only when something is wrong - a timeout with
         nothing seen is that verb's normal happy path, not a failure."""

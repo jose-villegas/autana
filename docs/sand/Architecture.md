@@ -379,6 +379,21 @@ computing a gradient step nothing will display. See
 [`Shading-and-Colour.md`](Shading-and-Colour.md#indexed-colour-modes-256-and-16)
 for the mechanism.
 
+## The `sand counts` console command
+
+`app_sand.c` declares the console prefix `sand` (`APP_CONSOLE`, `app.h`)
+and answers one command under it, `counts` - so the full typed line is
+`sand counts`. It tallies every cell in the live grid by material
+(`sand_material_counts()`, `sand.c`) and prints one `SAND <name>=<n>` line
+per material actually on the board, skipping the rest, ending with
+`SAND_END` - the reply prefix is always the app's own console prefix in
+capitals. Every extended cell, gunpowder included, shares one `Extended`
+line - [`MAT_EXTENDED`](#the-grid-in-one-byte) above says what those are.
+See
+[`../tools/Autana-CLI.md`](../tools/Autana-CLI.md#adding-a-command-from-an-app)
+for how a line like this reaches the app at all, and how to send it from an
+interactive `autana` session.
+
 ## Verifying performance on real hardware
 
 [`../Testing-Guide.md`](../Testing-Guide.md) is the host/device split and

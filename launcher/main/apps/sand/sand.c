@@ -467,6 +467,15 @@ sand_count(const sand_t* s) {
     return n;
 }
 
+void
+sand_material_counts(const sand_t* s, int counts[MATERIAL_MAX]) {
+    memset(counts, 0, sizeof(int) * MATERIAL_MAX);
+    const int total = s->w * s->h;
+    for (int i = 0; i < total; i++) {
+        counts[CELL_MATERIAL(s->cells[i])]++;
+    }
+}
+
 /* Attempt to place `material` at (x, y). Returns whether it did - off the
  * grid or already occupied is not an error, just nothing to do. */
 static bool
