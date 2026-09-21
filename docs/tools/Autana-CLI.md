@@ -1,9 +1,10 @@
 # The autana command
 
 One terminal command for everything that touches the board: flashing it,
-reading what it says, running a suite on it, changing a number on it. No
-model tokens, no `idf.py` environment activation, and no remembering which
-script under which folder does which half.
+reading what it says, running a suite on it, changing a number on it,
+standing in for a touch or an IMU sample, capturing what the panel shows.
+No `idf.py` environment activation, and no remembering which script under
+which folder does which half.
 
 `autana` with no arguments opens a session; every command below also works
 as a one-shot from the shell.
@@ -23,21 +24,31 @@ autana> buildid
 | `autana suite <name> [seconds]` | Run one registered suite and print what it prints. |
 | `autana suite list [text]` | The suites this worktree registers, read from its sources; `[text]` keeps the names containing it. |
 | `autana tune [text]` | The numbers a development build lets you change, with their ranges; `[text]` keeps the names containing it. |
-| `autana get <name>` | One of them. |
-| `autana set <name> <value>` | Change one on the running device. |
-| `autana reset <name>` | Back to the value the source declares. |
-| `autana save` | Write the device's current values into the `TUNE(...)` lines of the worktree you are standing in. |
+| `autana tune <name>` | One of them, when the name is exactly one tunable's own (owner optional when unambiguous); the same filtered listing as `[text]` otherwise. |
+| `autana tune <name> <value>` | Change one on the running device. |
+| `autana tune reset <name>` | Back to the value the source declares. |
+| `autana tune save` | Write the device's current values into the `TUNE(...)` lines of the worktree you are standing in. |
+| `autana screenshot [-o PATH]` | What the panel shows right now, as `PATH.png` plus a `PATH.json` state snapshot; `PATH` defaults to a timestamped name in the current directory. |
+| `autana freeze` | Stop the frame loop where it is. |
+| `autana resume` | Let the frame loop run again. |
+| `autana step [N]` | Advance N frames while frozen, 1 when `N` is omitted. |
+| `autana touch <down\|up> <x> <y>` | Stand in for the touch controller. |
+| `autana imu <ax> <ay> <az>` | Stand in for the IMU, raw accelerometer counts. |
 | `autana buildid` | The `BUILD_ID` the board answers with, so what is running can be checked against what was flashed. |
 | `autana id` | The name this `autana` holds the board under, and its pid: `autana-cli@<pid in base36>`. |
 | `autana help` | The same list. |
 
-Inside a session the `autana` prefix is dropped, and a tunable's name alone
-is `get`, a name and a value `set`:
+Inside a session the `autana` prefix is dropped, but tuning stays explicit -
+a bare word is either one of the commands above or a device console verb
+(`screenshot`, `freeze`, ...), never an implicit tunable lookup:
 
 ```
 autana> tune wave
-autana> trail                     # get
-autana> trail 200                 # set
+autana> tune trail                # show
+autana> tune trail 200            # change
+autana> freeze
+autana> step 3
+autana> resume
 autana> quit
 ```
 
@@ -85,8 +96,11 @@ history.
 
 ## An app's own verbs
 
-The commands above are the CLI's. The verbs the firmware answers on the
-console - `screenshot`, `runsuite`, `freeze`, `step`, `set` and the rest -
+The commands above are the CLI's, and cover most of what the console
+answers directly: `screenshot`, `freeze`, `resume`, `step`, `touch`, `imu`
+and the tuning verbs all go through `device.py`'s lock the same way. A verb
+the CLI has no command for - `runsuite` among them, since `autana suite`
+already runs one and reports the result - is still only a line away: type
+it in an interactive session, or extend `autana` here. The verbs themselves
 are a separate list, one file each under `launcher/main/console/`, and an
-app that adds its own documents them itself. `autana` does not need to know
-about a verb to carry a line to the board.
+app that adds its own documents them itself.

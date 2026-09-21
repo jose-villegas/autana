@@ -18,15 +18,25 @@
 
     autana tune [text]              the numbers a development build lets you change, live,
                                     with their ranges; [text] keeps the names containing it
-    autana get <name>               one of them
-    autana set <name> <value>       change one on the running device - no build, no flash.
-                                    A name may be given without its owner when that is
-                                    unambiguous: trail for ridge.trail.
-                                    Nothing is kept across a reboot.
-    autana reset <name>             back to the value the source declares
-    autana save                     write the device's current values into the TUNE(...)
+    autana tune <name>              one of them, or - when the name is not exactly one of
+                                    them - the same filtered listing as [text]. A name may
+                                    be given without its owner when that is unambiguous:
+                                    trail for ridge.trail.
+    autana tune <name> <value>      change one on the running device - no build, no flash,
+                                    and nothing kept across a reboot
+    autana tune reset <name>        back to the value the source declares
+    autana tune save                write the device's current values into the TUNE(...)
                                     lines of the worktree you are in, so they are what
                                     the next build - and release - is made with
+
+    autana screenshot [-o PATH]     what the panel shows right now, as PATH.png plus a
+                                    PATH.json state snapshot; PATH defaults to a
+                                    timestamped name in the current directory
+    autana freeze                   stop the frame loop where it is
+    autana resume                   let the frame loop run again
+    autana step [N]                 advance N frames while frozen (1 when N is omitted)
+    autana touch <down|up> <x> <y>  stand in for the touch controller
+    autana imu <ax> <ay> <az>       stand in for the IMU, raw accelerometer counts
 
     autana buildid                  the BUILD_ID the board answers with, so what is
                                     running can be checked against what was flashed.
@@ -39,11 +49,10 @@
                                     list when one will not let go.
     autana help                     this
 
-Terminal commands, not agent commands: they cost no model tokens. Run from
-any folder of any autana worktree - what a command acts on is the worktree
-you are standing in, not the checkout this file came from. Anything that
-touches the board goes through scripts/device/device.py, which takes the
-device lock; nothing here opens the serial port itself.
+Run from any folder of any autana worktree - what a command acts on is the
+worktree you are standing in, not the checkout this file came from. Anything
+that touches the board goes through scripts/device/device.py, which takes
+the device lock; nothing here opens the serial port itself.
 
 The launchers are tools/autana and tools/autana.cmd, and
 scripts/add-tools-to-path.sh puts tools/ on the PATH. The commands are
@@ -295,11 +304,14 @@ def board_holder(device):
     return ""
 
 
-def send(line, reply="TUNE", purpose="autana tune"):
+def send(line, reply="TUNE", purpose="autana tune", optional=False, seconds=None):
     """One console line to the device, under the lock. Returns (exit code,
     reply lines). `reply` is what the answer's lines start with, and also
     what ends the answer for a verb that replies once - util/tune's three
-    endings are device.py's default and need no saying."""
+    endings are device.py's default and need no saying. `optional` is for a
+    verb that answers only when something is wrong (TOUCH, IMU): a timeout
+    with nothing seen is success, not "no reply", since silence is that
+    verb's normal happy path."""
     device = device_tool()
     holder = board_holder(device)
     if holder:
@@ -313,10 +325,93 @@ def send(line, reply="TUNE", purpose="autana tune"):
                "--purpose", purpose]
     if reply != "TUNE":
         command += ["--reply", reply, "--until", reply]
+    if optional:
+        command.append("--optional")
+    if seconds is not None:
+        command += ["--seconds", str(seconds)]
     result = subprocess.run(command, capture_output=True, text=True)
     if result.stderr.strip():
         print(result.stderr.strip(), file=sys.stderr)
     return result.returncode, [answer for answer in result.stdout.splitlines() if answer.startswith(reply)]
+
+
+def screenshot(args):
+    """SCREENSHOT, captured and decoded the way launcher/tools/screenshot.sh
+    does (launcher/tools/screenshot.py's own read_screenshot()/write_capture()),
+    but under the device lock rather than opening the port directly - see
+    device.py's own `screenshot` subcommand."""
+    out = None
+    if args[:1] and args[0] in ("-o", "--out"):
+        if len(args) != 2:
+            sys.exit("usage: autana screenshot [-o PATH]")
+        out = args[1]
+    elif args:
+        sys.exit("usage: autana screenshot [-o PATH]")
+    device = device_tool()
+    holder = board_holder(device)
+    if holder:
+        print(f"the board is busy - {holder}\nnothing was sent; try again when it is free",
+              file=sys.stderr)
+        return 3
+    command = [sys.executable, "-u", str(device), "--owner", owner(), "screenshot",
+               "--purpose", "autana screenshot"]
+    if out:
+        command += ["--out", out]
+    return subprocess.call(command)
+
+
+def freeze(args):
+    if args:
+        sys.exit("usage: autana freeze")
+    code, replies = send("FREEZE", reply="FREEZE_STATE", purpose="autana freeze")
+    print("\n".join(replies))
+    return code
+
+
+def resume(args):
+    if args:
+        sys.exit("usage: autana resume")
+    code, replies = send("RESUME", reply="FREEZE_STATE", purpose="autana resume")
+    print("\n".join(replies))
+    return code
+
+
+def step(args):
+    if len(args) > 1:
+        sys.exit("usage: autana step [N]")
+    count = args[0] if args else ""
+    if count and not (count.isdigit() and int(count) >= 1):
+        sys.exit("usage: autana step [N] - N is a positive count")
+    code, replies = send("STEP " + count if count else "STEP", reply="FREEZE_STATE",
+                         purpose="autana step")
+    print("\n".join(replies))
+    return code
+
+
+def is_int(text):
+    try:
+        int(text)
+        return True
+    except ValueError:
+        return False
+
+
+def touch(args):
+    if len(args) != 3 or args[0] not in ("down", "up") or not is_int(args[1]) or not is_int(args[2]):
+        sys.exit("usage: autana touch <down|up> <x> <y>")
+    code, replies = send("TOUCH " + " ".join(args), reply="TOUCH", purpose="autana touch",
+                         optional=True, seconds=0.5)
+    print("\n".join(replies) if replies else "sent")
+    return code
+
+
+def imu(args):
+    if len(args) != 3 or not all(is_int(value) for value in args):
+        sys.exit("usage: autana imu <ax> <ay> <az>")
+    code, replies = send("IMU " + " ".join(args), reply="IMU", purpose="autana imu",
+                         optional=True, seconds=0.5)
+    print("\n".join(replies) if replies else "sent")
+    return code
 
 
 def tunables():
@@ -347,13 +442,19 @@ def full_name(name):
     sys.exit(f"autana: {name} could be any of: " + ", ".join(matches))
 
 
-def tune(args):
-    if len(args) > 1:
-        sys.exit("usage: autana tune [text]")
-    rows = [row for row in tunables() if not args or args[0] in row[0]]
+def exact_tune_matches(rows, name):
+    """Rows whose name IS `name`, or whose name ends `.<name>` when that is
+    unambiguous - `trail` for `ridge.trail`, the same drop-the-owner shorthand
+    `full_name()` resolves for a set/reset."""
+    if "." in name:
+        return [row for row in rows if row[0] == name]
+    return [row for row in rows if row[0].split(".", 1)[-1] == name]
+
+
+def format_tune_rows(rows, filter_text=""):
     if not rows:
-        print("no tunables" + (f" containing '{args[0]}'" if args else ""))
-        return 0
+        print("no tunables" + (f" containing '{filter_text}'" if filter_text else ""))
+        return
     width = max(len(row[0]) for row in rows)
     for name, value, low, high, default in rows:
         changed = int(value) != int(default)
@@ -361,31 +462,47 @@ def tune(args):
             # a colour reads as one; SET takes 0x38D6E8 back
             value, low, high, default = (f"0x{int(number):06X}" for number in (value, low, high, default))
         print(f"{name:<{width}}  {value:>8}   ({low}..{high})" + (f"   * source has {default}" if changed else ""))
+
+
+def tune_set(name, value):
+    code, replies = send("SET " + full_name(name) + " " + value)
+    print("\n".join(reply.split(" ", 1)[1] for reply in replies))
+    return code
+
+
+def tune_reset(name):
+    code, replies = send("RESET " + full_name(name))
+    print("\n".join(reply.split(" ", 1)[1] for reply in replies))
+    return code
+
+
+def tune(args):
+    """`tune` alone or with filter text lists; a name that is exactly one
+    tunable's own (owner optional when unambiguous) shows that one in the
+    same listing; a name and a value sets it; `reset`/`save` are recognised
+    only in first position, so a tunable actually named that would still be
+    reachable through the filtered listing."""
+    if args and args[0] == "save":
+        if len(args) > 1:
+            sys.exit("usage: autana tune save")
+        return save()
+    if args and args[0] == "reset":
+        if len(args) != 2:
+            sys.exit("usage: autana tune reset <name>")
+        return tune_reset(args[1])
+    if len(args) > 2:
+        sys.exit("usage: autana tune [text] | autana tune <name> [value] | "
+                 "autana tune reset <name> | autana tune save")
+    if len(args) == 2:
+        return tune_set(args[0], args[1])
+    rows = tunables()
+    text = args[0] if args else ""
+    shown = rows
+    if text:
+        exact = exact_tune_matches(rows, text)
+        shown = exact if len(exact) == 1 else [row for row in rows if text in row[0]]
+    format_tune_rows(shown, text)
     return 0
-
-
-def get(args):
-    if len(args) != 1:
-        sys.exit("usage: autana get <name>")
-    code, replies = send("GET " + full_name(args[0]))
-    print("\n".join(reply.split(" ", 1)[1] for reply in replies))
-    return code
-
-
-def set_value(args):
-    if len(args) != 2:
-        sys.exit("usage: autana set <name> <value>")
-    code, replies = send("SET " + full_name(args[0]) + " " + args[1])
-    print("\n".join(reply.split(" ", 1)[1] for reply in replies))
-    return code
-
-
-def reset(args):
-    if len(args) != 1:
-        sys.exit("usage: autana reset <name>")
-    code, replies = send("RESET " + full_name(args[0]))
-    print("\n".join(reply.split(" ", 1)[1] for reply in replies))
-    return code
 
 
 def literal(name, value):
@@ -406,10 +523,8 @@ def declarations(worktree):
     return found
 
 
-def save(args):
+def save():
     """The device's values, written into the TUNE lines they came from."""
-    if args:
-        sys.exit("usage: autana save")
     worktree = engine_worktree()
     where = declarations(worktree)
     changed = 0
@@ -440,23 +555,31 @@ def save(args):
     return 0
 
 
-CONSOLE_HELP = """  tune [text]          list the tunables (names containing text)
-  <name>               show one                  (get <name> works too)
-  <name> <value>       change it on the device   (set <name> <value> works too)
-  reset <name>         back to the value the source declares
-  save                 write the device's values into this worktree's source
-  flash [rel|dev|diag] build and flash this worktree
-  monitor [seconds]    print what the board says
-  suite <name> [secs]  run one registered suite on the board
-  suite list [text]    the suites this worktree registers
-  buildid              what the board says it is running
-  id                   what the device lock calls this session, and its pid
+CONSOLE_HELP = """  tune [text]              list the tunables (names containing text)
+  tune <name>              show one, or the same filtered list when the name is not exactly one
+  tune <name> <value>      change it on the device
+  tune reset <name>        back to the value the source declares
+  tune save                write the device's values into this worktree's source
+  screenshot [-o PATH]     what the panel shows right now
+  freeze                   stop the frame loop where it is
+  resume                   let the frame loop run again
+  step [N]                 advance N frames while frozen (1 when omitted)
+  touch <down|up> <x> <y>  stand in for the touch controller
+  imu <ax> <ay> <az>       stand in for the IMU, raw counts
+  flash [rel|dev|diag]     build and flash this worktree
+  monitor [seconds]        print what the board says
+  suite <name> [secs]      run one registered suite on the board
+  suite list [text]        the suites this worktree registers
+  buildid                  what the board says it is running
+  id                       what the device lock calls this session, and its pid
   help, quit"""
 
 
 def console(_args=None):
     """A session with the device: each line takes the lock, asks, and lets go,
-    so the board is free for anything else between two of them."""
+    so the board is free for anything else between two of them. A bare word
+    is only ever an autana command or a device console verb - never an
+    implicit tunable lookup; `tune <name>` is the only way to one."""
     print("autana console - 'help' for the commands, 'quit' to leave")
     while True:
         try:
@@ -475,10 +598,6 @@ def console(_args=None):
                 print(CONSOLE_HELP)
             elif verb in COMMANDS and verb != "console":
                 COMMANDS[verb](rest)
-            elif len(words) == 1:
-                get(words)
-            elif len(words) == 2:
-                set_value(words)
             else:
                 print("not understood - 'help' lists what is")
         except SystemExit as stop:
@@ -487,8 +606,9 @@ def console(_args=None):
                 print(stop.code)
 
 
-COMMANDS = {"flash": flash, "tune": tune, "get": get, "set": set_value, "reset": reset, "save": save,
-            "monitor": monitor, "suite": suite, "console": console, "id": identify, "buildid": buildid}
+COMMANDS = {"flash": flash, "tune": tune, "monitor": monitor, "suite": suite, "console": console,
+            "id": identify, "buildid": buildid, "screenshot": screenshot, "freeze": freeze,
+            "resume": resume, "step": step, "touch": touch, "imu": imu}
 
 
 def main():
