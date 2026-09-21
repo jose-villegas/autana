@@ -379,16 +379,18 @@ computing a gradient step nothing will display. See
 [`Shading-and-Colour.md`](Shading-and-Colour.md#indexed-colour-modes-256-and-16)
 for the mechanism.
 
-## The `counts` console command
+## The `sand counts` console command
 
-`app_sand.c` sets `console_line` in its `app_t` and answers one line,
-`counts`: tallies every cell in the live grid by material
+`app_sand.c` declares the console prefix `sand` (`APP_CONSOLE`, `app.h`)
+and answers one command under it, `counts` - so the full typed line is
+`sand counts`. It tallies every cell in the live grid by material
 (`sand_material_counts()`, `sand.c`) and prints one `COUNTS <name>=<n>`
-line per material actually on the board, skipping the rest. MAT_EXTENDED's
-own sub-materials (ice, plant, leaf, metal, root, gunpowder) share one
-`Extended` bucket rather than five. See
-[`../tools/Autana-CLI.md`](../tools/Autana-CLI.md#an-apps-own-verbs) for how
-a line like this reaches the app at all, and how to send it from an
+line per material actually on the board, skipping the rest, ending with
+`COUNTS_END`. Every extended cell, gunpowder included, shares one
+`Extended` line - [`MAT_EXTENDED`](#the-grid-in-one-byte) above says what
+those are. See
+[`../tools/Autana-CLI.md`](../tools/Autana-CLI.md#adding-a-command-from-an-app)
+for how a line like this reaches the app at all, and how to send it from an
 interactive `autana` session.
 
 ## Verifying performance on real hardware
