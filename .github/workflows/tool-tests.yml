@@ -1,0 +1,19 @@
+name: Tool Tests
+
+# The tooling's own Python suites; scripts/run-tool-tests.sh owns which ones.
+#
+# Own workflow file, like the others, purely so it gets its own badge -
+# GitHub exposes whole-workflow badges and never per-job ones. See
+# host-tests.yml's top comment.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tool-tests:
+    name: Tool tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/run-tool-tests.sh
