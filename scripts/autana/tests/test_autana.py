@@ -2,17 +2,18 @@
 hardware and no real device.py process: every device-touching call is
 mocked at the subprocess boundary, or at send() - autana's own thin wrapper
 around one `device.py send` call - for the commands built on top of it. See
-scripts/device/test_device.py and launcher/tools/tests/test_screenshot.py
+scripts/device/tests/test_device.py and launcher/tools/tests/test_screenshot.py
 for device.py's and the wire protocol's own coverage.
 
-    python -m unittest discover -s scripts/autana
+    python -m unittest discover -s scripts/autana/tests
 """
 import sys
 import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).parent))
+AUTANA = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(AUTANA))
 import autana  # noqa: E402
 
 
