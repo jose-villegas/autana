@@ -43,6 +43,21 @@ class DeviceAccessTest(unittest.TestCase):
             openers, _ = check_device_access.check(root)
         self.assertEqual(openers, [])
 
+    def test_the_gate_itself_is_exempt(self):
+        # A gate's own source and tests describe and exercise these exact
+        # patterns as data - real string literals, matching the ones that
+        # once tripped this check on its own docstring and test fixtures.
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "scripts/gates/check_device_access.py",
+                      'IDF_MONITOR_RE = "idf.py monitor"\n'
+                      'ESPTOOL = [\'"-m", "esptool"\']\n')
+            self.write(root, "scripts/gates/tests/test_check_device_access.py",
+                      'FIXTURE = \'cmd = [python, "-m", "esptool", "flash"]\'\n')
+            self.commit(root, "scripts")
+            openers, _ = check_device_access.check(root)
+        self.assertEqual(openers, [])
+
     def test_an_allowlisted_path_is_exempt(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

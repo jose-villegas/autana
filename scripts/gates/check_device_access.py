@@ -73,13 +73,19 @@ def is_comment_or_print(path, line):
     return bool(PRINT_LINE_RE.match(line))
 
 
+#  scripts/device/ is the one place allowed to touch the port at all;
+# scripts/gates/ is exempt too - a gate's own source and tests describe and
+# exercise these exact patterns as data, never run them against hardware.
+EXEMPT_PREFIXES = ("scripts/device/", "scripts/gates/")
+
+
 def serial_port_openers(root):
     """Every (path, line, reason) where a file outside scripts/device/ opens
     the board's serial port - pyserial, idf_monitor, or esptool."""
     root = pathlib.Path(root)
     found = []
     for path in tracked_files(root, ["*.py"]):
-        if path.startswith("scripts/device/") or not (root / path).is_file():
+        if path.startswith(EXEMPT_PREFIXES) or not (root / path).is_file():
             continue
         text = (root / path).read_text(encoding="utf-8", errors="replace")
         has_serial_import = bool(SERIAL_IMPORT_RE.search(text))
@@ -93,7 +99,7 @@ def serial_port_openers(root):
             elif ESPTOOL_PY_RE.search(line):
                 found.append(Violation(path, number, "invokes esptool"))
     for path in tracked_files(root, ["*.sh"]):
-        if path.startswith("scripts/device/") or not (root / path).is_file():
+        if path.startswith(EXEMPT_PREFIXES) or not (root / path).is_file():
             continue
         text = (root / path).read_text(encoding="utf-8", errors="replace")
         for number, line in enumerate(text.splitlines(), 1):
