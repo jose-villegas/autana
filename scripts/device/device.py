@@ -486,8 +486,15 @@ def send(args, store, port):
 
     Not a capture: nothing is written under records/ and index.jsonl gets no
     line. A tuning session is dozens of these, and none of them is evidence.
+
+    `args.optional` is for a verb that only answers when something is wrong
+    (TOUCH, IMU): a timeout with nothing seen is success, not "no reply" -
+    silence is that verb's normal happy path, so whatever partial match was
+    found (possibly nothing) is printed and this returns 0 rather than
+    raising.
     """
     data = bytearray()
+    found = []
     with HeldLock(store, port, args.owner, args.purpose, args.wait):
         wait_for_port(port)
         with open_serial(port) as connection:
@@ -504,8 +511,48 @@ def send(args, store, port):
                 if ("ignoring line: '" + args.line).encode("ascii") in data:
                     raise RuntimeError("this build does not answer '" + args.line.split(" ")[0] +
                                        "' - it needs a development build that has it")
+    if args.optional:
+        print("\n".join(found))
+        return 0
     raise RuntimeError("no reply to '" + args.line + "' within " + str(args.seconds) +
                        " s - is a development build running?")
+
+
+def screenshot(args, store, port):
+    """SCREENSHOT, decoded the way launcher/tools/screenshot.sh does -
+    read_screenshot()/write_capture() in launcher/tools/screenshot.py, the
+    one decoder both this and that script's own CLI use. Under the device
+    lock, unlike screenshot.sh's own direct port open: a maintainer at a
+    terminal with nothing else contending for the board can use that one
+    directly, but autana's `screenshot` must not fight another holder for
+    the port.
+
+    Not a capture: nothing is written under records/, the same reasoning
+    send()'s own docstring gives - a screenshot is a look at the screen, not
+    evidence of a run.
+    """
+    tools_dir = Path(__file__).resolve().parents[2] / "launcher" / "tools"
+    if str(tools_dir) not in sys.path:
+        sys.path.insert(0, str(tools_dir))
+    import screenshot as screenshot_tool
+
+    out = args.out or str(Path.cwd() / ("screenshot_" + now().strftime("%Y%m%d_%H%M%S") + ".png"))
+
+    def report(message):
+        print(message, file=sys.stderr, flush=True)
+
+    with HeldLock(store, port, args.owner, args.purpose, args.wait):
+        wait_for_port(port)
+        with open_serial(port) as connection:
+            png, state_json = screenshot_tool.read_screenshot(connection, args.timeout, on_status=report)
+
+    png_path, state_path = screenshot_tool.write_capture(out, png, state_json)
+    print(f"wrote {png_path} ({os.path.getsize(png_path)} bytes)")
+    if state_path:
+        print(f"wrote {state_path}")
+    else:
+        print("no SCREENSHOT_STATE line arrived - device state was not captured", file=sys.stderr)
+    return 0
 
 
 def build_script_supports(worktree, option):
@@ -620,6 +667,16 @@ def main(argv=None):
                                   "(default: TUNE_OK, TUNE_ERR, TUNE_END)")
     send_parser.add_argument("--seconds", type=float, default=3.0)
     send_parser.add_argument("--purpose", default="send")
+    send_parser.add_argument("--optional", action="store_true",
+                             help="a timeout with nothing seen is success, not an error - "
+                                  "for a verb that only answers when something is wrong")
+    screenshot_parser = subparsers.add_parser(
+        "screenshot", help="capture what the panel shows right now, as a .png plus a .json state snapshot")
+    screenshot_parser.add_argument("--out",
+                                   help="output path; any extension given is replaced with .png "
+                                        "(default: a timestamped name in the current directory)")
+    screenshot_parser.add_argument("--timeout", type=float, default=90.0)
+    screenshot_parser.add_argument("--purpose", default="screenshot")
     batch_parser = subparsers.add_parser(
         "batch", help="flash once, capture suites N times under one lock, write one summary")
     batch_parser.add_argument("--worktree", required=True)
@@ -680,6 +737,8 @@ def main(argv=None):
             if not args.until:
                 args.until = [args.reply + "_OK", args.reply + "_ERR", args.reply + "_END"]
             return send(args, store, port)
+        elif args.command == "screenshot":
+            return screenshot(args, store, port)
         else:
             listen(args, store, port)
         return 0
