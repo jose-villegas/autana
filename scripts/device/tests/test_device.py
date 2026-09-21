@@ -514,6 +514,58 @@ class FlashDefaultPathTests(unittest.TestCase):
             self.assertEqual(entry["worktree"], str(worktree.resolve()))
             self.assertEqual(entry["commit"], "deadbeef")
 
+    def test_passes_the_lock_token_to_build_flash_sh(self):
+        # build_flash.sh refuses to flash without AUTANA_DEVICE_LOCK_TOKEN -
+        # flash() is the one place that has the token to give it.
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory) / "engine"
+            (worktree / "launcher" / "tools").mkdir(parents=True)
+            (worktree / "launcher" / "tools" / "build_flash.sh").write_text("")
+            root = Path(directory) / "records"
+            connection = FakeConnection([b"BUILD_ID=expected\nTESTS_DONE\n"])
+            args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
+                             worktree=str(worktree), out=None)
+            store = mock.Mock()
+            store.acquire.return_value = {"log": "", "token": "sekrit-token"}
+            run = mock.Mock()
+            with mock.patch.object(device, "records_root", return_value=root), \
+                 mock.patch.object(device.subprocess, "run", run), \
+                 mock.patch.object(device, "reset"), \
+                 mock.patch.object(device, "read_expected_build_id", return_value="expected"), \
+                 mock.patch.object(device, "open_serial", return_value=connection), \
+                 mock.patch.object(device, "git_commit", return_value="deadbeef"):
+                device.flash(args, store, "COM5")
+            passed_env = run.call_args.kwargs["env"]
+            self.assertEqual(passed_env["AUTANA_DEVICE_LOCK_TOKEN"], "sekrit-token")
+
+
+class FlashCommandLineTests(unittest.TestCase):
+    """main()'s own `flash` dispatch: --perf-scope becomes an extra_flags
+    entry, the same way batch() and selftest() already build theirs."""
+
+    def run_main(self, argv):
+        calls = []
+
+        def fake_flash(args, store, port, held_lock=None, extra_flags=()):
+            calls.append(list(extra_flags))
+            return 0
+
+        with mock.patch.object(device, "find_port", return_value="COM5"), \
+             mock.patch.object(device, "flash", fake_flash), \
+             mock.patch.object(device, "device_lock") as fake_lock_module:
+            fake_lock_module.LockStore.return_value = mock.Mock()
+            device.main(argv)
+        return calls
+
+    def test_perf_scope_flag_becomes_an_extra_flag(self):
+        calls = self.run_main(["--owner", "a", "flash", "--variant", "diag",
+                               "--worktree", "C:/wt", "--perf-scope"])
+        self.assertEqual(calls, [["--perf-scope"]])
+
+    def test_no_perf_scope_flag_passes_nothing_extra(self):
+        calls = self.run_main(["--owner", "a", "flash", "--variant", "dev", "--worktree", "C:/wt"])
+        self.assertEqual(calls, [[]])
+
 
 class ReportCommandTests(unittest.TestCase):
     """The `report` subcommand must work over a file already on disk without
@@ -610,7 +662,7 @@ class BatchTests(unittest.TestCase):
     the same image. No serial port, lock file or build is touched here."""
 
     def run_batch(self, suites=("run_sand_perf_suite",), runs=3, fail_run=None,
-                  perf_scope=False, script_text="--diag --dev --perf-scope"):
+                  perf_scope=False, script_text="--diag --dev --perf-scope", out=False):
         calls = {"locks": 0, "flash": [], "run_suite": []}
 
         class FakeLock:
@@ -628,7 +680,7 @@ class BatchTests(unittest.TestCase):
             return "abc123-diag"
 
         def fake_run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
-            calls["run_suite"].append((args.suite, held_lock, args.expect_build_id,
+            calls["run_suite"].append((args.suite, args.out, held_lock, args.expect_build_id,
                                        worktree, commit))
             Path(args.out).write_text(":1:test_one:PASS\n", encoding="utf-8")
             if fail_run is not None and len(calls["run_suite"]) == fail_run:
@@ -640,9 +692,10 @@ class BatchTests(unittest.TestCase):
             (worktree / "launcher" / "tools").mkdir(parents=True)
             (worktree / "launcher" / "tools" / "build_flash.sh").write_text(script_text)
             calls["worktree"] = str(worktree.resolve())
+            out_path = str(Path(directory) / "raw.txt") if out else None
             args = Namespace(owner="agent", purpose="p", wait=0, worktree=str(worktree),
                              variant="diag", suite=list(suites), runs=runs, perf_scope=perf_scope,
-                             max_seconds=1, idle_seconds=None)
+                             max_seconds=1, idle_seconds=None, out=out_path)
             with mock.patch.object(device, "HeldLock", FakeLock), \
                  mock.patch.object(device, "flash", fake_flash), \
                  mock.patch.object(device, "run_suite", fake_run_suite), \
@@ -665,7 +718,7 @@ class BatchTests(unittest.TestCase):
         _, calls, _ = self.run_batch(runs=2)
         batch_lock = calls["flash"][0][0]
         self.assertIsNotNone(batch_lock)
-        for suite, held_lock, expected, unused_worktree, unused_commit in calls["run_suite"]:
+        for suite, out, held_lock, expected, unused_worktree, unused_commit in calls["run_suite"]:
             self.assertIs(held_lock, batch_lock)
             self.assertEqual(expected, "abc123-diag")
 
@@ -674,7 +727,7 @@ class BatchTests(unittest.TestCase):
         that worktree's HEAD, not the ambient cwd - see device.py's
         run_suite() docstring and the manifest bug this replaced."""
         _, calls, _ = self.run_batch(runs=1)
-        for suite, unused_held_lock, unused_expected, worktree, commit in calls["run_suite"]:
+        for suite, out, unused_held_lock, unused_expected, worktree, commit in calls["run_suite"]:
             self.assertEqual(worktree, calls["worktree"])
             self.assertEqual(commit, "c0ffee")
 
@@ -693,9 +746,17 @@ class BatchTests(unittest.TestCase):
         _, calls, _ = self.run_batch(perf_scope=True)
         self.assertEqual(calls["flash"][0][1], ["--perf-scope"])
 
-    def test_perf_scope_is_refused_when_the_build_script_cannot_do_it(self):
-        with self.assertRaisesRegex(RuntimeError, "no --perf-scope option"):
-            self.run_batch(perf_scope=True, script_text="--diag --dev")
+    def test_out_is_used_for_one_suite_one_run(self):
+        _, calls, _ = self.run_batch(suites=("run_sand_perf_suite",), runs=1, out=True)
+        self.assertTrue(calls["run_suite"][0][1].endswith("raw.txt"))
+
+    def test_out_with_more_than_one_run_is_refused(self):
+        with self.assertRaisesRegex(RuntimeError, "--out only makes sense"):
+            self.run_batch(suites=("run_sand_perf_suite",), runs=2, out=True)
+
+    def test_out_with_more_than_one_suite_is_refused(self):
+        with self.assertRaisesRegex(RuntimeError, "--out only makes sense"):
+            self.run_batch(suites=("run_sand_perf_suite", "run_gfx_suite"), runs=1, out=True)
 
 
 class HardResetViaRtsTests(unittest.TestCase):
@@ -709,6 +770,37 @@ class HardResetViaRtsTests(unittest.TestCase):
         self.assertFalse(connection.dtr)
         self.assertFalse(connection.rts)
         slept.assert_called_once_with(device.RESET_PULSE_S)
+
+
+class ToolchainAddr2LineTests(unittest.TestCase):
+    """toolchain_addr2line() looks under IDF_TOOLS_PATH when set - the same
+    override ESP-IDF's own install script honours - and ~/.espressif
+    otherwise."""
+
+    def make_toolchain(self, root):
+        bin_dir = root / "tools" / "xtensa-esp-elf" / "14.2.0" / "esp-14.2.0_20241119" / "bin"
+        bin_dir.mkdir(parents=True)
+        addr2line = bin_dir / "xtensa-esp32s3-elf-addr2line"
+        addr2line.write_bytes(b"")
+        return addr2line
+
+    def test_honours_idf_tools_path_when_set(self):
+        with tempfile.TemporaryDirectory() as directory:
+            custom_root = Path(directory) / "custom-tools"
+            addr2line = self.make_toolchain(custom_root)
+            with mock.patch.dict(os.environ, {"IDF_TOOLS_PATH": str(custom_root)}):
+                found = device.toolchain_addr2line()
+        self.assertEqual(found, addr2line)
+
+    def test_falls_back_to_home_espressif_when_unset(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            addr2line = self.make_toolchain(home / ".espressif")
+            with mock.patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("IDF_TOOLS_PATH", None)
+                with mock.patch.object(device.Path, "home", return_value=home):
+                    found = device.toolchain_addr2line()
+        self.assertEqual(found, addr2line)
 
 
 class DecodeCrashAddressesTests(unittest.TestCase):
@@ -735,6 +827,88 @@ class DecodeCrashAddressesTests(unittest.TestCase):
         self.assertEqual(decoded, ["main.c:42"])
         command = run.call_args[0][0]
         self.assertEqual(command.count("0x400d1234"), 1)
+
+
+class FindElfForBuildIdTests(unittest.TestCase):
+    """find_elf_for_build_id() picks the build actually on the board - the
+    one whose own build_id.txt matches - never merely the newest on disk."""
+
+    def test_no_build_id_finds_nothing(self):
+        self.assertIsNone(device.find_elf_for_build_id(Path("C:/wt"), ""))
+
+    def test_matches_the_build_whose_build_id_txt_agrees(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory)
+            newer = worktree / "launcher" / "build.dev"
+            older = worktree / "launcher" / "build.diag"
+            newer.mkdir(parents=True)
+            older.mkdir(parents=True)
+            (newer / "build_id.txt").write_text("newer-id\n", encoding="ascii")
+            (newer / "launcher.elf").write_bytes(b"")
+            (older / "build_id.txt").write_text("older-id\n", encoding="ascii")
+            (older / "launcher.elf").write_bytes(b"")
+            found = device.find_elf_for_build_id(worktree, "older-id")
+        self.assertEqual(found, older / "launcher.elf")
+
+    def test_no_matching_build_id_finds_nothing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory)
+            build = worktree / "launcher" / "build.dev"
+            build.mkdir(parents=True)
+            (build / "build_id.txt").write_text("some-id\n", encoding="ascii")
+            (build / "launcher.elf").write_bytes(b"")
+            found = device.find_elf_for_build_id(worktree, "different-id")
+        self.assertIsNone(found)
+
+    def test_a_matching_build_id_with_no_elf_file_is_skipped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory)
+            build = worktree / "launcher" / "build.dev"
+            build.mkdir(parents=True)
+            (build / "build_id.txt").write_text("some-id\n", encoding="ascii")
+            found = device.find_elf_for_build_id(worktree, "some-id")
+        self.assertIsNone(found)
+
+
+class ListenElfResolutionTests(unittest.TestCase):
+    """listen() decodes against --elf when given, and otherwise against
+    whatever find_elf_for_build_id() resolves from the capture itself."""
+
+    def run_listen(self, elf_arg, data_lines, matched_elf):
+        connection = FakeConnection([b"\n".join(data_lines) + b"\n"])
+        args = Namespace(owner="agent", purpose="autana monitor", wait=0,
+                         seconds=1, out=None, elf=elf_arg)
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "records"
+            with mock.patch.object(device, "open_serial", return_value=connection), \
+                 mock.patch.object(device, "wait_for_port"), \
+                 mock.patch.object(device, "records_root", return_value=root), \
+                 mock.patch.object(device, "git_commit", return_value="deadbeef"), \
+                 mock.patch.object(device, "find_elf_for_build_id", return_value=matched_elf) as finder, \
+                 mock.patch.object(device, "decode_crash_addresses", return_value=[]) as decode:
+                device.listen(args, store, "COM5")
+        return finder, decode
+
+    def test_an_explicit_elf_skips_build_id_matching(self):
+        finder, decode = self.run_listen("mine.elf", [b"ordinary log line"], None)
+        finder.assert_not_called()
+        decode.assert_called_once()
+        self.assertEqual(decode.call_args[0][1], Path("mine.elf"))
+
+    def test_no_elf_resolves_by_build_id(self):
+        finder, decode = self.run_listen(
+            None, [b"BUILD_ID=abc123-dev", b"Backtrace:0x400d1234:0x3ffb1f80"],
+            Path("C:/wt/launcher/build.dev/launcher.elf"))
+        finder.assert_called_once()
+        self.assertEqual(finder.call_args[0][1], "abc123-dev")
+        decode.assert_called_once_with(mock.ANY, Path("C:/wt/launcher/build.dev/launcher.elf"))
+
+    def test_no_match_decodes_nothing(self):
+        finder, decode = self.run_listen(None, [b"no build id here"], None)
+        finder.assert_called_once()
+        decode.assert_not_called()
 
 
 class SelftestTests(unittest.TestCase):
@@ -768,7 +942,7 @@ class SelftestTests(unittest.TestCase):
             (worktree / "launcher" / "tools").mkdir(parents=True)
             root = Path(directory) / "records"
             args = Namespace(owner="agent", purpose="autana selftest", wait=0,
-                             worktree=str(worktree), suite=None, out=None, perf_scope=perf_scope,
+                             worktree=str(worktree), out=None, perf_scope=perf_scope,
                              max_seconds=5, idle_seconds=None)
             store = mock.Mock()
             store.acquire.return_value = {"log": "", "token": "token"}
@@ -811,7 +985,7 @@ class SelftestTests(unittest.TestCase):
                 b":1:test_one:FAIL: boom\nSELFTEST_COMPLETE failures=1 elapsed_ms=10\n",
             ])
             args = Namespace(owner="agent", purpose="autana selftest", wait=0,
-                             worktree=str(worktree), suite=None, out=None, perf_scope=False,
+                             worktree=str(worktree), out=None, perf_scope=False,
                              max_seconds=5, idle_seconds=None)
             store = mock.Mock()
             store.acquire.return_value = {"log": "", "token": "token"}
@@ -823,51 +997,6 @@ class SelftestTests(unittest.TestCase):
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
                 code = device.selftest(args, store, "COM5")
         self.assertEqual(code, 1)
-
-
-class SelftestSuiteModeTests(unittest.TestCase):
-    """selftest() with --suite: build WITHOUT autorun and delegate to
-    run_suite() under the same lock - device_report.sh's RUNSUITE-based
-    reports (report_boot_anim_perf.sh) need exactly this."""
-
-    def run_selftest_suite(self):
-        calls = {"flash_extra_flags": None, "run_suite": None}
-
-        def fake_flash(args, store, port, held_lock=None, extra_flags=()):
-            calls["flash_extra_flags"] = list(extra_flags)
-            return "abc123-diag"
-
-        def fake_run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
-            calls["run_suite"] = (args.suite, args.out, held_lock, worktree, commit)
-            return 0
-
-        with tempfile.TemporaryDirectory() as directory:
-            worktree = Path(directory) / "wt"
-            (worktree / "launcher" / "tools").mkdir(parents=True)
-            args = Namespace(owner="agent", purpose="p", wait=0, worktree=str(worktree),
-                             suite="run_boot_anim_perf_suite", out="raw.txt", perf_scope=False,
-                             max_seconds=60, idle_seconds=None)
-            store = mock.Mock()
-            store.acquire.return_value = {"log": "", "token": "token"}
-            with mock.patch.object(device, "flash", fake_flash), \
-                 mock.patch.object(device, "run_suite", fake_run_suite), \
-                 mock.patch.object(device, "git_commit", return_value="deadbeef"):
-                code = device.selftest(args, store, "COM5")
-        return code, calls
-
-    def test_builds_without_autorun(self):
-        code, calls = self.run_selftest_suite()
-        self.assertEqual(code, 0)
-        self.assertEqual(calls["flash_extra_flags"], [])
-
-    def test_delegates_to_run_suite_under_the_same_lock_with_the_given_out_path(self):
-        _, calls = self.run_selftest_suite()
-        suite, out, held_lock, worktree, commit = calls["run_suite"]
-        self.assertEqual(suite, "run_boot_anim_perf_suite")
-        self.assertEqual(out, "raw.txt")
-        self.assertIsNotNone(held_lock)
-        self.assertTrue(worktree.endswith("wt"))
-        self.assertEqual(commit, "deadbeef")
 
 
 class ScreenshotCommandTests(unittest.TestCase):
