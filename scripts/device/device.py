@@ -307,7 +307,7 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
                         raise RuntimeError("no suite named " + suite_name + " on this build")
                     if b"SUITE_DONE" in text or text.startswith(suite_complete):
                         return bytes(data), "complete"
-            if b"TESTS_DONE" in data or (b"Tests " in data and b"Failures" in data):
+            if b"TESTS_DONE" in data or b"SELFTEST_COMPLETE" in data or (b"Tests " in data and b"Failures" in data):
                 return bytes(data), "complete"
     return bytes(data), "timeout"
 
@@ -316,6 +316,58 @@ def reset(port):
     command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
                "--after", "hard_reset", "chip_id"]
     subprocess.run(command, check=True)
+
+
+# The auto-reset circuit's own pulse width. DTR stays low throughout so
+# GPIO0 stays high - a normal boot, not the bootloader's download mode.
+RESET_PULSE_S = 0.1
+
+
+def hard_reset_via_rts(connection):
+    """A reset pulsed on RTS through the ALREADY-OPEN connection the caller
+    is about to capture from, so no gap between closing one port handle and
+    opening the next can lose the first lines of boot output - unlike
+    esptool's own --after hard_reset, which necessarily closes the port."""
+    connection.dtr = False
+    connection.rts = True
+    time.sleep(RESET_PULSE_S)
+    connection.rts = False
+
+
+CRASH_ADDRESS_RE = re.compile(rb"0x4[0-9a-fA-F]{7}")
+
+
+def toolchain_addr2line():
+    """The xtensa-esp32s3-elf-addr2line beside ESP-IDF's own toolchain,
+    found under .espressif/tools, or None when it is not installed. Sorted
+    reverse-alphabetically so the newest of several installed toolchain
+    versions wins."""
+    root = Path.home() / ".espressif" / "tools" / "xtensa-esp-elf"
+    for bin_dir in sorted(root.glob("*/*/bin"), reverse=True):
+        for name in ("xtensa-esp32s3-elf-addr2line.exe", "xtensa-esp32s3-elf-addr2line"):
+            candidate = bin_dir / name
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def decode_crash_addresses(data, elf):
+    """Every address on a `Backtrace:`/`PC` line in a capture, resolved
+    against `elf` to a file and line number. Returns [] when nothing looks
+    like a crash, or when no addr2line is installed to ask."""
+    addresses = []
+    for line in data.split(b"\n"):
+        if b"Backtrace" in line or b"PC      :" in line or b"PC :" in line:
+            addresses += CRASH_ADDRESS_RE.findall(line)
+    if not addresses:
+        return []
+    addr2line = toolchain_addr2line()
+    if addr2line is None:
+        return []
+    unique = list(dict.fromkeys(address.decode("ascii") for address in addresses))
+    result = subprocess.run([str(addr2line), "-pfiaC", "-e", str(elf), *unique],
+                            capture_output=True, text=True)
+    return [line for line in result.stdout.splitlines() if line.strip()]
 
 
 def boot_build_id(port, seconds=12, expected_build_id=None):
@@ -439,6 +491,79 @@ def run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
     return 1 if failed else 0
 
 
+def selftest(args, store, port):
+    """Build+flash the diagnostics image under one held lock, then capture
+    exactly one run into `--out` - device_report.sh's own build+capture
+    step, and the way to run every suite this worktree registers on the
+    device.
+
+    `--suite` picks which run: omitted, this builds WITH autorun and
+    resets+captures the boot-time run of every registered suite until
+    SELFTEST_COMPLETE (or a timeout); given, this builds WITHOUT autorun (so
+    the shell - and its RUNSUITE listener - comes up) and delegates to
+    run_suite() under the same lock, exactly the way batch() already does
+    for its own per-suite captures.
+
+    The no-`--suite` reset is pulsed on the SAME connection this then
+    captures from (hard_reset_via_rts), not esptool's --after hard_reset:
+    the whole point is a capture with no gap across the reset, so an early
+    line like the free-heap-after-framebuffer mark a report reads is never
+    lost to a closed-then-reopened port. The `--suite` case needs no such
+    care - a RUNSUITE report reads from the RUNSUITE response onward, never
+    from boot, so run_suite()'s own already-open-shell assumption is fine."""
+    worktree = str(Path(args.worktree).resolve())
+    started_at = now()
+    extra_flags = []
+    if args.perf_scope:
+        extra_flags.append("--perf-scope")
+    if not args.suite:
+        extra_flags.append("--autorun")
+    with HeldLock(store, port, args.owner, args.purpose, args.wait) as held:
+        flash_args = argparse.Namespace(owner=args.owner, purpose=args.purpose + " (flash)",
+                                        wait=args.wait, worktree=args.worktree,
+                                        variant="diag", out=None)
+        build_id = flash(flash_args, store, port, held_lock=held, extra_flags=extra_flags)
+        commit = git_commit(worktree)
+        if args.suite:
+            suite_args = argparse.Namespace(
+                owner=args.owner, wait=args.wait, suite=args.suite, out=args.out,
+                purpose=args.purpose, max_seconds=args.max_seconds,
+                idle_seconds=args.idle_seconds, expect_build_id=build_id)
+            return run_suite(suite_args, store, port, held_lock=held, worktree=worktree,
+                             commit=commit)
+
+        data = b""
+        reason = None
+        error = None
+        output, managed = resolve_capture_path(args.out, "selftest", args.owner, started_at)
+        try:
+            wait_for_port(port)
+            with open_serial(port) as connection:
+                hard_reset_via_rts(connection)
+                data, reason = capture(connection, output, args.max_seconds, args.idle_seconds,
+                                       build_id)
+        except RuntimeError as caught:
+            error = str(caught)
+            raise
+        finally:
+            final_path = record_capture(
+                output, managed, started_at=started_at, port=port, owner=args.owner,
+                purpose=args.purpose, command="selftest",
+                build_id=latest_build_id_from_bytes(data) or build_id,
+                worktree=worktree, commit=commit, reason=reason, error=error)
+            try:
+                report_path = device_report.write_report_for_capture(
+                    final_path, records_root() / "index.jsonl")
+                print("report: " + str(report_path))
+            except Exception as report_error:  # a report is a convenience, never fails the capture
+                print("report generation failed (capture is unaffected): " + str(report_error),
+                      file=sys.stderr)
+        passed, failed = count_suite_results(data)
+        print("selftest results: " + str(passed) + " PASS, " + str(failed) + " FAIL")
+        print("selftest capture ended: " + reason)
+        return 1 if failed else 0
+
+
 def listen(args, store, port):
     started_at = now()
     output, managed = resolve_capture_path(args.out, "listen", args.owner, started_at)
@@ -459,6 +584,12 @@ def listen(args, store, port):
                        build_id=latest_build_id_from_bytes(data), worktree=str(Path.cwd()),
                        commit=git_commit(), reason=reason, error=error)
     print("listen capture ended: " + reason)
+    if args.elf:
+        decoded = decode_crash_addresses(data, Path(args.elf))
+        if decoded:
+            print("\ncrash addresses decoded against " + args.elf + ":")
+            for line in decoded:
+                print("  " + line)
 
 
 def replies_to(data, reply, until):
@@ -519,13 +650,11 @@ def send(args, store, port):
 
 
 def screenshot(args, store, port):
-    """SCREENSHOT, decoded the way launcher/tools/screenshot.sh does -
-    read_screenshot()/write_capture() in launcher/tools/screenshot.py, the
-    one decoder both this and that script's own CLI use. Under the device
-    lock, unlike screenshot.sh's own direct port open: a maintainer at a
-    terminal with nothing else contending for the board can use that one
-    directly, but autana's `screenshot` must not fight another holder for
-    the port.
+    """SCREENSHOT, decoded by read_screenshot()/write_capture() in
+    launcher/tools/screenshot.py - the one decoder autana's own
+    `screenshot` shares. Under the device lock, so it queues behind
+    whatever else already holds the board rather than fighting it for the
+    port.
 
     Not a capture: nothing is written under records/, the same reasoning
     send()'s own docstring gives - a screenshot is a look at the screen, not
@@ -657,6 +786,24 @@ def main(argv=None):
     listen_parser.add_argument("--seconds", type=float, required=True)
     listen_parser.add_argument("--out")
     listen_parser.add_argument("--purpose", default="listen")
+    listen_parser.add_argument("--elf",
+                               help="decode any crash addresses seen against this .elf's symbols")
+    selftest_parser = subparsers.add_parser(
+        "selftest", help="flash the diagnostics image and capture one run: every registered "
+                         "suite at boot, or one suite via --suite")
+    selftest_parser.add_argument("--worktree", required=True)
+    selftest_parser.add_argument("--suite",
+                                 help="capture this one suite via RUNSUITE instead of the "
+                                      "full boot-time autorun")
+    selftest_parser.add_argument("--out")
+    selftest_parser.add_argument("--perf-scope", action="store_true",
+                                 help="build the perf-scoped image (needs build_flash.sh support)")
+    # A full run took 1,125,726 ms once its frame-budget fixtures could
+    # actually allocate their grids - see sand's own report_performance.sh
+    # comment on the same number; 3000 leaves headroom above it.
+    selftest_parser.add_argument("--max-seconds", type=float, default=3000)
+    selftest_parser.add_argument("--idle-seconds", type=float, default=300)
+    selftest_parser.add_argument("--purpose", default="selftest")
     send_parser = subparsers.add_parser(
         "send", help="write one console line and print the device's replies to it")
     send_parser.add_argument("line")
@@ -731,6 +878,8 @@ def main(argv=None):
             flash(args, store, port)
         elif args.command == "run-suite":
             return run_suite(args, store, port)
+        elif args.command == "selftest":
+            return selftest(args, store, port)
         elif args.command == "batch":
             return batch(args, store, port)
         elif args.command == "send":
