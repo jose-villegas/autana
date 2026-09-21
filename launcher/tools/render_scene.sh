@@ -19,7 +19,10 @@
 #                   The declared size is checked against what the binary
 #                   says it wrote, so a renderer that has quietly stopped
 #                   working fails the run rather than leaving a picture
-#                   nobody looks at twice.
+#                   nobody looks at twice. --video (a flag to this script,
+#                   not a declaration) also writes each render's frames to
+#                   <label>.avi beside its .bmp; it never touches the pinned
+#                   hash, which is taken from the .bmp alone.
 #   scene_includes  OPTIONAL extra -I directories, relative to launcher/
 #   scene_defines   OPTIONAL extra compiler flags
 #   scene_out_dir   OPTIONAL; the default is results/render/<name> under the
@@ -98,11 +101,13 @@ render_scene_run() {
     : "${scene_out_dir:=$_rs_owner/results/render/$scene_name}"
 
     _rs_repin=0
+    _rs_video=0
     while [ $# -gt 0 ]; do
         case "$1" in
             -o) scene_out_dir="$2"; shift 2 ;;
             --update-baseline) _rs_repin=1; shift ;;
-            *) echo "usage: $0 [-o <dir>] [--update-baseline]" >&2; return 2 ;;
+            --video) _rs_video=1; shift ;;
+            *) echo "usage: $0 [-o <dir>] [--update-baseline] [--video]" >&2; return 2 ;;
         esac
     done
 
@@ -136,7 +141,7 @@ render_scene_run() {
         _rs_flags="$_rs_flags -I $_rs_launcher/$_rs_inc"
     done
 
-    _rs_files="$_rs_tools/render_host.c"
+    _rs_files="$_rs_tools/render_host.c $_rs_tools/render_video.c"
     for _rs_src in $scene_sources; do
         _rs_files="$_rs_files $_rs_launcher/$_rs_src"
     done
@@ -163,9 +168,13 @@ render_scene_run() {
             _rs_args=${_rs_tail%%|*}
             _rs_want=${_rs_tail##*|}
             _rs_path="$scene_out_dir/$_rs_label.bmp"
+            _rs_video_args=""
+            if [ "$_rs_video" = 1 ]; then
+                _rs_video_args="--video $scene_out_dir/$_rs_label.avi"
+            fi
 
             # shellcheck disable=SC2086
-            if ! "$_rs_bin" $_rs_args -o "$_rs_path" 2> "$_rs_log"; then
+            if ! "$_rs_bin" $_rs_args -o "$_rs_path" $_rs_video_args 2> "$_rs_log"; then
                 cat "$_rs_log" >&2
                 echo "FAIL $scene_name/$_rs_label: the renderer exited non-zero" >&2
                 exit 1

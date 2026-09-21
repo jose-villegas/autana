@@ -4,6 +4,10 @@
  *
  *     boot_anim_render_host <now_ms>   > frame.bmp
  *
+ * <now_ms> is where the FIRST frame draws; --frames > 1 (--video, say)
+ * advances it by the harness's own elapsed_ms per frame, so the timeline
+ * animates instead of holding on one instant.
+ *
  * A render_host.h scene; render_host.c owns main(), gfx_init() and the BMP.
  * Built from these translation units, with `main` on the include path:
  *
@@ -45,14 +49,14 @@ options(int argc, char** argv) {
 
 static void
 draw(const render_frame_t* frame) {
-    (void)frame;
-    boot_anim_draw_frame(now_ms);
+    const uint32_t t_ms = now_ms + frame->elapsed_ms;
+    boot_anim_draw_frame(t_ms);
 
     /* The space's own local origin (0,0,0 - t=0, zeta=0), projected through
      * this frame's camera+space transform: the JSON side has nowhere to
      * author a screen position directly, so boot_anim_editor_server.py reads
      * this as a read-only "where does the origin land" readout. */
-    const boot_anim_view_t view = boot_anim_view(GFX_WIDTH, GFX_HEIGHT, now_ms);
+    const boot_anim_view_t view = boot_anim_view(GFX_WIDTH, GFX_HEIGHT, t_ms);
     int ox, oy;
     boot_anim_project(0, 0, 0, &view, &ox, &oy);
     fprintf(stderr, "ORIGIN %d %d\n", ox, oy);
