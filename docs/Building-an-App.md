@@ -52,6 +52,7 @@ APP_REGISTER(app_yours);
 | `invalidate()` | no | once per full-redraw request, before the next `frame()` | reset a draw cache the app keeps beyond the framebuffer |
 | `home_gesture` | no (`false`) | - | `true`: shell owns the way home (edge swipe + hint strip) |
 | `diagnostic_json(out, len)` | no | dev builds, on a screenshot capture | write one JSON object; spliced in as the capture's `"app"` key |
+| `console_line(line)` | no | dev builds, once per frame, for a line no registered verb claimed | match it, act, return true to claim it - see `docs/tools/Autana-CLI.md`'s "An app's own verbs" |
 
 The shell calls the three required pointers without a NULL check.
 

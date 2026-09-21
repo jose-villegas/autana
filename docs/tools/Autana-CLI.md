@@ -102,5 +102,15 @@ and the tuning verbs all go through `device.py`'s lock the same way. A verb
 the CLI has no command for - `runsuite` among them, since `autana suite`
 already runs one and reports the result - is still only a line away: type
 it in an interactive session, or extend `autana` here. The verbs themselves
-are a separate list, one file each under `launcher/main/console/`, and an
-app that adds its own documents them itself.
+are a separate list, one file each under `launcher/main/console/`.
+
+An app can answer its own commands too, without joining that list: set
+`console_line` in its `app_t` (`launcher/main/app.h`). A line none of the
+verbs above claims reaches the running app's callback instead of being
+logged and dropped - match the line, act, and return true to claim it.
+Built-in verbs still take precedence, so an app can never shadow one, and
+an unclaimed line only ever reaches whichever app is currently running,
+never the launcher. The callback runs on the frame loop, not the console's
+own reader task, so it can `printf()` a reply directly. Sending one is the
+same as any other line: type it in an interactive `autana` session. An app
+that adds a command documents it itself - see `docs/sand/` for `counts`.
