@@ -1,17 +1,9 @@
-"""Request a screenshot from the device and save it as a lossless .png.
-
-Invoked by screenshot.sh, and also imported by scripts/device/device.py's own
-`screenshot` subcommand (autana's `autana screenshot`) - one wire protocol and
-one decoder, read_screenshot()/bmp_bytes_to_png()/write_capture() below, so
-the two callers cannot drift apart. screenshot.sh opens the port itself,
-outside the device lock, since it is meant for a maintainer sitting at a
-terminal with nothing else contending for the board; device.py's own capture
-goes through the lock like everything else that touches it.
-
-Kept in Python because pyserial ships inside ESP-IDF's environment and
-behaves the same on every platform, which a shell script reading a serial
-port directly does not - the same reasoning test/collect_device_results.py's
-own top comment gives for the identical split there.
+"""The screenshot wire protocol and decoder: a pure library, imported by
+scripts/device/device.py's own `screenshot` subcommand (autana's `autana
+screenshot`) so there is exactly one decoder to drift out of sync with the
+device. Opening the port is the caller's job - see device.py's own capture,
+which does it under the device lock - so this module never touches one
+itself.
 
 Sends the trigger word over the console UART (see main/console/console.c)
 and reads the response back out of the same stream idf_monitor would
@@ -39,17 +31,13 @@ no image at all. write_capture() also writes a same-named .json beside the
 .png if a SCREENSHOT_STATE: line arrived.
 """
 
-import argparse
 import base64
 import json
 import os
 import re
 import struct
-import sys
 import time
 import zlib
-
-import serial
 
 BEGIN_RE = re.compile(r"^SCREENSHOT_BEGIN size=(\d+)$")
 DATA_PREFIX = "SCREENSHOT_DATA:"
@@ -239,9 +227,8 @@ def read_screenshot(port, timeout, on_status=None):
 
 
 def write_capture(out, png, state_json):
-    """png/.json beside each other, `out`'s extension replaced with .png -
-    the file layout screenshot.sh has always produced. Returns
-    (png_path, state_path_or_None); a state_json that fails to parse as JSON
+    """png/.json beside each other, `out`'s extension replaced with .png.
+    Returns (png_path, state_path_or_None); a state_json that fails to parse as JSON
     is still written, raw, to state_path - this both validates the device's
     own formatting (screenshot.c's snprintf() is hand-rolled, not a JSON
     library - see suite_device_state.c for what IS verified, on a host, ahead
@@ -265,70 +252,3 @@ def write_capture(out, png, state_json):
         with open(state_path, "w") as f:
             f.write(state_json + "\n")
     return png_path, state_path
-
-
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--port", required=True)
-    ap.add_argument("--baud", type=int, default=115200)
-    ap.add_argument("--out", required=True,
-                    help="output path; any extension given is replaced "
-                         "with .png (the .json state snapshot lands beside "
-                         "it under the same stem)")
-    ap.add_argument("--timeout", type=float, default=90.0,
-                    help="seconds to wait for the whole capture to arrive - "
-                         "a full 368x448 frame is roughly 650 KB of base64 "
-                         "over a 115200-baud link, which takes the better "
-                         "part of a minute on its own")
-    args = ap.parse_args()
-
-    # Two-step open, NOT serial.Serial(port, baud) directly: this board's
-    # USB-serial bridge treats a DTR/RTS transition as a reset pulse, the
-    # same auto-reset circuit esptool.py's flashing sequence relies on -
-    # and resetting the board is exactly what this tool must NOT do, since
-    # the whole point is to capture whatever app is ALREADY on screen, not
-    # whatever the boot animation happens to be drawing a moment later.
-    # Setting dtr/rts before open() is what keeps them from toggling during
-    # it, the standard fix for attaching to a running board without
-    # restarting it.
-    port = serial.Serial()
-    port.port = args.port
-    port.baudrate = args.baud
-    port.timeout = 0.2
-    port.dtr = False
-    port.rts = False
-
-    try:
-        port.open()
-    except serial.SerialException as exc:
-        print(f"could not open {args.port}: {exc}", file=sys.stderr)
-        print("is the firmware running, and no other program "
-              "(idf_monitor, another screenshot.sh, ...) already "
-              "holding the port?", file=sys.stderr)
-        return 2
-
-    def report(message):
-        print(message, file=sys.stderr, flush=True)
-
-    with port:
-        try:
-            png, state_json = read_screenshot(port, args.timeout, on_status=report)
-        except ScreenshotRefused as refused:
-            print(f"the device refused the capture: {refused}", file=sys.stderr)
-            return 3
-        except RuntimeError as timed_out:
-            print(f"\n{timed_out}", file=sys.stderr)
-            return 1
-
-    png_path, state_path = write_capture(args.out, png, state_json)
-    print(f"wrote {png_path} ({os.path.getsize(png_path)} bytes, converted "
-          f"losslessly from a BMP capture)")
-    if state_path:
-        print(f"wrote {state_path}")
-    else:
-        print("no SCREENSHOT_STATE line arrived - device state was not captured", file=sys.stderr)
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

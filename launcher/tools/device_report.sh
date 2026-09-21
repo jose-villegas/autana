@@ -14,10 +14,12 @@
 # was a capture that measured nothing rather than an error. A second copy of
 # this procedure is the bug; do not write one.
 #
-# The build half is not here either: build_flash.sh owns which fragments a
-# request layers, which flags must be present or absent afterwards, and
-# deleting a build directory's sdkconfig when it disagrees with the request.
-# This calls it.
+# The build and capture are both `scripts/device/device.py selftest` -
+# see its own docstring for the report_suite="" (boot-time, autorun) vs
+# report_suite=<name> (RUNSUITE) split, which this file's own report_suite
+# just forwards. One held lock covers the whole build+capture, the same
+# device lock every other board access goes through - see
+# docs/tools/Autana-CLI.md and docs/tools/Device-Lock.md.
 #
 # WHAT A CALLER DECLARES
 #
@@ -30,7 +32,7 @@
 #                      run needs the suites started before the shell, a
 #                      RUNSUITE run needs the shell up to listen, so the
 #                      image can never be the wrong one for the capture.
-#   report_build_flags extra build_flash.sh flags, e.g. --perf-scope
+#   report_build_flags extra device.py selftest flags, e.g. --perf-scope
 #   report_sentinel    a line the capture must contain to count as having
 #                      measured anything, beyond the results every run prints
 #   report_failures_ok 1 if the reporter exits 1 to mean "the report records
@@ -42,7 +44,7 @@
 #
 # and then calls device_report_run with the arguments every report takes:
 #
-#   [--no-restore] [COM_PORT] [OUT.md] [IDF_EXPORT]
+#   [--no-restore] [COM_PORT] [OUT.md]
 
 device_report_run() {
     # Defaults, applied here rather than at source time: a caller declares
@@ -73,7 +75,6 @@ device_report_run() {
 
     _dr_port="${1:-}"
     _dr_out="${2:-}"
-    _dr_export="${3:-}"
 
     # launcher/, wherever this report lives: beside tools/build_flash.sh, or
     # four folders down in an app's own tools/. Found by walking up to the
@@ -90,13 +91,9 @@ device_report_run() {
         return 1
     fi
     _dr_tools="$_dr_launcher/tools"
-
-    # shellcheck source=./find_port.sh
-    . "$_dr_tools/find_port.sh"
-    if [ -z "$_dr_port" ]; then
-        _dr_port="$(find_port)" || _dr_port=""
-    fi
-    device_report_check_port "$_dr_port" || return 1
+    _dr_worktree="$(cd "$_dr_launcher/.." && pwd)"
+    _dr_device_py="$_dr_worktree/scripts/device/device.py"
+    _dr_owner="${AUTANA_DEVICE_OWNER:-device_report}"
 
     mkdir -p "$report_dir"
     _dr_stamp="$(date +%Y%m%d_%H%M%S)"
@@ -110,7 +107,6 @@ device_report_run() {
     _dr_do_restore="$_dr_restore"
     trap device_report_finish EXIT
 
-    device_report_build || return 1
     device_report_capture || return 1
     device_report_validate || return 1
     device_report_report || return 1
@@ -122,60 +118,27 @@ device_report_run() {
     fi
 }
 
-# Fail in seconds, not in twelve minutes: a vanished port used to be
-# discovered by esptool only AFTER a full cold build. Enumerating the
-# registry never opens the port, and neither does testing for a device node.
-device_report_check_port() {
-    if [ -z "$1" ]; then
-        echo "ERROR: no serial port given, and none was found." >&2
-        echo "Plug in the device, or pass the port as the first argument." >&2
-        return 1
+# Build+flash and capture are one held-lock call, scripts/device/device.py's
+# own `selftest` - see its own docstring for what report_suite="" vs a name
+# builds and captures. No port lookup here: device.py finds the board by USB
+# identity itself and reports clearly when none or several are plugged in;
+# COM_PORT, when given, is passed through rather than searched for.
+device_report_capture() {
+    set -- --owner "$_dr_owner" selftest --worktree "$_dr_worktree" --out "$_dr_raw" \
+           --max-seconds "$report_timeout" --purpose "device_report $report_name"
+    if [ -n "$report_suite" ]; then
+        set -- "$@" --suite "$report_suite"
+        echo "=== Building and capturing RUNSUITE $report_suite ==="
+    else
+        echo "=== Building and capturing the self-test run ==="
     fi
-    if [ -n "${MSYSTEM:-}" ]; then
-        _dr_seen="$(powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
-            "[System.IO.Ports.SerialPort]::GetPortNames() -join ','" 2>&1 | tr -d '\r\n')"
-        case ",$_dr_seen," in
-            *",$1,"*) return 0 ;;
-        esac
-        echo "ERROR: $1 not found." >&2
-        echo "Ports currently visible to Windows: ${_dr_seen:-(none)}" >&2
-        echo "Plug in the device, or pass the right port as the first argument." >&2
-        return 1
-    fi
-    if [ ! -e "$1" ]; then
-        echo "ERROR: $1 does not exist." >&2
-        return 1
-    fi
-    return 0
-}
-
-device_report_build() {
-    echo "=== Building and flashing the diagnostics image to $_dr_port ==="
-    set -- --diag
-    if [ -z "$report_suite" ]; then
-        set -- "$@" --autorun
+    if [ -n "$_dr_port" ]; then
+        set -- --port "$_dr_port" "$@"
     fi
     # Unquoted on purpose: a caller declares zero or more flags in one string.
     # shellcheck disable=SC2086
-    set -- "$@" $report_build_flags "$_dr_port"
-    if [ -n "$_dr_export" ]; then
-        set -- "$@" "$_dr_export"
-    fi
-    # No stdin: build_flash.sh pauses for a double-clicker at the end, and
-    # this is not one.
-    sh "$_dr_tools/build_flash.sh" "$@" < /dev/null
-}
-
-device_report_capture() {
-    if [ -z "$report_suite" ]; then
-        echo "=== Capturing the self-test run ==="
-        python "$_dr_tools/sweeps/capture_selftest.py" "$_dr_raw" \
-            --port "$_dr_port" --timeout "$report_timeout"
-    else
-        echo "=== Triggering RUNSUITE $report_suite and capturing output ==="
-        python "$_dr_tools/sweeps/capture_runsuite.py" "$report_suite" "$_dr_raw" \
-            --port "$_dr_port" --timeout "$report_timeout"
-    fi
+    set -- "$@" $report_build_flags
+    python "$_dr_device_py" "$@"
 }
 
 # A capture that never finished, crashed, or measured nothing still produces
@@ -219,14 +182,12 @@ device_report_finish() {
     _dr_final=$?
     if [ "$_dr_do_restore" -eq 1 ]; then
         echo "=== Restoring the release firmware ==="
-        set --
+        set -- --owner "$_dr_owner" flash --variant release --worktree "$_dr_worktree" \
+               --purpose "device_report $report_name (restore)"
         if [ -n "$_dr_port" ]; then
-            set -- "$_dr_port"
+            set -- --port "$_dr_port" "$@"
         fi
-        if [ -n "$_dr_export" ]; then
-            set -- "$@" "$_dr_export"
-        fi
-        sh "$_dr_tools/build_flash.sh" "$@" < /dev/null \
+        python "$_dr_device_py" "$@" \
             || echo "WARNING: could not restore the release firmware - the device may still be on build.diag"
     else
         echo "=== --no-restore: leaving the device on the diagnostics image ==="
