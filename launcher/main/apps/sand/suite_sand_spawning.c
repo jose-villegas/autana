@@ -448,9 +448,6 @@ test_material_counts_tallies_every_cell_by_material(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(W * H - 3, counts[MAT_EMPTY], "every other cell is still empty");
 }
 
-/* MAT_EXTENDED's own materials (ice, plant, leaf, metal, root, gunpowder) do
- * not each get a slot - see sand_material_counts()'s own comment in sand.h
- * for why the caller sees them as one bucket. */
 static void
 test_material_counts_lumps_every_extended_submaterial_together(void) {
     fixture();
