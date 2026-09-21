@@ -1,10 +1,17 @@
 """Request a screenshot from the device and save it as a lossless .png.
 
-Invoked by screenshot.sh. Kept in Python because pyserial ships inside
-ESP-IDF's environment and behaves the same on every platform, which a shell
-script reading a serial port directly does not - the same reasoning
-test/collect_device_results.py's own top comment gives for the identical
-split there.
+Invoked by screenshot.sh, and also imported by scripts/device/device.py's own
+`screenshot` subcommand (autana's `autana screenshot`) - one wire protocol and
+one decoder, read_screenshot()/bmp_bytes_to_png()/write_capture() below, so
+the two callers cannot drift apart. screenshot.sh opens the port itself,
+outside the device lock, since it is meant for a maintainer sitting at a
+terminal with nothing else contending for the board; device.py's own capture
+goes through the lock like everything else that touches it.
+
+Kept in Python because pyserial ships inside ESP-IDF's environment and
+behaves the same on every platform, which a shell script reading a serial
+port directly does not - the same reasoning test/collect_device_results.py's
+own top comment gives for the identical split there.
 
 Sends the trigger word over the console UART (see main/console/console.c)
 and reads the response back out of the same stream idf_monitor would
@@ -15,21 +22,21 @@ SCREENSHOT_STATE: line of plain-text JSON (device state at that same frame
 main/console/console_screenshot.c for the field list), and a
 SCREENSHOT_END line - or, in place of all of those, one
 SCREENSHOT_REFUSED: line giving the reason, which ends the run at once
-rather than at --timeout. Anything else on the wire - ordinary
+rather than at the timeout. Anything else on the wire - ordinary
 ESP_LOG output, in particular - is ignored rather than treated as an
 error, since the device keeps logging normally while it streams.
 
 The device streams its frame as a 24bpp BMP (see screenshot_bmp_header() in
 util/screenshot.h) - the simplest thing to emit from a microcontroller with
 no image library on it - but nothing here ever writes that BMP to disk:
-bmp_bytes_to_png() below converts it to PNG entirely in memory, and `--out`
-gets only the PNG. This is genuinely lossless, not just smaller - PNG's
-compression is DEFLATE, the same as zlib/gzip, so every pixel round-trips
-exactly; this is not JPEG. Standard library only (zlib + struct), no
-Pillow - Pillow is not installed in the ESP-IDF python env this script
-actually runs under, so depending on it used to mean silently getting no
-image at all. Also writes a same-named .json beside the .png if a
-SCREENSHOT_STATE: line arrived.
+bmp_bytes_to_png() below converts it to PNG entirely in memory, and a
+capture's output gets only the PNG. This is genuinely lossless, not just
+smaller - PNG's compression is DEFLATE, the same as zlib/gzip, so every pixel
+round-trips exactly; this is not JPEG. Standard library only (zlib +
+struct), no Pillow - Pillow is not installed in the ESP-IDF python env this
+script actually runs under, so depending on it used to mean silently getting
+no image at all. write_capture() also writes a same-named .json beside the
+.png if a SCREENSHOT_STATE: line arrived.
 """
 
 import argparse
@@ -51,6 +58,11 @@ REFUSED_PREFIX = "SCREENSHOT_REFUSED:"
 END_LINE = "SCREENSHOT_END"
 
 TRIGGER = b"SCREENSHOT\n"
+
+
+class ScreenshotRefused(RuntimeError):
+    """The device answered with a SCREENSHOT_REFUSED: line - its own message
+    is this exception's, e.g. "band mode, and no room in PSRAM..."."""
 
 
 def _png_chunk(tag: bytes, data: bytes) -> bytes:
@@ -79,7 +91,7 @@ def bmp_bytes_to_png(bmp: bytes) -> bytes:
     Width/height/row-stride are read out of the BMP header rather than
     assumed, so this keeps working unchanged if the panel resolution ever
     does - the same "trust what the device announced" reasoning the
-    SCREENSHOT_BEGIN size check in main() already applies.
+    SCREENSHOT_BEGIN size check in read_screenshot() already applies.
     """
     if bmp[0:2] != b"BM":
         raise ValueError("not a BMP: missing the 'BM' signature")
@@ -116,6 +128,143 @@ def bmp_bytes_to_png(bmp: bytes) -> bytes:
     png += _png_chunk(b"IDAT", zlib.compress(raw, 6))
     png += _png_chunk(b"IEND", b"")
     return png
+
+
+def read_screenshot(port, timeout, on_status=None):
+    """Trigger one capture on an already-open connection and return
+    (png_bytes, state_json_or_None).
+
+    `port` is only read from and written to - opening it (including the
+    DTR/RTS dance that keeps the board from resetting, see main()'s own
+    comment) and closing it stay the caller's, since a capture is one thing
+    to do on a connection already open under whatever the caller's own
+    reason for holding it is (a bare port here, the device lock there).
+    Raises ScreenshotRefused if the device refuses, RuntimeError if a
+    complete capture never arrives within `timeout`. `on_status(message)` is
+    called with each progress line, defaulting to nothing.
+    """
+    if on_status is None:
+        def on_status(message):
+            pass
+
+    deadline = time.monotonic() + timeout
+    buffer = ""
+    total_size = None
+    chunks = []
+    received_b64_chars = 0
+    state_json = None
+
+    # Printed immediately, before anything blocks: without this, a slow but
+    # perfectly healthy capture prints nothing at all until it either
+    # finishes or times out, and looks identical to a genuine hang for the
+    # whole timeout in between.
+    on_status(f"sent trigger, waiting for the device (up to {timeout:g}s for a full frame)...")
+    last_progress = time.monotonic()
+
+    port.reset_input_buffer()
+    port.write(TRIGGER)
+    port.flush()
+    last_trigger_sent = time.monotonic()
+
+    while time.monotonic() < deadline:
+        chunk = port.read(4096)
+        if chunk:
+            buffer += chunk.decode("utf-8", errors="replace")
+
+        now = time.monotonic()
+
+        # Resend the trigger periodically until SCREENSHOT_BEGIN shows up. A
+        # single lost byte is easy to hit right after flashing: flashing
+        # resets the board, and if this runs before the firmware has gotten
+        # through POST and the boot animation to install its UART listener,
+        # the one-shot trigger arrives before anything is reading for it and
+        # is gone for good - otherwise indistinguishable from a genuine hang,
+        # since the firmware comes up moments later in a perfectly normal,
+        # listening state that will happily answer the NEXT one.
+        if total_size is None and now - last_trigger_sent >= 5.0:
+            on_status("  ... no response yet, resending trigger (the device may still be booting)")
+            port.write(TRIGGER)
+            port.flush()
+            last_trigger_sent = now
+
+        if now - last_progress >= 3.0:
+            if total_size is None:
+                on_status("  ... still waiting for SCREENSHOT_BEGIN (nothing recognizable seen yet)")
+            else:
+                received_bytes = received_b64_chars * 3 // 4
+                pct = min(100, received_bytes * 100 // max(total_size, 1))
+                on_status(f"  ... {pct}% ({received_bytes}/{total_size} bytes)")
+            last_progress = now
+
+        while "\n" in buffer:
+            line, buffer = buffer.split("\n", 1)
+            line = line.rstrip("\r")
+
+            if line.startswith(REFUSED_PREFIX):
+                raise ScreenshotRefused(line[len(REFUSED_PREFIX):].strip())
+
+            if total_size is None:
+                m = BEGIN_RE.match(line)
+                if m:
+                    total_size = int(m.group(1))
+                    on_status(f"  capturing {total_size} bytes...")
+                continue
+
+            if line == END_LINE:
+                data = base64.b64decode("".join(chunks))
+                if len(data) != total_size:
+                    on_status(f"warning: decoded {len(data)} bytes but the device "
+                             f"announced {total_size}")
+                return bmp_bytes_to_png(data), state_json
+
+            if line.startswith(STATE_PREFIX):
+                state_json = line[len(STATE_PREFIX):]
+                continue
+
+            if line.startswith(DATA_PREFIX):
+                encoded = line[len(DATA_PREFIX):]
+                chunks.append(encoded)
+                received_b64_chars += len(encoded)
+            # anything else on the wire is ordinary log output - ignored
+
+    if total_size is None:
+        raise RuntimeError(
+            f"timed out after {timeout:g}s without a complete capture. never saw a "
+            "SCREENSHOT_BEGIN line - is the firmware built with the screenshot listener "
+            "(util/screenshot.c), and is it actually running (not stuck in the boot "
+            "animation or a crash loop)?")
+    raise RuntimeError(
+        f"timed out after {timeout:g}s without a complete capture. saw SCREENSHOT_BEGIN "
+        f"size={total_size} but never SCREENSHOT_END - the transfer started but did not finish.")
+
+
+def write_capture(out, png, state_json):
+    """png/.json beside each other, `out`'s extension replaced with .png -
+    the file layout screenshot.sh has always produced. Returns
+    (png_path, state_path_or_None); a state_json that fails to parse as JSON
+    is still written, raw, to state_path - this both validates the device's
+    own formatting (screenshot.c's snprintf() is hand-rolled, not a JSON
+    library - see suite_device_state.c for what IS verified, on a host, ahead
+    of ever reaching real hardware) and pretty-prints it for a human reading
+    the file afterward.
+    """
+    png_path = os.path.splitext(out)[0] + ".png"
+    with open(png_path, "wb") as f:
+        f.write(png)
+
+    if state_json is None:
+        return png_path, None
+
+    state_path = os.path.splitext(out)[0] + ".json"
+    try:
+        parsed = json.loads(state_json)
+        with open(state_path, "w") as f:
+            json.dump(parsed, f, indent=2)
+            f.write("\n")
+    except json.JSONDecodeError:
+        with open(state_path, "w") as f:
+            f.write(state_json + "\n")
+    return png_path, state_path
 
 
 def main() -> int:
@@ -158,144 +307,27 @@ def main() -> int:
               "holding the port?", file=sys.stderr)
         return 2
 
-    deadline = time.monotonic() + args.timeout
-    buffer = ""
-    total_size = None
-    chunks = []
-    received_b64_chars = 0
-    state_json = None
-
-    # Printed immediately, before anything blocks: without this, a slow but
-    # perfectly healthy capture (see --timeout's own help text above) prints
-    # nothing at all until it either finishes or times out, and looks
-    # identical to a genuine hang for the whole minute in between.
-    print(f"sent trigger, waiting for the device "
-          f"(up to {args.timeout:g}s for a full frame)...",
-          file=sys.stderr, flush=True)
-    last_progress = time.monotonic()
+    def report(message):
+        print(message, file=sys.stderr, flush=True)
 
     with port:
-        port.reset_input_buffer()
-        port.write(TRIGGER)
-        port.flush()
-        last_trigger_sent = time.monotonic()
+        try:
+            png, state_json = read_screenshot(port, args.timeout, on_status=report)
+        except ScreenshotRefused as refused:
+            print(f"the device refused the capture: {refused}", file=sys.stderr)
+            return 3
+        except RuntimeError as timed_out:
+            print(f"\n{timed_out}", file=sys.stderr)
+            return 1
 
-        while time.monotonic() < deadline:
-            chunk = port.read(4096)
-            if chunk:
-                buffer += chunk.decode("utf-8", errors="replace")
-
-            now = time.monotonic()
-
-            # Resend the trigger periodically until SCREENSHOT_BEGIN shows
-            # up. A single lost byte is easy to hit right after flashing:
-            # flashing resets the board, and if this runs before the
-            # firmware has gotten through POST and the boot animation to
-            # install its UART listener, the one-shot trigger arrives
-            # before anything is reading for it and is gone for good -
-            # otherwise indistinguishable from a genuine hang, since the
-            # firmware comes up moments later in a perfectly normal,
-            # listening state that will happily answer the NEXT one.
-            if total_size is None and now - last_trigger_sent >= 5.0:
-                print("  ... no response yet, resending trigger (the device "
-                      "may still be booting)", file=sys.stderr, flush=True)
-                port.write(TRIGGER)
-                port.flush()
-                last_trigger_sent = now
-
-            if now - last_progress >= 3.0:
-                if total_size is None:
-                    print("  ... still waiting for SCREENSHOT_BEGIN "
-                          "(nothing recognizable seen yet)",
-                          file=sys.stderr, flush=True)
-                else:
-                    received_bytes = received_b64_chars * 3 // 4
-                    pct = min(100, received_bytes * 100 // max(total_size, 1))
-                    print(f"  ... {pct}% ({received_bytes}/{total_size} bytes)",
-                          file=sys.stderr, flush=True)
-                last_progress = now
-
-            while "\n" in buffer:
-                line, buffer = buffer.split("\n", 1)
-                line = line.rstrip("\r")
-
-                if line.startswith(REFUSED_PREFIX):
-                    print(f"the device refused the capture: "
-                          f"{line[len(REFUSED_PREFIX):]}", file=sys.stderr)
-                    return 3
-
-                if total_size is None:
-                    m = BEGIN_RE.match(line)
-                    if m:
-                        total_size = int(m.group(1))
-                        print(f"  capturing {total_size} bytes...",
-                              file=sys.stderr, flush=True)
-                    continue
-
-                if line == END_LINE:
-                    data = base64.b64decode("".join(chunks))
-                    if len(data) != total_size:
-                        print(f"warning: decoded {len(data)} bytes but the "
-                              f"device announced {total_size}", file=sys.stderr)
-
-                    png = bmp_bytes_to_png(data)
-                    png_path = os.path.splitext(args.out)[0] + ".png"
-                    with open(png_path, "wb") as f:
-                        f.write(png)
-                    print(f"wrote {png_path} ({len(png)} bytes, converted "
-                          f"losslessly from a {len(data)}-byte BMP capture)")
-
-                    if state_json is not None:
-                        state_path = os.path.splitext(args.out)[0] + ".json"
-                        try:
-                            # Round-tripped through json.loads/dump rather
-                            # than written raw: this both validates the
-                            # device's own formatting (screenshot.c's
-                            # snprintf() is hand-rolled, not a JSON library -
-                            # see suite_device_state.c for what IS verified,
-                            # on a host, ahead of ever reaching real
-                            # hardware) and pretty-prints it for a human
-                            # reading the file afterward.
-                            parsed = json.loads(state_json)
-                            with open(state_path, "w") as f:
-                                json.dump(parsed, f, indent=2)
-                                f.write("\n")
-                            print(f"wrote {state_path}")
-                        except json.JSONDecodeError as exc:
-                            print(f"warning: SCREENSHOT_STATE line was not "
-                                  f"valid JSON ({exc}); writing it raw to "
-                                  f"{state_path}", file=sys.stderr)
-                            with open(state_path, "w") as f:
-                                f.write(state_json + "\n")
-                            print(f"wrote {state_path} (raw, unparsed)")
-                    else:
-                        print("no SCREENSHOT_STATE line arrived - device "
-                              "state was not captured", file=sys.stderr)
-
-                    return 0
-
-                if line.startswith(STATE_PREFIX):
-                    state_json = line[len(STATE_PREFIX):]
-                    continue
-
-                if line.startswith(DATA_PREFIX):
-                    encoded = line[len(DATA_PREFIX):]
-                    chunks.append(encoded)
-                    received_b64_chars += len(encoded)
-                # anything else on the wire is ordinary log output - ignored
-
-    print(f"\ntimed out after {args.timeout:g}s without a complete capture.",
-          file=sys.stderr)
-    if total_size is None:
-        print("never saw a SCREENSHOT_BEGIN line - is the firmware built "
-              "with the screenshot listener (util/screenshot.c), and is it "
-              "actually running (not stuck in the boot animation or a "
-              "crash loop)?", file=sys.stderr)
+    png_path, state_path = write_capture(args.out, png, state_json)
+    print(f"wrote {png_path} ({os.path.getsize(png_path)} bytes, converted "
+          f"losslessly from a BMP capture)")
+    if state_path:
+        print(f"wrote {state_path}")
     else:
-        print(f"saw SCREENSHOT_BEGIN size={total_size} but never "
-              f"SCREENSHOT_END - the transfer started but did not finish.",
-              file=sys.stderr)
-    return 1
+        print("no SCREENSHOT_STATE line arrived - device state was not captured", file=sys.stderr)
+    return 0
 
 
 if __name__ == "__main__":

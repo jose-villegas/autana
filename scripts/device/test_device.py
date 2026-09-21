@@ -1,6 +1,8 @@
+import base64
 import gzip
 import json
 import os
+import struct
 import tempfile
 import unittest
 from argparse import Namespace
@@ -219,7 +221,7 @@ class DeviceTests(unittest.TestCase):
 
     def send_args(self, line):
         return Namespace(owner="agent", purpose="send", wait=0, line=line, reply="TUNE",
-                         until=["TUNE_OK", "TUNE_ERR", "TUNE_END"], seconds=1)
+                         until=["TUNE_OK", "TUNE_ERR", "TUNE_END"], seconds=1, optional=False)
 
     def test_send_writes_the_line_and_prints_the_reply(self):
         connection = FakeConnection([b"I (5) shell: x\nTUNE_OK launcher.ridge_trail=200\n"])
@@ -249,6 +251,43 @@ class DeviceTests(unittest.TestCase):
              mock.patch.object(device, "wait_for_port"):
             with self.assertRaisesRegex(RuntimeError, "needs a development build"):
                 device.send(self.send_args("TUNE"), store, "COM5")
+
+    def test_send_optional_treats_silence_as_success(self):
+        """TOUCH/IMU answer only when something is wrong - a timeout with
+        nothing seen is that verb's normal happy path, not a failure."""
+        connection = FakeConnection([b"I (1) shell: unrelated log line\n"])
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        args = Namespace(owner="agent", purpose="send", wait=0, line="TOUCH down 1 2",
+                         reply="TOUCH", until=["TOUCH"], seconds=0.05, optional=True)
+        with mock.patch.object(device, "open_serial", return_value=connection), \
+             mock.patch.object(device, "wait_for_port"), mock.patch("builtins.print") as printed:
+            status = device.send(args, store, "COM5")
+        self.assertEqual(status, 0)
+        printed.assert_called_once_with("")
+
+    def test_send_optional_still_prints_a_device_side_warning(self):
+        connection = FakeConnection([b"W (2) console: TOUCH wants <down|up> <x> <y>: 'bad'\n"])
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        args = Namespace(owner="agent", purpose="send", wait=0, line="TOUCH bad",
+                         reply="TOUCH", until=["TOUCH"], seconds=0.5, optional=True)
+        with mock.patch.object(device, "open_serial", return_value=connection), \
+             mock.patch.object(device, "wait_for_port"), mock.patch("builtins.print") as printed:
+            status = device.send(args, store, "COM5")
+        self.assertEqual(status, 0)
+        printed.assert_called_once_with("TOUCH wants <down|up> <x> <y>: 'bad'")
+
+    def test_send_without_optional_still_raises_on_silence(self):
+        connection = FakeConnection([b"I (1) shell: unrelated log line\n"])
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        args = Namespace(owner="agent", purpose="send", wait=0, line="TUNE", reply="TUNE",
+                         until=["TUNE_OK", "TUNE_ERR", "TUNE_END"], seconds=0.05, optional=False)
+        with mock.patch.object(device, "open_serial", return_value=connection), \
+             mock.patch.object(device, "wait_for_port"):
+            with self.assertRaisesRegex(RuntimeError, "no reply"):
+                device.send(args, store, "COM5")
 
     def test_status_reports_human_note_and_age(self):
         status = {"human": {"owner": "maintainer", "note": "panel", "since_at": 1000},
@@ -656,6 +695,67 @@ class BatchTests(unittest.TestCase):
     def test_perf_scope_is_refused_when_the_build_script_cannot_do_it(self):
         with self.assertRaisesRegex(RuntimeError, "no --perf-scope option"):
             self.run_batch(perf_scope=True, script_text="--diag --dev")
+
+
+class ScreenshotCommandTests(unittest.TestCase):
+    """device.screenshot() under a faked serial port, driving the real
+    launcher/tools/screenshot.py decode - see that module's own tests
+    (launcher/tools/tests/test_screenshot.py) for the decode in isolation."""
+
+    def minimal_bmp(self):
+        pixel_offset = 14 + 40
+        pixel = bytes((7, 8, 9)) + b"\x00"  # one BGR pixel, padded to 4 bytes
+        total = pixel_offset + len(pixel)
+        header = b"BM" + struct.pack("<IHHI", total, 0, 0, pixel_offset)
+        info = struct.pack("<IiiHHIIiiII", 40, 1, 1, 1, 24, 0, len(pixel), 0, 0, 0, 0)
+        return header + info + pixel
+
+    def wire_lines(self, bmp, state_json=None):
+        encoded = base64.b64encode(bmp).decode("ascii")
+        lines = [f"SCREENSHOT_BEGIN size={len(bmp)}", f"SCREENSHOT_DATA:{encoded}"]
+        if state_json is not None:
+            lines.append(f"SCREENSHOT_STATE:{state_json}")
+        lines.append("SCREENSHOT_END")
+        return ("\n".join(lines) + "\n").encode("ascii")
+
+    def test_takes_the_lock_and_writes_the_decoded_files(self):
+        connection = FakeConnection([self.wire_lines(self.minimal_bmp(), '{"heap": 1}')])
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        with tempfile.TemporaryDirectory() as directory:
+            out = str(Path(directory) / "shot.bmp")
+            args = Namespace(owner="agent", purpose="autana screenshot", wait=0, out=out, timeout=1.0)
+            with mock.patch.object(device, "open_serial", return_value=connection), \
+                 mock.patch.object(device, "wait_for_port"):
+                code = device.screenshot(args, store, "COM5")
+            self.assertEqual(code, 0)
+            self.assertTrue((Path(directory) / "shot.png").is_file())
+            self.assertEqual(json.loads((Path(directory) / "shot.json").read_text()), {"heap": 1})
+        store.acquire.assert_called_once()
+
+    def test_defaults_its_out_path_to_a_timestamped_name_in_the_cwd(self):
+        connection = FakeConnection([self.wire_lines(self.minimal_bmp())])
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        fixed_now = datetime(2026, 9, 16, 12, 30, 45)
+        with tempfile.TemporaryDirectory() as directory:
+            args = Namespace(owner="agent", purpose="autana screenshot", wait=0, out=None, timeout=1.0)
+            with mock.patch.object(device, "open_serial", return_value=connection), \
+                 mock.patch.object(device, "wait_for_port"), \
+                 mock.patch.object(device, "now", return_value=fixed_now), \
+                 mock.patch.object(device.Path, "cwd", return_value=Path(directory)):
+                device.screenshot(args, store, "COM5")
+            self.assertTrue((Path(directory) / "screenshot_20260916_123045.png").is_file())
+
+    def test_a_refusal_propagates_as_a_runtime_error(self):
+        connection = FakeConnection([b"SCREENSHOT_REFUSED: no room in PSRAM\n"])
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        args = Namespace(owner="agent", purpose="p", wait=0, out=None, timeout=1.0)
+        with mock.patch.object(device, "open_serial", return_value=connection), \
+             mock.patch.object(device, "wait_for_port"):
+            with self.assertRaisesRegex(RuntimeError, "no room in PSRAM"):
+                device.screenshot(args, store, "COM5")
 
 
 if __name__ == "__main__":

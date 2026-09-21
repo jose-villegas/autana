@@ -5,14 +5,16 @@ For a constant that is judged by eye - how long a trail lasts, how high a
 wave is - where each guess otherwise costs a build and a flash.
 
 `autana` alone opens a console session with the device, and everything below
-works in it without the prefix:
+works in it without the prefix. A bare word is never an implicit tunable
+lookup - `tune` is always the way to one, in the session and on the command
+line alike:
 
 ```
 autana> tune wave                 # the tunables whose names contain "wave"
-autana> trail                     # show one
-autana> trail 200                 # change it: on the screen a frame later
-autana> glow_halo_rgb 0xFF7A2A
-autana> save                      # write the device's values into the source
+autana> tune trail                # show one
+autana> tune trail 200            # change it: on the screen a frame later
+autana> tune glow_halo_rgb 0xFF7A2A
+autana> tune save                 # write the device's values into the source
 autana> flash dev
 ```
 
@@ -20,14 +22,16 @@ Each is also a command of its own, for a script or a single change:
 
 ```sh
 autana tune                       # every tunable, its value and its range
-autana get trail
-autana set trail 200
-autana save
+autana tune trail
+autana tune trail 200
+autana tune save
 ```
 
 A name may drop its owner when that is unambiguous: `trail` for
-`ridge.trail`. `autana` is the terminal command - every command it takes is
-in [Autana-CLI.md](Autana-CLI.md). It calls `scripts/device/device.py send`,
+`ridge.trail` - and when it is not exactly one tunable's own, `tune <name>`
+falls back to the same filtered listing `tune [text]` gives. `autana` is the
+terminal command - every command it takes is in
+[Autana-CLI.md](Autana-CLI.md). It calls `scripts/device/device.py send`,
 which takes the device lock like everything else that touches the board. A
 console session takes the lock for each line and lets go, so the board stays
 free between two of them.
@@ -46,7 +50,7 @@ is made with it.
 
 ```mermaid
 flowchart LR
-    T["autana set trail 200"] --> D["scripts/device/device.py send<br/><i>lock, port</i>"]
+    T["autana tune trail 200"] --> D["scripts/device/device.py send<br/><i>lock, port</i>"]
     D -->|"SET ridge.trail 200"| C["console listener<br/><i>main/console/console.c</i>"]
     C --> S["SET verb<br/><i>console/console_tune.c</i>"]
     S --> R["tune_handle_line()<br/><i>util/tune.c</i>"]
