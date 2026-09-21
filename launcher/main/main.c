@@ -41,6 +41,7 @@
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "console/console.h"
+#include "console/console_app_line.h"
 #include "console/console_freeze.h"
 #include "console/console_screenshot.h"
 #endif
@@ -694,6 +695,12 @@ run_dev_frame_extras(input_t* input, const app_t* current) {
     if (console_screenshot_take_request()) {
         console_screenshot_dump(input, current);
         gfx_request_full_redraw();
+    }
+
+    char console_line[CONSOLE_LINE_MAX];
+    if (console_take_unclaimed_line(console_line, sizeof console_line)
+        && !console_app_line_offer(current, console_line)) {
+        ESP_LOGI(TAG, "ignoring line: '%s'", console_line);
     }
 }
 #endif
