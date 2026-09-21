@@ -39,8 +39,8 @@ autana> buildid
 | `autana help` | The same list. |
 
 Inside a session the `autana` prefix is dropped, but tuning stays explicit -
-a bare word is either one of the commands above or a device console verb
-(`screenshot`, `freeze`, ...), never an implicit tunable lookup:
+a bare word is one of the commands above, or the whole line is sent to the
+board as typed - never an implicit tunable lookup:
 
 ```
 autana> tune wave
@@ -102,9 +102,9 @@ The commands above are the CLI's own; the verbs they send (`screenshot`,
 joining that list:
 
 1. Declare a prefix with `APP_CONSOLE()`, once, before the app's own
-   `app_t` - it is mandatory, checked at compile time, and checked again at
-   boot against every verb and every other app's prefix, so two commands
-   can never claim the same line:
+   `app_t` - non-empty and checked at compile time; a clash with a verb or
+   another app's prefix, or a prefix carrying a space of its own, is
+   checked again at boot, so two commands can never claim the same line:
 
    ```c
    static bool
@@ -112,7 +112,8 @@ joining that list:
        if (strcmp(args, "status") != 0) {
            return false;
        }
-       printf("STATUS ok\n");
+       printf("EXAMPLE status=ok\n");
+       printf("EXAMPLE_END\n");
        return true;
    }
 
@@ -132,26 +133,28 @@ joining that list:
    only what follows it (`args`, `""` for a bare prefix) - never the prefix
    itself. `example status` above is typed in full; the handler only ever
    sees `"status"`.
-3. Reply with `printf()` - a line starting with the command's name in
-   capitals. A reply of more than one line ends with a `<NAME>_END` line,
-   the way `SCREENSHOT_END` does, so a caller need not wait out a timeout to
-   know it has everything; a single-line reply needs no terminator.
-4. Return `true` to claim it.
+3. Reply with `printf()`: every line starts with the prefix in capitals,
+   and the last one is `<PREFIX>_END` - autana returns as soon as that line
+   arrives rather than waiting out a timeout, the same way `TUNE_END`
+   already lets `autana tune` return early.
+4. Return `true` to claim it. Returning `false` need not reply itself - the
+   shell sends `<PREFIX>_ERR not handled` on the handler's behalf.
 
-Send it the same way as any built-in verb: type it in an interactive
-`autana` session.
+Send it the same way as any built-in verb, one-shot (`autana example
+status`) or typed inside a session (`example status`).
 
 A few rules that follow from the shape above:
 
 - A registered verb always wins, so an app can never shadow one; a clash
   between a prefix and a verb, or between two apps' own prefixes, fails the
   boot loudly rather than silently losing one of them.
-- A line whose prefix belongs to an app that is not the one running gets an
-  explicit `NOTRUNNING_ERR <prefix>` reply, not silence.
+- A line whose prefix belongs to an app that is not the one running gets
+  `<PREFIX>_ERR not running`, not silence.
 - The handler runs on the frame loop, after the app's own `frame()`, so it
   sees settled state - and still runs while the frame loop is frozen
   (`autana freeze`), the obvious use being freeze, inspect, step.
-- Lines arriving faster than frames queue up to 4; a fifth before the frame
-  loop catches up is dropped and logged.
+- Lines arriving faster than frames queue, up to `APP_LINE_QUEUE_LEN`
+  (`console.c`); one past that is dropped and logged on the device side,
+  with no reply at all - the caller sees whatever the short window catches.
 
 An app that adds a command documents it itself.
