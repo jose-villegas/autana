@@ -1982,7 +1982,7 @@ test_the_xtensa_counters_over_three_scenes(void) {
 
 /* Board banded with every material, reactive pairs touch, gravity inverted.
  * Catches combination costs. THE ASSERTION BELOW IS NOT A BUDGET. Replace
- * with real figure from `run_device_tests.sh`. */
+ * with a real figure from a device selftest run. */
 static void
 test_a_gravity_flip_on_every_material_at_once_stays_sane(void) {
     uint8_t* big = malloc(REAL_W * REAL_H);

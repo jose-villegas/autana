@@ -358,8 +358,8 @@ if [ -z "$(find "$SU_DIR" -maxdepth 1 -name '*.su' -print -quit)" ]; then
     exit 1
 fi
 
-# Same interpreter search as elsewhere (run_device_tests.sh): whatever
-# python happens to be on PATH, python3 preferred.
+# Same interpreter search as elsewhere in this tree: whatever python
+# happens to be on PATH, python3 preferred.
 PYTHON=$(command -v python3 || command -v python || true)
 if [ -z "${PYTHON:-}" ]; then
     echo "no Python found to run check_stack_usage.py" >&2

@@ -24,9 +24,9 @@ reconfigures another:
 
 | image | flags | built by | directory |
 |---|---|---|---|
-| release | neither | `idf.py build`, `tools/build_flash.sh` | `build/` |
-| dev | DEVELOPMENT | `tools/build_flash.sh --dev` | `build.dev/` |
-| diagnostics | DEVELOPMENT + SELFTEST | `tools/build_flash.sh --diag`, `test/run_device_tests.sh` | `build.diag/` |
+| release | neither | `idf.py build`, `autana flash rel` | `build/` |
+| dev | DEVELOPMENT | `autana flash dev` | `build.dev/` |
+| diagnostics | DEVELOPMENT + SELFTEST | `autana flash diag`, `autana selftest` | `build.diag/` |
 
 ---
 
@@ -92,13 +92,13 @@ its `.text` *and* its `.bss`, which is what buys the run time back.
 
 | scope | fragment | carries | for |
 |---|---|---|---|
-| Full — the default | none | every suite, shell-owned and app-owned | every gate: `run_device_tests.sh`, `report_test_results.sh` |
+| Full — the default | none | every suite, shell-owned and app-owned | every gate: `autana selftest`, `report_test_results.sh` |
 | Perf | `sdkconfig.defaults.diag_perf` | `suite_sand_perf.c` + `suite_sand_scenes.c` + `suite_sand_common.c` | a sand frame-budget capture |
 
 ```sh
 bash launcher/main/apps/sand/tools/report_performance.sh --perf-scope
 # the image alone, left on the board, with no capture taken:
-bash launcher/tools/build_flash.sh --diag --perf-scope
+autana flash diag --perf-scope
 # by hand, the fragment simply appends to the usual three:
 idf.py -B build.diag.<yours> \
   -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag;sdkconfig.defaults.diag_autorun;sdkconfig.defaults.diag_perf" \
@@ -212,7 +212,7 @@ same size with and without the entry.
 
 ```sh
 idf.py build                          # build/       release, no test code
-./test/run_device_tests.sh            # build.diag/  firmware + suites
+autana selftest                       # build.diag/  firmware + suites
 ```
 
 The two use separate build directories so each keeps its own `sdkconfig` and

@@ -185,7 +185,7 @@ PORT_WAIT_SECONDS = 600
 def wait_for_port(port, seconds=PORT_WAIT_SECONDS, opener=None, sleep=time.sleep,
                   now=time.monotonic):
     """The lock arbitrates intent; the OS owns the port, and the two disagree
-    whenever a previous holder's reader outlives its lock - an agent that
+    whenever a previous holder's reader outlives its lock - a caller that
     queued fairly then fails on a port it was promised, which reads as a flaky
     board. Waiting is the right answer: this caller already won its turn, a
     straggler drains in seconds, and a port nobody ever frees still reports
@@ -307,7 +307,7 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
                         raise RuntimeError("no suite named " + suite_name + " on this build")
                     if b"SUITE_DONE" in text or text.startswith(suite_complete):
                         return bytes(data), "complete"
-            if b"TESTS_DONE" in data or (b"Tests " in data and b"Failures" in data):
+            if b"TESTS_DONE" in data or b"SELFTEST_COMPLETE" in data or (b"Tests " in data and b"Failures" in data):
                 return bytes(data), "complete"
     return bytes(data), "timeout"
 
@@ -316,6 +316,84 @@ def reset(port):
     command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
                "--after", "hard_reset", "chip_id"]
     subprocess.run(command, check=True)
+
+
+# The auto-reset circuit's own pulse width. DTR stays low throughout so
+# GPIO0 stays high - a normal boot, not the bootloader's download mode.
+RESET_PULSE_S = 0.1
+
+
+def hard_reset_via_rts(connection):
+    """A reset pulsed on RTS through the ALREADY-OPEN connection the caller
+    is about to capture from, so no gap between closing one port handle and
+    opening the next can lose the first lines of boot output - unlike
+    esptool's own --after hard_reset, which necessarily closes the port."""
+    connection.dtr = False
+    connection.rts = True
+    time.sleep(RESET_PULSE_S)
+    connection.rts = False
+
+
+CRASH_ADDRESS_RE = re.compile(rb"0x4[0-9a-fA-F]{7}")
+
+
+def toolchain_addr2line():
+    """The xtensa-esp32s3-elf-addr2line beside ESP-IDF's own toolchain,
+    found under IDF_TOOLS_PATH (default ~/.espressif) same as ESP-IDF's own
+    install script uses, or None when it is not installed. Sorted
+    reverse-alphabetically so the newest of several installed toolchain
+    versions wins."""
+    tools_root = Path(os.environ["IDF_TOOLS_PATH"]) if os.environ.get("IDF_TOOLS_PATH") \
+        else Path.home() / ".espressif"
+    root = tools_root / "tools" / "xtensa-esp-elf"
+    for bin_dir in sorted(root.glob("*/*/bin"), reverse=True):
+        for name in ("xtensa-esp32s3-elf-addr2line.exe", "xtensa-esp32s3-elf-addr2line"):
+            candidate = bin_dir / name
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def decode_crash_addresses(data, elf):
+    """Every address on a `Backtrace:`/`PC` line in a capture, resolved
+    against `elf` to a file and line number. Returns [] when nothing looks
+    like a crash, or when no addr2line is installed to ask."""
+    addresses = []
+    for line in data.split(b"\n"):
+        if b"Backtrace" in line or b"PC      :" in line or b"PC :" in line:
+            addresses += CRASH_ADDRESS_RE.findall(line)
+    if not addresses:
+        return []
+    addr2line = toolchain_addr2line()
+    if addr2line is None:
+        return []
+    unique = list(dict.fromkeys(address.decode("ascii") for address in addresses))
+    result = subprocess.run([str(addr2line), "-pfiaC", "-e", str(elf), *unique],
+                            capture_output=True, text=True)
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+def find_elf_for_build_id(worktree, build_id):
+    """The launcher.elf whose own build_id.txt matches `build_id`, searched
+    across every launcher/build*/ directory - the build actually on the
+    board, not merely the newest one on disk (a `--dev` build built after
+    the board was last flashed `--diag`, say, would otherwise decode
+    against the wrong symbols). None when `build_id` is empty or nothing
+    under this worktree matches."""
+    if not build_id:
+        return None
+    for build_dir in sorted(Path(worktree).glob("launcher/build*")):
+        id_file = build_dir / "build_id.txt"
+        try:
+            seen = id_file.read_text(encoding="ascii").strip()
+        except OSError:
+            continue
+        if seen != build_id:
+            continue
+        elf = build_dir / "launcher.elf"
+        if elf.is_file():
+            return elf
+    return None
 
 
 def boot_build_id(port, seconds=12, expected_build_id=None):
@@ -365,6 +443,11 @@ def flash(args, store, port, held_lock=None, extra_flags=()):
         print("flash log: " + str(log))
         environment = os.environ.copy()
         environment.setdefault("MSYSTEM", "MINGW64")
+        # Proof to build_flash.sh that this flash is under the device lock -
+        # it refuses to flash without it. Not a secret: it only has to
+        # differ from "unset", so a build_flash.sh run directly cannot
+        # forge one by guessing.
+        environment["AUTANA_DEVICE_LOCK_TOKEN"] = held.held["token"]
         build_id = None
         error = None
         try:
@@ -439,6 +522,65 @@ def run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
     return 1 if failed else 0
 
 
+def selftest(args, store, port):
+    """Build+flash the diagnostics+autorun image under one held lock, then
+    reset and capture the boot-time run of every registered suite until
+    SELFTEST_COMPLETE (or a timeout) - the way to run every suite this
+    worktree registers on the device, and device_report.sh's own
+    build+capture step for a report with no single named suite
+    (report_test_results.sh and the frame-budget reports). A report scoped
+    to one suite (report_boot_anim_perf.sh) uses `batch` instead, the same
+    build-then-capture-under-one-lock shape with a suite name to send.
+
+    The reset is pulsed on the SAME connection this then captures from
+    (hard_reset_via_rts), not esptool's --after hard_reset: the whole point
+    is a capture with no gap across the reset, so an early line like the
+    free-heap-after-framebuffer mark a report reads is never lost to a
+    closed-then-reopened port."""
+    worktree = str(Path(args.worktree).resolve())
+    started_at = now()
+    extra_flags = ["--autorun"]
+    if args.perf_scope:
+        extra_flags.append("--perf-scope")
+    with HeldLock(store, port, args.owner, args.purpose, args.wait) as held:
+        flash_args = argparse.Namespace(owner=args.owner, purpose=args.purpose + " (flash)",
+                                        wait=args.wait, worktree=args.worktree,
+                                        variant="diag", out=None)
+        build_id = flash(flash_args, store, port, held_lock=held, extra_flags=extra_flags)
+        commit = git_commit(worktree)
+
+        data = b""
+        reason = None
+        error = None
+        output, managed = resolve_capture_path(args.out, "selftest", args.owner, started_at)
+        try:
+            wait_for_port(port)
+            with open_serial(port) as connection:
+                hard_reset_via_rts(connection)
+                data, reason = capture(connection, output, args.max_seconds, args.idle_seconds,
+                                       build_id)
+        except RuntimeError as caught:
+            error = str(caught)
+            raise
+        finally:
+            final_path = record_capture(
+                output, managed, started_at=started_at, port=port, owner=args.owner,
+                purpose=args.purpose, command="selftest",
+                build_id=latest_build_id_from_bytes(data) or build_id,
+                worktree=worktree, commit=commit, reason=reason, error=error)
+            try:
+                report_path = device_report.write_report_for_capture(
+                    final_path, records_root() / "index.jsonl")
+                print("report: " + str(report_path))
+            except Exception as report_error:  # a report is a convenience, never fails the capture
+                print("report generation failed (capture is unaffected): " + str(report_error),
+                      file=sys.stderr)
+        passed, failed = count_suite_results(data)
+        print("selftest results: " + str(passed) + " PASS, " + str(failed) + " FAIL")
+        print("selftest capture ended: " + reason)
+        return 1 if failed else 0
+
+
 def listen(args, store, port):
     started_at = now()
     output, managed = resolve_capture_path(args.out, "listen", args.owner, started_at)
@@ -459,6 +601,14 @@ def listen(args, store, port):
                        build_id=latest_build_id_from_bytes(data), worktree=str(Path.cwd()),
                        commit=git_commit(), reason=reason, error=error)
     print("listen capture ended: " + reason)
+    elf = Path(args.elf) if args.elf else find_elf_for_build_id(
+        Path.cwd(), latest_build_id_from_bytes(data))
+    if elf:
+        decoded = decode_crash_addresses(data, elf)
+        if decoded:
+            print("\ncrash addresses decoded against " + str(elf) + ":")
+            for line in decoded:
+                print("  " + line)
 
 
 def replies_to(data, reply, until):
@@ -525,13 +675,11 @@ def send(args, store, port):
 
 
 def screenshot(args, store, port):
-    """SCREENSHOT, decoded the way launcher/tools/screenshot.sh does -
-    read_screenshot()/write_capture() in launcher/tools/screenshot.py, the
-    one decoder both this and that script's own CLI use. Under the device
-    lock, unlike screenshot.sh's own direct port open: a maintainer at a
-    terminal with nothing else contending for the board can use that one
-    directly, but autana's `screenshot` must not fight another holder for
-    the port.
+    """SCREENSHOT, decoded by read_screenshot()/write_capture() in
+    launcher/tools/screenshot.py - the one decoder autana's own
+    `screenshot` shares. Under the device lock, so it queues behind
+    whatever else already holds the board rather than fighting it for the
+    port.
 
     Not a capture: nothing is written under records/, the same reasoning
     send()'s own docstring gives - a screenshot is a look at the screen, not
@@ -561,29 +709,17 @@ def screenshot(args, store, port):
     return 0
 
 
-def build_script_supports(worktree, option):
-    script = Path(worktree) / "launcher" / "tools" / "build_flash.sh"
-    try:
-        return option in script.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return False
-
-
 def batch(args, store, port):
     """Flash once and capture every suite `runs` times under ONE lock, then
     write one summary across all runs. Holding the board for the whole
-    sequence is the point: another agent cannot flash between two captures
-    of this image, and nothing here needs a model to wait on a capture. A
+    sequence is the point: nobody else can flash between two captures
+    of this image. A
     capture that errors is recorded and the batch continues; only a failed
     build or flash stops it."""
-    extra_flags = []
-    if args.perf_scope:
-        if not build_script_supports(args.worktree, "--perf-scope"):
-            raise RuntimeError(
-                "--perf-scope asked for, but this worktree's launcher/tools/build_flash.sh "
-                "has no --perf-scope option; building the full image instead would measure "
-                "a different thing than asked. Drop --perf-scope or add the option there.")
-        extra_flags.append("--perf-scope")
+    extra_flags = ["--perf-scope"] if args.perf_scope else []
+    if args.out and (len(args.suite) != 1 or args.runs != 1):
+        raise RuntimeError("--out only makes sense with exactly one --suite and --runs 1 - "
+                           "several captures cannot all land on one path")
     worktree = str(Path(args.worktree).resolve())
     started_at = now()
     entries = []
@@ -597,7 +733,7 @@ def batch(args, store, port):
             for suite_name in args.suite:
                 capture_at = now()
                 out, _ = resolve_capture_path(
-                    None, "runsuite-" + suite_name + "-run" + str(run), args.owner, capture_at)
+                    args.out, "runsuite-" + suite_name + "-run" + str(run), args.owner, capture_at)
                 suite_args = argparse.Namespace(
                     owner=args.owner, wait=args.wait, suite=suite_name, out=str(out),
                     purpose=f"{args.purpose} ({suite_name} run {run}/{args.runs})",
@@ -649,6 +785,9 @@ def main(argv=None):
     flash_parser.add_argument("--worktree", required=True)
     flash_parser.add_argument("--purpose", default="flash")
     flash_parser.add_argument("--out")
+    flash_parser.add_argument("--perf-scope", action="store_true",
+                              help="with --variant diag: build the perf-scoped image "
+                                   "(needs build_flash.sh support)")
     suite = subparsers.add_parser("run-suite")
     suite.add_argument("suite")
     suite.add_argument("--out")
@@ -663,6 +802,20 @@ def main(argv=None):
     listen_parser.add_argument("--seconds", type=float, required=True)
     listen_parser.add_argument("--out")
     listen_parser.add_argument("--purpose", default="listen")
+    listen_parser.add_argument("--elf",
+                               help="decode any crash addresses seen against this .elf's symbols")
+    selftest_parser = subparsers.add_parser(
+        "selftest", help="flash the diagnostics+autorun image and capture the on-device run "
+                         "of every registered suite")
+    selftest_parser.add_argument("--worktree", required=True)
+    selftest_parser.add_argument("--out")
+    selftest_parser.add_argument("--perf-scope", action="store_true",
+                                 help="build the perf-scoped image (needs build_flash.sh support)")
+    # 3000 s leaves headroom over a full run's measured time - see
+    # launcher/tools/report_test_results.sh.
+    selftest_parser.add_argument("--max-seconds", type=float, default=3000)
+    selftest_parser.add_argument("--idle-seconds", type=float, default=300)
+    selftest_parser.add_argument("--purpose", default="selftest")
     send_parser = subparsers.add_parser(
         "send", help="write one console line and print the device's replies to it")
     send_parser.add_argument("line")
@@ -695,6 +848,9 @@ def main(argv=None):
     batch_parser.add_argument("--max-seconds", type=float, default=1800)
     batch_parser.add_argument("--idle-seconds", type=float, default=300)
     batch_parser.add_argument("--purpose", default="batch capture")
+    batch_parser.add_argument("--out",
+                              help="write the one capture here instead of the default path - "
+                                   "only with exactly one --suite and --runs 1")
     report_parser = subparsers.add_parser("report")
     report_parser.add_argument("capture", help="an existing capture file (.log or .log.gz)")
     report_parser.add_argument("--index", help="override index.jsonl (default: records/device)")
@@ -734,9 +890,12 @@ def main(argv=None):
             device_lock.print_status(store.status(port))
             return 0
         if args.command == "flash":
-            flash(args, store, port)
+            extra_flags = ["--perf-scope"] if args.perf_scope else []
+            flash(args, store, port, extra_flags=extra_flags)
         elif args.command == "run-suite":
             return run_suite(args, store, port)
+        elif args.command == "selftest":
+            return selftest(args, store, port)
         elif args.command == "batch":
             return batch(args, store, port)
         elif args.command == "send":

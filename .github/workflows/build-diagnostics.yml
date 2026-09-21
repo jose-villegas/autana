@@ -1,9 +1,8 @@
 name: Build (Diagnostics)
 
 # Compiles the diagnostics/test variant for the esp32s3 target - the
-# firmware plus the on-device test suites (see
-# launcher/test/run_device_tests.sh, which builds this same config
-# locally: -B build.diag -D SDKCONFIG=build.diag/sdkconfig -D
+# firmware plus the on-device test suites (`autana flash diag` builds this
+# same config locally: -B build.diag -D SDKCONFIG=build.diag/sdkconfig -D
 # SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag"). This is
 # a meaningfully different config from the release build (CONFIG_LAUNCHER_-
 # SELFTEST=y pulls in Unity and every suite), so it can break independently

@@ -271,9 +271,9 @@ Depends on phase 1.
 
 Host tests after every phase (`./launcher/test/run_tests.sh`, under a
 second). The screen itself cannot be judged by a test — flash a `--dev`
-build and capture it with `./launcher/tools/screenshot.sh`, which reaches
-the device over the same serial connection and needs neither `idf.py` nor
-PowerShell. That is the iteration loop for the look: screenshot, compare
+build and capture it with `autana screenshot`, which reaches the device
+over the same serial connection and needs neither `idf.py` nor PowerShell.
+That is the iteration loop for the look: screenshot, compare
 against the design, adjust the layout module. A screenshot reads the
 framebuffer, not the glass, so stray pixels or lines seen only on the
 device (80 MHz panel clock) are a link fault, not the layout - see
