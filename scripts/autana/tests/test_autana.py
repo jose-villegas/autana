@@ -167,35 +167,44 @@ class ScreenshotCommandTests(unittest.TestCase):
         called.assert_not_called()
 
 
-class MonitorCommandTests(unittest.TestCase):
-    """autana monitor forwards to `device.py listen`, and decodes crashes
-    against an ELF - the newest build in the worktree unless --elf says
-    otherwise."""
-
-    def test_defaults_to_the_newest_build_elf(self):
+class FlashCommandTests(unittest.TestCase):
+    def test_perf_scope_is_forwarded(self):
         with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
-             mock.patch.object(autana, "default_elf", return_value="C:/wt/launcher/build.dev/launcher.elf") as found, \
+             mock.patch.object(autana, "git", return_value=""), \
              mock.patch.object(autana.subprocess, "call", return_value=0) as called:
-            autana.monitor([])
-        found.assert_called_once_with("C:/wt")
+            autana.flash(["diag", "--quiet", "--perf-scope"])
         command = called.call_args[0][0]
-        self.assertEqual(command[command.index("--elf") + 1], "C:/wt/launcher/build.dev/launcher.elf")
+        self.assertIn("--perf-scope", command)
 
-    def test_an_explicit_elf_is_used_as_is(self):
+    def test_no_perf_scope_flag_is_not_forwarded(self):
         with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
-             mock.patch.object(autana, "default_elf", side_effect=AssertionError("must not be called")), \
+             mock.patch.object(autana, "git", return_value=""), \
              mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.flash(["diag", "--quiet"])
+        command = called.call_args[0][0]
+        self.assertNotIn("--perf-scope", command)
+
+
+class MonitorCommandTests(unittest.TestCase):
+    """autana monitor forwards to `device.py listen`, which matches the
+    capture's own BUILD_ID to a build directory itself when --elf is not
+    given - autana no longer guesses an ELF by file mtime."""
+
+    def test_no_elf_given_omits_the_flag_entirely(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.monitor([])
+        self.assertNotIn("--elf", called.call_args[0][0])
+
+    def test_an_explicit_elf_is_passed_through_as_is(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
             autana.monitor(["30", "--elf", "mine.elf"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--seconds") + 1], "30.0")
         self.assertEqual(command[command.index("--elf") + 1], "mine.elf")
 
-    def test_no_build_found_omits_elf(self):
-        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
-             mock.patch.object(autana, "default_elf", return_value=None), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
-            autana.monitor([])
-        self.assertNotIn("--elf", called.call_args[0][0])
+    def test_elf_with_no_value_is_rejected(self):
+        with self.assertRaises(SystemExit):
+            autana.monitor(["--elf"])
 
 
 class SelftestCommandTests(unittest.TestCase):
@@ -218,7 +227,7 @@ class SelftestCommandTests(unittest.TestCase):
 
 
 class BatchCommandTests(unittest.TestCase):
-    def test_one_suite_defaults_runs_and_variant(self):
+    def test_one_suite_defaults_runs_and_is_always_diag(self):
         with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
              mock.patch.object(autana.subprocess, "call", return_value=0) as called:
             code = autana.batch(["run_sand_perf_suite"])
@@ -238,12 +247,11 @@ class BatchCommandTests(unittest.TestCase):
         self.assertEqual(command[command.index("--runs") + 1], "5")
         self.assertIn("--perf-scope", command)
 
-    def test_variant_shorthand_resolves_the_same_way_flash_does(self):
-        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+    def test_no_variant_option_exists(self):
+        # A suite only exists to run in the diagnostics image - offering a
+        # variant choice here would only ever have one real answer.
+        with self.assertRaises(SystemExit):
             autana.batch(["run_sand_perf_suite", "--variant", "dev"])
-        command = called.call_args[0][0]
-        self.assertEqual(command[command.index("--variant") + 1], "dev")
 
     def test_no_suite_is_rejected(self):
         with self.assertRaises(SystemExit):

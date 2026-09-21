@@ -3,15 +3,18 @@
 
     autana                          a console session with the device: type "help" in it
 
-    autana flash [rel|dev|diag] [--quiet]
+    autana flash [rel|dev|diag] [--quiet] [--perf-scope]
                                     build and flash the worktree you are in (dev when omitted);
                                     the build and flash output streams here, --quiet leaves it
-                                    in the log file only
+                                    in the log file only. --perf-scope, with diag, builds the
+                                    perf-scoped image (needs build_flash.sh support) and is left
+                                    on the board with no suite run.
 
     autana monitor [seconds] [--elf PATH]
                                     print what the board says, for 60 seconds when omitted.
-                                    Any crash address seen is decoded against PATH's symbols,
-                                    the newest build in this worktree when PATH is omitted.
+                                    Any crash address seen is decoded against PATH's symbols;
+                                    with no PATH, the build directory whose own build_id.txt
+                                    matches the capture's BUILD_ID, if one does.
     autana suite <name> [seconds]   run one registered suite and print what it prints. A
                                     diagnostics build serves these with no rebuild and no
                                     reflash, and only one built WITHOUT autorun ever reaches
@@ -21,11 +24,11 @@
     autana selftest [seconds]       build the diagnostics+autorun image and run every suite
                                     this worktree registers, on the device - can take
                                     minutes; 3000 seconds when omitted.
-    autana batch <suite> [<suite> ...] [--runs N] [--perf-scope] [--variant rel|dev|diag]
-                                    flash once and capture the given suites --runs times
-                                    (3 when omitted) under one lock, so no other session can
-                                    flash between two captures of the same image; writes one
-                                    summary across every run
+    autana batch <suite> [<suite> ...] [--runs N] [--perf-scope]
+                                    flash the diagnostics image once and capture the given
+                                    suites --runs times (3 when omitted) under one lock, so
+                                    no other session can flash between two captures of the
+                                    same image; writes one summary across every run
 
     autana tune [text]              the numbers a development build lets you change, live,
                                     with their ranges; [text] keeps the names containing it
@@ -188,11 +191,12 @@ def run_streaming_its_log(command):
 
 def flash(args):
     quiet = "--quiet" in args
-    args = [arg for arg in args if arg != "--quiet"]
+    perf_scope = "--perf-scope" in args
+    args = [arg for arg in args if arg not in ("--quiet", "--perf-scope")]
     asked = args[0] if args else "dev"
     variant = VARIANTS.get(asked)
     if variant is None or len(args) > 1:
-        sys.exit("usage: autana flash [rel|dev|diag] [--quiet]")
+        sys.exit("usage: autana flash [rel|dev|diag] [--quiet] [--perf-scope]")
 
     worktree = engine_worktree()
     device = device_tool()
@@ -205,6 +209,8 @@ def flash(args):
         sys.executable, "-u", str(device), "--owner", owner(),
         "flash", "--variant", variant, "--worktree", worktree, "--purpose", f"autana flash {asked}",
     ]
+    if perf_scope:
+        command.append("--perf-scope")
     return subprocess.call(command) if quiet else run_streaming_its_log(command)
 
 
@@ -239,19 +245,12 @@ def buildid(args):
     return 0
 
 
-def default_elf(worktree):
-    """The newest launcher.elf under any launcher/build*/ - "newest wins"
-    when more than one build directory exists."""
-    candidates = sorted(Path(worktree).glob("launcher/build*/launcher.elf"),
-                        key=lambda path: path.stat().st_mtime, reverse=True)
-    return str(candidates[0]) if candidates else None
-
-
 def monitor(args):
     """The board's console, streamed for a while. The lock is held throughout -
     listening IS using the board, and two readers of one port interleave.
-    Any crash address seen is decoded against an ELF's symbols - the newest
-    build under this worktree when `--elf` is not given."""
+    Any crash address seen is decoded against an ELF's symbols - device.py's
+    own `listen` matches the capture's own BUILD_ID to a build directory
+    when `--elf` is not given, rather than guessing the newest one on disk."""
     elf = None
     rest = list(args)
     if "--elf" in rest:
@@ -261,8 +260,6 @@ def monitor(args):
         elf = rest[index + 1]
         del rest[index:index + 2]
     seconds = seconds_argument(rest, 60.0, "usage: autana monitor [seconds] [--elf PATH]")
-    if elf is None:
-        elf = default_elf(engine_worktree())
     command = [
         sys.executable, "-u", str(device_tool()), "--owner", owner(),
         "listen", "--seconds", str(seconds), "--purpose", "autana monitor",
@@ -286,14 +283,16 @@ def selftest(args):
     ])
 
 
-BATCH_USAGE = "usage: autana batch <suite> [<suite> ...] [--runs N] [--perf-scope] [--variant rel|dev|diag]"
+BATCH_USAGE = "usage: autana batch <suite> [<suite> ...] [--runs N] [--perf-scope]"
 
 
 def batch(args):
     """Flash once and capture one or more suites `--runs` times under one
     lock - see device.py's own batch() docstring for why this beats a
-    sequence of separate `suite` calls on a shared board."""
-    suites, runs, perf_scope, variant = [], "3", False, "diag"
+    sequence of separate `suite` calls on a shared board. Always the
+    diagnostics image: a suite only exists to run in one, so a variant
+    choice here would only ever have one real answer."""
+    suites, runs, perf_scope = [], "3", False
     rest = list(args)
     while rest:
         arg = rest.pop(0)
@@ -301,10 +300,6 @@ def batch(args):
             runs = rest.pop(0)
         elif arg == "--perf-scope":
             perf_scope = True
-        elif arg == "--variant" and rest:
-            variant = VARIANTS.get(rest.pop(0))
-            if variant is None:
-                sys.exit(BATCH_USAGE)
         elif arg.startswith("--"):
             sys.exit(BATCH_USAGE)
         else:
@@ -315,7 +310,7 @@ def batch(args):
     print(f"autana batch: {', '.join(suites)} x{runs}", flush=True)
     command = [
         sys.executable, "-u", str(device_tool()), "--owner", owner(),
-        "batch", "--worktree", worktree, "--variant", variant, "--runs", str(runs),
+        "batch", "--worktree", worktree, "--variant", "diag", "--runs", str(runs),
         "--purpose", "autana batch",
     ]
     for suite_name in suites:
@@ -445,9 +440,6 @@ def send(line, reply="TUNE", purpose="autana tune", optional=False, seconds=None
         print(f"the board is busy - {holder}\nnothing was sent; try again when it is free",
               file=sys.stderr)
         return 3, []
-    if '"send"' not in device.read_text(encoding="utf-8"):
-        sys.exit(f"autana: {device} has no 'send' command yet - "
-                 "merge the claude/device-send branch into .dev")
     command = [sys.executable, str(device), "--owner", owner(), "--wait", str(SEND_WAIT_S), "send", line,
                "--purpose", purpose]
     if reply != "TUNE":
