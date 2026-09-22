@@ -259,12 +259,9 @@ Three things fall out of that table:
    outside whatever ships behind a scalar reference (decision A). Closing
    that gap is what Phases 0-2 are for.
 
-The historical breakdown in
-[Display-and-Rendering.md](notes/Display-and-Rendering.md#measured-performance)
-— clear 5.2 ms, rasterize 28.1 ms, blit 25.0 ms, 15.5 fps — predates the
-ESP32-S3 port and is flagged there as unconfirmed on this board;
-`suite_cube_perf.c` exists to produce current numbers and has not yet been
-run to a checked-in result (Phase 0). The device does have real cube
+`suite_cube_perf.c` exists to produce a checked-in clear/rasterize/blit
+breakdown on this board and has not yet been run to a checked-in result
+(Phase 0). The device does have real cube
 numbers already, from an ad-hoc capture rather than that checked-in
 report: Total avg 35.9 ms (~28 fps) with the HUD and partial-present on
 and interlace off, 30.3 ms (~33 fps) with the HUD off, and 29.9 ms

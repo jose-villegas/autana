@@ -54,11 +54,6 @@ Worth knowing because it is not specific to buttons — every microui control
 resolves interaction through `mu_update_control()`, so anything that reacts to
 a press has the same requirement.
 
-The symptom, before the fix, was that a deliberate press of roughly 120 ms
-worked while a quick tap did nothing. It "worked" only because the flickering
-INT line from trap 2 occasionally faked a not-down frame between two down
-frames — one bug accidentally papering over another.
-
 **Sampling rate matters too.** Reading touch once per rendered frame is too
 coarse: a frame is ~40 ms here (the blit alone is 25 ms) and a quick tap can be
 shorter than that, so taps fall between samples entirely. Poll on a separate
@@ -167,8 +162,8 @@ exponential moving average - a lerp toward the reading rather than a jump to it
 matter more than the lerp:
 
 - Define it by a **time constant**, not a per-frame fraction. "Move 10% each
-  frame" changes meaning the moment the framerate does, and this project's has
-  already gone 25 -> 43 -> 70 fps.
+  frame" changes meaning the moment the framerate does, and this project's
+  framerate is not fixed across builds and settings.
 - Make it **adaptive using the gyroscope**. Heavy smoothing feels laggy when
   the board is genuinely moving; light smoothing feels noisy when it is not.
   The gyro reports rotation rate, which is near zero whenever the board is held
