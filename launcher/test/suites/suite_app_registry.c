@@ -49,6 +49,11 @@ run_app_registry_suite(void) {
     RUN_TEST(test_apps_end_up_sorted_by_name_regardless_of_registration_order);
 }
 
+#else
+
+void
+run_app_registry_suite(void) {}
+
 #endif
 
 SUITE_REGISTER(run_app_registry_suite);

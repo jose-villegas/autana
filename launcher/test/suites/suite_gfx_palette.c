@@ -10,6 +10,7 @@
 #ifndef DEVICE_BUILD
 
 #include "gfx_palette_gen.h"
+#endif
 
 static void
 test_cga16_has_16_entries_black_first_white_last(void) {
@@ -215,6 +216,8 @@ test_dither_checker2_is_deterministic(void) {
     TEST_ASSERT_EQUAL_HEX16_ARRAY(a, b, n);
 }
 
+#endif
+
 void
 run_gfx_palette_suite(void) {
     RUN_TEST(test_cga16_has_16_entries_black_first_white_last);
@@ -238,7 +241,5 @@ run_gfx_palette_suite(void) {
     RUN_TEST(test_dither_checker2_is_deterministic);
 #endif
 }
-
-#endif
 
 SUITE_REGISTER(run_gfx_palette_suite);
