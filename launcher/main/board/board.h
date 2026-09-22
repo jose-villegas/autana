@@ -35,17 +35,15 @@ esp_err_t board_audio_amp_enable(bool on);
  * but would not read" as different things rather than both collapsing into
  * one false. */
 typedef enum {
-    TEMP_SENSOR_OK,
-    TEMP_SENSOR_INSTALL_FAILED,
-    TEMP_SENSOR_READ_FAILED,
-} temp_sensor_status_t;
+    BOARD_TEMP_SENSOR_OK,
+    BOARD_TEMP_SENSOR_INSTALL_FAILED,
+    BOARD_TEMP_SENSOR_READ_FAILED,
+} board_temp_sensor_status_t;
 
-/* The on-die temperature sensor's own one-shot install/enable/read/
- * disable/uninstall cycle, shared by boot/post.c's POST check and
- * util/device_state.c's snapshot - not for every frame, fine for an
- * occasional read either caller is for. Leaves *out_celsius untouched
- * except on TEMP_SENSOR_OK. */
-temp_sensor_status_t board_temp_sensor_read_celsius(float* out_celsius);
+/* One-shot install/enable/read/disable/uninstall of the on-die sensor:
+ * fine for an occasional read, not for every frame. Leaves *out_celsius
+ * untouched except on BOARD_TEMP_SENSOR_OK. */
+board_temp_sensor_status_t board_temp_sensor_read_celsius(float* out_celsius);
 
 /* BOARD_BOOT_GPIO: pulled up, grounded when pressed, so LOW means down. */
 

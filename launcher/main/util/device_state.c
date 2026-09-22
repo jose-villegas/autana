@@ -25,7 +25,7 @@ device_state_read(device_state_t* out) {
      * for a value that cannot actually change on this board. */
     out->cpu_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
 
-    out->temp_ok = board_temp_sensor_read_celsius(&out->temp_c) == TEMP_SENSOR_OK;
+    out->temp_ok = board_temp_sensor_read_celsius(&out->temp_c) == BOARD_TEMP_SENSOR_OK;
 
     out->quarter = display_shell_quarter();
 

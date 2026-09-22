@@ -101,16 +101,16 @@ board_audio_amp_enable(bool on) {
     return gpio_set_level(AUDIO_AMP_GPIO, on ? 1 : 0);
 }
 
-temp_sensor_status_t
+board_temp_sensor_status_t
 board_temp_sensor_read_celsius(float* out_celsius) {
 #if CONFIG_LAUNCHER_QEMU
     /* QEMU has no such sensor, and ESP-IDF's driver waits on it forever. */
-    return TEMP_SENSOR_READ_FAILED;
+    return BOARD_TEMP_SENSOR_READ_FAILED;
 #endif
     temperature_sensor_handle_t sensor = NULL;
     temperature_sensor_config_t cfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(-10, 80);
     if (temperature_sensor_install(&cfg, &sensor) != ESP_OK) {
-        return TEMP_SENSOR_INSTALL_FAILED;
+        return BOARD_TEMP_SENSOR_INSTALL_FAILED;
     }
 
     const bool ok =
@@ -118,5 +118,5 @@ board_temp_sensor_read_celsius(float* out_celsius) {
 
     temperature_sensor_disable(sensor);
     temperature_sensor_uninstall(sensor);
-    return ok ? TEMP_SENSOR_OK : TEMP_SENSOR_READ_FAILED;
+    return ok ? BOARD_TEMP_SENSOR_OK : BOARD_TEMP_SENSOR_READ_FAILED;
 }
