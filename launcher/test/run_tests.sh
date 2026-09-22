@@ -15,64 +15,28 @@
 # device - see main/selftest.c. The suite sources are shared, so what passes
 # here is the same set of assertions the board makes.
 #
-# Default output is the verdict and the test/suite counts, and on failure the
-# failing suite(s) and the compiler errors that matter - the full build and
-# test stream is a couple thousand lines to say OK, so it goes to a log file
-# whose path is always printed instead. --verbose streams everything, as
-# this script always used to.
+# Default output is the verdict and test count. A passing run can emit
+# thousands of characters; the full stream is in the printed log path.
 #
 # POSIX sh on purpose: works under Git Bash or MSYS on Windows, and natively
 # on Linux and macOS.
 
 set -eu
 
-VERBOSE=0
-if [ "${1:-}" = "--verbose" ]; then
-    VERBOSE=1
+VERBOSE=${VERBOSE:-0}
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --verbose) VERBOSE=1 ;;
+        --print-sources|--print-flags) break ;;
+        *) echo "unknown option: $1" >&2; exit 2 ;;
+    esac
     shift
-fi
+done
+export VERBOSE
 
-# Prints the verdict, the test/suite counts (or the failing suite(s) and the
-# first real errors), and the log path - installed as an EXIT trap so it
-# fires wherever the script ends, `set -e` included. Runs with the real
-# stdout/stderr restored (fd 3/4, saved before the redirect below), against
-# whatever the redirected run wrote to $QUIET_LOG.
-quiet_report() {
-    status=$?
-    trap - EXIT
-    set +e
-    exec 1>&3 2>&4
-
-    summary=$(grep -E '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored$' "$QUIET_LOG" | tail -n 1)
-    suites=$(grep -oE '^[^[:space:]:]+\.c:[0-9]+:[A-Za-z0-9_]+:PASS$' "$QUIET_LOG" |
-        sed -E 's#^.*/##; s/:.*//' | sort -u | wc -l | tr -d ' ')
-
-    if [ "$status" -eq 0 ]; then
-        if [ -n "$summary" ]; then
-            echo "ok run_tests: $summary, $suites suites"
-        else
-            echo "ok run_tests"
-        fi
-    else
-        echo "FAIL run_tests"
-        [ -z "$summary" ] || echo "  $summary"
-
-        fails=$(grep -E ':[0-9]+:[A-Za-z0-9_]+:FAIL:' "$QUIET_LOG")
-        [ -z "$fails" ] || printf '%s\n' "$fails" | sed 's/^/  /'
-
-        errors=$(grep -E 'error:|undefined reference to|out of memory|cannot allocate|^  FAIL |check_stack_usage: |^  NEW |^  GREW ' "$QUIET_LOG" | head -n 20)
-        if [ -n "$errors" ]; then
-            printf '%s\n' "$errors" | sed 's/^/  /'
-        elif [ -z "$fails" ]; then
-            tail -n 20 "$QUIET_LOG" | sed 's/^/  /'
-        fi
-    fi
-
-    echo "full log: $QUIET_LOG"
-    exit "$status"
-}
-
+# shellcheck disable=SC1007
 TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck disable=SC1007
 MAIN_DIR=$(CDPATH= cd -- "$TEST_DIR/../main" && pwd)
 # Overridable so two runs cannot clobber each other: the build dir holds one
 # host_tests binary, so concurrent runs (two terminals, a sweep script
@@ -256,17 +220,17 @@ esac
 
 mkdir -p "$BUILD_DIR"
 QUIET_LOG="$BUILD_DIR/run_tests.log"
-
-# Everything from here on is the build-and-run stream this script used to
-# print in full - a couple thousand lines to say OK. Quiet by default: fd
-# 3/4 keep the real stdout/stderr open for quiet_report, and 1/2 move to the
-# log for the rest of the script. --verbose skips both, leaving the stream
-# on the terminal exactly as before.
-if [ "$VERBOSE" -eq 0 ]; then
-    : >"$QUIET_LOG"
-    exec 3>&1 4>&2
-    exec >>"$QUIET_LOG" 2>&1
-    trap quiet_report EXIT
+if [ -z "${QUIET_INNER:-}" ]; then
+    # shellcheck source=../../scripts/quiet.sh
+    . "$TEST_DIR/../../scripts/quiet.sh"
+    quiet_begin "$QUIET_LOG"
+    quiet_run host-tests env QUIET_INNER=1 VERBOSE="$VERBOSE" "$0" "$@" || true
+    QUIET_SUMMARY=$(grep -E '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored' "$QUIET_LOG" | tail -n 1)
+    export QUIET_SUMMARY
+    if quiet_end run_tests; then
+        exit 0
+    fi
+    exit $?
 fi
 
 # The hardware-facing app_*.c files are excluded from SOURCES above because
@@ -439,12 +403,4 @@ fi
 # MinGW appends .exe; elsewhere the plain name is produced.
 [ -x "$OUT" ] || OUT="$OUT.exe"
 
-# Verbose keeps the old tail call. Quiet does not exec: the binary's own
-# stdout/stderr are still redirected into $QUIET_LOG here, and letting it
-# run as an ordinary command means a nonzero exit trips `set -e` into the
-# quiet_report trap above instead of replacing this process before that can
-# fire.
-if [ "$VERBOSE" -eq 1 ]; then
-    exec "$OUT"
-fi
 "$OUT"

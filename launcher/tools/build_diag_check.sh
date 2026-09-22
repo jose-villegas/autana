@@ -5,10 +5,8 @@
 #
 #   tools/build_diag_check.sh [--verbose] [IDF_EXPORT]
 #
-# The build itself is quiet by default (the result, the first real errors,
-# and a log path) and streams everything under --verbose - see
-# build_flash.sh, which this forwards every argument to and which is where
-# that behaviour actually lives.
+# The result and log path are printed by default; --verbose streams and
+# saves the full command output.
 #
 # Exists because the diagnostics variant is the only one that links every
 # test suite into firmware, so it is the only one where a suite's own
@@ -38,10 +36,41 @@
 
 set -euo pipefail
 
+VERBOSE=${VERBOSE:-0}
+IDF_EXPORT_ARG=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --verbose) VERBOSE=1 ;;
+        -h|--help) echo "usage: tools/build_diag_check.sh [--verbose] [IDF_EXPORT]"; exit 0 ;;
+        -*) echo "unknown option: $1" >&2; exit 2 ;;
+        *)
+            if [ -n "$IDF_EXPORT_ARG" ]; then
+                echo "too many positional arguments" >&2
+                exit 2
+            fi
+            IDF_EXPORT_ARG=$1
+            ;;
+    esac
+    shift
+done
+
+# shellcheck disable=SC1007
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck disable=SC1007
 REPO_ROOT=$(CDPATH= cd -- "$DIR/../.." && pwd)
 COMPILE_DB="$DIR/../build.diag/compile_commands.json"
 GATE_BASE="${COMPLEXITY_GATE_BASE:-origin/main}"
+# shellcheck source=../../scripts/quiet.sh
+. "$DIR/../../scripts/quiet.sh"
+
+if [ -z "${QUIET_INNER:-}" ]; then
+    quiet_begin "$DIR/../build.diag/build_diag_check.log"
+    quiet_run diagnostics-check env QUIET_INNER=1 VERBOSE="$VERBOSE" "$0" ${IDF_EXPORT_ARG:+"$IDF_EXPORT_ARG"} || true
+    if quiet_end build_diag_check; then
+        exit 0
+    fi
+    exit $?
+fi
 
 PYTHON=$(command -v python3 || command -v python || true)
 if [ -z "$PYTHON" ]; then
@@ -55,11 +84,20 @@ complexity_gate() {
         --changed "$GATE_BASE")
 }
 
+build_diag() {
+    if [ "$VERBOSE" -eq 1 ]; then
+        "$DIR/build_flash.sh" --diag --build-only --verbose ${IDF_EXPORT_ARG:+"$IDF_EXPORT_ARG"}
+    else
+        "$DIR/build_flash.sh" --diag --build-only ${IDF_EXPORT_ARG:+"$IDF_EXPORT_ARG"}
+    fi
+}
+
 if [ -f "$COMPILE_DB" ]; then
     complexity_gate
-    exec "$DIR/build_flash.sh" --diag --build-only "$@"
+    build_diag
+    exit 0
 fi
 
 echo "=== No build.diag compile database yet - ratchet runs after the build ==="
-"$DIR/build_flash.sh" --diag --build-only "$@"
+build_diag
 complexity_gate

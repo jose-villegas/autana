@@ -28,11 +28,11 @@ before adding a test or deciding something "can't be tested".
 autana selftest                       # every suite, on the board, build+flash+run
 ```
 
-Default output is the verdict and the test/suite counts - a full run is over
-1,000 tests, thousands of characters to say OK - and on failure the failing
-suite(s) with the assertion line and the compiler errors that matter. The
-full stream always goes to a log file, whose path is printed either way;
-`--verbose` streams it instead, as this script always used to.
+Default output is the verdict and Unity's test counts. On failure it includes
+the failing runner section with its assertion lines, plus the first errors
+from compilation and the gates, including the stack check. The full stream is
+saved in `launcher/test/build/run_tests.log`, whose path is printed before
+the run; `--verbose` streams it while saving it there too.
 
 **Where those 40 seconds go, because it is not the tests.** All of the
 over 1,000 host tests execute in a couple of seconds. The rest is compiling: `run_tests.sh`
