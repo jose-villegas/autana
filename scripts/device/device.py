@@ -2,7 +2,6 @@
 
 import argparse
 import contextlib
-import glob
 import gzip
 import json
 import os
@@ -22,7 +21,6 @@ import device_report
 BAUD = 115200
 BUILD_ID = re.compile(rb"BUILD_ID=([^\s\r\n]+)")
 SUITE_RESULT = re.compile(rb":\d+:.*:(PASS|FAIL)(?:\r?$|:)", re.MULTILINE)
-IDF_PYTHON_GLOB = "~/.espressif/python_env/idf*_env/Scripts/python.exe"
 
 # Suite/listen captures run 13-131 KB and a flash log ~270 KB; only a capture
 # that lands on the default path (not an explicit --out) is ever gzipped, and
@@ -32,8 +30,11 @@ SLUG_UNSAFE = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
 def python_with_pyserial():
-    found = sorted(glob.glob(os.path.expanduser(IDF_PYTHON_GLOB)))
-    return found[-1] if found else sys.executable
+    tools_dir = Path(__file__).resolve().parents[2] / "launcher" / "tools"
+    if str(tools_dir) not in sys.path:
+        sys.path.insert(0, str(tools_dir))
+    from idf_python import idf_python
+    return idf_python()
 
 
 def git_bash():

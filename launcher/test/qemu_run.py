@@ -61,6 +61,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "tools"))
 import device_profile  # noqa: E402  (path must be set up first)
+from idf_python import idf_python  # noqa: E402  (path must be set up first)
 
 SENTINEL = "SELFTEST_COMPLETE"
 LISTENING = "listening for 'screenshot'"
@@ -370,8 +371,7 @@ def main(argv):
     efuse = os.path.join(workdir, "qemu_efuse.bin")
     log_path = args.log or os.path.join(workdir, "qemu_serial.log")
 
-    python = find_one("~/.espressif/python_env/idf*_env/Scripts/python.exe",
-                      "ESP-IDF Python") if os.name == "nt" else sys.executable
+    python = idf_python()
     qemu = find_one("~/.espressif/tools/qemu-xtensa/*/qemu/bin/"
                     "qemu-system-xtensa*", "qemu-system-xtensa")
 
