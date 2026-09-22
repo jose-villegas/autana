@@ -34,9 +34,9 @@ ULTRA's 41,216-byte grid is, in `docs/notes/Board-and-Memory.md`'s own
 words, "the largest single contiguous allocation of interest" the sand app
 makes. It is unchanged since this board moved to a PSRAM framebuffer.
 
-That move is worth stating plainly: the 322 KiB framebuffer now lives
-entirely in PSRAM (`BOARD_FRAMEBUFFER_CAPS`, `board.h`) and no longer
-competes with the sand grid, or anything else, for internal SRAM.
+The 322 KiB framebuffer lives entirely in PSRAM (`BOARD_FRAMEBUFFER_CAPS`,
+`board.h`), so it does not compete with the sand grid, or anything else,
+for internal SRAM.
 
 Measured internal (non-PSRAM) free heap after `gfx_init()` is 130,635
 bytes, in blocks of at most 51,200. A two-byte-per-cell grid at ULTRA
@@ -274,11 +274,11 @@ Almost nothing is spent on the five downward-ish directions: a particle
 that drifts down does so bluntly, and giving most of the ring a downward
 component reads as smoke *sinking* rather than swirling.
 
-**Why a walk rather than the inverted powder mover.** Gas used to reuse
-`try_fall_or_scatter()`/`try_slide()` with the direction negated - the
-water model reflected. That mover is exhaustive: it tries each candidate
-in turn, so its cost rises exactly when the grid is full and every
-candidate is blocked.
+**Why a walk rather than the inverted powder mover.** Reusing
+`try_fall_or_scatter()`/`try_slide()` with the direction negated would
+reflect the water model, but that mover is exhaustive: it tries each
+candidate in turn, so its cost rises exactly when the grid is full and
+every candidate is blocked.
 
 The walk is O(1) per cell and looks better, since real hot gas is chaotic
 rather than uniformly upward. The exhaustive mover is still reachable
@@ -341,9 +341,7 @@ Wood's `flammability` of 6 in 256 makes catching a negotiation - roughly
 vanishing on first touch. A lit log is essentially never `smothered()`:
 that predicate needs all four cardinal neighbours *strictly* denser, and
 at density 150 only stone (200) qualifies, so burying one in sand will
-not put it out. Only decay or water ends it. Gunpowder below walks the
-same dry/lit/quenched shape with a state diagram, plus the two outcomes -
-blast or plain fire - a burn-out can end in.
+not put it out. Only decay or water ends it.
 
 ### Two exhausts, deliberately different materials
 
@@ -414,21 +412,33 @@ than a separate flag:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Moist
-    Moist --> Dry: heat dries it
-    Dry --> Lit: flammability roll,<br/>or heat transform
+    [*] --> Dry: painted
+    Soaked --> Damp: dries - ambient,<br/>or heat while moist
+    Damp --> Dry: dries further
+    Dry --> Lit: flammability roll,<br/>or heat, once fully dry
+    Damp --> Lit: flammability roll,<br/>damped by moisture
+    Soaked --> Oil: soaked_chance roll
     Lit --> Lit: burn_decay counts down
     Lit --> Soaked: water quenches
     Lit --> Blast: burn-out,<br/>lit 2x2 + impulse buffer live<br/>+ cooldown clear
     Lit --> Fire: burn-out,<br/>otherwise
 ```
 
+Painted gunpowder starts `Dry` (`GUNPOWDER_CELL(0)`, `app_sand.c`). `Dry`
+and `Damp` are the same moisture counter, `Damp` standing in for moisture
+levels 1-3: each still ignites off a flame or hot lava, just at a lower
+chance the deeper it goes. `Soaked` (moisture at `moist_max`) cannot
+ignite at all - the same damping shift that lowers `Damp`'s chance reaches
+zero there - so heat only dries a soaked or damp cell further, or gives it
+its own separate chance to give up being powder and become `MAT_OIL`.
+
 **Lighting the fuse.** A flame or hot lava touching dry powder ignites it
 in the usual way (`flammability` 200, so it catches almost every time it
 is rolled). Heat alone, with nothing burning yet, can also reach the same
 trigger from the heat-transform path - lava resting beside it, or heat
-conducted through stone or metal, once the wet stage below has steamed
-any moisture off. Either path writes code 7, the cell's **lit** state
+conducted through stone or metal - but only once the cell is fully dry;
+while it still holds moisture, the same heat dries it one level instead of
+igniting it. Either ignition path writes code 7, the cell's **lit** state
 (`GUNPOWDER_LIT`), in place of the plain `MAT_FIRE` a less flammable fuel
 would get. A lit cell is a heat source in its own right, exactly like a
 burning log:
@@ -506,11 +516,10 @@ Acid dissolves gunpowder at the same rate it dissolves sand
 (`dissolvable = 200`); nothing about being explosive changes how a cell
 disappears once acid is what is touching it.
 
-**Gunpowder is not soil.** Every plant/root site that used to test
-`dries != 0` to mean "this is ground a root can use" now tests a separate
-field, `reaction_t.soil`, instead. Dirt sets `soil = 1`; gunpowder does
-not, even though it has a moisture codec of its own and would otherwise
-match every one of those checks.
+**Gunpowder is not soil.** Plant and root sites test `reaction_t.soil`,
+not `dries != 0`, to mean ground a root can use. Dirt sets `soil = 1`;
+gunpowder does not, even though it has a moisture codec of its own and
+would otherwise match every one of those checks.
 
 Moisture diffusion between same-species cells and percolation still read
 `dries`, unchanged - "can this variant mean wetness" and "is this ground"
@@ -1097,13 +1106,10 @@ growth, and still correct); it is root and tree genuinely competing for
 the same scarce moisture, first roll wins.
 
 `test_a_buried_root_does_not_cut_off_the_water_below_it`
-(`suite_sand_roots.c`) used to rest on a single row of water directly
-under the root, and the growth rule made that scene racy against this
-exact competition (measured: failed, deterministically, for the suite's
-fixed seed). The fix was a deeper wet reserve below the root, not a
-change to the mechanism, since a real root system does not get to
-consume literally every cell of water below it before the tree it
-belongs to can use any.
+(`suite_sand_roots.c`) rests the root over a deeper wet reserve, because a
+single row of water under it races against this exact competition - a
+real root system does not get to consume literally every cell of water
+below it before the tree it belongs to can use any.
 
 ## Performance discipline
 
@@ -1161,7 +1167,7 @@ every step" and the numbers above:
 
 `materials[]` is `const` data in flash, read through this chip's 32 KB
 data cache - kept separate from the 16 KB instruction cache the sweep's
-own code lives in, so the two no longer evict each other. A cache miss on
+own code lives in, so the two do not evict each other. A cache miss on
 a cold line is still a real cost inside the tightest loop in the project,
 which is what the bitmask above avoids paying per cell. See
 [Optimization-Playbook.md](../notes/Optimization-Playbook.md#know-what-kind-of-memory-you-actually-have)
@@ -1176,9 +1182,8 @@ sweep order: `sand_t.rng` is one `xorshift32` word, drawn from a
 data-dependent number of times per cell by every pass.
 
 Two cores drawing from it at once race on that word; the fix is to stop
-sharing it - see [The draw](#the-draw) below - which means the split can
-no longer promise the byte-identical output the project held itself to
-until this feature.
+sharing it - see [The draw](#the-draw) below - which means the split does
+not promise byte-identical output.
 
 What it promises instead is **determinism**: the same seed gives the same
 board every time, on any core, in any order, because no draw depends on
@@ -1317,7 +1322,7 @@ flowchart TD
     Override -->|yes| Forced(["whatever the override says"])
     Override -->|no| Awake{"awake cells at least<br/>SAND_CHUNK_SPLIT_MIN_AWAKE_CELLS?"}
     Awake -->|no| Serial
-    Awake -->|yes| Span{"modelled two-lane span under<br/>SAND_CHUNK_SPLIT_SPAN_SHARE_PERCENT%<br/>of walking the chunks one after another?"}
+    Awake -->|yes| Span{"modelled two-lane span at or below<br/>SAND_CHUNK_SPLIT_SPAN_SHARE_PERCENT%<br/>of walking the chunks one after another?"}
     Span -->|no| Serial
     Span -->|yes| Shared(["shared, two lanes"])
 ```
@@ -1345,17 +1350,18 @@ a pass hands only its travel direction, a per-chunk function and its own
 state. `sand_chunk_order()` (`sand_chunk_sched.[ch]`) counts from the
 downstream end of that direction, so the chunk holding a move's destination is
 settled by the time the source chunk runs - the same reason a serial pass runs
-against travel, one level up. A gravity-down pass on a 4x3 chunk grid ranks
-like this (`rank:lane`, lane = the rank's parity):
+against travel, one level up. A gravity-down pass on a 4x3 chunk grid, at
+phase 0 (an even `step_phase`), ranks like this (`rank:lane`, lane = the
+rank's parity):
 
 ```
 gravity
   |
   v
 
-row 0 (top)      8:A  10:A   9:B  11:B
-row 1            4:A   6:A   5:B   7:B
-row 2 (bottom)   0:A   2:A   1:B   3:B
+row 0 (top)      8:0  10:0   9:1  11:1
+row 1            4:0   6:0   5:1   7:1
+row 2 (bottom)   0:0   2:0   1:1   3:1
                 col0  col1  col2  col3
 ```
 

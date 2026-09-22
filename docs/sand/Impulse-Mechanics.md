@@ -187,8 +187,8 @@ material around.
 
 ## Water and acid are on different mechanisms
 
-Both liquids drive `sand_impulse()`, but no longer through the same code
-path - a real divergence, not a stale detail:
+Both liquids drive `sand_impulse()`, through different code paths - a
+real divergence:
 
 - **Water** (`splash_displace()`, `sand_liquid.c`): a radial spray via
   `sand_displace_material()`, masked to `MAT_WATER` so it can never fling

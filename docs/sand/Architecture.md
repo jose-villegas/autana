@@ -97,10 +97,10 @@ With every ordinary slot spent, two further tricks each bought one more
 material without widening the byte:
 
 - **Fold a state into an existing material's variant**, when the variant
-  has room. Ember used to be its own material; it is now wood with
-  `burn_decay` non-zero, so quenching it (water puts a fire out, leaving
-  the wood) became expressible for free. This works whenever the two
-  states differ only in fields the *cold* table reads, not the hot one.
+  has room. Ember is wood with `burn_decay` non-zero rather than a
+  material of its own, so quenching it (water puts a fire out, leaving
+  the wood) comes for free. This works whenever the two states differ
+  only in fields the *cold* table reads, not the hot one.
 - **Split `MAT_EXTENDED`'s low nibble by its own top bit.** `0xF0`-`0xF7`
   stays the extended-statics doorway; `0xF8`-`0xFF` (gunpowder) became a
   second, ordinary `KIND_POWDER` row with real physics and a 3-bit
