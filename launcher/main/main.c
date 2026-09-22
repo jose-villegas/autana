@@ -13,7 +13,6 @@
 
 #include <ctype.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 #include "app.h"
 #include "boot/boot_anim.h"
@@ -622,13 +621,13 @@ app_boot_init(void) {
     }
 #endif
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    check_console_prefix_clashes();
+#endif
     /* The launcher has to exist, turned the way boot draws, before the
      * animation can dissolve into it. ui_init() resets the transform to
      * identity, so DISPLAY_DEFAULT_QUARTER is applied here or the board
      * would start upright and visibly turn into place. */
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    check_console_prefix_clashes();
-#endif
     display_init(&shell_display);
     shell_display.quarter = DISPLAY_DEFAULT_QUARTER;
     ui_launcher_init();
