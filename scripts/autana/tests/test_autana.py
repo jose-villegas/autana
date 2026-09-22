@@ -225,6 +225,15 @@ class ResetCommandTests(unittest.TestCase):
         self.assertIn("--capture", command)
         self.assertEqual(command[command.index("--seconds") + 1], "15.0")
 
+    def test_capture_without_a_window_leaves_the_default_to_device(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.reset(["--capture"])
+        self.assertNotIn("--seconds", called.call_args[0][0])
+
+    def test_window_without_capture_is_rejected(self):
+        with self.assertRaises(SystemExit):
+            autana.reset(["30"])
+
 
 class SelftestCommandTests(unittest.TestCase):
     def test_builds_the_device_selftest_invocation(self):
