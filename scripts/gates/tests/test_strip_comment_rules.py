@@ -79,5 +79,17 @@ class SameLineRuleTest(unittest.TestCase):
         self.assertIn("*** never remove this lock ***", new)
 
 
+class OneDefinitionOfARuleTest(unittest.TestCase):
+    def test_three_stars_around_text_is_emphasis_to_both_checks(self):
+        # has_rule (the length gate) and the stripper must agree on what a
+        # drawn rule is: a "***" pair is style(9) emphasis, not decoration.
+        source = "void f(void) {\n/* *** VERY important *** */\n    int x = 1;\n}\n"
+        comments = list(strip_comment_rules.scan("t.c", source))
+        self.assertEqual(len(comments), 1)
+        self.assertFalse(comments[0].has_rule,
+                         "'/* *** VERY important *** */' is emphasis, not a drawn rule")
+        self.assertIsNone(strip_comment_rules.rewrite("t.c", source))
+
+
 if __name__ == "__main__":
     unittest.main()

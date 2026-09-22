@@ -52,6 +52,12 @@ EXCLUDED = (
 )
 
 
+# A drawn rule's run: 3+ of `=`, `_`, `#` or `-` - this tree's own
+# "/* --- title ---- */" padding is exactly 3 dashes - but `*` alone needs
+# 4+, since a bare "***" is style(9) emphasis, not decoration.
+RULE_RUN = r"(?:[=_#\-]{3,}|[=*_#\-]{4,})"
+
+
 class Comment:
     def __init__(self, path, line, kind, start=0, end=0):
         self.path = path
@@ -104,7 +110,7 @@ class Comment:
         if body.endswith("*/"):
             body = body[:-2]
         body = body.strip()
-        return bool(re.match(r"^[=*\-_#]{3,}\s", body) or re.search(r"\s[=*\-_#]{3,}$", body))
+        return bool(re.match("^" + RULE_RUN + r"\s", body) or re.search(r"\s" + RULE_RUN + "$", body))
 
     @property
     def is_banner(self):

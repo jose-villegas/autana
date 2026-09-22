@@ -242,9 +242,8 @@ try_heat_transform_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cel
         return false;
     }
 
-    /* Wet earth dries instead of transforming: `dries != 0` excludes sand and
-     * glass (neither carries moisture), and moisture_of() confirms this cell
-     * is actually wet. */
+    /* Wet earth dries a level, or spoils, instead of taking its heats_to;
+     * moisture_of() confirms this cell is actually wet. */
     if (r->dries != 0 && moisture_of(n, r) != 0) {
         /* Spoil pre-empts the moisture reduction below - wet ore that can
          * spoil cracks on first contact with heat, not after a warning step.
@@ -514,8 +513,7 @@ cool_off_chain_or_defer(sand_t* s, int x, int y, int w, int h, uint8_t product, 
     cool_off_chain(s, x, y, w, h, product, chance);
 }
 
-/* A constant, not a per-material field, since only materials with
- * `dries != 0` ever soak. */
+/* The percolation roll for every material that holds moisture (dries != 0). */
 #define SOIL_PERCOLATE_CHANCE 15
 
 /* A saturated cell only rolls its conversion one step in this many.
@@ -796,8 +794,6 @@ step_one_warming_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
         if (!sand_rng_chance_at(s, nx, ny, SAND_RNG_SLOT_REACT_WARM_MELT_GATE, r->warms)) {
             continue;
         }
-        /* Snow vital for shock. 1.5s smoke clears snow, risking boiler.
-         * Quarter rate minimally impacts ice, doubles snow life. */
         if (!sand_rng_chance_at(s, nx, ny, SAND_RNG_SLOT_REACT_WARM_MELT, nr->heat_chance >> 2)) {
             continue;
         }
@@ -2157,8 +2153,8 @@ unsigned sand_reactions_cells_dispatched;
 /* Which shape the call below took - see sand_priv.h. */
 bool sand_reactions_last_was_soak_only;
 
-/* REACTION-STAGE DISPATCH TABLE skips PREFIX rows. Water, oil, metal traverse
- * all fields.
+/* Each cell enters the stage chain at its material's plan->stage, skipping
+ * stages that can never apply to it.
  *
  * RANGE [x_lo, x_hi), NOT ALWAYS THE FULL ROW: the soak-only walk in
  * sand_step_reactions() calls this once per BLOCK_LIQUID_NEAR block instead
@@ -2237,7 +2233,6 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
                 continue;
             }
         }
-        /* May_have_temperature not re-armed for boards with no heat-holder. */
     stage_condense:
         if (r->condenses != 0) {
             found |= FOUND_CONDENSING;
@@ -2252,7 +2247,6 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
             }
             continue;
         }
-        /* Drift on dry ground persists, found later when liquid reaches it. */
     stage_crust:
         /* THE ROLL IS LAST on purpose: drawn before the settled test it would
          * shift the random stream for every scene whether or not snow is

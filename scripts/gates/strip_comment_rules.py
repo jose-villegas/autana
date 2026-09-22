@@ -18,17 +18,13 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from check_comment_length import EXCLUDED, code_only, scan  # noqa: E402
+from check_comment_length import EXCLUDED, RULE_RUN, code_only, scan  # noqa: E402
 
 SKIP = ("managed_components", "build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell")
 ONE_LINE_MAX = 78
 
-# A run of 3+ qualifies as a rule for `=`, `_`, `#` or `-` - this tree's own
-# "/* --- title ---- */" padding is exactly 3 dashes - but `*` alone needs 4+:
-# a bare "***" is style(9) emphasis a prose line can open with, not decoration,
-# and 3 is too short to tell the two apart.
-LEAD_RULE = re.compile(r"^(?:[=_#\-]{3,}|[=*_#\-]{4,})")
-TAIL_RULE = re.compile(r"(?:[=_#\-]{3,}|[=*_#\-]{4,})$")
+LEAD_RULE = re.compile("^" + RULE_RUN)
+TAIL_RULE = re.compile(RULE_RUN + "$")
 
 
 def restyle(span, indent):
@@ -86,7 +82,7 @@ def rewrite(path, source):
     return "".join(out)
 
 
-RULE_WORD = re.compile(r"^(?:[=_#\-]{3,}|[=*_#\-]{4,})$")
+RULE_WORD = re.compile("^" + RULE_RUN + "$")
 
 
 def words(text):
