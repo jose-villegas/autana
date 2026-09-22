@@ -11,8 +11,9 @@ name: Comment Rules
 # check_style_audit.py holds what neither of those covers: no tracker id or
 # commit hash, calendar date, "living document" line, personal path,
 # misdirected or unqualified include, stray HTML comment, or accidental
-# Markdown bullet in tracked text - see its own docstring for the full rule
-# list and what was left out because a script cannot judge it reliably.
+# Markdown bullet in tracked text - each rule is one decorated function in
+# the script, and its docstring says what was left out because a script
+# cannot judge it reliably.
 # Enforced here so the rules hold for every commit, however it was made.
 #
 # Own workflow file, like the others, purely so it gets its own badge -
