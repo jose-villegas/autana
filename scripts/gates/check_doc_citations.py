@@ -9,6 +9,7 @@ import subprocess
 import sys
 
 from check_comment_length import EXCLUDED as C_EXCLUDED, scan
+from check_doc_index import blank_fences, doc_headings
 from code_vocabulary import names
 
 INLINE = re.compile(r"`([^`\n]+)`")
@@ -140,21 +141,6 @@ def path_exists(root, value, citing_doc=None):
     return resolve_doc(root, value, citing_doc) is not None
 
 
-def _headings_of(path):
-    heads = set()
-    fenced = False
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
-            continue
-        if fenced:
-            continue
-        m = re.match(r"^#{1,6}\s+(.+?)\s*#*$", line)
-        if m:
-            heads.add(m.group(1).strip())
-    return heads
-
-
 def _paragraphs(lines):
     """(start_line, joined_text) for each run of consecutive non-blank
     lines - the same unit a reader sees as one sentence, so a quoted
@@ -196,13 +182,7 @@ def section_citations(root):
 
     for path in documentation(root):
         rel = path.relative_to(root).as_posix()
-        fenced, body = False, []
-        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if line.lstrip().startswith("```"):
-                fenced = not fenced
-                body.append("")
-                continue
-            body.append("" if fenced else line)
+        body = blank_fences(path.read_text(encoding="utf-8", errors="replace").splitlines())
         for start, text in _paragraphs(body):
             scan_text(rel, start, text)
 
@@ -229,7 +209,7 @@ def unresolved_sections(root):
         key = (citation.target_doc, citation.doc)
         if key not in heading_cache:
             target = resolve_doc(root, citation.target_doc, citation.doc)
-            heading_cache[key] = _headings_of(target) if target else None
+            heading_cache[key] = doc_headings(target) if target else None
         heads = heading_cache[key]
         if heads is None:
             missing.append((citation, f"{citation.target_doc} does not resolve"))

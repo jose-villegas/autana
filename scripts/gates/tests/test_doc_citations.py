@@ -413,6 +413,17 @@ Acid -->|"dissolvable 110"| Metal
             bad = check_doc_index.check_anchors(root)
         self.assertEqual(bad, [])
 
+    def test_anchor_link_to_a_directory_is_not_checked(self):
+        # A directory link ([notes](docs/notes/#top)) resolves to a folder,
+        # not a .md file - it is what reachable() expands to that folder's
+        # README.md, a step check_anchors() does not need to repeat.
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/notes/README.md", "# Notes\n")
+            self.write(root, "docs/Guide.md", "[notes](notes/#top)\n")
+            bad = check_doc_index.check_anchors(root)
+        self.assertEqual(bad, [])
+
     def test_index_reports_documents_no_link_reaches(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
