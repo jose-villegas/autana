@@ -5,6 +5,26 @@ The shared board has one USB serial port. Nothing opens that port except
 pyserial command. The tool finds the board by USB Serial/JTAG VID `0x303A`,
 not a fixed COM number, and opens it at 115200 with DTR and RTS low.
 
+```mermaid
+sequenceDiagram
+    participant App as autana
+    participant Dev as device.py
+    participant Lock as lock file, system temp folder
+    participant Port as the port, VID 0x303A
+    participant Bash as Git for Windows bash.exe
+    participant Flash as build_flash.sh
+
+    App->>Dev: owner, purpose
+    Dev->>Lock: take the lock
+    Dev->>Port: wait for the port
+    Dev->>Dev: open serial, 115200,<br/>DTR/RTS low
+
+    Note over Dev,Flash: flash, batch and selftest - a second lane
+    Dev->>Bash: run under it, never PATH's bash
+    Bash->>Flash: build_flash.sh
+    Flash-->>Dev: refuses without<br/>device.py's lock token
+```
+
 Day-to-day interactive use goes through `tools/autana` ([Autana-CLI.md](Autana-CLI.md))
 - every `autana` command calls `device.py` for the lock and the port. This
 doc covers `device.py` itself: its own command-line shape, for a script
