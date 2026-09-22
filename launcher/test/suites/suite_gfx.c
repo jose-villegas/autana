@@ -4,8 +4,7 @@
  * Covers what a host cannot: real framebuffer memory, real DMA, real I2C and
  * the actual panel. This suite is compiled into a SELFTEST build and runs
  * on-device alongside the portable suites, never into a release image; it is
- * excluded from the host runner because none of it would mean anything on a
- * laptop.
+ * on a host it compiles to nothing, where none of it would mean anything.
  *
  * Guidance on what belongs here:
  *   - reading back what a draw call actually wrote to memory
@@ -18,11 +17,14 @@
  * docs/Testing-Guide.md.
  */
 
+#include "suites.h"
+
+#ifdef DEVICE_BUILD
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "suites.h"
 #include "unity.h"
 
 #include "esp_heap_caps.h"
@@ -1595,5 +1597,12 @@ run_gfx_suite(void) {
     RUN_TEST(test_band_mode_readback_is_the_frame_its_bands_drew);
     RUN_TEST(test_band_mode_readback_waits_out_a_frame_missing_a_band);
 }
+
+#else
+
+void
+run_gfx_suite(void) {}
+
+#endif
 
 SUITE_REGISTER(run_gfx_suite);

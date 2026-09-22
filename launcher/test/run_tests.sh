@@ -79,71 +79,11 @@ HOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES=$(device_profile_require DP_SPIRAM_ALWAYSIN
 # heap_arena.c with every define the real compile has.
 HEAP_ARENA_DEFINES="-DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES=$HOST_HEAP_ARENA_BYTES -DHOST_HEAP_ARENA_PSRAM_BYTES=$HOST_HEAP_ARENA_PSRAM_BYTES -DHOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES=$HOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES"
 
-# The shell's own portable units and their suites. Hardware suites are absent
-# by design - suite_gfx.c would not compile here, which is the point.
-#
-# gfx_dirty.h has no matching .c: it is header-only by necessity (see its
-# own file comment - mark_band() has to stay inlinable into gfx.c), so
-# suite_gfx_dirty.c pulls in its own copy of the whole thing just by
-# including the header, with nothing extra to add to SOURCES for it.
 SOURCES="
 $TEST_DIR/host_main.c
 $TEST_DIR/suites.c
 $TEST_DIR/timing.c
 $TEST_DIR/heap_arena.c
-$TEST_DIR/suites/suite_touch_fsm.c
-$TEST_DIR/suites/suite_gesture.c
-$TEST_DIR/suites/suite_button_fsm.c
-$TEST_DIR/suites/suite_rng.c
-$TEST_DIR/suites/suite_fixed.c
-$TEST_DIR/suites/suite_frame_cost.c
-$TEST_DIR/suites/suite_tilt.c
-$TEST_DIR/suites/suite_tune.c
-$TEST_DIR/suites/suite_console.c
-$TEST_DIR/suites/suite_tween.c
-$TEST_DIR/suites/suite_spring_line.c
-$TEST_DIR/suites/suite_boot_anim.c
-$TEST_DIR/suites/suite_r3d_project.c
-$TEST_DIR/suites/suite_r3d_camera.c
-$TEST_DIR/suites/suite_gfx_dirty.c
-$TEST_DIR/suites/suite_gfx_full_redraw.c
-$TEST_DIR/suites/suite_gfx_present_guard.c
-$TEST_DIR/suites/suite_gfx_fb_guard.c
-$TEST_DIR/suites/suite_gfx_target.c
-$TEST_DIR/suites/suite_gfx_mode.c
-$TEST_DIR/suites/suite_gfx_band.c
-$TEST_DIR/suites/suite_gfx_heal.c
-$TEST_DIR/suites/suite_gfx_indexed.c
-$TEST_DIR/suites/suite_gfx_palette.c
-$TEST_DIR/suites/suite_small3dlib_scissor.c
-$TEST_DIR/suites/suite_gfx_color.c
-$TEST_DIR/suites/suite_gfx_glow.c
-$TEST_DIR/suites/suite_gfx_font.c
-$TEST_DIR/suites/suite_gfx_font_roles.c
-$TEST_DIR/suites/suite_icons.c
-$TEST_DIR/suites/suite_icons_system.c
-$TEST_DIR/suites/suite_ui_style.c
-$TEST_DIR/suites/suite_ui_transform.c
-$TEST_DIR/suites/suite_ui_anchor.c
-$TEST_DIR/suites/suite_control_center_layout.c
-$TEST_DIR/suites/suite_ui_centered_rect.c
-$TEST_DIR/suites/suite_ridge_curve.c
-$TEST_DIR/suites/suite_ridge_motion.c
-$TEST_DIR/suites/suite_ridge_pose.c
-$TEST_DIR/suites/suite_ui_launcher.c
-$TEST_DIR/suites/suite_ui_pointer.c
-$TEST_DIR/suites/suite_ui_pointer_microui.c
-$TEST_DIR/suites/suite_ui_scroll.c
-$TEST_DIR/suites/suite_ui_slider.c
-$TEST_DIR/suites/suite_display.c
-$TEST_DIR/suites/suite_post_ui.c
-$TEST_DIR/suites/suite_panel_clock.c
-$TEST_DIR/suites/suite_screenshot.c
-$TEST_DIR/suites/suite_app_registry.c
-$TEST_DIR/suites/suite_build_id.c
-$TEST_DIR/suites/suite_device_state.c
-$TEST_DIR/suites/suite_job.c
-$TEST_DIR/suites/suite_heap_caps.c
 $MAIN_DIR/app_registry.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/gesture.c
@@ -163,6 +103,12 @@ $MAIN_DIR/gfx/gfx_palette_standard.c
 $MAIN_DIR/../tools/gfx_palette_gen.c
 $TEST_DIR/../components/microui/src/microui.c
 "
+
+for suite_src in "$TEST_DIR"/suites/suite_*.c; do
+    [ -e "$suite_src" ] || continue
+    SOURCES="$SOURCES
+$suite_src"
+done
 
 # App-owned sources, discovered rather than listed, so adding or deleting an
 # app needs no change here.
@@ -288,12 +234,21 @@ UNITY_OBJ="$BUILD_DIR/unity.o"
 # through --wrap at all (a pointer from strdup() arrives at __wrap_free
 # never having been seen by __wrap_malloc), which is why the arena forwards
 # pointers it does not own instead of trusting every free().
+#
+# The sources go through a response file: every path is absolute, and under a
+# long checkout path their total length exceeds Windows' 32K command-line limit. MSYS
+# rewrites /c/... paths on a command line but not inside a file, hence cygpath.
+SOURCES_RSP="$BUILD_DIR/sources.rsp"
+# shellcheck disable=SC2086
+(printf '%s\n' $SOURCES | cygpath -m -f - 2>/dev/null || printf '%s\n' $SOURCES) |
+    sed -e '/^$/d' -e 's/[\\"]/\\&/g' -e 's/.*/"&"/' >"$SOURCES_RSP"
+
 # shellcheck disable=SC2086
 "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
     -I "$TEST_DIR/../components/microui/include" \
     -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
     $HEAP_ARENA_DEFINES \
-    $SOURCES "$UNITY_OBJ" -o "$OUT" \
+    "@$SOURCES_RSP" "$UNITY_OBJ" -o "$OUT" \
     -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm
 
 # --- static stack-frame gate ------------------------------------------------
@@ -310,12 +265,8 @@ UNITY_OBJ="$BUILD_DIR/unity.o"
 # sand.c itself would be a real risk too, but it is not the risk that
 # already panic-looped the board twice (see check_stack_usage.py's header),
 # and widening this to product code is a separate decision. Derived from
-# $SOURCES already assembled above, rather than a fresh glob, so this can
-# only ever compile files already proven to build on a host: suite_gfx.c and
-# suite_ui.c are device-only (real bsp/gfx headers, no host stub) and are
-# already correctly absent from $SOURCES - globbing test/suites/*.c blindly
-# would try to compile them here too and fail for a reason that has nothing
-# to do with stack usage.
+# $SOURCES already assembled above, rather than a fresh glob, so this only
+# compiles files already proven to build on a host.
 SU_DIR="$BUILD_DIR/su"
 rm -rf "$SU_DIR"
 mkdir -p "$SU_DIR"

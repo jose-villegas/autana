@@ -1,14 +1,15 @@
-/*
- * Portable suite: gfx_palette_standard's own data (sizes, known entries)
- * and gfx_palette_gen's two build-time helpers (index map, dither table) -
- * host-only, like the generator itself (tools/gfx_palette_gen.h).
- */
+/* Host-only: no firmware image compiles gfx_palette_standard.c - the
+ * standard palettes and their generator are host-side data. */
 
 #include "suites.h"
+
 #include "unity.h"
 
 #include "gfx/gfx_indexed.h"
 #include "gfx/gfx_palette_standard.h"
+
+#ifndef DEVICE_BUILD
+
 #include "gfx_palette_gen.h"
 
 static void
@@ -234,5 +235,12 @@ run_gfx_palette_suite(void) {
     RUN_TEST(test_dither_checker2_reproduces_an_exact_match_at_every_phase);
     RUN_TEST(test_dither_checker2_is_deterministic);
 }
+
+#else
+
+void
+run_gfx_palette_suite(void) {}
+
+#endif
 
 SUITE_REGISTER(run_gfx_palette_suite);

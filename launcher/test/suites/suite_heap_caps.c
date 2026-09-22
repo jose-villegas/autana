@@ -1,14 +1,14 @@
 /*
- * Portable suite: heap_arena.c's heap_caps_* pools. Internal and PSRAM are
- * independent budgets here the same way MALLOC_CAP_INTERNAL/_SPIRAM keep
- * them independent on the board - an allocation tagged for one must never
- * draw from the other, and one exceeding its own pool must fail exactly
- * like the device would, not spill over.
+ * Host-only: heap_arena.c's heap_caps_* pools - a device build has the real
+ * allocator.
  */
+
+#include "suites.h"
+
+#ifndef DEVICE_BUILD
 
 #include "stubs/esp_heap_caps.h"
 
-#include "suites.h"
 #include "unity.h"
 
 static void
@@ -62,5 +62,12 @@ suite_heap_caps(void) {
     RUN_TEST(test_a_psram_allocation_does_not_consume_internal_budget);
     RUN_TEST(test_a_psram_allocation_past_its_own_budget_fails);
 }
+
+#else
+
+void
+suite_heap_caps(void) {}
+
+#endif
 
 SUITE_REGISTER(suite_heap_caps)
