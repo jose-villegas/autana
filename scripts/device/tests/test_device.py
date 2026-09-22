@@ -61,12 +61,12 @@ class PortWaitTests(unittest.TestCase):
         with self.assertRaises(RuntimeError) as caught:
             device.open_when_free("COM5", 5, self.opener(99), self.sleep, lambda: self.clock[0])
         self.assertIn("COM5", str(caught.exception))
-        self.assertIn("won the lock", str(caught.exception))
+        self.assertIn("wait ran out", str(caught.exception))
 
     def test_reset_reenumeration_reason_reaches_the_timeout(self):
-        with self.assertRaisesRegex(RuntimeError, "to re-enumerate after reset"):
+        with self.assertRaisesRegex(RuntimeError, "re-enumerating after reset"):
             device.open_when_free("COM5", 0, self.opener(1), self.sleep,
-                                  lambda: self.clock[0], "to re-enumerate after reset")
+                                  lambda: self.clock[0], "re-enumerating after reset")
 
 
 class FakeConnection:
@@ -969,7 +969,7 @@ class ResetCommandTests(unittest.TestCase):
         reset.assert_called_once_with("COM5")
         store.release.assert_called_once_with("COM5", "token")
         self.assertEqual(open_when_free.call_count, 3)
-        open_when_free.assert_called_with("COM5", mock.ANY, reason="to re-enumerate after reset")
+        open_when_free.assert_called_with("COM5", mock.ANY, reason="re-enumerating after reset")
         self.assertEqual(entry["command"], "reset")
         self.assertEqual(entry["reason"], "complete")
 
