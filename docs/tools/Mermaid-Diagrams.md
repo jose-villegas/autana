@@ -47,6 +47,6 @@ nothing else here can affect.
 ## Tests
 
 `scripts/gates/tests/test_check_mermaid.mjs` covers the pure parts - fence
-extraction, the line-number rewrite, and the Windows argument-quoting helper
-- with `node --test`, no `mmdc` or `git` involved. `scripts/run-tool-tests.sh`
-runs it alongside the Python tool suites.
+extraction, the line-number rewrite, and the Windows argument-quoting
+helper - with `node --test`, no `mmdc` or `git` involved.
+`scripts/run-tool-tests.sh` runs it alongside the Python tool suites.

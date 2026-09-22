@@ -72,11 +72,11 @@ under `CONFIG_LAUNCHER_SELFTEST` — see `main/CMakeLists.txt`).
 
 ## A diagnostics build can be scoped
 
-A diagnostics build compiles **every** suite. A full run takes tens of
-minutes; most of it is the sand frame-budget suite. Perf-scoped compiles
-only the suites and files the perf scope declares - see `main/CMakeLists.txt`
-- so a sand performance capture, which reads a dozen rows out of the full
-run, does not pay for every other suite too.
+A diagnostics build compiles **every** suite, and a full run takes the time
+[Testing-Guide.md](Testing-Guide.md#recommended-practice) gives.
+Perf-scoped compiles only the suites and files `main/CMakeLists.txt`
+declares for it, so a sand performance capture, which reads a dozen rows
+out of the full run, does not pay for every other suite too.
 
 Scoping buys run time and build time, not memory: the framebuffer lives in
 PSRAM, so the `.bss` a dropped suite takes with it frees nothing a capture
