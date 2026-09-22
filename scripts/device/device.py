@@ -17,11 +17,15 @@ from pathlib import Path
 import device_lock
 import device_report
 
+# launcher/tools/ holds screenshot.py's decoder and espressif.py's Python
+# lookup, both used below - one insert here rather than one per call site.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools"))
+from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
+
 
 BAUD = 115200
 BUILD_ID = re.compile(rb"BUILD_ID=([^\s\r\n]+)")
 SUITE_RESULT = re.compile(rb":\d+:.*:(PASS|FAIL)(?:\r?$|:)", re.MULTILINE)
-IDF_PYTHON = Path(r"C:\Users\ville\.espressif\python_env\idf5.5_py3.14_env\Scripts\python.exe")
 
 # Suite/listen captures run 13-131 KB and a flash log ~270 KB; only a capture
 # that lands on the default path (not an explicit --out) is ever gzipped, and
@@ -31,7 +35,7 @@ SLUG_UNSAFE = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
 def python_with_pyserial():
-    return str(IDF_PYTHON) if IDF_PYTHON.is_file() else sys.executable
+    return idf_python()
 
 
 def git_bash():
@@ -339,13 +343,10 @@ CRASH_ADDRESS_RE = re.compile(rb"0x4[0-9a-fA-F]{7}")
 
 def toolchain_addr2line():
     """The xtensa-esp32s3-elf-addr2line beside ESP-IDF's own toolchain,
-    found under IDF_TOOLS_PATH (default ~/.espressif) same as ESP-IDF's own
-    install script uses, or None when it is not installed. Sorted
+    found under espressif_tools_root(), or None when it is not installed. Sorted
     reverse-alphabetically so the newest of several installed toolchain
     versions wins."""
-    tools_root = Path(os.environ["IDF_TOOLS_PATH"]) if os.environ.get("IDF_TOOLS_PATH") \
-        else Path.home() / ".espressif"
-    root = tools_root / "tools" / "xtensa-esp-elf"
+    root = espressif_tools_root() / "tools" / "xtensa-esp-elf"
     for bin_dir in sorted(root.glob("*/*/bin"), reverse=True):
         for name in ("xtensa-esp32s3-elf-addr2line.exe", "xtensa-esp32s3-elf-addr2line"):
             candidate = bin_dir / name
@@ -685,9 +686,6 @@ def screenshot(args, store, port):
     send()'s own docstring gives - a screenshot is a look at the screen, not
     evidence of a run.
     """
-    tools_dir = Path(__file__).resolve().parents[2] / "launcher" / "tools"
-    if str(tools_dir) not in sys.path:
-        sys.path.insert(0, str(tools_dir))
     import screenshot as screenshot_tool
 
     out = args.out or str(Path.cwd() / ("screenshot_" + now().strftime("%Y%m%d_%H%M%S") + ".png"))

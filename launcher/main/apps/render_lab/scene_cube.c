@@ -12,7 +12,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "../../gfx/gfx.h"
+#include "gfx/gfx.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
 

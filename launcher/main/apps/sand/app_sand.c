@@ -47,16 +47,14 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 
-#include "../../app.h"
-#include "../../build_variant.h"
-#include "../../display/display.h"
-#include "../../gfx/gfx.h"
-#include "../../gfx/gfx_font_roles.h"
-#include "../../input/imu.h"
-#include "../../input/imu_rotation.h"
-#include "../../ui/ui.h"
-#include "../../ui/ui_anchor.h"
+#include "app.h"
+#include "build_variant.h"
+#include "display/display.h"
+#include "gfx/gfx.h"
+#include "gfx/gfx_font_roles.h"
 #include "icons_sand.h"
+#include "input/imu.h"
+#include "input/imu_rotation.h"
 #include "input/tilt.h"
 #include "material_palette.h"
 #include "palette.h"
@@ -71,6 +69,8 @@
 #include "ui/brush_screen.h"
 #include "ui/palette_screen.h"
 #include "ui/sand_menu_screen.h"
+#include "ui/ui.h"
+#include "ui/ui_anchor.h"
 #include "util/intmath.h" /* im_abs(), im_len() - see
                              * update_local_depth_gravity() below, which
                              * projects gravity's own direction into the

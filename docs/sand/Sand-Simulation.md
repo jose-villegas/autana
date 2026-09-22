@@ -1438,7 +1438,6 @@ serial arm for the wrong reason.
 There is no development overlay for chunk boundaries: nothing stalls at one,
 so there would be nothing to draw.
 
-
 ### Liquid cross-flow chunks
 
 **The shipped step runs cross-flow on one core.** Measured on the board, its

@@ -249,10 +249,10 @@ test_the_soak_only_skip_hash_survives_ambient_two_core_state(void) {
 
 #ifdef DEVICE_BUILD
 #include <stdlib.h>
-#include "../../gfx/gfx.h"
 #include "esp_cpu.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "gfx/gfx.h"
 #include "row_runs.h"
 #include "xtensa/xt_perf_consts.h"
 #include "xtensa_perfmon_access.h"
@@ -264,9 +264,9 @@ static int perf_unmet_targets;
 static bool gas_ab_reporting;
 
 /* Ceilings are worst + max(spread, 2% of worst) across 5 two-core-pinned S3
- * portrait captures, 2026-09-16, build a195574e7177-dirty-diag. Landscape
+ * portrait captures, build a195574e7177-dirty-diag. Landscape
  * costs 17-37% more; not covered. The present-cost ceilings follow the same rule
- * across 3 captures with the panel clock pinned, 2026-09-17, build
+ * across 3 captures with the panel clock pinned, build
  * 8e32ebfe3968-diag. */
 
 static void
