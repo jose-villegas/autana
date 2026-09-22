@@ -11,9 +11,9 @@
  * render_lab_band_mode asks for.
  *
  * The accumulator is allocated, not a static: a permanent ~1 MB .bss entry
- * has twice eaten this project's dev-build heap margin already. A failed
- * allocation falls back to rt_path_schedule_advance()'s own direct-light-only
- * path rather than losing the scene.
+ * would eat the dev build's heap margin. A failed allocation falls back to
+ * rt_path_schedule_advance()'s own direct-light-only path rather than
+ * losing the scene.
  */
 
 #include <assert.h>
