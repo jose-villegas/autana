@@ -1,14 +1,12 @@
 # Autana: a rendering roadmap for the ESP32-S3
 
-**Status**: proposal, first written 2026-09-04, rewritten for the
-ESP32-S3-only target 2026-09-13. Board bring-up (the Waveshare
-ESP32-S3-Touch-AMOLED-1.8) has landed; nothing in the phases below is
-built. It sets the order of investment for turning this shell into a
+**Status**: proposal. A node drawn as built exists in the tree; the rest
+do not. It sets the order of investment for turning this shell into a
 small game engine ("Autana"), starting from where the two showcase apps
-stand today: `sand` proves pixel pushing, `cube` proves real-time 3D. The
-three target games it plans towards are the ones named by the maintainer:
-a gyro-and-buttons FPS, a rolling-ball game with physics and lighting, and
-a platformer with parallax and 2D lighting.
+stand today: `sand` proves pixel pushing, `render_lab` proves real-time
+3D. The three target games it plans towards are the ones named by the
+maintainer: a gyro-and-buttons FPS, a rolling-ball game with physics and
+lighting, and a platformer with parallax and 2D lighting.
 
 Every number below that is not marked *estimate* or *unmeasured* is
 measured, and its source is named. The house rule from
@@ -35,6 +33,7 @@ flowchart LR
   classDef p2 fill:#e76f51,color:#fff,stroke:none
   classDef game fill:#f4a261,color:#000,stroke:none
   classDef side fill:#adb5bd,color:#000,stroke:none
+  classDef done stroke:#06d6a0,stroke-width:4px
 
   subgraph P0["Phase 0 - attribution"]
     frameTime["Frame-time row<br/>sim + draw + present"]:::p0
@@ -62,7 +61,6 @@ flowchart LR
   sandInstance["Sand core as an instance:<br/>any size, several alive"]:::side
   reactionMatrix["Reaction pair-matrix"]:::side
   tiltShake["Tilt / shake library"]:::side
-  sandPerf5["Sand perf round 5"]:::side
 
   frameTime --> busRoot
   frameTime --> corePresent
@@ -80,39 +78,52 @@ flowchart LR
   tiltShake --> platformer
   reactionMatrix --> materialData
   bandRing -.->|scrolling track| platformer
-  sandPerf5 --> tiltShake
   hostHarness -.-> rasterizer
   hostHarness -.-> levelEditor
   busRoot -.-> raycaster
   corePresent -.-> platformer
+
+  class frameTime,cubePerf,busRoot,corePresent,bandRing,hostHarness,s3lExtract,tiltShake done
 ```
 
-### Where a frame's time goes, today, with core-1 present, and with the band ring
+The green-bordered nodes above are already in the tree, not proposed:
+`frameTime` (`util/frame_cost.{h,c}`), `cubePerf`
+(`apps/render_lab/tools/report_cube_perf.sh`), `busRoot` (`GFX_QSPI_HZ`,
+`gfx_heal.h`), `corePresent` (the present task pinned to core 1,
+`gfx_present_begin()`/`gfx_present_wait()`), `bandRing` (`gfx/gfx_band.h`,
+already what render lab draws into), `hostHarness`
+(`docs/tools/Render-Harness.md`'s `*_render_host.sh` + `render_diff.sh`),
+`s3lExtract` (`render/r3d_project.h`, `r3d_camera.h`, `r3d_ray.h`), and
+`tiltShake` (`input/tilt.{h,c}`, a pure, host-tested reader of down,
+strength and shake that the shell and apps both call).
 
-Today the shell runs `frame()` then `gfx_present()`, and present blocks
-until the last DMA transfer drains — the CPU idles for the whole present.
-Decision B (2026-09-13, revised) is "read PSRAM, never write it in bulk":
-retained apps (sand, the UI) get one retained framebuffer in PSRAM that
-core 1 only *reads* while it presents, in parallel with core 0 running the
-next update; full-redraw renderers (the 3D renderer, raycaster, image
-kernels) render into an internal-SRAM band ring and never write PSRAM at
-all. A PSRAM-resident double buffer with a catch-up copy was built and
-measured instead: the copy cost 6-15 ms per frame at ~22 MB/s and sand fell
-from ~17-20 to 11-12 drawn fps (device, 2026-09-13), so it is parked, not
-shipped. Present today copies full-width strips out of the PSRAM
-framebuffer into two internal DMA buffers and sends them at 80 MHz QSPI:
-~10.2-10.9 ms per full frame (device, 2026-09-13). Render/rasterize
-durations below are shown only for shape, since no app-general render
-number exists yet (Phase 0) and the band ring has not been built.
+### Where a frame's time goes, by which path an app takes
+
+An app without `update()` gets a synchronous present: `frame()` runs, then
+`gfx_present()` blocks until the last DMA transfer drains - the CPU idles
+for the whole present. An app that sets `update()` instead overlaps it:
+core 1 only *reads* a retained PSRAM framebuffer while it presents, in
+parallel with core 0 running the next `update()` - decision B, "read
+PSRAM, never write it in bulk". A PSRAM-resident double buffer with a
+catch-up copy was measured instead of that: the copy cost 6-15 ms per
+frame at ~22 MB/s and sand fell from ~17-20 to 11-12 drawn fps, which is
+why retained apps read one buffer rather than swap two. A full-redraw
+renderer (render lab) takes a third path instead of either: it renders
+into an internal-SRAM band ring and never writes PSRAM at all. Present
+copies full-width strips out of the PSRAM framebuffer into two internal
+DMA buffers and sends them at 80 MHz QSPI: ~10.2-10.9 ms per full frame
+(device measurement). Render/rasterize durations below are shape only;
+`util/frame_cost` reports an app's own.
 
 ```
 time (ms) 0         10        20        30        40
           |---------|---------|---------|---------|
-today     [ update + draw, shape only    ][ present ~10.2-10.9 measured ]
+without update() (most apps, the launcher)
+          [ frame(), shape only            ][ present ~10.2-10.9 measured ]
 core 0    busy ────────────────────────── idle while DMA drains ────────
-                                           (serial: update+draw, then present)
+                                           (serial: frame(), then present)
 
-core-1 present + sim/update overlap (retained apps: sand, UI)
+with update() - core-1 present overlaps sim/update (sand, UI)
 core 0    [ update N+1, shape only   ][ draw N+1, waits on core 1 ]
 core 1    [ present N: read PSRAM + send, ~10.2-10.9 measured     ]
                                         frame time -> max(update+draw,
@@ -121,7 +132,7 @@ core 1    [ present N: read PSRAM + send, ~10.2-10.9 measured     ]
                                         retained buffer, so there is no
                                         second buffer and no copy
 
-internal-SRAM band ring (full-redraw renderers: r3d, raycaster)
+internal-SRAM band ring (full-redraw renderers: render lab today, r3d/raycaster later)
 core 0    [ render band k+1, shape only ][ render band k+2 ]...
 core 1         [ send band k, shape only ][ send band k+1 ]...
                 render/send durations are shape only; PSRAM is never
@@ -447,7 +458,7 @@ replace it, chosen by app kind:
    rendered and sent in turn, PSRAM never written. **The ring itself is built** - `gfx_mode_enter()`
    grants `GFX_LAYOUT_BANDS`, `gfx_band_next()`/`gfx_band_submit()` (`gfx.h`,
    `gfx_band.h`) hand out and send one band at a time, waiting only on the
-   previous band's transfer - and the cube app ports onto it by transforming
+   previous band's transfer - and render_lab's cube scene ports onto it by transforming
    and depth-sorting the scene once per frame, binning each triangle by its
    own screen-space row range, and per band drawing only the triangles that
    overlap it, scissored to that band's rows by a small hook added to
@@ -659,8 +670,7 @@ buys at 60 fps:
 - Floor and ceiling casting is the expensive optional: per-pixel affine
   on horizontal spans. Start with flat colours and a dithered distance
   gradient; add real floor texturing once the numbers say there is room.
-- Gyro drives look (the tilt/shake library extraction is the
-  prerequisite); the two buttons move and act. Touch can be an
+- Gyro drives look through `input/tilt.h`; the two buttons move and act. Touch can be an
   on-screen stick if two buttons prove too few.
 
 The band ring (3.3) fits a raycaster naturally: columns are independent,

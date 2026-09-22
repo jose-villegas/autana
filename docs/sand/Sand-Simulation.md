@@ -32,11 +32,11 @@ shrinks or grows with it:
 
 ULTRA's 41,216-byte grid is, in `docs/notes/Board-and-Memory.md`'s own
 words, "the largest single contiguous allocation of interest" the sand app
-makes. It is unchanged since this board moved to a PSRAM framebuffer.
+makes.
 
-That move is worth stating plainly: the 322 KiB framebuffer now lives
-entirely in PSRAM (`BOARD_FRAMEBUFFER_CAPS`, `board.h`) and no longer
-competes with the sand grid, or anything else, for internal SRAM.
+The 322 KiB framebuffer lives entirely in PSRAM (`BOARD_FRAMEBUFFER_CAPS`,
+`board.h`), so it does not compete with the sand grid, or anything else,
+for internal SRAM.
 
 Measured internal (non-PSRAM) free heap after `gfx_init()` is 130,635
 bytes, in blocks of at most 51,200. A two-byte-per-cell grid at ULTRA
@@ -274,11 +274,11 @@ Almost nothing is spent on the five downward-ish directions: a particle
 that drifts down does so bluntly, and giving most of the ring a downward
 component reads as smoke *sinking* rather than swirling.
 
-**Why a walk rather than the inverted powder mover.** Gas used to reuse
-`try_fall_or_scatter()`/`try_slide()` with the direction negated - the
-water model reflected. That mover is exhaustive: it tries each candidate
-in turn, so its cost rises exactly when the grid is full and every
-candidate is blocked.
+**Why a walk rather than the inverted powder mover.** Reusing
+`try_fall_or_scatter()`/`try_slide()` with the direction negated would
+reflect the water model, but that mover is exhaustive: it tries each
+candidate in turn, so its cost rises exactly when the grid is full and
+every candidate is blocked.
 
 The walk is O(1) per cell and looks better, since real hot gas is chaotic
 rather than uniformly upward. The exhaustive mover is still reachable
@@ -406,18 +406,40 @@ stone.
 ### Gunpowder: a fuse, not a detonator
 
 Gunpowder catches and burns like wood, and it is the burning-out that can
-end in a blast - there is no separate detonator mechanism.
+end in a blast - there is no separate detonator mechanism. The state a
+cell moves through, all recorded in its own moisture/burn nibble rather
+than a separate flag:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Dry: painted
+    Dry --> Damp: water beside it,<br/>soaks roll
+    Damp --> Soaked: wets further,<br/>up to moist_max
+    Soaked --> Damp: dries - ambient,<br/>or heat while moist
+    Damp --> Dry: dries further
+    Dry --> Lit: flammability roll,<br/>or heat, once fully dry
+    Damp --> Lit: flammability roll,<br/>damped by moisture
+    Soaked --> Oil: soaked_chance roll
+    Lit --> Lit: burn_decay counts down
+    Lit --> Soaked: water quenches
+    Lit --> Blast: burn-out,<br/>lit 2x2 + impulse buffer live<br/>+ cooldown clear
+    Lit --> Fire: burn-out,<br/>otherwise
+```
+
+Painted gunpowder starts `Dry` (`GUNPOWDER_CELL(0)`, `app_sand.c`). `Damp`
+stands for moisture 1-3 and `Soaked` for `moist_max`; **Moisture damps
+ignition** below gives each level's odds.
 
 **Lighting the fuse.** A flame or hot lava touching dry powder ignites it
 in the usual way (`flammability` 200, so it catches almost every time it
 is rolled). Heat alone, with nothing burning yet, can also reach the same
 trigger from the heat-transform path - lava resting beside it, or heat
-conducted through stone or metal, once the wet stage below has steamed
-any moisture off.
-
-Either path writes code 7, the cell's **lit** state (`GUNPOWDER_LIT`), in
-place of the plain `MAT_FIRE` a less flammable fuel would get. A lit cell
-is a heat source in its own right, exactly like a burning log:
+conducted through stone or metal - but only once the cell is fully dry;
+while it still holds moisture, the same heat dries it one level instead of
+igniting it. Either ignition path writes code 7, the cell's **lit** state
+(`GUNPOWDER_LIT`), in place of the plain `MAT_FIRE` a less flammable fuel
+would get. A lit cell is a heat source in its own right, exactly like a
+burning log:
 
 - it ignites neighbouring dry powder, so a trail burns along, cell by
   cell
@@ -463,12 +485,8 @@ to - they are fire or flying grains by their own burn-out - which helps
 the spreading-out along independently. That is a side effect of the
 geometry, though, not what bounds the cost: the cooldown does that.
 
-The 2x2 rule started as a fully-lit 3x3 and was loosened after device
-testing: with independent burn-out rolls, the neighbours lit before a cell
-are usually already fire by the time it goes, and blasts became rare
-enough to look broken. Two designs before that were tried and measured no
-cheaper: an immediate per-cell blast on ignition, and a boundary-only
-check. The 2x2 fuse model is what shipped.
+The trigger is a lit 2x2 because burn-out rolls are independent: a larger
+block is rarely still all lit at once, and blasts would almost never fire.
 
 **Moisture damps ignition.** For any `dries != 0` material, the ignition
 roll is scaled down per moisture level: `f >>= SAND_DAMP_IGNITION_SHIFT *
@@ -481,14 +499,13 @@ steam (the same wet-earth stage `try_heat_transform_given()` already uses
 for dirt), or simple time (`dries = 1`, half dirt's own rate of 2 -
 powder holds water longer than soil does).
 
-A saturated cell additionally has a small chance per step
-(`soaked_to`/`soaked_chance`, 16 in 256) to give up being powder
+A saturated cell also rolls, one step in `SOAKED_CONVERT_PERIOD`
+(`sand_reactions.c`), at `soaked_chance` to give up being powder
 altogether and become a full `MAT_OIL` cell instead - the same "one grain
 plus its water becomes one liquid cell" shape other saturation reactions
 already use.
 
-That rate was tuned once against a measured target: on pre-saturated
-powder sitting under standing water, the board took 1,542 steps to lose
+Measured on pre-saturated powder sitting under standing water: the board took 1,542 steps to lose
 half its powder to oil at a chance of 8, and 835 steps at 16 - the
 shipped value.
 
@@ -496,11 +513,10 @@ Acid dissolves gunpowder at the same rate it dissolves sand
 (`dissolvable = 200`); nothing about being explosive changes how a cell
 disappears once acid is what is touching it.
 
-**Gunpowder is not soil.** Every plant/root site that used to test
-`dries != 0` to mean "this is ground a root can use" now tests a separate
-field, `reaction_t.soil`, instead. Dirt sets `soil = 1`; gunpowder does
-not, even though it has a moisture codec of its own and would otherwise
-match every one of those checks.
+**Gunpowder is not soil.** Plant and root sites test `reaction_t.soil`,
+not `dries != 0`, to mean ground a root can use. Dirt sets `soil = 1`;
+gunpowder does not, even though it has a moisture codec of its own and
+would otherwise match every one of those checks.
 
 Moisture diffusion between same-species cells and percolation still read
 `dries`, unchanged - "can this variant mean wetness" and "is this ground"
@@ -1087,13 +1103,10 @@ growth, and still correct); it is root and tree genuinely competing for
 the same scarce moisture, first roll wins.
 
 `test_a_buried_root_does_not_cut_off_the_water_below_it`
-(`suite_sand_roots.c`) used to rest on a single row of water directly
-under the root, and the growth rule made that scene racy against this
-exact competition (measured: failed, deterministically, for the suite's
-fixed seed). The fix was a deeper wet reserve below the root, not a
-change to the mechanism, since a real root system does not get to
-consume literally every cell of water below it before the tree it
-belongs to can use any.
+(`suite_sand_roots.c`) rests the root over a deeper wet reserve, because a
+single row of water under it races against this exact competition - a
+real root system does not get to consume literally every cell of water
+below it before the tree it belongs to can use any.
 
 ## Performance discipline
 
@@ -1151,7 +1164,7 @@ every step" and the numbers above:
 
 `materials[]` is `const` data in flash, read through this chip's 32 KB
 data cache - kept separate from the 16 KB instruction cache the sweep's
-own code lives in, so the two no longer evict each other. A cache miss on
+own code lives in, so the two do not evict each other. A cache miss on
 a cold line is still a real cost inside the tightest loop in the project,
 which is what the bitmask above avoids paying per cell. See
 [Optimization-Playbook.md](../notes/Optimization-Playbook.md#know-what-kind-of-memory-you-actually-have)
@@ -1166,9 +1179,8 @@ sweep order: `sand_t.rng` is one `xorshift32` word, drawn from a
 data-dependent number of times per cell by every pass.
 
 Two cores drawing from it at once race on that word; the fix is to stop
-sharing it - see [The draw](#the-draw) below - which means the split can
-no longer promise the byte-identical output the project held itself to
-until this feature.
+sharing it - see [The draw](#the-draw) below - which means the split does
+not promise byte-identical output.
 
 What it promises instead is **determinism**: the same seed gives the same
 board every time, on any core, in any order, because no draw depends on
@@ -1290,32 +1302,42 @@ keeps rather than tracking anything second.
 ### Whether a pass is shared at all
 
 The same question answers whether a pass is worth splitting in the first
-place. `sand_chunk_pass_ready()` charges each chunk of that pass's plan the
-cells it covers, or nothing where `blocks_settled_over()` says it is asleep,
-and feeds those to `sand_chunk_makespan()` - the runner's own rule with a
-number in place of the work. A pass is shared only when two things hold:
+place. `sand_chunk_pass_ready()` runs a chain of early-outs before ever
+charging a chunk plan's cells against `sand_chunk_makespan()` - the
+runner's own rule with a number in place of the work, fed the cells each
+chunk covers, or nothing where `blocks_settled_over()` says it is asleep:
 
-- at least `SAND_CHUNK_SPLIT_MIN_AWAKE_CELLS` are awake, because the
-  prepare, merge, dispatch and join are paid whatever the lanes find: a
-  settled board steps in 95 us serial and 148 split at ULTRA, 56 and 110 at
-  HIGH, 39 and 109 at NORMAL;
-- and the modelled two-lane span comes in under
-  `SAND_CHUNK_SPLIT_SPAN_SHARE_PERCENT` of walking those chunks one after
-  another, because the chunk walk itself costs 1.09 to 1.28 of the row-major
-  sweep before either lane has done anything.
+```mermaid
+flowchart TD
+    Start(["sand_chunk_pass_ready()"]) --> Lane{"two cores on, pass in mask,<br/>lane scratch present?"}
+    Lane -->|no| Serial(["serial row-major path"])
+    Lane -->|yes| Cells{"grid at least<br/>SAND_CHUNK_SPLIT_MIN_CELLS?"}
+    Cells -->|no| Serial
+    Cells -->|yes| Plan{"sand_chunk_plan(): at least two<br/>chunks each way, at most<br/>SAND_CHUNKS_MAX?"}
+    Plan -->|no| Serial
+    Plan -->|yes| Override{"sand_chunk_share_for_test()<br/>override set?"}
+    Override -->|yes| Forced(["whatever the override says"])
+    Override -->|no| Awake{"awake cells at least<br/>SAND_CHUNK_SPLIT_MIN_AWAKE_CELLS?"}
+    Awake -->|no| Serial
+    Awake -->|yes| Span{"modelled two-lane span at or below<br/>SAND_CHUNK_SPLIT_SPAN_SHARE_PERCENT%<br/>of walking the chunks one after another?"}
+    Span -->|no| Serial
+    Span -->|yes| Shared(["shared, two lanes"])
+```
 
-Under either, the pass takes its serial row-major path - not a one-lane walk
-of the schedule, which would pay the chunk order for nothing. The model
+Both threshold checks exist because splitting has its own fixed cost: the
+prepare, merge, dispatch and join are paid whatever the lanes find - a
+settled board steps in 95 us serial and 148 split at ULTRA, 56 and 110 at
+HIGH, 39 and 109 at NORMAL - and the chunk walk itself costs 1.09 to 1.28
+of the row-major sweep before either lane has done anything. The model
 agrees with the board on the shape of the answer: a two-column cut across a
 y-travelling pass spans 100 per cent, and that cut measured 1.19 of one core
 in portrait, while every cut that models about 50 per cent measured a win.
 
-Both conditions are a pure function of block state at the pass's start, so
-the host and the board decide alike and so does either core.
-`sand_chunk_share_for_test()` pins the decision either way, which is how a
-test that means to measure the split path says so; `sand_split_dispatches`
-counts the passes that were actually shared, one counter per pass, which is
-how it checks it was heard and which pass heard it.
+Every check is a pure function of block state at the pass's start, so the
+host and the board decide alike and so does either core.
+`sand_split_dispatches` counts the passes that were actually shared, one
+counter per pass, which is how a test checks the override was heard and
+which pass heard it.
 
 ### The schedule: downstream chunks first
 
@@ -1325,10 +1347,25 @@ a pass hands only its travel direction, a per-chunk function and its own
 state. `sand_chunk_order()` (`sand_chunk_sched.[ch]`) counts from the
 downstream end of that direction, so the chunk holding a move's destination is
 settled by the time the source chunk runs - the same reason a serial pass runs
-against travel, one level up. Within a line across travel, the shape a pile or
-pool surface takes, it alternates by the line index's parity: no move crosses
-a border inside such a line, so alternating is what lets both lanes work it
-instead of queueing on one chain.
+against travel, one level up. A gravity-down pass on a 4x3 chunk grid, at
+phase 0 (an even `step_phase`), ranks like this (`rank:lane`, lane = the
+rank's parity):
+
+```
+gravity
+  |
+  v
+
+row 0 (top)      8:0  10:0   9:1  11:1
+row 1            4:0   6:0   5:1   7:1
+row 2 (bottom)   0:0   2:0   1:1   3:1
+                col0  col1  col2  col3
+```
+
+Rank counts up from the bottom row, the downstream end for gravity-down.
+Within one row, the phase-selected column parity is pushed before the
+other, so both lanes get work inside that row instead of one lane racing
+ahead and stalling on the other.
 
 Two lanes walk that order, lane 0 from position 0 and lane 1 from position 1,
 each advancing by two. A chunk waits until every 8-neighbour ranked ahead of
@@ -1642,9 +1679,10 @@ flowchart TB
     ROW --> GRAIN["step_one_grain()<br/><i>once per grain in the row</i>"]
 
     GRAIN -->|"static or gas"| SKIP(("nothing to do"))
-    GRAIN -->|"liquid"| LIQ["move_liquid_grain()<br/><i>sand_liquid_move.h</i>"]
-    GRAIN -->|"powder, unblocked"| FALL["try_fall_or_scatter()"]
-    GRAIN -->|"blocked, or shaken"| SLIDE["try_slide()"]
+    GRAIN -->|"liquid"| LIQSTEP["step_one_liquid_grain()"]
+    LIQSTEP --> LIQ["move_liquid_grain()<br/><i>sand_liquid_move.h</i>"]
+    GRAIN -->|"powder, unblocked"| FALL["try_fall_or_scatter_impl()"]
+    GRAIN -->|"blocked, or shaken"| SLIDE["try_slide_impl()"]
 
     FALL --> SCATTER["try_scatter()<br/><i>drift sideways, or lag</i>"]
     FALL -.->|"fall itself blocked"| SLIDE
@@ -1653,18 +1691,21 @@ flowchart TB
     SLIDE --> PAIR["try_slide_pair()<br/><i>friction, then either slide</i>"]
 ```
 
-The cross-flow pass, per liquid cell:
+The cross-flow pass, per liquid cell - three ordered early-outs, cheapest
+first:
 
 ```mermaid
 flowchart TB
-    LIQSTEP["sand_step_liquids()<br/><i>after the main sweep finishes</i>"] --> EQ["equalise_liquids()"]
+    LIQSTEP2["sand_step_liquids()<br/><i>after the main sweep finishes</i>"] --> EQ["equalise_liquids()"]
 
     EQ --> EROW["equalise_one_row()<br/><i>once per row that holds liquid</i>"]
     EROW --> ECELL["equalise_one_cell()<br/><i>once per liquid cell</i>"]
 
-    ECELL --> ROOM["has_room_below()<br/><i>the common case - falls in the<br/>main sweep instead, nothing to do here</i>"]
-    ECELL --> LOWER["neighbour_is_lower()<br/><i>next commonest - level already</i>"]
-    ECELL --> FIND["find_shallowest()<br/><i>only reached along a real imbalance</i>"]
+    ECELL --> ROOM{"has_room_below()?<br/><i>the common case</i>"}
+    ROOM -->|yes| ROOMDONE(("falls in the main<br/>sweep instead"))
+    ROOM -->|no| LOWER{"neighbour_is_lower()?<br/><i>next commonest</i>"}
+    LOWER -->|yes| LOWERDONE(("already level"))
+    LOWER -->|no| FIND["find_shallowest()<br/><i>only reached along a real imbalance</i>"]
 ```
 
 `has_room_below()`, `neighbour_is_lower()`, `find_shallowest()` and
