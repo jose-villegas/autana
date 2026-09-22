@@ -42,7 +42,7 @@ class StyleAuditTest(unittest.TestCase):
     def test_a_bare_digit_led_tracker_id_is_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.write(root, "docs/Guide.md", "See autana-zq7 for the follow-up.\n")
+            self.write(root, "docs/Guide.md", "See autana-9qz for the follow-up.\n")
             self.commit(root, "docs")
             findings = self.rule_hits(root, "TRACKER-REF")
         self.assertEqual(len(findings), 1)
