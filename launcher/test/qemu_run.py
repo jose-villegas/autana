@@ -340,7 +340,8 @@ def main(argv):
                         help="leave this touch sample in place, in panel "
                              "coordinates (repeatable, in order); needs a "
                              "CONFIG_LAUNCHER_QEMU image, where no controller "
-                             "answers and a stand-in reports it instead")
+                             "answers and the injected sample is all the polling "
+                             "task has to read")
     parser.add_argument("--do", action="append", default=[], metavar="ACTION",
                         help="one step, in order (repeatable): 'suite NAME', "
                              "'tap X Y', 'swipe X0 Y0 X1 Y1', 'touch down|up "

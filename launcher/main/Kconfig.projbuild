@@ -88,10 +88,9 @@ menu "Launcher"
             instead: a strip counts as sent once its transfer time at the
             panel clock has passed, and the framebuffer, the present task
             and everything drawn through them run as they do on the board.
-            A missing touch controller is likewise replaced by one that
-            reports what touch_inject() sets, and a missing IMU by one that
-            reports what imu_inject() sets; the console listener takes TOUCH
-            and IMU lines for both.
+            In a development build an injected touch sample outranks the
+            controller until released. A missing IMU returns what
+            imu_inject() sets.
 
             Set only by sdkconfig.defaults.qemu, which also carries the
             flash and console settings QEMU needs. On a board that

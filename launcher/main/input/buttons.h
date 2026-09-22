@@ -73,5 +73,7 @@ typedef enum {
     BUTTONS_INJECT_POWER,
 } buttons_inject_button_t;
 
+/* Raises one edge on the next buttons_read(): `held` for a long press,
+ * `pressed` for a short one. */
 void buttons_inject(buttons_inject_button_t button, bool held);
 #endif

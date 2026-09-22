@@ -1,8 +1,7 @@
 /*
- * console_inject_parse - reading a TOUCH or IMU verb's args, the two
- * CONFIG_LAUNCHER_QEMU console verbs a host script uses to stand in for
- * hardware QEMU has none of (see console_inject.c). Pure and portable: no
- * verb dispatch, no controller, just two lines' worth of sscanf().
+ * console_inject_parse - reading the args of the verbs that stand in for
+ * touch, the IMU and the board buttons (see console_inject.c). Pure and
+ * portable: no verb dispatch, no controller, just sscanf() and bounds.
  */
 #pragma once
 
@@ -56,14 +55,7 @@ console_imu_parse(const char* args, int* ax, int* ay, int* az) {
     return true;
 }
 
-typedef enum {
-    CONSOLE_TOUCH_GESTURE_TAP,
-    CONSOLE_TOUCH_GESTURE_PRESS,
-    CONSOLE_TOUCH_GESTURE_DRAG,
-} console_touch_gesture_kind_t;
-
 typedef struct {
-    console_touch_gesture_kind_t kind;
     int x0, y0;
     int x1, y1;
     uint32_t ms;
@@ -74,28 +66,27 @@ typedef struct {
 #define CONSOLE_GESTURE_MAX_MS   60000u
 
 static inline bool
-console_gesture_duration_parse(const char* args, int* x, int* y, uint32_t default_ms, console_touch_gesture_t* out,
-                               console_touch_gesture_kind_t kind) {
+console_press_parse(const char* args, console_touch_gesture_t* out) {
+    int x, y;
     unsigned ms = 0;
     char trailing;
-    const int fields = sscanf(args, "%d %d %u %c", x, y, &ms, &trailing);
-    if (fields == 2 && sscanf(args, "%d %d %c", x, y, &trailing) != 2) {
+    const int fields = sscanf(args, "%d %d %u %c", &x, &y, &ms, &trailing);
+    if (fields == 2 && sscanf(args, "%d %d %c", &x, &y, &trailing) != 2) {
         return false;
     }
     if (fields != 2 && fields != 3) {
         return false;
     }
     if (fields == 2) {
-        ms = default_ms;
+        ms = CONSOLE_PRESS_DEFAULT_MS;
     }
     if (ms == 0 || ms > CONSOLE_GESTURE_MAX_MS) {
         return false;
     }
-    out->kind = kind;
-    out->x0 = *x;
-    out->y0 = *y;
-    out->x1 = *x;
-    out->y1 = *y;
+    out->x0 = x;
+    out->y0 = y;
+    out->x1 = x;
+    out->y1 = y;
     out->ms = ms;
     return true;
 }
@@ -103,13 +94,12 @@ console_gesture_duration_parse(const char* args, int* x, int* y, uint32_t defaul
 static inline bool
 console_tap_parse(const char* args, console_touch_gesture_t* out) {
     int x, y;
-    return console_gesture_duration_parse(args, &x, &y, CONSOLE_TAP_DEFAULT_MS, out, CONSOLE_TOUCH_GESTURE_TAP);
-}
-
-static inline bool
-console_press_parse(const char* args, console_touch_gesture_t* out) {
-    int x, y;
-    return console_gesture_duration_parse(args, &x, &y, CONSOLE_PRESS_DEFAULT_MS, out, CONSOLE_TOUCH_GESTURE_PRESS);
+    char trailing;
+    if (sscanf(args, "%d %d %c", &x, &y, &trailing) != 2) {
+        return false;
+    }
+    *out = (console_touch_gesture_t){.x0 = x, .y0 = y, .x1 = x, .y1 = y, .ms = CONSOLE_TAP_DEFAULT_MS};
+    return true;
 }
 
 static inline bool
@@ -121,7 +111,6 @@ console_drag_parse(const char* args, console_touch_gesture_t* out) {
         || ms > CONSOLE_GESTURE_MAX_MS) {
         return false;
     }
-    out->kind = CONSOLE_TOUCH_GESTURE_DRAG;
     out->x0 = x0;
     out->y0 = y0;
     out->x1 = x1;

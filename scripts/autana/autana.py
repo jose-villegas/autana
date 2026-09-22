@@ -52,17 +52,17 @@
     autana resume                   let the frame loop run again
     autana step [N]                 advance N frames while frozen (1 when N is omitted)
     autana touch <down|up> <x> <y>  inject a touch-controller sample
-    autana tap <x> <y>               tap at a point
-    autana press <x> <y> [ms]        hold at a point (1000 ms when omitted)
+    autana tap <x> <y>              tap at a point (50 ms when omitted)
+    autana press <x> <y> [ms]       hold at a point (1000 ms when omitted)
     autana drag <x0> <y0> <x1> <y1> <ms>
                                     drag between points over ms
-    autana imu <ax> <ay> <az>        inject raw accelerometer counts
-    autana imu release               return to the IMU controller
+    autana imu <ax> <ay> <az>       inject raw accelerometer counts
+    autana imu release              hand back to the sensor
     autana button <boot|power> [short|long]
                                     inject a physical-button event
-    autana apps                      list registered apps and the running one
-    autana open <name>               open an app by case-insensitive prefix
-    autana home                      return to the launcher
+    autana apps                     list registered apps and the running one
+    autana open <name>              open an app by case-insensitive prefix
+    autana home                     return to the launcher
 
     autana buildid                  the BUILD_ID the board answers with, so what is
                                     running can be checked against what was flashed.
@@ -576,9 +576,9 @@ def imu(args):
 def gesture(args, verb, usage):
     if not all(is_int(value) for value in args):
         sys.exit(usage)
-    code, replies = send(verb.upper() + " " + " ".join(args), reply=verb.upper(), purpose="autana " + verb,
-                         optional=True, seconds=0.5)
-    print("\n".join(replies) if replies else "sent")
+    code, replies = send(verb.upper() + " " + " ".join(args), reply=verb.upper(), until=[verb.upper() + "_OK"],
+                         purpose="autana " + verb)
+    print("\n".join(replies))
     return code
 
 
@@ -613,8 +613,8 @@ def button(args):
 def apps(args):
     if args:
         sys.exit("usage: autana apps")
-    code, replies = send("APPS", reply="APPS", until=["APPS_END", "APPS_ERR"], purpose="autana apps")
-    print("\n".join(replies))
+    code, replies = send("APPS", reply="APPS", until=["APPS_END"], purpose="autana apps")
+    print("\n".join(reply for reply in replies if reply.startswith("APPS ")))
     return code
 
 

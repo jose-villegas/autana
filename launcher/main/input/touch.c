@@ -1,5 +1,6 @@
 #include "input/touch.h"
 #include "input/touch_fsm.h"
+#include "input/touch_inject_fsm.h"
 
 #include "build_variant.h"
 
@@ -52,36 +53,13 @@ on_touch_int(esp_lcd_touch_handle_t tp) {
 static bool injected_down;
 static bool injected_release;
 static int injected_x, injected_y;
-static touch_gesture_t injected_gesture;
-static bool injected_gesture_active;
-static int64_t injected_gesture_started_us;
-
-static bool
-injected_gesture_sample(int64_t now_us, int* x, int* y) {
-    if (!injected_gesture_active) {
-        return false;
-    }
-    if (injected_gesture_started_us == 0) {
-        injected_gesture_started_us = now_us;
-    }
-    const int64_t elapsed_us = now_us - injected_gesture_started_us;
-    const int64_t duration_us = (int64_t)injected_gesture.ms * 1000;
-    if (elapsed_us >= duration_us) {
-        injected_gesture_active = false;
-        return false;
-    }
-    *x = injected_gesture.x0;
-    *y = injected_gesture.y0;
-    if (injected_gesture.kind == TOUCH_GESTURE_DRAG) {
-        *x += (int)(((int64_t)(injected_gesture.x1 - injected_gesture.x0) * elapsed_us) / duration_us);
-        *y += (int)(((int64_t)(injected_gesture.y1 - injected_gesture.y0) * elapsed_us) / duration_us);
-    }
-    return true;
-}
+static touch_inject_t injected_gesture;
+static touch_gesture_completion_t gesture_completion;
+static touch_gesture_completion_t completed_gesture;
 
 /* Returns true when injection supplied this poll's result, including its
  * final no-contact sample. That lets touch_fsm see the lift before the panel
- * becomes the source again. */
+ * before the controller becomes the source again. */
 static bool
 poll_injected(int64_t now_us, bool* have_point, int* x, int* y) {
     portENTER_CRITICAL(&lock);
@@ -98,10 +76,10 @@ poll_injected(int64_t now_us, bool* have_point, int* x, int* y) {
         portEXIT_CRITICAL(&lock);
         return true;
     }
-    if (injected_gesture_active) {
-        *have_point = injected_gesture_sample(now_us, x, y);
+    if (injected_gesture.active) {
+        *have_point = touch_inject_step(&injected_gesture, now_us, x, y);
         if (!*have_point) {
-            injected_release = false;
+            completed_gesture = gesture_completion;
         }
         portEXIT_CRITICAL(&lock);
         return true;
@@ -118,8 +96,7 @@ poll_injected(int64_t now_us, bool* have_point, int* x, int* y) {
 void
 touch_inject(bool down, int x, int y) {
     portENTER_CRITICAL(&lock);
-    injected_gesture_active = false;
-    injected_gesture_started_us = 0;
+    injected_gesture.active = false;
     injected_down = down;
     injected_x = x;
     injected_y = y;
@@ -128,14 +105,26 @@ touch_inject(bool down, int x, int y) {
 }
 
 void
-touch_gesture_start(const touch_gesture_t* gesture) {
+touch_gesture_start(int x0, int y0, int x1, int y1, uint32_t ms, touch_gesture_completion_t completion) {
     portENTER_CRITICAL(&lock);
     injected_down = false;
     injected_release = false;
-    injected_gesture = *gesture;
-    injected_gesture_started_us = 0;
-    injected_gesture_active = true;
+    touch_inject_init(&injected_gesture, x0, y0, x1, y1, ms);
+    gesture_completion = completion;
     portEXIT_CRITICAL(&lock);
+}
+
+bool
+touch_gesture_take_completion(touch_gesture_completion_t* completion) {
+    portENTER_CRITICAL(&lock);
+    if (completed_gesture == TOUCH_GESTURE_NONE) {
+        portEXIT_CRITICAL(&lock);
+        return false;
+    }
+    *completion = completed_gesture;
+    completed_gesture = TOUCH_GESTURE_NONE;
+    portEXIT_CRITICAL(&lock);
+    return true;
 }
 #endif
 
@@ -213,8 +202,8 @@ touch_start(void) {
         ESP_LOGW(TAG, "No touch controller; input comes from touch_inject()");
 #else
         ESP_LOGW(TAG, "Touch controller unavailable; input will not work");
-        panel = NULL;
 #endif
+        panel = NULL;
     } else if (esp_lcd_touch_register_interrupt_callback(panel, on_touch_int) != ESP_OK) {
         ESP_LOGW(TAG, "No touch interrupt; falling back to sampling INT's level");
     }

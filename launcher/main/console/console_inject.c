@@ -1,13 +1,14 @@
 /*
- * console_inject - TOUCH and IMU, letting a host script stand in for a
- * touch controller and IMU while a development build is driven from the
- * console.
+ * console_inject - TOUCH, IMU, TAP, PRESS, DRAG and BUTTON: a host script
+ * standing in for the touch controller, the IMU and the board buttons on a
+ * development build.
  *
- * Neither sets a flag for the frame loop the way SCREENSHOT/RUNSUITE do:
- * what each writes is a LEVEL the polling task samples at its own rate,
- * which is the contract touch_inject()/imu_inject() are built for - the
- * state machine below touch derives the edges from that level. Where a
- * real controller answers, injection takes precedence only until released.
+ * None sets a flag for the frame loop the way SCREENSHOT/RUNSUITE do. A
+ * touch or IMU sample is a LEVEL the polling task reads at its own rate
+ * until something releases it - the contract touch_inject()/imu_inject()
+ * are built for - a gesture is that level played out against the poller's
+ * clock until its duration runs out, and a button edge is consumed by the
+ * next read. Whatever is injected outranks the hardware while it lasts.
  */
 #include "console/console_inject_parse.h"
 #include "console/console_verbs.h"
@@ -48,24 +49,11 @@ console_verb_imu(const char* args, console_reply_fn reply) {
 }
 
 static void
-console_start_gesture(const console_touch_gesture_t* gesture) {
-    const touch_gesture_t input_gesture = {
-        .kind = (touch_gesture_kind_t)gesture->kind,
-        .x0 = gesture->x0,
-        .y0 = gesture->y0,
-        .x1 = gesture->x1,
-        .y1 = gesture->y1,
-        .ms = gesture->ms,
-    };
-    touch_gesture_start(&input_gesture);
-}
-
-static void
 console_verb_tap(const char* args, console_reply_fn reply) {
     (void)reply;
     console_touch_gesture_t gesture;
     if (console_tap_parse(args, &gesture)) {
-        console_start_gesture(&gesture);
+        touch_gesture_start(gesture.x0, gesture.y0, gesture.x1, gesture.y1, gesture.ms, TOUCH_GESTURE_TAP);
     } else {
         ESP_LOGW(TAG, "TAP wants <x> <y>: '%s'", args);
     }
@@ -76,7 +64,7 @@ console_verb_press(const char* args, console_reply_fn reply) {
     (void)reply;
     console_touch_gesture_t gesture;
     if (console_press_parse(args, &gesture)) {
-        console_start_gesture(&gesture);
+        touch_gesture_start(gesture.x0, gesture.y0, gesture.x1, gesture.y1, gesture.ms, TOUCH_GESTURE_PRESS);
     } else {
         ESP_LOGW(TAG, "PRESS wants <x> <y> [ms]: '%s'", args);
     }
@@ -87,7 +75,7 @@ console_verb_drag(const char* args, console_reply_fn reply) {
     (void)reply;
     console_touch_gesture_t gesture;
     if (console_drag_parse(args, &gesture)) {
-        console_start_gesture(&gesture);
+        touch_gesture_start(gesture.x0, gesture.y0, gesture.x1, gesture.y1, gesture.ms, TOUCH_GESTURE_DRAG);
     } else {
         ESP_LOGW(TAG, "DRAG wants <x0> <y0> <x1> <y1> <ms>: '%s'", args);
     }

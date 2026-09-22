@@ -75,6 +75,7 @@ $TEST_DIR/suites.c
 $TEST_DIR/timing.c
 $TEST_DIR/heap_arena.c
 $TEST_DIR/suites/suite_touch_fsm.c
+$TEST_DIR/suites/suite_touch_inject_fsm.c
 $TEST_DIR/suites/suite_gesture.c
 $TEST_DIR/suites/suite_button_fsm.c
 $TEST_DIR/suites/suite_rng.c
@@ -129,6 +130,7 @@ $TEST_DIR/suites/suite_job.c
 $TEST_DIR/suites/suite_heap_caps.c
 $MAIN_DIR/app_registry.c
 $MAIN_DIR/input/touch_fsm.c
+$MAIN_DIR/input/touch_inject_fsm.c
 $MAIN_DIR/input/gesture.c
 $MAIN_DIR/input/tilt.c
 $MAIN_DIR/input/button_fsm.c

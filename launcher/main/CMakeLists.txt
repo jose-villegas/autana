@@ -56,7 +56,10 @@ if(CONFIG_LAUNCHER_SELFTEST)
     list(APPEND app_srcs "console/console_runsuite.c")
 endif()
 if(CONFIG_LAUNCHER_DEVELOPMENT)
-    list(APPEND app_srcs "console/console_inject.c")
+    list(APPEND app_srcs
+        "console/console_inject.c"
+        "input/touch_inject_fsm.c"
+    )
 endif()
 
 # board/board.h binds this target's hardware facts to board_esp32s3.c.
@@ -185,6 +188,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
     # on a laptop is the same set of assertions the board makes.
     set(suite_srcs
         "../test/suites/suite_touch_fsm.c"
+        "../test/suites/suite_touch_inject_fsm.c"
         "../test/suites/suite_gesture.c"
         "../test/suites/suite_button_fsm.c"
         "../test/suites/suite_rng.c"
