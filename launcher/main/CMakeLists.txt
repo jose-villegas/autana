@@ -180,53 +180,12 @@ set(app_reqs microui small3dlib esp_lcd heap esp_timer
              perfmon unity)
 
 if(CONFIG_LAUNCHER_SELFTEST)
-    # The suites are shared with the host runner - same sources, so what passes
-    # on a laptop is the same set of assertions the board makes.
-    set(suite_srcs
-        "../test/suites/suite_touch_fsm.c"
-        "../test/suites/suite_gesture.c"
-        "../test/suites/suite_button_fsm.c"
-        "../test/suites/suite_rng.c"
-        "../test/suites/suite_boot_anim.c"
-        "../test/suites/suite_r3d_project.c"
-        "../test/suites/suite_r3d_camera.c"
-        "../test/suites/suite_boot_anim_perf.c"
-        "../test/suites/suite_fixed.c"
-        "../test/suites/suite_frame_cost.c"
-        "../test/suites/suite_tilt.c"
-        "../test/suites/suite_tune.c"
-        "../test/suites/suite_console.c"
-        "../test/suites/suite_tween.c"
-        "../test/suites/suite_ridge_motion.c"
-        "../test/suites/suite_ridge_pose.c"
-        "../test/suites/suite_spring_line.c"
-        "../test/suites/suite_gfx.c"
-        "../test/suites/suite_gfx_dirty.c"
-        "../test/suites/suite_gfx_heal.c"
-        "../test/suites/suite_gfx_color.c"
-        "../test/suites/suite_gfx_glow.c"
-        "../test/suites/suite_gfx_font.c"
-        "../test/suites/suite_gfx_font_roles.c"
-        "../test/suites/suite_icons.c"
-        "../test/suites/suite_icons_system.c"
-        "../test/suites/suite_ui.c"
-        "../test/suites/suite_ui_style.c"
-        "../test/suites/suite_ui_transform.c"
-        "../test/suites/suite_ui_anchor.c"
-        "../test/suites/suite_control_center_layout.c"
-        "../test/suites/suite_ui_centered_rect.c"
-        "../test/suites/suite_ui_pointer.c"
-        "../test/suites/suite_ui_pointer_microui.c"
-        "../test/suites/suite_ui_scroll.c"
-        "../test/suites/suite_ui_slider.c"
-        "../test/suites/suite_display.c"
-        "../test/suites/suite_post_ui.c"
-        "../test/suites/suite_panel_clock.c"
-        "../test/suites/suite_screenshot.c"
-        "../test/suites/suite_build_id.c"
-        "../test/suites/suite_device_state.c"
-        "../test/suites/suite_job.c"
-    )
+    if(CMAKE_SCRIPT_MODE_FILE)
+        file(GLOB suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c")
+    else()
+        file(GLOB suite_srcs CONFIGURE_DEPENDS
+             "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c")
+    endif()
     # SCOPE: which of those suites this image actually carries.
     #
     # Full is the default and stays globbed, so nothing can lose coverage by

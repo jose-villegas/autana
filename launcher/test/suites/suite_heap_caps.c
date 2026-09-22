@@ -6,9 +6,12 @@
  * like the device would, not spill over.
  */
 
+#include "suites.h"
+
+#ifndef DEVICE_BUILD
+
 #include "stubs/esp_heap_caps.h"
 
-#include "suites.h"
 #include "unity.h"
 
 static void
@@ -64,3 +67,12 @@ suite_heap_caps(void) {
 }
 
 SUITE_REGISTER(suite_heap_caps)
+
+#else
+
+void
+suite_heap_caps(void) {}
+
+SUITE_REGISTER(suite_heap_caps)
+
+#endif

@@ -15,6 +15,9 @@
  */
 
 #include "suites.h"
+
+#ifdef DEVICE_BUILD
+
 #include "unity.h"
 
 #include "gfx/gfx.h"
@@ -282,3 +285,12 @@ run_ui_suite(void) {
 }
 
 SUITE_REGISTER(run_ui_suite);
+
+#else
+
+void
+run_ui_suite(void) {}
+
+SUITE_REGISTER(run_ui_suite);
+
+#endif

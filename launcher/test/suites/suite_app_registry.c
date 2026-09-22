@@ -6,6 +6,9 @@
  */
 
 #include "suites.h"
+
+#ifndef DEVICE_BUILD
+
 #include "unity.h"
 
 #include "app.h"
@@ -48,3 +51,5 @@ run_app_registry_suite(void) {
 }
 
 SUITE_REGISTER(run_app_registry_suite);
+
+#endif

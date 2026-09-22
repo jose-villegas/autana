@@ -18,11 +18,14 @@
  * docs/Testing-Guide.md.
  */
 
+#include "suites.h"
+
+#ifdef DEVICE_BUILD
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "suites.h"
 #include "unity.h"
 
 #include "esp_heap_caps.h"
@@ -1597,3 +1600,12 @@ run_gfx_suite(void) {
 }
 
 SUITE_REGISTER(run_gfx_suite);
+
+#else
+
+void
+run_gfx_suite(void) {}
+
+SUITE_REGISTER(run_gfx_suite);
+
+#endif
