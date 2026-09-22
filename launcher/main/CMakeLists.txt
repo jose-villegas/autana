@@ -192,34 +192,26 @@ if(CONFIG_LAUNCHER_SELFTEST)
     # accident - a scope only ever NARROWS, and only when asked for by name
     # (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild).
     #
-    # The perf scope is a literal list rather than a pattern because it is
-    # shaped around what a capture READS, and that does not follow a folder
-    # or a filename: suite_sand_perf.c's rows are built by the scene
-    # builders in suite_sand_scenes.c and the fixtures in suite_sand_common.c,
-    # neither of which is named _perf, while suite_cube_perf.c and
-    # suite_boot_anim_perf.c are named _perf and are read by nobody in a sand
-    # round. Explicit, like the shell suite list above it.
-    #
-    # A member that goes missing (renamed, deleted with its app) fails the
-    # CONFIGURE below rather than quietly shrinking the scope. A member that
-    # is still here but no longer sufficient - an in-scope suite calling a
-    # builder from a file this list leaves out - fails at LINK, because the
-    # builders are ordinary called symbols and nothing stubs them.
     if(CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF)
-        set(app_suites
-            "${CMAKE_CURRENT_LIST_DIR}/apps/sand/suite_sand_perf.c"
-            "${CMAKE_CURRENT_LIST_DIR}/apps/sand/suite_sand_scenes.c"
-            "${CMAKE_CURRENT_LIST_DIR}/apps/sand/suite_sand_common.c"
-        )
-        foreach(suite_src IN LISTS app_suites)
+        if(CMAKE_SCRIPT_MODE_FILE)
+            file(GLOB perf_scope_files
+                 "${CMAKE_CURRENT_LIST_DIR}/apps/*/scope_perf.cmake")
+        else()
+            file(GLOB perf_scope_files CONFIGURE_DEPENDS
+                 "${CMAKE_CURRENT_LIST_DIR}/apps/*/scope_perf.cmake")
+        endif()
+        set(perf_scope_srcs "")
+        foreach(perf_scope_file IN LISTS perf_scope_files)
+            include("${perf_scope_file}")
+        endforeach()
+        foreach(suite_src IN LISTS perf_scope_srcs)
             if(NOT EXISTS "${suite_src}")
                 message(FATAL_ERROR
-                    "LAUNCHER_SELFTEST_SCOPE_PERF names a suite that does not "
-                    "exist: ${suite_src}. Fix the list in main/CMakeLists.txt - "
-                    "a scope that silently measures less than it claims is "
-                    "worse than no scope.")
+                    "LAUNCHER_SELFTEST_SCOPE_PERF names a missing source: "
+                    "${suite_src}")
             endif()
         endforeach()
+        set(app_suites ${perf_scope_srcs})
         set(suite_srcs "")
     endif()
 

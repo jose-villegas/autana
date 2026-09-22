@@ -117,13 +117,11 @@ menu "Launcher"
                 want: a gate is only a gate if it runs everything.
 
         config LAUNCHER_SELFTEST_SCOPE_PERF
-            bool "Perf - sand's frame-budget suite and the scenes it measures"
+            bool "Perf - suites apps declare for a performance capture"
             help
-                Only what a sand performance capture reads:
-                suite_sand_perf.c plus the scene builders it calls. Nothing
-                else is compiled, so their .bss and .text are gone from the
-                image - which is what buys back the static-RAM headroom a
-                capture needs.
+                Only the sources declared by apps in scope_perf.cmake are
+                compiled. Everything else is absent from the image, which
+                buys back the static-RAM headroom a capture needs.
 
                 It is also a build closer to release layout in the 32 KB
                 instruction cache. That is a better instrument on a

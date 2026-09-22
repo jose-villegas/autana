@@ -21,11 +21,10 @@
 #               for it. Without the flag AUTORUN must be ABSENT, so a build
 #               directory left behind by a capture is regenerated here.
 #   --perf-scope  with --diag only: layer sdkconfig.defaults.diag_perf, so the
-#               image carries just the frame-budget suite one app declares and
-#               the scenes it measures. Frees the static RAM a capture needs to
-#               instrument itself; drops behaviour coverage, so never a merge
-#               gate, and its numbers compare only with other perf-scoped
-#               captures.
+#               image carries only the perf sources apps declare. Frees the
+#               static RAM a capture needs to instrument itself; drops
+#               behaviour coverage, so never a merge gate, and its numbers
+#               compare only with other perf-scoped captures.
 #   --build-only  build and stop: no device needed, nothing flashed.
 #   COM_PORT    the port to flash. Flashing itself needs AUTANA_DEVICE_LOCK_TOKEN
 #               in the environment - device.py's own `flash`/`selftest`/`batch`
