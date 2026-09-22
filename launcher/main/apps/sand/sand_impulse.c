@@ -117,7 +117,7 @@ queue_outward_impulse(sand_t* s, int cx, int cy, int dx, int dy, int r2, int dis
                        SAND_IMPULSE_SPEED_RAMP);
 }
 
-/* Ordinary materials each have their own materials[] row, so density()
+/* Ordinary materials each have their own materials[] row, so density
  * already differs per material; every extended static (ice, metal, plant,
  * leaf, root, ...) shares ONE row instead (cell >> 3 - see
  * MATERIAL_ROW's own comment), so reaction_t.dislodge_density is the only

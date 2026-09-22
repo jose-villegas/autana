@@ -288,11 +288,11 @@ seal_water_beside(int wx, int wy) {
                                              * directly under the target cell
                                              * this pocket sits beside, which
                                              * is otherwise the one open
-                                             * gravity-ward move move_liquid_
-                                             * grain() would take, draining
-                                             * the pocket a little every step
-                                             * until nothing was left to be
-                                             * wet with */
+                                             * gravity-ward move
+                                             * move_liquid_grain() would take,
+                                             * draining the pocket a little
+                                             * every step until nothing was
+                                             * left to be wet with */
 }
 
 /* Water drains banked heat faster than ambient `cools` alone manages -

@@ -36,7 +36,7 @@ enum { GAS_RISE_TRIALS = 64, GAS_RISE_STEPS = 8, GAS_RISE_W = 64, GAS_RISE_H = 6
 static uint8_t gas_rise_cells[GAS_RISE_W * GAS_RISE_H];
 static sand_t gas_rise_sim;
 
-/* --- gas ------------------------------------------------------------------ */
+/* gas */
 
 static void
 test_gas_rises_straight_up_under_ordinary_gravity(void) {
@@ -580,7 +580,7 @@ test_tilted_equalise_still_spreads_a_packed_row_under_the_sight_bound(void) {
                                   "whole-grain gas conserves its count - this is a move, not a loss");
 }
 
-/* --- fire ------------------------------------------------------------- */
+/* fire */
 
 /* A stone box sealing columns x0..x1 of row 3 with no spare cells inside:
  * movement passes (main sweep, liquids, gas) all run before reactions in
@@ -605,7 +605,7 @@ test_fire_ignites_an_adjacent_flammable_neighbour(void) {
 
 /* An igniting gas cell touching a KIND_STATIC neighbour bursts instead of
  * just catching - see gas_ignite_confined() (sand_reactions.c) for the
- * design and try_ignite() for why it is gated on s->impulse_buf != NULL.
+ * design and try_ignite_given() for why it is gated on s->impulse_buf != NULL.
  *
  * The two tests below each malloc their own impulse buffer on the HEAP and
  * free it before their assertions can fail; static fixtures here cannot
@@ -1847,7 +1847,7 @@ test_placing_fire_arms_both_gas_and_fire_passes(void) {
                                                  "shadow this branch entirely");
 }
 
-/* --- wood, embers and steam ---------------------------------------------- */
+/* wood, embers and steam */
 
 /* Sets up fire at (3,3) beside wood at (4,3), boxed to keep fire from
  * smothering itself or drifting away before reactions runs. fire_room()
@@ -2236,7 +2236,7 @@ test_steam_and_smoke_are_told_apart_by_brightness(void) {
                                       "one");
 }
 
-/* --- bubbles: gas rising through standing liquid ---------------------- */
+/* bubbles: gas rising through standing liquid */
 
 /* water_column()/first_row_holding()/mass_held_by() live in
  * suite_sand_common.{c,h} - reused far past this section.

@@ -866,14 +866,11 @@ block_or_neighbour_has_liquid(const sand_t* s, int bx, int by) {
     return false;
 }
 
-/* Used only for touches OUTSIDE the gravity sweep: no moved_here-style
- * bookkeeping exists for any_neighbor_active() to observe next step,
- * unlike a sweep-internal move where the destination is always the
- * source's own neighbour. Unconditional 3x3, not edge-aware like
- * point_reach(): this runs at interaction rate, not per-grain-move, so
- * precision is not needed - see
- * test_undermining_a_sleeping_pile_collapses_it: erasing must wake a
- * NEIGHBOURING block's resting pile, with no sweep-internal fallback. */
+/* Used only for touches OUTSIDE the gravity sweep, where the destination
+ * is not always the source's own neighbour. Unconditional 3x3, not
+ * edge-aware like wake_blocks_range(): this runs at interaction rate, not
+ * per-grain-move, so precision is not needed - see
+ * test_undermining_a_sleeping_pile_collapses_it. */
 static inline void
 wake_block_and_neighbors(sand_t* s, int x, int y) {
     if (s->block_state == NULL) {
@@ -1027,13 +1024,10 @@ neighbor_smothers(const sand_t* s, int nx, int ny, int w, int h, uint8_t density
     return nm->kind != KIND_LIQUID && nm->density > density;
 }
 
-/* Replaces cover_count() (sand_reactions.c), which counted screen-fixed
- * cardinals and could never fire for a wide pool sealed by a crust (only
- * the cell directly above ever counted). The lid is the three cells
- * centred on anti-gravity - opposite gravity plus its two diagonals -
- * ALL THREE must cover; the two perpendiculars alone (five-cell
- * semi-disc) read a hand-drawn wall notch as a seal at brush radii 2-4,
- * bursting basins that should hold. */
+/* The lid is the three cells centred on anti-gravity - opposite gravity
+ * plus its two diagonals - not screen-fixed cardinals, which could never
+ * fire for a wide pool sealed by a crust; ALL THREE must cover, since the
+ * two perpendiculars alone read a hand-drawn wall notch as a seal. */
 #define COVER_LID 0x7u
 
 /* Covering is neighbor_smothers(): in bounds, not liquid, denser than

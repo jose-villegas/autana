@@ -9,8 +9,8 @@
  * directly, at a fixed NORMAL-quality (4 px) cell size - not app_sand.c,
  * which owns quality/colour-mode state this file has no access to and is
  * not part of any library this can link against selectively. Every grid
- * cell is repainted every measured frame (not only the changed spans #203
- * tracks in the real app - a worst-case draw cost, simpler than
+ * cell is repainted every measured frame (not only the changed spans the
+ * real app tracks - a worst-case draw cost, simpler than
  * reproducing that bookkeeping here a second time), but only the real
  * changed bounding box (diff_bounding_box()) is marked dirty, so present
  * cost and bytes sent answer the real question instead of all reading the
@@ -218,11 +218,12 @@ paint_full_frame_indexed(const uint8_t* grid, gfx_indexed_repaint_kind_t kind, c
 static uint8_t prev_grid[CM_GRID_W * CM_GRID_H];
 static bool prev_grid_valid;
 
-/* Real per-frame dirty extent, from the grid itself - not gfx_mark_all_
- * dirty() every frame, which sends every strip regardless of pixel format
- * and would make FULL/256/16 present the same bytes for no reason but this
- * suite's own shortcut. `false` (no change at all) leaves nothing marked;
- * the caller still owns whether that is expected this frame. */
+/* Real per-frame dirty extent, from the grid itself - not
+ * gfx_mark_all_dirty() every frame, which sends every strip regardless of
+ * pixel format and would make FULL/256/16 present the same bytes for no
+ * reason but this suite's own shortcut. `false` (no change at all) leaves
+ * nothing marked; the caller still owns whether that is expected this
+ * frame. */
 static bool
 diff_bounding_box(const uint8_t* grid, int* out_x0, int* out_y0, int* out_x1, int* out_y1) {
     int x0 = CM_GRID_W, y0 = CM_GRID_H, x1 = 0, y1 = 0;
