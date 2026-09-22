@@ -46,9 +46,9 @@ touchscreen never produces the first half, because the pointer does not exist
 until a finger is already down. Send move and press together and hover is never
 set, focus is never taken, and the control never fires.
 
-The fix is to synthesise the missing frame: on a press deliver only the
-position, and let the button-down land on the following frame. That costs one
-frame of latency (~40 ms, imperceptible) and makes taps reliable.
+The fix synthesises hover frames before the press lands - `UI_POINTER_HOVER_FRAMES`,
+and why two, in
+[Launcher-Architecture.md](../Launcher-Architecture.md#two-things-to-know-before-touching-it).
 
 Worth knowing because it is not specific to buttons — every microui control
 resolves interaction through `mu_update_control()`, so anything that reacts to
@@ -91,8 +91,8 @@ tell you, and the obvious guess is wrong here:
 | right (+x) | `-ay` |
 
 Mapping X to X and Y to Y makes the sand fall sideways. Determined by tilting
-the board and watching which way it went; the mapping lives in two macros at
-the top of `main/apps/sand/app_sand.c`.
+the board and watching which way it went; the mapping is
+`imu_gravity_screen_x()`/`imu_gravity_screen_y()` in `input/imu.h`.
 
 One more distinction that is easy to get wrong: the **accelerometer** senses
 gravity, so it is what tilting changes and what tells you which way is down.

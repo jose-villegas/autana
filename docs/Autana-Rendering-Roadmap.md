@@ -319,7 +319,7 @@ detail behind every row.
 | Core | 2 × Xtensa LX7, 240 MHz | for retained apps, core 1 runs `present()` (read-only) while core 0 runs the next update; full-redraw renderers split rendering and sending the band ring across both (decision B) |
 | FPU | single-precision hardware; `double` is software-emulated | float32 is fine per vertex/object; `double` stays banned on the device (decision A) |
 | SIMD | PIE 128-bit (16×8 / 8×16 lanes), inline asm only | any vector path sits behind a scalar reference implementation with a test asserting identical output (decision A) |
-| Integer mul/div | hardware, pipelined 32-bit mul and div; **64-bit div is a library call** | `__divdi3` and signed `/ 2^n` stay banned in hot loops (playbook items 7 and 11) |
+| Integer mul/div | hardware, pipelined 32-bit mul and div; **64-bit div is a library call** | `__divdi3` and signed `/ 2^n` stay banned in hot loops (see the Optimization Playbook's "A 64-bit divide on a 32-bit core is a library call" and "Division by a power of two is not automatically a shift") |
 | Internal RAM | 512 KB SRAM: ~296 KiB main heap region + 21 KiB + 32 KiB DRAM at boot; 130,635 bytes free after `gfx_init()` (framebuffer excluded — it lives in PSRAM), largest block 50 KiB (diag build, device capture, 2026-09-16) | stacks, the DMA gather and strip buffers, and hot per-step buffers (sand's grids, via `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536`) live here; the band ring's buffers will too |
 | PSRAM | 8 MB octal @ 80 MHz (120 MHz experimental); `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps allocations up to 64 KB internal and routes larger ones here; memcpy out ~58 MB/s, in ~47, PSRAM to PSRAM ~22 (device, 2026-09-13) | under decision B this is read-only bulk/cold storage: the one retained framebuffer, textures and levels; it is never the target of a full-screen write or copy; headroom is a non-issue |
 | Data cache | 32 KB, 32-byte line, 8-way; 64 KB measured no gain (device, 2026-09-13) | every PSRAM access — CPU render writes and DMA present reads alike — goes through this cache; see 3.3 |
@@ -411,7 +411,7 @@ sand from 11.8–14.3 to 16.7–20.3 drawn frames per second, at a cost of
 ~94 KB of internal RAM. A full-present time at 80 MHz is *unmeasured*; the
 next diagnostics capture replaces the 18.0–18.9 ms row.
 
-**Root cause found (2026-09-15): 80 MHz is outside the CO5300's rating.**
+**80 MHz is outside the CO5300's rating.**
 Its datasheet caps the write clock at 50 MHz, and every panel pin reaches
 it through the GPIO matrix. An app that redraws only dirty regions shows
 stray pixels and thin lines that persist until the region is re-sent with
@@ -430,8 +430,8 @@ Today `gfx_present()` is synchronous: `main.c` calls `frame()`, then
 present, which drains every queued DMA transfer before returning. The CPU
 idles for the whole present.
 
-**Decided 2026-09-13 (decision B, revised): "read PSRAM, never write it in
-bulk."** A PSRAM-resident double buffer with a retained catch-up copy
+**Decision B, revised: read PSRAM, never write it in bulk.** A PSRAM-resident
+double buffer with a retained catch-up copy
 (two framebuffers, copying the frame's dirty regions forward after each
 swap) was built and proven exact on the host, then measured on the
 device: the catch-up copy cost 6-15 ms per frame at ~22 MB/s, and sand
@@ -1037,12 +1037,14 @@ cheapest path to something that is unmistakably a game.
   half, replace its rasterizer.
 - **Do not put `double`, a 64-bit divide, or a signed divide by a power of
   two in a hot loop.** `double` is software-emulated even with the S3's
-  FPU; the divides are the two known traps (playbook items 7 and 11).
-  float32 is fine per vertex or per object — it does not belong in a
-  per-pixel/per-cell loop or anywhere that must stay bit-exact with the
-  host (decision A).
-- **Do not trust a host win on a work-quantity change** (playbook item 9);
-  host numbers are for code shape.
+  FPU; the divides are the two known traps - the Optimization Playbook's
+  "A 64-bit divide on a 32-bit core is a library call" and "Division by a
+  power of two is not automatically a shift". float32 is fine per vertex
+  or per object — it does not belong in a per-pixel/per-cell loop or
+  anywhere that must stay bit-exact with the host (decision A).
+- **Do not trust a host win on a work-quantity change** - the Optimization
+  Playbook's "A host-validated win is a hypothesis until the target
+  measures it"; host numbers are for code shape.
 
 ---
 

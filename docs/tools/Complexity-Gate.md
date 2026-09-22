@@ -49,11 +49,12 @@ neither source reaches, and that is not below, fails the gate by name:
 |---|---|
 | `main/apps/sand/tools/crossflow_bench.c` | uses C11 `timespec_get()`/`TIME_UTC`; esp-clang does not expose them under this project's `-std=c11` with the host route's headers, unrelated to the Xtensa target - host gcc compiles it fine (`report_crossflow.sh`) |
 
-Vendored code (`launcher/components/`, `managed_components/`, and the
-vendored Unity under `test/framework/`) is out of scope entirely - a
-ratchet on this project's own functions has nothing to say about code it
-did not write - and is never a source of a coverage gap, since it sits
-outside `launcher/main/`. A `static inline` helper defined only in a
+Unmodified vendored code (`launcher/components/`, `managed_components/`,
+`test/framework/`) is out of scope - a ratchet on this project's own
+functions has nothing to say about code it did not write, and it is never
+a source of a coverage gap since it sits outside `launcher/main/`. A
+vendored function this project changed is measured - see the end of this
+page. A `static inline` helper defined only in a
 shared header (for example `sand_priv.h`'s `dest_row()`/`mark_rows()`) is
 still invisible to this gate: clang-tidy's default scope is the file
 actually being compiled, not headers it pulls in.

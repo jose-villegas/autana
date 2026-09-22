@@ -208,12 +208,12 @@ on a clean build directory, which is what makes it a trap.
 
 ## runsuite: the everyday device loop
 
-A diag build (`CONFIG_LAUNCHER_SELFTEST` on, `AUTORUN` off) listens on the
-USB serial console for two verbs, dispatched from `launcher/main/console/console.c`
-to `console_screenshot.c` and `console_runsuite.c` respectively. `screenshot`
-dumps the frame on screen; `runsuite <suite_function_name>` runs exactly that
-one registered suite and
-prints its result — **with no rebuild and no reflash**:
+A diag build (`CONFIG_LAUNCHER_SELFTEST` on, `AUTORUN` off) answers
+`runsuite <suite>` on the console (`console/console_runsuite.c`, one of the
+verbs `launcher/main/console/console.c` dispatches); `autana suite <name>`
+sends it. `screenshot` (`console_screenshot.c`) is another verb - it dumps
+the frame on screen. `runsuite <suite_function_name>` runs exactly that one
+registered suite and prints its result — **with no rebuild and no reflash**:
 
 ```
 runsuite run_gfx_suite
@@ -634,9 +634,12 @@ directly; `gfx.c`'s own allocation and DMA-send side of `gfx_mode_enter()`/
 `main/apps/render_lab/suite_cube_band_perf.c` (device-only), which times the cube's
 band-mode path against its full-fb path on the same scene.
 
-Still untested: `ui_launcher.c`'s microui integration and the small3dlib
-rendering. Both are verified by running the firmware and looking at the screen.
-Worth being honest about rather than implying coverage we do not have.
+Still untested by an assertion: small3dlib's per-pixel Gouraud shading -
+verified by running the firmware and looking at the screen, since the cube
+scene's animation never settles into the fixed picture a render-harness
+pixel diff needs (`docs/tools/Render-Harness.md`). `ui_launcher.c`'s microui
+integration is driven by `suite_ui_launcher.c`, and small3dlib's row scissor
+by `suite_small3dlib_scissor.c`.
 
 The framework is Unity — the ThrowTheSwitch C library, no relation to the game
 engine. The host runner uses a vendored copy; the device uses the one ESP-IDF
