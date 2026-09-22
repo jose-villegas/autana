@@ -13,14 +13,14 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../app.h"
-#include "../../gfx/gfx.h"
-#include "../../ui/ui.h"
+#include "app.h"
+#include "gfx/gfx.h"
 #include "render_lab.h"
 #include "render_lab_mode_switch.h"
 #include "render_lab_scene.h"
 #include "ui/render_lab_hud_screen.h"
 #include "ui/render_lab_menu_screen.h"
+#include "ui/ui.h"
 
 extern const render_lab_scene_t scene_cube;
 extern const render_lab_scene_t scene_wire_plane;

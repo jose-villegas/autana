@@ -30,18 +30,18 @@
 
 #include <stdio.h>
 
-#include "../../app.h"
-#include "../../boot/post_layout.h"
-#include "../../boot/post_ui.h"
-#include "../../build_variant.h"
-#include "../../display/display.h"
-#include "../../gfx/gfx.h"
-#include "../../input/imu.h"
+#include "app.h"
+#include "boot/post_layout.h"
+#include "boot/post_ui.h"
+#include "build_variant.h"
+#include "display/display.h"
+#include "gfx/gfx.h"
+#include "input/imu.h"
 #if CONFIG_LAUNCHER_SELFTEST
-#include "../../boot/selftest.h"
+#include "boot/selftest.h"
 #endif
-#include "../../ui/ui.h"
 #include "ui/toggles_screen.h"
+#include "ui/ui.h"
 
 #define PAGE_COUNT     2
 #define COL_BACKGROUND 0x0A0C14

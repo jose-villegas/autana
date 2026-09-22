@@ -103,6 +103,11 @@ by a script, and the split is deliberate: a length, a cited name and an app
 name are decidable, and everything about whether a comment should exist is
 not.
 
+`scripts/gates/check_style_audit.py`'s HEADING-COMMENT rule warns on a
+one-line `/* */` inside a function body that is only a short label - up
+to five plain words, no punctuation. It is a worklist for a reader, not a
+verdict on whether the comment should exist.
+
 ### Comments
 
 **A comment is the exception. Most code needs none.** Follow OpenBSD's

@@ -24,8 +24,8 @@
 
 #include "esp_heap_caps.h"
 
-#include "../../display/display.h"
-#include "../../gfx/gfx.h"
+#include "display/display.h"
+#include "gfx/gfx.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
 #include "rt_cornell.h"

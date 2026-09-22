@@ -2042,7 +2042,7 @@ test_the_water_over_lava_scene_reaches_the_quench_cooloff_and_burst_paths_it_cla
  */
 
 /* WALLS MUST BE BRUSH-DRAWN, NOT A CLEAN RECTANGLE like
- * build_dune_in_a_vessel_scene's (suite_sand_dune_blast.c). A 2026-09-03
+ * build_dune_in_a_vessel_scene's (suite_sand_dune_blast.c). The
  * confinement rule found zero eligible cells over 5000 steps on a clean
  * rectangle, 16 on a brush-drawn one - confinement is shape-dependent. */
 #define GUNPOWDER_BASIN_INT_X0    67

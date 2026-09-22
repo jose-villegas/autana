@@ -5,9 +5,12 @@ name: Comment Rules
 # lines, no comment naming a function that does not exist, none below
 # apps/ naming an app, and none recording where code moved. Alongside it,
 # the tree-wide invariants documentation and tooling must hold: every
-# citation resolves, constants match source, and nothing outside
-# scripts/device/ opens the board's serial port or names one of the board
-# scripts the tree no longer has.
+# citation, down to a named section, resolves, constants match
+# source, and nothing outside scripts/device/ opens the board's serial port
+# or names one of the board scripts the tree no longer has.
+# check_style_audit.py holds the remaining decidable text and include
+# rules, one decorated function each; its docstring says what was left
+# out because a script cannot judge it reliably.
 # Enforced here so the rules hold for every commit, however it was made.
 #
 # Own workflow file, like the others, purely so it gets its own badge -
@@ -50,11 +53,14 @@ jobs:
       - name: Documentation names the supported board
         run: python3 scripts/gates/check_doc_vocabulary.py
 
-      - name: Every document is reachable from README.md
+      - name: Every document is reachable, and every anchor link resolves
         run: python3 scripts/gates/check_doc_index.py
 
       - name: The board is reached only through scripts/device/
         run: python3 scripts/gates/check_device_access.py
+
+      - name: No tracker id, personal path, or misdirected include is tracked
+        run: python3 scripts/gates/check_style_audit.py
 
       # Warns, never fails: a changed function a document cites is a reason
       # to reread that document, not proof it is wrong.
