@@ -30,10 +30,10 @@
 #include "suite_sand_common.h"
 #include "util/intmath.h"
 
-/* ===================================================================
+/*
  * Glass as a material with a temperature: the heat ramp, cooling, and
  * thermal shock against snow.
- * =================================================================== */
+ */
 
 /* The hottest glass cell anywhere, or 0 if there is no glass at all. */
 static int

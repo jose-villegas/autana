@@ -27,11 +27,10 @@
 /* The cell to paint at (col, row) of an N x N swatch for brush cell `spec`.
  *
  * Gunpowder and the MATX() materials spend their low nibble on STATE, not a
- * shade (material.h's top comment), so there is no variant axis to sweep -
- * this returns material_brush_color()'s (app_sand.c) own representative
- * cell instead,
- * a flat swatch rather than texture built from bytes that mean something
- * else. */
+ * shade, so there is no variant axis to sweep - this returns
+ * material_brush_color()'s (material_palette.h) own representative cell
+ * instead, a flat swatch rather than texture built from bytes that mean
+ * something else. */
 static inline cell_t
 sand_swatch_cell(cell_t spec, int col, int row, int cells) {
     if (cell_is_gunpowder(spec)) {

@@ -30,9 +30,7 @@
 #include "suite_sand_common.h"
 #include "util/intmath.h"
 
-/* ===================================================================
- * Dirt: soaking, drying, and sand turning into soil.
- * =================================================================== */
+/* Dirt: soaking, drying, and sand turning into soil. */
 
 /* Wet sand slowly becomes soil, and the water is SPENT doing it.
  *

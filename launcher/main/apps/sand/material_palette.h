@@ -74,11 +74,12 @@ typedef enum {
  * edge, and glass/stone would start outlining cells they used to paint as
  * solid interior. */
 
-/* `depth`: a liquid's own local depth, 0 at the boundary up to 255 - see
- * paint_row_n() and DEPTH_SATURATE_CELLS (material_palette.c) for the scale.
- * Only a liquid's INTERIOR reads it; every other case ignores it, except a
- * root cell, where it instead carries material_root_neighbours(): a tip (1
- * neighbour) darkens less than a rooted cell (2-3) or a collar (more). */
+/* `depth` means something per material: a liquid's INTERIOR reads local
+ * depth, 0 at the boundary up to 255 (see paint_row_n() and
+ * DEPTH_SATURATE_CELLS, material_palette.c); a root reads
+ * material_root_neighbours(), darker the more it has; a leaf, and wood
+ * beside one, read the leaf wave's fraction plus one. Everything else
+ * ignores it. */
 material_pattern_t material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth, gfx_color_t out[3]);
 
 static inline unsigned

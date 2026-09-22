@@ -357,11 +357,11 @@ const reaction_t reactions[MATERIAL_MAX] = {
             .fizz = 40, /* Adjust as needed. */
 
             .evaporates = 1, /* Rarest byte-wide roll: 1 in 256 per cell per
-                              * step. Still too frequent in real puddles. See
-                              * `step_one_dissolver_cell()` for extra gate
-                              * (now 1-in-60, effective 1 in 15360).
+                              * step. Still too frequent in real puddles, so
+                              * step_one_dissolver_cell() gates it a further
+                              * 1 in 64, for an effective 1 in 16384.
                               * `sand_set_evaporates()` override bypasses
-                              * gate. Tune on device. */
+                              * that gate. */
 
             .boils = 255,
 
@@ -438,17 +438,16 @@ const reaction_t reactions[MATERIAL_MAX] = {
             .heats_to = MATX(MATX_METAL),
             .heat_chance = 10,
 
-            /* METAL IS WHAT SURVIVES THIS ROLL, so the number is the STONE
-         * share: 230/256 stone leaves ~10% metal. Clumped, not sprinkled -
-         * HEAT_FLAW_CLUMP (sand_reactions.c) re-rolls only every fifth cell,
-         * so ore arrives in short veins and one run in ten is metal. */
+            /* Metal is what survives this roll, so the number is the stone
+             * share: 230/256 stone leaves ~10% metal. Clumped, not sprinkled -
+             * HEAT_FLAW_CLUMP (sand_reactions.c) re-rolls only every fifth
+             * cell, so ore arrives in short veins and one run in ten is
+             * metal. */
             .flaw_to = MAT_STONE,
             .flaw_chance = 230,
 
-            /* Wet ground now yields to heat more often than it crumbles: 77/256
-         * is about 30%, against the 235 that made wet dirt almost never
-         * produce anything but sand. Digging into damp earth is meant to
-         * be worth doing, not a reason to dry it out first. */
+            /* 77/256 is about 30% - digging into damp earth is meant to be
+             * worth doing, not a reason to dry it out first. */
             .spoils_to = MAT_SAND,
             .spoils_chance = 77,
         },
@@ -461,16 +460,16 @@ const reaction_t reactions[MATERIAL_MAX] = {
             .heats_to = MAT_WATER,
             .heat_chance = 120,
 
-            /* See reaction_t.thaws. Snow melts slower. */
+            /* Melts on contact with a liquid or wet soil neighbour
+             * (reaction_t.thaws), not the heat_chance above: a low roll, so
+             * snow beside standing water lingers rather than vanishing the
+             * moment it touches it. */
             .thaws = 4,
 
             .crusts = 35, /* out of CRUST_ROLL_MAX a settled, bordered cell.
                             * Set by the balance ceiling, not by feel: a 32
                             * cell deep cover of snow is 90% ice after 9152
-                            * steps, about five minutes of play. This field
-                            * only governs that rate now - it used to share it
-                            * with how often a thermal wake happened to
-                            * unsettle the bank. */
+                            * steps, about five minutes of play. */
             .crusts_to = MATX(MATX_ICE),
         },
 
@@ -495,8 +494,8 @@ const reaction_t reactions[MATERIAL_MAX] = {
             .cools = 5,
 
             .dissolvable = 60, /* well under sand's 200: acid eats stone
-                                * slowly. Glass has no dissolvable - the one
-                                * vessel acid cannot touch. */
+                                * slowly. Glass has no dissolvable, so acid
+                                * cannot eat it. */
 
             .conducts = 220, /* heat crosses one cell with ~0.86 chance,
                               * attenuating with depth */
@@ -536,23 +535,25 @@ const reaction_t reactions[MATERIAL_MAX] = {
             /* Trunk waters roots at third green growth rate. */
             .drinks = 12,
 
-            /* 6 in 256 is 43 steps before catch. Wood != MAT_FIRE. Tune on
-             * device. */
+            /* 6 in 256 is 43 steps before catching. */
             .flammability = 6,
 
+            /* Burning wood stays wood, lit via the state its own nibble
+             * carries (lit_from below), not converted to MAT_FIRE outright. */
             .ignites_to = MAT_WOOD,
 
             .burn_decay = 24,
 
-            /* Similar to gunpowder's row stating 7. */
+            /* 1, not gunpowder's 7: wood has no dry-tone/moisture codes to
+             * skip past, so any nonzero code already means lit. */
             .lit_from = 1,
 
             .residue = 90, /* Log burn > flame guttering, more smoke */
 
-            .quench_to = 0, /* Water extinguishes fire, replacing it with
-                             * steam; step_one_burning_cell() does this for
-                             * burn_decay material. Ember named MAT_STEAM as
-                             * the fire itself was extinguished. */
+            .quench_to = 0, /* An ember (already past lit_from) that water
+                             * reaches just vanishes; quench_lit_cell()
+                             * reverts a cell still actively lit to unlit
+                             * wood instead, before it ever reaches here. */
 
             .flare = 48, /* Wood is KIND_STATIC; otherwise, it would glow
                           * without flame. Flame rises via sand_step_gas(). */
@@ -616,11 +617,10 @@ const reaction_t extended_reactions[MATERIAL_EXTENDED_CODES] = {
             .canopy_to = MATX(MATX_LEAF),
             .trunk_girth = 2,
 
-            /* High, but not certain. Occasional reversion to gravity bends
-             * limb towards upright. */
-            .holds_line = 200, /* and it is part of one, which is the
-                                    * same material here and will not be
-                                    * once foliage exists */
+            .holds_line = 200, /* High, but not certain: an occasional
+                                * reversion bends the limb back toward
+                                * upright rather than letting it hold a
+                                * bent line forever. */
             .harden_run = 6,
             .harden_chance = 64, /* one in four; measured */
 
@@ -717,17 +717,18 @@ const reaction_t extended_reactions[MATERIAL_EXTENDED_CODES] = {
              * low (8 in 256) since, unlike the one-time collar seed, this
              * rolls every step for every root cell - a low base rate is
              * part of what bounds the cost, alongside ROOT_SURFACE_MAX
-             * (sand_reactions.c). */
+             * (sand_plants.c). */
             .roots = 8,
             .roots_to = MATX(MATX_ROOT),
 
         },
 
-/* flammability 200 catches instantly - the keg's defining trait - lighting
- * its own fuse, not MAT_FIRE, through its whole volume. heat_chance 24
- * matches wood's smoulder figure; lit_from (7) keeps GUNPOWDER_LIT past
- * every dry tone and moisture code. Soaks and dries far slower than dirt
- * (2/60, 1/2), so a keg holds water a long time either way. */
+/* flammability 200 catches almost at once - the keg's own trait - lighting
+ * its own fuse, not MAT_FIRE, through its whole volume. heat_chance is far
+ * lower, so conducted heat is a slower fuse than a direct flame. lit_from
+ * keeps GUNPOWDER_LIT past every dry tone and moisture code. Soaks far
+ * slower than dirt, so a keg sits visibly wet a while before it turns, and
+ * dries slower too. */
 #define GUNPOWDER_REACTION                                                                                             \
     {                                                                                                                  \
         .flammability = 200,                                                                                           \

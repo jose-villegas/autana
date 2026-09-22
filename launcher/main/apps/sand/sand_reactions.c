@@ -178,9 +178,7 @@ resolve_heat_flaw_yield(sand_t* s, int nx, int ny, const reaction_t* r) {
 
 /* Forced inline for its five call sites; the heat_ramp and spoils_to branches
  * inside try_heat_transform_given() grow the inlined body, so re-measure if
- * they grow further. Turns (nx, ny) into its heats_to on a won roll - heat
- * without burning. Wrapper checks before calling the core; returns change
- * status. */
+ * they grow further. */
 static inline __attribute__((always_inline)) bool
 try_heat_transform(sand_t* s, int nx, int ny, int w, int h) {
     if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
@@ -197,17 +195,18 @@ try_heat_transform(sand_t* s, int nx, int ny, int w, int h) {
     return try_heat_transform_given(s, nx, ny, w, h, at, n);
 }
 
-/* FORCED INLINE for 2 sites; wrapper perf. Shared walk confirms
- * step_one_burning_cell() shrink. */
+/* Forced inline for its 2 call sites; a shared walk confirmed
+ * step_one_burning_cell() shrinks with it inlined. */
 static inline __attribute__((always_inline)) bool
 try_heat_transform_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cell_t n) {
     const reaction_t* r = reaction_of(n);
 
-    /* Material climbs, transforms at top. Triggered by burning cell or
-     * conductor. */
+    /* A cell that banks heat climbs one level per won roll, triggered by a
+     * burning neighbour or a conductor, and transforms once it tops out. */
     if (r->heat_ramp != 0) {
-        /* SHOCK: hot-to-cold, cracks. Mirror step_one_cold_cell(). Check
-         * before ramp. */
+        /* Checked before the ramp roll, not after: a badly chilled cell
+         * shatters from a sudden warm-up (mirroring step_one_cold_cell()'s
+         * own shock check) rather than banking heat first. */
         REACTION_DOC(shatters_to, "if warmed while badly chilled");
         if (r->shatters_to != 0 && CELL_VARIANT(n) <= SAND_SHOCK_COLD) {
             crack_run_or_defer(s, nx, ny, w, h, (material_id_t)CELL_MATERIAL(n), (material_id_t)r->shatters_to);
@@ -233,8 +232,9 @@ try_heat_transform_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cel
     if (r->heats_to == 0 || r->heat_chance == 0) {
         return false;
     }
-    /* A LIT CELL `heats_to` GUNPOWDER_LIT_CELL. `explodes != 0` avoids extra
-     * compare. */
+    /* A gunpowder cell already lit has already fired its own heats_to
+     * (GUNPOWDER_LIT_CELL) - `explodes != 0` is a cheap gate before the
+     * lit_from compare. */
     if (r->explodes != 0 && cell_code(n) >= r->lit_from) {
         return false;
     }
@@ -242,9 +242,9 @@ try_heat_transform_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cel
         return false;
     }
 
-    /* WET EARTH FIRST. `dries != 0` checks. CELL_MOISTURE() confirms. Sand,
-     * glass untouched. Two reads on success. Saturated dirt needs
-     * SOIL_MOISTURE_MAX + 1 for metal with steam. */
+    /* Wet earth dries instead of transforming: `dries != 0` excludes sand and
+     * glass (neither carries moisture), and moisture_of() confirms this cell
+     * is actually wet. */
     if (r->dries != 0 && moisture_of(n, r) != 0) {
         /* Spoil pre-empts the moisture reduction below - wet ore that can
          * spoil cracks on first contact with heat, not after a warning step.
@@ -457,8 +457,7 @@ crack_run(sand_t* s, int x, int y, int w, int h, material_id_t from, material_id
 }
 
 /* Walks a chain of neighbouring KIND_LIQUID cells holding the same product,
- * freezing each in turn. Iterative, not recursive: a FreeRTOS task stack is
- * only a few KiB. */
+ * freezing each in turn. */
 static void
 cool_off_chain(sand_t* s, int x, int y, int w, int h, uint8_t product, int chance) {
     int cx = x, cy = y;
@@ -515,18 +514,19 @@ cool_off_chain_or_defer(sand_t* s, int x, int y, int w, int h, uint8_t product, 
     cool_off_chain(s, x, y, w, h, product, chance);
 }
 
-/* `#define` used for materials with `dries != 0` */
+/* A constant, not a per-material field, since only materials with
+ * `dries != 0` ever soak. */
 #define SOIL_PERCOLATE_CHANCE 15
 
 /* A saturated cell only rolls its conversion one step in this many.
  *
- * soaked_chance FLOORS AT 1 IN 256 - the roll is rng_next() & 0xFF - so it
+ * soaked_chance floors at 1 in 256 - the roll is rng_next() & 0xFF - so it
  * cannot reach "magnitudes slower" alone. Spacing the roll can, and costs no
- * draw on the steps it skips. First oil went from 18 steps to ~400.
+ * draw on the steps it skips.
  *
- * A POWER OF TWO, the gate being a mask, so it moves only in factors of two.
- * Finer changes go on soaked_chance, which is gunpowder's alone - no other row
- * declares soaked_to, whatever an earlier note here claimed. */
+ * A power of two, the gate being a mask, so it moves only in factors of two.
+ * Finer changes go on soaked_chance, which is gunpowder's alone - no other
+ * row declares soaked_to. */
 #define SOAKED_CONVERT_PERIOD 64
 
 /* Splits cell for input/output. Soaks UNIT, transforms or increases variant.
@@ -672,13 +672,13 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
         }
     }
 
-    /* Water percolates downhill, not just diffuses: each step it hands half
-     * of what it holds to one of the three gravity-ward neighbours, picked
-     * at random, so a soaking fingers down through the soil rather than
-     * settling at a flat gradient. The room check runs before the
-     * percolation roll, not after - the same order try_ignite_given() uses
-     * for flammability, so a cell that cannot receive never draws and never
-     * shifts the shared RNG stream for whatever comes after it. */
+    /* Water percolates downhill, not just diffuses: on a won roll it hands
+     * about half of what it holds to one of three gravity-ward neighbours
+     * with room, picked at random, fingering down through the soil rather
+     * than settling at a flat gradient. The room check runs before the
+     * roll, not after - the same order try_ignite_given() uses for
+     * flammability, so a cell that cannot receive never shifts the shared
+     * RNG stream for whatever comes after it. */
     if (r->dries != 0 && held != 0) {
         const int down = ring_of(s->last_load_dx, s->last_load_dy);
         int open[3], n_open = 0;
@@ -751,12 +751,9 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
         return held - 1 != 0;
     }
 
-    /* r->dries halves wetness, prevents false "still wet." Without,
-     * may_have_moisture could latch. */
     return (r->dries != 0 && held != 0) || beside_liquid;
 }
 
-/* may_have_heat_holder checks grid heat_ramp; skips heat_ramp == 0 cells. */
 static void
 step_one_warming_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     for (int d = 0; d < 4; d++) {
@@ -808,20 +805,15 @@ step_one_warming_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
     }
 }
 
-/* COLD melts, pulls temp, cracks if hot. Chilling, melting snow. Warm liquid
- * aids survival. */
-/* Bounds both conduction walks - conduct_heat() out of a burning cell and the
- * cold walk in step_one_cold_cell(). See "THE BOILER" for the rationale, and
- * note the two share it deliberately: a medium carries cold as far as it
- * carries heat. */
+/* Bounds conduct_heat()'s walk out of a burning cell; COLD_REACH below
+ * derives from it. See this file's own top comment for why a generous
+ * reach matters - a reach-of-one boiler is unbuildable with the pour
+ * brush. */
 #define CONDUCT_REACH      32
 
-/* How far COLD carries, which is no longer the same as heat.
- *
- * They shared CONDUCT_REACH on the argument that a medium carries cold as far
- * as it carries heat, and that stopped being true once cold got its own
- * attenuation run and, now, the diagonals. Thirty-two cells of cold read as
- * unrealistic in play - a third of it does not. */
+/* How far cold carries: a third of heat's reach. Cold has its own
+ * attenuation run and diagonals, and thirty-two cells of it read as
+ * unrealistic in play. */
 #define COLD_REACH         (CONDUCT_REACH / 3)
 
 /* Cells the cold crosses per attenuation roll - THE ONE PLACE COLD BEATS HEAT.
@@ -1031,10 +1023,12 @@ step_one_tempered_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cons
     const cell_t c = row[x];
     const uint8_t temp = CELL_VARIANT(c);
 
-    /* Spreads this cell's own temperature into a hotter or colder neighbour,
-     * so a frosted or heated patch is visible past the one cell conduct_heat()
-     * reaches. `wet` is computed in this same neighbour walk since the four
-     * cells are already loaded here - a separate pass would walk them twice. */
+    /* Pushes this cell's temperature one level into any heat-banking
+     * neighbour two or more levels away, so a frosted or heated patch
+     * spreads visibly. Pushed from here, not pulled: an ambient cell never
+     * reaches this pass, so it could not notice a frosted neighbour.
+     * `wet` is computed in this same neighbour walk since the four cells
+     * are already loaded here - a separate pass would walk them twice. */
     bool wet = false;
     for (int d = 0; d < 4; d++) {
         const int nx = x + reaction_dirs[d][0];
@@ -1155,13 +1149,11 @@ crust_faces(const sand_t* s, int x, int y, int w, int h, uint8_t mine, uint8_t b
 /* How often each of the two paths gets to roll. Periods, not divisors on the
  * chance: crusts is a small count, so dividing floors to zero.
  *
- * SEEDING NEEDS A CLOCK TOO. Ungated it rolls every step, so a whole contact
- * face turned within a second of settling while the shell behind it took
- * minutes - the crust appeared rather than formed. Still the faster of the
- * two, being what starts a shell, but no longer instant.
- *
- * The stagger multipliers differ per path so the two do not come due
- * together. */
+ * Seeding needs a clock too: ungated, it rolls every step, so a whole
+ * contact face would turn within a second of settling - the crust would
+ * appear rather than form. It still rolls more often than widening, being
+ * what starts a shell, but not every step. The stagger multipliers differ
+ * per path so the two do not come due together. */
 #define CRUST_SEED_PERIOD             4
 #define CRUST_WIDEN_PERIOD            8
 
@@ -1286,11 +1278,10 @@ emit_into_empty_neighbor(sand_t* s, int x, int y, int w, int h, uint8_t spec) {
  * or down. Not emit_into_empty_neighbor(): its screen-space order can put
  * fire beside/beneath lava and breaks under tilt. Not straight-up-only:
  * measured, 6% of rolls land vs 14% for this spread, costing the
- * thermal-shock scene 59% of its fire (827/2000 cells); raising `flare`
- * can't substitute - it sets a rate, not a density.
- *
- * Uses last_step, not last_load, matching try_flare()'s "below" check one
- * line earlier. */
+ * thermal-shock scene 59% of its fire; raising `flare` can't substitute -
+ * it sets a rate, not a density. Uses last_step, not last_load, matching
+ * try_flare()'s own "below" check - the two must agree on which way is
+ * down. */
 static inline bool
 emit_against_gravity(sand_t* s, int x, int y, int w, int h, uint8_t spec) {
     const int dx = s->last_step_dx, dy = s->last_step_dy;
@@ -1634,12 +1625,9 @@ dissolver_and_bubble_or_defer(sand_t* s, uint8_t* row, int x, int y, int w, int 
     step_one_dissolver_cell(s, row, x, y, w, h, r);
 }
 
-/* Detects a lit 2x2, not a wider block: reaction_t.explodes (material.h)
- * still rolls burn-out independently per cell, so a bigger cluster keeps its
- * own chance to catch rather than being swept in wholesale. Matches with
- * same_species(), not a bare material compare - MAT_EXTENDED cells share one
- * nibble across materials, and a raw compare would count an unrelated
- * extended cell like ice as a lit fuse. */
+/* same_species(), not a bare material compare: gunpowder shares
+ * MAT_EXTENDED's nibble with other extended materials, and a bare compare
+ * would count an unrelated extended cell like ice as a lit fuse. */
 static inline bool
 lit_here(const sand_t* s, int nx, int ny, int w, int h, cell_t grain, const reaction_t* r) {
     if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
@@ -1649,6 +1637,9 @@ lit_here(const sand_t* s, int nx, int ny, int w, int h, cell_t grain, const reac
     return same_species(n, grain) && cell_code(n) >= r->lit_from;
 }
 
+/* Detects a lit 2x2, not a wider block: reaction_t.explodes (material.h)
+ * still rolls burn-out independently per cell, so a bigger cluster keeps
+ * its own chance to catch rather than being swept in wholesale. */
 static inline bool
 find_lit_two_by_two(const sand_t* s, int x, int y, int w, int h, cell_t grain, const reaction_t* r, int* out_dx,
                     int* out_dy) {

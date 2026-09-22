@@ -44,9 +44,8 @@
 /* Ramp for `n` steps between colours, split for material limits. */
 #define SEG(lo, hi, i, n) GFX_RGB(LERP(lo, hi, ((i) * 15) / ((n) - 1)))
 
-/* Carries an independent tone per moisture level - wet soil reads darker,
- * capped at a 7-point spread - so variant 0 only needs to be paler than
- * variant 1, not shared with a separate slot. */
+/* One shade per variant, dry to wet; the saturated level takes the full wet
+ * colour. */
 #define DIRT_DRY          0x9A7B52
 #define DIRT_WET          0x3A2A18
 
@@ -80,7 +79,7 @@
 #define WOOD_LEAF_TINT_LO LERP(0x468F26, 0x000000, 6)
 #define WOOD_LEAF_TINT_HI LERP(0x468F26, 0x8CD24E, 3)
 
-/* Hot walls appear visibly hot now. */
+/* Hot walls appear visibly hot. */
 #define STONE_FROST       0xCEDCE8
 #define STONE_AMBIENT     0x5F6673
 #define STONE_NEUTRAL     0x8A7466
@@ -105,10 +104,6 @@
     STONE_AT(0), STONE_AT(1), STONE_AT(2), STONE_AT(3), STONE_AT(4), STONE_AT(5), STONE_AT(6), STONE_AT(7),            \
         STONE_AT(8), STONE_AT(9), STONE_AT(10), STONE_AT(11), STONE_AT(12), STONE_AT(13), STONE_AT(14), STONE_AT(15)
 
-/* Glass at room temp is mid; below sand's ambient it frosts, and at shock it
- * breaks and glows like lava. Shock is the ramp's largest step on purpose -
- * shattering should read as a distinct event, not a continuation of cooling. */
-
 /* CYAN, and only the cold END of the ramp - the shimmer keeps its own pale
  * target below, kept separate so a chilling cell doesn't drift toward the
  * very colour the per-cell shimmer already blends toward. Cyan holds
@@ -116,8 +111,8 @@
  * toward white. */
 #define GLASS_FROST   0x5FE6F0
 
-/* Where a cell's per-cell shimmer blends TO. Was GLASS_FROST; kept at that
- * old value so ambient glass renders exactly as it always has. */
+/* Where a cell's per-cell shimmer blends TO - its own pale target,
+ * independent of GLASS_FROST above. */
 #define GLASS_SHIMMER 0xD6EEF8
 #define GLASS_AMBIENT 0x2E6B85
 #define GLASS_NEUTRAL 0x8C7E70
@@ -390,9 +385,9 @@ static const gfx_color_t palette[256] = {
 
     [GUNPOWDER_CELL(0)] = GFX_RGB(0x141014), /* dry, tone 0 - near-black */
     [GUNPOWDER_CELL(1)] = GFX_RGB(0x2B1410), /* dry, tone 1 - black-red */
-    [GUNPOWDER_CELL(2)] = GFX_RGB(0x46160F), /* material_brush_color()'s own
-                                              * tone, app_sand.c - the only
-                                              * one ever visible */
+    [GUNPOWDER_CELL(2)] = GFX_RGB(0x46160F), /* dry, tone 2 - also the swatch
+                                              * colour, material_brush_color()
+                                              * (material_palette.h) */
     [GUNPOWDER_CELL(3)] = GFX_RGB(0x251210), /* moisture 1 */
     [GUNPOWDER_CELL(4)] = GFX_RGB(0x1F1011), /* moisture 2 */
     [GUNPOWDER_CELL(5)] = GFX_RGB(0x180E11), /* moisture 3 */
@@ -403,6 +398,9 @@ static const gfx_color_t palette[256] = {
                               * burning */
 };
 
+/* Glass at room temp is mid; below ambient it frosts, and at shock it
+ * breaks and glows like lava. Shock is the ramp's largest step on purpose -
+ * shattering should read as a distinct event, not a continuation of cooling. */
 #define GLASS_RGB(v)        ((v) <= SAND_AMBIENT_HEAT ? GLASS_COOL(v) : (v) < SAND_SHOCK_HEAT ? GLASS_WARM(v) : GLASS_HOT(v))
 
 /* Blends the TEMPERATURE toward ambient rather than the RGB endpoints the way
@@ -676,7 +674,7 @@ material_wood_leaf_top5(int gx, int gy, int* last_down, int8_t top5[5][2]) {
  * for visibility on water. */
 static const gfx_color_t water_foam = GFX_RGB(0xE8F6FF);
 
-/* Capped at 3, not the full curvature range: an uncapped corner cell would
+/* Capped below the full curvature range: an uncapped corner cell would
  * compute a higher value than a rough edge and read as more foamed instead
  * of just differently shaped. */
 #define WATER_FOAM_CURVATURE_MAX 3
