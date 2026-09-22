@@ -5,15 +5,12 @@
  * the way a test process's own list is between scenarios.
  */
 
-#include <stdio.h>
-
 #include "suites.h"
 #include "unity.h"
 
 #include "app.h"
 
 static app_t apps[4];
-static char names[4][16];
 
 static void
 fixture(void) {
@@ -22,8 +19,7 @@ fixture(void) {
 
 static void
 register_named(int slot, const char* name) {
-    snprintf(names[slot], sizeof names[slot], "%s", name);
-    apps[slot] = (app_t){.name = names[slot]};
+    apps[slot] = (app_t){.name = name};
     app_register(&apps[slot]);
 }
 
