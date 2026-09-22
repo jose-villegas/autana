@@ -23,12 +23,51 @@ def source_paths(root):
                 yield path
 
 
+def _without_comments_or_strings(text):
+    """`text` with every comment and string/char literal blanked to spaces
+    (newlines kept, so line numbers and `^`-anchored regexes still line up).
+
+    A name spelled `name()` only inside a comment or a message string - a
+    citation of some OTHER function, say - is not a declaration or a call,
+    so it must not count as the name being defined. Without this, a comment
+    that itself cites a dead name (a stale "replaces old_name()") makes
+    old_name() look real to every later scan, and a trim that garbles a
+    cited name can point at nothing forever without this gate ever noticing.
+    """
+    out = []
+    i, n = 0, len(text)
+    while i < n:
+        if text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            end = n if end < 0 else end + 2
+            out.append("".join(ch if ch == "\n" else " " for ch in text[i:end]))
+            i = end
+        elif text.startswith("//", i):
+            end = text.find("\n", i)
+            end = n if end < 0 else end
+            out.append(" " * (end - i))
+            i = end
+        elif text[i] in "\"'":
+            quote = text[i]
+            j = i + 1
+            while j < n and text[j] != quote:
+                j += 2 if text[j] == "\\" and j + 1 < n else 1
+            j = min(j + 1, n)
+            out.append("".join(ch if ch == "\n" else " " for ch in text[i:j]))
+            i = j
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
+
+
 def names(root):
     """Return function-like and macro/configuration names found in source."""
     functions, macros = set(), set()
     for path in source_paths(root):
         text = path.read_text(encoding="utf-8", errors="replace")
-        functions.update(FUNCTION.findall(text))
+        code = _without_comments_or_strings(text)
+        functions.update(FUNCTION.findall(code))
         macros.update(MACRO.findall(text))
         macros.update(UPPERCASE.findall(text))
         macros.update("CONFIG_" + name for name in KCONFIG.findall(text))
