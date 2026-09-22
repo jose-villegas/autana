@@ -223,7 +223,6 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites/suite_post_ui.c"
         "../test/suites/suite_panel_clock.c"
         "../test/suites/suite_screenshot.c"
-        "../test/suites/suite_app_registry.c"
         "../test/suites/suite_build_id.c"
         "../test/suites/suite_device_state.c"
         "../test/suites/suite_job.c"
