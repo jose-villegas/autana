@@ -24,7 +24,7 @@
 
 #include "palette.h"
 
-/* --- palette_cols(): the derivation itself ------------------------------ */
+/* palette_cols(): the derivation itself */
 
 static void
 test_palette_cols_at_the_two_real_screen_widths(void) {
@@ -73,12 +73,11 @@ test_palette_cols_clamps_to_the_max(void) {
                                   "an absurd width must not return an absurd column count");
 }
 
-/* --- palette_tile_rect / palette_hit agreement, count = 14 (one plausible
- * brush count: 3 full rows of 4, then a centred row of 2 - no longer
- * BRUSH_COUNT's own value, see the count = 15 case just below, but kept as
- * its own case since the sweep tests further down already cover every
- * count 1-16 generically and this one still pins the specific 2-wide
- * partial row by name) ---------------------------------------------------- */
+/* palette_tile_rect / palette_hit agreement, count = 14: a centred partial
+ * last row, 3 full rows of 4 then a row of 2 - kept as its own case, distinct
+ * from the count BRUSH_COUNT resolves to below, since the sweep tests
+ * further down cover every count 1-16 generically and this one still pins
+ * the specific 2-wide partial row by name. */
 
 static void
 test_centre_of_every_tile_hits_its_own_index(void) {
@@ -96,9 +95,8 @@ test_centre_of_every_tile_hits_its_own_index(void) {
     }
 }
 
-/* count = 15, BRUSH_COUNT's REAL value now that gunpowder's brush pushed
- * the panel one tile past the count = 14 case above (app_sand.c's own
- * brushes[] array) - 3 full rows of 4, then a centred row of 3, a
+/* count = 15, the count BRUSH_COUNT resolves to (app_sand.c's own brushes[]
+ * array) - a centred partial last row, 3 full rows of 4 then a row of 3, a
  * differently-shaped partial row than 14's own 2-wide one. */
 static void
 test_centre_of_every_tile_hits_its_own_index_at_brush_count(void) {
@@ -158,7 +156,7 @@ test_hit_round_trips_against_tile_rect_for_every_tile_turned(void) {
     check_hit_round_trips_against_tile_rect_for_every_tile(PALETTE_SCREEN_H, PALETTE_SCREEN_W);
 }
 
-/* --- the centred partial row: empty space beside it is a genuine miss --- */
+/* the centred partial row: empty space beside it is a genuine miss */
 
 static void
 test_empty_region_beside_centred_partial_row_misses(void) {
@@ -179,7 +177,7 @@ test_empty_region_beside_centred_partial_row_misses(void) {
     TEST_ASSERT_EQUAL_INT(-1, palette_hit(367, row_y, count, cols, PALETTE_SCREEN_W, PALETTE_SCREEN_H));
 }
 
-/* --- outside the panel entirely, and negative coordinates -------------- */
+/* outside the panel entirely, and negative coordinates */
 
 static void
 test_points_outside_the_panel_miss(void) {
@@ -206,7 +204,7 @@ test_negative_coordinates_miss(void) {
     TEST_ASSERT_EQUAL_INT(-1, palette_hit(100, -1, 14, cols, PALETTE_SCREEN_W, PALETTE_SCREEN_H));
 }
 
-/* --- tiles never overlap, and always sit inside the screen ------------- */
+/* tiles never overlap, and always sit inside the screen */
 
 static bool
 rects_overlap(int ax, int ay, int aw, int ah, int bx, int by, int bw, int bh) {
@@ -263,7 +261,7 @@ test_tile_rects_never_overlap_and_stay_on_screen_turned(void) {
     check_tile_rects_never_overlap_and_stay_on_screen(PALETTE_SCREEN_H, PALETTE_SCREEN_W);
 }
 
-/* --- a full grid (16, no partial row) leaves no gap --------------------- */
+/* a full grid (16, no partial row) leaves no gap */
 
 static void
 test_full_grid_of_sixteen_leaves_no_gap(void) {
@@ -292,7 +290,7 @@ test_full_grid_of_sixteen_leaves_no_gap(void) {
     }
 }
 
-/* --- a single tile still lands somewhere sensible ----------------------- */
+/* a single tile still lands somewhere sensible */
 
 static void
 test_count_of_one_lands_sensibly(void) {
@@ -312,7 +310,7 @@ test_count_of_one_lands_sensibly(void) {
     TEST_ASSERT_EQUAL_INT(-1, palette_hit(x - 1, y, 1, cols, PALETTE_SCREEN_W, PALETTE_SCREEN_H));
 }
 
-/* --- the panel never overflows the canvas it was derived from ---------- */
+/* the panel never overflows the canvas it was derived from */
 
 /* The sweep runs past PALETTE_COLS_MAX's clamp (16 * 92 = 1472) so the clamp
  * is exercised too, and screen_h is held generously above the worst case
@@ -339,14 +337,16 @@ test_panel_never_overflows_the_canvas_across_a_width_sweep(void) {
     }
 }
 
-/* --- palette_label_origin(): the label lands centred at every quarter turn
- * --------------------------------------------------------------------------
+/*
+ * palette_label_origin(): the label lands centred at every quarter turn
+ *
  *
  * gfx_text_turned()'s origin is the FIRST GLYPH's cell, not a corner of the
  * drawn string, so the origin VALUE differs by turn even when the text lands
  * in the same place. What has to be true is the box the string occupies, so
  * label_bbox() below reconstructs it by walking the origin the way
- * gfx_text_turned() does. */
+ * gfx_text_turned() does.
+ */
 
 static void
 label_bbox(int ox, int oy, int len, int turn, int* bx, int* by, int* bw, int* bh) {

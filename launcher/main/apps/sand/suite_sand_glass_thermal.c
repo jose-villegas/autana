@@ -633,7 +633,7 @@ static void
 test_lava_one_side_snow_the_other_cracks_the_wall(void) {
     const int wall = W / 2;
 
-    /* --- heat it first ---------------------------------------------- */
+    /* heat it first */
     build_lava_glass_wall(wall);
 
     /* Soak until THE CELL THE SNOW WILL TOUCH is hot, not until any glass
@@ -665,7 +665,7 @@ test_lava_one_side_snow_the_other_cracks_the_wall(void) {
                                       "must crack it - the gradient works whichever side the heat came "
                                       "from, which is the whole point of it being a gradient");
 
-    /* --- and without snow it never cracks at all --------------------- */
+    /* and without snow it never cracks at all */
     build_lava_glass_wall(wall);
 
     const int dry_sand_before = count_cells_of(MAT_SAND);

@@ -160,8 +160,8 @@ step_one_falling_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
  * lift. */
 #define TRUNK_WIDTH 3
 
-/* Moisture soaks; bottom wet, top dry. Plant paused, watered two rows below. */
-
+/* Moisture soaks bottom wet, top dry; a plant paused two rows below where it
+ * last drank still reads as watered. */
 static int
 find_water(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t self, int* lift, int* contact_at,
            int* root_depth, bool wants_room) {
@@ -185,11 +185,11 @@ find_water(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t se
          * fallback, missing ground. See lookahead. */
         bool took_root = false;
 
-        /* ORDERING is critical; incorrect ordering led to single-row roots. */
-
-        /* Fallback crosses root; contact drops row. Not reliable. */
-
-        /* One cell lookahead fixes bed shifting. */
+        /* The one-cell root lookahead below runs before the ordinary
+         * stem/ground scan, and must: reversing the order changes which cell
+         * a root-backed stem commits to. Looking one cell ahead, rather than
+         * only at the current cell, keeps the walk from losing the bed when
+         * it shifts by one row. */
         if (r->roots_to != 0) {
             const int* fd = ring_dir(down);
             const int tx = cx + fd[0], ty = cy + fd[1];
@@ -286,17 +286,12 @@ find_water(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t se
     return -1;
 }
 
-/* See PART 1 of roots feature. Rolls CONTACT cell welding into FIRST root. */
-
-/* `root_depth == 0` means tree not embedded, see reaction_t.roots in
- * material.h. */
-
-/* PART 2 - step_one_rooting_cell() handles growth starting from the root. */
-
-/* Gating shuts path to prevent root conflicts. */
-
-/* soil_at skips conversion to avoid disconnected woody specks. */
-
+/* The GROWER half of reaction_t.roots (material.h): fires once, at
+ * root_depth == 0, welding CONTACT into the FIRST root; step_one_rooting_cell()
+ * below is the ROOT half, growth from a root already placed, so the two are
+ * gated apart. Moisture is spent at soil_at, which can sit cells away from
+ * contact_at - only contact_at ever converts, so a deep drink never leaves a
+ * disconnected root speck. */
 static void
 spend_soil_moisture(sand_t* s, int w, const reaction_t* r, int soil_at, uint8_t amount, int contact_at,
                     int root_depth) {
@@ -324,12 +319,10 @@ spend_soil_moisture(sand_t* s, int w, const reaction_t* r, int soil_at, uint8_t 
 
 #define ROOT_CONDUCT_CHANCE 64
 
-/* One cell of ROOT, carrying water DOWN through itself - a conduit. */
-
-/* Moves only, gravity-ward. */
-
-/* Sides count as sources. Drawing from soil allows full column drainage. */
-
+/* One ROOT cell, carrying water down through itself as a conduit - moves
+ * gravity-ward only. Its two side neighbours count as sources too, not just
+ * the one above, so a whole column of soil can drain through it rather than
+ * only the cell directly overhead. */
 bool
 step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     const int down = ring_of(s->last_load_dx, s->last_load_dy);
@@ -389,11 +382,9 @@ step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t
     return true;
 }
 
-/* ROOT cell consumes soil moisture with chance, docs/sand/Sand-Simulation.md */
-
-/* Root does not need stem's machinery. Uses existing resource bound. */
-
-/* Prevents system becoming a block. Uses standard roll discipline. */
+/* A ROOT cell rolls to convert one adjacent moist soil cell into more root -
+ * see docs/sand/Sand-Simulation.md and ROOT_SURFACE_MAX above for why
+ * root_neighbors caps it before any roll happens. */
 bool
 step_one_rooting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     /* Cheapest question first, rejects thick columns without neighbour scan
@@ -413,17 +404,12 @@ step_one_rooting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
         return false; /* buried inside its own kind; nothing to do here */
     }
 
-    /* Qualitative difference, not rounding error. Uses ring_dir() instead of
-     * four-neighbour scan. */
-
-    /* WEIGHTED PICK, not uniform. Moisture spreads sideways, favouring sides
-     * over depth. */
-
-    /* GRAVITY-WARD biases depth: root seeks water beneath, not beside. */
-
-    /* TRUNK IS PARENT. First root has no neighbors, zero away-vector, gravity
-     * dominant, critical for heading. */
-
+    /* The pick below is WEIGHTED, not uniform: a direction that continues
+     * away from the parent (wood, or an existing root - the very first root
+     * cell has neither, so its away-vector is zero and gravity alone
+     * decides) or that reaches downward carries more weight, so a root
+     * spreads sideways from where it started and seeks water beneath itself
+     * rather than beside it. */
     int away_x = 0, away_y = 0;
     for (int d = 0; d < 8; d++) {
         const int* nd = ring_dir(d);

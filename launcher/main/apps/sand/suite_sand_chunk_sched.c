@@ -160,7 +160,7 @@ cs_downstream(int c, int n, int t) {
     return (t > 0) ? (n - 1 - c) : c;
 }
 
-/* --- the cut -------------------------------------------------------------- */
+/* the cut */
 
 static void
 cs_tally_chunk(const cs_case_t* c, uint8_t* seen, int cx, int cy, const char* label) {
@@ -216,7 +216,7 @@ test_the_cut_gives_every_cell_to_exactly_one_chunk(void) {
     }
 }
 
-/* --- the order ------------------------------------------------------------ */
+/* the order */
 
 static void
 cs_check_permutation(const cs_case_t* c, void* ctx) {
@@ -281,7 +281,7 @@ test_every_chunk_a_move_can_reach_runs_first(void) {
     cs_sweep(CS_GRIDS, cs_check_downstream_first, NULL);
 }
 
-/* --- two lanes ------------------------------------------------------------ */
+/* two lanes */
 
 static void
 cs_run_begin(cs_run_t* r, const cs_case_t* c, bool reenter) {
@@ -445,7 +445,7 @@ test_one_lane_alone_aborts_and_the_rest_finishes_the_board(void) {
     cs_sweep(CS_GRIDS, cs_check_lone_lane_gives_up, &run);
 }
 
-/* --- makespan ------------------------------------------------------------- */
+/* makespan */
 
 static int
 cs_makespan(const cs_case_t* c, const int* cost) {

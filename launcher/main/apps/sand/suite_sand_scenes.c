@@ -33,7 +33,7 @@
 #include "suite_sand_scenes.h"
 #include "util/intmath.h"
 
-/* --- on the real grid, on the real chip --------------------------------- */
+/* on the real grid, on the real chip */
 
 /* Which material lands on cell (x, y) in the all-pairs tiling.
  *
@@ -208,7 +208,7 @@ test_the_mixed_scene_puts_every_material_pair_in_contact(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(want, found, why);
 }
 
-/* --- three more scenes, built once and shared with a device benchmark --- */
+/* three more scenes, built once and shared with a device benchmark */
 
 /* A benchmark must be proven to run the reactions it claims to measure, and
  * "proven" means a host test that builds the SAME scene through the SAME
@@ -216,7 +216,7 @@ test_the_mixed_scene_puts_every_material_pair_in_contact(void) {
  * they do. Three device rounds once went into optimising a function the
  * failing benchmark never called. */
 
-/* --- the layout set ------------------------------------------------------ */
+/* the layout set */
 
 #define LAYOUT_SETTLE_STEPS 30
 
@@ -1932,16 +1932,14 @@ test_the_wet_earth_scene_keeps_percolating_across_the_window(void) {
                                   "purpose (update this test)");
 }
 
-/* --- water over lava: a continuous pour onto a sealed pool --------------
+/*
+ * water over lava: a continuous pour onto a sealed pool
  *
  * A pour, not a synthetic max-chance stress scene: production never pins
  * the burst-gate chance, so forcing it would cost more but not be
  * representative. Chains quench, cool_off_chain() (sand_reactions.c) and
  * the burst gate, so a regression in any shows up here.
- *
- * DO NOT compare these numbers to an older capture under this name: a
- * removed vent-spam mechanism measured a different,
- * costlier scene here. */
+ */
 
 /* One full-width seam, not many small sealed pockets: nothing here needs to
  * stay sealed, and a seam this wide puts as many lava cells in simultaneous
@@ -1950,20 +1948,16 @@ test_the_wet_earth_scene_keeps_percolating_across_the_window(void) {
  * worst case for the burst gate. */
 #define WATER_LAVA_LAVA_TOP (REAL_H / 2)
 
-/* Same real device impulse budget the vent-spam scene this replaces used
- * (that scene's own comment, git history, has the full account) - the
- * app's own buffer is sized APP_IMPULSE_MAX (2048), and this scene should
- * be fighting the same memory ceiling a real device pour actually has,
- * not a looser one a differently-sized test buffer would hide. */
+/* The app's own buffer is sized APP_IMPULSE_MAX (2048), and this scene
+ * fights the same memory ceiling a real device pour actually has, not a
+ * looser one a differently-sized test buffer would hide. */
 
-/* sand_set_lava_cooloff()/sand_set_lava_burst() forced to their maximum,
- * the same reasoning the vent-spam scene this replaces gave for forcing
- * sand_set_vent_chance(255) (git history): production leaves both
- * deliberately rare (SAND_LAVA_COOLOFF_CHANCE, SAND_LAVA_BURST_CHANCE,
- * sand.h), and a benchmark that mostly rolls "no" would not be measuring
- * the mechanisms it claims to. Quench itself has no chance to force - a
- * burning liquid touching a quenching one always converts - so only
- * these two need it. */
+/* sand_set_lava_cooloff()/sand_set_lava_burst() forced to their maximum:
+ * production leaves both deliberately rare (SAND_LAVA_COOLOFF_CHANCE,
+ * SAND_LAVA_BURST_CHANCE, sand.h), and a benchmark that mostly rolls "no"
+ * would not be measuring the mechanisms it claims to. Quench itself has no
+ * chance to force - a burning liquid touching a quenching one always
+ * converts - so only these two need it. */
 void
 build_water_over_lava_scene(sand_t* s) {
     sand_set_lava_cooloff(s, 255);
@@ -2039,11 +2033,13 @@ test_the_water_over_lava_scene_reaches_the_quench_cooloff_and_burst_paths_it_cla
                                          "gate never fired at all");
 }
 
-/* --- gunpowder basin: a brush-drawn vessel of gunpowder, lit once ------
+/*
+ * gunpowder basin: a brush-drawn vessel of gunpowder, lit once
  * A lit pile chain-detonating via
  * find_lit_two_by_two()/sand_explode() (sand_reactions.c) has never been
  * profiled on device, unlike the gas-pocket and covered-lava bursts it
- * mirrors. */
+ * mirrors.
+ */
 
 /* WALLS MUST BE BRUSH-DRAWN, NOT A CLEAN RECTANGLE like
  * build_dune_in_a_vessel_scene's (suite_sand_dune_blast.c). A 2026-09-03
@@ -2478,7 +2474,7 @@ test_the_gunpowder_basin_scene_reaches_the_reactions_it_claims(void) {
                                   "extended-static cell this scene paints on purpose)");
 }
 
-/* --- the three scenes added for the interaction round ------------------- */
+/* the three scenes added for the interaction round */
 
 /* Summed fill level, not cell count: a pool taking water consolidates as
  * often as it grows, so the count can sit still while the mass climbs. */

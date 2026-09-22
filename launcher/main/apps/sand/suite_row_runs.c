@@ -20,7 +20,7 @@
 #define EMPTY 0
 #define FULL  1
 
-/* --- row_runs_find -------------------------------------------------------- */
+/* row_runs_find */
 
 static void
 test_find_reports_one_run_for_one_contiguous_blob(void) {
@@ -86,7 +86,7 @@ test_find_gives_up_past_the_cap(void) {
     TEST_ASSERT_EQUAL_INT(-1, row_runs_find(row, width, EMPTY, x0, x1));
 }
 
-/* --- row_runs_span_fallback ------------------------------------------------ */
+/* row_runs_span_fallback */
 
 static void
 test_span_fallback_covers_everything_non_empty(void) {
@@ -110,7 +110,7 @@ test_span_fallback_reports_empty_range_for_an_empty_row(void) {
     TEST_ASSERT_EQUAL_INT(0, x1);
 }
 
-/* --- row_runs_reconcile ---------------------------------------------------- */
+/* row_runs_reconcile */
 
 /* True if every index in [x0,x1) is covered by at least one of the n
  * [send_x0[i],send_x1[i]) ranges - the general correctness property that

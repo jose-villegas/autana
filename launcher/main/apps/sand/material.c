@@ -494,12 +494,12 @@ const reaction_t reactions[MATERIAL_MAX] = {
             .heat_ramp = 32,
             .cools = 5,
 
-            .dissolvable = 60, /* Stone fails at 200; MAT_GLASS replaces it.
-                                * Glass immune due to no `dissolvable`. */
+            .dissolvable = 60, /* well under sand's 200: acid eats stone
+                                * slowly. Glass has no dissolvable - the one
+                                * vessel acid cannot touch. */
 
-            /* Heat crosses ONE cell with ~0.86 chance; attenuates with depth.
-             * Was 0.69, too timid */
-            .conducts = 220,
+            .conducts = 220, /* heat crosses one cell with ~0.86 chance,
+                              * attenuating with depth */
         },
 
     [MAT_GAS] =
@@ -607,8 +607,8 @@ const reaction_t extended_reactions[MATERIAL_EXTENDED_CODES] = {
             .hardens_to = MAT_WOOD,
             .clings_to = MAT_WOOD,
 
-            /* PART 1: ONE-TIME SEED for first root, aligns with wood's row,
-             * no seam at hardening. */
+            /* The grower's own one-time seed (reaction_t.roots, material.h),
+             * matched to wood's row so hardening leaves no seam. */
             .roots = 40,
             .roots_to = MATX(MATX_ROOT),
 
@@ -691,8 +691,7 @@ const reaction_t extended_reactions[MATERIAL_EXTENDED_CODES] = {
             .dislodge_density = 201,
         },
 
-    /* See reaction_t.roots and PART 1 of the roots feature
-     * (docs/sand/Sand-Simulation.md). */
+    /* See reaction_t.roots (material.h) for the ROOTING split this row uses. */
     [MATX_ROOT] =
         {
             /* Handles anchoring, stem walk, distance to water. Trunk on root
@@ -724,36 +723,11 @@ const reaction_t extended_reactions[MATERIAL_EXTENDED_CODES] = {
 
         },
 
-/* GUNPOWDER_BASE, material.h - one row, eight designators */
-
-/* flammability = 200: catches instantly - key trait for powder keg. */
-
-/* Lights fuse, not MAT_FIRE. */
-
-/* heat_chance = 24: wood's own smoulder figure - conducted heat is a
- * slower fuse than a direct flame. */
-
-/* lit_from = GUNPOWDER_LIT (7): codes below it are dry tones and moisture,
- * never mistaken for embers. */
-
-/* catches through volume, not just face */
-
-/* soaks = 2, far under dirt's 60: a keg must sit VISIBLY wet for a good while
- * before anything happens to it. Measured, powder under standing water:
- * saturation at 7 steps when this was dirt's rate, 293 now. */
-
-/* soaks_to = 0: stays gunpowder while it wets, only wetter, same as
- * dirt. */
-
-/* dries = 1: far under dirt's 2 - a powder keg holds water a long time
- * once soaked. */
-
-/* soaked_chance = 16: how fast a FULLY WET keg turns, which is a separate
- * question from how long it takes to get wet (soaks) and was tuned separately.
- * Measured, pre-saturated powder under water, steps until half of it is gone:
- * 1542 at 8, 835 here. The other lever, SOAKED_CONVERT_PERIOD, is a mask and
- * so only moves in factors of two - it could not express this. */
-
+/* flammability 200 catches instantly - the keg's defining trait - lighting
+ * its own fuse, not MAT_FIRE, through its whole volume. heat_chance 24
+ * matches wood's smoulder figure; lit_from (7) keeps GUNPOWDER_LIT past
+ * every dry tone and moisture code. Soaks and dries far slower than dirt
+ * (2/60, 1/2), so a keg holds water a long time either way. */
 #define GUNPOWDER_REACTION                                                                                             \
     {                                                                                                                  \
         .flammability = 200,                                                                                           \
