@@ -64,11 +64,10 @@ python scripts/device/device.py --owner sam listen --seconds 30
 `send` writes one console line and prints the device's replies to it, under
 the lock like everything else. It is what live tuning uses - the firmware's
 `util/tune` answers `SET <name> <value>`, `GET <name>` and `TUNE` on a
-development build - and what `autana set`, `autana get` and `autana tune`
-call:
+development build - and what `autana tune` calls:
 
 ```powershell
-python scripts/device/device.py --owner maintainer send "SET launcher.ridge_trail 200"
+python scripts/device/device.py --owner maintainer send "SET ridge.trail 200"
 python scripts/device/device.py --owner maintainer send TUNE
 ```
 

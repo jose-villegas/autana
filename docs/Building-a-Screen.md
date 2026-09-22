@@ -171,8 +171,8 @@ may not stay that way.
 
 ### Artwork
 
-`ui_draw_bitmap()` emits a bitmap as run-length rects into the command list.
-Application artwork lives in the app's own folder so deleting the app
+`ui_draw_icon()` (`ui/ui.h`) emits an icon's runs as rects into the command
+list. Application artwork lives in the app's own folder so deleting the app
 deletes it. Structural facts only in tests - non-empty, bbox in range, run
 count under the cap, declared symmetries - never assert artwork against the
 code that draws it.

@@ -311,16 +311,13 @@ bites code writing through `gfx_framebuffer()` directly, which gfx cannot see:
 that code must call `gfx_mark_dirty()`, and forgetting shows up as stale pixels
 rather than a crash.
 
-Two smaller things fell out of it:
+One smaller thing fell out of it:
 
-- **Marking must be cheap.** `gfx_text_scaled()` calls `gfx_fill_rect()` once
-  per set font pixel, so marking runs thousands of times on a screen of text.
-  Routing that through the public entry point, with its re-clipping and call
-  overhead, cost about 5% of the launcher's framerate; an inlined helper on the
-  already-clipped path fixed it.
-- **The launcher does not benefit.** microui is immediate-mode and clears every
-  frame by design, so it pays the tracking overhead and gets nothing back -
-  about one tick.
+**Marking must be cheap.** `gfx_text_scaled()` calls `gfx_fill_rect()` once
+per set font pixel, so marking runs thousands of times on a screen of text.
+Routing that through the public entry point, with its re-clipping and call
+overhead, cost about 5% of the launcher's framerate; an inlined helper on the
+already-clipped path fixed it.
 
 On the simulation side the same dirty information answers "what needs
 redrawing" as well as "what needs sending", which is the point of the
@@ -608,10 +605,6 @@ kept here so the reasoning survives to whoever picks one up.
   with tiles large enough to keep the transaction count low, same
   constraint that just sank the per-row idea - many small tiles would
   reintroduce exactly the problem tiling was meant to solve.
-- Clear only the previous frame's bounding box rather than all 165k pixels.
-- Skipping the launcher's redraw when nothing changed, which would let its bands
-  go unsent too.
-
 ### The dirty-region caps: swept, and mostly inert
 
 `ROW_MAX_RUNS`/`LEAF_REFINE_MAX_RUNS` (2 and 2) and `GATHER_MAX_PIXELS`
@@ -655,8 +648,8 @@ blitter, no GPU. `esp_lvgl_port` does ship PPA rotation code and hand-written
 SIMD blend routines for Xtensa (`_esp32.S`, `_esp32s3.S`), so the S3-specific
 SIMD path is present in that dependency, but the PPA path itself still
 compiles only when `SOC_PPA_SUPPORTED` is set, which it is not on the S3
-either. Everything on this chip is scalar C, and only across its two cores if
-something is explicitly split to use both - the render path here is not.
+either. Everything on this chip is scalar C; the present task runs on core 1 and
+sand's step splits across both.
 
 If graphics throughput ever becomes the requirement, that is a board decision:
 the ESP32-P4 has the PPA, PSRAM, *and* a real SDMMC host.

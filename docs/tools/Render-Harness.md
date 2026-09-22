@@ -175,9 +175,9 @@ The home screen is such a screen. A scene stepped for its animation, a
 Render Lab scene at a fixed step count, is not: the same step count does not mean the
 same accumulated time.
 
-*There is no IMU, so orientation cannot be injected.* The shell keeps
-`DISPLAY_DEFAULT_QUARTER`, which is landscape, for the whole run. A
-comparison at any other quarter is a host render against a host render.
+*Orientation comes from the injected IMU.* Until an `IMU` line
+(`qemu_run.py --do "tilt ..."`) says otherwise, the stand-in reads upright
+and still; set the pose before comparing at a given quarter.
 
 ## Diffing against a capture
 

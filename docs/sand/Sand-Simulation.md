@@ -1163,8 +1163,8 @@ every step" and the numbers above:
   costing 5.5 ms.
 
 `materials[]` is `const` data in flash, read through this chip's 32 KB
-data cache - kept separate from the 16 KB instruction cache the sweep's
-own code lives in, so the two do not evict each other. A cache miss on
+data cache - separate from the instruction cache the sweep's own code runs
+from, so the two do not evict each other. A cache miss on
 a cold line is still a real cost inside the tightest loop in the project,
 which is what the bitmask above avoids paying per cell. See
 [Optimization-Playbook.md](../notes/Optimization-Playbook.md#know-what-kind-of-memory-you-actually-have)

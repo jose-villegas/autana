@@ -41,7 +41,7 @@ than a structural fix does, the cost was structural.**
 
 "Optimize for cache locality" assumes a data cache, and it is worth checking
 rather than assuming either way: this chip has a real one — 32 KB, 32-byte
-line, 8-way — and a separate 16 KB instruction cache of the same line size
+line, 8-way — and a separate 32 KB instruction cache of the same line size
 and associativity for flash-resident code and `const` data. Unrelated code
 shifting flash layout can still move a hot function across cache-line or
 even instruction-cache-set boundaries and change its measured cost with
@@ -108,7 +108,7 @@ Fixing one un-inlined boundary can relocate the problem: the now-larger
 caller may itself stop being inlined at *its* own call sites. This does not
 compound forever for free — eventually a function gets folded into every one
 of its call sites and the hot loop stops fitting the instruction cache
-(16 KB on this chip), and the technique that had been winning at every prior
+(32 KB on this chip), and the technique that had been winning at every prior
 level makes *everything* worse. Measure past the point a technique keeps
 winning, not just up to the first win.
 
