@@ -26,4 +26,6 @@ jobs:
           esp_idf_version: release-v5.5
           target: esp32s3
           path: launcher
-          command: idf.py build
+          command: >-
+            bash tools/build_flash.sh --build-only
+            && tools/check_release_symbols.sh build/launcher.elf

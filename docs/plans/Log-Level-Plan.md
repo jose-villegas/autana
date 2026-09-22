@@ -72,7 +72,7 @@ runtime default floor move together; setting only one silently no-ops
    touching the ceiling. Most are probably legitimate dev-only noise
    (correct to lose in release), but some may be miscategorized and belong
    at `ESP_LOGW`/`ESP_LOGE` instead of silently disappearing.
-2. **Release** (`sdkconfig` / `sdkconfig.defaults`):
+2. **Release** (`sdkconfig.defaults`):
    `CONFIG_LOG_DEFAULT_LEVEL_ERROR=y` + `CONFIG_LOG_MAXIMUM_LEVEL_ERROR=y`
    (or the `_WARN` variants if warnings should compile in but stay quiet by
    default — see open questions).

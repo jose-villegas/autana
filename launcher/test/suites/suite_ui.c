@@ -15,6 +15,9 @@
  */
 
 #include "suites.h"
+
+#ifdef DEVICE_BUILD
+
 #include "unity.h"
 
 #include "gfx/gfx.h"
@@ -280,5 +283,12 @@ run_ui_suite(void) {
     RUN_TEST(test_ui_begin_screen_corrects_a_stale_rect_from_a_prior_orientation);
     RUN_TEST(test_repaint_clears_every_physical_row_under_an_odd_quarter);
 }
+
+#else
+
+void
+run_ui_suite(void) {}
+
+#endif
 
 SUITE_REGISTER(run_ui_suite);
