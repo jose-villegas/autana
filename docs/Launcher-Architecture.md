@@ -4,8 +4,6 @@ How the shell, the apps and the screen fit together, and why ownership is
 arranged this way. Read this before changing the frame loop. To write an app,
 start at [Building-an-App.md](Building-an-App.md).
 
-Living document: update it when the structure changes.
-
 ---
 
 ## Layout
@@ -320,12 +318,12 @@ and `util/device_state` reaches back up into `input/imu.h` (also
 368 × 448 × 2 bytes = **322 KiB**, allocated in PSRAM
 (`BOARD_FRAMEBUFFER_CAPS` in `board.h`), so it does not count against the
 internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)). There is
-room in PSRAM for a second one; there is no time for it. A per-frame catch-up
-copy between two PSRAM buffers costs 6-15 ms a frame (~22 MB/s), which takes
-sand from ~17-20 fps to 11-12. One full frame over QSPI is bandwidth-bound, not
-CPU-bound (see [Display-and-Rendering.md](notes/Display-and-Rendering.md),
-"The blit is bus-bound"), so a second buffer buys nothing on the send side
-either. The decision and its measurements are in
+room in PSRAM for a second one; there is no time for it - a per-frame
+catch-up copy between two PSRAM buffers costs more than sand's own frame
+budget, and one full frame over QSPI is bandwidth-bound, not CPU-bound (see
+[Display-and-Rendering.md](notes/Display-and-Rendering.md), "The blit is
+bus-bound"), so a second buffer buys nothing on the send side either. The
+decision and its measurements are in
 [Autana-Rendering-Roadmap.md](Autana-Rendering-Roadmap.md) (decision B).
 
 "One framebuffer" is really "one destination at a time": an app may ask for
@@ -484,10 +482,9 @@ card, so it has no business being reachable in a shipped image. See
 particular that `REQUIRES` must **not** be gated this way.
 
 Diagnostics ships in any development build, `--dev` included, not just
-`--diag` — that is what frees the RAM the on-device test suites would
-otherwise hold, letting a `--dev` build reach the gfx debug-overlay
-checkboxes without an app's large internal allocations failing for want of
-heap. Its own
+`--diag` - why a plain `--dev` build is still worth reaching for is in
+[Display-and-Rendering.md](notes/Display-and-Rendering.md#partial-updates-only-send-the-bands-that-changed).
+Its own
 toggle page mixes two shapes; the app itself does not. The "run self test
 suite" button and its result line are genuinely
 SELFTEST-only (`#if CONFIG_LAUNCHER_SELFTEST` inside `app_diagnostics.c` —
@@ -638,8 +635,9 @@ finger first landed and then goes deaf to everything after.
 
 These fight, and the fight would have hit apps, not just the launcher.
 Immediate mode rebuilds and repaints the UI every frame, which means clearing
-every frame, which marks every band dirty and forces a full ~17 ms transfer -
-discarding the saving that partial updates exist to provide.
+every frame, which marks every band dirty and forces a full transfer
+(`gfx.h`'s QSPI note) - discarding the saving that partial updates exist to
+provide.
 
 The resolution: an immediate-mode UI is **rebuilt** every frame but not
 necessarily **changed**. microui's command list is a complete description of
@@ -778,7 +776,8 @@ the same direction once put next to each other:
 PSRAM.** The framebuffer does not compete for
 internal SRAM - it lives entirely in the board's 8 MB of octal PSRAM (see
 `docs/notes/Board-and-Memory.md`) - but internal (non-PSRAM) free heap is
-still a few hundred KiB, not gigabytes, and a persistent widget tree and
+what `DP_FREE_HEAP_BYTES` records, nowhere near gigabytes, and a persistent
+widget tree and
 style system are a standing tax on that pool for the life of the process,
 not a one-time cost. microui needed patching too - see "The vendored header
 is patched" below - but that is a one-time struct-layout edit down to a small
@@ -818,7 +817,7 @@ not a free win.
 ## The microui integration
 
 microui is immediate-mode and draws nothing itself: each frame it turns the UI
-description into a list of rectangles, text and icons, and `ui_launcher.c` walks
+description into a list of rectangles, text and icons, and `ui.c` walks
 that list painting into the framebuffer.
 
 That command-list model is why it suits this device - see [Why microui, not
@@ -858,13 +857,10 @@ hover establishment is microui's own state, which is why
 to a press goes through `mu_update_control()`. Adding a checkbox requires
 nothing new, but reworking input handling means preserving this.
 
-A slider needed one more thing the hover synthesis alone does not give:
-`DOWN` has to stay held for the whole press rather than release on the same
-frame it presses, or a drag can only jump to where a finger first landed and
-then goes deaf to the rest of the gesture. `ui/ui_pointer.c` is where that
-policy actually lives — see "the pressed look is on hover" under "Drawing a
-UI" above — and `ui_slider_int()` is the control that could not exist
-without it.
+A slider needed one more thing the hover synthesis alone does not give: the
+hold-`DOWN` policy `ui/ui_pointer.c` owns - see "the pressed look is on
+hover" under "Drawing a UI" above for what it does and why - and
+`ui_slider_int()` is the control that could not exist without it.
 
 ---
 

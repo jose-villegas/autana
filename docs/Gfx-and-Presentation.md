@@ -309,12 +309,10 @@ also needs a framebuffer to read, so a trail is not available in band mode.
 
 A fading tail has to go on being drawn after the curve stops, or it freezes
 there. For how long is counted, not watched for: `gfx_glow_trail_draws()` is
-how many draws take the brightest colour to black at a given `trail`. The
-tail shares its rows with whatever else is drawn on them, so "are any lit
-pixels left" never becomes no - a first version asked that, and the launcher
-never went idle again. The launcher's ridge uses 226 (`ridge.trail`), a tail
-16 draws long - about a quarter of a second. At 32 it lasted two draws and
-could not be seen.
+how many draws take the brightest colour to black at a given `trail`, so a
+caller can schedule exactly that many more draws after the curve stops
+rather than polling the tail's own rows for whether any pixel is still lit.
+The launcher's ridge uses `ridge.trail`.
 
 **A map of the light, so that drawing is a lookup.** Searching beside every
 pixel costs in proportion to the radius, and so does the number of pixels, so
@@ -348,9 +346,10 @@ only once it is half a degree from the one on screen, and put exactly level
 once down has held still for 300 ms.
 
 It is also never quite still (`ui/ridge_motion.h`, pure and host-tested). It
-**breathes**: every 9 s its rest shape eases toward a smoothed copy of the
-ridge and back to the rigid original. A **wave** 2.5 px high runs along it.
-And the wave has **momentum**: while the device turns, the line lags true
+**breathes**: every `ridge.breath_ms` its rest shape eases toward a smoothed
+copy of the ridge and back to the rigid original. A **wave**
+`ridge.wave_height` (sixteenths of a pixel) high runs along it. And the
+wave has **momentum**: while the device turns, the line lags true
 level, so for that moment the ridge is a slope - the sine of the lag - and
 the wave is pushed down it and coasts on after. All three come in over 4 s
 after the line is released (`ridge.ambient_ease_ms`), slowly at first and
