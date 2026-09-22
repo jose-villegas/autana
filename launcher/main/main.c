@@ -189,8 +189,6 @@ shell_system_panel_clock_hz(void) {
     return panel_clock_system_hz(&shell_panel_clock);
 }
 
-/* app registry */
-
 /* Filled in before app_main() by the constructors APP_REGISTER() emits. No
  * app is named here; see app.h for why. */
 static const app_t* apps[APP_MAX];
@@ -359,8 +357,6 @@ show_post_failures(void) {
     /* Long timeout for manual action, short for unattended use. */
     vTaskDelay(pdMS_TO_TICKS(8000));
 }
-
-/* main */
 
 /* What the boot animation dissolves into: the home screen as its first frame
  * will draw it, untouched and whole. */
