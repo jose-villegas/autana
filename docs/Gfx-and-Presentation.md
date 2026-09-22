@@ -57,7 +57,10 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 - Only `GFX_RESOLUTION_FULL` without interlace renders today. The other
   request fields grant correctly and nothing consumes them.
 - `GFX_BAND_HEIGHT` is 16, 32 or 64 rows by Kconfig, default 32, and always
-  divides `GFX_HEIGHT`.
+  divides `GFX_HEIGHT`. At 64 the two band buffers are not a new
+  allocation: they alias `gfx.c`'s own strip-bounce slots (each already
+  exactly one 64-row band's size), idle while band mode holds them, since
+  free internal heap is only ~31 KB right after `gfx_init()`.
 
 ## Dirty tracking
 
@@ -204,6 +207,19 @@ sequenceDiagram
   draws a band's share. The shell queues its home hint with
   `ui_queue_band_overlay_rect()` before `frame()`, since nothing can draw
   after the loop.
+- `gfx_band_submit_span(x0, x1)` sends only that column range of the current
+  band instead of the whole width - the panel keeps showing whatever the
+  rest already held. Edges round outward to even and clip to the band
+  (`gfx_band_span_clip()`, `gfx_band.h`); an empty result sends nothing,
+  advancing the ring the way `gfx_band_skip()` does. Still exactly one
+  `draw_bitmap()` call: the span is packed to its own width in place first
+  (`gfx_band_span_pack()`), a flat buffer having no stride to skip past.
+  `gfx_band_submit()` is `gfx_band_submit_span(0, GFX_WIDTH)`.
+- Band mode heals too, at the fast clock: `gfx_band_frame_begin()` plans a
+  present's worth of heal strips the same way a full-fb present does
+  (`gfx_heal_queue_rolling()` + `gfx_heal_plan()`, same budget), and
+  `gfx_band_dirty()` reports a band dirty when it overlaps one of them - a
+  band is rendered from scratch, so healing it is just sending it again.
 
 ## Indexed mode
 

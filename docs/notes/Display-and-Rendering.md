@@ -405,6 +405,22 @@ frame as dirty once more, and that submit goes out bare. `gfx_band_next()`
 resets every row's cell boxes and leaf bits at the end of the frame, the
 same reset a full-framebuffer present gives each row it sends.
 
+Band mode's own heal at 80 MHz reuses the same reporting path: gfx has no
+copy of a band to resend on its own, so `gfx_band_frame_begin()` plans a
+present's worth of heal strips (`gfx_heal_queue_rolling()` + `gfx_heal_plan()`,
+same budget as a full-fb present) and `gfx_band_dirty()` reports a band
+dirty when it overlaps one, the same shape the overlay clean-up above
+already used to ask for a bare resend. A band is drawn from scratch every
+time, so healing it is just sending it again - there is no narrower shape to
+resend, unlike a full-fb strip.
+
+A band-mode caller can also send less than the whole band:
+`gfx_band_submit_span(x0, x1)` packs `[x0, x1)` of the band buffer to its
+own width in place and queues one `draw_bitmap()` over just that column
+range, instead of `gfx_band_submit()`'s always-full-width send - still one
+call, still even-rounded edges, an empty span just advancing the ring
+instead of sending.
+
 Declared only under
 `CONFIG_LAUNCHER_DEVELOPMENT`, in both the header and the implementation - not
 just compiled out of a release build, but undefined there: a caller outside a
