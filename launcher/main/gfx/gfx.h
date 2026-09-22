@@ -409,7 +409,10 @@ int gfx_band_count(void);
 
 /* Queues the current band's send, waiting first for whichever previous
  * band's send is still in flight (gfx_band_ring_must_wait(), gfx_band.h) -
- * never for the one just queued. */
+ * never for the one just queued. Sends only the extent gfx_band_dirty()
+ * last reported for this band (the full width if it was never called),
+ * packed and even-clipped, in one draw_bitmap() call. An empty extent
+ * sends nothing, advancing the ring as gfx_band_skip() does. */
 void gfx_band_submit(void);
 
 /*
@@ -473,12 +476,12 @@ void gfx_indexed_set_dither16(bool enabled);
  * frames, on the present task, like every other indexed setter here. */
 void gfx_indexed_set_dither(gfx_dither_mode_t mode, const gfx_color_t* table);
 
-/* True if [row0, row1) needs rendering and sending this frame - fed by the
- * ordinary gfx_mark_dirty() calls an app and ui.c already make. A true
- * return also gives the even-rounded column span (out_x0/out_x1) worth
- * touching. Always true, full width, right after gfx_mode_enter() and any
- * frame following gfx_invalidate(). */
-bool gfx_band_dirty(int row0, int row1, int* out_x0, int* out_x1);
+/* True if the band gfx_band_next() just handed out needs rendering and
+ * sending - fed by the ordinary gfx_mark_dirty() calls an app and ui.c
+ * already make. A true return gives the column span (out_x0/out_x1)
+ * gfx_band_submit() then sends. Always true, full width, right after
+ * gfx_mode_enter() and any frame following gfx_invalidate(). */
+bool gfx_band_dirty(int* out_x0, int* out_x1);
 
 /* The band gfx_band_next() just handed out needs no redraw - advances past
  * it without rendering or sending, in place of gfx_band_submit(). */

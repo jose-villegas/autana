@@ -5,7 +5,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { extractBlocks, rewriteLineNumbers, winQuote, parseExtraMmdcArgs } from '../check-mermaid.mjs';
+import {
+  extractBlocks,
+  rewriteLineNumbers,
+  winQuote,
+  parseExtraMmdcArgs,
+  findLiteralNewlineInStateDiagram,
+} from '../check-mermaid.mjs';
 
 test('extracts a single fenced block with its start line', () => {
   const text = ['intro', '```mermaid', 'graph TD', 'A --> B', '```', 'outro'].join('\n');
@@ -64,4 +70,58 @@ test('parseExtraMmdcArgs splits on whitespace and drops empties', () => {
 test('parseExtraMmdcArgs returns an empty array for unset or blank input', () => {
   assert.deepEqual(parseExtraMmdcArgs(undefined), []);
   assert.deepEqual(parseExtraMmdcArgs(''), []);
+});
+
+test('flags a literal \\n inside a stateDiagram-v2 transition label', () => {
+  const source = ['stateDiagram-v2', '    [*] --> Active', 'Active --> Settled: no activity\\nand no neighbour'].join(
+    '\n',
+  );
+  const hit = findLiteralNewlineInStateDiagram(source);
+  assert.notEqual(hit, null);
+  assert.equal(hit.lineIndex, 2);
+});
+
+test('flags a literal \\n inside a plain stateDiagram (no -v2) too', () => {
+  const source = ['stateDiagram', 'Active --> Settled: quiet\\nfor one step'].join('\n');
+  assert.notEqual(findLiteralNewlineInStateDiagram(source), null);
+});
+
+test('does not flag a stateDiagram that already uses <br/>', () => {
+  const source = ['stateDiagram-v2', 'Active --> Settled: no activity<br/>and no neighbour'].join('\n');
+  assert.equal(findLiteralNewlineInStateDiagram(source), null);
+});
+
+test('does not flag a literal \\n inside a flowchart label', () => {
+  const source = ['flowchart TD', 'A["one\\ntwo"] --> B'].join('\n');
+  assert.equal(findLiteralNewlineInStateDiagram(source), null);
+});
+
+test('does not flag a literal \\n inside a sequenceDiagram message', () => {
+  const source = ['sequenceDiagram', 'A->>B: line one\\nline two'].join('\n');
+  assert.equal(findLiteralNewlineInStateDiagram(source), null);
+});
+
+test('flags a literal \\n in a stateDiagram-v2 preceded by an %%{init}%% directive', () => {
+  const source = [
+    '%%{init: { "theme": "forest" } }%%',
+    'stateDiagram-v2',
+    'Active --> Settled: no activity\\nand no neighbour',
+  ].join('\n');
+  assert.notEqual(findLiteralNewlineInStateDiagram(source), null);
+});
+
+test('flags a literal \\n in a stateDiagram-v2 preceded by YAML frontmatter', () => {
+  const source = [
+    '---',
+    'title: Block sleeping',
+    '---',
+    'stateDiagram-v2',
+    'Active --> Settled: no activity\\nand no neighbour',
+  ].join('\n');
+  assert.notEqual(findLiteralNewlineInStateDiagram(source), null);
+});
+
+test('does not flag a flowchart preceded by an %%{init}%% directive', () => {
+  const source = ['%%{init: { "theme": "forest" } }%%', 'flowchart TD', 'A["one\\ntwo"] --> B'].join('\n');
+  assert.equal(findLiteralNewlineInStateDiagram(source), null);
 });

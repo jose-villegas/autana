@@ -131,7 +131,7 @@ run_band_frame(wire_totals_t* t, uint32_t dt_ms) {
         const int height = gfx_band_height();
         int x0, x1;
 
-        if (!gfx_band_dirty(row0, row0 + height, &x0, &x1)) {
+        if (!gfx_band_dirty(&x0, &x1)) {
             gfx_band_skip();
             continue;
         }

@@ -78,19 +78,32 @@ capturing sand performance numbers.
 
 ## Two runners, one set of suites
 
-The suites in `test/suites/` are compiled into **both** runners. Nothing is
-written twice.
+Portable suites (`test/suites/`, plus each app's own beside it,
+`apps/*/suite_*.c`) are compiled into every runner that can take them.
+Nothing is written twice. A shell suite that needs the device build -
+`suite_gfx.c` - is left out of the host runner's file list; an app's
+suites are globbed, so a device-only section of one sits behind `#ifdef
+DEVICE_BUILD` instead. POST is a third thing again, a boot-time hardware
+check rather than a Unity suite.
 
 ```mermaid
 flowchart LR
-    subgraph shared["test/suites/"]
-        S1["suite_touch_fsm.c"]
-        S2["suite_gesture.c"]
-        S3["suite_gfx.c<br/><i>DEVICE_BUILD only</i>"]
+    subgraph sources["sources"]
+        Portable["portable suites"]
+        DeviceOnly["device-only suites"]
     end
 
-    S1 & S2 --> HOST["test/host_main.c<br/><b>host runner</b><br/>&lt;1 s, run constantly"]
-    S1 & S2 & S3 --> DEV["main/boot/selftest.c<br/><b>SELFTEST build</b><br/>runsuite: one suite, seconds<br/>full run: ~18 min"]
+    subgraph runners["runners"]
+        Host["host run_tests.sh"]
+        Board["SELFTEST image on the board<br/><i>runsuite, or a full run</i>"]
+        Qemu["the same SELFTEST image,<br/>under QEMU"]
+    end
+
+    Portable --> Host
+    Portable --> Board
+    Portable --> Qemu
+    DeviceOnly --> Board
+    DeviceOnly --> Qemu
 ```
 
 **The host runner is the TDD loop.** Under a second, so red-green-refactor is
@@ -102,7 +115,7 @@ the portable ones. That is deliberate: passing on a laptop only proves the logic
 right on x86, whereas running on-target proves the same source behaves
 identically built by the Xtensa toolchain and executed on this chip. It
 never runs in a release image - only in a SELFTEST build, either one suite
-at a time via runsuite or as a full boot-time run.
+at a time via runsuite (seconds) or as a full boot-time run (~18 min).
 
 ### The host runner enforces two of the device's limits
 
@@ -470,11 +483,12 @@ Any timeout, debounce, animation or rate limit should take time as a parameter.
 
 ### Pass the environment in, don't reach for it
 
-`gesture_is_home_swipe()` takes the screen height rather than including
-`gfx.h`:
+`gesture_is_home_swipe()` takes the edge to check and both screen
+dimensions, rather than including `gfx.h`:
 
 ```c
-bool gesture_is_home_swipe(const input_t *input, int screen_height);
+bool gesture_is_home_swipe(const input_t *input, gesture_edge_t edge,
+                            int screen_w, int screen_h);
 ```
 
 So it depends on nothing, links against nothing, and can be tested at any
@@ -490,9 +504,7 @@ flowchart LR
     subgraph hw["Hardware-coupled"]
         direction TB
         HW1["touch.c<br/><i>I2C, FreeRTOS task</i>"]
-        HW2["gfx.c<br/><i>panel, DMA</i><br/><b>device suite</b>"]
-        HW3["ui_launcher.c<br/><i>microui</i><br/><i>not covered</i>"]
-        HW4["main.c<br/><i>frame loop</i><br/><i>not covered</i>"]
+        HW4["main.c<br/><i>frame loop</i>"]
     end
 
     subgraph pure["Pure logic — host AND device"]
@@ -502,7 +514,7 @@ flowchart LR
     end
 
     HW1 -->|"sample + now_us"| P1
-    HW4 -->|"input_t + screen height"| P2
+    HW4 -->|"input_t + screen dimensions"| P2
 ```
 
 Note the direction of the arrows: the hardware side calls *into* the pure side
@@ -551,16 +563,9 @@ exactly when they need it.
 
 ## The loop
 
-```mermaid
-flowchart LR
-    RED["Write the test<br/><b>watch it fail</b>"] --> GREEN["Make it pass<br/><i>simplest thing</i>"]
-    GREEN --> REFACTOR["Clean up<br/><i>tests stay green</i>"]
-    REFACTOR --> RED
-
-    RED -.->|"skipping this step is<br/>how untrustworthy<br/>suites happen"| RED
-```
-
-The failing step is not ceremony. A test never seen red might be asserting
+Write the test and watch it fail, make it pass the simplest way, then clean
+up with the tests still green - and back to red for the next one. The
+failing step is not ceremony. A test never seen red might be asserting
 nothing at all, and you will not find out until it fails to catch a regression.
 
 ---
@@ -624,10 +629,14 @@ the dirty tracker's own begin/wait/present sequencing on a host, by including
 `suite_gfx_dirty.c` can, and gfx.c's panel plumbing cannot. `suite_gfx_mode.c`
 and `suite_gfx_band.c` (portable) cover the mode-grant arithmetic and the
 band-ring state machine the same way, including `gfx_mode.h`/`gfx_band.h`
-directly; `gfx.c`'s own allocation and DMA-send side of `gfx_mode_enter()`/
-`gfx_band_submit()` needs real device memory, so it is exercised instead by
-`main/apps/render_lab/suite_cube_band_perf.c` (device-only), which times the cube's
-band-mode path against its full-fb path on the same scene.
+directly - the latter also covers `gfx_band_span_clip()`/`gfx_band_span_pack()`,
+the even-rounding and in-place packing behind `gfx_band_submit()`'s own send.
+`gfx.c`'s own allocation and DMA-send side
+of `gfx_mode_enter()`/`gfx_band_submit()` needs real device memory, so it is
+exercised instead by `main/apps/render_lab/suite_cube_band_perf.c`
+(device-only), which times the cube's band-mode path against its full-fb
+path on the same scene. No device suite covers a band's narrowed send or
+band buffers sharing the strip-bounce slots.
 
 Still untested: `ui_launcher.c`'s microui integration and the small3dlib
 rendering. Both are verified by running the firmware and looking at the screen.
