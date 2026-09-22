@@ -1,7 +1,6 @@
 /*
- * Portable suite: ui_scroll's shared scroll view - the API a boot menu, the
- * launcher list and a runtime-options menu all migrated onto, replacing
- * three private copies of the same RELATIVE-row fix. Drives real microui
+ * Portable suite: ui_scroll's shared scroll view - the scroll view every
+ * scrolling menu uses. Drives real microui
  * through ui_pointer_step(), the same bridge suite_ui_pointer_microui.c
  * proves against a plain list, so these assertions cover ui_flow_row() and
  * ui_scroll_view_begin()/_end() actually reaching a container's own

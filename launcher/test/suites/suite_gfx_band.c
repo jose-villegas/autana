@@ -82,8 +82,8 @@ test_the_ring_is_done_only_after_every_band_was_handed_out(void) {
 }
 
 /* gfx_band_next() (gfx.c) waits for the final band's send, then settles the
- * ring exactly once - settled() has to go from false to true across that,
- * and stay true without a further wait if asked again. */
+ * ring exactly once - gfx_band_ring_settled() has to go from false to true
+ * across that, and stay true without a further wait if asked again. */
 static void
 test_settling_clears_the_in_flight_band_exactly_once(void) {
     gfx_band_ring_t ring;

@@ -41,7 +41,7 @@ fixture(void) {
     gfx_full_redraw_latched = false;
 }
 
-/* --- band force -------------------------------------------------------- */
+/* band force */
 
 static void
 test_band_force_starts_clear_after_the_fixture_resets_it(void) {
@@ -58,7 +58,7 @@ test_band_force_set_and_taken_once(void) {
     TEST_ASSERT_FALSE_MESSAGE(gfx_band_take_force_all(), "a second read must not see the same request again");
 }
 
-/* --- the redraw request, composed the way gfx_request_full_redraw() does */
+/* the redraw request, composed the way gfx_request_full_redraw() does */
 
 static void
 request_full_redraw(void) {

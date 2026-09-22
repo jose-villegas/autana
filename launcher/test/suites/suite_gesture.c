@@ -37,7 +37,7 @@ dragging(int press_x, int press_y, int x, int y) {
     return in;
 }
 
-/* --- bottom edge: what should trigger it --------------------------------- */
+/* bottom edge: what should trigger it */
 
 void
 test_swipe_up_from_the_bottom_edge_triggers(void) {
@@ -64,7 +64,7 @@ test_a_diagonal_swipe_still_counts(void) {
     TEST_ASSERT_TRUE(gesture_is_home_swipe(&in, GESTURE_EDGE_BOTTOM, SCREEN_W, SCREEN_H));
 }
 
-/* --- bottom edge: what should not ----------------------------------------- */
+/* bottom edge: what should not */
 
 void
 test_a_swipe_starting_mid_screen_does_not_trigger(void) {
@@ -101,7 +101,7 @@ test_a_stationary_press_at_the_bottom_does_not_trigger(void) {
     TEST_ASSERT_FALSE(gesture_is_home_swipe(&in, GESTURE_EDGE_BOTTOM, SCREEN_W, SCREEN_H));
 }
 
-/* --- bottom edge: boundaries ----------------------------------------------- */
+/* bottom edge: boundaries */
 
 void
 test_the_start_zone_boundary_is_inclusive(void) {
@@ -129,7 +129,7 @@ test_the_distance_threshold_is_inclusive(void) {
                               "one pixel short should not");
 }
 
-/* --- top edge -------------------------------------------------------------- */
+/* top edge */
 
 void
 test_swipe_down_from_the_top_edge_triggers(void) {
@@ -158,7 +158,7 @@ test_a_swipe_starting_mid_screen_does_not_trigger_the_top_edge(void) {
     TEST_ASSERT_FALSE(gesture_is_home_swipe(&in, GESTURE_EDGE_TOP, SCREEN_W, SCREEN_H));
 }
 
-/* --- left edge --------------------------------------------------------------*/
+/* left edge */
 
 void
 test_swipe_right_from_the_left_edge_triggers(void) {
@@ -186,7 +186,7 @@ test_a_swipe_starting_mid_screen_does_not_trigger_the_left_edge(void) {
     TEST_ASSERT_FALSE(gesture_is_home_swipe(&in, GESTURE_EDGE_LEFT, SCREEN_W, SCREEN_H));
 }
 
-/* --- right edge --------------------------------------------------------------*/
+/* right edge */
 
 void
 test_swipe_left_from_the_right_edge_triggers(void) {
@@ -214,7 +214,7 @@ test_a_swipe_starting_mid_screen_does_not_trigger_the_right_edge(void) {
     TEST_ASSERT_FALSE(gesture_is_home_swipe(&in, GESTURE_EDGE_RIGHT, SCREEN_W, SCREEN_H));
 }
 
-/* --- suite ------------------------------------------------------------- */
+/* suite */
 
 void
 run_gesture_suite(void) {
