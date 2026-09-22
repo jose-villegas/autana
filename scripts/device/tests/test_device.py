@@ -786,19 +786,6 @@ class BatchTests(unittest.TestCase):
             self.run_batch(suites=("run_sand_perf_suite", "run_gfx_suite"), runs=1, out=True)
 
 
-class HardResetViaRtsTests(unittest.TestCase):
-    """The reset pulse selftest() issues on an already-open connection -
-    RTS high then low, DTR held low throughout for a normal boot."""
-
-    def test_pulses_rts_and_leaves_dtr_low(self):
-        connection = mock.Mock()
-        with mock.patch.object(device.time, "sleep") as slept:
-            device.hard_reset_via_rts(connection)
-        self.assertFalse(connection.dtr)
-        self.assertFalse(connection.rts)
-        slept.assert_called_once_with(device.RESET_PULSE_S)
-
-
 class ToolchainAddr2LineTests(unittest.TestCase):
     """toolchain_addr2line() looks under IDF_TOOLS_PATH when set - the same
     override ESP-IDF's own install script honours - and ~/.espressif
@@ -938,9 +925,50 @@ class ListenElfResolutionTests(unittest.TestCase):
         decode.assert_not_called()
 
 
+class ResetCommandTests(unittest.TestCase):
+    def test_parser_forwards_capture_options(self):
+        store = mock.Mock()
+        with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+             mock.patch.object(device, "reset_device", return_value=0) as reset_device:
+            code = device.main(["--port", "COM5", "reset", "--capture", "--seconds", "15"])
+        self.assertEqual(code, 0)
+        args = reset_device.call_args[0][0]
+        self.assertTrue(args.capture)
+        self.assertEqual(args.seconds, 15.0)
+
+    def test_capture_resets_waits_reopens_after_a_lost_handle_and_records(self):
+        class VanishingConnection(FakeConnection):
+            def read(self, unused_size):
+                raise OSError("USB device disappeared")
+
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        args = Namespace(owner="agent", purpose="autana reset", wait=0, capture=True,
+                         seconds=1.0, out=None)
+        first = VanishingConnection([])
+        second = FakeConnection([b"cpu_start: Multicore app\nSELFTEST_COMPLETE\n"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "records"
+            with mock.patch.object(device, "reset") as reset, \
+                 mock.patch.object(device, "wait_for_port") as wait_for_port, \
+                 mock.patch.object(device, "open_serial", side_effect=[first, second]) as open_serial, \
+                 mock.patch.object(device, "records_root", return_value=root), \
+                 mock.patch.object(device, "git_commit", return_value="deadbeef"):
+                code = device.reset_device(args, store, "COM5")
+            entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
+        self.assertEqual(code, 0)
+        reset.assert_called_once_with("COM5")
+        self.assertEqual(wait_for_port.call_count, 3)
+        wait_for_port.assert_called_with("COM5")
+        self.assertEqual(open_serial.call_count, 2)
+        self.assertEqual(entry["command"], "reset")
+        self.assertIn("complete", entry["reason"])
+        self.assertIn("may have been lost", entry["reason"])
+
+
 class SelftestTests(unittest.TestCase):
-    """selftest() flashes diag+autorun under one held lock, then resets on
-    the already-open connection and captures until SELFTEST_COMPLETE."""
+    """selftest() flashes diag+autorun under one held lock, then resets,
+    waits for USB serial, and captures until SELFTEST_COMPLETE."""
 
     def run_selftest(self, perf_scope=False):
         calls = {"flash_extra_flags": None, "held_lock": None, "reset": False}
@@ -960,9 +988,8 @@ class SelftestTests(unittest.TestCase):
         connection = FakeConnection([b"free heap after framebuffer: 123456 bytes\n",
                                      b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\n"])
 
-        def fake_reset(conn):
+        def fake_reset(unused_port):
             calls["reset"] = True
-            self.assertIs(conn, connection)
 
         with tempfile.TemporaryDirectory() as directory:
             worktree = Path(directory) / "wt"
@@ -974,7 +1001,7 @@ class SelftestTests(unittest.TestCase):
             store = mock.Mock()
             store.acquire.return_value = {"log": "", "token": "token"}
             with mock.patch.object(device, "flash", fake_flash), \
-                 mock.patch.object(device, "hard_reset_via_rts", fake_reset), \
+                 mock.patch.object(device, "reset", fake_reset), \
                  mock.patch.object(device, "open_serial", return_value=connection), \
                  mock.patch.object(device, "wait_for_port"), \
                  mock.patch.object(device, "records_root", return_value=root), \
@@ -993,7 +1020,7 @@ class SelftestTests(unittest.TestCase):
         _, calls, _ = self.run_selftest(perf_scope=True)
         self.assertEqual(sorted(calls["flash_extra_flags"]), ["--autorun", "--perf-scope"])
 
-    def test_resets_on_the_same_open_connection_before_capturing(self):
+    def test_resets_before_reopening_for_capture(self):
         _, calls, _ = self.run_selftest()
         self.assertTrue(calls["reset"])
 
@@ -1017,7 +1044,7 @@ class SelftestTests(unittest.TestCase):
             store = mock.Mock()
             store.acquire.return_value = {"log": "", "token": "token"}
             with mock.patch.object(device, "flash", return_value="abc123-diag"), \
-                 mock.patch.object(device, "hard_reset_via_rts"), \
+                 mock.patch.object(device, "reset"), \
                  mock.patch.object(device, "open_serial", return_value=connection), \
                  mock.patch.object(device, "wait_for_port"), \
                  mock.patch.object(device, "records_root", return_value=root), \
