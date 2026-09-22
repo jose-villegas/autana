@@ -833,6 +833,7 @@ run_dev_frame_extras(input_t* input, const app_t* current) {
     }
     offer_console_line(current);
 }
+
 #endif
 
 /* An app with update() manages its own present begin/wait inside step_app(),
@@ -847,6 +848,29 @@ present_unless_deferred(const app_t* current) {
         FRAME_COST_END(began, "present");
     }
 }
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static bool
+run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms) {
+    if (run_console_navigation(current, input, dt_ms)) {
+        run_dev_frame_extras(input, *current);
+        present_unless_deferred(*current);
+        return true;
+    }
+    /* After the reads above on purpose: a held device still answers
+     * the console and still latches an orientation change's own full
+     * redraw, so the STEP that follows a rotation draws the frame that
+     * rotation asked for. */
+    if (!console_freeze_frame_allowed()) {
+        /* Held frames never reach run_dev_frame_extras() below, so a
+         * frozen board still answers a command here - the obvious use
+         * is freeze, inspect, step. */
+        offer_console_line(*current);
+        return true;
+    }
+    return false;
+}
+#endif
 
 static void
 app_main_loop(void) {
@@ -883,22 +907,7 @@ app_main_loop(void) {
         sample_display_orientation(now_us, &next_display_sample_us);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        if (run_console_navigation(&current, &input, dt_ms)) {
-            run_dev_frame_extras(&input, current);
-            present_unless_deferred(current);
-            FRAME_COST_END(rest_began, "frame.rest");
-            vTaskDelay(1);
-            continue;
-        }
-        /* After the reads above on purpose: a held device still answers
-         * the console and still latches an orientation change's own full
-         * redraw, so the STEP that follows a rotation draws the frame that
-         * rotation asked for. */
-        if (!console_freeze_frame_allowed()) {
-            /* Held frames never reach run_dev_frame_extras() below, so a
-             * frozen board still answers a command here - the obvious use
-             * is freeze, inspect, step. */
-            offer_console_line(current);
+        if (run_development_pre_frame(&current, &input, dt_ms)) {
             FRAME_COST_END(rest_began, "frame.rest");
             vTaskDelay(1);
             continue;
