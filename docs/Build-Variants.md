@@ -24,9 +24,9 @@ reconfigures another:
 
 | image | flags | built by | directory |
 |---|---|---|---|
-| release | neither | `idf.py build`, `autana flash rel` | `build/` |
-| dev | DEVELOPMENT | `autana flash dev` | `build.dev/` |
-| diagnostics | DEVELOPMENT + SELFTEST | `autana flash diag`, `autana selftest` | `build.diag/` |
+| release | neither | `tools/build_flash.sh --build-only`, `autana flash rel` | `build/` |
+| dev | DEVELOPMENT | `tools/build_flash.sh --dev --build-only`, `autana flash dev` | `build.dev/` |
+| diagnostics | DEVELOPMENT + SELFTEST | `tools/build_flash.sh --diag --build-only`, `autana flash diag`, `autana selftest` | `build.diag/` |
 
 ---
 
@@ -42,11 +42,13 @@ broader flag than `CONFIG_LAUNCHER_SELFTEST` (see
 `main/CMakeLists.txt`) — it also ships in a `--dev` build, which carries no
 test suites at all.
 
-Verified rather than assumed, by counting symbols in the two images:
+`tools/check_release_symbols.sh build/launcher.elf` rejects a release image that
+defines any of the suite, console or self-test symbols it names - including a
+`run_<name>_suite` entry point. CI runs it after the release build.
 
 ```sh
-xtensa-esp32s3-elf-nm build/launcher.elf      | grep -ci 'unity\|suite_\|selftest\|app_diagnostics'   # 0
-xtensa-esp32s3-elf-nm build.diag/launcher.elf | grep -ci 'unity\|suite_\|selftest\|app_diagnostics'   # nonzero
+launcher/tools/build_flash.sh --build-only
+launcher/tools/check_release_symbols.sh launcher/build/launcher.elf
 ```
 
 `app_diagnostics` belongs in the same count as `unity`/`suite_`/`selftest`
@@ -74,15 +76,8 @@ under `CONFIG_LAUNCHER_SELFTEST` — see `main/CMakeLists.txt`).
 
 A diagnostics build compiles **every** suite, and a full run takes the time
 [Testing-Guide.md](Testing-Guide.md#recommended-practice) gives.
-Perf-scoped compiles only the suites and files `main/CMakeLists.txt`
-declares for it, so a sand performance capture, which reads a dozen rows
-out of the full run, does not pay for every other suite too.
-
-Scoping buys run time and build time, not memory: the framebuffer lives in
-PSRAM, so the `.bss` a dropped suite takes with it frees nothing a capture
-was short of. It does change the image's layout in the 32 KB instruction
-cache, which is why a scoped capture's numbers compare only with other
-scoped captures, never with an unscoped run.
+Perf-scoped compiles only the sources apps declare in their `scope_perf.cmake`
+file, so a performance capture does not pay for every other suite too.
 
 `CONFIG_LAUNCHER_SELFTEST` says whether the suites are compiled in;
 `CONFIG_LAUNCHER_SELFTEST_SCOPE_*` says **which**. Excluding a suite removes
@@ -91,28 +86,22 @@ its `.text` *and* its `.bss`, which is what buys the run time back.
 | scope | fragment | carries | for |
 |---|---|---|---|
 | Full — the default | none | every suite, shell-owned and app-owned | every gate: `autana selftest`, `report_test_results.sh` |
-| Perf | `sdkconfig.defaults.diag_perf` | the suites and files `main/CMakeLists.txt` declares for it | a sand frame-budget capture |
+| Perf | `sdkconfig.defaults.diag_perf` | sources each app declares in `scope_perf.cmake` | a performance capture |
 
 ```sh
 bash launcher/main/apps/sand/tools/report_performance.sh --perf-scope
 # the image alone, left on the board, with no capture taken:
 autana flash diag --perf-scope
-# by hand, the fragment simply appends to the usual three:
-idf.py -B build.diag.<yours> \
-  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag;sdkconfig.defaults.diag_autorun;sdkconfig.defaults.diag_perf" \
-  -D SDKCONFIG=build.diag.<yours>/sdkconfig build
+launcher/tools/build_flash.sh --diag --perf-scope --build-only
 ```
 
-Scoped around **what a run reads**, not around folders - the suites and
-files the perf scope compiles are declared in the build files
-(`main/CMakeLists.txt`), along with why the list is explicit rather than a
-pattern and what fails loudly when it falls out of sync.
+Scoped around **what a run reads**, not around folders. An app owns the perf
+sources it needs, so deleting its folder also removes its declaration.
 
 - **Full is the default and stays globbed.** A scope only ever narrows, and
   only when named, so coverage cannot shrink by accident.
-- **The scenes suite comes along because its builders do,** and its own tests
-  then check that the scenes the perf rows measure are still the scenes they
-  claim to be.
+- **Every source a perf run links is declared there.** A builder or fixture
+  omitted from an app's list fails at link.
 - **Release is untouched.** Both scope symbols live under `LAUNCHER_SELFTEST`,
   itself under `LAUNCHER_DEVELOPMENT`; a release config resolves neither, and
   the suites were never in that image to scope.
@@ -200,7 +189,7 @@ see its headers, and with no test sources compiled nothing references it and
 same size with and without the entry.
 
 ```sh
-idf.py build                          # build/       release, no test code
+tools/build_flash.sh --build-only     # build/       release, no test code
 autana selftest                       # build.diag/  firmware + suites
 ```
 

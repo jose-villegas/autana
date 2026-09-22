@@ -1,18 +1,9 @@
-/*
- * Portable suite: S3L_SCISSOR_Y (components/small3dlib/include/small3dlib.h)
- * - the minimal hook that lets a caller draw one triangle per band without
- * paying for rows outside that band. small3dlib itself has no hardware
- * dependency, so this drives the real, patched library on a host and
- * counts pixel-callback invocations rather than timing anything - the same
- * "counters, not time" standard the band-mode work around it is held to.
- *
- * Its own #include of small3dlib.h, configured independently of any real
- * caller's: static inline/static-scoped state means each translation unit
- * that includes the header gets its own private copy, so nothing here can
- * affect a caller's own build.
- */
+/* Host-only: S3L_SCISSOR_Y defines globals that conflict with the renderer's copy. */
 
 #include "suites.h"
+
+#ifndef DEVICE_BUILD
+
 #include "unity.h"
 
 #define S3L_PIXEL_FUNCTION      count_pixel
@@ -140,5 +131,12 @@ run_small3dlib_scissor_suite(void) {
     RUN_TEST(test_bands_sum_back_to_the_unscissored_count);
     RUN_TEST(test_a_band_outside_the_triangle_draws_nothing);
 }
+
+#else
+
+void
+run_small3dlib_scissor_suite(void) {}
+
+#endif
 
 SUITE_REGISTER(run_small3dlib_scissor_suite);

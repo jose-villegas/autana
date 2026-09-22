@@ -14,11 +14,14 @@
  * hence run_tests.sh only.
  */
 
+#include "suites.h"
+
+#ifndef DEVICE_BUILD
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "suites.h"
 #include "unity.h"
 
 #include "app.h"
@@ -205,5 +208,12 @@ run_ui_launcher_suite(void) {
     free(ctx);
     ctx = NULL;
 }
+
+#else
+
+void
+run_ui_launcher_suite(void) {}
+
+#endif
 
 SUITE_REGISTER(run_ui_launcher_suite);
