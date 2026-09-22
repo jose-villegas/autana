@@ -27,9 +27,10 @@ suite_sand_liquid_depth.c since the suite_sand.c split) - so 1024 is not
 starving anything real, it is just below where the next
 genuine outlier would have to be caught.
 
-Six host frames already exceed it (PRE_EXISTING_STACK_DEBT below), ranging
-1,088-1,792 bytes, plus one the host never compiles. The reason they are tracked individually rather
-than absorbed by a higher ceiling is what the worst of them turned out to
+The host frames that already exceed it, ranging 1,088-1,792 bytes plus one
+the host never compiles, are tracked individually
+(PRE_EXISTING_STACK_DEBT below) rather than absorbed by a higher ceiling.
+The reason is what the worst of them turned out to
 be: an on-stack `unsigned depth[92 * 112]`, 42,848 bytes, nearly twelve
 times the whole device stack, the same species of bug as both historical
 panics. Raising the ceiling to fit what already existed would have hidden
