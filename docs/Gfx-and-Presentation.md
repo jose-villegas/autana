@@ -57,8 +57,9 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 - Only `GFX_RESOLUTION_FULL` without interlace renders today. The other
   request fields grant correctly and nothing consumes them.
 - `GFX_BAND_HEIGHT` is 16, 32 or 64 rows by Kconfig, default 32, and always
-  divides `GFX_HEIGHT`. At every band height the two band buffers alias
-  `gfx.c`'s strip-bounce slots rather than allocating.
+  divides `GFX_HEIGHT`. On the device, at every band height, the two band
+  buffers alias `gfx.c`'s strip-bounce slots rather than allocating; a host
+  build mallocs them.
 
 ## Dirty tracking
 
@@ -205,12 +206,13 @@ sequenceDiagram
   draws a band's share. The shell queues its home hint with
   `ui_queue_band_overlay_rect()` before `frame()`, since nothing can draw
   after the loop.
-- `gfx_band_dirty()` records the column span it returns; `gfx_band_submit()`
-  sends exactly that, packed and even-clipped (`gfx_band_span_clip()`/
-  `gfx_band_span_pack()`, `gfx_band.h`), in one `draw_bitmap()` call - a flat
-  buffer has no stride to skip past. A caller that never calls
-  `gfx_band_dirty()` still gets a full-width send, and an empty extent sends
-  nothing, advancing the ring the way `gfx_band_skip()` does.
+- `gfx_band_dirty()` records the column span it returns for the band
+  `gfx_band_next()` just handed out; `gfx_band_submit()` sends exactly
+  that, packed and even-clipped (`gfx_band_span_clip()`/
+  `gfx_band_span_pack()`, `gfx_band.h`) - one `draw_bitmap()` per band, full
+  stop, a flat buffer having no stride to skip past. A caller that never
+  calls `gfx_band_dirty()` still gets a full-width send, and an empty
+  extent sends nothing, advancing the ring the way `gfx_band_skip()` does.
 
 ## Indexed mode
 
@@ -393,16 +395,9 @@ same window sent again fails the same way.
 | `gfx_heal_set_rolling()` | rows per present of a whole-screen sweep, 0 for none |
 | `gfx_heal_restore_defaults()` | empty the queue, reset both - the shell calls it on every app switch |
 
-Band mode heals differently, since gfx keeps no copy of a band to resend on
-its own: `gfx_band_dirty()` never reports a band dirty for heal alone - a
-band nothing else touched stays unsent, and only the rolling sweep or a
-real content change gets it looked at again. When a band the app *is*
-already sending overlaps a planned heal region, `gfx_band_submit()` cuts
-that one send into two `draw_bitmap()` windows at a row that moves with
-`heal.phase` (`gfx_heal_band_split_row()`) instead of one, so the same
-shape is never repeated even though the band's content did not change. The
-budget and `dev_heal_bytes_sent` are charged the band's own real pixels,
-not the planned strip's - one strip can overlap two bands.
+Band mode heals nothing, the same as the slow clock: a band is gone once
+sent, so heal has no shape left to repair, and a real content change already
+resends the whole band anyway.
 
 ## Repaint controls
 
