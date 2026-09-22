@@ -238,18 +238,18 @@ had changed.
 
 ## How it fits together
 
-One tier per top-level folder, stacked by dependency depth - the same
-thing the "includes are layer-qualified" rule above makes visible at the
-line level, drawn whole. Hardware-touching folders are marked.
+One row per dependency depth - the same thing the "includes are
+layer-qualified" rule above makes visible at the line level, drawn
+whole. Hardware-touching folders are marked.
 
 ```mermaid
 flowchart TB
     classDef hw fill:#8a3d3d,color:#fff
-    classDef contract fill:#f4f1e8,stroke:#333,stroke-width:1px
+    classDef contract fill:#f4f1e8,stroke:#333,stroke-width:1px,color:#111
 
     Apps["apps/<br/><i>one folder per app</i>"]
     Main["main.c<br/><i>the frame loop</i>"]
-    Contract(["app.h - the shell/app contract,<br/>included by every layer"]):::contract
+    Contract(["app.h - the shell/app contract"]):::contract
     Boot["boot/<br/><i>runs once, before the loop exists</i>"]
 
     subgraph T4[" "]
@@ -267,7 +267,7 @@ flowchart TB
         Util["util/<br/><i>arithmetic and services</i>"]
     end
 
-    Apps ~~~ Main ~~~ Contract ~~~ Boot
+    Apps ~~~ Main ~~~ Boot
     Boot ~~~ Ui
     Boot ~~~ Console
     Ui ~~~ Gfx
@@ -289,16 +289,18 @@ flowchart TB
 
     class Boot,Gfx,Input,Console,Board,Util hw
 
+    %% Keep these two dashed edges last: linkStyle below recolours them by
+    %% index, so an edge added above this line is safe, one added below is not.
     Contract -.->|"includes input/buttons.h"| Input
-    Input <-.-|"device_state.c reaches up"| Util
+    Input <-.-|"device_state reaches up"| Util
 
+    linkStyle 20 stroke:#e11,stroke-width:2px
     linkStyle 21 stroke:#e11,stroke-width:2px
-    linkStyle 22 stroke:#e11,stroke-width:2px
 ```
 
-**A folder may include anything below it, never above.** The two red
-arrows are the exceptions: `app.h` includes `input/buttons.h`, and
-`util/device_state` reaches back up into `input/imu.h` (also
+**A folder may include anything below it, and `app.h`, never above.** The
+two red arrows are the exceptions: `app.h` includes `input/buttons.h`,
+and `util/device_state` reaches back up into `input/imu.h` (also
 `display/display.h` and a driver header, not drawn).
 
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. See
