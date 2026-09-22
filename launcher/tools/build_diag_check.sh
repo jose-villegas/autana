@@ -3,7 +3,12 @@
 # Build the DIAGNOSTICS image and run the complexity ratchet - no device,
 # nothing flashed.
 #
-#   tools/build_diag_check.sh [IDF_EXPORT]
+#   tools/build_diag_check.sh [--verbose] [IDF_EXPORT]
+#
+# The build itself is quiet by default (the result, the first real errors,
+# and a log path) and streams everything under --verbose - see
+# build_flash.sh, which this forwards every argument to and which is where
+# that behaviour actually lives.
 #
 # Exists because the diagnostics variant is the only one that links every
 # test suite into firmware, so it is the only one where a suite's own
