@@ -2982,7 +2982,7 @@ gfx_band_count(void) {
 
 /* Sends the extent gfx_band_dirty() recorded for this band (band_send_x0/
  * x1 - the full width if it was never called), packed and even-clipped, in
- * exactly one draw_bitmap() call. */
+ * exactly one esp_lcd_panel_draw_bitmap() call. */
 void
 gfx_band_submit(void) {
     GFX_PRESENT_GUARD();
