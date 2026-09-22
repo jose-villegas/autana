@@ -33,5 +33,8 @@ touch_inject_step(touch_inject_t* inject, int64_t now_us, int* x, int* y) {
     }
     *x = inject->x0 + (int)(((int64_t)(inject->x1 - inject->x0) * elapsed_us) / duration_us);
     *y = inject->y0 + (int)(((int64_t)(inject->y1 - inject->y0) * elapsed_us) / duration_us);
+    if (*x == inject->x1 && *y == inject->y1) {
+        inject->endpoint_emitted = true;
+    }
     return true;
 }
