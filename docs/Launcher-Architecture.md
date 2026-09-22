@@ -85,6 +85,7 @@ launcher/
     │   └── ridge_curve_generated.h  Cerro Autana's ridge, a height per column of
     │                           the boot photograph's frame      (host-tested)
     ├── input/          the devices a finger reaches
+    │   ├── input.h             input_t, one frame's touch and buttons
     │   ├── touch.{h,c}         FT5x06 polling task
     │   ├── touch_fsm.{h,c}     samples -> press/release    (host-tested)
     │   ├── gesture.{h,c}       swipe recognition           (host-tested)
@@ -100,7 +101,7 @@ launcher/
     │   ├── spring_line.h       a row of points on springs (host-tested)
     │   ├── job.{h,c}           run a slice on the other core (host-tested)
     │   ├── frame_cost.{h,c}    where a frame's time goes, by name (host-tested)
-    │   ├── device_state.{h,c}  what survives a reboot      (host-tested)
+    │   ├── device_state.{h,c}  a snapshot of the board's state, as JSON (host-tested)
     │   ├── screenshot.h        BMP header + base64, pure   (host-tested)
     │   └── build_id.h          which build this is         (host-tested)
     ├── console/        the console listener, dev builds only - one verb per file
