@@ -2,7 +2,7 @@
 
 #include <stdio.h>
 
-#include "../render_lab.h"
+#include "apps/render_lab/render_lab.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 
