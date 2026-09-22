@@ -31,7 +31,7 @@ autana> buildid
 | `autana tune <name> <value>` | Change one on the running device. |
 | `autana tune reset <name>` | Back to the value the source declares. |
 | `autana tune save` | Write the device's current values into the `TUNE(...)` lines of the worktree you are standing in. |
-| `autana screenshot [-o PATH]` | What the panel shows right now, as `PATH.png` plus a `PATH.json` state snapshot; `PATH` defaults to a timestamped name in the current directory. |
+| `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | A landscape image matching the board's shape by default, as `PATH.png` plus a `PATH.json` state snapshot; `--as-shown` applies the captured `orientation_quarter`, and `--framebuffer` keeps the stored bytes unchanged. `PATH` defaults to a timestamped name in the current directory. |
 | `autana freeze` | Stop the frame loop where it is. |
 | `autana resume` | Let the frame loop run again. |
 | `autana step [N]` | Advance N frames while frozen, 1 when `N` is omitted. |
