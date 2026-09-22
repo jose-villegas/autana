@@ -229,8 +229,8 @@ find_water(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t se
                 nx = tx;
                 ny = ty; /* more stem, keep it as a fallback */
             } else if (nx < 0 && r->roots_to != 0 && c == (cell_t)r->roots_to) {
-                /* ROOT counts as stem. Fixes bug where stem finds neither
-                 * stem nor ground. */
+                /* ROOT counts as stem, or a root-backed stem would find
+                 * neither stem nor ground. */
                 nx = tx;
                 ny = ty;
                 via_root = true;
@@ -241,8 +241,7 @@ find_water(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t se
         }
         if (!on_soil) {
             if (via_root) {
-                roots_passed++; /* below the water line - see this
-                                  * function's own top comment */
+                roots_passed++;
             } else {
                 lift_count++;
             }
@@ -785,8 +784,8 @@ step_one_growing_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
      * straight up. */
     int head = up;
     if (r->holds_line != 0 && (int)(rng_next(&s->rng) & 0xFF) < r->holds_line) {
-        /* Longer baseline increases horizontal drift from 24 to 38. Shorter
-         * baseline simpler. */
+        /* One stem cell back is the whole baseline: a longer one measured
+         * more horizontal drift (38 against 24). */
         int px, py;
         if (stem_next(s, sx, sy, -ux, -uy, w, h, self, &px, &py)) {
             head = ring_of(sx - px, sy - py);

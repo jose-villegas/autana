@@ -354,7 +354,7 @@ const reaction_t reactions[MATERIAL_MAX] = {
         {
             .dissolves = 60,
 
-            .fizz = 40, /* Adjust as needed. */
+            .fizz = 40,
 
             .evaporates = 1, /* Rarest byte-wide roll: 1 in 256 per cell per
                               * step. Still too frequent in real puddles, so
@@ -550,10 +550,9 @@ const reaction_t reactions[MATERIAL_MAX] = {
 
             .residue = 90, /* Log burn > flame guttering, more smoke */
 
-            .quench_to = 0, /* An ember (already past lit_from) that water
-                             * reaches just vanishes; quench_lit_cell()
-                             * reverts a cell still actively lit to unlit
-                             * wood instead, before it ever reaches here. */
+            .quench_to = 0, /* unread: burn_decay makes wood BURN_LIT, so
+                             * water always takes quench_lit_cell(), which
+                             * leaves unlit wood */
 
             .flare = 48, /* Wood is KIND_STATIC; otherwise, it would glow
                           * without flame. Flame rises via sand_step_gas(). */

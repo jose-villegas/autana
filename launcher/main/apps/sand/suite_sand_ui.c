@@ -73,8 +73,6 @@ outside_every_tile(int* px, int* py) {
     *py = -5;
 }
 
-/* The four shipped bugs */
-
 /* Bug: a BOOT hold also cycled the brush, because cycling sat on
  * `.pressed` (and therefore fired again on every frame the hold's own
  * `.pressed` had already latched true, before `.held` even existed to
@@ -252,8 +250,6 @@ test_a_release_arriving_after_the_screen_changed_is_consumed_exactly_once(void) 
     TEST_ASSERT_FALSE(ui.swallow_release);      /* consumed exactly once */
     TEST_ASSERT_EQUAL_INT(0, ui.brush);         /* RUNNING never saw it either */
 }
-
-/* Ordinary behaviour */
 
 static void
 test_tapping_a_different_tile_selects_it_and_preserves_its_mode(void) {
