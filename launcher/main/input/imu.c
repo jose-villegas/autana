@@ -157,12 +157,13 @@ imu_read(imu_sample_t* out) {
         return false;
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
+    portENTER_CRITICAL(&injected_lock);
     if (injected) {
-        portENTER_CRITICAL(&injected_lock);
         *out = injected_sample;
         portEXIT_CRITICAL(&injected_lock);
         return true;
     }
+    portEXIT_CRITICAL(&injected_lock);
 #endif
 
     /* One twelve-byte burst rather than six word reads. Beyond being faster, it
