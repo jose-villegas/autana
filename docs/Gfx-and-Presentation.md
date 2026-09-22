@@ -104,13 +104,15 @@ one goes through `send_one_row()`:
 flowchart TB
     ROW["dirty strip"] --> RUNS["collect_dirty_runs()<br/>adjacent dirty cells merge into runs"]
     RUNS --> BOX["run_box(): union of the cells' boxes"]
-    BOX --> FIT{"box <= GATHER_MAX_PIXELS?"}
-    FIT -->|yes| LEAF{"plan_run(): leaves show<br/>a real gap inside?"}
+    BOX --> LEAF{"plan_run(): leaves show<br/>a real gap inside?"}
     LEAF -->|yes| SPLIT["gathered send, split in<br/>up to LEAF_REFINE_MAX_RUNS"]
-    LEAF -->|no| GATHER["gathered send:<br/>pack box into gather_buf"]
+    LEAF -->|no| FIT{"box <= GATHER_MAX_PIXELS?"}
+    FIT -->|yes| GATHER["gathered send:<br/>pack box into gather_buf"]
     FIT -->|no| FULLW{"full width and<br/>shorter than the strip?"}
-    FULLW -->|yes| PART["partial band:<br/>only rows y0..y1"]
-    FULLW -->|no| FULL["full strip, 64 rows"]
+    FULLW -->|yes| PARTOK{"send_partial_band()<br/>succeeds?"}
+    PARTOK -->|yes| PART["partial band:<br/>only rows y0..y1"]
+    PARTOK -->|no, a debug overlay is on| FULL
+    FULLW -->|no| FULL["the whole strip, all runs"]
 ```
 
 | Send path | Source | Cost |

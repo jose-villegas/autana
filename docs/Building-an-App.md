@@ -61,7 +61,7 @@ The shell calls the three required pointers without a NULL check.
 ```mermaid
 flowchart LR
     SRC["apps/&lt;name&gt;/*.c"] -->|"CMake glob<br/>CONFIGURE_DEPENDS"| LIB["libmain.a<br/>WHOLE_ARCHIVE"]
-    LIB -->|"APP_REGISTER<br/>.init_array constructor"| REG["app_register()<br/>apps[APP_MAX = 16]"]
+    LIB -->|"APP_REGISTER<br/>.init_array constructor"| REG["app_register()<br/>apps[APP_MAX]"]
     REG -->|"app_main(): sort by name"| LIST["launcher list"]
 ```
 
@@ -85,13 +85,10 @@ an app leaves by leaving the build:
 
 ## Lifecycle
 
-```mermaid
-stateDiagram-v2
-    [*] --> Launcher
-    Launcher --> Running: tap a list entry
-    Running --> Launcher: home swipe (home_gesture)<br/>or PWR long-press (no home_gesture)
-    Running --> Running: update() / frame()
-```
+The shell's state machine - Launcher, Control Center and a running app - is
+in [Launcher-Architecture.md](Launcher-Architecture.md#the-frame-loop). An
+app only ever sees the `Running` state; it leaves by home swipe
+(`home_gesture`) or PWR long-press (no `home_gesture`).
 
 What the shell does on each transition, in order - `step_launcher()` on
 launch, `leave_app()` on leave:
@@ -122,12 +119,21 @@ sequenceDiagram
     participant G as gfx
     S->>S: read touch, buttons, orientation
     S->>S: leaving? then exit() and stop here
+    alt band mode - GFX_LAYOUT_BANDS
+        S->>G: queue the home hint, home_gesture only
+    end
     S->>A: invalidate() if a full redraw is pending
     S->>A: frame(dt_ms, input)
     A->>G: gfx_* draws
-    S->>G: home hint strip (home_gesture)
+    alt full-framebuffer mode
+        S->>G: draw the home hint strip, home_gesture only
+    end
     S->>G: gfx_present()
 ```
+
+Band mode's whole loop runs inside `frame()`, with no chance to draw
+anything once it returns, so the shell queues its home hint before calling
+`frame()` instead of drawing one after - `queue_home_hint()`, `main.c`.
 
 With `update()` - the previous frame is sent on core 1 while `update()` runs on
 core 0:
@@ -145,7 +151,12 @@ sequenceDiagram
     end
     S->>P: gfx_present_wait()
     S->>A: frame(dt_ms, input)
+    Note over S,P: not presented now - deferred to next pass's gfx_present_begin()
 ```
+
+The shell never calls `gfx_present()` directly for an app with `update()`
+(`present_unless_deferred()`, `main.c`) - this pass's `frame()` output waits
+for the next pass's `gfx_present_begin()` to go out.
 
 The first pass after `enter()` skips the begin/update/wait half: nothing is
 drawn yet. Sand is the adopter - `sand_update()` steps the sim,
