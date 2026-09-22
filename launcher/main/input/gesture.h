@@ -15,7 +15,7 @@
 
 #include <stdbool.h>
 
-#include "app.h"
+#include "input/input.h"
 
 /* Which physical edge of the screen the home gesture currently lives on.
  * The caller decides this - see main.c's exit_edge_for_quarter() - by
