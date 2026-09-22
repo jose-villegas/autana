@@ -73,10 +73,11 @@ mismatch this fixes.
 `CONFIG_COMPILER_OPTIMIZATION_PERF` (-O2) is set in `sdkconfig.defaults`,
 the right choice for a device whose every frame is rasterising, cellular
 automata and pixel loops - there is no debugger attached to this board to
-trade away for it. A generated build-directory `sdkconfig` is not
-re-derived from `sdkconfig.defaults` just because the defaults changed, so
-check the committed file itself after changing them, rather than trusting
-that it once matched.
+trade away for it. A build directory's generated `sdkconfig` is not
+re-derived from `sdkconfig.defaults` just because the defaults changed.
+`tools/idf_variant.sh` deletes one that is older than a fragment it was built
+from, so change the defaults and rebuild through `tools/build_flash.sh`
+rather than trusting a directory left over from before.
 
 The frame loop ends in `vTaskDelay(1)` (`main.c`), so frame time is work
 rounded up to a whole tick - compare microseconds of work, not an fps

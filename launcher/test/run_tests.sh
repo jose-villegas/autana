@@ -207,15 +207,12 @@ UNITY_OBJ="$BUILD_DIR/unity.o"
 # pointers it does not own instead of trusting every free().
 #
 # The sources go through a response file: every path is absolute, and under a
-# long checkout path their sum passes Windows' 32K command-line limit. MSYS
+# long checkout path their total length exceeds Windows' 32K command-line limit. MSYS
 # rewrites /c/... paths on a command line but not inside a file, hence cygpath.
 SOURCES_RSP="$BUILD_DIR/sources.rsp"
 # shellcheck disable=SC2086
-if command -v cygpath >/dev/null 2>&1; then
-    cygpath -m $SOURCES
-else
-    printf '%s\n' $SOURCES
-fi | sed -e '/^$/d' -e 's/[\\"]/\\&/g' -e 's/.*/"&"/' >"$SOURCES_RSP"
+(printf '%s\n' $SOURCES | cygpath -m -f - 2>/dev/null || printf '%s\n' $SOURCES) |
+    sed -e '/^$/d' -e 's/[\\"]/\\&/g' -e 's/.*/"&"/' >"$SOURCES_RSP"
 
 # shellcheck disable=SC2086
 "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \

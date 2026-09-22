@@ -132,13 +132,11 @@ run_small3dlib_scissor_suite(void) {
     RUN_TEST(test_a_band_outside_the_triangle_draws_nothing);
 }
 
-SUITE_REGISTER(run_small3dlib_scissor_suite);
-
 #else
 
 void
 run_small3dlib_scissor_suite(void) {}
 
-SUITE_REGISTER(run_small3dlib_scissor_suite);
-
 #endif
+
+SUITE_REGISTER(run_small3dlib_scissor_suite);

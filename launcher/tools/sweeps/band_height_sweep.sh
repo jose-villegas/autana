@@ -40,7 +40,6 @@ IDF_EXPORT="${2:-$DEFAULT_EXPORT}"
 . "$SCRIPT_DIR/../idf.sh"
 idf_init "$LAUNCHER_DIR" "$IDF_EXPORT" "$SCRIPT_DIR/.."
 . "$SCRIPT_DIR/../idf_variant.sh"
-idf_variant_init "$LAUNCHER_DIR"
 
 BUILD_DIR="build.diag.bh$HEIGHT"
 DEFAULTS_FILE="$LAUNCHER_DIR/sdkconfig.defaults.band_height_$HEIGHT"
@@ -52,8 +51,8 @@ DEFAULTS_FILE="$LAUNCHER_DIR/sdkconfig.defaults.band_height_$HEIGHT"
 printf 'CONFIG_LAUNCHER_GFX_BAND_HEIGHT_%s=y\n' "$HEIGHT" > "$DEFAULTS_FILE"
 
 echo "=== Building $BUILD_DIR (GFX_BAND_HEIGHT=$HEIGHT) ==="
-idf_variant_build diag "$BUILD_DIR" \
-    --defaults "sdkconfig.defaults.band_height_$HEIGHT"
+idf_variant_build "$LAUNCHER_DIR" diag "$BUILD_DIR" \
+    --defaults "sdkconfig.defaults.band_height_$HEIGHT" "CONFIG_LAUNCHER_GFX_BAND_HEIGHT_$HEIGHT"
 
 rm -f "$DEFAULTS_FILE"
 

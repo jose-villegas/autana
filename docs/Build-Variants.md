@@ -42,9 +42,9 @@ broader flag than `CONFIG_LAUNCHER_SELFTEST` (see
 `main/CMakeLists.txt`) — it also ships in a `--dev` build, which carries no
 test suites at all.
 
-`tools/check_release_symbols.sh build/launcher.elf` rejects a release image
-that defines a `suite_`, `console_`, or `selftest_` symbol. CI runs it after
-the release build.
+`tools/check_release_symbols.sh build/launcher.elf` rejects a release image that
+defines any of the suite, console or self-test symbols it names - including a
+`run_<name>_suite` entry point. CI runs it after the release build.
 
 ```sh
 launcher/tools/build_flash.sh --build-only
@@ -79,12 +79,6 @@ A diagnostics build compiles **every** suite, and a full run takes the time
 Perf-scoped compiles only the sources apps declare in their `scope_perf.cmake`
 file, so a performance capture does not pay for every other suite too.
 
-Scoping buys run time and build time, not memory: the framebuffer lives in
-PSRAM, so the `.bss` a dropped suite takes with it frees nothing a capture
-was short of. It does change the image's layout in the 32 KB instruction
-cache, which is why a scoped capture's numbers compare only with other
-scoped captures, never with an unscoped run.
-
 `CONFIG_LAUNCHER_SELFTEST` says whether the suites are compiled in;
 `CONFIG_LAUNCHER_SELFTEST_SCOPE_*` says **which**. Excluding a suite removes
 its `.text` *and* its `.bss`, which is what buys the run time back.
@@ -106,9 +100,8 @@ sources it needs, so deleting its folder also removes its declaration.
 
 - **Full is the default and stays globbed.** A scope only ever narrows, and
   only when named, so coverage cannot shrink by accident.
-- **The scenes suite comes along because its builders do,** and its own tests
-  then check that the scenes the perf rows measure are still the scenes they
-  claim to be.
+- **Every source a perf run links is declared there.** A builder or fixture
+  omitted from an app's list fails at link.
 - **Release is untouched.** Both scope symbols live under `LAUNCHER_SELFTEST`,
   itself under `LAUNCHER_DEVELOPMENT`; a release config resolves neither, and
   the suites were never in that image to scope.

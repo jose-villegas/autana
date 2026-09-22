@@ -4,8 +4,7 @@
  * Covers what a host cannot: real framebuffer memory, real DMA, real I2C and
  * the actual panel. This suite is compiled into a SELFTEST build and runs
  * on-device alongside the portable suites, never into a release image; it is
- * excluded from the host runner because none of it would mean anything on a
- * laptop.
+ * on a host it compiles to nothing, where none of it would mean anything.
  *
  * Guidance on what belongs here:
  *   - reading back what a draw call actually wrote to memory
@@ -1599,13 +1598,11 @@ run_gfx_suite(void) {
     RUN_TEST(test_band_mode_readback_waits_out_a_frame_missing_a_band);
 }
 
-SUITE_REGISTER(run_gfx_suite);
-
 #else
 
 void
 run_gfx_suite(void) {}
 
-SUITE_REGISTER(run_gfx_suite);
-
 #endif
+
+SUITE_REGISTER(run_gfx_suite);

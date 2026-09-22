@@ -32,6 +32,15 @@ set(app_srcs
     "util/tune.c"
 )
 
+function(launcher_glob output pattern)
+    if(CMAKE_SCRIPT_MODE_FILE)
+        file(GLOB_RECURSE files "${pattern}")
+    else()
+        file(GLOB_RECURSE files CONFIGURE_DEPENDS "${pattern}")
+    endif()
+    set(${output} ${files} PARENT_SCOPE)
+endfunction()
+
 if(CONFIG_LAUNCHER_QEMU)
     list(APPEND app_srcs "gfx/gfx_null_panel.c")
 endif()
@@ -77,12 +86,7 @@ list(APPEND app_srcs "board/board_esp32s3.c")
 # The script pass only cares about REQUIRES, so plain globbing is fine there.
 # (This is the same early pass that makes a Kconfig-gated REQUIRES silently
 # fail - see the note on unity below.)
-if(CMAKE_SCRIPT_MODE_FILE)
-    file(GLOB_RECURSE discovered_apps "${CMAKE_CURRENT_LIST_DIR}/apps/*.c")
-else()
-    file(GLOB_RECURSE discovered_apps CONFIGURE_DEPENDS
-         "${CMAKE_CURRENT_LIST_DIR}/apps/*.c")
-endif()
+launcher_glob(discovered_apps "${CMAKE_CURRENT_LIST_DIR}/apps/*.c")
 
 # apps/<name>/tools/ holds that app's own host-side tooling (sweep scripts,
 # report generators) - see docs/Building-an-App.md, "An app is a
@@ -180,30 +184,20 @@ set(app_reqs microui small3dlib esp_lcd heap esp_timer
              perfmon unity)
 
 if(CONFIG_LAUNCHER_SELFTEST)
-    if(CMAKE_SCRIPT_MODE_FILE)
-        file(GLOB suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c")
-    else()
-        file(GLOB suite_srcs CONFIGURE_DEPENDS
-             "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c")
-    endif()
-    # SCOPE: which of those suites this image actually carries.
-    #
-    # Full is the default and stays globbed, so nothing can lose coverage by
-    # accident - a scope only ever NARROWS, and only when asked for by name
-    # (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild).
-    #
+    launcher_glob(suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c")
+    # SCOPE: full is the default and stays globbed, so nothing can lose
+    # coverage by accident - a scope only ever NARROWS, and only when asked
+    # for by name (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild). The
+    # perf scope replaces the shell suites outright with what apps declare.
     if(CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF)
-        if(CMAKE_SCRIPT_MODE_FILE)
-            file(GLOB perf_scope_files
-                 "${CMAKE_CURRENT_LIST_DIR}/apps/*/scope_perf.cmake")
-        else()
-            file(GLOB perf_scope_files CONFIGURE_DEPENDS
-                 "${CMAKE_CURRENT_LIST_DIR}/apps/*/scope_perf.cmake")
-        endif()
+        launcher_glob(perf_scope_files "${CMAKE_CURRENT_LIST_DIR}/apps/*/scope_perf.cmake")
         set(perf_scope_srcs "")
         foreach(perf_scope_file IN LISTS perf_scope_files)
             include("${perf_scope_file}")
         endforeach()
+        if(NOT perf_scope_srcs)
+            message(FATAL_ERROR "LAUNCHER_SELFTEST_SCOPE_PERF has no sources")
+        endif()
         foreach(suite_src IN LISTS perf_scope_srcs)
             if(NOT EXISTS "${suite_src}")
                 message(FATAL_ERROR
@@ -234,9 +228,15 @@ if(CONFIG_LAUNCHER_SELFTEST)
         COMPILE_OPTIONS "-include;${CMAKE_CURRENT_LIST_DIR}/../test/timing.h")
 endif()
 
+set(app_private_include_dirs "")
+if(CONFIG_LAUNCHER_SELFTEST)
+    list(APPEND app_private_include_dirs "../test")
+endif()
+
 idf_component_register(
     SRCS ${app_srcs}
-    INCLUDE_DIRS "." "../test" "../tools" "${build_id_generated_dir}"
+    INCLUDE_DIRS "." "${build_id_generated_dir}"
+    PRIV_INCLUDE_DIRS ${app_private_include_dirs}
     REQUIRES ${app_reqs}
 
     # Required by self-registration, and easy to get wrong.

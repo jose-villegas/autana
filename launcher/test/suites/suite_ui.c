@@ -284,13 +284,11 @@ run_ui_suite(void) {
     RUN_TEST(test_repaint_clears_every_physical_row_under_an_odd_quarter);
 }
 
-SUITE_REGISTER(run_ui_suite);
-
 #else
 
 void
 run_ui_suite(void) {}
 
-SUITE_REGISTER(run_ui_suite);
-
 #endif
+
+SUITE_REGISTER(run_ui_suite);
