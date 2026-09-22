@@ -341,7 +341,9 @@ Wood's `flammability` of 6 in 256 makes catching a negotiation - roughly
 vanishing on first touch. A lit log is essentially never `smothered()`:
 that predicate needs all four cardinal neighbours *strictly* denser, and
 at density 150 only stone (200) qualifies, so burying one in sand will
-not put it out. Only decay or water ends it.
+not put it out. Only decay or water ends it. Gunpowder below walks the
+same dry/lit/quenched shape with a state diagram, plus the two outcomes -
+blast or plain fire - a burn-out can end in.
 
 ### Two exhausts, deliberately different materials
 
@@ -406,18 +408,30 @@ stone.
 ### Gunpowder: a fuse, not a detonator
 
 Gunpowder catches and burns like wood, and it is the burning-out that can
-end in a blast - there is no separate detonator mechanism.
+end in a blast - there is no separate detonator mechanism. The state a
+cell moves through, all recorded in its own moisture/burn nibble rather
+than a separate flag:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Moist
+    Moist --> Dry: heat dries it
+    Dry --> Lit: flammability roll,<br/>or heat transform
+    Lit --> Lit: burn_decay counts down
+    Lit --> Soaked: water quenches
+    Lit --> Blast: burn-out,<br/>lit 2x2 + impulse buffer live<br/>+ cooldown clear
+    Lit --> Fire: burn-out,<br/>otherwise
+```
 
 **Lighting the fuse.** A flame or hot lava touching dry powder ignites it
 in the usual way (`flammability` 200, so it catches almost every time it
 is rolled). Heat alone, with nothing burning yet, can also reach the same
 trigger from the heat-transform path - lava resting beside it, or heat
 conducted through stone or metal, once the wet stage below has steamed
-any moisture off.
-
-Either path writes code 7, the cell's **lit** state (`GUNPOWDER_LIT`), in
-place of the plain `MAT_FIRE` a less flammable fuel would get. A lit cell
-is a heat source in its own right, exactly like a burning log:
+any moisture off. Either path writes code 7, the cell's **lit** state
+(`GUNPOWDER_LIT`), in place of the plain `MAT_FIRE` a less flammable fuel
+would get. A lit cell is a heat source in its own right, exactly like a
+burning log:
 
 - it ignites neighbouring dry powder, so a trail burns along, cell by
   cell
@@ -463,12 +477,8 @@ to - they are fire or flying grains by their own burn-out - which helps
 the spreading-out along independently. That is a side effect of the
 geometry, though, not what bounds the cost: the cooldown does that.
 
-The 2x2 rule started as a fully-lit 3x3 and was loosened after device
-testing: with independent burn-out rolls, the neighbours lit before a cell
-are usually already fire by the time it goes, and blasts became rare
-enough to look broken. Two designs before that were tried and measured no
-cheaper: an immediate per-cell blast on ignition, and a boundary-only
-check. The 2x2 fuse model is what shipped.
+The trigger is a lit 2x2 because burn-out rolls are independent: a larger
+block is rarely still all lit at once, and blasts would almost never fire.
 
 **Moisture damps ignition.** For any `dries != 0` material, the ignition
 roll is scaled down per moisture level: `f >>= SAND_DAMP_IGNITION_SHIFT *
@@ -1290,32 +1300,42 @@ keeps rather than tracking anything second.
 ### Whether a pass is shared at all
 
 The same question answers whether a pass is worth splitting in the first
-place. `sand_chunk_pass_ready()` charges each chunk of that pass's plan the
-cells it covers, or nothing where `blocks_settled_over()` says it is asleep,
-and feeds those to `sand_chunk_makespan()` - the runner's own rule with a
-number in place of the work. A pass is shared only when two things hold:
+place. `sand_chunk_pass_ready()` runs a chain of early-outs before ever
+charging a chunk plan's cells against `sand_chunk_makespan()` - the
+runner's own rule with a number in place of the work, fed the cells each
+chunk covers, or nothing where `blocks_settled_over()` says it is asleep:
 
-- at least `SAND_CHUNK_SPLIT_MIN_AWAKE_CELLS` are awake, because the
-  prepare, merge, dispatch and join are paid whatever the lanes find: a
-  settled board steps in 95 us serial and 148 split at ULTRA, 56 and 110 at
-  HIGH, 39 and 109 at NORMAL;
-- and the modelled two-lane span comes in under
-  `SAND_CHUNK_SPLIT_SPAN_SHARE_PERCENT` of walking those chunks one after
-  another, because the chunk walk itself costs 1.09 to 1.28 of the row-major
-  sweep before either lane has done anything.
+```mermaid
+flowchart TD
+    Start(["sand_chunk_pass_ready()"]) --> Lane{"two cores on, pass in mask,<br/>lane scratch present?"}
+    Lane -->|no| Serial(["serial row-major path"])
+    Lane -->|yes| Cells{"grid at least<br/>SAND_CHUNK_SPLIT_MIN_CELLS?"}
+    Cells -->|no| Serial
+    Cells -->|yes| Plan{"sand_chunk_plan(): at least two<br/>chunks each way, at most<br/>SAND_CHUNKS_MAX?"}
+    Plan -->|no| Serial
+    Plan -->|yes| Override{"sand_chunk_share_for_test()<br/>override set?"}
+    Override -->|yes| Forced(["whatever the override says"])
+    Override -->|no| Awake{"awake cells at least<br/>SAND_CHUNK_SPLIT_MIN_AWAKE_CELLS?"}
+    Awake -->|no| Serial
+    Awake -->|yes| Span{"modelled two-lane span under<br/>SAND_CHUNK_SPLIT_SPAN_SHARE_PERCENT%<br/>of walking the chunks one after another?"}
+    Span -->|no| Serial
+    Span -->|yes| Shared(["shared, two lanes"])
+```
 
-Under either, the pass takes its serial row-major path - not a one-lane walk
-of the schedule, which would pay the chunk order for nothing. The model
+Both threshold checks exist because splitting has its own fixed cost: the
+prepare, merge, dispatch and join are paid whatever the lanes find - a
+settled board steps in 95 us serial and 148 split at ULTRA, 56 and 110 at
+HIGH, 39 and 109 at NORMAL - and the chunk walk itself costs 1.09 to 1.28
+of the row-major sweep before either lane has done anything. The model
 agrees with the board on the shape of the answer: a two-column cut across a
 y-travelling pass spans 100 per cent, and that cut measured 1.19 of one core
 in portrait, while every cut that models about 50 per cent measured a win.
 
-Both conditions are a pure function of block state at the pass's start, so
-the host and the board decide alike and so does either core.
-`sand_chunk_share_for_test()` pins the decision either way, which is how a
-test that means to measure the split path says so; `sand_split_dispatches`
-counts the passes that were actually shared, one counter per pass, which is
-how it checks it was heard and which pass heard it.
+Every check is a pure function of block state at the pass's start, so the
+host and the board decide alike and so does either core.
+`sand_split_dispatches` counts the passes that were actually shared, one
+counter per pass, which is how a test checks the override was heard and
+which pass heard it.
 
 ### The schedule: downstream chunks first
 
@@ -1325,10 +1345,24 @@ a pass hands only its travel direction, a per-chunk function and its own
 state. `sand_chunk_order()` (`sand_chunk_sched.[ch]`) counts from the
 downstream end of that direction, so the chunk holding a move's destination is
 settled by the time the source chunk runs - the same reason a serial pass runs
-against travel, one level up. Within a line across travel, the shape a pile or
-pool surface takes, it alternates by the line index's parity: no move crosses
-a border inside such a line, so alternating is what lets both lanes work it
-instead of queueing on one chain.
+against travel, one level up. A gravity-down pass on a 4x3 chunk grid ranks
+like this (`rank:lane`, lane = the rank's parity):
+
+```
+gravity
+  |
+  v
+
+row 0 (top)      8:A  10:A   9:B  11:B
+row 1            4:A   6:A   5:B   7:B
+row 2 (bottom)   0:A   2:A   1:B   3:B
+                col0  col1  col2  col3
+```
+
+Rank counts up from the bottom row, the downstream end for gravity-down.
+Within one row, the phase-selected column parity is pushed before the
+other, so both lanes get work inside that row instead of one lane racing
+ahead and stalling on the other.
 
 Two lanes walk that order, lane 0 from position 0 and lane 1 from position 1,
 each advancing by two. A chunk waits until every 8-neighbour ranked ahead of
@@ -1642,9 +1676,10 @@ flowchart TB
     ROW --> GRAIN["step_one_grain()<br/><i>once per grain in the row</i>"]
 
     GRAIN -->|"static or gas"| SKIP(("nothing to do"))
-    GRAIN -->|"liquid"| LIQ["move_liquid_grain()<br/><i>sand_liquid_move.h</i>"]
-    GRAIN -->|"powder, unblocked"| FALL["try_fall_or_scatter()"]
-    GRAIN -->|"blocked, or shaken"| SLIDE["try_slide()"]
+    GRAIN -->|"liquid"| LIQSTEP["step_one_liquid_grain()"]
+    LIQSTEP --> LIQ["move_liquid_grain()<br/><i>sand_liquid_move.h</i>"]
+    GRAIN -->|"powder, unblocked"| FALL["try_fall_or_scatter_impl()"]
+    GRAIN -->|"blocked, or shaken"| SLIDE["try_slide_impl()"]
 
     FALL --> SCATTER["try_scatter()<br/><i>drift sideways, or lag</i>"]
     FALL -.->|"fall itself blocked"| SLIDE
@@ -1653,18 +1688,21 @@ flowchart TB
     SLIDE --> PAIR["try_slide_pair()<br/><i>friction, then either slide</i>"]
 ```
 
-The cross-flow pass, per liquid cell:
+The cross-flow pass, per liquid cell - three ordered early-outs, cheapest
+first:
 
 ```mermaid
 flowchart TB
-    LIQSTEP["sand_step_liquids()<br/><i>after the main sweep finishes</i>"] --> EQ["equalise_liquids()"]
+    LIQSTEP2["sand_step_liquids()<br/><i>after the main sweep finishes</i>"] --> EQ["equalise_liquids()"]
 
     EQ --> EROW["equalise_one_row()<br/><i>once per row that holds liquid</i>"]
     EROW --> ECELL["equalise_one_cell()<br/><i>once per liquid cell</i>"]
 
-    ECELL --> ROOM["has_room_below()<br/><i>the common case - falls in the<br/>main sweep instead, nothing to do here</i>"]
-    ECELL --> LOWER["neighbour_is_lower()<br/><i>next commonest - level already</i>"]
-    ECELL --> FIND["find_shallowest()<br/><i>only reached along a real imbalance</i>"]
+    ECELL --> ROOM{"has_room_below()?<br/><i>the common case</i>"}
+    ROOM -->|yes| ROOMDONE(("falls in the main<br/>sweep instead"))
+    ROOM -->|no| LOWER{"neighbour_is_lower()?<br/><i>next commonest</i>"}
+    LOWER -->|yes| LOWERDONE(("already level"))
+    LOWER -->|no| FIND["find_shallowest()<br/><i>only reached along a real imbalance</i>"]
 ```
 
 `has_room_below()`, `neighbour_is_lower()`, `find_shallowest()` and
