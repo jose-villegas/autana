@@ -1,8 +1,8 @@
-# Plan: bake icons from an atlas, as a system-wide facility
+# Icon baker
 
-**Status**: built - `launcher/tools/gen_icons.py`; the rules below are the
-generator's. Reads a PNG atlas cell or an integer-grid SVG path per icon
-(pixelarticons' shape: `M`/`H`/`V`/`h`/`v`/`Z` only) and emits one
+`launcher/tools/gen_icons.py` bakes icons from an atlas; the rules below
+are the generator's. Reads a PNG atlas cell or an integer-grid SVG path per
+icon (pixelarticons' shape: `M`/`H`/`V`/`h`/`v`/`Z` only) and emits one
 `icons_<name>.h` per manifest - `gfx/icons_system.h` for the shared set,
 `apps/<name>/icons_<name>.h` for an app's own. The shared type both
 instantiate is `icon_t` (`gfx/icon.h`); drawing is `icon_walk_blocks()`
