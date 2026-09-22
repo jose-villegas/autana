@@ -1155,6 +1155,7 @@
 4	launcher/main/gfx/gfx.c:2247	send_heal_strips
 4	launcher/main/gfx/gfx.c:2234	send_overlay_bordered_rows_clean
 4	launcher/main/main.c:662	sample_display_orientation
+4	launcher/main/main.c:250	sort_apps
 4	launcher/main/ui/system_navigation.c:9	system_navigation_step
 4	launcher/main/ui/ui.c:552	mark_changed_ui_bands
 4	launcher/main/ui/ui_build.c:462	ui_begin_screen
@@ -1452,7 +1453,6 @@
 3	launcher/main/gfx/gfx.c:2860	gfx_band_next
 3	launcher/main/gfx/gfx.c:1644	gfx_get_strip_send_counts
 3	launcher/main/gfx/gfx.c:2987	gfx_read_panel_row
-3	launcher/main/board/board_esp32s3.c:105	board_temp_sensor_read_celsius
 3	launcher/main/gfx/gfx.c:1793	gfx_set_send_audit
 3	launcher/main/gfx/gfx.c:1568	gfx_text_font_dither
 3	launcher/main/gfx/gfx.c:1864	send_audit_log_if_due
@@ -1471,6 +1471,7 @@
 3	launcher/main/ui/ui_pointer.c:40	step_drag
 3	launcher/main/ui/ui_ridge.c:215	pluck_from_touch
 3	launcher/main/ui/ui_ridge.c:150	ui_ridge_set_gravity
+3	launcher/main/util/device_state.c:15	temp_sensor_read_celsius
 3	launcher/main/util/job.c:113	job_dispatch
 3	launcher/main/util/job.c:150	job_wait
 3	launcher/main/util/screenshot.c:287	emit_bytes
