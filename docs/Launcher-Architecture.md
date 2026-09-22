@@ -26,6 +26,7 @@ launcher/
 └── main/
     ├── main.c          the frame loop and app switching
     ├── app.h           the shell/app contract
+    ├── app_registry.c  the registered apps, sorted by name (host-tested)
     ├── boot/           runs once each, before the frame loop exists
     │   ├── post.{h,c}          power-on self test
     │   ├── post_layout.{h,c}   the POST report's geometry   (host-tested)
