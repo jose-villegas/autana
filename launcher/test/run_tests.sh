@@ -224,7 +224,7 @@ if [ -z "${QUIET_INNER:-}" ]; then
     # shellcheck source=../../scripts/quiet.sh
     . "$TEST_DIR/../../scripts/quiet.sh"
     quiet_begin "$QUIET_LOG"
-    quiet_run host-tests env QUIET_INNER=1 VERBOSE="$VERBOSE" "$0" "$@" || true
+    quiet_run host-tests env QUIET_INNER=1 VERBOSE="$VERBOSE" sh "$0" "$@" || true
     QUIET_SUMMARY=$(grep -E '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored' "$QUIET_LOG" | tail -n 1)
     export QUIET_SUMMARY
     quiet_end run_tests || exit $?
