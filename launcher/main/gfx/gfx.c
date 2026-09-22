@@ -66,16 +66,31 @@ static int band_render_row0;
 static int band_render_height;
 
 /* This frame's heal plan for band mode - which rows gfx_heal_plan() picked
- * at gfx_band_frame_begin(), asked once per band by gfx_band_dirty() via
- * gfx_heal_strips_overlap() so a band overlapping any of them is reported
- * dirty and gets redrawn and resent from scratch. */
+ * at gfx_band_frame_begin(). gfx_band_submit() (not gfx_band_dirty(): a
+ * band the app is not already sending is never forced dirty just to heal
+ * it - see its own comment) asks gfx_heal_strips_overlap() whether the
+ * band it is about to send touches one, and if so splits that send into
+ * two windows instead of resending the whole thing again later. */
 static gfx_heal_strip_t band_heal_strips[GFX_HEAL_MAX_STRIPS];
 static int band_heal_strip_count;
 
-/* True once alloc_band_buffers() (below) owns band_buf[]'s memory and
- * free_band_buffers() must free it - false when band_buf[] only aliases
- * strip_bounce[] instead, whose lifetime belongs to gfx_init(). */
-static bool band_buf_owned = true;
+/* Real pixels of band-heal splitting still allowed this present - the
+ * strip-shaped heal_budget_pixels above bounds gfx_heal_plan()'s own
+ * selection, but a planned strip can overlap two bands (GFX_HEAL_STRIP_ROWS
+ * a fixed 32 against whatever GFX_BAND_HEIGHT is), so what a band send
+ * actually costs is counted here instead, in the band's own real shape. */
+static int band_heal_budget_remaining;
+
+/* gfx_band_next() advances heal.phase once, at the frame's end, only if
+ * this is true - the same "only if something was healed" rule
+ * gfx_heal_plan() already applies to its own phase advance. */
+static bool band_heal_split_happened;
+
+/* The extent gfx_band_dirty() last returned for the band in hand -
+ * gfx_band_submit() sends exactly this, packed and even-clipped (see its
+ * own comment). gfx_band_next() resets it to the full band width, so a
+ * scene that never calls gfx_band_dirty() still gets a full send. */
+static int band_send_x0, band_send_x1;
 
 /* gfx_band_force_all_dirty itself lives in gfx_full_redraw.h, for the same
  * reason gfx_dirty.h's all_dirty does - a host suite needs its own copy.
@@ -174,6 +189,20 @@ static gfx_heal_t heal;
 static int heal_budget_pixels = GFX_HEAL_DEFAULT_BUDGET_PIXELS;
 static int heal_rolling_rows;
 
+/* Queues this present's rolling sweep, or resets heal entirely while the
+ * clock is the slow one - heal is inert then. Shared by the full-fb path
+ * (send_heal_strips()) and the band path (gfx_band_frame_begin()), which
+ * duplicated exactly this decision before. Common code: both callers are. */
+static bool
+plan_heal(void) {
+    if (!gfx_heal_active()) {
+        gfx_heal_reset(&heal);
+        return false;
+    }
+    gfx_heal_queue_rolling(&heal, heal_rolling_rows);
+    return true;
+}
+
 static bool
 panel_clock_valid(int hz) {
     return hz == GFX_PANEL_CLOCK_SLOW_HZ || hz == GFX_PANEL_CLOCK_FAST_HZ;
@@ -265,12 +294,10 @@ _Static_assert(GFX_WIDTH % 2 == 0 && GFX_HEIGHT % 2 == 0, "panel windows round t
 static gfx_color_t* strip_bounce[STRIP_BOUNCE_SLOTS];
 static int strip_bounce_next;
 
-/* A GFX_BAND_HEIGHT of STRIP_HEIGHT (64) aliases band_buf[] onto these
- * slots instead of allocating (alloc_band_buffers() below) - each is
- * already exactly one 64-row band's own size, and idle whenever band mode
- * is, since band mode never runs the full-framebuffer send path these
- * belong to. Free internal heap is only ~31 KB right after gfx_init(), so a
- * second 64-row allocation is not affordable. */
+/* band_buf[] (alloc_band_buffers() below) always aliases these slots
+ * instead of allocating - idle whenever band mode is, since band mode
+ * never runs the full-fb send path they belong to. */
+_Static_assert(GFX_BAND_HEIGHT <= STRIP_HEIGHT, "a band must fit one strip_bounce slot to alias it");
 _Static_assert(GFX_BAND_SLOTS == STRIP_BOUNCE_SLOTS, "band_buf[] aliasing strip_bounce[] needs equal slot counts");
 #endif
 
@@ -2297,11 +2324,9 @@ send_overlay_bordered_rows_clean(bool (*send_rows)(int y0, int y1), int* queued)
  * sends so a strip carries whatever they just put on the panel. */
 static void
 send_heal_strips(bool (*send_rows)(int y0, int y1), int* queued) {
-    if (panel_clock_applied_hz != GFX_PANEL_CLOCK_FAST_HZ) {
-        gfx_heal_reset(&heal);
+    if (!plan_heal()) {
         return;
     }
-    gfx_heal_queue_rolling(&heal, heal_rolling_rows);
     gfx_heal_strip_t strips[GFX_HEAL_MAX_STRIPS];
     const int n = gfx_heal_plan(&heal, heal_budget_pixels, GFX_WIDTH, strips, GFX_HEAL_MAX_STRIPS);
     for (int i = 0; i < n; i++) {
@@ -2623,23 +2648,10 @@ free_full_framebuffer(void) {
 
 static bool
 alloc_band_buffers(int band_height) {
-    if (band_height == STRIP_HEIGHT) {
-        for (int i = 0; i < GFX_BAND_SLOTS; i++) {
-            band_buf[i] = strip_bounce[i];
-        }
-        band_buf_owned = false;
-        return true;
-    }
-    const size_t bytes = (size_t)GFX_WIDTH * (size_t)band_height * sizeof(gfx_color_t);
+    (void)band_height; /* GFX_BAND_HEIGHT <= STRIP_HEIGHT, asserted above */
     for (int i = 0; i < GFX_BAND_SLOTS; i++) {
-        band_buf[i] = heap_caps_malloc(bytes, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
-        if (band_buf[i] == NULL) {
-            ESP_LOGE(TAG, "Could not allocate %u byte band buffer", (unsigned)bytes);
-            band_buf_owned = true;
-            return false;
-        }
+        band_buf[i] = strip_bounce[i];
     }
-    band_buf_owned = true;
     return true;
 }
 
@@ -2681,11 +2693,9 @@ alloc_band_buffers(int band_height) {
     for (int i = 0; i < GFX_BAND_SLOTS; i++) {
         band_buf[i] = malloc(bytes);
         if (band_buf[i] == NULL) {
-            band_buf_owned = true;
             return false;
         }
     }
-    band_buf_owned = true;
     return true;
 }
 
@@ -2730,21 +2740,17 @@ free_band_snapshot(void) {
 
 static void
 free_band_buffers(void) {
-    if (!band_buf_owned) {
-        /* Aliased into strip_bounce[] - that memory outlives band mode. */
-        for (int i = 0; i < GFX_BAND_SLOTS; i++) {
-            band_buf[i] = NULL;
-        }
-        return;
-    }
-    for (int i = 0; i < GFX_BAND_SLOTS; i++) {
 #ifdef ESP_PLATFORM
-        heap_caps_free(band_buf[i]);
-#else
-        free(band_buf[i]);
-#endif
+    /* Aliased into strip_bounce[] - that memory outlives band mode. */
+    for (int i = 0; i < GFX_BAND_SLOTS; i++) {
         band_buf[i] = NULL;
     }
+#else
+    for (int i = 0; i < GFX_BAND_SLOTS; i++) {
+        free(band_buf[i]);
+        band_buf[i] = NULL;
+    }
+#endif
 }
 
 static void
@@ -2809,6 +2815,15 @@ gfx_mode_exit(void) {
         if (current_mode.pixfmt == GFX_PIXFMT_INDEXED8) {
             free_indexed_image();
         } else {
+#ifdef ESP_PLATFORM
+            /* band_buf[] aliases strip_bounce[] - the full-fb path that
+             * owns it next must never write it while this mode's last
+             * band is still on the wire. */
+            if (!gfx_band_ring_settled(&band_ring)) {
+                xSemaphoreTake(strip_sent, portMAX_DELAY);
+                gfx_band_ring_settle(&band_ring);
+            }
+#endif
             free_band_buffers();
         }
         if (alloc_full_framebuffer()) {
@@ -2885,54 +2900,52 @@ gfx_band_frame_begin(void) {
         band_snapshot_filling = band_frame_force_all;
     }
 
-    /* Band mode's own heal: plan once per frame, same budget and rolling
-     * sweep as a full-fb present's send_heal_strips(), and let
-     * gfx_band_dirty() report a band dirty per planned strip it overlaps -
-     * a band is rendered from scratch, so healing it is just sending it
-     * again. Inert while the clock is the slow one, like heal always is. */
-    if (gfx_heal_active()) {
-        gfx_heal_queue_rolling(&heal, heal_rolling_rows);
+    /* Band-mode heal: plan once per frame, same budget and rolling sweep as
+     * a full-fb present. gfx_band_submit() - not gfx_band_dirty(), see its
+     * own comment - checks whether the band it is about to send overlaps a
+     * planned strip, and if so splits that send rather than waiting to
+     * resend the band later on heal's account alone. */
+    if (plan_heal()) {
         band_heal_strip_count =
             gfx_heal_plan(&heal, heal_budget_pixels, GFX_WIDTH, band_heal_strips, GFX_HEAL_MAX_STRIPS);
+        band_heal_budget_remaining = heal_budget_pixels;
     } else {
-        gfx_heal_reset(&heal);
         band_heal_strip_count = 0;
+        band_heal_budget_remaining = 0;
     }
+    band_heal_split_happened = false;
 }
 
 /* Band mode's own "does [row0, row1) need touching this frame" query -
- * reuses gfx_dirty.h's cell tracker (dirty_band_extent()), the same one
- * gfx_present() consults for full-fb sends, fed by the ordinary
- * gfx_mark_dirty() calls an app and ui.c already make. A forced frame
- * (gfx_invalidate(), gfx_mode_enter()) always reports the full width
- * dirty, without needing every cell actually marked. */
+ * reuses gfx_dirty.h's cell tracker. Never true on heal's account alone:
+ * the band buffer only holds real content once the app redraws it, so
+ * gfx_band_submit() is where heal acts, on a band already dirty for a real
+ * reason. Every true return records the extent for gfx_band_submit(). */
 bool
 gfx_band_dirty(int row0, int row1, int* out_x0, int* out_x1) {
-    if (band_frame_force_all) {
+    bool dirty = band_frame_force_all;
+    if (dirty) {
         *out_x0 = 0;
         *out_x1 = GFX_WIDTH;
-        return true;
-    }
-    if (dirty_band_extent(row0, row1, out_x0, out_x1)) {
-        return true;
+    } else if (dirty_band_extent(row0, row1, out_x0, out_x1)) {
+        dirty = true;
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
     /* A border exists only in the band that was sent, and gfx holds no
      * copy to resend: the one way to take it off the panel is to have the
      * app render the band once more. */
-    if (row0 == band_render_row0 && (band_overlay_bordered & (1u << (row0 / band_render_height)))) {
+    if (!dirty && row0 == band_render_row0 && (band_overlay_bordered & (1u << (row0 / band_render_height)))) {
         band_overlay_cleanup_only = true;
         *out_x0 = 0;
         *out_x1 = GFX_WIDTH;
-        return true;
+        dirty = true;
     }
 #endif
-    if (gfx_heal_strips_overlap(band_heal_strips, band_heal_strip_count, row0, row1)) {
-        *out_x0 = 0;
-        *out_x1 = GFX_WIDTH;
-        return true;
+    if (dirty) {
+        band_send_x0 = *out_x0;
+        band_send_x1 = *out_x1;
     }
-    return false;
+    return dirty;
 }
 
 /* The band gfx_band_next() just handed out needs no redraw this frame
@@ -2958,6 +2971,12 @@ gfx_band_next(void) {
 #endif
             gfx_band_ring_settle(&band_ring);
         }
+        /* Same "only if something was healed" rule gfx_heal_plan() applies
+         * to its own strips - a present that split no band leaves the cut
+         * point where it was. */
+        if (band_heal_split_happened) {
+            gfx_heal_advance_phase(&heal);
+        }
         band_render_active = false;
         /* This frame's gfx_mark_dirty() calls (an app's own coverage, ui.c's
          * per-band UI changes) have done their job for gfx_band_dirty();
@@ -2975,6 +2994,8 @@ gfx_band_next(void) {
     band_current_slot = gfx_band_ring_slot(&band_ring);
     band_render_row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
     band_render_height = current_mode.band_height;
+    band_send_x0 = 0;
+    band_send_x1 = GFX_WIDTH;
     band_render_active = true;
     gfx_fb_guard_set_available(true);
     return true;
@@ -3004,22 +3025,61 @@ gfx_band_count(void) {
     return band_ring.band_count;
 }
 
-/* Shared by gfx_band_submit() (the full band) and gfx_band_submit_span()
- * (an [x0, x1) window of it) - the only difference is how much of the band
- * buffer actually goes out. */
-static void
-band_submit_span(int x0, int x1) {
+#ifdef ESP_PLATFORM
+/* How far into the band, from its own top, to cut its send for healing -
+ * 0 for no split. Only when the band is already being sent for real
+ * (gfx_band_dirty()'s own comment), and only real_pixels at a time: one
+ * planned strip can overlap two bands, and each is charged for what it
+ * actually sends, not the strip's own area. */
+static int
+band_heal_split(int row0, int span_w) {
+    if (band_heal_budget_remaining <= 0
+        || !gfx_heal_strips_overlap(band_heal_strips, band_heal_strip_count, row0, row0 + current_mode.band_height)) {
+        return 0;
+    }
+    const int real_pixels = current_mode.band_height * span_w;
+    if (real_pixels > band_heal_budget_remaining) {
+        return 0;
+    }
+    band_heal_budget_remaining -= real_pixels;
+    band_heal_split_happened = true;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    dev_heal_bytes_sent += (int64_t)real_pixels * sizeof(gfx_color_t);
+#endif
+    return gfx_heal_band_split_row(heal.phase, current_mode.band_height);
+}
+
+/* One draw_bitmap() call, or two at split_row - waited out synchronously
+ * in between, since the ring's must_wait accounting only ever expects one
+ * outstanding strip_sent give per band. */
+static esp_err_t
+band_submit_send(int sx0, int sx1, int row0, int span_w, int split_row, gfx_color_t* buf) {
+    if (split_row <= 0) {
+        return esp_lcd_panel_draw_bitmap(panel, sx0, row0, sx1, row0 + current_mode.band_height, buf);
+    }
+    const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, sx0, row0, sx1, row0 + split_row, buf);
+    if (err != ESP_OK) {
+        return err;
+    }
+    xSemaphoreTake(strip_sent, portMAX_DELAY);
+    return esp_lcd_panel_draw_bitmap(panel, sx0, row0 + split_row, sx1, row0 + current_mode.band_height,
+                                     buf + (size_t)split_row * span_w);
+}
+#endif
+
+/* Sends the extent gfx_band_dirty() recorded for this band (band_send_x0/
+ * x1 - the full width if it was never called), packed and even-clipped, in
+ * exactly one draw_bitmap() call - two if heal splits it, below. */
+void
+gfx_band_submit(void) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_BANDS);
 
     int sx0, sx1;
-    if (!gfx_band_span_clip(x0, x1, GFX_WIDTH, &sx0, &sx1)) {
-        /* Nothing survives rounding and clipping - same as gfx_band_skip():
-         * advance past this band without waiting or touching whatever send
-         * is already in flight, leaving the panel showing what it did. */
-        band_render_active = false;
-        gfx_fb_guard_set_available(false);
-        gfx_band_ring_skip(&band_ring);
+    if (!gfx_band_span_clip(band_send_x0, band_send_x1, GFX_WIDTH, &sx0, &sx1)) {
+        /* Nothing survives rounding and clipping - the same no-op as the
+         * app calling gfx_band_skip() itself. */
+        gfx_band_skip();
         return;
     }
 
@@ -3040,9 +3100,9 @@ band_submit_span(int x0, int x1) {
     gfx_band_span_pack(band_buf[band_current_slot], GFX_WIDTH, band_render_height, sx0, sx1);
 
     if (band_snapshot_filling) {
-        /* A readback forces every band full width (gfx_band_dirty()), so a
-         * span mid-readback is always the full one - packing above was a
-         * no-op and the buffer still holds a real, full-width band. */
+        /* True by construction: a readback forces every band full width
+         * (gfx_band_dirty()), so band_send_x0/x1 is always the full width
+         * during one, and packing above was a no-op. */
         if (sx0 == 0 && sx1 == GFX_WIDTH) {
             memcpy(band_snapshot + (size_t)band_render_row0 * GFX_WIDTH, band_buf[band_current_slot],
                    (size_t)band_render_height * GFX_WIDTH * sizeof(gfx_color_t));
@@ -3056,8 +3116,9 @@ band_submit_span(int x0, int x1) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
     const int row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
-    const esp_err_t err =
-        esp_lcd_panel_draw_bitmap(panel, sx0, row0, sx1, row0 + current_mode.band_height, band_buf[band_current_slot]);
+    const int span_w = sx1 - sx0;
+    const int split_row = band_heal_split(row0, span_w);
+    const esp_err_t err = band_submit_send(sx0, sx1, row0, span_w, split_row, band_buf[band_current_slot]);
     if (err != ESP_OK) {
         note_send_failure(err);
         sent = false;
@@ -3075,16 +3136,6 @@ band_submit_span(int x0, int x1) {
     gfx_band_force_all();
     gfx_band_ring_settle(&band_ring);
     gfx_band_ring_skip(&band_ring);
-}
-
-void
-gfx_band_submit(void) {
-    band_submit_span(0, GFX_WIDTH);
-}
-
-void
-gfx_band_submit_span(int x0, int x1) {
-    band_submit_span(x0, x1);
 }
 
 uint8_t*
@@ -3204,6 +3255,7 @@ gfx_fb_guard_trip_count(void) {
  * pipeline, so it has no begin/wait split of its own. */
 void
 gfx_present_raw_full_frame_for_test(void) {
+    assert(current_mode.layout == GFX_LAYOUT_FULL_FB);
     gfx_present_guard_begin();
     present_task_mode = PRESENT_TASK_RAW_FULL;
     dispatch_present();
