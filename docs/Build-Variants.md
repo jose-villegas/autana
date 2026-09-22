@@ -46,7 +46,7 @@ Verified rather than assumed, by counting symbols in the two images:
 
 ```sh
 xtensa-esp32s3-elf-nm build/launcher.elf      | grep -ci 'unity\|suite_\|selftest\|app_diagnostics'   # 0
-xtensa-esp32s3-elf-nm build.diag/launcher.elf | grep -ci 'unity\|suite_\|selftest\|app_diagnostics'   # 39
+xtensa-esp32s3-elf-nm build.diag/launcher.elf | grep -ci 'unity\|suite_\|selftest\|app_diagnostics'   # nonzero
 ```
 
 `app_diagnostics` belongs in the same count as `unity`/`suite_`/`selftest`
@@ -72,13 +72,11 @@ under `CONFIG_LAUNCHER_SELFTEST` — see `main/CMakeLists.txt`).
 
 ## A diagnostics build can be scoped
 
-A diagnostics build compiles **every** suite. The full run measured on
-2026-09-14 was 1,098 tests in about 18 minutes of device run (about 6-7 of those minutes in the sand
-frame-budget suite alone; every other suite runs in seconds to a minute).
-Perf-scoped compiles only 3 of them - `suite_sand_perf.c`,
-`suite_sand_scenes.c`, `suite_sand_common.c` - so a sand performance
-capture, which reads a dozen rows out of the full run, does not pay for
-every other suite too.
+A diagnostics build compiles **every** suite. A full run takes tens of
+minutes; most of it is the sand frame-budget suite. Perf-scoped compiles
+only the suites and files the perf scope declares - see `main/CMakeLists.txt`
+- so a sand performance capture, which reads a dozen rows out of the full
+run, does not pay for every other suite too.
 
 Scoping buys run time and build time, not memory: the framebuffer lives in
 PSRAM, so the `.bss` a dropped suite takes with it frees nothing a capture
@@ -93,7 +91,7 @@ its `.text` *and* its `.bss`, which is what buys the run time back.
 | scope | fragment | carries | for |
 |---|---|---|---|
 | Full — the default | none | every suite, shell-owned and app-owned | every gate: `autana selftest`, `report_test_results.sh` |
-| Perf | `sdkconfig.defaults.diag_perf` | `suite_sand_perf.c` + `suite_sand_scenes.c` + `suite_sand_common.c` | a sand frame-budget capture |
+| Perf | `sdkconfig.defaults.diag_perf` | the suites and files `main/CMakeLists.txt` declares for it | a sand frame-budget capture |
 
 ```sh
 bash launcher/main/apps/sand/tools/report_performance.sh --perf-scope
@@ -105,22 +103,13 @@ idf.py -B build.diag.<yours> \
   -D SDKCONFIG=build.diag.<yours>/sdkconfig build
 ```
 
-Scoped around **what a run reads**, not around folders — which is why the
-perf list is written out in `main/CMakeLists.txt` rather than matched by a
-pattern. The rows in `suite_sand_perf.c` are built by the scene builders in
-`suite_sand_scenes.c` and the fixtures in `suite_sand_common.c`, neither of
-which is named `_perf`; `suite_cube_perf.c` and `suite_boot_anim_perf.c` are
-named `_perf` and are read by nobody in a sand round.
-
-Four things hold this together:
+Scoped around **what a run reads**, not around folders - the suites and
+files the perf scope compiles are declared in the build files
+(`main/CMakeLists.txt`), along with why the list is explicit rather than a
+pattern and what fails loudly when it falls out of sync.
 
 - **Full is the default and stays globbed.** A scope only ever narrows, and
   only when named, so coverage cannot shrink by accident.
-- **Both ways of getting it wrong are loud.** A scope member that no longer
-  exists (renamed, deleted with its app) fails the CMake *configure* with a
-  `FATAL_ERROR`. An in-scope suite calling a builder from an out-of-scope
-  file fails the *link* — builders are ordinary called symbols and nothing
-  stubs them.
 - **The scenes suite comes along because its builders do,** and its own tests
   then check that the scenes the perf rows measure are still the scenes they
   claim to be.
