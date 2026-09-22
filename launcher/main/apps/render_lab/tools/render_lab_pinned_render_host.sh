@@ -44,7 +44,7 @@ components/microui/src/microui.c
 main/apps/render_lab/tools/render_lab_render_host.c
 main/apps/render_lab/tools/render_lab_render_host_heap.c
 "
-scene_includes="components/small3dlib/include test"
+scene_includes="components/small3dlib/include"
 scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
 
 scene_renders="
