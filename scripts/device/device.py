@@ -186,9 +186,12 @@ def record_capture(path, managed, *, started_at, port, owner, purpose, command, 
 PORT_WAIT_SECONDS = 600
 
 
-def wait_for_port(port, seconds=PORT_WAIT_SECONDS, opener=None, sleep=time.sleep,
-                  now=time.monotonic, timeout_message=None):
-    """The lock arbitrates intent; the OS owns the port, and the two disagree
+def open_when_free(port, seconds=PORT_WAIT_SECONDS, opener=None, sleep=time.sleep,
+                   now=time.monotonic, reason="open elsewhere"):
+    """Opens the port once the OS lets go of it and returns the open connection;
+    the caller closes it.
+
+    The lock arbitrates intent; the OS owns the port, and the two disagree
     whenever a previous holder's reader outlives its lock - a caller that
     queued fairly then fails on a port it was promised, which reads as a flaky
     board. Waiting is the right answer: this caller already won its turn, a
@@ -205,12 +208,11 @@ def wait_for_port(port, seconds=PORT_WAIT_SECONDS, opener=None, sleep=time.sleep
             return connection
         except OSError as error:
             if now() >= deadline:
-                if timeout_message:
-                    raise RuntimeError(timeout_message) from error
-                raise RuntimeError(port + " is held by another process " + str(int(seconds))
-                                   + "s after this task won the lock: " + str(error)) from error
+                raise RuntimeError(port + " did not become available " + reason + " within "
+                                   + str(int(seconds)) + "s after this task won the lock: "
+                                   + str(error)) from error
             if not waited:
-                print("waiting for " + port + ", open elsewhere", file=sys.stderr)
+                print("waiting for " + port + ", " + reason, file=sys.stderr)
                 waited = True
             sleep(1.0)
 
@@ -324,17 +326,27 @@ def reset(port):
 
 
 def reset_and_capture(port, output, seconds, idle_seconds, expected_build_id=None):
-    """Any reset re-enumerates USB Serial/JTAG and kills an open handle, so no capture spans the reset: what the board prints before the port reopens is lost."""
+    """Any reset re-enumerates USB Serial/JTAG and kills an open handle, so no
+    capture spans the reset: what the board prints before the port reopens is
+    lost."""
     reset(port)
     deadline = time.monotonic() + seconds
     data = bytearray()
     append = False
+    first_reopen = True
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return bytes(data), "timeout"
-        with wait_for_port(port, remaining,
-                           timeout_message="board did not come back after reset before capture ended") as connection:
+        try:
+            connection = open_when_free(port, remaining,
+                                        reason="to re-enumerate after reset")
+        except RuntimeError:
+            if first_reopen:
+                raise
+            return bytes(data), "port lost"
+        first_reopen = False
+        with connection:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return bytes(data), "timeout"
@@ -354,10 +366,10 @@ def reset_device(args, store, port):
     console output as a capture record."""
     if not args.capture:
         with HeldLock(store, port, args.owner, args.purpose, args.wait):
-            with wait_for_port(port):
+            with open_when_free(port):
                 pass
             reset(port)
-            with wait_for_port(port, timeout_message="board did not come back after reset"):
+            with open_when_free(port, reason="to re-enumerate after reset"):
                 pass
         print("board reset; USB serial port is back")
         return 0
@@ -369,7 +381,7 @@ def reset_device(args, store, port):
     error = None
     try:
         with HeldLock(store, port, args.owner, args.purpose, args.wait):
-            with wait_for_port(port):
+            with open_when_free(port):
                 pass
             data, reason = reset_and_capture(port, output, args.seconds, None)
     except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
@@ -480,7 +492,7 @@ def holding(store, port, args, held_lock):
 
 def flash(args, store, port, held_lock=None, extra_flags=()):
     with holding(store, port, args, held_lock) as held:
-        with wait_for_port(port):
+        with open_when_free(port):
             pass
         worktree = Path(args.worktree).resolve()
         script = worktree / "launcher" / "tools" / "build_flash.sh"
@@ -544,12 +556,12 @@ def run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
     error = None
     try:
         with holding(store, port, args, held_lock):
-            with wait_for_port(port) as connection:
+            with open_when_free(port) as connection:
                 connection.write(("\nRUNSUITE " + args.suite + "\n").encode("ascii"))
                 connection.flush()
                 data, reason = capture(connection, output, args.max_seconds, args.idle_seconds,
                                        args.expect_build_id, args.suite)
-    except RuntimeError as caught:
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
         error = str(caught)
         raise
     finally:
@@ -598,11 +610,11 @@ def selftest(args, store, port):
         error = None
         output, managed = resolve_capture_path(args.out, "selftest", args.owner, started_at)
         try:
-            with wait_for_port(port):
+            with open_when_free(port):
                 pass
             data, reason = reset_and_capture(port, output, args.max_seconds, args.idle_seconds,
                                              build_id)
-        except (RuntimeError, subprocess.CalledProcessError) as caught:
+        except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
             error = str(caught)
             raise
         finally:
@@ -632,9 +644,9 @@ def listen(args, store, port):
     error = None
     try:
         with HeldLock(store, port, args.owner, args.purpose, args.wait):
-            with wait_for_port(port) as connection:
+            with open_when_free(port) as connection:
                 data, reason = capture(connection, output, args.seconds, None)
-    except RuntimeError as caught:
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
         error = str(caught)
         raise
     finally:
@@ -694,7 +706,7 @@ def send(args, store, port):
     data = bytearray()
     found = []
     with HeldLock(store, port, args.owner, args.purpose, args.wait):
-        with wait_for_port(port) as connection:
+        with open_when_free(port) as connection:
             connection.reset_input_buffer()
             connection.write(("\n" + args.line + "\n").encode("ascii"))
             connection.flush()
@@ -734,7 +746,7 @@ def screenshot(args, store, port):
         print(message, file=sys.stderr, flush=True)
 
     with HeldLock(store, port, args.owner, args.purpose, args.wait):
-        with wait_for_port(port) as connection:
+        with open_when_free(port) as connection:
             png, state_json = screenshot_tool.read_screenshot(connection, args.timeout, on_status=report)
 
     png_path, state_path = screenshot_tool.write_capture(out, png, state_json)
@@ -952,7 +964,7 @@ def main(argv=None):
         else:
             listen(args, store, port)
         return 0
-    except (RuntimeError, subprocess.CalledProcessError) as error:
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
         print("device: " + str(error), file=sys.stderr)
         return 1
 
