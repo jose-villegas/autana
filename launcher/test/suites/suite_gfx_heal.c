@@ -166,6 +166,43 @@ test_a_band_exactly_beside_a_strip_does_not_overlap(void) {
     TEST_ASSERT_TRUE(gfx_heal_strips_overlap(adjacent, 1, 32, 65));
 }
 
+/* PHASE_STEP=24 against STRIP_ROWS=32 cycles through exactly four values
+ * before repeating - the concrete sequence a moving split point relies on. */
+static void
+test_advance_phase_cycles_through_four_values_then_repeats(void) {
+    gfx_heal_t h;
+    gfx_heal_reset(&h);
+
+    const int expect[4] = {24, 16, 8, 0};
+    for (int i = 0; i < 4; i++) {
+        gfx_heal_advance_phase(&h);
+        TEST_ASSERT_EQUAL_INT(expect[i], h.phase);
+    }
+    gfx_heal_advance_phase(&h);
+    TEST_ASSERT_EQUAL_INT(expect[0], h.phase);
+}
+
+static void
+test_band_split_row_stays_inside_the_band_and_even(void) {
+    const int band_heights[3] = {16, 32, 64};
+    const int phases[4] = {0, 8, 16, 24};
+
+    for (int b = 0; b < 3; b++) {
+        for (int p = 0; p < 4; p++) {
+            const int row = gfx_heal_band_split_row(phases[p], band_heights[b]);
+            TEST_ASSERT_TRUE(row >= 0 && row < band_heights[b]);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(0, row % 2, "a split row must land on an even panel edge");
+        }
+    }
+}
+
+static void
+test_band_split_row_worked_example(void) {
+    TEST_ASSERT_EQUAL_INT(8, gfx_heal_band_split_row(24, 16));
+    TEST_ASSERT_EQUAL_INT(24, gfx_heal_band_split_row(24, 32));
+    TEST_ASSERT_EQUAL_INT(0, gfx_heal_band_split_row(32, 32));
+}
+
 void
 run_gfx_heal_suite(void) {
     RUN_TEST(test_nothing_queued_plans_nothing);
@@ -178,6 +215,9 @@ run_gfx_heal_suite(void) {
     RUN_TEST(test_no_strips_overlap_nothing);
     RUN_TEST(test_a_band_overlapping_a_planned_strip_is_reported);
     RUN_TEST(test_a_band_exactly_beside_a_strip_does_not_overlap);
+    RUN_TEST(test_advance_phase_cycles_through_four_values_then_repeats);
+    RUN_TEST(test_band_split_row_stays_inside_the_band_and_even);
+    RUN_TEST(test_band_split_row_worked_example);
 }
 
 SUITE_REGISTER(run_gfx_heal_suite);
