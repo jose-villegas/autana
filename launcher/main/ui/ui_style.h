@@ -60,8 +60,6 @@ typedef struct {
     mu_Color color;
 } ui_span_t;
 
-/* The bezel */
-
 /* Face, plus a lit pair of edges and a shadowed pair. */
 #define UI_BEZEL_MAX_SPANS 5
 

@@ -370,9 +370,10 @@ bool gfx_heal_active(void);
 /*
  * Mode: a full PSRAM framebuffer, or an internal-SRAM band ring for a
  * full-redraw renderer (docs/Autana-Rendering-Roadmap.md section 3.3).
- * Requested from enter(), released with gfx_mode_exit() from exit(). Every
- * app requests full resolution with no interlace; other combinations grant
- * correctly (gfx_mode.h) but no caller exercises them.
+ * Requested from enter(), released with gfx_mode_exit() from exit(). No
+ * caller ever asks for anything but full resolution; an interlace request
+ * is granted (gfx_mode.h) but changes nothing drawn - gfx_set_interlace()
+ * is the switch that does.
  */
 
 /* Grants `request`, allocates whatever the granted layout needs, and
