@@ -282,7 +282,7 @@ the cost, not that the work was free.
 
 The ESP32-S3's performance monitor counts retired instructions, pipeline
 bubbles and stalls beside cycles, so the relation can be read rather than
-assumed. On this board's heaviest simulation scenes (device, 2026-09-19)
+assumed. On this board's heaviest simulation scenes (device)
 a step costs 1.5-1.8 cycles per retired instruction, pipeline bubbles are
 27-31% of all cycles, and instruction-cache fetch misses are zero — the hot
 loops run from internal RAM. One change cut a scene's instructions per step

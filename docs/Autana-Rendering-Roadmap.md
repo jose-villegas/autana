@@ -391,9 +391,7 @@ everything in this document. Add to it:
 At 40 MHz a full frame is 16.5 ms theoretical over the bus alone. Two
 S3-measured present-cost figures agree closely: `gfx_present()` measures
 17.6 ms directly ([Display-and-Rendering.md](notes/Display-and-Rendering.md),
-"The blit is bus-bound") and 18.0-18.9 ms via `boot_anim_perf` rows — the
-`psram_dma_direct` fix is what took the boot-animation-measured figure down
-from 22.4 ms and the boot animation itself from ~21 fps to ~32-36 fps. Both
+"The blit is bus-bound") and 18.0-18.9 ms via `boot_anim_perf` rows. Both
 present figures sit above the 16.5 ms theoretical; the gap is *unmeasured*
 why.
 
@@ -460,7 +458,7 @@ replace it, chosen by app kind:
    small3dlib (`S3L_SCISSOR_Y`, `components/small3dlib/include/small3dlib.h`)
    rather than the scissored span rasterizer this section otherwise assumes.
    That rasterizer (section 8 decision 4) is still a separate, unbuilt
-   piece; a full-screen z-buffer in PSRAM is no longer recommended for
+   piece; a full-screen z-buffer in PSRAM is not recommended for
    per-pixel access, and a per-band one arrives with the rasterizer, not
    with the ring alone.
 

@@ -5,7 +5,7 @@ files, each icon declaring its own source.
     python tools/gen_icons.py design/icons/system.png design/icons/system.json \\
         > main/gfx/icons_system.h
 
-General-purpose, not system-set-specific: the same generator later produces
+General-purpose, not system-set-specific: the same generator produces
 an app's own apps/<name>/icons_<name>.h from apps/<name>/icons/<name>.png +
 .json (see docs/tools/Icon-Baker.md, "Ownership") - only the paths
 differ. The emitted prefix (icon_<prefix>_*) is never a flag; it is always
