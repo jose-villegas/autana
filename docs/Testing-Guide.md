@@ -78,19 +78,34 @@ capturing sand performance numbers.
 
 ## Two runners, one set of suites
 
-The suites in `test/suites/` are compiled into **both** runners. Nothing is
-written twice.
+Portable suites (`test/suites/`, plus each app's own beside it,
+`apps/*/suite_*.c`) are compiled into every runner that can take them.
+Nothing is written twice. A device-only suite - `suite_gfx.c`, needing a
+real panel - is left out of the host runner's file list, not gated by a
+preprocessor guard: it would not compile there, which is the point. POST
+is a third thing again, a boot-time hardware check rather than a Unity
+suite.
 
 ```mermaid
 flowchart LR
-    subgraph shared["test/suites/"]
-        S1["suite_touch_fsm.c"]
-        S2["suite_gesture.c"]
-        S3["suite_gfx.c<br/><i>DEVICE_BUILD only</i>"]
+    subgraph sources["sources"]
+        Portable["portable suites"]
+        DeviceOnly["device-only suites"]
     end
 
-    S1 & S2 --> HOST["test/host_main.c<br/><b>host runner</b><br/>&lt;1 s, run constantly"]
-    S1 & S2 & S3 --> DEV["main/boot/selftest.c<br/><b>SELFTEST build</b><br/>runsuite: one suite, seconds<br/>full run: ~18 min"]
+    subgraph runners["runners"]
+        Host["host run_tests.sh"]
+        Board["SELFTEST image on the board<br/><i>runsuite, or a full run</i>"]
+        Qemu["the same SELFTEST image,<br/>under QEMU"]
+    end
+
+    Portable --> Host
+    Portable --> Board
+    Portable --> Qemu
+    DeviceOnly --> Board
+    DeviceOnly --> Qemu
+
+    POST["POST<br/><i>a boot-time hardware check,<br/>not a Unity suite</i>"]
 ```
 
 **The host runner is the TDD loop.** Under a second, so red-green-refactor is
@@ -102,7 +117,7 @@ the portable ones. That is deliberate: passing on a laptop only proves the logic
 right on x86, whereas running on-target proves the same source behaves
 identically built by the Xtensa toolchain and executed on this chip. It
 never runs in a release image - only in a SELFTEST build, either one suite
-at a time via runsuite or as a full boot-time run.
+at a time via runsuite (seconds) or as a full boot-time run (~18 min).
 
 ### The host runner enforces two of the device's limits
 
@@ -470,11 +485,12 @@ Any timeout, debounce, animation or rate limit should take time as a parameter.
 
 ### Pass the environment in, don't reach for it
 
-`gesture_is_home_swipe()` takes the screen height rather than including
-`gfx.h`:
+`gesture_is_home_swipe()` takes the edge to check and both screen
+dimensions, rather than including `gfx.h`:
 
 ```c
-bool gesture_is_home_swipe(const input_t *input, int screen_height);
+bool gesture_is_home_swipe(const input_t *input, gesture_edge_t edge,
+                            int screen_w, int screen_h);
 ```
 
 So it depends on nothing, links against nothing, and can be tested at any
@@ -499,10 +515,12 @@ flowchart LR
         direction TB
         P1["touch_fsm.c<br/><i>samples to events</i>"]
         P2["gesture.c<br/><i>swipe recognition</i>"]
+        P3["ui_launcher_draw.c<br/><i>the home screen's command list</i>"]
     end
 
     HW1 -->|"sample + now_us"| P1
-    HW4 -->|"input_t + screen height"| P2
+    HW4 -->|"input_t + screen dimensions"| P2
+    HW3 -->|"ctx, dt_ms"| P3
 ```
 
 Note the direction of the arrows: the hardware side calls *into* the pure side
@@ -551,16 +569,9 @@ exactly when they need it.
 
 ## The loop
 
-```mermaid
-flowchart LR
-    RED["Write the test<br/><b>watch it fail</b>"] --> GREEN["Make it pass<br/><i>simplest thing</i>"]
-    GREEN --> REFACTOR["Clean up<br/><i>tests stay green</i>"]
-    REFACTOR --> RED
-
-    RED -.->|"skipping this step is<br/>how untrustworthy<br/>suites happen"| RED
-```
-
-The failing step is not ceremony. A test never seen red might be asserting
+Write the test and watch it fail, make it pass the simplest way, then clean
+up with the tests still green - and back to red for the next one. The
+failing step is not ceremony. A test never seen red might be asserting
 nothing at all, and you will not find out until it fails to catch a regression.
 
 ---

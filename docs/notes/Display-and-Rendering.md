@@ -34,17 +34,6 @@ private static too. It is nine commands, Apache-2.0, and is copied into `gfx.c`
 with attribution — the driver's built-in defaults are *not* a substitute, since
 Waveshare tuned `0x44`/`0x53`/`0x51` for this panel.
 
-```mermaid
-flowchart TB
-    subgraph gfx["gfx.c owns the panel"]
-        BD["board_detect()<br/><i>variant, I2C, reset lines</i>"]
-        BU["panel_bring_up()"]
-    end
-
-    BD --> BU
-    BU -->|"spi_bus_initialize<br/>esp_lcd_new_panel_io_spi<br/>esp_lcd_new_panel_sh8601 / co5300"| UP(("display up<br/>SPI2 held"))
-```
-
 ---
 
 ## Driving the panel directly
