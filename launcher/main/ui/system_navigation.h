@@ -2,8 +2,8 @@
 
 #include <stdbool.h>
 
-#include "app.h"
 #include "input/gesture.h"
+#include "input/input.h"
 
 typedef enum {
     SYSTEM_SCREEN_LAUNCHER,
