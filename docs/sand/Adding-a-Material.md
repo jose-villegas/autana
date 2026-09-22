@@ -11,37 +11,7 @@ sweep's no-double-move guarantee are.
 
 A material is two orthogonal decisions, and confusing them is the most
 common way to over-build. **How it moves** is `materials[]`. **How it
-burns** is `reactions[]`. Neither constrains the other.
-
-```mermaid
-flowchart LR
-    subgraph MOVE["materials[] - how it MOVES (hot table)"]
-        direction TB
-        M1["KIND_STATIC\nstone, wood"]
-        M2["KIND_POWDER\nsand"]
-        M3["KIND_LIQUID\nwater, lava"]
-        M4["KIND_GAS\ngas, fire, steam, smoke"]
-    end
-
-    subgraph REACT["reactions[] - how it BURNS (cold table)"]
-        direction TB
-        R1["inert\nsand, water, steam, smoke"]
-        R2["fuel\ngas, wood"]
-        R3["heat source\nfire, lava"]
-        R4["conductor\nstone"]
-    end
-
-    MOVE -.->|"any row on the left\ncan pair with any\nrow on the right"| REACT
-
-    style M1 fill:#5a5a5a,color:#fff
-    style M2 fill:#a87a3d,color:#fff
-    style M3 fill:#3d6b8a,color:#fff
-    style M4 fill:#4a7c59,color:#fff
-    style R1 fill:#5a5a5a,color:#fff
-    style R2 fill:#a87a3d,color:#fff
-    style R3 fill:#8a3d3d,color:#fff
-    style R4 fill:#3d6b8a,color:#fff
-```
+reacts** is `reactions[]`. Neither constrains the other.
 
 **Lava is the clearest proof the axes are independent** - its own comment
 in `material.c` says exactly that: `KIND_LIQUID`, the same kind as
@@ -50,16 +20,6 @@ neighbours and flares, with not one line of movement code anywhere
 knowing about the combination. A `KIND_POWDER` material that is also
 flammable needs a `reactions[]` row and *nothing else* - no new pass, no
 movement code, no branch anywhere.
-
-Colour convention, used consistently in every diagram in this folder:
-
-| | |
-|---|---|
-| ⬛ grey `#5a5a5a` | static / inert |
-| 🟫 amber `#a87a3d` | powder, fuel |
-| 🟦 blue `#3d6b8a` | liquid, conductor, cold paths |
-| 🟩 green `#4a7c59` | gas |
-| 🟥 red `#8a3d3d` | hot / active / the expensive path |
 
 ---
 
@@ -266,13 +226,11 @@ VARIANT can carry it.** The tables are indexed by the material nibble
 alone, so two states of one material share `density`, `slip`, `repose`
 and `scatter`. What decides it is which table the differences live in,
 and whether the variant is free to name the state. Ember is the worked
-example: it differed from wood in seven fields, and only one (`decay`)
-was in the *movement* table - the rest are reactions, read in the cold
-pass, and wood's own variant was only holding a shade. So ember became a
-state (`burn_decay` non-zero, dispatched by `cell_is_burning()`), one
-slot back, and gained something a separate material never had: water
-puts a log out and leaves the log, where before the ember *was* the
-fire. The rule: what forces a slot is needing a different row in the
+example: it differs from wood in seven fields, only one (`decay`) in the
+movement table, and wood's variant was free to name it - so ember is a
+state of wood (`burn_decay` non-zero, `cell_is_burning()`), and water
+puts a log out and leaves the log. The rule: what forces a slot is
+needing a different row in the
 table the sweep reads, or having no spare variant bits to name the
 state. Steam and smoke fail this test on both counts - identical
 reaction rows, but five differing *movement* fields, and both already
@@ -336,41 +294,32 @@ rather than beside it.
 
 ```mermaid
 flowchart TD
-    A["1. material.h\nnew material_id_t\nbefore MAT_COUNT"] --> B["2a. material.c\nmaterials[] row\nkind, density, slip,\nrepose, scatter, name"]
-    B --> C["2b. material.c
-palette[] block
-[MAT_YOURS * MATERIAL_VARIANTS] =
-SHADES(lo,hi)"]
-    C --> D{"Does it react\nto fire at all?"}
-    D -- yes --> E["2c. material.c\nreactions[] row"]
-    D -- no --> F
+    Slot{"ordinary slot free?<br/>MAT_COUNT == MAT_EXTENDED means no"}
+    Slot -->|no| Room["'Making room' ladder above -<br/>reinterpret a nibble, fold into a state,<br/>spend MAT_EXTENDED, split a half-row"]
+    Slot -->|yes| A["1. material.h<br/>new material_id_t<br/>before MAT_COUNT"]
+    A --> B["2a. material.c<br/>materials[] row<br/>kind, density, slip,<br/>repose, scatter, name"]
+    B --> C["2b. material_palette.c<br/>palette[] block<br/>[MAT_YOURS * MATERIAL_VARIANTS] =<br/>SHADES(lo,hi)"]
+    C --> D{"Does it react<br/>to fire at all?"}
+    D -->|yes| E["2c. material.c<br/>reactions[] row"]
+    D -->|no| F
     E --> F{"New KIND?"}
-    F -- "no - reuses an\nexisting kind" --> G["DONE.\nWrite host tests."]
-    F -- yes --> H["4. new sand_<name>.c\n+ sand_step_<name>()\n+ may_have_<name> flag\n+ step_one_grain() branch"]
-    H --> I["6. app_sand.c\nbrush list, if paintable"]
+    F -->|"no - reuses an<br/>existing kind"| G["3. Done -<br/>write host tests"]
+    F -->|yes| H["4-5. new sand_&lt;name&gt;.c<br/>+ sand_step_&lt;name&gt;()<br/>+ may_have_&lt;name&gt; flag<br/>+ step_one_grain() branch"]
+    H --> I["6. app_sand.c<br/>brush list, if paintable"]
     G --> I
-
-    style G fill:#4a7c59,color:#fff
-    style H fill:#8a3d3d,color:#fff
-    style C fill:#3d6b8a,color:#fff
 ```
 
 1. **`material.h`**: add the new `material_id_t` enum value, before
    `MAT_COUNT`. **If no ordinary slot is free** - it currently is not -
    see "Making room" above before reaching for `MATX(k)` or a half-row
    split.
-2. **`material.c`**: add a `materials[]` row and a `palette[]` block. The
-   block needs its own designator - `[MAT_YOURS * MATERIAL_VARIANTS] =`
-   followed by `SHADES(lo, hi)` - which is what stops it depending on
-   where in the list it sits: the palette used to be positional, and a
-   block added or removed mid-list once shifted every block after it by
-   sixteen entries, handing materials each other's colours and leaving
-   the last one reading zero-filled tail - plain black, looking like a
-   styling choice rather than a bug.
-   `test_every_material_has_a_palette_block` now checks the result.
-   `MATERIAL_MAX` stays 16 either way - it counts nibble values, not
-   table rows, so it did not move even when `materials[]` itself doubled
-   for gunpowder's split.
+2. **`material.c`**: add a `materials[]` row. **`material_palette.c`**: add
+   the matching `palette[]` block. The block needs its own designator -
+   `[MAT_YOURS * MATERIAL_VARIANTS] =` followed by `SHADES(lo, hi)` - so it
+   does not depend on where in the list it sits; a missing block reads as
+   plain black, and `test_every_material_has_a_palette_block` catches it.
+   `MATERIAL_MAX` counts nibble values, not table rows, so adding a row
+   never moves it.
 
    **If the material reacts to fire at all** - it can catch, it is a
    heat source, it conducts, it smokes, it does something other than
@@ -394,15 +343,13 @@ SHADES(lo,hi)"]
 
    **An absent row is not neutral.** All-zero means something different
    per field: never catches, never a heat source - safe to skip - but
-   also **immune to acid** and **heat stops here**, real behaviours.
-   Glass shipped with both once, from the same missing row: correctly
-   immune to acid, wrongly inert to heat - a stone vessel over a flame
-   boiled its contents, a glass one did not, backwards for the one
-   vessel acid cannot eat. Nothing distinguishes the feature from the
-   bug, since neither is written anywhere - read the field list and say
-   what zero means for *each* field before leaving a row out, in a
-   comment even when the answer is zero, the way stone's row does for
-   `dissolvable`.
+   also **immune to acid** and **heat stops here**, real behaviours. A
+   stone vessel over a flame boils its contents; a glass one with no row
+   would not, since zero also means heat stops here. Nothing distinguishes
+   the feature from the bug, since neither is written anywhere - read the
+   field list and say what zero means for *each* field before leaving a
+   row out, in a comment even when the answer is zero, the way stone's row
+   does for `dissolvable`.
 
    **A stage gated on the cell's material IDENTITY, rather than a
    `reaction_t` field, must be threaded into `reaction_first_stage()`
@@ -468,74 +415,10 @@ SHADES(lo,hi)"]
 
 ---
 
-## The reaction chain, as it stands
+## The reaction chain
 
-Useful as a worked example of how much behaviour comes out of pure table
-data. Every arrow below is a `reaction_t` field, not a branch in code.
-Ice, plant, leaf and root are not on it - [`Reaction-Table.md`](Reaction-Table.md)
-is the generated, complete table.
-
-```mermaid
-flowchart TD
-    Wood["WOOD\nstatic, density 141"] -->|"flammability 6\n~43 steps of contact"| Wood
-    Gas["GAS\nrises"] -->|"flammability 255\ninstant, no RNG draw"| Fire
-
-    Wood -->|"flare 48, while lit"| Fire["FIRE\nrises, burns, decay 96"]
-    Wood -->|"residue 90, burned out"| Smoke
-    Fire -->|"residue 40"| Smoke["SMOKE\nfuel that burned out"]
-
-    Fire -->|"quench_to\n+ water pays 1 mass"| Steam["STEAM\nwater that got hot"]
-
-    Fire -->|"ignites cardinal\nneighbours"| Wood
-    Fire -->|"conducts through\nSTONE, boils beyond"| Steam
-
-    Oil["OIL\nliquid, needs_air"] -->|"flammability 50\nSURFACE ONLY"| Fire
-    Fire -->|"ignites exposed\noil"| Oil
-    Lava["LAVA\nliquid AND burns"] -->|"quench_to\n(water pays a unit)"| Stone["STONE"]
-    Acid["ACID\ndissolves"] -->|"dissolves 60 x dissolvable\n(acid pays a unit)"| Gone["EMPTY"]
-    Acid -->|"dissolvable 60"| Stone
-    Acid -->|"dissolvable 1 - barely touches it"| Metal
-    Sand["SAND"] -->|"heats_to, chance 8/256\n(~3% a step)"| Glass["GLASS\nimmune to acid"]
-    Glass -->|"heat_ramp 64 - long exposure"| Lava
-    Glass -->|"shatters_to, at SAND_SHOCK_HEAT\n(ambient+2), no roll"| Sand
-    Snow["SNOW
-cold"] -->|"heats_to 120 near fire
-thaws 4 in any liquid"| Water["WATER"]
-    Snow -.->|"chills 40"| Glass
-    Fire -->|"heat, no burning"| Sand
-    Lava -->|"flare 16"| Fire
-    Lava -.->|"heat, no burning"| Dirt
-    Dirt["DIRT\npowder, soaks/dries"] -->|"heats_to 10\ndries first - see wet-earth stage"| Metal["METAL\nstatic, conducts 248, heatproof"]
-
-    style Wood fill:#a87a3d,color:#fff
-    style Gas fill:#4a7c59,color:#fff
-    style Fire fill:#8a3d3d,color:#fff
-    style Smoke fill:#5a5a5a,color:#fff
-    style Steam fill:#3d6b8a,color:#fff
-    style Oil fill:#a87a3d,color:#fff
-    style Lava fill:#8a3d3d,color:#fff
-    style Stone fill:#5a5a5a,color:#fff
-    style Acid fill:#4a7c59,color:#fff
-    style Sand fill:#a87a3d,color:#fff
-    style Glass fill:#3d6b8a,color:#fff
-    style Snow fill:#5a5a5a,color:#fff
-    style Water fill:#3d6b8a,color:#fff
-    style Gone fill:#2a2a2a,color:#fff
-    style Dirt fill:#a87a3d,color:#fff
-    style Metal fill:#5a5a5a,color:#fff
-```
-
-Note the two byproducts are **different materials on purpose**: steam is
-water that got hot, smoke is fuel that burned out - see the palette
-question in "Design questions" above.
-
-Ember is not a node here: it folded into wood's own variant -
-`burn_decay` counts down how much of a lit log is left to burn, so
-"catching fire" is wood becoming a lit version of itself (the self-loop
-above) rather than becoming a different material, for the reason given
-in "Design questions" above (fire is `KIND_GAS` and would simply drift
-away). Dirt and metal are the newest arrivals - see
-[`Metal.md`](Metal.md).
+[Reaction-Table.md](Reaction-Table.md) is the generated, complete table,
+with every value.
 
 ---
 

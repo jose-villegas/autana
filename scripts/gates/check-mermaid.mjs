@@ -93,6 +93,52 @@ async function trackedMarkdownFiles(pathspecs, cwd) {
     .sort();
 }
 
+const STATE_DIAGRAM_HEADER = /^stateDiagram(-v2)?\b/;
+const FRONTMATTER_FENCE = /^---\s*$/;
+const DIRECTIVE_LINE = /^%%\{.*\}%%\s*$/;
+
+// The diagram-type keyword is not always the block's first line: a YAML
+// frontmatter block (--- ... ---) or one or more %%{init: ...}%% directives
+// may come first. Skip past those, and any blank line, to find it.
+function diagramTypeLineIndex(lines) {
+  let i = 0;
+  while (i < lines.length && lines[i].trim().length === 0) {
+    i++;
+  }
+  if (i < lines.length && FRONTMATTER_FENCE.test(lines[i])) {
+    i++;
+    while (i < lines.length && !FRONTMATTER_FENCE.test(lines[i])) {
+      i++;
+    }
+    i++; // past the closing fence
+  }
+  while (i < lines.length && (lines[i].trim().length === 0 || DIRECTIVE_LINE.test(lines[i].trim()))) {
+    i++;
+  }
+  return i;
+}
+
+// GitHub renders a literal `\n` inside a stateDiagram/stateDiagram-v2
+// transition label as the two characters "\n", not a line break. A
+// flowchart label renders `\n` as a real break, so this only looks at
+// stateDiagram blocks; mmdc itself never catches it, since the source
+// still parses.
+export function findLiteralNewlineInStateDiagram(source) {
+  const lines = source.split('\n');
+  const typeIndex = diagramTypeLineIndex(lines);
+  const typeLine = lines[typeIndex];
+  if (!typeLine || !STATE_DIAGRAM_HEADER.test(typeLine.trim())) {
+    return null;
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes('\\n')) {
+      return { lineIndex: i, line: lines[i] };
+    }
+  }
+  return null;
+}
+
 // mmdc reports the line within the block; map it back to the file so the
 // output is clickable.
 export function rewriteLineNumbers(message, blockStartLine) {
@@ -128,6 +174,18 @@ async function validate(block, label, workDir, index) {
 
   if (!block.source.trim()) {
     return { label, ok: false, message: 'Empty mermaid block' };
+  }
+
+  const literalNewline = findLiteralNewlineInStateDiagram(block.source);
+  if (literalNewline) {
+    const fileLine = block.line + literalNewline.lineIndex;
+    return {
+      label,
+      ok: false,
+      message:
+        `File line ${fileLine}: literal "\\n" inside a stateDiagram label renders as text ` +
+        `on GitHub, not a line break - use <br/> instead.\n  ${literalNewline.line.trim()}`,
+    };
   }
 
   const input = join(workDir, `block-${index}.mmd`);
