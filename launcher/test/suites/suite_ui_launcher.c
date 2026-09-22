@@ -38,13 +38,12 @@
 #define MAX_TEST_APPS  20
 
 static app_t test_apps[MAX_TEST_APPS];
-static const app_t* test_app_ptrs[MAX_TEST_APPS];
 static char test_app_names[MAX_TEST_APPS][8];
 static int test_app_count;
 
-const app_t* const*
+const app_t*
 app_list(void) {
-    return test_app_ptrs;
+    return test_app_count > 0 ? &test_apps[0] : NULL;
 }
 
 int
@@ -75,8 +74,8 @@ set_app_count(int n) {
             .enter = noop_enter,
             .frame = noop_frame,
             .exit = noop_exit,
+            .next = (i + 1 < n) ? &test_apps[i + 1] : NULL,
         };
-        test_app_ptrs[i] = &test_apps[i];
     }
 }
 
