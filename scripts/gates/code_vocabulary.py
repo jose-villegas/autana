@@ -4,6 +4,7 @@ import re
 
 SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components", ".git"}
 SOURCE_SUFFIXES = {".c", ".h", ".py"}
+C_SUFFIXES = {".c", ".h"}
 FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]{4,})\s*\(")
 MACRO = re.compile(r"^\s*#\s*define\s+([A-Z][A-Z0-9_]+)\b", re.M)
 KCONFIG = re.compile(r"^\s*config\s+([A-Z][A-Z0-9_]+)\b", re.M)
@@ -24,8 +25,11 @@ def source_paths(root):
 
 
 def _without_comments_or_strings(text):
-    """`text` with every comment and string/char literal blanked to spaces
-    (newlines kept, so line numbers and `^`-anchored regexes still line up).
+    """`text` with every C/C++ comment and string/char literal blanked to
+    spaces (newlines kept, so line numbers and `^`-anchored regexes still
+    line up). C syntax only - `#`, `//` as division, `'` inside a word and a
+    triple-quoted docstring all parse wrong under it, so `names()` below
+    applies this to C_SUFFIXES only, never to a .py file.
 
     A name spelled `name()` only inside a comment or a message string - a
     citation of some OTHER function, say - is not a declaration or a call,
@@ -66,7 +70,7 @@ def names(root):
     functions, macros = set(), set()
     for path in source_paths(root):
         text = path.read_text(encoding="utf-8", errors="replace")
-        code = _without_comments_or_strings(text)
+        code = _without_comments_or_strings(text) if path.suffix in C_SUFFIXES else text
         functions.update(FUNCTION.findall(code))
         macros.update(MACRO.findall(text))
         macros.update(UPPERCASE.findall(text))
