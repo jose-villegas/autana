@@ -83,13 +83,14 @@ console_verb_drag(const char* args, console_reply_fn reply) {
 
 static void
 console_verb_button(const char* args, console_reply_fn reply) {
-    (void)reply;
     console_button_t button;
     bool held;
     if (console_button_parse(args, &button, &held)) {
         buttons_inject(button == CONSOLE_BUTTON_BOOT ? BUTTONS_INJECT_BOOT : BUTTONS_INJECT_POWER, held);
+        reply("BUTTON_OK");
     } else {
         ESP_LOGW(TAG, "BUTTON wants <boot|power> [short|long]: '%s'", args);
+        reply("BUTTON_ERR");
     }
 }
 

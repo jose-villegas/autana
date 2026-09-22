@@ -604,9 +604,9 @@ def button(args):
     if len(args) not in (1, 2) or args[0] not in ("boot", "power") \
             or len(args) == 2 and args[1] not in ("short", "long"):
         sys.exit("usage: autana button <boot|power> [short|long]")
-    code, replies = send("BUTTON " + " ".join(args), reply="BUTTON", purpose="autana button",
-                         optional=True, seconds=0.5)
-    print("\n".join(replies) if replies else "sent")
+    code, replies = send("BUTTON " + " ".join(args), reply="BUTTON",
+                         until=["BUTTON_OK", "BUTTON_ERR"], purpose="autana button")
+    print("\n".join(replies))
     return code
 
 
