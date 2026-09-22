@@ -177,8 +177,8 @@ different layout and heals whatever the link corrupted. A fault between the
 chip and the panel has to be judged by eye on the device. To tell a software
 fault from a link fault, turn on the dev-only send audit (Diagnostics, "gfx
 send audit (logs)"): it logs whether every changed pixel went out with the
-right bytes. If it did, A/B the link itself - clock, pad drive, PSRAM speed
-- one build at a time.
+right bytes. If it did, A/B the link itself - clock, pad drive, PSRAM
+speed - one build at a time.
 
 ### Partial updates: only send the bands that changed
 
@@ -187,11 +187,8 @@ send fewer bytes. `esp_lcd_panel_draw_bitmap()` takes an arbitrary rectangle and
 sets the panel's address window per call, and the panel refreshes from its own
 GRAM - so anything not sent simply keeps showing what it last received.
 
-This went through three designs before settling. The first, simplest one - a
-dirty *bit* per 64-row band, sending a band whole or not at all - shipped
-first. Its numbers, for reference (measured at 80 MHz, the clock in use at
-the time - not the 40 MHz everything below this point was measured at, so
-do not compare these two tables against each other directly):
+A dirty bit per 64-row band, sending a band whole or not at all, costs
+this at 80 MHz (not comparable with the 40 MHz tables below):
 
 | Frame content | `gfx_present()` |
 |---|---|
@@ -199,19 +196,15 @@ do not compare these two tables against each other directly):
 | One band of seven | 1,406 us |
 | Nothing changed | **3 us** |
 
-That was strips-only: real savings only along one axis. Rotate the device and
-whichever axis used to be "narrow" becomes "tall", and every band ends up
-touched regardless of how little actually changed - the strips never adapt to
-orientation. A per-row-transfer prototype (send only a strip's real width, one
-`draw_bitmap()` call per row) was tried next to fix that and measured **5.4x
-slower**, not faster - the real fixed cost of a QSPI transaction on this chip
-turned out to be about 118 us, roughly 59x the ~2 us DMA-descriptor-only figure
-an estimate had assumed. See "Still untapped" below for that finding kept in
-full, since the number it established shaped everything after it.
+Strips save along one axis only: rotate the device and every band is
+touched however little changed. Sending each row's real width, one
+`draw_bitmap()` per row, is 5.4x slower: a QSPI transaction's fixed cost
+is about 118 us (see "Still untapped" below for that finding kept in
+full, since the number it established shaped everything after it).
 
-**What actually shipped:** the screen is a fixed 7×4 grid - 64-row bands the
-same as before, now also split into `GRID_COLS = 4` columns of 92 px each -
-28 cells in total. Each cell tracks a real `(x0,x1)×(y0,y1)` box, not just a
+**The grid:** the screen is a fixed 7×4 grid - 64-row bands, now also
+split into `GRID_COLS = 4` columns of 92 px each - 28 cells in total.
+Each cell tracks a real `(x0,x1)×(y0,y1)` box, not just a
 bit, via `gfx_mark_dirty()`; a caller that only touched part of a cell sends
 only that part. Within one row, contiguous dirty *columns* merge into a single
 gathered transfer (`collect_dirty_runs()`/`run_box()` in `gfx.c`) - adjacent
@@ -268,9 +261,10 @@ touched again:
   the order they were queued.
 
 **Nothing had to change in the existing apps.** `gfx_clear()` marks the whole
-screen, and the cube, the launcher and the POST report all clear before drawing
-- so they were correct without knowing dirty tracking existed. The rule only
-bites code writing through `gfx_framebuffer()` directly, which gfx cannot see:
+screen, and the cube, the launcher and the POST report all clear before
+drawing - so they were correct without knowing dirty tracking existed. The
+rule only bites code writing through `gfx_framebuffer()` directly, which gfx
+cannot see:
 that code must call `gfx_mark_dirty()`, and forgetting shows up as stale pixels
 rather than a crash.
 
@@ -293,9 +287,7 @@ with its own checkbox on the Diagnostics app's second page (BOOT to reach
 it), correct in all four on/off combinations. Diagnostics is gated on
 `CONFIG_LAUNCHER_DEVELOPMENT`, not the narrower `CONFIG_LAUNCHER_SELFTEST`
 (see `docs/Launcher-Architecture.md`), so a plain `--dev` build reaches
-these checkboxes too, with no test suites competing for RAM - the point of
-that split is exactly this: using them while working on `sand` without the
-suites' static footprint threatening its grid allocation:
+these checkboxes too:
 
 - **Panel-grid layer** (`gfx_set_debug_overlay(true)`) outlines whichever
   cells are actually being sent each frame - yellow for a gathered run, cyan
@@ -386,16 +378,16 @@ whatever the leaf layer's own bookkeeping costs.
 
 **What it is for:** `gfx_mark_dirty()`'s cell-level tracking already keeps
 a tight box, but only as tight as the *one* box a caller hands it - it has
-no way to know about a gap the caller never mentioned. `send_one_row()`
-now tries, before the existing `GATHER_MAX_PIXELS` full-row fallback:
-narrow a run's box further via the leaf layer if none of its cells are at
+no way to know about a gap the caller never mentioned. Before the existing
+`GATHER_MAX_PIXELS` full-row fallback, `send_one_row()`
+narrows a run's box further via the leaf layer if none of its cells are at
 their full coarse extent (the same "was this touched by `mark_band()`"
-test `gfx_mark_dirty()`'s own comment already relies on), re-validate each
+test `gfx_mark_dirty()`'s own comment already relies on), re-validates each
 resulting split against the gather budget (a wide run with a small gap can
 still split into pieces individually too big for `gather_buf`'s fixed
 allocation - skipping that check is a buffer overflow risk, not a
-graceful degradation), and fall back to the coarse box - exactly today's
-behaviour - whenever there is nothing safe or worthwhile to split on. A
+graceful degradation), and falls back to the coarse box whenever there is
+nothing safe or worthwhile to split on. A
 new device test (`test_two_marks_in_one_cell_cost_less_than_the_coarse_box`
 in `suite_gfx.c`) proves the case a cell-level run alone cannot: two 10x10
 marks 65 px apart inside one 92 px cell measured **1,960 us against
@@ -419,10 +411,9 @@ thin wrappers around it. That header is deliberately *not* a matching
 `.c`/`.h` pair despite being the natural first instinct: marking sits on
 the drawing primitives' hot path (an 8bpp or dithered glyph marks once per
 set font pixel), and routing it through a real cross-translation-
-unit call once already cost about 5% of the launcher's framerate - the
-regression this project measured and fixed once, earlier in this same
-section. A separate `.c` file would put it right back behind exactly that
-kind of call. Keeping `gfx_dirty.h` header-only and `static` (matching
+unit call costs about 5% of the launcher's framerate - see "Marking must
+be cheap" above. A separate `.c` file would put it right back behind
+exactly that kind of call. Keeping `gfx_dirty.h` header-only and `static` (matching
 `mark_band()`'s own pre-existing style) means `gfx.c` gets everything
 inlined into its own translation unit exactly as before, while a host test
 file gets its own fully independent copy just by including the header
@@ -520,8 +511,8 @@ kept here so the reasoning survives to whoever picks one up.
   *number of individually dirty rows* rather than pixel width might still
   clear that bar in a genuinely sparse case, but it was not judged worth
   the added correctness surface (the row-span bookkeeping, the semaphore
-  resize, the union logic to avoid leaving stale pixels behind) for a
-  narrower win than originally hoped.
+  resize, the union logic to avoid leaving stale pixels behind) for how
+  narrow the win would be.
 - **A smaller `STRIP_HEIGHT`.** Still open. The *horizontal* equivalent of
   this - splitting each band into narrower columns - already shipped as
   `GRID_COLS`; this is the same idea for the vertical axis, unexplored so
@@ -581,10 +572,10 @@ two shapes), and raising the pixel cap buys a further 5-9% only by
 growing the DMA gather buffer to match, against the internal free heap
 left once the sand grid and everything else internal are accounted for
 (the framebuffer lives in PSRAM and never competes for it - see
-[Board-and-Memory.md](Board-and-Memory.md)). The
-dirty-region tracker itself is at its ceiling against an uncapped oracle
-- within 3% of the exact changed-cell ideal on every scene measured - so
-the one real win left was a missing third send path: a box spanning the
+[Board-and-Memory.md](Board-and-Memory.md)). The dirty-region tracker
+itself is at its ceiling against an uncapped oracle - within 3% of the
+exact changed-cell ideal on every scene measured - so the one real win
+left was a missing third send path: a box spanning the
 full panel width is already contiguous in the framebuffer and can go out
 directly, rather than through the fixed gather buffer or a full 64-row
 band. That path (`send_partial_band()` in `gfx.c`) cut falling-sand and
