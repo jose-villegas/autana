@@ -12,6 +12,7 @@
 #include "console/console_inject_parse.h"
 #include "console/console_verbs.h"
 
+#include "input/buttons.h"
 #include "input/imu.h"
 #include "input/touch.h"
 
@@ -46,5 +47,67 @@ console_verb_imu(const char* args, console_reply_fn reply) {
     }
 }
 
+static void
+console_start_gesture(const console_touch_gesture_t* gesture) {
+    const touch_gesture_t input_gesture = {
+        .kind = (touch_gesture_kind_t)gesture->kind,
+        .x0 = gesture->x0,
+        .y0 = gesture->y0,
+        .x1 = gesture->x1,
+        .y1 = gesture->y1,
+        .ms = gesture->ms,
+    };
+    touch_gesture_start(&input_gesture);
+}
+
+static void
+console_verb_tap(const char* args, console_reply_fn reply) {
+    (void)reply;
+    console_touch_gesture_t gesture;
+    if (console_tap_parse(args, &gesture)) {
+        console_start_gesture(&gesture);
+    } else {
+        ESP_LOGW(TAG, "TAP wants <x> <y>: '%s'", args);
+    }
+}
+
+static void
+console_verb_press(const char* args, console_reply_fn reply) {
+    (void)reply;
+    console_touch_gesture_t gesture;
+    if (console_press_parse(args, &gesture)) {
+        console_start_gesture(&gesture);
+    } else {
+        ESP_LOGW(TAG, "PRESS wants <x> <y> [ms]: '%s'", args);
+    }
+}
+
+static void
+console_verb_drag(const char* args, console_reply_fn reply) {
+    (void)reply;
+    console_touch_gesture_t gesture;
+    if (console_drag_parse(args, &gesture)) {
+        console_start_gesture(&gesture);
+    } else {
+        ESP_LOGW(TAG, "DRAG wants <x0> <y0> <x1> <y1> <ms>: '%s'", args);
+    }
+}
+
+static void
+console_verb_button(const char* args, console_reply_fn reply) {
+    (void)reply;
+    console_button_t button;
+    bool held;
+    if (console_button_parse(args, &button, &held)) {
+        buttons_inject(button == CONSOLE_BUTTON_BOOT ? BUTTONS_INJECT_BOOT : BUTTONS_INJECT_POWER, held);
+    } else {
+        ESP_LOGW(TAG, "BUTTON wants <boot|power> [short|long]: '%s'", args);
+    }
+}
+
 CONSOLE_VERB(touch, 14, console_verb_touch)
 CONSOLE_VERB(imu, 20, console_verb_imu)
+CONSOLE_VERB(tap, 13, console_verb_tap)
+CONSOLE_VERB(press, 13, console_verb_press)
+CONSOLE_VERB(drag, 23, console_verb_drag)
+CONSOLE_VERB(button, 11, console_verb_button)
