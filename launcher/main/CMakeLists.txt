@@ -236,7 +236,7 @@ endif()
 
 idf_component_register(
     SRCS ${app_srcs}
-    INCLUDE_DIRS "." "../test" "${build_id_generated_dir}"
+    INCLUDE_DIRS "." "../test" "../tools" "${build_id_generated_dir}"
     REQUIRES ${app_reqs}
 
     # Required by self-registration, and easy to get wrong.
