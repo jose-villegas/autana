@@ -45,7 +45,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "../../app.h"
+#include "app.h"
 #include "material.h"
 #include "sand.h"
 
