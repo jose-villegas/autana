@@ -394,7 +394,8 @@ frame as dirty once more, and that submit goes out bare. `gfx_band_next()`
 resets every row's cell boxes and leaf bits at the end of the frame, the
 same reset a full-framebuffer present gives each row it sends.
 
-Declared only under
+The overlay setters (`gfx_set_debug_overlay()`, `gfx_set_leaf_overlay()`,
+`gfx_set_send_audit()`) are declared only under
 `CONFIG_LAUNCHER_DEVELOPMENT`, in both the header and the implementation - not
 just compiled out of a release build, but undefined there: a caller outside a
 development-only file that forgets to guard a call to it fails to compile

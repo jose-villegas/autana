@@ -65,6 +65,12 @@ static bool band_render_active;
 static int band_render_row0;
 static int band_render_height;
 
+/* The extent gfx_band_dirty() last returned for the band in hand -
+ * gfx_band_submit() sends exactly this, packed and even-clipped (see its
+ * own comment). gfx_band_next() resets it to the full band width, so a
+ * scene that never calls gfx_band_dirty() still gets a full send. */
+static int band_send_x0, band_send_x1;
+
 /* gfx_band_force_all_dirty itself lives in gfx_full_redraw.h, for the same
  * reason gfx_dirty.h's all_dirty does - a host suite needs its own copy.
  * band_frame_force_all is this frame's own captured value, taken once by
@@ -252,6 +258,12 @@ _Static_assert(GFX_WIDTH % 2 == 0 && GFX_HEIGHT % 2 == 0, "panel windows round t
 #define STRIP_BOUNCE_SLOTS       2
 static gfx_color_t* strip_bounce[STRIP_BOUNCE_SLOTS];
 static int strip_bounce_next;
+
+/* band_buf[] (alloc_band_buffers() below) always aliases these slots
+ * instead of allocating - idle whenever band mode is, since band mode
+ * never runs the full-fb send path they belong to. */
+_Static_assert(GFX_BAND_HEIGHT <= STRIP_HEIGHT, "a band must fit one strip_bounce slot to alias it");
+_Static_assert(GFX_BAND_SLOTS == STRIP_BOUNCE_SLOTS, "band_buf[] aliasing strip_bounce[] needs equal slot counts");
 #endif
 
 /*
@@ -2603,13 +2615,9 @@ free_full_framebuffer(void) {
 
 static bool
 alloc_band_buffers(int band_height) {
-    const size_t bytes = (size_t)GFX_WIDTH * (size_t)band_height * sizeof(gfx_color_t);
+    (void)band_height; /* GFX_BAND_HEIGHT <= STRIP_HEIGHT, asserted above */
     for (int i = 0; i < GFX_BAND_SLOTS; i++) {
-        band_buf[i] = heap_caps_malloc(bytes, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
-        if (band_buf[i] == NULL) {
-            ESP_LOGE(TAG, "Could not allocate %u byte band buffer", (unsigned)bytes);
-            return false;
-        }
+        band_buf[i] = strip_bounce[i];
     }
     return true;
 }
@@ -2646,6 +2654,8 @@ free_full_framebuffer(void) {
 
 static bool
 alloc_band_buffers(int band_height) {
+    /* No strip_bounce[] to alias on a host build (render_harness's own
+     * memory is not the constraint the device alias exists for). */
     const size_t bytes = (size_t)GFX_WIDTH * (size_t)band_height * sizeof(gfx_color_t);
     for (int i = 0; i < GFX_BAND_SLOTS; i++) {
         band_buf[i] = malloc(bytes);
@@ -2697,14 +2707,17 @@ free_band_snapshot(void) {
 
 static void
 free_band_buffers(void) {
-    for (int i = 0; i < GFX_BAND_SLOTS; i++) {
 #ifdef ESP_PLATFORM
-        heap_caps_free(band_buf[i]);
-#else
-        free(band_buf[i]);
-#endif
+    /* Aliased into strip_bounce[] - that memory outlives band mode. */
+    for (int i = 0; i < GFX_BAND_SLOTS; i++) {
         band_buf[i] = NULL;
     }
+#else
+    for (int i = 0; i < GFX_BAND_SLOTS; i++) {
+        free(band_buf[i]);
+        band_buf[i] = NULL;
+    }
+#endif
 }
 
 static void
@@ -2769,6 +2782,15 @@ gfx_mode_exit(void) {
         if (current_mode.pixfmt == GFX_PIXFMT_INDEXED8) {
             free_indexed_image();
         } else {
+#ifdef ESP_PLATFORM
+            /* band_buf[] aliases strip_bounce[] - the full-fb path that
+             * owns it next must never write it while this mode's last
+             * band is still on the wire. */
+            if (!gfx_band_ring_settled(&band_ring)) {
+                xSemaphoreTake(strip_sent, portMAX_DELAY);
+                gfx_band_ring_settle(&band_ring);
+            }
+#endif
             free_band_buffers();
         }
         if (alloc_full_framebuffer()) {
@@ -2844,36 +2866,44 @@ gfx_band_frame_begin(void) {
         band_snapshot_bands = 0;
         band_snapshot_filling = band_frame_force_all;
     }
+
+    /* Band mode heals nothing: a band is gone once sent, so gfx holds
+     * nothing to resend. The reset stops rows marked or swept in an earlier
+     * full-fb present from carrying into this mode. */
+    gfx_heal_reset(&heal);
 }
 
-/* Band mode's own "does [row0, row1) need touching this frame" query -
- * reuses gfx_dirty.h's cell tracker (dirty_band_extent()), the same one
- * gfx_present() consults for full-fb sends, fed by the ordinary
- * gfx_mark_dirty() calls an app and ui.c already make. A forced frame
- * (gfx_invalidate(), gfx_mode_enter()) always reports the full width
- * dirty, without needing every cell actually marked. */
+/* Band mode's own "does this band need touching" query, on gfx_dirty.h's
+ * cell tracker. It always reads the band gfx_band_next() just handed out,
+ * so there is no range to pass wrong; every true return records the
+ * extent gfx_band_submit() sends. */
 bool
-gfx_band_dirty(int row0, int row1, int* out_x0, int* out_x1) {
-    if (band_frame_force_all) {
+gfx_band_dirty(int* out_x0, int* out_x1) {
+    const int row0 = band_render_row0;
+    const int row1 = band_render_row0 + band_render_height;
+    bool dirty = band_frame_force_all;
+    if (dirty) {
         *out_x0 = 0;
         *out_x1 = GFX_WIDTH;
-        return true;
-    }
-    if (dirty_band_extent(row0, row1, out_x0, out_x1)) {
-        return true;
+    } else if (dirty_band_extent(row0, row1, out_x0, out_x1)) {
+        dirty = true;
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
     /* A border exists only in the band that was sent, and gfx holds no
      * copy to resend: the one way to take it off the panel is to have the
      * app render the band once more. */
-    if (row0 == band_render_row0 && (band_overlay_bordered & (1u << (row0 / band_render_height)))) {
+    if (!dirty && (band_overlay_bordered & (1u << (row0 / band_render_height)))) {
         band_overlay_cleanup_only = true;
         *out_x0 = 0;
         *out_x1 = GFX_WIDTH;
-        return true;
+        dirty = true;
     }
 #endif
-    return false;
+    if (dirty) {
+        band_send_x0 = *out_x0;
+        band_send_x1 = *out_x1;
+    }
+    return dirty;
 }
 
 /* The band gfx_band_next() just handed out needs no redraw this frame
@@ -2916,6 +2946,8 @@ gfx_band_next(void) {
     band_current_slot = gfx_band_ring_slot(&band_ring);
     band_render_row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
     band_render_height = current_mode.band_height;
+    band_send_x0 = 0;
+    band_send_x1 = GFX_WIDTH;
     band_render_active = true;
     gfx_fb_guard_set_available(true);
     return true;
@@ -2945,13 +2977,27 @@ gfx_band_count(void) {
     return band_ring.band_count;
 }
 
+/* Sends the extent gfx_band_dirty() recorded for this band (band_send_x0/
+ * x1 - the full width if it was never called), packed and even-clipped, in
+ * exactly one draw_bitmap() call. */
 void
 gfx_band_submit(void) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_BANDS);
+
+    int sx0, sx1;
+    if (!gfx_band_span_clip(band_send_x0, band_send_x1, GFX_WIDTH, &sx0, &sx1)) {
+        /* Nothing survives rounding and clipping - the same no-op as the
+         * app calling gfx_band_skip() itself. */
+        gfx_band_skip();
+        return;
+    }
+
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    /* Drawn into the buffer about to be sent. A band submitted only to
-     * clean last frame's borders (gfx_band_dirty()) goes out bare. */
+    /* Drawn into the buffer about to be sent, before packing - a narrow
+     * span then only carries whichever part of the border its own columns
+     * cover. A band submitted only to clean last frame's borders
+     * (gfx_band_dirty()) goes out bare. */
     const uint32_t band_bit = 1u << (band_render_row0 / band_render_height);
     if (overlay_any_on() && !band_overlay_cleanup_only) {
         mark_band_overlay(band_buf[band_current_slot], band_render_row0, band_render_height);
@@ -2960,7 +3006,14 @@ gfx_band_submit(void) {
         band_overlay_bordered &= ~band_bit;
     }
 #endif
+
+    gfx_band_span_pack(band_buf[band_current_slot], GFX_WIDTH, band_render_height, sx0, sx1);
+
     if (band_snapshot_filling) {
+        /* A readback forces every band full width (gfx_band_dirty()), so
+         * band_send_x0/x1 is always the full width during one, and packing
+         * above was a no-op. */
+        assert(sx0 == 0 && sx1 == GFX_WIDTH);
         memcpy(band_snapshot + (size_t)band_render_row0 * GFX_WIDTH, band_buf[band_current_slot],
                (size_t)band_render_height * GFX_WIDTH * sizeof(gfx_color_t));
         band_snapshot_complete = ++band_snapshot_bands == band_ring.band_count;
@@ -2972,8 +3025,8 @@ gfx_band_submit(void) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
     const int row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
-    const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, row0, GFX_WIDTH, row0 + current_mode.band_height,
-                                                    band_buf[band_current_slot]);
+    const esp_err_t err =
+        esp_lcd_panel_draw_bitmap(panel, sx0, row0, sx1, row0 + current_mode.band_height, band_buf[band_current_slot]);
     if (err != ESP_OK) {
         note_send_failure(err);
         sent = false;
@@ -3110,6 +3163,7 @@ gfx_fb_guard_trip_count(void) {
  * pipeline, so it has no begin/wait split of its own. */
 void
 gfx_present_raw_full_frame_for_test(void) {
+    assert(current_mode.layout == GFX_LAYOUT_FULL_FB);
     gfx_present_guard_begin();
     present_task_mode = PRESENT_TASK_RAW_FULL;
     dispatch_present();
