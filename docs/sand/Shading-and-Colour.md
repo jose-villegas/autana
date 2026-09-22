@@ -322,9 +322,9 @@ same fill level.
 concave crevice or a convex protrusion - and a calm surface is smooth by
 construction while a sloshing one is jagged along its whole length, so
 curvature alone is already a disturbance detector with no simulation state
-added. Measured: a
-still, flat pool has non-flat rim on only 4% of its cells; two steps into a
-75-degree tilt, 94%. The same signal gives a waterfall its foam for free -
+added. Measured: a still, flat pool has non-flat rim on only 4% of its
+cells; two steps into a 75-degree tilt, 94%. The same signal gives a
+waterfall its foam for free -
 a lip, the falling stream's edges, and the plunge point all foam without
 any code written for "waterfall." Curvature is dithered against a
 per-curvature threshold table (`water_foam_threshold[]`: 0, 3, 5, 7 foaming
