@@ -1,14 +1,12 @@
-"""Where ESP-IDF's tool installer put things, and the one Python interpreter
-inside it this repo's host tooling needs (the one with pyserial and esptool
-installed) - shared by scripts/device/device.py, launcher/test/qemu_run.py
-and launcher/tools/complexity_gate.py so each fact lives in one place.
+"""Where ESP-IDF's tool installer put things (espressif_tools_root()), and
+the interpreter inside it that has pyserial and esptool (idf_python()).
 
     from espressif import espressif_tools_root, idf_python
     root = espressif_tools_root()   # $IDF_TOOLS_PATH, or ~/.espressif
     python = idf_python()           # falls back to sys.executable if not found
 
-Windows only: elsewhere ESP-IDF's export script puts its Python on PATH, so
-sys.executable is already the right one.
+idf_python() searches only on Windows: elsewhere ESP-IDF's export script
+puts its Python on PATH, so sys.executable is already the right one.
 """
 import glob
 import os

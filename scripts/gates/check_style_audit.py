@@ -143,13 +143,13 @@ def _text_walk(root):
 
 # RULE: a tracker issue id or a git commit hash names a system this repo
 # does not keep in sync with itself - it belongs in bd/beads or git, never
-# in tracked text. A bd id is a short, 3-4 character code (autana-9xp,
-# autana-bix); "bd " in front is optional. The only real compound word this
+# in tracked text. A bd id is a short, 3-4 character code (autana-zq7,
+# autana-qqx); "bd " in front is optional. The only real compound word this
 # repo's own CLI names that shape - "autana-cli" - is excluded by name,
 # since every other one ("autana-screenshot", "autana-device",
 # "autana-monitor") is already too long to match. A 40-character hex run is
 # an unambiguous full SHA; a 12-character build id is perf provenance, not
-# a tracker reference (see suite_sand_perf.c's own build-id comments).
+# a tracker reference.
 
 TRACKER_ID = re.compile(
     r"\bbd\s+(?:show\s+|graph\s+)?autana-[a-zA-Z0-9]+\b|\bautana-(?!cli\b)[a-z0-9]{3,4}\b")
@@ -302,8 +302,8 @@ def _fix_include_layer(root, path, text):
 
 # RULE: a folder may include only a strictly lower tier of
 # docs/Launcher-Architecture.md's "How it fits together" (LAYER_TIER below;
-# two folders can share a tier). INCLUDE_DIRECTION_EXCEPTIONS are the red
-# arrows that section draws. app.h is outside LAYER_TIER, so its include of
+# two folders can share a tier). INCLUDE_DIRECTION_EXCEPTIONS holds
+# util/device_state's upward includes, the exception that section names. app.h is outside LAYER_TIER, so its include of
 # input/ is never checked; a system header such as
 # "driver/temperature_sensor.h" never resolves to a layer.
 
@@ -315,7 +315,6 @@ _ARCH_SECTION = 'Launcher-Architecture.md, "How it fits together"'
 INCLUDE_DIRECTION_EXCEPTIONS = {
     ("util/device_state", "display"): _ARCH_SECTION,
     ("util/device_state", "input"): _ARCH_SECTION,
-    ("util/device_state", "board"): _ARCH_SECTION,
 }
 
 
@@ -326,7 +325,7 @@ def _layer_dirs_match(root):
     with no folder on disk (a fixture, or a layer deleted since) is not
     this check's business."""
     main_dir = pathlib.Path(root) / "launcher/main"
-    found = {d.name for d in main_dir.iterdir() if d.is_dir() and d.name != "apps"}
+    found = {d.name for d in main_dir.iterdir() if d.is_dir()}
     unknown = sorted(found - set(LAYER_TIER))
     if unknown:
         raise ValueError(
@@ -374,8 +373,8 @@ def rule_include_direction(root, path, text):
 
 
 # RULE: a personal home-directory path baked into tracked source only works
-# on the machine that wrote it. `~` (or launcher/tools/idf_python.py's own
-# version-glob lookup) is the portable form this tree already uses.
+# on the machine that wrote it. launcher/tools/espressif.py's
+# espressif_tools_root() and idf_python() are the portable form.
 
 PERSONAL_PATH = re.compile(
     r"C:\\Users\\[A-Za-z0-9][A-Za-z0-9_.-]*|/home/[A-Za-z0-9][A-Za-z0-9_.-]*|/Users/[A-Za-z0-9][A-Za-z0-9_.-]*")
@@ -386,7 +385,7 @@ def rule_personal_path(root, path, text):
     for number, line in enumerate(text.splitlines(), 1):
         m = PERSONAL_PATH.search(line)
         if m:
-            yield number, f"{m.group(0)} is machine-specific - use ~ and a version glob"
+            yield number, f"{m.group(0)} is machine-specific - use ~, or launcher/tools/espressif.py for an ESP-IDF path"
 
 
 # RULE: an HTML comment in a doc renders as nothing. Only the gates' own
@@ -556,7 +555,7 @@ def rule_drawn_comment(root, path, text, comments):
             yield c.line, "comment draws a rule (/*==== or //----) - style(9) has no such shape; delete the rule line (--fix does)"
 
 
-# RULE: a one-line Title Case comment with no sentence, sitting inside a
+# RULE: a one-line block comment of up to five plain words, sitting inside a
 # function body, is a leftover section label for a block that should have
 # been an extracted, named helper - docs/C-Style-Guide.md's "needing to
 # comment parts of a function separately means the function is the

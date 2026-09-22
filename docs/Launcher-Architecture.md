@@ -296,10 +296,10 @@ flowchart TB
 
 **A folder may include anything below it, and `app.h`, never above or
 sideways within the same row.** `board/` sits in its own row below
-`util/` - nothing in it includes first-party code, so it is the tree's
-lowest layer. The two red arrows are the exceptions: `app.h` includes
+`util/` - nothing in it includes another first-party folder, so it is
+the tree's lowest layer. The two red arrows are the exceptions: `app.h` includes
 `input/buttons.h`, and `util/device_state` reaches back up into
-`input/imu.h` (also `display/display.h` and a driver header, not drawn).
+`input/imu.h` and `display/display.h` (not drawn).
 
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. See
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path) for how a draw

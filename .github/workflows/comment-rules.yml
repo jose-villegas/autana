@@ -5,15 +5,12 @@ name: Comment Rules
 # lines, no comment naming a function that does not exist, none below
 # apps/ naming an app, and none recording where code moved. Alongside it,
 # the tree-wide invariants documentation and tooling must hold: every
-# citation (including a doc's own section) resolves, constants match
+# citation, down to a named section, resolves, constants match
 # source, and nothing outside scripts/device/ opens the board's serial port
 # or names one of the board scripts the tree no longer has.
-# check_style_audit.py holds what neither of those covers: no tracker id or
-# commit hash, calendar date, "living document" line, personal path,
-# misdirected or unqualified include, stray HTML comment, or accidental
-# Markdown bullet in tracked text - each rule is one decorated function in
-# the script, and its docstring says what was left out because a script
-# cannot judge it reliably.
+# check_style_audit.py holds the remaining decidable text and include
+# rules, one decorated function each; its docstring says what was left
+# out because a script cannot judge it reliably.
 # Enforced here so the rules hold for every commit, however it was made.
 #
 # Own workflow file, like the others, purely so it gets its own badge -
