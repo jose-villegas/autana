@@ -144,6 +144,28 @@ test_rolling_reaches_every_row_and_wraps(void) {
                                   "the sweep wraps back to the top");
 }
 
+static void
+test_no_strips_overlap_nothing(void) {
+    TEST_ASSERT_FALSE(gfx_heal_strips_overlap(strips, 0, 0, GFX_HEAL_SCREEN_ROWS));
+}
+
+static void
+test_a_band_overlapping_a_planned_strip_is_reported(void) {
+    fixture();
+    gfx_heal_queue_rows(&heal, 100, 108);
+    const int n = plan(ROOMY);
+
+    TEST_ASSERT_TRUE_MESSAGE(gfx_heal_strips_overlap(strips, n, 64, 128), "the band [64, 128) contains row 100");
+    TEST_ASSERT_FALSE_MESSAGE(gfx_heal_strips_overlap(strips, n, 128, 192), "the next band touches none of it");
+}
+
+static void
+test_a_band_exactly_beside_a_strip_does_not_overlap(void) {
+    gfx_heal_strip_t adjacent[1] = {{.y0 = 64, .y1 = 96}};
+    TEST_ASSERT_FALSE_MESSAGE(gfx_heal_strips_overlap(adjacent, 1, 96, 128), "touching edges is not overlapping");
+    TEST_ASSERT_TRUE(gfx_heal_strips_overlap(adjacent, 1, 32, 65));
+}
+
 void
 run_gfx_heal_suite(void) {
     RUN_TEST(test_nothing_queued_plans_nothing);
@@ -153,6 +175,9 @@ run_gfx_heal_suite(void) {
     RUN_TEST(test_a_budget_below_one_strip_sends_nothing);
     RUN_TEST(test_the_same_rows_healed_again_are_cut_differently);
     RUN_TEST(test_rolling_reaches_every_row_and_wraps);
+    RUN_TEST(test_no_strips_overlap_nothing);
+    RUN_TEST(test_a_band_overlapping_a_planned_strip_is_reported);
+    RUN_TEST(test_a_band_exactly_beside_a_strip_does_not_overlap);
 }
 
 SUITE_REGISTER(run_gfx_heal_suite);

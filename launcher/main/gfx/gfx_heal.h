@@ -131,3 +131,16 @@ gfx_heal_plan(gfx_heal_t* h, int budget_pixels, int width, gfx_heal_strip_t* out
     }
     return n;
 }
+
+/* True if any of `strips[0..n)` overlaps [row0, row1) - what a band-mode
+ * caller asks, once per band, against a present's own gfx_heal_plan()
+ * result, to learn whether that band needs a from-scratch resend. */
+static inline bool
+gfx_heal_strips_overlap(const gfx_heal_strip_t* strips, int n, int row0, int row1) {
+    for (int i = 0; i < n; i++) {
+        if (strips[i].y0 < row1 && strips[i].y1 > row0) {
+            return true;
+        }
+    }
+    return false;
+}
