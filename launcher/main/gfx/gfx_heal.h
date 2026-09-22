@@ -141,25 +141,3 @@ gfx_heal_plan(gfx_heal_t* h, int budget_pixels, int width, gfx_heal_strip_t* out
     }
     return n;
 }
-
-/* True if any of strips[0..n) overlaps rows [row0, row1). */
-static inline bool
-gfx_heal_strips_overlap(const gfx_heal_strip_t* strips, int n, int row0, int row1) {
-    for (int i = 0; i < n; i++) {
-        if (strips[i].y0 < row1 && strips[i].y1 > row0) {
-            return true;
-        }
-    }
-    return false;
-}
-
-/* Where a band overlapping a heal strip should cut into two draw_bitmap()
- * windows, as a row offset from the band's own start - 0 means the current
- * phase falls on the band's own top edge, so one window already covers it
- * and no real split is needed this time. `band_height` a multiple of
- * GFX_HEAL_UNIT_ROWS (true of every GFX_BAND_HEIGHT choice) keeps the
- * result even, same as any other panel window edge. */
-static inline int
-gfx_heal_band_split_row(int phase, int band_height) {
-    return phase % band_height;
-}

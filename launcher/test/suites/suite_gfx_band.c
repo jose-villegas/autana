@@ -151,48 +151,31 @@ test_a_span_entirely_off_band_reports_no_send(void) {
 }
 
 /* gfx_band_span_pack()'s own contract: every pixel a packed row holds came
- * from that row's [x0, x1) in the source, in order, and nothing else. */
+ * from that row's [x0, x1) in the source, in order, and nothing else - a
+ * narrow span first, then one only 2 px narrower than the full width on
+ * each edge. */
 static void
-test_packing_keeps_each_rows_span_in_order(void) {
-    enum { WIDTH = 10, HEIGHT = 3, X0 = 2, X1 = 7 };
-
-    gfx_color_t buf[WIDTH * HEIGHT];
-    for (int row = 0; row < HEIGHT; row++) {
-        for (int col = 0; col < WIDTH; col++) {
-            buf[row * WIDTH + col] = (gfx_color_t)(row * 100 + col);
+pack_and_check(int width, int height, int x0, int x1) {
+    gfx_color_t buf[20 * 3];
+    for (int row = 0; row < height; row++) {
+        for (int col = 0; col < width; col++) {
+            buf[row * width + col] = (gfx_color_t)(row * 100 + col);
         }
     }
 
-    gfx_band_span_pack(buf, WIDTH, HEIGHT, X0, X1);
+    gfx_band_span_pack(buf, width, height, x0, x1);
 
-    for (int row = 0; row < HEIGHT; row++) {
-        for (int i = 0; i < X1 - X0; i++) {
-            TEST_ASSERT_EQUAL_INT(row * 100 + X0 + i, buf[row * (X1 - X0) + i]);
+    for (int row = 0; row < height; row++) {
+        for (int i = 0; i < x1 - x0; i++) {
+            TEST_ASSERT_EQUAL_INT(row * 100 + x0 + i, buf[row * (x1 - x0) + i]);
         }
     }
 }
 
-/* A wide span (2 px trimmed off each edge) makes every row's own packed
- * destination reach into its own unread source, not just row 0's - the
- * case test_packing_keeps_each_rows_span_in_order never exercises. */
 static void
-test_packing_a_wide_span_overlaps_its_own_source_every_row(void) {
-    enum { WIDTH = 20, HEIGHT = 3, X0 = 2, X1 = WIDTH - 2 };
-
-    gfx_color_t buf[WIDTH * HEIGHT];
-    for (int row = 0; row < HEIGHT; row++) {
-        for (int col = 0; col < WIDTH; col++) {
-            buf[row * WIDTH + col] = (gfx_color_t)(row * 100 + col);
-        }
-    }
-
-    gfx_band_span_pack(buf, WIDTH, HEIGHT, X0, X1);
-
-    for (int row = 0; row < HEIGHT; row++) {
-        for (int i = 0; i < X1 - X0; i++) {
-            TEST_ASSERT_EQUAL_INT(row * 100 + X0 + i, buf[row * (X1 - X0) + i]);
-        }
-    }
+test_packing_keeps_each_rows_span_in_order(void) {
+    pack_and_check(10, 3, 2, 7);
+    pack_and_check(20, 3, 2, 18);
 }
 
 static void
@@ -226,7 +209,6 @@ run_gfx_band_suite(void) {
     RUN_TEST(test_an_empty_span_reports_no_send);
     RUN_TEST(test_a_span_entirely_off_band_reports_no_send);
     RUN_TEST(test_packing_keeps_each_rows_span_in_order);
-    RUN_TEST(test_packing_a_wide_span_overlaps_its_own_source_every_row);
     RUN_TEST(test_packing_a_full_width_span_is_a_no_op);
 }
 
