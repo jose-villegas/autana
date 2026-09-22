@@ -21,16 +21,6 @@ knowing about the combination. A `KIND_POWDER` material that is also
 flammable needs a `reactions[]` row and *nothing else* - no new pass, no
 movement code, no branch anywhere.
 
-Colour convention in the material diagrams:
-
-| | |
-|---|---|
-| ⬛ grey `#5a5a5a` | static / inert |
-| 🟫 amber `#a87a3d` | powder, fuel |
-| 🟦 blue `#3d6b8a` | liquid, conductor, cold paths |
-| 🟩 green `#4a7c59` | gas |
-| 🟥 red `#8a3d3d` | hot / active / the expensive path |
-
 ---
 
 ## The two-part question
