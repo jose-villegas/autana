@@ -514,5 +514,69 @@ class MainTest(unittest.TestCase):
         self.assertEqual(check_style_audit.main(["--bogus"]), 2)
 
 
+class ShellCompoundStatusTest(unittest.TestCase):
+    write = StyleAuditTest.write
+    commit = StyleAuditTest.commit
+    rule_hits = StyleAuditTest.rule_hits
+
+    def test_a_status_read_after_fi_is_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "tools/run.sh",
+                       "#!/bin/sh\n"
+                       "run_it() {\n"
+                       "    if build >>\"$LOG\" 2>&1; then\n"
+                       "        return 0\n"
+                       "    fi\n"
+                       "    rc=$?\n"
+                       "    report \"$rc\"\n"
+                       "}\n")
+            self.commit(root, "tools")
+            findings = self.rule_hits(root, "SHELL-COMPOUND-STATUS")
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].line, 6)
+        self.assertIn("compound's status", findings[0].message)
+
+    def test_exit_after_fi_is_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "tools/run.sh",
+                       "#!/bin/sh\n"
+                       "if report run; then\n"
+                       "    exit 0\n"
+                       "fi\n"
+                       "exit $?\n")
+            self.commit(root, "tools")
+            findings = self.rule_hits(root, "SHELL-COMPOUND-STATUS")
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].line, 5)
+
+    def test_the_capture_inside_the_branch_is_not_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "tools/run.sh",
+                       "#!/bin/sh\n"
+                       "run_it() {\n"
+                       "    build >>\"$LOG\" 2>&1 && return 0\n"
+                       "    rc=$?\n"
+                       "    report \"$rc\"\n"
+                       "}\n"
+                       "report run || exit $?\n")
+            self.commit(root, "tools")
+            findings = self.rule_hits(root, "SHELL-COMPOUND-STATUS")
+        self.assertEqual(findings, [])
+
+    def test_a_c_file_is_not_shell(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/gfx/gfx.c",
+                       "/* gfx - fixture header. */\n\n"
+                       "void\ngfx_init(void) {\n}\n"
+                       "int rc=$?\n")
+            self.commit(root, "launcher")
+            findings = self.rule_hits(root, "SHELL-COMPOUND-STATUS")
+        self.assertEqual(findings, [])
+
+
 if __name__ == "__main__":
     unittest.main()
