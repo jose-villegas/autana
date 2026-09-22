@@ -11,13 +11,6 @@ individually shows that an explosion, a thrown wall chunk, and a water
 splash are **one mechanism with three call sites**, not three unrelated
 features.
 
-This replaces `Explosion-Plan.md` and `Liquid-Splash-Displacement.md`,
-both process narratives written while the mechanism was still being built
-and both explicitly self-described as "not a reference for the finished
-mechanism, read the code comments instead." Their play-by-play is in git
-history if it's ever needed again; what was still worth keeping from them
-is condensed into this page's "Lessons worth keeping" section below.
-
 ---
 
 ## It is a picture of a physics, not a physics
@@ -199,10 +192,8 @@ real divergence:
   at shrinking-but-still-visible strength forever. See
   `SAND_SPLASH_RADIUS_WATER`'s own comment in `sand.h` for the exact
   floors and steps.
-- **Acid** (`acid_bubble()`, `sand_reactions.c`): no `sand_displace()`
-  call at all any more. A single straight-up `sand_impulse()` per
-  dissolve, with a small (-1/0/+1) directional spread, gated by
-  `SAND_ACID_BUBBLE_CHANCE` and only when the cell above is genuinely
-  open. Reads as acid *bubbling*, not splashing - the earlier
-  displacement-based version (radius 5, always-fires, capped per step)
-  is gone; nothing in the tree still calls it that way.
+- **Acid** (`acid_bubble()`, `sand_reactions.c`): a single straight-up
+  `sand_impulse()` per dissolve, with a small (-1/0/+1) directional
+  spread, gated by `SAND_ACID_BUBBLE_CHANCE` and only when the cell above
+  is genuinely open, calling no `sand_displace()` at all. Reads as acid
+  *bubbling*, not splashing.

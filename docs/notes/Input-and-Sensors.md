@@ -46,25 +46,19 @@ touchscreen never produces the first half, because the pointer does not exist
 until a finger is already down. Send move and press together and hover is never
 set, focus is never taken, and the control never fires.
 
-The fix is to synthesise the missing frame: on a press deliver only the
-position, and let the button-down land on the following frame. That costs one
-frame of latency (~40 ms, imperceptible) and makes taps reliable.
+The fix synthesises hover frames before the press lands - `UI_POINTER_HOVER_FRAMES`,
+and why two, in
+[Launcher-Architecture.md](../Launcher-Architecture.md#two-things-to-know-before-touching-it).
 
 Worth knowing because it is not specific to buttons — every microui control
 resolves interaction through `mu_update_control()`, so anything that reacts to
 a press has the same requirement.
 
-The symptom, before the fix, was that a deliberate press of roughly 120 ms
-worked while a quick tap did nothing. It "worked" only because the flickering
-INT line from trap 2 occasionally faked a not-down frame between two down
-frames — one bug accidentally papering over another.
-
 **Sampling rate matters too.** Reading touch once per rendered frame is too
-coarse: a frame is ~40 ms here (the blit alone is 25 ms) and a quick tap can be
-shorter than that, so taps fall between samples entirely. Poll on a separate
-task — 100 Hz is plenty and costs nothing next to rendering — and latch the
-press/release edges so an event that happens wholly between two frames is still
-delivered to the next one.
+coarse: a quick tap can be shorter than a frame, so taps fall between
+samples entirely. Poll on a separate task — 100 Hz is plenty and costs
+nothing next to rendering — and latch the press/release edges so an event
+that happens wholly between two frames is still delivered to the next one.
 
 **On targets and gestures.** A small back button is fine to aim at with a mouse
 and miserable with a fingertip. A swipe up from the bottom edge — what the
@@ -91,8 +85,8 @@ tell you, and the obvious guess is wrong here:
 | right (+x) | `-ay` |
 
 Mapping X to X and Y to Y makes the sand fall sideways. Determined by tilting
-the board and watching which way it went; the mapping lives in two macros at
-the top of `main/apps/sand/app_sand.c`.
+the board and watching which way it went; the mapping is
+`imu_gravity_screen_x()`/`imu_gravity_screen_y()` in `input/imu.h`.
 
 One more distinction that is easy to get wrong: the **accelerometer** senses
 gravity, so it is what tilting changes and what tells you which way is down.
@@ -167,8 +161,8 @@ exponential moving average - a lerp toward the reading rather than a jump to it
 matter more than the lerp:
 
 - Define it by a **time constant**, not a per-frame fraction. "Move 10% each
-  frame" changes meaning the moment the framerate does, and this project's has
-  already gone 25 -> 43 -> 70 fps.
+  frame" changes meaning the moment the framerate does, and this project's
+  framerate is not fixed across builds and settings.
 - Make it **adaptive using the gyroscope**. Heavy smoothing feels laggy when
   the board is genuinely moving; light smoothing feels noisy when it is not.
   The gyro reports rotation rate, which is near zero whenever the board is held

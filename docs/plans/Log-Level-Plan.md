@@ -1,9 +1,6 @@
 # Plan: a compile-time log-level ceiling per build variant, not a logging class
 
-**Status**: planned, not built. Written 2026-08-30, out of the conversation
-that gated `report_fps()` behind `CONFIG_LAUNCHER_DEVELOPMENT`
-(`launcher/main/main.c`) and then asked whether a unified logging
-abstraction would catch this class of bug earlier.
+**Status**: planned, not built.
 
 ---
 
@@ -13,10 +10,9 @@ abstraction would catch this class of bug earlier.
 because nothing structural was keeping it out of release. `CONFIG_LAUNCHER_DEVELOPMENT`
 gates whole dev-only *subsystems* (the screenshot listener, `device_state`,
 `app_sand.c`'s frame-timing averages) — it says nothing about log
-*severity*. Every other `ESP_LOGI`/`ESP_LOGW` call site in the tree (48 and 9
-respectively, as of this writing) ships in release today unless someone
-remembers to wrap it by hand. That's the same bug class as `report_fps()`,
-just not yet tripped over again.
+*severity*. Every other `ESP_LOGI`/`ESP_LOGW` call site in the tree ships in
+release today unless someone remembers to wrap it by hand. That's the same
+bug class as `report_fps()`, just not yet tripped over again.
 
 ## The idiom already in ESP-IDF, verified not assumed
 

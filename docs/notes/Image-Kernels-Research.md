@@ -1,7 +1,7 @@
 # Image kernels on the ESP32-S3: research
 
-**Status**: literature and precedent, gathered 2026-09-13 for bd
-`autana-ems.14` (real-time blur and edge detection over the swap chain).
+**Status**: literature and precedent for real-time blur and edge detection
+over the framebuffer.
 Nothing here has run on the board. Every per-pixel cost is an **estimate**
 at roughly 1–1.5 cycles per simple operation at `-O2`, not a measurement.
 Sources are marked *(checked)* when they were re-read for this note, and
@@ -213,8 +213,5 @@ building on it.
 
 ## Related
 
-- bd `autana-ems.14` — the experiment plan this research feeds.
-- bd `autana-rpt` — a working pixel format separate from the panel's (8-bit
-  luminance or indexed, converted to RGB565 during present on core 1).
 - [`../Autana-Rendering-Roadmap.md`](../Autana-Rendering-Roadmap.md) — the
-  cycle budget and the swap-chain frame architecture.
+  cycle budget and the frame architecture over the one framebuffer.

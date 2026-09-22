@@ -5,9 +5,9 @@ files, each icon declaring its own source.
     python tools/gen_icons.py design/icons/system.png design/icons/system.json \\
         > main/gfx/icons_system.h
 
-General-purpose, not system-set-specific: the same generator later produces
+General-purpose, not system-set-specific: the same generator produces
 an app's own apps/<name>/icons_<name>.h from apps/<name>/icons/<name>.png +
-.json (see docs/plans/Icon-Baker-Plan.md, "Ownership") - only the paths
+.json (see docs/tools/Icon-Baker.md, "Ownership") - only the paths
 differ. The emitted prefix (icon_<prefix>_*) is never a flag; it is always
 the manifest's own filename stem, so system.json can only ever produce
 icon_system_*.
@@ -71,7 +71,7 @@ design/icons/system/close.svg for system.json) - checked-in files, never
 fetched by this script. "upstream" and "commit" are required for every "svg"
 entry: the icon this tree ships is only as trustworthy as knowing exactly
 which upstream file, at which commit, it came from - see design/icons/
-LICENSE-pixelarticons and docs/plans/Icon-Baker-Plan.md's "Provenance is a
+LICENSE-pixelarticons and docs/tools/Icon-Baker.md's "Provenance is a
 first-class requirement" on why (the defaulticon set was rejected when its
 own upstream vanished and its licence became unverifiable).
 
@@ -97,7 +97,7 @@ and, per icon, that packing its pixels into rows[] and unpacking them again
 reproduces the exact same on/off grid that was decoded - the honest
 self-check for a bit-packing routine, proving the ROUND TRIP rather than
 re-deriving the same bits with different code and comparing (see
-docs/plans/Icon-Baker-Plan.md, "Do not assert the baked bytes against a
+docs/tools/Icon-Baker.md, "Do not assert the baked bytes against a
 Python re-implementation of the packer").
 """
 
@@ -553,7 +553,7 @@ def count_runs(bits, w, h):
 def output_path_for(json_path):
     """Where this bake's own banner tells a future reader to redirect stdout.
     Not discovered - the script never sees its own `>` redirect - but derived
-    from the manifest's location, matching docs/plans/Icon-Baker-Plan.md's
+    from the manifest's location, matching docs/tools/Icon-Baker.md's
     ownership split: design/icons/<x>.json bakes to the shared gfx/ atlas, an
     app's own apps/<name>/icons/<x>.json bakes beside that app's folder."""
     manifest_dir = Path(json_path).parent

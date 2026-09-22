@@ -29,8 +29,8 @@ These rules are decidable. `.clang-format` is their definition and
 formatter ever disagree, fix the prose or make a separately reviewed formatter
 change; do not hand-format around the tool.
 
-`.clang-format` lists only where this repository deviates from clang-format's
-LLVM style - fifteen keys - so everything in it is a decision someone made,
+`.clang-format` lists only the keys where this repository deviates from
+clang-format's LLVM style, so everything in it is a decision someone made,
 and anything absent is that style's default.
 
 - Indent with four spaces and never tabs.
@@ -68,8 +68,8 @@ scripts/gates/check-format.sh path/to/file.c path/to/file.h
 clang-format 19, exactly - not "19 or newer". `.clang-format` does not define
 a formatting on its own; a version of clang-format reading it does, and they
 disagree about this config on real files here. Against the reformatted tree,
-19 changes nothing, 20 reformats `suite_sand_scenes.c`, 21 also reformats
-`material.c` and `gfx.c`. So `check-format.sh` refuses any other major
+19 changes nothing; 20 and 21 reformat files here. So `check-format.sh`
+refuses any other major
 version, CI installs `clang-format==19.1.7`, and 19 is also what ESP-IDF's
 esp-clang bundles - sourcing the IDF export script is usually all it takes.
 `CLANG_FORMAT_ANY_VERSION=1` forces a one-off run on another version, at the

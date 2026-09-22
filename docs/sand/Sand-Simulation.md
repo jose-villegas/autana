@@ -38,15 +38,9 @@ The 322 KiB framebuffer lives entirely in PSRAM (`BOARD_FRAMEBUFFER_CAPS`,
 `board.h`), so it does not compete with the sand grid, or anything else,
 for internal SRAM.
 
-Measured internal (non-PSRAM) free heap after `gfx_init()` is 130,635
-bytes, in blocks of at most 51,200. A two-byte-per-cell grid at ULTRA
-(82 KB) would fit the total but not any one block, so it could not be a
-single contiguous allocation there.
-
-The one-byte encoding predates that move: it was chosen when the
-framebuffer still lived in the same internal pool as everything else,
-leaving far less headroom to work with. The port to a PSRAM board loosened
-that specific constraint, but the byte layout itself was never revisited.
+The encoding stays one byte: a second byte at ULTRA would fit the internal
+heap's total but not one block (see
+[Board-and-Memory.md](../notes/Board-and-Memory.md)).
 
 Every other per-cell trick in this file - reusing the nibble, doubling
 the table only where a material actually needs it - still follows the
@@ -1148,13 +1142,13 @@ every step" and the numbers above:
   [Architecture.md](Architecture.md#block-and-row-sleeping) for why it is
   block-shaped rather than row-shaped, and how the block dimensions were
   chosen.
-- **Not every skip structure earns its keep.** The liquid pass had one of
-  its own for a long time - `ROW_NO_LIQUID`, a per-row "scanned and found
-  dry" flag - deleted once the device measured the bookkeeping that kept
-  it honest (a three-byte row_state wipe on every move of every material,
-  anywhere on the grid) as costing far more than the row scans it avoided:
-  a screen of water went from 17,860 us a step to 13,130 just from
-  removing it. Worth reading before adding another one.
+- **Not every skip structure earns its keep.** A per-row "scanned and found
+  dry" flag sounds like it should save the liquid pass a scan, but the
+  bookkeeping that keeps such a flag honest (a three-byte row_state wipe on
+  every move of every material, anywhere on the grid) can cost far more
+  than the scan it avoids: a screen of water measured at 17,860 us a step
+  with the flag, 13,130 without it. Prove a skip structure's upkeep cost
+  against the work it skips before adding one.
 - **Bitmasks over flash-table reads, inside a hot loop.** Asking
   `materials[id].kind` per cell means a flash read every time.
   Precomputing a 16-bit "is this id a liquid" bitmask once per pass
@@ -1163,8 +1157,8 @@ every step" and the numbers above:
   costing 5.5 ms.
 
 `materials[]` is `const` data in flash, read through this chip's 32 KB
-data cache - kept separate from the 16 KB instruction cache the sweep's
-own code lives in, so the two do not evict each other. A cache miss on
+data cache - separate from the instruction cache the sweep's own code runs
+from, so the two do not evict each other. A cache miss on
 a cold line is still a real cost inside the tightest loop in the project,
 which is what the bitmask above avoids paying per cell. See
 [Optimization-Playbook.md](../notes/Optimization-Playbook.md#know-what-kind-of-memory-you-actually-have)

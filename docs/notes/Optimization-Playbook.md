@@ -41,7 +41,7 @@ than a structural fix does, the cost was structural.**
 
 "Optimize for cache locality" assumes a data cache, and it is worth checking
 rather than assuming either way: this chip has a real one — 32 KB, 32-byte
-line, 8-way — and a separate 16 KB instruction cache of the same line size
+line, 8-way — and a separate 32 KB instruction cache of the same line size
 and associativity for flash-resident code and `const` data. Unrelated code
 shifting flash layout can still move a hot function across cache-line or
 even instruction-cache-set boundaries and change its measured cost with
@@ -108,7 +108,7 @@ Fixing one un-inlined boundary can relocate the problem: the now-larger
 caller may itself stop being inlined at *its* own call sites. This does not
 compound forever for free — eventually a function gets folded into every one
 of its call sites and the hot loop stops fitting the instruction cache
-(16 KB on this chip), and the technique that had been winning at every prior
+(32 KB on this chip), and the technique that had been winning at every prior
 level makes *everything* worse. Measure past the point a technique keeps
 winning, not just up to the first win.
 
@@ -236,7 +236,7 @@ anywhere taxes the same pool, and neither a clean compile nor a clean host
 run says whether the largest contiguous block a device-only allocation
 needs still exists after the addition. Diff `.bss`/`.data` size for
 **every** build variant, not just release; trust
-`heap_caps_get_largest_free_block()` over "total free heap." This class is
+`heap_caps_get_largest_free_block()` over "total free heap." This class
 must be caught by inspecting the map file's largest contiguous block before a
 firmware image is accepted.
 
@@ -282,7 +282,7 @@ the cost, not that the work was free.
 
 The ESP32-S3's performance monitor counts retired instructions, pipeline
 bubbles and stalls beside cycles, so the relation can be read rather than
-assumed. On this board's heaviest simulation scenes (device, 2026-09-19)
+assumed. On this board's heaviest simulation scenes (device)
 a step costs 1.5-1.8 cycles per retired instruction, pipeline bubbles are
 27-31% of all cycles, and instruction-cache fetch misses are zero — the hot
 loops run from internal RAM. One change cut a scene's instructions per step
@@ -303,10 +303,11 @@ delta is trustworthy at a size where a cycle delta is not.
 
 A disassembly-derived cycle count is read off one instruction set's codegen
 shapes. This project's own move to the ESP32-S3 carried a full set of
-cycle counts forward from the RISC-V board it replaced, and every one <!-- doc-vocabulary: ignore --> <!-- The historical ISA identifies the source of invalid cycle counts. -->
-stopped applying — not because the optimization was wrong, but because
-Xtensa's PC-relative literal loads, shift-add addressing and windowed
-calls are different codegen entirely from a flat RISC-V ABI. The <!-- doc-vocabulary: ignore --> <!-- The historical ABI is the comparison that invalidates the count. -->
+cycle counts forward from the RISC-V board it replaced <!-- doc-vocabulary: ignore -->,
+and every one stopped applying — not because the optimization was wrong,
+but because Xtensa's PC-relative literal loads, shift-add addressing and
+windowed calls are different codegen entirely from that board's flat,
+non-windowed ABI. The
 *mechanism* an optimization rests on ("skip the read entirely") can still
 hold across the swap; the *cycle number* that backed it cannot, and has to
 be re-derived from a fresh disassembly on the new target before it is
@@ -380,13 +381,10 @@ a widening divide helper (`fx_div_round`) twice per spline span, roughly
 four thousand soft-divisions per frame, for operands that provably fit 32
 bits (`i * 4096` tops out near 8 million). One 32-bit divide per span,
 carried incrementally across the loop, produced the same rounding and the
-same values — part of a bundle measured, on the board this project used
-before its move to the ESP32-S3, to take the curve phase from 26.5 ms to
-17.9 ms at the worst checkpoint (`boot_anim.c`, 2026-09-04); that specific
-timing has not been re-captured on this board. The lesson
-travels as a grep: look for `int64_t` division or modulo — including inside
-innocuous-looking fixed-point helpers — in any hot loop on a 32-bit target,
-then prove the operand range and stay narrow.
+same values (`boot_anim.c`). The lesson travels as a grep: look for
+`int64_t` division or modulo — including inside innocuous-looking
+fixed-point helpers — in any hot loop on a 32-bit target, then prove the
+operand range and stay narrow.
 
 ---
 
@@ -438,10 +436,8 @@ density thins, so frame cost tapers in step with how much of the drawing
 is actually left visible. Unlike everything above this IS an
 approximation: bound it with an argument written next to the constant (the
 convex-hull and sagitta bounds in `boot_anim.h`), and verify visually at
-the exact frames each tier first engages, not just at the extremes. The
-full bundle held every checkpoint of the boot animation at or above 20 fps
-where the three crossfade dips had sat at 12–14 (2026-09-04, measured via
-`suite_boot_anim_perf.c`).
+the exact frames each tier first engages, not just at the extremes.
+`suite_boot_anim_perf.c` measures every checkpoint.
 
 ---
 

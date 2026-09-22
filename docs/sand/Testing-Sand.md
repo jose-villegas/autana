@@ -9,21 +9,22 @@ chunk layout sweep that picks the app's two-core geometry.
 
 ---
 
-## Everyday loop: runsuite, not a capture
+## Everyday loop: autana suite, not a capture
 
 A diag build (`CONFIG_LAUNCHER_SELFTEST` on, `AUTORUN` off) listens on the
-USB serial console. Sending
+USB serial console for `runsuite <name>`; `autana suite <name>` sends it.
 
 ```
-runsuite run_sand_perf_suite
+autana suite run_sand_perf_suite
 ```
 
 runs the sand frame-budget suite alone, on the board already flashed, with
 no rebuild and no reflash. Any other sand suite works the same way -
-`run_sand_materials_suite`, `run_sand_combustion_suite`, and so on; see
-`docs/Testing-Guide.md`'s suite table for the full list. This is the loop
-while working on a material or a perf change: runsuite the suite for the
-area touched, and reserve a full capture for a merge decision.
+`run_sand_materials_suite`, `run_sand_combustion_suite`, and so on;
+the sand suites are the ones registered in files under
+`launcher/main/apps/sand/` (`autana suite list` prints each suite's
+file). This is the loop while working on a material or a perf change:
+`autana suite` the suite for the area touched, and reserve a full capture for a merge decision.
 
 ## Capturing a frame-budget report
 
@@ -115,11 +116,13 @@ cells its passes dispatched, and ranks how evenly a layout divides a board's
 work. That produces a shortlist of side pairs per quality and nothing else:
 no time of any kind.
 
-**QEMU.** One instance per quality against one perf-scope image, all from
-the sweep driver in `.dev/scripts/`:
+**QEMU.** One perf-scope image
+([`run_qemu_tests.sh`](../Testing-Guide.md#qemu-the-device-image-with-no-board)):
+one instance runs all five with `--suite` repeated, or split them across
+instances run at once:
 
 ```sh
-.dev/scripts/qemu-sweep.sh --instances 5
+./launcher/test/run_qemu_tests.sh --perf-scope --suite run_chunk_sweep_ultra_suite --suite run_chunk_sweep_high_suite --suite run_chunk_sweep_normal_suite --suite run_chunk_sweep_low_suite --suite run_chunk_sweep_very_low_suite
 ```
 
 It prices the chunking itself, through the one-thread arm. The two-lane arm
@@ -133,11 +136,11 @@ on-request suites, one per quality, live in the perf-scope diagnostics
 image and run by name:
 
 ```
-runsuite run_chunk_sweep_ultra_suite
-runsuite run_chunk_sweep_high_suite
-runsuite run_chunk_sweep_normal_suite
-runsuite run_chunk_sweep_low_suite
-runsuite run_chunk_sweep_very_low_suite
+autana suite run_chunk_sweep_ultra_suite
+autana suite run_chunk_sweep_high_suite
+autana suite run_chunk_sweep_normal_suite
+autana suite run_chunk_sweep_low_suite
+autana suite run_chunk_sweep_very_low_suite
 ```
 
 On request means no autorun pays for them: a full self-test never runs a
@@ -195,13 +198,9 @@ one quality is minutes on the board, and longer under emulation.
 
 ## The frame-budget tests
 
-`suite_sand_perf.c`, `#ifdef DEVICE_BUILD` only, runs 28 frame-budget
-tests against the real 184x224 grid. Most of their budgets are still
-pegged to numbers measured on the previous board and fail here until
-re-measured and re-pegged on this one; that is the expected, tracked
-state, not a regression. Read each test's own comment in
-`suite_sand_perf.c` for what its scene measures and why its budget sits
-where it does.
+`suite_sand_perf.c`, `#ifdef DEVICE_BUILD` only, runs frame-budget tests
+against the real 184x224 grid. Read each test's own comment in
+`suite_sand_perf.c` for its scene and budget.
 
 ## Related
 

@@ -89,7 +89,8 @@ mechanism and the full field list.
 - **Development-only** (`--dev` or `--diag` build) - a release build carries
   none of it.
 - **Slow by design**: a full 368x448 frame is roughly 650 KB of base64 over
-  115200 baud, taking the better part of a minute. `autana screenshot`
+  the serial port ([Device-Lock.md](../tools/Device-Lock.md) has the baud),
+  taking the better part of a minute. `autana screenshot`
   prints progress every few seconds so this does not read as a hang.
 - **Does not reset the board** - opens the port with DTR/RTS held low so a
   capture shows whatever app was already running, not a restarted boot
@@ -182,14 +183,8 @@ always the latest present's sends, not an accumulation.
 
 ## Performance seems off
 
-The shell logs frames-per-second on a fixed timer (`report_fps()` in
-`main/main.c`) - unconditionally, in every build including release, not
-gated behind `CONFIG_LAUNCHER_DEVELOPMENT` the way other instrumentation is
-(worth knowing if you go looking for it and expect it gated the same way as
-everything else on this page - see the note in
-[`../Build-Variants.md`](../Build-Variants.md#development-only-instrumentation-is-its-own-flag-not-selftest)
-on what should be gated and why). `autana monitor` shows it directly, no special
-build needed.
+A development build logs frames per second on a fixed timer (`report_fps()`
+in `main/main.c`); `autana monitor` shows it.
 
 For anything deeper than an fps number: `app_sand.c` carries its own
 `CONFIG_LAUNCHER_DEVELOPMENT`-gated rolling averages (step/draw timing,
