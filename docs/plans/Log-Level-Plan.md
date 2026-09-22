@@ -1,9 +1,6 @@
 # Plan: a compile-time log-level ceiling per build variant, not a logging class
 
-**Status**: planned, not built. Written 2026-08-30, out of the conversation
-that gated `report_fps()` behind `CONFIG_LAUNCHER_DEVELOPMENT`
-(`launcher/main/main.c`) and then asked whether a unified logging
-abstraction would catch this class of bug earlier.
+**Status**: planned, not built.
 
 ---
 
