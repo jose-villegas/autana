@@ -19,8 +19,20 @@ if ! command -v "$NM" >/dev/null 2>&1; then
     done
 fi
 
-symbols=$("$NM" --defined-only "$ELF" | awk '{print $NF}' |
-    grep -E '^(suite_|run_.*_suite$|console_(start$|emit_line$|reply_stdio$|take_unclaimed_line$|verb_)|selftest_)' || true)
+if ! command -v "$NM" >/dev/null 2>&1; then
+    echo "no nm for $ELF" >&2
+    exit 2
+fi
+
+symbols_file=$(mktemp)
+trap 'rm -f "$symbols_file"' EXIT
+if ! "$NM" --defined-only "$ELF" >"$symbols_file"; then
+    echo "nm failed for $ELF" >&2
+    exit 2
+fi
+
+symbols=$(awk '{print $NF}' "$symbols_file" |
+    grep -E '^(app_diagnostics$|unity$|suite_|run_.*_suite$|console_(start$|emit_line$|reply_stdio$|take_unclaimed_line$|verb_)|selftest_)' || true)
 if [ -n "$symbols" ]; then
     echo "release image contains development or test symbols:" >&2
     echo "$symbols" >&2

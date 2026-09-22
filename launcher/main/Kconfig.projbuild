@@ -119,9 +119,9 @@ menu "Launcher"
         config LAUNCHER_SELFTEST_SCOPE_PERF
             bool "Perf - suites apps declare for a performance capture"
             help
-                Only the sources declared by apps in scope_perf.cmake are
-                compiled. Everything else is absent from the image, which
-                buys back the static-RAM headroom a capture needs.
+                Only the sources apps declare in scope_perf.cmake are compiled.
+                No other suite's .text or .bss is in the image, which buys
+                back the static-RAM headroom a capture needs.
 
                 It is also a build closer to release layout in the 32 KB
                 instruction cache. That is a better instrument on a

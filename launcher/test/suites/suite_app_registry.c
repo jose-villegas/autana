@@ -1,8 +1,7 @@
 /*
- * Host-only suite: app_registry.c's own sort order. Not linked into the
- * device selftest - app_registry_reset_for_test() is absent from every
- * device build, and a real boot's registry must never be wiped mid-run
- * the way a test process's own list is between scenarios.
+ * Host-only suite: app_registry.c's own sort order. A real boot's registry
+ * must never be wiped mid-run the way a test process's list is between
+ * scenarios.
  */
 
 #include "suites.h"
@@ -50,6 +49,6 @@ run_app_registry_suite(void) {
     RUN_TEST(test_apps_end_up_sorted_by_name_regardless_of_registration_order);
 }
 
-SUITE_REGISTER(run_app_registry_suite);
-
 #endif
+
+SUITE_REGISTER(run_app_registry_suite);

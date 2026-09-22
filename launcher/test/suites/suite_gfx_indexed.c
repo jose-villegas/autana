@@ -1,8 +1,6 @@
-/* Host-only: mutable indexed-colour tables exceed the target image's DRAM budget. */
+/* Portable: one shared 8 KB table keeps this indexed/band coverage on target. */
 
 #include "suites.h"
-
-#ifndef DEVICE_BUILD
 
 #include <string.h>
 
@@ -96,7 +94,13 @@ test_panel_row_to_grid_row_floors_and_back_is_the_bands_first_row(void) {
     TEST_ASSERT_EQUAL_INT(9, gfx_indexed_grid_row_to_panel_row(3, 3));
 }
 
-static gfx_color_t dither_table[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES];
+static gfx_color_t scratch[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES];
+
+#define dither_table   scratch
+#define checker_table  scratch
+#define bayer2_table   scratch
+#define checker2_table scratch
+#define any_mode_table scratch
 
 static void
 set_dither_entry(int index, int phase, gfx_color_t rgb) {
@@ -251,7 +255,7 @@ xorshift32(uint32_t* state) {
  * unchanged 16-colour value really does mean identical pixels. */
 static void
 run_incremental_matches_full_reexpansion(uint32_t seed, bool dither16_on) {
-    static gfx_color_t table[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES];
+    gfx_color_t* table = scratch;
     /* Every 4 consecutive indices share a row - a handful of classes, not
      * 256 distinct ones, the realistic case where suppression has
      * something to catch. */
@@ -353,9 +357,6 @@ test_needs_repaint_matches_cell_changed_when_not_forced(void) {
 }
 
 /* lever 2: cell dither modes */
-
-static gfx_color_t checker_table[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CELL_CHECKER_PHASES];
-static gfx_color_t bayer2_table[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CELL_BAYER2_PHASES];
 
 /* Every cell reads its own (gx + cy) & 1 phase, whole cells solid - not a
  * per-pixel dither. */
@@ -508,9 +509,6 @@ test_repaint_cell_kinds_match_cell_dither_changed(void) {
 
 /* lever 2: GFX_DITHER_PIXEL_CHECKER2 */
 
-static gfx_color_t
-    checker2_table[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX];
-
 static void
 set_checker2_entry(int index, int row_phase, int chunk_px, gfx_color_t rgb) {
     checker2_table[(index * GFX_INDEXED_CHECKER2_ROW_PHASES + row_phase) * GFX_INDEXED_CHECKER2_CHUNK_PX + chunk_px] =
@@ -565,8 +563,6 @@ test_checker2_stays_in_phase_across_a_band_boundary(void) {
 }
 
 /* the panel row the present path and a screenshot both read */
-
-static gfx_color_t any_mode_table[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES];
 
 /* Each mode's documented table key at panel pixel (x, y), written out per
  * pixel rather than through any expander. */
@@ -662,12 +658,3 @@ run_gfx_indexed_suite(void) {
 }
 
 SUITE_REGISTER(run_gfx_indexed_suite);
-
-#else
-
-void
-run_gfx_indexed_suite(void) {}
-
-SUITE_REGISTER(run_gfx_indexed_suite);
-
-#endif

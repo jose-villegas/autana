@@ -209,13 +209,11 @@ run_ui_launcher_suite(void) {
     ctx = NULL;
 }
 
-SUITE_REGISTER(run_ui_launcher_suite);
-
 #else
 
 void
 run_ui_launcher_suite(void) {}
 
-SUITE_REGISTER(run_ui_launcher_suite);
-
 #endif
+
+SUITE_REGISTER(run_ui_launcher_suite);

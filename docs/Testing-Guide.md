@@ -80,7 +80,8 @@ Portable suites (`test/suites/`, plus each app's own beside it,
 `apps/*/suite_*.c`) are compiled into every runner that can take them.
 Shell and app suites are discovered by both runners. A device-only suite
 guards its body with `#ifdef DEVICE_BUILD`; a host-only suite uses the
-opposite guard. POST is a third thing again, a boot-time hardware check
+opposite guard, defines an empty runner for the device, and registers once
+outside that guard. POST is a third thing again, a boot-time hardware check
 rather than a Unity suite.
 
 ```mermaid
@@ -677,8 +678,9 @@ by a substring of the name, so treat it as a lookup, not an area map.
    `selftest.c`. Both runners discover `suite_*.c`, so a new suite joins the
    full scope automatically and can be run alone with
    `runsuite run_<name>_suite` on an already-flashed diagnostics build. If a
-   perf capture needs it, declare its sources in the owning app's
-   `scope_perf.cmake` (see "A diagnostics build can be scoped").
+   If a perf capture needs it, it must be an app's suite: declare it in that
+   app's `scope_perf.cmake`, together with every other source the run links.
+   The perf scope carries no shell suite (see "A diagnostics build can be scoped").
 4. Guard anything needing hardware with `#ifdef DEVICE_BUILD`, including its
    `RUN_TEST` line. A suite can be portable and still have a device-only
    section — `suite_job.c` runs every one of its tests on both, and fences

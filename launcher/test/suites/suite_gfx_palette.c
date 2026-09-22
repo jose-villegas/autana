@@ -1,13 +1,14 @@
-/* Host-only: exercises the host-side palette generator, which firmware never links. */
+/* Standard palettes run on both targets; their generator is host-only. */
 
 #include "suites.h"
-
-#ifndef DEVICE_BUILD
 
 #include "unity.h"
 
 #include "gfx/gfx_indexed.h"
 #include "gfx/gfx_palette_standard.h"
+
+#ifndef DEVICE_BUILD
+
 #include "gfx_palette_gen.h"
 
 static void
@@ -81,6 +82,8 @@ test_standard_registry_finds_every_palette_by_name(void) {
     }
     TEST_ASSERT_TRUE(saw_grayscale256);
 }
+
+#ifndef DEVICE_BUILD
 
 /* Every one of a small palette's own entries maps back to itself exactly -
  * the round trip a nearest-in-OKLab search must get right when the target
@@ -221,6 +224,7 @@ run_gfx_palette_suite(void) {
     RUN_TEST(test_grayscale16_is_evenly_spaced);
     RUN_TEST(test_vga256_and_grayscale256_have_256_unique_entries);
     RUN_TEST(test_standard_registry_finds_every_palette_by_name);
+#ifndef DEVICE_BUILD
     RUN_TEST(test_index_map_round_trips_every_entry_of_a_small_palette);
     RUN_TEST(test_index_map_never_returns_a_reserved_entry);
     RUN_TEST(test_dither_table_reproduces_an_exact_16_colour_match_at_every_phase);
@@ -232,15 +236,9 @@ run_gfx_palette_suite(void) {
     RUN_TEST(test_dither_cell_bayer2_is_deterministic);
     RUN_TEST(test_dither_checker2_reproduces_an_exact_match_at_every_phase);
     RUN_TEST(test_dither_checker2_is_deterministic);
+#endif
 }
 
-SUITE_REGISTER(run_gfx_palette_suite);
-
-#else
-
-void
-run_gfx_palette_suite(void) {}
-
-SUITE_REGISTER(run_gfx_palette_suite);
-
 #endif
+
+SUITE_REGISTER(run_gfx_palette_suite);

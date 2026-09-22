@@ -126,7 +126,6 @@ trap 'status=$?; if [ $status -ne 0 ]; then echo; echo "=== FAILED (exit $status
 . "$SCRIPT_DIR/idf.sh"
 idf_init "$LAUNCHER_DIR" "$IDF_EXPORT" "$SCRIPT_DIR"
 . "$SCRIPT_DIR/idf_variant.sh"
-idf_variant_init "$LAUNCHER_DIR"
 
 VARIANT_OPTIONS=""
 if [ "$AUTORUN" -eq 1 ]; then
@@ -136,7 +135,7 @@ if [ "$PERF_SCOPE" -eq 1 ]; then
     VARIANT_OPTIONS="$VARIANT_OPTIONS --perf-scope"
 fi
 # shellcheck disable=SC2086
-idf_variant_build "$VARIANT" "$BUILD_DIR" $VARIANT_OPTIONS
+idf_variant_build "$LAUNCHER_DIR" "$VARIANT" "$BUILD_DIR" $VARIANT_OPTIONS
 
 if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt" ]; then
     echo "build reported success but produced no build id at" >&2

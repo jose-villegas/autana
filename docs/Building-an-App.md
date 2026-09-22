@@ -242,6 +242,7 @@ main/apps/<name>/
 | `scene_*.c` | yes | no - same treatment as `app_*.c` |
 | other `*.c` | yes | yes |
 | `suite_*.c` | only `CONFIG_LAUNCHER_SELFTEST` builds | yes |
+| `scope_perf.cmake` | only `--perf-scope` builds | no |
 | `tools/**` | never | never |
 | `apps/diagnostics/**` | only `CONFIG_LAUNCHER_DEVELOPMENT` builds | yes |
 
