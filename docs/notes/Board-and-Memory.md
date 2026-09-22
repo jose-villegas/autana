@@ -92,7 +92,7 @@ are the framebuffer's only claim on internal DRAM.
 
 | Measurement | Value | Source |
 |---|---|---|
-| Internal (non-PSRAM) free heap after `gfx_init()` | **130,635 bytes** | `launcher/tools/device_profiles/esp32s3.sh`'s `DP_FREE_HEAP_BYTES`, device capture on the diagnostics build, 2026-09-16 |
+| Internal (non-PSRAM) free heap after `gfx_init()` | **130,635 bytes** | `launcher/tools/device_profiles/esp32s3.sh`'s `DP_FREE_HEAP_BYTES`, device capture on the diagnostics build |
 | Largest free block in it | **51,200 bytes** | `DP_LARGEST_FREE_BLOCK_BYTES`, same capture - `gfx_init()` holds a 17 KB gather buffer and two 47 KB strip buffers in this pool |
 
 That figure already excludes the framebuffer, since the framebuffer no longer

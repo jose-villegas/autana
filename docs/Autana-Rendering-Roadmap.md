@@ -144,8 +144,8 @@ core 1         [ send band k, shape only ][ send band k+1 ]...
 
 ```
 Internal SRAM, ~296 KiB main heap region (+21 KiB +32 KiB DRAM at boot);
-130,635 bytes free after gfx_init(), framebuffer excluded, largest block
-50 KiB (diag build, device capture, 2026-09-16 — Board-and-Memory.md)
+free heap and largest block after gfx_init(), framebuffer excluded,
+are DP_FREE_HEAP_BYTES / DP_LARGEST_FREE_BLOCK_BYTES (Board-and-Memory.md)
 
 [ stacks, RTOS, DMA gather buffer 17 KiB, two 47 KiB strip buffers ]
 [ headroom for hot buffers — sand's grids, and any further band buffer
@@ -228,7 +228,7 @@ is the one worth putting beside ours:
 |---|---|---|
 | Pixels per frame | 480×320 = 153,600 | 368×448 = 164,864 |
 | Bus | 1 lane × 80 MHz = 10 MB/s | 4 lanes × 40 MHz = 20 MB/s |
-| Full frame on the bus | ~30 ms theoretical, 24 fps achieved | 16.5 ms theoretical; 18.0-18.9 ms measured (`boot_anim_perf` rows, device, 2026-09-13) |
+| Full frame on the bus | ~30 ms theoretical, 24 fps achieved | 16.5 ms theoretical; 18.0-18.9 ms measured (`boot_anim_perf` rows, device) |
 | CPU | 2 × Xtensa LX7 @ 240 MHz, FPU | 2 × Xtensa LX7 @ 240 MHz, single-precision FPU — same class of chip |
 | Per-pixel work | flat fill (a store), later affine texture | Gouraud: 3 barycentric interpolations + RGB pack + 4 bbox compares |
 | Triangles | a few hundred small ones | 12 that each cover thousands of pixels |
@@ -238,8 +238,8 @@ Three things fall out of that table:
 
 1. **Their display bus is half the speed of ours.** They are bus-bound at
    24 fps full-frame; our own bus-bound ceiling for a full frame is
-   roughly 53-56 fps (18.0-18.9 ms measured, `boot_anim_perf` rows,
-   2026-09-13). The bus is not what puts our cube below that.
+   roughly 53-56 fps (18.0-18.9 ms measured, `boot_anim_perf` rows).
+   The bus is not what puts our cube below that.
 2. **Their per-pixel cost is roughly an order of magnitude lower.** A flat
    span is a run of stores, two pixels per 32-bit write. Our `shade_pixel()`
    (`launcher/main/apps/render_lab/scene_cube.c:112-151`) does nine multiplies,
@@ -265,9 +265,9 @@ breakdown on this board and has not yet been run to a checked-in result
 numbers already, from an ad-hoc capture rather than that checked-in
 report: Total avg 35.9 ms (~28 fps) with the HUD and partial-present on
 and interlace off, 30.3 ms (~33 fps) with the HUD off, and 29.9 ms
-(~33 fps, present alone 6.9 ms) with interlace on (device, 2026-09-13).
-These replace the stale 15.5 fps table as the current baseline; the
-checked-in report across all four variants is still owed.
+(~33 fps, present alone 6.9 ms) with interlace on (device).
+These are the current baseline; the checked-in report across all four
+variants is still owed.
 
 ### 1.1 Console-era tricks worth stealing (Saturn, PS1)
 
@@ -317,10 +317,10 @@ detail behind every row.
 | FPU | single-precision hardware; `double` is software-emulated | float32 is fine per vertex/object; `double` stays banned on the device (decision A) |
 | SIMD | PIE 128-bit (16×8 / 8×16 lanes), inline asm only | any vector path sits behind a scalar reference implementation with a test asserting identical output (decision A) |
 | Integer mul/div | hardware, pipelined 32-bit mul and div; **64-bit div is a library call** | `__divdi3` and signed `/ 2^n` stay banned in hot loops (see the Optimization Playbook's "A 64-bit divide on a 32-bit core is a library call" and "Division by a power of two is not automatically a shift") |
-| Internal RAM | 512 KB SRAM: ~296 KiB main heap region + 21 KiB + 32 KiB DRAM at boot; 130,635 bytes free after `gfx_init()` (framebuffer excluded — it lives in PSRAM), largest block 50 KiB (diag build, device capture, 2026-09-16) | stacks, the DMA gather and strip buffers, and hot per-step buffers (sand's grids, via `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536`) live here; the band ring's buffers will too |
-| PSRAM | 8 MB octal @ 80 MHz (120 MHz experimental); `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps allocations up to 64 KB internal and routes larger ones here; memcpy out ~58 MB/s, in ~47, PSRAM to PSRAM ~22 (device, 2026-09-13) | under decision B this is read-only bulk/cold storage: the one retained framebuffer, textures and levels; it is never the target of a full-screen write or copy; headroom is a non-issue |
-| Data cache | 32 KB, 32-byte line, 8-way; 64 KB measured no gain (device, 2026-09-13) | every PSRAM access — CPU render writes and DMA present reads alike — goes through this cache; see 3.3 |
-| Instruction cache | 32 KB, 32-byte line, 8-way (`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB`; IDF's default is 16 KB) — the larger size measured 1-11% per sand step (device, 2026-09-13) | costs 16 KB of internal RAM over the default |
+| Internal RAM | 512 KB SRAM: ~296 KiB main heap region + 21 KiB + 32 KiB DRAM at boot; free heap and largest block after `gfx_init()` (framebuffer excluded — it lives in PSRAM) are `DP_FREE_HEAP_BYTES`/`DP_LARGEST_FREE_BLOCK_BYTES` (Board-and-Memory.md) | stacks, the DMA gather and strip buffers, and hot per-step buffers (sand's grids, via `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536`) live here; the band ring's buffers will too |
+| PSRAM | 8 MB octal @ 80 MHz (120 MHz experimental); `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps allocations up to 64 KB internal and routes larger ones here; memcpy out ~58 MB/s, in ~47, PSRAM to PSRAM ~22 | under decision B this is read-only bulk/cold storage: the one retained framebuffer, textures and levels; it is never the target of a full-screen write or copy; headroom is a non-issue |
+| Data cache | 32 KB, 32-byte line, 8-way; 64 KB measured no gain | every PSRAM access — CPU render writes and DMA present reads alike — goes through this cache; see 3.3 |
+| Instruction cache | 32 KB, 32-byte line, 8-way (`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB`; IDF's default is 16 KB) — the larger size measured 1-11% per sand step | costs 16 KB of internal RAM over the default |
 | DMA | GDMA, 3 TX + 3 RX channels; async memcpy supported | strip transfers already DMA; mem-to-mem copies could offload clears — measure, do not assume |
 | Display bus | QSPI, both board revisions share the same 368×448 panel geometry and SPI2 wiring, all through the GPIO matrix; 40 MHz clean, 80 MHz outside the panel's 50 MHz rating | 80 MHz halves present but corrupts partial redraws; full-frame renderers are safe, partial ones need 40 or gfx heal (3.2) |
 | Second processor | ULP-RISC-V and ULP-FSM coprocessors | low-power only, not a render resource — they cannot touch the framebuffer at speed |
@@ -338,8 +338,9 @@ The two numbers to carry in your head for the S3:
   the band ring), but that does not raise this per-core ceiling; it
   removes present's competition for it.
 - **Memory: internal vs. PSRAM, with a cache in between.** Internal SRAM
-  (~296 KiB main region, 130,635 bytes free after `gfx_init()`, largest
-  block 50 KiB) holds stacks and the DMA gather buffer, and is the
+  (~296 KiB main region; free heap and largest block after `gfx_init()`
+  are `DP_FREE_HEAP_BYTES`/`DP_LARGEST_FREE_BLOCK_BYTES`, Board-and-Memory.md)
+  holds stacks and the DMA gather buffer, and is the
   candidate home for hot buffers if Phase 1 moves them there, plus the
   band ring's own band buffers (64 rows / 47 KiB each) for full-redraw
   renderers. PSRAM (8 MB) holds the one retained framebuffer (322 KiB),
@@ -349,7 +350,7 @@ The two numbers to carry in your head for the S3:
   Measured: PSRAM read throughput is 33-58 MB/s depending on access
   pattern, versus 365-724 MB/s for internal RAM, and PSRAM writes cost
   more than reads because each cache line is loaded from PSRAM before
-  it is written back (device, 2026-09-13; Espressif staff on esp32.com;
+  it is written back (device; Espressif staff on esp32.com;
   matches the independent project-x51/esp32-s3-memorycopy benchmark) —
   the reason decision B avoids bulk PSRAM writes rather than trying to
   make them cheap.
@@ -373,13 +374,13 @@ all is retired now that the port has happened.
 
 Nothing measures the frame a user sees: every sand budget row times
 `sand_step()` alone, the present-cost rows time the bus alone, and the
-cube's only committed numbers predate the S3 port entirely. A real
+cube has no committed numbers on this board. A real
 frame-time row — sim + draw + present — is the prerequisite for
 everything in this document. Add to it:
 
 - Run `suite_cube_perf.c` on the device and check the report in (all four
-  variants: baseline, no HUD, no partial, interlaced). That replaces the
-  stale 15.5 fps table.
+  variants: baseline, no HUD, no partial, interlaced). That gives the
+  cube a checked-in `suite_cube_perf.c` report.
 - Count pixels the rasterizer touches per frame and divide: **cycles per
   covered pixel** is the metric that transfers to any future renderer.
   The `frame_x0..y1` bbox already accumulated in `shade_pixel()` is a
@@ -387,26 +388,23 @@ everything in this document. Add to it:
 
 ### 3.2 Halve the bus
 
-At 40 MHz a full frame is 16.5 ms theoretical over the bus alone. The
-historical blit breakdown — 17,602 us measured at 40 MHz, 9,600 us at
-80 MHz — predates the ESP32-S3 port and is flagged in
-[Display-and-Rendering.md](notes/Display-and-Rendering.md) as unconfirmed
-on this board, though the reasoning is chip-independent: it is dictated by
-the QSPI clock and the panel, not the CPU. The current, S3-measured
-full-frame present cost is 18.0-18.9 ms (`boot_anim_perf` rows, device,
-2026-09-13) — already down from 22.4 ms before the `psram_dma_direct` fix
-landed, which also took the boot animation from ~21 fps to ~32-36 fps
-(device, 2026-09-13). Both present figures sit above the 16.5 ms
-theoretical; the gap is *unmeasured* why.
+At 40 MHz a full frame is 16.5 ms theoretical over the bus alone. Two
+S3-measured present-cost figures agree closely: `gfx_present()` measures
+17.6 ms directly ([Display-and-Rendering.md](notes/Display-and-Rendering.md),
+"The blit is bus-bound") and 18.0-18.9 ms via `boot_anim_perf` rows — the
+`psram_dma_direct` fix is what took the boot-animation-measured figure down
+from 22.4 ms and the boot animation itself from ~21 fps to ~32-36 fps. Both
+present figures sit above the 16.5 ms theoretical; the gap is *unmeasured*
+why.
 
-**80 MHz is now the default (2026-09-13).** Reading the framebuffer in
+**80 MHz is the default.** Reading the framebuffer in
 place from PSRAM does not survive 80 MHz — DMA from PSRAM shares the PSRAM
 bus's bandwidth and the panel received dropped data — so every full-width
 strip is copied into one of two 47 KB internal DMA buffers first. On the
 device that took the boot animation from 22.9 to 28.4 fps and the cube and
 sand from 11.8–14.3 to 16.7–20.3 drawn frames per second, at a cost of
-~94 KB of internal RAM. A full-present time at 80 MHz is *unmeasured*; the
-next diagnostics capture replaces the 18.0–18.9 ms row.
+~94 KB of internal RAM. `gfx_present()` measures 9.6 ms directly at 80 MHz;
+the `boot_anim_perf` capture at 80 MHz is the next one owed.
 
 **80 MHz is outside the CO5300's rating.**
 Its datasheet caps the write clock at 50 MHz, and every panel pin reaches
@@ -434,15 +432,15 @@ swap) was built and proven exact on the host, then measured on the
 device: the catch-up copy cost 6-15 ms per frame at ~22 MB/s, and sand
 fell from ~17-20 to 11-12 drawn fps. Writing PSRAM in bulk costs more than
 its own bandwidth number suggests, because each cache line is loaded from
-PSRAM before it is written back (device, 2026-09-13; Espressif staff on
+PSRAM before it is written back (device; Espressif staff on
 esp32.com); the double buffer is parked, not shipped. Two mechanisms
 replace it, chosen by app kind:
 
 1. **Retained apps** (sand, the UI, anything that draws only what
    changed) get **one retained framebuffer in PSRAM**. Present runs on
    core 1 and only *reads* it — strip copies into internal DMA buffers,
-   then the bus, ~10.2-10.9 ms per full frame measured (device,
-   2026-09-13) — while core 0 runs the next frame's update step in
+   then the bus, ~10.2-10.9 ms per full frame measured (device)
+   — while core 0 runs the next frame's update step in
    parallel. The draw phase waits for core 1 to finish reading, so there
    is no second buffer and no copy. This needs the app contract to
    separate an update phase from a draw phase so the shell can schedule
@@ -476,10 +474,10 @@ above, so it changes none of this section's reasoning.
 
 **Sand's working set is not part of this.** Sand's grids and per-step
 scratch live in internal RAM (allocations up to 64 KB stay internal), and
-its simulation reads no PSRAM: moving them there and doubling the <!-- doc-vocabulary: ignore --> <!-- This describes a hypothetical memory layout, not the board. -->
-instruction cache bought 1-11% per step, a 64 KB data cache bought
+its simulation reads no PSRAM <!-- doc-vocabulary: ignore -->: doubling
+the instruction cache bought 1-11% per step, a 64 KB data cache bought
 nothing, and the mixed-scene gravity flip that once measured 18,731 us
-was a reaction-pass regression, fixed at 11,924 us (device, 2026-09-13).
+was a reaction-pass regression, fixed at 11,924 us (device).
 Only sand's draw into the framebuffer touches PSRAM, and under this
 decision that write is the retained framebuffer's ordinary per-frame
 update, not a bulk copy.
@@ -501,7 +499,7 @@ one finishes sending. The shell's loop does not change: `frame()` still
 draws and returns.
 
 **Interlace and bands are panel-row shaped; the game is not.** The
-maintainer's observation (2026-09-04) that different orientations favour
+maintainer's observation that different orientations favour
 different interlace setups is a real constraint, and it splits "interlace"
 into two independent halvings that today's toggle conflates:
 
@@ -717,7 +715,7 @@ band ring's per-band z-buffer in internal SRAM (3.3) earn their place:
 
 ### 4.3 Platformer with parallax and 2D lighting → two tracks, and the mix
 
-This game is exploratory by design (maintainer, 2026-09-04): two ways to
+This game is exploratory by design (maintainer's call): two ways to
 build the world are both kept, and the interesting question is how they
 combine. The architectural requirement that makes the combination
 possible is stated at the end, because it has to be built before either
@@ -750,7 +748,7 @@ keeps every present cheap in a fixed-camera room.
 
 - **Levels are placed blocks of a material.** A level is an ordered list
   of rectangles, each "material *m*, size (*w*, *h*), at (*x*, *y*)" in
-  cell units (maintainer, 2026-09-04) — not a uniform tile grid. Loading
+  cell units — not a uniform tile grid. Loading
   a room fills the rectangles into the instance's grid in list order, so
   a later block overwrites an earlier one and carving is just a block of
   empty. A list of a few dozen records is a few hundred bytes, so levels
@@ -819,7 +817,7 @@ tiles.** This is where the two stop being alternatives:
   the windows' step, which is small. In a room-based game the whole
   screen can be one window and Track B falls out as the special case.
 
-**Track C design sketch (2026-09-04).** The two things the mix needs —
+**Track C design sketch.** The two things the mix needs —
 cells that are spatially aware of layers, and cells that survive
 scrolling — are one design seen from two sides, and the choice that
 decides it is *which coordinate frame the cells live in*. The answer is
@@ -864,9 +862,9 @@ both, for different jobs:
   window — the band ring of 3.3. Rooms: the row-run dirty path as today.
   Same instance type, two draw paths.
 - **Budget, estimates.** A 48×48 window is ~2,300 cells: from the sand
-  app's measured 6,623 us full-size step for 41,216 cells (device,
-  2026-09-13 — see 3.3 for why this is currently slower than the
-  previously pegged budget), *estimate* ~0.37 ms per step fully active
+  app's measured 6,623 us full-size step for 41,216 cells (device —
+  see 3.3 for why this is currently slower than the
+  pegged budget), *estimate* ~0.37 ms per step fully active
   and near zero asleep, so a dozen live windows are *estimate* a few
   milliseconds. The scrolling tile draw itself is a full-frame blit,
   *estimate* ~2 ms at two cycles per pixel.
@@ -876,7 +874,7 @@ both, for different jobs:
   which shows layers and compositing without the device; (3) the
   shifting grid with tile-mask fill, the first scroll test; (4) the
   momentum coupling, one parameter once the rest exists.
-- **Locality is the performance model** (maintainer, 2026-09-04). The
+- **Locality is the performance model.** The
   simulation never needs to run full-screen; full-screen is the special
   case of one big window. A level designer places a *torch*, and that is
   an emitter record in the level's rectangle list: "instance of 16×32
@@ -955,7 +953,7 @@ apps/       the games, each a folder, APP_REGISTER, no other file touched
 
 Principles, each of which is already a repo habit:
 
-- **Numeric policy (decided 2026-09-13, decision A).** float32 is allowed
+- **Numeric policy (decision A).** float32 is allowed
   per vertex and per object — transforms, physics, lighting setup;
   per-pixel and per-cell hot loops, and anything that must be bit-exact
   between host and device (the sand simulation and its fingerprint rule),
@@ -998,7 +996,7 @@ in.
 
 | Phase | Work | Gate (measured, on device) |
 |---|---|---|
-| **0. Attribution on the S3** | Real frame-time row (sim + draw + present); cube perf report checked in (all four variants: baseline, no HUD, no partial, interlaced); a cycles-per-covered-pixel counter; re-peg the device frame budgets once memory placement is settled | A checked-in table replacing the stale 15.5 fps figures, every row sourced |
+| **0. Attribution on the S3** | Real frame-time row (sim + draw + present); cube perf report checked in (all four variants: baseline, no HUD, no partial, interlaced); a cycles-per-covered-pixel counter; re-peg the device frame budgets once memory placement is settled | A checked-in `suite_cube_perf.c` report, every row sourced |
 | **1. Memory, cores and bus** | Core-1 present with sim/update overlap for retained apps (decision B); 80 MHz QSPI on this panel (present measured ~10.2-10.9 ms full-frame; out of the panel's rating, so a 40/80 display setting plus an opt-in heal for partial-redraw apps); an internal-RAM build-time gate now that hot buffers are internal | Sand frame time serial vs overlap measured and checked in; core 0's update never blocks on core 1's present |
 | **2. r3d v1** | Span rasterizer built band-aware into the internal-SRAM band ring (3.3): flat, Gouraud, affine texture, colormap lighting; transform/clip extracted from boot_anim; triangle binning; half-res mode (scope unchanged) | Gates recomputed for 240 MHz and the band ring; cycles/pixel judged against the ~24 cycles/pixel/core ceiling (section 2), the old flat/textured sub-targets pending re-derivation |
 | **3. Raycaster and the FPS prototype** | `render/rc`, column-major textures, per-column depth, sprites, gyro look via the tilt/shake library, buttons move (scope unchanged) | Original target — 60 fps full-res walls + sprites, playable on the glass — reviewed against S3 numbers once Phases 0-1 land |
@@ -1020,7 +1018,7 @@ cheapest path to something that is unmistakably a game.
   cycles per covered pixel and bytes per frame on the bus.
 - **Do not add a bespoke second framebuffer or z-buffer outside gfx's own
   retained buffer and band ring, and do not add LVGL.** Decision B
-  (2026-09-13) already gives retained apps one PSRAM framebuffer read
+  already gives retained apps one PSRAM framebuffer read
   only by present, and full-redraw renderers an internal-SRAM band ring
   with its own per-band z-buffer — anything more is redundant state to
   keep in sync. A full-screen z-buffer in PSRAM is specifically ruled
@@ -1047,7 +1045,7 @@ cheapest path to something that is unmistakably a game.
 
 ## 8. Open decisions
 
-1. ~~Half-res as the default for 3D apps?~~ **Decided 2026-09-04: a
+1. ~~Half-res as the default for 3D apps?~~ **Decided: a
    per-app choice, under a system-wide maximum.** Each app declares the
    resolution it wants at `enter()`; the shell carries a configurable
    "max resolution" setting (Settings app) that caps what
@@ -1057,7 +1055,7 @@ cheapest path to something that is unmistakably a game.
    they differ; the app is told the resolution it actually received, the
    way it is already told the screen height as a parameter.
 2. ~~Band height: 64 rows or 32?~~ **Live again under the revised
-   decision B (2026-09-13).** The band ring in internal SRAM is the
+   decision B.** The band ring in internal SRAM is the
    standing mechanism for every full-redraw renderer (r3d, raycaster,
    image kernels); PSRAM is never their render target. Band height stays
    a compile-time constant (`GFX_BAND_HEIGHT`, divisors of 448: 64, 32,
@@ -1068,10 +1066,10 @@ cheapest path to something that is unmistakably a game.
    itself across heights measuring present time, rasterizer time, and RAM
    freed, in the same style as the `GATHER_MAX_PIXELS` and
    `LEAF_REFINE_MAX_RUNS` sweeps recorded in Display-and-Rendering.md.
-3. ~~"Parallax" in the platformer~~ **Decided 2026-09-04: layered
+3. ~~"Parallax" in the platformer~~ **Decided: layered
    parallax scrolling**, not per-pixel parallax mapping.
-4. ~~Own rasterizer vs. deeper small3dlib configuration.~~ **Decided
-   2026-09-04: own rasterizer.** The seam: copy small3dlib's vector,
+4. ~~Own rasterizer vs. deeper small3dlib configuration.~~ **Decided:
+   own rasterizer.** The seam: copy small3dlib's vector,
    matrix, projection and clipping routines into `render/r3d` under this
    repo's fixed-point conventions (the same move made for the boot
    animation's helpers), and write the rasterizer, binning and
@@ -1088,7 +1086,7 @@ cheapest path to something that is unmistakably a game.
    perspective-correction cadence, all pixel-exact against a slow
    reference on the host. small3dlib stays vendored only until the boot
    animation stops including it, then the component is deleted.
-5. **Decided 2026-09-04: the platformer is exploratory, with both world
+5. **Decided: the platformer is exploratory, with both world
    models kept.** Track B (the sand automaton as the world, fixed-camera
    rooms, levels as blocks of a material, materials and reactions as
    baked data rather than runtime scripts) is the first prototype; Track
@@ -1104,7 +1102,7 @@ cheapest path to something that is unmistakably a game.
 Rules that apply to any change against this roadmap, independent of who or
 what is making it:
 
-- **Numeric policy (decision A, 2026-09-13):** float32 is allowed per
+- **Numeric policy (decision A):** float32 is allowed per
   vertex and per object (transforms, physics, lighting setup); per-pixel
   and per-cell hot loops, and anything that must be bit-exact between
   host and device (the whole sand simulation and its fingerprint rule),
