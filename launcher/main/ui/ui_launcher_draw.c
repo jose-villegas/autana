@@ -33,22 +33,21 @@ draw_banner(mu_Context* ctx) {
  * placed at an absolute y, so enough registered apps now overflow into the
  * window's own scroll instead of pushing later entries off screen with no
  * way back to them - see ui_scroll.h. Returns which app this frame's tap
- * chose, or -1. */
-static int
+ * chose, or NULL. */
+static const app_t*
 draw_app_rows(mu_Context* ctx) {
-    int chosen = -1;
-    int i = 0;
+    const app_t* chosen = NULL;
     ui_flow_t flow = ui_flow_start(ui_width(), UI_BANNER_HEIGHT + UI_ROW_GAP, UI_ROW_GAP);
-    for (const app_t* app = app_list(); app != NULL; app = app->next, i++) {
+    for (const app_t* app = app_list(); app != NULL; app = app->next) {
         ui_flow_row(ctx, &flow, LAUNCHER_BTN_W, UI_ROW_HEIGHT);
         if (mu_button(ctx, app->name)) {
-            chosen = i;
+            chosen = app;
         }
     }
     return chosen;
 }
 
-int
+const app_t*
 ui_launcher_draw(mu_Context* ctx, uint32_t dt_ms) {
     /* Bezelled buttons, stated every frame because style does not persist
      * - see ui.h. One full-screen window with no chrome, sized from
@@ -58,11 +57,11 @@ ui_launcher_draw(mu_Context* ctx, uint32_t dt_ms) {
 
     const int opt = MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME;
     if (!ui_scroll_view_begin(ctx, "Launcher", opt, ui_scroll_view_default(), dt_ms)) {
-        return -1;
+        return NULL;
     }
 
     draw_banner(ctx);
-    const int chosen = draw_app_rows(ctx);
+    const app_t* chosen = draw_app_rows(ctx);
     ui_scroll_view_end(ctx);
     return chosen;
 }

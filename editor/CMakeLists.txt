@@ -37,6 +37,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 add_library(editor_runtime STATIC
     runtime/runtime.c
+    ${LAUNCHER_DIR}/main/app_registry.c
     ${LAUNCHER_DIR}/main/gfx/gfx.c
     ${LAUNCHER_DIR}/main/input/gesture.c
     ${LAUNCHER_DIR}/main/ui/system_navigation.c

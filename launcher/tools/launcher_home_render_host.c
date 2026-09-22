@@ -11,10 +11,9 @@
  * sequence microui expects, so ui_pointer.c synthesizes hover frames before
  * a press can land - a settled screen is never the first frame.
  *
- * The list is a FIXTURE: three invented entries with no callbacks, because
- * the shell is what owns the registry and this is not the shell. Nothing
- * drawn here came from a registered app. `--row <label>`, repeatable,
- * replaces it with the rows a caller states - what a comparison against a
+ * The default list is a FIXTURE: three invented entries with no callbacks -
+ * nothing drawn here came from a real app. `--row <label>`, repeatable,
+ * registers the rows a caller states instead - what a comparison against a
  * real image's home screen needs, since only that image knows what it
  * registered.
  */
@@ -31,31 +30,20 @@
 #include "ui/ui_ridge.h"
 #include "ui/ui_transform.h"
 
-static const app_t fixture_alpha = {.name = "Alpha", .summary = "The first fixture row"};
-static const app_t fixture_beta = {.name = "Beta", .summary = "The second fixture row"};
-static const app_t fixture_gamma = {.name = "Gamma", .summary = "The third fixture row"};
-
-static const app_t* const fixture[] = {&fixture_alpha, &fixture_beta, &fixture_gamma};
+static app_t fixture_alpha = {.name = "Alpha", .summary = "The first fixture row"};
+static app_t fixture_beta = {.name = "Beta", .summary = "The second fixture row"};
+static app_t fixture_gamma = {.name = "Gamma", .summary = "The third fixture row"};
 
 #define ROWS_MAX 16
 
 static app_t stated[ROWS_MAX];
-static const app_t* stated_list[ROWS_MAX];
 static int stated_count;
 
-const app_t* const*
-app_list(void) {
-    return stated_count > 0 ? stated_list : fixture;
-}
-
-int
-app_list_count(void) {
-    return stated_count > 0 ? stated_count : (int)(sizeof(fixture) / sizeof(fixture[0]));
-}
-
-void
-app_register(const app_t* app) {
-    (void)app;
+static void
+register_fixture(void) {
+    app_register(&fixture_alpha);
+    app_register(&fixture_beta);
+    app_register(&fixture_gamma);
 }
 
 /* A press at the centre of the panel, held across two frames so
@@ -82,8 +70,14 @@ options(int argc, char** argv) {
             return false;
         }
         stated[stated_count].name = argv[++i];
-        stated_list[stated_count] = &stated[stated_count];
         stated_count++;
+    }
+    if (stated_count > 0) {
+        for (int i = 0; i < stated_count; i++) {
+            app_register(&stated[i]);
+        }
+    } else {
+        register_fixture();
     }
     return true;
 }

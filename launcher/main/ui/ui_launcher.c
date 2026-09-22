@@ -10,17 +10,18 @@
 
 #include "ui/ui_launcher.h"
 
+#include "app.h"
 #include "ui/ui.h"
 #include "ui/ui_ridge.h"
 #include "util/frame_cost.h"
 
-int
+const app_t*
 ui_launcher_frame(const input_t* input, uint32_t dt_ms) {
     mu_Context* ctx = ui_context();
 
     FRAME_COST_BEGIN(built_from);
     ui_begin(input);
-    const int chosen = ui_launcher_draw(ctx, dt_ms);
+    const app_t* chosen = ui_launcher_draw(ctx, dt_ms);
     FRAME_COST_END(built_from, "ui.build");
     ui_ridge_step(input, dt_ms);
 

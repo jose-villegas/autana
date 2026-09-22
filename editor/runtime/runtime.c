@@ -26,25 +26,9 @@
 
 static bool initialized;
 
-static const app_t preview_render_lab = {.name = "Render Lab", .summary = "Software rendering experiments"};
-static const app_t preview_diagnostics = {.name = "Diagnostics", .summary = "Device status"};
-static const app_t preview_sand = {.name = "Falling Sand", .summary = "Particle simulation"};
-
-static const app_t* const preview_apps[] = {
-    &preview_render_lab,
-    &preview_diagnostics,
-    &preview_sand,
-};
-
-const app_t* const*
-app_list(void) {
-    return preview_apps;
-}
-
-int
-app_list_count(void) {
-    return (int)(sizeof(preview_apps) / sizeof(preview_apps[0]));
-}
+static app_t preview_render_lab = {.name = "Render Lab", .summary = "Software rendering experiments"};
+static app_t preview_diagnostics = {.name = "Diagnostics", .summary = "Device status"};
+static app_t preview_sand = {.name = "Falling Sand", .summary = "Particle simulation"};
 
 bool
 editor_runtime_init(void) {
@@ -54,6 +38,10 @@ editor_runtime_init(void) {
     if (!gfx_init()) {
         return false;
     }
+
+    app_register(&preview_render_lab);
+    app_register(&preview_diagnostics);
+    app_register(&preview_sand);
 
     ui_launcher_init();
     initialized = true;

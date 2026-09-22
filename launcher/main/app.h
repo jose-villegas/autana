@@ -105,9 +105,7 @@ typedef struct app {
      * See docs/tools/Autana-CLI.md's "Adding a command from an app". */
     const app_console_t* console;
 
-    /* The registry's own link, threaded through app_register() - the same
-     * shape console_verb_t (console/console_verbs.h) and tune_entry_t
-     * (util/tune.h) already use. An app never sets this itself. */
+    /* The registry's link, set by app_register(); an app never sets it. */
     struct app* next;
 } app_t;
 
@@ -122,17 +120,13 @@ void shell_set_system_panel_clock_hz(int hz);
 int shell_system_panel_clock_hz(void);
 
 /*
- * Apps register themselves, so an app is entirely contained in
- * main/apps/<name>/ and deleting that folder removes it - source, logic and
- * tests - without touching another file, CMakeLists.txt included.
- *
  * APP_REGISTER() places a constructor in .init_array, which ESP-IDF runs
- * before app_main() - the same self-registering shape CONSOLE_VERB() and
- * TUNE() already use. Link order decides .init_array order; app_register()
+ * before app_main(). Link order decides .init_array order; app_register()
  * sorts by name at insertion so it never shows.
  */
 
-/* Called by APP_REGISTER before main(). */
+/* Called by APP_REGISTER before main(). Defined in app_registry.c, along
+ * with app_list() below - see that file for why it is its own module. */
 void app_register(app_t* app);
 
 #define APP_REGISTER(symbol)                                                                                           \
@@ -142,4 +136,14 @@ void app_register(app_t* app);
  * app_t.next - NULL once nothing more is registered. Valid from the first
  * line of app_main(). */
 const app_t* app_list(void);
-int app_list_count(void);
+
+/* How many are registered - kept for a boot log line and for sizing a
+ * caller's own scratch buffer, not for indexing: app_list() is a list. */
+int app_registry_count(void);
+
+#ifndef ESP_PLATFORM
+/* Host-only, absent from every device build: a test process runs many
+ * scenarios in one run and each wants a clean list, unlike a real boot's
+ * one-shot registration. */
+void app_registry_reset_for_test(void);
+#endif
