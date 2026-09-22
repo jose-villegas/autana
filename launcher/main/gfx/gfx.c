@@ -2289,7 +2289,7 @@ send_overlay_bordered_rows_clean(bool (*send_rows)(int y0, int y1), int* queued)
  * sends so a strip carries whatever they just put on the panel. */
 static void
 send_heal_strips(bool (*send_rows)(int y0, int y1), int* queued) {
-    if (!gfx_heal_active()) {
+    if (panel_clock_applied_hz != GFX_PANEL_CLOCK_FAST_HZ) {
         gfx_heal_reset(&heal);
         return;
     }
@@ -2867,19 +2867,16 @@ gfx_band_frame_begin(void) {
         band_snapshot_filling = band_frame_force_all;
     }
 
-    /* Band mode heals nothing: a band is gone once sent, so heal's resend
-     * has no shape left to repair, and there is no cheaper fix than
-     * sending the whole band again anyway - which a real change already
-     * does. Reset keeps a mark or a rolling sweep queued in an earlier
-     * full-fb present from carrying pending rows into this mode. */
+    /* Band mode heals nothing: a band is gone once sent, so gfx holds
+     * nothing to resend. The reset stops rows marked or swept in an earlier
+     * full-fb present from carrying into this mode. */
     gfx_heal_reset(&heal);
 }
 
-/* Band mode's own "does [row0, row1) need touching this frame" query -
- * reuses gfx_dirty.h's cell tracker for the band gfx_band_next() just
- * handed out - always that one, read from band_render_row0/height rather
- * than taken from the caller, so there is no range to pass wrong. Every
- * true return records the extent for gfx_band_submit(). */
+/* Band mode's own "does this band need touching" query, on gfx_dirty.h's
+ * cell tracker. It always reads the band gfx_band_next() just handed out,
+ * so there is no range to pass wrong; every true return records the
+ * extent gfx_band_submit() sends. */
 bool
 gfx_band_dirty(int* out_x0, int* out_x1) {
     const int row0 = band_render_row0;

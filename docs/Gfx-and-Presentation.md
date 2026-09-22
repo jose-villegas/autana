@@ -168,12 +168,11 @@ The app drives the send itself, inside `frame()`:
 gfx_band_frame_begin();
 while (gfx_band_next()) {
     int x0, x1;
-    const int row0 = gfx_band_row0();
-    if (!gfx_band_dirty(row0, row0 + gfx_band_height(), &x0, &x1)) {
+    if (!gfx_band_dirty(&x0, &x1)) {
         gfx_band_skip();            /* panel still shows it */
         continue;
     }
-    /* draw rows row0.. into gfx_band_buffer(); gfx_* calls are translated */
+    /* draw this band into gfx_band_buffer(); gfx_* calls are translated */
     gfx_band_submit();
 }
 ```
@@ -396,8 +395,7 @@ same window sent again fails the same way.
 | `gfx_heal_restore_defaults()` | empty the queue, reset both - the shell calls it on every app switch |
 
 Band mode heals nothing, the same as the slow clock: a band is gone once
-sent, so heal has no shape left to repair, and a real content change already
-resends the whole band anyway.
+sent, so gfx holds nothing to resend.
 
 ## Repaint controls
 

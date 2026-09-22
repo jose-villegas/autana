@@ -94,16 +94,6 @@ gfx_heal_strip_start(int row, int phase) {
     return phase + k * GFX_HEAL_STRIP_ROWS;
 }
 
-/* Moves the strip lattice on by one heal - the same rows cut differently
- * next time, since the corruption follows the shape of the transfer.
- * gfx_heal_plan() calls this for its own strips; a band-mode send that
- * splits itself for healing (gfx.c) calls it directly, once a present, for
- * the same reason. */
-static inline void
-gfx_heal_advance_phase(gfx_heal_t* h) {
-    h->phase = (h->phase + GFX_HEAL_PHASE_STEP) % GFX_HEAL_STRIP_ROWS;
-}
-
 /* Picks this present's strips, at most `budget_pixels` of `width`-wide rows,
  * and forgets the units they cover. Returns how many it wrote to `out`. */
 static inline int
@@ -137,7 +127,7 @@ gfx_heal_plan(gfx_heal_t* h, int budget_pixels, int width, gfx_heal_strip_t* out
     }
 
     if (n > 0) {
-        gfx_heal_advance_phase(h);
+        h->phase = (h->phase + GFX_HEAL_PHASE_STEP) % GFX_HEAL_STRIP_ROWS;
     }
     return n;
 }
