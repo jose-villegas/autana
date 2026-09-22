@@ -114,7 +114,8 @@ the portable ones. That is deliberate: passing on a laptop only proves the logic
 right on x86, whereas running on-target proves the same source behaves
 identically built by the Xtensa toolchain and executed on this chip. It
 never runs in a release image - only in a SELFTEST build, either one suite
-at a time via runsuite (seconds) or as a full boot-time run (~18 min).
+at a time via runsuite (seconds) or as a full boot-time run - see
+["Recommended practice"](#recommended-practice) for how long that takes.
 
 ### The host runner enforces two of the device's limits
 
@@ -244,8 +245,8 @@ needed, without paying a rebuild-and-reflash cycle per attempt.
    `autana selftest`, full scope, autorun, unattended. About 18 minutes
    on this board; treat it as the gate, not the everyday loop.
 4. **Know which suites cover which area** so a change to shell code (gfx,
-   ui) can be checked without waiting on an app's suites at all — see the
-   table below.
+   ui) can be checked without waiting on an app's suites at all — see
+   ["Which suites cover which area"](#which-suites-cover-which-area) below.
 
 ### Two device-only traps
 
@@ -441,7 +442,7 @@ different rules.
 | Ships in release | **yes** | diagnostics (SELFTEST) builds only |
 | Asks | "is this **board** working?" | "is this **code** correct?" |
 | Side effects | none — probe and report | draws to the panel, mutates state |
-| Cost | ~95 ms | runsuite: seconds; full self-test: ~18 min |
+| Cost | ~95 ms | runsuite: seconds; full self-test: see ["Recommended practice"](#recommended-practice) |
 | A failure means | this unit is faulty | this code is wrong |
 
 It probes each I2C peripheral, checks flash size, heap headroom, MAC validity
@@ -655,21 +656,8 @@ against.
 
 ## Which suites cover which area
 
-`autana suite list [text]` lists what this worktree actually registers,
-filtered to a substring - the live source of truth a hand-copied table
-here would only go stale against. A change's area maps to a suite-name
-prefix:
-
-| Area | Suite name prefix |
-|---|---|
-| gfx | `run_gfx_*`, `run_icons_*`, `run_display_suite`, `suite_screenshot`, `suite_heap_caps` |
-| ui | `run_ui_*`, `suite_ui_*` |
-| input | `run_touch_fsm_suite`, `run_gesture_suite`, `run_button_fsm_suite`, `run_tilt_suite` |
-| boot/POST | `run_boot_anim_*`, `suite_post_ui`, `suite_ridge_*`, `suite_control_center_layout`. POST itself (`boot/post.c`) has no suite — it runs every boot and is read from its own `POST_COMPLETE` line, not Unity |
-| render | `run_r3d_*` — the camera-space near-plane clip and perspective projection boot and other 3D callers share |
-| render lab | `run_cube_*`, `run_wire_*`, `run_rt_*`, `run_small3dlib_scissor_suite`, `run_render_lab_*` |
-| sand | `run_sand_*`, `run_row_runs_suite`, `run_palette_suite`, `run_brush_screen_suite` — see `launcher/main/apps/sand/suite_*.c`; frame-budget scenes are `run_sand_perf_suite`, see [`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md) |
-| shell/util | `suite_fixed`, `suite_tween`, `run_rng_suite`, `suite_device_state`, `suite_job`, `suite_frame_cost`, `suite_console`, `suite_tune` |
+Suite names carry their area - `gfx`, `ui`, `r3d`, `cube`, `wire`, `rt`,
+`sand`: `autana suite list <area>` lists what this worktree registers.
 
 ---
 
