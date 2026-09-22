@@ -1,9 +1,6 @@
 /*
- * input - the input layer's own shared type.
- *
- * input_t lives here, not in app.h, so touch.h/touch_fsm.h/gesture.h can
- * declare against it without reaching up into the apps layer - app.h
- * includes this header instead of defining the type itself.
+ * input - input_t, one frame's touch and buttons. It lives below app.h so
+ * no input/ header includes upward.
  */
 #pragma once
 

@@ -32,9 +32,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "app.h"
 #include "gfx/gfx_font.h"
 #include "gfx/icon.h"
+#include "input/input.h"
 #include "microui.h"
 #include "ui/ui_style.h"
 #include "ui/ui_transform.h"
