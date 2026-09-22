@@ -84,9 +84,10 @@ to `index.jsonl`. A tuning session is dozens of these, and none is evidence.
 
 `device.py screenshot [--out PATH] [--timeout SECONDS]` takes the lock,
 requests the panel capture and writes a `.png` plus a `.json` state snapshot;
-`autana screenshot` calls it the same way. A delegated task under the lock
-uses `device.py screenshot` directly, the same way it uses `run-suite`
-rather than `autana suite`. The wire protocol and the BMP-to-PNG decoder
+`autana screenshot` calls it the same way. A script that needs its own
+`--owner`/`--purpose` calls `device.py screenshot` directly, the same way
+it calls `run-suite` rather than `autana suite`. The wire protocol and the
+BMP-to-PNG decoder
 live in `launcher/tools/screenshot.py`, imported as a library - it opens no
 port itself.
 
@@ -97,7 +98,7 @@ captures every suite `--runs` times, and writes one summary across all runs.
 Holding the board for the whole sequence means nobody else can flash
 between two captures of the same image, and the command blocks until it is
 done. `autana batch` calls
-it the same way ([Autana-CLI.md](Autana-CLI.md)); a delegated task with its
+it the same way ([Autana-CLI.md](Autana-CLI.md)); a script with its
 own `--owner`/`--purpose` calls `device.py batch` directly:
 
 ```powershell
@@ -240,5 +241,3 @@ This clears the reservation and prints the resulting lock status. The lower-leve
 
 - [Autana-CLI.md](Autana-CLI.md) - the interactive `autana` command built on
   top of this lock.
-- `.dev/docs/notes/Device-Workflow.md` - the one board, its port, and a
-  measurement trap a device suite already caused once.
