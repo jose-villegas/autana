@@ -433,8 +433,6 @@ render_lab_invalidate(void) {
     current_scene()->invalidate();
 }
 
-/* Exported as the struct itself rather than a pointer to it, so the registry
- * in main.c can take its address in a static initializer. */
 app_t app_render_lab = {
     .name = "Render Lab",
     .summary = "Software rendering experiments",
