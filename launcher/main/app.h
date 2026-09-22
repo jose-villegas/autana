@@ -125,21 +125,16 @@ int shell_system_panel_clock_hz(void);
  * sorts by name at insertion so it never shows.
  */
 
-/* Called by APP_REGISTER before main(). Defined in app_registry.c, along
- * with app_list() below - see that file for why it is its own module. */
+/* Called by APP_REGISTER before main(); defined in app_registry.c. */
 void app_register(app_t* app);
 
 #define APP_REGISTER(symbol)                                                                                           \
     __attribute__((constructor)) static void symbol##_register(void) { app_register(&symbol); }
 
 /* The head of the registered apps, sorted by name and linked through
- * app_t.next - NULL once nothing more is registered. Valid from the first
- * line of app_main(). */
+ * app_t.next - NULL-terminated; NULL itself when nothing is registered.
+ * Valid from the first line of app_main(). */
 const app_t* app_list(void);
-
-/* How many are registered - kept for a boot log line and for sizing a
- * caller's own scratch buffer, not for indexing: app_list() is a list. */
-int app_registry_count(void);
 
 #ifndef ESP_PLATFORM
 /* Host-only, absent from every device build: a test process runs many

@@ -553,24 +553,26 @@ park_forever(void) {
  * match first. */
 static void
 check_console_prefix_clashes(void) {
-    /* At most one prefix per registered app, so the registry's own count is
-     * an exact upper bound - no magic number to outgrow. */
-    const char** app_prefixes = malloc(sizeof(*app_prefixes) * (size_t)app_registry_count());
-    if (app_prefixes == NULL) {
-        ESP_LOGE(TAG, "no memory to check console prefix clashes");
-        park_forever();
-    }
     int app_count = 0;
     for (const app_t* app = app_list(); app != NULL; app = app->next) {
+        app_count += app->console != NULL;
+    }
+    if (app_count == 0) {
+        return;
+    }
+
+    const char* app_prefixes[app_count];
+    int i = 0;
+    for (const app_t* app = app_list(); app != NULL; app = app->next) {
         if (app->console != NULL) {
-            app_prefixes[app_count++] = app->console->prefix;
+            app_prefixes[i++] = app->console->prefix;
         }
     }
 
     const char* from;
     const char* other;
     switch (console_find_clash(console_shared(), app_prefixes, app_count, &from, &other)) {
-        case CONSOLE_CLASH_NONE: free(app_prefixes); return;
+        case CONSOLE_CLASH_NONE: return;
         case CONSOLE_CLASH_SPACE: ESP_LOGE(TAG, "console prefix '%s' contains a space", from); break;
         case CONSOLE_CLASH_LENGTH:
             ESP_LOGE(TAG, "console prefix '%s' plus a space does not fit CONSOLE_LINE_MAX", from);
@@ -777,7 +779,10 @@ app_main_loop(void) {
 #endif
     int64_t next_display_sample_us = previous_us;
 
-    const int app_count = app_registry_count();
+    int app_count = 0;
+    for (const app_t* app = app_list(); app != NULL; app = app->next) {
+        app_count++;
+    }
     ESP_LOGI(TAG, "Ready, %d app%s registered", app_count, app_count == 1 ? "" : "s");
 
     while (1) {

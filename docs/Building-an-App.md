@@ -71,7 +71,7 @@ flowchart LR
   never shows.
 - `WHOLE_ARCHIVE` is what keeps an app nothing references by name in the
   image. Without it the app vanishes from the list with no link error.
-- Anything may read the registry: `app_list()`, `app_list_count()`.
+- Anything may read the registry: `app_list()` walks it.
 
 ### Deregistration
 
