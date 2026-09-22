@@ -50,8 +50,8 @@ not run ESP-IDF anyway.
 
 Every command but `report` takes `--owner` (defaults to
 `AUTANA_DEVICE_OWNER`) and its own `--purpose` (each subcommand has a
-sensible default - `flash`, `run suite`, `send`, `screenshot`, `batch
-capture` - override it to say why on a shared board).
+sensible default - `flash`, `reset`, `run suite`, `send`, `screenshot`,
+`batch capture` - override it to say why on a shared board).
 
 ```powershell
 python scripts/device/device.py status
@@ -118,9 +118,12 @@ capture to `PATH` instead of the default path - only with exactly one
 `--suite` and `--runs 1`, which is how `device_report.sh`'s RUNSUITE-scoped
 reports (report_boot_anim_perf.sh) call it.
 
-`flash`, `run-suite`, `selftest`, `batch`, and `listen` take the lock before
+`flash`, `run-suite`, `selftest`, `batch`, `listen`, and `reset` take the lock before
 they touch the board, keep it through their whole operation, and renew it
-every 30 seconds. `selftest` builds the diagnostics+autorun image and
+every 30 seconds. `reset` reboots with esptool and returns once the port is
+back. `reset --capture` and `selftest` then reopen the port for their capture,
+and again if it vanishes mid-capture, so what the board prints while USB
+re-enumerates may be lost. `selftest` builds the diagnostics+autorun image and
 captures the boot-time run of every registered suite until
 SELFTEST_COMPLETE; `autana selftest` calls it, and so does
 `launcher/tools/device_report.sh` for a report with no single named suite
@@ -142,15 +145,15 @@ appears while capturing.
 
 ### Where a capture lands
 
-None of the three commands need `--out`: by default each writes to
+No capture command needs `--out`: by default each writes to
 `<records>/<YYYYMMDD>/<HHMMSS>_<kind>_<owner>.log` (`kind` is
-`flash-<variant>`, `runsuite-<suite>`, or `listen`). `<records>` is
+`flash-<variant>`, `reset`, `runsuite-<suite>`, `selftest`, or `listen`). `<records>` is
 `$AUTANA_RECORDS` when set, otherwise the checkout's own gitignored
 `.records/device`, so nothing a commit can pick up by accident; the
 maintainer's shell points `AUTANA_RECORDS` at the `.dev` checkout, where the
 device history is tracked. A default-path capture over 200 KB is gzipped in
 place (suite/listen captures rarely reach that; a flash log at ~270 KB usually
-does); pass `--out <path>` on any of the three commands to write exactly
+does); pass `--out <path>` to any of them to write exactly
 there instead, uncompressed, e.g.:
 
 ```powershell
