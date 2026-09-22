@@ -413,6 +413,15 @@ int gfx_band_count(void);
  * never for the one just queued. */
 void gfx_band_submit(void);
 
+/* Like gfx_band_submit(), but sends only [x0, x1) of the current band - the
+ * rest keeps whatever the panel already showed. Edges round outward to even
+ * columns (gfx_band_span_clip(), gfx_band.h); an empty result sends
+ * nothing, advancing the ring as gfx_band_skip() does. Exactly one
+ * draw_bitmap() call: the span is packed to its own width in place first, a
+ * flat buffer having no stride to skip past. A full [0, GFX_WIDTH) span
+ * behaves exactly like gfx_band_submit(). */
+void gfx_band_submit_span(int x0, int x1);
+
 /*
  * GFX_PIXFMT_INDEXED8 - a persistent index image gfx owns instead of an
  * RGB565 band, valid only between a gfx_mode_enter() request carrying that
