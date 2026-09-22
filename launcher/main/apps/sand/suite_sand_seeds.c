@@ -29,7 +29,7 @@
 #include "suite_sand_common.h"
 #include "util/intmath.h"
 
-/* --- seeds ---------------------------------------------------------------- */
+/* seeds */
 
 /* A seed painted in mid-air falls.
  *
@@ -1048,7 +1048,7 @@ test_a_crowned_trunk_buds_and_a_bare_one_does_not(void) {
     }
 }
 
-/* --- foliage -------------------------------------------------------------- */
+/* foliage */
 
 /* A leaf on a tree never multiplies, and never moves: foliage is its own
  * material because every PLANT cell is a grower and find_water() walks
@@ -1155,7 +1155,7 @@ test_a_leaf_drains_standing_water_into_the_soil(void) {
     TEST_ASSERT_TRUE_MESSAGE(wet > 0, "and it must come out in the soil, not simply vanish");
 }
 
-/* --- growing ------------------------------------------------------------- */
+/* growing */
 
 /* A plant on wet soil climbs.
  *

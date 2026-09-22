@@ -58,7 +58,7 @@ static const char* TAG = "cube_perf";
 /* Frame timing breakdown. int32_t, not int64_t: these are one frame's worth
  * of microseconds, always well under a few hundred thousand, and halving
  * their size matters here - see samples/stat_scratch's own comment below for
- * why the two arrays these fields size aren't static any more either. */
+ * why the two arrays these fields size are allocated, not static. */
 typedef struct {
     int32_t frame_total_us; /* wall clock per frame */
     int32_t logic_us;       /* cube logic + scene setup */
@@ -251,29 +251,31 @@ run_perf_capture(const char* label, bool with_hud, bool with_partial, bool with_
         }
         next_frame_due += dt_ms * 1000;
 
-        /* --- LOGIC PHASE --- */
+        /* LOGIC PHASE */
         int64_t logic_start = esp_timer_get_time();
         cube_update_rotation((uint32_t)dt_ms);
         cube_clear_frame();
         int64_t logic_end = esp_timer_get_time();
 
-        /* --- RASTERIZE PHASE --- */
+        /* RASTERIZE PHASE */
         int64_t raster_start = esp_timer_get_time();
         cube_rasterize_frame();
         int64_t raster_end = esp_timer_get_time();
 
-        /* --- HUD PHASE --- */
-        /* Same position in the frame real cube_frame() calls it from - after
+        /* HUD PHASE */
+        /*
+         * Same position in the frame real render_lab_frame() calls it from - after
          * the cube's own dirty region is marked, before gfx_present() goes
          * out. Skipped entirely when with_hud is false, so hud_us reads as
-         * ~0 rather than the cost of a no-op draw_fps() call. */
+         * ~0 rather than the cost of a no-op draw_fps() call.
+         */
         int64_t hud_start = esp_timer_get_time();
         if (with_hud) {
             draw_fps(&null_input, false);
         }
         int64_t hud_end = esp_timer_get_time();
 
-        /* --- PRESENT PHASE --- */
+        /* PRESENT PHASE */
         int64_t present_start = esp_timer_get_time();
         gfx_present();
         int64_t present_end = esp_timer_get_time();
@@ -293,7 +295,7 @@ run_perf_capture(const char* label, bool with_hud, bool with_partial, bool with_
         sample_count++;
     }
 
-    /* --- COMPUTE STATISTICS --- */
+    /* COMPUTE STATISTICS */
     if (sample_count == 0) {
         ESP_LOGE(TAG, "No frames captured!");
         cube_perf_teardown();
@@ -311,11 +313,13 @@ run_perf_capture(const char* label, bool with_hud, bool with_partial, bool with_
     phase_stats_t hud = compute_stats(FIELD_HUD, valid);
     phase_stats_t pres = compute_stats(FIELD_PRESENT, valid);
 
-    /* --- LOG THE REPORT --- */
-    /* Console only - no mounted filesystem exists here (no SPIFFS partition,
+    /* LOG THE REPORT */
+    /*
+     * Console only - no mounted filesystem exists here (no SPIFFS partition,
      * and POST only mounts the SD card transiently to probe it - see
      * post.c). ESP_LOGI is what every perf tool here reports through,
-     * captured the same way by scripts/device/device.py's own selftest. */
+     * captured the same way by scripts/device/device.py's own selftest.
+     */
     ESP_LOGI(TAG, "=== CUBE PERF %s (%lld frames over %ds) ===", label, (long long)sample_count, SAMPLE_SECONDS);
     ESP_LOGI(TAG, "Total:   min=%lldus max=%lldus avg=%lldus med=%lldus p95=%lldus (%.1f/%.1f/%.1f fps)",
              (long long)total.min, (long long)total.max, (long long)total.avg, (long long)total.med,

@@ -34,7 +34,7 @@ settle(display_t* d, int gx, int gy) {
     }
 }
 
-/* --- the four unambiguous orientations ----------------------------------- */
+/* the four unambiguous orientations */
 
 void
 test_gravity_straight_down_reads_upright(void) {
@@ -68,7 +68,7 @@ test_gravity_to_the_right_reads_quarter_three(void) {
     TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
 }
 
-/* --- the test that matters: a slow sweep changes orientation ONCE --------- */
+/* the test that matters: a slow sweep changes orientation ONCE */
 
 void
 test_a_slow_sweep_through_a_boundary_flips_exactly_once(void) {
@@ -90,7 +90,7 @@ test_a_slow_sweep_through_a_boundary_flips_exactly_once(void) {
     TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
 }
 
-/* --- parked exactly on a boundary does not oscillate ---------------------- */
+/* parked exactly on a boundary does not oscillate */
 
 void
 test_parked_on_the_old_boundary_does_not_oscillate(void) {
@@ -121,7 +121,7 @@ test_parked_on_the_boundary_from_the_other_side_does_not_oscillate(void) {
     TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
 }
 
-/* --- returning partway does not flip until past the inner threshold ------- */
+/* returning partway does not flip until past the inner threshold */
 
 void
 test_returning_partway_does_not_flip_until_the_inner_threshold(void) {
@@ -143,7 +143,7 @@ test_returning_partway_does_not_flip_until_the_inner_threshold(void) {
     TEST_ASSERT_EQUAL_INT(0, display_quarter(&d));
 }
 
-/* --- display_update() reports true only on an actual change --------------- */
+/* display_update() reports true only on an actual change */
 
 void
 test_update_reports_true_only_on_an_actual_change(void) {
@@ -161,7 +161,7 @@ test_update_reports_true_only_on_an_actual_change(void) {
     TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
 }
 
-/* --- suite ---------------------------------------------------------------- */
+/* suite */
 
 void
 run_display_suite(void) {

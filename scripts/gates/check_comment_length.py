@@ -46,7 +46,16 @@ EXCLUDED = (
     "launcher/main/boot/boot_anim_image.h",
     "launcher/main/boot/boot_anim_timeline.h",
     "launcher/main/gfx/fonts/font_lmroman_40.h",
+    "launcher/main/gfx/gfx_palette_standard_generated.h",
+    "launcher/main/apps/sand/sand_palette256.h",
+    "launcher/main/apps/sand/captured_slope_data.h",
 )
+
+
+# A drawn rule's run: 3+ of `=`, `_`, `#` or `-` - this tree's own
+# "/* --- title ---- */" padding is exactly 3 dashes - but `*` alone needs
+# 4+, since a bare "***" is style(9) emphasis, not decoration.
+RULE_RUN = r"(?:[=_#\-]{3,}|[=*_#\-]{4,})"
 
 
 class Comment:
@@ -90,11 +99,18 @@ class Comment:
 
     @property
     def has_rule(self):
-        """Opens with a drawn rule - `/*====`, `//----`. Decoration this tree
-        does not use; scripts/gates/strip_comment_rules.py finds any that returns."""
+        """Opens with a drawn rule - `/*====`, `//----` - or draws one on the
+        same line as its own text - `/* --- title ---- */`. Decoration this
+        tree does not use; scripts/gates/strip_comment_rules.py finds any that
+        returns."""
         first = self.raw_lines[0].strip()
-        return bool(re.match(r"^/\*[=*\-_#]{4,}", first)
-                    or re.match(r"^//\s*[=*\-_#]{4,}", first))
+        if re.match(r"^/\*\s?[=*\-_#]{4,}", first) or re.match(r"^//\s*[=*\-_#]{4,}", first):
+            return True
+        body = first[2:]
+        if body.endswith("*/"):
+            body = body[:-2]
+        body = body.strip()
+        return bool(re.match("^" + RULE_RUN + r"\s", body) or re.search(r"\s" + RULE_RUN + "$", body))
 
     @property
     def is_banner(self):

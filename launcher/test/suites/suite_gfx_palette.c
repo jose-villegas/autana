@@ -191,8 +191,8 @@ test_dither_cell_bayer2_is_deterministic(void) {
 }
 
 /* GFX_DITHER_PIXEL_CHECKER2's own table: solid across all 4 (row, column)
- * phase combinations - the same exact-match case gfx_palette_gen_build_
- * dither16()'s own test covers for the 4x4 pattern. */
+ * phase combinations - the same exact-match case
+ * gfx_palette_gen_build_dither16()'s own test covers for the 4x4 pattern. */
 static void
 test_dither_checker2_reproduces_an_exact_match_at_every_phase(void) {
     static gfx_color_t table[GFX_PALETTE_MAX_ENTRIES * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX];

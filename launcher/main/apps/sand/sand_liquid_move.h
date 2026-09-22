@@ -12,9 +12,8 @@
 
 #include "sand_priv.h"
 
-/* WATER ONLY - acid_bubble() (sand_reactions.c) replaced this trigger
- * there. MASKED TO `mat_id`, because an unmasked throw scatters whatever
- * else is nearby too. */
+/* WATER ONLY - acid uses acid_bubble() (sand_reactions.c) instead. MASKED TO
+ * `mat_id`, because an unmasked throw scatters whatever else is nearby too. */
 /* NOT INLINED, though it lives in a header for the one caller that is.
  * Inlining move_liquid_grain() into the sweep won 18.4% on liquid scenes but
  * grew sand_step() 975 -> 1425 instructions, and that growth is paid by
@@ -25,10 +24,10 @@ splash_displace(sand_t* s, int x, int y, uint8_t mat_id) {
         return;
     }
     /* sand_impulse() below appends to one shared, board-wide queue with no
-     * lock - fine for the single core this always ran on, unsafe for two
-     * cores appending at once. A chunk-parallel dispatch (sand.c)
-     * arms rng_hashed for exactly this window, so a splash simply does
-     * not fire while one is running, rather than risk the queue. */
+     * lock - unsafe for two cores appending at once. A chunk-parallel
+     * dispatch (sand.c) arms rng_hashed for exactly this window, so a splash
+     * simply does not fire while one is running, rather than risk the
+     * queue. */
     if (s->rng_hashed) {
         return;
     }

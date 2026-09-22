@@ -55,8 +55,9 @@ typedef struct {
 } refine_result_t;
 
 /* One trace of the whole picture, refinement pass by pass - scene_raytrace.c's
- * own shape (trace_lattice_row(), fill_block()), rebuilt over a private
- * buffer instead of the shell's framebuffer and timed pass by pass. */
+ * own shape (rt_cornell_render_lattice_budget(), fill_block()), rebuilt
+ * over a private buffer instead of the shell's framebuffer and timed pass
+ * by pass. */
 static refine_result_t
 run_refine_capture(const rt_cornell_camera_t* cam, gfx_color_t* buf) {
     refine_result_t r = {0};

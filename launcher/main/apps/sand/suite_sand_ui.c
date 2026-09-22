@@ -16,13 +16,15 @@
 
 #include "sand_ui.h"
 
-/* --- fixture --------------------------------------------------------------
+/*
+ * fixture
  *
  * A small stub brush table, independent of app_sand.c's real one, but built
  * from the same real materials so material_can_emit() exercises the real
  * eligibility rule rather than a fake one: MAT_SAND and MAT_WATER are
  * KIND_POWDER/KIND_LIQUID (emit-capable), MAT_STONE is KIND_STATIC (not) -
- * see material.c. */
+ * see material.c.
+ */
 #define STUB_BRUSH_COUNT 4
 static const sand_brush_t stub_brushes[STUB_BRUSH_COUNT] = {
     SAND_BRUSH_SOLID(CELL_MAKE(MAT_SAND, 0)),  /* 0: emits */
@@ -71,10 +73,6 @@ outside_every_tile(int* px, int* py) {
     *py = -5;
 }
 
-/* =====================================================================
- * The four shipped bugs
- * ===================================================================== */
-
 /* Bug: a BOOT hold also cycled the brush, because cycling sat on
  * `.pressed` (and therefore fired again on every frame the hold's own
  * `.pressed` had already latched true, before `.held` even existed to
@@ -114,7 +112,7 @@ test_closing_the_palette_leaves_brush_exactly_as_it_was(void) {
     ui.opened_mode = BRUSH_POUR;
 
     /* A BOOT press, not a release, while the panel is open: must close
-     * nothing - this is the exact edge faad9bb's bug closed on. */
+     * nothing - closing on the press edge is the exact bug this guards. */
     input_t press = no_input();
     press.boot.pressed = true;
     const unsigned press_actions = sand_ui_step(&ui, &press);
@@ -134,11 +132,10 @@ test_closing_the_palette_leaves_brush_exactly_as_it_was(void) {
     TEST_ASSERT_EQUAL_INT(2, ui.brush);
 }
 
-/* Bug (commit eef97e4): the swallow-release guard armed unconditionally,
- * so with no finger down when the panel opened there was nothing to
- * swallow - and the flag ate the player's first genuine tap on a tile
- * instead, leaving the panel silently unresponsive until a second tap.
- * Opening with the finger already UP must leave a tap free to select. */
+/* An unconditionally armed swallow-release guard eats the player's first
+ * genuine tap on a tile when no finger was down as the panel opened,
+ * leaving it silently unresponsive until a second tap. Opening with the
+ * finger already UP must leave a tap free to select. */
 static void
 test_opening_with_no_finger_down_then_tapping_a_tile_selects_that_tile(void) {
     sand_ui_t ui;
@@ -254,10 +251,6 @@ test_a_release_arriving_after_the_screen_changed_is_consumed_exactly_once(void) 
     TEST_ASSERT_EQUAL_INT(0, ui.brush);         /* RUNNING never saw it either */
 }
 
-/* =====================================================================
- * Ordinary behaviour
- * ===================================================================== */
-
 static void
 test_tapping_a_different_tile_selects_it_and_preserves_its_mode(void) {
     sand_ui_t ui;
@@ -277,10 +270,10 @@ test_tapping_a_different_tile_selects_it_and_preserves_its_mode(void) {
 
 /* The same reset, but starting from DETONATE rather than ERASE - the third
  * leg of the cycle needs its own check rather than trusting that "resets
- * to PAINT" generalises from the ERASE case above, since handle_brush_input()
+ * to PAINT" generalises from the ERASE case, since handle_running_input()
  * cycles all three but handle_palette_input() only ever assigns PAINT
- * directly - nothing here proves it does that from EVERY starting mode
- * until it is actually exercised from each one. */
+ * directly - nothing proves it does that from EVERY starting mode until it
+ * is exercised from each one. */
 static void
 test_selecting_a_tile_while_detonating_resets_to_paint(void) {
     sand_ui_t ui;
@@ -338,9 +331,10 @@ test_tapping_the_selected_tile_is_untouched_by_detonate(void) {
     ui.mode = SAND_MODE_DETONATE;
     ui.modes[0] = BRUSH_POUR;
 
-    /* Same reasoning as test_selecting_a_tile_while_detonating_resets_to_
-     * paint just above - the tile index goes straight to sand_ui_tile_
-     * clicked(), not through a synthesized touch release. */
+    /* Same reasoning as
+     * test_selecting_a_tile_while_detonating_resets_to_paint just above -
+     * the tile index goes straight to sand_ui_tile_clicked(), not through a
+     * synthesized touch release. */
     const unsigned actions = sand_ui_tile_clicked(&ui, 0);
 
     TEST_ASSERT_TRUE(actions & SAND_UI_REDRAW_PALETTE);

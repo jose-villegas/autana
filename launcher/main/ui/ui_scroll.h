@@ -1,10 +1,8 @@
 /*
- * ui_scroll - a screen with more rows than fit, generalised out of three
- * private copies (a menu's own `place_row()`, a launcher hand-tracking `y`,
- * a menu placing absolute rects) that each rediscovered the same fix: only a
- * RELATIVE mu_Rect (mu_layout_set_next(), microui.c) folds into a
- * container's content_size and follows its scroll afterward, so only a
- * RELATIVE rect can ever be reached once the stack overflows the screen.
+ * ui_scroll - a screen with more rows than fit. Only a RELATIVE mu_Rect
+ * (mu_layout_set_next(), microui.c) folds into a container's content_size
+ * and follows its scroll afterward, so only a RELATIVE rect can ever be
+ * reached once the stack overflows the screen.
  *
  * ui_flow_row() is that fix, generalised to any centred fixed-width row.
  * ui_scroll_view_begin()/_end() sit around ui_begin_screen() to add what a
@@ -77,9 +75,7 @@ ui_flow_t ui_flow_start(int canvas_w, int y0, int gap);
 
 /* The rect a stack of `count` rows of `row_h` each, `gap` apart, should
  * start at so the whole stack sits centred in `canvas_h` - or `margin` from
- * the top once it no longer fits. Generalises the boot menu's own
- * centre-or-pin rule so every screen gets it from one place instead of
- * reimplementing it per menu. */
+ * the top once it no longer fits. One centre-or-pin rule for every screen. */
 int ui_flow_top(int canvas_h, int count, int row_h, int gap, int margin);
 
 /* The next `w`x`h` row, centred on `flow->canvas_w`, and folded into the

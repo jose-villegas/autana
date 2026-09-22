@@ -198,8 +198,9 @@ this at 80 MHz (not comparable with the 40 MHz tables below):
 
 Strips save along one axis only: rotate the device and every band is
 touched however little changed. Sending each row's real width, one
-`draw_bitmap()` per row, is 5.4x slower: a QSPI transaction's fixed cost
-is about 118 us (derived under "Still untapped" below).
+`esp_lcd_panel_draw_bitmap()` per row, is 5.4x slower: a QSPI
+transaction's fixed cost is about 118 us (derived under "Still untapped"
+below).
 
 **The grid:** the screen is a fixed 7×4 grid - 64-row bands, each
 split into `GRID_COLS = 4` columns of 92 px each - 28 cells in total.
@@ -466,7 +467,7 @@ kept here so the reasoning survives to whoever picks one up.
   next step.** A *different* 2D design, built afterward with this finding in
   hand, did ship - see "Partial updates" above for the grid-and-gathered-runs
   design that replaced plain strips. The difference is call count: this
-  prototype could reach up to 64 `draw_bitmap()` calls for one band, which
+  prototype could reach up to 64 `esp_lcd_panel_draw_bitmap()` calls for one band, which
   the ~118 us/call figure below rules out categorically; the shipped design
   bounds a row to at most `GRID_COLS/2` gathered calls (2, here) by merging
   adjacent dirty columns into one transfer first and falling back to a
@@ -479,7 +480,7 @@ kept here so the reasoning survives to whoever picks one up.
   framebuffer for free but an arbitrary sub-rectangle is not; a single
   row's sub-range, though, is already contiguous (`fb + y*GFX_WIDTH + x`),
   so a tracked (min x, max x, min y, max y) box could be sent as one
-  `draw_bitmap()` call per row inside it - no copy needed - and
+  `esp_lcd_panel_draw_bitmap()` call per row inside it - no copy needed - and
   `gfx_present()` already queues every strip's transfer before waiting on
   any of their semaphores, so this should not have added a wait per row.
   Espressif's docs put DMA descriptor setup at ~2 us per transaction,
@@ -490,7 +491,7 @@ kept here so the reasoning survives to whoever picks one up.
   time across a 64-row band cost **7,567 us**, against **1,407 us** for the
   same band sent as a single full-width call - **5.4x slower**, not
   faster. `7567 / 64 rows` is almost exactly 118 us/transaction, which
-  means the real, measured fixed cost per `draw_bitmap()` call is roughly
+  means the real, measured fixed cost per `esp_lcd_panel_draw_bitmap()` call is roughly
   **59x higher** than the ~2 us figure the estimate used. That 2 us covers
   only DMA descriptor linking; it does not cover whatever the rest of
   `esp_lcd_panel_io_tx_color()` and the SPI master driver's transaction
@@ -499,7 +500,7 @@ kept here so the reasoning survives to whoever picks one up.
   active, matching the number.
 
   The conclusion generalises past this one threshold: at ~118 us/call, any
-  design that trades "send fewer bytes" for "make more `draw_bitmap()`
+  design that trades "send fewer bytes" for "make more `esp_lcd_panel_draw_bitmap()`
   calls" needs the call count itself to be very small - rough breakeven
   against one 1,407 us full-band call is somewhere under a dozen calls,
   not the up-to-64 a per-row scheme can reach. A version gated on the
@@ -540,7 +541,7 @@ kept here so the reasoning survives to whoever picks one up.
 - **A tiled (swizzled) framebuffer - parked on purpose, not a next step.**
   Store pixels in fixed NxN tile order instead of scanline order, so a
   whole tile - not just one row of it - is a single contiguous run and
-  transfers with no copy and one `draw_bitmap()` call, the property a
+  transfers with no copy and one `esp_lcd_panel_draw_bitmap()` call, the property a
   full-width strip already gets today. Real, standard technique (GPU
   texture memory does the same thing), and with power-of-two tile
   dimensions the address math is shifts, same trick as `STRIP_HEIGHT`.

@@ -29,7 +29,7 @@
 #include "suite_sand_common.h"
 #include "util/intmath.h"
 
-/* --- materials ------------------------------------------------------------ */
+/* materials */
 
 /* Everything above this point is about sand. These are about the fact that a
  * cell is now a material, and that materials behave differently from each
@@ -1001,7 +1001,7 @@ test_a_cascading_impulse_moves_more_than_one_cell(void) {
     free(cascade_test_cells);
 }
 
-/* --- pouring water must not stir the dirt bed underneath it --------------- */
+/* pouring water must not stir the dirt bed underneath it */
 
 #define STIR_W 14
 #define STIR_H 30

@@ -1,22 +1,19 @@
 name: Format
 
 # The formatting gate: every first-party C and header file, checked against
-# .clang-format on every push and pull request. The tree was reformatted
-# wholesale once (#193); this is what stops it drifting back one PR at a
-# time. The pre-commit hook (scripts/install-git-hooks.sh) reports the same
-# thing earlier, but cannot enforce it - it is opt-in, skippable with
-# --no-verify, and absent from any commit CI or a merge makes.
+# .clang-format on every push and pull request. This holds the tree to
+# .clang-format. The pre-commit hook (scripts/install-git-hooks.sh) reports
+# the same thing earlier, but cannot enforce it - it is opt-in, skippable
+# with --no-verify, and absent from any commit CI or a merge makes.
 #
-# clang-format is pinned to one exact version, not a minimum. The versions
-# disagree about this config on real files in this tree: against the
-# committed baseline, 19 reformats nothing, 20 reformats
-# suite_sand_scenes.c, and 21 also reformats material.c and gfx.c. A range
-# would let the runner's toolchain decide what the tree looks like, which is
-# the drift this job exists to catch. pip rather than apt because it carries
-# the exact patch version on any runner image; 19 because it is also what
-# ESP-IDF's esp-clang bundles, so contributors usually already have it.
+# clang-format is pinned to one exact version, not a minimum: see
+# docs/C-Style-Guide.md's "One formatter version" for why the versions
+# disagree on real files in this tree. pip rather than apt because it
+# carries the exact patch version on any runner image; 19 because it is
+# also what ESP-IDF's esp-clang bundles, so contributors usually already
+# have it.
 #
-# Own workflow file, like the other five, purely so it gets its own badge -
+# Own workflow file, like the others, purely so it gets its own badge -
 # GitHub exposes whole-workflow badges and never per-job ones. See
 # host-tests.yml's top comment.
 

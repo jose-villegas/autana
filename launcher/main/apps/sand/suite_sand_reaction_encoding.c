@@ -30,7 +30,7 @@
 #include "suite_sand_common.h"
 #include "util/intmath.h"
 
-/* --- encoding: no reaction may mint an ambiguous byte ------------------ */
+/* encoding: no reaction may mint an ambiguous byte */
 
 static void
 assert_reaction_field_never_bare_extended(uint8_t v, const char* field, const char* owner) {
@@ -103,7 +103,7 @@ test_wood_burning_state_is_byte_identical_under_lit_from(void) {
     }
 }
 
-/* --- reaction dispatch: the table must not skip past the ladder ------- */
+/* reaction dispatch: the table must not skip past the ladder */
 
 /* Written independently of reaction_first_stage() (sand_priv.h), on
  * purpose - if a future edit changes the stage order in one place and
@@ -183,7 +183,7 @@ test_reaction_first_stage_never_dispatches_later_than_the_ladder(void) {
     }
 }
 
-/* --- the per-material burn plan ---------------------------------------- */
+/* the per-material burn plan */
 
 /* Written from the material and reaction rows directly rather than from
  * fill_burn_plan() (sand_reactions.c), on purpose - if a future edit changes
