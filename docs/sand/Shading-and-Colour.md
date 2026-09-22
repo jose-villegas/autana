@@ -317,11 +317,12 @@ faces away from "up" (minus gravity) darkens; one facing toward it
 brightens - a pool's lit top versus an overhang's shaded underside at the
 same fill level.
 
-**Foam is gated by rim curvature, not a motion flag.** `abs(neighbour_count
-- 3)` is 0 on a straight edge, positive on either a concave crevice or a
-convex protrusion - and a calm surface is smooth by construction while a
-sloshing one is jagged along its whole length, so curvature alone is
-already a disturbance detector with no simulation state added. Measured: a
+**Foam is gated by rim curvature, not a motion flag.**
+`abs(neighbour_count - 3)` is 0 on a straight edge, positive on either a
+concave crevice or a convex protrusion - and a calm surface is smooth by
+construction while a sloshing one is jagged along its whole length, so
+curvature alone is already a disturbance detector with no simulation state
+added. Measured: a
 still, flat pool has non-flat rim on only 4% of its cells; two steps into a
 75-degree tilt, 94%. The same signal gives a waterfall its foam for free -
 a lip, the falling stream's edges, and the plunge point all foam without
