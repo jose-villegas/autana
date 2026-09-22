@@ -15,6 +15,7 @@
 
 #include "console/console_inject_parse.h"
 #include "console/console_latch.h"
+#include "console/console_navigation_parse.h"
 #include "console/console_verbs.h"
 
 #define REPLIES_MAX 8
@@ -560,6 +561,14 @@ test_a_button_line_carries_its_kind(void) {
     TEST_ASSERT_FALSE(held);
 }
 
+static void
+test_an_app_name_accepts_a_case_folded_prefix(void) {
+    TEST_ASSERT_TRUE(console_app_name_matches("Render Lab", "render"));
+    TEST_ASSERT_TRUE(console_app_name_matches("Render Lab", "RENDER LAB"));
+    TEST_ASSERT_FALSE(console_app_name_matches("Render Lab", "sand"));
+    TEST_ASSERT_FALSE(console_app_name_matches("Render Lab", ""));
+}
+
 void
 suite_console(void) {
     RUN_TEST(test_exact_name_matches);
@@ -597,6 +606,7 @@ suite_console(void) {
     RUN_TEST(test_a_drag_line_carries_both_endpoints_and_duration);
     RUN_TEST(test_a_bad_gesture_line_changes_nothing);
     RUN_TEST(test_a_button_line_carries_its_kind);
+    RUN_TEST(test_an_app_name_accepts_a_case_folded_prefix);
 }
 
 SUITE_REGISTER(suite_console)
