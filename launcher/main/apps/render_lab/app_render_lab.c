@@ -95,8 +95,7 @@ scene_title_alpha(void) {
 
 /* Whether the BOOT-opened menu is showing instead of the current scene -
  * the normal view renders only the scene and the fps counter, everything
- * else lives behind BOOT, the same one-button-one-screen-level-concern
- * split app_diagnostics.c and app_sand.c already use. */
+ * else lives behind BOOT. */
 static bool menu_open;
 static render_lab_mode_switch_t mode_switch;
 
