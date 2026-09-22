@@ -1,5 +1,5 @@
 /*
- * Portable suite: the home screen's own row placement, built on
+ * Host-only suite: the home screen's own row placement, built on
  * ui_flow_row(), so rows past the screen stay reachable by scrolling.
  *
  * Drives the real ui_launcher_draw() through ui_pointer_step(), the same
@@ -9,8 +9,9 @@
  * was split out from it in the first place (see ui_launcher.c's own top
  * comment).
  *
- * Registers its fixture apps through the real app_register();
- * app_registry_reset_for_test() gives each test a clean list.
+ * Registers its fixture apps through the real app_register() and clears
+ * them with app_registry_reset_for_test(), which no device build has -
+ * hence run_tests.sh only.
  */
 
 #include <stdio.h>
