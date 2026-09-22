@@ -14,9 +14,8 @@ into that rather than fighting it.
 
 ## Why it exists
 
-Lava and dirt had no reaction — the one obviously missing pair on the
-board. Closing it needed a product, and the product needed a job nothing
-else could do. Every other solid stops heat; metal carries it.
+Lava smelting dirt needs a product, and that product needs a job nothing
+else on the board does. Every other solid stops heat; metal carries it.
 
 | | heat | acid | `conducts` |
 |---|---|---|---:|
@@ -68,8 +67,8 @@ cap, placing one more cell before the next attempt fails to fit
 (`test_the_rod_terminates_at_conduct_reach_not_the_far_wall`,
 `suite_sand_metal.c`).
 
-It is self-limiting, it falls out of tables already written, and it makes
-`CONDUCT_REACH` visible to the player for the first time.
+It is self-limiting, it falls out of tables already written, and it is the
+one place `CONDUCT_REACH` is visible to the player.
 
 ## Why `conducts` is 248
 

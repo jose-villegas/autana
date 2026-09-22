@@ -45,7 +45,7 @@ same bug costs a second on a laptop.
 ## Exact commands
 
 ```sh
-./launcher/test/run_tests.sh          # host suites, <1 s - the TDD loop
+./launcher/test/run_tests.sh          # host suites - the TDD loop, see Testing-Guide.md
 ./launcher/test/check_app_sources.sh  # compiles app_*.c against host stubs
 autana flash dev                      # --dev, always: autana screenshot needs it
 autana screenshot -o shot.png         # lossless PNG, does not reset
@@ -56,7 +56,7 @@ through the real drawing code and the real `gfx.c`:
 
 ```sh
 ./launcher/tools/render_all_scenes.sh        # every declared scene
-./launcher/tools/post_ui_render_host.sh      # one of them
+./launcher/tools/post_ui_render_host.sh -o /tmp/post  # one of them
 ./launcher/tools/render_diff.sh shot.png /tmp/post/landscape-panel.bmp
 ```
 
@@ -132,11 +132,12 @@ Fonts, scales and text styles are in [`Text-and-Fonts.md`](Text-and-Fonts.md).
 
 `ui_scroll.h` (`launcher/main/ui/`) is the shared way to lay out a stack of
 centred, fixed-width rows and let it scroll once it no longer fits - the
-boot menu, the launcher list and a runtime-options menu all build on it
-instead of each hand-tracking a `y` or placing rows at an ABSOLUTE rect,
-which left every row past the first unreachable once the stack overflowed
-(only a RELATIVE `mu_layout_set_next()` folds into a container's own
-`content_size` and follows its scroll - see `microui.c`'s `mu_layout_next()`).
+launcher list and each app's menu screens (`sand_menu_screen.c`,
+`render_lab_menu_screen.c`) build on it instead of each hand-tracking a `y`
+or placing rows at an ABSOLUTE rect, which left every row past the first
+unreachable once the stack overflowed (only a RELATIVE `mu_layout_set_next()`
+folds into a container's own `content_size` and follows its scroll - see
+`microui.c`'s `mu_layout_next()`).
 
 Open the window with `ui_scroll_view_begin()` instead of `ui_begin_screen()`,
 close it with `ui_scroll_view_end()`, and lay out rows with an `ui_flow_t`
@@ -155,8 +156,8 @@ if (ui_scroll_view_begin(ctx, "My Screen", opt, ui_scroll_view_default(), dt_ms)
 
 `ui_flow_top(canvas_h, count, row_h, gap, margin)` gives the starting `top`
 for a uniform stack that should sit centred when short and pinned to
-`margin` once it no longer fits - the same rule the boot menu already used
-for its own row count.
+`margin` once it no longer fits - the same rule `sand_menu_screen.c` already
+uses for its own row count.
 
 `ui_scroll_view_config_t` (from `ui_scroll_view_default()`, or built by hand)
 controls what a plain `ui_begin_screen()` cannot: `axis` (which of
@@ -171,8 +172,8 @@ may not stay that way.
 
 ### Artwork
 
-`ui_draw_icon()` emits a bitmap as run-length rects into the command list.
-Application artwork lives in the app's own folder so deleting the app
+`ui_draw_icon()` (`ui/ui.h`) emits a bitmap as run-length rects into the
+command list. Application artwork lives in the app's own folder so deleting the app
 deletes it. Structural facts only in tests - non-empty, bbox in range, run
 count under the cap, declared symmetries - never assert artwork against the
 code that draws it.

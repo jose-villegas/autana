@@ -1,9 +1,7 @@
 # Sand App Docs
 
 The falling-sand app's own documentation folder, referenced by name from
-[`../notes/README.md`](../notes/README.md) since this folder split out of
-the platform notes once there was enough sand-specific material to justify
-its own set. Eight files, two jobs:
+[`../notes/README.md`](../notes/README.md). Eight files, two jobs:
 
 **How it works today:**
 

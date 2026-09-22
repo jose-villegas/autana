@@ -3,8 +3,6 @@
 How this project tests firmware, and why it is set up the way it is. Read this
 before adding a test or deciding something "can't be tested".
 
-Living document: update it when the approach changes.
-
 | your question | read |
 |---|---|
 | How do I run the tests? | [Running them](#running-them) |
@@ -106,34 +104,37 @@ flowchart LR
     DeviceOnly --> Qemu
 ```
 
-**The host runner is the TDD loop.** Under a second, so red-green-refactor is
-actually practical — a ninety-second build-and-flash is not a loop anyone
-sustains. It runs the portable suites only.
+**The host runner is the TDD loop.** The tests themselves run in seconds;
+the wait is compiling - see "Running them" above. Still far more practical
+for red-green-refactor than a ninety-second build-and-flash. It runs the
+portable suites only.
 
 **The device run is the guarantee.** It runs *every* registered suite, including
 the portable ones. That is deliberate: passing on a laptop only proves the logic is
 right on x86, whereas running on-target proves the same source behaves
 identically built by the Xtensa toolchain and executed on this chip. It
 never runs in a release image - only in a SELFTEST build, either one suite
-at a time via runsuite (seconds) or as a full boot-time run (~18 min).
+at a time via runsuite (seconds) or as a full boot-time run - see
+["Recommended practice"](#recommended-practice) for how long that takes.
 
 ### The host runner enforces two of the device's limits
 
-The host has megabytes of stack and gigabytes of heap; the board has 3,584
-bytes of main task stack and 130,635 bytes of internal heap free after
-`gfx_init()` (117,219 once the shell is ready), in blocks no larger than
-51,200. Two classes of bug lived in
-that gap, and each one cost a build-flash-capture cycle to find — twice
-over, for both:
+The host has megabytes of stack and gigabytes of heap; the board's actual
+main-task stack and internal-heap figures are what
+`launcher/tools/device_profiles/esp32s3.sh` records
+(`DP_MAIN_TASK_STACK_BYTES`, `DP_FREE_HEAP_BYTES`,
+`DP_LARGEST_FREE_BLOCK_BYTES`). Two classes of bug lived in that gap, and
+each one cost a build-flash-capture cycle to find — twice over, for both:
 
 - **A fixture whose stack frame cannot fit.** `run_tests.sh` compiles the
   test sources a second time with `-fstack-usage` and
   `check_stack_usage.py` fails the run on any function whose frame exceeds
   the profile's ceiling. This is a *static prediction*, not a reproduction:
   the host cannot overflow, so the gate reads the frame sizes the compiler
-  already computed for its own prologues. Six host frames already exceed the
-  ceiling and are listed as debt in the checker, so a new one still fails
-  while the existing ones stay visible rather than silently blessed.
+  already computed for its own prologues. The frames already over the
+  ceiling are listed as debt (`PRE_EXISTING_STACK_DEBT` in
+  `check_stack_usage.py`), so a new one still fails while the existing ones
+  stay visible rather than silently blessed.
 - **A fixture that allocates more than the board has.** The suite's
   `malloc`/`calloc`/`realloc`/`free` are redirected (`-Wl,--wrap=`) into
   `heap_arena.c`, a first-fit arena exactly the size of the device's free
@@ -208,17 +209,17 @@ on a clean build directory, which is what makes it a trap.
 
 ## runsuite: the everyday device loop
 
-A diag build (`CONFIG_LAUNCHER_SELFTEST` on, `AUTORUN` off) listens on the
-USB serial console for two verbs, dispatched from `launcher/main/console/console.c`
-to `console_screenshot.c` and `console_runsuite.c` respectively. `screenshot`
-dumps the frame on screen; `runsuite <suite_function_name>` runs exactly that
-one registered suite and
-prints its result — **with no rebuild and no reflash**:
+A diag build (`CONFIG_LAUNCHER_SELFTEST` on, `AUTORUN` off) answers
+`runsuite <suite>` on the console (`console/console_runsuite.c`, one of the
+verbs `launcher/main/console/console.c` dispatches); `autana suite <name>`
+sends it. `screenshot` (`console_screenshot.c`) is another verb - it dumps
+the frame on screen. `runsuite <suite_function_name>` runs exactly that one
+registered suite and prints its result — **with no rebuild and no reflash**:
 
 ```
-runsuite run_gfx_suite
-runsuite run_sand_perf_suite
-runsuite run_cube_band_perf_suite
+autana suite run_gfx_suite
+autana suite run_sand_perf_suite
+autana suite run_cube_band_perf_suite
 ```
 
 Both commands only set a flag; `main.c`'s frame loop does the actual work at
@@ -228,13 +229,14 @@ the suite returns the shell prints `RUNSUITE_COMPLETE name=<suite> found=<0|1>`
 on its own line, so a harness need not guess from a quiet console that the
 run is over. This
 is what makes iterating on one area fast: flash the diag build once, then
-runsuite whichever suite covers what changed, as many times as needed,
-without paying a rebuild-and-reflash cycle per attempt.
+`autana suite` whichever suite covers what changed, as many times as
+needed, without paying a rebuild-and-reflash cycle per attempt.
 
 ### Recommended practice
 
-1. **During development**, runsuite the suites for the area you touched, on
-   a normal diag build (SELFTEST on, AUTORUN off, full scope).
+1. **During development**, `autana suite <name>` the suites for the area
+   you touched, on a normal diag build (SELFTEST on, AUTORUN off, full
+   scope).
 2. **Scoped builds for perf captures only** — see
    [`Build-Variants.md`](Build-Variants.md#a-diagnostics-build-can-be-scoped)
    and [`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md) for the
@@ -243,8 +245,8 @@ without paying a rebuild-and-reflash cycle per attempt.
    `autana selftest`, full scope, autorun, unattended. About 18 minutes
    on this board; treat it as the gate, not the everyday loop.
 4. **Know which suites cover which area** so a change to shell code (gfx,
-   ui) can be checked without waiting on an app's suites at all — see the
-   table below.
+   ui) can be checked without waiting on an app's suites at all — see
+   ["Which suites cover which area"](#which-suites-cover-which-area) below.
 
 ### Two device-only traps
 
@@ -304,7 +306,7 @@ cores, with no board and therefore no port to share. Any number of
 instances run at once.
 
 ```sh
-python %IDF_PATH%\tools\idf_tools.py install qemu-xtensa   # once
+python "$IDF_PATH/tools/idf_tools.py" install qemu-xtensa   # once
 ./launcher/test/run_qemu_tests.sh --perf-scope             # build + run
 ./launcher/test/run_qemu_tests.sh --perf-scope --icount --no-build
 ./launcher/test/run_qemu_tests.sh --suite suite_job --screenshot shot.png
@@ -440,7 +442,7 @@ different rules.
 | Ships in release | **yes** | diagnostics (SELFTEST) builds only |
 | Asks | "is this **board** working?" | "is this **code** correct?" |
 | Side effects | none — probe and report | draws to the panel, mutates state |
-| Cost | ~95 ms | runsuite: seconds; full self-test: ~18 min |
+| Cost | ~95 ms | runsuite: seconds; full self-test: see ["Recommended practice"](#recommended-practice) |
 | A failure means | this unit is faulty | this code is wrong |
 
 It probes each I2C peripheral, checks flash size, heap headroom, MAC validity
@@ -576,11 +578,11 @@ A test that cannot fail is decoration, and a green suite that was never seen red
 proves nothing. When adding one, **break the implementation deliberately and
 watch it go red**, then restore.
 
-This was done for the debounce: setting `TOUCH_RELEASE_QUIET_US` to `0` turned
-exactly `test_brief_dropout_is_not_a_release` and
-`test_contact_resuming_after_a_dropout_does_not_re_press` red, with their
-messages explaining why, and the runner exited non-zero. That is the evidence
-the rest of the suite is worth anything.
+For the touch debounce, that means setting `TOUCH_RELEASE_QUIET_US` to `0`
+and confirming exactly `test_brief_dropout_is_not_a_release` and
+`test_contact_resuming_after_a_dropout_does_not_re_press` turn red, with
+their messages explaining why. That is the evidence the rest of the suite
+is worth anything.
 
 ---
 
@@ -638,9 +640,12 @@ exercised instead by `main/apps/render_lab/suite_cube_band_perf.c`
 path on the same scene. No device suite covers a band's narrowed send or
 band buffers sharing the strip-bounce slots.
 
-Still untested: `ui_launcher.c`'s microui integration and the small3dlib
-rendering. Both are verified by running the firmware and looking at the screen.
-Worth being honest about rather than implying coverage we do not have.
+Still untested by an assertion: small3dlib's per-pixel Gouraud shading -
+verified by running the firmware and looking at the screen, since the cube
+scene's animation never settles into the fixed picture a render-harness
+pixel diff needs (`docs/tools/Render-Harness.md`). `ui_launcher.c`'s microui
+integration is driven by `suite_ui_launcher.c`, and small3dlib's row scissor
+by `suite_small3dlib_scissor.c`.
 
 The framework is Unity — the ThrowTheSwitch C library, no relation to the game
 engine. The host runner uses a vendored copy; the device uses the one ESP-IDF
@@ -651,21 +656,10 @@ against.
 
 ## Which suites cover which area
 
-Built by grepping every `SUITE_REGISTER` call site (63 suites when written). Use
-this to pick which runsuite commands cover a change, and to know a gfx/ui
-change can be checked without touching an app's suites at all.
-
-| Area | Suites | Covers |
-|---|---|---|
-| gfx | `run_gfx_suite`, `run_gfx_color_suite`, `run_gfx_dirty_suite`, `run_gfx_present_guard_suite`, `run_gfx_font_suite`, `run_gfx_font_roles_suite`, `run_gfx_mode_suite`, `run_gfx_band_suite`, `run_gfx_target_suite`, `run_gfx_fb_guard_suite`, `run_icons_suite`, `run_icons_system_suite`, `run_display_suite`, `suite_screenshot` | framebuffer, clipping, colour packing, DMA/present, dirty-rect tracking, fonts, icons, display orientation, the screenshot protocol, band mode (mode grant, band ring, band draw target, framebuffer guard) |
-| ui | `run_ui_suite`, `run_ui_pointer_suite`, `run_ui_pointer_microui_suite`, `run_ui_slider_suite`, `suite_ui_style`, `suite_ui_transform`, `suite_ui_centered_rect` | microui integration, pointer/widget hit-testing, style tokens, rotation transforms |
-| input | `run_touch_fsm_suite`, `run_gesture_suite`, `run_button_fsm_suite`, `run_tilt_suite` | touch debounce FSM, swipe gestures, button FSM, the tilt filter |
-| boot/POST | `run_boot_anim_suite`, `run_boot_anim_perf_suite` | the small3dlib boot animation and its frame budget. POST itself (`boot/post.c`) has no suite — it runs every boot and is read from its own `POST_COMPLETE` line, not Unity |
-| render | `run_r3d_project_suite`, `run_r3d_camera_suite` | the camera-space near-plane clip and perspective projection boot and other 3D callers share; the camera description, its upright roll, the viewport fit, and the float ray camera a tracer uses |
-| render lab | `run_cube_perf_suite`, `run_cube_band_perf_suite`, `run_small3dlib_scissor_suite`, `run_wire_pipeline_suite`, `run_wire_primitives_suite`, `run_wire_perf_suite`, `run_rt_cornell_suite`, `run_rt_perf_suite` | the cube scene's frame budget, band mode against the full framebuffer across orientations, the rasterizer's row scissor; the wireframe transform/near-clip/screen-clip pipeline and the baked plane/cube/sphere/capsule edge lists it draws; the wire scenes' frame budget by primitive, layout and orientation; the Cornell box ray tracer's ray/plane and ray/box intersection, its shadow ray and its picture at several sizes and quarters; the tracer's own frame budget by refinement pass against a plain row-by-row reference, at two quarters |
-| sand behaviour | `run_sand_*_suite` plus `run_row_runs_suite`, `run_palette_suite`, `run_brush_screen_suite` — see `launcher/main/apps/sand/suite_*.c` | materials, reactions, liquids, gas, dirt/roots, gunpowder, glass thermal, metal, the brush UI and palette picker, dirty-row reconciliation |
-| sand perf | `run_sand_perf_suite` | the app's frame-budget scenes — see [`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md) |
-| shell/util | `suite_fixed`, `suite_tween`, `run_rng_suite`, `suite_device_state` | fixed-point math, tweening, RNG, the device-state JSON `screenshot.py` reads |
+Shell suites (gfx, ui, input, boot, render, util) live in
+`launcher/test/suites/`; an app's own are its
+`launcher/main/apps/<name>/**/suite_*.c`. `autana suite list [text]` filters
+by a substring of the name, so treat it as a lookup, not an area map.
 
 ---
 

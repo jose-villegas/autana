@@ -11,3 +11,4 @@ How the repository's own checks work, where a script's header is not enough.
 | [Live-Tuning.md](Live-Tuning.md) | Changing a number on a running device by name, with no build and no flash: the commands, the console protocol, and making a constant tunable. |
 | [Render-Harness.md](Render-Harness.md) | Rendering real firmware screens on a host: declaring a scene, what its pixels are pinned to, video output, the QEMU backend, and diffing against a device capture. |
 | [Mermaid-Diagrams.md](Mermaid-Diagrams.md) | Validating ```` ```mermaid ```` diagrams with mermaid-cli: the command, the pre-commit step, and CI. |
+| [Icon-Baker.md](Icon-Baker.md) | `gen_icons.py`: baking icons from a PNG atlas or SVG source into a generated header, what it rejects, and how the shipped artifact is tested. |

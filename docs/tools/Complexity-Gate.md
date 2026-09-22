@@ -16,12 +16,10 @@ file counted twice:
 - **The diagnostics build's own database**,
   `launcher/build.diag/compile_commands.json` - real esp32s3 flags,
   restricted to `launcher/main/` and `launcher/test/`. This is what
-  reaches hardware-facing files: `app_sand.c`, `app_render_lab.c`,
-  `app_diagnostics.c`, `main.c`, `gfx/gfx.c`, `ui/ui.c`,
-  `ui/ui_launcher.c`, `board/board_esp32s3.c`, `boot/*.c`,
-  `input/buttons.c`, `input/imu.c`, `input/touch.c`,
-  `util/device_state.c`, `console/console.c`, `console/console_screenshot.c`, and every on-device test
-  suite. esp-clang does not recognise three GCC-only Xtensa flags in that
+  reaches every hardware-facing file the diagnostics build compiles: every
+  `app_*.c`/`scene_*.c`, the shell and boot sources, `board/`, `console/`,
+  `input/`, and every on-device test suite. esp-clang does not recognise
+  three GCC-only Xtensa flags in that
   database (stripped) and has no bundled libc for the target (given
   `--sysroot`/`--gcc-toolchain` pointing at the same `xtensa-esp-elf` GCC
   install ESP-IDF itself uses, found under the ESP-IDF tools root:
@@ -43,17 +41,16 @@ file counted twice:
 **Coverage is a checked rule, not a description.** Every `.c` file under
 `launcher/main/` is walked directly from the filesystem, independent of
 either database, and compared against what was actually measured. A file
-neither source reaches, and that is not below, fails the gate by name:
+neither source reaches, and that is not excluded, fails the gate by name.
+`EXCLUDED_MAIN_FILES` in `complexity_gate.py` is that exclusion list - each
+entry carries the reason a reader can check.
 
-| File | Why it is excluded |
-|---|---|
-| `main/apps/sand/tools/crossflow_bench.c` | uses C11 `timespec_get()`/`TIME_UTC`; esp-clang does not expose them under this project's `-std=c11` with the host route's headers, unrelated to the Xtensa target - host gcc compiles it fine (`report_crossflow.sh`) |
-
-Vendored code (`launcher/components/`, `managed_components/`, and the
-vendored Unity under `test/framework/`) is out of scope entirely - a
-ratchet on this project's own functions has nothing to say about code it
-did not write - and is never a source of a coverage gap, since it sits
-outside `launcher/main/`. A `static inline` helper defined only in a
+Unmodified vendored code (`launcher/components/`, `managed_components/`,
+`test/framework/`) is out of scope - a ratchet on this project's own
+functions has nothing to say about code it did not write, and it is never
+a source of a coverage gap since it sits outside `launcher/main/`. A
+vendored function this project changed is measured - see the end of this
+page. A `static inline` helper defined only in a
 shared header (for example `sand_priv.h`'s `dest_row()`/`mark_rows()`) is
 still invisible to this gate: clang-tidy's default scope is the file
 actually being compiled, not headers it pulls in.

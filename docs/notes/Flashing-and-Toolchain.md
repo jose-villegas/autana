@@ -3,12 +3,6 @@
 Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 - see
 [`README.md`](README.md) for the full set.
 
-The build-flag and framerate figures below were captured before this
-project's move to the ESP32-S3 and have not been re-measured on this board.
-The qualitative points (-Og being the wrong default, a generated `sdkconfig`
-going stale, one microui button costing real time) still apply; treat the
-specific millisecond and fps numbers as historical, not current.
-
 ---
 
 ## Flashing and recovery
@@ -74,78 +68,19 @@ mismatch this fixes.
 
 ---
 
-## The build was on -Og until it was measured
+## The build flag and the frame tick
 
-ESP-IDF defaults `CONFIG_COMPILER_OPTIMIZATION` to **Debug (-Og)**, and this
-project sat there without anyone checking. It is the wrong default for a device
-whose every frame is rasterising, cellular automata and pixel loops.
+`CONFIG_COMPILER_OPTIMIZATION_PERF` (-O2) is set in `sdkconfig.defaults`,
+the right choice for a device whose every frame is rasterising, cellular
+automata and pixel loops - there is no debugger attached to this board to
+trade away for it. A generated `sdkconfig` already committed to git is not
+re-derived from `sdkconfig.defaults` just because the defaults changed, so
+check the committed file itself after changing them, rather than trusting
+that it once matched.
 
-Switching to `CONFIG_COMPILER_OPTIMIZATION_PERF` (-O2):
-
-| | -Og | -O2 |
-|---|---|---|
-| Falling-sand step, 184x224, 10304 grains | 9035 us | **6664 us** |
-| `gfx_present()` | 18683 us | 17602 us |
-| Display suspend/resume round trip | 730 us | 636 us |
-| Shell framerate | 40.0 fps | **43.5 fps** |
-| Image size | 0x5c140 | **0x5ae50** |
-
-Faster *and* smaller, which is not the usual trade — -O2 inlines away enough
-call overhead to more than pay for what it unrolls. `gfx_present()` barely
-moves because it is waiting on DMA, not computing - see
-[Display-and-Rendering.md](Display-and-Rendering.md).
-
-Nothing was lost: there is no debugger attached to this board, and the on-device
-suite passes identically at either level.
-
-**This regressed silently, and was caught late.** The committed `sdkconfig`
-drifted back to `CONFIG_COMPILER_OPTIMIZATION_DEBUG` at some point after the
-numbers above were taken - `sdkconfig.defaults` kept saying `PERF`, but a
-generated file already checked into git is not re-derived from its defaults
-just because they changed, so nothing forced the two back into agreement.
-Every plain `idf.py build` since then shipped at -Og again, undetected
-because the diagnostics variant regenerates its own `sdkconfig` from the
-defaults on every build and so never drifted - it kept measuring the -O2
-numbers this doc assumed, while the actual release image quietly did not.
-Found while device-verifying an unrelated refactor; fixed by deleting the
-stale file and letting `idf.py reconfigure` rebuild it from the defaults.
-Worth remembering on its own: a generated file checked into git can go
-stale exactly like this, silently, with no diff pointing at it - the fix
-is to occasionally check what is actually committed rather than trust that
-it was once right.
-
----
-
-## Release and diagnostics run at the same speed
-
-Worth writing down because the first measurement said otherwise. The shell ran
-at **41.7 fps in release and 40.0 fps in diagnostics**, which looks like the
-test code costing ~4%. (Those figures are from the -Og era; the conclusion is
-unchanged at -O2, only the numbers moved.)
-
-It is not. Release registers one app and diagnostics registers two, so the two
-builds were drawing a different number of buttons. Registering `app_render_lab`
-twice in a release build reproduces 40.0 fps exactly — the entire difference is
-one microui button.
-
-The suites only ever run at boot; nothing test-related executes in the frame
-loop. What the diagnostics build actually costs:
-
-| | Release | Diagnostics |
-|---|---|---|
-| Shell framerate | 41.7 fps | 41.7 fps (like for like) |
-| Boot to ready | 1029 ms | 1696 ms |
-| Image size | 0x55f20 | 0x58d10 |
-
-Two things this does expose:
-
-- **One microui button costs about a millisecond.** The shell is not free, and
-  the menu gets slower as apps are added.
-- **The 1 ms tick quantises everything.** The frame loop ends in `vTaskDelay(1)`
-  (`main.c`), so frame time is work rounded up to a whole tick. 24 vs 25 ms is
-  one tick, which is why a small difference showed up as a clean 1.7 fps step.
-  Any framerate comparison here is quantised to ~1.7 fps near 40 fps — compare
-  microseconds of work, not the fps figure.
+The frame loop ends in `vTaskDelay(1)` (`main.c`), so frame time is work
+rounded up to a whole tick - compare microseconds of work, not an fps
+figure, which quantises around any small change.
 
 ---
 

@@ -31,11 +31,12 @@ sequenceDiagram
     end
 ```
 
-Day-to-day interactive use goes through `tools/autana` ([Autana-CLI.md](Autana-CLI.md))
-- every `autana` command calls `device.py` for the lock and the port. This
-doc covers `device.py` itself: its own command-line shape, for a script
-that names its own `--owner`/`--purpose` rather than `autana`'s generated
-one, and recovery when a lock will not let go.
+Day-to-day interactive use goes through `tools/autana`
+([Autana-CLI.md](Autana-CLI.md)) - every `autana` command calls `device.py`
+for the lock and the port. This doc covers `device.py` itself: its own
+command-line shape, for a script that names its own `--owner`/`--purpose`
+rather than `autana`'s generated one, and recovery when a lock will not let
+go.
 
 Run the tool with ESP-IDF's Python (the `python.exe` under
 `%USERPROFILE%\.espressif\python_env\idf<version>_py<version>_env\Scripts\`
@@ -64,11 +65,10 @@ python scripts/device/device.py --owner sam listen --seconds 30
 `send` writes one console line and prints the device's replies to it, under
 the lock like everything else. It is what live tuning uses - the firmware's
 `util/tune` answers `SET <name> <value>`, `GET <name>` and `TUNE` on a
-development build - and what `autana set`, `autana get` and `autana tune`
-call:
+development build - and what `autana tune` calls:
 
 ```powershell
-python scripts/device/device.py --owner maintainer send "SET launcher.ridge_trail 200"
+python scripts/device/device.py --owner maintainer send "SET ridge.trail 200"
 python scripts/device/device.py --owner maintainer send TUNE
 ```
 
@@ -85,9 +85,10 @@ to `index.jsonl`. A tuning session is dozens of these, and none is evidence.
 
 `device.py screenshot [--out PATH] [--timeout SECONDS]` takes the lock,
 requests the panel capture and writes a `.png` plus a `.json` state snapshot;
-`autana screenshot` calls it the same way. A delegated task under the lock
-uses `device.py screenshot` directly, the same way it uses `run-suite`
-rather than `autana suite`. The wire protocol and the BMP-to-PNG decoder
+`autana screenshot` calls it the same way. A script that needs its own
+`--owner`/`--purpose` calls `device.py screenshot` directly, the same way
+it calls `run-suite` rather than `autana suite`. The wire protocol and the
+BMP-to-PNG decoder
 live in `launcher/tools/screenshot.py`, imported as a library - it opens no
 port itself.
 
@@ -98,7 +99,7 @@ captures every suite `--runs` times, and writes one summary across all runs.
 Holding the board for the whole sequence means nobody else can flash
 between two captures of the same image, and the command blocks until it is
 done. `autana batch` calls
-it the same way ([Autana-CLI.md](Autana-CLI.md)); a delegated task with its
+it the same way ([Autana-CLI.md](Autana-CLI.md)); a script with its
 own `--owner`/`--purpose` calls `device.py batch` directly:
 
 ```powershell
@@ -241,5 +242,3 @@ This clears the reservation and prints the resulting lock status. The lower-leve
 
 - [Autana-CLI.md](Autana-CLI.md) - the interactive `autana` command built on
   top of this lock.
-- `.dev/docs/notes/Device-Workflow.md` - the one board, its port, and a
-  measurement trap a device suite already caused once.
