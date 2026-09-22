@@ -22,7 +22,7 @@
 #include "esp_timer.h"
 #include "unity.h"
 
-#include "../test/suites.h"
+#include "suites.h"
 
 static const char* TAG = "selftest";
 
