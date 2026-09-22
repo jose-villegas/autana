@@ -45,7 +45,7 @@ launcher/
     │   ├── board.h             what any board must provide
     │   └── board_esp32s3.c     this board's answer
     ├── display/        the panel behind the framebuffer
-    │   ├── display.{h,c}       panel bring-up and transfer  (host-tested)
+    │   ├── display.{h,c}       which way is up, with hysteresis  (host-tested)
     │   └── panel_clock.{h,c}   pixel-clock resolution       (host-tested)
     ├── gfx/            the one framebuffer, and what draws into it
     │   ├── gfx.{h,c}           owns THE framebuffer, primitives, text
@@ -238,35 +238,78 @@ had changed.
 
 ## How it fits together
 
-Input flows up from the panel, drawing flows down into one framebuffer, and the
-shell sits in the middle deciding who gets called.
+One row per dependency depth - the same thing the "includes are
+layer-qualified" rule above makes visible at the line level, drawn
+whole. Hardware-touching folders are marked.
 
 ```mermaid
 flowchart TB
-    FT["FT5x06 touch controller"] -->|"I2C, only when INT asserted"| TP
-    TP["touch.c<br/><i>polling task, 100 Hz</i>"] -->|"sample + timestamp"| FSM
-    FSM["touch_fsm.c<br/><i>press / release edges</i>"] -->|"input_t"| SHELL
+    classDef hw fill:#8a3d3d,color:#fff
+    classDef contract fill:#f4f1e8,stroke:#333,stroke-width:1px,color:#111
 
-    SHELL["main.c<br/><i>the one frame loop</i>"]
-    SHELL -->|"is it a home swipe?"| GEST["gesture.c"]
-    SHELL -->|"launcher showing"| UI["ui_launcher.c<br/><i>microui command list</i>"]
-    SHELL -->|"app running"| APP["apps/app_render_lab.c<br/><i>small3dlib</i>"]
+    Apps["apps/<br/><i>one folder per app</i>"]
+    Main["main.c<br/><i>the frame loop</i>"]
+    Contract(["app.h - the shell/app contract"]):::contract
+    Boot["boot/<br/><i>runs once, before the loop exists</i>"]
 
-    UI --> FB
-    APP --> FB
-    SHELL -->|"home hint"| FB
+    subgraph T4[" "]
+        Ui["ui/<br/><i>microui integration</i>"]
+        Console["console/<br/><i>dev builds only</i>"]
+    end
+    subgraph T5[" "]
+        Gfx["gfx/<br/><i>the one framebuffer</i>"]
+        Render["render/<br/><i>3D transform, clip, projection</i>"]
+        Display["display/<br/><i>orientation, with hysteresis</i>"]
+        Input["input/<br/><i>touch, gesture, tilt</i>"]
+    end
+    subgraph T6[" "]
+        Board["board/<br/><i>this board's pins and peripherals</i>"]
+        Util["util/<br/><i>arithmetic and services</i>"]
+    end
 
-    FB[("gfx.c<br/><b>the single framebuffer</b><br/>368 x 448 x 2 = 322 KiB")]
-    FB -->|"7 full-width strips, QSPI DMA"| PANEL["SH8601 AMOLED"]
+    Apps ~~~ Main ~~~ Boot
+    Boot ~~~ Ui
+    Boot ~~~ Console
+    Ui ~~~ Gfx
+    Ui ~~~ Render
+    Ui ~~~ Input
+    Ui ~~~ Display
+    Console ~~~ Gfx
+    Console ~~~ Render
+    Console ~~~ Input
+    Console ~~~ Display
+    Gfx ~~~ Board
+    Gfx ~~~ Util
+    Render ~~~ Board
+    Render ~~~ Util
+    Input ~~~ Board
+    Input ~~~ Util
+    Display ~~~ Board
+    Display ~~~ Util
+
+    class Boot,Gfx,Input,Console,Board,Util hw
+
+    %% linkStyle below recolours these two by index (20, 21); an edge added
+    %% above them shifts both numbers, so add new edges after them.
+    Contract -.->|"includes input/buttons.h"| Input
+    Input <-.-|"device_state reaches up"| Util
+
+    linkStyle 20 stroke:#e11,stroke-width:2px
+    linkStyle 21 stroke:#e11,stroke-width:2px
 ```
 
-Two things the diagram makes obvious that prose does not:
+**A folder may include anything below it, and `app.h`, never above.** The
+two red arrows are the exceptions: `app.h` includes `input/buttons.h`,
+and `util/device_state` reaches back up into `input/imu.h` (also
+`display/display.h` and a driver header, not drawn).
 
-- **Every drawing path converges on one buffer.** Nothing else allocates
-  pixels, because nothing else can afford to.
-- **Hardware touches the system at exactly two points** — `touch.c` at the top,
-  `gfx.c` at the bottom. Everything between them is ordinary logic, which is
-  why `touch_fsm` and `gesture` can be tested on a laptop.
+- **Every drawing path ends in gfx.** Nothing else allocates pixels. See
+  [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path) for how a draw
+  call becomes pixels on the panel.
+- **Hardware sits in the marked folders.** Within `input/`, the drivers
+  (`touch.c`, `buttons.c`, `imu.c`) are split from the logic they feed,
+  which is why `touch_fsm`, `button_fsm`, `gesture` and `tilt` are tested
+  on a laptop.
 
 ---
 
@@ -386,47 +429,24 @@ stateDiagram-v2
     [*] --> Launcher
 
     Launcher --> Launcher: ui_launcher_frame()<br/>draws the app list
-    Launcher --> Running: tap an entry<br/><i>app->enter()</i>
+    Launcher --> Running: tap an entry<br/><i>the app's enter()</i>
     Launcher --> ControlCenter: swipe in from the logical top
     ControlCenter --> ControlCenter: ui_control_center_frame()<br/>over the dimmed launcher
     ControlCenter --> Launcher: swipe in from the logical bottom
 
-    Running --> Running: app->frame(dt_ms, input)<br/>+ home hint
-    Running --> Launcher: home swipe or PWR long-press<br/><i>app->exit()</i>
+    Running --> Running: one pass
+    Running --> Launcher: home swipe or PWR long-press<br/><i>the app's exit()</i>
 ```
 
 What the shell does on each transition, and which of the two ways home an app
-gets, is in [Building-an-App.md](Building-an-App.md#lifecycle).
-
-Each iteration:
-
-```
-touch_read()          latched press/release edges from the polling task
-    |
-    +-- launcher showing?  ui_launcher_frame()  -> returns chosen app or -1
-    |                      Control Center up?   -> ui_control_center_frame()
-    |
-    +-- app running?       home swipe or PWR held?  -> exit() and go home
-                           otherwise app->frame(dt_ms, input) + home hint
-    |
-gfx_present()         blit, and wait for the DMA to drain
-vTaskDelay(1)         yield so the idle task can feed the watchdog
-```
-
-The blit dominates the frame - `gfx.h`'s QSPI note gives the bus time a full
-frame costs, and a scene that rasterizes into the framebuffer adds its own on
-top.
-
-`dt_ms` is clamped to `FRAME_DT_MAX_MS` (250 ms) so a stall does not make
-animation jump.
+gets, is in [Building-an-App.md](Building-an-App.md#lifecycle). One pass of
+the loop, with and without `update()`, is in
+[Building-an-App.md](Building-an-App.md#one-pass-of-the-frame-loop).
 
 ### Apps with `update()`: overlapping the next step with the present
 
 An app that sets `app_t.update` has the previous frame sent on core 1 while
-`update()` runs on core 0 - the sequence and the app's obligations are in
-[Building-an-App.md](Building-an-App.md#one-pass-of-the-frame-loop).
-
-The split present underneath it is in
+`update()` runs on core 0. The split present underneath it is in
 [Gfx-and-Presentation.md](Gfx-and-Presentation.md#present-who-runs-it).
 
 ### Full redraw
@@ -630,7 +650,7 @@ act - you mutate a node, it marks its canvas dirty. Immediate mode throws that
 signal away by construction, so we recover it from the other end: compare
 output where an engine compares intent. Same destination, opposite direction.
 
-### One window is one canvas
+### One window is one canvas, in full-framebuffer mode
 
 The canvas split comes free with it. microui already groups commands by root
 container, each with its own rect, so each window is hashed, repainted and
@@ -648,6 +668,9 @@ flowchart TB
     DIRTY -->|yes| PAINT
     PAINT --> OVER["also repaint any<br/>window above it<br/>that overlaps"]
 ```
+
+Band mode has no framebuffer to hash canvases against, so it hashes shapes
+by row range instead, per band (`ui_band_hash`, `ui/ui.c`).
 
 Two rules that have to be respected:
 

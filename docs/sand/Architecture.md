@@ -97,15 +97,15 @@ With every ordinary slot spent, two further tricks each bought one more
 material without widening the byte:
 
 - **Fold a state into an existing material's variant**, when the variant
-  has room. Ember used to be its own material; it is now wood with
-  `burn_decay` non-zero, so quenching it (water puts a fire out, leaving
-  the wood) became expressible for free. This works whenever the two
-  states differ only in fields the *cold* table reads, not the hot one.
+  has room. Ember is wood with `burn_decay` non-zero rather than a
+  material of its own, so quenching it (water puts a fire out, leaving
+  the wood) comes for free. This works whenever the two states differ
+  only in fields the *cold* table reads, not the hot one.
 - **Split `MAT_EXTENDED`'s low nibble by its own top bit.** `0xF0`-`0xF7`
-  stays the extended-statics doorway; `0xF8`-`0xFF` (gunpowder) became a
+  stays the extended-statics doorway; `0xF8`-`0xFF` is gunpowder, a
   second, ordinary `KIND_POWDER` row with real physics and a 3-bit
-  variant. This is what doubled `materials[]` to `MATERIAL_ROWS`, and it
-  is expensive - it spent half of what was left of the extended range on
+  variant, which is why `materials[]` has `MATERIAL_ROWS` rows. It is
+  expensive - it spent half of what was left of the extended range on
   one material. `Adding-a-Material.md`'s "Making room" section has the
   full ladder of options and what each one costs, for whoever needs a
   tenth.
@@ -171,34 +171,18 @@ for the full mechanism and every constant's reasoning.
 
 ```mermaid
 flowchart TD
-    Start(["sand_step(s, gx, gy, jostle)"]) --> Mom["build_sweep_tables()\nemit_from_emitters()"]
-    Mom --> Dith["dithered gravity direction\n(free fall -> early return)"]
-    Dith --> Sweep["Main gravity sweep
-step_one_row() per row
-(sand + water's DOWN move)
-chunks on a gravity-ordered schedule, two lanes"]
-    Sweep --> Liq["sand_step_liquids()
-cross-flow + wall rebound
-chunks on a ray-ordered schedule, two lanes"]
+    Start(["sand_step(s, gx, gy, jostle)"]) --> Tables["build_sweep_tables()<br/>emit_from_emitters()"]
+    Tables --> Dith["dithered gravity direction"]
+    Dith -->|"free fall"| End
+    Dith --> Sweep["Main gravity sweep<br/>step_one_row() per row<br/>(sand + water's DOWN move)<br/>chunks on a gravity-ordered schedule, two lanes"]
+    Sweep --> Liq["sand_step_liquids()<br/>cross-flow + wall rebound<br/>chunks on a ray-ordered schedule, two lanes"]
     Liq --> GasCheck{"may_have_gas?"}
-    GasCheck -- yes --> Gas["sand_step_gas()
-rise + disperse
-chunk-split across cores"]
-    GasCheck -- no --> React
-    Gas --> React["sand_step_reactions(s)
-ignite / extinguish / smother /
-burn out / conduct heat / flare
-local rules chunk-split across cores"]
-    React --> Imp["step_impulses(s, dx, dy)\nexplosions, thrown chunks, splash pushback"]
-    Imp --> Fin["finalize_settling()\nBLOCK_ACTIVE -> settled bits\nsplit across cores above FINALIZE_SETTLING_SPLIT_MIN_BLOCK_ROWS"]
+    GasCheck -->|yes| Gas["sand_step_gas()<br/>rise + disperse<br/>chunk-split across cores"]
+    GasCheck -->|no| React
+    Gas --> React["sand_step_reactions(s)<br/>ignite / extinguish / smother /<br/>burn out / conduct heat / flare<br/>local rules chunk-split across cores"]
+    React --> Imp["step_impulses(s, dx, dy)<br/>explosions, thrown chunks, splash pushback"]
+    Imp --> Fin["finalize_settling()<br/>BLOCK_ACTIVE -> settled bits<br/>split across cores above FINALIZE_SETTLING_SPLIT_MIN_BLOCK_ROWS"]
     Fin --> End(["done"])
-
-    style Sweep fill:#a87a3d,color:#fff
-    style Liq fill:#3d6b8a,color:#fff
-    style Gas fill:#4a7c59,color:#fff
-    style React fill:#8a3d3d,color:#fff
-    style Imp fill:#5a5a5a,color:#fff
-    style Fin fill:#5a5a5a,color:#fff
 ```
 
 The one rule that governs the whole pipeline: **every pass has to finish
@@ -237,9 +221,9 @@ what can split at all, and why the rest cannot.
 ```mermaid
 stateDiagram-v2
     [*] --> Active: block created
-    Active --> Active: a grain moved in this block\n(BLOCK_ACTIVE set)
-    Active --> Settled: no activity this step,\nAND no active neighbour\n(any_neighbor_active() false)
-    Settled --> Active: sand_set()/sand_erase()/\ncross-flow touches it\n(wake_block_and_neighbors(),\n3x3 neighbourhood)
+    Active --> Active: a grain moved in this block<br/>(BLOCK_ACTIVE set)
+    Active --> Settled: no activity this step,<br/>AND no active neighbour<br/>(any_neighbor_active() false)
+    Settled --> Active: sand_set()/sand_erase()/<br/>cross-flow touches it<br/>(wake_block_and_neighbors(),<br/>3x3 neighbourhood)
     Settled --> Settled: still quiet
 
     classDef activeStyle fill:#8a3d3d,color:#fff
