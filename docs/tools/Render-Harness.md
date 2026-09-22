@@ -182,7 +182,7 @@ and still; set the pose before comparing at a given quarter.
 ## Diffing against a capture
 
 ```sh
-autana screenshot -o shot.png                                # --dev build only
+autana screenshot --framebuffer -o shot.png                  # --dev build only
 ./launcher/tools/post_ui_render_host.sh -o /tmp/post
 ./launcher/tools/render_diff.sh shot.png /tmp/post/landscape-panel.bmp \
     --mask build_mark --mask home_hint --out /tmp/diff.png
@@ -193,10 +193,10 @@ with the differences in red and the masked regions in blue. Exit status is
 0 only when nothing differs. Either side may be a host render, a QEMU
 capture or a board capture.
 
-**Orientation is declared, never guessed.** A capture is always
-panel-native whatever the shell was rotated to; its sidecar's
-`orientation_quarter` says which rotation that was and is reported, not
-applied. A render in the read orientation must say `--quarter-a` /
+**Orientation is declared, never guessed.** The capture for this comparison
+uses `--framebuffer`, so it remains panel-native; its sidecar's
+`orientation_quarter` says which rotation the shell used and is reported,
+not applied. A render in the read orientation must say `--quarter-a` /
 `--quarter-b` or it is refused rather than turned on a guess.
 
 **Masks cover what the shell draws and a scene does not** - the development
