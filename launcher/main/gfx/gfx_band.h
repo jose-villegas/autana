@@ -114,7 +114,7 @@ gfx_band_span_clip(int x0, int x1, int width, int* out_x0, int* out_x1) {
 
 /* Packs `height` rows of `buf` (stride `width`) down to columns [x0, x1),
  * contiguous, in place, so gfx_band_submit() can hand the panel one flat
- * buffer - draw_bitmap() takes no stride, and a call per row measured 5.4x
+ * buffer - esp_lcd_panel_draw_bitmap() takes no stride, and a call per row measured 5.4x
  * slower (docs/notes/Display-and-Rendering.md, "Still untapped"). A no-op
  * at full width. memmove, not memcpy: a wide span overlaps its own source
  * row. Rows go low first, and row r's packed end never reaches row r+1's

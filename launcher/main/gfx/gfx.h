@@ -411,7 +411,7 @@ int gfx_band_count(void);
  * band's send is still in flight (gfx_band_ring_must_wait(), gfx_band.h) -
  * never for the one just queued. Sends only the extent gfx_band_dirty()
  * last reported for this band (the full width if it was never called),
- * packed and even-clipped, in one draw_bitmap() call. An empty extent
+ * packed and even-clipped, in one esp_lcd_panel_draw_bitmap() call. An empty extent
  * sends nothing, advancing the ring as gfx_band_skip() does. */
 void gfx_band_submit(void);
 
