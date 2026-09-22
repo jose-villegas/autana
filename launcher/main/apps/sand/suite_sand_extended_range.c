@@ -29,9 +29,7 @@
 #include "suite_sand_common.h"
 #include "util/intmath.h"
 
-/* ===================================================================
- * The extended range: sixteen materials behind the last slot.
- * =================================================================== */
+/* The extended range: sixteen materials behind the last slot. */
 
 /* Heat through a wall LIGHTS oil. It does not boil it away: conduct_heat()
  * steaming any non-burning liquid was right only while water was the only

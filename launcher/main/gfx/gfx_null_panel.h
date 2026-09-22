@@ -14,7 +14,7 @@
 #include "esp_err.h"
 #include "esp_lcd_panel_ops.h"
 
-/* `strip_done` is called once per draw_bitmap(), from the esp_timer task,
- * when that strip's modelled transfer at `hz` has elapsed. Opening again
- * only changes the clock; the handle is the same one. */
+/* `strip_done` is called once per esp_lcd_panel_draw_bitmap(), from the
+ * esp_timer task, when that strip's modelled transfer at `hz` has elapsed.
+ * Opening again only changes the clock; the handle is the same one. */
 esp_err_t gfx_null_panel_open(int hz, void (*strip_done)(void), esp_lcd_panel_handle_t* out_panel);

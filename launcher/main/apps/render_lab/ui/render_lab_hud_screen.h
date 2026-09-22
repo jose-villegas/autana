@@ -22,9 +22,9 @@ typedef struct {
      * say. NULL for none. */
     const char* status;
 
-    /* -1 leaves the box at the corner inset - see draw_overlay_box()'s own comment
-     * (render_lab_hud_screen.c) for why a perf test wants to move it
-     * instead. */
+    /* -1 leaves the box at the corner inset - see
+     * render_lab_hud_screen_draw()'s own comment (render_lab_hud_screen.c)
+     * for why a perf test wants to move it instead. */
     int fps_box_x_override;
 } render_lab_hud_screen_state_t;
 

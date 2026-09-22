@@ -29,7 +29,8 @@
 #include "suite_sand_common.h"
 #include "util/intmath.h"
 
-/* --- explosions -----------------------------------------------------------
+/*
+ * explosions
  *
  * sand_explode() throws grains outward one cell per step, in a bounded
  * transient list rather than a per-cell velocity field - see
@@ -599,9 +600,11 @@ test_a_flying_grain_keeps_its_outward_push_while_falling(void) {
                                      "step, not lose its push the instant gravity also touches it");
 }
 
-/* --- KIND_STATIC support agreeing with the drift, not merely CELL_IS_EMPTY
+/*
+ * KIND_STATIC support agreeing with the drift, not merely CELL_IS_EMPTY
  * on the one cell straight below (bd - "a thrown static chunk settles too
- * eagerly") -------------------------------------------------------------- */
+ * eagerly")
+ */
 
 /* can_impulse_enter() only refuses KIND_STATIC, so gravity-drift always
  * swaps into powder beneath a falling chunk; the old settled check
@@ -685,14 +688,16 @@ test_a_spent_static_chunk_rests_on_a_powder_bank_instead_of_sinking_forever(void
                                   "a powder bank did not stop)");
 }
 
-/* --- PENETRATION MUST STOP BEING DISTANCE-DEPENDENT ---------------------
+/*
+ * PENETRATION MUST STOP BEING DISTANCE-DEPENDENT
  *
  * Only the push move charges drag, and only when rolled_move (whose chance
  * IS entry.speed) succeeds. A chunk that has flown a long way arrives slow
  * and mostly FALLING, so nearly every displacement it makes is the gravity
  * drift's swap instead - without impulse_charge_displacement() it tunnels in
  * silently. MEASURED, 40 seeds: mean penetration 6.775 rows with that charge
- * mutated back out, 0.000 with it. */
+ * mutated back out, 0.000 with it.
+ */
 #define FAR_SINK_W         20
 #define FAR_SINK_BED_DEPTH 20
 #define FAR_SINK_DISTANCE  50
@@ -1004,8 +1009,10 @@ test_a_chunk_stacked_on_an_in_flight_chunk_waits_instead_of_settling_and_both_ev
     TEST_ASSERT_EQUAL_INT_MESSAGE(H - 1, found_rows[1], "same for the second chunk found - see the previous assertion");
 }
 
-/* --- the other half of the distinction: IMPULSE earns the sinking, being
- * a solid does not ------------------------------------------------------- */
+/*
+ * the other half of the distinction: IMPULSE earns the sinking, being
+ * a solid does not
+ */
 
 /* The main sweep skips KIND_STATIC by design, so a never-thrown static cell
  * has no mechanism here that could move it. This is the test that fails if
@@ -1064,14 +1071,16 @@ test_an_ordinary_static_solid_still_does_not_sink_into_liquid_or_powder(void) {
     ordinary_static_solid_scene(true);
 }
 
-/* --- Rung 1: medium drag on a thrown KIND_STATIC chunk --------------------
+/*
+ * Rung 1: medium drag on a thrown KIND_STATIC chunk
  *
  * step_impulses() charges extra `speed` loss per non-empty cell a
  * KIND_STATIC mover displaces, proportional to density (impulse_drag_of()) -
  * KIND_STATIC only, powder/liquid out of scope (see SAND_IMPULSE_DRAG_
  * POWDER_SHIFT, sand.h). Two test shapes: horizontal distance travelled,
  * averaged over seeds (the claim), and single-step arithmetic pins on
- * speed == 255 - SAND_IMPULSE_SPEED_RAMP - density (the formula itself). */
+ * speed == 255 - SAND_IMPULSE_SPEED_RAMP - density (the formula itself).
+ */
 #define PLOW_W     40
 /* Fills only row 0 with `medium`; every row below stays open to a single
  * STONE floor. Flooring the flight row itself instead (an earlier scene
@@ -1427,7 +1436,8 @@ test_a_thrown_chunk_displacing_nothing_loses_only_the_plain_ramp(void) {
                                   "before this rung existed");
 }
 
-/* --- Rung: multi-cell push, SAND_IMPULSE_CELLS_PER_STEP_DIVISOR -----------
+/*
+ * Rung: multi-cell push, SAND_IMPULSE_CELLS_PER_STEP_DIVISOR
  *
  * An entry advancing one cell per successful roll can never outrun the
  * ordinary gravity sweep: a horizontal throw sinks at close to 45 degrees,
@@ -1435,7 +1445,8 @@ test_a_thrown_chunk_displacing_nothing_loses_only_the_plain_ramp(void) {
  * visibly leave it.
  *
  * Two claims, two tests: nothing changes below the divisor, several cells at
- * once above it. */
+ * once above it.
+ */
 
 #define SUBDIV_W     40
 #define SUBDIV_H     80
@@ -1541,7 +1552,8 @@ test_a_full_speed_static_chunk_moves_several_cells_in_one_push(void) {
                                   "SAND_IMPULSE_CELLS_PER_STEP_DIVISOR (sand.h)");
 }
 
-/* --- Rung 2: reflection off solids, with restitution ----------------------
+/*
+ * Rung 2: reflection off solids, with restitution
  *
  * A blocked KIND_STATIC mover bounces about the blocking surface's normal;
  * restitution and the SAND_IMPULSE_BOUNCE_MIN_SPEED floor keep that from
@@ -1550,7 +1562,8 @@ test_a_full_speed_static_chunk_moves_several_cells_in_one_push(void) {
  *
  * The normal quantises by DOMINANCE, not sign: the arc's centre cell is
  * always covered, so signs alone pin a diagonal throw to its own reverse and
- * it could never glance. */
+ * it could never glance.
+ */
 
 /* A geometric rule checked at one or two hand-picked directions is not
  * really tested: that gap is what let a sign-quantised normal through for
@@ -2191,12 +2204,14 @@ test_without_a_buffer_explode_does_nothing(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, sand_count(&s), "and ordinary gravity alone must still account for the one grain");
 }
 
-/* --- Rung 3, Part A: the ricochet scene (measurement, not a new feature) --
+/*
+ * Rung 3, Part A: the ricochet scene (measurement, not a new feature) --
  *
  * Two stone walls across a 42-cell gap, blast at one wall, counting
  * direction changes per dislodged chunk before it settles - not a new
  * mechanism, exists to measure rung 3's tuning. See
- * docs/sand/Sand-Simulation.md for the numbers this scene reports. */
+ * docs/sand/Sand-Simulation.md for the numbers this scene reports.
+ */
 #define RICOCHET_W            44
 #define RICOCHET_H            40
 /* DETONATE_RADIUS_PX (50, app_sand.c) at NORMAL quality (4 px/cell):
@@ -2433,14 +2448,16 @@ test_the_two_wall_explosion_scene_bounces_more_than_once_before_settling(void) {
                                      "distribution)");
 }
 
-/* --- Rung 3, Part B: momentum transfer into a volume ----------------------
+/*
+ * Rung 3, Part B: momentum transfer into a volume
  *
  * A struck cell can pick up impulse of its own (TRANSFER, step_impulses())
  * and fly clean out of its volume. DIRT (packed, inert) gives a clean
  * zero-vs-real ejecta signal; WATER spreads on its own even with no mover
  * (measured ~1.0 cell/seed/step, linear), so its test asserts a MARGIN over
  * that baseline, not zero - 200 seeds: 387 cells outside the footprint with
- * transfer forced off, 454 with it on. */
+ * transfer forced off, 454 with it on.
+ */
 
 #define EJECTA_W     40
 #define EJECTA_H     20
@@ -2549,14 +2566,16 @@ test_a_thrown_powder_grain_flings_dirt_out_of_the_bank_it_hits(void) {
                                      "flung there by the transfer this rung adds");
 }
 
-/* --- MATERIAL ACTUALLY FLIES, NOW - SAND_IMPULSE_CELLS_PER_STEP_DIVISOR ---
+/*
+ * MATERIAL ACTUALLY FLIES, NOW - SAND_IMPULSE_CELLS_PER_STEP_DIVISOR
  *
  * AIRBORNE means every one of a cell's 8 neighbours is CELL_IS_EMPTY() -
  * stricter than ejecta_count_outside()'s "relocated". Before this rung
  * every displacing move advanced one cell per roll, same as gravity, so a
  * thrown chunk could never outrun it: ejecta could reposition but never
  * visibly fly. Measured, seeds 1..40: before, 26/40 seeds ever showed
- * airborne sand (peak 3 at once); after, all 40 do (peak 8). */
+ * airborne sand (peak 3 at once); after, all 40 do (peak 8).
+ */
 
 #define AIRBORNE_W        80
 #define AIRBORNE_H        40
@@ -2677,14 +2696,16 @@ test_a_stone_chunk_thrown_into_a_sand_bed_launches_sand_airborne(void) {
     TEST_ASSERT_GREATER_THAN_MESSAGE(4, peak, msg);
 }
 
-/* --- A THROWN GRAIN THAT HAS FLOWN A LONG WAY STILL EJECTS ON IMPACT ------
+/*
+ * A THROWN GRAIN THAT HAS FLOWN A LONG WAY STILL EJECTS ON IMPACT
  *
  * The `!rolled_move` branch keeps an entry tracked only if it is still
  * airborne, and the roll's chance IS entry.speed, which the ramp erodes every
  * step - so tracking collapses long before a grain's energy does: 62% at 10
  * steps, 16% at 20, 2% at 30, 0.1% at 40, while speed at 30 is still 193,
  * nearly 3x SAND_IMPULSE_TRANSFER_MIN_SPEED. The grain flies on with no entry
- * attached, so TRANSFER never runs. */
+ * attached, so TRANSFER never runs.
+ */
 #define EJECTA_FAR_W        45
 #define EJECTA_FAR_H        70
 #define EJECTA_FAR_WALL_X   35
@@ -2899,13 +2920,15 @@ test_a_struck_water_cell_is_handed_impulse_in_a_backward_cone_from_the_mover(voi
                                   "carrying exactly its share of the mover's own post-drag speed");
 }
 
-/* --- a KIND_POWDER mover's own distance, now that transfer is in scope
+/*
+ * a KIND_POWDER mover's own distance, now that transfer is in scope
  * too - PLOW_W/H/SEEDS/STEPS, plow_build() and plow_mover_x() are rung 1's
  * own (a few hundred lines up); this reuses that exact shape and grid, not
  * a new one, following plow_total_distance()'s own idiom. That existing
  * helper hardcodes MAT_STONE as the mover, so a fresh pair - one to find a
  * DIFFERENT material's mover, one to total ITS distance - is what a
- * KIND_POWDER mover needs instead of a third copy of the whole scene. */
+ * KIND_POWDER mover needs instead of a third copy of the whole scene.
+ */
 static int
 plow_mover_x_material(sand_t* g, uint8_t mat) {
     for (int y = 0; y < PLOW_H - 1; y++) {
@@ -2955,13 +2978,15 @@ test_a_thrown_powder_grain_travels_less_far_through_dirt_than_through_air(void) 
                                       "drag");
 }
 
-/* --- the budget guard: impulse_buf is shared, and it is finite ----------
+/*
+ * the budget guard: impulse_buf is shared, and it is finite
  *
  * SAND_CASCADE_MAX_PER_STEP caps deferred entries queued per step, but
  * impulse_buf itself (APP_IMPULSE_MAX) is a separate fixed budget shared
  * with whatever else is using it - sand_impulse() refuses silently once
  * full. A long plow through a low-density bank could queue one transfer
- * per cell without that cap; this test proves it holds. */
+ * per cell without that cap; this test proves it holds.
+ */
 #define BUDGET_W           200
 #define BUDGET_H           30
 /* Same open-below shape as plow_build(): a full floor under the mover's
@@ -3037,13 +3062,15 @@ test_a_long_plow_through_a_wide_bank_never_exhausts_the_impulse_buffer(void) {
     free(cells);
 }
 
-/* --- conservation: transfer relocates cells, it never creates or destroys
- * them --------------------------------------------------------------------
+/*
+ * conservation: transfer relocates cells, it never creates or destroys
+ * them
  *
  * DIRT is checked by CELL COUNT, exactly: a KIND_POWDER cell's count never
  * legitimately changes from ordinary movement. WATER is checked by MASS,
  * since a liquid's cell count is free to change as it spreads or merges
- * without a drop being lost. */
+ * without a drop being lost.
+ */
 static void
 test_a_thrown_powder_grain_conserves_the_dirt_it_ejects(void) {
     uint8_t* cells = malloc((size_t)EJECTA_W * EJECTA_H);
@@ -3141,7 +3168,7 @@ test_a_thrown_powder_grain_conserves_the_water_mass_it_ejects(void) {
                                   "the total amount must not move");
 }
 
-/* --- free fall and shaking ---------------------------------------------- */
+/* free fall and shaking */
 
 static void
 test_nothing_moves_in_free_fall(void) {

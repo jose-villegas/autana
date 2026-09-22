@@ -1,9 +1,9 @@
 /*
  * Portable suite: rt_pixel_budget.h - the shared growth/shrink step
- * scene_raytrace.c's progressive trace paces itself with. bd autana-cjdp:
- * a landscape resolve ran about two seconds slower than portrait because a
- * single over-budget frame nearly halved the budget while recovery only
- * grew it back one step at a time - a tiny per-frame difference in one
+ * scene_raytrace.c's progressive trace paces itself with. A single
+ * over-budget frame nearly halves the budget, while recovery only grows it
+ * back one step at a time - a landscape resolve ran about two seconds
+ * slower than portrait because a tiny per-frame difference in one
  * orientation was amplified into a much longer resolve.
  */
 

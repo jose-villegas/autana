@@ -866,14 +866,10 @@ block_or_neighbour_has_liquid(const sand_t* s, int bx, int by) {
     return false;
 }
 
-/* Used only for touches OUTSIDE the gravity sweep: no moved_here-style
- * bookkeeping exists for any_neighbor_active() to observe next step,
- * unlike a sweep-internal move where the destination is always the
- * source's own neighbour. Unconditional 3x3, not edge-aware like
- * point_reach(): this runs at interaction rate, not per-grain-move, so
- * precision is not needed - see
- * test_undermining_a_sleeping_pile_collapses_it: erasing must wake a
- * NEIGHBOURING block's resting pile, with no sweep-internal fallback. */
+/* For touches OUTSIDE the gravity sweep, which leave no moved_here record
+ * (sand.c) for the next step to find: the whole 3x3 of blocks wakes, since
+ * this runs at interaction rate, not per grain move - see
+ * test_undermining_a_sleeping_pile_collapses_it. */
 static inline void
 wake_block_and_neighbors(sand_t* s, int x, int y) {
     if (s->block_state == NULL) {
@@ -1027,13 +1023,10 @@ neighbor_smothers(const sand_t* s, int nx, int ny, int w, int h, uint8_t density
     return nm->kind != KIND_LIQUID && nm->density > density;
 }
 
-/* Replaces cover_count() (sand_reactions.c), which counted screen-fixed
- * cardinals and could never fire for a wide pool sealed by a crust (only
- * the cell directly above ever counted). The lid is the three cells
- * centred on anti-gravity - opposite gravity plus its two diagonals -
- * ALL THREE must cover; the two perpendiculars alone (five-cell
- * semi-disc) read a hand-drawn wall notch as a seal at brush radii 2-4,
- * bursting basins that should hold. */
+/* The lid is the three cells centred on anti-gravity - opposite gravity
+ * plus its two diagonals - not screen-fixed cardinals, which could never
+ * fire for a wide pool sealed by a crust; ALL THREE must cover, since the
+ * two perpendiculars alone read a hand-drawn wall notch as a seal. */
 #define COVER_LID 0x7u
 
 /* Covering is neighbor_smothers(): in bounds, not liquid, denser than
@@ -1165,13 +1158,8 @@ static const int8_t reaction_dirs[4][2] = {
     {1, 0},
 };
 
-/* Use precomputed `at` index to write `mat` into cell. Every cell creation
- * goes through here. */
-
-/* may_have_* latching needed; different cell kinds created */
-
-/* may_have_* flag required; forget leads to frozen cell */
-
+/* Every cell creation goes through here, so it latches may_have_*; a missed
+ * latch freezes the cell. */
 static inline void
 place_cell(sand_t* s, int x, int y, size_t at, cell_t c) {
     s->cells[at] = c;
@@ -1193,9 +1181,6 @@ place_reacted(sand_t* s, int x, int y, size_t at, uint8_t spec) {
     place_cell(s, x, y, at, CELL_MAKE(mat, reactions[mat].heat_ramp != 0 ? SAND_AMBIENT_HEAT : MATERIAL_VARIANTS - 1));
 }
 
-/* Cell pays 1 mass. Stops fire from draining. Preserves slow quench. Follows
- * give_mass(). */
-
 /* Fire's own helper, but sand_plants.c's step_one_drinking_cell() calls it
  * too, when a tree drinks from a puddle. */
 static inline void
@@ -1208,16 +1193,10 @@ pay_quench_cost(sand_t* s, int nx, int ny, int w) {
     wake_block_and_neighbors(s, nx, ny);
 }
 
-/* Dry front marks zero moisture, new tone, skips flat soil. See
- * CELL_WITH_MOISTURE(). */
-
-/* nearby_moisture: moisture level at last watering hand-off or root sink */
-
-/* Pass 0 for no neighbour; cell dries to same look. */
-
-/* SCALED THROUGH `dry_tone_from_moisture()` - `nearby_moisture` equals tone
- * if ranges match. */
-
+/* `nearby_moisture` is the moisture level at the last watering hand-off or
+ * root sink; 0 when there was no neighbour to take it from, drying the cell
+ * to the same flat look CELL_WITH_MOISTURE() would give it. Scaled through
+ * dry_tone_from_moisture() rather than read as a tone directly. */
 static inline cell_t
 soil_dry_out(cell_t c, uint8_t nearby_moisture) {
     /* Handles any material; avoids MAT_EXTENDED index error. Byte-identical

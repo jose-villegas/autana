@@ -1,10 +1,10 @@
 name: Build (Release)
 
 # Compiles the real shipping firmware via Espressif's own CI action - no
-# test code, nothing this can't ship as-is. Own workflow file so it gets its
-# own badge, separate from the diagnostics variant and the host test suite -
-# see host-tests.yml's top comment for why these are three files instead of
-# one.
+# test code, nothing this can't ship as-is. Own workflow file, separate from
+# the diagnostics variant and the host test suite, purely so each gets its
+# own status badge (GitHub exposes whole-workflow badges, never per-job
+# ones).
 #
 # What this can't cover: an on-device run - GitHub-hosted runners have no
 # USB/serial access to a real board. See

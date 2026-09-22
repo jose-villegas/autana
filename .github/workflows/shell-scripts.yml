@@ -5,10 +5,10 @@ name: Shell Scripts
 #
 # Development happens on Windows in Git Bash, where /bin/sh is bash wearing
 # a hat: `sh -n` there accepts bashisms that a real POSIX shell rejects, and
-# tools/idf.sh's non-Windows branch is never taken. Both gaps close here for
-# free, on a runner that was already going to exist.
+# launcher/tools/idf.sh's non-Windows branch is never taken. Both gaps close
+# here for free, on a runner that was already going to exist.
 #
-# Own workflow file, like the other three, purely so it gets its own badge -
+# Own workflow file, like the others, purely so it gets its own badge -
 # GitHub exposes whole-workflow badges and never per-job ones. See
 # host-tests.yml's top comment.
 

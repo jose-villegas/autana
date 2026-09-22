@@ -63,7 +63,8 @@ gfx_band_ring_must_wait(const gfx_band_ring_t* ring) {
 
 /* Called once a band's send has been queued (after waiting on the previous
  * one, if gfx_band_ring_must_wait() said so) - advances the ring so the
- * next gfx_band_ring_slot()/_row0() describe the following band. */
+ * next gfx_band_ring_slot()/gfx_band_ring_row0() describe the following
+ * band. */
 static inline void
 gfx_band_ring_advance(gfx_band_ring_t* ring) {
     ring->in_flight = ring->next_render;
@@ -113,7 +114,7 @@ gfx_band_span_clip(int x0, int x1, int width, int* out_x0, int* out_x1) {
 
 /* Packs `height` rows of `buf` (stride `width`) down to columns [x0, x1),
  * contiguous, in place, so gfx_band_submit() can hand the panel one flat
- * buffer - draw_bitmap() takes no stride, and a call per row measured 5.4x
+ * buffer - esp_lcd_panel_draw_bitmap() takes no stride, and a call per row measured 5.4x
  * slower (docs/notes/Display-and-Rendering.md, "Still untapped"). A no-op
  * at full width. memmove, not memcpy: a wide span overlaps its own source
  * row. Rows go low first, and row r's packed end never reaches row r+1's

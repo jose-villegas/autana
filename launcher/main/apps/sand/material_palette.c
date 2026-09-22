@@ -44,11 +44,8 @@
 /* Ramp for `n` steps between colours, split for material limits. */
 #define SEG(lo, hi, i, n) GFX_RGB(LERP(lo, hi, ((i) * 15) / ((n) - 1)))
 
-/* Carried tone shape for independent moisture levels. */
-
-/* Wet soil darker, 7 point cap. */
-
-/* Removes slot sharing: variant 0 only needs to be paler than variant 1. */
+/* One shade per variant, dry to wet; the saturated level takes the full wet
+ * colour. */
 #define DIRT_DRY          0x9A7B52
 #define DIRT_WET          0x3A2A18
 
@@ -63,9 +60,7 @@
         GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 15)) /* variant 15: unused - same as 14 */
 
 /* Ember ramp: dying char through glowing orange, redder and darker than
- * fire's yellow-white. */
-
-/* See material_colours() for speckling. */
+ * fire's yellow-white. See material_colours() for speckling. */
 #define WOOD_UNLIT   0x5A3D24
 #define WOOD_CHAR    0x2A0A00
 #define WOOD_GLOW    0xFF7A28
@@ -84,7 +79,7 @@
 #define WOOD_LEAF_TINT_LO LERP(0x468F26, 0x000000, 6)
 #define WOOD_LEAF_TINT_HI LERP(0x468F26, 0x8CD24E, 3)
 
-/* Hot walls appear visibly hot now. */
+/* Hot walls appear visibly hot. */
 #define STONE_FROST       0xCEDCE8
 #define STONE_AMBIENT     0x5F6673
 #define STONE_NEUTRAL     0x8A7466
@@ -109,12 +104,6 @@
     STONE_AT(0), STONE_AT(1), STONE_AT(2), STONE_AT(3), STONE_AT(4), STONE_AT(5), STONE_AT(6), STONE_AT(7),            \
         STONE_AT(8), STONE_AT(9), STONE_AT(10), STONE_AT(11), STONE_AT(12), STONE_AT(13), STONE_AT(14), STONE_AT(15)
 
-/* Glass at room temp is mid. Below sand, it frosts. At shock, it breaks,
- * glowing like lava. */
-
-/* Shock breaks largest step: material shatters, not cools. Different
- * behaviors should look distinct. */
-
 /* CYAN, and only the cold END of the ramp - the shimmer keeps its own pale
  * target below, kept separate so a chilling cell doesn't drift toward the
  * very colour the per-cell shimmer already blends toward. Cyan holds
@@ -122,8 +111,8 @@
  * toward white. */
 #define GLASS_FROST   0x5FE6F0
 
-/* Where a cell's per-cell shimmer blends TO. Was GLASS_FROST; kept at that
- * old value so ambient glass renders exactly as it always has. */
+/* Where a cell's per-cell shimmer blends TO - its own pale target,
+ * independent of GLASS_FROST above. */
 #define GLASS_SHIMMER 0xD6EEF8
 #define GLASS_AMBIENT 0x2E6B85
 #define GLASS_NEUTRAL 0x8C7E70
@@ -396,8 +385,9 @@ static const gfx_color_t palette[256] = {
 
     [GUNPOWDER_CELL(0)] = GFX_RGB(0x141014), /* dry, tone 0 - near-black */
     [GUNPOWDER_CELL(1)] = GFX_RGB(0x2B1410), /* dry, tone 1 - black-red */
-    [GUNPOWDER_CELL(2)] = GFX_RGB(0x46160F), /* brush_color(), app_sand.c -
-                                              * only visible tone */
+    [GUNPOWDER_CELL(2)] = GFX_RGB(0x46160F), /* dry, tone 2 - also the swatch
+                                              * colour, material_brush_color()
+                                              * (material_palette.h) */
     [GUNPOWDER_CELL(3)] = GFX_RGB(0x251210), /* moisture 1 */
     [GUNPOWDER_CELL(4)] = GFX_RGB(0x1F1011), /* moisture 2 */
     [GUNPOWDER_CELL(5)] = GFX_RGB(0x180E11), /* moisture 3 */
@@ -405,18 +395,19 @@ static const gfx_color_t palette[256] = {
     [GUNPOWDER_CELL(7)] = GFX_RGB(0xFF8C2A), /* LIT (GUNPOWDER_LIT) - the
                               * fuse itself, a hot ember orange near fire's
                               * bright end, so a burning trail reads as
-                              * burning. Was a fifth moisture level before
-                              * REVISION 2 spent this code on the lit state */
+                              * burning */
 };
 
+/* Glass at room temp is mid; below ambient it frosts, and at shock it
+ * breaks and glows like lava. Shock is the ramp's largest step on purpose -
+ * shattering should read as a distinct event, not a continuation of cooling. */
 #define GLASS_RGB(v)        ((v) <= SAND_AMBIENT_HEAT ? GLASS_COOL(v) : (v) < SAND_SHOCK_HEAT ? GLASS_WARM(v) : GLASS_HOT(v))
 
-/* Blends towards ambient, not endpoints like STONE_EDGE_RGB. */
-
-/* Averaging HOT and ambient saturates to unrelated green. */
-
-/* Blending TEMPERATURE first keeps glass edges clear on COOL/WARM/HOT. Stone
- * endpoints avoid mixing. */
+/* Blends the TEMPERATURE toward ambient rather than the RGB endpoints the way
+ * STONE_EDGE_RGB does: averaging HOT's orange with ambient's colour directly
+ * saturates to an unrelated green, where blending the value first and only
+ * then mapping it through GLASS_RGB keeps every edge on COOL/WARM/HOT's own
+ * ramp. */
 #define GLASS_EDGE_V_RAW(v) ((v) + (((int)(SAND_AMBIENT_HEAT) - (int)(v)) * 10) / 15)
 
 /* Clamped to SAND_SHOCK_HEAT if already HOT. */
@@ -455,8 +446,6 @@ static const gfx_color_t stone_speckle[MATERIAL_VARIANTS][8] = {
 
 /* UNLIT wood speckled; burning logs glow uniformly. */
 #define WOOD_GRAIN(k) GFX_RGB(LERP(LERP(WOOD_UNLIT, 0x000000, 3), LERP(WOOD_UNLIT, 0xFFFFFF, 2), (k) * 15 / 7))
-
-/* Dirt movement caused texture repeat; now, tone in cell with palette. */
 
 static const gfx_color_t wood_grain[8] = {
     WOOD_GRAIN(0), WOOD_GRAIN(1), WOOD_GRAIN(2), WOOD_GRAIN(3),
@@ -685,7 +674,9 @@ material_wood_leaf_top5(int gx, int gy, int* last_down, int8_t top5[5][2]) {
  * for visibility on water. */
 static const gfx_color_t water_foam = GFX_RGB(0xE8F6FF);
 
-/* Max 5 to prevent corners appearing more foamed. */
+/* Capped below the full curvature range: an uncapped corner cell would
+ * compute a higher value than a rough edge and read as more foamed instead
+ * of just differently shaped. */
 #define WATER_FOAM_CURVATURE_MAX 3
 
 /* Curvature 0 stays flat, never foams (test_a_flat_rim_still_never_foams in
@@ -773,35 +764,14 @@ material_popcount8(unsigned mask) {
 
 /* Index 4 tweaks gradient; 54-85 luminance, no rim. Adjust as needed. */
 #define DEPTH_RANGE          4
-
-/* Local depth for full darkening - clamped to material's body colour. */
-
-/* SHARED with sand_liquid.c - must be 24 to prevent drift. */
 #define DEPTH_SATURATE_CELLS MATERIAL_LIQUID_DEPTH_BAND
 
 material_pattern_t
 material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth, gfx_color_t out[3]) {
     const uint8_t v = CELL_VARIANT(c);
 
-    /* A LIQUID's full body colour is always painted, as fill level is a
-     * SOLVER transient (see material.h). */
-
-    /* Flat colour hides tilt comb. */
-
-    /* FLAT INTERIOR READS AS FLAT: `depth` is a new cue. */
-
-    /* depth shifts index toward BRIGHT end by DEPTH_RANGE steps, removes
-     * water special case */
-
-    /* See DEPTH_SATURATE_CELLS for range mismatch bug. Wave bands caused axis
-     * seam issues. */
-
-    /* LOCAL DEPTH, NOT SCREEN POSITION. Clamped at 255. */
-
-    /* Obstacle shows dip, not band. */
-
-    /* Staleness under dirty-row optimisation; see
-     * local_depth_row_a[]/local_depth_row_b[] in app_sand.c. */
+    /* `depth` is stale under the dirty-row optimisation for a row this frame
+     * skipped - see local_depth_row_a[]/local_depth_row_b[] in app_sand.c. */
 
     if (material_of(c)->kind == KIND_LIQUID) {
         const uint8_t id = CELL_MATERIAL(c);
@@ -833,14 +803,12 @@ material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth, gfx_col
                     curvature = WATER_FOAM_CURVATURE_MAX;
                 }
 
-                /* WARNING: Safe ONLY because foam is SOLE consumer of water's
-                 * hash. */
-
                 /* ADD, not XOR: XOR maps a power-of-two-aligned threshold
-                 * window either onto itself or another aligned window
-                 * depending only on phase's low bits, so about half of all
-                 * phase steps left the foam set unchanged - addition has no
-                 * such alignment to preserve. */
+                 * window onto itself or another aligned window depending
+                 * only on phase's low bits, leaving the foam set unchanged
+                 * on about half of all phase steps; addition has no such
+                 * alignment to preserve. Safe only because foam is the sole
+                 * consumer of water's hash. */
                 const unsigned dithered = hash + foam_phase * 0x9E37u;
                 if ((dithered & 7u) < water_foam_threshold[curvature]) {
                     out[0] = water_foam;
@@ -870,11 +838,9 @@ material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth, gfx_col
         }
         case MAT_EXTENDED:
             /* Switched on low nibble for identity - see MATX(). Non-grained
-             * fall through. */
-
-            /* Metal returns HATCHED pattern, not compatible with ternary's
-             * MATERIAL_SPECKLED. */
-
+             * fall through. Metal returns MATERIAL_HATCHED, not
+             * MATERIAL_SPECKLED like the rest - the ternary below cannot
+             * express a third pattern, so it gets its own early return. */
             if (v == MATX_METAL) {
                 out[0] = metal_grain[hash & 7u];
                 out[1] = out[0];
@@ -911,9 +877,9 @@ material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth, gfx_col
             /* `mask != 0` wrong; see MATERIAL_EDGE_CARDINAL. */
             const bool edge = (mask & MATERIAL_EDGE_CARDINAL) != 0;
 
-            /* glass_phase slides starting points, drifting together */
-
-            /* Fine enough to move by a small angle without a table. */
+            /* glass_phase slides every cell's starting point together, so the
+             * whole pane drifts as one rather than each cell wandering on its
+             * own; fine enough to move by a small angle without a table. */
             const unsigned frac = (unsigned)(((int)(hash & 0xFFu) + glass_phase) & 0xFF);
 
             /* uint32_t, not gfx_color_t - `base` is 0xRRGGBB, not packed by

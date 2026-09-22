@@ -122,7 +122,7 @@ draw_build_mark(void) {
 }
 #endif
 
-/* --- panel clock --------------------------------------------------------- */
+/* panel clock */
 
 _Static_assert(PANEL_CLOCK_SLOW_HZ == GFX_PANEL_CLOCK_SLOW_HZ && PANEL_CLOCK_FAST_HZ == GFX_PANEL_CLOCK_FAST_HZ,
                "panel_clock.h's rates must match gfx.h's");
@@ -188,8 +188,6 @@ int
 shell_system_panel_clock_hz(void) {
     return panel_clock_system_hz(&shell_panel_clock);
 }
-
-/* --- app registry ------------------------------------------------------- */
 
 /* Filled in before app_main() by the constructors APP_REGISTER() emits. No
  * app is named here; see app.h for why. */
@@ -265,7 +263,7 @@ sort_apps(void) {
     }
 }
 
-/* --- chrome ------------------------------------------------------------- */
+/* chrome */
 
 static void
 home_hint_rect(gesture_edge_t edge, int* x, int* y, int* w, int* h) {
@@ -359,8 +357,6 @@ show_post_failures(void) {
     /* Long timeout for manual action, short for unattended use. */
     vTaskDelay(pdMS_TO_TICKS(8000));
 }
-
-/* --- main --------------------------------------------------------------- */
 
 /* What the boot animation dissolves into: the home screen as its first frame
  * will draw it, untouched and whole. */
@@ -483,10 +479,10 @@ step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, u
 }
 
 /* An app with update(): overlap it with sending the frame drawn last pass
- * (gfx_present_begin()/_wait(), gfx.h) - skipped while priming (frame_ready
- * false), since nothing is queued yet. THIS pass's frame() output is
- * presented the same way, deferred to present_unless_deferred() next
- * pass. */
+ * (gfx_present_begin()/gfx_present_wait(), gfx.h) - skipped while priming
+ * (frame_ready false), since nothing is queued yet. THIS pass's frame()
+ * output is presented the same way, deferred to
+ * present_unless_deferred() next pass. */
 static void
 step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
     if (current->update == NULL) {

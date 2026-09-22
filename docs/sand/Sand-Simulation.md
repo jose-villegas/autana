@@ -1172,7 +1172,7 @@ for the cache sizes and the general lesson.
 
 ## Two cores: chunk-parallel passes, and what stays serial
 
-The device's own `present()` overlaps with `sand_step()` on the other
+The device's own `gfx_present()` overlaps with `sand_step()` on the other
 core already - see `docs/Launcher-Architecture.md`. Splitting the step
 itself across cores is harder, for a reason that has nothing to do with
 sweep order: `sand_t.rng` is one `xorshift32` word, drawn from a
