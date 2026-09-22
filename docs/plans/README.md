@@ -10,4 +10,3 @@ Designs written before or during the work they describe. Each plan's own
 | [Settings-App-Plan.md](Settings-App-Plan.md) | Splitting Diagnostics into a Settings app, and unifying SELFTEST/diagnostics naming. |
 | [Log-Level-Plan.md](Log-Level-Plan.md) | A compile-time log-level ceiling per build variant. |
 | [Reaction-Doc-Generator-Plan.md](Reaction-Doc-Generator-Plan.md) | A generated short description for every sand brush. |
-| [Sand-Brush-Screen-Plan.md](Sand-Brush-Screen-Plan.md) | The sand app's brush screen and the UI primitives it needed. |

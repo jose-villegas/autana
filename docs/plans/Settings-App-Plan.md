@@ -1,33 +1,27 @@
 # Plan: split Diagnostics into a Settings app, then unify SELFTEST/diagnostics naming
 
-**Status**: planned, not built. Written 2026-08-30, out of the conversation
-that added `tools/build_flash_dev.sh` (see [Build-Variants.md](../Build-Variants.md)
-and `main/Kconfig.projbuild`) and noticed the seam this plan closes.
+**Status**: Diagnostics is DEVELOPMENT-gated with the self-test runner under
+SELFTEST; open: extract the toggles into Settings, then the
+SELFTEST/diagnostics rename.
 
-**2026-09-02 update**: step 1 below did not land as written. The maintainer's
-actual motivation surfaced first - the gfx debug-overlay checkboxes need to
-be reachable from a `--dev` build so they can be used while working on
-`sand`, and a `--diag` build cannot stand in for that because its linked-in
-test suites eat enough static RAM that `sand`'s grid allocation fails. Given
-that, moving the *whole* Diagnostics app to `CONFIG_LAUNCHER_DEVELOPMENT` and
-guarding only the self-test-runner bits (the button, its result line,
-`selftest_run()`) behind `CONFIG_LAUNCHER_SELFTEST` was simpler than first
-extracting a Settings app, and unblocked the real goal immediately. See
-`launcher/main/CMakeLists.txt` (the `apps/diagnostics/` exclusion, now
-keyed on `CONFIG_LAUNCHER_DEVELOPMENT`) and `launcher/main/apps/diagnostics/
-app_diagnostics.c` (the `#if CONFIG_LAUNCHER_SELFTEST` guards around the
-runner). That also means the factual claim in "The naming mismatch" below -
-that the POST report is `CONFIG_LAUNCHER_SELFTEST`-shaped - is no longer
-true; it is `CONFIG_LAUNCHER_DEVELOPMENT`-shaped like the rest of the app
-now, and ships in `--dev`. The "run self test suite" button and its result
-line remain genuinely SELFTEST-shaped.
+The Diagnostics app ships whole under `CONFIG_LAUNCHER_DEVELOPMENT`
+(`launcher/main/CMakeLists.txt`'s `apps/diagnostics/` exclusion), so a
+`--dev` build reaches the gfx debug-overlay checkboxes without a `--diag`
+build's linked-in test suites competing with `sand`'s grid for static RAM.
+Only the self-test runner (the button, its result line, `selftest_run()`)
+is narrowed further, to `CONFIG_LAUNCHER_SELFTEST`
+(`launcher/main/apps/diagnostics/app_diagnostics.c`'s `#if
+CONFIG_LAUNCHER_SELFTEST` guards). That also means the POST report is
+`CONFIG_LAUNCHER_DEVELOPMENT`-shaped like the rest of the app, not
+`CONFIG_LAUNCHER_SELFTEST`-shaped as "The naming mismatch" below describes
+it.
 
 Step 1 (the Settings extraction) is still open, now as a pure UI/
 organisation question rather than one gating memory or build correctness -
-see "What survives" below. Step 2 (the SELFTEST/diagnostics rename) is, if
-anything, more pressing than when this was written: "diagnostics" now names
-an app that ships in a build that is not itself called diagnostics, which is
-exactly the kind of naming friction step 2 exists to remove.
+see "What survives" below. Step 2 (the SELFTEST/diagnostics rename) remains
+open too: "diagnostics" names an app that ships in a build that is not
+itself called diagnostics, which is exactly the kind of naming friction
+step 2 exists to remove.
 
 ---
 
