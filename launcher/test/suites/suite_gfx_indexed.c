@@ -1,4 +1,4 @@
-/* Host-only: mutable indexed-colour tables exceed the diagnostics image's DRAM budget. */
+/* Host-only: mutable indexed-colour tables exceed the target image's DRAM budget. */
 
 #include "suites.h"
 
