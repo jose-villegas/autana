@@ -226,13 +226,11 @@ VARIANT can carry it.** The tables are indexed by the material nibble
 alone, so two states of one material share `density`, `slip`, `repose`
 and `scatter`. What decides it is which table the differences live in,
 and whether the variant is free to name the state. Ember is the worked
-example: it differed from wood in seven fields, and only one (`decay`)
-was in the *movement* table - the rest are reactions, read in the cold
-pass, and wood's own variant was only holding a shade. So ember became a
-state (`burn_decay` non-zero, dispatched by `cell_is_burning()`), one
-slot back, and gained something a separate material never had: water
-puts a log out and leaves the log, where before the ember *was* the
-fire. The rule: what forces a slot is needing a different row in the
+example: it differs from wood in seven fields, only one (`decay`) in the
+movement table, and wood's variant was free to name it - so ember is a
+state of wood (`burn_decay` non-zero, `cell_is_burning()`), and water
+puts a log out and leaves the log. The rule: what forces a slot is
+needing a different row in the
 table the sweep reads, or having no spare variant bits to name the
 state. Steam and smoke fail this test on both counts - identical
 reaction rows, but five differing *movement* fields, and both already
