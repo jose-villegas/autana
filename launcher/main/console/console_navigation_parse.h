@@ -19,8 +19,8 @@ console_app_name_starts_with(const char* name, const char* prefix) {
     return true;
 }
 
-/* Any word of the name, not only the first: an app called "Falling Sand"
- * answers to the word a person reaches for. */
+/* Any word of a name, not only the first: a two-word name answers to
+ * either word, which is the one a person types. */
 static inline bool
 console_app_name_matches(const char* name, const char* prefix) {
     if (*prefix == '\0') {
