@@ -366,11 +366,11 @@ test_the_sand_dune_scene_throws_grains_beyond_its_own_footprint(void) {
                                   "comment in sand.h");
 }
 
-/* =========================================================================
+/*
  * VARIANTS ON THE SAME DUNE - water pool, stone vessel, wood, layered
  * dune - each reusing settle_fully()/DUNE_BLAST_RADIUS/DUNE_IMPULSE_MAX
  * above rather than inventing its own settling or sizing rules.
- * ========================================================================= */
+ */
 
 /* The base dune, plus a deep pool of water along the right third of the
  * grid - deep enough that a blast thrown into it still leaves plenty of

@@ -7,8 +7,7 @@
                                     build and flash the worktree you are in (dev when omitted);
                                     the build and flash output streams here, --quiet leaves it
                                     in the log file only. --perf-scope, with diag, builds the
-                                    perf-scoped image (needs build_flash.sh support) and is left
-                                    on the board with no suite run.
+                                    perf-scoped image and is left on the board with no suite run.
 
     autana monitor [seconds] [--elf PATH]
                                     print what the board says, for 60 seconds when omitted.

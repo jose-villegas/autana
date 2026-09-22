@@ -90,7 +90,8 @@ board_close(board_t* b) {
     free(b->cells);
 }
 
-/* --- scenes ---------------------------------------------------------------
+/*
+ * scenes
  *
  * suite_sand_scenes.c's layout set, so this tool and the emulated sweep rank
  * and measure the same five boards.
@@ -113,7 +114,7 @@ static const scene_t scenes[] = {
 #define SCENES    ((int)(sizeof scenes / sizeof scenes[0]))
 #define GRAVITIES ((int)(sizeof gravities / sizeof gravities[0]))
 
-/* --- one cell of the sweep ------------------------------------------------ */
+/* one cell of the sweep */
 
 typedef struct {
     int chunks;
@@ -192,7 +193,7 @@ measure(const quality_t* q, const scene_t* sc, const gravity_t* g, int side_x, i
     board_close(&b);
 }
 
-/* --- candidate sides ------------------------------------------------------ */
+/* candidate sides */
 
 /* Keeps `out` ascending and free of duplicates. */
 static int
@@ -236,7 +237,7 @@ axis_sides(int extent, const int* keep, int n_keep, int* out) {
     return n;
 }
 
-/* --- the report ----------------------------------------------------------- */
+/* the report */
 
 typedef struct {
     int side_x, side_y;

@@ -30,7 +30,7 @@
 #include "suite_sand_common.h"
 #include "util/intmath.h"
 
-/* --- dirty rows: nothing changes without saying so ---------------------- */
+/* dirty rows: nothing changes without saying so */
 
 /* app_sand.c only repaints rows whose dirty_rows byte is set, so a cell
  * that changes on an unmarked row leaves a stale pixel - a failure every
@@ -100,7 +100,7 @@ test_every_cell_change_marks_its_row_dirty(void) {
     assert_every_change_is_marked(MAT_LAVA, 240, "a lava cell must never change on a row left unmarked");
 }
 
-/* --- conservation ------------------------------------------------------- */
+/* conservation */
 
 static void
 test_grains_are_never_created_or_destroyed(void) {
@@ -142,7 +142,7 @@ test_a_grain_keeps_its_shade_as_it_falls(void) {
                                     "shade travels with the grain, or a falling pile shimmers");
 }
 
-/* --- gravity in other directions ---------------------------------------- */
+/* gravity in other directions */
 
 static void
 test_grains_fall_upward_when_the_board_is_inverted(void) {
@@ -208,7 +208,7 @@ test_a_heap_settles_against_whichever_wall_is_down(void) {
                                      "a settled heap must be completely stable, not creep for ever");
 }
 
-/* --- spawning ----------------------------------------------------------- */
+/* spawning */
 
 static void
 test_spawn_fills_a_disc(void) {
@@ -246,7 +246,7 @@ test_spawning_onto_existing_grains_does_not_double_count(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(after_first, sand_count(&s), "and must not change the grid");
 }
 
-/* --- pouring a share of the disc ---------------------------------------- */
+/* pouring a share of the disc */
 
 /* Counted the same way the spawn walks it, so no test here states an area
  * that a radius already decides. */
@@ -485,7 +485,7 @@ test_spawned_grains_use_the_full_range_of_shades(void) {
     TEST_ASSERT_GREATER_THAN_MESSAGE(1, distinct, "a flat-coloured pile looks like a solid block, not sand");
 }
 
-/* --- emitters ------------------------------------------------------------- */
+/* emitters */
 
 /* A persistent point source - see sand_add_emitter() in sand.h. Unlike
  * sand_spawn()/sand_erase() above, an emitter is stepped by sand_step()

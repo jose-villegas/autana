@@ -15,8 +15,7 @@
  * pressed frame while returning 0 forever.
  *
  * microui.c is plain C over stdio/stdlib/string, so it links here unchanged -
- * this is the only suite that links it, and the reason the "nothing here
- * links microui.c" note in run_tests.sh no longer holds.
+ * this is the only suite that links it.
  */
 
 #include <stdlib.h>

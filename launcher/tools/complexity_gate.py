@@ -547,10 +547,10 @@ def build_idf_entries(toolchain_root, vendored=False):
 
 
 # apps/*/tools/*.c - excluded from the firmware and the host build alike
-# by long-standing convention (main/CMakeLists.txt, run_tests.sh), but the
-# retired script's own usage text ("searched recursively for *.c") reached
-# them when pointed at launcher/main, so parity means giving them real
-# flags where that is possible at all: each already has its own working
+# by long-standing convention (main/CMakeLists.txt, run_tests.sh), but
+# check_main_coverage()'s own rglob("*.c") below reaches them anyway, so
+# parity means giving them real flags where that is possible at all: each
+# already has its own working
 # host compile line in a report_*.sh beside it (find_cc()'s compiler, this
 # project's own headers) - -I main/apps/<app> is the one addition beyond
 # the host runner's own flags every one of them needs, for its sibling
@@ -652,8 +652,7 @@ def build_compile_db():
 
 def check_main_coverage(measured_files):
     """Every .c file under launcher/main/, found by walking the
-    filesystem - independent of any build or database, the way the
-    retired script's own recursive *.c search worked. A gap that is not
+    filesystem - independent of any build or database. A gap that is not
     EXCLUDED_MAIN_FILES, with a reason, is a coverage regression and fails
     the gate by name rather than shrinking quietly."""
     measured = {str(Path(f).resolve()) for f in measured_files}

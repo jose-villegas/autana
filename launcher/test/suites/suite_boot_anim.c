@@ -375,9 +375,10 @@ test_spoke_reveal_target_advances_evenly_in_screen_space(void) {
     const int steps = 10;
 
     /* Starts at i=1 (reach>0), not 0 - reach=0's own target=0 is already
-     * covered exactly by test_spoke_reveal_target_hits_its_endpoints_
-     * exactly() above, and 1/0 has no meaningful "screen position" to
-     * compare against the next step's here. */
+     * covered exactly by
+     * test_spoke_reveal_target_hits_its_endpoints_exactly() above, and 1/0
+     * has no meaningful "screen position" to compare against the next
+     * step's here. */
     double prev_inv = -1.0;
     double prev_delta = 0.0;
     for (int i = 1; i <= steps; i++) {
@@ -1455,8 +1456,9 @@ test_a_letter_starts_off_panel_to_the_left(void) {
 static void
 test_final_x_matches_the_advance_sum(void) {
     /* Any moment past every letter's own flight is fine: only the FINAL
-     * resting x matters here, and test_a_letter_lands_exactly_on_its_final_
-     * position() already covers y/wobble/wave separately. */
+     * resting x matters here, and
+     * test_a_letter_lands_exactly_on_its_final_position() already covers
+     * y/wobble/wave separately. */
     const uint32_t arrived = BOOT_ANIM_TITLE_START_MS + (uint32_t)BOOT_ANIM_TITLE_LEN * BOOT_ANIM_TITLE_STAGGER_MS
                              + BOOT_ANIM_TITLE_FLIGHT_MS + 1000;
 
@@ -1473,7 +1475,7 @@ test_final_x_matches_the_advance_sum(void) {
 }
 
 /* The layout guard, in the same spirit as
- * test_the_whole_scene_fits_on_the_panel_throughout_the_orbit(): every
+ * test_the_seeds_curve_stays_near_the_panel_throughout(): every
  * letter, at every moment of its flight including the wildest part of the
  * wobble, must land within the VIEWER's frame once it is actually visible
  * - BOOT_ANIM_TITLE_VIEW_W/H, not PANEL_W/PANEL_H, since

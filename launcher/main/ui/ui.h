@@ -17,7 +17,7 @@
  *
  * This module knows about dirty bands because immediate mode rebuilds and
  * repaints the whole UI every frame, which normally means clearing the screen
- * every frame, marking every band dirty and forcing a full 9.6 ms transfer -
+ * every frame, marking every band dirty and forcing a full-frame transfer -
  * throwing away the saving partial updates exist to provide. That would hit
  * any app that drew a UI, not only the launcher.
  *

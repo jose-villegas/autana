@@ -74,20 +74,12 @@ typedef enum {
  * edge, and glass/stone would start outlining cells they used to paint as
  * solid interior. */
 
-/* LOCAL DEPTH, 0 at boundary, 255 max. */
-
-/* paint_row_n() for full mechanism; replaced old screen-position gradient. */
-
-/* INTERIOR reads `depth`; others ignore it. */
-
-/* See DEPTH_SATURATE_CELLS in material_palette.c for scale. */
-
-/* FOR ROOT CELL, `depth` MEANS material_root_neighbours() */
-
-/* READ shape: tip touches 1, cell 2-3, collar more */
-
-/* Shading: parent darkens when child grows, lightens if child lost. */
-
+/* `depth` means something per material: a liquid's INTERIOR reads local
+ * depth, 0 at the boundary up to 255 (see paint_row_n() and
+ * DEPTH_SATURATE_CELLS, material_palette.c); a root reads
+ * material_root_neighbours(), darker the more it has; a leaf, and wood
+ * beside one, read the leaf wave's fraction plus one. Everything else
+ * ignores it. */
 material_pattern_t material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth, gfx_color_t out[3]);
 
 static inline unsigned
@@ -171,9 +163,8 @@ void material_set_foam_phase(unsigned phase);
 /* Separate clock for cullet phase. See material_colours(), MAT_SAND case. */
 void material_set_cullet_phase(unsigned phase);
 
-/* Not a clock; app_sand.c provides gravity snapshot. */
-
-/* Names direction, not rate; steady tilt stays fixed. */
+/* Not a clock: app_sand.c passes a gravity snapshot, so this names a
+ * direction, not a rate, and a steady tilt leaves the phase fixed. */
 void material_set_glass_phase(int phase);
 
 /* Pure: see material_palette.c for the wave shape. `time_ms` is a plain

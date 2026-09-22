@@ -495,7 +495,7 @@ number goes in a comment next to the constant and the probe is disposable.
   build catches it (`'material_t' has no member named 'conducts'`) but
   only after the fact. Anchor on a field that only the intended table
   has.
-- **Do not draw a random number when the chance is 255.** `try_ignite()`
+- **Do not draw a random number when the chance is 255.** `try_ignite_given()`
   checks `flammability == 255` *before* rolling, so materials at "always"
   consume no RNG. This is not micro-optimisation - it keeps the whole
   random stream bit-identical for every scene that does not involve the

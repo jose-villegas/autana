@@ -16,7 +16,7 @@ MACRO = re.compile(r"^[A-Z][A-Z0-9_]*$")
 FILE = re.compile(r"^(?:launcher/|apps/|[\w.-]+/)*(?:[\w.-]+\.(?:c|h|py|sh|cmake)|CMakeLists\.txt)$")
 SKIP_FENCES = {"sh", "shell", "bash", "console", "text", "output"}
 SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components", ".git"}
-FOREIGN_FUNCTIONS = {"exit", "main", "max", "name"}
+FOREIGN_FUNCTIONS = {"exit", "main", "max", "name", "bsp_display_new"}
 FOREIGN_PATHS = {"idf.py"}
 FOREIGN_MACRO_PREFIXES = ("ESP", "CONFIG_COMPILER", "CONFIG_LOG", "IDF", "SDMMC", "WHOLE", "LOG", "DP")
 

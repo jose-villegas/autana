@@ -1360,11 +1360,7 @@ test_pouring_onto_a_settled_pool_in_landscape_redirties_a_bounded_column_band(vo
 /* Water's interior uses the same plain shade-index shift oil, lava and
  * acid always have (material_colours()'s liquid interior branch) - the old
  * fog-blend/wave-table pinned near-maximum haze at any realistic pool
- * depth, and rode over local depth's dominant-axis seam as rigid columns.
- * Preserved on the water-wave-fog-depth-banked branch for reuse.
- * test_deepest_water_interior_is_exactly_the_body_colour was broadened
- * into test_every_liquid_interior_is_exactly_the_body_colour_when_saturated
- * below. */
+ * depth, and rode over local depth's dominant-axis seam as rigid columns. */
 
 static void
 test_every_liquid_interior_is_exactly_the_body_colour_when_saturated(void) {

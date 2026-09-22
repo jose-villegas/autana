@@ -117,7 +117,7 @@ queue_outward_impulse(sand_t* s, int cx, int cy, int dx, int dy, int r2, int dis
                        SAND_IMPULSE_SPEED_RAMP);
 }
 
-/* Ordinary materials each have their own materials[] row, so density()
+/* Ordinary materials each have their own materials[] row, so density
  * already differs per material; every extended static (ice, metal, plant,
  * leaf, root, ...) shares ONE row instead (cell >> 3 - see
  * MATERIAL_ROW's own comment), so reaction_t.dislodge_density is the only
@@ -417,11 +417,10 @@ impulse_index_still_tracked(const sand_t* s, int kept, int self_i, uint16_t inde
     return false;
 }
 
-/* Both step_impulses() call sites (KIND_STATIC, KIND_POWDER) used to write
- * out the same three-candidate scan by hand, which let them diverge -
- * shared here instead. `cand_out` is always filled; KIND_STATIC reads
- * `cand_out[0]` post-false to tell wall from support, KIND_POWDER ignores
- * it. */
+/* Shared between step_impulses()'s KIND_STATIC and KIND_POWDER call sites,
+ * so the same three-candidate scan cannot diverge between them. `cand_out`
+ * is always filled; KIND_STATIC reads `cand_out[0]` post-false to tell wall
+ * from support, KIND_POWDER ignores it. */
 static bool
 impulse_has_opening(const sand_t* s, int x, int y, int dx, int dy, cell_t mover, uint8_t speed, int cand_out[3][2]) {
     impulse_gravity_candidates(x, y, dx, dy, cand_out);
@@ -522,11 +521,11 @@ impulse_charge_displacement(sand_t* s, impulse_t* entry, size_t new_index, int d
  * position honest, and turns a plain outward push into a ballistic arc
  * for free, since gravity has already pulled by the time this runs. */
 
-/* BLOCKED MEANS WAIT, NOT STOP. A cell in the way used to drop the entry
- * on the spot - fine for open air, wrong for anything packed: an
- * explosion into a bed of sand or water starts with every queued cell
- * surrounded by more of the same material, so that rule dropped nearly
- * everything on its first turn. */
+/* BLOCKED MEANS WAIT, NOT STOP. Dropping a blocked entry on the spot would
+ * be fine for open air but wrong for anything packed: an explosion into a
+ * bed of sand or water starts with every queued cell surrounded by more of
+ * the same material, so that rule would drop nearly everything on its
+ * first turn. */
 
 /* Only the annulus already touching open space (or the fire-filled core
  * sand_explode() now writes - see SAND_EXPLODE_CORE_DIVISOR in
@@ -538,13 +537,12 @@ impulse_charge_displacement(sand_t* s, impulse_t* entry, size_t new_index, int d
  * which is what lets the disturbance the core's fire starts unpack
  * outward over several steps instead of being a single frozen ring. */
 
-/* WAIT STILL HAPPENS, BUT ONLY AGAINST A TRUE WALL NOW - see
- * can_impulse_enter()'s own comment just above this function for why a
- * flying grain shoulders aside any non-static occupant it meets instead of
- * only ever moving into a genuinely empty cell. This narrows "blocked" to
- * KIND_STATIC and the grid edge, but the branch is still needed:
- * wait-then-retry keeps an entry pinned rather than dropped the instant
- * it arrives. */
+/* WAITING ONLY HAPPENS AGAINST A TRUE WALL - see can_impulse_enter()'s own
+ * comment just above this function for why a flying grain shoulders aside
+ * any non-static occupant it meets instead of only ever moving into a
+ * genuinely empty cell. "Blocked" narrows to KIND_STATIC and the grid edge,
+ * but the branch is still needed: wait-then-retry keeps an entry pinned
+ * rather than dropped the instant it arrives. */
 
 /* `dx`/`dy` is this step's own dithered gravity direction, the same one
  * sand_step()'s main sweep just used - needed for RE-ACQUISITION, below,

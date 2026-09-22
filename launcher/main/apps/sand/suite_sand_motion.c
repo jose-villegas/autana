@@ -50,7 +50,7 @@ assert_looks_like(const char* rows[], int count, const char* why) {
     }
 }
 
-/* --- gravity quantisation ----------------------------------------------- */
+/* gravity quantisation */
 
 static void
 test_gravity_quantises_to_eight_directions(void) {
@@ -99,7 +99,7 @@ test_no_gravity_has_no_direction(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, dy, "a zero vector has no direction");
 }
 
-/* --- dithering the direction -------------------------------------------- */
+/* dithering the direction */
 
 /* Runs `trials` steps at one gravity angle and reports how many of them chose
  * the diagonal. */
@@ -174,7 +174,7 @@ test_dithering_still_conserves_grains(void) {
     }
 }
 
-/* --- falling ------------------------------------------------------------ */
+/* falling */
 
 static void
 test_a_grain_falls_one_cell_per_step(void) {
@@ -326,7 +326,7 @@ test_a_grain_in_a_pit_stays_put(void) {
     assert_looks_like(after, 8, "a settled heap must stop moving entirely");
 }
 
-/* --- dirty row tracking -------------------------------------------------- */
+/* dirty row tracking */
 
 /* Everything here guards the same property: a row reported CLEAN must be
  * genuinely unchanged. Getting that wrong does not crash - it leaves stale
@@ -420,11 +420,13 @@ test_tracking_starts_by_assuming_everything_changed(void) {
     }
 }
 
-/* --- dirty-column tracking -----------------------------------------------
+/*
+ * dirty-column tracking
  *
  * dirty[] alone only answers "did this row change" - a grain moving along a
  * row still marked the WHOLE row. dirty_x0[y]/dirty_x1[y] add which
- * COLUMNS actually changed. */
+ * COLUMNS actually changed.
+ */
 
 static void
 test_dirty_cols_start_with_the_sentinel(void) {
@@ -515,7 +517,7 @@ test_a_sideways_fall_does_not_dirty_a_settled_run_elsewhere_in_the_row(void) {
                              "feature exists to fix, just measured in columns");
 }
 
-/* --- friction ------------------------------------------------------------ */
+/* friction */
 
 /* The behaviour these exist for: a floor of sand that skated sideways on the
  * faintest tilt, because nothing in the rules knew the bottom layer was
@@ -781,7 +783,7 @@ test_a_steep_tilt_does_pour_the_bed(void) {
                                      "past the angle of repose the bed must pour downhill");
 }
 
-/* --- sleeping ------------------------------------------------------------ */
+/* sleeping */
 
 /* A row wrongly left asleep leaves a grain hanging that should have fallen -
  * no crash, no corruption, it just quietly stops being sand. So the central

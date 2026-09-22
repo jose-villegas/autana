@@ -167,7 +167,7 @@ test_zero_elapsed_time_changes_nothing(void) {
                                   "divided by zero either");
 }
 
-/* --- telling gravity from being handled ---------------------------------- */
+/* telling gravity from being handled */
 
 static void
 test_a_shove_is_not_mistaken_for_gravity(void) {
@@ -217,7 +217,7 @@ test_free_fall_is_reported_rather_than_estimated(void) {
                              "real state, and what follows gravity should hang rather than settle");
 }
 
-/* --- a device lying flat ------------------------------------------------- */
+/* a device lying flat */
 
 static void
 test_flow_is_full_when_the_screen_is_upright(void) {
@@ -231,8 +231,8 @@ test_flow_is_full_when_the_screen_is_upright(void) {
 
 static void
 test_flow_falls_away_as_the_device_is_laid_flat(void) {
-    /* The reported behaviour: setting the device down stopped the simulation
-     * in a single frame, which reads as a crash rather than as settling.
+    /* The reported behaviour: setting the device down stopped motion in a
+     * single frame, which reads as a crash rather than as settling.
      *
      * Motion SHOULD stop on a level board. What it must not do is stop abruptly,
      * so what matters here is that the rate declines through the middle rather
@@ -282,7 +282,7 @@ test_free_fall_stops_the_flow_even_on_a_stale_estimate(void) {
                                   "caller keeps running all the way down");
 }
 
-/* --- rotating is not shaking --------------------------------------------- */
+/* rotating is not shaking */
 
 static void
 test_turning_the_board_does_not_read_as_shaking(void) {

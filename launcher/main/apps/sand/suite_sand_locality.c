@@ -28,12 +28,14 @@
 #include "suite_sand_common.h"
 #include "util/intmath.h"
 
-/* --- 2D block locality -----------------------------------------------------
+/*
+ * 2D block locality
  *
  * A row-shaped settled bit cannot fix a pour keeping a long-settled row
  * awake, even in principle: wake propagation only ever reached vertically.
  * These exercise 2D locality whichever way gravity points, on a 3x3-block
- * grid, which is the smallest that gives "far apart" a meaning. */
+ * grid, which is the smallest that gives "far apart" a meaning.
+ */
 #define LOC_W_CAP      (((SAND_BLOCK_W + 2) > 128) ? (SAND_BLOCK_W + 2) : 128)
 /* Capped, and malloc'd per test rather than `static`: this file also
  * compiles into the device build, where a `static` array is permanent BSS
@@ -537,9 +539,9 @@ test_block_indices_stay_in_range_at_the_real_screens_partial_edge_blocks(void) {
         }
     }
     /* A hard shake at the end, the same jostle path the flip/undermining
-     * tests use - it is what reaches try_slide()'s jostle-fall calls,
-     * the two mark_move_in_block() sites the direction cycle above does
-     * not otherwise exercise. */
+     * tests use - it is what reaches try_slide()'s jostle-fall calls, the
+     * wake_block_and_neighbors() sites the direction cycle above does not
+     * otherwise exercise. */
     for (int i = 0; i < 3; i++) {
         sand_step(&stress, 0, 100, 200);
     }
@@ -591,9 +593,8 @@ test_block_indices_stay_in_range_after_flipping_a_settled_pile_at_the_real_size(
 }
 
 /* Same idea, reproducing test_a_screen_of_water_fits_in_the_frame_budget
- * instead (also DEVICE_BUILD-only) - liquid's move_liquid_grain()/
- * block_coord() path is untested by the two tests above, which only
- * ever place plain sand. */
+ * instead (also DEVICE_BUILD-only) - liquid's move_liquid_grain() path is
+ * untested by the two tests above, which only ever place plain sand. */
 static void
 test_block_indices_stay_in_range_for_a_falling_screen_of_water_at_the_real_size(void) {
     uint8_t* cells = malloc((size_t)STRESS_W * STRESS_H);
@@ -619,7 +620,7 @@ test_block_indices_stay_in_range_for_a_falling_screen_of_water_at_the_real_size(
     free(blocks);
 }
 
-/* --- scatter -------------------------------------------------------------- */
+/* scatter */
 
 /* Measures how wide a falling stream has become, in occupied columns. */
 static int

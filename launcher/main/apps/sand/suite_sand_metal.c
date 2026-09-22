@@ -29,10 +29,10 @@
 #include "suite_sand_common.h"
 #include "util/intmath.h"
 
-/* ===================================================================
+/*
  * Metal: dirt smelted by sustained heat - see
  * docs/sand/Metal.md, which every test below follows.
- * =================================================================== */
+ */
 
 /* Mirrors sand_reactions.c's own HEAT_FLAW_CLUMP, which is private to
  * that file - same risk CONDUCT_REACH_TEST above already carries: if the

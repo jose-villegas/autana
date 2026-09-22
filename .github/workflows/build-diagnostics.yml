@@ -7,8 +7,8 @@ name: Build (Diagnostics)
 # a meaningfully different config from the release build (CONFIG_LAUNCHER_-
 # SELFTEST=y pulls in Unity and every suite), so it can break independently
 # of it - own workflow file, own badge, separate from build-release.yml
-# and host-tests.yml. See host-tests.yml's top comment for why these are
-# three files instead of one.
+# and host-tests.yml, purely so each gets its own status badge (GitHub
+# exposes whole-workflow badges, never per-job ones).
 #
 # -D SDKCONFIG_DEFAULTS is not optional here, even though -D SDKCONFIG is
 # already present. On a clean CI checkout build.diag/sdkconfig does not
@@ -17,11 +17,7 @@ name: Build (Diagnostics)
 # merging sdkconfig.defaults.diag. The result carries neither
 # LAUNCHER_DEVELOPMENT nor LAUNCHER_SELFTEST and quietly builds a
 # release-shaped image under the build.diag/ name: it builds, it just
-# isn't diagnostics. That is exactly what happened here: this workflow
-# stayed green from 2026-09-04 while the real diagnostics configuration
-# failed to compile (seven -Werror=format errors in suite_sand.c, fixed in
-# "Let the diagnostics image compile again"), because it was never
-# actually building that configuration. See
+# isn't diagnostics. See
 # launcher/tools/build_flash.sh's comment above its own idf.py call for
 # the sibling trap (missing -D SDKCONFIG instead, which reads the
 # PROJECT's own sdkconfig and is just as silent). List order matters here

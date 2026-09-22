@@ -30,7 +30,7 @@ fixture(void) {
     memset(full_buf, 0, sizeof full_buf);
 }
 
-/* --- clipping and translation, one target ------------------------------- */
+/* clipping and translation, one target */
 
 static void
 test_a_rect_entirely_inside_the_target_is_untouched_by_clipping(void) {
@@ -90,7 +90,7 @@ test_row_translation_lands_in_the_bands_own_local_row(void) {
                                     "absolute row 5 must land in the band's own local row 1 (5 - row0 4)");
 }
 
-/* --- straddling a band edge ---------------------------------------------- */
+/* straddling a band edge */
 
 /* A rect (the same shape a glyph pixel column is) that crosses a band
  * boundary must be split correctly across the two bands' own buffers, with
@@ -118,7 +118,7 @@ test_a_rect_straddling_a_band_edge_splits_correctly(void) {
     TEST_ASSERT_EQUAL_HEX16(0x1111, band_b[1 * WIDTH + 3]); /* local row 1 == absolute row 5 */
 }
 
-/* --- the union of every band equals one full-target render --------------- */
+/* the union of every band equals one full-target render */
 
 /* Several rects, standing in for a frame's worth of UI commands (a
  * background box, a text glyph's pixels, a border), rendered once into one

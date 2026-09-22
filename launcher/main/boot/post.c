@@ -81,8 +81,6 @@ post_failure_count(void) {
     return checks_failed;
 }
 
-/* --- phase one: before the display claims SPI2 --------------------------- */
-
 void
 post_run_before_display(void) {
     checks_run = 0;
@@ -139,8 +137,6 @@ check_sdcard_live(void) {
 
     report("sd card", err == ESP_OK, POST_OPTIONAL, detail);
 }
-
-/* --- phase two: once the display is up ----------------------------------- */
 
 static void
 check_soc(void) {

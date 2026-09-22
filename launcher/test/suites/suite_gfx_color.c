@@ -105,7 +105,7 @@ test_channels_blend_independently_green_stays_put(void) {
                                     "green must stay at zero while red and blue move independently");
 }
 
-/* --- gfx_color_add ------------------------------------------------------ */
+/* gfx_color_add */
 
 static void
 test_adding_black_changes_nothing(void) {
@@ -198,7 +198,7 @@ test_expanding_a_colour_twice_is_idempotent(void) {
     }
 }
 
-/* --- gfx_color_rgb565 ----------------------------------------------------- */
+/* gfx_color_rgb565 */
 
 /* Each 0xRRGGBB below has its 8-bit channels chosen as a multiple of 8 (R/B)
  * or 4 (G), the same convention this file's own top comment explains, so
