@@ -35,8 +35,15 @@ autana> buildid
 | `autana freeze` | Stop the frame loop where it is. |
 | `autana resume` | Let the frame loop run again. |
 | `autana step [N]` | Advance N frames while frozen, 1 when `N` is omitted. |
-| `autana touch <down\|up> <x> <y>` | Stand in for the touch controller - QEMU images only (`console_inject.c` compiles under `CONFIG_LAUNCHER_QEMU`), no real controller to override on the board. |
-| `autana imu <ax> <ay> <az>` | Stand in for the IMU, raw accelerometer counts - QEMU images only, same reason. |
+| `autana touch <down\|up> <x> <y>` | Inject one touch-controller level in panel coordinates. `up` returns control to the controller. |
+| `autana tap <x> <y>` | Tap at a point. |
+| `autana press <x> <y> [ms]` | Hold at a point; the default is 1000 ms. |
+| `autana drag <x0> <y0> <x1> <y1> <ms>` | Drag through interpolated points over the requested duration. |
+| `autana imu <ax> <ay> <az>` | Inject raw accelerometer counts. `autana imu release` returns control to the sensor. |
+| `autana button <boot\|power> [short\|long]` | Inject one event from the board's BOOT or PWR button. `short` is the default. |
+| `autana apps` | List registered apps and mark the running one. |
+| `autana open <name>` | Enter one app; matching ignores case and accepts an unambiguous prefix. |
+| `autana home` | Return to the launcher. |
 | `autana buildid` | The `BUILD_ID` the board answers with, so what is running can be checked against what was flashed. |
 | `autana id` | The name this `autana` holds the board under, and its pid: `autana-cli@<pid in base36>`. |
 | `autana status` | Who, if anyone, holds the board right now, and who else is waiting. |

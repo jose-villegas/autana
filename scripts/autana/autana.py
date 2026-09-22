@@ -51,8 +51,18 @@
     autana freeze                   stop the frame loop where it is
     autana resume                   let the frame loop run again
     autana step [N]                 advance N frames while frozen (1 when N is omitted)
-    autana touch <down|up> <x> <y>  stand in for the touch controller
-    autana imu <ax> <ay> <az>       stand in for the IMU, raw accelerometer counts
+    autana touch <down|up> <x> <y>  inject a touch-controller sample
+    autana tap <x> <y>               tap at a point
+    autana press <x> <y> [ms]        hold at a point (1000 ms when omitted)
+    autana drag <x0> <y0> <x1> <y1> <ms>
+                                    drag between points over ms
+    autana imu <ax> <ay> <az>        inject raw accelerometer counts
+    autana imu release               return to the IMU controller
+    autana button <boot|power> [short|long]
+                                    inject a physical-button event
+    autana apps                      list registered apps and the running one
+    autana open <name>               open an app by case-insensitive prefix
+    autana home                      return to the launcher
 
     autana buildid                  the BUILD_ID the board answers with, so what is
                                     running can be checked against what was flashed.
@@ -551,11 +561,76 @@ def touch(args):
 
 
 def imu(args):
+    if args == ["release"]:
+        code, replies = send("IMU release", reply="IMU", purpose="autana imu", optional=True, seconds=0.5)
+        print("\n".join(replies) if replies else "sent")
+        return code
     if len(args) != 3 or not all(is_int(value) for value in args):
-        sys.exit("usage: autana imu <ax> <ay> <az>")
+        sys.exit("usage: autana imu <ax> <ay> <az> | autana imu release")
     code, replies = send("IMU " + " ".join(args), reply="IMU", purpose="autana imu",
                          optional=True, seconds=0.5)
     print("\n".join(replies) if replies else "sent")
+    return code
+
+
+def gesture(args, verb, usage):
+    if not all(is_int(value) for value in args):
+        sys.exit(usage)
+    code, replies = send(verb.upper() + " " + " ".join(args), reply=verb.upper(), purpose="autana " + verb,
+                         optional=True, seconds=0.5)
+    print("\n".join(replies) if replies else "sent")
+    return code
+
+
+def tap(args):
+    if len(args) != 2:
+        sys.exit("usage: autana tap <x> <y>")
+    return gesture(args, "tap", "usage: autana tap <x> <y>")
+
+
+def press(args):
+    if len(args) not in (2, 3):
+        sys.exit("usage: autana press <x> <y> [ms]")
+    return gesture(args, "press", "usage: autana press <x> <y> [ms]")
+
+
+def drag(args):
+    if len(args) != 5:
+        sys.exit("usage: autana drag <x0> <y0> <x1> <y1> <ms>")
+    return gesture(args, "drag", "usage: autana drag <x0> <y0> <x1> <y1> <ms>")
+
+
+def button(args):
+    if len(args) not in (1, 2) or args[0] not in ("boot", "power") \
+            or len(args) == 2 and args[1] not in ("short", "long"):
+        sys.exit("usage: autana button <boot|power> [short|long]")
+    code, replies = send("BUTTON " + " ".join(args), reply="BUTTON", purpose="autana button",
+                         optional=True, seconds=0.5)
+    print("\n".join(replies) if replies else "sent")
+    return code
+
+
+def apps(args):
+    if args:
+        sys.exit("usage: autana apps")
+    code, replies = send("APPS", reply="APPS", until=["APPS_END", "APPS_ERR"], purpose="autana apps")
+    print("\n".join(replies))
+    return code
+
+
+def open_app(args):
+    if len(args) != 1:
+        sys.exit("usage: autana open <name>")
+    code, replies = send("OPEN " + args[0], reply="OPEN", purpose="autana open")
+    print("\n".join(replies))
+    return code
+
+
+def home(args):
+    if args:
+        sys.exit("usage: autana home")
+    code, replies = send("HOME", reply="HOME", purpose="autana home")
+    print("\n".join(replies))
     return code
 
 
@@ -777,7 +852,8 @@ def console(_args=None):
 
 COMMANDS = {"flash": flash, "tune": tune, "monitor": monitor, "reset": reset, "suite": suite, "console": console,
             "id": identify, "buildid": buildid, "screenshot": screenshot, "freeze": freeze,
-            "resume": resume, "step": step, "touch": touch, "imu": imu, "selftest": selftest,
+            "resume": resume, "step": step, "touch": touch, "tap": tap, "press": press, "drag": drag,
+            "imu": imu, "button": button, "apps": apps, "open": open_app, "home": home, "selftest": selftest,
             "batch": batch, "status": status, "release": release, "hand": hand,
             "take-back": take_back}
 
