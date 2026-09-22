@@ -34,11 +34,11 @@ static const char* TAG = "ui";
 
 /* Definitions for the externs ui_internal.h declares - see that header for
  * what each one is shared for. */
-mu_Context ctx;
-bool invalidated = true;
-ui_text_style_t text_style;
-ui_pointer_t pointer;
-uint64_t canvas_hash[MU_CONTAINERPOOL_SIZE];
+mu_Context ui_ctx;
+bool ui_invalidated = true;
+ui_text_style_t ui_text_style;
+ui_pointer_t ui_pointer_state;
+uint64_t ui_canvas_hash[MU_CONTAINERPOOL_SIZE];
 
 static ui_button_style_t button_style;
 /* The style in force for the rest of this frame, and microui's own frame
@@ -109,7 +109,7 @@ ui_resolve_font_scaled(mu_Font font) {
 }
 
 /* microui asks us for text metrics rather than measuring anything itself.
- * `font` is whatever ctx.style->font held when the widget that wants
+ * `font` is whatever ui_ctx.style->font held when the widget that wants
  * metrics ran - see ui_set_font() in ui.h. Falling back rather than
  * dereferencing NULL means a widget measured before ui_init() gets a
  * sane answer instead of a crash. */
@@ -168,8 +168,8 @@ ui_set_button_style(ui_button_style_t style) {
  * prevents. */
 void
 ui_set_text_style(ui_text_style_t style) {
-    if (style != text_style) {
-        text_style = style;
+    if (style != ui_text_style) {
+        ui_text_style = style;
         ui_invalidate();
     }
 }
@@ -185,7 +185,7 @@ ui_set_font_scaled(const gfx_font_t* font, int scale) {
     if (scale < 1) {
         scale = 1;
     }
-    ctx.style->font = (mu_Font)intern_font_scaled(font ? font : gfx_font_ui(), scale);
+    ui_ctx.style->font = (mu_Font)intern_font_scaled(font ? font : gfx_font_ui(), scale);
 }
 
 void
@@ -234,7 +234,7 @@ ui_effective_transform(void) {
 
 mu_Context*
 ui_context(void) {
-    return &ctx;
+    return &ui_ctx;
 }
 
 uint32_t
@@ -244,21 +244,21 @@ ui_layout_generation(void) {
 
 void
 ui_invalidate(void) {
-    invalidated = true;
+    ui_invalidated = true;
 }
 
 void
 ui_init(void) {
-    mu_init(&ctx);
-    ctx.text_width = measure_text_width;
-    ctx.text_height = measure_text_height;
+    mu_init(&ui_ctx);
+    ui_ctx.text_width = measure_text_width;
+    ui_ctx.text_height = measure_text_height;
     font_scaled_count = 0;
     ui_set_font(gfx_font_ui());
 
-    base_draw_frame = ctx.draw_frame;
-    ctx.draw_frame = styled_draw_frame;
+    base_draw_frame = ui_ctx.draw_frame;
+    ui_ctx.draw_frame = styled_draw_frame;
     button_style = UI_BUTTON_FLAT;
-    text_style = UI_TEXT_PLAIN;
+    ui_text_style = UI_TEXT_PLAIN;
     transform = ui_transform_identity();
     transform_valid = true;
     /* Explicit, not left to a zeroed static's implicit value - see
@@ -269,18 +269,18 @@ ui_init(void) {
 
     /* Palette. Deliberately dark: this is an OLED, so black pixels are off
      * pixels - it costs less power and looks better than a grey chrome. */
-    ctx.style->colors[MU_COLOR_WINDOWBG] = (mu_Color){0x0A, 0x0C, 0x14, 255};
-    ctx.style->colors[MU_COLOR_TEXT] = (mu_Color){0xE6, 0xEA, 0xF2, 255};
-    ctx.style->colors[MU_COLOR_BUTTON] = (mu_Color){0x16, 0x1A, 0x28, 255};
-    ctx.style->colors[MU_COLOR_BUTTONHOVER] = (mu_Color){0x23, 0x2A, 0x40, 255};
-    ctx.style->colors[MU_COLOR_BUTTONFOCUS] = (mu_Color){0x3D, 0xDC, 0x97, 255};
-    ctx.style->padding = 12;
-    ctx.style->spacing = UI_ROW_GAP;
-    ctx.style->indent = 0;
-    ctx.style->title_height = UI_TITLE_HEIGHT;
+    ui_ctx.style->colors[MU_COLOR_WINDOWBG] = (mu_Color){0x0A, 0x0C, 0x14, 255};
+    ui_ctx.style->colors[MU_COLOR_TEXT] = (mu_Color){0xE6, 0xEA, 0xF2, 255};
+    ui_ctx.style->colors[MU_COLOR_BUTTON] = (mu_Color){0x16, 0x1A, 0x28, 255};
+    ui_ctx.style->colors[MU_COLOR_BUTTONHOVER] = (mu_Color){0x23, 0x2A, 0x40, 255};
+    ui_ctx.style->colors[MU_COLOR_BUTTONFOCUS] = (mu_Color){0x3D, 0xDC, 0x97, 255};
+    ui_ctx.style->padding = 12;
+    ui_ctx.style->spacing = UI_ROW_GAP;
+    ui_ctx.style->indent = 0;
+    ui_ctx.style->title_height = UI_TITLE_HEIGHT;
 
-    memset(canvas_hash, 0, sizeof(canvas_hash));
-    invalidated = true;
+    memset(ui_canvas_hash, 0, sizeof(ui_canvas_hash));
+    ui_invalidated = true;
 }
 
 /*
@@ -324,14 +324,14 @@ replay_pointer_event(const ui_pointer_event_t* e) {
     ui_to_logical(e->x, e->y, &lx, &ly);
 
     switch (e->kind) {
-        case UI_POINTER_MOVE: mu_input_mousemove(&ctx, lx, ly); break;
-        case UI_POINTER_DOWN: mu_input_mousedown(&ctx, lx, ly, MU_MOUSE_LEFT); break;
-        case UI_POINTER_UP: mu_input_mouseup(&ctx, lx, ly, MU_MOUSE_LEFT); break;
+        case UI_POINTER_MOVE: mu_input_mousemove(&ui_ctx, lx, ly); break;
+        case UI_POINTER_DOWN: mu_input_mousedown(&ui_ctx, lx, ly, MU_MOUSE_LEFT); break;
+        case UI_POINTER_UP: mu_input_mouseup(&ui_ctx, lx, ly, MU_MOUSE_LEFT); break;
         case UI_POINTER_SCROLL: {
             /* A distance, not a point: only the transform's turn applies. */
             int ox, oy;
             ui_to_logical(0, 0, &ox, &oy);
-            mu_input_scroll(&ctx, lx - ox, ly - oy);
+            mu_input_scroll(&ui_ctx, lx - ox, ly - oy);
             break;
         }
     }
@@ -340,7 +340,7 @@ replay_pointer_event(const ui_pointer_event_t* e) {
 static void
 feed_input(const input_t* input) {
     ui_pointer_event_t events[UI_POINTER_MAX_EVENTS];
-    const int n = ui_pointer_step(&pointer, input, events, UI_POINTER_MAX_EVENTS);
+    const int n = ui_pointer_step(&ui_pointer_state, input, events, UI_POINTER_MAX_EVENTS);
     for (int i = 0; i < n; i++) {
         replay_pointer_event(&events[i]);
     }
@@ -352,7 +352,7 @@ ui_begin(const input_t* input) {
      * not persist across frames. */
     button_style = UI_BUTTON_FLAT;
     feed_input(input);
-    mu_begin(&ctx);
+    mu_begin(&ui_ctx);
 }
 
 /* See ui.h: the physical viewport mapped through the inverse transform. Both
@@ -384,7 +384,7 @@ ui_height(void) {
 
 int
 ui_measure_text(const char* str) {
-    const ui_font_scaled_t fs = ui_resolve_font_scaled(ctx.style->font);
+    const ui_font_scaled_t fs = ui_resolve_font_scaled(ui_ctx.style->font);
     return gfx_font_text_width(fs.font, str, -1, fs.scale);
 }
 

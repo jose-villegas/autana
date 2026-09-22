@@ -27,28 +27,28 @@ typedef struct {
 /* The one shell-wide microui context - see ui.h's own top comment for why
  * there is exactly one. Defined in ui_build.c; ui.c paints whatever frame it
  * holds. */
-extern mu_Context ctx;
+extern mu_Context ui_ctx;
 
 /* Set by ui_invalidate()/ui_init() (ui_build.c), read and cleared by
  * ui_end()/ui_end_for_bands() (ui.c) - see ui.h's ui_invalidate() comment. */
-extern bool invalidated;
+extern bool ui_invalidated;
 
 /* The style MU_COMMAND_TEXT is drawn in - set by ui_set_text_style()
  * (ui_build.c), read by draw_command() (ui.c). */
-extern ui_text_style_t text_style;
+extern ui_text_style_t ui_text_style;
 
 /* Touch-to-mouse state - fed by ui_begin() (ui_build.c). ui.c's ui_end()/
  * ui_end_for_bands() report back whether this frame's pointer sits over a
  * scrollable container, the one thing painting learns that building does not
  * already know. */
-extern ui_pointer_t pointer;
+extern ui_pointer_t ui_pointer_state;
 
 /* Zeroed by ui_init() (ui_build.c) even though only ui.c's repaint-skip
  * (mark_changed_canvases()/repaint_marked_canvases()) ever reads or writes
  * it afterward - a canvas hash is meaningless until a frame has painted, but
  * "meaningless" has to start as a known value, not whatever the previous
  * boot's abandoned command list happened to leave behind. */
-extern uint64_t canvas_hash[MU_CONTAINERPOOL_SIZE];
+extern uint64_t ui_canvas_hash[MU_CONTAINERPOOL_SIZE];
 
 /* The transform in force, or identity while none set is valid - see
  * ui_set_transform() (ui_build.c). Both draw_command() and canvas_physical_
