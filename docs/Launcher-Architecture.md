@@ -114,7 +114,7 @@ launcher/
     │   ├── console_freeze.{h,c}   freeze, resume, step - holds the frame loop
     │   ├── console_screenshot.{h,c}  screenshot
     │   ├── console_runsuite.{h,c}    runsuite, CONFIG_LAUNCHER_SELFTEST only
-    │   └── console_inject.c, console_inject_parse.h  TOUCH/IMU, CONFIG_LAUNCHER_QEMU only (host-tested)
+    │   └── console_inject.c, console_inject_parse.h  TOUCH/IMU/TAP/PRESS/DRAG/BUTTON (host-tested)
     └── apps/           one folder per app - see Building-an-App.md
         ├── render_lab/ a software rasterizer, wireframe and ray-traced scenes
         ├── diagnostics/  bench tool; development builds only

@@ -159,11 +159,10 @@ have to be stated: only the image knows what registered itself, and its
 console reports how many, never which.
 
 **A touch goes in as a level, not an event.** `TOUCH <down|up> <x> <y>` on
-the console reaches `touch_inject()`, and the polling task samples it at its
-own rate - so a sample has to be left in place long enough to be seen, and
-there is no acknowledgement to wait for. That is enough to open an app and
-photograph it, which is the only way to see a screen whose app cannot be
-linked on a host at all.
+the console reaches `touch_inject()`, which leaves a sample the polling task
+reads ahead of the controller. With no controller answering there is nothing
+else to read. That is enough to open an app and photograph it, which is the
+only way to see a screen whose app cannot be linked on a host at all.
 
 **Two limits worth knowing before comparing anything.**
 

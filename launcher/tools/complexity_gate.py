@@ -85,7 +85,6 @@ EXCLUDED_MAIN_FILES = {
 # declared only under that symbol.
 VARIANT_ONLY_FILES = {
     "main/gfx/gfx_null_panel.c": ("main/gfx/gfx.c", "CONFIG_LAUNCHER_QEMU"),
-    "main/console/console_inject.c": ("main/console/console.c", "CONFIG_LAUNCHER_QEMU"),
 }
 
 VENDORED_DIR_NAMES = {"components", "managed_components"}
