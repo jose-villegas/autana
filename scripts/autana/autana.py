@@ -14,6 +14,9 @@
                                     Any crash address seen is decoded against PATH's symbols;
                                     with no PATH, the build directory whose own build_id.txt
                                     matches the capture's BUILD_ID, if one does.
+    autana reset [--capture [seconds]]
+                                    reboot the board and wait for its USB serial port. --capture
+                                    also prints and records the boot console, for 20 seconds when omitted.
     autana suite <name> [seconds]   run one registered suite and print what it prints. A
                                     diagnostics build serves these with no rebuild and no
                                     reflash, and only one built WITHOUT autorun ever reaches
@@ -265,6 +268,27 @@ def monitor(args):
     ]
     if elf:
         command += ["--elf", elf]
+    return subprocess.call(command)
+
+
+def reset(args):
+    """Reboot the board, optionally printing and recording its boot console."""
+    capture = False
+    rest = list(args)
+    if "--capture" in rest:
+        rest.remove("--capture")
+        capture = True
+    seconds = seconds_argument(rest, None, "usage: autana reset [--capture [seconds]]")
+    if rest and not capture:
+        sys.exit("usage: autana reset [--capture [seconds]]")
+    command = [
+        sys.executable, "-u", str(device_tool()), "--owner", owner(),
+        "reset", "--purpose", "autana reset",
+    ]
+    if capture:
+        command += ["--capture"]
+        if seconds is not None:
+            command += ["--seconds", str(seconds)]
     return subprocess.call(command)
 
 
@@ -751,7 +775,7 @@ def console(_args=None):
                 print(stop.code)
 
 
-COMMANDS = {"flash": flash, "tune": tune, "monitor": monitor, "suite": suite, "console": console,
+COMMANDS = {"flash": flash, "tune": tune, "monitor": monitor, "reset": reset, "suite": suite, "console": console,
             "id": identify, "buildid": buildid, "screenshot": screenshot, "freeze": freeze,
             "resume": resume, "step": step, "touch": touch, "imu": imu, "selftest": selftest,
             "batch": batch, "status": status, "release": release, "hand": hand,
