@@ -259,11 +259,11 @@ touched again:
   the shared buffer, relying on same-device SPI transactions completing in
   the order they were queued.
 
-`gfx_clear()` marks the whole screen, so a screen that clears before
-drawing needs no marking of its own. The rule only bites code writing through `gfx_framebuffer()` directly, which gfx
-cannot see:
-that code must call `gfx_mark_dirty()`, and forgetting shows up as stale pixels
-rather than a crash.
+`gfx_clear()` marks the whole screen, so a screen that clears before drawing
+needs no marking of its own. The rule only bites code writing through
+`gfx_framebuffer()` directly, which gfx cannot see: that code must call
+`gfx_mark_dirty()`, and forgetting shows up as stale pixels rather than a
+crash.
 
 **Marking must be cheap.** `gfx_text_scaled()` calls `gfx_fill_rect()` once
 per set font pixel, so marking runs thousands of times on a screen of text.
