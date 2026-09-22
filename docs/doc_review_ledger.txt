@@ -7,3 +7,5 @@ docs/tools/Live-Tuning.md	2026-09-22	whole-repo docs review: reviewed against ut
 editor/README.md	2026-09-22	whole-repo docs review: reviewed against editor/CMakeLists.txt and gen_ui_layout.py, accurate
 docs/Gfx-and-Presentation.md	2026-09-22	PR #340 round 4: reviewed against the span send and the strip-buffer alias, accurate
 docs/Testing-Guide.md	2026-09-22	PR #340 round 4: reviewed against the span send and the strip-buffer alias, accurate
+docs/Building-an-App.md	2026-09-22	PR #345 round 3: reviewed against app_registry.c and the non-const app_t, accurate
+docs/Launcher-Architecture.md	2026-09-22	PR #345 round 3: reviewed against the rebased tier diagram and device_state includes, accurate
