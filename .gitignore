@@ -99,10 +99,6 @@ launcher/main/apps/*/tools/results/
 # directory, so a MISRA run leaves these in main/ - see tools/misra_check.sh.
 *.dump
 
-# The full stream run-tool-tests.sh's quiet default redirects instead of
-# printing - see its own top comment.
-scripts/run-tool-tests.log
-
 # Captured screenshots saved here by hand - scratch output, not
 # something to commit.
 launcher/tools/screenshots/

@@ -18,25 +18,28 @@
 # prove the suites pass, so a language it could not even run is a failure,
 # not something to wave through quietly.
 #
-# Default output is the verdict and the test/suite counts, and on failure
-# the failing suite(s) plus the assertion detail - each suite's own runner
-# (unittest, node --test) prints a dot or a checkmark per test, which adds
-# up to thousands of characters to say OK. The full stream goes to a log
-# file whose path is always printed; --verbose streams everything instead,
-# as this script always used to.
+# Default output is the verdict and test count. A passing run can emit
+# thousands of characters; the full stream is in the printed log path.
 #
 # POSIX sh; .github/workflows/shell-scripts.yml parses it under dash.
 
 set -eu
 
 VERBOSE=0
-if [ "${1:-}" = "--verbose" ]; then
-    VERBOSE=1
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --verbose) VERBOSE=1 ;;
+        *) echo "unknown option: $1" >&2; exit 2 ;;
+    esac
     shift
-fi
+done
+export VERBOSE
 
+# shellcheck disable=SC1007
 REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-QUIET_LOG="$REPO_ROOT/scripts/run-tool-tests.log"
+QUIET_LOG="$REPO_ROOT/launcher/test/build/run-tool-tests.log"
+# shellcheck source=quiet.sh
+. "$REPO_ROOT/scripts/quiet.sh"
 
 PYTHON=""
 for candidate in python3 python; do
@@ -54,42 +57,18 @@ if [ -z "$py_dirs" ] && [ -z "$mjs_files" ]; then
     exit 1
 fi
 
-status=0
 suite_count=0
-failed_labels=""
-
-[ "$VERBOSE" -eq 1 ] || : >"$QUIET_LOG"
-
-# run_one <label> <command...> - runs one suite, quiet by default (output
-# appended to $QUIET_LOG, a "== label ==" marker either way so the log reads
-# like the stream this replaces), streamed live under --verbose.
-run_one() {
-    label="$1"
-    shift
-    suite_count=$((suite_count + 1))
-    if [ "$VERBOSE" -eq 1 ]; then
-        echo "== $label =="
-        if ! "$@"; then
-            echo "FAILED: $label" >&2
-            status=1
-        fi
-        return 0
-    fi
-    echo "== $label ==" >>"$QUIET_LOG"
-    if ! "$@" >>"$QUIET_LOG" 2>&1; then
-        echo "FAILED: $label" >>"$QUIET_LOG"
-        status=1
-        failed_labels="$failed_labels $label"
-    fi
-}
+quiet_begin "$QUIET_LOG"
+export QUIET_STATUS
 
 if [ -n "$py_dirs" ]; then
     if [ -z "$PYTHON" ]; then
         echo "python 3 was not found on PATH (tried python3, python); skipping test_*.py suites." >&2
-        status=1
+        QUIET_STATUS=1
     else
         for dir in $py_dirs; do
-            run_one "$dir" "$PYTHON" -m unittest discover -s "$REPO_ROOT/$dir" -p 'test_*.py'
+            suite_count=$((suite_count + 1))
+            quiet_run "$dir" "$PYTHON" -m unittest discover -s "$REPO_ROOT/$dir" -p 'test_*.py' || true
         done
     fi
 fi
@@ -97,28 +76,17 @@ fi
 if [ -n "$mjs_files" ]; then
     if ! command -v node >/dev/null 2>&1; then
         echo "node was not found on PATH; skipping test_*.mjs suites." >&2
-        status=1
+        QUIET_STATUS=1
     else
         for file in $mjs_files; do
-            run_one "$file" node --test "$REPO_ROOT/$file"
+            suite_count=$((suite_count + 1))
+            quiet_run "$file" node --test "$REPO_ROOT/$file" || true
         done
     fi
 fi
 
-if [ "$VERBOSE" -eq 0 ]; then
-    py_tests=$(grep -oE '^Ran [0-9]+ tests? in' "$QUIET_LOG" | grep -oE '[0-9]+' | { sum=0; while read -r n; do sum=$((sum + n)); done; echo "$sum"; })
-    node_tests=$(grep -oE 'tests [0-9]+$' "$QUIET_LOG" | grep -oE '[0-9]+' | { sum=0; while read -r n; do sum=$((sum + n)); done; echo "$sum"; })
-    total_tests=$((py_tests + node_tests))
-
-    if [ "$status" -eq 0 ]; then
-        echo "ok run-tool-tests: $total_tests tests across $suite_count suites"
-    else
-        echo "FAIL run-tool-tests: $total_tests tests across $suite_count suites"
-        echo "  failing:$failed_labels"
-        grep -E '^(FAIL|ERROR): |^AssertionError|^ *File "|^. [A-Za-z].*\([0-9.]+ ?ms\)$|^not ok |Error[:[]|undefined reference to' "$QUIET_LOG" |
-            head -n 60 | sed 's/^/  /'
-    fi
-    echo "full log: $QUIET_LOG"
-fi
-
-exit "$status"
+py_tests=$(grep -oE '^Ran [0-9]+ tests? in' "$QUIET_LOG" | grep -oE '[0-9]+' | { sum=0; while read -r n; do sum=$((sum + n)); done; echo "$sum"; })
+node_tests=$(grep -oE 'tests [0-9]+$' "$QUIET_LOG" | grep -oE '[0-9]+' | { sum=0; while read -r n; do sum=$((sum + n)); done; echo "$sum"; })
+QUIET_SUMMARY="$((py_tests + node_tests)) tests across $suite_count suites"
+export QUIET_SUMMARY
+quiet_end run-tool-tests

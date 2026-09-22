@@ -6,10 +6,8 @@
 #   tools/build_flash.sh [--dev|--diag] [--autorun] [--perf-scope] \
 #                        [--build-only] [--verbose] [COM_PORT] [IDF_EXPORT]
 #
-#   --verbose   stream idf.py's own output (thousands of ninja lines for a
-#               clean build) instead of the default: the result plus the
-#               first real errors, with the full stream in a log file whose
-#               path is always printed.
+#   --verbose   stream and save the build output. The full stream is in the
+#               printed log path in either mode.
 #   --dev       build the DEVELOPMENT image instead of the release one, and
 #               leave it on the board: development-only logging and
 #               instrumentation (frame timings, the screenshot listener)
@@ -82,6 +80,8 @@ BUILD_ONLY=0
 PERF_SCOPE=0
 AUTORUN=0
 VERBOSE=0
+COM_PORT=""
+IDF_EXPORT_ARG=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -91,12 +91,23 @@ while [ $# -gt 0 ]; do
         --perf-scope) PERF_SCOPE=1; shift ;;
         --build-only) BUILD_ONLY=1; shift ;;
         --verbose) VERBOSE=1; shift ;;
-        -h|--help) sed -n '2,78p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,/^# what these flags are for\./p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         --)        shift; break ;;
         -*)        echo "unknown option: $1" >&2; exit 2 ;;
-        *)         break ;;
+        *)
+            if [ -z "$COM_PORT" ]; then
+                COM_PORT=$1
+            elif [ -z "$IDF_EXPORT_ARG" ]; then
+                IDF_EXPORT_ARG=$1
+            else
+                echo "too many positional arguments" >&2
+                exit 2
+            fi
+            shift
+            ;;
     esac
 done
+export VERBOSE
 
 if [ "$PERF_SCOPE" -eq 1 ] && [ "$VARIANT" != diag ]; then
     echo "--perf-scope scopes which SUITES are compiled in, so it needs --diag" >&2
@@ -108,8 +119,6 @@ if [ "$AUTORUN" -eq 1 ] && [ "$VARIANT" != diag ]; then
     exit 2
 fi
 
-COM_PORT="${1:-}"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
@@ -118,52 +127,36 @@ if [ -n "${MSYSTEM:-}" ]; then
 else
     DEFAULT_EXPORT="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"
 fi
-IDF_EXPORT="${2:-$DEFAULT_EXPORT}"
+IDF_EXPORT="${IDF_EXPORT_ARG:-$DEFAULT_EXPORT}"
 
 case "$VARIANT" in
     release) BUILD_DIR="build" ;;
     *)       BUILD_DIR="build.$VARIANT" ;;
 esac
 
-# So a double-clicked window (which closes the instant the script exits)
-# still shows the reason for a failure instead of vanishing on the spot.
-trap 'status=$?; if [ $status -ne 0 ]; then echo; echo "=== FAILED (exit $status) ==="; read -r -p "Press Enter to close..." _ || true; fi' EXIT
-
 # shellcheck source=./idf.sh
 . "$SCRIPT_DIR/idf.sh"
+# shellcheck source=../../scripts/quiet.sh
+. "$SCRIPT_DIR/../../scripts/quiet.sh"
 idf_init "$LAUNCHER_DIR" "$IDF_EXPORT" "$SCRIPT_DIR"
 
-# A clean idf.py build or flash is thousands of ninja/esptool lines to say
-# it worked. Quiet by default: the stream goes to $BUILD_DIR/build.log (the
-# path always printed once below), and only the first real errors surface
-# on a failure - --verbose streams idf.py directly, as this script always
-# used to.
+# A passing build's stream belongs in build.log under the build directory.
 QUIET_LOG="$LAUNCHER_DIR/$BUILD_DIR/build.log"
+quiet_begin "$QUIET_LOG"
 
-run_idf() {
-    if [ "$VERBOSE" -eq 1 ]; then
-        idf "$@"
-        return $?
+quiet_finish() {
+    status=$?
+    trap - EXIT
+    set +e
+    quiet_end build_flash "$status" || true
+    if [ "$status" -ne 0 ]; then
+        echo
+        echo "=== FAILED (exit $status) ==="
+        read -r -p "Press Enter to close..." _ || true
     fi
-    if idf "$@" >>"$QUIET_LOG" 2>&1; then
-        return 0
-    fi
-    rc=$?
-    echo "" >&2
-    errors="$(grep -E 'FAILED:|error:|undefined reference to|CMake Error|ninja: error' "$QUIET_LOG" | tail -n 30 || true)"
-    if [ -n "$errors" ]; then
-        printf '%s\n' "$errors" >&2
-    else
-        tail -n 30 "$QUIET_LOG" >&2 || true
-    fi
-    return "$rc"
+    exit "$status"
 }
-
-if [ "$VERBOSE" -eq 0 ]; then
-    mkdir -p "$(dirname "$QUIET_LOG")"
-    : >"$QUIET_LOG"
-    echo "full log: $QUIET_LOG"
-fi
+trap quiet_finish EXIT
 
 SDKCONFIG_FRAGMENTS=""
 REQUIRED_FLAGS=""
@@ -257,7 +250,7 @@ if [ -n "$REQUIRED_FLAGS" ]; then
     fi
 fi
 if [ "$VARIANT" = release ]; then
-    run_idf -B "$BUILD_DIR" build
+    quiet_run build idf -B "$BUILD_DIR" build
 else
     # BOTH -D flags are needed, and the second is the one that is easy to
     # leave off and hard to notice missing. idf.py's default sdkconfig path
@@ -274,7 +267,7 @@ else
     # Windows too: passing arguments through the shim without mangling them
     # is exactly what idf_shim.bat is for, and what ci_check_idf_sh.sh
     # asserts for the POSIX branch.
-    run_idf -B "$BUILD_DIR" \
+    quiet_run build idf -B "$BUILD_DIR" \
         -D SDKCONFIG_DEFAULTS="$SDKCONFIG_FRAGMENTS" \
         -D SDKCONFIG="$BUILD_DIR/sdkconfig" \
         build
@@ -331,7 +324,7 @@ if [ -z "$COM_PORT" ]; then
 fi
 
 echo "=== Flashing to $COM_PORT ==="
-run_idf -B "$BUILD_DIR" -p "$COM_PORT" flash
+idf -B "$BUILD_DIR" -p "$COM_PORT" flash
 
 case "$VARIANT" in
     dev)
