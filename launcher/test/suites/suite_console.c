@@ -511,6 +511,55 @@ test_a_malformed_imu_line_changes_nothing(void) {
     TEST_ASSERT_TRUE_MESSAGE(ax == 7 && ay == 8 && az == 9, "a rejected line must leave the outputs alone");
 }
 
+static void
+test_a_tap_line_uses_the_short_default_duration(void) {
+    console_touch_gesture_t gesture;
+
+    TEST_ASSERT_TRUE(console_tap_parse("184 224", &gesture));
+    TEST_ASSERT_EQUAL_INT(CONSOLE_TOUCH_GESTURE_TAP, gesture.kind);
+    TEST_ASSERT_EQUAL_INT(184, gesture.x0);
+    TEST_ASSERT_EQUAL_INT(224, gesture.y0);
+    TEST_ASSERT_EQUAL_UINT32(CONSOLE_TAP_DEFAULT_MS, gesture.ms);
+}
+
+static void
+test_a_drag_line_carries_both_endpoints_and_duration(void) {
+    console_touch_gesture_t gesture;
+
+    TEST_ASSERT_TRUE(console_drag_parse("1 2 300 400 250", &gesture));
+    TEST_ASSERT_EQUAL_INT(CONSOLE_TOUCH_GESTURE_DRAG, gesture.kind);
+    TEST_ASSERT_EQUAL_INT(1, gesture.x0);
+    TEST_ASSERT_EQUAL_INT(2, gesture.y0);
+    TEST_ASSERT_EQUAL_INT(300, gesture.x1);
+    TEST_ASSERT_EQUAL_INT(400, gesture.y1);
+    TEST_ASSERT_EQUAL_UINT32(250, gesture.ms);
+}
+
+static void
+test_a_bad_gesture_line_changes_nothing(void) {
+    console_touch_gesture_t gesture = {.kind = CONSOLE_TOUCH_GESTURE_PRESS, .x0 = 7, .ms = 9};
+
+    TEST_ASSERT_FALSE(console_press_parse("1 2 0", &gesture));
+    TEST_ASSERT_FALSE(console_drag_parse("1 2 3", &gesture));
+    TEST_ASSERT_EQUAL_INT(CONSOLE_TOUCH_GESTURE_PRESS, gesture.kind);
+    TEST_ASSERT_EQUAL_INT(7, gesture.x0);
+    TEST_ASSERT_EQUAL_UINT32(9, gesture.ms);
+}
+
+static void
+test_a_button_line_carries_its_kind(void) {
+    console_button_t button;
+    bool held = false;
+
+    TEST_ASSERT_TRUE(console_button_parse("boot long", &button, &held));
+    TEST_ASSERT_EQUAL_INT(CONSOLE_BUTTON_BOOT, button);
+    TEST_ASSERT_TRUE(held);
+
+    TEST_ASSERT_TRUE(console_button_parse("power", &button, &held));
+    TEST_ASSERT_EQUAL_INT(CONSOLE_BUTTON_POWER, button);
+    TEST_ASSERT_FALSE(held);
+}
+
 void
 suite_console(void) {
     RUN_TEST(test_exact_name_matches);
@@ -544,6 +593,10 @@ suite_console(void) {
     RUN_TEST(test_a_touch_line_fits_the_console_line);
     RUN_TEST(test_an_imu_line_carries_its_sample);
     RUN_TEST(test_a_malformed_imu_line_changes_nothing);
+    RUN_TEST(test_a_tap_line_uses_the_short_default_duration);
+    RUN_TEST(test_a_drag_line_carries_both_endpoints_and_duration);
+    RUN_TEST(test_a_bad_gesture_line_changes_nothing);
+    RUN_TEST(test_a_button_line_carries_its_kind);
 }
 
 SUITE_REGISTER(suite_console)

@@ -15,7 +15,7 @@
 #include "bsp/esp-bsp.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
-#if CONFIG_LAUNCHER_QEMU
+#if CONFIG_LAUNCHER_DEVELOPMENT
 #include "freertos/FreeRTOS.h"
 #endif
 
@@ -66,7 +66,7 @@ read_regs(uint8_t reg, uint8_t* out, size_t len) {
     return i2c_master_transmit_receive(dev, &reg, 1, out, len, QMI8658_TIMEOUT_MS) == ESP_OK;
 }
 
-#if CONFIG_LAUNCHER_QEMU
+#if CONFIG_LAUNCHER_DEVELOPMENT
 static bool injected;
 static imu_sample_t injected_sample = {.ax = IMU_COUNTS_PER_G};
 static portMUX_TYPE injected_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -75,6 +75,14 @@ void
 imu_inject(const imu_sample_t* sample) {
     portENTER_CRITICAL(&injected_lock);
     injected_sample = *sample;
+    injected = true;
+    portEXIT_CRITICAL(&injected_lock);
+}
+
+void
+imu_inject_release(void) {
+    portENTER_CRITICAL(&injected_lock);
+    injected = false;
     portEXIT_CRITICAL(&injected_lock);
 }
 #endif
@@ -148,7 +156,7 @@ imu_read(imu_sample_t* out) {
     if (!ready) {
         return false;
     }
-#if CONFIG_LAUNCHER_QEMU
+#if CONFIG_LAUNCHER_DEVELOPMENT
     if (injected) {
         portENTER_CRITICAL(&injected_lock);
         *out = injected_sample;
