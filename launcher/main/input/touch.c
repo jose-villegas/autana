@@ -83,7 +83,7 @@ injected_gesture_sample(int64_t now_us, int* x, int* y) {
  * final no-contact sample. That lets touch_fsm see the lift before the panel
  * becomes the source again. */
 static bool
-injected_sample(int64_t now_us, bool* have_point, int* x, int* y) {
+poll_injected(int64_t now_us, bool* have_point, int* x, int* y) {
     portENTER_CRITICAL(&lock);
     if (injected_release) {
         injected_release = false;
@@ -140,33 +140,38 @@ touch_gesture_start(const touch_gesture_t* gesture) {
 #endif
 
 static void
+poll_controller(bool* have_point, int* x, int* y) {
+    /* Only talk to the controller when it has something: a controller NACKs
+     * register reads while idle, and each failed transaction costs a bus
+     * timeout - polling blindly at this rate would swamp the system. */
+    const bool pending = report_pending;
+    report_pending = false;
+    if (panel != NULL && (pending || was_touching || gpio_get_level(BSP_LCD_TOUCH_INT) == 0)) {
+        if (esp_lcd_touch_read_data(panel) == ESP_OK) {
+            esp_lcd_touch_point_data_t point = {0};
+            uint8_t count = 0;
+            if (esp_lcd_touch_get_data(panel, &point, &count, 1) == ESP_OK && count > 0) {
+                *have_point = true;
+                *x = point.x;
+                *y = point.y;
+            }
+        }
+    }
+}
+
+static void
 poll_once(void) {
     bool have_point = false;
     int x = 0, y = 0;
     const int64_t now_us = esp_timer_get_time();
 
-    /* Only talk to the controller when it has something: a controller NACKs
-     * register reads while idle, and each failed transaction costs a bus
-     * timeout - polling blindly at this rate would swamp the system. */
-    bool injected = false;
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    injected = injected_sample(now_us, &have_point, &x, &y);
-#endif
-    if (!injected) {
-        const bool pending = report_pending;
-        report_pending = false;
-        if (panel != NULL && (pending || was_touching || gpio_get_level(BSP_LCD_TOUCH_INT) == 0)) {
-            if (esp_lcd_touch_read_data(panel) == ESP_OK) {
-                esp_lcd_touch_point_data_t point = {0};
-                uint8_t count = 0;
-                if (esp_lcd_touch_get_data(panel, &point, &count, 1) == ESP_OK && count > 0) {
-                    have_point = true;
-                    x = point.x;
-                    y = point.y;
-                }
-            }
-        }
+    if (!poll_injected(now_us, &have_point, &x, &y)) {
+        poll_controller(&have_point, &x, &y);
     }
+#else
+    poll_controller(&have_point, &x, &y);
+#endif
     was_touching = have_point;
 
     portENTER_CRITICAL(&lock);
