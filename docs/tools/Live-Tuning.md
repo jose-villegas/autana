@@ -48,9 +48,12 @@ is made with it.
 
 ## How it works
 
+See [Device-Lock.md](Device-Lock.md) for the lock and the port `send`
+starts from. From there:
+
 ```mermaid
 flowchart LR
-    T["autana tune trail 200"] --> D["scripts/device/device.py send<br/><i>lock, port</i>"]
+    T["autana tune trail 200"] --> D["scripts/device/device.py send"]
     D -->|"SET ridge.trail 200"| C["console listener<br/><i>main/console/console.c</i>"]
     C --> S["SET verb<br/><i>console/console_tune.c</i>"]
     S --> R["tune_handle_line()<br/><i>util/tune.c</i>"]

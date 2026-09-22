@@ -9,6 +9,18 @@ is instructions, not narrative.
 
 0. **Decide what owns what, before any code.** Three files, three jobs, and
    the split is what makes a screen testable at all:
+
+   ```mermaid
+   flowchart LR
+       App["app_*.c<br/><i>input, gfx calls, timing,<br/>app-state ownership</i>"] --> Draw["apps/&lt;app&gt;/ui/&lt;screen&gt;.c<br/><i>drawing</i>"]
+       Draw --> Layout["&lt;screen&gt;.c<br/><i>layout</i>"]
+       Draw --> State["*_ui.c<br/><i>state</i>"]
+
+       Test["a host suite, e.g.<br/>ui/suite_command_list_budget.c"] -.-> Draw
+       Test -.-> Layout
+       Test -.-> State
+   ```
+
    - **layout** (`<screen>.c/.h`) - pure geometry, canvas width and height
      taken as parameters. No `gfx.h`, no hardware.
    - **state** (`*_ui.c/.h`) - which screen is up, what a click MEANS, what
@@ -16,12 +28,9 @@ is instructions, not narrative.
    - **drawing** (`apps/<app>/ui/<screen>.c/.h`) - the microui calls that
      build this screen's command list: `ui_begin_screen()` through
      `mu_end_window()`, taking a `mu_Context*` and a small state struct
-     rather than reaching for `app_*.c`'s own statics. `app_*.c` keeps
-     input, gfx calls, timing and app-state ownership, brackets the call
-     with `ui_begin()`/`ui_end()`, and applies whatever the screen reports
-     was clicked. This is what makes a screen's OWN drawing host-testable -
-     see `ui/suite_command_list_budget.c` beside each app's screens for
-     one that drives the real function against a real microui and asserts
+     rather than reaching for `app_*.c`'s own statics. This is what makes a
+     screen's OWN drawing host-testable - a host suite beside each app's
+     screens drives the real function against a real microui and asserts
      its command-list use fits `MU_COMMANDLIST_SIZE`.
 
 1. **Write the layout module first, and test it before drawing anything.**
