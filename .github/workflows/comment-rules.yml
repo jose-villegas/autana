@@ -7,7 +7,9 @@ name: Comment Rules
 # the tree-wide invariants documentation and tooling must hold: every
 # citation resolves, constants match source, and nothing outside
 # scripts/device/ opens the board's serial port or names one of the board
-# scripts the tree no longer has.
+# scripts the tree no longer has. check_style_audit.py holds the rest of a
+# whole-repo style review that a script can decide reliably - see its own
+# docstring for the list and for what was left out because it could not be.
 # Enforced here so the rules hold for every commit, however it was made.
 #
 # Own workflow file, like the others, purely so it gets its own badge -
@@ -55,6 +57,9 @@ jobs:
 
       - name: The board is reached only through scripts/device/
         run: python3 scripts/gates/check_device_access.py
+
+      - name: The decidable style-audit rules
+        run: python3 scripts/gates/check_style_audit.py
 
       # Warns, never fails: a changed function a document cites is a reason
       # to reread that document, not proof it is wrong.
