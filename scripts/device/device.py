@@ -187,7 +187,7 @@ PORT_WAIT_SECONDS = 600
 
 
 def open_when_free(port, seconds=PORT_WAIT_SECONDS, opener=None, sleep=time.sleep,
-                   now=time.monotonic, reason="open elsewhere"):
+                   now=time.monotonic, reason="held by another process"):
     """Opens the port once the OS lets go of it and returns the open connection;
     the caller closes it.
 
@@ -208,8 +208,8 @@ def open_when_free(port, seconds=PORT_WAIT_SECONDS, opener=None, sleep=time.slee
             return connection
         except OSError as error:
             if now() >= deadline:
-                raise RuntimeError(port + " did not become available " + reason + " within "
-                                   + str(int(seconds)) + "s after this task won the lock: "
+                raise RuntimeError(port + " still " + reason + " when the "
+                                   + str(int(seconds)) + "s wait ran out: "
                                    + str(error)) from error
             if not waited:
                 print("waiting for " + port + ", " + reason, file=sys.stderr)
@@ -340,7 +340,7 @@ def reset_and_capture(port, output, seconds, idle_seconds, expected_build_id=Non
             return bytes(data), "timeout"
         try:
             connection = open_when_free(port, remaining,
-                                        reason="to re-enumerate after reset")
+                                        reason="re-enumerating after reset")
         except RuntimeError:
             if first_reopen:
                 raise
@@ -369,7 +369,7 @@ def reset_device(args, store, port):
             with open_when_free(port):
                 pass
             reset(port)
-            with open_when_free(port, reason="to re-enumerate after reset"):
+            with open_when_free(port, reason="re-enumerating after reset"):
                 pass
         print("board reset; USB serial port is back")
         return 0
