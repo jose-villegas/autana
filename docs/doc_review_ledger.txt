@@ -1,3 +1,7 @@
 # path<TAB>YYYY-MM-DD<TAB>optional review note
 docs/sand/Architecture.md	2026-09-21	PR #337 round 2: reviewed against the declared console prefix contract, accurate
 docs/Building-an-App.md	2026-09-21	PR #337 round 2: reviewed against the declared console prefix contract, accurate
+docs/tools/Doc-Drift.md	2026-09-22	whole-repo docs review: reviewed against doc_drift.py, accurate
+docs/tools/Mermaid-Diagrams.md	2026-09-22	whole-repo docs review: reviewed against check-mermaid.mjs, check-mermaid-staged.sh and mermaid.yml, accurate
+docs/tools/Live-Tuning.md	2026-09-22	whole-repo docs review: reviewed against util/tune.h, console_verbs.h and console_tune.c, accurate
+editor/README.md	2026-09-22	whole-repo docs review: reviewed against editor/CMakeLists.txt and gen_ui_layout.py, accurate
