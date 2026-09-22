@@ -204,12 +204,24 @@ UNITY_OBJ="$BUILD_DIR/unity.o"
 # through --wrap at all (a pointer from strdup() arrives at __wrap_free
 # never having been seen by __wrap_malloc), which is why the arena forwards
 # pointers it does not own instead of trusting every free().
+#
+# The sources go through a response file: every path is absolute, and under a
+# long checkout path their sum passes Windows' 32K command-line limit. MSYS
+# rewrites /c/... paths on a command line but not inside a file, hence cygpath.
+SOURCES_RSP="$BUILD_DIR/sources.rsp"
+# shellcheck disable=SC2086
+if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m $SOURCES
+else
+    printf '%s\n' $SOURCES
+fi | sed -e '/^$/d' -e 's/[\\"]/\\&/g' -e 's/.*/"&"/' >"$SOURCES_RSP"
+
 # shellcheck disable=SC2086
 "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
     -I "$TEST_DIR/../components/microui/include" \
     -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
     $HEAP_ARENA_DEFINES \
-    $SOURCES "$UNITY_OBJ" -o "$OUT" \
+    "@$SOURCES_RSP" "$UNITY_OBJ" -o "$OUT" \
     -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm
 
 # --- static stack-frame gate ------------------------------------------------
@@ -226,12 +238,8 @@ UNITY_OBJ="$BUILD_DIR/unity.o"
 # sand.c itself would be a real risk too, but it is not the risk that
 # already panic-looped the board twice (see check_stack_usage.py's header),
 # and widening this to product code is a separate decision. Derived from
-# $SOURCES already assembled above, rather than a fresh glob, so this can
-# only ever compile files already proven to build on a host: suite_gfx.c and
-# suite_ui.c are device-only (real bsp/gfx headers, no host stub) and are
-# already correctly absent from $SOURCES - globbing test/suites/*.c blindly
-# would try to compile them here too and fail for a reason that has nothing
-# to do with stack usage.
+# $SOURCES already assembled above, rather than a fresh glob, so this only
+# compiles files already proven to build on a host.
 SU_DIR="$BUILD_DIR/su"
 rm -rf "$SU_DIR"
 mkdir -p "$SU_DIR"
