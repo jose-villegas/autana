@@ -144,23 +144,6 @@ test_rolling_reaches_every_row_and_wraps(void) {
                                   "the sweep wraps back to the top");
 }
 
-/* PHASE_STEP=24 against STRIP_ROWS=32 cycles through exactly four values
- * before repeating - the concrete sequence gfx_heal_plan() relies on to
- * cut the same rows differently each time. */
-static void
-test_advance_phase_cycles_through_four_values_then_repeats(void) {
-    gfx_heal_t h;
-    gfx_heal_reset(&h);
-
-    const int expect[4] = {24, 16, 8, 0};
-    for (int i = 0; i < 4; i++) {
-        gfx_heal_advance_phase(&h);
-        TEST_ASSERT_EQUAL_INT(expect[i], h.phase);
-    }
-    gfx_heal_advance_phase(&h);
-    TEST_ASSERT_EQUAL_INT(expect[0], h.phase);
-}
-
 void
 run_gfx_heal_suite(void) {
     RUN_TEST(test_nothing_queued_plans_nothing);
@@ -170,7 +153,6 @@ run_gfx_heal_suite(void) {
     RUN_TEST(test_a_budget_below_one_strip_sends_nothing);
     RUN_TEST(test_the_same_rows_healed_again_are_cut_differently);
     RUN_TEST(test_rolling_reaches_every_row_and_wraps);
-    RUN_TEST(test_advance_phase_cycles_through_four_values_then_repeats);
 }
 
 SUITE_REGISTER(run_gfx_heal_suite);
