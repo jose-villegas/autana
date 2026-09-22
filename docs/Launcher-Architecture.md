@@ -482,10 +482,8 @@ card, so it has no business being reachable in a shipped image. See
 particular that `REQUIRES` must **not** be gated this way.
 
 Diagnostics ships in any development build, `--dev` included, not just
-`--diag` - why a plain `--dev` build is still worth reaching for is in
-[Display-and-Rendering.md](notes/Display-and-Rendering.md#partial-updates-only-send-the-bands-that-changed).
-Its own
-toggle page mixes two shapes; the app itself does not. The "run self test
+`--diag`. Its own toggle page mixes two shapes; the app itself does not.
+The "run self test
 suite" button and its result line are genuinely
 SELFTEST-only (`#if CONFIG_LAUNCHER_SELFTEST` inside `app_diagnostics.c` —
 `selftest_run()` does not exist as a symbol outside a SELFTEST build) and
