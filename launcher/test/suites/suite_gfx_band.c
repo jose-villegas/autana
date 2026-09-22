@@ -172,6 +172,29 @@ test_packing_keeps_each_rows_span_in_order(void) {
     }
 }
 
+/* A wide span (2 px trimmed off each edge) makes every row's own packed
+ * destination reach into its own unread source, not just row 0's - the
+ * case test_packing_keeps_each_rows_span_in_order never exercises. */
+static void
+test_packing_a_wide_span_overlaps_its_own_source_every_row(void) {
+    enum { WIDTH = 20, HEIGHT = 3, X0 = 2, X1 = WIDTH - 2 };
+
+    gfx_color_t buf[WIDTH * HEIGHT];
+    for (int row = 0; row < HEIGHT; row++) {
+        for (int col = 0; col < WIDTH; col++) {
+            buf[row * WIDTH + col] = (gfx_color_t)(row * 100 + col);
+        }
+    }
+
+    gfx_band_span_pack(buf, WIDTH, HEIGHT, X0, X1);
+
+    for (int row = 0; row < HEIGHT; row++) {
+        for (int i = 0; i < X1 - X0; i++) {
+            TEST_ASSERT_EQUAL_INT(row * 100 + X0 + i, buf[row * (X1 - X0) + i]);
+        }
+    }
+}
+
 static void
 test_packing_a_full_width_span_is_a_no_op(void) {
     enum { WIDTH = 6, HEIGHT = 2 };
@@ -203,6 +226,7 @@ run_gfx_band_suite(void) {
     RUN_TEST(test_an_empty_span_reports_no_send);
     RUN_TEST(test_a_span_entirely_off_band_reports_no_send);
     RUN_TEST(test_packing_keeps_each_rows_span_in_order);
+    RUN_TEST(test_packing_a_wide_span_overlaps_its_own_source_every_row);
     RUN_TEST(test_packing_a_full_width_span_is_a_no_op);
 }
 

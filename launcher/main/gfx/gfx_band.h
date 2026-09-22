@@ -1,7 +1,9 @@
 /*
  * gfx_band - the two-slot band-ring state machine behind gfx_band_next()/
  * gfx_band_submit(), as a standalone, ESP-IDF-free module so a host suite
- * can drive it without a panel, DMA, or a semaphore.
+ * can drive it without a panel, DMA, or a semaphore. Also the span geometry
+ * gfx_band_submit() sends less than a full band through: even-rounding and
+ * clipping a column range, and packing a band's rows down to it in place.
  *
  * Two buffers only: a full-redraw renderer draws band k+1 into the slot NOT
  * currently sending while band k's DMA transfer is still in flight, and the
@@ -17,6 +19,7 @@
 #include <string.h>
 
 #include "gfx/gfx_color.h"
+#include "util/intmath.h"
 
 #define GFX_BAND_SLOTS 2
 
@@ -88,29 +91,18 @@ gfx_band_ring_settle(gfx_band_ring_t* ring) {
     ring->in_flight = -1;
 }
 
-/* The geometry behind gfx_band_submit_span() (gfx.c): a caller asks to send
- * only [x0, x1) of the current band instead of the whole width, and gfx must
- * still queue exactly one esp_lcd_panel_draw_bitmap() call - the panel
- * window has to land on even edges (gfx.h's even-edge rule), and a buffer
- * that call takes has no stride to skip the columns outside the span, so the
- * rows have to be packed contiguous first. Both are pure geometry, so both
- * are here rather than in gfx.c.
- */
-
-/* Rounds [x0, x1) outward to even panel columns and clips to [0, width) -
- * width is always even (GFX_WIDTH), so clipping first and rounding after
- * can never push the result back out of range. Returns false, leaving the
- * outputs undefined, when nothing survives - an empty or fully-off-band
- * request. */
+/* Rounds [x0, x1) outward to even panel columns (util/intmath.h) and clips
+ * to [0, width) - width is always even (GFX_WIDTH), so clipping first and
+ * rounding after can never push the result back out of range, which is why
+ * gfx_band_submit() needs no further clamp once this returns. Returns
+ * false, leaving the outputs undefined, when nothing survives - an empty or
+ * fully-off-band request. */
 static inline bool
 gfx_band_span_clip(int x0, int x1, int width, int* out_x0, int* out_x1) {
     x0 = x0 < 0 ? 0 : (x0 > width ? width : x0);
     x1 = x1 < 0 ? 0 : (x1 > width ? width : x1);
-    x0 &= ~1;           /* even_floor */
-    x1 = (x1 + 1) & ~1; /* even_ceil */
-    if (x1 > width) {
-        x1 = width;
-    }
+    x0 = even_floor(x0);
+    x1 = even_ceil(x1);
     if (x0 >= x1) {
         return false;
     }
@@ -120,12 +112,12 @@ gfx_band_span_clip(int x0, int x1, int width, int* out_x0, int* out_x1) {
 }
 
 /* Packs `height` rows of `buf` (stride `width`) down to columns [x0, x1),
- * contiguous, in place - one flat draw_bitmap() buffer instead of `height`
- * per-row calls (a per-row send measured 5.4x slower, see
- * docs/notes/Display-and-Rendering.md's "Still untapped"). A no-op at full
- * width. memmove, not memcpy: a wide span can overlap its own source row;
- * low row first is still safe since row r's write never reaches row r+1's
- * unread source (its end, (r+1)*(x1-x0), never exceeds (r+1)*width). */
+ * contiguous, in place, so gfx_band_submit() can hand the panel one flat
+ * buffer - draw_bitmap() takes no stride, and a call per row measured 5.4x
+ * slower (docs/notes/Display-and-Rendering.md, "Still untapped"). A no-op
+ * at full width. memmove, not memcpy: a wide span overlaps its own source
+ * row. Rows go low first, and row r's packed end never reaches row r+1's
+ * source. */
 static inline void
 gfx_band_span_pack(gfx_color_t* buf, int width, int height, int x0, int x1) {
     const int span_w = x1 - x0;
