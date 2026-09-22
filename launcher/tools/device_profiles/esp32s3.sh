@@ -18,7 +18,7 @@ DP_STATUS=measured
 # stack is megabytes, which is why a 24 KB fixture array passed on a laptop
 # and panic-looped the board twice.
 DP_MAIN_TASK_STACK_BYTES=3584
-DP_MAIN_TASK_STACK_SOURCE="CONFIG_ESP_MAIN_TASK_STACK_SIZE in launcher/sdkconfig, read 2026-09-13"
+DP_MAIN_TASK_STACK_SOURCE="CONFIG_ESP_MAIN_TASK_STACK_SIZE in launcher/sdkconfig.defaults, read 2026-09-13"
 
 # Per-function stack-frame ceiling the host checker enforces on test code.
 # Justified in launcher/test/check_stack_usage.py's header - short version:
@@ -58,7 +58,7 @@ DP_PSRAM_SOURCE="ESP32-S3R8 package, 8 MB octal (launcher/sdkconfig.defaults CON
 # nor MALLOC_CAP_SPIRAM tries internal RAM before PSRAM; at or above it, PSRAM
 # is tried first. Read directly from the sdkconfig knob, not derived.
 DP_SPIRAM_ALWAYSINTERNAL_BYTES=65536
-DP_SPIRAM_ALWAYSINTERNAL_SOURCE="CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL in launcher/sdkconfig and sdkconfig.defaults, read 2026-09-16"
+DP_SPIRAM_ALWAYSINTERNAL_SOURCE="CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL in launcher/sdkconfig.defaults, read 2026-09-16"
 
 # One SPI transaction's hard ceiling: the peripheral's own transaction-length
 # register is 18 bits wide (SPI_LL_DMA_MAX_BIT_LEN in ESP-IDF's spi_ll.h), so
