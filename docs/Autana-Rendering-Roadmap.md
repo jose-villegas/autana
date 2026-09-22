@@ -85,7 +85,7 @@ flowchart LR
   busRoot -.-> raycaster
   corePresent -.-> platformer
 
-  class frameTime,cubePerf,busRoot,corePresent,bandRing,hostHarness,s3lExtract,tiltShake done
+  class frameTime,cubePerf,busRoot,corePresent,bandRing,hostHarness,s3lExtract done
 ```
 
 The green-bordered nodes above are already in the tree, not proposed:
@@ -95,10 +95,10 @@ The green-bordered nodes above are already in the tree, not proposed:
 `gfx_present_begin()`/`gfx_present_wait()`), `bandRing` (`gfx/gfx_band.h`,
 already what render lab draws into), `hostHarness`
 (`docs/tools/Render-Harness.md`'s `*_render_host.sh` + `render_diff.sh`),
-`s3lExtract` (`render/r3d_project.h`, `r3d_camera.h`, `r3d_ray.h`), and
-`tiltShake` (`input/tilt.{h,c}` already reads down/strength/shake as a
-shared, host-tested module - what is still open is generalising it
-further out of the apps that consume it today).
+and `s3lExtract` (`render/r3d_project.h`, `r3d_camera.h`, `r3d_ray.h`).
+`tiltShake` stays proposed: `input/tilt.{h,c}` already reads
+down/strength/shake for sand, but pulling that into a library the other
+games can share without depending on sand is still open work.
 
 ### Where a frame's time goes, by which path an app takes
 
@@ -115,8 +115,8 @@ renderer (render lab) takes a third path instead of either: it renders
 into an internal-SRAM band ring and never writes PSRAM at all. Present
 copies full-width strips out of the PSRAM framebuffer into two internal
 DMA buffers and sends them at 80 MHz QSPI: ~10.2-10.9 ms per full frame
-(device measurement). Render/rasterize durations below are shown only for
-shape, since no app-general render number exists yet (Phase 0).
+(device measurement). Render/rasterize durations below are shape only;
+`util/frame_cost` reports an app's own.
 
 ```
 time (ms) 0         10        20        30        40

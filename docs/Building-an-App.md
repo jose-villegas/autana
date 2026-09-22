@@ -151,12 +151,8 @@ sequenceDiagram
     end
     S->>P: gfx_present_wait()
     S->>A: frame(dt_ms, input)
-    Note over S,P: not presented now - deferred to next pass's gfx_present_begin()
+    Note over S,P: present_unless_deferred() leaves this frame to the next pass's gfx_present_begin()
 ```
-
-The shell never calls `gfx_present()` directly for an app with `update()`
-(`present_unless_deferred()`, `main.c`) - this pass's `frame()` output waits
-for the next pass's `gfx_present_begin()` to go out.
 
 The first pass after `enter()` skips the begin/update/wait half: nothing is
 drawn yet. Sand is the adopter - `sand_update()` steps the sim,
