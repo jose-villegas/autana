@@ -72,10 +72,6 @@ test('parseExtraMmdcArgs returns an empty array for unset or blank input', () =>
   assert.deepEqual(parseExtraMmdcArgs(''), []);
 });
 
-// GitHub renders a literal `\n` inside a stateDiagram transition label as
-// the two characters "\n", not a line break - unlike a flowchart, where it
-// does break the line. The skill's trap 3 covers the note-syntax case;
-// this is the same trap in a transition label.
 test('flags a literal \\n inside a stateDiagram-v2 transition label', () => {
   const source = ['stateDiagram-v2', '    [*] --> Active', 'Active --> Settled: no activity\\nand no neighbour'].join(
     '\n',
@@ -102,5 +98,30 @@ test('does not flag a literal \\n inside a flowchart label', () => {
 
 test('does not flag a literal \\n inside a sequenceDiagram message', () => {
   const source = ['sequenceDiagram', 'A->>B: line one\\nline two'].join('\n');
+  assert.equal(findLiteralNewlineInStateDiagram(source), null);
+});
+
+test('flags a literal \\n in a stateDiagram-v2 preceded by an %%{init}%% directive', () => {
+  const source = [
+    '%%{init: { "theme": "forest" } }%%',
+    'stateDiagram-v2',
+    'Active --> Settled: no activity\\nand no neighbour',
+  ].join('\n');
+  assert.notEqual(findLiteralNewlineInStateDiagram(source), null);
+});
+
+test('flags a literal \\n in a stateDiagram-v2 preceded by YAML frontmatter', () => {
+  const source = [
+    '---',
+    'title: Block sleeping',
+    '---',
+    'stateDiagram-v2',
+    'Active --> Settled: no activity\\nand no neighbour',
+  ].join('\n');
+  assert.notEqual(findLiteralNewlineInStateDiagram(source), null);
+});
+
+test('does not flag a flowchart preceded by an %%{init}%% directive', () => {
+  const source = ['%%{init: { "theme": "forest" } }%%', 'flowchart TD', 'A["one\\ntwo"] --> B'].join('\n');
   assert.equal(findLiteralNewlineInStateDiagram(source), null);
 });
