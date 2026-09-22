@@ -20,8 +20,8 @@ autana suite run_sand_perf_suite
 
 runs the sand frame-budget suite alone, on the board already flashed, with
 no rebuild and no reflash. Any other sand suite works the same way -
-`run_sand_materials_suite`, `run_sand_combustion_suite`, and so on; see
-`docs/Testing-Guide.md`'s suite table for the full list. This is the loop
+`run_sand_materials_suite`, `run_sand_combustion_suite`, and so on;
+`autana suite list sand` lists them all. This is the loop
 while working on a material or a perf change: `autana suite` the suite for
 the area touched, and reserve a full capture for a merge decision.
 
@@ -115,13 +115,13 @@ cells its passes dispatched, and ranks how evenly a layout divides a board's
 work. That produces a shortlist of side pairs per quality and nothing else:
 no time of any kind.
 
-**QEMU.** One instance per quality against one perf-scope image
-(`run_qemu_tests.sh`, [`../Testing-Guide.md`](../Testing-Guide.md#qemu-the-device-image-with-no-board)
-- any number of instances run at once):
+**QEMU.** One instance per quality against one perf-scope image, as many
+at once as you like
+([`run_qemu_tests.sh`](../Testing-Guide.md#qemu-the-device-image-with-no-board)).
+One line, `--suite` repeated, covers all five in a single instance:
 
 ```sh
-./launcher/test/run_qemu_tests.sh --perf-scope --suite run_chunk_sweep_ultra_suite
-./launcher/test/run_qemu_tests.sh --perf-scope --suite run_chunk_sweep_high_suite
+./launcher/test/run_qemu_tests.sh --perf-scope --suite run_chunk_sweep_ultra_suite --suite run_chunk_sweep_high_suite --suite run_chunk_sweep_normal_suite --suite run_chunk_sweep_low_suite --suite run_chunk_sweep_very_low_suite
 ```
 
 It prices the chunking itself, through the one-thread arm. The two-lane arm
