@@ -20,7 +20,7 @@ import device_report
 # launcher/tools/ holds screenshot.py's decoder and espressif.py's Python
 # lookup, both used below - one insert here rather than one per call site.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools"))
-from espressif import idf_python  # noqa: E402  (path must be set up first)
+from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
 
 
 BAUD = 115200
@@ -343,13 +343,10 @@ CRASH_ADDRESS_RE = re.compile(rb"0x4[0-9a-fA-F]{7}")
 
 def toolchain_addr2line():
     """The xtensa-esp32s3-elf-addr2line beside ESP-IDF's own toolchain,
-    found under IDF_TOOLS_PATH (default ~/.espressif) same as ESP-IDF's own
-    install script uses, or None when it is not installed. Sorted
+    found under espressif_tools_root(), or None when it is not installed. Sorted
     reverse-alphabetically so the newest of several installed toolchain
     versions wins."""
-    tools_root = Path(os.environ["IDF_TOOLS_PATH"]) if os.environ.get("IDF_TOOLS_PATH") \
-        else Path.home() / ".espressif"
-    root = tools_root / "tools" / "xtensa-esp-elf"
+    root = espressif_tools_root() / "tools" / "xtensa-esp-elf"
     for bin_dir in sorted(root.glob("*/*/bin"), reverse=True):
         for name in ("xtensa-esp32s3-elf-addr2line.exe", "xtensa-esp32s3-elf-addr2line"):
             candidate = bin_dir / name
