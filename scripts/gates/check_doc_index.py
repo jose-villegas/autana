@@ -7,9 +7,8 @@ does not match a heading GitHub will actually generate that id for.
 
 A link to a folder reaches that folder's README.md. Only real links count -
 a path written in backticks names a document, it does not index it. An
-anchor is checked only when the link's target file ends in `.md` - `#L3` in
-a link to a script, or a Python `# comment` a naive scan could mistake for a
-heading, are never a document heading and are not this gate's concern.
+anchor is checked only when the link's target file ends in `.md` - `#L3`
+in a link to a script is never a document heading.
 """
 import pathlib
 import re
@@ -29,15 +28,41 @@ def tracked_docs(root):
     return {name for name in result.stdout.splitlines() if name.endswith(".md")}
 
 
-def link_targets(root, doc):
-    path = root / doc
+def blank_fences(lines):
+    """`lines` with the content of each fenced code block - delimiters
+    included - replaced by an empty string. Same length and positions as
+    `lines`, so a line number computed against the result still matches
+    the original file; a shell transcript's own "```"-shaped text can
+    never be mistaken for prose this way either."""
     fenced = False
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    out = []
+    for line in lines:
         if line.lstrip().startswith("```"):
             fenced = not fenced
+            out.append("")
             continue
-        if fenced:
-            continue
+        out.append("" if fenced else line)
+    return out
+
+
+def doc_headings(path):
+    """Every heading's raw text in `path`, in document order - duplicates
+    kept, since GitHub numbers a repeated slug by occurrence, and a
+    citation match only needs to know some heading matches. None if
+    `path` is not a file."""
+    if not path.is_file():
+        return None
+    heads = []
+    for line in blank_fences(path.read_text(encoding="utf-8", errors="replace").splitlines()):
+        m = HEADING.match(line)
+        if m:
+            heads.append(m.group(2).strip())
+    return heads
+
+
+def link_targets(root, doc):
+    path = root / doc
+    for line in blank_fences(path.read_text(encoding="utf-8", errors="replace").splitlines()):
         for target in LINK.findall(line):
             target = target.split("#", 1)[0]
             if not target or "://" in target or target.startswith("mailto:"):
@@ -85,20 +110,12 @@ def slugify(text):
 
 
 def heading_slugs(path):
-    if not path.is_file():
+    heads = doc_headings(path)
+    if heads is None:
         return None
     slugs, counts = set(), {}
-    fenced = False
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
-            continue
-        if fenced:
-            continue
-        m = HEADING.match(line)
-        if not m:
-            continue
-        slug = slugify(m.group(2))
+    for text in heads:
+        slug = slugify(text)
         n = counts.get(slug, 0)
         counts[slug] = n + 1
         slugs.add(slug if n == 0 else f"{slug}-{n}")
@@ -114,13 +131,8 @@ def anchor_links(root):
         path = root / doc
         if not path.is_file():
             continue
-        fenced = False
-        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-            if line.lstrip().startswith("```"):
-                fenced = not fenced
-                continue
-            if fenced:
-                continue
+        lines = blank_fences(path.read_text(encoding="utf-8", errors="replace").splitlines())
+        for number, line in enumerate(lines, 1):
             for target in LINK.findall(line):
                 if "://" in target or target.startswith("mailto:"):
                     continue
