@@ -16,7 +16,7 @@
                                     matches the capture's BUILD_ID, if one does.
     autana reset [--capture [seconds]]
                                     reboot the board and wait for its USB serial port. --capture
-                                    prints and records the boot console for 20 seconds by default.
+                                    also prints and records the boot console, for 20 seconds when omitted.
     autana suite <name> [seconds]   run one registered suite and print what it prints. A
                                     diagnostics build serves these with no rebuild and no
                                     reflash, and only one built WITHOUT autorun ever reaches
@@ -278,7 +278,7 @@ def reset(args):
     if "--capture" in rest:
         rest.remove("--capture")
         capture = True
-    seconds = seconds_argument(rest, 20.0, "usage: autana reset [--capture [seconds]]")
+    seconds = seconds_argument(rest, None, "usage: autana reset [--capture [seconds]]")
     if rest and not capture:
         sys.exit("usage: autana reset [--capture [seconds]]")
     command = [
@@ -286,7 +286,9 @@ def reset(args):
         "reset", "--purpose", "autana reset",
     ]
     if capture:
-        command += ["--capture", "--seconds", str(seconds)]
+        command += ["--capture"]
+        if seconds is not None:
+            command += ["--seconds", str(seconds)]
     return subprocess.call(command)
 
 
