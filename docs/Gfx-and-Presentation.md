@@ -46,7 +46,7 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 | App writes | pixels, anywhere | pixels, one band at a time | palette indices, `gfx_indexed_image()` |
 | Buffer | 322 KiB, PSRAM | 2 x `GFX_BAND_HEIGHT` rows, DMA RAM | grid_w x grid_h bytes, internal RAM |
 | Who sends | present task | the app's own loop, inside `frame()` | present task |
-| Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole |
+| Sends | dirty cells, runs or strips | dirty bands, sent across their dirty columns | dirty strips, whole |
 | Content kept between frames | yes | **no** - a band is gone once sent | yes |
 | For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette |
 | Used by | launcher, diagnostics | render lab | sand |
@@ -57,10 +57,8 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 - Only `GFX_RESOLUTION_FULL` without interlace renders today. The other
   request fields grant correctly and nothing consumes them.
 - `GFX_BAND_HEIGHT` is 16, 32 or 64 rows by Kconfig, default 32, and always
-  divides `GFX_HEIGHT`. At 64 the two band buffers are not a new
-  allocation: they alias `gfx.c`'s own strip-bounce slots (each already
-  exactly one 64-row band's size), idle while band mode holds them, since
-  free internal heap is only ~31 KB right after `gfx_init()`.
+  divides `GFX_HEIGHT`. At every band height the two band buffers alias
+  `gfx.c`'s strip-bounce slots rather than allocating.
 
 ## Dirty tracking
 
@@ -207,19 +205,12 @@ sequenceDiagram
   draws a band's share. The shell queues its home hint with
   `ui_queue_band_overlay_rect()` before `frame()`, since nothing can draw
   after the loop.
-- `gfx_band_submit_span(x0, x1)` sends only that column range of the current
-  band instead of the whole width - the panel keeps showing whatever the
-  rest already held. Edges round outward to even and clip to the band
-  (`gfx_band_span_clip()`, `gfx_band.h`); an empty result sends nothing,
-  advancing the ring the way `gfx_band_skip()` does. Still exactly one
-  `draw_bitmap()` call: the span is packed to its own width in place first
-  (`gfx_band_span_pack()`), a flat buffer having no stride to skip past.
-  `gfx_band_submit()` is `gfx_band_submit_span(0, GFX_WIDTH)`.
-- Band mode heals too, at the fast clock: `gfx_band_frame_begin()` plans a
-  present's worth of heal strips the same way a full-fb present does
-  (`gfx_heal_queue_rolling()` + `gfx_heal_plan()`, same budget), and
-  `gfx_band_dirty()` reports a band dirty when it overlaps one of them - a
-  band is rendered from scratch, so healing it is just sending it again.
+- `gfx_band_dirty()` records the column span it returns; `gfx_band_submit()`
+  sends exactly that, packed and even-clipped (`gfx_band_span_clip()`/
+  `gfx_band_span_pack()`, `gfx_band.h`), in one `draw_bitmap()` call - a flat
+  buffer has no stride to skip past. A caller that never calls
+  `gfx_band_dirty()` still gets a full-width send, and an empty extent sends
+  nothing, advancing the ring the way `gfx_band_skip()` does.
 
 ## Indexed mode
 
@@ -401,6 +392,17 @@ same window sent again fails the same way.
 | `gfx_heal_set_budget()` | pixels of heal per present, default `GFX_HEAL_DEFAULT_BUDGET_PIXELS` |
 | `gfx_heal_set_rolling()` | rows per present of a whole-screen sweep, 0 for none |
 | `gfx_heal_restore_defaults()` | empty the queue, reset both - the shell calls it on every app switch |
+
+Band mode heals differently, since gfx keeps no copy of a band to resend on
+its own: `gfx_band_dirty()` never reports a band dirty for heal alone - a
+band nothing else touched stays unsent, and only the rolling sweep or a
+real content change gets it looked at again. When a band the app *is*
+already sending overlaps a planned heal region, `gfx_band_submit()` cuts
+that one send into two `draw_bitmap()` windows at a row that moves with
+`heal.phase` (`gfx_heal_band_split_row()`) instead of one, so the same
+shape is never repeated even though the band's content did not change. The
+budget and `dev_heal_bytes_sent` are charged the band's own real pixels,
+not the planned strip's - one strip can overlap two bands.
 
 ## Repaint controls
 
