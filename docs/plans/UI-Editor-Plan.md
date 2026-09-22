@@ -236,5 +236,5 @@ run by `.github/workflows/editor-tests.yml`.
 ## Related
 
 - [`../Building-a-Screen.md`](../Building-a-Screen.md) - how a screen is built by hand today
-- [`Icon-Baker-Plan.md`](Icon-Baker-Plan.md) - the same authored-data-to-baked-header pattern, for artwork
+- [`../tools/Icon-Baker.md`](../tools/Icon-Baker.md) - the same authored-data-to-baked-header pattern, for artwork
 - [`../Autana-Rendering-Roadmap.md`](../Autana-Rendering-Roadmap.md) - the engine direction this serves

@@ -4,7 +4,7 @@
  *
  * Mirrors gfx_font_t (gfx_font.h): the hand-written struct lives here, once,
  * so more than one generated atlas (gfx/icons_system.h today, an app's own
- * apps/<name>/icons_<name>.h later - see docs/plans/Icon-Baker-Plan.md's
+ * apps/<name>/icons_<name>.h later - see docs/tools/Icon-Baker.md's
  * "Ownership") can each define a `static const icon_t` table without
  * redeclaring the type.
  *
