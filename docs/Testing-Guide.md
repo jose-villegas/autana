@@ -80,11 +80,11 @@ capturing sand performance numbers.
 
 Portable suites (`test/suites/`, plus each app's own beside it,
 `apps/*/suite_*.c`) are compiled into every runner that can take them.
-Nothing is written twice. A device-only suite - `suite_gfx.c`, needing a
-real panel - is left out of the host runner's file list, not gated by a
-preprocessor guard: it would not compile there, which is the point. POST
-is a third thing again, a boot-time hardware check rather than a Unity
-suite.
+Nothing is written twice. A shell suite that needs the device build -
+`suite_gfx.c` - is left out of the host runner's file list; an app's
+suites are globbed, so a device-only section of one sits behind `#ifdef
+DEVICE_BUILD` instead. POST is a third thing again, a boot-time hardware
+check rather than a Unity suite.
 
 ```mermaid
 flowchart LR
@@ -104,8 +104,6 @@ flowchart LR
     Portable --> Qemu
     DeviceOnly --> Board
     DeviceOnly --> Qemu
-
-    POST["POST<br/><i>a boot-time hardware check,<br/>not a Unity suite</i>"]
 ```
 
 **The host runner is the TDD loop.** Under a second, so red-green-refactor is
@@ -515,12 +513,10 @@ flowchart LR
         direction TB
         P1["touch_fsm.c<br/><i>samples to events</i>"]
         P2["gesture.c<br/><i>swipe recognition</i>"]
-        P3["ui_launcher_draw.c<br/><i>the home screen's command list</i>"]
     end
 
     HW1 -->|"sample + now_us"| P1
     HW4 -->|"input_t + screen dimensions"| P2
-    HW3 -->|"ctx, dt_ms"| P3
 ```
 
 Note the direction of the arrows: the hardware side calls *into* the pure side

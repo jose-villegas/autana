@@ -10,17 +10,6 @@ is instructions, not narrative.
 0. **Decide what owns what, before any code.** Three files, three jobs, and
    the split is what makes a screen testable at all:
 
-   ```mermaid
-   flowchart LR
-       App["app_*.c<br/><i>input, gfx calls, timing,<br/>app-state ownership</i>"] --> Draw["apps/&lt;app&gt;/ui/&lt;screen&gt;.c<br/><i>drawing</i>"]
-       Draw --> Layout["&lt;screen&gt;.c<br/><i>layout</i>"]
-       Draw --> State["*_ui.c<br/><i>state</i>"]
-
-       Test["a host suite, e.g.<br/>ui/suite_command_list_budget.c"] -.-> Draw
-       Test -.-> Layout
-       Test -.-> State
-   ```
-
    - **layout** (`<screen>.c/.h`) - pure geometry, canvas width and height
      taken as parameters. No `gfx.h`, no hardware.
    - **state** (`*_ui.c/.h`) - which screen is up, what a click MEANS, what
