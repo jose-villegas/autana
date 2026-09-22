@@ -255,9 +255,9 @@ if(CONFIG_LAUNCHER_SELFTEST)
             if(NOT EXISTS "${suite_src}")
                 message(FATAL_ERROR
                     "LAUNCHER_SELFTEST_SCOPE_PERF names a suite that does not "
-                    "exist: ${suite_src}. Fix the list in main/CMakeLists.txt "
-                    "(and docs/Build-Variants.md) - a scope that silently "
-                    "measures less than it claims is worse than no scope.")
+                    "exist: ${suite_src}. Fix the list in main/CMakeLists.txt - "
+                    "a scope that silently measures less than it claims is "
+                    "worse than no scope.")
             endif()
         endforeach()
         set(suite_srcs "")
