@@ -160,8 +160,9 @@ step_one_falling_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
  * lift. */
 #define TRUNK_WIDTH 3
 
-/* Moisture soaks bottom wet, top dry; a plant paused two rows below where it
- * last drank still reads as watered. */
+/* Soil soaks bottom-up and dries top-down, so the collar can be dry over
+ * wet rows: past the stem, the walk goes up to ROOT_REACH cells into the
+ * soil for water. Roots on the stem count toward root_depth, not lift. */
 static int
 find_water(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t self, int* lift, int* contact_at,
            int* root_depth, bool wants_room) {
@@ -308,21 +309,19 @@ spend_soil_moisture(sand_t* s, int w, const reaction_t* r, int soil_at, uint8_t 
     place_reacted(s, contact_at % w, contact_at / w, (size_t)contact_at, r->roots_to);
 }
 
-/* Max neighbours; 2 ensures filamentary shape, not slab.
- * Docs/Sand/Sand-Simulation.md */
+/* A root with more root neighbours than this stops growing, keeping roots
+ * filaments, not slabs. */
 #define ROOT_SURFACE_MAX    2
 
-/* DOWN/AWAY=2. Trunk=parent. Roots stop at dry soil. Weights guide moist cell
- * selection. */
 #define ROOT_WEIGHT_AWAY    2
 #define ROOT_WEIGHT_DOWN    2
 
 #define ROOT_CONDUCT_CHANCE 64
 
 /* One ROOT cell, carrying water down through itself as a conduit - moves
- * gravity-ward only. Its two side neighbours count as sources too, not just
- * the one above, so a whole column of soil can drain through it rather than
- * only the cell directly overhead. */
+ * gravity-ward only, but its side and upper neighbours all count as
+ * sources, not just the one directly above, so a whole column of soil can
+ * drain through it rather than only the cell it sits under. */
 bool
 step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     const int down = ring_of(s->last_load_dx, s->last_load_dy);
@@ -344,14 +343,15 @@ step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t
         }
         const reaction_t* cr = reaction_of(c);
         if (cr->soil == 0) {
-            continue; /* not soil: root, wood, stone, air - and, since D1,
-                        * gunpowder: a fuse is not ground a root conducts
-                        * water through. */
+            continue; /* not soil: root, wood, stone, air, gunpowder - a fuse
+                        * is not ground a root conducts water through. */
         }
         const int m = moisture_of(c, cr);
         if (k == 0 || k == 1 || k == 7) {
-            /* Keeps codec soil below moist_max. Ensures !cell_is_burning(c)
-             * for accurate moisture readings. */
+            /* Only a cell below moist_max can receive more. moisture_of()
+             * reads a burning cell as 0 regardless of its real moisture -
+             * !cell_is_burning(c) keeps that from reading as the thirstiest
+             * candidate. */
             if (m < cr->moist_max && !cell_is_burning(c) && (dst_at < 0 || m < dst_m)) {
                 dst_m = m;
                 dst_at = (int)nat;
@@ -405,11 +405,10 @@ step_one_rooting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
     }
 
     /* The pick below is WEIGHTED, not uniform: a direction that continues
-     * away from the parent (wood, or an existing root - the very first root
-     * cell has neither, so its away-vector is zero and gravity alone
-     * decides) or that reaches downward carries more weight, so a root
-     * spreads sideways from where it started and seeks water beneath itself
-     * rather than beside it. */
+     * away from the parent (wood, or an existing root) or that reaches
+     * downward carries more weight, so a root spreads sideways from where
+     * it started and seeks water beneath itself rather than beside it -
+     * with no root or wood beside it, gravity alone steers. */
     int away_x = 0, away_y = 0;
     for (int d = 0; d < 8; d++) {
         const int* nd = ring_dir(d);
@@ -781,7 +780,9 @@ step_one_growing_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
         sy = ny;
     }
 
-    /* Gravity triggers `run < 3`, `holds_line` restores old behavior. */
+    /* On a won roll, keep the limb's own existing direction (from the
+     * previous segment to this one) instead of snapping back toward
+     * straight up. */
     int head = up;
     if (r->holds_line != 0 && (int)(rng_next(&s->rng) & 0xFF) < r->holds_line) {
         /* Longer baseline increases horizontal drift from 24 to 38. Shorter
@@ -881,7 +882,7 @@ step_one_growing_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
      * Last cell green. Growth ends. */
     const int up_i = ring_of(ux, uy);
 
-    /* Growth now from crowned wood (reaction_t.buds). */
+    /* Growth from crowned wood (reaction_t.buds). */
     const int hard = trunk;
 
     int topx[CANOPY_SPAN], topy[CANOPY_SPAN];
