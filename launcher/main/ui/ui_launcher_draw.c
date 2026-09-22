@@ -37,10 +37,11 @@ draw_banner(mu_Context* ctx) {
 static int
 draw_app_rows(mu_Context* ctx) {
     int chosen = -1;
+    int i = 0;
     ui_flow_t flow = ui_flow_start(ui_width(), UI_BANNER_HEIGHT + UI_ROW_GAP, UI_ROW_GAP);
-    for (int i = 0; i < app_list_count(); i++) {
+    for (const app_t* app = app_list(); app != NULL; app = app->next, i++) {
         ui_flow_row(ctx, &flow, LAUNCHER_BTN_W, UI_ROW_HEIGHT);
-        if (mu_button(ctx, app_list()[i]->name)) {
+        if (mu_button(ctx, app->name)) {
             chosen = i;
         }
     }

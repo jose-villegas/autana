@@ -47,7 +47,7 @@ typedef struct {
 #define APP_CONSOLE_PTR(handler) NULL
 #endif
 
-typedef struct {
+typedef struct app {
     const char* name;
     const char* summary; /* one line, shown in the launcher list */
 
@@ -104,6 +104,11 @@ typedef struct {
     /* Opt-in, NULL unless an app declares one with APP_CONSOLE_PTR() above.
      * See docs/tools/Autana-CLI.md's "Adding a command from an app". */
     const app_console_t* console;
+
+    /* The registry's own link, threaded through app_register() - the same
+     * shape console_verb_t (console/console_verbs.h) and tune_entry_t
+     * (util/tune.h) already use. An app never sets this itself. */
+    struct app* next;
 } app_t;
 
 /*
@@ -122,20 +127,19 @@ int shell_system_panel_clock_hz(void);
  * tests - without touching another file, CMakeLists.txt included.
  *
  * APP_REGISTER() places a constructor in .init_array, which ESP-IDF runs
- * before app_main(), into a fixed array - no allocation, and registration
- * cannot fail at an awkward time. Link order decides .init_array order, so
- * the shell sorts by name before showing the list.
+ * before app_main() - the same self-registering shape CONSOLE_VERB() and
+ * TUNE() already use. Link order decides .init_array order; app_register()
+ * sorts by name at insertion so it never shows.
  */
 
-#define APP_MAX 16
-
-/* Called by APP_REGISTER before main(). Ignores anything past APP_MAX, having
- * complained about it. */
-void app_register(const app_t* app);
+/* Called by APP_REGISTER before main(). */
+void app_register(app_t* app);
 
 #define APP_REGISTER(symbol)                                                                                           \
     __attribute__((constructor)) static void symbol##_register(void) { app_register(&symbol); }
 
-/* Registered apps, sorted by name. Valid from the first line of app_main(). */
-const app_t* const* app_list(void);
+/* The head of the registered apps, sorted by name and linked through
+ * app_t.next - NULL once nothing more is registered. Valid from the first
+ * line of app_main(). */
+const app_t* app_list(void);
 int app_list_count(void);

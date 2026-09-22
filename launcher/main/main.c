@@ -11,6 +11,7 @@
  * BOOT button - see docs/notes/Flashing-and-Toolchain.md.
  */
 
+#include <assert.h>
 #include <ctype.h>
 #include <stdint.h>
 #include <string.h>
@@ -191,21 +192,25 @@ shell_system_panel_clock_hz(void) {
 
 /* Filled in before app_main() by the constructors APP_REGISTER() emits. No
  * app is named here; see app.h for why. */
-static const app_t* apps[APP_MAX];
+static app_t* apps_head;
 static int apps_registered;
 
 void
-app_register(const app_t* app) {
-    if (apps_registered >= APP_MAX) {
-        ESP_LOGE(TAG, "More than %d apps registered; '%s' was dropped", APP_MAX, app->name);
-        return;
+app_register(app_t* app) {
+    app->next = NULL;
+    apps_registered++;
+
+    app_t** link = &apps_head;
+    while (*link != NULL && strcmp((*link)->name, app->name) < 0) {
+        link = &(*link)->next;
     }
-    apps[apps_registered++] = app;
+    app->next = *link;
+    *link = app;
 }
 
-const app_t* const*
+const app_t*
 app_list(void) {
-    return apps;
+    return apps_head;
 }
 
 int
@@ -248,19 +253,6 @@ opposite_edge(gesture_edge_t edge) {
         case GESTURE_EDGE_RIGHT: return GESTURE_EDGE_LEFT;
     }
     return edge;
-}
-
-static void
-sort_apps(void) {
-    for (int i = 1; i < apps_registered; i++) {
-        const app_t* const key = apps[i];
-        int j = i - 1;
-        while (j >= 0 && strcmp(apps[j]->name, key->name) > 0) {
-            apps[j + 1] = apps[j];
-            j--;
-        }
-        apps[j + 1] = key;
-    }
 }
 
 /* chrome */
@@ -470,7 +462,11 @@ step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, u
         draw_home_hint(exit_edge);
         return;
     }
-    *current = apps[chosen];
+    const app_t* app = apps_head;
+    for (int i = 0; i < chosen; i++) {
+        app = app->next;
+    }
+    *current = app;
     ESP_LOGI(TAG, "Starting %s", (*current)->name);
     gfx_request_full_redraw();
     restore_system_display_state();
@@ -590,11 +586,15 @@ park_forever(void) {
  * match first. */
 static void
 check_console_prefix_clashes(void) {
-    const char* app_prefixes[APP_MAX];
+    /* Bounded by how many registered apps could plausibly declare their own
+     * console prefix, not by apps_registered itself - the assert below
+     * catches this growing past that the day it happens. */
+    const char* app_prefixes[32];
     int app_count = 0;
-    for (int i = 0; i < apps_registered; i++) {
-        if (apps[i]->console != NULL) {
-            app_prefixes[app_count++] = apps[i]->console->prefix;
+    for (const app_t* app = apps_head; app != NULL; app = app->next) {
+        if (app->console != NULL) {
+            assert(app_count < (int)(sizeof(app_prefixes) / sizeof(app_prefixes[0])));
+            app_prefixes[app_count++] = app->console->prefix;
         }
     }
 
@@ -655,7 +655,6 @@ app_boot_init(void) {
      * animation can dissolve into it. ui_init() resets the transform to
      * identity, so DISPLAY_DEFAULT_QUARTER is applied here or the board
      * would start upright and visibly turn into place. */
-    sort_apps();
 #if CONFIG_LAUNCHER_DEVELOPMENT
     check_console_prefix_clashes();
 #endif
@@ -751,8 +750,7 @@ offer_console_line(const app_t* current) {
         return;
     }
 
-    for (int i = 0; i < apps_registered; i++) {
-        const app_t* app = apps[i];
+    for (const app_t* app = apps_head; app != NULL; app = app->next) {
         if (app->console == NULL) {
             continue;
         }

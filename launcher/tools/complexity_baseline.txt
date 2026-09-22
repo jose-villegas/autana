@@ -1155,7 +1155,6 @@
 4	launcher/main/gfx/gfx.c:2247	send_heal_strips
 4	launcher/main/gfx/gfx.c:2234	send_overlay_bordered_rows_clean
 4	launcher/main/main.c:662	sample_display_orientation
-4	launcher/main/main.c:250	sort_apps
 4	launcher/main/ui/system_navigation.c:9	system_navigation_step
 4	launcher/main/ui/ui.c:552	mark_changed_ui_bands
 4	launcher/main/ui/ui_build.c:462	ui_begin_screen

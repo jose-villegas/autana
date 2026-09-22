@@ -61,14 +61,14 @@ The shell calls the three required pointers without a NULL check.
 ```mermaid
 flowchart LR
     SRC["apps/&lt;name&gt;/*.c"] -->|"CMake glob<br/>CONFIGURE_DEPENDS"| LIB["libmain.a<br/>WHOLE_ARCHIVE"]
-    LIB -->|"APP_REGISTER<br/>.init_array constructor"| REG["app_register()<br/>apps[APP_MAX]"]
-    REG -->|"app_main(): sort by name"| LIST["launcher list"]
+    LIB -->|"APP_REGISTER<br/>.init_array constructor"| REG["app_register()<br/>sorted linked list"]
+    REG --> LIST["launcher list"]
 ```
 
-- `app_register()` runs before `app_main()`, into a fixed array of `APP_MAX`
-  (16): no allocation, no failure path. One app too many is dropped with an
-  error log.
-- Constructor order is link order, so `sort_apps()` orders by `name`.
+- `app_register()` runs before `app_main()`, threading each `app_t` into a
+  list through its own `next` field - no allocation, no capacity to exceed.
+- It inserts in `name` order directly, so constructor order (link order)
+  never shows.
 - `WHOLE_ARCHIVE` is what keeps an app nothing references by name in the
   image. Without it the app vanishes from the list with no link error.
 - Anything may read the registry: `app_list()`, `app_list_count()`.

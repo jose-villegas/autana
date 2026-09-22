@@ -27,17 +27,18 @@ extern bool render_lab_band_mode;
 extern bool render_lab_show_hud;
 extern const char* render_lab_start_scene_key;
 
-static const app_t* registered;
+static app_t* registered;
 static int shell_quarter;
 
 void
-app_register(const app_t* app) {
+app_register(app_t* app) {
+    app->next = NULL;
     registered = app;
 }
 
-const app_t* const*
+const app_t*
 app_list(void) {
-    return &registered;
+    return registered;
 }
 
 int

@@ -2320,7 +2320,7 @@ sand_invalidate(void) {
     }
 }
 
-const app_t app_sand = {
+app_t app_sand = {
     .name = "Falling Sand",
     .summary = "Tilt to steer, touch to pour",
     .enter = sand_enter,
