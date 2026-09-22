@@ -10,6 +10,9 @@ console_app_name_matches(const char* name, const char* prefix) {
         return false;
     }
     while (*prefix != '\0') {
+        if (*name == '\0') {
+            return false;
+        }
         if (tolower((unsigned char)*name) != tolower((unsigned char)*prefix)) {
             return false;
         }

@@ -566,6 +566,7 @@ test_an_app_name_accepts_a_case_folded_prefix(void) {
     TEST_ASSERT_TRUE(console_app_name_matches("Render Lab", "render"));
     TEST_ASSERT_TRUE(console_app_name_matches("Render Lab", "RENDER LAB"));
     TEST_ASSERT_FALSE(console_app_name_matches("Render Lab", "sand"));
+    TEST_ASSERT_FALSE(console_app_name_matches("Sand", "sandy"));
     TEST_ASSERT_FALSE(console_app_name_matches("Render Lab", ""));
 }
 
