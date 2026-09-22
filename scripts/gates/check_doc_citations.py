@@ -8,17 +8,28 @@ import re
 import subprocess
 import sys
 
+from check_comment_length import EXCLUDED as C_EXCLUDED, scan
 from code_vocabulary import names
 
 INLINE = re.compile(r"`([^`\n]+)`")
 FUNCTION = re.compile(r"^([a-z][a-z0-9_]*)\(\)$")
 MACRO = re.compile(r"^[A-Z][A-Z0-9_]*$")
-FILE = re.compile(r"^(?:launcher/|apps/|[\w.-]+/)*(?:[\w.-]+\.(?:c|h|py|sh|cmake)|CMakeLists\.txt)$")
+FILE = re.compile(r"^(?:launcher/|apps/|[\w.-]+/)*(?:[\w.-]+\.(?:c|h|py|sh|cmake|md)|CMakeLists\.txt)$")
 SKIP_FENCES = {"sh", "shell", "bash", "console", "text", "output"}
 SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components", ".git"}
 FOREIGN_FUNCTIONS = {"exit", "main", "max", "name", "bsp_display_new"}
 FOREIGN_PATHS = {"idf.py"}
 FOREIGN_MACRO_PREFIXES = ("ESP", "CONFIG_COMPILER", "CONFIG_LOG", "IDF", "SDMMC", "WHOLE", "LOG", "DP")
+
+# A citation of one or more sections of a doc: `X.md`'s "Section", or "One"
+# and "Two" in X.md. The backtick around the doc name is optional - both
+# spellings appear in this tree. Quoted phrases are only allowed to pile up
+# behind one doc reference, joined by "," or "and", matching how a comment
+# citing two sections of the same doc actually reads.
+QUOTED = re.compile(r'"([^"\n]{2,80})"')
+_QUOTED_GROUP = r'(?:"[^"\n]{2,80}"\s*(?:,|and)?\s*)+'
+SECTION_AFTER_DOC = re.compile(r"`?([A-Za-z0-9_./-]+\.md)`?'s\s+(" + _QUOTED_GROUP + r")")
+SECTION_BEFORE_DOC = re.compile(r"(" + _QUOTED_GROUP + r")\s+in\s+`?([A-Za-z0-9_./-]+\.md)`?")
 
 
 class Citation:
@@ -91,18 +102,140 @@ def allowlist(root):
     return allowed
 
 
-def path_exists(root, value):
+def resolve_doc(root, value, citing_doc=None):
+    """Resolve a citation's path the way this tree actually writes one -
+    absolute from the repo root, `launcher/`- or `apps/`-rooted, a bare
+    filename found anywhere, or (given the citing document) `../`/`./`
+    relative to it. Returns the resolved Path or None. Shared by path
+    citations and section citations so both agree on how "Guide.md" or
+    "../Guide.md" finds a document."""
     root = pathlib.Path(root)
+    if citing_doc and value.startswith(("../", "./")):
+        resolved = (root / citing_doc).parent.joinpath(value).resolve()
+        try:
+            resolved.relative_to(root.resolve())
+        except ValueError:
+            return None
+        return resolved if resolved.exists() else None
     if value.startswith("apps/"):
-        return (root / "launcher/main" / value).exists()
+        candidate = root / "launcher/main" / value
+        return candidate if candidate.exists() else None
     if "/" in value:
-        candidates = [root / value, root / "launcher" / value,
-                      root / "launcher/main" / value]
-        return any(path.exists() for path in candidates) or any(
-            path.as_posix().endswith("/" + value) for path in root.rglob("*")
-            if not any(part in SKIP for part in path.parts))
-    return any(path.name == value for path in root.rglob(value)
-               if not any(part in SKIP for part in path.parts))
+        for candidate in (root / value, root / "launcher" / value, root / "launcher/main" / value):
+            if candidate.exists():
+                return candidate
+        for path in root.rglob("*"):
+            if any(part in SKIP for part in path.parts):
+                continue
+            if path.as_posix().endswith("/" + value):
+                return path
+        return None
+    for path in root.rglob(value):
+        if not any(part in SKIP for part in path.parts):
+            return path
+    return None
+
+
+def path_exists(root, value, citing_doc=None):
+    return resolve_doc(root, value, citing_doc) is not None
+
+
+def _headings_of(path):
+    heads = set()
+    fenced = False
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        m = re.match(r"^#{1,6}\s+(.+?)\s*#*$", line)
+        if m:
+            heads.add(m.group(1).strip())
+    return heads
+
+
+def _paragraphs(lines):
+    """(start_line, joined_text) for each run of consecutive non-blank
+    lines - the same unit a reader sees as one sentence, so a quoted
+    section split across a wrapped line still reads as one citation."""
+    start, buf = None, []
+    for number, line in enumerate(lines, 1):
+        if line.strip():
+            if start is None:
+                start = number
+            buf.append(line.strip())
+        elif buf:
+            yield start, " ".join(buf)
+            start, buf = None, []
+    if buf:
+        yield start, " ".join(buf)
+
+
+class SectionCitation:
+    def __init__(self, doc, line, target_doc, section):
+        self.doc = doc
+        self.line = line
+        self.target_doc = target_doc
+        self.section = section
+
+
+def section_citations(root):
+    """Every quoted-section citation - `X.md`'s "Section", or "One" and
+    "Two" in X.md - across tracked docs and C comments."""
+    root = pathlib.Path(root)
+    found = []
+
+    def scan_text(doc, line, text):
+        for pattern, doc_group, sections_group in (
+                (SECTION_AFTER_DOC, 1, 2), (SECTION_BEFORE_DOC, 2, 1)):
+            for m in pattern.finditer(text):
+                target_doc = m.group(doc_group)
+                for section in QUOTED.findall(m.group(sections_group)):
+                    found.append(SectionCitation(doc, line, target_doc, section))
+
+    for path in documentation(root):
+        rel = path.relative_to(root).as_posix()
+        fenced, body = False, []
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.lstrip().startswith("```"):
+                fenced = not fenced
+                body.append("")
+                continue
+            body.append("" if fenced else line)
+        for start, text in _paragraphs(body):
+            scan_text(rel, start, text)
+
+    for path in sorted(pathlib.Path(root, "launcher").rglob("*")):
+        if path.suffix not in (".c", ".h") or any(part in SKIP for part in path.parts):
+            continue
+        rel = path.relative_to(root).as_posix()
+        if any(rel.startswith(e) for e in C_EXCLUDED):
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for c in scan(rel, text):
+            scan_text(rel, c.line, c.text)
+
+    return found
+
+
+def unresolved_sections(root):
+    """Every section citation whose target doc, or section within it, does
+    not resolve."""
+    root = pathlib.Path(root)
+    heading_cache = {}
+    missing = []
+    for citation in section_citations(root):
+        key = (citation.target_doc, citation.doc)
+        if key not in heading_cache:
+            target = resolve_doc(root, citation.target_doc, citation.doc)
+            heading_cache[key] = _headings_of(target) if target else None
+        heads = heading_cache[key]
+        if heads is None:
+            missing.append((citation, f"{citation.target_doc} does not resolve"))
+        elif not any(h == citation.section or h.startswith(citation.section) for h in heads):
+            missing.append((citation, f'"{citation.section}" is not a heading in {citation.target_doc}'))
+    return missing
 
 
 def allowlist_entry(allowed, citation):
@@ -134,7 +267,7 @@ def unresolved(root):
                 continue
         exists = (citation.value in functions if citation.kind == "function" else
                   citation.value in macros if citation.kind == "macro" else
-                  path_exists(root, citation.value))
+                  path_exists(root, citation.value, citation.doc))
         if not exists:
             missing.append(citation)
     return missing
@@ -163,18 +296,23 @@ def main(argv):
     try:
         missing = check(root)
         stale = stale_allowlist(root)
+        missing_sections = unresolved_sections(root)
     except ValueError as error:
         print(error, file=sys.stderr)
         return 2
     for item in missing:
         label = item.value + "()" if item.kind == "function" else item.value
         print(f"{item.doc}:{item.line}: missing {item.kind} citation {label}")
+    for citation, reason in missing_sections:
+        print(f"{citation.doc}:{citation.line}: missing section citation - {reason}")
     for number, doc, citation in stale:
         print(f"{ALLOWLIST}:{number}: stale entry {doc} {citation}: nothing left to allow")
+    print(f"{len(missing_sections)} missing section citation"
+          f"{'' if len(missing_sections) == 1 else 's'}")
     print(f"{len(missing)} missing documentation citation"
           f"{'' if len(missing) == 1 else 's'}, {len(stale)} stale allowlist "
           f"entr{'y' if len(stale) == 1 else 'ies'}")
-    return 1 if missing or stale else 0
+    return 1 if missing or stale or missing_sections else 0
 
 
 if __name__ == "__main__":
