@@ -14,6 +14,9 @@
 #pragma once
 
 #include <stdbool.h>
+#include <string.h>
+
+#include "gfx/gfx_color.h"
 
 #define GFX_BAND_SLOTS 2
 
@@ -83,4 +86,53 @@ gfx_band_ring_settled(const gfx_band_ring_t* ring) {
 static inline void
 gfx_band_ring_settle(gfx_band_ring_t* ring) {
     ring->in_flight = -1;
+}
+
+/* The geometry behind gfx_band_submit_span() (gfx.c): a caller asks to send
+ * only [x0, x1) of the current band instead of the whole width, and gfx must
+ * still queue exactly one esp_lcd_panel_draw_bitmap() call - the panel
+ * window has to land on even edges (gfx.h's even-edge rule), and a buffer
+ * that call takes has no stride to skip the columns outside the span, so the
+ * rows have to be packed contiguous first. Both are pure geometry, so both
+ * are here rather than in gfx.c.
+ */
+
+/* Rounds [x0, x1) outward to even panel columns and clips to [0, width) -
+ * width is always even (GFX_WIDTH), so clipping first and rounding after
+ * can never push the result back out of range. Returns false, leaving the
+ * outputs undefined, when nothing survives - an empty or fully-off-band
+ * request. */
+static inline bool
+gfx_band_span_clip(int x0, int x1, int width, int* out_x0, int* out_x1) {
+    x0 = x0 < 0 ? 0 : (x0 > width ? width : x0);
+    x1 = x1 < 0 ? 0 : (x1 > width ? width : x1);
+    x0 &= ~1;           /* even_floor */
+    x1 = (x1 + 1) & ~1; /* even_ceil */
+    if (x1 > width) {
+        x1 = width;
+    }
+    if (x0 >= x1) {
+        return false;
+    }
+    *out_x0 = x0;
+    *out_x1 = x1;
+    return true;
+}
+
+/* Packs `height` rows of `buf` (stride `width`) down to columns [x0, x1),
+ * contiguous, in place - one flat draw_bitmap() buffer instead of `height`
+ * per-row calls (a per-row send measured 5.4x slower, see
+ * docs/notes/Display-and-Rendering.md's "Still untapped"). A no-op at full
+ * width. memmove, not memcpy: a wide span can overlap its own source row;
+ * low row first is still safe since row r's write never reaches row r+1's
+ * unread source (its end, (r+1)*(x1-x0), never exceeds (r+1)*width). */
+static inline void
+gfx_band_span_pack(gfx_color_t* buf, int width, int height, int x0, int x1) {
+    const int span_w = x1 - x0;
+    if (x0 == 0 && span_w == width) {
+        return;
+    }
+    for (int row = 0; row < height; row++) {
+        memmove(buf + (size_t)row * span_w, buf + (size_t)row * width + x0, (size_t)span_w * sizeof(gfx_color_t));
+    }
 }
