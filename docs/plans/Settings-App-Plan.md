@@ -6,15 +6,11 @@ SELFTEST/diagnostics rename.
 
 The Diagnostics app ships whole under `CONFIG_LAUNCHER_DEVELOPMENT`
 (`launcher/main/CMakeLists.txt`'s `apps/diagnostics/` exclusion), so a
-`--dev` build reaches the gfx debug-overlay checkboxes without a `--diag`
-build's linked-in test suites competing with `sand`'s grid for static RAM.
-Only the self-test runner (the button, its result line, `selftest_run()`)
-is narrowed further, to `CONFIG_LAUNCHER_SELFTEST`
+`--dev` build reaches the gfx debug-overlay checkboxes. Only the
+self-test runner (the button, its result line, `selftest_run()`) is
+narrowed further, to `CONFIG_LAUNCHER_SELFTEST`
 (`launcher/main/apps/diagnostics/app_diagnostics.c`'s `#if
-CONFIG_LAUNCHER_SELFTEST` guards). That also means the POST report is
-`CONFIG_LAUNCHER_DEVELOPMENT`-shaped like the rest of the app, not
-`CONFIG_LAUNCHER_SELFTEST`-shaped as "The naming mismatch" below describes
-it.
+CONFIG_LAUNCHER_SELFTEST` guards).
 
 Step 1 (the Settings extraction) is still open, now as a pure UI/
 organisation question rather than one gating memory or build correctness -
@@ -39,7 +35,7 @@ Two vocabularies name the same flag today:
 
 A straight rename (pick one word, sed it everywhere) would paper over a
 real conceptual seam rather than close it. `main/apps/diagnostics/app_diagnostics.c`
-is (as of 2026-09-02) two different screens' worth of concerns wearing one
+is two different screens' worth of concerns wearing one
 page, gated at two different granularities:
 
 - **The "run self test suite" button and its result line** on page 1 are
@@ -53,24 +49,20 @@ page, gated at two different granularities:
   the project's own stated rule (Build-Variants.md, "Development-only
   instrumentation is its own flag, not SELFTEST"): none of it needs the test
   suites, all of it is exactly "meant for someone AT the device or watching
-  its serial console while working on it" - and, as of 2026-09-02, that is
-  exactly the flag the whole app (not just these rows) is gated on.
+  its serial console while working on it" - and that is exactly the flag
+  the whole app (not just these rows) is gated on.
 
-The app used to be gated entirely behind `CONFIG_LAUNCHER_SELFTEST` only
-because that was the only flag available when it was written, not because
-"diagnostics" and "selftest" are actually the same concept. `--dev` (added
-in the conversation this doc opened with) proved the two flags are
-independently useful; the app has since been moved onto
-`CONFIG_LAUNCHER_DEVELOPMENT` wholesale, with only the button/result-line
-pair still carrying the narrower `CONFIG_LAUNCHER_SELFTEST` gate they
-actually need.
+"Diagnostics" and "selftest" are not the same concept: only the
+button/result-line pair needs `CONFIG_LAUNCHER_SELFTEST`'s narrower gate,
+and everything else needs only `CONFIG_LAUNCHER_DEVELOPMENT`'s wider one -
+`--dev` is what proves the two flags are independently useful.
 
 ## The plan
 
 **1. Extract the DEVELOPMENT-only rows into a new Settings app.** This step
-no longer changes what a `--dev` build can reach - as of 2026-09-02 the
+does not change what a `--dev` build can reach - the
 whole Diagnostics app, POST report included, already ships there - so it is
-now purely an organisation/UI question: should the gfx overlay checkboxes,
+purely an organisation/UI question: should the gfx overlay checkboxes,
 interlace toggle, and orientation readout live on their own screen instead
 of as Diagnostics' second page, and does a `--dev` build want a `Settings`
 entry in its app list distinct from `Diagnostics`. The "run self test
@@ -80,8 +72,8 @@ way; they have no meaning without the suites.
 **2. Once that split lands (or is deliberately skipped), the SELFTEST/
 diagnostics naming mismatch is a clean, low-risk mechanical rename**
 (Kconfig symbol, app folder, build directory, CLI flags, CI workflow file,
-docs). It no longer strictly needs to wait on step 1 the way it once did -
-`app_diagnostics.c` today has only one small SELFTEST-shaped island (the
+docs). It does not strictly need to wait on step 1:
+`app_diagnostics.c` has only one small SELFTEST-shaped island (the
 button + result line) rather than a whole hybrid page - but doing the
 extraction first still keeps the rename mechanical rather than another
 occasion to relitigate what belongs where.
