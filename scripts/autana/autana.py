@@ -45,9 +45,10 @@
                                     lines of the worktree you are in, so they are what
                                     the next build - and release - is made with
 
-    autana screenshot [-o PATH]     what the panel shows right now, as PATH.png plus a
-                                    PATH.json state snapshot; PATH defaults to a
-                                    timestamped name in the current directory
+    autana screenshot [--as-shown|--framebuffer] [-o PATH]
+                                    a landscape image of the board by default; --as-shown
+                                    applies the device orientation and --framebuffer keeps
+                                    stored pixels, with PATH.png plus PATH.json
     autana freeze                   stop the frame loop where it is
     autana resume                   let the frame loop run again
     autana step [N]                 advance N frames while frozen (1 when N is omitted)
@@ -486,12 +487,15 @@ def screenshot(args):
     read_screenshot()/write_capture(), under the device lock - see
     device.py's own `screenshot` subcommand."""
     out = None
-    if args[:1] and args[0] in ("-o", "--out"):
-        if len(args) != 2:
-            sys.exit("usage: autana screenshot [-o PATH]")
-        out = args[1]
-    elif args:
-        sys.exit("usage: autana screenshot [-o PATH]")
+    view = None
+    while args:
+        arg = args.pop(0)
+        if arg in ("-o", "--out") and args and out is None:
+            out = args.pop(0)
+        elif arg in ("--as-shown", "--framebuffer") and view is None:
+            view = arg
+        else:
+            sys.exit("usage: autana screenshot [--as-shown|--framebuffer] [-o PATH]")
     device = device_tool()
     holder = board_holder(device)
     if holder:
@@ -502,6 +506,8 @@ def screenshot(args):
                "--purpose", "autana screenshot"]
     if out:
         command += ["--out", out]
+    if view:
+        command.append(view)
     return subprocess.call(command)
 
 
@@ -705,7 +711,7 @@ CONSOLE_HELP = """  tune [text]              list the tunables (names containing
   tune <name> <value>      change it on the device
   tune reset <name>        back to the value the source declares
   tune save                write the device's values into this worktree's source
-  screenshot [-o PATH]     what the panel shows right now
+  screenshot [--as-shown|--framebuffer] [-o PATH]
   freeze                   stop the frame loop where it is
   resume                   let the frame loop run again
   step [N]                 advance N frames while frozen (1 when omitted)

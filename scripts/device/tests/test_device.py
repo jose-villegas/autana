@@ -6,6 +6,7 @@ import struct
 import subprocess
 import tempfile
 import unittest
+import zlib
 from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
@@ -1152,6 +1153,33 @@ class ScreenshotCommandTests(unittest.TestCase):
         info = struct.pack("<IiiHHIIiiII", 40, 1, 1, 1, 24, 0, len(pixel), 0, 0, 0, 0)
         return header + info + pixel
 
+    def marked_bmp(self):
+        pixel_offset = 14 + 40
+        width, height = 2, 3
+        rows = [bytes((1, 2, 3, 4, 5, 6, 0, 0)), bytes((7, 8, 9, 10, 11, 12, 0, 0)),
+                bytes((13, 14, 15, 16, 17, 18, 0, 0))]
+        pixel_data = b"".join(rows)
+        total = pixel_offset + len(pixel_data)
+        header = b"BM" + struct.pack("<IHHI", total, 0, 0, pixel_offset)
+        info = struct.pack("<IiiHHIIiiII", 40, width, height, 1, 24, 0,
+                           len(pixel_data), 0, 0, 0, 0)
+        return header + info + pixel_data
+
+    def image_shape(self, path):
+        data = Path(path).read_bytes()
+        return struct.unpack_from(">II", data, 16)
+
+    def first_pixel(self, path):
+        data = Path(path).read_bytes()
+        pos = 8
+        compressed = bytearray()
+        while pos < len(data):
+            length, = struct.unpack_from(">I", data, pos)
+            if data[pos + 4:pos + 8] == b"IDAT":
+                compressed += data[pos + 8:pos + 8 + length]
+            pos += length + 12
+        return zlib.decompress(compressed)[1:4]
+
     def wire_lines(self, bmp, state_json=None):
         encoded = base64.b64encode(bmp).decode("ascii")
         lines = [f"SCREENSHOT_BEGIN size={len(bmp)}", f"SCREENSHOT_DATA:{encoded}"]
@@ -1171,7 +1199,8 @@ class ScreenshotCommandTests(unittest.TestCase):
                 code = device.screenshot(args, store, "COM5")
             self.assertEqual(code, 0)
             self.assertTrue((Path(directory) / "shot.png").is_file())
-            self.assertEqual(json.loads((Path(directory) / "shot.json").read_text()), {"heap": 1})
+            self.assertEqual(json.loads((Path(directory) / "shot.json").read_text()),
+                             {"heap": 1, "image_turn_quarter": 3})
         store.acquire.assert_called_once()
 
     def test_defaults_its_out_path_to_a_timestamped_name_in_the_cwd(self):
@@ -1186,6 +1215,51 @@ class ScreenshotCommandTests(unittest.TestCase):
                  mock.patch.object(device.Path, "cwd", return_value=Path(directory)):
                 device.screenshot(args, store, "COM5")
             self.assertTrue((Path(directory) / "screenshot_20260916_123045.png").is_file())
+
+    def test_default_turns_the_framebuffer_to_the_board_shape_and_records_it(self):
+        connection = FakeConnection([self.wire_lines(self.marked_bmp(), '{"orientation_quarter": 2}')])
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        with tempfile.TemporaryDirectory() as directory:
+            out = str(Path(directory) / "shot.png")
+            args = Namespace(owner="agent", purpose="p", wait=0, out=out, timeout=1.0)
+            with mock.patch.object(device, "open_when_free", return_value=connection):
+                device.screenshot(args, store, "COM5")
+            self.assertEqual(self.image_shape(out), (3, 2))
+            self.assertEqual(self.first_pixel(out), bytes((18, 17, 16)))
+            self.assertEqual(json.loads(Path(directory, "shot.json").read_text())["image_turn_quarter"], 3)
+
+    def test_framebuffer_mode_keeps_the_bytes_orientation_and_records_zero_turn(self):
+        connection = FakeConnection([self.wire_lines(self.marked_bmp(), '{"orientation_quarter": 1}')])
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        with tempfile.TemporaryDirectory() as directory:
+            out = str(Path(directory) / "shot.png")
+            args = Namespace(owner="agent", purpose="p", wait=0, out=out, timeout=1.0,
+                             framebuffer=True)
+            with mock.patch.object(device, "open_when_free", return_value=connection):
+                device.screenshot(args, store, "COM5")
+            self.assertEqual(self.image_shape(out), (2, 3))
+            self.assertEqual(self.first_pixel(out), bytes((15, 14, 13)))
+            self.assertEqual(json.loads(Path(directory, "shot.json").read_text())["image_turn_quarter"], 0)
+
+    def test_as_shown_uses_the_captured_orientation_quarter(self):
+        connection = FakeConnection([self.wire_lines(self.marked_bmp(), '{"orientation_quarter": 2}')])
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        with tempfile.TemporaryDirectory() as directory:
+            out = str(Path(directory) / "shot.png")
+            args = Namespace(owner="agent", purpose="p", wait=0, out=out, timeout=1.0,
+                             as_shown=True)
+            with mock.patch.object(device, "open_when_free", return_value=connection):
+                device.screenshot(args, store, "COM5")
+            self.assertEqual(self.image_shape(out), (2, 3))
+            self.assertEqual(self.first_pixel(out), bytes((6, 5, 4)))
+            self.assertEqual(json.loads(Path(directory, "shot.json").read_text())["image_turn_quarter"], 2)
+
+    def test_screenshot_views_are_mutually_exclusive(self):
+        with self.assertRaises(SystemExit):
+            device.main(["screenshot", "--as-shown", "--framebuffer"])
 
     def test_a_refusal_propagates_as_a_runtime_error(self):
         connection = FakeConnection([b"SCREENSHOT_REFUSED: no room in PSRAM\n"])
