@@ -227,10 +227,8 @@ if [ -z "${QUIET_INNER:-}" ]; then
     quiet_run host-tests env QUIET_INNER=1 VERBOSE="$VERBOSE" "$0" "$@" || true
     QUIET_SUMMARY=$(grep -E '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored' "$QUIET_LOG" | tail -n 1)
     export QUIET_SUMMARY
-    if quiet_end run_tests; then
-        exit 0
-    fi
-    exit $?
+    quiet_end run_tests || exit $?
+    exit 0
 fi
 
 # The hardware-facing app_*.c files are excluded from SOURCES above because
