@@ -210,7 +210,8 @@ sequenceDiagram
 - `gfx_band_dirty()` records the column span it returns for the band
   `gfx_band_next()` just handed out; `gfx_band_submit()` sends exactly
   that, packed and even-clipped (`gfx_band_span_clip()`/
-  `gfx_band_span_pack()`, `gfx_band.h`) - one `draw_bitmap()` per band, full
+  `gfx_band_span_pack()`, `gfx_band.h`) - one `esp_lcd_panel_draw_bitmap()`
+  per band, full
   stop, a flat buffer having no stride to skip past. A caller that never
   calls `gfx_band_dirty()` still gets a full-width send, and an empty
   extent sends nothing, advancing the ring the way `gfx_band_skip()` does.
