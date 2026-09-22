@@ -1,0 +1,44 @@
+name: Mermaid Diagrams
+
+# Renders every ```mermaid block in tracked Markdown through mermaid-cli - the only thing
+# that catches a broken diagram, since GitHub fails silently and shows a parse error where
+# the picture should be. docs/tools/Mermaid-Diagrams.md has the full picture; this job just
+# runs the command it documents. Path-filtered, unlike this repo's other workflows, because
+# installing mermaid-cli's bundled Chrome is real per-run cost and nothing outside a .md
+# file or the validator itself can change the result.
+#
+# Own workflow file, like the others, purely so it gets its own badge - GitHub exposes
+# whole-workflow badges and never per-job ones. See host-tests.yml's top comment.
+
+on:
+  push:
+    paths:
+      - '**/*.md'
+      - 'scripts/gates/check-mermaid.mjs'
+      - '.github/workflows/mermaid.yml'
+  pull_request:
+    paths:
+      - '**/*.md'
+      - 'scripts/gates/check-mermaid.mjs'
+      - '.github/workflows/mermaid.yml'
+
+jobs:
+  check-mermaid:
+    name: Mermaid diagrams
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mermaid-cli
+        run: npm install -g @mermaid-js/mermaid-cli
+
+      # The CI container has no unprivileged user namespace for Chrome's own sandbox;
+      # --no-sandbox is standard for a CI-only Puppeteer run, never for a developer machine.
+      - name: Write a sandboxed Puppeteer config for CI's Chrome
+        run: |
+          echo '{"args": ["--no-sandbox"]}' > "$RUNNER_TEMP/puppeteer-config.json"
+
+      - name: Validate every mermaid block
+        env:
+          CHECK_MERMAID_MMDC_ARGS: -p ${{ runner.temp }}/puppeteer-config.json
+        run: node scripts/gates/check-mermaid.mjs

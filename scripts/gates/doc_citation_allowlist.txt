@@ -7,3 +7,4 @@ docs/sand/Adding-a-Material.md	probe.c	Example probe source, not shipped.
 docs/Build-Variants.md	FATAL_ERROR	CMake command.
 docs/Autana-Rendering-Roadmap.md	CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB	ESP-IDF Kconfig symbol, set in launcher/sdkconfig.defaults.
 docs/notes/Board-and-Memory.md	CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB	ESP-IDF Kconfig symbol, set in launcher/sdkconfig.defaults.
+docs/tools/Mermaid-Diagrams.md	CHECK_MERMAID_MMDC_ARGS	Defined in scripts/gates/check-mermaid.mjs, a .mjs file this checker's C/Python-only scanner does not read.

@@ -1,6 +1,7 @@
 name: Tool Tests
 
-# The tooling's own Python suites; scripts/run-tool-tests.sh owns which ones.
+# The tooling's own test suites - Python and, for check-mermaid.mjs's pure parts, Node;
+# scripts/run-tool-tests.sh owns which ones.
 #
 # Own workflow file, like the others, purely so it gets its own badge -
 # GitHub exposes whole-workflow badges and never per-job ones. See
