@@ -1,13 +1,11 @@
-/*
- * Portable suite: gfx_indexed - expanding a row of palette-index bytes
- * into panel pixels (gfx.h's GFX_PIXFMT_INDEXED8). Header-only and
- * ESP-IDF-free, like gfx_dirty.h's own suite - gfx.c's real allocation and
- * present-task wiring around this needs a device and is not covered here.
- */
+/* Host-only: mutable indexed-colour tables exceed the diagnostics image's DRAM budget. */
+
+#include "suites.h"
+
+#ifndef DEVICE_BUILD
 
 #include <string.h>
 
-#include "suites.h"
 #include "unity.h"
 
 #include "gfx/gfx_indexed.h"
@@ -664,3 +662,12 @@ run_gfx_indexed_suite(void) {
 }
 
 SUITE_REGISTER(run_gfx_indexed_suite);
+
+#else
+
+void
+run_gfx_indexed_suite(void) {}
+
+SUITE_REGISTER(run_gfx_indexed_suite);
+
+#endif
