@@ -478,12 +478,12 @@ void gfx_indexed_set_dither16(bool enabled);
  * frames, on the present task, like every other indexed setter here. */
 void gfx_indexed_set_dither(gfx_dither_mode_t mode, const gfx_color_t* table);
 
-/* True if [row0, row1) needs rendering and sending this frame - fed by the
- * ordinary gfx_mark_dirty() calls an app and ui.c already make. A true
- * return gives the column span (out_x0/out_x1) gfx_band_submit() then
- * sends. Always true, full width, right after gfx_mode_enter() and any
- * frame following gfx_invalidate(). Never true for heal alone. */
-bool gfx_band_dirty(int row0, int row1, int* out_x0, int* out_x1);
+/* True if the band gfx_band_next() just handed out needs rendering and
+ * sending - fed by the ordinary gfx_mark_dirty() calls an app and ui.c
+ * already make. A true return gives the column span (out_x0/out_x1)
+ * gfx_band_submit() then sends. Always true, full width, right after
+ * gfx_mode_enter() and any frame following gfx_invalidate(). */
+bool gfx_band_dirty(int* out_x0, int* out_x1);
 
 /* The band gfx_band_next() just handed out needs no redraw - advances past
  * it without rendering or sending, in place of gfx_band_submit(). */

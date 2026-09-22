@@ -144,30 +144,9 @@ test_rolling_reaches_every_row_and_wraps(void) {
                                   "the sweep wraps back to the top");
 }
 
-static void
-test_no_strips_overlap_nothing(void) {
-    TEST_ASSERT_FALSE(gfx_heal_strips_overlap(strips, 0, 0, GFX_HEAL_SCREEN_ROWS));
-}
-
-static void
-test_a_band_overlapping_a_planned_strip_is_reported(void) {
-    fixture();
-    gfx_heal_queue_rows(&heal, 100, 108);
-    const int n = plan(ROOMY);
-
-    TEST_ASSERT_TRUE_MESSAGE(gfx_heal_strips_overlap(strips, n, 64, 128), "the band [64, 128) contains row 100");
-    TEST_ASSERT_FALSE_MESSAGE(gfx_heal_strips_overlap(strips, n, 128, 192), "the next band touches none of it");
-}
-
-static void
-test_a_band_exactly_beside_a_strip_does_not_overlap(void) {
-    gfx_heal_strip_t adjacent[1] = {{.y0 = 64, .y1 = 96}};
-    TEST_ASSERT_FALSE_MESSAGE(gfx_heal_strips_overlap(adjacent, 1, 96, 128), "touching edges is not overlapping");
-    TEST_ASSERT_TRUE(gfx_heal_strips_overlap(adjacent, 1, 32, 65));
-}
-
 /* PHASE_STEP=24 against STRIP_ROWS=32 cycles through exactly four values
- * before repeating - the concrete sequence a moving split point relies on. */
+ * before repeating - the concrete sequence gfx_heal_plan() relies on to
+ * cut the same rows differently each time. */
 static void
 test_advance_phase_cycles_through_four_values_then_repeats(void) {
     gfx_heal_t h;
@@ -182,27 +161,6 @@ test_advance_phase_cycles_through_four_values_then_repeats(void) {
     TEST_ASSERT_EQUAL_INT(expect[0], h.phase);
 }
 
-static void
-test_band_split_row_stays_inside_the_band_and_even(void) {
-    const int band_heights[3] = {16, 32, 64};
-    const int phases[4] = {0, 8, 16, 24};
-
-    for (int b = 0; b < 3; b++) {
-        for (int p = 0; p < 4; p++) {
-            const int row = gfx_heal_band_split_row(phases[p], band_heights[b]);
-            TEST_ASSERT_TRUE(row >= 0 && row < band_heights[b]);
-            TEST_ASSERT_EQUAL_INT_MESSAGE(0, row % 2, "a split row must land on an even panel edge");
-        }
-    }
-}
-
-static void
-test_band_split_row_worked_example(void) {
-    TEST_ASSERT_EQUAL_INT(8, gfx_heal_band_split_row(24, 16));
-    TEST_ASSERT_EQUAL_INT(24, gfx_heal_band_split_row(24, 32));
-    TEST_ASSERT_EQUAL_INT(0, gfx_heal_band_split_row(32, 32));
-}
-
 void
 run_gfx_heal_suite(void) {
     RUN_TEST(test_nothing_queued_plans_nothing);
@@ -212,12 +170,7 @@ run_gfx_heal_suite(void) {
     RUN_TEST(test_a_budget_below_one_strip_sends_nothing);
     RUN_TEST(test_the_same_rows_healed_again_are_cut_differently);
     RUN_TEST(test_rolling_reaches_every_row_and_wraps);
-    RUN_TEST(test_no_strips_overlap_nothing);
-    RUN_TEST(test_a_band_overlapping_a_planned_strip_is_reported);
-    RUN_TEST(test_a_band_exactly_beside_a_strip_does_not_overlap);
     RUN_TEST(test_advance_phase_cycles_through_four_values_then_repeats);
-    RUN_TEST(test_band_split_row_stays_inside_the_band_and_even);
-    RUN_TEST(test_band_split_row_worked_example);
 }
 
 SUITE_REGISTER(run_gfx_heal_suite);
