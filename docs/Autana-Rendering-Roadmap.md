@@ -61,7 +61,6 @@ flowchart LR
   sandInstance["Sand core as an instance:<br/>any size, several alive"]:::side
   reactionMatrix["Reaction pair-matrix"]:::side
   tiltShake["Tilt / shake library"]:::side
-  sandPerf5["Sand perf round 5"]:::side
 
   frameTime --> busRoot
   frameTime --> corePresent
@@ -79,7 +78,6 @@ flowchart LR
   tiltShake --> platformer
   reactionMatrix --> materialData
   bandRing -.->|scrolling track| platformer
-  sandPerf5 --> tiltShake
   hostHarness -.-> rasterizer
   hostHarness -.-> levelEditor
   busRoot -.-> raycaster
@@ -672,8 +670,7 @@ buys at 60 fps:
 - Floor and ceiling casting is the expensive optional: per-pixel affine
   on horizontal spans. Start with flat colours and a dithered distance
   gradient; add real floor texturing once the numbers say there is room.
-- Gyro drives look (the tilt/shake library extraction is the
-  prerequisite); the two buttons move and act. Touch can be an
+- Gyro drives look through `input/tilt.h`; the two buttons move and act. Touch can be an
   on-screen stick if two buttons prove too few.
 
 The band ring (3.3) fits a raycaster naturally: columns are independent,
