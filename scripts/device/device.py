@@ -17,6 +17,11 @@ from pathlib import Path
 import device_lock
 import device_report
 
+# launcher/tools/ holds screenshot.py's decoder and espressif.py's Python
+# lookup, both used below - one insert here rather than one per call site.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools"))
+from espressif import idf_python  # noqa: E402  (path must be set up first)
+
 
 BAUD = 115200
 BUILD_ID = re.compile(rb"BUILD_ID=([^\s\r\n]+)")
@@ -30,10 +35,6 @@ SLUG_UNSAFE = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
 def python_with_pyserial():
-    tools_dir = Path(__file__).resolve().parents[2] / "launcher" / "tools"
-    if str(tools_dir) not in sys.path:
-        sys.path.insert(0, str(tools_dir))
-    from idf_python import idf_python
     return idf_python()
 
 
@@ -688,9 +689,6 @@ def screenshot(args, store, port):
     send()'s own docstring gives - a screenshot is a look at the screen, not
     evidence of a run.
     """
-    tools_dir = Path(__file__).resolve().parents[2] / "launcher" / "tools"
-    if str(tools_dir) not in sys.path:
-        sys.path.insert(0, str(tools_dir))
     import screenshot as screenshot_tool
 
     out = args.out or str(Path.cwd() / ("screenshot_" + now().strftime("%Y%m%d_%H%M%S") + ".png"))

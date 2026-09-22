@@ -39,6 +39,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from espressif import espressif_tools_root  # noqa: E402  (path must be set up first)
+
 TOOLS_DIR = Path(__file__).resolve().parent
 LAUNCHER_DIR = TOOLS_DIR.parent
 REPO_ROOT = LAUNCHER_DIR.parent
@@ -141,14 +144,6 @@ def clang_tidy_major(binary):
         return None
     m = re.search(r"version\s+(\d+)", out.stdout)
     return m.group(1) if m else None
-
-
-def espressif_tools_root():
-    """Where ESP-IDF's tool installer put its toolchains: $IDF_TOOLS_PATH
-    when set (ESP-IDF's container images use /opt/esp), else the installer's
-    default under the home directory."""
-    env = os.environ.get("IDF_TOOLS_PATH")
-    return Path(env) if env else Path.home() / ".espressif"
 
 
 def candidate_clang_tidy_binaries():
