@@ -120,7 +120,10 @@ reports (report_boot_anim_perf.sh) call it.
 
 `flash`, `run-suite`, `selftest`, `batch`, `listen`, and `reset` take the lock before
 they touch the board, keep it through their whole operation, and renew it
-every 30 seconds. `selftest` builds the diagnostics+autorun image and
+every 30 seconds. `reset` reboots with esptool and returns once the port is
+back. `reset --capture` and `selftest` then reopen the port for their capture,
+and again if it vanishes mid-capture, so what the board prints while USB
+re-enumerates may be lost. `selftest` builds the diagnostics+autorun image and
 captures the boot-time run of every registered suite until
 SELFTEST_COMPLETE; `autana selftest` calls it, and so does
 `launcher/tools/device_report.sh` for a report with no single named suite
@@ -144,13 +147,13 @@ appears while capturing.
 
 No capture command needs `--out`: by default each writes to
 `<records>/<YYYYMMDD>/<HHMMSS>_<kind>_<owner>.log` (`kind` is
-`flash-<variant>`, `reset`, `runsuite-<suite>`, or `listen`). `<records>` is
+`flash-<variant>`, `reset`, `runsuite-<suite>`, `selftest`, or `listen`). `<records>` is
 `$AUTANA_RECORDS` when set, otherwise the checkout's own gitignored
 `.records/device`, so nothing a commit can pick up by accident; the
 maintainer's shell points `AUTANA_RECORDS` at the `.dev` checkout, where the
 device history is tracked. A default-path capture over 200 KB is gzipped in
 place (suite/listen captures rarely reach that; a flash log at ~270 KB usually
-does); pass `--out <path>` on any of the three commands to write exactly
+does); pass `--out <path>` to any of them to write exactly
 there instead, uncompressed, e.g.:
 
 ```powershell
@@ -165,11 +168,6 @@ best-effort observed otherwise), the worktree and commit involved, how the
 capture ended, and the error if it failed. `device.py` never commits any of
 this itself - whoever ran the command commits the evidence with the work it
 supports.
-
-`reset --capture` resets through esptool, waits for USB serial to re-enumerate,
-then opens it for the boot capture. If the console disappears again while
-capturing, it waits and reopens it before the capture window ends. The
-record always says that bytes may have been lost in the reset gap.
 
 `run-suite` also writes a parsed `<same stem>.md` beside its capture -
 suite PASS/FAIL counts, every failing test's Unity message, and any
