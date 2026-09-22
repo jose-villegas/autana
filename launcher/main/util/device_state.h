@@ -23,8 +23,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "app.h"
 #include "input/imu.h"
+#include "input/input.h"
 
 typedef struct {
     int64_t uptime_us; /* esp_timer_get_time() */
@@ -46,21 +46,6 @@ typedef struct {
  * this is not something to call every frame - fine for an occasional,
  * deliberately-triggered snapshot like console_screenshot_dump()'s. */
 void device_state_read(device_state_t* out);
-
-/* Which step of the cycle below a failure happened at, so a caller can
- * report "no such sensor" and "sensor found but would not read" as
- * different things rather than both collapsing into one false. */
-typedef enum {
-    TEMP_SENSOR_OK,
-    TEMP_SENSOR_INSTALL_FAILED,
-    TEMP_SENSOR_READ_FAILED,
-} temp_sensor_status_t;
-
-/* The on-die temperature sensor's own one-shot install/enable/read/
- * disable/uninstall cycle, shared with boot/post.c's POST check - not for
- * every frame, fine for an occasional read either caller is for. Leaves
- * *out_celsius untouched except on TEMP_SENSOR_OK. */
-temp_sensor_status_t temp_sensor_read_celsius(float* out_celsius);
 
 /* Large enough for every field at its worst-case width (a full int64_t
  * uptime, both heap counters at UINT32_MAX, the IMU's six int16_t axes all
