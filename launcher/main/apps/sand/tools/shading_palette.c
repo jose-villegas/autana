@@ -62,7 +62,7 @@
 #define PALETTE_SIZE 256
 #define UI_ENTRIES   16
 
-/* --- material groups ------------------------------------------------------ */
+/* material groups */
 
 typedef enum {
     G_EMPTY,
@@ -149,7 +149,7 @@ key_rgb888(uint16_t key) {
     return ((r5 << 3 | r5 >> 2) << 16) | ((g6 << 2 | g6 >> 4) << 8) | (b5 << 3 | b5 >> 2);
 }
 
-/* --- 1. the sweep ---------------------------------------------------------- */
+/* 1. the sweep */
 
 /* One bit per restriction a call satisfied: the full sweep, then each input
  * pinned in turn, so "colours lost when X is pinned" names what X creates. */
@@ -281,7 +281,7 @@ count_seen(group_t g, uint8_t bit) {
     return n;
 }
 
-/* --- 3a. scenes ------------------------------------------------------------ */
+/* 3a. scenes */
 
 /* View coordinates: vx across the landscape screen, vy down it toward the
  * floor. Grid x is vy; grid y runs against vx. */
@@ -465,7 +465,7 @@ static const scene_t scenes[] = {
 
 #define SCENE_COUNT             ((int)(sizeof scenes / sizeof scenes[0]))
 
-/* --- 3b. the painter mirror (paint_row_n in app_sand.c, n = 2) ------------- */
+/* 3b. the painter mirror (paint_row_n in app_sand.c, n = 2) */
 
 #define SHINE_PERIOD            64
 #define FOAM_BLOB_SHIFT         3
@@ -759,7 +759,7 @@ paint_frame(const uint8_t* grid, gfx_color_t* fb, uint8_t* grp, uint32_t time_ms
     }
 }
 
-/* --- 2. OKLab and the quantiser --------------------------------------------- */
+/* 2. OKLab and the quantiser */
 
 typedef struct {
     double l, a, b;
@@ -1223,7 +1223,7 @@ map_error(group_t g, uint16_t key) {
     return idx < 0 ? 1e9 : sqrt(dist2(key_lab[key], key_lab[palette[idx]]));
 }
 
-/* --- ramps ------------------------------------------------------------------ */
+/* ramps */
 
 #define RAMP_MAX 512
 
@@ -1493,7 +1493,7 @@ report_ramps(FILE* f) {
             ramps_collapsed, ramps_broken);
 }
 
-/* --- PNG ------------------------------------------------------------------- */
+/* PNG */
 
 static uint32_t crc_table[256];
 
@@ -1600,7 +1600,7 @@ write_png(const char* path, const uint8_t* rgb, int w, int h) {
     return fclose(f) == 0;
 }
 
-/* --- a 3x5 font, for labels ------------------------------------------------ */
+/* a 3x5 font, for labels */
 
 static const uint16_t font_digits[10] = {
     0x7B6F, 0x2C97, 0x73E7, 0x73CF, 0x5BC9, 0x79CF, 0x79EF, 0x7249, 0x7BEF, 0x7BCF,
@@ -1693,7 +1693,7 @@ write_swatches(const char* dir) {
     free(rgb);
 }
 
-/* --- 16 colours, ordered dither ------------------------------------------- */
+/* 16 colours, ordered dither */
 
 #define EGA_ENTRIES      16
 #define EGA_LEVELS       16
@@ -1953,7 +1953,7 @@ ega_pixel(const ega_palette_t* pal, const ega_choice_t* ch, int px, int py) {
 static ega_palette_t ega_global;
 static ega_palette_t ega_local[SCENE_COUNT];
 
-/* --- scene output --------------------------------------------------------- */
+/* scene output */
 
 #define PANEL_GAP 8
 #define LABEL_H   24
@@ -2099,7 +2099,8 @@ render_scene(const char* dir, int si, FILE* f, gfx_color_t* fb, uint8_t* grp) {
             st.local_sum / px_total, (unsigned long long)unseen);
 }
 
-/* --- production header ------------------------------------------------------
+/*
+ * production header
  *
  * sand_palette256.h: the 256-colour LUT (UI block 0-15, palette[] 16-255),
  * the shared 16-colour LUT, and one dither choice per 256-entry - the
@@ -2333,7 +2334,7 @@ write_sand_palette_header(const char* path) {
     fclose(f);
 }
 
-/* --- main ----------------------------------------------------------------- */
+/* main */
 
 static uint8_t grids[SCENE_COUNT][GRID_W * GRID_H];
 static gfx_color_t common_fb[PANEL_W * PANEL_H];
@@ -2385,8 +2386,10 @@ common_setup(void) {
     ega_build(&ega_global, &ega_all, native_key(material_palette()[SAND_EMPTY]));
 }
 
-/* --- dither pattern exploration (report only - writes no generated header,
- * not part of report_shading_palette.sh's own gate) --------------------- */
+/*
+ * dither pattern exploration (report only - writes no generated header,
+ * not part of report_shading_palette.sh's own gate)
+ */
 
 /* The single nearest entry, never a blend - what ega_choose() itself starts
  * from before searching for a better pair. Variant (e)'s own choice. */

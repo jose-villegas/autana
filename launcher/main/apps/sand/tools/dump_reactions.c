@@ -580,7 +580,7 @@ causes_are_complete(void) {
 
 /* Rate ladder (FK_RATE/SCALE_RATE): one chance per step against a steady
  * partner (expected wait = 256/value steps). 255 = instant, no RNG draw
- * (try_ignite() short-circuits before rolling; see flammability in
+ * (try_ignite_given() short-circuits before rolling; see flammability in
  * material.h). 6..254 stays silent, reading true unqualified. Exception:
  * sand's heat_chance (16) is silent by this rule but rolls per adjacent
  * heat source, so a held-flame bed converts far slower in practice
@@ -859,13 +859,12 @@ representative_variant(material_id_t material) {
 }
 
 /* Writes v's colour as "#rrggbb" into buf. Reads material_palette() at the
- * representative swatch a fresh cell of this material actually takes
- * (representative_variant() above), not brush_color()'s "+13" -
+ * representative swatch a fresh cell actually takes
+ * (representative_variant() above), not material_brush_color()'s "+13" -
  * deliberately different for materials whose variant isn't a plain shade.
  * Caller-owned buffer, not shared static: an anatomy example can need two
- * or more colours live at once (hardens_to and clings_to), and a shared
- * buffer would overwrite the earlier one. buf must be at least COLOR_LEN
- * bytes. */
+ * or more colours live at once (hardens_to and clings_to). buf must be at
+ * least COLOR_LEN bytes. */
 static void
 material_hex(uint8_t v, char* buf, size_t cap) {
     const cell_t base = (v >= (uint8_t)(MAT_EXTENDED << 4)) ? (cell_t)v : CELL_MAKE(v, 0);
@@ -1158,8 +1157,9 @@ emit_ignite(const reaction_t* r, uint8_t self_id) {
 
     const char* adv = adverb_child("flammability", r->flammability);
 
-    /* ignites_to has three shapes (material.h's own comment; try_ignite()
-     * matches). Each gets its own sentence, not one template: MAT_FIRE/0
+    /* ignites_to has three shapes (material.h's own comment;
+     * try_ignite_given() matches). Each gets its own sentence, not one
+     * template: MAT_FIRE/0
      * default drops "becoming Fire" as redundant. Self (wood) - burning
      * is a STATE not a transformation, so the sentence avoids "becoming
      * Wood". A third material - unused today but a real shape (ash/coal).

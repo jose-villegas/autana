@@ -53,7 +53,7 @@ count_cells_gunpowder(void) {
     return n;
 }
 
-/* --- encoding and appearance --------------------------------------- */
+/* encoding and appearance */
 
 /* A dry tone travels with the grain exactly the way a sand shade or a
  * dirt tone already does - see test_a_grain_keeps_its_shade_as_it_falls
@@ -148,7 +148,7 @@ test_gunpowder_codes_decode_to_the_documented_moisture(void) {
     }
 }
 
-/* --- movement -------------------------------------------------------- */
+/* movement */
 
 static void
 test_gunpowder_falls_and_piles_like_a_powder(void) {
@@ -295,7 +295,7 @@ test_gunpowder_is_conserved_under_every_gravity(void) {
     }
 }
 
-/* --- ignition and the heat path -------------------------------------- */
+/* ignition and the heat path */
 
 /* NOT fire_room(): boxing fire in on all four cardinals leaves every one
  * of its neighbours denser than fire itself (gunpowder 50, fire 15), and
@@ -398,7 +398,7 @@ test_heat_conducted_through_stone_lights_gunpowder(void) {
                                   "through a wall");
 }
 
-/* --- the fuse: trails, blasts, burial, quenching ---------------------- */
+/* the fuse: trails, blasts, burial, quenching */
 
 /* Ignition spreads cell to cell along a trail exactly like fire spreads
  * through wood - only ONE end is lit here, the rest start dry, so this
@@ -898,7 +898,7 @@ test_gunpowder_without_impulses_burns_to_fire(void) {
                                   "sand_explode() to have written into at all");
 }
 
-/* --- moisture chemistry ------------------------------------------------ */
+/* moisture chemistry */
 
 /* moist_max is the one level where SAND_DAMP_IGNITION_SHIFT's damping
  * (f >>= 2*m) reaches zero - moisture 2 still lights at 12 in 256 a step
@@ -1325,14 +1325,16 @@ test_acid_dissolves_gunpowder(void) {
                                   "(dissolvable 200) it already eats sand and dirt at");
 }
 
-/* --- D1/E1/E2 regression: gunpowder is not soil, a lit fuse is not wet or
- * re-placed --------------------------------------------------------------
+/*
+ * D1/E1/E2 regression: gunpowder is not soil, a lit fuse is not wet or
+ * re-placed
  *
  * D1: reaction_t.soil (nonzero for dirt only) gates whether plants may
  * root in, sprout from, drink from or conduct water into a material.
  * Moisture DIFFUSION between same-species cells and percolation keep
  * using `dries`, unchanged - only the "is this ground a plant can use"
- * question is `soil`'s. */
+ * question is `soil`'s.
+ */
 
 /* E2: a lit fuse must not be doused to an arbitrary level by a wet
  * same-species neighbour - soak diffusion's same_species() branch

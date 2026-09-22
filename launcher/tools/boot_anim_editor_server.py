@@ -145,23 +145,19 @@ PAYLOAD_KEYS = ("timing", "camera_focal", "grid_step_m", "wave_height_m",
 # precisely so that editing any of them (the actual point of this tool -
 # iterating on boot_anim.c itself, not just the timeline) invalidates the
 # cache instead of silently serving a binary built from whatever they
-# looked like at the LAST payload change. A payload-only hash used to
-# miss this entirely: editing boot_anim.c with the server already running
-# and re-requesting the same `ms`/timeline kept hitting the cached
-# binary, no different from a payload that had not changed.
+# looked like at the LAST payload change. A payload-only hash cannot see
+# this at all: editing boot_anim.c with the server already running and
+# re-requesting the same `ms`/timeline would hit the cached binary, no
+# different from a payload that had not changed.
 #
-# A whole-directory glob, not a hand-picked file list - an earlier version
-# of this hard-coded the exact .c sources plus one header (boot_anim.h)
-# that happened to matter at the time, which is exactly the kind of list
-# that goes stale the next time a source gains a new #include: a
-# forgotten entry would silently go back to never invalidating for that
-# one file, the same bug this exists to fix. A narrower version of this
-# same mistake, walking only main/boot|gfx|util, missed it again -
-# render_host.h pulls in main/app.h (for app_t/input_t), which pulls in
-# main/input/buttons.h, neither of them under those three subdirectories.
-# The whole of MAIN_DIR (~80 files, trivial to stat every
-# render) is the actual honest answer to "everything under here MIGHT be
-# a compile dependency, so watch all of it" rather than trying to name
+# A whole-directory glob, not a hand-picked file list or a narrower set of
+# subdirectories: a fixed list goes stale the moment a source gains a new
+# #include outside it - render_host.h pulls in main/app.h (for
+# app_t/input_t), which pulls in main/input/buttons.h, neither under
+# main/boot, main/gfx or main/util. The whole of MAIN_DIR (~80 files,
+# trivial to stat every render) is the actual honest answer to "everything
+# under here MIGHT be a compile dependency, so watch all of it" rather than
+# trying to name
 # every subdirectory this build's own transitive #includes happen to
 # reach today - the same reasoning that makes this a glob instead of a
 # file list in the first place, just not stopped short at the first
@@ -382,11 +378,11 @@ class Renderer:
         # across restarts instead of needing to be redone every time.
         # Keyed by port, not shared across every instance: two servers
         # running at once (e.g. verifying a change on an alternate port
-        # without disturbing a live session on the default one) used to
-        # both point at the SAME directory - the second one's startup
-        # rmtree() below would delete the first one's already-compiled
-        # binary out from under it mid-session, breaking its very next
-        # render with a plain FileNotFoundError.
+        # without disturbing a live session on the default one) would
+        # otherwise both point at the SAME directory - the second one's
+        # startup rmtree() below would delete the first one's
+        # already-compiled binary out from under it mid-session, breaking
+        # its very next render with a plain FileNotFoundError.
         self.scratch = os.path.join(
             tempfile.gettempdir(), "boot_anim_editor_scratch_%d" % port)
         # Cleared and recreated on every server start - stale contents from
@@ -556,10 +552,10 @@ class Renderer:
         # Its own try/except, separate from the real invocation's below -
         # a probe timeout is itself diagnostic (bash launched but never
         # returned), not a stand-in for "the build timed out"; letting
-        # TimeoutExpired propagate unguarded here used to surface as
-        # exactly that wrong, confusing message ("build_flash_dev.sh did
-        # not finish within 600s") for a run that had not even reached
-        # the real invocation yet.
+        # TimeoutExpired propagate unguarded here would surface that same
+        # wrong, confusing message ("build_flash_dev.sh did not finish
+        # within 600s") for a run that had not even reached the real
+        # invocation yet.
         try:
             probe = subprocess.run(
                 [bash, "-c",
@@ -623,9 +619,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _do_get_timeline(self):
         """The REAL, committed boot_anim_timeline.json - see this file's
         own top comment on why the editor page loads this on open rather
-        than opening on its own hand-duplicated DEFAULT_STATE (a
-        Build & Flash before ever pressing Load used to silently
-        overwrite the committed timeline with that stale copy)."""
+        than opening on its own hand-duplicated DEFAULT_STATE: a Build &
+        Flash before ever pressing Load would otherwise silently overwrite
+        the committed timeline with that stale copy."""
         try:
             with open(TIMELINE_JSON, "r", encoding="utf-8") as f:
                 data = f.read()

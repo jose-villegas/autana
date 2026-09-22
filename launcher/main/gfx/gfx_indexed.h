@@ -92,8 +92,8 @@ gfx_indexed_expand_row_dither16(const uint8_t* grid_row, int grid_w,
 /* Groups the 256 indices by whether a `phases`-wide table renders them
  * IDENTICALLY - a cell whose index moves within a class has provably
  * unchanged output wherever it sits. `out_class[i]` is the smallest index
- * sharing i's own row. The PIXEL modes' own rule; gfx_indexed_cell_
- * dither_changed() is the CELL modes' tighter one. */
+ * sharing i's own row. The PIXEL modes' own rule;
+ * gfx_indexed_cell_dither_changed() is the CELL modes' tighter one. */
 static inline void
 gfx_indexed_classify(const gfx_color_t* table, int phases, uint8_t out_class[GFX_INDEXED_PALETTE_SIZE]) {
     for (int i = 0; i < GFX_INDEXED_PALETTE_SIZE; i++) {
@@ -210,11 +210,10 @@ gfx_indexed_cell_dither_changed(uint8_t old_idx, uint8_t new_idx, const gfx_colo
 
 /* Which rule an indexed-mode row painter's hot loop resolves to, decided
  * once per indexed-mode entry - never per cell, and never by a runtime
- * dither16_on/dither_mode pair re-examined on every visit the way each
- * hand-written caller once did. RAW is 256
- * mode; CLASS covers NONE and the two PIXEL modes, all a single 256-entry
- * lookup; the two CELL kinds carry their own phase formula and never touch
- * a class table at all. */
+ * dither16_on/dither_mode pair re-examined on every visit. RAW is 256 mode;
+ * CLASS covers NONE and the two PIXEL modes, all a single 256-entry lookup;
+ * the two CELL kinds carry their own phase formula and never touch a class
+ * table at all. */
 typedef enum {
     GFX_INDEXED_REPAINT_RAW,
     GFX_INDEXED_REPAINT_CLASS,

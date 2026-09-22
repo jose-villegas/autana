@@ -15,7 +15,7 @@ open_palette(sand_ui_t* ui, bool touch_in_progress) {
      * protect the rare one: with no finger down there is no dangling
      * release to eat, so the flag ate the player's first deliberate tap
      * on a tile instead and the panel only started responding on the
-     * second (commit eef97e4). `touch_in_progress` is simply input->down
+     * second. `touch_in_progress` is simply input->down
      * at the moment of opening - swallow a release only when there is
      * genuinely one already owed. */
     ui->swallow_release = touch_in_progress;
@@ -56,11 +56,11 @@ handle_palette_input(sand_ui_t* ui, const input_t* input) {
     /* On the RELEASE, never on the press. Closing on boot.pressed split a
      * single physical press across two screens: the panel closed on the
      * press edge, and the matching release arrived a frame later with
-     * screen back to SAND_UI_RUNNING, where handle_brush_input() consumed
-     * it and cycled the brush - commit faad9bb, still guarded against
-     * though cycling is gone. input->boot.held is deliberately NOT
-     * handled: button_fsm suppresses the .released of a press turned
-     * .held, so holding does nothing here. */
+     * screen back to SAND_UI_RUNNING, where handle_running_input() consumed
+     * it and cycled the brush - still guarded against though cycling is
+     * gone. input->boot.held is deliberately NOT handled: button_fsm
+     * suppresses the .released of a press turned .held, so holding does
+     * nothing here. */
     if (input->boot.released) {
         return close_palette(ui);
     }
@@ -89,7 +89,7 @@ sand_ui_tile_clicked(sand_ui_t* ui, int index) {
      * down - see `swallow_release`'s own comment on sand_ui_t, and
      * handle_palette_input()'s own comment for the other half of this
      * guard (disarming it on the finger's actual lift). This is the same
-     * family of bug faad9bb fixed for BOOT: an edge that outlives the
+     * family of bug BOOT already had to fix: an edge that outlives the
      * state that produced it, read by whatever state happens to be
      * current instead of the one it actually belongs to. */
     if (ui->swallow_release) {

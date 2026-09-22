@@ -54,8 +54,7 @@ split_gravity(int q, int gx, int gy, int* aligned, int* perp) {
 
 /* Which quarter is reached by leaving `q` when `perp` (the perpendicular
  * component split_gravity() just computed for `q`) is the one driving the
- * switch. Same sign-to-quarter mapping the old gravity_quarter_turn() used,
- * just entered from whichever quarter is already current instead of
+ * switch - entered from whichever quarter is already current instead of
  * recomputed from nothing every call. */
 static int
 neighbor_quarter(int q, int perp) {

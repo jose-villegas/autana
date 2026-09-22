@@ -38,7 +38,7 @@ fixture(void) {
     }
 }
 
-/* --- leaf boundary math ---------------------------------------------------- */
+/* leaf boundary math */
 
 static void
 test_mark_leaves_stays_in_the_leaf_before_a_boundary(void) {
@@ -78,13 +78,15 @@ test_mark_leaves_spans_a_cell_boundary_too(void) {
     TEST_ASSERT_EQUAL_HEX16(0x0018, leaf_dirty[0]); /* bits 3 and 4 */
 }
 
-/* --- dirty_leaf_rects() ------------------------------------------------------
+/*
+ * dirty_leaf_rects()
  *
  * Backs the leaf debug-overlay layer in gfx.c - one rectangle per dirty
  * leaf, unmerged, clipped to the caller's box. A host build cannot reach
  * gfx.c's overlay code at all (it is CONFIG_LAUNCHER_DEVELOPMENT, ESP-IDF-
  * dependent), so this enumerator, not the drawing that consumes it, is
- * where the geometry actually gets proven correct. */
+ * where the geometry actually gets proven correct.
+ */
 
 static void
 test_dirty_leaf_rects_finds_nothing_in_a_clean_row(void) {
@@ -199,7 +201,7 @@ test_dirty_leaf_rects_leaf_rows_are_independent(void) {
     TEST_ASSERT_EQUAL_INT(LEAF_H, out[0].y1);
 }
 
-/* --- eligibility ------------------------------------------------------------ */
+/* eligibility */
 
 static void
 test_run_is_leaf_eligible_when_every_cell_is_tight(void) {
@@ -223,11 +225,13 @@ test_run_is_leaf_eligible_false_if_any_cell_in_the_run_is_coarse(void) {
                               "just that cell");
 }
 
-/* --- collect_runs_from_mask -------------------------------------------------
+/*
+ * collect_runs_from_mask
  *
  * Shared by the cell-level and leaf-level run finders in gfx.c - these
  * exercise it directly, at the bit-manipulation level, rather than only
- * indirectly through whichever caller happens to reach it. */
+ * indirectly through whichever caller happens to reach it.
+ */
 
 static void
 test_collect_runs_from_mask_finds_nothing_in_an_empty_mask(void) {
@@ -288,12 +292,14 @@ test_collect_runs_from_mask_gives_up_past_the_cap(void) {
     TEST_ASSERT_EQUAL_INT(-1, n);
 }
 
-/* --- cell-level runs and boxes ----------------------------------------------
+/*
+ * cell-level runs and boxes
  *
  * collect_dirty_runs()/run_box() are the cell-granularity counterparts of
  * collect_runs_from_mask() above, and plan_run() is what decides whether a
  * run gets leaf-refined at all - exercised directly here rather than only
- * indirectly through gfx.c's send path, which a host build cannot reach. */
+ * indirectly through gfx.c's send path, which a host build cannot reach.
+ */
 
 static void
 test_collect_dirty_runs_finds_two_separate_cell_runs(void) {
@@ -370,7 +376,7 @@ test_plan_run_rejects_a_split_over_the_gather_budget(void) {
     TEST_ASSERT_EQUAL_INT(0, n);
 }
 
-/* --- per-row reset, once a row has been sent -------------------------------- */
+/* per-row reset, once a row has been sent */
 
 static void
 test_row_sent_clears_only_that_rows_leaves(void) {
@@ -401,7 +407,7 @@ test_row_sent_resets_cell_boxes_to_empty(void) {
                                                       "the previous frame's box forever");
 }
 
-/* --- the all_dirty fast path ------------------------------------------------ */
+/* the all_dirty fast path */
 
 static void
 test_mark_all_claims_every_row(void) {
@@ -425,8 +431,10 @@ test_dirty_mark_is_a_noop_once_everything_is_already_claimed(void) {
                                   "can only ever repeat work already done - it must not run at all");
 }
 
-/* --- dirty_band_extent(): band mode's own "does this row range need
- * touching" query -------------------------------------------------------- */
+/*
+ * dirty_band_extent(): band mode's own "does this row range need
+ * touching" query
+ */
 
 static void
 test_band_extent_false_when_nothing_is_dirty(void) {

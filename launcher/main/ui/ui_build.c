@@ -97,8 +97,9 @@ intern_font_scaled(const gfx_font_t* font, int scale) {
     return &font_scaled_table[0];
 }
 
-/* mu_Font is NULL only before ui_init() has run - see measure_text_width()/
- * height() below, which is where that matters. */
+/* mu_Font is NULL only before ui_init() has run - see
+ * measure_text_width()/measure_text_height() below, which is where that
+ * matters. */
 ui_font_scaled_t
 ui_resolve_font_scaled(mu_Font font) {
     if (font) {

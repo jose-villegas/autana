@@ -5,8 +5,9 @@
  * gfx_present_guard.h carries no ESP-IDF dependency, the same reason
  * gfx_dirty.h does not - see suite_gfx_dirty.c. Including both here gets an
  * independent copy of each, exactly as gfx.c's own translation unit does,
- * so this exercises the same state gfx_present_begin()/_wait() drive on a
- * real build without needing the panel plumbing gfx.c also carries.
+ * so this exercises the same state
+ * gfx_present_begin()/gfx_present_wait() drive on a real build without
+ * needing the panel plumbing gfx.c also carries.
  */
 
 #include "suites.h"
@@ -52,7 +53,7 @@ fixture(void) {
     }
 }
 
-/* --- the guard itself ------------------------------------------------- */
+/* the guard itself */
 
 static void
 test_guard_is_quiet_with_no_present_in_flight(void) {
@@ -91,7 +92,7 @@ test_end_stops_the_guard_from_tripping(void) {
     TEST_ASSERT_EQUAL_UINT(1, gfx_present_guard_trips);
 }
 
-/* --- begin/wait/present sequencing vs. the dirty tracker ---------------- */
+/* begin/wait/present sequencing vs. the dirty tracker */
 
 /* gfx_present_wait()'s host implementation (gfx.c) is exactly this drain,
  * minus interlace - see dirty_frame_sent()'s own comment for why the whole-

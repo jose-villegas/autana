@@ -313,7 +313,7 @@ detail behind every row.
 
 | Property | ESP32-S3 (Waveshare ESP32-S3-Touch-AMOLED-1.8) | Consequence |
 |---|---|---|
-| Core | 2 × Xtensa LX7, 240 MHz | for retained apps, core 1 runs `present()` (read-only) while core 0 runs the next update; full-redraw renderers split rendering and sending the band ring across both (decision B) |
+| Core | 2 × Xtensa LX7, 240 MHz | for retained apps, core 1 runs `gfx_present()` (read-only) while core 0 runs the next update; full-redraw renderers split rendering and sending the band ring across both (decision B) |
 | FPU | single-precision hardware; `double` is software-emulated | float32 is fine per vertex/object; `double` stays banned on the device (decision A) |
 | SIMD | PIE 128-bit (16×8 / 8×16 lanes), inline asm only | any vector path sits behind a scalar reference implementation with a test asserting identical output (decision A) |
 | Integer mul/div | hardware, pipelined 32-bit mul and div; **64-bit div is a library call** | `__divdi3` and signed `/ 2^n` stay banned in hot loops (see the Optimization Playbook's "A 64-bit divide on a 32-bit core is a library call" and "Division by a power of two is not automatically a shift") |

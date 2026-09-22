@@ -46,15 +46,15 @@ void gfx_palette_gen_build_dither16(const gfx_palette_t* palette256, const gfx_p
 void gfx_palette_gen_build_lut_nearest(const gfx_palette_t* palette256, const gfx_palette_t* palette16,
                                        gfx_color_t out_lut[GFX_PALETTE_MAX_ENTRIES]);
 
-/* GFX_DITHER_CELL_CHECKER (`bayer2` false, 2 phases) or GFX_DITHER_
- * CELL_BAYER2's (`bayer2` true, 4) own table - gfx_indexed_expand_row_
- * dither_cell() reads it, one lookup per cell. `out_table` needs
- * GFX_PALETTE_MAX_ENTRIES * (bayer2 ? 4 : 2) entries. */
+/* GFX_DITHER_CELL_CHECKER (`bayer2` false, 2 phases) or
+ * GFX_DITHER_CELL_BAYER2's (`bayer2` true, 4) own table -
+ * gfx_indexed_expand_row_dither_cell() reads it, one lookup per cell.
+ * `out_table` needs GFX_PALETTE_MAX_ENTRIES * (bayer2 ? 4 : 2) entries. */
 void gfx_palette_gen_build_dither_cell(const gfx_palette_t* palette256, const gfx_palette_t* palette16, bool bayer2,
                                        gfx_color_t* out_table);
 
-/* GFX_DITHER_PIXEL_CHECKER2's own table - gfx_indexed_expand_row_dither_
- * checker2() reads it, the same shape as gfx_palette_gen_build_dither16()
- * at a 2-pixel period instead of 4x4. */
+/* GFX_DITHER_PIXEL_CHECKER2's own table -
+ * gfx_indexed_expand_row_dither_checker2() reads it, the same shape as
+ * gfx_palette_gen_build_dither16() at a 2-pixel period instead of 4x4. */
 void gfx_palette_gen_build_dither_checker2(const gfx_palette_t* palette256, const gfx_palette_t* palette16,
                                            gfx_color_t out_table[GFX_PALETTE_MAX_ENTRIES * 2 * 2]);

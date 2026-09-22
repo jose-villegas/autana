@@ -7,7 +7,8 @@
  * input/button_fsm.c already use.
  *
  * Coordinates in and out are PHYSICAL (screen) coordinates. Mapping each
- * point through ui.c's to_logical() is that caller's job, not this module's.
+ * point into logical space, through ui_transform_point() and the current
+ * transform's own inverse, is that caller's job, not this module's.
  */
 #pragma once
 

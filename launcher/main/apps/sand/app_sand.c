@@ -213,12 +213,12 @@ _Static_assert((unsigned long)APP_IMPULSE_MAX * sizeof(impulse_t) <= SAND_IMPULS
                "allocated - never from arithmetic alone.");
 
 /* Selected from the palette panel, not cycled - a cycle's cost grows with
- * material count, a panel's doesn't. PAINT/ERASE/DETONATE now comes from
- * the brush screen's segmented control, not a PWR cycle, for the same
- * reason: a HOLD's 600ms tax is too slow for a control used this often.
- * Only paintable materials get a tile - burning wood is a STATE, not a
- * material (reaction_t.burn_decay). Whole CELLS, not ids: an extended
- * material isn't nameable by id alone (MATX() in material.h). */
+ * material count, a panel's doesn't. PAINT/ERASE/DETONATE is the brush
+ * screen's segmented control, for the same reason: a HOLD's 600ms tax is
+ * too slow for a control used this often. Only paintable materials get a
+ * tile - burning wood is a STATE, not a material (reaction_t.burn_decay).
+ * Whole CELLS, not ids: an extended material isn't nameable by id alone
+ * (MATX() in material.h). */
 static const sand_brush_t brushes[] = {
     SAND_BRUSH_SOLID(CELL_MAKE(MAT_SAND, 0)),  SAND_BRUSH_SOLID(CELL_MAKE(MAT_WATER, 0)),
     SAND_BRUSH_SOLID(CELL_MAKE(MAT_STONE, 0)), SAND_BRUSH_SOLID(CELL_MAKE(MAT_GAS, 0)),
@@ -1167,8 +1167,9 @@ paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy,
              * cell, but whether THIS cell falls on the band still can: the
              * same shine line, sampled once at the cell's own centre
              * instead of per pixel. A cell the line crosses takes col[2]'s
-             * own index (already in the study's sweep - see material_
-             * palette256_index()'s own comment) instead of col[0]'s. */
+             * own index (already in the study's sweep - see
+             * material_palette256_index()'s own comment) instead of
+             * col[0]'s. */
             gfx_color_t shade = col[0];
             if (pat == MATERIAL_HATCHED) {
                 const int shine_q8 = (cx * n + n / 2) * shine_ux_q8 + (cy * n + n / 2) * shine_uy_q8;
@@ -1946,9 +1947,9 @@ draw_menu(uint32_t dt_ms, const input_t* input) {
         quality = (quality + 1) % QUALITY_COUNT;
     }
     if (result.color_clicked) {
-        /* Not applied here - the next start_sim() (apply_gfx_enter_
-         * indexed()) reads dither_mode, the same "menu picks, entry
-         * applies" split QUALITY/COLOUR already use. */
+        /* Not applied here - the next start_sim() (apply_gfx_enter_indexed())
+         * reads dither_mode, the same "menu picks, entry applies" split
+         * QUALITY/COLOUR already use. */
         color_mode = (color_mode + 1) % SAND_COLOR_COUNT;
     }
     if (result.dither_clicked) {
@@ -2108,10 +2109,10 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
         /* Restores UI_TEXT_PLAIN so the palette's outline style doesn't leak
          * into the next UI drawn (text style stays in force until changed -
          * ui.h); the brush screen only ever used PLAIN, so this is a no-op
-         * on that path. Does NOT restore the transform any more: main.c now
-         * owns that for the whole shell, sampling real orientation on its
-         * own schedule. An app must not touch it - resetting it here would
-         * fight the shell the moment the board is actually held sideways. */
+         * on that path. main.c owns the transform for the whole shell,
+         * sampling real orientation on its own schedule - an app must not
+         * touch it; resetting it here would fight the shell the moment the
+         * board is actually held sideways. */
         ui_set_text_style(UI_TEXT_PLAIN);
 
         apply_gfx_action(sand_colour_on_close_overlay(&colour_state));

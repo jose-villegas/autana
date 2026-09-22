@@ -786,8 +786,7 @@ def main(argv=None):
     flash_parser.add_argument("--purpose", default="flash")
     flash_parser.add_argument("--out")
     flash_parser.add_argument("--perf-scope", action="store_true",
-                              help="with --variant diag: build the perf-scoped image "
-                                   "(needs build_flash.sh support)")
+                              help="with --variant diag: build the perf-scoped image")
     suite = subparsers.add_parser("run-suite")
     suite.add_argument("suite")
     suite.add_argument("--out")
@@ -810,7 +809,7 @@ def main(argv=None):
     selftest_parser.add_argument("--worktree", required=True)
     selftest_parser.add_argument("--out")
     selftest_parser.add_argument("--perf-scope", action="store_true",
-                                 help="build the perf-scoped image (needs build_flash.sh support)")
+                                 help="build the perf-scoped image")
     # 3000 s leaves headroom over a full run's measured time - see
     # launcher/tools/report_test_results.sh.
     selftest_parser.add_argument("--max-seconds", type=float, default=3000)
@@ -844,7 +843,7 @@ def main(argv=None):
                               help="a suite to capture; repeat for several")
     batch_parser.add_argument("--runs", type=int, default=3)
     batch_parser.add_argument("--perf-scope", action="store_true",
-                              help="build the perf-scoped image (needs build_flash.sh support)")
+                              help="build the perf-scoped image")
     batch_parser.add_argument("--max-seconds", type=float, default=1800)
     batch_parser.add_argument("--idle-seconds", type=float, default=300)
     batch_parser.add_argument("--purpose", default="batch capture")

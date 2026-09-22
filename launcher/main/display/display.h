@@ -70,8 +70,7 @@ typedef struct {
  * something a device-agnostic module should bake into its reset.
  * DISPLAY_LANDSCAPE, not a bare 1 - this board is normally held sideways
  * to its native upright, and the table above confirms that is quarter
- * 1, independent of which edge USB sits on. It was a first guess when
- * written; it no longer is. */
+ * 1, independent of which edge USB sits on. */
 #define DISPLAY_DEFAULT_QUARTER       DISPLAY_LANDSCAPE
 
 void display_init(display_t* d);

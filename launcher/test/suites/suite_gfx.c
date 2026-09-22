@@ -2,9 +2,10 @@
  * Device-only suite: the graphics layer.
  *
  * Covers what a host cannot: real framebuffer memory, real DMA, real I2C and
- * the actual panel. This suite is compiled into the shipped firmware and runs
- * at boot alongside the portable suites; it is excluded from the host runner
- * because none of it would mean anything on a laptop.
+ * the actual panel. This suite is compiled into a SELFTEST build and runs
+ * on-device alongside the portable suites, never into a release image; it is
+ * excluded from the host runner because none of it would mean anything on a
+ * laptop.
  *
  * Guidance on what belongs here:
  *   - reading back what a draw call actually wrote to memory
@@ -39,9 +40,8 @@
 static const char* TAG = "device_tests";
 
 /* Regression ceilings are worst + max(spread, 2% of worst) across three
- * fresh-boot S3 portrait SELFTEST captures on 2026-09-16, build
- * 982ee5662f25-diag. Shipping landscape costs 17-37% more; these pegs do not
- * cover that orientation. */
+ * fresh-boot S3 portrait SELFTEST captures. Shipping landscape costs 17-37%
+ * more; these pegs do not cover that orientation. */
 
 /* gfx owns global hardware state and is already initialised by the time this
  * runs - the shipped firmware brings the display up before self-testing. Tests
@@ -85,7 +85,7 @@ pixel_at(int x, int y) {
     return gfx_framebuffer()[y * GFX_WIDTH + x];
 }
 
-/* --- bring-up ----------------------------------------------------------- */
+/* bring-up */
 
 void
 test_display_is_up(void) {
@@ -148,7 +148,7 @@ test_an_injected_touch_reaches_the_input_state(void) {
 }
 #endif
 
-/* --- colour packing ----------------------------------------------------- */
+/* colour packing */
 
 void
 test_colour_packing_matches_the_panel_format(void) {
@@ -164,7 +164,7 @@ test_colour_packing_matches_the_panel_format(void) {
     TEST_ASSERT_EQUAL_HEX16(0xFFFF, gfx_rgb(0xFFFFFF));
 }
 
-/* --- primitives, verified by reading the framebuffer back --------------- */
+/* primitives, verified by reading the framebuffer back */
 
 void
 test_clear_touches_every_pixel(void) {
@@ -253,7 +253,7 @@ test_fill_rect_writes_exactly_its_own_area(void) {
     TEST_ASSERT_EQUAL_HEX16(bg, pixel_at(39, 60));
 }
 
-/* --- dithered fake transparency ------------------------------------------ */
+/* dithered fake transparency */
 
 void
 test_dither_at_alpha_zero_draws_nothing(void) {
@@ -346,7 +346,7 @@ test_dither_stays_in_phase_across_separate_calls(void) {
     }
 }
 
-/* --- gfx_blit_dither: image-over-live-content compositing ---------------- */
+/* gfx_blit_dither: image-over-live-content compositing */
 
 /* One synthetic source pixel per index - every value distinct from its
  * neighbours and never equal to the black background (the | 1), so a blit
@@ -492,7 +492,7 @@ test_dithered_text_at_low_alpha_draws_fewer_pixels_than_solid(void) {
                              "a dim shadow should draw some but fewer pixels than a solid glyph");
 }
 
-/* --- lines -------------------------------------------------------------- */
+/* lines */
 
 void
 test_a_horizontal_line_covers_both_endpoints(void) {
@@ -752,7 +752,7 @@ test_text_metrics_agree_with_what_is_drawn(void) {
     TEST_ASSERT_EQUAL_INT(GFX_CHAR_H, gfx_text_height());
 }
 
-/* --- DMA ---------------------------------------------------------------- */
+/* DMA */
 
 void
 test_present_completes(void) {
@@ -794,7 +794,7 @@ test_repeated_presents_stay_in_sync(void) {
     TEST_PASS();
 }
 
-/* --- partial presents --------------------------------------------------- */
+/* partial presents */
 
 /* The panel refreshes from its own GRAM, so a band that is not sent keeps
  * showing what it last received.
@@ -925,7 +925,7 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
     const int64_t full_band = time_present();
 
     /* A narrow strip within a band, written directly and marked with its
-     * real bounds - what draw_dirty_rows() actually does for a small pour. */
+     * real bounds - a caller repainting a narrow changed strip. */
     gfx_color_t* fb = gfx_framebuffer();
     const int w = 20;
     for (int y = 0; y < 64; y++) {
@@ -1021,7 +1021,7 @@ test_a_full_width_partial_height_change_costs_less_than_a_band(void) {
     gfx_fill_rect(0, 0, GFX_WIDTH, 64, gfx_rgb(0x406020));
     const int64_t full_band = time_present();
 
-    /* Full width, 48 of the band's 64 rows - the shape a wide pour
+    /* Full width, 48 of the band's 64 rows - the shape a wide change
      * leaves that has not yet grown to fill its whole strip. */
     gfx_color_t* fb = gfx_framebuffer();
     const int h = 48;
@@ -1286,9 +1286,9 @@ test_drawing_marks_what_it_touched(void) {
                               "a band nowhere near the drawing must not be");
 }
 
-/* --- suite ------------------------------------------------------------- */
+/* suite */
 
-/* --- memory throughput: PSRAM against internal RAM ------------------------ */
+/* memory throughput: PSRAM against internal RAM */
 
 /* An instrument, not a gate: prices the bulk reads, writes and copies a
  * framebuffer architecture would do, per memory pool, so the choice between
@@ -1403,7 +1403,7 @@ test_memory_throughput_psram_against_internal(void) {
     TEST_ASSERT_TRUE_MESSAGE(ok, "could not allocate the throughput buffers");
 }
 
-/* --- present/update overlap ---------------------------------------------- */
+/* present/update overlap */
 
 /* Stands in for an app's update(): a fixed amount of CPU work, cheap to
  * reason about. `volatile` keeps the compiler from proving the loop dead. */
@@ -1422,8 +1422,7 @@ run_overlap_busy_work(void) {
 
 /* Instrument, not a budget: logs the overlapped cost against the same send
  * plus busy work done back to back (gfx_set_present_async(false)), and
- * asserts only that overlapping never costs materially more than serial -
- * see autana-91i. */
+ * asserts only that overlapping never costs materially more than serial. */
 static void
 test_present_overlap_against_serial(void) {
     fixture();
@@ -1454,7 +1453,7 @@ test_present_overlap_against_serial(void) {
                                           "overlapping update() with present cost noticeably more than serial");
 }
 
-/* --- readback ------------------------------------------------------------ */
+/* readback */
 
 static gfx_color_t
 readback_row_colour(int y) {

@@ -7,10 +7,10 @@
  * or a band ring in internal SRAM for a full-redraw renderer), a resolution,
  * and a per-axis interlace choice. gfx_mode_resolve() is the pure function
  * that turns a request into a grant; gfx_mode_enter() (gfx.c) is the only
- * caller that also allocates. Only GFX_LAYOUT_FULL_FB and
- * GFX_RESOLUTION_FULL with no interlace are wired to real rendering today -
- * the rest of the fields exist so the request/grant shape does not need
- * revisiting once they are.
+ * caller that also allocates. Both layouts are wired to real rendering,
+ * but only GFX_RESOLUTION_FULL with no interlace is - no caller ever
+ * requests HALF or turns interlace on - so those fields exist ahead of a
+ * caller that needs them.
  */
 #pragma once
 
