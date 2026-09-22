@@ -138,6 +138,36 @@ class DeviceVerbCommandTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             autana.imu(["1", "two", "3"])
 
+    def test_tap_sends_one_device_side_gesture(self):
+        with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
+            autana.tap(["10", "20"])
+        sent.assert_called_once_with("TAP 10 20", reply="TAP", until=["TAP_OK"], purpose="autana tap")
+
+    def test_drag_requires_its_duration(self):
+        with self.assertRaises(SystemExit):
+            autana.drag(["1", "2", "3", "4"])
+
+    def test_button_waits_for_the_board_to_answer(self):
+        with mock.patch.object(autana, "send", return_value=(0, ["BUTTON_OK"])) as sent, \
+             mock.patch("builtins.print") as printed:
+            autana.button(["power", "long"])
+        sent.assert_called_once_with("BUTTON power long", reply="BUTTON",
+                                     until=["BUTTON_OK", "BUTTON_ERR"], purpose="autana button")
+        printed.assert_called_once_with("BUTTON_OK")
+
+    def test_apps_waits_for_the_complete_listing(self):
+        with mock.patch.object(autana, "send", return_value=(0, ["APPS name=Star Chart running=0", "APPS_END"])) as sent, \
+             mock.patch("builtins.print") as printed:
+            autana.apps([])
+        sent.assert_called_once_with("APPS", reply="APPS", until=["APPS_END"], purpose="autana apps")
+        printed.assert_called_once_with("APPS name=Star Chart running=0")
+
+    def test_open_sends_the_app_name(self):
+        with mock.patch.object(autana, "send", return_value=(0, ["OPEN_OK name=Star Chart"])) as sent, \
+             mock.patch("builtins.print"):
+            autana.open_app(["star"])
+        sent.assert_called_once_with("OPEN star", reply="OPEN", purpose="autana open")
+
 
 class ScreenshotCommandTests(unittest.TestCase):
     """autana screenshot goes straight to `device.py screenshot`, not

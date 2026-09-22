@@ -3,8 +3,9 @@
  * console_word_match(), console_find_clash(), the line assembler) and
  * console_latch (the frame-loop handoff), driven here with a registry and
  * latches this suite owns - never console_shared(), which only a device
- * build's CONSOLE_VERB() entries ever touch. Also the TOUCH/IMU parsers
- * (console_inject_parse.h), moved here from suite_build_id.c.
+ * build's CONSOLE_VERB() entries ever touch. Also the input-injection and
+ * app-name parsers (console_inject_parse.h, console_navigation_parse.h),
+ * pure enough to run on a host.
  */
 
 #include <stdio.h>
@@ -15,6 +16,7 @@
 
 #include "console/console_inject_parse.h"
 #include "console/console_latch.h"
+#include "console/console_navigation_parse.h"
 #include "console/console_verbs.h"
 
 #define REPLIES_MAX 8
@@ -511,6 +513,75 @@ test_a_malformed_imu_line_changes_nothing(void) {
     TEST_ASSERT_TRUE_MESSAGE(ax == 7 && ay == 8 && az == 9, "a rejected line must leave the outputs alone");
 }
 
+static void
+test_a_tap_line_uses_the_short_default_duration(void) {
+    console_touch_gesture_t gesture;
+
+    TEST_ASSERT_TRUE(console_tap_parse("184 224", &gesture));
+    TEST_ASSERT_EQUAL_INT(184, gesture.x0);
+    TEST_ASSERT_EQUAL_INT(224, gesture.y0);
+    TEST_ASSERT_EQUAL_UINT32(CONSOLE_TAP_DEFAULT_MS, gesture.ms);
+}
+
+static void
+test_a_tap_line_rejects_a_duration(void) {
+    console_touch_gesture_t gesture = {.x0 = 7, .ms = 9};
+
+    TEST_ASSERT_FALSE(console_tap_parse("10 20 5000", &gesture));
+    TEST_ASSERT_EQUAL_INT(7, gesture.x0);
+    TEST_ASSERT_EQUAL_UINT32(9, gesture.ms);
+}
+
+static void
+test_a_drag_line_carries_both_endpoints_and_duration(void) {
+    console_touch_gesture_t gesture;
+
+    TEST_ASSERT_TRUE(console_drag_parse("1 2 300 400 250", &gesture));
+    TEST_ASSERT_EQUAL_INT(1, gesture.x0);
+    TEST_ASSERT_EQUAL_INT(2, gesture.y0);
+    TEST_ASSERT_EQUAL_INT(300, gesture.x1);
+    TEST_ASSERT_EQUAL_INT(400, gesture.y1);
+    TEST_ASSERT_EQUAL_UINT32(250, gesture.ms);
+}
+
+static void
+test_a_bad_gesture_line_changes_nothing(void) {
+    console_touch_gesture_t gesture = {.x0 = 7, .ms = 9};
+
+    TEST_ASSERT_FALSE(console_press_parse("1 2 0", &gesture));
+    TEST_ASSERT_FALSE(console_drag_parse("1 2 3", &gesture));
+    TEST_ASSERT_EQUAL_INT(7, gesture.x0);
+    TEST_ASSERT_EQUAL_UINT32(9, gesture.ms);
+}
+
+static void
+test_a_button_line_carries_its_kind(void) {
+    console_button_t button;
+    bool held = false;
+
+    TEST_ASSERT_TRUE(console_button_parse("boot long", &button, &held));
+    TEST_ASSERT_EQUAL_INT(CONSOLE_BUTTON_BOOT, button);
+    TEST_ASSERT_TRUE(held);
+
+    TEST_ASSERT_TRUE(console_button_parse("power", &button, &held));
+    TEST_ASSERT_EQUAL_INT(CONSOLE_BUTTON_POWER, button);
+    TEST_ASSERT_FALSE(held);
+}
+
+static void
+test_an_app_name_accepts_a_case_folded_prefix(void) {
+    TEST_ASSERT_TRUE(console_app_name_matches("Star Chart", "star"));
+    TEST_ASSERT_TRUE(console_app_name_matches("Star Chart", "STAR CHART"));
+    TEST_ASSERT_FALSE(console_app_name_matches("Star Chart", "moon"));
+    TEST_ASSERT_FALSE(console_app_name_matches("Star Chart", "starry"));
+    /* The word a person reaches for is rarely the first one. */
+    TEST_ASSERT_TRUE(console_app_name_matches("Star Chart", "chart"));
+    TEST_ASSERT_TRUE(console_app_name_matches("Star Chart", "CHART"));
+    TEST_ASSERT_FALSE(console_app_name_matches("Star Chart", "hart"));
+    TEST_ASSERT_FALSE(console_app_name_matches("Star Chart", ""));
+    TEST_ASSERT_FALSE(console_app_name_matches("Star Chart", ""));
+}
+
 void
 suite_console(void) {
     RUN_TEST(test_exact_name_matches);
@@ -544,6 +615,12 @@ suite_console(void) {
     RUN_TEST(test_a_touch_line_fits_the_console_line);
     RUN_TEST(test_an_imu_line_carries_its_sample);
     RUN_TEST(test_a_malformed_imu_line_changes_nothing);
+    RUN_TEST(test_a_tap_line_uses_the_short_default_duration);
+    RUN_TEST(test_a_tap_line_rejects_a_duration);
+    RUN_TEST(test_a_drag_line_carries_both_endpoints_and_duration);
+    RUN_TEST(test_a_bad_gesture_line_changes_nothing);
+    RUN_TEST(test_a_button_line_carries_its_kind);
+    RUN_TEST(test_an_app_name_accepts_a_case_folded_prefix);
 }
 
 SUITE_REGISTER(suite_console)
