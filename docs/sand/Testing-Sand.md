@@ -21,7 +21,8 @@ autana suite run_sand_perf_suite
 runs the sand frame-budget suite alone, on the board already flashed, with
 no rebuild and no reflash. Any other sand suite works the same way -
 `run_sand_materials_suite`, `run_sand_combustion_suite`, and so on;
-every `suite_*.c` under `launcher/main/apps/sand/` is one. This is the loop
+the sand suites are the ones registered in files under
+`launcher/main/apps/sand/` (`autana suite list` prints each suite's file). This is the loop
 while working on a material or a perf change: `autana suite` the suite for
 the area touched, and reserve a full capture for a merge decision.
 
