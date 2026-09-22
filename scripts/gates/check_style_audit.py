@@ -401,6 +401,67 @@ KNOWN_MARKERS = re.compile(
     re.escape(DOC_CONSTANTS_ESCAPE) + "|" + re.escape(DOC_VOCABULARY_ESCAPE) + r"|(?:BEGIN|END)\s+GENERATED")
 
 
+# RULE: a working copy written with CRLF. .gitattributes normalises it on
+# staging and CI reads the index, so this never reaches a commit - but a tool
+# that rewrites a file whole leaves the checkout mixed, and the next reader
+# sees a whole-file diff that is not there. A WARN with a fixer: --fix
+# normalises it and nobody spends a thought on it.
+
+LINE_ENDINGS_ACTION = "written with CRLF - run --fix, or git add --renormalize ."
+
+
+@text_rule("LINE-ENDINGS", severity=WARN,
+           fixer=lambda root, path, text: _fix_line_endings(path))
+def rule_line_endings(root, path, text):
+    raw = pathlib.Path(path).read_bytes()
+    if b"\r\n" in raw:
+        yield raw[:raw.index(b"\r\n")].count(b"\n") + 1, LINE_ENDINGS_ACTION
+
+
+def _fix_line_endings(path):
+    """Rewrites in place and returns None: the caller's text-in/text-out
+    fixer contract would put the endings back on the way through."""
+    path = pathlib.Path(path)
+    raw = path.read_bytes()
+    if b"\r\n" in raw:
+        path.write_bytes(raw.replace(b"\r\n", b"\n"))
+    return None
+
+
+# RULE: `$?` on the line after a compound statement is that compound's own
+# status, not the command a reader has in mind. An `if` whose condition fails
+# and which has no `else` exits 0, so `if cmd; then return 0; fi` followed by
+# `rc=$?` or `exit $?` reports success for a run that failed. Capture the
+# status inside the branch instead: `cmd && return 0; rc=$?`.
+
+SHELL_FILE = re.compile(r"\.sh$|\.bash$")
+SHELL_SHEBANG = re.compile(r"^#!.*\b(?:ba|da|k|z)?sh\b")
+COMPOUND_END = re.compile(r"^(?:fi|done|esac|\})\s*(?:#.*)?$")
+STATUS_READ = re.compile(r"^(?:exit|return)\s+\$\?\s*$|^[A-Za-z_][A-Za-z0-9_]*=\$\?\s*$")
+
+SHELL_STATUS_ACTION = ("$? here is the compound's status, not the command's - "
+                       "capture it inside the branch (`cmd && return 0; rc=$?`)")
+
+
+def _is_shell(path, text):
+    return bool(SHELL_FILE.search(str(path))
+                or SHELL_SHEBANG.match(text.splitlines()[0] if text else ""))
+
+
+@text_rule("SHELL-COMPOUND-STATUS")
+def rule_shell_compound_status(root, path, text):
+    if not _is_shell(path, text):
+        return
+    previous = ""
+    for number, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if STATUS_READ.match(line) and COMPOUND_END.match(previous):
+            yield number, line + " after `" + previous + "`: " + SHELL_STATUS_ACTION
+        previous = line
+
+
 @doc_rule("STRAY-HTML-COMMENT")
 def rule_stray_html_comment(root, path, raw_lines):
     blanked = "\n".join(blank_fences(raw_lines))
@@ -700,6 +761,7 @@ def run_fix(root, findings):
     fixed = 0
     for rel in files:
         path = pathlib.Path(root) / rel
+        before = path.read_bytes()
         text = path.read_text(encoding="utf-8", errors="replace")
         original = text
         rule_ids = sorted({f.rule_id for f in findings if f.path == rel and f.fixable})
@@ -710,6 +772,9 @@ def run_fix(root, findings):
                 text = new_text
         if text != original:
             path.write_text(text, encoding="utf-8", newline="")
+        # A fixer may rewrite the file itself (line endings do not survive the
+        # text contract above), so the count is what the bytes say.
+        if path.read_bytes() != before:
             fixed += 1
             print(f"  fixed [{', '.join(rule_ids)}] {rel}")
     print(f"\nfixed {fixed} file(s)")
