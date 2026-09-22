@@ -228,8 +228,9 @@ arena_pool_take_block(arena_pool_t* p, arena_block_t* b, size_t need) {
 /* Walks a pool's own block list for its true free-byte total, true largest
  * free block, and free-block count. Not an approximation: each pool is a
  * real first-fit list, so this is the same quantity a bump-pointer or
- * byte-counter model could only guess at - see heap_caps_get_largest_free_
- * block() below for what that honesty does and does not buy. */
+ * byte-counter model could only guess at - see
+ * heap_caps_get_largest_free_block() below for what that honesty does and
+ * does not buy. */
 static void
 arena_pool_scan(arena_pool_t* p, size_t* out_total_free, size_t* out_largest_free, size_t* out_free_blocks) {
     arena_pool_init_once(p);
@@ -355,10 +356,12 @@ heap_arena_reset_peak(void) {
     s_internal.peak_bytes = s_internal.cur_bytes;
 }
 
-/* --- malloc/calloc/realloc/free interposition ------------------------- */
-/* Everything below this point charges the INTERNAL pool only, exactly as
+/* malloc/calloc/realloc/free interposition */
+/*
+ * Everything below this point charges the INTERNAL pool only, exactly as
  * before PSRAM was modeled - plain malloc()/calloc()/free() never routes to
- * PSRAM on their own; only an explicit heap_caps_* call (below) can. */
+ * PSRAM on their own; only an explicit heap_caps_* call (below) can.
+ */
 
 extern void* __real_malloc(size_t size);
 extern void __real_free(void* ptr);

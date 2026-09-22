@@ -42,8 +42,8 @@ test_an_on_axis_point_lands_on_the_viewport_centre(void) {
     TEST_ASSERT_EQUAL_INT(view.center_y, y);
 }
 
-/* Independent of r3d_camera_view()'s own arithmetic: builds the matrix the
- * same way boot and the wire scene used to by hand. */
+/* Independent of r3d_camera_view()'s own arithmetic: builds the matrix by
+ * hand, from a pose and a model. */
 static void
 check_view_matrix_matches_hand_built(S3L_Transform3D camera_pose, S3L_Transform3D model) {
     const r3d_camera_t camera = {.pose = camera_pose, .focal = S3L_F, .near_z = R3D_NEAR_Z};

@@ -221,9 +221,11 @@ test_classify_names_a_class_after_its_smallest_member(void) {
     TEST_ASSERT_EQUAL_UINT8(20, class_out[80]);
 }
 
-/* --- gfx_indexed_cell_changed(): incremental output vs a full re-expansion,
+/*
+ * gfx_indexed_cell_changed(): incremental output vs a full re-expansion,
  * over many steps of a busy scene. The decision is portable even where the
- * row painter calling it is not. */
+ * row painter calling it is not.
+ */
 
 /* Deterministic across platforms and libc versions, unlike rand() - "many
  * steps, seeds varied" must reproduce exactly on a re-run. */
@@ -242,9 +244,10 @@ xorshift32(uint32_t* state) {
 #define IC_CELL_SIZE 4
 #define IC_STEPS     200
 
-/* One seeded run: `incremental` only updates a cell gfx_indexed_cell_
- * changed() says changed, mirroring paint_row_n()'s own rule; `truth`
- * always takes the fresh value, standing in for a full repaint every step.
+/* One seeded run: `incremental` only updates a cell
+ * gfx_indexed_cell_changed() says changed, mirroring paint_row_n()'s own
+ * rule; `truth` always takes the fresh value, standing in for a full
+ * repaint every step.
  * Every step, both re-expand through the SAME table and must match pixel
  * for pixel - the dither depends only on panel position and index, so an
  * unchanged 16-colour value really does mean identical pixels. */
@@ -351,7 +354,7 @@ test_needs_repaint_matches_cell_changed_when_not_forced(void) {
     }
 }
 
-/* --- lever 2: cell dither modes ------------------------------------------ */
+/* lever 2: cell dither modes */
 
 static gfx_color_t checker_table[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CELL_CHECKER_PHASES];
 static gfx_color_t bayer2_table[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CELL_BAYER2_PHASES];
@@ -442,7 +445,7 @@ test_cell_dither_changed_is_exact_per_cell_not_every_phase(void) {
     TEST_ASSERT_FALSE(gfx_indexed_cell_dither_changed(1, 1, bayer2_table, true, 1, 0));
 }
 
-/* --- lever 1/2 unified dispatch: gfx_indexed_cell_repaint() --------------- */
+/* lever 1/2 unified dispatch: gfx_indexed_cell_repaint() */
 
 /* force_full widens past every kind, even RAW with the tables left NULL -
  * the one case a stale index image must still repaint. */
@@ -505,7 +508,7 @@ test_repaint_cell_kinds_match_cell_dither_changed(void) {
         gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_CELL_CHECKER, NULL, checker_table, false, 7, 9, 1, 0));
 }
 
-/* --- lever 2: GFX_DITHER_PIXEL_CHECKER2 ----------------------------------- */
+/* lever 2: GFX_DITHER_PIXEL_CHECKER2 */
 
 static gfx_color_t
     checker2_table[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX];
@@ -563,7 +566,7 @@ test_checker2_stays_in_phase_across_a_band_boundary(void) {
     TEST_ASSERT_EQUAL_HEX16_ARRAY(whole + 5, right, 7);
 }
 
-/* --- the panel row the present path and a screenshot both read ----------- */
+/* the panel row the present path and a screenshot both read */
 
 static gfx_color_t any_mode_table[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES];
 

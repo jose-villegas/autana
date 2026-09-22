@@ -1,9 +1,6 @@
 /*
- * Portable suite: the home screen's own row placement, now built on
- * ui_flow_row() instead of a hand-tracked `y` and ABSOLUTE mu_layout_
- * set_next() calls - bd autana-9ic wanted this list scrollable once enough
- * apps push entries off the bottom, and an ABSOLUTE rect is exactly what
- * left every row past the first one unreachable once that happened.
+ * Portable suite: the home screen's own row placement, built on
+ * ui_flow_row(), so rows past the screen stay reachable by scrolling.
  *
  * Drives the real ui_launcher_draw() through ui_pointer_step(), the same
  * bridge suite_ui_pointer_microui.c proves against a plain list, with this

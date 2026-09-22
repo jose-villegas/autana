@@ -28,7 +28,7 @@ fixture(void) {
     touch_fsm_init(&fsm);
 }
 
-/* --- pressing ----------------------------------------------------------- */
+/* pressing */
 
 void
 test_starts_with_nothing_pressed(void) {
@@ -98,7 +98,7 @@ test_press_position_is_where_the_touch_began(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(200, in.y, "y tracks the current position");
 }
 
-/* --- releasing, and the debounce that makes it reliable ----------------- */
+/* releasing, and the debounce that makes it reliable */
 
 void
 test_release_is_reported_after_the_quiet_period(void) {
@@ -191,7 +191,7 @@ test_a_full_tap_produces_exactly_one_press_and_one_release(void) {
     TEST_ASSERT_EQUAL_INT(1, releases);
 }
 
-/* --- suite ------------------------------------------------------------- */
+/* suite */
 
 void
 run_touch_fsm_suite(void) {
