@@ -504,9 +504,7 @@ flowchart LR
     subgraph hw["Hardware-coupled"]
         direction TB
         HW1["touch.c<br/><i>I2C, FreeRTOS task</i>"]
-        HW2["gfx.c<br/><i>panel, DMA</i><br/><b>device suite</b>"]
-        HW3["ui_launcher.c<br/><i>microui</i><br/><i>not covered</i>"]
-        HW4["main.c<br/><i>frame loop</i><br/><i>not covered</i>"]
+        HW4["main.c<br/><i>frame loop</i>"]
     end
 
     subgraph pure["Pure logic — host AND device"]

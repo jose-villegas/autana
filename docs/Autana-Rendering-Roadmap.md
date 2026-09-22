@@ -85,7 +85,7 @@ flowchart LR
   busRoot -.-> raycaster
   corePresent -.-> platformer
 
-  class frameTime,cubePerf,busRoot,corePresent,bandRing,hostHarness,s3lExtract done
+  class frameTime,cubePerf,busRoot,corePresent,bandRing,hostHarness,s3lExtract,tiltShake done
 ```
 
 The green-bordered nodes above are already in the tree, not proposed:
@@ -95,10 +95,9 @@ The green-bordered nodes above are already in the tree, not proposed:
 `gfx_present_begin()`/`gfx_present_wait()`), `bandRing` (`gfx/gfx_band.h`,
 already what render lab draws into), `hostHarness`
 (`docs/tools/Render-Harness.md`'s `*_render_host.sh` + `render_diff.sh`),
-and `s3lExtract` (`render/r3d_project.h`, `r3d_camera.h`, `r3d_ray.h`).
-`tiltShake` stays proposed: `input/tilt.{h,c}` already reads
-down/strength/shake for sand, but pulling that into a library the other
-games can share without depending on sand is still open work.
+`s3lExtract` (`render/r3d_project.h`, `r3d_camera.h`, `r3d_ray.h`), and
+`tiltShake` (`input/tilt.{h,c}`, a pure, host-tested reader of down,
+strength and shake that the shell and apps both call).
 
 ### Where a frame's time goes, by which path an app takes
 

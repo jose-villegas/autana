@@ -23,10 +23,11 @@ sequenceDiagram
         Dev->>Port: talk to the running firmware
     else flash, batch, selftest
         Dev->>Bash: run build_flash.sh,<br/>AUTANA_DEVICE_LOCK_TOKEN set
-        Bash->>Flash: build_flash.sh
+        Bash->>Flash: run it
         Note over Flash: refuses to flash without<br/>device.py's lock token
         Dev->>Port: reset the board
         Dev->>Port: open serial, read BUILD_ID
+        Note over Dev,Port: batch and selftest keep this same lock<br/>and capture straight through, after the flash
     end
 ```
 
