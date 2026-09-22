@@ -43,11 +43,13 @@ components/microui/src/microui.c
 main/apps/render_lab/tools/render_lab_render_host.c
 main/apps/render_lab/tools/render_lab_render_host_heap.c
 "
-scene_includes="components/small3dlib/include"
+scene_includes="components/small3dlib/include test"
 
 # scene_wire.c's enter()/exit() need a working heap_caps_malloc()/free() on
-# the host, matched against test/stubs/esp_heap_caps.h's own declarations
-# (render_scene.sh puts that directory on the include path already).
+# the host, matched against test/stubs/esp_heap_caps.h's own declarations -
+# render_lab_render_host_heap.c spells that "stubs/esp_heap_caps.h", the
+# same path the complexity gate's own host flags resolve it from, so
+# `test` joins render_scene.sh's own test/stubs on the include path above.
 # test/heap_arena.c models the device's real heap caps, but its
 # malloc/calloc/realloc/free wrapping reaches gfx_init()'s own host branch
 # (gfx.c), which allocates the framebuffer with a plain malloc() it expects
