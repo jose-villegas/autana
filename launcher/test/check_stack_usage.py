@@ -29,8 +29,8 @@ genuine outlier would have to be caught.
 
 Host frames already over it are listed one by one in
 PRE_EXISTING_STACK_DEBT below, not absorbed by a higher ceiling: a ceiling
-raised to fit them would also fit the next on-stack grid-sized array, the
-bug class behind both panics above.
+raised to fit them would also fit the next large on-stack array, the bug
+class behind both panics above.
 
 This gate is only worth as much as a host frame resembles the target's, so
 that was measured rather than assumed. Compiling the same suites with
