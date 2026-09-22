@@ -54,7 +54,7 @@ endif()
 if(CONFIG_LAUNCHER_SELFTEST)
     list(APPEND app_srcs "console/console_runsuite.c")
 endif()
-if(CONFIG_LAUNCHER_QEMU AND CONFIG_LAUNCHER_DEVELOPMENT)
+if(CONFIG_LAUNCHER_DEVELOPMENT)
     list(APPEND app_srcs "console/console_inject.c")
 endif()
 

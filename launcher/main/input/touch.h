@@ -23,11 +23,24 @@
  * panel is missing: reads simply report nothing rather than failing. */
 void touch_start(void);
 
-#if CONFIG_LAUNCHER_QEMU
-/* Where no controller answers, sets what the stand-in controller reports
- * from now on, in panel coordinates. The sample still travels the polling
- * task and the touch state machine to reach touch_read(). */
+#if CONFIG_LAUNCHER_DEVELOPMENT
+typedef enum {
+    TOUCH_GESTURE_TAP,
+    TOUCH_GESTURE_PRESS,
+    TOUCH_GESTURE_DRAG,
+} touch_gesture_kind_t;
+
+typedef struct {
+    touch_gesture_kind_t kind;
+    int x0, y0;
+    int x1, y1;
+    uint32_t ms;
+} touch_gesture_t;
+
+/* The injected level takes precedence over a physical sample until its up
+ * transition reaches the polling task. */
 void touch_inject(bool down, int x, int y);
+void touch_gesture_start(const touch_gesture_t* gesture);
 #endif
 
 /* Copies the accumulated state into `out` and clears the latched edges, so

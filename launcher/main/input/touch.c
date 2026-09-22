@@ -48,41 +48,94 @@ on_touch_int(esp_lcd_touch_handle_t tp) {
     report_pending = true;
 }
 
-#if CONFIG_LAUNCHER_QEMU
-/* A controller with no chip behind it: it reports whatever touch_inject()
- * last set, through the same driver interface a real one answers. */
-static volatile bool injected_down;
-static volatile uint16_t injected_x, injected_y;
-
-static esp_err_t
-injected_read_data(esp_lcd_touch_handle_t tp) {
-    (void)tp;
-    return ESP_OK;
-}
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static bool injected_down;
+static bool injected_release;
+static int injected_x, injected_y;
+static touch_gesture_t injected_gesture;
+static bool injected_gesture_active;
+static int64_t injected_gesture_started_us;
 
 static bool
-injected_get_xy(esp_lcd_touch_handle_t tp, uint16_t* x, uint16_t* y, uint16_t* strength, uint8_t* point_num,
-                uint8_t max_point_num) {
-    (void)tp;
-    (void)strength;
-    (void)max_point_num;
-    *point_num = injected_down ? 1 : 0;
-    x[0] = injected_x;
-    y[0] = injected_y;
-    return injected_down;
+injected_gesture_sample(int64_t now_us, int* x, int* y) {
+    if (!injected_gesture_active) {
+        return false;
+    }
+    if (injected_gesture_started_us == 0) {
+        injected_gesture_started_us = now_us;
+    }
+    const int64_t elapsed_us = now_us - injected_gesture_started_us;
+    const int64_t duration_us = (int64_t)injected_gesture.ms * 1000;
+    if (elapsed_us >= duration_us) {
+        injected_gesture_active = false;
+        return false;
+    }
+    *x = injected_gesture.x0;
+    *y = injected_gesture.y0;
+    if (injected_gesture.kind == TOUCH_GESTURE_DRAG) {
+        *x += (int)(((int64_t)(injected_gesture.x1 - injected_gesture.x0) * elapsed_us) / duration_us);
+        *y += (int)(((int64_t)(injected_gesture.y1 - injected_gesture.y0) * elapsed_us) / duration_us);
+    }
+    return true;
 }
 
-static esp_lcd_touch_t injected_panel = {
-    .read_data = injected_read_data,
-    .get_xy = injected_get_xy,
-};
+/* Returns true when injection supplied this poll's result, including its
+ * final no-contact sample. That lets touch_fsm see the lift before the panel
+ * becomes the source again. */
+static bool
+injected_sample(int64_t now_us, bool* have_point, int* x, int* y) {
+    portENTER_CRITICAL(&lock);
+    if (injected_release) {
+        injected_release = false;
+        *have_point = false;
+        portEXIT_CRITICAL(&lock);
+        return true;
+    }
+    if (injected_down) {
+        *have_point = true;
+        *x = injected_x;
+        *y = injected_y;
+        portEXIT_CRITICAL(&lock);
+        return true;
+    }
+    if (injected_gesture_active) {
+        *have_point = injected_gesture_sample(now_us, x, y);
+        if (!*have_point) {
+            injected_release = false;
+        }
+        portEXIT_CRITICAL(&lock);
+        return true;
+    }
+    portEXIT_CRITICAL(&lock);
+#if CONFIG_LAUNCHER_QEMU
+    *have_point = false;
+    return true;
+#else
+    return false;
+#endif
+}
 
 void
 touch_inject(bool down, int x, int y) {
-    injected_x = (uint16_t)x;
-    injected_y = (uint16_t)y;
+    portENTER_CRITICAL(&lock);
+    injected_gesture_active = false;
+    injected_gesture_started_us = 0;
     injected_down = down;
-    report_pending = true;
+    injected_x = x;
+    injected_y = y;
+    injected_release = !down;
+    portEXIT_CRITICAL(&lock);
+}
+
+void
+touch_gesture_start(const touch_gesture_t* gesture) {
+    portENTER_CRITICAL(&lock);
+    injected_down = false;
+    injected_release = false;
+    injected_gesture = *gesture;
+    injected_gesture_started_us = 0;
+    injected_gesture_active = true;
+    portEXIT_CRITICAL(&lock);
 }
 #endif
 
@@ -90,26 +143,31 @@ static void
 poll_once(void) {
     bool have_point = false;
     int x = 0, y = 0;
+    const int64_t now_us = esp_timer_get_time();
 
     /* Only talk to the controller when it has something: a controller NACKs
      * register reads while idle, and each failed transaction costs a bus
      * timeout - polling blindly at this rate would swamp the system. */
-    const bool pending = report_pending;
-    report_pending = false;
-    if (panel != NULL && (pending || was_touching || gpio_get_level(BSP_LCD_TOUCH_INT) == 0)) {
-        if (esp_lcd_touch_read_data(panel) == ESP_OK) {
-            esp_lcd_touch_point_data_t point = {0};
-            uint8_t count = 0;
-            if (esp_lcd_touch_get_data(panel, &point, &count, 1) == ESP_OK && count > 0) {
-                have_point = true;
-                x = point.x;
-                y = point.y;
+    bool injected = false;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    injected = injected_sample(now_us, &have_point, &x, &y);
+#endif
+    if (!injected) {
+        const bool pending = report_pending;
+        report_pending = false;
+        if (panel != NULL && (pending || was_touching || gpio_get_level(BSP_LCD_TOUCH_INT) == 0)) {
+            if (esp_lcd_touch_read_data(panel) == ESP_OK) {
+                esp_lcd_touch_point_data_t point = {0};
+                uint8_t count = 0;
+                if (esp_lcd_touch_get_data(panel, &point, &count, 1) == ESP_OK && count > 0) {
+                    have_point = true;
+                    x = point.x;
+                    y = point.y;
+                }
             }
         }
     }
     was_touching = have_point;
-
-    const int64_t now_us = esp_timer_get_time();
 
     portENTER_CRITICAL(&lock);
     touch_fsm_update(&fsm, have_point, x, y, now_us);
@@ -148,7 +206,6 @@ touch_start(void) {
     if (bsp_touch_new(NULL, &panel) != ESP_OK) {
 #if CONFIG_LAUNCHER_QEMU
         ESP_LOGW(TAG, "No touch controller; input comes from touch_inject()");
-        panel = &injected_panel;
 #else
         ESP_LOGW(TAG, "Touch controller unavailable; input will not work");
         panel = NULL;

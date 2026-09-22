@@ -21,6 +21,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "build_variant.h"
+
 /* Raw sensor counts, in the chip's own axes.
  *
  * Left raw on purpose: a caller steering by tilt needs only the direction of
@@ -45,10 +47,11 @@ bool imu_ready(void);
 /* Reads all six axes. Returns false on a bus error, leaving `out` untouched. */
 bool imu_read(imu_sample_t* out);
 
-#if CONFIG_LAUNCHER_QEMU
-/* Where no sensor answers, imu_init() succeeds anyway and imu_read() returns
- * what this last set - held upright and still until it is called. */
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* Makes imu_read() return `sample` until imu_inject_release() restores the
+ * controller. */
 void imu_inject(const imu_sample_t* sample);
+void imu_inject_release(void);
 #endif
 
 /* Sensor axes to screen axes: how the QMI8658 is soldered relative to the
