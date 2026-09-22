@@ -63,41 +63,29 @@ Three rules keep a reading honest:
   before: rotated UI work, and sand rows running along gravity rather
   than across it.
 
-### Free heap is not a real risk
+### A report with no timings means a short heap
 
-Every frame-budget scene mallocs its grid (one grid is ~41 KB), so on a
-board where that allocation could fail, a short heap produced a
-clean-looking, worthless report: the suite still ran, still printed
-completion, with no timings in it at all.
-
-On this board that failure mode is gone. The framebuffer lives in PSRAM,
-not internal DRAM, so it does not compete with the sand grid for
-internal-heap contiguity. It is not roomy either: the measured internal
-heap free after `gfx_init()` is 130,635 bytes (117,219 once the shell is
-ready), and its largest block is 51,200 - one 41,216-byte sand grid fits,
-a second contiguous one does not. Still worth grepping a raw capture
-for `free heap after framebuffer` if a report ever comes back with zero
-timings, since a heap short for an unrelated reason (a leak in an earlier
-suite, a scoped build's own footprint) would look the same.
+Every frame-budget scene mallocs its ~41 KB grid; if that fails, the
+suite still runs and prints completion with no timings in it. With the
+framebuffer in PSRAM, one grid fits the internal heap's largest block
+and a second contiguous one does not. A report with zero timings: grep
+the raw capture for `free heap after framebuffer`.
 
 ## Perf sanity, not just logging
 
 A perf test should assert that work actually happened - bytes sent
 greater than zero, a frame time not impossibly fast - not only log a
-number. A logging-only band-mode test once passed while the mode
-rendered nothing at all. Log the measurement **before** asserting on it,
-so a failing budget still prints what it measured instead of losing the
-number to the same assert that failed.
+number. A logging-only test can pass while the mode it measures renders
+nothing. Log the measurement **before** asserting on it, so a failing
+budget still prints what it measured instead of losing the number to
+the same assert that failed.
 
 ## Scoping a build for a capture
 
 The perf scope (`CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF`) compiles only
 `suite_sand_perf.c` plus the scene builders and fixtures it calls -
 `suite_sand_scenes.c` and `suite_sand_common.c` - instead of every suite.
-On a board where the framebuffer shared internal DRAM with `.bss`, this
-once bought back static-RAM headroom a capture needed to run at all. On
-this board the framebuffer lives in PSRAM, so scoping does not buy
-memory - it only buys run time (3 suites instead of the full run) and
+It buys run time, not memory - the framebuffer lives in PSRAM - and
 changes the image's layout in the 32 KB instruction cache. That second
 effect means **a scoped capture's numbers compare only with other scoped
 captures**, never with an unscoped run - same reasoning as the

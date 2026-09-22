@@ -102,10 +102,10 @@ material without widening the byte:
   the wood) comes for free. This works whenever the two states differ
   only in fields the *cold* table reads, not the hot one.
 - **Split `MAT_EXTENDED`'s low nibble by its own top bit.** `0xF0`-`0xF7`
-  stays the extended-statics doorway; `0xF8`-`0xFF` (gunpowder) became a
+  stays the extended-statics doorway; `0xF8`-`0xFF` is gunpowder, a
   second, ordinary `KIND_POWDER` row with real physics and a 3-bit
-  variant. This is what doubled `materials[]` to `MATERIAL_ROWS`, and it
-  is expensive - it spent half of what was left of the extended range on
+  variant, which is why `materials[]` has `MATERIAL_ROWS` rows. It is
+  expensive - it spent half of what was left of the extended range on
   one material. `Adding-a-Material.md`'s "Making room" section has the
   full ladder of options and what each one costs, for whoever needs a
   tenth.

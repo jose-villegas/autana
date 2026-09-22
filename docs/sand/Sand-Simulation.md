@@ -32,7 +32,7 @@ shrinks or grows with it:
 
 ULTRA's 41,216-byte grid is, in `docs/notes/Board-and-Memory.md`'s own
 words, "the largest single contiguous allocation of interest" the sand app
-makes. It is unchanged since this board moved to a PSRAM framebuffer.
+makes.
 
 The 322 KiB framebuffer lives entirely in PSRAM (`BOARD_FRAMEBUFFER_CAPS`,
 `board.h`), so it does not compete with the sand grid, or anything else,
@@ -413,6 +413,8 @@ than a separate flag:
 ```mermaid
 stateDiagram-v2
     [*] --> Dry: painted
+    Dry --> Damp: water beside it,<br/>soaks roll
+    Damp --> Soaked: wets further,<br/>up to moist_max
     Soaked --> Damp: dries - ambient,<br/>or heat while moist
     Damp --> Dry: dries further
     Dry --> Lit: flammability roll,<br/>or heat, once fully dry
@@ -424,13 +426,9 @@ stateDiagram-v2
     Lit --> Fire: burn-out,<br/>otherwise
 ```
 
-Painted gunpowder starts `Dry` (`GUNPOWDER_CELL(0)`, `app_sand.c`). `Dry`
-and `Damp` are the same moisture counter, `Damp` standing in for moisture
-levels 1-3: each still ignites off a flame or hot lava, just at a lower
-chance the deeper it goes. `Soaked` (moisture at `moist_max`) cannot
-ignite at all - the same damping shift that lowers `Damp`'s chance reaches
-zero there - so heat only dries a soaked or damp cell further, or gives it
-its own separate chance to give up being powder and become `MAT_OIL`.
+Painted gunpowder starts `Dry` (`GUNPOWDER_CELL(0)`, `app_sand.c`). `Damp`
+stands for moisture 1-3 and `Soaked` for `moist_max`; **Moisture damps
+ignition** below gives each level's odds.
 
 **Lighting the fuse.** A flame or hot lava touching dry powder ignites it
 in the usual way (`flammability` 200, so it catches almost every time it
