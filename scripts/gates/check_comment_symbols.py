@@ -20,7 +20,8 @@ CITED = re.compile(r"\b([a-z_][a-z0-9_]{4,})\(\)")
 
 # Named in comments as the C library or the vendor SDK spells them, with no
 # definition in this tree to find.
-FOREIGN = {"main", "printf", "malloc", "free", "memset", "memcpy", "assert"}
+FOREIGN = {"main", "printf", "malloc", "free", "memset", "memcpy", "assert", "bsp_display_new",
+           "esp_clk_cpu_freq", "xtensa_perfmon_exec", "strcasecmp", "strdup"}
 
 
 def main():

@@ -90,11 +90,18 @@ class Comment:
 
     @property
     def has_rule(self):
-        """Opens with a drawn rule - `/*====`, `//----`. Decoration this tree
-        does not use; scripts/gates/strip_comment_rules.py finds any that returns."""
+        """Opens with a drawn rule - `/*====`, `//----` - or draws one on the
+        same line as its own text - `/* --- title ---- */`. Decoration this
+        tree does not use; scripts/gates/strip_comment_rules.py finds any that
+        returns."""
         first = self.raw_lines[0].strip()
-        return bool(re.match(r"^/\*[=*\-_#]{4,}", first)
-                    or re.match(r"^//\s*[=*\-_#]{4,}", first))
+        if re.match(r"^/\*[=*\-_#]{4,}", first) or re.match(r"^//\s*[=*\-_#]{4,}", first):
+            return True
+        body = first[2:]
+        if body.endswith("*/"):
+            body = body[:-2]
+        body = body.strip()
+        return bool(re.match(r"^[=*\-_#]{3,}\s", body) or re.search(r"\s[=*\-_#]{3,}$", body))
 
     @property
     def is_banner(self):
