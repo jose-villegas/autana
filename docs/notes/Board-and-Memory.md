@@ -84,7 +84,7 @@ place: each full-width strip is copied into one of two internal DMA strip
 buffers (`strip_bounce` in `gfx.c`, 47 KB each) and sent from there. SPI DMA
 can read PSRAM directly (`psram_dma_direct`), but that shares the PSRAM bus's
 bandwidth, and at 80 MHz QSPI the panel received dropped data (a green box
-and a black band, 2026-09-13). That is separate from 80 MHz being outside
+and a black band). That is separate from 80 MHz being outside
 the panel's own rating, which bouncing does not fix (see
 [Display-and-Rendering.md](Display-and-Rendering.md), "The blit is
 bus-bound"). The two strip buffers plus the gather buffer
@@ -126,7 +126,7 @@ for the extra 16 KiB of internal RAM. The data cache stays at the default,
 because 64 KiB bought nothing — sand's grids live in internal SRAM and are
 already direct-access rather than cached (see
 [`../Autana-Rendering-Roadmap.md`](../Autana-Rendering-Roadmap.md) §3.3,
-device measurement, 2026-09-13).
+device measurement).
 
 ### Static growth still taxes the internal heap
 
