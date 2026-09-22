@@ -9,6 +9,8 @@
  */
 #pragma once
 
+#include <stdint.h>
+
 #include "build_variant.h"
 #include "input/input.h"
 
