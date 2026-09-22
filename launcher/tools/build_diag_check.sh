@@ -65,7 +65,7 @@ GATE_BASE="${COMPLEXITY_GATE_BASE:-origin/main}"
 
 if [ -z "${QUIET_INNER:-}" ]; then
     quiet_begin "$DIR/../build.diag/build_diag_check.log"
-    quiet_run diagnostics-check env QUIET_INNER=1 VERBOSE="$VERBOSE" "$0" ${IDF_EXPORT_ARG:+"$IDF_EXPORT_ARG"} || true
+    quiet_run diagnostics-check env QUIET_INNER=1 VERBOSE="$VERBOSE" bash "$0" ${IDF_EXPORT_ARG:+"$IDF_EXPORT_ARG"} || true
     quiet_end build_diag_check || exit $?
     exit 0
 fi
