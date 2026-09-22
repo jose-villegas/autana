@@ -5,16 +5,6 @@ Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 - see
 actual board or read out of the actual source. See
 [Board-and-Memory.md](Board-and-Memory.md) for the SPI2 wiring this builds on.
 
-Most of the timing figures below were captured before this project's move to
-the ESP32-S3 and have not been re-measured on this board since. The
-bus-bandwidth-bound findings (the QSPI clock analysis, the dirty-region send
-costs) are the most likely to still hold,
-since they are dictated by the QSPI clock and the panel rather than the CPU;
-anything CPU-bound (the cube's rasterize stage in particular) should be
-treated as unconfirmed on this board until re-measured. Numbers are kept
-because the reasoning that produced them still applies - re-verify before
-relying on any specific figure for a decision.
-
 ---
 
 ## Owning panel bring-up
@@ -64,38 +54,11 @@ for LVGL that snaps areas to even boundaries. Full-width strips at multiples of
 
 ## Measured performance
 
-Full-screen 368×448, Gouraud-shaded rotating cube, `small3dlib`, no GPU:
-
-| Stage | Time | Share |
-|---|---|---|
-| Clear (32-bit fill) | 5.2 ms | 10% |
-| Rasterize | 28.1 ms | 48% |
-| Blit (QSPI DMA) | 25.0 ms | 41% |
-| **Total** | **~59 ms → 15.5 fps** | |
-
-The blit works out to ~13 MB/s effective over QSPI at 40 MHz.
-
-These per-stage figures were captured before the ESP32-S3 port and have not
-been re-measured on this board; Clear and Rasterize are CPU-bound and will not
-carry over as-is to a dual-core Xtensa LX7 at 240 MHz. The blit figure is
-bandwidth-bound on the QSPI clock rather than the CPU (see "The blit is
-bus-bound" below) and so is the more likely of the three to still hold, but it
-too is unconfirmed on this board — treat the whole table as historical,
-unmeasured on this board.
-
-Those cube figures predate a build-flag change and are kept as a record of the
-starting point: the build now uses -O2 rather than -Og (see
-[Flashing-and-Toolchain.md](Flashing-and-Toolchain.md)). An 80 MHz QSPI clock
-roughly halves the blit row, but is outside the panel's rating and corrupts
-partially redrawn frames; see "The blit is bus-bound" below.
-
-Two results worth remembering because they contradict the intuitive guess:
-
-- **Double-buffering the strips changed nothing** (11.1 → 10.7 fps). DMA was
-  never the bottleneck.
-- **Tiled rendering was *slower* than one full-screen pass** (10.7 → 15.5 fps).
-  Rasterizing the scene once per strip meant doing it seven times per frame;
-  the discarded-pixel path was cheap, but not free.
+The cube scene's own frame-budget suite (`main/apps/render_lab/suite_cube_perf.c`)
+is the current source for its clear/rasterize/blit timing - see
+[`../Autana-Rendering-Roadmap.md`](../Autana-Rendering-Roadmap.md) for where
+that stands. What follows here is bus-level measurement, board-verified and
+independent of any one scene.
 
 ### The blit is bus-bound, and the clock was half what it could be
 
@@ -190,8 +153,8 @@ cheaper. `GATHER_MAX_PIXELS` and the run-merging thresholds in `gfx.c` are
 tuned against the 40 MHz numbers; they would need re-measuring, not just
 reusing, if the clock ever changes.
 
-The clock is `GFX_QSPI_HZ` in `gfx.h`, chosen by
-`CONFIG_LAUNCHER_GFX_QSPI_80MHZ`.
+`GFX_QSPI_HZ` (`gfx.h`, `CONFIG_LAUNCHER_GFX_QSPI_80MHZ`) is the boot
+default; the running clock is the shell's system panel clock above.
 
 An in-between clock looked like the obvious next thing to try - more margin
 than 80, still faster than 40 - and is exactly what 60 MHz was tried as. It
@@ -468,12 +431,12 @@ way - leaf boundary math, run-collection edge cases, the gather-budget
 rejection path - none of which was reachable from a host before.
 
 **One real, currently-latent beneficiary: `app_sand.c`.** The concrete
-case this was built for - two separated blobs of sand inside one grid row
-- was traced back further than `gfx.c`: `draw_one_row()` used to compute
-one `(min_cx, max_cx)` span per row, so two genuinely separate blobs
-already arrived at `gfx_mark_dirty()` merged, with the gap between them,
-before the leaf layer ever got a chance to see it. Fixed by extracting the
-run-finding and previous/current reconciliation into
+case this was built for is two separated blobs of sand inside one grid row:
+`draw_one_row()` computes each row's runs itself rather than one
+`(min_cx, max_cx)` span, so two genuinely separate blobs reach
+`gfx_mark_dirty()` as separate runs, gap and all, instead of merged before
+the leaf layer ever sees them. The run-finding and previous/current
+reconciliation live in
 `main/apps/sand/row_runs.c`/`.h` (a portable sibling of `sand.c`/`tilt.c`,
 not a special case wired into `gfx.c`) - its run finder mirrors
 `gfx.c`'s own `collect_runs_from_mask()`, and `row_runs_reconcile()`
@@ -614,8 +577,10 @@ shipped values: the run caps are structurally inert against real scenes
 (a checkerboard row needs the full-row fallback regardless of the cap, a
 slab row needs one run either way, and no real scene falls between those
 two shapes), and raising the pixel cap buys a further 5-9% only by
-growing the DMA gather buffer to match, against roughly 67 KB of free
-heap once the framebuffer and the sand grid are accounted for. The
+growing the DMA gather buffer to match, against the internal free heap
+left once the sand grid and everything else internal are accounted for
+(the framebuffer lives in PSRAM and never competes for it - see
+[Board-and-Memory.md](Board-and-Memory.md)). The
 dirty-region tracker itself is at its ceiling against an uncapped oracle
 - within 3% of the exact changed-cell ideal on every scene measured - so
 the one real win left was a missing third send path: a box spanning the

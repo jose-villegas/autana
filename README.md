@@ -18,12 +18,13 @@ anything.
 
 ## What's inside
 
-A minimal shell (`main/`) that lists and switches between self-contained
-apps, each living entirely in its own `main/apps/<name>/` folder — adding or
-removing one touches no other file. Currently:
+A minimal shell (`launcher/main/`) that lists and switches between
+self-contained apps, each living entirely in its own
+`launcher/main/apps/<name>/` folder — adding or removing one touches no
+other file. Currently:
 
-- **Falling Sand** — a cellular-automaton sandbox with sand, water and
-  stone, steered by tilting the board and poured with a touch. The most
+- **Falling Sand** — a sandbox of powders, liquids, gases and fire
+  chemistry, steered by tilting the board and poured with a touch. The most
   substantial piece of engineering in this repo: a flash-resident material
   system, a hybrid mass-diffusion water model, one impulse mechanism behind
   explosions, thrown chunks and water's own splash, and a device-verified
@@ -48,7 +49,7 @@ cd launcher && idf.py build            # release — no test code, ships to the 
 autana flash rel                       # flash it - works from any shell, including Git Bash
 autana monitor                         # print what it says
 
-./launcher/test/run_tests.sh           # host tests, portable suites, <1 s
+./launcher/test/run_tests.sh           # host tests, portable suites - see Testing-Guide.md
 autana selftest                        # builds the diagnostics variant, flashes it,
                                         # runs every suite on the actual chip
 ```
@@ -61,7 +62,6 @@ markdown report instead of a pass/fail line, use the wrappers below - `.sh`
 scripts that write into their own `tools/results/`:
 
 ```bash
-autana flash rel                       # build + flash the release firmware
 ./launcher/tools/report_test_results.sh # every suite, pass/fail
 ./launcher/main/apps/sand/tools/report_performance.sh  # frame-budget numbers
 ```

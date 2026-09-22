@@ -6,8 +6,6 @@ actual board or read out of the actual source - nothing is copied from a spec
 sheet unless it is marked as such. Numbers come from boot logs and
 `esp_timer` measurements taken in this repo.
 
-Living document: correct it when the hardware disagrees with it.
-
 ---
 
 ## The board
@@ -143,14 +141,11 @@ story and the checklist for avoiding a repeat: an app's own big buffers get
 malloc'd once and kept; anything optional (screenshots, debug overlays,
 future dev tooling) must be malloc'd-on-use and freed-after, never a
 permanent static, and must be checked with `idf.py -B build.dev size` /
-`build.diag size` — not just `build.release`, which does not even compile
-that code in.
+`build.diag size` — not just `build/` (the release output), which does not
+even compile that code in.
 
-There is no automated build-time gate for this any more: the framebuffer no
-longer lives in internal DRAM, so the old prediction of "does the framebuffer
-plus one grid still fit" no longer applies, and nothing has replaced it.
-Watching internal-heap headroom (the measured figure above, and `HEAPMARK`
-boot lines on a dev build) is a manual habit now, not an enforced one.
+Nothing gates internal-heap headroom at build time; watch the figure above
+and a dev build's `HEAPMARK` lines.
 
 Reading `esp_get_free_heap_size()` against
 `heap_caps_get_largest_free_block()` still invents a fragmentation gap that

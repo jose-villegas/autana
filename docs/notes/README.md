@@ -5,15 +5,12 @@ verified on the actual board or read out of the actual source — nothing is
 copied from a spec sheet unless it is marked as such. Numbers come from boot
 logs and `esp_timer` measurements taken in this repo.
 
-Living document: correct it when the hardware disagrees with it.
-
-Split into six files, grown out of what was originally one - a seventh,
-the falling-sand app's own discovery narrative, moved out to
-[`../sand/`](../sand/) once that folder existed to hold it properly:
+Six files, one hardware fact area each - the falling-sand app's own
+discovery narrative lives in [`../sand/`](../sand/) instead:
 
 - **[Board-and-Memory.md](Board-and-Memory.md)** — the board's hardware
   inventory, the memory budget built around the framebuffer living in
-  PSRAM, and why the SD card and the display no longer contend for a bus.
+  PSRAM, and why the SD card and the display do not share a bus.
 - **[Display-and-Rendering.md](Display-and-Rendering.md)** — owning the
   panel directly, the QSPI clock (80 MHz is outside the panel's rating and
   corrupts partial redraws, needs the strips sent from internal RAM, and no
@@ -23,8 +20,8 @@ the falling-sand app's own discovery narrative, moved out to
   and its accelerometer/gyroscope split, and the two buttons that are not
   the same kind of device.
 - **[Flashing-and-Toolchain.md](Flashing-and-Toolchain.md)** — recovering
-  an unresponsive board, ESP-IDF version requirements, and the build-flag
-  history (`-Og` vs `-O2`, release vs diagnostics).
+  an unresponsive board, ESP-IDF version requirements, and the build flag
+  and frame-tick rules a framerate comparison has to respect.
 - **[Optimization-Playbook.md](Optimization-Playbook.md)** — general-purpose
   performance techniques this board's work turned up, written to travel to
   other chips and projects rather than staying specific to this one:
