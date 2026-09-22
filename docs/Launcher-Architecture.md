@@ -133,7 +133,6 @@ and means something different by each:
 | **launcher** | the home screen the shell draws when no app is running — `launcher/main/ui/ui_launcher.c`. This is what you reach after booting. |
 | **boot** | what runs once before the loop exists and never again — `boot/` |
 
-
 ---
 
 ## Generated sources
