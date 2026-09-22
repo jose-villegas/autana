@@ -287,7 +287,7 @@ flowchart TB
 
     %% linkStyle below recolours these two by index (17, 18); an edge added
     %% above them shifts both numbers, so add new edges after them.
-    Contract -.->|"includes input/buttons.h"| Input
+    Contract -.->|"includes input/input.h"| Input
     Input <-.-|"device_state reaches up"| Util
 
     linkStyle 17 stroke:#e11,stroke-width:2px
@@ -297,9 +297,9 @@ flowchart TB
 **A folder may include anything below it, and `app.h`, never above or
 sideways within the same row.** `board/` sits in its own row below
 `util/` - nothing in it includes another first-party folder, so it is
-the tree's lowest layer. The two red arrows are the exceptions: `app.h` includes
-`input/buttons.h`, and `util/device_state` reaches back up into
-`input/imu.h` and `display/display.h` (not drawn).
+the tree's lowest layer. The two red arrows are the exceptions: `app.h`
+includes `input/input.h`, and `util/device_state` reaches back up into
+`input/imu.h`, `input/input.h` and `display/display.h` (not drawn).
 
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. See
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path) for how a draw

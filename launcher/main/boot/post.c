@@ -17,7 +17,6 @@
 
 #include "board/board.h"
 #include "gfx/gfx.h"
-#include "util/device_state.h"
 
 static const char* TAG = "post";
 
@@ -213,7 +212,7 @@ check_mac(void) {
 static void
 check_temperature(void) {
     float celsius = 0.0f;
-    const temp_sensor_status_t status = temp_sensor_read_celsius(&celsius);
+    const temp_sensor_status_t status = board_temp_sensor_read_celsius(&celsius);
 
     char detail[96];
     switch (status) {
