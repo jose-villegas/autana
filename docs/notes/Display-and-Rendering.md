@@ -76,7 +76,7 @@ that in. The panel runs at 80 without complaint on the surface:
 | `gfx_present()` | 17,602 us | 9,600 us |
 | Shell framerate | 43.5 fps | 70.0 fps |
 
-**80 MHz is outside the panel's rating** (proven on device, 2026-09-15). The
+**80 MHz is outside the panel's rating** (proven on device). The
 CO5300 datasheet, section 6.4 (QSPI write):
 
 | Parameter | Datasheet | At 80 MHz | At 40 MHz |
@@ -199,10 +199,9 @@ this at 80 MHz (not comparable with the 40 MHz tables below):
 Strips save along one axis only: rotate the device and every band is
 touched however little changed. Sending each row's real width, one
 `draw_bitmap()` per row, is 5.4x slower: a QSPI transaction's fixed cost
-is about 118 us (see "Still untapped" below for that finding kept in
-full, since the number it established shaped everything after it).
+is about 118 us (derived under "Still untapped" below).
 
-**The grid:** the screen is a fixed 7×4 grid - 64-row bands, now also
+**The grid:** the screen is a fixed 7×4 grid - 64-row bands, each
 split into `GRID_COLS = 4` columns of 92 px each - 28 cells in total.
 Each cell tracks a real `(x0,x1)×(y0,y1)` box, not just a
 bit, via `gfx_mark_dirty()`; a caller that only touched part of a cell sends
@@ -260,15 +259,11 @@ touched again:
   the shared buffer, relying on same-device SPI transactions completing in
   the order they were queued.
 
-**Nothing had to change in the existing apps.** `gfx_clear()` marks the whole
-screen, and the cube, the launcher and the POST report all clear before
-drawing - so they were correct without knowing dirty tracking existed. The
-rule only bites code writing through `gfx_framebuffer()` directly, which gfx
+`gfx_clear()` marks the whole screen, so a screen that clears before
+drawing needs no marking of its own. The rule only bites code writing through `gfx_framebuffer()` directly, which gfx
 cannot see:
 that code must call `gfx_mark_dirty()`, and forgetting shows up as stale pixels
 rather than a crash.
-
-One smaller thing fell out of it:
 
 **Marking must be cheap.** `gfx_text_scaled()` calls `gfx_fill_rect()` once
 per set font pixel, so marking runs thousands of times on a screen of text.

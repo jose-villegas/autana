@@ -12,8 +12,8 @@ narrowed further, to `CONFIG_LAUNCHER_SELFTEST`
 (`launcher/main/apps/diagnostics/app_diagnostics.c`'s `#if
 CONFIG_LAUNCHER_SELFTEST` guards).
 
-Step 1 (the Settings extraction) is still open, now as a pure UI/
-organisation question rather than one gating memory or build correctness -
+Step 1 (the Settings extraction) is open, and is a UI/
+organisation question, not one of memory or build correctness -
 see "What survives" below. Step 2 (the SELFTEST/diagnostics rename) remains
 open too: "diagnostics" names an app that ships in a build that is not
 itself called diagnostics, which is exactly the kind of naming friction

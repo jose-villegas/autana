@@ -656,8 +656,10 @@ against.
 
 ## Which suites cover which area
 
-Suite names carry their area - `gfx`, `ui`, `r3d`, `cube`, `wire`, `rt`,
-`sand`: `autana suite list <area>` lists what this worktree registers.
+Shell suites (gfx, ui, input, boot, render, util) live in
+`launcher/test/suites/`; an app's own are its
+`launcher/main/apps/<name>/**/suite_*.c`. `autana suite list [text]` filters
+by a substring of the name, so treat it as a lookup, not an area map.
 
 ---
 
