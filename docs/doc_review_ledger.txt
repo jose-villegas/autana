@@ -5,3 +5,5 @@ docs/tools/Doc-Drift.md	2026-09-22	whole-repo docs review: reviewed against doc_
 docs/tools/Mermaid-Diagrams.md	2026-09-22	whole-repo docs review: reviewed against check-mermaid.mjs, check-mermaid-staged.sh and mermaid.yml, accurate
 docs/tools/Live-Tuning.md	2026-09-22	whole-repo docs review: reviewed against util/tune.h, console_verbs.h and console_tune.c, accurate
 editor/README.md	2026-09-22	whole-repo docs review: reviewed against editor/CMakeLists.txt and gen_ui_layout.py, accurate
+docs/Gfx-and-Presentation.md	2026-09-22	PR #340 round 4: reviewed against the span send and the strip-buffer alias, accurate
+docs/Testing-Guide.md	2026-09-22	PR #340 round 4: reviewed against the span send and the strip-buffer alias, accurate

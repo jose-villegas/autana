@@ -46,7 +46,7 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 | App writes | pixels, anywhere | pixels, one band at a time | palette indices, `gfx_indexed_image()` |
 | Buffer | 322 KiB, PSRAM | 2 x `GFX_BAND_HEIGHT` rows, DMA RAM | grid_w x grid_h bytes, internal RAM |
 | Who sends | present task | the app's own loop, inside `frame()` | present task |
-| Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole |
+| Sends | dirty cells, runs or strips | dirty bands, sent across their dirty columns | dirty strips, whole |
 | Content kept between frames | yes | **no** - a band is gone once sent | yes |
 | For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette |
 | Used by | launcher, diagnostics | render lab | sand |
@@ -57,7 +57,9 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 - Only `GFX_RESOLUTION_FULL` without interlace renders today. The other
   request fields grant correctly and nothing consumes them.
 - `GFX_BAND_HEIGHT` is 16, 32 or 64 rows by Kconfig, default 32, and always
-  divides `GFX_HEIGHT`.
+  divides `GFX_HEIGHT`. On the device, at every band height, the two band
+  buffers alias `gfx.c`'s strip-bounce slots rather than allocating; a host
+  build mallocs them.
 
 ## Dirty tracking
 
@@ -168,12 +170,11 @@ The app drives the send itself, inside `frame()`:
 gfx_band_frame_begin();
 while (gfx_band_next()) {
     int x0, x1;
-    const int row0 = gfx_band_row0();
-    if (!gfx_band_dirty(row0, row0 + gfx_band_height(), &x0, &x1)) {
+    if (!gfx_band_dirty(&x0, &x1)) {
         gfx_band_skip();            /* panel still shows it */
         continue;
     }
-    /* draw rows row0.. into gfx_band_buffer(); gfx_* calls are translated */
+    /* draw this band into gfx_band_buffer(); gfx_* calls are translated */
     gfx_band_submit();
 }
 ```
@@ -206,6 +207,13 @@ sequenceDiagram
   draws a band's share. The shell queues its home hint with
   `ui_queue_band_overlay_rect()` before `frame()`, since nothing can draw
   after the loop.
+- `gfx_band_dirty()` records the column span it returns for the band
+  `gfx_band_next()` just handed out; `gfx_band_submit()` sends exactly
+  that, packed and even-clipped (`gfx_band_span_clip()`/
+  `gfx_band_span_pack()`, `gfx_band.h`) - one `draw_bitmap()` per band, full
+  stop, a flat buffer having no stride to skip past. A caller that never
+  calls `gfx_band_dirty()` still gets a full-width send, and an empty
+  extent sends nothing, advancing the ring the way `gfx_band_skip()` does.
 
 ## Indexed mode
 
@@ -386,6 +394,9 @@ same window sent again fails the same way.
 | `gfx_heal_set_budget()` | pixels of heal per present, default `GFX_HEAL_DEFAULT_BUDGET_PIXELS` |
 | `gfx_heal_set_rolling()` | rows per present of a whole-screen sweep, 0 for none |
 | `gfx_heal_restore_defaults()` | empty the queue, reset both - the shell calls it on every app switch |
+
+Band mode heals nothing, the same as the slow clock: a band is gone once
+sent, so gfx holds nothing to resend.
 
 ## Repaint controls
 
