@@ -7,8 +7,9 @@ them, and how it gets into and out of the launcher list. The contract is
 [`Building-a-Screen.md`](Building-a-Screen.md); for why the shell is built this
 way see [`Launcher-Architecture.md`](Launcher-Architecture.md).
 
-An app is a `const app_t` plus one `APP_REGISTER()` line. It is not a task or
-a process: one binary, one address space, no isolation.
+An app is an `app_t` (not `const`: the registry links it through its own
+`next` field) plus one `APP_REGISTER()` line. It is not a task or a process:
+one binary, one address space, no isolation.
 
 ## Minimal app
 
@@ -28,7 +29,7 @@ static void yours_frame(uint32_t dt_ms, const input_t* input) {
 
 static void yours_exit(void) { /* release what enter() took */ }
 
-const app_t app_yours = {
+app_t app_yours = {
     .name = "Your App",
     .summary = "what it does",
     .enter = yours_enter,
@@ -71,7 +72,8 @@ flowchart LR
   never shows.
 - `WHOLE_ARCHIVE` is what keeps an app nothing references by name in the
   image. Without it the app vanishes from the list with no link error.
-- Anything may read the registry: `app_list()` walks it.
+- Anything may read the registry: `app_list()` returns its head, and `next`
+  walks it.
 
 ### Deregistration
 

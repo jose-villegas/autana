@@ -125,7 +125,7 @@ joining that list:
 
    APP_CONSOLE("example", app_example_console);
 
-   const app_t app_example = {
+   app_t app_example = {
        .name = "Example",
        ...
        .console = APP_CONSOLE_PTR(app_example_console),
