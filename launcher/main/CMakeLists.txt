@@ -1,6 +1,7 @@
 # The shell and the board drivers. Apps are NOT listed here - see below.
 set(app_srcs
     "main.c"
+    "app_registry.c"
     "boot/boot_anim.c"
     "boot/post.c"
     "boot/post_layout.c"

@@ -15,7 +15,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "app.h"
+#include "input/input.h"
 
 typedef enum {
     UI_POINTER_MOVE,

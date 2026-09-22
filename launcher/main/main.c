@@ -13,7 +13,6 @@
 
 #include <ctype.h>
 #include <stdint.h>
-#include <string.h>
 
 #include "app.h"
 #include "boot/boot_anim.h"
@@ -189,30 +188,6 @@ shell_system_panel_clock_hz(void) {
     return panel_clock_system_hz(&shell_panel_clock);
 }
 
-/* Filled in before app_main() by the constructors APP_REGISTER() emits. No
- * app is named here; see app.h for why. */
-static const app_t* apps[APP_MAX];
-static int apps_registered;
-
-void
-app_register(const app_t* app) {
-    if (apps_registered >= APP_MAX) {
-        ESP_LOGE(TAG, "More than %d apps registered; '%s' was dropped", APP_MAX, app->name);
-        return;
-    }
-    apps[apps_registered++] = app;
-}
-
-const app_t* const*
-app_list(void) {
-    return apps;
-}
-
-int
-app_list_count(void) {
-    return apps_registered;
-}
-
 static display_t shell_display;
 
 int
@@ -248,19 +223,6 @@ opposite_edge(gesture_edge_t edge) {
         case GESTURE_EDGE_RIGHT: return GESTURE_EDGE_LEFT;
     }
     return edge;
-}
-
-static void
-sort_apps(void) {
-    for (int i = 1; i < apps_registered; i++) {
-        const app_t* const key = apps[i];
-        int j = i - 1;
-        while (j >= 0 && strcmp(apps[j]->name, key->name) > 0) {
-            apps[j + 1] = apps[j];
-            j--;
-        }
-        apps[j + 1] = key;
-    }
 }
 
 /* chrome */
@@ -465,12 +427,12 @@ step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, u
     }
     apply_pending_full_redraw(NULL);
     feed_launcher_gravity(dt_ms);
-    const int chosen = ui_launcher_frame(input, dt_ms);
-    if (chosen < 0 || chosen >= apps_registered) {
+    const app_t* chosen = ui_launcher_frame(input, dt_ms);
+    if (chosen == NULL) {
         draw_home_hint(exit_edge);
         return;
     }
-    *current = apps[chosen];
+    *current = chosen;
     ESP_LOGI(TAG, "Starting %s", (*current)->name);
     gfx_request_full_redraw();
     restore_system_display_state();
@@ -590,11 +552,19 @@ park_forever(void) {
  * match first. */
 static void
 check_console_prefix_clashes(void) {
-    const char* app_prefixes[APP_MAX];
     int app_count = 0;
-    for (int i = 0; i < apps_registered; i++) {
-        if (apps[i]->console != NULL) {
-            app_prefixes[app_count++] = apps[i]->console->prefix;
+    for (const app_t* app = app_list(); app != NULL; app = app->next) {
+        app_count += app->console != NULL;
+    }
+    if (app_count == 0) {
+        return;
+    }
+
+    const char* app_prefixes[app_count];
+    int i = 0;
+    for (const app_t* app = app_list(); app != NULL; app = app->next) {
+        if (app->console != NULL) {
+            app_prefixes[i++] = app->console->prefix;
         }
     }
 
@@ -651,14 +621,13 @@ app_boot_init(void) {
     }
 #endif
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    check_console_prefix_clashes();
+#endif
     /* The launcher has to exist, turned the way boot draws, before the
      * animation can dissolve into it. ui_init() resets the transform to
      * identity, so DISPLAY_DEFAULT_QUARTER is applied here or the board
      * would start upright and visibly turn into place. */
-    sort_apps();
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    check_console_prefix_clashes();
-#endif
     display_init(&shell_display);
     shell_display.quarter = DISPLAY_DEFAULT_QUARTER;
     ui_launcher_init();
@@ -751,8 +720,7 @@ offer_console_line(const app_t* current) {
         return;
     }
 
-    for (int i = 0; i < apps_registered; i++) {
-        const app_t* app = apps[i];
+    for (const app_t* app = app_list(); app != NULL; app = app->next) {
         if (app->console == NULL) {
             continue;
         }
@@ -810,7 +778,11 @@ app_main_loop(void) {
 #endif
     int64_t next_display_sample_us = previous_us;
 
-    ESP_LOGI(TAG, "Ready, %d app%s registered", apps_registered, apps_registered == 1 ? "" : "s");
+    int app_count = 0;
+    for (const app_t* app = app_list(); app != NULL; app = app->next) {
+        app_count++;
+    }
+    ESP_LOGI(TAG, "Ready, %d app%s registered", app_count, app_count == 1 ? "" : "s");
 
     while (1) {
         const int64_t now_us = esp_timer_get_time();

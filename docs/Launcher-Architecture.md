@@ -26,6 +26,7 @@ launcher/
 └── main/
     ├── main.c          the frame loop and app switching
     ├── app.h           the shell/app contract
+    ├── app_registry.c  the registered apps, sorted by name (host-tested)
     ├── boot/           runs once each, before the frame loop exists
     │   ├── post.{h,c}          power-on self test
     │   ├── post_layout.{h,c}   the POST report's geometry   (host-tested)
@@ -85,6 +86,7 @@ launcher/
     │   └── ridge_curve_generated.h  Cerro Autana's ridge, a height per column of
     │                           the boot photograph's frame      (host-tested)
     ├── input/          the devices a finger reaches
+    │   ├── input.h             input_t, one frame's touch and buttons
     │   ├── touch.{h,c}         FT5x06 polling task
     │   ├── touch_fsm.{h,c}     samples -> press/release    (host-tested)
     │   ├── gesture.{h,c}       swipe recognition           (host-tested)
@@ -100,7 +102,7 @@ launcher/
     │   ├── spring_line.h       a row of points on springs (host-tested)
     │   ├── job.{h,c}           run a slice on the other core (host-tested)
     │   ├── frame_cost.{h,c}    where a frame's time goes, by name (host-tested)
-    │   ├── device_state.{h,c}  what survives a reboot      (host-tested)
+    │   ├── device_state.{h,c}  a snapshot of the board's state, as JSON (host-tested)
     │   ├── screenshot.h        BMP header + base64, pure   (host-tested)
     │   └── build_id.h          which build this is         (host-tested)
     ├── console/        the console listener, dev builds only - one verb per file
@@ -287,7 +289,7 @@ flowchart TB
 
     %% linkStyle below recolours these two by index (17, 18); an edge added
     %% above them shifts both numbers, so add new edges after them.
-    Contract -.->|"includes input/buttons.h"| Input
+    Contract -.->|"includes input/input.h"| Input
     Input <-.-|"device_state reaches up"| Util
 
     linkStyle 17 stroke:#e11,stroke-width:2px
@@ -297,9 +299,9 @@ flowchart TB
 **A folder may include anything below it, and `app.h`, never above or
 sideways within the same row.** `board/` sits in its own row below
 `util/` - nothing in it includes another first-party folder, so it is
-the tree's lowest layer. The two red arrows are the exceptions: `app.h` includes
-`input/buttons.h`, and `util/device_state` reaches back up into
-`input/imu.h` and `display/display.h` (not drawn).
+the tree's lowest layer. The two red arrows are the exceptions: `app.h`
+includes `input/input.h`, and `util/device_state` reaches back up into
+`input/imu.h`, `input/input.h` and `display/display.h` (not drawn).
 
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. See
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path) for how a draw

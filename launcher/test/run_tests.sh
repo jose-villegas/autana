@@ -122,10 +122,12 @@ $TEST_DIR/suites/suite_display.c
 $TEST_DIR/suites/suite_post_ui.c
 $TEST_DIR/suites/suite_panel_clock.c
 $TEST_DIR/suites/suite_screenshot.c
+$TEST_DIR/suites/suite_app_registry.c
 $TEST_DIR/suites/suite_build_id.c
 $TEST_DIR/suites/suite_device_state.c
 $TEST_DIR/suites/suite_job.c
 $TEST_DIR/suites/suite_heap_caps.c
+$MAIN_DIR/app_registry.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/gesture.c
 $MAIN_DIR/input/tilt.c

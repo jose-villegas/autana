@@ -8,7 +8,7 @@
 # This is the scene that proves the general path: the real ui layer, real
 # microui, several frames and a declared synthetic touch - see
 # launcher_home_render_host.c for what it presses and why two frames are
-# the floor. The rows are a fixture, not a registry.
+# the floor. The rows are a fixture registered into the real app_registry.c.
 #
 # Everything this does beyond the declarations below is
 # tools/render_scene.sh.
@@ -18,6 +18,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=launcher_home
 scene_sources="
+main/app_registry.c
 main/gfx/gfx.c
 main/ui/ui.c
 main/ui/ui_build.c

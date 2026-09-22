@@ -7,8 +7,9 @@ them, and how it gets into and out of the launcher list. The contract is
 [`Building-a-Screen.md`](Building-a-Screen.md); for why the shell is built this
 way see [`Launcher-Architecture.md`](Launcher-Architecture.md).
 
-An app is a `const app_t` plus one `APP_REGISTER()` line. It is not a task or
-a process: one binary, one address space, no isolation.
+An app is an `app_t` (not `const`: the registry links it through its own
+`next` field) plus one `APP_REGISTER()` line. It is not a task or a process:
+one binary, one address space, no isolation.
 
 ## Minimal app
 
@@ -28,7 +29,7 @@ static void yours_frame(uint32_t dt_ms, const input_t* input) {
 
 static void yours_exit(void) { /* release what enter() took */ }
 
-const app_t app_yours = {
+app_t app_yours = {
     .name = "Your App",
     .summary = "what it does",
     .enter = yours_enter,
@@ -61,17 +62,18 @@ The shell calls the three required pointers without a NULL check.
 ```mermaid
 flowchart LR
     SRC["apps/&lt;name&gt;/*.c"] -->|"CMake glob<br/>CONFIGURE_DEPENDS"| LIB["libmain.a<br/>WHOLE_ARCHIVE"]
-    LIB -->|"APP_REGISTER<br/>.init_array constructor"| REG["app_register()<br/>apps[APP_MAX]"]
-    REG -->|"app_main(): sort by name"| LIST["launcher list"]
+    LIB -->|"APP_REGISTER<br/>.init_array constructor"| REG["app_register()<br/>sorted linked list"]
+    REG --> LIST["launcher list"]
 ```
 
-- `app_register()` runs before `app_main()`, into a fixed array of `APP_MAX`
-  (16): no allocation, no failure path. One app too many is dropped with an
-  error log.
-- Constructor order is link order, so `sort_apps()` orders by `name`.
+- `app_register()` runs before `app_main()`, threading each `app_t` into a
+  list through its own `next` field - no allocation, no capacity to exceed.
+- It inserts in `name` order directly, so constructor order (link order)
+  never shows.
 - `WHOLE_ARCHIVE` is what keeps an app nothing references by name in the
   image. Without it the app vanishes from the list with no link error.
-- Anything may read the registry: `app_list()`, `app_list_count()`.
+- Anything may read the registry: `app_list()` returns its head, and `next`
+  walks it.
 
 ### Deregistration
 

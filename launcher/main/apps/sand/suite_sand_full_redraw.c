@@ -22,7 +22,7 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 
-extern const app_t app_sand;
+extern app_t app_sand;
 extern int sand_app_enter_running_for_test(void);
 extern void sand_app_restore_colour_mode_for_test(int mode);
 

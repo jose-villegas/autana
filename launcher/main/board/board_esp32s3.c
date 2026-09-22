@@ -9,6 +9,7 @@
 
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
+#include "driver/temperature_sensor.h"
 #include "esp_check.h"
 #include "esp_io_expander_tca9554.h"
 #include "esp_log.h"
@@ -98,4 +99,24 @@ board_audio_amp_enable(bool on) {
         amp_gpio_ready = true;
     }
     return gpio_set_level(AUDIO_AMP_GPIO, on ? 1 : 0);
+}
+
+board_temp_sensor_status_t
+board_temp_sensor_read_celsius(float* out_celsius) {
+#if CONFIG_LAUNCHER_QEMU
+    /* QEMU has no such sensor, and ESP-IDF's driver waits on it forever. */
+    return BOARD_TEMP_SENSOR_READ_FAILED;
+#endif
+    temperature_sensor_handle_t sensor = NULL;
+    temperature_sensor_config_t cfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(-10, 80);
+    if (temperature_sensor_install(&cfg, &sensor) != ESP_OK) {
+        return BOARD_TEMP_SENSOR_INSTALL_FAILED;
+    }
+
+    const bool ok =
+        temperature_sensor_enable(sensor) == ESP_OK && temperature_sensor_get_celsius(sensor, out_celsius) == ESP_OK;
+
+    temperature_sensor_disable(sensor);
+    temperature_sensor_uninstall(sensor);
+    return ok ? BOARD_TEMP_SENSOR_OK : BOARD_TEMP_SENSOR_READ_FAILED;
 }
