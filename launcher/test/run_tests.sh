@@ -4,6 +4,7 @@
 #
 #   ./test/run_tests.sh
 #   CC=clang ./test/run_tests.sh
+#   ./test/run_tests.sh --verbose
 #
 # This is the fast loop: it compiles for THIS machine, not the ESP32, and runs
 # in well under a second. Red-green-refactor is only practical with instant
@@ -14,12 +15,28 @@
 # device - see main/selftest.c. The suite sources are shared, so what passes
 # here is the same set of assertions the board makes.
 #
+# Default output is the verdict and test count. A passing run can emit
+# thousands of characters; the full stream is in the printed log path.
+#
 # POSIX sh on purpose: works under Git Bash or MSYS on Windows, and natively
 # on Linux and macOS.
 
 set -eu
 
+VERBOSE=${VERBOSE:-0}
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --verbose) VERBOSE=1 ;;
+        --print-sources|--print-flags) break ;;
+        *) echo "unknown option: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+export VERBOSE
+
+# shellcheck disable=SC1007
 TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck disable=SC1007
 MAIN_DIR=$(CDPATH= cd -- "$TEST_DIR/../main" && pwd)
 # Overridable so two runs cannot clobber each other: the build dir holds one
 # host_tests binary, so concurrent runs (two terminals, a sweep script
@@ -147,13 +164,25 @@ case "${1:-}" in
         ;;
 esac
 
+mkdir -p "$BUILD_DIR"
+QUIET_LOG="$BUILD_DIR/run_tests.log"
+if [ -z "${QUIET_INNER:-}" ]; then
+    # shellcheck source=../../scripts/quiet.sh
+    . "$TEST_DIR/../../scripts/quiet.sh"
+    quiet_begin "$QUIET_LOG"
+    quiet_run host-tests env QUIET_INNER=1 VERBOSE="$VERBOSE" sh "$0" "$@" || true
+    QUIET_SUMMARY=$(grep -E '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored' "$QUIET_LOG" | tail -n 1)
+    export QUIET_SUMMARY
+    quiet_end run_tests || exit $?
+    exit 0
+fi
+
 # The hardware-facing app_*.c files are excluded from SOURCES above because
 # they cannot link here - which also meant nothing compiled them at all
 # until a full device build. Compile-check them first, so a change that
 # does not build is caught here rather than on the board.
 "$TEST_DIR/check_app_sources.sh"
 
-mkdir -p "$BUILD_DIR"
 OUT="$BUILD_DIR/host_tests"
 
 # Every suite calls RUN_TEST(func) directly; timing.h intercepts that macro
@@ -323,4 +352,4 @@ fi
 # MinGW appends .exe; elsewhere the plain name is produced.
 [ -x "$OUT" ] || OUT="$OUT.exe"
 
-exec "$OUT"
+"$OUT"

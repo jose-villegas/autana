@@ -4,8 +4,10 @@
 #
 # Usage:
 #   tools/build_flash.sh [--dev|--diag] [--autorun] [--perf-scope] \
-#                        [--build-only] [COM_PORT] [IDF_EXPORT]
+#                        [--build-only] [--verbose] [COM_PORT] [IDF_EXPORT]
 #
+#   --verbose   stream and save the build output. The full stream is in the
+#               printed log path in either mode.
 #   --dev       build the DEVELOPMENT image instead of the release one, and
 #               leave it on the board: development-only logging and
 #               instrumentation (frame timings, the screenshot listener)
@@ -76,6 +78,9 @@ VARIANT=release
 BUILD_ONLY=0
 PERF_SCOPE=0
 AUTORUN=0
+VERBOSE=0
+COM_PORT=""
+IDF_EXPORT_ARG=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -84,12 +89,24 @@ while [ $# -gt 0 ]; do
         --autorun) AUTORUN=1; shift ;;
         --perf-scope) PERF_SCOPE=1; shift ;;
         --build-only) BUILD_ONLY=1; shift ;;
-        -h|--help) sed -n '2,74p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --verbose) VERBOSE=1; shift ;;
+        -h|--help) sed -n '2,/^# what these flags are for\./p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         --)        shift; break ;;
         -*)        echo "unknown option: $1" >&2; exit 2 ;;
-        *)         break ;;
+        *)
+            if [ -z "$COM_PORT" ]; then
+                COM_PORT=$1
+            elif [ -z "$IDF_EXPORT_ARG" ]; then
+                IDF_EXPORT_ARG=$1
+            else
+                echo "too many positional arguments" >&2
+                exit 2
+            fi
+            shift
+            ;;
     esac
 done
+export VERBOSE
 
 if [ "$PERF_SCOPE" -eq 1 ] && [ "$VARIANT" != diag ]; then
     echo "--perf-scope scopes which SUITES are compiled in, so it needs --diag" >&2
@@ -101,8 +118,6 @@ if [ "$AUTORUN" -eq 1 ] && [ "$VARIANT" != diag ]; then
     exit 2
 fi
 
-COM_PORT="${1:-}"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
@@ -111,21 +126,37 @@ if [ -n "${MSYSTEM:-}" ]; then
 else
     DEFAULT_EXPORT="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"
 fi
-IDF_EXPORT="${2:-$DEFAULT_EXPORT}"
+IDF_EXPORT="${IDF_EXPORT_ARG:-$DEFAULT_EXPORT}"
 
 case "$VARIANT" in
     release) BUILD_DIR="build" ;;
     *)       BUILD_DIR="build.$VARIANT" ;;
 esac
 
-# So a double-clicked window (which closes the instant the script exits)
-# still shows the reason for a failure instead of vanishing on the spot.
-trap 'status=$?; if [ $status -ne 0 ]; then echo; echo "=== FAILED (exit $status) ==="; read -r -p "Press Enter to close..." _ || true; fi' EXIT
-
 # shellcheck source=./idf.sh
 . "$SCRIPT_DIR/idf.sh"
+# shellcheck source=../../scripts/quiet.sh
+. "$SCRIPT_DIR/../../scripts/quiet.sh"
 idf_init "$LAUNCHER_DIR" "$IDF_EXPORT" "$SCRIPT_DIR"
 . "$SCRIPT_DIR/idf_variant.sh"
+
+# A passing build's stream belongs in build.log under the build directory.
+QUIET_LOG="$LAUNCHER_DIR/$BUILD_DIR/build.log"
+quiet_begin "$QUIET_LOG"
+
+quiet_finish() {
+    status=$?
+    trap - EXIT
+    set +e
+    quiet_end build_flash "$status" || true
+    if [ "$status" -ne 0 ]; then
+        echo
+        echo "=== FAILED (exit $status) ==="
+        read -r -p "Press Enter to close..." _ || true
+    fi
+    exit "$status"
+}
+trap quiet_finish EXIT
 
 VARIANT_OPTIONS=""
 if [ "$AUTORUN" -eq 1 ]; then
@@ -135,7 +166,7 @@ if [ "$PERF_SCOPE" -eq 1 ]; then
     VARIANT_OPTIONS="$VARIANT_OPTIONS --perf-scope"
 fi
 # shellcheck disable=SC2086
-idf_variant_build "$LAUNCHER_DIR" "$VARIANT" "$BUILD_DIR" $VARIANT_OPTIONS
+quiet_run build idf_variant_build "$LAUNCHER_DIR" "$VARIANT" "$BUILD_DIR" $VARIANT_OPTIONS
 
 if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt" ]; then
     echo "build reported success but produced no build id at" >&2
