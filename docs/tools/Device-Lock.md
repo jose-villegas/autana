@@ -31,11 +31,12 @@ sequenceDiagram
     end
 ```
 
-Day-to-day interactive use goes through `tools/autana` ([Autana-CLI.md](Autana-CLI.md))
-- every `autana` command calls `device.py` for the lock and the port. This
-doc covers `device.py` itself: its own command-line shape, for a script
-that names its own `--owner`/`--purpose` rather than `autana`'s generated
-one, and recovery when a lock will not let go.
+Day-to-day interactive use goes through `tools/autana`
+([Autana-CLI.md](Autana-CLI.md)) - every `autana` command calls `device.py`
+for the lock and the port. This doc covers `device.py` itself: its own
+command-line shape, for a script that names its own `--owner`/`--purpose`
+rather than `autana`'s generated one, and recovery when a lock will not let
+go.
 
 Run the tool with ESP-IDF's Python (the `python.exe` under
 `%USERPROFILE%\.espressif\python_env\idf<version>_py<version>_env\Scripts\`

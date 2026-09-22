@@ -72,9 +72,10 @@ sees against a build's `.elf`.
 
 `autana screenshot` captures whatever the device currently has on screen to
 a lossless `.png`, plus a same-named `.json` snapshot of device state at
-that exact frame (sensors, memory, clock), over that same serial connection
-- no SD card, no button on the device, just the running firmware and a
-cable already plugged in. Needs neither `idf.py` nor PowerShell.
+that exact frame (sensors, memory, clock), over that same serial
+connection - no SD card, no button on the device, just the running
+firmware and a cable already plugged in. Needs neither `idf.py` nor
+PowerShell.
 Development-only (`autana flash dev` / `autana flash diag`) - a
 release build carries none of it, see
 [`docs/Build-Variants.md`](docs/Build-Variants.md).
