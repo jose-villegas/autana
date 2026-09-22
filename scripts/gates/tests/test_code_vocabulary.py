@@ -59,6 +59,40 @@ class NamesRequireADefinitionTest(unittest.TestCase):
             functions, _ = code_vocabulary.names(str(root))
         self.assertIn("gfx_reset_palette", functions)
 
+    def test_a_python_apostrophe_comment_does_not_eat_the_next_def(self):
+        # The C blanker was applied to .py files too: "# don't" has no `#`
+        # case, so the apostrophe in "don't" opened a bogus string that
+        # swallowed everything up to the next real quote - including
+        # real_one()'s own definition - as blanked-out "string content".
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "scripts/gates/example.py",
+                      "# don't do this\n"
+                      "def real_one():\n"
+                      "    pass\n")
+            functions, _ = code_vocabulary.names(str(root))
+        self.assertIn("real_one", functions)
+
+    def test_python_floor_division_does_not_blank_the_rest_of_the_line(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "scripts/gates/example.py",
+                      "def real_two():\n"
+                      "    return a // real_two_helper()\n")
+            functions, _ = code_vocabulary.names(str(root))
+        self.assertIn("real_two", functions)
+        self.assertIn("real_two_helper", functions)
+
+    def test_a_python_docstring_does_not_hide_the_function_after_it(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "scripts/gates/example.py",
+                      '"""Module docstring."""\n'
+                      "def real_three():\n"
+                      "    pass\n")
+            functions, _ = code_vocabulary.names(str(root))
+        self.assertIn("real_three", functions)
+
 
 if __name__ == "__main__":
     unittest.main()

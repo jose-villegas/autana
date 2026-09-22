@@ -47,6 +47,37 @@ class SameLineRuleTest(unittest.TestCase):
         self.assertIn("gfx_blit_dither: image-over-live-content compositing", new)
         self.assertNotIn("---", new)
 
+    def test_a_multiline_rule_with_a_space_after_the_star_is_detected(self):
+        # This tree's real multi-line banner shape includes a space:
+        # "/* ====...", not the no-space "/*====..." has_rule already found.
+        source = ("void f(void) {\n"
+                  "/* =====================================================\n"
+                  " * suite\n"
+                  " * ===================================================== */\n"
+                  "}\n")
+        comments = list(strip_comment_rules.scan("t.c", source))
+        self.assertEqual(len(comments), 1)
+        self.assertTrue(comments[0].has_rule,
+                        "'/* ====...' (with a space before the rule) must be "
+                        "recognised as a drawn rule, the same as '/*====' is")
+        new = strip_comment_rules.rewrite("t.c", source)
+        self.assertIsNotNone(new)
+        self.assertNotIn("=", new)
+        self.assertIn("suite", new)
+
+    def test_widening_to_three_does_not_eat_a_leading_triple_star_emphasis(self):
+        # LEAD_RULE/TAIL_RULE dropped from a 4-char run to 3 to strip this
+        # tree's real "---" padding - which must not also start stripping a
+        # genuine "***" emphasis marker a prose line happens to open with.
+        source = ("void f(void) {\n"
+                  "/* =====================================================\n"
+                  " * *** never remove this lock ***\n"
+                  " * ===================================================== */\n"
+                  "}\n")
+        new = strip_comment_rules.rewrite("t.c", source)
+        self.assertIsNotNone(new)
+        self.assertIn("*** never remove this lock ***", new)
+
 
 if __name__ == "__main__":
     unittest.main()

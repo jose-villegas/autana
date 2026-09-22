@@ -46,6 +46,9 @@ EXCLUDED = (
     "launcher/main/boot/boot_anim_image.h",
     "launcher/main/boot/boot_anim_timeline.h",
     "launcher/main/gfx/fonts/font_lmroman_40.h",
+    "launcher/main/gfx/gfx_palette_standard_generated.h",
+    "launcher/main/apps/sand/sand_palette256.h",
+    "launcher/main/apps/sand/captured_slope_data.h",
 )
 
 
@@ -95,7 +98,7 @@ class Comment:
         tree does not use; scripts/gates/strip_comment_rules.py finds any that
         returns."""
         first = self.raw_lines[0].strip()
-        if re.match(r"^/\*[=*\-_#]{4,}", first) or re.match(r"^//\s*[=*\-_#]{4,}", first):
+        if re.match(r"^/\*\s?[=*\-_#]{4,}", first) or re.match(r"^//\s*[=*\-_#]{4,}", first):
             return True
         body = first[2:]
         if body.endswith("*/"):
