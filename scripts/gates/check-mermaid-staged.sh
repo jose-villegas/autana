@@ -1,21 +1,20 @@
 #!/bin/sh
 #
-# Validates every staged Markdown file that has a ```mermaid fence, so a
-# broken diagram never reaches a commit. GitHub is the only render target
-# and it fails silently - a parse error where the picture should be, and
-# nothing else catches it.
+# Validates the STAGED content of every staged Markdown file that has a
+# ```mermaid fence, so a broken diagram never reaches a commit.
 #
 #   scripts/gates/check-mermaid-staged.sh
 #
-# Runs against the file on disk, not the staged blob: validate-mermaid.mjs
-# reads a real file, and check-format-staged.sh's partial-stage concern does
-# not apply the same way to a diagram, which is rarely split across hunks.
+# Checks the staged blob, not the file on disk - same reasoning as
+# check-format-staged.sh: `git show ":$file"` piped into check-mermaid.mjs's
+# --stdin mode, one file at a time, so a partially staged file is judged by
+# what is actually about to be committed.
 #
-# A missing node or mmdc SKIPS this check with a warning instead of
-# blocking the commit - nobody should have to install Puppeteer's Chrome
-# just to commit an unrelated doc fix. Tools are probed by running them, not
-# with `command -v`, for the same reason check-format-staged.sh does: a
-# stub on PATH can exist without working.
+# A missing node or mmdc skips this check with a warning instead of
+# blocking the commit. An mmdc that IS on PATH but cannot find a Chrome
+# still blocks: the probe below only proves the binary runs, not that it
+# can render, so every block in the commit fails. Tools are probed by
+# running them, since a stub on PATH can exist without working.
 
 set -eu
 
@@ -29,8 +28,7 @@ files=""
 IFS='
 '
 for file in $staged; do
-    [ -f "$file" ] || continue
-    if grep -q '^[[:space:]]*```[[:space:]]*mermaid[[:space:]]*$' "$file"; then
+    if git show ":$file" | grep -q '^[[:space:]]*```[[:space:]]*mermaid[[:space:]]*$'; then
         files="$files $file"
     fi
 done
@@ -48,5 +46,11 @@ if ! mmdc --version >/dev/null 2>&1; then
     exit 0
 fi
 
-# shellcheck disable=SC2086  # word-splitting the staged file list is intended
-exec node scripts/gates/validate-mermaid.mjs $files
+status=0
+for file in $files; do
+    if ! git show ":$file" | node scripts/gates/check-mermaid.mjs --stdin "$file"; then
+        status=1
+    fi
+done
+
+exit "$status"
