@@ -381,13 +381,10 @@ a widening divide helper (`fx_div_round`) twice per spline span, roughly
 four thousand soft-divisions per frame, for operands that provably fit 32
 bits (`i * 4096` tops out near 8 million). One 32-bit divide per span,
 carried incrementally across the loop, produced the same rounding and the
-same values — part of a bundle that took the curve phase from 26.5 ms to
-17.9 ms at the worst checkpoint on the board this technique was measured
-on (`boot_anim.c`); that specific timing has not been re-captured on this
-board. The lesson
-travels as a grep: look for `int64_t` division or modulo — including inside
-innocuous-looking fixed-point helpers — in any hot loop on a 32-bit target,
-then prove the operand range and stay narrow.
+same values (`boot_anim.c`). The lesson travels as a grep: look for
+`int64_t` division or modulo — including inside innocuous-looking
+fixed-point helpers — in any hot loop on a 32-bit target, then prove the
+operand range and stay narrow.
 
 ---
 
@@ -439,10 +436,8 @@ density thins, so frame cost tapers in step with how much of the drawing
 is actually left visible. Unlike everything above this IS an
 approximation: bound it with an argument written next to the constant (the
 convex-hull and sagitta bounds in `boot_anim.h`), and verify visually at
-the exact frames each tier first engages, not just at the extremes. The
-full bundle held every checkpoint of the boot animation at or above 20 fps
-where the three crossfade dips had sat at 12–14, measured via
-`suite_boot_anim_perf.c`.
+the exact frames each tier first engages, not just at the extremes.
+`suite_boot_anim_perf.c` measures every checkpoint.
 
 ---
 
