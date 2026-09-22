@@ -215,6 +215,17 @@ class MonitorCommandTests(unittest.TestCase):
             autana.monitor(["--elf"])
 
 
+class ResetCommandTests(unittest.TestCase):
+    def test_capture_forwards_its_window_to_device(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            code = autana.reset(["--capture", "15"])
+        self.assertEqual(code, 0)
+        command = called.call_args[0][0]
+        self.assertIn("reset", command)
+        self.assertIn("--capture", command)
+        self.assertEqual(command[command.index("--seconds") + 1], "15.0")
+
+
 class SelftestCommandTests(unittest.TestCase):
     def test_builds_the_device_selftest_invocation(self):
         with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \

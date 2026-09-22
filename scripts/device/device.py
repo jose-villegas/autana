@@ -267,7 +267,7 @@ class HeldLock:
 
 
 def capture(connection, output, max_seconds, idle_seconds, expected_build_id=None,
-            suite_name=None):
+            suite_name=None, append=False):
     data = bytearray()
     pending = b""
     seen_build_id = None
@@ -276,7 +276,7 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
     suite_complete = None
     if suite_name:
         suite_complete = b"RUNSUITE_COMPLETE name=" + suite_name.encode("ascii") + b" "
-    with open(output, "wb") as stream:
+    with open(output, "ab" if append else "wb") as stream:
         while time.monotonic() < deadline:
             try:
                 chunk = connection.read(4096)
@@ -322,20 +322,65 @@ def reset(port):
     subprocess.run(command, check=True)
 
 
-# The auto-reset circuit's own pulse width. DTR stays low throughout so
-# GPIO0 stays high - a normal boot, not the bootloader's download mode.
-RESET_PULSE_S = 0.1
+def reset_and_capture(port, output, seconds, idle_seconds, expected_build_id=None):
+    """Reset through esptool, then reopen the native USB console after its
+    re-enumeration. A disappearance during boot reopens the console again;
+    bytes in the reset gap cannot be observed."""
+    reset(port)
+    deadline = time.monotonic() + seconds
+    data = bytearray()
+    append = False
+    while True:
+        wait_for_port(port)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return bytes(data), "timeout"
+        with open_serial(port) as connection:
+            part, reason = capture(connection, output, remaining, idle_seconds,
+                                   expected_build_id, append=append)
+        data.extend(part)
+        append = True
+        if reason != "port lost":
+            return bytes(data), reason
+        if time.monotonic() >= deadline:
+            return bytes(data), "port lost"
+        print("reset capture lost the port; reopening", file=sys.stderr)
 
 
-def hard_reset_via_rts(connection):
-    """A reset pulsed on RTS through the ALREADY-OPEN connection the caller
-    is about to capture from, so no gap between closing one port handle and
-    opening the next can lose the first lines of boot output - unlike
-    esptool's own --after hard_reset, which necessarily closes the port."""
-    connection.dtr = False
-    connection.rts = True
-    time.sleep(RESET_PULSE_S)
-    connection.rts = False
+def reset_device(args, store, port):
+    """Reboot under the device lock, optionally keeping the post-reset
+    console output as a capture record."""
+    if not args.capture:
+        with HeldLock(store, port, args.owner, args.purpose, args.wait):
+            wait_for_port(port)
+            reset(port)
+            wait_for_port(port)
+        print("board reset; USB serial port is back")
+        return 0
+
+    started_at = now()
+    output, managed = resolve_capture_path(args.out, "reset", args.owner, started_at)
+    data = b""
+    reason = None
+    error = None
+    try:
+        with HeldLock(store, port, args.owner, args.purpose, args.wait):
+            wait_for_port(port)
+            data, reason = reset_and_capture(port, output, args.seconds, None)
+    except (RuntimeError, subprocess.CalledProcessError) as caught:
+        error = str(caught)
+        raise
+    finally:
+        reason = (reason or "error") + "; bytes may have been lost in reset gap"
+        final_path = record_capture(
+            output, managed, started_at=started_at, port=port, owner=args.owner,
+            purpose=args.purpose, command="reset", build_id=latest_build_id_from_bytes(data),
+            worktree=str(Path.cwd()), commit=git_commit(), reason=reason, error=error)
+    if data:
+        print(data.decode("utf-8", errors="replace"), end="")
+    print("reset capture: " + str(final_path))
+    print("reset capture ended: " + reason)
+    return 0
 
 
 CRASH_ADDRESS_RE = re.compile(rb"0x4[0-9a-fA-F]{7}")
@@ -533,11 +578,8 @@ def selftest(args, store, port):
     to one suite (report_boot_anim_perf.sh) uses `batch` instead, the same
     build-then-capture-under-one-lock shape with a suite name to send.
 
-    The reset is pulsed on the SAME connection this then captures from
-    (hard_reset_via_rts), not esptool's --after hard_reset: the whole point
-    is a capture with no gap across the reset, so an early line like the
-    free-heap-after-framebuffer mark a report reads is never lost to a
-    closed-then-reopened port."""
+    Resetting re-enumerates native USB serial, so the capture reopens it after
+    esptool resets the board. The reset gap may lose bytes."""
     worktree = str(Path(args.worktree).resolve())
     started_at = now()
     extra_flags = ["--autorun"]
@@ -556,11 +598,9 @@ def selftest(args, store, port):
         output, managed = resolve_capture_path(args.out, "selftest", args.owner, started_at)
         try:
             wait_for_port(port)
-            with open_serial(port) as connection:
-                hard_reset_via_rts(connection)
-                data, reason = capture(connection, output, args.max_seconds, args.idle_seconds,
-                                       build_id)
-        except RuntimeError as caught:
+            data, reason = reset_and_capture(port, output, args.max_seconds, args.idle_seconds,
+                                             build_id)
+        except (RuntimeError, subprocess.CalledProcessError) as caught:
             error = str(caught)
             raise
         finally:
@@ -801,6 +841,13 @@ def main(argv=None):
     listen_parser.add_argument("--purpose", default="listen")
     listen_parser.add_argument("--elf",
                                help="decode any crash addresses seen against this .elf's symbols")
+    reset_parser = subparsers.add_parser("reset", help="reboot the board and wait for USB serial")
+    reset_parser.add_argument("--capture", action="store_true",
+                              help="capture the boot console after the reset")
+    reset_parser.add_argument("--seconds", type=float, default=20.0,
+                              help="boot capture window (default: 20)")
+    reset_parser.add_argument("--out")
+    reset_parser.add_argument("--purpose", default="reset")
     selftest_parser = subparsers.add_parser(
         "selftest", help="flash the diagnostics+autorun image and capture the on-device run "
                          "of every registered suite")
@@ -893,6 +940,8 @@ def main(argv=None):
             return run_suite(args, store, port)
         elif args.command == "selftest":
             return selftest(args, store, port)
+        elif args.command == "reset":
+            return reset_device(args, store, port)
         elif args.command == "batch":
             return batch(args, store, port)
         elif args.command == "send":
