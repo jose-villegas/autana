@@ -63,13 +63,6 @@ static button_fsm_t boot_fsm;
 static bool power_pressed;
 static bool power_held;
 
-#if CONFIG_LAUNCHER_DEVELOPMENT
-static bool injected_boot_pressed;
-static bool injected_boot_held;
-static bool injected_power_pressed;
-static bool injected_power_held;
-#endif
-
 /* Shared between the polling task and the render loop. A spinlock-guarded
  * critical section is correct on either a one-core or two-core target, and
  * cheap here since it only ever spans a few field updates. */
@@ -244,16 +237,6 @@ buttons_read(button_t* boot, button_t* power) {
     power->pressed = power_pressed;
     power->released = false;
     power->held = power_held;
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    boot->pressed |= injected_boot_pressed;
-    boot->held |= injected_boot_held;
-    power->pressed |= injected_power_pressed;
-    power->held |= injected_power_held;
-    injected_boot_pressed = false;
-    injected_boot_held = false;
-    injected_power_pressed = false;
-    injected_power_held = false;
-#endif
     power_pressed = false;
     power_held = false;
 
@@ -265,15 +248,16 @@ void
 buttons_inject(buttons_inject_button_t button, bool held) {
     portENTER_CRITICAL(&lock);
     if (button == BUTTONS_INJECT_BOOT) {
+        const int64_t now_us = esp_timer_get_time();
+        button_fsm_update(&boot_fsm, true, now_us);
+        button_fsm_update(&boot_fsm, true, now_us + BUTTON_DEBOUNCE_US);
         if (held) {
-            injected_boot_held = true;
-        } else {
-            injected_boot_pressed = true;
+            button_fsm_update(&boot_fsm, true, now_us + BUTTON_DEBOUNCE_US + BUTTON_HOLD_US);
         }
     } else if (held) {
-        injected_power_held = true;
+        power_held = true;
     } else {
-        injected_power_pressed = true;
+        power_pressed = true;
     }
     portEXIT_CRITICAL(&lock);
 }

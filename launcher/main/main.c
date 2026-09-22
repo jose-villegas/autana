@@ -359,14 +359,22 @@ apply_pending_full_redraw(const app_t* app) {
     }
 }
 
+static system_navigation_t system_navigation;
+static int control_center_backdrop_quarter;
+
 static void
-leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint32_t dt_ms) {
+exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
     restore_system_display_state();
     *current = NULL;
     frame_ready = false;
     gfx_request_full_redraw();
+}
+
+static void
+leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint32_t dt_ms) {
+    exit_app(current);
     apply_pending_full_redraw(NULL);
     /* Draw it immediately, so the frame presented below is the home screen
      * rather than the app's last one. */
@@ -382,14 +390,12 @@ static void
 start_app(const app_t** current, const app_t* next) {
     *current = next;
     ESP_LOGI(TAG, "Starting %s", (*current)->name);
+    system_navigation_init(&system_navigation);
     gfx_request_full_redraw();
     restore_system_display_state();
     (*current)->enter();
     frame_ready = false;
 }
-
-static system_navigation_t system_navigation;
-static int control_center_backdrop_quarter;
 
 /* The backdrop is the launcher's own frame under a scrim, drawn once and
  * then painted over, so anything that replaces the framebuffer or turns the
@@ -776,8 +782,8 @@ console_find_app(const char* prefix, bool* ambiguous) {
     return match;
 }
 
-/* Returns true when navigation consumed the frame that would otherwise run
- * the selected app. */
+/* Returns true when the request changed which app is running, so this frame
+ * belongs to the switch and not to an app's frame(). */
 static bool
 run_console_navigation(const app_t** current, input_t* input, uint32_t dt_ms) {
     console_navigation_t navigation;
@@ -814,12 +820,23 @@ run_console_navigation(const app_t** current, input_t* input, uint32_t dt_ms) {
         return false;
     }
     if (*current != NULL) {
-        leave_app(current, input, exit_edge, dt_ms);
+        exit_app(current);
     }
     start_app(current, next);
     printf("OPEN_OK name=%s\n", next->name);
     fflush(stdout);
-    return true;
+    return false;
+}
+
+static void
+report_gesture_completion(void) {
+    touch_gesture_completion_t completion;
+    if (!touch_gesture_take_completion(&completion)) {
+        return;
+    }
+    const char* verb = completion == TOUCH_GESTURE_TAP ? "TAP" : completion == TOUCH_GESTURE_PRESS ? "PRESS" : "DRAG";
+    printf("%s_OK\n", verb);
+    fflush(stdout);
 }
 
 static void
@@ -852,19 +869,18 @@ present_unless_deferred(const app_t* current) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static bool
 run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms) {
+    report_gesture_completion();
     if (run_console_navigation(current, input, dt_ms)) {
         run_dev_frame_extras(input, *current);
         present_unless_deferred(*current);
         return true;
     }
-    /* After the reads above on purpose: a held device still answers
-     * the console and still latches an orientation change's own full
-     * redraw, so the STEP that follows a rotation draws the frame that
-     * rotation asked for. */
+    /* The caller samples input before this runs on purpose: a held device
+     * still answers the console and still latches an orientation change's
+     * own full redraw, so the STEP after a rotation draws the frame that
+     * rotation asked for. A held frame never reaches run_dev_frame_extras(),
+     * so the line is offered here - freeze, inspect, step. */
     if (!console_freeze_frame_allowed()) {
-        /* Held frames never reach run_dev_frame_extras() below, so a
-         * frozen board still answers a command here - the obvious use
-         * is freeze, inspect, step. */
         offer_console_line(*current);
         return true;
     }

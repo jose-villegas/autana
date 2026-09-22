@@ -48,8 +48,8 @@ bool imu_ready(void);
 bool imu_read(imu_sample_t* out);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-/* Makes imu_read() return `sample` until imu_inject_release() restores the
- * controller. */
+/* Makes imu_read() report `sample` until imu_inject_release() hands back to
+ * the sensor. */
 void imu_inject(const imu_sample_t* sample);
 void imu_inject_release(void);
 #endif

@@ -1,8 +1,8 @@
 # The autana command
 
-One terminal command for everything that touches the board: flashing it,
-reading what it says, running a suite on it, changing a number on it,
-standing in for a touch or an IMU sample, capturing what the panel shows.
+One terminal command for driving its touch, buttons and app navigation from a
+script; it also flashes the board, reads what it says, runs a suite, changes a
+number and captures what the panel shows.
 No `idf.py` environment activation, and no remembering which script under
 which folder does which half.
 
@@ -36,13 +36,13 @@ autana> buildid
 | `autana resume` | Let the frame loop run again. |
 | `autana step [N]` | Advance N frames while frozen, 1 when `N` is omitted. |
 | `autana touch <down\|up> <x> <y>` | Inject one touch-controller level in panel coordinates. `up` returns control to the controller. |
-| `autana tap <x> <y>` | Tap at a point. |
+| `autana tap <x> <y>` | Tap at a point; the default is 50 ms. |
 | `autana press <x> <y> [ms]` | Hold at a point; the default is 1000 ms. |
 | `autana drag <x0> <y0> <x1> <y1> <ms>` | Drag through interpolated points over the requested duration. |
 | `autana imu <ax> <ay> <az>` | Inject raw accelerometer counts. `autana imu release` returns control to the sensor. |
 | `autana button <boot\|power> [short\|long]` | Inject one event from the board's BOOT or PWR button. `short` is the default. |
 | `autana apps` | List registered apps and mark the running one. |
-| `autana open <name>` | Enter one app; matching ignores case and accepts an unambiguous prefix. |
+| `autana open <name>` | Enter one app, including while frozen; matching ignores case and accepts an unambiguous prefix. Quote a name containing a space. |
 | `autana home` | Return to the launcher. |
 | `autana buildid` | The `BUILD_ID` the board answers with, so what is running can be checked against what was flashed. |
 | `autana id` | The name this `autana` holds the board under, and its pid: `autana-cli@<pid in base36>`. |
@@ -69,6 +69,8 @@ autana> quit
 A tunable's name may drop its owner when that is unambiguous: `trail` for
 `ridge.trail`. See [Live-Tuning.md](Live-Tuning.md) for what makes a
 constant tunable in the first place.
+
+Touch and gesture coordinates are panel pixels.
 
 **A development build is what answers.** A release image has no console
 listener, no registry and no names - `buildid`, `tune` and the rest have

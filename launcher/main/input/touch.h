@@ -25,22 +25,17 @@ void touch_start(void);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 typedef enum {
+    TOUCH_GESTURE_NONE,
     TOUCH_GESTURE_TAP,
     TOUCH_GESTURE_PRESS,
     TOUCH_GESTURE_DRAG,
-} touch_gesture_kind_t;
+} touch_gesture_completion_t;
 
-typedef struct {
-    touch_gesture_kind_t kind;
-    int x0, y0;
-    int x1, y1;
-    uint32_t ms;
-} touch_gesture_t;
-
-/* The injected level takes precedence over a physical sample until its up
- * transition reaches the polling task. */
+/* What is injected outranks the controller: a level until an up reaches the
+ * polling task, a gesture until its `ms` has elapsed. */
 void touch_inject(bool down, int x, int y);
-void touch_gesture_start(const touch_gesture_t* gesture);
+void touch_gesture_start(int x0, int y0, int x1, int y1, uint32_t ms, touch_gesture_completion_t completion);
+bool touch_gesture_take_completion(touch_gesture_completion_t* completion);
 #endif
 
 /* Copies the accumulated state into `out` and clears the latched edges, so
