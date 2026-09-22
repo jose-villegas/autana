@@ -347,10 +347,10 @@ everything drawn through them run as they do on the board, and costs keep
 their order — a narrow window cheaper than a band, a band cheaper than a
 frame, nothing sent costing nothing.
 
-Touch gets the same treatment: where no controller answers, `touch.c`
-installs a stand-in behind the same driver interface, and `touch_inject()`
-sets what it reports. The sample still travels the polling task and the
-touch state machine to `touch_read()`, so a test can drive input end to end.
+Touch gets the same treatment: `touch_inject()` leaves a sample the polling
+task reads ahead of the controller, and with no controller answering there is
+nothing else to read. The sample still travels the touch state machine to
+`touch_read()`, so a test can drive input end to end.
 The IMU likewise: with no sensor answering, `imu_init()` succeeds and
 `imu_read()` returns what `imu_inject()` last set - held upright and still
 until then, so the shell picks portrait as it would in a hand.

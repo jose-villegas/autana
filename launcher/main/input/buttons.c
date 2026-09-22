@@ -242,3 +242,23 @@ buttons_read(button_t* boot, button_t* power) {
 
     portEXIT_CRITICAL(&lock);
 }
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+void
+buttons_inject(buttons_inject_button_t button, bool held) {
+    portENTER_CRITICAL(&lock);
+    if (button == BUTTONS_INJECT_BOOT) {
+        const int64_t now_us = esp_timer_get_time();
+        button_fsm_update(&boot_fsm, true, now_us);
+        button_fsm_update(&boot_fsm, true, now_us + BUTTON_DEBOUNCE_US);
+        if (held) {
+            button_fsm_update(&boot_fsm, true, now_us + BUTTON_DEBOUNCE_US + BUTTON_HOLD_US);
+        }
+    } else if (held) {
+        power_held = true;
+    } else {
+        power_pressed = true;
+    }
+    portEXIT_CRITICAL(&lock);
+}
+#endif

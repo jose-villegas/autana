@@ -34,6 +34,8 @@
 
 #include <stdbool.h>
 
+#include "build_variant.h"
+
 /* One button's state for the current frame. `pressed`/`released` are
  * edges, true only on the frame the transition happened; `down` is the
  * level. Edges are what UI code almost always wants - the level would
@@ -64,3 +66,14 @@ void buttons_start(void);
 
 /* Reads and CONSUMES the edges accumulated since the last call. */
 void buttons_read(button_t* boot, button_t* power);
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+typedef enum {
+    BUTTONS_INJECT_BOOT,
+    BUTTONS_INJECT_POWER,
+} buttons_inject_button_t;
+
+/* Raises one edge on the next buttons_read(): `held` for a long press,
+ * `pressed` for a short one. */
+void buttons_inject(buttons_inject_button_t button, bool held);
+#endif

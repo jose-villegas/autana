@@ -56,6 +56,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/console.c"
         "console/console_buildid.c"
         "console/console_freeze.c"
+        "console/console_navigation.c"
         "console/console_tune.c"
         "console/console_screenshot.c"
     )
@@ -63,8 +64,11 @@ endif()
 if(CONFIG_LAUNCHER_SELFTEST)
     list(APPEND app_srcs "console/console_runsuite.c")
 endif()
-if(CONFIG_LAUNCHER_QEMU AND CONFIG_LAUNCHER_DEVELOPMENT)
-    list(APPEND app_srcs "console/console_inject.c")
+if(CONFIG_LAUNCHER_DEVELOPMENT)
+    list(APPEND app_srcs
+        "console/console_inject.c"
+        "input/touch_inject_fsm.c"
+    )
 endif()
 
 # board/board.h binds this target's hardware facts to board_esp32s3.c.

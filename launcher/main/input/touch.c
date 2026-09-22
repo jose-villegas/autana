@@ -1,5 +1,6 @@
 #include "input/touch.h"
 #include "input/touch_fsm.h"
+#include "input/touch_inject_fsm.h"
 
 #include "build_variant.h"
 
@@ -48,49 +49,87 @@ on_touch_int(esp_lcd_touch_handle_t tp) {
     report_pending = true;
 }
 
-#if CONFIG_LAUNCHER_QEMU
-/* A controller with no chip behind it: it reports whatever touch_inject()
- * last set, through the same driver interface a real one answers. */
-static volatile bool injected_down;
-static volatile uint16_t injected_x, injected_y;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static bool injected_down;
+static bool injected_release;
+static int injected_x, injected_y;
+static touch_inject_t injected_gesture;
+static touch_gesture_completion_t gesture_completion;
+static touch_gesture_completion_t completed_gesture;
 
-static esp_err_t
-injected_read_data(esp_lcd_touch_handle_t tp) {
-    (void)tp;
-    return ESP_OK;
-}
-
+/* Returns true when injection supplied this poll's result, including its
+ * final no-contact sample. That lets touch_fsm see the lift before the panel
+ * before the controller becomes the source again. */
 static bool
-injected_get_xy(esp_lcd_touch_handle_t tp, uint16_t* x, uint16_t* y, uint16_t* strength, uint8_t* point_num,
-                uint8_t max_point_num) {
-    (void)tp;
-    (void)strength;
-    (void)max_point_num;
-    *point_num = injected_down ? 1 : 0;
-    x[0] = injected_x;
-    y[0] = injected_y;
-    return injected_down;
+poll_injected(int64_t now_us, bool* have_point, int* x, int* y) {
+    portENTER_CRITICAL(&lock);
+    if (injected_release) {
+        injected_release = false;
+        *have_point = false;
+        portEXIT_CRITICAL(&lock);
+        return true;
+    }
+    if (injected_down) {
+        *have_point = true;
+        *x = injected_x;
+        *y = injected_y;
+        portEXIT_CRITICAL(&lock);
+        return true;
+    }
+    if (injected_gesture.active) {
+        *have_point = touch_inject_step(&injected_gesture, now_us, x, y);
+        if (!*have_point) {
+            completed_gesture = gesture_completion;
+        }
+        portEXIT_CRITICAL(&lock);
+        return true;
+    }
+    portEXIT_CRITICAL(&lock);
+#if CONFIG_LAUNCHER_QEMU
+    *have_point = false;
+    return true;
+#else
+    return false;
+#endif
 }
-
-static esp_lcd_touch_t injected_panel = {
-    .read_data = injected_read_data,
-    .get_xy = injected_get_xy,
-};
 
 void
 touch_inject(bool down, int x, int y) {
-    injected_x = (uint16_t)x;
-    injected_y = (uint16_t)y;
+    portENTER_CRITICAL(&lock);
+    injected_gesture.active = false;
     injected_down = down;
-    report_pending = true;
+    injected_x = x;
+    injected_y = y;
+    injected_release = !down;
+    portEXIT_CRITICAL(&lock);
+}
+
+void
+touch_gesture_start(int x0, int y0, int x1, int y1, uint32_t ms, touch_gesture_completion_t completion) {
+    portENTER_CRITICAL(&lock);
+    injected_down = false;
+    injected_release = false;
+    touch_inject_init(&injected_gesture, x0, y0, x1, y1, ms);
+    gesture_completion = completion;
+    portEXIT_CRITICAL(&lock);
+}
+
+bool
+touch_gesture_take_completion(touch_gesture_completion_t* completion) {
+    portENTER_CRITICAL(&lock);
+    if (completed_gesture == TOUCH_GESTURE_NONE) {
+        portEXIT_CRITICAL(&lock);
+        return false;
+    }
+    *completion = completed_gesture;
+    completed_gesture = TOUCH_GESTURE_NONE;
+    portEXIT_CRITICAL(&lock);
+    return true;
 }
 #endif
 
 static void
-poll_once(void) {
-    bool have_point = false;
-    int x = 0, y = 0;
-
+poll_controller(bool* have_point, int* x, int* y) {
     /* Only talk to the controller when it has something: a controller NACKs
      * register reads while idle, and each failed transaction costs a bus
      * timeout - polling blindly at this rate would swamp the system. */
@@ -101,15 +140,28 @@ poll_once(void) {
             esp_lcd_touch_point_data_t point = {0};
             uint8_t count = 0;
             if (esp_lcd_touch_get_data(panel, &point, &count, 1) == ESP_OK && count > 0) {
-                have_point = true;
-                x = point.x;
-                y = point.y;
+                *have_point = true;
+                *x = point.x;
+                *y = point.y;
             }
         }
     }
-    was_touching = have_point;
+}
 
+static void
+poll_once(void) {
+    bool have_point = false;
+    int x = 0, y = 0;
     const int64_t now_us = esp_timer_get_time();
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (!poll_injected(now_us, &have_point, &x, &y)) {
+        poll_controller(&have_point, &x, &y);
+    }
+#else
+    poll_controller(&have_point, &x, &y);
+#endif
+    was_touching = have_point;
 
     portENTER_CRITICAL(&lock);
     touch_fsm_update(&fsm, have_point, x, y, now_us);
@@ -148,11 +200,10 @@ touch_start(void) {
     if (bsp_touch_new(NULL, &panel) != ESP_OK) {
 #if CONFIG_LAUNCHER_QEMU
         ESP_LOGW(TAG, "No touch controller; input comes from touch_inject()");
-        panel = &injected_panel;
 #else
         ESP_LOGW(TAG, "Touch controller unavailable; input will not work");
-        panel = NULL;
 #endif
+        panel = NULL;
     } else if (esp_lcd_touch_register_interrupt_callback(panel, on_touch_int) != ESP_OK) {
         ESP_LOGW(TAG, "No touch interrupt; falling back to sampling INT's level");
     }
