@@ -41,7 +41,7 @@ quiet_run() {
 }
 
 quiet_error_lines() {
-    grep -E 'FAILED:|error:|undefined reference to|out of memory|cannot allocate|CMake Error|ninja: error|^  FAIL |^check_stack_usage: [0-9]+ function\(s\) exceed|^  NEW |^  GREW |AssertionError|^ *File "|^FAIL:|^ERROR:' \
+    grep -E 'FAILED:|error:|undefined reference to|out of memory|cannot allocate|CMake Error|ninja: error|^  FAIL |:FAIL: |:FAIL$|^check_stack_usage: [0-9]+ function\(s\) exceed|^  NEW |^  GREW |AssertionError|^ *File "|^FAIL:|^ERROR:' \
         "$QUIET_LOG" | head -n "$QUIET_LIMIT" || true
 }
 
