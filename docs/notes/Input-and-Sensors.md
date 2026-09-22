@@ -55,11 +55,10 @@ resolves interaction through `mu_update_control()`, so anything that reacts to
 a press has the same requirement.
 
 **Sampling rate matters too.** Reading touch once per rendered frame is too
-coarse: a frame is ~40 ms here (the blit alone is 25 ms) and a quick tap can be
-shorter than that, so taps fall between samples entirely. Poll on a separate
-task — 100 Hz is plenty and costs nothing next to rendering — and latch the
-press/release edges so an event that happens wholly between two frames is still
-delivered to the next one.
+coarse: a quick tap can be shorter than a frame, so taps fall between
+samples entirely. Poll on a separate task — 100 Hz is plenty and costs
+nothing next to rendering — and latch the press/release edges so an event
+that happens wholly between two frames is still delivered to the next one.
 
 **On targets and gestures.** A small back button is fine to aim at with a mouse
 and miserable with a fingertip. A swipe up from the bottom edge — what the
