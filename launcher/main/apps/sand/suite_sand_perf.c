@@ -249,10 +249,10 @@ test_the_soak_only_skip_hash_survives_ambient_two_core_state(void) {
 
 #ifdef DEVICE_BUILD
 #include <stdlib.h>
-#include "../../gfx/gfx.h"
 #include "esp_cpu.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "gfx/gfx.h"
 #include "row_runs.h"
 #include "xtensa/xt_perf_consts.h"
 #include "xtensa_perfmon_access.h"
