@@ -218,13 +218,9 @@ ui_text_passes(ui_text_style_t style, ui_text_pass_t* out, int max) {
     }
 }
 
-/*
- * The panel
- *
- * A section frame for the brush screen's captioned groups: a face plus a
- * plain border, sibling to the bezel above but flat rather than lit/shadowed
- * - a panel groups content, it does not invite a press.
- */
+/* A section frame for a screen's captioned groups: a face plus a plain
+ * border, sibling to the bezel above but flat rather than lit/shadowed - a
+ * panel groups content, it does not invite a press. */
 
 /* Face, plus four border edges. */
 #define UI_PANEL_MAX_SPANS        5

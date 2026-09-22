@@ -49,8 +49,9 @@ static const char* TAG = "gfx";
 static gfx_color_t* fb;
 
 /* GFX_LAYOUT_FULL_FB until gfx_init() sets real geometry below, or an app's
- * gfx_mode_enter() grants something else. gfx_present_begin()/_wait() read
- * this to know whether there is a framebuffer to send at all. */
+ * gfx_mode_enter() grants something else.
+ * gfx_present_begin()/gfx_present_wait() read this to know whether there is
+ * a framebuffer to send at all. */
 static gfx_mode_t current_mode;
 
 /* The band ring's own buffers - declared here, not with the rest of the
@@ -71,9 +72,10 @@ static int band_render_height;
  * gfx_band_frame_begin() so a later gfx_invalidate() call mid-frame
  * affects the NEXT frame, not this one. */
 
-/* GFX_PIXFMT_INDEXED8's own state - the app writes indices, run_present_
- * indexed() below expands them through whichever LUT is installed. Not a
- * gfx_target.h render target: no drawing primitive writes through it. */
+/* GFX_PIXFMT_INDEXED8's own state - the app writes indices,
+ * run_present_indexed() below expands them through whichever LUT is
+ * installed. Not a gfx_target.h render target: no drawing primitive writes
+ * through it. */
 static uint8_t* indexed_image;
 static int indexed_grid_w, indexed_grid_h, indexed_cell_size;
 static gfx_color_t indexed_lut256[GFX_INDEXED_PALETTE_SIZE];
@@ -122,7 +124,8 @@ indexed_frame(void) {
 }
 
 /* True only for the RGB565 band mode, where an app's own frame() drives
- * gfx_band_next()/_submit() itself - see gfx_present_begin() below. */
+ * gfx_band_next()/gfx_band_submit() itself - see gfx_present_begin()
+ * below. */
 static inline bool
 band_is_app_driven(void) {
     return current_mode.layout == GFX_LAYOUT_BANDS && current_mode.pixfmt == GFX_PIXFMT_RGB565;
@@ -248,7 +251,8 @@ _Static_assert(GFX_WIDTH % 2 == 0 && GFX_HEIGHT % 2 == 0, "panel windows round t
  * bandwidth, and past 40 MHz QSPI the panel receives dropped data. Two
  * slots are enough to keep strips queuing back to back: esp_lcd sends a
  * window's address commands only after the previous transfer has drained,
- * so once draw_bitmap() returns, the strip before it is off the bus. */
+ * so once esp_lcd_panel_draw_bitmap() returns, the strip before it is off
+ * the bus. */
 #define STRIP_BOUNCE_SLOTS       2
 static gfx_color_t* strip_bounce[STRIP_BOUNCE_SLOTS];
 static int strip_bounce_next;
@@ -679,7 +683,8 @@ gfx_invalidate(void) {
 
 /* Guard-free body of gfx_mark_all_dirty(), also called from the send path
  * itself (already past the guard by definition - a present is in flight)
- * when a rejected draw_bitmap() means this frame never reached the panel. */
+ * when a rejected esp_lcd_panel_draw_bitmap() means this frame never
+ * reached the panel. */
 static void
 mark_all_dirty_now(void) {
     dirty_mark_all();
@@ -1962,13 +1967,11 @@ note_send_failure(esp_err_t err) {
 }
 
 /* gather_buf is shared and about to be overwritten, so every queued
- * transfer, not just the most recent, must drain first. strip_sent is a
- * plain counter with no transfer identity: taking it once is not the
- * same as waiting for THIS gather, since whichever transfer finishes
- * first satisfies whichever Take() runs. Draining exactly *queued first
- * empties the queue, so the one Take() after this draw_bitmap()
- * unambiguously waits for it - SPI transactions on one device complete
- * in queued order. */
+ * transfer must drain first, not just the most recent. strip_sent has no
+ * transfer identity, so taking it once is not the same as waiting for THIS
+ * gather; draining exactly *queued first empties the queue, so the one
+ * Take() after this esp_lcd_panel_draw_bitmap() unambiguously waits for
+ * it. */
 static void
 gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_end, bool refined, int* queued,
                 gfx_color_t border) {

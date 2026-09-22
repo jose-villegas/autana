@@ -57,7 +57,8 @@ gfx_band_ring_must_wait(const gfx_band_ring_t* ring) {
 
 /* Called once a band's send has been queued (after waiting on the previous
  * one, if gfx_band_ring_must_wait() said so) - advances the ring so the
- * next gfx_band_ring_slot()/_row0() describe the following band. */
+ * next gfx_band_ring_slot()/gfx_band_ring_row0() describe the following
+ * band. */
 static inline void
 gfx_band_ring_advance(gfx_band_ring_t* ring) {
     ring->in_flight = ring->next_render;

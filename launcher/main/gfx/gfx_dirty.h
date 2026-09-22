@@ -97,10 +97,10 @@ static int cell_y1[CELL_COUNT];
 static uint16_t leaf_dirty[STRIP_COUNT * LEAF_SUB];
 
 /* Bounds gather_buf, the scratch space gfx.c packs one gathered run's box
- * into edge-to-edge before sending it as one draw_bitmap() call. A run
- * bigger than this is not worth gathering at all, at which point the row
- * is sent whole instead. Also the size budget plan_run()'s leaf-refined
- * splits must respect - see its own comment. */
+ * into edge-to-edge before sending it as one esp_lcd_panel_draw_bitmap()
+ * call. A run bigger than this is not worth gathering at all, at which
+ * point the row is sent whole instead. Also the size budget plan_run()'s
+ * leaf-refined splits must respect - see its own comment. */
 #define GATHER_MAX_PIXELS (128 * 64)
 
 #define LEAF_REFINE_MAX_RUNS                                                                                           \

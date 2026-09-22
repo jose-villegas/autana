@@ -252,8 +252,9 @@ ui_transform_quarter(ui_transform_t t) {
         return 3;
     }
     return 0; /* not a rotation at all (e.g. the zero matrix) - identity is
-                 the least wrong answer, and is_axis_preserving() would have
-                 already rejected this transform anyway. */
+                 the least wrong answer, and
+                 ui_transform_is_axis_preserving() would have already
+                 rejected this transform anyway. */
 }
 
 /* Where gfx_text_font()'s (x, y) origin - the FIRST glyph's cell,

@@ -20,8 +20,8 @@
 
 /* microui clips a window to the rect it had on the previous frame, so the
  * first frame after the canvas turns is cut to the old shape. The device
- * shows the next frame 16 ms later; a preview is one frame, so it takes the
- * second. */
+ * shows the correct shape one frame later; a preview is one frame, so it
+ * takes the second. */
 #define SETTLE_FRAMES     2
 
 static bool initialized;

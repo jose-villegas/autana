@@ -173,7 +173,7 @@ void gfx_line(int x0, int y0, int x1, int y1, gfx_color_t color);
 /*
  * Two independent choices - how it composites, and whether it owns its
  * first pixel - so flags on one function rather than a family of
- * gfx_line_add_open() spellings inviting another.
+ * "add"/"open" name variants inviting another.
  *
  * A GFX_LINE_SMOOTH doing Xiaolin Wu antialiasing cost 6.7 fps to be nearly
  * invisible: antialiasing redistributes light WITHIN a pixel, while what
@@ -226,10 +226,10 @@ void gfx_text_scaled(int x, int y, const char* text, gfx_color_t color, int scal
 void gfx_text_turned(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns);
 
 /* Text metrics. Kept here so the UI layer and the renderer cannot disagree.
- * `static inline` over gfx_font.h's pure gfx_font_text_width()/height() -
- * no framebuffer, panel or DMA state behind either, so a caller needing
- * only a metric (an app's own microui screen, say) links no more of gfx
- * than gfx_font_ui()'s own font data already costs. */
+ * `static inline` over gfx_font.h's pure gfx_font_text_width()/
+ * gfx_font_height() - no framebuffer, panel or DMA state behind either, so
+ * a caller needing only a metric (an app's own microui screen, say) links
+ * no more of gfx than gfx_font_ui()'s own font data already costs. */
 static inline int
 gfx_text_width(const char* text, int len) {
     return gfx_font_text_width(gfx_font_ui(), text, len, GFX_GLYPH_SCALE);
@@ -242,9 +242,8 @@ gfx_text_height(void) {
 
 /* The font every gfx_text*() call above draws with is gfx_font_ui()
  * (gfx/gfx_font_roles.h) - the UI/body-text role, not something this file
- * names itself any more (it used to, as gfx_default_font()). A caller
- * that wants a specific font, or that wants to name a role directly, asks
- * gfx_font_roles.h for it. */
+ * names itself. A caller that wants a specific font, or that wants to name a
+ * role directly, asks gfx_font_roles.h for it. */
 
 /* The single font-aware drawing path gfx_text(), gfx_text_scaled() and
  * gfx_text_turned() all delegate to, passing gfx_font_ui(). Same
@@ -371,9 +370,9 @@ bool gfx_heal_active(void);
 /*
  * Mode: a full PSRAM framebuffer, or an internal-SRAM band ring for a
  * full-redraw renderer (docs/Autana-Rendering-Roadmap.md section 3.3).
- * Requested from enter(), released with gfx_mode_exit() from exit(). Only
- * full resolution with no interlace renders; other requests grant
- * correctly (gfx_mode.h) but nothing consumes them yet.
+ * Requested from enter(), released with gfx_mode_exit() from exit(). Every
+ * app requests full resolution with no interlace; other combinations grant
+ * correctly (gfx_mode.h) but no caller exercises them.
  */
 
 /* Grants `request`, allocates whatever the granted layout needs, and
