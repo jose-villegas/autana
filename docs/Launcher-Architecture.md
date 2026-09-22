@@ -260,8 +260,10 @@ flowchart TB
         Input["input/<br/><i>touch, gesture, tilt</i>"]
     end
     subgraph T6[" "]
-        Board["board/<br/><i>this board's pins and peripherals</i>"]
         Util["util/<br/><i>arithmetic and services</i>"]
+    end
+    subgraph T7[" "]
+        Board["board/<br/><i>this board's pins and peripherals</i>"]
     end
 
     Apps ~~~ Main ~~~ Boot
@@ -275,30 +277,29 @@ flowchart TB
     Console ~~~ Render
     Console ~~~ Input
     Console ~~~ Display
-    Gfx ~~~ Board
     Gfx ~~~ Util
-    Render ~~~ Board
     Render ~~~ Util
-    Input ~~~ Board
     Input ~~~ Util
-    Display ~~~ Board
     Display ~~~ Util
+    Util ~~~ Board
 
     class Boot,Gfx,Input,Console,Board,Util hw
 
-    %% linkStyle below recolours these two by index (20, 21); an edge added
+    %% linkStyle below recolours these two by index (17, 18); an edge added
     %% above them shifts both numbers, so add new edges after them.
     Contract -.->|"includes input/buttons.h"| Input
     Input <-.-|"device_state reaches up"| Util
 
-    linkStyle 20 stroke:#e11,stroke-width:2px
-    linkStyle 21 stroke:#e11,stroke-width:2px
+    linkStyle 17 stroke:#e11,stroke-width:2px
+    linkStyle 18 stroke:#e11,stroke-width:2px
 ```
 
-**A folder may include anything below it, and `app.h`, never above.** The
-two red arrows are the exceptions: `app.h` includes `input/buttons.h`,
-and `util/device_state` reaches back up into `input/imu.h` (also
-`display/display.h` and a driver header, not drawn).
+**A folder may include anything below it, and `app.h`, never above or
+sideways within the same row.** `board/` sits in its own row below
+`util/` - nothing in it includes first-party code, so it is the tree's
+lowest layer. The two red arrows are the exceptions: `app.h` includes
+`input/buttons.h`, and `util/device_state` reaches back up into
+`input/imu.h` (also `display/display.h` and a driver header, not drawn).
 
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. See
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path) for how a draw

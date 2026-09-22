@@ -28,6 +28,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from check_comment_length import EXCLUDED, scan  # noqa: E402
 from check_doc_citations import SKIP as SKIP_DIRS, documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
+from check_doc_index import blank_fences  # noqa: E402
 from check_doc_vocabulary import ESCAPE as DOC_VOCABULARY_ESCAPE  # noqa: E402
 import strip_comment_rules  # noqa: E402
 
@@ -73,12 +74,13 @@ def _register(kind):
     return make_decorator
 
 
-# Every rule function takes (root, path, data) and yields (line, message)
-# pairs; `data` is the one thing its walker already read for it - raw doc
-# lines, a file's scanned comments, or its raw text. Every fixer takes
-# (root, path, text) and returns the file's new text, or None to leave it
-# alone - the same shape regardless of which walker found the violation, so
-# --fix does not need to know which kind of rule it is re-running.
+# Every rule function takes (root, path, data) - or, for a c_comment_rule,
+# (root, path, text, comments), since a comment rule sometimes needs the raw
+# text too (brace context, say) and the walker already read it - and yields
+# (line, message) pairs. Every fixer takes (root, path, text) and returns
+# the file's new text, or None to leave it alone - the same shape
+# regardless of which walker found the violation, so --fix does not need to
+# know which kind of rule it is re-running.
 doc_rule = _register("doc")
 c_comment_rule = _register("c_comment")
 c_line_rule = _register("c_line")
@@ -93,17 +95,6 @@ def tracked_files(root, patterns):
 
 def relpath(root, path):
     return pathlib.Path(path).resolve().relative_to(pathlib.Path(root).resolve()).as_posix()
-
-
-def strip_fences(lines):
-    fenced = False
-    for number, line in enumerate(lines, 1):
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
-            continue
-        if fenced:
-            continue
-        yield number, line
 
 
 # Walkers: each reads a file exactly once and hands every registered rule of
@@ -152,16 +143,16 @@ def _text_walk(root):
 
 # RULE: a tracker issue id or a git commit hash names a system this repo
 # does not keep in sync with itself - it belongs in bd/beads or git, never
-# in tracked text. A bd id is always written "bd autana-<code>" in this
-# tree; a bare "autana-cli"-shaped compound word (this doc's own CLI,
-# "autana-screenshot", "autana-device", ...) is not one, so only a
-# digit-led bare code is also flagged - no real compound word in this tree
-# starts with a digit. A 40-character hex run is an unambiguous full SHA; a
-# shorter one is not (see suite_sand_perf.c's own build-id comments, which
-# are perf provenance, not a tracker reference).
+# in tracked text. A bd id is a short, 3-4 character code (autana-9xp,
+# autana-bix); "bd " in front is optional. The only real compound word this
+# repo's own CLI names that shape - "autana-cli" - is excluded by name,
+# since every other one ("autana-screenshot", "autana-device",
+# "autana-monitor") is already too long to match. A 40-character hex run is
+# an unambiguous full SHA; a 12-character build id is perf provenance, not
+# a tracker reference (see suite_sand_perf.c's own build-id comments).
 
 TRACKER_ID = re.compile(
-    r"\bbd\s+(?:show\s+|graph\s+)?autana-[a-zA-Z0-9]+\b|\bautana-[0-9][a-z0-9]{1,5}\b")
+    r"\bbd\s+(?:show\s+|graph\s+)?autana-[a-zA-Z0-9]+\b|\bautana-(?!cli\b)[a-z0-9]{3,4}\b")
 COMMIT_SHA = re.compile(r"\b[0-9a-f]{40}\b")
 
 
@@ -172,38 +163,40 @@ def _tracker_refs(text):
             yield what, m.group(0)
 
 
+TRACKER_REF_ACTION = "move it to the PR body or bd and state the fact itself"
+
+
 @doc_rule("TRACKER-REF")
 def rule_tracker_ref_doc(root, path, raw_lines):
-    for number, line in strip_fences(raw_lines):
+    for number, line in enumerate(blank_fences(raw_lines), 1):
         for what, value in _tracker_refs(line):
-            yield number, f"names {what} ({value}) - issue ids and commit hashes never go into tracked text"
+            yield number, f"names {what} ({value}) - {TRACKER_REF_ACTION}"
 
 
 @c_comment_rule("TRACKER-REF")
-def rule_tracker_ref_comment(root, path, comments):
+def rule_tracker_ref_comment(root, path, text, comments):
     for c in comments:
         for what, value in _tracker_refs(c.text):
-            yield c.line, f"comment names {what} ({value}) - issue ids and commit hashes never go into tracked text"
+            yield c.line, f"comment names {what} ({value}) - {TRACKER_REF_ACTION}"
 
 
 # RULE: a calendar date in a C comment or a doc records when something was
 # true, not what is true now. docs/doc_review_ledger.txt is a genuine dated
-# log (path, date, note - one row per review); it is a .txt, outside this
-# rule's .md/.c/.h scope, which is exactly the exception that needs one.
+# log; as a .txt it is outside this rule's .md/.c/.h scope.
 
 DATE = re.compile(r"\b(?:19|20)\d{2}-\d{2}-\d{2}\b")
 
 
 @doc_rule("CALENDAR-DATE")
 def rule_calendar_date_doc(root, path, raw_lines):
-    for number, line in strip_fences(raw_lines):
+    for number, line in enumerate(blank_fences(raw_lines), 1):
         m = DATE.search(line)
         if m:
             yield number, f"carries a calendar date ({m.group(0)}) - state the constraint, not when it was measured"
 
 
 @c_comment_rule("CALENDAR-DATE")
-def rule_calendar_date_comment(root, path, comments):
+def rule_calendar_date_comment(root, path, text, comments):
     for c in comments:
         m = DATE.search(c.text)
         if m:
@@ -218,7 +211,7 @@ LIVING_DOCUMENT = re.compile(r"living document", re.I)
 
 @doc_rule("LIVING-DOC")
 def rule_living_document(root, path, raw_lines):
-    for number, line in strip_fences(raw_lines):
+    for number, line in enumerate(blank_fences(raw_lines), 1):
         if LIVING_DOCUMENT.search(line):
             yield number, '"living document" - say what the doc covers, not that it changes'
 
@@ -228,39 +221,39 @@ def rule_living_document(root, path, raw_lines):
 # "gfx.h", even between two files in the same folder. launcher/main is a
 # registered include root (INCLUDE_DIRS "." in CMakeLists.txt, and -I
 # "$MAIN_DIR" in run_tests.sh), so every header under one of the shared
-# layers, or living at main/'s own root, is reachable without a dot. Scoped
-# to those shared layers only - docs/Launcher-Architecture.md's own
-# "How it fits together" is about an app reaching down past ui/ into gfx/,
-# not about an app's own internal includes, and apps organise their own
-# folders however they like.
+# layers, or living at main/'s own root, is reachable without a dot.
 #
-# The detection predicate is shared by the check and the fix: a bare form is
-# only auto-fixed when its basename names exactly one layer header - two
-# files sharing a basename in different layers would make the fix a guess,
-# so that case is reported, never rewritten.
+# resolve_include() finds the file the way the compiler does - next to the
+# including file first, then from launcher/main - so an app's own local
+# header (found next to it) is never mistaken for a layer header that
+# merely shares its basename, and a fix always rewrites to the one spelling
+# that file actually has.
 
 INCLUDE = re.compile(r'^\s*#include\s+"([^"]+)"')
-LAYER_DIRS = ("boot", "display", "gfx", "input", "render", "ui", "util", "console")
-LAYER_ROOT_FILES = ("app.h", "build_variant.h")
-
-_layer_header_cache = {}
 
 
-def _layer_headers(root):
-    key = str(root)
-    if key not in _layer_header_cache:
-        main_dir = pathlib.Path(root) / "launcher/main"
-        headers = {}
-        for layer in LAYER_DIRS:
-            for p in (main_dir / layer).rglob("*.h"):
-                headers.setdefault(p.name, []).append(f"{layer}/{p.relative_to(main_dir / layer).as_posix()}")
-        _layer_header_cache[key] = headers
-    return _layer_header_cache[key]
+def resolve_include(root, path, inc):
+    """Where the compiler actually finds a quoted include from `path`: next
+    to the including file first (the real search order for
+    `#include "..."`), then relative to launcher/main (its registered "."
+    INCLUDE_DIRS root). None if neither has it - a real compile error, and
+    not this rule's business."""
+    main_dir = pathlib.Path(root) / "launcher/main"
+    same_dir = (path.parent / inc).resolve()
+    if same_dir.is_file():
+        return same_dir
+    from_root = (main_dir / inc).resolve()
+    return from_root if from_root.is_file() else None
+
+
+def _layer_root_files(root):
+    return {p.name for p in (pathlib.Path(root) / "launcher/main").glob("*.h")}
 
 
 def _include_layer_violations(root, path, text):
-    """(line_no, include_string, replacement_or_None, message) for each
-    relative or unqualified include of a shared-layer header."""
+    """(line_no, include_string, canonical_spelling, message) for each
+    include whose written spelling differs from the layer-qualified path
+    the file it resolves to actually has."""
     main_dir = pathlib.Path(root) / "launcher/main"
     try:
         rel_to_main = path.resolve().relative_to(main_dir.resolve())
@@ -268,39 +261,33 @@ def _include_layer_violations(root, path, text):
         return
     if rel_to_main.parts[:1] == ("apps",) and "tools" in rel_to_main.parts:
         return  # apps/*/tools/ is excluded from the firmware glob build entirely
-    layer_headers = _layer_headers(root)
+    root_files = _layer_root_files(root)
     for number, line in enumerate(text.splitlines(), 1):
         m = INCLUDE.match(line)
         if not m:
             continue
         inc = m.group(1)
-        if "/" not in inc and inc in layer_headers:
-            candidates = layer_headers[inc]
-            if len(candidates) == 1:
-                yield number, inc, candidates[0], f'"{inc}" names a layer header without its folder - use "{candidates[0]}"'
-            else:
-                yield number, inc, None, f'"{inc}" names a layer header without its folder, and is ambiguous ({", ".join(candidates)})'
+        resolved = resolve_include(root, path, inc)
+        if resolved is None:
             continue
-        if "../" in inc:
-            resolved = (path.parent / inc).resolve()
-            try:
-                target_rel = resolved.relative_to(main_dir.resolve())
-            except ValueError:
-                continue
-            top = target_rel.as_posix().split("/")[0]
-            if resolved.exists() and (top in LAYER_DIRS or target_rel.as_posix() in LAYER_ROOT_FILES):
-                fix = target_rel.as_posix()
-                yield number, inc, fix, f'"{inc}" is relative - use "{fix}"'
+        try:
+            target_rel = resolved.relative_to(main_dir.resolve())
+        except ValueError:
+            continue
+        top = target_rel.parts[0] if target_rel.parts else ""
+        canonical = target_rel.as_posix()
+        if inc != canonical and (top in LAYER_DIRS or canonical in root_files):
+            yield number, inc, canonical, f'"{inc}" is not layer-qualified - use "{canonical}"'
 
 
 @c_line_rule("INCLUDE-LAYER", fixer=lambda root, path, text: _fix_include_layer(root, path, text))
 def rule_include_layer(root, path, text):
-    for number, _old, new, message in _include_layer_violations(root, path, text):
-        yield number, message, new is not None
+    for number, _old, _new, message in _include_layer_violations(root, path, text):
+        yield number, message
 
 
 def _fix_include_layer(root, path, text):
-    fixes = {old: new for _line, old, new, _msg in _include_layer_violations(root, path, text) if new}
+    fixes = {old: new for _line, old, new, _msg in _include_layer_violations(root, path, text)}
     if not fixes:
         return None
     lines = text.splitlines(keepends=True)
@@ -313,34 +300,22 @@ def _fix_include_layer(root, path, text):
     return "".join(lines) if changed else None
 
 
-# RULE: a folder may include anything strictly below it in
-# docs/Launcher-Architecture.md's "How it fits together" tier diagram, and
-# app.h, never above or sideways into a different same-tier folder. Order
-# is the one table below (folder membership alone does not fix it - two
-# folders can share a tier); INCLUDE_DIRECTION_EXCEPTIONS is every reach the
-# diagram itself documents as deliberate, each citing the section that says
-# so. app.h's own reach into input/buttons.h needs no entry: app.h sits
-# above every tier, so "anything below it" already covers it - the diagram
-# calls it out only because a slim shell contract depending on a driver
-# header is worth a reader noticing, not because it is illegal.
-#
-# util/device_state.c also opens ESP-IDF's own "driver/temperature_sensor.h"
-# - a system header, never a first-party board/ one, so it never reaches
-# this rule's resolution step at all; "a driver header, not drawn" in the
-# prose is this file's own name for exactly that gap.
-#
-# PR #345 (claude/layering-hygiene) moves input_t into a new input/input.h
-# and device_state's temperature read into board/ - this table is correct
-# for main as it stands now, and #345 will need to retarget the
-# util/device_state.h -> input/imu.h entry once input_t moves.
+# RULE: a folder may include only a strictly lower tier of
+# docs/Launcher-Architecture.md's "How it fits together" (LAYER_TIER below;
+# two folders can share a tier). INCLUDE_DIRECTION_EXCEPTIONS are the red
+# arrows that section draws. app.h is outside LAYER_TIER, so its include of
+# input/ is never checked; a system header such as
+# "driver/temperature_sensor.h" never resolves to a layer.
 
-LAYER_TIER = {"boot": 1, "ui": 2, "console": 2, "gfx": 3, "render": 3, "display": 3,
-             "input": 3, "board": 4, "util": 4}
+LAYER_TIER = {"apps": 0, "boot": 1, "ui": 2, "console": 2, "gfx": 3, "render": 3,
+             "display": 3, "input": 3, "util": 4, "board": 5}
+LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps")
 
 _ARCH_SECTION = 'Launcher-Architecture.md, "How it fits together"'
 INCLUDE_DIRECTION_EXCEPTIONS = {
-    ("util/device_state.c", "display/display.h"): _ARCH_SECTION,
-    ("util/device_state.h", "input/imu.h"): _ARCH_SECTION,
+    ("util/device_state", "display"): _ARCH_SECTION,
+    ("util/device_state", "input"): _ARCH_SECTION,
+    ("util/device_state", "board"): _ARCH_SECTION,
 }
 
 
@@ -368,28 +343,34 @@ def rule_include_direction(root, path, text):
     except ValueError:
         return
     parts = rel_to_main.parts
-    if not parts or parts[0] not in LAYER_TIER:
+    if not parts or parts[0] == "apps" or parts[0] not in LAYER_TIER:
         return
     _layer_dirs_match(root)
     source_layer = parts[0]
     source_tier = LAYER_TIER[source_layer]
-    source_key = rel_to_main.as_posix()
+    source_base = (rel_to_main.parent / rel_to_main.stem).as_posix()
     for number, line in enumerate(text.splitlines(), 1):
         m = INCLUDE.match(line)
         if not m:
             continue
         inc = m.group(1)
-        if "/" not in inc:
+        resolved = resolve_include(root, path, inc)
+        if resolved is None:
             continue
-        target_layer = inc.split("/", 1)[0]
-        if target_layer == source_layer or target_layer not in LAYER_TIER:
+        try:
+            target_rel = resolved.relative_to(main_dir.resolve())
+        except ValueError:
+            continue
+        target_layer = target_rel.parts[0] if target_rel.parts else None
+        if target_layer is None or target_layer == source_layer or target_layer not in LAYER_TIER:
             continue
         if LAYER_TIER[target_layer] > source_tier:
             continue
-        if INCLUDE_DIRECTION_EXCEPTIONS.get((source_key, inc)):
+        if (source_base, target_layer) in INCLUDE_DIRECTION_EXCEPTIONS:
             continue
         yield number, (f'"{inc}" reaches from {source_layer}/ (tier {source_tier}) into {target_layer}/ '
-                       f"(tier {LAYER_TIER[target_layer]}) - a folder may only include a strictly lower tier")
+                       f"(tier {LAYER_TIER[target_layer]}) - move the shared piece down a tier, or add an "
+                       "INCLUDE_DIRECTION_EXCEPTIONS entry citing the doc section that draws it")
 
 
 # RULE: a personal home-directory path baked into tracked source only works
@@ -420,21 +401,9 @@ KNOWN_MARKERS = re.compile(
     re.escape(DOC_CONSTANTS_ESCAPE) + "|" + re.escape(DOC_VOCABULARY_ESCAPE) + r"|(?:BEGIN|END)\s+GENERATED")
 
 
-def _blank_fences(raw_lines):
-    fenced = False
-    out = []
-    for line in raw_lines:
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
-            out.append("")
-            continue
-        out.append("" if fenced else line)
-    return out
-
-
 @doc_rule("STRAY-HTML-COMMENT")
 def rule_stray_html_comment(root, path, raw_lines):
-    blanked = "\n".join(_blank_fences(raw_lines))
+    blanked = "\n".join(blank_fences(raw_lines))
     for m in HTML_COMMENT.finditer(blanked):
         if KNOWN_MARKERS.search(m.group(0)):
             continue
@@ -458,25 +427,21 @@ LIST_MARKER = re.compile(r"^\s*([-*+]|\d+\.)\s")
 
 @doc_rule("ACCIDENTAL-BULLET")
 def rule_accidental_bullet(root, path, raw_lines):
-    fenced = False
-    for i, line in enumerate(raw_lines):
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
+    lines = blank_fences(raw_lines)
+    for i, line in enumerate(lines):
+        if i == 0 or not BULLET.match(line):
             continue
-        if fenced or i == 0 or not BULLET.match(line):
-            continue
-        prev = raw_lines[i - 1]
-        if prev.strip() == "" or prev.lstrip().startswith("```"):
-            continue
+        prev = lines[i - 1]
+        if prev.strip() == "":
+            continue  # blank, or a blanked-out fenced line
         if prev != prev.lstrip():
             continue  # indented: continuing a nested block, not a bare paragraph
         if LIST_MARKER.match(prev):
             continue  # the previous line is itself a list item - a normal list
         start = i - 1
-        while (start > 0 and raw_lines[start - 1].strip() != ""
-               and not raw_lines[start - 1].lstrip().startswith("```")):
+        while start > 0 and lines[start - 1].strip() != "":
             start -= 1
-        para_first = raw_lines[start]
+        para_first = lines[start]
         if LIST_MARKER.match(para_first) or para_first.lstrip().startswith(("#", ">", "|")):
             continue
         if prev.rstrip().endswith(":"):
@@ -504,9 +469,16 @@ def _generated_span(raw_lines):
 @doc_rule("BLANK-LINES", fixer=lambda root, path, text: _fix_blank_lines(text))
 def rule_blank_lines(root, path, raw_lines):
     span = _generated_span(raw_lines)
-    run = 0
+    run, fenced = 0, False
     for i, line in enumerate(raw_lines):
         if span and span[0] <= i <= span[1]:
+            run = 0
+            continue
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            run = 0
+            continue
+        if fenced:
             run = 0
             continue
         if line.strip() == "":
@@ -520,11 +492,20 @@ def rule_blank_lines(root, path, raw_lines):
 def _fix_blank_lines(text):
     lines = text.splitlines(keepends=True)
     span = _generated_span([line.rstrip("\n") for line in lines])
-    out, run = [], 0
+    out, run, fenced = [], 0, False
     for i, line in enumerate(lines):
         if span and span[0] <= i <= span[1]:
             out.append(line)
             run = 0
+            continue
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            run = 0
+            out.append(line)
+            continue
+        if fenced:
+            run = 0
+            out.append(line)
             continue
         if line.strip() == "":
             run += 1
@@ -546,7 +527,7 @@ def rule_trailing_blank_lines(root, path, raw_lines):
         else:
             break
     if trailing:
-        yield len(raw_lines), f"{trailing} trailing blank line(s) at end of file"
+        yield len(raw_lines), f"{trailing} trailing blank line(s) at end of file - end the file on its last line of text"
 
 
 def _fix_trailing_blank(text):
@@ -569,10 +550,10 @@ def _fix_trailing_blank(text):
 # either.
 
 @c_comment_rule("DRAWN-COMMENT-RULE", fixer=lambda root, path, text: strip_comment_rules.rewrite(str(path), text))
-def rule_drawn_comment(root, path, comments):
+def rule_drawn_comment(root, path, text, comments):
     for c in comments:
         if c.has_rule:
-            yield c.line, "comment draws a rule (/*==== or //----) - style(9) has no such shape"
+            yield c.line, "comment draws a rule (/*==== or //----) - style(9) has no such shape; delete the rule line (--fix does)"
 
 
 # RULE: a one-line Title Case comment with no sentence, sitting inside a
@@ -643,8 +624,7 @@ def _function_body_comments(text, comments):
 
 
 @c_comment_rule("HEADING-COMMENT", severity=WARN)
-def rule_heading_comment(root, path, comments):
-    text = path.read_text(encoding="utf-8", errors="replace")
+def rule_heading_comment(root, path, text, comments):
     in_function = _function_body_comments(text, comments)
     for c in comments:
         if c.is_banner or c.kind != "block" or c.lines != 1 or c not in in_function:
@@ -665,13 +645,8 @@ def run_audit(root, rule_filter=None, file_filter=None):
         return not file_filter or file_filter in str(path).replace("\\", "/")
 
     def add(rel, rule, item):
-        # A rule's check yields (line, message) or (line, message, fixable) -
-        # the third field overrides "this rule has a fixer" for a specific
-        # finding, the way INCLUDE-LAYER's ambiguous case must: the rule can
-        # fix ONE shape of its own violation, not every one it reports.
-        line, message, *rest = item
-        fixable = (rule.fixer is not None) and (rest[0] if rest else True)
-        findings.append(Finding(rel, line, rule.id, rule.severity, message, fixable))
+        line, message = item
+        findings.append(Finding(rel, line, rule.id, rule.severity, message, rule.fixer is not None))
 
     doc_rules = [r for r in active if r.kind == "doc"]
     if doc_rules:
@@ -696,10 +671,10 @@ def run_audit(root, rule_filter=None, file_filter=None):
                 if r.kind == "c_comment":
                     if comments is None:
                         comments = scan(rel, text)
-                    data = comments
+                    items = r.func(root, path, text, comments)
                 else:
-                    data = text
-                for item in (r.func(root, path, data) or ()):
+                    items = r.func(root, path, text)
+                for item in (items or ()):
                     add(rel, r, item)
 
     text_rules = [r for r in active if r.kind == "text"]
@@ -765,7 +740,11 @@ def main(argv):
         print(f"no such rule: {rule_filter}", file=sys.stderr)
         return 2
 
-    findings, scanned = run_audit(root, rule_filter, file_filter)
+    try:
+        findings, scanned = run_audit(root, rule_filter, file_filter)
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 2
     if file_filter and scanned == 0:
         print(f"'{file_filter}' matched no file - nothing was audited.", file=sys.stderr)
         return 2

@@ -113,7 +113,25 @@ class StyleAuditTest(unittest.TestCase):
             check_style_audit.run_fix(root, findings)
             self.assertEqual(target.read_text(encoding="utf-8"), '#include "gfx/gfx.h"\n')
 
-    def test_a_bare_ambiguous_layer_header_is_reported_unfixable(self):
+    def test_an_apps_own_local_header_sharing_a_layer_basename_is_not_rewritten(self):
+        # The compiler resolves a quoted include next to the including file
+        # FIRST - apps/foo/fixed.h is found before launcher/main/fixed.h (or
+        # any layer/fixed.h) is even tried, so this is never a layer-header
+        # reference at all, however many other folders happen to have a
+        # file with the same basename.
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/util/fixed.h", "#pragma once\n")
+            self.write(root, "launcher/main/apps/foo/fixed.h", "#pragma once\n")
+            self.write(root, "launcher/main/apps/foo/app_foo.c", '#include "fixed.h"\n')
+            self.commit(root, "launcher")
+            findings = self.rule_hits(root, "INCLUDE-LAYER")
+        self.assertEqual(findings, [])
+
+    def test_a_bare_include_that_resolves_nowhere_is_not_flagged(self):
+        # Two layers each have a same-named header and neither sits at the
+        # include root itself - the real compiler would not find this
+        # include either, so it is a compile error, not this rule's concern.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.write(root, "launcher/main/gfx/shared.h", "#pragma once\n")
@@ -121,8 +139,19 @@ class StyleAuditTest(unittest.TestCase):
             self.write(root, "launcher/main/apps/sand/app_sand.c", '#include "shared.h"\n')
             self.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-LAYER")
+        self.assertEqual(findings, [])
+
+    def test_a_relative_reach_into_board_is_flagged(self):
+        # LAYER_DIRS used to be hand-typed and missed board/ entirely, so a
+        # relative reach into it went unflagged.
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/board/board.h", "#pragma once\n")
+            self.write(root, "launcher/main/apps/sand/app_sand.c", '#include "../../board/board.h"\n')
+            self.commit(root, "launcher")
+            findings = self.rule_hits(root, "INCLUDE-LAYER")
         self.assertEqual(len(findings), 1)
-        self.assertFalse(findings[0].fixable)
+        self.assertIn("board/board.h", findings[0].message)
 
     def test_an_apps_internal_relative_include_is_not_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -135,25 +164,62 @@ class StyleAuditTest(unittest.TestCase):
         self.assertEqual(findings, [])
 
     def layer_tree(self, root):
-        # The 9 real layer folders, minimally populated, so
-        # rule_include_direction's own LAYER_TIER-vs-tree check passes.
-        for layer in check_style_audit.LAYER_TIER:
+        # The real layer folders (LAYER_TIER minus the virtual "apps" entry),
+        # minimally populated, so rule_include_direction's own
+        # LAYER_TIER-vs-tree check passes.
+        for layer in check_style_audit.LAYER_DIRS:
             self.write(root, f"launcher/main/{layer}/.keep", "")
 
     def test_a_same_tier_cross_folder_include_is_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
+            self.write(root, "launcher/main/render/r3d_project.h", "#pragma once\n")
             self.write(root, "launcher/main/gfx/gfx.c", '#include "render/r3d_project.h"\n')
             self.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(len(findings), 1)
         self.assertIn("tier", findings[0].message)
 
+    def test_include_direction_judges_the_resolved_file_not_the_spelling(self):
+        # A relative include from gfx/ into ui/ must be caught before
+        # INCLUDE-LAYER's own --fix ever runs, since it reaches sideways
+        # within the same tier either way.
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.layer_tree(root)
+            self.write(root, "launcher/main/ui/ui.h", "#pragma once\n")
+            self.write(root, "launcher/main/gfx/gfx.c", '#include "../ui/ui.h"\n')
+            self.commit(root, "launcher")
+            findings = self.rule_hits(root, "INCLUDE-DIRECTION")
+        self.assertEqual(len(findings), 1)
+
+    def test_a_lower_layer_including_an_app_header_is_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.layer_tree(root)
+            self.write(root, "launcher/main/apps/foo/foo_api.h", "#pragma once\n")
+            self.write(root, "launcher/main/gfx/gfx.c", '#include "apps/foo/foo_api.h"\n')
+            self.commit(root, "launcher")
+            findings = self.rule_hits(root, "INCLUDE-DIRECTION")
+        self.assertEqual(len(findings), 1)
+        self.assertIn("apps/", findings[0].message)
+
+    def test_apps_own_sources_are_never_a_source_for_include_direction(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.layer_tree(root)
+            self.write(root, "launcher/main/util/tune.h", "#pragma once\n")
+            self.write(root, "launcher/main/apps/foo/app_foo.c", '#include "util/tune.h"\n')
+            self.commit(root, "launcher")
+            findings = self.rule_hits(root, "INCLUDE-DIRECTION")
+        self.assertEqual(findings, [])
+
     def test_including_a_strictly_lower_tier_is_not_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
+            self.write(root, "launcher/main/util/tune.h", "#pragma once\n")
             self.write(root, "launcher/main/gfx/gfx.c", '#include "util/tune.h"\n')
             self.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
@@ -163,6 +229,7 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
+            self.write(root, "launcher/main/gfx/gfx_dirty.h", "#pragma once\n")
             self.write(root, "launcher/main/gfx/gfx.c", '#include "gfx/gfx_dirty.h"\n')
             self.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
@@ -172,10 +239,21 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
+            self.write(root, "launcher/main/display/display.h", "#pragma once\n")
             self.write(root, "launcher/main/util/device_state.c", '#include "display/display.h"\n')
             self.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(findings, [])
+
+    def test_a_folder_this_table_does_not_know_about_fails_loudly(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.layer_tree(root)
+            self.write(root, "launcher/main/gfx/gfx.c", "int x;\n")
+            self.write(root, "launcher/main/newlayer/thing.h", "#pragma once\n")
+            self.commit(root, "launcher")
+            with self.assertRaises(ValueError):
+                self.rule_hits(root, "INCLUDE-DIRECTION")
 
     def test_a_windows_personal_path_is_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -384,6 +462,15 @@ class MainTest(unittest.TestCase):
             self.commit(root, "docs")
             code = self.run_main(root, [])
         self.assertEqual(code, 1)
+
+    def test_an_unknown_layer_folder_exits_two_instead_of_crashing(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/gfx/gfx.c", "int x;\n")
+            self.write(root, "launcher/main/newlayer/thing.h", "#pragma once\n")
+            self.commit(root, "launcher")
+            code = self.run_main(root, ["--rule", "INCLUDE-DIRECTION"])
+        self.assertEqual(code, 2)
 
     def test_a_warning_alone_passes_without_strict_and_fails_with_it(self):
         with tempfile.TemporaryDirectory() as temp:
