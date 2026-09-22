@@ -73,7 +73,7 @@ mismatch this fixes.
 `CONFIG_COMPILER_OPTIMIZATION_PERF` (-O2) is set in `sdkconfig.defaults`,
 the right choice for a device whose every frame is rasterising, cellular
 automata and pixel loops - there is no debugger attached to this board to
-trade away for it. A generated `sdkconfig` already committed to git is not
+trade away for it. A generated build-directory `sdkconfig` is not
 re-derived from `sdkconfig.defaults` just because the defaults changed, so
 check the committed file itself after changing them, rather than trusting
 that it once matched.

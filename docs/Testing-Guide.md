@@ -78,11 +78,10 @@ capturing sand performance numbers.
 
 Portable suites (`test/suites/`, plus each app's own beside it,
 `apps/*/suite_*.c`) are compiled into every runner that can take them.
-Nothing is written twice. A shell suite that needs the device build -
-`suite_gfx.c` - is left out of the host runner's file list; an app's
-suites are globbed, so a device-only section of one sits behind `#ifdef
-DEVICE_BUILD` instead. POST is a third thing again, a boot-time hardware
-check rather than a Unity suite.
+Shell and app suites are discovered by both runners. A device-only suite
+guards its body with `#ifdef DEVICE_BUILD`; a host-only suite uses the
+opposite guard. POST is a third thing again, a boot-time hardware check
+rather than a Unity suite.
 
 ```mermaid
 flowchart LR
@@ -675,13 +674,11 @@ by a substring of the name, so treat it as a lookup, not an area map.
    it at the top of each test.
 3. Register it from inside itself: `SUITE_REGISTER(run_<name>_suite);`. That is
    all — there is no list in `suites.h`, no call in `host_main.c` and none in
-   `selftest.c`. App suites are globbed by the build; shell suites are listed in
-   `CMakeLists.txt` and `run_tests.sh`. A new suite joins the full scope
-   automatically, is picked up by the table above the next time it is
-   regenerated, and can be run alone right away with
-   `runsuite run_<name>_suite` on an already-flashed diag build; if a perf
-   capture needs it, add it to the perf list in `main/CMakeLists.txt` too
-   (see "A diagnostics build can be scoped").
+   `selftest.c`. Both runners discover `suite_*.c`, so a new suite joins the
+   full scope automatically and can be run alone with
+   `runsuite run_<name>_suite` on an already-flashed diagnostics build. If a
+   perf capture needs it, declare its sources in the owning app's
+   `scope_perf.cmake` (see "A diagnostics build can be scoped").
 4. Guard anything needing hardware with `#ifdef DEVICE_BUILD`, including its
    `RUN_TEST` line. A suite can be portable and still have a device-only
    section — `suite_job.c` runs every one of its tests on both, and fences
