@@ -16,8 +16,8 @@ a process: one binary, one address space, no isolation.
 `main.c`, not `CMakeLists.txt`:
 
 ```c
-#include "../../app.h"
-#include "../../gfx/gfx.h"
+#include "app.h"
+#include "gfx/gfx.h"
 
 static void yours_enter(void) { /* reset state */ }
 
@@ -244,8 +244,8 @@ main/apps/<name>/
 | `apps/diagnostics/**` | only `CONFIG_LAUNCHER_DEVELOPMENT` builds | yes |
 
 Tooling that spans an app *and* shell code lives in `launcher/tools/`, not the
-app's `tools/`. An app reaches shell headers layer-qualified, relative to its
-own folder: `"../../gfx/gfx.h"`, `"../../ui/ui.h"`.
+app's `tools/`. An app reaches shell headers layer-qualified: `"gfx/gfx.h"`,
+`"ui/ui.h"`.
 
 ## Verify
 
