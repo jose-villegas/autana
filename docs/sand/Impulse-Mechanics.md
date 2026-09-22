@@ -69,8 +69,7 @@ sand_impulse(x, y, dir, speed)          ← ONE grain, ONE step's worth of push
    │
    ├── sand_impulse_dislodge(x, y, dir, speed, ramp)
    │      bypasses the toughness roll below for a guaranteed single-cell
-   │      push - today exercised only by suite_sand_impulse.c; no game
-   │      trigger calls it yet, the same way sand_explode() started
+   │      push - no game trigger calls it
    │
    ├── sand_displace(cx, cy, radius) / sand_displace_material(..., mat_id)
    │      ring-seeded radial disc built on sand_impulse() per occupied
@@ -89,11 +88,10 @@ sand_impulse(x, y, dir, speed)          ← ONE grain, ONE step's worth of push
    └── acid_bubble() (sand_reactions.c)
           NOT built on sand_displace() at all - a single straight-up
           sand_impulse() call with a one-step spread, gated by
-          evaporation. Superseded acid's own displacement-based splash
-          entirely (see "Water and acid are on different mechanisms now")
+          evaporation (see "Water and acid are on different mechanisms")
 ```
 
-### Who calls what, today
+### Who calls what
 
 | Entry point | Trigger | Where |
 |---|---|---|
@@ -187,7 +185,7 @@ material around.
 
 ---
 
-## Water and acid are on different mechanisms now
+## Water and acid are on different mechanisms
 
 Both liquids drive `sand_impulse()`, but no longer through the same code
 path - a real divergence, not a stale detail:

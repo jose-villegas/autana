@@ -31,18 +31,15 @@ turn into lava.
 
 ## How dirt becomes metal
 
-Dirt under heat rolls once, then a second roll decides the product:
+Dirt under heat rolls once, then a second roll decides the product -
+[Reaction-Table.md](Reaction-Table.md) has the generated per-material
+chances:
 
-```
-        dirt + heat
-             |
-      heat_chance (10)
-             |
-        transforms
-         /        \
-   flaw 230/256   26/256
-        |            |
-      STONE        METAL      ~10% of transforms
+```mermaid
+flowchart TD
+    Dirt["dirt + heat"] -->|"heat_chance roll"| T{"transforms"}
+    T -->|"flaw_chance"| Stone["STONE"]
+    T -->|"otherwise"| Metal["METAL"]
 ```
 
 The flaw roll is re-rolled only every fifth cell
