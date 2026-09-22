@@ -499,14 +499,13 @@ steam (the same wet-earth stage `try_heat_transform_given()` already uses
 for dirt), or simple time (`dries = 1`, half dirt's own rate of 2 -
 powder holds water longer than soil does).
 
-A saturated cell additionally has a small chance per step
-(`soaked_to`/`soaked_chance`, 16 in 256) to give up being powder
+A saturated cell also rolls, one step in `SOAKED_CONVERT_PERIOD`
+(`sand_reactions.c`), at `soaked_chance` to give up being powder
 altogether and become a full `MAT_OIL` cell instead - the same "one grain
 plus its water becomes one liquid cell" shape other saturation reactions
 already use.
 
-That rate was tuned once against a measured target: on pre-saturated
-powder sitting under standing water, the board took 1,542 steps to lose
+Measured on pre-saturated powder sitting under standing water: the board took 1,542 steps to lose
 half its powder to oil at a chance of 8, and 835 steps at 16 - the
 shipped value.
 

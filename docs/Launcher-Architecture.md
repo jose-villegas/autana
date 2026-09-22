@@ -289,8 +289,8 @@ flowchart TB
 
     class Boot,Gfx,Input,Console,Board,Util hw
 
-    %% Keep these two dashed edges last: linkStyle below recolours them by
-    %% index, so an edge added above this line is safe, one added below is not.
+    %% linkStyle below recolours these two by index (20, 21); an edge added
+    %% above them shifts both numbers, so add new edges after them.
     Contract -.->|"includes input/buttons.h"| Input
     Input <-.-|"device_state reaches up"| Util
 
