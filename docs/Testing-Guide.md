@@ -625,13 +625,17 @@ the dirty tracker's own begin/wait/present sequencing on a host, by including
 and `suite_gfx_band.c` (portable) cover the mode-grant arithmetic and the
 band-ring state machine the same way, including `gfx_mode.h`/`gfx_band.h`
 directly - the latter also covers `gfx_band_span_clip()`/`gfx_band_span_pack()`,
-the even-rounding and in-place packing behind `gfx_band_submit_span()`.
-`suite_gfx_heal.c` covers `gfx_heal_strips_overlap()` the same way: which
-bands a planned heal touches, not the resend itself. `gfx.c`'s own
+the even-rounding and in-place packing behind `gfx_band_submit()`'s own send.
+`suite_gfx_heal.c` covers `gfx_heal_strips_overlap()`, `gfx_heal_advance_phase()`
+and `gfx_heal_band_split_row()` the same way: which bands a planned heal
+touches and where it would cut, not the resend itself. `gfx.c`'s own
 allocation and DMA-send side of `gfx_mode_enter()`/`gfx_band_submit()` needs
 real device memory, so it is exercised instead by
 `main/apps/render_lab/suite_cube_band_perf.c` (device-only), which times the cube's
-band-mode path against its full-fb path on the same scene.
+band-mode path against its full-fb path on the same scene - not the
+narrower send a band's own dirty extent can now produce, the strip_bounce
+alias every `GFX_BAND_HEIGHT` now uses, or a band's own heal split, none of
+which any device suite exercises yet.
 
 Still untested: `ui_launcher.c`'s microui integration and the small3dlib
 rendering. Both are verified by running the firmware and looking at the screen.

@@ -347,12 +347,9 @@ render_lab_frame_band(uint32_t dt_ms, const input_t* input) {
         const int row0 = gfx_band_row0();
         const int height = gfx_band_height();
 
-        /* touched_x0/x1 (the column span worth touching) is not narrowed
-         * further yet - the whole band's own internal-SRAM buffer is
-         * reused across bands, so sending less than the whole width would
-         * need packing the same way gfx.c's own gather_and_send() does for
-         * full-fb, which is future work; only whether to touch the band
-         * at all is exploited here. */
+        /* touched_x0/x1 is unused here - drawing still redraws the whole
+         * band. gfx_band_submit() sends only this extent regardless, since
+         * it records whatever gfx_band_dirty() last returned. */
         int touched_x0, touched_x1;
         if (!gfx_band_dirty(row0, row0 + height, &touched_x0, &touched_x1)) {
             gfx_band_skip(); /* the panel already shows what belongs here */
