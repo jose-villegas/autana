@@ -578,5 +578,46 @@ class ShellCompoundStatusTest(unittest.TestCase):
         self.assertEqual(findings, [])
 
 
+class LineEndingsTest(unittest.TestCase):
+    write = StyleAuditTest.write
+    commit = StyleAuditTest.commit
+    rule_hits = StyleAuditTest.rule_hits
+
+    def crlf_fixture(self, root):
+        target = root / "tools" / "run.sh"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"#!/bin/sh\r\nset -eu\r\necho hello\r\n")
+        self.commit(root, "tools")
+        return target
+
+    def test_a_crlf_working_copy_warns(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.crlf_fixture(root)
+            findings = self.rule_hits(root, "LINE-ENDINGS")
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, "WARN")
+        self.assertEqual(findings[0].line, 1)
+
+    def test_fix_rewrites_it_as_lf_and_changes_nothing_else(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            target = self.crlf_fixture(root)
+            findings, _ = check_style_audit.run_audit(root, rule_filter="LINE-ENDINGS")
+            check_style_audit.run_fix(root, findings)
+            self.assertEqual(target.read_bytes(), b"#!/bin/sh\nset -eu\necho hello\n")
+            self.assertEqual(self.rule_hits(root, "LINE-ENDINGS"), [])
+
+    def test_an_lf_file_is_not_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            target = root / "tools" / "run.sh"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"#!/bin/sh\nset -eu\n")
+            self.commit(root, "tools")
+            findings = self.rule_hits(root, "LINE-ENDINGS")
+        self.assertEqual(findings, [])
+
+
 if __name__ == "__main__":
     unittest.main()
