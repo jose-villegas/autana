@@ -9,11 +9,8 @@
  * was split out from it in the first place (see ui_launcher.c's own top
  * comment).
  *
- * Registers its fixture apps through the real app_register()/app_list()
- * (app_registry.c) rather than a hand-copied registry of its own - see
- * that file. app_registry_reset_for_test() clears the list before each of
- * this suite's own two scenarios, since a real boot only ever registers
- * once but this process runs several in one run.
+ * Registers its fixture apps through the real app_register();
+ * app_registry_reset_for_test() gives each test a clean list.
  */
 
 #include <stdio.h>
