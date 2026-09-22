@@ -81,11 +81,11 @@ typedef struct {
 
     /* Optional, NULL unless an app sets it. When present, the shell overlaps
      * it with sending the PREVIOUS frame() call's output on core 1
-     * (gfx_present_begin()/_wait(), gfx.h). update() may change app state
-     * but MUST NOT call any gfx_* function or touch the framebuffer - that
-     * buffer may still be mid-send. A development build asserts this (see
-     * gfx_present_guard.h). frame() alone still draws. Left NULL, an app is
-     * unchanged: frame(), then gfx_present(), as before this field existed. */
+     * (gfx_present_begin()/gfx_present_wait(), gfx.h). update() may change
+     * app state but MUST NOT call any gfx_* function or touch the
+     * framebuffer - that buffer may still be mid-send. A development build
+     * asserts this (see gfx_present_guard.h). Left NULL: frame(), then
+     * gfx_present(). */
     void (*update)(uint32_t dt_ms, const input_t* input);
 
     /* Called once as the app stops. Release anything enter() acquired. */

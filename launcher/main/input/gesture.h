@@ -30,8 +30,8 @@ typedef enum {
 
 /* How far into the screen from the target edge a home swipe may begin.
  * Generous, because a fingertip landing "at the edge" is not precise. Named
- * for depth rather than height now that this applies to left/right edges
- * too, but the tuned value is unchanged. */
+ * for depth, not height, since it applies to a left/right edge as much as a
+ * top/bottom one. */
 #define GESTURE_HOME_ZONE_DEPTH 64
 
 /* How far it must travel away from that edge, toward the centre, to count.
