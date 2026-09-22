@@ -574,6 +574,11 @@ test_an_app_name_accepts_a_case_folded_prefix(void) {
     TEST_ASSERT_TRUE(console_app_name_matches("Star Chart", "STAR CHART"));
     TEST_ASSERT_FALSE(console_app_name_matches("Star Chart", "moon"));
     TEST_ASSERT_FALSE(console_app_name_matches("Star Chart", "starry"));
+    /* The word a person reaches for is rarely the first one. */
+    TEST_ASSERT_TRUE(console_app_name_matches("Star Chart", "chart"));
+    TEST_ASSERT_TRUE(console_app_name_matches("Star Chart", "CHART"));
+    TEST_ASSERT_FALSE(console_app_name_matches("Star Chart", "hart"));
+    TEST_ASSERT_FALSE(console_app_name_matches("Star Chart", ""));
     TEST_ASSERT_FALSE(console_app_name_matches("Star Chart", ""));
 }
 

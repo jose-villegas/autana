@@ -147,11 +147,13 @@ class DeviceVerbCommandTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             autana.drag(["1", "2", "3", "4"])
 
-    def test_button_sends_the_board_button_name(self):
-        with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
+    def test_button_waits_for_the_board_to_answer(self):
+        with mock.patch.object(autana, "send", return_value=(0, ["BUTTON_OK"])) as sent, \
+             mock.patch("builtins.print") as printed:
             autana.button(["power", "long"])
-        sent.assert_called_once_with("BUTTON power long", reply="BUTTON", purpose="autana button",
-                                     optional=True, seconds=0.5)
+        sent.assert_called_once_with("BUTTON power long", reply="BUTTON",
+                                     until=["BUTTON_OK", "BUTTON_ERR"], purpose="autana button")
+        printed.assert_called_once_with("BUTTON_OK")
 
     def test_apps_waits_for_the_complete_listing(self):
         with mock.patch.object(autana, "send", return_value=(0, ["APPS name=Star Chart running=0", "APPS_END"])) as sent, \
