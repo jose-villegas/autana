@@ -25,8 +25,8 @@
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
 
-#include "../material.h"
-#include "../sand_ui.h"
+#include "apps/sand/material.h"
+#include "apps/sand/sand_ui.h"
 #include "brush_screen.h"
 #include "palette_screen.h"
 #include "sand_menu_screen.h"

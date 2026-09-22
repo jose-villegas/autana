@@ -30,6 +30,21 @@ const char* board_variant_name(board_variant_t variant);
  * and a plain GPIO on another - callers never need to know which. */
 esp_err_t board_audio_amp_enable(bool on);
 
+/* Which step of the on-die temperature sensor's cycle below a failure
+ * happened at, so a caller can report "no such sensor" and "sensor found
+ * but would not read" as different things rather than both collapsing into
+ * one false. */
+typedef enum {
+    BOARD_TEMP_SENSOR_OK,
+    BOARD_TEMP_SENSOR_INSTALL_FAILED,
+    BOARD_TEMP_SENSOR_READ_FAILED,
+} board_temp_sensor_status_t;
+
+/* One-shot install/enable/read/disable/uninstall of the on-die sensor:
+ * fine for an occasional read, not for every frame. Leaves *out_celsius
+ * untouched except on BOARD_TEMP_SENSOR_OK. */
+board_temp_sensor_status_t board_temp_sensor_read_celsius(float* out_celsius);
+
 /* BOARD_BOOT_GPIO: pulled up, grounded when pressed, so LOW means down. */
 
 #define BOARD_BOOT_GPIO             GPIO_NUM_0

@@ -8,7 +8,7 @@
  * scene_wire.c's small scratch buffers to allocate, nothing about their size
  * or placement.
  */
-#include "../../../../test/stubs/esp_heap_caps.h"
+#include "stubs/esp_heap_caps.h"
 
 #include <stdlib.h>
 

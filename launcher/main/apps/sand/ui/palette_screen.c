@@ -4,9 +4,9 @@
 #include "ui/ui.h"
 #include "ui/ui_style.h"
 
-#include "../material.h"
-#include "../material_palette.h"
-#include "../palette.h"
+#include "apps/sand/material.h"
+#include "apps/sand/material_palette.h"
+#include "apps/sand/palette.h"
 
 #define PALETTE_GROUT              4
 #define PALETTE_BEZEL              3

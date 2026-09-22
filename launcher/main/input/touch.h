@@ -9,8 +9,10 @@
  */
 #pragma once
 
-#include "app.h"
+#include <stdint.h>
+
 #include "build_variant.h"
+#include "input/input.h"
 
 /* Fast enough that a brief tap is sampled several times, cheap enough to be
  * irrelevant next to rendering (one small I2C read per poll, and only when

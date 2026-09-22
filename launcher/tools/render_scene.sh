@@ -136,7 +136,7 @@ render_scene_run() {
     # the real header is used for, so a scene reaching a call nothing has
     # stubbed fails at the link rather than compiling into something else.
     _rs_flags="-I $_rs_launcher/main -I $_rs_launcher/components/microui/include"
-    _rs_flags="$_rs_flags -I $_rs_tools -I $_rs_launcher/test/stubs"
+    _rs_flags="$_rs_flags -I $_rs_tools -I $_rs_launcher/test -I $_rs_launcher/test/stubs"
     for _rs_inc in $scene_includes; do
         _rs_flags="$_rs_flags -I $_rs_launcher/$_rs_inc"
     done

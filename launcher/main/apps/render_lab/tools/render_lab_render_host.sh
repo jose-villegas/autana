@@ -18,6 +18,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=render_lab
 scene_sources="
+main/app_registry.c
 main/gfx/gfx.c
 main/util/tune.c
 main/ui/ui.c
@@ -46,7 +47,7 @@ scene_includes="components/small3dlib/include"
 
 # scene_wire.c's enter()/exit() need a working heap_caps_malloc()/free() on
 # the host, matched against test/stubs/esp_heap_caps.h's own declarations
-# (render_scene.sh puts that directory on the include path already).
+# (render_scene.sh puts test/ on the include path).
 # test/heap_arena.c models the device's real heap caps, but its
 # malloc/calloc/realloc/free wrapping reaches gfx_init()'s own host branch
 # (gfx.c), which allocates the framebuffer with a plain malloc() it expects

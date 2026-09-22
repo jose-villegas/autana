@@ -13,7 +13,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "app.h"
+#include "input/input.h"
 
 /* How long the controller must report nothing before the finger counts as
  * lifted.

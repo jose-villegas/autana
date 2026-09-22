@@ -16,26 +16,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "input/buttons.h"
-
-/* Touch state for the current frame.
- *
- * `pressed` and `released` are edges (true only on the frame the transition
- * happened); `down` is the level. Edges are what UI code almost always wants -
- * using the level for a button would re-trigger it every frame it is held. */
-typedef struct {
-    bool down;
-    bool pressed;
-    bool released;
-    int x, y;             /* current position, or the last one seen */
-    int press_x, press_y; /* where the current touch began */
-
-    /* The two physical buttons, delivered the same way touch is so an app
-     * never has to poll anything itself. See buttons.h - PWR is an event from
-     * the power-management chip, so only its `pressed` edge is meaningful. */
-    button_t boot;
-    button_t power;
-} input_t;
+#include "input/input.h"
 
 /* An app's own console command - docs/tools/Autana-CLI.md's "Adding a
  * command from an app". The shell matches `prefix` as a whole word
@@ -66,7 +47,7 @@ typedef struct {
 #define APP_CONSOLE_PTR(handler) NULL
 #endif
 
-typedef struct {
+typedef struct app {
     const char* name;
     const char* summary; /* one line, shown in the launcher list */
 
@@ -123,6 +104,9 @@ typedef struct {
     /* Opt-in, NULL unless an app declares one with APP_CONSOLE_PTR() above.
      * See docs/tools/Autana-CLI.md's "Adding a command from an app". */
     const app_console_t* console;
+
+    /* The registry's link, set by app_register(); an app never sets it. */
+    struct app* next;
 } app_t;
 
 /*
@@ -136,25 +120,25 @@ void shell_set_system_panel_clock_hz(int hz);
 int shell_system_panel_clock_hz(void);
 
 /*
- * Apps register themselves, so an app is entirely contained in
- * main/apps/<name>/ and deleting that folder removes it - source, logic and
- * tests - without touching another file, CMakeLists.txt included.
- *
  * APP_REGISTER() places a constructor in .init_array, which ESP-IDF runs
- * before app_main(), into a fixed array - no allocation, and registration
- * cannot fail at an awkward time. Link order decides .init_array order, so
- * the shell sorts by name before showing the list.
+ * before app_main(). Link order decides .init_array order; app_register()
+ * sorts by name at insertion so it never shows.
  */
 
-#define APP_MAX 16
-
-/* Called by APP_REGISTER before main(). Ignores anything past APP_MAX, having
- * complained about it. */
-void app_register(const app_t* app);
+/* Called by APP_REGISTER before main(); defined in app_registry.c. */
+void app_register(app_t* app);
 
 #define APP_REGISTER(symbol)                                                                                           \
     __attribute__((constructor)) static void symbol##_register(void) { app_register(&symbol); }
 
-/* Registered apps, sorted by name. Valid from the first line of app_main(). */
-const app_t* const* app_list(void);
-int app_list_count(void);
+/* The head of the registered apps, sorted by name and linked through
+ * app_t.next - NULL-terminated; NULL itself when nothing is registered.
+ * Valid from the first line of app_main(). */
+const app_t* app_list(void);
+
+#ifndef ESP_PLATFORM
+/* Host-only, absent from every device build: a test process runs many
+ * scenarios in one run and each wants a clean list, unlike a real boot's
+ * one-shot registration. */
+void app_registry_reset_for_test(void);
+#endif

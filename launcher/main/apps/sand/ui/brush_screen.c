@@ -8,9 +8,9 @@
 #include "ui/ui.h"
 #include "ui/ui_style.h"
 
-#include "../icons_sand.h"
-#include "../material_palette.h"
-#include "../sand_swatch.h"
+#include "apps/sand/icons_sand.h"
+#include "apps/sand/material_palette.h"
+#include "apps/sand/sand_swatch.h"
 
 /* Space between the three stacked panels - and between a panel's own
  * caption row and the control below it, which reuses the same value so the

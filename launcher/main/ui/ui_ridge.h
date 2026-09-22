@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "app.h"
+#include "input/input.h"
 
 /* Which way is down in the screen plane, as input/tilt.h reports it: `gx`
  * and `gy` in the panel's own axes, `strength` 0-256 and `shake` 0-255. The

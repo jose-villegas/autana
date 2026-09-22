@@ -188,7 +188,7 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
 static void
 diagnostics_exit(void) {}
 
-const app_t app_diagnostics = {
+app_t app_diagnostics = {
     .name = "Diagnostics",
     .summary = "Hardware self-test report",
     .enter = diagnostics_enter,

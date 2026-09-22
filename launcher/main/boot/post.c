@@ -17,7 +17,6 @@
 
 #include "board/board.h"
 #include "gfx/gfx.h"
-#include "util/device_state.h"
 
 static const char* TAG = "post";
 
@@ -213,17 +212,17 @@ check_mac(void) {
 static void
 check_temperature(void) {
     float celsius = 0.0f;
-    const temp_sensor_status_t status = temp_sensor_read_celsius(&celsius);
+    const board_temp_sensor_status_t status = board_temp_sensor_read_celsius(&celsius);
 
     char detail[96];
     switch (status) {
-        case TEMP_SENSOR_INSTALL_FAILED: snprintf(detail, sizeof(detail), "install failed"); break;
-        case TEMP_SENSOR_READ_FAILED: snprintf(detail, sizeof(detail), "read failed"); break;
-        case TEMP_SENSOR_OK: snprintf(detail, sizeof(detail), "%.1f C", celsius); break;
+        case BOARD_TEMP_SENSOR_INSTALL_FAILED: snprintf(detail, sizeof(detail), "install failed"); break;
+        case BOARD_TEMP_SENSOR_READ_FAILED: snprintf(detail, sizeof(detail), "read failed"); break;
+        case BOARD_TEMP_SENSOR_OK: snprintf(detail, sizeof(detail), "%.1f C", celsius); break;
     }
 
     /* A plausible reading also rules out a sensor stuck at a fixed value. */
-    const bool valid = status == TEMP_SENSOR_OK && celsius > -40.0f && celsius < 125.0f;
+    const bool valid = status == BOARD_TEMP_SENSOR_OK && celsius > -40.0f && celsius < 125.0f;
     report("temp sensor", valid, POST_REQUIRED, detail);
 }
 

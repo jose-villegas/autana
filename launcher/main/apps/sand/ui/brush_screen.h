@@ -28,7 +28,7 @@
 
 #include "microui.h"
 
-#include "../sand_ui.h"
+#include "apps/sand/sand_ui.h"
 
 /* The three brush-mode segments, in the order they are laid out left to
  * right - matching sand_mode_t's own PAINT/ERASE/DETONATE order (see this

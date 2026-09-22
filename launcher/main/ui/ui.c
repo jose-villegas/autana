@@ -129,7 +129,7 @@ draw_text_command(const mu_Command* cmd, ui_transform_t t) {
         return;
     }
 
-    if (text_style == UI_TEXT_OUTLINED && font->bpp == 1) {
+    if (ui_text_style == UI_TEXT_OUTLINED && font->bpp == 1) {
         /* gfx_text_font_halo() draws the same halo ui_text_passes()'s
          * 8 unit-offset copies would, in one pass instead of eight -
          * see its own comment. Ink is still drawn last, unchanged. */
@@ -141,7 +141,7 @@ draw_text_command(const mu_Command* cmd, ui_transform_t t) {
     }
 
     ui_text_pass_t passes[UI_TEXT_MAX_PASSES];
-    const int n = ui_text_passes(text_style, passes, UI_TEXT_MAX_PASSES);
+    const int n = ui_text_passes(ui_text_style, passes, UI_TEXT_MAX_PASSES);
     for (int i = 0; i < n; i++) {
         const mu_Color c = passes[i].ink ? ink : halo;
         const gfx_color_t color = mu_color_to_gfx(c);
@@ -271,14 +271,14 @@ canvas_physical_rect(const mu_Container* cnt) {
  * however unchanged its own description is. */
 static bool
 canvas_itself_changed(const mu_Container* cnt) {
-    const int slot = (int)(cnt - ctx.containers);
-    return invalidated || slot < 0 || slot >= MU_CONTAINERPOOL_SIZE || hash_canvas(cnt) != canvas_hash[slot];
+    const int slot = (int)(cnt - ui_ctx.containers);
+    return ui_invalidated || slot < 0 || slot >= MU_CONTAINERPOOL_SIZE || hash_canvas(cnt) != ui_canvas_hash[slot];
 }
 
 static void
 mark_changed_canvases(int n, bool* repaint) {
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
-        const mu_Container* cnt = ctx.root_list.items[i];
+        const mu_Container* cnt = ui_ctx.root_list.items[i];
         const mu_Rect phys = canvas_physical_rect(cnt);
 
         if (canvas_itself_changed(cnt) || gfx_region_dirty(phys.x, phys.y, phys.w, phys.h)) {
@@ -298,8 +298,8 @@ propagate_repaint_over_overlaps(int n, bool* repaint) {
         }
         for (int j = i + 1; j < n && j < MU_ROOTLIST_SIZE; j++) {
             if (!repaint[j]
-                && rects_overlap(canvas_physical_rect(ctx.root_list.items[i]),
-                                 canvas_physical_rect(ctx.root_list.items[j]))) {
+                && rects_overlap(canvas_physical_rect(ui_ctx.root_list.items[i]),
+                                 canvas_physical_rect(ui_ctx.root_list.items[j]))) {
                 repaint[j] = true;
             }
         }
@@ -314,7 +314,7 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
         if (!repaint[i]) {
             continue;
         }
-        const mu_Container* cnt = ctx.root_list.items[i];
+        const mu_Container* cnt = ui_ctx.root_list.items[i];
 
         /* Clear only this canvas's rect, not the screen. Everything gfx draws
          * marks its own bands, so nothing else needs marking here. */
@@ -325,9 +325,9 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
 
         paint_canvas(cnt);
 
-        const int slot = (int)(cnt - ctx.containers);
+        const int slot = (int)(cnt - ui_ctx.containers);
         if (slot >= 0 && slot < MU_CONTAINERPOOL_SIZE) {
-            canvas_hash[slot] = hash_canvas(cnt);
+            ui_canvas_hash[slot] = hash_canvas(cnt);
         }
         drew = true;
     }
@@ -336,21 +336,21 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
 
 bool
 ui_end(uint32_t background_rgb) {
-    mu_end(&ctx);
-    pointer.over_scrollable = ctx.scroll_target != NULL;
+    mu_end(&ui_ctx);
+    ui_pointer_state.over_scrollable = ui_ctx.scroll_target != NULL;
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    report_command_list_high_water(ctx.command_list.idx);
+    report_command_list_high_water(ui_ctx.command_list.idx);
 #endif
 
-    const int n = ctx.root_list.idx;
+    const int n = ui_ctx.root_list.idx;
     bool repaint[MU_ROOTLIST_SIZE] = {false};
 
     mark_changed_canvases(n, repaint);
     propagate_repaint_over_overlaps(n, repaint);
     const bool drew = repaint_marked_canvases(n, repaint, background_rgb);
 
-    invalidated = false;
+    ui_invalidated = false;
     return drew;
 }
 
@@ -360,18 +360,18 @@ ui_end(uint32_t background_rgb) {
  * with no backdrop call: whoever drew under it has already drawn that part. */
 bool
 ui_end_over(ui_backdrop_fn paint_backdrop) {
-    mu_end(&ctx);
-    pointer.over_scrollable = ctx.scroll_target != NULL;
+    mu_end(&ui_ctx);
+    ui_pointer_state.over_scrollable = ui_ctx.scroll_target != NULL;
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    report_command_list_high_water(ctx.command_list.idx);
+    report_command_list_high_water(ui_ctx.command_list.idx);
 #endif
 
-    const int n = ctx.root_list.idx;
+    const int n = ui_ctx.root_list.idx;
     bool repaint[MU_ROOTLIST_SIZE] = {false};
     bool ui_changed = false;
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
-        ui_changed = ui_changed || canvas_itself_changed(ctx.root_list.items[i]);
+        ui_changed = ui_changed || canvas_itself_changed(ui_ctx.root_list.items[i]);
     }
 
     if (ui_changed) {
@@ -385,7 +385,7 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
     }
     const bool drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND);
 
-    invalidated = false;
+    ui_invalidated = false;
     return drew;
 }
 
@@ -564,18 +564,18 @@ mark_changed_ui_bands(void) {
 
 void
 ui_end_for_bands(uint32_t background_rgb) {
-    mu_end(&ctx);
-    pointer.over_scrollable = ctx.scroll_target != NULL;
+    mu_end(&ui_ctx);
+    ui_pointer_state.over_scrollable = ui_ctx.scroll_target != NULL;
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    report_command_list_high_water(ctx.command_list.idx);
+    report_command_list_high_water(ui_ctx.command_list.idx);
 #endif
 
     ui_band_bin_count = 0;
-    const int n = ctx.root_list.idx;
+    const int n = ui_ctx.root_list.idx;
 
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
-        const mu_Container* cnt = ctx.root_list.items[i];
+        const mu_Container* cnt = ui_ctx.root_list.items[i];
 
         if (background_rgb != UI_NO_BACKGROUND) {
             bin_fill_rect(canvas_physical_rect(cnt), mu_color_from_rgb(background_rgb));

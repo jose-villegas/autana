@@ -10,7 +10,7 @@
 
 #include "microui.h"
 
-#include "../sand_ui.h"
+#include "apps/sand/sand_ui.h"
 
 /* Draws every brush tile and applies a tap to `ui` before returning - see
  * sand_ui_tile_clicked(). Caller brackets this with ui_begin()/
