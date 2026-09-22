@@ -32,6 +32,15 @@ set(app_srcs
     "util/tune.c"
 )
 
+function(launcher_glob output pattern)
+    if(CMAKE_SCRIPT_MODE_FILE)
+        file(GLOB_RECURSE files "${pattern}")
+    else()
+        file(GLOB_RECURSE files CONFIGURE_DEPENDS "${pattern}")
+    endif()
+    set(${output} ${files} PARENT_SCOPE)
+endfunction()
+
 if(CONFIG_LAUNCHER_QEMU)
     list(APPEND app_srcs "gfx/gfx_null_panel.c")
 endif()
@@ -81,12 +90,7 @@ list(APPEND app_srcs "board/board_esp32s3.c")
 # The script pass only cares about REQUIRES, so plain globbing is fine there.
 # (This is the same early pass that makes a Kconfig-gated REQUIRES silently
 # fail - see the note on unity below.)
-if(CMAKE_SCRIPT_MODE_FILE)
-    file(GLOB_RECURSE discovered_apps "${CMAKE_CURRENT_LIST_DIR}/apps/*.c")
-else()
-    file(GLOB_RECURSE discovered_apps CONFIGURE_DEPENDS
-         "${CMAKE_CURRENT_LIST_DIR}/apps/*.c")
-endif()
+launcher_glob(discovered_apps "${CMAKE_CURRENT_LIST_DIR}/apps/*.c")
 
 # apps/<name>/tools/ holds that app's own host-side tooling (sweep scripts,
 # report generators) - see docs/Building-an-App.md, "An app is a
@@ -184,88 +188,28 @@ set(app_reqs microui small3dlib esp_lcd heap esp_timer
              perfmon unity)
 
 if(CONFIG_LAUNCHER_SELFTEST)
-    # The suites are shared with the host runner - same sources, so what passes
-    # on a laptop is the same set of assertions the board makes.
-    set(suite_srcs
-        "../test/suites/suite_touch_fsm.c"
-        "../test/suites/suite_touch_inject_fsm.c"
-        "../test/suites/suite_gesture.c"
-        "../test/suites/suite_button_fsm.c"
-        "../test/suites/suite_rng.c"
-        "../test/suites/suite_boot_anim.c"
-        "../test/suites/suite_r3d_project.c"
-        "../test/suites/suite_r3d_camera.c"
-        "../test/suites/suite_boot_anim_perf.c"
-        "../test/suites/suite_fixed.c"
-        "../test/suites/suite_frame_cost.c"
-        "../test/suites/suite_tilt.c"
-        "../test/suites/suite_tune.c"
-        "../test/suites/suite_console.c"
-        "../test/suites/suite_tween.c"
-        "../test/suites/suite_ridge_motion.c"
-        "../test/suites/suite_ridge_pose.c"
-        "../test/suites/suite_spring_line.c"
-        "../test/suites/suite_gfx.c"
-        "../test/suites/suite_gfx_dirty.c"
-        "../test/suites/suite_gfx_heal.c"
-        "../test/suites/suite_gfx_color.c"
-        "../test/suites/suite_gfx_glow.c"
-        "../test/suites/suite_gfx_font.c"
-        "../test/suites/suite_gfx_font_roles.c"
-        "../test/suites/suite_icons.c"
-        "../test/suites/suite_icons_system.c"
-        "../test/suites/suite_ui.c"
-        "../test/suites/suite_ui_style.c"
-        "../test/suites/suite_ui_transform.c"
-        "../test/suites/suite_ui_anchor.c"
-        "../test/suites/suite_control_center_layout.c"
-        "../test/suites/suite_ui_centered_rect.c"
-        "../test/suites/suite_ui_pointer.c"
-        "../test/suites/suite_ui_pointer_microui.c"
-        "../test/suites/suite_ui_scroll.c"
-        "../test/suites/suite_ui_slider.c"
-        "../test/suites/suite_display.c"
-        "../test/suites/suite_post_ui.c"
-        "../test/suites/suite_panel_clock.c"
-        "../test/suites/suite_screenshot.c"
-        "../test/suites/suite_build_id.c"
-        "../test/suites/suite_device_state.c"
-        "../test/suites/suite_job.c"
-    )
-    # SCOPE: which of those suites this image actually carries.
-    #
-    # Full is the default and stays globbed, so nothing can lose coverage by
-    # accident - a scope only ever NARROWS, and only when asked for by name
-    # (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild).
-    #
-    # The perf scope is a literal list rather than a pattern because it is
-    # shaped around what a capture READS, and that does not follow a folder
-    # or a filename: suite_sand_perf.c's rows are built by the scene
-    # builders in suite_sand_scenes.c and the fixtures in suite_sand_common.c,
-    # neither of which is named _perf, while suite_cube_perf.c and
-    # suite_boot_anim_perf.c are named _perf and are read by nobody in a sand
-    # round. Explicit, like the shell suite list above it.
-    #
-    # A member that goes missing (renamed, deleted with its app) fails the
-    # CONFIGURE below rather than quietly shrinking the scope. A member that
-    # is still here but no longer sufficient - an in-scope suite calling a
-    # builder from a file this list leaves out - fails at LINK, because the
-    # builders are ordinary called symbols and nothing stubs them.
+    launcher_glob(suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c")
+    # SCOPE: full is the default and stays globbed, so nothing can lose
+    # coverage by accident - a scope only ever NARROWS, and only when asked
+    # for by name (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild). The
+    # perf scope replaces the shell suites outright with what apps declare.
     if(CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF)
-        set(app_suites
-            "${CMAKE_CURRENT_LIST_DIR}/apps/sand/suite_sand_perf.c"
-            "${CMAKE_CURRENT_LIST_DIR}/apps/sand/suite_sand_scenes.c"
-            "${CMAKE_CURRENT_LIST_DIR}/apps/sand/suite_sand_common.c"
-        )
-        foreach(suite_src IN LISTS app_suites)
+        launcher_glob(perf_scope_files "${CMAKE_CURRENT_LIST_DIR}/apps/*/scope_perf.cmake")
+        set(perf_scope_srcs "")
+        foreach(perf_scope_file IN LISTS perf_scope_files)
+            include("${perf_scope_file}")
+        endforeach()
+        if(NOT perf_scope_srcs)
+            message(FATAL_ERROR "LAUNCHER_SELFTEST_SCOPE_PERF has no sources")
+        endif()
+        foreach(suite_src IN LISTS perf_scope_srcs)
             if(NOT EXISTS "${suite_src}")
                 message(FATAL_ERROR
-                    "LAUNCHER_SELFTEST_SCOPE_PERF names a suite that does not "
-                    "exist: ${suite_src}. Fix the list in main/CMakeLists.txt - "
-                    "a scope that silently measures less than it claims is "
-                    "worse than no scope.")
+                    "LAUNCHER_SELFTEST_SCOPE_PERF names a missing source: "
+                    "${suite_src}")
             endif()
         endforeach()
+        set(app_suites ${perf_scope_srcs})
         set(suite_srcs "")
     endif()
 
@@ -288,9 +232,15 @@ if(CONFIG_LAUNCHER_SELFTEST)
         COMPILE_OPTIONS "-include;${CMAKE_CURRENT_LIST_DIR}/../test/timing.h")
 endif()
 
+set(app_private_include_dirs "")
+if(CONFIG_LAUNCHER_SELFTEST)
+    list(APPEND app_private_include_dirs "../test")
+endif()
+
 idf_component_register(
     SRCS ${app_srcs}
-    INCLUDE_DIRS "." "../test" "${build_id_generated_dir}"
+    INCLUDE_DIRS "." "${build_id_generated_dir}"
+    PRIV_INCLUDE_DIRS ${app_private_include_dirs}
     REQUIRES ${app_reqs}
 
     # Required by self-registration, and easy to get wrong.

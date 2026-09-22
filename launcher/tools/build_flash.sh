@@ -4,8 +4,10 @@
 #
 # Usage:
 #   tools/build_flash.sh [--dev|--diag] [--autorun] [--perf-scope] \
-#                        [--build-only] [COM_PORT] [IDF_EXPORT]
+#                        [--build-only] [--verbose] [COM_PORT] [IDF_EXPORT]
 #
+#   --verbose   stream and save the build output. The full stream is in the
+#               printed log path in either mode.
 #   --dev       build the DEVELOPMENT image instead of the release one, and
 #               leave it on the board: development-only logging and
 #               instrumentation (frame timings, the screenshot listener)
@@ -21,11 +23,10 @@
 #               for it. Without the flag AUTORUN must be ABSENT, so a build
 #               directory left behind by a capture is regenerated here.
 #   --perf-scope  with --diag only: layer sdkconfig.defaults.diag_perf, so the
-#               image carries just the frame-budget suite one app declares and
-#               the scenes it measures. Frees the static RAM a capture needs to
-#               instrument itself; drops behaviour coverage, so never a merge
-#               gate, and its numbers compare only with other perf-scoped
-#               captures.
+#               image carries only the perf sources apps declare. Frees the
+#               static RAM a capture needs to instrument itself; drops
+#               behaviour coverage, so never a merge gate, and its numbers
+#               compare only with other perf-scoped captures.
 #   --build-only  build and stop: no device needed, nothing flashed.
 #   COM_PORT    the port to flash. Flashing itself needs AUTANA_DEVICE_LOCK_TOKEN
 #               in the environment - device.py's own `flash`/`selftest`/`batch`
@@ -77,6 +78,9 @@ VARIANT=release
 BUILD_ONLY=0
 PERF_SCOPE=0
 AUTORUN=0
+VERBOSE=0
+COM_PORT=""
+IDF_EXPORT_ARG=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -85,12 +89,24 @@ while [ $# -gt 0 ]; do
         --autorun) AUTORUN=1; shift ;;
         --perf-scope) PERF_SCOPE=1; shift ;;
         --build-only) BUILD_ONLY=1; shift ;;
-        -h|--help) sed -n '2,74p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --verbose) VERBOSE=1; shift ;;
+        -h|--help) sed -n '2,/^# what these flags are for\./p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         --)        shift; break ;;
         -*)        echo "unknown option: $1" >&2; exit 2 ;;
-        *)         break ;;
+        *)
+            if [ -z "$COM_PORT" ]; then
+                COM_PORT=$1
+            elif [ -z "$IDF_EXPORT_ARG" ]; then
+                IDF_EXPORT_ARG=$1
+            else
+                echo "too many positional arguments" >&2
+                exit 2
+            fi
+            shift
+            ;;
     esac
 done
+export VERBOSE
 
 if [ "$PERF_SCOPE" -eq 1 ] && [ "$VARIANT" != diag ]; then
     echo "--perf-scope scopes which SUITES are compiled in, so it needs --diag" >&2
@@ -102,8 +118,6 @@ if [ "$AUTORUN" -eq 1 ] && [ "$VARIANT" != diag ]; then
     exit 2
 fi
 
-COM_PORT="${1:-}"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
@@ -112,155 +126,47 @@ if [ -n "${MSYSTEM:-}" ]; then
 else
     DEFAULT_EXPORT="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"
 fi
-IDF_EXPORT="${2:-$DEFAULT_EXPORT}"
+IDF_EXPORT="${IDF_EXPORT_ARG:-$DEFAULT_EXPORT}"
 
 case "$VARIANT" in
     release) BUILD_DIR="build" ;;
     *)       BUILD_DIR="build.$VARIANT" ;;
 esac
 
-# So a double-clicked window (which closes the instant the script exits)
-# still shows the reason for a failure instead of vanishing on the spot.
-trap 'status=$?; if [ $status -ne 0 ]; then echo; echo "=== FAILED (exit $status) ==="; read -r -p "Press Enter to close..." _ || true; fi' EXIT
-
 # shellcheck source=./idf.sh
 . "$SCRIPT_DIR/idf.sh"
+# shellcheck source=../../scripts/quiet.sh
+. "$SCRIPT_DIR/../../scripts/quiet.sh"
 idf_init "$LAUNCHER_DIR" "$IDF_EXPORT" "$SCRIPT_DIR"
+. "$SCRIPT_DIR/idf_variant.sh"
 
-SDKCONFIG_FRAGMENTS=""
-REQUIRED_FLAGS=""
-FORBIDDEN_FLAGS=""
-BUILD_SDKCONFIG="$LAUNCHER_DIR/$BUILD_DIR/sdkconfig"
+# A passing build's stream belongs in build.log under the build directory.
+QUIET_LOG="$LAUNCHER_DIR/$BUILD_DIR/build.log"
+quiet_begin "$QUIET_LOG"
 
-# The first way the config on disk contradicts what was asked for, or nothing.
-# Both halves are needed: a flag that must be there catches a fragment that
-# never applied, and a flag that must be ABSENT catches one left behind by a
-# different request into the same build directory - the variant directories
-# are shared, so the previous run's scope outlives it.
-sdkconfig_disagreement() {
-    local config="$1" flag
-    for flag in $REQUIRED_FLAGS; do
-        if ! grep -q "^${flag}=y" "$config"; then
-            echo "$flag is not set"
-            return 0
-        fi
-    done
-    for flag in $FORBIDDEN_FLAGS; do
-        if grep -q "^${flag}=y" "$config"; then
-            echo "$flag is set"
-            return 0
-        fi
-    done
-    return 1
+quiet_finish() {
+    status=$?
+    trap - EXIT
+    set +e
+    quiet_end build_flash "$status" || true
+    if [ "$status" -ne 0 ]; then
+        echo
+        echo "=== FAILED (exit $status) ==="
+        read -r -p "Press Enter to close..." _ || true
+    fi
+    exit "$status"
 }
+trap quiet_finish EXIT
 
-if [ "$VARIANT" != release ]; then
-    SDKCONFIG_FRAGMENTS="sdkconfig.defaults;sdkconfig.defaults.$VARIANT"
-    REQUIRED_FLAGS="CONFIG_LAUNCHER_DEVELOPMENT"
-    if [ "$VARIANT" = diag ]; then
-        REQUIRED_FLAGS="$REQUIRED_FLAGS CONFIG_LAUNCHER_SELFTEST"
-        # Autorun is the only difference between the interactive diag image
-        # and the one a capture needs, and both land in the same build.diag.
-        # Whichever ran last, the request decides which one is on disk here.
-        if [ "$AUTORUN" -eq 1 ]; then
-            SDKCONFIG_FRAGMENTS="$SDKCONFIG_FRAGMENTS;sdkconfig.defaults.diag_autorun"
-            REQUIRED_FLAGS="$REQUIRED_FLAGS CONFIG_LAUNCHER_SELFTEST_AUTORUN"
-        else
-            FORBIDDEN_FLAGS="CONFIG_LAUNCHER_SELFTEST_AUTORUN"
-        fi
-    else
-        FORBIDDEN_FLAGS="CONFIG_LAUNCHER_SELFTEST"
-    fi
-    if [ "$PERF_SCOPE" -eq 1 ]; then
-        SDKCONFIG_FRAGMENTS="$SDKCONFIG_FRAGMENTS;sdkconfig.defaults.diag_perf"
-        REQUIRED_FLAGS="$REQUIRED_FLAGS CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF"
-        echo "=== PERF SCOPE: behaviour suites are NOT in this image ==="
-    elif [ "$VARIANT" = diag ]; then
-        FORBIDDEN_FLAGS="$FORBIDDEN_FLAGS CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF"
-    fi
-
-    # A generated sdkconfig WINS over the fragments: idf.py applies
-    # SDKCONFIG_DEFAULTS only when it has to CREATE that file, so an existing
-    # one silently outranks every fragment edit and every fragment this run did
-    # or did not layer. Deleting it whenever it is older than a fragment or
-    # disagrees with the request costs one reconfigure and makes the request
-    # authoritative again. Every request for a device image comes through here,
-    # so switching between two of them into one build directory pays that
-    # reconfigure and a wrong image does not reach the board.
-    if [ -f "$BUILD_SDKCONFIG" ]; then
-        stale=""
-        for fragment in $(printf '%s' "$SDKCONFIG_FRAGMENTS" | tr ';' ' '); do
-            if [ "$LAUNCHER_DIR/$fragment" -nt "$BUILD_SDKCONFIG" ]; then
-                stale="$fragment is newer"
-                break
-            fi
-        done
-        if [ -z "$stale" ]; then
-            stale="$(sdkconfig_disagreement "$BUILD_SDKCONFIG")" || stale=""
-        fi
-        if [ -n "$stale" ]; then
-            echo "=== $BUILD_DIR/sdkconfig: $stale - regenerating it ==="
-            rm -f "$BUILD_SDKCONFIG"
-        fi
-    fi
+VARIANT_OPTIONS=""
+if [ "$AUTORUN" -eq 1 ]; then
+    VARIANT_OPTIONS="$VARIANT_OPTIONS --autorun"
 fi
-
-echo "=== Building $BUILD_DIR ==="
-if [ -n "$REQUIRED_FLAGS" ]; then
-    # Said out loud, not only on failure: which flags a request demands is
-    # the thing that drifted silently twice, and a capture's log is where
-    # anyone looks afterwards to find out what was actually built.
-    # Unquoted on purpose: one space between flags however they were built up.
-    # shellcheck disable=SC2086
-    echo "=== $BUILD_DIR/sdkconfig must have:" $REQUIRED_FLAGS "==="
-    if [ -n "${FORBIDDEN_FLAGS# }" ]; then
-        # shellcheck disable=SC2086
-        echo "===   and must not have:" $FORBIDDEN_FLAGS "==="
-    fi
+if [ "$PERF_SCOPE" -eq 1 ]; then
+    VARIANT_OPTIONS="$VARIANT_OPTIONS --perf-scope"
 fi
-if [ "$VARIANT" = release ]; then
-    idf -B "$BUILD_DIR" build
-else
-    # BOTH -D flags are needed, and the second is the one that is easy to
-    # leave off and hard to notice missing. idf.py's default sdkconfig path
-    # is the PROJECT's sdkconfig, not the build directory's, so without
-    # -D SDKCONFIG this reads launcher/sdkconfig - which has neither flag on
-    # - and cheerfully produces a build.dev or build.diag image with none of
-    # it in there. It can even look like it worked, if that build directory's
-    # own CMakeCache.txt is left over from a run that did pass the flag.
-    # SDKCONFIG_DEFAULTS alone does not fix it. (Learned in the report path,
-    # where the silent version of this cost a capture with no measurements
-    # in it.)
-    #
-    # The semicolon inside SDKCONFIG_DEFAULTS reaches idf.py intact on
-    # Windows too: passing arguments through the shim without mangling them
-    # is exactly what idf_shim.bat is for, and what ci_check_idf_sh.sh
-    # asserts for the POSIX branch.
-    idf -B "$BUILD_DIR" \
-        -D SDKCONFIG_DEFAULTS="$SDKCONFIG_FRAGMENTS" \
-        -D SDKCONFIG="$BUILD_DIR/sdkconfig" \
-        build
-
-    # The generated config is the only honest witness that the fragments took.
-    # The delete above is not enough on its own: a renamed Kconfig symbol or a
-    # dropped fragment leaves a config that exists, builds, flashes, and is
-    # simply not the image that was asked for.
-    disagreement="$(sdkconfig_disagreement "$BUILD_SDKCONFIG")" || disagreement=""
-    if [ -n "$disagreement" ]; then
-        echo "$BUILD_DIR/sdkconfig: $disagreement - the fragments did not reach" >&2
-        echo "this build, so the image is not the one asked for." >&2
-        exit 1
-    fi
-fi
-
-# A build tool that reports success without producing anything is how this
-# project once flashed and measured code it had never built. The exit
-# status is not enough on its own, so confirm the artifact is really there.
-if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/launcher.bin" ]; then
-    echo "build reported success but produced no binary at" >&2
-    echo "  $LAUNCHER_DIR/$BUILD_DIR/launcher.bin" >&2
-    exit 1
-fi
+# shellcheck disable=SC2086
+quiet_run build idf_variant_build "$LAUNCHER_DIR" "$VARIANT" "$BUILD_DIR" $VARIANT_OPTIONS
 
 if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt" ]; then
     echo "build reported success but produced no build id at" >&2
@@ -313,9 +219,9 @@ case "$VARIANT" in
             echo "    them on demand, since AUTORUN is not layered here."
         fi
         if [ "$PERF_SCOPE" -eq 1 ]; then
-            echo "    PERF-SCOPED: only sand's frame-budget suite and its scenes are"
-            echo "    in there. Its numbers compare only with other perf-scoped"
-            echo "    captures, and it is not a behaviour gate."
+            echo "    PERF-SCOPED: only sources apps declare are in there. Its numbers"
+            echo "    compare only with other perf-scoped captures, and it is not a"
+            echo "    behaviour gate."
         fi
         echo "    Re-run without --diag to put the release firmware back."
         ;;

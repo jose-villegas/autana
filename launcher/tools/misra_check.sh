@@ -18,7 +18,7 @@
 #   tools/misra_check.sh [build_dir] [file_filter]
 #
 #   build_dir     defaults to build.dev - must have compile_commands.json
-#                 (run `idf.py build` first if it doesn't)
+#                 (run `tools/build_flash.sh --build-only` first if it doesn't)
 #   file_filter   cppcheck --file-filter glob, defaults to the sand app
 #                 (pass "*/main/*" for the whole project, minus vendored
 #                 dependencies)
@@ -111,8 +111,7 @@ fi
 
 COMPILE_COMMANDS="$LAUNCHER_DIR/$BUILD_DIR/compile_commands.json"
 if [ ! -f "$COMPILE_COMMANDS" ]; then
-    echo "No compile_commands.json in $BUILD_DIR/ - run 'idf.py build' there first." >&2
-    echo "  (tools/idf.sh, or: cd $LAUNCHER_DIR && idf.py -B $BUILD_DIR build)" >&2
+    echo "No compile_commands.json in $BUILD_DIR/ - run 'tools/build_flash.sh --build-only' first." >&2
     exit 1
 fi
 

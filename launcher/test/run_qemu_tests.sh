@@ -31,7 +31,6 @@ TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 LAUNCHER_DIR=$(CDPATH= cd -- "$TEST_DIR/.." && pwd)
 
 BUILD_DIR=build.qemu
-DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag"
 AUTORUN=1
 PERF=0
 BUILD=1
@@ -59,16 +58,12 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
-if [ "$AUTORUN" = 1 ]; then
-    DEFAULTS="$DEFAULTS;sdkconfig.defaults.diag_autorun"
-else
+if [ "$AUTORUN" != 1 ]; then
     BUILD_DIR=build.qemu.shell
 fi
 if [ "$PERF" = 1 ]; then
     BUILD_DIR="$BUILD_DIR.perf"
-    DEFAULTS="$DEFAULTS;sdkconfig.defaults.diag_perf"
 fi
-DEFAULTS="$DEFAULTS;sdkconfig.defaults.qemu"
 
 case "$(uname -s)" in
     MINGW* | MSYS* | CYGWIN*) DEFAULT_EXPORT='C:\Espressif\esp-idf-v5.5\export.bat' ;;
@@ -80,10 +75,17 @@ if [ "$BUILD" = 1 ]; then
     # shellcheck source=../tools/idf.sh
     . "$LAUNCHER_DIR/tools/idf.sh"
     idf_init "$LAUNCHER_DIR" "$IDF_EXPORT" "$LAUNCHER_DIR/tools"
-    idf -B "$BUILD_DIR" \
-        -D SDKCONFIG_DEFAULTS="$DEFAULTS" \
-        -D SDKCONFIG="$BUILD_DIR/sdkconfig" \
-        build
+    . "$LAUNCHER_DIR/tools/idf_variant.sh"
+    idf_variant_init "$LAUNCHER_DIR"
+    VARIANT_OPTIONS="--qemu"
+    if [ "$AUTORUN" = 1 ]; then
+        VARIANT_OPTIONS="$VARIANT_OPTIONS --autorun"
+    fi
+    if [ "$PERF" = 1 ]; then
+        VARIANT_OPTIONS="$VARIANT_OPTIONS --perf-scope"
+    fi
+    # shellcheck disable=SC2086
+    idf_variant_build diag "$BUILD_DIR" $VARIANT_OPTIONS
 fi
 
 if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/launcher.bin" ]; then

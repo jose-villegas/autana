@@ -1,37 +1,20 @@
-name: Build (Diagnostics)
-
-# Compiles the diagnostics/test variant for the esp32s3 target - the
-# firmware plus the on-device test suites (`autana flash diag` builds this
-# same config locally: -B build.diag -D SDKCONFIG=build.diag/sdkconfig -D
-# SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag"). This is
-# a meaningfully different config from the release build (CONFIG_LAUNCHER_-
-# SELFTEST=y pulls in Unity and every suite), so it can break independently
-# of it - own workflow file, own badge, separate from build-release.yml
-# and host-tests.yml, purely so each gets its own status badge (GitHub
-# exposes whole-workflow badges, never per-job ones).
-#
-# -D SDKCONFIG_DEFAULTS is not optional here, even though -D SDKCONFIG is
-# already present. On a clean CI checkout build.diag/sdkconfig does not
-# exist yet, so idf.py generates it - and without -D SDKCONFIG_DEFAULTS
-# that generation falls back to the single base sdkconfig.defaults, never
-# merging sdkconfig.defaults.diag. The result carries neither
-# LAUNCHER_DEVELOPMENT nor LAUNCHER_SELFTEST and quietly builds a
-# release-shaped image under the build.diag/ name: it builds, it just
-# isn't diagnostics. See
-# launcher/tools/build_flash.sh's comment above its own idf.py call for
-# the sibling trap (missing -D SDKCONFIG instead, which reads the
-# PROJECT's own sdkconfig and is just as silent). List order matters here
-# too: the base defaults first, then the variant's, so the variant's
-# choices win where they overlap.
+name: Build (Development)
 
 on:
   push:
   pull_request:
 
 jobs:
-  build-diagnostics:
-    name: Build (diagnostics)
+  build-variants:
+    name: Build (${{ matrix.name }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: development
+            args: --dev
+          - name: diagnostics perf scope
+            args: --diag --perf-scope
     steps:
       - uses: actions/checkout@v4
 
@@ -40,30 +23,23 @@ jobs:
           esp_idf_version: release-v5.5
           target: esp32s3
           path: launcher
-          command: >-
-            idf.py -B build.diag -D SDKCONFIG=build.diag/sdkconfig -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag" build
+          command: bash tools/build_flash.sh ${{ matrix.args }} --build-only
 
-  # Its own job so only the gate fetches the pinned upstream submodules; a
-  # failed fetch from their hosts cannot fail the firmware build.
-  complexity-gate:
-    name: Complexity gate
+  build-diagnostics:
+    name: Build (diagnostics and complexity gate)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
 
-      # Same container invocation as its own build: the toolchains exist
-      # only inside ESP-IDF's image, and the compile database names container
-      # paths. esp-clang is an optional ESP-IDF tool, installed here at the
-      # version the baseline was recorded with.
       - uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: release-v5.5
           target: esp32s3
           path: launcher
           command: >-
-            idf.py -B build.diag -D SDKCONFIG=build.diag/sdkconfig -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.diag" build
+            bash tools/build_flash.sh --diag --build-only
             && python "$IDF_PATH/tools/idf_tools.py" install esp-clang
             && cd ..
             && python3 launcher/tools/complexity_gate.py
