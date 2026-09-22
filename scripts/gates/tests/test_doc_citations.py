@@ -323,6 +323,96 @@ Acid -->|"dissolvable 110"| Metal
             stale = check_doc_constants.stale_allowlist(root)
         self.assertEqual(stale, [("docs/Guide.md", "BLOCK_W", 16)])
 
+    def test_section_citation_after_the_doc_is_flagged_when_missing(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/Target.md", "## Two cores: real heading\n")
+            self.write(root, "docs/Guide.md", 'See Target.md\'s "Nothing like this" section.\n')
+            missing = check_doc_citations.unresolved_sections(root)
+        self.assertEqual(len(missing), 1)
+        self.assertEqual(missing[0][0].target_doc, "Target.md")
+
+    def test_section_citation_is_a_shorthand_prefix_of_the_real_heading(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/Target.md",
+                      "## Two cores: chunk-parallel passes, and what stays serial\n")
+            self.write(root, "docs/Guide.md", 'See Target.md\'s "Two cores" section.\n')
+            missing = check_doc_citations.unresolved_sections(root)
+        self.assertEqual(missing, [])
+
+    def test_section_citation_before_the_doc_with_and_is_resolved(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/Target.md", "## Partial updates\n## Still untapped\n")
+            self.write(root, "docs/Guide.md",
+                      'See "Partial updates" and "Still untapped" in Target.md for more.\n')
+            missing = check_doc_citations.unresolved_sections(root)
+        self.assertEqual(missing, [])
+
+    def test_section_citation_with_a_backtick_around_the_doc_name_is_read(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/Target.md", "## Making room\n")
+            self.write(root, "docs/Guide.md", '`Target.md`\'s "Making room" is the spot.\n')
+            missing = check_doc_citations.unresolved_sections(root)
+        self.assertEqual(missing, [])
+
+    def test_section_citation_in_a_c_comment_is_checked(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/Target.md", "## Real section\n")
+            self.write(root, "launcher/main/example.h",
+                      '/* see docs/Target.md\'s "Not real" for background. */\n')
+            missing = check_doc_citations.unresolved_sections(root)
+        self.assertEqual(len(missing), 1)
+        self.assertEqual(missing[0][0].doc, "launcher/main/example.h")
+
+    def test_section_citation_wrapped_across_a_comment_line_is_still_read(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/Target.md", "## Still untapped\n")
+            self.write(root, "launcher/main/example.h",
+                      '/* See docs/Target.md\'s "Partial updates" and "Still\n'
+                      ' * untapped" for the full reasoning. */\n')
+            missing = check_doc_citations.unresolved_sections(root)
+        self.assertEqual(len(missing), 1)
+        self.assertEqual(missing[0][0].section, "Partial updates")
+
+    def test_anchor_link_matching_no_heading_is_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/Guide.md", "# Guide\n\n[gone](#nothing-here)\n")
+            bad = check_doc_index.check_anchors(root)
+        self.assertEqual(len(bad), 1)
+
+    def test_anchor_link_to_a_real_heading_is_not_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/A.md", "[B](B.md#the-section)\n")
+            self.write(root, "docs/B.md", "## The section\n")
+            bad = check_doc_index.check_anchors(root)
+        self.assertEqual(bad, [])
+
+    def test_anchor_link_slug_uses_a_double_hyphen_for_an_em_dash(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/Guide.md",
+                      "### SD card — fully independent\n\n"
+                      "[SD card](#sd-card--fully-independent)\n")
+            bad = check_doc_index.check_anchors(root)
+        self.assertEqual(bad, [])
+
+    def test_anchor_link_to_a_non_markdown_target_is_not_checked(self):
+        # `#L3` in a link to a script is a line number, not a heading - and
+        # a Python "# comment" in that file is not a Markdown heading either.
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "scripts/a.py", "# comment\nprint(1)\n")
+            self.write(root, "docs/Guide.md", "[a.py](../scripts/a.py#L3)\n")
+            bad = check_doc_index.check_anchors(root)
+        self.assertEqual(bad, [])
+
     def test_index_reports_documents_no_link_reaches(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
