@@ -103,6 +103,11 @@ by a script, and the split is deliberate: a length, a cited name and an app
 name are decidable, and everything about whether a comment should exist is
 not.
 
+`scripts/gates/check_style_audit.py`'s HEADING-COMMENT rule flags a
+Title-Case, sentence-free comment sitting inside a function body as a WARN,
+not an ERROR - a worklist for a reader to weigh, never a verdict on whether
+that comment should exist, so it does not contradict the split above.
+
 ### Comments
 
 **A comment is the exception. Most code needs none.** Follow OpenBSD's
