@@ -12,8 +12,10 @@
 # The list comes from git on every run, so a suite is found wherever it
 # lives and build output is never searched. Exits 1 if any suite fails;
 # keeps running the rest so one broken suite does not hide another. A
-# missing interpreter skips its language's suites with a warning instead of
-# failing outright, matching scripts/git-hooks/pre-commit's style.
+# missing interpreter skips its language's suites with a warning and still
+# exits 1 - unlike scripts/git-hooks/pre-commit, this script's job is to
+# prove the suites pass, so a language it could not even run is a failure,
+# not something to wave through quietly.
 #
 # POSIX sh; .github/workflows/shell-scripts.yml parses it under dash.
 
