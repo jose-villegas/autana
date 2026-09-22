@@ -17,12 +17,17 @@ sequenceDiagram
     App->>Dev: owner, purpose
     Dev->>Lock: take the lock
     Dev->>Port: wait for the port
-    Dev->>Dev: open serial, 115200,<br/>DTR/RTS low
 
-    Note over Dev,Flash: flash, batch and selftest - a second lane
-    Dev->>Bash: run under it, never PATH's bash
-    Bash->>Flash: build_flash.sh
-    Flash-->>Dev: refuses without<br/>device.py's lock token
+    alt send, screenshot, run-suite, listen
+        Dev->>Port: open serial, 115200,<br/>DTR/RTS low
+        Dev->>Port: talk to the running firmware
+    else flash, batch, selftest
+        Dev->>Bash: run build_flash.sh,<br/>AUTANA_DEVICE_LOCK_TOKEN set
+        Bash->>Flash: build_flash.sh
+        Note over Flash: refuses to flash without<br/>device.py's lock token
+        Dev->>Port: reset the board
+        Dev->>Port: open serial, read BUILD_ID
+    end
 ```
 
 Day-to-day interactive use goes through `tools/autana` ([Autana-CLI.md](Autana-CLI.md))

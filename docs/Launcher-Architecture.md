@@ -238,82 +238,76 @@ had changed.
 
 ## How it fits together
 
-One node per top-level folder, edges are `#include` directions - the same
+One tier per top-level folder, stacked by dependency depth - the same
 thing the "includes are layer-qualified" rule above makes visible at the
 line level, drawn whole. Hardware-touching folders are marked.
 
 ```mermaid
 flowchart TB
     classDef hw fill:#8a3d3d,color:#fff
+    classDef contract fill:#f4f1e8,stroke:#333,stroke-width:1px
 
     Apps["apps/<br/><i>one folder per app</i>"]
-    Shell["main.c / app.h<br/><i>frame loop, shell/app contract</i>"]
+    Main["main.c<br/><i>the frame loop</i>"]
+    Contract(["app.h - the shell/app contract,<br/>included by every layer"]):::contract
     Boot["boot/<br/><i>runs once, before the loop exists</i>"]
-    Ui["ui/<br/><i>microui integration</i>"]
-    Input["input/<br/><i>touch, gesture, tilt</i>"]
-    Render["render/<br/><i>3D transform, clip, projection</i>"]
-    Util["util/<br/><i>arithmetic and services</i>"]
-    Console["console/<br/><i>dev builds only</i>"]
-    Gfx["gfx/<br/><i>the one framebuffer</i>"]
-    Display["display/<br/><i>orientation, with hysteresis</i>"]
-    Board["board/<br/><i>this board's pins and peripherals</i>"]
 
-    class Boot,Gfx,Input,Console,Board hw
+    subgraph T4[" "]
+        Ui["ui/<br/><i>microui integration</i>"]
+        Console["console/<br/><i>dev builds only</i>"]
+    end
+    subgraph T5[" "]
+        Gfx["gfx/<br/><i>the one framebuffer</i>"]
+        Render["render/<br/><i>3D transform, clip, projection</i>"]
+        Display["display/<br/><i>orientation, with hysteresis</i>"]
+        Input["input/<br/><i>touch, gesture, tilt</i>"]
+    end
+    subgraph T6[" "]
+        Board["board/<br/><i>this board's pins and peripherals</i>"]
+        Util["util/<br/><i>arithmetic and services</i>"]
+    end
 
-    Apps --> Shell
-    Apps --> Ui
-    Apps --> Input
-    Apps --> Render
-    Apps --> Util
-    Apps --> Gfx
-    Apps --> Display
-    Apps --> Board
+    Apps ~~~ Main ~~~ Contract ~~~ Boot
+    Boot ~~~ Ui
+    Boot ~~~ Console
+    Ui ~~~ Gfx
+    Ui ~~~ Render
+    Ui ~~~ Input
+    Ui ~~~ Display
+    Console ~~~ Gfx
+    Console ~~~ Render
+    Console ~~~ Input
+    Console ~~~ Display
+    Gfx ~~~ Board
+    Gfx ~~~ Util
+    Render ~~~ Board
+    Render ~~~ Util
+    Input ~~~ Board
+    Input ~~~ Util
+    Display ~~~ Board
+    Display ~~~ Util
 
-    Shell --> Boot
-    Shell --> Ui
-    Shell --> Console
-    Shell --> Display
-    Shell --> Gfx
-    Shell --> Util
+    class Boot,Gfx,Input,Console,Board,Util hw
 
-    Boot --> Board
-    Boot --> Display
-    Boot --> Gfx
-    Boot --> Render
-    Boot --> Ui
-    Boot --> Util
+    Contract -.->|"includes input/buttons.h"| Input
+    Input <-.-|"device_state.c reaches up"| Util
 
-    Console --> Gfx
-    Console --> Input
-    Console --> Util
-
-    Ui --> Gfx
-    Ui --> Input
-    Ui --> Util
-
-    Input --> Board
-    Input --> Util
-
-    Gfx --> Board
-    Gfx --> Util
-
-    Shell -.->|"app.h includes input/buttons.h"| Input
-    Input -.->|"gesture.h, touch.h, touch_fsm.h<br/>include app.h back"| Shell
-    Util -.->|"device_state.h/.c reach app.h,<br/>input/imu.h, display/display.h,<br/>a driver header - directly"| Shell
+    linkStyle 21 stroke:#e11,stroke-width:2px
+    linkStyle 22 stroke:#e11,stroke-width:2px
 ```
 
-The two dashed pairs are known violations of the direction this map is
-supposed to hold, not proposals: `app.h` and `input/` include each other,
-and `util/device_state` reaches past its own layer into the shell, `input/`
-and `display/` instead of staying pure arithmetic. Fixing them is tracked
-work, not something this doc resolves by drawing it differently.
+**A folder may include anything below it, never above.** The two red
+arrows are the exceptions: `app.h` includes `input/buttons.h`, and
+`util/device_state` reaches back up into `input/imu.h` (also
+`display/display.h` and a driver header, not drawn).
 
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. See
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path) for how a draw
   call becomes pixels on the panel.
-- **Hardware sits at the edges** — the input drivers at the top, `gfx.c` at
-  the bottom. Everything between is ordinary logic, which is why
-  `touch_fsm`, `button_fsm`, `gesture` and `tilt` are tested on a laptop.
+- **Hardware sits in the marked folders.** Within `input/`, the drivers
+  (`touch.c`, `buttons.c`, `imu.c`) are split from the logic they feed,
+  which is why `touch_fsm`, `button_fsm`, `gesture` and `tilt` are tested
+  on a laptop.
 
 ---
 
