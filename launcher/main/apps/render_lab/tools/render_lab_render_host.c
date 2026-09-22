@@ -5,9 +5,9 @@
  * A render_host.h scene: the real enter()/frame(), the real gfx and ui
  * layers, no board, no IDF header, no clock or finger but the harness's own.
  * app_*.c is excluded from the host test runner as hardware-facing, but it
- * asks nothing of the board, so the shell-owned functions below stand in - a
- * registry of exactly the app that registered itself, the shell's quarter,
- * and no frame loop at all.
+ * asks nothing of the board, so this links the real app_registry.c - its
+ * own APP_REGISTER() constructor lands the one app that runs here - and
+ * only display_shell_quarter() below stands in for the shell itself.
  */
 
 #include <stdbool.h>
@@ -27,24 +27,7 @@ extern bool render_lab_band_mode;
 extern bool render_lab_show_hud;
 extern const char* render_lab_start_scene_key;
 
-static app_t* registered;
 static int shell_quarter;
-
-void
-app_register(app_t* app) {
-    app->next = NULL;
-    registered = app;
-}
-
-const app_t*
-app_list(void) {
-    return registered;
-}
-
-int
-app_list_count(void) {
-    return registered != NULL ? 1 : 0;
-}
 
 /* Which names are valid is app_render_lab.c's own knowledge (each scene's
  * .key, render_lab_scene.h) - this only hands the string through. */
@@ -73,6 +56,7 @@ display_shell_quarter(void) {
 
 static bool
 setup(int quarter) {
+    const app_t* registered = app_list();
     if (registered == NULL || registered->enter == NULL || registered->frame == NULL) {
         fprintf(stderr, "no app registered itself\n");
         return false;
@@ -87,7 +71,7 @@ setup(int quarter) {
 
 static void
 draw(const render_frame_t* frame) {
-    registered->frame(frame->dt_ms, &frame->input);
+    app_list()->frame(frame->dt_ms, &frame->input);
 }
 
 const render_scene_t render_scene = {

@@ -9,11 +9,11 @@
  * was split out from it in the first place (see ui_launcher.c's own top
  * comment).
  *
- * app_register()/app_list()/app_list_count() are normally main.c's, which
- * cannot link on a host either - this suite supplies its own small registry
- * instead. That is also why it is listed in run_tests.sh only, not
- * main/CMakeLists.txt's suite_srcs: linked into the firmware too, its
- * app_list()/app_list_count() would collide with main.c's real ones.
+ * Registers its fixture apps through the real app_register()/app_list()
+ * (app_registry.c) rather than a hand-copied registry of its own - see
+ * that file. app_registry_reset_for_test() clears the list before each of
+ * this suite's own two scenarios, since a real boot only ever registers
+ * once but this process runs several in one run.
  */
 
 #include <stdio.h>
@@ -39,17 +39,6 @@
 
 static app_t test_apps[MAX_TEST_APPS];
 static char test_app_names[MAX_TEST_APPS][8];
-static int test_app_count;
-
-const app_t*
-app_list(void) {
-    return test_app_count > 0 ? &test_apps[0] : NULL;
-}
-
-int
-app_list_count(void) {
-    return test_app_count;
-}
 
 static void
 noop_enter(void) {}
@@ -63,19 +52,21 @@ noop_frame(uint32_t dt_ms, const input_t* input) {
 static void
 noop_exit(void) {}
 
+/* Zero-padded so ascending index order and the registry's own name order
+ * agree - test_apps[i] lands at row i either way. */
 static void
 set_app_count(int n) {
     TEST_ASSERT_TRUE(n <= MAX_TEST_APPS);
-    test_app_count = n;
+    app_registry_reset_for_test();
     for (int i = 0; i < n; i++) {
-        snprintf(test_app_names[i], sizeof test_app_names[i], "App%d", i);
+        snprintf(test_app_names[i], sizeof test_app_names[i], "App%02d", i);
         test_apps[i] = (app_t){
             .name = test_app_names[i],
             .enter = noop_enter,
             .frame = noop_frame,
             .exit = noop_exit,
-            .next = (i + 1 < n) ? &test_apps[i + 1] : NULL,
         };
+        app_register(&test_apps[i]);
     }
 }
 
@@ -113,8 +104,8 @@ fixture(int app_count) {
 
 /* One frame of the real bridge: touch through ui_pointer_step(), the real
  * ui_launcher_draw() in place of ui.c's ui_begin()/ui_end(). Returns the
- * chosen app index, or -1. */
-static int
+ * chosen app, or NULL. */
+static const app_t*
 launcher_frame(bool down, bool pressed, bool released, int x, int y, uint32_t dt_ms) {
     input_t in = {0};
     in.down = down;
@@ -135,7 +126,7 @@ launcher_frame(bool down, bool pressed, bool released, int x, int y, uint32_t dt
     }
 
     mu_begin(ctx);
-    const int chosen = ui_launcher_draw(ctx, dt_ms);
+    const app_t* chosen = ui_launcher_draw(ctx, dt_ms);
     mu_end(ctx);
     pointer.over_scrollable = ctx->scroll_target != NULL;
     return chosen;
@@ -148,27 +139,27 @@ idle_frames(int count) {
     }
 }
 
-static int
+static const app_t*
 tap(int x, int y) {
-    int chosen = -1;
-    int r = launcher_frame(true, true, false, x, y, 16);
-    chosen = r >= 0 ? r : chosen;
+    const app_t* chosen = NULL;
+    const app_t* r = launcher_frame(true, true, false, x, y, 16);
+    chosen = r != NULL ? r : chosen;
     for (int i = 0; i < 4; i++) {
         r = launcher_frame(true, false, false, x, y, 16);
-        chosen = r >= 0 ? r : chosen;
+        chosen = r != NULL ? r : chosen;
     }
     r = launcher_frame(false, false, true, x, y, 16);
-    return r >= 0 ? r : chosen;
+    return r != NULL ? r : chosen;
 }
 
 static int
 drag(int x, int y0, int y1, int steps) {
     int taps = 0;
-    taps += launcher_frame(true, true, false, x, y0, 16) >= 0;
+    taps += launcher_frame(true, true, false, x, y0, 16) != NULL;
     for (int i = 1; i <= steps; i++) {
-        taps += launcher_frame(true, false, false, x, y0 + (y1 - y0) * i / steps, 16) >= 0;
+        taps += launcher_frame(true, false, false, x, y0 + (y1 - y0) * i / steps, 16) != NULL;
     }
-    taps += launcher_frame(false, false, true, x, y1, 16) >= 0;
+    taps += launcher_frame(false, false, true, x, y1, 16) != NULL;
     return taps;
 }
 
@@ -189,7 +180,7 @@ test_rows_land_at_todays_positions_when_nothing_overflows(void) {
 
     for (int i = 0; i < 3; i++) {
         const mu_Rect r = old_row_rect(i);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(i, tap(r.x + r.w / 2, r.y + r.h / 2),
+        TEST_ASSERT_EQUAL_PTR_MESSAGE(&test_apps[i], tap(r.x + r.w / 2, r.y + r.h / 2),
                                       "a non-overflowing list must keep every row exactly where it was");
     }
 }
@@ -204,7 +195,7 @@ test_the_last_app_is_reachable_once_enough_apps_overflow(void) {
         idle_frames(1);
     }
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAX_TEST_APPS - 1, tap(ui_width() / 2, ui_height() - 40),
+    TEST_ASSERT_EQUAL_PTR_MESSAGE(&test_apps[MAX_TEST_APPS - 1], tap(ui_width() / 2, ui_height() - 40),
                                   "enough apps must now scroll into reach instead of falling off the bottom");
 }
 

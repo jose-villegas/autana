@@ -11,10 +11,9 @@
  * BOOT button - see docs/notes/Flashing-and-Toolchain.md.
  */
 
-#include <assert.h>
 #include <ctype.h>
 #include <stdint.h>
-#include <string.h>
+#include <stdlib.h>
 
 #include "app.h"
 #include "boot/boot_anim.h"
@@ -188,34 +187,6 @@ shell_set_system_panel_clock_hz(int hz) {
 int
 shell_system_panel_clock_hz(void) {
     return panel_clock_system_hz(&shell_panel_clock);
-}
-
-/* Filled in before app_main() by the constructors APP_REGISTER() emits. No
- * app is named here; see app.h for why. */
-static app_t* apps_head;
-static int apps_registered;
-
-void
-app_register(app_t* app) {
-    app->next = NULL;
-    apps_registered++;
-
-    app_t** link = &apps_head;
-    while (*link != NULL && strcmp((*link)->name, app->name) < 0) {
-        link = &(*link)->next;
-    }
-    app->next = *link;
-    *link = app;
-}
-
-const app_t*
-app_list(void) {
-    return apps_head;
-}
-
-int
-app_list_count(void) {
-    return apps_registered;
 }
 
 static display_t shell_display;
@@ -457,16 +428,12 @@ step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, u
     }
     apply_pending_full_redraw(NULL);
     feed_launcher_gravity(dt_ms);
-    const int chosen = ui_launcher_frame(input, dt_ms);
-    if (chosen < 0 || chosen >= apps_registered) {
+    const app_t* chosen = ui_launcher_frame(input, dt_ms);
+    if (chosen == NULL) {
         draw_home_hint(exit_edge);
         return;
     }
-    const app_t* app = apps_head;
-    for (int i = 0; i < chosen; i++) {
-        app = app->next;
-    }
-    *current = app;
+    *current = chosen;
     ESP_LOGI(TAG, "Starting %s", (*current)->name);
     gfx_request_full_redraw();
     restore_system_display_state();
@@ -586,14 +553,16 @@ park_forever(void) {
  * match first. */
 static void
 check_console_prefix_clashes(void) {
-    /* Bounded by how many registered apps could plausibly declare their own
-     * console prefix, not by apps_registered itself - the assert below
-     * catches this growing past that the day it happens. */
-    const char* app_prefixes[32];
+    /* At most one prefix per registered app, so the registry's own count is
+     * an exact upper bound - no magic number to outgrow. */
+    const char** app_prefixes = malloc(sizeof(*app_prefixes) * (size_t)app_registry_count());
+    if (app_prefixes == NULL) {
+        ESP_LOGE(TAG, "no memory to check console prefix clashes");
+        park_forever();
+    }
     int app_count = 0;
-    for (const app_t* app = apps_head; app != NULL; app = app->next) {
+    for (const app_t* app = app_list(); app != NULL; app = app->next) {
         if (app->console != NULL) {
-            assert(app_count < (int)(sizeof(app_prefixes) / sizeof(app_prefixes[0])));
             app_prefixes[app_count++] = app->console->prefix;
         }
     }
@@ -601,7 +570,7 @@ check_console_prefix_clashes(void) {
     const char* from;
     const char* other;
     switch (console_find_clash(console_shared(), app_prefixes, app_count, &from, &other)) {
-        case CONSOLE_CLASH_NONE: return;
+        case CONSOLE_CLASH_NONE: free(app_prefixes); return;
         case CONSOLE_CLASH_SPACE: ESP_LOGE(TAG, "console prefix '%s' contains a space", from); break;
         case CONSOLE_CLASH_LENGTH:
             ESP_LOGE(TAG, "console prefix '%s' plus a space does not fit CONSOLE_LINE_MAX", from);
@@ -750,7 +719,7 @@ offer_console_line(const app_t* current) {
         return;
     }
 
-    for (const app_t* app = apps_head; app != NULL; app = app->next) {
+    for (const app_t* app = app_list(); app != NULL; app = app->next) {
         if (app->console == NULL) {
             continue;
         }
@@ -808,7 +777,8 @@ app_main_loop(void) {
 #endif
     int64_t next_display_sample_us = previous_us;
 
-    ESP_LOGI(TAG, "Ready, %d app%s registered", apps_registered, apps_registered == 1 ? "" : "s");
+    const int app_count = app_registry_count();
+    ESP_LOGI(TAG, "Ready, %d app%s registered", app_count, app_count == 1 ? "" : "s");
 
     while (1) {
         const int64_t now_us = esp_timer_get_time();
