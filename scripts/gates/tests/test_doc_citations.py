@@ -332,6 +332,21 @@ Acid -->|"dissolvable 110"| Metal
         self.assertEqual(len(missing), 1)
         self.assertEqual(missing[0][0].target_doc, "Target.md")
 
+    def test_a_bare_doc_name_never_resolves_into_an_untracked_nested_checkout(self):
+        # The primary checkout carries .dev, a separate repository with docs of
+        # its own names; CI never has it. A citation must find the tracked doc.
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/sand/Architecture.md", "## The grid, in one byte\n")
+            self.write(root, "docs/Guide.md", 'See Architecture.md\'s "The grid, in one byte".\n')
+            self.write(root, ".dev/skills/mermaid/references/Architecture.md", "## Something else\n")
+            git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+            subprocess.run(git + ["init", "-q"], cwd=root, check=True)
+            subprocess.run(git + ["add", "docs"], cwd=root, check=True)
+            subprocess.run(git + ["commit", "-qm", "fixture"], cwd=root, check=True)
+            missing = check_doc_citations.unresolved_sections(root)
+        self.assertEqual(missing, [])
+
     def test_section_citation_is_a_shorthand_prefix_of_the_real_heading(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
