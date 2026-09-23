@@ -148,6 +148,10 @@ $RECYCLE.BIN/
 .dev/
 /CLAUDE.md
 /AGENTS.md
+# .dev's skills, linked in by .dev/scripts/link-dev-into-worktree.sh, and the
+# agent worktrees Claude Code keeps beside them.
+/.claude/skills/
+/.claude/worktrees/
 
 ### Beads (bd issue tracker)
 # Per-machine backlog database - the issues themselves travel through this

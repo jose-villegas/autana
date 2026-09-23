@@ -44,8 +44,12 @@ and checks storage, memory, sensors and the display on every boot.
 
 ```bash
 scripts/add-tools-to-path.sh           # puts `autana` on PATH - once per machine
-scripts/install-git-hooks.sh           # pre-commit format check - once per clone
+scripts/install-git-hooks.sh           # pre-commit format and diagram checks - once per clone
+npm install -g @mermaid-js/mermaid-cli # the diagram check's renderer, the one CI installs
 ```
+
+Without mermaid-cli the hook skips the diagram check with a warning, and a
+broken ```` ```mermaid ```` block is found by CI instead.
 
 Requires [ESP-IDF](https://docs.espressif.com/projects/esp-idf/) v5.5+, and
 its own export script has to work: `idf.py` cannot run under Git Bash, so on
