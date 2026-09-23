@@ -1,21 +1,6 @@
 /*
- * device_state - snapshotting the board's own state: uptime, memory, clock,
- * on-die temperature, orientation, and the IMU, as one JSON line.
- *
- * Split the way gfx_color.h/gfx.c is: device_state_read() below actually
- * touches hardware - the temperature sensor, an I2C transaction for the
- * IMU - and is device-only, defined in device_state.c.
- * device_state_format_json() only turns an already-read device_state_t
- * into text; it is pure arithmetic and string formatting, no I/O of its
- * own, so it lives here as `static inline` and can be built and checked on
- * a host (see test/suites/suite_device_state.c) the same way
- * screenshot_bmp_header() (util/screenshot.h) is.
- *
- * Its own module rather than folded into console/console_screenshot.c:
- * "what does this board's state look like right now" is a useful question
- * on its own - console_screenshot.c (which calls device_state_read() to
- * attach a snapshot to every capture - see console_screenshot_dump()) is
- * its first caller, not its only reason to exist.
+ * Board state for console screenshots. The reader samples hardware; the
+ * inline formatter accepts a snapshot and frame input without I/O.
  */
 #pragma once
 

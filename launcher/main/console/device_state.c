@@ -1,9 +1,7 @@
 /*
- * device_state.c - the device-only half: everything device_state_read()
- * needs actual hardware for. See device_state.h for the pure formatting
- * side and the module's own reason to exist.
+ * Read a board snapshot for the console screenshot state.
  */
-#include "util/device_state.h"
+#include "console/device_state.h"
 
 #include "esp_system.h"
 #include "esp_timer.h"
