@@ -40,9 +40,30 @@ other file. Currently:
 A power-on self-test (`launcher/main/boot/post.c`) runs in every build, release included,
 and checks storage, memory, sensors and the display on every boot.
 
-## Quick start
+## Setting up a clone
 
-Requires [ESP-IDF](https://docs.espressif.com/projects/esp-idf/) v5.5+.
+```bash
+scripts/add-tools-to-path.sh           # puts `autana` on PATH - once per machine
+scripts/install-git-hooks.sh           # pre-commit format check - once per clone
+```
+
+Requires [ESP-IDF](https://docs.espressif.com/projects/esp-idf/) v5.5+, and
+its own export script has to work: `idf.py` cannot run under Git Bash, so on
+Windows the build scripts hand that step to `cmd` and need a working
+`export.bat`. They find it from `IDF_PATH`. Set `IDF_TOOLS_PATH` too whenever
+the toolchain is not where ESP-IDF's installer puts it by default - that root
+is also where the checks find the bundled clang-format and clang-tidy, and
+where `autana` finds the Python that carries pyserial.
+
+Host tests need a **host** compiler, not the ESP32 one: Windows `winget
+install BrechtSanders.WinLibs.POSIX.UCRT`, Debian/Ubuntu `apt install
+build-essential`, macOS `xcode-select --install`.
+
+The complexity gate, alone among the checks, also wants
+`git submodule update --init` - see
+[`docs/tools/Complexity-Gate.md`](docs/tools/Complexity-Gate.md).
+
+## Quick start
 
 ```bash
 cd launcher && idf.py build            # release — no test code, ships to the board
