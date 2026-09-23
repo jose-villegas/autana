@@ -38,6 +38,22 @@ def python_with_pyserial():
     return idf_python()
 
 
+def rerun_under_idf_python(argv):
+    """This command's exit status after running it again under ESP-IDF's
+    Python, or None when this interpreter can already reach the board. pyserial
+    lives in that environment, not in whichever `python` a caller found first,
+    so no caller has to know which one to pick."""
+    try:
+        import serial  # noqa: F401
+        return None
+    except ImportError:
+        pass
+    python = idf_python()
+    if os.path.normcase(os.path.abspath(python)) == os.path.normcase(os.path.abspath(sys.executable)):
+        return None
+    return subprocess.call([python, str(Path(__file__).resolve()), *argv])
+
+
 def git_bash():
     """From a native Windows shell, `bash` on PATH is WSL's launcher, which
     hands the script path to Linux bash to unescape and cannot run ESP-IDF."""
@@ -991,4 +1007,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    rerun = rerun_under_idf_python(sys.argv[1:])
+    raise SystemExit(main() if rerun is None else rerun)
