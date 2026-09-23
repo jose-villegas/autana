@@ -56,9 +56,3 @@ CONFIG_ESPTOOLPY_FLASHFREQ_120M=y
 CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR=y
 CONFIG_BOOTLOADER_FLASH_DC_AWARE=y
 CONFIG_SPI_FLASH_HPM_ENA=y
-
-# LVGL comes in with the board support package and is never called - the
-# linked binary carries no lv_* symbols. Its own examples and demos are
-# 327 of a build's 2074 steps, compiled for nothing.
-CONFIG_LV_BUILD_EXAMPLES=n
-CONFIG_LV_BUILD_DEMOS=n

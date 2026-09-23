@@ -93,8 +93,7 @@ current table of all 16 material slots.
 `MATERIAL_ROWS` is **32**, not 16 - doubled once gunpowder split material id
 15's nibble in two. That doubled the hot table's flash footprint from 192 B
 to 384 B, but left the sweep with the same one shift, one indexed load per
-cell - see [`Architecture.md`'s "Getting more than sixteen materials out of
-one nibble"](Architecture.md#getting-more-than-sixteen-materials-out-of-one-nibble)
+cell - see [Architecture.md](Architecture.md#getting-more-than-sixteen-materials-out-of-one-nibble)
 for how the doubling works and what it cost.
 
 The 256-entry colour palette (`material_palette()`) is built the same way -
