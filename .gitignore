@@ -148,3 +148,9 @@ $RECYCLE.BIN/
 .dev/
 /CLAUDE.md
 /AGENTS.md
+
+### Beads (bd issue tracker)
+# Per-machine backlog database - the issues themselves travel through this
+# repository's Dolt remote (refs/dolt/data), never through these files.
+.beads/
+.beads.gate.lock
