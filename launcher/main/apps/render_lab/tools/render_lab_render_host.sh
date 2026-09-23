@@ -17,33 +17,7 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=render_lab
-scene_sources="
-main/app_registry.c
-main/gfx/gfx.c
-main/util/tune.c
-main/ui/ui.c
-main/ui/ui_build.c
-main/ui/ui_pointer.c
-main/ui/ui_scroll.c
-main/apps/render_lab/app_render_lab.c
-main/apps/render_lab/scene_cube.c
-main/apps/render_lab/scene_wire.c
-main/apps/render_lab/scene_raytrace.c
-main/apps/render_lab/scene_pathtrace.c
-main/apps/render_lab/wire_pipeline.c
-main/apps/render_lab/rt_cornell.c
-main/apps/render_lab/rt_cornell_scene.c
-main/apps/render_lab/rt_geometry.c
-main/apps/render_lab/rt_path.c
-main/util/job.c
-main/apps/render_lab/render_lab_mode_switch.c
-main/apps/render_lab/ui/render_lab_hud_screen.c
-main/apps/render_lab/ui/render_lab_menu_screen.c
-components/microui/src/microui.c
-main/apps/render_lab/tools/render_lab_render_host.c
-main/apps/render_lab/tools/render_lab_render_host_heap.c
-"
-scene_includes="components/small3dlib/include"
+. "$SCRIPT_DIR/render_lab_render_sources.sh"
 
 # scene_wire.c's enter()/exit() need a working heap_caps_malloc()/free() on
 # the host, matched against test/stubs/esp_heap_caps.h's own declarations
@@ -54,8 +28,6 @@ scene_includes="components/small3dlib/include"
 # to always succeed - a rendering preview needs the scratch buffers to
 # allocate, nothing about their size or placement, so
 # render_lab_render_host_heap.c is a plain pass-through instead.
-scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
-
 # Size-checked but not hash-pinned. The scenes are integer throughout, but
 # the fps readout drawn over them is a double printed with "%.1f", and a pin
 # would rest on a C library's rounding.
