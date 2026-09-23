@@ -2,16 +2,16 @@ version: "1.0.0"
 dependencies:
   idf: ">=5.5"
   # The V2 (CO5300 panel) revision - see main/gfx/gfx.c. A private
-  # dependency of the BSP above, so it needs its own declaration here too
-  # for main to see its headers directly.
+  # dependency of the vendored BSP in components/, so it needs its own
+  # declaration here too for main to see its headers directly.
   espressif/esp_lcd_co5300:
     version: "^2.1.0"
   # The original (pre-V2) revision's panel - see main/gfx/gfx.c. Also only
-  # a private dependency of the local BSP.
+  # a private dependency of the vendored BSP.
   waveshare/esp_lcd_sh8601:
     version: "^2.0.0"
   # input/touch.c calls esp_lcd_touch_*() directly, but this is only a
-  # private dependency of the local BSP's touch drivers, so main declares
+  # private dependency of the vendored BSP's touch drivers, so main declares
   # it directly.
   espressif/esp_lcd_touch:
     version: "^1.2.0"

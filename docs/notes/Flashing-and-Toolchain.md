@@ -47,9 +47,10 @@ the cable first, then the PWR button: this board's power is managed by an
 
 ## Toolchain
 
-- **ESP-IDF v5.5+ is required.** The main component declares `idf: ">=5.5"`.
-- BSP component: `launcher/components/esp32_s3_touch_amoled_1_8/`, plus the panel drivers
-  that main declares directly for their headers:
+- **ESP-IDF v5.5+ is required.** `launcher/main/idf_component.yml` declares
+  `idf: ">=5.5"`. Several versions can coexist; they are keyed by `IDF_PATH`.
+- BSP component: the vendored `launcher/components/esp32_s3_touch_amoled_1_8/`,
+  plus the panel drivers main declares directly to see their headers:
   `espressif/esp_lcd_co5300` (V2) and `waveshare/esp_lcd_sh8601` (original).
 - `sdkconfig.defaults` worth keeping: `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y` —
   without it the image header says 2 MB and the bootloader warns on every boot.

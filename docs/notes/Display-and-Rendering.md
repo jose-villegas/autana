@@ -9,10 +9,9 @@ actual board or read out of the actual source. See
 
 ## Owning panel bring-up
 
-`gfx.c` does not call `bsp_display_new()` from the vendored
-`launcher/components/esp32_s3_touch_amoled_1_8/`. It initialises SPI2, the
-panel IO and the panel itself, keeping `board_detect()` for variant detection and the
-reset lines on the (optional) IO expander.
+`gfx.c` does not call the BSP's `bsp_display_new()`. It initialises SPI2, the
+panel IO and the panel itself, keeping `board_detect()` for variant detection
+and the reset lines on the (optional) IO expander.
 
 That is not a preference. The BSP holds `panel_handle` and `io_handle` as
 private statics and offers no way to reach the init sequence at all — owning
