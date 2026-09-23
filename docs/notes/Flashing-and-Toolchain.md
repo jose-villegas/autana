@@ -49,6 +49,18 @@ the cable first, then the PWR button: this board's power is managed by an
 
 - **ESP-IDF v5.5+ is required.** The Waveshare BSP declares `idf: ">=5.5"`;
   v5.4 will not resolve it. Both can coexist — they are keyed by `IDF_PATH`.
+- **What the build scripts need is a working `export.bat`, not just a working
+  `idf.py`.** `launcher/tools/idf.sh` runs ESP-IDF from Git Bash by handing
+  the command to `cmd`, because v5.5 refuses to activate under MSYS at all.
+  Espressif's newer `eim` installer satisfies `idf.py` and not this: it emits
+  only a PowerShell activation script, and it clones via libgit2, so
+  `export.bat` arrives with LF endings and `cmd` cannot resolve a batch label
+  in one. Its Python environment is also somewhere `export.bat` does not
+  look. Running ESP-IDF's own `install.bat` against that same checkout adds
+  what is missing and re-downloads no toolchain.
+- **`IDF_TOOLS_PATH` is the root, not the `tools/` inside it.** Point it one
+  level too deep and `idf_tools.py` installs a second copy of every toolchain
+  under `tools/tools/`.
 - BSP component: `waveshare/esp32_s3_touch_amoled_1_8` `^2.0.3` (see
   `launcher/main/idf_component.yml`), plus the two panel drivers it only
   depends on privately and so must be declared again here directly:
