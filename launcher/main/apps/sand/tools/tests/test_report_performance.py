@@ -15,7 +15,7 @@ import unittest
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 REPORTER = TOOLS / "report_performance.py"
-SUITE = TOOLS.parents[0] / "suite_sand_perf.c"
+SUITE = TOOLS.parents[0] / "tests" / "suite_sand_perf.c"
 
 BOOT = "ESP-ROM:esp32s3-20210327\nI (31) boot: ESP-IDF v5.5\n"
 COMPLETE = "I (3000) selftest: SELFTEST_COMPLETE failures=0 elapsed_ms=380\n"

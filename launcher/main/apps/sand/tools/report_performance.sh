@@ -86,7 +86,7 @@ done
 # a present costs as much as a step.
 report_generate() {
     python "$SCRIPT_DIR/report_performance.py" "$1" "$2" \
-        --source "$LAUNCHER_DIR/main/apps/sand/suite_sand_perf.c" \
+        --source "$LAUNCHER_DIR/main/apps/sand/tests/suite_sand_perf.c" \
         --source "$LAUNCHER_DIR/test/suites/suite_gfx.c"
 }
 
