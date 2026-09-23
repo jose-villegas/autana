@@ -63,18 +63,18 @@ idf_init() {
 # way IDF_PATH arrived. $HOME/esp/esp-idf is Espressif's documented checkout.
 idf_default_export() {
     if idf_needs_shim; then
-        _idf_export="${IDF_PATH:-}/export.bat"
+        _IDF_DEFAULT="${IDF_PATH:-}/export.bat"
     else
-        _idf_export="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"
+        _IDF_DEFAULT="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"
     fi
-    if [ ! -f "$_idf_export" ]; then
+    if [ ! -f "$_IDF_DEFAULT" ]; then
         echo "no ESP-IDF found: set IDF_PATH to your ESP-IDF checkout, or pass its export script" >&2
         return 1
     fi
     if idf_needs_shim; then
-        echo "$(cygpath -w "$IDF_PATH")\\export.bat"
+        cygpath -w "$_IDF_DEFAULT"
     else
-        echo "$_idf_export"
+        echo "$_IDF_DEFAULT"
     fi
 }
 
