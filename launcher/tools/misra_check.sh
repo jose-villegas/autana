@@ -59,7 +59,7 @@ MAX_UNITS="${MISRA_MAX_UNITS:-60}"
 # check that one configuration and skip the others in silence, so #ifdef'd
 # code goes unanalysed - measured on a toy case, a divide-by-zero inside an
 # #ifdef is reported without -D and missed with it. --force restores the
-# other configurations, and the -D still pins MISRA_SCAN, so the un-stubbed
+# other configurations, and the -D still pins ANALYSIS_SCAN, so the un-stubbed
 # variant of a stubbed file is never the one analysed.
 #
 # It costs time for coverage that is mostly already there: this project's
@@ -188,16 +188,16 @@ fi
 
 # Any file that stubs a macro for the analyser is analysed as stubbed, not as
 # written. Name them, so a finding count is never read as full coverage.
-stubbed="$(grep -rl --include='*.c' --include='*.h' 'MISRA_SCAN' main 2>/dev/null || true)"
+stubbed="$(grep -rl --include='*.c' --include='*.h' 'ANALYSIS_SCAN' main 2>/dev/null || true)"
 if [ -n "$stubbed" ]; then
-    echo "Analysed with source-level stubs (see each MISRA_SCAN block for scope):"
+    echo "Analysed with source-level stubs (see each ANALYSIS_SCAN block for scope):"
     echo "$stubbed" | sed 's|^|  |'
 fi
 set +e
 "$TIMEOUT" --signal=TERM --kill-after=10s "${TIMEOUT_SECONDS}s" cppcheck \
     --project="$BUILD_DIR/compile_commands.json" \
     --file-filter="$FILE_FILTER" \
-    -DMISRA_SCAN=1 \
+    -DANALYSIS_SCAN=1 \
     $FORCE_FLAG \
     -j "$JOBS" \
     --enable=warning,style,performance,portability \
