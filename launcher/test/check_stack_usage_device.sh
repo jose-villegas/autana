@@ -49,8 +49,8 @@ if [ -z "$CC_BIN" ]; then
     # which costs ~90s and is not worth paying just to read frame sizes. The
     # tool directory is not named after the prefix: IDF ships every Xtensa
     # chip's driver in one xtensa-esp-elf install.
-    for c in "$HOME/.espressif/tools"/*/*/*/bin/"$PREFIX-gcc.exe" \
-             "$HOME/.espressif/tools"/*/*/*/bin/"$PREFIX-gcc"; do
+    for c in "${IDF_TOOLS_PATH:-$HOME/.espressif}/tools"/*/*/*/bin/"$PREFIX-gcc.exe" \
+             "${IDF_TOOLS_PATH:-$HOME/.espressif}/tools"/*/*/*/bin/"$PREFIX-gcc"; do
         [ -x "$c" ] && CC_BIN="$c" && break
     done
 fi

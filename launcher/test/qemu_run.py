@@ -355,9 +355,9 @@ def main(argv):
                         help="where flash, eFuse and log go "
                              "(default: the build directory)")
     parser.add_argument("--log", default=None)
-    parser.add_argument("--idf-path",
-                        default=os.environ.get("IDF_PATH",
-                                               r"C:\Espressif\esp-idf-v5.5"))
+    parser.add_argument("--idf-path", default=os.environ.get("IDF_PATH"),
+                        required=not os.environ.get("IDF_PATH"),
+                        help="the ESP-IDF checkout (default: $IDF_PATH)")
     args = parser.parse_args(argv)
 
     actions = ["suite %s" % name for name in args.suite]

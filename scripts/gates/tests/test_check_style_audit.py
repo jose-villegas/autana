@@ -264,6 +264,15 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "PERSONAL-PATH")
         self.assertEqual(len(findings), 1)
 
+    def test_a_drive_rooted_esp_idf_checkout_is_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/tools/build.sh",
+                      "DEFAULT_EXPORT='" + "\\".join(["C:", "Espressif", "esp-idf-v5.5", "export.bat"]) + "'\n")
+            self.commit(root, "launcher")
+            findings = self.rule_hits(root, "PERSONAL-PATH")
+        self.assertEqual(len(findings), 1)
+
     def test_a_portable_home_relative_path_is_not_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

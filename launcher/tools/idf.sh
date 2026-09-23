@@ -3,7 +3,7 @@
 # Run idf.py from a POSIX shell, on any platform. Source this and call idf().
 #
 #   . "$(dirname "$0")/idf.sh"
-#   idf_init "/path/to/launcher" "C:\\Espressif\\esp-idf-v5.5\\export.bat"
+#   idf_init "/path/to/launcher" "$(idf_default_export)" || exit $?
 #   idf -B build.release build       || exit $?
 #   idf -B build.release -p <PORT> flash || exit $?
 #
@@ -51,6 +51,26 @@ idf_init() {
     _IDF_DIR="$1"
     _IDF_EXPORT="$2"
     _IDF_SHIM="${3:-$(cd "$(dirname "$0")" && pwd)}/idf_shim.bat"
+}
+
+# The export script of the ESP-IDF at $IDF_PATH, which ESP-IDF's installers
+# set. On Windows it goes to cmd, so it is spelled as a Windows path whichever
+# way IDF_PATH arrived. $HOME/esp/esp-idf is Espressif's documented checkout.
+idf_default_export() {
+    if idf_needs_shim; then
+        _idf_export="${IDF_PATH:-}/export.bat"
+    else
+        _idf_export="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"
+    fi
+    if [ ! -f "$_idf_export" ]; then
+        echo "no ESP-IDF found: set IDF_PATH to your ESP-IDF checkout, or pass its export script" >&2
+        return 1
+    fi
+    if idf_needs_shim; then
+        echo "$(cygpath -w "$IDF_PATH")\\export.bat"
+    else
+        echo "$_idf_export"
+    fi
 }
 
 # Whether this shell needs the Windows shim at all.
