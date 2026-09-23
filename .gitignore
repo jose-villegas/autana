@@ -74,7 +74,6 @@ build/
 # Each variant keeps its own sdkconfig so it never disturbs the normal build.
 build.*/
 managed_components/
-dependencies.lock
 sdkconfig.old
 /launcher/sdkconfig
 
