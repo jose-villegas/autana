@@ -34,8 +34,7 @@
 #               port; run `autana flash rel|dev|diag` rather than this script
 #               directly. --build-only needs neither the token nor a port.
 #   IDF_EXPORT  path to ESP-IDF's export script - export.bat on Windows,
-#               export.sh elsewhere. Default: the ESP-IDF Windows
-#               installer's path.
+#               export.sh elsewhere. Default: the one under $IDF_PATH.
 #
 # Run from anywhere (it cds to launcher/ itself); double-click from Explorer
 # if .sh is associated with Git Bash, or right-click launcher/tools/ ->
@@ -121,21 +120,6 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-if [ -n "${MSYSTEM:-}" ]; then
-    # idf.sh hands this to cmd, so it has to be a Windows path even though
-    # IDF_PATH may arrive in either spelling - cygpath -w accepts both, and
-    # does not fail on a path that is not there, so the export script itself
-    # is what decides whether IDF_PATH is worth preferring over the default.
-    if [ -f "${IDF_PATH:-}/export.bat" ]; then
-        DEFAULT_EXPORT="$(cygpath -w "$IDF_PATH")\\export.bat"
-    else
-        DEFAULT_EXPORT='C:\Espressif\esp-idf-v5.5\export.bat'
-    fi
-else
-    DEFAULT_EXPORT="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"
-fi
-IDF_EXPORT="${IDF_EXPORT_ARG:-$DEFAULT_EXPORT}"
-
 case "$VARIANT" in
     release) BUILD_DIR="build" ;;
     *)       BUILD_DIR="build.$VARIANT" ;;
@@ -145,6 +129,7 @@ esac
 . "$SCRIPT_DIR/idf.sh"
 # shellcheck source=../../scripts/quiet.sh
 . "$SCRIPT_DIR/../../scripts/quiet.sh"
+IDF_EXPORT="${IDF_EXPORT_ARG:-$(idf_default_export)}" || exit 2
 idf_init "$LAUNCHER_DIR" "$IDF_EXPORT" "$SCRIPT_DIR"
 . "$SCRIPT_DIR/idf_variant.sh"
 

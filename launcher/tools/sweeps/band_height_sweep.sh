@@ -29,15 +29,9 @@ HEIGHT="$1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-if [ -n "${MSYSTEM:-}" ]; then
-    DEFAULT_EXPORT='C:\Espressif\esp-idf-v5.5\export.bat'
-else
-    DEFAULT_EXPORT="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"
-fi
-IDF_EXPORT="${2:-$DEFAULT_EXPORT}"
-
 # shellcheck source=../idf.sh
 . "$SCRIPT_DIR/../idf.sh"
+IDF_EXPORT="${2:-$(idf_default_export)}" || exit 2
 idf_init "$LAUNCHER_DIR" "$IDF_EXPORT" "$SCRIPT_DIR/.."
 . "$SCRIPT_DIR/../idf_variant.sh"
 

@@ -65,15 +65,10 @@ if [ "$PERF" = 1 ]; then
     BUILD_DIR="$BUILD_DIR.perf"
 fi
 
-case "$(uname -s)" in
-    MINGW* | MSYS* | CYGWIN*) DEFAULT_EXPORT='C:\Espressif\esp-idf-v5.5\export.bat' ;;
-    *) DEFAULT_EXPORT="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh" ;;
-esac
-IDF_EXPORT="${IDF_EXPORT:-$DEFAULT_EXPORT}"
-
 if [ "$BUILD" = 1 ]; then
     # shellcheck source=../tools/idf.sh
     . "$LAUNCHER_DIR/tools/idf.sh"
+    IDF_EXPORT="${IDF_EXPORT:-$(idf_default_export)}" || exit 2
     idf_init "$LAUNCHER_DIR" "$IDF_EXPORT" "$LAUNCHER_DIR/tools"
     . "$LAUNCHER_DIR/tools/idf_variant.sh"
     idf_variant_init "$LAUNCHER_DIR"

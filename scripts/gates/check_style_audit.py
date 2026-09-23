@@ -26,7 +26,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from check_comment_length import EXCLUDED, scan  # noqa: E402
-from check_doc_citations import SKIP as SKIP_DIRS, documentation  # noqa: E402
+from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
 from check_doc_index import blank_fences  # noqa: E402
 from check_doc_vocabulary import ESCAPE as DOC_VOCABULARY_ESCAPE  # noqa: E402
@@ -112,8 +112,6 @@ def _c_walk(root):
     check-format.sh and check_comment_length.py give them."""
     root = pathlib.Path(root)
     for rel in tracked_files(root, ["*.c", "*.h"]):
-        if any(part in SKIP_DIRS for part in pathlib.PurePosixPath(rel).parts):
-            continue
         if any(rel.startswith(e) for e in EXCLUDED):
             continue
         path = root / rel
@@ -129,7 +127,7 @@ def _text_walk(root):
     root = pathlib.Path(root)
     for rel in tracked_files(root, []):
         p = pathlib.Path(rel)
-        if p.suffix.lower() in BINARY_EXTENSIONS or any(part in SKIP_DIRS for part in p.parts):
+        if p.suffix.lower() in BINARY_EXTENSIONS:
             continue
         full = root / rel
         if not full.is_file():
@@ -373,12 +371,14 @@ def rule_include_direction(root, path, text):
                        "INCLUDE_DIRECTION_EXCEPTIONS entry citing the doc section that draws it")
 
 
-# RULE: a personal home-directory path baked into tracked source only works
-# on the machine that wrote it. launcher/tools/espressif.py's
-# espressif_tools_root() and idf_python() are the portable form.
+# RULE: a personal home-directory path, or one machine's ESP-IDF checkout,
+# baked into tracked source only works on the machine that wrote it.
+# launcher/tools/espressif.py's espressif_tools_root() and idf_python(), and
+# idf.sh's idf_default_export(), are the portable forms.
 
 PERSONAL_PATH = re.compile(
-    r"C:\\Users\\[A-Za-z0-9][A-Za-z0-9_.-]*|/home/[A-Za-z0-9][A-Za-z0-9_.-]*|/Users/[A-Za-z0-9][A-Za-z0-9_.-]*")
+    r"C:\\Users\\[A-Za-z0-9][A-Za-z0-9_.-]*|/home/[A-Za-z0-9][A-Za-z0-9_.-]*|/Users/[A-Za-z0-9][A-Za-z0-9_.-]*"
+    r"|[A-Za-z]:\\+Espressif\\+(?:frameworks\\+)?esp-idf[\w.-]*")
 
 
 @text_rule("PERSONAL-PATH")
@@ -386,7 +386,7 @@ def rule_personal_path(root, path, text):
     for number, line in enumerate(text.splitlines(), 1):
         m = PERSONAL_PATH.search(line)
         if m:
-            yield number, f"{m.group(0)} is machine-specific - use ~, or launcher/tools/espressif.py for an ESP-IDF path"
+            yield number, f"{m.group(0)} is machine-specific - use ~, or launcher/tools/espressif.py or IDF_PATH, for an ESP-IDF path"
 
 
 # RULE: an HTML comment in a doc renders as nothing. Only the gates' own

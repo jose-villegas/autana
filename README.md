@@ -50,7 +50,9 @@ scripts/install-git-hooks.sh           # pre-commit format check - once per clon
 Requires [ESP-IDF](https://docs.espressif.com/projects/esp-idf/) v5.5+, and
 its own export script has to work: `idf.py` cannot run under Git Bash, so on
 Windows the build scripts hand that step to `cmd` and need a working
-`export.bat`. They find it from `IDF_PATH`. Set `IDF_TOOLS_PATH` too whenever
+`export.bat`. They find it from `IDF_PATH`, which has to be set where they
+run (Linux and macOS fall back to `~/esp/esp-idf`), and refuse to build
+without it. Set `IDF_TOOLS_PATH` too whenever
 the toolchain is not where ESP-IDF's installer puts it by default - that root
 is also where the checks find the bundled clang-format and clang-tidy, and
 where `autana` finds the Python that carries pyserial.
