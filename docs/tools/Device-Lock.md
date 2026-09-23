@@ -83,7 +83,7 @@ to `index.jsonl`. A tuning session is dozens of these, and none is evidence.
 
 ### Screenshots: `device.py screenshot`
 
-`device.py screenshot [--out PATH] [--timeout SECONDS]` takes the lock,
+`device.py screenshot [--as-shown|--framebuffer] [--out PATH] [--timeout SECONDS]` takes the lock,
 requests the panel capture and writes a `.png` plus a `.json` state snapshot;
 `autana screenshot` calls it the same way. A script that needs its own
 `--owner`/`--purpose` calls `device.py screenshot` directly, the same way

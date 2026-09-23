@@ -749,8 +749,26 @@ def screenshot(args, store, port):
         with open_when_free(port) as connection:
             png, state_json = screenshot_tool.read_screenshot(connection, args.timeout, on_status=report)
 
-    png_path, state_path = screenshot_tool.write_capture(out, png, state_json)
-    print(f"wrote {png_path} ({os.path.getsize(png_path)} bytes)")
+    if getattr(args, "framebuffer", False):
+        image_turn_quarter = 0
+        description = "framebuffer bytes"
+    elif getattr(args, "as_shown", False):
+        try:
+            image_turn_quarter = json.loads(state_json)["orientation_quarter"] % 4
+        except (KeyError, TypeError, json.JSONDecodeError):
+            raise RuntimeError("the capture did not report orientation_quarter for --as-shown")
+        description = "as shown"
+    else:
+        image_turn_quarter = 3
+        description = "to match the board"
+    png = screenshot_tool.turn_png(png, image_turn_quarter)
+    png_path, state_path = screenshot_tool.write_capture(out, png, state_json, image_turn_quarter)
+    degrees = image_turn_quarter * 90
+    direction = "clockwise" if image_turn_quarter == 1 else "counter-clockwise"
+    if image_turn_quarter == 0:
+        print(f"wrote {png_path} (framebuffer bytes; turned 0 degrees)")
+    else:
+        print(f"wrote {png_path} (turned {min(degrees, 360 - degrees)} degrees {direction} {description})")
     if state_path:
         print(f"wrote {state_path}")
     else:
@@ -891,6 +909,9 @@ def main(argv=None):
                                         "(default: a timestamped name in the current directory)")
     screenshot_parser.add_argument("--timeout", type=float, default=90.0)
     screenshot_parser.add_argument("--purpose", default="screenshot")
+    screenshot_view = screenshot_parser.add_mutually_exclusive_group()
+    screenshot_view.add_argument("--as-shown", action="store_true")
+    screenshot_view.add_argument("--framebuffer", action="store_true")
     batch_parser = subparsers.add_parser(
         "batch", help="flash once, capture suites N times under one lock, write one summary")
     batch_parser.add_argument("--worktree", required=True)

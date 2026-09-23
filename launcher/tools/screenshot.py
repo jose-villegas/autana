@@ -118,6 +118,59 @@ def bmp_bytes_to_png(bmp: bytes) -> bytes:
     return png
 
 
+def turn_png(png: bytes, quarter: int) -> bytes:
+    """Turn an RGB PNG made by bmp_bytes_to_png() clockwise by `quarter`."""
+    quarter %= 4
+    if quarter == 0:
+        return png
+
+    pos = 8
+    header = None
+    compressed = bytearray()
+    while pos < len(png):
+        length, = struct.unpack_from(">I", png, pos)
+        tag = png[pos + 4:pos + 8]
+        data = png[pos + 8:pos + 8 + length]
+        if tag == b"IHDR":
+            header = struct.unpack(">IIBBBBB", data)
+        elif tag == b"IDAT":
+            compressed += data
+        pos += length + 12
+
+    if header is None:
+        raise ValueError("not a PNG: no IHDR chunk")
+    width, height, depth, colour, compression, filter_method, interlace = header
+    if (depth, colour, compression, filter_method, interlace) != (8, 2, 0, 0, 0):
+        raise ValueError("expected an 8-bit RGB PNG without interlace")
+
+    raw = zlib.decompress(compressed)
+    stride = width * 3
+    rows = []
+    for y in range(height):
+        start = y * (stride + 1)
+        if raw[start] != 0:
+            raise ValueError("expected unfiltered PNG rows")
+        rows.append(raw[start + 1:start + 1 + stride])
+
+    if quarter == 1:
+        rows = [b"".join(rows[height - 1 - x][y * 3:y * 3 + 3] for x in range(height))
+                for y in range(width)]
+    elif quarter == 2:
+        rows = [b"".join(row[x * 3:x * 3 + 3] for x in range(width - 1, -1, -1))
+                for row in reversed(rows)]
+    else:
+        rows = [b"".join(rows[x][(width - 1 - y) * 3:(width - y) * 3] for x in range(height))
+                for y in range(width)]
+
+    raw = b"".join(b"\0" + row for row in rows)
+    out_width, out_height = (height, width) if quarter % 2 else (width, height)
+    turned = b"\x89PNG\r\n\x1a\n"
+    turned += _png_chunk(b"IHDR", struct.pack(">IIBBBBB", out_width, out_height, 8, 2, 0, 0, 0))
+    turned += _png_chunk(b"IDAT", zlib.compress(raw, 6))
+    turned += _png_chunk(b"IEND", b"")
+    return turned
+
+
 def read_screenshot(port, timeout, on_status=None):
     """Trigger one capture on an already-open connection and return
     (png_bytes, state_json_or_None).
@@ -226,7 +279,7 @@ def read_screenshot(port, timeout, on_status=None):
         f"size={total_size} but never SCREENSHOT_END - the transfer started but did not finish.")
 
 
-def write_capture(out, png, state_json):
+def write_capture(out, png, state_json, image_turn_quarter=None):
     """png/.json beside each other, `out`'s extension replaced with .png.
     Returns (png_path, state_path_or_None); a state_json that fails to parse as JSON
     is still written, raw, to state_path - this both validates the device's
@@ -245,6 +298,8 @@ def write_capture(out, png, state_json):
     state_path = os.path.splitext(out)[0] + ".json"
     try:
         parsed = json.loads(state_json)
+        if image_turn_quarter is not None:
+            parsed["image_turn_quarter"] = image_turn_quarter
         with open(state_path, "w") as f:
             json.dump(parsed, f, indent=2)
             f.write("\n")

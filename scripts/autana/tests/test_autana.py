@@ -192,6 +192,24 @@ class ScreenshotCommandTests(unittest.TestCase):
         command = called.call_args[0][0]
         self.assertNotIn("--out", command)
 
+    def test_as_shown_is_forwarded_to_device(self):
+        status = mock.Mock(stdout="")
+        with mock.patch.object(autana.subprocess, "run", return_value=status), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.screenshot(["--as-shown"])
+        self.assertIn("--as-shown", called.call_args[0][0])
+
+    def test_framebuffer_is_forwarded_to_device(self):
+        status = mock.Mock(stdout="")
+        with mock.patch.object(autana.subprocess, "run", return_value=status), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.screenshot(["--framebuffer"])
+        self.assertIn("--framebuffer", called.call_args[0][0])
+
+    def test_screenshot_views_are_mutually_exclusive(self):
+        with self.assertRaises(SystemExit):
+            autana.screenshot(["--as-shown", "--framebuffer"])
+
     def test_unrecognised_flags_are_rejected(self):
         with self.assertRaises(SystemExit):
             autana.screenshot(["bogus"])
