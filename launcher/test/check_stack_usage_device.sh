@@ -36,6 +36,7 @@ BUILD_DIR="${TEST_BUILD_DIR:-$TEST_DIR/build}/su-device"
 
 # shellcheck source=../tools/device_profile.sh
 . "$TEST_DIR/../tools/device_profile.sh"
+. "$TEST_DIR/../tools/espressif.sh"
 device_profile_load "" "$TEST_DIR/../tools/device_profiles" || exit 1
 
 ARCH_FLAGS=$(device_profile_require DP_ARCH_FLAGS) || exit 1
@@ -49,8 +50,8 @@ if [ -z "$CC_BIN" ]; then
     # which costs ~90s and is not worth paying just to read frame sizes. The
     # tool directory is not named after the prefix: IDF ships every Xtensa
     # chip's driver in one xtensa-esp-elf install.
-    for c in "$HOME/.espressif/tools"/*/*/*/bin/"$PREFIX-gcc.exe" \
-             "$HOME/.espressif/tools"/*/*/*/bin/"$PREFIX-gcc"; do
+    for c in "$(espressif_tools_root)/tools"/*/*/*/bin/"$PREFIX-gcc.exe" \
+             "$(espressif_tools_root)/tools"/*/*/*/bin/"$PREFIX-gcc"; do
         [ -x "$c" ] && CC_BIN="$c" && break
     done
 fi
