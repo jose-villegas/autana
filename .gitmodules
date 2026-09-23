@@ -4,3 +4,6 @@
 [submodule "third_party/upstream/small3dlib"]
 	path = third_party/upstream/small3dlib
 	url = https://gitlab.com/drummyfish/small3dlib.git
+[submodule "third_party/upstream/Waveshare-ESP32-components"]
+	path = third_party/upstream/Waveshare-ESP32-components
+	url = https://github.com/waveshareteam/Waveshare-ESP32-components.git

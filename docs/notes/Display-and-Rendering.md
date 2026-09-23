@@ -9,8 +9,9 @@ actual board or read out of the actual source. See
 
 ## Owning panel bring-up
 
-`gfx.c` does not call `bsp_display_new()`. It initialises SPI2, the panel IO and
-the panel itself, keeping `board_detect()` only for variant detection and the
+`gfx.c` does not call `bsp_display_new()` from the vendored
+`launcher/components/esp32_s3_touch_amoled_1_8/`. It initialises SPI2, the
+panel IO and the panel itself, keeping `board_detect()` for variant detection and the
 reset lines on the (optional) IO expander.
 
 That is not a preference. The BSP holds `panel_handle` and `io_handle` as
@@ -28,7 +29,7 @@ Waveshare tuned `0x44`/`0x53`/`0x51` for this panel.
 
 ## Driving the panel directly
 
-Going below LVGL means taking on four things it was doing for you. All four
+Driving the panel directly requires four safeguards. All four
 fail *silently* — wrong output rather than an error.
 
 **1. `esp_lcd_panel_draw_bitmap()` is asynchronous.** It queues a DMA transfer
@@ -43,11 +44,10 @@ strips get queued before any is awaited, so several finish first. A binary
 semaphore saturates at one and discards the rest — the second `take` blocks
 forever. Symptom: clean boot log that stops dead after the last setup line.
 
-**3. RGB565 must be byte-swapped.** `esp_lvgl_port` sets `swap_bytes = true`
-for this panel; driving it directly you do it yourself.
+**3. RGB565 must be byte-swapped.** The panel transfer expects swapped bytes;
+`gfx.c` performs the swap.
 
-**4. Coordinates want 2-pixel alignment.** The BSP installs a rounder callback
-for LVGL that snaps areas to even boundaries. Full-width strips at multiples of
+**4. Coordinates want 2-pixel alignment.** Full-width strips at multiples of
 64 rows satisfy this naturally.
 
 ---
@@ -597,12 +597,8 @@ count does not produce the other.
 
 Verified, not assumed. `SOC_PPA_SUPPORTED` is defined **only for the ESP32-P4**
 in ESP-IDF's SoC caps — this chip has no Pixel Processing Accelerator, no 2D
-blitter, no GPU. `esp_lvgl_port` does ship PPA rotation code and hand-written
-SIMD blend routines for Xtensa (`_esp32.S`, `_esp32s3.S`), so the S3-specific
-SIMD path is present in that dependency, but the PPA path itself still
-compiles only when `SOC_PPA_SUPPORTED` is set, which it is not on the S3
-either. Everything on this chip is scalar C; the present task runs on core 1 and
-sand's step splits across both.
+blitter, no GPU. Rendering here runs as scalar C; the render task runs on
+core 1 and sand's step splits across both.
 
 If graphics throughput ever becomes the requirement, that is a board decision:
 the ESP32-P4 has the PPA, PSRAM, *and* a real SDMMC host.
