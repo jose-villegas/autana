@@ -22,7 +22,7 @@ MAIN_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)
 LAUNCHER_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../../.." && pwd)
 
 BUILD_DIR="$SCRIPT_DIR/build"
-RESULTS_DIR="${1:-$BUILD_DIR/shading_palette}"
+RESULTS_DIR="${1:-$BUILD_DIR/shading_palette_results}"
 
 # shellcheck source=../../../../tools/find_cc.sh
 . "$LAUNCHER_DIR/tools/find_cc.sh"
