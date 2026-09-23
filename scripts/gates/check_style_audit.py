@@ -370,9 +370,13 @@ def rule_include_direction(root, path, text):
 # launcher/tools/espressif.py's espressif_tools_root() and idf_python(), and
 # idf.sh's idf_default_export(), are the portable forms.
 
+# The ESP-IDF branch matches any drive path that names an esp-idf checkout,
+# not one installer's folder layout. It stays off root-anchored paths: the
+# portable $HOME/esp/esp-idf default and github.com/espressif/esp-idf both
+# contain the name and are fine.
 PERSONAL_PATH = re.compile(
     r"C:\\Users\\[A-Za-z0-9][A-Za-z0-9_.-]*|/home/[A-Za-z0-9][A-Za-z0-9_.-]*|/Users/[A-Za-z0-9][A-Za-z0-9_.-]*"
-    r"|[A-Za-z]:\\+Espressif\\+(?:frameworks\\+)?esp-idf[\w.-]*")
+    r"|(?<![\w/])[A-Za-z]:[\\/][^\s\"'`;|()]*?esp-idf[\w.-]*")
 
 
 @text_rule("PERSONAL-PATH")
