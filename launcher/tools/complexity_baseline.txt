@@ -1471,7 +1471,7 @@
 3	launcher/main/ui/ui_pointer.c:40	step_drag
 3	launcher/main/ui/ui_ridge.c:215	pluck_from_touch
 3	launcher/main/ui/ui_ridge.c:150	ui_ridge_set_gravity
-3	launcher/main/util/device_state.c:15	temp_sensor_read_celsius
+3	launcher/main/console/device_state.c:13	temp_sensor_read_celsius
 3	launcher/main/util/job.c:113	job_dispatch
 3	launcher/main/util/job.c:150	job_wait
 3	launcher/main/util/screenshot.c:287	emit_bytes
