@@ -7,9 +7,9 @@
 #include <windows.h>
 #endif
 
+#include "apps/sand/tests/suite_sand_common.h"
+#include "apps/sand/tests/suite_sand_scenes.h"
 #include "sand_priv.h"
-#include "suite_sand_common.h"
-#include "suite_sand_scenes.h"
 
 static bool split_liquid;
 static double liquid_us;

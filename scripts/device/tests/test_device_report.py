@@ -231,7 +231,8 @@ class DiscoverReportersTests(unittest.TestCase):
         app_dir = Path(root) / "launcher" / "main" / "apps" / app
         (app_dir / "tools").mkdir(parents=True)
         (app_dir / "tools" / "report_performance.py").write_text("# stub\n")
-        (app_dir / suite_file).write_text(f"SUITE_REGISTER({registered_suite});\n")
+        (app_dir / "tests").mkdir()
+        (app_dir / "tests" / suite_file).write_text(f"SUITE_REGISTER({registered_suite});\n")
 
     def test_zero_candidates_when_no_app_registers_the_suite(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -290,7 +291,8 @@ class BuildBudgetSectionTests(unittest.TestCase):
                 app_dir = Path(directory) / "launcher" / "main" / "apps" / app
                 (app_dir / "tools").mkdir(parents=True)
                 (app_dir / "tools" / "report_performance.py").write_text("# stub\n")
-                (app_dir / f"suite_{app}.c").write_text("SUITE_REGISTER(run_shared_suite);\n")
+                (app_dir / "tests").mkdir()
+                (app_dir / "tests" / f"suite_{app}.c").write_text("SUITE_REGISTER(run_shared_suite);\n")
             section = "\n".join(device_report.build_budget_section(
                 directory, "run_shared_suite", Path(directory) / "capture.log", ""))
         self.assertIn("ambiguous", section)
@@ -302,7 +304,8 @@ class BuildBudgetSectionTests(unittest.TestCase):
             app_dir = Path(directory) / "launcher" / "main" / "apps" / "sand"
             (app_dir / "tools").mkdir(parents=True)
             (app_dir / "tools" / "report_performance.py").write_text("# stub\n")
-            (app_dir / "suite_sand_perf.c").write_text("SUITE_REGISTER(run_sand_perf_suite);\n")
+            (app_dir / "tests").mkdir()
+            (app_dir / "tests" / "suite_sand_perf.c").write_text("SUITE_REGISTER(run_sand_perf_suite);\n")
             capture = Path(directory) / "capture.log"
             capture.write_text(SAND_CAPTURE)
             with mock.patch.object(device_report, "run_reporter",
@@ -317,7 +320,8 @@ class BuildBudgetSectionTests(unittest.TestCase):
             app_dir = Path(directory) / "launcher" / "main" / "apps" / "sand"
             (app_dir / "tools").mkdir(parents=True)
             (app_dir / "tools" / "report_performance.py").write_text("# stub\n")
-            (app_dir / "suite_sand_perf.c").write_text("SUITE_REGISTER(run_sand_perf_suite);\n")
+            (app_dir / "tests").mkdir()
+            (app_dir / "tests" / "suite_sand_perf.c").write_text("SUITE_REGISTER(run_sand_perf_suite);\n")
             capture = Path(directory) / "capture.log"
             capture.write_text(SAND_CAPTURE)
             fake_result = mock.Mock(returncode=1, stdout="", stderr="source not found\n")
@@ -332,7 +336,8 @@ class BuildBudgetSectionTests(unittest.TestCase):
             app_dir = Path(directory) / "launcher" / "main" / "apps" / "sand"
             (app_dir / "tools").mkdir(parents=True)
             (app_dir / "tools" / "report_performance.py").write_text("# stub\n")
-            (app_dir / "suite_sand_perf.c").write_text("SUITE_REGISTER(run_sand_perf_suite);\n")
+            (app_dir / "tests").mkdir()
+            (app_dir / "tests" / "suite_sand_perf.c").write_text("SUITE_REGISTER(run_sand_perf_suite);\n")
             capture = Path(directory) / "capture.log"
             capture.write_text(SAND_CAPTURE)
             table = "\n".join([
@@ -362,7 +367,8 @@ class BuildBudgetSectionTests(unittest.TestCase):
             app_dir = Path(directory) / "launcher" / "main" / "apps" / "sand"
             (app_dir / "tools").mkdir(parents=True)
             (app_dir / "tools" / "report_performance.py").write_text("# stub\n")
-            (app_dir / "suite_sand_perf.c").write_text("SUITE_REGISTER(run_sand_perf_suite);\n")
+            (app_dir / "tests").mkdir()
+            (app_dir / "tests" / "suite_sand_perf.c").write_text("SUITE_REGISTER(run_sand_perf_suite);\n")
             capture = Path(directory) / "capture.log"
             capture.write_text(PERF_TARGET_CAPTURE)
             empty_table = "\n".join([
@@ -388,7 +394,8 @@ class BuildBudgetSectionTests(unittest.TestCase):
             app_dir = Path(directory) / "launcher" / "main" / "apps" / "sand"
             (app_dir / "tools").mkdir(parents=True)
             (app_dir / "tools" / "report_performance.py").write_text("# stub\n")
-            (app_dir / "suite_sand_perf.c").write_text("SUITE_REGISTER(run_sand_perf_suite);\n")
+            (app_dir / "tests").mkdir()
+            (app_dir / "tests" / "suite_sand_perf.c").write_text("SUITE_REGISTER(run_sand_perf_suite);\n")
             capture = Path(directory) / "capture.log"
             plain = ":1:test_one:PASS\n"
             capture.write_text(plain)
