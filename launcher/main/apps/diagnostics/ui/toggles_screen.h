@@ -17,7 +17,7 @@
  * two fields below stay unconditional - a few unused bytes outside a
  * SELFTEST build, never a missing member. A host build (CONFIG_LAUNCHER_
  * SELFTEST never defined there) measures this page without the row they
- * feed; only a SELFTEST build's own run of ui/suite_command_list_budget.c
+ * feed; only a SELFTEST build's own run of tests/suite_command_list_budget.c
  * exercises it.
  */
 #pragma once
