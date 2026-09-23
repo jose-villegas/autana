@@ -42,6 +42,8 @@ clang_format_major() {
 # then the ESP-IDF-bundled esp-clang (present unless the IDF export script
 # has been sourced in this shell, in which case PATH already found it).
 # Newest esp-clang first, since a machine can carry several IDF versions.
+# $IDF_TOOLS_PATH relocates that root, and Windows spells the binary .exe -
+# without both, this fallback can never fire on an installer-placed toolchain.
 candidate_binaries() {
     if command -v "clang-format-$PINNED_MAJOR" >/dev/null 2>&1; then
         echo "clang-format-$PINNED_MAJOR"
@@ -49,7 +51,9 @@ candidate_binaries() {
     if command -v clang-format >/dev/null 2>&1; then
         echo "clang-format"
     fi
-    ls -d "$HOME"/.espressif/tools/esp-clang/*/esp-clang/bin/clang-format 2>/dev/null | sort -Vr || true
+    local root="${IDF_TOOLS_PATH:-$HOME/.espressif}"
+    ls -d "$root"/tools/esp-clang/*/esp-clang/bin/clang-format \
+          "$root"/tools/esp-clang/*/esp-clang/bin/clang-format.exe 2>/dev/null | sort -Vr || true
 }
 
 print_install_help() {
@@ -59,7 +63,8 @@ print_install_help() {
     echo "Get it:" >&2
     echo "  any platform:  pip install 'clang-format==${PINNED_MAJOR}.1.7'" >&2
     echo "  ESP-IDF:       already bundled - source the IDF export script, or let this" >&2
-    echo "                 script find ~/.espressif/tools/esp-clang/*/esp-clang/bin/" >&2
+    echo "                 script find \$IDF_TOOLS_PATH (default ~/.espressif)" >&2
+    echo "                 /tools/esp-clang/*/esp-clang/bin/" >&2
     case "$(uname -s)" in
         Darwin)
             echo "  macOS:         brew install llvm@${PINNED_MAJOR}" >&2
@@ -100,7 +105,7 @@ resolve_clang_format() {
     done < <(candidate_binaries)
 
     if [ -z "$fallback" ]; then
-        echo "No clang-format found on PATH or in ~/.espressif/tools/esp-clang/." >&2
+        echo "No clang-format found on PATH or in ${IDF_TOOLS_PATH:-$HOME/.espressif}/tools/esp-clang/." >&2
         print_install_help
         exit 1
     fi
