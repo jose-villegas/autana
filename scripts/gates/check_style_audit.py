@@ -21,7 +21,6 @@ the same reason - a worklist, not a verdict.
 """
 import pathlib
 import re
-import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -31,6 +30,7 @@ from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
 from check_doc_index import blank_fences  # noqa: E402
 from check_doc_vocabulary import ESCAPE as DOC_VOCABULARY_ESCAPE  # noqa: E402
 import strip_comment_rules  # noqa: E402
+from tracked import tracked_files  # noqa: E402
 
 ERROR, WARN = "ERROR", "WARN"
 
@@ -85,12 +85,6 @@ doc_rule = _register("doc")
 c_comment_rule = _register("c_comment")
 c_line_rule = _register("c_line")
 text_rule = _register("text")
-
-
-def tracked_files(root, patterns):
-    result = subprocess.run(["git", "ls-files", *patterns], cwd=root,
-                            capture_output=True, text=True, check=True)
-    return [line for line in result.stdout.splitlines() if line]
 
 
 def relpath(root, path):
