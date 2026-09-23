@@ -4,17 +4,19 @@ name: Shell Scripts
 # some of it can be checked at all.
 #
 # Development happens on Windows in Git Bash, where /bin/sh is bash wearing
-# a hat: `sh -n` there accepts bashisms that a real POSIX shell rejects, and
-# launcher/tools/idf.sh's non-Windows branch is never taken. Both gaps close
-# here for free, on a runner that was already going to exist.
-#
-# Own workflow file, like the others, purely so it gets its own badge -
-# GitHub exposes whole-workflow badges and never per-job ones. See
-# host-tests.yml's top comment.
+# a hat: `sh -n` there accepts bashisms that a real POSIX shell rejects.
+# launcher/tools/idf.sh's POSIX branch, the other thing Windows never runs,
+# is what every firmware build workflow drives through build_flash.sh.
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   lint:
@@ -69,18 +71,3 @@ jobs:
       # gate permanently soft.
       - name: shellcheck (errors)
         run: shellcheck -S error $(cat "$RUNNER_TEMP/shell-scripts.txt")
-
-  idf-sh:
-    name: tools/idf.sh on a POSIX host
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      # The one thing Windows development cannot test about its own tooling.
-      # See launcher/tools/ci_check_idf_sh.sh for what it asserts and why.
-      - uses: espressif/esp-idf-ci-action@v1
-        with:
-          esp_idf_version: release-v5.5
-          target: esp32s3
-          path: launcher
-          command: sh tools/ci_check_idf_sh.sh

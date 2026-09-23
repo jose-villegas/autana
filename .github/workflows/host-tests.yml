@@ -1,24 +1,41 @@
 name: Host Tests
 
-# The fast, portable suite (launcher/test/run_tests.sh) - plain gcc, no
-# ESP-IDF, seconds to run. Split into its own workflow file (not a job
-# alongside the build workflows) purely so it gets its own status badge -
-# GitHub only exposes whole-workflow badges, never per-job ones.
-#
-# The render scenes run here rather than under editor-tests.yml: they are
-# the same plain-gcc build this job already has, and they need neither
-# CMake nor anything fetched.
+# Everything that compiles and runs on the runner itself, no ESP-IDF: the
+# portable suite (launcher/test/run_tests.sh, plain gcc), the render scenes,
+# and the host editor's CTest suite. The editor steps run even when an
+# earlier one failed, so one red suite never hides the state of the other.
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   host-tests:
-    name: Host tests
+    name: Host and editor tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: bash launcher/test/run_tests.sh
       - run: bash launcher/main/apps/sand/tools/report_reactions.sh --check
       - run: sh launcher/tools/render_all_scenes.sh
+
+      # EDITOR_BUILD_GUI=OFF leaves out only the SDL2 + Dear ImGui window,
+      # which nothing here can exercise, so the runner needs no display
+      # packages.
+      - name: Configure the editor
+        id: editor-configure
+        if: ${{ !cancelled() }}
+        run: cmake -S editor -B editor/build -DCMAKE_BUILD_TYPE=Debug -DEDITOR_BUILD_GUI=OFF
+      - name: Build the editor
+        id: editor-build
+        if: ${{ !cancelled() && steps.editor-configure.outcome == 'success' }}
+        run: cmake --build editor/build --parallel
+      - name: Editor tests
+        if: ${{ !cancelled() && steps.editor-build.outcome == 'success' }}
+        run: ctest --test-dir editor/build --output-on-failure

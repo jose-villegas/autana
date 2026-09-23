@@ -12,18 +12,22 @@ name: Comment Rules
 # rules, one decorated function each; its docstring says what was left
 # out because a script cannot judge it reliably.
 # Enforced here so the rules hold for every commit, however it was made.
-#
-# Own workflow file, like the others, purely so it gets its own badge -
-# GitHub exposes whole-workflow badges and never per-job ones. See
-# host-tests.yml's top comment.
+# The tooling's own suites run last, in the same job: they test these
+# scripts, and are too small to be worth a runner of their own.
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   comment-rules:
-    name: Comment rules
+    name: Comment rules and tool tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -67,3 +71,9 @@ jobs:
       - name: Documents citing what this pull request changed
         if: github.event_name == 'pull_request'
         run: python3 scripts/gates/doc_citers.py --changed "origin/${{ github.base_ref }}"
+
+      # Python and, for check-mermaid.mjs's pure parts, Node;
+      # scripts/run-tool-tests.sh owns which suites.
+      - name: Tool tests
+        if: ${{ !cancelled() }}
+        run: sh scripts/run-tool-tests.sh
