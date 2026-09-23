@@ -5,11 +5,13 @@
 # anything that needs pyserial. scripts/add-tools-to-path.sh puts this folder
 # on PATH.
 here=$(cd "$(dirname "$0")/.." && pwd -P)
+# shellcheck source=../launcher/tools/espressif.sh
+. "$here/launcher/tools/espressif.sh"
 
 # Windows' Store stub answers `command -v` but exits instead of running, so
 # each candidate has to prove it executes.
 for python in python3 python \
-              "${IDF_TOOLS_PATH:-$HOME/.espressif}"/python_env/idf*_env/Scripts/python.exe; do
+              "$(espressif_tools_root)"/python_env/idf*_env/Scripts/python.exe; do
     "$python" -c '' >/dev/null 2>&1 && exec "$python" "$here/scripts/autana/autana.py" "$@"
 done
 

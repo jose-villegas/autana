@@ -14,6 +14,9 @@
 
 set -euo pipefail
 
+# shellcheck source=../../launcher/tools/espressif.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../../launcher/tools/espressif.sh"
+
 # ONE major version, not a floor. .clang-format does not define a formatting
 # by itself; a version of clang-format reading it does, and the versions
 # disagree about this config on real files in this tree. Measured against
@@ -51,7 +54,8 @@ candidate_binaries() {
     if command -v clang-format >/dev/null 2>&1; then
         echo "clang-format"
     fi
-    local root="${IDF_TOOLS_PATH:-$HOME/.espressif}"
+    local root
+    root="$(espressif_tools_root)"
     ls -d "$root"/tools/esp-clang/*/esp-clang/bin/clang-format \
           "$root"/tools/esp-clang/*/esp-clang/bin/clang-format.exe 2>/dev/null | sort -Vr || true
 }
@@ -105,7 +109,7 @@ resolve_clang_format() {
     done < <(candidate_binaries)
 
     if [ -z "$fallback" ]; then
-        echo "No clang-format found on PATH or in ${IDF_TOOLS_PATH:-$HOME/.espressif}/tools/esp-clang/." >&2
+        echo "No clang-format found on PATH or in $(espressif_tools_root)/tools/esp-clang/." >&2
         print_install_help
         exit 1
     fi
