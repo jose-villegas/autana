@@ -22,11 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: espressif/esp-idf-ci-action@v1
+      - uses: ./.github/actions/idf-build
         with:
-          esp_idf_version: release-v5.5
-          target: esp32s3
-          path: launcher
+          cache-name: release
           command: >-
             bash tools/build_flash.sh --build-only
             && tools/check_release_symbols.sh build/launcher.elf
