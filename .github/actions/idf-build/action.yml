@@ -1,0 +1,50 @@
+name: ESP-IDF build
+description: >-
+  Run a command from launcher/ inside the ESP-IDF container, with the
+  container's ccache kept across runs.
+
+# The image already builds through ccache (IDF_CCACHE_ENABLE=1); its cache
+# just dies with the container. This keeps it in the runner's temp directory,
+# outside the checkout, under a key per variant - each variant's sdkconfig.h
+# differs, so one variant's objects never hit for another.
+#
+# Restore and save are separate steps rather than actions/cache, whose save
+# would be a post step of an action nested in a composite one.
+
+inputs:
+  cache-name:
+    description: Names this build's ccache, one per variant.
+    required: true
+  command:
+    description: Shell command run from launcher/; no single quotes.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - id: restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.temp }}/ccache
+        key: idf-ccache-${{ inputs.cache-name }}-${{ github.sha }}
+        restore-keys: idf-ccache-${{ inputs.cache-name }}-
+
+    # COMPILERCHECK=content: the release-v5.5 image is rebuilt in place, so a
+    # compiler's mtime says nothing about whether it is the same compiler.
+    - uses: espressif/esp-idf-ci-action@v1
+      with:
+        esp_idf_version: release-v5.5
+        target: esp32s3
+        path: launcher
+        extra_docker_args: >-
+          -v ${{ runner.temp }}/ccache:/ccache
+          -e CCACHE_DIR=/ccache
+          -e CCACHE_MAXSIZE=500M
+          -e CCACHE_COMPILERCHECK=content
+        command: ccache -z > /dev/null && ${{ inputs.command }} && ccache -s
+
+    - if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/ccache
+        key: idf-ccache-${{ inputs.cache-name }}-${{ github.sha }}
