@@ -129,8 +129,7 @@ esac
 . "$SCRIPT_DIR/idf.sh"
 # shellcheck source=../../scripts/quiet.sh
 . "$SCRIPT_DIR/../../scripts/quiet.sh"
-IDF_EXPORT="${IDF_EXPORT_ARG:-$(idf_default_export)}" || exit 2
-idf_init "$LAUNCHER_DIR" "$IDF_EXPORT" "$SCRIPT_DIR"
+idf_init "$LAUNCHER_DIR" "$IDF_EXPORT_ARG" "$SCRIPT_DIR" || exit 2
 . "$SCRIPT_DIR/idf_variant.sh"
 
 # A passing build's stream belongs in build.log under the build directory.

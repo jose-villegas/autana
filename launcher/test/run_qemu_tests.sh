@@ -68,8 +68,7 @@ fi
 if [ "$BUILD" = 1 ]; then
     # shellcheck source=../tools/idf.sh
     . "$LAUNCHER_DIR/tools/idf.sh"
-    IDF_EXPORT="${IDF_EXPORT:-$(idf_default_export)}" || exit 2
-    idf_init "$LAUNCHER_DIR" "$IDF_EXPORT" "$LAUNCHER_DIR/tools"
+    idf_init "$LAUNCHER_DIR" "${IDF_EXPORT:-}" "$LAUNCHER_DIR/tools" || exit 2
     . "$LAUNCHER_DIR/tools/idf_variant.sh"
     idf_variant_init "$LAUNCHER_DIR"
     VARIANT_OPTIONS="--qemu"
