@@ -27,7 +27,7 @@ fi
 
 # shellcheck source=./idf.sh
 . "$TOOLS_DIR/idf.sh"
-idf_init "$LAUNCHER_DIR" "$IDF_PATH/export.sh" "$TOOLS_DIR"
+idf_init "$LAUNCHER_DIR" "" "$TOOLS_DIR" || exit 1
 
 # The branch under test. On this host MSYSTEM is unset, so idf_needs_shim()
 # must say no - assert that rather than assume it, since taking the Windows
