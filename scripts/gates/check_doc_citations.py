@@ -5,12 +5,12 @@
 """
 import pathlib
 import re
-import subprocess
 import sys
 
 from check_comment_length import EXCLUDED as C_EXCLUDED, scan
 from check_doc_index import blank_fences, doc_headings
 from code_vocabulary import names
+from tracked import tracked_files
 
 INLINE = re.compile(r"`([^`\n]+)`")
 FUNCTION = re.compile(r"^([a-z][a-z0-9_]*)\(\)$")
@@ -40,26 +40,10 @@ class Citation:
         self.value = value
 
 
-def tree_files(root):
-    """What a citation may resolve to: the tracked files, since a build tree
-    or a checkout nested inside this one is not what CI sees. Outside git (a
-    test fixture), every file under root."""
-    root = pathlib.Path(root)
-    result = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True)
-    if result.returncode:
-        return sorted(path for path in root.rglob("*") if path.is_file())
-    return [root / name for name in sorted(result.stdout.splitlines())]
-
-
 def documentation(root):
     root = pathlib.Path(root)
     yield from sorted((root / "docs").rglob("*.md"))
-    result = subprocess.run(["git", "ls-files", "*.md"], cwd=root,
-                            capture_output=True, text=True)
-    if result.returncode:
-        yield from sorted(root.glob("*.md"))
-        return
-    for name in sorted(result.stdout.splitlines()):
+    for name in sorted(tracked_files(root, ["*.md"])):
         if "/" not in name:
             yield root / name
 
@@ -135,13 +119,13 @@ def resolve_doc(root, value, citing_doc=None):
         for candidate in (root / value, root / "launcher" / value, root / "launcher/main" / value):
             if candidate.exists():
                 return candidate
-        for path in tree_files(root):
-            if path.as_posix().endswith("/" + value) and path.exists():
-                return path
+        for name in tracked_files(root):
+            if ("/" + name).endswith("/" + value) and (root / name).exists():
+                return root / name
         return None
-    for path in tree_files(root):
-        if path.name == value and path.exists():
-            return path
+    for name in tracked_files(root):
+        if name.rsplit("/", 1)[-1] == value and (root / name).exists():
+            return root / name
     return None
 
 
@@ -194,9 +178,9 @@ def section_citations(root):
         for start, text in _paragraphs(body):
             scan_text(rel, start, text)
 
-    for path in tree_files(root):
-        rel = path.relative_to(root).as_posix()
-        if not rel.startswith("launcher/") or path.suffix not in (".c", ".h") or not path.exists():
+    for rel in tracked_files(root, ["launcher/*.c", "launcher/*.h"]):
+        path = root / rel
+        if not path.exists():
             continue
         if any(rel.startswith(e) for e in C_EXCLUDED):
             continue
