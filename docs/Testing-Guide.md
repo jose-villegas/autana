@@ -381,11 +381,11 @@ button has no stand-in, so such an app cannot be left.
 read a clock; the full scope runs to `SELFTEST_COMPLETE` in about nine
 minutes, the perf scope in five. Prefer `--icount` for it: emulated code
 runs several times slower than the chip in real time, so without it
-ceilings pegged on the board fail on the CPU half of their cost. Two kinds
-of failure remain by construction — the performance-monitor test, since
+ceilings pegged on the board fail on the CPU half of their cost. The tests
+of hardware QEMU lacks skip themselves — the performance-monitor test, since
 QEMU does not model the PMU and every counter reads zero, and the test that
-a touch controller physically answers, which skips itself. Any other
-failure deserves a look on the board. A run says nothing about the real
+a touch controller physically answers — so any failure is a real one, fails
+the run, and deserves a look on the board. A run says nothing about the real
 panel, the real touch controller, the IMU or timing.
 
 **`--icount` counts instructions, never time.** Virtual time then advances
