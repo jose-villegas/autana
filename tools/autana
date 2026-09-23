@@ -2,7 +2,34 @@
 #
 # autana - the terminal command. scripts/autana/autana.py is all of it; this
 # finds a Python for it. scripts/add-tools-to-path.sh puts this folder on PATH.
+#
+# It has to be ESP-IDF's Python: autana.py starts scripts/device/device.py with
+# sys.executable, and device.py imports pyserial. Resolved the way
+# launcher/tools/espressif.py resolves it, so one checkout cannot disagree with
+# the other about which interpreter that is.
 here=$(cd "$(dirname "$0")/.." && pwd -P)
-python="$HOME/.espressif/python_env/idf5.5_py3.14_env/Scripts/python.exe"
-[ -x "$python" ] || python=$(command -v python3 || command -v python)
+
+python=""
+if [ -n "${IDF_PYTHON_ENV_PATH:-}" ] && [ -x "$IDF_PYTHON_ENV_PATH/Scripts/python.exe" ]; then
+    python="$IDF_PYTHON_ENV_PATH/Scripts/python.exe"
+else
+    python=$(ls -d "${IDF_TOOLS_PATH:-$HOME/.espressif}"/python_env/idf*_env/Scripts/python.exe \
+                 2>/dev/null | sort -Vr | head -n1)
+fi
+
+# Windows' Store stub answers `command -v` but exits instead of running, so a
+# fallback has to prove it executes. Anything found here is short of pyserial,
+# which device.py reports for itself.
+if [ ! -x "$python" ]; then
+    for candidate in python3 python; do
+        "$candidate" -c '' >/dev/null 2>&1 || continue
+        python=$candidate
+        break
+    done
+fi
+
+[ -n "$python" ] || {
+    echo "autana: no Python found - install ESP-IDF, or see docs/tools/Autana-CLI.md" >&2
+    exit 1
+}
 exec "$python" "$here/scripts/autana/autana.py" "$@"

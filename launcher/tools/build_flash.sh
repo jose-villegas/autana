@@ -122,7 +122,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 if [ -n "${MSYSTEM:-}" ]; then
-    DEFAULT_EXPORT='C:\Espressif\esp-idf-v5.5\export.bat'
+    # idf.sh hands this to cmd, so it has to be a Windows path even though
+    # IDF_PATH may arrive in either spelling - cygpath -w accepts both.
+    if [ -n "${IDF_PATH:-}" ]; then
+        DEFAULT_EXPORT="$(cygpath -w "$IDF_PATH")\\export.bat"
+    else
+        DEFAULT_EXPORT='C:\Espressif\esp-idf-v5.5\export.bat'
+    fi
 else
     DEFAULT_EXPORT="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"
 fi
