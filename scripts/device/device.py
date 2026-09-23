@@ -38,6 +38,22 @@ def python_with_pyserial():
     return idf_python()
 
 
+def rerun_under_idf_python(argv):
+    """This command's exit status after running it again under ESP-IDF's
+    Python, or None when this interpreter can already reach the board. pyserial
+    lives in that environment, not in whichever `python` a caller found first,
+    so no caller has to know which one to pick."""
+    try:
+        import serial  # noqa: F401
+        return None
+    except ImportError:
+        pass
+    python = idf_python()
+    if os.path.normcase(os.path.abspath(python)) == os.path.normcase(os.path.abspath(sys.executable)):
+        return None
+    return subprocess.call([python, str(Path(__file__).resolve()), *argv])
+
+
 def git_bash():
     """From a native Windows shell, `bash` on PATH is WSL's launcher, which
     hands the script path to Linux bash to unescape and cannot run ESP-IDF."""
@@ -749,8 +765,26 @@ def screenshot(args, store, port):
         with open_when_free(port) as connection:
             png, state_json = screenshot_tool.read_screenshot(connection, args.timeout, on_status=report)
 
-    png_path, state_path = screenshot_tool.write_capture(out, png, state_json)
-    print(f"wrote {png_path} ({os.path.getsize(png_path)} bytes)")
+    if getattr(args, "framebuffer", False):
+        image_turn_quarter = 0
+        description = "framebuffer bytes"
+    elif getattr(args, "as_shown", False):
+        try:
+            image_turn_quarter = json.loads(state_json)["orientation_quarter"] % 4
+        except (KeyError, TypeError, json.JSONDecodeError):
+            raise RuntimeError("the capture did not report orientation_quarter for --as-shown")
+        description = "as shown"
+    else:
+        image_turn_quarter = 3
+        description = "to match the board"
+    png = screenshot_tool.turn_png(png, image_turn_quarter)
+    png_path, state_path = screenshot_tool.write_capture(out, png, state_json, image_turn_quarter)
+    degrees = image_turn_quarter * 90
+    direction = "clockwise" if image_turn_quarter == 1 else "counter-clockwise"
+    if image_turn_quarter == 0:
+        print(f"wrote {png_path} (framebuffer bytes; turned 0 degrees)")
+    else:
+        print(f"wrote {png_path} (turned {min(degrees, 360 - degrees)} degrees {direction} {description})")
     if state_path:
         print(f"wrote {state_path}")
     else:
@@ -891,6 +925,9 @@ def main(argv=None):
                                         "(default: a timestamped name in the current directory)")
     screenshot_parser.add_argument("--timeout", type=float, default=90.0)
     screenshot_parser.add_argument("--purpose", default="screenshot")
+    screenshot_view = screenshot_parser.add_mutually_exclusive_group()
+    screenshot_view.add_argument("--as-shown", action="store_true")
+    screenshot_view.add_argument("--framebuffer", action="store_true")
     batch_parser = subparsers.add_parser(
         "batch", help="flash once, capture suites N times under one lock, write one summary")
     batch_parser.add_argument("--worktree", required=True)
@@ -970,4 +1007,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    rerun = rerun_under_idf_python(sys.argv[1:])
+    raise SystemExit(main() if rerun is None else rerun)

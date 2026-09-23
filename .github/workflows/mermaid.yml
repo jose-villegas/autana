@@ -5,13 +5,12 @@ name: Mermaid Diagrams
 # the picture should be. docs/tools/Mermaid-Diagrams.md has the full picture; this job just
 # runs the command it documents. Path-filtered, unlike this repo's other workflows, because
 # installing mermaid-cli's bundled Chrome is real per-run cost and nothing outside a .md
-# file or the validator itself can change the result.
-#
-# Own workflow file, like the others, purely so it gets its own badge - GitHub exposes
-# whole-workflow badges and never per-job ones. See host-tests.yml's top comment.
+# file or the validator itself can change the result - which is also why it is its own
+# workflow: a path filter applies to a whole workflow, never to one job.
 
 on:
   push:
+    branches: [main]
     paths:
       - '**/*.md'
       - 'scripts/gates/check-mermaid.mjs'
@@ -21,6 +20,11 @@ on:
       - '**/*.md'
       - 'scripts/gates/check-mermaid.mjs'
       - '.github/workflows/mermaid.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   check-mermaid:

@@ -16,8 +16,9 @@ exist; the board is reached through `autana`, docs/tools/Autana-CLI.md.
 """
 import pathlib
 import re
-import subprocess
 import sys
+
+from tracked import tracked_files
 
 ALLOWLIST = "scripts/gates/device_access_allowlist.txt"
 
@@ -57,12 +58,6 @@ class Violation:
         self.path = path
         self.line = line
         self.reason = reason
-
-
-def tracked_files(root, patterns):
-    result = subprocess.run(["git", "ls-files", *patterns], cwd=root,
-                            capture_output=True, text=True, check=True)
-    return [line for line in result.stdout.splitlines() if line]
 
 
 def is_comment_or_print(path, line):
