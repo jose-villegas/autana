@@ -2,19 +2,18 @@ name: Build (Development)
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  build-variants:
-    name: Build (${{ matrix.name }})
+  build-development:
+    name: Build (development)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - name: development
-            args: --dev
-          - name: diagnostics perf scope
-            args: --diag --perf-scope
     steps:
       - uses: actions/checkout@v4
 
@@ -23,7 +22,23 @@ jobs:
           esp_idf_version: release-v5.5
           target: esp32s3
           path: launcher
-          command: bash tools/build_flash.sh ${{ matrix.args }} --build-only
+          command: bash tools/build_flash.sh --dev --build-only
+
+  # An instrument rather than a gate (see sdkconfig.defaults.diag_perf), so
+  # a pull request does not wait on it: main and a manual run build it.
+  build-perf-scope:
+    name: Build (diagnostics perf scope)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: release-v5.5
+          target: esp32s3
+          path: launcher
+          command: bash tools/build_flash.sh --diag --perf-scope --build-only
 
   build-diagnostics:
     name: Build (diagnostics and complexity gate)
