@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
 #
 # autana - the terminal command. scripts/autana/autana.py is all of it; this
-# finds a Python for it. scripts/add-tools-to-path.sh puts this folder on PATH.
+# finds a Python to start it with, and autana.py picks ESP-IDF's own for
+# anything that needs pyserial. scripts/add-tools-to-path.sh puts this folder
+# on PATH.
 here=$(cd "$(dirname "$0")/.." && pwd -P)
-python="$HOME/.espressif/python_env/idf5.5_py3.14_env/Scripts/python.exe"
-[ -x "$python" ] || python=$(command -v python3 || command -v python)
-exec "$python" "$here/scripts/autana/autana.py" "$@"
+# shellcheck source=../launcher/tools/espressif.sh
+. "$here/launcher/tools/espressif.sh"
+
+# Windows' Store stub answers `command -v` but exits instead of running, so
+# each candidate has to prove it executes.
+for python in python3 python \
+              "$(espressif_tools_root)"/python_env/idf*_env/Scripts/python.exe; do
+    "$python" -c '' >/dev/null 2>&1 && exec "$python" "$here/scripts/autana/autana.py" "$@"
+done
+
+echo "autana: no Python found - install ESP-IDF, or see docs/tools/Autana-CLI.md" >&2
+exit 1

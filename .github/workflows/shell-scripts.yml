@@ -1,7 +1,7 @@
 name: Shell Scripts
 
-# Every .sh in the repo, checked on Linux - which is the only place some of
-# it can be checked at all.
+# Every shell script in the repo, checked on Linux - which is the only place
+# some of it can be checked at all.
 #
 # Development happens on Windows in Git Bash, where /bin/sh is bash wearing
 # a hat: `sh -n` there accepts bashisms that a real POSIX shell rejects, and
@@ -23,13 +23,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A shell script is what its first line says, not its name: tools/autana
+      # and the pre-commit hook have no .sh, and a glob by name never saw them.
+      - name: List every tracked sh or bash script
+        run: |
+          git ls-files -z | while IFS= read -r -d '' f; do
+            first=""
+            IFS= read -r first < "$f" 2>/dev/null || true
+            if [[ $first =~ ^#!.*[/[:space:]](ba)?sh([[:space:]]|$) ]]; then
+              printf '%s\n' "$f"
+            fi
+          done > "$RUNNER_TEMP/shell-scripts.txt"
+          cat "$RUNNER_TEMP/shell-scripts.txt"
+
       # Ubuntu's /bin/sh IS dash, so this is a genuine POSIX parse - unlike
       # the same command run from Git Bash, which cannot fail this way.
       - name: POSIX syntax check every #!/bin/sh script
         run: |
           set -eu
           status=0
-          for f in $(git ls-files '*.sh'); do
+          for f in $(cat "$RUNNER_TEMP/shell-scripts.txt"); do
             if head -1 "$f" | grep -q '/bin/sh'; then
               printf 'dash -n %s ... ' "$f"
               if dash -n "$f"; then echo ok; else echo FAILED; status=1; fi
@@ -41,7 +54,7 @@ jobs:
         run: |
           set -eu
           status=0
-          for f in $(git ls-files '*.sh'); do
+          for f in $(cat "$RUNNER_TEMP/shell-scripts.txt"); do
             if head -1 "$f" | grep -q 'bash'; then
               printf 'bash -n %s ... ' "$f"
               if bash -n "$f"; then echo ok; else echo FAILED; status=1; fi
@@ -55,7 +68,7 @@ jobs:
       # raise this to warning once they are cleared rather than leaving the
       # gate permanently soft.
       - name: shellcheck (errors)
-        run: shellcheck -S error $(git ls-files '*.sh')
+        run: shellcheck -S error $(cat "$RUNNER_TEMP/shell-scripts.txt")
 
   idf-sh:
     name: tools/idf.sh on a POSIX host
