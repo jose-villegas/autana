@@ -72,7 +72,7 @@ The executable is `editor/build/autana_editor`. SDL2, Dear ImGui, nlohmann/json 
 GoogleTest are fetched by git at pinned tags into the untracked build
 directory. `-DEDITOR_BUILD_GUI=OFF` builds and tests everything except the
 window and fetches neither SDL2 nor Dear ImGui; CI uses it
-(`.github/workflows/editor-tests.yml`).
+(`.github/workflows/host-tests.yml`).
 
 On Windows with MinGW the binaries link statically: a MinGW executable
 otherwise loads whichever `libstdc++-6.dll` `PATH` reaches first, and Git for

@@ -1,19 +1,19 @@
 name: Build (Release)
 
 # Compiles the real shipping firmware via Espressif's own CI action - no
-# test code, nothing this can't ship as-is. Own workflow file, separate from
-# the diagnostics variant and the host test suite, purely so each gets its
-# own status badge (GitHub exposes whole-workflow badges, never per-job
-# ones).
-#
-# What this can't cover: an on-device run - GitHub-hosted runners have no
-# USB/serial access to a real board. See
-# docs/sand/Architecture.md's "Verifying performance on real hardware"
-# section for that workflow.
+# test code, nothing this can't ship as-is. An on-device run is out of reach:
+# a hosted runner has no USB/serial access to a board. See
+# docs/sand/Architecture.md's "Verifying performance on real hardware".
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build-release:
@@ -21,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: release-v5.5
