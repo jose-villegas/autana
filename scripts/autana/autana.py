@@ -45,9 +45,10 @@
                                     lines of the worktree you are in, so they are what
                                     the next build - and release - is made with
 
-    autana screenshot [-o PATH]     what the panel shows right now, as PATH.png plus a
-                                    PATH.json state snapshot; PATH defaults to a
-                                    timestamped name in the current directory
+    autana screenshot [--as-shown|--framebuffer] [-o PATH]
+                                    a landscape image of the board by default; --as-shown
+                                    applies the device orientation and --framebuffer keeps
+                                    stored pixels, with PATH.png plus PATH.json
     autana freeze                   stop the frame loop where it is
     autana resume                   let the frame loop run again
     autana step [N]                 advance N frames while frozen (1 when N is omitted)
@@ -103,6 +104,9 @@ import threading
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools"))
+from espressif import idf_python  # noqa: E402  (path must be set up first)
+
 VARIANTS = {"rel": "release", "release": "release", "dev": "dev", "diag": "diag"}
 
 # What the device lock calls this autana. Two holders of one board are worth
@@ -147,6 +151,12 @@ def device_tool():
     if not device.is_file():
         sys.exit(f"autana: {device} not found")
     return device
+
+
+def device_command(*args):
+    """device.py imports pyserial, so it runs under ESP-IDF's Python even
+    when some other interpreter started this file."""
+    return [idf_python(), "-u", str(device_tool()), *args]
 
 
 def follow(log, finished):
@@ -211,16 +221,15 @@ def flash(args):
         sys.exit("usage: autana flash [rel|dev|diag] [--quiet] [--perf-scope]")
 
     worktree = engine_worktree()
-    device = device_tool()
     branch = git("branch", "--show-current") or "detached"
     commit = git("rev-parse", "--short", "HEAD")
     dirty = " (dirty)" if git("status", "--porcelain") else ""
     print(f"autana flash: {variant} of {branch} @ {commit}{dirty}", flush=True)
 
-    command = [
-        sys.executable, "-u", str(device), "--owner", owner(),
+    command = device_command(
+        "--owner", owner(),
         "flash", "--variant", variant, "--worktree", worktree, "--purpose", f"autana flash {asked}",
-    ]
+    )
     if perf_scope:
         command.append("--perf-scope")
     return subprocess.call(command) if quiet else run_streaming_its_log(command)
@@ -272,10 +281,10 @@ def monitor(args):
         elf = rest[index + 1]
         del rest[index:index + 2]
     seconds = seconds_argument(rest, 60.0, "usage: autana monitor [seconds] [--elf PATH]")
-    command = [
-        sys.executable, "-u", str(device_tool()), "--owner", owner(),
+    command = device_command(
+        "--owner", owner(),
         "listen", "--seconds", str(seconds), "--purpose", "autana monitor",
-    ]
+    )
     if elf:
         command += ["--elf", elf]
     return subprocess.call(command)
@@ -291,10 +300,10 @@ def reset(args):
     seconds = seconds_argument(rest, None, "usage: autana reset [--capture [seconds]]")
     if rest and not capture:
         sys.exit("usage: autana reset [--capture [seconds]]")
-    command = [
-        sys.executable, "-u", str(device_tool()), "--owner", owner(),
+    command = device_command(
+        "--owner", owner(),
         "reset", "--purpose", "autana reset",
-    ]
+    )
     if capture:
         command += ["--capture"]
         if seconds is not None:
@@ -309,11 +318,11 @@ def selftest(args):
     seconds = seconds_argument(args, 3000.0, "usage: autana selftest [seconds]")
     worktree = engine_worktree()
     print(f"autana selftest: every suite, {worktree}", flush=True)
-    return subprocess.call([
-        sys.executable, "-u", str(device_tool()), "--owner", owner(),
+    return subprocess.call(device_command(
+        "--owner", owner(),
         "selftest", "--worktree", worktree, "--max-seconds", str(seconds),
         "--purpose", "autana selftest",
-    ])
+    ))
 
 
 BATCH_USAGE = "usage: autana batch <suite> [<suite> ...] [--runs N] [--perf-scope]"
@@ -341,11 +350,11 @@ def batch(args):
         sys.exit(BATCH_USAGE)
     worktree = engine_worktree()
     print(f"autana batch: {', '.join(suites)} x{runs}", flush=True)
-    command = [
-        sys.executable, "-u", str(device_tool()), "--owner", owner(),
+    command = device_command(
+        "--owner", owner(),
         "batch", "--worktree", worktree, "--variant", "diag", "--runs", str(runs),
         "--purpose", "autana batch",
-    ]
+    )
     for suite_name in suites:
         command += ["--suite", suite_name]
     if perf_scope:
@@ -357,7 +366,7 @@ def status(args):
     """Who, if anyone, holds the board right now - and who is waiting."""
     if args:
         sys.exit("usage: autana status")
-    return subprocess.call([sys.executable, str(device_tool()), "status"])
+    return subprocess.call(device_command("status"))
 
 
 def release(args):
@@ -365,8 +374,8 @@ def release(args):
     - the token comes from what that command printed when it acquired it."""
     if len(args) != 1:
         sys.exit("usage: autana release <token>")
-    return subprocess.call([sys.executable, str(device_tool()), "--owner", owner(),
-                            "release", "--token", args[0]])
+    return subprocess.call(device_command("--owner", owner(),
+                                          "release", "--token", args[0]))
 
 
 def hand(args):
@@ -374,15 +383,15 @@ def hand(args):
     work against it until `autana take-back`."""
     if not args:
         sys.exit("usage: autana hand <note>")
-    return subprocess.call([sys.executable, str(device_tool()), "--owner", owner(),
-                            "hand-to-human", "--note", " ".join(args)])
+    return subprocess.call(device_command("--owner", owner(),
+                                          "hand-to-human", "--note", " ".join(args)))
 
 
 def take_back(args):
     """Clear a reservation `autana hand` made, freeing the board again."""
     if args:
         sys.exit("usage: autana take-back")
-    return subprocess.call([sys.executable, str(device_tool()), "take-back"])
+    return subprocess.call(device_command("take-back"))
 
 
 SUITE_REGISTRATION = re.compile(r"SUITE_REGISTER(_ON_REQUEST)?\(\s*([A-Za-z_]\w*)\s*\)")
@@ -432,10 +441,10 @@ def suite(args):
     # the whole suite, not how long a quiet stretch inside one may last.
     seconds = seconds_argument(rest, 600.0, "usage: autana suite <name> [seconds]")
     print(f"autana suite: {name}", flush=True)
-    return subprocess.call([
-        sys.executable, "-u", str(device_tool()), "--owner", owner(),
+    return subprocess.call(device_command(
+        "--owner", owner(),
         "run-suite", name, "--max-seconds", str(seconds), "--purpose", f"autana suite {name}",
-    ])
+    ))
 
 
 # A console line is asked from a prompt somebody is sitting at: a board another
@@ -445,14 +454,14 @@ def suite(args):
 SEND_WAIT_S = 5
 
 
-def board_holder(device):
+def board_holder():
     """'held by <owner> for ...' when someone else has the board, else ''.
 
     Every line of a console session is a device.py of its own under one
     autana, so a lock this autana already holds is not somebody else's and
     the session does not refuse itself."""
     mine = f"held by {owner()} "
-    result = subprocess.run([sys.executable, str(device), "status"], capture_output=True, text=True)
+    result = subprocess.run(device_command("status"), capture_output=True, text=True)
     for line in result.stdout.splitlines():
         if line.startswith("held by ") and not line.startswith(mine):
             return line.strip()
@@ -469,14 +478,13 @@ def send(line, reply="TUNE", purpose="autana tune", optional=False, seconds=None
     is for a verb that answers only when something is wrong (TOUCH, IMU): a
     timeout with nothing seen is success, not "no reply", since silence is
     that verb's normal happy path."""
-    device = device_tool()
-    holder = board_holder(device)
+    holder = board_holder()
     if holder:
         print(f"the board is busy - {holder}\nnothing was sent; try again when it is free",
               file=sys.stderr)
         return 3, []
-    command = [sys.executable, str(device), "--owner", owner(), "--wait", str(SEND_WAIT_S), "send", line,
-               "--purpose", purpose]
+    command = device_command("--owner", owner(), "--wait", str(SEND_WAIT_S), "send", line,
+                             "--purpose", purpose)
     if reply != "TUNE":
         command += ["--reply", reply]
         for one_until in until if until is not None else [reply]:
@@ -496,22 +504,26 @@ def screenshot(args):
     read_screenshot()/write_capture(), under the device lock - see
     device.py's own `screenshot` subcommand."""
     out = None
-    if args[:1] and args[0] in ("-o", "--out"):
-        if len(args) != 2:
-            sys.exit("usage: autana screenshot [-o PATH]")
-        out = args[1]
-    elif args:
-        sys.exit("usage: autana screenshot [-o PATH]")
-    device = device_tool()
-    holder = board_holder(device)
+    view = None
+    while args:
+        arg = args.pop(0)
+        if arg in ("-o", "--out") and args and out is None:
+            out = args.pop(0)
+        elif arg in ("--as-shown", "--framebuffer") and view is None:
+            view = arg
+        else:
+            sys.exit("usage: autana screenshot [--as-shown|--framebuffer] [-o PATH]")
+    holder = board_holder()
     if holder:
         print(f"the board is busy - {holder}\nnothing was sent; try again when it is free",
               file=sys.stderr)
         return 3
-    command = [sys.executable, "-u", str(device), "--owner", owner(), "screenshot",
-               "--purpose", "autana screenshot"]
+    command = device_command("--owner", owner(), "screenshot",
+                             "--purpose", "autana screenshot")
     if out:
         command += ["--out", out]
+    if view:
+        command.append(view)
     return subprocess.call(command)
 
 
@@ -780,7 +792,7 @@ CONSOLE_HELP = """  tune [text]              list the tunables (names containing
   tune <name> <value>      change it on the device
   tune reset <name>        back to the value the source declares
   tune save                write the device's values into this worktree's source
-  screenshot [-o PATH]     what the panel shows right now
+  screenshot [--as-shown|--framebuffer] [-o PATH]
   freeze                   stop the frame loop where it is
   resume                   let the frame loop run again
   step [N]                 advance N frames while frozen (1 when omitted)

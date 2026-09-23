@@ -92,8 +92,9 @@ The pre-commit hook checks the *staged content* of the C and header files in a
 commit, so a partially staged file is judged by what is actually being
 committed. It is feedback and not a gate: `--no-verify` skips it, `.git/hooks`
 is not cloned, and it never sees a merge or a commit made by CI. The workflow
-is the gate, and it checks every file in the list on every push - so a drift
-that reaches `main` is a failed build, not a surprise six months later.
+is the gate, and it checks every file in the list on every pull request and
+every push to `main` - so a drift that reaches `main` is a failed build, not
+a surprise six months later.
 
 ## Judgment rules
 
@@ -176,8 +177,8 @@ scripts/gates/check-comment-length.sh --files         # per-file counts
 ```
 
 `.github/workflows/comment-rules.yml` holds the tree to all three checks on
-every push: length beside code and header height
-(`scripts/gates/check_comment_length.py`), every cited function existing
+every pull request and every push to `main`: length beside code and header
+height (`scripts/gates/check_comment_length.py`), every cited function existing
 (`check_comment_symbols.py`), and no app named below `apps/`
 (`check_comment_layers.py`). The last two take their vocabulary from the tree
 itself, so neither needs updating when code moves.

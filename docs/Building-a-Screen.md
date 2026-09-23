@@ -48,7 +48,7 @@ same bug costs a second on a laptop.
 ./launcher/test/run_tests.sh          # host suites - the TDD loop, see Testing-Guide.md
 ./launcher/test/check_app_sources.sh  # compiles app_*.c against host stubs
 autana flash dev                      # --dev, always: autana screenshot needs it
-autana screenshot -o shot.png         # lossless PNG, does not reset
+autana screenshot --framebuffer -o shot.png  # lossless PNG, does not reset
 ```
 
 A screen can also be rendered on a host, with no board and no flash cycle,

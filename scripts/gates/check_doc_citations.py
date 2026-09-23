@@ -5,21 +5,20 @@
 """
 import pathlib
 import re
-import subprocess
 import sys
 
 from check_comment_length import EXCLUDED as C_EXCLUDED, scan
 from check_doc_index import blank_fences, doc_headings
 from code_vocabulary import names
+from tracked import tracked_files
 
 INLINE = re.compile(r"`([^`\n]+)`")
 FUNCTION = re.compile(r"^([a-z][a-z0-9_]*)\(\)$")
 MACRO = re.compile(r"^[A-Z][A-Z0-9_]*$")
 FILE = re.compile(r"^(?:launcher/|apps/|[\w.-]+/)*(?:[\w.-]+\.(?:c|h|py|sh|cmake|md)|CMakeLists\.txt)$")
 SKIP_FENCES = {"sh", "shell", "bash", "console", "text", "output"}
-SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components", ".git"}
 FOREIGN_FUNCTIONS = {"exit", "main", "max", "name", "bsp_display_new"}
-FOREIGN_PATHS = {"idf.py"}
+FOREIGN_PATHS = {"idf.py", "idf_tools.py"}
 FOREIGN_MACRO_PREFIXES = ("ESP", "CONFIG_COMPILER", "CONFIG_LOG", "IDF", "SDMMC", "WHOLE", "LOG", "DP")
 
 # A citation of one or more sections of a doc: `X.md`'s "Section", or "One"
@@ -44,12 +43,7 @@ class Citation:
 def documentation(root):
     root = pathlib.Path(root)
     yield from sorted((root / "docs").rglob("*.md"))
-    result = subprocess.run(["git", "ls-files", "*.md"], cwd=root,
-                            capture_output=True, text=True)
-    if result.returncode:
-        yield from sorted(root.glob("*.md"))
-        return
-    for name in sorted(result.stdout.splitlines()):
+    for name in sorted(tracked_files(root, ["*.md"])):
         if "/" not in name:
             yield root / name
 
@@ -125,15 +119,13 @@ def resolve_doc(root, value, citing_doc=None):
         for candidate in (root / value, root / "launcher" / value, root / "launcher/main" / value):
             if candidate.exists():
                 return candidate
-        for path in root.rglob("*"):
-            if any(part in SKIP for part in path.parts):
-                continue
-            if path.as_posix().endswith("/" + value):
-                return path
+        for name in tracked_files(root):
+            if ("/" + name).endswith("/" + value) and (root / name).exists():
+                return root / name
         return None
-    for path in root.rglob(value):
-        if not any(part in SKIP for part in path.parts):
-            return path
+    for name in tracked_files(root):
+        if name.rsplit("/", 1)[-1] == value and (root / name).exists():
+            return root / name
     return None
 
 
@@ -186,10 +178,10 @@ def section_citations(root):
         for start, text in _paragraphs(body):
             scan_text(rel, start, text)
 
-    for path in sorted(pathlib.Path(root, "launcher").rglob("*")):
-        if path.suffix not in (".c", ".h") or any(part in SKIP for part in path.parts):
+    for rel in tracked_files(root, ["launcher/*.c", "launcher/*.h"]):
+        path = root / rel
+        if not path.exists():
             continue
-        rel = path.relative_to(root).as_posix()
         if any(rel.startswith(e) for e in C_EXCLUDED):
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
