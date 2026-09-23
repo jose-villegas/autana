@@ -17,10 +17,6 @@ FUNCTION = re.compile(r"^([a-z][a-z0-9_]*)\(\)$")
 MACRO = re.compile(r"^[A-Z][A-Z0-9_]*$")
 FILE = re.compile(r"^(?:launcher/|apps/|[\w.-]+/)*(?:[\w.-]+\.(?:c|h|py|sh|cmake|md)|CMakeLists\.txt)$")
 SKIP_FENCES = {"sh", "shell", "bash", "console", "text", "output"}
-# .dev is a separate repository that sits inside this checkout, so a bare
-# filename must not resolve into it - it carries its own Architecture.md, and
-# CI never has it, which makes a wrong match here fail locally and nowhere else.
-SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components", ".git", ".dev"}
 FOREIGN_FUNCTIONS = {"exit", "main", "max", "name", "bsp_display_new"}
 FOREIGN_PATHS = {"idf.py", "idf_tools.py"}
 FOREIGN_MACRO_PREFIXES = ("ESP", "CONFIG_COMPILER", "CONFIG_LOG", "IDF", "SDMMC", "WHOLE", "LOG", "DP")
@@ -42,6 +38,17 @@ class Citation:
         self.line = line
         self.kind = kind
         self.value = value
+
+
+def tree_files(root):
+    """What a citation may resolve to: the tracked files, since a build tree
+    or a checkout nested inside this one is not what CI sees. Outside git (a
+    test fixture), every file under root."""
+    root = pathlib.Path(root)
+    result = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True)
+    if result.returncode:
+        return sorted(path for path in root.rglob("*") if path.is_file())
+    return [root / name for name in sorted(result.stdout.splitlines())]
 
 
 def documentation(root):
@@ -128,14 +135,12 @@ def resolve_doc(root, value, citing_doc=None):
         for candidate in (root / value, root / "launcher" / value, root / "launcher/main" / value):
             if candidate.exists():
                 return candidate
-        for path in root.rglob("*"):
-            if any(part in SKIP for part in path.parts):
-                continue
-            if path.as_posix().endswith("/" + value):
+        for path in tree_files(root):
+            if path.as_posix().endswith("/" + value) and path.exists():
                 return path
         return None
-    for path in root.rglob(value):
-        if not any(part in SKIP for part in path.parts):
+    for path in tree_files(root):
+        if path.name == value and path.exists():
             return path
     return None
 
@@ -189,10 +194,10 @@ def section_citations(root):
         for start, text in _paragraphs(body):
             scan_text(rel, start, text)
 
-    for path in sorted(pathlib.Path(root, "launcher").rglob("*")):
-        if path.suffix not in (".c", ".h") or any(part in SKIP for part in path.parts):
-            continue
+    for path in tree_files(root):
         rel = path.relative_to(root).as_posix()
+        if not rel.startswith("launcher/") or path.suffix not in (".c", ".h") or not path.exists():
+            continue
         if any(rel.startswith(e) for e in C_EXCLUDED):
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
