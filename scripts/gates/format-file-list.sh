@@ -48,7 +48,8 @@ qualifies() {
     # "launcher/test/framework/*" into the three paths it matches today and
     # lets everything else through. A case pattern is never expanded.
     case "$path" in
-        launcher/components/microui/* | \
+        launcher/components/esp32_s3_touch_amoled_1_8/* | \
+            launcher/components/microui/* | \
             launcher/components/small3dlib/* | \
             launcher/test/framework/*)
             return 1

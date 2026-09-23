@@ -11,6 +11,7 @@ start at [Building-an-App.md](Building-an-App.md).
 ```
 launcher/
 ├── components/
+│   ├── esp32_s3_touch_amoled_1_8/  Waveshare BSP, LVGL trimmed
 │   ├── microui/        MIT, patched for this chip (see below)
 │   └── small3dlib/     CC0, header-only
 ├── tools/              generators, build/flash wrappers, report scripts
@@ -763,11 +764,9 @@ release needs a 60 ms quiet period because INT means "data ready" rather than
 
 ## Why microui, not LVGL
 
-LVGL is present in the build - it is a transitive dependency of the Waveshare
-BSP package, `main/idf_component.yml` pulls that in for the display and touch
-drivers - but nothing here calls into it. `gfx.c` drives the panel directly
-(`esp_lcd_new_panel_sh8601`, not `bsp_display_new()`/`bsp_display_start()`),
-so it never runs, and the linked binary carries zero `lv_*` symbols.
+The Waveshare BSP lives in `components/esp32_s3_touch_amoled_1_8/` with its
+LVGL interface removed. LVGL is not built. `gfx.c` drives the panel directly
+through the panel drivers; the BSP supplies board services and touch setup.
 
 Three constraints, all already documented elsewhere in this project, point
 the same direction once put next to each other:

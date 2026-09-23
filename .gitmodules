@@ -10,3 +10,6 @@
 	# moment it is cloned on Windows or macOS and no checkout can clear it.
 	# Commit changes still show; only worktree dirt is ignored.
 	ignore = dirty
+[submodule "third_party/upstream/Waveshare-ESP32-components"]
+	path = third_party/upstream/Waveshare-ESP32-components
+	url = https://github.com/waveshareteam/Waveshare-ESP32-components.git
