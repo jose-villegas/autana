@@ -31,8 +31,7 @@ LAUNCHER_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../idf.sh
 . "$SCRIPT_DIR/../idf.sh"
-IDF_EXPORT="${2:-$(idf_default_export)}" || exit 2
-idf_init "$LAUNCHER_DIR" "$IDF_EXPORT" "$SCRIPT_DIR/.."
+idf_init "$LAUNCHER_DIR" "${2:-}" "$SCRIPT_DIR/.." || exit 2
 . "$SCRIPT_DIR/../idf_variant.sh"
 
 BUILD_DIR="build.diag.bh$HEIGHT"

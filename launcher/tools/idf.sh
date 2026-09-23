@@ -3,7 +3,7 @@
 # Run idf.py from a POSIX shell, on any platform. Source this and call idf().
 #
 #   . "$(dirname "$0")/idf.sh"
-#   idf_init "/path/to/launcher" "$(idf_default_export)" || exit $?
+#   idf_init "/path/to/launcher" || exit $?
 #   idf -B build.release build       || exit $?
 #   idf -B build.release -p <PORT> flash || exit $?
 #
@@ -35,7 +35,12 @@ _IDF_DIR=""
 _IDF_EXPORT=""
 _IDF_SHIM=""
 
-# idf_init <launcher-dir> <export.bat-or-export.sh> [tools-dir]
+# idf_init <launcher-dir> [export.bat-or-export.sh] [tools-dir]
+#
+# An empty export means idf_default_export(), resolved in here rather than by
+# the caller: `idf_init "$dir" "$(idf_default_export)"` loses the failure,
+# because a substitution that fails inside an argument leaves the command's
+# status at 0, and idf_init would carry on with no export script at all.
 #
 # State is kept in _IDF_-prefixed variables. Sourcing a file that declares
 # plain IDF_EXPORT would silently blank a caller's variable of that name
@@ -49,7 +54,7 @@ _IDF_SHIM=""
 # way for a sourced file to find itself.
 idf_init() {
     _IDF_DIR="$1"
-    _IDF_EXPORT="$2"
+    _IDF_EXPORT="${2:-$(idf_default_export)}" || return 1
     _IDF_SHIM="${3:-$(cd "$(dirname "$0")" && pwd)}/idf_shim.bat"
 }
 
