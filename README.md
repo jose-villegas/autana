@@ -55,9 +55,13 @@ the toolchain is not where ESP-IDF's installer puts it by default - that root
 is also where the checks find the bundled clang-format and clang-tidy, and
 where `autana` finds the Python that carries pyserial.
 
-Host tests need a **host** compiler, not the ESP32 one: Windows `winget
-install BrechtSanders.WinLibs.POSIX.UCRT`, Debian/Ubuntu `apt install
-build-essential`, macOS `xcode-select --install`.
+Host tests need a **host** compiler, not the ESP32 one:
+
+| Platform | |
+|---|---|
+| Windows | `winget install BrechtSanders.WinLibs.POSIX.UCRT` |
+| Debian/Ubuntu | `sudo apt install build-essential` |
+| macOS | `xcode-select --install` |
 
 The complexity gate, alone among the checks, also wants
 `git submodule update --init` - see

@@ -21,6 +21,7 @@ fi
 # fallback has to prove it executes. Anything found here is short of pyserial,
 # which device.py reports for itself.
 if [ ! -x "$python" ]; then
+    python=""
     for candidate in python3 python; do
         "$candidate" -c '' >/dev/null 2>&1 || continue
         python=$candidate
