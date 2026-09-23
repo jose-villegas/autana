@@ -49,6 +49,11 @@ app's own `tools/`, so nothing in the engine's tooling names an app.
 `render_all_scenes.sh` finds both by name, so a new scene is one pair of
 files and deleting an app deletes its scenes.
 
+Render Lab's two host harnesses source `render_lab_render_sources.sh`. It
+collects the app's `.c` files outside `tools/` and `tests/`, excluding
+`suite_*.c`, and declares the shared engine and host shim sources. A new
+Render Lab source in the app folder is included in both harnesses.
+
 Each line of `scene_renders` is `<label>|<arguments>|<width>x<height>`, and
 the declared size is checked against what the binary reports it wrote. That
 is what makes the sweep a check rather than a picture nobody looks at
