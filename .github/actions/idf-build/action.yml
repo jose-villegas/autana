@@ -4,12 +4,9 @@ description: >-
   container's ccache kept across runs.
 
 # The image already builds through ccache (IDF_CCACHE_ENABLE=1); its cache
-# just dies with the container. This keeps it in the runner's temp directory,
-# outside the checkout, under a key per variant - each variant's sdkconfig.h
-# differs, so one variant's objects never hit for another.
-#
-# Restore and save are separate steps rather than actions/cache, whose save
-# would be a post step of an action nested in a composite one.
+# just dies with the container. One key prefix per variant, because a
+# restore takes the newest entry under its prefix: shared, each job would get
+# whichever variant saved last, with a different sdkconfig.h, and mostly miss.
 
 inputs:
   cache-name:
@@ -22,15 +19,15 @@ inputs:
 runs:
   using: composite
   steps:
-    - id: restore
-      uses: actions/cache/restore@v4
+    - uses: actions/cache@v4
       with:
         path: ${{ runner.temp }}/ccache
         key: idf-ccache-${{ inputs.cache-name }}-${{ github.sha }}
         restore-keys: idf-ccache-${{ inputs.cache-name }}-
 
-    # COMPILERCHECK=content: the release-v5.5 image is rebuilt in place, so a
-    # compiler's mtime says nothing about whether it is the same compiler.
+    # COMPILERCHECK=content: the release-v5.5 tag is rebuilt in place, and
+    # hashing the compiler driver is cheap next to trusting the image to keep
+    # its timestamps honest.
     - uses: espressif/esp-idf-ci-action@v1
       with:
         esp_idf_version: release-v5.5
@@ -42,9 +39,3 @@ runs:
           -e CCACHE_MAXSIZE=500M
           -e CCACHE_COMPILERCHECK=content
         command: ccache -z > /dev/null && ${{ inputs.command }} && ccache -s
-
-    - if: steps.restore.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: ${{ runner.temp }}/ccache
-        key: idf-ccache-${{ inputs.cache-name }}-${{ github.sha }}
