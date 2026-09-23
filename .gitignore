@@ -74,7 +74,6 @@ build/
 # Each variant keeps its own sdkconfig so it never disturbs the normal build.
 build.*/
 managed_components/
-dependencies.lock
 sdkconfig.old
 /launcher/sdkconfig
 
@@ -139,3 +138,22 @@ $RECYCLE.BIN/
 # Where scripts/device/device.py writes a session's log and manifest when
 # AUTANA_RECORDS names nowhere else - see docs/tools/Autana-CLI.md.
 .records/
+
+### The .dev tooling checkout
+# A separate repository that has to sit inside this one - see .dev/README.md.
+# CLAUDE.md and AGENTS.md live in it; the two at this root are symlinks to
+# them, so they belong to that repository too. Rooted, so a CLAUDE.md written
+# for a subdirectory would still be tracked.
+.dev/
+/CLAUDE.md
+/AGENTS.md
+# .dev's skills, linked in by .dev/scripts/link-dev-into-worktree.sh, and the
+# agent worktrees Claude Code keeps beside them.
+/.claude/skills/
+/.claude/worktrees/
+
+### Beads (bd issue tracker)
+# Per-machine backlog database - the issues themselves travel through this
+# repository's Dolt remote (refs/dolt/data), never through these files.
+.beads/
+.beads.gate.lock

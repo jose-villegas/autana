@@ -264,6 +264,38 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "PERSONAL-PATH")
         self.assertEqual(len(findings), 1)
 
+    def test_a_drive_rooted_esp_idf_checkout_is_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/tools/build.sh",
+                      "DEFAULT_EXPORT='" + "\\".join(["C:", "Espressif", "esp-idf-v5.5", "export.bat"]) + "'\n")
+            self.commit(root, "launcher")
+            findings = self.rule_hits(root, "PERSONAL-PATH")
+        self.assertEqual(len(findings), 1)
+
+    def test_any_drive_path_to_an_esp_idf_checkout_is_flagged(self):
+        # The layouts an installer actually produces, not only one machine's.
+        layouts = ["\\".join(["C:", "Espressif", "v5.5.5", "esp-idf", "export.bat"]),
+                   "\\".join(["D:", "esp", "esp-idf", "export.bat"]),
+                   "/".join(["C:", "Espressif", "v5.5.5", "esp-idf"])]
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/tools/build.sh",
+                      "".join(f"EXPORT_{i}='{layout}'\n" for i, layout in enumerate(layouts)))
+            self.commit(root, "launcher")
+            findings = self.rule_hits(root, "PERSONAL-PATH")
+        self.assertEqual(len(findings), len(layouts))
+
+    def test_portable_esp_idf_references_are_not_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/tools/build.sh",
+                      'EXPORT="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"\n'
+                      "# https://github.com/espressif/esp-idf\n")
+            self.commit(root, "launcher")
+            findings = self.rule_hits(root, "PERSONAL-PATH")
+        self.assertEqual(findings, [])
+
     def test_a_portable_home_relative_path_is_not_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
