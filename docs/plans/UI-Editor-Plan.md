@@ -160,7 +160,7 @@ has no real text input, no file dialogs and no docking.
 **Build with CMake.** ESP-IDF already uses it, so it is not a new tool for
 anyone on any platform. The editor is never part of the firmware build, and
 is absent from `idf.py` and from `test/run_tests.sh`; its own suite is CTest,
-run by `.github/workflows/editor-tests.yml`.
+run by `.github/workflows/host-tests.yml`.
 
 ## Phases
 

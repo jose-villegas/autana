@@ -1,10 +1,11 @@
 name: Format
 
-# The formatting gate: every first-party C and header file, checked against
-# .clang-format on every push and pull request. This holds the tree to
-# .clang-format. The pre-commit hook (scripts/install-git-hooks.sh) reports
-# the same thing earlier, but cannot enforce it - it is opt-in, skippable
-# with --no-verify, and absent from any commit CI or a merge makes.
+# The formatting gate: every first-party C and header file checked against
+# .clang-format, and every tracked text file against CRLF, on each pull
+# request and each push to main. The pre-commit hook
+# (scripts/install-git-hooks.sh) reports formatting earlier, but cannot
+# enforce it - it is opt-in, skippable with --no-verify, and absent from any
+# commit CI or a merge makes.
 #
 # clang-format is pinned to one exact version, not a minimum: see
 # docs/C-Style-Guide.md's "One formatter version" for why the versions
@@ -12,18 +13,20 @@ name: Format
 # carries the exact patch version on any runner image; 19 because it is
 # also what ESP-IDF's esp-clang bundles, so contributors usually already
 # have it.
-#
-# Own workflow file, like the others, purely so it gets its own badge -
-# GitHub exposes whole-workflow badges and never per-job ones. See
-# host-tests.yml's top comment.
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  clang-format:
-    name: clang-format
+  format:
+    name: clang-format and LF line endings
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,15 +49,10 @@ jobs:
       - name: Every first-party C and header file is formatted
         run: scripts/gates/format-file-list.sh | xargs scripts/gates/check-format.sh --check
 
-  line-endings:
-    name: LF line endings
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
       # Reads the index, not the checkout, so a CRLF file fails here whatever
       # .gitattributes or the runner's git config would do to it on disk.
       - name: No text file is stored with CRLF
+        if: ${{ !cancelled() }}
         run: |
           set -eu
           crlf=$(git ls-files --eol | awk '$1 ~ /crlf|mixed/ {print $NF}')
