@@ -139,3 +139,12 @@ $RECYCLE.BIN/
 # Where scripts/device/device.py writes a session's log and manifest when
 # AUTANA_RECORDS names nowhere else - see docs/tools/Autana-CLI.md.
 .records/
+
+### The .dev tooling checkout
+# A separate repository that has to sit inside this one - see .dev/README.md.
+# CLAUDE.md and AGENTS.md live in it; the two at this root are symlinks to
+# them, so they belong to that repository too. Rooted, so a CLAUDE.md written
+# for a subdirectory would still be tracked.
+.dev/
+/CLAUDE.md
+/AGENTS.md
