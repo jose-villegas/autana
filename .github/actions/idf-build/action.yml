@@ -27,7 +27,9 @@ runs:
 
     # COMPILERCHECK=content: the release-v5.5 tag is rebuilt in place, and
     # hashing the compiler driver is cheap next to trusting the image to keep
-    # its timestamps honest.
+    # its timestamps honest. MAXSIZE is about four times one variant's fresh
+    # cache: each save carries forward all it restored, and every variant and
+    # commit shares the repository's 10 GB of Actions cache.
     - uses: espressif/esp-idf-ci-action@v1
       with:
         esp_idf_version: release-v5.5
@@ -36,6 +38,6 @@ runs:
         extra_docker_args: >-
           -v ${{ runner.temp }}/ccache:/ccache
           -e CCACHE_DIR=/ccache
-          -e CCACHE_MAXSIZE=500M
+          -e CCACHE_MAXSIZE=150M
           -e CCACHE_COMPILERCHECK=content
         command: ccache -z > /dev/null && ${{ inputs.command }} && ccache -s
