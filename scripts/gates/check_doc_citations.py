@@ -17,9 +17,12 @@ FUNCTION = re.compile(r"^([a-z][a-z0-9_]*)\(\)$")
 MACRO = re.compile(r"^[A-Z][A-Z0-9_]*$")
 FILE = re.compile(r"^(?:launcher/|apps/|[\w.-]+/)*(?:[\w.-]+\.(?:c|h|py|sh|cmake|md)|CMakeLists\.txt)$")
 SKIP_FENCES = {"sh", "shell", "bash", "console", "text", "output"}
-SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components", ".git"}
+# .dev is a separate repository that sits inside this checkout, so a bare
+# filename must not resolve into it - it carries its own Architecture.md, and
+# CI never has it, which makes a wrong match here fail locally and nowhere else.
+SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components", ".git", ".dev"}
 FOREIGN_FUNCTIONS = {"exit", "main", "max", "name", "bsp_display_new"}
-FOREIGN_PATHS = {"idf.py"}
+FOREIGN_PATHS = {"idf.py", "idf_tools.py"}
 FOREIGN_MACRO_PREFIXES = ("ESP", "CONFIG_COMPILER", "CONFIG_LOG", "IDF", "SDMMC", "WHOLE", "LOG", "DP")
 
 # A citation of one or more sections of a doc: `X.md`'s "Section", or "One"
