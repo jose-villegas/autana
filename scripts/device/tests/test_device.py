@@ -19,6 +19,38 @@ import device_lock
 import device_report
 
 
+class InterpreterTests(unittest.TestCase):
+    """Any interpreter may start device.py - a report script's `python`, a
+    person at a prompt - and only ESP-IDF's carries pyserial."""
+
+    MISSING = {"serial": None}
+    PRESENT = {"serial": mock.MagicMock()}
+
+    def test_without_pyserial_it_runs_itself_again_under_idf_python(self):
+        with mock.patch.dict(sys.modules, self.MISSING), \
+                mock.patch.object(device, "idf_python", return_value="C:/idf/python.exe"), \
+                mock.patch.object(device.subprocess, "call", return_value=3) as call:
+            status = device.rerun_under_idf_python(["status"])
+        self.assertEqual(status, 3)
+        self.assertEqual(call.call_args.args[0][0], "C:/idf/python.exe")
+        self.assertEqual(call.call_args.args[0][-1], "status")
+
+    def test_it_does_not_rerun_when_idf_python_is_this_interpreter(self):
+        with mock.patch.dict(sys.modules, self.MISSING), \
+                mock.patch.object(device, "idf_python", return_value=sys.executable), \
+                mock.patch.object(device.subprocess, "call") as call:
+            status = device.rerun_under_idf_python(["status"])
+        self.assertIsNone(status)
+        call.assert_not_called()
+
+    def test_with_pyserial_it_runs_where_it_is(self):
+        with mock.patch.dict(sys.modules, self.PRESENT), \
+                mock.patch.object(device.subprocess, "call") as call:
+            status = device.rerun_under_idf_python(["status"])
+        self.assertIsNone(status)
+        call.assert_not_called()
+
+
 class PortWaitTests(unittest.TestCase):
     """A caller that won the lock must outwait a straggler still holding the
     port, and must say so rather than failing as if the board were flaky."""
