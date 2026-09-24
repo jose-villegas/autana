@@ -190,10 +190,10 @@ test_proportional_height_is_cell_h_times_scale(void) {
 
 /*
  * gfx_font_row_run_rect() - proof that batching a run of set bits into one
- * rect covers exactly the same pixels as gfx.c's draw_rotated_font_pixel()
- * would have, one bit at a time. gfx.c cannot link on a host (it calls
- * gfx_fill_rect()), so draw_rotated_font_pixel()'s px/py switch is mirrored
- * here rather than driven directly - see this suite's own file comment.
+ * rect covers exactly the same pixels as gfx.c's glyph drawing would one
+ * bit at a time. gfx.c cannot link on a host (it calls gfx_fill_rect()), so
+ * its per-pixel px/py switch is mirrored here rather than driven directly -
+ * see this suite's own file comment.
  */
 
 static void
