@@ -343,7 +343,8 @@ class LockCommandTests(unittest.TestCase):
     lock-level commands."""
 
     def test_status_takes_no_arguments_and_calls_device(self):
-        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        result = mock.Mock(returncode=0, stdout="unlocked\n")
+        with mock.patch.object(autana.subprocess, "run", return_value=result) as called:
             code = autana.status([])
         self.assertEqual(code, 0)
         self.assertIn("status", called.call_args[0][0])
