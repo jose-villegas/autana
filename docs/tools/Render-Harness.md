@@ -49,13 +49,14 @@ app's own `tools/`, so nothing in the engine's tooling names an app.
 `render_all_scenes.sh` finds both by name, so a new scene is one pair of
 files and deleting an app deletes its scenes.
 
-Render Lab's two host harnesses source `render_lab_render_sources.sh`. It
-collects the app's `.c` files outside `tools/` and `tests/`, excluding
-`suite_*.c`, and declares the shared engine and host shim sources. A new
-Render Lab source in the app folder is included in both harnesses.
+A scene script may find its app's sources instead of listing them: Render
+Lab's collects every `.c` in the app folder outside `tools/` and `tests/`,
+excluding `suite_*.c`, and lists only the shared engine and host-shim
+sources by hand, so a new source file needs no edit to the script.
 
-Each line of `scene_renders` is `<label>|<arguments>|<width>x<height>`, and
-the declared size is checked against what the binary reports it wrote. That
+Each line of `scene_renders` is `<label>|<arguments>|<width>x<height>`,
+optionally followed by `|nopin`, and the declared size is checked against
+what the binary reports it wrote. That
 is what makes the sweep a check rather than a picture nobody looks at
 twice.
 
@@ -95,11 +96,13 @@ a different compiler and C library than anyone's desk. The self-test report,
 the home screen and the boot animation are pinned: `gfx.c` does no float
 maths, and the scroll view's momentum - the one part of the UI that reaches
 the maths library - is switched off at a zero time constant, so it is
-linked but never called. Render Lab declares `scene_pin=0` and is checked for its
-declared size alone: it draws a frame counter that is a `double` printed
-with `"%.1f"`, and the only reason that reads zero is a run stopping 20 ms
-short of the window that computes it. A scene whose pin can fail for a
-reason nobody changed teaches the reader to ignore the pin.
+linked but never called. A render that is not integer-exact ends its line
+with `|nopin` and is checked for its declared size alone (`scene_pin=0` does
+the same for a whole scene). Render Lab pins its integer scenes with the HUD
+hidden, and marks `|nopin` both the same scenes with the HUD, whose fps
+readout is a `double` printed with `"%.1f"`, and the Cornell scenes, which
+are float throughout. A scene whose pin can fail for a reason nobody changed
+teaches the reader to ignore the pin.
 
 Every scene is linked against the maths library regardless, last on the
 line: the Windows toolchains fold those functions into libc, so a scene that
