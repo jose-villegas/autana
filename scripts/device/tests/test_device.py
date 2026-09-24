@@ -1,4 +1,6 @@
 import base64
+import io
+import contextlib
 import gzip
 import json
 import os
@@ -129,6 +131,13 @@ class FakeConnection:
         pass
 
 
+class InterruptedConnection(FakeConnection):
+    def read(self, size):
+        if not self.chunks:
+            raise KeyboardInterrupt
+        return super().read(size)
+
+
 class DeviceTests(unittest.TestCase):
     def test_suite_output_shows_failure_messages_and_caps_the_list(self):
         data = (b"boot detail\n" + b":1:good:PASS\n" +
@@ -256,6 +265,38 @@ class DeviceTests(unittest.TestCase):
             self.assertEqual(output.read_bytes(), b":1:test_one:PASS\n")
         self.assertEqual(reason, "port lost")
         self.assertEqual(device.count_suite_results(data), (1, 0))
+
+    def test_capture_echoes_every_chunk_byte_for_byte(self):
+        chunks = [b"ordinary\n", b"\xfferror: broken\n"]
+        echo = io.BytesIO()
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "capture.log"
+            device.capture(FakeConnection(chunks), output, 0.2, None, echo=echo)
+            self.assertEqual(output.read_bytes(), b"".join(chunks))
+        self.assertEqual(echo.getvalue(), b"".join(chunks))
+
+    def test_stoppable_capture_records_bytes_before_interrupt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "capture.log"
+            data, reason = device.capture(InterruptedConnection([b"before\n"]), output,
+                                          None, None, stoppable=True)
+            self.assertEqual(output.read_bytes(), b"before\n")
+        self.assertEqual((data, reason), (b"before\n", "stopped"))
+
+    def test_regular_capture_still_raises_on_interrupt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "capture.log"
+            with self.assertRaises(KeyboardInterrupt):
+                device.capture(InterruptedConnection([b"before\n"]), output, 1, None)
+            self.assertEqual(output.read_bytes(), b"before\n")
+
+    def test_follow_waits_for_interrupt_even_after_test_output(self):
+        chunks = [b"TESTS_DONE\n", b"ordinary after tests\n"]
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "capture.log"
+            data, reason = device.capture(InterruptedConnection(chunks), output,
+                                          None, None, stoppable=True)
+        self.assertEqual((data, reason), (b"".join(chunks), "stopped"))
 
     def test_capture_rejects_run_suite_when_build_has_no_suites(self):
         connection = FakeConnection([b"shell: ignoring line: 'RUNSUITE sand'\n"])
@@ -1024,6 +1065,24 @@ class ListenElfResolutionTests(unittest.TestCase):
         finder, decode = self.run_listen(None, [b"no build id here"], None)
         finder.assert_called_once()
         decode.assert_not_called()
+
+    def test_quiet_listen_prints_record_path_and_errors(self):
+        connection = FakeConnection([b"ordinary line\nerror: failed\n"])
+        args = Namespace(owner="agent", purpose="autana monitor", wait=0,
+                         seconds=0.1, follow=False, echo=False, out=None, elf=None)
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        printed = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(device, "open_when_free", return_value=connection), \
+             mock.patch.object(device, "records_root", return_value=Path(directory)), \
+             mock.patch.object(device, "git_commit", return_value="deadbeef"), \
+             mock.patch.object(device, "find_elf_for_build_id", return_value=None), \
+             contextlib.redirect_stdout(printed):
+            device.listen(args, store, "COM5")
+        self.assertIn("listen capture: ", printed.getvalue())
+        self.assertIn("error: failed", printed.getvalue())
+        self.assertNotIn("ordinary line", printed.getvalue())
 
 
 class ResetCommandTests(unittest.TestCase):

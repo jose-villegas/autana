@@ -328,19 +328,23 @@ class HeldLock:
 
 
 def capture(connection, output, max_seconds, idle_seconds, expected_build_id=None,
-            suite_name=None, append=False):
+            suite_name=None, append=False, echo=None, stoppable=False):
     data = bytearray()
     pending = b""
     seen_build_id = None
     last_non_shell = time.monotonic()
-    deadline = last_non_shell + max_seconds
+    deadline = last_non_shell + max_seconds if max_seconds is not None else None
     suite_complete = None
     if suite_name:
         suite_complete = b"RUNSUITE_COMPLETE name=" + suite_name.encode("ascii") + b" "
     with open(output, "ab" if append else "wb") as stream:
-        while time.monotonic() < deadline:
+        while deadline is None or time.monotonic() < deadline:
             try:
                 chunk = connection.read(4096)
+            except KeyboardInterrupt:
+                if not stoppable:
+                    raise
+                return bytes(data), "stopped"
             except OSError:
                 # The USB serial port re-enumerates under the reader now and
                 # then; what was read is still a capture worth reporting.
@@ -352,6 +356,9 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
             data.extend(chunk)
             stream.write(chunk)
             stream.flush()
+            if echo is not None:
+                echo.write(chunk)
+                echo.flush()
             pending += chunk
             lines = pending.split(b"\n")
             pending = lines.pop()
@@ -372,7 +379,8 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
                         raise RuntimeError("no suite named " + suite_name + " on this build")
                     if b"SUITE_DONE" in text or text.startswith(suite_complete):
                         return bytes(data), "complete"
-            if b"TESTS_DONE" in data or b"SELFTEST_COMPLETE" in data or (b"Tests " in data and b"Failures" in data):
+            if not stoppable and (b"TESTS_DONE" in data or b"SELFTEST_COMPLETE" in data or
+                                  (b"Tests " in data and b"Failures" in data)):
                 return bytes(data), "complete"
     return bytes(data), "timeout"
 
@@ -698,15 +706,20 @@ def listen(args, store, port):
     try:
         with HeldLock(store, port, args.owner, args.purpose, args.wait):
             with open_when_free(port) as connection:
-                data, reason = capture(connection, output, args.seconds, None)
+                data, reason = capture(connection, output, args.seconds, None,
+                                       echo=sys.stdout.buffer if getattr(args, "echo", False) else None,
+                                       stoppable=getattr(args, "follow", False))
     except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
         error = str(caught)
         raise
     finally:
-        record_capture(output, managed, started_at=started_at, port=port, owner=args.owner,
-                       purpose=args.purpose, command="listen",
-                       build_id=latest_build_id_from_bytes(data), worktree=str(Path.cwd()),
-                       commit=git_commit(), reason=reason, error=error)
+        final_path = record_capture(output, managed, started_at=started_at, port=port,
+                                    owner=args.owner, purpose=args.purpose, command="listen",
+                                    build_id=latest_build_id_from_bytes(data), worktree=str(Path.cwd()),
+                                    commit=git_commit(), reason=reason, error=error)
+    if not getattr(args, "echo", False):
+        print_reset_output(data, False)
+    print("listen capture: " + str(final_path))
     print("listen capture ended: " + reason)
     elf = Path(args.elf) if args.elf else find_elf_for_build_id(
         Path.cwd(), latest_build_id_from_bytes(data))
@@ -919,7 +932,10 @@ def main(argv=None):
     suite.add_argument("--verbose", action="store_true")
     suite.add_argument("--purpose", default="run suite")
     listen_parser = subparsers.add_parser("listen")
-    listen_parser.add_argument("--seconds", type=float, required=True)
+    listen_duration = listen_parser.add_mutually_exclusive_group(required=True)
+    listen_duration.add_argument("--seconds", type=float)
+    listen_duration.add_argument("--follow", action="store_true")
+    listen_parser.add_argument("--echo", action="store_true")
     listen_parser.add_argument("--out")
     listen_parser.add_argument("--purpose", default="listen")
     listen_parser.add_argument("--elf",

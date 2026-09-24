@@ -247,12 +247,12 @@ class MonitorCommandTests(unittest.TestCase):
     given - autana no longer guesses an ELF by file mtime."""
 
     def test_no_elf_given_omits_the_flag_entirely(self):
-        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with mock.patch.object(autana.subprocess, "Popen") as called:
             autana.monitor([])
         self.assertNotIn("--elf", called.call_args[0][0])
 
     def test_an_explicit_elf_is_passed_through_as_is(self):
-        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with mock.patch.object(autana.subprocess, "Popen") as called:
             autana.monitor(["30", "--elf", "mine.elf"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--seconds") + 1], "30.0")
@@ -261,6 +261,34 @@ class MonitorCommandTests(unittest.TestCase):
     def test_elf_with_no_value_is_rejected(self):
         with self.assertRaises(SystemExit):
             autana.monitor(["--elf"])
+
+    def test_echo_only_when_stdout_is_a_terminal(self):
+        for tty in (False, True):
+            with self.subTest(tty=tty), \
+                 mock.patch.object(autana.sys.stdout, "isatty", return_value=tty), \
+                 mock.patch.object(autana.subprocess, "Popen") as started:
+                autana.monitor([])
+            self.assertEqual("--echo" in started.call_args.args[0], tty)
+
+    def test_follow_is_forwarded_without_seconds(self):
+        with mock.patch.object(autana.subprocess, "Popen") as started:
+            autana.monitor(["--follow"])
+        command = started.call_args.args[0]
+        self.assertIn("--follow", command)
+        self.assertNotIn("--seconds", command)
+
+    def test_follow_and_seconds_is_a_usage_error(self):
+        with mock.patch.object(autana.subprocess, "Popen") as started, \
+             self.assertRaises(SystemExit):
+            autana.monitor(["30", "--follow"])
+        started.assert_not_called()
+
+    def test_parent_waits_for_child_after_interrupt(self):
+        process = mock.Mock()
+        process.wait.side_effect = [KeyboardInterrupt, 7]
+        with mock.patch.object(autana.subprocess, "Popen", return_value=process):
+            self.assertEqual(autana.monitor(["--follow"]), 7)
+        self.assertEqual(process.wait.call_count, 2)
 
 
 class ResetCommandTests(unittest.TestCase):
