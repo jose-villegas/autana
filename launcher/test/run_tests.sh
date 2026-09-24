@@ -119,7 +119,7 @@ done
 # it cannot link on a host. A scene_*.c is the same kind of file: one of
 # several hardware-facing renderers an app hosts behind its single app_*.c.
 # Everything else in the folder is portable logic and is
-# compiled in, along with any suite_*.c beside it.
+# compiled in, along with the suite_*.c in its tests/ folder.
 #
 # That split is not bureaucracy: it is what forces an app's logic to be
 # separable from its wiring, which is the only reason a falling-sand automaton

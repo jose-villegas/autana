@@ -53,7 +53,7 @@ forever. Symptom: clean boot log that stops dead after the last setup line.
 
 ## Measured performance
 
-The cube scene's own frame-budget suite (`main/apps/render_lab/suite_cube_perf.c`)
+The cube scene's own frame-budget suite (`main/apps/render_lab/tests/suite_cube_perf.c`)
 is the current source for its clear/rasterize/blit timing - see
 [`../Autana-Rendering-Roadmap.md`](../Autana-Rendering-Roadmap.md) for where
 that stands. What follows here is bus-level measurement, board-verified and

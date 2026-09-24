@@ -26,10 +26,11 @@
 
 #define LERP_RGB(lo, hi, sh) ((LERP_CH(lo, hi, 16, sh) << 16) | (LERP_CH(lo, hi, 8, sh) << 8) | LERP_CH(lo, hi, 0, sh))
 
-#ifdef MISRA_SCAN
-/* The tables below expand this a few thousand times, which exhausts the MISRA
- * addon before it reaches any code. Stubbed for the tables only: LERP goes
- * back to LERP_RGB below them, so the functions are analysed as written. */
+#ifdef ANALYSIS_SCAN
+/* The tables below expand this a few thousand times, which exhausts cppcheck's
+ * MISRA addon and holds clang-tidy on this one file for over a minute. Stubbed
+ * for the tables only: LERP goes back to LERP_RGB below them, so the functions
+ * are analysed as written. */
 #define LERP(lo, hi, sh) ((uint32_t)(lo) + (uint32_t)(hi) + (uint32_t)(sh))
 #else
 #define LERP(lo, hi, sh) LERP_RGB(lo, hi, sh)
@@ -526,7 +527,7 @@ static const gfx_color_t stone_edge_speckle[MATERIAL_VARIANTS][8] = {
     STONE_EDGE_ROW(12), STONE_EDGE_ROW(13), STONE_EDGE_ROW(14), STONE_EDGE_ROW(15),
 };
 
-#ifdef MISRA_SCAN
+#ifdef ANALYSIS_SCAN
 /* Last table is behind us - see LERP's own stub above. */
 #undef LERP
 #define LERP(lo, hi, sh) LERP_RGB(lo, hi, sh)

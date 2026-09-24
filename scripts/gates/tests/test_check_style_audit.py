@@ -235,7 +235,7 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(findings, [])
 
-    def test_a_documented_exception_is_not_flagged(self):
+    def test_util_may_not_include_display(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
@@ -243,7 +243,7 @@ class StyleAuditTest(unittest.TestCase):
             self.write(root, "launcher/main/util/device_state.c", '#include "display/display.h"\n')
             self.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
-        self.assertEqual(findings, [])
+        self.assertEqual(len(findings), 1)
 
     def test_a_folder_this_table_does_not_know_about_fails_loudly(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -83,8 +83,8 @@ capturing sand performance numbers.
 
 ## Two runners, one set of suites
 
-Portable suites (`test/suites/`, plus each app's own beside it,
-`apps/*/suite_*.c`) are compiled into every runner that can take them.
+Portable suites (`test/suites/`, plus each app's own in its `tests/` folder,
+`apps/*/tests/suite_*.c`) are compiled into every runner that can take them.
 Shell and app suites are discovered by both runners. A device-only suite
 guards its body with `#ifdef DEVICE_BUILD`; a host-only suite uses the
 opposite guard, defines an empty runner for the device, and registers once
@@ -343,9 +343,12 @@ unidentified board a null panel (`gfx_null_panel.c`). It keeps the one
 property of the link the code above depends on: a strip occupies the bus
 for its own transfer time at the current panel clock, one strip after
 another, and only then counts as sent. The framebuffer, the present task and
-everything drawn through them run as they do on the board, and costs keep
-their order — a narrow window cheaper than a band, a band cheaper than a
-frame, nothing sent costing nothing.
+everything drawn through them run as they do on the board, and bus time
+keeps its order — a narrow window cheaper than a band, a band cheaper than
+a frame, nothing sent costing nothing. A whole present's measured cost does
+not: the CPU work around the bus is priced by the emulator, not the chip,
+so a test that compares two presents' times reports the comparison there
+rather than enforcing it.
 
 Touch gets the same treatment: `touch_inject()` leaves a sample the polling
 task reads ahead of the controller, and with no controller answering there is
@@ -644,7 +647,7 @@ directly - the latter also covers `gfx_band_span_clip()`/`gfx_band_span_pack()`,
 the even-rounding and in-place packing behind `gfx_band_submit()`'s own send.
 `gfx.c`'s own allocation and DMA-send side
 of `gfx_mode_enter()`/`gfx_band_submit()` needs real device memory, so it is
-exercised instead by `main/apps/render_lab/suite_cube_band_perf.c`
+exercised instead by `main/apps/render_lab/tests/suite_cube_band_perf.c`
 (device-only), which times the cube's band-mode path against its full-fb
 path on the same scene. No device suite covers a band's narrowed send or
 band buffers sharing the strip-bounce slots.
@@ -667,7 +670,7 @@ against.
 
 Shell suites (gfx, ui, input, boot, render, util) live in
 `launcher/test/suites/`; an app's own are its
-`launcher/main/apps/<name>/**/suite_*.c`. `autana suite list [text]` filters
+`launcher/main/apps/<name>/tests/suite_*.c`. `autana suite list [text]` filters
 by a substring of the name, so treat it as a lookup, not an area map.
 
 ---
@@ -675,8 +678,9 @@ by a substring of the name, so treat it as a lookup, not an area map.
 ## Adding a suite
 
 1. Create the file. A suite for shell code goes in `launcher/test/suites/`; a
-   suite for an app goes **beside the app**, in `main/apps/<name>/`, so it is
-   deleted along with it.
+   suite for an app goes **inside the app**, in `main/apps/<name>/tests/`, so
+   it is deleted along with it. Suites are found by their `suite_` name, not
+   by that folder, so one placed elsewhere still runs rather than vanishing.
 2. Write the tests, then a `void run_<name>_suite(void)` that calls
    `RUN_TEST(...)` for each. Do **not** define `setUp`/`tearDown` or call
    `UNITY_BEGIN`/`UNITY_END` — the runners own those, because several suites
