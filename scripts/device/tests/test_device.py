@@ -477,6 +477,14 @@ class DeviceTests(unittest.TestCase):
         store.clear_human.assert_called_once_with("COM5")
         output.assert_called_once_with("unlocked")
 
+    def test_hand_records_reservation(self):
+        store = mock.Mock()
+        store.status.return_value = {"human": None, "lock": None, "queue": []}
+        with mock.patch.object(device.device_lock, "LockStore", return_value=store):
+            self.assertEqual(device.main(["--port", "COM5", "--owner", "agent",
+                                          "hand-to-human", "--note", "check cable"]), 0)
+        store.set_human.assert_called_once_with("COM5", "agent", "check cable")
+
 
 class SlugTests(unittest.TestCase):
     def test_replaces_unsafe_characters_with_a_single_dash(self):
