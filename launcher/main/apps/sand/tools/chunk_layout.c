@@ -38,7 +38,7 @@ typedef struct {
     int w, h;
 } quality_t;
 
-/* The five the boot menu offers, at 368 x 448 - the same grids
+/* The five the options screen offers, at 368 x 448 - the same grids
  * suite_sand_chunk_sched.c sweeps. */
 static const quality_t qualities[] = {
     {"ULTRA", 184, 224}, {"HIGH", 122, 149}, {"NORMAL", 92, 112}, {"LOW", 61, 74}, {"VERY LOW", 46, 56},

@@ -19,7 +19,7 @@ underneath everything here, see `docs/notes/README.md`.
 
 ## The grid is one byte per cell
 
-The cell size is a quality setting on the app's boot menu, and the grid
+The cell size is a quality setting on the app's options screen, and the grid
 shrinks or grows with it:
 
 | Setting | Cell | Grid | Cells (= bytes) |

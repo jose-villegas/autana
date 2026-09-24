@@ -6,11 +6,6 @@
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 
-static mu_Color
-mu_color_hex(uint32_t rgb) {
-    return mu_color((int)((rgb >> 16) & 0xFF), (int)((rgb >> 8) & 0xFF), (int)(rgb & 0xFF), 255);
-}
-
 /* The panel's bezel hides about 15 px along every edge. */
 #define HUD_INSET_PX    16
 #define HUD_LINE_GAP_PX 4
@@ -23,7 +18,7 @@ mu_color_hex(uint32_t rgb) {
 static mu_Rect
 draw_text_box(mu_Context* ctx, const char* text, int x, int y) {
     const mu_Rect box = mu_rect(x, y, gfx_text_width(text, -1) + 8, gfx_text_height() + 4);
-    mu_draw_rect(ctx, box, mu_color_hex(RENDER_LAB_BACKGROUND_RGB));
+    mu_draw_rect(ctx, box, ui_rgb(RENDER_LAB_BACKGROUND_RGB));
     mu_layout_set_next(ctx, box, 0);
     mu_text(ctx, text);
     return box;
@@ -49,7 +44,7 @@ draw_scene_title(mu_Context* ctx, const char* title, uint8_t alpha, const int ro
         row++;
     }
     box.y = HUD_INSET_PX + row * (h + HUD_LINE_GAP_PX);
-    mu_draw_rect(ctx, box, mu_color_hex(RENDER_LAB_BACKGROUND_RGB));
+    mu_draw_rect(ctx, box, ui_rgb(RENDER_LAB_BACKGROUND_RGB));
 
     mu_Color ink = ctx->style->colors[MU_COLOR_TEXT];
     ink.a = alpha;

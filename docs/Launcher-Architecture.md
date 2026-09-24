@@ -408,13 +408,13 @@ stateDiagram-v2
     ControlCenter : Control Center<br/>ui_control_center_frame()<br/>over the dimmed launcher
 
     Launcher --> Running: tap an entry<br/><i>the app's enter()</i>
-    Running --> Launcher: home swipe or<br/>PWR long-press<br/><i>the app's exit()</i>
+    Running --> Launcher: home swipe, PWR long-press<br/>or shell_request_exit()<br/><i>the app's exit()</i>
     Launcher --> ControlCenter: swipe in from<br/>the logical top
     ControlCenter --> Launcher: swipe in from<br/>the logical bottom
 ```
 
-What the shell does on each transition, and which of the two ways home an app
-gets, is in [Building-an-App.md](Building-an-App.md#lifecycle). One pass of
+What the shell does on each transition, and which way home an app gets, is
+in [Building-an-App.md](Building-an-App.md#lifecycle). One pass of
 the loop, with and without `update()`, is in
 [Building-an-App.md](Building-an-App.md#one-pass-of-the-frame-loop).
 

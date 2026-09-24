@@ -90,7 +90,8 @@ an app leaves by leaving the build:
 The shell's state machine - Launcher, Control Center and a running app - is
 in [Launcher-Architecture.md](Launcher-Architecture.md#the-frame-loop). An
 app only ever sees the `Running` state; it leaves by home swipe
-(`home_gesture`) or PWR long-press (no `home_gesture`).
+(`home_gesture`), PWR long-press (no `home_gesture`), or its own call to
+`shell_request_exit()`.
 
 What the shell does on each transition, in order - `step_launcher()` on
 launch, `leave_app()` on leave:
@@ -183,8 +184,9 @@ button fields are `button_t`, from `input/buttons.h`.
 `step_app()` checks both before the app runs: `gesture_is_home_swipe()`
 against the edge `exit_edge_for_quarter()` names, or `power.held`. Leave
 `home_gesture` `false` only when the app's own input is a drag near a screen
-edge - sand does. An app cannot ask the shell to leave; every exit is one of
-the two rows above.
+edge - sand does. An app with an on-screen way out calls
+`shell_request_exit()` instead: the shell leaves before the app's next
+`frame()`, exactly as it does for the two rows above.
 
 ## Rules
 

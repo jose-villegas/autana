@@ -19,11 +19,11 @@
         "wifi": [16, 16, 160, 78],
         "bluetooth": [192, 16, 160, 78],
         "link": [16, 106, 336, 58],
-        "volume": [16, 176, 160, 52],
-        "brightness": [192, 176, 160, 52],
-        "notifications_header": [16, 242, 336, 18],
-        "library_notification": [16, 270, 336, 72],
-        "controller_notification": [16, 354, 336, 72]
+        "volume": [16, 176, 160, 56],
+        "brightness": [192, 176, 160, 56],
+        "notifications_header": [16, 246, 336, 18],
+        "library_notification": [16, 274, 336, 72],
+        "controller_notification": [16, 358, 336, 72]
       }
     },
     "landscape": {
@@ -32,11 +32,11 @@
         "wifi": [16, 16, 130, 84],
         "bluetooth": [159, 16, 130, 84],
         "link": [302, 16, 130, 84],
-        "volume": [16, 112, 203, 52],
-        "brightness": [229, 112, 203, 52],
-        "notifications_header": [16, 178, 416, 18],
-        "library_notification": [16, 206, 416, 66],
-        "controller_notification": [16, 284, 416, 66]
+        "volume": [16, 112, 203, 56],
+        "brightness": [229, 112, 203, 56],
+        "notifications_header": [16, 182, 416, 18],
+        "library_notification": [16, 210, 416, 64],
+        "controller_notification": [16, 284, 416, 64]
       }
     }
   }

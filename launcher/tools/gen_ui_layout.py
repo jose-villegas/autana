@@ -17,7 +17,7 @@ from pathlib import Path
 SCHEMA_VERSION = 2
 ORIENTATIONS = ("portrait", "landscape")
 CANVASES = {"portrait": (368, 448), "landscape": (448, 368)}
-MIN_TAP_TARGET = 44
+MIN_TAP_TARGET = 56  # ui/ui.h UI_TAP_MIN
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
 
 

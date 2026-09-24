@@ -11,8 +11,7 @@
 #include "unity.h"
 
 #include "ui/control_center_layout_generated.h"
-
-#define MIN_TAP_TARGET   44
+#include "ui/ui.h"
 
 /* About 15 px at every edge of the panel is not visible on the device. */
 #define PANEL_EDGE_INSET 15
@@ -65,8 +64,8 @@ test_every_tap_target_is_finger_sized(void) {
             if (!is_tap_target(e)) {
                 continue;
             }
-            TEST_ASSERT_TRUE_MESSAGE(layout->rects[e].width >= MIN_TAP_TARGET, describe(layout, e));
-            TEST_ASSERT_TRUE_MESSAGE(layout->rects[e].height >= MIN_TAP_TARGET, describe(layout, e));
+            TEST_ASSERT_TRUE_MESSAGE(layout->rects[e].width >= UI_TAP_MIN, describe(layout, e));
+            TEST_ASSERT_TRUE_MESSAGE(layout->rects[e].height >= UI_TAP_MIN, describe(layout, e));
         }
     }
 }
