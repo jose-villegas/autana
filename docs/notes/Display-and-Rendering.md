@@ -267,8 +267,9 @@ crash.
 
 **Marking must be cheap.** Dithered text can call `gfx_fill_rect_dither()`
 once per set font pixel, so marking runs thousands of times on a screen of
-text. The already-clipped path uses an inlined helper to avoid repeated
-clipping and call overhead.
+text. Routing that through the public entry point, with its re-clipping and
+call overhead, cost about 5% of the launcher's framerate; an inlined helper
+on the already-clipped path fixed it.
 
 On the simulation side the same dirty information answers "what needs
 redrawing" as well as "what needs sending", which is the point of the
