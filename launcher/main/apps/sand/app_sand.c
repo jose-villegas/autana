@@ -2208,6 +2208,51 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
 }
 
 #if CONFIG_LAUNCHER_SELFTEST
+static void
+sand_app_test_tap_menu_rect(mu_Rect r) {
+    const int x = r.x + r.w / 2;
+    const int y = r.y + r.h / 2;
+    const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
+    const input_t hold = {.down = true, .x = x, .y = y};
+    const input_t release = {.released = true, .x = x, .y = y};
+    const input_t idle = {0};
+    draw_menu(&press);
+    for (int i = 0; i < 4; i++) {
+        draw_menu(&hold);
+    }
+    draw_menu(&release);
+    draw_menu(&idle);
+}
+
+bool
+sand_app_test_options_reach_start(int action) {
+    const sand_options_t saved = current_options();
+    ui_set_transform(ui_transform_identity());
+    sand_enter();
+    const sand_options_t before = current_options();
+    sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS, before);
+    menu.draft.quality = (before.quality + 1) % QUALITY_COUNT;
+
+    if (action == 1 || action == 2) {
+        const input_t idle = {0};
+        draw_menu(&idle);
+        draw_menu(&idle);
+        options_screen_layout_t lay;
+        options_screen_layout(ui_width(), ui_height(), &lay);
+        sand_app_test_tap_menu_rect(action == 2 ? lay.apply : lay.cancel);
+    } else {
+        sand_menu_init(&menu);
+    }
+
+    const bool started = sand_menu_title_clicked(&menu, SAND_TITLE_START, current_options()) == SAND_MENU_START;
+    const bool ok = started && menu.screen == SAND_MENU_TITLE
+                    && current_options().quality == (action == 2 ? menu.draft.quality : before.quality);
+    sand_exit();
+    adopt_options(&saved);
+    ui_set_transform(ui_transform_quarter_turn(display_shell_quarter(), GFX_WIDTH, GFX_HEIGHT));
+    return ok;
+}
+
 /* Unlike sand_app_test_survives_indexed_then_menu() above, this runs the
  * START button itself. One pressed+released frame is not enough: microui's
  * hover_root lags next_hover_root by a frame (begin_root_container(),

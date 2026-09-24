@@ -15,6 +15,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef HOST_HEAP_ARENA
+#include "esp_heap_caps.h"
+#endif
+
 #ifdef ESP_PLATFORM
 #include "board/board.h"
 #include "driver/gpio.h"
@@ -622,7 +626,11 @@ gfx_init(void) {
     return true;
 #else
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+#ifdef HOST_HEAP_ARENA
+    fb = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
     fb = malloc(bytes);
+#endif
     if (fb == NULL) {
         return false;
     }
