@@ -303,7 +303,7 @@ class DeviceTests(unittest.TestCase):
             output = Path(directory) / "capture.log"
             with self.assertRaises(KeyboardInterrupt):
                 device.capture(InterruptedConnection(chunks), output,
-                               None, None, until_tests_done=False)
+                               None, None, complete=None)
             self.assertEqual(output.read_bytes(), b"".join(chunks))
 
     def test_capture_rejects_run_suite_when_build_has_no_suites(self):
@@ -350,7 +350,13 @@ class DeviceTests(unittest.TestCase):
             self.assertEqual(device.run_suite(args, store, "COM5"), 1)
 
     def test_reading_the_build_id_queries_the_console_when_the_boot_has_none(self):
-        connection = FakeConnection([b"boot\nTESTS_DONE\n", b"BUILD_ID=reply\n"])
+        class RepliesWhenAsked(FakeConnection):
+            def read(self, size):
+                if self.writes:
+                    return b"BUILD_ID=reply\n"
+                return super().read(size)
+
+        connection = RepliesWhenAsked([b"boot\n"])
         with mock.patch.object(device, "reset"), \
              mock.patch.object(device, "open_serial", return_value=connection):
             actual, reason = device.reset_and_read_build_id("COM5", seconds=1)
@@ -1198,7 +1204,7 @@ class CaptureAfterResetTests(unittest.TestCase):
             unused_data, reason = device.capture_after_reset("COM5", os.devnull, 30, 0.1)
         self.assertEqual(reason, "complete")
 
-    def read_build_id(self, connections, resets=None):
+    def read_build_id(self, connections, resets=None, seconds=1.5):
         resets = [] if resets is None else resets
         connections = iter(connections)
         opened = lambda *unused, **unused_keywords: next(connections)
@@ -1207,9 +1213,33 @@ class CaptureAfterResetTests(unittest.TestCase):
              mock.patch.object(device, "open_serial", side_effect=opened), \
              mock.patch.object(device, "open_when_free", side_effect=opened), \
              mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.05), \
-             mock.patch.object(device, "RESET_REOPEN_SECONDS", 0.3), \
-             mock.patch.object(device, "BOOT_IDLE_SECONDS", 0.3):
-            return device.reset_and_read_build_id("COM5", seconds=5)
+             mock.patch.object(device, "RESET_REOPEN_SECONDS", 0.3):
+            return device.reset_and_read_build_id("COM5", seconds=seconds)
+
+    def test_the_build_id_is_heard_after_a_silence_longer_than_an_idle_cutoff(self):
+        class QuietThenId(AnswersNoQuery):
+            """Boot output, then a boot animation's worth of silence, then the
+            id the shell prints once ready."""
+
+            def __init__(self):
+                super().__init__([])
+                self.started = None
+
+            def read(self, size):
+                self.started = self.started or time.monotonic()
+                if self.writes:
+                    return b""
+                quiet_for = time.monotonic() - self.started
+                if not self.chunks and quiet_for < 0.1:
+                    self.chunks = [b"I (773) post: 15 checks, all passed\n"]
+                    return super().read(size)
+                if quiet_for >= 2.5 and not getattr(self, "said_id", False):
+                    self.said_id = True
+                    return b"BUILD_ID=after-the-animation\n"
+                return b""
+
+        actual, reason = self.read_build_id([QuietThenId(), AnswersNoQuery([])], seconds=5)
+        self.assertEqual((actual, reason), ("after-the-animation", "complete"))
 
     def test_the_build_id_is_read_through_a_stale_first_handle(self):
         actual, unused_reason = self.read_build_id(
