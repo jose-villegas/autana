@@ -30,8 +30,7 @@ shrinks or grows with it:
 | LOW | 6 px | 61 x 74 | 4,514 (~4.5 KB) |
 | VERY LOW | 8 px | 46 x 56 | 2,576 (~2.5 KB) |
 
-ULTRA's 41,216-byte grid is, in `docs/notes/Board-and-Memory.md`'s own
-words, "the largest single contiguous allocation of interest" the sand app
+ULTRA's 41,216-byte grid is the largest single allocation the sand app
 makes.
 
 The 322 KiB framebuffer lives entirely in PSRAM (`BOARD_FRAMEBUFFER_CAPS`,
