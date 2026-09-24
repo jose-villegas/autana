@@ -252,9 +252,10 @@ def added_lines(ref, path):
 
 
 def comments_at_ref(ref):
-    """Comment prose present anywhere in the base tree."""
+    """Comment prose the base held in files this change deleted or edited -
+    the only places a verbatim move can come from."""
     files = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", ref],
+        ["git", "diff", "--name-only", "--no-renames", "--diff-filter=DM", ref],
         capture_output=True, text=True, check=True).stdout.splitlines()
     exts = (".c", ".h", ".cpp", ".hpp")
     texts = set()
