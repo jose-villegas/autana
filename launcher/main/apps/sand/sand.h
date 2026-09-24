@@ -147,6 +147,9 @@ typedef struct sand_s {
      * occur. */
     bool may_have_condenser;
 
+    /* Content flags armed during the current reactions pass. */
+    uint8_t reaction_latched_flags;
+
     /* See sand_set_soak(). 0, the default, means nothing soaks. */
     int soak;
     /* Steps between a saturated cell's conversion rolls, or

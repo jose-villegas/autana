@@ -336,6 +336,7 @@ merge_lane_content_flags(sand_t* s, const sand_t* lane) {
     s->may_have_condenser |= lane->may_have_condenser;
     s->may_have_viscous_liquid |= lane->may_have_viscous_liquid;
     s->may_have_materials |= lane->may_have_materials;
+    s->reaction_latched_flags |= lane->reaction_latched_flags;
     s->faller_may_move |= lane->faller_may_move;
     s->stamped |= lane->stamped;
 }

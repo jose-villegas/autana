@@ -922,6 +922,22 @@ test_a_2x2_block_of_steam_condenses_into_one_water_cell(void) {
     TEST_ASSERT_TRUE_MESSAGE(CELL_IS_EMPTY(sand_at(&s, 4, 4)), "and clear the other three corners of the square");
 }
 
+static void
+test_condensation_keeps_moisture_armed(void) {
+    fixture();
+    sand_set_condenses(&s, 255);
+
+    sand_set(&s, 3, 3, STEAM);
+    sand_set(&s, 4, 3, STEAM);
+    sand_set(&s, 3, 4, STEAM);
+    sand_set(&s, 4, 4, STEAM);
+
+    sand_step_reactions(&s);
+
+    TEST_ASSERT_EQUAL_INT(MAT_WATER, CELL_MATERIAL(sand_at(&s, 3, 3)));
+    TEST_ASSERT_TRUE_MESSAGE(s.may_have_moisture, "condensed water must keep the moisture flag armed");
+}
+
 /* Three matching corners and a fourth cell that is NOT steam (stone,
  * here, not left empty - an empty fourth cell risks a neighbouring gas
  * cell sliding into it during the very same step's gas pass, before the
@@ -1182,6 +1198,7 @@ run_sand_metal_suite(void) {
     RUN_TEST(test_acid_eats_metal_between_stone_and_sand);
     RUN_TEST(test_wood_and_steam_grain_count_is_conserved);
     RUN_TEST(test_a_2x2_block_of_steam_condenses_into_one_water_cell);
+    RUN_TEST(test_condensation_keeps_moisture_armed);
     RUN_TEST(test_condensation_needs_a_genuine_2x2_square);
     RUN_TEST(test_a_qualifying_gas_steam_pocket_collapses_into_one_cell);
     RUN_TEST(test_a_rained_acid_cell_keeps_dissolving_after_the_collapse);

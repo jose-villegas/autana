@@ -1100,6 +1100,12 @@ clear_content_flags(sand_t* s) {
     s->may_have_materials = 0xFFFFu;
 }
 
+#define REACTION_LATCH_BURNING     1u
+#define REACTION_LATCH_DISSOLVER   2u
+#define REACTION_LATCH_TEMPERATURE 4u
+#define REACTION_LATCH_MOISTURE    8u
+#define REACTION_LATCH_CONDENSING  64u
+
 static inline void
 latch_content_flags(sand_t* s, cell_t cell) {
     if (CELL_IS_EMPTY(cell)) {
@@ -1107,6 +1113,7 @@ latch_content_flags(sand_t* s, cell_t cell) {
     }
     const material_t* mat = material_of(cell);
     const reaction_t* r = reaction_of(cell); /* decodes MAT_EXTENDED */
+    uint8_t reaction_latched = 0;
 
     if (mat->kind == KIND_LIQUID) {
         s->may_have_liquid = true;
@@ -1121,9 +1128,11 @@ latch_content_flags(sand_t* s, cell_t cell) {
     s->may_have_materials |= (uint16_t)(1u << CELL_MATERIAL(cell));
     if (cell_is_burning(cell)) {
         s->may_have_burning = true;
+        reaction_latched |= REACTION_LATCH_BURNING;
     }
     if (r->dissolves) {
         s->may_have_dissolver = true;
+        reaction_latched |= REACTION_LATCH_DISSOLVER;
     }
     if (r->falls != 0) {
         s->may_have_faller = true;
@@ -1131,16 +1140,20 @@ latch_content_flags(sand_t* s, cell_t cell) {
     }
     if (r->condenses != 0) {
         s->may_have_condenser = true;
+        reaction_latched |= REACTION_LATCH_CONDENSING;
     }
     if (r->chills != 0 || r->warms != 0 || (r->heat_ramp != 0 && CELL_VARIANT(cell) != SAND_AMBIENT_HEAT)) {
         s->may_have_temperature = true;
+        reaction_latched |= REACTION_LATCH_TEMPERATURE;
     }
     if (r->heat_ramp != 0 || (r->chills != 0 && r->heats_to != 0 && r->heat_chance != 0)) {
         s->may_have_heat_holder = true;
     }
     if (mat->kind == KIND_LIQUID || (r->dries != 0 && moisture_of(cell, r) != 0)) {
         s->may_have_moisture = true;
+        reaction_latched |= REACTION_LATCH_MOISTURE;
     }
+    s->reaction_latched_flags |= reaction_latched;
 }
 
 /* The four cardinals every per-cell reaction pass walks - fire chemistry and

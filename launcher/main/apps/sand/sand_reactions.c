@@ -225,6 +225,7 @@ try_heat_transform_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cel
         }
         s->cells[at] = CELL_MAKE(CELL_MATERIAL(n), heat + 1);
         s->may_have_temperature = true;
+        latch_content_flags(s, s->cells[at]);
         mark_rows(s, nx, ny, ny); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
         return true;
     }
@@ -891,6 +892,7 @@ step_one_cold_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
                 /* Drawn, not woken - see HEAT LEVELS DO NOT WAKE. This walk
                  * is where that rule was first found and paid for. */
                 s->cells[cat] = CELL_MAKE(CELL_MATERIAL(cc), (uint8_t)(ct - 1));
+                latch_content_flags(s, s->cells[cat]);
                 mark_rows(s, cx, cy, cy);
                 if (ct > SAND_AMBIENT_HEAT) {
                     spent_on_heat = true;
@@ -971,6 +973,7 @@ step_one_cold_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
 
         s->cells[nat] = CELL_MAKE(CELL_MATERIAL(n), (uint8_t)(temp - 1));
         s->may_have_temperature = true;
+        latch_content_flags(s, s->cells[nat]);
         mark_rows(s, nx, ny, ny); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
 
         /* AND ON THROUGH THE MEDIUM. Cold stopped where it touched: snow on
@@ -1054,6 +1057,7 @@ step_one_tempered_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cons
         }
         s->cells[nat] = CELL_MAKE(CELL_MATERIAL(n), (uint8_t)(gap > 0 ? nt + 1 : nt - 1));
         s->may_have_temperature = true;
+        latch_content_flags(s, s->cells[nat]);
         mark_rows(s, nx, ny, ny); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
     }
 
@@ -2137,13 +2141,13 @@ step_one_acid_rain_cell(sand_t* s, int x, int y, int w, int h) {
  * cell is identified as burning, before step_one_burning_cell() runs, so a
  * quiet burning cell (no fuel or liquid touching it, roll not hit) still
  * counts. Separate flags keep one kind of cell from reading as another. */
-#define FOUND_BURNING     1u
-#define FOUND_DISSOLVER   2u
-#define FOUND_TEMPERATURE 4u
-#define FOUND_MOISTURE    8u
+#define FOUND_BURNING     REACTION_LATCH_BURNING
+#define FOUND_DISSOLVER   REACTION_LATCH_DISSOLVER
+#define FOUND_TEMPERATURE REACTION_LATCH_TEMPERATURE
+#define FOUND_MOISTURE    REACTION_LATCH_MOISTURE
 #define FOUND_FALLER      16u
 #define FOUND_FALLER_MOVE 32u
-#define FOUND_CONDENSING  64u
+#define FOUND_CONDENSING  REACTION_LATCH_CONDENSING
 
 /* Cells the dispatch loop below actually visits, across both the full row
  * walk and the soak-only partial walk. Never reset here - see its own
@@ -2815,6 +2819,7 @@ run_reaction_rows(sand_t* s, bool soak_only, bool may_split, bool hash_serial) {
 void
 sand_step_reactions(sand_t* s) {
     sand_reactions_last_was_soak_only = false;
+    s->reaction_latched_flags = 0;
 
     if (s->fuse_blast_wait != 0) {
         s->fuse_blast_wait--;
@@ -2917,29 +2922,25 @@ sand_step_reactions(sand_t* s) {
     }
 
     const unsigned found = run_reaction_rows(s, soak_only, may_split, hash_serial);
+    const unsigned present = found | s->reaction_latched_flags;
 
-    if (!(found & FOUND_BURNING)) {
+    if (!(present & FOUND_BURNING)) {
         s->may_have_burning = false;
     }
-    if (!(found & FOUND_DISSOLVER)) {
+    if (!(present & FOUND_DISSOLVER)) {
         s->may_have_dissolver = false;
     }
-    if (!(found & FOUND_TEMPERATURE)) {
+    if (!(present & FOUND_TEMPERATURE)) {
         s->may_have_temperature = false;
     }
-    /* ARMS AS WELL AS CLEARS, unlike the three above. Cleared-only, a pour
-     * still in mid-air cleared it and the soil it landed on could never
-     * re-arm the growth stages. Losing a bit latched mid-pass is safe here,
-     * unlike for may_have_materials: whatever else latches it is a liquid,
-     * which the early return above keeps the pass alive for. */
-    s->may_have_moisture = (found & FOUND_MOISTURE) != 0;
+    s->may_have_moisture = (present & FOUND_MOISTURE) != 0;
     if ((found & FOUND_FALLER) != 0) {
         s->may_have_faller = true;
     }
     if ((found & FOUND_FALLER_MOVE) != 0) {
         s->faller_may_move = true;
     }
-    if (!(found & FOUND_CONDENSING)) {
+    if (!(present & FOUND_CONDENSING)) {
         s->may_have_condenser = false;
     }
     /* Same shape as the flags above: OR, so a material created mid-pass by
