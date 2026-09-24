@@ -7,12 +7,6 @@ Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 - see
 
 ## Flashing and recovery
 
-With 120 MHz PSRAM and flash, `launcher/bootloader_components/pmic_cold_boot/`
-asks the AXP2101 to cycle SoC power after a warm reset. This gives app startup
-a power-on reset before PSRAM timing tuning; a power-on reset boots directly.
-The restart re-enumerates USB about 0.7 s into boot, after the first
-`BUILD_ID` line, so the shell prints it again once it is ready.
-
 **The chip only accepts auto-reset while an app is actively running.** Once
 firmware returns from `app_main` and goes idle, reset signalling stops working
 entirely — `Hard resetting via RTS pin` does nothing, esptool reports
@@ -71,6 +65,37 @@ If it vanishes from USB entirely — no COM port, no device at vendor ID
 `0x303A` — check
 the cable first, then the PWR button: this board's power is managed by an
 **AXP2101 PMIC**, so a long press cuts system power.
+
+### Warm resets at 120 MHz
+
+At 120 MHz PSRAM and flash, a warm reset - esptool's RTS reset, a watchdog, a
+panic, a restart - hangs in the app's PSRAM timing tuning, and repeated, it
+leaves the chip deaf to esptool until a power cycle; a power-on reset boots.
+The cause is not established - flash high-performance mode surviving the
+reset is as likely as PSRAM - so the fix is a workaround:
+`launcher/bootloader_components/pmic_cold_boot/` has the AXP2101 power-cycle
+the SoC whenever the reset was not a power-on.
+
+```mermaid
+sequenceDiagram
+    participant Host
+    participant Boot as 2nd-stage bootloader
+    participant PMIC as AXP2101
+    participant App
+    Host->>Boot: warm reset
+    Boot->>PMIC: I2C, REG 0x10 bit 1, restart
+    PMIC->>Boot: VCC3V3 off and on, PWROK low on CHIP_PU
+    Note over Host,Boot: USB drops, the port goes away
+    Boot->>App: power-on reset this time, so the app loads
+    App->>Host: first BUILD_ID, before the port is back
+    Note over Host,App: USB enumerates again
+    App->>Host: BUILD_ID again, after shell Ready
+```
+
+So the app always starts from, and reports, a power-on reset: after a panic
+or a watchdog the cause shows only in what was logged before it, RTC memory
+does not survive, and a deep-sleep wake would become a full power cycle.
+Nothing in the tree relies on any of those today.
 
 ---
 

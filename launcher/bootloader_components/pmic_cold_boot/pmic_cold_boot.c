@@ -1,4 +1,17 @@
-#if PMIC_PSRAM_120M
+/*
+ * At 120 MHz PSRAM and flash, a warm reset (esptool's RTS, a watchdog, a
+ * panic, a restart) hangs in the app's PSRAM timing tuning; a power-on reset
+ * does not. So any reset that is not a power-on is turned into one: AXP2101
+ * register 0x10 bit 1 power-cycles the SoC, since on this board DCDC1 is
+ * VCC3V3 and PWROK drives CHIP_PU. A missing ACK, or a chip still running
+ * after the wait, logs and boots on rather than looping. Dropping to 80 MHz
+ * was the alternative, rejected as visibly slower.
+ */
+#include "sdkconfig.h"
+
+/* Flash and PSRAM move to 120 MHz together, and only the flash clock is in
+ * the bootloader's configuration. */
+#if CONFIG_ESPTOOLPY_FLASHFREQ_120M
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -10,13 +23,15 @@
 #include "soc/gpio_struct.h"
 #include "soc/reset_reasons.h"
 
-/* launcher/main/board/board.h owns these board facts for the app. */
-#define PMIC_SDA_GPIO    15
-#define PMIC_SCL_GPIO    14
-#define PMIC_I2C_ADDR    0x34
-#define PMIC_RESTART_REG 0x10
-#define PMIC_RESTART_BIT (1u << 1)
-#define I2C_HALF_US      5
+/* The app's copies: BOARD_PMU_I2C_ADDR in main/board/board.h, BSP_I2C_SDA/SCL
+ * in the BSP header. Neither reaches a bootloader build. */
+#define PMIC_SDA_GPIO     15
+#define PMIC_SCL_GPIO     14
+#define PMIC_I2C_ADDR     0x34
+#define PMIC_RESTART_REG  0x10
+#define PMIC_RESTART_BIT  (1u << 1)
+#define PMIC_POWEROFF_BIT (1u << 0)
+#define I2C_HALF_US       5
 
 static bool
 needs_cold_restart(soc_reset_reason_t reason) {
@@ -116,13 +131,18 @@ pmic_restart(void) {
     uint8_t control = i2c_read_byte();
     i2c_stop();
 
+    /* A corrupted read - a floating line reads 0xFF - must not carry the
+     * soft power-off bit back, which would leave the board off. */
+    uint8_t restart = (uint8_t)((control & ~PMIC_POWEROFF_BIT) | PMIC_RESTART_BIT);
     i2c_start();
-    bool acknowledged = i2c_write_byte(PMIC_I2C_ADDR << 1) && i2c_write_byte(PMIC_RESTART_REG)
-                        && i2c_write_byte(control | PMIC_RESTART_BIT);
+    bool acknowledged =
+        i2c_write_byte(PMIC_I2C_ADDR << 1) && i2c_write_byte(PMIC_RESTART_REG) && i2c_write_byte(restart);
     i2c_stop();
     return acknowledged;
 }
 
+/* The bootloader links with -u bootloader_hooks_include; this symbol is what
+ * pulls the hooks below into the image. */
 void
 bootloader_hooks_include(void) {}
 

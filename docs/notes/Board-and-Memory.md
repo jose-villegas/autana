@@ -19,7 +19,7 @@ Reported by the BSP at boot rather than assumed:
 | Display | 368 × 448, QSPI, RGB565 |
 | Touch / peripheral I2C | port 0, SDA GPIO 15, SCL GPIO 14 |
 | Flash | 16 MB |
-| PSRAM | 8 MB octal, 80 MHz |
+| PSRAM | 8 MB octal; clock set in `launcher/sdkconfig.defaults` |
 | CPU | dual-core, `SOC_CPU_CORES_NUM 2` |
 
 ### Hardware inventory
@@ -76,8 +76,8 @@ that drives the panel directly should not add its own.
 
 ## Memory — the constraint that shapes everything
 
-8 MB of octal PSRAM (80 MHz, the fastest mode this die supports) changes what
-"the constraint" even means here compared to a board without it. The
+8 MB of octal PSRAM changes what "the constraint" even means here compared
+to a board without it. The
 framebuffer (`BOARD_FRAMEBUFFER_CAPS = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT` in
 `board.h`) is allocated entirely in PSRAM. It never goes to the panel in
 place: each full-width strip is copied into one of two internal DMA strip
