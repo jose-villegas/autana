@@ -267,8 +267,10 @@ def buildid(args):
     code, replies = send("BUILDID", reply="BUILD_ID", purpose="autana buildid")
     if code != 0 or not replies:
         return code or 1
-    result = parse_buildid(replies[-1])
-    print(json.dumps(result) if json_output else f"BUILD_ID={result['build_id']}")
+    if json_output:
+        print(json.dumps(parse_buildid(replies[-1])))
+    else:
+        print(replies[-1])
     return 0
 
 
@@ -292,8 +294,6 @@ def monitor(args):
     when `--elf` is not given, rather than guessing the newest one on disk."""
     elf = None
     rest = list(args)
-    json_output = "--json" in rest
-    rest = [arg for arg in rest if arg != "--json"]
     if "--elf" in rest:
         index = rest.index("--elf")
         if index + 1 >= len(rest):
@@ -307,13 +307,6 @@ def monitor(args):
     )
     if elf:
         command += ["--elf", elf]
-    if json_output:
-        result = subprocess.run(command, capture_output=True, text=True)
-        if result.stderr:
-            print(result.stderr, end="", file=sys.stderr)
-        if result.returncode == 0:
-            print(json.dumps({"lines": result.stdout.splitlines()}))
-        return result.returncode
     return subprocess.call(command)
 
 
@@ -391,17 +384,13 @@ def batch(args):
 
 def status(args):
     """Who, if anyone, holds the board right now - and who is waiting."""
-    json_output = read_json_flag(args, "usage: autana status [--json]")
+    if not read_json_flag(args, "usage: autana status [--json]"):
+        return subprocess.call(device_command("status"))
     result = subprocess.run(device_command("status"), capture_output=True, text=True)
     if result.returncode != 0:
-        if result.stderr:
-            print(result.stderr, end="", file=sys.stderr)
+        print(result.stderr, end="", file=sys.stderr)
         return result.returncode
-    parsed = parse_status(result.stdout)
-    if json_output:
-        print(json.dumps(parsed))
-    else:
-        print(format_status(parsed))
+    print(json.dumps(parse_status(result.stdout)))
     return 0
 
 
@@ -425,18 +414,6 @@ def parse_status(reply):
     if first == "unlocked":
         return {"state": "unlocked", "waiting": waiting}
     raise ValueError(f"unrecognized device status: {first}")
-
-
-def format_status(result):
-    if result["state"] == "held":
-        first = "held by {owner} for {purpose} since {acquired_at}".format(**result)
-    elif result["state"] == "human":
-        first = "human reservation: {owner}: {note} ({age_seconds}s ago)".format(**result)
-    else:
-        first = "unlocked"
-    if result["waiting"]:
-        first += "\nwaiting: " + ", ".join(result["waiting"])
-    return first
 
 
 def release(args):
@@ -702,12 +679,10 @@ def button(args):
 def apps(args):
     json_output = read_json_flag(args, "usage: autana apps [--json]")
     code, replies = send("APPS", reply="APPS", until=["APPS_END"], purpose="autana apps")
-    rows = parse_apps(replies)
-    if json_output:
-        if code == 0:
-            print(json.dumps({"apps": rows}))
-    else:
-        print("\n".join(f"APPS name={row['name']} running={int(row['running'])}" for row in rows))
+    if not json_output:
+        print("\n".join(reply for reply in replies if reply.startswith("APPS ")))
+    elif code == 0:
+        print(json.dumps({"apps": parse_apps(replies)}))
     return code
 
 
