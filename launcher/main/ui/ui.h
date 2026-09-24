@@ -40,14 +40,21 @@
 #include "ui/ui_transform.h"
 
 /* Shared metrics, so the shell and any app UI look like one product. */
-#define UI_TITLE_HEIGHT  56
-#define UI_ROW_HEIGHT    64
-#define UI_ROW_GAP       8
-#define UI_MARGIN        16
+#define UI_TITLE_HEIGHT    56
+#define UI_ROW_HEIGHT      64
+#define UI_ROW_GAP         8
+#define UI_MARGIN          16
+
+/* Tap targets, in the smaller dimension. The panel is ~322 px per inch
+ * (368x448 on a 1.8" diagonal), so a phone's 44 is only 3.5 mm here: 56 is
+ * ~4.4 mm, the floor layout tests hold every control to, and 64 (~5 mm) is
+ * what a new control should aim for. */
+#define UI_TAP_MIN         56
+#define UI_TAP_RECOMMENDED 64
 
 /* ui_slider_int()'s knob width - chunky enough for a finger, not tuned
  * finer than that until Phase 5 puts a screenshot next to the design. */
-#define UI_SLIDER_KNOB_W 40
+#define UI_SLIDER_KNOB_W   40
 
 /* The strip across the top of the home screen, reserved and deliberately
  * empty. It is where status belongs - battery, connection, the clock -
@@ -55,11 +62,11 @@
  * nothing below it. A row of the menu was there before; a status bar and
  * a heading that only ever said "APPS" cannot both have the top of a
  * 448px screen. */
-#define UI_BANNER_HEIGHT 56
+#define UI_BANNER_HEIGHT   56
 
 /* Pass as ui_end()'s background to draw without clearing first - for a UI laid
  * over an app's own output rather than replacing it. */
-#define UI_NO_BACKGROUND 0xFFFFFFFFu
+#define UI_NO_BACKGROUND   0xFFFFFFFFu
 
 void ui_init(void);
 

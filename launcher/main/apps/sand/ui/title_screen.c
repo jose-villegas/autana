@@ -11,11 +11,11 @@
 #define SUBTITLE_GAP    12
 #define SUBTITLE_H      24
 #define MAIN_W_MAX      320
-#define MAIN_H          52
+#define MAIN_H          UI_TAP_MIN
 #define MAIN_GAP        10
 #define MAIN_COUNT      3
 #define FOOTER_W_MAX    360
-#define FOOTER_H        64
+#define FOOTER_H        (UI_TAP_MIN + 2 * FOOTER_PAD)
 #define FOOTER_PAD      8
 #define TITLE_SCALE_MAX 3
 

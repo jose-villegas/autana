@@ -16,15 +16,12 @@
 
 #include "apps/sand/ui/brush_screen.h"
 #include "gfx/gfx_font_roles.h"
+#include "ui/ui.h"
 
 #define PORTRAIT_W  368
 #define PORTRAIT_H  448
 #define LANDSCAPE_W 448
 #define LANDSCAPE_H 368
-
-/* Smallest touch target this design accepts - see palette.h's own "WHY FOUR
- * COLUMNS" for the same 44px floor derived from a fingertip's contact patch. */
-#define MIN_TAP     44
 
 static brush_screen_layout_t
 fixture(int screen_w, int screen_h) {
@@ -178,7 +175,7 @@ test_size_row_landscape(void) {
 }
 
 /*
- * Tap targets: segments, info button, slider track >= MIN_TAP in the
+ * Tap targets: segments, info button, slider track >= UI_TAP_MIN in the
  * smaller dimension
  */
 
@@ -187,10 +184,11 @@ assert_tap_targets(int screen_w, int screen_h) {
     const brush_screen_layout_t l = fixture(screen_w, screen_h);
 
     for (int i = 0; i < BRUSH_SCREEN_SEGMENT_COUNT; i++) {
-        TEST_ASSERT_TRUE_MESSAGE(min_dim(l.segments[i]) >= MIN_TAP, "a brush-mode segment is smaller than a fingertip");
+        TEST_ASSERT_TRUE_MESSAGE(min_dim(l.segments[i]) >= UI_TAP_MIN,
+                                 "a brush-mode segment is smaller than a fingertip");
     }
-    TEST_ASSERT_TRUE_MESSAGE(min_dim(l.info_button) >= MIN_TAP, "the info button is smaller than a fingertip");
-    TEST_ASSERT_TRUE_MESSAGE(min_dim(l.slider_track) >= MIN_TAP, "the slider track is smaller than a fingertip");
+    TEST_ASSERT_TRUE_MESSAGE(min_dim(l.info_button) >= UI_TAP_MIN, "the info button is smaller than a fingertip");
+    TEST_ASSERT_TRUE_MESSAGE(min_dim(l.slider_track) >= UI_TAP_MIN, "the slider track is smaller than a fingertip");
 }
 
 static void

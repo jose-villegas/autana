@@ -1,14 +1,14 @@
 #include <stdio.h>
-#include "esp_lcd_panel_ops.h"
-#include "esp_lcd_panel_io.h"
-#include "esp_lcd_panel_io_additions.h"
-#include "esp_err.h"
-#include "esp_log.h"
-#include "esp_check.h"
-#include "esp_vfs_fat.h"
-#include "esp_spiffs.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
+#include "esp_check.h"
+#include "esp_err.h"
+#include "esp_lcd_panel_io.h"
+#include "esp_lcd_panel_io_additions.h"
+#include "esp_lcd_panel_ops.h"
+#include "esp_log.h"
+#include "esp_spiffs.h"
+#include "esp_vfs_fat.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -16,40 +16,41 @@
 #include "esp_lcd_touch_cst816s.h"
 #include "esp_lcd_touch_ft5x06.h"
 
-#include "esp_codec_dev_defaults.h"
-#include "bsp/esp32_s3_touch_amoled_1_8.h"
-#include "bsp_err_check.h"
 #include "bsp/display.h"
+#include "bsp/esp32_s3_touch_amoled_1_8.h"
 #include "bsp/touch.h"
+#include "bsp_err_check.h"
+#include "esp_codec_dev_defaults.h"
 
-static const char *TAG = "ESP32-S3-Touch-AMOLED-1.8";
+static const char* TAG = "ESP32-S3-Touch-AMOLED-1.8";
 
 #define BSP_LCD_CST816S_X_GAP (0x10)
 
 static i2c_master_bus_handle_t i2c_handle = NULL; // I2C Handle
 static bool i2c_initialized = false;
 static esp_io_expander_handle_t io_expander = NULL; // IO expander tca9554 handle
-sdmmc_card_t *bsp_sdcard = NULL; // Global uSD card handler
-static esp_lcd_panel_handle_t panel_handle = NULL; // LCD panel handle
+sdmmc_card_t* bsp_sdcard = NULL;                    // Global uSD card handler
+static esp_lcd_panel_handle_t panel_handle = NULL;  // LCD panel handle
 static esp_lcd_panel_io_handle_t io_handle = NULL;
 static uint16_t panel_x_gap = 0;
 
 static i2s_chan_handle_t i2s_tx_chan = NULL;
 static i2s_chan_handle_t i2s_rx_chan = NULL;
-static const audio_codec_data_if_t *i2s_data_if = NULL; /* Codec data interface */
+static const audio_codec_data_if_t* i2s_data_if = NULL; /* Codec data interface */
 
-#define BSP_I2S_GPIO_CFG       \
-    {                          \
-        .mclk = BSP_I2S_MCLK,  \
-        .bclk = BSP_I2S_SCLK,  \
-        .ws = BSP_I2S_LCLK,    \
-        .dout = BSP_I2S_DOUT,  \
-        .din = BSP_I2S_DSIN,   \
-        .invert_flags = {      \
-            .mclk_inv = false, \
-            .bclk_inv = false, \
-            .ws_inv = false,   \
-        },                     \
+#define BSP_I2S_GPIO_CFG                                                                                               \
+    {                                                                                                                  \
+        .mclk = BSP_I2S_MCLK,                                                                                          \
+        .bclk = BSP_I2S_SCLK,                                                                                          \
+        .ws = BSP_I2S_LCLK,                                                                                            \
+        .dout = BSP_I2S_DOUT,                                                                                          \
+        .din = BSP_I2S_DSIN,                                                                                           \
+        .invert_flags =                                                                                                \
+            {                                                                                                          \
+                .mclk_inv = false,                                                                                     \
+                .bclk_inv = false,                                                                                     \
+                .ws_inv = false,                                                                                       \
+            },                                                                                                         \
     }
 
 static const co5300_lcd_init_cmd_t lcd_init_cmds[] = {
@@ -66,11 +67,11 @@ static const co5300_lcd_init_cmd_t lcd_init_cmds[] = {
     {0x29, (uint8_t[]){0x00}, 0, 0},
 };
 
-#define BSP_I2S_DUPLEX_MONO_CFG(_sample_rate)                                                         \
-    {                                                                                                 \
-        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(_sample_rate),                                          \
-        .slot_cfg = I2S_STD_PHILIP_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO), \
-        .gpio_cfg = BSP_I2S_GPIO_CFG,                                                                 \
+#define BSP_I2S_DUPLEX_MONO_CFG(_sample_rate)                                                                          \
+    {                                                                                                                  \
+        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(_sample_rate),                                                           \
+        .slot_cfg = I2S_STD_PHILIP_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),                  \
+        .gpio_cfg = BSP_I2S_GPIO_CFG,                                                                                  \
     }
 
 /**************************************************************************************************
@@ -78,11 +79,10 @@ static const co5300_lcd_init_cmd_t lcd_init_cmds[] = {
  * I2C Function
  *
  **************************************************************************************************/
-esp_err_t bsp_i2c_init(void)
-{
+esp_err_t
+bsp_i2c_init(void) {
     /* I2C was initialized before */
-    if (i2c_initialized)
-    {
+    if (i2c_initialized) {
         return ESP_OK;
     }
 
@@ -99,26 +99,26 @@ esp_err_t bsp_i2c_init(void)
     return ESP_OK;
 }
 
-esp_err_t bsp_i2c_deinit(void)
-{
+esp_err_t
+bsp_i2c_deinit(void) {
     BSP_ERROR_CHECK_RETURN_ERR(i2c_del_master_bus(i2c_handle));
     i2c_initialized = false;
     return ESP_OK;
 }
 
-i2c_master_bus_handle_t bsp_i2c_get_handle(void)
-{
+i2c_master_bus_handle_t
+bsp_i2c_get_handle(void) {
     bsp_i2c_init();
     return i2c_handle;
 }
 
-static esp_err_t bsp_i2c_device_probe(uint8_t addr)
-{
+static esp_err_t
+bsp_i2c_device_probe(uint8_t addr) {
     return i2c_master_probe(i2c_handle, addr, 100);
 }
 
-esp_err_t bsp_spiffs_mount(void)
-{
+esp_err_t
+bsp_spiffs_mount(void) {
     esp_vfs_spiffs_conf_t conf = {
         .base_path = CONFIG_BSP_SPIFFS_MOUNT_POINT,
         .partition_label = CONFIG_BSP_SPIFFS_PARTITION_LABEL,
@@ -136,25 +136,22 @@ esp_err_t bsp_spiffs_mount(void)
 
     size_t total = 0, used = 0;
     ret_val = esp_spiffs_info(conf.partition_label, &total, &used);
-    if (ret_val != ESP_OK)
-    {
+    if (ret_val != ESP_OK) {
         ESP_LOGE(TAG, "Failed to get SPIFFS partition information (%s)", esp_err_to_name(ret_val));
-    }
-    else
-    {
+    } else {
         ESP_LOGI(TAG, "Partition size: total: %d, used: %d", total, used);
     }
 
     return ret_val;
 }
 
-esp_err_t bsp_spiffs_unmount(void)
-{
+esp_err_t
+bsp_spiffs_unmount(void) {
     return esp_vfs_spiffs_unregister(CONFIG_BSP_SPIFFS_PARTITION_LABEL);
 }
 
-esp_err_t bsp_sdcard_mount(void)
-{
+esp_err_t
+bsp_sdcard_mount(void) {
     const esp_vfs_fat_sdmmc_mount_config_t mount_config = {
 #ifdef CONFIG_BSP_SD_FORMAT_ON_MOUNT_FAIL
         .format_if_mount_failed = true,
@@ -189,14 +186,13 @@ esp_err_t bsp_sdcard_mount(void)
     return esp_vfs_fat_sdmmc_mount(BSP_SD_MOUNT_POINT, &host, &slot_config, &mount_config, &bsp_sdcard);
 }
 
-esp_err_t bsp_sdcard_unmount(void)
-{
+esp_err_t
+bsp_sdcard_unmount(void) {
     return esp_vfs_fat_sdcard_unmount(BSP_SD_MOUNT_POINT, bsp_sdcard);
 }
 
-
-esp_err_t bsp_audio_init(const i2s_std_config_t *i2s_config)
-{
+esp_err_t
+bsp_audio_init(const i2s_std_config_t* i2s_config) {
     if (i2s_tx_chan && i2s_rx_chan) {
         /* Audio was initialized before */
         return ESP_OK;
@@ -209,7 +205,7 @@ esp_err_t bsp_audio_init(const i2s_std_config_t *i2s_config)
 
     /* Setup I2S channels */
     const i2s_std_config_t std_cfg_default = BSP_I2S_DUPLEX_MONO_CFG(22050);
-    const i2s_std_config_t *p_i2s_cfg = &std_cfg_default;
+    const i2s_std_config_t* p_i2s_cfg = &std_cfg_default;
     if (i2s_config != NULL) {
         p_i2s_cfg = i2s_config;
     }
@@ -234,8 +230,8 @@ esp_err_t bsp_audio_init(const i2s_std_config_t *i2s_config)
     return ESP_OK;
 }
 
-esp_codec_dev_handle_t bsp_audio_codec_speaker_init(void)
-{
+esp_codec_dev_handle_t
+bsp_audio_codec_speaker_init(void) {
     if (i2s_data_if == NULL) {
         /* Initilize I2C */
         ESP_ERROR_CHECK(bsp_i2c_init());
@@ -244,14 +240,14 @@ esp_codec_dev_handle_t bsp_audio_codec_speaker_init(void)
     }
     assert(i2s_data_if);
 
-    const audio_codec_gpio_if_t *gpio_if = audio_codec_new_gpio();
+    const audio_codec_gpio_if_t* gpio_if = audio_codec_new_gpio();
 
     audio_codec_i2c_cfg_t i2c_cfg = {
         .port = BSP_I2C_NUM,
         .addr = ES8311_CODEC_DEFAULT_ADDR,
         .bus_handle = i2c_handle,
     };
-    const audio_codec_ctrl_if_t *i2c_ctrl_if = audio_codec_new_i2c_ctrl(&i2c_cfg);
+    const audio_codec_ctrl_if_t* i2c_ctrl_if = audio_codec_new_i2c_ctrl(&i2c_cfg);
     assert(i2c_ctrl_if);
 
     esp_codec_dev_hw_gain_t gain = {
@@ -272,7 +268,7 @@ esp_codec_dev_handle_t bsp_audio_codec_speaker_init(void)
         .invert_sclk = false,
         .hw_gain = gain,
     };
-    const audio_codec_if_t *es8311_dev = es8311_codec_new(&es8311_cfg);
+    const audio_codec_if_t* es8311_dev = es8311_codec_new(&es8311_cfg);
     assert(es8311_dev);
 
     esp_codec_dev_cfg_t codec_dev_cfg = {
@@ -283,8 +279,8 @@ esp_codec_dev_handle_t bsp_audio_codec_speaker_init(void)
     return esp_codec_dev_new(&codec_dev_cfg);
 }
 
-esp_codec_dev_handle_t bsp_audio_codec_microphone_init(void)
-{
+esp_codec_dev_handle_t
+bsp_audio_codec_microphone_init(void) {
     if (i2s_data_if == NULL) {
         /* Initilize I2C */
         ESP_ERROR_CHECK(bsp_i2c_init());
@@ -293,14 +289,14 @@ esp_codec_dev_handle_t bsp_audio_codec_microphone_init(void)
     }
     assert(i2s_data_if);
 
-    const audio_codec_gpio_if_t *gpio_if = audio_codec_new_gpio();
+    const audio_codec_gpio_if_t* gpio_if = audio_codec_new_gpio();
 
     audio_codec_i2c_cfg_t i2c_cfg = {
         .port = BSP_I2C_NUM,
         .addr = ES8311_CODEC_DEFAULT_ADDR,
         .bus_handle = i2c_handle,
     };
-    const audio_codec_ctrl_if_t *i2c_ctrl_if = audio_codec_new_i2c_ctrl(&i2c_cfg);
+    const audio_codec_ctrl_if_t* i2c_ctrl_if = audio_codec_new_i2c_ctrl(&i2c_cfg);
     assert(i2c_ctrl_if);
 
     esp_codec_dev_hw_gain_t gain = {
@@ -322,7 +318,7 @@ esp_codec_dev_handle_t bsp_audio_codec_microphone_init(void)
         .hw_gain = gain,
     };
 
-    const audio_codec_if_t *es8311_dev = es8311_codec_new(&es8311_cfg);
+    const audio_codec_if_t* es8311_dev = es8311_codec_new(&es8311_cfg);
     assert(es8311_dev);
 
     esp_codec_dev_cfg_t codec_es8311_dev_cfg = {
@@ -333,26 +329,24 @@ esp_codec_dev_handle_t bsp_audio_codec_microphone_init(void)
     return esp_codec_dev_new(&codec_es8311_dev_cfg);
 }
 
-#define LCD_CMD_BITS (8)
+#define LCD_CMD_BITS   (8)
 #define LCD_PARAM_BITS (8)
-#define LCD_LEDC_CH (CONFIG_BSP_DISPLAY_BRIGHTNESS_LEDC_CH)
+#define LCD_LEDC_CH    (CONFIG_BSP_DISPLAY_BRIGHTNESS_LEDC_CH)
 
-esp_err_t bsp_display_brightness_init(void)
-{
+esp_err_t
+bsp_display_brightness_init(void) {
     bsp_display_brightness_set(100);
     return ESP_OK;
 }
 
-esp_err_t bsp_display_brightness_set(int brightness_percent)
-{
-    if (panel_handle == NULL)
-    {
+esp_err_t
+bsp_display_brightness_set(int brightness_percent) {
+    if (panel_handle == NULL) {
         ESP_LOGE(TAG, "Panel handle is not initialized");
         return ESP_ERR_INVALID_STATE;
     }
 
-    if (brightness_percent < 0 || brightness_percent > 100)
-    {
+    if (brightness_percent < 0 || brightness_percent > 100) {
         ESP_LOGE(TAG, "Invalid brightness percentage. Should be between 0 and 100.");
         return ESP_ERR_INVALID_ARG;
     }
@@ -369,20 +363,20 @@ esp_err_t bsp_display_brightness_set(int brightness_percent)
     return ESP_OK;
 }
 
-esp_err_t bsp_display_backlight_off(void)
-{
+esp_err_t
+bsp_display_backlight_off(void) {
     ESP_LOGI(TAG, "Backlight off");
     return bsp_display_brightness_set(0);
 }
 
-esp_err_t bsp_display_backlight_on(void)
-{
+esp_err_t
+bsp_display_backlight_on(void) {
     ESP_LOGI(TAG, "Backlight on");
     return bsp_display_brightness_set(100);
 }
 
-static esp_err_t bsp_display_set_x_gap(uint16_t x_gap)
-{
+static esp_err_t
+bsp_display_set_x_gap(uint16_t x_gap) {
     panel_x_gap = x_gap;
     if (panel_handle != NULL) {
         return esp_lcd_panel_set_gap(panel_handle, panel_x_gap, 0);
@@ -391,17 +385,15 @@ static esp_err_t bsp_display_set_x_gap(uint16_t x_gap)
     return ESP_OK;
 }
 
-esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_handle_t *ret_panel, esp_lcd_panel_io_handle_t *ret_io)
-{
+esp_err_t
+bsp_display_new(const bsp_display_config_t* config, esp_lcd_panel_handle_t* ret_panel,
+                esp_lcd_panel_io_handle_t* ret_io) {
     esp_err_t ret = ESP_OK;
 
     ESP_LOGI(TAG, "Initialize SPI bus");
-    const spi_bus_config_t buscfg = CO5300_PANEL_BUS_QSPI_CONFIG(BSP_LCD_PCLK,
-                                                                 BSP_LCD_DATA0,
-                                                                 BSP_LCD_DATA1,
-                                                                 BSP_LCD_DATA2,
-                                                                 BSP_LCD_DATA3,
-                                                                 BSP_LCD_H_RES * BSP_LCD_V_RES * BSP_LCD_BITS_PER_PIXEL / 8);
+    const spi_bus_config_t buscfg =
+        CO5300_PANEL_BUS_QSPI_CONFIG(BSP_LCD_PCLK, BSP_LCD_DATA0, BSP_LCD_DATA1, BSP_LCD_DATA2, BSP_LCD_DATA3,
+                                     BSP_LCD_H_RES * BSP_LCD_V_RES * BSP_LCD_BITS_PER_PIXEL / 8);
     ESP_ERROR_CHECK(spi_bus_initialize(BSP_LCD_SPI_NUM, &buscfg, SPI_DMA_CH_AUTO));
 
     const esp_lcd_panel_io_spi_config_t io_config = CO5300_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, NULL, NULL);
@@ -409,9 +401,10 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
     co5300_vendor_config_t vendor_config = {
         .init_cmds = lcd_init_cmds,
         .init_cmds_size = sizeof(lcd_init_cmds) / sizeof(lcd_init_cmds[0]),
-        .flags = {
-            .use_qspi_interface = 1,
-        },
+        .flags =
+            {
+                .use_qspi_interface = 1,
+            },
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, &io_handle));
     const esp_lcd_panel_dev_config_t panel_config = {
@@ -426,19 +419,17 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
     ESP_ERROR_CHECK(esp_lcd_panel_set_gap(panel_handle, panel_x_gap, 0));
     esp_lcd_panel_disp_on_off(panel_handle, true);
 
-    if (ret_panel)
-    {
+    if (ret_panel) {
         *ret_panel = panel_handle;
     }
-    if (ret_io)
-    {
+    if (ret_io) {
         *ret_io = io_handle;
     }
     return ret;
 }
 
-esp_err_t bsp_touch_new(const bsp_touch_config_t *config, esp_lcd_touch_handle_t *ret_touch)
-{
+esp_err_t
+bsp_touch_new(const bsp_touch_config_t* config, esp_lcd_touch_handle_t* ret_touch) {
     /* Initilize I2C */
     BSP_ERROR_CHECK_RETURN_ERR(bsp_i2c_init());
 
@@ -448,20 +439,23 @@ esp_err_t bsp_touch_new(const bsp_touch_config_t *config, esp_lcd_touch_handle_t
         .y_max = BSP_LCD_V_RES,
         .rst_gpio_num = BSP_LCD_TOUCH_RST, // Shared with LCD reset
         .int_gpio_num = BSP_LCD_TOUCH_INT,
-        .levels = {
-            .reset = 0,
-            .interrupt = 0,
-        },
-        .flags = {
-            .swap_xy = 0,
-            .mirror_x = 0,
-            .mirror_y = 0,
-        },
+        .levels =
+            {
+                .reset = 0,
+                .interrupt = 0,
+            },
+        .flags =
+            {
+                .swap_xy = 0,
+                .mirror_x = 0,
+                .mirror_y = 0,
+            },
     };
 
     esp_lcd_panel_io_handle_t tp_io_handle = NULL;
     esp_lcd_panel_io_i2c_config_t tp_io_config;
-    esp_err_t (*touch_new)(const esp_lcd_panel_io_handle_t io, const esp_lcd_touch_config_t *config, esp_lcd_touch_handle_t *out_touch) = NULL;
+    esp_err_t (*touch_new)(const esp_lcd_panel_io_handle_t io, const esp_lcd_touch_config_t* config,
+                           esp_lcd_touch_handle_t* out_touch) = NULL;
     uint16_t x_gap = 0;
 
     esp_lcd_panel_io_i2c_config_t cst816s_config = ESP_LCD_TOUCH_IO_I2C_CST816S_CONFIG();
@@ -493,13 +487,12 @@ esp_err_t bsp_touch_new(const bsp_touch_config_t *config, esp_lcd_touch_handle_t
  * IO Expander Function
  *
  **************************************************************************************************/
-esp_io_expander_handle_t bsp_io_expander_init(void)
-{
+esp_io_expander_handle_t
+bsp_io_expander_init(void) {
     BSP_ERROR_CHECK_RETURN_ERR(bsp_i2c_init());
-    if (!io_expander)
-    {
-        BSP_ERROR_CHECK_RETURN_NULL(esp_io_expander_new_i2c_tca9554(i2c_handle, BSP_IO_EXPANDER_I2C_ADDRESS, &io_expander));
+    if (!io_expander) {
+        BSP_ERROR_CHECK_RETURN_NULL(
+            esp_io_expander_new_i2c_tca9554(i2c_handle, BSP_IO_EXPANDER_I2C_ADDRESS, &io_expander));
     }
     return io_expander;
 }
-

@@ -85,7 +85,10 @@ These are not style preferences. Each one is a bug that shipped.
   list to skip repaints, so anything drawn behind its back survives as a
   stale smear. The scrim is the one deliberate exception, and only because
   it must *not* be re-applied per repaint.
-- **Every tap target is at least 44px** in its smaller dimension.
+- **Every tap target is at least `UI_TAP_MIN` (56px)** in its smaller
+  dimension, and a new control should aim for `UI_TAP_RECOMMENDED` (64px).
+  Both are in `ui/ui.h`. A phone's 44 is only 3.5mm on this ~322 ppi panel,
+  a target a finger misses as often as it hits; 56 is ~4.4mm.
 - **Assert every layout invariant at both 368x448 and 448x368.**
 - **Styles are part of the frame's description.** `ui_begin()` resets the
   button style; state what you want every frame.
@@ -249,7 +252,7 @@ fifth icon.
 
 - [ ] layout asserted at both orientations, nothing overlapping or off-canvas
 - [ ] every fixed string measured against its own rect
-- [ ] every tap target >= 44px
+- [ ] every tap target >= `UI_TAP_MIN`
 - [ ] clicks routed through a real control, decided by the state module
 - [ ] nothing painted outside the command list
 - [ ] `run_tests.sh` green, `check_app_sources.sh` green
