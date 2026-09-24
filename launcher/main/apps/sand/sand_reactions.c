@@ -48,6 +48,8 @@
  * grows. */
 static uint8_t present_pair_bits = 0xFFu;
 static uint16_t seen_materials;
+static bool present_temperature;
+static bool present_moisture;
 
 /* Can an acid-rain quad exist at all? It needs all four cells to be steam or
  * gas with exactly two steam - so two of each - and a board missing either
@@ -2285,7 +2287,7 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
         /* Gated on `may_have_heat_holder` to avoid unnecessary neighbour
          * scans. */
     stage_warm:
-        if (r->warms != 0 && s->may_have_temperature && s->may_have_heat_holder) {
+        if (r->warms != 0 && present_temperature && s->may_have_heat_holder) {
             step_one_warming_cell(s, x, y, w, h, r);
             found |= FOUND_TEMPERATURE;
             continue;
@@ -2316,7 +2318,7 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
             }
         }
     stage_root:
-        if (r->roots != 0 && c == (cell_t)r->roots_to && s->may_have_moisture) {
+        if (r->roots != 0 && c == (cell_t)r->roots_to && present_moisture) {
             /* Conduct first, tip growth level constraint. */
             if (step_one_conducting_cell(s, x, y, w, h, r)) {
                 found |= FOUND_MOISTURE;
@@ -2332,14 +2334,14 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
          * existence. Dirt alone carries `soil`, so a dirt cell still holding
          * a drop reports itself at stage_soak_dry regardless. */
     stage_grow:
-        if (r->grows != 0 && s->may_have_moisture) {
+        if (r->grows != 0 && present_moisture) {
             step_one_growing_cell(s, x, y, w, h, r);
             continue;
         }
         /* Budding. Same gate as growing, and reached by unlit wood, which
          * falls through every branch above it. */
     stage_sprout:
-        if (r->sprouts != 0 && s->may_have_moisture) {
+        if (r->sprouts != 0 && present_moisture) {
             if (step_one_sprouting_cell(s, x, y, w, h, r)) {
                 found |= FOUND_MOISTURE;
             }
@@ -2347,7 +2349,7 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
         /* Budding, on the same gate. Reached by wood, which falls through
          * every branch above it. */
     stage_bud:
-        if (r->buds != 0 && s->may_have_moisture) {
+        if (r->buds != 0 && present_moisture) {
             step_one_budding_cell(s, x, y, w, h, r);
         }
     stage_end:;
@@ -2890,27 +2892,21 @@ sand_step_reactions(sand_t* s) {
         refresh_moisture_blocks(s);
     }
 
-    /* CLEARED HERE so a bit latch_content_flags() ORs in mid-pass survives the
-     * write-back below; assigning the walk's census there dropped cells this
-     * pass CREATED at its own coordinates. The other five may_have_* bools
-     * gate stage_warm and the plants per cell, so they clear at the end; the
-     * fall pair gates nothing in the pass and joins the mask here.
-     *
-     * SOAK-ONLY skips the clear: an unvisited block proves nothing gone. */
+    present_temperature = s->may_have_temperature;
+    present_moisture = s->may_have_moisture;
+    s->may_have_burning = false;
+    s->may_have_dissolver = false;
+    s->may_have_temperature = false;
+    s->may_have_moisture = false;
+    s->may_have_condenser = false;
+
+    /* SOAK-ONLY skips the material clear: an unvisited block proves nothing gone. */
     if (!soak_only) {
         s->may_have_materials = 0;
     }
     seen_materials = 0;
 
-    /* CLEARED HERE, not with the five below, for the same reason the mask
-     * above is: this pass dissolves and burns ground, and each of those marks
-     * a row. Clearing at the end throws that arming away and leaves a plant
-     * over the hole this same pass opened under it. Presence joins it so a
-     * plant BUDDED mid-pass, into a row already walked, is not cleared away
-     * either.
-     *
-     * SOAK-ONLY SKIPS THIS CLEAR TOO, same reasoning as the materials mask
-     * above. */
+    /* SOAK-ONLY leaves faller presence intact because it visits only liquid-near blocks. */
     if (!soak_only) {
         s->may_have_faller = false;
         s->faller_may_move = false;
@@ -2918,30 +2914,17 @@ sand_step_reactions(sand_t* s) {
 
     const unsigned found = run_reaction_rows(s, soak_only, may_split, hash_serial);
 
-    if (!(found & FOUND_BURNING)) {
-        s->may_have_burning = false;
-    }
-    if (!(found & FOUND_DISSOLVER)) {
-        s->may_have_dissolver = false;
-    }
-    if (!(found & FOUND_TEMPERATURE)) {
-        s->may_have_temperature = false;
-    }
-    /* ARMS AS WELL AS CLEARS, unlike the three above. Cleared-only, a pour
-     * still in mid-air cleared it and the soil it landed on could never
-     * re-arm the growth stages. Losing a bit latched mid-pass is safe here,
-     * unlike for may_have_materials: whatever else latches it is a liquid,
-     * which the early return above keeps the pass alive for. */
-    s->may_have_moisture = (found & FOUND_MOISTURE) != 0;
+    s->may_have_burning |= (found & FOUND_BURNING) != 0;
+    s->may_have_dissolver |= (found & FOUND_DISSOLVER) != 0;
+    s->may_have_temperature |= (found & FOUND_TEMPERATURE) != 0;
+    s->may_have_moisture |= (found & FOUND_MOISTURE) != 0;
     if ((found & FOUND_FALLER) != 0) {
         s->may_have_faller = true;
     }
     if ((found & FOUND_FALLER_MOVE) != 0) {
         s->faller_may_move = true;
     }
-    if (!(found & FOUND_CONDENSING)) {
-        s->may_have_condenser = false;
-    }
+    s->may_have_condenser |= (found & FOUND_CONDENSING) != 0;
     /* Same shape as the flags above: OR, so a material created mid-pass by
      * place_cell() keeps the bit it just latched. */
     s->may_have_materials |= seen_materials;
