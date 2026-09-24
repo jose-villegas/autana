@@ -47,12 +47,12 @@ class UiLayoutGeneratorTest(unittest.TestCase):
 
     def test_small_interactive_element_is_rejected(self):
         layout = copy.deepcopy(self.layout)
-        layout["orientations"]["landscape"]["rects"]["volume"][3] = 43
-        self.assert_rejected(layout, "44px tap target")
+        layout["orientations"]["landscape"]["rects"]["volume"][3] = 55
+        self.assert_rejected(layout, "56px tap target")
 
     def test_small_passive_element_is_accepted(self):
         header = self.layout["orientations"]["portrait"]["rects"]["notifications_header"]
-        self.assertLess(header[3], 44)
+        self.assertLess(header[3], 56)
         GENERATOR.validate(self.layout)
 
     def test_rect_outside_the_canvas_is_rejected(self):

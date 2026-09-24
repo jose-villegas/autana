@@ -72,6 +72,9 @@ OUT_BIN="$BUILD_DIR/brush_screen_preview"
     "$SAND_DIR/material_palette.c" \
     "$SAND_DIR/sand_ui.c" \
     "$MAIN_DIR/ui/ui_build.c" \
+    "$MAIN_DIR/ui/ui_canvas_marks.c" \
+    "$MAIN_DIR/ui/ui_widgets.c" \
+    "$SAND_DIR/ui/sand_theme.c" \
     "$MAIN_DIR/ui/ui_pointer.c" \
     "$LAUNCHER_DIR/components/microui/src/microui.c" \
     -o "$OUT_BIN"

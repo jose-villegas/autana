@@ -21,7 +21,7 @@ struct LayoutElement {
 class LayoutDocument {
   public:
     static constexpr int schema_version = 2;
-    static constexpr int min_tap_target = 44;
+    static constexpr int min_tap_target = 56; // ui/ui.h UI_TAP_MIN
 
     static std::optional<LayoutDocument> load(const std::filesystem::path& path, std::string& error);
 

@@ -53,6 +53,16 @@ typedef enum {
     UI_BUTTON_BEZEL,
 } ui_button_style_t;
 
+/* 0xRRGGBB, opaque: UI_RGB() as an initializer, so a theme can be const
+ * data, and ui_rgb() in an expression. */
+#define UI_RGB(rgb)                                                                                                    \
+    {(unsigned char)(((rgb) >> 16) & 0xFF), (unsigned char)(((rgb) >> 8) & 0xFF), (unsigned char)((rgb) & 0xFF), 255}
+
+static inline mu_Color
+ui_rgb(uint32_t rgb) {
+    return (mu_Color)UI_RGB(rgb);
+}
+
 /* One flat rectangle of a styled frame, in paint order - later spans draw
  * over earlier ones, which is what decides how the corners meet. */
 typedef struct {

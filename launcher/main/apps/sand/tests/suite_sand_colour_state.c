@@ -1,7 +1,7 @@
 /*
  * Portable suite: sand_colour_state - the state machine deciding when sand
  * must call gfx_mode_enter()/exit(), pure and host-tested so the crash this
- * guards against (indexed mode still active when the launch menu draws,
+ * guards against (indexed mode still active when the title screen draws,
  * which has no framebuffer to draw into) can be proven fixed without a
  * device.
  */
@@ -12,7 +12,7 @@
 #include "apps/sand/sand_colour_state.h"
 
 /* The reported crash's own sequence: start a sim in 256, then return to the
- * launch menu the only real way that happens today - a fresh sand_enter().
+ * title screen the only real way that happens today - a fresh sand_enter().
  * Indexed mode must not survive it. */
 static void
 test_entering_sim_in_256_then_returning_to_the_menu_leaves_full(void) {

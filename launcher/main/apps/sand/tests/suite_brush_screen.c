@@ -14,17 +14,18 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "apps/sand/material.h"
+#include "apps/sand/sand_ui.h"
 #include "apps/sand/ui/brush_screen.h"
 #include "gfx/gfx_font_roles.h"
+#include "input/input.h"
+#include "ui/ui.h"
+#include "ui/ui_transform.h"
 
 #define PORTRAIT_W  368
 #define PORTRAIT_H  448
 #define LANDSCAPE_W 448
 #define LANDSCAPE_H 368
-
-/* Smallest touch target this design accepts - see palette.h's own "WHY FOUR
- * COLUMNS" for the same 44px floor derived from a fingertip's contact patch. */
-#define MIN_TAP     44
 
 static brush_screen_layout_t
 fixture(int screen_w, int screen_h) {
@@ -178,7 +179,7 @@ test_size_row_landscape(void) {
 }
 
 /*
- * Tap targets: segments, info button, slider track >= MIN_TAP in the
+ * Tap targets: segments, info button, slider track >= UI_TAP_MIN in the
  * smaller dimension
  */
 
@@ -187,10 +188,11 @@ assert_tap_targets(int screen_w, int screen_h) {
     const brush_screen_layout_t l = fixture(screen_w, screen_h);
 
     for (int i = 0; i < BRUSH_SCREEN_SEGMENT_COUNT; i++) {
-        TEST_ASSERT_TRUE_MESSAGE(min_dim(l.segments[i]) >= MIN_TAP, "a brush-mode segment is smaller than a fingertip");
+        TEST_ASSERT_TRUE_MESSAGE(min_dim(l.segments[i]) >= UI_TAP_MIN,
+                                 "a brush-mode segment is smaller than a fingertip");
     }
-    TEST_ASSERT_TRUE_MESSAGE(min_dim(l.info_button) >= MIN_TAP, "the info button is smaller than a fingertip");
-    TEST_ASSERT_TRUE_MESSAGE(min_dim(l.slider_track) >= MIN_TAP, "the slider track is smaller than a fingertip");
+    TEST_ASSERT_TRUE_MESSAGE(min_dim(l.info_button) >= UI_TAP_MIN, "the info button is smaller than a fingertip");
+    TEST_ASSERT_TRUE_MESSAGE(min_dim(l.slider_track) >= UI_TAP_MIN, "the slider track is smaller than a fingertip");
 }
 
 static void
@@ -252,6 +254,64 @@ test_captions_fit_their_rects_landscape(void) {
     assert_captions_fit(448, 368);
 }
 
+/* A real tap, through ui_begin()'s own pointer bridge, on a mode segment. */
+
+static sand_ui_t
+ui_fixture(void) {
+    static const sand_brush_t brushes[1] = {SAND_BRUSH_SOLID(GUNPOWDER_CELL(0))};
+    static uint8_t modes[1] = {BRUSH_POUR};
+    sand_ui_t ui = {0};
+    ui.brushes = brushes;
+    ui.modes = modes;
+    ui.brush_count = 1;
+    ui.screen = SAND_UI_BRUSH;
+    ui.mode = SAND_MODE_PAINT;
+    ui.radius_px[SAND_MODE_PAINT] = 10;
+    ui.radius_px[SAND_MODE_ERASE] = 10;
+    ui.radius_px[SAND_MODE_DETONATE] = 10;
+    return ui;
+}
+
+static void
+brush_frame(sand_ui_t* ui, const input_t* in) {
+    ui_begin(in);
+    brush_screen_draw(ui_context(), ui);
+    mu_end(ui_context());
+}
+
+static void
+tap_segment(sand_ui_t* ui, mu_Rect r) {
+    const int x = r.x + r.w / 2;
+    const int y = r.y + r.h / 2;
+    const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
+    const input_t hold = {.down = true, .x = x, .y = y};
+    const input_t release = {.released = true, .x = x, .y = y};
+    const input_t idle = {0};
+
+    brush_frame(ui, &press);
+    for (int i = 0; i < 4; i++) {
+        brush_frame(ui, &hold);
+    }
+    brush_frame(ui, &release);
+    brush_frame(ui, &idle);
+}
+
+static void
+test_a_tap_on_a_mode_segment_changes_sand_ui_mode(void) {
+    ui_init();
+    ui_set_transform(ui_transform_identity());
+    sand_ui_t ui = ui_fixture();
+    const input_t idle = {0};
+    brush_frame(&ui, &idle);
+    brush_frame(&ui, &idle);
+    TEST_ASSERT_EQUAL_INT(SAND_MODE_PAINT, ui.mode);
+
+    const brush_screen_layout_t lay = fixture(PORTRAIT_W, PORTRAIT_H);
+    tap_segment(&ui, lay.segments[BRUSH_SCREEN_SEG_ERASE]);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(SAND_MODE_ERASE, ui.mode,
+                                  "a tap on the ERASE segment must reach sand_ui_mode_clicked() and switch the mode");
+}
+
 void
 run_brush_screen_suite(void) {
     RUN_TEST(test_captions_fit_their_rects_portrait);
@@ -268,6 +328,7 @@ run_brush_screen_suite(void) {
     RUN_TEST(test_size_row_landscape);
     RUN_TEST(test_tap_targets_portrait);
     RUN_TEST(test_tap_targets_landscape);
+    RUN_TEST(test_a_tap_on_a_mode_segment_changes_sand_ui_mode);
 }
 
 SUITE_REGISTER(run_brush_screen_suite);

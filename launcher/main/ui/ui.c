@@ -81,13 +81,6 @@ mu_color_to_gfx(mu_Color c) {
     return gfx_rgb(((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b);
 }
 
-/* The inverse, opaque - for a caller that only has a packed 0xRRGGBB and
- * needs an mu_Color to hand to a fill helper. */
-static mu_Color
-mu_color_from_rgb(uint32_t rgb) {
-    return mu_color((int)((rgb >> 16) & 0xFF), (int)((rgb >> 8) & 0xFF), (int)(rgb & 0xFF), 255);
-}
-
 static void
 draw_text_command(const mu_Command* cmd, ui_transform_t t) {
     const mu_Color ink = cmd->text.color;
@@ -304,6 +297,36 @@ propagate_repaint_over_overlaps(int n, bool* repaint) {
     }
 }
 
+/* The rects of every window painted before but not drawn this frame, each
+ * reported once. Nothing else repaints them: see ui_canvas_marks.h. */
+static int
+take_vanished_canvases(mu_Rect* out) {
+    bool present[MU_CONTAINERPOOL_SIZE] = {false};
+    for (int i = 0; i < ui_ctx.root_list.idx && i < MU_ROOTLIST_SIZE; i++) {
+        const int slot = (int)(ui_ctx.root_list.items[i] - ui_ctx.containers);
+        if (slot >= 0 && slot < MU_CONTAINERPOOL_SIZE) {
+            present[slot] = true;
+        }
+    }
+    return ui_canvas_marks_take_vanished(&ui_canvas_marks, present, out, MU_CONTAINERPOOL_SIZE);
+}
+
+/* Clearing a vanished rect marks it dirty, so whatever overlaps it repaints
+ * in mark_changed_canvases(). With no background to clear to, the app
+ * underneath is asked for a full redraw instead. */
+static void
+clear_vanished_canvases(uint32_t background_rgb) {
+    mu_Rect vanished[MU_CONTAINERPOOL_SIZE];
+    const int n = take_vanished_canvases(vanished);
+    for (int i = 0; i < n; i++) {
+        if (background_rgb != UI_NO_BACKGROUND) {
+            gfx_fill_rect(vanished[i].x, vanished[i].y, vanished[i].w, vanished[i].h, gfx_rgb(background_rgb));
+        } else {
+            gfx_request_full_redraw();
+        }
+    }
+}
+
 static bool
 repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
     bool drew = false;
@@ -327,6 +350,7 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
         if (slot >= 0 && slot < MU_CONTAINERPOOL_SIZE) {
             ui_canvas_hash[slot] = hash_canvas(cnt);
         }
+        ui_canvas_marks_painted(&ui_canvas_marks, slot, canvas_physical_rect(cnt));
         drew = true;
     }
     return drew;
@@ -344,6 +368,7 @@ ui_end(uint32_t background_rgb) {
     const int n = ui_ctx.root_list.idx;
     bool repaint[MU_ROOTLIST_SIZE] = {false};
 
+    clear_vanished_canvases(background_rgb);
     mark_changed_canvases(n, repaint);
     propagate_repaint_over_overlaps(n, repaint);
     const bool drew = repaint_marked_canvases(n, repaint, background_rgb);
@@ -367,7 +392,8 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
 
     const int n = ui_ctx.root_list.idx;
     bool repaint[MU_ROOTLIST_SIZE] = {false};
-    bool ui_changed = false;
+    mu_Rect vanished[MU_CONTAINERPOOL_SIZE];
+    bool ui_changed = take_vanished_canvases(vanished) > 0;
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
         ui_changed = ui_changed || canvas_itself_changed(ui_ctx.root_list.items[i]);
     }
@@ -576,7 +602,7 @@ ui_end_for_bands(uint32_t background_rgb) {
         const mu_Container* cnt = ui_ctx.root_list.items[i];
 
         if (background_rgb != UI_NO_BACKGROUND) {
-            bin_fill_rect(canvas_physical_rect(cnt), mu_color_from_rgb(background_rgb));
+            bin_fill_rect(canvas_physical_rect(cnt), ui_rgb(background_rgb));
         }
 
         const char* p = (const char*)cnt->head + cnt->head->base.size;
@@ -604,7 +630,7 @@ ui_end_for_bands(uint32_t background_rgb) {
 
     for (int i = 0; i < extra_rect_count; i++) {
         const ui_extra_rect_t* r = &extra_rects[i];
-        bin_fill_rect(mu_rect(r->x, r->y, r->w, r->h), mu_color_from_rgb(r->rgb));
+        bin_fill_rect(mu_rect(r->x, r->y, r->w, r->h), ui_rgb(r->rgb));
     }
     extra_rect_count = 0;
 
