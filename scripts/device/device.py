@@ -344,10 +344,16 @@ def reset(port):
 
 
 def reset_and_capture(port, output, seconds, idle_seconds, expected_build_id=None):
+    reset(port)
+    return capture_after_reset(port, output, seconds, idle_seconds, expected_build_id)
+
+
+def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=None):
     """Any reset re-enumerates USB Serial/JTAG and kills an open handle, so no
     capture spans the reset: what the board prints before the port reopens is
-    lost."""
-    reset(port)
+    lost. A watchdog reset re-enumerates late enough that the first open can
+    get the old handle, which reads nothing rather than failing; a capture
+    that went idle without a byte is reopened for that reason."""
     deadline = time.monotonic() + seconds
     data = bytearray()
     append = False
@@ -372,7 +378,8 @@ def reset_and_capture(port, output, seconds, idle_seconds, expected_build_id=Non
                                    expected_build_id, append=append)
         data.extend(part)
         append = True
-        if reason != "port lost":
+        silent_since_reset = reason == "idle" and not data
+        if reason != "port lost" and not silent_since_reset:
             return bytes(data), reason
         if time.monotonic() >= deadline:
             return bytes(data), "port lost"
@@ -476,12 +483,16 @@ def find_elf_for_build_id(worktree, build_id):
     return None
 
 
+BOOT_IDLE_SECONDS = 2
+
+
 def boot_build_id(port, seconds=12, expected_build_id=None):
-    with open_serial(port) as connection:
-        data, reason = capture(connection, os.devnull, seconds, 2, expected_build_id)
-        actual = latest_build_id_from_bytes(data)
-        if actual:
-            return actual, reason
+    data, reason = capture_after_reset(port, os.devnull, seconds, BOOT_IDLE_SECONDS,
+                                       expected_build_id)
+    actual = latest_build_id_from_bytes(data)
+    if actual:
+        return actual, reason
+    with open_when_free(port, reason="re-enumerating after reset") as connection:
         connection.write(b"BUILDID\n")
         connection.flush()
         deadline = time.monotonic() + 3
