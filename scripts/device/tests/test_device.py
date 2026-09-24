@@ -22,16 +22,6 @@ import device_lock
 import device_report
 
 
-def setUpModule():
-    global saved_hook
-    saved_hook = os.environ.pop("AUTANA_LOCK_HOOK", None)
-
-
-def tearDownModule():
-    if saved_hook is not None:
-        os.environ["AUTANA_LOCK_HOOK"] = saved_hook
-
-
 class InterpreterTests(unittest.TestCase):
     """Any interpreter may start device.py - a report script's `python`, a
     person at a prompt - and only ESP-IDF's carries pyserial."""

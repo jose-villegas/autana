@@ -248,19 +248,24 @@ This clears the reservation and prints the resulting lock status. The lower-leve
 Set `AUTANA_LOCK_HOOK` to a shell command to run when the lock changes. The
 command receives these environment variables: `AUTANA_LOCK_EVENT`,
 `AUTANA_LOCK_PORT`, `AUTANA_LOCK_OWNER`, `AUTANA_LOCK_PURPOSE`, and
-`AUTANA_LOCK_NOTE`. Purpose is empty for human reservations; note is empty for
-other events. The command runs through the platform shell and has a three
-second timeout. A failed or timed out hook prints one warning and never changes
-the lock operation's outcome.
+`AUTANA_LOCK_NOTE`. Purpose is empty for human reservations; note carries the
+reclaim reason for `lost` and the reservation note for human events. The
+command runs through `cmd.exe` on Windows (`%VAR%`) and
+`/bin/sh` elsewhere (`$VAR`); a script that reads the variables works on both.
+Hooks run in separate processes and are not ordered across them, so one
+holder's `released` can arrive after the next holder's `acquired`. A hook has
+a three second timeout. A failed or timed out hook prints one warning and
+never changes the lock operation's outcome.
 
 | Event | When |
 |---|---|
 | `acquired` | A ticket takes the lock, including reclaiming a stale lock. |
 | `released` | The holder gives up the lock. |
-| `waiting` | A ticket first waits for a held or reserved board; once per ticket. |
+| `waiting` | A ticket begins a real wait for a held or reserved board; once per ticket. |
+| `gave-up` | A waiting ticket leaves without the lock. |
 | `human-reserved` | A human reservation is recorded. |
 | `human-cleared` | A human reservation is cleared. |
-| `lost` | A holder's heartbeat finds its lock gone. |
+| `lost` | A stale lock is reclaimed; owner and purpose identify its former holder, and note gives the reclaim reason. |
 
 For example, set the hook to `python path/to/board-events.py` and give that
 script either job:
@@ -270,9 +275,7 @@ script either job:
 - Append `AUTANA_LOCK_EVENT`, `AUTANA_LOCK_OWNER`, `AUTANA_LOCK_PORT`, and
   `AUTANA_LOCK_PURPOSE` to a usage log.
 
-The recovery command `device_lock.py` also emits lock and reservation events;
-only a holder running `device.py` emits `lost`, since it knows the holder's
-owner and purpose.
+The recovery command `device_lock.py` also emits lock and reservation events.
 
 ## Related
 

@@ -23,7 +23,7 @@ def emit(event, port, owner="", purpose="", note=""):
     try:
         result = subprocess.run(command, shell=True, env=environment,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                stderr=subprocess.PIPE, text=True,
+                                stderr=subprocess.DEVNULL,
                                 timeout=HOOK_TIMEOUT_SECONDS)
         if result.returncode:
             raise RuntimeError(f"exit status {result.returncode}")
