@@ -12,6 +12,8 @@ import time
 import uuid
 from pathlib import Path
 
+import device_hook
+
 
 DEFAULT_STALE_SECONDS = 600
 GUARD_STALE_SECONDS = 30
@@ -182,21 +184,33 @@ class LockStore:
         return self.now() - lock["heartbeat_at"] > stale_seconds
 
     def claim(self, port, ticket, expected_build_id, stale_seconds=DEFAULT_STALE_SECONDS):
+        held, reclaimed, reason = self._claim(port, ticket, expected_build_id, stale_seconds)
+        if held:
+            if reclaimed:
+                device_hook.emit("lost", port, reclaimed["owner"], reclaimed["purpose"],
+                                 note=reason)
+            device_hook.emit("acquired", port, held["owner"], held["purpose"])
+        return held
+
+    def _claim(self, port, ticket, expected_build_id, stale_seconds):
         with self.guard(port):
             self.prune_crashed_waiters(port)
             pending = self.tickets(port)
             if not pending or pending[0]["ticket"] != ticket:
-                return None
+                return None, None, ""
             if self.read_json(self.human_path(port)):
-                return None
+                return None, None, ""
             current = self.read_json(self.lock_path(port))
             reclaimed = ""
+            evicted = None
+            reason = ""
             if current:
                 same_host = current.get("host") == socket.gethostname()
                 dead = same_host and not self.is_alive(current["pid"])
                 if not dead and not self.is_stale(current, stale_seconds):
-                    return None
+                    return None, None, ""
                 reason = "dead process" if dead else "heartbeat expiry"
+                evicted = current
                 reclaimed = ("reclaimed lock from {owner} for {purpose} "
                              "({reason})".format(reason=reason, **current))
                 self.lock_path(port).unlink(missing_ok=True)
@@ -215,19 +229,29 @@ class LockStore:
             }
             self.write_json(self.lock_path(port), held)
             (self.queue_dir(port) / (ticket + ".json")).unlink(missing_ok=True)
-            return held
+            return held, evicted, reason
 
     def acquire(self, port, owner, purpose, expected_build_id="", wait=0,
                 stale_seconds=DEFAULT_STALE_SECONDS):
         ticket = self.enqueue(port, owner, purpose)
         deadline = self.now() + wait
+        waiting = False
         while True:
             held = self.claim(port, ticket, expected_build_id, stale_seconds)
             if held:
                 return held
             if self.now() >= deadline:
                 self.cancel(port, ticket)
+                if waiting:
+                    device_hook.emit("gave-up", port, owner, purpose)
                 return None
+            if not self.read_json(self.queue_dir(port) / (ticket + ".json")):
+                if waiting:
+                    device_hook.emit("gave-up", port, owner, purpose)
+                return None
+            if not waiting:
+                device_hook.emit("waiting", port, owner, purpose)
+                waiting = True
             time.sleep(min(0.1, max(0, deadline - self.now())))
 
     def cancel(self, port, ticket):
@@ -253,12 +277,18 @@ class LockStore:
             return True
 
     def release(self, port, token):
+        lock = self._release(port, token)
+        if lock:
+            device_hook.emit("released", port, lock["owner"], lock["purpose"])
+        return bool(lock)
+
+    def _release(self, port, token):
         with self.guard(port):
             lock = self.read_json(self.lock_path(port))
             if not lock or lock["token"] != token:
-                return False
+                return None
             self.lock_path(port).unlink(missing_ok=True)
-            return True
+            return lock
 
     def set_human(self, port, owner, note):
         with self.guard(port):
@@ -269,11 +299,15 @@ class LockStore:
                 "owner": owner,
                 "since_at": self.now(),
             })
-            return reservation_id
+        device_hook.emit("human-reserved", port, owner, note=note)
+        return reservation_id
 
     def clear_human(self, port):
         with self.guard(port):
+            human = self.read_json(self.human_path(port))
             self.human_path(port).unlink(missing_ok=True)
+        if human:
+            device_hook.emit("human-cleared", port, human["owner"], note=human["note"])
 
     def status(self, port):
         with self.guard(port):

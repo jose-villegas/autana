@@ -47,7 +47,9 @@ CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
 # dummy-cycle-aware bootloader, and the PSRAM sample point is retuned as
 # the die temperature moves; Espressif warns of random access faults after
 # roughly 20 C of drift without it. Measured: cube 4-9% faster, sand
-# simulation unchanged; 20/20 resets and a 55-minute sand soak clean.
+# simulation unchanged, a 55-minute sand soak clean. A warm reset at this
+# speed hangs in the app's PSRAM timing tuning, so the bootloader turns
+# each one into a PMIC power cycle (bootloader_components/pmic_cold_boot/).
 # To go back to 80 MHz, delete this block and rebuild with a fresh
 # sdkconfig (the bootloader changes too, so flash it as well).
 CONFIG_IDF_EXPERIMENTAL_FEATURES=y
