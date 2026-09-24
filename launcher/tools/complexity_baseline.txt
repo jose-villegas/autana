@@ -10,7 +10,6 @@
 66	launcher/main/apps/sand/material_palette.c:783	material_colours
 65	launcher/main/apps/sand/sand_reactions.c:1384	conduct_heat
 60	launcher/main/apps/sand/sand_reactions.c:1539	step_one_dissolver_cell
-43	launcher/main/apps/render_lab/scene_cube.c:213	cube_transform_and_bin
 40	launcher/main/apps/sand/sand_reactions.c:2433	build_reaction_tables
 39	launcher/main/gfx/gfx.c:1185	gfx_blit_dither
 35	launcher/main/apps/sand/app_sand.c:1404	draw_dirty_rows
@@ -18,7 +17,6 @@
 33	launcher/main/apps/sand/sand_reactions.c:2867	sand_step_reactions
 31	launcher/components/small3dlib/include/small3dlib.h:1974	S3L_drawTriangle
 30	launcher/main/apps/sand/sand_plants.c:52	anchored
-30	launcher/main/boot/boot_anim.c:472	draw_curve
 29	launcher/main/apps/sand/app_sand.c:2062	sand_frame
 29	launcher/main/gfx/gfx.c:1523	draw_glyph_font_dither
 28	launcher/main/apps/sand/sand_liquid.c:338	equalise_one_row
@@ -33,10 +31,8 @@
 20	launcher/main/apps/sand/sand_impulse.c:303	sand_explode
 20	launcher/main/apps/sand/sand_plants.c:334	step_one_conducting_cell
 19	launcher/main/apps/sand/sand_reactions.c:486	cool_off_chain
-19	launcher/main/boot/boot_anim.c:263	draw_floor
 18	launcher/main/apps/sand/sand_plants.c:578	step_one_budding_cell
 18	launcher/main/gfx/gfx.c:731	gfx_mark_dirty
-16	launcher/main/apps/sand/tests/suite_sand_reaction_encoding.c:113	reaction_ladder_reference_stage
 15	launcher/main/apps/render_lab/tests/suite_wire_pipeline.c:388	test_bbox_is_the_union_of_the_emitted_segments
 15	launcher/main/apps/render_lab/wire_pipeline.c:37	clip_to_screen
 15	launcher/main/apps/sand/sand_plants.c:539	step_one_sprouting_cell
@@ -91,6 +87,7 @@
 14	launcher/main/apps/sand/tools/shading_palette.c:1086	greedy_grow_palette
 14	launcher/main/boot/boot_anim.c:221	draw_grid_spoke
 14	launcher/test/suites/suite_gfx_indexed.c:252	run_incremental_matches_full_reexpansion
+14	launcher/main/boot/boot_anim.c:515	draw_curve
 13	launcher/main/apps/render_lab/scene_cube.c:102	shade_pixel
 13	launcher/main/apps/sand/sand.c:1317	build_xflow
 13	launcher/main/apps/sand/sand.c:536	sand_erase
@@ -231,6 +228,7 @@
 11	launcher/test/suites/suite_icons_system.c:41	test_all_icons_blocks_match_actual_run_length
 11	launcher/tools/gfx_palette_gen.c:224	gfx_palette_gen_build_dither_cell
 11	launcher/tools/gfx_palette_gen.c:251	gfx_palette_gen_build_dither_checker2
+11	launcher/main/apps/render_lab/scene_cube.c:272	cube_transform_and_bin
 10	launcher/main/apps/sand/app_sand.c:582	start_sim
 10	launcher/main/apps/sand/app_sand.c:896	update_local_depth_gravity
 10	launcher/main/apps/sand/sand.c:929	choose_sweep_order
@@ -308,6 +306,9 @@
 10	launcher/test/suites/suite_gfx_target.c:129	test_the_union_of_all_bands_equals_the_full_target_render
 10	launcher/test/suites/suite_icons_system.c:147	reference_blocks
 10	launcher/test/suites/suite_post_ui.c:199	place_report
+10	launcher/main/apps/render_lab/scene_cube.c:243	cube_expand_bbox
+10	launcher/main/boot/boot_anim.c:482	draw_curve_segment
+10	launcher/main/boot/boot_anim.c:302	draw_floor
 9	launcher/main/apps/render_lab/tests/suite_wire_pipeline.c:96	build_grid
 9	launcher/main/apps/render_lab/tests/suite_wire_primitives.c:138	test_plane_grid_is_centred
 9	launcher/main/apps/render_lab/ui/render_lab_menu_screen.c:15	render_lab_menu_screen_draw
@@ -387,6 +388,7 @@
 9	launcher/test/suites/suite_gfx_glow.c:151	test_a_cliff_lights_nothing_far_above_the_plateau
 9	launcher/test/suites/suite_icons.c:107	assert_centred_within_a_pixel
 9	launcher/test/suites/suite_ui_pointer_microui.c:272	list_frame
+9	launcher/main/apps/render_lab/scene_cube.c:208	cube_triangle_bounds
 8	launcher/main/apps/render_lab/app_render_lab.c:296	render_lab_frame_band
 8	launcher/main/apps/render_lab/tests/suite_cube_band_perf.c:194	band_frame
 8	launcher/main/apps/sand/app_sand.c:555	alloc_grid_bookkeeping
@@ -497,6 +499,8 @@
 8	launcher/main/ui/ui_pointer.c:100	step_hover
 8	launcher/test/heap_arena.c:290	arena_pool_release
 8	launcher/test/suites/suite_ridge_motion.c:139	test_smoothing_leaves_a_flat_line_alone_and_rounds_a_step
+8	launcher/main/apps/sand/tests/suite_sand_reaction_encoding.c:113	reaction_ladder_reference_late_stage
+8	launcher/main/apps/sand/tests/suite_sand_reaction_encoding.c:139	reaction_ladder_reference_stage
 7	launcher/main/apps/render_lab/app_render_lab.c:338	render_lab_frame
 7	launcher/main/apps/render_lab/scene_wire.c:247	wire_line_pixel_estimate
 7	launcher/main/apps/render_lab/wire_pipeline.c:123	wire_project_edges
@@ -615,6 +619,7 @@
 7	launcher/test/suites/suite_tilt.c:122	test_noise_is_attenuated_when_the_board_is_still
 7	launcher/tools/gfx_palette_gen.c:71	gfx_palette_gen_build_index_map
 7	launcher/tools/gfx_palette_gen.c:122	try_dither_pair
+7	launcher/main/boot/boot_anim.c:263	floor_ring_steps
 6	launcher/components/small3dlib/include/small3dlib.h:1412	S3L_asin
 6	launcher/main/apps/diagnostics/app_diagnostics.c:143	diagnostics_frame
 6	launcher/main/apps/diagnostics/app_diagnostics.c:87	draw_toggles_page
@@ -1783,3 +1788,4 @@
 2	launcher/test/suites/suite_tilt.c:80	test_smoothing_is_independent_of_framerate
 2	launcher/test/suites/suite_ui.c:33	build
 2	launcher/tools/gfx_palette_gen.c:211	gfx_palette_gen_build_lut_nearest
+2	launcher/main/apps/render_lab/scene_cube.c:232	cube_insert_triangle
