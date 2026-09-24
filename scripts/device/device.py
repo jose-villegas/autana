@@ -330,11 +330,13 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
     return bytes(data), "timeout"
 
 
-def reset(port):
-    """The SoC's own watchdog, not esptool's hard_reset: a chip left in
-    download mode by a recovery flash does not restart from RTS."""
+def reset(port, after="hard_reset"):
+    """hard_reset pulses RTS, and USB Serial/JTAG stays up through it, so a
+    capture hears the boot from its first line. It cannot restart a chip in
+    download mode; watchdog_reset can, but re-enumerates USB, losing the
+    early boot lines a release image's BUILD_ID is among."""
     command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
-               "--after", "watchdog_reset", "chip_id"]
+               "--after", after, "chip_id"]
     subprocess.run(command, check=True)
 
 
@@ -352,28 +354,33 @@ def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=N
     capture spans the reset: what the board prints before the port reopens is
     lost. A watchdog reset re-enumerates late enough that the first open can
     get the old handle, which reads nothing rather than failing, so for a short
-    window after the reset a handle silent from the start is reopened."""
+    window after the reset a handle silent from the start is reopened. A
+    capture that heard nothing at all ends as "silent", whatever stopped it."""
     started = time.monotonic()
     deadline = started + seconds
     data = bytearray()
     append = False
     first_reopen = True
+
+    def ended(reason):
+        return bytes(data), reason if data else "silent"
+
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            return bytes(data), "timeout"
+            return ended("timeout")
         try:
             connection = open_when_free(port, remaining,
                                         reason="re-enumerating after reset")
         except RuntimeError:
             if first_reopen:
                 raise
-            return bytes(data), "port lost"
+            return ended("port lost")
         first_reopen = False
         with connection:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return bytes(data), "timeout"
+                return ended("timeout")
             in_reopen_window = not data and time.monotonic() - started < RESET_REOPEN_SECONDS
             part, reason = capture(connection, output, remaining, idle_seconds,
                                    expected_build_id, append=append,
@@ -382,9 +389,9 @@ def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=N
         data.extend(part)
         append = True
         if reason not in ("port lost", "silent"):
-            return bytes(data), reason
+            return ended(reason)
         if time.monotonic() >= deadline:
-            return bytes(data), reason
+            return ended(reason)
         if reason == "silent":
             print("reset capture read nothing since the reset; reopening", file=sys.stderr)
         else:
@@ -557,6 +564,11 @@ def flash(args, store, port, held_lock=None, extra_flags=()):
                       file=sys.stderr)
             reset(port)
             actual, reason = boot_build_id(port, expected_build_id=expected)
+            if reason == "silent":
+                print("board silent after the flash, as from download mode; "
+                      "restarting it through the watchdog", file=sys.stderr)
+                reset(port, after="watchdog_reset")
+                actual, reason = boot_build_id(port, expected_build_id=expected)
             if not expected or not actual:
                 print("build id is unverified: boot did not provide BUILD_ID", file=sys.stderr)
             elif actual != expected:

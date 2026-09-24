@@ -48,33 +48,42 @@ esptool.py --chip esp32s3 -p <PORT> --before no_reset flash_id
 Connecting almost instantly (a few dots) means the chip is sitting in the
 bootloader.
 
-From there `autana flash` boots the new image on its own: **`reset()` in
-`scripts/device/device.py` passes `--after watchdog_reset`**, which trips the
-SoC's own watchdog instead of the RTS line that cannot restart a chip in
-download mode. Run directly, outside `autana`, esptool or `idf.py flash`
-needs `--after watchdog_reset` or a power cycle to start the image.
+From there `autana flash` still boots the new image on its own. Its usual
+restart is esptool's RTS pulse, which USB Serial/JTAG stays up through, so the
+whole boot log - BUILD_ID included - is heard. A chip in download mode ignores
+RTS and says nothing; **when `flash()` hears nothing after its RTS reset, it
+restarts the board with `--after watchdog_reset`**, which trips the SoC's own
+watchdog. Run directly, outside `autana`, esptool or `idf.py flash` needs
+`--after watchdog_reset` or a power cycle to start the image.
 
 A restart re-enumerates USB Serial/JTAG, and Windows may hand the board a
 **different COM number** than it had before. Anything holding a port by name
 breaks there; `find_port()` in `scripts/device/device.py` looks it up by
 vendor id `0x303A` each time for that reason.
 
-A watchdog reset re-enumerates later than an RTS one, so the first open after
-it can get the old handle, which reads nothing and raises nothing.
-`capture_after_reset()` reopens for that, and only while the reset is recent:
+The watchdog path re-enumerates USB, and late: the first open can get the old
+handle, which reads nothing and raises nothing, so `capture_after_reset()`
+reopens a handle silent for 2 s while the reset is under 10 s old. A release
+image prints its BUILD_ID about 0.6 s into boot and has no console to ask
+again, so a recovery flash boots but may still report itself unverified.
 
 ```mermaid
 sequenceDiagram
     participant Dev as device.py
     participant Esp as esptool
     participant Board as board
-    Dev->>Esp: chip_id, after watchdog_reset
-    Esp->>Board: trip the watchdog
-    Dev->>Board: open the port
-    Note over Dev,Board: can be the old handle, silent, no error
-    Board-->>Dev: USB re-enumerates
-    Dev->>Board: 2 s without a byte, within 10 s of the reset, so reopen
-    Board-->>Dev: boot log with BUILD_ID
+    Dev->>Esp: chip_id, after hard_reset
+    Esp->>Board: RTS pulse
+    alt board was running an app
+        Board-->>Dev: whole boot log, BUILD_ID included
+    else chip sat in download mode
+        Note over Dev,Board: nothing heard
+        Dev->>Esp: chip_id, after watchdog_reset
+        Esp->>Board: trip the watchdog
+        Board-->>Dev: USB re-enumerates, early lines lost
+        Dev->>Board: reopen a handle silent for 2 s
+        Board-->>Dev: the rest of the boot log
+    end
 ```
 
 If it vanishes from USB entirely — no COM port, no device at vendor ID
