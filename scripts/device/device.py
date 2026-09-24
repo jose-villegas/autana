@@ -300,8 +300,9 @@ def print_reset_output(data, verbose):
 
 
 class HeldLock:
-    def __init__(self, store, port, owner, purpose, wait):
+    def __init__(self, store, port, owner, purpose, wait, announce_waiters=False):
         self.store = store
+        self.announce_waiters = announce_waiters
         self.port = port
         self.held = store.acquire(port, owner, purpose, wait=wait)
         if not self.held:
@@ -313,9 +314,11 @@ class HeldLock:
         self.thread = threading.Thread(target=self.keep_alive, daemon=True)
 
     def keep_alive(self):
+        # Only a holder the person can end with Ctrl+C invites them to.
+        poll = 1 if self.announce_waiters else 30
         next_heartbeat = time.monotonic() + 30
-        while not self.stop.wait(1):
-            for ticket in self.store.tickets(self.port):
+        while not self.stop.wait(poll):
+            for ticket in (self.store.tickets(self.port) if self.announce_waiters else ()):
                 if ticket["ticket"] not in self.notified:
                     self.notified.add(ticket["ticket"])
                     print(f'{ticket["owner"]} is waiting for the board '
@@ -737,7 +740,7 @@ def listen(args, store, port):
     echo = getattr(args, "echo", False)
     sink = sys.stdout.buffer if echo else ErrorLineSink(sys.stdout)
     try:
-        with HeldLock(store, port, args.owner, args.purpose, args.wait):
+        with HeldLock(store, port, args.owner, args.purpose, args.wait, announce_waiters=True):
             with open_when_free(port) as connection:
                 data, reason = capture(connection, output, args.seconds, None,
                                        echo=sink, until_tests_done=False)

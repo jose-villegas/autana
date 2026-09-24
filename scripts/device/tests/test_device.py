@@ -1234,12 +1234,23 @@ class WaiterNoticeTests(unittest.TestCase):
         store = mock.Mock()
         store.acquire.return_value = {"log": "", "token": "token"}
         store.tickets.return_value = [{"ticket": "one", "owner": "sam", "purpose": "test"}]
-        lock = device.HeldLock(store, "COM5", "agent", "monitor", 0)
+        lock = device.HeldLock(store, "COM5", "agent", "monitor", 0, announce_waiters=True)
         lock.stop.wait = mock.Mock(side_effect=[False, False, True])
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
             lock.keep_alive()
         self.assertEqual(stderr.getvalue().count("sam is waiting"), 1)
+
+    def test_a_flash_or_suite_holder_never_invites_ctrl_c(self):
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        store.tickets.return_value = [{"ticket": "one", "owner": "sam", "purpose": "test"}]
+        lock = device.HeldLock(store, "COM5", "agent", "flash", 0)
+        lock.stop.wait = mock.Mock(side_effect=[False, False, True])
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            lock.keep_alive()
+        self.assertEqual(stderr.getvalue(), "")
 
 
 class ResetCommandTests(unittest.TestCase):
