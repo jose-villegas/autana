@@ -318,31 +318,58 @@ dirty_mark(int x, int y, int w, int h) {
     mark_leaves(x0, y0, x1, y1);
 }
 
-/* gfx_region_dirty()'s implementation - x and w are accepted for API
- * symmetry but ignored, matching the public function's own documented
- * contract (see gfx.h). */
+/* Reports any tracked dirt overlapping the clipped box. A full cell can
+ * come from mark_band(), which has no leaf bits to query. */
 static inline bool
-dirty_region_dirty(int y, int h) {
+dirty_region_dirty(int x, int y, int w, int h) {
+    int x0 = x;
+    int x1 = x + w;
     int y0 = y;
     int y1 = y + h;
 
+    if (x0 < 0) {
+        x0 = 0;
+    }
+    if (x1 > GFX_DIRTY_WIDTH) {
+        x1 = GFX_DIRTY_WIDTH;
+    }
     if (y0 < 0) {
         y0 = 0;
     }
     if (y1 > GFX_DIRTY_HEIGHT) {
         y1 = GFX_DIRTY_HEIGHT;
     }
-    if (y0 >= y1) {
+    if (x0 >= x1 || y0 >= y1) {
         return false;
     }
 
-    const int first = y0 / STRIP_HEIGHT;
-    const int last = (y1 - 1) / STRIP_HEIGHT;
+    const int row_first = y0 / STRIP_HEIGHT;
+    const int row_last = (y1 - 1) / STRIP_HEIGHT;
+    const int col_first = x0 / COL_WIDTH;
+    const int col_last = (x1 - 1) / COL_WIDTH;
 
-    for (int row = first; row <= last; row++) {
-        for (int col = 0; col < GRID_COLS; col++) {
-            if (cell_dirty & (1u << (row * GRID_COLS + col))) {
+    for (int row = row_first; row <= row_last; row++) {
+        for (int col = col_first; col <= col_last; col++) {
+            const int idx = row * GRID_COLS + col;
+            if (!(cell_dirty & (1u << idx))) {
+                continue;
+            }
+            if (cell_x1[idx] <= x0 || cell_x0[idx] >= x1 || cell_y1[idx] <= y0 || cell_y0[idx] >= y1) {
+                continue;
+            }
+            if (cell_x1[idx] - cell_x0[idx] >= COL_WIDTH && cell_y1[idx] - cell_y0[idx] >= STRIP_HEIGHT) {
                 return true;
+            }
+
+            const int lx0 = ((x0 > col * COL_WIDTH) ? x0 : col * COL_WIDTH) / LEAF_W;
+            const int lx1 = (((x1 < (col + 1) * COL_WIDTH) ? x1 : (col + 1) * COL_WIDTH) - 1) / LEAF_W;
+            const uint16_t mask = (uint16_t)(((1u << (lx1 - lx0 + 1)) - 1u) << lx0);
+            const int ly0 = ((y0 > row * STRIP_HEIGHT) ? y0 : row * STRIP_HEIGHT) / LEAF_H;
+            const int ly1 = (((y1 < (row + 1) * STRIP_HEIGHT) ? y1 : (row + 1) * STRIP_HEIGHT) - 1) / LEAF_H;
+            for (int leaf_row = ly0; leaf_row <= ly1; leaf_row++) {
+                if (leaf_dirty[leaf_row] & mask) {
+                    return true;
+                }
             }
         }
     }

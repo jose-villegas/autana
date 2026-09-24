@@ -60,6 +60,8 @@ python scripts/device/device.py --owner sam run-suite sand --expect-build-id 012
 python scripts/device/device.py --owner sam listen --seconds 30
 ```
 
+`listen` takes `--follow` to run until Ctrl+C and `--echo` to print the full stream.
+
 ### Talking to a running device: `send`
 
 `send` writes one console line and prints the device's replies to it, under
@@ -134,9 +136,10 @@ report calls `batch --suite X --runs 1 --out PATH` instead, the same
 build-then-capture-under-one-lock shape scoped to one suite and run. The
 default wait is ten minutes; pass `--wait 0` to return immediately when the
 board is busy. `flash` resets with esptool, then compares the boot
-`BUILD_ID` with the `build_id.txt` that `build_flash.sh` wrote into that
-variant's build directory. When either value is missing, the command reports
-the image as unverified instead of claiming success. `run-suite` stops at the shell's `RUNSUITE_COMPLETE
+`BUILD_ID` with the `BUILD_ID=` line `build_flash.sh` printed into the flash
+log; a board silent after that reset is restarted through the watchdog and
+read again. When either value is missing, the command reports the image as
+unverified instead of claiming success. `run-suite` stops at the shell's `RUNSUITE_COMPLETE
 name=<suite>` line (or an older build's `SUITE_DONE`), or after its
 non-`shell:` output is idle. A port that disappears mid-capture ends it as
 `port lost` with what was read kept, so a `batch` carries on with its next

@@ -1,6 +1,6 @@
-# What the render_lab_pinned scene's renders hash to, one per line.
+# What the render_lab scene's renders hash to, one per line.
 # Re-pinned deliberately, after looking at the images:
-#     ./launcher/main/apps/render_lab/tools/render_lab_pinned_render_host.sh --update-baseline
+#     ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh --update-baseline
 gouraud-landscape b4072a84491ea28f2243d06ecd28254fd61ef5dc24c99021835c7bf702b986c4
 gouraud-landscape-panel 20587f17794ce55552787e522d889e4b89a0f252c4fc2c2d10d53d8fc9424d47
 gouraud-portrait 20587f17794ce55552787e522d889e4b89a0f252c4fc2c2d10d53d8fc9424d47

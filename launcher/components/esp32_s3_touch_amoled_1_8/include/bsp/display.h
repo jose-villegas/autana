@@ -1,6 +1,10 @@
 
 
 #pragma once
+
+/* PATCHED: upstream gets esp_err_t from driver/gpio.h, which its parent
+ * header includes first; the trimmed parent now reaches this one earlier. */
+#include "esp_err.h"
 #include "esp_lcd_types.h"
 
 /* LCD color formats */
