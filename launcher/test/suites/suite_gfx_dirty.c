@@ -540,8 +540,60 @@ test_band_extent_follows_a_moving_box_across_several_frames(void) {
     }
 }
 
+static void
+test_region_query_skips_a_box_beside_dirt_in_the_same_rows(void) {
+    fixture();
+    dirty_mark(5, 5, 10, 10);
+
+    TEST_ASSERT_FALSE(dirty_region_dirty(2 * COL_WIDTH, 5, 10, 10));
+    TEST_ASSERT_FALSE(dirty_region_dirty(2 * LEAF_W, 5, 10, 10));
+}
+
+static void
+test_region_query_finds_an_overlapping_box(void) {
+    fixture();
+    dirty_mark(5, 5, 10, 10);
+
+    TEST_ASSERT_TRUE(dirty_region_dirty(10, 10, 10, 10));
+}
+
+static void
+test_region_query_handles_strip_and_cell_boundaries(void) {
+    fixture();
+    dirty_mark(COL_WIDTH - 1, STRIP_HEIGHT - 1, 2, 2);
+
+    TEST_ASSERT_TRUE(dirty_region_dirty(COL_WIDTH, STRIP_HEIGHT, 1, 1));
+    TEST_ASSERT_TRUE(dirty_region_dirty(COL_WIDTH - 1, STRIP_HEIGHT - 1, 1, 1));
+    TEST_ASSERT_FALSE(dirty_region_dirty(COL_WIDTH + LEAF_W, STRIP_HEIGHT, 1, 1));
+}
+
+static void
+test_region_query_keeps_full_width_band_marks(void) {
+    fixture();
+    mark_band(STRIP_HEIGHT, 2 * STRIP_HEIGHT);
+
+    TEST_ASSERT_TRUE(dirty_region_dirty(0, STRIP_HEIGHT + 5, 1, 1));
+    TEST_ASSERT_TRUE(dirty_region_dirty(GFX_DIRTY_WIDTH - 1, STRIP_HEIGHT + 5, 1, 1));
+    TEST_ASSERT_FALSE(dirty_region_dirty(0, STRIP_HEIGHT - 1, 1, 1));
+}
+
+static void
+test_region_query_uses_leaf_gaps_within_one_cell(void) {
+    fixture();
+    dirty_mark(1, 5, 2, 2);
+    dirty_mark(3 * LEAF_W, 5, 2, 2);
+
+    TEST_ASSERT_FALSE(dirty_region_dirty(LEAF_W + 1, 5, 1, 1));
+    TEST_ASSERT_TRUE(dirty_region_dirty(3 * LEAF_W, 5, 1, 1));
+}
+
 void
 run_gfx_dirty_suite(void) {
+    RUN_TEST(test_region_query_skips_a_box_beside_dirt_in_the_same_rows);
+    RUN_TEST(test_region_query_finds_an_overlapping_box);
+    RUN_TEST(test_region_query_handles_strip_and_cell_boundaries);
+    RUN_TEST(test_region_query_keeps_full_width_band_marks);
+    RUN_TEST(test_region_query_uses_leaf_gaps_within_one_cell);
     RUN_TEST(test_mark_leaves_stays_in_the_leaf_before_a_boundary);
     RUN_TEST(test_mark_leaves_moves_to_the_next_leaf_at_a_boundary);
     RUN_TEST(test_mark_leaves_sets_every_leaf_a_wide_box_spans);
