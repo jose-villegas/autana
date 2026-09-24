@@ -836,12 +836,7 @@ def console(_args=None):
     is an autana command, or the whole line is sent to the device as typed
     (forward()); `tune <name>` is the only way to a tunable, never an
     implicit lookup of a bare name."""
-    readline = completion_readline()
-    if readline is not None:
-        readline.set_completer(lambda prefix, state: completion_candidates(
-            readline.get_line_buffer(), prefix)[state]
-            if state < len(completion_candidates(readline.get_line_buffer(), prefix)) else None)
-        readline.parse_and_bind("tab: complete")
+    install_completion()
     print("autana console - 'help' for the commands, 'quit' to leave")
     while True:
         try:
@@ -880,7 +875,7 @@ COMMANDS = {"flash": flash, "tune": tune, "monitor": monitor, "reset": reset, "s
 def completion_candidates(line, prefix):
     """Return command or static argument matches for the current word."""
     if not any(character.isspace() for character in line):
-        words = COMMANDS
+        words = (set(COMMANDS) - {"console"}) | {"help", "quit"}
     else:
         parts = line.split()
         if line and line[-1].isspace():
@@ -900,6 +895,22 @@ def completion_readline():
             return importlib.import_module("pyreadline3")
         except ImportError:
             return None
+
+
+def install_completion():
+    readline = completion_readline()
+    if readline is None:
+        return
+    matches = []
+
+    def complete(prefix, state):
+        if state == 0:
+            matches[:] = completion_candidates(readline.get_line_buffer(), prefix)
+        return matches[state] if state < len(matches) else None
+
+    readline.set_completer(complete)
+    readline.set_completer_delims(" \t")
+    readline.parse_and_bind("tab: complete")
 
 
 def main():

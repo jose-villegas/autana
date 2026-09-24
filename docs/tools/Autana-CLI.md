@@ -7,7 +7,8 @@ No `idf.py` environment activation, and no remembering which script under
 which folder does which half.
 
 `autana` with no arguments opens a session; every command below also works
-as a one-shot from the shell.
+as a one-shot from the shell. Tab completes command names and `flash`'s
+variants where Python has `readline` (on Windows, `pip install pyreadline3`).
 
 ```
 $ autana
