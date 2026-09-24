@@ -904,6 +904,10 @@ app_main_loop(void) {
         app_count++;
     }
     ESP_LOGI(TAG, "Ready, %d app%s registered", app_count, app_count == 1 ? "" : "s");
+    /* Again for a host whose port came back after the first print: a PMIC
+     * cold restart re-enumerates USB Serial/JTAG about 0.7 s into boot. */
+    printf("BUILD_ID=%s\n", BUILD_ID);
+    fflush(stdout);
 
     while (1) {
         const int64_t now_us = esp_timer_get_time();
