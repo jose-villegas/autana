@@ -228,6 +228,8 @@ cube_triangle_bounds(const S3L_Vec4 transformed[6], int* x0, int* x1, int* y0, i
     }
 }
 
+/* Descending by sort_value, as S3L_drawScene() sorts (S3L_SORT == 1): farther
+ * triangles land first and nearer ones draw over them. */
 static void
 cube_insert_triangle(cube_triangle_bin_t entry) {
     int slot = cube_bin_count;
