@@ -204,7 +204,8 @@ def parse_buildid(reply):
 
 
 def monitor(args):
-    """A person watches a terminal stream; an agent reads only the verdict.
+    """A terminal gets the live stream; a pipe or script gets only the error
+    lines and the verdict, and must say how long to listen so it cannot hang.
     device.py decodes crashes using --elf or the capture's BUILD_ID."""
     elf = None
     rest = list(args)
