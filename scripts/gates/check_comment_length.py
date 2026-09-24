@@ -45,7 +45,6 @@ EXCLUDED = (
     "launcher/main/boot/boot_anim_curve.h",
     "launcher/main/boot/boot_anim_image.h",
     "launcher/main/boot/boot_anim_timeline.h",
-    "launcher/main/gfx/fonts/font_lmroman_40.h",
     "launcher/main/gfx/gfx_palette_standard_generated.h",
     "launcher/main/apps/sand/sand_palette256.h",
     "launcher/main/apps/sand/captured_slope_data.h",

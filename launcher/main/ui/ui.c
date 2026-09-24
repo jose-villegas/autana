@@ -122,10 +122,8 @@ draw_text_command(const mu_Command* cmd, ui_transform_t t) {
         return;
     }
 
-    if (ui_text_style == UI_TEXT_OUTLINED && font->bpp == 1) {
-        /* gfx_text_font_halo() draws the same halo ui_text_passes()'s
-         * 8 unit-offset copies would, in one pass instead of eight -
-         * see its own comment. Ink is still drawn last, unchanged. */
+    if (ui_text_style == UI_TEXT_OUTLINED) {
+        /* Ink follows the halo so the outline does not cover glyphs. */
         const gfx_color_t halo_color = mu_color_to_gfx(halo);
         const gfx_color_t ink_color = mu_color_to_gfx(ink);
         gfx_text_font_halo(mx, my, cmd->text.str, halo_color, scale, quarter, font);

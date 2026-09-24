@@ -19,27 +19,20 @@ flashable even when startup fails.
 If the board becomes unreachable, BOOT has to be held at the moment power
 arrives - so what produces that moment decides the procedure.
 
-**No battery fitted**, where unplugging USB really does remove power:
+| # | No battery fitted | Battery fitted |
+|---|---|---|
+| 1. | Unplug USB-C | **Long-press PWR** (~10 s), USB-C still plugged in, until the COM port disappears |
+| 2. | **Hold BOOT** | **Hold BOOT** |
+| 3. | Plug USB-C back in, still holding | **Press PWR**, still holding |
+| 4. | Keep holding ~2 s, release | Keep holding ~2 s, release |
 
-1. Unplug USB-C
-2. **Hold BOOT**
-3. Plug USB-C back in while still holding
-4. Keep holding ~2 s, release
+**With a battery fitted, unplugging USB never power-cycles the board**, and
+fails silently: the AXP2101 keeps the rail up from the battery, so the SoC
+carries its stuck state through every replug. Only the PMU cuts a
+battery-backed rail.
 
-**With a battery fitted, that sequence cannot work**, and it fails silently
-rather than reporting anything: the AXP2101 keeps the rail up from the battery,
-so unplugging USB never power-cycles the SoC and step 3 delivers no power-on at
-all. The chip carries its stuck state through every replug. Power off through
-the PMU instead, which is the only thing that cuts a battery-backed rail:
-
-1. **Long-press PWR** (~10 s) until it powers off - the COM port disappearing
-   is what proves the rail actually dropped; without that, this step did nothing
-2. **Hold BOOT**
-3. **Press PWR** to power on, still holding
-4. Keep holding ~2 s, release
-
-That forces the ROM bootloader regardless of firmware state. Confirm you are in
-download mode with:
+Either sequence forces the ROM bootloader regardless of firmware state.
+Confirm you are in download mode with:
 
 ```bash
 esptool.py --chip esp32s3 -p <PORT> --before no_reset flash_id
@@ -48,23 +41,83 @@ esptool.py --chip esp32s3 -p <PORT> --before no_reset flash_id
 Connecting almost instantly (a few dots) means the chip is sitting in the
 bootloader.
 
-**After flashing this way, the board will not boot on its own** — `--after
-hard_reset` uses the same non-functional RTS reset, so it stays in download
-mode, silent, running nothing. **`--after watchdog_reset` starts it from
-there**, tripping the SoC's own watchdog instead of the RTS line, and needs
-nobody at the bench - verified from the ROM bootloader on this board, which
-`hard_reset` cannot restart. A power cycle works too, but with a battery that
-means the PWR sequence above rather than a replug.
+From there `autana flash` still boots the new image on its own. Every restart
+`device.py` makes starts with esptool's RTS pulse, which USB Serial/JTAG stays
+up through, so the whole boot log - BUILD_ID included - is heard. A chip in
+download mode ignores RTS and says nothing; **when a capture after that reset
+hears nothing at all, `reset_and_capture()` restarts the board with `--after
+watchdog_reset`**, which trips the SoC's own watchdog. `flash`, `reset
+--capture` and `selftest` all go through it. Run directly, outside `autana`,
+esptool or `idf.py flash` needs `--after watchdog_reset` or a power cycle to
+start the image.
 
-A restart re-enumerates USB Serial/JTAG, and Windows may hand the board a
-**different COM number** than it had before. Anything holding a port by name
-breaks there; `find_port()` in `scripts/device/device.py` looks it up by
-vendor id `0x303A` each time for that reason.
+A watchdog reset or a power cycle re-enumerates USB Serial/JTAG, and Windows
+may hand the board a **different COM number** than it had before. Anything
+holding a port by name breaks there; `find_port()` in
+`scripts/device/device.py` looks it up by vendor id `0x303A` each time for
+that reason.
+
+That re-enumeration comes late: the first open can get the old handle, which
+reads nothing and raises nothing, so `capture_after_reset()` reopens a handle
+silent for `RESET_FIRST_BYTE_SECONDS` while the reset is younger than
+`RESET_REOPEN_SECONDS`. A release image prints its BUILD_ID about 0.6 s into
+boot and has no console to ask again, so a recovery flash boots but may still
+report itself unverified.
+
+```mermaid
+sequenceDiagram
+    participant Dev as device.py
+    participant Esp as esptool
+    participant Board as board
+    Dev->>Esp: chip_id, after hard_reset
+    Esp->>Board: RTS pulse
+    alt board was running an app
+        Board-->>Dev: whole boot log, BUILD_ID included
+    else chip sat in download mode
+        Note over Dev,Board: nothing heard
+        Dev->>Esp: chip_id, after watchdog_reset
+        Esp->>Board: trip the watchdog
+        Board-->>Dev: USB re-enumerates, early lines lost
+        Dev->>Board: reopen a handle silent since the reset
+        Board-->>Dev: the rest of the boot log
+    end
+```
 
 If it vanishes from USB entirely — no COM port, no device at vendor ID
 `0x303A` — check
 the cable first, then the PWR button: this board's power is managed by an
 **AXP2101 PMIC**, so a long press cuts system power.
+
+### Warm resets at 120 MHz
+
+At 120 MHz PSRAM and flash, a warm reset - esptool's RTS reset, a watchdog, a
+panic, a restart - hangs in the app's PSRAM timing tuning, and repeated, it
+leaves the chip deaf to esptool until a power cycle; a power-on reset boots.
+The cause is not established - flash high-performance mode surviving the
+reset is as likely as PSRAM - so the fix is a workaround:
+`launcher/bootloader_components/pmic_cold_boot/` has the AXP2101 power-cycle
+the SoC whenever the reset was not a power-on.
+
+```mermaid
+sequenceDiagram
+    participant Host
+    participant Boot as 2nd-stage bootloader
+    participant PMIC as AXP2101
+    participant App
+    Host->>Boot: warm reset
+    Boot->>PMIC: I2C, REG 0x10 bit 1, restart
+    PMIC->>Boot: VCC3V3 off and on, PWROK low on CHIP_PU
+    Note over Host,Boot: USB drops, the port goes away
+    Boot->>App: power-on reset this time, so the app loads
+    App->>Host: first BUILD_ID, before the port is back
+    Note over Host,App: USB enumerates again
+    App->>Host: BUILD_ID again, after shell Ready
+```
+
+So the app always starts from, and reports, a power-on reset: after a panic
+or a watchdog the cause shows only in what was logged before it, RTC memory
+does not survive, and a deep-sleep wake would become a full power cycle.
+Nothing in the tree relies on any of those today.
 
 ---
 

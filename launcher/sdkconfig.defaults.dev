@@ -7,6 +7,6 @@
 # does plus the test harness; this file is what gets just the first half.
 #
 # Used by tools/build_flash_dev.sh (or `build_flash.sh --dev`), which builds
-# this into its own build.dev/ so it never overwrites build/ or
-# build.release/.
+# this into its own build.dev/ so it never overwrites the release build in
+# build/.
 CONFIG_LAUNCHER_DEVELOPMENT=y

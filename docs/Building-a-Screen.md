@@ -125,7 +125,7 @@ one app's screen.
 ### More than one text size
 
 `ui_set_font_scaled(gfx_font_ui(), scale)`. The UI font is the 1bpp 8x8
-bitmap, so integer scales stay crisp; an 8bpp atlas font would blur above 1.
+bitmap, so integer scales stay crisp.
 
 **Do not add a render-time global for a UI setting.** Anything read at
 render time is invisible to the repaint hash and needs `ui_invalidate()` on

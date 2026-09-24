@@ -186,6 +186,11 @@ fi
 # does not build is caught here rather than on the board.
 "$TEST_DIR/check_app_sources.sh"
 
+# The bootloader hook lives outside SOURCES too - a separate header world
+# entirely, so it gets its own standalone binary rather than joining the
+# suites above.
+"$TEST_DIR/check_pmic_cold_boot.sh"
+
 OUT="$BUILD_DIR/host_tests"
 
 # Every suite calls RUN_TEST(func) directly; timing.h intercepts that macro

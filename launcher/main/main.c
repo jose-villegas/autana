@@ -917,6 +917,11 @@ app_main_loop(void) {
         app_count++;
     }
     ESP_LOGI(TAG, "Ready, %d app%s registered", app_count, app_count == 1 ? "" : "s");
+    /* Again, for a host that lost the port: after a PMIC cold restart, USB
+     * Serial/JTAG enumerates only about 0.7 s into the new boot, after
+     * app_boot_init()'s print. */
+    printf("BUILD_ID=%s\n", BUILD_ID);
+    fflush(stdout);
 
     while (1) {
         const int64_t now_us = esp_timer_get_time();

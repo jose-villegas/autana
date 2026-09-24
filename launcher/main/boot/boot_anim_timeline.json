@@ -24,8 +24,6 @@
         "grid_ceiling_max": 96,
         "grid_max": 64,
         "pen_finish_ms": 4800,
-        "wave_start_ms": 4200,
-        "wave_end_ms": 5800,
         "grid_spokes": 4,
         "grid_spoke_dash": 1,
         "grid_spoke_start_ms": 2300,
@@ -41,7 +39,6 @@
         "title_shadow_alpha": 128,
         "title_wave_out_ms": 3200,
         "title_wave_fade_ms": 1500,
-        "title_font": 1,
         "title_scale": 5
     },
     "camera_focal": 512,

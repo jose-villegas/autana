@@ -9,9 +9,9 @@ not a fixed COM number, and opens it at 115200 with DTR and RTS low.
 sequenceDiagram
     participant App as autana
     participant Dev as device.py
-    participant Lock as lock file, system temp folder
-    participant Port as the port, VID 0x303A
-    participant Bash as Git for Windows bash.exe
+    participant Lock as lock file
+    participant Port as USB port
+    participant Bash as Git bash
     participant Flash as build_flash.sh
 
     App->>Dev: owner, purpose
@@ -19,10 +19,10 @@ sequenceDiagram
     Dev->>Port: wait for the port
 
     alt send, screenshot, run-suite, listen
-        Dev->>Port: open serial, 115200,<br/>DTR/RTS low
+        Dev->>Port: open serial
         Dev->>Port: talk to the running firmware
     else flash, batch, selftest
-        Dev->>Bash: run build_flash.sh,<br/>AUTANA_DEVICE_LOCK_TOKEN set
+        Dev->>Bash: run with AUTANA_DEVICE_LOCK_TOKEN
         Bash->>Flash: run it
         Note over Flash: refuses to flash without<br/>device.py's lock token
         Dev->>Port: reset the board
@@ -123,9 +123,13 @@ reports (report_boot_anim_perf.sh) call it.
 `flash`, `run-suite`, `selftest`, `batch`, `listen`, and `reset` take the lock before
 they touch the board, keep it through their whole operation, and renew it
 every 30 seconds. `reset` reboots with esptool and returns once the port is
-back. `reset --capture` and `selftest` then reopen the port for their capture,
-and again if it vanishes mid-capture, so what the board prints while USB
-re-enumerates may be lost. `selftest` builds the diagnostics+autorun image and
+back. `reset --capture`, `selftest` and `flash`'s `BUILD_ID` check then
+reopen the port for their capture: again if it vanishes mid-capture, and
+again - within `RESET_REOPEN_SECONDS` of the reset only - if
+`RESET_FIRST_BYTE_SECONDS` pass without a byte, the stale handle a watchdog
+reset can leave. A board that says nothing at all after the RTS reset is
+restarted through the watchdog and captured again. What the board prints
+while USB re-enumerates may be lost. `selftest` builds the diagnostics+autorun image and
 captures the boot-time run of every registered suite until
 SELFTEST_COMPLETE; `autana selftest` calls it, and so does
 `launcher/tools/device_report.sh` for a report with no single named suite
@@ -134,9 +138,9 @@ report calls `batch --suite X --runs 1 --out PATH` instead, the same
 build-then-capture-under-one-lock shape scoped to one suite and run. The
 default wait is ten minutes; pass `--wait 0` to return immediately when the
 board is busy. `flash` resets with esptool, then compares the boot
-`BUILD_ID` with `launcher/build.<variant>/build_id.txt`. Until an engine build
-provides either value, the command reports the image as unverified instead of
-claiming success. `run-suite` stops at the shell's `RUNSUITE_COMPLETE
+`BUILD_ID` with the `BUILD_ID=` line `build_flash.sh` printed into the flash
+log. When either value is missing, the command reports the image as
+unverified instead of claiming success. `run-suite` stops at the shell's `RUNSUITE_COMPLETE
 name=<suite>` line (or an older build's `SUITE_DONE`), or after its
 non-`shell:` output is idle. A port that disappears mid-capture ends it as
 `port lost` with what was read kept, so a `batch` carries on with its next
@@ -222,7 +226,7 @@ python scripts/device/device_lock.py --port COM5 release --token <token>
 The acquire result prints the token as JSON. Releasing requires that token, so
 one owner cannot release another owner's active lock.
 
-When the maintainer needs the board, record the reservation before using it -
+To reserve the board, record the reservation before using it -
 `autana hand <note>`, or `hand-to-human` directly for an active lock's own
 token:
 
@@ -233,7 +237,7 @@ python scripts/device/device.py --owner maintainer hand-to-human --token <token>
 When a session holds the board, its token releases that lock before the command
 creates the human reservation. Without an active lock, omit `--token` (what
 `autana hand` always does). The reservation appears in `status` and prevents
-future acquisitions. After the maintainer is done, clear it explicitly -
+future acquisitions. When the reservation is no longer needed, clear it -
 `autana take-back`, or:
 
 ```powershell
@@ -242,6 +246,46 @@ python scripts/device/device.py --port COM5 --owner maintainer take-back
 
 This clears the reservation and prints the resulting lock status. The lower-level
 `device_lock.py --port COM5 clear-human` command remains available for recovery.
+
+## Lock events
+
+Set `AUTANA_LOCK_HOOK` to a shell command to run when the lock changes. The
+command receives these environment variables: `AUTANA_LOCK_EVENT`,
+`AUTANA_LOCK_PORT`, `AUTANA_LOCK_OWNER`, `AUTANA_LOCK_PURPOSE`, and
+`AUTANA_LOCK_NOTE`. Purpose is empty for human reservations; note carries the
+reclaim reason for `lost` and the reservation note for human events. The
+command runs through `cmd.exe` on Windows (`%VAR%`) and
+`/bin/sh` elsewhere (`$VAR`); a script that reads the variables works on both.
+Hooks run in separate processes and are not ordered across them, so one
+holder's `released` can arrive after the next holder's `acquired`. A hook has
+a three second timeout. A failed or timed out hook prints one warning and
+never changes the lock operation's outcome.
+
+| Event | When |
+|---|---|
+| `acquired` | A ticket takes the lock, including reclaiming a stale lock. |
+| `released` | The holder gives up the lock. |
+| `waiting` | A ticket begins a real wait for a held or reserved board; once per ticket. |
+| `gave-up` | A waiting ticket leaves without the lock. |
+| `human-reserved` | A human reservation is recorded. |
+| `human-cleared` | A human reservation is cleared. |
+| `lost` | A stale lock is reclaimed; owner and purpose identify its former holder, and note gives the reclaim reason. |
+
+For example, set the hook to `python path/to/board-events.py` and give that
+script either job:
+
+- Tell you the board is free when `AUTANA_LOCK_EVENT` is `released` or
+  `human-cleared`.
+- Append `AUTANA_LOCK_EVENT`, `AUTANA_LOCK_OWNER`, `AUTANA_LOCK_PORT`, and
+  `AUTANA_LOCK_PURPOSE` to a usage log.
+
+The recovery command `device_lock.py` also emits lock and reservation events.
+
+`autana hand --wait <seconds> <note...>` waits without holding the device
+lock; `human-reserved` fires when the reservation is recorded and
+`human-cleared` when it is released. The wait loop emits no additional event.
+Release returns 0, timeout or Ctrl+C returns 3, and a replacement reservation
+returns 4 without clearing it.
 
 ## Related
 
