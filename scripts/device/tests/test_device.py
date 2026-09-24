@@ -927,6 +927,34 @@ class FindElfForBuildIdTests(unittest.TestCase):
         self.assertIsNone(found)
 
 
+class ReadExpectedBuildIdTests(unittest.TestCase):
+    """The id a flash is verified against comes from the directory
+    build_flash.sh built that variant into."""
+
+    def expected_id(self, variant, build_dir):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory)
+            build = worktree / "launcher" / build_dir
+            build.mkdir(parents=True)
+            (build / "build_id.txt").write_text("the-id\n", encoding="ascii")
+            return device.read_expected_build_id(worktree, variant)
+
+    def test_release_is_read_from_the_plain_build_directory(self):
+        self.assertEqual(self.expected_id("release", "build"), "the-id")
+
+    def test_another_variant_is_read_from_its_suffixed_directory(self):
+        self.assertEqual(self.expected_id("diag", "build.diag"), "the-id")
+
+
+class ResetTests(unittest.TestCase):
+    def test_restarts_through_the_watchdog_not_the_rts_line(self):
+        with mock.patch.object(device, "python_with_pyserial", return_value="python"), \
+             mock.patch.object(device.subprocess, "run") as run:
+            device.reset("COM5")
+        command = run.call_args[0][0]
+        self.assertEqual(command[command.index("--after") + 1], "watchdog_reset")
+
+
 class ListenElfResolutionTests(unittest.TestCase):
     """listen() decodes against --elf when given, and otherwise against
     whatever find_elf_for_build_id() resolves from the capture itself."""

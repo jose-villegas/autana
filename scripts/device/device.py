@@ -244,7 +244,7 @@ def latest_build_id_from_bytes(data):
 
 
 def read_expected_build_id(worktree, variant):
-    build_dir = "build." + variant
+    build_dir = "build" if variant == "release" else "build." + variant
     path = Path(worktree) / "launcher" / build_dir / "build_id.txt"
     try:
         return path.read_text(encoding="ascii").strip() or None
@@ -336,8 +336,10 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
 
 
 def reset(port):
+    """The SoC's own watchdog, not esptool's hard_reset: a chip left in
+    download mode by a recovery flash does not restart from RTS."""
     command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
-               "--after", "hard_reset", "chip_id"]
+               "--after", "watchdog_reset", "chip_id"]
     subprocess.run(command, check=True)
 
 
