@@ -456,6 +456,28 @@ class LockCommandTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             autana.hand([])
 
+    def test_hand_forwards_wait_and_note(self):
+        with mock.patch.object(autana.subprocess, "Popen") as called:
+            called.return_value.wait.return_value = 3
+            code = autana.hand(["--wait", "10", "enter", "download", "mode"])
+        self.assertEqual(code, 3)
+        command = called.call_args.args[0]
+        self.assertEqual(command[command.index("--wait") + 1], "10")
+        self.assertEqual(command[command.index("--note") + 1], "enter download mode")
+
+    def test_hand_interrupt_returns_child_timeout_status(self):
+        with mock.patch.object(autana.subprocess, "Popen") as started, \
+             mock.patch("builtins.print") as output:
+            started.return_value.wait.side_effect = [KeyboardInterrupt, 3]
+            code = autana.hand(["--wait", "10", "download mode"])
+        self.assertEqual(code, 3)
+        started.return_value.terminate.assert_not_called()
+        output.assert_not_called()
+
+    def test_hand_rejects_wait_without_seconds(self):
+        with self.assertRaises(SystemExit):
+            autana.hand(["--wait", "enter mode"])
+
     def test_take_back_takes_no_arguments(self):
         with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
             code = autana.take_back([])

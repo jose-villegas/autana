@@ -281,6 +281,12 @@ script either job:
 
 The recovery command `device_lock.py` also emits lock and reservation events.
 
+`autana hand --wait <seconds> <note...>` waits without holding the device
+lock; `human-reserved` fires when the reservation is recorded and
+`human-cleared` when it is released. The wait loop emits no additional event.
+Release returns 0, timeout or Ctrl+C returns 3, and a replacement reservation
+returns 4 without clearing it.
+
 ## Related
 
 - [Autana-CLI.md](Autana-CLI.md) - the interactive `autana` command built on
