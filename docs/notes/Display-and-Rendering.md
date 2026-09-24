@@ -559,18 +559,18 @@ kept here so the reasoning survives to whoever picks one up.
 
 `ROW_MAX_RUNS`/`LEAF_REFINE_MAX_RUNS` (2 and 2) and `GATHER_MAX_PIXELS`
 (8192) were swept against both synthetic device tests and the three real
-sand scenes the present-cost tests measure. All three stay at their
-shipped values: the run caps are structurally inert against real scenes
-(a checkerboard row needs the full-row fallback regardless of the cap, a
-slab row needs one run either way, and no real scene falls between those
-two shapes), and raising the pixel cap buys a further 5-9% only by
+sand scenes the present-cost tests measure, all of them portrait. All three
+stay at their shipped values: the run caps are structurally inert against
+those scenes (a checkerboard row needs the full-row fallback regardless of
+the cap, a slab row needs one run either way, and no measured scene falls
+between those two shapes), and raising the pixel cap buys a further 5-9% only by
 growing the DMA gather buffer to match, against the internal free heap
 left once the sand grid and everything else internal are accounted for
 (the framebuffer lives in PSRAM and never competes for it - see
 [Board-and-Memory.md](Board-and-Memory.md)). The dirty-region tracker
 itself is at its ceiling against an uncapped oracle - within 3% of the
-exact changed-cell ideal on every scene measured - so the one real win
-left was a missing third send path: a box spanning the
+exact changed-cell ideal on every portrait scene measured (landscape is
+unmeasured) - so the one real win left was a missing third send path: a box spanning the
 full panel width is already contiguous in the framebuffer and can go out
 directly, rather than through the fixed gather buffer or a full 64-row
 band. That path (`send_partial_band()` in `gfx.c`) cut falling-sand and
