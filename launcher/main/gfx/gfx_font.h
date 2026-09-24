@@ -6,17 +6,8 @@
  * table can be built and tested without the panel - see gfx_color.h's own
  * top comment for why that split matters on this project.
  *
- * Two fonts exist: the 8x8 bitmap in font8x8_basic.h, wrapped below as
- * gfx_font_8x8 so it is an ordinary entry in this scheme rather than a
- * special case something else routes around, and an 8bpp coverage atlas
- * with anti-aliasing and real proportional advances - generated from a TTF
- * by tools/gen_font.py, e.g. main/gfx/fonts/font_lmroman_40.h. `bpp` is a
- * field and advances are per-glyph-capable so an atlas font like that slots
- * in as an ordinary gfx_font_t with no change here. See gfx.c's
- * draw_glyph_font() for how a bpp==8 atlas is actually drawn (blended, not
- * masked); this file stays pure metrics, no drawing, so both fonts'
- * widths/advances/heights are computable and testable on a host with
- * neither gfx.h nor a framebuffer.
+ * The 8x8 bitmap in font8x8_basic.h is wrapped below as gfx_font_8x8.
+ * This file keeps font metrics pure and host-testable without a framebuffer.
  */
 #pragma once
 
@@ -30,13 +21,9 @@
  * which codepoints it covers, and cursor advance per glyph. `atlas` is
  * const so it lands in flash at zero RAM. Glyphs are packed cell by
  * cell from `first`; a 1bpp glyph is `cell_h` bytes, one per row, bit 0
- * (LSB) the LEFTMOST pixel - see gfx_font_8x8 below. An 8bpp coverage
- * atlas uses `cell_w * cell_h` bytes per glyph, one byte per pixel,
- * row-major, 0..255 background to ink - see tools/gen_font.py and
- * gfx.c's draw_glyph_font(). */
+ * (LSB) the LEFTMOST pixel - see gfx_font_8x8 below. */
 typedef struct {
     const uint8_t* atlas;   /* glyph bitmaps, cell by cell */
-    uint8_t bpp;            /* 1 = bitmask (gfx_font_8x8); 8 = coverage */
     uint8_t cell_w, cell_h; /* one glyph's cell, in atlas pixels */
     uint8_t first;          /* first codepoint the atlas covers */
     uint16_t count;         /* how many glyphs follow it, from `first` */
@@ -54,7 +41,6 @@ typedef struct {
  * internal linkage keeps that safe. */
 static const gfx_font_t gfx_font_8x8 = {
     .atlas = (const uint8_t*)font8x8_basic,
-    .bpp = 1,
     .cell_w = 8,
     .cell_h = 8,
     .first = 0,

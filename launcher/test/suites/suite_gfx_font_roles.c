@@ -1,19 +1,6 @@
 /*
- * Portable suite: gfx_font_roles - the accessors, not the fonts behind them.
- *
- * gfx_font_roles.h is deliberately thin: each role is a `static inline`
- * function returning a fixed `&gfx_font_X`, so there is no runtime logic to
- * exercise beyond "does the accessor still return the font its own comment
- * promises." That promise is the whole migration this file guards: every
- * call site gfx_font_ui() replaced (gfx.c, ui.c, boot_anim.c - see
- * gfx_font_roles.h's own top comment) drew with gfx_font_8x8 before the
- * role existed, and this suite is what would turn red if a future edit
- * quietly pointed the role at a different font, which - per that same
- * comment - is a product decision nobody has made yet.
- *
- * gfx.h is deliberately NOT included here, the same reason suite_gfx_font.c
- * does not include it: it pulls in bsp/esp-bsp.h, which does not compile on
- * a host, and gfx_font_roles.h itself only needs gfx_font.h to do its job.
+ * Portable suite for the UI font role's fixed font identity.
+ * gfx.h requires the BSP; gfx_font_roles.h compiles on the host.
  */
 
 #include "suites.h"

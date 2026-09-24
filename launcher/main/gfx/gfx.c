@@ -1176,8 +1176,6 @@ gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha
     }
 
     if (!band_render_active) {
-        /* An 8bpp font draws one coverage pixel per call through here
-         * (draw_rotated_font_pixel_blend()). */
         mark_fill(x0, y0, x1, y1);
     }
 }
@@ -1304,116 +1302,38 @@ gfx_text_scaled(int x, int y, const char* text, gfx_color_t color, int scale) {
     gfx_text_turned(x, y, text, color, scale, 0);
 }
 
-/* One glyph pixel, solid. Coverage varies per pixel in an 8bpp atlas, so
- * draw_glyph_font()'s 8bpp path still draws one at a time; its 1bpp path
- * batches runs instead (gfx_font_row_run_rect()). */
-static void
-draw_rotated_font_pixel(const gfx_font_t* font, int x, int y, int row, int col, int scale, int turn,
-                        gfx_color_t color) {
-    int px, py;
-    switch (turn) {
-        case 1:
-            px = font->cell_h - 1 - row;
-            py = col;
-            break;
-        case 2:
-            px = font->cell_w - 1 - col;
-            py = font->cell_h - 1 - row;
-            break;
-        case 3:
-            px = row;
-            py = font->cell_w - 1 - col;
-            break;
-        default:
-            px = col;
-            py = row;
-            break;
-    }
-    gfx_fill_rect(x + px * scale, y + py * scale, scale, scale, color);
-}
-
-/* 8bpp atlas; 0-255 coverage; blends via gfx_fill_rect_blend() instead of
- * solid. */
-static void
-draw_rotated_font_pixel_blend(const gfx_font_t* font, int x, int y, int row, int col, int scale, int turn,
-                              gfx_color_t color, uint8_t coverage) {
-    int px, py;
-    switch (turn) {
-        case 1:
-            px = font->cell_h - 1 - row;
-            py = col;
-            break;
-        case 2:
-            px = font->cell_w - 1 - col;
-            py = font->cell_h - 1 - row;
-            break;
-        case 3:
-            px = row;
-            py = font->cell_w - 1 - col;
-            break;
-        default:
-            px = col;
-            py = row;
-            break;
-    }
-    gfx_fill_rect_blend(x + px * scale, y + py * scale, scale, scale, color, coverage);
-}
-
-/* Draws `font` glyph or nothing if `ch` is out of range or `font->bpp`
- * unsupported. Use separate loops for layouts. */
+/* Draws `font` glyph or nothing if `ch` is out of range. */
 static void
 draw_glyph_font(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_color_t color, int scale, int turn) {
     if (ch < font->first || (unsigned)(ch - font->first) >= font->count) {
         return;
     }
 
-    if (font->bpp == 1) {
-        /* One filled rect per coalesced box of set bits, not one per run
-         * per row - gfx_font_glyph_run_boxes() merges a vertical stroke's
-         * identical run across every row it spans into one box, so
-         * gfx_font_run_box_rect() covers it with one gfx_fill_rect() call
-         * regardless of which glyph axis a turn maps onto the screen's
-         * narrow one. */
-        gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
-        const int n = gfx_font_glyph_run_boxes(font, ch, boxes, GFX_FONT_RUN_BOXES_MAX);
-        for (int i = 0; i < n; i++) {
-            int rx, ry, rw, rh;
-            gfx_font_run_box_rect(font, x, y, boxes[i].row0, boxes[i].row1, boxes[i].col0, boxes[i].col1, scale, turn,
-                                  &rx, &ry, &rw, &rh);
-            gfx_fill_rect(rx, ry, rw, rh, color);
-        }
-        return;
-    }
-
-    if (font->bpp == 8) {
-        const size_t cell_pixels = (size_t)font->cell_w * font->cell_h;
-        const uint8_t* glyph = font->atlas + (size_t)(ch - font->first) * cell_pixels;
-
-        for (int row = 0; row < font->cell_h; row++) {
-            const uint8_t* glyph_row = glyph + (size_t)row * font->cell_w;
-            for (int col = 0; col < font->cell_w; col++) {
-                const uint8_t coverage = glyph_row[col];
-                if (coverage == 0) {
-                    continue;
-                }
-                draw_rotated_font_pixel_blend(font, x, y, row, col, scale, turn, color, coverage);
-            }
-        }
-        return;
+    /* One filled rect per coalesced box of set bits, not one per run
+     * per row - gfx_font_glyph_run_boxes() merges a vertical stroke's
+     * identical run across every row it spans into one box, so
+     * gfx_font_run_box_rect() covers it with one gfx_fill_rect() call
+     * regardless of which glyph axis a turn maps onto the screen's
+     * narrow one. */
+    gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
+    const int n = gfx_font_glyph_run_boxes(font, ch, boxes, GFX_FONT_RUN_BOXES_MAX);
+    for (int i = 0; i < n; i++) {
+        int rx, ry, rw, rh;
+        gfx_font_run_box_rect(font, x, y, boxes[i].row0, boxes[i].row1, boxes[i].col0, boxes[i].col1, scale, turn, &rx,
+                              &ry, &rw, &rh);
+        gfx_fill_rect(rx, ry, rw, rh, color);
     }
 }
 
-/* draw_glyph_font()'s bpp==1 path, halo variant: each run is
+/* draw_glyph_font()'s halo variant: each run is
  * gfx_font_row_run_rect_dilated() instead of gfx_font_row_run_rect() -
  * see that function's own comment for why this covers the same area as
- * UI_TEXT_OUTLINED's 8 unit-offset copies. Never called for a bpp==8
- * font - see gfx_text_font_halo()'s own comment. */
+ * UI_TEXT_OUTLINED's 8 unit-offset copies. */
 static void
 draw_glyph_font_halo(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_color_t color, int scale, int turn) {
     if (ch < font->first || (unsigned)(ch - font->first) >= font->count) {
         return;
     }
-    assert(font->bpp == 1);
 
     gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
     const int n = gfx_font_glyph_run_boxes(font, ch, boxes, GFX_FONT_RUN_BOXES_MAX);
@@ -1473,9 +1393,7 @@ gfx_text_turned(int x, int y, const char* text, gfx_color_t color, int scale, in
 
 /* gfx_text_font()'s own loop, drawing each character's halo
  * (draw_glyph_font_halo()) rather than its ink - see gfx.h's own comment.
- * UI_TEXT_OUTLINED is the only caller and only ever styles gfx_font_ui(),
- * a bpp==1 font - draw_glyph_font_halo() asserts that rather than
- * drawing a bpp==8 font's halo wrong. */
+ * UI_TEXT_OUTLINED is the only caller and only ever styles gfx_font_ui(). */
 void
 gfx_text_font_halo(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
                    const gfx_font_t* font) {
@@ -1553,39 +1471,18 @@ draw_glyph_font_dither(const gfx_font_t* font, int x, int y, unsigned char ch, g
         return;
     }
 
-    if (font->bpp == 1) {
-        const uint8_t* glyph = font->atlas + (size_t)(ch - font->first) * font->cell_h;
+    const uint8_t* glyph = font->atlas + (size_t)(ch - font->first) * font->cell_h;
 
-        for (int row = 0; row < font->cell_h; row++) {
-            const uint8_t bits = glyph[row];
-            if (bits == 0) {
-                continue;
-            }
-            for (int col = 0; col < font->cell_w; col++) {
-                if (bits & (1 << col)) {
-                    draw_rotated_font_pixel_dither(font, x, y, row, col, scale, turn, color, alpha);
-                }
+    for (int row = 0; row < font->cell_h; row++) {
+        const uint8_t bits = glyph[row];
+        if (bits == 0) {
+            continue;
+        }
+        for (int col = 0; col < font->cell_w; col++) {
+            if (bits & (1 << col)) {
+                draw_rotated_font_pixel_dither(font, x, y, row, col, scale, turn, color, alpha);
             }
         }
-        return;
-    }
-
-    if (font->bpp == 8) {
-        const size_t cell_pixels = (size_t)font->cell_w * font->cell_h;
-        const uint8_t* glyph = font->atlas + (size_t)(ch - font->first) * cell_pixels;
-
-        for (int row = 0; row < font->cell_h; row++) {
-            const uint8_t* glyph_row = glyph + (size_t)row * font->cell_w;
-            for (int col = 0; col < font->cell_w; col++) {
-                const uint8_t coverage = glyph_row[col];
-                if (coverage == 0) {
-                    continue;
-                }
-                const uint8_t folded = coverage < alpha ? coverage : alpha;
-                draw_rotated_font_pixel_dither(font, x, y, row, col, scale, turn, color, folded);
-            }
-        }
-        return;
     }
 }
 

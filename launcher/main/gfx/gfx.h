@@ -143,8 +143,7 @@ void gfx_fill_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t
  * untouched, 255 is pixel-identical to gfx_fill_rect(), everything
  * between is a real per-channel blend). Unlike every other fill here,
  * this one READS the destination pixel first - affordable for
- * text-sized areas (this exists for an 8bpp coverage-atlas font), NOT
- * for full-frame work - see gfx_blit_dither() for why a full-frame
+ * text-sized areas, not for full-frame work. See gfx_blit_dither() for why a full-frame
  * composite dithers instead. */
 void gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha);
 
@@ -240,11 +239,7 @@ gfx_text_height(void) {
 
 /* The single font-aware drawing path gfx_text(), gfx_text_scaled() and
  * gfx_text_turned() all delegate to, passing gfx_font_ui(). Same
- * (x, y)-is-the-first-glyph's-cell and turn convention. Draws bpp==1
- * (1-bit mask) and bpp==8 (8-bit coverage atlas) glyphs; anything else is
- * silently skipped rather than drawn wrong - see draw_glyph_font()'s own
- * comment in gfx.c for why those are the only two layouts with a defined
- * meaning. */
+ * (x, y)-is-the-first-glyph's-cell and turn convention. */
 void gfx_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
                    const gfx_font_t* font);
 
@@ -259,8 +254,7 @@ void gfx_text_font_dither(int x, int y, const char* text, gfx_color_t color, int
 /* gfx_text_font(), but draws each run one pixel wider on every side
  * instead of its own ink - the halo UI_TEXT_OUTLINED (ui_style.h) casts,
  * in one pass instead of eight unit-offset copies of gfx_text_font()
- * itself. Only bpp==1 fonts (gfx_font_row_run_rect_dilated()'s own
- * comment): the caller still draws the ink pass afterwards, unchanged. */
+ * itself. The caller still draws the ink pass afterwards, unchanged. */
 void gfx_text_font_halo(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
                         const gfx_font_t* font);
 
