@@ -264,7 +264,7 @@ def print_suite_output(data, record_path, command, reason, verbose):
     if verbose and text:
         print(text, end="" if text.endswith("\n") else "\n")
     passed, failed = count_suite_results(data)
-    unused_passed, unused_failed, failures = device_report.parse_suite_results(text)
+    _, _, failures = device_report.parse_suite_results(text)
     print(f"{command} results: {passed} PASS, {failed} FAIL")
     for name, message in failures[:MAX_PRINTED_FAILURES]:
         print(f"{name}: {message}" if message else name)
