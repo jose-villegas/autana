@@ -4,8 +4,8 @@
 #
 #   . "$(dirname "$0")/idf.sh"
 #   idf_init "/path/to/launcher" || exit $?
-#   idf -B build.release build       || exit $?
-#   idf -B build.release -p <PORT> flash || exit $?
+#   idf -B build build               || exit $?
+#   idf -B build -p <PORT> flash     || exit $?
 #
 # WHY THIS EXISTS
 #

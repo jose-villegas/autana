@@ -123,9 +123,13 @@ reports (report_boot_anim_perf.sh) call it.
 `flash`, `run-suite`, `selftest`, `batch`, `listen`, and `reset` take the lock before
 they touch the board, keep it through their whole operation, and renew it
 every 30 seconds. `reset` reboots with esptool and returns once the port is
-back. `reset --capture` and `selftest` then reopen the port for their capture,
-and again if it vanishes mid-capture, so what the board prints while USB
-re-enumerates may be lost. `selftest` builds the diagnostics+autorun image and
+back. `reset --capture`, `selftest` and `flash`'s `BUILD_ID` check then
+reopen the port for their capture: again if it vanishes mid-capture, and
+again - within `RESET_REOPEN_SECONDS` of the reset only - if
+`RESET_FIRST_BYTE_SECONDS` pass without a byte, the stale handle a watchdog
+reset can leave. A board that says nothing at all after the RTS reset is
+restarted through the watchdog and captured again. What the board prints
+while USB re-enumerates may be lost. `selftest` builds the diagnostics+autorun image and
 captures the boot-time run of every registered suite until
 SELFTEST_COMPLETE; `autana selftest` calls it, and so does
 `launcher/tools/device_report.sh` for a report with no single named suite
@@ -134,9 +138,9 @@ report calls `batch --suite X --runs 1 --out PATH` instead, the same
 build-then-capture-under-one-lock shape scoped to one suite and run. The
 default wait is ten minutes; pass `--wait 0` to return immediately when the
 board is busy. `flash` resets with esptool, then compares the boot
-`BUILD_ID` with `launcher/build.<variant>/build_id.txt`. Until an engine build
-provides either value, the command reports the image as unverified instead of
-claiming success. `run-suite` stops at the shell's `RUNSUITE_COMPLETE
+`BUILD_ID` with the `BUILD_ID=` line `build_flash.sh` printed into the flash
+log. When either value is missing, the command reports the image as
+unverified instead of claiming success. `run-suite` stops at the shell's `RUNSUITE_COMPLETE
 name=<suite>` line (or an older build's `SUITE_DONE`), or after its
 non-`shell:` output is idle. A port that disappears mid-capture ends it as
 `port lost` with what was read kept, so a `batch` carries on with its next
