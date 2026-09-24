@@ -1,97 +1,13 @@
 #!/usr/bin/env python3
 """autana - terminal commands for the autana engine repo.
 
-    autana                          a console session with the device: type "help" in it
+    autana                  a console session with the device
+    autana help [topic]     the commands, grouped; a topic is a group or a command
 
-    autana flash [rel|dev|diag] [--quiet] [--perf-scope]
-                                    build and flash the worktree you are in (dev when omitted);
-                                    the build and flash output streams here, --quiet leaves it
-                                    in the log file only. --perf-scope, with diag, builds the
-                                    perf-scoped image and is left on the board with no suite run.
-
-    autana monitor [seconds] [--elf PATH]
-                                    print what the board says, for 60 seconds when omitted.
-                                    Any crash address seen is decoded against PATH's symbols;
-                                    with no PATH, the build directory whose own build_id.txt
-                                    matches the capture's BUILD_ID, if one does.
-    autana reset [--capture [seconds]]
-                                    reboot the board and wait for its USB serial port. --capture
-                                    also prints and records the boot console, for 20 seconds when omitted.
-    autana suite <name> [seconds]   run one registered suite and print what it prints. A
-                                    diagnostics build serves these with no rebuild and no
-                                    reflash, and only one built WITHOUT autorun ever reaches
-                                    the prompt to be asked.
-    autana suite list [text]        the suites this worktree registers, read from its
-                                    sources; [text] keeps the names containing it
-    autana selftest [seconds]       build the diagnostics+autorun image and run every suite
-                                    this worktree registers, on the device - can take
-                                    minutes; 3000 seconds when omitted.
-    autana batch <suite> [<suite> ...] [--runs N] [--perf-scope]
-                                    flash the diagnostics image once and capture the given
-                                    suites --runs times (3 when omitted) under one lock, so
-                                    no other session can flash between two captures of the
-                                    same image; writes one summary across every run
-
-    autana tune [text]              the numbers a development build lets you change, live,
-                                    with their ranges; [text] keeps the names containing it
-    autana tune <name>              one of them, or - when the name is not exactly one of
-                                    them - the same filtered listing as [text]. A name may
-                                    be given without its owner when that is unambiguous:
-                                    trail for ridge.trail.
-    autana tune <name> <value>      change one on the running device - no build, no flash,
-                                    and nothing kept across a reboot
-    autana tune reset <name>        back to the value the source declares
-    autana tune save                write the device's current values into the TUNE(...)
-                                    lines of the worktree you are in, so they are what
-                                    the next build - and release - is made with
-
-    autana screenshot [--as-shown|--framebuffer] [-o PATH]
-                                    a landscape image of the board by default; --as-shown
-                                    applies the device orientation and --framebuffer keeps
-                                    stored pixels, with PATH.png plus PATH.json
-    autana freeze                   stop the frame loop where it is
-    autana resume                   let the frame loop run again
-    autana step [N]                 advance N frames while frozen (1 when N is omitted)
-    autana touch <down|up> <x> <y>  inject a touch-controller sample
-    autana tap <x> <y>              tap at a point (50 ms when omitted)
-    autana press <x> <y> [ms]       hold at a point (1000 ms when omitted)
-    autana drag <x0> <y0> <x1> <y1> <ms>
-                                    drag between points over ms
-    autana imu <ax> <ay> <az>       inject raw accelerometer counts
-    autana imu release              hand back to the sensor
-    autana button <boot|power> [short|long]
-                                    inject a physical-button event
-    autana apps                     list registered apps and the running one
-    autana open <name>              open an app by case-insensitive prefix
-    autana home                     return to the launcher
-
-    autana buildid                  the BUILD_ID the board answers with, so what is
-                                    running can be checked against what was flashed.
-                                    A development build has the console that answers;
-                                    a release one has none.
-    autana id                       the name this autana holds the board under, and the
-                                    pid it is: autana-cli@<pid in base36>. It is what
-                                    "autana monitor" shows waiting when two sessions
-                                    want the board, and what to look for in the task
-                                    list when one will not let go.
-    autana status                   who, if anyone, holds the board right now, and who
-                                    else is waiting
-    autana release <token>          release a lock this session holds, before its own
-                                    command would have - the token is what that command
-                                    printed when it acquired it
-    autana hand <note>              reserve the board for a maintainer sitting at it;
-                                    autana refuses new work against it until take-back
-    autana take-back                clear a reservation "hand" made, freeing the board
-    autana help                     this
-
-Run from any folder of any autana worktree - what a command acts on is the
-worktree you are standing in, not the checkout this file came from. Anything
-that touches the board goes through scripts/device/device.py, which takes
-the device lock; nothing here opens the serial port itself.
-
-The launchers are tools/autana and tools/autana.cmd, and
-scripts/add-tools-to-path.sh puts tools/ on the PATH. The commands are
-documented in docs/tools/Autana-CLI.md.
+Run from any folder of any autana worktree: a command acts on the worktree
+you are standing in. Anything that touches the board goes through
+scripts/device/device.py, which takes the device lock. The command list is
+COMMAND_GROUPS at the end of this file; docs/tools/Autana-CLI.md mirrors it.
 """
 
 import gzip
@@ -104,6 +20,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import namedtuple
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools"))
@@ -892,31 +809,6 @@ def save():
     return 0
 
 
-CONSOLE_HELP = """  tune [text]              list the tunables (names containing text)
-  tune <name>              show one, or the same filtered list when the name is not exactly one
-  tune <name> <value>      change it on the device
-  tune reset <name>        back to the value the source declares
-  tune save                write the device's values into this worktree's source
-  screenshot [--as-shown|--framebuffer] [-o PATH]
-  freeze                   stop the frame loop where it is
-  resume                   let the frame loop run again
-  step [N]                 advance N frames while frozen (1 when omitted)
-  touch <down|up> <x> <y>  stand in for the touch controller
-  imu <ax> <ay> <az>       stand in for the IMU, raw counts
-  flash [rel|dev|diag]     build and flash this worktree
-  monitor [seconds]        print what the board says
-  suite <name> [secs]      run one registered suite on the board
-  suite list [text]        the suites this worktree registers
-  selftest [seconds]       build diagnostics+autorun and run every suite on the board
-  batch <suite> ...        flash once, capture suites --runs times under one lock
-  buildid                  what the board says it is running
-  id                       what the device lock calls this session, and its pid
-  status                   who, if anyone, holds the board
-  release <token>          release a lock this session holds
-  hand <note>              reserve the board for a maintainer at it
-  take-back                clear a reservation `hand` made
-  help, quit"""
-
 
 def forward(line, verb):
     """A line no autana command recognises, sent to the device as typed -
@@ -956,7 +848,7 @@ def console(_args=None):
             return 0
         try:
             if verb == "help":
-                print(CONSOLE_HELP)
+                print(help_text(rest, prefix=""))
             elif verb in COMMANDS and verb != "console":
                 COMMANDS[verb](rest)
             else:
@@ -968,12 +860,104 @@ def console(_args=None):
                 print(stop.code)
 
 
-COMMANDS = {"flash": flash, "tune": tune, "monitor": monitor, "reset": reset, "suite": suite, "console": console,
-            "id": identify, "buildid": buildid, "screenshot": screenshot, "freeze": freeze,
-            "resume": resume, "step": step, "touch": touch, "tap": tap, "press": press, "drag": drag,
-            "imu": imu, "button": button, "apps": apps, "open": open_app, "home": home, "selftest": selftest,
-            "batch": batch, "status": status, "release": release, "hand": hand,
-            "take-back": take_back}
+Command = namedtuple("Command", "name handler usages")
+
+# (key, title, commands). `autana help <key>` shows one group; each usage is
+# (synopsis without "autana ", one line of what it does).
+COMMAND_GROUPS = (
+    ("build", "Build and flash", (
+        Command("flash", flash, (
+            ("flash [rel|dev|diag] [--quiet] [--perf-scope]", "build and flash this worktree; dev when omitted"),)),
+        Command("buildid", buildid, (
+            ("buildid [--json]", "the BUILD_ID the board is running"),)),
+    )),
+    ("tests", "Tests", (
+        Command("suite", suite, (
+            ("suite <name> [seconds] [--verbose]", "run one registered suite on the board"),
+            ("suite list [text] [--json]", "the suites this worktree registers"))),
+        Command("selftest", selftest, (
+            ("selftest [seconds] [--verbose]", "build diagnostics+autorun, run every suite on the board"),)),
+        Command("batch", batch, (
+            ("batch <suite>... [--runs N] [--perf-scope] [--verbose]",
+             "flash once, capture the suites N times under one lock"),)),
+    )),
+    ("watch", "Watch the board", (
+        Command("monitor", monitor, (
+            ("monitor [seconds] [--elf PATH]", "print what the board says; 60 s when omitted"),)),
+        Command("reset", reset, (
+            ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
+        Command("screenshot", screenshot, (
+            ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),)),
+    )),
+    ("input", "Drive input", (
+        Command("tap", tap, (("tap <x> <y>", "tap a point"),)),
+        Command("press", press, (("press <x> <y> [ms]", "hold a point; 1000 ms when omitted"),)),
+        Command("drag", drag, (("drag <x0> <y0> <x1> <y1> <ms>", "drag between two points"),)),
+        Command("touch", touch, (("touch <down|up> <x> <y>", "one raw touch level; up hands back"),)),
+        Command("imu", imu, (
+            ("imu <ax> <ay> <az>", "raw accelerometer counts"),
+            ("imu release", "hand back to the sensor"))),
+        Command("button", button, (("button <boot|power> [short|long]", "press a board button"),)),
+    )),
+    ("apps", "Apps", (
+        Command("apps", apps, (("apps [--json]", "the registered apps, and which is running"),)),
+        Command("open", open_app, (("open <name>", "enter an app; case-insensitive prefix"),)),
+        Command("home", home, (("home", "back to the launcher"),)),
+    )),
+    ("frames", "Frame loop", (
+        Command("freeze", freeze, (("freeze", "stop the frame loop"),)),
+        Command("resume", resume, (("resume", "run it again"),)),
+        Command("step", step, (("step [N]", "advance N frames while frozen; 1 when omitted"),)),
+    )),
+    ("tune", "Tunables", (
+        Command("tune", tune, (
+            ("tune [text] [--json]", "list the tunables, names containing text"),
+            ("tune <name> [value]", "show one, or set it on the board"),
+            ("tune reset <name>", "back to the value the source declares"),
+            ("tune save", "write the board's values into this worktree's TUNE() lines"))),
+    )),
+    ("lock", "Sharing the board", (
+        Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
+        Command("id", identify, (("id [--json]", "the name this session holds the lock under"),)),
+        Command("release", release, (("release <token>", "release a lock this session holds"),)),
+        Command("hand", hand, (("hand <note>", "reserve the board for a person at it"),)),
+        Command("take-back", take_back, (("take-back", "clear that reservation"),)),
+    )),
+)
+
+COMMANDS = {command.name: command.handler
+            for _, _, commands in COMMAND_GROUPS for command in commands}
+COMMANDS["console"] = console
+HELP_TOPICS = [key for key, _, _ in COMMAND_GROUPS] + [
+    command.name for _, _, commands in COMMAND_GROUPS for command in commands]
+USAGE_WIDTH = 34
+
+
+def help_text(args, prefix="autana "):
+    """Every group, or the one group or command `args` names."""
+    topic = args[0] if args else None
+    lines = []
+    for key, title, commands in COMMAND_GROUPS:
+        if topic not in (None, key):
+            commands = [command for command in commands if command.name == topic]
+            if not commands:
+                continue
+        lines.append(f"{title} ({key})")
+        for command in commands:
+            for synopsis, summary in command.usages:
+                usage = prefix + synopsis
+                if len(usage) > USAGE_WIDTH:
+                    lines.append(f"  {usage}")
+                    usage = ""
+                lines.append(f"  {usage:{USAGE_WIDTH}}  {summary}")
+        lines.append("")
+    if not lines:
+        return f"no command or group '{topic}'; groups: " + ", ".join(
+            key for key, _, _ in COMMAND_GROUPS)
+    if topic is None:
+        lines.append(f"{prefix}help [topic]  one group or command"
+                     + ("" if prefix else "; quit leaves the session"))
+    return "\n".join(lines).rstrip()
 
 
 def completion_candidates(line, prefix):
@@ -984,9 +968,9 @@ def completion_candidates(line, prefix):
         parts = line.split()
         if line and line[-1].isspace():
             parts.append("")
-        if len(parts) != 2 or parts[0] != "flash":
+        if len(parts) != 2 or parts[0] not in ("flash", "help"):
             return []
-        words = VARIANTS
+        words = VARIANTS if parts[0] == "flash" else HELP_TOPICS
     return sorted(word for word in words if word.startswith(prefix))
 
 
@@ -1021,7 +1005,7 @@ def main():
     if len(sys.argv) < 2:
         sys.exit(console())
     if sys.argv[1] in ("help", "--help", "-h"):
-        print(__doc__.strip())
+        print(help_text(sys.argv[2:]))
         sys.exit(0)
     if sys.argv[1] not in COMMANDS:
         # A one-shot the same as a forwarded line in a session (forward()'s
