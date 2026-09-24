@@ -12,6 +12,8 @@ import time
 import uuid
 from pathlib import Path
 
+import device_hook
+
 
 DEFAULT_STALE_SECONDS = 600
 GUARD_STALE_SECONDS = 30
@@ -182,6 +184,12 @@ class LockStore:
         return self.now() - lock["heartbeat_at"] > stale_seconds
 
     def claim(self, port, ticket, expected_build_id, stale_seconds=DEFAULT_STALE_SECONDS):
+        held = self._claim(port, ticket, expected_build_id, stale_seconds)
+        if held:
+            device_hook.emit("acquired", port, held["owner"], held["purpose"])
+        return held
+
+    def _claim(self, port, ticket, expected_build_id, stale_seconds):
         with self.guard(port):
             self.prune_crashed_waiters(port)
             pending = self.tickets(port)
@@ -221,10 +229,14 @@ class LockStore:
                 stale_seconds=DEFAULT_STALE_SECONDS):
         ticket = self.enqueue(port, owner, purpose)
         deadline = self.now() + wait
+        waiting = False
         while True:
             held = self.claim(port, ticket, expected_build_id, stale_seconds)
             if held:
                 return held
+            if not waiting:
+                device_hook.emit("waiting", port, owner, purpose)
+                waiting = True
             if self.now() >= deadline:
                 self.cancel(port, ticket)
                 return None
@@ -234,7 +246,13 @@ class LockStore:
         with self.guard(port):
             (self.queue_dir(port) / (ticket + ".json")).unlink(missing_ok=True)
 
-    def heartbeat(self, port, token):
+    def heartbeat(self, port, token, owner="", purpose=""):
+        alive = self._heartbeat(port, token)
+        if not alive and owner:
+            device_hook.emit("lost", port, owner, purpose)
+        return alive
+
+    def _heartbeat(self, port, token):
         with self.guard(port):
             lock = self.read_json(self.lock_path(port))
             if not lock or lock["token"] != token:
@@ -253,12 +271,18 @@ class LockStore:
             return True
 
     def release(self, port, token):
+        lock = self._release(port, token)
+        if lock:
+            device_hook.emit("released", port, lock["owner"], lock["purpose"])
+        return bool(lock)
+
+    def _release(self, port, token):
         with self.guard(port):
             lock = self.read_json(self.lock_path(port))
             if not lock or lock["token"] != token:
-                return False
+                return None
             self.lock_path(port).unlink(missing_ok=True)
-            return True
+            return lock
 
     def set_human(self, port, owner, note):
         with self.guard(port):
@@ -267,10 +291,14 @@ class LockStore:
                 "owner": owner,
                 "since_at": self.now(),
             })
+        device_hook.emit("human-reserved", port, owner, note=note)
 
     def clear_human(self, port):
         with self.guard(port):
+            human = self.read_json(self.human_path(port))
             self.human_path(port).unlink(missing_ok=True)
+        if human:
+            device_hook.emit("human-cleared", port, human["owner"], note=human["note"])
 
     def status(self, port):
         with self.guard(port):
