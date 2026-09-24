@@ -143,8 +143,7 @@ void gfx_fill_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t
  * untouched, 255 is pixel-identical to gfx_fill_rect(), everything
  * between is a real per-channel blend). Unlike every other fill here,
  * this one READS the destination pixel first - affordable for
- * text-sized areas (this exists for an 8bpp coverage-atlas font), NOT
- * for full-frame work - see gfx_blit_dither() for why a full-frame
+ * text-sized areas, not for full-frame work. See gfx_blit_dither() for why a full-frame
  * composite dithers instead. */
 void gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha);
 

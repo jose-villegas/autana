@@ -41,7 +41,6 @@
         "title_shadow_alpha": 128,
         "title_wave_out_ms": 3200,
         "title_wave_fade_ms": 1500,
-        "title_font": 1,
         "title_scale": 5
     },
     "camera_focal": 512,

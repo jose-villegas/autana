@@ -265,11 +265,10 @@ needs no marking of its own. The rule only bites code writing through
 `gfx_mark_dirty()`, and forgetting shows up as stale pixels rather than a
 crash.
 
-**Marking must be cheap.** `gfx_text_scaled()` calls `gfx_fill_rect()` once
-per set font pixel, so marking runs thousands of times on a screen of text.
-Routing that through the public entry point, with its re-clipping and call
-overhead, cost about 5% of the launcher's framerate; an inlined helper on the
-already-clipped path fixed it.
+**Marking must be cheap.** Dithered text can call `gfx_fill_rect_dither()`
+once per set font pixel, so marking runs thousands of times on a screen of
+text. The already-clipped path uses an inlined helper to avoid repeated
+clipping and call overhead.
 
 On the simulation side the same dirty information answers "what needs
 redrawing" as well as "what needs sending", which is the point of the
@@ -404,7 +403,7 @@ signatures; the actual tracking state and logic moved into
 `gfx/gfx_dirty.h`, and `gfx.c` implements the three public functions as
 thin wrappers around it. That header is deliberately *not* a matching
 `.c`/`.h` pair despite being the natural first instinct: marking sits on
-the drawing primitives' hot path (an 8bpp or dithered glyph marks once per
+the drawing primitives' hot path (a dithered glyph marks once per
 set font pixel), and routing it through a real cross-translation-
 unit call costs about 5% of the launcher's framerate - see "Marking must
 be cheap" above. A separate `.c` file would put it right back behind

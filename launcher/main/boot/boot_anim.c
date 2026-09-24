@@ -34,7 +34,6 @@
 #include "boot/boot_anim_image.h"
 #include "build_variant.h"
 #include "display/display.h"
-#include "gfx/fonts/font_lmroman_40.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
 #include "util/fixed.h"
@@ -611,10 +610,7 @@ draw_title(uint32_t now_ms, uint8_t ink) {
      * colour, the same way the photograph under it does. */
     const bool dissolve = ending_backdrop != NULL && ink < 255;
     const gfx_color_t c = dissolve ? COL_WHITE : gfx_color_mix(COL_BG, COL_WHITE, ink);
-    /* See BOOT_ANIM_TITLE_FONT. Default 0 uses 40px Computer Modern; 1 uses
-     * 8x8 bitmap. Use gfx_font_ui() for flexibility. gfx_font_lmroman_40 for
-     * linker drop. */
-    const gfx_font_t* font = (BOOT_ANIM_TITLE_FONT == BOOT_ANIM_TITLE_FONT_8X8) ? gfx_font_ui() : &gfx_font_lmroman_40;
+    const gfx_font_t* font = gfx_font_ui();
     const int glyph_w = gfx_font_width(font, "A", -1, BOOT_ANIM_TITLE_SCALE);
     const int glyph_h = gfx_font_height(font, BOOT_ANIM_TITLE_SCALE);
     char one[2] = {0, 0};
