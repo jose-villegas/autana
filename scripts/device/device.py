@@ -243,14 +243,6 @@ def latest_build_id_from_bytes(data):
     return matches[-1].group(1).decode("ascii", "replace") if matches else None
 
 
-def read_expected_build_id(worktree, variant):
-    build_dir = "build" if variant == "release" else "build." + variant
-    path = Path(worktree) / "launcher" / build_dir / "build_id.txt"
-    try:
-        return path.read_text(encoding="ascii").strip() or None
-    except FileNotFoundError:
-        return None
-
 
 def count_suite_results(data):
     results = SUITE_RESULT.findall(data)
@@ -286,7 +278,7 @@ class HeldLock:
 
 
 def capture(connection, output, max_seconds, idle_seconds, expected_build_id=None,
-            suite_name=None, append=False):
+            suite_name=None, append=False, first_byte_seconds=None):
     data = bytearray()
     pending = b""
     seen_build_id = None
@@ -304,7 +296,10 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
                 # then; what was read is still a capture worth reporting.
                 return bytes(data), "port lost"
             if not chunk:
-                if idle_seconds is not None and time.monotonic() - last_non_shell >= idle_seconds:
+                quiet = time.monotonic() - last_non_shell
+                if not data and first_byte_seconds is not None and quiet >= first_byte_seconds:
+                    return bytes(data), "silent"
+                if idle_seconds is not None and quiet >= idle_seconds:
                     return bytes(data), "idle"
                 continue
             data.extend(chunk)
@@ -348,13 +343,18 @@ def reset_and_capture(port, output, seconds, idle_seconds, expected_build_id=Non
     return capture_after_reset(port, output, seconds, idle_seconds, expected_build_id)
 
 
+RESET_FIRST_BYTE_SECONDS = 2
+RESET_REOPEN_SECONDS = 10
+
+
 def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=None):
     """Any reset re-enumerates USB Serial/JTAG and kills an open handle, so no
     capture spans the reset: what the board prints before the port reopens is
     lost. A watchdog reset re-enumerates late enough that the first open can
-    get the old handle, which reads nothing rather than failing; a capture
-    that went idle without a byte is reopened for that reason."""
-    deadline = time.monotonic() + seconds
+    get the old handle, which reads nothing rather than failing, so for a short
+    window after the reset a handle silent from the start is reopened."""
+    started = time.monotonic()
+    deadline = started + seconds
     data = bytearray()
     append = False
     first_reopen = True
@@ -374,16 +374,21 @@ def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=N
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return bytes(data), "timeout"
+            in_reopen_window = not data and time.monotonic() - started < RESET_REOPEN_SECONDS
             part, reason = capture(connection, output, remaining, idle_seconds,
-                                   expected_build_id, append=append)
+                                   expected_build_id, append=append,
+                                   first_byte_seconds=RESET_FIRST_BYTE_SECONDS
+                                   if in_reopen_window else None)
         data.extend(part)
         append = True
-        silent_since_reset = reason == "idle" and not data
-        if reason != "port lost" and not silent_since_reset:
+        if reason not in ("port lost", "silent"):
             return bytes(data), reason
         if time.monotonic() >= deadline:
-            return bytes(data), "port lost"
-        print("reset capture lost the port; reopening", file=sys.stderr)
+            return bytes(data), reason
+        if reason == "silent":
+            print("reset capture read nothing since the reset; reopening", file=sys.stderr)
+        else:
+            print("reset capture lost the port; reopening", file=sys.stderr)
 
 
 def reset_device(args, store, port):
@@ -483,12 +488,8 @@ def find_elf_for_build_id(worktree, build_id):
     return None
 
 
-BOOT_IDLE_SECONDS = 2
-
-
 def boot_build_id(port, seconds=12, expected_build_id=None):
-    data, reason = capture_after_reset(port, os.devnull, seconds, BOOT_IDLE_SECONDS,
-                                       expected_build_id)
+    data, reason = capture_after_reset(port, os.devnull, seconds, 2, expected_build_id)
     actual = latest_build_id_from_bytes(data)
     if actual:
         return actual, reason
@@ -541,17 +542,19 @@ def flash(args, store, port, held_lock=None, extra_flags=()):
         # forge one by guessing.
         environment["AUTANA_DEVICE_LOCK_TOKEN"] = held.held["token"]
         build_id = None
+        expected = None
         error = None
         try:
             with open(log, "wb") as stream:
                 subprocess.run(command, cwd=worktree, stdin=subprocess.DEVNULL,
                                stdout=stream, stderr=subprocess.STDOUT, check=True,
                                env=environment)
-            expected = read_expected_build_id(worktree, args.variant)
+            expected = latest_build_id_from_bytes(Path(log).read_bytes())
             if expected:
                 store.set_expected_build_id(port, held.held["token"], expected)
             else:
-                print("build id is unverified: build_id.txt is absent", file=sys.stderr)
+                print("build id is unverified: the build log has no BUILD_ID",
+                      file=sys.stderr)
             reset(port)
             actual, reason = boot_build_id(port, expected_build_id=expected)
             if not expected or not actual:
@@ -569,7 +572,7 @@ def flash(args, store, port, held_lock=None, extra_flags=()):
             record_capture(log, managed, started_at=started_at, port=port, owner=args.owner,
                            purpose=args.purpose, command="flash", build_id=build_id,
                            worktree=str(worktree), commit=git_commit(worktree), error=error)
-        return build_id or read_expected_build_id(worktree, args.variant)
+        return build_id or expected
 
 
 def run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
