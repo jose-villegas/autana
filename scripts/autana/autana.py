@@ -1,101 +1,18 @@
 #!/usr/bin/env python3
 """autana - terminal commands for the autana engine repo.
 
-    autana                          a console session with the device: type "help" in it
+    autana                  a console session with the device
+    autana help [topic]     the commands, grouped; a topic is a group or a command
 
-    autana flash [rel|dev|diag] [--quiet] [--perf-scope]
-                                    build and flash the worktree you are in (dev when omitted);
-                                    the build and flash output streams here, --quiet leaves it
-                                    in the log file only. --perf-scope, with diag, builds the
-                                    perf-scoped image and is left on the board with no suite run.
-
-    autana monitor [seconds] [--elf PATH]
-                                    print what the board says, for 60 seconds when omitted.
-                                    Any crash address seen is decoded against PATH's symbols;
-                                    with no PATH, the build directory whose own build_id.txt
-                                    matches the capture's BUILD_ID, if one does.
-    autana reset [--capture [seconds]]
-                                    reboot the board and wait for its USB serial port. --capture
-                                    also prints and records the boot console, for 20 seconds when omitted.
-    autana suite <name> [seconds]   run one registered suite and print what it prints. A
-                                    diagnostics build serves these with no rebuild and no
-                                    reflash, and only one built WITHOUT autorun ever reaches
-                                    the prompt to be asked.
-    autana suite list [text]        the suites this worktree registers, read from its
-                                    sources; [text] keeps the names containing it
-    autana selftest [seconds]       build the diagnostics+autorun image and run every suite
-                                    this worktree registers, on the device - can take
-                                    minutes; 3000 seconds when omitted.
-    autana batch <suite> [<suite> ...] [--runs N] [--perf-scope]
-                                    flash the diagnostics image once and capture the given
-                                    suites --runs times (3 when omitted) under one lock, so
-                                    no other session can flash between two captures of the
-                                    same image; writes one summary across every run
-
-    autana tune [text]              the numbers a development build lets you change, live,
-                                    with their ranges; [text] keeps the names containing it
-    autana tune <name>              one of them, or - when the name is not exactly one of
-                                    them - the same filtered listing as [text]. A name may
-                                    be given without its owner when that is unambiguous:
-                                    trail for ridge.trail.
-    autana tune <name> <value>      change one on the running device - no build, no flash,
-                                    and nothing kept across a reboot
-    autana tune reset <name>        back to the value the source declares
-    autana tune save                write the device's current values into the TUNE(...)
-                                    lines of the worktree you are in, so they are what
-                                    the next build - and release - is made with
-
-    autana screenshot [--as-shown|--framebuffer] [-o PATH]
-                                    a landscape image of the board by default; --as-shown
-                                    applies the device orientation and --framebuffer keeps
-                                    stored pixels, with PATH.png plus PATH.json
-    autana freeze                   stop the frame loop where it is
-    autana resume                   let the frame loop run again
-    autana step [N]                 advance N frames while frozen (1 when N is omitted)
-    autana touch <down|up> <x> <y>  inject a touch-controller sample
-    autana tap <x> <y>              tap at a point (50 ms when omitted)
-    autana press <x> <y> [ms]       hold at a point (1000 ms when omitted)
-    autana drag <x0> <y0> <x1> <y1> <ms>
-                                    drag between points over ms
-    autana imu <ax> <ay> <az>       inject raw accelerometer counts
-    autana imu release              hand back to the sensor
-    autana button <boot|power> [short|long]
-                                    inject a physical-button event
-    autana apps                     list registered apps and the running one
-    autana open <name>              open an app by case-insensitive prefix
-    autana home                     return to the launcher
-
-    autana buildid                  the BUILD_ID the board answers with, so what is
-                                    running can be checked against what was flashed.
-                                    A development build has the console that answers;
-                                    a release one has none.
-    autana id                       the name this autana holds the board under, and the
-                                    pid it is: autana-cli@<pid in base36>. It is what
-                                    "autana monitor" shows waiting when two sessions
-                                    want the board, and what to look for in the task
-                                    list when one will not let go.
-    autana status                   who, if anyone, holds the board right now, and who
-                                    else is waiting
-    autana release <token>          release a lock this session holds, before its own
-                                    command would have - the token is what that command
-                                    printed when it acquired it
-    autana hand <note>              reserve the board for a maintainer sitting at it;
-                                    autana refuses new work against it until take-back
-    autana take-back                clear a reservation "hand" made, freeing the board
-    autana help                     this
-
-Run from any folder of any autana worktree - what a command acts on is the
-worktree you are standing in, not the checkout this file came from. Anything
-that touches the board goes through scripts/device/device.py, which takes
-the device lock; nothing here opens the serial port itself.
-
-The launchers are tools/autana and tools/autana.cmd, and
-scripts/add-tools-to-path.sh puts tools/ on the PATH. The commands are
-documented in docs/tools/Autana-CLI.md.
+Run from any folder of any autana worktree: a command acts on the worktree
+you are standing in. Anything that touches the board goes through
+scripts/device/device.py, which takes the device lock. The command list is
+COMMAND_GROUPS at the end of this file; docs/tools/Autana-CLI.md mirrors it.
 """
 
 import gzip
 import importlib
+import json
 import os
 import re
 import shlex
@@ -103,6 +20,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import namedtuple
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools"))
@@ -249,6 +167,10 @@ def seconds_argument(args, default, usage):
 
 def identify(args):
     """What the device lock calls this autana, and the process that is it."""
+    json_output = read_json_flag(args, "usage: autana id [--json]")
+    if json_output:
+        print(json.dumps({"owner": owner(), "pid": os.getpid()}))
+        return 0
     if args:
         sys.exit("usage: autana id")
     print(f"{owner()}   pid {os.getpid()}")
@@ -258,49 +180,91 @@ def identify(args):
 def buildid(args):
     """What the BOARD says it is running, asked of it rather than read out of
     a build directory: the point of the question is whether the two agree."""
-    if args:
-        sys.exit("usage: autana buildid")
+    json_output = read_json_flag(args, "usage: autana buildid [--json]")
     code, replies = send("BUILDID", reply="BUILD_ID", purpose="autana buildid")
     if code != 0 or not replies:
         return code or 1
-    print(replies[-1])
+    if json_output:
+        print(json.dumps(parse_buildid(replies[-1])))
+    else:
+        print(replies[-1])
     return 0
 
 
+def read_json_flag(args, usage):
+    if args == ["--json"]:
+        return True
+    if args:
+        sys.exit(usage)
+    return False
+
+
+def parse_buildid(reply):
+    return {"build_id": reply.removeprefix("BUILD_ID=")}
+
+
 def monitor(args):
-    """The board's console, streamed for a while. The lock is held throughout -
-    listening IS using the board, and two readers of one port interleave.
-    Any crash address seen is decoded against an ELF's symbols - device.py's
-    own `listen` matches the capture's own BUILD_ID to a build directory
-    when `--elf` is not given, rather than guessing the newest one on disk."""
+    """A terminal gets the live stream; a pipe or script gets only the error
+    lines and the verdict, and must say how long to listen so it cannot hang.
+    device.py decodes crashes using --elf or the capture's BUILD_ID."""
     elf = None
     rest = list(args)
+    usage = "usage: autana monitor [seconds] [--follow] [--stream] [--elf PATH]"
     if "--elf" in rest:
         index = rest.index("--elf")
         if index + 1 >= len(rest):
-            sys.exit("usage: autana monitor [seconds] [--elf PATH]")
+            sys.exit(usage)
         elf = rest[index + 1]
         del rest[index:index + 2]
-    seconds = seconds_argument(rest, 60.0, "usage: autana monitor [seconds] [--elf PATH]")
+    follow = "--follow" in rest
+    if follow:
+        rest.remove("--follow")
+    stream = "--stream" in rest
+    if stream:
+        rest.remove("--stream")
+    if follow and rest:
+        sys.exit(usage)
+    seconds = seconds_argument(rest, None, usage) if not follow else None
+    terminal = sys.stdout.isatty()
+    if seconds is None and not follow:
+        if not terminal:
+            print(usage, file=sys.stderr)
+            raise SystemExit(2)
+        follow = True
     command = device_command(
         "--owner", owner(),
-        "listen", "--seconds", str(seconds), "--purpose", "autana monitor",
+        "listen", "--purpose", "autana monitor",
     )
+    command += ["--follow"] if follow else ["--seconds", str(seconds)]
+    if terminal or stream:
+        command.append("--echo")
     if elf:
         command += ["--elf", elf]
-    return subprocess.call(command)
+    process = subprocess.Popen(command)
+    interrupted = False
+    # Ctrl+C reaches device.py too; it saves the capture before exiting.
+    while True:
+        try:
+            return process.wait()
+        except KeyboardInterrupt:
+            if interrupted:
+                return 130
+            interrupted = True
 
 
 def reset(args):
-    """Reboot the board, optionally printing and recording its boot console."""
+    """Reboot the board, optionally recording its boot console."""
     capture = False
     rest = list(args)
+    verbose = "--verbose" in rest
+    if verbose:
+        rest.remove("--verbose")
     if "--capture" in rest:
         rest.remove("--capture")
         capture = True
-    seconds = seconds_argument(rest, None, "usage: autana reset [--capture [seconds]]")
+    seconds = seconds_argument(rest, None, "usage: autana reset [--capture [seconds]] [--verbose]")
     if rest and not capture:
-        sys.exit("usage: autana reset [--capture [seconds]]")
+        sys.exit("usage: autana reset [--capture [seconds]] [--verbose]")
     command = device_command(
         "--owner", owner(),
         "reset", "--purpose", "autana reset",
@@ -309,6 +273,8 @@ def reset(args):
         command += ["--capture"]
         if seconds is not None:
             command += ["--seconds", str(seconds)]
+    if verbose:
+        command.append("--verbose")
     return subprocess.call(command)
 
 
@@ -316,17 +282,24 @@ def selftest(args):
     """Build+flash the diagnostics+autorun image and run every suite this
     worktree registers, on the device. Can take minutes - the full run's
     own budget, not a bug in this command."""
-    seconds = seconds_argument(args, 3000.0, "usage: autana selftest [seconds]")
+    rest = list(args)
+    verbose = "--verbose" in rest
+    if verbose:
+        rest.remove("--verbose")
+    seconds = seconds_argument(rest, 3000.0, "usage: autana selftest [seconds] [--verbose]")
     worktree = engine_worktree()
     print(f"autana selftest: every suite, {worktree}", flush=True)
-    return subprocess.call(device_command(
+    command = device_command(
         "--owner", owner(),
         "selftest", "--worktree", worktree, "--max-seconds", str(seconds),
         "--purpose", "autana selftest",
-    ))
+    )
+    if verbose:
+        command.append("--verbose")
+    return subprocess.call(command)
 
 
-BATCH_USAGE = "usage: autana batch <suite> [<suite> ...] [--runs N] [--perf-scope]"
+BATCH_USAGE = "usage: autana batch <suite> [<suite> ...] [--runs N] [--perf-scope] [--verbose]"
 
 
 def batch(args):
@@ -335,7 +308,7 @@ def batch(args):
     sequence of separate `suite` calls on a shared board. Always the
     diagnostics image: a suite only exists to run in one, so a variant
     choice here would only ever have one real answer."""
-    suites, runs, perf_scope = [], "3", False
+    suites, runs, perf_scope, verbose = [], "3", False, False
     rest = list(args)
     while rest:
         arg = rest.pop(0)
@@ -343,6 +316,8 @@ def batch(args):
             runs = rest.pop(0)
         elif arg == "--perf-scope":
             perf_scope = True
+        elif arg == "--verbose":
+            verbose = True
         elif arg.startswith("--"):
             sys.exit(BATCH_USAGE)
         else:
@@ -360,14 +335,43 @@ def batch(args):
         command += ["--suite", suite_name]
     if perf_scope:
         command.append("--perf-scope")
+    if verbose:
+        command.append("--verbose")
     return subprocess.call(command)
 
 
 def status(args):
     """Who, if anyone, holds the board right now - and who is waiting."""
-    if args:
-        sys.exit("usage: autana status")
-    return subprocess.call(device_command("status"))
+    if not read_json_flag(args, "usage: autana status [--json]"):
+        return subprocess.call(device_command("status"))
+    result = subprocess.run(device_command("status"), capture_output=True, text=True)
+    if result.returncode != 0:
+        print(result.stderr, end="", file=sys.stderr)
+        return result.returncode
+    print(json.dumps(parse_status(result.stdout)))
+    return 0
+
+
+def parse_status(reply):
+    lines = reply.splitlines()
+    waiting = next((line[len("waiting: "):].split(", ") for line in lines
+                    if line.startswith("waiting: ")), [])
+    first = lines[0] if lines else "unlocked"
+    if first.startswith("held by "):
+        match = re.fullmatch(r"held by (.+) for (.+) since (\d+)", first)
+        if match:
+            owner_name, purpose, acquired_at = match.groups()
+            return {"state": "held", "owner": owner_name, "purpose": purpose,
+                    "acquired_at": int(acquired_at), "waiting": waiting}
+    if first.startswith("human reservation: "):
+        match = re.fullmatch(r"human reservation: (.+?): (.*) \((\d+)s ago\)", first)
+        if match:
+            owner_name, note, age = match.groups()
+            return {"state": "human", "owner": owner_name, "note": note,
+                    "age_seconds": int(age), "waiting": waiting}
+    if first == "unlocked":
+        return {"state": "unlocked", "waiting": waiting}
+    raise ValueError(f"unrecognized device status: {first}")
 
 
 def release(args):
@@ -403,8 +407,10 @@ def suite_list(args):
     itself where it is defined and the board serves no listing verb, so there
     is nowhere else to ask. A name is runnable once a build carrying it is on
     the board - which variant and scope was flashed decides that, not this."""
+    json_output = "--json" in args
+    args = [arg for arg in args if arg != "--json"]
     if len(args) > 1:
-        sys.exit("usage: autana suite list [text]")
+        sys.exit("usage: autana suite list [text] [--json]")
     wanted = args[0].lower() if args else ""
     worktree = Path(engine_worktree())
 
@@ -418,14 +424,19 @@ def suite_list(args):
             found[name] = (source.relative_to(worktree).as_posix(), bool(on_request),
                            "#ifdef DEVICE_BUILD" in text)
 
-    shown = sorted(name for name in found if wanted in name.lower())
-    for name in shown:
-        where, on_request, device_only = found[name]
+    shown = [{"name": name, "source": found[name][0], "on_request": found[name][1],
+              "device_only": found[name][2]} for name in sorted(found) if wanted in name.lower()]
+    if json_output:
+        print(json.dumps({"suites": shown}))
+        return 0
+    for row in shown:
+        name, where = row["name"], row["source"]
+        on_request, device_only = row["on_request"], row["device_only"]
         marks = "".join([" [on request]" if on_request else "", " [device]" if device_only else ""])
         print(f"  {name}{marks}\n      {where}")
     kept = f" matching '{wanted}'" if wanted else ""
     print(f"{len(shown)} suite(s){kept}")
-    if any(found[name][1] for name in shown):
+    if any(row["on_request"] for row in shown):
         print("[on request] is left out of a full run: asking for it by name is the only way it runs")
     return 0
 
@@ -438,14 +449,21 @@ def suite(args):
     if args[0] == "list":
         return suite_list(args[1:])
     name, rest = args[0], args[1:]
+    rest = list(rest)
+    verbose = "--verbose" in rest
+    if verbose:
+        rest.remove("--verbose")
     # A perf row can sit silent for minutes; the cap is how long to wait for
     # the whole suite, not how long a quiet stretch inside one may last.
-    seconds = seconds_argument(rest, 600.0, "usage: autana suite <name> [seconds]")
+    seconds = seconds_argument(rest, 600.0, "usage: autana suite <name> [seconds] [--verbose]")
     print(f"autana suite: {name}", flush=True)
-    return subprocess.call(device_command(
+    command = device_command(
         "--owner", owner(),
         "run-suite", name, "--max-seconds", str(seconds), "--purpose", f"autana suite {name}",
-    ))
+    )
+    if verbose:
+        command.append("--verbose")
+    return subprocess.call(command)
 
 
 # A console line is asked from a prompt somebody is sitting at: a board another
@@ -624,11 +642,22 @@ def button(args):
 
 
 def apps(args):
-    if args:
-        sys.exit("usage: autana apps")
+    json_output = read_json_flag(args, "usage: autana apps [--json]")
     code, replies = send("APPS", reply="APPS", until=["APPS_END"], purpose="autana apps")
-    print("\n".join(reply for reply in replies if reply.startswith("APPS ")))
+    if not json_output:
+        print("\n".join(reply for reply in replies if reply.startswith("APPS ")))
+    elif code == 0:
+        print(json.dumps({"apps": parse_apps(replies)}))
     return code
+
+
+def parse_apps(replies):
+    rows = []
+    for reply in replies:
+        match = re.fullmatch(r"APPS name=(.*) running=([01])", reply)
+        if match:
+            rows.append({"name": match[1], "running": match[2] == "1"})
+    return rows
 
 
 def open_app(args):
@@ -652,6 +681,10 @@ def tunables():
     code, replies = send("TUNE")
     if code != 0:
         sys.exit(code)
+    return parse_tunables(replies)
+
+
+def parse_tunables(replies):
     rows = []
     for reply in replies:
         if not reply.startswith("TUNE ") or "=" not in reply:
@@ -661,6 +694,12 @@ def tunables():
         rows.append((name, fields[name], fields.get("min", "?"), fields.get("max", "?"),
                      fields.get("default", fields[name])))
     return rows
+
+
+def tune_dict(row):
+    name, value, low, high, default = row
+    return {"name": name, "value": int(value), "min": int(low), "max": int(high),
+            "default": int(default)}
 
 
 def full_name(name):
@@ -715,6 +754,10 @@ def tune(args):
     same listing; a name and a value sets it; `reset`/`save` are recognised
     only in first position, so a tunable actually named that would still be
     reachable through the filtered listing."""
+    json_output = "--json" in args
+    args = [arg for arg in args if arg != "--json"]
+    if json_output and (len(args) > 1 or args and args[0] in ("save", "reset")):
+        sys.exit("usage: autana tune [text] [--json]")
     if args and args[0] == "save":
         if len(args) > 1:
             sys.exit("usage: autana tune save")
@@ -734,7 +777,10 @@ def tune(args):
     if text:
         exact = exact_tune_matches(rows, text)
         shown = exact if len(exact) == 1 else [row for row in rows if text in row[0]]
-    format_tune_rows(shown, text)
+    if json_output:
+        print(json.dumps({"tunables": [tune_dict(row) for row in shown]}))
+    else:
+        format_tune_rows(shown, text)
     return 0
 
 
@@ -788,31 +834,6 @@ def save():
     return 0
 
 
-CONSOLE_HELP = """  tune [text]              list the tunables (names containing text)
-  tune <name>              show one, or the same filtered list when the name is not exactly one
-  tune <name> <value>      change it on the device
-  tune reset <name>        back to the value the source declares
-  tune save                write the device's values into this worktree's source
-  screenshot [--as-shown|--framebuffer] [-o PATH]
-  freeze                   stop the frame loop where it is
-  resume                   let the frame loop run again
-  step [N]                 advance N frames while frozen (1 when omitted)
-  touch <down|up> <x> <y>  stand in for the touch controller
-  imu <ax> <ay> <az>       stand in for the IMU, raw counts
-  flash [rel|dev|diag]     build and flash this worktree
-  monitor [seconds]        print what the board says
-  suite <name> [secs]      run one registered suite on the board
-  suite list [text]        the suites this worktree registers
-  selftest [seconds]       build diagnostics+autorun and run every suite on the board
-  batch <suite> ...        flash once, capture suites --runs times under one lock
-  buildid                  what the board says it is running
-  id                       what the device lock calls this session, and its pid
-  status                   who, if anyone, holds the board
-  release <token>          release a lock this session holds
-  hand <note>              reserve the board for a maintainer at it
-  take-back                clear a reservation `hand` made
-  help, quit"""
-
 
 def forward(line, verb):
     """A line no autana command recognises, sent to the device as typed -
@@ -852,7 +873,7 @@ def console(_args=None):
             return 0
         try:
             if verb == "help":
-                print(CONSOLE_HELP)
+                print(help_text(rest, prefix=""))
             elif verb in COMMANDS and verb != "console":
                 COMMANDS[verb](rest)
             else:
@@ -864,12 +885,104 @@ def console(_args=None):
                 print(stop.code)
 
 
-COMMANDS = {"flash": flash, "tune": tune, "monitor": monitor, "reset": reset, "suite": suite, "console": console,
-            "id": identify, "buildid": buildid, "screenshot": screenshot, "freeze": freeze,
-            "resume": resume, "step": step, "touch": touch, "tap": tap, "press": press, "drag": drag,
-            "imu": imu, "button": button, "apps": apps, "open": open_app, "home": home, "selftest": selftest,
-            "batch": batch, "status": status, "release": release, "hand": hand,
-            "take-back": take_back}
+Command = namedtuple("Command", "name handler usages")
+
+# (key, title, commands). `autana help <key>` shows one group; each usage is
+# (synopsis without "autana ", one line of what it does).
+COMMAND_GROUPS = (
+    ("build", "Build and flash", (
+        Command("flash", flash, (
+            ("flash [rel|dev|diag] [--quiet] [--perf-scope]", "build and flash this worktree; dev when omitted"),)),
+        Command("buildid", buildid, (
+            ("buildid [--json]", "the BUILD_ID the board is running"),)),
+    )),
+    ("tests", "Tests", (
+        Command("suite", suite, (
+            ("suite <name> [seconds] [--verbose]", "run one registered suite on the board"),
+            ("suite list [text] [--json]", "the suites this worktree registers"))),
+        Command("selftest", selftest, (
+            ("selftest [seconds] [--verbose]", "build diagnostics+autorun, run every suite on the board"),)),
+        Command("batch", batch, (
+            ("batch <suite>... [--runs N] [--perf-scope] [--verbose]",
+             "flash once, capture the suites N times under one lock"),)),
+    )),
+    ("watch", "Watch the board", (
+        Command("monitor", monitor, (
+            ("monitor [seconds] [--follow] [--stream] [--elf PATH]", "the console live until Ctrl+C, or for N s"),)),
+        Command("reset", reset, (
+            ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
+        Command("screenshot", screenshot, (
+            ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),)),
+    )),
+    ("input", "Drive input", (
+        Command("tap", tap, (("tap <x> <y>", "tap a point"),)),
+        Command("press", press, (("press <x> <y> [ms]", "hold a point; 1000 ms when omitted"),)),
+        Command("drag", drag, (("drag <x0> <y0> <x1> <y1> <ms>", "drag between two points"),)),
+        Command("touch", touch, (("touch <down|up> <x> <y>", "one raw touch level; up hands back"),)),
+        Command("imu", imu, (
+            ("imu <ax> <ay> <az>", "raw accelerometer counts"),
+            ("imu release", "hand back to the sensor"))),
+        Command("button", button, (("button <boot|power> [short|long]", "press a board button"),)),
+    )),
+    ("apps", "Apps", (
+        Command("apps", apps, (("apps [--json]", "the registered apps, and which is running"),)),
+        Command("open", open_app, (("open <name>", "enter an app; case-insensitive prefix"),)),
+        Command("home", home, (("home", "back to the launcher"),)),
+    )),
+    ("frames", "Frame loop", (
+        Command("freeze", freeze, (("freeze", "stop the frame loop"),)),
+        Command("resume", resume, (("resume", "run it again"),)),
+        Command("step", step, (("step [N]", "advance N frames while frozen; 1 when omitted"),)),
+    )),
+    ("tune", "Tunables", (
+        Command("tune", tune, (
+            ("tune [text] [--json]", "list the tunables, names containing text"),
+            ("tune <name> [value]", "show one, or set it on the board"),
+            ("tune reset <name>", "back to the value the source declares"),
+            ("tune save", "write the board's values into this worktree's TUNE() lines"))),
+    )),
+    ("lock", "Sharing the board", (
+        Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
+        Command("id", identify, (("id [--json]", "the name this session holds the lock under"),)),
+        Command("release", release, (("release <token>", "release a lock this session holds"),)),
+        Command("hand", hand, (("hand <note>", "reserve the board for a person at it"),)),
+        Command("take-back", take_back, (("take-back", "clear that reservation"),)),
+    )),
+)
+
+COMMANDS = {command.name: command.handler
+            for _, _, commands in COMMAND_GROUPS for command in commands}
+COMMANDS["console"] = console
+HELP_TOPICS = [key for key, _, _ in COMMAND_GROUPS] + [
+    command.name for _, _, commands in COMMAND_GROUPS for command in commands]
+USAGE_WIDTH = 34
+
+
+def help_text(args, prefix="autana "):
+    """Every group, or the one group or command `args` names."""
+    topic = args[0] if args else None
+    lines = []
+    for key, title, commands in COMMAND_GROUPS:
+        if topic not in (None, key):
+            commands = [command for command in commands if command.name == topic]
+            if not commands:
+                continue
+        lines.append(f"{title} ({key})")
+        for command in commands:
+            for synopsis, summary in command.usages:
+                usage = prefix + synopsis
+                if len(usage) > USAGE_WIDTH:
+                    lines.append(f"  {usage}")
+                    usage = ""
+                lines.append(f"  {usage:{USAGE_WIDTH}}  {summary}")
+        lines.append("")
+    if not lines:
+        return f"no command or group '{topic}'; groups: " + ", ".join(
+            key for key, _, _ in COMMAND_GROUPS)
+    if topic is None:
+        lines.append(f"{prefix}help [topic]  one group or command"
+                     + ("" if prefix else "; quit leaves the session"))
+    return "\n".join(lines).rstrip()
 
 
 def completion_candidates(line, prefix):
@@ -880,9 +993,9 @@ def completion_candidates(line, prefix):
         parts = line.split()
         if line and line[-1].isspace():
             parts.append("")
-        if len(parts) != 2 or parts[0] != "flash":
+        if len(parts) != 2 or parts[0] not in ("flash", "help"):
             return []
-        words = VARIANTS
+        words = VARIANTS if parts[0] == "flash" else HELP_TOPICS
     return sorted(word for word in words if word.startswith(prefix))
 
 
@@ -917,7 +1030,7 @@ def main():
     if len(sys.argv) < 2:
         sys.exit(console())
     if sys.argv[1] in ("help", "--help", "-h"):
-        print(__doc__.strip())
+        print(help_text(sys.argv[2:]))
         sys.exit(0)
     if sys.argv[1] not in COMMANDS:
         # A one-shot the same as a forwarded line in a session (forward()'s
