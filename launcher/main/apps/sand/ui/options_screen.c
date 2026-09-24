@@ -128,8 +128,7 @@ draw_quality(mu_Context* ctx, const options_screen_layout_t* lay, const sand_men
 
     const int count = labels->quality_count;
     int slider = options_screen_slider_from_quality(menu->draft.quality, count);
-    mu_layout_set_next(ctx, lay->quality_slider, 0);
-    if (ui_slider_int(ctx, &slider, 0, count - 1, 1)) {
+    if (ui_theme_slider_int(ctx, lay->quality_slider, &slider, 0, count - 1, 1, theme)) {
         hits->quality = options_screen_quality_from_slider(slider, count);
     }
 }
@@ -188,9 +187,10 @@ draw_dither(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu
 }
 
 static void
-draw_footer(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu_t* menu, sand_options_hits_t* hits) {
+draw_footer(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu_t* menu, sand_options_t committed,
+            sand_options_hits_t* hits) {
     const ui_theme_t* theme = &sand_ui_theme;
-    const int pending = sand_menu_pending_changes(menu);
+    const int pending = sand_menu_pending_changes(menu, committed);
     char apply_label[24];
     options_screen_apply_label(pending, apply_label, (int)sizeof apply_label);
 
@@ -202,7 +202,8 @@ draw_footer(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu
 }
 
 sand_options_hits_t
-options_screen_draw(mu_Context* ctx, const sand_menu_t* menu, const options_screen_labels_t* labels) {
+options_screen_draw(mu_Context* ctx, const sand_menu_t* menu, sand_options_t committed,
+                    const options_screen_labels_t* labels) {
     sand_options_hits_t hits = SAND_OPTIONS_NO_HITS;
     ui_set_text_style(UI_TEXT_PLAIN);
 
@@ -218,7 +219,7 @@ options_screen_draw(mu_Context* ctx, const sand_menu_t* menu, const options_scre
     }
     draw_quality(ctx, &lay, menu, labels, &hits);
     draw_colour(ctx, &lay, menu, labels, &hits);
-    draw_footer(ctx, &lay, menu, &hits);
+    draw_footer(ctx, &lay, menu, committed, &hits);
     if (sand_menu_dither_applies(menu->draft.color)) {
         draw_dither(ctx, &lay, menu, labels, &hits);
     }

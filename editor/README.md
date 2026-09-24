@@ -29,8 +29,8 @@ flowchart LR
   no JSON, no parser, no layout solver.
 - **Save and Bake are separate**, so a preview edit cannot silently change a
   device build. Both refuse a layout with problems.
-- **The same rules in both places.** Inside the canvas, no overlap, and 44 px
-  at least for an `interactive` element - enforced by the generator at bake
+- **The same rules in both places.** Inside the canvas, no overlap, and `UI_TAP_MIN`
+  (56 px) at least for an `interactive` element - enforced by the generator at bake
   time and by `LayoutDocument` while dragging.
 
 ## Layout

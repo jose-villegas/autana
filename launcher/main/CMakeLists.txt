@@ -19,6 +19,7 @@ set(app_srcs
     "ui/ui.c"
     "ui/system_navigation.c"
     "ui/ui_build.c"
+    "ui/ui_canvas_marks.c"
     "ui/ui_control_center.c"
     "ui/ui_control_center_draw.c"
     "ui/ui_launcher.c"

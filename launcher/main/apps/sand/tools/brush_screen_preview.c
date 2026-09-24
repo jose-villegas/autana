@@ -206,9 +206,9 @@ draw_screen(ui_transform_t t, int screen_w, int screen_h) {
     const int scale = BRUSH_SCREEN_CAPTION_SCALE;
 
     /* Header: swatch, caption/name, info button. */
-    draw_panel(t, lay.header_panel, BRUSH_PANEL_FACE_COLOR, BRUSH_PANEL_BORDER_COLOR);
+    draw_panel(t, lay.header_panel, SAND_THEME_PANEL_FACE_COLOR, SAND_THEME_PANEL_EDGE_COLOR);
     draw_swatch(t, lay.swatch, PREVIEW_MATERIAL);
-    draw_text(t, lay.material_caption, BRUSH_SCREEN_MATERIAL_CAPTION, BRUSH_CAPTION_COLOR, scale, -1);
+    draw_text(t, lay.material_caption, BRUSH_SCREEN_MATERIAL_CAPTION, SAND_THEME_CAPTION_COLOR, scale, -1);
 
     const char* name = material_name(PREVIEW_MATERIAL);
     int name_scale = 4;
@@ -217,9 +217,9 @@ draw_screen(ui_transform_t t, int screen_w, int screen_h) {
             break;
         }
     }
-    draw_text(t, lay.material_name, name, BRUSH_TEXT_COLOR, name_scale, -1);
+    draw_text(t, lay.material_name, name, SAND_THEME_TEXT_COLOR, name_scale, -1);
 
-    draw_bezel(t, lay.info_button, BRUSH_SEG_UNSELECTED_COLOR);
+    draw_bezel(t, lay.info_button, SAND_THEME_BUTTON_FACE_COLOR);
     {
         const mu_Rect icon_r = {
             lay.info_button.x + INFO_ICON_PAD,
@@ -227,19 +227,19 @@ draw_screen(ui_transform_t t, int screen_w, int screen_h) {
             lay.info_button.w - 2 * INFO_ICON_PAD,
             lay.info_button.h - 2 * INFO_ICON_PAD,
         };
-        draw_icon(t, icon_r, &icon_sand_table[ICON_SAND_INFO], BRUSH_TEXT_COLOR);
+        draw_icon(t, icon_r, &icon_sand_table[ICON_SAND_INFO], SAND_THEME_TEXT_COLOR);
     }
 
     /* Brush mode: caption, three segments. */
-    draw_panel(t, lay.mode_panel, BRUSH_PANEL_FACE_COLOR, BRUSH_PANEL_BORDER_COLOR);
-    draw_text(t, lay.mode_caption, BRUSH_SCREEN_MODE_CAPTION, BRUSH_CAPTION_COLOR, scale, -1);
+    draw_panel(t, lay.mode_panel, SAND_THEME_PANEL_FACE_COLOR, SAND_THEME_PANEL_EDGE_COLOR);
+    draw_text(t, lay.mode_caption, BRUSH_SCREEN_MODE_CAPTION, SAND_THEME_CAPTION_COLOR, scale, -1);
 
     for (int i = 0; i < BRUSH_SCREEN_SEGMENT_COUNT; i++) {
         const mu_Rect r = lay.segments[i];
         const char* label = brush_screen_segment_label((brush_screen_segment_t)i);
         const bool selected = ((sand_mode_t)i == PREVIEW_MODE);
-        const uint32_t face = selected ? BRUSH_SEG_SELECTED_COLOR : BRUSH_SEG_UNSELECTED_COLOR;
-        const uint32_t ink = selected ? BRUSH_SEG_SELECTED_INK_COLOR : BRUSH_TEXT_COLOR;
+        const uint32_t face = selected ? SAND_THEME_SELECTED_COLOR : SAND_THEME_BUTTON_FACE_COLOR;
+        const uint32_t ink = selected ? SAND_THEME_ON_SELECTED_COLOR : SAND_THEME_TEXT_COLOR;
 
         draw_bezel(t, r, face);
 
@@ -267,13 +267,13 @@ draw_screen(ui_transform_t t, int screen_w, int screen_h) {
     }
 
     /* Brush size: caption/value, slider. */
-    draw_panel(t, lay.size_panel, BRUSH_PANEL_FACE_COLOR, BRUSH_PANEL_BORDER_COLOR);
-    draw_text(t, lay.size_caption, brush_screen_size_caption((brush_screen_segment_t)PREVIEW_MODE), BRUSH_CAPTION_COLOR,
-              scale, -1);
+    draw_panel(t, lay.size_panel, SAND_THEME_PANEL_FACE_COLOR, SAND_THEME_PANEL_EDGE_COLOR);
+    draw_text(t, lay.size_caption, brush_screen_size_caption((brush_screen_segment_t)PREVIEW_MODE),
+              SAND_THEME_CAPTION_COLOR, scale, -1);
 
     char size_value[8];
     snprintf(size_value, sizeof size_value, "%02u PX", (unsigned)PREVIEW_RADIUS_PX);
-    draw_text(t, lay.size_value, size_value, BRUSH_TEXT_COLOR, scale, 1);
+    draw_text(t, lay.size_value, size_value, SAND_THEME_TEXT_COLOR, scale, 1);
 
     draw_slider(t, lay.slider_track, SAND_UI_RADIUS_MIN, SAND_UI_RADIUS_MAX, PREVIEW_RADIUS_PX);
 }

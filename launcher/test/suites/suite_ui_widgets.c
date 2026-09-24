@@ -31,12 +31,8 @@ static const ui_theme_t THEME = {
 
 static const mu_Rect BUTTON = {40, 100, 240, 60};
 
-typedef enum { DRAW_ICON_BUTTON, DRAW_CHECK_ROW } widget_kind_t;
-
 typedef struct {
-    widget_kind_t kind;
     bool enabled;
-    bool checked;
 } widget_t;
 
 static bool
@@ -44,13 +40,8 @@ widget_frame(const widget_t* w, const input_t* in) {
     ui_begin(in);
     bool hit = false;
     if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        if (w->kind == DRAW_CHECK_ROW) {
-            const ui_widget_button_t row = {.label = "NAME", .enabled = true};
-            hit = ui_check_row(ui_context(), "row", BUTTON, &row, w->checked, &THEME);
-        } else {
-            const ui_widget_button_t b = {.label = "GO", .enabled = w->enabled};
-            hit = ui_icon_button(ui_context(), "button", BUTTON, &b, &THEME);
-        }
+        const ui_widget_button_t b = {.label = "GO", .enabled = w->enabled};
+        hit = ui_icon_button(ui_context(), "button", BUTTON, &b, &THEME);
         mu_end_window(ui_context());
     }
     mu_end(ui_context());
@@ -86,50 +77,15 @@ fixture(void) {
 static void
 test_an_enabled_button_reports_a_tap(void) {
     fixture();
-    const widget_t w = {.kind = DRAW_ICON_BUTTON, .enabled = true};
+    const widget_t w = {.enabled = true};
     TEST_ASSERT_TRUE(tap(&w));
 }
 
 static void
 test_a_disabled_button_takes_no_tap(void) {
     fixture();
-    const widget_t w = {.kind = DRAW_ICON_BUTTON, .enabled = false};
+    const widget_t w = {.enabled = false};
     TEST_ASSERT_FALSE(tap(&w));
-}
-
-static void
-test_a_check_row_reports_a_tap(void) {
-    fixture();
-    const widget_t w = {.kind = DRAW_CHECK_ROW, .checked = false};
-    TEST_ASSERT_TRUE(tap(&w));
-}
-
-/* The text of the only text command the last frame emitted. */
-static const char*
-drawn_text(void) {
-    mu_Command* cmd = NULL;
-    const char* text = NULL;
-    while (mu_next_command(ui_context(), &cmd)) {
-        if (cmd->type == MU_COMMAND_TEXT) {
-            TEST_ASSERT_NULL_MESSAGE(text, "expected one text command");
-            text = cmd->text.str;
-        }
-    }
-    TEST_ASSERT_NOT_NULL(text);
-    return text;
-}
-
-static void
-test_a_check_row_draws_its_mark_before_its_label(void) {
-    fixture();
-    const input_t idle = {0};
-    const widget_t checked = {.kind = DRAW_CHECK_ROW, .checked = true};
-    widget_frame(&checked, &idle);
-    TEST_ASSERT_EQUAL_STRING(UI_CHECK_ON " NAME", drawn_text());
-
-    const widget_t unchecked = {.kind = DRAW_CHECK_ROW, .checked = false};
-    widget_frame(&unchecked, &idle);
-    TEST_ASSERT_EQUAL_STRING(UI_CHECK_OFF " NAME", drawn_text());
 }
 
 static void
@@ -237,8 +193,8 @@ dropdown_frame(const input_t* in, int selected) {
     ui_begin(in);
     int picked = -1;
     if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        picked = ui_dropdown(ui_context(), "dither", DROPDOWN, ITEMS, 3, selected, &THEME);
-        dropdown_open = ui_dropdown_is_open(ui_context(), "dither");
+        picked = ui_dropdown(ui_context(), "pick", DROPDOWN, ITEMS, 3, selected, &THEME);
+        dropdown_open = ui_dropdown_is_open(ui_context(), "pick");
         mu_end_window(ui_context());
     }
     mu_end(ui_context());
@@ -409,7 +365,7 @@ test_the_last_row_of_a_list_taller_than_the_screen_can_be_picked(void) {
 static void
 test_only_a_real_press_draws_a_button_pressed(void) {
     fixture();
-    const widget_t w = {.kind = DRAW_ICON_BUTTON, .enabled = true};
+    const widget_t w = {.enabled = true};
     const input_t idle = {0};
     widget_frame(&w, &idle);
     widget_frame(&w, &idle);
@@ -433,12 +389,32 @@ test_only_a_real_press_draws_a_button_pressed(void) {
     TEST_ASSERT_NOT_EQUAL_MESSAGE(at_rest, pressed, "a landed press must look pressed");
 }
 
+/* One frame of the same window with the dropdown left out, as a screen
+ * that hides it does. */
+static void
+frame_without_dropdown(void) {
+    const input_t idle = {0};
+    ui_begin(&idle);
+    if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+        mu_end_window(ui_context());
+    }
+    mu_end(ui_context());
+}
+
+static void
+test_a_list_its_dropdown_stopped_drawing_is_closed_when_it_returns(void) {
+    open_fixture();
+    frame_without_dropdown();
+
+    const input_t idle = {0};
+    dropdown_frame(&idle, 0);
+    TEST_ASSERT_FALSE_MESSAGE(list_open(), "a list left open by a screen that moved on must not reappear");
+}
+
 void
 run_ui_widgets_suite(void) {
     RUN_TEST(test_an_enabled_button_reports_a_tap);
     RUN_TEST(test_a_disabled_button_takes_no_tap);
-    RUN_TEST(test_a_check_row_reports_a_tap);
-    RUN_TEST(test_a_check_row_draws_its_mark_before_its_label);
     RUN_TEST(test_an_icon_leaves_less_room_for_the_label);
     RUN_TEST(test_text_aligns_to_either_edge_or_the_centre);
     RUN_TEST(test_a_list_goes_below_its_dropdown_when_it_fits);
@@ -449,6 +425,7 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_opening_the_list_changes_the_screen_under_it);
     RUN_TEST(test_a_list_that_fits_does_not_scroll);
     RUN_TEST(test_only_a_real_press_draws_a_button_pressed);
+    RUN_TEST(test_a_list_its_dropdown_stopped_drawing_is_closed_when_it_returns);
     RUN_TEST(test_a_list_taller_than_the_screen_stays_inside_it);
     RUN_TEST(test_a_list_opens_scrolled_to_its_current_item);
     RUN_TEST(test_the_last_row_of_a_list_taller_than_the_screen_can_be_picked);

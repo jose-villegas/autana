@@ -4,9 +4,11 @@
  * hit, commands for everything drawn, and the caller deciding what a hit
  * means.
  *
- * Every widget takes a ui_theme_t rather than reading colours of its own,
- * so a screen states its look once and each widget stays the same code for
- * every screen that uses it. Labels are the UI font at the theme's scale.
+ * Every control takes a ui_theme_t rather than reading colours of its own,
+ * so a screen states its look once and each control stays the same code for
+ * every screen that uses it; aligned text and a swatch grid are drawing
+ * helpers and take their colours directly. Labels are the UI font at the
+ * theme's scale.
  */
 #pragma once
 
@@ -15,6 +17,7 @@
 
 #include "gfx/icon.h"
 #include "microui.h"
+#include "ui/ui_style.h"
 
 typedef struct {
     mu_Color panel_face;
@@ -40,16 +43,6 @@ typedef struct {
     bool selected; /* drawn on accent_face; a press only sinks the bezel */
 } ui_widget_button_t;
 
-#define UI_CHECK_ON  "[X]"
-#define UI_CHECK_OFF "[ ]"
-
-/* 0xRRGGBB, opaque: UI_RGB() as an initializer, so a theme can be const
- * data, and ui_rgb() in an expression. */
-#define UI_RGB(rgb)                                                                                                    \
-    {(unsigned char)(((rgb) >> 16) & 0xFF), (unsigned char)(((rgb) >> 8) & 0xFF), (unsigned char)((rgb) & 0xFF), 255}
-
-mu_Color ui_rgb(uint32_t rgb);
-
 void ui_panel(mu_Context* ctx, mu_Rect r, const ui_theme_t* theme);
 
 /* A full-width bar with an edge along its bottom and `title` centred. */
@@ -63,6 +56,10 @@ void ui_text_in(mu_Context* ctx, mu_Rect r, const char* str, mu_Color color, int
 bool ui_icon_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* button,
                     const ui_theme_t* theme);
 
+/* ui_slider_int() at `r`: the filled part on accent_face, the knob in the
+ * theme's text colour. */
+bool ui_theme_slider_int(mu_Context* ctx, mu_Rect r, int* value, int lo, int hi, int step, const ui_theme_t* theme);
+
 /* How wide a label may be inside a `button_w` ui_icon_button(). */
 int ui_icon_button_label_width(int button_w, bool has_icon, const ui_theme_t* theme);
 
@@ -72,7 +69,7 @@ int ui_icon_button_label_width(int button_w, bool has_icon, const ui_theme_t* th
 mu_Rect ui_tile_icon_rect(mu_Rect r, const ui_theme_t* theme);
 
 /* `colors` as a `cols` x `rows` grid of equal cells filling `r`, row by
- * row: a sample of real colours, where an icon would only stand for one. */
+ * row. */
 void ui_swatch_grid(mu_Context* ctx, mu_Rect r, const mu_Color* colors, int cols, int rows);
 
 bool ui_tile_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* button,
@@ -100,18 +97,16 @@ int ui_dropdown_label_width(int w, const ui_theme_t* theme);
 /* The chosen item with a chevron; a tap opens the rest as a list over the
  * screen, placed by ui_dropdown_list_rect(). Returns the index picked this
  * frame, or -1; the list closes UI_DROPDOWN_CLOSE_FRAMES frames later.
- * `id` names the list's own window, unique per dropdown. */
+ * `id` must be unique per dropdown; its list's window is named after it. */
 int ui_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t* items, int count, int selected,
                 const ui_theme_t* theme);
 
 /* How many frames a list stays up after its pick, once the finger lifts. */
 #define UI_DROPDOWN_CLOSE_FRAMES 4
 
+/* Forgets any open dropdown list's state; ui_init() calls it. */
+void ui_widgets_reset(void);
+
 /* Whether dropdown `id`'s list is open. Asked from inside the same window
  * as the ui_dropdown() call, since microui scopes a name to its window. */
 bool ui_dropdown_is_open(mu_Context* ctx, const char* id);
-
-/* A row reading "[X] label" or "[ ] label" after an optional icon; a tap
- * reports, never toggles. `row->label` is the bare label. */
-bool ui_check_row(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* row, bool checked,
-                  const ui_theme_t* theme);

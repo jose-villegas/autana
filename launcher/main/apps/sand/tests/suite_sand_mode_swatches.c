@@ -16,7 +16,7 @@
 
 static gfx_color_t none_lut[LUT_SIZE];
 static gfx_color_t lut256[LUT_SIZE];
-static sand_mode_swatch_t swatches[3];
+static sand_mode_swatch_t swatches[SAND_COLOUR_MODE_COUNT];
 
 /* Sixteen greys for the 16-colour mode, repeated across the table the way
  * a nearest-colour table repeats them; a distinct colour per index above

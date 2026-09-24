@@ -2,8 +2,9 @@
  * sand_colour_state - which gfx pixel-format transition each sand app event
  * requires, as a standalone, ESP-IDF-free module so a host suite can prove
  * the one invariant that matters without gfx.c or a device: indexed mode
- * never survives a path back to the launch menu, because the menu has no
- * indexed draw path and would touch a framebuffer that does not exist.
+ * never survives a path back to the title screen, because neither menu
+ * screen has an indexed draw path; either would touch a framebuffer that
+ * does not exist.
  *
  * app_sand.c owns the actual gfx_mode_enter()/exit() calls; this only
  * decides WHEN one is needed and tracks whether indexed mode is currently
@@ -19,6 +20,7 @@ typedef enum {
     SAND_COLOUR_FULL,
     SAND_COLOUR_256,
     SAND_COLOUR_16,
+    SAND_COLOUR_MODE_COUNT,
 } sand_colour_mode_t;
 
 typedef enum {
@@ -58,7 +60,7 @@ sand_colour_grant_failed(sand_colour_state_t* st) {
     st->indexed_active = false;
 }
 
-/* Every path back to the launch menu: sand_enter() (a fresh entry, and the
+/* Every path back to the title screen: sand_enter() (a fresh entry, and the
  * only real one today), plus a defensive call right before the menu itself
  * draws. Idempotent - safe to call when already FULL. */
 static inline sand_gfx_action_t

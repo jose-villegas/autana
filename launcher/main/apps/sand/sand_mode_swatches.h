@@ -14,8 +14,7 @@
 #include "apps/sand/sand_colour_state.h"
 #include "gfx/gfx_color.h"
 
-/* Two rows across a tile's width, where a wide strip reads better than a
- * square at 32px tall. */
+/* Two rows across a tile's width: its picture area is wider than tall. */
 #define SAND_SWATCH_ROWS       2
 #define SAND_SWATCH_16_COLS    8
 #define SAND_SWATCH_256_COLS   12
@@ -32,4 +31,4 @@ typedef struct {
  * to one of the 16-colour mode's colours; the first `ui_entries` of
  * `lut256` are UI colours, not sand, and are left out of its sample. */
 void sand_mode_swatches(const gfx_color_t* none_lut, const gfx_color_t* lut256, int lut_size, int ui_entries,
-                        sand_mode_swatch_t out[3]);
+                        sand_mode_swatch_t out[SAND_COLOUR_MODE_COUNT]);

@@ -1,12 +1,13 @@
 /*
  * sand_menu - what the sand app's title and options screens MEAN, with no
  * drawing and no hardware: which of the two is up, what a tap on either
- * does, and the launch options the options screen edits.
+ * does, and the draft the options screen edits.
  *
- * The options screen edits a draft, never the options a run starts with.
- * APPLY commits the draft and CANCEL drops it, so a half-made choice can
- * never leak into the next START. The screens report what was hit; this
- * decides what it means, so suite_sand_menu.c can pin it on a host.
+ * The launch options themselves stay the app's, passed in as `committed`:
+ * this holds only a draft of them. APPLY hands the draft back to be adopted
+ * and CANCEL drops it, so a half-made choice never reaches the next START.
+ * The screens report what was hit; this decides what it means, so
+ * suite_sand_menu.c can pin it on a host.
  */
 #pragma once
 
@@ -26,8 +27,7 @@ typedef struct {
 
 typedef struct {
     sand_menu_screen_t screen;
-    sand_options_t committed;
-    sand_options_t draft;
+    sand_options_t draft; /* meaningful while the options screen is up */
 } sand_menu_t;
 
 typedef enum {
@@ -55,18 +55,19 @@ typedef struct {
 
 #define SAND_OPTIONS_NO_HITS ((sand_options_hits_t){.quality = -1, .color = -1, .dither = -1})
 
-void sand_menu_init(sand_menu_t* menu, sand_options_t current);
+void sand_menu_init(sand_menu_t* menu);
 
-/* LOAD SAVES and GUIDE have no screen behind them yet, so they stay put. */
-sand_menu_action_t sand_menu_title_clicked(sand_menu_t* menu, sand_title_button_t button);
+/* OPTIONS starts a draft from `committed`. LOAD SAVES and GUIDE have no
+ * screen behind them yet, so they stay put. */
+sand_menu_action_t sand_menu_title_clicked(sand_menu_t* menu, sand_title_button_t button, sand_options_t committed);
 
-/* Applies one frame's hits to the draft. Returns true when APPLY committed
- * it, the one moment the app must adopt `committed`. */
-bool sand_menu_options_step(sand_menu_t* menu, sand_options_hits_t hits);
+/* Applies one frame's hits to the draft. Returns true when APPLY commits
+ * it, the one moment the app must adopt `menu->draft`. */
+bool sand_menu_options_step(sand_menu_t* menu, sand_options_t committed, sand_options_hits_t hits);
 
 /* The draft's differences from `committed` that the screen still shows.
  * A dither pick stops counting once the colour mode no longer uses it. */
-int sand_menu_pending_changes(const sand_menu_t* menu);
+int sand_menu_pending_changes(const sand_menu_t* menu, sand_options_t committed);
 
 /* Whether the dither choice means anything under colour mode `color`. */
 bool sand_menu_dither_applies(sand_colour_mode_t color);

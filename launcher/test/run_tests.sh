@@ -97,6 +97,7 @@ $MAIN_DIR/util/tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/ui/ui_build.c
+$MAIN_DIR/ui/ui_canvas_marks.c
 $MAIN_DIR/ui/ui_launcher_draw.c
 $MAIN_DIR/ui/ui_pointer.c
 $MAIN_DIR/ui/ui_scroll.c

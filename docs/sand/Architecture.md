@@ -326,8 +326,7 @@ keeps the gesture worth the same at every grid quality.
 Before a simulation exists the app shows its menu (`SAND_UI_MENU`, outside
 `sand_ui_t` entirely), two screens with the same three-way split:
 `ui/title_screen.c/.h` (START GAME, LOAD SAVES, OPTIONS, and a GUIDE / EXIT
-footer) and `ui/options_screen.c/.h` (QUALITY, COLOR MODE, DITHER, the
-development build's two-core toggle, APPLY / CANCEL), both built from the
+footer) and `ui/options_screen.c/.h` (QUALITY, COLOR MODE, DITHER, APPLY / CANCEL), both built from the
 shell's `ui/ui_widgets.h` in the one theme `ui/sand_theme.c/.h` holds, which the brush screen draws in too. Their state is `sand_menu.c/.h`: which of the two is
 up, what a tap means, and the launch options as a draft the options screen
 edits and APPLY commits, so an unapplied choice never reaches the next

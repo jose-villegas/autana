@@ -43,6 +43,7 @@ add_library(editor_runtime STATIC
     ${LAUNCHER_DIR}/main/ui/system_navigation.c
     ${LAUNCHER_DIR}/main/ui/ui.c
     ${LAUNCHER_DIR}/main/ui/ui_build.c
+    ${LAUNCHER_DIR}/main/ui/ui_canvas_marks.c
     ${LAUNCHER_DIR}/main/ui/ui_control_center.c
     ${LAUNCHER_DIR}/main/ui/ui_control_center_draw.c
     ${LAUNCHER_DIR}/main/ui/ui_launcher.c
@@ -50,6 +51,7 @@ add_library(editor_runtime STATIC
     ${LAUNCHER_DIR}/main/ui/ui_pointer.c
     ${LAUNCHER_DIR}/main/ui/ui_ridge.c
     ${LAUNCHER_DIR}/main/ui/ui_scroll.c
+    ${LAUNCHER_DIR}/main/ui/ui_widgets.c
     ${LAUNCHER_DIR}/main/util/tune.c
     ${LAUNCHER_DIR}/components/microui/src/microui.c
 )

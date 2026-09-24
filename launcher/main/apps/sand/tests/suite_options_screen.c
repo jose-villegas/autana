@@ -28,7 +28,7 @@ static const char* const DITHER_NAMES[] = {"NONE", "CELL CHECKER", "CELL BAYER2"
 
 /* Shaped like the app's, for layout, taps and command-list size; the
  * colours themselves are suite_sand_mode_swatches.c's. */
-static const sand_mode_swatch_t MODE_SWATCHES[3] = {
+static const sand_mode_swatch_t MODE_SWATCHES[SAND_COLOUR_MODE_COUNT] = {
     [SAND_COLOUR_FULL] = {.cols = SAND_SWATCH_FULL_BANDS, .rows = 1},
     [SAND_COLOUR_256] = {.cols = SAND_SWATCH_256_COLS, .rows = SAND_SWATCH_ROWS},
     [SAND_COLOUR_16] = {.cols = SAND_SWATCH_16_COLS, .rows = SAND_SWATCH_ROWS},
@@ -85,7 +85,7 @@ assert_layout(bool landscape) {
     const mu_Rect taps[] = {lay.quality_slider, lay.tiles[0], lay.tiles[1], lay.tiles[2],
                             lay.dither,         lay.apply,    lay.cancel};
     for (size_t i = 0; i < sizeof taps / sizeof taps[0]; i++) {
-        TEST_ASSERT_GREATER_OR_EQUAL_INT(UI_TAP_MIN, taps[i].h);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT(UI_TAP_MIN, taps[i].w < taps[i].h ? taps[i].w : taps[i].h);
     }
     TEST_ASSERT_TRUE(lay.apply.x + lay.apply.w <= lay.cancel.x);
     TEST_ASSERT_TRUE(lay.tiles[0].x + lay.tiles[0].w <= lay.tiles[1].x);
@@ -189,12 +189,13 @@ test_tiles_run_sixteen_then_256_then_full(void) {
 /* Real taps, portrait, through ui_begin()'s own pointer bridge. */
 
 static sand_menu_t menu;
+static sand_options_t committed;
 
 static sand_options_hits_t
 options_frame(bool down, bool pressed, bool released, int x, int y) {
     input_t in = {.down = down, .pressed = pressed, .released = released, .x = x, .y = y};
     ui_begin(&in);
-    const sand_options_hits_t hits = options_screen_draw(ui_context(), &menu, &LABELS);
+    const sand_options_hits_t hits = options_screen_draw(ui_context(), &menu, committed, &LABELS);
     mu_end(ui_context());
     return hits;
 }
@@ -231,8 +232,9 @@ static void
 tap_fixture(sand_colour_mode_t colour) {
     ui_init();
     ui_set_transform(ui_transform_identity());
-    sand_menu_init(&menu, (sand_options_t){.quality = 2, .color = colour, .dither = 2});
-    sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS);
+    committed = (sand_options_t){.quality = 2, .color = colour, .dither = 2};
+    sand_menu_init(&menu);
+    sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS, committed);
     options_frame(false, false, false, 0, 0);
     options_frame(false, false, false, 0, 0);
 }
