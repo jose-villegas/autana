@@ -10,6 +10,8 @@ Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 - see
 With 120 MHz PSRAM and flash, `launcher/bootloader_components/pmic_cold_boot/`
 asks the AXP2101 to cycle SoC power after a warm reset. This gives app startup
 a power-on reset before PSRAM timing tuning; a power-on reset boots directly.
+The restart re-enumerates USB about 0.7 s into boot, after the first
+`BUILD_ID` line, so the shell prints it again once it is ready.
 
 **The chip only accepts auto-reset while an app is actively running.** Once
 firmware returns from `app_main` and goes idle, reset signalling stops working
