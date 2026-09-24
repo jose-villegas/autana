@@ -406,17 +406,18 @@ than a separate flag:
 ```mermaid
 stateDiagram-v2
     [*] --> Dry: painted
-    Dry --> Damp: water beside it,<br/>soaks roll
-    Damp --> Soaked: wets further,<br/>up to moist_max
-    Soaked --> Damp: dries - ambient,<br/>or heat while moist
-    Damp --> Dry: dries further
-    Dry --> Lit: flammability roll,<br/>or heat, once fully dry
-    Damp --> Lit: flammability roll,<br/>damped by moisture
-    Soaked --> Oil: soaked_chance roll
-    Lit --> Lit: burn_decay counts down
-    Lit --> Soaked: water quenches
-    Lit --> Blast: burn-out,<br/>lit 2x2 + impulse buffer live<br/>+ cooldown clear
-    Lit --> Fire: burn-out,<br/>otherwise
+    Lit : Lit<br/>burn_decay counts down
+
+    Dry --> Damp: soaks
+    Damp --> Soaked: wets
+    Soaked --> Damp: dries
+    Damp --> Dry: dries
+    Dry --> Lit: flame or heat
+    Damp --> Lit: flame, damped
+    Soaked --> Oil: soaked_chance
+    Lit --> Soaked: quenched
+    Lit --> Blast: burns out<br/>in a lit 2x2
+    Lit --> Fire: burns out<br/>otherwise
 ```
 
 Painted gunpowder starts `Dry` (`GUNPOWDER_CELL(0)`, `app_sand.c`). `Damp`

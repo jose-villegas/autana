@@ -36,31 +36,38 @@ flowchart LR
   classDef done stroke:#06d6a0,stroke-width:4px
 
   subgraph P0["Phase 0 - attribution"]
+    direction TB
     frameTime["Frame-time row<br/>sim + draw + present"]:::p0
     cubePerf["Cube perf report,<br/>cycles per covered pixel"]:::p0
   end
   subgraph P1["Phase 1 - memory, cores and bus"]
-    busRoot["80 MHz QSPI<br/>clock setting + heal"]:::p1
-    corePresent["Core-1 present, reads only +<br/>sim/update overlap (retained apps)"]:::p1
-    memPlacement["Hot buffers to internal RAM;<br/>icache 32K / dcache 64K experiment"]:::p1
+    direction TB
     resSettings["Resolution / colour<br/>system settings"]:::p1
+    busRoot["80 MHz QSPI<br/>clock setting + heal"]:::p1
+    corePresent["Core-1 present +<br/>sim/update overlap"]:::p1
+    memPlacement["Hot buffers to internal RAM,<br/>icache 32K / dcache 64K experiment"]:::p1
   end
   subgraph P2["Phase 2 - r3d"]
+    direction TB
     s3lExtract["Extract S3L transform<br/>from boot_anim"]:::side
-    bandRing["Internal-SRAM band ring<br/>(full-redraw renderers)"]:::p2
-    rasterizer["Span rasterizer, binning,<br/>ordering table, colormap<br/>(band-aware)"]:::p2
+    bandRing["Internal-SRAM band ring"]:::p2
+    rasterizer["Span rasterizer,<br/>band-aware"]:::p2
+  end
+  subgraph SIDE["Tools, data and libraries"]
+    direction TB
+    hostHarness["Host render harness"]:::side
+    tiltShake["Tilt / shake library"]:::side
+    reactionMatrix["Reaction pair-matrix"]:::side
+    materialData["Materials + reactions<br/>as baked data"]:::side
+    levelEditor["Level editor"]:::side
+    sandInstance["Sand core as an instance"]:::side
   end
   subgraph G["Phases 3-5 - the games"]
+    direction TB
     raycaster["Raycaster + FPS"]:::game
     rollingBall["Rolling ball"]:::game
-    platformer["Platformer: sand world first,<br/>tiles + sim windows next"]:::game
+    platformer["Platformer"]:::game
   end
-  hostHarness["Host render harness<br/>frame -> .bmp diff"]:::side
-  levelEditor["Level editor: material<br/>blocks, bake"]:::side
-  materialData["Materials + reactions<br/>as baked data"]:::side
-  sandInstance["Sand core as an instance:<br/>any size, several alive"]:::side
-  reactionMatrix["Reaction pair-matrix"]:::side
-  tiltShake["Tilt / shake library"]:::side
 
   frameTime --> busRoot
   frameTime --> corePresent
