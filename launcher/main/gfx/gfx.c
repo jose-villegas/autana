@@ -1178,8 +1178,6 @@ gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha
     }
 
     if (!band_render_active) {
-        /* An 8bpp font draws one coverage pixel per call through here
-         * (draw_rotated_font_pixel_blend()). */
         mark_fill(x0, y0, x1, y1);
     }
 }
@@ -1306,61 +1304,6 @@ gfx_text_scaled(int x, int y, const char* text, gfx_color_t color, int scale) {
     gfx_text_turned(x, y, text, color, scale, 0);
 }
 
-/* One glyph pixel, solid. Coverage varies per pixel in an 8bpp atlas, so
- * draw_glyph_font()'s 8bpp path still draws one at a time; its 1bpp path
- * batches runs instead (gfx_font_row_run_rect()). */
-static void
-draw_rotated_font_pixel(const gfx_font_t* font, int x, int y, int row, int col, int scale, int turn,
-                        gfx_color_t color) {
-    int px, py;
-    switch (turn) {
-        case 1:
-            px = font->cell_h - 1 - row;
-            py = col;
-            break;
-        case 2:
-            px = font->cell_w - 1 - col;
-            py = font->cell_h - 1 - row;
-            break;
-        case 3:
-            px = row;
-            py = font->cell_w - 1 - col;
-            break;
-        default:
-            px = col;
-            py = row;
-            break;
-    }
-    gfx_fill_rect(x + px * scale, y + py * scale, scale, scale, color);
-}
-
-/* 8bpp atlas; 0-255 coverage; blends via gfx_fill_rect_blend() instead of
- * solid. */
-static void
-draw_rotated_font_pixel_blend(const gfx_font_t* font, int x, int y, int row, int col, int scale, int turn,
-                              gfx_color_t color, uint8_t coverage) {
-    int px, py;
-    switch (turn) {
-        case 1:
-            px = font->cell_h - 1 - row;
-            py = col;
-            break;
-        case 2:
-            px = font->cell_w - 1 - col;
-            py = font->cell_h - 1 - row;
-            break;
-        case 3:
-            px = row;
-            py = font->cell_w - 1 - col;
-            break;
-        default:
-            px = col;
-            py = row;
-            break;
-    }
-    gfx_fill_rect_blend(x + px * scale, y + py * scale, scale, scale, color, coverage);
-}
-
 /* Draws `font` glyph or nothing if `ch` is out of range or `font->bpp`
  * unsupported. Use separate loops for layouts. */
 static void
@@ -1390,16 +1333,64 @@ draw_glyph_font(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_colo
     if (font->bpp == 8) {
         const size_t cell_pixels = (size_t)font->cell_w * font->cell_h;
         const uint8_t* glyph = font->atlas + (size_t)(ch - font->first) * cell_pixels;
+        const gfx_target_t target = current_target();
+        const int box_w = ((turn & 1) ? font->cell_h : font->cell_w) * scale;
+        const int box_h = ((turn & 1) ? font->cell_w : font->cell_h) * scale;
+        int x0 = x, y0 = y, x1 = x + box_w, y1 = y + box_h;
 
-        for (int row = 0; row < font->cell_h; row++) {
-            const uint8_t* glyph_row = glyph + (size_t)row * font->cell_w;
-            for (int col = 0; col < font->cell_w; col++) {
-                const uint8_t coverage = glyph_row[col];
-                if (coverage == 0) {
-                    continue;
+        if (x0 < clip.x0) {
+            x0 = clip.x0;
+        }
+        if (x1 > clip.x1) {
+            x1 = clip.x1;
+        }
+        gfx_target_clip_y(target, clip.y0, clip.y1, &y0, &y1);
+        if (x0 >= x1 || y0 >= y1) {
+            return;
+        }
+
+        bool drew = false;
+        for (int yy = y0; yy < y1; yy++) {
+            gfx_color_t* dst = gfx_target_row(target, yy);
+            const int sy = (yy - y) / scale;
+            for (int sx = (x0 - x) / scale, xx = x0; xx < x1; sx++) {
+                int end = x + (sx + 1) * scale;
+                if (end > x1) {
+                    end = x1;
                 }
-                draw_rotated_font_pixel_blend(font, x, y, row, col, scale, turn, color, coverage);
+
+                int row, col;
+                switch (turn) {
+                    case 1:
+                        row = font->cell_h - 1 - sx;
+                        col = sy;
+                        break;
+                    case 2:
+                        row = font->cell_h - 1 - sy;
+                        col = font->cell_w - 1 - sx;
+                        break;
+                    case 3:
+                        row = sx;
+                        col = font->cell_w - 1 - sy;
+                        break;
+                    default:
+                        row = sy;
+                        col = sx;
+                        break;
+                }
+                const uint8_t coverage = glyph[(size_t)row * font->cell_w + col];
+                if (coverage != 0) {
+                    drew = true;
+                    for (; xx < end; xx++) {
+                        dst[xx] = gfx_color_mix(dst[xx], color, coverage);
+                    }
+                } else {
+                    xx = end;
+                }
             }
+        }
+        if (drew && !band_render_active) {
+            mark_fill(x0, y0, x1, y1);
         }
         return;
     }
