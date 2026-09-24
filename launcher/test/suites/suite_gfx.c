@@ -1367,6 +1367,9 @@ memtp_log(const char* what, const char* pools, size_t bytes, int64_t us) {
 
 static void
 test_memory_throughput_psram_against_internal(void) {
+#if CONFIG_LAUNCHER_QEMU
+    TEST_IGNORE_MESSAGE("an emulator does not keep the chip's memory speeds");
+#endif
     const size_t band = (size_t)GFX_WIDTH * 64 * sizeof(gfx_color_t); /* one 64-row strip */
     const size_t frame = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
 
