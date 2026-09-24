@@ -4,17 +4,23 @@
  * ui_begin() and microui.
  */
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "suites.h"
 #include "unity.h"
 
+#include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
 #include "input/input.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
 #include "ui/ui_transform.h"
 #include "ui/ui_widgets.h"
+
+#ifdef HOST_HEAP_ARENA
+#include "esp_heap_caps.h"
+#endif
 
 static const ui_theme_t THEME = {
     .panel_face = UI_RGB(0x202020),
@@ -226,18 +232,26 @@ static const ui_dropdown_item_t ITEMS[] = {{.label = "ZERO"}, {.label = "ONE"}, 
 static const mu_Rect DROPDOWN = {40, 60, 240, 44};
 
 static bool dropdown_open;
+static bool paint_frames;
 
 /* One frame of a window holding only the dropdown; returns its pick. */
 static int
 dropdown_frame(const input_t* in, int selected) {
     ui_begin(in);
     int picked = -1;
-    if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+    const int opts = MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME;
+    const bool began = paint_frames ? mu_begin_window_ex(ui_context(), "Widgets", mu_rect(20, 40, 300, 80), opts)
+                                    : ui_begin_screen(ui_context(), "Widgets", opts);
+    if (began) {
         picked = ui_dropdown(ui_context(), "pick", DROPDOWN, ITEMS, 3, selected, &THEME);
         dropdown_open = ui_dropdown_is_open(ui_context(), "pick");
         mu_end_window(ui_context());
     }
-    mu_end(ui_context());
+    if (paint_frames) {
+        ui_end(0x0A0C14);
+    } else {
+        mu_end(ui_context());
+    }
     return picked;
 }
 
@@ -456,6 +470,50 @@ test_closing_the_list_restores_the_closed_drawing(void) {
     TEST_ASSERT_EQUAL_MESSAGE(closed, canvas_hash("Widgets"),
                               "a picked close must also redraw the dropdown's own closed chevron");
 }
+
+#ifndef DEVICE_BUILD
+static uint64_t
+framebuffer_rect_hash(mu_Rect r) {
+    const gfx_color_t* fb = gfx_framebuffer();
+    uint64_t h = 1469598103934665603ull;
+    for (int y = r.y; y < r.y + r.h; y++) {
+        for (int x = r.x; x < r.x + r.w; x++) {
+            h = (h ^ fb[y * GFX_WIDTH + x]) * 1099511628211ull;
+        }
+    }
+    return h;
+}
+
+static void
+test_closing_the_list_restores_the_pixels_under_it(void) {
+    TEST_ASSERT_TRUE(gfx_init());
+    fixture();
+    paint_frames = true;
+    gfx_clear(gfx_rgb(0x0A0C14));
+
+    const input_t idle = {0};
+    dropdown_frame(&idle, 0);
+    dropdown_frame(&idle, 0);
+    const mu_Rect list = open_list_rect();
+    const uint64_t before = framebuffer_rect_hash(list);
+
+    TEST_ASSERT_EQUAL_INT(-1, dropdown_tap(DROPDOWN.x + 20, DROPDOWN.y + 20, 0));
+    TEST_ASSERT_TRUE(list_open());
+    TEST_ASSERT_NOT_EQUAL(before, framebuffer_rect_hash(list));
+
+    TEST_ASSERT_EQUAL_INT(-1, dropdown_tap(5, ui_height() - 5, 0));
+    TEST_ASSERT_FALSE(list_open());
+    dropdown_frame(&idle, 0);
+    TEST_ASSERT_EQUAL_MESSAGE(before, framebuffer_rect_hash(list), "the vanished list must leave its original pixels");
+
+    paint_frames = false;
+#ifdef HOST_HEAP_ARENA
+    heap_caps_free(gfx_framebuffer());
+#else
+    free(gfx_framebuffer());
+#endif
+}
+#endif
 
 static const ui_dropdown_item_t MANY[] = {{.label = "0"}, {.label = "1"}, {.label = "2"}, {.label = "3"},
                                           {.label = "4"}, {.label = "5"}, {.label = "6"}, {.label = "7"},
@@ -752,6 +810,9 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_opening_the_list_changes_the_screen_under_it);
     RUN_TEST(test_the_chevron_lags_the_lists_own_open_flag_by_one_frame);
     RUN_TEST(test_closing_the_list_restores_the_closed_drawing);
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_closing_the_list_restores_the_pixels_under_it);
+#endif
     RUN_TEST(test_a_list_that_fits_does_not_scroll);
     RUN_TEST(test_only_a_real_press_draws_a_button_pressed);
     RUN_TEST(test_a_press_that_slides_onto_a_button_from_off_it_is_not_a_click);
