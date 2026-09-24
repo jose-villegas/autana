@@ -920,6 +920,7 @@ test_a_2x2_block_of_steam_condenses_into_one_water_cell(void) {
     TEST_ASSERT_TRUE_MESSAGE(CELL_IS_EMPTY(sand_at(&s, 4, 3)), "and clear the other three corners of the square");
     TEST_ASSERT_TRUE_MESSAGE(CELL_IS_EMPTY(sand_at(&s, 3, 4)), "and clear the other three corners of the square");
     TEST_ASSERT_TRUE_MESSAGE(CELL_IS_EMPTY(sand_at(&s, 4, 4)), "and clear the other three corners of the square");
+    TEST_ASSERT_TRUE_MESSAGE(s.may_have_liquid, "condensed water must keep the liquid pass armed");
 }
 
 /* Three matching corners and a fourth cell that is NOT steam (stone,
