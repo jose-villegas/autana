@@ -323,7 +323,14 @@ def summarise(log_path):
     print("%d passed, %d failed, %d skipped%s" %
           (passed, len(failed), ignored,
            "; " + sentinel.group(0) if sentinel else ""))
-    return sentinel is not None
+    return sentinel is not None, len(failed)
+
+
+def verdict(log_path, finished, actions):
+    autorun_ended, failures = summarise(log_path)
+    if not actions and not autorun_ended:
+        print("NO %s - the run did not finish" % SENTINEL)
+    return 0 if finished and not failures else 1
 
 
 def main(argv):
@@ -419,10 +426,7 @@ def main(argv):
         proc.wait()
 
     print("console: %s" % log_path)
-    autorun_ended = summarise(log_path)
-    if not actions and not autorun_ended:
-        print("NO %s - the run did not finish" % SENTINEL)
-    return 0 if finished else 1
+    return verdict(log_path, finished, actions)
 
 
 if __name__ == "__main__":

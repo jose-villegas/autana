@@ -1,0 +1,46 @@
+name: QEMU Tests
+
+# Every suite in the real Xtensa image, under Espressif's QEMU: the proof the
+# host runner cannot give, that the chip's build behaves as the laptop's does.
+# docs/Testing-Guide.md's QEMU section says what a run is evidence of. Too
+# slow for every pull request, so it runs on main, by hand, and on a pull
+# request that changes the harness itself.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - '.github/workflows/qemu-tests.yml'
+      - 'launcher/test/qemu_run.py'
+      - 'launcher/test/run_qemu_tests.sh'
+      - 'launcher/sdkconfig.defaults.qemu'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  qemu-tests:
+    name: Every suite under QEMU
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      # No --icount: it puts both emulated cores on one host thread, doubling
+      # the run, and a QEMU image reports every measured time rather than
+      # enforcing it, so instruction counting buys a pass/fail run nothing.
+      # The full scope takes about fourteen minutes on an idle desktop.
+      - uses: ./.github/actions/idf-build
+        with:
+          cache-name: qemu
+          command: sh test/run_qemu_tests.sh --timeout 4500
+
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-serial-log
+          path: launcher/build.qemu/qemu_serial.log
+          if-no-files-found: ignore

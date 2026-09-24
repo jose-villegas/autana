@@ -2,7 +2,7 @@
 #
 # Build the self-test image for Espressif's QEMU and run it with no board.
 #
-#   ./launcher/test/run_qemu_tests.sh [--perf-scope] [--icount] [--no-build]
+#   ./launcher/test/run_qemu_tests.sh [--perf-scope] [--icount] [--timeout S] [--no-build]
 #   ./launcher/test/run_qemu_tests.sh --suite <name> [--suite ...] \
 #                                     [--touch <down|up>,<x>,<y> ...] [--screenshot <png>]
 #   ./launcher/test/run_qemu_tests.sh --perf-scope --suite <name> --build-only
@@ -44,6 +44,11 @@ while [ $# -gt 0 ]; do
         # One image serves however many instances a driver then starts
         # against it by hand, each with its own qemu_run.py --workdir.
         --build-only) RUN=0 ;;
+        --timeout)
+            [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
+            RUN_ARGS="$RUN_ARGS $1 $2"
+            shift
+            ;;
         --suite | --touch | --do | --screenshot)
             [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
             AUTORUN=0
@@ -51,7 +56,7 @@ while [ $# -gt 0 ]; do
             shift
             ;;
         *)
-            echo "usage: run_qemu_tests.sh [--perf-scope] [--icount] [--no-build] [--build-only]" >&2
+            echo "usage: run_qemu_tests.sh [--perf-scope] [--icount] [--timeout S] [--no-build] [--build-only]" >&2
             echo "       run_qemu_tests.sh --suite <name> [--suite ...] [--screenshot <png>]" >&2
             exit 2
             ;;
@@ -70,7 +75,6 @@ if [ "$BUILD" = 1 ]; then
     . "$LAUNCHER_DIR/tools/idf.sh"
     idf_init "$LAUNCHER_DIR" "${IDF_EXPORT:-}" "$LAUNCHER_DIR/tools" || exit 2
     . "$LAUNCHER_DIR/tools/idf_variant.sh"
-    idf_variant_init "$LAUNCHER_DIR"
     VARIANT_OPTIONS="--qemu"
     if [ "$AUTORUN" = 1 ]; then
         VARIANT_OPTIONS="$VARIANT_OPTIONS --autorun"
@@ -79,7 +83,7 @@ if [ "$BUILD" = 1 ]; then
         VARIANT_OPTIONS="$VARIANT_OPTIONS --perf-scope"
     fi
     # shellcheck disable=SC2086
-    idf_variant_build diag "$BUILD_DIR" $VARIANT_OPTIONS
+    idf_variant_build "$LAUNCHER_DIR" diag "$BUILD_DIR" $VARIANT_OPTIONS
 fi
 
 if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/launcher.bin" ]; then
