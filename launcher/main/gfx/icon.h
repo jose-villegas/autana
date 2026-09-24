@@ -18,10 +18,6 @@
  * accepts because a font is looked up through one hand-written accessor per
  * role (gfx_font_roles.h) rather than a whole table of them. An offset needs
  * none of that: the table is pure data, exactly as `static const` promises.
- *
- * WHY A RUNTIME TABLE IS FINE HERE, UNLIKE A FONT ROLE
- *
- * A small icon table can be indexed at runtime without a large flash cost.
  */
 #pragma once
 

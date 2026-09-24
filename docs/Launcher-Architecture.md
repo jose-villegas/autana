@@ -148,7 +148,7 @@ from `main/ui/control_center_layout.json`, which the host editor in
 `design/boot/boot.png` drawn as a line in the same frame), `main/boot/boot_anim_curve.h` (`tools/gen_zeta_curve.py`),
 `main/boot/boot_anim_timeline.h` (`tools/gen_boot_anim_timeline.py`, from
 `main/boot/boot_anim_timeline.json`), `main/boot/boot_anim_image.h`
-(`tools/gen_boot_anim_image.py`, from `design/boot/boot.png`), and
+(`tools/gen_boot_anim_image.py`, from `design/boot/boot.png`),
 `main/gfx/gfx_palette_standard_generated.h` and `main/gfx/icons_system.h`.
 
 `boot_anim_curve.h` holds the zeta function evaluated along the critical
@@ -208,7 +208,6 @@ running `gen_boot_anim_image.py` by hand would. The next asset type decides
 which rule it follows the same way: state the browser is actively editing
 gets a scratch copy and waits for an explicit save; a file on disk that the
 generator only mirrors gets regenerated in place on demand.
-
 
 ---
 

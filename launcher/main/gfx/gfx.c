@@ -1310,11 +1310,11 @@ draw_glyph_font(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_colo
     }
 
     /* One filled rect per coalesced box of set bits, not one per run
-         * per row - gfx_font_glyph_run_boxes() merges a vertical stroke's
-         * identical run across every row it spans into one box, so
-         * gfx_font_run_box_rect() covers it with one gfx_fill_rect() call
-         * regardless of which glyph axis a turn maps onto the screen's
-         * narrow one. */
+     * per row - gfx_font_glyph_run_boxes() merges a vertical stroke's
+     * identical run across every row it spans into one box, so
+     * gfx_font_run_box_rect() covers it with one gfx_fill_rect() call
+     * regardless of which glyph axis a turn maps onto the screen's
+     * narrow one. */
     gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
     const int n = gfx_font_glyph_run_boxes(font, ch, boxes, GFX_FONT_RUN_BOXES_MAX);
     for (int i = 0; i < n; i++) {
@@ -1393,9 +1393,7 @@ gfx_text_turned(int x, int y, const char* text, gfx_color_t color, int scale, in
 
 /* gfx_text_font()'s own loop, drawing each character's halo
  * (draw_glyph_font_halo()) rather than its ink - see gfx.h's own comment.
- * UI_TEXT_OUTLINED is the only caller and only ever styles gfx_font_ui(),
- * a bpp==1 font - draw_glyph_font_halo() asserts that rather than
- * drawing a bpp==8 font's halo wrong. */
+ * UI_TEXT_OUTLINED is the only caller and only ever styles gfx_font_ui(). */
 void
 gfx_text_font_halo(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
                    const gfx_font_t* font) {

@@ -27,6 +27,7 @@
 #include "unity.h"
 
 #include "boot/boot_anim.h"
+#include "gfx/gfx_font_roles.h"
 
 /* The panel these numbers are laid out for. Named here rather than pulled
  * from gfx.h, which needs the BSP; gfx_dirty.h mirrors the same two numbers
@@ -1328,17 +1329,9 @@ test_the_live_end_of_the_curve_is_drawn_thicker(void) {
                                     "a stroke between two pens should be thin again");
 }
 
-/*
- * The title
- *
- * boot_anim_title_letter() takes the font it is laying out, so the tests
- * below exercise the UI font used by the title rather than
- * a synthetic stand-in: checks against the actual authored geometry, not
- * the layout FORMULA in the abstract. suite_gfx_font.c already covers
- * gfx_font_text_width()/gfx_font_advance() themselves.
- */
+/* The title tests use the UI font role, which draw_title() draws with. */
 
-#define TITLE_FONT (&gfx_font_8x8)
+#define TITLE_FONT (gfx_font_ui())
 
 static void
 test_the_wobble_is_exactly_flat_once_a_letter_has_arrived(void) {

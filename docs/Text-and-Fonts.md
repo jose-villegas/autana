@@ -11,7 +11,7 @@ There is no font rasterizer on the device. A font is a bitmap table in flash.
 
 ```mermaid
 flowchart LR
-    BMP["font8x8_basic.h<br/>1bpp bitmap"] --> F8["gfx_font_8x8"]
+    BMP["font8x8_basic.h<br/>1 bpp bitmap"] --> F8["gfx_font_8x8"]
     F8 --> DESC["gfx_font_t"]
     DESC --> ROLE["gfx_font_roles.h<br/>gfx_font_ui()"]
     ROLE --> GT["gfx_text*()"]
@@ -74,7 +74,7 @@ text. Retyping the UI is an edit there.
 
 | Rule | Why |
 |---|---|
-| a role is a `static inline` accessor returning a fixed font | the linker drops a font table only if nothing references it; a runtime registry would link every candidate |
+| a role is a `static inline` accessor returning a fixed font | retyping the UI is one edit, and a font nothing names is not linked |
 | the header includes only font headers that have a role | same reason |
 | no "label" role | a label is the UI face at a smaller scale, and scale is a call-site argument |
 
@@ -117,6 +117,7 @@ plus a `gfx_font_t` describing it.
 
 | Constraint | From |
 |---|---|
+| cell_w <= 8 | each row is one byte, bit 0 leftmost |
 | `first + count` <= 256 | `first` is a `uint8_t`; glyphs index by `unsigned char` |
 | every glyph shares one cell and one baseline | the table is indexed by glyph and row; spacing lives only in `advance` |
 
