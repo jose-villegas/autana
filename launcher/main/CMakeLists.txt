@@ -26,7 +26,6 @@ set(app_srcs
     "ui/ui_pointer.c"
     "ui/ui_ridge.c"
     "ui/ui_scroll.c"
-    "util/device_state.c"
     "util/frame_cost.c"
     "util/job.c"
     "util/tune.c"
@@ -59,6 +58,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/console_navigation.c"
         "console/console_tune.c"
         "console/console_screenshot.c"
+        "console/device_state.c"
     )
 endif()
 if(CONFIG_LAUNCHER_SELFTEST)
