@@ -139,7 +139,15 @@ class DeviceTests(unittest.TestCase):
         lines = [call.args[0] for call in printed.call_args_list]
         self.assertIn("suite results: 1 PASS, 12 FAIL", lines)
         self.assertIn("bad_1: wrong 1", lines)
-        self.assertIn("2 more in record.log", lines)
+        self.assertIn("2 more in the capture", lines)
+        self.assertNotIn("boot detail", "\n".join(lines))
+
+    def test_a_passing_run_still_names_its_capture(self):
+        data = b"boot detail\n:1:good:PASS\n"
+        with mock.patch("builtins.print") as printed:
+            device.print_suite_output(data, "record.log", "suite", "complete", False)
+        lines = [call.args[0] for call in printed.call_args_list]
+        self.assertIn("suite capture: record.log", lines)
         self.assertNotIn("boot detail", "\n".join(lines))
 
     def test_suite_output_pass_and_verbose_capture(self):
