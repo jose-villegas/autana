@@ -32,6 +32,8 @@ SUITE_RESULT = re.compile(rb":\d+:.*:(PASS|FAIL)(?:\r?$|:)", re.MULTILINE)
 # only once it clears this, so the common case stays plain-text and greppable.
 COMPRESS_ABOVE_BYTES = 200_000
 SLUG_UNSAFE = re.compile(r"[^A-Za-z0-9_.-]+")
+BOOT_ERROR = re.compile(r"(?:\berror\b|\bpanic\b|\babort\b|\bassert\b|^E \(\d+\))", re.I)
+MAX_PRINTED_FAILURES = 10
 
 
 def python_with_pyserial():
@@ -257,6 +259,32 @@ def count_suite_results(data):
     return results.count(b"PASS"), results.count(b"FAIL")
 
 
+def print_suite_output(data, record_path, command, reason, verbose):
+    text = data.decode("utf-8", errors="replace")
+    if verbose and text:
+        print(text, end="" if text.endswith("\n") else "\n")
+    passed, failed = count_suite_results(data)
+    _, _, failures = device_report.parse_suite_results(text)
+    print(f"{command} results: {passed} PASS, {failed} FAIL")
+    for name, message in failures[:MAX_PRINTED_FAILURES]:
+        print(f"{name}: {message}" if message else name)
+    if len(failures) > MAX_PRINTED_FAILURES:
+        print(f"{len(failures) - MAX_PRINTED_FAILURES} more in {record_path}")
+    print(f"{command} capture ended: {reason}")
+    return failed
+
+
+def print_reset_output(data, verbose):
+    text = data.decode("utf-8", errors="replace")
+    if verbose:
+        if text:
+            print(text, end="" if text.endswith("\n") else "\n")
+    else:
+        for line in text.splitlines():
+            if BOOT_ERROR.search(line):
+                print(line)
+
+
 class HeldLock:
     def __init__(self, store, port, owner, purpose, wait):
         self.store = store
@@ -408,8 +436,7 @@ def reset_device(args, store, port):
             output, managed, started_at=started_at, port=port, owner=args.owner,
             purpose=args.purpose, command="reset", build_id=latest_build_id_from_bytes(data),
             worktree=str(Path.cwd()), commit=git_commit(), reason=reason, error=error)
-    if data:
-        print(data.decode("utf-8", errors="replace"), end="")
+    print_reset_output(data, getattr(args, "verbose", False))
     print("reset capture: " + str(final_path))
     print("reset capture ended: " + reason + "; bytes may have been lost in reset gap")
     return 0
@@ -594,9 +621,7 @@ def run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
         except Exception as report_error:  # a report is a convenience, never fails the capture
             print("report generation failed (capture is unaffected): " + str(report_error),
                   file=sys.stderr)
-    passed, failed = count_suite_results(data)
-    print("suite results: " + str(passed) + " PASS, " + str(failed) + " FAIL")
-    print("suite capture ended: " + reason)
+    failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False))
     return 1 if failed else 0
 
 
@@ -646,9 +671,7 @@ def selftest(args, store, port):
             except Exception as report_error:  # a report is a convenience, never fails the capture
                 print("report generation failed (capture is unaffected): " + str(report_error),
                       file=sys.stderr)
-        passed, failed = count_suite_results(data)
-        print("selftest results: " + str(passed) + " PASS, " + str(failed) + " FAIL")
-        print("selftest capture ended: " + reason)
+        failed = print_suite_output(data, final_path, "selftest", reason, getattr(args, "verbose", False))
         return 1 if failed else 0
 
 
@@ -821,7 +844,7 @@ def batch(args, store, port):
                     owner=args.owner, wait=args.wait, suite=suite_name, out=str(out),
                     purpose=f"{args.purpose} ({suite_name} run {run}/{args.runs})",
                     max_seconds=args.max_seconds, idle_seconds=args.idle_seconds,
-                    expect_build_id=build_id)
+                    expect_build_id=build_id, verbose=getattr(args, "verbose", False))
                 print(f"batch: {suite_name} run {run}/{args.runs}", flush=True)
                 error = None
                 try:
@@ -879,6 +902,7 @@ def main(argv=None):
     # perf capture after three tests and read as "the rows are missing".
     suite.add_argument("--idle-seconds", type=float, default=300)
     suite.add_argument("--expect-build-id")
+    suite.add_argument("--verbose", action="store_true")
     suite.add_argument("--purpose", default="run suite")
     listen_parser = subparsers.add_parser("listen")
     listen_parser.add_argument("--seconds", type=float, required=True)
@@ -889,6 +913,7 @@ def main(argv=None):
     reset_parser = subparsers.add_parser("reset", help="reboot the board and wait for USB serial")
     reset_parser.add_argument("--capture", action="store_true",
                               help="capture the boot console after the reset")
+    reset_parser.add_argument("--verbose", action="store_true")
     reset_parser.add_argument("--seconds", type=float, default=20.0,
                               help="boot capture window (default: 20)")
     reset_parser.add_argument("--out")
@@ -898,6 +923,7 @@ def main(argv=None):
                          "of every registered suite")
     selftest_parser.add_argument("--worktree", required=True)
     selftest_parser.add_argument("--out")
+    selftest_parser.add_argument("--verbose", action="store_true")
     selftest_parser.add_argument("--perf-scope", action="store_true",
                                  help="build the perf-scoped image")
     # 3000 s leaves headroom over a full run's measured time - see
@@ -935,6 +961,7 @@ def main(argv=None):
     batch_parser.add_argument("--suite", action="append", required=True,
                               help="a suite to capture; repeat for several")
     batch_parser.add_argument("--runs", type=int, default=3)
+    batch_parser.add_argument("--verbose", action="store_true")
     batch_parser.add_argument("--perf-scope", action="store_true",
                               help="build the perf-scoped image")
     batch_parser.add_argument("--max-seconds", type=float, default=1800)
