@@ -262,11 +262,14 @@ class LockStore:
 
     def set_human(self, port, owner, note):
         with self.guard(port):
+            reservation_id = uuid.uuid4().hex
             self.write_json(self.human_path(port), {
+                "id": reservation_id,
                 "note": note,
                 "owner": owner,
                 "since_at": self.now(),
             })
+            return reservation_id
 
     def clear_human(self, port):
         with self.guard(port):

@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import gzip
 import json
+import math
 import os
 import re
 import shutil
@@ -939,6 +940,37 @@ def batch(args, store, port):
     return 1 if any(e["error"] for e in entries) else 0
 
 
+def human_wait_seconds(value):
+    try:
+        seconds = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("wait must be a nonnegative number") from error
+    if not math.isfinite(seconds) or seconds < 0:
+        raise argparse.ArgumentTypeError("wait must be a nonnegative finite number")
+    return seconds
+
+
+def wait_for_human_release(store, port, reservation_id, seconds):
+    deadline = time.monotonic() + seconds
+    try:
+        while True:
+            human = store.status(port)["human"]
+            if human is None:
+                print("human reservation released")
+                return 0
+            if human.get("id") != reservation_id:
+                print("human reservation replaced")
+                return 4
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                print("human reservation wait timed out")
+                return 3
+            time.sleep(min(1.0, remaining))
+    except KeyboardInterrupt:
+        print("human reservation wait interrupted")
+        return 3
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--port")
@@ -952,6 +984,7 @@ def main(argv=None):
     hand.add_argument("--note", required=True)
     hand.add_argument("--token")
     hand.add_argument("--purpose", default="handing board to maintainer")
+    hand.add_argument("--wait", type=human_wait_seconds)
     subparsers.add_parser("take-back")
     flash_parser = subparsers.add_parser("flash")
     flash_parser.add_argument("--variant", choices=("dev", "diag", "release"), required=True)
@@ -1071,9 +1104,11 @@ def main(argv=None):
             if active:
                 if not args.token or not store.release(port, args.token):
                     raise RuntimeError("active lock requires its token before handoff")
-            store.set_human(port, args.owner, args.note)
-            print("human reservation recorded")
-            return 0
+            reservation_id = store.set_human(port, args.owner, args.note)
+            if args.wait is None:
+                print("human reservation recorded")
+                return 0
+            return wait_for_human_release(store, port, reservation_id, args.wait)
         if args.command == "take-back":
             store.clear_human(port)
             device_lock.print_status(store.status(port))

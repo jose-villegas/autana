@@ -243,6 +243,10 @@ python scripts/device/device.py --port COM5 --owner maintainer take-back
 This clears the reservation and prints the resulting lock status. The lower-level
 `device_lock.py --port COM5 clear-human` command remains available for recovery.
 
+`autana hand --wait <seconds> <note...>` waits without holding the device
+lock; release returns 0, timeout or Ctrl+C returns 3, and a replacement
+reservation returns 4 without clearing it.
+
 ## Related
 
 - [Autana-CLI.md](Autana-CLI.md) - the interactive `autana` command built on
