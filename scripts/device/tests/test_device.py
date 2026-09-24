@@ -349,11 +349,12 @@ class DeviceTests(unittest.TestCase):
             args.out = str(Path(directory) / "capture.log")
             self.assertEqual(device.run_suite(args, store, "COM5"), 1)
 
-    def test_boot_build_id_queries_console_when_boot_has_no_id(self):
+    def test_reading_the_build_id_queries_the_console_when_the_boot_has_none(self):
         connection = FakeConnection([b"boot\nTESTS_DONE\n", b"BUILD_ID=reply\n"])
-        with mock.patch.object(device, "open_serial", return_value=connection):
-            actual, unused_reason = device.boot_build_id("COM5", seconds=1)
-        self.assertEqual(actual, "reply")
+        with mock.patch.object(device, "reset"), \
+             mock.patch.object(device, "open_serial", return_value=connection):
+            actual, reason = device.reset_and_read_build_id("COM5", seconds=1)
+        self.assertEqual((actual, reason), ("reply", "console"))
         self.assertEqual(connection.writes, [b"BUILDID\n"])
 
     def test_replies_are_found_behind_log_prefixes_and_end_at_a_terminator(self):
@@ -1188,33 +1189,61 @@ class CaptureAfterResetTests(unittest.TestCase):
             unused_data, reason = device.capture_after_reset("COM5", os.devnull, 30, 0.5)
         self.assertEqual((reason, len(opens)), ("idle", 2))
 
-    def boot_build_id(self, connections):
+    def test_idle_cutoff_equal_to_the_first_byte_wait_still_reopens_a_stale_handle(self):
+        connections = iter([FakeConnection([]),
+                            FakeConnection([b"SELFTEST_COMPLETE failures=0\n"])])
+        with mock.patch.object(device, "open_when_free",
+                               side_effect=lambda *unused, **unused_keywords: next(connections)), \
+             mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.1):
+            unused_data, reason = device.capture_after_reset("COM5", os.devnull, 30, 0.1)
+        self.assertEqual(reason, "complete")
+
+    def read_build_id(self, connections, resets=None):
+        resets = [] if resets is None else resets
         connections = iter(connections)
         opened = lambda *unused, **unused_keywords: next(connections)
-        with mock.patch.object(device, "open_serial", side_effect=opened), \
+        with mock.patch.object(device, "reset",
+                               side_effect=lambda port, after="hard_reset": resets.append(after)), \
+             mock.patch.object(device, "open_serial", side_effect=opened), \
              mock.patch.object(device, "open_when_free", side_effect=opened), \
              mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.05), \
-             mock.patch.object(device, "RESET_REOPEN_SECONDS", 0.3):
-            return device.boot_build_id("COM5", seconds=5)
+             mock.patch.object(device, "RESET_REOPEN_SECONDS", 0.3), \
+             mock.patch.object(device, "BOOT_IDLE_SECONDS", 0.3):
+            return device.reset_and_read_build_id("COM5", seconds=5)
 
-    def test_boot_build_id_reads_the_id_through_a_stale_first_handle(self):
-        actual, unused_reason = self.boot_build_id(
+    def test_the_build_id_is_read_through_a_stale_first_handle(self):
+        actual, unused_reason = self.read_build_id(
             [AnswersNoQuery([]), AnswersNoQuery([b"BUILD_ID=after-reset\n"])])
         self.assertEqual(actual, "after-reset")
 
-    def test_boot_build_id_reads_the_id_through_a_lost_first_handle(self):
+    def test_the_build_id_is_read_through_a_lost_first_handle(self):
         class LostConnection(FakeConnection):
             def read(self, unused_size):
                 raise OSError("device re-enumerated")
 
-        actual, unused_reason = self.boot_build_id(
+        actual, unused_reason = self.read_build_id(
             [LostConnection([]), AnswersNoQuery([b"BUILD_ID=after-reset\n"])])
         self.assertEqual(actual, "after-reset")
+
+    def test_a_board_silent_after_rts_is_restarted_through_the_watchdog(self):
+        resets = []
+        silent_until_the_watchdog = [AnswersNoQuery([]) for unused in range(8)]
+        actual, unused_reason = self.read_build_id(
+            silent_until_the_watchdog + [AnswersNoQuery([b"BUILD_ID=after-watchdog\n"])], resets)
+        self.assertEqual(resets, ["hard_reset", "watchdog_reset"])
+        self.assertEqual(actual, "after-watchdog")
+
+    def test_a_board_that_spoke_without_an_id_is_not_restarted_again(self):
+        resets = []
+        actual, unused_reason = self.read_build_id(
+            [AnswersNoQuery([b"I (113) boot: no id in this log\n"]), AnswersNoQuery([])], resets)
+        self.assertEqual(resets, ["hard_reset"])
+        self.assertIsNone(actual)
 
     def test_a_board_silent_throughout_still_gets_the_query_in_bounded_time(self):
         silent = [AnswersNoQuery([]) for unused in range(50)]
         started = time.monotonic()
-        actual, reason = self.boot_build_id(silent)
+        actual, reason = self.read_build_id(silent)
         self.assertIsNone(actual)
         self.assertEqual(reason, "silent")
         queried =[connection for connection in silent if connection.writes]

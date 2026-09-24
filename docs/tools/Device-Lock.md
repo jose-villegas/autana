@@ -124,10 +124,12 @@ reports (report_boot_anim_perf.sh) call it.
 they touch the board, keep it through their whole operation, and renew it
 every 30 seconds. `reset` reboots with esptool and returns once the port is
 back. `reset --capture`, `selftest` and `flash`'s `BUILD_ID` check then
-reopen the port for their capture: again if it vanishes mid-capture, and -
-for the first ten seconds after the reset only - again if two seconds pass
-without a byte, the stale handle a watchdog reset can leave. What the board
-prints while USB re-enumerates may be lost. `selftest` builds the diagnostics+autorun image and
+reopen the port for their capture: again if it vanishes mid-capture, and
+again - within `RESET_REOPEN_SECONDS` of the reset only - if
+`RESET_FIRST_BYTE_SECONDS` pass without a byte, the stale handle a watchdog
+reset can leave. A board that says nothing at all after the RTS reset is
+restarted through the watchdog and captured again. What the board prints
+while USB re-enumerates may be lost. `selftest` builds the diagnostics+autorun image and
 captures the boot-time run of every registered suite until
 SELFTEST_COMPLETE; `autana selftest` calls it, and so does
 `launcher/tools/device_report.sh` for a report with no single named suite
@@ -137,8 +139,7 @@ build-then-capture-under-one-lock shape scoped to one suite and run. The
 default wait is ten minutes; pass `--wait 0` to return immediately when the
 board is busy. `flash` resets with esptool, then compares the boot
 `BUILD_ID` with the `BUILD_ID=` line `build_flash.sh` printed into the flash
-log; a board silent after that reset is restarted through the watchdog and
-read again. When either value is missing, the command reports the image as
+log. When either value is missing, the command reports the image as
 unverified instead of claiming success. `run-suite` stops at the shell's `RUNSUITE_COMPLETE
 name=<suite>` line (or an older build's `SUITE_DONE`), or after its
 non-`shell:` output is idle. A port that disappears mid-capture ends it as

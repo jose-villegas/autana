@@ -402,7 +402,16 @@ def reset(port, after="hard_reset"):
 
 
 def reset_and_capture(port, output, seconds, idle_seconds, expected_build_id=None):
+    """A board that says nothing at all after the RTS reset is taken for a chip
+    in download mode, the one case RTS cannot start, and gets the watchdog. One
+    that spoke, even without a BUILD_ID, is left alone."""
     reset(port)
+    data, reason = capture_after_reset(port, output, seconds, idle_seconds, expected_build_id)
+    if reason != "silent":
+        return data, reason
+    print("board silent after an RTS reset, as from download mode; "
+          "restarting it through the watchdog", file=sys.stderr)
+    reset(port, after="watchdog_reset")
     return capture_after_reset(port, output, seconds, idle_seconds, expected_build_id)
 
 
@@ -411,12 +420,12 @@ RESET_REOPEN_SECONDS = 10
 
 
 def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=None):
-    """Any reset re-enumerates USB Serial/JTAG and kills an open handle, so no
-    capture spans the reset: what the board prints before the port reopens is
-    lost. A watchdog reset re-enumerates late enough that the first open can
-    get the old handle, which reads nothing rather than failing, so for a short
-    window after the reset a handle silent from the start is reopened. A
-    capture that heard nothing at all ends as "silent", whatever stopped it."""
+    """A watchdog reset or a power cycle re-enumerates USB Serial/JTAG and
+    kills an open handle, so no capture spans one: what the board prints
+    before the port reopens is lost. It re-enumerates late enough that the
+    first open can get the old handle, which reads nothing rather than
+    failing, so within RESET_REOPEN_SECONDS a handle silent from the start is
+    reopened. A capture that heard nothing at all ends as "silent"."""
     started = time.monotonic()
     deadline = started + seconds
     data = bytearray()
@@ -555,8 +564,14 @@ def find_elf_for_build_id(worktree, build_id):
     return None
 
 
-def boot_build_id(port, seconds=12, expected_build_id=None):
-    data, reason = capture_after_reset(port, os.devnull, seconds, 2, expected_build_id)
+BOOT_IDLE_SECONDS = 2
+
+
+def reset_and_read_build_id(port, seconds=12, expected_build_id=None):
+    """The id from the boot log, or else from the console's BUILDID query -
+    which a release image, having no console, never answers."""
+    data, reason = reset_and_capture(port, os.devnull, seconds, BOOT_IDLE_SECONDS,
+                                     expected_build_id)
     actual = latest_build_id_from_bytes(data)
     if actual:
         return actual, reason
@@ -575,7 +590,7 @@ def boot_build_id(port, seconds=12, expected_build_id=None):
             for line in lines:
                 actual = build_id_from_bytes(line)
                 if actual:
-                    return actual, reason
+                    return actual, "console"
         return None, reason
 
 
@@ -622,13 +637,7 @@ def flash(args, store, port, held_lock=None, extra_flags=()):
             else:
                 print("build id is unverified: the build log has no BUILD_ID",
                       file=sys.stderr)
-            reset(port)
-            actual, reason = boot_build_id(port, expected_build_id=expected)
-            if reason == "silent":
-                print("board silent after the flash, as from download mode; "
-                      "restarting it through the watchdog", file=sys.stderr)
-                reset(port, after="watchdog_reset")
-                actual, reason = boot_build_id(port, expected_build_id=expected)
+            actual, reason = reset_and_read_build_id(port, expected_build_id=expected)
             if not expected or not actual:
                 print("build id is unverified: boot did not provide BUILD_ID", file=sys.stderr)
             elif actual != expected:
