@@ -26,6 +26,7 @@ set(app_srcs
     "ui/ui_pointer.c"
     "ui/ui_ridge.c"
     "ui/ui_scroll.c"
+    "ui/ui_widgets.c"
     "util/device_state.c"
     "util/frame_cost.c"
     "util/job.c"

@@ -1,6 +1,6 @@
 /*
- * Portable suite: icons_sand - structural facts about the brush screen's
- * baked artwork.
+ * Portable suite: icons_sand - structural facts about the brush, title
+ * and options screens' baked artwork.
  *
  * Same reasoning as test/suites/suite_icons_system.c and the generated-sources
  * convention in docs/Launcher-Architecture.md: the expected rows below are transcribed by
@@ -34,10 +34,9 @@ typedef struct {
 } named_icon_t;
 
 static const named_icon_t ICONS[] = {
-    {"pour", ICON_SAND_POUR},
-    {"erase", ICON_SAND_ERASE},
-    {"boom", ICON_SAND_BOOM},
-    {"info", ICON_SAND_INFO},
+    {"pour", ICON_SAND_POUR},       {"erase", ICON_SAND_ERASE}, {"boom", ICON_SAND_BOOM},
+    {"info", ICON_SAND_INFO},       {"start", ICON_SAND_START}, {"load", ICON_SAND_LOAD},
+    {"options", ICON_SAND_OPTIONS}, {"guide", ICON_SAND_GUIDE}, {"exit", ICON_SAND_EXIT},
 };
 #define ICON_COUNT (sizeof(ICONS) / sizeof(ICONS[0]))
 
@@ -58,10 +57,9 @@ test_every_icon_is_non_empty(void) {
     }
 }
 
-/* Erase's own baked run count (28) is the largest of the four - big enough
- * buffer for any of this atlas's icons at native size without pulling in a
- * general worst case that belongs to a different artwork. */
-#define SAND_ICON_TEST_MAX_BLOCKS 32
+/* Guide's own baked run count (34) is the largest in the atlas, so this
+ * holds any of its icons at native size. */
+#define SAND_ICON_TEST_MAX_BLOCKS 40
 
 typedef struct {
     icon_rect_t* blocks;
@@ -248,6 +246,18 @@ test_pour_is_not_symmetric(void) {
     TEST_ASSERT_FALSE(icon_is_top_bottom_symmetric(icon));
 }
 
+/* The gear is drawn symmetric on both axes; power and the open book only
+ * left-right, since each has a top and a bottom. */
+static void
+test_the_menu_icons_keep_their_drawn_symmetry(void) {
+    TEST_ASSERT_TRUE(icon_is_left_right_symmetric(&icon_sand_table[ICON_SAND_OPTIONS]));
+    TEST_ASSERT_TRUE(icon_is_top_bottom_symmetric(&icon_sand_table[ICON_SAND_OPTIONS]));
+    TEST_ASSERT_TRUE(icon_is_left_right_symmetric(&icon_sand_table[ICON_SAND_EXIT]));
+    TEST_ASSERT_FALSE(icon_is_top_bottom_symmetric(&icon_sand_table[ICON_SAND_EXIT]));
+    TEST_ASSERT_TRUE(icon_is_left_right_symmetric(&icon_sand_table[ICON_SAND_GUIDE]));
+    TEST_ASSERT_FALSE(icon_is_top_bottom_symmetric(&icon_sand_table[ICON_SAND_GUIDE]));
+}
+
 void
 run_sand_icons_suite(void) {
     RUN_TEST(test_every_icon_is_non_empty);
@@ -258,6 +268,7 @@ run_sand_icons_suite(void) {
     RUN_TEST(test_boom_is_symmetric_both_axes);
     RUN_TEST(test_info_is_left_right_symmetric_but_not_top_bottom);
     RUN_TEST(test_pour_is_not_symmetric);
+    RUN_TEST(test_the_menu_icons_keep_their_drawn_symmetry);
 }
 
 SUITE_REGISTER(run_sand_icons_suite);

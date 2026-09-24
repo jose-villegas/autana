@@ -87,7 +87,7 @@ fill_rect_logical(ui_transform_t t, mu_Rect r, gfx_color_t color) {
     gfx_fill_rect(p.x, p.y, p.w, p.h, color);
 }
 
-/* Mirrors app_sand.c's draw_brush_panel(): one flat section frame. */
+/* Mirrors ui_panel(): one flat section frame. */
 static void
 draw_panel(ui_transform_t t, mu_Rect r, uint32_t face_rgb, uint32_t border_rgb) {
     ui_span_t spans[UI_PANEL_MAX_SPANS];
@@ -97,7 +97,7 @@ draw_panel(ui_transform_t t, mu_Rect r, uint32_t face_rgb, uint32_t border_rgb) 
     }
 }
 
-/* Mirrors app_sand.c's draw_brush_bezel(); `sunken` is always false here -
+/* Mirrors brush_screen.c's draw_brush_bezel(); `sunken` is always false here -
  * see this file's header on hit state. */
 static void
 draw_bezel(ui_transform_t t, mu_Rect r, uint32_t face_rgb) {
@@ -125,7 +125,7 @@ draw_icon(ui_transform_t t, mu_Rect box, const icon_t* icon, uint32_t color_rgb)
     ui_transform_icon_blocks(t, icon_sand_rows + icon->offset, icon->w, icon->h, icon->stride, box, icon_emit, &ctx);
 }
 
-/* Mirrors app_sand.c's draw_brush_text() for the logical (x, y), then ui.c's
+/* Mirrors ui_text_in() for the logical (x, y), then ui.c's
  * draw_command() MU_COMMAND_TEXT case for turning it into a physical glyph
  * origin - see gfx_text_font() and ui_text_glyph0_origin(). The brush
  * screen always draws UI_TEXT_PLAIN, so this is the ink pass alone, no

@@ -119,6 +119,10 @@ typedef struct app {
 void shell_set_system_panel_clock_hz(int hz);
 int shell_system_panel_clock_hz(void);
 
+/* Leaves the running app for the launcher before its next frame, as the
+ * home gesture does - for an app with an on-screen way out. */
+void shell_request_exit(void);
+
 /*
  * APP_REGISTER() places a constructor in .init_array, which ESP-IDF runs
  * before app_main(). Link order decides .init_array order; app_register()

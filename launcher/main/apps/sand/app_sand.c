@@ -52,6 +52,7 @@
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
+#include "icons_dither.h"
 #include "icons_sand.h"
 #include "input/imu.h"
 #include "input/imu_rotation.h"
@@ -63,12 +64,15 @@
 #include "sand_colour_state.h"
 #include "sand_heal.h"
 #include "sand_limits.h"
+#include "sand_menu.h"
+#include "sand_mode_swatches.h"
 #include "sand_palette256.h"
 #include "sand_swatch.h"
 #include "sand_ui.h"
 #include "ui/brush_screen.h"
+#include "ui/options_screen.h"
 #include "ui/palette_screen.h"
-#include "ui/sand_menu_screen.h"
+#include "ui/title_screen.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
 #include "util/intmath.h" /* im_abs(), im_len() - see
@@ -117,6 +121,13 @@ static const char* const dither_names[GFX_DITHER_MODE_COUNT] = {
 };
 
 static gfx_dither_mode_t dither_mode = GFX_DITHER_CELL_BAYER2;
+
+_Static_assert((int)ICON_DITHER_COUNT == (int)GFX_DITHER_MODE_COUNT && (int)ICON_DITHER_NONE == (int)GFX_DITHER_NONE
+                   && (int)ICON_DITHER_CELL_CHECKER == (int)GFX_DITHER_CELL_CHECKER
+                   && (int)ICON_DITHER_CELL_BAYER2 == (int)GFX_DITHER_CELL_BAYER2
+                   && (int)ICON_DITHER_PIXEL_CHECKER2 == (int)GFX_DITHER_PIXEL_CHECKER2
+                   && (int)ICON_DITHER_PIXEL_BAYER4 == (int)GFX_DITHER_PIXEL_BAYER4,
+               "the options screen shows dither swatch i beside dither_names[i]");
 
 /* sand_color_mode_t and sand_colour_state.h's own sand_colour_mode_t share
  * an ordinal order (FULL, 256, 16) by construction - one cast, not a
@@ -170,6 +181,15 @@ static bool overlays_skipped_reason_logged;
  * once mu_button() returns. sand_frame() applies it at the top of its next
  * pass instead, a full UI build later. */
 static bool pending_start;
+
+/* The title and options screens' state. The launch options themselves stay
+ * in quality/color_mode/dither_mode above; this only holds them while the
+ * options screen edits a draft - see adopt_options(). */
+static sand_menu_t menu;
+
+/* Built from the palettes on the first visit to the options screen. */
+static sand_mode_swatch_t mode_swatches[3];
+static bool mode_swatches_ready;
 
 static int cell, grid_w, grid_h, block_cols, block_rows;
 
@@ -440,6 +460,15 @@ apply_gfx_action(sand_gfx_action_t action) {
     }
 }
 
+static sand_options_t
+current_options(void) {
+    return (sand_options_t){
+        .quality = quality,
+        .color = (sand_colour_mode_t)color_mode,
+        .dither = (int)dither_mode,
+    };
+}
+
 static void
 sand_enter(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -466,6 +495,7 @@ sand_enter(void) {
      * exist. Idempotent: a plain FULL entry asks for nothing. */
     apply_gfx_action(sand_colour_on_enter_menu(&colour_state));
     ui.screen = SAND_UI_MENU;
+    sand_menu_init(&menu, current_options());
 
     /* A tap that outlived its own app session (START, then home before the
      * deferred frame ran) must not restart the sim before the menu it
@@ -1910,61 +1940,59 @@ frame_log_sample(int64_t frame_us) {
 #endif
 
 static void
-draw_menu(uint32_t dt_ms, const input_t* input) {
+adopt_options(const sand_options_t* options) {
+    quality = options->quality;
+    color_mode = (sand_color_mode_t)options->color;
+    dither_mode = (gfx_dither_mode_t)options->dither;
+}
+
+static void
+draw_options(mu_Context* ctx) {
+    if (!mode_swatches_ready) {
+        sand_mode_swatches(sand_dither_none_lut, sand_palette256_lut, GFX_INDEXED_PALETTE_SIZE, SAND_PALETTE_UI_ENTRIES,
+                           mode_swatches);
+        mode_swatches_ready = true;
+    }
+    const char* quality_names[QUALITY_COUNT];
+    for (int i = 0; i < QUALITY_COUNT; i++) {
+        quality_names[i] = qualities[i].name;
+    }
+    const options_screen_labels_t labels = {
+        .quality_names = quality_names,
+        .quality_count = QUALITY_COUNT,
+        .dither_names = dither_names,
+        .dither_count = GFX_DITHER_MODE_COUNT,
+        .mode_swatches = mode_swatches,
+    };
+    const sand_options_hits_t hits = options_screen_draw(ctx, &menu, &labels);
+    if (sand_menu_options_step(&menu, hits)) {
+        /* Not applied to a running sim - the next start_sim() reads them. */
+        adopt_options(&menu.committed);
+    }
+}
+
+static void
+draw_title(mu_Context* ctx) {
+    switch (sand_menu_title_clicked(&menu, title_screen_draw(ctx))) {
+        case SAND_MENU_START:
+            /* Not called here - see pending_start's own comment. */
+            pending_start = true;
+            break;
+        case SAND_MENU_EXIT: shell_request_exit(); break;
+        case SAND_MENU_STAY: break;
+    }
+}
+
+static void
+draw_menu(const input_t* input) {
     mu_Context* ctx = ui_context();
 
     ui_begin(input);
-
-    char quality_label[24];
-    snprintf(quality_label, sizeof quality_label, "QUALITY: %s", qualities[quality].name);
-    char color_label[24];
-    snprintf(color_label, sizeof color_label, "COLOUR: %s", color_names[color_mode]);
-    char dither_label[24] = "";
-    if (color_mode == SAND_COLOR_16) {
-        snprintf(dither_label, sizeof dither_label, "DITHER: %s", dither_names[dither_mode]);
+    if (menu.screen == SAND_MENU_OPTIONS) {
+        draw_options(ctx);
+    } else {
+        draw_title(ctx);
     }
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    char two_core_label[24];
-    snprintf(two_core_label, sizeof two_core_label, "TWO-CORE: %s", sand_two_core_step_enabled() ? "On" : "Off");
-#endif
-
-    const sand_menu_screen_state_t state = {
-        .quality = quality_label,
-        .color = color_label,
-        .dither = dither_label,
-        .show_dither = (color_mode == SAND_COLOR_16),
-#if CONFIG_LAUNCHER_DEVELOPMENT
-        .two_core = two_core_label,
-#endif
-    };
-    const sand_menu_screen_result_t result = sand_menu_screen_draw(ctx, &state, dt_ms);
-
-    if (result.start_clicked) {
-        /* Not called here - see pending_start's own comment. */
-        pending_start = true;
-    }
-    if (result.quality_clicked) {
-        quality = (quality + 1) % QUALITY_COUNT;
-    }
-    if (result.color_clicked) {
-        /* Not applied here - the next start_sim() (apply_gfx_enter_indexed())
-         * reads dither_mode, the same "menu picks, entry applies" split
-         * QUALITY/COLOUR already use. */
-        color_mode = (color_mode + 1) % SAND_COLOR_COUNT;
-    }
-    if (result.dither_clicked) {
-        dither_mode = (gfx_dither_mode_t)((dither_mode + 1) % GFX_DITHER_MODE_COUNT);
-    }
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    if (result.two_core_clicked) {
-        /* Takes effect immediately, unlike QUALITY/COLOUR/DITHER: nothing
-         * about the running sim depends on this at start_sim() time, and
-         * the coordinator's capture wants the switch to land mid-visit. */
-        sand_set_two_core_step(!sand_two_core_step_enabled());
-        frame_log_note_mode_change();
-    }
-#endif
-
     ui_end(COL_BACKGROUND);
 }
 
@@ -2076,7 +2104,7 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
          * future path back to the menu from reintroducing the crash rather
          * than a second place trusting it stays covered. */
         apply_gfx_action(sand_colour_on_enter_menu(&colour_state));
-        draw_menu(dt_ms, input);
+        draw_menu(input);
         return;
     }
 
@@ -2250,7 +2278,9 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
     ui_set_transform(ui_transform_identity());
     sand_enter();
 
-    const mu_Rect start_rect = sand_menu_screen_start_rect(color_mode == SAND_COLOR_16);
+    title_screen_layout_t title;
+    title_screen_layout(ui_width(), ui_height(), &title);
+    const mu_Rect start_rect = title.buttons[SAND_TITLE_START];
     const int cx = start_rect.x + start_rect.w / 2;
     const int cy = start_rect.y + start_rect.h / 2;
     ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", cx, cy, start_rect.x, start_rect.y,
@@ -2260,7 +2290,7 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
     sand_frame(0, &press); /* primes next_hover_root - see the comment above */
 
     const input_t hold = {.x = cx, .y = cy};
-    sand_frame(16, &hold); /* hover_root now Sand Menu; hover granted this frame */
+    sand_frame(16, &hold); /* hover_root now Sand Title; hover granted this frame */
 
     const input_t release = {.released = true, .x = cx, .y = cy};
     sand_frame(16, &release); /* DOWN then UP, same draw_menu() call - the click */

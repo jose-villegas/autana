@@ -1,0 +1,11 @@
+{
+    "cell_w": 4,
+    "cell_h": 4,
+    "icons": [
+        { "name": "none", "source": "png", "col": 0, "row": 0 },
+        { "name": "cell_checker", "source": "png", "col": 1, "row": 0 },
+        { "name": "cell_bayer2", "source": "png", "col": 2, "row": 0 },
+        { "name": "pixel_checker2", "source": "png", "col": 3, "row": 0 },
+        { "name": "pixel_bayer4", "source": "png", "col": 4, "row": 0 }
+    ]
+}

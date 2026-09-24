@@ -335,6 +335,12 @@ paint_launcher_under_boot(void) {
  * caller has not yet begun presenting - see step_app(). Reset whenever the
  * running app changes, so a freshly entered one always primes first. */
 static bool frame_ready;
+static bool exit_requested;
+
+void
+shell_request_exit(void) {
+    exit_requested = true;
+}
 
 static void present_unless_deferred(const app_t* current);
 
@@ -393,6 +399,7 @@ start_app(const app_t** current, const app_t* next) {
     system_navigation_init(&system_navigation);
     gfx_request_full_redraw();
     restore_system_display_state();
+    exit_requested = false;
     (*current)->enter();
     frame_ready = false;
 }
@@ -481,6 +488,12 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
 
     if (*current == NULL) {
         step_launcher(current, input, exit_edge, dt_ms);
+        return;
+    }
+
+    if (exit_requested) {
+        exit_requested = false;
+        leave_app(current, input, exit_edge, dt_ms);
         return;
     }
 
