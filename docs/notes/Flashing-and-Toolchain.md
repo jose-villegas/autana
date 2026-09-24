@@ -19,24 +19,18 @@ flashable even when startup fails.
 If the board becomes unreachable, BOOT has to be held at the moment power
 arrives - so what produces that moment decides the procedure.
 
-**No battery fitted**, where unplugging USB really does remove power:
+| Step | No battery fitted | Battery fitted |
+|---|---|---|
+| 1. Cut power | Unplug USB-C | **Long-press PWR** (~10 s) until the COM port disappears |
+| 2. | **Hold BOOT** | **Hold BOOT** |
+| 3. Power on, still holding BOOT | Plug USB-C back in | **Press PWR** |
+| 4. | Keep holding ~2 s, release | Keep holding ~2 s, release |
 
-1. Unplug USB-C
-2. **Hold BOOT**
-3. Plug USB-C back in while still holding
-4. Keep holding ~2 s, release
-
-**With a battery fitted, that sequence cannot work**, and it fails silently
-rather than reporting anything: the AXP2101 keeps the rail up from the battery,
-so unplugging USB never power-cycles the SoC and step 3 delivers no power-on at
-all. The chip carries its stuck state through every replug. Power off through
-the PMU instead, which is the only thing that cuts a battery-backed rail:
-
-1. **Long-press PWR** (~10 s) until it powers off - the COM port disappearing
-   is what proves the rail actually dropped; without that, this step did nothing
-2. **Hold BOOT**
-3. **Press PWR** to power on, still holding
-4. Keep holding ~2 s, release
+**With a battery fitted, unplugging USB does nothing**, and fails silently: the
+AXP2101 keeps the rail up from the battery, so the SoC never loses power and
+carries its stuck state through every replug. Only the PMU cuts a
+battery-backed rail, and the COM port disappearing is what proves step 1
+worked.
 
 That forces the ROM bootloader regardless of firmware state. Confirm you are in
 download mode with:
