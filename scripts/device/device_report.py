@@ -27,7 +27,7 @@ from pathlib import Path
 # "file.c:3685:name:PASS" - so a required leading token never matches a real
 # capture. Confirmed against 152333_runsuite-run_sand_perf_suite...log:
 # report_performance.py's own RESULT_RE finds zero entries in it.
-RESULT_RE = re.compile(r"^\S*:\d+:(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
+RESULT_RE = re.compile(r"^(?P<file>\S*?):\d+:(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
 # Searched, not anchored: a real line carries the ESP-IDF log prefix
 # ("I (32139) device_tests: PERF TARGET full-size step: ..."), and a target's
 # name contains spaces.

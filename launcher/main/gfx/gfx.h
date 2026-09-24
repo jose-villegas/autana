@@ -295,11 +295,8 @@ void gfx_mark_dirty(int x, int y, int w, int h);
 
 void gfx_mark_all_dirty(void);
 
-/* Whether any band overlapping this rectangle is already going to be
- * sent. For overlay content that is identical every frame - the shell's
- * home hint - this answers "does it need redrawing?". If nothing below
- * it changed, the pixels are still in the framebuffer and still on the
- * panel, and both the draw and the transfer can be skipped. */
+/* Whether any recorded dirt overlaps this rectangle. The tracker uses
+ * leaf-sized regions for precise marks and full cells for band marks. */
 bool gfx_region_dirty(int x, int y, int w, int h);
 
 /* Send the changed bands to the panel and wait for the transfers to land.
