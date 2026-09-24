@@ -333,8 +333,17 @@ class HeldLock:
             self.store.release(self.port, self.held["token"])
 
 
+def tests_done(data):
+    return (b"TESTS_DONE" in data or b"SELFTEST_COMPLETE" in data or
+            (b"Tests " in data and b"Failures" in data))
+
+
+def build_id_heard(data):
+    return BUILD_ID.search(data) is not None
+
+
 def capture(connection, output, max_seconds, idle_seconds, expected_build_id=None,
-            suite_name=None, append=False, echo=None, until_tests_done=True,
+            suite_name=None, append=False, echo=None, complete=tests_done,
             first_byte_seconds=None):
     data = bytearray()
     pending = b""
@@ -385,8 +394,7 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
                         raise RuntimeError("no suite named " + suite_name + " on this build")
                     if b"SUITE_DONE" in text or text.startswith(suite_complete):
                         return bytes(data), "complete"
-            if until_tests_done and (b"TESTS_DONE" in data or b"SELFTEST_COMPLETE" in data or
-                                  (b"Tests " in data and b"Failures" in data)):
+            if complete is not None and complete(data):
                 return bytes(data), "complete"
     return bytes(data), "timeout"
 
@@ -401,25 +409,29 @@ def reset(port, after="hard_reset"):
     subprocess.run(command, check=True)
 
 
-def reset_and_capture(port, output, seconds, idle_seconds, expected_build_id=None):
+def reset_and_capture(port, output, seconds, idle_seconds, expected_build_id=None,
+                      complete=tests_done):
     """A board that says nothing at all after the RTS reset is taken for a chip
     in download mode, the one case RTS cannot start, and gets the watchdog. One
     that spoke, even without a BUILD_ID, is left alone."""
     reset(port)
-    data, reason = capture_after_reset(port, output, seconds, idle_seconds, expected_build_id)
+    data, reason = capture_after_reset(port, output, seconds, idle_seconds, expected_build_id,
+                                       complete)
     if reason != "silent":
         return data, reason
     print("board silent after an RTS reset, as from download mode; "
           "restarting it through the watchdog", file=sys.stderr)
     reset(port, after="watchdog_reset")
-    return capture_after_reset(port, output, seconds, idle_seconds, expected_build_id)
+    return capture_after_reset(port, output, seconds, idle_seconds, expected_build_id,
+                               complete)
 
 
 RESET_FIRST_BYTE_SECONDS = 2
 RESET_REOPEN_SECONDS = 10
 
 
-def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=None):
+def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=None,
+                        complete=tests_done):
     """A watchdog reset or a power cycle re-enumerates USB Serial/JTAG and
     kills an open handle, so no capture spans one: what the board prints
     before the port reopens is lost. It re-enumerates late enough that the
@@ -453,7 +465,7 @@ def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=N
                 return ended("timeout")
             in_reopen_window = not data and time.monotonic() - started < RESET_REOPEN_SECONDS
             part, reason = capture(connection, output, remaining, idle_seconds,
-                                   expected_build_id, append=append,
+                                   expected_build_id, append=append, complete=complete,
                                    first_byte_seconds=RESET_FIRST_BYTE_SECONDS
                                    if in_reopen_window else None)
         data.extend(part)
@@ -564,14 +576,13 @@ def find_elf_for_build_id(worktree, build_id):
     return None
 
 
-BOOT_IDLE_SECONDS = 2
-
-
 def reset_and_read_build_id(port, seconds=12, expected_build_id=None):
-    """The id from the boot log, or else from the console's BUILDID query -
-    which a release image, having no console, never answers."""
-    data, reason = reset_and_capture(port, os.devnull, seconds, BOOT_IDLE_SECONDS,
-                                     expected_build_id)
+    """The id from the boot log, listened for until it arrives - a cold boot
+    prints it again once the shell is ready, past the boot animation's
+    silence - or else from the console's BUILDID query, which a release
+    image, having no console, never answers."""
+    data, reason = reset_and_capture(port, os.devnull, seconds, None, expected_build_id,
+                                     complete=build_id_heard)
     actual = latest_build_id_from_bytes(data)
     if actual:
         return actual, reason
@@ -781,7 +792,7 @@ def listen(args, store, port):
         with HeldLock(store, port, args.owner, args.purpose, args.wait, announce_waiters=True):
             with open_when_free(port) as connection:
                 data, reason = capture(connection, output, args.seconds, None,
-                                       echo=sink, until_tests_done=False)
+                                       echo=sink, complete=None)
     except KeyboardInterrupt:
         reason = "stopped"
         data = Path(output).read_bytes() if Path(output).exists() else b""
