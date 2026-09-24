@@ -68,16 +68,13 @@ class JsonReadTests(unittest.TestCase):
         self.assertEqual(result["owner"], autana.owner())
         self.assertEqual(result["pid"], autana.os.getpid())
 
-    def test_monitor_lines(self):
-        result = mock.Mock(returncode=0, stdout="booted\nready\n", stderr="")
-        with mock.patch.object(autana.subprocess, "run", return_value=result):
-            self.assertEqual(self.output(autana.monitor, ["1", "--json"]),
-                             {"lines": ["booted", "ready"]})
-
-    def test_status_text_uses_parsed_result(self):
-        reply = "human reservation: Maintainer: inspecting panel (8s ago)\nwaiting: Alice\n"
-        parsed = autana.parse_status(reply)
-        self.assertEqual(autana.format_status(parsed) + "\n", reply)
+    def test_text_output_is_the_board_reply_unchanged(self):
+        replies = ["APPS name=Sand running=1 extra=kept", "APPS_END"]
+        stream = io.StringIO()
+        with mock.patch.object(autana, "send", return_value=(0, replies)), \
+                contextlib.redirect_stdout(stream):
+            autana.apps([])
+        self.assertEqual(stream.getvalue(), "APPS name=Sand running=1 extra=kept\n")
 
     def test_json_rejected_for_tune_write(self):
         with self.assertRaises(SystemExit):

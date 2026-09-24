@@ -55,7 +55,7 @@ autana> buildid
 
 ## JSON read results
 
-The read commands `status`, `buildid`, `id`, `apps`, `suite list`, `monitor`, and the
+The read commands `status`, `buildid`, `id`, `apps`, `suite list`, and the
 listing form of `tune` accept `--json`. Place it after the command, including
 after any `suite list` or `tune` filter. Each prints one JSON object:
 
@@ -67,7 +67,6 @@ after any `suite list` or `tune` filter. Each prints one JSON object:
 | `apps --json` | `apps`: objects with `name` and boolean `running` |
 | `suite list [text] --json` | `suites`: objects with `name`, `source`, boolean `on_request`, and boolean `device_only` |
 | `tune [text] --json` | `tunables`: objects with `name`, `value`, `min`, `max`, and `default` as numbers |
-| `monitor [seconds] [--elf PATH] --json` | `lines`: captured console lines. The object prints when the monitoring interval ends. |
 
 The listing commands return an empty array when the filter matches nothing.
 `--json` is available only for reads; tuning changes and board actions use
