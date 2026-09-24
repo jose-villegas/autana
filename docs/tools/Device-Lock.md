@@ -9,9 +9,9 @@ not a fixed COM number, and opens it at 115200 with DTR and RTS low.
 sequenceDiagram
     participant App as autana
     participant Dev as device.py
-    participant Lock as lock file, system temp folder
-    participant Port as the port, VID 0x303A
-    participant Bash as Git for Windows bash.exe
+    participant Lock as lock file
+    participant Port as USB port
+    participant Bash as Git bash
     participant Flash as build_flash.sh
 
     App->>Dev: owner, purpose
@@ -19,10 +19,10 @@ sequenceDiagram
     Dev->>Port: wait for the port
 
     alt send, screenshot, run-suite, listen
-        Dev->>Port: open serial, 115200,<br/>DTR/RTS low
+        Dev->>Port: open serial
         Dev->>Port: talk to the running firmware
     else flash, batch, selftest
-        Dev->>Bash: run build_flash.sh,<br/>AUTANA_DEVICE_LOCK_TOKEN set
+        Dev->>Bash: run with AUTANA_DEVICE_LOCK_TOKEN
         Bash->>Flash: run it
         Note over Flash: refuses to flash without<br/>device.py's lock token
         Dev->>Port: reset the board
