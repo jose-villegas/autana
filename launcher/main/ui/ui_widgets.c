@@ -1,5 +1,6 @@
 #include "ui/ui_widgets.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -271,6 +272,7 @@ close_if_abandoned(mu_Context* ctx, mu_Container* list) {
 int
 ui_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t* items, int count, int selected,
             const ui_theme_t* theme) {
+    assert(count > 0);
     if (selected < 0 || selected >= count) {
         selected = 0;
     }

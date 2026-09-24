@@ -40,7 +40,7 @@ sand_colour_state_init(sand_colour_state_t* st) {
     st->indexed_suspended = false;
 }
 
-/* start_sim(): `requested` came straight from the COLOUR menu button. */
+/* start_sim(): `requested` is the committed COLOR MODE option. */
 static inline sand_gfx_action_t
 sand_colour_on_start_sim(sand_colour_state_t* st, sand_colour_mode_t requested) {
     st->indexed_suspended = false;
@@ -60,9 +60,8 @@ sand_colour_grant_failed(sand_colour_state_t* st) {
     st->indexed_active = false;
 }
 
-/* Every path back to the title screen: sand_enter() (a fresh entry, and the
- * only real one today), plus a defensive call right before the menu itself
- * draws. Idempotent - safe to call when already FULL. */
+/* Every path back to the title screen: sand_enter(), plus a defensive call
+ * right before the menu itself draws. Idempotent - safe to call when already FULL. */
 static inline sand_gfx_action_t
 sand_colour_on_enter_menu(sand_colour_state_t* st) {
     st->indexed_suspended = false;

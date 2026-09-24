@@ -1,5 +1,6 @@
 #include "options_screen.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -163,19 +164,18 @@ draw_colour(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu
     }
 }
 
-#define DITHER_ITEMS_MAX 8
-
 static void
 draw_dither(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu_t* menu,
             const options_screen_labels_t* labels, sand_options_hits_t* hits) {
     const ui_theme_t* theme = &sand_ui_theme;
     ui_text_in(ctx, lay->dither_caption, OPTIONS_SCREEN_DITHER, theme->caption, theme->text_scale, UI_ALIGN_CENTRE);
 
-    ui_dropdown_item_t items[DITHER_ITEMS_MAX];
-    const int count = min_int(labels->dither_count, DITHER_ITEMS_MAX);
+    assert(labels->dither_count <= ICON_DITHER_COUNT);
+    ui_dropdown_item_t items[ICON_DITHER_COUNT];
+    const int count = labels->dither_count;
     for (int i = 0; i < count; i++) {
         items[i] = (ui_dropdown_item_t){
-            .icon = i < ICON_DITHER_COUNT ? &icon_dither_table[i] : NULL,
+            .icon = &icon_dither_table[i],
             .icon_rows = icon_dither_rows,
             .label = labels->dither_names[i],
         };

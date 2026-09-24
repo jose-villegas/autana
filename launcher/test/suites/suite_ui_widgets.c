@@ -356,8 +356,7 @@ canvas_hash(const char* name) {
     return h;
 }
 
-/* Nothing repaints the rect a closed list leaves, so the screen under it
- * must change its own drawing when the list opens or closes. */
+/* The dropdown shows whether its list is open, through its chevron. */
 static void
 test_opening_the_list_changes_the_screen_under_it(void) {
     fixture();
