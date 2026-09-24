@@ -34,7 +34,7 @@ where Python has `readline` (Windows: `pip install pyreadline3`).
 | `autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` | Flash once, capture the suites `N` times (3) under one lock; one summary. |
 
 Each prints the report and capture paths, PASS/FAIL counts, up to ten failure
-messages and the end reason. `--verbose` prints the whole capture; to find
+messages (then a FAIL count per suite) and the end reason. `--verbose` prints the whole capture; to find
 something in it, grep the capture instead.
 
 ## Watch the board

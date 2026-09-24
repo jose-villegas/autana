@@ -139,7 +139,33 @@ class DeviceTests(unittest.TestCase):
         lines = [call.args[0] for call in printed.call_args_list]
         self.assertIn("suite results: 1 PASS, 12 FAIL", lines)
         self.assertIn("bad_1: wrong 1", lines)
-        self.assertIn("2 more in record.log", lines)
+        self.assertIn("2 more in the capture; by suite:", lines)
+        self.assertIn("  file: 12 FAIL", lines)
+        self.assertNotIn("boot detail", "\n".join(lines))
+
+    def test_failures_past_the_cap_are_counted_per_suite(self):
+        data = b"".join(
+            [f"/p/tests/suite_sand_scenes.c:{n}:a_{n}:FAIL: x\n".encode() for n in range(9)] +
+            [f"C:\\w\\suite_gfx.c:{n}:b_{n}:FAIL: y\n".encode() for n in range(3)] +
+            [b"/p/suite_gfx.c:99:ok:PASS\n"])
+        with mock.patch("builtins.print") as printed:
+            device.print_suite_output(data, "record.log", "suite", "complete", False)
+        lines = [call.args[0] for call in printed.call_args_list]
+        by_suite = lines[lines.index("2 more in the capture; by suite:") + 1:][:2]
+        self.assertEqual(by_suite, ["  suite_sand_scenes: 9 FAIL", "  suite_gfx: 3 FAIL"])
+
+    def test_under_the_cap_there_is_no_per_suite_block(self):
+        data = b"/p/suite_gfx.c:1:b:FAIL: y\n"
+        with mock.patch("builtins.print") as printed:
+            device.print_suite_output(data, "record.log", "suite", "complete", False)
+        self.assertFalse(any("by suite" in call.args[0] for call in printed.call_args_list))
+
+    def test_a_passing_run_still_names_its_capture(self):
+        data = b"boot detail\n:1:good:PASS\n"
+        with mock.patch("builtins.print") as printed:
+            device.print_suite_output(data, "record.log", "suite", "complete", False)
+        lines = [call.args[0] for call in printed.call_args_list]
+        self.assertIn("suite capture: record.log", lines)
         self.assertNotIn("boot detail", "\n".join(lines))
 
     def test_suite_output_pass_and_verbose_capture(self):
