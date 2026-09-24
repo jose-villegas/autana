@@ -19,15 +19,6 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=render_lab
 . "$SCRIPT_DIR/render_lab_render_sources.sh"
 
-# scene_wire.c's enter()/exit() need a working heap_caps_malloc()/free() on
-# the host, matched against test/stubs/esp_heap_caps.h's own declarations
-# (render_scene.sh puts test/ on the include path).
-# test/heap_arena.c models the device's real heap caps, but its
-# malloc/calloc/realloc/free wrapping reaches gfx_init()'s own host branch
-# (gfx.c), which allocates the framebuffer with a plain malloc() it expects
-# to always succeed - a rendering preview needs the scratch buffers to
-# allocate, nothing about their size or placement, so
-# render_lab_render_host_heap.c is a plain pass-through instead.
 # Size-checked but not hash-pinned. The scenes are integer throughout, but
 # the fps readout drawn over them is a double printed with "%.1f", and a pin
 # would rest on a C library's rounding.
