@@ -100,7 +100,7 @@ something in it, grep the capture instead.
 | `autana status [--json]` | Who holds the board, and who is waiting. |
 | `autana id [--json]` | The name this session holds the lock under: `autana-cli@<pid in base36>`. |
 | `autana release <token>` | Release a lock this session holds; the token is what its command printed. |
-| `autana hand [--wait <seconds>] <note...>` | Reserve the board for a person at it. With `--wait`, return when `take-back` clears the reservation. |
+| `autana hand [--wait <seconds>] <note...>` | Reserve the board and emit `human-reserved`; with `--wait`, wait until `take-back` emits `human-cleared`. |
 | `autana take-back` | Clear that reservation. |
 
 `autana hand --wait 30 put the board in download mode` pauses a flash script
@@ -150,6 +150,8 @@ The lock is one per machine, in the system temp folder. Each session writes a
 log and a manifest under `AUTANA_RECORDS` - the checkout's gitignored
 `.records/device` when unset, `.dev/records/device` when the PATH installer
 finds a `.dev` checkout beside it.
+Set `AUTANA_LOCK_HOOK` to a shell command for lock events; see
+[Device-Lock.md](Device-Lock.md#lock-events) for events and variables.
 
 ## Adding a command from an app
 

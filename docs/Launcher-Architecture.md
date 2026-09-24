@@ -10,6 +10,8 @@ start at [Building-an-App.md](Building-an-App.md).
 
 ```
 launcher/
+├── bootloader_components/  hooks built into the second-stage bootloader
+│   └── pmic_cold_boot/     a warm reset becomes a PMIC power cycle at 120 MHz
 ├── components/
 │   ├── esp32_s3_touch_amoled_1_8/  Waveshare BSP, LVGL trimmed
 │   ├── microui/        MIT, patched for this chip (see below)
