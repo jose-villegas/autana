@@ -2,8 +2,8 @@
 
 **Status**: phases 1 to 4 exist for one screen. The editor is
 [`editor/`](../../editor/README.md); Control Center is its one authored
-document and the launcher a preview beside it. The brush screen, the screen
-this plan was written for, is not yet a document.
+document and the launcher a preview beside it. The brush screen is not yet a
+document.
 
 The objective is a tool where a screen is **authored visually and edited
 again later** - not screenshotted and re-typed. The brush screen should open
@@ -47,12 +47,12 @@ scrubbing time never recompiles, and it has a build-and-flash path out the
 back.
 
 That is the architecture, running, for one payload. A level editor
-(`ems.9`) proposes it for a second. This plan is the third:
+proposes it for a second. This plan is the third:
 
 | | authored data | generator | rendered by |
 |---|---|---|---|
 | boot animation | `boot_anim_timeline.json` | `gen_boot_anim_timeline.py` | real `boot_anim.c` + `gfx.c` on host |
-| level editor (`ems.9`) | material blocks | bake to a header | real sand code on host |
+| level editor | material blocks | bake to a header | real sand code on host |
 | **UI editor (this)** | **a screen's layout** | **bake to a header** | **real `gfx.c` + pure geometry on host** |
 
 They are not three tools. They are one pattern with three payloads, and the

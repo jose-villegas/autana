@@ -8,9 +8,9 @@
  *
  * WHY THE GRID IS COARSER THAN THE SCREEN
  *
- * A cell per pixel would be 368 x 448 = 165 KB of grid. After the framebuffer
- * takes 322 KB of the chip's ~424 KB there is nowhere near that left, so a
- * cell is a square block of `cell` x `cell` pixels, and `cell` is chosen from
+ * A cell per pixel would be 368 x 448 = 165 KB of grid and four times the
+ * work of the finest quality every step, so a cell is a square block of
+ * `cell` x `cell` pixels, and `cell` is chosen from
  * the options screen rather than fixed: ULTRA (2 px) gives a 184 x 224 grid, or
  * 41 KB; HIGH (3 px) gives 122 x 149, or 18 KB; NORMAL (4 px, the default)
  * gives 92 x 112, or 10 KB; LOW (6 px) gives 61 x 74, or about 4.5 KB;

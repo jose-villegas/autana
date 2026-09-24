@@ -323,8 +323,8 @@ fills. Everything is `SAND_SPAWN_SHARE_FULL` except plant, at
 a thicket the player cannot undo quickly, and a share rather than a count
 keeps the gesture worth the same at every grid quality.
 
-Before a simulation exists the app shows its menu (`SAND_UI_MENU`, outside
-`sand_ui_t` entirely), two screens with the same three-way split:
+Before a run starts the app shows its menu (`ui.screen` is `SAND_UI_MENU`),
+two screens with the same three-way split:
 `ui/title_screen.c/.h` (START GAME, LOAD SAVES, OPTIONS, and a GUIDE / EXIT
 footer) and `ui/options_screen.c/.h` (QUALITY, COLOR MODE, DITHER, APPLY / CANCEL), both built from the
 shell's `ui/ui_widgets.h` in the one theme `ui/sand_theme.c/.h` holds, which the brush screen draws in too. Their state is `sand_menu.c/.h`: which of the two is

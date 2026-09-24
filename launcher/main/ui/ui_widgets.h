@@ -97,7 +97,8 @@ int ui_dropdown_label_width(int w, const ui_theme_t* theme);
 /* The chosen item with a chevron; a tap opens the rest as a list over the
  * screen, placed by ui_dropdown_list_rect(). Returns the index picked this
  * frame, or -1; the list closes UI_DROPDOWN_CLOSE_FRAMES frames later.
- * `id` must be unique per dropdown; its list's window is named after it. */
+ * `items` holds at least one entry, and `id` must be unique per dropdown;
+ * its list's window is named after it. */
 int ui_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t* items, int count, int selected,
                 const ui_theme_t* theme);
 
