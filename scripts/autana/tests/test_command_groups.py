@@ -19,7 +19,7 @@ DOC = Path(__file__).resolve().parents[3] / "docs" / "tools" / "Autana-CLI.md"
 def doc_sections():
     text = DOC.read_text(encoding="utf-8")
     parts = re.split(r"^## (.+)$", text, flags=re.MULTILINE)
-    return {parts[i].strip(): parts[i + 1].replace("\\|", "|") for i in range(1, len(parts), 2)}, \
+    return {parts[i].strip(): parts[i + 1] for i in range(1, len(parts), 2)}, \
         [parts[i].strip() for i in range(1, len(parts), 2)]
 
 
