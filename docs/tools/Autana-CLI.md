@@ -17,21 +17,17 @@ where Python has `readline` (Windows: `pip install pyreadline3`).
 
 `autana help build`
 
-| | |
-|---|---|
-| `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope]` | Build and flash this worktree; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
-| `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
+- `autana flash [rel|dev|diag] [--quiet] [--perf-scope]` — Build and flash this worktree; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run.
+- `autana buildid [--json]` — The `BUILD_ID` the board is running, to check against what was flashed.
 
 ## Tests
 
 `autana help tests`
 
-| | |
-|---|---|
-| `autana suite <name> [seconds] [--verbose]` | Run one registered suite on a diagnostics build already on the board. |
-| `autana suite list [text] [--json]` | The suites this worktree registers; `[on request]` ones run only by name. |
-| `autana selftest [seconds] [--verbose]` | Build diagnostics+autorun, flash, run every suite; 3000 s when omitted. |
-| `autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` | Flash once, capture the suites `N` times (3) under one lock; one summary. |
+- `autana suite <name> [seconds] [--verbose]` — Run one registered suite on a diagnostics build already on the board.
+- `autana suite list [text] [--json]` — The suites this worktree registers; `[on request]` ones run only by name.
+- `autana selftest [seconds] [--verbose]` — Build diagnostics+autorun, flash, run every suite; 3000 s when omitted.
+- `autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` — Flash once, capture the suites `N` times (3) under one lock; one summary.
 
 Each prints the report and capture paths, PASS/FAIL counts, up to ten failure
 messages and the end reason. `--verbose` prints the whole capture; to find
@@ -41,71 +37,59 @@ something in it, grep the capture instead.
 
 `autana help watch`
 
-| | |
-|---|---|
-| `autana monitor [seconds] [--elf PATH]` | Print what the board says; 60 s when omitted. Crash addresses decode against `PATH`, or the build whose `build_id.txt` matches. |
-| `autana reset [--capture [seconds]] [--verbose]` | Reboot and wait for USB serial. `--capture` records the boot (20 s) and prints its path and any error lines. |
-| `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | `PATH.png` plus a `PATH.json` state snapshot. Landscape by default; `--as-shown` uses the board's orientation, `--framebuffer` the raw bytes. |
+- `autana monitor [seconds] [--elf PATH]` — Print what the board says; 60 s when omitted. Crash addresses decode against `PATH`, or the build whose `build_id.txt` matches.
+- `autana reset [--capture [seconds]] [--verbose]` — Reboot and wait for USB serial. `--capture` records the boot (20 s) and prints its path and any error lines.
+- `autana screenshot [--as-shown|--framebuffer] [-o PATH]` — `PATH.png` plus a `PATH.json` state snapshot. Landscape by default; `--as-shown` uses the board's orientation, `--framebuffer` the raw bytes.
 
 ## Drive input
 
 `autana help input`
 
-| | |
-|---|---|
-| `autana tap <x> <y>` | Tap, 50 ms. |
-| `autana press <x> <y> [ms]` | Hold; 1000 ms when omitted. |
-| `autana drag <x0> <y0> <x1> <y1> <ms>` | Drag between two points over `ms`. |
-| `autana touch <down\|up> <x> <y>` | One raw touch-controller level; `up` hands back to the controller. |
-| `autana imu <ax> <ay> <az>` | Raw accelerometer counts; `autana imu release` hands back to the sensor. |
-| `autana button <boot\|power> [short\|long]` | A BOOT or PWR press; `short` when omitted. |
+- `autana tap <x> <y>` — Tap, 50 ms.
+- `autana press <x> <y> [ms]` — Hold; 1000 ms when omitted.
+- `autana drag <x0> <y0> <x1> <y1> <ms>` — Drag between two points over `ms`.
+- `autana touch <down|up> <x> <y>` — One raw touch-controller level; `up` hands back to the controller.
+- `autana imu <ax> <ay> <az>` — Raw accelerometer counts; `autana imu release` hands back to the sensor.
+- `autana button <boot|power> [short|long]` — A BOOT or PWR press; `short` when omitted.
 
 ## Apps
 
 `autana help apps`
 
-| | |
-|---|---|
-| `autana apps [--json]` | The registered apps, and which is running. |
-| `autana open <name>` | Enter an app, even while frozen; case-insensitive, unambiguous prefix. |
-| `autana home` | Back to the launcher. |
+- `autana apps [--json]` — The registered apps, and which is running.
+- `autana open <name>` — Enter an app, even while frozen; case-insensitive, unambiguous prefix.
+- `autana home` — Back to the launcher.
 
 ## Frame loop
 
 `autana help frames`
 
-| | |
-|---|---|
-| `autana freeze` | Stop the frame loop where it is. |
-| `autana resume` | Run it again. |
-| `autana step [N]` | Advance `N` frames while frozen; 1 when omitted. |
+- `autana freeze` — Stop the frame loop where it is.
+- `autana resume` — Run it again.
+- `autana step [N]` — Advance `N` frames while frozen; 1 when omitted.
 
 ## Tunables
 
 `autana help tune` · what makes a constant tunable: [Live-Tuning.md](Live-Tuning.md)
 
-| | |
-|---|---|
-| `autana tune [text] [--json]` | List the tunables with their ranges; names containing `text`. |
-| `autana tune <name> [value]` | Show one, or set it on the board (lost on reboot). `trail` works for `ridge.trail` when unambiguous. |
-| `autana tune reset <name>` | Back to the value the source declares. |
-| `autana tune save` | Write the board's values into this worktree's `TUNE(...)` lines. |
+- `autana tune [text] [--json]` — List the tunables with their ranges; names containing `text`.
+- `autana tune <name> [value]` — Show one, or set it on the board (lost on reboot). `trail` works for `ridge.trail` when unambiguous.
+- `autana tune reset <name>` — Back to the value the source declares.
+- `autana tune save` — Write the board's values into this worktree's `TUNE(...)` lines.
 
 ## Sharing the board
 
 `autana help lock` · the lock itself: [Device-Lock.md](Device-Lock.md)
 
-| | |
-|---|---|
-| `autana status [--json]` | Who holds the board, and who is waiting. |
-| `autana id [--json]` | The name this session holds the lock under: `autana-cli@<pid in base36>`. |
-| `autana release <token>` | Release a lock this session holds; the token is what its command printed. |
-| `autana hand <note>` | Reserve the board for a person at it; autana refuses work until `take-back`. |
-| `autana take-back` | Clear that reservation. |
+- `autana status [--json]` — Who holds the board, and who is waiting.
+- `autana id [--json]` — The name this session holds the lock under: `autana-cli@<pid in base36>`.
+- `autana release <token>` — Release a lock this session holds; the token is what its command printed.
+- `autana hand <note>` — Reserve the board for a person at it; autana refuses work until `take-back`.
+- `autana take-back` — Clear that reservation.
 
 ## JSON fields
 
-| | |
+| Command | Fields |
 |---|---|
 | `status` | `state` (`unlocked`, `held`, `human`), `waiting`; held: `owner`, `purpose`, `acquired_at`; human: `owner`, `note`, `age_seconds` |
 | `buildid` | `build_id` |
@@ -132,12 +116,10 @@ autana> quit
 
 ## Setup and records
 
-| | |
-|---|---|
-| `tools/autana`, `tools/autana.cmd` | The launchers; `tools/` goes on the PATH. |
-| `scripts/autana/autana.py` | Every command; `COMMAND_GROUPS` is the list above. |
-| `scripts/device/device.py` | The serial port and the device lock. Nothing else opens the port. |
-| `scripts/add-tools-to-path.sh [--check]` | Put `tools/` on the PATH, from the primary checkout (a worktree's entry dies with it). |
+- `tools/autana`, `tools/autana.cmd` — The launchers; `tools/` goes on the PATH.
+- `scripts/autana/autana.py` — Every command; `COMMAND_GROUPS` is the list above.
+- `scripts/device/device.py` — The serial port and the device lock. Nothing else opens the port.
+- `scripts/add-tools-to-path.sh [--check]` — Put `tools/` on the PATH, from the primary checkout (a worktree's entry dies with it).
 
 The lock is one per machine, in the system temp folder. Each session writes a
 log and a manifest under `AUTANA_RECORDS` - the checkout's gitignored
