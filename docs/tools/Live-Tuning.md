@@ -52,13 +52,18 @@ See [Device-Lock.md](Device-Lock.md) for the lock and the port `send`
 starts from. From there:
 
 ```mermaid
-flowchart LR
-    T["autana tune trail 200"] --> D["scripts/device/device.py send"]
-    D -->|"SET ridge.trail 200"| C["console listener<br/><i>main/console/console.c</i>"]
-    C --> S["SET verb<br/><i>console/console_tune.c</i>"]
-    S --> R["tune_handle_line()<br/><i>util/tune.c</i>"]
-    R -->|"writes the int32_t"| V["the tunable, read<br/>by its owner each frame"]
-    R -->|"TUNE_OK ridge.trail=200"| D
+sequenceDiagram
+    participant T as autana
+    participant D as device.py
+    participant C as console.c
+    participant S as console_tune.c
+    participant R as util/tune.c
+    T->>D: tune trail 200
+    D->>C: SET ridge.trail 200
+    C->>S: the SET verb
+    S->>R: tune_handle_line()
+    Note over R: writes the int32_t,<br/>its owner reads it each frame
+    R-->>D: TUNE_OK ridge.trail=200
 ```
 
 The console protocol is four lines, answered by `util/tune`:

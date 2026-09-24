@@ -556,15 +556,10 @@ boot_anim_grid_whiten(uint32_t now_ms) {
  * it settles rather than sliding to a stop.
  */
 
-#define BOOT_ANIM_TITLE     "Autana"
-#define BOOT_ANIM_TITLE_LEN 6
+#define BOOT_ANIM_TITLE        "Autana"
+#define BOOT_ANIM_TITLE_LEN    6
 
-#define BOOT_ANIM_TITLE_GAP 3 /* extra px of tracking between glyphs */
-
-typedef enum {
-    BOOT_ANIM_TITLE_FONT_LMROMAN_40 = 0,
-    BOOT_ANIM_TITLE_FONT_8X8 = 1,
-} boot_anim_title_font_id_t;
+#define BOOT_ANIM_TITLE_GAP    3 /* extra px of tracking between glyphs */
 
 #define BOOT_ANIM_TITLE_VIEW_W 448
 #define BOOT_ANIM_TITLE_VIEW_H 368
