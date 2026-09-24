@@ -269,7 +269,8 @@ def print_suite_output(data, record_path, command, reason, verbose):
     for name, message in failures[:MAX_PRINTED_FAILURES]:
         print(f"{name}: {message}" if message else name)
     if len(failures) > MAX_PRINTED_FAILURES:
-        print(f"{len(failures) - MAX_PRINTED_FAILURES} more in {record_path}")
+        print(f"{len(failures) - MAX_PRINTED_FAILURES} more in the capture")
+    print(f"{command} capture: {record_path}")
     print(f"{command} capture ended: {reason}")
     return failed
 
