@@ -53,6 +53,25 @@ autana> buildid
 | `autana take-back` | Clear a reservation `hand` made, freeing the board again. |
 | `autana help` | The same list. |
 
+## JSON read results
+
+The read commands `status`, `buildid`, `id`, `apps`, `suite list`, and the
+listing form of `tune` accept `--json`. Place it after the command, including
+after any `suite list` or `tune` filter. Each prints one JSON object:
+
+| Command | Fields |
+|---|---|
+| `status --json` | `state` (`unlocked`, `held`, or `human`), `waiting` (owner names), and the active `owner` plus `purpose` and `acquired_at` for a held lock, or `note` and `age_seconds` for a human reservation. |
+| `buildid --json` | `build_id` |
+| `id --json` | `owner`, `pid` |
+| `apps --json` | `apps`: objects with `name` and boolean `running` |
+| `suite list [text] --json` | `suites`: objects with `name`, `source`, boolean `on_request`, and boolean `device_only` |
+| `tune [text] --json` | `tunables`: objects with `name`, `value`, `min`, `max`, and `default` as numbers |
+
+The listing commands return an empty array when the filter matches nothing.
+`--json` is available only for reads; tuning changes and board actions use
+their regular output.
+
 Inside a session the `autana` prefix is dropped, but tuning stays explicit -
 a bare word is one of the commands above, or the whole line is sent to the
 board as typed - never an implicit tunable lookup:

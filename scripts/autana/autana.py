@@ -96,6 +96,7 @@ documented in docs/tools/Autana-CLI.md.
 
 import gzip
 import importlib
+import json
 import os
 import re
 import shlex
@@ -249,6 +250,10 @@ def seconds_argument(args, default, usage):
 
 def identify(args):
     """What the device lock calls this autana, and the process that is it."""
+    json_output = read_json_flag(args, "usage: autana id [--json]")
+    if json_output:
+        print(json.dumps({"owner": owner(), "pid": os.getpid()}))
+        return 0
     if args:
         sys.exit("usage: autana id")
     print(f"{owner()}   pid {os.getpid()}")
@@ -258,13 +263,27 @@ def identify(args):
 def buildid(args):
     """What the BOARD says it is running, asked of it rather than read out of
     a build directory: the point of the question is whether the two agree."""
-    if args:
-        sys.exit("usage: autana buildid")
+    json_output = read_json_flag(args, "usage: autana buildid [--json]")
     code, replies = send("BUILDID", reply="BUILD_ID", purpose="autana buildid")
     if code != 0 or not replies:
         return code or 1
-    print(replies[-1])
+    if json_output:
+        print(json.dumps(parse_buildid(replies[-1])))
+    else:
+        print(replies[-1])
     return 0
+
+
+def read_json_flag(args, usage):
+    if args == ["--json"]:
+        return True
+    if args:
+        sys.exit(usage)
+    return False
+
+
+def parse_buildid(reply):
+    return {"build_id": reply.removeprefix("BUILD_ID=")}
 
 
 def monitor(args):
@@ -365,9 +384,36 @@ def batch(args):
 
 def status(args):
     """Who, if anyone, holds the board right now - and who is waiting."""
-    if args:
-        sys.exit("usage: autana status")
-    return subprocess.call(device_command("status"))
+    if not read_json_flag(args, "usage: autana status [--json]"):
+        return subprocess.call(device_command("status"))
+    result = subprocess.run(device_command("status"), capture_output=True, text=True)
+    if result.returncode != 0:
+        print(result.stderr, end="", file=sys.stderr)
+        return result.returncode
+    print(json.dumps(parse_status(result.stdout)))
+    return 0
+
+
+def parse_status(reply):
+    lines = reply.splitlines()
+    waiting = next((line[len("waiting: "):].split(", ") for line in lines
+                    if line.startswith("waiting: ")), [])
+    first = lines[0] if lines else "unlocked"
+    if first.startswith("held by "):
+        match = re.fullmatch(r"held by (.+) for (.+) since (\d+)", first)
+        if match:
+            owner_name, purpose, acquired_at = match.groups()
+            return {"state": "held", "owner": owner_name, "purpose": purpose,
+                    "acquired_at": int(acquired_at), "waiting": waiting}
+    if first.startswith("human reservation: "):
+        match = re.fullmatch(r"human reservation: (.+?): (.*) \((\d+)s ago\)", first)
+        if match:
+            owner_name, note, age = match.groups()
+            return {"state": "human", "owner": owner_name, "note": note,
+                    "age_seconds": int(age), "waiting": waiting}
+    if first == "unlocked":
+        return {"state": "unlocked", "waiting": waiting}
+    raise ValueError(f"unrecognized device status: {first}")
 
 
 def release(args):
@@ -403,8 +449,10 @@ def suite_list(args):
     itself where it is defined and the board serves no listing verb, so there
     is nowhere else to ask. A name is runnable once a build carrying it is on
     the board - which variant and scope was flashed decides that, not this."""
+    json_output = "--json" in args
+    args = [arg for arg in args if arg != "--json"]
     if len(args) > 1:
-        sys.exit("usage: autana suite list [text]")
+        sys.exit("usage: autana suite list [text] [--json]")
     wanted = args[0].lower() if args else ""
     worktree = Path(engine_worktree())
 
@@ -418,14 +466,19 @@ def suite_list(args):
             found[name] = (source.relative_to(worktree).as_posix(), bool(on_request),
                            "#ifdef DEVICE_BUILD" in text)
 
-    shown = sorted(name for name in found if wanted in name.lower())
-    for name in shown:
-        where, on_request, device_only = found[name]
+    shown = [{"name": name, "source": found[name][0], "on_request": found[name][1],
+              "device_only": found[name][2]} for name in sorted(found) if wanted in name.lower()]
+    if json_output:
+        print(json.dumps({"suites": shown}))
+        return 0
+    for row in shown:
+        name, where = row["name"], row["source"]
+        on_request, device_only = row["on_request"], row["device_only"]
         marks = "".join([" [on request]" if on_request else "", " [device]" if device_only else ""])
         print(f"  {name}{marks}\n      {where}")
     kept = f" matching '{wanted}'" if wanted else ""
     print(f"{len(shown)} suite(s){kept}")
-    if any(found[name][1] for name in shown):
+    if any(row["on_request"] for row in shown):
         print("[on request] is left out of a full run: asking for it by name is the only way it runs")
     return 0
 
@@ -624,11 +677,22 @@ def button(args):
 
 
 def apps(args):
-    if args:
-        sys.exit("usage: autana apps")
+    json_output = read_json_flag(args, "usage: autana apps [--json]")
     code, replies = send("APPS", reply="APPS", until=["APPS_END"], purpose="autana apps")
-    print("\n".join(reply for reply in replies if reply.startswith("APPS ")))
+    if not json_output:
+        print("\n".join(reply for reply in replies if reply.startswith("APPS ")))
+    elif code == 0:
+        print(json.dumps({"apps": parse_apps(replies)}))
     return code
+
+
+def parse_apps(replies):
+    rows = []
+    for reply in replies:
+        match = re.fullmatch(r"APPS name=(.*) running=([01])", reply)
+        if match:
+            rows.append({"name": match[1], "running": match[2] == "1"})
+    return rows
 
 
 def open_app(args):
@@ -652,6 +716,10 @@ def tunables():
     code, replies = send("TUNE")
     if code != 0:
         sys.exit(code)
+    return parse_tunables(replies)
+
+
+def parse_tunables(replies):
     rows = []
     for reply in replies:
         if not reply.startswith("TUNE ") or "=" not in reply:
@@ -661,6 +729,12 @@ def tunables():
         rows.append((name, fields[name], fields.get("min", "?"), fields.get("max", "?"),
                      fields.get("default", fields[name])))
     return rows
+
+
+def tune_dict(row):
+    name, value, low, high, default = row
+    return {"name": name, "value": int(value), "min": int(low), "max": int(high),
+            "default": int(default)}
 
 
 def full_name(name):
@@ -715,6 +789,10 @@ def tune(args):
     same listing; a name and a value sets it; `reset`/`save` are recognised
     only in first position, so a tunable actually named that would still be
     reachable through the filtered listing."""
+    json_output = "--json" in args
+    args = [arg for arg in args if arg != "--json"]
+    if json_output and (len(args) > 1 or args and args[0] in ("save", "reset")):
+        sys.exit("usage: autana tune [text] [--json]")
     if args and args[0] == "save":
         if len(args) > 1:
             sys.exit("usage: autana tune save")
@@ -734,7 +812,10 @@ def tune(args):
     if text:
         exact = exact_tune_matches(rows, text)
         shown = exact if len(exact) == 1 else [row for row in rows if text in row[0]]
-    format_tune_rows(shown, text)
+    if json_output:
+        print(json.dumps({"tunables": [tune_dict(row) for row in shown]}))
+    else:
+        format_tune_rows(shown, text)
     return 0
 
 
