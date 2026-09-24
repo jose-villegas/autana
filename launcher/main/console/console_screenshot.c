@@ -12,7 +12,7 @@
 #include "console/console_latch.h"
 #include "console/console_verbs.h"
 
-#include "util/device_state.h"
+#include "console/device_state.h"
 #include "util/screenshot.h"
 
 #include "esp_heap_caps.h"
@@ -64,7 +64,7 @@ static char* row_b64; /* +1: NUL, for printf("%s") */
 /* Prints one SCREENSHOT_STATE: line of plain-text JSON (no base64 - it's
  * already printable ASCII, small enough that base64's reason to exist,
  * staying UART-safe, isn't worth the decode step for one line). Reading/
- * formatting live in util/device_state.h/.c. `current_app`'s OPTIONAL
+ * formatting live in console/device_state.h/.c. `current_app`'s OPTIONAL
  * diagnostic_json() is spliced in as an "app" key AFTER
  * device_state_format_json() produces a complete object - by overwriting
  * its closing `}` with `,"app":<fragment>}` rather than teaching

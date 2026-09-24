@@ -1,9 +1,5 @@
 /*
- * Portable suite: device_state_format_json - the pure formatting half of
- * util/device_state.h. device_state_read() (device_state.c) actually
- * touches hardware and is not tested here - only that a fully-populated
- * (or deliberately not-ready/not-ok) device_state_t formats into the exact
- * JSON shape screenshot.py's host side expects.
+ * Portable JSON formatting checks for console screenshot state.
  */
 
 #include <string.h>
@@ -11,7 +7,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "util/device_state.h"
+#include "console/device_state.h"
 
 static void
 test_full_state_formats_exactly(void) {

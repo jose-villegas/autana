@@ -16,6 +16,8 @@
 #   scene_sources   the firmware translation units to build, space or
 #                   newline separated, relative to launcher/
 #   scene_renders   one render per line: <label>|<arguments>|<width>x<height>
+#                   with an optional fourth field, |nopin, for a render
+#                   whose pixels are not integer-exact (see scene_pin).
 #                   The declared size is checked against what the binary
 #                   says it wrote, so a renderer that has quietly stopped
 #                   working fails the run rather than leaving a picture
@@ -39,6 +41,7 @@
 #                   declares 0 and says why: it is then checked for its
 #                   declared size only, since a pin that can fail for a
 #                   reason nobody changed teaches the reader to ignore it.
+#                   |nopin on one render line does the same for that line.
 #
 # POSIX sh, like the rest of this directory.
 
@@ -166,7 +169,16 @@ render_scene_run() {
             _rs_label=${_rs_line%%|*}
             _rs_tail=${_rs_line#*|}
             _rs_args=${_rs_tail%%|*}
-            _rs_want=${_rs_tail##*|}
+            _rs_tail=${_rs_tail#*|}
+            _rs_want=${_rs_tail%%|*}
+            _rs_pin_this="$scene_pin"
+            case "$_rs_tail" in
+                *"|nopin") _rs_pin_this=0 ;;
+                *"|"*)
+                    echo "FAIL $scene_name/$_rs_label: unknown render flag '${_rs_tail#*|}'" >&2
+                    exit 1
+                    ;;
+            esac
             _rs_path="$scene_out_dir/$_rs_label.bmp"
             _rs_video_args=""
             if [ "$_rs_video" = 1 ]; then
@@ -185,13 +197,15 @@ render_scene_run() {
                 exit 1
             fi
             _rs_hash=$(render_scene_sha256 "$_rs_path")
-            printf '%s %s\n' "$_rs_label" "$_rs_hash" >> "$_rs_new"
+            if [ "$_rs_pin_this" = 1 ]; then
+                printf '%s %s\n' "$_rs_label" "$_rs_hash" >> "$_rs_new"
+            fi
 
             _rs_pinned=""
-            if [ "$scene_pin" = 1 ] && [ -f "$scene_baseline" ]; then
+            if [ "$_rs_pin_this" = 1 ] && [ -f "$scene_baseline" ]; then
                 _rs_pinned=$(awk -v l="$_rs_label" '$1 == l { print $2 }' "$scene_baseline")
             fi
-            if [ "$scene_pin" != 1 ]; then
+            if [ "$_rs_pin_this" != 1 ]; then
                 echo "ok $scene_name/$_rs_label $_rs_want -> $_rs_path (size only, not pinned)"
             elif [ -z "$_rs_hash" ]; then
                 echo "ok $scene_name/$_rs_label $_rs_want -> $_rs_path (no sha256 tool; not checked)"

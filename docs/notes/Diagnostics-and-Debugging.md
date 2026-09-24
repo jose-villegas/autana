@@ -79,7 +79,7 @@ heap (current and low-water mark), CPU clock, on-die temperature,
 orientation, the IMU, and that frame's touch/button state. Good for anything
 where you need to see the actual pixels, or correlate a visual glitch
 against memory/sensor conditions at that instant - see
-`main/console/console_screenshot.c` and `main/util/device_state.h` for the
+`main/console/console_screenshot.c` and `main/console/device_state.h` for the
 mechanism and the full field list.
 
 - The device streams a 24bpp BMP over the wire, decoded to PNG in memory
@@ -191,7 +191,7 @@ For anything deeper than an fps number: `app_sand.c` carries its own
 awake-cell counts) logged periodically - see
 `main/apps/sand/tools/report_performance.sh` for the host-side report
 generator. The render lab app's cube scene has a dedicated on-device
-performance suite (`main/apps/render_lab/suite_cube_perf.c`) for
+performance suite (`main/apps/render_lab/tests/suite_cube_perf.c`) for
 phase-by-phase timing (logic / rasterise / HUD / present) against a 60fps
 budget, run the same way as any other on-device suite (see
 [above](#does-it-still-hold-on-the-real-chip---on-device-suite));
