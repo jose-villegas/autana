@@ -48,6 +48,9 @@
  * grows. */
 static uint8_t present_pair_bits = 0xFFu;
 static uint16_t seen_materials;
+/* The walk's per-cell gates, read from these pass-start copies: the flags
+ * themselves are cleared at pass start so a cell latched mid-pass - even
+ * behind the scan - keeps its flag, and a gate must not see that clear. */
 static bool present_temperature;
 static bool present_moisture;
 
@@ -890,9 +893,9 @@ step_one_cold_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
                 if ((depth % COLD_CARRY_RUN) == 0 && (int)(rng_next(&s->rng) & 0xFF) >= cr->conducts) {
                     break; /* the cold did not carry this far this step */
                 }
-                /* Drawn, not woken - see HEAT LEVELS DO NOT WAKE. This walk
-                 * is where that rule was first found and paid for. */
+                /* Drawn, not woken - see HEAT LEVELS DO NOT WAKE. */
                 s->cells[cat] = CELL_MAKE(CELL_MATERIAL(cc), (uint8_t)(ct - 1));
+                s->may_have_temperature = true;
                 mark_rows(s, cx, cy, cy);
                 if (ct > SAND_AMBIENT_HEAT) {
                     spent_on_heat = true;
@@ -2906,7 +2909,9 @@ sand_step_reactions(sand_t* s) {
     }
     seen_materials = 0;
 
-    /* SOAK-ONLY leaves faller presence intact because it visits only liquid-near blocks. */
+    /* Cleared here, not at the end, like the mask: this pass dissolves and
+     * burns ground, and a plant over a hole opened this pass must not be
+     * cleared away. Soak-only skips it - an unvisited block proves nothing. */
     if (!soak_only) {
         s->may_have_faller = false;
         s->faller_may_move = false;
