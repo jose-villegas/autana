@@ -339,7 +339,8 @@ def tests_done(data):
 
 
 def build_id_heard(data):
-    return BUILD_ID.search(data) is not None
+    """Only a finished line counts: an id can arrive split across two reads."""
+    return BUILD_ID.search(data[:data.rfind(b"\n") + 1]) is not None
 
 
 def capture(connection, output, max_seconds, idle_seconds, expected_build_id=None,
@@ -577,9 +578,8 @@ def find_elf_for_build_id(worktree, build_id):
 
 
 def reset_and_read_build_id(port, seconds=12, expected_build_id=None):
-    """The id from the boot log, listened for until it arrives - a cold boot
-    prints it again once the shell is ready, past the boot animation's
-    silence - or else from the console's BUILDID query, which a release
+    """The id from the boot log, however long the boot stays silent before
+    printing it; or else from the console's BUILDID query, which a release
     image, having no console, never answers."""
     data, reason = reset_and_capture(port, os.devnull, seconds, None, expected_build_id,
                                      complete=build_id_heard)

@@ -1255,12 +1255,21 @@ class CaptureAfterResetTests(unittest.TestCase):
             [LostConnection([]), AnswersNoQuery([b"BUILD_ID=after-reset\n"])])
         self.assertEqual(actual, "after-reset")
 
+    def test_a_build_id_split_across_reads_is_read_whole(self):
+        actual, reason = self.read_build_id(
+            [AnswersNoQuery([b"I (640) BUILD_ID=b8e2ef", b"0bbe68-release\n"])])
+        self.assertEqual((actual, reason), ("b8e2ef0bbe68-release", "complete"))
+
     def test_a_board_silent_after_rts_is_restarted_through_the_watchdog(self):
         resets = []
         silent_until_the_watchdog = [AnswersNoQuery([]) for unused in range(8)]
-        actual, unused_reason = self.read_build_id(
-            silent_until_the_watchdog + [AnswersNoQuery([b"BUILD_ID=after-watchdog\n"])], resets)
+        started = time.monotonic()
+        actual, reason = self.read_build_id(
+            silent_until_the_watchdog + [AnswersNoQuery([b"BUILD_ID=after-watchdog\n"])], resets,
+            seconds=5)
         self.assertEqual(resets, ["hard_reset", "watchdog_reset"])
+        self.assertEqual(reason, "complete")
+        self.assertLess(time.monotonic() - started, 5 + 2.5)
         self.assertEqual(actual, "after-watchdog")
 
     def test_a_board_that_spoke_without_an_id_is_not_restarted_again(self):
@@ -1706,6 +1715,10 @@ class SelftestTests(unittest.TestCase):
         self.assertEqual(entry["command"], "selftest")
         self.assertEqual(entry["build_id"], "abc123-diag")
         self.assertIsNone(entry["error"])
+
+    def test_the_capture_ends_on_selftest_complete_not_its_deadline(self):
+        _, _, entry = self.run_selftest()
+        self.assertEqual(entry["reason"], "complete")
 
     def test_a_failing_run_is_reported_but_still_records_cleanly(self):
         with tempfile.TemporaryDirectory() as directory:
