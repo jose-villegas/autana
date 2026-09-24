@@ -18,9 +18,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "apps/sand/tests/suite_sand_scenes.h"
 #include "sand.h"
 #include "sand_priv.h"
-#include "suite_sand_scenes.h"
 
 #define STEPS         16
 #define AXIS_SAMPLES  6

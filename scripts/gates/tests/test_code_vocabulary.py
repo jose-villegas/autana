@@ -32,7 +32,7 @@ class NamesRequireADefinitionTest(unittest.TestCase):
     def test_a_name_only_inside_a_string_literal_is_not_defined(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.write(root, "launcher/main/apps/sand/suite_sand.c",
+            self.write(root, "launcher/main/apps/sand/tests/suite_sand.c",
                       'TEST_ASSERT_TRUE_MESSAGE(x, "the case cover_count() '
                       'could never fire");\n'
                       "void real_function(void) {}\n")

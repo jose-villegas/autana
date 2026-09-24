@@ -197,14 +197,7 @@ void gfx_line(int x0, int y0, int x1, int y1, gfx_color_t color);
 
 void gfx_line_ex(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags);
 
-/* A curve drawn as light - see gfx_glow.h. `y_q4` is a height per column of
- * a frame turned `quarter_turns` into the panel. Only columns [x0, x1) are
- * redrawn; what they cover is replaced, and `erase_px` beyond the light's
- * reach blackened. */
-void gfx_glow_curve(const int16_t* y_q4, int count, int x0, int x1, int quarter_turns, int erase_px,
-                    const gfx_glow_style_t* style);
-
-/* The same curve at any angle - see gfx_glow.h for a pose, a field, a map
+/* A curve drawn as light - see gfx_glow.h for a pose, a field, a map
  * and `trail`. `map` may be NULL. `lit_lo`/`lit_hi` are GFX_HEIGHT long and
  * the caller's. */
 void gfx_glow_curve_posed(const gfx_glow_field_t* field, const gfx_glow_map_t* map, int view_h, gfx_glow_pose_t pose,

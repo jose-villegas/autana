@@ -231,8 +231,8 @@ main/apps/<name>/
 ├── app_<name>.c      entry point: hardware, gfx, state ownership   (NOT host-portable)
 ├── scene_*.c         a hardware-facing render target the app hosts (NOT host-portable)
 ├── *.c / *.h         the app's logic                                (pure, host-tested)
-├── suite_*.c         its tests - SUITE_REGISTER, same self-registration
 ├── ui/               one file per screen - see Building-a-Screen.md
+├── tests/suite_*.c   its tests - SUITE_REGISTER, same self-registration
 └── tools/            host tooling that touches ONLY this app
 ```
 

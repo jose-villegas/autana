@@ -11,10 +11,9 @@ Autana is a small game engine for ESP32 AMOLED boards, growing out of
 ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/) board — dual-core
 Xtensa LX7 @ 240 MHz, 8 MB octal PSRAM, a 368×448 AMOLED panel, capacitive
 touch, and a 6-axis IMU. Everything here
-drives the hardware directly rather than through a display framework: LVGL
-ships as a transitive dependency of the board support package but is never
-called, saving the internal RAM it would otherwise cost before drawing
-anything.
+drives the hardware directly rather than through a display framework. The
+Waveshare BSP is vendored in `launcher/components/esp32_s3_touch_amoled_1_8/`
+with its LVGL interface removed; LVGL is not built.
 
 ## What's inside
 

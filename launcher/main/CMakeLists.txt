@@ -27,7 +27,6 @@ set(app_srcs
     "ui/ui_ridge.c"
     "ui/ui_scroll.c"
     "ui/ui_widgets.c"
-    "util/device_state.c"
     "util/frame_cost.c"
     "util/job.c"
     "util/tune.c"
@@ -60,6 +59,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/console_navigation.c"
         "console/console_tune.c"
         "console/console_screenshot.c"
+        "console/device_state.c"
     )
 endif()
 if(CONFIG_LAUNCHER_SELFTEST)
@@ -170,7 +170,7 @@ endif()
 # esp_lcd_co5300 brings up the V2 (CO5300 panel) revision - see gfx.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
-set(app_reqs microui small3dlib esp_lcd heap esp_timer
+set(app_reqs microui small3dlib esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support spi_flash
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag vfs nvs_flash
