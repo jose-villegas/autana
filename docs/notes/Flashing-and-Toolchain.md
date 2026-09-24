@@ -48,16 +48,34 @@ esptool.py --chip esp32s3 -p <PORT> --before no_reset flash_id
 Connecting almost instantly (a few dots) means the chip is sitting in the
 bootloader.
 
-From there `autana flash` boots the new image on its own: **every restart
-`scripts/device/device.py` makes is `--after watchdog_reset`**, which trips
-the SoC's own watchdog instead of the RTS line that cannot restart a chip in
+From there `autana flash` boots the new image on its own: **`reset()` in
+`scripts/device/device.py` passes `--after watchdog_reset`**, which trips the
+SoC's own watchdog instead of the RTS line that cannot restart a chip in
 download mode. Run directly, outside `autana`, esptool or `idf.py flash`
-still needs `--after watchdog_reset` or a power cycle to start the image.
+needs `--after watchdog_reset` or a power cycle to start the image.
 
 A restart re-enumerates USB Serial/JTAG, and Windows may hand the board a
 **different COM number** than it had before. Anything holding a port by name
 breaks there; `find_port()` in `scripts/device/device.py` looks it up by
 vendor id `0x303A` each time for that reason.
+
+A watchdog reset re-enumerates later than an RTS one, so the first open after
+it can get the old handle, which reads nothing and raises nothing.
+`capture_after_reset()` reopens for that, and only while the reset is recent:
+
+```mermaid
+sequenceDiagram
+    participant Dev as device.py
+    participant Esp as esptool
+    participant Board as board
+    Dev->>Esp: chip_id, after watchdog_reset
+    Esp->>Board: trip the watchdog
+    Dev->>Board: open the port
+    Note over Dev,Board: can be the old handle, silent, no error
+    Board-->>Dev: USB re-enumerates
+    Dev->>Board: 2 s without a byte, within 10 s of the reset, so reopen
+    Board-->>Dev: boot log with BUILD_ID
+```
 
 If it vanishes from USB entirely — no COM port, no device at vendor ID
 `0x303A` — check
