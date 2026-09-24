@@ -378,10 +378,12 @@ which then runs far slower than the host's. An app that does not set
 button has no stand-in, so such an app cannot be left.
 
 **What a run is evidence of.** Pass and fail, for any test that does not
-read a clock; the full scope runs to `SELFTEST_COMPLETE` in about nine
-minutes, the perf scope in five. Prefer `--icount` for it: emulated code
-runs several times slower than the chip in real time, so without it
-ceilings pegged on the board fail on the CPU half of their cost. The tests
+read a clock - a time a test measures, against a ceiling pegged on the
+board or another present in the same run, is reported there and not
+enforced. The full scope runs to `SELFTEST_COMPLETE` in about fourteen
+minutes on an idle desktop, twice that with `--icount`, which puts both
+emulated cores on one host thread. Without it they get a thread each, so a
+busy host stretches the two-core tests by minutes. The tests
 of hardware QEMU lacks skip themselves — the performance-monitor test, since
 QEMU does not model the PMU and every counter reads zero, and the test that
 a touch controller physically answers — so any failure is a real one, fails

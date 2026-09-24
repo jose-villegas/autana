@@ -29,10 +29,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # No --icount: it runs both emulated cores on one host thread, and a
-      # QEMU image reports its timing ceilings rather than enforcing them, so
-      # instruction counting buys nothing a pass/fail run needs. A hosted
-      # runner is several times slower than a desktop, hence the timeout.
+      # No --icount: it puts both emulated cores on one host thread, doubling
+      # the run, and a QEMU image reports every measured time rather than
+      # enforcing it, so instruction counting buys a pass/fail run nothing.
+      # The full scope takes about fourteen minutes on an idle desktop.
       - uses: ./.github/actions/idf-build
         with:
           cache-name: qemu
