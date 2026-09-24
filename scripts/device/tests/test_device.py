@@ -248,6 +248,33 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(actual, "reply")
         self.assertEqual(connection.writes, [b"BUILDID\n"])
 
+    def test_boot_build_id_reopens_a_port_lost_to_re_enumeration(self):
+        class LostConnection(FakeConnection):
+            def read(self, unused_size):
+                raise OSError("device re-enumerated")
+
+        reopened = FakeConnection([b"BUILD_ID=after-reset\n"])
+        connections = iter([LostConnection([]), reopened])
+        opened = lambda *unused, **unused_keywords: next(connections)
+        with mock.patch.object(device, "open_serial", side_effect=opened), \
+             mock.patch.object(device, "open_when_free", side_effect=opened):
+            actual, unused_reason = device.boot_build_id("COM5", seconds=1)
+        self.assertEqual(actual, "after-reset")
+
+    def test_boot_build_id_reopens_a_handle_that_is_silent_since_the_reset(self):
+        class AnswersNoQuery(FakeConnection):
+            def read(self, size):
+                return b"" if self.writes else super().read(size)
+
+        reopened = AnswersNoQuery([b"BUILD_ID=after-reset\n"])
+        connections = iter([AnswersNoQuery([]), reopened, AnswersNoQuery([])])
+        opened = lambda *unused, **unused_keywords: next(connections)
+        with mock.patch.object(device, "open_serial", side_effect=opened), \
+             mock.patch.object(device, "open_when_free", side_effect=opened), \
+             mock.patch.object(device, "BOOT_IDLE_SECONDS", 0.05):
+            actual, unused_reason = device.boot_build_id("COM5", seconds=2)
+        self.assertEqual(actual, "after-reset")
+
     def test_replies_are_found_behind_log_prefixes_and_end_at_a_terminator(self):
         data = (b"I (812) shell: frame 16 ms\n"
                 b"TUNE launcher.ridge_trail=226 min=0 max=255\n"
