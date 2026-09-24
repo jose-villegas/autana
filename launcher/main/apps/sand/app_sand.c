@@ -2244,9 +2244,15 @@ sand_app_test_options_reach_start(int action) {
         sand_menu_init(&menu);
     }
 
-    const bool started = sand_menu_title_clicked(&menu, SAND_TITLE_START, current_options()) == SAND_MENU_START;
-    const bool ok = started && menu.screen == SAND_MENU_TITLE
-                    && current_options().quality == (action == 2 ? menu.draft.quality : before.quality);
+    title_screen_layout_t title;
+    title_screen_layout(ui_width(), ui_height(), &title);
+    sand_app_test_tap_menu_rect(title.buttons[SAND_TITLE_START]);
+    const bool queued = pending_start;
+    const input_t idle = {0};
+    sand_frame(0, &idle);
+    const int expected_quality = action == 2 ? menu.draft.quality : before.quality;
+    const bool ok = queued && ui.screen == SAND_UI_RUNNING && !failed && current_options().quality == expected_quality
+                    && cell == qualities[expected_quality].cell;
     sand_exit();
     adopt_options(&saved);
     ui_set_transform(ui_transform_quarter_turn(display_shell_quarter(), GFX_WIDTH, GFX_HEIGHT));
