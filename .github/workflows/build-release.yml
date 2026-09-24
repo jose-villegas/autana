@@ -26,5 +26,6 @@ jobs:
         with:
           cache-name: release
           command: >-
-            bash tools/build_flash.sh --build-only
+            bash tools/build_flash.sh --build-only | tee build_flash.out
+            && grep -q ^BUILD_ID= build_flash.out
             && tools/check_release_symbols.sh build/launcher.elf

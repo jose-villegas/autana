@@ -166,6 +166,8 @@ if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt" ]; then
     exit 1
 fi
 BUILD_ID=$(tr -d '\r\n' < "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt")
+# device.py reads this line from the flash log to verify what boots; it stays
+# on stdout, outside quiet_run, or every flash reports itself unverified.
 echo "BUILD_ID=$BUILD_ID"
 
 if [ "$BUILD_ONLY" -eq 1 ]; then
