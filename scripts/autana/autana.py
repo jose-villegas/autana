@@ -204,11 +204,11 @@ def parse_buildid(reply):
 
 
 def monitor(args):
-    """Stream the board's console while device.py holds the port lock.
-    device.py decodes crash addresses using --elf or the capture's BUILD_ID."""
+    """A person watches a terminal stream; an agent reads only the verdict.
+    device.py decodes crashes using --elf or the capture's BUILD_ID."""
     elf = None
     rest = list(args)
-    usage = "usage: autana monitor [seconds|--follow] [--elf PATH]"
+    usage = "usage: autana monitor [seconds] [--follow] [--stream] [--elf PATH]"
     if "--elf" in rest:
         index = rest.index("--elf")
         if index + 1 >= len(rest):
@@ -218,25 +218,37 @@ def monitor(args):
     follow = "--follow" in rest
     if follow:
         rest.remove("--follow")
-        if rest:
-            sys.exit(usage)
-    else:
-        seconds = seconds_argument(rest, 60.0, usage)
+    stream = "--stream" in rest
+    if stream:
+        rest.remove("--stream")
+    if follow and rest:
+        sys.exit(usage)
+    seconds = seconds_argument(rest, None, usage) if not follow else None
+    terminal = sys.stdout.isatty()
+    if seconds is None and not follow:
+        if not terminal:
+            print(usage, file=sys.stderr)
+            raise SystemExit(2)
+        follow = True
     command = device_command(
         "--owner", owner(),
         "listen", "--purpose", "autana monitor",
     )
     command += ["--follow"] if follow else ["--seconds", str(seconds)]
-    if sys.stdout.isatty():
+    if terminal or stream:
         command.append("--echo")
     if elf:
         command += ["--elf", elf]
     process = subprocess.Popen(command)
+    interrupted = False
+    # Ctrl+C reaches device.py too; it saves the capture before exiting.
     while True:
         try:
             return process.wait()
         except KeyboardInterrupt:
-            continue
+            if interrupted:
+                return 130
+            interrupted = True
 
 
 def reset(args):
@@ -895,7 +907,7 @@ COMMAND_GROUPS = (
     )),
     ("watch", "Watch the board", (
         Command("monitor", monitor, (
-            ("monitor [seconds|--follow] [--elf PATH]", "stream the board; 60 s, or until Ctrl+C"),)),
+            ("monitor [seconds] [--follow] [--stream] [--elf PATH]", "the console live until Ctrl+C, or for N s"),)),
         Command("reset", reset, (
             ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
         Command("screenshot", screenshot, (
