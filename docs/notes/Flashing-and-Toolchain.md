@@ -21,19 +21,18 @@ arrives - so what produces that moment decides the procedure.
 
 | # | No battery fitted | Battery fitted |
 |---|---|---|
-| 1. | Unplug USB-C | **Long-press PWR** (~10 s) until the COM port disappears |
+| 1. | Unplug USB-C | **Long-press PWR** (~10 s), USB-C still plugged in, until the COM port disappears |
 | 2. | **Hold BOOT** | **Hold BOOT** |
 | 3. | Plug USB-C back in, still holding | **Press PWR**, still holding |
 | 4. | Keep holding ~2 s, release | Keep holding ~2 s, release |
 
-**With a battery fitted, unplugging USB does nothing**, and fails silently: the
-AXP2101 keeps the rail up from the battery, so the SoC never loses power and
+**With a battery fitted, unplugging USB never power-cycles the board**, and
+fails silently: the AXP2101 keeps the rail up from the battery, so the SoC
 carries its stuck state through every replug. Only the PMU cuts a
-battery-backed rail, and the COM port disappearing is what proves step 1
-worked.
+battery-backed rail.
 
-That forces the ROM bootloader regardless of firmware state. Confirm you are in
-download mode with:
+Either sequence forces the ROM bootloader regardless of firmware state.
+Confirm you are in download mode with:
 
 ```bash
 esptool.py --chip esp32s3 -p <PORT> --before no_reset flash_id
