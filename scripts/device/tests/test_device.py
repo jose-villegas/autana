@@ -20,6 +20,7 @@ DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 import device
 import device_lock
+import device_hook
 import device_report
 
 
@@ -499,6 +500,66 @@ class DeviceTests(unittest.TestCase):
             self.assertEqual(device.main(["--port", "COM5", "--owner", "agent",
                                           "hand-to-human", "--note", "check cable"]), 0)
         store.set_human.assert_called_once_with("COM5", "agent", "check cable")
+
+
+class HumanWaitTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.store = device_lock.LockStore(root=self.temp.name)
+        self.clock = [0.0]
+        self.on_sleep = None
+
+    def sleep(self, seconds):
+        self.clock[0] += seconds
+        if self.on_sleep:
+            self.on_sleep()
+
+    def hand(self, *flags):
+        with mock.patch.object(device.device_lock, "LockStore", return_value=self.store), \
+             mock.patch.object(device.time, "monotonic", side_effect=lambda: self.clock[0]), \
+             mock.patch.object(device.time, "sleep", side_effect=self.sleep), \
+             mock.patch("builtins.print") as output:
+            code = device.main(["--port", "COM5", "--owner", "agent", "hand-to-human",
+                                "--note", "download mode", *flags])
+        return code, output
+
+    def test_release_before_deadline_succeeds(self):
+        self.on_sleep = lambda: self.store.clear_human("COM5")
+        with mock.patch.object(device_hook, "emit") as emit:
+            code, output = self.hand("--wait", "3")
+        self.assertEqual(code, 0)
+        self.assertEqual(output.call_args_list[-1].args[0], "human reservation released")
+        self.assertEqual(emit.call_args_list, [
+            mock.call("human-reserved", "COM5", "agent", note="download mode"),
+            mock.call("human-cleared", "COM5", "agent", note="download mode"),
+        ])
+
+    def test_timeout_keeps_reservation(self):
+        code, output = self.hand("--wait", "2")
+        self.assertEqual(code, 3)
+        self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out")
+        self.assertEqual(self.store.status("COM5")["human"]["note"], "download mode")
+
+    def test_interrupt_keeps_reservation(self):
+        def interrupt():
+            raise KeyboardInterrupt
+
+        self.on_sleep = interrupt
+        code, output = self.hand("--wait", "3")
+        self.assertEqual(code, 3)
+        self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait interrupted")
+        self.assertIsNotNone(self.store.status("COM5")["human"])
+
+    def test_replaced_reservation_is_reported(self):
+        def replace():
+            self.store.set_human("COM5", "agent", "download mode")
+
+        self.on_sleep = replace
+        code, output = self.hand("--wait", "3")
+        self.assertEqual(code, 4)
+        self.assertEqual(output.call_args_list[-1].args[0], "human reservation replaced")
+        self.assertEqual(self.store.status("COM5")["human"]["note"], "download mode")
 
 
 class SlugTests(unittest.TestCase):
