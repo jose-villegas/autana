@@ -169,6 +169,11 @@ def validate(cfg):
     timing = cfg["timing"]
     kfs = cfg["keyframes"]
 
+    unknown = sorted(set(timing) - {key for key, _, _ in TIMING_ORDER})
+    if unknown:
+        fail("unknown timing key(s): %s - not a setting of this timeline" %
+             ", ".join(unknown))
+
     if len(kfs) < 2:
         fail("need at least two keyframes")
 
@@ -254,7 +259,7 @@ def validate(cfg):
              (timing["title_scale"],))
 
     if timing["title_scale"] < 3:
-        warn("title_scale %d gives a %dpx title" %
+        warn("title_scale %d gives a %dpx title - the 8x8 bitmap needs about 5x to read as a title" %
              (timing["title_scale"], 8 * timing["title_scale"]))
 
     if timing["title_wave_out_ms"] < 0 or timing["title_wave_fade_ms"] < 0:

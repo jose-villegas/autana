@@ -265,11 +265,7 @@ needs no marking of its own. The rule only bites code writing through
 `gfx_mark_dirty()`, and forgetting shows up as stale pixels rather than a
 crash.
 
-**Marking must be cheap.** Dithered text can call `gfx_fill_rect_dither()`
-once per set font pixel, so marking runs thousands of times on a screen of
-text. Routing that through the public entry point, with its re-clipping and
-call overhead, cost about 5% of the launcher's framerate; an inlined helper
-on the already-clipped path fixed it.
+**Marking must be cheap.** A dithered glyph calls gfx_fill_rect_dither() once per set font pixel, so marking can run once per lit pixel of text. Routing it through the public entry point, with its re-clipping and call overhead, measured about 5% of the launcher's framerate with every glyph drawn a pixel at a time; an inlined helper on the already-clipped path fixed it.
 
 On the simulation side the same dirty information answers "what needs
 redrawing" as well as "what needs sending", which is the point of the

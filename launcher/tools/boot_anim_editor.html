@@ -553,7 +553,7 @@ const FIELD_LABELS = {
   title_wave_amplitude_px: 'idle wave amplitude once a letter has landed',
   title_wave_period_ms: 'idle wave cycle time',
   title_wave_stagger_ms: 'idle wave phase offset, per letter',
-  title_scale: 'size multiplier - 8x8 bitmap draws at 8xthis; the 40px atlas is native at 1 and resamples above it',
+  title_scale: 'size multiplier - the 8x8 bitmap draws at 8 x this, crisp at any integer',
   title_wave_out_ms: 'when the idle wave starts calming (total_ms = never)',
   title_wave_fade_ms: 'how long the calming takes (0 = stop dead)',
   title_height_px: 'how far down the frame the title lands',
@@ -1249,6 +1249,8 @@ function applyLoadedState(loaded) {
       loaded.grid_step_m === undefined) {
     throw new Error('missing timing/camera_focal/grid_step_m/keyframes');
   }
+  loaded.timing = Object.fromEntries(Object.entries(loaded.timing).filter(
+    ([key]) => Object.prototype.hasOwnProperty.call(DEFAULT_STATE.timing, key)));
   if (loaded.timing.pen_finish_ms === undefined) {
     loaded.timing.pen_finish_ms = loaded.timing.fade_start_ms;
   }
