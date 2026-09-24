@@ -324,8 +324,7 @@ class HeldLock:
                     print(f'{ticket["owner"]} is waiting for the board '
                           f'({ticket["purpose"]}) - Ctrl+C to hand it over', file=sys.stderr)
             if time.monotonic() >= next_heartbeat:
-                if not self.store.heartbeat(self.port, self.held["token"],
-                                            self.held["owner"], self.held["purpose"]):
+                if not self.store.heartbeat(self.port, self.held["token"]):
                     print("device lock was lost", file=sys.stderr)
                     return
                 next_heartbeat = time.monotonic() + 30

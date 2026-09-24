@@ -125,9 +125,12 @@ class LockTests(unittest.TestCase):
 
     def test_acquired_event(self):
         with mock.patch.dict(os.environ, {"AUTANA_LOCK_HOOK": "echo hook"}), \
-                mock.patch.object(device_hook.subprocess, "run") as run:
+                mock.patch.object(device_hook.subprocess, "run",
+                                  return_value=subprocess.CompletedProcess([], 0)) as run, \
+                contextlib.redirect_stderr(io.StringIO()) as stderr:
             self.lock.acquire("COM5", "one", "flash")
         self.assertEqual(run.call_args.kwargs["env"]["AUTANA_LOCK_EVENT"], "acquired")
+        self.assertEqual(stderr.getvalue(), "")
 
     def test_state_events_once_with_facts(self):
         with mock.patch.object(device_hook, "emit") as emit:
@@ -138,13 +141,12 @@ class LockTests(unittest.TestCase):
             self.lock.set_human("COM5", "person", "panel")
             self.lock.clear_human("COM5")
             self.lock.clear_human("COM5")
-            self.lock.heartbeat("COM5", held["token"], "one", "flash")
+            self.lock.heartbeat("COM5", held["token"])
         self.assertEqual(emit.call_args_list, [
             mock.call("acquired", "COM5", "one", "flash"),
             mock.call("released", "COM5", "one", "flash"),
             mock.call("human-reserved", "COM5", "person", note="panel"),
             mock.call("human-cleared", "COM5", "person", note="panel"),
-            mock.call("lost", "COM5", "one", "flash"),
         ])
 
     def test_waiting_once_over_polls_and_reclaim_acquires(self):
@@ -159,6 +161,8 @@ class LockTests(unittest.TestCase):
         self.assertNotEqual(reclaimed["token"], held["token"])
         self.assertEqual(emit.call_args_list, [
             mock.call("waiting", "COM5", "two", "flash"),
+            mock.call("gave-up", "COM5", "two", "flash"),
+            mock.call("lost", "COM5", "one", "listen", note="heartbeat expiry"),
             mock.call("acquired", "COM5", "three", "send"),
         ])
 
@@ -167,10 +171,71 @@ class LockTests(unittest.TestCase):
             self.lock.acquire("COM5", "one", "flash")
         run.assert_not_called()
 
+    def test_empty_hook_runs_nothing(self):
+        with mock.patch.dict(os.environ, {"AUTANA_LOCK_HOOK": ""}), \
+                mock.patch.object(device_hook.subprocess, "run") as run, \
+                contextlib.redirect_stderr(io.StringIO()) as stderr:
+            self.lock.acquire("COM5", "one", "flash")
+        run.assert_not_called()
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_real_sleeping_hook_times_out(self):
+        command = f'"{sys.executable}" -c "import time; time.sleep(10)"'
+        with mock.patch.dict(os.environ, {"AUTANA_LOCK_HOOK": command}), \
+                mock.patch.object(device_hook, "HOOK_TIMEOUT_SECONDS", 0.2), \
+                contextlib.redirect_stderr(io.StringIO()) as stderr:
+            start = time.monotonic()
+            held = self.lock.acquire("COM5", "one", "flash")
+            elapsed = time.monotonic() - start
+        self.assertIsNotNone(held)
+        self.assertLess(elapsed, 1.2)
+        self.assertEqual(stderr.getvalue().count("warning: device lock hook failed:"), 1)
+
+    def test_missing_command_warns_once_and_keeps_result(self):
+        with mock.patch.dict(os.environ, {"AUTANA_LOCK_HOOK":
+                                      "autana-hook-command-does-not-exist-88219"}), \
+                contextlib.redirect_stderr(io.StringIO()) as stderr:
+            held = self.lock.acquire("COM5", "one", "flash")
+        self.assertIsNotNone(held)
+        self.assertEqual(stderr.getvalue().count("warning: device lock hook failed:"), 1)
+
+    def test_hook_output_is_hidden_from_caller(self):
+        caller = "import device_hook; device_hook.emit('acquired', 'COM5')"
+        for status in (0, 7):
+            with self.subTest(status=status):
+                command = (f'"{sys.executable}" -c "import sys; '
+                           f'print(12345); print(67890, file=sys.stderr); sys.exit({status})"')
+                environment = os.environ.copy()
+                environment["AUTANA_LOCK_HOOK"] = command
+                environment["PYTHONPATH"] = str(DEVICE)
+                result = subprocess.run([sys.executable, "-c", caller],
+                                        env=environment, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+                self.assertNotIn("12345", result.stderr)
+                self.assertNotIn("67890", result.stderr)
+                self.assertEqual(result.stderr.count("warning: device lock hook failed:"),
+                                 0 if status == 0 else 1)
+
+    def test_suite_ignores_inherited_hook(self):
+        if os.environ.get("AUTANA_HOOK_SUITE_CHILD"):
+            self.skipTest("suite child")
+        sentinel = Path(self.temp.name) / "sentinel"
+        command = (f'"{sys.executable}" -c "import os; '
+                   "open(os.environ['AUTANA_HOOK_SENTINEL'], 'w').close()\"")
+        environment = os.environ.copy()
+        environment.update({"AUTANA_LOCK_HOOK": command,
+                            "AUTANA_HOOK_SENTINEL": str(sentinel),
+                            "AUTANA_HOOK_SUITE_CHILD": "1"})
+        result = subprocess.run([sys.executable, "-m", "unittest", "discover",
+                                 "-s", str(DEVICE / "tests"), "-p", "test_device_lock.py"],
+                                env=environment, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr[-1000:])
+        self.assertFalse(sentinel.exists())
+
     def test_hook_errors_leave_lock_operation_successful(self):
         for result in (subprocess.CompletedProcess([], 4),
-                       subprocess.TimeoutExpired("hook", 3), FileNotFoundError(),
-                       RuntimeError()):
+                       subprocess.TimeoutExpired("hook", 3), RuntimeError()):
             with self.subTest(result=result), mock.patch.dict(
                     os.environ, {"AUTANA_LOCK_HOOK": "missing-command"}), \
                     mock.patch.object(device_hook.subprocess, "run") as run, \
@@ -223,6 +288,86 @@ class LockTests(unittest.TestCase):
         self.assertIn("reclaimed lock from lost for listen (heartbeat expiry)",
                       held["log"])
         self.assertNotEqual(old["token"], held["token"])
+
+    def test_reclaim_emits_lost_before_acquired(self):
+        self.lock.acquire("COM5", "old", "listen")
+        self.clock.advance(601)
+        with mock.patch.object(device_hook, "emit") as emit:
+            held = self.lock.acquire("COM5", "new", "flash")
+        self.assertIsNotNone(held)
+        self.assertEqual(emit.call_args_list, [
+            mock.call("lost", "COM5", "old", "listen", note="heartbeat expiry"),
+            mock.call("acquired", "COM5", "new", "flash"),
+        ])
+
+    def test_wait_zero_emits_no_event(self):
+        self.lock.acquire("COM5", "old", "listen")
+        with mock.patch.object(device_hook, "emit") as emit:
+            self.assertIsNone(self.lock.acquire("COM5", "new", "flash", wait=0))
+        emit.assert_not_called()
+
+    def test_wait_timeout_emits_waiting_then_gave_up(self):
+        self.lock.acquire("COM5", "old", "listen")
+        with mock.patch.object(device_hook, "emit") as emit, \
+                mock.patch.object(device_lock.time, "sleep",
+                                  side_effect=lambda seconds: self.clock.advance(seconds)):
+            self.assertIsNone(self.lock.acquire("COM5", "new", "flash", wait=0.3))
+        self.assertEqual(emit.call_args_list, [
+            mock.call("waiting", "COM5", "new", "flash"),
+            mock.call("gave-up", "COM5", "new", "flash"),
+        ])
+
+    def test_wait_then_win_emits_waiting_then_acquired(self):
+        old = self.lock.acquire("COM5", "old", "listen")
+
+        def release_and_advance(seconds):
+            self.lock.release("COM5", old["token"])
+            self.clock.advance(seconds)
+
+        with mock.patch.object(device_hook, "emit") as emit, \
+                mock.patch.object(device_lock.time, "sleep", side_effect=release_and_advance):
+            held = self.lock.acquire("COM5", "new", "flash", wait=0.3)
+        self.assertIsNotNone(held)
+        self.assertEqual(emit.call_args_list, [
+            mock.call("waiting", "COM5", "new", "flash"),
+            mock.call("released", "COM5", "old", "listen"),
+            mock.call("acquired", "COM5", "new", "flash"),
+        ])
+
+    def test_cancelled_wait_emits_gave_up(self):
+        self.lock.acquire("COM5", "old", "listen")
+
+        def cancel_ticket(seconds):
+            ticket = self.lock.tickets("COM5")[0]["ticket"]
+            self.lock.cancel("COM5", ticket)
+            self.clock.advance(seconds)
+
+        with mock.patch.object(device_hook, "emit") as emit, \
+                mock.patch.object(device_lock.time, "sleep", side_effect=cancel_ticket):
+            self.assertIsNone(self.lock.acquire("COM5", "new", "flash", wait=0.3))
+        self.assertEqual(emit.call_args_list, [
+            mock.call("waiting", "COM5", "new", "flash"),
+            mock.call("gave-up", "COM5", "new", "flash"),
+        ])
+
+    def test_events_run_without_guard(self):
+        def check_guard(event, port, owner="", purpose="", note=""):
+            self.assertFalse(self.lock.guard_path(port).exists(), event)
+
+        with mock.patch.object(device_hook, "emit", side_effect=check_guard) as emit:
+            old = self.lock.acquire("COM5", "old", "listen")
+            self.clock.advance(601)
+            new = self.lock.acquire("COM5", "new", "flash")
+            self.lock.release("COM5", new["token"])
+            self.lock.set_human("COM5", "person", "panel")
+            self.lock.clear_human("COM5")
+            self.lock.acquire("COM5", "last", "listen")
+            with mock.patch.object(device_lock.time, "sleep",
+                                  side_effect=lambda seconds: self.clock.advance(seconds)):
+                self.lock.acquire("COM5", "waiter", "flash", wait=0.2)
+        self.assertEqual({call.args[0] for call in emit.call_args_list},
+                         {"acquired", "lost", "released", "human-reserved",
+                          "human-cleared", "waiting", "gave-up"})
 
     def test_dead_lock_holder_on_this_host_is_reclaimed(self):
         ticket = self.lock.enqueue("COM5", "dead", "flash", pid=1)

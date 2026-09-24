@@ -184,8 +184,11 @@ class LockStore:
         return self.now() - lock["heartbeat_at"] > stale_seconds
 
     def claim(self, port, ticket, expected_build_id, stale_seconds=DEFAULT_STALE_SECONDS):
-        held = self._claim(port, ticket, expected_build_id, stale_seconds)
+        held, reclaimed, reason = self._claim(port, ticket, expected_build_id, stale_seconds)
         if held:
+            if reclaimed:
+                device_hook.emit("lost", port, reclaimed["owner"], reclaimed["purpose"],
+                                 note=reason)
             device_hook.emit("acquired", port, held["owner"], held["purpose"])
         return held
 
@@ -194,17 +197,20 @@ class LockStore:
             self.prune_crashed_waiters(port)
             pending = self.tickets(port)
             if not pending or pending[0]["ticket"] != ticket:
-                return None
+                return None, None, ""
             if self.read_json(self.human_path(port)):
-                return None
+                return None, None, ""
             current = self.read_json(self.lock_path(port))
             reclaimed = ""
+            evicted = None
+            reason = ""
             if current:
                 same_host = current.get("host") == socket.gethostname()
                 dead = same_host and not self.is_alive(current["pid"])
                 if not dead and not self.is_stale(current, stale_seconds):
-                    return None
+                    return None, None, ""
                 reason = "dead process" if dead else "heartbeat expiry"
+                evicted = current
                 reclaimed = ("reclaimed lock from {owner} for {purpose} "
                              "({reason})".format(reason=reason, **current))
                 self.lock_path(port).unlink(missing_ok=True)
@@ -223,7 +229,7 @@ class LockStore:
             }
             self.write_json(self.lock_path(port), held)
             (self.queue_dir(port) / (ticket + ".json")).unlink(missing_ok=True)
-            return held
+            return held, evicted, reason
 
     def acquire(self, port, owner, purpose, expected_build_id="", wait=0,
                 stale_seconds=DEFAULT_STALE_SECONDS):
@@ -234,25 +240,25 @@ class LockStore:
             held = self.claim(port, ticket, expected_build_id, stale_seconds)
             if held:
                 return held
+            if self.now() >= deadline:
+                self.cancel(port, ticket)
+                if waiting:
+                    device_hook.emit("gave-up", port, owner, purpose)
+                return None
+            if not self.read_json(self.queue_dir(port) / (ticket + ".json")):
+                if waiting:
+                    device_hook.emit("gave-up", port, owner, purpose)
+                return None
             if not waiting:
                 device_hook.emit("waiting", port, owner, purpose)
                 waiting = True
-            if self.now() >= deadline:
-                self.cancel(port, ticket)
-                return None
             time.sleep(min(0.1, max(0, deadline - self.now())))
 
     def cancel(self, port, ticket):
         with self.guard(port):
             (self.queue_dir(port) / (ticket + ".json")).unlink(missing_ok=True)
 
-    def heartbeat(self, port, token, owner="", purpose=""):
-        alive = self._heartbeat(port, token)
-        if not alive and owner:
-            device_hook.emit("lost", port, owner, purpose)
-        return alive
-
-    def _heartbeat(self, port, token):
+    def heartbeat(self, port, token):
         with self.guard(port):
             lock = self.read_json(self.lock_path(port))
             if not lock or lock["token"] != token:
