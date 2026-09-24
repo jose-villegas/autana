@@ -29,3 +29,5 @@ jobs:
             bash tools/build_flash.sh --build-only | tee build_flash.out
             && grep -q ^BUILD_ID= build_flash.out
             && tools/check_release_symbols.sh build/launcher.elf
+            && grep -A1 .text.bootloader_after_init build/bootloader/bootloader.map
+            | grep -q libpmic_cold_boot

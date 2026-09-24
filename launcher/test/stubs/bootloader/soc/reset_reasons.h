@@ -1,0 +1,31 @@
+#pragma once
+
+/* The ESP32-S3's own reset-reason enum, copied verbatim from
+ * $IDF_PATH/components/soc/esp32s3/include/soc/reset_reasons.h so the values
+ * this test asserts on are the real device's, not a host guess. */
+typedef enum {
+    RESET_REASON_CHIP_POWER_ON = 0x01,
+    RESET_REASON_CHIP_BROWN_OUT = 0x01,
+    RESET_REASON_CHIP_SUPER_WDT = 0x01,
+    RESET_REASON_CORE_SW = 0x03,
+    RESET_REASON_CORE_DEEP_SLEEP = 0x05,
+    RESET_REASON_CORE_MWDT0 = 0x07,
+    RESET_REASON_CORE_MWDT1 = 0x08,
+    RESET_REASON_CORE_RTC_WDT = 0x09,
+    RESET_REASON_CPU0_MWDT0 = 0x0B,
+    RESET_REASON_CPU1_MWDT0 = 0x0B,
+    RESET_REASON_CPU0_SW = 0x0C,
+    RESET_REASON_CPU1_SW = 0x0C,
+    RESET_REASON_CPU0_RTC_WDT = 0x0D,
+    RESET_REASON_CPU1_RTC_WDT = 0x0D,
+    RESET_REASON_SYS_BROWN_OUT = 0x0F,
+    RESET_REASON_SYS_RTC_WDT = 0x10,
+    RESET_REASON_CPU0_MWDT1 = 0x11,
+    RESET_REASON_CPU1_MWDT1 = 0x11,
+    RESET_REASON_SYS_SUPER_WDT = 0x12,
+    RESET_REASON_SYS_CLK_GLITCH = 0x13,
+    RESET_REASON_CORE_EFUSE_CRC = 0x14,
+    RESET_REASON_CORE_USB_UART = 0x15,
+    RESET_REASON_CORE_USB_JTAG = 0x16,
+    RESET_REASON_CORE_PWR_GLITCH = 0x17,
+} soc_reset_reason_t;
