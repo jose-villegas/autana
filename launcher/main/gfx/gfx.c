@@ -1185,26 +1185,6 @@ gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha
 }
 
 void
-gfx_glow_curve(const int16_t* y_q4, int count, int x0, int x1, int quarter_turns, int erase_px,
-               const gfx_glow_style_t* style) {
-    GFX_PRESENT_GUARD();
-    if (!GFX_REQUIRE_FRAMEBUFFER()) {
-        return;
-    }
-    const gfx_target_t target = current_target();
-    x0 = im_max(x0, 0);
-    x1 = im_min(x1, count);
-    for (int chunk = x0; chunk < x1; chunk += GFX_GLOW_CHUNK) {
-        const gfx_glow_box_t box =
-            gfx_glow_draw_columns(target, clip.x0, clip.y0, clip.x1, clip.y1, GFX_WIDTH, GFX_HEIGHT, y_q4, count, chunk,
-                                  im_min(chunk + GFX_GLOW_CHUNK, x1), quarter_turns, erase_px, style);
-        if (!band_render_active && box.x1 > box.x0) {
-            gfx_mark_dirty(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
-        }
-    }
-}
-
-void
 gfx_glow_curve_posed(const gfx_glow_field_t* field, const gfx_glow_map_t* map, int view_h, gfx_glow_pose_t pose,
                      int16_t* lit_lo, int16_t* lit_hi, int trail, const gfx_glow_style_t* style) {
     GFX_PRESENT_GUARD();
@@ -1212,10 +1192,10 @@ gfx_glow_curve_posed(const gfx_glow_field_t* field, const gfx_glow_map_t* map, i
         return;
     }
     const gfx_target_t target = current_target();
-    for (int row = 0; row < GFX_HEIGHT; row += GFX_GLOW_CHUNK) {
+    for (int row = 0; row < GFX_HEIGHT; row += GFX_GLOW_ROW_BLOCK) {
         const gfx_glow_box_t box =
             gfx_glow_draw_posed_rows(target, clip.x0, clip.y0, clip.x1, clip.y1, GFX_WIDTH, GFX_HEIGHT, field, map,
-                                     view_h, pose, row, row + GFX_GLOW_CHUNK, lit_lo, lit_hi, trail, style);
+                                     view_h, pose, row, row + GFX_GLOW_ROW_BLOCK, lit_lo, lit_hi, trail, style);
         if (!band_render_active && box.x1 > box.x0) {
             gfx_mark_dirty(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
         }
