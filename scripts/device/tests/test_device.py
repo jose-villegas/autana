@@ -498,7 +498,8 @@ class DeviceTests(unittest.TestCase):
         store.status.return_value = {"human": None, "lock": None, "queue": []}
         sink = mock.Mock()
         with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
-             mock.patch.object(device_notify, "SINKS", (sink,)):
+             mock.patch.object(device_notify, "SINKS", (sink,)), \
+             mock.patch.object(device_notify.os, "name", "nt"):
             self.assertEqual(device.main(["--port", "COM5", "--owner", "agent",
                                           "hand-to-human", "--note", "check cable"]), 0)
         sink.assert_not_called()
