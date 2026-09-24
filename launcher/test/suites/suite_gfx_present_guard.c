@@ -62,6 +62,10 @@ test_guard_is_quiet_with_no_present_in_flight(void) {
     TEST_ASSERT_EQUAL_UINT(0, gfx_present_guard_trips);
 }
 
+/* Host only: on a device the guard asserts on a trip by design, so these
+ * would abort the run. */
+#ifndef DEVICE_BUILD
+
 /* Stands in for "a draw call between begin and wait": every gfx_* entry
  * point gfx.c guards calls exactly this function first - see GFX_PRESENT_
  * GUARD() in gfx_present_guard.h. */
@@ -91,6 +95,8 @@ test_end_stops_the_guard_from_tripping(void) {
     gfx_present_guard_check();
     TEST_ASSERT_EQUAL_UINT(1, gfx_present_guard_trips);
 }
+
+#endif
 
 /* begin/wait/present sequencing vs. the dirty tracker */
 
@@ -143,9 +149,11 @@ test_a_mark_after_present_is_not_swallowed_by_a_stale_all_dirty_flag(void) {
 void
 run_gfx_present_guard_suite(void) {
     RUN_TEST(test_guard_is_quiet_with_no_present_in_flight);
+#ifndef DEVICE_BUILD
     RUN_TEST(test_a_check_between_begin_and_end_trips_the_guard);
     RUN_TEST(test_repeated_checks_while_in_flight_keep_tripping);
     RUN_TEST(test_end_stops_the_guard_from_tripping);
+#endif
 
     RUN_TEST(test_present_sequencing_leaves_every_row_clean);
     RUN_TEST(test_a_mark_after_present_is_not_swallowed_by_a_stale_all_dirty_flag);

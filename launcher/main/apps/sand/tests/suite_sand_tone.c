@@ -488,6 +488,9 @@ test_an_edge_shows_less_temperature_than_the_body(void) {
  * behaviour and no other test would notice. */
 static void
 test_each_material_is_painted_the_way_it_should_be(void) {
+    /* A device run reaches here after suites that drive the app, which
+     * advances the phase; the host never compiles that code. */
+    material_set_cullet_phase(0u);
     const gfx_color_t* pal = material_palette();
     /* Deepest depth - every KIND_LIQUID material below is asserted to
      * paint EXACTLY its own body colour at this point, now that every

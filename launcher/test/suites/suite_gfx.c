@@ -59,9 +59,11 @@ fixture(void) {
 static void
 perf_guard(const char* name, int64_t measured_us, int64_t ceiling_us) {
 #if CONFIG_LAUNCHER_QEMU
-    /* A ceiling pegged on the board prices the board's clock, not an
-     * emulator's, so there it is reported and not enforced. */
-    ESP_LOGI("device_tests", "%s: %lld us, board ceiling %lld us not enforced", name, (long long)measured_us,
+    /* Whether the ceiling was pegged on the board or is another present
+     * timed in the same run, it prices the chip's balance of CPU against bus
+     * time, which an emulator does not keep - so there it is reported and not
+     * enforced. */
+    ESP_LOGI("device_tests", "%s: %lld us, limit %lld us not enforced", name, (long long)measured_us,
              (long long)ceiling_us);
     return;
 #endif
@@ -825,9 +827,9 @@ test_an_unchanged_frame_costs_almost_nothing(void) {
 
     ESP_LOGI(TAG, "present: full %lld us, unchanged %lld us", (long long)full, (long long)unchanged);
 
-    TEST_ASSERT_LESS_THAN_MESSAGE((int)(full / 10), (int)unchanged,
-                                  "a frame in which nothing changed must skip the bus entirely, not "
-                                  "resend 322 KiB of identical pixels");
+    perf_guard("a frame in which nothing changed must skip the bus entirely, not "
+               "resend 322 KiB of identical pixels",
+               unchanged, full / 10);
 
     /* 3-4 us across four device captures: seven dirty_row_is_dirty() checks,
      * all clean. 50 us is generous on purpose - the regression it guards
@@ -886,9 +888,9 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
 
     ESP_LOGI(TAG, "present: full %lld us, one band %lld us", (long long)full, (long long)one_band);
 
-    TEST_ASSERT_LESS_THAN_MESSAGE((int)(full / 2), (int)one_band,
-                                  "sending one band of seven must cost far less than sending all of "
-                                  "them - this is the whole point of dirty tracking");
+    perf_guard("sending one band of seven must cost far less than sending all of "
+               "them - this is the whole point of dirty tracking",
+               one_band, full / 2);
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, (int)one_band, "but it must still actually send something");
 
     /* One band, un-pipelined - the same reference every ratio test below
@@ -941,10 +943,10 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
     ESP_LOGI(TAG, "present: full band %lld us, %d px wide (gathered) %lld us", (long long)full_band, w,
              (long long)narrow);
 
-    TEST_ASSERT_LESS_THAN_MESSAGE((int)full_band, (int)narrow,
-                                  "a strip a fraction of the band's width must cost less than "
-                                  "claiming the whole band, or the gather-copy path is not paying "
-                                  "for itself");
+    perf_guard("a strip a fraction of the band's width must cost less than "
+               "claiming the whole band, or the gather-copy path is not paying "
+               "for itself",
+               narrow, full_band);
 
     /* 757 / 750 / 766 / 743 us across four captures - a 3% spread, wider
      * than the full-band reference because this path does a memcpy into
@@ -989,10 +991,10 @@ test_a_short_wide_change_costs_less_than_a_full_band(void) {
     ESP_LOGI(TAG, "present: full band %lld us, %dx%d px (gathered) %lld us", (long long)full_band, w, h,
              (long long)wide);
 
-    TEST_ASSERT_LESS_THAN_MESSAGE((int)full_band, (int)wide,
-                                  "a box short enough in height must cost less than claiming the "
-                                  "whole band, even at most of its width - orientation must not "
-                                  "matter to whether gathering pays off");
+    perf_guard("a box short enough in height must cost less than claiming the "
+               "whole band, even at most of its width - orientation must not "
+               "matter to whether gathering pays off",
+               wide, full_band);
 
     /* 562 / 605 / 576 / 591 us across four captures - the widest spread of
      * any gathered-piece test here, about 7.6%, from the same memcpy-plus-
@@ -1040,10 +1042,10 @@ test_a_full_width_partial_height_change_costs_less_than_a_band(void) {
              "band) %lld us",
              (long long)full_band, h, (long long)partial);
 
-    TEST_ASSERT_LESS_THAN_MESSAGE((int)(full_band * 9 / 10), (int)partial,
-                                  "a full-width box shorter than a whole band must send fewer rows "
-                                  "and cost less than claiming the whole band - see "
-                                  "send_partial_band() in gfx.c");
+    perf_guard("a full-width box shorter than a whole band must send fewer rows "
+               "and cost less than claiming the whole band - see "
+               "send_partial_band() in gfx.c",
+               partial, full_band * 9 / 10);
 }
 
 /* Two small clusters in the same band but opposite corners - each cheap
@@ -1089,9 +1091,9 @@ test_two_far_corners_cost_less_than_a_full_band(void) {
     ESP_LOGI(TAG, "present: full band %lld us, two %dx%d corners %lld us", (long long)full_band, size, size,
              (long long)two_corners);
 
-    TEST_ASSERT_LESS_THAN_MESSAGE((int)full_band, (int)two_corners,
-                                  "two small, far-apart clusters sent independently together must "
-                                  "still cost less than the whole band");
+    perf_guard("two small, far-apart clusters sent independently together must "
+               "still cost less than the whole band",
+               two_corners, full_band);
 
     /* 1,914 / 1,917 / 1,916 / 1,914 us across four captures - a 0.16%
      * spread, nearly as tight as the full-band reference itself, because
@@ -1235,9 +1237,9 @@ test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
     ESP_LOGI(TAG, "present: full band %lld us, two marks in one cell %lld us", (long long)full_band,
              (long long)two_marks);
 
-    TEST_ASSERT_LESS_THAN_MESSAGE((int)full_band, (int)two_marks,
-                                  "two small marks separated by a real gap inside one cell must cost "
-                                  "less than sending the coarse box spanning both");
+    perf_guard("two small marks separated by a real gap inside one cell must cost "
+               "less than sending the coarse box spanning both",
+               two_marks, full_band);
 
     perf_guard("two marks in one cell", two_marks, 2976);
 }
@@ -1267,8 +1269,7 @@ test_a_corner_label_costs_less_than_its_rows_full_width(void) {
 
     ESP_LOGI(TAG, "present: full band %lld us, corner label %lld us", (long long)full_band, (long long)label);
 
-    TEST_ASSERT_LESS_THAN_MESSAGE((int)full_band, (int)label,
-                                  "a label in one corner must cost less than sending its rows full width");
+    perf_guard("a label in one corner must cost less than sending its rows full width", label, full_band);
 }
 
 static void
@@ -1451,8 +1452,8 @@ test_present_overlap_against_serial(void) {
     ESP_LOGI(TAG, "present/update overlap: overlapped %lld us, serial %lld us", (long long)overlap_us,
              (long long)serial_us);
 
-    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE((int)(serial_us + serial_us / 4), (int)overlap_us,
-                                          "overlapping update() with present cost noticeably more than serial");
+    perf_guard("overlapping update() with present cost noticeably more than serial", overlap_us,
+               serial_us + serial_us / 4 + 1);
 }
 
 /* readback */
