@@ -60,6 +60,8 @@ python scripts/device/device.py --owner sam run-suite sand --expect-build-id 012
 python scripts/device/device.py --owner sam listen --seconds 30
 ```
 
+`listen` takes `--follow` to run until Ctrl+C and `--echo` to print the full stream.
+
 ### Talking to a running device: `send`
 
 `send` writes one console line and prints the device's replies to it, under

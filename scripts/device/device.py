@@ -300,8 +300,9 @@ def print_reset_output(data, verbose):
 
 
 class HeldLock:
-    def __init__(self, store, port, owner, purpose, wait):
+    def __init__(self, store, port, owner, purpose, wait, announce_waiters=False):
         self.store = store
+        self.announce_waiters = announce_waiters
         self.port = port
         self.held = store.acquire(port, owner, purpose, wait=wait)
         if not self.held:
@@ -309,13 +310,24 @@ class HeldLock:
         if self.held["log"]:
             print(self.held["log"], file=sys.stderr)
         self.stop = threading.Event()
+        self.notified = set()
         self.thread = threading.Thread(target=self.keep_alive, daemon=True)
 
     def keep_alive(self):
-        while not self.stop.wait(30):
-            if not self.store.heartbeat(self.port, self.held["token"]):
-                print("device lock was lost", file=sys.stderr)
-                return
+        # Only a holder the person can end with Ctrl+C invites them to.
+        poll = 1 if self.announce_waiters else 30
+        next_heartbeat = time.monotonic() + 30
+        while not self.stop.wait(poll):
+            for ticket in (self.store.tickets(self.port) if self.announce_waiters else ()):
+                if ticket["ticket"] not in self.notified:
+                    self.notified.add(ticket["ticket"])
+                    print(f'{ticket["owner"]} is waiting for the board '
+                          f'({ticket["purpose"]}) - Ctrl+C to hand it over', file=sys.stderr)
+            if time.monotonic() >= next_heartbeat:
+                if not self.store.heartbeat(self.port, self.held["token"]):
+                    print("device lock was lost", file=sys.stderr)
+                    return
+                next_heartbeat = time.monotonic() + 30
 
     def __enter__(self):
         self.thread.start()
@@ -323,22 +335,24 @@ class HeldLock:
 
     def __exit__(self, unused_type, unused_value, unused_traceback):
         self.stop.set()
-        self.thread.join()
-        self.store.release(self.port, self.held["token"])
+        try:
+            self.thread.join()
+        finally:
+            self.store.release(self.port, self.held["token"])
 
 
 def capture(connection, output, max_seconds, idle_seconds, expected_build_id=None,
-            suite_name=None, append=False):
+            suite_name=None, append=False, echo=None, until_tests_done=True):
     data = bytearray()
     pending = b""
     seen_build_id = None
     last_non_shell = time.monotonic()
-    deadline = last_non_shell + max_seconds
+    deadline = last_non_shell + max_seconds if max_seconds is not None else None
     suite_complete = None
     if suite_name:
         suite_complete = b"RUNSUITE_COMPLETE name=" + suite_name.encode("ascii") + b" "
     with open(output, "ab" if append else "wb") as stream:
-        while time.monotonic() < deadline:
+        while deadline is None or time.monotonic() < deadline:
             try:
                 chunk = connection.read(4096)
             except OSError:
@@ -352,6 +366,9 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
             data.extend(chunk)
             stream.write(chunk)
             stream.flush()
+            if echo is not None:
+                echo.write(chunk)
+                echo.flush()
             pending += chunk
             lines = pending.split(b"\n")
             pending = lines.pop()
@@ -372,7 +389,8 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
                         raise RuntimeError("no suite named " + suite_name + " on this build")
                     if b"SUITE_DONE" in text or text.startswith(suite_complete):
                         return bytes(data), "complete"
-            if b"TESTS_DONE" in data or b"SELFTEST_COMPLETE" in data or (b"Tests " in data and b"Failures" in data):
+            if until_tests_done and (b"TESTS_DONE" in data or b"SELFTEST_COMPLETE" in data or
+                                  (b"Tests " in data and b"Failures" in data)):
                 return bytes(data), "complete"
     return bytes(data), "timeout"
 
@@ -689,24 +707,59 @@ def selftest(args, store, port):
         return 1 if failed else 0
 
 
+class ErrorLineSink:
+    def __init__(self, output):
+        self.output = output
+        self.pending = b""
+
+    def write(self, chunk):
+        self.pending += chunk
+        while b"\n" in self.pending:
+            line, self.pending = self.pending.split(b"\n", 1)
+            text = line.decode("utf-8", errors="replace")
+            if BOOT_ERROR.search(text):
+                self.output.write(text + "\n")
+                self.output.flush()
+
+    def flush(self):
+        self.output.flush()
+
+    def finish(self):
+        text = self.pending.decode("utf-8", errors="replace")
+        if BOOT_ERROR.search(text):
+            self.output.write(text + "\n")
+        self.output.flush()
+
+
 def listen(args, store, port):
     started_at = now()
     output, managed = resolve_capture_path(args.out, "listen", args.owner, started_at)
     data = b""
     reason = None
     error = None
+    echo = getattr(args, "echo", False)
+    sink = sys.stdout.buffer if echo else ErrorLineSink(sys.stdout)
     try:
-        with HeldLock(store, port, args.owner, args.purpose, args.wait):
+        with HeldLock(store, port, args.owner, args.purpose, args.wait, announce_waiters=True):
             with open_when_free(port) as connection:
-                data, reason = capture(connection, output, args.seconds, None)
+                data, reason = capture(connection, output, args.seconds, None,
+                                       echo=sink, until_tests_done=False)
+    except KeyboardInterrupt:
+        reason = "stopped"
+        data = Path(output).read_bytes() if Path(output).exists() else b""
     except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
         error = str(caught)
         raise
     finally:
-        record_capture(output, managed, started_at=started_at, port=port, owner=args.owner,
-                       purpose=args.purpose, command="listen",
-                       build_id=latest_build_id_from_bytes(data), worktree=str(Path.cwd()),
-                       commit=git_commit(), reason=reason, error=error)
+        final_path = record_capture(output, managed, started_at=started_at, port=port,
+                                    owner=args.owner, purpose=args.purpose, command="listen",
+                                    build_id=latest_build_id_from_bytes(data), worktree=str(Path.cwd()),
+                                    commit=git_commit(), reason=reason, error=error)
+    if not echo:
+        sink.finish()
+    elif data and not data.endswith(b"\n"):
+        print()
+    print("listen capture: " + str(final_path))
     print("listen capture ended: " + reason)
     elf = Path(args.elf) if args.elf else find_elf_for_build_id(
         Path.cwd(), latest_build_id_from_bytes(data))
@@ -919,7 +972,10 @@ def main(argv=None):
     suite.add_argument("--verbose", action="store_true")
     suite.add_argument("--purpose", default="run suite")
     listen_parser = subparsers.add_parser("listen")
-    listen_parser.add_argument("--seconds", type=float, required=True)
+    listen_duration = listen_parser.add_mutually_exclusive_group(required=True)
+    listen_duration.add_argument("--seconds", type=float)
+    listen_duration.add_argument("--follow", action="store_true")
+    listen_parser.add_argument("--echo", action="store_true")
     listen_parser.add_argument("--out")
     listen_parser.add_argument("--purpose", default="listen")
     listen_parser.add_argument("--elf",

@@ -1,4 +1,6 @@
 import base64
+import io
+import contextlib
 import gzip
 import json
 import os
@@ -129,6 +131,13 @@ class FakeConnection:
         pass
 
 
+class InterruptedConnection(FakeConnection):
+    def read(self, size):
+        if not self.chunks:
+            raise KeyboardInterrupt
+        return super().read(size)
+
+
 class DeviceTests(unittest.TestCase):
     def test_suite_output_shows_failure_messages_and_caps_the_list(self):
         data = (b"boot detail\n" + b":1:good:PASS\n" +
@@ -256,6 +265,38 @@ class DeviceTests(unittest.TestCase):
             self.assertEqual(output.read_bytes(), b":1:test_one:PASS\n")
         self.assertEqual(reason, "port lost")
         self.assertEqual(device.count_suite_results(data), (1, 0))
+
+    def test_capture_echoes_every_chunk_byte_for_byte(self):
+        chunks = [b"ordinary\n", b"\xfferror: broken\n"]
+        echo = io.BytesIO()
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "capture.log"
+            device.capture(FakeConnection(chunks), output, 0.2, None, echo=echo)
+            self.assertEqual(output.read_bytes(), b"".join(chunks))
+        self.assertEqual(echo.getvalue(), b"".join(chunks))
+
+    def test_capture_flushes_bytes_before_interrupt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "capture.log"
+            with self.assertRaises(KeyboardInterrupt):
+                device.capture(InterruptedConnection([b"before\n"]), output, None, None)
+            self.assertEqual(output.read_bytes(), b"before\n")
+
+    def test_regular_capture_still_raises_on_interrupt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "capture.log"
+            with self.assertRaises(KeyboardInterrupt):
+                device.capture(InterruptedConnection([b"before\n"]), output, 1, None)
+            self.assertEqual(output.read_bytes(), b"before\n")
+
+    def test_monitor_capture_ignores_test_completion(self):
+        chunks = [b"TESTS_DONE\n", b"ordinary after tests\n"]
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "capture.log"
+            with self.assertRaises(KeyboardInterrupt):
+                device.capture(InterruptedConnection(chunks), output,
+                               None, None, until_tests_done=False)
+            self.assertEqual(output.read_bytes(), b"".join(chunks))
 
     def test_capture_rejects_run_suite_when_build_has_no_suites(self):
         connection = FakeConnection([b"shell: ignoring line: 'RUNSUITE sand'\n"])
@@ -1024,6 +1065,192 @@ class ListenElfResolutionTests(unittest.TestCase):
         finder, decode = self.run_listen(None, [b"no build id here"], None)
         finder.assert_called_once()
         decode.assert_not_called()
+
+    def test_quiet_listen_prints_record_path_and_errors(self):
+        connection = FakeConnection([b"ordinary line\nerror: failed\n"])
+        args = Namespace(owner="agent", purpose="autana monitor", wait=0,
+                         seconds=0.1, follow=False, echo=False, out=None, elf=None)
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        printed = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(device, "open_when_free", return_value=connection), \
+             mock.patch.object(device, "records_root", return_value=Path(directory)), \
+             mock.patch.object(device, "git_commit", return_value="deadbeef"), \
+             mock.patch.object(device, "find_elf_for_build_id", return_value=None), \
+             contextlib.redirect_stdout(printed):
+            device.listen(args, store, "COM5")
+        self.assertIn("listen capture: ", printed.getvalue())
+        self.assertIn("error: failed", printed.getvalue())
+        self.assertNotIn("ordinary line", printed.getvalue())
+
+
+class ListenLifecycleTests(unittest.TestCase):
+    def run_listen(self, connection, flags, output=None):
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = output or io.StringIO()
+            with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+                 mock.patch.object(device, "open_when_free", return_value=connection), \
+                 mock.patch.object(device, "records_root", return_value=root), \
+                 mock.patch.object(device, "git_commit", return_value="deadbeef"), \
+                 mock.patch.object(device, "find_elf_for_build_id", return_value=None), \
+                 contextlib.redirect_stdout(output):
+                code = device.main(["--port", "COM5", "listen", *flags])
+            entries = [json.loads(line) for line in (root / "index.jsonl").read_text().splitlines()]
+            payload = Path(entries[-1]["capture_path"]).read_bytes()
+            return code, output.getvalue(), entries[-1], payload, store
+
+    def test_read_interrupt_records_stopped_capture(self):
+        for flags in (["--follow"], ["--seconds", "1"]):
+            with self.subTest(flags=flags):
+                code, output, entry, payload, store = self.run_listen(
+                    InterruptedConnection([b"BUILD_ID=abc123\nerror: broken\n"]), flags)
+                self.assertEqual(code, 0)
+                self.assertEqual(entry["reason"], "stopped")
+                self.assertEqual(entry["build_id"], "abc123")
+                self.assertEqual(payload, b"BUILD_ID=abc123\nerror: broken\n")
+                self.assertIn("listen capture: " + entry["capture_path"], output)
+                self.assertIn("listen capture ended: stopped", output)
+                store.release.assert_called_once()
+
+    def test_listen_requires_exactly_one_duration_mode(self):
+        for flags in ([], ["--seconds", "1", "--follow"]):
+            with self.subTest(flags=flags), self.assertRaises(SystemExit) as caught:
+                device.main(["--port", "COM5", "listen", *flags])
+            self.assertEqual(caught.exception.code, 2)
+
+    def test_quiet_errors_arrive_before_capture_ends(self):
+        class Connection(FakeConnection):
+            def read(self, size):
+                if not self.chunks:
+                    self.assert_output()
+                    raise KeyboardInterrupt
+                return super().read(size)
+
+        connection = Connection([b"ordinary\nerror: broken\n"])
+        connection.assert_output = lambda: self.assertIn("error: broken", current_stdout.getvalue())
+        current_stdout = io.StringIO()
+        code, output, entry, _, _ = self.run_listen(connection, ["--follow"], current_stdout)
+        self.assertEqual(code, 0)
+        self.assertEqual(output.count("error: broken"), 1)
+        self.assertNotIn("ordinary", output)
+
+    def test_echo_interrupt_records_flushed_bytes(self):
+        class Output(io.StringIO):
+            def __init__(self):
+                super().__init__()
+                self.buffer = mock.Mock()
+                self.buffer.write.side_effect = KeyboardInterrupt
+
+        output = Output()
+        code, text, entry, payload, store = self.run_listen(
+            FakeConnection([b"BUILD_ID=abc123\nerror: broken\n"]),
+            ["--follow", "--echo"], output)
+        self.assertEqual(code, 0)
+        self.assertEqual(entry["reason"], "stopped")
+        self.assertEqual(entry["build_id"], "abc123")
+        self.assertEqual(payload, b"BUILD_ID=abc123\nerror: broken\n")
+        self.assertIn(entry["capture_path"], text)
+        store.release.assert_called_once()
+
+    def test_echo_writes_raw_bytes_without_reprinting_errors(self):
+        class Output(io.StringIO):
+            def __init__(self):
+                super().__init__()
+                self.buffer = io.BytesIO()
+
+        output = Output()
+        raw = b"ordinary\nerror: broken\n"
+        code, text, _, _, _ = self.run_listen(
+            InterruptedConnection([raw]), ["--follow", "--echo"], output)
+        self.assertEqual(code, 0)
+        self.assertEqual(output.buffer.getvalue(), raw)
+        self.assertNotIn("error: broken", text)
+
+    def test_timed_listen_continues_past_test_completion(self):
+        connection = InterruptedConnection([b"TESTS_DONE\n", b"after tests\n"])
+        code, _, entry, payload, _ = self.run_listen(connection, ["--seconds", "1"])
+        self.assertEqual(code, 0)
+        self.assertEqual(entry["reason"], "stopped")
+        self.assertEqual(payload, b"TESTS_DONE\nafter tests\n")
+
+    def test_partial_echo_gets_newline_before_path(self):
+        class Output(io.StringIO):
+            def __init__(self):
+                super().__init__()
+                self.buffer = io.BytesIO()
+
+        output = Output()
+        code, text, entry, _, _ = self.run_listen(
+            InterruptedConnection([b"partial"]), ["--follow", "--echo"], output)
+        self.assertEqual(code, 0)
+        self.assertTrue(text.startswith("\nlisten capture: "))
+        self.assertEqual(output.buffer.getvalue(), b"partial")
+
+    def test_compressed_path_is_printed(self):
+        code, text, entry, _, _ = self.run_listen(
+            InterruptedConnection([b"x" * (device.COMPRESS_ABOVE_BYTES + 1)]),
+            ["--follow"])
+        self.assertEqual(code, 0)
+        self.assertTrue(entry["capture_path"].endswith(".gz"))
+        self.assertIn("listen capture: " + entry["capture_path"], text)
+
+    def test_interrupt_during_lock_wait_records_stopped(self):
+        store = mock.Mock()
+        store.acquire.side_effect = KeyboardInterrupt
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+             mock.patch.object(device, "records_root", return_value=Path(directory)), \
+             mock.patch.object(device, "git_commit", return_value="deadbeef"), \
+             mock.patch.object(device, "find_elf_for_build_id", return_value=None), \
+             contextlib.redirect_stdout(io.StringIO()):
+            code = device.main(["--port", "COM5", "listen", "--follow"])
+            entry = json.loads((Path(directory) / "index.jsonl").read_text().strip())
+        self.assertEqual(code, 0)
+        self.assertEqual(entry["reason"], "stopped")
+
+    def test_interrupt_during_port_open_releases_lock(self):
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+             mock.patch.object(device, "open_when_free", side_effect=KeyboardInterrupt), \
+             mock.patch.object(device, "records_root", return_value=Path(directory)), \
+             mock.patch.object(device, "git_commit", return_value="deadbeef"), \
+             mock.patch.object(device, "find_elf_for_build_id", return_value=None), \
+             contextlib.redirect_stdout(io.StringIO()):
+            code = device.main(["--port", "COM5", "listen", "--follow"])
+            entry = json.loads((Path(directory) / "index.jsonl").read_text().strip())
+        self.assertEqual(code, 0)
+        self.assertEqual(entry["reason"], "stopped")
+        store.release.assert_called_once()
+
+
+class WaiterNoticeTests(unittest.TestCase):
+    def test_holder_reports_each_waiter_once(self):
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        store.tickets.return_value = [{"ticket": "one", "owner": "sam", "purpose": "test"}]
+        lock = device.HeldLock(store, "COM5", "agent", "monitor", 0, announce_waiters=True)
+        lock.stop.wait = mock.Mock(side_effect=[False, False, True])
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            lock.keep_alive()
+        self.assertEqual(stderr.getvalue().count("sam is waiting"), 1)
+
+    def test_a_flash_or_suite_holder_never_invites_ctrl_c(self):
+        store = mock.Mock()
+        store.acquire.return_value = {"log": "", "token": "token"}
+        store.tickets.return_value = [{"ticket": "one", "owner": "sam", "purpose": "test"}]
+        lock = device.HeldLock(store, "COM5", "agent", "flash", 0)
+        lock.stop.wait = mock.Mock(side_effect=[False, False, True])
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            lock.keep_alive()
+        self.assertEqual(stderr.getvalue(), "")
 
 
 class ResetCommandTests(unittest.TestCase):
