@@ -264,6 +264,11 @@ class MonitorCommandTests(unittest.TestCase):
 
 
 class ResetCommandTests(unittest.TestCase):
+    def test_verbose_reaches_reset_capture(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.reset(["--capture", "--verbose"])
+        self.assertIn("--verbose", called.call_args.args[0])
+
     def test_capture_forwards_its_window_to_device(self):
         with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
             code = autana.reset(["--capture", "15"])
@@ -284,6 +289,12 @@ class ResetCommandTests(unittest.TestCase):
 
 
 class SelftestCommandTests(unittest.TestCase):
+    def test_verbose_reaches_device(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.selftest(["--verbose"])
+        self.assertIn("--verbose", called.call_args.args[0])
+
     def test_builds_the_device_selftest_invocation(self):
         with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
              mock.patch.object(autana.subprocess, "call", return_value=0) as called:
@@ -303,6 +314,12 @@ class SelftestCommandTests(unittest.TestCase):
 
 
 class BatchCommandTests(unittest.TestCase):
+    def test_verbose_reaches_device(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.batch(["run_gfx_suite", "--verbose"])
+        self.assertIn("--verbose", called.call_args.args[0])
+
     def test_one_suite_defaults_runs_and_is_always_diag(self):
         with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
              mock.patch.object(autana.subprocess, "call", return_value=0) as called:
@@ -336,6 +353,13 @@ class BatchCommandTests(unittest.TestCase):
     def test_an_unknown_flag_is_rejected(self):
         with self.assertRaises(SystemExit):
             autana.batch(["run_sand_perf_suite", "--bogus"])
+
+
+class SuiteCommandTests(unittest.TestCase):
+    def test_verbose_reaches_device(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite", "--verbose"])
+        self.assertIn("--verbose", called.call_args.args[0])
 
 
 class LockCommandTests(unittest.TestCase):

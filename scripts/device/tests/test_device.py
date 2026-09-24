@@ -130,6 +130,39 @@ class FakeConnection:
 
 
 class DeviceTests(unittest.TestCase):
+    def test_suite_output_shows_failure_messages_and_caps_the_list(self):
+        data = (b"boot detail\n" + b":1:good:PASS\n" +
+                b"".join(f"file.c:{line}:bad_{line}:FAIL: wrong {line}\n".encode()
+                         for line in range(1, 13)))
+        with mock.patch("builtins.print") as printed:
+            device.print_suite_output(data, "record.log", "suite", "complete", False)
+        lines = [call.args[0] for call in printed.call_args_list]
+        self.assertIn("suite results: 1 PASS, 12 FAIL", lines)
+        self.assertIn("bad_1: wrong 1", lines)
+        self.assertIn("2 more in record.log", lines)
+        self.assertNotIn("boot detail", "\n".join(lines))
+
+    def test_suite_output_pass_and_verbose_capture(self):
+        data = b"boot detail\n:1:good:PASS\n"
+        with mock.patch("builtins.print") as printed:
+            device.print_suite_output(data, "record.log", "selftest", "complete", True)
+        lines = [call.args[0] for call in printed.call_args_list]
+        self.assertIn("boot detail\n:1:good:PASS\n", lines)
+        self.assertIn("selftest results: 1 PASS, 0 FAIL", lines)
+
+    def test_reset_output_shows_only_error_lines_by_default(self):
+        data = b"boot detail\nE (4) boot: failed to mount\npanic: halted\n"
+        with mock.patch("builtins.print") as printed:
+            device.print_reset_output(data, False)
+        lines = [call.args[0] for call in printed.call_args_list]
+        self.assertEqual(lines, ["E (4) boot: failed to mount", "panic: halted"])
+
+    def test_reset_output_verbose_shows_full_capture(self):
+        data = b"boot detail\nabort() was called\n"
+        with mock.patch("builtins.print") as printed:
+            device.print_reset_output(data, True)
+        printed.assert_called_once_with(data.decode(), end="")
+
     def test_count_suite_results_accepts_unity_failure_messages(self):
         data = b""":601:test_one:PASS
 :602:test_two:PASS
@@ -1034,7 +1067,8 @@ class ResetCommandTests(unittest.TestCase):
         self.assertEqual(capture, b"boot output\n")
         self.assertEqual(entry["reason"], "port lost")
         self.assertIsNone(entry["error"])
-        printed.assert_any_call("boot output\n", end="")
+        self.assertNotIn(mock.call("boot output\n", end=""), printed.call_args_list)
+        printed.assert_any_call("reset capture: " + entry["capture_path"])
 
     def test_reset_releases_the_lock_when_esptool_fails(self):
         store = mock.Mock()
