@@ -343,9 +343,12 @@ unidentified board a null panel (`gfx_null_panel.c`). It keeps the one
 property of the link the code above depends on: a strip occupies the bus
 for its own transfer time at the current panel clock, one strip after
 another, and only then counts as sent. The framebuffer, the present task and
-everything drawn through them run as they do on the board, and costs keep
-their order — a narrow window cheaper than a band, a band cheaper than a
-frame, nothing sent costing nothing.
+everything drawn through them run as they do on the board, and bus time
+keeps its order — a narrow window cheaper than a band, a band cheaper than
+a frame, nothing sent costing nothing. A whole present's measured cost does
+not: the CPU work around the bus is priced by the emulator, not the chip,
+so a test that compares two presents' times reports the comparison there
+rather than enforcing it.
 
 Touch gets the same treatment: `touch_inject()` leaves a sample the polling
 task reads ahead of the controller, and with no controller answering there is
