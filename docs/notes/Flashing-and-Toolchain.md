@@ -19,11 +19,11 @@ flashable even when startup fails.
 If the board becomes unreachable, BOOT has to be held at the moment power
 arrives - so what produces that moment decides the procedure.
 
-| Step | No battery fitted | Battery fitted |
+| # | No battery fitted | Battery fitted |
 |---|---|---|
-| 1. Cut power | Unplug USB-C | **Long-press PWR** (~10 s) until the COM port disappears |
+| 1. | Unplug USB-C | **Long-press PWR** (~10 s) until the COM port disappears |
 | 2. | **Hold BOOT** | **Hold BOOT** |
-| 3. Power on, still holding BOOT | Plug USB-C back in | **Press PWR** |
+| 3. | Plug USB-C back in, still holding | **Press PWR**, still holding |
 | 4. | Keep holding ~2 s, release | Keep holding ~2 s, release |
 
 **With a battery fitted, unplugging USB does nothing**, and fails silently: the
