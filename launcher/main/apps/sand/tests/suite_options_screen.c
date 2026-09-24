@@ -20,8 +20,6 @@
 #include "apps/sand/ui/options_screen.h"
 #include "apps/sand/ui/sand_theme.h"
 
-#define TAP_TARGET_MIN 44
-
 static const char* const QUALITY_NAMES[] = {"ULTRA", "HIGH", "NORMAL", "LOW", "VERY LOW"};
 #define QUALITY_COUNT ((int)(sizeof QUALITY_NAMES / sizeof QUALITY_NAMES[0]))
 
@@ -87,7 +85,7 @@ assert_layout(bool landscape) {
     const mu_Rect taps[] = {lay.quality_slider, lay.tiles[0], lay.tiles[1], lay.tiles[2],
                             lay.dither,         lay.apply,    lay.cancel};
     for (size_t i = 0; i < sizeof taps / sizeof taps[0]; i++) {
-        TEST_ASSERT_GREATER_OR_EQUAL_INT(TAP_TARGET_MIN, taps[i].h);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT(UI_TAP_MIN, taps[i].h);
     }
     TEST_ASSERT_TRUE(lay.apply.x + lay.apply.w <= lay.cancel.x);
     TEST_ASSERT_TRUE(lay.tiles[0].x + lay.tiles[0].w <= lay.tiles[1].x);

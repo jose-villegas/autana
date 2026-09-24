@@ -188,20 +188,33 @@ test_a_list_grows_upward_from_a_dropdown_near_the_bottom(void) {
     TEST_ASSERT_GREATER_OR_EQUAL_INT(16, list.y);
 }
 
-static void
-test_a_list_too_tall_for_either_side_stays_inside_the_margins(void) {
-    const mu_Rect anchor = {20, 120, 200, 44};
-    const mu_Rect list = ui_dropdown_list_rect(anchor, 5, 44, 300, 16);
-    TEST_ASSERT_GREATER_OR_EQUAL_INT(16, list.y);
-    TEST_ASSERT_LESS_OR_EQUAL_INT(300 - 16, list.y + list.h);
+static bool
+overlaps(mu_Rect a, mu_Rect b) {
+    return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
 
 static void
-test_a_list_taller_than_the_screen_is_capped_inside_the_margins(void) {
+test_a_list_too_tall_for_either_side_fills_the_roomier_one(void) {
+    const mu_Rect anchor = {20, 120, 200, 44};
+    const mu_Rect list = ui_dropdown_list_rect(anchor, 5, 44, 300, 16);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(anchor.y + anchor.h - 1, list.y, "more room below than above");
+    TEST_ASSERT_EQUAL_INT(300 - 16, list.y + list.h);
+    TEST_ASSERT_FALSE(overlaps(list, anchor));
+
+    const mu_Rect low = {20, 200, 200, 44};
+    const mu_Rect up = ui_dropdown_list_rect(low, 5, 44, 300, 16);
+    TEST_ASSERT_EQUAL_INT(16, up.y);
+    TEST_ASSERT_FALSE(overlaps(up, low));
+}
+
+static void
+test_a_list_taller_than_the_screen_stays_inside_it(void) {
     const mu_Rect anchor = {20, 60, 200, 44};
     const mu_Rect list = ui_dropdown_list_rect(anchor, 10, 44, 300, 16);
-    TEST_ASSERT_EQUAL_INT(300 - 2 * 16, list.h);
-    TEST_ASSERT_EQUAL_INT(16, list.y);
+    TEST_ASSERT_LESS_THAN_INT(10 * 44, list.h);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(16, list.y);
+    TEST_ASSERT_LESS_OR_EQUAL_INT(300 - 16, list.y + list.h);
+    TEST_ASSERT_FALSE(overlaps(list, anchor));
 }
 
 static void
@@ -274,6 +287,12 @@ test_a_tap_on_a_listed_item_picks_it_and_closes_the_list(void) {
     open_fixture();
     const mu_Rect list = open_list_rect();
     TEST_ASSERT_EQUAL_INT(2, dropdown_tap(list.x + 20, list.y + 2 * DROPDOWN.h + 20, 0));
+    TEST_ASSERT_TRUE_MESSAGE(list_open(), "the list stays up long enough to be seen taking the pick");
+
+    const input_t idle = {0};
+    for (int i = 0; i < UI_DROPDOWN_CLOSE_FRAMES; i++) {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(-1, dropdown_frame(&idle, 2), "a pick is reported once");
+    }
     TEST_ASSERT_FALSE(list_open());
 }
 
@@ -282,6 +301,29 @@ test_a_tap_elsewhere_closes_the_list_without_a_pick(void) {
     open_fixture();
     TEST_ASSERT_EQUAL_INT(-1, dropdown_tap(5, ui_height() - 5, 0));
     TEST_ASSERT_FALSE(list_open());
+}
+
+/* The open list's own window, found by the rect it was placed at. */
+static const mu_Container*
+open_list_window(void) {
+    const mu_Rect want = open_list_rect();
+    for (int i = 0; i < ui_context()->root_list.idx; i++) {
+        const mu_Container* cnt = ui_context()->root_list.items[i];
+        if (cnt->rect.y == want.y && cnt->rect.h == want.h && cnt->rect.x == want.x) {
+            return cnt;
+        }
+    }
+    TEST_FAIL_MESSAGE("no window at the open list's rect");
+    return NULL;
+}
+
+/* microui narrows a window's body for a scrollbar only when it scrolls. */
+static void
+test_a_list_that_fits_does_not_scroll(void) {
+    open_fixture();
+    const mu_Container* list = open_list_window();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(list->rect.w, list->body.w, "a list that fits must not grow a scrollbar");
+    TEST_ASSERT_EQUAL_INT(list->rect.h, list->body.h);
 }
 
 static uint64_t
@@ -361,6 +403,36 @@ test_the_last_row_of_a_list_taller_than_the_screen_can_be_picked(void) {
     TEST_ASSERT_EQUAL_INT(MANY_COUNT - 1, many_tap(list.x + 20, last_y + DROPDOWN.h / 2, MANY_COUNT - 1));
 }
 
+/* A finger resting on a button before ui_pointer lands its press - which
+ * is all a drag across a list ever is - must not draw it pressed; the
+ * press itself must. */
+static void
+test_only_a_real_press_draws_a_button_pressed(void) {
+    fixture();
+    const widget_t w = {.kind = DRAW_ICON_BUTTON, .enabled = true};
+    const input_t idle = {0};
+    widget_frame(&w, &idle);
+    widget_frame(&w, &idle);
+    const uint64_t at_rest = canvas_hash("Widgets");
+
+    const int x = BUTTON.x + BUTTON.w / 2;
+    const int y = BUTTON.y + BUTTON.h / 2;
+    const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
+    const input_t hold = {.down = true, .x = x, .y = y};
+    widget_frame(&w, &press);
+    widget_frame(&w, &hold);
+    TEST_ASSERT_EQUAL_MESSAGE(at_rest, canvas_hash("Widgets"), "hovered but not yet pressed must look at rest");
+
+    widget_frame(&w, &hold);
+    widget_frame(&w, &hold);
+    const uint64_t pressed = canvas_hash("Widgets");
+
+    const input_t release = {.released = true, .x = x, .y = y};
+    widget_frame(&w, &release);
+    widget_frame(&w, &idle);
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(at_rest, pressed, "a landed press must look pressed");
+}
+
 void
 run_ui_widgets_suite(void) {
     RUN_TEST(test_an_enabled_button_reports_a_tap);
@@ -371,11 +443,13 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_text_aligns_to_either_edge_or_the_centre);
     RUN_TEST(test_a_list_goes_below_its_dropdown_when_it_fits);
     RUN_TEST(test_a_list_grows_upward_from_a_dropdown_near_the_bottom);
-    RUN_TEST(test_a_list_too_tall_for_either_side_stays_inside_the_margins);
+    RUN_TEST(test_a_list_too_tall_for_either_side_fills_the_roomier_one);
     RUN_TEST(test_a_tap_on_a_listed_item_picks_it_and_closes_the_list);
     RUN_TEST(test_a_tap_elsewhere_closes_the_list_without_a_pick);
     RUN_TEST(test_opening_the_list_changes_the_screen_under_it);
-    RUN_TEST(test_a_list_taller_than_the_screen_is_capped_inside_the_margins);
+    RUN_TEST(test_a_list_that_fits_does_not_scroll);
+    RUN_TEST(test_only_a_real_press_draws_a_button_pressed);
+    RUN_TEST(test_a_list_taller_than_the_screen_stays_inside_it);
     RUN_TEST(test_a_list_opens_scrolled_to_its_current_item);
     RUN_TEST(test_the_last_row_of_a_list_taller_than_the_screen_can_be_picked);
 }

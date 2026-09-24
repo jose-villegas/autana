@@ -26,10 +26,7 @@
  * floating inside it. */
 #define SWATCH_SIDE        80
 
-/* 56, not the 44px tap-target floor exactly: a bit of headroom so the "i"
- * glyph Phase 5b/6 draws into it isn't pressed against the button's own
- * edge. */
-#define INFO_BTN_SIDE      56
+#define INFO_BTN_SIDE      UI_TAP_MIN
 
 /* Exactly "06 PX" at scale 2 on the 8px-wide UI font: 5 glyphs * 8px *
  * 2 = 80. Monospace, so this is exact, not a guess - a narrower value
@@ -41,11 +38,11 @@
 
 /* Panel heights, tuned so the whole stack fits the tighter of the two real
  * canvases (448x368 landscape, 336px of content height after margins) with
- * every tap target still >= 44px - see brush_screen_layout()'s own
+ * every tap target still >= UI_TAP_MIN - see brush_screen_layout()'s own
  * comment for the sum this must clear. */
 #define HEADER_H           96
 #define MODE_H             112
-#define SIZE_H             96
+#define SIZE_H             100
 
 #define BLOCK_H            (HEADER_H + BRUSH_SCREEN_GAP + MODE_H + BRUSH_SCREEN_GAP + SIZE_H)
 

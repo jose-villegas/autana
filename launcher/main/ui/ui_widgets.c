@@ -70,7 +70,9 @@ begin_control(mu_Context* ctx, const char* id, mu_Rect r, bool enabled, bool sel
     if (enabled) {
         const mu_Id mid = mu_get_id(ctx, id, (int)strlen(id));
         mu_update_control(ctx, mid, r, 0);
-        c.pressed = (ctx->hover == mid) || (ctx->focus == mid);
+        /* Focus, not hover: on touch the pointer sits on whatever a drag
+         * crosses, and only a landed press is a press. */
+        c.pressed = ctx->focus == mid;
         c.clicked = ctx->mouse_pressed == MU_MOUSE_LEFT && ctx->focus == mid;
     }
 
@@ -114,23 +116,21 @@ ui_icon_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_butto
 
 mu_Rect
 ui_dropdown_list_rect(mu_Rect anchor, int count, int row_h, int canvas_h, int margin) {
-    int h = count * row_h;
-    if (h > canvas_h - 2 * margin) {
-        h = canvas_h - 2 * margin;
-    }
+    const int h = count * row_h;
     const int below = anchor.y + anchor.h + LIST_GAP;
     const int room_below = canvas_h - margin - below;
     const int room_above = anchor.y - LIST_GAP - margin;
 
-    int y;
     if (h <= room_below) {
-        y = below;
-    } else if (h <= room_above) {
-        y = anchor.y - LIST_GAP - h;
-    } else {
-        y = room_below >= room_above ? canvas_h - margin - h : margin;
+        return mu_rect(anchor.x, below, anchor.w, h);
     }
-    return mu_rect(anchor.x, y, anchor.w, h);
+    if (h <= room_above) {
+        return mu_rect(anchor.x, anchor.y - LIST_GAP - h, anchor.w, h);
+    }
+    if (room_below >= room_above) {
+        return mu_rect(anchor.x, below, anchor.w, room_below);
+    }
+    return mu_rect(anchor.x, margin, anchor.w, room_above);
 }
 
 int
@@ -167,12 +167,22 @@ list_name(const char* id, char* out, size_t len) {
 static mu_Container* opening_list;
 static int opening_scroll;
 
+/* A picked list stays up UI_DROPDOWN_CLOSE_FRAMES frames after the finger
+ * lifts, so the row it landed on is seen taking the pick. */
+static mu_Container* closing_list;
+static int closing_frames;
+
 static int
 draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const ui_dropdown_item_t* items, int count,
                    int selected, const ui_theme_t* theme) {
     const mu_Rect list = ui_dropdown_list_rect(anchor, count, anchor.h, ui_height(), UI_MARGIN);
     mu_Container* cnt = find_list(ctx, id);
     cnt->rect = list;
+    if (cnt == closing_list && !ctx->mouse_down && --closing_frames <= 0) {
+        closing_list = NULL;
+        cnt->open = 0;
+        return -1;
+    }
     if (cnt == opening_list) {
         cnt->scroll.y = opening_scroll;
         if (cnt->content_size.y > 0) {
@@ -180,11 +190,15 @@ draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const ui_dro
         }
     }
 
+    /* Rows flush with the list's edges: padding would count toward the
+     * content height, and a list that fits would then scroll. */
+    const int saved_padding = ctx->style->padding;
+    ctx->style->padding = 0;
     const int opt = MU_OPT_POPUP | MU_OPT_NORESIZE | MU_OPT_NOTITLE | MU_OPT_NOFRAME | MU_OPT_CLOSED;
     if (!mu_begin_window_ex(ctx, id, list, opt)) {
+        ctx->style->padding = saved_padding;
         return -1;
     }
-    const int p = ctx->style->padding;
     const int row_w = cnt->body.w;
     int picked = -1;
     for (int i = 0; i < count; i++) {
@@ -197,13 +211,15 @@ draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const ui_dro
             .enabled = true,
             .selected = i == selected,
         };
-        mu_layout_set_next(ctx, mu_rect(-p, i * anchor.h - p, row_w, anchor.h), 1);
+        mu_layout_set_next(ctx, mu_rect(0, i * anchor.h, row_w, anchor.h), 1);
         if (ui_icon_button(ctx, row_id, mu_layout_next(ctx), &row, theme)) {
             picked = i;
-            cnt->open = 0;
+            closing_list = cnt;
+            closing_frames = UI_DROPDOWN_CLOSE_FRAMES;
         }
     }
     mu_end_window(ctx);
+    ctx->style->padding = saved_padding;
     return picked;
 }
 
@@ -238,6 +254,9 @@ ui_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t
         mu_open_popup(ctx, list_id);
         const mu_Rect list = ui_dropdown_list_rect(r, count, r.h, ui_height(), UI_MARGIN);
         opening_list = find_list(ctx, list_id);
+        if (closing_list == opening_list) {
+            closing_list = NULL;
+        }
         opening_scroll = ui_dropdown_list_scroll(selected, count, r.h, list.h);
     }
     if (!ui_dropdown_is_open(ctx, id)) {

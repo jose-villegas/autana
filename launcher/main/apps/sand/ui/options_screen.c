@@ -15,15 +15,18 @@
 #define CAPTION_H       20
 #define CAPTION_GAP     6
 #define PANEL_PAD       8
-#define QUALITY_PANEL_H 80
-#define SLIDER_H        44
+#define SLIDER_H        UI_TAP_MIN
+#define QUALITY_PANEL_H (PANEL_PAD + CAPTION_H + PANEL_PAD + SLIDER_H + PANEL_PAD)
 #define TILE_H          68
 #define TILE_GAP        8
-#define DROPDOWN_H      44
+#define DROPDOWN_H      UI_TAP_MIN
 #define BOTTOM_MARGIN   8
-#define FOOTER_H        52
-#define FOOTER_GAP      8
-#define SWATCH_INSET    10
+#define BODY_H                                                                                                         \
+    (SECTION_GAP + QUALITY_PANEL_H + SECTION_GAP + CAPTION_H + CAPTION_GAP + TILE_H + SECTION_GAP + CAPTION_H          \
+     + CAPTION_GAP + DROPDOWN_H + SECTION_GAP + FOOTER_H + BOTTOM_MARGIN)
+#define FOOTER_H     UI_TAP_MIN
+#define FOOTER_GAP   8
+#define SWATCH_INSET 10
 
 static const sand_colour_mode_t TILE_COLOURS[OPTIONS_SCREEN_TILE_COUNT] = {
     SAND_COLOUR_16,
@@ -99,8 +102,11 @@ options_screen_layout(int screen_w, int screen_h, options_screen_layout_t* out) 
     const int w = min_int(screen_w - 2 * UI_MARGIN, COLUMN_W_MAX);
     const int x = (screen_w - w) / 2;
 
-    out->header = mu_rect(0, 0, screen_w, HEADER_H);
-    int y = layout_quality(x, w, HEADER_H + SECTION_GAP, out);
+    /* The header is the one row a short canvas can spare: every other row is
+     * a control, and none may shrink below UI_TAP_MIN. */
+    const int header_h = screen_h >= HEADER_H + BODY_H ? HEADER_H : 0;
+    out->header = mu_rect(0, 0, screen_w, header_h);
+    int y = layout_quality(x, w, header_h + SECTION_GAP, out);
     y = layout_tiles(x, w, y, out);
     out->dither_caption = mu_rect(x, y, w, CAPTION_H);
     out->dither = mu_rect(x, y + CAPTION_H + CAPTION_GAP, w, DROPDOWN_H);
@@ -207,7 +213,9 @@ options_screen_draw(mu_Context* ctx, const sand_menu_t* menu, const options_scre
         return hits;
     }
 
-    ui_header_bar(ctx, lay.header, OPTIONS_SCREEN_TITLE, sand_ui_theme.text_scale, &sand_ui_theme);
+    if (lay.header.h > 0) {
+        ui_header_bar(ctx, lay.header, OPTIONS_SCREEN_TITLE, sand_ui_theme.text_scale, &sand_ui_theme);
+    }
     draw_quality(ctx, &lay, menu, labels, &hits);
     draw_colour(ctx, &lay, menu, labels, &hits);
     draw_footer(ctx, &lay, menu, &hits);

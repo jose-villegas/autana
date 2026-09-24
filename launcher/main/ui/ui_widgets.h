@@ -86,8 +86,8 @@ typedef struct {
 
 /* Where a dropdown's open list goes: below `anchor` when `count` rows of
  * `row_h` fit above `canvas_h - margin`, above it when they fit there, and
- * otherwise on whichever side has more room, pinned inside the margins.
- * Never taller than the canvas inside its margins; the list scrolls. */
+ * otherwise filling whichever side has more room, where it scrolls. The
+ * list never covers the dropdown itself. */
 mu_Rect ui_dropdown_list_rect(mu_Rect anchor, int count, int row_h, int canvas_h, int margin);
 
 /* Where a list `list_h` tall opens scrolled to: `selected` centred when it
@@ -99,9 +99,13 @@ int ui_dropdown_label_width(int w, const ui_theme_t* theme);
 
 /* The chosen item with a chevron; a tap opens the rest as a list over the
  * screen, placed by ui_dropdown_list_rect(). Returns the index picked this
- * frame, or -1. `id` names the list's own window, unique per dropdown. */
+ * frame, or -1; the list closes UI_DROPDOWN_CLOSE_FRAMES frames later.
+ * `id` names the list's own window, unique per dropdown. */
 int ui_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t* items, int count, int selected,
                 const ui_theme_t* theme);
+
+/* How many frames a list stays up after its pick, once the finger lifts. */
+#define UI_DROPDOWN_CLOSE_FRAMES 4
 
 /* Whether dropdown `id`'s list is open. Asked from inside the same window
  * as the ui_dropdown() call, since microui scopes a name to its window. */
