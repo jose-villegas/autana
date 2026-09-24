@@ -220,11 +220,14 @@ what can split at all, and why the rest cannot.
 
 ```mermaid
 stateDiagram-v2
+    direction LR
     [*] --> Active: block created
-    Active --> Active: a grain moved in this block<br/>(BLOCK_ACTIVE set)
-    Active --> Settled: no activity this step,<br/>AND no active neighbour<br/>(any_neighbor_active() false)
-    Settled --> Active: sand_set()/sand_erase()/<br/>cross-flow touches it<br/>(wake_block_and_neighbors(),<br/>3x3 neighbourhood)
-    Settled --> Settled: still quiet
+
+    Active : Active<br/>a grain moved here<br/>(BLOCK_ACTIVE set)
+    Settled : Settled<br/>stays until woken
+
+    Active --> Settled: a quiet step and<br/>any_neighbor_active() false
+    Settled --> Active: sand_set(), sand_erase()<br/>or cross-flow wakes its 3x3<br/>(wake_block_and_neighbors())
 
     classDef activeStyle fill:#8a3d3d,color:#fff
     classDef settledStyle fill:#3d6b8a,color:#fff

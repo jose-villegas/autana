@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import gzip
 import json
+import math
 import os
 import re
 import shutil
@@ -245,14 +246,6 @@ def latest_build_id_from_bytes(data):
     return matches[-1].group(1).decode("ascii", "replace") if matches else None
 
 
-def read_expected_build_id(worktree, variant):
-    build_dir = "build." + variant
-    path = Path(worktree) / "launcher" / build_dir / "build_id.txt"
-    try:
-        return path.read_text(encoding="ascii").strip() or None
-    except FileNotFoundError:
-        return None
-
 
 def count_suite_results(data):
     results = SUITE_RESULT.findall(data)
@@ -341,8 +334,19 @@ class HeldLock:
             self.store.release(self.port, self.held["token"])
 
 
+def tests_done(data):
+    return (b"TESTS_DONE" in data or b"SELFTEST_COMPLETE" in data or
+            (b"Tests " in data and b"Failures" in data))
+
+
+def build_id_heard(data):
+    """Only a finished line counts: an id can arrive split across two reads."""
+    return BUILD_ID.search(data[:data.rfind(b"\n") + 1]) is not None
+
+
 def capture(connection, output, max_seconds, idle_seconds, expected_build_id=None,
-            suite_name=None, append=False, echo=None, until_tests_done=True):
+            suite_name=None, append=False, echo=None, complete=tests_done,
+            first_byte_seconds=None):
     data = bytearray()
     pending = b""
     seen_build_id = None
@@ -360,7 +364,10 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
                 # then; what was read is still a capture worth reporting.
                 return bytes(data), "port lost"
             if not chunk:
-                if idle_seconds is not None and time.monotonic() - last_non_shell >= idle_seconds:
+                quiet = time.monotonic() - last_non_shell
+                if not data and first_byte_seconds is not None and quiet >= first_byte_seconds:
+                    return bytes(data), "silent"
+                if idle_seconds is not None and quiet >= idle_seconds:
                     return bytes(data), "idle"
                 continue
             data.extend(chunk)
@@ -389,52 +396,90 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
                         raise RuntimeError("no suite named " + suite_name + " on this build")
                     if b"SUITE_DONE" in text or text.startswith(suite_complete):
                         return bytes(data), "complete"
-            if until_tests_done and (b"TESTS_DONE" in data or b"SELFTEST_COMPLETE" in data or
-                                  (b"Tests " in data and b"Failures" in data)):
+            if complete is not None and complete(data):
                 return bytes(data), "complete"
     return bytes(data), "timeout"
 
 
-def reset(port):
+def reset(port, after="hard_reset"):
+    """hard_reset pulses RTS, and USB Serial/JTAG stays up through it, so a
+    capture hears the boot from its first line. It cannot restart a chip in
+    download mode; watchdog_reset can, but re-enumerates USB, losing the
+    early boot lines a release image's BUILD_ID is among."""
     command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
-               "--after", "hard_reset", "chip_id"]
+               "--after", after, "chip_id"]
     subprocess.run(command, check=True)
 
 
-def reset_and_capture(port, output, seconds, idle_seconds, expected_build_id=None):
-    """Any reset re-enumerates USB Serial/JTAG and kills an open handle, so no
-    capture spans the reset: what the board prints before the port reopens is
-    lost."""
+def reset_and_capture(port, output, seconds, idle_seconds, expected_build_id=None,
+                      complete=tests_done):
+    """A board that says nothing at all after the RTS reset is taken for a chip
+    in download mode, the one case RTS cannot start, and gets the watchdog. One
+    that spoke, even without a BUILD_ID, is left alone."""
     reset(port)
-    deadline = time.monotonic() + seconds
+    data, reason = capture_after_reset(port, output, seconds, idle_seconds, expected_build_id,
+                                       complete)
+    if reason != "silent":
+        return data, reason
+    print("board silent after an RTS reset, as from download mode; "
+          "restarting it through the watchdog", file=sys.stderr)
+    reset(port, after="watchdog_reset")
+    return capture_after_reset(port, output, seconds, idle_seconds, expected_build_id,
+                               complete)
+
+
+RESET_FIRST_BYTE_SECONDS = 2
+RESET_REOPEN_SECONDS = 10
+
+
+def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=None,
+                        complete=tests_done):
+    """A watchdog reset or a power cycle re-enumerates USB Serial/JTAG and
+    kills an open handle, so no capture spans one: what the board prints
+    before the port reopens is lost. It re-enumerates late enough that the
+    first open can get the old handle, which reads nothing rather than
+    failing, so within RESET_REOPEN_SECONDS a handle silent from the start is
+    reopened. A capture that heard nothing at all ends as "silent"."""
+    started = time.monotonic()
+    deadline = started + seconds
     data = bytearray()
     append = False
     first_reopen = True
+
+    def ended(reason):
+        return bytes(data), reason if data else "silent"
+
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            return bytes(data), "timeout"
+            return ended("timeout")
         try:
             connection = open_when_free(port, remaining,
                                         reason="re-enumerating after reset")
         except RuntimeError:
             if first_reopen:
                 raise
-            return bytes(data), "port lost"
+            return ended("port lost")
         first_reopen = False
         with connection:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return bytes(data), "timeout"
+                return ended("timeout")
+            in_reopen_window = not data and time.monotonic() - started < RESET_REOPEN_SECONDS
             part, reason = capture(connection, output, remaining, idle_seconds,
-                                   expected_build_id, append=append)
+                                   expected_build_id, append=append, complete=complete,
+                                   first_byte_seconds=RESET_FIRST_BYTE_SECONDS
+                                   if in_reopen_window else None)
         data.extend(part)
         append = True
-        if reason != "port lost":
-            return bytes(data), reason
+        if reason not in ("port lost", "silent"):
+            return ended(reason)
         if time.monotonic() >= deadline:
-            return bytes(data), "port lost"
-        print("reset capture lost the port; reopening", file=sys.stderr)
+            return ended(reason)
+        if reason == "silent":
+            print("reset capture read nothing since the reset; reopening", file=sys.stderr)
+        else:
+            print("reset capture lost the port; reopening", file=sys.stderr)
 
 
 def reset_device(args, store, port):
@@ -533,12 +578,16 @@ def find_elf_for_build_id(worktree, build_id):
     return None
 
 
-def boot_build_id(port, seconds=12, expected_build_id=None):
-    with open_serial(port) as connection:
-        data, reason = capture(connection, os.devnull, seconds, 2, expected_build_id)
-        actual = latest_build_id_from_bytes(data)
-        if actual:
-            return actual, reason
+def reset_and_read_build_id(port, seconds=12, expected_build_id=None):
+    """The id from the boot log, however long the boot stays silent before
+    printing it; or else from the console's BUILDID query, which a release
+    image, having no console, never answers."""
+    data, reason = reset_and_capture(port, os.devnull, seconds, None, expected_build_id,
+                                     complete=build_id_heard)
+    actual = latest_build_id_from_bytes(data)
+    if actual:
+        return actual, reason
+    with open_when_free(port, reason="re-enumerating after reset") as connection:
         connection.write(b"BUILDID\n")
         connection.flush()
         deadline = time.monotonic() + 3
@@ -553,7 +602,7 @@ def boot_build_id(port, seconds=12, expected_build_id=None):
             for line in lines:
                 actual = build_id_from_bytes(line)
                 if actual:
-                    return actual, reason
+                    return actual, "console"
         return None, reason
 
 
@@ -587,19 +636,20 @@ def flash(args, store, port, held_lock=None, extra_flags=()):
         # forge one by guessing.
         environment["AUTANA_DEVICE_LOCK_TOKEN"] = held.held["token"]
         build_id = None
+        expected = None
         error = None
         try:
             with open(log, "wb") as stream:
                 subprocess.run(command, cwd=worktree, stdin=subprocess.DEVNULL,
                                stdout=stream, stderr=subprocess.STDOUT, check=True,
                                env=environment)
-            expected = read_expected_build_id(worktree, args.variant)
+            expected = latest_build_id_from_bytes(Path(log).read_bytes())
             if expected:
                 store.set_expected_build_id(port, held.held["token"], expected)
             else:
-                print("build id is unverified: build_id.txt is absent", file=sys.stderr)
-            reset(port)
-            actual, reason = boot_build_id(port, expected_build_id=expected)
+                print("build id is unverified: the build log has no BUILD_ID",
+                      file=sys.stderr)
+            actual, reason = reset_and_read_build_id(port, expected_build_id=expected)
             if not expected or not actual:
                 print("build id is unverified: boot did not provide BUILD_ID", file=sys.stderr)
             elif actual != expected:
@@ -615,7 +665,7 @@ def flash(args, store, port, held_lock=None, extra_flags=()):
             record_capture(log, managed, started_at=started_at, port=port, owner=args.owner,
                            purpose=args.purpose, command="flash", build_id=build_id,
                            worktree=str(worktree), commit=git_commit(worktree), error=error)
-        return build_id or read_expected_build_id(worktree, args.variant)
+        return build_id or expected
 
 
 def run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
@@ -743,7 +793,7 @@ def listen(args, store, port):
         with HeldLock(store, port, args.owner, args.purpose, args.wait, announce_waiters=True):
             with open_when_free(port) as connection:
                 data, reason = capture(connection, output, args.seconds, None,
-                                       echo=sink, until_tests_done=False)
+                                       echo=sink, complete=None)
     except KeyboardInterrupt:
         reason = "stopped"
         data = Path(output).read_bytes() if Path(output).exists() else b""
@@ -939,6 +989,37 @@ def batch(args, store, port):
     return 1 if any(e["error"] for e in entries) else 0
 
 
+def human_wait_seconds(value):
+    try:
+        seconds = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("wait must be a nonnegative number") from error
+    if not math.isfinite(seconds) or seconds < 0:
+        raise argparse.ArgumentTypeError("wait must be a nonnegative finite number")
+    return seconds
+
+
+def wait_for_human_release(store, port, reservation_id, seconds):
+    deadline = time.monotonic() + seconds
+    try:
+        while True:
+            human = store.status(port)["human"]
+            if human is None:
+                print("human reservation released")
+                return 0
+            if human.get("id") != reservation_id:
+                print("human reservation replaced")
+                return 4
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                print("human reservation wait timed out")
+                return 3
+            time.sleep(min(1.0, remaining))
+    except KeyboardInterrupt:
+        print("human reservation wait interrupted")
+        return 3
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--port")
@@ -952,6 +1033,7 @@ def main(argv=None):
     hand.add_argument("--note", required=True)
     hand.add_argument("--token")
     hand.add_argument("--purpose", default="handing board to maintainer")
+    hand.add_argument("--wait", type=human_wait_seconds)
     subparsers.add_parser("take-back")
     flash_parser = subparsers.add_parser("flash")
     flash_parser.add_argument("--variant", choices=("dev", "diag", "release"), required=True)
@@ -1071,9 +1153,11 @@ def main(argv=None):
             if active:
                 if not args.token or not store.release(port, args.token):
                     raise RuntimeError("active lock requires its token before handoff")
-            store.set_human(port, args.owner, args.note)
-            print("human reservation recorded")
-            return 0
+            reservation_id = store.set_human(port, args.owner, args.note)
+            if args.wait is None:
+                print("human reservation recorded")
+                return 0
+            return wait_for_human_release(store, port, reservation_id, args.wait)
         if args.command == "take-back":
             store.clear_human(port)
             device_lock.print_status(store.status(port))

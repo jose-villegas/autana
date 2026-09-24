@@ -10,13 +10,15 @@ start at [Building-an-App.md](Building-an-App.md).
 
 ```
 launcher/
+├── bootloader_components/  hooks built into the second-stage bootloader
+│   └── pmic_cold_boot/     a warm reset becomes a PMIC power cycle at 120 MHz
 ├── components/
 │   ├── esp32_s3_touch_amoled_1_8/  Waveshare BSP, LVGL trimmed
 │   ├── microui/        MIT, patched for this chip (see below)
 │   └── small3dlib/     CC0, header-only
 ├── tools/              generators, build/flash wrappers, report scripts
 │   ├── gen_zeta_curve.py       generates main/boot/boot_anim_curve.h
-│   ├── gen_boot_anim_timeline.py, gen_boot_anim_image.py, gen_font.py,
+│   ├── gen_boot_anim_timeline.py, gen_boot_anim_image.py,
 │   │                           gen_gfx_palette_standard.py, gen_icons.py
 │   ├── gen_ui_layout.py        bakes main/ui/<screen>_layout.json into its header
 │   ├── gen_ridge_curve.py      bakes design/boot/ridge.png into main/ui/ridge_curve_generated.h
@@ -64,7 +66,6 @@ launcher/
     │   ├── gfx_font.h          what a font IS             (host-tested)
     │   ├── font8x8_basic.h     the built-in 8x8 glyphs
     │   ├── gfx_font_roles.h    which font plays which part (host-tested)
-    │   ├── fonts/              GENERATED - see tools/gen_font.py
     │   └── icon.h, icons_system.h  artwork no font provides (host-tested)
     ├── ui/             microui integration, shared by the shell and apps
     │   ├── ui.{h,c}, ui_internal.h, ui_build.c
@@ -149,9 +150,7 @@ from `main/ui/control_center_layout.json`, which the host editor in
 `design/boot/boot.png` drawn as a line in the same frame), `main/boot/boot_anim_curve.h` (`tools/gen_zeta_curve.py`),
 `main/boot/boot_anim_timeline.h` (`tools/gen_boot_anim_timeline.py`, from
 `main/boot/boot_anim_timeline.json`), `main/boot/boot_anim_image.h`
-(`tools/gen_boot_anim_image.py`, from `design/boot/boot.png`), and
-`main/gfx/fonts/font_lmroman_40.h` (`tools/gen_font.py`, from
-`design/fonts/LatinModern/lmroman10-bold.otf`),
+(`tools/gen_boot_anim_image.py`, from `design/boot/boot.png`),
 `main/gfx/gfx_palette_standard_generated.h` and `main/gfx/icons_system.h`.
 
 `boot_anim_curve.h` holds the zeta function evaluated along the critical
@@ -162,16 +161,7 @@ computes it once in double precision on a host and the result ships in
 flash. `boot_anim_image.h` holds the same idea applied to a photograph the
 boot animation crossfades to: there is no PNG decoder in this codebase, so
 the pixel data - already rotated into panel space and packed into the
-panel's own byte-swapped RGB565 - ships in flash the same way. `font_lmroman_40.h` is the same idea a third time: no
-TrueType rasterizer here either, so `gen_font.py` renders the glyphs once on
-a host - at one fixed pixel size, on a common baseline, with a real
-proportional advance table - and the coverage atlas ships in flash.
-
-A font atlas is the one generated artifact whose SIZE is a live design
-constraint rather than a curiosity: at 8 bits of coverage per pixel,
-`font_lmroman_40.h` is 274 KiB, comparable to the photograph. That is what
-makes it worth caring whether a font is referenced at all - see
-[Text-and-Fonts.md](Text-and-Fonts.md#roles).
+panel's own byte-swapped RGB565 - ships in flash the same way.
 
 Five rules, and the fourth is the one that matters:
 
@@ -203,12 +193,7 @@ content against - its independent check is instead two `_Static_assert`s in
 `tools/boot_anim_editor_server.py`'s render view (the general path for a
 render-affecting change is a `*_render_host.sh` harness diffed against its
 `*_render_baseline.txt` with `tools/render_diff.sh` — see
-[Render-Harness.md](tools/Render-Harness.md)). A font atlas has no math
-to check either, and its independent check is that the shipped METRICS are
-used for real: `suite_boot_anim.c` lays the title out with whichever font
-the timeline actually authors and asserts the letters land where summing
-that font's own advances says they should, so an atlas whose advance table
-did not match its glyphs would move the word and fail.
+[Render-Harness.md](tools/Render-Harness.md)).
 
 **Two different rules for keeping a generated file current, by design.**
 `boot_anim_editor_server.py`'s dev server updates both `boot_anim_timeline.h`
@@ -225,14 +210,6 @@ running `gen_boot_anim_image.py` by hand would. The next asset type decides
 which rule it follows the same way: state the browser is actively editing
 gets a scratch copy and waits for an explicit save; a file on disk that the
 generator only mirrors gets regenerated in place on demand.
-
-A font atlas takes a third answer: neither, run `gen_font.py` by hand. It is
-not live state the editor holds, and unlike the photograph it is not
-something anyone edits in place either - a typeface arrives once, is
-rasterized at a chosen size, and then does not change until someone
-deliberately picks a different face or size. Regenerating it on an mtime
-check would spend seconds of rasterizing on every render to notice nothing
-had changed.
 
 ---
 
@@ -423,16 +400,17 @@ or Control Center - is `system_navigation_t`'s one field.
 
 ```mermaid
 stateDiagram-v2
+    direction LR
     [*] --> Launcher
 
-    Launcher --> Launcher: ui_launcher_frame()<br/>draws the app list
-    Launcher --> Running: tap an entry<br/><i>the app's enter()</i>
-    Launcher --> ControlCenter: swipe in from the logical top
-    ControlCenter --> ControlCenter: ui_control_center_frame()<br/>over the dimmed launcher
-    ControlCenter --> Launcher: swipe in from the logical bottom
+    Running : Running<br/>one pass per frame
+    Launcher : Launcher<br/>ui_launcher_frame()<br/>draws the app list
+    ControlCenter : Control Center<br/>ui_control_center_frame()<br/>over the dimmed launcher
 
-    Running --> Running: one pass
+    Launcher --> Running: tap an entry<br/><i>the app's enter()</i>
     Running --> Launcher: home swipe, PWR long-press<br/>or shell_request_exit()<br/><i>the app's exit()</i>
+    Launcher --> ControlCenter: swipe in from<br/>the logical top
+    ControlCenter --> Launcher: swipe in from<br/>the logical bottom
 ```
 
 What the shell does on each transition, and which way home an app gets, is

@@ -386,10 +386,32 @@ def release(args):
 def hand(args):
     """Reserve the board for a maintainer sitting at it - autana refuses new
     work against it until `autana take-back`."""
+    usage = "usage: autana hand [--wait <seconds>] <note...>"
+    wait = []
+    if args and args[0] == "--wait":
+        if len(args) < 3:
+            sys.exit(usage)
+        wait = args[:2]
+        args = args[2:]
     if not args:
-        sys.exit("usage: autana hand <note>")
-    return subprocess.call(device_command("--owner", owner(),
-                                          "hand-to-human", "--note", " ".join(args)))
+        sys.exit(usage)
+    command = device_command("--owner", owner(), "hand-to-human",
+                             "--note", " ".join(args), *wait)
+    if not wait:
+        return subprocess.call(command)
+    process = subprocess.Popen(command)
+    try:
+        return process.wait()
+    except KeyboardInterrupt:
+        try:
+            code = process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            process.wait()
+            code = None
+        if code != 3:
+            print("human reservation wait interrupted")
+        return 3
 
 
 def take_back(args):
@@ -945,7 +967,8 @@ COMMAND_GROUPS = (
         Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
         Command("id", identify, (("id [--json]", "the name this session holds the lock under"),)),
         Command("release", release, (("release <token>", "release a lock this session holds"),)),
-        Command("hand", hand, (("hand <note>", "reserve the board for a person at it"),)),
+        Command("hand", hand, (("hand [--wait <seconds>] <note...>",
+                                 "reserve the board for a person at it"),)),
         Command("take-back", take_back, (("take-back", "clear that reservation"),)),
     )),
 )

@@ -18,16 +18,6 @@
  * accepts because a font is looked up through one hand-written accessor per
  * role (gfx_font_roles.h) rather than a whole table of them. An offset needs
  * none of that: the table is pure data, exactly as `static const` promises.
- *
- * WHY A RUNTIME TABLE IS FINE HERE, UNLIKE A FONT ROLE
- *
- * gfx_font_roles.h argues hard against ever resolving a font through a
- * runtime-indexed table: an 8bpp coverage atlas is hundreds of KiB, so a
- * registry naming every candidate from one translation unit would force all
- * of them to link, undoing the linker's ability to drop an unselected one.
- * A 16x16 1bpp icon is 32 bytes; a hundred of them is a few KiB - the
- * calculus a font role is built around does not apply, so an icon table
- * indexed by a generated enum is the plain, ordinary way to look one up.
  */
 #pragma once
 
