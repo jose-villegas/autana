@@ -3,63 +3,67 @@
 /* PATCHED: LVGL includes and display helpers are removed because the launcher drives
  * the panel directly. diff -r against the pinned upstream BSP shows the trim. */
 
-#include "bsp/config.h"
-#include "bsp/display.h"
+#include "sdkconfig.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
-#include "driver/i2s_std.h"
 #include "driver/sdmmc_host.h"
-#include "esp_codec_dev.h"
 #include "esp_io_expander_tca9554.h"
-#include "sdkconfig.h"
+#include "driver/i2s_std.h"
+#include "bsp/config.h"
+#include "bsp/display.h"
+#include "esp_codec_dev.h"
+
+
+
 
 /**************************************************************************************************
  *  BSP Capabilities
  **************************************************************************************************/
 
-#define BSP_CAPS_DISPLAY            1
-#define BSP_CAPS_TOUCH              1
-#define BSP_CAPS_BUTTONS            0
-#define BSP_CAPS_AUDIO              1
-#define BSP_CAPS_AUDIO_SPEAKER      1
-#define BSP_CAPS_AUDIO_MIC          1
-#define BSP_CAPS_SDCARD             1
-#define BSP_CAPS_IMU                0
+#define BSP_CAPS_DISPLAY        1
+#define BSP_CAPS_TOUCH          1
+#define BSP_CAPS_BUTTONS        0
+#define BSP_CAPS_AUDIO          1
+#define BSP_CAPS_AUDIO_SPEAKER  1
+#define BSP_CAPS_AUDIO_MIC      1
+#define BSP_CAPS_SDCARD         1
+#define BSP_CAPS_IMU            0
 
 /**************************************************************************************************
  * ESP-SparkBot-BSP pinout
  **************************************************************************************************/
 
 /* I2C */
-#define BSP_I2C_SCL                 (GPIO_NUM_14)
-#define BSP_I2C_SDA                 (GPIO_NUM_15)
+#define BSP_I2C_SCL           (GPIO_NUM_14)
+#define BSP_I2C_SDA           (GPIO_NUM_15)
 
-#define BSP_I2S_SCLK                (GPIO_NUM_9)
-#define BSP_I2S_MCLK                (GPIO_NUM_16)
-#define BSP_I2S_LCLK                (GPIO_NUM_45)
-#define BSP_I2S_DOUT                (GPIO_NUM_8)
-#define BSP_I2S_DSIN                (GPIO_NUM_10)
-#define BSP_POWER_AMP_IO            (GPIO_NUM_46)
+#define BSP_I2S_SCLK          (GPIO_NUM_9)
+#define BSP_I2S_MCLK          (GPIO_NUM_16)
+#define BSP_I2S_LCLK          (GPIO_NUM_45)
+#define BSP_I2S_DOUT          (GPIO_NUM_8)
+#define BSP_I2S_DSIN          (GPIO_NUM_10)
+#define BSP_POWER_AMP_IO      (GPIO_NUM_46)
 
 /* Display */
-#define BSP_LCD_CS                  (GPIO_NUM_12)
-#define BSP_LCD_PCLK                (GPIO_NUM_11)
-#define BSP_LCD_DATA0               (GPIO_NUM_4)
-#define BSP_LCD_DATA1               (GPIO_NUM_5)
-#define BSP_LCD_DATA2               (GPIO_NUM_6)
-#define BSP_LCD_DATA3               (GPIO_NUM_7)
+#define BSP_LCD_CS        (GPIO_NUM_12)
+#define BSP_LCD_PCLK      (GPIO_NUM_11)
+#define BSP_LCD_DATA0     (GPIO_NUM_4)
+#define BSP_LCD_DATA1     (GPIO_NUM_5)
+#define BSP_LCD_DATA2     (GPIO_NUM_6)
+#define BSP_LCD_DATA3     (GPIO_NUM_7)
 
-#define BSP_LCD_BACKLIGHT           (GPIO_NUM_NC)
-#define BSP_LCD_RST                 (GPIO_NUM_NC)
-#define BSP_LCD_TOUCH_RST           (GPIO_NUM_NC)
-#define BSP_LCD_TOUCH_INT           (GPIO_NUM_21)
+#define BSP_LCD_BACKLIGHT     (GPIO_NUM_NC)
+#define BSP_LCD_RST           (GPIO_NUM_NC)
+#define BSP_LCD_TOUCH_RST     (GPIO_NUM_NC)
+#define BSP_LCD_TOUCH_INT     (GPIO_NUM_21)
 
 /* uSD card */
-#define BSP_SD_D0                   (GPIO_NUM_3)
-#define BSP_SD_CMD                  (GPIO_NUM_1)
-#define BSP_SD_CLK                  (GPIO_NUM_2)
+#define BSP_SD_D0            (GPIO_NUM_3)
+#define BSP_SD_CMD           (GPIO_NUM_1)
+#define BSP_SD_CLK           (GPIO_NUM_2)
 
-#define BSP_IO_EXPANDER_I2C_ADDRESS (ESP_IO_EXPANDER_I2C_TCA9554_ADDRESS_000)
+#define BSP_IO_EXPANDER_I2C_ADDRESS     (ESP_IO_EXPANDER_I2C_TCA9554_ADDRESS_000)
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -73,7 +77,7 @@ extern "C" {
  *  - QMA7981 Inertial measurement unit
  *  - OV2640 Camera module
  **************************************************************************************************/
-#define BSP_I2C_NUM CONFIG_BSP_I2C_NUM
+#define BSP_I2C_NUM     CONFIG_BSP_I2C_NUM
 
 /**
  * @brief Init I2C driver
@@ -104,6 +108,7 @@ esp_err_t bsp_i2c_deinit(void);
  *
  */
 i2c_master_bus_handle_t bsp_i2c_get_handle(void);
+
 
 /**************************************************************************************************
  *
@@ -138,7 +143,7 @@ i2c_master_bus_handle_t bsp_i2c_get_handle(void);
  *      - ESP_ERR_NO_MEM        No memory for storing the channel information
  *      - ESP_ERR_INVALID_STATE This channel has not initialized or already started
  */
-esp_err_t bsp_audio_init(const i2s_std_config_t* i2s_config);
+esp_err_t bsp_audio_init(const i2s_std_config_t *i2s_config);
 
 /**
  * @brief Initialize speaker codec device
@@ -165,7 +170,7 @@ esp_codec_dev_handle_t bsp_audio_codec_microphone_init(void);
  * fclose(f);
  * \endcode
  **************************************************************************************************/
-#define BSP_SPIFFS_MOUNT_POINT CONFIG_BSP_SPIFFS_MOUNT_POINT
+#define BSP_SPIFFS_MOUNT_POINT      CONFIG_BSP_SPIFFS_MOUNT_POINT
 
 /**
  * @brief Mount SPIFFS to virtual file system
@@ -199,8 +204,8 @@ esp_err_t bsp_spiffs_unmount(void);
  * fclose(f);
  * \endcode
  **************************************************************************************************/
-#define BSP_SD_MOUNT_POINT CONFIG_BSP_SD_MOUNT_POINT
-extern sdmmc_card_t* bsp_sdcard;
+#define BSP_SD_MOUNT_POINT      CONFIG_BSP_SD_MOUNT_POINT
+extern sdmmc_card_t *bsp_sdcard;
 
 /**
  * @brief Mount microSD card to virtual file system
@@ -237,7 +242,8 @@ esp_err_t bsp_sdcard_unmount(void);
  */
 esp_io_expander_handle_t bsp_io_expander_init(void);
 
-#define BSP_LCD_SPI_NUM (SPI2_HOST)
+
+#define BSP_LCD_SPI_NUM            (SPI2_HOST)
 
 #ifdef __cplusplus
 }

@@ -47,7 +47,7 @@
 
 /* Tap targets, in the smaller dimension. The panel is ~322 px per inch
  * (368x448 on a 1.8" diagonal), so a phone's 44 is only 3.5 mm here: 56 is
- * ~4.4 mm, the floor layout tests hold every control to, and 64 (~5 mm) is
+ * ~4.4 mm, the floor a layout test holds a control to, and 64 (~5 mm) is
  * what a new control should aim for. */
 #define UI_TAP_MIN         56
 #define UI_TAP_RECOMMENDED 64

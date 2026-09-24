@@ -1,8 +1,9 @@
 /*
  * Portable suite: measures the peak bytes each of this app's microui
  * screens' command list reaches, driving the REAL palette_screen_draw()/
- * brush_screen_draw()/title_screen_draw()/options_screen_draw() against a real microui
- * (ui_init() + ui_begin(), the same calls app_sand.c makes) rather than a
+ * brush_screen_draw()/title_screen_draw()/options_screen_draw() against a
+ * real microui (ui_init() + ui_begin(), the same calls app_sand.c makes)
+ * rather than a
  * hand-mirrored reconstruction - see docs/Building-a-Screen.md.
  *
  * production's own brushes[] lives in app_sand.c (the hardware entry
@@ -11,7 +12,7 @@
  * suite_brush_screen.c cover the real behaviour. Every scenario below picks
  * the worst case a real visit can reach (tile 0 selected AND every
  * emit-eligible tile flagged BRUSH_SPAWN, the longest name in each option
- * table, the DITHER rows shown) rather than whatever a fresh sand_ui_t
+ * table, the DITHER list open) rather than whatever a fresh sand_ui_t
  * happens to zero-initialize to.
  */
 
@@ -130,7 +131,7 @@ test_title_screen_command_list_fits_budget(void) {
 
 /* Shaped like the app's, for layout, taps and command-list size; the
  * colours themselves are suite_sand_mode_swatches.c's. */
-static const sand_mode_swatch_t TEST_MODE_SWATCHES[3] = {
+static const sand_mode_swatch_t TEST_MODE_SWATCHES[SAND_COLOUR_MODE_COUNT] = {
     [SAND_COLOUR_FULL] = {.cols = SAND_SWATCH_FULL_BANDS, .rows = 1},
     [SAND_COLOUR_256] = {.cols = SAND_SWATCH_256_COLS, .rows = SAND_SWATCH_ROWS},
     [SAND_COLOUR_16] = {.cols = SAND_SWATCH_16_COLS, .rows = SAND_SWATCH_ROWS},
@@ -152,13 +153,14 @@ test_options_screen_command_list_fits_budget(void) {
         .mode_swatches = TEST_MODE_SWATCHES,
     };
     sand_menu_t menu;
-    sand_menu_init(&menu, (sand_options_t){.quality = 4, .color = SAND_COLOUR_16, .dither = 3});
-    sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS);
+    const sand_options_t committed = {.quality = 4, .color = SAND_COLOUR_16, .dither = 3};
+    sand_menu_init(&menu);
+    sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS, committed);
     menu.draft.quality = 0;
 
     const input_t input = {0};
     ui_begin(&input);
-    options_screen_draw(ui_context(), &menu, &labels);
+    options_screen_draw(ui_context(), &menu, committed, &labels);
     assert_budget("sand options", end_and_measure());
 }
 
@@ -177,8 +179,9 @@ test_options_screen_with_its_dither_list_open_fits_budget(void) {
         .mode_swatches = TEST_MODE_SWATCHES,
     };
     sand_menu_t menu;
-    sand_menu_init(&menu, (sand_options_t){.quality = 4, .color = SAND_COLOUR_16, .dither = 3});
-    sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS);
+    const sand_options_t committed = {.quality = 4, .color = SAND_COLOUR_16, .dither = 3};
+    sand_menu_init(&menu);
+    sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS, committed);
 
     options_screen_layout_t lay;
     options_screen_layout(ui_width(), ui_height(), &lay);
@@ -196,13 +199,13 @@ test_options_screen_with_its_dither_list_open_fits_budget(void) {
     };
     for (size_t i = 0; i < sizeof steps / sizeof steps[0]; i++) {
         ui_begin(&steps[i]);
-        options_screen_draw(ui_context(), &menu, &labels);
+        options_screen_draw(ui_context(), &menu, committed, &labels);
         mu_end(ui_context());
     }
 
     const input_t idle = {0};
     ui_begin(&idle);
-    options_screen_draw(ui_context(), &menu, &labels);
+    options_screen_draw(ui_context(), &menu, committed, &labels);
     const int used = end_and_measure();
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(1, ui_context()->root_list.idx,
                                          "the list must actually be open for this to measure it");

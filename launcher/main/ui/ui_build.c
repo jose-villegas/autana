@@ -31,6 +31,7 @@ static const char* TAG = "ui";
 #include "ui/ui_internal.h"
 #include "ui/ui_pointer.h"
 #include "ui/ui_slider.h"
+#include "ui/ui_widgets.h"
 
 /* Definitions for the externs ui_internal.h declares - see that header for
  * what each one is shared for. */
@@ -39,6 +40,7 @@ bool ui_invalidated = true;
 ui_text_style_t ui_text_style;
 ui_pointer_t ui_pointer_state;
 uint64_t ui_canvas_hash[MU_CONTAINERPOOL_SIZE];
+ui_canvas_marks_t ui_canvas_marks;
 
 static ui_button_style_t button_style;
 /* The style in force for the rest of this frame, and microui's own frame
@@ -280,6 +282,8 @@ ui_init(void) {
     ui_ctx.style->title_height = UI_TITLE_HEIGHT;
 
     memset(ui_canvas_hash, 0, sizeof(ui_canvas_hash));
+    ui_canvas_marks_reset(&ui_canvas_marks);
+    ui_widgets_reset();
     ui_invalidated = true;
 }
 

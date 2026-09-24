@@ -15,11 +15,6 @@
 #define CHEVRON_SIDE    24
 #define LIST_GAP        4
 
-mu_Color
-ui_rgb(uint32_t rgb) {
-    return mu_color((int)((rgb >> 16) & 0xFF), (int)((rgb >> 8) & 0xFF), (int)(rgb & 0xFF), 255);
-}
-
 static void
 draw_spans(mu_Context* ctx, const ui_span_t* spans, int n) {
     for (int i = 0; i < n; i++) {
@@ -114,6 +109,28 @@ ui_icon_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_butto
     return c.clicked;
 }
 
+bool
+ui_theme_slider_int(mu_Context* ctx, mu_Rect r, int* value, int lo, int hi, int step, const ui_theme_t* theme) {
+    mu_Color* colors = ctx->style->colors;
+    const mu_Color base = colors[MU_COLOR_BASE];
+    const mu_Color border = colors[MU_COLOR_BORDER];
+    const mu_Color knob = colors[MU_COLOR_BUTTON];
+    const mu_Color fill = colors[MU_COLOR_BUTTONFOCUS];
+    colors[MU_COLOR_BASE] = theme->button_face;
+    colors[MU_COLOR_BORDER] = theme->panel_edge;
+    colors[MU_COLOR_BUTTON] = theme->text;
+    colors[MU_COLOR_BUTTONFOCUS] = theme->accent_face;
+
+    mu_layout_set_next(ctx, r, 0);
+    const bool changed = ui_slider_int(ctx, value, lo, hi, step);
+
+    colors[MU_COLOR_BASE] = base;
+    colors[MU_COLOR_BORDER] = border;
+    colors[MU_COLOR_BUTTON] = knob;
+    colors[MU_COLOR_BUTTONFOCUS] = fill;
+    return changed;
+}
+
 mu_Rect
 ui_dropdown_list_rect(mu_Rect anchor, int count, int row_h, int canvas_h, int margin) {
     const int h = count * row_h;
@@ -162,15 +179,22 @@ list_name(const char* id, char* out, size_t len) {
     snprintf(out, len, "%s list", id);
 }
 
-/* A just-opened list's scroll, re-applied until the list has a measured
- * content height: before that microui clamps any scroll back to 0. */
-static mu_Container* opening_list;
-static int opening_scroll;
+/* The one list that can be open at a time: a microui popup closes on any
+ * tap outside it. `scroll` is re-applied until the list has measured its
+ * content, since microui clamps any scroll before that back to 0, and
+ * `close_in` counts the frames a picked list stays up once the finger lifts. */
+static struct {
+    mu_Container* list;
+    int scroll;
+    bool scroll_pending;
+    int close_in;
+    int drawn_frame;
+} live;
 
-/* A picked list stays up UI_DROPDOWN_CLOSE_FRAMES frames after the finger
- * lifts, so the row it landed on is seen taking the pick. */
-static mu_Container* closing_list;
-static int closing_frames;
+void
+ui_widgets_reset(void) {
+    memset(&live, 0, sizeof live);
+}
 
 static int
 draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const ui_dropdown_item_t* items, int count,
@@ -178,17 +202,16 @@ draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const ui_dro
     const mu_Rect list = ui_dropdown_list_rect(anchor, count, anchor.h, ui_height(), UI_MARGIN);
     mu_Container* cnt = find_list(ctx, id);
     cnt->rect = list;
-    if (cnt == closing_list && !ctx->mouse_down && --closing_frames <= 0) {
-        closing_list = NULL;
+    if (live.close_in > 0 && !ctx->mouse_down && --live.close_in == 0) {
         cnt->open = 0;
+        live.list = NULL;
         return -1;
     }
-    if (cnt == opening_list) {
-        cnt->scroll.y = opening_scroll;
-        if (cnt->content_size.y > 0) {
-            opening_list = NULL;
-        }
+    if (live.scroll_pending) {
+        cnt->scroll.y = live.scroll;
+        live.scroll_pending = cnt->content_size.y <= 0;
     }
+    live.drawn_frame = ctx->frame;
 
     /* Rows flush with the list's edges: padding would count toward the
      * content height, and a list that fits would then scroll. */
@@ -214,8 +237,7 @@ draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const ui_dro
         mu_layout_set_next(ctx, mu_rect(0, i * anchor.h, row_w, anchor.h), 1);
         if (ui_icon_button(ctx, row_id, mu_layout_next(ctx), &row, theme)) {
             picked = i;
-            closing_list = cnt;
-            closing_frames = UI_DROPDOWN_CLOSE_FRAMES;
+            live.close_in = UI_DROPDOWN_CLOSE_FRAMES;
         }
     }
     mu_end_window(ctx);
@@ -231,20 +253,37 @@ ui_dropdown_is_open(mu_Context* ctx, const char* id) {
     return list != NULL && list->open;
 }
 
+/* A list its dropdown stopped drawing - the screen changed, or the app left
+ * mid-close - is closed rather than found open on the next visit. */
+static void
+close_if_abandoned(mu_Context* ctx, mu_Container* list) {
+    if (list == NULL || !list->open) {
+        return;
+    }
+    if (list != live.list || live.drawn_frame != ctx->frame - 1) {
+        list->open = 0;
+        if (list == live.list) {
+            live.list = NULL;
+        }
+    }
+}
+
 int
 ui_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t* items, int count, int selected,
             const ui_theme_t* theme) {
+    if (selected < 0 || selected >= count) {
+        selected = 0;
+    }
     char list_id[48];
     list_name(id, list_id, sizeof list_id);
+    close_if_abandoned(ctx, find_list(ctx, list_id));
+
     const bool was_open = ui_dropdown_is_open(ctx, id);
     const control_t c = begin_control(ctx, id, r, true, false, theme);
     const ui_dropdown_item_t* chosen = &items[selected];
     draw_icon_and_label(ctx, r, chosen->icon, chosen->icon_rows, chosen->label, ui_dropdown_label_width(r.w, theme),
                         c.ink, theme);
 
-    /* The chevron is also what repaints the screen under a closing list:
-     * nothing redraws the rect a closed window leaves, but the flip changes
-     * this canvas, and a changed canvas is cleared and redrawn whole. */
     const icon_system_id_t chevron = was_open ? ICON_SYSTEM_CHEVRON_UP : ICON_SYSTEM_CHEVRON_DOWN;
     const mu_Rect chevron_r = {r.x + r.w - BUTTON_PAD - CHEVRON_SIDE, r.y + (r.h - CHEVRON_SIDE) / 2, CHEVRON_SIDE,
                                CHEVRON_SIDE};
@@ -253,11 +292,11 @@ ui_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t
     if (c.clicked && !was_open) {
         mu_open_popup(ctx, list_id);
         const mu_Rect list = ui_dropdown_list_rect(r, count, r.h, ui_height(), UI_MARGIN);
-        opening_list = find_list(ctx, list_id);
-        if (closing_list == opening_list) {
-            closing_list = NULL;
-        }
-        opening_scroll = ui_dropdown_list_scroll(selected, count, r.h, list.h);
+        live.list = find_list(ctx, list_id);
+        live.scroll = ui_dropdown_list_scroll(selected, count, r.h, list.h);
+        live.scroll_pending = true;
+        live.close_in = 0;
+        live.drawn_frame = ctx->frame;
     }
     if (!ui_dropdown_is_open(ctx, id)) {
         return -1;
@@ -300,14 +339,4 @@ ui_tile_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_butto
     const mu_Rect label = {r.x + TILE_PAD, icon.y + icon.h + TILE_LABEL_GAP, r.w - 2 * TILE_PAD, label_h};
     ui_text_in(ctx, label, button->label, c.ink, theme->text_scale, UI_ALIGN_CENTRE);
     return c.clicked;
-}
-
-bool
-ui_check_row(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* row, bool checked,
-             const ui_theme_t* theme) {
-    char text[64];
-    snprintf(text, sizeof text, "%s %s", checked ? UI_CHECK_ON : UI_CHECK_OFF, row->label);
-    ui_widget_button_t marked = *row;
-    marked.label = text;
-    return ui_icon_button(ctx, id, r, &marked, theme);
 }

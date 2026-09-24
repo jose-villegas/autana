@@ -18,11 +18,6 @@
 #define PALETTE_BADGE_BORDER_COLOR 0x141414
 #define PALETTE_BADGE_FILL_COLOR   0xF2F2F2
 
-static mu_Color
-mu_color_hex(uint32_t rgb) {
-    return mu_color((int)((rgb >> 16) & 0xFF), (int)((rgb >> 8) & 0xFF), (int)(rgb & 0xFF), 255);
-}
-
 static void
 draw_palette_selection_bezel(mu_Context* ctx, mu_Rect r, mu_Color face) {
     ui_span_t spans[UI_BEZEL_MAX_SPANS];
@@ -37,8 +32,8 @@ draw_palette_badge(mu_Context* ctx, sand_ui_t* ui, int i, int ix, int iy, int iw
     if (!material_can_emit(ui->brushes[i].cell)) {
         return;
     }
-    const mu_Color border = mu_color_hex(PALETTE_BADGE_BORDER_COLOR);
-    const mu_Color fill = mu_color_hex(PALETTE_BADGE_FILL_COLOR);
+    const mu_Color border = ui_rgb(PALETTE_BADGE_BORDER_COLOR);
+    const mu_Color fill = ui_rgb(PALETTE_BADGE_FILL_COLOR);
     const int bx = ix + iw - PALETTE_BEZEL - PALETTE_BADGE_MARGIN - PALETTE_BADGE_SIZE;
     const int by = iy + PALETTE_BEZEL + PALETTE_BADGE_MARGIN;
     const mu_Rect badge_rect = mu_rect(bx, by, PALETTE_BADGE_SIZE, PALETTE_BADGE_SIZE);
@@ -64,7 +59,7 @@ draw_palette_tile(mu_Context* ctx, sand_ui_t* ui, int i, int cols) {
     const int iw = w - 2 * PALETTE_GROUT;
     const int ih = h - 2 * PALETTE_GROUT;
 
-    const mu_Color face = mu_color_hex(gfx_color_rgb888(material_brush_color(ui->brushes[i].cell)));
+    const mu_Color face = ui_rgb(gfx_color_rgb888(material_brush_color(ui->brushes[i].cell)));
     ctx->style->colors[MU_COLOR_BUTTON] = face;
 
     const char* name = material_name(ui->brushes[i].cell);

@@ -26,7 +26,7 @@
 static const char* const QUALITY_NAMES[] = {"ULTRA", "HIGH", "NORMAL", "LOW", "VERY LOW"};
 static const char* const DITHER_NAMES[] = {"NONE", "CELL CHECKER", "CELL BAYER2", "PIXEL CHECKER2", "PIXEL BAYER4"};
 
-static sand_mode_swatch_t mode_swatches[3];
+static sand_mode_swatch_t mode_swatches[SAND_COLOUR_MODE_COUNT];
 
 static const options_screen_labels_t LABELS = {
     .quality_names = QUALITY_NAMES,
@@ -37,6 +37,7 @@ static const options_screen_labels_t LABELS = {
 };
 
 static sand_menu_t menu;
+static sand_options_t committed;
 static bool show_options;
 static sand_colour_mode_t colour = SAND_COLOUR_256;
 static bool pending;
@@ -74,9 +75,10 @@ setup(int quarter) {
     ui_init();
     transform = ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT);
     ui_set_transform(transform);
-    sand_menu_init(&menu, (sand_options_t){.quality = 2, .color = colour, .dither = 2});
+    committed = (sand_options_t){.quality = 2, .color = colour, .dither = 2};
+    sand_menu_init(&menu);
     if (show_options) {
-        sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS);
+        sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS, committed);
     }
     if (pending) {
         menu.draft.quality = 1;
@@ -105,7 +107,7 @@ draw(const render_frame_t* frame) {
     const input_t input = open_dither ? dither_tap(frame->index) : frame->input;
     ui_begin(&input);
     if (menu.screen == SAND_MENU_OPTIONS) {
-        options_screen_draw(ui_context(), &menu, &LABELS);
+        options_screen_draw(ui_context(), &menu, committed, &LABELS);
     } else {
         title_screen_draw(ui_context());
     }

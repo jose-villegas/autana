@@ -11,7 +11,7 @@
  * A cell per pixel would be 368 x 448 = 165 KB of grid. After the framebuffer
  * takes 322 KB of the chip's ~424 KB there is nowhere near that left, so a
  * cell is a square block of `cell` x `cell` pixels, and `cell` is chosen from
- * the boot menu rather than fixed: ULTRA (2 px) gives a 184 x 224 grid, or
+ * the options screen rather than fixed: ULTRA (2 px) gives a 184 x 224 grid, or
  * 41 KB; HIGH (3 px) gives 122 x 149, or 18 KB; NORMAL (4 px, the default)
  * gives 92 x 112, or 10 KB; LOW (6 px) gives 61 x 74, or about 4.5 KB;
  * VERY LOW (8 px) gives 46 x 56, or about 2.5 KB. All five still read as
@@ -188,7 +188,7 @@ static bool pending_start;
 static sand_menu_t menu;
 
 /* Built from the palettes on the first visit to the options screen. */
-static sand_mode_swatch_t mode_swatches[3];
+static sand_mode_swatch_t mode_swatches[SAND_COLOUR_MODE_COUNT];
 static bool mode_swatches_ready;
 
 static int cell, grid_w, grid_h, block_cols, block_rows;
@@ -345,16 +345,6 @@ static int64_t pour_awake_total, idle_awake_total;
  * unit. */
 static int64_t pour_awake_cells_total, idle_awake_cells_total;
 
-/* RAW per-frame step times for a real play-session capture - see
- * frame_log_sample(). An average would hide the stutter a two-core switch
- * is being measured for, and so would a ceiling: a heavy scene spends most
- * of its frames past 65 ms, so the samples are full microseconds. */
-#define FRAME_LOG_RING 32
-static uint32_t frame_log_ring[FRAME_LOG_RING];
-static int frame_log_count;
-static bool frame_log_armed;
-static bool frame_log_last_two_core;
-static int frame_log_last_quality = -1;
 #endif
 static uint32_t sim_accumulator_q8;
 static uint32_t pour_accumulator_ms;
@@ -495,7 +485,7 @@ sand_enter(void) {
      * exist. Idempotent: a plain FULL entry asks for nothing. */
     apply_gfx_action(sand_colour_on_enter_menu(&colour_state));
     ui.screen = SAND_UI_MENU;
-    sand_menu_init(&menu, current_options());
+    sand_menu_init(&menu);
 
     /* A tap that outlived its own app session (START, then home before the
      * deferred frame ran) must not restart the sim before the menu it
@@ -1892,51 +1882,6 @@ track_pour_split(const input_t* input, int64_t step_us, int64_t draw_us, int awa
     split_log_at_us = now + 2000000;
 }
 
-/* One line per full ring, so the amortised cost is one snprintf/log call
- * per FRAME_LOG_RING frames rather than every frame. */
-static void
-frame_log_flush(void) {
-    if (frame_log_count == 0) {
-        return;
-    }
-    char line[FRAME_LOG_RING * 9 + 1] = "";
-    int n = 0;
-    for (int i = 0; i < frame_log_count; i++) {
-        n += snprintf(line + n, sizeof line - (size_t)n, "%lu,", (unsigned long)frame_log_ring[i]);
-    }
-    ESP_LOGI(TAG, "FRAME_US %s", line);
-    frame_log_count = 0;
-}
-
-/* Arms the capture on first call, otherwise flushes whatever the previous
- * mode/quality had queued before marking the new one - the coordinator's
- * own boundary between "one minute of this setting" and the next. */
-static void
-frame_log_note_mode_change(void) {
-    if (frame_log_armed) {
-        frame_log_flush();
-    } else {
-        frame_log_armed = true;
-    }
-    frame_log_last_two_core = sand_two_core_step_enabled();
-    frame_log_last_quality = quality;
-    ESP_LOGI(TAG, "FRAME_MODE two_core=%d quality=%s grid=%dx%d t_us=%lld", frame_log_last_two_core,
-             qualities[quality].name, grid_w, grid_h, (long long)esp_timer_get_time());
-}
-
-static void
-frame_log_sample(int64_t frame_us) {
-    if (!frame_log_armed) {
-        return;
-    }
-    if (sand_two_core_step_enabled() != frame_log_last_two_core || quality != frame_log_last_quality) {
-        frame_log_note_mode_change();
-    }
-    frame_log_ring[frame_log_count++] = (uint32_t)(frame_us < 0 ? 0 : frame_us);
-    if (frame_log_count >= FRAME_LOG_RING) {
-        frame_log_flush();
-    }
-}
 #endif
 
 static void
@@ -1964,16 +1909,17 @@ draw_options(mu_Context* ctx) {
         .dither_count = GFX_DITHER_MODE_COUNT,
         .mode_swatches = mode_swatches,
     };
-    const sand_options_hits_t hits = options_screen_draw(ctx, &menu, &labels);
-    if (sand_menu_options_step(&menu, hits)) {
+    const sand_options_t committed = current_options();
+    const sand_options_hits_t hits = options_screen_draw(ctx, &menu, committed, &labels);
+    if (sand_menu_options_step(&menu, committed, hits)) {
         /* Not applied to a running sim - the next start_sim() reads them. */
-        adopt_options(&menu.committed);
+        adopt_options(&menu.draft);
     }
 }
 
 static void
 draw_title(mu_Context* ctx) {
-    switch (sand_menu_title_clicked(&menu, title_screen_draw(ctx))) {
+    switch (sand_menu_title_clicked(&menu, title_screen_draw(ctx), current_options())) {
         case SAND_MENU_START:
             /* Not called here - see pending_start's own comment. */
             pending_start = true;
@@ -2070,7 +2016,6 @@ sand_update(uint32_t dt_ms, const input_t* input) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     pending_step_us = esp_timer_get_time() - t0;
     count_awake(&pending_awake_blocks, &pending_awake_cells);
-    frame_log_sample(pending_step_us);
 #endif
 
     /* Local-depth wake, cullet cycle, shine, and the wood-leaf swing each

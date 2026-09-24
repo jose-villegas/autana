@@ -65,6 +65,7 @@ void options_screen_apply_label(int pending, char* out, int len);
 int options_screen_slider_from_quality(int quality, int quality_count);
 int options_screen_quality_from_slider(int slider, int quality_count);
 
-/* Caller brackets this with ui_begin()/ui_end(). */
-sand_options_hits_t options_screen_draw(mu_Context* ctx, const sand_menu_t* menu,
+/* Caller brackets this with ui_begin()/ui_end(). `committed` is what APPLY
+ * would replace, for the pending count. */
+sand_options_hits_t options_screen_draw(mu_Context* ctx, const sand_menu_t* menu, sand_options_t committed,
                                         const options_screen_labels_t* labels);

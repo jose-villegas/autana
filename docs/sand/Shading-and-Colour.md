@@ -454,7 +454,7 @@ reads the same value. None of this touches the FULL path or the simulation
 itself - `material_colours()` is unmodified and the fingerprint suite stays
 green in every mode.
 
-**Indexed mode must never be active when the launch menu draws** - it has
+**Indexed mode must never be active when the title or options screen draws** - it has
 no indexed draw path and would touch a framebuffer that does not exist.
 `sand_colour_state.h` is the small, host-tested state machine deciding when
 a `gfx_mode_enter()`/`exit()` call is owed. **UI in 256/16 is scoped down,

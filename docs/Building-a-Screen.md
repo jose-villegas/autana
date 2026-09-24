@@ -85,10 +85,9 @@ These are not style preferences. Each one is a bug that shipped.
   list to skip repaints, so anything drawn behind its back survives as a
   stale smear. The scrim is the one deliberate exception, and only because
   it must *not* be re-applied per repaint.
-- **Every tap target is at least `UI_TAP_MIN` (56px)** in its smaller
-  dimension, and a new control should aim for `UI_TAP_RECOMMENDED` (64px).
-  Both are in `ui/ui.h`. A phone's 44 is only 3.5mm on this ~322 ppi panel,
-  a target a finger misses as often as it hits; 56 is ~4.4mm.
+- **Every tap target is at least `UI_TAP_MIN`** in its smaller dimension, and
+  a new control should aim for `UI_TAP_RECOMMENDED`; `ui/ui.h` gives both and
+  why.
 - **Assert every layout invariant at both 368x448 and 448x368.**
 - **Styles are part of the frame's description.** `ui_begin()` resets the
   button style; state what you want every frame.
@@ -116,11 +115,12 @@ control or two of them collide.
 Hand the click to the state module; let it decide what it means.
 
 Most of what a screen needs is already built that way in `ui/ui_widgets.h`:
-a panel, a header bar, text aligned in a rect, a button with an icon beside
-its label, a tile with the icon above it, a check row, and a dropdown whose
-list opens over the screen - above or below itself, wherever it fits. Each takes a
-`ui_theme_t`, so a screen states its colours once; add a widget there
-rather than a private copy in one app's screen.
+a panel, a header bar, a button with an icon beside its label, a tile with
+the icon above it, a themed slider, and a dropdown whose list opens over the
+screen - above or below itself, wherever it fits. Each takes a `ui_theme_t`,
+so a screen states its colours once; text aligned in a rect and a swatch
+grid take colours directly. Add a widget there rather than a private copy in
+one app's screen.
 
 ### More than one text size
 
@@ -142,7 +142,7 @@ Fonts, scales and text styles are in [`Text-and-Fonts.md`](Text-and-Fonts.md).
 
 `ui_scroll.h` (`launcher/main/ui/`) is the shared way to lay out a stack of
 centred, fixed-width rows and let it scroll once it no longer fits - the
-launcher list and each app's menu screens (`render_lab_menu_screen.c`)
+launcher list and render_lab's menu screen (`render_lab_menu_screen.c`)
 build on it instead of each hand-tracking a `y`
 or placing rows at an ABSOLUTE rect, which left every row past the first
 unreachable once the stack overflowed (only a RELATIVE `mu_layout_set_next()`

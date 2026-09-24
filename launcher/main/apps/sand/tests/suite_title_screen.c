@@ -55,7 +55,7 @@ assert_layout(bool landscape) {
     for (int i = 0; i < SAND_TITLE_BUTTON_COUNT; i++) {
         const mu_Rect b = lay.buttons[i];
         TEST_ASSERT_TRUE_MESSAGE(inside(b, w, h), title_screen_label((sand_title_button_t)i));
-        TEST_ASSERT_GREATER_OR_EQUAL_INT(UI_TAP_MIN, b.h);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT(UI_TAP_MIN, b.w < b.h ? b.w : b.h);
         TEST_ASSERT_FALSE(overlaps(b, lay.header));
         TEST_ASSERT_FALSE(overlaps(b, lay.subtitle));
         for (int j = i + 1; j < SAND_TITLE_BUTTON_COUNT; j++) {

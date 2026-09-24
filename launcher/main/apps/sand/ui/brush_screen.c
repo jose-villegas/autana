@@ -209,17 +209,14 @@ draw_brush_bezel(mu_Context* ctx, mu_Rect r, uint32_t face_rgb, bool sunken) {
 static void
 draw_brush_swatch(mu_Context* ctx, mu_Rect r, cell_t spec) {
     const gfx_color_t* palette = material_palette();
-
+    mu_Color colors[BRUSH_SWATCH_CELLS * BRUSH_SWATCH_CELLS];
     for (int row = 0; row < BRUSH_SWATCH_CELLS; row++) {
-        const int y0 = r.y + row * r.h / BRUSH_SWATCH_CELLS;
-        const int y1 = r.y + (row + 1) * r.h / BRUSH_SWATCH_CELLS;
         for (int col = 0; col < BRUSH_SWATCH_CELLS; col++) {
-            const int x0 = r.x + col * r.w / BRUSH_SWATCH_CELLS;
-            const int x1 = r.x + (col + 1) * r.w / BRUSH_SWATCH_CELLS;
             const cell_t cell = sand_swatch_cell(spec, col, row, BRUSH_SWATCH_CELLS);
-            mu_draw_rect(ctx, mu_rect(x0, y0, x1 - x0, y1 - y0), ui_rgb(gfx_color_rgb888(palette[cell])));
+            colors[row * BRUSH_SWATCH_CELLS + col] = ui_rgb(gfx_color_rgb888(palette[cell]));
         }
     }
+    ui_swatch_grid(ctx, r, colors, BRUSH_SWATCH_CELLS, BRUSH_SWATCH_CELLS);
 
     ui_span_t spans[UI_BEZEL_MAX_SPANS];
     const int n =
@@ -253,7 +250,7 @@ draw_brush_header(mu_Context* ctx, sand_ui_t* ui, const brush_screen_layout_t* l
     ui_text_in(ctx, lay->material_name, name, sand_ui_theme.text, name_scale, UI_ALIGN_LEFT);
     ui_set_font_scaled(gfx_font_ui(), BRUSH_SCREEN_CAPTION_SCALE);
 
-    draw_brush_bezel(ctx, lay->info_button, BRUSH_SEG_UNSELECTED_COLOR, false);
+    draw_brush_bezel(ctx, lay->info_button, SAND_THEME_BUTTON_FACE_COLOR, false);
     /* No handler: the panel this button opens is separate, later work.
      * Drawn now because it's in the design; not a bug that tapping it
      * does nothing yet. */
@@ -303,9 +300,9 @@ draw_brush_size_block(mu_Context* ctx, sand_ui_t* ui, const brush_screen_layout_
     snprintf(size_value, sizeof size_value, "%02u PX", (unsigned)sand_ui_radius(ui));
     ui_text_in(ctx, lay->size_value, size_value, sand_ui_theme.text, BRUSH_SCREEN_CAPTION_SCALE, UI_ALIGN_RIGHT);
 
-    mu_layout_set_next(ctx, lay->slider_track, 0);
     int radius = sand_ui_radius(ui);
-    if (ui_slider_int(ctx, &radius, SAND_UI_RADIUS_MIN, SAND_UI_RADIUS_MAX, 1)) {
+    if (ui_theme_slider_int(ctx, lay->slider_track, &radius, SAND_UI_RADIUS_MIN, SAND_UI_RADIUS_MAX, 1,
+                            &sand_ui_theme)) {
         sand_ui_set_radius(ui, (uint8_t)radius);
     }
 }

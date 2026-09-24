@@ -468,7 +468,7 @@ _Static_assert(SCENE_COUNT == 4, "test_mixed_flip/test_gas_over_pile/test_levell
  * does not earn an app_sand.h, the same reasoning suite_sand_perf.c's own
  * sand_app_alloc_selfcheck() declaration gives. Drives the real app through
  * the exact sequence the reported crash reproduced: a sim entered in the
- * given colour mode, then back to the launch menu. */
+ * given colour mode, then back to the title screen. */
 bool sand_app_test_survives_indexed_then_menu(int mode);
 
 static void

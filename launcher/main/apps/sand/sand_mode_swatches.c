@@ -87,7 +87,7 @@ build_full(sand_mode_swatch_t* out) {
 
 void
 sand_mode_swatches(const gfx_color_t* none_lut, const gfx_color_t* lut256, int lut_size, int ui_entries,
-                   sand_mode_swatch_t out[3]) {
+                   sand_mode_swatch_t out[SAND_COLOUR_MODE_COUNT]) {
     build_full(&out[SAND_COLOUR_FULL]);
     build_256(lut256, lut_size, ui_entries, &out[SAND_COLOUR_256]);
     build_sixteen(none_lut, lut_size, &out[SAND_COLOUR_16]);

@@ -83,7 +83,7 @@ typedef enum { SAND_MODE_PAINT, SAND_MODE_ERASE, SAND_MODE_DETONATE } sand_mode_
 #define SAND_MODE_COUNT 3
 
 /* Which screen the sand app is showing. SAND_UI_MENU is never acted on by
- * sand_ui_step() - the boot menu is microui-driven and stays entirely in
+ * sand_ui_step() - the title and options screens are microui-driven and stays entirely in
  * app_sand.c - but it lives in this enum anyway so `screen` has one
  * definition rather than two. SAND_UI_BRUSH and SAND_UI_PALETTE are
  * siblings, opened by PWR and BOOT respectively - never both at once. */
