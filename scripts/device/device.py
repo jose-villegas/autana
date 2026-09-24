@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 import device_lock
-from device_notify import notify_human
+import device_notify
 import device_report
 
 # launcher/tools/ holds screenshot.py's decoder and espressif.py's Python
@@ -1074,12 +1074,7 @@ def main(argv=None):
                     raise RuntimeError("active lock requires its token before handoff")
             store.set_human(port, args.owner, args.note)
             print("human reservation recorded")
-            try:
-                if notify_human(port, args.owner, args.note):
-                    print("toast shown")
-            except Exception as error:
-                print("warning: notification failed: " + str(error).splitlines()[0],
-                      file=sys.stderr)
+            device_notify.notify_human(port, args.owner, args.note)
             return 0
         if args.command == "take-back":
             store.clear_human(port)
