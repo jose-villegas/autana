@@ -43,7 +43,7 @@ something in it, grep the capture instead.
 
 | Command | What it does |
 |---|---|
-| `autana monitor [seconds] [--elf PATH]` | Print what the board says; 60 s when omitted. Crash addresses decode against `PATH`, or the build whose `build_id.txt` matches. |
+| `autana monitor [seconds\|--follow] [--elf PATH]` | Stream what the board says; 60 s when omitted, `--follow` until Ctrl+C. Not in a terminal: only error lines and the capture path. Crash addresses decode against `PATH`, or the build whose `build_id.txt` matches. |
 | `autana reset [--capture [seconds]] [--verbose]` | Reboot and wait for USB serial. `--capture` records the boot (20 s) and prints its path and any error lines. |
 | `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | `PATH.png` plus a `PATH.json` state snapshot. Landscape by default; `--as-shown` uses the board's orientation, `--framebuffer` the raw bytes. |
 
