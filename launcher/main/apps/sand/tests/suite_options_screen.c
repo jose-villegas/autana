@@ -258,6 +258,99 @@ test_apply_takes_a_tap_once_something_is_pending(void) {
     TEST_ASSERT_TRUE(tap(layout_for(false).apply).apply);
 }
 
+/* The DITHER row exists in the layout at every colour mode - only draw_dither()
+ * decides whether anything real sits there - so a tap where it would be must
+ * hit nothing, and open no list, unless the draft colour is 16. */
+static void
+assert_dither_dropdown_absent_for(sand_colour_mode_t colour) {
+    tap_fixture(colour);
+    const options_screen_layout_t lay = layout_for(false);
+
+    TEST_ASSERT_FALSE_MESSAGE(any_hit(tap(lay.dither)),
+                              "a tap where the dither dropdown would sit must hit nothing under this colour mode");
+
+    const mu_Rect list = ui_dropdown_list_rect(lay.dither, DITHER_COUNT, lay.dither.h, canvas_h(false), UI_MARGIN);
+    const sand_options_hits_t hits = tap_at(list.x + list.w / 2, list.y + lay.dither.h / 2);
+    TEST_ASSERT_FALSE_MESSAGE(any_hit(hits), "no list can have opened, so nothing sits where its first row would");
+}
+
+static void
+test_the_dither_dropdown_is_absent_unless_the_draft_colour_is_sixteen(void) {
+    assert_dither_dropdown_absent_for(SAND_COLOUR_256);
+    assert_dither_dropdown_absent_for(SAND_COLOUR_FULL);
+}
+
+static void
+test_a_tap_at_the_sliders_right_end_reports_the_finest_quality(void) {
+    tap_fixture(SAND_COLOUR_256);
+    const mu_Rect s = layout_for(false).quality_slider;
+    TEST_ASSERT_EQUAL_INT(0, tap_at(s.x + s.w - 4, s.y + s.h / 2).quality);
+}
+
+static void
+test_a_tap_at_the_sliders_left_end_reports_the_coarsest_quality(void) {
+    tap_fixture(SAND_COLOUR_256);
+    const mu_Rect s = layout_for(false).quality_slider;
+    TEST_ASSERT_EQUAL_INT(QUALITY_COUNT - 1, tap_at(s.x + 4, s.y + s.h / 2).quality);
+}
+
+static void
+test_a_tap_on_cancel_reports_cancel_and_not_apply(void) {
+    tap_fixture(SAND_COLOUR_256);
+    const sand_options_hits_t hits = tap(layout_for(false).cancel);
+    TEST_ASSERT_TRUE_MESSAGE(hits.cancel, "a tap on CANCEL must report cancel");
+    TEST_ASSERT_FALSE_MESSAGE(hits.apply, "a tap on CANCEL must never also report apply");
+}
+
+/* Every tile draws a face rect exactly its own size - ui_frame_spans()'s
+ * first span - so its colour says whether that tile drew selected. */
+static mu_Color
+tile_face_color(mu_Rect tile) {
+    mu_Command* cmd = NULL;
+    while (mu_next_command(ui_context(), &cmd)) {
+        if (cmd->type != MU_COMMAND_RECT) {
+            continue;
+        }
+        const mu_Rect r = cmd->rect.rect;
+        if (r.x == tile.x && r.y == tile.y && r.w == tile.w && r.h == tile.h) {
+            return cmd->rect.color;
+        }
+    }
+    TEST_FAIL_MESSAGE("no face rect drawn at a tile's own rect");
+    return (mu_Color){0};
+}
+
+static bool
+same_color(mu_Color a, mu_Color b) {
+    return a.r == b.r && a.g == b.g && a.b == b.b;
+}
+
+static void
+test_the_draft_colour_tile_is_selected_even_when_uncommitted(void) {
+    tap_fixture(SAND_COLOUR_256);
+    menu.draft.color = SAND_COLOUR_FULL;
+    options_frame(false, false, false, 0, 0);
+
+    const options_screen_layout_t lay = layout_for(false);
+    for (int i = 0; i < OPTIONS_SCREEN_TILE_COUNT; i++) {
+        const mu_Color face = tile_face_color(lay.tiles[i]);
+        const bool is_draft = options_screen_tile_colour(i) == menu.draft.color;
+        if (is_draft) {
+            TEST_ASSERT_TRUE_MESSAGE(same_color(face, sand_ui_theme.accent_face),
+                                     "the draft colour's own tile must draw on accent_face");
+        } else {
+            TEST_ASSERT_FALSE_MESSAGE(same_color(face, sand_ui_theme.accent_face),
+                                      "a tile that is not the draft colour must not draw on accent_face");
+        }
+    }
+}
+
+static void
+test_the_header_is_present_in_portrait_and_absent_in_landscape(void) {
+    TEST_ASSERT_GREATER_THAN_INT(0, layout_for(false).header.h);
+    TEST_ASSERT_EQUAL_INT(0, layout_for(true).header.h);
+}
+
 static void
 test_the_dither_dropdown_picks_from_its_list(void) {
     tap_fixture(SAND_COLOUR_16);
@@ -285,6 +378,12 @@ run_options_screen_suite(void) {
     RUN_TEST(test_apply_takes_no_tap_while_nothing_is_pending);
     RUN_TEST(test_apply_takes_a_tap_once_something_is_pending);
     RUN_TEST(test_the_dither_dropdown_picks_from_its_list);
+    RUN_TEST(test_the_dither_dropdown_is_absent_unless_the_draft_colour_is_sixteen);
+    RUN_TEST(test_a_tap_at_the_sliders_right_end_reports_the_finest_quality);
+    RUN_TEST(test_a_tap_at_the_sliders_left_end_reports_the_coarsest_quality);
+    RUN_TEST(test_a_tap_on_cancel_reports_cancel_and_not_apply);
+    RUN_TEST(test_the_draft_colour_tile_is_selected_even_when_uncommitted);
+    RUN_TEST(test_the_header_is_present_in_portrait_and_absent_in_landscape);
 }
 
 SUITE_REGISTER(run_options_screen_suite);

@@ -4,6 +4,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 
 #include "suites.h"
 #include "unity.h"
@@ -166,6 +167,45 @@ test_a_tap_reports_the_button_under_it(void) {
     }
 }
 
+static bool
+color_matches(mu_Color a, mu_Color b) {
+    return a.r == b.r && a.g == b.g && a.b == b.b;
+}
+
+/* LOAD SAVES and GUIDE have no screen behind them yet, drawn disabled -
+ * begin_control() inks a disabled button with theme->muted, so this pins
+ * that these two specific labels really do, and the three live ones don't. */
+static void
+test_disabled_buttons_are_inked_muted(void) {
+    tap_fixture();
+    title_frame(false, false, false, 0, 0);
+
+    mu_Color ink[SAND_TITLE_BUTTON_COUNT];
+    bool found[SAND_TITLE_BUTTON_COUNT] = {false};
+    mu_Command* cmd = NULL;
+    while (mu_next_command(ui_context(), &cmd)) {
+        if (cmd->type != MU_COMMAND_TEXT) {
+            continue;
+        }
+        for (int i = 0; i < SAND_TITLE_BUTTON_COUNT; i++) {
+            if (strcmp(cmd->text.str, title_screen_label((sand_title_button_t)i)) == 0) {
+                found[i] = true;
+                ink[i] = cmd->text.color;
+            }
+        }
+    }
+    for (int i = 0; i < SAND_TITLE_BUTTON_COUNT; i++) {
+        TEST_ASSERT_TRUE_MESSAGE(found[i], title_screen_label((sand_title_button_t)i));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(color_matches(ink[SAND_TITLE_LOAD], sand_ui_theme.muted), "LOAD SAVES must be muted");
+    TEST_ASSERT_TRUE_MESSAGE(color_matches(ink[SAND_TITLE_GUIDE], sand_ui_theme.muted), "GUIDE must be muted");
+    TEST_ASSERT_FALSE_MESSAGE(color_matches(ink[SAND_TITLE_START], sand_ui_theme.muted),
+                              "START GAME must not be muted");
+    TEST_ASSERT_FALSE_MESSAGE(color_matches(ink[SAND_TITLE_OPTIONS], sand_ui_theme.muted), "OPTIONS must not be muted");
+    TEST_ASSERT_FALSE_MESSAGE(color_matches(ink[SAND_TITLE_EXIT], sand_ui_theme.muted), "EXIT must not be muted");
+}
+
 static void
 test_a_button_with_nothing_behind_it_takes_no_tap(void) {
     title_screen_layout_t lay;
@@ -185,6 +225,7 @@ run_title_screen_suite(void) {
     RUN_TEST(test_every_string_fits_its_rect_landscape);
     RUN_TEST(test_the_title_grows_where_the_canvas_is_wide_enough);
     RUN_TEST(test_a_tap_reports_the_button_under_it);
+    RUN_TEST(test_disabled_buttons_are_inked_muted);
     RUN_TEST(test_a_button_with_nothing_behind_it_takes_no_tap);
 }
 
