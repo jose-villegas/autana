@@ -3,8 +3,8 @@
  * pixel-writing gfx_* primitive goes through, driven directly since the
  * header carries no ESP-IDF dependency. gfx_target_fill_rect() is
  * gfx_fill_rect()'s own body; text ultimately reduces to the same
- * primitive (one glyph pixel is one small filled rect - gfx.c's
- * draw_rotated_font_pixel()), so a rect straddling a band edge is the
+ * primitive (one glyph pixel is one small filled rect), so a rect
+ * straddling a band edge is the
  * faithful stand-in for a glyph straddling one.
  */
 
