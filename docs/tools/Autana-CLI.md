@@ -143,6 +143,8 @@ The lock is one per machine, in the system temp folder. Each session writes a
 log and a manifest under `AUTANA_RECORDS` - the checkout's gitignored
 `.records/device` when unset, `.dev/records/device` when the PATH installer
 finds a `.dev` checkout beside it.
+Set `AUTANA_LOCK_HOOK` to a shell command for lock events; see
+[Device-Lock.md](Device-Lock.md#lock-events) for events and variables.
 
 ## Adding a command from an app
 

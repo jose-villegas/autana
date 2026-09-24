@@ -1,4 +1,6 @@
 import errno
+import contextlib
+import io
 import json
 import os
 import subprocess
@@ -7,10 +9,22 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 import device_lock
+import device_hook
+
+
+def setUpModule():
+    global saved_hook
+    saved_hook = os.environ.pop("AUTANA_LOCK_HOOK", None)
+
+
+def tearDownModule():
+    if saved_hook is not None:
+        os.environ["AUTANA_LOCK_HOOK"] = saved_hook
 
 
 class Clock:
@@ -108,6 +122,87 @@ class LockTests(unittest.TestCase):
                          1003.0)
         self.assertTrue(self.lock.release("COM5", held["token"]))
         self.assertIsNone(self.lock.status("COM5")["lock"])
+
+    def test_acquired_event(self):
+        with mock.patch.dict(os.environ, {"AUTANA_LOCK_HOOK": "echo hook"}), \
+                mock.patch.object(device_hook.subprocess, "run") as run:
+            self.lock.acquire("COM5", "one", "flash")
+        self.assertEqual(run.call_args.kwargs["env"]["AUTANA_LOCK_EVENT"], "acquired")
+
+    def test_state_events_once_with_facts(self):
+        with mock.patch.object(device_hook, "emit") as emit:
+            held = self.lock.acquire("COM5", "one", "flash")
+            self.lock.heartbeat("COM5", held["token"])
+            self.lock.release("COM5", "wrong")
+            self.lock.release("COM5", held["token"])
+            self.lock.set_human("COM5", "person", "panel")
+            self.lock.clear_human("COM5")
+            self.lock.clear_human("COM5")
+            self.lock.heartbeat("COM5", held["token"], "one", "flash")
+        self.assertEqual(emit.call_args_list, [
+            mock.call("acquired", "COM5", "one", "flash"),
+            mock.call("released", "COM5", "one", "flash"),
+            mock.call("human-reserved", "COM5", "person", note="panel"),
+            mock.call("human-cleared", "COM5", "person", note="panel"),
+            mock.call("lost", "COM5", "one", "flash"),
+        ])
+
+    def test_waiting_once_over_polls_and_reclaim_acquires(self):
+        held = self.lock.acquire("COM5", "one", "listen")
+        with mock.patch.object(device_hook, "emit") as emit, \
+                mock.patch.object(device_lock.time, "sleep",
+                                  side_effect=lambda seconds: self.clock.advance(seconds)):
+            self.assertIsNone(self.lock.acquire("COM5", "two", "flash", wait=0.3))
+            self.clock.advance(601)
+            reclaimed = self.lock.acquire("COM5", "three", "send")
+        self.assertIsNotNone(reclaimed)
+        self.assertNotEqual(reclaimed["token"], held["token"])
+        self.assertEqual(emit.call_args_list, [
+            mock.call("waiting", "COM5", "two", "flash"),
+            mock.call("acquired", "COM5", "three", "send"),
+        ])
+
+    def test_unset_hook_runs_nothing(self):
+        with mock.patch.object(device_hook.subprocess, "run") as run:
+            self.lock.acquire("COM5", "one", "flash")
+        run.assert_not_called()
+
+    def test_hook_errors_leave_lock_operation_successful(self):
+        for result in (subprocess.CompletedProcess([], 4),
+                       subprocess.TimeoutExpired("hook", 3), FileNotFoundError(),
+                       RuntimeError()):
+            with self.subTest(result=result), mock.patch.dict(
+                    os.environ, {"AUTANA_LOCK_HOOK": "missing-command"}), \
+                    mock.patch.object(device_hook.subprocess, "run") as run, \
+                    contextlib.redirect_stderr(io.StringIO()) as stderr:
+                if isinstance(result, BaseException):
+                    run.side_effect = result
+                else:
+                    run.return_value = result
+                held = self.lock.acquire("COM5", "one", "flash")
+            self.assertIsNotNone(held)
+            self.assertEqual(stderr.getvalue().count("\n"), 1)
+            self.assertIn("warning: device lock hook failed:", stderr.getvalue())
+            self.assertEqual(run.call_args.kwargs["timeout"], device_hook.HOOK_TIMEOUT_SECONDS)
+            self.lock.release("COM5", held["token"])
+
+    def test_real_hook_records_environment(self):
+        output = Path(self.temp.name) / "events.txt"
+        command = (f'"{sys.executable}" -c "import os; '
+                   "print('|'.join(os.environ[k] for k in "
+                   "('AUTANA_LOCK_EVENT','AUTANA_LOCK_PORT','AUTANA_LOCK_OWNER',"
+                   "'AUTANA_LOCK_PURPOSE','AUTANA_LOCK_NOTE')), "
+                   "file=open(os.environ['AUTANA_LOCK_LOG'],'a'))\"")
+        with mock.patch.dict(os.environ, {"AUTANA_LOCK_HOOK": command,
+                                          "AUTANA_LOCK_LOG": str(output)}):
+            held = self.lock.acquire("COM5", "one", "flash")
+            self.lock.release("COM5", held["token"])
+            self.lock.set_human("COM5", "person", "panel")
+            self.lock.clear_human("COM5")
+        self.assertEqual(output.read_text().splitlines(), [
+            "acquired|COM5|one|flash|", "released|COM5|one|flash|",
+            "human-reserved|COM5|person||panel", "human-cleared|COM5|person||panel",
+        ])
 
     def test_waiters_are_fifo(self):
         first = self.lock.enqueue("COM5", "one", "run")

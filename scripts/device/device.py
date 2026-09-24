@@ -15,7 +15,6 @@ from datetime import datetime
 from pathlib import Path
 
 import device_lock
-import device_notify
 import device_report
 
 # launcher/tools/ holds screenshot.py's decoder and espressif.py's Python
@@ -325,7 +324,8 @@ class HeldLock:
                     print(f'{ticket["owner"]} is waiting for the board '
                           f'({ticket["purpose"]}) - Ctrl+C to hand it over', file=sys.stderr)
             if time.monotonic() >= next_heartbeat:
-                if not self.store.heartbeat(self.port, self.held["token"]):
+                if not self.store.heartbeat(self.port, self.held["token"],
+                                            self.held["owner"], self.held["purpose"]):
                     print("device lock was lost", file=sys.stderr)
                     return
                 next_heartbeat = time.monotonic() + 30
@@ -1074,7 +1074,6 @@ def main(argv=None):
                     raise RuntimeError("active lock requires its token before handoff")
             store.set_human(port, args.owner, args.note)
             print("human reservation recorded")
-            device_notify.notify_human(port, args.owner, args.note)
             return 0
         if args.command == "take-back":
             store.clear_human(port)

@@ -222,7 +222,7 @@ python scripts/device/device_lock.py --port COM5 release --token <token>
 The acquire result prints the token as JSON. Releasing requires that token, so
 one owner cannot release another owner's active lock.
 
-When the maintainer needs the board, record the reservation before using it -
+To reserve the board, record the reservation before using it -
 `autana hand <note>`, or `hand-to-human` directly for an active lock's own
 token:
 
@@ -233,12 +233,7 @@ python scripts/device/device.py --owner maintainer hand-to-human --token <token>
 When a session holds the board, its token releases that lock before the command
 creates the human reservation. Without an active lock, omit `--token` (what
 `autana hand` always does). The reservation appears in `status` and prevents
-future acquisitions. On Windows, the command also shows a toast naming the
-board's port and reservation owner, with the note as its message. Other
-platforms record the reservation silently. Each notification that fails prints
-a warning; the reservation still stands. Set `AUTANA_NOTIFY=0` to reserve
-without notifying. The toast adds about 1.5 seconds to the command, with a
-10-second maximum. After the maintainer is done, clear it explicitly -
+future acquisitions. When the reservation is no longer needed, clear it -
 `autana take-back`, or:
 
 ```powershell
@@ -247,6 +242,37 @@ python scripts/device/device.py --port COM5 --owner maintainer take-back
 
 This clears the reservation and prints the resulting lock status. The lower-level
 `device_lock.py --port COM5 clear-human` command remains available for recovery.
+
+## Lock events
+
+Set `AUTANA_LOCK_HOOK` to a shell command to run when the lock changes. The
+command receives these environment variables: `AUTANA_LOCK_EVENT`,
+`AUTANA_LOCK_PORT`, `AUTANA_LOCK_OWNER`, `AUTANA_LOCK_PURPOSE`, and
+`AUTANA_LOCK_NOTE`. Purpose is empty for human reservations; note is empty for
+other events. The command runs through the platform shell and has a three
+second timeout. A failed or timed out hook prints one warning and never changes
+the lock operation's outcome.
+
+| Event | When |
+|---|---|
+| `acquired` | A ticket takes the lock, including reclaiming a stale lock. |
+| `released` | The holder gives up the lock. |
+| `waiting` | A ticket first waits for a held or reserved board; once per ticket. |
+| `human-reserved` | A human reservation is recorded. |
+| `human-cleared` | A human reservation is cleared. |
+| `lost` | A holder's heartbeat finds its lock gone. |
+
+For example, set the hook to `python path/to/board-events.py` and give that
+script either job:
+
+- Tell you the board is free when `AUTANA_LOCK_EVENT` is `released` or
+  `human-cleared`.
+- Append `AUTANA_LOCK_EVENT`, `AUTANA_LOCK_OWNER`, `AUTANA_LOCK_PORT`, and
+  `AUTANA_LOCK_PURPOSE` to a usage log.
+
+The recovery command `device_lock.py` also emits lock and reservation events;
+only a holder running `device.py` emits `lost`, since it knows the holder's
+owner and purpose.
 
 ## Related
 
