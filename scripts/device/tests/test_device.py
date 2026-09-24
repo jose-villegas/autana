@@ -20,6 +20,7 @@ sys.path.insert(0, str(DEVICE))
 import device
 import device_lock
 import device_report
+import device_notify
 
 
 class InterpreterTests(unittest.TestCase):
@@ -476,6 +477,34 @@ class DeviceTests(unittest.TestCase):
             self.assertEqual(device.main(["--port", "COM5", "take-back"]), 0)
         store.clear_human.assert_called_once_with("COM5")
         output.assert_called_once_with("unlocked")
+
+    def test_hand_notifies_after_recording_reservation(self):
+        store = mock.Mock()
+        store.status.return_value = {"human": None, "lock": None, "queue": []}
+        with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+             mock.patch.object(device, "notify_human", return_value=True) as notify:
+            self.assertEqual(device.main(["--port", "COM5", "--owner", "agent",
+                                          "hand-to-human", "--note", "check cable"]), 0)
+        store.set_human.assert_called_once_with("COM5", "agent", "check cable")
+        notify.assert_called_once_with("COM5", "agent", "check cable")
+
+    def test_hand_keeps_reservation_when_notifier_raises(self):
+        store = mock.Mock()
+        store.status.return_value = {"human": None, "lock": None, "queue": []}
+        with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+             mock.patch.object(device, "notify_human", side_effect=RuntimeError("toast failed")), \
+             mock.patch("builtins.print") as printed:
+            self.assertEqual(device.main(["--port", "COM5", "--owner", "agent",
+                                          "hand-to-human", "--note", "check cable"]), 0)
+        store.set_human.assert_called_once_with("COM5", "agent", "check cable")
+        self.assertTrue(any("toast failed" in str(call) for call in printed.call_args_list))
+
+    def test_notify_env_switch_skips_sinks(self):
+        sink = mock.Mock()
+        with mock.patch.dict(os.environ, {"AUTANA_NOTIFY": "0"}), \
+             mock.patch.object(device_notify, "SINKS", (sink,)):
+            self.assertFalse(device_notify.notify_human("COM5", "agent", "check cable"))
+        sink.assert_not_called()
 
 
 class SlugTests(unittest.TestCase):
