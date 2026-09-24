@@ -48,24 +48,28 @@ esptool.py --chip esp32s3 -p <PORT> --before no_reset flash_id
 Connecting almost instantly (a few dots) means the chip is sitting in the
 bootloader.
 
-From there `autana flash` still boots the new image on its own. Its usual
-restart is esptool's RTS pulse, which USB Serial/JTAG stays up through, so the
-whole boot log - BUILD_ID included - is heard. A chip in download mode ignores
-RTS and says nothing; **when `flash()` hears nothing after its RTS reset, it
-restarts the board with `--after watchdog_reset`**, which trips the SoC's own
-watchdog. Run directly, outside `autana`, esptool or `idf.py flash` needs
-`--after watchdog_reset` or a power cycle to start the image.
+From there `autana flash` still boots the new image on its own. Every restart
+`device.py` makes starts with esptool's RTS pulse, which USB Serial/JTAG stays
+up through, so the whole boot log - BUILD_ID included - is heard. A chip in
+download mode ignores RTS and says nothing; **when a capture after that reset
+hears nothing at all, `reset_and_capture()` restarts the board with `--after
+watchdog_reset`**, which trips the SoC's own watchdog. `flash`, `reset
+--capture` and `selftest` all go through it. Run directly, outside `autana`,
+esptool or `idf.py flash` needs `--after watchdog_reset` or a power cycle to
+start the image.
 
-A restart re-enumerates USB Serial/JTAG, and Windows may hand the board a
-**different COM number** than it had before. Anything holding a port by name
-breaks there; `find_port()` in `scripts/device/device.py` looks it up by
-vendor id `0x303A` each time for that reason.
+A watchdog reset or a power cycle re-enumerates USB Serial/JTAG, and Windows
+may hand the board a **different COM number** than it had before. Anything
+holding a port by name breaks there; `find_port()` in
+`scripts/device/device.py` looks it up by vendor id `0x303A` each time for
+that reason.
 
-The watchdog path re-enumerates USB, and late: the first open can get the old
-handle, which reads nothing and raises nothing, so `capture_after_reset()`
-reopens a handle silent for 2 s while the reset is under 10 s old. A release
-image prints its BUILD_ID about 0.6 s into boot and has no console to ask
-again, so a recovery flash boots but may still report itself unverified.
+That re-enumeration comes late: the first open can get the old handle, which
+reads nothing and raises nothing, so `capture_after_reset()` reopens a handle
+silent for `RESET_FIRST_BYTE_SECONDS` while the reset is younger than
+`RESET_REOPEN_SECONDS`. A release image prints its BUILD_ID about 0.6 s into
+boot and has no console to ask again, so a recovery flash boots but may still
+report itself unverified.
 
 ```mermaid
 sequenceDiagram
@@ -81,7 +85,7 @@ sequenceDiagram
         Dev->>Esp: chip_id, after watchdog_reset
         Esp->>Board: trip the watchdog
         Board-->>Dev: USB re-enumerates, early lines lost
-        Dev->>Board: reopen a handle silent for 2 s
+        Dev->>Board: reopen a handle silent since the reset
         Board-->>Dev: the rest of the boot log
     end
 ```
