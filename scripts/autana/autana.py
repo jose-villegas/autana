@@ -292,15 +292,18 @@ def monitor(args):
 
 
 def reset(args):
-    """Reboot the board, optionally printing and recording its boot console."""
+    """Reboot the board, optionally recording its boot console."""
     capture = False
     rest = list(args)
+    verbose = "--verbose" in rest
+    if verbose:
+        rest.remove("--verbose")
     if "--capture" in rest:
         rest.remove("--capture")
         capture = True
-    seconds = seconds_argument(rest, None, "usage: autana reset [--capture [seconds]]")
+    seconds = seconds_argument(rest, None, "usage: autana reset [--capture [seconds]] [--verbose]")
     if rest and not capture:
-        sys.exit("usage: autana reset [--capture [seconds]]")
+        sys.exit("usage: autana reset [--capture [seconds]] [--verbose]")
     command = device_command(
         "--owner", owner(),
         "reset", "--purpose", "autana reset",
@@ -309,6 +312,8 @@ def reset(args):
         command += ["--capture"]
         if seconds is not None:
             command += ["--seconds", str(seconds)]
+    if verbose:
+        command.append("--verbose")
     return subprocess.call(command)
 
 
@@ -316,17 +321,24 @@ def selftest(args):
     """Build+flash the diagnostics+autorun image and run every suite this
     worktree registers, on the device. Can take minutes - the full run's
     own budget, not a bug in this command."""
-    seconds = seconds_argument(args, 3000.0, "usage: autana selftest [seconds]")
+    rest = list(args)
+    verbose = "--verbose" in rest
+    if verbose:
+        rest.remove("--verbose")
+    seconds = seconds_argument(rest, 3000.0, "usage: autana selftest [seconds] [--verbose]")
     worktree = engine_worktree()
     print(f"autana selftest: every suite, {worktree}", flush=True)
-    return subprocess.call(device_command(
+    command = device_command(
         "--owner", owner(),
         "selftest", "--worktree", worktree, "--max-seconds", str(seconds),
         "--purpose", "autana selftest",
-    ))
+    )
+    if verbose:
+        command.append("--verbose")
+    return subprocess.call(command)
 
 
-BATCH_USAGE = "usage: autana batch <suite> [<suite> ...] [--runs N] [--perf-scope]"
+BATCH_USAGE = "usage: autana batch <suite> [<suite> ...] [--runs N] [--perf-scope] [--verbose]"
 
 
 def batch(args):
@@ -335,7 +347,7 @@ def batch(args):
     sequence of separate `suite` calls on a shared board. Always the
     diagnostics image: a suite only exists to run in one, so a variant
     choice here would only ever have one real answer."""
-    suites, runs, perf_scope = [], "3", False
+    suites, runs, perf_scope, verbose = [], "3", False, False
     rest = list(args)
     while rest:
         arg = rest.pop(0)
@@ -343,6 +355,8 @@ def batch(args):
             runs = rest.pop(0)
         elif arg == "--perf-scope":
             perf_scope = True
+        elif arg == "--verbose":
+            verbose = True
         elif arg.startswith("--"):
             sys.exit(BATCH_USAGE)
         else:
@@ -360,6 +374,8 @@ def batch(args):
         command += ["--suite", suite_name]
     if perf_scope:
         command.append("--perf-scope")
+    if verbose:
+        command.append("--verbose")
     return subprocess.call(command)
 
 
@@ -438,14 +454,21 @@ def suite(args):
     if args[0] == "list":
         return suite_list(args[1:])
     name, rest = args[0], args[1:]
+    rest = list(rest)
+    verbose = "--verbose" in rest
+    if verbose:
+        rest.remove("--verbose")
     # A perf row can sit silent for minutes; the cap is how long to wait for
     # the whole suite, not how long a quiet stretch inside one may last.
-    seconds = seconds_argument(rest, 600.0, "usage: autana suite <name> [seconds]")
+    seconds = seconds_argument(rest, 600.0, "usage: autana suite <name> [seconds] [--verbose]")
     print(f"autana suite: {name}", flush=True)
-    return subprocess.call(device_command(
+    command = device_command(
         "--owner", owner(),
         "run-suite", name, "--max-seconds", str(seconds), "--purpose", f"autana suite {name}",
-    ))
+    )
+    if verbose:
+        command.append("--verbose")
+    return subprocess.call(command)
 
 
 # A console line is asked from a prompt somebody is sitting at: a board another
