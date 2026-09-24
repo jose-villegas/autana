@@ -116,8 +116,7 @@ mechanism and the full field list.
 autana monitor
 ```
 
-Streams the console for a while (60 seconds when no argument is given), and
-decodes any crash address it sees against an ELF's symbols - the build
+Decodes any crash address it sees against an ELF's symbols - the build
 directory whose own `build_id.txt` matches the capture's `BUILD_ID`, or
 `--elf path/to/other.elf` to pin a specific one. Passing the right `.elf`
 matters for more than bookkeeping - it carries the debug symbols that turn
