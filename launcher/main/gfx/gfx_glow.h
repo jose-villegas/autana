@@ -2,9 +2,8 @@
  * gfx_glow - a curve drawn as light: every pixel within a radius of the
  * curve is coloured by its distance to it.
  *
- * The curve is a height per column of a VIEW frame, turned a number of
- * quarter turns into the panel, so it is a function of x and one 1D array
- * can carry a displaced, waving copy of it. Heights are Q4.
+ * The curve is a height per column of a view frame, posed in the panel.
+ * Heights are Q4.
  *
  * The distance is the true distance to the curve, not the vertical one.
  * A vertical falloff scaled by the local slope is a fraction of the work and
@@ -13,7 +12,7 @@
  * ends.
  *
  * Pure and header-only like gfx_target.h, so a host suite drives the real
- * arithmetic with no panel; gfx.c's gfx_glow_curve() adds the guards, the
+ * arithmetic with no panel; gfx.c's gfx_glow_curve_posed() adds the guards, the
  * target and the dirty marking.
  */
 #pragma once
@@ -29,10 +28,6 @@
 #define GFX_GLOW_MAX_RADIUS 31
 #define GFX_GLOW_RAMP_SIZE  64
 #define GFX_GLOW_PHASES     16
-
-/* Columns drawn per call. Bounds the span scratch on the stack and sizes the
- * box each call reports for dirty marking. */
-#define GFX_GLOW_CHUNK      16
 
 typedef struct {
     /* Colour by distance over radius, [0] on the curve, once per cell of
@@ -202,28 +197,6 @@ gfx_glow_outside(int v, int lo, int hi) {
 }
 
 static inline void
-gfx_glow_to_panel(int quarter_turns, int panel_w, int panel_h, int x, int y, int* px, int* py) {
-    switch (quarter_turns & 3) {
-        case 1:
-            *px = panel_w - 1 - y;
-            *py = x;
-            break;
-        case 2:
-            *px = panel_w - 1 - x;
-            *py = panel_h - 1 - y;
-            break;
-        case 3:
-            *px = y;
-            *py = panel_h - 1 - x;
-            break;
-        default:
-            *px = x;
-            *py = y;
-            break;
-    }
-}
-
-static inline void
 gfx_glow_box_add(gfx_glow_box_t* box, int px, int py) {
     if (box->x1 <= box->x0) {
         *box = (gfx_glow_box_t){px, py, px + 1, py + 1};
@@ -243,76 +216,6 @@ gfx_glow_box_add(gfx_glow_box_t* box, int px, int py) {
     }
 }
 
-/* The spans of the columns a chunk can see: its own and `radius` to each
- * side. Index 0 holds column `first`. */
-typedef struct {
-    int16_t lo[GFX_GLOW_CHUNK + 2 * GFX_GLOW_MAX_RADIUS];
-    int16_t hi[GFX_GLOW_CHUNK + 2 * GFX_GLOW_MAX_RADIUS];
-    int first;
-    int count;
-} gfx_glow_spans_t;
-
-static inline void
-gfx_glow_spans_fill(gfx_glow_spans_t* spans, const int16_t* y, int count, int x0, int x1, int radius) {
-    spans->first = x0 - radius;
-    spans->count = count;
-    for (int j = spans->first; j < x1 + radius; j++) {
-        if (j >= 0 && j < count) {
-            int lo, hi;
-            gfx_glow_column_span(y, count, j, &lo, &hi);
-            spans->lo[j - spans->first] = (int16_t)lo;
-            spans->hi[j - spans->first] = (int16_t)hi;
-        }
-    }
-}
-
-/* The rows of column `x` that light can reach: every column within the
- * radius lights a chord of it. Q4. */
-static inline void
-gfx_glow_reach(const gfx_glow_spans_t* spans, const gfx_glow_style_t* style, int x, int* lo, int* hi) {
-    *lo = INT32_MAX;
-    *hi = INT32_MIN;
-    for (int k = -style->radius; k <= style->radius; k++) {
-        const int j = x + k;
-        if (j < 0 || j >= spans->count) {
-            continue;
-        }
-        const int chord = style->chord[k < 0 ? -k : k];
-        if (spans->lo[j - spans->first] - chord < *lo) {
-            *lo = spans->lo[j - spans->first] - chord;
-        }
-        if (spans->hi[j - spans->first] + chord > *hi) {
-            *hi = spans->hi[j - spans->first] + chord;
-        }
-    }
-}
-
-/* Squared distance, Q8, from (x, centre) to the curve. Walks outward a column
- * at a time and stops once a column is further across than the best found,
- * which near a flat stretch is after a handful. */
-static inline int
-gfx_glow_distance2(const gfx_glow_spans_t* spans, int radius, int x, int centre) {
-    const int own = gfx_glow_outside(centre, spans->lo[x - spans->first], spans->hi[x - spans->first]);
-    int best = own * own;
-    for (int k = 1; k <= radius; k++) {
-        const int across = (k * GFX_GLOW_ONE) * (k * GFX_GLOW_ONE);
-        if (across >= best) {
-            break;
-        }
-        for (int side = -1; side <= 1; side += 2) {
-            const int j = x + side * k;
-            if (j < 0 || j >= spans->count) {
-                continue;
-            }
-            const int up = gfx_glow_outside(centre, spans->lo[j - spans->first], spans->hi[j - spans->first]);
-            if (across + up * up < best) {
-                best = across + up * up;
-            }
-        }
-    }
-    return best;
-}
-
 static inline gfx_color_t
 gfx_glow_colour(const gfx_glow_style_t* style, int distance2, int px, int py) {
     const uint32_t u_q12 = ((uint32_t)distance2 * style->u_per_d2) >> 16;
@@ -323,56 +226,9 @@ gfx_glow_colour(const gfx_glow_style_t* style, int distance2, int px, int py) {
 }
 
 /*
- * Draws columns [x0, x1) of the curve, at most GFX_GLOW_CHUNK of them, and
- * returns the panel box it wrote. Rows within `erase_px` beyond the light's
- * reach are written black, so a curve that moves less than that per frame
- * wipes its own trail. Every pixel written is replaced, not blended.
- */
-static inline gfx_glow_box_t
-gfx_glow_draw_columns(gfx_target_t target, int clip_x0, int clip_y0, int clip_x1, int clip_y1, int panel_w, int panel_h,
-                      const int16_t* y, int count, int x0, int x1, int quarter_turns, int erase_px,
-                      const gfx_glow_style_t* style) {
-    gfx_glow_box_t box = {0, 0, 0, 0};
-    const int erase = erase_px * GFX_GLOW_ONE;
-
-    x0 = x0 < 0 ? 0 : x0;
-    x1 = x1 > count ? count : x1;
-    x1 = x1 - x0 > GFX_GLOW_CHUNK ? x0 + GFX_GLOW_CHUNK : x1;
-    if (x1 <= x0) {
-        return box;
-    }
-
-    gfx_glow_spans_t spans;
-    gfx_glow_spans_fill(&spans, y, count, x0, x1, style->radius);
-
-    for (int x = x0; x < x1; x++) {
-        int reach_lo, reach_hi;
-        gfx_glow_reach(&spans, style, x, &reach_lo, &reach_hi);
-        const int row0 = (reach_lo - erase) >> GFX_GLOW_Q_SHIFT;
-        const int row1 = ((reach_hi + erase) >> GFX_GLOW_Q_SHIFT) + 1;
-
-        for (int row = row0; row < row1; row++) {
-            int px, py;
-            gfx_glow_to_panel(quarter_turns, panel_w, panel_h, x, row, &px, &py);
-            if (px < clip_x0 || px >= clip_x1 || py < clip_y0 || py >= clip_y1 || py < target.y0
-                || py >= target.y0 + target.height) {
-                continue;
-            }
-            const int centre = row * GFX_GLOW_ONE + GFX_GLOW_ONE / 2;
-            const int distance2 = gfx_glow_distance2(&spans, style->radius, x, centre);
-            gfx_target_row(target, py)[px] = gfx_glow_colour(style, distance2, px, py);
-            gfx_glow_box_add(&box, px, py);
-        }
-    }
-    return box;
-}
-
-/*
  * The curve at any angle. A pose is where the view frame's DOWN points on
  * the panel, a unit vector in Q14, and both frames turn about their centres;
- * down = (-1, 0) is quarter turn 1, pixel for pixel. A turned curve is not a
- * height per panel column, so this walks panel rows and asks of each pixel
- * where it lies in the view frame.
+ * The renderer walks panel rows and asks where each pixel lies in the view frame.
  */
 
 #define GFX_GLOW_POSE_ONE     (1 << 14)
@@ -453,7 +309,7 @@ gfx_glow_field_prepare(gfx_glow_field_t* field, const int16_t* y, const gfx_glow
     gfx_glow_field_chunk(field);
 }
 
-/* gfx_glow_distance2() for a point that is not on a column's centre. */
+/* Squared distance, Q8, from a point between column centres. */
 static inline int
 gfx_glow_field_distance2(const gfx_glow_field_t* field, int radius, int vx, int vy) {
     const int own = vx >> GFX_GLOW_Q_SHIFT;
@@ -619,7 +475,7 @@ gfx_glow_map_build(gfx_glow_map_t* map, const gfx_glow_field_t* field, const gfx
     }
 }
 
-/* Squared distance at a view position, Q8 like gfx_glow_distance2(), from
+/* Squared distance at a view position, Q8, from
  * the four cells around it. Above and below the map there is no light; past
  * either end the end cells stand. */
 static inline int
