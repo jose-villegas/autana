@@ -32,6 +32,8 @@ SUITE_RESULT = re.compile(rb":\d+:.*:(PASS|FAIL)(?:\r?$|:)", re.MULTILINE)
 # only once it clears this, so the common case stays plain-text and greppable.
 COMPRESS_ABOVE_BYTES = 200_000
 SLUG_UNSAFE = re.compile(r"[^A-Za-z0-9_.-]+")
+BOOT_ERROR = re.compile(r"(?:\berror\b|\bpanic\b|\babort\b|\bassert\b|^E \(\d+\))", re.I)
+MAX_PRINTED_FAILURES = 10
 
 
 def python_with_pyserial():
@@ -257,9 +259,50 @@ def count_suite_results(data):
     return results.count(b"PASS"), results.count(b"FAIL")
 
 
+def failures_by_suite(text):
+    """(suite file stem, FAIL count), most failures first."""
+    counts = {}
+    for line in text.splitlines():
+        match = device_report.RESULT_RE.match(line.strip())
+        if match and match.group("status") == "FAIL":
+            stem = re.split(r"[\\/]", match.group("file"))[-1].removesuffix(".c")
+            counts[stem] = counts.get(stem, 0) + 1
+    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+
+
+def print_suite_output(data, record_path, command, reason, verbose):
+    text = data.decode("utf-8", errors="replace")
+    if verbose and text:
+        print(text, end="" if text.endswith("\n") else "\n")
+    passed, failed = count_suite_results(data)
+    _, _, failures = device_report.parse_suite_results(text)
+    print(f"{command} results: {passed} PASS, {failed} FAIL")
+    for name, message in failures[:MAX_PRINTED_FAILURES]:
+        print(f"{name}: {message}" if message else name)
+    if len(failures) > MAX_PRINTED_FAILURES:
+        print(f"{len(failures) - MAX_PRINTED_FAILURES} more in the capture; by suite:")
+        for suite_name, count in failures_by_suite(text):
+            print(f"  {suite_name}: {count} FAIL")
+    print(f"{command} capture: {record_path}")
+    print(f"{command} capture ended: {reason}")
+    return failed
+
+
+def print_reset_output(data, verbose):
+    text = data.decode("utf-8", errors="replace")
+    if verbose:
+        if text:
+            print(text, end="" if text.endswith("\n") else "\n")
+    else:
+        for line in text.splitlines():
+            if BOOT_ERROR.search(line):
+                print(line)
+
+
 class HeldLock:
-    def __init__(self, store, port, owner, purpose, wait):
+    def __init__(self, store, port, owner, purpose, wait, announce_waiters=False):
         self.store = store
+        self.announce_waiters = announce_waiters
         self.port = port
         self.held = store.acquire(port, owner, purpose, wait=wait)
         if not self.held:
@@ -267,13 +310,24 @@ class HeldLock:
         if self.held["log"]:
             print(self.held["log"], file=sys.stderr)
         self.stop = threading.Event()
+        self.notified = set()
         self.thread = threading.Thread(target=self.keep_alive, daemon=True)
 
     def keep_alive(self):
-        while not self.stop.wait(30):
-            if not self.store.heartbeat(self.port, self.held["token"]):
-                print("device lock was lost", file=sys.stderr)
-                return
+        # Only a holder the person can end with Ctrl+C invites them to.
+        poll = 1 if self.announce_waiters else 30
+        next_heartbeat = time.monotonic() + 30
+        while not self.stop.wait(poll):
+            for ticket in (self.store.tickets(self.port) if self.announce_waiters else ()):
+                if ticket["ticket"] not in self.notified:
+                    self.notified.add(ticket["ticket"])
+                    print(f'{ticket["owner"]} is waiting for the board '
+                          f'({ticket["purpose"]}) - Ctrl+C to hand it over', file=sys.stderr)
+            if time.monotonic() >= next_heartbeat:
+                if not self.store.heartbeat(self.port, self.held["token"]):
+                    print("device lock was lost", file=sys.stderr)
+                    return
+                next_heartbeat = time.monotonic() + 30
 
     def __enter__(self):
         self.thread.start()
@@ -281,22 +335,24 @@ class HeldLock:
 
     def __exit__(self, unused_type, unused_value, unused_traceback):
         self.stop.set()
-        self.thread.join()
-        self.store.release(self.port, self.held["token"])
+        try:
+            self.thread.join()
+        finally:
+            self.store.release(self.port, self.held["token"])
 
 
 def capture(connection, output, max_seconds, idle_seconds, expected_build_id=None,
-            suite_name=None, append=False):
+            suite_name=None, append=False, echo=None, until_tests_done=True):
     data = bytearray()
     pending = b""
     seen_build_id = None
     last_non_shell = time.monotonic()
-    deadline = last_non_shell + max_seconds
+    deadline = last_non_shell + max_seconds if max_seconds is not None else None
     suite_complete = None
     if suite_name:
         suite_complete = b"RUNSUITE_COMPLETE name=" + suite_name.encode("ascii") + b" "
     with open(output, "ab" if append else "wb") as stream:
-        while time.monotonic() < deadline:
+        while deadline is None or time.monotonic() < deadline:
             try:
                 chunk = connection.read(4096)
             except OSError:
@@ -310,6 +366,9 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
             data.extend(chunk)
             stream.write(chunk)
             stream.flush()
+            if echo is not None:
+                echo.write(chunk)
+                echo.flush()
             pending += chunk
             lines = pending.split(b"\n")
             pending = lines.pop()
@@ -330,7 +389,8 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
                         raise RuntimeError("no suite named " + suite_name + " on this build")
                     if b"SUITE_DONE" in text or text.startswith(suite_complete):
                         return bytes(data), "complete"
-            if b"TESTS_DONE" in data or b"SELFTEST_COMPLETE" in data or (b"Tests " in data and b"Failures" in data):
+            if until_tests_done and (b"TESTS_DONE" in data or b"SELFTEST_COMPLETE" in data or
+                                  (b"Tests " in data and b"Failures" in data)):
                 return bytes(data), "complete"
     return bytes(data), "timeout"
 
@@ -408,8 +468,7 @@ def reset_device(args, store, port):
             output, managed, started_at=started_at, port=port, owner=args.owner,
             purpose=args.purpose, command="reset", build_id=latest_build_id_from_bytes(data),
             worktree=str(Path.cwd()), commit=git_commit(), reason=reason, error=error)
-    if data:
-        print(data.decode("utf-8", errors="replace"), end="")
+    print_reset_output(data, getattr(args, "verbose", False))
     print("reset capture: " + str(final_path))
     print("reset capture ended: " + reason + "; bytes may have been lost in reset gap")
     return 0
@@ -594,9 +653,7 @@ def run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
         except Exception as report_error:  # a report is a convenience, never fails the capture
             print("report generation failed (capture is unaffected): " + str(report_error),
                   file=sys.stderr)
-    passed, failed = count_suite_results(data)
-    print("suite results: " + str(passed) + " PASS, " + str(failed) + " FAIL")
-    print("suite capture ended: " + reason)
+    failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False))
     return 1 if failed else 0
 
 
@@ -646,10 +703,32 @@ def selftest(args, store, port):
             except Exception as report_error:  # a report is a convenience, never fails the capture
                 print("report generation failed (capture is unaffected): " + str(report_error),
                       file=sys.stderr)
-        passed, failed = count_suite_results(data)
-        print("selftest results: " + str(passed) + " PASS, " + str(failed) + " FAIL")
-        print("selftest capture ended: " + reason)
+        failed = print_suite_output(data, final_path, "selftest", reason, getattr(args, "verbose", False))
         return 1 if failed else 0
+
+
+class ErrorLineSink:
+    def __init__(self, output):
+        self.output = output
+        self.pending = b""
+
+    def write(self, chunk):
+        self.pending += chunk
+        while b"\n" in self.pending:
+            line, self.pending = self.pending.split(b"\n", 1)
+            text = line.decode("utf-8", errors="replace")
+            if BOOT_ERROR.search(text):
+                self.output.write(text + "\n")
+                self.output.flush()
+
+    def flush(self):
+        self.output.flush()
+
+    def finish(self):
+        text = self.pending.decode("utf-8", errors="replace")
+        if BOOT_ERROR.search(text):
+            self.output.write(text + "\n")
+        self.output.flush()
 
 
 def listen(args, store, port):
@@ -658,18 +737,29 @@ def listen(args, store, port):
     data = b""
     reason = None
     error = None
+    echo = getattr(args, "echo", False)
+    sink = sys.stdout.buffer if echo else ErrorLineSink(sys.stdout)
     try:
-        with HeldLock(store, port, args.owner, args.purpose, args.wait):
+        with HeldLock(store, port, args.owner, args.purpose, args.wait, announce_waiters=True):
             with open_when_free(port) as connection:
-                data, reason = capture(connection, output, args.seconds, None)
+                data, reason = capture(connection, output, args.seconds, None,
+                                       echo=sink, until_tests_done=False)
+    except KeyboardInterrupt:
+        reason = "stopped"
+        data = Path(output).read_bytes() if Path(output).exists() else b""
     except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
         error = str(caught)
         raise
     finally:
-        record_capture(output, managed, started_at=started_at, port=port, owner=args.owner,
-                       purpose=args.purpose, command="listen",
-                       build_id=latest_build_id_from_bytes(data), worktree=str(Path.cwd()),
-                       commit=git_commit(), reason=reason, error=error)
+        final_path = record_capture(output, managed, started_at=started_at, port=port,
+                                    owner=args.owner, purpose=args.purpose, command="listen",
+                                    build_id=latest_build_id_from_bytes(data), worktree=str(Path.cwd()),
+                                    commit=git_commit(), reason=reason, error=error)
+    if not echo:
+        sink.finish()
+    elif data and not data.endswith(b"\n"):
+        print()
+    print("listen capture: " + str(final_path))
     print("listen capture ended: " + reason)
     elf = Path(args.elf) if args.elf else find_elf_for_build_id(
         Path.cwd(), latest_build_id_from_bytes(data))
@@ -821,7 +911,7 @@ def batch(args, store, port):
                     owner=args.owner, wait=args.wait, suite=suite_name, out=str(out),
                     purpose=f"{args.purpose} ({suite_name} run {run}/{args.runs})",
                     max_seconds=args.max_seconds, idle_seconds=args.idle_seconds,
-                    expect_build_id=build_id)
+                    expect_build_id=build_id, verbose=getattr(args, "verbose", False))
                 print(f"batch: {suite_name} run {run}/{args.runs}", flush=True)
                 error = None
                 try:
@@ -879,9 +969,13 @@ def main(argv=None):
     # perf capture after three tests and read as "the rows are missing".
     suite.add_argument("--idle-seconds", type=float, default=300)
     suite.add_argument("--expect-build-id")
+    suite.add_argument("--verbose", action="store_true")
     suite.add_argument("--purpose", default="run suite")
     listen_parser = subparsers.add_parser("listen")
-    listen_parser.add_argument("--seconds", type=float, required=True)
+    listen_duration = listen_parser.add_mutually_exclusive_group(required=True)
+    listen_duration.add_argument("--seconds", type=float)
+    listen_duration.add_argument("--follow", action="store_true")
+    listen_parser.add_argument("--echo", action="store_true")
     listen_parser.add_argument("--out")
     listen_parser.add_argument("--purpose", default="listen")
     listen_parser.add_argument("--elf",
@@ -889,6 +983,7 @@ def main(argv=None):
     reset_parser = subparsers.add_parser("reset", help="reboot the board and wait for USB serial")
     reset_parser.add_argument("--capture", action="store_true",
                               help="capture the boot console after the reset")
+    reset_parser.add_argument("--verbose", action="store_true")
     reset_parser.add_argument("--seconds", type=float, default=20.0,
                               help="boot capture window (default: 20)")
     reset_parser.add_argument("--out")
@@ -898,6 +993,7 @@ def main(argv=None):
                          "of every registered suite")
     selftest_parser.add_argument("--worktree", required=True)
     selftest_parser.add_argument("--out")
+    selftest_parser.add_argument("--verbose", action="store_true")
     selftest_parser.add_argument("--perf-scope", action="store_true",
                                  help="build the perf-scoped image")
     # 3000 s leaves headroom over a full run's measured time - see
@@ -935,6 +1031,7 @@ def main(argv=None):
     batch_parser.add_argument("--suite", action="append", required=True,
                               help="a suite to capture; repeat for several")
     batch_parser.add_argument("--runs", type=int, default=3)
+    batch_parser.add_argument("--verbose", action="store_true")
     batch_parser.add_argument("--perf-scope", action="store_true",
                               help="build the perf-scoped image")
     batch_parser.add_argument("--max-seconds", type=float, default=1800)

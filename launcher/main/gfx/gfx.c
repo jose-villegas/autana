@@ -817,9 +817,7 @@ gfx_mark_dirty(int x, int y, int w, int h) {
 bool
 gfx_region_dirty(int x, int y, int w, int h) {
     GFX_PRESENT_GUARD();
-    (void)x;
-    (void)w;
-    return dirty_region_dirty(y, h);
+    return dirty_region_dirty(x, y, w, h);
 }
 
 /* Colour */

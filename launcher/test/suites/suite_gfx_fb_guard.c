@@ -30,6 +30,10 @@ test_drawing_is_allowed_while_a_framebuffer_is_available(void) {
     TEST_ASSERT_EQUAL_UINT(0, gfx_fb_guard_trips);
 }
 
+/* Host only: on a development device build - every SELFTEST image - the
+ * guard asserts on a refused draw by design, so these would abort the run. */
+#ifndef DEVICE_BUILD
+
 /* The exact scenario the bug report named: main.c's home hint (or any
  * other shell-side draw) reaching a gfx_* entry point after band mode has
  * freed the framebuffer must be refused, not crash. */
@@ -67,12 +71,16 @@ test_restoring_the_framebuffer_stops_the_guard_from_tripping(void) {
     TEST_ASSERT_EQUAL_UINT(1, gfx_fb_guard_trips);
 }
 
+#endif
+
 void
 run_gfx_fb_guard_suite(void) {
     RUN_TEST(test_drawing_is_allowed_while_a_framebuffer_is_available);
+#ifndef DEVICE_BUILD
     RUN_TEST(test_drawing_is_refused_once_the_framebuffer_is_unavailable);
     RUN_TEST(test_repeated_draws_while_unavailable_keep_tripping);
     RUN_TEST(test_restoring_the_framebuffer_stops_the_guard_from_tripping);
+#endif
 }
 
 SUITE_REGISTER(run_gfx_fb_guard_suite);
