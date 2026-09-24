@@ -259,6 +259,17 @@ def count_suite_results(data):
     return results.count(b"PASS"), results.count(b"FAIL")
 
 
+def failures_by_suite(text):
+    """(suite file stem, FAIL count), most failures first."""
+    counts = {}
+    for line in text.splitlines():
+        match = device_report.RESULT_RE.match(line.strip())
+        if match and match.group("status") == "FAIL":
+            stem = re.split(r"[\\/]", match.group("file"))[-1].removesuffix(".c")
+            counts[stem] = counts.get(stem, 0) + 1
+    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+
+
 def print_suite_output(data, record_path, command, reason, verbose):
     text = data.decode("utf-8", errors="replace")
     if verbose and text:
@@ -269,7 +280,10 @@ def print_suite_output(data, record_path, command, reason, verbose):
     for name, message in failures[:MAX_PRINTED_FAILURES]:
         print(f"{name}: {message}" if message else name)
     if len(failures) > MAX_PRINTED_FAILURES:
-        print(f"{len(failures) - MAX_PRINTED_FAILURES} more in {record_path}")
+        print(f"{len(failures) - MAX_PRINTED_FAILURES} more in the capture; by suite:")
+        for suite_name, count in failures_by_suite(text):
+            print(f"  {suite_name}: {count} FAIL")
+    print(f"{command} capture: {record_path}")
     print(f"{command} capture ended: {reason}")
     return failed
 
