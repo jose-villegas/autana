@@ -23,6 +23,10 @@ import device_report
 import device_notify
 
 
+def setUpModule():
+    os.environ["AUTANA_NOTIFY"] = "0"
+
+
 class InterpreterTests(unittest.TestCase):
     """Any interpreter may start device.py - a report script's `python`, a
     person at a prompt - and only ESP-IDF's carries pyserial."""
@@ -482,22 +486,86 @@ class DeviceTests(unittest.TestCase):
         store = mock.Mock()
         store.status.return_value = {"human": None, "lock": None, "queue": []}
         with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
-             mock.patch.object(device, "notify_human", return_value=True) as notify:
+             mock.patch.object(device_notify, "notify_human") as notify, \
+             mock.patch.dict(os.environ, {"AUTANA_NOTIFY": "1"}):
             self.assertEqual(device.main(["--port", "COM5", "--owner", "agent",
                                           "hand-to-human", "--note", "check cable"]), 0)
         store.set_human.assert_called_once_with("COM5", "agent", "check cable")
         notify.assert_called_once_with("COM5", "agent", "check cable")
 
-    def test_hand_keeps_reservation_when_notifier_raises(self):
+    def test_hand_suite_guard_suppresses_unpatched_notifier(self):
         store = mock.Mock()
         store.status.return_value = {"human": None, "lock": None, "queue": []}
+        sink = mock.Mock()
         with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
-             mock.patch.object(device, "notify_human", side_effect=RuntimeError("toast failed")), \
-             mock.patch("builtins.print") as printed:
+             mock.patch.object(device_notify, "SINKS", (sink,)):
+            self.assertEqual(device.main(["--port", "COM5", "--owner", "agent",
+                                          "hand-to-human", "--note", "check cable"]), 0)
+        sink.assert_not_called()
+
+    def test_hand_sink_failure_is_warning_and_preserves_reservation(self):
+        store = mock.Mock()
+        store.status.return_value = {"human": None, "lock": None, "queue": []}
+        first = mock.Mock(__name__="first_sink", side_effect=ValueError())
+        second = mock.Mock(__name__="second_sink")
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+             mock.patch.object(device_notify, "SINKS", (first, second)), \
+             mock.patch.dict(os.environ, {"AUTANA_NOTIFY": "1"}), \
+             contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             self.assertEqual(device.main(["--port", "COM5", "--owner", "agent",
                                           "hand-to-human", "--note", "check cable"]), 0)
         store.set_human.assert_called_once_with("COM5", "agent", "check cable")
-        self.assertTrue(any("toast failed" in str(call) for call in printed.call_args_list))
+        first.assert_called_once_with("COM5", "agent", "check cable")
+        second.assert_called_once_with("COM5", "agent", "check cable")
+        self.assertEqual(stderr.getvalue().count("\n"), 1)
+        self.assertIn("warning: first_sink failed: ValueError", stderr.getvalue())
+        self.assertNotIn("toast", stdout.getvalue())
+
+    def test_notify_arguments_order_and_environment_switch(self):
+        for setting, should_call in ((None, True), ("1", True), ("", True), ("0", False)):
+            sinks = [mock.Mock(), mock.Mock()]
+            env = {} if setting is None else {"AUTANA_NOTIFY": setting}
+            with self.subTest(setting=setting), mock.patch.dict(os.environ, env, clear=True), \
+                    mock.patch.object(device_notify, "SINKS", tuple(sinks)):
+                self.assertIsNone(device_notify.notify_human("COM5", "owner", "note"))
+            for sink in sinks:
+                if should_call:
+                    sink.assert_called_once_with("COM5", "owner", "note")
+                else:
+                    sink.assert_not_called()
+
+    def test_notify_continues_after_empty_message_error(self):
+        first = mock.Mock(__name__="broken_sink", side_effect=RuntimeError())
+        second = mock.Mock()
+        stderr = io.StringIO()
+        with mock.patch.dict(os.environ, {"AUTANA_NOTIFY": "1"}), \
+                mock.patch.object(device_notify, "SINKS", (first, second)), \
+                contextlib.redirect_stderr(stderr):
+            self.assertIsNone(device_notify.notify_human("COM5", "owner", "note"))
+        second.assert_called_once_with("COM5", "owner", "note")
+        self.assertIn("warning: broken_sink failed: RuntimeError", stderr.getvalue())
+
+    def test_windows_toast_platform_and_process_results(self):
+        run = mock.Mock(return_value=subprocess.CompletedProcess([], 0, "", ""))
+        with mock.patch.object(device_notify.os, "name", "posix"), \
+                mock.patch.object(device_notify.subprocess, "run", run):
+            device_notify.windows_toast("COM5", "owner", "note")
+        run.assert_not_called()
+        for result, expected in (
+                (subprocess.CompletedProcess([], 0, "", ""), None),
+                (subprocess.CompletedProcess([], 3, "", "first\nlast\n"), "last"),
+                (subprocess.CompletedProcess([], 4, "", ""), "PowerShell exited 4")):
+            with self.subTest(expected=expected), \
+                    mock.patch.object(device_notify.os, "name", "nt"), \
+                    mock.patch.object(device_notify.subprocess, "CREATE_NO_WINDOW", 0, create=True), \
+                    mock.patch.object(device_notify.subprocess, "run", return_value=result) as run:
+                if expected is None:
+                    device_notify.windows_toast("COM5", "owner", "note")
+                else:
+                    with self.assertRaisesRegex(RuntimeError, expected):
+                        device_notify.windows_toast("COM5", "owner", "note")
+                self.assertEqual(run.call_args.kwargs["timeout"], 10)
 
     def test_notify_env_switch_skips_sinks(self):
         sink = mock.Mock()

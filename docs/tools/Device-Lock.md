@@ -234,11 +234,11 @@ When a session holds the board, its token releases that lock before the command
 creates the human reservation. Without an active lock, omit `--token` (what
 `autana hand` always does). The reservation appears in `status` and prevents
 future acquisitions. On Windows, the command also shows a toast naming the
-board's port and reservation owner, with the note as its message. The toast
-runs through Windows PowerShell and needs no extra module. Notification failure
-prints a warning; the reservation still stands. Set `AUTANA_NOTIFY=0` to
-reserve without a toast. Other platforms record the reservation without a
-notification. After the maintainer is done, clear it explicitly -
+board's port and reservation owner, with the note as its message. Other
+platforms record the reservation silently. Each notification that fails prints
+a warning; the reservation still stands. Set `AUTANA_NOTIFY=0` to reserve
+without notifying. The toast adds about 1.5 seconds to the command, with a
+10-second maximum. After the maintainer is done, clear it explicitly -
 `autana take-back`, or:
 
 ```powershell
