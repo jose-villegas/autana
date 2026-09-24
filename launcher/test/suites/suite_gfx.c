@@ -1367,34 +1367,34 @@ memtp_log(const char* what, const char* pools, size_t bytes, int64_t us) {
 
 static void
 test_memory_throughput_psram_against_internal(void) {
-    const size_t band = (size_t)GFX_WIDTH * 64 * sizeof(gfx_color_t); /* one 64-row strip */
+    const size_t sample = (size_t)GFX_WIDTH * 16 * sizeof(gfx_color_t);
     const size_t frame = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
 
-    uint8_t* int_a = heap_caps_malloc(band, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    uint8_t* int_b = heap_caps_malloc(band, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint8_t* int_a = heap_caps_malloc(sample, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint8_t* int_b = heap_caps_malloc(sample, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     uint8_t* ps_a = heap_caps_malloc(frame, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     uint8_t* ps_b = heap_caps_malloc(frame, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     const bool ok = int_a && int_b && ps_a && ps_b;
 
     if (ok) {
-        memset(int_a, 0x5A, band);
-        memset(int_b, 0xA5, band);
+        memset(int_a, 0x5A, sample);
+        memset(int_b, 0xA5, sample);
         memset(ps_a, 0x5A, frame);
         memset(ps_b, 0xA5, frame);
 
-        memtp_log("memset", "internal", band, memtp_best_us(memtp_op_memset, int_a, NULL, band));
-        memtp_log("memset", "psram", band, memtp_best_us(memtp_op_memset, ps_a, NULL, band));
+        memtp_log("memset", "internal", sample, memtp_best_us(memtp_op_memset, int_a, NULL, sample));
+        memtp_log("memset", "psram", sample, memtp_best_us(memtp_op_memset, ps_a, NULL, sample));
         memtp_log("memset", "psram", frame, memtp_best_us(memtp_op_memset, ps_a, NULL, frame));
-        memtp_log("pixels", "internal", band, memtp_best_us(memtp_op_pixels, int_a, NULL, band));
-        memtp_log("pixels", "psram", band, memtp_best_us(memtp_op_pixels, ps_a, NULL, band));
+        memtp_log("pixels", "internal", sample, memtp_best_us(memtp_op_pixels, int_a, NULL, sample));
+        memtp_log("pixels", "psram", sample, memtp_best_us(memtp_op_pixels, ps_a, NULL, sample));
         memtp_log("pixels", "psram", frame, memtp_best_us(memtp_op_pixels, ps_a, NULL, frame));
-        memtp_log("read", "internal", band, memtp_best_us(memtp_op_read, int_a, NULL, band));
-        memtp_log("read", "psram", band, memtp_best_us(memtp_op_read, ps_a, NULL, band));
+        memtp_log("read", "internal", sample, memtp_best_us(memtp_op_read, int_a, NULL, sample));
+        memtp_log("read", "psram", sample, memtp_best_us(memtp_op_read, ps_a, NULL, sample));
         memtp_log("read", "psram", frame, memtp_best_us(memtp_op_read, ps_a, NULL, frame));
-        memtp_log("copy", "internal>internal", band, memtp_best_us(memtp_op_copy, int_b, int_a, band));
-        memtp_log("copy", "internal>psram", band, memtp_best_us(memtp_op_copy, ps_b, int_a, band));
-        memtp_log("copy", "psram>internal", band, memtp_best_us(memtp_op_copy, int_b, ps_a, band));
-        memtp_log("copy", "psram>psram", band, memtp_best_us(memtp_op_copy, ps_b, ps_a, band));
+        memtp_log("copy", "internal>internal", sample, memtp_best_us(memtp_op_copy, int_b, int_a, sample));
+        memtp_log("copy", "internal>psram", sample, memtp_best_us(memtp_op_copy, ps_b, int_a, sample));
+        memtp_log("copy", "psram>internal", sample, memtp_best_us(memtp_op_copy, int_b, ps_a, sample));
+        memtp_log("copy", "psram>psram", sample, memtp_best_us(memtp_op_copy, ps_b, ps_a, sample));
         memtp_log("copy", "psram>psram", frame, memtp_best_us(memtp_op_copy, ps_b, ps_a, frame));
         memtp_log("copy-rows", "psram>psram", frame, memtp_best_us(memtp_op_copy_rows, ps_b, ps_a, frame));
     }
