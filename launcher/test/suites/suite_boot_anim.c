@@ -27,7 +27,6 @@
 #include "unity.h"
 
 #include "boot/boot_anim.h"
-#include "gfx/fonts/font_lmroman_40.h"
 
 /* The panel these numbers are laid out for. Named here rather than pulled
  * from gfx.h, which needs the BSP; gfx_dirty.h mirrors the same two numbers
@@ -1333,19 +1332,13 @@ test_the_live_end_of_the_curve_is_drawn_thicker(void) {
  * The title
  *
  * boot_anim_title_letter() takes the font it is laying out, so the tests
- * below exercise the REAL font the seed authors (TITLE_FONT) rather than
+ * below exercise the UI font used by the title rather than
  * a synthetic stand-in: checks against the actual authored geometry, not
  * the layout FORMULA in the abstract. suite_gfx_font.c already covers
  * gfx_font_text_width()/gfx_font_advance() themselves.
  */
 
-/* Whichever font the timeline actually AUTHORS, resolved the same way
- * draw_title() resolves it (boot_anim.c). These tests check the real
- * authored geometry, so they ask the same question the renderer does:
- * title_font and title_scale are a pair, and pinning the font while the
- * seed tunes the scale for a different one tests a combination that
- * never ships (e.g. a 51px cell at 5x, off the panel). */
-#define TITLE_FONT ((BOOT_ANIM_TITLE_FONT == BOOT_ANIM_TITLE_FONT_8X8) ? &gfx_font_8x8 : &gfx_font_lmroman_40)
+#define TITLE_FONT (&gfx_font_8x8)
 
 static void
 test_the_wobble_is_exactly_flat_once_a_letter_has_arrived(void) {
@@ -1485,10 +1478,7 @@ static void
 test_the_title_stays_on_the_panel_once_visible(void) {
     /* The full glyph cell, not just its anchor corner - (x, y) is where a
      * glyph's cell BEGINS, so the cell's far edge is what actually has to
-     * stay on the panel. cell_w and cell_h separately, not one shared
-     * `cell`: font_lmroman_40's cell is NOT square (51x58), so conflating
-     * the two axes would silently check the wrong bound on whichever axis
-     * differs. */
+     * stay on the panel. */
     const int cell_w = TITLE_FONT->cell_w * BOOT_ANIM_TITLE_SCALE;
     const int cell_h = TITLE_FONT->cell_h * BOOT_ANIM_TITLE_SCALE;
 

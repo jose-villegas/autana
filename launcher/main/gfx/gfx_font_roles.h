@@ -2,18 +2,8 @@
  * gfx_font_roles - which typeface plays which part, decided once, here, so
  * retyping the UI is an edit here rather than a grep.
  *
- * RESOLUTION STAYS COMPILE TIME. An 8bpp atlas is real flash - lmroman_40
- * alone is 274 KiB - and the linker only drops one nothing references;
- * measured, by pointing the boot timeline at the bitmap font and watching
- * that atlas leave launcher.map. A role resolved at runtime would reference
- * every candidate from one translation unit and link them all. Hence a
- * static inline accessor per role, and: only #include a font header for a
- * typeface that has a role below.
- *
- * No "label" role - label draws are the UI face at a smaller scale, and
- * scale is a call-site argument. The boot title is an authored per-animation
- * knob, not a role; boot_anim.c names lmroman_40 through its own include so
- * this file never references it.
+ * The UI and boot title use the same bitmap font. Scale is a call-site
+ * argument, so labels do not need a separate role.
  */
 #pragma once
 
