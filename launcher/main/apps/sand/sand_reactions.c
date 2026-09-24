@@ -225,7 +225,7 @@ try_heat_transform_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cel
         }
         s->cells[at] = CELL_MAKE(CELL_MATERIAL(n), heat + 1);
         s->may_have_temperature = true;
-        latch_content_flags(s, s->cells[at]);
+        s->reaction_latched_flags |= REACTION_LATCH_TEMPERATURE;
         mark_rows(s, nx, ny, ny); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
         return true;
     }
@@ -892,7 +892,8 @@ step_one_cold_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
                 /* Drawn, not woken - see HEAT LEVELS DO NOT WAKE. This walk
                  * is where that rule was first found and paid for. */
                 s->cells[cat] = CELL_MAKE(CELL_MATERIAL(cc), (uint8_t)(ct - 1));
-                latch_content_flags(s, s->cells[cat]);
+                s->may_have_temperature = true;
+                s->reaction_latched_flags |= REACTION_LATCH_TEMPERATURE;
                 mark_rows(s, cx, cy, cy);
                 if (ct > SAND_AMBIENT_HEAT) {
                     spent_on_heat = true;
@@ -973,7 +974,7 @@ step_one_cold_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
 
         s->cells[nat] = CELL_MAKE(CELL_MATERIAL(n), (uint8_t)(temp - 1));
         s->may_have_temperature = true;
-        latch_content_flags(s, s->cells[nat]);
+        s->reaction_latched_flags |= REACTION_LATCH_TEMPERATURE;
         mark_rows(s, nx, ny, ny); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
 
         /* AND ON THROUGH THE MEDIUM. Cold stopped where it touched: snow on
@@ -1057,7 +1058,7 @@ step_one_tempered_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cons
         }
         s->cells[nat] = CELL_MAKE(CELL_MATERIAL(n), (uint8_t)(gap > 0 ? nt + 1 : nt - 1));
         s->may_have_temperature = true;
-        latch_content_flags(s, s->cells[nat]);
+        s->reaction_latched_flags |= REACTION_LATCH_TEMPERATURE;
         mark_rows(s, nx, ny, ny); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
     }
 
@@ -2933,6 +2934,8 @@ sand_step_reactions(sand_t* s) {
     if (!(present & FOUND_TEMPERATURE)) {
         s->may_have_temperature = false;
     }
+    /* Arms as well as clears: a pour still in mid-air would otherwise clear
+     * it for good, and the soil it lands on could never re-arm growth. */
     s->may_have_moisture = (present & FOUND_MOISTURE) != 0;
     if ((found & FOUND_FALLER) != 0) {
         s->may_have_faller = true;
