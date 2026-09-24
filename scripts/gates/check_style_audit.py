@@ -294,9 +294,9 @@ def _fix_include_layer(root, path, text):
 
 # RULE: a folder may include only a strictly lower tier of
 # docs/Launcher-Architecture.md's "How it fits together" (LAYER_TIER below;
-# two folders can share a tier). app.h is outside LAYER_TIER, so its include of input/ is never checked;
-# a system header such as "driver/temperature_sensor.h" never resolves to
-# a layer.
+# two folders can share a tier). app.h is outside LAYER_TIER, so its
+# include of input/ is never checked; a system header such as
+# "driver/temperature_sensor.h" never resolves to a layer.
 
 LAYER_TIER = {"apps": 0, "boot": 1, "ui": 2, "console": 2, "gfx": 3, "render": 3,
              "display": 3, "input": 3, "util": 4, "board": 5}
