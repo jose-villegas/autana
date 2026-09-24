@@ -48,13 +48,11 @@ esptool.py --chip esp32s3 -p <PORT> --before no_reset flash_id
 Connecting almost instantly (a few dots) means the chip is sitting in the
 bootloader.
 
-**After flashing this way, the board will not boot on its own** — `--after
-hard_reset` uses the same non-functional RTS reset, so it stays in download
-mode, silent, running nothing. **`--after watchdog_reset` starts it from
-there**, tripping the SoC's own watchdog instead of the RTS line, and needs
-nobody at the bench - verified from the ROM bootloader on this board, which
-`hard_reset` cannot restart. A power cycle works too, but with a battery that
-means the PWR sequence above rather than a replug.
+From there `autana flash` boots the new image on its own: **every restart
+`scripts/device/device.py` makes is `--after watchdog_reset`**, which trips
+the SoC's own watchdog instead of the RTS line that cannot restart a chip in
+download mode. Run directly, outside `autana`, esptool or `idf.py flash`
+still needs `--after watchdog_reset` or a power cycle to start the image.
 
 A restart re-enumerates USB Serial/JTAG, and Windows may hand the board a
 **different COM number** than it had before. Anything holding a port by name
