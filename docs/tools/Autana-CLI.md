@@ -17,7 +17,7 @@ where Python has `readline` (Windows: `pip install pyreadline3`).
 
 `autana help build`
 
-| | |
+| Command | What it does |
 |---|---|
 | `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope]` | Build and flash this worktree; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
@@ -26,7 +26,7 @@ where Python has `readline` (Windows: `pip install pyreadline3`).
 
 `autana help tests`
 
-| | |
+| Command | What it does |
 |---|---|
 | `autana suite <name> [seconds] [--verbose]` | Run one registered suite on a diagnostics build already on the board. |
 | `autana suite list [text] [--json]` | The suites this worktree registers; `[on request]` ones run only by name. |
@@ -41,7 +41,7 @@ something in it, grep the capture instead.
 
 `autana help watch`
 
-| | |
+| Command | What it does |
 |---|---|
 | `autana monitor [seconds] [--elf PATH]` | Print what the board says; 60 s when omitted. Crash addresses decode against `PATH`, or the build whose `build_id.txt` matches. |
 | `autana reset [--capture [seconds]] [--verbose]` | Reboot and wait for USB serial. `--capture` records the boot (20 s) and prints its path and any error lines. |
@@ -51,7 +51,7 @@ something in it, grep the capture instead.
 
 `autana help input`
 
-| | |
+| Command | What it does |
 |---|---|
 | `autana tap <x> <y>` | Tap, 50 ms. |
 | `autana press <x> <y> [ms]` | Hold; 1000 ms when omitted. |
@@ -64,7 +64,7 @@ something in it, grep the capture instead.
 
 `autana help apps`
 
-| | |
+| Command | What it does |
 |---|---|
 | `autana apps [--json]` | The registered apps, and which is running. |
 | `autana open <name>` | Enter an app, even while frozen; case-insensitive, unambiguous prefix. |
@@ -74,7 +74,7 @@ something in it, grep the capture instead.
 
 `autana help frames`
 
-| | |
+| Command | What it does |
 |---|---|
 | `autana freeze` | Stop the frame loop where it is. |
 | `autana resume` | Run it again. |
@@ -84,7 +84,7 @@ something in it, grep the capture instead.
 
 `autana help tune` · what makes a constant tunable: [Live-Tuning.md](Live-Tuning.md)
 
-| | |
+| Command | What it does |
 |---|---|
 | `autana tune [text] [--json]` | List the tunables with their ranges; names containing `text`. |
 | `autana tune <name> [value]` | Show one, or set it on the board (lost on reboot). `trail` works for `ridge.trail` when unambiguous. |
@@ -95,7 +95,7 @@ something in it, grep the capture instead.
 
 `autana help lock` · the lock itself: [Device-Lock.md](Device-Lock.md)
 
-| | |
+| Command | What it does |
 |---|---|
 | `autana status [--json]` | Who holds the board, and who is waiting. |
 | `autana id [--json]` | The name this session holds the lock under: `autana-cli@<pid in base36>`. |
@@ -105,7 +105,7 @@ something in it, grep the capture instead.
 
 ## JSON fields
 
-| | |
+| Command | Fields |
 |---|---|
 | `status` | `state` (`unlocked`, `held`, `human`), `waiting`; held: `owner`, `purpose`, `acquired_at`; human: `owner`, `note`, `age_seconds` |
 | `buildid` | `build_id` |
@@ -132,7 +132,7 @@ autana> quit
 
 ## Setup and records
 
-| | |
+| Path | What it is |
 |---|---|
 | `tools/autana`, `tools/autana.cmd` | The launchers; `tools/` goes on the PATH. |
 | `scripts/autana/autana.py` | Every command; `COMMAND_GROUPS` is the list above. |
