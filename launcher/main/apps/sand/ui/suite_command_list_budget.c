@@ -1,7 +1,7 @@
 /*
- * Portable suite: measures the peak bytes each of this app's three microui
+ * Portable suite: measures the peak bytes each of this app's microui
  * screens' command list reaches, driving the REAL palette_screen_draw()/
- * brush_screen_draw()/sand_menu_screen_draw() against a real microui
+ * brush_screen_draw()/title_screen_draw()/options_screen_draw() against a real microui
  * (ui_init() + ui_begin(), the same calls app_sand.c makes) rather than a
  * hand-mirrored reconstruction - see docs/Building-a-Screen.md.
  *
@@ -11,7 +11,7 @@
  * suite_brush_screen.c cover the real behaviour. Every scenario below picks
  * the worst case a real visit can reach (tile 0 selected AND every
  * emit-eligible tile flagged BRUSH_SPAWN, the longest name in each option
- * table, the DITHER row shown) rather than whatever a fresh sand_ui_t
+ * table, the DITHER rows shown) rather than whatever a fresh sand_ui_t
  * happens to zero-initialize to.
  */
 
@@ -28,8 +28,9 @@
 #include "apps/sand/material.h"
 #include "apps/sand/sand_ui.h"
 #include "brush_screen.h"
+#include "options_screen.h"
 #include "palette_screen.h"
-#include "sand_menu_screen.h"
+#include "title_screen.h"
 
 /* A fifth screen or a busier icon still has this many bytes of
  * MU_COMMANDLIST_SIZE left to grow into before any screen's own peak
@@ -118,27 +119,103 @@ test_brush_screen_command_list_fits_budget(void) {
 }
 
 static void
-test_menu_screen_command_list_fits_budget(void) {
+test_title_screen_command_list_fits_budget(void) {
     fixture();
-
-    const sand_menu_screen_state_t state = {
-        .quality = "QUALITY: VERY LOW",
-        .color = "COLOUR: FULL",
-        .dither = "DITHER: PIXEL CHECKER2",
-        .show_dither = true,
-    };
 
     const input_t input = {0};
     ui_begin(&input);
-    sand_menu_screen_draw(ui_context(), &state, 16);
-    assert_budget("sand menu", end_and_measure());
+    title_screen_draw(ui_context());
+    assert_budget("sand title", end_and_measure());
+}
+
+/* Shaped like the app's, for layout, taps and command-list size; the
+ * colours themselves are suite_sand_mode_swatches.c's. */
+static const sand_mode_swatch_t TEST_MODE_SWATCHES[3] = {
+    [SAND_COLOUR_FULL] = {.cols = SAND_SWATCH_FULL_BANDS, .rows = 1},
+    [SAND_COLOUR_256] = {.cols = SAND_SWATCH_256_COLS, .rows = SAND_SWATCH_ROWS},
+    [SAND_COLOUR_16] = {.cols = SAND_SWATCH_16_COLS, .rows = SAND_SWATCH_ROWS},
+};
+
+static const char* const TEST_QUALITY_NAMES[] = {"ULTRA", "HIGH", "NORMAL", "LOW", "VERY LOW"};
+static const char* const TEST_DITHER_NAMES[] = {"NONE", "CELL CHECKER", "CELL BAYER2", "PIXEL CHECKER2",
+                                                "PIXEL BAYER4"};
+
+static void
+test_options_screen_command_list_fits_budget(void) {
+    fixture();
+
+    const options_screen_labels_t labels = {
+        .quality_names = TEST_QUALITY_NAMES,
+        .quality_count = 5,
+        .dither_names = TEST_DITHER_NAMES,
+        .dither_count = 5,
+        .mode_swatches = TEST_MODE_SWATCHES,
+    };
+    sand_menu_t menu;
+    sand_menu_init(&menu, (sand_options_t){.quality = 4, .color = SAND_COLOUR_16, .dither = 3});
+    sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS);
+    menu.draft.quality = 0;
+
+    const input_t input = {0};
+    ui_begin(&input);
+    options_screen_draw(ui_context(), &menu, &labels);
+    assert_budget("sand options", end_and_measure());
+}
+
+/* The dither list open: every row, swatch and all, on top of the screen.
+ * Portrait, so a tap lands where the layout says with no turn between. */
+static void
+test_options_screen_with_its_dither_list_open_fits_budget(void) {
+    ui_init();
+    ui_set_transform(ui_transform_identity());
+
+    const options_screen_labels_t labels = {
+        .quality_names = TEST_QUALITY_NAMES,
+        .quality_count = 5,
+        .dither_names = TEST_DITHER_NAMES,
+        .dither_count = 5,
+        .mode_swatches = TEST_MODE_SWATCHES,
+    };
+    sand_menu_t menu;
+    sand_menu_init(&menu, (sand_options_t){.quality = 4, .color = SAND_COLOUR_16, .dither = 3});
+    sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS);
+
+    options_screen_layout_t lay;
+    options_screen_layout(ui_width(), ui_height(), &lay);
+    const int x = lay.dither.x + lay.dither.w / 2;
+    const int y = lay.dither.y + lay.dither.h / 2;
+    const input_t steps[] = {
+        {0},
+        {0},
+        {.down = true, .pressed = true, .x = x, .y = y},
+        {.down = true, .x = x, .y = y},
+        {.down = true, .x = x, .y = y},
+        {.down = true, .x = x, .y = y},
+        {.released = true, .x = x, .y = y},
+        {0},
+    };
+    for (size_t i = 0; i < sizeof steps / sizeof steps[0]; i++) {
+        ui_begin(&steps[i]);
+        options_screen_draw(ui_context(), &menu, &labels);
+        mu_end(ui_context());
+    }
+
+    const input_t idle = {0};
+    ui_begin(&idle);
+    options_screen_draw(ui_context(), &menu, &labels);
+    const int used = end_and_measure();
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(1, ui_context()->root_list.idx,
+                                         "the list must actually be open for this to measure it");
+    assert_budget("sand options, dither list open", used);
 }
 
 void
 run_sand_command_list_budget_suite(void) {
     RUN_TEST(test_palette_screen_command_list_fits_budget);
     RUN_TEST(test_brush_screen_command_list_fits_budget);
-    RUN_TEST(test_menu_screen_command_list_fits_budget);
+    RUN_TEST(test_title_screen_command_list_fits_budget);
+    RUN_TEST(test_options_screen_command_list_fits_budget);
+    RUN_TEST(test_options_screen_with_its_dither_list_open_fits_budget);
 }
 
 SUITE_REGISTER(run_sand_command_list_budget_suite);

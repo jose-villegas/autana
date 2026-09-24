@@ -112,6 +112,13 @@ control or two of them collide.
 
 Hand the click to the state module; let it decide what it means.
 
+Most of what a screen needs is already built that way in `ui/ui_widgets.h`:
+a panel, a header bar, text aligned in a rect, a button with an icon beside
+its label, a tile with the icon above it, a check row, and a dropdown whose
+list opens over the screen - above or below itself, wherever it fits. Each takes a
+`ui_theme_t`, so a screen states its colours once; add a widget there
+rather than a private copy in one app's screen.
+
 ### More than one text size
 
 `ui_set_font_scaled(gfx_font_ui(), scale)`. The UI font is the 1bpp 8x8
@@ -132,8 +139,8 @@ Fonts, scales and text styles are in [`Text-and-Fonts.md`](Text-and-Fonts.md).
 
 `ui_scroll.h` (`launcher/main/ui/`) is the shared way to lay out a stack of
 centred, fixed-width rows and let it scroll once it no longer fits - the
-launcher list and each app's menu screens (`sand_menu_screen.c`,
-`render_lab_menu_screen.c`) build on it instead of each hand-tracking a `y`
+launcher list and each app's menu screens (`render_lab_menu_screen.c`)
+build on it instead of each hand-tracking a `y`
 or placing rows at an ABSOLUTE rect, which left every row past the first
 unreachable once the stack overflowed (only a RELATIVE `mu_layout_set_next()`
 folds into a container's own `content_size` and follows its scroll - see
@@ -156,8 +163,7 @@ if (ui_scroll_view_begin(ctx, "My Screen", opt, ui_scroll_view_default(), dt_ms)
 
 `ui_flow_top(canvas_h, count, row_h, gap, margin)` gives the starting `top`
 for a uniform stack that should sit centred when short and pinned to
-`margin` once it no longer fits - the same rule `sand_menu_screen.c` already
-uses for its own row count.
+`margin` once it no longer fits.
 
 `ui_scroll_view_config_t` (from `ui_scroll_view_default()`, or built by hand)
 controls what a plain `ui_begin_screen()` cannot: `axis` (which of
