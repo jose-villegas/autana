@@ -251,6 +251,22 @@ def added_lines(ref, path):
     return lines
 
 
+def comments_at_ref(ref):
+    """Comment prose the base held in files this change deleted or edited -
+    the only places a verbatim move can come from."""
+    files = subprocess.run(
+        ["git", "diff", "--name-only", "--no-renames", "--diff-filter=DM", ref],
+        capture_output=True, text=True, check=True).stdout.splitlines()
+    exts = (".c", ".h", ".cpp", ".hpp")
+    texts = set()
+    for path in files:
+        if path.endswith(exts):
+            source = file_at_ref(ref, path)
+            if source is not None:
+                texts.update(comment.text for comment in scan(path, source))
+    return texts
+
+
 def file_at_ref(ref, path):
     # text=True alone decodes with the platform default (cp1252 on
     # Windows), which mangles any non-ASCII byte a source file carries (an
@@ -350,6 +366,8 @@ def main(argv):
         paths = [p for p in paths if not any(p.startswith(x) for x in EXCLUDED)]
 
     scoped = (changed_ref is not None or staged) and not explicit
+    base_comments = (comments_at_ref(changed_ref)
+                     if changed_ref and scoped else set())
     comments = []
     for path in paths:
         try:
@@ -360,7 +378,9 @@ def main(argv):
             continue
         if scoped:
             touched = added_lines(changed_ref or "", path)
-            found = [c for c in found if touched & set(c.line_range)]
+            found = [c for c in found
+                     if touched & set(c.line_range)
+                     and c.text not in base_comments]
         comments += found
 
     tall_heads = []
