@@ -95,6 +95,7 @@ documented in docs/tools/Autana-CLI.md.
 """
 
 import gzip
+import importlib
 import os
 import re
 import shlex
@@ -835,6 +836,7 @@ def console(_args=None):
     is an autana command, or the whole line is sent to the device as typed
     (forward()); `tune <name>` is the only way to a tunable, never an
     implicit lookup of a bare name."""
+    install_completion()
     print("autana console - 'help' for the commands, 'quit' to leave")
     while True:
         try:
@@ -868,6 +870,47 @@ COMMANDS = {"flash": flash, "tune": tune, "monitor": monitor, "reset": reset, "s
             "imu": imu, "button": button, "apps": apps, "open": open_app, "home": home, "selftest": selftest,
             "batch": batch, "status": status, "release": release, "hand": hand,
             "take-back": take_back}
+
+
+def completion_candidates(line, prefix):
+    """Return command or static argument matches for the current word."""
+    if not any(character.isspace() for character in line):
+        words = (set(COMMANDS) - {"console"}) | {"help", "quit"}
+    else:
+        parts = line.split()
+        if line and line[-1].isspace():
+            parts.append("")
+        if len(parts) != 2 or parts[0] != "flash":
+            return []
+        words = VARIANTS
+    return sorted(word for word in words if word.startswith(prefix))
+
+
+def completion_readline():
+    """Load a terminal completion module when the interpreter provides one."""
+    try:
+        return importlib.import_module("readline")
+    except ImportError:
+        try:
+            return importlib.import_module("pyreadline3")
+        except ImportError:
+            return None
+
+
+def install_completion():
+    readline = completion_readline()
+    if readline is None:
+        return
+    matches = []
+
+    def complete(prefix, state):
+        if state == 0:
+            matches[:] = completion_candidates(readline.get_line_buffer(), prefix)
+        return matches[state] if state < len(matches) else None
+
+    readline.set_completer(complete)
+    readline.set_completer_delims(" \t")
+    readline.parse_and_bind("tab: complete")
 
 
 def main():

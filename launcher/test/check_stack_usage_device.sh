@@ -82,7 +82,7 @@ compile_suite() {
         -fstack-usage -c "$2" -o "$BUILD_DIR/$(basename "$2" .c).o" 2>/dev/null
 }
 
-for f in "$MAIN_DIR"/apps/*/suite_*.c "$TEST_DIR"/suites/suite_*.c; do
+for f in "$MAIN_DIR"/apps/*/tests/suite_*.c "$TEST_DIR"/suites/suite_*.c; do
     [ -e "$f" ] || continue
     if compile_suite -DDEVICE_BUILD "$f"; then
         continue

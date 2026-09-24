@@ -174,7 +174,7 @@ suite PASS/FAIL counts, every failing test's Unity message, and any
 `PERF TARGET` lines - so a result is readable without opening the raw log.
 When the manifest's `worktree` names a checkout with exactly one app whose
 `tools/report_performance.py` registers the suite that ran
-(`SUITE_REGISTER(<suite>)` in that app's own `suite_*.c`), that app's
+(`SUITE_REGISTER(<suite>)` in that app's own `tests/suite_*.c`), that app's
 frame-budget table is appended too; zero or several matches, or a reporter
 that fails, are noted in the report instead of the table - a capture is
 never failed over this. Rebuild a report for any existing capture without

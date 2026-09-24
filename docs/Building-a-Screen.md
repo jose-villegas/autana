@@ -18,8 +18,8 @@ is instructions, not narrative.
      build this screen's command list: `ui_begin_screen()` through
      `mu_end_window()`, taking a `mu_Context*` and a small state struct
      rather than reaching for `app_*.c`'s own statics. This is what makes a
-     screen's OWN drawing host-testable - a host suite beside each app's
-     screens drives the real function against a real microui and asserts
+     screen's OWN drawing host-testable - a host suite in each app's
+     `tests/` drives the real function against a real microui and asserts
      its command-list use fits `MU_COMMANDLIST_SIZE`.
 
 1. **Write the layout module first, and test it before drawing anything.**

@@ -240,50 +240,27 @@ every palette then needs, the colour -> index map and the dither table, are
 
 ## Glow curves
 
-`gfx_glow_curve()` draws a curve as light: every pixel within a radius is
-coloured by its **true distance** to the curve. The curve is a height per
-column (Q4) of a view frame turned a number of quarter turns into the panel,
-so one `int16_t` array carries a displaced, waving copy of it. The arithmetic
-is `gfx_glow.h`, pure and host-tested; `gfx.c` adds guards, target and dirty
-marking.
+`gfx_glow_curve_posed()` draws a curve as light: every pixel within a radius
+is coloured by its true distance to the curve. The curve is a Q4 height per
+column of a view frame posed in the panel. The arithmetic is in
+`gfx/gfx_glow.h`; `gfx.c` adds guards, the target and dirty marking.
 
-- **Why true distance.** A vertical falloff scaled by the local slope costs a
-  fraction as much and lights a spike above a plateau beside every cliff: it
-  measures to the cliff's tangent line, not to where the cliff ends. Each
-  pixel instead searches the columns beside it, stopping as soon as a column
-  is further across than the best distance found.
+- **True distance.** The distance search checks the neighbouring curve spans
+  so a steep slope lights only pixels near the curve.
 - **No square root per pixel.** The search compares squared distances; the
   ramp index comes from one 256-byte table read at two scales.
-- **A style is a baked ramp** (`gfx_glow_style_set()`, about 2 KiB): 64 steps
-  of distance, once per cell of the 4x4 Bayer matrix. Each phase rounds the
-  same 8-bit colour to RGB565 at a different threshold, which is what turns
-  the 32 levels a glow fades through from bands into a gradient. Changing
-  colour or radius rebuilds the ramp; drawing never blends or reads back.
-- **A stippled halo is the same ramp, baked differently.**
-  `gfx_glow_style_set_stepped()` holds the light to a number of equal levels
-  and lets the phase's threshold decide the remainder, so with one step a
-  pixel past the core is the halo colour or black, and fewer are lit the
-  further out. It is a look, not a saving: a draw does the same work and
-  sends the same pixels either way. The launcher's ridge reads it from
-  `ridge.glow_steps`, none being the smooth halo.
-- **The caller says which columns moved.** Only `[x0, x1)` is redrawn, and
-  dirty boxes are marked per 16 columns, so a local ripple costs a local
-  redraw and a local send. A curve at rest should not be drawn at all.
-- **It wipes its own trail.** Rows within `erase_px` beyond the light's reach
-  are written black, so nothing else has to clear behind a curve that moves
-  less than that per frame.
+- **A style is a baked ramp** (`gfx_glow_style_set()`): 64 steps of distance,
+  once per cell of the 4x4 Bayer matrix. Each phase rounds the same 8-bit
+  colour to RGB565 at a different threshold. Changing colour or radius
+  rebuilds the ramp.
+- **A stippled halo uses the same ramp.** `gfx_glow_style_set_stepped()` holds
+  the light to equal levels and lets each phase decide the remainder. The
+  launcher's ridge reads the step count from `ridge.glow_steps`.
 
-What moves the curve is `util/spring_line.h`: one offset per column, each
-pulled toward rest and toward its neighbours, so a poke travels along the
-curve as a wave and dies away. It is built to go quiet - at rest it
-simulates nothing and `spring_line_apply()` reports no changed columns, so
-the screen costs no draw and no send until touched. `apply` also returns how
-far the curve moved this frame, which is the `erase_px` to draw it with.
-`ui/ui_ridge.c` puts the two together as the launcher's backdrop, under the
-app rows by way of `ui_end_over()`.
+`ui/ui_ridge.c` combines the glow with `util/spring_line.h`, which advances
+one offset per column. When the spring is at rest, the ridge skips the draw.
 
-**At any angle.** `gfx_glow_curve_posed()` draws the same curve turned to a
-*pose*: where the view frame's down points on the panel, a Q14 unit vector,
+The view frame has a *pose*: a Q14 unit vector pointing down on the panel,
 so a gravity reading is a pose with no angle or arctangent in between. A
 turned curve is no longer a height per panel column, so it walks panel rows
 and asks of each pixel where it lies in the view frame - an add per pixel,
@@ -295,10 +272,7 @@ is walked in blocks of `GFX_GLOW_ROW_BLOCK` pixels, and a block is skipped
 when the view positions of its two ends show that no column under it can be
 lit: adds, shifts and compares against the reach of chunks of columns, since
 a 64-bit division is a library call on this chip and one per block cost more
-than the pixels it saved. Counted under QEMU's `--icount`, a level ridge at
-radius 13 draws in 6.9 million instructions a frame in landscape and 7.0 in
-portrait; walking the curve's whole band took 10.8 and 9.2. The landscape pose
-is the quarter-turn renderer pixel for pixel. It keeps, per panel row, the
+than the pixels it saved. It keeps, per panel row, the
 stretch it lit, and blackens that before drawing the row again, so a curve
 that turns needs nothing clearing behind it either.
 

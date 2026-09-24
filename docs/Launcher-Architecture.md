@@ -11,6 +11,7 @@ start at [Building-an-App.md](Building-an-App.md).
 ```
 launcher/
 ├── components/
+│   ├── esp32_s3_touch_amoled_1_8/  Waveshare BSP, LVGL trimmed
 │   ├── microui/        MIT, patched for this chip (see below)
 │   └── small3dlib/     CC0, header-only
 ├── tools/              generators, build/flash wrappers, report scripts
@@ -102,7 +103,6 @@ launcher/
     │   ├── spring_line.h       a row of points on springs (host-tested)
     │   ├── job.{h,c}           run a slice on the other core (host-tested)
     │   ├── frame_cost.{h,c}    where a frame's time goes, by name (host-tested)
-    │   ├── device_state.{h,c}  a snapshot of the board's state, as JSON (host-tested)
     │   ├── screenshot.h        BMP header + base64, pure   (host-tested)
     │   └── build_id.h          which build this is         (host-tested)
     ├── console/        the console listener, dev builds only - one verb per file
@@ -113,6 +113,7 @@ launcher/
     │   ├── console_tune.c         SET, GET, RESET, TUNE - forwards to util/tune
     │   ├── console_freeze.{h,c}   freeze, resume, step - holds the frame loop
     │   ├── console_screenshot.{h,c}  screenshot
+    │   ├── device_state.{h,c}  a snapshot of the board's state, as JSON (host-tested)
     │   ├── console_runsuite.{h,c}    runsuite, CONFIG_LAUNCHER_SELFTEST only
     │   └── console_inject.c, console_inject_parse.h  TOUCH/IMU/TAP/PRESS/DRAG/BUTTON (host-tested)
     └── apps/           one folder per app - see Building-an-App.md
@@ -287,21 +288,17 @@ flowchart TB
 
     class Boot,Gfx,Input,Console,Board,Util hw
 
-    %% linkStyle below recolours these two by index (17, 18); an edge added
-    %% above them shifts both numbers, so add new edges after them.
+    %% The contract edge is index 17; edges above it shift that index.
     Contract -.->|"includes input/input.h"| Input
-    Input <-.-|"device_state reaches up"| Util
 
     linkStyle 17 stroke:#e11,stroke-width:2px
-    linkStyle 18 stroke:#e11,stroke-width:2px
 ```
 
 **A folder may include anything below it, and `app.h`, never above or
 sideways within the same row.** `board/` sits in its own row below
 `util/` - nothing in it includes another first-party folder, so it is
-the tree's lowest layer. The two red arrows are the exceptions: `app.h`
-includes `input/input.h`, and `util/device_state` reaches back up into
-`input/imu.h`, `input/input.h` and `display/display.h` (not drawn).
+the tree's lowest layer. The red arrow marks the exception: `app.h`
+includes `input/input.h`.
 
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. See
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path) for how a draw
@@ -763,11 +760,9 @@ release needs a 60 ms quiet period because INT means "data ready" rather than
 
 ## Why microui, not LVGL
 
-LVGL is present in the build - it is a transitive dependency of the Waveshare
-BSP package, `main/idf_component.yml` pulls that in for the display and touch
-drivers - but nothing here calls into it. `gfx.c` drives the panel directly
-(`esp_lcd_new_panel_sh8601`, not `bsp_display_new()`/`bsp_display_start()`),
-so it never runs, and the linked binary carries zero `lv_*` symbols.
+The Waveshare BSP lives in `components/esp32_s3_touch_amoled_1_8/` with its
+LVGL interface removed. LVGL is not built. `gfx.c` drives the panel directly
+through the panel drivers; the BSP supplies board services and touch setup.
 
 Three constraints, all already documented elsewhere in this project, point
 the same direction once put next to each other:

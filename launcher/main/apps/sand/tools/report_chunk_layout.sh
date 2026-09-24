@@ -52,8 +52,8 @@ OUT_BIN="$BUILD_DIR/chunk_layout"
 "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$SAND_DIR" \
     -I "$LAUNCHER_DIR/test" -I "$LAUNCHER_DIR/test/framework" \
     "$SCRIPT_DIR/chunk_layout.c" \
-    "$SAND_DIR/suite_sand_scenes.c" \
-    "$SAND_DIR/suite_sand_common.c" \
+    "$SAND_DIR/tests/suite_sand_scenes.c" \
+    "$SAND_DIR/tests/suite_sand_common.c" \
     "$LAUNCHER_DIR/test/framework/unity.c" \
     "$LAUNCHER_DIR/test/suites.c" \
     "$MAIN_DIR/util/job.c" \

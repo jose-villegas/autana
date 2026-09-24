@@ -6,7 +6,7 @@ that app's own frame-budget table.
 
 Knows no app by name. A reporter is found by convention:
 `launcher/main/apps/*/tools/report_performance.py`, paired with whichever
-`suite_*.c` in that app's folder registers the suite that ran
+`suite_*.c` in that app's tests/ folder registers the suite that ran
 (`SUITE_REGISTER(<suite>)` - the same name device.py's run-suite passed to
 RUNSUITE). Zero matches, more than one, or a reporter that raises all fall
 back to the generic summary with a stated reason; the capture is the
@@ -251,7 +251,7 @@ def looks_like_perf_capture(text):
 
 def discover_reporters(worktree, suite):
     """Every app under `worktree` whose tools/report_performance.py exists
-    AND whose own suite_*.c registers `suite`. Reads only file names and
+    AND whose own tests/suite_*.c registers `suite`. Reads only file names and
     grep-shaped text, never anything sand- or cube-specific, so a new app
     following the same convention needs no change here."""
     matches = []
@@ -261,7 +261,7 @@ def discover_reporters(worktree, suite):
     register_re = re.compile(r"SUITE_REGISTER\(\s*" + re.escape(suite) + r"\s*\)")
     for reporter_path in sorted(apps_root.glob("*/tools/report_performance.py")):
         app_dir = reporter_path.parents[1]
-        for source in sorted(app_dir.glob("suite_*.c")):
+        for source in sorted((app_dir / "tests").glob("suite_*.c")):
             try:
                 source_text = source.read_text(encoding="utf-8", errors="replace")
             except OSError:

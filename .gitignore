@@ -141,11 +141,10 @@ $RECYCLE.BIN/
 
 ### The .dev tooling checkout
 # A separate repository that has to sit inside this one - see .dev/README.md.
-# CLAUDE.md and AGENTS.md live in it; the two at this root are symlinks to
-# them, so they belong to that repository too. Rooted, so a CLAUDE.md written
-# for a subdirectory would still be tracked.
+# AGENTS.md, the instruction file every agent reads, lives in it; the one at
+# this root is a symlink to it, so it belongs to that repository too. Rooted,
+# so an AGENTS.md written for a subdirectory would still be tracked.
 .dev/
-/CLAUDE.md
 /AGENTS.md
 # .dev's skills, linked in by .dev/scripts/link-dev-into-worktree.sh, and the
 # agent worktrees Claude Code keeps beside them.

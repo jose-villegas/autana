@@ -17,11 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: espressif/esp-idf-ci-action@v1
+      - uses: ./.github/actions/idf-build
         with:
-          esp_idf_version: release-v5.5
-          target: esp32s3
-          path: launcher
+          cache-name: dev
           command: bash tools/build_flash.sh --dev --build-only
 
   # An instrument rather than a gate (see sdkconfig.defaults.diag_perf), so
@@ -33,11 +31,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: espressif/esp-idf-ci-action@v1
+      - uses: ./.github/actions/idf-build
         with:
-          esp_idf_version: release-v5.5
-          target: esp32s3
-          path: launcher
+          cache-name: diag-perf
           command: bash tools/build_flash.sh --diag --perf-scope --build-only
 
   build-diagnostics:
@@ -48,11 +44,9 @@ jobs:
         with:
           submodules: true
 
-      - uses: espressif/esp-idf-ci-action@v1
+      - uses: ./.github/actions/idf-build
         with:
-          esp_idf_version: release-v5.5
-          target: esp32s3
-          path: launcher
+          cache-name: diag
           command: >-
             bash tools/build_flash.sh --diag --build-only
             && python "$IDF_PATH/tools/idf_tools.py" install esp-clang

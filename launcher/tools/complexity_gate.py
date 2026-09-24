@@ -37,6 +37,7 @@ import os
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -257,11 +258,10 @@ def run_tests_print(flag):
 
 
 def is_vendored(path_str):
-    """launcher/components/ (microui, small3dlib), managed_components/
-    (lvgl, pulled in only as a BSP dependency, never called - see
-    CLAUDE.md), and the vendored Unity framework under test/framework/ -
-    third-party code, out of scope for a ratchet on THIS project's own
-    functions."""
+    """launcher/components/ (microui, small3dlib, the board support package),
+    managed_components/ (registry drivers), and the vendored Unity framework
+    under test/framework/ - third-party code, out of scope for a ratchet on
+    THIS project's own functions."""
     parts = Path(path_str).parts
     if any(p in VENDORED_DIR_NAMES for p in parts):
         return True
@@ -435,8 +435,7 @@ def scan_vendored(clang_tidy, db_path, sources):
                 sys.exit(f"FAIL: {ours_rel} has modified functions "
                          f"{sorted(modified)} but no measured file includes it.")
             continue
-        cmd = [clang_tidy, "-p", str(db_path.parent), "--config-file",
-               str(CLANG_TIDY_CONFIG), "--quiet"]
+        cmd = clang_tidy_cmd(clang_tidy, db_path)
         if header_filter:
             cmd.append(f"--header-filter={header_filter}")
         proc = subprocess.run(cmd + units, capture_output=True, text=True)
@@ -674,12 +673,36 @@ def find_parse_errors(stdout):
     return errors
 
 
+def clang_tidy_cmd(clang_tidy, db_path):
+    """ANALYSIS_SCAN stubs the macros that expand into data tables, which
+    no function score can depend on (IgnoreMacros); unstubbed, one palette
+    file alone held clang-tidy for over a minute."""
+    return [clang_tidy, "-p", str(db_path.parent), "--config-file",
+            str(CLANG_TIDY_CONFIG), "--quiet", "--extra-arg=-DANALYSIS_SCAN=1"]
+
+
+def run_clang_tidy_parallel(cmd, files):
+    """One clang-tidy per core over an equal share of the files, output
+    joined in a fixed order. Without a header filter every diagnostic
+    belongs to the file it was reported for, so the shares cannot overlap."""
+    jobs = min(os.cpu_count() or 1, len(files))
+    shares = [files[i::jobs] for i in range(jobs)]
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        results = list(pool.map(
+            lambda share: subprocess.run(cmd + share, capture_output=True,
+                                         text=True),
+            shares))
+    return subprocess.CompletedProcess(
+        cmd + files,
+        max(r.returncode for r in results),
+        "".join(r.stdout for r in results),
+        "".join(r.stderr for r in results))
+
+
 def scan(clang_tidy, db_path, files):
     if not files:
         return {}, None
-    cmd = [clang_tidy, "-p", str(db_path.parent), "--config-file",
-           str(CLANG_TIDY_CONFIG), "--quiet", *files]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = run_clang_tidy_parallel(clang_tidy_cmd(clang_tidy, db_path), files)
     scores = {}
     for line in result.stdout.splitlines():
         m = DIAG_RE.match(line)

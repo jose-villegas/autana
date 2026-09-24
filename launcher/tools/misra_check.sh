@@ -33,11 +33,10 @@
 #
 # NEVER pass a bare "*". --file-filter controls what cppcheck actually
 # ANALYZES, not just what gets reported -- "*" matches every translation
-# unit in compile_commands.json, and on this repo that's ~1800 of them,
-# ~1785 vendored (788 alone are LVGL) and none of them main/ code worth a
-# finding. That ran cppcheck's MISRA addon over the whole ESP-IDF SDK and
-# LVGL for nothing, cost over 12GB of RAM, and had to be killed by hand
-# after running for a long time with no end in sight. "*/main/*" scopes
+# unit in compile_commands.json, well over a thousand on this repo and
+# nearly all of them vendored ESP-IDF code, none of it main/ code worth a
+# finding. That runs cppcheck's MISRA addon over the whole SDK for nothing,
+# past 12GB of RAM, with no end in sight. "*/main/*" scopes
 # analysis to the ~28 real translation units under main/ instead -- use
 # that for a whole-project scan, not "*". The filter is checked for shape
 # and then the matches are counted, so a filter that reaches that far is
@@ -60,13 +59,13 @@ MAX_UNITS="${MISRA_MAX_UNITS:-60}"
 # check that one configuration and skip the others in silence, so #ifdef'd
 # code goes unanalysed - measured on a toy case, a divide-by-zero inside an
 # #ifdef is reported without -D and missed with it. --force restores the
-# other configurations, and the -D still pins MISRA_SCAN, so the un-stubbed
+# other configurations, and the -D still pins ANALYSIS_SCAN, so the un-stubbed
 # variant of a stubbed file is never the one analysed.
 #
 # It costs time for coverage that is mostly already there: this project's
 # #ifdefs are pinned by the compile database, so on the sand app --force
 # takes 90s instead of 20s and today recovers nothing first-party (one extra
-# syntax error, in a vendored LVGL header). Default on anyway, because what
+# syntax error, in a vendored header). Default on anyway, because what
 # it prevents is silent; MISRA_FORCE=0 when a scan needs to be quick.
 FORCE_FLAG="--force"
 if [ "${MISRA_FORCE:-1}" = "0" ]; then
@@ -189,16 +188,16 @@ fi
 
 # Any file that stubs a macro for the analyser is analysed as stubbed, not as
 # written. Name them, so a finding count is never read as full coverage.
-stubbed="$(grep -rl --include='*.c' --include='*.h' 'MISRA_SCAN' main 2>/dev/null || true)"
+stubbed="$(grep -rl --include='*.c' --include='*.h' 'ANALYSIS_SCAN' main 2>/dev/null || true)"
 if [ -n "$stubbed" ]; then
-    echo "Analysed with source-level stubs (see each MISRA_SCAN block for scope):"
+    echo "Analysed with source-level stubs (see each ANALYSIS_SCAN block for scope):"
     echo "$stubbed" | sed 's|^|  |'
 fi
 set +e
 "$TIMEOUT" --signal=TERM --kill-after=10s "${TIMEOUT_SECONDS}s" cppcheck \
     --project="$BUILD_DIR/compile_commands.json" \
     --file-filter="$FILE_FILTER" \
-    -DMISRA_SCAN=1 \
+    -DANALYSIS_SCAN=1 \
     $FORCE_FLAG \
     -j "$JOBS" \
     --enable=warning,style,performance,portability \

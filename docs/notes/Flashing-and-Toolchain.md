@@ -70,8 +70,8 @@ the cable first, then the PWR button: this board's power is managed by an
 
 ## Toolchain
 
-- **ESP-IDF v5.5+ is required.** The Waveshare BSP declares `idf: ">=5.5"`;
-  v5.4 will not resolve it. Both can coexist — they are keyed by `IDF_PATH`.
+- **ESP-IDF v5.5+ is required.** `launcher/main/idf_component.yml` declares
+  `idf: ">=5.5"`. Several versions can coexist; they are keyed by `IDF_PATH`.
 - **What the build scripts need is a working `export.bat`, not just a working
   `idf.py`.** `launcher/tools/idf.sh` runs ESP-IDF from Git Bash by handing
   the command to `cmd`, because v5.5 refuses to activate under MSYS at all.
@@ -84,9 +84,8 @@ the cable first, then the PWR button: this board's power is managed by an
 - **`IDF_TOOLS_PATH` is the root, not the `tools/` inside it.** Point it one
   level too deep and `idf_tools.py` installs a second copy of every toolchain
   under `tools/tools/`.
-- BSP component: `waveshare/esp32_s3_touch_amoled_1_8` `^2.0.3` (see
-  `launcher/main/idf_component.yml`), plus the two panel drivers it only
-  depends on privately and so must be declared again here directly:
+- BSP component: the vendored `launcher/components/esp32_s3_touch_amoled_1_8/`,
+  plus the panel drivers main declares directly to see their headers:
   `espressif/esp_lcd_co5300` (V2) and `waveshare/esp_lcd_sh8601` (original).
 - `sdkconfig.defaults` worth keeping: `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y` —
   without it the image header says 2 MB and the bootloader warns on every boot.
