@@ -398,16 +398,17 @@ or Control Center - is `system_navigation_t`'s one field.
 
 ```mermaid
 stateDiagram-v2
+    direction LR
     [*] --> Launcher
 
-    Launcher --> Launcher: ui_launcher_frame()<br/>draws the app list
-    Launcher --> Running: tap an entry<br/><i>the app's enter()</i>
-    Launcher --> ControlCenter: swipe in from the logical top
-    ControlCenter --> ControlCenter: ui_control_center_frame()<br/>over the dimmed launcher
-    ControlCenter --> Launcher: swipe in from the logical bottom
+    Running : Running<br/>one pass per frame
+    Launcher : Launcher<br/>ui_launcher_frame()<br/>draws the app list
+    ControlCenter : Control Center<br/>ui_control_center_frame()<br/>over the dimmed launcher
 
-    Running --> Running: one pass
-    Running --> Launcher: home swipe or PWR long-press<br/><i>the app's exit()</i>
+    Launcher --> Running: tap an entry<br/><i>the app's enter()</i>
+    Running --> Launcher: home swipe or<br/>PWR long-press<br/><i>the app's exit()</i>
+    Launcher --> ControlCenter: swipe in from<br/>the logical top
+    ControlCenter --> Launcher: swipe in from<br/>the logical bottom
 ```
 
 What the shell does on each transition, and which of the two ways home an app
