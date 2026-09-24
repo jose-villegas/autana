@@ -1,7 +1,6 @@
 /*
  * Portable suite: gfx_glow.h - a curve drawn as light by true distance.
- * Drives gfx_glow_draw_columns() into a small buffer of its own; gfx.c's
- * wrapper adds only guards and dirty marking.
+ * Drives gfx_glow_draw_posed_rows() into a small buffer of its own.
  */
 
 #include <stdbool.h>
@@ -12,7 +11,6 @@
 #include "unity.h"
 
 #include "gfx/gfx_glow.h"
-#include "ui/ui_transform.h"
 #include "util/trig.h"
 
 #define PANEL_W   96
@@ -23,6 +21,11 @@
 static gfx_color_t* pixels;
 static gfx_glow_style_t* style;
 static int16_t heights[PANEL_W];
+static int16_t posed_spans[4][PANEL_W];
+static int16_t lit_lo[PANEL_H];
+static int16_t lit_hi[PANEL_H];
+static int posed_trail;
+static const gfx_glow_map_t* posed_map;
 
 static void
 fixture_begin(void) {
@@ -49,12 +52,31 @@ whole_panel(void) {
     return (gfx_target_t){pixels, 0, PANEL_H, PANEL_W};
 }
 
-static void
-draw(gfx_target_t target, int count, int chunk, int quarter_turns, int erase_px) {
-    for (int x = 0; x < count; x += chunk) {
-        gfx_glow_draw_columns(target, 0, 0, PANEL_W, PANEL_H, PANEL_W, PANEL_H, heights, count, x, x + chunk,
-                              quarter_turns, erase_px, style);
-    }
+static gfx_glow_field_t
+posed_field_count(int count) {
+    gfx_glow_field_t field = {.span_lo = posed_spans[0],
+                              .span_hi = posed_spans[1],
+                              .reach_lo = posed_spans[2],
+                              .reach_hi = posed_spans[3],
+                              .count = count};
+    gfx_glow_field_prepare(&field, heights, style);
+    return field;
+}
+
+static gfx_glow_box_t
+draw_curve(gfx_target_t target, int count, int view_h, gfx_glow_pose_t pose, int clip_x0, int clip_y0, int clip_x1,
+           int clip_y1, int row0, int row1) {
+    const gfx_glow_field_t field = posed_field_count(count);
+    memset(lit_lo, 0, sizeof lit_lo);
+    memset(lit_hi, 0, sizeof lit_hi);
+    return gfx_glow_draw_posed_rows(target, clip_x0, clip_y0, clip_x1, clip_y1, PANEL_W, PANEL_H, &field, NULL, view_h,
+                                    pose, row0, row1, lit_lo, lit_hi, 0, style);
+}
+
+static gfx_glow_box_t
+draw_identity(gfx_target_t target) {
+    return draw_curve(target, PANEL_W, PANEL_H, (gfx_glow_pose_t){0, GFX_GLOW_POSE_ONE}, 0, 0, PANEL_W, PANEL_H, 0,
+                      PANEL_H);
 }
 
 static bool
@@ -73,24 +95,6 @@ static void
 flat_curve(int row) {
     for (int x = 0; x < PANEL_W; x++) {
         heights[x] = (int16_t)(row * GFX_GLOW_ONE + GFX_GLOW_ONE / 2);
-    }
-}
-
-static void
-test_turning_into_the_panel_matches_ui_transform(void) {
-    for (int quarter = 0; quarter < 4; quarter++) {
-        const bool turned = quarter & 1;
-        const int view_w = turned ? PANEL_H : PANEL_W;
-        const int view_h = turned ? PANEL_W : PANEL_H;
-        const ui_transform_t transform = ui_transform_quarter_turn(quarter, PANEL_W, PANEL_H);
-        const int corners[4][2] = {{0, 0}, {view_w - 1, 0}, {0, view_h - 1}, {view_w - 1, view_h - 1}};
-        for (int c = 0; c < 4; c++) {
-            const mu_Rect pixel = ui_transform_rect(transform, (mu_Rect){corners[c][0], corners[c][1], 1, 1});
-            int px, py;
-            gfx_glow_to_panel(quarter, PANEL_W, PANEL_H, corners[c][0], corners[c][1], &px, &py);
-            TEST_ASSERT_EQUAL_INT(pixel.x, px);
-            TEST_ASSERT_EQUAL_INT(pixel.y, py);
-        }
     }
 }
 
@@ -137,7 +141,7 @@ static void
 test_a_flat_curve_lights_its_radius_and_no_further(void) {
     fixture_begin();
     flat_curve(40);
-    draw(whole_panel(), PANEL_W, GFX_GLOW_CHUNK, 0, 0);
+    draw_identity(whole_panel());
     for (int x = 0; x < PANEL_W; x++) {
         TEST_ASSERT_TRUE(lit(x, 40));
         TEST_ASSERT_TRUE(lit(x, 40 - (RADIUS - 2)) && lit(x, 40 + (RADIUS - 2)));
@@ -155,7 +159,7 @@ test_a_cliff_lights_nothing_far_above_the_plateau(void) {
         const int row = x < 40 ? 20 : (x < 48 ? 20 + (x - 40) * 5 : 60);
         heights[x] = (int16_t)(row * GFX_GLOW_ONE);
     }
-    draw(whole_panel(), PANEL_W, GFX_GLOW_CHUNK, 0, 0);
+    draw_identity(whole_panel());
     for (int x = 36; x < 52; x++) {
         for (int y = 0; y < 20 - RADIUS - 1; y++) {
             TEST_ASSERT_FALSE(lit(x, y));
@@ -173,7 +177,7 @@ test_on_a_diagonal_the_radius_is_measured_across_the_line(void) {
     for (int x = 0; x < PANEL_W; x++) {
         heights[x] = (int16_t)((x - 8) * GFX_GLOW_ONE);
     }
-    draw(whole_panel(), PANEL_W, GFX_GLOW_CHUNK, 0, 0);
+    draw_identity(whole_panel());
     /* 10 rows above the line is 7.1 px from it; 13 rows is 9.2 px. */
     TEST_ASSERT_TRUE(lit(48, 40 - 10));
     TEST_ASSERT_FALSE(lit(48, 40 - 13));
@@ -181,32 +185,15 @@ test_on_a_diagonal_the_radius_is_measured_across_the_line(void) {
 }
 
 static void
-test_the_picture_does_not_depend_on_how_columns_are_chunked(void) {
-    fixture_begin();
-    for (int x = 0; x < PANEL_W; x++) {
-        heights[x] = (int16_t)((40 + ((x / 7) % 2 ? 9 : -9)) * GFX_GLOW_ONE);
-    }
-    draw(whole_panel(), PANEL_W, GFX_GLOW_CHUNK, 0, 2);
-    gfx_color_t* whole = malloc(sizeof(gfx_color_t) * PANEL_W * PANEL_H);
-    TEST_ASSERT_NOT_NULL(whole);
-    memcpy(whole, pixels, sizeof(gfx_color_t) * PANEL_W * PANEL_H);
-
-    for (int i = 0; i < PANEL_W * PANEL_H; i++) {
-        pixels[i] = UNTOUCHED;
-    }
-    draw(whole_panel(), PANEL_W, 5, 0, 2);
-    TEST_ASSERT_EQUAL_MEMORY(whole, pixels, sizeof(gfx_color_t) * PANEL_W * PANEL_H);
-    free(whole);
-    fixture_end();
-}
-
-static void
 test_erase_rows_are_blackened_and_the_rest_left_alone(void) {
     fixture_begin();
     flat_curve(40);
-    draw(whole_panel(), PANEL_W, GFX_GLOW_CHUNK, 0, 3);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x000000), pixels[(40 + RADIUS + 2) * PANEL_W + 10]);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x000000), pixels[(40 - RADIUS - 2) * PANEL_W + 10]);
+    draw_identity(whole_panel());
+    flat_curve(43);
+    const gfx_glow_field_t field = posed_field_count(PANEL_W);
+    gfx_glow_draw_posed_rows(whole_panel(), 0, 0, PANEL_W, PANEL_H, PANEL_W, PANEL_H, &field, NULL, PANEL_H,
+                             (gfx_glow_pose_t){0, GFX_GLOW_POSE_ONE}, 0, PANEL_H, lit_lo, lit_hi, 0, style);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x000000), pixels[(40 - RADIUS + 2) * PANEL_W + 10]);
     TEST_ASSERT_EQUAL_HEX16(UNTOUCHED, pixels[(40 + RADIUS + 6) * PANEL_W + 10]);
     TEST_ASSERT_EQUAL_HEX16(UNTOUCHED, pixels[(40 - RADIUS - 6) * PANEL_W + 10]);
     fixture_end();
@@ -216,18 +203,17 @@ static void
 test_the_reported_box_covers_exactly_what_was_written(void) {
     fixture_begin();
     flat_curve(40);
-    const gfx_glow_box_t box = gfx_glow_draw_columns(whole_panel(), 0, 0, PANEL_W, PANEL_H, PANEL_W, PANEL_H, heights,
-                                                     PANEL_W, 32, 48, 0, 0, style);
-    TEST_ASSERT_EQUAL_INT(32, box.x0);
-    TEST_ASSERT_EQUAL_INT(48, box.x1);
+    const gfx_glow_box_t box = draw_identity(whole_panel());
+    TEST_ASSERT_EQUAL_INT(0, box.x0);
+    TEST_ASSERT_EQUAL_INT(PANEL_W, box.x1);
     for (int y = 0; y < PANEL_H; y++) {
         for (int x = 0; x < PANEL_W; x++) {
             const bool inside = x >= box.x0 && x < box.x1 && y >= box.y0 && y < box.y1;
             TEST_ASSERT_TRUE(inside || pixels[y * PANEL_W + x] == UNTOUCHED);
         }
     }
-    TEST_ASSERT_TRUE(pixels[box.y0 * PANEL_W + 32] != UNTOUCHED);
-    TEST_ASSERT_TRUE(pixels[(box.y1 - 1) * PANEL_W + 47] != UNTOUCHED);
+    TEST_ASSERT_TRUE(pixels[40 * PANEL_W + 0] != UNTOUCHED);
+    TEST_ASSERT_TRUE(pixels[40 * PANEL_W + PANEL_W - 1] != UNTOUCHED);
     fixture_end();
 }
 
@@ -237,7 +223,8 @@ test_a_quarter_turn_draws_the_same_curve_turned(void) {
     for (int x = 0; x < PANEL_H; x++) {
         heights[x] = (int16_t)((30 + x / 4) * GFX_GLOW_ONE);
     }
-    draw(whole_panel(), PANEL_H, GFX_GLOW_CHUNK, 1, 0);
+    draw_curve(whole_panel(), PANEL_H, PANEL_W, (gfx_glow_pose_t){-GFX_GLOW_POSE_ONE, 0}, 0, 0, PANEL_W, PANEL_H, 0,
+               PANEL_H);
     for (int view_x = 0; view_x < PANEL_H; view_x += 9) {
         const int on_curve = 30 + view_x / 4;
         TEST_ASSERT_TRUE(lit(PANEL_W - 1 - on_curve, view_x));
@@ -250,11 +237,10 @@ static void
 test_clip_and_a_band_target_bound_the_writes(void) {
     fixture_begin();
     flat_curve(40);
-    gfx_glow_draw_columns(whole_panel(), 10, 38, 20, 42, PANEL_W, PANEL_H, heights, PANEL_W, 0, GFX_GLOW_CHUNK, 0, 0,
-                          style);
+    draw_curve(whole_panel(), PANEL_W, PANEL_H, (gfx_glow_pose_t){0, GFX_GLOW_POSE_ONE}, 10, 38, 20, 42, 0, PANEL_H);
     for (int y = 0; y < PANEL_H; y++) {
         for (int x = 0; x < PANEL_W; x++) {
-            const bool inside = x >= 10 && x < 16 && y >= 38 && y < 42;
+            const bool inside = x >= 10 && x < 20 && y >= 38 && y < 42;
             TEST_ASSERT_EQUAL_INT(inside, pixels[y * PANEL_W + x] != UNTOUCHED);
         }
     }
@@ -264,8 +250,7 @@ test_clip_and_a_band_target_bound_the_writes(void) {
         pixels[i] = UNTOUCHED;
     }
     const gfx_target_t band = {pixels, 36, 8, PANEL_W};
-    gfx_glow_draw_columns(band, 0, 0, PANEL_W, PANEL_H, PANEL_W, PANEL_H, heights, PANEL_W, 0, GFX_GLOW_CHUNK, 0, 0,
-                          style);
+    draw_identity(band);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFFFFFF), pixels[4 * PANEL_W + 5]);
     TEST_ASSERT_EQUAL_HEX16(UNTOUCHED, pixels[8 * PANEL_W + 5]);
     fixture_end();
@@ -274,21 +259,9 @@ test_clip_and_a_band_target_bound_the_writes(void) {
 /* The curve at any angle. The view frame of these tests is the panel turned
  * a quarter: PANEL_H columns, PANEL_W tall. */
 
-static int16_t posed_spans[4][PANEL_H];
-static int16_t lit_lo[PANEL_H];
-static int16_t lit_hi[PANEL_H];
-static int posed_trail;
-static const gfx_glow_map_t* posed_map;
-
 static gfx_glow_field_t
 posed_field(void) {
-    gfx_glow_field_t field = {.span_lo = posed_spans[0],
-                              .span_hi = posed_spans[1],
-                              .reach_lo = posed_spans[2],
-                              .reach_hi = posed_spans[3],
-                              .count = PANEL_H};
-    gfx_glow_field_prepare(&field, heights, style);
-    return field;
+    return posed_field_count(PANEL_H);
 }
 
 static void
@@ -308,37 +281,6 @@ wavy_curve_for_the_turned_view(void) {
     for (int x = 0; x < PANEL_H; x++) {
         heights[x] = (int16_t)((40 + ((x / 9) % 2 ? 11 : -7) + x / 5) * GFX_GLOW_ONE + 5);
     }
-}
-
-static void
-blacken_untouched(gfx_color_t* image) {
-    for (int i = 0; i < PANEL_W * PANEL_H; i++) {
-        if (image[i] == UNTOUCHED) {
-            image[i] = GFX_RGB(0x000000);
-        }
-    }
-}
-
-static void
-test_the_landscape_pose_is_the_quarter_turn_pixel_for_pixel(void) {
-    fixture_begin();
-    wavy_curve_for_the_turned_view();
-    draw(whole_panel(), PANEL_H, GFX_GLOW_CHUNK, 1, 0);
-    gfx_color_t* by_columns = malloc(sizeof(gfx_color_t) * PANEL_W * PANEL_H);
-    TEST_ASSERT_NOT_NULL(by_columns);
-    memcpy(by_columns, pixels, sizeof(gfx_color_t) * PANEL_W * PANEL_H);
-    blacken_untouched(by_columns);
-
-    for (int i = 0; i < PANEL_W * PANEL_H; i++) {
-        pixels[i] = UNTOUCHED;
-    }
-    const gfx_glow_field_t field = posed_field();
-    forget_what_was_lit();
-    draw_posed(&field, -GFX_GLOW_POSE_ONE, 0);
-    blacken_untouched(pixels);
-    TEST_ASSERT_EQUAL_MEMORY(by_columns, pixels, sizeof(gfx_color_t) * PANEL_W * PANEL_H);
-    free(by_columns);
-    fixture_end();
 }
 
 static void
@@ -807,7 +749,6 @@ test_outside_the_maps_rows_there_is_no_light(void) {
 
 void
 suite_gfx_glow(void) {
-    RUN_TEST(test_turning_into_the_panel_matches_ui_transform);
     RUN_TEST(test_ramp_index_runs_from_the_curve_to_the_rim_without_a_square_root);
     RUN_TEST(test_every_phase_fades_from_the_core_colour_to_black);
     RUN_TEST(test_phases_round_one_colour_at_different_thresholds);
@@ -816,12 +757,10 @@ suite_gfx_glow(void) {
     RUN_TEST(test_a_flat_curve_lights_its_radius_and_no_further);
     RUN_TEST(test_a_cliff_lights_nothing_far_above_the_plateau);
     RUN_TEST(test_on_a_diagonal_the_radius_is_measured_across_the_line);
-    RUN_TEST(test_the_picture_does_not_depend_on_how_columns_are_chunked);
     RUN_TEST(test_erase_rows_are_blackened_and_the_rest_left_alone);
     RUN_TEST(test_the_reported_box_covers_exactly_what_was_written);
     RUN_TEST(test_a_quarter_turn_draws_the_same_curve_turned);
     RUN_TEST(test_clip_and_a_band_target_bound_the_writes);
-    RUN_TEST(test_the_landscape_pose_is_the_quarter_turn_pixel_for_pixel);
     RUN_TEST(test_narrow_keeps_exactly_the_steps_inside_the_bounds);
     RUN_TEST(test_turning_leaves_no_trail);
     RUN_TEST(test_a_turned_curve_keeps_its_width);
