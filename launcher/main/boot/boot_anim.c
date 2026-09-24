@@ -259,14 +259,49 @@ draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool da
     }
 }
 
+static int
+floor_ring_steps(S3L_Vec4 rim_a, S3L_Vec4 rim_b, int dissolve_level, const boot_anim_view_t* view) {
+    int steps = BOOT_ANIM_GRID_CIRCLE_STEPS;
+    if (boot_anim_screen_chord_lt(rim_a, rim_b, view, 32)) {
+        steps = 4;
+    } else if (boot_anim_screen_chord_lt(rim_a, rim_b, view, 72)) {
+        steps = 6;
+    } else if (boot_anim_screen_chord_lt(rim_a, rim_b, view, 128)) {
+        steps = 8;
+    }
+    if (dissolve_level >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL && steps > 6) {
+        steps = 6;
+    } else if (dissolve_level >= BOOT_ANIM_DISSOLVE_HALF_LEVEL && steps > 8) {
+        steps = 8;
+    }
+    return steps;
+}
+
+static bool
+draw_floor_ring(int ring, uint32_t now_ms, int32_t amp_q12, int dissolve_level, uint8_t alpha,
+                const boot_anim_view_t* view) {
+    const int32_t d = (int32_t)ring * BOOT_ANIM_GRID_STEP_Q12;
+    const int32_t t =
+        boot_anim_wave_height(d, now_ms, amp_q12, BOOT_ANIM_WAVE_WAVELENGTH_Q12, BOOT_ANIM_WAVE_PERIOD_MS);
+
+    int32_t rim_re, rim_im;
+    polar_point(d, 0, &rim_re, &rim_im);
+    const S3L_Vec4 rim_a = boot_anim_to_camera_space(rim_re, rim_im, t, view);
+    polar_point(d, 32768, &rim_re, &rim_im);
+    const S3L_Vec4 rim_b = boot_anim_to_camera_space(rim_re, rim_im, t, view);
+
+    const int steps = floor_ring_steps(rim_a, rim_b, dissolve_level, view);
+    const bool tiny = boot_anim_screen_chord_lt(rim_a, rim_b, view, 16);
+    const gfx_color_t c =
+        lit_whitened(boot_anim_hue_rgb(boot_anim_grid_hue(now_ms, ring)), boot_anim_grid_whiten(now_ms), alpha);
+    draw_grid_circle(d, t, c, steps, view);
+    return tiny;
+}
+
 void
 draw_floor(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
     const int32_t amp_q12 = (int32_t)(((int64_t)BOOT_ANIM_WAVE_HEIGHT_Q12 * boot_anim_wave_envelope(now_ms)) / 255);
-    const int32_t wavelength_q12 = BOOT_ANIM_WAVE_WAVELENGTH_Q12;
-    const uint32_t period_ms = BOOT_ANIM_WAVE_PERIOD_MS;
-
     bool last_ring_tiny = false;
-
     const int dissolve_level = gfx_dither_level(boot_anim_image_reveal(now_ms));
 
     for (int ring = 1; ring <= BOOT_ANIM_GRID_RINGS; ring++) {
@@ -274,40 +309,10 @@ draw_floor(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
         if (alpha == 0) {
             break;
         }
-
         if ((ring & 1) && (last_ring_tiny || dissolve_level >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL)) {
             continue;
         }
-
-        /* BOOT_ANIM_GRID_RINGS's comment explains closer rings */
-        const int32_t d = (int32_t)ring * BOOT_ANIM_GRID_STEP_Q12;
-        const int32_t t = boot_anim_wave_height(d, now_ms, amp_q12, wavelength_q12, period_ms);
-
-        int32_t rim_re, rim_im;
-        polar_point(d, 0, &rim_re, &rim_im);
-        const S3L_Vec4 rim_a = boot_anim_to_camera_space(rim_re, rim_im, t, view);
-        polar_point(d, 32768, &rim_re, &rim_im);
-        const S3L_Vec4 rim_b = boot_anim_to_camera_space(rim_re, rim_im, t, view);
-
-        int steps = BOOT_ANIM_GRID_CIRCLE_STEPS;
-        if (boot_anim_screen_chord_lt(rim_a, rim_b, view, 32)) {
-            steps = 4;
-        } else if (boot_anim_screen_chord_lt(rim_a, rim_b, view, 72)) {
-            steps = 6;
-        } else if (boot_anim_screen_chord_lt(rim_a, rim_b, view, 128)) {
-            steps = 8;
-        }
-        if (dissolve_level >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL && steps > 6) {
-            steps = 6;
-        } else if (dissolve_level >= BOOT_ANIM_DISSOLVE_HALF_LEVEL && steps > 8) {
-            steps = 8;
-        }
-        last_ring_tiny = boot_anim_screen_chord_lt(rim_a, rim_b, view, 16);
-
-        const gfx_color_t c =
-            lit_whitened(boot_anim_hue_rgb(boot_anim_grid_hue(now_ms, ring)), boot_anim_grid_whiten(now_ms), alpha);
-
-        draw_grid_circle(d, t, c, steps, view);
+        last_ring_tiny = draw_floor_ring(ring, now_ms, amp_q12, dissolve_level, alpha, view);
     }
 
     const gfx_color_t spoke_c = lit(COL_AXIS, ink);
@@ -466,6 +471,44 @@ draw_heads(int32_t colour_pen, uint8_t ink, const boot_anim_view_t* view) {
     }
 }
 
+typedef struct {
+    S3L_Vec4 prev_cs;
+    bool prev_front;
+    int prev_sx, prev_sy;
+    bool joined;
+} curve_segment_t;
+
+static void
+draw_curve_segment(curve_segment_t* segment, S3L_Vec4 next_cs, gfx_color_t color, int width,
+                   const boot_anim_view_t* view) {
+    const bool next_front = next_cs.z > view->near_z;
+
+    if (segment->prev_front && next_front) {
+        int nsx, nsy;
+        r3d_camera_to_screen(next_cs, view, &nsx, &nsy);
+        draw_stroke(segment->prev_sx, segment->prev_sy, nsx, nsy, color, width, segment->joined);
+        segment->joined = true;
+        segment->prev_sx = nsx;
+        segment->prev_sy = nsy;
+    } else if (segment->prev_front != next_front) {
+        int ax, ay, bx, by;
+        if (r3d_project_segment_cs(segment->prev_cs, next_cs, view, &ax, &ay, &bx, &by)) {
+            draw_stroke(ax, ay, bx, by, color, width, segment->joined);
+            segment->joined = true;
+            if (next_front) {
+                segment->prev_sx = bx;
+                segment->prev_sy = by;
+            }
+        } else {
+            segment->joined = false;
+        }
+    } else {
+        segment->joined = false;
+    }
+    segment->prev_cs = next_cs;
+    segment->prev_front = next_front;
+}
+
 /* Re-colours within half the curve's length of the head. No second
  * framebuffer available. */
 int32_t
@@ -496,19 +539,10 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
     boot_anim_pt_t s1 = boot_anim_sample(0);
     S3L_Vec4 ta = boot_anim_to_camera_space(s0.re, s0.im, s0.t, view);
     S3L_Vec4 tb = boot_anim_to_camera_space(s1.re, s1.im, s1.t, view);
-    /* Kept in CAMERA space across the loop - see
-     * r3d_project_segment_cs() for explanation. */
-    S3L_Vec4 prev_cs = tb;
-    /* Cached position for perspective division if prev_front indicates point
-     * in front. Straddling segments use r3d_project_segment_cs()'s clip. */
-    bool prev_front = prev_cs.z > view->near_z;
-    int prev_sx = 0, prev_sy = 0;
-    if (prev_front) {
-        r3d_camera_to_screen(prev_cs, view, &prev_sx, &prev_sy);
+    curve_segment_t segment = {.prev_cs = tb, .prev_front = tb.z > view->near_z};
+    if (segment.prev_front) {
+        r3d_camera_to_screen(segment.prev_cs, view, &segment.prev_sx, &segment.prev_sy);
     }
-    /* GFX_LINE_OPEN's `joined` comment: near-plane skips cause gaps; next
-     * segment must skip start pixel. */
-    bool joined = false;
 
     int32_t a0 = 0;
 
@@ -537,37 +571,7 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
             const int32_t t = (limit * step) / steps;
 
             const S3L_Vec4 next_cs = boot_anim_spline_cs(ta, tb, tc, t);
-            const bool next_front = next_cs.z > view->near_z;
-
-            if (prev_front && next_front) {
-                /* Near-plane clip inapplicable, project one point, reuse
-                 * cached one. */
-                int nsx, nsy;
-                r3d_camera_to_screen(next_cs, view, &nsx, &nsy);
-                draw_stroke(prev_sx, prev_sy, nsx, nsy, span_c, s.width, joined);
-                joined = true;
-                prev_sx = nsx;
-                prev_sy = nsy;
-            } else if (prev_front != next_front) {
-                /* Straddles the near plane - the one case the pairwise
-                 * clip exists for. */
-                int ax, ay, bx, by;
-                if (r3d_project_segment_cs(prev_cs, next_cs, view, &ax, &ay, &bx, &by)) {
-                    draw_stroke(ax, ay, bx, by, span_c, s.width, joined);
-                    joined = true;
-                    if (next_front) {
-                        /* Cache valid across crossing. */
-                        prev_sx = bx;
-                        prev_sy = by;
-                    }
-                } else {
-                    joined = false;
-                }
-            } else {
-                joined = false; /* both behind - nothing to draw */
-            }
-            prev_cs = next_cs;
-            prev_front = next_front;
+            draw_curve_segment(&segment, next_cs, span_c, s.width, view);
         }
 
         a0 = a1;

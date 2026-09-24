@@ -204,6 +204,67 @@ typedef struct {
 static cube_triangle_bin_t cube_bin[S3L_CUBE_TRIANGLE_COUNT];
 static int cube_bin_count;
 
+static void
+cube_triangle_bounds(const S3L_Vec4 transformed[6], int* x0, int* x1, int* y0, int* y1) {
+    *x0 = transformed[0].x;
+    *x1 = transformed[0].x;
+    *y0 = transformed[0].y;
+    *y1 = transformed[0].y;
+    for (int i = 1; i < 3; i++) {
+        const S3L_Unit x = transformed[i].x;
+        const S3L_Unit y = transformed[i].y;
+        if (x < *x0) {
+            *x0 = x;
+        }
+        if (x > *x1) {
+            *x1 = x;
+        }
+        if (y < *y0) {
+            *y0 = y;
+        }
+        if (y > *y1) {
+            *y1 = y;
+        }
+    }
+}
+
+/* Descending by sort_value, as S3L_drawScene() sorts (S3L_SORT == 1): farther
+ * triangles land first and nearer ones draw over them. */
+static void
+cube_insert_triangle(cube_triangle_bin_t entry) {
+    int slot = cube_bin_count;
+    while (slot > 0 && cube_bin[slot - 1].sort_value < entry.sort_value) {
+        cube_bin[slot] = cube_bin[slot - 1];
+        slot--;
+    }
+    cube_bin[slot] = entry;
+    cube_bin_count++;
+}
+
+static void
+cube_expand_bbox(const cube_triangle_bin_t* entry, int x0, int x1) {
+    if (!cube_bbox_valid) {
+        cube_bbox_x0 = x0;
+        cube_bbox_y0 = entry->y0;
+        cube_bbox_x1 = x1;
+        cube_bbox_y1 = entry->y1;
+        cube_bbox_valid = true;
+    } else {
+        if (x0 < cube_bbox_x0) {
+            cube_bbox_x0 = x0;
+        }
+        if (entry->y0 < cube_bbox_y0) {
+            cube_bbox_y0 = entry->y0;
+        }
+        if (x1 > cube_bbox_x1) {
+            cube_bbox_x1 = x1;
+        }
+        if (entry->y1 > cube_bbox_y1) {
+            cube_bbox_y1 = entry->y1;
+        }
+    }
+}
+
 /* Transforms and depth-sorts every visible triangle once per frame, so band
  * mode does not re-transform the whole scene once per band. Only correct
  * while S3L_NEAR_CROSS_STRATEGY stays 0: _S3L_projectTriangle() then never
@@ -232,26 +293,8 @@ cube_transform_and_bin(void) {
             continue;
         }
 
-        int x0 = transformed[0].x;
-        int x1 = transformed[0].x;
-        int y0 = transformed[0].y;
-        int y1 = transformed[0].y;
-        for (int i = 1; i < 3; i++) {
-            const S3L_Unit x = transformed[i].x;
-            const S3L_Unit y = transformed[i].y;
-            if (x < x0) {
-                x0 = x;
-            }
-            if (x > x1) {
-                x1 = x;
-            }
-            if (y < y0) {
-                y0 = y;
-            }
-            if (y > y1) {
-                y1 = y;
-            }
-        }
+        int x0, x1, y0, y1;
+        cube_triangle_bounds(transformed, &x0, &x1, &y0, &y1);
         x0 = x0 < 0 ? 0 : x0;
         x1 = (x1 + 1 > GFX_WIDTH) ? GFX_WIDTH : x1 + 1;
 
@@ -264,37 +307,8 @@ cube_transform_and_bin(void) {
         entry.y1 = (y1 + 1 > GFX_HEIGHT) ? GFX_HEIGHT : y1 + 1; /* +1: inclusive of the bottom row */
         entry.sort_value = S3L_zeroClamp(transformed[0].w + transformed[1].w + transformed[2].w) >> 2;
 
-        /* Insertion sort into place - the same shape as S3L_drawScene()'s
-         * own sort, descending by sort_value (S3L_SORT == 1) so farther
-         * triangles land first and nearer ones draw over them. */
-        int slot = cube_bin_count;
-        while (slot > 0 && cube_bin[slot - 1].sort_value < entry.sort_value) {
-            cube_bin[slot] = cube_bin[slot - 1];
-            slot--;
-        }
-        cube_bin[slot] = entry;
-        cube_bin_count++;
-
-        if (!cube_bbox_valid) {
-            cube_bbox_x0 = x0;
-            cube_bbox_y0 = entry.y0;
-            cube_bbox_x1 = x1;
-            cube_bbox_y1 = entry.y1;
-            cube_bbox_valid = true;
-        } else {
-            if (x0 < cube_bbox_x0) {
-                cube_bbox_x0 = x0;
-            }
-            if (entry.y0 < cube_bbox_y0) {
-                cube_bbox_y0 = entry.y0;
-            }
-            if (x1 > cube_bbox_x1) {
-                cube_bbox_x1 = x1;
-            }
-            if (entry.y1 > cube_bbox_y1) {
-                cube_bbox_y1 = entry.y1;
-            }
-        }
+        cube_insert_triangle(entry);
+        cube_expand_bbox(&entry, x0, x1);
     }
 
     /* Marked here, not by each caller: a band the cube left still needs

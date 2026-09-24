@@ -110,6 +110,32 @@ test_wood_burning_state_is_byte_identical_under_lit_from(void) {
  * not the other, this copy is what notices. Same field order the
  * ladder in step_one_reacting_row() (sand_reactions.c) walks. */
 static int
+reaction_ladder_reference_late_stage(const reaction_t* r) {
+    if (r->soaks != 0 || r->dries != 0) {
+        return RSTAGE_SOAK_DRY;
+    }
+    if (r->falls != 0) {
+        return RSTAGE_FALL;
+    }
+    if (r->drinks != 0) {
+        return RSTAGE_DRINK;
+    }
+    if (r->roots != 0) {
+        return RSTAGE_ROOT;
+    }
+    if (r->grows != 0) {
+        return RSTAGE_GROW;
+    }
+    if (r->sprouts != 0) {
+        return RSTAGE_SPROUT;
+    }
+    if (r->buds != 0) {
+        return RSTAGE_BUD;
+    }
+    return RSTAGE_END;
+}
+
+static int
 reaction_ladder_reference_stage(const reaction_t* r, bool is_acid_rain_material) {
     if (r->burns != 0) {
         return RSTAGE_BURN_ALWAYS;
@@ -135,28 +161,7 @@ reaction_ladder_reference_stage(const reaction_t* r, bool is_acid_rain_material)
     if (r->warms != 0) {
         return RSTAGE_WARM;
     }
-    if (r->soaks != 0 || r->dries != 0) {
-        return RSTAGE_SOAK_DRY;
-    }
-    if (r->falls != 0) {
-        return RSTAGE_FALL;
-    }
-    if (r->drinks != 0) {
-        return RSTAGE_DRINK;
-    }
-    if (r->roots != 0) {
-        return RSTAGE_ROOT;
-    }
-    if (r->grows != 0) {
-        return RSTAGE_GROW;
-    }
-    if (r->sprouts != 0) {
-        return RSTAGE_SPROUT;
-    }
-    if (r->buds != 0) {
-        return RSTAGE_BUD;
-    }
-    return RSTAGE_END;
+    return reaction_ladder_reference_late_stage(r);
 }
 
 /* Dispatching EARLIER than the reference is safe - dead field checks get
