@@ -206,6 +206,28 @@ test_water_falling_onto_a_sleeping_dirt_bed_still_wets_it(void) {
     TEST_ASSERT_TRUE_MESSAGE(wetted_at > 0 && wetted_at < 80, why);
 }
 
+static int
+wide_count_dirt_in_row(int y) {
+    int n = 0;
+    for (int x = 0; x < WIDE_W; x++) {
+        if (CELL_MATERIAL(sand_at(&wide, x, y)) == MAT_DIRT) {
+            n++;
+        }
+    }
+    return n;
+}
+
+static bool
+wide_row_has_wet_dirt(int y) {
+    for (int x = 0; x < WIDE_W; x++) {
+        const cell_t c = sand_at(&wide, x, y);
+        if (CELL_MATERIAL(c) == MAT_DIRT && CELL_MOISTURE(c) != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* mark_block_has_moisture() (sand_reactions.c) is what keeps a NEWLY
  * converted dirt cell's block in the soak-only walk once the block goes to
  * sleep and no liquid is left nearby to hold BLOCK_LIQUID_NEAR up for it -
@@ -241,11 +263,7 @@ test_dirt_made_from_soaked_sand_still_dries_out_asleep(void) {
     int converted = 0;
     for (int i = 0; i < 200 && converted == 0; i++) {
         sand_step(&wide, 0, 1000, 0);
-        for (int x = 0; x < WIDE_W; x++) {
-            if (CELL_MATERIAL(sand_at(&wide, x, sand_y)) == MAT_DIRT) {
-                converted++;
-            }
-        }
+        converted += wide_count_dirt_in_row(sand_y);
     }
     TEST_ASSERT_TRUE_MESSAGE(converted > 0, "setup: at least one sand cell must have soaked into dirt, or "
                                             "the rest of this test proves nothing");
@@ -264,14 +282,7 @@ test_dirt_made_from_soaked_sand_still_dries_out_asleep(void) {
     bool still_wet = true;
     for (int i = 0; i < 6000 && still_wet; i++) {
         sand_step(&wide, 0, 1000, 0);
-        still_wet = false;
-        for (int x = 0; x < WIDE_W; x++) {
-            const cell_t c = sand_at(&wide, x, sand_y);
-            if (CELL_MATERIAL(c) == MAT_DIRT && CELL_MOISTURE(c) != 0) {
-                still_wet = true;
-                break;
-            }
-        }
+        still_wet = wide_row_has_wet_dirt(sand_y);
     }
 
     free(wide_cells);
