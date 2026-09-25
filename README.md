@@ -53,7 +53,7 @@ The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a
 ./tools/autana monitor 30
 ```
 
-`flash dev` builds this worktree and flashes it; `monitor 30` reads the serial console for 30 seconds. Board operations use a device lock. To call `autana` by name from future terminals, run `scripts/add-tools-to-path.sh` from your lasting checkout. See the [CLI guide](docs/tools/Autana-CLI.md) for screenshots, tests on the chip, and recovery. The [flashing and toolchain notes](docs/notes/Flashing-and-Toolchain.md) cover board setup problems.
+`flash dev` builds the checkout you run it from and flashes it; `monitor 30` reads the serial console for 30 seconds. Board operations use a device lock. To call `autana` by name from future terminals, run `scripts/add-tools-to-path.sh` from the checkout you keep. See the [CLI guide](docs/tools/Autana-CLI.md) for screenshots, tests on the chip, and recovery. The [flashing and toolchain notes](docs/notes/Flashing-and-Toolchain.md) cover board setup problems.
 
 ## Find your way around
 
