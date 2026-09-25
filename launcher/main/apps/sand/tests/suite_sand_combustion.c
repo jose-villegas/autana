@@ -1647,7 +1647,7 @@ count_loose_snow(const sand_t* g, int gw, int gh) {
 /* AND ONCE AT REST IT STAYS AT REST, whatever is happening thermally under it.
  *
  * The test above makes cell_settled() the gate on crusting, which hands the
- * crust RATE to whatever else clears BLOCK_SETTLED - and waking on heat
+ * crust RATE to whatever else clears BLOCK_SETTLED_* - and waking on heat
  * traffic moved the balance ceiling 9x with COLD_REWARM_PERIOD.
  *
  * STONE UNDERNEATH IS THE POINT - the heat_ramp material snow can chill. On

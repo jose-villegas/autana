@@ -47,7 +47,7 @@ console_screenshot_take_request(void) {
 /* Not stack-local: console_screenshot_dump() runs on the shell task
  * (3584-byte stack), and a 736-byte pixel row, its 1104-byte BMP row and
  * 1472 bytes of base64 would be most of that budget on top of
- * printf/ESP_LOG's own use. Not permanently static either - held only for
+ * printf/ESP_LOGI's own use. Not permanently static either - held only for
  * the duration of a capture, because static here competes for the largest
  * contiguous heap block an app may need at runtime. */
 static gfx_color_t* pixels;
