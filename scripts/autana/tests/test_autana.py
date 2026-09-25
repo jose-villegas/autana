@@ -7,8 +7,12 @@ for device.py's and the wire protocol's own coverage.
 
     python -m unittest discover -s scripts/autana/tests
 """
+import contextlib
+import io
+import socket
 import sys
 import os
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -26,6 +30,9 @@ def tearDownModule():
 AUTANA = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AUTANA))
 import autana  # noqa: E402
+
+sys.path.insert(0, str(AUTANA.parent / "device"))
+import device_lock  # noqa: E402
 
 
 class SendCommandBuildingTests(unittest.TestCase):
@@ -84,6 +91,35 @@ class SendCommandBuildingTests(unittest.TestCase):
             code, replies = autana.send("TUNE")
         self.assertEqual(code, 3)
         self.assertEqual(replies, [])
+
+
+class BoardHolderTests(unittest.TestCase):
+    """board_holder() reads `device.py status` as text, so what the lock
+    store prints is the contract - pinned here from a real store."""
+
+    def status_output(self, holder_pid):
+        with tempfile.TemporaryDirectory() as root:
+            store = device_lock.LockStore(root, is_alive=lambda pid: pid == 1)
+            store.write_json(store.lock_path("COM3"), {
+                "acquired_at": store.now(), "heartbeat_at": store.now(),
+                "expected_build_id": "", "host": socket.gethostname(),
+                "owner": "killed@0pac", "pid": holder_pid, "port": "COM3",
+                "purpose": "autana screenshot", "token": "old",
+            })
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                device_lock.print_status(store.status("COM3"))
+            return out.getvalue()
+
+    def holder_seen(self, status_text):
+        with mock.patch.object(autana.subprocess, "run", return_value=mock.Mock(stdout=status_text)):
+            return autana.board_holder()
+
+    def test_a_lock_whose_holder_died_does_not_make_the_board_busy(self):
+        self.assertEqual(self.holder_seen(self.status_output(holder_pid=99)), "")
+
+    def test_a_lock_whose_holder_lives_still_makes_the_board_busy(self):
+        self.assertTrue(self.holder_seen(self.status_output(holder_pid=1)).startswith("held by killed@0pac"))
 
 
 class DeviceVerbCommandTests(unittest.TestCase):
