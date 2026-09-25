@@ -1,6 +1,6 @@
 # Autana
 
-Autana is firmware for the [Waveshare ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/esp32-s3-touch-amoled-1.8.htm): a touch and motion controlled app shell with a falling-sand sandbox and software-rendering experiments. The shell runs one app at a time on the board's AMOLED screen. Drawing goes directly through the project's framebuffer and panel driver, without LVGL or a GPU.
+Autana is software for the [Waveshare ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/esp32-s3-touch-amoled-1.8.htm): a home screen that launches a falling-sand sandbox and software-rendering experiments. Touch and board motion control the apps. The firmware draws each frame in software and sends its pixels directly to the board's AMOLED screen.
 
 These are frames from the firmware's drawing code, rendered on a computer with fixture input. The sand image shows its **menu**, not the running simulation; moving sand and tilt input need the board.
 
