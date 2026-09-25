@@ -14,10 +14,8 @@
 # wholesale, so any hook you have there stops running - this script says so
 # if it finds one.
 #
-# What this buys: a formatting mistake surfaces in the two seconds before it
-# becomes a commit. What it does not buy: enforcement. `--no-verify` skips it,
-# a fresh clone has it off until somebody runs this, and it never sees a
-# merge or a CI commit. .github/workflows/format.yml is the gate.
+# The hooks report format errors before commits and invalid branch names before
+# pushes. CI enforces both checks on pull requests.
 
 set -eu
 
@@ -33,10 +31,12 @@ case "${1:-}" in
         if [ -n "$current" ]; then
             echo "core.hooksPath = $current"
             if [ "$current" != "$HOOKS_DIR" ]; then
-                echo "  (not this repository's $HOOKS_DIR - the format hook is NOT active)"
+                echo "  (not this repository's $HOOKS_DIR - pre-commit and pre-push hooks are NOT active)"
+            else
+                echo "  pre-commit checks formatting; pre-push checks target branch names."
             fi
         else
-            echo "core.hooksPath is unset; git uses .git/hooks, so the format hook is NOT active."
+            echo "core.hooksPath is unset; git uses .git/hooks, so pre-commit and pre-push hooks are NOT active."
             echo "Run scripts/install-git-hooks.sh to turn it on."
         fi
         exit 0
@@ -96,4 +96,6 @@ done
 echo ""
 echo "The pre-commit hook checks that staged C and header files are formatted"
 echo "(scripts/gates/check-format-staged.sh). It needs clang-format 19 - see"
-echo "docs/C-Style-Guide.md. Undo with: scripts/install-git-hooks.sh --remove"
+echo "docs/C-Style-Guide.md. The pre-push hook checks target branch names with"
+echo "scripts/gates/check-branch-name.sh."
+echo "Undo with: scripts/install-git-hooks.sh --remove"
