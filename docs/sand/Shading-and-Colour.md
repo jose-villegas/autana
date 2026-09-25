@@ -34,8 +34,8 @@ and it stays free. Everything below is about the cells that need more.
 
 `material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth,
 gfx_color_t out[3])` is the one function every non-trivial cell goes
-through, called from `paint_row_n()` in `app_sand.c` - the hottest loop in
-the app, once per cell per dirty row. Its inputs:
+through, called from `paint_row_n()` in `sand_paint_row.h` - the hottest loop
+in the app, once per cell per dirty row. Its inputs:
 
 - **`hash`** - `material_grain_hash(cx, cy)`, a stable per-cell scramble so
   a speckled material shows the same grain in the same place frame to
@@ -211,7 +211,7 @@ reported value, however rarely it fired.
 **Storage is a plain, gravity-agnostic step count, clamped at
 `LOCAL_DEPTH_COUNT_CEILING` (== `MATERIAL_LIQUID_DEPTH_BAND`, 24),
 projected to a cell distance fresh every frame** by the current frame's own
-gravity (`count * local_depth_scale_q8 >> 8`, `app_sand.c`). This is
+gravity (`count * local_depth_scale_q8 >> 8`, `sand_paint_row.h`). This is
 deliberate, not incidental: gravity can rotate between the frame that wrote
 a stored value and the frame that reads it, and a plain count survives
 being re-projected under new gravity, while a value that already has an
@@ -259,7 +259,7 @@ observe, resets both row buffers and the debounce array wholesale.** The
 gate is exact arithmetic, not a tuned deadband: a vertical-dominant walk's
 sideways drift is observable only if `grid_h * |gx| >= |gy|`, and a
 horizontal-dominant walk's cross-row read is observable only if
-`grid_w * |gy| >= |gx|` (`update_local_depth_gravity()`, `app_sand.c`) -
+`grid_w * |gy| >= |gx|` (`update_local_depth_gravity()`, `sand_paint_row.h`) -
 otherwise the flipped flag cannot change any number the walk computes, and
 gating on it would silently reintroduce a tuned dead zone this mechanism
 already removed once. A regime flip itself is never gated - it always
@@ -538,10 +538,14 @@ is future work.
 - **`panel_luminance()`** (`suite_sand_common.c`) is the Rec.601 luminance
   helper already used throughout the suite - reuse it rather than writing a
   second one.
-- **`app_sand.c` is not linked into the host suite** (`run_tests.sh`
-  excludes every `app_*.c`) - anything living only in `paint_row_n()`'s own
-  per-frame accumulators (foam phase, local depth's row-order logic) needs
-  a test-local mirror of the algorithm, not a real link. A mirror that
+- **`paint_row_n()` and `update_local_depth_gravity()` live in
+  `sand_paint_row.h`** (`apps/sand/`), not `app_sand.c` - a header of
+  `static inline` functions the host suite links directly
+  (`suite_sand_paint_row.c`), the real code rather than a mirror of it.
+  `app_sand.c` itself is still excluded from the host build (`run_tests.sh`
+  excludes every `app_*.c`), so anything living only in its own per-frame
+  accumulators (foam phase, wood/leaf wind, the row-flag bookkeeping) still
+  needs a test-local mirror, not a real link. A mirror that
   duplicates an algorithm instead of linking to it needs the same scrutiny
   the code it protects gets: re-verify it against the *current* shape of
   the mechanism after every change to it, not just whatever the mirror
