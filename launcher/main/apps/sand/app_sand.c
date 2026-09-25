@@ -496,8 +496,8 @@ sand_enter(void) {
 }
 
 /* Seeds every row's run-tracking as one full-width span, as if the whole row
- * were occupied. Shared with sand_frame()'s SAND_UI_CLOSE_PALETTE handling,
- * which forces the panel to clear the framebuffer fully on the first frame
+ * were occupied. Shared with close_overlay_screen()'s full redraw (through
+ * mark_sand_fully_dirty()), which forces the panel to clear the framebuffer fully on the first frame
  * after closing, not trusting the sand's narrower real extent. */
 static void
 seed_row_runs_full_width(void) {
@@ -1123,7 +1123,7 @@ cell_shading_depth(const uint8_t* above, const uint8_t* row, const uint8_t* belo
     const int wood_leaf_wind_pos = wood_leaf_wind_sign * ((cx * wood_leaf_wind_ux_q8 + cy * wood_leaf_wind_uy_q8) >> 8);
 
     /* +1: the wave's own fraction can legitimately be 0 at its trough,
-     * which must still select the tint branch in material_colours(),
+     * which must still select the tint branch in wood_colours(),
      * not fall through to the untinted look an untinted depth of 0
      * would. */
     return (row[cx] == MATX(MATX_ROOT))
@@ -1336,7 +1336,8 @@ paint_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy, c
     }
 }
 
-/* wx0/wx1: the columns actually worth repainting - see draw_dirty_rows().
+/* wx0/wx1: the columns actually worth repainting - see draw_dirty_row()'s
+ * row_paint_span() call.
  * Run detection stays full-row, so row_run_x0/x1/n keeps seeing the row's
  * true shape, not just the part just repainted. `index_image` is NULL for
  * the RGB565 path; otherwise GFX_PIXFMT_INDEXED8's own index image, and
@@ -2120,7 +2121,7 @@ sand_update(uint32_t dt_ms, const input_t* input) {
     /* Local-depth wake, cullet cycle, shine, and the wood-leaf swing each
      * have their own clock tick and row array. Driven by dt_ms, not frame
      * count. Glass's wake uses gravity_bearing_q16(). State only - each
-     * result feeds sand_frame()'s draw_dirty_rows() call. */
+     * result feeds draw_sim_frame()'s draw_dirty_rows() call. */
     pending_shine_moved = advance_shine(dt_ms);
     pending_local_depth_woke = advance_local_depth_wake(dt_ms);
     pending_cullet_moved = advance_cullet(dt_ms);
@@ -2192,13 +2193,13 @@ open_overlay_screen(void) {
     }
 }
 
-/* Board turned while the palette or brush screen stayed open: the palette
- * paints UI_NO_BACKGROUND deliberately (frozen sand shows through the
- * grout), and the opaque brush screen still leaves uncovered the corners
- * the grid used to occupy, so either leaves a ghost until repainted.
- * Full-canvas repaint, since the sand itself never rotates;
- * draw_emitter_markers() follows since markers aren't stored in the grid.
- * No wake ticks - the sim is paused, so nothing would change anyway. */
+/* Dims the backdrop when the screen opens, and repaints it when the board
+ * turns while the palette or brush screen is open: the palette paints
+ * UI_NO_BACKGROUND (frozen sand shows through the grout) and the opaque
+ * brush screen leaves uncovered the corners the grid occupied before the
+ * turn, so either leaves a ghost. Full-canvas, since the sand never
+ * rotates; markers are redrawn because the grid does not store them. The
+ * sim is paused, so no wake ticks. */
 static void
 refresh_overlay_backdrop(bool just_opened) {
     const int quarter = display_shell_quarter();

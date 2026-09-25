@@ -188,7 +188,7 @@ test_a_root_column_does_not_spend_the_trees_lift(void) {
 }
 
 /* A root with dirt piled back on top of it must not cut the tree off
- * from the water below it (find_water()'s own soil-walk transparency). */
+ * from the water below it (drink_below_collar()'s soil-walk transparency). */
 #define BURIED_ROOT_TEST_W   8
 #define BURIED_ROOT_TEST_H   16
 /* A DEEP wet reserve (6 rows), not a single row: since PART 2 of the
@@ -235,8 +235,8 @@ test_a_buried_root_does_not_cut_off_the_water_below_it(void) {
                                    "it would cut the tree off from the water below its own root");
 }
 
-/* see find_water()'s own bug SHAPE over the whole run: nothing above the
- * collar, deepens and spreads */
+/* A root system's SHAPE over the whole run: nothing above the collar,
+ * deepens and spreads. */
 #define REACH_TEST_W 16
 #define REACH_TEST_H 12
 
@@ -639,7 +639,7 @@ test_a_root_never_eats_dry_dirt_sand_or_empty_space(void) {
     }
     sand_set(&s, cx, cy - 1, CELL_MAKE(MAT_WOOD, 0)); /* shelter, up */
     sand_set(&s, cx, cy, MATX(MATX_ROOT));
-    /* Three candidates, one per guard in step_one_rooting_cell()'s
+    /* Three candidates, one per guard in gather_root_cands()'s
      * neighbour scan - all beside the root rather than below it, since
      * the row below is now the floor. */
     sand_set(&s, cx - 1, cy, CELL_SOIL(MAT_DIRT, 1, 0)); /* dry, left */
@@ -896,12 +896,10 @@ test_a_thickly_rooted_cell_stops_growing(void) {
                               "instead of a solid block");
 }
 
-/* ROOTS FOLLOW WATER, WITH NO DIRECTION WEIGHTS OF THEIR OWN
- * (step_one_rooting_cell()'s own top comment, sand_plants.c): a bed
- * wet on only one side of a root grows root on that side and never the
- * dry one, purely because the moisture check is the only thing steering
- * it - nothing in the scan itself prefers left over right or down over
- * up. */
+/* ROOTS FOLLOW WATER: a bed wet on only one side of a root grows root on
+ * that side and never the dry one, because gather_root_cands()
+ * (sand_plants.c) offers only moist soil. Its away and down weights rank
+ * moist candidates; they never make a dry cell one. */
 static void
 test_roots_grow_toward_the_wet_side_only(void) {
     fixture();
@@ -1212,8 +1210,8 @@ test_wood_near_leaf_widens_coverage_with_more_slots(void) {
 
 /* `depth` carries the wave's fraction (0-255) plus one for MAT_WOOD here,
  * not a neighbour count (that's root's own use, see
- * test_a_root_darkens_as_more_root_grows_around_it above) - see the
- * MAT_WOOD case in material_colours(). */
+ * test_a_root_darkens_as_more_root_grows_around_it above) - see
+ * wood_colours(). */
 static void
 test_unlit_wood_tints_green_only_beside_a_leaf(void) {
     const cell_t wood = CELL_MAKE(MAT_WOOD, 0);
@@ -1230,8 +1228,7 @@ test_unlit_wood_tints_green_only_beside_a_leaf(void) {
 
 /* The blend is a live LERP8 between the two named anchors, exact at both
  * ends (depth 1 = fraction 0 = WOOD_LEAF_TINT_LO, depth 256 = fraction 255
- * = WOOD_LEAF_TINT_HI) and monotonic in between - see the MAT_WOOD case in
- * material_colours(). */
+ * = WOOD_LEAF_TINT_HI) and monotonic in between - see wood_colours(). */
 static void
 test_wood_leaf_tint_blends_smoothly_between_its_anchors(void) {
     const cell_t wood = CELL_MAKE(MAT_WOOD, 0);
@@ -1680,8 +1677,8 @@ test_a_moving_grain_keeps_the_shade_it_was_poured_with(void) {
 /* Sand that turns to soil arrives WET, and a wet cell carries no tone of
  * its own (material.h's state-split comment) - so the grain's shade has
  * nowhere to go. Wet soil's variation instead comes from the moisture
- * gradient percolation lays down (step_one_soaking_cell()'s soaks_to
- * branch, sand_reactions.c). Whichever end of the dune band a grain came
+ * gradient percolation lays down (percolate_into()'s soaks_to branch,
+ * sand_reactions.c). Whichever end of the dune band a grain came
  * from, it converts to the same moisture - the one unit `soaks` just
  * took - since shade plays no part in the conversion. */
 static void

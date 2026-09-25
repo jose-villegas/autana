@@ -2031,9 +2031,9 @@ restore_overlay_borders(int y, int leaf_n) {
     }
 }
 
-/* Cyan borders, green leaves, or both, sent and waited for immediately so
- * the overlay can be restored before anything else draws; false when there
- * is nothing to overlay (leaf_overlay_on with no dirty leaves included). */
+/* Sent and waited for at once, so the overlay's pixels are restored before
+ * anything else draws. False when there is nothing to overlay: no grid
+ * overlay and no dirty leaves in this strip. */
 static bool
 send_row_with_overlays(int row, int y) {
     /* leaf_rect_scratch never NULL: gfx_set_leaf_overlay() allocates */
@@ -2077,7 +2077,7 @@ send_full_row(int row, int* queued) {
  * coarse strip grid. Measured ~10% fewer pixels per frame on scenes that
  * dirty many short spans, 0% where strips are genuinely full-height.
  * Declines whenever either overlay layer is on: their save/restore
- * machinery assumes send_full_row()'s full STRIP_HEIGHT box. */
+ * machinery assumes send_row_with_overlays()'s full STRIP_HEIGHT box. */
 static bool
 send_partial_band(int y0, int y1, int* queued) {
 #if CONFIG_LAUNCHER_DEVELOPMENT

@@ -1032,9 +1032,9 @@ count_room_wall_stone(void) {
 }
 
 /* Guards react_stage_acid_rain()'s found |= FOUND_DISSOLVER report
- * (sand_reactions.c): a collapsing pocket's survivor
- * is written behind the row walk's own scan position, so nothing but that
- * report keeps may_have_dissolver armed once the pass ends. Skip it and
+ * (sand_reactions.c): a collapsing pocket's survivor is written behind the
+ * row walk's own scan position, so nothing but that report keeps
+ * may_have_dissolver armed once the pass ends. Skip it and
  * the new acid is created inert. A full sealed 4x4 room, not just its
  * neighbours, since sand_set_mobility(0) means it drifts rather than
  * sitting still. Seeded to land the coin flip on Acid. */

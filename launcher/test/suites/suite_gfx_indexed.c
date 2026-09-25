@@ -247,7 +247,7 @@ xorshift32(uint32_t* state) {
 #define IC_STEPS     200
 
 /* One seeded run: `incremental` only updates a cell
- * gfx_indexed_cell_changed() says changed, mirroring paint_row_n()'s own
+ * gfx_indexed_cell_changed() says changed, mirroring paint_indexed_cell()'s own
  * rule; `truth` always takes the fresh value, standing in for a full
  * repaint every step.
  * Every step, both re-expand through the SAME table and must match pixel

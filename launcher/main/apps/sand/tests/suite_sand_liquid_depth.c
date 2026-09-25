@@ -572,7 +572,8 @@ mirror_ray_walk_count(int cx, int cy, bool vertical_dominant, ray_walk_source_t 
     return count;
 }
 
-/* paint_row_n()'s own per-cell count/depth update, mirrored, for one
+/* local_depth_count_at()'s and cell_shading_depth()'s per-cell count/depth
+ * update, mirrored, for one
  * column of the row mirror_ray_walk_row() below is walking. `step` is
  * that row's own horizontal-error outcome for this column (0, or +-1 off
  * a cardinal-neighbour row), already resolved by the caller since it is
@@ -1359,7 +1360,7 @@ test_pouring_onto_a_settled_pool_in_landscape_redirties_a_bounded_column_band(vo
 }
 
 /* Water's interior uses the same plain shade-index shift oil, lava and
- * acid always have (material_colours()'s liquid interior branch) - the old
+ * acid always have (liquid_interior()) - the old
  * fog-blend/wave-table pinned near-maximum haze at any realistic pool
  * depth, and rode over local depth's dominant-axis seam as rigid columns. */
 
@@ -2869,7 +2870,7 @@ test_a_fixed_depth_reads_the_same_at_every_tilt_angle(void) {
         const unsigned scale_q8 = dom_axis ? (256u * (unsigned)len) / dom_axis : 256u;
 
         /* Combine-time projection, clamped to MATERIAL_LIQUID_DEPTH_BAND -
-         * see LOCAL_DEPTH_COUNT_CEILING's own comment (app_sand.c). Gravity is
+         * see cell_shading_depth() (app_sand.c). Gravity is
          * static within one sweep sample here, so there is no
          * stale-accumulator concern to model. */
         const unsigned depth_raw = (count * scale_q8) >> 8;

@@ -204,8 +204,8 @@ try_heat_transform(sand_t* s, int nx, int ny, int w, int h) {
 static inline __attribute__((always_inline)) bool
 try_heat_ramp_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cell_t n, const reaction_t* r) {
     /* Checked before the ramp roll, not after: a badly chilled cell
-     * shatters from a sudden warm-up (mirroring step_one_cold_cell()'s
-     * own shock check) rather than banking heat first. */
+     * shatters from a sudden warm-up (mirroring cold_chills_neighbor()'s
+     * own SAND_SHOCK_HEAT check) rather than banking heat first. */
     REACTION_DOC(shatters_to, "if warmed while badly chilled");
     if (r->shatters_to != 0 && CELL_VARIANT(n) <= SAND_SHOCK_COLD) {
         crack_run_or_defer(s, nx, ny, w, h, (material_id_t)CELL_MATERIAL(n), (material_id_t)r->shatters_to);
@@ -669,7 +669,7 @@ soak_share_with(sand_t* s, uint8_t* row, int x, int y, int nx, int ny, size_t na
     } else if (same_species(n, c) && !cell_is_burning(n)) {
         /* Moisture_of() reads lit fuse as 0. Gap calc overwrites lit
          * byte. */
-        /* SIGNED ON PURPOSE, unlike the three halvings above: a
+        /* SIGNED ON PURPOSE, unlike the `held / 2` above: a
          * WETTER neighbour makes this negative and the lines below
          * depend on it, moving moisture the other way. Casting it
          * unsigned turns a small negative into a huge positive. */
@@ -765,8 +765,8 @@ percolate_into(sand_t* s, uint8_t* row, int x, int y, int w, cell_t c, uint8_t h
         }
         cost = give;
         recv_m = give;
-        /* Arrives WET, so no tone of its own - the soaking
-         * branch above's own comment covers why. */
+        /* Arrives wet, so tone 0: soil_set_moisture() gives it a tone
+         * through soil_dry_out() once it dries. */
         s->cells[nat] = soil_cell(CELL_MAKE(br->soaks_to, 0), 0, (uint8_t)give, &reactions[br->soaks_to]);
         latch_content_flags(s, s->cells[nat]);
     } else {
@@ -1158,10 +1158,10 @@ step_one_cold_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     return true;
 }
 
-/* The carry walk above reaches up to COLD_REACH cells and stays entirely
+/* cold_carry_walk() reaches up to COLD_REACH cells and stays entirely
  * serial rather than split: it decides whether to melt the SOURCE cell
- * before its own contact loop runs, and a deferred carry could only answer
- * that after the loop had already run for nothing. */
+ * before cold_touch_neighbors() runs, and a deferred carry could only answer
+ * that after the contact loop had already run for nothing. */
 static bool
 step_one_cold_cell_or_defer(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     if (react_deferred_of(s) != NULL) {
@@ -2630,8 +2630,8 @@ react_stage_grow(reacting_cell_t* k) {
     k->done = true;
 }
 
-/* Budding. Same gate as growing, and reached by unlit wood, which falls
- * through every stage above it. */
+/* Same gate as growing; reached by unlit wood, which falls through every
+ * stage above it. */
 static inline __attribute__((always_inline)) void
 react_stage_sprout(reacting_cell_t* k) {
     if (k->done) {
@@ -2643,8 +2643,7 @@ react_stage_sprout(reacting_cell_t* k) {
     }
 }
 
-/* Budding, on the same gate. Reached by wood, which falls through every
- * stage above it. */
+/* Same gate again. */
 static inline __attribute__((always_inline)) void
 react_stage_bud(reacting_cell_t* k) {
     if (k->done) {
@@ -3204,13 +3203,9 @@ run_reaction_rows(sand_t* s, bool soak_only, bool may_split, bool hash_serial) {
     return found | react_pass_close();
 }
 
-/* Nothing on the board can react this step.
- *
- * A LIQUID WITH SOMEWHERE TO GO is the missing term. Without it this
- * returned on a board whose water had not landed yet, and soaking and
- * drinking - the only two ways new moisture is made - never ran again.
- * Measured on HEAD: water dropped eight rows onto dry dirt stayed dry for
- * 400 steps. */
+/* Nothing on the board can react this step. A LIQUID WITH SOMEWHERE TO GO
+ * counts: soaking and drinking are the only ways new moisture is made, so
+ * water that has not landed yet keeps the pass running. */
 static bool
 reactions_quiet(const sand_t* s) {
     return !s->may_have_burning && !s->may_have_dissolver && !s->may_have_temperature && !s->may_have_moisture
@@ -3239,9 +3234,8 @@ smothering_density_of_present(int m, uint8_t densest) {
     return densest;
 }
 
-/* Materials -> bits, once, here: this is the first point in a step where
- * the table is known built, and the passes below read the result per
- * cell. */
+/* Materials -> bits, once per step, after build_reaction_tables(); the row
+ * passes read the result per cell. */
 static void
 note_present_materials(const sand_t* s) {
     present_pair_bits = 0;
@@ -3333,7 +3327,6 @@ sand_step_reactions(sand_t* s) {
     if (s->fuse_blast_wait != 0) {
         s->fuse_blast_wait--;
     }
-    /* Dissolving, not fire. Heat, condensation independent. */
     if (reactions_quiet(s)) {
         return;
     }

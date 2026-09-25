@@ -864,10 +864,10 @@ extended_colours(cell_t c, uint8_t v, unsigned hash, unsigned depth, gfx_color_t
 
     if (v == MATX_LEAF) {
         /* depth carries the wave's fraction (0-255) plus one here too - the
-         * same live sweep MAT_WOOD's near-leaf case reads, so a leaf and the
-         * wood beside it catch the same gust together. No stored grain
-         * table: LERP8 needs 0xRRGGBB, not a packed gfx_color_t (see GLASS's
-         * own note on this exact trap). */
+         * same live sweep wood_colours()'s near-leaf case reads, so a leaf
+         * and the wood beside it catch the same gust together. No stored
+         * grain table: LERP8 needs 0xRRGGBB, not a packed gfx_color_t (see
+         * glass_colours()'s own note on this exact trap). */
         const unsigned frac = depth != 0 ? depth - 1u : 0u;
         const uint32_t base = LERP(LEAF_DARK, LEAF_LIGHT, (hash & 7u) * 15 / 7);
         paint_solid(out, GFX_RGB(LERP8(base, WOOD_LEAF_TINT_HI, frac)));
@@ -917,7 +917,8 @@ wood_colours(cell_t c, uint8_t v, unsigned hash, unsigned depth, gfx_color_t out
     }
     if (depth != 0) {
         /* depth carries the wave's fraction (0-255) plus one, from
-         * material_wood_leaf_wave() via paint_row_n() - see
+         * material_wood_leaf_wave() via cell_shading_depth() (app_sand.c) -
+         * see
          * material_wood_near_leaf() in material_palette.h for the gate. A
          * live LERP8, not a stored step, so the blend is smooth rather than
          * snapping between fixed shades. */

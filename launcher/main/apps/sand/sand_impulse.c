@@ -442,8 +442,9 @@ impulse_index_still_tracked(const sand_t* s, int kept, int self_i, uint16_t inde
     return false;
 }
 
-/* Shared between step_impulses()'s KIND_STATIC and KIND_POWDER call sites,
- * so the same three-candidate scan cannot diverge between them. `cand_out`
+/* Shared between static_chunk_stays_airborne() (KIND_STATIC) and
+ * unrolled_entry_stays_tracked() (KIND_POWDER), so the same three-candidate
+ * scan cannot diverge between them. `cand_out`
  * is always filled; KIND_STATIC reads `cand_out[0]` post-false to tell wall
  * from support, KIND_POWDER ignores it. */
 static bool
@@ -555,17 +556,6 @@ impulse_charge_displacement(sand_t* s, impulse_t* entry, size_t new_index, int d
     entry->index = (uint16_t)new_index;
 }
 
-/* `dx`/`dy` is this step's own dithered gravity direction, the same one
- * sand_step()'s main sweep just used - it is what makes a thrown grain arc
- * at all rather than flying dead straight for exactly one cell. Without
- * it, a stale stored index fails the identity check and the entry is
- * dropped after one hop - lateral scatter out of a crater, not an arc. */
-
-/* The sweep runs BEFORE this pass, every step, on every ordinary cell
- * including ones this list still has an eye on: an airborne grain
- * sitting in open air is not special to the sweep, so gravity moves it
- * down one cell before this pass ever gets a turn on it that step. */
-
 /* HEAT-RAMPING MATERIALS FIRST, CHECK POSITION ONLY. VARIANT NIBBLE
  * DRIFTS NEAR HEAT. BLOCKED ENTRIES DON'T MOVE, CAUSING MISMATCH. TRYING
  * MOVEMENT FIRST MAY CAUSE FALSE POSITIVES, ESPECIALLY WITH COVERED LAVA
@@ -645,12 +635,13 @@ reacquire_liquid_by_material(const sand_t* s, impulse_t* entry, uint8_t lost_mat
     return false;
 }
 
-/* Verify before moving: nothing marks a cell "spoken for", so gravity or a
- * reaction may have touched it since. RE-ACQUIRE by checking the three
- * cells step_one_grain() could have moved this grain to, for a
- * byte-for-byte match - same material and variant is the same GRAIN
- * anywhere else in this file. Never adopt a DIFFERENT byte. False means
- * the grain is lost and the entry is dropped. */
+/* Verify before moving: nothing marks a cell "spoken for", and the main
+ * sweep runs before this pass, moving an airborne grain like any other.
+ * RE-ACQUIRE by checking the three cells step_one_grain() could have moved
+ * it to along this step's own dithered gravity (dx, dy), for a
+ * byte-for-byte match - same material and variant is the same GRAIN. Never
+ * adopt a DIFFERENT byte. Without this a thrown grain drops after one hop
+ * instead of arcing. False means the grain is lost. */
 static bool
 impulse_locate(const sand_t* s, impulse_t* entry, int dx, int dy) {
     if (s->cells[entry->index] == entry->cell) {
@@ -925,40 +916,13 @@ flush_deferred_impulses(sand_t* s, const impulse_t* deferred, int deferred_trans
     }
 }
 
-/* The flight pass: every entry in s->impulse_buf either moves one cell
- * along its queued direction, waits another turn, or is finally dropped.
- * Called from sand_step(), immediately before finalize_settling() - see
- * docs/sand/Impulse-Mechanics.md's "Why the flight pass runs LAST": running
- * after every pass that can move a cell keeps an entry's
- * position honest, and turns a plain outward push into a ballistic arc
- * for free, since gravity has already pulled by the time this runs. */
-
-/* BLOCKED MEANS WAIT, NOT STOP. Dropping a blocked entry on the spot would
- * be fine for open air but wrong for anything packed: an explosion into a
- * bed of sand or water starts with every queued cell surrounded by more of
- * the same material, so that rule would drop nearly everything on its
- * first turn. */
-
-/* Only the annulus already touching open space (or the fire-filled core
- * sand_explode() now writes - see SAND_EXPLODE_CORE_DIVISOR in
- * sand_impulse.h - which a denser neighbour can swap straight through)
- * ever went anywhere. */
-
-/* Keeping a blocked entry instead lets it try again next step, once
- * whatever was ahead of it has had a chance to move out of the way -
- * which is what lets the disturbance the core's fire starts unpack
- * outward over several steps instead of being a single frozen ring. */
-
-/* WAITING ONLY HAPPENS AGAINST A TRUE WALL - see can_impulse_enter()'s own
- * comment for why a flying grain shoulders aside any non-static occupant
- * it meets instead of only ever moving into a genuinely empty cell.
- * "Blocked" narrows to KIND_STATIC and the grid edge, but the branch is
- * still needed: wait-then-retry keeps an entry pinned rather than dropped
- * the instant it arrives. */
-
-/* A single `if` with nothing queued, which is every step on a board with
- * nothing in flight - the same shape sand_step_gas()'s own may_have_gas
- * gate gives a board with no gas on it. */
+/* The flight pass: each entry moves one cell, waits, or is dropped. It
+ * runs after every pass that moves cells (docs/sand/Impulse-Mechanics.md's
+ * "Why the flight pass runs LAST"), so positions are honest and gravity
+ * bends a push into an arc. BLOCKED MEANS WAIT, NOT STOP: an explosion into
+ * packed sand or water would otherwise drop nearly every entry on its first
+ * turn; waiting lets it unpack outward over several steps. Only KIND_STATIC
+ * and the grid edge block - see can_impulse_enter(). */
 void
 step_impulses(sand_t* s, int dx, int dy) {
     if (s->impulse_count == 0) {
