@@ -346,15 +346,10 @@ render_lab_frame_band(uint32_t dt_ms, const input_t* input) {
         const int row0 = gfx_band_row0();
         const int height = gfx_band_height();
 
-        /* The scene redraws the whole band; gfx_band_submit() sends only
-         * the extent gfx_band_dirty() returned. */
-        int touched_x0, touched_x1;
-        if (!gfx_band_dirty(&touched_x0, &touched_x1)) {
+        if (!gfx_band_dirty()) {
             gfx_band_skip(); /* the panel already shows what belongs here */
             continue;
         }
-        (void)touched_x0;
-        (void)touched_x1;
 
         gfx_color_t* buf = gfx_band_buffer();
         render_lab_clear_band(buf, height);
