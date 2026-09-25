@@ -18,6 +18,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "gfx/gfx_color.h"
@@ -378,12 +379,19 @@ gfx_glow_narrow(int64_t v0, int64_t step, int64_t lo, int64_t hi, int* a, int* b
 /* One cell to this many pixels each way: a glow is smooth. The line itself
  * is not, so within GFX_GLOW_MAP_EXACT_PX of it a draw still searches, over
  * a window that small. */
-#define GFX_GLOW_MAP_CELL        2
-#define GFX_GLOW_MAP_EXACT_PX    5
+#define GFX_GLOW_MAP_CELL     2
+#define GFX_GLOW_MAP_EXACT_PX 5
 
 /* A cell holds squared distance, which is what the ramp is indexed by and
  * interpolates almost exactly, in quarter pixels squared. */
-#define GFX_GLOW_MAP_Q           2
+#define GFX_GLOW_MAP_Q        2
+
+/* gfx_glow_map_t.far holds the squared reach of the widest glow in 16 bits;
+ * a larger GFX_GLOW_MAX_RADIUS would wrap it and light the far field. */
+_Static_assert(((GFX_GLOW_MAX_RADIUS + GFX_GLOW_MAP_CELL) << GFX_GLOW_MAP_Q)
+                       * ((GFX_GLOW_MAX_RADIUS + GFX_GLOW_MAP_CELL) << GFX_GLOW_MAP_Q)
+                   <= UINT16_MAX,
+               "the widest glow's squared reach must fit gfx_glow_map_t.far");
 
 /* Below this radius the map's fixed cost is more than the search it saves. */
 #define GFX_GLOW_MAP_FROM_RADIUS 10

@@ -193,9 +193,12 @@ if [ -n "$stubbed" ]; then
     echo "Analysed with source-level stubs (see each ANALYSIS_SCAN block for scope):"
     echo "$stubbed" | sed 's|^|  |'
 fi
+# The database by absolute path: given a relative one, Cppcheck 2.13 keeps
+# each unit's path relative to the working directory ("main/..."), and the
+# '*/main/' filter above then matches nothing.
 set +e
 "$TIMEOUT" --signal=TERM --kill-after=10s "${TIMEOUT_SECONDS}s" cppcheck \
-    --project="$BUILD_DIR/compile_commands.json" \
+    --project="$COMPILE_COMMANDS" \
     --file-filter="$FILE_FILTER" \
     -DANALYSIS_SCAN=1 \
     $FORCE_FLAG \
