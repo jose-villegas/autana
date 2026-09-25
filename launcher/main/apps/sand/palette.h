@@ -68,8 +68,8 @@
  * hidden global. */
 int palette_cols(int screen_w);
 
-/* Duplicated from gfx.h's GFX_CHAR_W/GFX_CHAR_H - see this file's own top
- * comment ("THE SCREEN SIZE IS DUPLICATED, NOT SHARED") for why: gfx.h
+/* Duplicated from gfx.h's GFX_CHAR_W/GFX_CHAR_H - see the PALETTE_SCREEN_W/H
+ * paragraph of this file's top comment for why: gfx.h
  * drags in bsp/esp-bsp.h, which this host-testable module cannot
  * include. Both are 16 (an 8x8 font glyph at GFX_GLYPH_SCALE 2) and must
  * stay in step with gfx.h's own definitions by hand. */

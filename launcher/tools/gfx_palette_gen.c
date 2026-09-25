@@ -234,8 +234,9 @@ gfx_palette_gen_build_dither_cell(const gfx_palette_t* palette256, const gfx_pal
         const dither_choice_t ch = dither_choice_of_entry(palette256, i, lin16, lab16, palette16->count);
         if (!bayer2) {
             /* checker: solid when the search found no worthwhile blend,
-             * else alternating - matches gfx_indexed_expand_row_dither_
-             * cell()'s own (gx + cy) & 1 phase order. */
+             * else alternating - matches
+             * gfx_indexed_expand_row_dither_cell()'s own (gx + cy) & 1 phase
+             * order. */
             out_table[i * 2 + 0] = palette16->entries[ch.lo];
             out_table[i * 2 + 1] = palette16->entries[ch.level == 0 ? ch.lo : ch.hi];
             continue;

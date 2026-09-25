@@ -716,8 +716,8 @@ material_set_glass_phase(int phase) {
 }
 
 /* A short gust, not a slow ramp - a symmetric triangle read as one broad
- * pulse. SCREEN_SPAN_MS is a multiple of PERIOD_MS so several bands show
- * at once. `hash` salts each cell's phase - see glass's own `(hash & 0xFF)
+ * pulse. WOOD_LEAF_WAVE_SCREEN_SPAN_MS is a multiple of
+ * WOOD_LEAF_WAVE_PERIOD_MS so several bands show at once. `hash` salts each cell's phase - see glass's own `(hash & 0xFF)
  * + glass_phase`. */
 #define WOOD_LEAF_WAVE_PERIOD_MS        600u
 #define WOOD_LEAF_WAVE_RISE_MS          60u
