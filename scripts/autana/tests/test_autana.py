@@ -261,6 +261,32 @@ class ScreenshotCommandTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             autana.screenshot(["bogus"])
 
+    def test_frames_primes_then_freezes_and_steps_between_captures(self):
+        events = []
+        status = mock.Mock(stdout="")
+
+        def capture(command):
+            events.append("capture " + (command[command.index("--out") + 1] if "--out" in command else ""))
+            return 0
+
+        def sent(line, **kwargs):
+            events.append(line)
+            return 0, []
+
+        with mock.patch.object(autana.subprocess, "run", return_value=status), \
+             mock.patch.object(autana.subprocess, "call", side_effect=capture), \
+             mock.patch.object(autana, "send", side_effect=sent), mock.patch("builtins.print"):
+            code = autana.screenshot(["--frames", "3", "-o", "cap"])
+        self.assertEqual(code, 0)
+        self.assertEqual(events[1:], ["FREEZE", "capture cap-00", "STEP", "capture cap-01", "STEP",
+                                      "capture cap-02", "RESUME"])
+        self.assertTrue(events[0].startswith("capture "), "one capture before freezing primes band mode")
+
+    def test_frames_needs_a_positive_count_and_a_path(self):
+        for args in (["--frames", "0", "-o", "cap"], ["--frames", "x", "-o", "cap"], ["--frames", "3"]):
+            with self.assertRaises(SystemExit):
+                autana.screenshot(list(args))
+
     def test_a_busy_board_is_refused_without_calling_device(self):
         busy = mock.Mock(stdout="held by someone-else@0001 for 3s\n")
         with mock.patch.object(autana.subprocess, "run", return_value=busy), \

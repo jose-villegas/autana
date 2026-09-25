@@ -2688,6 +2688,7 @@ gfx_mode_exit(void) {
             }
 #endif
             free_band_buffers();
+            free_band_snapshot();
         }
         if (alloc_full_framebuffer()) {
             gfx_fb_guard_set_available(true);
@@ -2879,9 +2880,11 @@ gfx_band_submit(void) {
     }
 #endif
 
-    if (band_snapshot_filling) {
+    if (band_snapshot_filling || band_snapshot_complete) {
         memcpy(band_snapshot + (size_t)band_render_row0 * GFX_WIDTH, band_buf[band_current_slot],
                (size_t)band_render_height * GFX_WIDTH * sizeof(gfx_color_t));
+    }
+    if (band_snapshot_filling) {
         band_snapshot_complete = ++band_snapshot_bands == band_ring.band_count;
         band_snapshot_filling = !band_snapshot_complete;
     }
@@ -2948,10 +2951,15 @@ gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]) {
     }
 }
 
+/* Band mode's snapshot stays: once filled, every submitted band keeps it
+ * equal to the panel, so the next capture is ready at once. It goes with
+ * the mode, in gfx_mode_exit(). */
 void
 gfx_readback_end(void) {
     GFX_PRESENT_GUARD();
-    free_band_snapshot();
+    if (!band_is_app_driven()) {
+        free_band_snapshot();
+    }
 }
 
 void
