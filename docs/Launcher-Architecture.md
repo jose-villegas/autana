@@ -165,7 +165,7 @@ panel's own byte-swapped RGB565 - ships in flash the same way.
 
 Five rules, and the fourth is the one that matters:
 
-**The generator lives in `tools/`, the output in the tree it belongs to.**
+**The generator lives in `tools/gen/`, the output in the tree it belongs to.**
 Generated output is checked in, not built. A build-time generator would put
 Python on the critical path of every clean build, on a project whose whole
 toolchain story is already long enough.

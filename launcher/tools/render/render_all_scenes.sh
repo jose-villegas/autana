@@ -7,7 +7,7 @@
 #
 # The standing check that the host render harness still works. Scenes are
 # found, never listed: every *_render_host.sh under launcher/ is one,
-# whether it belongs to the engine (tools/) or to an app (that app's own
+# whether it belongs to the engine (tools/render/scenes/) or to an app (that app's own
 # tools/), so adding a scene is one file and deleting an app takes its
 # scenes with it.
 #
