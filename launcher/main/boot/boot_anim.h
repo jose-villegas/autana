@@ -177,7 +177,7 @@ boot_anim_timeline_sample(uint32_t now_ms) {
 /* RINGS is how far the fade reaches, not the floor size - quarter-unit
  * spacing (not whole) so it reads as a dense ripple rather than
  * individually countable bands. Both generated: RINGS in
- * boot_anim_timeline.h, STEP_Q12 with it. FADE is its own name for what
+ * boot_anim_timeline.h, BOOT_ANIM_GRID_STEP_Q12 with it. FADE is its own name for what
  * boot_anim_grid_alpha() means, but must equal RINGS exactly - short of
  * it is a hard edge, past it divides by a count nothing reaches. */
 #define BOOT_ANIM_GRID_FADE      BOOT_ANIM_GRID_RINGS

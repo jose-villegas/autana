@@ -512,8 +512,8 @@ int
 sand_spawn_cell_share(sand_t* s, int cx, int cy, int radius, cell_t spec, int share_pct) {
     int filled = 0;
     const int r2 = radius * radius;
-    /* Once for the whole brushful - see random_cell(). material_shade_span_
-     * cell(), not the plain id-only macro, because `spec` may be gunpowder
+    /* Once for the whole brushful - see random_cell().
+     * material_shade_span_cell(), not the plain id-only macro, because `spec` may be gunpowder
      * (whose span is 3, read off its own reaction row) rather than a
      * material_id_t CELL_MATERIAL() could safely extract a span for. */
     const int span = material_shade_span_cell(spec);
@@ -1093,8 +1093,8 @@ step_one_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* b
 }
 
 /* The non-inline forms exist alongside the inline versions (see sand_priv.h
- * comment). sand_gas.c calls these, not the _impl versions, to avoid a second
- * inlined copy. */
+ * comment). sand_gas.c calls the _impl versions directly, not these (see its
+ * call site). */
 bool
 try_fall_or_scatter(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int dx,
                     int dy, const int* slide_a, const int* slide_b, cell_t grain, uint8_t density, int scatter) {
