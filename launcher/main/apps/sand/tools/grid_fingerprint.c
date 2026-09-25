@@ -697,7 +697,7 @@ scene_two_core_big(sand_t* s) {
  * Landscape and every diagonal give py != 0, where equalise_gas() takes a
  * different path and the row skip has a branch that runs nowhere else -
  * corrupting which left --check reporting "identical". */
-static const struct {
+typedef struct {
     const char* name;
     scene_fn build;
     uint32_t seed;
@@ -708,7 +708,9 @@ static const struct {
     int h;        /* 0 means FP_H */
     int two_core; /* 1 runs this row's steps through the two-core split -
                     * 0 for every other row, which pins the serial step */
-} SCENES[] = {
+} fp_scene_t;
+
+static const fp_scene_t SCENES[] = {
     {"dry_fall", scene_dry_fall, 7u, 0, 1000, 0, 0, 0, 0},
     {"water_pool", scene_water_pool, 11u, 0, 1000, 0, 0, 0, 0},
     {"lava_quench", scene_lava_quench, 23u, 0, 1000, 0, 0, 0, 0},
@@ -774,6 +776,104 @@ static const struct {
     {"two_core_big", scene_two_core_big, 101u, 0, 1000, 0, 256, 192, 1},
 };
 
+/* What one scene's sand_t points into, owned here and freed together. */
+typedef struct {
+    uint8_t* cells;
+    impulse_t* impulses;
+    uint8_t* blocks;
+    void* lane_scratch;
+} fp_buffers_t;
+
+static void
+free_buffers(fp_buffers_t* b) {
+    free(b->cells);
+    free(b->impulses);
+    free(b->blocks);
+    free(b->lane_scratch);
+}
+
+/* Allocates the scene's buffers and wires them into `s`; false, having said
+ * which, when memory runs out. */
+static bool
+prepare_scene(sand_t* s, const fp_scene_t* sc, int w, int h, fp_buffers_t* b) {
+    const int cell_count = w * h;
+    b->cells = calloc((size_t)cell_count, 1);
+    b->impulses = calloc((size_t)cell_count, sizeof *b->impulses);
+    if (!b->cells || !b->impulses) {
+        fprintf(stderr, "grid_fingerprint: out of memory\n");
+        return false;
+    }
+
+    sand_init(s, b->cells, w, h, sc->seed);
+    /* Impulses on, because the throw paths (explosions, bursts,
+     * splashes) are part of the behaviour being fingerprinted - a
+     * loop is allowed to optimise them, so a change there must show
+     * up here. */
+    sand_enable_impulses(s, b->impulses, cell_count);
+    if (sc->sleeping) {
+        b->blocks = calloc((size_t)s->block_cols * (size_t)s->block_rows, 1);
+        if (b->blocks == NULL) {
+            fprintf(stderr, "grid_fingerprint: out of memory for blocks\n");
+            return false;
+        }
+        sand_enable_sleeping(s, b->blocks);
+    }
+
+    /* EXPLICIT per scene, not merely relying on the default: this
+     * baseline is the serial step's own signature - see
+     * Sand-Simulation.md. Only two_core_big asks for the split. */
+    sand_set_two_core_step(false);
+    if (sc->two_core) {
+        b->lane_scratch = malloc(sand_lane_scratch_bytes(w, h));
+        if (b->lane_scratch == NULL) {
+            fprintf(stderr, "grid_fingerprint: out of memory for lane scratch\n");
+            return false;
+        }
+        sand_enable_lane_scratch(s, b->lane_scratch);
+        sand_set_two_core_step(true);
+    }
+    return true;
+}
+
+static void
+print_row(const char* name, const uint8_t* cells, int cell_count) {
+    int counts[16];
+    histogram(cells, cell_count, counts);
+
+    printf("%-12s %016llx", name, (unsigned long long)fnv1a(cells, (size_t)cell_count));
+    for (int m = 0; m < 16; m++) {
+        printf(" %d", counts[m]);
+    }
+    printf("\n");
+}
+
+/* Builds, steps and prints one scene; false when it could not be run. */
+static bool
+run_scene(const fp_scene_t* sc) {
+    const int w = sc->w != 0 ? sc->w : FP_W;
+    const int h = sc->h != 0 ? sc->h : FP_H;
+    fp_buffers_t b = {0};
+    sand_t s;
+    if (!prepare_scene(&s, sc, w, h, &b)) {
+        free_buffers(&b);
+        return false;
+    }
+
+    sc->build(&s);
+
+    /* Gravity pinned PER SCENE and jostle fixed: this tool answers "did
+     * the same input produce the same output", so every input including
+     * the environment has to be pinned - pinned to one value, not to the
+     * same value everywhere. */
+    for (int step = 0; step < FP_STEPS; step++) {
+        sand_step(&s, sc->gx, sc->gy, 0);
+    }
+
+    print_row(sc->name, b.cells, w * h);
+    free_buffers(&b);
+    return true;
+}
+
 int
 main(void) {
 #ifdef _WIN32
@@ -791,80 +891,9 @@ main(void) {
     printf("# scene hash mat0..mat15\n");
 
     for (size_t i = 0; i < sizeof SCENES / sizeof SCENES[0]; i++) {
-        const int w = SCENES[i].w != 0 ? SCENES[i].w : FP_W;
-        const int h = SCENES[i].h != 0 ? SCENES[i].h : FP_H;
-        const int cell_count = w * h;
-
-        uint8_t* cells = calloc((size_t)cell_count, 1);
-        impulse_t* impulses = calloc((size_t)cell_count, sizeof *impulses);
-        if (!cells || !impulses) {
-            fprintf(stderr, "grid_fingerprint: out of memory\n");
-            free(cells);
-            free(impulses);
+        if (!run_scene(&SCENES[i])) {
             return 1;
         }
-
-        sand_t s;
-        sand_init(&s, cells, w, h, SCENES[i].seed);
-        /* Impulses on, because the throw paths (explosions, bursts,
-         * splashes) are part of the behaviour being fingerprinted - a
-         * loop is allowed to optimise them, so a change there must show
-         * up here. */
-        sand_enable_impulses(&s, impulses, cell_count);
-        uint8_t* blocks = NULL;
-        if (SCENES[i].sleeping) {
-            blocks = calloc((size_t)s.block_cols * (size_t)s.block_rows, 1);
-            if (blocks == NULL) {
-                fprintf(stderr, "grid_fingerprint: out of memory for blocks\n");
-                free(cells);
-                free(impulses);
-                return 1;
-            }
-            sand_enable_sleeping(&s, blocks);
-        }
-
-        /* EXPLICIT per scene, not merely relying on the default: this
-         * baseline is the serial step's own signature - see
-         * Sand-Simulation.md. Only two_core_big asks for the split. */
-        void* lane_scratch = NULL;
-        if (SCENES[i].two_core) {
-            lane_scratch = malloc(sand_lane_scratch_bytes(w, h));
-            if (lane_scratch == NULL) {
-                fprintf(stderr, "grid_fingerprint: out of memory for lane scratch\n");
-                free(cells);
-                free(impulses);
-                free(blocks);
-                return 1;
-            }
-            sand_enable_lane_scratch(&s, lane_scratch);
-            sand_set_two_core_step(true);
-        } else {
-            sand_set_two_core_step(false);
-        }
-
-        SCENES[i].build(&s);
-
-        /* Gravity pinned PER SCENE and jostle fixed: this tool answers "did
-         * the same input produce the same output", so every input including
-         * the environment has to be pinned - pinned to one value, not to the
-         * same value everywhere. */
-        for (int step = 0; step < FP_STEPS; step++) {
-            sand_step(&s, SCENES[i].gx, SCENES[i].gy, 0);
-        }
-
-        int counts[16];
-        histogram(cells, cell_count, counts);
-
-        printf("%-12s %016llx", SCENES[i].name, (unsigned long long)fnv1a(cells, (size_t)cell_count));
-        for (int m = 0; m < 16; m++) {
-            printf(" %d", counts[m]);
-        }
-        printf("\n");
-
-        free(cells);
-        free(impulses);
-        free(blocks);
-        free(lane_scratch);
     }
 
     return 0;
