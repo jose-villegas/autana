@@ -3,7 +3,7 @@
 # Build the launcher's firmware and flash it to the device.
 #
 # Usage:
-#   tools/build_flash.sh [--dev|--diag] [--autorun] [--perf-scope] \
+#   tools/build/build_flash.sh [--dev|--diag] [--autorun] [--perf-scope] \
 #                        [--build-only] [--verbose] [COM_PORT] [IDF_EXPORT]
 #
 #   --verbose   stream and save the build output. The full stream is in the
@@ -41,7 +41,7 @@
 # "Git Bash Here" -> `./build_flash.sh`.
 #
 # All the logic here is POSIX sh. On Windows the ESP-IDF calls go through
-# tools/idf_shim.bat, which exists only to delete MSYSTEM - see tools/idf.sh
+# tools/build/idf_shim.bat, which exists only to delete MSYSTEM - see tools/build/idf.sh
 # for the full story and the measurements behind it. This script used to
 # embed a block of PowerShell that carried its own sequencing and exit-code
 # handling; it does not need to.
@@ -67,7 +67,7 @@
 # Using either flag means putting that image on the board and leaving it.
 # Nothing else here does that: `autana selftest` and the report scripts
 # flash the diagnostics variant too, but to read test output back, and the
-# report scripts restore release afterwards - see tools/device_report.sh.
+# report scripts restore release afterwards - see tools/device/device_report.sh.
 # Neither is "put this image on the device and leave it there", which is
 # what these flags are for.
 
@@ -118,7 +118,7 @@ if [ "$AUTORUN" -eq 1 ] && [ "$VARIANT" != diag ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LAUNCHER_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+LAUNCHER_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 case "$VARIANT" in
     release) BUILD_DIR="build" ;;
@@ -127,8 +127,8 @@ esac
 
 # shellcheck source=./idf.sh
 . "$SCRIPT_DIR/idf.sh"
-# shellcheck source=../../scripts/quiet.sh
-. "$SCRIPT_DIR/../../scripts/quiet.sh"
+# shellcheck source=../../../scripts/quiet.sh
+. "$SCRIPT_DIR/../../../scripts/quiet.sh"
 idf_init "$LAUNCHER_DIR" "$IDF_EXPORT_ARG" "$SCRIPT_DIR" || exit 2
 . "$SCRIPT_DIR/idf_variant.sh"
 

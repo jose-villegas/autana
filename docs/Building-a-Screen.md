@@ -55,9 +55,9 @@ A screen can also be rendered on a host, with no board and no flash cycle,
 through the real drawing code and the real `gfx.c`:
 
 ```sh
-./launcher/tools/render_all_scenes.sh        # every declared scene
-./launcher/tools/post_ui_render_host.sh -o /tmp/post  # one of them
-./launcher/tools/render_diff.sh shot.png /tmp/post/landscape-panel.bmp
+./launcher/tools/render/render_all_scenes.sh        # every declared scene
+./launcher/tools/render/scenes/post_ui_render_host.sh -o /tmp/post  # one of them
+./launcher/tools/render/render_diff.sh shot.png /tmp/post/landscape-panel.bmp
 ```
 
 A screen built through microui is rendered the same way, driven over
@@ -245,7 +245,7 @@ fifth icon.
   builds link every suite, and UI fixtures are exactly the ones that get
   large - a microui context alone is 10,744 bytes, real weight against
   internal heap headroom. Allocate them in `fixture()`, and run
-  `tools/build_diag_check.sh` to build that configuration locally rather
+  `tools/build/build_diag_check.sh` to build that configuration locally rather
   than finding out from CI.
 
 ## Checklist before flashing

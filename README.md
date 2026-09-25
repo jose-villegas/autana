@@ -92,7 +92,7 @@ markdown report instead of a pass/fail line, use the wrappers below - `.sh`
 scripts that write into their own `tools/results/`:
 
 ```bash
-./launcher/tools/report_test_results.sh # every suite, pass/fail
+./launcher/tools/quality/report_test_results.sh # every suite, pass/fail
 ./launcher/main/apps/sand/tools/report_performance.sh  # frame-budget numbers
 ```
 
@@ -131,6 +131,7 @@ this, not a tour. Start wherever your question is:
 | [`docs/sand/`](docs/sand/README.md) | The sand app's own doc set - architecture, materials, reactions, shading, testing. |
 | [`docs/plans/`](docs/plans/README.md) | Designs for work not yet built, or built from a written plan. |
 | [`docs/tools/`](docs/tools/README.md) | How the repository's checks and host-side tools work: the complexity gate, documentation drift, and the render harness. |
+| [`launcher/tools/`](launcher/tools/README.md) | Build wrappers, generators, render scenes, device helpers, and quality checks. |
 
 ## Status
 

@@ -3,7 +3,7 @@
 # Compare two frames of this panel pixel for pixel - a host render against a
 # device capture, or any two of them.
 #
-#   ./launcher/tools/render_diff.sh <a> <b> [options]
+#   ./launcher/tools/render/render_diff.sh <a> <b> [options]
 #
 # Every argument is passed straight to render_diff.py, which is where the
 # options and the orientation and masking rules are documented. This only

@@ -15,10 +15,10 @@
 # rule set has been chosen and the backlog triaged.
 #
 # Usage:
-#   tools/misra_check.sh [build_dir] [file_filter]
+#   tools/quality/misra_check.sh [build_dir] [file_filter]
 #
 #   build_dir     defaults to build.dev - must have compile_commands.json
-#                 (run `tools/build_flash.sh --build-only` first if it doesn't)
+#                 (run `tools/build/build_flash.sh --build-only` first if it doesn't)
 #   file_filter   cppcheck --file-filter glob, defaults to the sand app
 #                 (pass "*/main/*" for the whole project, minus vendored
 #                 dependencies)
@@ -47,7 +47,7 @@
 set -eu
 
 TOOLS_DIR="$(cd "$(dirname "$0")" && pwd)"
-LAUNCHER_DIR="$(cd "$TOOLS_DIR/.." && pwd)"
+LAUNCHER_DIR="$(cd "$TOOLS_DIR/../.." && pwd)"
 
 BUILD_DIR="${1:-build.dev}"
 FILE_FILTER="${2:-*/main/apps/sand/*}"
@@ -110,7 +110,7 @@ fi
 
 COMPILE_COMMANDS="$LAUNCHER_DIR/$BUILD_DIR/compile_commands.json"
 if [ ! -f "$COMPILE_COMMANDS" ]; then
-    echo "No compile_commands.json in $BUILD_DIR/ - run 'tools/build_flash.sh --build-only' first." >&2
+    echo "No compile_commands.json in $BUILD_DIR/ - run 'tools/build/build_flash.sh --build-only' first." >&2
     exit 1
 fi
 
@@ -138,7 +138,7 @@ do
     fi
 done
 
-RESULTS_DIR="$TOOLS_DIR/results"
+RESULTS_DIR="$TOOLS_DIR/../results"
 mkdir -p "$RESULTS_DIR"
 safe_name="$(echo "$FILE_FILTER" | tr -c 'A-Za-z0-9_' '_')"
 REPORT="$RESULTS_DIR/misra_${safe_name}.txt"

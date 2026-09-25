@@ -35,5 +35,5 @@ options-dither-open-portrait|--quarter 0 --options --sixteen --open-dither --fra
 options-dither-open-landscape|--quarter 1 --options --sixteen --open-dither --frames 12|448x368
 "
 
-. "$SCRIPT_DIR/../../../../tools/render_scene.sh"
+. "$SCRIPT_DIR/../../../../tools/render/render_scene.sh"
 render_scene_run "$@"

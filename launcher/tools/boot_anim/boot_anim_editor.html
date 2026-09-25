@@ -5,7 +5,7 @@
 
   RUN IT
 
-      python tools/boot_anim_editor_server.py
+      python tools/boot_anim/boot_anim_editor_server.py
 
   then open http://127.0.0.1:8934/ - this page is served BY that script, it
   is not meant to be opened directly as a file:// page any more (phase 1 of
@@ -37,7 +37,7 @@
   boot_anim_timeline.json with the download, then regenerate the firmware
   header:
 
-      python tools/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json > main/boot/boot_anim_timeline.h
+      python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json > main/boot/boot_anim_timeline.h
 
   "Load" reopens a previously-baked JSON (or any file in this shape) to
   keep editing it. Bake/Load never touch the SCRATCH copy the server
@@ -51,7 +51,7 @@
   The one button here that is not a preview: it writes the current values
   straight to the REAL main/boot/boot_anim_timeline.json and regenerates
   the REAL boot_anim_timeline.h (what Bake + a manual copy + regenerate
-  would produce, done here instead), then runs tools/build_flash_dev.sh -
+  would produce, done here instead), then runs tools/build/build_flash_dev.sh -
   builds the development firmware image and flashes it to the serial port
   typed in next to the button (default COM3). See
   boot_anim_editor_server.py's own top comment for the /build_flash

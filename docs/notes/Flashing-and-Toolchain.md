@@ -115,7 +115,7 @@ Nothing in the tree relies on any of those today.
 - **ESP-IDF v5.5+ is required.** `launcher/main/idf_component.yml` declares
   `idf: ">=5.5"`. Several versions can coexist; they are keyed by `IDF_PATH`.
 - **What the build scripts need is a working `export.bat`, not just a working
-  `idf.py`.** `launcher/tools/idf.sh` runs ESP-IDF from Git Bash by handing
+  `idf.py`.** `launcher/tools/build/idf.sh` runs ESP-IDF from Git Bash by handing
   the command to `cmd`, because v5.5 refuses to activate under MSYS at all.
   Espressif's newer `eim` installer satisfies `idf.py` and not this: it emits
   only a PowerShell activation script, and it clones via libgit2, so
@@ -151,8 +151,8 @@ the right choice for a device whose every frame is rasterising, cellular
 automata and pixel loops - there is no debugger attached to this board to
 trade away for it. A build directory's generated `sdkconfig` is not
 re-derived from `sdkconfig.defaults` just because the defaults changed.
-`tools/idf_variant.sh` deletes one that is older than a fragment it was built
-from, so change the defaults and rebuild through `tools/build_flash.sh`
+`tools/build/idf_variant.sh` deletes one that is older than a fragment it was built
+from, so change the defaults and rebuild through `tools/build/build_flash.sh`
 rather than trusting a directory left over from before.
 
 The frame loop ends in `vTaskDelay(1)` (`main.c`), so frame time is work

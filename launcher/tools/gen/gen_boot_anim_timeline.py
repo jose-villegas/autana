@@ -3,12 +3,12 @@
 constants and its two keyframed 3D transforms (camera, and the space the
 grid+curve live in).
 
-    python tools/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json > main/boot/boot_anim_timeline.h
+    python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json > main/boot/boot_anim_timeline.h
 
 WHERE THIS DATA COMES FROM
 
 main/boot/boot_anim_timeline.json is the source of truth: hand-edited, or
-edited through tools/boot_anim_editor.html's "Bake" button, which downloads a
+edited through tools/boot_anim/boot_anim_editor.html's "Bake" button, which downloads a
 JSON file in exactly this shape to replace it. This script never talks to
 the editor directly - the two are joined only by the file format.
 
@@ -583,12 +583,12 @@ def main():
     w("/*=============================================================================\n")
     w(" * GENERATED FILE - do not edit.\n")
     w(" *\n")
-    w(" *     python tools/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json > main/boot/boot_anim_timeline.h\n")
+    w(" *     python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json > main/boot/boot_anim_timeline.h\n")
     w(" *\n")
     w(" * The boot animation's timing constants and its two keyframed 3D\n")
     w(" * transforms (camera, and the space the grid+curve live in), edited as\n")
     w(" * main/boot/boot_anim_timeline.json - by hand, or via\n")
-    w(" * tools/boot_anim_editor.html's Bake button - and turned into this header by\n")
+    w(" * tools/boot_anim/boot_anim_editor.html's Bake button - and turned into this header by\n")
     w(" * this script. See that script's own top comment for what a keyframe is\n")
     w(" * (plain meters/degrees/multiplier units, converted to small3dlib's fixed\n")
     w(" * point right here) and boot_anim.h's boot_anim_timeline_sample() for how\n")

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bake Cerro Autana's ridge line into a table of heights.
 
-    python tools/gen_ridge_curve.py ../design/boot/ridge.png main/ui/ridge_curve_generated.h [--check]
+    python tools/gen/gen_ridge_curve.py ../design/boot/ridge.png main/ui/ridge_curve_generated.h [--check]
 
 design/boot/ridge.png is the ridge of design/boot/boot.png drawn as a soft
 line on black, in the same 448x368 frame. The line is the authored source
@@ -63,7 +63,7 @@ def generate(image):
         "/*",
         " * GENERATED FILE - do not edit.",
         " *",
-        " *     python tools/gen_ridge_curve.py ../design/boot/ridge.png main/ui/ridge_curve_generated.h",
+        " *     python tools/gen/gen_ridge_curve.py ../design/boot/ridge.png main/ui/ridge_curve_generated.h",
         " *",
         " * Cerro Autana's ridge line, one height per column of the 448x368 frame",
         " * design/boot/boot.png is drawn in, so a curve drawn from this table lies",

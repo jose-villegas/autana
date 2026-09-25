@@ -149,7 +149,7 @@ gfx_indexed_cell_needs_repaint(bool force_full, uint8_t old_idx, uint8_t new_idx
 }
 
 /* Lever 2: which SPATIAL PATTERN a 16-colour reduction paints with - the
- * blend choice itself (tools/gfx_palette_gen.h) is shared by all five;
+ * blend choice itself (tools/gen/gfx_palette_gen.h) is shared by all five;
  * only where lo/hi land differs, solid cells to per-pixel dither. */
 typedef enum {
     GFX_DITHER_NONE,           /* nearest of the 16, no blend - one solid colour per cell */

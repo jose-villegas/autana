@@ -38,9 +38,9 @@ BASELINE="$SCRIPT_DIR/fingerprint_baseline.txt"
 BUILD_DIR="$SCRIPT_DIR/build"
 
 # --- find a compiler -------------------------------------------------------
-# Sourced, not copied - see tools/find_cc.sh's own top comment.
-# shellcheck source=../../../../tools/find_cc.sh
-. "$LAUNCHER_DIR/tools/find_cc.sh"
+# Sourced, not copied - see tools/build/find_cc.sh's own top comment.
+# shellcheck source=../../../../tools/build/find_cc.sh
+. "$LAUNCHER_DIR/tools/build/find_cc.sh"
 
 if ! CC_BIN=$(find_cc); then
     echo "No C compiler found." >&2

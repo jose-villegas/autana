@@ -85,7 +85,7 @@ html_report/
 # launcher/tools/sweeps/README.md. The scripts themselves are tracked.
 launcher/tools/sweeps/results/
 
-# Same idea for tools/report_test_results.sh - generated reports and raw
+# Same idea for tools/quality/report_test_results.sh - generated reports and raw
 # captures, not something to commit.
 launcher/tools/results/
 
@@ -96,7 +96,7 @@ launcher/tools/results/
 launcher/main/apps/*/tools/results/
 
 # Cppcheck writes its parse dumps NEXT TO THE SOURCE, not into its own output
-# directory, so a MISRA run leaves these in main/ - see tools/misra_check.sh.
+# directory, so a MISRA run leaves these in main/ - see tools/quality/misra_check.sh.
 *.dump
 
 # Captured screenshots saved here by hand - scratch output, not

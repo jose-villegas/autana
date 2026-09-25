@@ -6,7 +6,7 @@
 # (main/Kconfig.projbuild), so a diag build carries everything this one
 # does plus the test harness; this file is what gets just the first half.
 #
-# Used by tools/build_flash_dev.sh (or `build_flash.sh --dev`), which builds
+# Used by tools/build/build_flash_dev.sh (or `build_flash.sh --dev`), which builds
 # this into its own build.dev/ so it never overwrites the release build in
 # build/.
 CONFIG_LAUNCHER_DEVELOPMENT=y

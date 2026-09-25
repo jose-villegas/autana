@@ -4,7 +4,7 @@
 hand-typed literals): a VGA-style default (16 EGA + a 216-colour 6x6x6
 "web-safe" cube + 24 grays) and a plain 256-level grayscale ramp.
 
-    python tools/gen_gfx_palette_standard.py > main/gfx/gfx_palette_standard_generated.h
+    python tools/gen/gen_gfx_palette_standard.py > main/gfx/gfx_palette_standard_generated.h
 
 The EGA 16, PICO-8, DawnBringer DB16/DB32 and 16-level grayscale palettes
 are curated, small, and hand-typed directly in gfx_palette_standard.c
@@ -102,7 +102,7 @@ def main():
         "=============\n"
         " * GENERATED FILE - do not edit.\n"
         " *\n"
-        " *     python tools/gen_gfx_palette_standard.py > "
+        " *     python tools/gen/gen_gfx_palette_standard.py > "
         "main/gfx/gfx_palette_standard_generated.h\n"
         " *\n"
         " * Two formulaic 256-entry palettes for gfx_palette_standard.c: a\n"

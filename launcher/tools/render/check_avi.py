@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify a render_video.c AVI: header, index and file size all agree.
 
-    python launcher/tools/check_avi.py <file.avi>...
+    python launcher/tools/render/check_avi.py <file.avi>...
 
 Re-parses the RIFF structure from scratch - walking LIST/chunk headers
 rather than trusting the byte offsets render_video.c itself used - and

@@ -115,7 +115,7 @@ class DeviceAccessTest(unittest.TestCase):
         # see; without the allowlist entry it is correctly flagged.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.write(root, "launcher/tools/build_flash.sh",
+            self.write(root, "launcher/tools/build/build_flash.sh",
                       '#!/bin/sh\nidf -B "$BUILD_DIR" -p "$COM_PORT" flash\n')
             self.commit(root, "launcher")
             openers, _ = check_device_access.check(root)
@@ -145,7 +145,7 @@ class DeviceAccessTest(unittest.TestCase):
         # was narrowed to an actual invocation shape.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.write(root, "launcher/tools/screenshot.py",
+            self.write(root, "launcher/tools/device/screenshot.py",
                       '"""Reads the response back out of the same stream idf_monitor\n'
                       'would otherwise be showing as logs.\n"""\n')
             self.commit(root, "launcher")

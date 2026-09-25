@@ -17,7 +17,7 @@
  *                                comment)
  *     main/boot/boot_anim.c     (host-portable for the same reason)
  *
- * tools/boot_anim_editor_server.py compiles the same four with a scratch
+ * tools/boot_anim/boot_anim_editor_server.py compiles the same four with a scratch
  * directory holding a DRAFT boot_anim_timeline.h placed AHEAD of `main` on
  * the include path, so it shadows the real, committed one without ever
  * touching it - see that script's own top comment.

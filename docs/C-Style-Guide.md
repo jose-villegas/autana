@@ -10,7 +10,7 @@ The comment policy is under "Comments" below, and the layering rule comments
 obey is there with it; the include half of that rule lives in
 [`docs/Launcher-Architecture.md`](Launcher-Architecture.md), since it is
 about how the layers fit together rather than about C. Cppcheck and the MISRA
-addon check semantic rules through `launcher/tools/misra_check.sh`. Their
+addon check semantic rules through `launcher/tools/quality/misra_check.sh`. Their
 findings are not formatting or naming rules and are not part of this guide.
 
 The guide deliberately takes structural ideas from

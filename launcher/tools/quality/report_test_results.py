@@ -5,7 +5,7 @@ assertion message, and the full pass/fail list tucked into a collapsible
 section so the failures are what a reader actually sees first.
 
 Usage:
-    python tools/report_test_results.py <raw_capture.txt> <out.md>
+    python tools/quality/report_test_results.py <raw_capture.txt> <out.md>
 
 Exit 0 = every test passed, 1 = the report records a failing test (a result
 to read, not an error), 2 = the capture has nothing in it to report on.

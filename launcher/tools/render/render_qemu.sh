@@ -3,8 +3,8 @@
 # Capture the screen from the device image running under QEMU, and compare
 # it with the host render of the same screen.
 #
-#   ./launcher/tools/render_qemu.sh [-o <dir>] [--no-build]
-#   ./launcher/tools/render_qemu.sh [-o <dir>] --row <label> [--row <label>]...
+#   ./launcher/tools/render/render_qemu.sh [-o <dir>] [--no-build]
+#   ./launcher/tools/render/render_qemu.sh [-o <dir>] --row <label> [--row <label>]...
 #
 # The second backend of the host render harness: the same scenes, the real
 # Xtensa image instead of a host build. The capture itself is entirely
@@ -29,9 +29,9 @@
 set -eu
 
 TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-LAUNCHER_DIR=$(CDPATH= cd -- "$TOOLS_DIR/.." && pwd)
+LAUNCHER_DIR=$(CDPATH= cd -- "$TOOLS_DIR/../.." && pwd)
 
-OUT_DIR="$TOOLS_DIR/results/render/qemu"
+OUT_DIR="$TOOLS_DIR/../results/render/qemu"
 BUILD_ARGS=""
 ROWS=""
 while [ $# -gt 0 ]; do
@@ -76,7 +76,7 @@ QUARTER=$("$PYTHON" -c "import json,sys; print(json.load(open(sys.argv[1]))['ori
     "${CAPTURE%.png}.json")
 echo "the capture's sidecar says quarter $QUARTER"
 
-sh "$TOOLS_DIR/launcher_home_render_host.sh" -o "$OUT_DIR/host" > /dev/null
+sh "$TOOLS_DIR/scenes/launcher_home_render_host.sh" -o "$OUT_DIR/host" > /dev/null
 BIN="$OUT_DIR/host/launcher_home_render"
 if [ "${OS:-}" = "Windows_NT" ]; then
     BIN="$BIN.exe"

@@ -8,7 +8,7 @@
  *
  * THE TABLE IS TESTED AGAINST THE MATHEMATICS, NOT AGAINST ITSELF
  *
- * tools/gen_zeta_curve.py already refuses to emit a table unless its own
+ * tools/gen/gen_zeta_curve.py already refuses to emit a table unless its own
  * evaluation of zeta checks out, but that proves nothing about the file
  * actually in the repo - which could be stale, hand-edited, or generated with
  * different constants than boot_anim.h now uses.

@@ -2,7 +2,7 @@
 """Generate an icons_<name>.h from a manifest of PNG-atlas cells and/or SVG
 files, each icon declaring its own source.
 
-    python tools/gen_icons.py design/icons/system.png design/icons/system.json \\
+    python tools/gen/gen_icons.py design/icons/system.png design/icons/system.json \\
         > main/gfx/icons_system.h
 
 General-purpose, not system-set-specific: the same generator produces
@@ -629,7 +629,7 @@ def emit(w_stdout, prefix, cmd, source_png, cell_w, cell_h, svg_commits, baked):
     w(" *     %s\n" % cmd)
     w(" *\n")
     body = ("Baked from %s (%dx%d cells) - see gfx/icon.h for icon_t's own "
-            "fields and tools/gen_icons.py for the PNG/SVG decode, "
+            "fields and tools/gen/gen_icons.py for the PNG/SVG decode, "
             "validation and packing this table was produced by." %
             (source_png, cell_w, cell_h))
     for line in textwrap.wrap(body, width=75):
@@ -803,7 +803,7 @@ def main(argv):
         die("baked rows blob is %d bytes, too large for icon_t.offset "
             "(uint16_t)" % offset)
 
-    cmd = ("python tools/gen_icons.py %s %s > %s" %
+    cmd = ("python tools/gen/gen_icons.py %s %s > %s" %
            (png_path, json_path, output_path_for(json_path)))
     emit(sys.stdout.write, prefix, cmd, png_path, cell_w, cell_h,
          sorted(svg_commits), baked)

@@ -48,9 +48,9 @@ BUILD_DIR="${TEST_BUILD_DIR:-$TEST_DIR/build}"
 # --- find a compiler -------------------------------------------------------
 # Sourced rather than defined here, so that report_reactions.sh (main/apps/
 # sand/tools/) can find a compiler the same way without a hand-copied twin -
-# see tools/find_cc.sh's own top comment.
-# shellcheck source=../tools/find_cc.sh
-. "$TEST_DIR/../tools/find_cc.sh"
+# see tools/build/find_cc.sh's own top comment.
+# shellcheck source=../tools/build/find_cc.sh
+. "$TEST_DIR/../tools/build/find_cc.sh"
 
 if ! CC_BIN=$(find_cc); then
     echo "No C compiler found." >&2
@@ -69,9 +69,9 @@ CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -g -O1"
 # field rather than a literal here for the reason device_profile.sh's own
 # header gives: it is a per-chip number, and a second board may join the
 # test family. Selection is $DEVICE_PROFILE, default esp32s3.
-# shellcheck source=../tools/device_profile.sh
-. "$TEST_DIR/../tools/device_profile.sh"
-device_profile_load "" "$TEST_DIR/../tools/device_profiles" || exit 1
+# shellcheck source=../tools/device/device_profile.sh
+. "$TEST_DIR/../tools/device/device_profile.sh"
+device_profile_load "" "$TEST_DIR/../tools/device/device_profiles" || exit 1
 HOST_HEAP_ARENA_BYTES=$(device_profile_require DP_FREE_HEAP_BYTES) || exit 1
 HOST_HEAP_ARENA_PSRAM_BYTES=$(device_profile_require DP_PSRAM_BYTES) || exit 1
 HOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES=$(device_profile_require DP_SPIRAM_ALWAYSINTERNAL_BYTES) || exit 1
@@ -103,7 +103,7 @@ $MAIN_DIR/ui/ui_pointer.c
 $MAIN_DIR/ui/ui_scroll.c
 $MAIN_DIR/ui/ui_widgets.c
 $MAIN_DIR/gfx/gfx_palette_standard.c
-$MAIN_DIR/../tools/gfx_palette_gen.c
+$MAIN_DIR/../tools/gen/gfx_palette_gen.c
 $TEST_DIR/../components/microui/src/microui.c
 "
 
@@ -145,7 +145,7 @@ done
 
 # Exit here, before touching a compiler, for a caller that only wants the
 # exact file list or flag set this script proves compilable - the clang-tidy
-# complexity gate (tools/complexity_gate.py) builds its compile database
+# complexity gate (tools/quality/complexity_gate.py) builds its compile database
 # from these instead of keeping its own copy, so the two cannot drift apart
 # the way cognitive_complexity.py's own function finder did. -Werror is
 # left out of --print-flags: it is this script's own strictness choice, not
@@ -161,7 +161,7 @@ case "${1:-}" in
             -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
             -I "$TEST_DIR/../components/microui/include" \
             -I "$TEST_DIR/../components/small3dlib/include" \
-            -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
+            -I "$TEST_DIR/../tools/gen" -include "$TEST_DIR/timing.h" \
             $HEAP_ARENA_DEFINES
         exit 0
         ;;
@@ -254,7 +254,7 @@ SOURCES_RSP="$BUILD_DIR/sources.rsp"
 # shellcheck disable=SC2086
 "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
     -I "$TEST_DIR/../components/microui/include" \
-    -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
+    -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools/gen" -include "$TEST_DIR/timing.h" \
     $HEAP_ARENA_DEFINES \
     "@$SOURCES_RSP" "$UNITY_OBJ" -o "$OUT" \
     -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm
@@ -322,7 +322,7 @@ for f in $SU_SOURCES; do
     # shellcheck disable=SC2086
     "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
         -I "$TEST_DIR/../components/microui/include" \
-        -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
+        -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools/gen" -include "$TEST_DIR/timing.h" \
         -fstack-usage -c "$f" -o "$SU_DIR/$(printf '%02d' "$n")_$base.o" &
     su_pids="$su_pids $!"
     in_batch=$((in_batch + 1))

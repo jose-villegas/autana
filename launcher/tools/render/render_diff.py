@@ -3,7 +3,7 @@
     render_diff.py <a> <b> [--quarter-a N] [--quarter-b N]
                    [--mask NAME ...] [--out diff.png]
 
-Either side may be a host render (tools/render_scene.sh writes 24bpp BMPs)
+Either side may be a host render (tools/render/render_scene.sh writes 24bpp BMPs)
 or a device capture (autana screenshot writes a PNG plus a .json sidecar).
 
 ORIENTATION IS DECLARED, NEVER GUESSED. A device capture is always the

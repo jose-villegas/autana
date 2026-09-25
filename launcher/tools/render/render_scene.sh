@@ -3,12 +3,12 @@
 # The one build-and-render path behind every host render. Source this and
 # call `render_scene_run "$@"`; everything that differs between scenes is a
 # variable the caller declares first, so a scene script holds declarations
-# and no procedure of its own. The same shape tools/device_report.sh uses,
+# and no procedure of its own. The same shape tools/device/device_report.sh uses,
 # and for the same reason: a second copy of this procedure is the bug.
 #
-# An ENGINE scene declares itself in launcher/tools/scenes/; an APP's scene
+# An ENGINE scene declares itself in launcher/tools/render/scenes/; an APP's scene
 # declares itself in that app's own tools/scenes/, so nothing here ever
-# names an app. Both are found by tools/render_all_scenes.sh.
+# names an app. Both are found by tools/render/render_all_scenes.sh.
 #
 # Declare before sourcing:
 #
@@ -72,7 +72,7 @@ render_scene_run() {
     for _rs_required in scene_name scene_sources scene_renders; do
         eval "_rs_value=\${$_rs_required+set}"
         if [ -z "${_rs_value:-}" ]; then
-            echo "ERROR: $_rs_required was never declared - see tools/render_scene.sh" >&2
+            echo "ERROR: $_rs_required was never declared - see tools/render/render_scene.sh" >&2
             return 1
         fi
     done
@@ -80,16 +80,16 @@ render_scene_run() {
     : "${scene_defines:=}"
     : "${scene_pin:=1}"
 
-    # launcher/, wherever this scene lives: beside tools/render_scene.sh, or
+    # launcher/, wherever this scene lives: beside tools/render/render_scene.sh, or
     # further down in an app's own tools/. Found by walking up to the folder
     # that holds this file rather than by counting levels, so moving a scene
     # between the two is not a second thing to edit.
     _rs_here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
     _rs_launcher="$_rs_here"
-    while [ ! -f "$_rs_launcher/tools/render_scene.sh" ] && [ "$_rs_launcher" != "/" ]; do
+    while [ ! -f "$_rs_launcher/tools/render/render_scene.sh" ] && [ "$_rs_launcher" != "/" ]; do
         _rs_launcher=$(dirname "$_rs_launcher")
     done
-    if [ ! -f "$_rs_launcher/tools/render_scene.sh" ]; then
+    if [ ! -f "$_rs_launcher/tools/render/render_scene.sh" ]; then
         echo "ERROR: no launcher/tools/ above $_rs_here" >&2
         return 1
     fi
@@ -118,8 +118,8 @@ render_scene_run() {
     # hashes with it.
     : "${scene_baseline:=$_rs_here/${scene_name}_render_baseline.txt}"
 
-    # shellcheck source=./find_cc.sh
-    . "$_rs_tools/find_cc.sh"
+    # shellcheck source=../build/find_cc.sh
+    . "$_rs_tools/build/find_cc.sh"
     if ! _rs_cc=$(find_cc); then
         echo "No C compiler found." >&2
         echo "  Windows: winget install BrechtSanders.WinLibs.POSIX.UCRT" >&2
@@ -139,12 +139,12 @@ render_scene_run() {
     # the real header is used for, so a scene reaching a call nothing has
     # stubbed fails at the link rather than compiling into something else.
     _rs_flags="-I $_rs_launcher/main -I $_rs_launcher/components/microui/include"
-    _rs_flags="$_rs_flags -I $_rs_tools -I $_rs_launcher/test -I $_rs_launcher/test/stubs"
+    _rs_flags="$_rs_flags -I $_rs_tools/render -I $_rs_launcher/test -I $_rs_launcher/test/stubs"
     for _rs_inc in $scene_includes; do
         _rs_flags="$_rs_flags -I $_rs_launcher/$_rs_inc"
     done
 
-    _rs_files="$_rs_tools/render_host.c $_rs_tools/render_video.c"
+    _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c"
     for _rs_src in $scene_sources; do
         _rs_files="$_rs_files $_rs_launcher/$_rs_src"
     done
@@ -248,7 +248,7 @@ render_scene_run() {
     # A .png beside each BMP when Python and Pillow happen to be installed.
     # Neither is a dependency, and nothing here installs one.
     if _rs_python=$(command -v python3 || command -v python); then
-        "$_rs_python" "$(render_scene_to_native "$_rs_tools/render_png.py")" \
+        "$_rs_python" "$(render_scene_to_native "$_rs_tools/render/render_png.py")" \
             "$(render_scene_to_native "$scene_out_dir")" || return 1
     fi
 }

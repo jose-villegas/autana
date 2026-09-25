@@ -45,12 +45,12 @@ device_report_run() {
     for _dr_required in report_name report_dir report_timeout report_suite; do
         eval "_dr_value=\${$_dr_required+set}"
         if [ -z "${_dr_value:-}" ]; then
-            echo "ERROR: $_dr_required was never declared - see tools/device_report.sh" >&2
+            echo "ERROR: $_dr_required was never declared - see tools/device/device_report.sh" >&2
             return 1
         fi
     done
     if ! command -v report_generate > /dev/null 2>&1; then
-        echo "ERROR: report_generate() was never declared - see tools/device_report.sh" >&2
+        echo "ERROR: report_generate() was never declared - see tools/device/device_report.sh" >&2
         return 1
     fi
 
@@ -66,17 +66,17 @@ device_report_run() {
     _dr_port="${1:-}"
     _dr_out="${2:-}"
 
-    # launcher/, wherever this report lives: beside tools/build_flash.sh, or
+    # launcher/, wherever this report lives: beside tools/build/build_flash.sh, or
     # four folders down in an app's own tools/. Found by walking up to the
     # folder that holds this file rather than by counting levels, so moving a
     # report script between the two is not a second thing to edit. Not by
     # CMakeLists.txt: main/ and the components each have one of those too.
     _dr_here="$(cd "$(dirname "$0")" && pwd)"
     _dr_launcher="$_dr_here"
-    while [ ! -f "$_dr_launcher/tools/device_report.sh" ] && [ "$_dr_launcher" != "/" ]; do
+    while [ ! -f "$_dr_launcher/tools/device/device_report.sh" ] && [ "$_dr_launcher" != "/" ]; do
         _dr_launcher="$(dirname "$_dr_launcher")"
     done
-    if [ ! -f "$_dr_launcher/tools/device_report.sh" ]; then
+    if [ ! -f "$_dr_launcher/tools/device/device_report.sh" ]; then
         echo "ERROR: no launcher/tools/ above $_dr_here" >&2
         return 1
     fi

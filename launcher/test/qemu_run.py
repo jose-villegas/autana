@@ -19,7 +19,7 @@ SELFTEST_COMPLETE. With either, the image is expected to boot into the shell
 instead: once the console listener is up, each --suite is sent as RUNSUITE
 and waited out to its RUNSUITE_COMPLETE, each --touch is left on the screen
 in turn, and then --screenshot sends SCREENSHOT and writes the frame as a
-PNG (and its state as .json) the way tools/screenshot.py does from a board.
+PNG (and its state as .json) the way tools/device/screenshot.py does from a board.
 
 --do drives that same image as a user would, one ordered step at a time, and
 runs after the --suite and --touch options and before --screenshot:
@@ -59,7 +59,9 @@ import sys
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "tools"))
+                                "..", "tools", "device"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "tools", "build"))
 import device_profile  # noqa: E402  (path must be set up first)
 from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
 
@@ -181,7 +183,7 @@ class Console:
 
 def take_screenshot(console, out_path):
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                    "..", "tools"))
+                                    "..", "tools", "device"))
     import screenshot as wire  # noqa: E402  (the board tool's own protocol)
 
     console.send(wire.TRIGGER.decode().strip())

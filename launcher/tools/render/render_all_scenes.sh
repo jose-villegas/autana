@@ -3,7 +3,7 @@
 # Build and render every declared scene, and fail if any of them stops
 # producing the image it declared.
 #
-#   ./launcher/tools/render_all_scenes.sh [-o <dir>]
+#   ./launcher/tools/render/render_all_scenes.sh [-o <dir>]
 #
 # The standing check that the host render harness still works. Scenes are
 # found, never listed: every *_render_host.sh under launcher/ is one,
@@ -32,7 +32,7 @@
 set -eu
 
 TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-LAUNCHER_DIR=$(CDPATH= cd -- "$TOOLS_DIR/.." && pwd)
+LAUNCHER_DIR=$(CDPATH= cd -- "$TOOLS_DIR/../.." && pwd)
 
 OUT_ROOT=""
 SCENE_ARGS=""
@@ -45,8 +45,8 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# shellcheck source=./find_cc.sh
-. "$TOOLS_DIR/find_cc.sh"
+# shellcheck source=../build/find_cc.sh
+. "$TOOLS_DIR/../build/find_cc.sh"
 if ! find_cc > /dev/null; then
     echo "No C compiler found - skipping the host render scenes." >&2
     echo "  Windows: winget install BrechtSanders.WinLibs.POSIX.UCRT" >&2

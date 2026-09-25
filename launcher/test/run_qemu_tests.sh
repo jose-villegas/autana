@@ -21,7 +21,7 @@
 # Needs qemu-xtensa, which ESP-IDF does not install by default:
 #   python %IDF_PATH%\tools\idf_tools.py install qemu-xtensa
 #
-# Environment: IDF_EXPORT, as in tools/build_flash.sh.
+# Environment: IDF_EXPORT, as in tools/build/build_flash.sh.
 #
 # POSIX sh, same portability reasoning as run_tests.sh.
 
@@ -71,10 +71,10 @@ if [ "$PERF" = 1 ]; then
 fi
 
 if [ "$BUILD" = 1 ]; then
-    # shellcheck source=../tools/idf.sh
-    . "$LAUNCHER_DIR/tools/idf.sh"
-    idf_init "$LAUNCHER_DIR" "${IDF_EXPORT:-}" "$LAUNCHER_DIR/tools" || exit 2
-    . "$LAUNCHER_DIR/tools/idf_variant.sh"
+    # shellcheck source=../tools/build/idf.sh
+    . "$LAUNCHER_DIR/tools/build/idf.sh"
+    idf_init "$LAUNCHER_DIR" "${IDF_EXPORT:-}" "$LAUNCHER_DIR/tools/build" || exit 2
+    . "$LAUNCHER_DIR/tools/build/idf_variant.sh"
     VARIANT_OPTIONS="--qemu"
     if [ "$AUTORUN" = 1 ]; then
         VARIANT_OPTIONS="$VARIANT_OPTIONS --autorun"
