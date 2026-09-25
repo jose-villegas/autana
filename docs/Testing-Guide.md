@@ -3,6 +3,14 @@
 How this project tests firmware, and why it is set up the way it is. Read this
 before adding a test or deciding something "can't be tested".
 
+For a first result without hardware, run [`run_tests.sh`](../launcher/test/run_tests.sh) in
+Git Bash on Windows or a terminal on macOS/Linux. It needs a host C compiler,
+but no ESP-IDF installation or board. It prints the verdict and writes the
+full build and test log under `launcher/test/build/`. The same portable suites
+can also run in the firmware on the device. A successful run ends with
+`0 Failures` and `OK`; most of the wait is compilation. Read [Running them](#running-them)
+for the other runners only when you need them.
+
 | your question | read |
 |---|---|
 | How do I run the tests? | [Running them](#running-them) |
@@ -23,7 +31,7 @@ before adding a test or deciding something "can't be tested".
 ## Running them
 
 ```sh
-./launcher/test/run_tests.sh          # portable suites, on this machine, ~40 s
+./launcher/test/run_tests.sh          # portable suites, on this machine
 ./launcher/test/run_tests.sh --verbose  # the full build-and-test stream, not just the result
 autana selftest                       # every suite, on the board, build+flash+run
 ```
@@ -34,14 +42,10 @@ from compilation and the gates, including the stack check. The full stream is
 saved in `launcher/test/build/run_tests.log`, whose path is printed before
 the run; `--verbose` streams it while saving it there too.
 
-**Where those 40 seconds go, because it is not the tests.** All of the
-over 1,000 host tests execute in a couple of seconds. The rest is compiling: `run_tests.sh`
-builds every source in one `gcc` invocation each run and then compiles them
-all a second time for the `-fstack-usage` pass, with no object caching
-between runs - a re-run that changes nothing costs the same 40 s as one
-that changes a file. So a slow individual test is rarely what to optimise;
-the two rebuilds are. (Measured on one Windows machine - treat the ratio as
-the point, not the number.)
+Most of a host run is compiling. `run_tests.sh` builds the sources and then
+compiles them again for the `-fstack-usage` pass, without object caching
+between runs. The summary line reports the current test count; a repeat run
+still pays for both compilations.
 
 `autana selftest` builds, flashes and runs every suite under the device
 lock, from any shell including Git Bash. For a markdown report instead of

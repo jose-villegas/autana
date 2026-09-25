@@ -4,6 +4,20 @@ How the shell, the apps and the screen fit together, and why ownership is
 arranged this way. Read this before changing the frame loop. To write an app,
 start at [Building-an-App.md](Building-an-App.md).
 
+The board shows a launcher, starts the selected app, and returns home when the
+app exits. Each frame has one owner:
+
+| Step | Owner | Job |
+|---|---|---|
+| Read touch and motion | shell (`main.c`) | Make one `input_t` for the frame. |
+| Update and draw | current app | Draw into the shared framebuffer, then return. |
+| Present | shell and `gfx/` | Send changed pixels to the panel. |
+
+The [host-rendered launcher](images/overview/launcher-home.png) shows the home
+screen with fixture entries. [Building an App](Building-an-App.md) is the
+shortest route to adding an entry; the directory map below is for finding
+the owner of a specific piece.
+
 ---
 
 ## Layout

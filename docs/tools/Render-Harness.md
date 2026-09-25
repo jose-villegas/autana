@@ -6,6 +6,32 @@ diffing any of them against a device capture.
 [`../Testing-Guide.md`](../Testing-Guide.md) is the host/device test split
 this sits inside.
 
+![A shaded cube rendered by the firmware drawing code on a host](../images/overview/render-lab-cube.png)
+
+<!-- Regenerate: ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o <dir>; use gouraud-landscape.png. -->
+
+On Windows, run the `.sh` commands below in Git Bash. On macOS/Linux, use a
+terminal. You need a host C compiler; [the README](../../README.md#try-it-without-a-board)
+lists setup commands. The picture above is the `gouraud-landscape` output of
+the Render Lab scene. A **scene** is a named screen and fixture input for the
+host renderer.
+
+```sh
+./launcher/main/apps/render_lab/tools/render_lab_render_host.sh
+```
+
+Open `launcher/main/apps/render_lab/tools/results/render/render_lab/gouraud-landscape.bmp`
+for the cube or `cornell-landscape.bmp` for this software ray-traced room:
+
+![Cornell box rendered in software](../images/overview/render-lab-cornell.png)
+
+<!-- Regenerate: ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o <dir>; use cornell-landscape.png. The displayed FPS comes from the host fixture, not a board measurement. -->
+
+The host fixture supplies the on-screen FPS text; use a device capture to
+measure the board's frame time. The same command also renders other Render Lab
+views. The reference below explains how scenes are declared, checked, and
+compared with device captures.
+
 ---
 
 The firmware's drawing code compiles on a host, so a screen can be rendered
