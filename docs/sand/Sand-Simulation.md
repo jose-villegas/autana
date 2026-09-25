@@ -817,8 +817,7 @@ it), and converts it into more root.
 
 The conversion *is* the water cost: `place_reacted()` overwrites the
 whole cell with a fresh root byte, so the dirt's moisture nibble is
-simply gone along with everything else the cell used to be, rather than
-being separately debited.
+gone with the overwritten dirt state, rather than being separately debited.
 
 ```
 a root eating outward:
