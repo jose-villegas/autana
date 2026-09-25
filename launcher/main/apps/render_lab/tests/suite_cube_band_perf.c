@@ -207,14 +207,11 @@ band_frame(uint32_t dt_ms) {
         const int row0 = gfx_band_row0();
         const int height = gfx_band_height();
 
-        int x0, x1;
-        if (!gfx_band_dirty(&x0, &x1)) {
+        if (!gfx_band_dirty()) {
             gfx_band_skip();
             skipped_band_count++;
             continue;
         }
-        (void)x0;
-        (void)x1;
         touched_band_count++;
 
         gfx_color_t* buf = gfx_band_buffer();

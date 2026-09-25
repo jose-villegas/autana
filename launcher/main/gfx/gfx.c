@@ -2773,24 +2773,17 @@ gfx_band_frame_begin(void) {
  * cell tracker. It always reads the band gfx_band_next() just handed out,
  * so there is no range to pass wrong. */
 bool
-gfx_band_dirty(int* out_x0, int* out_x1) {
+gfx_band_dirty(void) {
     const int row0 = band_render_row0;
     const int row1 = band_render_row0 + band_render_height;
-    bool dirty = band_frame_force_all;
-    if (dirty) {
-        *out_x0 = 0;
-        *out_x1 = GFX_WIDTH;
-    } else if (dirty_band_extent(row0, row1, out_x0, out_x1)) {
-        dirty = true;
-    }
+    int x0, x1;
+    bool dirty = band_frame_force_all || dirty_band_extent(row0, row1, &x0, &x1);
 #if CONFIG_LAUNCHER_DEVELOPMENT
     /* A border exists only in the band that was sent, and gfx holds no
      * copy to resend: the one way to take it off the panel is to have the
      * app render the band once more. */
     if (!dirty && (band_overlay_bordered & (1u << (row0 / band_render_height)))) {
         band_overlay_cleanup_only = true;
-        *out_x0 = 0;
-        *out_x1 = GFX_WIDTH;
         dirty = true;
     }
 #endif
@@ -2866,9 +2859,9 @@ gfx_band_count(void) {
     return band_ring.band_count;
 }
 
-/* Always the full band width. Sending only gfx_band_dirty()'s extent means
- * packing the rows in place first, and on the cube that cost 3.3 ms a frame
- * (19.1 -> 22.4 ms) while sending the same bytes. */
+/* Always the full band width, straight from the buffer the app drew: the
+ * panel transfer takes no source stride, so a narrower send would first
+ * have to repack the rows, and that costs more CPU than the bytes it saves. */
 void
 gfx_band_submit(void) {
     GFX_PRESENT_GUARD();
