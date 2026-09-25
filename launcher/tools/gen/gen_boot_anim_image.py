@@ -2,7 +2,7 @@
 """Generate main/boot/boot_anim_image.h - the photograph the boot animation
 crossfades to.
 
-    python tools/gen_boot_anim_image.py ../design/boot/boot.png > main/boot/boot_anim_image.h
+    python tools/gen/gen_boot_anim_image.py ../design/boot/boot.png > main/boot/boot_anim_image.h
 
 WHY THIS IS A TABLE AND NOT A RUNTIME DECODE
 
@@ -51,7 +51,7 @@ Cross-checked two more ways before trusting it (see main()'s own
 self-validation below, which asserts this outright rather than merely
 assuming it): ui_transform.h's ui_transform_quarter_turn(1, w, h) is the
 same mapping in its general corner-to-corner form, and
-tools/boot_anim_editor.html's own render-preview CSS applies the exact
+tools/boot_anim/boot_anim_editor.html's own render-preview CSS applies the exact
 inverse (a -90deg rotation) with a comment recording that the OTHER sign
 was tried first and was visibly wrong by 180 degrees.
 
@@ -207,13 +207,13 @@ def main():
     w("/*=============================================================================\n")
     w(" * GENERATED FILE - do not edit.\n")
     w(" *\n")
-    w(" *     python tools/gen_boot_anim_image.py ../design/boot/boot.png > main/boot/boot_anim_image.h\n")
+    w(" *     python tools/gen/gen_boot_anim_image.py ../design/boot/boot.png > main/boot/boot_anim_image.h\n")
     w(" *\n")
     w(" * %s - Cerro Autana, the tepui the boot animation's own title is\n" % sys.argv[1])
     w(" * named after - turned a quarter into the panel's native %dx%d\n" % (PANEL_W, PANEL_H))
     w(" * portrait framebuffer and packed into gfx_color.h's byte-swapped\n")
     w(" * RGB565, so drawing it is a blend and nothing else. See\n")
-    w(" * tools/gen_boot_anim_image.py for the rotation's derivation and\n")
+    w(" * tools/gen/gen_boot_anim_image.py for the rotation's derivation and\n")
     w(" * boot_anim.c's draw_image() for what is done with it.\n")
     w(" *===========================================================================*/\n")
     w("#pragma once\n\n#include <stdint.h>\n\n")

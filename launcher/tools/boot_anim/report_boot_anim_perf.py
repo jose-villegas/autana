@@ -19,7 +19,7 @@ particular one means, so a new checkpoint added to the suite shows up in
 the report with no changes needed here.
 
 Usage:
-    python tools/report_boot_anim_perf.py <raw_capture.txt> <out.md>
+    python tools/boot_anim/report_boot_anim_perf.py <raw_capture.txt> <out.md>
 
 Exit 2 means the capture has no checkpoint in it to report on.
 

@@ -1,12 +1,12 @@
 /*=============================================================================
  * GENERATED FILE - do not edit.
  *
- *     python tools/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json > main/boot/boot_anim_timeline.h
+ *     python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json > main/boot/boot_anim_timeline.h
  *
  * The boot animation's timing constants and its two keyframed 3D
  * transforms (camera, and the space the grid+curve live in), edited as
  * main/boot/boot_anim_timeline.json - by hand, or via
- * tools/boot_anim_editor.html's Bake button - and turned into this header by
+ * tools/boot_anim/boot_anim_editor.html's Bake button - and turned into this header by
  * this script. See that script's own top comment for what a keyframe is
  * (plain meters/degrees/multiplier units, converted to small3dlib's fixed
  * point right here) and boot_anim.h's boot_anim_timeline_sample() for how

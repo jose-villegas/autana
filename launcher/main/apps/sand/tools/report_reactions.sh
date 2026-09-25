@@ -64,11 +64,11 @@ BEGIN_MARK='<!-- BEGIN GENERATED -->'
 END_MARK='<!-- END GENERATED -->'
 
 # --- find a compiler -------------------------------------------------------
-# Sourced, not copied - see tools/find_cc.sh's own top comment for why a
+# Sourced, not copied - see tools/build/find_cc.sh's own top comment for why a
 # duplicated block is exactly the drift problem this script itself exists
 # to avoid, one level over.
-# shellcheck source=../../../../tools/find_cc.sh
-. "$LAUNCHER_DIR/tools/find_cc.sh"
+# shellcheck source=../../../../tools/build/find_cc.sh
+. "$LAUNCHER_DIR/tools/build/find_cc.sh"
 
 if ! CC_BIN=$(find_cc); then
     echo "No C compiler found." >&2

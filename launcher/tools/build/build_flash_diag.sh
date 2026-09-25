@@ -2,7 +2,7 @@
 #
 # build_flash.sh --diag, without having to remember or type the flag.
 #
-#   tools/build_flash_diag.sh [COM_PORT] [IDF_EXPORT]
+#   tools/build/build_flash_diag.sh [COM_PORT] [IDF_EXPORT]
 #
 # Same arguments as build_flash.sh otherwise - see that script's own header
 # for what --diag actually does and why it exists.

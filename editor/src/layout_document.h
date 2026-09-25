@@ -16,8 +16,7 @@ struct LayoutElement {
 };
 
 // An authored <screen>_layout.json. The file declares its own screen and
-// elements, so every authored screen is this one type; launcher/tools/
-// gen_ui_layout.py applies the same rules when it bakes the header.
+// elements, so every authored screen is this one type; launcher/tools/gen/gen_ui_layout.py applies the same rules when it bakes the header.
 class LayoutDocument {
   public:
     static constexpr int schema_version = 2;

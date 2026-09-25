@@ -16,11 +16,11 @@ main/ui/ui_pointer.c
 main/ui/ui_scroll.c
 main/ui/ui_widgets.c
 components/microui/src/microui.c
-tools/ui_dropdown_render_host.c
+tools/render/scenes/ui_dropdown_render_host.c
 "
 scene_renders="
 scrolled-and-picked|--quarter 0|368x448
 "
 
-. "$SCRIPT_DIR/render_scene.sh"
+. "$SCRIPT_DIR/../render_scene.sh"
 render_scene_run "$@"

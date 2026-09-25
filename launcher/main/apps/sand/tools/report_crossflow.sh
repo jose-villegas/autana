@@ -4,7 +4,7 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SAND_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 LAUNCHER_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../../.." && pwd)
-. "$LAUNCHER_DIR/tools/find_cc.sh"
+. "$LAUNCHER_DIR/tools/build/find_cc.sh"
 CC_BIN=$(find_cc)
 BUILD_DIR="$SCRIPT_DIR/build"
 mkdir -p "$BUILD_DIR"

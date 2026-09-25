@@ -1,6 +1,6 @@
 """Writes a .png beside every .bmp in a directory, if Pillow is installed.
 
-A convenience, never a gate: tools/render_scene.sh already checked that each
+A convenience, never a gate: tools/render/render_scene.sh already checked that each
 BMP has the size its scene declared, so this adds nothing to the verdict and
 says so once when Pillow is absent rather than failing the run that produced
 the images.

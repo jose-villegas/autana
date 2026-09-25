@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bake an authored screen layout into a fixed firmware table.
 
-    python tools/gen_ui_layout.py main/ui/<screen>_layout.json \\
+    python tools/gen/gen_ui_layout.py main/ui/<screen>_layout.json \\
         main/ui/<screen>_layout_generated.h [--check]
 
 The JSON names its own screen and elements, so one generator serves every
@@ -106,7 +106,7 @@ def generate(document):
         "/*",
         " * GENERATED FILE - do not edit.",
         " *",
-        f" *     python tools/gen_ui_layout.py main/ui/{screen}_layout.json main/ui/{screen}_layout_generated.h",
+        f" *     python tools/gen/gen_ui_layout.py main/ui/{screen}_layout.json main/ui/{screen}_layout_generated.h",
         " */",
         "#pragma once",
         "",

@@ -23,7 +23,7 @@ flowchart LR
   (`id`, `label`, `interactive`), then gives one rect per element for
   `portrait` (368 x 448) and `landscape` (448 x 368). The editor writes it one
   rect per line, so an edit's diff is the rects that moved.
-- **The header is output, never input.** `launcher/tools/gen_ui_layout.py` is
+- **The header is output, never input.** `launcher/tools/gen/gen_ui_layout.py` is
   the only thing that writes firmware geometry. The editor launches it on an
   explicit Bake and never reimplements it. The device links the baked table:
   no JSON, no parser, no layout solver.

@@ -28,9 +28,9 @@ LAUNCHER_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../../.." && pwd)
 BUILD_DIR="$SCRIPT_DIR/build"
 
 # --- find a compiler -------------------------------------------------------
-# Sourced, not copied - see tools/find_cc.sh's own top comment.
-# shellcheck source=../../../../tools/find_cc.sh
-. "$LAUNCHER_DIR/tools/find_cc.sh"
+# Sourced, not copied - see tools/build/find_cc.sh's own top comment.
+# shellcheck source=../../../../tools/build/find_cc.sh
+. "$LAUNCHER_DIR/tools/build/find_cc.sh"
 
 if ! CC_BIN=$(find_cc); then
     echo "No C compiler found." >&2
@@ -43,7 +43,7 @@ fi
 # No -Werror, unlike report_fingerprint.sh beside this: gfx.c (linked below,
 # for real drawing - see brush_screen_preview.c's own top comment) carries
 # present-path statics that a host build never calls, the same reason
-# tools/boot_anim_editor_server.py's own compile of gfx.c drops these two.
+# tools/boot_anim/boot_anim_editor_server.py's own compile of gfx.c drops these two.
 CFLAGS="-std=c11 -Wall -Wextra -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable -g -O1"
 
 mkdir -p "$BUILD_DIR"

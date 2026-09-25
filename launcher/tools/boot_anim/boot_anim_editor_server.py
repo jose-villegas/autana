@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Local dev server for tools/boot_anim_editor.html - real C-code rendering.
+"""Local dev server for tools/boot_anim/boot_anim_editor.html - real C-code rendering.
 
-    python tools/boot_anim_editor_server.py [port]
+    python tools/boot_anim/boot_anim_editor_server.py [port]
 
 Serves the editor page and answers POST /render with an actual frame of the
 boot animation, rendered by the REAL firmware code (main/gfx/gfx.c +
@@ -19,7 +19,7 @@ step 1 hashes `payload`; an mtime comparison against the real, checked-in
 header is what stands in for that. Unlike the timeline JSON below, this
 writes the REAL header directly, not a scratch copy - there is no "draft"
 concept for a photo, and regenerating in place is exactly what running
-tools/gen_boot_anim_image.py by hand already does.
+tools/gen/gen_boot_anim_image.py by hand already does.
 
 POST /render body is {"timing": {...}, "camera_focal": 512, "grid_step_m":
 0.25, "wave_height_m": 0, "wave_wavelength_m": 0.75, "wave_period_ms": 3000,
@@ -36,10 +36,10 @@ else here.
   2. Otherwise: write that JSON to a SCRATCH copy of boot_anim_timeline.json
      (never the real, committed one - see build_and_flash() below for the
      one thing here that does write it) and run
-     tools/gen_boot_anim_timeline.py against it. A validation failure there
+     tools/gen/gen_boot_anim_timeline.py against it. A validation failure there
      (curve still drawing when the fade starts, etc.) is reported back as a
      400 with the generator's own message.
-  3. Compile tools/boot_anim_render_host.c + tools/render_host.c +
+  3. Compile tools/render/scenes/boot_anim_render_host.c + tools/render/render_host.c +
      main/gfx/gfx.c + main/boot/boot_anim.c, with the scratch directory
      (holding the DRAFT boot_anim_timeline.h from step 2),
      components/small3dlib/include (the camera/space transform math
@@ -66,8 +66,8 @@ shape as /render minus `ms`, plus `port` (a serial port, e.g. "COM3"). It
 validates exactly like step 2 above (into a throwaway scratch file first, so
 a bad edit never reaches the real files), then overwrites the REAL
 main/boot/boot_anim_timeline.json and boot_anim_timeline.h - what
-tools/boot_anim_editor.html's Bake button downloads, written here instead of
-copied in by hand - and runs tools/build_flash_dev.sh, which builds the
+tools/boot_anim/boot_anim_editor.html's Bake button downloads, written here instead of
+copied in by hand - and runs tools/build/build_flash_dev.sh, which builds the
 development image and flashes it to `port`. Its combined stdout/stderr comes
 back as the response body (200) or as the error (500) if the build or the
 flash failed.
@@ -89,7 +89,7 @@ import sys
 import tempfile
 
 TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
-LAUNCHER_DIR = os.path.dirname(TOOLS_DIR)
+LAUNCHER_DIR = os.path.dirname(os.path.dirname(TOOLS_DIR))
 ENGINE_DIR = os.path.dirname(LAUNCHER_DIR)
 
 # The device lock, the same one every autana verb takes - build_and_flash()
@@ -101,7 +101,7 @@ MAIN_DIR = os.path.join(LAUNCHER_DIR, "main")
 SMALL3DLIB_DIR = os.path.join(LAUNCHER_DIR, "components", "small3dlib", "include")
 MICROUI_DIR = os.path.join(LAUNCHER_DIR, "components", "microui", "include")
 EDITOR_HTML = os.path.join(TOOLS_DIR, "boot_anim_editor.html")
-GENERATOR = os.path.join(TOOLS_DIR, "gen_boot_anim_timeline.py")
+GENERATOR = os.path.join(LAUNCHER_DIR, "tools", "gen", "gen_boot_anim_timeline.py")
 
 # The REAL, committed files - see build_and_flash()'s own comment on why
 # these, unlike everything render() touches, are not disposable.
@@ -117,10 +117,10 @@ TIMELINE_HEADER = os.path.join(MAIN_DIR, "boot", "boot_anim_timeline.h")
 # timeline) - there is no "draft" concept for a photo the way there is
 # for in-progress timing values; regenerating in place is exactly what
 # running the generator by hand already does.
-GEN_IMAGE = os.path.join(TOOLS_DIR, "gen_boot_anim_image.py")
+GEN_IMAGE = os.path.join(LAUNCHER_DIR, "tools", "gen", "gen_boot_anim_image.py")
 BOOT_PNG = os.path.join(os.path.dirname(LAUNCHER_DIR), "design", "boot", "boot.png")
 BOOT_ANIM_IMAGE_HEADER = os.path.join(MAIN_DIR, "boot", "boot_anim_image.h")
-BUILD_FLASH_SCRIPT = os.path.join(TOOLS_DIR, "build_flash_dev.sh")
+BUILD_FLASH_SCRIPT = os.path.join(LAUNCHER_DIR, "tools", "build", "build_flash_dev.sh")
 # 300 measured too short in practice - a from-scratch (or even mostly-
 # cached) dev build going through this script's own Git-Bash -> cmd-shim
 # -> idf.py chain (see build_flash_dev.sh/idf.sh's own comments on why
@@ -175,11 +175,12 @@ WATCHED_SOURCE_DIRS = (
     SMALL3DLIB_DIR,
 )
 
-# Listed NON-recursively (see _watched_source_paths()) - unlike the above,
-# tools/ also holds results/screenshots/sweeps/__pycache__ subdirectories
-# (sweep/report scratch output, not source), and every source this build
-# compiles from here sits directly in it.
-WATCHED_TOP_LEVEL_DIRS = (TOOLS_DIR,)
+# Host C sources are split between the render scenes and shared tooling.
+WATCHED_TOP_LEVEL_DIRS = (
+    os.path.join(LAUNCHER_DIR, "tools", "render"),
+    os.path.join(LAUNCHER_DIR, "tools", "render", "scenes"),
+    os.path.join(LAUNCHER_DIR, "tools", "gen"),
+)
 
 # boot_anim_timeline.h under main/boot is the one file in that directory
 # that must NOT be watched - it is the REAL, committed one (see
@@ -306,7 +307,7 @@ def _ensure_image_current():
 
 
 def find_cc():
-    """Mirrors tools/find_cc.sh's own search order - see its top comment."""
+    """Mirrors tools/build/find_cc.sh's own search order - see its top comment."""
     env_cc = os.environ.get("CC")
     if env_cc:
         return env_cc
@@ -329,7 +330,7 @@ def find_bash():
     """build_flash_dev.sh is POSIX sh, written to run under Git Bash (see its
     own top comment) - idf.py itself cannot run under Git Bash on Windows
     (see docs/Testing-Guide.md), but build_flash.sh already routes around
-    that itself (tools/idf.sh -> idf_shim.bat), so running the .sh under
+    that itself (tools/build/idf.sh -> idf_shim.bat), so running the .sh under
     Git Bash's own bash.exe is the one thing this needs to get right.
 
     Git Bash's own known install locations are checked BEFORE shutil.which,
@@ -424,8 +425,8 @@ class Renderer:
             f.write(gen.stdout)
 
         sources = [
-            os.path.join(TOOLS_DIR, "boot_anim_render_host.c"),
-            os.path.join(TOOLS_DIR, "render_host.c"),
+            os.path.join(LAUNCHER_DIR, "tools", "render", "scenes", "boot_anim_render_host.c"),
+            os.path.join(LAUNCHER_DIR, "tools", "render", "render_host.c"),
             os.path.join(MAIN_DIR, "gfx", "gfx.c"),
             os.path.join(MAIN_DIR, "boot", "boot_anim.c"),
         ]
@@ -434,7 +435,7 @@ class Renderer:
             "-Wno-unused-parameter", "-Wno-unused-function",
             "-Wno-unused-variable", "-O1",
             "-I", self.scratch, "-I", MAIN_DIR, "-I", SMALL3DLIB_DIR,
-            "-I", MICROUI_DIR, "-I", TOOLS_DIR,
+            "-I", MICROUI_DIR, "-I", os.path.join(LAUNCHER_DIR, "tools", "render"),
             *sources, "-o", self.binary,
         ]
         cc_result = subprocess.run(cmd, capture_output=True, text=True)

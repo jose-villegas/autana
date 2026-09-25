@@ -6,10 +6,10 @@
 # suite_boot_anim_perf.c via RUNSUITE, capture its output, and write a
 # markdown report of the six-checkpoint breakdown.
 #
-# Declaring a suite is what selects that image: see tools/device_report.sh.
+# Declaring a suite is what selects that image: see tools/device/device_report.sh.
 #
 # Usage:
-#   tools/report_boot_anim_perf.sh [--no-restore] [COM_PORT] [OUT.md]
+#   tools/boot_anim/report_boot_anim_perf.sh [--no-restore] [COM_PORT] [OUT.md]
 #
 #   COM_PORT     serial port the device is on. Found by USB identity when
 #                omitted - see scripts/device/device.py.
@@ -19,14 +19,14 @@
 #
 # Everything this does beyond the declarations below - which image, deleting
 # a build directory's sdkconfig that disagrees, asserting the flags took,
-# capturing, validating, restoring release - is tools/device_report.sh.
+# capturing, validating, restoring release - is tools/device/device_report.sh.
 
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 report_name=boot_anim_perf
-report_dir="$SCRIPT_DIR/results"
+report_dir="$SCRIPT_DIR/../results"
 report_suite=run_boot_anim_perf_suite
 
 # A fixed window after the command is sent: no completion marker is generic
@@ -44,5 +44,5 @@ report_generate() {
 }
 
 # shellcheck source=./device_report.sh
-. "$SCRIPT_DIR/device_report.sh"
+. "$SCRIPT_DIR/../device/device_report.sh"
 device_report_run "$@"

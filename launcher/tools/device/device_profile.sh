@@ -2,8 +2,8 @@
 #
 # Load one device profile from device_profiles/, for POSIX sh callers.
 #
-#   . "$LAUNCHER/tools/device_profile.sh"
-#   device_profile_load "" "$LAUNCHER/tools/device_profiles"
+#   . "$LAUNCHER/tools/device/device_profile.sh"
+#   device_profile_load "" "$LAUNCHER/tools/device/device_profiles"
 #   echo "$DP_MAIN_TASK_STACK_BYTES"
 #
 # An empty first argument means "$DEVICE_PROFILE, else esp32s3".

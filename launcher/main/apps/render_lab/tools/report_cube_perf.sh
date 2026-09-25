@@ -18,7 +18,7 @@
 #
 # Everything this does beyond the declarations below - which image, deleting
 # a build directory's sdkconfig that disagrees, asserting the flags took,
-# capturing, validating, restoring release - is tools/device_report.sh.
+# capturing, validating, restoring release - is tools/device/device_report.sh.
 
 set -eu
 
@@ -44,6 +44,6 @@ report_generate() {
     python "$SCRIPT_DIR/report_cube_perf.py" "$1" "$2"
 }
 
-# shellcheck source=../../../../tools/device_report.sh
-. "$LAUNCHER_DIR/tools/device_report.sh"
+# shellcheck source=../../../../tools/device/device_report.sh
+. "$LAUNCHER_DIR/tools/device/device_report.sh"
 device_report_run "$@"

@@ -1,7 +1,7 @@
 /*
  * console_screenshot - SCREENSHOT: prints the frame gfx holds
  * (gfx_read_panel_row()) as base64 between marker lines that
- * tools/screenshot.py reads back out of the console stream idf_monitor
+ * tools/device/screenshot.py reads back out of the console stream idf_monitor
  * already uses. The verb itself only sets a latch; console_screenshot_dump()
  * does the actual streaming, called from main.c's frame loop - see
  * console.c's own top comment for why nothing here may draw on this task.
@@ -161,7 +161,7 @@ alloc_row_buffers(size_t pixels_bytes, size_t row_bytes, size_t row_b64_bytes) {
 }
 
 /* Marker and data lines go through console_emit_line(), not ESP_LOGx, so
- * tools/screenshot.py's fixed-prefix match never has to strip a log
+ * tools/device/screenshot.py's fixed-prefix match never has to strip a log
  * prefix off first. Flushed before the first one, since buffered log
  * output must not land inside the stream. */
 static void

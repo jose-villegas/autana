@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate main/boot_anim_curve.h - the zeta curve the startup animation draws.
 
-    python tools/gen_zeta_curve.py > main/boot_anim_curve.h
+    python tools/gen/gen_zeta_curve.py > main/boot/boot_anim_curve.h
 
 WHY THIS IS A TABLE AND NOT DEVICE CODE
 
@@ -186,10 +186,10 @@ def main():
     w("/*=============================================================================\n")
     w(" * GENERATED FILE - do not edit.\n")
     w(" *\n")
-    w(" *     python tools/gen_zeta_curve.py > main/boot_anim_curve.h\n")
+    w(" *     python tools/gen/gen_zeta_curve.py > main/boot/boot_anim_curve.h\n")
     w(" *\n")
     w(" * zeta(1/2 + it) for t from 0 to %g, sampled at roughly equal spacing on\n" % T_MAX)
-    w(" * screen. See tools/gen_zeta_curve.py for how the values are computed and\n")
+    w(" * screen. See tools/gen/gen_zeta_curve.py for how the values are computed and\n")
     w(" * why they are a table rather than device code, and boot_anim.h for what is\n")
     w(" * done with them.\n")
     w(" *\n")
@@ -200,7 +200,7 @@ def main():
     w("#define BOOT_ANIM_CURVE_POINTS %d\n\n" % len(pts))
 
     w("/* How many of the leading points are phase 1 of the reveal - see\n"
-      " * PHASE1_T_MAX's own comment in tools/gen_zeta_curve.py and\n"
+      " * PHASE1_T_MAX's own comment in tools/gen/gen_zeta_curve.py and\n"
       " * boot_anim_pen()'s in boot_anim.h. */\n")
     w("#define BOOT_ANIM_CURVE_PHASE1_POINTS %d\n\n" % phase1_count)
 

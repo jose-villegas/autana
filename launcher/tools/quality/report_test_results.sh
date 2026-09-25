@@ -4,7 +4,7 @@
 # capture the boot-time run of every suite, write a markdown results report.
 #
 # Usage:
-#   tools/report_test_results.sh [--no-restore] [COM_PORT] [OUT.md]
+#   tools/quality/report_test_results.sh [--no-restore] [COM_PORT] [OUT.md]
 #
 #   COM_PORT     serial port the device is on. Found by USB identity when
 #                omitted - see scripts/device/device.py.
@@ -21,14 +21,14 @@
 #
 # Everything this does beyond the declarations below - which image, deleting
 # a build directory's sdkconfig that disagrees, asserting the flags took,
-# capturing, validating, restoring release - is tools/device_report.sh.
+# capturing, validating, restoring release - is tools/device/device_report.sh.
 
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 report_name=test_results
-report_dir="$SCRIPT_DIR/results"
+report_dir="$SCRIPT_DIR/../results"
 report_timeout="${CAPTURE_TIMEOUT:-3000}"
 report_suite=""
 
@@ -42,5 +42,5 @@ report_generate() {
 }
 
 # shellcheck source=./device_report.sh
-. "$SCRIPT_DIR/device_report.sh"
+. "$SCRIPT_DIR/../device/device_report.sh"
 device_report_run "$@"
