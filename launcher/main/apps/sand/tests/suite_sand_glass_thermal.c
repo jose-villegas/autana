@@ -297,6 +297,62 @@ test_snow_shatters_a_glowing_pane_into_sand(void) {
                                   "the loop heat opened, so the player can un-make the material");
 }
 
+/* Cracking is not the only thing a chill contact does - the snow also gets
+ * its own turn at try_heat_transform() (sand_reactions.c) right after,
+ * snow's plain heats_to=WATER roll at 120/256. Probabilistic, so many
+ * ISOLATED [SNOW][GLASS][STONE] trials, the way suite_sand_gunpowder.c's
+ * own ignite_trial_row() is. Cracking has no roll at all, so every trial
+ * must crack; whether ANY snow also melted separates "transforms too" from
+ * "left untouched". */
+#define GLASS_CHILL_TRIALS 96
+
+static void
+test_chilling_hot_glass_also_transforms_the_chilling_snow_cell(void) {
+    const int w = GLASS_CHILL_TRIALS * 3;
+    uint8_t* chill_cells = malloc((size_t)w * 2);
+    TEST_ASSERT_NOT_NULL_MESSAGE(chill_cells, "glass-chill trial grid must fit in what the framebuffer leaves");
+    sand_t* g = malloc(sizeof *g);
+    TEST_ASSERT_NOT_NULL_MESSAGE(g, "glass-chill trial sand_t must fit in what the framebuffer leaves");
+
+    sand_init(g, chill_cells, w, 2, 9u);
+    sand_clear(g);
+    for (int i = 0; i < GLASS_CHILL_TRIALS; i++) {
+        const int base = i * 3;
+        sand_set(g, base + 0, 0, SNOW);
+        sand_set(g, base + 1, 0, CELL_MAKE(MAT_GLASS, MATERIAL_VARIANTS - 1));
+        sand_set(g, base + 2, 0, STONE);
+    }
+    for (int x = 0; x < w; x++) {
+        sand_set(g, x, 1, STONE);
+    }
+
+    sand_step(g, 0, 1000, 0);
+
+    int cracked = 0, melted = 0;
+    for (int i = 0; i < GLASS_CHILL_TRIALS; i++) {
+        const int base = i * 3;
+        if (CELL_MATERIAL(sand_at(g, base + 1, 0)) != MAT_GLASS) {
+            cracked++;
+        }
+        if (CELL_MATERIAL(sand_at(g, base + 0, 0)) == MAT_WATER) {
+            melted++;
+        }
+    }
+    free(g);
+    free(chill_cells);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(GLASS_CHILL_TRIALS, cracked,
+                                  "every hot pane touching snow must crack - the shock threshold check "
+                                  "has no random roll in it at all, so anything less than every trial "
+                                  "means the setup itself is broken, not the behaviour under test");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, melted,
+                                         "the chilling snow cell must ALSO take its own heat transform "
+                                         "from the same contact that cracked the glass - at 96 "
+                                         "independent trials and a 120/256 chance each, seeing zero "
+                                         "melt means that transform never ran at all, not that every "
+                                         "single trial happened to lose its roll");
+}
+
 /* The threshold is sharp, and it is the ONLY thing that decides.
  *
  * One level below it a pane is untouchable and one level above it breaks
@@ -871,6 +927,7 @@ run_sand_glass_thermal_suite(void) {
     RUN_TEST(test_glass_cools_on_a_board_with_no_fire_at_all);
     RUN_TEST(test_freshly_fused_glass_starts_cold);
     RUN_TEST(test_snow_shatters_a_glowing_pane_into_sand);
+    RUN_TEST(test_chilling_hot_glass_also_transforms_the_chilling_snow_cell);
     RUN_TEST(test_the_shock_threshold_is_exact);
     RUN_TEST(test_glass_looks_different_at_the_shock_threshold);
     RUN_TEST(test_snow_frosts_a_resting_pane);

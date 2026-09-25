@@ -15,6 +15,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "gfx/gfx_color.h"
 
