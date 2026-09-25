@@ -48,6 +48,7 @@
 #include "esp_timer.h"
 
 #include "app.h"
+#include "apps/sand/app_sand_test.h"
 #include "build_variant.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
@@ -66,6 +67,7 @@
 #include "sand_limits.h"
 #include "sand_menu.h"
 #include "sand_mode_swatches.h"
+#include "sand_paint.h"
 #include "sand_palette256.h"
 #include "sand_swatch.h"
 #include "sand_ui.h"
@@ -903,15 +905,6 @@ static int local_depth_prev_cy = LOCAL_DEPTH_NO_ROW;
  * cross-regime confusion for either convention to guard against. */
 static uint8_t local_depth_top_row[GRID_W_MAX];
 
-/* Unlike the two-walk design's own ceiling (34, raised above
- * MATERIAL_LIQUID_DEPTH_BAND's 24), this walk needs no raise: that design's
- * weight (component/len) was always <= 256, so a clamped count could
- * project BELOW the band; this walk's scale (len/dominant_axis) is always
- * >= 256, so a clamped count already projects AT LEAST the band at every
- * angle. Verified host-side against
- * test_a_saturated_liquid_body_reads_the_same_shade_at_every_tilt_angle. */
-#define LOCAL_DEPTH_COUNT_CEILING MATERIAL_LIQUID_DEPTH_BAND
-
 static void
 update_local_depth_gravity(int gx, int gy) {
     const int ax = im_abs(gx), ay = im_abs(gy);
@@ -998,28 +991,8 @@ sand_indexed_cell_needs_repaint(bool force_full, uint8_t old_idx, uint8_t new_id
 }
 
 static inline __attribute__((always_inline)) unsigned
-cardinal_edge_mask(const uint8_t* above, const uint8_t* row, const uint8_t* below, int cx) {
-    return ((cx > 0 && CELL_IS_EMPTY(row[cx - 1])) ? MATERIAL_EDGE_LEFT : 0u)
-           | ((cx < grid_w - 1 && CELL_IS_EMPTY(row[cx + 1])) ? MATERIAL_EDGE_RIGHT : 0u)
-           | ((above != NULL && CELL_IS_EMPTY(above[cx])) ? MATERIAL_EDGE_UP : 0u)
-           | ((below != NULL && CELL_IS_EMPTY(below[cx])) ? MATERIAL_EDGE_DOWN : 0u);
-}
-
-static inline __attribute__((always_inline)) unsigned
-diagonal_edge_mask(const uint8_t* above, const uint8_t* below, int cx) {
-    return ((cx > 0 && above != NULL && CELL_IS_EMPTY(above[cx - 1])) ? MATERIAL_EDGE_UP_LEFT : 0u)
-           | ((cx < grid_w - 1 && above != NULL && CELL_IS_EMPTY(above[cx + 1])) ? MATERIAL_EDGE_UP_RIGHT : 0u)
-           | ((cx > 0 && below != NULL && CELL_IS_EMPTY(below[cx - 1])) ? MATERIAL_EDGE_DOWN_LEFT : 0u)
-           | ((cx < grid_w - 1 && below != NULL && CELL_IS_EMPTY(below[cx + 1])) ? MATERIAL_EDGE_DOWN_RIGHT : 0u);
-}
-
-static inline __attribute__((always_inline)) unsigned
 cell_edge_mask(const uint8_t* above, const uint8_t* row, const uint8_t* below, int cx) {
-    unsigned mask = cardinal_edge_mask(above, row, below, cx);
-    if ((mask & MATERIAL_EDGE_CARDINAL) != 0 && CELL_MATERIAL(row[cx]) == MAT_WATER) {
-        mask |= diagonal_edge_mask(above, below, cx);
-    }
-    return mask;
+    return sand_paint_edge_mask(above, row, below, cx, grid_w);
 }
 
 /* One row's walk through the local-depth state, set up once per row by
@@ -1067,25 +1040,9 @@ local_depth_cross_step(local_depth_walk_t* walk) {
 }
 
 static inline __attribute__((always_inline)) unsigned
-local_depth_next_count(unsigned carry) {
-    return carry < LOCAL_DEPTH_COUNT_CEILING ? carry + 1u : LOCAL_DEPTH_COUNT_CEILING;
-}
-
-static inline __attribute__((always_inline)) unsigned
 local_depth_liquid_count(bool same_material, bool carry_ok, unsigned src_count, int cx, int cy) {
-    if (same_material) {
-        if (!local_depth_vertical_dominant) {
-            local_depth_top_row[cx] = 255u;
-        }
-        return local_depth_next_count(src_count);
-    }
-    const bool committed =
-        local_depth_vertical_dominant ? (local_depth_top_row[cx] == (uint8_t)cy) : (local_depth_top_row[cx] != 255u);
-    if (committed) {
-        return 0u;
-    }
-    local_depth_top_row[cx] = local_depth_vertical_dominant ? (uint8_t)cy : 0u;
-    return local_depth_next_count(carry_ok ? src_count : 0u);
+    return sand_paint_depth_count(local_depth_top_row, local_depth_vertical_dominant, same_material, carry_ok,
+                                  src_count, cx, cy);
 }
 
 static inline __attribute__((always_inline)) unsigned
@@ -1511,13 +1468,9 @@ mark_row_sends(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t
                bool healing) {
     int64_t pixels = 0;
     for (int i = 0; i < send_n; i++) {
-        int sx0 = im_max(send_x0[i], wx0);
-        int sx1 = im_min(send_x1[i], wx1);
-        if (indexed) {
-            sx0 = im_max(sx0, row_changed_x0[cy]);
-            sx1 = im_min(sx1, row_changed_x1[cy]);
-        }
-        if (sx0 >= sx1) {
+        int sx0, sx1;
+        if (!sand_paint_clip_send(send_x0[i], send_x1[i], wx0, wx1, indexed, row_changed_x0[cy], row_changed_x1[cy],
+                                  &sx0, &sx1)) {
             continue;
         }
         gfx_mark_dirty(sx0 * cell, cy * cell, (sx1 - sx0) * cell, cell);
@@ -2322,6 +2275,57 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
 }
 
 #if CONFIG_LAUNCHER_SELFTEST
+static void
+sand_app_test_tap_menu_rect(mu_Rect r) {
+    const int x = r.x + r.w / 2;
+    const int y = r.y + r.h / 2;
+    const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
+    const input_t hold = {.down = true, .x = x, .y = y};
+    const input_t release = {.released = true, .x = x, .y = y};
+    const input_t idle = {0};
+    draw_menu(&press);
+    for (int i = 0; i < 4; i++) {
+        draw_menu(&hold);
+    }
+    draw_menu(&release);
+    draw_menu(&idle);
+}
+
+bool
+sand_app_test_options_reach_start(sand_test_start_action_t action) {
+    const sand_options_t saved = current_options();
+    ui_set_transform(ui_transform_identity());
+    sand_enter();
+    const sand_options_t before = current_options();
+    sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS, before);
+    menu.draft.quality = (before.quality + 1) % QUALITY_COUNT;
+
+    if (action == SAND_TEST_CANCEL_THEN_START || action == SAND_TEST_APPLY_THEN_START) {
+        const input_t idle = {0};
+        draw_menu(&idle);
+        draw_menu(&idle);
+        options_screen_layout_t lay;
+        options_screen_layout(ui_width(), ui_height(), &lay);
+        sand_app_test_tap_menu_rect(action == SAND_TEST_APPLY_THEN_START ? lay.apply : lay.cancel);
+    } else {
+        sand_menu_init(&menu);
+    }
+
+    title_screen_layout_t title;
+    title_screen_layout(ui_width(), ui_height(), &title);
+    sand_app_test_tap_menu_rect(title.buttons[SAND_TITLE_START]);
+    const bool queued = pending_start;
+    const input_t idle = {0};
+    sand_frame(0, &idle);
+    const int expected_quality = action == SAND_TEST_APPLY_THEN_START ? menu.draft.quality : before.quality;
+    const bool ok = queued && ui.screen == SAND_UI_RUNNING && !failed && current_options().quality == expected_quality
+                    && cell == qualities[expected_quality].cell;
+    sand_exit();
+    adopt_options(&saved);
+    ui_set_transform(ui_transform_quarter_turn(display_shell_quarter(), GFX_WIDTH, GFX_HEIGHT));
+    return ok;
+}
+
 /* Unlike sand_app_test_survives_indexed_then_menu() above, this runs the
  * START button itself. One pressed+released frame is not enough: microui's
  * hover_root lags next_hover_root by a frame (begin_root_container(),

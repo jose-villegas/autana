@@ -30,9 +30,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../idf.sh
-. "$SCRIPT_DIR/../idf.sh"
-idf_init "$LAUNCHER_DIR" "${2:-}" "$SCRIPT_DIR/.." || exit 2
-. "$SCRIPT_DIR/../idf_variant.sh"
+. "$SCRIPT_DIR/../build/idf.sh"
+idf_init "$LAUNCHER_DIR" "${2:-}" "$SCRIPT_DIR/../build" || exit 2
+. "$SCRIPT_DIR/../build/idf_variant.sh"
 
 BUILD_DIR="build.diag.bh$HEIGHT"
 DEFAULTS_FILE="$LAUNCHER_DIR/sdkconfig.defaults.band_height_$HEIGHT"

@@ -34,10 +34,10 @@ TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 MAIN_DIR=$(CDPATH= cd -- "$TEST_DIR/../main" && pwd)
 BUILD_DIR="${TEST_BUILD_DIR:-$TEST_DIR/build}/su-device"
 
-# shellcheck source=../tools/device_profile.sh
-. "$TEST_DIR/../tools/device_profile.sh"
-. "$TEST_DIR/../tools/espressif.sh"
-device_profile_load "" "$TEST_DIR/../tools/device_profiles" || exit 1
+# shellcheck source=../tools/device/device_profile.sh
+. "$TEST_DIR/../tools/device/device_profile.sh"
+. "$TEST_DIR/../tools/build/espressif.sh"
+device_profile_load "" "$TEST_DIR/../tools/device/device_profiles" || exit 1
 
 ARCH_FLAGS=$(device_profile_require DP_ARCH_FLAGS) || exit 1
 CODEGEN_FLAGS=$(device_profile_require DP_CODEGEN_FLAGS) || exit 1

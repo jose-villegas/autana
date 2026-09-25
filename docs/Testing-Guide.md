@@ -48,12 +48,12 @@ lock, from any shell including Git Bash. For a markdown report instead of
 a pass/fail line, use one of the report scripts:
 
 ```sh
-./launcher/tools/report_test_results.sh                    # pass/fail for every suite  -> tools/results/
+./launcher/tools/quality/report_test_results.sh                    # pass/fail for every suite  -> tools/results/
 ./launcher/main/apps/sand/tools/report_performance.sh       # frame-budget numbers       -> its own tools/results/
 ```
 
 Both declare what they want and hand the work to
-`launcher/tools/device_report.sh`, which calls `device.py selftest` to build
+`launcher/tools/device/device_report.sh`, which calls `device.py selftest` to build
 the diagnostics variant, capture the run and write a markdown report under
 one held lock, then reflashes the release firmware afterwards unless given
 `--no-restore`. A report script differs from its siblings only in what it
@@ -128,7 +128,7 @@ at a time via runsuite (seconds) or as a full boot-time run - see
 
 The host has megabytes of stack and gigabytes of heap; the board's actual
 main-task stack and internal-heap figures are what
-`launcher/tools/device_profiles/esp32s3.sh` records
+`launcher/tools/device/device_profiles/esp32s3.sh` records
 (`DP_MAIN_TASK_STACK_BYTES`, `DP_FREE_HEAP_BYTES`,
 `DP_LARGEST_FREE_BLOCK_BYTES`). Two classes of bug lived in that gap, and
 each one cost a build-flash-capture cycle to find — twice over, for both:
@@ -153,7 +153,7 @@ each one cost a build-flash-capture cycle to find — twice over, for both:
   the host run — that is the assert-before-free pattern, which on device
   leaks that block and starves every later test in the same boot.
 
-Those numbers come from `launcher/tools/device_profiles/<chip>.sh`, selected
+Those numbers come from `launcher/tools/device/device_profiles/<chip>.sh`, selected
 by `$DEVICE_PROFILE` (default `esp32s3`), each carrying its own provenance.
 
 The framebuffer lives in PSRAM
@@ -323,7 +323,7 @@ The last form is the everyday one. It builds the same image without autorun
 (`build.qemu.shell/`), which boots into the shell, and then speaks the
 console protocol a board speaks: `runsuite <name>` for each `--suite`, waited
 out to the `RUNSUITE_COMPLETE` line the shell prints, then `screenshot`,
-decoded to a PNG and a state `.json` by `tools/screenshot.py`'s own code.
+decoded to a PNG and a state `.json` by `tools/device/screenshot.py`'s own code.
 Boot, one suite and a capture take about a minute and a half, against five
 to nine for a whole autorun. The frame is the firmware's real framebuffer,
 so it is a board-free way to look at a screen, and the second backend the
@@ -430,7 +430,7 @@ into an image without a flash cycle, and the pixels of every declared scene
 are pinned against change.
 
 ```sh
-./launcher/tools/render_all_scenes.sh          # every scene, and the standing check
+./launcher/tools/render/render_all_scenes.sh          # every scene, and the standing check
 ```
 
 Reach for it to judge a layout, prove a screen still draws what it drew, or
@@ -707,7 +707,7 @@ by a substring of the name, so treat it as a lookup, not an area map.
    (which links no suites) can see it. Allocate anything large in
    `fixture()` or in the suite's own run function instead, as
    `suite_ui_pointer_microui.c` does with its context, and run
-   `tools/build_diag_check.sh` before pushing rather than finding out from a
+   `tools/build/build_diag_check.sh` before pushing rather than finding out from a
    pull request — nothing gates this automatically
    ([`Build-Variants.md`](Build-Variants.md#a-diagnostics-build-can-be-scoped)),
    so the check is `idf.py -B build.diag size` read by eye, not a pass/fail
@@ -726,7 +726,7 @@ by a substring of the name, so treat it as a lookup, not an area map.
 
    ```sh
    rm -f launcher/build.diag/sdkconfig
-   ./launcher/tools/build_diag_check.sh
+   ./launcher/tools/build/build_diag_check.sh
    idf.py -B launcher/build.diag size            # read the real .bss total
    ```
 6. **Stick to ISO C in a suite.** The host runner compiles with

@@ -121,7 +121,7 @@ bake_layout(const LayoutDocument& document, bool check_only, std::string& error)
     return false;
 #else
     const std::filesystem::path generator =
-        std::filesystem::path(EDITOR_PROJECT_ROOT) / "launcher" / "tools" / "gen_ui_layout.py";
+        std::filesystem::path(EDITOR_PROJECT_ROOT) / "launcher" / "tools" / "gen" / "gen_ui_layout.py";
     const std::filesystem::path output = baked_header_path(document);
     const std::string python_argument = shell_argument(EDITOR_PYTHON_EXECUTABLE);
     const std::string generator_argument = shell_argument(generator);

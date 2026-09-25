@@ -5,7 +5,7 @@ name: Shell Scripts
 #
 # Development happens on Windows in Git Bash, where /bin/sh is bash wearing
 # a hat: `sh -n` there accepts bashisms that a real POSIX shell rejects.
-# launcher/tools/idf.sh's POSIX branch, the other thing Windows never runs,
+# launcher/tools/build/idf.sh's POSIX branch, the other thing Windows never runs,
 # is what every firmware build workflow drives through build_flash.sh.
 
 on:

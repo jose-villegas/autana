@@ -183,6 +183,15 @@ class LockStore:
     def is_stale(self, lock, stale_seconds):
         return self.now() - lock["heartbeat_at"] > stale_seconds
 
+    def reclaim_reason(self, lock, stale_seconds):
+        """Why `lock` may be taken from its holder, or "" while it holds."""
+        same_host = lock.get("host") == socket.gethostname()
+        if same_host and not self.is_alive(lock["pid"]):
+            return "dead process"
+        if self.is_stale(lock, stale_seconds):
+            return "heartbeat expiry"
+        return ""
+
     def claim(self, port, ticket, expected_build_id, stale_seconds=DEFAULT_STALE_SECONDS):
         held, reclaimed, reason = self._claim(port, ticket, expected_build_id, stale_seconds)
         if held:
@@ -205,11 +214,9 @@ class LockStore:
             evicted = None
             reason = ""
             if current:
-                same_host = current.get("host") == socket.gethostname()
-                dead = same_host and not self.is_alive(current["pid"])
-                if not dead and not self.is_stale(current, stale_seconds):
+                reason = self.reclaim_reason(current, stale_seconds)
+                if not reason:
                     return None, None, ""
-                reason = "dead process" if dead else "heartbeat expiry"
                 evicted = current
                 reclaimed = ("reclaimed lock from {owner} for {purpose} "
                              "({reason})".format(reason=reason, **current))
@@ -309,12 +316,18 @@ class LockStore:
         if human:
             device_hook.emit("human-cleared", port, human["owner"], note=human["note"])
 
-    def status(self, port):
+    def status(self, port, stale_seconds=DEFAULT_STALE_SECONDS):
+        """A lock the next claim() would reclaim is reported under
+        "reclaimable", not "lock": nothing holds the board, but the file stays
+        for claim() to replace, with its record of whom it took it from."""
         with self.guard(port):
             self.prune_crashed_waiters(port)
+            lock = self.read_json(self.lock_path(port))
+            reason = self.reclaim_reason(lock, stale_seconds) if lock else ""
             return {
                 "human": self.read_json(self.human_path(port)),
-                "lock": self.read_json(self.lock_path(port)),
+                "lock": None if reason else lock,
+                "reclaimable": dict(lock, reason=reason) if reason else None,
                 "queue": self.tickets(port),
             }
 
@@ -327,6 +340,8 @@ def print_status(status):
     elif status["lock"]:
         lock = status["lock"]
         print("held by {owner} for {purpose} since {acquired_at:.0f}".format(**lock))
+    elif status.get("reclaimable"):
+        print("unlocked - stale lock from {owner} for {purpose} ({reason})".format(**status["reclaimable"]))
     else:
         print("unlocked")
     if status["queue"]:

@@ -1,13 +1,13 @@
 /*=============================================================================
  * GENERATED FILE - do not edit.
  *
- *     python tools/gen_boot_anim_image.py ../design/boot/boot.png > main/boot/boot_anim_image.h
+ *     python tools/gen/gen_boot_anim_image.py ../design/boot/boot.png > main/boot/boot_anim_image.h
  *
  * ../design/boot/boot.png - Cerro Autana, the tepui the boot animation's own title is
  * named after - turned a quarter into the panel's native 368x448
  * portrait framebuffer and packed into gfx_color.h's byte-swapped
  * RGB565, so drawing it is a blend and nothing else. See
- * tools/gen_boot_anim_image.py for the rotation's derivation and
+ * tools/gen/gen_boot_anim_image.py for the rotation's derivation and
  * boot_anim.c's draw_image() for what is done with it.
  *===========================================================================*/
 #pragma once

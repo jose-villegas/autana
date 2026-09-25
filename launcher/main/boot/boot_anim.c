@@ -43,7 +43,7 @@
  * draw_image()'s own memcpy fast path below depends on being true. */
 _Static_assert(BOOT_ANIM_IMAGE_W == GFX_WIDTH && BOOT_ANIM_IMAGE_H == GFX_HEIGHT,
                "boot_anim_image.h was generated for a different panel - regenerate it: "
-               "python tools/gen_boot_anim_image.py ../design/boot/boot.png");
+               "python tools/gen/gen_boot_anim_image.py ../design/boot/boot.png");
 _Static_assert(sizeof(boot_anim_image) == (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t),
                "the photo is not exactly one framebuffer - draw_image() hands it to "
                "gfx_blit_dither() as a full-screen source, which reads exactly that "

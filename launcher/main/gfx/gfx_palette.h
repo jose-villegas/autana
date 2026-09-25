@@ -5,7 +5,7 @@
  *
  * Building a palette (which colours it holds) and building a reverse map or
  * dither table FOR one are host-only, offline work - see
- * tools/gfx_palette_gen.h. This header is only what a caller reads at
+ * tools/gen/gfx_palette_gen.h. This header is only what a caller reads at
  * runtime: the data shape, the UI-reserved convention, and the one lookup
  * a colour-to-index step needs.
  */
@@ -29,7 +29,7 @@ typedef struct {
 } gfx_palette_t;
 
 /* Nearest-entry index of `c` in whichever palette `index_map` was built
- * for (tools/gfx_palette_gen.h's gfx_palette_gen_build_index_map()) - one
+ * for (tools/gen/gfx_palette_gen.h's gfx_palette_gen_build_index_map()) - one
  * flash read, keyed by native (non-byte-swapped) RGB565, the same swap
  * gfx_color_rgb888() undoes. */
 static inline int

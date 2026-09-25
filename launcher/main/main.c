@@ -531,6 +531,81 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
     }
 }
 
+#if CONFIG_LAUNCHER_SELFTEST
+static int shell_test_enters;
+static int shell_test_frames;
+static int shell_test_exits;
+
+static void
+shell_test_enter(void) {
+    shell_test_enters++;
+}
+
+static void
+shell_test_frame(uint32_t dt_ms, const input_t* input) {
+    shell_test_frames++;
+}
+
+static void
+shell_test_exit(void) {
+    shell_test_exits++;
+}
+
+static const app_t shell_test_app = {
+    .name = "Shell exit test",
+    .enter = shell_test_enter,
+    .frame = shell_test_frame,
+    .exit = shell_test_exit,
+};
+
+void
+shell_test_fixture(void) {
+    shell_test_enters = 0;
+    shell_test_frames = 0;
+    shell_test_exits = 0;
+    exit_requested = false;
+}
+
+bool
+shell_test_requested_exit(void) {
+    const app_t* current = NULL;
+    input_t input = {0};
+    start_app(&current, &shell_test_app);
+    step_app(&current, &input, 16);
+    const bool ordinary =
+        current == &shell_test_app && shell_test_enters == 1 && shell_test_frames == 1 && shell_test_exits == 0;
+
+    shell_request_exit();
+    step_app(&current, &input, 16);
+    const bool left = current == NULL && shell_test_frames == 1 && shell_test_exits == 1;
+    if (current == NULL) {
+        step_app(&current, &input, 16);
+    }
+    const bool launcher_next = current == NULL && shell_test_frames == 1 && shell_test_exits == 1;
+    if (current != NULL) {
+        exit_app(&current);
+    }
+    exit_requested = false;
+    return ordinary && left && launcher_next;
+}
+
+bool
+shell_test_stale_exit_is_cleared(void) {
+    const app_t* current = NULL;
+    input_t input = {0};
+    shell_request_exit();
+    start_app(&current, &shell_test_app);
+    step_app(&current, &input, 16);
+    const bool first_frame =
+        current == &shell_test_app && shell_test_enters == 1 && shell_test_frames == 1 && shell_test_exits == 0;
+    if (current != NULL) {
+        exit_app(&current);
+    }
+    exit_requested = false;
+    return first_frame;
+}
+#endif
+
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Report throughput on TIMER, not frames. CONFIG_LAUNCHER_DEVELOPMENT only */
 static void
@@ -634,14 +709,14 @@ app_boot_init(void) {
 
     heap_mark("after gfx_init");
     load_system_panel_clock();
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    heap_caps_dump(MALLOC_CAP_DMA);
-#endif
 
     if (!post_run_after_display()) {
         show_post_failures();
     }
     heap_mark("after post");
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    heap_caps_dump(MALLOC_CAP_DMA);
+#endif
 
 #if CONFIG_LAUNCHER_SELFTEST && CONFIG_LAUNCHER_SELFTEST_AUTORUN
     if (selftest_run() != 0) {

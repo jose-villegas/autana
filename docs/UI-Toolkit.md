@@ -12,7 +12,8 @@ and the house rules it must follow, are in
 
 The board is held either way up, so a screen must work in both
 orientations, and every picture below shows both. Each comes from the real
-code, drawn on a host by the gallery scene, `launcher/tools/ui_widgets_render_host.sh` (see
+code, drawn on a host by the gallery scene,
+`launcher/tools/render/scenes/ui_widgets_render_host.sh` (see
 [Regenerating the images](#regenerating-the-images)).
 
 ## At a glance
@@ -352,7 +353,7 @@ screen, once a second screen could use it. It must:
 - have a host test in `test/suites/suite_ui_widgets.c` that drives real
   taps through `ui_begin()`
 - appear in the gallery scene (a view in
-  `launcher/tools/ui_widgets_render_host.c`) and in this document
+  `launcher/tools/render/scenes/ui_widgets_render_host.c`) and in this document
 
 A control that shows everything at once sits inline, like
 `ui_swatch_grid()` or a row of tiles. One that must show more than its own
@@ -365,7 +366,7 @@ something else.
 ## Regenerating the images
 
 ```sh
-sh launcher/tools/ui_widgets_render_host.sh
+sh launcher/tools/render/scenes/ui_widgets_render_host.sh
 ```
 
 It renders each view to `launcher/tools/results/render/ui_widgets/` and

@@ -25,8 +25,8 @@ BOOT_TEST_DIR="$HERE/bootloader"
 STUBS="$HERE/stubs/bootloader"
 BUILD_DIR="${TEST_BUILD_DIR:-$HERE/build}"
 
-# shellcheck source=../tools/find_cc.sh
-. "$HERE/../tools/find_cc.sh"
+# shellcheck source=../tools/build/find_cc.sh
+. "$HERE/../tools/build/find_cc.sh"
 
 if ! CC_BIN=$(find_cc); then
     echo "check_pmic_cold_boot: no C compiler found" >&2

@@ -1659,8 +1659,8 @@ whatever else `sand.c`, `sand_liquid.c`, `sand_gas.c`, `sand_reactions.c`,
 between `sand.c` and `sand_liquid.c`).
 
 Cognitive complexity is ratcheted, not documented here:
-`launcher/tools/complexity_gate.py` checks every first-party function
-against `launcher/tools/complexity_baseline.txt`, which holds each one's
+`launcher/tools/quality/complexity_gate.py` checks every first-party function
+against `launcher/tools/quality/complexity_baseline.txt`, which holds each one's
 current score - see `docs/tools/Complexity-Gate.md`.
 
 The main sweep, per grain:
