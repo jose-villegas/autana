@@ -647,14 +647,13 @@ the dirty tracker's own begin/wait/present sequencing on a host, by including
 `suite_gfx_dirty.c` can, and gfx.c's panel plumbing cannot. `suite_gfx_mode.c`
 and `suite_gfx_band.c` (portable) cover the mode-grant arithmetic and the
 band-ring state machine the same way, including `gfx_mode.h`/`gfx_band.h`
-directly - the latter also covers `gfx_band_span_clip()`/`gfx_band_span_pack()`,
-the even-rounding and in-place packing behind `gfx_band_submit()`'s own send.
+directly.
 `gfx.c`'s own allocation and DMA-send side
 of `gfx_mode_enter()`/`gfx_band_submit()` needs real device memory, so it is
 exercised instead by `main/apps/render_lab/tests/suite_cube_band_perf.c`
 (device-only), which times the cube's band-mode path against its full-fb
-path on the same scene. No device suite covers a band's narrowed send or
-band buffers sharing the strip-bounce slots.
+path on the same scene. No device suite covers band buffers sharing the
+strip-bounce slots.
 
 Still untested by an assertion: small3dlib's per-pixel Gouraud shading -
 verified by running the firmware and looking at the screen, since the cube

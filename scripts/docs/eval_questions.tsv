@@ -1,0 +1,45 @@
+why does my app freeze the frame loop when I call vTaskDelay	docs/Launcher-Architecture.md	There is exactly one frame loop, and it belongs to the shell
+how do I register a new app with APP_REGISTER	docs/Building-an-App.md	Registration
+what does CONFIG_LAUNCHER_SELFTEST actually gate	docs/Build-Variants.md	Development-only instrumentation is its own flag, not SELFTEST
+flash diagnostics build	docs/tools/Autana-CLI.md	Build and flash
+autana monitor without --follow hangs, why	docs/tools/Autana-CLI.md	Watch the board
+how do two agents share the same board without stepping on each other	docs/tools/Device-Lock.md	Device lock
+why is my host test failing but the device suite passes	docs/Testing-Guide.md	The host runner enforces two of the device's limits
+how do I make a tunable I can change live on the device	docs/tools/Live-Tuning.md	Making something tunable
+clang-format version mismatch breaks CI	docs/C-Style-Guide.md	One formatter version
+why can't a gfx file mention a specific app name in a comment	.dev/AGENTS.md	Includes are layer-qualified
+why is LVGL not used here	docs/Launcher-Architecture.md	Why microui, not LVGL
+touch taps feel laggy in the UI	docs/Launcher-Architecture.md	Two things to know before touching it
+how does dirty-band redraw skip repainting unchanged microui windows	docs/Launcher-Architecture.md	Immediate mode versus dirty bands
+one byte per sand grid cell, what fields does it hold	docs/sand/Architecture.md	The grid, in one byte
+adding a new material to the sand sim checklist	docs/sand/Adding-a-Material.md	Adding a Material
+how does water flow and cross-flow pressure work in sand	docs/sand/Sand-Simulation.md	Cross-flow: a cheap stand-in for pressure
+how does the falling sand sim split work across the two cores	docs/sand/Sand-Simulation.md	Two cores: chunk-parallel passes, and what stays serial
+gunpowder fuse mechanics in sand	docs/sand/Reaction-Table.md	Gunpowder's fuse: what the table above cannot express
+how is metal smelted from dirt in sand	docs/sand/Metal.md	How dirt becomes metal
+why does my liquid material look wrong, shading pipeline	docs/sand/Shading-and-Colour.md	The pipeline
+how do I capture a frame-budget performance report for sand	docs/sand/Testing-Sand.md	Capturing a frame-budget report
+explosion and thrown chunk mechanics, impulse	docs/sand/Impulse-Mechanics.md	Impulse Mechanics: things in flight
+what is a scene_*.c file versus app_*.c	.dev/AGENTS.md	Adding/removing an app touches no other file
+render_lab wireframe scene generator	launcher/tools/render/scenes/README.md	Render/Scenes
+how do I add a screen to the host editor	editor/README.md	Adding a screen
+running qemu tests without a board	docs/Testing-Guide.md	QEMU: the device image with no board
+pinning pixels for a rendered scene against a reference capture	docs/tools/Render-Harness.md	Diffing against a capture
+what suite naming pattern does SUITE_REGISTER expect	docs/Testing-Guide.md	Adding a suite
+how do I take a screenshot of the panel from the CLI	docs/tools/Device-Lock.md	Screenshots: `device.py screenshot`
+console is not showing up as a normal UART port	docs/notes/Diagnostics-and-Debugging.md	The console is USB-Serial-JTAG, not UART0
+IMU axes seem swapped compared to the screen orientation	docs/notes/Input-and-Sensors.md	The IMU's axes do not match the screen's
+board keeps resetting when flashing at high baud, warm reset issue	docs/notes/Flashing-and-Toolchain.md	Warm resets at 120 MHz
+internal heap budget with framebuffer in PSRAM	docs/notes/Board-and-Memory.md	Memory - the constraint that shapes everything
+partial screen updates only sending changed bands	docs/notes/Display-and-Rendering.md	Partial updates: only send the bands that changed
+cognitive complexity ratchet failing the build	docs/tools/Complexity-Gate.md	A ratchet with a fail line
+generating and validating a mermaid diagram before commit	docs/tools/Mermaid-Diagrams.md	Pre-commit
+icon baker generator rejects bad input	docs/tools/Icon-Baker.md	What the generator rejects before emitting
+proposal for a compile-time log level per build variant	docs/plans/Log-Level-Plan.md	Plan: a compile-time log-level ceiling per build variant, not a logging class
+plan for splitting diagnostics into a settings app	docs/plans/Settings-App-Plan.md	Plan: split Diagnostics into a Settings app, then unify SELFTEST/diagnostics naming
+UI editor plan, native app rendering in-process with Dear ImGui	docs/plans/UI-Editor-Plan.md	The shell: SDL2 + Dear ImGui
+band-mode framebuffer and span rasterizer roadmap for future games	docs/Autana-Rendering-Roadmap.md	3.3 Read PSRAM, never write it in bulk: core-1 present and an internal-SRAM band ring
+when should a task go to Codex instead of Claude	.dev/docs/workflows/Model-Delegation-Workflow.md	Routing table
+worktrees don't have .dev folder, why	.dev/docs/workflows/Agent-Workflow.md	Worktrees get no `.dev`
+why did my screenshot look fine but the panel-link actually glitched	.dev/docs/notes/Device-Workflow.md	Panel-link faults are invisible to screenshots
+touchscreen hover synthesized frames costing tap latency, lesson learned	.dev/docs/UI-Lessons.md	A touchscreen needs two synthesized hover frames, and this shipped broken
