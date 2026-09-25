@@ -1360,11 +1360,12 @@ void sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a
  * must run LAST - see sand_impulse.c's own banner. */
 void step_impulses(sand_t* s, int dx, int dy);
 
-/* try_fall_or_scatter()/try_slide() live here, static inline, same
- * reason as dest_row()/mark_rows(): hottest path, called once per grain
- * per step. sand_gas.c calls thin non-inline wrappers in sand.c instead
- * of un-static-ing these or duplicating the chain - both regressed a
- * frame-budget test (lost inlining, or duplicated flash). */
+/* try_fall_or_scatter_impl()/try_slide_impl() live here, static inline,
+ * same reason as dest_row()/mark_rows(): hottest path, called once per
+ * grain per step. Un-static-ing them loses inlining at sand.c's hot site.
+ * sand_gas.c calls the _impl forms directly too: routing it through the
+ * non-inline wrappers in sand.c cost every gas grain a
+ * cross-translation-unit call (see its call site). */
 
 /* Static materials never yield regardless of density, so a wall stays a
  * wall - the general "yields to denser" rule below has this one
