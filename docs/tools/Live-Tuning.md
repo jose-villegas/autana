@@ -118,5 +118,5 @@ TUNE(ridge, trail, 226, 0, 255);      /* where the #define was: `trail` */
 
 ## Related
 
-- [`../Gfx-and-Presentation.md`](../Gfx-and-Presentation.md) - the launcher's ridge, whose numbers are the first tunables
+- [`../Glow-Curves.md`](../Glow-Curves.md) - the launcher's ridge, whose numbers are the first tunables
 - [`../Build-Variants.md`](../Build-Variants.md) - what a development build is

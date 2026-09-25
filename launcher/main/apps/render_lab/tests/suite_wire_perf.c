@@ -129,14 +129,11 @@ run_band_frame(wire_totals_t* t, uint32_t dt_ms) {
     while (gfx_band_next()) {
         const int row0 = gfx_band_row0();
         const int height = gfx_band_height();
-        int x0, x1;
 
-        if (!gfx_band_dirty(&x0, &x1)) {
+        if (!gfx_band_dirty()) {
             gfx_band_skip();
             continue;
         }
-        (void)x0;
-        (void)x1;
 
         gfx_color_t* buf = gfx_band_buffer();
         const int64_t d0 = esp_timer_get_time();
