@@ -50,26 +50,40 @@ pour(int frame) {
 }
 
 static void
+draw_cell_pixels(gfx_color_t* fb, int cx, int cy, material_pattern_t pattern, const gfx_color_t* colors) {
+    for (int py = 0; py < CELL_SIZE; py++) {
+        for (int px = 0; px < CELL_SIZE; px++) {
+            const bool hatch = pattern == MATERIAL_HATCHED && ((cx * CELL_SIZE + px + cy * CELL_SIZE + py) & 7) == 0;
+            fb[(cy * CELL_SIZE + py) * GFX_WIDTH + cx * CELL_SIZE + px] = hatch ? colors[2] : colors[0];
+        }
+    }
+}
+
+static void
+draw_cell(gfx_color_t* fb, const uint8_t* above, const uint8_t* row, const uint8_t* below, int cx, int cy) {
+    const unsigned mask = sand_paint_edge_mask(above, row, below, cx, GRID_W);
+    const unsigned hash = material_grain_hash(cx, cy);
+    gfx_color_t colors[3];
+    const material_pattern_t pattern = material_colours(row[cx], hash, mask, 0, colors);
+    draw_cell_pixels(fb, cx, cy, pattern, colors);
+}
+
+static void
+draw_row(gfx_color_t* fb, const uint8_t* grid, int cy) {
+    const uint8_t* row = grid + cy * GRID_W;
+    const uint8_t* above = cy > 0 ? row - GRID_W : NULL;
+    const uint8_t* below = cy + 1 < GRID_H ? row + GRID_W : NULL;
+    for (int cx = 0; cx < GRID_W; cx++) {
+        draw_cell(fb, above, row, below, cx, cy);
+    }
+}
+
+static void
 draw_grid(void) {
     gfx_color_t* fb = gfx_framebuffer();
     const uint8_t* grid = sim.cells;
     for (int cy = 0; cy < GRID_H; cy++) {
-        const uint8_t* row = grid + cy * GRID_W;
-        const uint8_t* above = cy > 0 ? row - GRID_W : NULL;
-        const uint8_t* below = cy + 1 < GRID_H ? row + GRID_W : NULL;
-        for (int cx = 0; cx < GRID_W; cx++) {
-            const unsigned mask = sand_paint_edge_mask(above, row, below, cx, GRID_W);
-            const unsigned hash = material_grain_hash(cx, cy);
-            gfx_color_t colors[3];
-            const material_pattern_t pattern = material_colours(row[cx], hash, mask, 0, colors);
-            for (int py = 0; py < CELL_SIZE; py++) {
-                for (int px = 0; px < CELL_SIZE; px++) {
-                    const bool hatch =
-                        pattern == MATERIAL_HATCHED && ((cx * CELL_SIZE + px + cy * CELL_SIZE + py) & 7) == 0;
-                    fb[(cy * CELL_SIZE + py) * GFX_WIDTH + cx * CELL_SIZE + px] = hatch ? colors[2] : colors[0];
-                }
-            }
-        }
+        draw_row(fb, grid, cy);
     }
 }
 
