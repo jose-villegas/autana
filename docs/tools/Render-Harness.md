@@ -8,7 +8,7 @@ this sits inside.
 
 ![A shaded cube rendered by the firmware drawing code on a host](../images/overview/render-lab-cube.png)
 
-<!-- Regenerate: ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o <dir>; use gouraud-landscape.png. -->
+See [Images in these docs](#images-in-these-docs) for the exact render command.
 
 On Windows, run the `.sh` commands below in Git Bash. On macOS/Linux, use a
 terminal. You need a host C compiler; [the README](../../README.md#try-it-without-a-board)
@@ -26,12 +26,25 @@ for the cube or `cornell-landscape.bmp` for this software ray-traced room:
 
 ![Cornell box rendered in software](../images/overview/render-lab-cornell.png)
 
-<!-- Regenerate: ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o <dir>; use cornell-landscape.png. The displayed FPS comes from the host fixture, not a board measurement. -->
+See [Images in these docs](#images-in-these-docs) for the exact render command. The displayed FPS comes from the host fixture, not a board measurement.
 
 The host fixture supplies the on-screen FPS text; use a device capture to
 measure the board's frame time. The same command also renders other Render Lab
 views. The reference below explains how scenes are declared, checked, and
 compared with device captures.
+
+## Images in these docs
+
+Run the commands from the repository root. Host render scripts write outputs under their `-o` directory; use the named scene image shown here.
+
+| Image | Scene command and output | GIF command |
+|---|---|---|
+| `docs/images/overview/sand-simulation.gif` | `./launcher/main/apps/sand/tools/sand_sim_render_host.sh --video`; input: `launcher/main/apps/sand/tools/results/render/sand_sim/simulation-portrait.avi` | `ffmpeg -y -i launcher/main/apps/sand/tools/results/render/sand_sim/simulation-portrait.avi -vf "trim=start=1.6:end=4.7,setpts=PTS-STARTPTS,fps=12,scale=276:-1:flags=lanczos,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0,palettegen" docs/images/overview/sand-simulation-palette.png` then `ffmpeg -y -i launcher/main/apps/sand/tools/results/render/sand_sim/simulation-portrait.avi -i docs/images/overview/sand-simulation-palette.png -filter_complex "[0:v]trim=start=1.6:end=4.7,setpts=PTS-STARTPTS,fps=12,scale=276:-1:flags=lanczos,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0[v];[v][1:v]paletteuse=dither=bayer" -loop 0 docs/images/overview/sand-simulation.gif` |
+| `docs/images/overview/launcher-home.png` | `./launcher/tools/render/scenes/launcher_home_render_host.sh -o <dir>`; use `landscape.png` | — |
+| `docs/images/overview/render-lab-cube.gif` | Run [`render_lab_render_host.sh`](../../launcher/main/apps/render_lab/tools/render_lab_render_host.sh), then `launcher/main/apps/render_lab/tools/results/render/render_lab/render_lab_render --quarter 1 --no-hud --scene gouraud --frames 100 --dt 33 -o launcher/main/apps/render_lab/tools/results/render/render_lab/cube-motion.bmp --video launcher/main/apps/render_lab/tools/results/render/render_lab/cube-motion.avi` | `ffmpeg -y -i launcher/main/apps/render_lab/tools/results/render/render_lab/cube-motion.avi -vf "fps=12,scale=336:-1:flags=lanczos,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0,palettegen" docs/images/overview/render-lab-cube-palette.png` then `ffmpeg -y -i launcher/main/apps/render_lab/tools/results/render/render_lab/cube-motion.avi -i docs/images/overview/render-lab-cube-palette.png -filter_complex "[0:v]fps=12,scale=336:-1:flags=lanczos,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0[v];[v][1:v]paletteuse=dither=bayer" -loop 0 docs/images/overview/render-lab-cube.gif` |
+| `docs/images/overview/sand-menu.png` | `./launcher/main/apps/sand/tools/sand_menu_render_host.sh -o <dir>`; use `title-landscape.png` | — |
+| `docs/images/overview/render-lab-cube.png` | `./launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o <dir>`; use `gouraud-landscape.png` | — |
+| `docs/images/overview/render-lab-cornell.png` | `./launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o <dir>`; use `cornell-landscape.png` | — |
 
 ---
 
