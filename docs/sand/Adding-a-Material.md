@@ -450,8 +450,11 @@ inlined, and give the new pass an ordinary, non-inline wrapper instead -
 un-`static`ing the shared primitives loses inlining at the *original*
 site, and duplicating the inline chain into the new translation unit
 inlines a whole call graph into a place that rarely needs it as much.
-`sand_gas.c` takes the wrapper route for exactly this reason (see
-`sand_priv.h`'s own comment above `try_fall_or_scatter()`/`try_slide()`);
+`sand_gas.c` is the exception that proves the rule: its rise sweep is
+hot enough that it calls `try_fall_or_scatter_impl()`/`try_slide_impl()`
+directly, since the wrapper's cross-translation-unit call cost more than
+the second inlined copy (see the comment at that call site in
+`sand_gas.c`);
 `suite_sand_perf.c` records a measured 26% regression as precedent for
 sharing a hot per-call function across a translation-unit boundary the
 wrong way. Flash is a cache-constrained resource here (32 KB
