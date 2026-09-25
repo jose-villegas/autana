@@ -778,7 +778,7 @@ test_cullet_stays_pale_at_every_phase(void) {
 
 /*
  * CULLET'S GLINT - the pale cycle above read as too white on the device, so
- * material_colours()'s MAT_SAND case now flashes a grain PURE WHITE instead
+ * material_colours()'s sand_colours() now flashes a grain PURE WHITE instead
  * of its pale cycle colour, rarely (CULLET_GLINT_ONE_IN), for a different
  * few grains every phase step - a facet catching the light. See
  * CULLET_GLINT's and CULLET_GLINT_ONE_IN's own comments in material.c.
