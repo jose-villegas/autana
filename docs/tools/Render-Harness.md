@@ -44,8 +44,8 @@ Two files, the same declare-then-source shape a report script uses:
   `render_scene_run "$@"`. Everything else - finding a compiler, building,
   checking each image, converting to PNG - is that one procedure.
 
-An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives in that
-app's own `tools/`, so nothing in the engine's tooling names an app.
+An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives
+in that app's own `tools/`, so nothing in the engine's tooling names an app.
 `render_all_scenes.sh` finds both by name, so a new scene is one pair of
 files and deleting an app deletes its scenes.
 

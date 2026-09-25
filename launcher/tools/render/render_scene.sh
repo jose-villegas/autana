@@ -7,7 +7,7 @@
 # and for the same reason: a second copy of this procedure is the bug.
 #
 # An ENGINE scene declares itself in launcher/tools/render/scenes/; an APP's scene
-# declares itself in that app's own tools/scenes/, so nothing here ever
+# declares itself in that app's own tools/, so nothing here ever
 # names an app. Both are found by tools/render/render_all_scenes.sh.
 #
 # Declare before sourcing:
