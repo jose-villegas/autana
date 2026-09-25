@@ -3,11 +3,22 @@
 import contextlib
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
+
+
+def setUpModule():
+    global saved_hook
+    saved_hook = os.environ.pop("AUTANA_LOCK_HOOK", None)
+
+
+def tearDownModule():
+    if saved_hook is not None:
+        os.environ["AUTANA_LOCK_HOOK"] = saved_hook
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import autana  # noqa: E402

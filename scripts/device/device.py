@@ -430,10 +430,24 @@ def reset_and_capture(port, output, seconds, idle_seconds, expected_build_id=Non
 
 RESET_FIRST_BYTE_SECONDS = 2
 RESET_REOPEN_SECONDS = 10
+FLASH_PORT_WAIT_SECONDS = 12
+FLASH_BOOT_SECONDS = 12
+
+
+def open_usb_after_flash(seconds):
+    deadline = time.monotonic() + seconds
+    while True:
+        try:
+            port = find_port()
+            return port, open_serial(port)
+        except (OSError, RuntimeError):
+            if time.monotonic() >= deadline:
+                raise RuntimeError("USB Serial/JTAG port did not return after the flash")
+            time.sleep(0.2)
 
 
 def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=None,
-                        complete=tests_done):
+                        complete=tests_done, follow_usb=False):
     """A watchdog reset or a power cycle re-enumerates USB Serial/JTAG and
     kills an open handle, so no capture spans one: what the board prints
     before the port reopens is lost. It re-enumerates late enough that the
@@ -454,10 +468,13 @@ def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=N
         if remaining <= 0:
             return ended("timeout")
         try:
-            connection = open_when_free(port, remaining,
-                                        reason="re-enumerating after reset")
+            if follow_usb:
+                unused_port, connection = open_usb_after_flash(remaining)
+            else:
+                connection = open_when_free(port, remaining,
+                                            reason="re-enumerating after reset")
         except RuntimeError:
-            if first_reopen:
+            if first_reopen and not follow_usb:
                 raise
             return ended("port lost")
         first_reopen = False
@@ -579,15 +596,22 @@ def find_elf_for_build_id(worktree, build_id):
 
 
 def reset_and_read_build_id(port, seconds=12, expected_build_id=None):
-    """The id from the boot log, however long the boot stays silent before
-    printing it; or else from the console's BUILDID query, which a release
-    image, having no console, never answers."""
-    data, reason = reset_and_capture(port, os.devnull, seconds, None, expected_build_id,
-                                     complete=build_id_heard)
+    """Read the boot after flashing, then use the watchdog if it was missed."""
+    data, reason = capture_after_reset(port, os.devnull, seconds, None, expected_build_id,
+                                       complete=build_id_heard, follow_usb=True)
     actual = latest_build_id_from_bytes(data)
     if actual:
         return actual, reason
-    with open_when_free(port, reason="re-enumerating after reset") as connection:
+    port, connection = open_usb_after_flash(FLASH_PORT_WAIT_SECONDS)
+    connection.close()
+    reset(port, after="watchdog_reset")
+    data, reason = capture_after_reset(port, os.devnull, seconds, None, expected_build_id,
+                                       complete=build_id_heard, follow_usb=True)
+    actual = latest_build_id_from_bytes(data)
+    if actual:
+        return actual, reason
+    unused_port, connection = open_usb_after_flash(FLASH_PORT_WAIT_SECONDS)
+    with connection:
         connection.write(b"BUILDID\n")
         connection.flush()
         deadline = time.monotonic() + 3
@@ -649,13 +673,14 @@ def flash(args, store, port, held_lock=None, extra_flags=()):
             else:
                 print("build id is unverified: the build log has no BUILD_ID",
                       file=sys.stderr)
-            actual, reason = reset_and_read_build_id(port, expected_build_id=expected)
-            if not expected or not actual:
-                print("build id is unverified: boot did not provide BUILD_ID", file=sys.stderr)
-            elif actual != expected:
+            actual, reason = reset_and_read_build_id(port, seconds=FLASH_BOOT_SECONDS,
+                                                     expected_build_id=expected)
+            if expected and not actual:
+                raise RuntimeError("flashed boot did not provide BUILD_ID after watchdog reset")
+            elif expected and actual != expected:
                 raise RuntimeError(
                     "flashed build id mismatch: expected " + expected + ", got " + actual)
-            else:
+            elif expected:
                 build_id = actual
                 print("verified BUILD_ID=" + actual + " (" + reason + ")")
         except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
