@@ -491,120 +491,15 @@ ui_end(UI_NO_BACKGROUND);   /* draw over the app instead of clearing */
 That gets the touch handling - which is not obvious, see the comment on
 `feed_input()` - and the repaint logic below, for free.
 
-### Styling a control
-
-`ui_style.h` decides how a control's frame *looks*, separately from what it
-*is*. Two styles exist for buttons:
-
-| | |
-|---|---|
-| `UI_BUTTON_FLAT` | microui's own — a flat fill plus a one-pixel border. The default. |
-| `UI_BUTTON_BEZEL` | lit from the top left, inverted while a finger is on it. What the launcher uses. |
-
-```c
-ui_begin(input);
-ui_set_button_style(UI_BUTTON_BEZEL);   /* every frame - see below */
-```
-
-Three things about it are worth knowing before adding a style of your own.
-
-**The hook is microui's, not a patch.** `mu_Context` carries a `draw_frame`
-function pointer that every frame goes through — button, checkbox, slider,
-scrollbar, window background — with a rect and a colour id. `ui_init()` saves
-the one microui installed and puts its own in front, so `UI_BUTTON_FLAT` and
-every non-button frame are still literally upstream's code, and nothing in
-`components/microui/` is edited.
-
-**A style emits commands, not pixels.** It would be simpler to call
-`gfx_fill_rect()` and paint the edges directly, and it would break the repaint
-skip below: that works by hashing microui's command list, so an edge drawn
-outside the list is invisible to the hash and survives on screen as a stale
-smear after the control underneath it changes. Styles return spans;
-`styled_draw_frame()` turns spans into `mu_draw_rect()` calls; the hash sees
-all of it.
-
-**Style does not persist across frames.** `ui_begin()` resets it, so a caller
-that wants a style states it every frame. That is the immediate-mode reading —
-style is part of the frame's description, like everything else — and it is load
-bearing here, because the whole shell shares one `mu_Context`: without the
-reset, the launcher opting in would leave a running app's own buttons
-bezelled too.
-
-One detail worth spelling out, because it is the opposite of what a desktop
-toolkit would do: **the pressed look is on hover, not only on focus.** On a
-mouse, hover means "the pointer is near" and focus means "the button is
-held"; on a touchscreen the pointer does not exist until a finger is already
-on the glass, so hover *is* contact.
-
-The pointer holds `DOWN` for the whole press instead of releasing the same
-frame it presses — `ui_pointer.c` is where that policy lives — so
-`MU_COLOR_BUTTONFOCUS` now covers most of a tap on its own —
-microui keeps a control focused for as long as `mouse_down` stays true,
-`MU_OPT_HOLDFOCUS` or not. What still needs hover is the one synthesized
-frame *before* `DOWN` lands (see `feed_input()`'s comment): the pointer is
-on the control but focus has not been taken yet, so a style keyed only on
-focus would render that one frame flat. Keying the bezel off hover as well
-as focus is what keeps it sinking smoothly through the whole gesture instead
-of flashing in on the second frame.
-
-The geometry and the shading are pure functions in the header, the same split
-`icon_walk_blocks()` makes, so `test/suites/suite_ui_style.c` checks the shape on a host
-without linking `gfx.c` or even `microui.c` — nobody can eyeball five
-overlapping rectangles reliably.
-
-`ui_style.h` has a flat sibling to the bezel above: `ui_panel_spans()` is a
-face plus a plain border, for a captioned section frame that groups controls
-without inviting a press — a panel outlines a whole screen area, a bezel
-outlines one tap target, and the two would fight if a panel were lit and
-shadowed the same way.
+The controls, drawing helpers, button styles, icons and layout calls a UI
+can use are catalogued in [UI-Toolkit.md](UI-Toolkit.md). What follows is how
+the integration underneath them works.
 
 ### Text at more than one size
 
 A font and its scale ride inside every text command, so the repaint hash
 sees a size change unaided; a text style does not. The calls and the reason
 are in [Text-and-Fonts.md](Text-and-Fonts.md#text-in-a-microui-screen).
-
-### App-owned artwork, and how it reaches the command list
-
-`icon_walk_blocks()` (`gfx/icon.h`) fits an icon's row bytes to a destination
-box and emits each horizontal run to a callback, so the per-draw stack is
-O(1) in the icon's size; a per-icon bound is the baked `blocks` field of
-`icon_t`. It stays pure geometry, the same split `ui_style.h`'s spans use: it
-says WHERE the blocks go, not how they reach a framebuffer, so it links and
-is tested on a host with no `gfx.c` or `microui.c` involved.
-
-`ui_draw_icon(ctx, r, icon, rows, color)` (`ui/ui.h`) is what turns those
-runs into command-list entries — one `mu_draw_rect()` per run. That is
-the whole reason it exists, rather than an app calling `gfx_fill_rect()`
-straight into the framebuffer for its own icon: artwork painted outside the
-command list is invisible to the repaint hash and survives as a stale smear
-once the control underneath it changes — the same "a style emits commands,
-not pixels" rule above, applied to an app's own artwork instead of a
-control's frame. It also means an app icon needs no new `MU_ICON_*` id and
-no patch to `components/microui/`.
-
-The icons themselves are never the shell's to own. The system atlas stays
-what the shell itself needs: `MU_ICON_CHECK` maps to `ICON_SYSTEM_CHECK` in
-`gfx/icons_system.h`, and the other three microui icons stay a centred-square
-placeholder — see the comment on `MU_COMMAND_ICON` in `ui.c` for why that is
-deliberate. An app that wants a funnel, a cross, a
-starburst draws its own bitmaps in its own folder (e.g.
-`apps/sand/icons_sand.h`) and reaches `ui_draw_icon()` to put them in its
-own command list. Deleting the app folder deletes its icons with it, per
-"an app is a folder" above.
-
-`ui_slider_int()` (`ui/ui_build.c`) is built the same way, one layer down:
-`ui/ui_slider.h` is pure geometry — the track, the filled portion and the
-knob rect for a value, and the inverse, a touch x back to a value,
-quantized and clamped — and `ui_slider_int()` turns that into
-`mu_draw_rect()` calls via `ui_panel_spans()`/`ui_bezel_spans()`. Integer
-throughout, deliberately: these are whole-unit settings, and
-`mu_slider_ex()`'s float value and `"%.2f"` thumb are the wrong shape for
-that. A slider is also the one control that actually needs the pointer to
-hold `DOWN` for the whole press rather than release on the same frame it
-pressed — see "the pressed look is on hover" above for that policy and why
-it lives in `ui_pointer.c`; without it, a drag can only jump to where a
-finger first landed and then goes deaf to everything after.
 
 ### Immediate mode versus dirty bands
 

@@ -114,13 +114,9 @@ control or two of them collide.
 
 Hand the click to the state module; let it decide what it means.
 
-Most of what a screen needs is already built that way in `ui/ui_widgets.h`:
-a panel, a header bar, a button with an icon beside its label, a tile with
-the icon above it, a themed slider, and a dropdown whose list opens over the
-screen - above or below itself, wherever it fits. Each takes a `ui_theme_t`,
-so a screen states its colours once; text aligned in a rect and a swatch
-grid take colours directly. Add a widget there rather than a private copy in
-one app's screen.
+Most of what a screen needs is already built that way: check
+[`UI-Toolkit.md`](UI-Toolkit.md) first, and add a new control to
+`ui/ui_widgets.h` rather than a private copy in one app's screen.
 
 ### More than one text size
 
@@ -140,44 +136,11 @@ Fonts, scales and text styles are in [`Text-and-Fonts.md`](Text-and-Fonts.md).
 
 ### A list of rows that may overflow
 
-`ui_scroll.h` (`launcher/main/ui/`) is the shared way to lay out a stack of
-centred, fixed-width rows and let it scroll once it no longer fits - the
-launcher list and render_lab's menu screen (`render_lab_menu_screen.c`)
-build on it instead of each hand-tracking a `y`
-or placing rows at an ABSOLUTE rect, which left every row past the first
-unreachable once the stack overflowed (only a RELATIVE `mu_layout_set_next()`
-folds into a container's own `content_size` and follows its scroll - see
-`microui.c`'s `mu_layout_next()`).
-
-Open the window with `ui_scroll_view_begin()` instead of `ui_begin_screen()`,
-close it with `ui_scroll_view_end()`, and lay out rows with an `ui_flow_t`
-cursor:
-
-```c
-if (ui_scroll_view_begin(ctx, "My Screen", opt, ui_scroll_view_default(), dt_ms)) {
-    ui_flow_t flow = ui_flow_start(ui_width(), top, gap);
-    for (int i = 0; i < count; i++) {
-        ui_flow_row(ctx, &flow, row_w, row_h);
-        if (mu_button(ctx, labels[i])) { chosen = i; }
-    }
-    ui_scroll_view_end(ctx);
-}
-```
-
-`ui_flow_top(canvas_h, count, row_h, gap, margin)` gives the starting `top`
-for a uniform stack that should sit centred when short and pinned to
-`margin` once it no longer fits.
-
-`ui_scroll_view_config_t` (from `ui_scroll_view_default()`, or built by hand)
-controls what a plain `ui_begin_screen()` cannot: `axis` (which of
-`UI_SCROLL_AXIS_{NONE,VERTICAL,HORIZONTAL,BOTH}` a drag or scrollbar may
-move - vertical only by default), `hide_scrollbar` (draw no scrollbar
-chrome; dragging the content still scrolls it), and `momentum_tau_ms` (0 by
-default - a drag stops dead on release; above 0, residual velocity decays
-exponentially with that time constant, integrated in closed form from
-`dt_ms` so a coast covers the same distance at any frame rate). `dt_ms` is
-required even when momentum is off, since a screen that starts with it off
-may not stay that way.
+Use the scroll view and a `ui_flow_t` cursor
+([UI-Toolkit.md](UI-Toolkit.md#layout)). A row placed at an ABSOLUTE rect
+is never reachable once the stack overflows: only a RELATIVE
+`mu_layout_set_next()` folds into a container's own `content_size` and
+follows its scroll.
 
 ### Artwork
 
@@ -261,6 +224,7 @@ fifth icon.
 ## Related
 
 - [`Building-an-App.md`](Building-an-App.md) - the app a screen lives in
+- [`UI-Toolkit.md`](UI-Toolkit.md) - every control and helper available, pictured
 - [`Text-and-Fonts.md`](Text-and-Fonts.md) - fonts, scales, text styles
 - [`Launcher-Architecture.md`](Launcher-Architecture.md) - the mechanisms
 - [`Testing-Guide.md`](Testing-Guide.md) - suites and runners
