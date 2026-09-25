@@ -539,7 +539,7 @@ test_a_lit_two_by_two_of_gunpowder_detonates(void) {
 /* A stronger, board-wide version of the corner checks
  * test_a_lit_two_by_two_of_gunpowder_detonates already makes:
  * sand_explode()'s unconditional core fill (radius /
- * SAND_EXPLODE_CORE_DIVISOR, sand.c) reaches every cell of a 2x2
+ * SAND_EXPLODE_CORE_DIVISOR, sand_impulse.c) reaches every cell of a 2x2
  * whichever corner turns out to be its centre, so nothing needs scanning
  * only the four corners by name - the whole board must come up clean of
  * the lit code once the blast has actually happened. */

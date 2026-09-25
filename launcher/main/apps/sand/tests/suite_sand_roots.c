@@ -1279,7 +1279,7 @@ test_wood_leaf_wave_rises_then_falls_smoothly(void) {
 static void
 test_wood_leaf_wave_shifts_with_position(void) {
     /* 60ms puts pos 0 exactly at its peak; pos 10 of a 100-wide span
-     * shifts by 10*SCREEN_SPAN_MS(4000)/100 = 400ms, landing it in the
+     * shifts by 10*WOOD_LEAF_WAVE_SCREEN_SPAN_MS(4000)/100 = 400ms, landing it in the
      * quiet gap instead - proving the travelling band is narrow. */
     const unsigned at_pos0 = material_wood_leaf_wave(60u, 0, 100, 0u);
     const unsigned at_pos10 = material_wood_leaf_wave(60u, 10, 100, 0u);

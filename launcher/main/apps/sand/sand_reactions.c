@@ -25,10 +25,10 @@
 #include "sand_limits.h"
 #include "sand_priv.h"
 
-/* PAIR_BITS - classifies neighbour probes. Every bit but PAIR_DENSER reads
- * `theirs` only, so pair_theirs_bits() below can answer for a whole material
- * without a `mine` argument; PAIR_DENSER stays genuinely pairwise, and is why
- * pair_theirs_bits() excludes it. See docs/sand/Reaction-Table.md. */
+/* PAIR_* - classifies neighbour probes. Every bit reads `theirs` only, so
+ * pair_theirs_bits() below can answer for a whole material without a `mine`
+ * argument; the one pairwise question, whether the neighbour is denser, has
+ * no bit - see max_smothering_density below. See docs/sand/Reaction-Table.md. */
 #define PAIR_HEAT_RESPONSIVE (1u << 0) /* theirs could pass try_heat_transform()'s first two gates */
 #define PAIR_WETS            (1u << 1) /* theirs is a liquid whose reaction row wets */
 #define PAIR_IGNITABLE       (1u << 2) /* theirs has a nonzero flammability - try_ignite_given()'s own first reject */
@@ -84,7 +84,7 @@ static burn_plan_t extended_plan[MATERIAL_EXTENDED_CODES];
 static uint8_t pair_bits[MATERIAL_MAX][MATERIAL_MAX];
 
 /* Reads theirs-only bits. Used by try_heat_transform(), step_one_cold_cell(),
- * conduct_heat(). MAT_EMPTY stores theirs-only bits. Avoid PAIR_DENSER. */
+ * conduct_heat(). MAT_EMPTY stores theirs-only bits. */
 static inline uint8_t
 pair_theirs_bits(uint8_t theirs) {
     return pair_bits[MAT_EMPTY][theirs];
@@ -2507,7 +2507,7 @@ crust_due(const reacting_cell_t* k) {
  * every baselined hash for a rule that did nothing.
  *
  * Converts in place and deliberately does NOT wake. Waking would clear
- * BLOCK_SETTLED on the very bank whose stillness allowed this, so the crust
+ * BLOCK_SETTLED_* on the very bank whose stillness allowed this, so the crust
  * would form one cell and stall; and nothing needs waking, because snow
  * becoming ice only makes the board more solid. */
 static inline __attribute__((always_inline)) void

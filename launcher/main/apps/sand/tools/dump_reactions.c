@@ -1589,10 +1589,9 @@ pred_wets_liquid(const mrow_t* row) {
     return row->kind == KIND_LIQUID && row->r->wets != 0;
 }
 
-/* `soil != 0` (reaction_t.soil, material.h) - GUNPOWDER IS NOT SOIL (D1,
- * GUNPOWDER_FIXES.md sec 7): `dries` meant "plantable ground". Now gunpowder
- * sets `dries`, so `soil` checks for plant/root sites. `soil` is only set by
- * dirt. */
+/* `soil != 0` (reaction_t.soil, material.h) - GUNPOWDER IS NOT SOIL:
+ * `dries` meant "plantable ground". Now gunpowder sets `dries`, so `soil`
+ * checks for plant/root sites. `soil` is only set by dirt. */
 static bool
 pred_soil(const mrow_t* row) {
     return row->r->soil != 0;

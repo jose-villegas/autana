@@ -131,7 +131,7 @@ liquid_near_cell_bound(const sand_t* s) {
  * blocks instead - see its own soak_only comment.
  *
  * Runs the SAME scene and steps twice so "far fewer" reads against a
- * measured full-walk count, not a guess; the LIQUID_NEAR bound is likewise
+ * measured full-walk count, not a guess; the BLOCK_LIQUID_NEAR bound is likewise
  * summed fresh per step, since flipping gravity moves the marked blocks. */
 static void
 test_the_soak_only_skip_dispatches_far_fewer_cells_than_a_full_walk(void) {
@@ -1815,7 +1815,7 @@ static const xtperf_event_t XTPERF_EVENTS[] = {
 #define XTPERF_EVENT_COUNT (sizeof(XTPERF_EVENTS) / sizeof(XTPERF_EVENTS[0]))
 
 /* Counter 0 is cycles, seeded the way xtensa_perfmon_exec() seeds it (select
- * 0, mask 0xffff). kernelcnt 0 / tracelevel -1 is exec()'s own encoding for
+ * 0, mask 0xffff). kernelcnt 0 / tracelevel -1 is its own encoding for
  * "no interrupt-level filter" (xtensa_perfmon_config_t: negative tracelevel
  * means the filter is ignored) - every level counts, none excluded, which is
  * what a whole-step instrument needs. */

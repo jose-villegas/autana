@@ -1055,7 +1055,7 @@ count_dirt_movement(const sand_t* g, const bool* was_dirt, int n, int* left_its_
 }
 
 /* Pouring water over a dirt bed must never move a dirt cell out of
- * position - can_impulse_enter() (sand.c) gates a flying water grain's
+ * position - can_impulse_enter() (sand_impulse.c) gates a flying water grain's
  * swap to liquid targets only, so a splash-kicked grain cannot tunnel
  * through dirt in its path. A settled dirt bed and pool, with a
  * continuous stream poured on top. Tracks whether MAT_DIRT leaves its
@@ -1140,7 +1140,7 @@ test_a_flying_water_grain_does_not_swap_into_dirt_in_its_path(void) {
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(MAT_DIRT, CELL_MATERIAL(sand_at(&s, DX, ROW)),
                                     "a flying water grain queued straight at a dirt cell beside it "
-                                    "must not swap into that cell - can_impulse_enter() (sand.c) now "
+                                    "must not swap into that cell - can_impulse_enter() (sand_impulse.c) now "
                                     "refuses a KIND_LIQUID mover's swap into anything but another "
                                     "KIND_LIQUID target, pinned here directly rather than through a "
                                     "whole pour scene");
@@ -1151,8 +1151,8 @@ test_a_flying_water_grain_does_not_swap_into_dirt_in_its_path(void) {
  * lava must still work. A floor under both cells keeps gravity from pulling
  * either out of the row before the sideways push runs, and a wall one cell
  * past OX caps it there - a full-speed push covers several cells per step
- * (SAND_IMPULSE_CELLS_PER_STEP_DIVISOR, sand.h), and this test polls once
- * per step, so an unstopped grain is never seen AT rest on OX. */
+ * (SAND_IMPULSE_CELLS_PER_STEP_DIVISOR, sand_impulse.h), and this test
+ * polls each step, so an unstopped grain is never seen AT rest on OX. */
 static void
 test_a_flying_water_grain_still_displaces_another_liquid(void) {
     fixture();
