@@ -305,9 +305,14 @@ board remains flashable. For invalid internal state, assert as described
 above. Do not turn recoverable hardware conditions into assertions.
 
 Prefer early returns for failed preconditions and completed edge cases. They
-keep the main path shallow. This intentionally conflicts with MISRA C:2012 Rule
-15.5's single-exit preference; record and triage that rule in the MISRA
-pipeline rather than contorting house style or hiding the finding.
+keep the main path shallow. MISRA C:2012 Rule 15.5 asks for a single exit;
+it is advisory, and this project disapplies it.
+
+What the rule protects is kept: a function that acquires resources (memory, a
+task, a peripheral) never returns while holding some of them. Acquire first,
+test once, and on failure release everything acquired so far before the one
+failure return; `free(NULL)` is a no-op, so the release needs no bookkeeping
+of which acquisitions succeeded.
 
 Keep return-code contracts small. Avoid a project-wide error enum: use
 `esp_err_t` where its detail is useful, `bool` for a two-state module boundary,
