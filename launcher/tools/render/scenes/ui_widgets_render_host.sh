@@ -16,7 +16,7 @@ main/ui/ui_pointer.c
 main/ui/ui_scroll.c
 main/ui/ui_widgets.c
 components/microui/src/microui.c
-tools/ui_widgets_render_host.c
+tools/render/scenes/ui_widgets_render_host.c
 "
 scene_renders="
 widgets|--quarter 0 --view widgets|368x448
@@ -29,5 +29,5 @@ settings|--quarter 0 --view settings|368x448
 settings-landscape|--quarter 1 --view settings|448x368
 "
 
-. "$SCRIPT_DIR/render_scene.sh"
+. "$SCRIPT_DIR/../render_scene.sh"
 render_scene_run "$@"

@@ -14,3 +14,6 @@
 | [ui_dropdown_render_host.c](ui_dropdown_render_host.c) | Dropdown control drawing scene. |
 | [ui_dropdown_render_host.sh](ui_dropdown_render_host.sh) | Dropdown scene inputs and render points. |
 | [ui_dropdown_render_baseline.txt](ui_dropdown_render_baseline.txt) | Pinned dropdown frame hashes. |
+| [ui_widgets_render_host.c](ui_widgets_render_host.c) | UI toolkit gallery drawing scene. |
+| [ui_widgets_render_host.sh](ui_widgets_render_host.sh) | UI toolkit gallery views and render points. |
+| [ui_widgets_render_baseline.txt](ui_widgets_render_baseline.txt) | Pinned UI toolkit gallery frame hashes. |
