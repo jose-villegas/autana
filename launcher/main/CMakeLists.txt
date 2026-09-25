@@ -267,4 +267,6 @@ if(CONFIG_LAUNCHER_SELFTEST)
     # Tells the shared suite headers they are being built for the target, which
     # is what enables the hardware-only suites.
     target_compile_definitions(${COMPONENT_LIB} PRIVATE DEVICE_BUILD=1)
+    # Unity's ROM output bypasses the app's USB serial console.
+    target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=esp_system_console_put_char")
 endif()
