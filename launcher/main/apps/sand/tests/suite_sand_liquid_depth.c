@@ -542,10 +542,11 @@ mirror_ray_walk_source(sand_t* g, int cx, int cy, int grid_w, int grid_h, bool v
     return src;
 }
 
-/* paint_row_n()'s own count-update decision, mirrored: 0 for anything not
- * liquid, a climb from the source when it holds the same material, a
- * reset once this column has already committed to a different source
- * this pass, or a HOLD's own climb (paint_row_n()'s `carry`) otherwise. */
+/* local_depth_count_at()'s own count-update decision, mirrored: 0 for
+ * anything not liquid, a climb from the source when it holds the same
+ * material, a reset once this column has already committed to a different
+ * source this pass, or a HOLD's own climb (local_depth_liquid_count()'s
+ * `carry_ok`) otherwise. */
 static unsigned
 mirror_ray_walk_count(int cx, int cy, bool vertical_dominant, ray_walk_source_t src, bool chain_ok, unsigned ceiling,
                       bool here_liquid, ray_walk_state_t* st) {
@@ -625,7 +626,7 @@ mirror_ray_walk_row(sand_t* g, int cy, int grid_w, int grid_h, bool vertical_dom
     const int hdir = h_reverse ? -1 : 1;
     const int ysign = v_reverse ? 1 : -1;
     const int surf_cy = cy - vdir;
-    /* paint_row_n()'s own local_depth_chain_ok, once per row. */
+    /* local_depth_walk_begin()'s own chain_ok, once per row. */
     const bool chain_ok = st->ignore_chain_break || (st->prev_cy == surf_cy);
 
     const int row_step =
