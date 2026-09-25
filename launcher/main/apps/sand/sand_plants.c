@@ -909,8 +909,8 @@ grow_into(sand_t* s, int gx, int gy, int dx, int dy, int w, int h, cell_t self, 
     return true;
 }
 
-/* Taper linear by LENGTH. Step is taper. Twelve hardenings merge trees; 6-7
- * preferred. */
+/* Adds `extra` wood cells square on to the stem at (cx, cy), alternating
+ * sides. */
 static void
 widen_wood(sand_t* s, int cx, int cy, int up_i, int extra, int w, int h, const reaction_t* r) {
     for (int g = 1; g <= extra; g++) {
@@ -988,6 +988,8 @@ shape_tree(sand_t* s, int fx, int fy, int ux, int uy, int w, int h, cell_t self,
         const bool more = stem_next(s, cx, cy, ux, uy, w, h, self, &nx, &ny);
         place_cell(s, cx, cy, (size_t)cy * (size_t)w + (size_t)cx, CELL_MAKE(r->hardens_to, 0));
 
+        /* Taper linear by LENGTH. Step is taper. Twelve hardenings merge
+         * trees; 6-7 preferred. */
         const int span = (hard > 1) ? hard - 1 : 1;
         widen_wood(s, cx, cy, up_i, (int)r->trunk_girth * (span - i) / span, w, h, r);
 
@@ -1024,7 +1026,6 @@ harden_stem(sand_t* s, int x, int y, int ux, int uy, int w, int h, cell_t self, 
     if (__builtin_expect((int)(rng_next(&s->rng) & 0xFF) >= r->harden_chance, 1)) {
         return;
     }
-    /* Growth from crowned wood (reaction_t.buds). */
     shape_tree(s, fx, fy, ux, uy, w, h, self, r, trunk);
 }
 

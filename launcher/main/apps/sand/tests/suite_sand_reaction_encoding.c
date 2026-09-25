@@ -2155,7 +2155,7 @@ test_boiling_converts_the_cell_nearest_the_heat(void) {
                                   "old against-gravity walk had come back");
 }
 
-/* reaction_t.boils gates conduct_heat()'s conversion above behind a second
+/* reaction_t.boils gates conduct_boil_liquid()'s conversion behind a second
  * roll - see material.h. sand_set_boils(0) disables that conversion, same as
  * other chance fields. */
 static void

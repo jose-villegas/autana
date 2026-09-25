@@ -495,8 +495,7 @@ test_each_material_is_painted_the_way_it_should_be(void) {
     /* Deepest depth - every KIND_LIQUID material below is asserted to
      * paint EXACTLY its own body colour at this point, now that every
      * liquid's interior (water included) uses the same plain shade-index
-     * shift into its own ramp - see material_colours()'s own comment on
-     * the liquid interior branch. */
+     * shift into its own ramp - see liquid_interior(). */
 
     for (int m = 1; m < MAT_COUNT; m++) {
         for (int v = 0; v < MATERIAL_VARIANTS; v++) {
@@ -504,7 +503,7 @@ test_each_material_is_painted_the_way_it_should_be(void) {
             gfx_color_t col[3] = {0, 0, 0};
             /* hash 1, not 0: hash 0 at the rest phase (0, this file's
              * default) is the one combination that glints cullet
-             * (material.c's MAT_SAND case, CULLET_GLINT_ONE_IN's own
+             * (sand_colours() in material_palette.c, CULLET_GLINT_ONE_IN's own
              * comment) - see this file's own CULLET GLINT tests for that
              * roll on its own terms, checked deliberately rather than by
              * accident here. Wood gets depth 0: nonzero now means "beside a
@@ -523,10 +522,10 @@ test_each_material_is_painted_the_way_it_should_be(void) {
                 TEST_ASSERT_EQUAL_MESSAGE(v == 0 ? MATERIAL_SPECKLED : MATERIAL_FLAT, pat, why);
             } else if (material_by_id((material_id_t)m)->kind == KIND_LIQUID) {
                 /* mask 0 here (this loop never passes anything else), so
-                 * this is the INTERIOR case - see material_colours()'s own
-                 * comment on why that paints the full body colour rather
-                 * than the fill-indexed one, whatever variant this cell
-                 * happens to carry. The rim half of the same split gets
+                 * this is the INTERIOR case - liquid_interior() paints it
+                 * by depth rather than fill, so the deepest depth is the
+                 * full body colour whatever variant this cell happens to
+                 * carry. The rim half of the same split gets
                  * its own tests (test_a_liquid_body_paints_flat_inside and
                  * friends, near the palette tests below) precisely because
                  * this loop cannot exercise it without a mask to vary. */
@@ -624,7 +623,7 @@ test_cullet_shades_are_four_distinct_tints(void) {
     material_set_cullet_phase(0u);
 
     /* hash 1, not 0 - hash 0 at phase 0 is the one combination
-     * CULLET_GLINT_ONE_IN's own roll (material.c's MAT_SAND case) turns
+     * CULLET_GLINT_ONE_IN's own roll (sand_colours(), material_palette.c) turns
      * into a glint, and this test wants the plain pale cycle, not the
      * pure-white exception to it (hash 1 never glints at any phase: with
      * the roll's odd multiplier, 1 + 183 * phase is never 0 mod 192). See
@@ -728,7 +727,8 @@ test_cullet_never_dresses_as_beach(void) {
     /* hash 1, not 0, through the whole phase range this loop covers
      * (0..CULLET_CYCLE_LEN-1) - see test_cullet_shades_are_four_distinct_
      * tints above for why, and note this checks the PALE colour path only:
-     * a glint (the rare pure-white exception, material.c's MAT_SAND case)
+     * a glint (the rare pure-white exception, sand_colours() in
+     * material_palette.c)
      * is deliberately outside the pale band, and asserting against it here
      * would be asserting a constraint the feature was never given. */
     for (unsigned phase = 0; phase < CULLET_CYCLE_LEN; phase++) {
@@ -777,11 +777,11 @@ test_cullet_stays_pale_at_every_phase(void) {
 }
 
 /*
- * CULLET'S GLINT - the pale cycle above read as too white on the device, so
- * material_colours()'s sand_colours() now flashes a grain PURE WHITE instead
- * of its pale cycle colour, rarely (CULLET_GLINT_ONE_IN), for a different
- * few grains every phase step - a facet catching the light. See
- * CULLET_GLINT's and CULLET_GLINT_ONE_IN's own comments in material.c.
+ * CULLET'S GLINT - sand_colours() (material_palette.c) flashes a grain PURE
+ * WHITE instead of its pale cycle colour, rarely (CULLET_GLINT_ONE_IN), for
+ * a different few grains every phase step - a facet catching the light. See
+ * CULLET_GLINT's and CULLET_GLINT_ONE_IN's own comments in
+ * material_palette.c.
  */
 
 /* A glint is the brightest thing the panel can show, full white - not a

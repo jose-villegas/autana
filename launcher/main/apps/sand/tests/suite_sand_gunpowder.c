@@ -1115,7 +1115,7 @@ test_water_wets_gunpowder_and_it_dries_out_slowly(void) {
 
     /* THE WETTING HALF: an isolated dry cell under a splash of water
      * must take on moisture - the ordinary soaking-up path
-     * (step_one_soaking_cell()'s own held < moist_max branch), which
+     * (soak_in_one_level()'s own held < moist_max branch), which
      * calls with_moisture(c, held + 1, r) with the row passed in
      * directly, never re-derived from CELL_MATERIAL(c). */
     fixture();
@@ -1364,7 +1364,7 @@ test_a_wet_neighbour_does_not_put_out_a_lit_fuse(void) {
     }
 }
 
-/* Gunpowder is excluded from step_one_rooting_cell()'s candidate scan by
+/* Gunpowder is excluded from gather_root_cands()'s candidate scan by
  * MATERIAL (reaction_t.soil == 0), not by moisture level, so the scan
  * rejects it before any eligibility roll. Moisture 2 rather than
  * moist_max: at moist_max reaction_t.soaked_to's saturated-to-oil roll is

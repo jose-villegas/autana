@@ -118,7 +118,7 @@ test_expansion_reproduces_the_real_lut_cell_for_cell(void) {
 /* MATERIAL_HATCHED belongs to metal (MATX_METAL); MAT_GLASS is a flat
  * MATERIAL_SPECKLED gradient with no sub-cell pattern, so it needs no
  * shine-index handling. Metal's shine cells get col[2]'s own index, which
- * dithers to a different 16-colour entry too - see paint_row_n()'s own
+ * dithers to a different 16-colour entry too - see paint_indexed_cell()'s own
  * comment (app_sand.c) for why one index byte forces this adaptation. */
 static void
 test_metal_shine_cells_get_a_different_index_in_256_and_16(void) {

@@ -415,9 +415,9 @@ test_blit_dither_at_alpha_255_matches_the_source_exactly(void) {
 /* The primitive's whole correctness claim (see its comment in gfx.c): the
  * row-pattern walk, fringes and memcpy shortcuts included, is bit-identical
  * to asking gfx_dither_covers() at every pixel. Checked at a deliberately
- * UNALIGNED rect (x = 13, so blit_dither_row()'s 4-pixel group loop's
- * prologue and epilogue both actually run) across alphas that exercise a sparse, a
- * half, and a dense pattern. */
+ * UNALIGNED rect (x = 13, so the prologue and epilogue of
+ * blit_dither_row()'s 4-pixel group loop both run) across alphas that
+ * exercise a sparse, a half, and a dense pattern. */
 void
 test_blit_dither_matches_per_pixel_covers_reference(void) {
     fixture();
