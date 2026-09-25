@@ -190,6 +190,16 @@ test_the_same_helpers_serve_both_shift_8_and_shift_16(void) {
     TEST_ASSERT_EQUAL_INT32(65536, fx_div_round(100, 100, 16));
 }
 
+static void
+test_div_round_takes_the_most_negative_int32(void) {
+    TEST_ASSERT_EQUAL_INT32_MESSAGE(65536, fx_div_round(INT32_MIN, INT32_MIN, 16),
+                                    "INT32_MIN divided by itself is exactly 1.0 in Q16.16");
+    TEST_ASSERT_EQUAL_INT32_MESSAGE(-32768, fx_div_round(INT32_MIN, 1 << 24, 8),
+                                    "-2^31 / 2^24 is exactly -128, -32768 in Q24.8");
+    TEST_ASSERT_EQUAL_INT32_MESSAGE(-65536, fx_div_round(1 << 24, INT32_MIN, 23),
+                                    "2^24 / -2^31 is exactly -2^-7, -65536 in Q23");
+}
+
 void
 suite_fixed(void) {
     RUN_TEST(test_mul_floor_matches_a_hand_written_widened_shift);
@@ -200,6 +210,7 @@ suite_fixed(void) {
     RUN_TEST(test_mul_floor_survives_a_32_bit_overflowing_product);
     RUN_TEST(test_mul_round_survives_a_32_bit_overflowing_product);
     RUN_TEST(test_the_same_helpers_serve_both_shift_8_and_shift_16);
+    RUN_TEST(test_div_round_takes_the_most_negative_int32);
 }
 
 SUITE_REGISTER(suite_fixed);
