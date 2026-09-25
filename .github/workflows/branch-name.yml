@@ -1,0 +1,16 @@
+name: Branch Name
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  branch-name:
+    name: Branch name
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check PR branch name
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: scripts/gates/check-branch-name.sh "$HEAD_REF"
