@@ -634,14 +634,14 @@ app_boot_init(void) {
 
     heap_mark("after gfx_init");
     load_system_panel_clock();
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    heap_caps_dump(MALLOC_CAP_DMA);
-#endif
 
     if (!post_run_after_display()) {
         show_post_failures();
     }
     heap_mark("after post");
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    heap_caps_dump(MALLOC_CAP_DMA);
+#endif
 
 #if CONFIG_LAUNCHER_SELFTEST && CONFIG_LAUNCHER_SELFTEST_AUTORUN
     if (selftest_run() != 0) {
