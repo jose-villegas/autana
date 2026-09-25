@@ -70,12 +70,6 @@ static bool band_render_active;
 static int band_render_row0;
 static int band_render_height;
 
-/* The extent gfx_band_dirty() last returned for the band in hand -
- * gfx_band_submit() sends exactly this, packed and even-clipped (see its
- * own comment). gfx_band_next() resets it to the full band width, so a
- * scene that never calls gfx_band_dirty() still gets a full send. */
-static int band_send_x0, band_send_x1;
-
 /* gfx_band_force_all_dirty itself lives in gfx_full_redraw.h, for the same
  * reason gfx_dirty.h's all_dirty does - a host suite needs its own copy.
  * band_frame_force_all is this frame's own captured value, taken once by
@@ -2777,8 +2771,7 @@ gfx_band_frame_begin(void) {
 
 /* Band mode's own "does this band need touching" query, on gfx_dirty.h's
  * cell tracker. It always reads the band gfx_band_next() just handed out,
- * so there is no range to pass wrong; every true return records the
- * extent gfx_band_submit() sends. */
+ * so there is no range to pass wrong. */
 bool
 gfx_band_dirty(int* out_x0, int* out_x1) {
     const int row0 = band_render_row0;
@@ -2801,10 +2794,6 @@ gfx_band_dirty(int* out_x0, int* out_x1) {
         dirty = true;
     }
 #endif
-    if (dirty) {
-        band_send_x0 = *out_x0;
-        band_send_x1 = *out_x1;
-    }
     return dirty;
 }
 
@@ -2848,8 +2837,6 @@ gfx_band_next(void) {
     band_current_slot = gfx_band_ring_slot(&band_ring);
     band_render_row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
     band_render_height = current_mode.band_height;
-    band_send_x0 = 0;
-    band_send_x1 = GFX_WIDTH;
     band_render_active = true;
     gfx_fb_guard_set_available(true);
     return true;
@@ -2879,27 +2866,17 @@ gfx_band_count(void) {
     return band_ring.band_count;
 }
 
-/* Sends the extent gfx_band_dirty() recorded for this band (band_send_x0/
- * x1 - the full width if it was never called), packed and even-clipped, in
- * exactly one esp_lcd_panel_draw_bitmap() call. */
+/* Always the full band width. Sending only gfx_band_dirty()'s extent means
+ * packing the rows in place first, and on the cube that cost 3.3 ms a frame
+ * (19.1 -> 22.4 ms) while sending the same bytes. */
 void
 gfx_band_submit(void) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_BANDS);
 
-    int sx0, sx1;
-    if (!gfx_band_span_clip(band_send_x0, band_send_x1, GFX_WIDTH, &sx0, &sx1)) {
-        /* Nothing survives rounding and clipping - the same no-op as the
-         * app calling gfx_band_skip() itself. */
-        gfx_band_skip();
-        return;
-    }
-
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    /* Drawn into the buffer about to be sent, before packing - a narrow
-     * span then only carries whichever part of the border its own columns
-     * cover. A band submitted only to clean last frame's borders
-     * (gfx_band_dirty()) goes out bare. */
+    /* Drawn into the buffer about to be sent. A band submitted only to
+     * clean last frame's borders (gfx_band_dirty()) goes out bare. */
     const uint32_t band_bit = 1u << (band_render_row0 / band_render_height);
     if (overlay_any_on() && !band_overlay_cleanup_only) {
         mark_band_overlay(band_buf[band_current_slot], band_render_row0, band_render_height);
@@ -2909,13 +2886,7 @@ gfx_band_submit(void) {
     }
 #endif
 
-    gfx_band_span_pack(band_buf[band_current_slot], GFX_WIDTH, band_render_height, sx0, sx1);
-
     if (band_snapshot_filling) {
-        /* A readback forces every band full width (gfx_band_dirty()), so
-         * band_send_x0/x1 is always the full width during one, and packing
-         * above was a no-op. */
-        assert(sx0 == 0 && sx1 == GFX_WIDTH);
         memcpy(band_snapshot + (size_t)band_render_row0 * GFX_WIDTH, band_buf[band_current_slot],
                (size_t)band_render_height * GFX_WIDTH * sizeof(gfx_color_t));
         band_snapshot_complete = ++band_snapshot_bands == band_ring.band_count;
@@ -2927,8 +2898,8 @@ gfx_band_submit(void) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
     const int row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
-    const esp_err_t err =
-        esp_lcd_panel_draw_bitmap(panel, sx0, row0, sx1, row0 + current_mode.band_height, band_buf[band_current_slot]);
+    const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, row0, GFX_WIDTH, row0 + current_mode.band_height,
+                                                    band_buf[band_current_slot]);
     if (err != ESP_OK) {
         note_send_failure(err);
         sent = false;
