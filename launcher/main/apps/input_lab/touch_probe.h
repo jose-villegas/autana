@@ -36,6 +36,22 @@ bool touch_probe_record(touch_probe_stats_t* stats, touch_probe_target_t target,
  * dx is right of it, positive dy is below it. */
 void touch_probe_offset(touch_probe_target_t target, int x, int y, int* dx, int* dy);
 
+/* Target `index` of a `cols` x `rows` grid spanning the same area
+ * touch_probe_next() draws from, corner to corner, row by row. */
+touch_probe_target_t touch_probe_grid(int index, int cols, int rows, int screen_w, int screen_h, int side, int margin);
+
+/* `order` becomes 0..n-1 in a random order. */
+void touch_probe_shuffle(uint32_t* rng, int* order, int n);
+
+typedef struct {
+    int x, y;
+    int t_ms; /* since the press */
+} touch_probe_sample_t;
+
+/* Where a touch settled: the per-axis median of the samples from `from_ms`
+ * to `to_ms`, or the last sample before `to_ms` when none fall inside. */
+void touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int to_ms, int* x, int* y);
+
 float touch_probe_mean_dx(const touch_probe_stats_t* stats);
 float touch_probe_mean_dy(const touch_probe_stats_t* stats);
 float touch_probe_spread_dx(const touch_probe_stats_t* stats);

@@ -92,6 +92,68 @@ test_no_taps_reads_as_zero_not_nan(void) {
     TEST_ASSERT_EQUAL_FLOAT(0.0f, touch_probe_spread_dy(&s));
 }
 
+static void
+test_a_grid_spans_the_allowed_area_corner_to_corner(void) {
+    const touch_probe_target_t first = touch_probe_grid(0, 5, 5, 448, 368, 12, 8);
+    const touch_probe_target_t last = touch_probe_grid(24, 5, 5, 448, 368, 12, 8);
+    TEST_ASSERT_EQUAL_INT(8, first.x);
+    TEST_ASSERT_EQUAL_INT(8, first.y);
+    TEST_ASSERT_EQUAL_INT(448 - 8 - 12, last.x);
+    TEST_ASSERT_EQUAL_INT(368 - 8 - 12, last.y);
+}
+
+/* Index runs along a row first: 7 in a 5x5 grid is row 1, column 2, the
+ * middle of the allowed width. */
+static void
+test_a_grid_index_runs_along_a_row_first(void) {
+    const touch_probe_target_t t = touch_probe_grid(7, 5, 5, 448, 368, 12, 8);
+    TEST_ASSERT_EQUAL_INT(8 + (448 - 16 - 12) / 2, t.x);
+    TEST_ASSERT_EQUAL_INT(8 + (368 - 16 - 12) / 4, t.y);
+}
+
+static void
+test_a_shuffle_visits_every_index_once(void) {
+    uint32_t rng = 3;
+    int order[25];
+    touch_probe_shuffle(&rng, order, 25);
+    int seen[25] = {0};
+    int in_place = 0;
+    for (int i = 0; i < 25; i++) {
+        TEST_ASSERT_TRUE(order[i] >= 0 && order[i] < 25);
+        seen[order[i]]++;
+        in_place += order[i] == i;
+    }
+    for (int i = 0; i < 25; i++) {
+        TEST_ASSERT_EQUAL_INT(1, seen[i]);
+    }
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(25, in_place, "a shuffle must move something");
+}
+
+/* The window 30-80 ms holds x 10, 30, 20: the median is 20, whatever
+ * came before or after. */
+static void
+test_the_settled_point_is_the_median_inside_the_window(void) {
+    const touch_probe_sample_t s[] = {
+        {.x = 0, .y = 0, .t_ms = 0},   {.x = 10, .y = 5, .t_ms = 30},  {.x = 30, .y = 1, .t_ms = 50},
+        {.x = 20, .y = 3, .t_ms = 70}, {.x = 99, .y = 99, .t_ms = 90},
+    };
+    int x, y;
+    touch_probe_settled(s, 5, 30, 80, &x, &y);
+    TEST_ASSERT_EQUAL_INT(20, x);
+    TEST_ASSERT_EQUAL_INT(3, y);
+}
+
+/* A tap lifted before the window opens has no settled sample of its own;
+ * the last one it did have stands in. */
+static void
+test_a_tap_too_short_for_the_window_settles_on_its_last_sample(void) {
+    const touch_probe_sample_t s[] = {{.x = 5, .y = 6, .t_ms = 0}, {.x = 7, .y = 8, .t_ms = 16}};
+    int x, y;
+    touch_probe_settled(s, 2, 30, 80, &x, &y);
+    TEST_ASSERT_EQUAL_INT(7, x);
+    TEST_ASSERT_EQUAL_INT(8, y);
+}
+
 void
 run_touch_probe_suite(void) {
     RUN_TEST(test_every_target_fits_inside_the_margin);
@@ -101,6 +163,11 @@ run_touch_probe_suite(void) {
     RUN_TEST(test_a_hit_is_inside_the_square_and_nowhere_else);
     RUN_TEST(test_mean_and_spread_follow_the_taps);
     RUN_TEST(test_no_taps_reads_as_zero_not_nan);
+    RUN_TEST(test_a_grid_spans_the_allowed_area_corner_to_corner);
+    RUN_TEST(test_a_grid_index_runs_along_a_row_first);
+    RUN_TEST(test_a_shuffle_visits_every_index_once);
+    RUN_TEST(test_the_settled_point_is_the_median_inside_the_window);
+    RUN_TEST(test_a_tap_too_short_for_the_window_settles_on_its_last_sample);
 }
 
 SUITE_REGISTER(run_touch_probe_suite);
