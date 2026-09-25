@@ -21,6 +21,7 @@ typedef struct {
     int band_count;  /* total bands this frame */
     int next_render; /* index of the band the next gfx_band_ring_slot() hands out */
     int in_flight;   /* index of the band whose send is queued but not waited on, or -1 */
+    int next_slot;   /* the buffer not holding in_flight's pixels */
 } gfx_band_ring_t;
 
 static inline void
@@ -28,6 +29,7 @@ gfx_band_ring_begin(gfx_band_ring_t* ring, int band_count) {
     ring->band_count = band_count;
     ring->next_render = 0;
     ring->in_flight = -1;
+    ring->next_slot = 0;
 }
 
 /* True once every band this frame has been handed out. */
@@ -36,10 +38,12 @@ gfx_band_ring_done(const gfx_band_ring_t* ring) {
     return ring->next_render >= ring->band_count;
 }
 
-/* Which of the two buffers the next render targets. */
+/* Which of the two buffers the next render targets. It changes only with
+ * a send, never with a skip, or a skipped band would hand the next one the
+ * buffer still on the wire. */
 static inline int
 gfx_band_ring_slot(const gfx_band_ring_t* ring) {
-    return ring->next_render % GFX_BAND_SLOTS;
+    return ring->next_slot;
 }
 
 /* The absolute row the next band starts at, given the band height in force. */
@@ -63,6 +67,7 @@ static inline void
 gfx_band_ring_advance(gfx_band_ring_t* ring) {
     ring->in_flight = ring->next_render;
     ring->next_render++;
+    ring->next_slot = (ring->next_slot + 1) % GFX_BAND_SLOTS;
 }
 
 /* Advances past the current band WITHOUT sending it - the caller decided
