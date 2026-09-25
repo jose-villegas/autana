@@ -207,14 +207,11 @@ sequenceDiagram
   draws a band's share. The shell queues its home hint with
   `ui_queue_band_overlay_rect()` before `frame()`, since nothing can draw
   after the loop.
-- `gfx_band_dirty()` records the column span it returns for the band
-  `gfx_band_next()` just handed out; `gfx_band_submit()` sends exactly
-  that, packed and even-clipped (`gfx_band_span_clip()`/
-  `gfx_band_span_pack()`, `gfx_band.h`) - one `esp_lcd_panel_draw_bitmap()`
-  per band, full
-  stop, a flat buffer having no stride to skip past. A caller that never
-  calls `gfx_band_dirty()` still gets a full-width send, and an empty
-  extent sends nothing, advancing the ring the way `gfx_band_skip()` does.
+- `gfx_band_dirty()` answers for the band `gfx_band_next()` just handed
+  out; `gfx_band_submit()` always sends that band at full width, one
+  `esp_lcd_panel_draw_bitmap()` per band. Sending only the dirty column
+  span means packing the rows in place first, which measured 3.3 ms a
+  frame slower on the cube for the same bytes.
 
 ## Indexed mode
 
