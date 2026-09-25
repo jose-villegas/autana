@@ -334,6 +334,48 @@ diagonal_row(const sand_t* s, int y, const xflow_t* r, const uint8_t* ax_row) {
     return (r->q_q8 != 0) ? dest_row(s, y + r->dg[1]) : ax_row;
 }
 
+/* One block's share of a row walk, columns [lo, hi): true when it holds
+ * liquid, whether or not any of it moved. */
+static inline __attribute__((always_inline)) bool
+equalise_row_block(sand_t* s, uint8_t* row, int y, int lo, int hi, int x_step, const uint8_t* brow, int bx,
+                   const uint8_t* ax_row, const uint8_t* dg_row, const uint8_t* below_row, int w, const xflow_t* r,
+                   int dx, int sight, uint16_t is_liquid, bool* touched, int* touched_x0, int* touched_x1,
+                   liquid_work_t* work) {
+    /* A block the main sweep left settled had no arrival from gravity OR
+     * a prior cross-flow transfer last step - either wakes it directly
+     * (wake_block_and_neighbors()/wake_blocks_range()) - so this pass
+     * already answered "nothing to find" here, 32 rows' worth of times
+     * over one block, and the answer cannot have changed since. Skips
+     * past rays_blocked() rediscovering the same thing every row. */
+    if (brow != NULL
+        && (brow[bx] & (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER))
+               == (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER)) {
+        return span_has_liquid(row, lo, hi, is_liquid);
+    }
+
+    if (span_is_empty(row, lo, hi)) {
+        return false;
+    }
+
+    /* SKIPPED WHOLE when both rays land where nothing can be lower - the
+     * shape a SETTLED pool holds, and worth rediscovering every step,
+     * because BLOCK_LIQUID_NEAR only says liquid is present, never that
+     * it is still moving. Halves a settled basin.
+     *
+     * RNG-NEUTRAL: these cells would all have rejected at
+     * neighbour_is_lower(), and liquid_may_move()'s viscosity roll sits
+     * after that, so no draw is skipped. PER BLOCK, NOT PER ROW - a
+     * row-level form only fires on a pool spanning the whole screen. */
+    if (rays_blocked(ax_row, dg_row, lo, hi, w, is_liquid)) {
+        return span_has_liquid(row, lo, hi, is_liquid);
+    }
+
+    const int from = (x_step > 0) ? lo : hi - 1;
+    const int to = (x_step > 0) ? hi : lo - 1;
+    return equalise_one_block(s, row, y, from, to, x_step, ax_row, dg_row, below_row, w, r, dx, sight, is_liquid,
+                              touched, touched_x0, touched_x1, work);
+}
+
 static bool
 equalise_one_row(sand_t* s, int y, int x0, int x1, int w, int x_step, const xflow_t* r, int dx, int dy, int sight,
                  uint16_t is_liquid, liquid_work_t* work) {
@@ -360,45 +402,8 @@ equalise_one_row(sand_t* s, int y, int x0, int x1, int w, int x_step, const xflo
         }
         const int lo = im_max(bx * SAND_BLOCK_W, x0);
         const int hi = im_min(bx * SAND_BLOCK_W + SAND_BLOCK_W, x1);
-
-        /* A block the main sweep left settled had no arrival from gravity OR
-         * a prior cross-flow transfer last step - either wakes it directly
-         * (wake_block_and_neighbors()/wake_blocks_range()) - so this pass
-         * already answered "nothing to find" here, 32 rows' worth of times
-         * over one block, and the answer cannot have changed since. Skips
-         * past rays_blocked() rediscovering the same thing every row. */
-        if (brow != NULL
-            && (brow[bx] & (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER))
-                   == (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER)) {
-            if (span_has_liquid(row, lo, hi, is_liquid)) {
-                any_liquid = true;
-            }
-            continue;
-        }
-
-        if (span_is_empty(row, lo, hi)) {
-            continue;
-        }
-
-        /* SKIPPED WHOLE when both rays land where nothing can be lower - the
-         * shape a SETTLED pool holds, and worth rediscovering every step,
-         * because BLOCK_LIQUID_NEAR only says liquid is present, never that
-         * it is still moving. Halves a settled basin.
-         *
-         * RNG-NEUTRAL: these cells would all have rejected at
-         * neighbour_is_lower(), and liquid_may_move()'s viscosity roll sits
-         * after that, so no draw is skipped. PER BLOCK, NOT PER ROW - a
-         * row-level form only fires on a pool spanning the whole screen. */
-        if (rays_blocked(ax_row, dg_row, lo, hi, w, is_liquid)) {
-            if (span_has_liquid(row, lo, hi, is_liquid)) {
-                any_liquid = true;
-            }
-            continue;
-        }
-
-        if (equalise_one_block(s, row, y, (x_step > 0) ? lo : hi - 1, (x_step > 0) ? hi : lo - 1, x_step, ax_row,
-                               dg_row, below_row, w, r, dx, sight, is_liquid, &touched, &touched_x0, &touched_x1,
-                               work)) {
+        if (equalise_row_block(s, row, y, lo, hi, x_step, brow, bx, ax_row, dg_row, below_row, w, r, dx, sight,
+                               is_liquid, &touched, &touched_x0, &touched_x1, work)) {
             any_liquid = true;
         }
     }
