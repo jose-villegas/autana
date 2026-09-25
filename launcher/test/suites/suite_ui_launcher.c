@@ -32,7 +32,7 @@
 #include "ui/ui_pointer.h"
 #include "ui/ui_transform.h"
 
-/* LAUNCHER_BTN_W (ui_launcher.c) - private to that file, mirrored here so
+/* LAUNCHER_BTN_W (ui_launcher_draw.c) - private to that file, mirrored here so
  * this suite can tap the same physical spot a real finger would. */
 #define LAUNCHER_BTN_W 240
 

@@ -152,9 +152,13 @@ comfortable allowance. It says what the module IS and what was deliberately
 rejected; prose belonging beside the code it describes lives there, where the
 character rule applies to it.
 
-Two further rules a length alone cannot express. A comment may not name a
-function that does not exist - a trim that garbles a cited name leaves a
-comment pointing at nothing. And **nothing below `apps/` may name a
+Two further rules a length alone cannot express. **A comment may not cite
+something that does not exist** - a trim that garbles a cited name, or a
+rename the comment never heard about, leaves it pointing at nothing. Cite a
+function or constant by its full name; a family by its prefix and a star
+(`BLOCK_SETTLED_*`), never by a shortened name the tree does not define; a
+name's file only where that file's code spells it; a heading only where some
+comment carries it. And **nothing below `apps/` may name a
 particular app**: an app is a folder designed to be deleted whole, so a
 comment in a lower layer naming one is a dangling reference by construction,
 and it survives the code it described. Say what shape of caller needs the
@@ -178,7 +182,7 @@ scripts/gates/check-comment-length.sh --files         # per-file counts
 
 `.github/workflows/comment-rules.yml` holds the tree to all three checks on
 every pull request and every push to `main`: length beside code and header
-height (`scripts/gates/check_comment_length.py`), every cited function existing
+height (`scripts/gates/check_comment_length.py`), every citation resolving
 (`check_comment_symbols.py`), and no app named below `apps/`
 (`check_comment_layers.py`). The last two take their vocabulary from the tree
 itself, so neither needs updating when code moves.

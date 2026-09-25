@@ -790,7 +790,7 @@ row_is_packed(const uint8_t* row, int w, uint16_t is_gas, bool* any_gas, int* ma
 }
 
 /* One row's share of spread. Returns whether it held any gas. No
- * ROW_NO_GAS equivalent yet - deferred until real usage patterns exist to
+ * per-row "no gas here" skip yet - deferred until real usage patterns exist to
  * measure against, same as every other tunable in this project; may_have_gas
  * alone is the pass's cheap-skip for now. */
 static bool

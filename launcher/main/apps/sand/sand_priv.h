@@ -638,7 +638,7 @@ void sand_chunk_pass_set_driver_for_test(sand_chunk_pass_driver_t driver);
 #define BLOCK_LIQUID_NEAR     0x10
 
 /* A block holding a cell whose moisture is currently nonzero - the soak-
- * only walk's alternative to LIQUID_NEAR once the liquid that put the
+ * only walk's alternative to BLOCK_LIQUID_NEAR once the liquid that put the
  * moisture there is gone, since ambient drying and dirt-to-dirt
  * percolation (step_one_soaking_cell(), sand_reactions.c) need neither
  * liquid nor NEAR to keep running. Set wherever a write grants moisture;
