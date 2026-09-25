@@ -21,6 +21,7 @@ import json
 import os
 import platform
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
@@ -131,7 +132,8 @@ def setup(chat=False):
                 bundle.extractall(target)
         else:
             with tarfile.open(archive) as bundle:
-                bundle.extractall(target, filter="data")
+                safe = {"filter": "data"} if hasattr(tarfile, "data_filter") else {}
+                bundle.extractall(target, **safe)
         for file in target.rglob("llama-server"):
             file.chmod(0o755)
         archive.unlink()
@@ -184,10 +186,11 @@ def start():
     log = open(home() / "server.log", "ab")
     flags = {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP} \
         if os.name == "nt" else {"start_new_session": True}
-    subprocess.Popen([str(binary), "--models-preset", str(write_preset()), "--host", "127.0.0.1",
-                      "--port", str(port()), "--sleep-idle-seconds", str(IDLE_SECONDS),
-                      "--models-max", "3"],
-                     stdout=log, stderr=log, stdin=subprocess.DEVNULL, **flags)
+    server = subprocess.Popen([str(binary), "--models-preset", str(write_preset()),
+                               "--host", "127.0.0.1", "--port", str(port()),
+                               "--sleep-idle-seconds", str(IDLE_SECONDS), "--models-max", "3"],
+                              stdout=log, stderr=log, stdin=subprocess.DEVNULL, **flags)
+    pid_file().write_text(str(server.pid), encoding="ascii")
     deadline = time.time() + 30
     while time.time() < deadline:
         if running():
@@ -196,13 +199,24 @@ def start():
     return False
 
 
+def pid_file():
+    return home() / "server.pid"
+
+
 def stop():
-    if not running():
+    """End the server this module started, and the model processes under it - no other."""
+    try:
+        pid = int(pid_file().read_text(encoding="ascii"))
+    except (OSError, ValueError):
         return False
     if os.name == "nt":
-        subprocess.run(["taskkill", "/F", "/IM", "llama-server.exe"], capture_output=True)
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
     else:
-        subprocess.run(["pkill", "-f", "llama-server.*--models-preset"], capture_output=True)
+        try:
+            os.killpg(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    pid_file().unlink(missing_ok=True)
     return True
 
 

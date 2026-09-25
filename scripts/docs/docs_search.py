@@ -51,7 +51,7 @@ FIELD_WEIGHTS = {"headings": 4.0, "title": 2.0, "path": 1.5, "body": 1.0}
 K1 = 1.2
 B = 0.75
 # Reciprocal-rank fusion of the embedding ranking with half-weighted BM25:
-# on eval_questions.tsv, 36/45 top-3 and 30/45 top-1 against BM25's 30 and 19.
+# --eval scored half weight above both equal weight and meaning alone.
 FUSION_K = 10
 LEXICAL_WEIGHT = 0.5
 FUSED_DEPTH = 50
@@ -436,7 +436,8 @@ def breadcrumb(section):
 def answer(index, question, top=3, more=5, budget=1800):
     hits, terms = index.search(question, limit=top + more)
     unknown = index.unknown_terms(terms)
-    shares = [0.5, 0.3, 0.2] + [0.15] * max(top - 3, 0)
+    weights = ([0.5, 0.3, 0.2] + [0.15] * max(top - 3, 0))[:max(top, 0)]
+    shares = [w / sum(weights) for w in weights]
     results = []
     for rank, hit in enumerate(hits[:top]):
         results.append({"location": location(hit.section), "heading": breadcrumb(hit.section),
