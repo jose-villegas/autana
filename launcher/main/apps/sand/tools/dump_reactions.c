@@ -1849,7 +1849,7 @@ emit_chills(void) {
                            table_rate(adverb("chills", all_rows[i].r->chills)), "");
             if (all_rows[j].r->shatters_to != 0) {
                 /* Index 1: sand_reactions.c's SECOND shatters_to
-                 * REACTION_DOC(), at step_one_cold_cell()'s SAND_SHOCK_HEAT
+                 * REACTION_DOC(), at cold_chills_neighbor()'s SAND_SHOCK_HEAT
                  * check - "if chilled while hot", the direction this row
                  * itself is walking (A chills B). Index 0 belongs to
                  * emit_shatter() instead; see that function's own comment. */
