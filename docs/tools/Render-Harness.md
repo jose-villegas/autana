@@ -18,6 +18,7 @@ host renderer.
 
 ```sh
 ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh
+./launcher/main/apps/sand/tools/sand_sim_render_host.sh --video
 ```
 
 Open `launcher/main/apps/render_lab/tools/results/render/render_lab/gouraud-landscape.bmp`
@@ -170,6 +171,12 @@ starts, and each later frame adds that frame's own `elapsed_ms` to it, the
 harness's usual per-frame schedule. Like every other render this harness
 writes, a video's frames are drawn from a scene's own fixture data - never a
 reading from any board.
+
+`sand_sim_render_host.sh` steps the portable simulation with scripted sand,
+water and lava pours, then tilts gravity. It paints through the shared material
+shading code into the host framebuffer. Its final image is pinned as an
+integer-exact render. Render Lab's Gouraud scene rotates when stepped over
+multiple frames.
 
 ## The second backend: the real image under QEMU
 
