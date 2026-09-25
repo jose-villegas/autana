@@ -1,9 +1,16 @@
 # Building a Screen
 
-Start here to build or change a UI screen in this
-shell. Read this start to finish before writing anything. For how the UI
-works see [`Launcher-Architecture.md`](Launcher-Architecture.md). This page
-is instructions, not narrative.
+Build or change a UI screen here. A screen has three separable parts:
+rectangles and text that fit them, the state changed by input, and the drawing
+commands. The host renderer can show the real drawing code without a board;
+[the render harness](tools/Render-Harness.md) has a sample image and command.
+For the shell's frame ownership see [Launcher Architecture](Launcher-Architecture.md).
+
+To inspect an existing screen first, run
+[`launcher_home_render_host.sh`](../launcher/tools/render/scenes/launcher_home_render_host.sh) from Git Bash on
+Windows or a terminal on macOS/Linux. Its `results/render/launcher_home/`
+folder contains BMP output and PNG output if Pillow is installed. You need a
+host C compiler, as described in the [README](../README.md#try-it-without-a-board).
 
 ## The loop
 
@@ -74,7 +81,7 @@ cannot.
 
 ## House rules
 
-These are not style preferences. Each one is a bug that shipped.
+These constraints keep input, layout, and rendering behavior consistent.
 
 - **Never hand-roll a hit test.** Go through a real control, or build one
   from `mu_get_id()` + `mu_update_control()`. Hand-tested coordinates do not
