@@ -120,6 +120,7 @@ this, not a tour. Start wherever your question is:
 | [`docs/Launcher-Architecture.md`](docs/Launcher-Architecture.md) | How the shell and its apps fit together; the three rules that shape everything; why the UI toolkit is microui, not LVGL. |
 | [`docs/Building-an-App.md`](docs/Building-an-App.md) | Start here to write an app: the `app_t` endpoints, registration, the lifecycle the shell drives, and the folder convention. |
 | [`docs/Gfx-and-Presentation.md`](docs/Gfx-and-Presentation.md) | How a draw call reaches the panel: the three draw targets, the dirty tracker, the present path, the band ring, heal. |
+| [`docs/Glow-Curves.md`](docs/Glow-Curves.md) | The posed glow curve drawing primitive and its light trail. |
 | [`docs/Text-and-Fonts.md`](docs/Text-and-Fonts.md) | The font descriptor, the text calls, font roles, text in a microui screen, and how to add a typeface. |
 | [`docs/sand/Sand-Simulation.md`](docs/sand/Sand-Simulation.md) | The falling-sand app in depth: materials, the water model, gas and fire chemistry, temperature, the two-core sweep, and the performance numbers behind every design choice. |
 | [`docs/notes/`](docs/notes/README.md) | Board-specific hardware notes: the memory budget, panel and touch gotchas, flashing and recovery. Split by topic - start at the index. |
@@ -131,7 +132,7 @@ this, not a tour. Start wherever your question is:
 | [`docs/Autana-Rendering-Roadmap.md`](docs/Autana-Rendering-Roadmap.md) | Proposal: the order of investment for the rendering engine and its target games. |
 | [`docs/sand/`](docs/sand/README.md) | The sand app's own doc set - architecture, materials, reactions, shading, testing. |
 | [`docs/plans/`](docs/plans/README.md) | Designs for work not yet built, or built from a written plan. |
-| [`docs/tools/`](docs/tools/README.md) | How the repository's checks and host-side tools work: the complexity gate, documentation drift, and the render harness. |
+| [`docs/tools/`](docs/tools/README.md) | How the repository's checks and host-side tools work: frame cost, documentation drift, and the render harness. |
 | [`launcher/tools/`](launcher/tools/README.md) | Build wrappers, generators, render scenes, device helpers, and quality checks. |
 
 ## Status

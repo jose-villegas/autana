@@ -139,6 +139,8 @@ and means something different by each:
 
 ---
 
+The frame stage profiler is described in [tools/Frame-Cost.md](tools/Frame-Cost.md).
+
 ## Generated sources
 
 Generated files live throughout the tree, each following the same rules
