@@ -1945,7 +1945,7 @@ static uint8_t band_test_blocks[((BAND_TEST_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W
  * above. */
 
 /* Do NOT raise above MATERIAL_LIQUID_DEPTH_BAND. LOCAL_DEPTH_COUNT_CEILING's
- * comment in app_sand.c explains why no raise is needed. */
+ * comment in sand_paint.h explains why no raise is needed. */
 static unsigned
 band_test_ceiling(void) {
     return MATERIAL_LIQUID_DEPTH_BAND;
