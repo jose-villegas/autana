@@ -55,12 +55,13 @@ fx_mul_round(int32_t a, int32_t b, int shift) {
 
 /* Divide two fixed-point numbers in Q(*.shift), rounding the Q(*.shift)
  * result to the nearest representable value, ties away from zero. `den` must
- * be nonzero - same contract ui_fp_div() has always had, just relocated. */
+ * be nonzero - same contract ui_fp_div() has always had, just relocated.
+ * Magnitudes are taken after widening: INT32_MIN has none in 32 bits. */
 static inline int32_t
 fx_div_round(int32_t num, int32_t den, int shift) {
     const int neg = (num < 0) != (den < 0);
-    const int64_t n = ((int64_t)(num < 0 ? -num : num)) << shift;
-    const int64_t d = den < 0 ? -den : den;
+    const int64_t n = (num < 0 ? -(int64_t)num : (int64_t)num) << shift;
+    const int64_t d = den < 0 ? -(int64_t)den : (int64_t)den;
     const int64_t q = (n + d / 2) / d;
     return (int32_t)(neg ? -q : q);
 }
