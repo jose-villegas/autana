@@ -1,5 +1,16 @@
 import sys
 import unittest
+import os
+
+
+def setUpModule():
+    global saved_hook
+    saved_hook = os.environ.pop("AUTANA_LOCK_HOOK", None)
+
+
+def tearDownModule():
+    if saved_hook is not None:
+        os.environ["AUTANA_LOCK_HOOK"] = saved_hook
 from pathlib import Path
 
 AUTANA = Path(__file__).resolve().parents[1]

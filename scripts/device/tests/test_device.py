@@ -24,6 +24,16 @@ import device_hook
 import device_report
 
 
+def setUpModule():
+    global saved_hook
+    saved_hook = os.environ.pop("AUTANA_LOCK_HOOK", None)
+
+
+def tearDownModule():
+    if saved_hook is not None:
+        os.environ["AUTANA_LOCK_HOOK"] = saved_hook
+
+
 class InterpreterTests(unittest.TestCase):
     """Any interpreter may start device.py - a report script's `python`, a
     person at a prompt - and only ESP-IDF's carries pyserial."""
@@ -54,6 +64,28 @@ class InterpreterTests(unittest.TestCase):
             status = device.rerun_under_idf_python(["status"])
         self.assertIsNone(status)
         call.assert_not_called()
+
+
+class HookIsolationTests(unittest.TestCase):
+    def test_suite_child_reservation_does_not_run_inherited_hook(self):
+        if os.environ.get("AUTANA_HOOK_SUITE_CHILD"):
+            with tempfile.TemporaryDirectory() as root:
+                device_lock.LockStore(root=root).set_human("COM5", "agent", "test")
+            return
+        with tempfile.TemporaryDirectory() as root:
+            sentinel = Path(root) / "sentinel"
+            command = (f'"{sys.executable}" -c "import os; '
+                       "open(os.environ['AUTANA_HOOK_SENTINEL'], 'w').close()\"")
+            environment = os.environ.copy()
+            environment.update({"AUTANA_LOCK_HOOK": command,
+                                "AUTANA_HOOK_SENTINEL": str(sentinel),
+                                "AUTANA_HOOK_SUITE_CHILD": "1"})
+            result = subprocess.run([sys.executable, "-m", "unittest", "discover",
+                                     "-s", str(DEVICE / "tests"), "-p", "test_device.py",
+                                     "-k", "HookIsolationTests.test_suite_child_reservation"],
+                                    env=environment, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr[-1000:])
+            self.assertFalse(sentinel.exists())
 
 
 class PortWaitTests(unittest.TestCase):
