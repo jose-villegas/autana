@@ -1,3 +1,4 @@
+import contextlib
 import errno
 import contextlib
 import io
@@ -400,6 +401,46 @@ class LockTests(unittest.TestCase):
             "token": "old",
         })
         self.assertIsNone(self.lock.claim("COM5", ticket, "", stale_seconds=600))
+
+    def write_holder(self, pid, host=None):
+        self.lock.write_json(self.lock.lock_path("COM5"), {
+            "acquired_at": 1000, "heartbeat_at": 1000,
+            "expected_build_id": "",
+            "host": host or device_lock.socket.gethostname(),
+            "owner": "gone", "pid": pid, "port": "COM5", "purpose": "screenshot",
+            "token": "old",
+        })
+
+    def printed_status(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            device_lock.print_status(self.lock.status("COM5"))
+        return out.getvalue()
+
+    def test_status_does_not_report_a_dead_holder_as_holding_the_board(self):
+        self.write_holder(pid=99)
+        self.assertIsNone(self.lock.status("COM5")["lock"])
+        printed = self.printed_status()
+        self.assertNotIn("held by", printed)
+        self.assertIn("stale lock from gone for screenshot (dead process)", printed)
+
+    def test_status_does_not_report_an_expired_heartbeat_as_holding_the_board(self):
+        self.write_holder(pid=1)
+        self.clock.advance(device_lock.DEFAULT_STALE_SECONDS + 1)
+        self.assertIsNone(self.lock.status("COM5")["lock"])
+        self.assertIn("(heartbeat expiry)", self.printed_status())
+
+    def test_status_still_reports_a_live_holder(self):
+        self.write_holder(pid=1)
+        self.assertEqual(self.lock.status("COM5")["lock"]["owner"], "gone")
+        self.assertTrue(self.printed_status().startswith("held by gone for screenshot"))
+
+    def test_status_leaves_reclaiming_a_dead_holder_to_claim(self):
+        self.write_holder(pid=99)
+        self.lock.status("COM5")
+        self.assertTrue(self.lock.lock_path("COM5").exists())
+        ticket = self.lock.enqueue("COM5", "next", "screenshot", pid=1)
+        self.assertIn("(dead process)", self.lock.claim("COM5", ticket, "")["log"])
 
     def test_crashed_waiter_does_not_block_queue(self):
         ticket = self.lock.enqueue("COM5", "crashed", "flash", pid=99)
