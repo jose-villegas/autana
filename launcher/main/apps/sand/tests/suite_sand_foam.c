@@ -461,7 +461,7 @@ test_foam_flip_rate_stays_even_across_the_phase_cycle(void) {
     }
     material_set_foam_phase(0); /* leave global state as later tests assume it */
 
-    char why[320];
+    char why[384];
     snprintf(why, sizeof why,
              "the foam set's flip rate from one phase to the next must stay "
              "roughly the same at every step of the 8-phase cycle, the way a "
