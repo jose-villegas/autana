@@ -1,144 +1,77 @@
 # Autana
 
-[![Host Tests](https://github.com/jose-villegas/autana/actions/workflows/host-tests.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/host-tests.yml)
-[![Build (Release)](https://github.com/jose-villegas/autana/actions/workflows/build-release.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/build-release.yml)
-[![Build (Diagnostics)](https://github.com/jose-villegas/autana/actions/workflows/build-diagnostics.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/build-diagnostics.yml)
-[![Shell Scripts](https://github.com/jose-villegas/autana/actions/workflows/shell-scripts.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/shell-scripts.yml)
-[![Format](https://github.com/jose-villegas/autana/actions/workflows/format.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/format.yml)
+Autana is firmware for the [Waveshare ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/esp32-s3-touch-amoled-1.8.htm): a touch and motion controlled app shell with a falling-sand sandbox and software-rendering experiments. The shell runs one app at a time on the board's AMOLED screen. Drawing goes directly through the project's framebuffer and panel driver, without LVGL or a GPU.
 
-Autana is a small game engine for ESP32 AMOLED boards, growing out of
-`launcher`, a custom app shell for the [Waveshare
-ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/) board — dual-core
-Xtensa LX7 @ 240 MHz, 8 MB octal PSRAM, a 368×448 AMOLED panel, capacitive
-touch, and a 6-axis IMU. Everything here
-drives the hardware directly rather than through a display framework. The
-Waveshare BSP is vendored in `launcher/components/esp32_s3_touch_amoled_1_8/`
-with its LVGL interface removed; LVGL is not built.
+These are frames from the firmware's drawing code, rendered on a computer with fixture input. The sand image shows its **menu**, not the running simulation; moving sand and tilt input need the board.
 
-## What's inside
+| Launcher | Falling Sand menu | Render Lab cube |
+|:---:|:---:|:---:|
+| ![The app launcher with three fixture entries](docs/images/overview/launcher-home.png) | ![Falling Sand title screen](docs/images/overview/sand-menu.png) | ![A shaded cube on a black screen](docs/images/overview/render-lab-cube.png) |
 
-A minimal shell (`launcher/main/`) that lists and switches between
-self-contained apps, each living entirely in its own
-`launcher/main/apps/<name>/` folder — adding or removing one touches no
-other file. Currently:
+<!-- Regenerate launcher-home.png: ./launcher/tools/render/scenes/launcher_home_render_host.sh -o <dir>; use landscape.png. -->
+<!-- Regenerate sand-menu.png: ./launcher/main/apps/sand/tools/sand_menu_render_host.sh -o <dir>; use title-landscape.png. -->
+<!-- Regenerate render-lab-cube.png: ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o <dir>; use gouraud-landscape.png. -->
 
-- **Falling Sand** — a sandbox of powders, liquids, gases and fire
-  chemistry, steered by tilting the board and poured with a touch. The most
-  substantial piece of engineering in this repo: a flash-resident material
-  system, a hybrid mass-diffusion water model, one impulse mechanism behind
-  explosions, thrown chunks and water's own splash, and a device-verified
-  performance budget for every hot path. See `docs/sand/Sand-Simulation.md`.
-- **Render Lab** — software-rendering experiments, no GPU: a Gouraud-shaded
-  rotating cube, wireframe primitives, and a ray-traced Cornell box.
-- **Diagnostics** — a bench tool: a hardware self-test (POST) report plus a
-  developer-toggles page; ships in any development build (`--dev` or the
-  diagnostics build), never release. The on-device self-test *runner* on
-  that page is narrower still — only the diagnostics build, the one that
-  also carries the test suites.
+The launcher image uses placeholder app names supplied by the host fixture. On the board, the shell lists the apps built into the firmware.
 
-A power-on self-test (`launcher/main/boot/post.c`) runs in every build, release included,
-and checks storage, memory, sensors and the display on every boot.
+## Try it without a board
 
-## Setting up a clone
+Use [Git Bash](https://git-scm.com/download/win) on Windows, or a terminal on macOS or Linux. You need a C compiler for your computer, plus a POSIX shell; **ESP-IDF and a board are not needed**. The renderer writes BMP files and also PNGs when Python has Pillow installed.
 
-```bash
-scripts/add-tools-to-path.sh           # puts `autana` on PATH - once per machine
-scripts/install-git-hooks.sh           # pre-commit checks and pre-push branch names - once per clone
-npm install -g @mermaid-js/mermaid-cli # the diagram check's renderer, the one CI installs
+```sh
+./launcher/main/apps/render_lab/tools/render_lab_render_host.sh
 ```
 
-Without mermaid-cli the hook skips the diagram check with a warning, and a
-broken ```` ```mermaid ```` block is found by CI instead.
+Open `launcher/main/apps/render_lab/tools/results/render/render_lab/gouraud-landscape.bmp` to see the shaded cube. For a result in the terminal, run the portable tests:
 
-Requires [ESP-IDF](https://docs.espressif.com/projects/esp-idf/) v5.5+, and
-its own export script has to work: `idf.py` cannot run under Git Bash, so on
-Windows the build scripts hand that step to `cmd` and need a working
-`export.bat`. They find it from `IDF_PATH`, which has to be set where they
-run (Linux and macOS fall back to `~/esp/esp-idf`), and refuse to build
-without it. Set `IDF_TOOLS_PATH` too whenever
-the toolchain is not where ESP-IDF's installer puts it by default - that root
-is also where the checks find the bundled clang-format and clang-tidy, and
-where `autana` finds the Python that carries pyserial.
+```sh
+./launcher/test/run_tests.sh
+```
 
-Host tests need a **host** compiler, not the ESP32 one:
+The test runner prints a verdict and saves its full log. It compiles and runs the parts of the firmware that do not need ESP32 peripherals. The [Testing Guide](docs/Testing-Guide.md) explains what it covers; the [render harness](docs/tools/Render-Harness.md) lists other screens you can render. If the shell cannot find a C compiler, install one for your computer:
 
-| Platform | |
+| System | Compiler setup |
 |---|---|
 | Windows | `winget install BrechtSanders.WinLibs.POSIX.UCRT` |
 | Debian/Ubuntu | `sudo apt install build-essential` |
 | macOS | `xcode-select --install` |
 
-The complexity gate, alone among the checks, also wants
-`git submodule update --init` - see
-[`docs/tools/Complexity-Gate.md`](docs/tools/Complexity-Gate.md).
+## What is here
 
-## Quick start
+- **Falling Sand:** pour powders and liquids with touch; the board's motion sensor steers gravity. Gas, fire, heat, and material reactions make the sandbox interactive. Start with the [sand overview](docs/sand/README.md), then the [simulation details](docs/sand/Sand-Simulation.md).
+- **Render Lab:** a shaded cube, wireframe shapes, and a ray-traced Cornell box rendered in software. The [host renderer](docs/tools/Render-Harness.md) can produce still frames of these scenes without the board.
+- **Diagnostics:** a hardware self-test report and developer controls in development builds. The power-on check runs in every build. [Build variants](docs/Build-Variants.md) explains which tools ship in each image.
 
-```bash
-cd launcher && idf.py build            # release — no test code, ships to the board
-autana flash rel                       # flash it - works from any shell, including Git Bash
-autana monitor                         # print what it says
+Each app lives in its own folder under `launcher/main/apps/`. The shell calls an app once per frame and presents its drawing to the panel. [Building an App](docs/Building-an-App.md) shows the smallest implementation; [Launcher Architecture](docs/Launcher-Architecture.md) explains how the pieces fit.
 
-./launcher/test/run_tests.sh           # host tests, portable suites - see Testing-Guide.md
-autana selftest                        # builds the diagnostics variant, flashes it,
-                                        # runs every suite on the actual chip
+## Run it on the board
+
+The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a board build, install [ESP-IDF v5.5 or later](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/index.html) and make sure its export script works. The project scripts find ESP-IDF through `IDF_PATH` (on Linux and macOS they also check `~/esp/esp-idf`). Set `IDF_TOOLS_PATH` if your ESP-IDF tools are outside their default location. On Windows, use Git Bash for these commands; the build wrapper calls the ESP-IDF Windows environment through `cmd`.
+
+```sh
+./tools/autana flash dev
+./tools/autana monitor 30
 ```
 
-Everything that touches the board - flashing, the console, a suite run, a
-screenshot - goes through the `autana` command, one terminal command
-covering all of it, taking a device lock so two sessions never fight over
-the port; see [`docs/tools/Autana-CLI.md`](docs/tools/Autana-CLI.md). For a
-markdown report instead of a pass/fail line, use the wrappers below - `.sh`
-scripts that write into their own `tools/results/`:
+`flash dev` builds this worktree and flashes it; `monitor 30` reads the serial console for 30 seconds. Board operations use a device lock. To call `autana` by name from future terminals, run `scripts/add-tools-to-path.sh` from your lasting checkout. See the [CLI guide](docs/tools/Autana-CLI.md) for screenshots, tests on the chip, and recovery. The [flashing and toolchain notes](docs/notes/Flashing-and-Toolchain.md) cover board setup problems.
 
-```bash
-./launcher/tools/quality/report_test_results.sh # every suite, pass/fail
-./launcher/main/apps/sand/tools/report_performance.sh  # frame-budget numbers
-```
+## Find your way around
 
-`autana monitor` attaches to the console without paying ESP-IDF's ~90s
-environment-activation cost on every call, and decodes any crash address it
-sees against a build's `.elf`.
-
-`autana screenshot` captures whatever the device currently has on screen to
-a lossless `.png`, plus a same-named `.json` snapshot of device state at
-that exact frame (sensors, memory, clock), over that same serial
-connection - no SD card, no button on the device, just the running
-firmware and a cable already plugged in. Needs neither `idf.py` nor
-PowerShell.
-Development-only (`autana flash dev` / `autana flash diag`) - a
-release build carries none of it, see
-[`docs/Build-Variants.md`](docs/Build-Variants.md).
-
-## Documentation
-
-Each doc earns its length — these are working notes from actually building
-this, not a tour. Start wherever your question is:
-
-| | |
+| If you want to... | Read |
 |---|---|
-| [`docs/Launcher-Architecture.md`](docs/Launcher-Architecture.md) | How the shell and its apps fit together; the three rules that shape everything; why the UI toolkit is microui, not LVGL. |
-| [`docs/Building-an-App.md`](docs/Building-an-App.md) | Start here to write an app: the `app_t` endpoints, registration, the lifecycle the shell drives, and the folder convention. |
-| [`docs/Gfx-and-Presentation.md`](docs/Gfx-and-Presentation.md) | How a draw call reaches the panel: the three draw targets, the dirty tracker, the present path, the band ring, heal. |
-| [`docs/Text-and-Fonts.md`](docs/Text-and-Fonts.md) | The font descriptor, the text calls, font roles, text in a microui screen, and how to add a typeface. |
-| [`docs/sand/Sand-Simulation.md`](docs/sand/Sand-Simulation.md) | The falling-sand app in depth: materials, the water model, gas and fire chemistry, temperature, the two-core sweep, and the performance numbers behind every design choice. |
-| [`docs/notes/`](docs/notes/README.md) | Board-specific hardware notes: the memory budget, panel and touch gotchas, flashing and recovery. Split by topic - start at the index. |
-| [`docs/C-Style-Guide.md`](docs/C-Style-Guide.md) | The C style: what the formatter decides, what judgment decides, and how the pre-commit hook and CI keep the tree from drifting. |
-| [`docs/Testing-Guide.md`](docs/Testing-Guide.md) | How the host and on-device test suites work, how to run one suite on the board, and how to make code testable. |
-| [`docs/Build-Variants.md`](docs/Build-Variants.md) | What release, dev and diagnostics builds each carry: the Kconfig flags, the suite scope, and why release contains no test code. |
-| [`docs/Building-a-Screen.md`](docs/Building-a-Screen.md) | Start here to build or change a UI screen: the loop, the house rules, and how to do what a screen needs. |
-| [`docs/UI-Toolkit.md`](docs/UI-Toolkit.md) | The catalog: every control, drawing helper and layout call the UI layer offers, pictured. |
-| [`docs/Autana-Rendering-Roadmap.md`](docs/Autana-Rendering-Roadmap.md) | Proposal: the order of investment for the rendering engine and its target games. |
-| [`docs/sand/`](docs/sand/README.md) | The sand app's own doc set - architecture, materials, reactions, shading, testing. |
-| [`docs/plans/`](docs/plans/README.md) | Designs for work not yet built, or built from a written plan. |
-| [`docs/tools/`](docs/tools/README.md) | How the repository's checks and host-side tools work: the complexity gate, documentation drift, and the render harness. |
-| [`launcher/tools/`](launcher/tools/README.md) | Build wrappers, generators, render scenes, device helpers, and quality checks. |
+| Change a game or add one | [Building an App](docs/Building-an-App.md), [Building a Screen](docs/Building-a-Screen.md) |
+| Understand the frame loop and drawing path | [Launcher Architecture](docs/Launcher-Architecture.md), [Graphics and Presentation](docs/Gfx-and-Presentation.md) |
+| Follow the sand simulation | [Sand docs](docs/sand/README.md), [Simulation](docs/sand/Sand-Simulation.md) |
+| Run or add tests | [Testing Guide](docs/Testing-Guide.md) |
+| Work with fonts and controls | [Text and Fonts](docs/Text-and-Fonts.md), [UI Toolkit](docs/UI-Toolkit.md) |
+| Build, flash, render, or inspect the board | [Tools index](docs/tools/README.md), [board notes](docs/notes/README.md) |
+| Check build flags and C style | [Build Variants](docs/Build-Variants.md), [C Style Guide](docs/C-Style-Guide.md) |
+| Explore proposed work | [Rendering Roadmap](docs/Autana-Rendering-Roadmap.md), [plans](docs/plans/README.md) |
 
-## Status
+The [`launcher/tools/` index](launcher/tools/README.md) maps build wrappers, generators, render scenes, and quality checks. `scripts/install-git-hooks.sh` installs optional local checks; [Mermaid diagrams](docs/tools/Mermaid-Diagrams.md) need `npm install -g @mermaid-js/mermaid-cli` if you edit them. The complexity gate also needs `git submodule update --init`; see its [guide](docs/tools/Complexity-Gate.md).
 
-Actively developed, single-maintainer, not affiliated with Waveshare or
-Espressif. Board-specific enough that most of this will not transfer
-directly to other hardware, but the *reasoning* in the docs above — sweep
-order in a cellular automaton, checking what memory tiers a chip actually
-has before assuming them, how to keep test code out of a release image —
-should.
+Autana is actively developed by one maintainer and is not affiliated with Waveshare or Espressif. Its firmware is board-specific; its host tests and rendering tools let you explore substantial parts without hardware.
+
+[![Host Tests](https://github.com/jose-villegas/autana/actions/workflows/host-tests.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/host-tests.yml)
+[![Build (Release)](https://github.com/jose-villegas/autana/actions/workflows/build-release.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/build-release.yml)
+[![Build (Diagnostics)](https://github.com/jose-villegas/autana/actions/workflows/build-diagnostics.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/build-diagnostics.yml)
