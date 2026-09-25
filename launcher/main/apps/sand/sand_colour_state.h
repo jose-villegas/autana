@@ -52,7 +52,7 @@ sand_colour_on_start_sim(sand_colour_state_t* st, sand_colour_mode_t requested) 
     return SAND_GFX_ENTER_INDEXED;
 }
 
-/* gfx_mode_enter() returned FULL_FB instead of the indexed layout asked
+/* gfx_mode_enter() returned GFX_LAYOUT_FULL_FB instead of the indexed layout asked
  * for - the request just made was never granted, so nothing needs undoing
  * on the gfx side; only the state that assumed it would be does. */
 static inline void

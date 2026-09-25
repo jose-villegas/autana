@@ -475,7 +475,7 @@ test_the_cap_degrades_gracefully(void) {
  *
  * Two non-overlapping blasts, no sand_step() between. The second blast's
  * fire order (room=4) matches sand_explode()'s ring-then-edge scan order
- * (sand.h's "QUEUED BY RING") - see the assertions below. */
+ * (sand_displace()'s RING order, sand_impulse.h) - see the assertions below. */
 static void
 test_two_overlapping_blasts_share_the_buffer_evenly(void) {
     fixture();
@@ -610,13 +610,13 @@ test_a_flying_grain_keeps_its_outward_push_while_falling(void) {
  * swaps into powder beneath a falling chunk; the old settled check
  * disagreed, declaring it settled after one row. Split into two tests:
  * ENERGETIC must still sink deep, SPENT (below SAND_IMPULSE_SINK_MIN_SPEED,
- * sand.h) must rest instead. */
+ * sand_impulse.h) must rest instead. */
 enum { SETTLE_COL = 3, SETTLE_TOP_ROW = 0 };
 
 /* The drift used to charge no drag, so an energetic chunk tunnelled an
  * entire powder bank for free regardless of how far it had travelled. Now
  * charges the same drag the push site does (SAND_IMPULSE_DRAG_POWDER_SHIFT,
- * sand.h), stopping within the first few layers instead. */
+ * sand_impulse.h), stopping within the first few layers instead. */
 static void
 test_an_energetic_static_chunk_over_a_powder_bank_now_stops_within_the_first_few_layers(void) {
     fixture();
@@ -1044,7 +1044,7 @@ ordinary_static_solid_scene(bool flip) {
         /* CHECKED EVERY STEP, AND BY KIND, not once at the end against a
          * count of zero. The water column here spreads, falls and lands on
          * itself, and water landing on water is exactly what
-         * splash_displace() (sand_liquid.c) queues an impulse for - so the
+         * splash_displace() (sand_liquid_move.h) queues an impulse for - so the
          * buffer is legitimately non-empty mid-run whichever way the sweep
          * runs. What must never appear in it is a KIND_STATIC entry. */
         for (int q = 0; q < s.impulse_count; q++) {
@@ -1076,8 +1076,8 @@ test_an_ordinary_static_solid_still_does_not_sink_into_liquid_or_powder(void) {
  *
  * step_impulses() charges extra `speed` loss per non-empty cell a
  * KIND_STATIC mover displaces, proportional to density (impulse_drag_of()) -
- * KIND_STATIC only, powder/liquid out of scope (see SAND_IMPULSE_DRAG_
- * POWDER_SHIFT, sand.h). Two test shapes: horizontal distance travelled,
+ * KIND_STATIC only, powder/liquid out of scope (see
+ * SAND_IMPULSE_DRAG_POWDER_SHIFT, sand_impulse.h). Two test shapes: horizontal distance travelled,
  * averaged over seeds (the claim), and single-step arithmetic pins on
  * speed == 255 - SAND_IMPULSE_SPEED_RAMP - density (the formula itself).
  */
@@ -1321,7 +1321,7 @@ test_a_thrown_powder_grain_pays_drag_displacing_dirt(void) {
  * (SAND_SPLASH_SPEED_DECAY_SHIFT) instead of on the plain ramp, and the
  * splash and cascade features are tuned around that shape - charging them
  * drag on top would move a tuned feature nobody asked to move. A liquid
- * mover only ever displaces another liquid (can_impulse_enter(), sand.c),
+ * mover only ever displaces another liquid (can_impulse_enter(), sand_impulse.c),
  * so water into water is the whole of the case. */
 static void
 test_a_thrown_liquid_grain_pays_no_drag_displacing_water(void) {
@@ -1341,7 +1341,7 @@ test_a_thrown_liquid_grain_pays_no_drag_displacing_water(void) {
 
     /* Not == 1, unlike the two pins above: this is the only one of the
      * three whose mover is a liquid, and the liquid passes run BEFORE the
-     * flight pass every step - splash_displace() (sand_liquid.c) queues
+     * flight pass every step - splash_displace() (sand_liquid_move.h) queues
      * impulses of its own, so the buffer legitimately holds more than the
      * one this test put there. Ours is still entry 0: it was queued first,
      * and step_impulses()'s compaction keeps surviving entries in order. */

@@ -1,7 +1,7 @@
 /*
  * Device suite: FULL vs 256 vs 16 present cost on landscape sand scenes.
  *
- * RUNSUITE run_sand_colour_modes_suite (main/util/screenshot.c) - not run
+ * RUNSUITE run_sand_colour_modes_suite on the console (console_runsuite.c) - not run
  * at ordinary boot, since three present passes per scene at full grid size
  * is a deliberate, explicit measurement, not a startup check.
  *

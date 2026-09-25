@@ -9,7 +9,7 @@ import sys
 
 from check_comment_length import EXCLUDED as C_EXCLUDED, scan
 from check_doc_index import blank_fences, doc_headings
-from code_vocabulary import names
+from code_vocabulary import vocabulary
 from tracked import tracked_files
 
 INLINE = re.compile(r"`([^`\n]+)`")
@@ -221,7 +221,8 @@ def allowlist_entry(allowed, citation):
 def unresolved(root):
     """Every citation that does not resolve, allowlisted or not."""
     root = pathlib.Path(root)
-    functions, macros = names(root)
+    vocab = vocabulary(root)
+    functions, macros = vocab.functions | vocab.script_functions, vocab.constants
     missing = []
     for citation in citations(root):
         if citation.kind == "function" and (
