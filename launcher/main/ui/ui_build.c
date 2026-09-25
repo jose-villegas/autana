@@ -295,13 +295,9 @@ ui_init(void) {
  * button-down for the following frame.
  *
  * Touch also arrives in PHYSICAL coordinates while controls were laid out in
- * LOGICAL ones, so a tap needs the inverse transform first.
+ * LOGICAL ones, so a touch needs the inverse transform first.
  */
 
-/* Also where ui_pointer_step()'s off-screen park point (-1, -1) gets mapped:
- * under a translating transform, logical "off-screen" is not necessarily
- * (-1, -1) either, so the park needs the same inverse as a real touch to
- * stay outside whatever the logical canvas currently is. */
 void
 ui_to_logical(int x, int y, int* lx, int* ly) {
     ui_transform_t inv;
@@ -318,33 +314,28 @@ ui_to_logical(int x, int y, int* lx, int* ly) {
     ui_transform_point(inv, x, y, lx, ly);
 }
 
-/* One ui_pointer_t event, mapped to logical and replayed into microui. The
- * policy itself - hover, then hold down until the real release, park
- * off-screen when idle - lives in ui_pointer_step(); this only translates
- * and dispatches what it returns. */
+/* One ui_pointer_t event replayed into microui. The policy itself - hover,
+ * then hold down until the real release, park off-screen when idle - lives
+ * in ui_pointer_step(); this only dispatches what it returns. */
 static void
 replay_pointer_event(const ui_pointer_event_t* e) {
-    int lx, ly;
-    ui_to_logical(e->x, e->y, &lx, &ly);
-
     switch (e->kind) {
-        case UI_POINTER_MOVE: mu_input_mousemove(&ui_ctx, lx, ly); break;
-        case UI_POINTER_DOWN: mu_input_mousedown(&ui_ctx, lx, ly, MU_MOUSE_LEFT); break;
-        case UI_POINTER_UP: mu_input_mouseup(&ui_ctx, lx, ly, MU_MOUSE_LEFT); break;
-        case UI_POINTER_SCROLL: {
-            /* A distance, not a point: only the transform's turn applies. */
-            int ox, oy;
-            ui_to_logical(0, 0, &ox, &oy);
-            mu_input_scroll(&ui_ctx, lx - ox, ly - oy);
-            break;
-        }
+        case UI_POINTER_MOVE: mu_input_mousemove(&ui_ctx, e->x, e->y); break;
+        case UI_POINTER_DOWN: mu_input_mousedown(&ui_ctx, e->x, e->y, MU_MOUSE_LEFT); break;
+        case UI_POINTER_UP: mu_input_mouseup(&ui_ctx, e->x, e->y, MU_MOUSE_LEFT); break;
+        case UI_POINTER_SCROLL: mu_input_scroll(&ui_ctx, e->x, e->y); break;
     }
 }
 
+/* Mapped before ui_pointer_step() rather than after, so that its "vertical
+ * or sideways" judgement follows the screen's up, not the panel's: under a
+ * quarter turn a drag down a list is a sideways stroke on the glass. */
 static void
 feed_input(const input_t* input) {
+    input_t logical = *input;
+    ui_to_logical(input->x, input->y, &logical.x, &logical.y);
     ui_pointer_event_t events[UI_POINTER_MAX_EVENTS];
-    const int n = ui_pointer_step(&ui_pointer_state, input, events, UI_POINTER_MAX_EVENTS);
+    const int n = ui_pointer_step(&ui_pointer_state, &logical, events, UI_POINTER_MAX_EVENTS);
     for (int i = 0; i < n; i++) {
         replay_pointer_event(&events[i]);
     }

@@ -14,6 +14,7 @@
 #include "gfx/gfx_font_roles.h"
 #include "input/input.h"
 #include "ui/ui.h"
+#include "ui/ui_internal.h"
 #include "ui/ui_transform.h"
 #include "ui/ui_widgets.h"
 
@@ -197,6 +198,7 @@ options_frame(bool down, bool pressed, bool released, int x, int y) {
     ui_begin(&in);
     const sand_options_hits_t hits = options_screen_draw(ui_context(), &menu, committed, &LABELS);
     mu_end(ui_context());
+    ui_pointer_state.over_scrollable = ui_ctx.scroll_target != NULL;
     return hits;
 }
 
@@ -386,6 +388,60 @@ test_a_landscape_tap_picks_the_open_dither_list_row(void) {
     TEST_ASSERT_FALSE(hits.color >= 0);
 }
 
+static const mu_Container*
+open_list(mu_Rect list) {
+    for (int i = 0; i < ui_context()->root_list.idx; i++) {
+        const mu_Container* c = ui_context()->root_list.items[i];
+        if (c->rect.x == list.x && c->rect.y == list.y && c->rect.h == list.h) {
+            return c;
+        }
+    }
+    return NULL;
+}
+
+static void
+finger_at(bool landscape, bool pressed, bool released, int x, int y) {
+    int px, py;
+    ui_transform_point(ui_transform_quarter_turn(landscape ? 1 : 0, GFX_WIDTH, GFX_HEIGHT), x, y, &px, &py);
+    options_frame(!released, pressed, released, px, py);
+}
+
+/* Held on the bottom row, then dragged up the screen. In landscape that is a
+ * sideways stroke on the panel, which must still read as a scroll. */
+static void
+assert_a_drag_scrolls_the_dither_list(bool landscape) {
+    tap_fixture(SAND_COLOUR_16, landscape);
+    menu.draft.dither = 0;
+    const options_screen_layout_t lay = layout_for(landscape);
+    TEST_ASSERT_FALSE(any_hit(tap(lay.dither)));
+    const mu_Rect list = ui_dropdown_list_rect(lay.dither, DITHER_COUNT, lay.dither.h, canvas_h(landscape), UI_MARGIN);
+    const mu_Container* cnt = open_list(list);
+    TEST_ASSERT_NOT_NULL_MESSAGE(cnt, "the tap must have opened the list");
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(DITHER_COUNT * lay.dither.h, list.h, "a list that fits has nothing to scroll");
+    const int before = cnt->scroll.y;
+    const int x = list.x + list.w / 2;
+    const int y0 = list.y + list.h - lay.dither.h / 2;
+    finger_at(landscape, true, false, x, y0);
+    for (int i = 0; i < 3; i++) {
+        finger_at(landscape, false, false, x, y0);
+    }
+    for (int dy = 4; dy <= 40; dy += 4) {
+        finger_at(landscape, false, false, x, y0 - dy);
+    }
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(before, cnt->scroll.y, "a finger held on the list, then dragged, scrolls it");
+    finger_at(landscape, false, true, x, y0 - 40);
+}
+
+static void
+test_a_drag_scrolls_the_dither_list_landscape(void) {
+    assert_a_drag_scrolls_the_dither_list(true);
+}
+
+static void
+test_a_drag_scrolls_the_dither_list_portrait(void) {
+    assert_a_drag_scrolls_the_dither_list(false);
+}
+
 void
 run_options_screen_suite(void) {
     RUN_TEST(test_the_whole_screen_fits_portrait);
@@ -403,6 +459,8 @@ run_options_screen_suite(void) {
     RUN_TEST(test_apply_takes_a_tap_once_something_is_pending);
     RUN_TEST(test_the_dither_dropdown_picks_from_its_list);
     RUN_TEST(test_a_landscape_tap_picks_the_open_dither_list_row);
+    RUN_TEST(test_a_drag_scrolls_the_dither_list_landscape);
+    RUN_TEST(test_a_drag_scrolls_the_dither_list_portrait);
     RUN_TEST(test_the_dither_dropdown_is_absent_unless_the_draft_colour_is_sixteen);
     RUN_TEST(test_a_tap_at_the_sliders_right_end_reports_the_finest_quality);
     RUN_TEST(test_a_tap_at_the_sliders_left_end_reports_the_coarsest_quality);

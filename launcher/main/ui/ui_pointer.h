@@ -6,9 +6,9 @@
  * today because suite_ui.c is device-only. Same split input/touch_fsm.c and
  * input/button_fsm.c already use.
  *
- * Coordinates in and out are PHYSICAL (screen) coordinates. Mapping each
- * point into logical space, through ui_transform_point() and the current
- * transform's own inverse, is that caller's job, not this module's.
+ * Coordinates in and out are LOGICAL, the UI's own: the caller maps a touch
+ * off the panel first, since which way a drag runs - down a list, or along
+ * a slider - is a question about the screen, not the glass.
  */
 #pragma once
 
@@ -25,7 +25,7 @@ typedef enum {
 } ui_pointer_kind_t;
 
 /* For UI_POINTER_SCROLL, x and y are how far to scroll the content, in
- * physical pixels: the opposite of the finger's own movement. */
+ * logical pixels: the opposite of the finger's own movement. */
 typedef struct {
     ui_pointer_kind_t kind;
     int x, y;
