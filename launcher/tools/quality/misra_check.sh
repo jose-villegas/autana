@@ -29,7 +29,7 @@
 #   MISRA_FORCE            1 (default) checks every #ifdef configuration; 0
 #                          is faster and analyses only the pinned one
 #   MISRA_MAX_UNITS        translation units the filter may match, defaults
-#                          to 60 (the whole project under main/ is ~30)
+#                          to 150 (the whole project under main/ is ~80)
 #
 # NEVER pass a bare "*". --file-filter controls what cppcheck actually
 # ANALYZES, not just what gets reported -- "*" matches every translation
@@ -37,7 +37,7 @@
 # nearly all of them vendored ESP-IDF code, none of it main/ code worth a
 # finding. That runs cppcheck's MISRA addon over the whole SDK for nothing,
 # past 12GB of RAM, with no end in sight. "*/main/*" scopes
-# analysis to the ~28 real translation units under main/ instead -- use
+# analysis to the ~80 real translation units under main/ instead -- use
 # that for a whole-project scan, not "*". The filter is checked for shape
 # and then the matches are counted, so a filter that reaches that far is
 # refused before cppcheck starts rather than discovered an hour in.
@@ -53,7 +53,7 @@ BUILD_DIR="${1:-build.dev}"
 FILE_FILTER="${2:-*/main/apps/sand/*}"
 JOBS="${MISRA_JOBS:-2}"
 TIMEOUT_SECONDS="${MISRA_TIMEOUT_SECONDS:-900}"
-MAX_UNITS="${MISRA_MAX_UNITS:-60}"
+MAX_UNITS="${MISRA_MAX_UNITS:-150}"
 
 # --force alongside -D, not instead of it. A -D on its own makes cppcheck
 # check that one configuration and skip the others in silence, so #ifdef'd
@@ -178,7 +178,7 @@ fi
 # The count, not the glob, is what stops a runaway: whatever the filter says,
 # this is the number of translation units about to be analysed, and the
 # incident behind this script was ~1800 of them. The whole project under
-# main/ is around 30.
+# main/ is around 80.
 if [ "${count:-0}" -gt "$MAX_UNITS" ]; then
     echo "Refusing to scan $count translation units (limit $MAX_UNITS)." >&2
     echo "The filter '$FILE_FILTER' is reaching outside this project's main/." >&2
