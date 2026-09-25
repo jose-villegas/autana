@@ -133,7 +133,7 @@ dislodge_density(cell_t cell) {
  * `allow_dislodge_static` uses `255 - dislodge_density()` for chance:
  * LOWER density means HIGHER chance - see that helper's own comment
  * for why an extended static needs its own override. */
-static inline __attribute__((always_inline)) bool
+static bool
 static_source_holds(sand_t* s, cell_t cell, bool allow_dislodge_static, bool guaranteed_dislodge) {
     if (material_of(cell)->kind != KIND_STATIC) {
         return false;
@@ -156,7 +156,7 @@ static_source_holds(sand_t* s, cell_t cell, bool allow_dislodge_static, bool gua
  * on `cell` too, not index alone: queuing happens during reactions,
  * before step_impulses()'s own re-acquisition runs, so a stored index
  * can be stale here. */
-static inline __attribute__((always_inline)) bool
+static bool
 impulse_already_queued(const sand_t* s, size_t at, cell_t cell) {
     for (int existing = 0; existing < s->impulse_count; existing++) {
         if (s->impulse_buf[existing].index == (uint16_t)at && s->impulse_buf[existing].cell == cell) {
@@ -170,7 +170,7 @@ impulse_already_queued(const sand_t* s, size_t at, cell_t cell) {
  * carrying the push that dislodged it rather than sailing off as an
  * intact sheet. Written to the grid as well as the entry - flight
  * matches `cell` against what is actually there before moving it. */
-static inline __attribute__((always_inline)) cell_t
+static cell_t
 shatter_if_glass(sand_t* s, size_t at, int x, int y, cell_t cell) {
     if (CELL_MATERIAL(cell) != MAT_GLASS) {
         return cell;
@@ -322,7 +322,7 @@ sand_displace_material(sand_t* s, int cx, int cy, int radius, uint8_t mat_id) {
 /* Written by hand rather than through place_cell() (sand_reactions.c),
  * which is static to that file. `d2` is the cell's squared distance from
  * the centre, already known to be inside the core. */
-static inline __attribute__((always_inline)) void
+static void
 ignite_core_cell(sand_t* s, int fx, int fy, int d2, int core_r2) {
     if (fx < 0 || fx >= s->w || fy < 0 || fy >= s->h) {
         return;
@@ -478,7 +478,7 @@ impulse_decay(impulse_t* entry, uint8_t mat_id, int cells) {
  * Random scan avoids sheet-like ejection. sand_at() ensures no
  * out-of-world cells. Returns -1 when the ejecta is buried - no surface
  * to leave by. */
-static inline __attribute__((always_inline)) int
+static int
 pick_open_ejecta_dir(sand_t* s, size_t old_index, int dir_for_transfer) {
     const int w = s->w;
     const int ex = (int)((unsigned)old_index % (unsigned)w);
@@ -499,7 +499,7 @@ pick_open_ejecta_dir(sand_t* s, size_t old_index, int dir_for_transfer) {
 
 /* Drag for shouldering `displaced` aside, then a TRANSFER entry for the
  * ejecta when the hit was hard enough and the per-step budget has room. */
-static inline __attribute__((always_inline)) void
+static void
 charge_drag_and_transfer(sand_t* s, impulse_t* entry, size_t old_index, cell_t displaced, int dir_for_transfer,
                          impulse_t* deferred, int* deferred_transfer_count) {
     const uint8_t impact_speed = entry->speed;
@@ -573,7 +573,7 @@ impulse_charge_displacement(sand_t* s, impulse_t* entry, size_t new_index, int d
  * reactions[lost_mat] - lost_mat is the high nibble shared by statics and
  * gunpowder in the MAT_EXTENDED range; reaction_of() handles this, while
  * reactions[lost_mat] incorrectly reads reactions[MAT_EXTENDED]. */
-static inline __attribute__((always_inline)) bool
+static bool
 reacquire_heat_ramped_in_place(const sand_t* s, impulse_t* entry, uint8_t lost_mat) {
     if (reaction_of(entry->cell)->heat_ramp == 0) {
         return false;
@@ -588,7 +588,7 @@ reacquire_heat_ramped_in_place(const sand_t* s, impulse_t* entry, uint8_t lost_m
 
 /* THE SAME THREE CANDIDATES impulse_gravity_candidates() builds for the
  * gravity drift and the settled check, so the three can never diverge. */
-static inline __attribute__((always_inline)) bool
+static bool
 reacquire_fallen_grain(const sand_t* s, impulse_t* entry, int ox, int oy, int dx, int dy) {
     const int w = s->w;
     const int h = s->h;
@@ -615,7 +615,7 @@ reacquire_fallen_grain(const sand_t* s, impulse_t* entry, int ox, int oy, int dx
  * one of the three gravity candidates - measured 44.5% of queued water
  * entries lost to this gap otherwise. Scoped to water/acid; checked at the
  * original cell, then its 8 neighbours. */
-static inline __attribute__((always_inline)) bool
+static bool
 reacquire_liquid_by_material(const sand_t* s, impulse_t* entry, uint8_t lost_mat, int ox, int oy) {
     if (lost_mat != MAT_WATER && lost_mat != MAT_ACID) {
         return false;
@@ -651,7 +651,7 @@ reacquire_liquid_by_material(const sand_t* s, impulse_t* entry, uint8_t lost_mat
  * byte-for-byte match - same material and variant is the same GRAIN
  * anywhere else in this file. Never adopt a DIFFERENT byte. False means
  * the grain is lost and the entry is dropped. */
-static inline __attribute__((always_inline)) bool
+static bool
 impulse_locate(const sand_t* s, impulse_t* entry, int dx, int dy) {
     if (s->cells[entry->index] == entry->cell) {
         return true;
@@ -674,7 +674,7 @@ impulse_locate(const sand_t* s, impulse_t* entry, int dx, int dy) {
  * it also gets one UNCONDITIONAL gravity-ward attempt every step - not
  * rolled, since gating it on `speed` would tie "still falling" to "still
  * has push left", which is backwards. */
-static inline __attribute__((always_inline)) void
+static void
 static_chunk_gravity_drift(sand_t* s, impulse_t* entry, int dx, int dy, impulse_t* deferred,
                            int* deferred_transfer_count) {
     if (material_of(entry->cell)->kind != KIND_STATIC) {
@@ -726,7 +726,7 @@ static_chunk_gravity_drift(sand_t* s, impulse_t* entry, int dx, int dy, impulse_
  * NOT SETTLE: the blocker may be another tracked entry that hasn't
  * drifted yet this step - settling on it would freeze two flying chunks
  * forever. impulse_index_still_tracked() catches that rare case. */
-static inline __attribute__((always_inline)) bool
+static bool
 static_chunk_stays_airborne(const sand_t* s, const impulse_t* entry, int kept, int self_i, int dx, int dy) {
     const int w = s->w;
     const int h = s->h;
@@ -758,7 +758,7 @@ static_chunk_stays_airborne(const sand_t* s, const impulse_t* entry, int kept, i
  * SAND_IMPULSE_BOUNCE_MIN_SPEED: below it a grain can neither clear the
  * transfer floor nor bounce, so tracking further is pure bookkeeping
  * cost. */
-static inline __attribute__((always_inline)) bool
+static bool
 unrolled_entry_stays_tracked(const sand_t* s, const impulse_t* entry, int kept, int self_i, int dx, int dy) {
     if (material_of(entry->cell)->kind == KIND_STATIC) {
         return static_chunk_stays_airborne(s, entry, kept, self_i, dx, dy);
@@ -780,7 +780,7 @@ unrolled_entry_stays_tracked(const sand_t* s, const impulse_t* entry, int kept, 
  * splash_displace(). THROWN CHUNK OR GRAIN REFLECTS TOO, off surface's
  * normal, floored at SAND_IMPULSE_BOUNCE_MIN_SPEED and charges
  * restitution. */
-static inline __attribute__((always_inline)) void
+static void
 impulse_meet_blocker(const sand_t* s, impulse_t* entry, uint8_t mat_id, int x, int y) {
     if (mat_id == MAT_WATER || mat_id == MAT_ACID) {
         entry->dir = (entry->dir + 4) & 7;
@@ -802,7 +802,7 @@ impulse_meet_blocker(const sand_t* s, impulse_t* entry, uint8_t mat_id, int x, i
 
 /* One cell of the push. False means blocked: the entry stays where it is
  * and the push ends this step. */
-static inline __attribute__((always_inline)) bool
+static bool
 impulse_hop(sand_t* s, impulse_t* entry, uint8_t mat_id, int hop, impulse_t* deferred, int* deferred_transfer_count) {
     const int w = s->w;
     const int x = (int)((unsigned)entry->index % (unsigned)w);
@@ -849,7 +849,7 @@ impulse_hop(sand_t* s, impulse_t* entry, uint8_t mat_id, int hop, impulse_t* def
  * post-ramp speed. Under divisor, exactly 1 cell. NOT ONLY BUDGET - hop
  * loop also has ENERGY exit. This is hard upper bound, preventing mover
  * from exceeding divisor. */
-static inline __attribute__((always_inline)) int
+static int
 impulse_push(sand_t* s, impulse_t* entry, uint8_t mat_id, impulse_t* deferred, int* deferred_transfer_count) {
     const int push_count = 1 + (int)entry->speed / SAND_IMPULSE_CELLS_PER_STEP_DIVISOR;
     int moved = 0;
@@ -878,7 +878,7 @@ impulse_push(sand_t* s, impulse_t* entry, uint8_t mat_id, impulse_t* deferred, i
  * feeding this move from behind. (rx, ry) is one step behind where this
  * entry started ITS OWN MOVE THIS STEP, not where a multi-cell push ends
  * up. */
-static inline __attribute__((always_inline)) void
+static void
 queue_cascade_relay(const sand_t* s, const impulse_t* entry, uint8_t mat_id, int moved, int rx, int ry,
                     impulse_t* deferred, int deferred_transfer_count, int* deferred_cascade_count) {
     if (!(moved > 0 && (mat_id == MAT_WATER || mat_id == MAT_ACID)
@@ -911,7 +911,7 @@ queue_cascade_relay(const sand_t* s, const impulse_t* entry, uint8_t mat_id, int
 /* TRANSFERs sit in [0, deferred_transfer_count); CASCADEs in the last
  * deferred_cascade_count slots. Queued only once the flight loop is done
  * and s->impulse_count holds just the kept entries. */
-static inline __attribute__((always_inline)) void
+static void
 flush_deferred_impulses(sand_t* s, const impulse_t* deferred, int deferred_transfer_count, int deferred_cascade_count) {
     const int w = s->w;
     for (int i = 0; i < deferred_transfer_count; i++) {

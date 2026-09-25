@@ -55,7 +55,7 @@ typedef struct {
     int n;
 } support_t;
 
-static inline __attribute__((always_inline)) void
+static void
 support_admit(support_t* sp, uint16_t at) {
     unsigned k = support_slot(at);
     while (((sp->filled >> k) & 1u) != 0u) {
@@ -71,7 +71,7 @@ support_admit(support_t* sp, uint16_t at) {
 
 /* True once a neighbour of body cell `at` that is not kin sits straight
  * down: the body rests on it. Kin neighbours join the body instead. */
-static inline __attribute__((always_inline)) bool
+static bool
 support_visit(sand_t* s, support_t* sp, int at, int w, int h, int down, cell_t self, const reaction_t* r) {
     const int cx = at % w, cy = at / w;
 
@@ -189,7 +189,7 @@ typedef struct {
  * must: reversing the order changes which cell a root-backed stem commits
  * to. Looking one cell ahead, rather than only at the current cell, keeps the
  * walk from losing the bed when it shifts by one row. */
-static inline __attribute__((always_inline)) bool
+static bool
 root_lookahead(sand_t* s, int cx, int cy, int w, int h, const reaction_t* r, int down, stem_step_t* st) {
     const int* fd = ring_dir(down);
     const int tx = cx + fd[0], ty = cy + fd[1];
@@ -214,7 +214,7 @@ root_lookahead(sand_t* s, int cx, int cy, int w, int h, const reaction_t* r, int
 /* Straight down, then one step round either way. */
 static const int below_fan[3] = {0, 1, 7};
 
-static inline __attribute__((always_inline)) void
+static void
 scan_below(sand_t* s, int cx, int cy, int w, int h, const reaction_t* r, cell_t self, int down, stem_step_t* st) {
     for (int i = 0; i < 3; i++) {
         const int* fd = ring_dir(down + below_fan[i]);
@@ -250,7 +250,7 @@ scan_below(sand_t* s, int cx, int cy, int w, int h, const reaction_t* r, cell_t 
 
 /* Growth seeks nutrient-rich soil, drinking seeks room to expand. A lit cell
  * never has room or water. */
-static inline __attribute__((always_inline)) bool
+static bool
 soil_offers(cell_t c, bool wants_room) {
     const reaction_t* cr = reaction_of(c);
     if (cell_is_burning(c)) {
@@ -261,7 +261,7 @@ soil_offers(cell_t c, bool wants_room) {
 
 /* From the collar at (cx, cy), gravity-ward through at most ROOT_REACH cells
  * of soil to the first one that offers what the caller wants. */
-static inline __attribute__((always_inline)) int
+static int
 drink_below_collar(sand_t* s, int cx, int cy, int w, int h, const reaction_t* r, bool wants_room) {
     const int dx = s->last_load_dx, dy = s->last_load_dy;
     for (int depth = 0; depth < ROOT_REACH; depth++) {
@@ -368,7 +368,7 @@ typedef struct {
     int at, x, y, m;
 } conduit_end_t;
 
-static inline __attribute__((always_inline)) void
+static void
 conduit_take(conduit_end_t* e, int m, size_t nat, int nx, int ny) {
     e->m = m;
     e->at = (int)nat;
@@ -378,7 +378,7 @@ conduit_take(conduit_end_t* e, int m, size_t nat, int nx, int ny) {
 
 /* Weighs neighbour k (round from straight down) as the driest sink below or
  * the wettest source beside or above. */
-static inline __attribute__((always_inline)) void
+static void
 conduit_weigh(cell_t c, int k, size_t nat, int nx, int ny, conduit_end_t* src, conduit_end_t* dst) {
     if (CELL_IS_EMPTY(c)) {
         return;
@@ -440,7 +440,7 @@ step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t
     return true;
 }
 
-static inline __attribute__((always_inline)) int
+static int
 count_root_neighbors(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     int root_neighbors = 0;
     for (int d = 0; d < 8; d++) {
@@ -457,7 +457,7 @@ count_root_neighbors(sand_t* s, int x, int y, int w, int h, const reaction_t* r)
 }
 
 /* Sum of the directions pointing away from every root or wood neighbour. */
-static inline __attribute__((always_inline)) void
+static void
 away_from_parent(sand_t* s, int x, int y, int w, int h, const reaction_t* r, int* away_x, int* away_y) {
     for (int d = 0; d < 8; d++) {
         const int* nd = ring_dir(d);
@@ -479,7 +479,7 @@ typedef struct {
     int n, total_w;
 } root_cands_t;
 
-static inline __attribute__((always_inline)) int
+static int
 root_weight(const int* nd, int away_x, int away_y, int gx, int gy) {
     int wgt = 1;
     if (nd[0] * away_x + nd[1] * away_y > 0) {
@@ -491,7 +491,7 @@ root_weight(const int* nd, int away_x, int away_y, int gx, int gy) {
     return wgt;
 }
 
-static inline __attribute__((always_inline)) void
+static void
 gather_root_cands(sand_t* s, int x, int y, int w, int h, int away_x, int away_y, root_cands_t* rc) {
     const int gx = s->last_load_dx, gy = s->last_load_dy;
     for (int d = 0; d < 8; d++) {
@@ -644,7 +644,7 @@ step_one_sprouting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t*
     return true;
 }
 
-static inline __attribute__((always_inline)) bool
+static bool
 is_crowned(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     bool crowned = false;
     for (int d = 0; d < 8 && !crowned; d++) {
@@ -659,7 +659,7 @@ is_crowned(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
 }
 
 /* Somewhere to put a bud, up and away from gravity; -1 when boxed in. */
-static inline __attribute__((always_inline)) int
+static int
 find_bud_site(sand_t* s, int x, int y, int w, int h, int* bx, int* by) {
     const int up_i = ring_of(-s->last_load_dx, -s->last_load_dy);
     static const int out[5] = {7, 0, 1, 2, 6};
@@ -786,7 +786,7 @@ shove_aside(sand_t* s, int gx, int gy, int dx, int dy, int w, int h) {
 
 /* Walks up to `steps` stem cells from (*px, *py) toward (ux, uy), leaving
  * (*px, *py) on the last one reached; returns how many steps it took. */
-static inline __attribute__((always_inline)) int
+static int
 stem_walk(sand_t* s, int* px, int* py, int ux, int uy, int w, int h, cell_t self, int steps) {
     int taken = 0;
     while (taken < steps) {
@@ -803,7 +803,7 @@ stem_walk(sand_t* s, int* px, int* py, int ux, int uy, int w, int h, cell_t self
 
 /* Reach aids, BURIED stagnate, growth peaks early, surface optimal, dense
  * skip scans. The board edge counts as crowd. */
-static inline __attribute__((always_inline)) int
+static int
 count_packed(sand_t* s, int x, int y, int w, int h, cell_t self, const reaction_t* r) {
     int packed = 0;
     for (int d = 0; d < 8; d++) {
@@ -829,7 +829,7 @@ typedef struct {
     bool thicken;
 } grow_plan_t;
 
-static inline __attribute__((always_inline)) grow_plan_t
+static grow_plan_t
 plan_growth(sand_t* s, int run, int side) {
     grow_plan_t p = {run - 1, 0, false};
     const int what = rng_below(&s->rng, 8);
@@ -854,7 +854,7 @@ plan_growth(sand_t* s, int run, int side) {
 
 /* On a won roll, keep the limb's own existing direction (from the previous
  * segment to this one) instead of snapping back toward straight up. */
-static inline __attribute__((always_inline)) int
+static int
 grow_heading(sand_t* s, int sx, int sy, int ux, int uy, int w, int h, cell_t self, const reaction_t* r) {
     int head = ring_of(ux, uy);
     if (r->holds_line != 0 && (int)(rng_next(&s->rng) & 0xFF) < r->holds_line) {
@@ -871,7 +871,7 @@ grow_heading(sand_t* s, int sx, int sy, int ux, int uy, int w, int h, cell_t sel
 /* TAPERED: allowance shrinks with height, fat at foot, single cell by
  * branches. Uniform grows a pillar, not a tree. True when the trunk at
  * (sx, sy) should not widen any further along (dx, dy). */
-static inline __attribute__((always_inline)) bool
+static bool
 thick_enough(sand_t* s, int sx, int sy, int dx, int dy, int w, int h, cell_t self, const reaction_t* r, int height) {
     const int allowed = TRUNK_WIDTH - height / 3;
     if (allowed < 2) {
@@ -893,7 +893,7 @@ thick_enough(sand_t* s, int sx, int sy, int dx, int dy, int w, int h, cell_t sel
 }
 
 /* Only a shoot (growth at the tip) may shove what is in its way aside. */
-static inline __attribute__((always_inline)) bool
+static bool
 grow_into(sand_t* s, int gx, int gy, int dx, int dy, int w, int h, cell_t self, bool shoot) {
     if ((unsigned)gx >= (unsigned)w || (unsigned)gy >= (unsigned)h) {
         return false;
@@ -911,7 +911,7 @@ grow_into(sand_t* s, int gx, int gy, int dx, int dy, int w, int h, cell_t self, 
 
 /* Taper linear by LENGTH. Step is taper. Twelve hardenings merge trees; 6-7
  * preferred. */
-static inline __attribute__((always_inline)) void
+static void
 widen_wood(sand_t* s, int cx, int cy, int up_i, int extra, int w, int h, const reaction_t* r) {
     for (int g = 1; g <= extra; g++) {
         const int sidei = (g & 1) ? 2 : 6; /* square on, both ways */
@@ -935,7 +935,7 @@ typedef struct {
     int n;
 } crown_t;
 
-static inline __attribute__((always_inline)) void
+static void
 crown_push(crown_t* t, int cx, int cy) {
     if (t->n < CANOPY_SPAN) {
         t->x[t->n] = cx;
@@ -951,7 +951,7 @@ crown_push(crown_t* t, int cx, int cy) {
     t->y[CANOPY_SPAN - 1] = cy;
 }
 
-static inline __attribute__((always_inline)) void
+static void
 hang_canopy(sand_t* s, const crown_t* t, int up_i, int w, int h, const reaction_t* r) {
     static const int crown[4] = {7, 1, 2, 6};
     for (int i = 0; i < t->n; i++) {
@@ -975,7 +975,7 @@ hang_canopy(sand_t* s, const crown_t* t, int up_i, int w, int h, const reaction_
 
 /* SHAPING PASS: Hardens the `hard` cells from the foot (fx, fy), converts
  * to wood, thickens trunk, adds canopy. Last cell green. Growth ends. */
-static inline __attribute__((always_inline)) void
+static void
 shape_tree(sand_t* s, int fx, int fy, int ux, int uy, int w, int h, cell_t self, const reaction_t* r, int hard) {
     const int up_i = ring_of(ux, uy);
 
@@ -1009,7 +1009,7 @@ shape_tree(sand_t* s, int fx, int fy, int ux, int uy, int w, int h, cell_t self,
 
 /* HARDENING. Counted from the bottom; run measured once regardless of
  * growth. */
-static inline __attribute__((always_inline)) void
+static void
 harden_stem(sand_t* s, int x, int y, int ux, int uy, int w, int h, cell_t self, const reaction_t* r) {
     int cx = x, cy = y;
     stem_walk(s, &cx, &cy, -ux, -uy, w, h, self, GROW_REACH);
