@@ -149,6 +149,16 @@ class Search(unittest.TestCase):
         reply = docs_search.answer(self.index, "framebuffer psram", budget=120)
         self.assertLessEqual(len(reply["results"][0]["excerpt"]), 120 * 0.5 + 4)
 
+    def test_the_budget_holds_however_many_sections_are_excerpted(self):
+        paragraph = "The palette budget is spent one shade at a time. " * 20
+        root = make_repo({f"docs/Palette{n}.md": f"# Palette {n}\n\n{paragraph}\n"
+                          for n in range(6)})
+        index = docs_search.Index(root, semantic=False)
+        reply = docs_search.answer(index, "palette budget shade", top=5, budget=400)
+        used = sum(len(r["excerpt"]) for r in reply["results"])
+        self.assertEqual(len(reply["results"]), 5)
+        self.assertLessEqual(used, 400 + len(" ...") * 5)
+
     def test_a_section_is_found_by_line_or_heading(self):
         by_line = self.index.find_section("docs/Flashing.md:17")
         by_name = self.index.find_section("docs/Flashing.md#warm")
@@ -258,10 +268,91 @@ class Mcp(unittest.TestCase):
         [reply] = self.converse({"jsonrpc": "2.0", "id": 9, "method": "resources/list"})
         self.assertEqual(reply["error"]["code"], -32601)
 
+    def test_an_unknown_protocol_version_is_answered_with_the_supported_one(self):
+        [reply] = self.converse({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                                 "params": {"protocolVersion": "bogus"}})
+        self.assertEqual(reply["result"]["protocolVersion"], docs_mcp.PROTOCOL)
+
+    def test_an_edit_mid_session_is_searchable_at_once(self):
+        root = fixture()
+        server = docs_mcp.Server(root)
+        ask = {"question": "zeppelin mooring"}
+        with mock.patch.object(docs_llama, "installed", return_value=False):
+            before, _ = server.call("docs_search", ask)
+            with open(root / "docs" / "Memory.md", "a", encoding="utf-8") as doc:
+                doc.write("\n## Zeppelin mooring\n\nA zeppelin moors to the mast.\n")
+            after, _ = server.call("docs_search", ask)
+        self.assertIn("no document uses", before)
+        self.assertIn("Zeppelin mooring", after)
+
+
+class Downloads(unittest.TestCase):
+    def setUp(self):
+        self.target = Path(tempfile.mkdtemp()) / "model.gguf"
+        self.good = __import__("hashlib").sha256(b"good").hexdigest()
+
+    def serve(self, payload):
+        return mock.patch("urllib.request.urlopen", return_value=io.BytesIO(payload))
+
+    def test_a_mismatched_download_never_becomes_the_file(self):
+        with self.serve(b"tampered"), mock.patch("sys.stderr", io.StringIO()), \
+                self.assertRaises(SystemExit):
+            docs_llama.download("https://example.invalid/m", self.target, self.good)
+        self.assertEqual(list(self.target.parent.iterdir()), [])
+
+    def test_a_matching_download_is_kept(self):
+        with self.serve(b"good"), mock.patch("sys.stderr", io.StringIO()):
+            docs_llama.download("https://example.invalid/m", self.target, self.good)
+        self.assertEqual(self.target.read_bytes(), b"good")
+
+    def test_a_verified_file_is_not_downloaded_again(self):
+        self.target.write_bytes(b"good")
+        with mock.patch("urllib.request.urlopen") as fetch:
+            docs_llama.download("https://example.invalid/m", self.target, self.good)
+        fetch.assert_not_called()
+
+
+class Stop(unittest.TestCase):
+    def setUp(self):
+        home = tempfile.mkdtemp()
+        patch = mock.patch.dict(os.environ, {"AUTANA_LLAMA_HOME": home})
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_stop_ends_only_the_server_it_started(self):
+        docs_llama.pid_file().write_text("4242", encoding="ascii")
+        with mock.patch("subprocess.run") as run, mock.patch("os.killpg", create=True) as kill:
+            self.assertTrue(docs_llama.stop())
+        if os.name == "nt":
+            self.assertEqual(run.call_args.args[0], ["taskkill", "/F", "/T", "/PID", "4242"])
+        else:
+            self.assertEqual(kill.call_args.args[0], 4242)
+        self.assertFalse(docs_llama.pid_file().exists())
+
+    def test_a_server_it_did_not_start_is_left_alone(self):
+        with mock.patch("subprocess.run") as run, mock.patch("os.killpg", create=True) as kill:
+            self.assertFalse(docs_llama.stop())
+        run.assert_not_called()
+        kill.assert_not_called()
+
 
 class RealDocuments(unittest.TestCase):
-    """Exact words alone must keep finding what they find today on the real documents."""
+    """Exact-word retrieval must meet FLOOR on the evaluation set, whose every row names a real section."""
     FLOOR = 0.5
+
+    def test_every_question_names_a_section_that_exists(self):
+        with mock.patch.object(docs_llama, "installed", return_value=False):
+            index = docs_search.Index(REPO, semantic=False)
+        dev = (REPO / ".dev").is_dir()
+        missing = []
+        for question, path, heading in docs_search.load_eval():
+            if path.startswith(".dev/") and not dev:
+                continue
+            if not any(s.path == path and any(heading in name.lower()
+                                              for name in s.headings + (s.title,))
+                       for s in index.sections):
+                missing.append(f"{path}#{heading}")
+        self.assertEqual(missing, [])
 
     def test_lexical_recall_holds(self):
         with mock.patch.object(docs_llama, "installed", return_value=False):

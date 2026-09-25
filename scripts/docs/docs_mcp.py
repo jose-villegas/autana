@@ -15,6 +15,9 @@ from pathlib import Path
 import docs_search
 
 PROTOCOL = "2025-06-18"
+# Tools over stdio are unchanged across these; a client asking for another is
+# answered with PROTOCOL, and decides for itself whether to continue.
+PROTOCOLS = ("2024-11-05", "2025-03-26", PROTOCOL)
 TOOLS = [
     {"name": "docs_search",
      "description": "Search this repository's documentation. Returns the few sections that "
@@ -69,7 +72,8 @@ class Server:
         if ident is None:
             return None
         if method == "initialize":
-            result = {"protocolVersion": message.get("params", {}).get("protocolVersion", PROTOCOL),
+            asked = message.get("params", {}).get("protocolVersion")
+            result = {"protocolVersion": asked if asked in PROTOCOLS else PROTOCOL,
                       "capabilities": {"tools": {}},
                       "serverInfo": {"name": "autana-docs", "version": "1"}}
         elif method == "tools/list":
