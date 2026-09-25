@@ -1197,7 +1197,7 @@ update can touch another's, in cells:
 | Gas walk (`gas_walk_once`) | 1, same shape as the sweep | yes; private wake and repaint state |
 | Reaction local rules (`step_one_reacting_row`'s burn/warm/tempered/crust/soak-dry/condense/acid-rain stages) | 1 | yes, and serial-exact - a reaction never relocates a cell; private wake, repaint and content-flag state; growers on the board disable the split entirely (`reactions_may_split()`, `sand_reactions.c`) |
 | Gas cross-flow (`equalise_gas`) | `material_of(c)->sight`: 5-24 cells across fire (5), gas (16), steam (20), and smoke (24) | only along a ray that stays in its own row - see below |
-| Heat conduction to a boiler (`try_heat_transform_given`'s `CONDUCT_REACH`) | 32, a directed walk, not a spread | no; queue-free - `sand_step_reaction_reach()` re-scans for every still-burning cell |
+| Heat conduction to a boiler (`conduct_heat()`'s `CONDUCT_REACH`) | 32, a directed walk, not a spread | no; queue-free - `sand_step_reaction_reach()` re-scans for every still-burning cell |
 | Chilling (`step_one_cold_cell`'s carry walk) and dissolving (acid) | `COLD_REACH`, and acid's own multi-cell backing check | no; same re-scan, left whole rather than split into a local half |
 | Glass crack flood | up to `CRACK_MAX`, 256 | no; a small fixed queue, drained by the reach pass |
 | Lava cool-off chain | up to `SAND_LAVA_COOLOFF_MAX_CHAIN`, 8 links, each an arbitrary further cell | no; same queue mechanism |

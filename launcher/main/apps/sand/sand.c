@@ -1093,8 +1093,8 @@ step_one_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* b
 }
 
 /* The non-inline forms exist alongside the inline versions (see sand_priv.h
- * comment). sand_gas.c calls these, not the _impl versions, to avoid a second
- * inlined copy. */
+ * comment). sand_gas.c calls the _impl versions directly, not these (see its
+ * call site). */
 bool
 try_fall_or_scatter(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int dx,
                     int dy, const int* slide_a, const int* slide_b, cell_t grain, uint8_t density, int scatter) {
