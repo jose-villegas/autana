@@ -1,9 +1,16 @@
 # Adding a Material
 
-A practical checklist for extending `main/apps/sand/`'s material table. Read
-[`Sand-Simulation.md`](Sand-Simulation.md) first if you have not - this
-assumes you already know what `material_t`, `material_kind_t`, and the main
-sweep's no-double-move guarantee are.
+A checklist for adding a material to the falling-sand grid. Start with an
+existing movement kind: powder falls and piles, liquid spreads by amount,
+gas rises, and static material stays put. `material_t` is a material's row
+of properties; `material_kind_t` selects its movement rule. The sweep marks
+cells it has moved so the same cell does not move twice in one update.
+
+Read [the architecture map](Architecture.md) for the byte and file layout,
+then [the simulation guide](Sand-Simulation.md) for movement and reactions.
+The checklist below assumes those rules are familiar. A new row can be
+checked by [host tests](../Testing-Guide.md), while seeing it in the running
+sandbox requires a board build.
 
 ---
 
@@ -39,12 +46,8 @@ independent of each other:
    it is: "adding a material is a row here rather than a branch in the
    movement code" (`material.h`'s own header comment).
 
-2. **Does it need a new KIND?** `material_kind_t` has exactly five values
-   - `NONE`/`STATIC`/`POWDER`/`LIQUID`/`GAS` - and only one of them,
-   `KIND_GAS`, was ever added after the founding three (sand, water,
-   stone) established the first three. Every ordinary and extended
-   material shipped since has reused one of the existing four. That is
-   the honest odds: a genuinely new movement shape is rare, and it is the
+2. **Does it need a new KIND?** `material_kind_t` lists the available
+   movement kinds. A genuinely new movement shape is rare, and it is the
    harder path - a new file, a second sweep pass, and real performance
    work, covered below.
 
@@ -273,10 +276,9 @@ without re-reading this section.
 many variant codes as it actually uses. The cost lands in the hottest
 loop in the program: `CELL_MATERIAL`/`CELL_VARIANT` become dependent
 table lookups instead of a shift and a mask. Worth doing only when slot
-pressure is real enough to justify that, and only after recomputing the
-actual headroom against the table as it stands - the growth/root/canopy
-fields and the extended materials that use them did not exist when this
-option was last costed out, so the old count is not trustworthy any more.
+pressure is real enough to justify that, and only after measuring headroom
+against the current material table and its growth, root, canopy, and
+extended-material fields.
 
 **What does not work: moving transients out of the grid into a side
 list.** Fire, smoke, steam, gas and ember-like states are short-lived, so a
@@ -520,9 +522,9 @@ number goes in a comment next to the constant and the probe is disposable.
 - **A material's variant may already mean something.** Liquids read it as
   fill, transients as life, glass and stone as temperature, wood as how
   much is left to burn. The suite's `GLASS`, `STONE` and `WOOD` macros have
-  each been caught placing cells at a variant that used to be a shade and
-  had quietly become a state - hot stone, half-melted glass, a log already
-  on fire. If you give a material's variant a meaning, grep the tests for
+  must place cells with variants appropriate to their current state: hot
+  stone, half-melted glass, or a log already on fire. If you give a
+  material's variant a meaning, grep the tests for
   `CELL_MAKE(MAT_YOURS`.
 - **Test overrides are wiped by `sand_init()`.** `sand_set_decay()` and
   friends must be called *after* any fixture helper that re-inits the

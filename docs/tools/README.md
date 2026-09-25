@@ -1,6 +1,11 @@
 # Tooling
 
-How the repository's own checks work, where a script's header is not enough.
+To see real firmware screens without a board, start with the
+[render harness](Render-Harness.md). To run portable logic tests, use the
+[Testing Guide](../Testing-Guide.md). Board commands live in the
+[`autana` CLI guide](Autana-CLI.md).
+
+The rest of this index explains the repository's checks and tools in depth.
 
 | | |
 |---|---|

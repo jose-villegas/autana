@@ -1,9 +1,20 @@
 # The Falling-Sand Simulation
 
-What `main/apps/sand/` actually is: a cellular automaton with a handful of
-materials, tilt-steered by the accelerometer, that has to run inside a
-memory and time budget tight enough that most of its design decisions were
-forced by measurement rather than chosen for elegance.
+In the falling-sand app, touch deposits materials into a grid. Each update
+checks nearby cells: sand forms piles, water spreads and levels, and fire,
+heat, and reactions change materials. The board's motion sensor changes the
+direction of gravity. The app fits those rules into the memory and frame-time
+budgets of one ESP32-S3 board.
+
+The [sand menu image](../images/overview/sand-menu.png) is a host render of
+the real UI. The host renderer has no scene of active sand gameplay, so the
+movement described here needs a device capture to show it.
+
+The grid's cells hold a material and a small amount of state in one byte.
+The lower **nibble** is four bits of that byte. PSRAM is the board's external
+memory, where the framebuffer lives; internal SRAM is the smaller memory
+used by the working grid. The [architecture map](Architecture.md) shows the
+byte layout before the sections below examine each rule.
 
 This document is the "why" behind it - the material encoding, the movement
 rules, the water model, and the performance discipline that shaped all of
@@ -218,34 +229,12 @@ tilted pool, gravity down-and-right:
   but the MIX across the pool still reads as the true angle
 ```
 
-Two bugs, both fixed and both worth knowing if this code is touched again.
-
-**Bug one: picking the ray from the dithered direction flickered a
-settled pool.** Gravity's direction is dithered every step (see
-[Movement](#movement-one-rule-and-one-invariant-that-has-to-be-right)
-above). If cross-flow's axis followed that dither, "is this level" was
-asked along a different axis almost every step.
-
-A settled pool then read as wildly unbalanced along whichever direction
-it wasn't just checked against - large amounts of mass swinging back and
-forth every step or two, visible as flashing and resettling. Fixed by
-taking the axis from the *nearest* (non-dithered) direction instead - the
-same fix friction's burial check already used. See
-`test_a_settled_pool_does_not_flicker` (`suite_sand_materials.c`).
-
-**Bug two: pinning to one ray flattened every surface to 0/45/90
-degrees.** That was the correct fix for the flicker, but it had an
-unpriced cost: a pool could then only settle perpendicular to one of
-eight directions. The near-vertical octant lost the most - its axis ray
-is horizontal, and a horizontal ray can only move mass within a row, so
-that octant couldn't tilt its surface at all.
-
-The fix shown above - dithering between the axis ray and the diagonal
-beside it, by column, in space rather than in time - restored real tilt
-angles without bringing the flicker back.
-`test_a_pool_settles_at_the_angle_it_is_tilted_to`
-(`suite_sand_materials.c`) guards the second property; the flicker test
-above still guards the first. Neither alone is enough.
+Cross-flow chooses its axis from the nearest, non-dithered gravity
+direction. A temporal change of axis would make a settled pool alternate
+between balanced and unbalanced. Columns alternate between that axis ray
+and its neighboring diagonal in space, allowing intermediate tilt angles
+without making the surface flicker. The settled-pool and tilted-pool tests
+in `suite_sand_materials.c` guard both properties.
 
 ## Gas: a biased random walk
 
@@ -621,24 +610,11 @@ while the board is held still), not the per-step dithered one - dithering
 would swing the lid between two adjacent orientations every step a tilt
 fell between two eighths, turning the rule into orientation noise.
 
-This shape replaced an earlier five-cell **semi-disc** (the same three
-cells plus the two perpendiculars, needing three covered in a contiguous
-run). The perpendiculars were the defect.
-
-A finger-drawn stone wall bulges one cell past itself every brush step,
-giving its inner face a notch. Lava settling into each notch saw wall to
-its side, wall on the diagonal above that side, and wall directly above -
-three cells, contiguous, "sealed" - while the pool's surface sat wide
-open one cell over. Every hand-drawn basin blew its own sides out as the
-lava settled.
-
-Measured: a clean one-cell wall never produced a single eligible cell in
-5,000 steps (no test caught it, since every basin in the suite is drawn
-clean); a brush-drawn one did within 16 steps and breached by step 62 at
-natural odds. Dropping the perpendiculars removed every eligible cell in
-that scene at brush radii 2-4, left the wide-pool-under-a-crust case
-exactly as it was, and is cheaper besides: three probes, no count, no
-contiguity walk.
+Perpendicular neighbors do not seal the lid. A brush-drawn stone wall
+has one-cell notches along its inner face; counting those neighbors would
+make lava at the wall appear sealed while the pool remains open beside it.
+The three probes cover a genuine crust without treating a basin wall as
+sealed.
 
 The one shape it still fires on, that a player might not expect, is a
 two-cell-wide overhang, where the innermost cell does have a complete
@@ -917,13 +893,12 @@ seeds, mean deepest root of 19 rows, for three percolation rates:
 |---|---:|---:|
 | 15 (current) | 4.6 | 15.0 |
 | 30 | 7.0 | 18.0 |
-| 60 (the old value) | 5.3 | 15.1 |
+| 60 | 5.3 | 15.1 |
 | 15, on a saturated bed | 9.6 | 15.4 |
 
 Conduction is worth roughly three times what the percolation rate is -
-even the old, fast percolation only reached 5-7 rows without it - so
-slowing `SOIL_PERCOLATE_CHANCE` down did not make roots shallow, and
-undoing it would not make them deep.
+even faster percolation only reaches 5-7 rows without it. The current
+rate therefore leaves root depth to the conduit mechanism.
 
 ### What actually bounds the system's size
 
@@ -952,16 +927,9 @@ climbing at 220 by step 20,000. At 2 it climbed to the low forties by
 step 2,000 and then sat there **byte-identical** through the remaining
 18,000 steps, seed after seed - a genuine fixed point.
 
-No depth or spread cap turned out to be needed. An earlier walk-shaped
-design (reusing `step_one_growing_cell()`'s stem-walk machinery, with its
-own depth cap) was replaced by this local eating rule, because a root
-does not need a stem's machinery to look like a root.
-
-Eating rests on the same scarce-resource philosophy the rest of this
-feature already uses, rather than adding depth and spread caps as a
-second, separate kind of bound beside it. `ROOT_SURFACE_MAX` alone
-already produces a genuine fixed point at the scale this feature runs
-at.
+Roots use a local eating rule rather than stem walking. Moisture and
+`ROOT_SURFACE_MAX` bound growth without separate depth or spread caps.
+The measured scene above reaches a fixed point at the scale used here.
 
 **Eight neighbours, not four.** `step_one_rooting_cell()`'s scan walks
 all eight ring directions rather than the four cardinals

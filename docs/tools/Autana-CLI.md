@@ -4,6 +4,13 @@ One command for everything that touches the board: build and flash, run
 suites, watch it, drive its input, change a number live. It takes the device
 lock and acts on the worktree you are standing in.
 
+For a first board run, install ESP-IDF and set up `autana` as described in
+[the README](../../README.md#run-it-on-the-board), then use `autana flash dev`
+and `autana monitor 30`. On Windows, run these in Git Bash. The CLI handles
+the ESP-IDF build environment and serial port; `monitor 30` exits after 30
+seconds. For a result without a board, use the
+[host render](../../README.md#try-it-without-a-board).
+
 ```sh
 autana                  # a session: the same commands without the prefix
 autana help [topic]     # the list below; a topic is a group key or a command

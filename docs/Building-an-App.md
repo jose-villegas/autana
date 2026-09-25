@@ -7,6 +7,13 @@ them, and how it gets into and out of the launcher list. The contract is
 [`Building-a-Screen.md`](Building-a-Screen.md); for why the shell is built this
 way see [`Launcher-Architecture.md`](Launcher-Architecture.md).
 
+The first result is a new launcher entry. Put one `app_<name>.c` file in
+`launcher/main/apps/<name>/`, give it a display name, and register it with
+`APP_REGISTER()`. The build discovers the file; the shell calls `enter()`
+when selected, `frame()` once per screen update, and `exit()` when leaving.
+For a board-free first run of the existing firmware, use the
+[README's host render](../README.md#try-it-without-a-board).
+
 An app is an `app_t` (not `const`: the registry links it through its own
 `next` field) plus one `APP_REGISTER()` line. It is not a task or a process:
 one binary, one address space, no isolation.
@@ -40,6 +47,14 @@ app_t app_yours = {
 
 APP_REGISTER(app_yours);
 ```
+
+To check a new `app_*.c` file without the ESP32 toolchain, run
+[`check_app_sources.sh`](../launcher/test/check_app_sources.sh) in Git Bash on
+Windows or a terminal on macOS/Linux. It syntax-checks the hardware-facing
+app sources with host stand-in headers; it does not run the app. A new app
+appears in the launcher after a firmware build and flash. To make a separate
+board-free preview of its drawing, declare a scene with the
+[host render harness](tools/Render-Harness.md#declaring-a-scene).
 
 ## The endpoints
 
