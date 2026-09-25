@@ -2052,9 +2052,68 @@ test_painted_gunpowder_starts_dry_in_one_of_three_tones(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(tones, distinct, why);
 }
 
+/* An airborne faller (reaction_t.falls) must not also run a later stage the
+ * same step - the `continue` after step_one_falling_cell() in
+ * step_one_reacting_row() (sand_reactions.c). MATX_PLANT has both `falls`
+ * and, right after it, `drinks`.
+ *
+ * STATISTICAL: the fall roll (85/256) and drink roll (40/256) both have to
+ * land, so many ISOLATED trials, each handing drink everything it needs -
+ * WATER above the tip, DIRT two cells below - with STONE walls between
+ * trials so none can answer another's plant. */
+#define PLANT_FALL_TRIALS 400
+#define PLANT_FALL_H      5
+
+static void
+test_a_falling_plant_tip_does_not_also_drink_the_same_step(void) {
+    const int w = PLANT_FALL_TRIALS * 2;
+    uint8_t* cells = malloc((size_t)w * PLANT_FALL_H);
+    TEST_ASSERT_NOT_NULL_MESSAGE(cells, "plant-fall trial grid must fit in what the framebuffer leaves");
+    sand_t* g = malloc(sizeof *g);
+    TEST_ASSERT_NOT_NULL_MESSAGE(g, "plant-fall trial sand_t must fit in what the framebuffer leaves");
+
+    sand_init(g, cells, w, PLANT_FALL_H, 5u);
+    sand_clear(g);
+    for (int i = 0; i < PLANT_FALL_TRIALS; i++) {
+        const int x = i * 2;
+        sand_set(g, x, 0, WATER);
+        sand_set(g, x, 1, MATX(MATX_PLANT));
+        /* row 2 left empty: nothing anchors the tip, so it is airborne. */
+        sand_set(g, x, 3, CELL_MAKE(MAT_DIRT, 0));
+        sand_set(g, x, 4, STONE);
+        sand_set(g, x + 1, 0, STONE);
+        sand_set(g, x + 1, 1, STONE);
+        sand_set(g, x + 1, 2, STONE);
+        sand_set(g, x + 1, 3, STONE);
+        sand_set(g, x + 1, 4, STONE);
+    }
+
+    sand_step(g, 0, 1000, 0);
+
+    bool drank = false;
+    for (int i = 0; i < PLANT_FALL_TRIALS && !drank; i++) {
+        const int x = i * 2;
+        const cell_t soil = sand_at(g, x, 3);
+        if (CELL_MATERIAL(soil) == MAT_DIRT && CELL_MOISTURE(soil) != 0) {
+            drank = true;
+        }
+    }
+
+    free(g);
+    free(cells);
+
+    TEST_ASSERT_FALSE_MESSAGE(drank, "a plant tip with nothing under it must not ALSO reach stage_drink "
+                                     "on the very step it is airborne - the water directly above it and "
+                                     "the dirt two cells below are both within easy reach the moment a "
+                                     "later stage runs, so any moisture change on ANY of 400 independent "
+                                     "trials in one step means a later stage ran after the fall stage "
+                                     "instead of ending the cell's turn");
+}
+
 void
 run_sand_roots_suite(void) {
     RUN_TEST(test_a_watered_plant_roots_into_the_soil_it_drinks_from);
+    RUN_TEST(test_a_falling_plant_tip_does_not_also_drink_the_same_step);
     RUN_TEST(test_a_trunk_standing_on_its_own_root_is_anchored);
     RUN_TEST(test_a_root_column_does_not_spend_the_trees_lift);
     RUN_TEST(test_a_buried_root_does_not_cut_off_the_water_below_it);
