@@ -37,9 +37,9 @@
 #include "gfx/icons_system.h"
 #include "ui/ui_internal.h"
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
 static const char* TAG = "ui";
 
-#if CONFIG_LAUNCHER_DEVELOPMENT
 /* MU_COMMANDLIST_SIZE (8 KiB, microui.h) was sized against an estimate, not
  * a measurement - this makes it one. Logs only on a new high, so a screen
  * that has already shown its worst frame costs nothing more to watch. */

@@ -96,6 +96,8 @@ $MAIN_DIR/util/job.c
 $MAIN_DIR/util/tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/display/panel_clock.c
+$MAIN_DIR/gfx/gfx.c
+$MAIN_DIR/ui/ui.c
 $MAIN_DIR/ui/ui_build.c
 $MAIN_DIR/ui/ui_canvas_marks.c
 $MAIN_DIR/ui/ui_launcher_draw.c
@@ -158,7 +160,7 @@ case "${1:-}" in
         ;;
     --print-flags)
         printf '%s\n' -std=c11 -Wall -Wextra -Wno-unused-parameter -g -O1 \
-            -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
+            -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
             -I "$TEST_DIR/../components/microui/include" \
             -I "$TEST_DIR/../components/small3dlib/include" \
             -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
@@ -206,7 +208,7 @@ OUT="$BUILD_DIR/host_tests"
 # calls. So it is compiled alone, first, without -include.
 UNITY_OBJ="$BUILD_DIR/unity.o"
 # shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
+"$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
     -c "$TEST_DIR/framework/unity.c" -o "$UNITY_OBJ"
 
 # components/microui/include is on the path for ui_style.h's sake: it needs
@@ -252,7 +254,7 @@ SOURCES_RSP="$BUILD_DIR/sources.rsp"
     sed -e '/^$/d' -e 's/[\\"]/\\&/g' -e 's/.*/"&"/' >"$SOURCES_RSP"
 
 # shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
+"$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
     -I "$TEST_DIR/../components/microui/include" \
     -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
     $HEAP_ARENA_DEFINES \
@@ -320,7 +322,7 @@ for f in $SU_SOURCES; do
     n=$((n + 1))
     base=$(basename "$f" .c)
     # shellcheck disable=SC2086
-    "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
+    "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
         -I "$TEST_DIR/../components/microui/include" \
         -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools" -include "$TEST_DIR/timing.h" \
         -fstack-usage -c "$f" -o "$SU_DIR/$(printf '%02d' "$n")_$base.o" &

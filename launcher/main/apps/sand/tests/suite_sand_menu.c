@@ -8,6 +8,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "apps/sand/app_sand_test.h"
 #include "apps/sand/sand_menu.h"
 
 static const sand_options_t STARTING = {
@@ -208,6 +209,23 @@ test_a_dither_the_screen_no_longer_shows_is_neither_pending_nor_applied(void) {
     TEST_ASSERT_EQUAL_INT(STARTING.dither, committed.dither);
 }
 
+#ifdef DEVICE_BUILD
+static void
+test_cancel_then_start_uses_the_old_options(void) {
+    TEST_ASSERT_TRUE(sand_app_test_options_reach_start(SAND_TEST_CANCEL_THEN_START));
+}
+
+static void
+test_apply_then_start_uses_the_new_options(void) {
+    TEST_ASSERT_TRUE(sand_app_test_options_reach_start(SAND_TEST_APPLY_THEN_START));
+}
+
+static void
+test_start_without_apply_uses_the_old_options(void) {
+    TEST_ASSERT_TRUE(sand_app_test_options_reach_start(SAND_TEST_START_WITHOUT_APPLY));
+}
+#endif
+
 void
 run_sand_menu_suite(void) {
     RUN_TEST(test_the_menu_opens_on_the_title);
@@ -222,6 +240,11 @@ run_sand_menu_suite(void) {
     RUN_TEST(test_only_sixteen_colours_uses_a_dither);
     RUN_TEST(test_a_dither_picked_under_sixteen_colours_is_committed);
     RUN_TEST(test_a_dither_the_screen_no_longer_shows_is_neither_pending_nor_applied);
+#ifdef DEVICE_BUILD
+    RUN_TEST(test_cancel_then_start_uses_the_old_options);
+    RUN_TEST(test_apply_then_start_uses_the_new_options);
+    RUN_TEST(test_start_without_apply_uses_the_old_options);
+#endif
 }
 
 SUITE_REGISTER(run_sand_menu_suite);
