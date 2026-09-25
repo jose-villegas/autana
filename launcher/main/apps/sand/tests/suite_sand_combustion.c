@@ -2246,6 +2246,59 @@ test_steam_and_smoke_are_told_apart_by_brightness(void) {
  * other material). Between them a steam cell under standing water has no
  * legal move in EITHER direction - the behaviour try_bubble() exists
  * for. */
+
+/* THE EXHAUSTIVE MOVER'S OWN BUBBLE, not the walk's. Every other bubble test
+ * in this split leaves sand_set_gas_walk() at its default (the walk), which
+ * covers the same deadlock through gas_walk_once()'s own buoyancy fallback -
+ * a different code path. water_column() already boxes the gas in on every
+ * side but up with water no lighter mover can slide past, so with the walk
+ * off, try_fall_or_scatter() and try_slide() both find every neighbour
+ * occupied and try_bubble() is the only legal move left. */
+static void
+test_gas_bubbles_up_through_a_liquid_ceiling_with_no_free_slide(void) {
+    water_column();
+    sand_set_gas_walk(&s, false);
+    sand_set(&s, 3, 6, GAS);
+
+    bool escaped = false;
+    for (int i = 0; i < 20 && !escaped; i++) {
+        sand_step(&s, 0, 1000, 0);
+        escaped = first_row_holding(MAT_GAS) < 2;
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(escaped, "a gas grain capped directly above by a liquid it is lighter than, "
+                                      "with no sideways slide free anywhere in the sealed tank, must "
+                                      "still pass up through it within a bounded number of steps - "
+                                      "try_fall_or_scatter() and try_slide() both find every neighbour "
+                                      "occupied by something denser, so try_bubble() is the only move "
+                                      "left");
+}
+
+/* The same setup, but capped by SOLID instead of liquid: no legal move
+ * exists in either direction, and the grain must simply sit there forever -
+ * distinguishing "nothing could move it" from "something moved it out",
+ * which the escape test above alone cannot tell apart. */
+static void
+test_gas_capped_by_solid_instead_of_a_liquid_stays_put(void) {
+    water_column();
+    sand_set_gas_walk(&s, false);
+    for (int y = 2; y <= 6; y++) {
+        for (int x = 2; x <= 5; x++) {
+            sand_set(&s, x, y, STONE);
+        }
+    }
+    sand_set(&s, 3, 6, GAS);
+
+    for (int i = 0; i < 20; i++) {
+        sand_step(&s, 0, 1000, 0);
+    }
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(6, first_row_holding(MAT_GAS),
+                                  "capped by SOLID instead of liquid, the same grain has no legal move "
+                                  "at all and must still sit exactly where it started - only a liquid "
+                                  "ceiling gets the special bubble-through case");
+}
+
 /* --- oil and lava ----------------------------------------------------- */
 
 /* A stone basin holding a pool of oil `depth` cells deep in columns
@@ -2513,6 +2566,8 @@ run_sand_combustion_suite(void) {
     RUN_TEST(test_creating_steam_arms_the_gas_pass);
     RUN_TEST(test_burnt_out_fire_can_leave_smoke);
     RUN_TEST(test_steam_and_smoke_are_told_apart_by_brightness);
+    RUN_TEST(test_gas_bubbles_up_through_a_liquid_ceiling_with_no_free_slide);
+    RUN_TEST(test_gas_capped_by_solid_instead_of_a_liquid_stays_put);
     RUN_TEST(test_only_the_exposed_surface_of_an_oil_pool_can_ignite);
     RUN_TEST(test_oil_ignites_with_a_flame_sitting_directly_on_it);
     RUN_TEST(test_water_still_puts_fire_out);

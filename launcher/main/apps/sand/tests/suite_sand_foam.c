@@ -410,6 +410,69 @@ test_foam_never_stalls_between_frames(void) {
                                    * assume it */
 }
 
+/* test_foam_never_stalls_between_frames sweeps only 8 hash values - for
+ * THIS multiplier (0x9E37) that is too few to tell ADD from XOR, both being
+ * bijections on the low 3 bits over a full 8-phase period (red-check stayed
+ * green against the ADD-to-XOR break). What differs is how EVENLY the
+ * change lands over a wider pool: ADD rotates the threshold window by a
+ * fixed step every phase; XOR complements a different bit count per phase,
+ * so its flip rate swings instead of staying level. */
+#define FOAM_FLIP_SAMPLE 2000
+
+/* Count of hashes in [0, FOAM_FLIP_SAMPLE) whose foam status differs
+ * between phase_a and phase_b, at curvature `mask`. */
+static int
+count_foam_flips(unsigned mask, unsigned phase_a, unsigned phase_b) {
+    int flips = 0;
+    for (unsigned h = 0; h < (unsigned)FOAM_FLIP_SAMPLE; h++) {
+        gfx_color_t col_a[3], col_b[3];
+        material_set_foam_phase(phase_a);
+        material_colours(CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), h, mask, 255u, col_a);
+        material_set_foam_phase(phase_b);
+        material_colours(CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), h, mask, 255u, col_b);
+        if (col_a[0] != col_b[0]) {
+            flips++;
+        }
+    }
+    return flips;
+}
+
+/* THE FLIP RATE MUST STAY EVEN ACROSS THE WHOLE CYCLE - a rotating window
+ * (addition) changes roughly the same share of cells every step; the
+ * complementing one (XOR) does not, and the gap is large: measured at
+ * curvature 1, phase 0->1 flips 3x as many of 2000 sampled hashes under
+ * XOR as addition does, while most OTHER adjacent phases flip about the
+ * same count either way - a min/max ratio a uniform rotation never
+ * produces. */
+static void
+test_foam_flip_rate_stays_even_across_the_phase_cycle(void) {
+    const unsigned curvature1_mask =
+        MATERIAL_EDGE_UP | MATERIAL_EDGE_DOWN | MATERIAL_EDGE_UP_LEFT | MATERIAL_EDGE_UP_RIGHT; /* count 4 */
+
+    int min_flips = FOAM_FLIP_SAMPLE + 1, max_flips = -1;
+    for (unsigned phase = 0; phase < 8u; phase++) {
+        const int flips = count_foam_flips(curvature1_mask, phase, phase + 1u);
+        if (flips < min_flips) {
+            min_flips = flips;
+        }
+        if (flips > max_flips) {
+            max_flips = flips;
+        }
+    }
+    material_set_foam_phase(0); /* leave global state as later tests assume it */
+
+    char why[320];
+    snprintf(why, sizeof why,
+             "the foam set's flip rate from one phase to the next must stay "
+             "roughly the same at every step of the 8-phase cycle, the way a "
+             "window ROTATING by a fixed amount does - min=%d max=%d flips "
+             "of %d sampled hashes across the cycle; a ratio this wide is "
+             "what combining hash and phase by XOR instead of addition "
+             "produces",
+             min_flips, max_flips, FOAM_FLIP_SAMPLE);
+    TEST_ASSERT_TRUE_MESSAGE(max_flips < 2 * min_flips, why);
+}
+
 /* Mirrors FOAM_BLOB_SHIFT in app_sand.c. Duplicated rather than shared,
  * because paint_row_n() - the only thing that actually applies the shift -
  * is static to that file and this suite links against material.c alone, on
@@ -475,6 +538,7 @@ run_sand_foam_suite(void) {
     RUN_TEST(test_a_diagonal_neighbour_alone_is_not_an_edge);
     RUN_TEST(test_foam_moves_between_frames);
     RUN_TEST(test_foam_never_stalls_between_frames);
+    RUN_TEST(test_foam_flip_rate_stays_even_across_the_phase_cycle);
     RUN_TEST(test_foam_blobs_are_bigger_than_one_cell);
 }
 
