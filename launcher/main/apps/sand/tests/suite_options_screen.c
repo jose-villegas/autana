@@ -207,17 +207,20 @@ any_hit(sand_options_hits_t h) {
 
 static sand_options_hits_t
 tap_at(int x, int y) {
+    int px, py;
+    ui_transform_point(ui_transform_quarter_turn(ui_width() == GFX_HEIGHT ? 1 : 0, GFX_WIDTH, GFX_HEIGHT), x, y, &px,
+                       &py);
     sand_options_hits_t hit = SAND_OPTIONS_NO_HITS;
-    sand_options_hits_t f = options_frame(true, true, false, x, y);
+    sand_options_hits_t f = options_frame(true, true, false, px, py);
     hit = any_hit(f) ? f : hit;
     for (int i = 0; i < 4; i++) {
-        f = options_frame(true, false, false, x, y);
+        f = options_frame(true, false, false, px, py);
         hit = any_hit(f) ? f : hit;
     }
-    f = options_frame(false, false, true, x, y);
+    f = options_frame(false, false, true, px, py);
     hit = any_hit(f) ? f : hit;
     for (int i = 0; i < 2; i++) {
-        f = options_frame(false, false, false, x, y);
+        f = options_frame(false, false, false, px, py);
         hit = any_hit(f) ? f : hit;
     }
     return hit;
@@ -229,9 +232,9 @@ tap(mu_Rect r) {
 }
 
 static void
-tap_fixture(sand_colour_mode_t colour) {
+tap_fixture(sand_colour_mode_t colour, bool landscape) {
     ui_init();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(ui_transform_quarter_turn(landscape ? 1 : 0, GFX_WIDTH, GFX_HEIGHT));
     committed = (sand_options_t){.quality = 2, .color = colour, .dither = 2};
     sand_menu_init(&menu);
     sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS, committed);
@@ -241,19 +244,25 @@ tap_fixture(sand_colour_mode_t colour) {
 
 static void
 test_a_tap_on_a_tile_reports_its_colour_mode(void) {
-    tap_fixture(SAND_COLOUR_256);
+    tap_fixture(SAND_COLOUR_256, false);
     TEST_ASSERT_EQUAL_INT(SAND_COLOUR_FULL, tap(layout_for(false).tiles[2]).color);
 }
 
 static void
+test_a_landscape_tap_on_a_tile_reports_its_colour_mode(void) {
+    tap_fixture(SAND_COLOUR_256, true);
+    TEST_ASSERT_EQUAL_INT(SAND_COLOUR_FULL, tap(layout_for(true).tiles[2]).color);
+}
+
+static void
 test_apply_takes_no_tap_while_nothing_is_pending(void) {
-    tap_fixture(SAND_COLOUR_256);
+    tap_fixture(SAND_COLOUR_256, false);
     TEST_ASSERT_FALSE(tap(layout_for(false).apply).apply);
 }
 
 static void
 test_apply_takes_a_tap_once_something_is_pending(void) {
-    tap_fixture(SAND_COLOUR_256);
+    tap_fixture(SAND_COLOUR_256, false);
     menu.draft.quality = 0;
     TEST_ASSERT_TRUE(tap(layout_for(false).apply).apply);
 }
@@ -263,7 +272,7 @@ test_apply_takes_a_tap_once_something_is_pending(void) {
  * hit nothing, and open no list, unless the draft colour is 16. */
 static void
 assert_dither_dropdown_absent_for(sand_colour_mode_t colour) {
-    tap_fixture(colour);
+    tap_fixture(colour, false);
     const options_screen_layout_t lay = layout_for(false);
 
     TEST_ASSERT_FALSE_MESSAGE(any_hit(tap(lay.dither)),
@@ -282,21 +291,21 @@ test_the_dither_dropdown_is_absent_unless_the_draft_colour_is_sixteen(void) {
 
 static void
 test_a_tap_at_the_sliders_right_end_reports_the_finest_quality(void) {
-    tap_fixture(SAND_COLOUR_256);
+    tap_fixture(SAND_COLOUR_256, false);
     const mu_Rect s = layout_for(false).quality_slider;
     TEST_ASSERT_EQUAL_INT(0, tap_at(s.x + s.w - 4, s.y + s.h / 2).quality);
 }
 
 static void
 test_a_tap_at_the_sliders_left_end_reports_the_coarsest_quality(void) {
-    tap_fixture(SAND_COLOUR_256);
+    tap_fixture(SAND_COLOUR_256, false);
     const mu_Rect s = layout_for(false).quality_slider;
     TEST_ASSERT_EQUAL_INT(QUALITY_COUNT - 1, tap_at(s.x + 4, s.y + s.h / 2).quality);
 }
 
 static void
 test_a_tap_on_cancel_reports_cancel_and_not_apply(void) {
-    tap_fixture(SAND_COLOUR_256);
+    tap_fixture(SAND_COLOUR_256, false);
     const sand_options_hits_t hits = tap(layout_for(false).cancel);
     TEST_ASSERT_TRUE_MESSAGE(hits.cancel, "a tap on CANCEL must report cancel");
     TEST_ASSERT_FALSE_MESSAGE(hits.apply, "a tap on CANCEL must never also report apply");
@@ -327,7 +336,7 @@ same_color(mu_Color a, mu_Color b) {
 
 static void
 test_the_draft_colour_tile_is_selected_even_when_uncommitted(void) {
-    tap_fixture(SAND_COLOUR_256);
+    tap_fixture(SAND_COLOUR_256, false);
     menu.draft.color = SAND_COLOUR_FULL;
     options_frame(false, false, false, 0, 0);
 
@@ -353,7 +362,7 @@ test_the_header_is_present_in_portrait_and_absent_in_landscape(void) {
 
 static void
 test_the_dither_dropdown_picks_from_its_list(void) {
-    tap_fixture(SAND_COLOUR_16);
+    tap_fixture(SAND_COLOUR_16, false);
     const options_screen_layout_t lay = layout_for(false);
     TEST_ASSERT_FALSE(any_hit(tap(lay.dither)));
 
@@ -361,6 +370,20 @@ test_the_dither_dropdown_picks_from_its_list(void) {
     const sand_options_hits_t hits = tap_at(list.x + list.w / 2, list.y + lay.dither.h / 2);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, hits.dither, "the top row of the list is the first dither");
     TEST_ASSERT_FALSE_MESSAGE(hits.color >= 0, "the list, not a tile beneath it, takes the tap");
+}
+
+static void
+test_a_landscape_tap_picks_the_open_dither_list_row(void) {
+    tap_fixture(SAND_COLOUR_16, true);
+    const options_screen_layout_t lay = layout_for(true);
+    TEST_ASSERT_FALSE(any_hit(tap(lay.dither)));
+    const mu_Rect list = ui_dropdown_list_rect(lay.dither, DITHER_COUNT, lay.dither.h, canvas_h(true), UI_MARGIN);
+    const int row = 2;
+    const int scroll = ui_dropdown_list_scroll(menu.draft.dither, DITHER_COUNT, lay.dither.h, list.h);
+    const sand_options_hits_t hits =
+        tap_at(list.x + list.w / 2, list.y + row * lay.dither.h - scroll + lay.dither.h / 2);
+    TEST_ASSERT_EQUAL_INT(row, hits.dither);
+    TEST_ASSERT_FALSE(hits.color >= 0);
 }
 
 void
@@ -375,9 +398,11 @@ run_options_screen_suite(void) {
     RUN_TEST(test_apply_counts_what_is_pending);
     RUN_TEST(test_tiles_run_sixteen_then_256_then_full);
     RUN_TEST(test_a_tap_on_a_tile_reports_its_colour_mode);
+    RUN_TEST(test_a_landscape_tap_on_a_tile_reports_its_colour_mode);
     RUN_TEST(test_apply_takes_no_tap_while_nothing_is_pending);
     RUN_TEST(test_apply_takes_a_tap_once_something_is_pending);
     RUN_TEST(test_the_dither_dropdown_picks_from_its_list);
+    RUN_TEST(test_a_landscape_tap_picks_the_open_dither_list_row);
     RUN_TEST(test_the_dither_dropdown_is_absent_unless_the_draft_colour_is_sixteen);
     RUN_TEST(test_a_tap_at_the_sliders_right_end_reports_the_finest_quality);
     RUN_TEST(test_a_tap_at_the_sliders_left_end_reports_the_coarsest_quality);

@@ -131,26 +131,29 @@ static sand_title_button_t
 tap(mu_Rect r) {
     const int x = r.x + r.w / 2;
     const int y = r.y + r.h / 2;
+    int px, py;
+    ui_transform_point(ui_transform_quarter_turn(ui_width() == GFX_HEIGHT ? 1 : 0, GFX_WIDTH, GFX_HEIGHT), x, y, &px,
+                       &py);
     sand_title_button_t hit = SAND_TITLE_NONE;
-    sand_title_button_t f = title_frame(true, true, false, x, y);
+    sand_title_button_t f = title_frame(true, true, false, px, py);
     hit = f != SAND_TITLE_NONE ? f : hit;
     for (int i = 0; i < 4; i++) {
-        f = title_frame(true, false, false, x, y);
+        f = title_frame(true, false, false, px, py);
         hit = f != SAND_TITLE_NONE ? f : hit;
     }
-    f = title_frame(false, false, true, x, y);
+    f = title_frame(false, false, true, px, py);
     hit = f != SAND_TITLE_NONE ? f : hit;
     for (int i = 0; i < 2; i++) {
-        f = title_frame(false, false, false, x, y);
+        f = title_frame(false, false, false, px, py);
         hit = f != SAND_TITLE_NONE ? f : hit;
     }
     return hit;
 }
 
 static void
-tap_fixture(void) {
+tap_fixture(bool landscape) {
     ui_init();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(ui_transform_quarter_turn(landscape ? 1 : 0, GFX_WIDTH, GFX_HEIGHT));
     title_frame(false, false, false, 0, 0);
     title_frame(false, false, false, 0, 0);
 }
@@ -162,9 +165,17 @@ test_a_tap_reports_the_button_under_it(void) {
 
     const sand_title_button_t live[] = {SAND_TITLE_START, SAND_TITLE_OPTIONS, SAND_TITLE_EXIT};
     for (size_t i = 0; i < sizeof live / sizeof live[0]; i++) {
-        tap_fixture();
+        tap_fixture(false);
         TEST_ASSERT_EQUAL_INT_MESSAGE(live[i], tap(lay.buttons[live[i]]), title_screen_label(live[i]));
     }
+}
+
+static void
+test_a_landscape_tap_reports_the_button_under_it(void) {
+    title_screen_layout_t lay;
+    layout_for(true, &lay);
+    tap_fixture(true);
+    TEST_ASSERT_EQUAL_INT(SAND_TITLE_START, tap(lay.buttons[SAND_TITLE_START]));
 }
 
 static bool
@@ -177,7 +188,7 @@ color_matches(mu_Color a, mu_Color b) {
  * that these two specific labels really do, and the three live ones don't. */
 static void
 test_disabled_buttons_are_inked_muted(void) {
-    tap_fixture();
+    tap_fixture(false);
     title_frame(false, false, false, 0, 0);
 
     mu_Color ink[SAND_TITLE_BUTTON_COUNT];
@@ -211,9 +222,9 @@ test_a_button_with_nothing_behind_it_takes_no_tap(void) {
     title_screen_layout_t lay;
     layout_for(false, &lay);
 
-    tap_fixture();
+    tap_fixture(false);
     TEST_ASSERT_EQUAL_INT(SAND_TITLE_NONE, tap(lay.buttons[SAND_TITLE_LOAD]));
-    tap_fixture();
+    tap_fixture(false);
     TEST_ASSERT_EQUAL_INT(SAND_TITLE_NONE, tap(lay.buttons[SAND_TITLE_GUIDE]));
 }
 
@@ -225,6 +236,7 @@ run_title_screen_suite(void) {
     RUN_TEST(test_every_string_fits_its_rect_landscape);
     RUN_TEST(test_the_title_grows_where_the_canvas_is_wide_enough);
     RUN_TEST(test_a_tap_reports_the_button_under_it);
+    RUN_TEST(test_a_landscape_tap_reports_the_button_under_it);
     RUN_TEST(test_disabled_buttons_are_inked_muted);
     RUN_TEST(test_a_button_with_nothing_behind_it_takes_no_tap);
 }

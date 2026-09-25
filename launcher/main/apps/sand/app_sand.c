@@ -48,6 +48,7 @@
 #include "esp_timer.h"
 
 #include "app.h"
+#include "apps/sand/app_sand_test.h"
 #include "build_variant.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
@@ -2322,6 +2323,57 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
 }
 
 #if CONFIG_LAUNCHER_SELFTEST
+static void
+sand_app_test_tap_menu_rect(mu_Rect r) {
+    const int x = r.x + r.w / 2;
+    const int y = r.y + r.h / 2;
+    const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
+    const input_t hold = {.down = true, .x = x, .y = y};
+    const input_t release = {.released = true, .x = x, .y = y};
+    const input_t idle = {0};
+    draw_menu(&press);
+    for (int i = 0; i < 4; i++) {
+        draw_menu(&hold);
+    }
+    draw_menu(&release);
+    draw_menu(&idle);
+}
+
+bool
+sand_app_test_options_reach_start(sand_test_start_action_t action) {
+    const sand_options_t saved = current_options();
+    ui_set_transform(ui_transform_identity());
+    sand_enter();
+    const sand_options_t before = current_options();
+    sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS, before);
+    menu.draft.quality = (before.quality + 1) % QUALITY_COUNT;
+
+    if (action == SAND_TEST_CANCEL_THEN_START || action == SAND_TEST_APPLY_THEN_START) {
+        const input_t idle = {0};
+        draw_menu(&idle);
+        draw_menu(&idle);
+        options_screen_layout_t lay;
+        options_screen_layout(ui_width(), ui_height(), &lay);
+        sand_app_test_tap_menu_rect(action == SAND_TEST_APPLY_THEN_START ? lay.apply : lay.cancel);
+    } else {
+        sand_menu_init(&menu);
+    }
+
+    title_screen_layout_t title;
+    title_screen_layout(ui_width(), ui_height(), &title);
+    sand_app_test_tap_menu_rect(title.buttons[SAND_TITLE_START]);
+    const bool queued = pending_start;
+    const input_t idle = {0};
+    sand_frame(0, &idle);
+    const int expected_quality = action == SAND_TEST_APPLY_THEN_START ? menu.draft.quality : before.quality;
+    const bool ok = queued && ui.screen == SAND_UI_RUNNING && !failed && current_options().quality == expected_quality
+                    && cell == qualities[expected_quality].cell;
+    sand_exit();
+    adopt_options(&saved);
+    ui_set_transform(ui_transform_quarter_turn(display_shell_quarter(), GFX_WIDTH, GFX_HEIGHT));
+    return ok;
+}
+
 /* Unlike sand_app_test_survives_indexed_then_menu() above, this runs the
  * START button itself. One pressed+released frame is not enough: microui's
  * hover_root lags next_hover_root by a frame (begin_root_container(),
