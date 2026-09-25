@@ -289,6 +289,40 @@ arm_exhaustive_landing(int y) {
     gas_row_arm(y + 1);
 }
 
+/* The exhaustive mover, for a grain that has already won its mobility roll:
+ * fall or scatter, then slide, then bubble, stopping at the first that moves
+ * it. */
+static inline __attribute__((always_inline)) bool
+gas_move_exhaustive(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int rdx,
+                    int rdy, const int* rslide_a, const int* rslide_b, int rload_dx, int rload_dy, int jostle,
+                    cell_t grain, uint8_t mat_id, uint8_t density, const material_t* mat,
+                    bool driven_gas[MATERIAL_MAX][2]) {
+    if (jostle == 0) {
+        const int scatter = (s->scatter >= 0) ? s->scatter : mat->scatter;
+        /* The _impl, not the public wrapper. Both live in sand_priv.h as
+         * static inline; the wrappers are extern in sand.c and exist for the
+         * suite, which cannot reach a static. Calling them from here made every
+         * gas grain pay a cross-translation-unit call with thirteen arguments -
+         * and the gas rise sweep is 49% of the app's most expensive scene.
+         * The main sweep already calls the _impl directly. */
+        if (try_fall_or_scatter_impl(s, row, prow, arow, brow, x, y, w, rdx, rdy, rslide_a, rslide_b, grain, density,
+                                     scatter)) {
+            return true;
+        }
+    }
+    /* Same as above, and worse: try_slide() is a 22-byte thunk, so this
+     * marshalled sixteen arguments only to forward them to try_slide_impl
+     * on the other side of the call. */
+    if (try_slide_impl(s, row, prow, arow, brow, x, y, w, rdx, rdy, rslide_a, rslide_b, rload_dx, rload_dy, jostle,
+                       grain, mat_id, density, mat, driven_gas)) {
+        return true;
+    }
+    /* Last, so an ordinary rise into open space always wins over shoving a
+     * liquid aside - a gas with somewhere free to go takes it, and only a
+     * gas that is genuinely capped by liquid pays for the extra check. */
+    return try_bubble(s, row, prow, x, y, w, rdx, rdy, grain, density);
+}
+
 static bool
 step_one_gas_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int rdx,
                    int rdy, const int* rslide_a, const int* rslide_b, int rload_dx, int rload_dy, int jostle,
@@ -309,51 +343,24 @@ step_one_gas_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_
     const bool try_moving =
         jostle != 0 || (int)(sand_rng_next_at(s, x, y, SAND_RNG_SLOT_GAS_MOBILITY) & 0xFF) < mobility;
 
-    bool moved = false;
-
     /* The walk replaces only the MOVEMENT half - tick_decay() above still runs,
      * so fire still burns down at the same rate. It draws its own direction, so
      * it does not consume the mobility roll differently than the branch below;
      * both paths have already drawn it. */
     if (s->gas_walk) {
-        if (try_moving) {
-            /* gas_walk_once() handles an up-ish draw blocked by a
-             * lighter-than-gas liquid itself, so this needs no separate
-             * try_bubble() call of its own. */
-            moved = gas_walk_once(s, row, x, y, w, rdx, rdy, grain, density);
-        }
-        if (moved) {
+        /* gas_walk_once() handles an up-ish draw blocked by a
+         * lighter-than-gas liquid itself, so this needs no separate
+         * try_bubble() call of its own. */
+        const bool walked = try_moving && gas_walk_once(s, row, x, y, w, rdx, rdy, grain, density);
+        if (walked) {
             wake_block_and_neighbors(s, x, y);
         }
-        return moved;
+        return walked;
     }
 
-    if (try_moving && jostle == 0) {
-        const int scatter = (s->scatter >= 0) ? s->scatter : mat->scatter;
-        /* The _impl, not the public wrapper. Both live in sand_priv.h as
-         * static inline; the wrappers are extern in sand.c and exist for the
-         * suite, which cannot reach a static. Calling them from here made every
-         * gas grain pay a cross-translation-unit call with thirteen arguments -
-         * and the gas rise sweep is 49% of the app's most expensive scene.
-         * The main sweep already calls the _impl directly. */
-        if (try_fall_or_scatter_impl(s, row, prow, arow, brow, x, y, w, rdx, rdy, rslide_a, rslide_b, grain, density,
-                                     scatter)) {
-            moved = true;
-        }
-    }
-    if (try_moving && !moved) {
-        /* Same as above, and worse: try_slide() is a 22-byte thunk, so this
-         * marshalled sixteen arguments only to forward them to try_slide_impl
-         * on the other side of the call. */
-        moved = try_slide_impl(s, row, prow, arow, brow, x, y, w, rdx, rdy, rslide_a, rslide_b, rload_dx, rload_dy,
-                               jostle, grain, mat_id, density, mat, driven_gas);
-    }
-    /* Last, so an ordinary rise into open space always wins over shoving a
-     * liquid aside - a gas with somewhere free to go takes it, and only a
-     * gas that is genuinely capped by liquid pays for the extra check. */
-    if (try_moving && !moved) {
-        moved = try_bubble(s, row, prow, x, y, w, rdx, rdy, grain, density);
-    }
+    const bool moved = try_moving
+                       && gas_move_exhaustive(s, row, prow, arow, brow, x, y, w, rdx, rdy, rslide_a, rslide_b, rload_dx,
+                                              rload_dy, jostle, grain, mat_id, density, mat, driven_gas);
     if (moved) {
         arm_exhaustive_landing(y);
         wake_block_and_neighbors(s, x, y);

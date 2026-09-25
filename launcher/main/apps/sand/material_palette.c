@@ -767,6 +767,167 @@ material_popcount8(unsigned mask) {
 #define DEPTH_RANGE          4
 #define DEPTH_SATURATE_CELLS MATERIAL_LIQUID_DEPTH_BAND
 
+static inline __attribute__((always_inline)) void
+paint_solid(gfx_color_t out[3], gfx_color_t col) {
+    out[0] = col;
+    out[1] = out[0];
+    out[2] = out[0];
+}
+
+static inline __attribute__((always_inline)) int
+clamp_mass(int idx) {
+    return idx < 0 ? 0 : (idx > MASS_MAX ? MASS_MAX : idx);
+}
+
+/* A liquid cell with no empty cardinal neighbour, shaded by its local depth. */
+static inline __attribute__((always_inline)) gfx_color_t
+liquid_interior(uint8_t id, unsigned depth) {
+    /* Prevent unsigned wrap-around when `depth` exceeds
+     * DEPTH_SATURATE_CELLS. */
+    const unsigned depth_capped = depth < DEPTH_SATURATE_CELLS ? depth : DEPTH_SATURATE_CELLS;
+
+    const int bright = ((int)DEPTH_RANGE * (int)(DEPTH_SATURATE_CELLS - depth_capped)) / (int)DEPTH_SATURATE_CELLS;
+    const int idx = clamp_mass((int)MASS_MAX - bright);
+    return palette[CELL_MAKE(id, (uint8_t)idx)];
+}
+
+static inline __attribute__((always_inline)) bool
+water_foams(unsigned hash, unsigned mask) {
+    const unsigned empty_count = material_popcount8(mask);
+    unsigned curvature = (empty_count > 3) ? (empty_count - 3) : (3 - empty_count);
+    if (curvature > WATER_FOAM_CURVATURE_MAX) {
+        curvature = WATER_FOAM_CURVATURE_MAX;
+    }
+
+    /* ADD, not XOR: XOR maps a power-of-two-aligned threshold window onto
+     * itself or another aligned window depending only on phase's low bits,
+     * leaving the foam set unchanged on about half of all phase steps;
+     * addition has no such alignment to preserve. Safe only because foam is
+     * the sole consumer of water's hash. */
+    const unsigned dithered = hash + foam_phase * 0x9E37u;
+    return (dithered & 7u) < water_foam_threshold[curvature];
+}
+
+/* Rim cell uses fill-indexed lookup shifted by liquid_spec[] indexed by
+ * CARDINAL bits; see material_set_gravity() and MATERIAL_EDGE_CARDINAL in
+ * material_palette.h. */
+static inline __attribute__((always_inline)) gfx_color_t
+liquid_rim(uint8_t id, uint8_t v, unsigned hash, unsigned mask, unsigned cardinal) {
+    const int idx = clamp_mass((int)v + liquid_spec[cardinal]);
+    if (id == MAT_WATER && water_foams(hash, mask)) {
+        return water_foam;
+    }
+    return palette[CELL_MAKE(id, (uint8_t)idx)];
+}
+
+static inline __attribute__((always_inline)) material_pattern_t
+liquid_colours(cell_t c, uint8_t v, unsigned hash, unsigned mask, unsigned depth, gfx_color_t out[3]) {
+    const uint8_t id = CELL_MATERIAL(c);
+    const unsigned cardinal = mask & MATERIAL_EDGE_CARDINAL;
+    paint_solid(out, cardinal == 0 ? liquid_interior(id, depth) : liquid_rim(id, v, hash, mask, cardinal));
+    return MATERIAL_FLAT;
+}
+
+static inline __attribute__((always_inline)) material_pattern_t
+palette_colours(cell_t c, gfx_color_t out[3]) {
+    paint_solid(out, palette[c]);
+    return MATERIAL_FLAT;
+}
+
+static inline __attribute__((always_inline)) material_pattern_t
+sand_colours(cell_t c, uint8_t v, unsigned hash, gfx_color_t out[3]) {
+    if (v < SAND_CULLET_BASE) {
+        return palette_colours(c, out);
+    }
+    const unsigned i =
+        ((v - SAND_CULLET_BASE) * (CULLET_CYCLE_LEN / SAND_CULLET_SHADES) + cullet_phase) & (CULLET_CYCLE_LEN - 1);
+
+    /* GLINT: Flash white; mix uses hash & phase, not RNG. Rarity
+     * controlled by CULLET_GLINT_ONE_IN. */
+    const bool glint = ((hash + cullet_phase * 0x9E37u) % CULLET_GLINT_ONE_IN) == 0;
+    paint_solid(out, glint ? CULLET_GLINT : cullet_cycle[i]);
+    return MATERIAL_FLAT;
+}
+
+/* Switched on low nibble for identity - see MATX(). Non-grained ones take
+ * their palette entry. Metal returns MATERIAL_HATCHED, not MATERIAL_SPECKLED
+ * like the rest - the ternary below cannot express a third pattern, so it
+ * gets its own early return. */
+static inline __attribute__((always_inline)) material_pattern_t
+extended_colours(cell_t c, uint8_t v, unsigned hash, unsigned depth, gfx_color_t out[3]) {
+    if (v == MATX_METAL) {
+        out[0] = metal_grain[hash & 7u];
+        out[1] = out[0];
+        out[2] = metal_shine;
+        return MATERIAL_HATCHED;
+    }
+
+    if (v == MATX_LEAF) {
+        /* depth carries the wave's fraction (0-255) plus one here too - the
+         * same live sweep MAT_WOOD's near-leaf case reads, so a leaf and the
+         * wood beside it catch the same gust together. No stored grain
+         * table: LERP8 needs 0xRRGGBB, not a packed gfx_color_t (see GLASS's
+         * own note on this exact trap). */
+        const unsigned frac = depth != 0 ? depth - 1u : 0u;
+        const uint32_t base = LERP(LEAF_DARK, LEAF_LIGHT, (hash & 7u) * 15 / 7);
+        paint_solid(out, GFX_RGB(LERP8(base, WOOD_LEAF_TINT_HI, frac)));
+        return MATERIAL_SPECKLED;
+    }
+
+    /* Guard-plus-ternary: switch costs 14%, unhinted branch 26%. */
+    if (v == MATX_PLANT || v == MATX_ICE || v == MATX_ROOT) {
+        paint_solid(out, (v == MATX_PLANT) ? plant_grain[hash & 7u]
+                         : (v == MATX_ICE) ? ice_grain[hash & 7u]
+                                           : root_grain[root_shade(depth)][hash & 7u]);
+        return MATERIAL_SPECKLED;
+    }
+    return palette_colours(c, out);
+}
+
+static inline __attribute__((always_inline)) material_pattern_t
+glass_colours(uint8_t v, unsigned hash, unsigned mask, gfx_color_t out[3]) {
+    /* `mask != 0` wrong; see MATERIAL_EDGE_CARDINAL. */
+    const bool edge = (mask & MATERIAL_EDGE_CARDINAL) != 0;
+
+    /* glass_phase slides every cell's starting point together, so the whole
+     * pane drifts as one rather than each cell wandering on its own; fine
+     * enough to move by a small angle without a table. */
+    const unsigned frac = (unsigned)(((int)(hash & 0xFFu) + glass_phase) & 0xFF);
+
+    /* uint32_t, not gfx_color_t - `base` is 0xRRGGBB, not packed by
+     * GFX_RGB(). gfx_color_t drops red byte, causing "glass reads green
+     * under heat". */
+    const uint32_t base = edge ? GLASS_EDGE_RGB(v) : GLASS_RGB(v);
+    paint_solid(out, GFX_RGB(LERP8(base, GLASS_GRADIENT_HI(v), frac)));
+    return MATERIAL_SPECKLED;
+}
+
+static inline __attribute__((always_inline)) material_pattern_t
+stone_colours(uint8_t v, unsigned hash, unsigned mask, gfx_color_t out[3]) {
+    /* See MATERIAL_EDGE_CARDINAL's comment in material_palette.h. */
+    paint_solid(out, ((mask & MATERIAL_EDGE_CARDINAL) != 0) ? stone_edge_speckle[v][hash & 7u]
+                                                            : stone_speckle[v][hash & 7u]);
+    return MATERIAL_SPECKLED;
+}
+
+static inline __attribute__((always_inline)) material_pattern_t
+wood_colours(cell_t c, uint8_t v, unsigned hash, unsigned depth, gfx_color_t out[3]) {
+    if (v != 0) {
+        return palette_colours(c, out); /* alight: one flat glow, not grain */
+    }
+    if (depth != 0) {
+        /* depth carries the wave's fraction (0-255) plus one, from
+         * material_wood_leaf_wave() via paint_row_n() - see
+         * material_wood_near_leaf() in material_palette.h for the gate. A
+         * live LERP8, not a stored step, so the blend is smooth rather than
+         * snapping between fixed shades. */
+        paint_solid(out, GFX_RGB(LERP8(WOOD_LEAF_TINT_LO, WOOD_LEAF_TINT_HI, depth - 1u)));
+        return MATERIAL_FLAT;
+    }
+    paint_solid(out, wood_grain[hash & 7u]);
+    return MATERIAL_SPECKLED;
+}
+
 material_pattern_t
 material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth, gfx_color_t out[3]) {
     const uint8_t v = CELL_VARIANT(c);
@@ -775,156 +936,17 @@ material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth, gfx_col
      * skipped - see local_depth_row_a[]/local_depth_row_b[] in app_sand.c. */
 
     if (material_of(c)->kind == KIND_LIQUID) {
-        const uint8_t id = CELL_MATERIAL(c);
-        const unsigned cardinal = mask & MATERIAL_EDGE_CARDINAL;
-
-        if (cardinal == 0) {
-            /* Prevent unsigned wrap-around when `depth` exceeds
-             * DEPTH_SATURATE_CELLS. */
-            const unsigned depth_capped = depth < DEPTH_SATURATE_CELLS ? depth : DEPTH_SATURATE_CELLS;
-
-            const int bright =
-                ((int)DEPTH_RANGE * (int)(DEPTH_SATURATE_CELLS - depth_capped)) / (int)DEPTH_SATURATE_CELLS;
-            int idx = (int)MASS_MAX - bright;
-            idx = idx < 0 ? 0 : (idx > MASS_MAX ? MASS_MAX : idx);
-            out[0] = palette[CELL_MAKE(id, (uint8_t)idx)];
-        } else {
-
-            /* rim cell uses fill-indexed lookup shifted by liquid_spec[]
-             * indexed by CARDINAL bits; see material_set_gravity() and
-             * MATERIAL_EDGE_CARDINAL in material_palette.h. */
-            int idx = (int)v + liquid_spec[cardinal];
-            idx = idx < 0 ? 0 : (idx > MASS_MAX ? MASS_MAX : idx);
-            out[0] = palette[CELL_MAKE(id, (uint8_t)idx)];
-
-            if (id == MAT_WATER) {
-                const unsigned empty_count = material_popcount8(mask);
-                unsigned curvature = (empty_count > 3) ? (empty_count - 3) : (3 - empty_count);
-                if (curvature > WATER_FOAM_CURVATURE_MAX) {
-                    curvature = WATER_FOAM_CURVATURE_MAX;
-                }
-
-                /* ADD, not XOR: XOR maps a power-of-two-aligned threshold
-                 * window onto itself or another aligned window depending
-                 * only on phase's low bits, leaving the foam set unchanged
-                 * on about half of all phase steps; addition has no such
-                 * alignment to preserve. Safe only because foam is the sole
-                 * consumer of water's hash. */
-                const unsigned dithered = hash + foam_phase * 0x9E37u;
-                if ((dithered & 7u) < water_foam_threshold[curvature]) {
-                    out[0] = water_foam;
-                }
-            }
-        }
-        out[1] = out[0];
-        out[2] = out[0];
-        return MATERIAL_FLAT;
+        return liquid_colours(c, v, hash, mask, depth, out);
     }
 
     switch (CELL_MATERIAL(c)) {
-        case MAT_SAND: {
-            if (v < SAND_CULLET_BASE) {
-                break;
-            }
-            const unsigned i = ((v - SAND_CULLET_BASE) * (CULLET_CYCLE_LEN / SAND_CULLET_SHADES) + cullet_phase)
-                               & (CULLET_CYCLE_LEN - 1);
-
-            /* GLINT: Flash white; mix uses hash & phase, not RNG. Rarity
-             * controlled by CULLET_GLINT_ONE_IN. */
-            const bool glint = ((hash + cullet_phase * 0x9E37u) % CULLET_GLINT_ONE_IN) == 0;
-            out[0] = glint ? CULLET_GLINT : cullet_cycle[i];
-            out[1] = out[0];
-            out[2] = out[0];
-            return MATERIAL_FLAT;
-        }
-        case MAT_EXTENDED:
-            /* Switched on low nibble for identity - see MATX(). Non-grained
-             * fall through. Metal returns MATERIAL_HATCHED, not
-             * MATERIAL_SPECKLED like the rest - the ternary below cannot
-             * express a third pattern, so it gets its own early return. */
-            if (v == MATX_METAL) {
-                out[0] = metal_grain[hash & 7u];
-                out[1] = out[0];
-                out[2] = metal_shine;
-                return MATERIAL_HATCHED;
-            }
-
-            if (v == MATX_LEAF) {
-                /* depth carries the wave's fraction (0-255) plus one here
-                 * too - the same live sweep MAT_WOOD's near-leaf case
-                 * reads, so a leaf and the wood beside it catch the same
-                 * gust together. No stored grain table: LERP8 needs
-                 * 0xRRGGBB, not a packed gfx_color_t (see GLASS's own
-                 * note on this exact trap). */
-                const unsigned frac = depth != 0 ? depth - 1u : 0u;
-                const uint32_t base = LERP(LEAF_DARK, LEAF_LIGHT, (hash & 7u) * 15 / 7);
-                out[0] = GFX_RGB(LERP8(base, WOOD_LEAF_TINT_HI, frac));
-                out[1] = out[0];
-                out[2] = out[0];
-                return MATERIAL_SPECKLED;
-            }
-
-            /* Guard-plus-ternary: switch costs 14%, unhinted branch 26%. */
-            if (v == MATX_PLANT || v == MATX_ICE || v == MATX_ROOT) {
-                out[0] = (v == MATX_PLANT) ? plant_grain[hash & 7u]
-                         : (v == MATX_ICE) ? ice_grain[hash & 7u]
-                                           : root_grain[root_shade(depth)][hash & 7u];
-                out[1] = out[0];
-                out[2] = out[0];
-                return MATERIAL_SPECKLED;
-            }
-            break;
-        case MAT_GLASS: {
-            /* `mask != 0` wrong; see MATERIAL_EDGE_CARDINAL. */
-            const bool edge = (mask & MATERIAL_EDGE_CARDINAL) != 0;
-
-            /* glass_phase slides every cell's starting point together, so the
-             * whole pane drifts as one rather than each cell wandering on its
-             * own; fine enough to move by a small angle without a table. */
-            const unsigned frac = (unsigned)(((int)(hash & 0xFFu) + glass_phase) & 0xFF);
-
-            /* uint32_t, not gfx_color_t - `base` is 0xRRGGBB, not packed by
-             * GFX_RGB(). gfx_color_t drops red byte, causing "glass reads
-             * green under heat". */
-            const uint32_t base = edge ? GLASS_EDGE_RGB(v) : GLASS_RGB(v);
-            out[0] = GFX_RGB(LERP8(base, GLASS_GRADIENT_HI(v), frac));
-            out[1] = out[0];
-            out[2] = out[0];
-            return MATERIAL_SPECKLED;
-        }
-        case MAT_STONE:
-            /* See MATERIAL_EDGE_CARDINAL's comment in material_palette.h. */
-            out[0] =
-                ((mask & MATERIAL_EDGE_CARDINAL) != 0) ? stone_edge_speckle[v][hash & 7u] : stone_speckle[v][hash & 7u];
-            out[1] = out[0];
-            out[2] = out[0];
-            return MATERIAL_SPECKLED;
-        case MAT_WOOD:
-            if (v != 0) {
-                break; /* alight: one flat glow, not grain */
-            }
-            if (depth != 0) {
-                /* depth carries the wave's fraction (0-255) plus one, from
-                 * material_wood_leaf_wave() via paint_row_n() - see
-                 * material_wood_near_leaf() in material_palette.h for the
-                 * gate. A live LERP8, not a stored step, so the blend is
-                 * smooth rather than snapping between fixed shades. */
-                out[0] = GFX_RGB(LERP8(WOOD_LEAF_TINT_LO, WOOD_LEAF_TINT_HI, depth - 1u));
-                out[1] = out[0];
-                out[2] = out[0];
-                return MATERIAL_FLAT;
-            }
-            out[0] = wood_grain[hash & 7u];
-            out[1] = out[0];
-            out[2] = out[0];
-            return MATERIAL_SPECKLED;
-        default: break;
+        case MAT_SAND: return sand_colours(c, v, hash, out);
+        case MAT_EXTENDED: return extended_colours(c, v, hash, depth, out);
+        case MAT_GLASS: return glass_colours(v, hash, mask, out);
+        case MAT_STONE: return stone_colours(v, hash, mask, out);
+        case MAT_WOOD: return wood_colours(c, v, hash, depth, out);
+        default: return palette_colours(c, out);
     }
-
-    out[0] = palette[c];
-    out[1] = out[0];
-    out[2] = out[0];
-    return MATERIAL_FLAT;
 }
 
 const gfx_color_t*
