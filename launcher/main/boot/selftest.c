@@ -26,6 +26,11 @@
 
 static const char* TAG = "selftest";
 
+void
+__wrap_esp_system_console_put_char(char c) {
+    (void)putchar((unsigned char)c);
+}
+
 /* Unity requires these once per binary. The suites manage their own fixtures,
  * since they all share this program. */
 void
