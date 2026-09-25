@@ -206,6 +206,95 @@ test_water_falling_onto_a_sleeping_dirt_bed_still_wets_it(void) {
     TEST_ASSERT_TRUE_MESSAGE(wetted_at > 0 && wetted_at < 80, why);
 }
 
+static int
+wide_count_dirt_in_row(int y) {
+    int n = 0;
+    for (int x = 0; x < WIDE_W; x++) {
+        if (CELL_MATERIAL(sand_at(&wide, x, y)) == MAT_DIRT) {
+            n++;
+        }
+    }
+    return n;
+}
+
+static bool
+wide_row_has_wet_dirt(int y) {
+    for (int x = 0; x < WIDE_W; x++) {
+        const cell_t c = sand_at(&wide, x, y);
+        if (CELL_MATERIAL(c) == MAT_DIRT && CELL_MOISTURE(c) != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* mark_block_has_moisture() (sand_reactions.c) is what keeps a NEWLY
+ * converted dirt cell's block in the soak-only walk once the block goes to
+ * sleep and no liquid is left nearby to hold BLOCK_LIQUID_NEAR up for it -
+ * without that mark, a sand grain that soaked into dirt right before its
+ * block settled would stay wet forever, the same bug
+ * test_water_falling_onto_a_sleeping_dirt_bed_still_wets_it exists for on
+ * the wetting side, mirrored here on the drying side. */
+static void
+test_dirt_made_from_soaked_sand_still_dries_out_asleep(void) {
+    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
+    TEST_ASSERT_NOT_NULL(wide_cells);
+    const int block_cols = (WIDE_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W;
+    const int block_rows = (WIDE_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H;
+    uint8_t* blocks = malloc((size_t)block_cols * (size_t)block_rows);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 11u);
+    sand_enable_sleeping(&wide, blocks);
+    sand_set_soak(&wide, SAND_SOAK_PER_MATERIAL);
+
+    const int floor_y = WIDE_H - 1;
+    const int sand_y = WIDE_H - 2;
+    const int water_y = WIDE_H - 3;
+    for (int x = 0; x < WIDE_W; x++) {
+        sand_set(&wide, x, floor_y, STONE);
+        sand_set(&wide, x, sand_y, CELL_MAKE(MAT_SAND, 8));
+        sand_set(&wide, x, water_y, CELL_MAKE(MAT_WATER, MASS_MAX));
+    }
+
+    /* WIDE_W independent sand cells at MAT_SAND's own 8/256 soak rate makes
+     * "not one of them converted within 200 steps" astronomically unlikely,
+     * without forcing any single cell's own roll. */
+    int converted = 0;
+    for (int i = 0; i < 200 && converted == 0; i++) {
+        sand_step(&wide, 0, 1000, 0);
+        converted += wide_count_dirt_in_row(sand_y);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(converted > 0, "setup: at least one sand cell must have soaked into dirt, or "
+                                            "the rest of this test proves nothing");
+
+    /* Take the water away and let the bed settle to sleep - the same
+     * ordering test_water_falling_onto_a_sleeping_dirt_bed_still_wets_it
+     * uses, mirrored: this time sleep has to hold with the water gone. */
+    clear_material(&wide, WIDE_W, WIDE_H, MAT_WATER);
+    for (int i = 0; i < 80; i++) {
+        sand_step(&wide, 0, 1000, 0);
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_awake_blocks(&wide),
+                                  "setup: the bed must actually be asleep by now, or this test cannot "
+                                  "tell a sleeping block's own drying from an awake one's");
+
+    bool still_wet = true;
+    for (int i = 0; i < 6000 && still_wet; i++) {
+        sand_step(&wide, 0, 1000, 0);
+        still_wet = wide_row_has_wet_dirt(sand_y);
+    }
+
+    free(wide_cells);
+    wide_cells = NULL;
+    free(blocks);
+
+    TEST_ASSERT_FALSE_MESSAGE(still_wet, "dirt made by soaking must still dry out once its block sleeps "
+                                         "and the water beside it is gone - if the conversion left its "
+                                         "block unmarked, the soak-only walk never visits it again and "
+                                         "it stays wet forever");
+}
+
 /* Freshly drawn dirt is dry, and freshly poured dirt is banded the way a
  * freshly poured grain of sand is - see random_cell() (sand.c).
  *
@@ -998,6 +1087,7 @@ run_sand_dirt_suite(void) {
     RUN_TEST(test_wet_sand_becomes_dirt_and_spends_the_water);
     RUN_TEST(test_dirt_takes_on_moisture_and_dries_out_again);
     RUN_TEST(test_water_falling_onto_a_sleeping_dirt_bed_still_wets_it);
+    RUN_TEST(test_dirt_made_from_soaked_sand_still_dries_out_asleep);
     RUN_TEST(test_new_dirt_starts_dry_in_a_random_tone);
     RUN_TEST(test_consecutive_dirt_pours_land_on_different_bands);
     RUN_TEST(test_a_dry_dirt_grain_keeps_its_tone_as_it_falls);
