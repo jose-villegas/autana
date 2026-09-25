@@ -663,6 +663,12 @@ def button(args):
     return code
 
 
+def docs(args):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "docs"))
+    import docs_search
+    return docs_search.main(args, root=engine_worktree())
+
+
 def apps(args):
     json_output = read_json_flag(args, "usage: autana apps [--json]")
     code, replies = send("APPS", reply="APPS", until=["APPS_END"], purpose="autana apps")
@@ -970,6 +976,13 @@ COMMAND_GROUPS = (
         Command("hand", hand, (("hand [--wait <seconds>] <note...>",
                                  "reserve the board for a person at it"),)),
         Command("take-back", take_back, (("take-back", "clear that reservation"),)),
+    )),
+    ("docs", "Documentation", (
+        Command("docs", docs, (
+            ("docs <question...>", "the sections that answer it, and where to read on"),
+            ("docs --section <path:line>", "one section whole; --deep adds its subsections"),
+            ("docs --outline <path>", "a document's headings, with lines and sizes"),
+            ("docs --ask <question...>", "a short answer from the local chat model"))),
     )),
 )
 

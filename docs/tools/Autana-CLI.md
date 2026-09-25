@@ -115,6 +115,17 @@ wait timed out or was interrupted with Ctrl+C; the reservation stays. Exit 4
 means another hand replaced the reservation; that reservation stays. The
 caller decides how to proceed after either nonzero result.
 
+## Documentation
+
+`autana help docs` · how it ranks and what it needs: [Docs-Search.md](Docs-Search.md)
+
+| Command | What it does |
+|---|---|
+| `autana docs <question...>` | The three sections that answer it best, excerpted, each with its `path:line` range and the code it cites, then five more to read on. Needs no board. |
+| `autana docs --section <path:line>` | One section whole, or `path#heading words`; `--deep` adds its subsections. |
+| `autana docs --outline <path>` | A document's headings with their lines and sizes, to pick a section without reading the file. |
+| `autana docs --ask <question...>` | A short answer written by the local chat model from those sections, with their sources. |
+
 ## JSON fields
 
 | Command | Fields |
