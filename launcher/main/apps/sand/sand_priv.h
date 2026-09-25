@@ -1659,9 +1659,9 @@ reaction_first_stage(const reaction_t* r, bool is_acid_rain_material) {
     if (r->heat_ramp != 0) {
         return RSTAGE_HEAT_RAMP;
     }
-    /* BEFORE chills, because stage_chill ends in `continue` and never falls
-     * through - snow chills, so a crust stage after it would be unreachable
-     * for the one material that has it. */
+    /* BEFORE chills, because react_stage_chill() ends the cell's stages
+     * and never falls through - snow chills, so a crust stage after it
+     * would be unreachable for the one material that has it. */
     if (r->crusts != 0) {
         return RSTAGE_CRUST;
     }

@@ -3185,12 +3185,12 @@ panel_clock_scope_end(panel_clock_scope_t scope) {
     gfx_heal_restore_defaults();
 }
 
-/* REPRODUCING, NOT CALLING: draw_dirty_rows()/draw_one_row()/paint_row()
+/* REPRODUCING, NOT CALLING: draw_dirty_row()/draw_one_row()/paint_row()
  * (app_sand.c) are static, inlined at their one call site - sharing a hot
  * per-call function across a translation-unit boundary previously cost a
  * measured 26% regression elsewhere.
- * Duplicates draw_dirty_rows()'s ~15-line policy instead (same row_runs
- * calls, same order, same dirty gate); paints no pixels, since
+ * Duplicates draw_dirty_row()'s policy instead (same row_runs calls, same
+ * order), behind draw_dirty_rows()'s same dirty gate; paints no pixels, since
  * gfx_present()'s cost depends only on marked regions, never colour. */
 
 static void

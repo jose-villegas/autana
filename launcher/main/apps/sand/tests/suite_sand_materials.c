@@ -954,7 +954,7 @@ static void
 test_a_cascading_impulse_moves_more_than_one_cell(void) {
     /* An impulse only ever moves the ONE grain queued - a successful
      * WATER/ACID move relays its push into same-material behind it
-     * (step_impulses()'s CASCADE comment, sand.c), speed halving each hop
+     * (queue_cascade_relay()'s comment, sand_impulse.c), speed halving each hop
      * so the wave dies out. A VERTICAL column pushed UP, not sideways:
      * cross-flow runs horizontal every step, and gravity never moves
      * water up on its own, so water above the column must be the
