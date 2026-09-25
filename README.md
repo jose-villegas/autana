@@ -72,20 +72,6 @@ The complexity gate, alone among the checks, also wants
 `git submodule update --init` - see
 [`docs/tools/Complexity-Gate.md`](docs/tools/Complexity-Gate.md).
 
-## Branches
-
-`main` is the trunk. Work on a short-lived branch and merge it by pull
-request. Name the branch `<type>/<description>`, using `feature`, `bugfix`,
-`hotfix`, or `release` as the type. The description uses lowercase letters and
-digits, with single hyphens between words. Release names may also use single
-dots, as in `release/v1.2.0`. Examples: `feature/touch-calibration`,
-`bugfix/boot-timeout`, `hotfix/display-reset`. Names say what the work does,
-not who wrote it. `main` and `__dolt_remote_info__` are exempt.
-
-Before pushing a branch with another name, rename it with
-`git branch -m feature/<what-it-does>`. The pre-push hook and pull request CI
-run `scripts/gates/check-branch-name.sh`.
-
 ## Quick start
 
 ```bash

@@ -19,5 +19,6 @@ if printf '%s\n' "$name" | LC_ALL=C grep -Eq '^(feature|bugfix|hotfix)/[a-z0-9]+
     exit 0
 fi
 
-echo "Invalid branch name '$name'; use feature/<what-it-does> (or bugfix/, hotfix/, release/)." >&2
+echo "Invalid branch name '$name'. Use feature/, bugfix/, hotfix/, or release/ with lowercase letters and digits separated by single hyphens; dots are allowed only in release/." >&2
+echo "Rename with: git branch -m <new-name>" >&2
 exit 1
