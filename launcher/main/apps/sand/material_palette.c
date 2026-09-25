@@ -74,7 +74,7 @@
         WOOD_BURN(14), WOOD_BURN(15)
 
 /* Unlit wood beside a leaf blends live between these two anchors (LERP8 -
- * see material_wood_leaf_wave() and material_colours()'s MAT_WOOD case).
+ * see material_wood_leaf_wave() and wood_colours()).
  * Both anchored on leaf's own green, not wood's colour - even at rest this
  * should read as leaf, just a darker shade of it. */
 #define WOOD_LEAF_TINT_LO LERP(0x468F26, 0x000000, 6)

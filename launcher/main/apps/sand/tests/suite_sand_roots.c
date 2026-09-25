@@ -897,7 +897,7 @@ test_a_thickly_rooted_cell_stops_growing(void) {
 }
 
 /* ROOTS FOLLOW WATER, WITH NO DIRECTION WEIGHTS OF THEIR OWN
- * (step_one_rooting_cell()'s own top comment, sand_reactions.c): a bed
+ * (step_one_rooting_cell()'s own top comment, sand_plants.c): a bed
  * wet on only one side of a root grows root on that side and never the
  * dry one, purely because the moisture check is the only thing steering
  * it - nothing in the scan itself prefers left over right or down over

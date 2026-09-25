@@ -177,9 +177,6 @@ step_one_falling_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
  * lift. */
 #define TRUNK_WIDTH 3
 
-/* Soil soaks bottom-up and dries top-down, so the collar can be dry over
- * wet rows: past the stem, the walk goes up to ROOT_REACH cells into the
- * soil for water. Roots on the stem count toward root_depth, not lift. */
 /* One step of the stem walk: where it goes next, and whether that cell is
  * ground (the walk ends there) or a root (it counts toward root_depth). */
 typedef struct {
@@ -291,6 +288,9 @@ drink_below_collar(sand_t* s, int cx, int cy, int w, int h, const reaction_t* r,
     return -1;
 }
 
+/* Soil soaks bottom-up and dries top-down, so the collar can be dry over
+ * wet rows: past the stem, the walk goes up to ROOT_REACH cells into the
+ * soil for water. Roots on the stem count toward root_depth, not lift. */
 static int
 find_water(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t self, int* lift, int* contact_at,
            int* root_depth, bool wants_room) {
@@ -363,10 +363,6 @@ spend_soil_moisture(sand_t* s, int w, const reaction_t* r, int soil_at, uint8_t 
 
 #define ROOT_CONDUCT_CHANCE 64
 
-/* One ROOT cell, carrying water down through itself as a conduit - moves
- * gravity-ward only, but its side and upper neighbours all count as
- * sources, not just the one directly above, so a whole column of soil can
- * drain through it rather than only the cell it sits under. */
 /* A soil cell a root conducts between: its index, position and moisture. */
 typedef struct {
     int at, x, y, m;
@@ -407,6 +403,10 @@ conduit_weigh(cell_t c, int k, size_t nat, int nx, int ny, conduit_end_t* src, c
     }
 }
 
+/* One ROOT cell, carrying water down through itself as a conduit - moves
+ * gravity-ward only, but its side and upper neighbours all count as
+ * sources, not just the one directly above, so a whole column of soil can
+ * drain through it rather than only the cell it sits under. */
 bool
 step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     const int down = ring_of(s->last_load_dx, s->last_load_dy);
@@ -440,9 +440,6 @@ step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t
     return true;
 }
 
-/* A ROOT cell rolls to convert one adjacent moist soil cell into more root -
- * see docs/sand/Sand-Simulation.md and ROOT_SURFACE_MAX above for why
- * root_neighbors caps it before any roll happens. */
 static inline __attribute__((always_inline)) int
 count_root_neighbors(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     int root_neighbors = 0;
@@ -518,6 +515,9 @@ gather_root_cands(sand_t* s, int x, int y, int w, int h, int away_x, int away_y,
     }
 }
 
+/* A ROOT cell rolls to convert one adjacent moist soil cell into more root -
+ * see docs/sand/Sand-Simulation.md and ROOT_SURFACE_MAX above for why
+ * root_neighbors caps it before any roll happens. */
 bool
 step_one_rooting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     /* Cheapest question first, rejects thick columns without neighbour scan
