@@ -128,6 +128,61 @@ dislodge_density(cell_t cell) {
     return override != 0 ? override : material_of(cell)->density;
 }
 
+/* WALL CANNOT BE THROWN BY DEFAULT, any more than one can be entered -
+ * can_impulse_enter() gates the DESTINATION, this gates the SOURCE.
+ * `allow_dislodge_static` uses `255 - dislodge_density()` for chance:
+ * LOWER density means HIGHER chance - see that helper's own comment
+ * for why an extended static needs its own override. */
+static bool
+static_source_holds(sand_t* s, cell_t cell, bool allow_dislodge_static, bool guaranteed_dislodge) {
+    if (material_of(cell)->kind != KIND_STATIC) {
+        return false;
+    }
+    if (!allow_dislodge_static) {
+        return true;
+    }
+    /* `guaranteed_dislodge` bypasses the roll below, for
+     * sand_impulse_dislodge()'s caller, which wants a KIND_STATIC
+     * target moved unconditionally rather than toughness-scaled. */
+    if (guaranteed_dislodge) {
+        return false;
+    }
+    const int chance = 255 - dislodge_density(cell);
+    return (int)(rng_next(&s->rng) & 0xFF) >= chance; /* a failed roll means the wall holds, same as always */
+}
+
+/* REFUSE A SECOND ENTRY FOR A CELL ALREADY TRACKED - two entries both
+ * claiming to be the one grain at `at` is a bookkeeping error. Matched
+ * on `cell` too, not index alone: queuing happens during reactions,
+ * before step_impulses()'s own re-acquisition runs, so a stored index
+ * can be stale here. */
+static bool
+impulse_already_queued(const sand_t* s, size_t at, cell_t cell) {
+    for (int existing = 0; existing < s->impulse_count; existing++) {
+        if (s->impulse_buf[existing].index == (uint16_t)at && s->impulse_buf[existing].cell == cell) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* A pane knocked loose is a pane broken: it flies on as cullet,
+ * carrying the push that dislodged it rather than sailing off as an
+ * intact sheet. Written to the grid as well as the entry - flight
+ * matches `cell` against what is actually there before moving it. */
+static cell_t
+shatter_if_glass(sand_t* s, size_t at, int x, int y, cell_t cell) {
+    if (CELL_MATERIAL(cell) != MAT_GLASS) {
+        return cell;
+    }
+    const cell_t flying = cullet_cell(s);
+    s->cells[at] = flying;
+    latch_content_flags(s, flying);
+    mark_rows(s, x, y, y);
+    wake_block_and_neighbors(s, x, y);
+    return flying;
+}
+
 /* SHARED IMPLEMENTATION behind sand_impulse() and sand_explode()'s own
  * annulus seeding, so the bounds/empty/buffer-full checks stay in one
  * place. `allow_dislodge_static` and `ramp` (speed decay) differ per
@@ -164,49 +219,14 @@ queue_flying_grain(sand_t* s, int x, int y, int dir, int speed, bool allow_dislo
         return;
     }
 
-    /* WALL CANNOT BE THROWN BY DEFAULT, any more than one can be entered -
-     * can_impulse_enter() gates the DESTINATION, this gates the SOURCE.
-     * `allow_dislodge_static` uses `255 - dislodge_density()` for chance:
-     * LOWER density means HIGHER chance - see that helper's own comment
-     * for why an extended static needs its own override. */
-    if (material_of(cell)->kind == KIND_STATIC) {
-        if (!allow_dislodge_static) {
-            return;
-        }
-        /* `guaranteed_dislodge` bypasses the roll above, for
-         * sand_impulse_dislodge()'s caller, which wants a KIND_STATIC
-         * target moved unconditionally rather than toughness-scaled. */
-        if (!guaranteed_dislodge) {
-            const int chance = 255 - dislodge_density(cell);
-            if ((int)(rng_next(&s->rng) & 0xFF) >= chance) {
-                return; /* the roll failed - the wall holds, same as always */
-            }
-        }
+    if (static_source_holds(s, cell, allow_dislodge_static, guaranteed_dislodge)) {
+        return;
+    }
+    if (impulse_already_queued(s, at, cell)) {
+        return;
     }
 
-    /* REFUSE A SECOND ENTRY FOR A CELL ALREADY TRACKED - two entries both
-     * claiming to be the one grain at `at` is a bookkeeping error. Matched
-     * on `cell` too, not index alone: queuing happens during reactions,
-     * before step_impulses()'s own re-acquisition runs, so a stored index
-     * can be stale here. */
-    for (int existing = 0; existing < s->impulse_count; existing++) {
-        if (s->impulse_buf[existing].index == (uint16_t)at && s->impulse_buf[existing].cell == cell) {
-            return;
-        }
-    }
-
-    /* A pane knocked loose is a pane broken: it flies on as cullet,
-     * carrying the push that dislodged it rather than sailing off as an
-     * intact sheet. Written to the grid as well as the entry - flight
-     * matches `cell` against what is actually there before moving it. */
-    cell_t flying = cell;
-    if (CELL_MATERIAL(cell) == MAT_GLASS) {
-        flying = cullet_cell(s);
-        s->cells[at] = flying;
-        latch_content_flags(s, flying);
-        mark_rows(s, x, y, y);
-        wake_block_and_neighbors(s, x, y);
-    }
+    const cell_t flying = shatter_if_glass(s, at, x, y, cell);
 
     impulse_t* entry = &s->impulse_buf[s->impulse_count++];
     entry->index = (uint16_t)at;
@@ -299,6 +319,30 @@ sand_displace_material(sand_t* s, int cx, int cy, int radius, uint8_t mat_id) {
     displace_disc(s, cx, cy, radius, (int)mat_id, false);
 }
 
+/* Written by hand rather than through place_cell() (sand_reactions.c),
+ * which is static to that file. `d2` is the cell's squared distance from
+ * the centre, already known to be inside the core. */
+static void
+ignite_core_cell(sand_t* s, int fx, int fy, int d2, int core_r2) {
+    if (fx < 0 || fx >= s->w || fy < 0 || fy >= s->h) {
+        return;
+    }
+    const size_t fat = (size_t)fy * (size_t)s->w + (size_t)fx;
+    /* Life is floored at 1, variant 0 indicates an expired fire. */
+    int life = MATERIAL_VARIANTS - 1;
+    if (core_r2 > 0) {
+        life -= d2 * SAND_EXPLODE_CORE_FADE / core_r2;
+        if (life < 1) {
+            life = 1;
+        }
+    }
+    const cell_t fire = CELL_MAKE(MAT_FIRE, (uint8_t)life);
+    s->cells[fat] = fire;
+    latch_content_flags(s, fire);
+    mark_rows(s, fx, fy, fy);
+    wake_block_and_neighbors(s, fx, fy);
+}
+
 void
 sand_explode(sand_t* s, int cx, int cy, int radius) {
     s->explosions_this_step++;
@@ -308,9 +352,7 @@ sand_explode(sand_t* s, int cx, int cy, int radius) {
 
     /* FILLS a cavity with fire before queuing any flight entries - see
      * SAND_EXPLODE_CORE_DIVISOR's own comment in sand_impulse.h. Every cell
-     * in the core is written unconditionally, occupied or empty alike.
-     * Written by hand rather than through place_cell() (sand_reactions.c),
-     * which is static to that file. */
+     * in the core is written unconditionally, occupied or empty alike. */
     const int core_radius_raw = radius / SAND_EXPLODE_CORE_DIVISOR;
     /* Clamped to a minimum core_radius of 1 for radius >= 2 - see
      * SAND_EXPLODE_CORE_DIVISOR's own comment in sand_impulse.h. radius 1 is
@@ -320,28 +362,11 @@ sand_explode(sand_t* s, int cx, int cy, int radius) {
     const int core_r2 = core_radius * core_radius;
     for (int fdy = -core_radius; fdy <= core_radius; fdy++) {
         for (int fdx = -core_radius; fdx <= core_radius; fdx++) {
-            if (fdx * fdx + fdy * fdy > core_r2) {
+            const int d2 = fdx * fdx + fdy * fdy;
+            if (d2 > core_r2) {
                 continue;
             }
-            const int fx = cx + fdx;
-            const int fy = cy + fdy;
-            if (fx < 0 || fx >= s->w || fy < 0 || fy >= s->h) {
-                continue;
-            }
-            const size_t fat = (size_t)fy * (size_t)s->w + (size_t)fx;
-            /* Life is floored at 1, variant 0 indicates an expired fire. */
-            int life = MATERIAL_VARIANTS - 1;
-            if (core_r2 > 0) {
-                life -= (fdx * fdx + fdy * fdy) * SAND_EXPLODE_CORE_FADE / core_r2;
-                if (life < 1) {
-                    life = 1;
-                }
-            }
-            const cell_t fire = CELL_MAKE(MAT_FIRE, (uint8_t)life);
-            s->cells[fat] = fire;
-            latch_content_flags(s, fire);
-            mark_rows(s, fx, fy, fy);
-            wake_block_and_neighbors(s, fx, fy);
+            ignite_core_cell(s, cx + fdx, cy + fdy, d2, core_r2);
         }
     }
 
@@ -417,8 +442,9 @@ impulse_index_still_tracked(const sand_t* s, int kept, int self_i, uint16_t inde
     return false;
 }
 
-/* Shared between step_impulses()'s KIND_STATIC and KIND_POWDER call sites,
- * so the same three-candidate scan cannot diverge between them. `cand_out`
+/* Shared between static_chunk_stays_airborne() (KIND_STATIC) and
+ * unrolled_entry_stays_tracked() (KIND_POWDER), so the same three-candidate
+ * scan cannot diverge between them. `cand_out`
  * is always filled; KIND_STATIC reads `cand_out[0]` post-false to tell wall
  * from support, KIND_POWDER ignores it. */
 static bool
@@ -449,6 +475,56 @@ impulse_decay(impulse_t* entry, uint8_t mat_id, int cells) {
     entry->speed = (entry->speed > total) ? (uint8_t)(entry->speed - total) : 0;
 }
 
+/* Throw only cells with open air; surface cells dominate the budget.
+ * Random scan avoids sheet-like ejection. sand_at() ensures no
+ * out-of-world cells. Returns -1 when the ejecta is buried - no surface
+ * to leave by. */
+static int
+pick_open_ejecta_dir(sand_t* s, size_t old_index, int dir_for_transfer) {
+    const int w = s->w;
+    const int ex = (int)((unsigned)old_index % (unsigned)w);
+    const int ey = (int)((unsigned)old_index / (unsigned)w);
+    const int base = dir_for_transfer + 3;
+    const unsigned first = rng_below(&s->rng, 3);
+    int chosen = -1;
+
+    for (unsigned k = 0; k < 3u && chosen < 0; k++) {
+        const int cand = (base + (int)((first + k) % 3u)) & 7;
+        const int* cd = ring_dir(cand);
+        if (CELL_IS_EMPTY(sand_at(s, ex + cd[0], ey + cd[1]))) {
+            chosen = cand;
+        }
+    }
+    return chosen;
+}
+
+/* Drag for shouldering `displaced` aside, then a TRANSFER entry for the
+ * ejecta when the hit was hard enough and the per-step budget has room. */
+static void
+charge_drag_and_transfer(sand_t* s, impulse_t* entry, size_t old_index, cell_t displaced, int dir_for_transfer,
+                         impulse_t* deferred, int* deferred_transfer_count) {
+    const uint8_t impact_speed = entry->speed;
+    const uint8_t drag = impulse_drag_of(displaced);
+    entry->speed = (entry->speed > drag) ? (uint8_t)(entry->speed - drag) : 0;
+
+    if (impact_speed < SAND_IMPULSE_TRANSFER_MIN_SPEED
+        || *deferred_transfer_count >= SAND_CASCADE_TRANSFER_MAX_PER_STEP) {
+        return;
+    }
+    const int chosen = pick_open_ejecta_dir(s, old_index, dir_for_transfer);
+    /* chosen < 0 means buried, so nothing is queued, but the displacement
+     * still happens: burial is a fact about the EJECTA, not about whether
+     * the mover itself still moves into the cell it just paid drag for. */
+    if (chosen < 0) {
+        return;
+    }
+    impulse_t* t = &deferred[(*deferred_transfer_count)++];
+    t->index = (uint16_t)old_index;
+    t->cell = displaced;
+    t->dir = (uint8_t)chosen;
+    t->speed = (uint8_t)(((unsigned)impact_speed * SAND_IMPULSE_TRANSFER_KEEP) >> 8);
+}
+
 /* Shared by push and gravity-drift, charged identically: `impact_speed`
  * is captured before drag touches `entry->speed`, so transfer derives
  * from what was LOST, not what is left. `dir_for_transfer` is not
@@ -460,43 +536,10 @@ impulse_charge_displacement(sand_t* s, impulse_t* entry, size_t new_index, int d
     const int w = s->w;
     const size_t old_index = entry->index;
     const cell_t displaced = s->cells[new_index];
-    const uint8_t impact_speed = entry->speed;
 
     if (!CELL_IS_EMPTY(displaced)
         && (material_of(entry->cell)->kind == KIND_STATIC || material_of(entry->cell)->kind == KIND_POWDER)) {
-        const uint8_t drag = impulse_drag_of(displaced);
-        entry->speed = (entry->speed > drag) ? (uint8_t)(entry->speed - drag) : 0;
-
-        if (impact_speed >= SAND_IMPULSE_TRANSFER_MIN_SPEED
-            && *deferred_transfer_count < SAND_CASCADE_TRANSFER_MAX_PER_STEP) {
-            /* Throw only cells with open air; surface cells dominate the
-             * budget. Random scan avoids sheet-like ejection. sand_at()
-             * ensures no out-of-world cells. */
-            const int ex = (int)((unsigned)old_index % (unsigned)w);
-            const int ey = (int)((unsigned)old_index / (unsigned)w);
-            const int base = dir_for_transfer + 3;
-            const unsigned first = rng_below(&s->rng, 3);
-            int chosen = -1;
-
-            for (unsigned k = 0; k < 3u && chosen < 0; k++) {
-                const int cand = (base + (int)((first + k) % 3u)) & 7;
-                const int* cd = ring_dir(cand);
-                if (CELL_IS_EMPTY(sand_at(s, ex + cd[0], ey + cd[1]))) {
-                    chosen = cand;
-                }
-            }
-            if (chosen >= 0) {
-                impulse_t* t = &deferred[(*deferred_transfer_count)++];
-                t->index = (uint16_t)old_index;
-                t->cell = displaced;
-                t->dir = (uint8_t)chosen;
-                t->speed = (uint8_t)(((unsigned)impact_speed * SAND_IMPULSE_TRANSFER_KEEP) >> 8);
-            }
-            /* chosen < 0 means buried - no surface to leave by - so nothing
-             * is queued, but the displacement below still happens: burial
-             * is a fact about the EJECTA, not about whether the mover
-             * itself still moves into the cell it just paid drag for. */
-        }
+        charge_drag_and_transfer(s, entry, old_index, displaced, dir_for_transfer, deferred, deferred_transfer_count);
     }
 
     s->cells[new_index] = entry->cell;
@@ -513,52 +556,373 @@ impulse_charge_displacement(sand_t* s, impulse_t* entry, size_t new_index, int d
     entry->index = (uint16_t)new_index;
 }
 
-/* The flight pass: every entry in s->impulse_buf either moves one cell
- * along its queued direction, waits another turn, or is finally dropped.
- * Called from sand_step(), immediately before finalize_settling() - see
- * docs/sand/Impulse-Mechanics.md's "Why the flight pass runs LAST": running
- * after every pass that can move a cell keeps an entry's
- * position honest, and turns a plain outward push into a ballistic arc
- * for free, since gravity has already pulled by the time this runs. */
+/* HEAT-RAMPING MATERIALS FIRST, CHECK POSITION ONLY. VARIANT NIBBLE
+ * DRIFTS NEAR HEAT. BLOCKED ENTRIES DON'T MOVE, CAUSING MISMATCH. TRYING
+ * MOVEMENT FIRST MAY CAUSE FALSE POSITIVES, ESPECIALLY WITH COVERED LAVA
+ * (see sand_reactions.c). reaction_of(entry->cell), not
+ * reactions[lost_mat] - lost_mat is the high nibble shared by statics and
+ * gunpowder in the MAT_EXTENDED range; reaction_of() handles this, while
+ * reactions[lost_mat] incorrectly reads reactions[MAT_EXTENDED]. */
+static bool
+reacquire_heat_ramped_in_place(const sand_t* s, impulse_t* entry, uint8_t lost_mat) {
+    if (reaction_of(entry->cell)->heat_ramp == 0) {
+        return false;
+    }
+    const cell_t here = s->cells[entry->index];
+    if (CELL_IS_EMPTY(here) || CELL_MATERIAL(here) != lost_mat) {
+        return false;
+    }
+    entry->cell = here;
+    return true;
+}
 
-/* BLOCKED MEANS WAIT, NOT STOP. Dropping a blocked entry on the spot would
- * be fine for open air but wrong for anything packed: an explosion into a
- * bed of sand or water starts with every queued cell surrounded by more of
- * the same material, so that rule would drop nearly everything on its
- * first turn. */
+/* THE SAME THREE CANDIDATES impulse_gravity_candidates() builds for the
+ * gravity drift and the settled check, so the three can never diverge. */
+static bool
+reacquire_fallen_grain(const sand_t* s, impulse_t* entry, int ox, int oy, int dx, int dy) {
+    const int w = s->w;
+    const int h = s->h;
+    int cand[3][2];
+    impulse_gravity_candidates(ox, oy, dx, dy, cand);
 
-/* Only the annulus already touching open space (or the fire-filled core
- * sand_explode() now writes - see SAND_EXPLODE_CORE_DIVISOR in
- * sand_impulse.h - which a denser neighbour can swap straight through)
- * ever went anywhere. */
+    for (int c = 0; c < 3; c++) {
+        const int cx = cand[c][0];
+        const int cy = cand[c][1];
+        if ((unsigned)cx >= (unsigned)w || (unsigned)cy >= (unsigned)h) {
+            continue;
+        }
+        const size_t cat = (size_t)cy * (size_t)w + (size_t)cx;
+        if (s->cells[cat] == entry->cell) {
+            entry->index = (uint16_t)cat;
+            return true;
+        }
+    }
+    return false;
+}
 
-/* Keeping a blocked entry instead lets it try again next step, once
- * whatever was ahead of it has had a chance to move out of the way -
- * which is what lets the disturbance the core's fire starts unpack
- * outward over several steps instead of being a single frozen ring. */
+/* LIQUIDS GET A SECOND CHANCE, MATCHED ON MATERIAL ONLY: cross-flow moves
+ * MASS, not grains, so a cell's variant can change without moving it to
+ * one of the three gravity candidates - measured 44.5% of queued water
+ * entries lost to this gap otherwise. Scoped to water/acid; checked at the
+ * original cell, then its 8 neighbours. */
+static bool
+reacquire_liquid_by_material(const sand_t* s, impulse_t* entry, uint8_t lost_mat, int ox, int oy) {
+    if (lost_mat != MAT_WATER && lost_mat != MAT_ACID) {
+        return false;
+    }
+    const cell_t here = s->cells[entry->index];
+    if (!CELL_IS_EMPTY(here) && CELL_MATERIAL(here) == lost_mat) {
+        entry->cell = here;
+        return true;
+    }
+    const int w = s->w;
+    const int h = s->h;
+    for (int c = 0; c < 8; c++) {
+        const int* rd = ring_dir(c);
+        const int cx = ox + rd[0];
+        const int cy = oy + rd[1];
+        if ((unsigned)cx >= (unsigned)w || (unsigned)cy >= (unsigned)h) {
+            continue;
+        }
+        const size_t cat = (size_t)cy * (size_t)w + (size_t)cx;
+        const cell_t found = s->cells[cat];
+        if (!CELL_IS_EMPTY(found) && CELL_MATERIAL(found) == lost_mat) {
+            entry->index = (uint16_t)cat;
+            entry->cell = found;
+            return true;
+        }
+    }
+    return false;
+}
 
-/* WAITING ONLY HAPPENS AGAINST A TRUE WALL - see can_impulse_enter()'s own
- * comment just above this function for why a flying grain shoulders aside
- * any non-static occupant it meets instead of only ever moving into a
- * genuinely empty cell. "Blocked" narrows to KIND_STATIC and the grid edge,
- * but the branch is still needed: wait-then-retry keeps an entry pinned
- * rather than dropped the instant it arrives. */
+/* Verify before moving: nothing marks a cell "spoken for", and the main
+ * sweep runs before this pass, moving an airborne grain like any other.
+ * RE-ACQUIRE by checking the three cells step_one_grain() could have moved
+ * it to along this step's own dithered gravity (dx, dy), for a
+ * byte-for-byte match - same material and variant is the same GRAIN. Never
+ * adopt a DIFFERENT byte. Without this a thrown grain drops after one hop
+ * instead of arcing. False means the grain is lost. */
+static bool
+impulse_locate(const sand_t* s, impulse_t* entry, int dx, int dy) {
+    if (s->cells[entry->index] == entry->cell) {
+        return true;
+    }
+    const uint8_t lost_mat = CELL_MATERIAL(entry->cell);
+    if (reacquire_heat_ramped_in_place(s, entry, lost_mat)) {
+        return true;
+    }
+    const int ox = (int)((unsigned)entry->index % (unsigned)s->w);
+    const int oy = (int)((unsigned)entry->index / (unsigned)s->w);
+    if (reacquire_fallen_grain(s, entry, ox, oy, dx, dy)) {
+        return true;
+    }
+    return reacquire_liquid_by_material(s, entry, lost_mat, ox, oy);
+}
 
-/* `dx`/`dy` is this step's own dithered gravity direction, the same one
- * sand_step()'s main sweep just used - needed for RE-ACQUISITION, below,
- * which is what makes a thrown grain arc at all rather than flying dead
- * straight for exactly one cell. Without it, a stale stored index fails
- * the identity check and the entry is dropped after one hop - lateral
- * scatter out of a crater, not an arc. */
+/* AIRBORNE SOLIDS FALL TOO - KIND_STATIC never moves in the ordinary
+ * sweep, so a thrown chunk never arced like sand or water, which get
+ * gravity for free every step besides this pass's own push. While tracked,
+ * it also gets one UNCONDITIONAL gravity-ward attempt every step - not
+ * rolled, since gating it on `speed` would tie "still falling" to "still
+ * has push left", which is backwards. */
+static void
+static_chunk_gravity_drift(sand_t* s, impulse_t* entry, int dx, int dy, impulse_t* deferred,
+                           int* deferred_transfer_count) {
+    if (material_of(entry->cell)->kind != KIND_STATIC) {
+        return;
+    }
+    const int w = s->w;
+    const int h = s->h;
+    const int gx = (int)((unsigned)entry->index % (unsigned)w);
+    const int gy = (int)((unsigned)entry->index / (unsigned)w);
+    int gcand[3][2];
+    impulse_gravity_candidates(gx, gy, dx, dy, gcand);
+    /* Direction each candidate is: straight down, then two diagonals.
+     * Matches order in impulse_gravity_candidates(). gcand_dir[c] is
+     * needed for impulse_charge_displacement()'s transfer cone, not
+     * just entry->dir. */
+    const int i_dir = ring_of(dx, dy);
+    const int gcand_dir[3] = {i_dir, (i_dir + 7) & 7, (i_dir + 1) & 7};
+    for (int c = 0; c < 3; c++) {
+        const int cx = gcand[c][0];
+        const int cy = gcand[c][1];
+        if ((unsigned)cx >= (unsigned)w || (unsigned)cy >= (unsigned)h) {
+            continue;
+        }
+        const cell_t gtarget = sand_at(s, cx, cy);
+        /* can_impulse_enter_gravity_ward() is the same predicate the
+         * settled check uses. No separate "but not liquid" exclusion: this
+         * move is a SWAP, not an overwrite, so a lava cell a thrown chunk
+         * enters just relocates - conservation and "never smothered" both
+         * hold. An ENERGETIC chunk sinks into a liquid like a dense powder
+         * already does; below SAND_IMPULSE_SINK_MIN_SPEED a SPENT one gets
+         * none of this. */
+        if (!can_impulse_enter_gravity_ward(gtarget, entry->cell, entry->speed)) {
+            continue;
+        }
+        /* A DISPLACEMENT IS A DISPLACEMENT - impulse_charge_displacement()
+         * handles silent tunnelling: slow chunks paid nothing, threw
+         * nothing. It manages swap/latch/mark/index-update, not just
+         * charge. */
+        const size_t gnat = (size_t)cy * (size_t)w + (size_t)cx;
+        impulse_charge_displacement(s, entry, gnat, gcand_dir[c], deferred, deferred_transfer_count);
+        return;
+    }
+}
 
-/* The sweep runs BEFORE this pass, every step, on every ordinary cell
- * including ones this list still has an eye on: an airborne grain
- * sitting in open air is not special to the sweep, so gravity moves it
- * down one cell before this pass ever gets a turn on it that step. */
+/* KIND_STATIC has no other fallback, so SUPPORTED, NOT MERELY ROLLED,
+ * decides settled for it - the same predicate the drift uses, so the two
+ * can never disagree about an opening (a cheaper CELL_IS_EMPTY()-only
+ * check once regressed that way). A SUPPORT ITSELF IN FLIGHT MEANS WAIT,
+ * NOT SETTLE: the blocker may be another tracked entry that hasn't
+ * drifted yet this step - settling on it would freeze two flying chunks
+ * forever. impulse_index_still_tracked() catches that rare case. */
+static bool
+static_chunk_stays_airborne(const sand_t* s, const impulse_t* entry, int kept, int self_i, int dx, int dy) {
+    const int w = s->w;
+    const int h = s->h;
+    const int rx = (int)((unsigned)entry->index % (unsigned)w);
+    const int ry = (int)((unsigned)entry->index / (unsigned)w);
+    int rcand[3][2];
+    if (impulse_has_opening(s, rx, ry, dx, dy, entry->cell, entry->speed, rcand)) {
+        return true; /* still airborne - keep falling */
+    }
 
-/* A single `if` with nothing queued, which is every step on a board with
- * nothing in flight - the same shape sand_step_gas()'s own may_have_gas
- * gate gives a board with no gas on it. */
+    /* Off-grid is excluded first to prevent synthetic edge cells. */
+    const int bx = rcand[0][0];
+    const int by = rcand[0][1];
+    if ((unsigned)bx >= (unsigned)w || (unsigned)by >= (unsigned)h) {
+        return false;
+    }
+    const cell_t blocker = s->cells[(size_t)by * (size_t)w + (size_t)bx];
+    if (CELL_IS_EMPTY(blocker) || material_of(blocker)->kind != KIND_STATIC) {
+        return false;
+    }
+    const uint16_t block_index = (uint16_t)((size_t)by * (size_t)w + (size_t)bx);
+    return impulse_index_still_tracked(s, kept, self_i, block_index);
+}
+
+/* A THROWN GRAIN GETS THE SAME "STILL AIRBORNE" TREATMENT A THROWN CHUNK
+ * GETS - without it, a powder entry dropped the instant one push-roll
+ * failed, so TRANSFER never fired on impact. No "support in flight" wait
+ * here: the sweep already falls a powder grain regardless. FLOORED AT
+ * SAND_IMPULSE_BOUNCE_MIN_SPEED: below it a grain can neither clear the
+ * transfer floor nor bounce, so tracking further is pure bookkeeping
+ * cost. */
+static bool
+unrolled_entry_stays_tracked(const sand_t* s, const impulse_t* entry, int kept, int self_i, int dx, int dy) {
+    if (material_of(entry->cell)->kind == KIND_STATIC) {
+        return static_chunk_stays_airborne(s, entry, kept, self_i, dx, dy);
+    }
+    if (material_of(entry->cell)->kind != KIND_POWDER || entry->speed < SAND_IMPULSE_BOUNCE_MIN_SPEED) {
+        return false;
+    }
+    const int rx = (int)((unsigned)entry->index % (unsigned)s->w);
+    const int ry = (int)((unsigned)entry->index / (unsigned)s->w);
+    int rcand[3][2];
+    /* True means still airborne - keep tracked; the ordinary sweep does
+     * the actual falling. */
+    return impulse_has_opening(s, rx, ry, dx, dy, entry->cell, entry->speed, rcand);
+}
+
+/* Blocked means WAIT: keeps position, direction and speed for another try
+ * next step, rather than dropping. WATER/ACID BOUNCE INSTEAD: reversing
+ * `dir` turns speed into rebound, scoped to water/acid, matching
+ * splash_displace(). THROWN CHUNK OR GRAIN REFLECTS TOO, off surface's
+ * normal, floored at SAND_IMPULSE_BOUNCE_MIN_SPEED and charges
+ * restitution. */
+static void
+impulse_meet_blocker(const sand_t* s, impulse_t* entry, uint8_t mat_id, int x, int y) {
+    if (mat_id == MAT_WATER || mat_id == MAT_ACID) {
+        entry->dir = (entry->dir + 4) & 7;
+        return;
+    }
+    if ((material_of(entry->cell)->kind != KIND_STATIC && material_of(entry->cell)->kind != KIND_POWDER)
+        || entry->speed < SAND_IMPULSE_BOUNCE_MIN_SPEED) {
+        return;
+    }
+    const int normal = blocker_normal(s, x, y, entry->dir);
+    const int reflected = (normal < 0) ? -1 : reflect_off_normal(entry->dir, normal);
+    if (reflected < 0) {
+        return;
+    }
+    const bool head_on = (reflected == ((entry->dir + 4) & 7));
+    entry->dir = (uint8_t)reflected;
+    entry->speed = head_on ? (uint8_t)(entry->speed >> 1) : (uint8_t)(entry->speed - (entry->speed >> 2));
+}
+
+/* One cell of the push. False means blocked: the entry stays where it is
+ * and the push ends this step. */
+static bool
+impulse_hop(sand_t* s, impulse_t* entry, uint8_t mat_id, int hop, impulse_t* deferred, int* deferred_transfer_count) {
+    const int w = s->w;
+    const int x = (int)((unsigned)entry->index % (unsigned)w);
+    const int y = (int)((unsigned)entry->index / (unsigned)w);
+    const int* d = ring_dir(entry->dir);
+    const int nx = x + d[0];
+    const int ny = y + d[1];
+
+    /* can_impulse_enter() checks if a flying grain can enter a cell,
+     * displacing non-static occupants except liquids against
+     * non-liquids. STATIC blocks unconditionally. sand_at() handles
+     * grid edges as STATIC. */
+    const cell_t target = sand_at(s, nx, ny);
+    if (!can_impulse_enter(target, entry->cell)) {
+        impulse_meet_blocker(s, entry, mat_id, x, y);
+        return false;
+    }
+
+    /* A SWAP, not an overwrite - move_to()'s trick, so conservation needs
+     * nothing extra. Drag and transfer are charged by
+     * impulse_charge_displacement(), the same body gravity-drift uses, at
+     * the move site so open air costs nothing. `impact_speed` is captured
+     * fresh per hop, so a multi-cell move pays as if it took one step per
+     * cell.
+     *
+     * ONLY AN *EXTRA* CELL IS CHARGED HERE - hop 0's ramp was already paid
+     * before push_count was computed, so charging it again here would
+     * double it. */
+    if (hop > 0) {
+        impulse_decay(entry, mat_id, 1);
+    }
+
+    const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
+    impulse_charge_displacement(s, entry, nat, entry->dir, deferred, deferred_transfer_count);
+    return true;
+}
+
+/* Returns how many cells the entry moved, which gates CASCADE like a
+ * single-cell move: triggered only if the entry moved at least once, not
+ * for one stuck immediately.
+ *
+ * DISTANCE BUDGET - MAX CELLS STEP PUSH CAN COVER. See
+ * SAND_IMPULSE_CELLS_PER_STEP_DIVISOR in sand_impulse.h. Computed from
+ * post-ramp speed. Under divisor, exactly 1 cell. NOT ONLY BUDGET - hop
+ * loop also has ENERGY exit. This is hard upper bound, preventing mover
+ * from exceeding divisor. */
+static int
+impulse_push(sand_t* s, impulse_t* entry, uint8_t mat_id, impulse_t* deferred, int* deferred_transfer_count) {
+    const int push_count = 1 + (int)entry->speed / SAND_IMPULSE_CELLS_PER_STEP_DIVISOR;
+    int moved = 0;
+
+    for (int hop = 0; hop < push_count; hop++) {
+        if (!impulse_hop(s, entry, mat_id, hop, deferred, deferred_transfer_count)) {
+            break;
+        }
+        moved++;
+
+        /* THE ENERGY EXIT - push_count is a DISTANCE budget only, fixed
+         * from speed before this loop's drag charged, so a chunk that paid
+         * nearly all its speed to drag on hop 0 would otherwise still take
+         * every hop the budget allowed, since packed medium is not a wall.
+         * DISTANCE alone still stays a hard cap too: an energy-only exit
+         * would let open air tunnel a full-speed entry far past
+         * push_count's cells. Both are required. */
+        if (entry->speed < SAND_IMPULSE_CELLS_PER_STEP_DIVISOR) {
+            break;
+        }
+    }
+    return moved;
+}
+
+/* RELAYS BACKWARD, NOT FORWARD - the cell ahead is open, so relay material
+ * feeding this move from behind. (rx, ry) is one step behind where this
+ * entry started ITS OWN MOVE THIS STEP, not where a multi-cell push ends
+ * up. */
+static void
+queue_cascade_relay(const sand_t* s, const impulse_t* entry, uint8_t mat_id, int moved, int rx, int ry,
+                    impulse_t* deferred, int deferred_transfer_count, int* deferred_cascade_count) {
+    if (!(moved > 0 && (mat_id == MAT_WATER || mat_id == MAT_ACID)
+          && entry->speed >= SAND_CASCADE_MIN_SPEED * SAND_CASCADE_SPEED_DIVISOR
+          && *deferred_cascade_count < SAND_CASCADE_MAX_PER_STEP - deferred_transfer_count)) {
+        return;
+    }
+    const int w = s->w;
+    if ((unsigned)rx >= (unsigned)w || (unsigned)ry >= (unsigned)s->h) {
+        return;
+    }
+    const cell_t relay_target = s->cells[(size_t)ry * (size_t)w + (size_t)rx];
+    if (CELL_IS_EMPTY(relay_target) || CELL_MATERIAL(relay_target) != mat_id) {
+        return;
+    }
+    /* Writes from the BACK of `deferred` - see the array's own comment in
+     * step_impulses() for why this and TRANSFER (which writes from the
+     * front, inside impulse_charge_displacement()) never collide: each
+     * partition is sized to its own cap, and the two caps sum to exactly
+     * this array's capacity. */
+    const int relay_slot = SAND_CASCADE_MAX_PER_STEP - 1 - *deferred_cascade_count;
+    (*deferred_cascade_count)++;
+    impulse_t* c = &deferred[relay_slot];
+    c->index = (uint16_t)((size_t)ry * (size_t)w + (size_t)rx);
+    c->cell = relay_target;
+    c->dir = entry->dir;
+    c->speed = (uint8_t)(entry->speed / SAND_CASCADE_SPEED_DIVISOR);
+}
+
+/* TRANSFERs sit in [0, deferred_transfer_count); CASCADEs in the last
+ * deferred_cascade_count slots. Queued only once the flight loop is done
+ * and s->impulse_count holds just the kept entries. */
+static void
+flush_deferred_impulses(sand_t* s, const impulse_t* deferred, int deferred_transfer_count, int deferred_cascade_count) {
+    const int w = s->w;
+    for (int i = 0; i < deferred_transfer_count; i++) {
+        sand_impulse(s, (int)((unsigned)deferred[i].index % (unsigned)w),
+                     (int)((unsigned)deferred[i].index / (unsigned)w), deferred[i].dir, deferred[i].speed);
+    }
+    for (int i = 0; i < deferred_cascade_count; i++) {
+        const impulse_t* c = &deferred[SAND_CASCADE_MAX_PER_STEP - 1 - i];
+        sand_impulse(s, (int)((unsigned)c->index % (unsigned)w), (int)((unsigned)c->index / (unsigned)w), c->dir,
+                     c->speed);
+    }
+}
+
+/* The flight pass: each entry moves one cell, waits, or is dropped. It
+ * runs after every pass that moves cells (docs/sand/Impulse-Mechanics.md's
+ * "Why the flight pass runs LAST"), so positions are honest and gravity
+ * bends a push into an arc. BLOCKED MEANS WAIT, NOT STOP: an explosion into
+ * packed sand or water would otherwise drop nearly every entry on its first
+ * turn; waiting lets it unpack outward over several steps. Only KIND_STATIC
+ * and the grid edge block - see can_impulse_enter(). */
 void
 step_impulses(sand_t* s, int dx, int dy) {
     if (s->impulse_count == 0) {
@@ -566,7 +930,6 @@ step_impulses(sand_t* s, int dx, int dy) {
     }
 
     const int w = s->w;
-    const int h = s->h;
     int kept = 0;
 
     /* DEFERRED follow-up entries (CASCADE relays and TRANSFER hits alike),
@@ -583,142 +946,15 @@ step_impulses(sand_t* s, int dx, int dy) {
     for (int i = 0; i < s->impulse_count; i++) {
         impulse_t entry = s->impulse_buf[i];
 
-        /* Verify before moving: nothing marks a cell "spoken for", so
-         * gravity or a reaction may have touched it since. RE-ACQUIRE by
-         * checking the three cells step_one_grain() could have moved this
-         * grain to, for a byte-for-byte match - same material and variant
-         * is the same GRAIN anywhere else in this file. Never adopt a
-         * DIFFERENT byte. */
-        if (s->cells[entry.index] != entry.cell) {
-            bool reacquired = false;
-
-            /* HEAT-RAMPING MATERIALS FIRST, CHECK POSITION ONLY. VARIANT
-             * NIBBLE DRIFTS NEAR HEAT. BLOCKED ENTRIES DON'T MOVE, CAUSING
-             * MISMATCH. TRYING MOVEMENT FIRST MAY CAUSE FALSE POSITIVES,
-             * ESPECIALLY WITH COVERED LAVA (see sand_reactions.c). */
-            const uint8_t lost_mat = CELL_MATERIAL(entry.cell);
-            /* reaction_of(entry.cell), not reactions[lost_mat] - lost_mat is
-             * high nibble shared by statics and gunpowder in MAT_EXTENDED
-             * range; reaction_of() handles this, while reactions[lost_mat]
-             * incorrectly reads reactions[MAT_EXTENDED]. */
-            if (reaction_of(entry.cell)->heat_ramp != 0) {
-                const cell_t here = s->cells[entry.index];
-                if (!CELL_IS_EMPTY(here) && CELL_MATERIAL(here) == lost_mat) {
-                    entry.cell = here;
-                    reacquired = true;
-                }
-            }
-
-            const int ox = (int)((unsigned)entry.index % (unsigned)w);
-            const int oy = (int)((unsigned)entry.index / (unsigned)w);
-            /* THE SAME THREE CANDIDATES impulse_gravity_candidates() (above)
-             * already builds for the gravity-drift move and the settled
-             * check further down this loop - hand-rolled here before an
-             * adversarial review pointed out this was the
-             * exact duplication that helper exists to prevent. */
-            int cand[3][2];
-            impulse_gravity_candidates(ox, oy, dx, dy, cand);
-
-            for (int c = 0; c < 3 && !reacquired; c++) {
-                const int cx = cand[c][0];
-                const int cy = cand[c][1];
-                if ((unsigned)cx >= (unsigned)w || (unsigned)cy >= (unsigned)h) {
-                    continue;
-                }
-                const size_t cat = (size_t)cy * (size_t)w + (size_t)cx;
-                if (s->cells[cat] == entry.cell) {
-                    entry.index = (uint16_t)cat;
-                    reacquired = true;
-                }
-            }
-
-            /* LIQUIDS GET A SECOND CHANCE, MATCHED ON MATERIAL ONLY:
-             * cross-flow moves MASS, not grains, so a cell's variant can
-             * change without moving it to one of the three candidates
-             * above - measured 44.5% of queued water entries lost to this
-             * gap otherwise. Scoped to water/acid; checked at the original
-             * cell, then its 8 neighbours. */
-            if (!reacquired) {
-                if (lost_mat == MAT_WATER || lost_mat == MAT_ACID) {
-                    const cell_t here = s->cells[entry.index];
-                    if (!CELL_IS_EMPTY(here) && CELL_MATERIAL(here) == lost_mat) {
-                        entry.cell = here;
-                        reacquired = true;
-                    }
-                    for (int c = 0; c < 8 && !reacquired; c++) {
-                        const int* rd = ring_dir(c);
-                        const int cx = ox + rd[0];
-                        const int cy = oy + rd[1];
-                        if ((unsigned)cx >= (unsigned)w || (unsigned)cy >= (unsigned)h) {
-                            continue;
-                        }
-                        const size_t cat = (size_t)cy * (size_t)w + (size_t)cx;
-                        const cell_t found = s->cells[cat];
-                        if (!CELL_IS_EMPTY(found) && CELL_MATERIAL(found) == lost_mat) {
-                            entry.index = (uint16_t)cat;
-                            entry.cell = found;
-                            reacquired = true;
-                        }
-                    }
-                }
-            }
-
-            if (!reacquired) {
-                continue;
-            }
+        if (!impulse_locate(s, &entry, dx, dy)) {
+            continue;
         }
 
-        /* Read once, after re-acquisition (which can rewrite entry.cell -
-         * see its own comment above) has had its say, and reused for every
-         * material check below instead of re-deriving it three times. */
+        /* Read once, after re-acquisition (which can rewrite entry.cell)
+         * has had its say, and reused for every material check below. */
         const uint8_t mat_id = CELL_MATERIAL(entry.cell);
 
-        /* AIRBORNE SOLIDS FALL TOO - KIND_STATIC never moves in the
-         * ordinary sweep, so a thrown chunk never arced like sand or
-         * water, which get gravity for free every step besides this
-         * loop's own push. While tracked, it also gets one UNCONDITIONAL
-         * gravity-ward attempt every step - not rolled, since gating it
-         * on `speed` would tie "still falling" to "still has push left",
-         * which is backwards. */
-        if (material_of(entry.cell)->kind == KIND_STATIC) {
-            const int gx = (int)((unsigned)entry.index % (unsigned)w);
-            const int gy = (int)((unsigned)entry.index / (unsigned)w);
-            int gcand[3][2];
-            impulse_gravity_candidates(gx, gy, dx, dy, gcand);
-            /* Direction each candidate is: straight down, then two diagonals.
-             * Matches order in impulse_gravity_candidates(). gcand_dir[c] is
-             * needed for impulse_charge_displacement()'s transfer cone, not
-             * just entry.dir. */
-            const int i_dir = ring_of(dx, dy);
-            const int gcand_dir[3] = {i_dir, (i_dir + 7) & 7, (i_dir + 1) & 7};
-            for (int c = 0; c < 3; c++) {
-                const int cx = gcand[c][0];
-                const int cy = gcand[c][1];
-                if ((unsigned)cx >= (unsigned)w || (unsigned)cy >= (unsigned)h) {
-                    continue;
-                }
-                const cell_t gtarget = sand_at(s, cx, cy);
-                /* can_impulse_enter_gravity_ward() is the same predicate
-                 * the settled check below uses. No separate "but not
-                 * liquid" exclusion: this move is a SWAP, not an
-                 * overwrite, so a lava cell a thrown chunk enters just
-                 * relocates - conservation and "never smothered" both
-                 * hold. An ENERGETIC chunk sinks into a liquid like a
-                 * dense powder already does; below
-                 * SAND_IMPULSE_SINK_MIN_SPEED a SPENT one gets none of
-                 * this. */
-                if (!can_impulse_enter_gravity_ward(gtarget, entry.cell, entry.speed)) {
-                    continue;
-                }
-                /* A DISPLACEMENT IS A DISPLACEMENT -
-                 * impulse_charge_displacement() handles silent tunnelling:
-                 * slow chunks paid nothing, threw nothing. It manages
-                 * swap/latch/mark/index-update, not just charge. */
-                const size_t gnat = (size_t)cy * (size_t)w + (size_t)cx;
-                impulse_charge_displacement(s, &entry, gnat, gcand_dir[c], deferred, &deferred_transfer_count);
-                break;
-            }
-        }
+        static_chunk_gravity_drift(s, &entry, dx, dy, deferred, &deferred_transfer_count);
 
         /* The roll happens before the move attempt, EVERY turn, blocked or
          * not: rolling only on a move would let a wedged entry wait
@@ -748,179 +984,24 @@ step_impulses(sand_t* s, int dx, int dy) {
          * sand_impulse_dislodge() is the one caller that queues a
          * different figure. */
 
-        /* Dropping from tracking (not re-added to `kept` below) the instant
-         * a roll fails is harmless for every kind except KIND_STATIC: a
-         * liquid or powder entry keeps falling under the ordinary sweep
-         * whether or not this loop still tracks it. */
-
+        /* Dropping from tracking the instant a roll fails is harmless for
+         * every kind except KIND_STATIC: a liquid or powder entry keeps
+         * falling under the ordinary sweep whether or not this pass still
+         * tracks it. */
         if (!rolled_move) {
-            /* KIND_STATIC has no other fallback, so SUPPORTED, NOT MERELY
-             * ROLLED, decides settled for it - the same predicate the
-             * drift above uses, so the two can never disagree about an
-             * opening (a cheaper CELL_IS_EMPTY()-only check once
-             * regressed that way). A SUPPORT ITSELF IN FLIGHT MEANS WAIT,
-             * NOT SETTLE: the blocker may be another tracked entry that
-             * hasn't drifted yet this step - settling on it would freeze
-             * two flying chunks forever. impulse_index_still_tracked()
-             * catches that rare case. */
-            if (material_of(entry.cell)->kind == KIND_STATIC) {
-                const int rx = (int)((unsigned)entry.index % (unsigned)w);
-                const int ry = (int)((unsigned)entry.index / (unsigned)w);
-                int rcand[3][2];
-                if (impulse_has_opening(s, rx, ry, dx, dy, entry.cell, entry.speed, rcand)) {
-                    s->impulse_buf[kept++] = entry;
-                    continue; /* still airborne - keep falling */
-                }
-
-                /* Off-grid is excluded first to prevent synthetic edge cells. */
-                const int bx = rcand[0][0];
-                const int by = rcand[0][1];
-                if ((unsigned)bx < (unsigned)w && (unsigned)by < (unsigned)h) {
-                    const cell_t blocker = s->cells[(size_t)by * (size_t)w + (size_t)bx];
-                    if (!CELL_IS_EMPTY(blocker) && material_of(blocker)->kind == KIND_STATIC) {
-                        const uint16_t block_index = (uint16_t)((size_t)by * (size_t)w + (size_t)bx);
-                        if (impulse_index_still_tracked(s, kept, i, block_index)) {
-                            s->impulse_buf[kept++] = entry;
-                            continue; /* support is itself still in
-                                         * flight - wait, don't settle */
-                        }
-                    }
-                }
-                /* A THROWN GRAIN GETS THE SAME "STILL AIRBORNE" TREATMENT A
-             * THROWN CHUNK GETS ABOVE - without it, a powder entry dropped
-             * the instant one push-roll failed, so TRANSFER never fired on
-             * impact. No "support in flight" wait here: the sweep already
-             * falls a powder grain regardless. FLOORED AT
-             * SAND_IMPULSE_BOUNCE_MIN_SPEED: below it a grain can neither
-             * clear the transfer floor nor bounce, so tracking further is
-             * pure bookkeeping cost. */
-            } else if (material_of(entry.cell)->kind == KIND_POWDER && entry.speed >= SAND_IMPULSE_BOUNCE_MIN_SPEED) {
-                const int rx = (int)((unsigned)entry.index % (unsigned)w);
-                const int ry = (int)((unsigned)entry.index / (unsigned)w);
-                int rcand[3][2];
-                if (impulse_has_opening(s, rx, ry, dx, dy, entry.cell, entry.speed, rcand)) {
-                    s->impulse_buf[kept++] = entry;
-                    continue; /* still airborne - keep tracked; the
-                                 * ordinary sweep does the actual falling */
-                }
+            if (unrolled_entry_stays_tracked(s, &entry, kept, i, dx, dy)) {
+                s->impulse_buf[kept++] = entry;
             }
-            continue; /* settled - out of flight for good */
+            continue; /* otherwise settled - out of flight for good */
         }
 
-        /* DISTANCE BUDGET - MAX CELLS STEP PUSH CAN COVER. See
-         * SAND_IMPULSE_CELLS_PER_STEP_DIVISOR in sand_impulse.h. Computed
-         * from post-ramp speed. Under divisor, exactly 1 cell. NOT ONLY
-         * BUDGET - hop loop also has ENERGY exit. This is hard upper
-         * bound, preventing mover from exceeding divisor. */
-        const int push_count = 1 + (int)entry.speed / SAND_IMPULSE_CELLS_PER_STEP_DIVISOR;
-
-        /* Position and direction before this step's cells move - CASCADE
-         * block measures against "one step behind where this entry started
-         * ITS OWN MOVE THIS STEP", not where multi-cell push ends up. See
-         * block's comment for why backward, not forward. */
         const int x0 = (int)((unsigned)entry.index % (unsigned)w);
         const int y0 = (int)((unsigned)entry.index / (unsigned)w);
         const int* d0 = ring_dir(entry.dir);
 
-        /* Counts `push_count` cells moved before budget exhaustion or
-         * obstruction, gating CASCADE check like single-cell moves: triggered
-         * only if entry moved at least once, not for those stuck immediately. */
-        int moved = 0;
-
-        for (int hop = 0; hop < push_count; hop++) {
-            const int x = (int)((unsigned)entry.index % (unsigned)w);
-            const int y = (int)((unsigned)entry.index / (unsigned)w);
-            const int* d = ring_dir(entry.dir);
-            const int nx = x + d[0];
-            const int ny = y + d[1];
-
-            /* can_impulse_enter() checks if a flying grain can enter a cell,
-             * displacing non-static occupants except liquids against
-             * non-liquids. STATIC blocks unconditionally. sand_at() handles
-             * grid edges as STATIC. */
-            const cell_t target = sand_at(s, nx, ny);
-            if (!can_impulse_enter(target, entry.cell)) {
-                /* Blocked means WAIT: keeps position, direction and speed
-                 * for another try next step, rather than dropping.
-                 * WATER/ACID BOUNCE INSTEAD: reversing `dir` turns speed
-                 * into rebound, scoped to water/acid, matching
-                 * splash_displace(). THROWN CHUNK OR GRAIN REFLECTS TOO,
-                 * off surface's normal, floored at
-                 * SAND_IMPULSE_BOUNCE_MIN_SPEED and charges restitution. */
-                if (mat_id == MAT_WATER || mat_id == MAT_ACID) {
-                    entry.dir = (entry.dir + 4) & 7;
-                } else if ((material_of(entry.cell)->kind == KIND_STATIC
-                            || material_of(entry.cell)->kind == KIND_POWDER)
-                           && entry.speed >= SAND_IMPULSE_BOUNCE_MIN_SPEED) {
-                    const int normal = blocker_normal(s, x, y, entry.dir);
-                    const int reflected = (normal < 0) ? -1 : reflect_off_normal(entry.dir, normal);
-                    if (reflected >= 0) {
-                        const bool head_on = (reflected == ((entry.dir + 4) & 7));
-                        entry.dir = (uint8_t)reflected;
-                        entry.speed =
-                            head_on ? (uint8_t)(entry.speed >> 1) : (uint8_t)(entry.speed - (entry.speed >> 2));
-                    }
-                }
-                break;
-            }
-
-            /* A SWAP, not an overwrite - move_to()'s trick, so
-             * conservation needs nothing extra. Drag and transfer are
-             * charged by impulse_charge_displacement(), the same body
-             * gravity-drift uses, at the move site so open air costs
-             * nothing. `impact_speed` is captured fresh per hop, so a
-             * multi-cell move pays as if it took one step per cell. */
-
-            /* ONLY AN *EXTRA* CELL IS CHARGED HERE - hop 0's ramp was
-             * already paid before push_count was computed, so charging it
-             * again here would double it. */
-            if (hop > 0) {
-                impulse_decay(&entry, mat_id, 1);
-            }
-
-            const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
-            impulse_charge_displacement(s, &entry, nat, entry.dir, deferred, &deferred_transfer_count);
-            moved++;
-
-            /* THE ENERGY EXIT - push_count is a DISTANCE budget only,
-             * fixed from speed before this loop's drag charged, so a
-             * chunk that paid nearly all its speed to drag on hop 0 would
-             * otherwise still take every hop the budget allowed, since
-             * packed medium is not a wall. DISTANCE alone still stays a
-             * hard cap too: an energy-only exit would let open air tunnel
-             * a full-speed entry far past push_count's cells. Both are
-             * required. */
-            if (entry.speed < SAND_IMPULSE_CELLS_PER_STEP_DIVISOR) {
-                break;
-            }
-        }
-
-        /* RELAYS BACKWARD, NOT FORWARD - the cell ahead is open, so relay
-         * material feeding this move from behind. */
-        if (moved > 0 && (mat_id == MAT_WATER || mat_id == MAT_ACID)
-            && entry.speed >= SAND_CASCADE_MIN_SPEED * SAND_CASCADE_SPEED_DIVISOR
-            && deferred_cascade_count < SAND_CASCADE_MAX_PER_STEP - deferred_transfer_count) {
-            const int rx = x0 - d0[0];
-            const int ry = y0 - d0[1];
-            if ((unsigned)rx < (unsigned)w && (unsigned)ry < (unsigned)h) {
-                const cell_t relay_target = s->cells[(size_t)ry * (size_t)w + (size_t)rx];
-                if (!CELL_IS_EMPTY(relay_target) && CELL_MATERIAL(relay_target) == mat_id) {
-                    /* Writes from the BACK of `deferred` - see the array's
-                     * own top comment for why this and TRANSFER (which
-                     * writes from the front, inside
-                     * impulse_charge_displacement()) never collide: each
-                     * partition is sized to its own cap, and the two caps
-                     * sum to exactly this array's capacity. */
-                    const int relay_slot = SAND_CASCADE_MAX_PER_STEP - 1 - deferred_cascade_count;
-                    deferred_cascade_count++;
-                    impulse_t* c = &deferred[relay_slot];
-                    c->index = (uint16_t)((size_t)ry * (size_t)w + (size_t)rx);
-                    c->cell = relay_target;
-                    c->dir = entry.dir;
-                    c->speed = (uint8_t)(entry.speed / SAND_CASCADE_SPEED_DIVISOR);
-                }
-            }
-        }
+        const int moved = impulse_push(s, &entry, mat_id, deferred, &deferred_transfer_count);
+        queue_cascade_relay(s, &entry, mat_id, moved, x0 - d0[0], y0 - d0[1], deferred, deferred_transfer_count,
+                            &deferred_cascade_count);
 
         s->impulse_buf[kept].index = entry.index;
         s->impulse_buf[kept].cell = entry.cell;
@@ -931,17 +1012,5 @@ step_impulses(sand_t* s, int dx, int dy) {
     }
 
     s->impulse_count = kept;
-
-    /* Queued `kept` impulses safely; TRANSFERs in [0,
-     * deferred_transfer_count); CASCADEs in last deferred_transfer_count
-     * cells. */
-    for (int i = 0; i < deferred_transfer_count; i++) {
-        sand_impulse(s, (int)((unsigned)deferred[i].index % (unsigned)w),
-                     (int)((unsigned)deferred[i].index / (unsigned)w), deferred[i].dir, deferred[i].speed);
-    }
-    for (int i = 0; i < deferred_cascade_count; i++) {
-        const impulse_t* c = &deferred[SAND_CASCADE_MAX_PER_STEP - 1 - i];
-        sand_impulse(s, (int)((unsigned)c->index % (unsigned)w), (int)((unsigned)c->index / (unsigned)w), c->dir,
-                     c->speed);
-    }
+    flush_deferred_impulses(s, deferred, deferred_transfer_count, deferred_cascade_count);
 }

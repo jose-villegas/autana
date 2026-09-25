@@ -160,7 +160,7 @@ void material_wood_leaf_top5(int gx, int gy, int* last_down, int8_t top5[5][2]);
  * independence. See material_colours() for foam. */
 void material_set_foam_phase(unsigned phase);
 
-/* Separate clock for cullet phase. See material_colours(), MAT_SAND case. */
+/* Separate clock for cullet phase. See sand_colours() in material_palette.c. */
 void material_set_cullet_phase(unsigned phase);
 
 /* Not a clock: app_sand.c passes a gravity snapshot, so this names a
