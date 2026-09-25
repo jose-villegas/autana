@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 
@@ -215,7 +216,7 @@ paint_full_frame_indexed(const uint8_t* grid, gfx_indexed_repaint_kind_t kind, c
     return (x1 - x0) * (y1 - y0);
 }
 
-static uint8_t prev_grid[CM_GRID_W * CM_GRID_H];
+static uint8_t* prev_grid;
 static bool prev_grid_valid;
 
 /* Real per-frame dirty extent, from the grid itself - not
@@ -238,7 +239,7 @@ diff_bounding_box(const uint8_t* grid, int* out_x0, int* out_y0, int* out_x1, in
             cm_bbox_extend(cx, cy, &x0, &y0, &x1, &y1);
         }
     }
-    memcpy(prev_grid, grid, sizeof prev_grid);
+    memcpy(prev_grid, grid, (size_t)CM_GRID_W * CM_GRID_H);
     prev_grid_valid = true;
     if (any) {
         *out_x0 = x0;
@@ -360,7 +361,9 @@ measure_mode_frame(sand_t* sim, uint8_t* grid, int i, const colour_scene_t* scen
 static void
 measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t dither_mode, mode_result_t* out) {
     uint8_t* grid = malloc((size_t)CM_GRID_W * CM_GRID_H);
+    prev_grid = heap_caps_malloc((size_t)CM_GRID_W * CM_GRID_H, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     TEST_ASSERT_NOT_NULL(grid);
+    TEST_ASSERT_NOT_NULL(prev_grid);
     prev_grid_valid = false;
 
     sand_t sim;
@@ -396,6 +399,8 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t 
         gfx_mode_exit();
     }
     free(grid);
+    heap_caps_free(prev_grid);
+    prev_grid = NULL;
 }
 
 static const char* const mode_names[] = {"FULL", "256", "16"};

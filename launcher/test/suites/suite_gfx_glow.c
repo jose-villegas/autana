@@ -10,6 +10,10 @@
 #include "suites.h"
 #include "unity.h"
 
+#ifdef DEVICE_BUILD
+#include "esp_heap_caps.h"
+#endif
+
 #include "gfx/gfx_glow.h"
 #include "util/trig.h"
 
@@ -19,6 +23,7 @@
 #define UNTOUCHED ((gfx_color_t)0x1234)
 
 static gfx_color_t* pixels;
+static gfx_color_t* truth;
 static gfx_glow_style_t* style;
 static int16_t heights[PANEL_W];
 static int16_t posed_spans[4][PANEL_W];
@@ -30,7 +35,13 @@ static const gfx_glow_map_t* posed_map;
 static void
 fixture_begin(void) {
     pixels = malloc(sizeof(gfx_color_t) * PANEL_W * PANEL_H);
+#ifdef DEVICE_BUILD
+    truth = heap_caps_malloc(sizeof(gfx_color_t) * PANEL_W * PANEL_H, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    truth = malloc(sizeof(gfx_color_t) * PANEL_W * PANEL_H);
+#endif
     style = malloc(sizeof *style);
+    TEST_ASSERT_NOT_NULL(truth);
     TEST_ASSERT_NOT_NULL(pixels);
     TEST_ASSERT_NOT_NULL(style);
     for (int i = 0; i < PANEL_W * PANEL_H; i++) {
@@ -42,8 +53,10 @@ fixture_begin(void) {
 static void
 fixture_end(void) {
     free(pixels);
+    free(truth);
     free(style);
     pixels = NULL;
+    truth = NULL;
     style = NULL;
 }
 
@@ -429,7 +442,6 @@ truth_pixel(const gfx_glow_field_t* field, int view_h, gfx_glow_pose_t pose, int
 
 static void
 assert_draw_matches_truth(const gfx_glow_field_t* field, gfx_glow_pose_t pose) {
-    static gfx_color_t truth[PANEL_W * PANEL_H];
     for (int py = 0; py < PANEL_H; py++) {
         for (int px = 0; px < PANEL_W; px++) {
             truth[py * PANEL_W + px] = truth_pixel(field, PANEL_W, pose, px, py);
@@ -437,7 +449,7 @@ assert_draw_matches_truth(const gfx_glow_field_t* field, gfx_glow_pose_t pose) {
     }
     clear_panel_and_forget();
     draw_posed(field, pose.down_x, pose.down_y);
-    TEST_ASSERT_EQUAL_MEMORY(truth, pixels, sizeof truth);
+    TEST_ASSERT_EQUAL_MEMORY(truth, pixels, sizeof(gfx_color_t) * PANEL_W * PANEL_H);
 }
 
 static void
