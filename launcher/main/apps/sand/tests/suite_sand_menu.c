@@ -8,6 +8,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "apps/sand/app_sand_test.h"
 #include "apps/sand/sand_menu.h"
 
 static const sand_options_t STARTING = {
@@ -209,21 +210,19 @@ test_a_dither_the_screen_no_longer_shows_is_neither_pending_nor_applied(void) {
 }
 
 #ifdef DEVICE_BUILD
-bool sand_app_test_options_reach_start(int action);
-
 static void
 test_cancel_then_start_uses_the_old_options(void) {
-    TEST_ASSERT_TRUE(sand_app_test_options_reach_start(1));
+    TEST_ASSERT_TRUE(sand_app_test_options_reach_start(SAND_TEST_CANCEL_THEN_START));
 }
 
 static void
 test_apply_then_start_uses_the_new_options(void) {
-    TEST_ASSERT_TRUE(sand_app_test_options_reach_start(2));
+    TEST_ASSERT_TRUE(sand_app_test_options_reach_start(SAND_TEST_APPLY_THEN_START));
 }
 
 static void
 test_start_without_apply_uses_the_old_options(void) {
-    TEST_ASSERT_TRUE(sand_app_test_options_reach_start(0));
+    TEST_ASSERT_TRUE(sand_app_test_options_reach_start(SAND_TEST_START_WITHOUT_APPLY));
 }
 #endif
 
