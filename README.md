@@ -127,6 +127,7 @@ this, not a tour. Start wherever your question is:
 | [`docs/Testing-Guide.md`](docs/Testing-Guide.md) | How the host and on-device test suites work, how to run one suite on the board, and how to make code testable. |
 | [`docs/Build-Variants.md`](docs/Build-Variants.md) | What release, dev and diagnostics builds each carry: the Kconfig flags, the suite scope, and why release contains no test code. |
 | [`docs/Building-a-Screen.md`](docs/Building-a-Screen.md) | Start here to build or change a UI screen: the loop, the house rules, and how to do what a screen needs. |
+| [`docs/UI-Toolkit.md`](docs/UI-Toolkit.md) | The catalog: every control, drawing helper and layout call the UI layer offers, pictured. |
 | [`docs/Autana-Rendering-Roadmap.md`](docs/Autana-Rendering-Roadmap.md) | Proposal: the order of investment for the rendering engine and its target games. |
 | [`docs/sand/`](docs/sand/README.md) | The sand app's own doc set - architecture, materials, reactions, shading, testing. |
 | [`docs/plans/`](docs/plans/README.md) | Designs for work not yet built, or built from a written plan. |
