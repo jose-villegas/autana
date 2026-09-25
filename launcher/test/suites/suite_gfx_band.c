@@ -25,8 +25,8 @@ test_a_fresh_ring_starts_at_band_zero_with_nothing_in_flight(void) {
     TEST_ASSERT_FALSE_MESSAGE(gfx_band_ring_must_wait(&ring), "band 0 has no previous send to wait for");
 }
 
-/* The two buffers alternate strictly by band index - what lets the app
- * render band k+1 into the OTHER slot while band k's send is in flight. */
+/* The two buffers alternate with every send - what lets the app render
+ * band k+1 into the OTHER slot while band k's send is in flight. */
 static void
 test_slots_alternate_between_the_two_buffers(void) {
     gfx_band_ring_t ring;
@@ -39,6 +39,22 @@ test_slots_alternate_between_the_two_buffers(void) {
     }
 
     TEST_ASSERT_EQUAL_INT_ARRAY(((int[]){0, 1, 0, 1}), slots, 4);
+}
+
+/* A skipped band sends nothing, so the band after it must still render
+ * into the slot that is not on the wire: band 0 sends from slot 0, band 1
+ * is skipped, and band 2 drawing into slot 0 would overwrite band 0's
+ * pixels mid-transfer. */
+static void
+test_a_skipped_band_never_hands_out_the_slot_in_flight(void) {
+    gfx_band_ring_t ring;
+    gfx_band_ring_begin(&ring, BAND_COUNT);
+
+    const int sent_slot = gfx_band_ring_slot(&ring);
+    gfx_band_ring_advance(&ring);
+    gfx_band_ring_skip(&ring);
+
+    TEST_ASSERT_NOT_EQUAL_INT(sent_slot, gfx_band_ring_slot(&ring));
 }
 
 static void
@@ -119,6 +135,7 @@ run_gfx_band_suite(void) {
     RUN_TEST(test_the_ring_is_done_only_after_every_band_was_handed_out);
     RUN_TEST(test_settling_clears_the_in_flight_band_exactly_once);
     RUN_TEST(test_a_single_band_frame_never_waits);
+    RUN_TEST(test_a_skipped_band_never_hands_out_the_slot_in_flight);
 }
 
 SUITE_REGISTER(run_gfx_band_suite);
