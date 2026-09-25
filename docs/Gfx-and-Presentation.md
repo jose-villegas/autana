@@ -236,7 +236,7 @@ curated ones ship in `gfx/gfx_palette_standard.h`, chosen at runtime by name.
 Building one is the app's work - see
 [`sand/Shading-and-Colour.md`](sand/Shading-and-Colour.md). The two steps
 every palette then needs, the colour -> index map and the dither table, are
-`tools/gfx_palette_gen.h`: host-only, in OKLab, never in the firmware image.
+`tools/gen/gfx_palette_gen.h`: host-only, in OKLab, never in the firmware image.
 
 ## Glow curves
 

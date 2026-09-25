@@ -1,4 +1,4 @@
-"""Regression tests for launcher/tools/screenshot.py's shared decode and
+"""Regression tests for launcher/tools/device/screenshot.py's shared decode and
 wire-protocol logic - the module scripts/device/device.py's own `screenshot`
 subcommand imports rather than re-implementing (see its own screenshot()
 docstring). No hardware: a FakeConnection stands in for the serial port.
@@ -16,7 +16,7 @@ import zlib
 from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(TOOLS))
+sys.path.insert(0, str(TOOLS / "device"))
 
 import screenshot  # noqa: E402
 

@@ -1,6 +1,6 @@
 # Icon baker
 
-`launcher/tools/gen_icons.py` bakes icons from an atlas; the rules below
+`launcher/tools/gen/gen_icons.py` bakes icons from an atlas; the rules below
 are the generator's. Reads a PNG atlas cell or an integer-grid SVG path per
 icon (pixelarticons' shape: `M`/`H`/`V`/`h`/`v`/`Z` only) and emits one
 `icons_<name>.h` per manifest - `gfx/icons_system.h` for the shared set,

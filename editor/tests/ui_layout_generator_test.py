@@ -6,7 +6,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-GENERATOR_PATH = ROOT / "launcher" / "tools" / "gen_ui_layout.py"
+GENERATOR_PATH = ROOT / "launcher" / "tools" / "gen" / "gen_ui_layout.py"
 UI_DIR = ROOT / "launcher" / "main" / "ui"
 
 SPEC = importlib.util.spec_from_file_location("gen_ui_layout", GENERATOR_PATH)

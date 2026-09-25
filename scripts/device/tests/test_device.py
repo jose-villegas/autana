@@ -806,8 +806,8 @@ class FlashVerificationTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             worktree = Path(directory) / "engine"
-            (worktree / "launcher" / "tools").mkdir(parents=True)
-            (worktree / "launcher" / "tools" / "build_flash.sh").write_text("")
+            (worktree / "launcher" / "tools" / "build").mkdir(parents=True)
+            (worktree / "launcher" / "tools" / "build" / "build_flash.sh").write_text("")
             args = Namespace(owner="agent", purpose="flash", wait=0, variant="release",
                              worktree=str(worktree), out=None)
             store = mock.Mock()
@@ -882,8 +882,8 @@ class FlashDefaultPathTests(unittest.TestCase):
     def test_uses_the_default_path_and_records_the_manifest_when_out_is_omitted(self):
         with tempfile.TemporaryDirectory() as directory:
             worktree = Path(directory) / "engine"
-            (worktree / "launcher" / "tools").mkdir(parents=True)
-            (worktree / "launcher" / "tools" / "build_flash.sh").write_text("")
+            (worktree / "launcher" / "tools" / "build").mkdir(parents=True)
+            (worktree / "launcher" / "tools" / "build" / "build_flash.sh").write_text("")
             root = Path(directory) / "records"
             connection = FakeConnection([b"BUILD_ID=expected\nTESTS_DONE\n"])
             args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
@@ -914,8 +914,8 @@ class FlashDefaultPathTests(unittest.TestCase):
         # flash() is the one place that has the token to give it.
         with tempfile.TemporaryDirectory() as directory:
             worktree = Path(directory) / "engine"
-            (worktree / "launcher" / "tools").mkdir(parents=True)
-            (worktree / "launcher" / "tools" / "build_flash.sh").write_text("")
+            (worktree / "launcher" / "tools" / "build").mkdir(parents=True)
+            (worktree / "launcher" / "tools" / "build" / "build_flash.sh").write_text("")
             root = Path(directory) / "records"
             connection = FakeConnection([b"BUILD_ID=expected\nTESTS_DONE\n"])
             args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
@@ -1084,8 +1084,8 @@ class BatchTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             worktree = Path(directory) / "wt"
-            (worktree / "launcher" / "tools").mkdir(parents=True)
-            (worktree / "launcher" / "tools" / "build_flash.sh").write_text(script_text)
+            (worktree / "launcher" / "tools" / "build").mkdir(parents=True)
+            (worktree / "launcher" / "tools" / "build" / "build_flash.sh").write_text(script_text)
             calls["worktree"] = str(worktree.resolve())
             out_path = str(Path(directory) / "raw.txt") if out else None
             args = Namespace(owner="agent", purpose="p", wait=0, worktree=str(worktree),
@@ -1810,7 +1810,7 @@ class SelftestTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             worktree = Path(directory) / "wt"
-            (worktree / "launcher" / "tools").mkdir(parents=True)
+            (worktree / "launcher" / "tools" / "build").mkdir(parents=True)
             root = Path(directory) / "records"
             args = Namespace(owner="agent", purpose="autana selftest", wait=0,
                              worktree=str(worktree), out=None, perf_scope=perf_scope,
@@ -1853,7 +1853,7 @@ class SelftestTests(unittest.TestCase):
     def test_a_failing_run_is_reported_but_still_records_cleanly(self):
         with tempfile.TemporaryDirectory() as directory:
             worktree = Path(directory) / "wt"
-            (worktree / "launcher" / "tools").mkdir(parents=True)
+            (worktree / "launcher" / "tools" / "build").mkdir(parents=True)
             root = Path(directory) / "records"
             connection = FakeConnection([
                 b":1:test_one:FAIL: boom\nSELFTEST_COMPLETE failures=1 elapsed_ms=10\n",
@@ -1874,7 +1874,7 @@ class SelftestTests(unittest.TestCase):
 
 class ScreenshotCommandTests(unittest.TestCase):
     """device.screenshot() under a faked serial port, driving the real
-    launcher/tools/screenshot.py decode - see that module's own tests
+    launcher/tools/device/screenshot.py decode - see that module's own tests
     (launcher/tools/tests/test_screenshot.py) for the decode in isolation."""
 
     def minimal_bmp(self):

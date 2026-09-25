@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: bash launcher/test/run_tests.sh
       - run: bash launcher/main/apps/sand/tools/report_reactions.sh --check
-      - run: sh launcher/tools/render_all_scenes.sh
+      - run: sh launcher/tools/render/render_all_scenes.sh
 
       # EDITOR_BUILD_GUI=OFF leaves out only the SDL2 + Dear ImGui window,
       # which nothing here can exercise, so the runner needs no display

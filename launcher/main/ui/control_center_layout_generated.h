@@ -1,7 +1,7 @@
 /*
  * GENERATED FILE - do not edit.
  *
- *     python tools/gen_ui_layout.py main/ui/control_center_layout.json main/ui/control_center_layout_generated.h
+ *     python tools/gen/gen_ui_layout.py main/ui/control_center_layout.json main/ui/control_center_layout_generated.h
  */
 #pragma once
 

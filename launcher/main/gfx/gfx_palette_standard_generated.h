@@ -1,7 +1,7 @@
 /*===========================================================================
  * GENERATED FILE - do not edit.
  *
- *     python tools/gen_gfx_palette_standard.py > main/gfx/gfx_palette_standard_generated.h
+ *     python tools/gen/gen_gfx_palette_standard.py > main/gfx/gfx_palette_standard_generated.h
  *
  * Two formulaic 256-entry palettes for gfx_palette_standard.c: a
  * VGA-style default (16 EGA + a 216-colour web-safe RGB lattice +

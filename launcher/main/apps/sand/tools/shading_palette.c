@@ -2257,7 +2257,7 @@ write_reverse_index(FILE* f) {
     fprintf(f, "\n};\n\n");
 }
 
-/* gfx_palette_gen.h (launcher/tools/) bakes every derived dither table from
+/* gfx_palette_gen.h (launcher/tools/gen/) bakes every derived dither table from
  * a finished pair of palettes; this file only owns the FINAL sand256/sand16
  * palettes those bakes read, not any one table's own logic. */
 static void

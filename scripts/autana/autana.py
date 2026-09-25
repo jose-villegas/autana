@@ -23,7 +23,7 @@ import time
 from collections import namedtuple
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 from espressif import idf_python  # noqa: E402  (path must be set up first)
 
 VARIANTS = {"rel": "release", "release": "release", "dev": "dev", "diag": "diag"}
@@ -541,7 +541,7 @@ def send(line, reply="TUNE", purpose="autana tune", optional=False, seconds=None
 
 
 def screenshot(args):
-    """SCREENSHOT, captured and decoded by launcher/tools/screenshot.py's own
+    """SCREENSHOT, captured and decoded by launcher/tools/device/screenshot.py's own
     read_screenshot()/write_capture(), under the device lock - see
     device.py's own `screenshot` subcommand."""
     out = None

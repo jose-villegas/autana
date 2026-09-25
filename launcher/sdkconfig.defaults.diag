@@ -1,6 +1,6 @@
 # Diagnostics variant: the firmware plus the on-device test suites.
 #
-# Used by `tools/build_flash.sh --diag` (autana's own `flash diag` and
+# Used by `tools/build/build_flash.sh --diag` (autana's own `flash diag` and
 # `selftest`), which builds it into its own directory so it never overwrites
 # the normal build. Not for shipping - the suites draw to the panel and add
 # test code to the image.
