@@ -46,7 +46,7 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 | App writes | pixels, anywhere | pixels, one band at a time | palette indices, `gfx_indexed_image()` |
 | Buffer | 322 KiB, PSRAM | 2 x `GFX_BAND_HEIGHT` rows, DMA RAM | grid_w x grid_h bytes, internal RAM |
 | Who sends | present task | the app's own loop, inside `frame()` | present task |
-| Sends | dirty cells, runs or strips | dirty bands, sent across their dirty columns | dirty strips, whole |
+| Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole |
 | Content kept between frames | yes | **no** - a band is gone once sent | yes |
 | For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette |
 | Used by | launcher, diagnostics | render lab | sand |
@@ -169,8 +169,7 @@ The app drives the send itself, inside `frame()`:
 ```c
 gfx_band_frame_begin();
 while (gfx_band_next()) {
-    int x0, x1;
-    if (!gfx_band_dirty(&x0, &x1)) {
+    if (!gfx_band_dirty()) {
         gfx_band_skip();            /* panel still shows it */
         continue;
     }
@@ -208,10 +207,10 @@ sequenceDiagram
   `ui_queue_band_overlay_rect()` before `frame()`, since nothing can draw
   after the loop.
 - `gfx_band_dirty()` answers for the band `gfx_band_next()` just handed
-  out; `gfx_band_submit()` always sends that band at full width, one
-  `esp_lcd_panel_draw_bitmap()` per band. Sending only the dirty column
-  span means packing the rows in place first, which measured 3.3 ms a
-  frame slower on the cube for the same bytes.
+  out; `gfx_band_submit()` sends that band whole, one
+  `esp_lcd_panel_draw_bitmap()` per band, straight from the buffer the app
+  drew. The transfer takes no source stride, so sending fewer columns would
+  mean repacking the rows first.
 
 ## Indexed mode
 
