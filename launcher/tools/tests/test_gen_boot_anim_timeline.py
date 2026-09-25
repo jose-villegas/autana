@@ -9,7 +9,7 @@ import unittest
 
 
 LAUNCHER = pathlib.Path(__file__).resolve().parents[2]
-GENERATOR = LAUNCHER / "tools" / "gen_boot_anim_timeline.py"
+GENERATOR = LAUNCHER / "tools" / "gen" / "gen_boot_anim_timeline.py"
 TIMELINE = LAUNCHER / "main" / "boot" / "boot_anim_timeline.json"
 HEADER = LAUNCHER / "main" / "boot" / "boot_anim_timeline.h"
 

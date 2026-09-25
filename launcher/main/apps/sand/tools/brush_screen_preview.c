@@ -2,7 +2,7 @@
  * brush_screen_preview - render the sand app's brush screen through the real
  * firmware drawing code on a host, at both canvas sizes, so its composition
  * can be judged without a device build or a flash. Same shape as
- * launcher/tools/boot_anim_render_host.c: real drawing code, a malloc'd
+ * launcher/tools/render/scenes/boot_anim_render_host.c: real drawing code, a malloc'd
  * framebuffer, no device.
  *
  *     main/apps/sand/tools/report_brush_screen_preview.sh

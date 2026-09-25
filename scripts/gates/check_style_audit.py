@@ -361,7 +361,7 @@ def rule_include_direction(root, path, text):
 
 # RULE: a personal home-directory path, or one machine's ESP-IDF checkout,
 # baked into tracked source only works on the machine that wrote it.
-# launcher/tools/espressif.py's espressif_tools_root() and idf_python(), and
+# launcher/tools/build/espressif.py's espressif_tools_root() and idf_python(), and
 # idf.sh's idf_default_export(), are the portable forms.
 
 # The ESP-IDF branch matches any drive path that names an esp-idf checkout,
@@ -378,7 +378,7 @@ def rule_personal_path(root, path, text):
     for number, line in enumerate(text.splitlines(), 1):
         m = PERSONAL_PATH.search(line)
         if m:
-            yield number, f"{m.group(0)} is machine-specific - use ~, or launcher/tools/espressif.py or IDF_PATH, for an ESP-IDF path"
+            yield number, f"{m.group(0)} is machine-specific - use ~, or launcher/tools/build/espressif.py or IDF_PATH, for an ESP-IDF path"
 
 
 # RULE: an HTML comment in a doc renders as nothing. Only the gates' own

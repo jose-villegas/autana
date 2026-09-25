@@ -18,9 +18,8 @@ from pathlib import Path
 import device_lock
 import device_report
 
-# launcher/tools/ holds screenshot.py's decoder and espressif.py's Python
-# lookup, both used below - one insert here rather than one per call site.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "device"))
 from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
 
 
@@ -643,7 +642,7 @@ def flash(args, store, port, held_lock=None, extra_flags=()):
         with open_when_free(port):
             pass
         worktree = Path(args.worktree).resolve()
-        script = worktree / "launcher" / "tools" / "build_flash.sh"
+        script = worktree / "launcher" / "tools" / "build" / "build_flash.sh"
         if not script.is_file():
             raise RuntimeError("build tool not found: " + str(script))
         started_at = now()
@@ -910,7 +909,7 @@ def send(args, store, port):
 
 def screenshot(args, store, port):
     """SCREENSHOT, decoded by read_screenshot()/write_capture() in
-    launcher/tools/screenshot.py - the one decoder autana's own
+    launcher/tools/device/screenshot.py - the one decoder autana's own
     `screenshot` shares. Under the device lock, so it queues behind
     whatever else already holds the board rather than fighting it for the
     port.
@@ -1104,7 +1103,7 @@ def main(argv=None):
     selftest_parser.add_argument("--perf-scope", action="store_true",
                                  help="build the perf-scoped image")
     # 3000 s leaves headroom over a full run's measured time - see
-    # launcher/tools/report_test_results.sh.
+    # launcher/tools/quality/report_test_results.sh.
     selftest_parser.add_argument("--max-seconds", type=float, default=3000)
     selftest_parser.add_argument("--idle-seconds", type=float, default=300)
     selftest_parser.add_argument("--purpose", default="selftest")

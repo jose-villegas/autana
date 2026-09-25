@@ -1,7 +1,7 @@
 # Board and Memory
 
 Part of the [platform notes](README.md). Numbers come from this board, and the
-two heap figures from `launcher/tools/device_profiles/esp32s3.sh`.
+two heap figures from `launcher/tools/device/device_profiles/esp32s3.sh`.
 
 ## The board
 
@@ -77,7 +77,7 @@ in internal SRAM, sand's grids included.
 
 | Measurement | Value | Source |
 |---|---|---|
-| Internal (non-PSRAM) free heap after `gfx_init()` | **130,635 bytes** | `launcher/tools/device_profiles/esp32s3.sh`'s `DP_FREE_HEAP_BYTES`, device capture on the diagnostics build |
+| Internal (non-PSRAM) free heap after `gfx_init()` | **130,635 bytes** | `launcher/tools/device/device_profiles/esp32s3.sh`'s `DP_FREE_HEAP_BYTES`, device capture on the diagnostics build |
 | Largest free block in it | **51,200 bytes** | `DP_LARGEST_FREE_BLOCK_BYTES`, same capture - `gfx_init()` holds a gather buffer and two 46 KiB strip buffers in this pool |
 
 The framebuffer is not in this pool; the figure is what is left for stacks,

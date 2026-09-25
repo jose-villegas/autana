@@ -14,9 +14,9 @@ names the translation units it needs, the quarter turn, how many frames to
 draw, and what synthetic touch to feed them.
 
 ```sh
-./launcher/tools/render_all_scenes.sh          # every scene, and the standing check
-./launcher/tools/post_ui_render_host.sh        # one scene, into its own results/render/
-./launcher/tools/launcher_home_render_host.sh -o /tmp/home
+./launcher/tools/render/render_all_scenes.sh          # every scene, and the standing check
+./launcher/tools/render/scenes/post_ui_render_host.sh        # one scene, into its own results/render/
+./launcher/tools/render/scenes/launcher_home_render_host.sh -o /tmp/home
 ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh
 ```
 
@@ -36,16 +36,16 @@ Time a change on the device, or under QEMU's `--icount` for counts.
 Two files, the same declare-then-source shape a report script uses:
 
 - **`<name>_render_host.c`** defines one `render_scene` - see
-  `launcher/tools/render_host.h` for the fields: a setup hook that runs
+  `launcher/tools/render/render_host.h` for the fields: a setup hook that runs
   once after `gfx_init()`, a draw hook that runs once per frame, and an
   options hook taking whatever arguments the harness did not recognise.
 - **`<name>_render_host.sh`** declares `scene_name`, `scene_sources` and
-  `scene_renders`, then sources `launcher/tools/render_scene.sh` and calls
+  `scene_renders`, then sources `launcher/tools/render/render_scene.sh` and calls
   `render_scene_run "$@"`. Everything else - finding a compiler, building,
   checking each image, converting to PNG - is that one procedure.
 
-An engine scene lives in `launcher/tools/`; an app's scene lives in that
-app's own `tools/`, so nothing in the engine's tooling names an app.
+An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives
+in that app's own `tools/`, so nothing in the engine's tooling names an app.
 `render_all_scenes.sh` finds both by name, so a new scene is one pair of
 files and deleting an app deletes its scenes.
 
@@ -109,7 +109,7 @@ line: the Windows toolchains fold those functions into libc, so a scene that
 needs one links clean on a laptop and fails only on Linux.
 
 ```sh
-./launcher/tools/render_all_scenes.sh --update-baseline   # re-pin, deliberately
+./launcher/tools/render/render_all_scenes.sh --update-baseline   # re-pin, deliberately
 ```
 
 Re-pin only after looking at the images and agreeing the pixels should have
@@ -125,9 +125,9 @@ the same reason the rest of this harness exists. The frame rate is
 unchanged alongside `--video`, or on its own.
 
 ```sh
-./launcher/tools/boot_anim_render_host.sh --video   # every scene's script takes this,
+./launcher/tools/render/scenes/boot_anim_render_host.sh --video   # every scene's script takes this,
                                                      # writing <label>.avi beside <label>.bmp
-python launcher/tools/check_avi.py out.avi ...      # re-reads the header and index and
+python launcher/tools/render/check_avi.py out.avi ...      # re-reads the header and index and
                                                      # checks frame count, size and rate agree
 ```
 
@@ -153,7 +153,7 @@ console answers `screenshot` with the frame - the board tool's own protocol,
 over a socket instead of USB.
 
 ```sh
-./launcher/tools/render_qemu.sh -o /tmp/q \
+./launcher/tools/render/render_qemu.sh -o /tmp/q \
     --row "<first row>" --row "<second row>"     # capture, then diff
 ./launcher/test/run_qemu_tests.sh --touch down,128,224 --touch up,128,224 \
     --screenshot /tmp/after_tap.png              # tap a row, capture the app
@@ -190,8 +190,8 @@ and still; set the pose before comparing at a given quarter.
 
 ```sh
 autana screenshot --framebuffer -o shot.png                  # --dev build only
-./launcher/tools/post_ui_render_host.sh -o /tmp/post
-./launcher/tools/render_diff.sh shot.png /tmp/post/landscape-panel.bmp \
+./launcher/tools/render/scenes/post_ui_render_host.sh -o /tmp/post
+./launcher/tools/render/render_diff.sh shot.png /tmp/post/landscape-panel.bmp \
     --mask build_mark --mask home_hint --out /tmp/diff.png
 ```
 
@@ -208,7 +208,7 @@ not applied. A render in the read orientation must say `--quarter-a` /
 
 **Masks cover what the shell draws and a scene does not** - the development
 build's corner mark, the swipe-home strip. They are declared per quarter in
-`launcher/tools/render_masks.json` and named on the command line. If that
+`launcher/tools/render/render_masks.json` and named on the command line. If that
 chrome moves, that file has to move with it.
 
 ---

@@ -1,10 +1,10 @@
 /*=============================================================================
  * GENERATED FILE - do not edit.
  *
- *     python tools/gen_zeta_curve.py > main/boot_anim_curve.h
+ *     python tools/gen/gen_zeta_curve.py > main/boot/boot_anim_curve.h
  *
  * zeta(1/2 + it) for t from 0 to 126, sampled at roughly equal spacing on
- * screen. See tools/gen_zeta_curve.py for how the values are computed and
+ * screen. See tools/gen/gen_zeta_curve.py for how the values are computed and
  * why they are a table rather than device code, and boot_anim.h for what is
  * done with them.
  *
@@ -17,7 +17,7 @@
 #define BOOT_ANIM_CURVE_POINTS 1976
 
 /* How many of the leading points are phase 1 of the reveal - see
- * PHASE1_T_MAX's own comment in tools/gen_zeta_curve.py and
+ * PHASE1_T_MAX's own comment in tools/gen/gen_zeta_curve.py and
  * boot_anim_pen()'s in boot_anim.h. */
 #define BOOT_ANIM_CURVE_PHASE1_POINTS 260
 

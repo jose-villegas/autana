@@ -18,7 +18,7 @@ to the level editor already banked in that roadmap.
 | piece | where |
 |---|---|
 | authored layout | `launcher/main/ui/<screen>_layout.json`: the screen's name, its elements (`id`, `label`, `interactive`) and one rect per element per orientation |
-| generator | `launcher/tools/gen_ui_layout.py`, one for every screen; every C identifier derives from the JSON's `screen` |
+| generator | `launcher/tools/gen/gen_ui_layout.py`, one for every screen; every C identifier derives from the JSON's `screen` |
 | baked table | `<screen>_layout_generated.h`, the only form the device links |
 | document | `editor/src/layout_document.{h,cpp}`, one type for every screen, applying the generator's rules |
 | renderer | `editor/runtime/runtime.c`: the firmware's `ui/` and `gfx.c` compiled for the host |
@@ -37,7 +37,7 @@ previewed.
 
 ## This pattern already runs in this repo
 
-`tools/boot_anim_editor_server.py` serves `tools/boot_anim_editor.html` and
+`tools/boot_anim/boot_anim_editor_server.py` serves `tools/boot_anim/boot_anim_editor.html` and
 answers `POST /render` with **a real frame rendered by the real firmware
 code** - `main/gfx/gfx.c` plus `main/boot/boot_anim.c`, unmodified, compiled
 for the host. It writes the edited payload to a *scratch* copy of

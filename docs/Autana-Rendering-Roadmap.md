@@ -969,7 +969,7 @@ Principles, each of which is already a repo habit:
   memory placement and branches (3.3).
 - **Everything above `board/` compiles on the host.** The boot animation
   editor already renders real frames through the real `gfx.c` on the host
-  (`tools/boot_anim_render_host.c`); generalize that into a host runner
+  (`tools/render/scenes/boot_anim_render_host.c`); generalize that into a host runner
   that renders any app's frame to a `.bmp`, so the device screenshot tool
   and the host render can be diffed pixel-exact. That is the visual
   regression suite, and the TDD loop for a renderer.

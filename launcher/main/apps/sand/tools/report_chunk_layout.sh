@@ -26,8 +26,8 @@ LAUNCHER_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../../.." && pwd)
 BUILD_DIR="$SCRIPT_DIR/build"
 REPORT_DIR="$SCRIPT_DIR/results"
 
-# shellcheck source=../../../../tools/find_cc.sh
-. "$LAUNCHER_DIR/tools/find_cc.sh"
+# shellcheck source=../../../../tools/build/find_cc.sh
+. "$LAUNCHER_DIR/tools/build/find_cc.sh"
 
 if ! CC_BIN=$(find_cc); then
     echo "No C compiler found." >&2

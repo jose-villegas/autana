@@ -49,8 +49,8 @@
 #ifndef HOST_HEAP_ARENA_BYTES
 #error "heap_arena.c: HOST_HEAP_ARENA_BYTES must be supplied by the build " \
     "(-DHOST_HEAP_ARENA_BYTES=<n>), sourced from a device profile's " \
-    "DP_FREE_HEAP_BYTES (launcher/tools/device_profiles/esp32s3.sh, read " \
-    "via launcher/tools/device_profile.sh). A gate running against an " \
+    "DP_FREE_HEAP_BYTES (launcher/tools/device/device_profiles/esp32s3.sh, read " \
+    "via launcher/tools/device/device_profile.sh). A gate running against an " \
     "invented cap is worse than no gate."
 #endif
 

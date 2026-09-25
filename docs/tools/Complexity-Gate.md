@@ -1,6 +1,6 @@
 # The cognitive-complexity ratchet
 
-`launcher/tools/complexity_gate.py` measures cognitive complexity with
+`launcher/tools/quality/complexity_gate.py` measures cognitive complexity with
 clang-tidy's `readability-function-cognitive-complexity` check
 (`launcher/.clang-tidy` holds its configuration) and ratchets every
 first-party function's score against a committed baseline, failing only
@@ -30,7 +30,7 @@ file counted twice:
   host-only test-runner files (`host_main.c`, `heap_arena.c`) and
   `gfx/gfx_palette_standard.c`. esp-clang's own default target has no
   usable libc either, so these get the same `--sysroot`/`--gcc-toolchain`
-  treatment against the host compiler `tools/find_cc.sh` resolves -
+  treatment against the host compiler `tools/build/find_cc.sh` resolves -
   never a second, independently-guessed compiler.
 - **`apps/*/tools/*.c`** (sweep and report scripts, excluded from the
   firmware and the host build alike by long-standing convention) get the
@@ -63,7 +63,7 @@ fail the run immediately instead of being reported as clean.
 
 ## A ratchet with a fail line
 
-`launcher/tools/complexity_baseline.txt` records every measured
+`launcher/tools/quality/complexity_baseline.txt` records every measured
 function's current score, one line per function
 (`score<TAB>file:line<TAB>name`, sorted worst first) - a plain text file
 meant to be diffed in review like any other. It is the source for a
@@ -94,10 +94,10 @@ is one of the gate's two sources, and a missing one fails with a message
 saying so rather than a stack trace:
 
 ```sh
-./launcher/tools/build_diag_check.sh                            # ratchet, then the build - several minutes
-python launcher/tools/complexity_gate.py                        # the ratchet
-python launcher/tools/complexity_gate.py --update-baseline      # record today's scores on purpose
-python launcher/tools/complexity_gate.py --changed origin/main  # only files that changed - still needs the build above
+./launcher/tools/build/build_diag_check.sh                            # ratchet, then the build - several minutes
+python launcher/tools/quality/complexity_gate.py                        # the ratchet
+python launcher/tools/quality/complexity_gate.py --update-baseline      # record today's scores on purpose
+python launcher/tools/quality/complexity_gate.py --changed origin/main  # only files that changed - still needs the build above
 ```
 
 `build_diag_check.sh` runs `--changed origin/main` itself before it starts
