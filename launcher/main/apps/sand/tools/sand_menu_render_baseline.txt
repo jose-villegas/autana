@@ -1,0 +1,12 @@
+# What the sand_menu scene's renders hash to, one per line.
+# Re-pinned deliberately, after looking at the images:
+#     ./launcher/main/apps/sand/tools/sand_menu_render_host.sh --update-baseline
+title-portrait c0dbbd7a4079f8f694928b5c4d4f051586541cdf27b086cfa1c717c01b1deb36
+title-landscape a99d6ba577f9721282fe94cf5413571e877eebda8cdb0b2a3a0abcd5f0c700bc
+options-portrait c9b1b3c980d32638295d600bae92c8581b45ae51663bb7dd0d51902d958c925c
+options-landscape 0c84bf815bd0f72eadedec5a7ea4189b4cb88c6da2718bf2ee4a09b795b13331
+options-sixteen-portrait 51c3a08b72d07a55231de7b06fba0a6e06591d361548b244ce6af9e1310d9fce
+options-pending-portrait 7f5290165dd23bc4e35376283b856e63b9ac46a0c5ea22e02f619321defb4bd1
+options-sixteen-landscape c59fda2ee32eb8598d4f0bc463c3a73c98d2c24a843aa55575da6e13ec87172f
+options-dither-open-portrait 807a96c1ab5ec838b99a03727a83b2e8c9d5efb01024ee1abf85c7ded15850ed
+options-dither-open-landscape 5af92db5141bade16dc2fe0dac9d447a09a14020a47b50ff7fb196582b1d60fd

@@ -4,5 +4,5 @@ docs/notes/Display-and-Rendering.md	spi_ll_master_cal_clock	ESP-IDF private API.
 docs/notes/Display-and-Rendering.md	spi_ll.h	ESP-IDF private header.
 docs/sand/Adding-a-Material.md	probe.c	Example probe source, not shipped.
 docs/Autana-Rendering-Roadmap.md	CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB	ESP-IDF Kconfig symbol, set in launcher/sdkconfig.defaults.
-docs/notes/Board-and-Memory.md	CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB	ESP-IDF Kconfig symbol, set in launcher/sdkconfig.defaults.
+docs/notes/Board-and-Memory.md	CONFIG_FATFS_LFN_NONE	ESP-IDF Kconfig default, not set in this tree.
 docs/tools/Mermaid-Diagrams.md	CHECK_MERMAID_MMDC_ARGS	Defined in scripts/gates/check-mermaid.mjs, a .mjs file this checker's C/Python-only scanner does not read.

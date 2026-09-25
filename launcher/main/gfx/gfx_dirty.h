@@ -4,7 +4,7 @@
  *
  * Header-only, all functions static (some static inline), by necessity, not
  * by convenience: the marking calls sit on the drawing primitives' hot
- * path - an 8bpp or dithered glyph marks once per set font pixel - and
+ * path - a dithered glyph marks once per set font pixel - and
  * routing that through a real cross-translation-unit call once cost about
  * 5% of the launcher's framerate (see docs/notes/Display-and-Rendering.md's
  * "Partial updates"). A traditional .c/.h split would put mark_band() back

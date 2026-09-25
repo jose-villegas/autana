@@ -109,7 +109,7 @@ TEST(LayoutDocument, RejectsPanelOverlap) {
 
 TEST(LayoutDocument, RejectsUndersizedInteractiveTarget) {
     LayoutDocument document = load_layout();
-    rect_of(document, LayoutOrientation::Portrait, "volume").height = 43;
+    rect_of(document, LayoutOrientation::Portrait, "volume").height = 55;
 
     EXPECT_THAT(document.validate(), Contains("portrait: volume is smaller than 44px"));
 }
@@ -117,7 +117,7 @@ TEST(LayoutDocument, RejectsUndersizedInteractiveTarget) {
 TEST(LayoutDocument, AllowsUndersizedPassiveElement) {
     LayoutDocument document = load_layout();
 
-    EXPECT_LT(rect_of(document, LayoutOrientation::Portrait, "notifications_header").height, 44);
+    EXPECT_LT(rect_of(document, LayoutOrientation::Portrait, "notifications_header").height, 56);
     EXPECT_TRUE(document.validate().empty());
 }
 

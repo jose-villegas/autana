@@ -133,7 +133,6 @@ static const uint8_t synth_atlas[4 * 7] = {0};
 static const uint8_t synth_advance[4] = {3, 4, 5, 6};
 static const gfx_font_t synth_font = {
     .atlas = synth_atlas,
-    .bpp = 1,
     .cell_w = 5,
     .cell_h = 7,
     .first = (uint8_t)'A',
@@ -190,10 +189,8 @@ test_proportional_height_is_cell_h_times_scale(void) {
 
 /*
  * gfx_font_row_run_rect() - proof that batching a run of set bits into one
- * rect covers exactly the same pixels as gfx.c's draw_rotated_font_pixel()
- * would have, one bit at a time. gfx.c cannot link on a host (it calls
- * gfx_fill_rect()), so draw_rotated_font_pixel()'s px/py switch is mirrored
- * here rather than driven directly - see this suite's own file comment.
+ * rect covers exactly the same pixels as drawing one bit at a time.
+ * gfx.c cannot link on a host, so the pixel transform is mirrored here.
  */
 
 static void
@@ -446,7 +443,6 @@ test_dilated_halo_matches_eight_offset_copies_at_a_band_edge(void) {
 static const uint8_t merge_synth_atlas[8] = {0x06, 0x06, 0x06, 0x18, 0x18, 0x18, 0x18, 0x18};
 static const gfx_font_t merge_synth_font = {
     .atlas = merge_synth_atlas,
-    .bpp = 1,
     .cell_w = 8,
     .cell_h = 8,
     .first = (uint8_t)'A',
@@ -475,7 +471,6 @@ test_glyph_run_boxes_merges_consecutive_identical_rows(void) {
 static const uint8_t merge_gap_atlas[8] = {0x06, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00};
 static const gfx_font_t merge_gap_font = {
     .atlas = merge_gap_atlas,
-    .bpp = 1,
     .cell_w = 8,
     .cell_h = 8,
     .first = (uint8_t)'A',
@@ -500,7 +495,6 @@ test_glyph_run_boxes_empty_glyph_yields_none(void) {
     static const uint8_t blank[8] = {0};
     static const gfx_font_t blank_font = {
         .atlas = blank,
-        .bpp = 1,
         .cell_w = 8,
         .cell_h = 8,
         .first = (uint8_t)'A',

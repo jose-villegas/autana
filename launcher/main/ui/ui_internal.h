@@ -11,6 +11,7 @@
 
 #include "gfx/gfx_font.h"
 #include "microui.h"
+#include "ui/ui_canvas_marks.h"
 #include "ui/ui_pointer.h"
 #include "ui/ui_style.h"
 #include "ui/ui_transform.h"
@@ -49,6 +50,7 @@ extern ui_pointer_t ui_pointer_state;
  * "meaningless" has to start as a known value, not whatever the previous
  * boot's abandoned command list happened to leave behind. */
 extern uint64_t ui_canvas_hash[MU_CONTAINERPOOL_SIZE];
+extern ui_canvas_marks_t ui_canvas_marks;
 
 /* The transform in force, or identity while none set is valid - see
  * ui_set_transform() (ui_build.c). Both draw_command() and canvas_physical_
