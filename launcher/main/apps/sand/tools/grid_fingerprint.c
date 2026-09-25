@@ -90,29 +90,30 @@ typedef void (*scene_fn)(sand_t* s);
  * dirt full saturation, and for the gases the right value purely by the
  * coincidence of MATERIAL_VARIANTS - 1.
  */
-#define FP_STONE     CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT)
-#define FP_SAND      CELL_MAKE(MAT_SAND, 0) /* dry */
-#define FP_DIRT      CELL_MAKE(MAT_DIRT, 0) /* dry */
-#define FP_WOOD      CELL_MAKE(MAT_WOOD, 0) /* not alight */
-#define FP_WATER     CELL_MAKE(MAT_WATER, MASS_MAX)
-#define FP_LAVA      CELL_MAKE(MAT_LAVA, MASS_MAX)
-#define FP_OIL       CELL_MAKE(MAT_OIL, MASS_MAX)
-#define FP_GAS       CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1)
-#define FP_FIRE      CELL_MAKE(MAT_FIRE, MATERIAL_VARIANTS - 1)
-#define FP_ACID      CELL_MAKE(MAT_ACID, MASS_MAX)
-#define FP_STEAM     CELL_MAKE(MAT_STEAM, MATERIAL_VARIANTS - 1)
-#define FP_GLASS     CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT) /* heat_ramp, like stone */
-#define FP_CULLET    CELL_MAKE(MAT_SAND, SAND_CULLET_BASE)   /* glass milled to grains */
-#define FP_METAL     MATX(MATX_METAL)
-#define FP_SNOW      CELL_MAKE(MAT_SNOW, 0) /* dry, as sand and dirt are */
-#define FP_SMOKE     CELL_MAKE(MAT_SMOKE, MATERIAL_VARIANTS - 1)
-#define FP_WET_DIRT  CELL_MAKE(MAT_DIRT, MASS_MAX) /* saturated, not damp */
-#define FP_HOT_GLASS CELL_MAKE(MAT_GLASS, SAND_SHOCK_HEAT - 1)
-#define FP_ICE       MATX(MATX_ICE)
-#define FP_POWDER    GUNPOWDER_CELL(0) /* dry, unlit */
-#define FP_PLANT     MATX(MATX_PLANT)
-#define FP_LEAF      MATX(MATX_LEAF)
-#define FP_ROOT      MATX(MATX_ROOT)
+#define FP_STONE         CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT)
+#define FP_SAND          CELL_MAKE(MAT_SAND, 0) /* dry */
+#define FP_DIRT          CELL_MAKE(MAT_DIRT, 0) /* dry */
+#define FP_WOOD          CELL_MAKE(MAT_WOOD, 0) /* not alight */
+#define FP_WATER         CELL_MAKE(MAT_WATER, MASS_MAX)
+#define FP_LAVA          CELL_MAKE(MAT_LAVA, MASS_MAX)
+#define FP_OIL           CELL_MAKE(MAT_OIL, MASS_MAX)
+#define FP_GAS           CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1)
+#define FP_FIRE          CELL_MAKE(MAT_FIRE, MATERIAL_VARIANTS - 1)
+#define FP_ACID          CELL_MAKE(MAT_ACID, MASS_MAX)
+#define FP_STEAM         CELL_MAKE(MAT_STEAM, MATERIAL_VARIANTS - 1)
+#define FP_GLASS         CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT)     /* heat_ramp, like stone */
+#define FP_GLOWING_GLASS CELL_MAKE(MAT_GLASS, MATERIAL_VARIANTS - 1) /* past SAND_SHOCK_HEAT */
+#define FP_CULLET        CELL_MAKE(MAT_SAND, SAND_CULLET_BASE)       /* glass milled to grains */
+#define FP_METAL         MATX(MATX_METAL)
+#define FP_SNOW          CELL_MAKE(MAT_SNOW, 0) /* dry, as sand and dirt are */
+#define FP_SMOKE         CELL_MAKE(MAT_SMOKE, MATERIAL_VARIANTS - 1)
+#define FP_WET_DIRT      CELL_MAKE(MAT_DIRT, MASS_MAX) /* saturated, not damp */
+#define FP_HOT_GLASS     CELL_MAKE(MAT_GLASS, SAND_SHOCK_HEAT - 1)
+#define FP_ICE           MATX(MATX_ICE)
+#define FP_POWDER        GUNPOWDER_CELL(0) /* dry, unlit */
+#define FP_PLANT         MATX(MATX_PLANT)
+#define FP_LEAF          MATX(MATX_LEAF)
+#define FP_ROOT          MATX(MATX_ROOT)
 
 /* Scene 1: dry grains over a floor. The main sweep and nothing else - no
  * liquid, no reactions, no gas. This is the control: a change that alters
@@ -598,6 +599,96 @@ scene_plant_ruin(sand_t* s) {
     plant_ruin_acid_and_lava(s);
 }
 
+/* F1: gas held to the exhaustive mover - every gas scene above leaves
+ * sand_set_gas_walk() at its default, so gas_walk_once() is all this file
+ * has run gas through. Pillars force the slide/scatter paths too; the
+ * water pocket forces try_bubble(). */
+static void
+scene_gas_no_walk(sand_t* s) {
+    sand_set_gas_walk(s, false);
+
+    for (int x = 0; x < FP_W; x++) {
+        sand_set(s, x, FP_H - 1, FP_STONE);
+    }
+    for (int x = 5; x < FP_W - 5; x += 15) {
+        for (int y = 10; y < 25; y++) {
+            sand_set(s, x, y, FP_STONE);
+        }
+    }
+    for (int y = 30; y < 40; y++) {
+        for (int x = 8; x < FP_W - 8; x++) {
+            sand_set(s, x, y, FP_GAS);
+        }
+    }
+    for (int y = FP_H - 10; y < FP_H - 1; y++) {
+        for (int x = 20; x < 40; x++) {
+            sand_set(s, x, y, FP_WATER);
+        }
+    }
+}
+
+/* F2: acid meeting oil, absent from every scene above - acid_bath dissolves
+ * sand, cullet, metal, glass, stone and water, but never touches oil, so
+ * dissolver_and_bubble_or_defer()'s MAT_OIL branch (the two independent
+ * residue/death draws) has no cover here otherwise. */
+static void
+scene_acid_oil(sand_t* s) {
+    for (int x = 0; x < FP_W; x++) {
+        sand_set(s, x, FP_H - 1, FP_STONE);
+    }
+    for (int y = FP_H - 10; y < FP_H - 1; y++) {
+        for (int x = 4; x < FP_W - 4; x++) {
+            sand_set(s, x, y, FP_OIL);
+        }
+    }
+    for (int y = FP_H - 20; y < FP_H - 10; y++) {
+        for (int x = 4; x < FP_W - 4; x++) {
+            sand_set(s, x, y, FP_ACID);
+        }
+    }
+}
+
+/* F3: a pane already past SAND_SHOCK_HEAT, touching snow directly - every
+ * row above keeps its glass a level below (FP_HOT_GLASS) or a conductor
+ * away, so crack_run() and the chilling cell's own heat transform are
+ * both unreached without this one. */
+static void
+scene_glass_shock_snow(sand_t* s) {
+    for (int x = 0; x < FP_W; x++) {
+        sand_set(s, x, FP_H - 1, FP_STONE);
+    }
+    for (int x = 4; x < FP_W - 4; x++) {
+        sand_set(s, x, FP_H - 2, FP_GLOWING_GLASS);
+        sand_set(s, x, FP_H - 3, FP_SNOW);
+    }
+}
+
+/* F5: the water_pool shape, scaled up to whatever (w, h) main() hands it.
+ * sand_chunk_pass_ready() refuses to split anything under
+ * SAND_CHUNK_SPLIT_MIN_CELLS, which every 64x64 row above falls under - the
+ * two-core row needs its own larger board to ever engage the split. */
+static void
+scene_two_core_big(sand_t* s) {
+    const int w = s->w, h = s->h;
+
+    for (int x = 0; x < w; x++) {
+        sand_set(s, x, h - 1, FP_STONE);
+    }
+    for (int y = h - 60; y < h - 1; y++) {
+        sand_set(s, 20, y, FP_STONE);
+        for (int x = 21; x < w - 20; x++) {
+            sand_set(s, x, y, FP_WATER);
+        }
+    }
+    for (int y = 10; y < 80; y++) {
+        for (int x = 4; x < w - 4; x++) {
+            if (((x * 7 + y * 13) & 3) == 0) {
+                sand_set(s, x, y, FP_SAND);
+            }
+        }
+    }
+}
+
 /* GRAVITY IS PER SCENE, and the six original rows keep the straight-down
  * vector they were baselined with - their hashes must not move.
  *
@@ -613,26 +704,30 @@ static const struct {
     int gx;
     int gy;
     int sleeping; /* 0 for every original row - see the two at the end */
+    int w;        /* 0 means FP_W - overridden only by the two-core row */
+    int h;        /* 0 means FP_H */
+    int two_core; /* 1 runs this row's steps through the two-core split -
+                    * 0 for every other row, which pins the serial step */
 } SCENES[] = {
-    {"dry_fall", scene_dry_fall, 7u, 0, 1000, 0},
-    {"water_pool", scene_water_pool, 11u, 0, 1000, 0},
-    {"lava_quench", scene_lava_quench, 23u, 0, 1000, 0},
-    {"fire_gas", scene_fire_gas, 31u, 0, 1000, 0},
-    {"sealed_lava", scene_sealed_lava, 41u, 0, 1000, 0},
-    {"wet_earth", scene_wet_earth, 53u, 0, 1000, 0},
+    {"dry_fall", scene_dry_fall, 7u, 0, 1000, 0, 0, 0, 0},
+    {"water_pool", scene_water_pool, 11u, 0, 1000, 0, 0, 0, 0},
+    {"lava_quench", scene_lava_quench, 23u, 0, 1000, 0, 0, 0, 0},
+    {"fire_gas", scene_fire_gas, 31u, 0, 1000, 0, 0, 0, 0},
+    {"sealed_lava", scene_sealed_lava, 41u, 0, 1000, 0, 0, 0, 0},
+    {"wet_earth", scene_wet_earth, 53u, 0, 1000, 0, 0, 0, 0},
 
     /* Same builders, held sideways and cornerwise. */
-    {"gas_land", scene_fire_gas, 31u, 1000, 0, 0},
-    {"water_diag", scene_water_pool, 11u, 1000, 1000, 0},
+    {"gas_land", scene_fire_gas, 31u, 1000, 0, 0, 0, 0, 0},
+    {"water_diag", scene_water_pool, 11u, 1000, 1000, 0, 0, 0, 0},
 
     /* The only row here in which anything grows - see the builder. */
-    {"plant_bed", scene_plant_bed, 11u, 0, 1000, 0},
+    {"plant_bed", scene_plant_bed, 11u, 0, 1000, 0, 0, 0, 0},
 
     /* The only row here that puts acid on the board at all. */
-    {"acid_bath", scene_acid_bath, 67u, 0, 1000, 0},
+    {"acid_bath", scene_acid_bath, 67u, 0, 1000, 0, 0, 0, 0},
 
     /* Likewise snow, ice and deliberately-placed smoke. */
-    {"snow_thaw", scene_snow_thaw, 71u, 0, 1000, 0},
+    {"snow_thaw", scene_snow_thaw, 71u, 0, 1000, 0, 0, 0, 0},
 
     /* SLEEPING ON, which every row above leaves OFF though the app runs with it
      * ON. cell_settled() answers false when block_state is NULL, so no
@@ -642,33 +737,45 @@ static const struct {
      * pair is the point: block sleep claims to change nothing, and two rows
      * differing only in sleeping are what check that. They come back
      * byte-identical to their awake twins, which is that claim measured. */
-    {"snow_asleep", scene_snow_thaw, 71u, 0, 1000, 1},
-    {"pool_asleep", scene_water_pool, 11u, 0, 1000, 1},
+    {"snow_asleep", scene_snow_thaw, 71u, 0, 1000, 1, 0, 0, 0},
+    {"pool_asleep", scene_water_pool, 11u, 0, 1000, 1, 0, 0, 0},
 
     /* The one combination neither half above reaches: held sideways WITH
      * the blocks awake to it. Block shape is asymmetric - 32 across by 64
      * along - so which cells a block calls settled depends on the gravity
      * axis, and every sleeping row here pointed the same way. A change to
      * that shape lands here and nowhere else in this table. */
-    {"pool_land", scene_water_pool, 11u, 1000, 0, 1},
+    {"pool_land", scene_water_pool, 11u, 1000, 0, 1, 0, 0, 0},
 
     /* And the one row where a SETTLED-gated rule actually fires - see the
      * builder for why the rate is forced. */
-    {"snow_crust", scene_snow_crust, 71u, 0, 1000, 1},
+    {"snow_crust", scene_snow_crust, 71u, 0, 1000, 1, 0, 0, 0},
 
     /* The gunpowder row - see the builder for what was invisible without it. */
-    {"powder_keg", scene_powder_keg, 29u, 0, 1000, 0},
+    {"powder_keg", scene_powder_keg, 29u, 0, 1000, 0, 0, 0, 0},
 
     /* Two pairings the rows above never put in contact - see each builder.
      * Sleeping ON for the snow row, since seeding is settled-gated. */
-    {"snow_earth", scene_snow_earth, 71u, 0, 1000, 1},
-    {"plant_ruin", scene_plant_ruin, 67u, 0, 1000, 0},
+    {"snow_earth", scene_snow_earth, 71u, 0, 1000, 1, 0, 0, 0},
+    {"plant_ruin", scene_plant_ruin, 67u, 0, 1000, 0, 0, 0, 0},
+
+    /* Five rows a reviewer found this table never reached - see each
+     * builder for what it puts in front of the mechanism. */
+    {"gas_no_walk", scene_gas_no_walk, 83u, 0, 1000, 0, 0, 0, 0},
+    {"acid_oil", scene_acid_oil, 89u, 0, 1000, 0, 0, 0, 0},
+    {"glass_shock_snow", scene_glass_shock_snow, 97u, 0, 1000, 0, 0, 0, 0},
+
+    /* gas_land's own scene, tipped to a NEGATIVE gx this time - every gx
+     * above is 0 or 1000, so sweep_x_order()'s dx<0 branch has never run. */
+    {"gas_land_inv", scene_fire_gas, 31u, -1000, 0, 0, 0, 0, 0},
+
+    /* The only row run through the two-core split - see the builder for
+     * why it needs its own board size. */
+    {"two_core_big", scene_two_core_big, 101u, 0, 1000, 0, 256, 192, 1},
 };
 
 int
 main(void) {
-    const int cell_count = FP_W * FP_H;
-
 #ifdef _WIN32
     /* Byte-identical output (top comment) must hold ACROSS PLATFORMS: the
      * baseline is checked in and compared against a fresh run, routinely
@@ -680,16 +787,14 @@ main(void) {
     _setmode(_fileno(stdout), _O_BINARY);
 #endif
 
-    /* EXPLICIT, not merely relying on the default: this baseline is the
-     * serial step's own signature, and sand_set_two_core_step(true)'s
-     * checkerboard sweep is deliberately not byte-identical to it - see
-     * Sand-Simulation.md's own section on why. */
-    sand_set_two_core_step(false);
-
     printf("# grid fingerprint: %dx%d, %d steps per scene\n", FP_W, FP_H, FP_STEPS);
     printf("# scene hash mat0..mat15\n");
 
     for (size_t i = 0; i < sizeof SCENES / sizeof SCENES[0]; i++) {
+        const int w = SCENES[i].w != 0 ? SCENES[i].w : FP_W;
+        const int h = SCENES[i].h != 0 ? SCENES[i].h : FP_H;
+        const int cell_count = w * h;
+
         uint8_t* cells = calloc((size_t)cell_count, 1);
         impulse_t* impulses = calloc((size_t)cell_count, sizeof *impulses);
         if (!cells || !impulses) {
@@ -700,7 +805,7 @@ main(void) {
         }
 
         sand_t s;
-        sand_init(&s, cells, FP_W, FP_H, SCENES[i].seed);
+        sand_init(&s, cells, w, h, SCENES[i].seed);
         /* Impulses on, because the throw paths (explosions, bursts,
          * splashes) are part of the behaviour being fingerprinted - a
          * loop is allowed to optimise them, so a change there must show
@@ -717,6 +822,26 @@ main(void) {
             }
             sand_enable_sleeping(&s, blocks);
         }
+
+        /* EXPLICIT per scene, not merely relying on the default: this
+         * baseline is the serial step's own signature - see
+         * Sand-Simulation.md. Only two_core_big asks for the split. */
+        void* lane_scratch = NULL;
+        if (SCENES[i].two_core) {
+            lane_scratch = malloc(sand_lane_scratch_bytes(w, h));
+            if (lane_scratch == NULL) {
+                fprintf(stderr, "grid_fingerprint: out of memory for lane scratch\n");
+                free(cells);
+                free(impulses);
+                free(blocks);
+                return 1;
+            }
+            sand_enable_lane_scratch(&s, lane_scratch);
+            sand_set_two_core_step(true);
+        } else {
+            sand_set_two_core_step(false);
+        }
+
         SCENES[i].build(&s);
 
         /* Gravity pinned PER SCENE and jostle fixed: this tool answers "did
@@ -739,6 +864,7 @@ main(void) {
         free(cells);
         free(impulses);
         free(blocks);
+        free(lane_scratch);
     }
 
     return 0;
