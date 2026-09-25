@@ -1,0 +1,14 @@
+#!/bin/sh
+
+ROOT=$(git rev-parse --show-toplevel) || exit 1
+
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+    case "$remote_ref" in
+        refs/heads/*)
+            case "$local_sha" in
+                0000000000000000000000000000000000000000) continue ;;
+            esac
+            "$ROOT/scripts/gates/check-branch-name.sh" "${remote_ref#refs/heads/}" || exit 1
+            ;;
+    esac
+done

@@ -43,7 +43,7 @@ and checks storage, memory, sensors and the display on every boot.
 
 ```bash
 scripts/add-tools-to-path.sh           # puts `autana` on PATH - once per machine
-scripts/install-git-hooks.sh           # pre-commit format and diagram checks - once per clone
+scripts/install-git-hooks.sh           # pre-commit checks and pre-push branch names - once per clone
 npm install -g @mermaid-js/mermaid-cli # the diagram check's renderer, the one CI installs
 ```
 
