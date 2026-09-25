@@ -45,8 +45,13 @@ class BranchNameTests(unittest.TestCase):
             with self.subTest(name=name):
                 result = subprocess.run(["sh", str(CHECKER), name], capture_output=True, text=True)
                 self.assertEqual(result.returncode, 1, result.stderr)
-                self.assertEqual(len(result.stderr.splitlines()), 1)
-                self.assertIn("feature/<what-it-does>", result.stderr)
+                self.assertEqual(
+                    result.stderr.splitlines(),
+                    [
+                        f"Invalid branch name '{name}'. Use feature/, bugfix/, hotfix/, or release/ with lowercase letters and digits separated by single hyphens; dots are allowed only in release/.",
+                        "Rename with: git branch -m <new-name>",
+                    ],
+                )
 
 
 if __name__ == "__main__":
