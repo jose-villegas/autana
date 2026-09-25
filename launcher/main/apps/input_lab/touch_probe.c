@@ -85,3 +85,70 @@ float
 touch_probe_spread_dy(const touch_probe_stats_t* stats) {
     return spread(stats->sum_dy, stats->sum_dy2, stats->taps);
 }
+
+touch_probe_target_t
+touch_probe_grid(int index, int cols, int rows, int screen_w, int screen_h, int side, int margin) {
+    const int span_x = screen_w - 2 * margin - side;
+    const int span_y = screen_h - 2 * margin - side;
+    const int col = index % cols;
+    const int row = index / cols;
+    const touch_probe_target_t t = {
+        .x = margin + (cols > 1 ? span_x * col / (cols - 1) : span_x / 2),
+        .y = margin + (rows > 1 ? span_y * row / (rows - 1) : span_y / 2),
+        .side = side,
+    };
+    return t;
+}
+
+void
+touch_probe_shuffle(uint32_t* rng, int* order, int n) {
+    for (int i = 0; i < n; i++) {
+        order[i] = i;
+    }
+    for (int i = n - 1; i > 0; i--) {
+        const int j = random_in(rng, 0, i);
+        const int swap = order[i];
+        order[i] = order[j];
+        order[j] = swap;
+    }
+}
+
+#define SETTLE_MAX 64
+
+static int
+median(int* v, int n) {
+    for (int i = 1; i < n; i++) {
+        const int key = v[i];
+        int j = i - 1;
+        while (j >= 0 && v[j] > key) {
+            v[j + 1] = v[j];
+            j--;
+        }
+        v[j + 1] = key;
+    }
+    return v[n / 2];
+}
+
+void
+touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int to_ms, int* x, int* y) {
+    int xs[SETTLE_MAX], ys[SETTLE_MAX];
+    int count = 0;
+    int last = 0;
+    for (int i = 0; i < n; i++) {
+        if (samples[i].t_ms <= to_ms) {
+            last = i;
+        }
+        if (samples[i].t_ms >= from_ms && samples[i].t_ms <= to_ms && count < SETTLE_MAX) {
+            xs[count] = samples[i].x;
+            ys[count] = samples[i].y;
+            count++;
+        }
+    }
+    if (count == 0) {
+        *x = samples[last].x;
+        *y = samples[last].y;
+        return;
+    }
+    *x = median(xs, count);
+    *y = median(ys, count);
+}
