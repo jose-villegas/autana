@@ -1505,7 +1505,7 @@ row_paint_span(int cy, int* out_x0, int* out_x1) {
  * Indexed modes narrow further, to row_changed_x0/x1 - a cell visited but
  * left untouched dithers the same as before, not merely unpainted.
  * Returns the pixels marked. */
-static inline __attribute__((always_inline)) int64_t
+static int64_t
 mark_row_sends(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t* send_x1, int send_n, bool indexed,
                bool healing) {
     int64_t pixels = 0;
@@ -1523,14 +1523,16 @@ mark_row_sends(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t
         if (healing) {
             sand_heal_note_rows(&heal_policy, cy * cell, (cy + 1) * cell);
         }
+#if CONFIG_LAUNCHER_DEVELOPMENT
         pixels += (int64_t)(sx1 - sx0) * cell * cell;
+#endif
     }
     return pixels;
 }
 
 /* Repaints dirty row `cy` and marks what changed since its last paint;
  * returns the pixels marked. */
-static inline __attribute__((always_inline)) int64_t
+static int64_t
 draw_dirty_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_image, int cy, bool force_full, bool indexed,
                bool healing) {
     dirty_rows[cy] = 0;

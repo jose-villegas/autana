@@ -144,8 +144,7 @@ static void cool_off_chain_or_defer(sand_t* s, int x, int y, int w, int h, uint8
 
 static inline bool emit_into_empty_neighbor(sand_t* s, int x, int y, int w, int h, uint8_t spec);
 
-static inline __attribute__((always_inline)) bool try_heat_transform_given(sand_t* s, int nx, int ny, int w, int h,
-                                                                           size_t at, cell_t n);
+static bool try_heat_transform_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cell_t n);
 
 /* HEAT LEVELS DO NOT WAKE: a write that only moves a cell's heat nibble one
  * step marks its row for drawing and stops there.
@@ -230,7 +229,7 @@ try_heat_ramp_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cell_t n
 }
 
 /* Wet earth dries a level, or spoils, instead of taking its heats_to. */
-static inline __attribute__((always_inline)) void
+static void
 dry_heated_soil(sand_t* s, int nx, int ny, int w, int h, size_t at, cell_t n, const reaction_t* r) {
     /* Spoil pre-empts the moisture reduction below - wet ore that can
      * spoil cracks on first contact with heat, not after a warning step.
@@ -472,7 +471,7 @@ crack_run(sand_t* s, int x, int y, int w, int h, material_id_t from, material_id
 
 /* A KIND_LIQUID cell that quenches to `product` - the next link a
  * cool_off_chain() can freeze. */
-static inline __attribute__((always_inline)) bool
+static bool
 is_cool_off_link(sand_t* s, int nx, int ny, int w, int h, uint8_t product) {
     if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
         return false;
@@ -552,7 +551,7 @@ cool_off_chain_or_defer(sand_t* s, int x, int y, int w, int h, uint8_t product, 
 /* Converts a fully saturated cell into its soaked_to, on the spaced roll
  * SOAKED_CONVERT_PERIOD describes. `>=` used, not `==`. Short-circuits on
  * `soaked_to != 0`. */
-static inline __attribute__((always_inline)) bool
+static bool
 try_soak_convert(sand_t* s, int x, int y, int w, const reaction_t* r, uint8_t held) {
     REACTION_DOC(soaked_to, "once fully saturated, at a per-step chance");
     const unsigned convert_period = (s->soak_convert > 0) ? (unsigned)s->soak_convert : SOAKED_CONVERT_PERIOD;
@@ -570,7 +569,7 @@ try_soak_convert(sand_t* s, int x, int y, int w, const reaction_t* r, uint8_t he
  * space left, so it neither drinks nor binds into soil. Forced to zero
  * rather than skipped at the conversion itself so a shard standing in
  * water does not spend the water for nothing. */
-static inline __attribute__((always_inline)) int
+static int
 soak_rate_of(const sand_t* s, cell_t c, const reaction_t* r) {
     if (cell_is_cullet(c)) {
         return 0;
@@ -580,7 +579,7 @@ soak_rate_of(const sand_t* s, cell_t c, const reaction_t* r) {
 
 /* Takes one level of moisture from a liquid neighbour: binds into soaks_to,
  * or raises this cell's own moisture while it has room. */
-static inline __attribute__((always_inline)) void
+static void
 soak_in_one_level(sand_t* s, uint8_t* row, int x, int y, int w, const reaction_t* r, cell_t c, uint8_t held) {
     REACTION_DOC(soaks_to, "unless the grain is cullet, which is glass and holds no water");
     if (r->soaks_to != 0) {
@@ -602,7 +601,7 @@ soak_in_one_level(sand_t* s, uint8_t* row, int x, int y, int w, const reaction_t
 
 /* Soaks from the first wetting neighbour that wins its roll. Returns whether
  * one did; sets `*beside_liquid` for any wetting neighbour it reaches. */
-static inline __attribute__((always_inline)) bool
+static bool
 soak_from_liquid(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reaction_t* r, cell_t c, uint8_t held,
                  int soaks, bool* beside_liquid) {
     for (int d = 0; d < 4; d++) {
@@ -646,7 +645,7 @@ settle_moisture_move(sand_t* s, uint8_t* row, int x, int y, int nx, int ny, cell
 }
 
 /* Shares moisture with one drinking neighbour. Returns whether it did. */
-static inline __attribute__((always_inline)) bool
+static bool
 soak_share_with(sand_t* s, uint8_t* row, int x, int y, int nx, int ny, size_t nat, cell_t c, uint8_t held) {
     const cell_t n = s->cells[nat];
     if (CELL_IS_EMPTY(n)) {
@@ -691,7 +690,7 @@ soak_share_with(sand_t* s, uint8_t* row, int x, int y, int nx, int ny, size_t na
 
 /* Spreads moisture sideways into the first neighbour that takes it. Returns
  * whether one did. */
-static inline __attribute__((always_inline)) bool
+static bool
 soak_spread_to_neighbors(sand_t* s, uint8_t* row, int x, int y, int w, int h, cell_t c, uint8_t held) {
     for (int d = 0; d < 4; d++) {
         const int nx = x + reaction_dirs[d][0];
@@ -709,13 +708,13 @@ soak_spread_to_neighbors(sand_t* s, uint8_t* row, int x, int y, int w, int h, ce
 
 /* Ring offset from gravity-ward for percolation slot `i`: straight down,
  * then its two diagonals. */
-static inline __attribute__((always_inline)) int
+static int
 percolate_slot_offset(int i) {
     return i == 0 ? 0 : i == 1 ? 1 : 7;
 }
 
 /* Whether `below` has room to take percolating water. */
-static inline __attribute__((always_inline)) bool
+static bool
 percolate_accepts(cell_t below) {
     if (CELL_IS_EMPTY(below)) {
         return false;
@@ -730,7 +729,7 @@ percolate_accepts(cell_t below) {
 
 /* Fills `open` with the percolation slots that can take water; returns how
  * many. */
-static inline __attribute__((always_inline)) int
+static int
 percolate_open_slots(sand_t* s, int x, int y, int w, int h, int down, int open[3]) {
     int n_open = 0;
     for (int i = 0; i < 3; i++) {
@@ -748,7 +747,7 @@ percolate_open_slots(sand_t* s, int x, int y, int w, int h, int down, int open[3
 
 /* Hands about half of what this cell holds to the gravity-ward neighbour
  * in slot `pick`. */
-static inline __attribute__((always_inline)) void
+static void
 percolate_into(sand_t* s, uint8_t* row, int x, int y, int w, cell_t c, uint8_t held, int down, int pick) {
     const int* fd = ring_dir(down + percolate_slot_offset(pick));
     const int nx = x + fd[0], ny = y + fd[1];
@@ -859,7 +858,7 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
     return (r->dries != 0 && held != 0) || beside_liquid;
 }
 
-static inline __attribute__((always_inline)) void
+static void
 warm_one_neighbor(sand_t* s, int nx, int ny, size_t nat, cell_t n, const reaction_t* r) {
     const reaction_t* nr = reaction_of(n);
 
@@ -956,7 +955,7 @@ step_one_warming_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
 
 /* The conductor a cold carry can cross at (cx, cy), or NULL where the medium
  * ends: off-grid, empty, or not a heat-banking conductor. */
-static inline __attribute__((always_inline)) const reaction_t*
+static const reaction_t*
 cold_medium_at(sand_t* s, int cx, int cy, int w, int h, size_t* cat) {
     if ((unsigned)cx >= (unsigned)w || (unsigned)cy >= (unsigned)h) {
         return NULL;
@@ -982,7 +981,7 @@ cold_medium_at(sand_t* s, int cx, int cy, int w, int h, size_t* cat) {
  * nothing new needs tuning. Free where nothing conducts.
  *
  * Returns whether this ray cooled anything that sat above ambient. */
-static inline __attribute__((always_inline)) bool
+static bool
 cold_carry_ray(sand_t* s, int x, int y, int w, int h, const int* dir) {
     bool spent_on_heat = false;
     int cx = x, cy = y;
@@ -1023,7 +1022,7 @@ cold_carry_ray(sand_t* s, int x, int y, int w, int h, const int* dir) {
  *
  * Walked ONCE for the cell rather than once per cardinal neighbour, which
  * also makes the source's bill one per step instead of up to four. */
-static inline __attribute__((always_inline)) bool
+static bool
 cold_carry_walk(sand_t* s, int x, int y, int w, int h) {
     bool spent_on_heat = false;
     for (int d = 0; d < 8; d++) {
@@ -1036,7 +1035,7 @@ cold_carry_walk(sand_t* s, int x, int y, int w, int h) {
 
 /* Melts this cold cell from a liquid or wet-soil neighbour. Returns whether
  * it melted. */
-static inline __attribute__((always_inline)) bool
+static bool
 cold_thaws_beside(sand_t* s, int x, int y, int w, int nx, int ny, size_t nat, cell_t n, const reaction_t* nr,
                   const reaction_t* r) {
     /* MELTING, from any liquid - see reaction_t.thaws. */
@@ -1070,7 +1069,7 @@ cold_thaws_beside(sand_t* s, int x, int y, int w, int nx, int ny, size_t nat, ce
 
 /* Chills one heat-banking neighbour a level, or shatters it if hot. Returns
  * whether this cold cell melted paying for it. */
-static inline __attribute__((always_inline)) bool
+static bool
 cold_chills_neighbor(sand_t* s, int x, int y, int w, int h, int nx, int ny, size_t nat, cell_t n, const reaction_t* nr,
                      const reaction_t* r) {
     if (r->chills == 0 || nr->heat_ramp == 0) {
@@ -1100,7 +1099,7 @@ cold_chills_neighbor(sand_t* s, int x, int y, int w, int h, int nx, int ny, size
 }
 
 /* The cardinal contact loop. Returns whether this cold cell melted. */
-static inline __attribute__((always_inline)) bool
+static bool
 cold_touch_neighbors(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     for (int d = 0; d < 4; d++) {
         const int nx = x + reaction_dirs[d][0];
@@ -1175,7 +1174,7 @@ step_one_cold_cell_or_defer(sand_t* s, int x, int y, int w, int h, const reactio
 
 /* Pushes `temp` one level into this heat-banking neighbour when the two sit
  * two or more levels apart. */
-static inline __attribute__((always_inline)) void
+static void
 temper_push_into(sand_t* s, int nx, int ny, size_t nat, cell_t n, const reaction_t* r, uint8_t temp) {
     if (r->conducts == 0 || reaction_of(n)->heat_ramp == 0) {
         return;
@@ -1199,7 +1198,7 @@ temper_push_into(sand_t* s, int nx, int ny, size_t nat, cell_t n, const reaction
  * reaches this pass, so it could not notice a frosted neighbour.
  * Returns `wet`, computed in this same neighbour walk since the four cells
  * are already loaded here - a separate pass would walk them twice. */
-static inline __attribute__((always_inline)) bool
+static bool
 temper_spread_to_neighbors(sand_t* s, int x, int y, int w, int h, const reaction_t* r, uint8_t temp) {
     bool wet = false;
     for (int d = 0; d < 4; d++) {
@@ -1225,7 +1224,7 @@ temper_spread_to_neighbors(sand_t* s, int x, int y, int w, int h, const reaction
 /* `wet` only multiplies drain above ambient, never below it: a wet cell
  * cools faster than a dry one, but nothing here pulls it down into
  * SAND_SHOCK_COLD range - that stays snow's own mechanism. */
-static inline __attribute__((always_inline)) unsigned
+static unsigned
 temper_drain(const sand_t* s, int x, int y, const reaction_t* r, uint8_t temp, bool wet) {
     unsigned drain = r->cools;
     if (temp < SAND_AMBIENT_HEAT
@@ -1505,7 +1504,7 @@ try_flare(sand_t* s, int x, int y, int w, int h, const material_t* mat, uint8_t 
 }
 
 /* Whether the neighbour at (rx, ry) can start a conductor run. */
-static inline __attribute__((always_inline)) bool
+static bool
 conduct_run_starts(const sand_t* s, int rx, int ry, int w, int h) {
     if ((unsigned)rx >= (unsigned)w || (unsigned)ry >= (unsigned)h) {
         return false;
@@ -1566,7 +1565,7 @@ conduct_through_run(sand_t* s, int dx, int dy, int w, int h, int* rx, int* ry) {
 }
 
 /* Conducted heat reaching a non-burning liquid: may boil it. */
-static inline __attribute__((always_inline)) bool
+static bool
 conduct_boil_liquid(sand_t* s, int rx, int ry, size_t bat, cell_t bc) {
     /* s->boils mirrors s->flammability's override: negative uses the
      * material's own boils row, any other value overrides it
@@ -1583,7 +1582,7 @@ conduct_boil_liquid(sand_t* s, int rx, int ry, size_t bat, cell_t bc) {
 
 /* Conducted heat reaching any other cell: may heat-transform it, and may
  * ignite it. */
-static inline __attribute__((always_inline)) bool
+static bool
 conduct_heat_or_ignite(sand_t* s, int rx, int ry, int w, int h, size_t bat, cell_t bc) {
     bool acted = false;
     const reaction_t* br = reaction_of(bc);
@@ -1687,7 +1686,7 @@ acid_bubble(sand_t* s, int x, int y) {
 }
 
 /* The dissolver's own evaporate roll; returns whether it turned to gas. */
-static inline __attribute__((always_inline)) bool
+static bool
 dissolver_evaporates(sand_t* s, int x, int y, int w, const reaction_t* r) {
     const bool per_material = s->evaporates < 0;
     const int evaporates = per_material ? r->evaporates : s->evaporates;
@@ -1702,7 +1701,7 @@ dissolver_evaporates(sand_t* s, int x, int y, int w, const reaction_t* r) {
 
 /* Whether the dissolver bites neighbour n this step, spending its
  * dissolvable roll. */
-static inline __attribute__((always_inline)) bool
+static bool
 dissolver_bites(sand_t* s, cell_t n) {
     if (CELL_IS_EMPTY(n)) {
         return false;
@@ -1724,7 +1723,7 @@ dissolver_bites(sand_t* s, cell_t n) {
 }
 
 /* Whether the in-bounds cell at (bx, by) is material m. */
-static inline __attribute__((always_inline)) bool
+static bool
 dilution_backing_is(const sand_t* s, int bx, int by, int w, int h, uint8_t m) {
     return (unsigned)bx < (unsigned)w && (unsigned)by < (unsigned)h
            && CELL_MATERIAL(s->cells[(size_t)by * (size_t)w + (size_t)bx]) == m;
@@ -1733,7 +1732,7 @@ dilution_backing_is(const sand_t* s, int bx, int by, int w, int h, uint8_t m) {
 /* Water wins a dilution more often the more water backs it than acid backs
  * the acid. Measuring acid alone was asymmetrical: deep acid vs. adjacent
  * water. */
-static inline __attribute__((always_inline)) int
+static int
 dilution_water_wins_chance(const sand_t* s, int x, int y, int nx, int ny, int w, int h) {
     int acid_backing = 0, water_backing = 0;
     for (int bd = 0; bd < 4; bd++) {
@@ -1751,7 +1750,7 @@ dilution_water_wins_chance(const sand_t* s, int x, int y, int nx, int ny, int w,
 /* DILUTION occurs. SAND_ACID_DILUTE_TO_WATER_CHANCE dictates. Cells evolve
  * symmetrically. Winner vaporizes, loser converts. CELL_VARIANT persists.
  * Transformation costs. */
-static inline __attribute__((always_inline)) void
+static void
 dissolve_into_water(sand_t* s, const uint8_t* row, int x, int y, int w, int h, int nx, int ny, size_t at, cell_t n) {
     const int water_wins_chance = dilution_water_wins_chance(s, x, y, nx, ny, w, h);
 
@@ -1771,7 +1770,7 @@ dissolve_into_water(sand_t* s, const uint8_t* row, int x, int y, int w, int h, i
 }
 
 /* Oil turns to gas. Acid dies or pays quench cost. Rolls independent. */
-static inline __attribute__((always_inline)) void
+static void
 dissolve_into_oil(sand_t* s, int x, int y, int w, int nx, int ny, size_t at) {
     const uint8_t oil_residue = ((int)(rng_next(&s->rng) & 0xFF) < SAND_ACID_OIL_TO_GAS_CHANCE) ? MAT_GAS : MAT_ACID;
     place_reacted(s, nx, ny, at, oil_residue);
@@ -1787,7 +1786,7 @@ dissolve_into_oil(sand_t* s, int x, int y, int w, int nx, int ny, size_t at) {
 }
 
 /* Eats any other dissolvable neighbour; the dissolver may die of it. */
-static inline __attribute__((always_inline)) void
+static void
 dissolve_eat(sand_t* s, uint8_t* row, int x, int y, int w, int nx, int ny, size_t at, const reaction_t* r) {
     /* Smoke lighter, try_bubble() moves it. Smoke or gas, 50% chance,
      * acid breathes gas. */
@@ -2853,7 +2852,7 @@ sand_reactions_force_full_walk(bool on) {
 
 /* Whether any cell of the block spanning [x_lo, x_hi) x [y_lo, y_hi) still
  * holds moisture it can dry off. */
-static inline __attribute__((always_inline)) bool
+static bool
 block_still_moist(const sand_t* s, int x_lo, int x_hi, int y_lo, int y_hi) {
     for (int y = y_lo; y < y_hi; y++) {
         const uint8_t* const row = s->cells + (size_t)y * (size_t)s->w;
