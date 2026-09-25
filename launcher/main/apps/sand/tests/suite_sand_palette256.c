@@ -108,8 +108,8 @@ test_expansion_reproduces_the_real_lut_cell_for_cell(void) {
     }
 }
 
-/* Mirrors paint_row_n()'s own indexed shine test (app_sand.c, not host-
- * portable) at a fixed NORMAL cell size and zero shine phase - the same
+/* Mirrors paint_indexed_cell()'s own indexed shine test (app_sand.c, not
+ * host-portable) at a fixed NORMAL cell size and zero shine phase - the same
  * mirroring suite_sand_common.h's own top comment describes for local
  * depth. */
 #define SHINE_TEST_CELL   4

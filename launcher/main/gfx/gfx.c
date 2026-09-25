@@ -767,6 +767,30 @@ gfx_full_redraw_clear_pending(void) {
     gfx_full_redraw_unlatch();
 }
 
+static void
+drawn_bbox_extend(int x0, int y0, int x1, int y1) {
+    if (!drawn_bbox_valid) {
+        drawn_bbox_x0 = x0;
+        drawn_bbox_y0 = y0;
+        drawn_bbox_x1 = x1;
+        drawn_bbox_y1 = y1;
+        drawn_bbox_valid = true;
+        return;
+    }
+    if (x0 < drawn_bbox_x0) {
+        drawn_bbox_x0 = x0;
+    }
+    if (y0 < drawn_bbox_y0) {
+        drawn_bbox_y0 = y0;
+    }
+    if (x1 > drawn_bbox_x1) {
+        drawn_bbox_x1 = x1;
+    }
+    if (y1 > drawn_bbox_y1) {
+        drawn_bbox_y1 = y1;
+    }
+}
+
 void
 gfx_mark_dirty(int x, int y, int w, int h) {
     GFX_PRESENT_GUARD();
@@ -775,43 +799,15 @@ gfx_mark_dirty(int x, int y, int w, int h) {
     if (w <= 0 || h <= 0) {
         return;
     }
-    int x0 = x, y0 = y, x1 = x + w, y1 = y + h;
-    if (x0 < 0) {
-        x0 = 0;
-    }
-    if (y0 < 0) {
-        y0 = 0;
-    }
-    if (x1 > GFX_WIDTH) {
-        x1 = GFX_WIDTH;
-    }
-    if (y1 > GFX_HEIGHT) {
-        y1 = GFX_HEIGHT;
-    }
+    const int x0 = x < 0 ? 0 : x;
+    const int y0 = y < 0 ? 0 : y;
+    const int x1 = x + w > GFX_WIDTH ? GFX_WIDTH : x + w;
+    const int y1 = y + h > GFX_HEIGHT ? GFX_HEIGHT : y + h;
     if (x0 >= x1 || y0 >= y1) {
         return;
     }
 
-    if (drawn_bbox_valid) {
-        if (x0 < drawn_bbox_x0) {
-            drawn_bbox_x0 = x0;
-        }
-        if (y0 < drawn_bbox_y0) {
-            drawn_bbox_y0 = y0;
-        }
-        if (x1 > drawn_bbox_x1) {
-            drawn_bbox_x1 = x1;
-        }
-        if (y1 > drawn_bbox_y1) {
-            drawn_bbox_y1 = y1;
-        }
-    } else {
-        drawn_bbox_x0 = x0;
-        drawn_bbox_y0 = y0;
-        drawn_bbox_x1 = x1;
-        drawn_bbox_y1 = y1;
-        drawn_bbox_valid = true;
-    }
+    drawn_bbox_extend(x0, y0, x1, y1);
 }
 
 bool
@@ -1198,6 +1194,29 @@ gfx_glow_curve_posed(const gfx_glow_field_t* field, const gfx_glow_map_t* map, i
     }
 }
 
+/* `dp`/`sp` start at column `x0`; only the columns `p` passes are copied. */
+static inline __attribute__((always_inline)) void
+blit_dither_row(gfx_color_t* dp, const gfx_color_t* sp, int x0, int x1, const bool p[4]) {
+    int col = x0;
+    for (; col < x1 && (col & 3) != 0; col++, dp++, sp++) {
+        if (p[col & 3]) {
+            *dp = *sp;
+        }
+    }
+    for (; col + 4 <= x1; col += 4, dp += 4, sp += 4) {
+        for (int k = 0; k < 4; k++) {
+            if (p[k]) {
+                dp[k] = sp[k];
+            }
+        }
+    }
+    for (; col < x1; col++, dp++, sp++) {
+        if (p[col & 3]) {
+            *dp = *sp;
+        }
+    }
+}
+
 /* Cheap by construction, not by luck: alpha is one value for the whole
  * call, and the Bayer pattern repeats every 4 pixels, so the per-pixel
  * decision collapses to four booleans per row - a fully-covered row is a
@@ -1248,33 +1267,7 @@ gfx_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stri
             continue;
         }
 
-        int col = x0;
-        gfx_color_t* dp = dst + col;
-        const gfx_color_t* sp = s;
-        for (; col < x1 && (col & 3) != 0; col++, dp++, sp++) {
-            if (p[col & 3]) {
-                *dp = *sp;
-            }
-        }
-        for (; col + 4 <= x1; col += 4, dp += 4, sp += 4) {
-            if (p[0]) {
-                dp[0] = sp[0];
-            }
-            if (p[1]) {
-                dp[1] = sp[1];
-            }
-            if (p[2]) {
-                dp[2] = sp[2];
-            }
-            if (p[3]) {
-                dp[3] = sp[3];
-            }
-        }
-        for (; col < x1; col++, dp++, sp++) {
-            if (p[col & 3]) {
-                *dp = *sp;
-            }
-        }
+        blit_dither_row(dst + x0, s, x0, x1, p);
     }
 
     if (!band_render_active) {
@@ -1991,61 +1984,84 @@ send_indexed_rows(int y0, int y1) {
     return false;
 }
 
-static void
-send_full_row(int row, int* queued) {
-    const int y = row * STRIP_HEIGHT;
-
 #if CONFIG_LAUNCHER_DEVELOPMENT
+static void
+save_overlay_borders(int y, int leaf_n) {
+    if (debug_overlay_on) {
+        for (int col = 0; col < GRID_COLS; col++) {
+            gfx_color_t* cell = fb + (size_t)y * GFX_WIDTH + col * COL_WIDTH;
+            save_border(cell, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, overlay_cell_save()[col]);
+        }
+    }
+    for (int i = 0; i < leaf_n; i++) {
+        const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
+        gfx_color_t* at = fb + (size_t)r->y0 * GFX_WIDTH + r->x0;
+        save_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, overlay_leaf_save()[i]);
+    }
+}
+
+static void
+draw_overlay_borders(int y, int leaf_n) {
+    if (debug_overlay_on) {
+        for (int col = 0; col < GRID_COLS; col++) {
+            gfx_color_t* cell = fb + (size_t)y * GFX_WIDTH + col * COL_WIDTH;
+            mark_rect_border(cell, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, gfx_rgb(0x00FFFF));
+        }
+    }
+    for (int i = 0; i < leaf_n; i++) {
+        const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
+        gfx_color_t* at = fb + (size_t)r->y0 * GFX_WIDTH + r->x0;
+        mark_rect_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
+    }
+}
+
+/* Restore in the reverse order of saving. */
+static void
+restore_overlay_borders(int y, int leaf_n) {
+    for (int i = leaf_n - 1; i >= 0; i--) {
+        const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
+        gfx_color_t* at = fb + (size_t)r->y0 * GFX_WIDTH + r->x0;
+        restore_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, overlay_leaf_save()[i]);
+    }
+    if (debug_overlay_on) {
+        for (int col = GRID_COLS - 1; col >= 0; col--) {
+            gfx_color_t* cell = fb + (size_t)y * GFX_WIDTH + col * COL_WIDTH;
+            restore_border(cell, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, overlay_cell_save()[col]);
+        }
+    }
+}
+
+/* Cyan borders, green leaves, or both, sent and waited for immediately so
+ * the overlay can be restored before anything else draws; false when there
+ * is nothing to overlay (leaf_overlay_on with no dirty leaves included). */
+static bool
+send_row_with_overlays(int row, int y) {
     /* leaf_rect_scratch never NULL: gfx_set_leaf_overlay() allocates */
     int leaf_n = 0;
     if (leaf_overlay_on) {
         leaf_n = dirty_leaf_rects(row, 0, y, GFX_WIDTH, y + STRIP_HEIGHT, leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
     }
+    if (!debug_overlay_on && leaf_n == 0) {
+        return false;
+    }
 
-    /* Cyan borders, green leaves, or both. Skip if leaf_overlay_on and no
-     * dirty leaves. Transfer immediately for debugging. */
-    if (debug_overlay_on || leaf_n > 0) {
-        /* Save phase: prevent overwriting shared pixels. */
-        if (debug_overlay_on) {
-            for (int col = 0; col < GRID_COLS; col++) {
-                gfx_color_t* cell = fb + (size_t)y * GFX_WIDTH + col * COL_WIDTH;
-                save_border(cell, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, overlay_cell_save()[col]);
-            }
-        }
-        for (int i = 0; i < leaf_n; i++) {
-            const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
-            gfx_color_t* at = fb + (size_t)r->y0 * GFX_WIDTH + r->x0;
-            save_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, overlay_leaf_save()[i]);
-        }
+    /* Save phase: prevent overwriting shared pixels. */
+    save_overlay_borders(y, leaf_n);
+    draw_overlay_borders(y, leaf_n);
+    if (send_fb_rows(y, y + STRIP_HEIGHT)) {
+        xSemaphoreTake(strip_sent, portMAX_DELAY);
+    }
+    restore_overlay_borders(y, leaf_n);
+    return true;
+}
+#endif
 
-        if (debug_overlay_on) {
-            for (int col = 0; col < GRID_COLS; col++) {
-                gfx_color_t* cell = fb + (size_t)y * GFX_WIDTH + col * COL_WIDTH;
-                mark_rect_border(cell, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, gfx_rgb(0x00FFFF));
-            }
-        }
-        for (int i = 0; i < leaf_n; i++) {
-            const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
-            gfx_color_t* at = fb + (size_t)r->y0 * GFX_WIDTH + r->x0;
-            mark_rect_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
-        }
+static void
+send_full_row(int row, int* queued) {
+    const int y = row * STRIP_HEIGHT;
 
-        if (send_fb_rows(y, y + STRIP_HEIGHT)) {
-            xSemaphoreTake(strip_sent, portMAX_DELAY);
-        }
-
-        /* Restore in the reverse order of saving. */
-        for (int i = leaf_n - 1; i >= 0; i--) {
-            const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
-            gfx_color_t* at = fb + (size_t)r->y0 * GFX_WIDTH + r->x0;
-            restore_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, overlay_leaf_save()[i]);
-        }
-        if (debug_overlay_on) {
-            for (int col = GRID_COLS - 1; col >= 0; col--) {
-                gfx_color_t* cell = fb + (size_t)y * GFX_WIDTH + col * COL_WIDTH;
-                restore_border(cell, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, overlay_cell_save()[col]);
-            }
-        }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (send_row_with_overlays(row, y)) {
         return;
     }
 #endif
