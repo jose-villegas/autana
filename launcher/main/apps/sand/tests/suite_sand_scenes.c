@@ -3255,8 +3255,8 @@ water_slope_gravity_hold(sand_t* s, int gx, int gy, int steps) {
 
 /* One sand_set() per non-empty cell, not a memcpy of captured_slope_cells:
  * a raw write bypasses sand_set()'s own latch_content_flags()/mark_move(),
- * leaving may_have_liquid false and every block's HAS_LIQUID/LIQUID_NEAR
- * bit clear - the water sits in the grid but sand_step_liquids() and the
+ * leaving may_have_liquid false and every block's BLOCK_HAS_LIQUID/
+ * BLOCK_LIQUID_NEAR bit clear - the water sits in the grid but sand_step_liquids() and the
  * reactions soak path both see nothing there and never run. */
 void
 build_captured_water_slope_scene(sand_t* s) {
@@ -3629,8 +3629,8 @@ test_the_captured_slope_scene_matches_the_sampled_screenshot(void) {
 
 /* A raw cell count says the array is right; it does not say the water on
  * it is LIVE. A builder that writes s->cells directly, bypassing sand_set()'s
- * bookkeeping, leaves may_have_liquid false and every block's HAS_LIQUID/
- * LIQUID_NEAR bit clear - the water is there but sand_step_liquids() and the
+ * bookkeeping, leaves may_have_liquid false and every block's
+ * BLOCK_HAS_LIQUID/BLOCK_LIQUID_NEAR bit clear - the water is there but sand_step_liquids() and the
  * reactions soak path both see nothing and never run. */
 static void
 test_the_captured_slope_scenes_water_is_live(void) {

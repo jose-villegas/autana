@@ -731,7 +731,7 @@ step_impulses(sand_t* s, int dx, int dy) {
         const bool rolled_move = rng_chance(&s->rng, entry.speed);
 
         /* First cell's ramp charges every turn. `speed` ages with roll.
-         * `push_count` from distance before `impulse_decay()`. Further cells
+         * `push_count` comes from post-`impulse_decay()` speed. Further cells
          * charge once inside hop loop. Saturating `speed` prevents
          * `rng_chance()` success, dropping entry next turn. No separate "done
          * flying" check needed. */

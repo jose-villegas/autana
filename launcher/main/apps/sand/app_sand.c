@@ -99,7 +99,7 @@ static const quality_t qualities[] = {
 static int quality = QUALITY_DEFAULT;
 
 /* FULL is today's RGB565 framebuffer path, byte-identical to before this
- * option existed. 256 and 16 both run GFX_PIXFMT_INDEXED8 (gfx.h); 16 also
+ * option existed. 256 and 16 both run GFX_PIXFMT_INDEXED8 (gfx_mode.h); 16 also
  * turns on its ordered dither against a shared 16-colour table. */
 typedef enum {
     SAND_COLOR_FULL,
@@ -112,8 +112,8 @@ static const char* const color_names[SAND_COLOR_COUNT] = {"FULL", "256", "16"};
 
 static sand_color_mode_t color_mode = SAND_COLOR_256;
 
-/* The DITHER launch option, next to COLOUR once it is 16 - gfx_dither_
- * mode_t (gfx_indexed.h) directly, no sand-side mirror: "dither" has one
+/* The DITHER launch option, next to COLOUR once it is 16 -
+ * gfx_dither_mode_t (gfx_indexed.h) directly, no sand-side mirror: "dither" has one
  * spelling either side of the app/engine line. CELL_BAYER2 by default, the
  * maintainer's own pick. */
 static const char* const dither_names[GFX_DITHER_MODE_COUNT] = {

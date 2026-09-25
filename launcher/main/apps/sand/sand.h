@@ -204,7 +204,7 @@ typedef struct sand_s {
     unsigned explosions_this_step;
     uint8_t confined_blasts_this_step;
 
-    /* Decaying trigger chance for splash_displace() (sand_liquid.c) - see
+    /* Decaying trigger chance for splash_displace() (sand_liquid_move.h) - see
      * SAND_SPLASH_RADIUS_WATER's own comment above for why this lives
      * per-instance. WATER only - acid does not use splash_displace() at
      * all any more, see acid_bubble()'s own comment in sand_liquid.c. */
@@ -400,8 +400,8 @@ bool sand_emitter_at(const sand_t* s, int i, int* x, int* y, cell_t* cell);
 /* Radius and decaying trigger CHANCE for a water grain's splash - a real
  * splash's reach, exaggerated so it reads clearly here. WATER ONLY, NOT
  * ACID - see acid_bubble(). A grain landing back in the liquid would
- * otherwise re-trigger the call, so CHANCE and RADIUS_WATER both step
- * down on every trigger, independently, settling a bounce chain rather
+ * otherwise re-trigger the call, so SAND_SPLASH_CHANCE_* and
+ * SAND_SPLASH_RADIUS_WATER_* both step down on every trigger, independently, settling a bounce chain rather
  * than rattling on. */
 #define SAND_SPLASH_RADIUS_WATER           20
 #define SAND_SPLASH_RADIUS_WATER_FLOOR     2
@@ -421,8 +421,8 @@ bool sand_emitter_at(const sand_t* s, int i, int* x, int* y, cell_t* cell);
  * material one step BEHIND where it started, so connected liquid moves as
  * a chain rather than one grain flying off alone (the cell ahead is close
  * to definitionally open, so relaying there would find nothing). Each
- * hop's speed is the last one's divided by DIVISOR; MIN_SPEED gates
- * whether a hop even queues, kept at 1 so a roll's own exhaustion, not
+ * hop's speed is the last one's divided by SAND_CASCADE_SPEED_DIVISOR;
+ * SAND_CASCADE_MIN_SPEED gates whether a hop even queues, kept at 1 so a roll's own exhaustion, not
  * this gate, stops a chain. */
 #define SAND_CASCADE_SPEED_DIVISOR         2
 #define SAND_CASCADE_MIN_SPEED             1

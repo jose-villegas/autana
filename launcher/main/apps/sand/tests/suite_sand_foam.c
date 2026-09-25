@@ -32,7 +32,7 @@
 
 /*
  * WATER'S FOAM - gathered at crevices, never on a flat run. Curvature
- * alone decides it (material_colours()'s own comment, material.c):
+ * alone decides it (the gating comment above water_foam, material_palette.c):
  * measured on sloshing water, a flat pool's rim is non-flat in 4% of its
  * cells and one two steps into a 75 degree tilt in 94%.
  *

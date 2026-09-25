@@ -330,7 +330,7 @@ test_liquid_cross_flow_wakes_only_the_blocks_it_touches_by_range(void) {
 /* The one case where a move of something that is NOT a liquid still
  * relocates liquid: move_to() is a SWAP, so sand entering water sends that
  * water UP into a row that had none a moment earlier. Written against
- * ROW_NO_LIQUID, a per-row dry cache since deleted for costing more than it
+ * a per-row dry cache since deleted for costing more than it
  * saved - kept anyway, since any future row-skip optimization needs exactly
  * this scenario checked against it. */
 static void

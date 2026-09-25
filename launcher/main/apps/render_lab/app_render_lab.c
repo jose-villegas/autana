@@ -61,7 +61,7 @@ current_scene(void) {
     return scenes[current_scene_index];
 }
 
-/* Requests gfx's internal-SRAM band ring (GFX_LAYOUT_BANDS, gfx.h) instead
+/* Requests gfx's internal-SRAM band ring (GFX_LAYOUT_BANDS, gfx_mode.h) instead
  * of the PSRAM framebuffer. On by default; runtime override for
  * suite_cube_band_perf.c. Read only at enter(), so flipping it mid-visit
  * needs a re-entry to take hold. */

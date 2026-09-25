@@ -338,7 +338,7 @@ test_shine_direction_is_unit_length(void) {
 
 /* PASSING `inc=1, ceiling=MATERIAL_LIQUID_DEPTH_BAND` REPRODUCES OLD
  * ARITHMETIC EXACTLY - TESTS STILL PASS UNCHANGED.
- * TEST_THE_BLEND_HAS_NO_JUMP_CROSSING_45_DEGREES NEEDS RAISED CEILING. */
+ * test_the_blend_has_no_jump_crossing_45_degrees NEEDS RAISED CEILING. */
 static void
 mirror_local_depth_column(sand_t* g, int cx, int h, unsigned char* stable, unsigned char* top_row, unsigned depth_out[],
                           unsigned inc, unsigned ceiling) {
@@ -2868,7 +2868,7 @@ test_a_fixed_depth_reads_the_same_at_every_tilt_angle(void) {
         const unsigned scale_q8 = dom_axis ? (256u * (unsigned)len) / dom_axis : 256u;
 
         /* Combine-time projection, clamped to MATERIAL_LIQUID_DEPTH_BAND -
-         * see paint_row_n()'s own "THE PROJECTION" (app_sand.c). Gravity is
+         * see LOCAL_DEPTH_COUNT_CEILING's own comment (app_sand.c). Gravity is
          * static within one sweep sample here, so there is no
          * stale-accumulator concern to model. */
         const unsigned depth_raw = (count * scale_q8) >> 8;

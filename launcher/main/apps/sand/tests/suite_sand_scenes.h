@@ -303,7 +303,7 @@ void landscape_sand_pour(sand_t* s, int step);
  * diagonal running corner to corner in landscape, water poured at its high
  * corner until it covers the slope and runs the whole way down. Built from
  * overlapping sand_spawn() discs along the diagonal, the same brush-drawn
- * shape GUNPOWDER_BASIN's wall uses, not a clean sand_set() line. */
+ * shape build_gunpowder_basin_scene()'s wall uses, not a clean sand_set() line. */
 #define WATER_SLOPE_DISC_STEP    3
 #define WATER_SLOPE_POUR_RADIUS  LANDSCAPE_POUR_RADIUS
 #define WATER_SLOPE_POUR_Y       6

@@ -2,10 +2,10 @@ name: Comment Rules
 
 # The comment rules docs/C-Style-Guide.md states, measured rather than
 # argued: nothing beside code over 500 characters, no file header over 50
-# lines, no comment naming a function that does not exist, none below
-# apps/ naming an app, and none recording where code moved. Alongside it,
-# the tree-wide invariants documentation and tooling must hold: every
-# citation, down to a named section, resolves, constants match
+# lines, no comment citing a name, file or heading that is not there,
+# none below apps/ naming an app, and none recording where code moved.
+# Alongside it, the tree-wide invariants documentation and tooling must
+# hold: every citation, down to a named section, resolves, constants match
 # source, and nothing outside scripts/device/ opens the board's serial port
 # or names one of the board scripts the tree no longer has.
 # check_style_audit.py holds the remaining decidable text and include
@@ -39,7 +39,7 @@ jobs:
           python3 scripts/gates/check_comment_length.py
           --no-banners --limit 500 --header-limit 50 --top 0
 
-      - name: Every function a comment names exists
+      - name: Every name, file and heading a comment cites exists
         run: python3 scripts/gates/check_comment_symbols.py
 
       - name: No comment below apps/ names an app

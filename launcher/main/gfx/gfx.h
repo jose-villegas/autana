@@ -174,7 +174,7 @@ void gfx_line(int x0, int y0, int x1, int y1, gfx_color_t color);
  * first pixel - so flags on one function rather than a family of
  * "add"/"open" name variants inviting another.
  *
- * A GFX_LINE_SMOOTH doing Xiaolin Wu antialiasing cost 6.7 fps to be nearly
+ * A smooth-line flag doing Xiaolin Wu antialiasing cost 6.7 fps to be nearly
  * invisible: antialiasing redistributes light WITHIN a pixel, while what
  * reads as a lit curve on this panel is a falloff several pixels ACROSS.
  * The thing to come back with is a wide-support filter in the manner of

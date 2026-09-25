@@ -121,7 +121,7 @@ void sand_displace(sand_t* s, int cx, int cy, int radius);
 
 /* Same as sand_displace(), but only cells whose material is exactly
  * `mat_id` are ever queued - see its own comment in sand_impulse.c. Used
- * by splash_displace() (sand_liquid.c) so a liquid's splash cannot fling
+ * by splash_displace() (sand_liquid_move.h) so a liquid's splash cannot fling
  * unrelated material (dirt under a pool of water, say) along with it. */
 void sand_displace_material(sand_t* s, int cx, int cy, int radius, uint8_t mat_id);
 

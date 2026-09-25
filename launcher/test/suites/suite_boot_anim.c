@@ -1376,7 +1376,7 @@ test_the_wobbles_oscillation_slows_as_it_lands(void) {
  * boot_anim_title_wobble()) has fully decayed, not that the letter sits
  * dead still - boot_anim_title_wave() keeps a small idle motion going
  * forever, by design, so a landed letter's y is BOOT_ANIM_TITLE_VIEW_Y plus
- * whatever that wave says at this instant, not VIEW_Y alone. */
+ * whatever that wave says at this instant, not BOOT_ANIM_TITLE_VIEW_Y alone. */
 static void
 test_a_letter_lands_exactly_on_its_final_position(void) {
     const uint32_t arrived = BOOT_ANIM_TITLE_START_MS + BOOT_ANIM_TITLE_FLIGHT_MS + 1000;
