@@ -14,8 +14,7 @@ icon_system_*.
 
 STANDARD LIBRARY ONLY - NO PILLOW
 
-Unlike gen_font.py and gen_boot_anim_image.py, this generator does not import
-Pillow even lazily: nobody should have to install it for icon art alone,
+This generator does not import Pillow: nobody should have to install it for icon art alone,
 and icon art has no proportional-advance or antialiasing need that would
 justify the dependency. `read_png()` below
 decodes a PNG by hand:
@@ -84,7 +83,7 @@ and nothing in this generator assumes every baked icon shares one size.
 
 WHAT GETS REJECTED BEFORE ANYTHING IS EMITTED
 
-Following gen_boot_anim_image.py/gen_font.py's own convention: every check
+Like the other generators: every check
 below runs to completion, and the header is only written once none of them
 have called die() - see this file's own main() for the full order. Checked:
 every PNG pixel strictly on or off; the PNG's dimensions divide evenly into

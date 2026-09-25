@@ -50,6 +50,37 @@ hottest_glass(void) {
     return hot;
 }
 
+static void
+test_heat_written_behind_the_reaction_walk_keeps_temperature_armed(void) {
+    bool heated = false;
+    for (uint32_t seed = 1; seed <= 64; seed++) {
+        sand_init(&s, cells, W, H, seed);
+        sand_set_decay(&s, 0);
+        sand_set(&s, 3, 3, STONE);
+        sand_set(&s, 4, 3, FIRE);
+
+        sand_step_reactions(&s);
+
+        if (CELL_VARIANT(sand_at(&s, 3, 3)) > SAND_AMBIENT_HEAT) {
+            heated = true;
+            TEST_ASSERT_TRUE_MESSAGE(s.may_have_temperature, "heat written behind the walk must arm the next pass");
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(heated, "the fire must heat stone in at least one trial");
+}
+
+static void
+test_temperature_flag_clears_after_its_last_cell_is_removed(void) {
+    fixture();
+    sand_set(&s, 3, 3, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT + 1));
+    TEST_ASSERT_TRUE(s.may_have_temperature);
+    sand_set(&s, 3, 3, CELL_EMPTY);
+
+    sand_step_reactions(&s);
+
+    TEST_ASSERT_FALSE_MESSAGE(s.may_have_temperature, "a pass with no heated cells must clear temperature presence");
+}
+
 /* A pane with lava held against its underside, for `steps` steps. */
 static void
 hold_lava_under_a_pane(int steps) {
@@ -832,6 +863,8 @@ test_reinitialising_forgets_the_old_board(void) {
 
 void
 run_sand_glass_thermal_suite(void) {
+    RUN_TEST(test_heat_written_behind_the_reaction_walk_keeps_temperature_armed);
+    RUN_TEST(test_temperature_flag_clears_after_its_last_cell_is_removed);
     RUN_TEST(test_glass_banks_heat_rather_than_melting_on_contact);
     RUN_TEST(test_a_fire_held_long_enough_melts_glass_to_lava);
     RUN_TEST(test_glass_forgets_a_fire_that_went_out);

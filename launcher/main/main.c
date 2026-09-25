@@ -335,6 +335,12 @@ paint_launcher_under_boot(void) {
  * caller has not yet begun presenting - see step_app(). Reset whenever the
  * running app changes, so a freshly entered one always primes first. */
 static bool frame_ready;
+static bool exit_requested;
+
+void
+shell_request_exit(void) {
+    exit_requested = true;
+}
 
 static void present_unless_deferred(const app_t* current);
 
@@ -393,6 +399,7 @@ start_app(const app_t** current, const app_t* next) {
     system_navigation_init(&system_navigation);
     gfx_request_full_redraw();
     restore_system_display_state();
+    exit_requested = false;
     (*current)->enter();
     frame_ready = false;
 }
@@ -481,6 +488,12 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
 
     if (*current == NULL) {
         step_launcher(current, input, exit_edge, dt_ms);
+        return;
+    }
+
+    if (exit_requested) {
+        exit_requested = false;
+        leave_app(current, input, exit_edge, dt_ms);
         return;
     }
 
@@ -904,6 +917,11 @@ app_main_loop(void) {
         app_count++;
     }
     ESP_LOGI(TAG, "Ready, %d app%s registered", app_count, app_count == 1 ? "" : "s");
+    /* Again, for a host that lost the port: after a PMIC cold restart, USB
+     * Serial/JTAG enumerates only about 0.7 s into the new boot, after
+     * app_boot_init()'s print. */
+    printf("BUILD_ID=%s\n", BUILD_ID);
+    fflush(stdout);
 
     while (1) {
         const int64_t now_us = esp_timer_get_time();

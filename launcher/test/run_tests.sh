@@ -97,9 +97,11 @@ $MAIN_DIR/util/tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/ui/ui_build.c
+$MAIN_DIR/ui/ui_canvas_marks.c
 $MAIN_DIR/ui/ui_launcher_draw.c
 $MAIN_DIR/ui/ui_pointer.c
 $MAIN_DIR/ui/ui_scroll.c
+$MAIN_DIR/ui/ui_widgets.c
 $MAIN_DIR/gfx/gfx_palette_standard.c
 $MAIN_DIR/../tools/gfx_palette_gen.c
 $TEST_DIR/../components/microui/src/microui.c
@@ -183,6 +185,11 @@ fi
 # until a full device build. Compile-check them first, so a change that
 # does not build is caught here rather than on the board.
 "$TEST_DIR/check_app_sources.sh"
+
+# The bootloader hook lives outside SOURCES too - a separate header world
+# entirely, so it gets its own standalone binary rather than joining the
+# suites above.
+"$TEST_DIR/check_pmic_cold_boot.sh"
 
 OUT="$BUILD_DIR/host_tests"
 

@@ -2,8 +2,8 @@
 
 **Status**: phases 1 to 4 exist for one screen. The editor is
 [`editor/`](../../editor/README.md); Control Center is its one authored
-document and the launcher a preview beside it. The brush screen, the screen
-this plan was written for, is not yet a document.
+document and the launcher a preview beside it. The brush screen is not yet a
+document.
 
 The objective is a tool where a screen is **authored visually and edited
 again later** - not screenshotted and re-typed. The brush screen should open
@@ -47,12 +47,12 @@ scrubbing time never recompiles, and it has a build-and-flash path out the
 back.
 
 That is the architecture, running, for one payload. A level editor
-(`ems.9`) proposes it for a second. This plan is the third:
+proposes it for a second. This plan is the third:
 
 | | authored data | generator | rendered by |
 |---|---|---|---|
 | boot animation | `boot_anim_timeline.json` | `gen_boot_anim_timeline.py` | real `boot_anim.c` + `gfx.c` on host |
-| level editor (`ems.9`) | material blocks | bake to a header | real sand code on host |
+| level editor | material blocks | bake to a header | real sand code on host |
 | **UI editor (this)** | **a screen's layout** | **bake to a header** | **real `gfx.c` + pure geometry on host** |
 
 They are not three tools. They are one pattern with three payloads, and the
@@ -88,7 +88,7 @@ is not paid at all.
   last of these linked for `suite_ui_pointer_microui.c` and available now.
 - **The validation.** `suite_brush_screen.c` already asserts, at both
   368x448 and 448x368: everything inside the canvas, no panel overlap, equal
-  segment widths, a 44px floor on every tap target, and every fixed string
+  segment widths, a `UI_TAP_MIN` floor on every tap target, and every fixed string
   measured against its own rect.
 
 That last one matters more than it looks - see below.
@@ -176,7 +176,7 @@ run by `.github/workflows/host-tests.yml`.
 
 2. **Validation in the generator.** It refuses, at bake time and for every
    orientation, a layout that overlaps, leaves the canvas or drops an
-   interactive element below 44px. *Exists*, mirrored in the document so the
+   interactive element below `UI_TAP_MIN`. *Exists*, mirrored in the document so the
    editor reports the same problems while dragging. **Not yet: a string in a
    box it does not fit** - the defect this plan cares most about. The host
    suite keeps its own assertions as the independent witness - the generator

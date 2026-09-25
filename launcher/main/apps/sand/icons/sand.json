@@ -5,6 +5,11 @@
         { "name": "pour", "source": "png", "col": 0, "row": 0 },
         { "name": "erase", "source": "png", "col": 1, "row": 0 },
         { "name": "boom", "source": "png", "col": 2, "row": 0 },
-        { "name": "info", "source": "png", "col": 3, "row": 0 }
+        { "name": "info", "source": "png", "col": 3, "row": 0 },
+        { "name": "start", "source": "png", "col": 0, "row": 1 },
+        { "name": "load", "source": "png", "col": 1, "row": 1 },
+        { "name": "options", "source": "png", "col": 2, "row": 1 },
+        { "name": "guide", "source": "png", "col": 3, "row": 1 },
+        { "name": "exit", "source": "png", "col": 0, "row": 2 }
     ]
 }

@@ -1369,6 +1369,9 @@ memtp_log(const char* what, const char* pools, size_t bytes, int64_t us) {
 
 static void
 test_memory_throughput_psram_against_internal(void) {
+#if CONFIG_LAUNCHER_QEMU
+    TEST_IGNORE_MESSAGE("an emulator does not keep the chip's memory speeds");
+#endif
     /* CONFIG_ESP32S3_DATA_CACHE_32KB can hold a sample; rotate PSRAM windows between repetitions. */
     const size_t sample = (size_t)GFX_WIDTH * 16 * sizeof(gfx_color_t);
     const size_t frame = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);

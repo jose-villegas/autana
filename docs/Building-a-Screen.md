@@ -85,7 +85,9 @@ These are not style preferences. Each one is a bug that shipped.
   list to skip repaints, so anything drawn behind its back survives as a
   stale smear. The scrim is the one deliberate exception, and only because
   it must *not* be re-applied per repaint.
-- **Every tap target is at least 44px** in its smaller dimension.
+- **Every tap target is at least `UI_TAP_MIN`** in its smaller dimension, and
+  a new control should aim for `UI_TAP_RECOMMENDED`; `ui/ui.h` gives both and
+  why.
 - **Assert every layout invariant at both 368x448 and 448x368.**
 - **Styles are part of the frame's description.** `ui_begin()` resets the
   button style; state what you want every frame.
@@ -112,10 +114,18 @@ control or two of them collide.
 
 Hand the click to the state module; let it decide what it means.
 
+Most of what a screen needs is already built that way in `ui/ui_widgets.h`:
+a panel, a header bar, a button with an icon beside its label, a tile with
+the icon above it, a themed slider, and a dropdown whose list opens over the
+screen - above or below itself, wherever it fits. Each takes a `ui_theme_t`,
+so a screen states its colours once; text aligned in a rect and a swatch
+grid take colours directly. Add a widget there rather than a private copy in
+one app's screen.
+
 ### More than one text size
 
 `ui_set_font_scaled(gfx_font_ui(), scale)`. The UI font is the 1bpp 8x8
-bitmap, so integer scales stay crisp; an 8bpp atlas font would blur above 1.
+bitmap, so integer scales stay crisp.
 
 **Do not add a render-time global for a UI setting.** Anything read at
 render time is invisible to the repaint hash and needs `ui_invalidate()` on
@@ -132,8 +142,8 @@ Fonts, scales and text styles are in [`Text-and-Fonts.md`](Text-and-Fonts.md).
 
 `ui_scroll.h` (`launcher/main/ui/`) is the shared way to lay out a stack of
 centred, fixed-width rows and let it scroll once it no longer fits - the
-launcher list and each app's menu screens (`sand_menu_screen.c`,
-`render_lab_menu_screen.c`) build on it instead of each hand-tracking a `y`
+launcher list and render_lab's menu screen (`render_lab_menu_screen.c`)
+build on it instead of each hand-tracking a `y`
 or placing rows at an ABSOLUTE rect, which left every row past the first
 unreachable once the stack overflowed (only a RELATIVE `mu_layout_set_next()`
 folds into a container's own `content_size` and follows its scroll - see
@@ -156,8 +166,7 @@ if (ui_scroll_view_begin(ctx, "My Screen", opt, ui_scroll_view_default(), dt_ms)
 
 `ui_flow_top(canvas_h, count, row_h, gap, margin)` gives the starting `top`
 for a uniform stack that should sit centred when short and pinned to
-`margin` once it no longer fits - the same rule `sand_menu_screen.c` already
-uses for its own row count.
+`margin` once it no longer fits.
 
 `ui_scroll_view_config_t` (from `ui_scroll_view_default()`, or built by hand)
 controls what a plain `ui_begin_screen()` cannot: `axis` (which of
@@ -243,7 +252,7 @@ fifth icon.
 
 - [ ] layout asserted at both orientations, nothing overlapping or off-canvas
 - [ ] every fixed string measured against its own rect
-- [ ] every tap target >= 44px
+- [ ] every tap target >= `UI_TAP_MIN`
 - [ ] clicks routed through a real control, decided by the state module
 - [ ] nothing painted outside the command list
 - [ ] `run_tests.sh` green, `check_app_sources.sh` green

@@ -319,7 +319,6 @@ static const uint8_t glyph0_atlas[4 * 10] = {0}; /* 4 glyphs * cell_h rows, unre
 static const uint8_t glyph0_advance[4] = {3, 5, 4, 6};
 static const gfx_font_t glyph0_font = {
     .atlas = glyph0_atlas,
-    .bpp = 1,
     .cell_w = 6,
     .cell_h = 10,
     .first = (uint8_t)'A',

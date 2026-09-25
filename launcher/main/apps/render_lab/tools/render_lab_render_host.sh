@@ -34,6 +34,8 @@ main/util/tune.c
 main/util/job.c
 main/ui/ui.c
 main/ui/ui_build.c
+main/ui/ui_canvas_marks.c
+main/ui/ui_widgets.c
 main/ui/ui_pointer.c
 main/ui/ui_scroll.c
 components/microui/src/microui.c
