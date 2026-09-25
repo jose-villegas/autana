@@ -1478,8 +1478,7 @@ draw_readback_band_frame(int skip_row0) {
     gfx_band_frame_begin();
     while (gfx_band_next()) {
         const int row0 = gfx_band_row0();
-        int x0, x1;
-        if (row0 == skip_row0 || !gfx_band_dirty(&x0, &x1)) {
+        if (row0 == skip_row0 || !gfx_band_dirty()) {
             gfx_band_skip();
             continue;
         }

@@ -648,8 +648,8 @@ directly.
 of `gfx_mode_enter()`/`gfx_band_submit()` needs real device memory, so it is
 exercised instead by `main/apps/render_lab/tests/suite_cube_band_perf.c`
 (device-only), which times the cube's band-mode path against its full-fb
-path on the same scene. No device suite covers a band's narrowed send or
-band buffers sharing the strip-bounce slots.
+path on the same scene. No device suite covers band buffers sharing the
+strip-bounce slots.
 
 Still untested by an assertion: small3dlib's per-pixel Gouraud shading -
 verified by running the firmware and looking at the screen, since the cube
