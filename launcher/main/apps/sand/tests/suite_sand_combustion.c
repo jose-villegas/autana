@@ -2299,8 +2299,6 @@ test_gas_capped_by_solid_instead_of_a_liquid_stays_put(void) {
                                   "ceiling gets the special bubble-through case");
 }
 
-/* --- oil and lava ----------------------------------------------------- */
-
 /* A stone basin holding a pool of oil `depth` cells deep in columns
  * 2..5, with open air above it, and returns the row the surface sits on.
  * Open above on purpose, unlike fire_room(): these tests need a flame to
