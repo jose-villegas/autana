@@ -57,7 +57,7 @@ logic rather than about the actual board. See
 
 ```bash
 autana selftest                                   # build, flash, run every suite
-./launcher/tools/report_test_results.sh           # same, plus a markdown report
+./launcher/tools/quality/report_test_results.sh           # same, plus a markdown report
 ```
 
 Builds the diagnostics variant, flashes it, and runs *every* registered

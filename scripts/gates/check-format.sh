@@ -14,8 +14,8 @@
 
 set -euo pipefail
 
-# shellcheck source=../../launcher/tools/espressif.sh
-. "$(dirname "${BASH_SOURCE[0]}")/../../launcher/tools/espressif.sh"
+# shellcheck source=../../launcher/tools/build/espressif.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../../launcher/tools/build/espressif.sh"
 
 # ONE major version, not a floor. .clang-format does not define a formatting
 # by itself; a version of clang-format reading it does, and the versions

@@ -24,9 +24,9 @@ reconfigures another:
 
 | image | flags | built by | directory |
 |---|---|---|---|
-| release | neither | `tools/build_flash.sh --build-only`, `autana flash rel` | `build/` |
-| dev | DEVELOPMENT | `tools/build_flash.sh --dev --build-only`, `autana flash dev` | `build.dev/` |
-| diagnostics | DEVELOPMENT + SELFTEST | `tools/build_flash.sh --diag --build-only`, `autana flash diag`, `autana selftest` | `build.diag/` |
+| release | neither | `tools/build/build_flash.sh --build-only`, `autana flash rel` | `build/` |
+| dev | DEVELOPMENT | `tools/build/build_flash.sh --dev --build-only`, `autana flash dev` | `build.dev/` |
+| diagnostics | DEVELOPMENT + SELFTEST | `tools/build/build_flash.sh --diag --build-only`, `autana flash diag`, `autana selftest` | `build.diag/` |
 
 ---
 
@@ -42,13 +42,13 @@ broader flag than `CONFIG_LAUNCHER_SELFTEST` (see
 `main/CMakeLists.txt`) — it also ships in a `--dev` build, which carries no
 test suites at all.
 
-`tools/check_release_symbols.sh build/launcher.elf` rejects a release image that
+`tools/build/check_release_symbols.sh build/launcher.elf` rejects a release image that
 defines any of the suite, console or self-test symbols it names - including a
 `run_<name>_suite` entry point. CI runs it after the release build.
 
 ```sh
-launcher/tools/build_flash.sh --build-only
-launcher/tools/check_release_symbols.sh launcher/build/launcher.elf
+launcher/tools/build/build_flash.sh --build-only
+launcher/tools/build/check_release_symbols.sh launcher/build/launcher.elf
 ```
 
 `app_diagnostics` belongs in the same count as `unity`/`suite_`/`selftest`
@@ -92,7 +92,7 @@ its `.text` *and* its `.bss`, which is what buys the run time back.
 bash launcher/main/apps/sand/tools/report_performance.sh --perf-scope
 # the image alone, left on the board, with no capture taken:
 autana flash diag --perf-scope
-launcher/tools/build_flash.sh --diag --perf-scope --build-only
+launcher/tools/build/build_flash.sh --diag --perf-scope --build-only
 ```
 
 Scoped around **what a run reads**, not around folders. An app owns the perf
@@ -189,7 +189,7 @@ see its headers, and with no test sources compiled nothing references it and
 same size with and without the entry.
 
 ```sh
-tools/build_flash.sh --build-only     # build/       release, no test code
+tools/build/build_flash.sh --build-only     # build/       release, no test code
 autana selftest                       # build.diag/  firmware + suites
 ```
 

@@ -5,8 +5,8 @@
 # anything that needs pyserial. scripts/add-tools-to-path.sh puts this folder
 # on PATH.
 here=$(cd "$(dirname "$0")/.." && pwd -P)
-# shellcheck source=../launcher/tools/espressif.sh
-. "$here/launcher/tools/espressif.sh"
+# shellcheck source=../launcher/tools/build/espressif.sh
+. "$here/launcher/tools/build/espressif.sh"
 
 # Windows' Store stub answers `command -v` but exits instead of running, so
 # each candidate has to prove it executes.

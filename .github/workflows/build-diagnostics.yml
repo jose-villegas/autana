@@ -20,7 +20,7 @@ jobs:
       - uses: ./.github/actions/idf-build
         with:
           cache-name: dev
-          command: bash tools/build_flash.sh --dev --build-only
+          command: bash tools/build/build_flash.sh --dev --build-only
 
   # An instrument rather than a gate (see sdkconfig.defaults.diag_perf), so
   # a pull request does not wait on it: main and a manual run build it.
@@ -34,7 +34,7 @@ jobs:
       - uses: ./.github/actions/idf-build
         with:
           cache-name: diag-perf
-          command: bash tools/build_flash.sh --diag --perf-scope --build-only
+          command: bash tools/build/build_flash.sh --diag --perf-scope --build-only
 
   build-diagnostics:
     name: Build (diagnostics and complexity gate)
@@ -48,7 +48,7 @@ jobs:
         with:
           cache-name: diag
           command: >-
-            bash tools/build_flash.sh --diag --build-only
+            bash tools/build/build_flash.sh --diag --build-only
             && python "$IDF_PATH/tools/idf_tools.py" install esp-clang
             && cd ..
-            && python3 launcher/tools/complexity_gate.py
+            && python3 launcher/tools/quality/complexity_gate.py

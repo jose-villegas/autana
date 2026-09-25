@@ -5,7 +5,7 @@
  * Selected by name or position, not a Kconfig choice - an app calls
  * gfx_palette_standard_find() (or iterates gfx_palette_standard_count()/
  * _at()) at runtime and installs the result through gfx_indexed_set_lut()
- * or gfx_indexed_set_lut16() (tools/gfx_palette_gen.h builds the reverse
+ * or gfx_indexed_set_lut16() (tools/gen/gfx_palette_gen.h builds the reverse
  * index map and dither table either one needs first).
  */
 #pragma once
@@ -30,7 +30,7 @@ extern const gfx_palette_t gfx_palette_db16;
 extern const gfx_palette_t gfx_palette_db32;
 
 /* 16 EGA + a 216-colour "web-safe" 6x6x6 RGB lattice + enough grays to
- * reach 256 - see tools/gen_gfx_palette_standard.py for the construction. */
+ * reach 256 - see tools/gen/gen_gfx_palette_standard.py for the construction. */
 extern const gfx_palette_t gfx_palette_vga256;
 
 extern const gfx_palette_t gfx_palette_grayscale16;

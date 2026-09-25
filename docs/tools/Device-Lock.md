@@ -91,7 +91,7 @@ requests the panel capture and writes a `.png` plus a `.json` state snapshot;
 `--owner`/`--purpose` calls `device.py screenshot` directly, the same way
 it calls `run-suite` rather than `autana suite`. The wire protocol and the
 BMP-to-PNG decoder
-live in `launcher/tools/screenshot.py`, imported as a library - it opens no
+live in `launcher/tools/device/screenshot.py`, imported as a library - it opens no
 port itself.
 
 ### Measuring: use `batch`, not a sequence of commands
@@ -134,7 +134,7 @@ uses a watchdog reset and checks again. What the board prints while USB
 re-enumerates may be lost. `selftest` builds the diagnostics+autorun image and
 captures the boot-time run of every registered suite until
 SELFTEST_COMPLETE; `autana selftest` calls it, and so does
-`launcher/tools/device_report.sh` for a report with no single named suite
+`launcher/tools/device/device_report.sh` for a report with no single named suite
 (report_test_results.sh and the frame-budget reports) - its RUNSUITE-scoped
 report calls `batch --suite X --runs 1 --out PATH` instead, the same
 build-then-capture-under-one-lock shape scoped to one suite and run. The

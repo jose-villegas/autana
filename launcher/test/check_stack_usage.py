@@ -15,7 +15,7 @@ cannot reproduce a stack panic - it can only predict one, statically, from
 the frame sizes GCC/Clang already compute for their own prologues. This gate
 is that prediction, run every time the host suite runs.
 
-The ceiling (DP_TEST_FRAME_CEILING_BYTES, see launcher/tools/device_profiles/
+The ceiling (DP_TEST_FRAME_CEILING_BYTES, see launcher/tools/device/device_profiles/
 esp32s3.sh) is 1024 bytes: comfortably below the 3,584-byte device stack
 (generous margin given that stack is shared with Unity and the interpreter
 chain above a fixture, not just the fixture's own frame), yet it catches
@@ -45,7 +45,7 @@ frame near the ceiling is a reason to run that script, as is any toolchain
 or -O-level change.
 
 The profile is the source of truth for the ceiling and the device stack size
-- neither number is hardcoded here. See launcher/tools/device_profile.py.
+- neither number is hardcoded here. See launcher/tools/device/device_profile.py.
 
     launcher/test/check_stack_usage.py <su-dir> [--ceiling N] [--profile NAME]
 """
@@ -55,7 +55,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "tools"))
+                                "..", "tools", "device"))
 import device_profile  # noqa: E402  (path must be set up first)
 
 
@@ -177,7 +177,7 @@ def main(argv):
                     "the source of truth for both numbers this prints - "
                     "nothing here is a literal; see DP_TEST_FRAME_CEILING_"
                     "BYTES and DP_MAIN_TASK_STACK_BYTES in "
-                    "launcher/tools/device_profiles/<profile>.sh.")
+                    "launcher/tools/device/device_profiles/<profile>.sh.")
     parser.add_argument("su_dir",
                         help="directory to search recursively for .su "
                              "files (as produced by -fstack-usage)")
@@ -186,7 +186,7 @@ def main(argv):
                              "or esp32s3)")
     parser.add_argument("--profile-dir", default=None,
                         help="override the directory profiles are read "
-                             "from (default: launcher/tools/device_profiles)")
+                             "from (default: launcher/tools/device/device_profiles)")
     parser.add_argument("--ceiling", type=int, default=None,
                         help="override the per-function byte ceiling for "
                              "one-off experiments. The profile stays the "

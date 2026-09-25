@@ -86,21 +86,21 @@ class ReporterExitCodeTest(CaptureFixture):
             capture_output=True, text=True)
 
     def test_test_results_refuses_a_capture_with_no_results(self):
-        done = self.run_reporter("report_test_results.py", BOOT + COMPLETE)
+        done = self.run_reporter("quality/report_test_results.py", BOOT + COMPLETE)
         self.assertEqual(done.returncode, 2, done.stderr)
         self.assertIn("no test results", done.stderr)
 
     def test_test_results_exits_one_for_a_failing_test(self):
         capture = BOOT + "suite_sand.c:70:test_lava_cools:FAIL: expected 5 was 4\n" + COMPLETE
-        done = self.run_reporter("report_test_results.py", capture)
+        done = self.run_reporter("quality/report_test_results.py", capture)
         self.assertEqual(done.returncode, 1, done.stderr)
 
     def test_test_results_exits_zero_when_everything_passed(self):
-        done = self.run_reporter("report_test_results.py", BOOT + RESULT + COMPLETE)
+        done = self.run_reporter("quality/report_test_results.py", BOOT + RESULT + COMPLETE)
         self.assertEqual(done.returncode, 0, done.stderr)
 
     def test_boot_anim_refuses_a_capture_with_no_checkpoint(self):
-        done = self.run_reporter("report_boot_anim_perf.py", BOOT + RESULT)
+        done = self.run_reporter("boot_anim/report_boot_anim_perf.py", BOOT + RESULT)
         self.assertEqual(done.returncode, 2, done.stderr)
         self.assertIn("BOOT_ANIM PERF", done.stderr)
 

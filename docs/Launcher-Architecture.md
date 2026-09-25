@@ -36,8 +36,8 @@ launcher/
     │   ├── post_ui.{h,c}       the POST report, on screen
     │   ├── selftest.{h,c}      runs the suites at boot (diagnostics build)
     │   ├── boot_anim.{h,c}     the startup animation  (the .h is host-tested)
-    │   ├── boot_anim_curve.h   GENERATED - see tools/gen_zeta_curve.py
-    │   ├── boot_anim_image.h   GENERATED - see tools/gen_boot_anim_image.py
+    │   ├── boot_anim_curve.h   GENERATED - see tools/gen/gen_zeta_curve.py
+    │   ├── boot_anim_image.h   GENERATED - see tools/gen/gen_boot_anim_image.py
     │   └── boot_anim_timeline.h GENERATED - from boot_anim_timeline.json
     ├── render/         3D transform, clip and projection shared by boot and apps
     │   ├── r3d_project.h       camera-space near clip, perspective (host-tested)
@@ -143,20 +143,20 @@ and means something different by each:
 
 Generated files live throughout the tree, each following the same rules
 below — grep for `GENERATED FILE` to list them, since apps add their own. The
-shell's own are `main/ui/control_center_layout_generated.h` (`tools/gen_ui_layout.py`,
+shell's own are `main/ui/control_center_layout_generated.h` (`tools/gen/gen_ui_layout.py`,
 from `main/ui/control_center_layout.json`, which the host editor in
 [`editor/`](../editor/README.md) edits), `main/ui/ridge_curve_generated.h`
-(`tools/gen_ridge_curve.py`, from `design/boot/ridge.png`, the ridge of
-`design/boot/boot.png` drawn as a line in the same frame), `main/boot/boot_anim_curve.h` (`tools/gen_zeta_curve.py`),
-`main/boot/boot_anim_timeline.h` (`tools/gen_boot_anim_timeline.py`, from
+(`tools/gen/gen_ridge_curve.py`, from `design/boot/ridge.png`, the ridge of
+`design/boot/boot.png` drawn as a line in the same frame), `main/boot/boot_anim_curve.h` (`tools/gen/gen_zeta_curve.py`),
+`main/boot/boot_anim_timeline.h` (`tools/gen/gen_boot_anim_timeline.py`, from
 `main/boot/boot_anim_timeline.json`), `main/boot/boot_anim_image.h`
-(`tools/gen_boot_anim_image.py`, from `design/boot/boot.png`),
+(`tools/gen/gen_boot_anim_image.py`, from `design/boot/boot.png`),
 `main/gfx/gfx_palette_standard_generated.h` and `main/gfx/icons_system.h`.
 
 `boot_anim_curve.h` holds the zeta function evaluated along the critical
 line. That is not something to compute on this chip at the precision it
 needs - the hardware FPU is single-precision only, and zeta along the
-critical line needs double - and it never changes, so `tools/gen_zeta_curve.py`
+critical line needs double - and it never changes, so `tools/gen/gen_zeta_curve.py`
 computes it once in double precision on a host and the result ships in
 flash. `boot_anim_image.h` holds the same idea applied to a photograph the
 boot animation crossfades to: there is no PNG decoder in this codebase, so
@@ -165,7 +165,7 @@ panel's own byte-swapped RGB565 - ships in flash the same way.
 
 Five rules, and the fourth is the one that matters:
 
-**The generator lives in `tools/`, the output in the tree it belongs to.**
+**The generator lives in `tools/gen/`, the output in the tree it belongs to.**
 Generated output is checked in, not built. A build-time generator would put
 Python on the critical path of every clean build, on a project whose whole
 toolchain story is already long enough.
@@ -190,9 +190,9 @@ by accident. `boot_anim_image.h` has no underlying math to check pixel
 content against - its independent check is instead two `_Static_assert`s in
 `boot_anim.c` pinning the shipped array's shape to the panel's own
 `GFX_WIDTH`/`GFX_HEIGHT`, plus real visual verification through
-`tools/boot_anim_editor_server.py`'s render view (the general path for a
+`tools/boot_anim/boot_anim_editor_server.py`'s render view (the general path for a
 render-affecting change is a `*_render_host.sh` harness diffed against its
-`*_render_baseline.txt` with `tools/render_diff.sh` — see
+`*_render_baseline.txt` with `tools/render/render_diff.sh` — see
 [Render-Harness.md](tools/Render-Harness.md)).
 
 **Two different rules for keeping a generated file current, by design.**

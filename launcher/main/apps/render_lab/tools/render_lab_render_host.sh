@@ -7,11 +7,11 @@
 # Each declared render starts on one scene (--scene) via
 # render_lab_start_scene_key and steps 16 ms frames, full-framebuffer
 # layout. Landscape is the shipping orientation, so it leads; a panel-native
-# render is the shape tools/render_diff.sh compares a device capture against.
+# render is the shape tools/render/render_diff.sh compares a device capture against.
 #
 # Everything beyond the declarations below - finding a compiler, building,
 # checking each image against its declared size and pin, converting to PNG -
-# is launcher/tools/render_scene.sh.
+# is launcher/tools/render/render_scene.sh.
 
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -83,6 +83,6 @@ cornell-pt-seed|--quarter 1 --scene cornell-pt --frames 2|448x368|nopin
 cornell-pt-accum|--quarter 1 --scene cornell-pt --frames 45|448x368|nopin
 "
 
-# shellcheck source=../../../../tools/render_scene.sh
-. "$SCRIPT_DIR/../../../../tools/render_scene.sh"
+# shellcheck source=../../../../tools/render/render_scene.sh
+. "$SCRIPT_DIR/../../../../tools/render/render_scene.sh"
 render_scene_run "$@"

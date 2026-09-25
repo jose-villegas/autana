@@ -24,8 +24,8 @@ LAUNCHER_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../../.." && pwd)
 BUILD_DIR="$SCRIPT_DIR/build"
 RESULTS_DIR="${1:-$BUILD_DIR/shading_palette_results}"
 
-# shellcheck source=../../../../tools/find_cc.sh
-. "$LAUNCHER_DIR/tools/find_cc.sh"
+# shellcheck source=../../../../tools/build/find_cc.sh
+. "$LAUNCHER_DIR/tools/build/find_cc.sh"
 
 if ! CC_BIN=$(find_cc); then
     echo "No C compiler found." >&2
@@ -42,7 +42,7 @@ mkdir -p "$BUILD_DIR" "$RESULTS_DIR"
 OUT_BIN="$BUILD_DIR/shading_palette"
 
 # shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$SAND_DIR" -I "$LAUNCHER_DIR/tools" \
+"$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$SAND_DIR" -I "$LAUNCHER_DIR/tools/gen" \
     "$SCRIPT_DIR/shading_palette.c" \
     "$MAIN_DIR/util/job.c" \
     "$SAND_DIR/sand.c" \
@@ -54,7 +54,7 @@ OUT_BIN="$BUILD_DIR/shading_palette"
     "$SAND_DIR/sand_liquid.c" \
     "$SAND_DIR/material.c" \
     "$SAND_DIR/material_palette.c" \
-    "$LAUNCHER_DIR/tools/gfx_palette_gen.c" \
+    "$LAUNCHER_DIR/tools/gen/gfx_palette_gen.c" \
     -o "$OUT_BIN" -lm
 
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"
