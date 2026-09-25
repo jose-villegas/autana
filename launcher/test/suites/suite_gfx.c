@@ -1467,14 +1467,19 @@ test_present_overlap_against_serial(void) {
 /* readback */
 
 static gfx_color_t
-readback_row_colour(int y) {
-    return gfx_rgb(((uint32_t)(y * 37) & 0xFFu) << 16 | ((uint32_t)y & 0xFFu) << 8 | 0x40u);
+readback_row_colour_frame(int y, uint32_t frame) {
+    return gfx_rgb(((uint32_t)(y * 37) & 0xFFu) << 16 | ((uint32_t)y & 0xFFu) << 8 | (0x40u + frame));
 }
 
-/* One band-mode frame painting every panel row its own colour, except the
- * band starting at `skip_row0`, which it skips (-1 skips none). */
+static gfx_color_t
+readback_row_colour(int y) {
+    return readback_row_colour_frame(y, 0);
+}
+
+/* One band-mode frame painting every panel row its own colour for `frame`,
+ * except the band starting at `skip_row0`, which it skips (-1 skips none). */
 static void
-draw_readback_band_frame(int skip_row0) {
+draw_readback_band_frame_n(int skip_row0, uint32_t frame) {
     gfx_band_frame_begin();
     while (gfx_band_next()) {
         const int row0 = gfx_band_row0();
@@ -1485,11 +1490,16 @@ draw_readback_band_frame(int skip_row0) {
         gfx_color_t* buf = gfx_band_buffer();
         for (int r = 0; r < gfx_band_height(); r++) {
             for (int x = 0; x < GFX_WIDTH; x++) {
-                buf[r * GFX_WIDTH + x] = readback_row_colour(row0 + r);
+                buf[r * GFX_WIDTH + x] = readback_row_colour_frame(row0 + r, frame);
             }
         }
         gfx_band_submit();
     }
+}
+
+static void
+draw_readback_band_frame(int skip_row0) {
+    draw_readback_band_frame_n(skip_row0, 0);
 }
 
 static const gfx_mode_t*
@@ -1542,6 +1552,41 @@ test_band_mode_readback_waits_out_a_frame_missing_a_band(void) {
     gfx_mode_exit();
     TEST_ASSERT_EQUAL_INT(GFX_READBACK_PENDING, after_partial);
     TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, after_whole);
+}
+
+/* After one capture, the readback is the panel itself: ready at once, with
+ * no frame needed (the loop may be frozen), and a band a later frame left
+ * unsent reads back as the pixels still showing there. */
+static void
+test_band_mode_readback_keeps_the_band_a_later_frame_skipped(void) {
+    fixture();
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_BANDS, enter_rgb565_band_mode()->layout);
+    const int stale_row0 = GFX_BAND_HEIGHT * 3;
+
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_PENDING, gfx_readback_begin());
+    draw_readback_band_frame_n(-1, 0);
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
+    gfx_readback_end();
+
+    gfx_invalidate();
+    draw_readback_band_frame_n(stale_row0, 1);
+    const gfx_readback_t next = gfx_readback_begin();
+
+    static gfx_color_t row[GFX_WIDTH];
+    int wrong_rows = 0;
+    if (next == GFX_READBACK_READY) {
+        for (int y = 0; y < GFX_HEIGHT; y++) {
+            const bool stale = y >= stale_row0 && y < stale_row0 + GFX_BAND_HEIGHT;
+            gfx_read_panel_row(y, row);
+            if (row[0] != readback_row_colour_frame(y, stale ? 0 : 1)) {
+                wrong_rows++;
+            }
+        }
+    }
+    gfx_readback_end();
+    gfx_mode_exit();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_READBACK_READY, next, "a second capture must not wait for another frame");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wrong_rows, "rows read back differ from what the panel shows");
 }
 
 void
@@ -1604,6 +1649,7 @@ run_gfx_suite(void) {
     RUN_TEST(test_drawing_marks_what_it_touched);
     RUN_TEST(test_band_mode_readback_is_the_frame_its_bands_drew);
     RUN_TEST(test_band_mode_readback_waits_out_a_frame_missing_a_band);
+    RUN_TEST(test_band_mode_readback_keeps_the_band_a_later_frame_skipped);
 }
 
 #else

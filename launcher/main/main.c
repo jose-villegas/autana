@@ -969,6 +969,9 @@ run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms)
      * rotation asked for. A held frame never reaches run_dev_frame_extras(),
      * so the line is offered here - freeze, inspect, step. */
     if (!console_freeze_frame_allowed()) {
+        if (console_screenshot_take_request()) {
+            console_screenshot_dump(input, *current);
+        }
         offer_console_line(*current);
         return true;
     }
