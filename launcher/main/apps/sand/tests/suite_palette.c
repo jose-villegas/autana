@@ -9,8 +9,8 @@
  * rather than trusting the arithmetic by eye.
  *
  * Columns are derived at runtime: palette_cols(screen_w) computes them from
- * whatever width is actually available (see palette.h's "WHY THE COLUMN
- * COUNT IS DERIVED, NOT FIXED"), so every test below calls palette_cols()
+ * whatever width is actually available (see palette.h's "WHY DERIVED,
+ * NOT FIXED"), so every test below calls palette_cols()
  * itself and threads the result through, the same way app_sand.c's
  * draw_palette() does - which is what tests the derivation, rather than
  * merely re-checking fixed-4 arithmetic under a new name.

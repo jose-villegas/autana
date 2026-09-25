@@ -331,7 +331,7 @@ portrait_pixel(int x, int y) {
 }
 
 /* The inverse of ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT) - see
- * this file's header ("HOW LANDSCAPE GETS DRAWN AT ALL") for the rect-corner
+ * the Landscape paragraph of this file's header for the rect-corner
  * derivation this formula comes from: logical pixel (lx, ly) lands at
  * physical column (GFX_WIDTH - 1 - ly), row lx. */
 static gfx_color_t

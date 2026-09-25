@@ -345,7 +345,7 @@ test_soil_loses_its_tone_across_a_wetting_and_gets_a_fresh_one_drying(void) {
 
 /* THE DRYING-FRONT IMPRINT: a donor cell that empties itself by handing
  * its very last unit of moisture to a drier neighbour dries out biased by
- * THAT neighbour, not bone pale - see soil_dry_out() (sand_reactions.c).
+ * THAT neighbour, not bone pale - see soil_dry_out() (sand_priv.h).
  * It is what makes a pile that dried top-down legible as having dried
  * top-down.
  *

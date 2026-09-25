@@ -934,7 +934,7 @@ test_acid_evaporates_into_gas_when_forced(void) {
     fixture();
     /* Boxed in on every side it could move to - a liquid's fall and
      * spread are not gated by mobility the way a gas grain's rise is
-     * (see move_liquid_grain(), sand_liquid.c), so nothing short of
+     * (see move_liquid_grain(), sand_liquid_move.h), so nothing short of
      * actually walling the cell in keeps it in place for its one step. */
     sand_set(&s, 2, 3, STONE);
     sand_set(&s, 4, 3, STONE);

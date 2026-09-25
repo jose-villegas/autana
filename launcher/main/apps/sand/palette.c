@@ -85,8 +85,8 @@ void
 palette_panel_rect(int count, int cols, int screen_w, int screen_h, int* x, int* y, int* w, int* h) {
     /* row_left_x(cols, ...) is exactly the panel's own left edge: a
      * full-width row (row_count == cols) IS the panel's own width, centred
-     * the same way. Not hardcoded to 0: PALETTE_COLS * PALETTE_TILE ==
-     * PALETTE_SCREEN_W (368 == 368) only in the upright case - at
+     * the same way. Not hardcoded to 0: palette_cols(PALETTE_SCREEN_W) *
+     * PALETTE_TILE == PALETTE_SCREEN_W (368 == 368) only in the upright case - at
      * screen_w == 448 (a quarter turn), a panel narrower than the canvas
      * no longer fills it and has to be centred like everything else here. */
     *x = row_left_x(cols, screen_w);

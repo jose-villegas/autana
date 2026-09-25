@@ -279,7 +279,7 @@ test_icon_blocks_at_turn_3_rotate_three_steps_clockwise(void) {
 
 /* CROSS-CHECK, independent of the hand-derived expectations above: every
  * run, treated as its own rect and mapped straight through
- * ui_transform_rect() - the function every other MU_COMMAND already
+ * ui_transform_rect() - the function every other MU_COMMAND_* already
  * trusts - must equal what ui_transform_icon_blocks() produced for it. */
 static void
 test_icon_blocks_match_ui_transform_rect_run_by_run(void) {
@@ -329,7 +329,7 @@ static const gfx_font_t glyph0_font = {
 /* The ground truth ui_text_glyph0_origin()'s own comment claims it matches:
  * glyph 0's OWN logical cell (cell_w x cell_h, at the string's logical
  * origin) mapped straight through ui_transform_rect() - the one function
- * every other MU_COMMAND (_RECT, _ICON, _CLIP) already trusts without
+ * every other MU_COMMAND_* (_RECT, _ICON, _CLIP) already trusts without
  * dispute - must describe exactly where the function under test says
  * glyph 0 belongs, at every quarter, not just the two (2 and 3) that get an
  * explicit correction. */
