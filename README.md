@@ -6,23 +6,11 @@ Autana is software for the [Waveshare ESP32-S3-Touch-AMOLED-1.8](https://www.wav
 
 The moving sand uses the real simulation and material shading code, rendered on a computer with scripted pours and gravity input. It is a host preview, not a board capture.
 
-<!-- Regenerate sand-simulation.gif:
-./launcher/main/apps/sand/tools/sand_sim_render_host.sh --video
-ffmpeg -y -i launcher/main/apps/sand/tools/results/render/sand_sim/simulation-portrait.avi -vf "trim=start=1.6:end=4.7,setpts=PTS-STARTPTS,fps=12,scale=276:-1:flags=lanczos,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0,palettegen" docs/images/overview/sand-simulation-palette.png
-ffmpeg -y -i launcher/main/apps/sand/tools/results/render/sand_sim/simulation-portrait.avi -i docs/images/overview/sand-simulation-palette.png -filter_complex "[0:v]trim=start=1.6:end=4.7,setpts=PTS-STARTPTS,fps=12,scale=276:-1:flags=lanczos,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0[v];[v][1:v]paletteuse=dither=bayer" -loop 0 docs/images/overview/sand-simulation.gif
--->
-
 | Launcher | Rotating Render Lab cube |
 |:---:|:---:|
 | ![The app launcher with three fixture entries](docs/images/overview/launcher-home.png) | ![A shaded cube rotating on a black screen](docs/images/overview/render-lab-cube.gif) |
 
-<!-- Regenerate launcher-home.png: ./launcher/tools/render/scenes/launcher_home_render_host.sh -o <dir>; use landscape.png. -->
-<!-- Regenerate render-lab-cube.gif:
-./launcher/main/apps/render_lab/tools/render_lab_render_host.sh
-./launcher/main/apps/render_lab/tools/results/render/render_lab/render_lab_render --quarter 1 --no-hud --scene gouraud --frames 100 --dt 33 -o launcher/main/apps/render_lab/tools/results/render/render_lab/cube-motion.bmp --video launcher/main/apps/render_lab/tools/results/render/render_lab/cube-motion.avi
-ffmpeg -y -i launcher/main/apps/render_lab/tools/results/render/render_lab/cube-motion.avi -vf "fps=12,scale=336:-1:flags=lanczos,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0,palettegen" docs/images/overview/render-lab-cube-palette.png
-ffmpeg -y -i launcher/main/apps/render_lab/tools/results/render/render_lab/cube-motion.avi -i docs/images/overview/render-lab-cube-palette.png -filter_complex "[0:v]fps=12,scale=336:-1:flags=lanczos,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0[v];[v][1:v]paletteuse=dither=bayer" -loop 0 docs/images/overview/render-lab-cube.gif
--->
+Image render commands are in the [render harness](docs/tools/Render-Harness.md#images-in-these-docs).
 
 The launcher image uses placeholder app names supplied by the host fixture. On the board, the shell lists the apps built into the firmware.
 
