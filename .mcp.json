@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "autana-docs": {
+      "command": "python",
+      "args": ["scripts/docs/docs_mcp.py"]
+    }
+  }
+}
