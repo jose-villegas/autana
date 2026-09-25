@@ -358,7 +358,8 @@ class DeviceTests(unittest.TestCase):
                 return super().read(size)
 
         connection = RepliesWhenAsked([b"boot\n"])
-        with mock.patch.object(device, "reset"), \
+        with mock.patch.object(device, "find_port", return_value="COM5"), \
+             mock.patch.object(device, "reset"), \
              mock.patch.object(device, "open_serial", return_value=connection):
             actual, reason = device.reset_and_read_build_id("COM5", seconds=1)
         self.assertEqual((actual, reason), ("reply", "console"))
@@ -749,7 +750,8 @@ class FlashVerificationTests(unittest.TestCase):
     """flash() restarts the board, then checks the image that boots against
     the id the build printed - not a build directory it would have to guess."""
 
-    def flash(self, build_output, board_output, events=None, after_watchdog=None):
+    def flash(self, build_output, board_output, events=None, after_watchdog=None,
+              port_lookup=None):
         """board_output is what the board says after the RTS reset - b"" for
         a chip still in download mode - and after_watchdog what it says once
         the watchdog has restarted it."""
@@ -779,20 +781,22 @@ class FlashVerificationTests(unittest.TestCase):
             store = mock.Mock()
             store.acquire.return_value = {"log": "", "token": "token"}
             with mock.patch.object(device, "records_root", return_value=Path(directory)), \
+                 mock.patch.object(device, "find_port", side_effect=port_lookup,
+                                   return_value="COM5"), \
                  mock.patch.object(device.subprocess, "run", side_effect=run), \
                  mock.patch.object(device, "reset", side_effect=reset), \
                  mock.patch.object(device, "open_when_free", side_effect=opened), \
                  mock.patch.object(device, "open_serial", side_effect=opened), \
                  mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.05), \
                  mock.patch.object(device, "RESET_REOPEN_SECONDS", 0.2), \
+                 mock.patch.object(device, "FLASH_BOOT_SECONDS", 0.2), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
                 return device.flash(args, store, "COM5"), store
 
     def test_restarts_the_board_after_the_build_and_before_reading_it(self):
         events = []
         self.flash(b"BUILD_ID=built\n", b"BUILD_ID=built\nTESTS_DONE\n", events)
-        self.assertEqual(events[events.index("build"):][:3],
-                         ["build", "reset COM5 hard_reset", "open"])
+        self.assertEqual(events[events.index("build"):][:2], ["build", "open"])
 
     def test_a_board_heard_after_the_rts_reset_is_not_restarted_again(self):
         events = []
@@ -806,6 +810,23 @@ class FlashVerificationTests(unittest.TestCase):
         self.assertIn("reset COM5 watchdog_reset", events)
         self.assertEqual(verified, "built")
 
+    def test_flash_waits_for_reenumeration_on_a_new_com_port(self):
+        ports = iter([RuntimeError("no board"), "COM7", "COM7"])
+        events = []
+
+        def find_port():
+            result = next(ports, "COM7")
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        with mock.patch.object(device.time, "sleep"):
+            verified, unused_store = self.flash(
+                b"BUILD_ID=built\n", b"BUILD_ID=built\nTESTS_DONE\n", events,
+                port_lookup=find_port)
+        self.assertEqual(verified, "built")
+        self.assertNotIn("reset COM5 hard_reset", events)
+
     def test_verifies_against_the_id_the_build_printed(self):
         verified, store = self.flash(b"noise\nBUILD_ID=built\n", b"BUILD_ID=built\nTESTS_DONE\n")
         self.assertEqual(verified, "built")
@@ -814,6 +835,10 @@ class FlashVerificationTests(unittest.TestCase):
     def test_a_different_image_on_the_board_is_a_mismatch(self):
         with self.assertRaisesRegex(RuntimeError, "expected built, got other"):
             self.flash(b"BUILD_ID=built\n", b"BUILD_ID=other\nTESTS_DONE\n")
+
+    def test_a_flash_without_a_boot_id_fails_after_the_watchdog(self):
+        with self.assertRaisesRegex(RuntimeError, "boot did not provide BUILD_ID"):
+            self.flash(b"BUILD_ID=built\n", b"", after_watchdog=b"")
 
     def test_a_build_that_printed_no_id_is_unverified_not_verified(self):
         verified, store = self.flash(b"no id here\n", b"BUILD_ID=anything\nTESTS_DONE\n")
@@ -837,6 +862,7 @@ class FlashDefaultPathTests(unittest.TestCase):
             with mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device, "now", return_value=fixed_now), \
                  mock.patch.object(device.subprocess, "run", side_effect=build_prints("expected")), \
+                 mock.patch.object(device, "find_port", return_value="COM5"), \
                  mock.patch.object(device, "reset"), \
                  mock.patch.object(device, "open_serial", return_value=connection), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
@@ -867,6 +893,7 @@ class FlashDefaultPathTests(unittest.TestCase):
             run = mock.Mock(side_effect=build_prints("expected"))
             with mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device.subprocess, "run", run), \
+                 mock.patch.object(device, "find_port", return_value="COM5"), \
                  mock.patch.object(device, "reset"), \
                  mock.patch.object(device, "open_serial", return_value=connection), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
@@ -1279,6 +1306,7 @@ class CaptureAfterResetTests(unittest.TestCase):
         opened = lambda *unused, **unused_keywords: next(connections)
         with mock.patch.object(device, "reset",
                                side_effect=lambda port, after="hard_reset": resets.append(after)), \
+             mock.patch.object(device, "find_port", return_value="COM5"), \
              mock.patch.object(device, "open_serial", side_effect=opened), \
              mock.patch.object(device, "open_when_free", side_effect=opened), \
              mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.05), \
@@ -1329,23 +1357,24 @@ class CaptureAfterResetTests(unittest.TestCase):
             [AnswersNoQuery([b"I (640) BUILD_ID=b8e2ef", b"0bbe68-release\n"])])
         self.assertEqual((actual, reason), ("b8e2ef0bbe68-release", "complete"))
 
-    def test_a_board_silent_after_rts_is_restarted_through_the_watchdog(self):
+    def test_a_board_silent_after_flash_is_restarted_through_the_watchdog(self):
         resets = []
         silent_until_the_watchdog = [AnswersNoQuery([]) for unused in range(8)]
         started = time.monotonic()
         actual, reason = self.read_build_id(
             silent_until_the_watchdog + [AnswersNoQuery([b"BUILD_ID=after-watchdog\n"])], resets,
             seconds=5)
-        self.assertEqual(resets, ["hard_reset", "watchdog_reset"])
+        self.assertEqual(resets, ["watchdog_reset"])
         self.assertEqual(reason, "complete")
         self.assertLess(time.monotonic() - started, 5 + 2.5)
         self.assertEqual(actual, "after-watchdog")
 
-    def test_a_board_that_spoke_without_an_id_is_not_restarted_again(self):
+    def test_a_board_that_spoke_without_an_id_gets_the_watchdog(self):
         resets = []
         actual, unused_reason = self.read_build_id(
-            [AnswersNoQuery([b"I (113) boot: no id in this log\n"]), AnswersNoQuery([])], resets)
-        self.assertEqual(resets, ["hard_reset"])
+            [AnswersNoQuery([b"I (113) boot: no id in this log\n"])] +
+            [AnswersNoQuery([]) for unused in range(50)], resets)
+        self.assertEqual(resets, ["watchdog_reset"])
         self.assertIsNone(actual)
 
     def test_a_board_silent_throughout_still_gets_the_query_in_bounded_time(self):
