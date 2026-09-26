@@ -241,6 +241,8 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
         .partial_updates_on = render_lab_partial_updates,
         .band_mode_on = render_lab_band_mode,
         .double_buffer_on = render_lab_double_buffer,
+        .double_buffer_available =
+            render_lab_mode_switch_double_buffer_allowed(band_mode_active, current_scene() == &scene_cube),
         .scene_name = current_scene()->name,
     };
     const render_lab_menu_screen_result_t result = render_lab_menu_screen_draw(ctx, &state, dt_ms);
@@ -260,11 +262,9 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
         render_lab_band_mode = !render_lab_band_mode;
         render_lab_mode_switch_request(&mode_switch);
     }
-    if (result.double_buffer_clicked && current_scene() == &scene_cube) {
+    if (result.double_buffer_clicked
+        && render_lab_mode_switch_double_buffer_allowed(band_mode_active, current_scene() == &scene_cube)) {
         render_lab_double_buffer = !render_lab_double_buffer;
-        if (render_lab_double_buffer) {
-            render_lab_band_mode = false;
-        }
         render_lab_mode_switch_request(&mode_switch);
     }
     if (result.next_scene_clicked) {

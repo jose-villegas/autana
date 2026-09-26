@@ -41,10 +41,14 @@ render_lab_menu_screen_draw(mu_Context* ctx, const render_lab_menu_screen_state_
             result.band_mode_clicked = true;
         }
 
-        snprintf(label, sizeof label, "DOUBLE BUFFER: %s", state->double_buffer_on ? "ON" : "OFF");
         ui_flow_row(ctx, &flow, MENU_BTN_W, MENU_BTN_H);
-        if (mu_button(ctx, label)) {
-            result.double_buffer_clicked = true;
+        if (state->double_buffer_available) {
+            snprintf(label, sizeof label, "DOUBLE BUFFER: %s", state->double_buffer_on ? "ON" : "OFF");
+            if (mu_button(ctx, label)) {
+                result.double_buffer_clicked = true;
+            }
+        } else {
+            mu_label(ctx, "DOUBLE BUFFER: BAND MODE ON");
         }
 
         snprintf(label, sizeof label, "NEXT SCENE: %s", state->scene_name);
