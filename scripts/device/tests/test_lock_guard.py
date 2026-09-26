@@ -614,7 +614,8 @@ class BuildFlashScriptTests(unittest.TestCase):
                          "launcher/tools/build/idf_variant.sh", "launcher/tools/build/idf_shim.bat",
                          "launcher/tools/build/espressif.py", "scripts/quiet.sh",
                          "scripts/device/device.py", "scripts/device/device_lock.py",
-                         "scripts/device/device_hook.py", "scripts/device/device_report.py"):
+                         "scripts/device/device_hook.py", "scripts/device/device_report.py",
+                         "scripts/device/main_copy.py"):
             (self.tree / relative).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(ENGINE / relative, self.tree / relative)
         stubs = self.tree / "stubs"

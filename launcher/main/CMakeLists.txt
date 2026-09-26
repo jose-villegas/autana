@@ -262,6 +262,7 @@ idf_component_register(
 )
 
 if(NOT CMAKE_SCRIPT_MODE_FILE)
+    target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=vla -Werror=unused-macros)
     add_dependencies(${COMPONENT_LIB} build_id_header)
 endif()
 

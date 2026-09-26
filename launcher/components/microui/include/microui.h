@@ -10,6 +10,8 @@
 
 #define MU_VERSION "2.02"
 
+#include <stdint.h>
+
 /* ---------------------------------------------------------------------------
  * LOCAL MODIFICATION vs upstream rxi/microui 2.02.
  *
@@ -18,14 +20,17 @@
  * board has ~424 KiB of RAM in total and we spend 322 KiB of it on the
  * framebuffer, so the stock context does not fit.
  *
- * They are edited here rather than overridden from our own headers on
- * purpose: they determine the layout of mu_Context, so if two translation
- * units ever disagreed the struct would differ between them and corrupt
- * silently. One definition, no way to get it wrong.
+ * The command-list size has one definition here because it determines
+ * mu_Context's layout. Pointer width selects a larger host budget while
+ * keeping the device context within its RAM limit.
  *
  * Upstream values are kept in the trailing comments.
  * ------------------------------------------------------------------------ */
-#define MU_COMMANDLIST_SIZE     (8 * 1024)  /* upstream: 256 * 1024 */
+#if UINTPTR_MAX > 0xFFFFFFFFu
+#define MU_COMMANDLIST_SIZE     (9 * 1024)  /* 64-bit host: 8-byte pointers and alignment */
+#else
+#define MU_COMMANDLIST_SIZE     (8 * 1024)  /* the device; upstream: 256 * 1024 */
+#endif
 #define MU_ROOTLIST_SIZE        8           /* upstream: 32 */
 #define MU_CONTAINERSTACK_SIZE  8           /* upstream: 32 */
 #define MU_CLIPSTACK_SIZE       8           /* upstream: 32 */
@@ -205,7 +210,7 @@ struct mu_Context {
   char number_edit_buf[MU_MAX_FMT];
   mu_Id number_edit;
   /* stacks */
-  mu_stack(char, MU_COMMANDLIST_SIZE) command_list;
+  struct { int idx; _Alignas(mu_Command) char items[MU_COMMANDLIST_SIZE]; } command_list;
   mu_stack(mu_Container*, MU_ROOTLIST_SIZE) root_list;
   mu_stack(mu_Container*, MU_CONTAINERSTACK_SIZE) container_stack;
   mu_stack(mu_Rect, MU_CLIPSTACK_SIZE) clip_stack;
