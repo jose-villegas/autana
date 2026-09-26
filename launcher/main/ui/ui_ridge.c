@@ -407,13 +407,15 @@ extend_repaint_range(int was, int now, int* lo, int* hi) {
 static void
 repaint_changed(void) {
     for (int strip = 0; strip < ridge->strips; strip++) {
-        int lo = INT_MAX, hi = INT_MIN;
         for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+            const int was = ridge->shown[layer][strip];
             const int now = ridge->boundary[layer][strip];
-            extend_repaint_range(ridge->shown[layer][strip], now, &lo, &hi);
+            if (was == now) {
+                continue;
+            }
+            int lo = INT_MAX, hi = INT_MIN;
+            extend_repaint_range(was, now, &lo, &hi);
             ridge->shown[layer][strip] = now;
-        }
-        if (lo != INT_MAX) {
             repaint_strip(strip, lo, hi);
         }
     }
