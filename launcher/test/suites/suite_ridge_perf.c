@@ -27,6 +27,7 @@ typedef enum {
     ARM_TILT_SWEEP,
     ARM_TILT_WOBBLE,
     ARM_AMBIENT,
+    ARM_AMBIENT_PORTRAIT,
 } arm_t;
 
 typedef struct {
@@ -94,7 +95,15 @@ static arm_result_t
 run_arm(arm_t arm) {
     arm_result_t result = {0};
     prime();
-    ui_ridge_set_ambient(arm == ARM_AMBIENT);
+    ui_ridge_set_ambient(arm == ARM_AMBIENT || arm == ARM_AMBIENT_PORTRAIT);
+    if (arm == ARM_AMBIENT_PORTRAIT) {
+        ui_ridge_set_gravity(0, 256, 256, 0);
+        for (int frame = 0; frame < 200; frame++) {
+            ui_ridge_step(&idle_input, FRAME_DT_MS);
+            gfx_present();
+        }
+        gfx_reset_strip_send_counts();
+    }
     gfx_reset_strip_send_counts();
 
     const int64_t began = esp_timer_get_time();
@@ -124,6 +133,7 @@ arm_name(arm_t arm) {
         case ARM_TILT_SWEEP: return "tilt_sweep";
         case ARM_TILT_WOBBLE: return "tilt_wobble";
         case ARM_AMBIENT: return "ambient";
+        case ARM_AMBIENT_PORTRAIT: return "ambient_portrait";
     }
     return "unknown";
 }
@@ -228,7 +238,7 @@ test_ridge_repaint_matches_a_full_paint(void) {
 
 void
 test_ridge_performance(void) {
-    for (arm_t arm = ARM_IDLE; arm <= ARM_AMBIENT; arm++) {
+    for (arm_t arm = ARM_IDLE; arm <= ARM_AMBIENT_PORTRAIT; arm++) {
         const arm_result_t result = run_arm(arm);
         log_arm(arm, &result);
         assert_arm(&result);
