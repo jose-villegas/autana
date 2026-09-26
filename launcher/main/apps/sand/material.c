@@ -757,4 +757,3 @@ const reaction_t extended_reactions[MATERIAL_EXTENDED_CODES] = {
     [14] = GUNPOWDER_REACTION,
     [15] = GUNPOWDER_REACTION,
 };
-#undef GUNPOWDER_REACTION
