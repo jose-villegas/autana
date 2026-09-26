@@ -218,10 +218,10 @@ the same way.
 For inspection or emergency recovery, use the lower-level command:
 
 ```powershell
-python scripts/device/device_lock.py --board-id usb-303a --port COM5 status
-python scripts/device/device_lock.py --board-id usb-303a --port COM5 acquire --owner sam --purpose investigate --wait 60
-python scripts/device/device_lock.py --board-id usb-303a --port COM5 heartbeat --token <token>
-python scripts/device/device_lock.py --board-id usb-303a --port COM5 release --token <token>
+python scripts/device/device_lock.py --port COM5 status
+python scripts/device/device_lock.py --port COM5 acquire --owner sam --purpose investigate --wait 60
+python scripts/device/device_lock.py --port COM5 heartbeat --token <token>
+python scripts/device/device_lock.py --port COM5 release --token <token>
 ```
 
 The acquire result prints the token as JSON. Releasing requires that token, so
@@ -246,7 +246,7 @@ python scripts/device/device.py --port COM5 --owner maintainer take-back
 ```
 
 This clears the reservation and prints the resulting lock status. The lower-level
-`device_lock.py --board-id usb-303a --port COM5 clear-human` remains available
+`device_lock.py --port COM5 clear-human` remains available
 for recovery.
 
 ## Lock events

@@ -130,7 +130,7 @@ check_flash_lock() {
         return 1
     fi
     if ! python "$LAUNCHER_DIR/../scripts/device/device_lock.py" \
-            --port "$COM_PORT" --board-id usb-303a \
+            --port "$COM_PORT" \
             check-token --token "$AUTANA_DEVICE_LOCK_TOKEN"; then
         echo "ERROR: device lock token is not active for the board" >&2
         return 1
