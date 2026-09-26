@@ -5,7 +5,7 @@
 # both ways for a human to judge - see shading_palette.c's own top comment.
 #
 # Usage:
-#   main/apps/sand/tools/report_shading_palette.sh [results-dir]
+#   main/apps/sand/tools/report_shading_palette.sh [results-dir] [header-path]
 #
 # Writes stats.txt, mapping.csv, palette_swatches.png, and per scene
 # scene_<name>.png (original | 256 | 16 dithered) and
@@ -59,4 +59,4 @@ OUT_BIN="$BUILD_DIR/shading_palette"
 
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"
 
-"$OUT_BIN" "$RESULTS_DIR" minimax "$SAND_DIR/sand_palette256.h"
+"$OUT_BIN" "$RESULTS_DIR" minimax "${2:-$SAND_DIR/sand_palette256.h}"
