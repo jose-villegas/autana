@@ -699,6 +699,7 @@ allocate_once(void) {
     ridge->attitude.steady_level = POSE_LANDSCAPE;
     ridge->pose_on_screen = POSE_LANDSCAPE;
     ridge->shake_seed = 0x9e3779b9u;
+    ridge->ambient = true;
 }
 
 void
