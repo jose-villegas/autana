@@ -18,14 +18,14 @@
  * board has ~424 KiB of RAM in total and we spend 322 KiB of it on the
  * framebuffer, so the stock context does not fit.
  *
- * They are edited here rather than overridden from our own headers on
- * purpose: they determine the layout of mu_Context, so if two translation
- * units ever disagreed the struct would differ between them and corrupt
- * silently. One definition, no way to get it wrong.
+ * The command-list size may be overridden by a compiler flag shared by
+ * every translation unit: it determines mu_Context's layout.
  *
  * Upstream values are kept in the trailing comments.
  * ------------------------------------------------------------------------ */
-#define MU_COMMANDLIST_SIZE     (9 * 1024)  /* upstream: 256 * 1024 */
+#ifndef MU_COMMANDLIST_SIZE
+#define MU_COMMANDLIST_SIZE     (8 * 1024)  /* upstream: 256 * 1024 */
+#endif
 #define MU_ROOTLIST_SIZE        8           /* upstream: 32 */
 #define MU_CONTAINERSTACK_SIZE  8           /* upstream: 32 */
 #define MU_CLIPSTACK_SIZE       8           /* upstream: 32 */

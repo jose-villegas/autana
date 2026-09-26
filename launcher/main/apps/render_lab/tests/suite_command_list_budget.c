@@ -17,7 +17,8 @@
 #include "apps/render_lab/ui/render_lab_hud_screen.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 
-/* A busier icon or a third screen still has this many bytes of
+/* The host's larger command list checks rendering growth; device/QEMU enforces
+ * the 8 KiB RAM limit. A busier icon or a third screen still has this many bytes of
  * MU_COMMANDLIST_SIZE left to grow into before either screen's own peak
  * reaches the ceiling microui.c asserts against. */
 #define COMMANDLIST_HEADROOM_BYTES 2048

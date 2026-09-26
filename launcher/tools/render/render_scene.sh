@@ -138,7 +138,8 @@ render_scene_run() {
     # header, shared with check_app_sources.sh: each declares exactly what
     # the real header is used for, so a scene reaching a call nothing has
     # stubbed fails at the link rather than compiling into something else.
-    _rs_flags="-I $_rs_launcher/main -I $_rs_launcher/components/microui/include"
+    # 64-bit pointers and 8-byte alignment make every command bigger on the host.
+    _rs_flags="-DMU_COMMANDLIST_SIZE=9216 -I $_rs_launcher/main -I $_rs_launcher/components/microui/include"
     _rs_flags="$_rs_flags -I $_rs_tools/render -I $_rs_launcher/test -I $_rs_launcher/test/stubs"
     for _rs_inc in $scene_includes; do
         _rs_flags="$_rs_flags -I $_rs_launcher/$_rs_inc"
