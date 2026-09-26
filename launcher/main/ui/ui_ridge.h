@@ -26,5 +26,5 @@ void ui_ridge_settle(void);
  * untouched. */
 void ui_ridge_step(const input_t* input, uint32_t dt_ms);
 
-/* The whole backdrop, black and the ridge as it stands - a ui_backdrop_fn. */
+/* The whole layered backdrop and the ridge as it stands - a ui_backdrop_fn. */
 void ui_ridge_paint(void);
