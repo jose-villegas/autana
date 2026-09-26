@@ -33,6 +33,8 @@ def replaced_roots():
 REAL_ROOTS = replaced_roots()
 os.environ["AUTANA_RECORDS"] = str(TEMP / "records")
 os.environ["AUTANA_DEVICE_LOCK_ROOT"] = str(TEMP / "locks")
+# The tools under test are this checkout's, never the main checkout's.
+os.environ["AUTANA_DEVICE_TOOLS"] = "here"
 os.environ.pop("AUTANA_LOCK_HOOK", None)
 os.environ.pop("AUTANA_BOARD", None)
 

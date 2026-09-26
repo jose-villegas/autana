@@ -51,6 +51,18 @@ waits for USB. Case and surrounding spaces do not matter. With several
 candidates and none named, a command fails and lists their serial numbers;
 each board has its own lock and queue.
 
+## One copy of the tools
+
+Every worktree carries its own `scripts/device/`, but the lock is one set of
+files on the machine, and two versions of the lock code can each believe
+they hold the board. So `device.py` and `device_lock.py`, started from any
+worktree, run the main checkout's copy (the checkout that owns git's common
+directory) with the same arguments and exit with its status. What gets built
+and flashed still comes from the worktree named by `--worktree` or the
+current directory. Keep the main checkout current - fast-forward it after a
+change to these tools merges. `AUTANA_DEVICE_TOOLS=here` runs a worktree's
+own copy, for working on the tools themselves; the test suites set it.
+
 ## What a flash proves
 
 A flash succeeds when esptool's `write_flash` hash-verified every region it
