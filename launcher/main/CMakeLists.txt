@@ -133,9 +133,10 @@ list(FILTER discovered_apps EXCLUDE REGEX "/suite_[^/]*\\.c$")
 # sand's grid allocation can fail. LAUNCHER_SELFTEST `select`s
 # LAUNCHER_DEVELOPMENT (Kconfig.projbuild), so this one condition still
 # covers both --dev and --diag. Excluded by folder rather than by name so
-# the rule is structural.
+# the rule is structural. Input Lab is the same kind of bench tool: its
+# only reader is whoever refits the touch panel from its log.
 if(NOT CONFIG_LAUNCHER_DEVELOPMENT)
-    list(FILTER discovered_apps EXCLUDE REGEX "/apps/diagnostics/")
+    list(FILTER discovered_apps EXCLUDE REGEX "/apps/(diagnostics|input_lab)/")
 endif()
 
 list(APPEND app_srcs ${discovered_apps})

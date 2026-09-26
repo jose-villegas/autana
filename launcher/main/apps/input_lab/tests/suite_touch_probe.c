@@ -154,6 +154,117 @@ test_a_tap_too_short_for_the_window_settles_on_its_last_sample(void) {
     TEST_ASSERT_EQUAL_INT(8, y);
 }
 
+/* The window's own bounds count: samples at exactly 30 and 80 ms are in it. */
+static void
+test_the_settle_window_includes_both_bounds(void) {
+    const touch_probe_sample_t s[] = {
+        {.x = 1, .y = 1, .t_ms = 29}, {.x = 40, .y = 40, .t_ms = 30}, {.x = 50, .y = 50, .t_ms = 80},
+        {.x = 9, .y = 9, .t_ms = 81}, {.x = 45, .y = 45, .t_ms = 55},
+    };
+    int x, y;
+    touch_probe_settled(s, 5, 30, 80, &x, &y);
+    TEST_ASSERT_EQUAL_INT(45, x);
+    TEST_ASSERT_EQUAL_INT(45, y);
+}
+
+static const input_t IDLE = {0};
+
+/* Static: a tap's sample buffer is too large for the device's test stack. */
+static touch_probe_tap_t tap;
+
+static touch_probe_tap_t*
+fresh_tap(void) {
+    tap = (touch_probe_tap_t){0};
+    return &tap;
+}
+
+static input_t
+press_at(int x, int y) {
+    return (input_t){.pressed = true, .down = true, .press_x = x, .press_y = y, .x = x, .y = y};
+}
+
+static input_t
+held_at(int press_x, int press_y, int x, int y) {
+    return (input_t){.down = true, .press_x = press_x, .press_y = press_y, .x = x, .y = y};
+}
+
+static input_t
+released_at(int press_x, int press_y, int x, int y) {
+    return (input_t){.released = true, .press_x = press_x, .press_y = press_y, .x = x, .y = y};
+}
+
+/* A tap held over three frames, drifting: every position in order, timed
+ * from the press, and one completion on the release. */
+static void
+test_a_held_tap_is_followed_frame_by_frame(void) {
+    touch_probe_tap_t* t = fresh_tap();
+    TEST_ASSERT_FALSE(touch_probe_track(t, 16, &IDLE));
+    TEST_ASSERT_FALSE(touch_probe_track(t, 16, &IDLE));
+    const input_t press = press_at(100, 200);
+    TEST_ASSERT_FALSE(touch_probe_track(t, 16, &press));
+    const input_t held1 = held_at(100, 200, 102, 201);
+    TEST_ASSERT_FALSE(touch_probe_track(t, 10, &held1));
+    const input_t held2 = held_at(100, 200, 104, 203);
+    TEST_ASSERT_FALSE(touch_probe_track(t, 10, &held2));
+    const input_t release = released_at(100, 200, 104, 203);
+    TEST_ASSERT_TRUE(touch_probe_track(t, 10, &release));
+
+    TEST_ASSERT_EQUAL_INT(3, t->count);
+    TEST_ASSERT_EQUAL_INT(100, t->samples[0].x);
+    TEST_ASSERT_EQUAL_INT(0, t->samples[0].t_ms);
+    TEST_ASSERT_EQUAL_INT(102, t->samples[1].x);
+    TEST_ASSERT_EQUAL_INT(10, t->samples[1].t_ms);
+    TEST_ASSERT_EQUAL_INT(203, t->samples[2].y);
+    TEST_ASSERT_EQUAL_INT(20, t->samples[2].t_ms);
+    TEST_ASSERT_EQUAL_INT(32, t->idle_before_press);
+    TEST_ASSERT_FALSE_MESSAGE(touch_probe_track(t, 16, &IDLE), "a tap completes once");
+}
+
+static void
+test_a_press_and_release_in_one_frame_is_a_tap(void) {
+    touch_probe_tap_t* t = fresh_tap();
+    input_t both = press_at(50, 60);
+    both.released = true;
+    both.down = false;
+    TEST_ASSERT_TRUE(touch_probe_track(t, 16, &both));
+    TEST_ASSERT_EQUAL_INT(1, t->count);
+    TEST_ASSERT_EQUAL_INT(50, t->samples[0].x);
+}
+
+/* A press that lands where the finger then already moved on keeps both. */
+static void
+test_a_press_already_moved_keeps_where_it_began(void) {
+    touch_probe_tap_t* t = fresh_tap();
+    input_t press = press_at(50, 60);
+    press.x = 55;
+    touch_probe_track(t, 16, &press);
+    TEST_ASSERT_EQUAL_INT(2, t->count);
+    TEST_ASSERT_EQUAL_INT(50, t->samples[0].x);
+    TEST_ASSERT_EQUAL_INT(55, t->samples[1].x);
+}
+
+/* A lift with no press before it - a finger already down when counting
+ * began - is not a tap. */
+static void
+test_a_release_without_its_press_is_no_tap(void) {
+    touch_probe_tap_t* t = fresh_tap();
+    const input_t release = released_at(10, 10, 10, 10);
+    TEST_ASSERT_FALSE(touch_probe_track(t, 16, &release));
+}
+
+static void
+test_a_long_hold_keeps_to_the_sample_buffer(void) {
+    touch_probe_tap_t* t = fresh_tap();
+    const input_t press = press_at(1, 1);
+    touch_probe_track(t, 16, &press);
+    const input_t held = held_at(1, 1, 2, 2);
+    for (int i = 0; i < 3 * TOUCH_PROBE_SAMPLES_MAX; i++) {
+        touch_probe_track(t, 5, &held);
+    }
+    TEST_ASSERT_EQUAL_INT(TOUCH_PROBE_SAMPLES_MAX, t->count);
+    TEST_ASSERT_EQUAL_INT(3 * TOUCH_PROBE_SAMPLES_MAX * 5, t->held_ms);
+}
+
 void
 run_touch_probe_suite(void) {
     RUN_TEST(test_every_target_fits_inside_the_margin);
@@ -168,6 +279,12 @@ run_touch_probe_suite(void) {
     RUN_TEST(test_a_shuffle_visits_every_index_once);
     RUN_TEST(test_the_settled_point_is_the_median_inside_the_window);
     RUN_TEST(test_a_tap_too_short_for_the_window_settles_on_its_last_sample);
+    RUN_TEST(test_the_settle_window_includes_both_bounds);
+    RUN_TEST(test_a_held_tap_is_followed_frame_by_frame);
+    RUN_TEST(test_a_press_and_release_in_one_frame_is_a_tap);
+    RUN_TEST(test_a_press_already_moved_keeps_where_it_began);
+    RUN_TEST(test_a_release_without_its_press_is_no_tap);
+    RUN_TEST(test_a_long_hold_keeps_to_the_sample_buffer);
 }
 
 SUITE_REGISTER(run_touch_probe_suite);
