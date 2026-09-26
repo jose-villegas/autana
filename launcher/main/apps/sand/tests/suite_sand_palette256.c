@@ -108,10 +108,10 @@ test_expansion_reproduces_the_real_lut_cell_for_cell(void) {
     }
 }
 
-/* Mirrors paint_indexed_cell()'s own indexed shine test (app_sand.c, not
- * host-portable) at a fixed NORMAL cell size and zero shine phase - the same
- * mirroring suite_sand_common.h's own top comment describes for local
- * depth. */
+/* Mirrors paint_indexed_cell()'s own indexed shine test (sand_paint_row.h,
+ * mirrored rather than linked since this suite predates the paint-row split)
+ * at a fixed NORMAL cell size and zero shine phase - the same mirroring
+ * suite_sand_common.h's own top comment describes for local depth. */
 #define SHINE_TEST_CELL   4
 #define SHINE_TEST_PERIOD 64
 
@@ -119,7 +119,7 @@ test_expansion_reproduces_the_real_lut_cell_for_cell(void) {
  * MATERIAL_SPECKLED gradient with no sub-cell pattern, so it needs no
  * shine-index handling. Metal's shine cells get col[2]'s own index, which
  * dithers to a different 16-colour entry too - see paint_indexed_cell()'s own
- * comment (app_sand.c) for why one index byte forces this adaptation. */
+ * comment (sand_paint_row.h) for why one index byte forces this adaptation. */
 static void
 test_metal_shine_cells_get_a_different_index_in_256_and_16(void) {
     int shine_ux_q8, shine_uy_q8;

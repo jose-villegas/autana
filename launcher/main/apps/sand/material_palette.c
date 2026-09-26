@@ -917,7 +917,7 @@ wood_colours(cell_t c, uint8_t v, unsigned hash, unsigned depth, gfx_color_t out
     }
     if (depth != 0) {
         /* depth carries the wave's fraction (0-255) plus one, from
-         * material_wood_leaf_wave() via cell_shading_depth() (app_sand.c) -
+         * material_wood_leaf_wave() via cell_shading_depth() (sand_paint_row.h) -
          * see
          * material_wood_near_leaf() in material_palette.h for the gate. A
          * live LERP8, not a stored step, so the blend is smooth rather than
