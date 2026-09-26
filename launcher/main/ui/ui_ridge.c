@@ -1,6 +1,6 @@
 /*
- * ui_ridge - the launcher's backdrop: Cerro Autana's ridge as a line of
- * light on black, level with the horizon and set waving by a touch.
+ * ui_ridge - the launcher's layered backdrop: two dithered back ridges,
+ * a dithered sky fill, and Cerro Autana's glowing ridge in front.
  *
  * The ridge is the one the boot animation's photograph ends on, in the same
  * frame, and the launcher's first frames hold it in boot's landscape pose, so
@@ -9,8 +9,8 @@
  * ease round to true level, which it then keeps at any angle while the app
  * rows turn in quarters.
  *
- * Black is the point and not a default: an AMOLED pixel at 0 is off, so the
- * line is the only thing lit.
+ * The boot hand-off stays black until the front ridge has held its photograph
+ * pose. The layers then ease in behind it without changing the dissolve.
  */
 
 #include "ui/ui_ridge.h"
@@ -21,6 +21,7 @@
 
 #include "gfx/gfx.h"
 #include "ui/ridge_curve_generated.h"
+#include "ui/ridge_layers.h"
 #include "ui/ridge_motion.h"
 #include "ui/ridge_pose.h"
 #include "util/frame_cost.h"
@@ -46,6 +47,31 @@ TUNE(ridge, glow_pattern, GFX_DITHER_BAYER4, 0, GFX_DITHER_PATTERN_COUNT - 1);
 /* Levels of stippled light in the halo; none is a smooth one. */
 TUNE(ridge, glow_steps, 0, 0, 16);
 
+TUNE(ridge, sky_top_rgb, 0x1199C8, 0, 0xFFFFFF);
+TUNE(ridge, sky_bottom_rgb, 0x91C6D1, 0, 0xFFFFFF);
+TUNE(ridge, background_rgb, 0x0B6382, 0, 0xFFFFFF);
+TUNE(ridge, colour_balance, 45, 0, 100);
+TUNE(ridge, fill_pattern, GFX_DITHER_SCANLINES4, 0, GFX_DITHER_PATTERN_COUNT - 1);
+TUNE(ridge, fill_levels, 6, 1, 16);
+TUNE(ridge, lip_px, 12, 1, 48);
+TUNE(ridge, back0_offset, -70, -160, 80);
+TUNE(ridge, back0_amplitude, 5, 0, 32);
+TUNE(ridge, back0_wavelength, 260, 8, 1000);
+TUNE(ridge, back0_period_ms, 6000, 100, 60000);
+TUNE(ridge, back0_rgb, 0x07638C, 0, 0xFFFFFF);
+TUNE(ridge, back0_body_alpha, 204, 0, 255);
+TUNE(ridge, back0_lip_alpha, 71, 0, 255);
+TUNE(ridge, back1_offset, -30, -160, 80);
+TUNE(ridge, back1_amplitude, 8, 0, 32);
+TUNE(ridge, back1_wavelength, 200, 8, 1000);
+TUNE(ridge, back1_period_ms, 4300, 100, 60000);
+TUNE(ridge, back1_rgb, 0x10606B, 0, 0xFFFFFF);
+TUNE(ridge, back1_body_alpha, 204, 0, 255);
+TUNE(ridge, back1_lip_alpha, 71, 0, 255);
+TUNE(ridge, front_offset, 0, -160, 80);
+TUNE(ridge, front_body_alpha, 217, 0, 255);
+TUNE(ridge, front_lip_alpha, 76, 0, 255);
+
 /* What becomes of the light the line leaves behind as it moves, out of 256
  * per redraw: 0 wipes it, 255 never does, between is a trail that fades. */
 TUNE(ridge, trail, 226, 0, 255);
@@ -67,9 +93,9 @@ TUNE(ridge, spring_damping, 2, 0, 64);
 TUNE(ridge, breath_ms, 5000, 500, 60000);
 TUNE(ridge, breath_depth, 164, 0, 256);
 TUNE(ridge, breath_smooth, 20, 0, 60);
-TUNE(ridge, wave_height, 300, 0, 400);
-TUNE(ridge, wave_length, 164, 8, 1000);
-TUNE(ridge, wave_period_ms, 2600, 100, 60000);
+TUNE(ridge, front_amplitude, 6, 0, 32);
+TUNE(ridge, front_wavelength, 164, 8, 1000);
+TUNE(ridge, front_period_ms, 2600, 100, 60000);
 TUNE(ridge, tilt_push, 350, 0, 1000);
 TUNE(ridge, tilt_coast_ms, 2000, 50, 10000);
 
@@ -114,6 +140,8 @@ TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 
 #define POSE_LANDSCAPE    ((gfx_glow_pose_t){-GFX_GLOW_POSE_ONE, 0})
 
+#define RIDGE_LAYER_COUNT 3
+
 typedef struct {
     spring_line_t line;
     gfx_glow_style_t style;
@@ -124,6 +152,8 @@ typedef struct {
     int16_t heights[RIDGE_COLUMNS];
     int16_t smooth[RIDGE_COLUMNS];
     int16_t shape[RIDGE_COLUMNS];
+    int16_t layers[RIDGE_LAYER_COUNT][RIDGE_COLUMNS];
+    int16_t shown_layers[RIDGE_LAYER_COUNT][RIDGE_COLUMNS];
     ridge_motion_t motion;
     uint32_t tuned_at;
     bool ambient;
@@ -145,10 +175,140 @@ typedef struct {
     int shake;
     int last_pluck_x;
     int fade_draws_left;
+    bool backdrop_painted;
 } ridge_t;
 
 static ridge_t* ridge;
 static bool allocation_tried;
+
+static uint32_t
+rgb_mix(uint32_t a, uint32_t b, int amount) {
+    uint32_t mixed = 0;
+    for (int shift = 0; shift <= 16; shift += 8) {
+        const int from = (a >> shift) & 0xFF;
+        const int to = (b >> shift) & 0xFF;
+        mixed |= (uint32_t)(from + (to - from) * amount / 100) << shift;
+    }
+    return mixed;
+}
+
+static uint32_t
+sky_colour(int view_y) {
+    const uint32_t top = rgb_mix((uint32_t)sky_top_rgb, (uint32_t)background_rgb, colour_balance);
+    const uint32_t bottom = rgb_mix((uint32_t)sky_bottom_rgb, (uint32_t)background_rgb, colour_balance);
+    const int t = view_y < 0 ? 0 : (view_y >= RIDGE_CURVE_VIEW_H ? 256 : view_y * 256 / RIDGE_CURVE_VIEW_H);
+    return rgb_mix(top, bottom, t * 100 / 256);
+}
+
+static int
+layer_alpha(int delta, int lip_alpha, int body_alpha) {
+    if (delta < 0) {
+        return 0;
+    }
+    if (delta >= lip_px) {
+        return body_alpha;
+    }
+    return lip_alpha + (body_alpha - lip_alpha) * delta / lip_px;
+}
+
+static bool
+layer_covers(int x, int y, int alpha) {
+    return gfx_dither_alpha_pick((gfx_dither_pattern_id_t)fill_pattern, x, y, (uint8_t)alpha);
+}
+
+static uint32_t
+quantise_fill_rgb(uint32_t rgb, int x, int y) {
+    const gfx_dither_pattern_t* const pattern = gfx_dither_pattern((gfx_dither_pattern_id_t)fill_pattern);
+    const int phase = gfx_dither_threshold((gfx_dither_pattern_id_t)fill_pattern, x, y) * 64 / pattern->levels;
+    const int steps = fill_levels * 4;
+    uint32_t quantised = 0;
+    for (int shift = 0; shift <= 16; shift += 8) {
+        const int channel = (rgb >> shift) & 0xFF;
+        int level = (channel * steps * 64 / 255 + phase) / 64;
+        level = level > steps ? steps : level;
+        quantised |= (uint32_t)(level * 255 / steps) << shift;
+    }
+    return quantised;
+}
+
+static gfx_color_t
+backdrop_pixel(int panel_x, int panel_y, int ambient) {
+    if (ambient == 0) {
+        return GFX_RGB(0x000000);
+    }
+    const int column = panel_y + RIDGE_EXTRA;
+    const int view_y = GFX_WIDTH - 1 - panel_x;
+    uint32_t rgb = rgb_mix((uint32_t)background_rgb, sky_colour(RIDGE_CURVE_VIEW_H / 2), colour_balance);
+    const int alpha0 = layer_alpha(view_y - (ridge->layers[0][column] >> 4), back0_lip_alpha, back0_body_alpha);
+    const int alpha1 = layer_alpha(view_y - (ridge->layers[1][column] >> 4), back1_lip_alpha, back1_body_alpha);
+    const int alpha2 = layer_alpha(view_y - (ridge->layers[2][column] >> 4), front_lip_alpha, front_body_alpha);
+    if (layer_covers(panel_x, panel_y, alpha0)) {
+        rgb = (uint32_t)back0_rgb;
+    }
+    if (layer_covers(panel_x, panel_y, alpha1)) {
+        rgb = (uint32_t)back1_rgb;
+    }
+    if (layer_covers(panel_x, panel_y, alpha2)) {
+        rgb = sky_colour(view_y);
+    }
+    return ambient >= 256 || layer_covers(panel_x, panel_y, ambient) ? gfx_rgb(quantise_fill_rgb(rgb, panel_x, panel_y))
+                                                                     : GFX_RGB(0x000000);
+}
+
+static void
+repaint_backdrop_span(int column, int lo, int hi, int ambient) {
+    const int panel_y = column - RIDGE_EXTRA;
+    if (panel_y < 0 || panel_y >= GFX_HEIGHT) {
+        return;
+    }
+    int x0 = GFX_WIDTH - hi;
+    int x1 = GFX_WIDTH - lo;
+    x0 = x0 < 0 ? 0 : x0;
+    x1 = x1 > GFX_WIDTH ? GFX_WIDTH : x1;
+    if (x1 <= x0) {
+        return;
+    }
+    gfx_color_t* const framebuffer = gfx_framebuffer();
+    for (int x = x0; x < x1; x++) {
+        framebuffer[panel_y * GFX_WIDTH + x] = backdrop_pixel(x, panel_y, ambient);
+    }
+    gfx_mark_dirty(x0, panel_y, x1 - x0, 1);
+}
+
+static void
+build_layers(void) {
+    const int amplitude[2] = {back0_amplitude, back1_amplitude};
+    const int wavelength[2] = {back0_wavelength, back1_wavelength};
+    const int period[2] = {back0_period_ms, back1_period_ms};
+    const int offset[2] = {back0_offset, back1_offset};
+    for (int x = 0; x < RIDGE_COLUMNS; x++) {
+        for (int layer = 0; layer < 2; layer++) {
+            const uint32_t phase = (uint32_t)x * 65536u / (uint32_t)wavelength[layer]
+                                   - (uint32_t)((uint64_t)ridge->alive_ms * 65536u / (uint32_t)period[layer]);
+            const int echo = spring_line_scale(ridge->line.offset[x], layer == 0 ? 64 : 128) / (SPRING_LINE_ONE / 16);
+            ridge->layers[layer][x] = (int16_t)(ridge->rigid[x] + offset[layer] * 16
+                                                + amplitude[layer] * trig_sin((uint16_t)phase) / 2048 + echo);
+        }
+        ridge->layers[2][x] = (int16_t)(ridge->heights[x] + front_offset * 16);
+    }
+}
+
+static void
+repaint_moved_backdrop(int ambient) {
+    for (int column = RIDGE_EXTRA; column < RIDGE_EXTRA + RIDGE_CURVE_POINTS; column++) {
+        int lo = RIDGE_CURVE_VIEW_H;
+        int hi = 0;
+        for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+            int a, b;
+            ridge_layer_dirty_span(ridge->shown_layers[layer][column], ridge->layers[layer][column], lip_px,
+                                   layer == RIDGE_LAYER_COUNT - 1 ? glow_radius : 0, &a, &b);
+            lo = a < lo ? a : lo;
+            hi = b > hi ? b : hi;
+            ridge->shown_layers[layer][column] = ridge->layers[layer][column];
+        }
+        repaint_backdrop_span(column, lo, hi, ambient);
+    }
+}
 
 /* What a draw measures distance against, for the line as it now stands. */
 static void
@@ -208,6 +368,8 @@ allocate_once(void) {
         .rows = MAP_ROWS,
     };
     bake_what_is_tuned();
+    build_layers();
+    memcpy(ridge->shown_layers, ridge->layers, sizeof ridge->shown_layers);
     ridge->attitude.pose = POSE_LANDSCAPE;
     ridge->pose_on_screen = POSE_LANDSCAPE;
     ridge->attitude.level = POSE_LANDSCAPE;
@@ -256,10 +418,23 @@ draw_ridge(void) {
 void
 ui_ridge_paint(void) {
     allocate_once();
-    gfx_fill_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, gfx_rgb(0x000000));
     if (ridge == NULL) {
+        gfx_fill_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, gfx_rgb(0x000000));
         return;
     }
+    const int released = ridge->ambient && ridge->alive_ms > (uint32_t)boot_hold_ms
+                             ? ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms)
+                             : 0;
+    build_layers();
+    gfx_color_t* const framebuffer = gfx_framebuffer();
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        for (int x = 0; x < GFX_WIDTH; x++) {
+            framebuffer[y * GFX_WIDTH + x] = backdrop_pixel(x, y, released);
+        }
+    }
+    gfx_mark_all_dirty();
+    memcpy(ridge->shown_layers, ridge->layers, sizeof ridge->shown_layers);
+    ridge->backdrop_painted = released == 256;
     memset(ridge->lit_lo, 0, sizeof ridge->lit_lo);
     memset(ridge->lit_hi, 0, sizeof ridge->lit_hi);
     draw_ridge();
@@ -292,9 +467,9 @@ shape_this_frame(uint32_t dt_ms) {
     const ridge_motion_params_t params = {
         .breath_ms = breath_ms,
         .breath_depth = breath_depth,
-        .wave_height_q4 = wave_height,
-        .wave_length = wave_length,
-        .wave_passes_in_ms = wave_period_ms,
+        .wave_height_q4 = front_amplitude * 16,
+        .wave_length = front_wavelength,
+        .wave_passes_in_ms = front_period_ms,
         .push = tilt_push,
         .coast_ms = tilt_coast_ms,
     };
@@ -359,19 +534,30 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     int lo, hi;
     spring_line_apply(&ridge->line, ridge->shape, ridge->heights, &lo, &hi);
     const bool line_moved = hi > lo;
+    build_layers();
     if (line_moved) {
         prepare_light();
     }
     const bool settles_now = arrived && !ridge_pose_within(ridge->attitude.pose, ridge->pose_on_screen, 1);
     /* A tail that fades is drawn until it is gone, or it would freeze where
      * the line stopped. */
-    const bool moved = line_moved || settles_now || retuned || pose_moved_enough_to_see();
+    const int ambient_gain =
+        ridge->ambient && ridge->alive_ms > (uint32_t)boot_hold_ms
+            ? ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms)
+            : 0;
+    const bool backdrop_moved = ambient_gain > 0 && (ambient_gain < 256 || ridge->ambient);
+    const bool moved = line_moved || settles_now || retuned || pose_moved_enough_to_see() || backdrop_moved;
     if (moved) {
         ridge->fade_draws_left = gfx_glow_trail_draws(trail);
     } else if (ridge->fade_draws_left > 0) {
         ridge->fade_draws_left--;
     }
     if (moved || ridge->fade_draws_left > 0) {
-        draw_ridge();
+        if (ambient_gain < 256 || !ridge->backdrop_painted) {
+            ui_ridge_paint();
+        } else {
+            repaint_moved_backdrop(ambient_gain);
+            draw_ridge();
+        }
     }
 }
