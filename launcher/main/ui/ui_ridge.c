@@ -229,6 +229,13 @@ raster_segment(int layer, int x0, int y0, int x1, int y1) {
     }
 }
 
+/* `value / RIDGE_POSE_ONE` exactly, truncating toward zero, without the
+ * 64-bit division: a library call on this chip, four per curve point. */
+static inline __attribute__((always_inline)) int
+pose_scale(int32_t value) {
+    return value >= 0 ? value >> 14 : -((-value) >> 14);
+}
+
 static void
 raster_boundaries(void) {
     const bool was_by_column = ridge->by_column;
@@ -240,17 +247,19 @@ raster_boundaries(void) {
         for (int strip = 0; strip < GFX_HEIGHT; strip++) {
             ridge->boundary[layer][strip] = INT16_MAX;
         }
-        for (int point = 1; point < RIDGE_COLUMNS; point++) {
-            const int64_t rx = ridge->attitude.pose.down_y, ry = -ridge->attitude.pose.down_x;
-            const int64_t dx = ridge->attitude.pose.down_x, dy = ridge->attitude.pose.down_y;
-            const int u0 = (point - 1) * 16 - (RIDGE_COLUMNS - 1) * 8, u1 = point * 16 - (RIDGE_COLUMNS - 1) * 8;
-            const int h0 = ridge->layers[layer][point - 1] - RIDGE_CURVE_VIEW_H * 8;
-            const int h1 = ridge->layers[layer][point] - RIDGE_CURVE_VIEW_H * 8;
-            const int x0 = round_q4((GFX_WIDTH - 1) * 8 + (int)((u0 * rx + h0 * dx) / RIDGE_POSE_ONE));
-            const int y0 = round_q4((GFX_HEIGHT - 1) * 8 + (int)((u0 * ry + h0 * dy) / RIDGE_POSE_ONE));
-            const int x1 = round_q4((GFX_WIDTH - 1) * 8 + (int)((u1 * rx + h1 * dx) / RIDGE_POSE_ONE));
-            const int y1 = round_q4((GFX_HEIGHT - 1) * 8 + (int)((u1 * ry + h1 * dy) / RIDGE_POSE_ONE));
-            raster_segment(layer, x0, y0, x1, y1);
+        const int32_t rx = ridge->attitude.pose.down_y, ry = -ridge->attitude.pose.down_x;
+        const int32_t dx = ridge->attitude.pose.down_x, dy = ridge->attitude.pose.down_y;
+        int x0 = 0, y0 = 0;
+        for (int point = 0; point < RIDGE_COLUMNS; point++) {
+            const int32_t u = point * 16 - (RIDGE_COLUMNS - 1) * 8;
+            const int32_t h = ridge->layers[layer][point] - RIDGE_CURVE_VIEW_H * 8;
+            const int x1 = round_q4((GFX_WIDTH - 1) * 8 + pose_scale(u * rx + h * dx));
+            const int y1 = round_q4((GFX_HEIGHT - 1) * 8 + pose_scale(u * ry + h * dy));
+            if (point > 0) {
+                raster_segment(layer, x0, y0, x1, y1);
+            }
+            x0 = x1;
+            y0 = y1;
         }
     }
     build_sky_gradient();
@@ -394,8 +403,13 @@ extend_repaint_range(int was, int now, int* lo, int* hi) {
         first = last;
         last = swap;
     }
-    first -= lip_px;
-    last += lip_px + 1;
+    /* The lip lies on the down side of the boundary only. */
+    if (ridge->down_sign > 0) {
+        last += lip_px + 1;
+    } else {
+        first -= lip_px;
+        last += 1;
+    }
     if (first < *lo) {
         *lo = first;
     }
