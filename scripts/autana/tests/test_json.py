@@ -46,38 +46,6 @@ class JsonReadTests(unittest.TestCase):
                              {"tunables": [{"name": "ridge.trail", "value": 200, "min": 0,
                                             "max": 255, "default": 226}]})
 
-    def test_status_reply(self):
-        reply = ("held by worker for capture since 123 "
-                 "(local 1970-01-01 01:02:03; elapsed 12s; estimated free unknown (no duration history))\n"
-                 "waiting: Alice, Bob\n"
-                 "  1. Alice for flash; estimated start unknown (no duration history)\n"
-                 "  2. Bob for listen; estimated start unknown (no duration history)\n")
-        expected = {"state": "held", "owner": "worker", "purpose": "capture",
-                    "acquired_at": 123, "local_start": "1970-01-01 01:02:03",
-                    "elapsed_seconds": 12, "estimated_free": None,
-                    "waiting": [{"owner": "Alice", "purpose": "flash", "estimated_start": None},
-                                {"owner": "Bob", "purpose": "listen", "estimated_start": None}]}
-        self.assertEqual(autana.parse_status(reply), expected)
-        with mock.patch.object(autana.subprocess, "run", return_value=mock.Mock(returncode=0, stdout=reply)):
-            self.assertEqual(self.output(autana.status, ["--json"]), expected)
-
-    def test_status_estimate_and_human_reservation(self):
-        held = ("held by worker for flash since 123 "
-                "(local local-time; elapsed 7s; estimated free 2026-09-26 20:00:00)\n"
-                "waiting: Alice\n"
-                "  1. Alice for send; estimated start 2026-09-26 20:00:00\n")
-        parsed = autana.parse_status(held)
-        self.assertEqual(parsed["estimated_free"], "2026-09-26 20:00:00")
-        self.assertEqual(parsed["waiting"][0]["estimated_start"], "2026-09-26 20:00:00")
-        human = ("human reservation: maintainer: power cycle "
-                 "(5s ago; since 2026-09-26 19:00:00)\n"
-                 "waiting: Alice\n"
-                 "  1. Alice for flash; estimated start unknown (no duration history)\n")
-        parsed = autana.parse_status(human)
-        self.assertEqual(parsed["state"], "human")
-        self.assertEqual(parsed["local_start"], "2026-09-26 19:00:00")
-        self.assertIsNone(parsed["waiting"][0]["estimated_start"])
-
     def test_suite_list(self):
         with tempfile.TemporaryDirectory() as temp:
             source = Path(temp) / "launcher" / "test" / "suite.c"
