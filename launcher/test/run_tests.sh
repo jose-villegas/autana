@@ -62,7 +62,8 @@ fi
 
 # Warnings are errors: a host build catches mistakes the target build misses,
 # and strictness costs nothing in tests.
-CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -Wno-unused-parameter -g -O1"
+BASE_CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -Wno-unused-parameter -g -O1"
+CFLAGS="$BASE_CFLAGS"
 if [ "${HOST_SANITIZE:-}" = undefined ]; then
     # Instrumentation widens the ranges that format-truncation reasons about.
     CFLAGS="$CFLAGS -fsanitize=undefined -fno-sanitize-recover=undefined -Wno-format-truncation"
@@ -327,7 +328,7 @@ for f in $SU_SOURCES; do
     n=$((n + 1))
     base=$(basename "$f" .c)
     # shellcheck disable=SC2086
-    "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
+    "$CC_BIN" $BASE_CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
         -I "$TEST_DIR/../components/microui/include" \
         -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools/gen" -include "$TEST_DIR/timing.h" \
         -fstack-usage -c "$f" -o "$SU_DIR/$(printf '%02d' "$n")_$base.o" &
