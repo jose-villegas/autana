@@ -334,10 +334,10 @@ How a panel over a paused app and a drawn backdrop use these is in
 
 ## What a screen costs
 
-`MU_COMMANDLIST_SIZE` is 8 KiB, and everything drawn spends it. An open
-dropdown list adds its rows on top of the screen beneath it. The gallery
-above could not draw its whole widgets page with the list open: microui
-stopped at its command-list assertion. A development build logs the
+`MU_COMMANDLIST_SIZE` in `components/microui/include/microui.h` caps
+the command list, and everything drawn spends it. An open dropdown list
+adds its rows on top of the screen beneath it. The screen budget suites
+keep space for additional controls. A development build logs the
 high-water mark from `ui_end()`; check it before adding a texture or
 another icon.
 
