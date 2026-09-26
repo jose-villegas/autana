@@ -21,9 +21,10 @@ firmware captures.
 | Back layers | two, from the sky's hue: HSV (h, 0.95, 0.55) and (h, 0.85, 0.42), where h is the hue of `#1199C8` |
 | Layer shape | Cerro Autana's ridge, offset -70 / -30 / 0 px, each with its own wave: 5 / 8 / 6 px high, 260 / 200 / 164 px long, 6.0 / 4.3 / 2.6 s |
 | Layer edges | dithered alpha, never a mix: a 12 px lip rising to a mostly solid body (0.8, 0.8, 0.85) |
-| Glow | white core, halo `#CFF4F8`, radius 13, core 3, trail 226/256 |
+| Line | none: the front fill's edge is the ridge. The animations still show the glow they were made with |
 | Dither | fixed to the screen, not the curve; scanlines (4 rows) for the fills |
 | Pluck | the spring line as today (tension 64, stiffness 4, damping 2); back layers echo it at 50% and 25% |
+| Theme | one colour from a row of about 12 swatches, each stored as a small preset; roles derived on a fixed OKLCH lightness ladder |
 
 Every value above is meant to be a live tunable, and the pattern a
 selectable table. Because the dither is fixed to the screen, pixels a
