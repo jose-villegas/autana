@@ -775,7 +775,7 @@ test_the_blend_has_no_jump_crossing_45_degrees(void) {
     free(blend_pool_cells);
 }
 
-/* PAINT_ROW_N()'s debounced walk. A per-cell debounce history is not
+/* paint_row_n()'s debounced walk. A per-cell debounce history is not
  * affordable: one byte per cell over the finest grid is 41,216 bytes, the
  * size of the grid buffer itself. col_stable_depth[]/col_top_row[]
  * (app_sand.c) debounces per COLUMN instead: a reset commits only once the
@@ -2870,7 +2870,7 @@ test_a_fixed_depth_reads_the_same_at_every_tilt_angle(void) {
         const unsigned scale_q8 = dom_axis ? (256u * (unsigned)len) / dom_axis : 256u;
 
         /* Combine-time projection, clamped to MATERIAL_LIQUID_DEPTH_BAND -
-         * see cell_shading_depth() (app_sand.c). Gravity is
+         * see cell_shading_depth() (sand_paint_row.h). Gravity is
          * static within one sweep sample here, so there is no
          * stale-accumulator concern to model. */
         const unsigned depth_raw = (count * scale_q8) >> 8;
