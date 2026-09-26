@@ -1,107 +1,201 @@
+#include <math.h>
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "gfx/gfx.h"
+#include "input/tilt.h"
 #include "render_host.h"
 
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand.h"
-#include "apps/sand/sand_paint.h"
+#include "apps/sand/sand_paint_row.h"
 
 #define CELL_SIZE 4
 #define GRID_W    (GFX_WIDTH / CELL_SIZE)
 #define GRID_H    (GFX_HEIGHT / CELL_SIZE)
+#define VIEW_W    GRID_H
+#define VIEW_H    GRID_W
 
 static sand_t sim;
+static tilt_t tilt;
 static uint8_t cells[GRID_W * GRID_H];
+static impulse_t impulses[GRID_W * GRID_H];
+static uint8_t depth_a[GRID_W_MAX];
+static uint8_t depth_b[GRID_W_MAX];
+static sand_paint_row_state_t paint = {
+    .local_depth_cur_row = depth_a, .local_depth_prev_row = depth_b, .local_depth_prev_cy = LOCAL_DEPTH_NO_ROW};
+static FILE* angles;
+static int wood_top_down;
+static int gunpowder_blasts;
+
+static void
+put(int x, int y, cell_t cell) {
+    sand_set(&sim, VIEW_H - 1 - y, x, cell);
+}
+
+static void
+mountain(void) {
+    for (int x = 0; x < VIEW_W; x++) {
+        const int top = x < 48 ? 79 : x < 80 ? 80 : 66;
+        for (int y = top; y < VIEW_H; y++) {
+            put(x, y, CELL_MAKE(MAT_STONE, (x + y) & 7));
+        }
+    }
+    for (int x = 3; x < 52; x++) {
+        const int dx = abs(x - 25);
+        const int top = 23 + dx * 2;
+        for (int y = top; y < 79; y++) {
+            const bool vent = dx < 3 && y < 54;
+            const bool chamber = dx < 10 && y >= 54 && y < 64;
+            if (vent || chamber) {
+                continue;
+            }
+            put(x, y, CELL_MAKE(y < top + 4 ? MAT_DIRT : MAT_STONE, (x + y) & 7));
+        }
+    }
+}
+
+static void
+magma(void) {
+    for (int x = 17; x < 34; x++) {
+        for (int y = 57; y < 64; y++) {
+            put(x, y, CELL_MAKE(MAT_LAVA, 15));
+        }
+    }
+    for (int y = 31; y < 54; y++) {
+        for (int x = 23; x < 28; x++) {
+            put(x, y, CELL_MAKE(MAT_LAVA, 15));
+        }
+    }
+}
+
+static void
+lake_and_grove(void) {
+    for (int x = 50; x < 80; x++) {
+        for (int y = 64; y < 80; y++) {
+            put(x, y, CELL_MAKE(MAT_WATER, 15));
+        }
+    }
+    for (int x = 80; x < VIEW_W; x++) {
+        for (int y = 62; y < 66; y++) {
+            put(x, y, CELL_MAKE(MAT_DIRT, 13));
+        }
+    }
+}
+
+static void
+gunpowder_charge(void) {
+    for (int x = 37; x < 41; x++) {
+        for (int y = 47 + (x - 37) * 2; y < 54 + (x - 37) * 2; y++) {
+            put(x, y, GUNPOWDER_CELL(0));
+        }
+    }
+}
+
+static void
+terrain(void) {
+    mountain();
+    magma();
+    lake_and_grove();
+    gunpowder_charge();
+}
+
+static void
+trees(void) {
+    for (int i = 0; i < 3; i++) {
+        put(85 + i * 10, 61, MATX(MATX_PLANT));
+    }
+}
 
 static bool
 setup(int quarter) {
-    (void)quarter;
-    sand_init(&sim, cells, GRID_W, GRID_H, 0x53414e44u);
+    if (quarter != 1) {
+        return false;
+    }
+    sand_init(&sim, cells, GRID_W, GRID_H, 0x564f4c43u);
     sand_set_scatter(&sim, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&sim, SAND_DECAY_PER_MATERIAL);
     sand_set_evaporates(&sim, SAND_EVAPORATES_PER_MATERIAL);
     sand_set_soak(&sim, SAND_SOAK_PER_MATERIAL);
     sand_set_mobility(&sim, SAND_MOBILITY_PER_MATERIAL);
-    for (int x = 8; x < 84; x++) {
-        sand_set(&sim, x, 78, CELL_MAKE(MAT_STONE, 3));
-    }
-    for (int y = 63; y < 78; y++) {
-        sand_set(&sim, 8, y, CELL_MAKE(MAT_STONE, 3));
-        sand_set(&sim, 83, y, CELL_MAKE(MAT_STONE, 3));
-    }
-    return true;
+    sand_enable_impulses(&sim, impulses, GRID_W * GRID_H);
+    terrain();
+    trees();
+    sand_add_emitter(&sim, VIEW_H - 1 - 26, 25, CELL_MAKE(MAT_LAVA, 15));
+    tilt_reset(&tilt, 256);
+    const char* path = getenv("SAND_ANGLE_PATH");
+    angles = path != NULL ? fopen(path, "w") : NULL;
+    return path == NULL || angles != NULL;
+}
+
+static double
+board_angle(int frame) {
+    const double t = (double)frame / 149.0;
+    return 7.0 * sin(t * 6.283185307179586) + 36.0 * (0.5 - 0.5 * cos(t * 6.283185307179586));
 }
 
 static void
-pour(int frame) {
-    if (frame < 90) {
-        for (int dx = -3; dx <= 3; dx++) {
-            sand_set(&sim, 25 + dx, 9, CELL_MAKE(MAT_SAND, (frame + dx) & 15));
-            sand_set(&sim, 66 + dx, 14, CELL_MAKE(MAT_WATER, 15));
-        }
-    }
-    if (frame >= 18 && frame < 75) {
-        sand_set(&sim, 43, 11, CELL_MAKE(MAT_LAVA, 15));
-        sand_set(&sim, 49, 11, CELL_MAKE(MAT_WATER, 15));
-    }
-}
-
-static void
-draw_cell_pixels(gfx_color_t* fb, int cx, int cy, material_pattern_t pattern, const gfx_color_t* colors) {
-    for (int py = 0; py < CELL_SIZE; py++) {
-        for (int px = 0; px < CELL_SIZE; px++) {
-            const bool hatch = pattern == MATERIAL_HATCHED && ((cx * CELL_SIZE + px + cy * CELL_SIZE + py) & 7) == 0;
-            fb[(cy * CELL_SIZE + py) * GFX_WIDTH + cx * CELL_SIZE + px] = hatch ? colors[2] : colors[0];
-        }
+drive_tilt(const render_frame_t* frame, int* gx, int* gy) {
+    const double radians = board_angle(frame->index) * 0.017453292519943295;
+    const int sx = (int)lround(256.0 * sin(radians));
+    const int sy = (int)lround(256.0 * cos(radians));
+    tilt_update(&tilt, -sy, sx, 0, 90, frame->dt_ms);
+    *gx = tilt_x(&tilt);
+    *gy = tilt_y(&tilt);
+    if (angles != NULL) {
+        fprintf(angles, "%.3f\n", board_angle(frame->index));
+        fflush(angles);
     }
 }
 
 static void
-draw_cell(gfx_color_t* fb, const uint8_t* above, const uint8_t* row, const uint8_t* below, int cx, int cy) {
-    const unsigned mask = sand_paint_edge_mask(above, row, below, cx, GRID_W);
-    const unsigned hash = material_grain_hash(cx, cy);
-    gfx_color_t colors[3];
-    const material_pattern_t pattern = material_colours(row[cx], hash, mask, 0, colors);
-    draw_cell_pixels(fb, cx, cy, pattern, colors);
-}
-
-static void
-draw_row(gfx_color_t* fb, const uint8_t* grid, int cy) {
-    const uint8_t* row = grid + cy * GRID_W;
-    const uint8_t* above = cy > 0 ? row - GRID_W : NULL;
-    const uint8_t* below = cy + 1 < GRID_H ? row + GRID_W : NULL;
-    for (int cx = 0; cx < GRID_W; cx++) {
-        draw_cell(fb, above, row, below, cx, cy);
-    }
-}
-
-static void
-draw_grid(void) {
-    gfx_color_t* fb = gfx_framebuffer();
-    const uint8_t* grid = sim.cells;
+paint_grid(const render_frame_t* frame, int gx, int gy) {
+    sand_paint_frame_t pf = {.shine_period = 64,
+                             .shine_offset = frame->index / 2,
+                             .wood_leaf_wind_sign = 1,
+                             .wood_leaf_time_ms = frame->elapsed_ms};
+    material_set_gravity(gx, gy);
+    material_set_foam_phase(frame->elapsed_ms / 90);
+    material_shine_direction(gx, gy, &pf.shine_ux_q8, &pf.shine_uy_q8);
+    material_wood_leaf_wind_axis(gx, gy, &pf.wood_leaf_wind_ux_q8, &pf.wood_leaf_wind_uy_q8);
+    material_wood_leaf_top5(gx, gy, &wood_top_down, pf.wood_leaf_top5);
+    update_local_depth_gravity(&paint, gx, gy, GRID_W, GRID_H);
     for (int cy = 0; cy < GRID_H; cy++) {
-        draw_row(fb, grid, cy);
+        paint_row_n(&paint, &pf, gfx_framebuffer(), NULL, NULL, cy, sim.cells + cy * GRID_W, CELL_SIZE, GRID_W, GRID_H,
+                    0, GRID_W, true);
     }
 }
 
 static void
 draw(const render_frame_t* frame) {
-    pour(frame->index);
-    const int gx = frame->index < 85 ? 0 : 180;
-    const int gy = frame->index < 85 ? 256 : 175;
-    for (int i = 0; i < 2; i++) {
-        sand_step(&sim, gx, gy, 0);
+    int gx, gy;
+    drive_tilt(frame, &gx, &gy);
+    if (frame->index == 100) {
+        put(85, 59, CELL_MAKE(MAT_FIRE, 15));
     }
-    draw_grid();
+    for (int i = 0; i < 4; i++) {
+        const uint8_t wait_before = sim.fuse_blast_wait;
+        sand_step(&sim, gx, gy, 0);
+        if (wait_before == 0 && sim.fuse_blast_wait != 0) {
+            gunpowder_blasts++;
+        }
+    }
+    paint_grid(frame, gx, gy);
+    if (frame->index == frame->count - 1) {
+        printf("sand_sim gunpowder blasts: %d\n", gunpowder_blasts);
+    }
+    if (frame->index == frame->count - 1 && angles != NULL) {
+        fclose(angles);
+        angles = NULL;
+    }
 }
 
 const render_scene_t render_scene = {
     .name = "sand_sim",
-    .quarter = 0,
-    .frames = 145,
+    .quarter = 1,
+    .frames = 150,
     .dt_ms = 33,
     .setup = setup,
     .draw = draw,
