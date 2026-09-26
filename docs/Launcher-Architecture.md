@@ -118,6 +118,7 @@ launcher/
     │   ├── console_runsuite.{h,c}    runsuite, CONFIG_LAUNCHER_SELFTEST only
     │   └── console_inject.c, console_inject_parse.h  TOUCH/IMU/TAP/PRESS/DRAG/BUTTON (host-tested)
     └── apps/           one folder per app - see Building-an-App.md
+        ├── input_lab/  touch precision and bezel measurement
         ├── render_lab/ a software rasterizer, wireframe and ray-traced scenes
         ├── diagnostics/  bench tool; development builds only
         └── sand/       the falling-sand sandbox

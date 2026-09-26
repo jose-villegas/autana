@@ -30,6 +30,8 @@ other file. Currently:
   performance budget for every hot path. See `docs/sand/Sand-Simulation.md`.
 - **Render Lab** — software-rendering experiments, no GPU: a Gouraud-shaded
   rotating cube, wireframe primitives, and a ray-traced Cornell box.
+- **Input Lab** — measures the touch panel: random, grid and bezel targets,
+  every tap logged, and the fit behind the touch correction.
 - **Diagnostics** — a bench tool: a hardware self-test (POST) report plus a
   developer-toggles page; ships in any development build (`--dev` or the
   diagnostics build), never release. The on-device self-test *runner* on
