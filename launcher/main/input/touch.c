@@ -1,8 +1,10 @@
 #include "input/touch.h"
+#include "input/touch_calib.h"
 #include "input/touch_fsm.h"
 #include "input/touch_inject_fsm.h"
 
 #include "build_variant.h"
+#include "util/tune.h"
 
 #include "bsp/esp-bsp.h"
 #include "bsp/touch.h"
@@ -18,6 +20,22 @@
 static const char* TAG = "touch";
 
 static esp_lcd_touch_handle_t panel;
+
+/* How this panel reports a tap aimed at a known point, fitted from 217 taps
+ * across both orientations: the long axis alone reads 18% stretched about a
+ * point 165 px down it, the same whichever way the board is held. */
+static const touch_calib_fit_t PANEL_FIT = {
+    .xx = 1.119f,
+    .xy = 0.019f,
+    .x0 = -23.1f,
+    .yx = 0.015f,
+    .yy = 1.183f,
+    .y0 = -29.2f,
+};
+static touch_calib_t calib;
+
+TUNE_OWNER(touch);
+TUNE(touch, calibrate, 1, 0, 1);
 
 /* All the interpretation lives in touch_fsm, which is hardware-free and
  * covered by host tests. This file is only responsible for getting samples out
@@ -143,6 +161,9 @@ poll_controller(bool* have_point, int* x, int* y) {
                 *have_point = true;
                 *x = point.x;
                 *y = point.y;
+                if (calibrate) {
+                    touch_calib_apply(&calib, BSP_LCD_H_RES, BSP_LCD_V_RES, x, y);
+                }
             }
         }
     }
@@ -196,6 +217,7 @@ touch_start(void) {
     started = true;
 
     touch_fsm_init(&fsm);
+    calib = touch_calib_from_fit(PANEL_FIT);
 
     if (bsp_touch_new(NULL, &panel) != ESP_OK) {
 #if CONFIG_LAUNCHER_QEMU
