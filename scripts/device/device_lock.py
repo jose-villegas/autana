@@ -2,10 +2,13 @@
 
 import argparse
 import contextlib
+import datetime
 import errno
 import json
+import math
 import os
 import socket
+import statistics
 import sys
 import tempfile
 import time
@@ -15,12 +18,15 @@ from pathlib import Path
 import device_hook
 
 
+# The one board, whatever COM number it enumerates as after a reset.
+BOARD_ID = "usb-303a"
 DEFAULT_STALE_SECONDS = 600
 GUARD_STALE_SECONDS = 30
 
 
 def default_root():
-    return Path(tempfile.gettempdir()) / "autana-device"
+    return Path(os.environ.get("AUTANA_DEVICE_LOCK_ROOT") or
+                Path(tempfile.gettempdir()) / "autana-device")
 
 
 def process_alive(pid):
@@ -84,13 +90,14 @@ def windows_process_alive(pid, kernel32=None):
 
 
 class LockStore:
-    def __init__(self, root=None, now=time.time, is_alive=process_alive):
+    def __init__(self, root=None, now=time.time, is_alive=process_alive, board_id=BOARD_ID):
         self.root = Path(root) if root else default_root()
         self.now = now
         self.is_alive = is_alive
+        self.board_id = board_id
 
     def stem(self, port):
-        return port.replace("/", "_").replace("\\", "_").replace(":", "_")
+        return (self.board_id or port).replace("/", "_").replace("\\", "_").replace(":", "_")
 
     def lock_path(self, port):
         return self.root / (self.stem(port) + ".json")
@@ -142,7 +149,7 @@ class LockStore:
             except FileNotFoundError:
                 pass
 
-    def enqueue(self, port, owner, purpose, pid=None):
+    def enqueue(self, port, owner, purpose, pid=None, kind=None):
         with self.guard(port):
             directory = self.queue_dir(port)
             directory.mkdir(parents=True, exist_ok=True)
@@ -158,6 +165,7 @@ class LockStore:
                 "owner": owner,
                 "pid": os.getpid() if pid is None else pid,
                 "purpose": purpose,
+                "kind": kind or purpose,
                 "sequence": sequence,
                 "ticket": ticket,
             })
@@ -232,6 +240,7 @@ class LockStore:
                 "pid": pending[0]["pid"],
                 "port": port,
                 "purpose": pending[0]["purpose"],
+                "kind": pending[0].get("kind", pending[0]["purpose"]),
                 "token": uuid.uuid4().hex,
             }
             self.write_json(self.lock_path(port), held)
@@ -239,8 +248,8 @@ class LockStore:
             return held, evicted, reason
 
     def acquire(self, port, owner, purpose, expected_build_id="", wait=0,
-                stale_seconds=DEFAULT_STALE_SECONDS):
-        ticket = self.enqueue(port, owner, purpose)
+                stale_seconds=DEFAULT_STALE_SECONDS, kind=None, on_wait=None):
+        ticket = self.enqueue(port, owner, purpose, kind=kind)
         deadline = self.now() + wait
         waiting = False
         while True:
@@ -259,6 +268,8 @@ class LockStore:
             if not waiting:
                 device_hook.emit("waiting", port, owner, purpose)
                 waiting = True
+            if on_wait:
+                on_wait(ticket)
             time.sleep(min(0.1, max(0, deadline - self.now())))
 
     def cancel(self, port, ticket):
@@ -268,7 +279,7 @@ class LockStore:
     def heartbeat(self, port, token):
         with self.guard(port):
             lock = self.read_json(self.lock_path(port))
-            if not lock or lock["token"] != token:
+            if not lock or lock["token"] != token or self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
                 return False
             lock["heartbeat_at"] = self.now()
             self.write_json(self.lock_path(port), lock)
@@ -282,6 +293,12 @@ class LockStore:
             lock["expected_build_id"] = expected_build_id
             self.write_json(self.lock_path(port), lock)
             return True
+
+    def check_token(self, port, token, stale_seconds=DEFAULT_STALE_SECONDS):
+        with self.guard(port):
+            lock = self.read_json(self.lock_path(port))
+            return bool(lock and lock["token"] == token and
+                        not self.reclaim_reason(lock, stale_seconds))
 
     def release(self, port, token):
         lock = self._release(port, token)
@@ -332,26 +349,87 @@ class LockStore:
             }
 
 
-def print_status(status):
+def duration_history(records_root, minimum=3):
+    history = {}
+    try:
+        with open(Path(records_root) / "durations.jsonl", encoding="utf-8") as stream:
+            for line in stream:
+                try:
+                    entry = json.loads(line)
+                    duration = entry.get("duration_seconds")
+                    if (not entry.get("error") and isinstance(duration, (int, float))
+                            and not isinstance(duration, bool) and math.isfinite(duration)
+                            and duration >= 0 and isinstance(entry.get("command"), str)):
+                        history.setdefault(entry["command"], []).append(duration)
+                except (ValueError, TypeError):
+                    continue
+    except FileNotFoundError:
+        pass
+    return {kind: statistics.median(values[-30:]) for kind, values in history.items()
+            if len(values) >= minimum}
+
+
+def local_time(timestamp):
+    return datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def format_estimate(timestamp):
+    return local_time(timestamp) if timestamp is not None else "unknown (no duration history)"
+
+
+def queue_estimates(status, now, durations=None):
+    durations = durations or {}
+    lock = status.get("lock")
+    if status.get("human"):
+        start = None
+    elif lock:
+        duration = durations.get(lock.get("kind", lock["purpose"]))
+        start = max(now, lock["acquired_at"] + duration) if duration is not None else None
+    else:
+        start = now
+    estimates = {}
+    for ticket in status["queue"]:
+        estimates[ticket["ticket"]] = start
+        duration = durations.get(ticket.get("kind", ticket["purpose"]))
+        start = start + duration if start is not None and duration is not None else None
+    return estimates
+
+
+def print_status(status, now=None, durations=None):
+    now = time.time() if now is None else now
+    durations = durations or {}
     if status["human"]:
         human = status["human"]
-        age = max(0, time.time() - human["since_at"])
-        print("human reservation: {owner}: {note} ({age:.0f}s ago)".format(age=age, **human))
+        age = max(0, now - human["since_at"])
+        print("human reservation: {owner}: {note} ({age:.0f}s ago; since {since})".format(
+            age=age, since=local_time(human["since_at"]), **human))
     elif status["lock"]:
         lock = status["lock"]
-        print("held by {owner} for {purpose} since {acquired_at:.0f}".format(**lock))
+        duration = durations.get(lock.get("kind", lock["purpose"]))
+        free = (max(now, lock["acquired_at"] + duration)
+                if duration is not None else None)
+        print("held by {owner} for {purpose} since {acquired_at:.0f} "
+              "(local {local}; elapsed {elapsed:.0f}s; estimated free {free})".format(
+                  local=local_time(lock["acquired_at"]),
+                  elapsed=max(0, now - lock["acquired_at"]),
+                  free=format_estimate(free), **lock))
     elif status.get("reclaimable"):
         print("unlocked - stale lock from {owner} for {purpose} ({reason})".format(**status["reclaimable"]))
     else:
         print("unlocked")
     if status["queue"]:
         print("waiting: " + ", ".join(ticket["owner"] for ticket in status["queue"]))
+        estimates = queue_estimates(status, now, durations)
+        for index, ticket in enumerate(status["queue"], 1):
+            print(f"  {index}. {ticket['owner']} for {ticket['purpose']}; estimated start "
+                  f"{format_estimate(estimates[ticket['ticket']])}")
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=default_root())
     parser.add_argument("--port", required=True)
+    parser.add_argument("--board-id", default=BOARD_ID)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("status")
     acquire = subparsers.add_parser("acquire")
@@ -364,12 +442,14 @@ def main(argv=None):
     heartbeat.add_argument("--token", required=True)
     release = subparsers.add_parser("release")
     release.add_argument("--token", required=True)
+    check_token = subparsers.add_parser("check-token")
+    check_token.add_argument("--token", required=True)
     human = subparsers.add_parser("human")
     human.add_argument("--owner", required=True)
     human.add_argument("--note", required=True)
     subparsers.add_parser("clear-human")
     args = parser.parse_args(argv)
-    store = LockStore(args.root)
+    store = LockStore(args.root, board_id=args.board_id)
     if args.command == "status":
         print_status(store.status(args.port))
         return 0
@@ -387,6 +467,8 @@ def main(argv=None):
         return 0 if store.heartbeat(args.port, args.token) else 1
     if args.command == "release":
         return 0 if store.release(args.port, args.token) else 1
+    if args.command == "check-token":
+        return 0 if store.check_token(args.port, args.token) else 1
     if args.command == "human":
         store.set_human(args.port, args.owner, args.note)
         return 0
