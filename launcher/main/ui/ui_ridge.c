@@ -122,7 +122,7 @@ build_sky_gradient(void) {
     }
 }
 
-static int
+static inline __attribute__((always_inline)) int
 layer_alpha(int distance, int lip_alpha, int body_alpha) {
     if (distance < 0) {
         return 0;
@@ -133,14 +133,14 @@ layer_alpha(int distance, int lip_alpha, int body_alpha) {
     return lip_alpha + (body_alpha - lip_alpha) * distance / lip_px;
 }
 
-static int
+static inline __attribute__((always_inline)) int
 boundary_distance(int layer, int x, int y) {
     const int strip = ridge->by_column ? x : y;
     const int boundary = ridge->boundary[layer][strip];
     return boundary == INT16_MAX ? -1 : ridge->down_sign * ((ridge->by_column ? y : x) - boundary);
 }
 
-static bool
+static inline __attribute__((always_inline)) bool
 backdrop_dither_pick(int x, int y, uint8_t alpha) {
     if (ridge->scanline_dither) {
         static const uint8_t cutoff[4] = {64, 192, 128, 255};
@@ -149,7 +149,7 @@ backdrop_dither_pick(int x, int y, uint8_t alpha) {
     return gfx_dither_alpha_pick((gfx_dither_pattern_id_t)fill_pattern, x, y, alpha);
 }
 
-static gfx_color_t
+static inline __attribute__((always_inline)) gfx_color_t
 backdrop_pixel(int x, int y, uint8_t reveal_alpha) {
     if (!backdrop_dither_pick(x, y, reveal_alpha)) {
         return GFX_RGB(0);
