@@ -1,19 +1,10 @@
+import isolation  # noqa: F401  (first: keeps the suite out of real records)
 import json
 import tempfile
 import unittest
 import os
 from pathlib import Path
 from unittest import mock
-
-
-def setUpModule():
-    global saved_hook
-    saved_hook = os.environ.pop("AUTANA_LOCK_HOOK", None)
-
-
-def tearDownModule():
-    if saved_hook is not None:
-        os.environ["AUTANA_LOCK_HOOK"] = saved_hook
 
 import sys
 DEVICE = Path(__file__).resolve().parents[1]

@@ -7,11 +7,11 @@
 # run rather than one assertion per test - that it needs its own parser.
 #
 # Usage:
-#   main/apps/render_lab/tools/report_cube_perf.sh [--no-restore] [COM_PORT] \
+#   main/apps/render_lab/tools/report_cube_perf.sh [--no-restore] [BOARD] \
 #       [OUT.md]
 #
-#   COM_PORT     serial port the device is on. Found by USB identity when
-#                omitted - see scripts/device/device.py.
+#   BOARD        the board's USB serial number. Default: AUTANA_BOARD, else
+#                the only board plugged in - see scripts/device/device.py.
 #   OUT.md       markdown report path. Default:
 #                main/apps/render_lab/tools/results/cube_perf_<timestamp>.md
 #   --no-restore leave the device on the diagnostics image afterwards.

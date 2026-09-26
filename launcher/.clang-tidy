@@ -12,3 +12,5 @@ CheckOptions:
   # ESP-IDF's macro internals, not this codebase's complexity.
   - key:             readability-function-cognitive-complexity.IgnoreMacros
     value:           'true'
+  - key:             bugprone-unused-return-value.CheckedFunctions
+    value:           '^::snprintf$;^::strtol$;^::fread$'
