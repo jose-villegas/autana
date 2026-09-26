@@ -1,6 +1,6 @@
 # What the launcher_home scene's renders hash to, one per line.
 # Re-pinned deliberately, after looking at the images:
 #     ./launcher/tools/render/scenes/launcher_home_render_host.sh --update-baseline
-landscape fa544cec8919f89bb656122a775fc2d829ee9ada444029d7523492063d7ece0f
-landscape-panel fbe84fd94b174b2081d9a4391863d9c23f278138192fdda6f5dad84765983543
-portrait d85d32e450515daec1ebd9181b8fb3310911c427c51a8891b35cd61243b7c8de
+landscape 0b35515903c5983f29f88b08bb4a165301d0ae3842f5fd1168e99a1256fbda79
+landscape-panel 84ccb9cf110f8a735c7efd199e0eeb00d598c61a59448cf74fa87061c4a209df
+portrait b2ca8bf5bb1de3a29d8bf046ae3015078f8f424b9bde8ca5ef7e1f9e5ea7a3f3

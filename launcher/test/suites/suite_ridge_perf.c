@@ -156,6 +156,23 @@ assert_arm(const arm_result_t* result) {
     TEST_ASSERT_TRUE_MESSAGE(result->bytes > 0, "no panel bytes sent");
 }
 
+typedef struct {
+    int count, x0, x1, y0, y1;
+} unlike_t;
+
+static void
+note_unlike(unlike_t* unlike, size_t at, gfx_color_t repainted, gfx_color_t full) {
+    const int x = (int)(at % GFX_WIDTH), y = (int)(at / GFX_WIDTH);
+    unlike->x0 = x < unlike->x0 ? x : unlike->x0;
+    unlike->x1 = x > unlike->x1 ? x : unlike->x1;
+    unlike->y0 = y < unlike->y0 ? y : unlike->y0;
+    unlike->y1 = y > unlike->y1 ? y : unlike->y1;
+    if (unlike->count < 4) {
+        ESP_LOGI(TAG, "unlike x=%d y=%d repainted=%04x full=%04x", x, y, repainted, full);
+    }
+    unlike->count++;
+}
+
 static int
 unlike_a_full_paint_now(void) {
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
@@ -163,25 +180,17 @@ unlike_a_full_paint_now(void) {
     TEST_ASSERT_NOT_NULL(repainted);
     memcpy(repainted, gfx_framebuffer(), bytes);
     ui_ridge_paint();
-    int unlike = 0, x0 = GFX_WIDTH, x1 = -1, y0 = GFX_HEIGHT, y1 = -1;
+    unlike_t unlike = {0, GFX_WIDTH, -1, GFX_HEIGHT, -1};
     for (size_t i = 0; i < (size_t)GFX_WIDTH * GFX_HEIGHT; i++) {
         if (repainted[i] != gfx_framebuffer()[i]) {
-            const int x = (int)(i % GFX_WIDTH), y = (int)(i / GFX_WIDTH);
-            x0 = x < x0 ? x : x0;
-            x1 = x > x1 ? x : x1;
-            y0 = y < y0 ? y : y0;
-            y1 = y > y1 ? y : y1;
-            if (unlike < 4) {
-                ESP_LOGI(TAG, "unlike x=%d y=%d repainted=%04x full=%04x", x, y, repainted[i], gfx_framebuffer()[i]);
-            }
-            unlike++;
+            note_unlike(&unlike, i, repainted[i], gfx_framebuffer()[i]);
         }
     }
-    if (unlike) {
-        ESP_LOGI(TAG, "unlike box x %d..%d y %d..%d", x0, x1, y0, y1);
+    if (unlike.count) {
+        ESP_LOGI(TAG, "unlike box x %d..%d y %d..%d", unlike.x0, unlike.x1, unlike.y0, unlike.y1);
     }
     heap_caps_free(repainted);
-    return unlike;
+    return unlike.count;
 }
 
 /* The frame the incremental repaint leaves must be the frame a full paint

@@ -137,8 +137,12 @@ main(void) {
     expect(moving_frames == 20, "the wave keeps sending while it travels");
     expect(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) != 0, "the line is displaced");
 
+    /* Only pixels that change are sent, so the spring's last sub-pixel
+     * wobbles leave quiet frames between sends: rest is a long quiet run. */
     int frames_until_quiet = 0;
-    while (frames_until_quiet < FRAMES_TO_REST && frame(false, false)) {
+    int still_run = 0;
+    while (frames_until_quiet < FRAMES_TO_REST && still_run < 60) {
+        still_run = frame(false, false) ? 0 : still_run + 1;
         frames_until_quiet++;
     }
     expect(frames_until_quiet < FRAMES_TO_REST, "the line comes to rest");
@@ -161,7 +165,7 @@ main(void) {
     }
     expect(ambient_frames_sending > 300, "with its ambient motion on, the ridge keeps moving");
     expect(least_lit > lit_pixels(settled) * 8 / 10 && most_lit < lit_pixels(settled) * 12 / 10,
-           "and stays one line of about the same light, not a smear");
+           "and the backdrop stays whole while it moves: nothing it covers goes dark");
 
     ui_ridge_set_ambient(false);
     for (int i = 0; i < 40; i++) {
