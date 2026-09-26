@@ -30,7 +30,7 @@ where Python has `readline` (Windows: `pip install pyreadline3`).
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
 
 After flashing, `autana flash` compares the built app image with the board's
-flash through esptool. It checks that the build id in the build log matches
+flash through esptool after USB Serial/JTAG re-enumerates. It checks that the build id in the build log matches
 `build_id.txt`. Verification does not wait for boot console output.
 
 ## Tests

@@ -22,6 +22,8 @@ class FlashProofTests(unittest.TestCase):
                 '{"flash_files":{"0x0":"bootloader/bootloader.bin",'
                 '"0x10000":"launcher.bin"}}', encoding="utf-8")
             with mock.patch.object(device, "require_port_lock"), \
+                 mock.patch.object(device, "find_port", return_value="COM5"), \
+                 mock.patch.object(device, "open_serial"), \
                  mock.patch.object(device.subprocess, "run") as run:
                 device.verify_flashed_image("COM5", build)
             command = run.call_args.args[0]
@@ -33,6 +35,29 @@ class FlashProofTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(RuntimeError):
                 device.verify_flashed_image("COM5", Path(directory))
+
+    def test_verification_waits_for_usb_to_reenumerate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            (build / "launcher.bin").write_bytes(b"image")
+            (build / "flasher_args.json").write_text(
+                '{"flash_files":{"0x10000":"launcher.bin"}}', encoding="utf-8")
+            ports = iter([RuntimeError("USB absent"), "COM7"])
+
+            def find_port():
+                found = next(ports)
+                if isinstance(found, Exception):
+                    raise found
+                return found
+
+            with mock.patch.object(device, "require_port_lock"), \
+                 mock.patch.object(device, "find_port", side_effect=find_port), \
+                 mock.patch.object(device, "open_serial"), \
+                 mock.patch.object(device.time, "sleep"), \
+                 mock.patch.object(device.subprocess, "run") as run:
+                device.verify_flashed_image("COM5", build)
+            command = run.call_args.args[0]
+            self.assertEqual(command[command.index("-p") + 1], "COM7")
 
 
 class LockBoundaryTests(unittest.TestCase):

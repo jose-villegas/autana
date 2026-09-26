@@ -129,7 +129,8 @@ vanishes or remains silent after a reset.
 
 `flash` reads the app image and offset from `flasher_args.json` and asks
 esptool to compare that image with flash. The `BUILD_ID` in `build_id.txt` must
-match the build log. Verification works without a console reader, including
+match the build log. It waits for USB Serial/JTAG to re-enumerate after flash.
+Verification works without a console reader, including
 while an AUTORUN image runs its suites. A console `BUILD_ID` in a later capture
 is additional evidence. `selftest` builds the diagnostics+autorun image and
 captures the boot-time run until `SELFTEST_COMPLETE`; report scripts use the
