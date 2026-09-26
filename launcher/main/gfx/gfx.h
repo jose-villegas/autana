@@ -417,11 +417,11 @@ uint8_t* gfx_indexed_image(void);
 
 /*
  * Readback - the frame on the panel, row by row, for a capture. A
- * framebuffer or index image is readable at once. RGB565 band mode keeps
- * nothing once a band is sent, so gfx_readback_begin() forces the next
- * frame to redraw every band and copies each one as it is submitted:
- * PENDING until that frame has run, then READY. Call it once per frame
- * until it stops answering PENDING, and pair it with gfx_readback_end().
+ * framebuffer or index image is readable at once. In RGB565 band mode the
+ * first gfx_readback_begin() is PENDING until a frame has redrawn every
+ * band into a PSRAM copy; every band sent after that updates the copy
+ * until the mode exits, so later calls are READY at once, frozen loop
+ * included. Pair each with gfx_readback_end().
  */
 typedef enum {
     GFX_READBACK_READY,
@@ -435,7 +435,7 @@ gfx_readback_t gfx_readback_begin(void);
  * path expands it. Only after gfx_readback_begin() answered READY. */
 void gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]);
 
-/* Releases band mode's snapshot, if one was taken; a no-op otherwise. */
+/* Ends a capture. Band mode's copy stays until gfx_mode_exit(). */
 void gfx_readback_end(void);
 
 /* Installs the 256-entry LUT GFX_PIXFMT_INDEXED8 expands through when 16-
