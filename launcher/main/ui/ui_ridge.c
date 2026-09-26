@@ -3,6 +3,7 @@
 #include "ui/ui_ridge.h"
 
 #include <limits.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -72,6 +73,8 @@ TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 #define RIDGE_MAX_LIP_PX  48
 #define MIN_TILT_STRENGTH 64
 #define POSE_REDRAW_STEP  143
+#define POSE_STEPS        720
+#define RIDGE_PI          3.14159265f
 #define LEVEL_STEADY_STEP 29
 #define LEVEL_STEADY_MS   300
 #define STRUM_STEP_PX     12
@@ -88,6 +91,7 @@ typedef struct {
     ridge_motion_t motion;
     ridge_pose_t attitude;
     ridge_vector_t pose_on_screen;
+    int pose_step;
     ridge_theme_t theme;
     gfx_color_t background_color, back0_color, back1_color;
     gfx_color_t sky[GFX_HEIGHT];
@@ -236,30 +240,56 @@ pose_scale(int32_t value) {
     return value >= 0 ? value >> 14 : -((-value) >> 14);
 }
 
+/* The pose the ridge is drawn at: the eased pose snapped to 0.5 degree
+ * steps, moving to a new step only once the eased pose is three quarters of
+ * a step past the one on screen, so a pose resting between two steps
+ * settles on one of them instead of flickering. */
+static bool
+snap_pose_on_screen(void) {
+    const float step = 2.0f * RIDGE_PI / POSE_STEPS;
+    const float angle = atan2f((float)ridge->attitude.pose.down_x, (float)ridge->attitude.pose.down_y);
+    float off = angle - ridge->pose_step * step;
+    off -= 2.0f * RIDGE_PI * floorf(off / (2.0f * RIDGE_PI) + 0.5f);
+    if (ridge->painted && fabsf(off) < 0.75f * step) {
+        return false;
+    }
+    const int snapped = (int)lroundf(angle / step);
+    ridge->pose_step = ((snapped % POSE_STEPS) + POSE_STEPS) % POSE_STEPS;
+    const float drawn = ridge->pose_step * step;
+    const ridge_vector_t pose = {(int32_t)lroundf(sinf(drawn) * RIDGE_POSE_ONE),
+                                 (int32_t)lroundf(cosf(drawn) * RIDGE_POSE_ONE)};
+    const bool moved = pose.down_x != ridge->pose_on_screen.down_x || pose.down_y != ridge->pose_on_screen.down_y;
+    ridge->pose_on_screen = pose;
+    return moved;
+}
+
 static void
 raster_boundaries(void) {
     const bool was_by_column = ridge->by_column;
-    ridge->by_column = abs(ridge->attitude.pose.down_y) >= abs(ridge->attitude.pose.down_x);
+    const ridge_vector_t pose = ridge->pose_on_screen;
+    ridge->by_column = abs(pose.down_y) >= abs(pose.down_x);
     ridge->axis_on_screen = ridge->painted && was_by_column != ridge->by_column;
     ridge->strips = ridge->by_column ? GFX_WIDTH : GFX_HEIGHT;
-    ridge->down_sign = (ridge->by_column ? ridge->attitude.pose.down_y : ridge->attitude.pose.down_x) >= 0 ? 1 : -1;
+    ridge->down_sign = (ridge->by_column ? pose.down_y : pose.down_x) >= 0 ? 1 : -1;
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
         for (int strip = 0; strip < GFX_HEIGHT; strip++) {
             ridge->boundary[layer][strip] = INT16_MAX;
         }
-        const int32_t rx = ridge->attitude.pose.down_y, ry = -ridge->attitude.pose.down_x;
-        const int32_t dx = ridge->attitude.pose.down_x, dy = ridge->attitude.pose.down_y;
+        const int32_t rx = pose.down_y, ry = -pose.down_x, dx = pose.down_x, dy = pose.down_y;
+        const int32_t u0 = -(RIDGE_COLUMNS - 1) * 8;
+        int32_t along_x = u0 * rx, along_y = u0 * ry;
         int x0 = 0, y0 = 0;
         for (int point = 0; point < RIDGE_COLUMNS; point++) {
-            const int32_t u = point * 16 - (RIDGE_COLUMNS - 1) * 8;
             const int32_t h = ridge->layers[layer][point] - RIDGE_CURVE_VIEW_H * 8;
-            const int x1 = round_q4((GFX_WIDTH - 1) * 8 + pose_scale(u * rx + h * dx));
-            const int y1 = round_q4((GFX_HEIGHT - 1) * 8 + pose_scale(u * ry + h * dy));
+            const int x1 = round_q4((GFX_WIDTH - 1) * 8 + pose_scale(along_x + h * dx));
+            const int y1 = round_q4((GFX_HEIGHT - 1) * 8 + pose_scale(along_y + h * dy));
             if (point > 0) {
                 raster_segment(layer, x0, y0, x1, y1);
             }
             x0 = x1;
             y0 = y1;
+            along_x += 16 * rx;
+            along_y += 16 * ry;
         }
     }
     build_sky_gradient();
@@ -818,11 +848,11 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     int lo, hi;
     spring_line_advance(&ridge->line, dt_ms);
     spring_line_apply(&ridge->line, ridge->shape, ridge->heights, &lo, &hi);
+    const bool pose_moved = snap_pose_on_screen();
     FRAME_COST_BEGIN(layers_from);
     build_layers();
     raster_boundaries();
     FRAME_COST_END(layers_from, "ridge.layers");
-    const bool pose_moved = !ridge_pose_within(ridge->attitude.pose, ridge->pose_on_screen, POSE_REDRAW_STEP);
     const bool revealing = ridge->alive_ms < (uint32_t)boot_hold_ms + (uint32_t)ambient_ease_ms;
     FRAME_COST_BEGIN(painted_from);
     if (!ridge->painted || retuned || ridge->axis_on_screen || revealing) {
@@ -831,5 +861,4 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
         repaint_changed();
     }
     FRAME_COST_END(painted_from, "ridge.paint");
-    ridge->pose_on_screen = ridge->attitude.pose;
 }
