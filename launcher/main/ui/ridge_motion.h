@@ -91,14 +91,14 @@ ridge_motion_breath(const ridge_motion_t* motion, const ridge_motion_params_t* p
 static inline int
 ridge_motion_wave(const ridge_motion_t* motion, const ridge_motion_params_t* params, int x) {
     const uint32_t length = params->wave_length > 0 ? (uint32_t)params->wave_length : 1;
-    const uint32_t along = (uint32_t)x * (65536u / length);
+    const uint32_t along = (uint32_t)x * (65536U / length);
     const uint16_t phase = (uint16_t)((motion->wave_phase_q8 >> 8) - along);
     return (int)(trig_sin(phase) * params->wave_height_q4 / 32767);
 }
 
 static inline int16_t
 ridge_motion_height(const ridge_motion_t* motion, const ridge_motion_params_t* params, int rigid, int smooth, int x) {
-    const int breathed = rigid + (smooth - rigid) * ridge_motion_breath(motion, params) / 256;
+    const int breathed = rigid + ((smooth - rigid) * ridge_motion_breath(motion, params) / 256);
     return (int16_t)(breathed + ridge_motion_wave(motion, params, x));
 }
 
@@ -124,8 +124,8 @@ ridge_motion_extend(const int16_t* in, int count, int16_t* out, int extra) {
     for (int k = 1; k <= extra; k++) {
         /* k columns out at a slope falling linearly to nothing at `extra`. */
         const int64_t run = (int64_t)k * (2 * extra - k);
-        out[extra - k] = (int16_t)(in[0] + left_per_span * run / ((int64_t)2 * extra * span));
-        out[extra + count - 1 + k] = (int16_t)(in[count - 1] + right_per_span * run / ((int64_t)2 * extra * span));
+        out[extra - k] = (int16_t)(in[0] + (left_per_span * run / ((int64_t)2 * extra * span)));
+        out[extra + count - 1 + k] = (int16_t)(in[count - 1] + (right_per_span * run / ((int64_t)2 * extra * span)));
     }
 }
 

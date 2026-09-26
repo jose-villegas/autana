@@ -23,7 +23,7 @@ typedef struct {
 static inline uint32_t
 ridge_pose_isqrt(uint32_t v) {
     uint32_t root = 0;
-    for (uint32_t bit = 1u << 30; bit != 0; bit >>= 2) {
+    for (uint32_t bit = 1U << 30; bit != 0; bit >>= 2) {
         if (v >= root + bit) {
             v -= root + bit;
             root = (root >> 1) + bit;
@@ -64,7 +64,7 @@ ridge_pose_level_from_gravity(ridge_vector_t level, int gx, int gy, int strength
     if (strength < min_strength) {
         return level;
     }
-    const int64_t length = (int64_t)ridge_pose_isqrt((uint32_t)(gx * gx + gy * gy));
+    const int64_t length = (int64_t)ridge_pose_isqrt((uint32_t)((gx * gx) + (gy * gy)));
     if (length == 0) {
         return level;
     }
@@ -83,13 +83,13 @@ ridge_pose_ease(ridge_pose_t* rp, ridge_vector_t target, uint32_t dt_ms, int tau
     const int32_t share = (int32_t)(dt_ms * 256 / ((uint32_t)tau_ms + dt_ms));
     const int64_t facing =
         ((int64_t)rp->pose.down_x * target.down_x + (int64_t)rp->pose.down_y * target.down_y) / RIDGE_POSE_ONE;
-    int32_t x = rp->pose.down_x + (target.down_x - rp->pose.down_x) * share / 256;
-    int32_t y = rp->pose.down_y + (target.down_y - rp->pose.down_y) * share / 256;
-    if (facing < -(RIDGE_POSE_ONE - RIDGE_POSE_ONE / 64)) {
+    int32_t x = rp->pose.down_x + ((target.down_x - rp->pose.down_x) * share / 256);
+    int32_t y = rp->pose.down_y + ((target.down_y - rp->pose.down_y) * share / 256);
+    if (facing < -(RIDGE_POSE_ONE - (RIDGE_POSE_ONE / 64))) {
         x += rp->pose.down_y * share / 256;
         y -= rp->pose.down_x * share / 256;
     }
-    const int64_t length = (int64_t)ridge_pose_isqrt((uint32_t)(x * x + y * y));
+    const int64_t length = (int64_t)ridge_pose_isqrt((uint32_t)((x * x) + (y * y)));
     if (length == 0) {
         return;
     }
@@ -146,7 +146,7 @@ static inline int
 ridge_pose_column_under(ridge_vector_t pose, int panel_w, int panel_h, int columns, int panel_x, int panel_y) {
     const int64_t right_x = pose.down_y;
     const int64_t right_y = -pose.down_x;
-    const int64_t dx2 = 2 * (int64_t)panel_x - (panel_w - 1);
-    const int64_t dy2 = 2 * (int64_t)panel_y - (panel_h - 1);
+    const int64_t dx2 = (2 * (int64_t)panel_x) - (panel_w - 1);
+    const int64_t dy2 = (2 * (int64_t)panel_y) - (panel_h - 1);
     return (int)((columns - 1 + (dx2 * right_x + dy2 * right_y) / RIDGE_POSE_ONE) / 2);
 }
