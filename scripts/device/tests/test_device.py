@@ -515,7 +515,8 @@ class DeviceTests(unittest.TestCase):
         with mock.patch.object(device_lock.time, "time", return_value=1065), \
              mock.patch("builtins.print") as output:
             device_lock.print_status(status)
-        output.assert_called_once_with("human reservation: maintainer: panel (65s ago)")
+        self.assertIn("human reservation: maintainer: panel (65s ago; since ",
+                      output.call_args.args[0])
 
     def test_take_back_clears_human_reservation_and_prints_status(self):
         store = mock.Mock()
@@ -676,6 +677,8 @@ class RecordCaptureTests(unittest.TestCase):
             self.assertEqual(len(lines), 1)
             self.assertEqual(json.loads(lines[0]), {
                 "started_at": started_at.isoformat(),
+                "acquired_at": None,
+                "duration_seconds": None,
                 "port": "COM5",
                 "owner": "agent",
                 "purpose": "listen",
@@ -779,103 +782,46 @@ def build_prints(build_id):
 
 
 class FlashVerificationTests(unittest.TestCase):
-    """flash() restarts the board, then checks the image that boots against
-    the id the build printed - not a build directory it would have to guess."""
-
-    def flash(self, build_output, board_output, events=None, after_watchdog=None,
-              port_lookup=None):
-        """board_output is what the board says after the RTS reset - b"" for
-        a chip still in download mode - and after_watchdog what it says once
-        the watchdog has restarted it."""
-        events = [] if events is None else events
-        said = {"hard_reset": board_output, "watchdog_reset": after_watchdog}
-        last_reset = ["hard_reset"]
-
-        def run(*unused, **keywords):
-            events.append("build")
-            keywords["stdout"].write(build_output)
-
-        def reset(port, after="hard_reset"):
-            events.append("reset " + port + " " + after)
-            last_reset[0] = after
-
-        def opened(*unused, **unused_keywords):
-            events.append("open")
-            output = said[last_reset[0]]
-            return AnswersNoQuery([output] if output else [])
-
+    def run_flash(self, build_id="built", verify_error=None):
         with tempfile.TemporaryDirectory() as directory:
             worktree = Path(directory) / "engine"
+            build = worktree / "launcher" / "build"
             (worktree / "launcher" / "tools" / "build").mkdir(parents=True)
             (worktree / "launcher" / "tools" / "build" / "build_flash.sh").write_text("")
+            build.mkdir()
+            (build / "build_id.txt").write_text(build_id + "\n")
             args = Namespace(owner="agent", purpose="flash", wait=0, variant="release",
                              worktree=str(worktree), out=None)
             store = mock.Mock()
             store.acquire.return_value = {"log": "", "token": "token"}
+            def build_run(*unused, **keywords):
+                keywords["stdout"].write(("BUILD_ID=" + build_id + "\n").encode())
             with mock.patch.object(device, "records_root", return_value=Path(directory)), \
-                 mock.patch.object(device, "find_port", side_effect=port_lookup,
-                                   return_value="COM5"), \
-                 mock.patch.object(device.subprocess, "run", side_effect=run), \
-                 mock.patch.object(device, "reset", side_effect=reset), \
-                 mock.patch.object(device, "open_when_free", side_effect=opened), \
-                 mock.patch.object(device, "open_serial", side_effect=opened), \
-                 mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.05), \
-                 mock.patch.object(device, "RESET_REOPEN_SECONDS", 0.2), \
-                 mock.patch.object(device, "FLASH_BOOT_SECONDS", 0.2), \
+                 mock.patch.object(device.subprocess, "run", side_effect=build_run), \
+                 mock.patch.object(device, "open_when_free", return_value=FakeConnection([])), \
+                 mock.patch.object(device, "verify_flashed_image",
+                                   side_effect=verify_error or None,
+                                   return_value=build / "launcher.bin") as verify, \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
-                return device.flash(args, store, "COM5"), store
+                if verify_error:
+                    with self.assertRaises(type(verify_error)):
+                        device.flash(args, store, "COM5")
+                else:
+                    self.assertEqual(device.flash(args, store, "COM5"), build_id)
+            entry = json.loads((Path(directory) / "index.jsonl").read_text().strip())
+            return verify, store, entry
 
-    def test_restarts_the_board_after_the_build_and_before_reading_it(self):
-        events = []
-        self.flash(b"BUILD_ID=built\n", b"BUILD_ID=built\nTESTS_DONE\n", events)
-        self.assertEqual(events[events.index("build"):][:2], ["build", "open"])
-
-    def test_a_board_heard_after_the_rts_reset_is_not_restarted_again(self):
-        events = []
-        self.flash(b"BUILD_ID=built\n", b"BUILD_ID=built\nTESTS_DONE\n", events)
-        self.assertNotIn("reset COM5 watchdog_reset", events)
-
-    def test_a_board_silent_after_the_flash_is_restarted_through_the_watchdog(self):
-        events = []
-        verified, unused_store = self.flash(b"BUILD_ID=built\n", b"", events,
-                                            after_watchdog=b"BUILD_ID=built\nTESTS_DONE\n")
-        self.assertIn("reset COM5 watchdog_reset", events)
-        self.assertEqual(verified, "built")
-
-    def test_flash_waits_for_reenumeration_on_a_new_com_port(self):
-        ports = iter([RuntimeError("no board"), "COM7", "COM7"])
-        events = []
-
-        def find_port():
-            result = next(ports, "COM7")
-            if isinstance(result, Exception):
-                raise result
-            return result
-
-        with mock.patch.object(device.time, "sleep"):
-            verified, unused_store = self.flash(
-                b"BUILD_ID=built\n", b"BUILD_ID=built\nTESTS_DONE\n", events,
-                port_lookup=find_port)
-        self.assertEqual(verified, "built")
-        self.assertNotIn("reset COM5 hard_reset", events)
-
-    def test_verifies_against_the_id_the_build_printed(self):
-        verified, store = self.flash(b"noise\nBUILD_ID=built\n", b"BUILD_ID=built\nTESTS_DONE\n")
-        self.assertEqual(verified, "built")
+    def test_silent_autorun_console_still_verifies_flash(self):
+        verify, store, entry = self.run_flash()
+        verify.assert_called_once()
+        self.assertEqual(entry["build_id"], "built")
         store.set_expected_build_id.assert_called_once_with("COM5", "token", "built")
 
-    def test_a_different_image_on_the_board_is_a_mismatch(self):
-        with self.assertRaisesRegex(RuntimeError, "expected built, got other"):
-            self.flash(b"BUILD_ID=built\n", b"BUILD_ID=other\nTESTS_DONE\n")
-
-    def test_a_flash_without_a_boot_id_fails_after_the_watchdog(self):
-        with self.assertRaisesRegex(RuntimeError, "boot did not provide BUILD_ID"):
-            self.flash(b"BUILD_ID=built\n", b"", after_watchdog=b"")
-
-    def test_a_build_that_printed_no_id_is_unverified_not_verified(self):
-        verified, store = self.flash(b"no id here\n", b"BUILD_ID=anything\nTESTS_DONE\n")
-        self.assertIsNone(verified)
-        store.set_expected_build_id.assert_not_called()
+    def test_flash_verification_failure_is_recorded(self):
+        unused_verify, unused_store, entry = self.run_flash(
+            verify_error=subprocess.CalledProcessError(1, "esptool"))
+        self.assertIsNone(entry["build_id"])
+        self.assertIsNotNone(entry["error"])
 
 
 class FlashDefaultPathTests(unittest.TestCase):
@@ -884,6 +830,8 @@ class FlashDefaultPathTests(unittest.TestCase):
             worktree = Path(directory) / "engine"
             (worktree / "launcher" / "tools" / "build").mkdir(parents=True)
             (worktree / "launcher" / "tools" / "build" / "build_flash.sh").write_text("")
+            (worktree / "launcher" / "build.dev").mkdir()
+            (worktree / "launcher" / "build.dev" / "build_id.txt").write_text("expected\n")
             root = Path(directory) / "records"
             connection = FakeConnection([b"BUILD_ID=expected\nTESTS_DONE\n"])
             args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
@@ -897,6 +845,7 @@ class FlashDefaultPathTests(unittest.TestCase):
                  mock.patch.object(device, "find_port", return_value="COM5"), \
                  mock.patch.object(device, "reset"), \
                  mock.patch.object(device, "open_serial", return_value=connection), \
+                 mock.patch.object(device, "verify_flashed_image", return_value=worktree / "launcher" / "build" / "launcher.bin"), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
                 device.flash(args, store, "COM5")
             expected_log = root / "20260916" / "123045_flash-dev_agent.log"
@@ -916,6 +865,8 @@ class FlashDefaultPathTests(unittest.TestCase):
             worktree = Path(directory) / "engine"
             (worktree / "launcher" / "tools" / "build").mkdir(parents=True)
             (worktree / "launcher" / "tools" / "build" / "build_flash.sh").write_text("")
+            (worktree / "launcher" / "build.dev").mkdir()
+            (worktree / "launcher" / "build.dev" / "build_id.txt").write_text("expected\n")
             root = Path(directory) / "records"
             connection = FakeConnection([b"BUILD_ID=expected\nTESTS_DONE\n"])
             args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
@@ -928,6 +879,7 @@ class FlashDefaultPathTests(unittest.TestCase):
                  mock.patch.object(device, "find_port", return_value="COM5"), \
                  mock.patch.object(device, "reset"), \
                  mock.patch.object(device, "open_serial", return_value=connection), \
+                 mock.patch.object(device, "verify_flashed_image", return_value=worktree / "launcher" / "build" / "launcher.bin"), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
                 device.flash(args, store, "COM5")
             passed_env = run.call_args.kwargs["env"]
@@ -1061,8 +1013,9 @@ class BatchTests(unittest.TestCase):
         calls = {"locks": 0, "flash": [], "run_suite": []}
 
         class FakeLock:
-            def __init__(self, *unused):
+            def __init__(self, *unused, **unused_keywords):
                 calls["locks"] += 1
+                self.held = {}
 
             def __enter__(self):
                 return self
@@ -1423,7 +1376,8 @@ class CaptureAfterResetTests(unittest.TestCase):
 
 class ResetTests(unittest.TestCase):
     def after_argument(self, *args, **keywords):
-        with mock.patch.object(device, "python_with_pyserial", return_value="python"), \
+        with mock.patch.object(device, "require_port_lock"), \
+             mock.patch.object(device, "python_with_pyserial", return_value="python"), \
              mock.patch.object(device.subprocess, "run") as run:
             device.reset("COM5", *args, **keywords)
         command = run.call_args[0][0]

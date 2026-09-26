@@ -29,10 +29,9 @@ where Python has `readline` (Windows: `pip install pyreadline3`).
 | `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope]` | Build and flash this worktree; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
 
-After flashing, `autana flash` waits for USB Serial/JTAG to return, including
-when Windows assigns a different COM number. It verifies the boot's `BUILD_ID`
-against the build log. If the boot is not heard, it uses a watchdog reset and
-checks again before returning. A missing or different id is reported explicitly.
+After flashing, `autana flash` compares the built app image with the board's
+flash through esptool. It checks that the build id in the build log matches
+`build_id.txt`. Verification does not wait for boot console output.
 
 ## Tests
 
@@ -110,7 +109,7 @@ something in it, grep the capture instead.
 
 | Command | What it does |
 |---|---|
-| `autana status [--json]` | Who holds the board, and who is waiting. |
+| `autana status [--json]` | Whether the board is free or held; holder, local start and elapsed time, estimated free time, and FIFO waiters with purposes and estimated starts. |
 | `autana id [--json]` | The name this session holds the lock under: `autana-cli@<pid in base36>`. |
 | `autana release <token>` | Release a lock this session holds; the token is what its command printed. |
 | `autana hand [--wait <seconds>] <note...>` | Reserve the board and emit `human-reserved`; with `--wait`, wait until `take-back` emits `human-cleared`. |

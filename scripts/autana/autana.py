@@ -358,13 +358,13 @@ def parse_status(reply):
                     if line.startswith("waiting: ")), [])
     first = lines[0] if lines else "unlocked"
     if first.startswith("held by "):
-        match = re.fullmatch(r"held by (.+) for (.+) since (\d+)", first)
+        match = re.fullmatch(r"held by (.+) for (.+) since (\d+)(?: \(.*\))?", first)
         if match:
             owner_name, purpose, acquired_at = match.groups()
             return {"state": "held", "owner": owner_name, "purpose": purpose,
                     "acquired_at": int(acquired_at), "waiting": waiting}
     if first.startswith("human reservation: "):
-        match = re.fullmatch(r"human reservation: (.+?): (.*) \((\d+)s ago\)", first)
+        match = re.fullmatch(r"human reservation: (.+?): (.*) \((\d+)s ago(?:; since .*)?\)", first)
         if match:
             owner_name, note, age = match.groups()
             return {"state": "human", "owner": owner_name, "note": note,

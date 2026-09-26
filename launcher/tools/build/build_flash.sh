@@ -191,6 +191,11 @@ if [ -z "$COM_PORT" ]; then
     echo "ERROR: no COM_PORT given - device.py always passes one under the lock." >&2
     exit 1
 fi
+if ! python "$LAUNCHER_DIR/../scripts/device/device_lock.py" --port "$COM_PORT" \
+        check-token --token "$AUTANA_DEVICE_LOCK_TOKEN"; then
+    echo "ERROR: device lock token is not active for $COM_PORT" >&2
+    exit 1
+fi
 
 echo "=== Flashing to $COM_PORT ==="
 idf -B "$BUILD_DIR" -p "$COM_PORT" flash
