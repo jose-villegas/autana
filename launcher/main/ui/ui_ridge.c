@@ -347,7 +347,9 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     const bool arrived = ridge_pose_advance(&ridge->attitude, &pose_params, dt_ms, ridge->alive_ms);
 
     pluck_from_touch(input);
-    pluck_from_shaking();
+    if (ridge->ambient) {
+        pluck_from_shaking();
+    }
 
     shape_this_frame(dt_ms);
     spring_line_advance(&ridge->line, dt_ms);
