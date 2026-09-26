@@ -291,11 +291,6 @@ static const field_doc_t field_docs[] = {
     F(stride_pad4, GRP_PADDING, FK_PAD, NULL),
 };
 
-#undef F
-#undef FRATE
-#undef FCHANCE
-#undef FCHANCE_VOCAB
-
 _Static_assert(ARRAY_LEN(field_docs) == sizeof(reaction_t), "every reaction_t field needs exactly one row in "
                                                             "field_docs[] - add one (group, kind, and a verb if the "
                                                             "group template needs it) for whatever field just changed "

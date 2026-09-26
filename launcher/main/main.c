@@ -13,6 +13,7 @@
 
 #include <ctype.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #include "app.h"
 #include "boot/boot_anim.h"
@@ -663,7 +664,11 @@ check_console_prefix_clashes(void) {
         return;
     }
 
-    const char* app_prefixes[app_count];
+    const char** app_prefixes = malloc((size_t)app_count * sizeof(*app_prefixes));
+    if (app_prefixes == NULL) {
+        ESP_LOGE(TAG, "cannot check console prefixes: out of memory");
+        park_forever();
+    }
     int i = 0;
     for (const app_t* app = app_list(); app != NULL; app = app->next) {
         if (app->console != NULL) {
@@ -673,7 +678,9 @@ check_console_prefix_clashes(void) {
 
     const char* from;
     const char* other;
-    switch (console_find_clash(console_shared(), app_prefixes, app_count, &from, &other)) {
+    const console_clash_t clash = console_find_clash(console_shared(), app_prefixes, app_count, &from, &other);
+    free(app_prefixes);
+    switch (clash) {
         case CONSOLE_CLASH_NONE: return;
         case CONSOLE_CLASH_SPACE: ESP_LOGE(TAG, "console prefix '%s' contains a space", from); break;
         case CONSOLE_CLASH_LENGTH:

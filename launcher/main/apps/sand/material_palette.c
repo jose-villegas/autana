@@ -42,9 +42,6 @@
 
 #define LERP8(lo, hi, fr) ((LERP8_CH(lo, hi, 16, fr) << 16) | (LERP8_CH(lo, hi, 8, fr) << 8) | LERP8_CH(lo, hi, 0, fr))
 
-/* Ramp for `n` steps between colours, split for material limits. */
-#define SEG(lo, hi, i, n) GFX_RGB(LERP(lo, hi, ((i) * 15) / ((n) - 1)))
-
 /* One shade per variant, dry to wet; the saturated level takes the full wet
  * colour. */
 #define DIRT_DRY          0x9A7B52
@@ -196,8 +193,6 @@ static const gfx_color_t cullet_cycle[CULLET_CYCLE_LEN] = {
         GFX_RGB(LERP(lo, hi, 4)), GFX_RGB(LERP(lo, hi, 5)), GFX_RGB(LERP(lo, hi, 6)), GFX_RGB(LERP(lo, hi, 7)),        \
         GFX_RGB(LERP(lo, hi, 8)), GFX_RGB(LERP(lo, hi, 9)), GFX_RGB(LERP(lo, hi, 10)), GFX_RGB(LERP(lo, hi, 11)),      \
         GFX_RGB(LERP(lo, hi, 12)), GFX_RGB(LERP(lo, hi, 13)), GFX_RGB(LERP(lo, hi, 14)), GFX_RGB(LERP(lo, hi, 15))
-
-#define UNUSED SHADES(0xFF00FF, 0xFF00FF)
 
 /* THE source of colour. One place to change. Rows in material_id_t order. */
 static const gfx_color_t palette[256] = {
