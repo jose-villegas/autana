@@ -13,6 +13,7 @@
 #include "ui/ridge_motion.h"
 #include "ui/ridge_pose.h"
 #include "ui/ridge_theme.h"
+#include "util/frame_cost.h"
 #include "util/spring_line.h"
 #include "util/tune.h"
 
@@ -87,9 +88,11 @@ typedef struct {
     ridge_pose_t attitude;
     ridge_vector_t pose_on_screen;
     ridge_theme_t theme;
+    gfx_color_t background_color, back0_color, back1_color;
+    gfx_color_t sky[GFX_HEIGHT];
     uint32_t theme_seed, tuned_at, alive_ms, shake_seed;
     int shake, last_pluck_x, strips, down_sign;
-    bool by_column, axis_on_screen, ambient, painted;
+    bool by_column, axis_on_screen, ambient, painted, scanline_dither;
 } ridge_t;
 
 static ridge_t* ridge;
@@ -110,11 +113,13 @@ rgb_mix(uint32_t a, uint32_t b, int amount) {
     return mixed;
 }
 
-static uint32_t
-sky_colour(int x, int y) {
-    const int along = ridge->by_column ? y : x;
+static void
+build_sky_gradient(void) {
     const int length = ridge->by_column ? GFX_HEIGHT : GFX_WIDTH;
-    return rgb_mix((uint32_t)sky_top_rgb, (uint32_t)sky_bottom_rgb, along * 100 / (length - 1));
+    for (int along = 0; along < length; along++) {
+        ridge->sky[along] =
+            gfx_rgb(rgb_mix((uint32_t)sky_top_rgb, (uint32_t)sky_bottom_rgb, along * 100 / (length - 1)));
+    }
 }
 
 static int
@@ -135,31 +140,34 @@ boundary_distance(int layer, int x, int y) {
     return boundary == INT16_MAX ? -1 : ridge->down_sign * ((ridge->by_column ? y : x) - boundary);
 }
 
+static bool
+backdrop_dither_pick(int x, int y, uint8_t alpha) {
+    if (ridge->scanline_dither) {
+        static const uint8_t cutoff[4] = {64, 192, 128, 255};
+        return alpha == 255 || alpha >= cutoff[y & 3];
+    }
+    return gfx_dither_alpha_pick((gfx_dither_pattern_id_t)fill_pattern, x, y, alpha);
+}
+
 static gfx_color_t
-backdrop_pixel(int x, int y) {
-    const int reveal = ridge->alive_ms <= (uint32_t)boot_hold_ms
-                           ? 0
-                           : ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms);
-    if (!gfx_dither_alpha_pick((gfx_dither_pattern_id_t)fill_pattern, x, y, (uint8_t)(reveal * 255 / 256))) {
+backdrop_pixel(int x, int y, uint8_t reveal_alpha) {
+    if (!backdrop_dither_pick(x, y, reveal_alpha)) {
         return GFX_RGB(0);
     }
-    uint32_t rgb = (uint32_t)background_rgb;
+    gfx_color_t color = ridge->background_color;
     const int back0 = boundary_distance(0, x, y);
     const int back1 = boundary_distance(1, x, y);
     const int front = boundary_distance(2, x, y);
-    if (gfx_dither_alpha_pick((gfx_dither_pattern_id_t)fill_pattern, x, y,
-                              (uint8_t)layer_alpha(back0, back0_lip_alpha, back0_body_alpha))) {
-        rgb = (uint32_t)back0_rgb;
+    if (backdrop_dither_pick(x, y, (uint8_t)layer_alpha(back0, back0_lip_alpha, back0_body_alpha))) {
+        color = ridge->back0_color;
     }
-    if (gfx_dither_alpha_pick((gfx_dither_pattern_id_t)fill_pattern, x, y,
-                              (uint8_t)layer_alpha(back1, back1_lip_alpha, back1_body_alpha))) {
-        rgb = (uint32_t)back1_rgb;
+    if (backdrop_dither_pick(x, y, (uint8_t)layer_alpha(back1, back1_lip_alpha, back1_body_alpha))) {
+        color = ridge->back1_color;
     }
-    if (gfx_dither_alpha_pick((gfx_dither_pattern_id_t)fill_pattern, x, y,
-                              (uint8_t)layer_alpha(front, front_lip_alpha, front_body_alpha))) {
-        rgb = sky_colour(x, y);
+    if (backdrop_dither_pick(x, y, (uint8_t)layer_alpha(front, front_lip_alpha, front_body_alpha))) {
+        color = ridge->sky[ridge->by_column ? y : x];
     }
-    return gfx_rgb(rgb);
+    return color;
 }
 
 static void
@@ -243,6 +251,7 @@ raster_boundaries(void) {
             raster_segment(layer, x0, y0, x1, y1);
         }
     }
+    build_sky_gradient();
 }
 
 static void
@@ -253,15 +262,19 @@ repaint_strip(int strip, int lo, int hi) {
     if (lo >= hi) {
         return;
     }
+    const int reveal = ridge->alive_ms <= (uint32_t)boot_hold_ms
+                           ? 0
+                           : ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms);
+    const uint8_t reveal_alpha = (uint8_t)(reveal * 255 / 256);
     gfx_color_t* const framebuffer = gfx_framebuffer();
     if (ridge->by_column) {
         for (int y = lo; y < hi; y++) {
-            framebuffer[y * GFX_WIDTH + strip] = backdrop_pixel(strip, y);
+            framebuffer[y * GFX_WIDTH + strip] = backdrop_pixel(strip, y, reveal_alpha);
         }
         gfx_mark_dirty(strip, lo, 1, hi - lo);
     } else {
         for (int x = lo; x < hi; x++) {
-            framebuffer[strip * GFX_WIDTH + x] = backdrop_pixel(x, strip);
+            framebuffer[strip * GFX_WIDTH + x] = backdrop_pixel(x, strip, reveal_alpha);
         }
         gfx_mark_dirty(lo, strip, hi - lo, 1);
     }
@@ -306,10 +319,14 @@ repaint_changed(void) {
 
 static void
 paint_all(void) {
+    const int reveal = ridge->alive_ms <= (uint32_t)boot_hold_ms
+                           ? 0
+                           : ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms);
+    const uint8_t reveal_alpha = (uint8_t)(reveal * 255 / 256);
     gfx_color_t* const framebuffer = gfx_framebuffer();
     for (int y = 0; y < GFX_HEIGHT; y++) {
         for (int x = 0; x < GFX_WIDTH; x++) {
-            framebuffer[y * GFX_WIDTH + x] = backdrop_pixel(x, y);
+            framebuffer[y * GFX_WIDTH + x] = backdrop_pixel(x, y, reveal_alpha);
         }
     }
     gfx_mark_all_dirty();
@@ -323,6 +340,10 @@ bake_what_is_tuned(void) {
         apply_theme();
     }
     ridge_motion_smooth(ridge->rigid, ridge->smooth, ridge->shape, RIDGE_COLUMNS, breath_smooth);
+    ridge->background_color = gfx_rgb((uint32_t)background_rgb);
+    ridge->back0_color = gfx_rgb((uint32_t)back0_rgb);
+    ridge->back1_color = gfx_rgb((uint32_t)back1_rgb);
+    ridge->scanline_dither = fill_pattern == GFX_DITHER_SCANLINES4;
     ridge->tuned_at = TUNE_GENERATION(ridge);
 }
 
@@ -386,9 +407,9 @@ ui_ridge_paint(void) {
         gfx_fill_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, GFX_RGB(0));
         return;
     }
-    build_layers();
-    raster_boundaries();
+    FRAME_COST_BEGIN(painted_from);
     paint_all();
+    FRAME_COST_END(painted_from, "ridge.paint");
 }
 
 static void
@@ -468,14 +489,18 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     int lo, hi;
     spring_line_advance(&ridge->line, dt_ms);
     spring_line_apply(&ridge->line, ridge->shape, ridge->heights, &lo, &hi);
+    FRAME_COST_BEGIN(layers_from);
     build_layers();
     raster_boundaries();
+    FRAME_COST_END(layers_from, "ridge.layers");
     const bool pose_moved = !ridge_pose_within(ridge->attitude.pose, ridge->pose_on_screen, POSE_REDRAW_STEP);
     const bool revealing = ridge->alive_ms < (uint32_t)boot_hold_ms + (uint32_t)ambient_ease_ms;
+    FRAME_COST_BEGIN(painted_from);
     if (!ridge->painted || retuned || ridge->axis_on_screen || revealing) {
         paint_all();
     } else if (hi > lo || pose_moved || ridge->ambient) {
         repaint_changed();
     }
+    FRAME_COST_END(painted_from, "ridge.paint");
     ridge->pose_on_screen = ridge->attitude.pose;
 }
