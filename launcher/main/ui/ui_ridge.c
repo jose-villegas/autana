@@ -255,6 +255,91 @@ raster_boundaries(void) {
 }
 
 static void
+fill_row(gfx_color_t* dst, int x0, int x1, gfx_color_t color) {
+    for (int x = x0; x < x1; x++) {
+        dst[x] = color;
+    }
+}
+
+static void
+add_row_break(int* points, int* count, int x, int lo, int hi) {
+    if (x <= lo || x >= hi) {
+        return;
+    }
+    int at = *count;
+    while (at > 0 && points[at - 1] > x) {
+        points[at] = points[at - 1];
+        at--;
+    }
+    if (at == 0 || points[at - 1] != x) {
+        points[at] = x;
+        (*count)++;
+    }
+}
+
+static bool
+row_lip_at(int y, int x) {
+    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+        const int distance = boundary_distance(layer, x, y);
+        if (distance >= 0 && distance < lip_px) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void
+paint_row_span(gfx_color_t* framebuffer, int y, int lo, int hi, uint8_t reveal_alpha) {
+    gfx_color_t* const row = framebuffer + y * GFX_WIDTH;
+    if (!backdrop_dither_pick(0, y, reveal_alpha)) {
+        fill_row(row, lo, hi, GFX_RGB(0));
+        return;
+    }
+
+    int points[2 * RIDGE_LAYER_COUNT + 2] = {lo};
+    int count = 1;
+    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+        const int boundary = ridge->boundary[layer][y];
+        if (boundary == INT16_MAX) {
+            continue;
+        }
+        if (ridge->down_sign > 0) {
+            add_row_break(points, &count, boundary, lo, hi);
+            add_row_break(points, &count, boundary + lip_px, lo, hi);
+        } else {
+            add_row_break(points, &count, boundary - lip_px + 1, lo, hi);
+            add_row_break(points, &count, boundary + 1, lo, hi);
+        }
+    }
+    points[count++] = hi;
+
+    for (int part = 0; part + 1 < count; part++) {
+        const int x0 = points[part], x1 = points[part + 1];
+        if (row_lip_at(y, x0)) {
+            for (int x = x0; x < x1; x++) {
+                row[x] = backdrop_pixel(x, y, reveal_alpha);
+            }
+            continue;
+        }
+        gfx_color_t color = ridge->background_color;
+        if (backdrop_dither_pick(
+                0, y, (uint8_t)layer_alpha(boundary_distance(0, x0, y), back0_lip_alpha, back0_body_alpha))) {
+            color = ridge->back0_color;
+        }
+        if (backdrop_dither_pick(
+                0, y, (uint8_t)layer_alpha(boundary_distance(1, x0, y), back1_lip_alpha, back1_body_alpha))) {
+            color = ridge->back1_color;
+        }
+        if (backdrop_dither_pick(
+                0, y, (uint8_t)layer_alpha(boundary_distance(2, x0, y), front_lip_alpha, front_body_alpha))) {
+            memcpy(row + x0, ridge->sky + x0, (size_t)(x1 - x0) * sizeof(*row));
+        } else {
+            fill_row(row, x0, x1, color);
+        }
+    }
+}
+
+static void
 repaint_strip(int strip, int lo, int hi) {
     const int limit = ridge->by_column ? GFX_HEIGHT : GFX_WIDTH;
     lo = lo < 0 ? 0 : lo;
@@ -273,8 +358,12 @@ repaint_strip(int strip, int lo, int hi) {
         }
         gfx_mark_dirty(strip, lo, 1, hi - lo);
     } else {
-        for (int x = lo; x < hi; x++) {
-            framebuffer[strip * GFX_WIDTH + x] = backdrop_pixel(x, strip, reveal_alpha);
+        if (ridge->scanline_dither) {
+            paint_row_span(framebuffer, strip, lo, hi, reveal_alpha);
+        } else {
+            for (int x = lo; x < hi; x++) {
+                framebuffer[strip * GFX_WIDTH + x] = backdrop_pixel(x, strip, reveal_alpha);
+            }
         }
         gfx_mark_dirty(lo, strip, hi - lo, 1);
     }
@@ -324,9 +413,15 @@ paint_all(void) {
                            : ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms);
     const uint8_t reveal_alpha = (uint8_t)(reveal * 255 / 256);
     gfx_color_t* const framebuffer = gfx_framebuffer();
-    for (int y = 0; y < GFX_HEIGHT; y++) {
-        for (int x = 0; x < GFX_WIDTH; x++) {
-            framebuffer[y * GFX_WIDTH + x] = backdrop_pixel(x, y, reveal_alpha);
+    if (!ridge->by_column && ridge->scanline_dither) {
+        for (int y = 0; y < GFX_HEIGHT; y++) {
+            paint_row_span(framebuffer, y, 0, GFX_WIDTH, reveal_alpha);
+        }
+    } else {
+        for (int y = 0; y < GFX_HEIGHT; y++) {
+            for (int x = 0; x < GFX_WIDTH; x++) {
+                framebuffer[y * GFX_WIDTH + x] = backdrop_pixel(x, y, reveal_alpha);
+            }
         }
     }
     gfx_mark_all_dirty();
