@@ -62,8 +62,8 @@ silently reverts it to a stale copy.
 
 POST /build_flash is the only other endpoint, and the only thing here that
 writes anything meant to be committed or touches the real device: same body
-shape as /render minus `ms`, plus `board` (the board's USB serial number,
-empty for the only board plugged in). It
+shape as /render minus `ms`, plus `board` (the board's USB serial number;
+empty: AUTANA_BOARD, else the only board plugged in). It
 validates exactly like step 2 above (into a throwaway scratch file first, so
 a bad edit never reaches the real files), then overwrites the REAL
 main/boot/boot_anim_timeline.json and boot_anim_timeline.h - what
@@ -93,9 +93,8 @@ TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 LAUNCHER_DIR = os.path.dirname(os.path.dirname(TOOLS_DIR))
 ENGINE_DIR = os.path.dirname(LAUNCHER_DIR)
 
-# The device lock, the same one every autana verb takes - build_and_flash()
-# below is this tool's own board access and must queue behind it rather
-# than fight it for the port.
+# build_and_flash() flashes through device.flash_script(), so it queues for
+# the board's lock like every autana command rather than fight it for the port.
 sys.path.insert(0, os.path.join(ENGINE_DIR, "scripts", "device"))
 import device  # noqa: E402
 MAIN_DIR = os.path.join(LAUNCHER_DIR, "main")
@@ -579,29 +578,24 @@ class Renderer:
         # would otherwise hang this request forever - see its own comment
         # on the `|| true` that makes stdin-at-EOF there a no-op, not a
         # reported failure.
-        #
-        # Held for the whole build+flash, same as every other autana verb -
-        # build_flash.sh itself refuses to flash without the token this
-        # puts in AUTANA_DEVICE_LOCK_TOKEN, so a second flash (an agent's,
-        # or another /build_flash request) cannot land mid-write.
-        board = device.find_board(board).serial
-        store = device.device_lock.LockStore()
-        with device.HeldLock(store, board, "boot-anim-editor", "boot anim preview flash",
-                             wait=300) as held:
-            environment = os.environ.copy()
-            environment["AUTANA_DEVICE_LOCK_TOKEN"] = held.held["token"]
-            environment["AUTANA_BOARD"] = board
-            proc = subprocess.run(
-                [bash, script_for_bash],
-                cwd=LAUNCHER_DIR, stdin=subprocess.DEVNULL, env=environment,
-                capture_output=True, text=True, timeout=BUILD_FLASH_TIMEOUT_S)
-        log = proc.stdout + proc.stderr
-        if proc.returncode != 0:
+        failed = None
+        with tempfile.TemporaryFile() as output:
+            try:
+                device.flash_script(
+                    device.device_lock.LockStore(), board, "boot-anim-editor",
+                    "boot anim preview flash", [bash, script_for_bash], 300,
+                    cwd=LAUNCHER_DIR, stdin=subprocess.DEVNULL, stdout=output,
+                    stderr=subprocess.STDOUT, timeout=BUILD_FLASH_TIMEOUT_S)
+            except subprocess.CalledProcessError as error:
+                failed = error
+            output.seek(0)
+            log = output.read().decode("utf-8", errors="replace")
+        if failed:
             if "No such file or directory" in log and script_for_bash in log:
                 log = log.strip() + "\n\n" + probe_info
             raise RenderError(500, log.strip() or
                               "build_flash_dev.sh exited with code %d" %
-                              proc.returncode)
+                              failed.returncode)
         return log
 
 

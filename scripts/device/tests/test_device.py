@@ -827,7 +827,7 @@ class FlashCommandLineTests(unittest.TestCase):
             calls.append(list(extra_flags))
             return 0
 
-        with mock.patch.object(device, "find_board", return_value=device.Board(BOARD, BOARD)), \
+        with mock.patch.object(device, "board_for_lock", return_value=BOARD), \
              mock.patch.object(device, "flash", fake_flash), \
              mock.patch.object(device, "device_lock") as fake_lock_module:
             fake_lock_module.LockStore.return_value = mock.Mock()
