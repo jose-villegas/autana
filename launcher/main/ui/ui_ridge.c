@@ -279,7 +279,7 @@ add_row_break(int* points, int* count, int x, int lo, int hi) {
     }
 }
 
-static bool
+static inline __attribute__((always_inline)) bool
 row_lip_at(int y, int x) {
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
         const int distance = boundary_distance(layer, x, y);
@@ -290,15 +290,8 @@ row_lip_at(int y, int x) {
     return false;
 }
 
-static void
-paint_row_span(gfx_color_t* framebuffer, int y, int lo, int hi, uint8_t reveal_alpha) {
-    gfx_color_t* const row = framebuffer + y * GFX_WIDTH;
-    if (!backdrop_dither_pick(0, y, reveal_alpha)) {
-        fill_row(row, lo, hi, GFX_RGB(0));
-        return;
-    }
-
-    int points[2 * RIDGE_LAYER_COUNT + 2] = {lo};
+static inline __attribute__((always_inline)) int
+collect_row_breaks(int* points, int y, int lo, int hi) {
     int count = 1;
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
         const int boundary = ridge->boundary[layer][y];
@@ -314,27 +307,48 @@ paint_row_span(gfx_color_t* framebuffer, int y, int lo, int hi, uint8_t reveal_a
         }
     }
     points[count++] = hi;
+    return count;
+}
 
+static inline __attribute__((always_inline)) gfx_color_t
+row_body_color(int y, int x) {
+    gfx_color_t color = ridge->background_color;
+    if (backdrop_dither_pick(0, y, (uint8_t)ridge_layer_alpha(0, boundary_distance(0, x, y)))) {
+        color = ridge->back0_color;
+    }
+    if (backdrop_dither_pick(0, y, (uint8_t)ridge_layer_alpha(1, boundary_distance(1, x, y)))) {
+        color = ridge->back1_color;
+    }
+    return color;
+}
+
+static inline __attribute__((always_inline)) void
+paint_row_part(gfx_color_t* row, int y, int x0, int x1, uint8_t reveal_alpha) {
+    if (row_lip_at(y, x0)) {
+        for (int x = x0; x < x1; x++) {
+            row[x] = backdrop_pixel(x, y, reveal_alpha);
+        }
+        return;
+    }
+    if (backdrop_dither_pick(0, y, (uint8_t)ridge_layer_alpha(2, boundary_distance(2, x0, y)))) {
+        memcpy(row + x0, ridge->sky + x0, (size_t)(x1 - x0) * sizeof(*row));
+        return;
+    }
+    fill_row(row, x0, x1, row_body_color(y, x0));
+}
+
+static void
+paint_row_span(gfx_color_t* framebuffer, int y, int lo, int hi, uint8_t reveal_alpha) {
+    gfx_color_t* const row = framebuffer + y * GFX_WIDTH;
+    if (!backdrop_dither_pick(0, y, reveal_alpha)) {
+        fill_row(row, lo, hi, GFX_RGB(0));
+        return;
+    }
+
+    int points[2 * RIDGE_LAYER_COUNT + 2] = {lo};
+    const int count = collect_row_breaks(points, y, lo, hi);
     for (int part = 0; part + 1 < count; part++) {
-        const int x0 = points[part], x1 = points[part + 1];
-        if (row_lip_at(y, x0)) {
-            for (int x = x0; x < x1; x++) {
-                row[x] = backdrop_pixel(x, y, reveal_alpha);
-            }
-            continue;
-        }
-        gfx_color_t color = ridge->background_color;
-        if (backdrop_dither_pick(0, y, (uint8_t)ridge_layer_alpha(0, boundary_distance(0, x0, y)))) {
-            color = ridge->back0_color;
-        }
-        if (backdrop_dither_pick(0, y, (uint8_t)ridge_layer_alpha(1, boundary_distance(1, x0, y)))) {
-            color = ridge->back1_color;
-        }
-        if (backdrop_dither_pick(0, y, (uint8_t)ridge_layer_alpha(2, boundary_distance(2, x0, y)))) {
-            memcpy(row + x0, ridge->sky + x0, (size_t)(x1 - x0) * sizeof(*row));
-        } else {
-            fill_row(row, x0, x1, color);
-        }
+        paint_row_part(row, y, points[part], points[part + 1], reveal_alpha);
     }
 }
 
