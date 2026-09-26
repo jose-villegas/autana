@@ -127,6 +127,23 @@ def find_board(board=None):
     return present[0]
 
 
+def board_for_lock(store, named=None):
+    """The board a command queues for. A lock outlives the board's USB
+    presence, so while a holder's reset has the only board off USB a waiter
+    still finds it through the lock records; only opening its port needs USB."""
+    wanted = chosen_board(named)
+    if wanted:
+        return wanted
+    present = sorted(found.serial for found in plugged_boards())
+    candidates = present or store.boards()
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        raise NoBoard("no USB Serial/JTAG board found (VID 0x303A)")
+    raise RuntimeError("several boards are " + ("plugged in" if present else "known to the lock")
+                       + " - name one with --board or AUTANA_BOARD: " + ", ".join(candidates))
+
+
 def open_serial():
     port = locked_port()
     try:
@@ -366,6 +383,7 @@ class HeldLock:
     when it ends, with an error when it raised, set `error`, or lost the lock."""
 
     HEARTBEAT_SECONDS = 5
+    NOTICE_SECONDS = 30
 
     def __init__(self, store, board, owner, purpose, wait, announce_waiters=False, kind=None):
         self.store = store
@@ -388,7 +406,7 @@ class HeldLock:
 
     def wait_notice(self, ticket):
         now = self.store.now()
-        if self.last_notice is not None and now - self.last_notice < 30:
+        if self.last_notice is not None and now - self.last_notice < self.NOTICE_SECONDS:
             return
         self.last_notice = now
         status = self.store.status(self.board)
@@ -735,11 +753,12 @@ def stop_process_tree(process):
     process.wait()
 
 
-def run_while_held(command, held, **options):
+def run_while_held(command, held, timeout=None, **options):
     """Runs `command` to its end, or stops it the moment the heartbeat finds
     the lock lost, before it writes to a board somebody else now holds."""
     if os.name != "nt":
         options["start_new_session"] = True
+    deadline = None if timeout is None else time.monotonic() + timeout
     process = subprocess.Popen(command, **options)
     try:
         while True:
@@ -749,11 +768,49 @@ def run_while_held(command, held, **options):
             except subprocess.TimeoutExpired:
                 if held.lost.is_set():
                     raise LockLost("device lock was lost during the flash; the flash was stopped")
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise subprocess.TimeoutExpired(command, timeout)
     except BaseException:
         stop_process_tree(process)
         raise
     if code:
         raise subprocess.CalledProcessError(code, command)
+
+
+def run_flash_script(held, command, **popen):
+    """Runs a build_flash.sh `command` under `held`, the board's lock."""
+    environment = dict(popen.pop("env", None) or os.environ)
+    environment.setdefault("MSYSTEM", "MINGW64")
+    # Proof to build_flash.sh that this flash holds this board's lock: it runs
+    # check-token with both before it flashes. The token sits in plain text in
+    # the lock file, so this catches an accident, not a forger.
+    environment["AUTANA_DEVICE_LOCK_TOKEN"] = held.held["token"]
+    environment["AUTANA_BOARD"] = held.board
+    run_while_held(command, held, env=environment, **popen)
+
+
+def flash_script(store, board, owner, purpose, command, wait, **popen):
+    """Runs a build_flash.sh `command` for a caller outside device.py: finds
+    the board (`board`, else AUTANA_BOARD, else the only one), queues for its
+    lock and holds it until the script ends. Returns the board's serial."""
+    board = board_for_lock(store, board)
+    with HeldLock(store, board, owner, purpose, wait, kind="flash") as held:
+        run_flash_script(held, command, **popen)
+    return board
+
+
+FLASH_FAILURE = re.compile(r"fatal error|\berror:|^error\b|could not", re.I)
+
+
+def flash_failure_line(text):
+    """The line that says why a flash log failed: the first error line, since
+    idf.py and ninja follow esptool's own reason with lines of their own."""
+    lines = [line.strip() for line in text.splitlines()
+             if line.strip() and not line.startswith("===") and "Press Enter" not in line]
+    for line in lines:
+        if FLASH_FAILURE.search(line):
+            return line
+    return lines[-1] if lines else "the log is empty"
 
 
 def flash(args, store, board, held_lock=None, extra_flags=()):
@@ -770,20 +827,17 @@ def flash(args, store, board, held_lock=None, extra_flags=()):
         flag = {"dev": "--dev", "diag": "--diag", "release": ""}[args.variant]
         command = [git_bash(), str(script)] + ([flag] if flag else []) + list(extra_flags)
         print("flash log: " + str(log))
-        environment = os.environ.copy()
-        environment.setdefault("MSYSTEM", "MINGW64")
-        # Proof to build_flash.sh that this flash is under the device lock on
-        # this board - it checks both before it flashes. Not a secret: it
-        # only has to differ from "unset", so a build_flash.sh run directly
-        # cannot forge one by guessing.
-        environment["AUTANA_DEVICE_LOCK_TOKEN"] = held.held["token"]
-        environment["AUTANA_BOARD"] = board
         build_id = None
         error = None
         try:
-            with open(log, "wb") as stream:
-                run_while_held(command, held, cwd=worktree, stdin=subprocess.DEVNULL,
-                               stdout=stream, stderr=subprocess.STDOUT, env=environment)
+            try:
+                with open(log, "wb") as stream:
+                    run_flash_script(held, command, cwd=worktree, stdin=subprocess.DEVNULL,
+                                     stdout=stream, stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError as failed:
+                text = Path(log).read_text(encoding="utf-8", errors="replace")
+                raise RuntimeError(f"build_flash.sh failed (exit {failed.returncode}): "
+                                   f"{flash_failure_line(text)} - flash log: {log}") from failed
             require_live_lock()
             expected = latest_build_id_from_bytes(Path(log).read_bytes())
             if not expected:
@@ -1114,8 +1168,9 @@ def batch(args, store, board):
                 print(f"batch: {suite_name} run {run}/{args.runs}", flush=True)
                 error = None
                 try:
-                    run_suite(suite_args, store, board, held_lock=held, worktree=worktree,
-                              commit=commit)
+                    if run_suite(suite_args, store, board, held_lock=held, worktree=worktree,
+                                 commit=commit):
+                        error = "suite reported FAIL"
                 except RuntimeError as caught:
                     error = str(caught)
                     print("batch: capture error, continuing: " + error, file=sys.stderr)
@@ -1194,7 +1249,8 @@ def print_statuses(entries):
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--board", help="the board's USB serial number (default: AUTANA_BOARD, "
-                                        "else the only board plugged in)")
+                                        "else the only board plugged in, else the only one "
+                                        "a lock record names)")
     parser.add_argument("--owner", default=os.environ.get("AUTANA_DEVICE_OWNER", "unknown"))
     parser.add_argument("--wait", type=float, default=600)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1326,7 +1382,7 @@ def main(argv=None):
         if args.command == "resolve-port":
             print(find_board(args.board).port)
             return 0
-        board = chosen_board(args.board) or find_board().serial
+        board = board_for_lock(store, args.board)
         if args.command == "release":
             return 0 if store.release(board, args.token) else 1
         if args.command == "hand-to-human":

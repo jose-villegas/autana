@@ -469,21 +469,25 @@ SEND_WAIT_S = 5
 
 
 def board_holder():
-    """'held by <owner> for <purpose>' when someone else has a board that is
-    plugged in, else ''.
+    """'held by <owner> for <purpose>' when someone else has the board a
+    command would use, else ''. That board is AUTANA_BOARD's, else the only
+    one plugged in; with several plugged in and none named, device.py's own
+    refusal says so.
 
     Every line of a console session is a device.py of its own under one
     autana, so a lock this autana already holds is not somebody else's and
     the session does not refuse itself."""
     result = subprocess.run(device_command("status", "--json"), capture_output=True, text=True)
     try:
-        boards = json.loads(result.stdout)["boards"]
+        plugged = [board for board in json.loads(result.stdout)["boards"] if board["port"]]
     except (ValueError, KeyError, TypeError):
         return ""
-    for board in boards:
-        holder = board["holder"]
-        if board["port"] and board["state"] == "held" and holder["owner"] != owner():
-            return f"held by {holder['owner']} for {holder['purpose']}"
+    if len(plugged) != 1:
+        return ""
+    board = plugged[0]
+    holder = board["holder"]
+    if board["state"] == "held" and holder["owner"] != owner():
+        return f"held by {holder['owner']} for {holder['purpose']}"
     return ""
 
 

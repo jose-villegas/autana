@@ -368,8 +368,8 @@ class LockStore:
 DURATIONS_FILE = "durations.jsonl"
 ESTIMATE_MINIMUM_RUNS = 3
 ESTIMATE_RECENT_RUNS = 30
-# The file is rewritten down to the recent successful runs of each kind once
-# it passes this, so `status` and a waiter's notice never read an unbounded log.
+# Past this many lines the file is trimmed back (trim_durations()), so
+# `status` and a waiter's notice never read an unbounded log.
 DURATIONS_TRIM_LINES = 400
 
 
@@ -411,15 +411,18 @@ def record_duration(kind, seconds, error=None, root=None):
 
 
 def trim_durations(path, rows):
-    """A row another process appends during the rewrite can be lost; an
-    estimate is a median of thirty and does not notice."""
-    kept = {}
-    for row in rows:
+    """Keeps each kind's last ESTIMATE_RECENT_RUNS successful rows, then the
+    newest DURATIONS_TRIM_LINES of those, however many kinds there are. A row
+    another process appends during the rewrite can be lost; a median over
+    that many runs does not notice."""
+    by_kind = {}
+    for index, row in enumerate(rows):
         if successful_duration(row) is not None:
-            kept.setdefault(row["command"], []).append(row)
-    recent = {id(row) for runs in kept.values() for row in runs[-ESTIMATE_RECENT_RUNS:]}
+            by_kind.setdefault(row["command"], []).append(index)
+    recent = sorted(index for runs in by_kind.values() for index in runs[-ESTIMATE_RECENT_RUNS:])
+    kept = recent[-DURATIONS_TRIM_LINES:]
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
-    temporary.write_text("".join(json.dumps(row) + "\n" for row in rows if id(row) in recent),
+    temporary.write_text("".join(json.dumps(rows[index]) + "\n" for index in kept),
                          encoding="utf-8")
     os.replace(temporary, path)
 
