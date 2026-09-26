@@ -38,8 +38,8 @@
  * the running device ("SET ridge.trail 200"), a release build compiles them
  * in. The values here are the ones that ship. */
 TUNE_OWNER(ridge);
-TUNE(ridge, glow_radius, 13, 1, GFX_GLOW_MAX_RADIUS);
-TUNE(ridge, glow_core, 3, 1, GFX_GLOW_MAX_RADIUS);
+TUNE(ridge, glow_radius, 1, 1, GFX_GLOW_MAX_RADIUS);
+TUNE(ridge, glow_core, 1, 1, GFX_GLOW_MAX_RADIUS);
 TUNE(ridge, glow_core_rgb, 0xFFFFFF, 0, 0xFFFFFF);
 TUNE(ridge, glow_halo_rgb, 0x38D6E8, 0, 0xFFFFFF);
 /* Levels of stippled light in the halo; none is a smooth one. */
@@ -91,9 +91,8 @@ TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 #define MIN_TILT_STRENGTH 64
 
 /* A pose is redrawn once it is this far, in Q14, from the one on screen:
- * about half a degree. A hand is never still; this is what keeps a held
- * device from redrawing every frame for a change nobody could see. */
-#define POSE_REDRAW_STEP  143
+ * about three and a half degrees. */
+#define POSE_REDRAW_STEP  1024
 
 /* Easing never quite arrives, and the step above would let the line rest
  * half a degree off level. Once down has held within LEVEL_STEADY_STEP (a
