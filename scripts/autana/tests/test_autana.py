@@ -7,25 +7,18 @@ for device.py's and the wire protocol's own coverage.
 
     python -m unittest discover -s scripts/autana/tests
 """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "device" / "tests"))
+import isolation  # noqa: E402,F401  (first: keeps the suite out of real records)
 import contextlib
 import io
 import socket
-import sys
 import os
 import tempfile
 import unittest
-from pathlib import Path
 from unittest import mock
-
-
-def setUpModule():
-    global saved_hook
-    saved_hook = os.environ.pop("AUTANA_LOCK_HOOK", None)
-
-
-def tearDownModule():
-    if saved_hook is not None:
-        os.environ["AUTANA_LOCK_HOOK"] = saved_hook
 
 AUTANA = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AUTANA))

@@ -1,3 +1,4 @@
+import isolation  # noqa: F401  (first: keeps the suite out of real records)
 import ast
 import contextlib
 import io

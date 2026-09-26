@@ -1,3 +1,4 @@
+import isolation  # noqa: F401  (first: keeps the suite out of real records)
 import contextlib
 import io
 import json
