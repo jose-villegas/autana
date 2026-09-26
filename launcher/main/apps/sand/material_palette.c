@@ -4,7 +4,7 @@
  * Split off material.c's data half (materials[], reactions[] - see that
  * file's own banner) because everything below is colour, not behaviour: a
  * 256-entry palette and the per-cell function app_sand.c's row painter
- * (paint_row_n()) calls once per cell, every frame. Keeping it separate
+ * (sand_paint_row_n()) calls once per cell, every frame. Keeping it separate
  * means a caller of material.c's tables - the simulation's hot loop, the
  * host test runner, tools/dump_reactions.c - never has to pull in
  * gfx_color_t just to ask what a material IS.
@@ -574,7 +574,7 @@ liquid_spec_for_mask(unsigned mask, int ux_q8, int uy_q8) {
 /* Only three outward-normal cases exist here (two axes): no empty side, one,
  * or two adjacent (diagonal, length sqrt(2)) - so norm_q8 picks only unit
  * length or 1/sqrt(2). Liquid interior shading is walked per cell in
- * paint_row_n() instead, since gravity alone cannot predict a cell's
+ * sand_paint_row_n() instead, since gravity alone cannot predict a cell's
  * surroundings. */
 void
 material_set_gravity(int gx, int gy) {
@@ -753,7 +753,7 @@ material_wood_leaf_wave(uint32_t time_ms, int pos, int span, unsigned hash) {
     return (unsigned)(255u - (since_peak * 255u) / WOOD_LEAF_WAVE_FALL_MS);
 }
 
-/* No floating point, suitable for water rim cells. See paint_row_n(). */
+/* No floating point, suitable for water rim cells. See sand_paint_row_n(). */
 static unsigned
 material_popcount8(unsigned mask) {
     unsigned count = 0;
@@ -917,7 +917,7 @@ wood_colours(cell_t c, uint8_t v, unsigned hash, unsigned depth, gfx_color_t out
     }
     if (depth != 0) {
         /* depth carries the wave's fraction (0-255) plus one, from
-         * material_wood_leaf_wave() via cell_shading_depth() (app_sand.c) -
+         * material_wood_leaf_wave() via sp_cell_shading_depth() (sand_paint_row.h) -
          * see
          * material_wood_near_leaf() in material_palette.h for the gate. A
          * live LERP8, not a stored step, so the blend is smooth rather than
