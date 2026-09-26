@@ -24,7 +24,7 @@ from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must
 
 
 BAUD = 115200
-BOARD_ID = "usb-303a"
+BOARD_ID = device_lock.BOARD_ID
 BUILD_ID = re.compile(rb"BUILD_ID=([^\s\r\n]+)")
 SUITE_RESULT = re.compile(rb":\d+:.*:(PASS|FAIL)(?:\r?$|:)", re.MULTILINE)
 

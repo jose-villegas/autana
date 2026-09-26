@@ -18,6 +18,8 @@ from pathlib import Path
 import device_hook
 
 
+# The one board, whatever COM number it enumerates as after a reset.
+BOARD_ID = "usb-303a"
 DEFAULT_STALE_SECONDS = 600
 GUARD_STALE_SECONDS = 30
 
@@ -88,7 +90,7 @@ def windows_process_alive(pid, kernel32=None):
 
 
 class LockStore:
-    def __init__(self, root=None, now=time.time, is_alive=process_alive, board_id=None):
+    def __init__(self, root=None, now=time.time, is_alive=process_alive, board_id=BOARD_ID):
         self.root = Path(root) if root else default_root()
         self.now = now
         self.is_alive = is_alive
@@ -427,7 +429,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=default_root())
     parser.add_argument("--port", required=True)
-    parser.add_argument("--board-id")
+    parser.add_argument("--board-id", default=BOARD_ID)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("status")
     acquire = subparsers.add_parser("acquire")

@@ -19,7 +19,8 @@ import autana
 
 
 class GuardTests(unittest.TestCase):
-    def test_guard_rejects_missing_replaced_and_stale_lock(self):
+    @mock.patch.object(device, "find_port", return_value="COM5")
+    def test_guard_rejects_missing_replaced_and_stale_lock(self, _find_port):
         with tempfile.TemporaryDirectory() as directory:
             store = device_lock.LockStore(directory, now=lambda: 1000)
             with self.assertRaisesRegex(RuntimeError, "device lock"):
@@ -45,10 +46,12 @@ class GuardTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             outer = device_lock.LockStore(Path(directory) / "outer")
             inner = device_lock.LockStore(Path(directory) / "inner")
-            with device.HeldLock(outer, "COM5", "a", "send", 0):
-                with device.HeldLock(inner, "COM6", "b", "send", 0):
-                    device.require_port_lock("COM6")
-                device.require_port_lock("COM5")
+            with mock.patch.object(device, "find_port", return_value="COM5"):
+                with device.HeldLock(outer, "COM5", "a", "send", 0) as held_outer:
+                    with device.HeldLock(inner, "COM5", "b", "send", 0) as held_inner:
+                        self.assertIs(device.ACTIVE_LOCK.held, held_inner)
+                    self.assertIs(device.ACTIVE_LOCK.held, held_outer)
+                    device.require_port_lock("COM5")
 
     def test_port_must_belong_to_the_locked_usb_board(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -143,6 +146,13 @@ class GuardTests(unittest.TestCase):
             refused = subprocess.run(command, env=env, capture_output=True, text=True)
             self.assertNotEqual(refused.returncode, 0)
             self.assertIn("device lock token is not active", refused.stderr)
+
+    def test_every_default_store_shares_one_lock_across_com_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            first = device_lock.LockStore(directory, now=lambda: 1000)
+            second = device_lock.LockStore(directory, now=lambda: 1000)
+            self.assertTrue(first.acquire("COM5", "a", "flash", wait=0))
+            self.assertFalse(second.acquire("COM7", "b", "listen", wait=0))
 
 
 class EstimateTests(unittest.TestCase):
