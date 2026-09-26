@@ -113,6 +113,11 @@ typedef struct {
 static ridge_t* ridge;
 static bool allocation_tried;
 
+static inline __attribute__((always_inline)) int
+clamp_int(int value, int lo, int hi) {
+    return value < lo ? lo : value > hi ? hi : value;
+}
+
 static int
 round_q4(int value) {
     return value >= 0 ? (value + 8) / 16 : (value - 8) / 16;
@@ -194,10 +199,7 @@ backdrop_dither_pick(int x, int y, uint8_t alpha) {
 }
 
 static inline __attribute__((always_inline)) gfx_color_t
-backdrop_pixel(int x, int y, uint8_t reveal_alpha) {
-    if (!backdrop_dither_pick(x, y, reveal_alpha)) {
-        return GFX_RGB(0);
-    }
+backdrop_pixel(int x, int y) {
     gfx_color_t color = ridge->background_color;
     const int back0 = boundary_distance(0, x, y);
     const int back1 = boundary_distance(1, x, y);
@@ -233,13 +235,21 @@ build_layers(void) {
     const int wavelength[2] = {back0_wavelength, back1_wavelength};
     const int period[2] = {back0_period_ms, back1_period_ms};
     const int offset[2] = {back0_offset, back1_offset};
+    /* The waves grow in and go out with the rest of the ambient motion, so
+     * a ridge whose motion is switched off rests on its rigid shape. */
+    const int gain = ridge->ambient && ridge->alive_ms > (uint32_t)boot_hold_ms
+                         ? ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms)
+                         : 0;
+    uint32_t travelled[2];
+    for (int layer = 0; layer < 2; layer++) {
+        travelled[layer] = (uint32_t)((uint64_t)ridge->wave_ms * 65536u / (uint32_t)period[layer]);
+    }
     for (int x = 0; x < RIDGE_COLUMNS; x++) {
         for (int layer = 0; layer < 2; layer++) {
-            const uint32_t phase = (uint32_t)x * 65536u / (uint32_t)wavelength[layer]
-                                   - (uint32_t)((uint64_t)ridge->wave_ms * 65536u / (uint32_t)period[layer]);
+            const uint32_t phase = (uint32_t)x * 65536u / (uint32_t)wavelength[layer] - travelled[layer];
             const int echo = spring_line_scale(ridge->line.offset[x], layer == 0 ? 64 : 128) / (SPRING_LINE_ONE / 16);
-            ridge->layers[layer][x] = (int16_t)(ridge->rigid[x] + offset[layer] * 16
-                                                + amplitude[layer] * trig_sin((uint16_t)phase) / 2048 + echo);
+            const int wave = amplitude[layer] * trig_sin((uint16_t)phase) / 2048 * gain / 256;
+            ridge->layers[layer][x] = (int16_t)(ridge->rigid[x] + offset[layer] * 16 + wave + echo);
         }
         ridge->layers[2][x] = (int16_t)(ridge->heights[x] + front_offset * 16);
     }
@@ -413,43 +423,49 @@ layer_alpha_at(int layer, int distance) {
 /* A segment with a lip in it, along its strip from `a0` to `a1`, scanline
  * dither only. The same picture as backdrop_pixel(), with each layer's
  * distance stepped instead of looked up and no orientation test per pixel. */
+/* How far into each layer `a` along `strip` lies; far outside a layer
+ * that does not cross the strip. */
+static inline __attribute__((always_inline)) void
+strip_distances(int strip, int a, int distance[RIDGE_LAYER_COUNT]) {
+    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+        const int boundary = ridge->boundary[layer][strip];
+        distance[layer] = boundary == INT16_MAX ? INT_MIN / 2 : ridge->down_sign * (a - boundary);
+    }
+}
+
+static inline __attribute__((always_inline)) gfx_color_t
+lip_pixel(const int distance[RIDGE_LAYER_COUNT], int phase, int x, int y) {
+    gfx_color_t color = ridge->background_color;
+    if (scanline_pick(layer_alpha_at(0, distance[0]), phase)) {
+        color = ridge->back0_color;
+    }
+    if (scanline_pick(layer_alpha_at(1, distance[1]), phase)) {
+        color = ridge->back1_color;
+    }
+    if (scanline_pick(layer_alpha_at(2, distance[2]), phase)) {
+        color = sky_at(x, y);
+    }
+    return color;
+}
+
 static void
-paint_lip_segment(gfx_color_t* out, int strip, int a0, int a1, uint8_t reveal_alpha) {
+paint_lip_segment(gfx_color_t* out, int strip, int a0, int a1) {
     const bool by_column = ridge->by_column;
     const int step = by_column ? GFX_WIDTH : 1;
     int distance[RIDGE_LAYER_COUNT];
-    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-        const int boundary = ridge->boundary[layer][strip];
-        distance[layer] = boundary == INT16_MAX ? INT_MIN / 2 : ridge->down_sign * (a0 - boundary);
-    }
-    const gfx_color_t back0 = ridge->back0_color, back1 = ridge->back1_color, black = GFX_RGB(0);
+    strip_distances(strip, a0, distance);
     for (int a = a0; a < a1; a++, out += step) {
-        const int phase = (by_column ? a : strip) & 3;
-        gfx_color_t color = ridge->background_color;
-        if (!scanline_pick(reveal_alpha, phase)) {
-            color = black;
-        } else {
-            if (scanline_pick(layer_alpha_at(0, distance[0]), phase)) {
-                color = back0;
-            }
-            if (scanline_pick(layer_alpha_at(1, distance[1]), phase)) {
-                color = back1;
-            }
-            if (scanline_pick(layer_alpha_at(2, distance[2]), phase)) {
-                color = sky_at(by_column ? strip : a, by_column ? a : strip);
-            }
+        *out = by_column ? lip_pixel(distance, a & 3, strip, a) : lip_pixel(distance, strip & 3, a, strip);
+        for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+            distance[layer] += ridge->down_sign;
         }
-        *out = color;
-        distance[0] += ridge->down_sign;
-        distance[1] += ridge->down_sign;
-        distance[2] += ridge->down_sign;
     }
 }
 
 static inline __attribute__((always_inline)) void
-paint_row_part(gfx_color_t* row, int y, int x0, int x1, uint8_t reveal_alpha) {
+paint_row_part(gfx_color_t* row, int y, int x0, int x1) {
     if (row_lip_at(y, x0)) {
-        paint_lip_segment(row + x0, y, x0, x1, reveal_alpha);
+        paint_lip_segment(row + x0, y, x0, x1);
         return;
     }
     if (backdrop_dither_pick(0, y, (uint8_t)ridge_layer_alpha(2, boundary_distance(2, x0, y)))) {
@@ -464,38 +480,29 @@ paint_row_part(gfx_color_t* row, int y, int x0, int x1, uint8_t reveal_alpha) {
 }
 
 static void
-paint_row_into(gfx_color_t* row, int y, int lo, int hi, uint8_t reveal_alpha) {
-    if (!backdrop_dither_pick(0, y, reveal_alpha)) {
-        fill_row(row, lo, hi, GFX_RGB(0));
-        return;
-    }
+paint_row_into(gfx_color_t* row, int y, int lo, int hi) {
 
     int points[2 * RIDGE_LAYER_COUNT + 2] = {lo};
     const int count = collect_row_breaks(points, y, lo, hi);
     for (int part = 0; part + 1 < count; part++) {
-        paint_row_part(row, y, points[part], points[part + 1], reveal_alpha);
+        paint_row_part(row, y, points[part], points[part + 1]);
     }
 }
 
 static void
-paint_row_span(gfx_color_t* framebuffer, int y, int lo, int hi, uint8_t reveal_alpha) {
-    paint_row_into(framebuffer + y * GFX_WIDTH, y, lo, hi, reveal_alpha);
+paint_row_span(gfx_color_t* framebuffer, int y, int lo, int hi) {
+    paint_row_into(framebuffer + y * GFX_WIDTH, y, lo, hi);
 }
 
 /* A column segment with no lip in it: every layer there is either absent or
  * at its body alpha, so a pixel's colour depends only on its scanline phase,
  * and on the sky gradient where the front layer shows. */
 static inline __attribute__((always_inline)) void
-paint_column_body(gfx_color_t* framebuffer, int x, int y0, int y1, uint8_t reveal_alpha) {
+paint_column_body(gfx_color_t* framebuffer, int x, int y0, int y1) {
     gfx_color_t phase_color[4];
     bool phase_sky[4];
     for (int phase = 0; phase < 4; phase++) {
         const int y = y0 + ((phase - y0) & 3);
-        phase_sky[phase] = false;
-        if (!backdrop_dither_pick(x, y, reveal_alpha)) {
-            phase_color[phase] = GFX_RGB(0);
-            continue;
-        }
         phase_sky[phase] = backdrop_dither_pick(x, y, (uint8_t)ridge_layer_alpha(2, boundary_distance(2, x, y0)));
         phase_color[phase] = row_body_color(y, x);
     }
@@ -506,50 +513,54 @@ paint_column_body(gfx_color_t* framebuffer, int x, int y0, int y1, uint8_t revea
 }
 
 static void
-paint_column_span(gfx_color_t* framebuffer, int x, int lo, int hi, uint8_t reveal_alpha) {
+paint_column_span(gfx_color_t* framebuffer, int x, int lo, int hi) {
     int points[2 * RIDGE_LAYER_COUNT + 2] = {lo};
     const int count = collect_row_breaks(points, x, lo, hi);
     for (int part = 0; part + 1 < count; part++) {
         const int y0 = points[part], y1 = points[part + 1];
         if (row_lip_at(y0, x)) {
-            paint_lip_segment(framebuffer + y0 * GFX_WIDTH + x, x, y0, y1, reveal_alpha);
+            paint_lip_segment(framebuffer + y0 * GFX_WIDTH + x, x, y0, y1);
         } else {
-            paint_column_body(framebuffer, x, y0, y1, reveal_alpha);
+            paint_column_body(framebuffer, x, y0, y1);
         }
     }
 }
 
 static void
+repaint_column_strip(gfx_color_t* framebuffer, int x, int lo, int hi) {
+    if (ridge->scanline_dither) {
+        paint_column_span(framebuffer, x, lo, hi);
+    } else {
+        for (int y = lo; y < hi; y++) {
+            framebuffer[y * GFX_WIDTH + x] = backdrop_pixel(x, y);
+        }
+    }
+    gfx_mark_dirty(x, lo, 1, hi - lo);
+}
+
+static void
+repaint_row_strip(gfx_color_t* framebuffer, int y, int lo, int hi) {
+    if (ridge->scanline_dither) {
+        paint_row_span(framebuffer, y, lo, hi);
+    } else {
+        for (int x = lo; x < hi; x++) {
+            framebuffer[y * GFX_WIDTH + x] = backdrop_pixel(x, y);
+        }
+    }
+    gfx_mark_dirty(lo, y, hi - lo, 1);
+}
+
+static void
 repaint_strip(int strip, int lo, int hi) {
-    const int limit = ridge->by_column ? GFX_HEIGHT : GFX_WIDTH;
     lo = lo < 0 ? 0 : lo;
-    hi = hi > limit ? limit : hi;
+    hi = clamp_int(hi, lo, ridge->by_column ? GFX_HEIGHT : GFX_WIDTH);
     if (lo >= hi) {
         return;
     }
-    const int reveal = ridge->alive_ms <= (uint32_t)boot_hold_ms
-                           ? 0
-                           : ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms);
-    const uint8_t reveal_alpha = (uint8_t)(reveal * 255 / 256);
-    gfx_color_t* const framebuffer = gfx_framebuffer();
     if (ridge->by_column) {
-        if (ridge->scanline_dither) {
-            paint_column_span(framebuffer, strip, lo, hi, reveal_alpha);
-        } else {
-            for (int y = lo; y < hi; y++) {
-                framebuffer[y * GFX_WIDTH + strip] = backdrop_pixel(strip, y, reveal_alpha);
-            }
-        }
-        gfx_mark_dirty(strip, lo, 1, hi - lo);
+        repaint_column_strip(gfx_framebuffer(), strip, lo, hi);
     } else {
-        if (ridge->scanline_dither) {
-            paint_row_span(framebuffer, strip, lo, hi, reveal_alpha);
-        } else {
-            for (int x = lo; x < hi; x++) {
-                framebuffer[strip * GFX_WIDTH + x] = backdrop_pixel(x, strip, reveal_alpha);
-            }
-        }
-        gfx_mark_dirty(lo, strip, hi - lo, 1);
+        repaint_row_strip(gfx_framebuffer(), strip, lo, hi);
     }
 }
 
@@ -584,11 +595,8 @@ extend_repaint_range(int was, int now, int* lo, int* hi) {
 #define COLUMN_GROUP 16
 
 static inline __attribute__((always_inline)) gfx_color_t
-column_pixel(int x, int y, uint8_t reveal_alpha) {
+column_pixel(int x, int y) {
     const int phase = y & 3;
-    if (!scanline_pick(reveal_alpha, phase)) {
-        return GFX_RGB(0);
-    }
     gfx_color_t color = ridge->background_color;
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
         const int boundary = ridge->boundary[layer][x];
@@ -602,49 +610,68 @@ column_pixel(int x, int y, uint8_t reveal_alpha) {
     return color;
 }
 
+/* The rows any of columns [x0, x1) needs repainted; empty when none. */
 static void
-repaint_column_group(const int16_t* lo, const int16_t* hi, int x0, uint8_t reveal_alpha) {
-    int y0 = GFX_HEIGHT, y1 = 0;
-    for (int x = x0; x < x0 + COLUMN_GROUP && x < GFX_WIDTH; x++) {
+group_rows(const int16_t* lo, const int16_t* hi, int x0, int x1, int* y0, int* y1) {
+    *y0 = GFX_HEIGHT;
+    *y1 = 0;
+    for (int x = x0; x < x1; x++) {
         if (lo[x] < hi[x]) {
-            y0 = lo[x] < y0 ? lo[x] : y0;
-            y1 = hi[x] > y1 ? hi[x] : y1;
+            *y0 = lo[x] < *y0 ? lo[x] : *y0;
+            *y1 = hi[x] > *y1 ? hi[x] : *y1;
         }
     }
+}
+
+static inline __attribute__((always_inline)) void
+repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0, int x1, int y) {
+    for (int x = x0; x < x1; x++) {
+        if (y >= lo[x] && y < hi[x]) {
+            row[x] = column_pixel(x, y);
+        }
+    }
+}
+
+static void
+repaint_column_group(const int16_t* lo, const int16_t* hi, int x0) {
+    const int x1 = x0 + COLUMN_GROUP < GFX_WIDTH ? x0 + COLUMN_GROUP : GFX_WIDTH;
+    int y0, y1;
+    group_rows(lo, hi, x0, x1, &y0, &y1);
     if (y0 >= y1) {
         return;
     }
-    const int x1 = x0 + COLUMN_GROUP < GFX_WIDTH ? x0 + COLUMN_GROUP : GFX_WIDTH;
     gfx_color_t* const framebuffer = gfx_framebuffer();
     for (int y = y0; y < y1; y++) {
-        gfx_color_t* const row = framebuffer + y * GFX_WIDTH;
-        for (int x = x0; x < x1; x++) {
-            if (y >= lo[x] && y < hi[x]) {
-                row[x] = column_pixel(x, y, reveal_alpha);
-            }
-        }
+        repaint_group_row(framebuffer + y * GFX_WIDTH, lo, hi, x0, x1, y);
     }
     gfx_mark_dirty(x0, y0, x1 - x0, y1 - y0);
+}
+
+/* The rows of column `x` that layer `layer`'s move needs repainted; the
+ * move is then what the screen shows. */
+static void
+column_repaint_rows(int layer, int x, int16_t* lo, int16_t* hi) {
+    const int was = ridge->shown[layer][x], now = ridge->boundary[layer][x];
+    int first = INT_MAX, last = INT_MIN;
+    if (was != now) {
+        extend_repaint_range(was, now, &first, &last);
+    }
+    *lo = (int16_t)clamp_int(first, 0, GFX_HEIGHT);
+    *hi = (int16_t)clamp_int(last, 0, GFX_HEIGHT);
+    ridge->shown[layer][x] = (int16_t)now;
 }
 
 /* Portrait: a column's pixels are a row apart in the framebuffer, so paint
  * a group of columns row by row rather than each column top to bottom. */
 static void
-repaint_changed_columns(uint8_t reveal_alpha) {
+repaint_changed_columns(void) {
     int16_t lo[GFX_WIDTH], hi[GFX_WIDTH];
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
         for (int x = 0; x < GFX_WIDTH; x++) {
-            const int was = ridge->shown[layer][x], now = ridge->boundary[layer][x];
-            int first = INT_MAX, last = INT_MIN;
-            if (was != now) {
-                extend_repaint_range(was, now, &first, &last);
-            }
-            lo[x] = (int16_t)(first < 0 ? 0 : first > GFX_HEIGHT ? GFX_HEIGHT : first);
-            hi[x] = (int16_t)(last > GFX_HEIGHT ? GFX_HEIGHT : last < 0 ? 0 : last);
-            ridge->shown[layer][x] = (int16_t)now;
+            column_repaint_rows(layer, x, &lo[x], &hi[x]);
         }
         for (int x0 = 0; x0 < GFX_WIDTH; x0 += COLUMN_GROUP) {
-            repaint_column_group(lo, hi, x0, reveal_alpha);
+            repaint_column_group(lo, hi, x0);
         }
     }
 }
@@ -652,11 +679,7 @@ repaint_changed_columns(uint8_t reveal_alpha) {
 static void
 repaint_changed(void) {
     if (ridge->by_column && ridge->scanline_dither) {
-        const int reveal =
-            ridge->alive_ms <= (uint32_t)boot_hold_ms
-                ? 0
-                : ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms);
-        repaint_changed_columns((uint8_t)(reveal * 255 / 256));
+        repaint_changed_columns();
         return;
     }
     for (int strip = 0; strip < ridge->strips; strip++) {
@@ -674,14 +697,6 @@ repaint_changed(void) {
     }
 }
 
-static uint8_t
-current_reveal_alpha(void) {
-    const int reveal = ridge->alive_ms <= (uint32_t)boot_hold_ms
-                           ? 0
-                           : ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms);
-    return (uint8_t)(reveal * 255 / 256);
-}
-
 /* Where along row `y` the depth `depth2` (sky_depth2()'s units) is first
  * reached for `pose`, as a real column; -inf/+inf when the row never or
  * always reaches it. */
@@ -696,7 +711,7 @@ edge_column(ridge_vector_t pose, int y, int32_t depth2) {
 }
 
 static void
-repaint_span(int y, int x0, int x1, uint8_t reveal_alpha) {
+repaint_span(int y, int x0, int x1) {
     x0 = x0 < 0 ? 0 : x0;
     x1 = x1 > GFX_WIDTH ? GFX_WIDTH : x1;
     if (x0 >= x1) {
@@ -705,10 +720,10 @@ repaint_span(int y, int x0, int x1, uint8_t reveal_alpha) {
     gfx_color_t* const row = gfx_framebuffer() + y * GFX_WIDTH;
     if (ridge->by_column) {
         for (int x = x0; x < x1; x++) {
-            row[x] = column_pixel(x, y, reveal_alpha);
+            row[x] = column_pixel(x, y);
         }
     } else {
-        paint_row_into(row, y, x0, x1, reveal_alpha);
+        paint_row_into(row, y, x0, x1);
     }
 }
 
@@ -717,54 +732,59 @@ repaint_span(int y, int x0, int x1, uint8_t reveal_alpha) {
  * mark. */
 #define EDGE_ROWS 16
 
+/* The columns of row `y` between where the edge at `depth2` crossed it at
+ * `was` and where it crosses it now, with a pixel of slack each side. */
+static void
+edge_swept_columns(ridge_vector_t was, int y, int32_t depth2, int* x0, int* x1) {
+    const float a = edge_column(was, y, depth2), b = edge_column(ridge->pose_on_screen, y, depth2);
+    const float lo = fmaxf(fminf(a, b), -2.0f), hi = fminf(fmaxf(a, b), (float)GFX_WIDTH + 2.0f);
+    *x0 = clamp_int((int)floorf(lo) - 1, 0, GFX_WIDTH);
+    *x1 = clamp_int((int)ceilf(hi) + 2, 0, GFX_WIDTH);
+}
+
+/* One shade edge across rows [y0, y1): repaint what it swept, one box. */
+static void
+repaint_edge_band(ridge_vector_t was, int y0, int y1, int32_t depth2) {
+    int box_x0 = GFX_WIDTH, box_x1 = 0;
+    for (int y = y0; y < y1; y++) {
+        int x0, x1;
+        edge_swept_columns(was, y, depth2, &x0, &x1);
+        if (x0 < x1) {
+            repaint_span(y, x0, x1);
+            box_x0 = x0 < box_x0 ? x0 : box_x0;
+            box_x1 = x1 > box_x1 ? x1 : box_x1;
+        }
+    }
+    if (box_x0 < box_x1) {
+        gfx_mark_dirty(box_x0, y0, box_x1 - box_x0, y1 - y0);
+    }
+}
+
 static void
 repaint_gradient_turn(ridge_vector_t was) {
-    const ridge_vector_t now = ridge->pose_on_screen;
-    const uint8_t reveal_alpha = current_reveal_alpha();
     for (int y0 = 0; y0 < GFX_HEIGHT; y0 += EDGE_ROWS) {
         const int y1 = y0 + EDGE_ROWS < GFX_HEIGHT ? y0 + EDGE_ROWS : GFX_HEIGHT;
         for (int edge = 0; edge < ridge->sky_edge_count; edge++) {
-            const int32_t depth2 = (int32_t)(ridge->sky_edge[edge] - ridge->sky_half) << 15;
-            int box_x0 = GFX_WIDTH, box_x1 = 0;
-            for (int y = y0; y < y1; y++) {
-                const float a = edge_column(was, y, depth2), b = edge_column(now, y, depth2);
-                const float lo = a < b ? a : b, hi = a < b ? b : a;
-                const int x0 = lo < -1.0f ? 0 : lo > GFX_WIDTH ? GFX_WIDTH : (int)floorf(lo) - 1;
-                const int x1 = hi < 0.0f ? 0 : hi > GFX_WIDTH ? GFX_WIDTH : (int)ceilf(hi) + 2;
-                if (x0 < x1) {
-                    repaint_span(y, x0, x1, reveal_alpha);
-                    box_x0 = x0 < box_x0 ? x0 : box_x0;
-                    box_x1 = x1 > box_x1 ? x1 : box_x1;
-                }
-            }
-            if (box_x0 < box_x1) {
-                box_x0 = box_x0 < 0 ? 0 : box_x0;
-                box_x1 = box_x1 > GFX_WIDTH ? GFX_WIDTH : box_x1;
-                gfx_mark_dirty(box_x0, y0, box_x1 - box_x0, y1 - y0);
-            }
+            repaint_edge_band(was, y0, y1, (int32_t)(ridge->sky_edge[edge] - ridge->sky_half) << 15);
         }
     }
 }
 
 static void
 paint_all(void) {
-    const int reveal = ridge->alive_ms <= (uint32_t)boot_hold_ms
-                           ? 0
-                           : ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms);
-    const uint8_t reveal_alpha = (uint8_t)(reveal * 255 / 256);
     gfx_color_t* const framebuffer = gfx_framebuffer();
     if (!ridge->by_column && ridge->scanline_dither) {
         for (int y = 0; y < GFX_HEIGHT; y++) {
-            paint_row_span(framebuffer, y, 0, GFX_WIDTH, reveal_alpha);
+            paint_row_span(framebuffer, y, 0, GFX_WIDTH);
         }
     } else if (ridge->scanline_dither) {
         for (int x = 0; x < GFX_WIDTH; x++) {
-            paint_column_span(framebuffer, x, 0, GFX_HEIGHT, reveal_alpha);
+            paint_column_span(framebuffer, x, 0, GFX_HEIGHT);
         }
     } else {
         for (int y = 0; y < GFX_HEIGHT; y++) {
             for (int x = 0; x < GFX_WIDTH; x++) {
-                framebuffer[y * GFX_WIDTH + x] = backdrop_pixel(x, y, reveal_alpha);
+                framebuffer[y * GFX_WIDTH + x] = backdrop_pixel(x, y);
             }
         }
     }
@@ -972,11 +992,12 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     build_layers();
     raster_boundaries();
     FRAME_COST_END(layers_from, "ridge.layers");
-    const bool revealing = ridge->alive_ms < (uint32_t)boot_hold_ms + (uint32_t)ambient_ease_ms;
     FRAME_COST_BEGIN(painted_from);
-    if (!ridge->painted || retuned || ridge->axis_on_screen || revealing) {
+    if (!ridge->painted || retuned || ridge->axis_on_screen) {
         paint_all();
-    } else if (hi > lo || pose_moved || ridge->ambient) {
+    } else {
+        /* Every frame, not only when the spring reports motion: a spring put
+         * to rest takes its last fraction of a pixel without reporting it. */
         if (pose_moved && ridge->scanline_dither) {
             repaint_gradient_turn(ridge->gradient_pose);
             ridge->gradient_pose = ridge->pose_on_screen;
