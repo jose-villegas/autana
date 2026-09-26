@@ -8,7 +8,7 @@ GENERATE="$ROOT/launcher/main/apps/sand/tools/report_shading_palette.sh"
 TEMP=$(mktemp -d)
 trap 'rm -rf "$TEMP"' EXIT HUP INT TERM
 
-"$GENERATE" "$TEMP/results" "$TEMP/sand_palette256.h"
+sh "$GENERATE" "$TEMP/results" "$TEMP/sand_palette256.h"
 
 if ! cmp -s "$HEADER" "$TEMP/sand_palette256.h"; then
     echo "sand_palette256.h differs from report_shading_palette.sh output" >&2
