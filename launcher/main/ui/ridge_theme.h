@@ -44,8 +44,8 @@ ridge_theme_to_oklch(uint32_t rgb) {
     const float l = cbrtf(0.4122214708f * r + 0.5363325363f * g + 0.0514459929f * b);
     const float m = cbrtf(0.2119034982f * r + 0.6806995451f * g + 0.1073969566f * b);
     const float s = cbrtf(0.0883024619f * r + 0.2817188376f * g + 0.6299787005f * b);
-    const float a = 0.2104542553f * l + 0.7936177850f * m - 0.0040720468f * s;
-    const float bb = 1.9779984951f * l - 2.4285922050f * m + 0.4505937099f * s;
+    const float a = 1.9779984951f * l - 2.4285922050f * m + 0.4505937099f * s;
+    const float bb = 0.0259040371f * l + 0.7827717662f * m - 0.8086757660f * s;
     return (ridge_oklch_t){0.2104542553f * l + 0.7936177850f * m - 0.0040720468f * s, sqrtf(a * a + bb * bb),
                            atan2f(bb, a)};
 }

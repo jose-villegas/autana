@@ -399,14 +399,14 @@ class DeviceTests(unittest.TestCase):
 
     def test_replies_are_found_behind_log_prefixes_and_end_at_a_terminator(self):
         data = (b"I (812) shell: frame 16 ms\n"
-                b"TUNE launcher.ridge_trail=226 min=0 max=255\n"
-                b"I (813) screenshot: TUNE launcher.glow_radius=13 min=1 max=31\r\n"
+                b"TUNE ridge.theme_rgb=1153480 min=0 max=16777215\n"
+                b"I (813) screenshot: TUNE ridge.front_amplitude=6 min=0 max=32\r\n"
                 b"TUNE_END count=2\n"
                 b"TUNE_OK later=1\n")
         found, complete = device.replies_to(data, "TUNE", ["TUNE_OK", "TUNE_ERR", "TUNE_END"])
         self.assertTrue(complete)
-        self.assertEqual(found, ["TUNE launcher.ridge_trail=226 min=0 max=255",
-                                 "TUNE launcher.glow_radius=13 min=1 max=31",
+        self.assertEqual(found, ["TUNE ridge.theme_rgb=1153480 min=0 max=16777215",
+                                 "TUNE ridge.front_amplitude=6 min=0 max=32",
                                  "TUNE_END count=2"])
 
     def test_replies_are_incomplete_until_the_terminator_arrives(self):
@@ -420,23 +420,23 @@ class DeviceTests(unittest.TestCase):
                          until=["TUNE_OK", "TUNE_ERR", "TUNE_END"], seconds=1, optional=False)
 
     def test_send_writes_the_line_and_prints_the_reply(self):
-        connection = FakeConnection([b"I (5) shell: x\nTUNE_OK launcher.ridge_trail=200\n"])
+        connection = FakeConnection([b"I (5) shell: x\nTUNE_OK ridge.theme_rgb=200\n"])
         store = mock.Mock()
         store.acquire.return_value = {"log": "", "token": "token"}
         with mock.patch.object(device, "open_when_free", return_value=connection), \
              mock.patch("builtins.print") as printed:
-            status = device.send(self.send_args("SET launcher.ridge_trail 200"), store, "COM5")
+            status = device.send(self.send_args("SET ridge.theme_rgb 200"), store, "COM5")
         self.assertEqual(status, 0)
-        self.assertEqual(connection.writes, [b"\nSET launcher.ridge_trail 200\n"])
-        printed.assert_called_once_with("TUNE_OK launcher.ridge_trail=200")
+        self.assertEqual(connection.writes, [b"\nSET ridge.theme_rgb 200\n"])
+        printed.assert_called_once_with("TUNE_OK ridge.theme_rgb=200")
 
     def test_send_fails_on_an_error_reply(self):
-        connection = FakeConnection([b"TUNE_ERR range launcher.ridge_trail takes 0..255\n"])
+        connection = FakeConnection([b"TUNE_ERR range ridge.front_amplitude takes 0..32\n"])
         store = mock.Mock()
         store.acquire.return_value = {"log": "", "token": "token"}
         with mock.patch.object(device, "open_when_free", return_value=connection), \
              mock.patch("builtins.print"):
-            self.assertEqual(device.send(self.send_args("SET launcher.ridge_trail 999"), store, "COM5"), 1)
+            self.assertEqual(device.send(self.send_args("SET ridge.front_amplitude 999"), store, "COM5"), 1)
 
     def test_send_says_so_when_the_build_has_no_such_command(self):
         connection = FakeConnection([b"I (9) screenshot: ignoring line: 'TUNE'\n"])

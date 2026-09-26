@@ -46,11 +46,11 @@ class JsonReadTests(unittest.TestCase):
                                        {"name": "Sand", "running": False}]})
 
     def test_tune_reply(self):
-        replies = ["TUNE ridge.trail=200 min=0 max=255 default=226", "TUNE_END count=1"]
-        self.assertEqual(autana.parse_tunables(replies), [("ridge.trail", "200", "0", "255", "226")])
+        replies = ["TUNE tune.primary=200 min=0 max=255 default=226", "TUNE_END count=1"]
+        self.assertEqual(autana.parse_tunables(replies), [("tune.primary", "200", "0", "255", "226")])
         with mock.patch.object(autana, "send", return_value=(0, replies)):
             self.assertEqual(self.output(autana.tune, ["--json"]),
-                             {"tunables": [{"name": "ridge.trail", "value": 200, "min": 0,
+                             {"tunables": [{"name": "tune.primary", "value": 200, "min": 0,
                                             "max": 255, "default": 226}]})
 
     def test_status_reply(self):

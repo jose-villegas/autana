@@ -1,6 +1,6 @@
 /*
  * Portable suite: the ordered screen-space threshold patterns used by
- * backdrop and glow rendering.
+ * backdrop rendering.
  */
 
 #include <stdbool.h>
