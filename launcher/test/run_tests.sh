@@ -62,7 +62,10 @@ fi
 
 # Warnings are errors: a host build catches mistakes the target build misses,
 # and strictness costs nothing in tests.
-CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -g -O1"
+CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -Wno-unused-parameter -g -O1"
+if [ "${HOST_SANITIZE:-}" = undefined ]; then
+    CFLAGS="$CFLAGS -fsanitize=undefined -fno-sanitize-recover=undefined"
+fi
 
 # --- the device's heap, on this machine ------------------------------------
 # Sourced the same way find_cc.sh is, one block above. The cap is a profile
