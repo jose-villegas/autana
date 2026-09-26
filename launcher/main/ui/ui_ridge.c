@@ -502,6 +502,30 @@ ui_ridge_settle(void) {
     }
 }
 
+#if CONFIG_LAUNCHER_SELFTEST
+void
+ui_ridge_reset_for_test(void) {
+    allocate_once();
+    if (ridge == NULL) {
+        return;
+    }
+    spring_line_init(&ridge->line, ridge->offset, ridge->velocity, RIDGE_COLUMNS, spring_tension, spring_stiffness,
+                     spring_damping);
+    memcpy(ridge->heights, ridge->rigid, sizeof ridge->heights);
+    memset(&ridge->motion, 0, sizeof ridge->motion);
+    ridge->attitude.pose = POSE_LANDSCAPE;
+    ridge->attitude.level = POSE_LANDSCAPE;
+    ridge->attitude.steady_level = POSE_LANDSCAPE;
+    ridge->attitude.steady_ms = LEVEL_STEADY_MS;
+    ridge->pose_on_screen = POSE_LANDSCAPE;
+    ridge->alive_ms = (uint32_t)boot_hold_ms + (uint32_t)ambient_ease_ms;
+    ridge->shake = 0;
+    ridge->last_pluck_x = 0;
+    ridge->ambient = false;
+    ridge->painted = false;
+}
+#endif
+
 void
 ui_ridge_paint(void) {
     allocate_once();
