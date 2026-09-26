@@ -1,0 +1,46 @@
+name: Sand Palette
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'launcher/main/apps/sand/material*.c'
+      - 'launcher/main/apps/sand/material*.h'
+      - 'launcher/main/apps/sand/sand*.c'
+      - 'launcher/main/apps/sand/sand*.h'
+      - 'launcher/main/apps/sand/tools/shading_palette.c'
+      - 'launcher/main/apps/sand/tools/report_shading_palette.sh'
+      - 'launcher/main/util/job.c'
+      - 'launcher/main/util/job.h'
+      - 'launcher/main/util/intmath.h'
+      - 'launcher/main/gfx/gfx_color.h'
+      - 'launcher/main/gfx/gfx_indexed.h'
+      - 'launcher/main/gfx/gfx_palette.h'
+      - 'launcher/tools/gen/**'
+      - 'scripts/gates/check-sand-palette.sh'
+      - '.github/workflows/sand-palette.yml'
+  pull_request:
+    paths:
+      - 'launcher/main/apps/sand/material*.c'
+      - 'launcher/main/apps/sand/material*.h'
+      - 'launcher/main/apps/sand/sand*.c'
+      - 'launcher/main/apps/sand/sand*.h'
+      - 'launcher/main/apps/sand/tools/shading_palette.c'
+      - 'launcher/main/apps/sand/tools/report_shading_palette.sh'
+      - 'launcher/main/util/job.c'
+      - 'launcher/main/util/job.h'
+      - 'launcher/main/util/intmath.h'
+      - 'launcher/main/gfx/gfx_color.h'
+      - 'launcher/main/gfx/gfx_indexed.h'
+      - 'launcher/main/gfx/gfx_palette.h'
+      - 'launcher/tools/gen/**'
+      - 'scripts/gates/check-sand-palette.sh'
+      - '.github/workflows/sand-palette.yml'
+  workflow_dispatch:
+
+jobs:
+  palette:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/gates/check-sand-palette.sh
