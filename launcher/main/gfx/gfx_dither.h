@@ -65,7 +65,7 @@ gfx_dither_threshold(gfx_dither_pattern_id_t id, int x, int y) {
     const int cell_x = (x / pattern->scale_x) & (pattern->width - 1);
     const int cell_y = (y / pattern->scale_y) & (pattern->height - 1);
     if (pattern->ranks != NULL) {
-        return pattern->ranks[cell_y * pattern->width + cell_x];
+        return pattern->ranks[(cell_y * pattern->width) + cell_x];
     }
     switch (id) {
         case GFX_DITHER_BAYER2: return gfx_dither_bayer_rank(cell_x, cell_y, 1);
