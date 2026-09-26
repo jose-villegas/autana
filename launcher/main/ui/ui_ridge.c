@@ -74,6 +74,9 @@ TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 #define MIN_TILT_STRENGTH 64
 #define POSE_REDRAW_STEP  143
 #define POSE_STEPS        720
+/* Enough entries for the panel's diagonal, the longest a gradient along
+ * gravity can span. */
+#define RIDGE_SKY_ENTRIES 600
 #define RIDGE_PI          3.14159265f
 #define LEVEL_STEADY_STEP 29
 #define LEVEL_STEADY_MS   300
@@ -94,7 +97,8 @@ typedef struct {
     int pose_step;
     ridge_theme_t theme;
     gfx_color_t background_color, back0_color, back1_color;
-    gfx_color_t sky[GFX_HEIGHT];
+    gfx_color_t sky[RIDGE_SKY_ENTRIES];
+    int sky_half;
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
     uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
     int shake, last_pluck_x, strips, down_sign;
@@ -119,13 +123,38 @@ rgb_mix(uint32_t a, uint32_t b, int amount) {
     return mixed;
 }
 
+/* The fill's gradient runs along gravity, top colour up and bottom colour
+ * down, across the screen's own extent in that direction, so it turns with
+ * the ridge instead of flipping from panel rows to columns at 45 degrees. */
 static void
 build_sky_gradient(void) {
-    const int length = ridge->by_column ? GFX_HEIGHT : GFX_WIDTH;
-    for (int along = 0; along < length; along++) {
+    const ridge_vector_t down = ridge->pose_on_screen;
+    const int extent = (GFX_WIDTH * abs(down.down_x) + GFX_HEIGHT * abs(down.down_y)) / RIDGE_POSE_ONE;
+    ridge->sky_half = extent / 2;
+    for (int along = 0; along <= 2 * ridge->sky_half && along < RIDGE_SKY_ENTRIES; along++) {
         ridge->sky[along] =
-            gfx_rgb(rgb_mix((uint32_t)sky_top_rgb, (uint32_t)sky_bottom_rgb, along * 100 / (length - 1)));
+            gfx_rgb(rgb_mix((uint32_t)sky_top_rgb, (uint32_t)sky_bottom_rgb, along * 100 / (2 * ridge->sky_half)));
     }
+}
+
+/* How far down, in panel pixels from the centre, `(x, y)` lies, twice over:
+ * doubled coordinates keep the centre of an even-sized panel whole. */
+static inline __attribute__((always_inline)) int32_t
+sky_depth2(int x, int y) {
+    return (2 * x - (GFX_WIDTH - 1)) * ridge->pose_on_screen.down_x
+           + (2 * y - (GFX_HEIGHT - 1)) * ridge->pose_on_screen.down_y;
+}
+
+static inline __attribute__((always_inline)) gfx_color_t
+sky_from_depth2(int32_t depth2) {
+    int along = ridge->sky_half + (depth2 >> 15);
+    along = along < 0 ? 0 : along > 2 * ridge->sky_half ? 2 * ridge->sky_half : along;
+    return ridge->sky[along];
+}
+
+static inline __attribute__((always_inline)) gfx_color_t
+sky_at(int x, int y) {
+    return sky_from_depth2(sky_depth2(x, y));
 }
 
 static inline __attribute__((always_inline)) int
@@ -171,7 +200,7 @@ backdrop_pixel(int x, int y, uint8_t reveal_alpha) {
         color = ridge->back1_color;
     }
     if (backdrop_dither_pick(x, y, (uint8_t)ridge_layer_alpha(2, front))) {
-        color = ridge->sky[ridge->by_column ? y : x];
+        color = sky_at(x, y);
     }
     return color;
 }
@@ -376,10 +405,9 @@ layer_alpha_at(int layer, int distance) {
  * dither only. The same picture as backdrop_pixel(), with each layer's
  * distance stepped instead of looked up and no orientation test per pixel. */
 static void
-paint_lip_segment(gfx_color_t* framebuffer, int strip, int a0, int a1, uint8_t reveal_alpha) {
+paint_lip_segment(gfx_color_t* out, int strip, int a0, int a1, uint8_t reveal_alpha) {
     const bool by_column = ridge->by_column;
     const int step = by_column ? GFX_WIDTH : 1;
-    gfx_color_t* out = framebuffer + (by_column ? a0 * GFX_WIDTH + strip : strip * GFX_WIDTH + a0);
     int distance[RIDGE_LAYER_COUNT];
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
         const int boundary = ridge->boundary[layer][strip];
@@ -399,7 +427,7 @@ paint_lip_segment(gfx_color_t* framebuffer, int strip, int a0, int a1, uint8_t r
                 color = back1;
             }
             if (scanline_pick(layer_alpha_at(2, distance[2]), phase)) {
-                color = ridge->sky[a];
+                color = sky_at(by_column ? strip : a, by_column ? a : strip);
             }
         }
         *out = color;
@@ -412,19 +440,22 @@ paint_lip_segment(gfx_color_t* framebuffer, int strip, int a0, int a1, uint8_t r
 static inline __attribute__((always_inline)) void
 paint_row_part(gfx_color_t* row, int y, int x0, int x1, uint8_t reveal_alpha) {
     if (row_lip_at(y, x0)) {
-        paint_lip_segment(row - y * GFX_WIDTH, y, x0, x1, reveal_alpha);
+        paint_lip_segment(row + x0, y, x0, x1, reveal_alpha);
         return;
     }
     if (backdrop_dither_pick(0, y, (uint8_t)ridge_layer_alpha(2, boundary_distance(2, x0, y)))) {
-        memcpy(row + x0, ridge->sky + x0, (size_t)(x1 - x0) * sizeof(*row));
+        int32_t depth2 = sky_depth2(x0, y);
+        const int32_t step = 2 * ridge->pose_on_screen.down_x;
+        for (int x = x0; x < x1; x++, depth2 += step) {
+            row[x] = sky_from_depth2(depth2);
+        }
         return;
     }
     fill_row(row, x0, x1, row_body_color(y, x0));
 }
 
 static void
-paint_row_span(gfx_color_t* framebuffer, int y, int lo, int hi, uint8_t reveal_alpha) {
-    gfx_color_t* const row = framebuffer + y * GFX_WIDTH;
+paint_row_into(gfx_color_t* row, int y, int lo, int hi, uint8_t reveal_alpha) {
     if (!backdrop_dither_pick(0, y, reveal_alpha)) {
         fill_row(row, lo, hi, GFX_RGB(0));
         return;
@@ -435,6 +466,11 @@ paint_row_span(gfx_color_t* framebuffer, int y, int lo, int hi, uint8_t reveal_a
     for (int part = 0; part + 1 < count; part++) {
         paint_row_part(row, y, points[part], points[part + 1], reveal_alpha);
     }
+}
+
+static void
+paint_row_span(gfx_color_t* framebuffer, int y, int lo, int hi, uint8_t reveal_alpha) {
+    paint_row_into(framebuffer + y * GFX_WIDTH, y, lo, hi, reveal_alpha);
 }
 
 /* A column segment with no lip in it: every layer there is either absent or
@@ -456,7 +492,7 @@ paint_column_body(gfx_color_t* framebuffer, int x, int y0, int y1, uint8_t revea
     }
     for (int y = y0; y < y1; y++) {
         const int phase = y & 3;
-        framebuffer[y * GFX_WIDTH + x] = phase_sky[phase] ? ridge->sky[y] : phase_color[phase];
+        framebuffer[y * GFX_WIDTH + x] = phase_sky[phase] ? sky_at(x, y) : phase_color[phase];
     }
 }
 
@@ -467,7 +503,7 @@ paint_column_span(gfx_color_t* framebuffer, int x, int lo, int hi, uint8_t revea
     for (int part = 0; part + 1 < count; part++) {
         const int y0 = points[part], y1 = points[part + 1];
         if (row_lip_at(y0, x)) {
-            paint_lip_segment(framebuffer, x, y0, y1, reveal_alpha);
+            paint_lip_segment(framebuffer + y0 * GFX_WIDTH + x, x, y0, y1, reveal_alpha);
         } else {
             paint_column_body(framebuffer, x, y0, y1, reveal_alpha);
         }
@@ -551,7 +587,7 @@ column_pixel(int x, int y, uint8_t reveal_alpha) {
             continue;
         }
         if (scanline_pick(layer_alpha_at(layer, ridge->down_sign * (y - boundary)), phase)) {
-            color = layer == 0 ? ridge->back0_color : layer == 1 ? ridge->back1_color : ridge->sky[y];
+            color = layer == 0 ? ridge->back0_color : layer == 1 ? ridge->back1_color : sky_at(x, y);
         }
     }
     return color;
@@ -627,6 +663,47 @@ repaint_changed(void) {
             repaint_strip(strip, lo, hi);
         }
     }
+}
+
+static uint8_t
+current_reveal_alpha(void) {
+    const int reveal = ridge->alive_ms <= (uint32_t)boot_hold_ms
+                           ? 0
+                           : ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms);
+    return (uint8_t)(reveal * 255 / 256);
+}
+
+/* A turn of the pose moves the fill's gradient under every pixel, not just
+ * the boundaries. Recompute each row, write and mark only the stretch of it
+ * that differs from what the framebuffer holds, so a small turn sends the
+ * shade edges that moved rather than the whole screen. */
+static void
+repaint_turned(void) {
+    static gfx_color_t line[GFX_WIDTH];
+    const uint8_t reveal_alpha = current_reveal_alpha();
+    gfx_color_t* const framebuffer = gfx_framebuffer();
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        if (ridge->by_column) {
+            for (int x = 0; x < GFX_WIDTH; x++) {
+                line[x] = column_pixel(x, y, reveal_alpha);
+            }
+        } else {
+            paint_row_into(line, y, 0, GFX_WIDTH, reveal_alpha);
+        }
+        gfx_color_t* const row = framebuffer + y * GFX_WIDTH;
+        int first = 0, last = GFX_WIDTH - 1;
+        while (first <= last && line[first] == row[first]) {
+            first++;
+        }
+        while (last >= first && line[last] == row[last]) {
+            last--;
+        }
+        if (first <= last) {
+            memcpy(row + first, line + first, (size_t)(last - first + 1) * sizeof(*row));
+            gfx_mark_dirty(first, y, last - first + 1, 1);
+        }
+    }
+    memcpy(ridge->shown, ridge->boundary, sizeof ridge->shown);
 }
 
 static void
@@ -858,6 +935,8 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     FRAME_COST_BEGIN(painted_from);
     if (!ridge->painted || retuned || ridge->axis_on_screen || revealing) {
         paint_all();
+    } else if (pose_moved && ridge->scanline_dither) {
+        repaint_turned();
     } else if (hi > lo || pose_moved || ridge->ambient) {
         repaint_changed();
     }
