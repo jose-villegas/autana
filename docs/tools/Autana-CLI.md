@@ -109,7 +109,7 @@ prints the whole capture; to find something in it, grep the capture instead.
 
 | Command | What it does |
 |---|---|
-| `autana status [--json]` | Whether the board is free or held; holder, local start and elapsed time, estimated free time, and FIFO waiters with purposes and estimated starts. |
+| `autana status [--json]` | Whether the board is free or held; holder, local start and elapsed time, estimated free time, and FIFO waiters with purposes and estimated starts. Works while the board is off USB. |
 | `autana id [--json]` | The name this session holds the lock under: `autana-cli@<pid in base36>`. |
 | `autana release <token>` | Release a lock this session holds; the token is what its command printed. |
 | `autana hand [--wait <seconds>] <note...>` | Reserve the board and emit `human-reserved`; with `--wait`, wait until `take-back` emits `human-cleared`. |

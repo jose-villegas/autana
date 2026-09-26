@@ -89,6 +89,15 @@ def find_port():
     return matches[0]
 
 
+def board_port_if_present():
+    """The lock is keyed by the board, so its state reads fine while the
+    board is off USB - mid-reset, or unplugged."""
+    try:
+        return find_port()
+    except RuntimeError:
+        return ""
+
+
 def open_serial(port):
     port = current_port(port)
     require_port_lock(port)
@@ -1203,7 +1212,10 @@ def main(argv=None):
         return 0
 
     try:
-        port = args.port or find_port()
+        if args.command == "status" and not args.port:
+            port = board_port_if_present()
+        else:
+            port = args.port or find_port()
         if args.command == "resolve-port":
             print(port)
             return 0
