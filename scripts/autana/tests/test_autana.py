@@ -7,25 +7,19 @@ for device.py's and the wire protocol's own coverage.
 
     python -m unittest discover -s scripts/autana/tests
 """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "device" / "tests"))
+import isolation  # noqa: E402,F401  (first: keeps the suite out of real records)
 import contextlib
 import io
+import json
 import socket
-import sys
 import os
 import tempfile
 import unittest
-from pathlib import Path
 from unittest import mock
-
-
-def setUpModule():
-    global saved_hook
-    saved_hook = os.environ.pop("AUTANA_LOCK_HOOK", None)
-
-
-def tearDownModule():
-    if saved_hook is not None:
-        os.environ["AUTANA_LOCK_HOOK"] = saved_hook
 
 AUTANA = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AUTANA))
@@ -35,19 +29,27 @@ sys.path.insert(0, str(AUTANA.parent / "device"))
 import device_lock  # noqa: E402
 
 
+def busy_status(owner="someone-else@0001", port="COM3"):
+    """`device.py status --json` with one board that `owner` holds."""
+    return json.dumps({"boards": [{
+        "board": "90:70:69:FE:A3:08", "port": port, "state": "held",
+        "holder": {"owner": owner, "purpose": "autana screenshot"}, "since": 1000,
+        "elapsed_seconds": 3, "estimated_free": None, "stale": None, "waiting": []}]})
+
+
 class SendCommandBuildingTests(unittest.TestCase):
     """send() is the one place that actually shells out to `device.py send`
     - every device-verb command (freeze, touch, tune, ...) goes through it,
     so its own command-building is worth pinning once, directly."""
 
     def setUp(self):
-        status = mock.Mock(stdout="", stderr="", returncode=0)
-        answered = mock.Mock(stdout="TUNE_OK ridge.theme_rgb=200\n", stderr="", returncode=0)
+        status = mock.Mock(stdout='{"boards": []}', stderr="", returncode=0)
+        answered = mock.Mock(stdout="TUNE_OK launcher.ridge_trail=200\n", stderr="", returncode=0)
         self.calls = []
 
         def fake_run(command, **unused_kwargs):
             self.calls.append(command)
-            return status if command[-1] == "status" else answered
+            return status if "status" in command else answered
 
         patcher = mock.patch.object(autana.subprocess, "run", side_effect=fake_run)
         patcher.start()
@@ -86,7 +88,7 @@ class SendCommandBuildingTests(unittest.TestCase):
         self.assertEqual(command[command.index("--seconds") + 1], "0.5")
 
     def test_a_busy_board_sends_nothing(self):
-        busy = mock.Mock(stdout="held by someone-else@0001 for 3s\n")
+        busy = mock.Mock(stdout=busy_status())
         with mock.patch.object(autana.subprocess, "run", return_value=busy):
             code, replies = autana.send("TUNE")
         self.assertEqual(code, 3)
@@ -94,22 +96,22 @@ class SendCommandBuildingTests(unittest.TestCase):
 
 
 class BoardHolderTests(unittest.TestCase):
-    """board_holder() reads `device.py status` as text, so what the lock
-    store prints is the contract - pinned here from a real store."""
+    """board_holder() reads `device.py status --json`, pinned here from a
+    real store's own status entry."""
 
-    def status_output(self, holder_pid):
+    BOARD = "90:70:69:FE:A3:08"
+
+    def status_output(self, holder_pid, owner="killed@0pac", port="COM3"):
         with tempfile.TemporaryDirectory() as root:
             store = device_lock.LockStore(root, is_alive=lambda pid: pid == 1)
-            store.write_json(store.lock_path("COM3"), {
-                "acquired_at": store.now(), "heartbeat_at": store.now(),
-                "expected_build_id": "", "host": socket.gethostname(),
-                "owner": "killed@0pac", "pid": holder_pid, "port": "COM3",
-                "purpose": "autana screenshot", "token": "old",
+            store.write_json(store.lock_path(self.BOARD), {
+                "acquired_at": store.now(), "board": self.BOARD, "heartbeat_at": store.now(),
+                "expected_build_id": "", "host": socket.gethostname(), "kind": "screenshot",
+                "owner": owner, "pid": holder_pid, "purpose": "autana screenshot",
+                "token": "old",
             })
-            out = io.StringIO()
-            with contextlib.redirect_stdout(out):
-                device_lock.print_status(store.status("COM3"))
-            return out.getvalue()
+            entry = device_lock.status_entry(store, self.BOARD, port, durations={})
+        return json.dumps({"boards": [entry]})
 
     def holder_seen(self, status_text):
         with mock.patch.object(autana.subprocess, "run", return_value=mock.Mock(stdout=status_text)):
@@ -119,7 +121,25 @@ class BoardHolderTests(unittest.TestCase):
         self.assertEqual(self.holder_seen(self.status_output(holder_pid=99)), "")
 
     def test_a_lock_whose_holder_lives_still_makes_the_board_busy(self):
-        self.assertTrue(self.holder_seen(self.status_output(holder_pid=1)).startswith("held by killed@0pac"))
+        self.assertEqual(self.holder_seen(self.status_output(holder_pid=1)),
+                         "held by killed@0pac for autana screenshot")
+
+    def test_a_lock_this_autana_holds_is_not_somebody_else_s(self):
+        self.assertEqual(self.holder_seen(self.status_output(1, owner=autana.owner())), "")
+
+    def test_a_held_board_that_is_not_plugged_in_blocks_nothing(self):
+        self.assertEqual(self.holder_seen(self.status_output(holder_pid=1, port=None)), "")
+
+    def test_the_named_board_is_judged_even_off_usb(self):
+        named_off_usb = self.status_output(holder_pid=1, port=None)
+        with mock.patch.dict(autana.os.environ, {"AUTANA_BOARD": self.BOARD}):
+            self.assertEqual(self.holder_seen(named_off_usb),
+                             "held by killed@0pac for autana screenshot")
+
+    def test_with_two_boards_plugged_and_none_named_device_py_decides(self):
+        held = json.loads(self.status_output(holder_pid=1))["boards"][0]
+        free = dict(held, board="90:70:69:FE:B1:22", port="COM7", state="unlocked", holder=None)
+        self.assertEqual(self.holder_seen(json.dumps({"boards": [held, free]})), "")
 
 
 class DeviceVerbCommandTests(unittest.TestCase):
@@ -288,7 +308,7 @@ class ScreenshotCommandTests(unittest.TestCase):
                 autana.screenshot(list(args))
 
     def test_a_busy_board_is_refused_without_calling_device(self):
-        busy = mock.Mock(stdout="held by someone-else@0001 for 3s\n")
+        busy = mock.Mock(stdout=busy_status())
         with mock.patch.object(autana.subprocess, "run", return_value=busy), \
              mock.patch.object(autana.subprocess, "call") as called:
             code = autana.screenshot([])
@@ -503,7 +523,13 @@ class LockCommandTests(unittest.TestCase):
         with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
             code = autana.status([])
         self.assertEqual(code, 0)
-        self.assertIn("status", called.call_args[0][0])
+        self.assertEqual(called.call_args[0][0][-1], "status")
+
+    def test_status_json_is_device_json_passed_through(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            code = autana.status(["--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(called.call_args[0][0][-2:], ["status", "--json"])
 
     def test_status_rejects_arguments(self):
         with self.assertRaises(SystemExit):
@@ -566,8 +592,8 @@ class TuneCommandTests(unittest.TestCase):
     """Tuning is no longer implicit - `tune` and its subforms are the only
     way to a tunable, on the command line and in the console alike."""
 
-    ROWS = [("tune.primary", "226", "0", "255", "226"),
-           ("other.value", "13", "1", "31", "13"),
+    ROWS = [("ridge.trail", "226", "0", "255", "226"),
+           ("ridge.glow_radius", "13", "1", "31", "13"),
            ("wave.height", "40", "0", "100", "40")]
 
     def test_bare_tune_lists_every_row(self):
@@ -593,33 +619,33 @@ class TuneCommandTests(unittest.TestCase):
     def test_an_exact_unambiguous_name_shows_just_that_one(self):
         with mock.patch.object(autana, "tunables", return_value=self.ROWS), \
              mock.patch("builtins.print") as printed:
-            autana.tune(["primary"])
+            autana.tune(["trail"])
         printed.assert_called_once()
-        self.assertIn("tune.primary", printed.call_args[0][0])
+        self.assertIn("ridge.trail", printed.call_args[0][0])
 
     def test_an_ambiguous_name_falls_back_to_the_filtered_listing(self):
-        rows = self.ROWS + [("other.primary", "1", "0", "2", "1")]
+        rows = self.ROWS + [("other.trail", "1", "0", "2", "1")]
         with mock.patch.object(autana, "tunables", return_value=rows), \
              mock.patch("builtins.print") as printed:
-            autana.tune(["primary"])
+            autana.tune(["trail"])
         self.assertEqual(printed.call_count, 2)
 
     def test_two_arguments_set_the_resolved_name(self):
-        with mock.patch.object(autana, "send", return_value=(0, ["TUNE_OK tune.primary=200"])) as sent, \
+        with mock.patch.object(autana, "send", return_value=(0, ["TUNE_OK ridge.trail=200"])) as sent, \
              mock.patch.object(autana, "tunables", return_value=self.ROWS), mock.patch("builtins.print"):
-            code = autana.tune(["primary", "200"])
+            code = autana.tune(["trail", "200"])
         self.assertEqual(code, 0)
-        sent.assert_called_once_with("SET tune.primary 200")
+        sent.assert_called_once_with("SET ridge.trail 200")
 
     def test_reset_needs_exactly_a_name(self):
         with self.assertRaises(SystemExit):
             autana.tune(["reset"])
 
     def test_reset_resets_the_resolved_name(self):
-        with mock.patch.object(autana, "send", return_value=(0, ["TUNE_OK tune.primary=226"])) as sent, \
+        with mock.patch.object(autana, "send", return_value=(0, ["TUNE_OK ridge.trail=226"])) as sent, \
              mock.patch.object(autana, "tunables", return_value=self.ROWS), mock.patch("builtins.print"):
-            autana.tune(["reset", "primary"])
-        sent.assert_called_once_with("RESET tune.primary")
+            autana.tune(["reset", "trail"])
+        sent.assert_called_once_with("RESET ridge.trail")
 
     def test_save_takes_no_further_words(self):
         with self.assertRaises(SystemExit):
@@ -633,11 +659,11 @@ class TuneCommandTests(unittest.TestCase):
 
     def test_reset_as_a_value_is_a_set_not_the_reset_subcommand(self):
         # "reset"/"save" are only ever a subcommand in first position; here
-        # "primary" is first, so "reset" is just the value being set.
-        with mock.patch.object(autana, "send", return_value=(0, ["TUNE_OK tune.primary=reset"])) as sent, \
+        # "trail" is first, so "reset" is just the value being set.
+        with mock.patch.object(autana, "send", return_value=(0, ["TUNE_OK ridge.trail=reset"])) as sent, \
              mock.patch.object(autana, "tunables", return_value=self.ROWS), mock.patch("builtins.print"):
-            autana.tune(["primary", "reset"])
-        sent.assert_called_once_with("SET tune.primary reset")
+            autana.tune(["trail", "reset"])
+        sent.assert_called_once_with("SET ridge.trail reset")
 
     def test_too_many_arguments_are_rejected(self):
         with self.assertRaises(SystemExit):
@@ -677,7 +703,7 @@ class ConsoleRoutingTests(unittest.TestCase):
 
     def test_a_forwarded_line_with_no_reply_says_sent(self):
         with mock.patch.object(autana, "send", return_value=(0, [])), mock.patch("builtins.print") as printed:
-            self.run_console(["primary 200"])
+            self.run_console(["trail 200"])
         printed.assert_any_call("sent")
 
     def test_a_forwarded_lines_several_reply_lines_are_joined(self):
@@ -689,8 +715,8 @@ class ConsoleRoutingTests(unittest.TestCase):
     def test_tune_with_a_name_is_still_the_way_to_reach_a_tunable(self):
         fake = mock.Mock(return_value=0)
         with mock.patch.dict(autana.COMMANDS, {"tune": fake}):
-            self.run_console(["tune primary"])
-        fake.assert_called_once_with(["primary"])
+            self.run_console(["tune trail"])
+        fake.assert_called_once_with(["trail"])
 
     def test_quit_ends_the_session_without_dispatching_anything(self):
         fake = mock.Mock(return_value=0)

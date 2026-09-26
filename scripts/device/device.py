@@ -1,6 +1,8 @@
-"""Lock-aware commands for the single shared USB Serial/JTAG board."""
+"""Lock-aware commands for the shared USB Serial/JTAG boards, each named by its
+USB serial number."""
 
 import argparse
+import collections
 import contextlib
 import gzip
 import json
@@ -8,6 +10,7 @@ import math
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -24,6 +27,7 @@ from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must
 
 
 BAUD = 115200
+ESPRESSIF_VID = 0x303A
 BUILD_ID = re.compile(rb"BUILD_ID=([^\s\r\n]+)")
 SUITE_RESULT = re.compile(rb":\d+:.*:(PASS|FAIL)(?:\r?$|:)", re.MULTILINE)
 
@@ -75,20 +79,73 @@ def git_bash():
     raise RuntimeError("Git Bash not found; install Git for Windows")
 
 
-def find_port():
+class NoBoard(RuntimeError):
+    """The board asked for is not on USB, as it is not for a moment after a reset."""
+
+
+class LockLost(RuntimeError):
+    def __init__(self, message="device lock was lost"):
+        super().__init__(message)
+
+
+class PortUnavailable(RuntimeError):
+    """The board's port did not open within the wait it was given."""
+
+
+Board = collections.namedtuple("Board", "serial port")
+
+
+def plugged_boards():
     try:
         from serial.tools import list_ports
     except ImportError as error:
         raise RuntimeError("pyserial is required; run this with the ESP-IDF Python") from error
-    matches = [port.device for port in list_ports.comports() if port.vid == 0x303A]
-    if not matches:
-        raise RuntimeError("no USB Serial/JTAG board found (VID 0x303A)")
-    if len(matches) > 1:
-        raise RuntimeError("multiple USB Serial/JTAG boards found: " + ", ".join(matches))
-    return matches[0]
+    return [Board(device_lock.normalise_board(port.serial_number), port.device)
+            for port in list_ports.comports()
+            if port.vid == ESPRESSIF_VID and port.serial_number]
 
 
-def open_serial(port):
+def chosen_board(board=None):
+    named = board or os.environ.get("AUTANA_BOARD")
+    return device_lock.normalise_board(named) if named else None
+
+
+def find_board(board=None):
+    """The board named by `board` or AUTANA_BOARD, else the only one plugged in."""
+    wanted = chosen_board(board)
+    present = plugged_boards()
+    if wanted:
+        for candidate in present:
+            if candidate.serial == wanted:
+                return candidate
+        raise NoBoard("board " + wanted + " is not on USB")
+    if not present:
+        raise NoBoard("no USB Serial/JTAG board found (VID 0x303A)")
+    if len(present) > 1:
+        raise RuntimeError("several boards are plugged in - name one with --board or "
+                           "AUTANA_BOARD: " + ", ".join(sorted(b.serial for b in present)))
+    return present[0]
+
+
+def board_for_lock(store, named=None):
+    """The board a command queues for. A lock outlives the board's USB
+    presence, so while a holder's reset has the only board off USB a waiter
+    still finds it through the lock records; only opening its port needs USB."""
+    wanted = chosen_board(named)
+    if wanted:
+        return wanted
+    present = sorted(found.serial for found in plugged_boards())
+    candidates = present or store.boards()
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        raise NoBoard("no USB Serial/JTAG board found (VID 0x303A)")
+    raise RuntimeError("several boards are " + ("plugged in" if present else "known to the lock")
+                       + " - name one with --board or AUTANA_BOARD: " + ", ".join(candidates))
+
+
+def open_serial():
+    port = locked_port()
     try:
         import serial
     except ImportError as error:
@@ -169,8 +226,9 @@ def append_manifest(entry, root=None):
         stream.write(json.dumps(entry, sort_keys=True) + "\n")
 
 
-def record_capture(path, managed, *, started_at, port, owner, purpose, command, commit,
-                   suite=None, build_id=None, worktree=None, reason=None, error=None, root=None):
+def record_capture(path, managed, *, started_at, board, owner, purpose, command, commit,
+                    suite=None, build_id=None, worktree=None, reason=None, error=None, root=None,
+                    acquired_at=None):
     """The permanent trail: written for every flash/run-suite/listen call, so
     even a capture left behind in a doomed worktree still has metadata here."""
     path = Path(path)
@@ -182,7 +240,8 @@ def record_capture(path, managed, *, started_at, port, owner, purpose, command, 
         capture_bytes = None
     append_manifest({
         "started_at": started_at.isoformat(),
-        "port": port,
+        "acquired_at": datetime.fromtimestamp(acquired_at).isoformat() if acquired_at else None,
+        "board": board,
         "owner": owner,
         "purpose": purpose,
         "command": command,
@@ -204,7 +263,7 @@ def record_capture(path, managed, *, started_at, port, owner, purpose, command, 
 PORT_WAIT_SECONDS = 600
 
 
-def open_when_free(port, seconds=PORT_WAIT_SECONDS, opener=None, sleep=time.sleep,
+def open_when_free(seconds=PORT_WAIT_SECONDS, opener=None, sleep=time.sleep,
                    now=time.monotonic, reason="held by another process"):
     """Opens the port once the OS lets go of it and returns the open connection;
     the caller closes it.
@@ -220,17 +279,18 @@ def open_when_free(port, seconds=PORT_WAIT_SECONDS, opener=None, sleep=time.slee
     waited = False
     while True:
         try:
-            connection = open_port(port)
+            connection = open_port()
             if waited:
-                print("port " + port + " came free", file=sys.stderr)
+                print("board port came free", file=sys.stderr)
             return connection
-        except OSError as error:
+        except (OSError, NoBoard) as error:
+            require_live_lock()
             if now() >= deadline:
-                raise RuntimeError(port + " still " + reason + " when the "
-                                   + str(int(seconds)) + "s wait ran out: "
-                                   + str(error)) from error
+                raise PortUnavailable("board port still " + reason + " when the "
+                                      + str(int(seconds)) + "s wait ran out: "
+                                      + str(error)) from error
             if not waited:
-                print("waiting for " + port + ", " + reason, file=sys.stderr)
+                print("waiting for the board port, " + reason, file=sys.stderr)
                 waited = True
             sleep(1.0)
 
@@ -291,56 +351,130 @@ def print_reset_output(data, verbose):
                 print(line)
 
 
+ACTIVE_LOCK = threading.local()
+
+
+def locked_port():
+    """The COM port the locked board enumerates as now: a reset can renumber it."""
+    active = getattr(ACTIVE_LOCK, "held", None)
+    if active is None:
+        raise RuntimeError("serial port access requires the device lock")
+    require_live_lock()
+    return find_board(active.board).port
+
+
+def require_live_lock():
+    active = getattr(ACTIVE_LOCK, "held", None)
+    if active and (active.lost.is_set() or
+                   not active.store.check_token(active.board, active.held["token"])):
+        raise LockLost()
+
+
+def require_unlost():
+    """The read loops' check: the heartbeat reads the lock file, so a read
+    only has to look at what the heartbeat found."""
+    active = getattr(ACTIVE_LOCK, "held", None)
+    if active and active.lost.is_set():
+        raise LockLost()
+
+
 class HeldLock:
-    def __init__(self, store, port, owner, purpose, wait, announce_waiters=False):
+    """One board held for one command. The command's duration is recorded
+    when it ends, with an error when it raised, set `error`, or lost the lock."""
+
+    HEARTBEAT_SECONDS = 5
+    NOTICE_SECONDS = 30
+
+    def __init__(self, store, board, owner, purpose, wait, announce_waiters=False, kind=None):
         self.store = store
         self.announce_waiters = announce_waiters
-        self.port = port
-        self.held = store.acquire(port, owner, purpose, wait=wait)
+        self.board = board
+        self.last_notice = None
+        self.held = store.acquire(board, owner, purpose, wait=wait, kind=kind,
+                                  on_wait=self.wait_notice)
         if not self.held:
             raise RuntimeError("device lock was not acquired")
         if self.held["log"]:
             print(self.held["log"], file=sys.stderr)
         self.stop = threading.Event()
+        self.lost = threading.Event()
         self.notified = set()
         self.thread = threading.Thread(target=self.keep_alive, daemon=True)
+        self.started = time.monotonic()
+        self.kind = kind or purpose
+        self.error = None
+
+    def wait_notice(self, ticket):
+        now = self.store.now()
+        if self.last_notice is not None and now - self.last_notice < self.NOTICE_SECONDS:
+            return
+        self.last_notice = now
+        status = self.store.status(self.board)
+        place = next((index for index, item in enumerate(status["queue"], 1)
+                      if item["ticket"] == ticket), None)
+        if place:
+            estimate = device_lock.queue_estimates(
+                status, now, device_lock.duration_history(self.store.root)).get(ticket)
+            print(f"waiting for board: queue place {place}; estimated start "
+                  f"{device_lock.format_estimate(estimate)}", file=sys.stderr)
 
     def keep_alive(self):
         # Only a holder the person can end with Ctrl+C invites them to.
-        poll = 1 if self.announce_waiters else 30
-        next_heartbeat = time.monotonic() + 30
+        poll = 1 if self.announce_waiters else self.HEARTBEAT_SECONDS
+        next_heartbeat = time.monotonic() + self.HEARTBEAT_SECONDS
         while not self.stop.wait(poll):
-            for ticket in (self.store.tickets(self.port) if self.announce_waiters else ()):
+            for ticket in (self.store.tickets(self.board) if self.announce_waiters else ()):
                 if ticket["ticket"] not in self.notified:
                     self.notified.add(ticket["ticket"])
                     print(f'{ticket["owner"]} is waiting for the board '
                           f'({ticket["purpose"]}) - Ctrl+C to hand it over', file=sys.stderr)
             if time.monotonic() >= next_heartbeat:
-                if not self.store.heartbeat(self.port, self.held["token"]):
+                if not self.store.heartbeat(self.board, self.held["token"]):
+                    self.lost.set()
                     print("device lock was lost", file=sys.stderr)
                     return
-                next_heartbeat = time.monotonic() + 30
+                next_heartbeat = time.monotonic() + self.HEARTBEAT_SECONDS
 
     def __enter__(self):
+        self.previous_lock = getattr(ACTIVE_LOCK, "held", None)
+        ACTIVE_LOCK.held = self
         self.thread.start()
         return self
 
-    def __exit__(self, unused_type, unused_value, unused_traceback):
+    def __exit__(self, error_type, error_value, unused_traceback):
         self.stop.set()
         try:
             self.thread.join()
         finally:
-            self.store.release(self.port, self.held["token"])
+            lost = self.lost.is_set() or not self.store.check_token(self.board, self.held["token"])
+            self.store.release(self.board, self.held["token"])
+            ACTIVE_LOCK.held = self.previous_lock
+            error = (str(error_value) if error_type else
+                     str(LockLost()) if lost else self.error)
+            device_lock.record_duration(self.kind, time.monotonic() - self.started, error,
+                                        self.store.root)
+        if lost and error_type is None:
+            raise LockLost()
+
+
+class NestedCommand:
+    """A command run under a lock an enclosing `batch` or `selftest` already
+    holds: the enclosing lock's board and token, this command's own duration."""
+
+    def __init__(self, lock, kind):
+        self.lock = lock
+        self.store = lock.store
+        self.board = lock.board
+        self.held = lock.held
+        self.lost = lock.lost
+        self.kind = kind
+        self.started = time.monotonic()
+        self.error = None
 
 
 def tests_done(data):
     return (b"TESTS_DONE" in data or b"SELFTEST_COMPLETE" in data or
             (b"Tests " in data and b"Failures" in data))
-
-
-def build_id_heard(data):
-    """Only a finished line counts: an id can arrive split across two reads."""
-    return BUILD_ID.search(data[:data.rfind(b"\n") + 1]) is not None
 
 
 def capture(connection, output, max_seconds, idle_seconds, expected_build_id=None,
@@ -356,9 +490,11 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
         suite_complete = b"RUNSUITE_COMPLETE name=" + suite_name.encode("ascii") + b" "
     with open(output, "ab" if append else "wb") as stream:
         while deadline is None or time.monotonic() < deadline:
+            require_unlost()
             try:
                 chunk = connection.read(4096)
             except OSError:
+                require_live_lock()
                 # The USB serial port re-enumerates under the reader now and
                 # then; what was read is still a capture worth reporting.
                 return bytes(data), "port lost"
@@ -400,53 +536,41 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
     return bytes(data), "timeout"
 
 
-def reset(port, after="hard_reset"):
+def reset(after="hard_reset"):
     """hard_reset pulses RTS, and USB Serial/JTAG stays up through it, so a
     capture hears the boot from its first line. It cannot restart a chip in
     download mode; watchdog_reset can, but re-enumerates USB, losing the
     early boot lines a release image's BUILD_ID is among."""
+    port = locked_port()
     command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
                "--after", after, "chip_id"]
     subprocess.run(command, check=True)
 
 
-def reset_and_capture(port, output, seconds, idle_seconds, expected_build_id=None,
+def reset_and_capture(output, seconds, idle_seconds, expected_build_id=None,
                       complete=tests_done):
     """A board that says nothing at all after the RTS reset is taken for a chip
     in download mode, the one case RTS cannot start, and gets the watchdog. One
     that spoke, even without a BUILD_ID, is left alone."""
-    reset(port)
-    data, reason = capture_after_reset(port, output, seconds, idle_seconds, expected_build_id,
+    reset()
+    data, reason = capture_after_reset(output, seconds, idle_seconds, expected_build_id,
                                        complete)
     if reason != "silent":
         return data, reason
     print("board silent after an RTS reset, as from download mode; "
           "restarting it through the watchdog", file=sys.stderr)
-    reset(port, after="watchdog_reset")
-    return capture_after_reset(port, output, seconds, idle_seconds, expected_build_id,
+    reset(after="watchdog_reset")
+    return capture_after_reset(output, seconds, idle_seconds, expected_build_id,
                                complete)
 
 
 RESET_FIRST_BYTE_SECONDS = 2
 RESET_REOPEN_SECONDS = 10
 FLASH_PORT_WAIT_SECONDS = 12
-FLASH_BOOT_SECONDS = 12
 
 
-def open_usb_after_flash(seconds):
-    deadline = time.monotonic() + seconds
-    while True:
-        try:
-            port = find_port()
-            return port, open_serial(port)
-        except (OSError, RuntimeError):
-            if time.monotonic() >= deadline:
-                raise RuntimeError("USB Serial/JTAG port did not return after the flash")
-            time.sleep(0.2)
-
-
-def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=None,
-                        complete=tests_done, follow_usb=False):
+def capture_after_reset(output, seconds, idle_seconds, expected_build_id=None,
+                        complete=tests_done):
     """A watchdog reset or a power cycle re-enumerates USB Serial/JTAG and
     kills an open handle, so no capture spans one: what the board prints
     before the port reopens is lost. It re-enumerates late enough that the
@@ -467,13 +591,9 @@ def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=N
         if remaining <= 0:
             return ended("timeout")
         try:
-            if follow_usb:
-                unused_port, connection = open_usb_after_flash(remaining)
-            else:
-                connection = open_when_free(port, remaining,
-                                            reason="re-enumerating after reset")
-        except RuntimeError:
-            if first_reopen and not follow_usb:
+            connection = open_when_free(remaining, reason="re-enumerating after reset")
+        except PortUnavailable:
+            if first_reopen:
                 raise
             return ended("port lost")
         first_reopen = False
@@ -498,15 +618,15 @@ def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=N
             print("reset capture lost the port; reopening", file=sys.stderr)
 
 
-def reset_device(args, store, port):
+def reset_device(args, store, board):
     """Reboot under the device lock, optionally keeping the post-reset
     console output as a capture record."""
     if not args.capture:
-        with HeldLock(store, port, args.owner, args.purpose, args.wait):
-            with open_when_free(port):
+        with HeldLock(store, board, args.owner, args.purpose, args.wait, kind="reset"):
+            with open_when_free():
                 pass
-            reset(port)
-            with open_when_free(port, reason="re-enumerating after reset"):
+            reset()
+            with open_when_free(reason="re-enumerating after reset"):
                 pass
         print("board reset; USB serial port is back")
         return 0
@@ -516,19 +636,21 @@ def reset_device(args, store, port):
     data = b""
     reason = None
     error = None
+    held = None
     try:
-        with HeldLock(store, port, args.owner, args.purpose, args.wait):
-            with open_when_free(port):
+        with HeldLock(store, board, args.owner, args.purpose, args.wait, kind="reset") as held:
+            with open_when_free():
                 pass
-            data, reason = reset_and_capture(port, output, args.seconds, None)
+            data, reason = reset_and_capture(output, args.seconds, None)
     except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
         error = str(caught)
         raise
     finally:
         final_path = record_capture(
-            output, managed, started_at=started_at, port=port, owner=args.owner,
+            output, managed, started_at=started_at, board=board, owner=args.owner,
             purpose=args.purpose, command="reset", build_id=latest_build_id_from_bytes(data),
-            worktree=str(Path.cwd()), commit=git_commit(), reason=reason, error=error)
+            worktree=str(Path.cwd()), commit=git_commit(), reason=reason, error=error,
+            acquired_at=held.held["acquired_at"] if held else None)
     print_reset_output(data, getattr(args, "verbose", False))
     print("reset capture: " + str(final_path))
     print("reset capture ended: " + reason + "; bytes may have been lost in reset gap")
@@ -594,52 +716,106 @@ def find_elf_for_build_id(worktree, build_id):
     return None
 
 
-def reset_and_read_build_id(port, seconds=12, expected_build_id=None):
-    """Read the boot after flashing, then use the watchdog if it was missed."""
-    data, reason = capture_after_reset(port, os.devnull, seconds, None, expected_build_id,
-                                       complete=build_id_heard, follow_usb=True)
-    actual = latest_build_id_from_bytes(data)
-    if actual:
-        return actual, reason
-    port, connection = open_usb_after_flash(FLASH_PORT_WAIT_SECONDS)
-    connection.close()
-    reset(port, after="watchdog_reset")
-    data, reason = capture_after_reset(port, os.devnull, seconds, None, expected_build_id,
-                                       complete=build_id_heard, follow_usb=True)
-    actual = latest_build_id_from_bytes(data)
-    if actual:
-        return actual, reason
-    unused_port, connection = open_usb_after_flash(FLASH_PORT_WAIT_SECONDS)
-    with connection:
-        connection.write(b"BUILDID\n")
-        connection.flush()
-        deadline = time.monotonic() + 3
-        pending = b""
-        while time.monotonic() < deadline:
-            chunk = connection.read(4096)
-            if not chunk:
-                continue
-            pending += chunk
-            lines = pending.split(b"\n")
-            pending = lines.pop()
-            for line in lines:
-                actual = build_id_from_bytes(line)
-                if actual:
-                    return actual, "console"
-        return None, reason
-
-
-def holding(store, port, args, held_lock):
+@contextlib.contextmanager
+def holding(store, board, args, held_lock, kind):
     """The lock a command runs under: a fresh one, or `held_lock` when a
     batch already holds the board for the whole sequence."""
-    if held_lock is not None:
-        return contextlib.nullcontext(held_lock)
-    return HeldLock(store, port, args.owner, args.purpose, args.wait)
+    if held_lock is None:
+        with HeldLock(store, board, args.owner, args.purpose, args.wait, kind=kind) as held:
+            yield held
+        return
+    nested = NestedCommand(held_lock, kind)
+    error = None
+    try:
+        yield nested
+    except BaseException as caught:
+        error = str(caught)
+        raise
+    finally:
+        device_lock.record_duration(kind, time.monotonic() - nested.started,
+                                    error or nested.error, store.root)
 
 
-def flash(args, store, port, held_lock=None, extra_flags=()):
-    with holding(store, port, args, held_lock) as held:
-        with open_when_free(port):
+FLASH_POLL_SECONDS = 0.5
+
+
+def stop_process_tree(process):
+    """build_flash.sh runs idf.py and esptool under it; the flash has to stop,
+    not just the shell that started it."""
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    process.wait()
+
+
+def run_while_held(command, held, timeout=None, **options):
+    """Runs `command` to its end, or stops it the moment the heartbeat finds
+    the lock lost, before it writes to a board somebody else now holds."""
+    if os.name != "nt":
+        options["start_new_session"] = True
+    deadline = None if timeout is None else time.monotonic() + timeout
+    process = subprocess.Popen(command, **options)
+    try:
+        while True:
+            try:
+                code = process.wait(timeout=FLASH_POLL_SECONDS)
+                break
+            except subprocess.TimeoutExpired:
+                if held.lost.is_set():
+                    raise LockLost("device lock was lost during the flash; the flash was stopped")
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise subprocess.TimeoutExpired(command, timeout)
+    except BaseException:
+        stop_process_tree(process)
+        raise
+    if code:
+        raise subprocess.CalledProcessError(code, command)
+
+
+def run_flash_script(held, command, **popen):
+    """Runs a build_flash.sh `command` under `held`, the board's lock."""
+    environment = dict(popen.pop("env", None) or os.environ)
+    environment.setdefault("MSYSTEM", "MINGW64")
+    # Proof to build_flash.sh that this flash holds this board's lock: it runs
+    # check-token with both before it flashes. The token sits in plain text in
+    # the lock file, so this catches an accident, not a forger.
+    environment["AUTANA_DEVICE_LOCK_TOKEN"] = held.held["token"]
+    environment["AUTANA_BOARD"] = held.board
+    run_while_held(command, held, env=environment, **popen)
+
+
+def flash_script(store, board, owner, purpose, command, wait, **popen):
+    """Runs a build_flash.sh `command` for a caller outside device.py: finds
+    the board (`board`, else AUTANA_BOARD, else the only one), queues for its
+    lock and holds it until the script ends. Returns the board's serial."""
+    board = board_for_lock(store, board)
+    with HeldLock(store, board, owner, purpose, wait, kind="flash") as held:
+        run_flash_script(held, command, **popen)
+    return board
+
+
+FLASH_FAILURE = re.compile(r"fatal error|\berror:|^error\b|could not", re.I)
+
+
+def flash_failure_line(text):
+    """The line that says why a flash log failed: the first error line, since
+    idf.py and ninja follow esptool's own reason with lines of their own."""
+    lines = [line.strip() for line in text.splitlines()
+             if line.strip() and not line.startswith("===") and "Press Enter" not in line]
+    for line in lines:
+        if FLASH_FAILURE.search(line):
+            return line
+    return lines[-1] if lines else "the log is empty"
+
+
+def flash(args, store, board, held_lock=None, extra_flags=()):
+    with holding(store, board, args, held_lock, "flash") as held:
+        with open_when_free():
             pass
         worktree = Path(args.worktree).resolve()
         script = worktree / "launcher" / "tools" / "build" / "build_flash.sh"
@@ -649,50 +825,39 @@ def flash(args, store, port, held_lock=None, extra_flags=()):
         log, managed = resolve_capture_path(args.out, "flash-" + args.variant, args.owner,
                                             started_at)
         flag = {"dev": "--dev", "diag": "--diag", "release": ""}[args.variant]
-        command = [git_bash(), str(script)] + ([flag] if flag else []) + list(extra_flags) + [port]
+        command = [git_bash(), str(script)] + ([flag] if flag else []) + list(extra_flags)
         print("flash log: " + str(log))
-        environment = os.environ.copy()
-        environment.setdefault("MSYSTEM", "MINGW64")
-        # Proof to build_flash.sh that this flash is under the device lock -
-        # it refuses to flash without it. Not a secret: it only has to
-        # differ from "unset", so a build_flash.sh run directly cannot
-        # forge one by guessing.
-        environment["AUTANA_DEVICE_LOCK_TOKEN"] = held.held["token"]
         build_id = None
-        expected = None
         error = None
         try:
-            with open(log, "wb") as stream:
-                subprocess.run(command, cwd=worktree, stdin=subprocess.DEVNULL,
-                               stdout=stream, stderr=subprocess.STDOUT, check=True,
-                               env=environment)
+            try:
+                with open(log, "wb") as stream:
+                    run_flash_script(held, command, cwd=worktree, stdin=subprocess.DEVNULL,
+                                     stdout=stream, stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError as failed:
+                text = Path(log).read_text(encoding="utf-8", errors="replace")
+                raise RuntimeError(f"build_flash.sh failed (exit {failed.returncode}): "
+                                   f"{flash_failure_line(text)} - flash log: {log}") from failed
+            require_live_lock()
             expected = latest_build_id_from_bytes(Path(log).read_bytes())
-            if expected:
-                store.set_expected_build_id(port, held.held["token"], expected)
-            else:
-                print("build id is unverified: the build log has no BUILD_ID",
-                      file=sys.stderr)
-            actual, reason = reset_and_read_build_id(port, seconds=FLASH_BOOT_SECONDS,
-                                                     expected_build_id=expected)
-            if expected and not actual:
-                raise RuntimeError("flashed boot did not provide BUILD_ID after watchdog reset")
-            elif expected and actual != expected:
-                raise RuntimeError(
-                    "flashed build id mismatch: expected " + expected + ", got " + actual)
-            elif expected:
-                build_id = actual
-                print("verified BUILD_ID=" + actual + " (" + reason + ")")
+            if not expected:
+                raise RuntimeError("the flash log has no BUILD_ID line")
+            if not store.set_expected_build_id(board, held.held["token"], expected):
+                raise LockLost()
+            build_id = expected
+            print("flashed BUILD_ID=" + expected + " (esptool hash verified; boot not verified)")
         except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
             error = str(caught)
             raise
         finally:
-            record_capture(log, managed, started_at=started_at, port=port, owner=args.owner,
+            record_capture(log, managed, started_at=started_at, board=board, owner=args.owner,
                            purpose=args.purpose, command="flash", build_id=build_id,
-                           worktree=str(worktree), commit=git_commit(worktree), error=error)
-        return build_id or expected
+                           worktree=str(worktree), commit=git_commit(worktree), error=error,
+                           acquired_at=held.held["acquired_at"])
+        return build_id
 
 
-def run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
+def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
     """`worktree`/`commit` name the checkout the flashed build came from. A
     standalone `run-suite` has no `--worktree` of its own, so it keeps
     recording the ambient cwd; a `batch` call passes its own `--worktree`
@@ -703,9 +868,10 @@ def run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
     data = b""
     reason = None
     error = None
+    held = None
     try:
-        with holding(store, port, args, held_lock):
-            with open_when_free(port) as connection:
+        with holding(store, board, args, held_lock, "run-suite") as held:
+            with open_when_free(FLASH_PORT_WAIT_SECONDS if held_lock else PORT_WAIT_SECONDS) as connection:
                 connection.write(("\nRUNSUITE " + args.suite + "\n").encode("ascii"))
                 connection.flush()
                 data, reason = capture(connection, output, args.max_seconds, args.idle_seconds,
@@ -715,11 +881,12 @@ def run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
         raise
     finally:
         final_path = record_capture(
-            output, managed, started_at=started_at, port=port, owner=args.owner,
+            output, managed, started_at=started_at, board=board, owner=args.owner,
             purpose=args.purpose, command="run-suite", suite=args.suite,
             build_id=latest_build_id_from_bytes(data) or args.expect_build_id,
             worktree=worktree if worktree is not None else str(Path.cwd()),
-            commit=commit if commit is not None else git_commit(), reason=reason, error=error)
+            commit=commit if commit is not None else git_commit(), reason=reason, error=error,
+            acquired_at=held.held["acquired_at"] if held else None)
         try:
             report_path = device_report.write_report_for_capture(
                 final_path, records_root() / "index.jsonl")
@@ -731,7 +898,7 @@ def run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
     return 1 if failed else 0
 
 
-def selftest(args, store, port):
+def selftest(args, store, board):
     """Build+flash the diagnostics+autorun image under one held lock, then
     reset and capture the boot-time run of every registered suite until
     SELFTEST_COMPLETE (or a timeout) - the way to run every suite this
@@ -745,11 +912,11 @@ def selftest(args, store, port):
     extra_flags = ["--autorun"]
     if args.perf_scope:
         extra_flags.append("--perf-scope")
-    with HeldLock(store, port, args.owner, args.purpose, args.wait) as held:
+    with HeldLock(store, board, args.owner, args.purpose, args.wait, kind="selftest") as held:
         flash_args = argparse.Namespace(owner=args.owner, purpose=args.purpose + " (flash)",
                                         wait=args.wait, worktree=args.worktree,
                                         variant="diag", out=None)
-        build_id = flash(flash_args, store, port, held_lock=held, extra_flags=extra_flags)
+        build_id = flash(flash_args, store, board, held_lock=held, extra_flags=extra_flags)
         commit = git_commit(worktree)
 
         data = b""
@@ -757,19 +924,20 @@ def selftest(args, store, port):
         error = None
         output, managed = resolve_capture_path(args.out, "selftest", args.owner, started_at)
         try:
-            with open_when_free(port):
+            with open_when_free(FLASH_PORT_WAIT_SECONDS):
                 pass
-            data, reason = reset_and_capture(port, output, args.max_seconds, args.idle_seconds,
+            data, reason = reset_and_capture(output, args.max_seconds, args.idle_seconds,
                                              build_id)
         except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
             error = str(caught)
             raise
         finally:
             final_path = record_capture(
-                output, managed, started_at=started_at, port=port, owner=args.owner,
+                output, managed, started_at=started_at, board=board, owner=args.owner,
                 purpose=args.purpose, command="selftest",
                 build_id=latest_build_id_from_bytes(data) or build_id,
-                worktree=worktree, commit=commit, reason=reason, error=error)
+                worktree=worktree, commit=commit, reason=reason, error=error,
+                acquired_at=held.held["acquired_at"])
             try:
                 report_path = device_report.write_report_for_capture(
                     final_path, records_root() / "index.jsonl")
@@ -805,7 +973,7 @@ class ErrorLineSink:
         self.output.flush()
 
 
-def listen(args, store, port):
+def listen(args, store, board):
     started_at = now()
     output, managed = resolve_capture_path(args.out, "listen", args.owner, started_at)
     data = b""
@@ -813,9 +981,11 @@ def listen(args, store, port):
     error = None
     echo = getattr(args, "echo", False)
     sink = sys.stdout.buffer if echo else ErrorLineSink(sys.stdout)
+    held = None
     try:
-        with HeldLock(store, port, args.owner, args.purpose, args.wait, announce_waiters=True):
-            with open_when_free(port) as connection:
+        with HeldLock(store, board, args.owner, args.purpose, args.wait,
+                      announce_waiters=True, kind="listen") as held:
+            with open_when_free() as connection:
                 data, reason = capture(connection, output, args.seconds, None,
                                        echo=sink, complete=None)
     except KeyboardInterrupt:
@@ -825,10 +995,11 @@ def listen(args, store, port):
         error = str(caught)
         raise
     finally:
-        final_path = record_capture(output, managed, started_at=started_at, port=port,
+        final_path = record_capture(output, managed, started_at=started_at, board=board,
                                     owner=args.owner, purpose=args.purpose, command="listen",
                                     build_id=latest_build_id_from_bytes(data), worktree=str(Path.cwd()),
-                                    commit=git_commit(), reason=reason, error=error)
+                                    commit=git_commit(), reason=reason, error=error,
+                                    acquired_at=held.held["acquired_at"] if held else None)
     if not echo:
         sink.finish()
     elif data and not data.endswith(b"\n"):
@@ -867,7 +1038,7 @@ def replies_to(data, reply, until):
     return found, False
 
 
-def send(args, store, port):
+def send(args, store, board):
     """Write one console line and print what the device answers.
 
     Not a capture: nothing is written under records/ and index.jsonl gets no
@@ -885,18 +1056,22 @@ def send(args, store, port):
     """
     data = bytearray()
     found = []
-    with HeldLock(store, port, args.owner, args.purpose, args.wait):
-        with open_when_free(port) as connection:
+    with HeldLock(store, board, args.owner, args.purpose, args.wait, kind="send") as held:
+        with open_when_free() as connection:
             connection.reset_input_buffer()
             connection.write(("\n" + args.line + "\n").encode("ascii"))
             connection.flush()
             deadline = time.monotonic() + args.seconds
             while time.monotonic() < deadline:
+                require_unlost()
                 data.extend(connection.read(4096))
                 found, complete = replies_to(bytes(data), args.reply, args.until)
                 if complete:
                     print("\n".join(found))
-                    return 1 if found[-1].startswith(args.reply + "_ERR") else 0
+                    if found[-1].startswith(args.reply + "_ERR"):
+                        held.error = found[-1]
+                        return 1
+                    return 0
                 if ("ignoring line: '" + args.line).encode("ascii") in data:
                     raise RuntimeError("this build does not answer '" + args.line.split(" ")[0] +
                                        "' - it needs a development build that has it")
@@ -907,7 +1082,7 @@ def send(args, store, port):
                        " s - is a development build running?")
 
 
-def screenshot(args, store, port):
+def screenshot(args, store, board):
     """SCREENSHOT, decoded by read_screenshot()/write_capture() in
     launcher/tools/device/screenshot.py - the one decoder autana's own
     `screenshot` shares. Under the device lock, so it queues behind
@@ -925,8 +1100,8 @@ def screenshot(args, store, port):
     def report(message):
         print(message, file=sys.stderr, flush=True)
 
-    with HeldLock(store, port, args.owner, args.purpose, args.wait):
-        with open_when_free(port) as connection:
+    with HeldLock(store, board, args.owner, args.purpose, args.wait, kind="screenshot"):
+        with open_when_free() as connection:
             png, state_json = screenshot_tool.read_screenshot(connection, args.timeout, on_status=report)
 
     if getattr(args, "framebuffer", False):
@@ -956,7 +1131,7 @@ def screenshot(args, store, port):
     return 0
 
 
-def batch(args, store, port):
+def batch(args, store, board):
     """Flash once and capture every suite `runs` times under ONE lock, then
     write one summary across all runs. Holding the board for the whole
     sequence is the point: nobody else can flash between two captures
@@ -970,11 +1145,11 @@ def batch(args, store, port):
     worktree = str(Path(args.worktree).resolve())
     started_at = now()
     entries = []
-    with HeldLock(store, port, args.owner, args.purpose, args.wait) as held:
+    with HeldLock(store, board, args.owner, args.purpose, args.wait, kind="batch") as held:
         flash_args = argparse.Namespace(owner=args.owner, purpose=args.purpose + " (flash)",
                                         wait=args.wait, worktree=args.worktree,
                                         variant=args.variant, out=None)
-        build_id = flash(flash_args, store, port, held_lock=held, extra_flags=extra_flags)
+        build_id = flash(flash_args, store, board, held_lock=held, extra_flags=extra_flags)
         commit = git_commit(worktree)
         for run in range(1, args.runs + 1):
             for suite_name in args.suite:
@@ -987,22 +1162,28 @@ def batch(args, store, port):
                     max_seconds=args.max_seconds, idle_seconds=args.idle_seconds,
                     expect_build_id=build_id, verbose=getattr(args, "verbose", False))
                 print(f"batch: {suite_name} run {run}/{args.runs}", flush=True)
+                # A suite FAIL is a result, not a broken run: a perf capture always
+                # carries its budget targets' FAILs, and its duration still counts.
                 error = None
+                failed = False
                 try:
-                    run_suite(suite_args, store, port, held_lock=held, worktree=worktree,
-                             commit=commit)
+                    failed = bool(run_suite(suite_args, store, board, held_lock=held,
+                                            worktree=worktree, commit=commit))
                 except RuntimeError as caught:
                     error = str(caught)
                     print("batch: capture error, continuing: " + error, file=sys.stderr)
                 entries.append({"suite": suite_name, "run": run, "capture": str(out),
-                                "error": error})
+                                "error": error, "failed": failed})
+        if any(entry["error"] for entry in entries):
+            held.error = "a batch capture failed"
     meta = {"build_id": build_id, "owner": args.owner, "purpose": args.purpose,
             "runs": args.runs, "worktree": worktree, "commit": commit}
     summary_path, _ = resolve_capture_path(None, "batch", args.owner, started_at)
     summary_path = summary_path.with_suffix(".md")
     summary_path.write_text(device_report.batch_summary_markdown(entries, meta),
                             encoding="utf-8")
-    append_manifest({"started_at": started_at.isoformat(), "port": port, "owner": args.owner,
+    append_manifest({"started_at": started_at.isoformat(), "board": board, "owner": args.owner,
+                     "acquired_at": datetime.fromtimestamp(held.held["acquired_at"]).isoformat(),
                      "purpose": args.purpose, "command": "batch", "suite": ",".join(args.suite),
                      "build_id": build_id, "worktree": worktree, "commit": meta["commit"],
                      "reason": None,
@@ -1010,7 +1191,7 @@ def batch(args, store, port):
                      "capture_path": str(summary_path),
                      "capture_bytes": summary_path.stat().st_size})
     print("batch summary: " + str(summary_path))
-    return 1 if any(e["error"] for e in entries) else 0
+    return 1 if any(e["error"] or e["failed"] for e in entries) else 0
 
 
 def human_wait_seconds(value):
@@ -1023,11 +1204,11 @@ def human_wait_seconds(value):
     return seconds
 
 
-def wait_for_human_release(store, port, reservation_id, seconds):
+def wait_for_human_release(store, board, reservation_id, seconds):
     deadline = time.monotonic() + seconds
     try:
         while True:
-            human = store.status(port)["human"]
+            human = store.status(board)["human"]
             if human is None:
                 print("human reservation released")
                 return 0
@@ -1044,13 +1225,36 @@ def wait_for_human_release(store, port, reservation_id, seconds):
         return 3
 
 
+def board_statuses(store, board=None):
+    """Every board a lock record names or USB shows, or only `board`."""
+    plugged = {found.serial: found.port for found in plugged_boards()}
+    boards = [board] if board else sorted(set(store.boards()) | set(plugged))
+    durations = device_lock.duration_history(store.root)
+    return [device_lock.status_entry(store, name, plugged.get(name), durations=durations)
+            for name in boards]
+
+
+def print_statuses(entries):
+    if not entries:
+        print("no board found")
+    for entry in entries:
+        where = "on " + entry["port"] if entry["port"] else "not on USB"
+        print(f"board {entry['board']} ({where})")
+        for line in device_lock.status_lines(entry):
+            print("  " + line)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port")
+    parser.add_argument("--board", help="the board's USB serial number (default: AUTANA_BOARD, "
+                                        "else the only board plugged in, else the only one "
+                                        "a lock record names)")
     parser.add_argument("--owner", default=os.environ.get("AUTANA_DEVICE_OWNER", "unknown"))
     parser.add_argument("--wait", type=float, default=600)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("status")
+    status_parser = subparsers.add_parser("status")
+    status_parser.add_argument("--json", action="store_true")
+    subparsers.add_parser("resolve-port")
     release = subparsers.add_parser("release")
     release.add_argument("--token", required=True)
     hand = subparsers.add_parser("hand-to-human")
@@ -1151,8 +1355,8 @@ def main(argv=None):
     report_parser.add_argument("--index", help="override index.jsonl (default: records/device)")
     args = parser.parse_args(argv)
 
-    # Touches no lock and no port - it only reads a capture already on disk,
-    # so it is handled before port discovery even runs, unlike every command
+    # Touches no lock and no board - it only reads a capture already on disk,
+    # so it is handled before board discovery even runs, unlike every command
     # below this.
     if args.command == "report":
         index_path = Path(args.index) if args.index else records_root() / "index.jsonl"
@@ -1165,46 +1369,53 @@ def main(argv=None):
         return 0
 
     try:
-        port = args.port or find_port()
         store = device_lock.LockStore()
         if args.command == "status":
-            device_lock.print_status(store.status(port))
+            entries = board_statuses(store, chosen_board(args.board))
+            if args.json:
+                print(json.dumps({"boards": entries}))
+            else:
+                print_statuses(entries)
             return 0
+        if args.command == "resolve-port":
+            print(find_board(args.board).port)
+            return 0
+        board = board_for_lock(store, args.board)
         if args.command == "release":
-            return 0 if store.release(port, args.token) else 1
+            return 0 if store.release(board, args.token) else 1
         if args.command == "hand-to-human":
-            active = store.status(port)["lock"]
+            active = store.status(board)["lock"]
             if active:
-                if not args.token or not store.release(port, args.token):
+                if not args.token or not store.release(board, args.token):
                     raise RuntimeError("active lock requires its token before handoff")
-            reservation_id = store.set_human(port, args.owner, args.note)
+            reservation_id = store.set_human(board, args.owner, args.note)
             if args.wait is None:
                 print("human reservation recorded")
                 return 0
-            return wait_for_human_release(store, port, reservation_id, args.wait)
+            return wait_for_human_release(store, board, reservation_id, args.wait)
         if args.command == "take-back":
-            store.clear_human(port)
-            device_lock.print_status(store.status(port))
+            store.clear_human(board)
+            print_statuses(board_statuses(store, board))
             return 0
         if args.command == "flash":
             extra_flags = ["--perf-scope"] if args.perf_scope else []
-            flash(args, store, port, extra_flags=extra_flags)
+            flash(args, store, board, extra_flags=extra_flags)
         elif args.command == "run-suite":
-            return run_suite(args, store, port)
+            return run_suite(args, store, board)
         elif args.command == "selftest":
-            return selftest(args, store, port)
+            return selftest(args, store, board)
         elif args.command == "reset":
-            return reset_device(args, store, port)
+            return reset_device(args, store, board)
         elif args.command == "batch":
-            return batch(args, store, port)
+            return batch(args, store, board)
         elif args.command == "send":
             if not args.until:
                 args.until = [args.reply + "_OK", args.reply + "_ERR", args.reply + "_END"]
-            return send(args, store, port)
+            return send(args, store, board)
         elif args.command == "screenshot":
-            return screenshot(args, store, port)
+            return screenshot(args, store, board)
         else:
-            listen(args, store, port)
+            listen(args, store, board)
         return 0
     except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
         print("device: " + str(error), file=sys.stderr)
