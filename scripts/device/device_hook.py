@@ -2,7 +2,6 @@
 
 import os
 import subprocess
-import sys
 
 
 HOOK_TIMEOUT_SECONDS = 3
@@ -21,12 +20,9 @@ def emit(event, port, owner="", purpose="", note=""):
         "AUTANA_LOCK_NOTE": note,
     })
     try:
-        result = subprocess.run(command, shell=True, env=environment,
-                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL,
-                                timeout=HOOK_TIMEOUT_SECONDS)
-        if result.returncode:
-            raise RuntimeError(f"exit status {result.returncode}")
-    except Exception as error:
-        message = str(error).splitlines()[0] if str(error).splitlines() else type(error).__name__
-        print(f"warning: device lock hook failed: {message}", file=sys.stderr)
+        subprocess.run(command, shell=True, env=environment,
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL,
+                       timeout=HOOK_TIMEOUT_SECONDS)
+    except Exception:
+        pass

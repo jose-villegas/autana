@@ -89,6 +89,7 @@ def find_port():
 
 
 def open_serial(port):
+    require_port_lock(port)
     try:
         import serial
     except ImportError as error:
@@ -170,7 +171,8 @@ def append_manifest(entry, root=None):
 
 
 def record_capture(path, managed, *, started_at, port, owner, purpose, command, commit,
-                   suite=None, build_id=None, worktree=None, reason=None, error=None, root=None):
+                   suite=None, build_id=None, worktree=None, reason=None, error=None, root=None,
+                   acquired_at=None):
     """The permanent trail: written for every flash/run-suite/listen call, so
     even a capture left behind in a doomed worktree still has metadata here."""
     path = Path(path)
@@ -182,6 +184,8 @@ def record_capture(path, managed, *, started_at, port, owner, purpose, command, 
         capture_bytes = None
     append_manifest({
         "started_at": started_at.isoformat(),
+        "acquired_at": datetime.fromtimestamp(acquired_at).isoformat() if acquired_at else None,
+        "duration_seconds": max(0, time.time() - acquired_at) if acquired_at else None,
         "port": port,
         "owner": owner,
         "purpose": purpose,
@@ -291,12 +295,25 @@ def print_reset_output(data, verbose):
                 print(line)
 
 
+ACTIVE_LOCK = threading.local()
+
+
+def require_port_lock(port):
+    active = getattr(ACTIVE_LOCK, "held", None)
+    if active is None:
+        raise RuntimeError("serial port access requires the device lock")
+    store, locked_port, token = active
+    current = store.status(locked_port)["lock"]
+    if not current or current["token"] != token:
+        raise RuntimeError("device lock was lost before serial port access")
+
+
 class HeldLock:
-    def __init__(self, store, port, owner, purpose, wait, announce_waiters=False):
+    def __init__(self, store, port, owner, purpose, wait, announce_waiters=False, kind=None):
         self.store = store
         self.announce_waiters = announce_waiters
         self.port = port
-        self.held = store.acquire(port, owner, purpose, wait=wait)
+        self.held = store.acquire(port, owner, purpose, wait=wait, kind=kind)
         if not self.held:
             raise RuntimeError("device lock was not acquired")
         if self.held["log"]:
@@ -322,6 +339,8 @@ class HeldLock:
                 next_heartbeat = time.monotonic() + 30
 
     def __enter__(self):
+        self.previous_lock = getattr(ACTIVE_LOCK, "held", None)
+        ACTIVE_LOCK.held = (self.store, self.port, self.held["token"])
         self.thread.start()
         return self
 
@@ -331,6 +350,7 @@ class HeldLock:
             self.thread.join()
         finally:
             self.store.release(self.port, self.held["token"])
+            ACTIVE_LOCK.held = self.previous_lock
 
 
 def tests_done(data):
@@ -405,6 +425,7 @@ def reset(port, after="hard_reset"):
     capture hears the boot from its first line. It cannot restart a chip in
     download mode; watchdog_reset can, but re-enumerates USB, losing the
     early boot lines a release image's BUILD_ID is among."""
+    require_port_lock(port)
     command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
                "--after", after, "chip_id"]
     subprocess.run(command, check=True)
@@ -502,7 +523,7 @@ def reset_device(args, store, port):
     """Reboot under the device lock, optionally keeping the post-reset
     console output as a capture record."""
     if not args.capture:
-        with HeldLock(store, port, args.owner, args.purpose, args.wait):
+        with HeldLock(store, port, args.owner, args.purpose, args.wait, kind="reset"):
             with open_when_free(port):
                 pass
             reset(port)
@@ -517,7 +538,7 @@ def reset_device(args, store, port):
     reason = None
     error = None
     try:
-        with HeldLock(store, port, args.owner, args.purpose, args.wait):
+        with HeldLock(store, port, args.owner, args.purpose, args.wait, kind="reset") as held:
             with open_when_free(port):
                 pass
             data, reason = reset_and_capture(port, output, args.seconds, None)
@@ -528,7 +549,8 @@ def reset_device(args, store, port):
         final_path = record_capture(
             output, managed, started_at=started_at, port=port, owner=args.owner,
             purpose=args.purpose, command="reset", build_id=latest_build_id_from_bytes(data),
-            worktree=str(Path.cwd()), commit=git_commit(), reason=reason, error=error)
+            worktree=str(Path.cwd()), commit=git_commit(), reason=reason, error=error,
+            acquired_at=held.held.get("acquired_at") if "held" in locals() else None)
     print_reset_output(data, getattr(args, "verbose", False))
     print("reset capture: " + str(final_path))
     print("reset capture ended: " + reason + "; bytes may have been lost in reset gap")
@@ -629,16 +651,33 @@ def reset_and_read_build_id(port, seconds=12, expected_build_id=None):
         return None, reason
 
 
-def holding(store, port, args, held_lock):
+def holding(store, port, args, held_lock, kind):
     """The lock a command runs under: a fresh one, or `held_lock` when a
     batch already holds the board for the whole sequence."""
     if held_lock is not None:
         return contextlib.nullcontext(held_lock)
-    return HeldLock(store, port, args.owner, args.purpose, args.wait)
+    return HeldLock(store, port, args.owner, args.purpose, args.wait, kind=kind)
+
+
+def verify_flashed_image(port, build_dir, output=None):
+    require_port_lock(port)
+    manifest = build_dir / "flasher_args.json"
+    if not manifest.is_file():
+        raise RuntimeError("flash arguments missing: " + str(manifest))
+    flash_files = json.loads(manifest.read_text(encoding="utf-8"))["flash_files"]
+    images = [(offset, build_dir / name) for offset, name in flash_files.items()
+              if Path(name).name == "launcher.bin"]
+    if len(images) != 1 or not images[0][1].is_file():
+        raise RuntimeError("app image missing from flash arguments: " + str(manifest))
+    offset, image = images[0]
+    command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
+               "--after", "hard_reset", "verify_flash", offset, str(image)]
+    subprocess.run(command, check=True, stdout=output, stderr=subprocess.STDOUT if output else None)
+    return image
 
 
 def flash(args, store, port, held_lock=None, extra_flags=()):
-    with holding(store, port, args, held_lock) as held:
+    with holding(store, port, args, held_lock, "flash") as held:
         with open_when_free(port):
             pass
         worktree = Path(args.worktree).resolve()
@@ -667,28 +706,24 @@ def flash(args, store, port, held_lock=None, extra_flags=()):
                                stdout=stream, stderr=subprocess.STDOUT, check=True,
                                env=environment)
             expected = latest_build_id_from_bytes(Path(log).read_bytes())
-            if expected:
-                store.set_expected_build_id(port, held.held["token"], expected)
-            else:
-                print("build id is unverified: the build log has no BUILD_ID",
-                      file=sys.stderr)
-            actual, reason = reset_and_read_build_id(port, seconds=FLASH_BOOT_SECONDS,
-                                                     expected_build_id=expected)
-            if expected and not actual:
-                raise RuntimeError("flashed boot did not provide BUILD_ID after watchdog reset")
-            elif expected and actual != expected:
-                raise RuntimeError(
-                    "flashed build id mismatch: expected " + expected + ", got " + actual)
-            elif expected:
-                build_id = actual
-                print("verified BUILD_ID=" + actual + " (" + reason + ")")
+            build_dir = worktree / "launcher" / ("build" if args.variant == "release"
+                                                 else "build." + args.variant)
+            id_file = build_dir / "build_id.txt"
+            if not expected or not id_file.is_file() or id_file.read_text(encoding="ascii").strip() != expected:
+                raise RuntimeError("build id missing or inconsistent in flash output")
+            store.set_expected_build_id(port, held.held["token"], expected)
+            with open(log, "ab") as stream:
+                image = verify_flashed_image(port, build_dir, stream)
+            build_id = expected
+            print("verified BUILD_ID=" + expected + " (flash image " + str(image) + ")")
         except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
             error = str(caught)
             raise
         finally:
             record_capture(log, managed, started_at=started_at, port=port, owner=args.owner,
                            purpose=args.purpose, command="flash", build_id=build_id,
-                           worktree=str(worktree), commit=git_commit(worktree), error=error)
+                           worktree=str(worktree), commit=git_commit(worktree), error=error,
+                           acquired_at=held.held.get("acquired_at"))
         return build_id or expected
 
 
@@ -704,7 +739,7 @@ def run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
     reason = None
     error = None
     try:
-        with holding(store, port, args, held_lock):
+        with holding(store, port, args, held_lock, "run-suite") as held:
             with open_when_free(port) as connection:
                 connection.write(("\nRUNSUITE " + args.suite + "\n").encode("ascii"))
                 connection.flush()
@@ -719,7 +754,8 @@ def run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
             purpose=args.purpose, command="run-suite", suite=args.suite,
             build_id=latest_build_id_from_bytes(data) or args.expect_build_id,
             worktree=worktree if worktree is not None else str(Path.cwd()),
-            commit=commit if commit is not None else git_commit(), reason=reason, error=error)
+            commit=commit if commit is not None else git_commit(), reason=reason, error=error,
+            acquired_at=held.held.get("acquired_at") if "held" in locals() else None)
         try:
             report_path = device_report.write_report_for_capture(
                 final_path, records_root() / "index.jsonl")
@@ -745,7 +781,7 @@ def selftest(args, store, port):
     extra_flags = ["--autorun"]
     if args.perf_scope:
         extra_flags.append("--perf-scope")
-    with HeldLock(store, port, args.owner, args.purpose, args.wait) as held:
+    with HeldLock(store, port, args.owner, args.purpose, args.wait, kind="selftest") as held:
         flash_args = argparse.Namespace(owner=args.owner, purpose=args.purpose + " (flash)",
                                         wait=args.wait, worktree=args.worktree,
                                         variant="diag", out=None)
@@ -769,7 +805,8 @@ def selftest(args, store, port):
                 output, managed, started_at=started_at, port=port, owner=args.owner,
                 purpose=args.purpose, command="selftest",
                 build_id=latest_build_id_from_bytes(data) or build_id,
-                worktree=worktree, commit=commit, reason=reason, error=error)
+                worktree=worktree, commit=commit, reason=reason, error=error,
+                acquired_at=held.held.get("acquired_at"))
             try:
                 report_path = device_report.write_report_for_capture(
                     final_path, records_root() / "index.jsonl")
@@ -814,7 +851,8 @@ def listen(args, store, port):
     echo = getattr(args, "echo", False)
     sink = sys.stdout.buffer if echo else ErrorLineSink(sys.stdout)
     try:
-        with HeldLock(store, port, args.owner, args.purpose, args.wait, announce_waiters=True):
+        with HeldLock(store, port, args.owner, args.purpose, args.wait,
+                      announce_waiters=True, kind="listen") as held:
             with open_when_free(port) as connection:
                 data, reason = capture(connection, output, args.seconds, None,
                                        echo=sink, complete=None)
@@ -828,7 +866,8 @@ def listen(args, store, port):
         final_path = record_capture(output, managed, started_at=started_at, port=port,
                                     owner=args.owner, purpose=args.purpose, command="listen",
                                     build_id=latest_build_id_from_bytes(data), worktree=str(Path.cwd()),
-                                    commit=git_commit(), reason=reason, error=error)
+                                    commit=git_commit(), reason=reason, error=error,
+                                    acquired_at=held.held.get("acquired_at") if "held" in locals() else None)
     if not echo:
         sink.finish()
     elif data and not data.endswith(b"\n"):
@@ -885,7 +924,7 @@ def send(args, store, port):
     """
     data = bytearray()
     found = []
-    with HeldLock(store, port, args.owner, args.purpose, args.wait):
+    with HeldLock(store, port, args.owner, args.purpose, args.wait, kind="send"):
         with open_when_free(port) as connection:
             connection.reset_input_buffer()
             connection.write(("\n" + args.line + "\n").encode("ascii"))
@@ -925,7 +964,7 @@ def screenshot(args, store, port):
     def report(message):
         print(message, file=sys.stderr, flush=True)
 
-    with HeldLock(store, port, args.owner, args.purpose, args.wait):
+    with HeldLock(store, port, args.owner, args.purpose, args.wait, kind="screenshot"):
         with open_when_free(port) as connection:
             png, state_json = screenshot_tool.read_screenshot(connection, args.timeout, on_status=report)
 
@@ -970,7 +1009,7 @@ def batch(args, store, port):
     worktree = str(Path(args.worktree).resolve())
     started_at = now()
     entries = []
-    with HeldLock(store, port, args.owner, args.purpose, args.wait) as held:
+    with HeldLock(store, port, args.owner, args.purpose, args.wait, kind="batch") as held:
         flash_args = argparse.Namespace(owner=args.owner, purpose=args.purpose + " (flash)",
                                         wait=args.wait, worktree=args.worktree,
                                         variant=args.variant, out=None)
@@ -1003,6 +1042,10 @@ def batch(args, store, port):
     summary_path.write_text(device_report.batch_summary_markdown(entries, meta),
                             encoding="utf-8")
     append_manifest({"started_at": started_at.isoformat(), "port": port, "owner": args.owner,
+                     "acquired_at": datetime.fromtimestamp(held.held["acquired_at"]).isoformat()
+                     if held.held.get("acquired_at") else None,
+                     "duration_seconds": time.time() - held.held["acquired_at"]
+                     if held.held.get("acquired_at") else None,
                      "purpose": args.purpose, "command": "batch", "suite": ",".join(args.suite),
                      "build_id": build_id, "worktree": worktree, "commit": meta["commit"],
                      "reason": None,
