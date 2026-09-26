@@ -28,13 +28,14 @@
 #               behaviour coverage, so never a merge gate, and its numbers
 #               compare only with other perf-scoped captures.
 #   --build-only  build and stop: no device needed, nothing flashed.
-#               Flashing needs AUTANA_DEVICE_LOCK_TOKEN and AUTANA_BOARD (the
-#               board's USB serial number) in the environment - device.py's
-#               own `flash`/`selftest`/`batch` set both after taking that
-#               board's lock, so run `autana flash rel|dev|diag` rather than
-#               this script directly. --build-only needs neither.
 #   IDF_EXPORT  path to ESP-IDF's export script - export.bat on Windows,
 #               export.sh elsewhere. Default: the one under $IDF_PATH.
+#
+# Flashing needs AUTANA_DEVICE_LOCK_TOKEN and AUTANA_BOARD (the board's USB
+# serial number) in the environment. device.py's `flash`, `selftest` and
+# `batch` set both after taking that board's lock, so run
+# `autana flash rel|dev|diag` rather than this script directly. --build-only
+# needs neither.
 #
 # Run from anywhere (it cds to launcher/ itself); double-click from Explorer
 # if .sh is associated with Git Bash, or right-click launcher/tools/ ->

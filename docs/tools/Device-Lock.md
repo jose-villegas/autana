@@ -44,16 +44,21 @@ looked up again before every port open and every esptool call.
 
 A command acts on the board named by `--board <serial>`, else by
 `AUTANA_BOARD`, else on the only Espressif (VID `0x303A`) board plugged in.
-Case does not matter. With several boards plugged in and none named, a
-command fails and lists their serial numbers; each board has its own lock
-and queue.
+With none plugged in it takes the only board a lock, reservation or waiter
+names, so a command can queue while the holder's reset has the board off
+USB, and `take-back` works on an unplugged board; opening the port still
+waits for USB. Case and surrounding spaces do not matter. With several
+candidates and none named, a command fails and lists their serial numbers;
+each board has its own lock and queue.
 
 ## What a flash proves
 
 A flash succeeds when esptool's `write_flash` hash-verified every region it
 wrote and the flash log carries the build's `BUILD_ID=` line; `flash` then
 prints `flashed BUILD_ID=<id> (esptool hash verified; boot not verified)`.
-It proves the write, not the boot, for every variant. What boots is proven
+It proves the write, not the boot, for every variant. When `build_flash.sh`
+fails, `flash` fails with the log's first error line (esptool's
+`Could not open COM3 ...`, say) and the log's path. What boots is proven
 only by a console that names it: a `selftest` or `batch` capture, which fails
 on any other `BUILD_ID`, or `autana buildid` on a development build.
 
@@ -75,7 +80,7 @@ sequenceDiagram
     Dev->>Sh: run with AUTANA_DEVICE_LOCK_TOKEN and AUTANA_BOARD
     Sh->>Sh: build, print BUILD_ID
     Sh->>Lock: check-token for AUTANA_BOARD
-    Sh->>Board: look up the board's COM port by serial
+    Sh->>Sh: device.py resolve-port - AUTANA_BOARD's COM port now
     Sh->>Idf: idf flash on that port
     Idf->>Board: write_flash, hash-verify each region
     Idf->>Board: RTS reset
@@ -110,6 +115,19 @@ the live token for the named board just before `idf flash`; it cannot prove
 ownership during the esptool write itself, which is what the heartbeat is
 for.
 
+```mermaid
+stateDiagram-v2
+    state "Held, renewed by a heartbeat every 5 s" as Held
+    [*] --> Queued: ticket in the board's queue
+    Queued --> Held: first in line, board free
+    Queued --> [*]: wait ran out, or the waiter died
+    Held --> Stale: heartbeat 10 min old, or holder dead
+    Stale --> Lost: a waiter reclaims it, or the heartbeat is refused
+    Held --> Lost: lock replaced
+    Lost --> [*]: the command stops and fails
+    Held --> [*]: released when the command ends
+```
+
 After winning the lock a command also waits for the serial port itself to
 come free, since a previous holder's reader can outlive its lock. The
 default lock wait is ten minutes; `--wait 0` returns at once when the board
@@ -142,12 +160,15 @@ epoch seconds; an estimate without enough history is `null`.
 Estimates come from `durations.jsonl` beside the lock files, one file shared
 by every checkout and session on the machine. Each held command records how
 long it held the board, nested `flash` and `run-suite` inside `batch` or
-`selftest` included. A command that raises, exits non-zero, or loses its lock
-is recorded with its error and never counts. An estimate is the median of a
-command kind's last 30 successful runs, after at least three; a holder past
-it is estimated free now, and a human reservation or an unknown duration
-ahead of a waiter makes its estimate unknown. Past 400 lines the file is cut
-back to the last 30 successful runs of each kind.
+`selftest` included. A command that raises, exits non-zero, reports a failed
+suite, or loses its lock is recorded with its error and never counts. An
+estimate is the median of a command kind's last `ESTIMATE_RECENT_RUNS`
+successful runs, after at least `ESTIMATE_MINIMUM_RUNS` (constants in
+`device_lock.py`); a holder past it is estimated free now, and a human
+reservation or an unknown duration ahead of a waiter makes its estimate
+unknown. Past `DURATIONS_TRIM_LINES` lines the file is cut back to each
+kind's last `ESTIMATE_RECENT_RUNS` successful runs, and then to the newest
+`DURATIONS_TRIM_LINES` of those.
 
 ### Talking to a running device: `send`
 
@@ -191,8 +212,9 @@ The summary (`<HHMMSS>_batch_<owner>.md` in the day's records folder) shows,
 per suite: every timing per run with min, max and spread; every test whose
 result changed between runs of the image - a test that flaps on one binary is
 a finding, not noise; the tests that failed in every run; and each
-`PERF TARGET` per run. A capture that errors is recorded and the batch
-continues; only a failed build or flash stops it. `--perf-scope` builds the
+`PERF TARGET` per run. A capture that errors or reports a failed test
+is recorded and the batch continues, then exits 1; only a failed build or
+flash stops it. `--perf-scope` builds the
 perf-scoped image. `--out PATH` writes the one raw capture to `PATH` - only
 with exactly one `--suite` and `--runs 1`, which is how `device_report.sh`'s
 RUNSUITE-scoped reports (report_boot_anim_perf.sh) call it. `selftest`
@@ -249,8 +271,8 @@ python scripts/device/device.py report .records/device/20260916/153113_runsuite-
 The lock root is `%TEMP%/autana-device` (`AUTANA_DEVICE_LOCK_ROOT`
 overrides it). Per board, with `:` in the serial number written as `_`:
 `<serial>.json` is the lock - `board`, `owner`, `purpose`, `kind`,
-`acquired_at`, `heartbeat_at`, `expected_build_id`, `host`, `pid`, and an
-opaque `token`; `<serial>.queue/` holds the FIFO waiter tickets (a dead
+`acquired_at`, `heartbeat_at`, `expected_build_id`, `host`, `pid`, `log`
+(whom it was reclaimed from, if anyone), and an opaque `token`; `<serial>.queue/` holds the FIFO waiter tickets (a dead
 waiter's is discarded); `<serial>.human.json` is a person's reservation.
 
 `device.py --owner <owner> release --token <token>` releases a lock this
