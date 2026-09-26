@@ -9,7 +9,6 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "ui/ridge_layers.h"
 #include "ui/ridge_motion.h"
 
 #define COLUMNS 300
@@ -87,14 +86,6 @@ test_the_height_is_the_rigid_ridge_plus_the_wave_at_the_top_of_a_breath(void) {
     const int halfway_out =
         ridge_motion_height(&motion, &params, 2000, 2600, 0) - ridge_motion_wave(&motion, &params, 0);
     TEST_ASSERT_INT_WITHIN(4, 2000 + 600 * params.breath_depth / 256, halfway_out);
-}
-
-static void
-test_a_moved_layer_marks_only_its_old_and_new_lip_and_light_reach(void) {
-    int lo, hi;
-    ridge_layer_dirty_span(160, 208, 12, 13, &lo, &hi);
-    TEST_ASSERT_EQUAL_INT(-3, lo);
-    TEST_ASSERT_EQUAL_INT(38, hi);
 }
 
 static void
@@ -248,7 +239,6 @@ test_easing_in_starts_and_ends_gently_and_is_half_way_at_half_time(void) {
 
 void
 suite_ridge_motion(void) {
-    RUN_TEST(test_a_moved_layer_marks_only_its_old_and_new_lip_and_light_reach);
     RUN_TEST(test_a_breath_starts_rigid_swells_and_comes_back_rigid);
     RUN_TEST(test_the_height_is_the_rigid_ridge_plus_the_wave_at_the_top_of_a_breath);
     RUN_TEST(test_the_wave_stays_within_its_height_and_is_one_length_long);

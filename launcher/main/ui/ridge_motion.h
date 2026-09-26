@@ -6,7 +6,7 @@
  * slope, and the wave is pushed down it and coasts on after.
  *
  * Pure: time, the slope and how much of each are passed in, heights come
- * out. Q4 heights, as gfx_glow.h takes them; phases are trig.h's, 65536 to
+ * out. Heights are Q4; phases are trig.h's, 65536 to
  * the turn.
  */
 #pragma once

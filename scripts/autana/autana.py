@@ -766,7 +766,7 @@ def tune_dict(row):
 
 
 def full_name(name):
-    """`trail` for `ridge.trail`, when only one tunable ends that way."""
+    """`theme_rgb` for `ridge.theme_rgb`, when only one tunable ends that way."""
     if "." in name:
         return name
     matches = [row[0] for row in tunables() if row[0].split(".", 1)[-1] == name]
@@ -779,7 +779,7 @@ def full_name(name):
 
 def exact_tune_matches(rows, name):
     """Rows whose name IS `name`, or whose name ends `.<name>` when that is
-    unambiguous - `trail` for `ridge.trail`, the same drop-the-owner shorthand
+    unambiguous - `theme_rgb` for `ridge.theme_rgb`, the same drop-the-owner shorthand
     `full_name()` resolves for a set/reset."""
     if "." in name:
         return [row for row in rows if row[0] == name]

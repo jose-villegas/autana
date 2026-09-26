@@ -4,7 +4,6 @@
 #include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font_roles.h"
 #include "gfx/gfx_full_redraw.h"
-#include "gfx/gfx_glow.h"
 #include "gfx/gfx_heal.h"
 #include "gfx/gfx_present_guard.h"
 #include "gfx/gfx_target.h"
@@ -1175,24 +1174,6 @@ gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha
 
     if (!band_render_active) {
         mark_fill(x0, y0, x1, y1);
-    }
-}
-
-void
-gfx_glow_curve_posed(const gfx_glow_field_t* field, const gfx_glow_map_t* map, int view_h, gfx_glow_pose_t pose,
-                     int16_t* lit_lo, int16_t* lit_hi, int trail, const gfx_glow_style_t* style) {
-    GFX_PRESENT_GUARD();
-    if (!GFX_REQUIRE_FRAMEBUFFER()) {
-        return;
-    }
-    const gfx_target_t target = current_target();
-    for (int row = 0; row < GFX_HEIGHT; row += GFX_GLOW_ROW_BLOCK) {
-        const gfx_glow_box_t box =
-            gfx_glow_draw_posed_rows(target, clip.x0, clip.y0, clip.x1, clip.y1, GFX_WIDTH, GFX_HEIGHT, field, map,
-                                     view_h, pose, row, row + GFX_GLOW_ROW_BLOCK, lit_lo, lit_hi, trail, style);
-        if (!band_render_active && box.x1 > box.x0) {
-            gfx_mark_dirty(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
-        }
     }
 }
 
