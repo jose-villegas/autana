@@ -24,6 +24,7 @@ from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must
 
 
 BAUD = 115200
+BOARD_ID = "usb-303a"
 BUILD_ID = re.compile(rb"BUILD_ID=([^\s\r\n]+)")
 SUITE_RESULT = re.compile(rb":\d+:.*:(PASS|FAIL)(?:\r?$|:)", re.MULTILINE)
 
@@ -89,6 +90,7 @@ def find_port():
 
 
 def open_serial(port):
+    port = current_port(port)
     require_port_lock(port)
     try:
         import serial
@@ -170,9 +172,17 @@ def append_manifest(entry, root=None):
         stream.write(json.dumps(entry, sort_keys=True) + "\n")
 
 
+def record_duration(kind, started, error=None):
+    root = records_root()
+    root.mkdir(parents=True, exist_ok=True)
+    with open(root / "durations.jsonl", "a", encoding="utf-8") as stream:
+        stream.write(json.dumps({"command": kind, "duration_seconds": time.monotonic() - started,
+                                 "error": error}) + "\n")
+
+
 def record_capture(path, managed, *, started_at, port, owner, purpose, command, commit,
-                   suite=None, build_id=None, worktree=None, reason=None, error=None, root=None,
-                   acquired_at=None):
+                    suite=None, build_id=None, worktree=None, reason=None, error=None, root=None,
+                    acquired_at=None):
     """The permanent trail: written for every flash/run-suite/listen call, so
     even a capture left behind in a doomed worktree still has metadata here."""
     path = Path(path)
@@ -185,7 +195,6 @@ def record_capture(path, managed, *, started_at, port, owner, purpose, command, 
     append_manifest({
         "started_at": started_at.isoformat(),
         "acquired_at": datetime.fromtimestamp(acquired_at).isoformat() if acquired_at else None,
-        "duration_seconds": max(0, time.time() - acquired_at) if acquired_at else None,
         "port": port,
         "owner": owner,
         "purpose": purpose,
@@ -228,7 +237,10 @@ def open_when_free(port, seconds=PORT_WAIT_SECONDS, opener=None, sleep=time.slee
             if waited:
                 print("port " + port + " came free", file=sys.stderr)
             return connection
-        except OSError as error:
+        except (OSError, RuntimeError) as error:
+            if isinstance(error, RuntimeError) and "no USB Serial/JTAG board found" not in str(error):
+                raise
+            require_live_lock()
             if now() >= deadline:
                 raise RuntimeError(port + " still " + reason + " when the "
                                    + str(int(seconds)) + "s wait ran out: "
@@ -298,14 +310,28 @@ def print_reset_output(data, verbose):
 ACTIVE_LOCK = threading.local()
 
 
+def current_port(port):
+    active = getattr(ACTIVE_LOCK, "held", None)
+    return find_port() if active and active.store.board_id else port
+
+
 def require_port_lock(port):
     active = getattr(ACTIVE_LOCK, "held", None)
     if active is None:
         raise RuntimeError("serial port access requires the device lock")
-    store, locked_port, token = active
-    current = store.status(locked_port)["lock"]
-    if not current or current["token"] != token:
-        raise RuntimeError("device lock was lost before serial port access")
+    require_live_lock()
+    if active.store.board_id:
+        if find_port() != port:
+            raise RuntimeError("port does not belong to the locked board")
+    elif port != active.port:
+        raise RuntimeError("port does not belong to the locked board")
+
+
+def require_live_lock():
+    active = getattr(ACTIVE_LOCK, "held", None)
+    if active and (active.lost.is_set() or
+                   not active.store.check_token(active.port, active.held["token"])):
+        raise RuntimeError("device lock was lost")
 
 
 class HeldLock:
@@ -313,14 +339,32 @@ class HeldLock:
         self.store = store
         self.announce_waiters = announce_waiters
         self.port = port
-        self.held = store.acquire(port, owner, purpose, wait=wait, kind=kind)
+        self.last_notice = 0
+        self.held = store.acquire(port, owner, purpose, wait=wait, kind=kind,
+                                  on_wait=self.wait_notice)
         if not self.held:
             raise RuntimeError("device lock was not acquired")
         if self.held["log"]:
             print(self.held["log"], file=sys.stderr)
         self.stop = threading.Event()
+        self.lost = threading.Event()
         self.notified = set()
         self.thread = threading.Thread(target=self.keep_alive, daemon=True)
+        self.started = time.monotonic()
+        self.kind = kind or purpose
+
+    def wait_notice(self, ticket):
+        if self.store.now() - self.last_notice < 30:
+            return
+        status = self.store.status(self.port)
+        place = next((index for index, item in enumerate(status["queue"], 1)
+                      if item["ticket"] == ticket), None)
+        if place:
+            estimate = device_lock.queue_estimates(
+                status, self.store.now(), device_lock.duration_history(records_root())).get(ticket)
+            print(f"waiting for board: queue place {place}; estimated start "
+                  f"{device_lock.format_estimate(estimate)}", file=sys.stderr)
+        self.last_notice = self.store.now()
 
     def keep_alive(self):
         # Only a holder the person can end with Ctrl+C invites them to.
@@ -334,33 +378,34 @@ class HeldLock:
                           f'({ticket["purpose"]}) - Ctrl+C to hand it over', file=sys.stderr)
             if time.monotonic() >= next_heartbeat:
                 if not self.store.heartbeat(self.port, self.held["token"]):
+                    self.lost.set()
                     print("device lock was lost", file=sys.stderr)
                     return
                 next_heartbeat = time.monotonic() + 30
 
     def __enter__(self):
         self.previous_lock = getattr(ACTIVE_LOCK, "held", None)
-        ACTIVE_LOCK.held = (self.store, self.port, self.held["token"])
+        ACTIVE_LOCK.held = self
         self.thread.start()
         return self
 
-    def __exit__(self, unused_type, unused_value, unused_traceback):
+    def __exit__(self, error_type, error_value, unused_traceback):
         self.stop.set()
         try:
             self.thread.join()
         finally:
+            lost = self.lost.is_set() or not self.store.check_token(self.port, self.held["token"])
             self.store.release(self.port, self.held["token"])
             ACTIVE_LOCK.held = self.previous_lock
+            record_duration(self.kind, self.started,
+                            str(error_value) if error_type else "device lock was lost" if lost else None)
+        if lost and error_type is None:
+            raise RuntimeError("device lock was lost")
 
 
 def tests_done(data):
     return (b"TESTS_DONE" in data or b"SELFTEST_COMPLETE" in data or
             (b"Tests " in data and b"Failures" in data))
-
-
-def build_id_heard(data):
-    """Only a finished line counts: an id can arrive split across two reads."""
-    return BUILD_ID.search(data[:data.rfind(b"\n") + 1]) is not None
 
 
 def capture(connection, output, max_seconds, idle_seconds, expected_build_id=None,
@@ -376,9 +421,11 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
         suite_complete = b"RUNSUITE_COMPLETE name=" + suite_name.encode("ascii") + b" "
     with open(output, "ab" if append else "wb") as stream:
         while deadline is None or time.monotonic() < deadline:
+            require_live_lock()
             try:
                 chunk = connection.read(4096)
             except OSError:
+                require_live_lock()
                 # The USB serial port re-enumerates under the reader now and
                 # then; what was read is still a capture worth reporting.
                 return bytes(data), "port lost"
@@ -425,6 +472,7 @@ def reset(port, after="hard_reset"):
     capture hears the boot from its first line. It cannot restart a chip in
     download mode; watchdog_reset can, but re-enumerates USB, losing the
     early boot lines a release image's BUILD_ID is among."""
+    port = current_port(port)
     require_port_lock(port)
     command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
                "--after", after, "chip_id"]
@@ -450,24 +498,11 @@ def reset_and_capture(port, output, seconds, idle_seconds, expected_build_id=Non
 
 RESET_FIRST_BYTE_SECONDS = 2
 RESET_REOPEN_SECONDS = 10
-FLASH_PORT_WAIT_SECONDS = 30
-FLASH_BOOT_SECONDS = 12
-
-
-def open_usb_after_flash(seconds):
-    deadline = time.monotonic() + seconds
-    while True:
-        try:
-            port = find_port()
-            return port, open_serial(port)
-        except (OSError, RuntimeError):
-            if time.monotonic() >= deadline:
-                raise RuntimeError("USB Serial/JTAG port did not return after the flash")
-            time.sleep(0.2)
+FLASH_PORT_WAIT_SECONDS = 12
 
 
 def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=None,
-                        complete=tests_done, follow_usb=False):
+                        complete=tests_done):
     """A watchdog reset or a power cycle re-enumerates USB Serial/JTAG and
     kills an open handle, so no capture spans one: what the board prints
     before the port reopens is lost. It re-enumerates late enough that the
@@ -488,13 +523,11 @@ def capture_after_reset(port, output, seconds, idle_seconds, expected_build_id=N
         if remaining <= 0:
             return ended("timeout")
         try:
-            if follow_usb:
-                unused_port, connection = open_usb_after_flash(remaining)
-            else:
-                connection = open_when_free(port, remaining,
-                                            reason="re-enumerating after reset")
-        except RuntimeError:
-            if first_reopen and not follow_usb:
+            connection = open_when_free(port, remaining,
+                                        reason="re-enumerating after reset")
+        except RuntimeError as error:
+            if ("device lock was lost" in str(error) or
+                    "port does not belong" in str(error) or first_reopen):
                 raise
             return ended("port lost")
         first_reopen = False
@@ -616,75 +649,23 @@ def find_elf_for_build_id(worktree, build_id):
     return None
 
 
-def reset_and_read_build_id(port, seconds=12, expected_build_id=None):
-    """Read the boot after flashing, then use the watchdog if it was missed."""
-    data, reason = capture_after_reset(port, os.devnull, seconds, None, expected_build_id,
-                                       complete=build_id_heard, follow_usb=True)
-    actual = latest_build_id_from_bytes(data)
-    if actual:
-        return actual, reason
-    port, connection = open_usb_after_flash(FLASH_PORT_WAIT_SECONDS)
-    connection.close()
-    reset(port, after="watchdog_reset")
-    data, reason = capture_after_reset(port, os.devnull, seconds, None, expected_build_id,
-                                       complete=build_id_heard, follow_usb=True)
-    actual = latest_build_id_from_bytes(data)
-    if actual:
-        return actual, reason
-    unused_port, connection = open_usb_after_flash(FLASH_PORT_WAIT_SECONDS)
-    with connection:
-        connection.write(b"BUILDID\n")
-        connection.flush()
-        deadline = time.monotonic() + 3
-        pending = b""
-        while time.monotonic() < deadline:
-            chunk = connection.read(4096)
-            if not chunk:
-                continue
-            pending += chunk
-            lines = pending.split(b"\n")
-            pending = lines.pop()
-            for line in lines:
-                actual = build_id_from_bytes(line)
-                if actual:
-                    return actual, "console"
-        return None, reason
-
-
+@contextlib.contextmanager
 def holding(store, port, args, held_lock, kind):
     """The lock a command runs under: a fresh one, or `held_lock` when a
     batch already holds the board for the whole sequence."""
     if held_lock is not None:
-        return contextlib.nullcontext(held_lock)
-    return HeldLock(store, port, args.owner, args.purpose, args.wait, kind=kind)
-
-
-def verify_flashed_image(port, build_dir, output=None):
-    require_port_lock(port)
-    manifest = build_dir / "flasher_args.json"
-    if not manifest.is_file():
-        raise RuntimeError("flash arguments missing: " + str(manifest))
-    flash_files = json.loads(manifest.read_text(encoding="utf-8"))["flash_files"]
-    images = [(offset, build_dir / name) for offset, name in flash_files.items()
-              if Path(name).name == "launcher.bin"]
-    if len(images) != 1 or not images[0][1].is_file():
-        raise RuntimeError("app image missing from flash arguments: " + str(manifest))
-    offset, image = images[0]
-    deadline = time.monotonic() + FLASH_PORT_WAIT_SECONDS
-    while True:
+        started = time.monotonic()
+        error = None
         try:
-            port = find_port()
-            with open_serial(port):
-                pass
-            break
-        except (OSError, RuntimeError) as error:
-            if time.monotonic() >= deadline:
-                raise RuntimeError("USB Serial/JTAG port did not return after flash") from error
-            time.sleep(0.2)
-    command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
-               "--after", "hard_reset", "verify_flash", offset, str(image)]
-    subprocess.run(command, check=True, stdout=output, stderr=subprocess.STDOUT if output else None)
-    return image
+            yield held_lock
+        except BaseException as caught:
+            error = str(caught)
+            raise
+        finally:
+            record_duration(kind, started, error)
+    else:
+        with HeldLock(store, port, args.owner, args.purpose, args.wait, kind=kind) as held:
+            yield held
 
 
 def flash(args, store, port, held_lock=None, extra_flags=()):
@@ -716,17 +697,19 @@ def flash(args, store, port, held_lock=None, extra_flags=()):
                 subprocess.run(command, cwd=worktree, stdin=subprocess.DEVNULL,
                                stdout=stream, stderr=subprocess.STDOUT, check=True,
                                env=environment)
+            require_live_lock()
             expected = latest_build_id_from_bytes(Path(log).read_bytes())
             build_dir = worktree / "launcher" / ("build" if args.variant == "release"
                                                  else "build." + args.variant)
             id_file = build_dir / "build_id.txt"
             if not expected or not id_file.is_file() or id_file.read_text(encoding="ascii").strip() != expected:
                 raise RuntimeError("build id missing or inconsistent in flash output")
-            store.set_expected_build_id(port, held.held["token"], expected)
-            with open(log, "ab") as stream:
-                image = verify_flashed_image(port, build_dir, stream)
+            if not store.set_expected_build_id(port, held.held["token"], expected):
+                raise RuntimeError("device lock was lost")
             build_id = expected
-            print("verified BUILD_ID=" + expected + " (flash image " + str(image) + ")")
+            print("flashed BUILD_ID=" + expected + " (esptool hash verified)")
+            if args.variant == "release":
+                print("release boot not verified")
         except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
             error = str(caught)
             raise
@@ -751,7 +734,7 @@ def run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
     error = None
     try:
         with holding(store, port, args, held_lock, "run-suite") as held:
-            with open_when_free(port) as connection:
+            with open_when_free(port, FLASH_PORT_WAIT_SECONDS if held_lock else PORT_WAIT_SECONDS) as connection:
                 connection.write(("\nRUNSUITE " + args.suite + "\n").encode("ascii"))
                 connection.flush()
                 data, reason = capture(connection, output, args.max_seconds, args.idle_seconds,
@@ -804,7 +787,7 @@ def selftest(args, store, port):
         error = None
         output, managed = resolve_capture_path(args.out, "selftest", args.owner, started_at)
         try:
-            with open_when_free(port):
+            with open_when_free(port, FLASH_PORT_WAIT_SECONDS):
                 pass
             data, reason = reset_and_capture(port, output, args.max_seconds, args.idle_seconds,
                                              build_id)
@@ -942,6 +925,7 @@ def send(args, store, port):
             connection.flush()
             deadline = time.monotonic() + args.seconds
             while time.monotonic() < deadline:
+                require_live_lock()
                 data.extend(connection.read(4096))
                 found, complete = replies_to(bytes(data), args.reply, args.until)
                 if complete:
@@ -978,6 +962,7 @@ def screenshot(args, store, port):
     with HeldLock(store, port, args.owner, args.purpose, args.wait, kind="screenshot"):
         with open_when_free(port) as connection:
             png, state_json = screenshot_tool.read_screenshot(connection, args.timeout, on_status=report)
+            require_live_lock()
 
     if getattr(args, "framebuffer", False):
         image_turn_quarter = 0
@@ -1055,8 +1040,6 @@ def batch(args, store, port):
     append_manifest({"started_at": started_at.isoformat(), "port": port, "owner": args.owner,
                      "acquired_at": datetime.fromtimestamp(held.held["acquired_at"]).isoformat()
                      if held.held.get("acquired_at") else None,
-                     "duration_seconds": time.time() - held.held["acquired_at"]
-                     if held.held.get("acquired_at") else None,
                      "purpose": args.purpose, "command": "batch", "suite": ",".join(args.suite),
                      "build_id": build_id, "worktree": worktree, "commit": meta["commit"],
                      "reason": None,
@@ -1105,6 +1088,7 @@ def main(argv=None):
     parser.add_argument("--wait", type=float, default=600)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("status")
+    subparsers.add_parser("resolve-port")
     release = subparsers.add_parser("release")
     release.add_argument("--token", required=True)
     hand = subparsers.add_parser("hand-to-human")
@@ -1220,9 +1204,13 @@ def main(argv=None):
 
     try:
         port = args.port or find_port()
-        store = device_lock.LockStore()
+        if args.command == "resolve-port":
+            print(port)
+            return 0
+        store = device_lock.LockStore(board_id=BOARD_ID)
         if args.command == "status":
-            device_lock.print_status(store.status(port))
+            device_lock.print_status(store.status(port),
+                                     durations=device_lock.duration_history(records_root()))
             return 0
         if args.command == "release":
             return 0 if store.release(port, args.token) else 1
@@ -1238,7 +1226,8 @@ def main(argv=None):
             return wait_for_human_release(store, port, reservation_id, args.wait)
         if args.command == "take-back":
             store.clear_human(port)
-            device_lock.print_status(store.status(port))
+            device_lock.print_status(store.status(port),
+                                     durations=device_lock.duration_history(records_root()))
             return 0
         if args.command == "flash":
             extra_flags = ["--perf-scope"] if args.perf_scope else []

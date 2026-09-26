@@ -382,21 +382,6 @@ class DeviceTests(unittest.TestCase):
             args.out = str(Path(directory) / "capture.log")
             self.assertEqual(device.run_suite(args, store, "COM5"), 1)
 
-    def test_reading_the_build_id_queries_the_console_when_the_boot_has_none(self):
-        class RepliesWhenAsked(FakeConnection):
-            def read(self, size):
-                if self.writes:
-                    return b"BUILD_ID=reply\n"
-                return super().read(size)
-
-        connection = RepliesWhenAsked([b"boot\n"])
-        with mock.patch.object(device, "find_port", return_value="COM5"), \
-             mock.patch.object(device, "reset"), \
-             mock.patch.object(device, "open_serial", return_value=connection):
-            actual, reason = device.reset_and_read_build_id("COM5", seconds=1)
-        self.assertEqual((actual, reason), ("reply", "console"))
-        self.assertEqual(connection.writes, [b"BUILDID\n"])
-
     def test_replies_are_found_behind_log_prefixes_and_end_at_a_terminator(self):
         data = (b"I (812) shell: frame 16 ms\n"
                 b"TUNE launcher.ridge_trail=226 min=0 max=255\n"
@@ -678,7 +663,6 @@ class RecordCaptureTests(unittest.TestCase):
             self.assertEqual(json.loads(lines[0]), {
                 "started_at": started_at.isoformat(),
                 "acquired_at": None,
-                "duration_seconds": None,
                 "port": "COM5",
                 "owner": "agent",
                 "purpose": "listen",
@@ -781,51 +765,8 @@ def build_prints(build_id):
     return run
 
 
-class FlashVerificationTests(unittest.TestCase):
-    def run_flash(self, build_id="built", verify_error=None):
-        with tempfile.TemporaryDirectory() as directory:
-            worktree = Path(directory) / "engine"
-            build = worktree / "launcher" / "build"
-            (worktree / "launcher" / "tools" / "build").mkdir(parents=True)
-            (worktree / "launcher" / "tools" / "build" / "build_flash.sh").write_text("")
-            build.mkdir()
-            (build / "build_id.txt").write_text(build_id + "\n")
-            args = Namespace(owner="agent", purpose="flash", wait=0, variant="release",
-                             worktree=str(worktree), out=None)
-            store = mock.Mock()
-            store.acquire.return_value = {"log": "", "token": "token"}
-            def build_run(*unused, **keywords):
-                keywords["stdout"].write(("BUILD_ID=" + build_id + "\n").encode())
-            with mock.patch.object(device, "records_root", return_value=Path(directory)), \
-                 mock.patch.object(device.subprocess, "run", side_effect=build_run), \
-                 mock.patch.object(device, "open_when_free", return_value=FakeConnection([])), \
-                 mock.patch.object(device, "verify_flashed_image",
-                                   side_effect=verify_error or None,
-                                   return_value=build / "launcher.bin") as verify, \
-                 mock.patch.object(device, "git_commit", return_value="deadbeef"):
-                if verify_error:
-                    with self.assertRaises(type(verify_error)):
-                        device.flash(args, store, "COM5")
-                else:
-                    self.assertEqual(device.flash(args, store, "COM5"), build_id)
-            entry = json.loads((Path(directory) / "index.jsonl").read_text().strip())
-            return verify, store, entry
-
-    def test_silent_autorun_console_still_verifies_flash(self):
-        verify, store, entry = self.run_flash()
-        verify.assert_called_once()
-        self.assertEqual(entry["build_id"], "built")
-        store.set_expected_build_id.assert_called_once_with("COM5", "token", "built")
-
-    def test_flash_verification_failure_is_recorded(self):
-        unused_verify, unused_store, entry = self.run_flash(
-            verify_error=subprocess.CalledProcessError(1, "esptool"))
-        self.assertIsNone(entry["build_id"])
-        self.assertIsNotNone(entry["error"])
-
-
 class FlashDefaultPathTests(unittest.TestCase):
-    def test_uses_the_default_path_and_records_the_manifest_when_out_is_omitted(self):
+    def test_flash_uses_esptool_exit_and_build_id_without_boot_console(self):
         with tempfile.TemporaryDirectory() as directory:
             worktree = Path(directory) / "engine"
             (worktree / "launcher" / "tools" / "build").mkdir(parents=True)
@@ -833,21 +774,24 @@ class FlashDefaultPathTests(unittest.TestCase):
             (worktree / "launcher" / "build.dev").mkdir()
             (worktree / "launcher" / "build.dev" / "build_id.txt").write_text("expected\n")
             root = Path(directory) / "records"
-            connection = FakeConnection([b"BUILD_ID=expected\nTESTS_DONE\n"])
+            connection = FakeConnection([])
             args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
                              worktree=str(worktree), out=None)
             store = mock.Mock()
             store.acquire.return_value = {"log": "", "token": "token"}
             fixed_now = datetime(2026, 9, 16, 12, 30, 45)
+            output = io.StringIO()
             with mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device, "now", return_value=fixed_now), \
                  mock.patch.object(device.subprocess, "run", side_effect=build_prints("expected")), \
                  mock.patch.object(device, "find_port", return_value="COM5"), \
                  mock.patch.object(device, "reset"), \
                  mock.patch.object(device, "open_serial", return_value=connection), \
-                 mock.patch.object(device, "verify_flashed_image", return_value=worktree / "launcher" / "build" / "launcher.bin"), \
-                 mock.patch.object(device, "git_commit", return_value="deadbeef"):
+                 mock.patch.object(device, "git_commit", return_value="deadbeef"), \
+                 contextlib.redirect_stdout(output):
                 device.flash(args, store, "COM5")
+            self.assertIn("flashed BUILD_ID=expected (esptool hash verified)", output.getvalue())
+            self.assertEqual(connection.chunks, [])
             expected_log = root / "20260916" / "123045_flash-dev_agent.log"
             self.assertTrue(expected_log.is_file())
             entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
@@ -879,7 +823,6 @@ class FlashDefaultPathTests(unittest.TestCase):
                  mock.patch.object(device, "find_port", return_value="COM5"), \
                  mock.patch.object(device, "reset"), \
                  mock.patch.object(device, "open_serial", return_value=connection), \
-                 mock.patch.object(device, "verify_flashed_image", return_value=worktree / "launcher" / "build" / "launcher.bin"), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
                 device.flash(args, store, "COM5")
             passed_env = run.call_args.kwargs["env"]
@@ -1284,95 +1227,6 @@ class CaptureAfterResetTests(unittest.TestCase):
              mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.1):
             unused_data, reason = device.capture_after_reset("COM5", os.devnull, 30, 0.1)
         self.assertEqual(reason, "complete")
-
-    def read_build_id(self, connections, resets=None, seconds=1.5):
-        resets = [] if resets is None else resets
-        connections = iter(connections)
-        opened = lambda *unused, **unused_keywords: next(connections)
-        with mock.patch.object(device, "reset",
-                               side_effect=lambda port, after="hard_reset": resets.append(after)), \
-             mock.patch.object(device, "find_port", return_value="COM5"), \
-             mock.patch.object(device, "open_serial", side_effect=opened), \
-             mock.patch.object(device, "open_when_free", side_effect=opened), \
-             mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.05), \
-             mock.patch.object(device, "RESET_REOPEN_SECONDS", 0.3):
-            return device.reset_and_read_build_id("COM5", seconds=seconds)
-
-    def test_the_build_id_is_heard_after_a_silence_longer_than_an_idle_cutoff(self):
-        class QuietThenId(AnswersNoQuery):
-            """Boot output, then a boot animation's worth of silence, then the
-            id the shell prints once ready."""
-
-            def __init__(self):
-                super().__init__([])
-                self.started = None
-
-            def read(self, size):
-                self.started = self.started or time.monotonic()
-                if self.writes:
-                    return b""
-                quiet_for = time.monotonic() - self.started
-                if not self.chunks and quiet_for < 0.1:
-                    self.chunks = [b"I (773) post: 15 checks, all passed\n"]
-                    return super().read(size)
-                if quiet_for >= 2.5 and not getattr(self, "said_id", False):
-                    self.said_id = True
-                    return b"BUILD_ID=after-the-animation\n"
-                return b""
-
-        actual, reason = self.read_build_id([QuietThenId(), AnswersNoQuery([])], seconds=5)
-        self.assertEqual((actual, reason), ("after-the-animation", "complete"))
-
-    def test_the_build_id_is_read_through_a_stale_first_handle(self):
-        actual, unused_reason = self.read_build_id(
-            [AnswersNoQuery([]), AnswersNoQuery([b"BUILD_ID=after-reset\n"])])
-        self.assertEqual(actual, "after-reset")
-
-    def test_the_build_id_is_read_through_a_lost_first_handle(self):
-        class LostConnection(FakeConnection):
-            def read(self, unused_size):
-                raise OSError("device re-enumerated")
-
-        actual, unused_reason = self.read_build_id(
-            [LostConnection([]), AnswersNoQuery([b"BUILD_ID=after-reset\n"])])
-        self.assertEqual(actual, "after-reset")
-
-    def test_a_build_id_split_across_reads_is_read_whole(self):
-        actual, reason = self.read_build_id(
-            [AnswersNoQuery([b"I (640) BUILD_ID=b8e2ef", b"0bbe68-release\n"])])
-        self.assertEqual((actual, reason), ("b8e2ef0bbe68-release", "complete"))
-
-    def test_a_board_silent_after_flash_is_restarted_through_the_watchdog(self):
-        resets = []
-        silent_until_the_watchdog = [AnswersNoQuery([]) for unused in range(8)]
-        started = time.monotonic()
-        actual, reason = self.read_build_id(
-            silent_until_the_watchdog + [AnswersNoQuery([b"BUILD_ID=after-watchdog\n"])], resets,
-            seconds=5)
-        self.assertEqual(resets, ["watchdog_reset"])
-        self.assertEqual(reason, "complete")
-        self.assertLess(time.monotonic() - started, 5 + 2.5)
-        self.assertEqual(actual, "after-watchdog")
-
-    def test_a_board_that_spoke_without_an_id_gets_the_watchdog(self):
-        resets = []
-        actual, unused_reason = self.read_build_id(
-            [AnswersNoQuery([b"I (113) boot: no id in this log\n"])] +
-            [AnswersNoQuery([]) for unused in range(50)], resets)
-        self.assertEqual(resets, ["watchdog_reset"])
-        self.assertIsNone(actual)
-
-    def test_a_board_silent_throughout_still_gets_the_query_in_bounded_time(self):
-        silent = [AnswersNoQuery([]) for unused in range(50)]
-        started = time.monotonic()
-        actual, reason = self.read_build_id(silent)
-        self.assertIsNone(actual)
-        self.assertEqual(reason, "silent")
-        queried =[connection for connection in silent if connection.writes]
-        self.assertEqual([connection.writes for connection in queried], [[b"BUILDID\n"]])
-        self.assertLess(time.monotonic() - started, 5 + 3)
-
-
 
 class ResetTests(unittest.TestCase):
     def after_argument(self, *args, **keywords):

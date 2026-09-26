@@ -354,23 +354,36 @@ def status(args):
 
 def parse_status(reply):
     lines = reply.splitlines()
-    waiting = next((line[len("waiting: "):].split(", ") for line in lines
-                    if line.startswith("waiting: ")), [])
+    waiting = []
+    for line in lines:
+        match = re.fullmatch(r"  (\d+)\. (.+) for (.+); estimated start (.+)", line)
+        if match:
+            number, owner, purpose, estimate = match.groups()
+            if int(number) != len(waiting) + 1:
+                raise ValueError("device status queue is out of order")
+            waiting.append({"owner": owner, "purpose": purpose,
+                            "estimated_start": None if estimate.startswith("unknown") else estimate})
     first = lines[0] if lines else "unlocked"
     if first.startswith("held by "):
-        match = re.fullmatch(r"held by (.+) for (.+) since (\d+)(?: \(.*\))?", first)
+        match = re.fullmatch(r"held by (.+) for (.+) since (\d+) "
+                             r"\(local (.+); elapsed (\d+)s; estimated free (.+)\)", first)
         if match:
-            owner_name, purpose, acquired_at = match.groups()
+            owner_name, purpose, acquired_at, local, elapsed, estimate = match.groups()
             return {"state": "held", "owner": owner_name, "purpose": purpose,
-                    "acquired_at": int(acquired_at), "waiting": waiting}
+                    "acquired_at": int(acquired_at), "local_start": local,
+                    "elapsed_seconds": int(elapsed),
+                    "estimated_free": None if estimate.startswith("unknown") else estimate,
+                    "waiting": waiting}
     if first.startswith("human reservation: "):
-        match = re.fullmatch(r"human reservation: (.+?): (.*) \((\d+)s ago(?:; since .*)?\)", first)
+        match = re.fullmatch(r"human reservation: (.+?): (.*) \((\d+)s ago; since (.+)\)", first)
         if match:
-            owner_name, note, age = match.groups()
+            owner_name, note, age, local = match.groups()
             return {"state": "human", "owner": owner_name, "note": note,
-                    "age_seconds": int(age), "waiting": waiting}
+                    "age_seconds": int(age), "local_start": local, "waiting": waiting}
     if first == "unlocked":
         return {"state": "unlocked", "waiting": waiting}
+    if first.startswith("unlocked - stale lock from "):
+        return {"state": "unlocked", "stale_lock": first, "waiting": waiting}
     raise ValueError(f"unrecognized device status: {first}")
 
 

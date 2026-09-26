@@ -42,9 +42,7 @@
 #
 # All the logic here is POSIX sh. On Windows the ESP-IDF calls go through
 # tools/build/idf_shim.bat, which exists only to delete MSYSTEM - see tools/build/idf.sh
-# for the full story and the measurements behind it. This script used to
-# embed a block of PowerShell that carried its own sequencing and exit-code
-# handling; it does not need to.
+# for the ESP-IDF environment setup.
 #
 # WHY --dev AND --diag BOTH EXIST
 #
@@ -79,6 +77,7 @@ PERF_SCOPE=0
 AUTORUN=0
 VERBOSE=0
 COM_PORT=""
+CHECK_FLASH_LOCK=0
 IDF_EXPORT_ARG=""
 
 while [ $# -gt 0 ]; do
@@ -88,6 +87,7 @@ while [ $# -gt 0 ]; do
         --autorun) AUTORUN=1; shift ;;
         --perf-scope) PERF_SCOPE=1; shift ;;
         --build-only) BUILD_ONLY=1; shift ;;
+        --check-flash-lock) CHECK_FLASH_LOCK=1; shift ;;
         --verbose) VERBOSE=1; shift ;;
         -h|--help) sed -n '2,/^# what these flags are for\./p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         --)        shift; break ;;
@@ -119,6 +119,28 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+check_flash_lock() {
+    if [ -z "${AUTANA_DEVICE_LOCK_TOKEN:-}" ]; then
+        echo "ERROR: flashing needs the device lock." >&2
+        return 1
+    fi
+    if [ -z "$COM_PORT" ]; then
+        echo "ERROR: no COM_PORT given - device.py always passes one under the lock." >&2
+        return 1
+    fi
+    if ! python "$LAUNCHER_DIR/../scripts/device/device_lock.py" \
+            --port "$COM_PORT" --board-id usb-303a \
+            check-token --token "$AUTANA_DEVICE_LOCK_TOKEN"; then
+        echo "ERROR: device lock token is not active for the board" >&2
+        return 1
+    fi
+}
+
+if [ "$CHECK_FLASH_LOCK" -eq 1 ]; then
+    check_flash_lock
+    exit $?
+fi
 
 case "$VARIANT" in
     release) BUILD_DIR="build" ;;
@@ -181,21 +203,8 @@ fi
 # refuses without proof one is held, rather than opening the port itself
 # and risking two writers. device.py sets AUTANA_DEVICE_LOCK_TOKEN (and
 # passes COM_PORT) once it holds the lock; nothing else should set it.
-if [ -z "${AUTANA_DEVICE_LOCK_TOKEN:-}" ]; then
-    echo "ERROR: flashing needs the device lock." >&2
-    echo "Run 'autana flash rel|dev|diag' instead of this script directly," >&2
-    echo "or pass --build-only, which needs neither the lock nor a device." >&2
-    exit 1
-fi
-if [ -z "$COM_PORT" ]; then
-    echo "ERROR: no COM_PORT given - device.py always passes one under the lock." >&2
-    exit 1
-fi
-if ! python "$LAUNCHER_DIR/../scripts/device/device_lock.py" --port "$COM_PORT" \
-        check-token --token "$AUTANA_DEVICE_LOCK_TOKEN"; then
-    echo "ERROR: device lock token is not active for $COM_PORT" >&2
-    exit 1
-fi
+COM_PORT=$(python "$LAUNCHER_DIR/../scripts/device/device.py" resolve-port)
+check_flash_lock
 
 echo "=== Flashing to $COM_PORT ==="
 idf -B "$BUILD_DIR" -p "$COM_PORT" flash
