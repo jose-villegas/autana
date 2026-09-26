@@ -253,6 +253,55 @@ test_sand_paint_skipped_row_breaks_carry_then_converges(void) {
 }
 
 static void
+paint_rgb_blocks_row(sand_paint_row_state_t* st, sand_paint_frame_t* pf, gfx_color_t* fb, const uint8_t* cells, int n) {
+    enum { PAINT_W = 4, MAX_N = 8 };
+
+    pf->shine_offset = SAND_PAINT_SHINE_PERIOD - n - 1;
+    for (int p = 0; p < MAX_N * GFX_WIDTH; p++) {
+        fb[p] = 0x1234;
+    }
+    paint_one(st, pf, fb, NULL, 0, cells, n, PAINT_W, 1, 1, 3, true);
+}
+
+static void
+assert_rgb_block_span(const gfx_color_t* fb, int n) {
+    enum { PAINT_W = 4, MAX_N = 8 };
+
+    for (int dy = 0; dy < MAX_N; dy++) {
+        for (int x = 0; x < PAINT_W * n + 1; x++) {
+            const gfx_color_t px = fb[dy * GFX_WIDTH + x];
+            if (dy >= n || x < n || x >= 3 * n) {
+                TEST_ASSERT_EQUAL_HEX16(0x1234, px);
+            } else {
+                TEST_ASSERT_NOT_EQUAL(0x1234, px);
+            }
+        }
+    }
+}
+
+static void
+assert_rgb_metal_shine(const gfx_color_t* fb, const uint8_t* cells, int n) {
+    gfx_color_t metal_base = 0;
+    gfx_color_t metal_shine = 0;
+    for (int dy = 0; dy < n; dy++) {
+        for (int x = n; x < 2 * n; x++) {
+            const gfx_color_t px = fb[dy * GFX_WIDTH + x];
+            if (x == n) {
+                metal_base = px;
+            }
+            if (x == n + n - 1) {
+                metal_shine = px;
+            }
+        }
+    }
+    TEST_ASSERT_NOT_EQUAL(metal_base, metal_shine);
+    gfx_color_t col[3];
+    material_colours(cells[1], material_grain_hash(1, 0), 0, 0, col);
+    TEST_ASSERT_EQUAL_HEX16(col[0], metal_base);
+    TEST_ASSERT_EQUAL_HEX16(col[2], metal_shine);
+}
+
+static void
 test_sand_paint_rgb_blocks_respect_cell_size_and_partial_span(void) {
     enum { PAINT_W = 4, MAX_N = 8 };
 
@@ -264,36 +313,9 @@ test_sand_paint_rgb_blocks_respect_cell_size_and_partial_span(void) {
     sand_paint_row_state_t* st = paint_state(0, 1000, PAINT_W, 1);
     for (size_t i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++) {
         const int n = sizes[i];
-        pf.shine_offset = SAND_PAINT_SHINE_PERIOD - n - 1;
-        for (int p = 0; p < MAX_N * GFX_WIDTH; p++) {
-            fb[p] = 0x1234;
-        }
-        paint_one(st, &pf, fb, NULL, 0, cells, n, PAINT_W, 1, 1, 3, true);
-        gfx_color_t metal_base = 0;
-        gfx_color_t metal_shine = 0;
-        for (int dy = 0; dy < MAX_N; dy++) {
-            for (int x = 0; x < PAINT_W * n + 1; x++) {
-                const gfx_color_t px = fb[dy * GFX_WIDTH + x];
-                if (dy >= n || x < n || x >= 3 * n) {
-                    TEST_ASSERT_EQUAL_HEX16(0x1234, px);
-                } else {
-                    TEST_ASSERT_NOT_EQUAL(0x1234, px);
-                    if (x >= n && x < 2 * n) {
-                        if (x == n) {
-                            metal_base = px;
-                        }
-                        if (x == n + n - 1) {
-                            metal_shine = px;
-                        }
-                    }
-                }
-            }
-        }
-        TEST_ASSERT_NOT_EQUAL(metal_base, metal_shine);
-        gfx_color_t col[3];
-        material_colours(cells[1], material_grain_hash(1, 0), 0, 0, col);
-        TEST_ASSERT_EQUAL_HEX16(col[0], metal_base);
-        TEST_ASSERT_EQUAL_HEX16(col[2], metal_shine);
+        paint_rgb_blocks_row(st, &pf, fb, cells, n);
+        assert_rgb_block_span(fb, n);
+        assert_rgb_metal_shine(fb, cells, n);
     }
     free(st);
     free(fb);
