@@ -407,10 +407,11 @@ pure function of the cell byte plus whatever per-frame state has been set
 hashes cell bytes, never rendered pixels - stays green while the display
 shimmers. What *does* move is `app_sand.c`'s repaint bookkeeping: a cullet
 cell's row needs the same periodic-wake treatment shine already gets -
-`row_flags[]` carries a `ROW_FLAG_CULLET` bit, and `mark_wake_hits()` marks
-every row holding one dirty whenever the phase advances, or a heap that has
-stopped moving would repaint on nothing and freeze on whatever tint it held
-the moment it went still.
+`sand_paint_row_state_t`'s `row_flags[]` (`sand_paint_row.h`) carries a
+`SAND_PAINT_ROW_FLAG_CULLET` bit, and `app_sand.c`'s `mark_wake_hits()`
+marks every row holding one dirty whenever the phase advances, or a heap
+that has stopped moving would repaint on nothing and freeze on whatever
+tint it held the moment it went still.
 
 ---
 
