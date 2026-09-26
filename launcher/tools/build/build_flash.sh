@@ -4,7 +4,7 @@
 #
 # Usage:
 #   tools/build/build_flash.sh [--dev|--diag] [--autorun] [--perf-scope] \
-#                        [--build-only] [--verbose] [COM_PORT] [IDF_EXPORT]
+#                        [--build-only] [--verbose] [IDF_EXPORT]
 #
 #   --verbose   stream and save the build output. The full stream is in the
 #               printed log path in either mode.
@@ -28,11 +28,11 @@
 #               behaviour coverage, so never a merge gate, and its numbers
 #               compare only with other perf-scoped captures.
 #   --build-only  build and stop: no device needed, nothing flashed.
-#   COM_PORT    the port to flash. Flashing itself needs AUTANA_DEVICE_LOCK_TOKEN
-#               in the environment - device.py's own `flash`/`selftest`/`batch`
-#               set it after taking the device lock, and pass this worktree's
-#               port; run `autana flash rel|dev|diag` rather than this script
-#               directly. --build-only needs neither the token nor a port.
+#               Flashing needs AUTANA_DEVICE_LOCK_TOKEN and AUTANA_BOARD (the
+#               board's USB serial number) in the environment - device.py's
+#               own `flash`/`selftest`/`batch` set both after taking that
+#               board's lock, so run `autana flash rel|dev|diag` rather than
+#               this script directly. --build-only needs neither.
 #   IDF_EXPORT  path to ESP-IDF's export script - export.bat on Windows,
 #               export.sh elsewhere. Default: the one under $IDF_PATH.
 #
@@ -76,8 +76,6 @@ BUILD_ONLY=0
 PERF_SCOPE=0
 AUTORUN=0
 VERBOSE=0
-COM_PORT=""
-CHECK_FLASH_LOCK=0
 IDF_EXPORT_ARG=""
 
 while [ $# -gt 0 ]; do
@@ -87,20 +85,16 @@ while [ $# -gt 0 ]; do
         --autorun) AUTORUN=1; shift ;;
         --perf-scope) PERF_SCOPE=1; shift ;;
         --build-only) BUILD_ONLY=1; shift ;;
-        --check-flash-lock) CHECK_FLASH_LOCK=1; shift ;;
         --verbose) VERBOSE=1; shift ;;
         -h|--help) sed -n '2,/^# what these flags are for\./p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         --)        shift; break ;;
         -*)        echo "unknown option: $1" >&2; exit 2 ;;
         *)
-            if [ -z "$COM_PORT" ]; then
-                COM_PORT=$1
-            elif [ -z "$IDF_EXPORT_ARG" ]; then
-                IDF_EXPORT_ARG=$1
-            else
+            if [ -n "$IDF_EXPORT_ARG" ]; then
                 echo "too many positional arguments" >&2
                 exit 2
             fi
+            IDF_EXPORT_ARG=$1
             shift
             ;;
     esac
@@ -121,26 +115,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 check_flash_lock() {
-    if [ -z "${AUTANA_DEVICE_LOCK_TOKEN:-}" ]; then
-        echo "ERROR: flashing needs the device lock." >&2
-        return 1
-    fi
-    if [ -z "$COM_PORT" ]; then
-        echo "ERROR: no COM_PORT given - device.py always passes one under the lock." >&2
+    if [ -z "${AUTANA_DEVICE_LOCK_TOKEN:-}" ] || [ -z "${AUTANA_BOARD:-}" ]; then
+        echo "ERROR: flashing needs the device lock on a named board." >&2
+        echo "Run 'autana flash rel|dev|diag' instead, or pass --build-only." >&2
         return 1
     fi
     if ! python "$LAUNCHER_DIR/../scripts/device/device_lock.py" \
-            --port "$COM_PORT" \
+            --board "$AUTANA_BOARD" \
             check-token --token "$AUTANA_DEVICE_LOCK_TOKEN"; then
-        echo "ERROR: device lock token is not active for the board" >&2
+        echo "ERROR: device lock token is not active for board $AUTANA_BOARD" >&2
+        echo "Run 'autana flash rel|dev|diag' instead, or pass --build-only." >&2
         return 1
     fi
 }
-
-if [ "$CHECK_FLASH_LOCK" -eq 1 ]; then
-    check_flash_lock
-    exit $?
-fi
 
 case "$VARIANT" in
     release) BUILD_DIR="build" ;;
@@ -188,8 +175,8 @@ if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt" ]; then
     exit 1
 fi
 BUILD_ID=$(tr -d '\r\n' < "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt")
-# device.py reads this line from the flash log to verify what boots; it stays
-# on stdout, outside quiet_run, or every flash reports itself unverified.
+# device.py takes the flashed build's id from this line in the flash log; it
+# stays on stdout, outside quiet_run, or no flash can name what it wrote.
 echo "BUILD_ID=$BUILD_ID"
 
 if [ "$BUILD_ONLY" -eq 1 ]; then
@@ -199,12 +186,12 @@ if [ "$BUILD_ONLY" -eq 1 ]; then
     exit 0
 fi
 
-# Flashing touches the one shared board, so it needs the device lock - this
-# refuses without proof one is held, rather than opening the port itself
-# and risking two writers. device.py sets AUTANA_DEVICE_LOCK_TOKEN (and
-# passes COM_PORT) once it holds the lock; nothing else should set it.
-COM_PORT=$(python "$LAUNCHER_DIR/../scripts/device/device.py" resolve-port)
+# Flashing touches a shared board, so it needs that board's lock - this
+# refuses without proof one is held, rather than opening the port itself and
+# risking two writers. The port is looked up only now, after the build: a
+# board keeps its serial number but can come back from a reset on another COM.
 check_flash_lock
+COM_PORT=$(python "$LAUNCHER_DIR/../scripts/device/device.py" --board "$AUTANA_BOARD" resolve-port)
 
 echo "=== Flashing to $COM_PORT ==="
 idf -B "$BUILD_DIR" -p "$COM_PORT" flash

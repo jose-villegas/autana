@@ -1,3 +1,4 @@
+import isolation  # noqa: F401  (first: keeps the suite out of real records)
 import base64
 import io
 import contextlib
@@ -23,15 +24,15 @@ import device_lock
 import device_hook
 import device_report
 
-
-def setUpModule():
-    global saved_hook
-    saved_hook = os.environ.pop("AUTANA_LOCK_HOOK", None)
+# A board is named by its USB serial number; COM5 is where it enumerates.
+BOARD = "90:70:69:FE:A3:08"
 
 
-def tearDownModule():
-    if saved_hook is not None:
-        os.environ["AUTANA_LOCK_HOOK"] = saved_hook
+def mock_store(token="token"):
+    store = mock.Mock()
+    store.root = Path(os.environ["AUTANA_DEVICE_LOCK_ROOT"])
+    store.acquire.return_value = {"log": "", "token": token, "acquired_at": 1000.0}
+    return store
 
 
 class InterpreterTests(unittest.TestCase):
@@ -70,7 +71,7 @@ class HookIsolationTests(unittest.TestCase):
     def test_suite_child_reservation_does_not_run_inherited_hook(self):
         if os.environ.get("AUTANA_HOOK_SUITE_CHILD"):
             with tempfile.TemporaryDirectory() as root:
-                device_lock.LockStore(root=root).set_human("COM5", "agent", "test")
+                device_lock.LockStore(root=root).set_human(BOARD, "agent", "test")
             return
         with tempfile.TemporaryDirectory() as root:
             sentinel = Path(root) / "sentinel"
@@ -103,7 +104,7 @@ class PortWaitTests(unittest.TestCase):
     def opener(self, failures):
         remaining = [failures]
 
-        def open_port(unused_port):
+        def open_port():
             if remaining[0] > 0:
                 remaining[0] -= 1
                 raise OSError(13, "Access is denied")
@@ -112,29 +113,28 @@ class PortWaitTests(unittest.TestCase):
         return open_port
 
     def test_a_port_that_is_free_is_not_waited_for(self):
-        device.open_when_free("COM5", 120, self.opener(0), self.sleep, lambda: self.clock[0])
+        device.open_when_free(120, self.opener(0), self.sleep, lambda: self.clock[0])
         self.assertEqual(self.slept, [])
 
     def test_returns_the_connection_without_closing_it(self):
         connection = mock.Mock()
-        result = device.open_when_free("COM5", 120, lambda unused_port: connection,
+        result = device.open_when_free(120, lambda: connection,
                                        self.sleep, lambda: self.clock[0])
         self.assertIs(result, connection)
         connection.close.assert_not_called()
 
     def test_a_straggler_is_waited_out(self):
-        device.open_when_free("COM5", 120, self.opener(3), self.sleep, lambda: self.clock[0])
+        device.open_when_free(120, self.opener(3), self.sleep, lambda: self.clock[0])
         self.assertEqual(self.slept, [1.0, 1.0, 1.0])
 
     def test_a_port_nobody_frees_reports_at_the_deadline(self):
-        with self.assertRaises(RuntimeError) as caught:
-            device.open_when_free("COM5", 5, self.opener(99), self.sleep, lambda: self.clock[0])
-        self.assertIn("COM5", str(caught.exception))
+        with self.assertRaises(device.PortUnavailable) as caught:
+            device.open_when_free(5, self.opener(99), self.sleep, lambda: self.clock[0])
         self.assertIn("wait ran out", str(caught.exception))
 
     def test_reset_reenumeration_reason_reaches_the_timeout(self):
         with self.assertRaisesRegex(RuntimeError, "re-enumerating after reset"):
-            device.open_when_free("COM5", 0, self.opener(1), self.sleep,
+            device.open_when_free(0, self.opener(1), self.sleep,
                                   lambda: self.clock[0], "re-enumerating after reset")
 
 
@@ -357,14 +357,13 @@ class DeviceTests(unittest.TestCase):
         connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
         args = Namespace(owner="agent", purpose="test", wait=0, suite="sand",
                          out=None, max_seconds=1, idle_seconds=None, expect_build_id=None)
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with tempfile.TemporaryDirectory() as directory, \
              mock.patch.object(device, "open_when_free", return_value=connection), \
              mock.patch.object(device, "records_root", return_value=Path(directory)), \
              mock.patch("builtins.print") as output:
             args.out = str(Path(directory) / "capture.log")
-            self.assertEqual(device.run_suite(args, store, "COM5"), 0)
+            self.assertEqual(device.run_suite(args, store, BOARD), 0)
         output.assert_any_call("suite results: 1 PASS, 0 FAIL")
 
     def test_run_suite_returns_failure_status(self):
@@ -374,13 +373,12 @@ class DeviceTests(unittest.TestCase):
         ])
         args = Namespace(owner="agent", purpose="test", wait=0, suite="sand",
                          out=None, max_seconds=1, idle_seconds=None, expect_build_id=None)
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with tempfile.TemporaryDirectory() as directory, \
              mock.patch.object(device, "open_when_free", return_value=connection), \
              mock.patch.object(device, "records_root", return_value=Path(directory)):
             args.out = str(Path(directory) / "capture.log")
-            self.assertEqual(device.run_suite(args, store, "COM5"), 1)
+            self.assertEqual(device.run_suite(args, store, BOARD), 1)
 
     def test_replies_are_found_behind_log_prefixes_and_end_at_a_terminator(self):
         data = (b"I (812) shell: frame 16 ms\n"
@@ -406,30 +404,27 @@ class DeviceTests(unittest.TestCase):
 
     def test_send_writes_the_line_and_prints_the_reply(self):
         connection = FakeConnection([b"I (5) shell: x\nTUNE_OK launcher.ridge_trail=200\n"])
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with mock.patch.object(device, "open_when_free", return_value=connection), \
              mock.patch("builtins.print") as printed:
-            status = device.send(self.send_args("SET launcher.ridge_trail 200"), store, "COM5")
+            status = device.send(self.send_args("SET launcher.ridge_trail 200"), store, BOARD)
         self.assertEqual(status, 0)
         self.assertEqual(connection.writes, [b"\nSET launcher.ridge_trail 200\n"])
         printed.assert_called_once_with("TUNE_OK launcher.ridge_trail=200")
 
     def test_send_fails_on_an_error_reply(self):
         connection = FakeConnection([b"TUNE_ERR range launcher.ridge_trail takes 0..255\n"])
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with mock.patch.object(device, "open_when_free", return_value=connection), \
              mock.patch("builtins.print"):
-            self.assertEqual(device.send(self.send_args("SET launcher.ridge_trail 999"), store, "COM5"), 1)
+            self.assertEqual(device.send(self.send_args("SET launcher.ridge_trail 999"), store, BOARD), 1)
 
     def test_send_says_so_when_the_build_has_no_such_command(self):
         connection = FakeConnection([b"I (9) screenshot: ignoring line: 'TUNE'\n"])
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with mock.patch.object(device, "open_when_free", return_value=connection):
             with self.assertRaisesRegex(RuntimeError, "needs a development build"):
-                device.send(self.send_args("TUNE"), store, "COM5")
+                device.send(self.send_args("TUNE"), store, BOARD)
 
     def test_send_forwards_an_app_command_and_completes_on_its_own_end_line(self):
         """autana console's own case (autana.py's console()): an app's
@@ -437,88 +432,86 @@ class DeviceTests(unittest.TestCase):
         completes as soon as that prefix's own _END arrives rather than
         waiting out the window."""
         connection = FakeConnection([b"EXAMPLE status=ok\n", b"EXAMPLE_END\n"])
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         args = Namespace(owner="agent", purpose="send", wait=0, line="example status",
                          reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], seconds=1, optional=True)
         with mock.patch.object(device, "open_when_free", return_value=connection), \
              mock.patch("builtins.print") as printed:
-            status = device.send(args, store, "COM5")
+            status = device.send(args, store, BOARD)
         self.assertEqual(status, 0)
         printed.assert_called_once_with("EXAMPLE status=ok\nEXAMPLE_END")
 
     def test_send_forwards_an_app_command_and_fails_on_its_own_err_line(self):
         connection = FakeConnection([b"EXAMPLE_ERR not running\n"])
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         args = Namespace(owner="agent", purpose="send", wait=0, line="example status",
                          reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], seconds=1, optional=True)
         with mock.patch.object(device, "open_when_free", return_value=connection), \
              mock.patch("builtins.print"):
-            status = device.send(args, store, "COM5")
+            status = device.send(args, store, BOARD)
         self.assertEqual(status, 1)
 
     def test_send_optional_treats_silence_as_success(self):
         """TOUCH/IMU answer only when something is wrong - a timeout with
         nothing seen is that verb's normal happy path, not a failure."""
         connection = FakeConnection([b"I (1) shell: unrelated log line\n"])
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         args = Namespace(owner="agent", purpose="send", wait=0, line="TOUCH down 1 2",
                          reply="TOUCH", until=["TOUCH"], seconds=0.05, optional=True)
         with mock.patch.object(device, "open_when_free", return_value=connection), \
              mock.patch("builtins.print") as printed:
-            status = device.send(args, store, "COM5")
+            status = device.send(args, store, BOARD)
         self.assertEqual(status, 0)
         printed.assert_called_once_with("")
 
     def test_send_optional_still_prints_a_device_side_warning(self):
         connection = FakeConnection([b"W (2) console: TOUCH wants <down|up> <x> <y>: 'bad'\n"])
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         args = Namespace(owner="agent", purpose="send", wait=0, line="TOUCH bad",
                          reply="TOUCH", until=["TOUCH"], seconds=0.5, optional=True)
         with mock.patch.object(device, "open_when_free", return_value=connection), \
              mock.patch("builtins.print") as printed:
-            status = device.send(args, store, "COM5")
+            status = device.send(args, store, BOARD)
         self.assertEqual(status, 0)
         printed.assert_called_once_with("TOUCH wants <down|up> <x> <y>: 'bad'")
 
     def test_send_without_optional_still_raises_on_silence(self):
         connection = FakeConnection([b"I (1) shell: unrelated log line\n"])
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         args = Namespace(owner="agent", purpose="send", wait=0, line="TUNE", reply="TUNE",
                          until=["TUNE_OK", "TUNE_ERR", "TUNE_END"], seconds=0.05, optional=False)
         with mock.patch.object(device, "open_when_free", return_value=connection):
             with self.assertRaisesRegex(RuntimeError, "no reply"):
-                device.send(args, store, "COM5")
+                device.send(args, store, BOARD)
 
     def test_status_reports_human_note_and_age(self):
-        status = {"human": {"owner": "maintainer", "note": "panel", "since_at": 1000},
-                  "lock": None, "queue": []}
-        with mock.patch.object(device_lock.time, "time", return_value=1065), \
-             mock.patch("builtins.print") as output:
-            device_lock.print_status(status)
-        self.assertIn("human reservation: maintainer: panel (65s ago; since ",
-                      output.call_args.args[0])
+        with tempfile.TemporaryDirectory() as root:
+            store = device_lock.LockStore(root, now=lambda: 1000)
+            store.set_human(BOARD, "maintainer", "panel")
+            entry = device_lock.status_entry(store, BOARD, now=1065)
+        self.assertEqual((entry["state"], entry["holder"], entry["elapsed_seconds"]),
+                         ("human", {"owner": "maintainer", "purpose": "panel"}, 65))
+        self.assertTrue(device_lock.status_lines(entry)[0].startswith(
+            "human reservation: maintainer: panel (since "))
 
     def test_take_back_clears_human_reservation_and_prints_status(self):
-        store = mock.Mock()
-        store.status.return_value = {"human": None, "lock": None, "queue": []}
-        with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
-             mock.patch("builtins.print") as output:
-            self.assertEqual(device.main(["--port", "COM5", "take-back"]), 0)
-        store.clear_human.assert_called_once_with("COM5")
-        output.assert_called_once_with("unlocked")
+        with tempfile.TemporaryDirectory() as root:
+            store = device_lock.LockStore(root)
+            store.set_human(BOARD, "maintainer", "panel")
+            with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+                    mock.patch.object(device, "plugged_boards", return_value=[]), \
+                    contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(device.main(["--board", BOARD, "take-back"]), 0)
+            self.assertIsNone(store.status(BOARD)["human"])
+        self.assertEqual(output.getvalue(), f"board {BOARD} (not on USB)\n  unlocked\n")
 
     def test_hand_records_reservation(self):
         store = mock.Mock()
         store.status.return_value = {"human": None, "lock": None, "queue": []}
         with mock.patch.object(device.device_lock, "LockStore", return_value=store):
-            self.assertEqual(device.main(["--port", "COM5", "--owner", "agent",
+            self.assertEqual(device.main(["--board", BOARD, "--owner", "agent",
                                           "hand-to-human", "--note", "check cable"]), 0)
-        store.set_human.assert_called_once_with("COM5", "agent", "check cable")
+        store.set_human.assert_called_once_with(BOARD, "agent", "check cable")
 
 
 class HumanWaitTests(unittest.TestCase):
@@ -539,26 +532,26 @@ class HumanWaitTests(unittest.TestCase):
              mock.patch.object(device.time, "monotonic", side_effect=lambda: self.clock[0]), \
              mock.patch.object(device.time, "sleep", side_effect=self.sleep), \
              mock.patch("builtins.print") as output:
-            code = device.main(["--port", "COM5", "--owner", "agent", "hand-to-human",
+            code = device.main(["--board", BOARD, "--owner", "agent", "hand-to-human",
                                 "--note", "download mode", *flags])
         return code, output
 
     def test_release_before_deadline_succeeds(self):
-        self.on_sleep = lambda: self.store.clear_human("COM5")
+        self.on_sleep = lambda: self.store.clear_human(BOARD)
         with mock.patch.object(device_hook, "emit") as emit:
             code, output = self.hand("--wait", "3")
         self.assertEqual(code, 0)
         self.assertEqual(output.call_args_list[-1].args[0], "human reservation released")
         self.assertEqual(emit.call_args_list, [
-            mock.call("human-reserved", "COM5", "agent", note="download mode"),
-            mock.call("human-cleared", "COM5", "agent", note="download mode"),
+            mock.call("human-reserved", BOARD, "agent", note="download mode"),
+            mock.call("human-cleared", BOARD, "agent", note="download mode"),
         ])
 
     def test_timeout_keeps_reservation(self):
         code, output = self.hand("--wait", "2")
         self.assertEqual(code, 3)
         self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out")
-        self.assertEqual(self.store.status("COM5")["human"]["note"], "download mode")
+        self.assertEqual(self.store.status(BOARD)["human"]["note"], "download mode")
 
     def test_interrupt_keeps_reservation(self):
         def interrupt():
@@ -568,17 +561,17 @@ class HumanWaitTests(unittest.TestCase):
         code, output = self.hand("--wait", "3")
         self.assertEqual(code, 3)
         self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait interrupted")
-        self.assertIsNotNone(self.store.status("COM5")["human"])
+        self.assertIsNotNone(self.store.status(BOARD)["human"])
 
     def test_replaced_reservation_is_reported(self):
         def replace():
-            self.store.set_human("COM5", "agent", "download mode")
+            self.store.set_human(BOARD, "agent", "download mode")
 
         self.on_sleep = replace
         code, output = self.hand("--wait", "3")
         self.assertEqual(code, 4)
         self.assertEqual(output.call_args_list[-1].args[0], "human reservation replaced")
-        self.assertEqual(self.store.status("COM5")["human"]["note"], "download mode")
+        self.assertEqual(self.store.status(BOARD)["human"]["note"], "download mode")
 
 
 class SlugTests(unittest.TestCase):
@@ -653,7 +646,7 @@ class RecordCaptureTests(unittest.TestCase):
             out.write_bytes(b"x" * (device.COMPRESS_ABOVE_BYTES + 1))
             started_at = datetime(2026, 9, 16, 12, 30, 45)
             path = device.record_capture(
-                out, False, started_at=started_at, port="COM5", owner="agent",
+                out, False, started_at=started_at, board=BOARD, owner="agent",
                 purpose="listen", command="listen", commit="deadbeef", reason="complete",
                 error=None, root=root)
             self.assertEqual(path, out)
@@ -663,7 +656,7 @@ class RecordCaptureTests(unittest.TestCase):
             self.assertEqual(json.loads(lines[0]), {
                 "started_at": started_at.isoformat(),
                 "acquired_at": None,
-                "port": "COM5",
+                "board": BOARD,
                 "owner": "agent",
                 "purpose": "listen",
                 "command": "listen",
@@ -685,7 +678,7 @@ class RecordCaptureTests(unittest.TestCase):
             payload = b"x" * (device.COMPRESS_ABOVE_BYTES + 1)
             log.write_bytes(payload)
             path = device.record_capture(
-                log, True, started_at=datetime(2026, 9, 16, 12, 30, 45), port="COM5",
+                log, True, started_at=datetime(2026, 9, 16, 12, 30, 45), board=BOARD,
                 owner="agent", purpose="run suite", command="run-suite", suite="sand",
                 commit=None, reason="complete", error=None, root=root)
             self.assertEqual(path, log.with_name("capture.log.gz"))
@@ -703,7 +696,7 @@ class RecordCaptureTests(unittest.TestCase):
             log = root / "capture.log"
             log.write_bytes(b"x" * device.COMPRESS_ABOVE_BYTES)
             path = device.record_capture(
-                log, True, started_at=datetime(2026, 9, 16, 12, 30, 45), port="COM5",
+                log, True, started_at=datetime(2026, 9, 16, 12, 30, 45), board=BOARD,
                 owner="agent", purpose="run suite", command="run-suite", suite="sand",
                 commit=None, reason="complete", error=None, root=root)
             self.assertEqual(path, log)
@@ -715,8 +708,7 @@ class RunSuiteDefaultPathTests(unittest.TestCase):
         connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
         args = Namespace(owner="agent a", purpose="test", wait=0, suite="sand", out=None,
                          max_seconds=1, idle_seconds=None, expect_build_id=None)
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "records"
             fixed_now = datetime(2026, 9, 16, 12, 30, 45)
@@ -724,7 +716,7 @@ class RunSuiteDefaultPathTests(unittest.TestCase):
                  mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device, "now", return_value=fixed_now), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
-                self.assertEqual(device.run_suite(args, store, "COM5"), 0)
+                self.assertEqual(device.run_suite(args, store, BOARD), 0)
             expected_log = root / "20260916" / "123045_runsuite-sand_agent-a.log"
             self.assertTrue(expected_log.is_file())
             entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
@@ -742,15 +734,14 @@ class RunSuiteDefaultPathTests(unittest.TestCase):
         ])
         args = Namespace(owner="agent", purpose="test", wait=0, suite="sand", out=None,
                          max_seconds=1, idle_seconds=None, expect_build_id="expected")
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "records"
             with mock.patch.object(device, "open_serial", return_value=connection), \
                  mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device, "git_commit", return_value=None):
                 with self.assertRaisesRegex(RuntimeError, "got different"):
-                    device.run_suite(args, store, "COM5")
+                    device.run_suite(args, store, BOARD)
             entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
             self.assertIsNotNone(entry["error"])
             self.assertIn("got different", entry["error"])
@@ -758,7 +749,7 @@ class RunSuiteDefaultPathTests(unittest.TestCase):
 
 
 def build_prints(build_id):
-    """A subprocess.run standing in for build_flash.sh, which prints the id
+    """A run_while_held() standing in for build_flash.sh, which prints the id
     of the image it built into the flash log."""
     def run(*unused, **keywords):
         keywords["stdout"].write(("BUILD_ID=" + build_id + "\n").encode("ascii"))
@@ -771,26 +762,24 @@ class FlashDefaultPathTests(unittest.TestCase):
             worktree = Path(directory) / "engine"
             (worktree / "launcher" / "tools" / "build").mkdir(parents=True)
             (worktree / "launcher" / "tools" / "build" / "build_flash.sh").write_text("")
-            (worktree / "launcher" / "build.dev").mkdir()
-            (worktree / "launcher" / "build.dev" / "build_id.txt").write_text("expected\n")
             root = Path(directory) / "records"
             connection = FakeConnection([])
             args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
                              worktree=str(worktree), out=None)
-            store = mock.Mock()
-            store.acquire.return_value = {"log": "", "token": "token"}
+            store = mock_store()
             fixed_now = datetime(2026, 9, 16, 12, 30, 45)
             output = io.StringIO()
             with mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device, "now", return_value=fixed_now), \
-                 mock.patch.object(device.subprocess, "run", side_effect=build_prints("expected")), \
-                 mock.patch.object(device, "find_port", return_value="COM5"), \
+                 mock.patch.object(device, "run_while_held", side_effect=build_prints("expected")), \
+                 mock.patch.object(device, "find_board", return_value=device.Board(BOARD, BOARD)), \
                  mock.patch.object(device, "reset"), \
                  mock.patch.object(device, "open_serial", return_value=connection), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"), \
                  contextlib.redirect_stdout(output):
-                device.flash(args, store, "COM5")
-            self.assertIn("flashed BUILD_ID=expected (esptool hash verified)", output.getvalue())
+                device.flash(args, store, BOARD)
+            self.assertIn("flashed BUILD_ID=expected (esptool hash verified; boot not verified)",
+                          output.getvalue())
             self.assertEqual(connection.chunks, [])
             expected_log = root / "20260916" / "123045_flash-dev_agent.log"
             self.assertTrue(expected_log.is_file())
@@ -809,24 +798,22 @@ class FlashDefaultPathTests(unittest.TestCase):
             worktree = Path(directory) / "engine"
             (worktree / "launcher" / "tools" / "build").mkdir(parents=True)
             (worktree / "launcher" / "tools" / "build" / "build_flash.sh").write_text("")
-            (worktree / "launcher" / "build.dev").mkdir()
-            (worktree / "launcher" / "build.dev" / "build_id.txt").write_text("expected\n")
             root = Path(directory) / "records"
             connection = FakeConnection([b"BUILD_ID=expected\nTESTS_DONE\n"])
             args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
                              worktree=str(worktree), out=None)
-            store = mock.Mock()
-            store.acquire.return_value = {"log": "", "token": "sekrit-token"}
+            store = mock_store("sekrit-token")
             run = mock.Mock(side_effect=build_prints("expected"))
             with mock.patch.object(device, "records_root", return_value=root), \
-                 mock.patch.object(device.subprocess, "run", run), \
-                 mock.patch.object(device, "find_port", return_value="COM5"), \
+                 mock.patch.object(device, "run_while_held", run), \
+                 mock.patch.object(device, "find_board", return_value=device.Board(BOARD, BOARD)), \
                  mock.patch.object(device, "reset"), \
                  mock.patch.object(device, "open_serial", return_value=connection), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
-                device.flash(args, store, "COM5")
+                device.flash(args, store, BOARD)
             passed_env = run.call_args.kwargs["env"]
             self.assertEqual(passed_env["AUTANA_DEVICE_LOCK_TOKEN"], "sekrit-token")
+            self.assertEqual(passed_env["AUTANA_BOARD"], BOARD)
 
 
 class FlashCommandLineTests(unittest.TestCase):
@@ -840,7 +827,7 @@ class FlashCommandLineTests(unittest.TestCase):
             calls.append(list(extra_flags))
             return 0
 
-        with mock.patch.object(device, "find_port", return_value="COM5"), \
+        with mock.patch.object(device, "find_board", return_value=device.Board(BOARD, BOARD)), \
              mock.patch.object(device, "flash", fake_flash), \
              mock.patch.object(device, "device_lock") as fake_lock_module:
             fake_lock_module.LockStore.return_value = mock.Mock()
@@ -865,8 +852,8 @@ class ReportCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             capture = Path(directory) / "capture.log"
             capture.write_text(":1:test_one:PASS\n:2:test_two:FAIL: boom\n")
-            with mock.patch.object(device, "find_port",
-                                   side_effect=AssertionError("must not look for a port")):
+            with mock.patch.object(device, "plugged_boards",
+                                   side_effect=AssertionError("must not look for a board")):
                 exit_code = device.main(["report", str(capture), "--index",
                                          str(Path(directory) / "index.jsonl")])
             self.assertEqual(exit_code, 0)
@@ -877,8 +864,8 @@ class ReportCommandTests(unittest.TestCase):
     def test_a_missing_capture_fails_without_raising(self):
         with tempfile.TemporaryDirectory() as directory:
             missing = Path(directory) / "nope.log"
-            with mock.patch.object(device, "find_port",
-                                   side_effect=AssertionError("must not look for a port")):
+            with mock.patch.object(device, "plugged_boards",
+                                   side_effect=AssertionError("must not look for a board")):
                 exit_code = device.main(["report", str(missing)])
         self.assertEqual(exit_code, 1)
 
@@ -893,8 +880,7 @@ class RunSuiteReportGenerationTests(unittest.TestCase):
         ])
         args = Namespace(owner="agent", purpose="test", wait=0, suite="sand", out=None,
                          max_seconds=1, idle_seconds=None, expect_build_id=None)
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "records"
             fixed_now = datetime(2026, 9, 16, 12, 30, 45)
@@ -902,7 +888,7 @@ class RunSuiteReportGenerationTests(unittest.TestCase):
                  mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device, "now", return_value=fixed_now), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
-                self.assertEqual(device.run_suite(args, store, "COM5"), 1)
+                self.assertEqual(device.run_suite(args, store, BOARD), 1)
             report_path = root / "20260916" / "123045_runsuite-sand_agent.md"
             self.assertTrue(report_path.is_file())
             text = report_path.read_text(encoding="utf-8")
@@ -913,8 +899,7 @@ class RunSuiteReportGenerationTests(unittest.TestCase):
         connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
         args = Namespace(owner="agent", purpose="test", wait=0, suite="sand", out=None,
                          max_seconds=1, idle_seconds=None, expect_build_id=None)
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "records"
             with mock.patch.object(device, "open_serial", return_value=connection), \
@@ -922,7 +907,7 @@ class RunSuiteReportGenerationTests(unittest.TestCase):
                  mock.patch.object(device, "git_commit", return_value="deadbeef"), \
                  mock.patch.object(device_report, "write_report_for_capture",
                                    side_effect=RuntimeError("disk full")):
-                self.assertEqual(device.run_suite(args, store, "COM5"), 0)
+                self.assertEqual(device.run_suite(args, store, BOARD), 0)
 
 
 class RunSuiteRecordsWorktreeTests(unittest.TestCase):
@@ -933,15 +918,14 @@ class RunSuiteRecordsWorktreeTests(unittest.TestCase):
         connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
         args = Namespace(owner="agent", purpose="test", wait=0, suite="sand", out=None,
                          max_seconds=1, idle_seconds=None, expect_build_id=None)
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "records"
             with mock.patch.object(device, "open_serial", return_value=connection), \
                  mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"), \
                  mock.patch.object(device.Path, "cwd", return_value=Path("C:/some/worktree")):
-                device.run_suite(args, store, "COM5")
+                device.run_suite(args, store, BOARD)
             entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
         self.assertEqual(entry["worktree"], str(Path("C:/some/worktree")))
 
@@ -958,7 +942,8 @@ class BatchTests(unittest.TestCase):
         class FakeLock:
             def __init__(self, *unused, **unused_keywords):
                 calls["locks"] += 1
-                self.held = {}
+                self.held = {"acquired_at": 1000.0}
+                self.error = None
 
             def __enter__(self):
                 return self
@@ -993,7 +978,7 @@ class BatchTests(unittest.TestCase):
                  mock.patch.object(device, "records_root", return_value=Path(directory) / "rec"), \
                  mock.patch.object(device, "git_commit", return_value="c0ffee"), \
                  mock.patch("builtins.print"):
-                code = device.batch(args, mock.Mock(), "COM5")
+                code = device.batch(args, mock.Mock(), BOARD)
                 summaries = list((Path(directory) / "rec").rglob("*_batch_*.md"))
                 summary = summaries[0].read_text(encoding="utf-8") if summaries else ""
         return code, calls, summary
@@ -1161,7 +1146,7 @@ class CaptureAfterResetTests(unittest.TestCase):
         with mock.patch.object(device, "open_when_free", side_effect=opened), \
              mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.05), \
              mock.patch.object(device, "RESET_REOPEN_SECONDS", 0.3):
-            data, reason = device.capture_after_reset("COM5", os.devnull, seconds, idle_seconds)
+            data, reason = device.capture_after_reset(os.devnull, seconds, idle_seconds)
         return data, reason, time.monotonic() - started
 
     def test_a_handle_silent_since_the_reset_is_reopened_despite_a_long_idle_cutoff(self):
@@ -1194,7 +1179,7 @@ class CaptureAfterResetTests(unittest.TestCase):
         started = time.monotonic()
         with mock.patch.object(device, "open_when_free", side_effect=opened), \
              mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.05):
-            unused_data, reason = device.capture_after_reset("COM5", os.devnull, 30, 0.2)
+            unused_data, reason = device.capture_after_reset(os.devnull, 30, 0.2)
         self.assertEqual((reason, len(opens)), ("idle", 1))
         self.assertLess(time.monotonic() - started, 5)
 
@@ -1216,7 +1201,7 @@ class CaptureAfterResetTests(unittest.TestCase):
         with mock.patch.object(device, "open_when_free", side_effect=opened), \
              mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.05), \
              mock.patch.object(device, "RESET_REOPEN_SECONDS", 5):
-            unused_data, reason = device.capture_after_reset("COM5", os.devnull, 30, 0.5)
+            unused_data, reason = device.capture_after_reset(os.devnull, 30, 0.5)
         self.assertEqual((reason, len(opens)), ("idle", 2))
 
     def test_idle_cutoff_equal_to_the_first_byte_wait_still_reopens_a_stale_handle(self):
@@ -1225,15 +1210,15 @@ class CaptureAfterResetTests(unittest.TestCase):
         with mock.patch.object(device, "open_when_free",
                                side_effect=lambda *unused, **unused_keywords: next(connections)), \
              mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.1):
-            unused_data, reason = device.capture_after_reset("COM5", os.devnull, 30, 0.1)
+            unused_data, reason = device.capture_after_reset(os.devnull, 30, 0.1)
         self.assertEqual(reason, "complete")
 
 class ResetTests(unittest.TestCase):
     def after_argument(self, *args, **keywords):
-        with mock.patch.object(device, "require_port_lock"), \
+        with mock.patch.object(device, "locked_port", return_value="COM5"), \
              mock.patch.object(device, "python_with_pyserial", return_value="python"), \
              mock.patch.object(device.subprocess, "run") as run:
-            device.reset("COM5", *args, **keywords)
+            device.reset(*args, **keywords)
         command = run.call_args[0][0]
         return command[command.index("--after") + 1]
 
@@ -1252,8 +1237,7 @@ class ListenElfResolutionTests(unittest.TestCase):
         connection = FakeConnection([b"\n".join(data_lines) + b"\n"])
         args = Namespace(owner="agent", purpose="autana monitor", wait=0,
                          seconds=1, out=None, elf=elf_arg)
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "records"
             with mock.patch.object(device, "open_when_free", return_value=connection), \
@@ -1261,7 +1245,7 @@ class ListenElfResolutionTests(unittest.TestCase):
                  mock.patch.object(device, "git_commit", return_value="deadbeef"), \
                  mock.patch.object(device, "find_elf_for_build_id", return_value=matched_elf) as finder, \
                  mock.patch.object(device, "decode_crash_addresses", return_value=[]) as decode:
-                device.listen(args, store, "COM5")
+                device.listen(args, store, BOARD)
         return finder, decode
 
     def test_an_explicit_elf_skips_build_id_matching(self):
@@ -1287,8 +1271,7 @@ class ListenElfResolutionTests(unittest.TestCase):
         connection = FakeConnection([b"ordinary line\nerror: failed\n"])
         args = Namespace(owner="agent", purpose="autana monitor", wait=0,
                          seconds=0.1, follow=False, echo=False, out=None, elf=None)
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         printed = io.StringIO()
         with tempfile.TemporaryDirectory() as directory, \
              mock.patch.object(device, "open_when_free", return_value=connection), \
@@ -1296,7 +1279,7 @@ class ListenElfResolutionTests(unittest.TestCase):
              mock.patch.object(device, "git_commit", return_value="deadbeef"), \
              mock.patch.object(device, "find_elf_for_build_id", return_value=None), \
              contextlib.redirect_stdout(printed):
-            device.listen(args, store, "COM5")
+            device.listen(args, store, BOARD)
         self.assertIn("listen capture: ", printed.getvalue())
         self.assertIn("error: failed", printed.getvalue())
         self.assertNotIn("ordinary line", printed.getvalue())
@@ -1304,8 +1287,7 @@ class ListenElfResolutionTests(unittest.TestCase):
 
 class ListenLifecycleTests(unittest.TestCase):
     def run_listen(self, connection, flags, output=None):
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             output = output or io.StringIO()
@@ -1315,7 +1297,7 @@ class ListenLifecycleTests(unittest.TestCase):
                  mock.patch.object(device, "git_commit", return_value="deadbeef"), \
                  mock.patch.object(device, "find_elf_for_build_id", return_value=None), \
                  contextlib.redirect_stdout(output):
-                code = device.main(["--port", "COM5", "listen", *flags])
+                code = device.main(["--board", BOARD, "listen", *flags])
             entries = [json.loads(line) for line in (root / "index.jsonl").read_text().splitlines()]
             payload = Path(entries[-1]["capture_path"]).read_bytes()
             return code, output.getvalue(), entries[-1], payload, store
@@ -1336,7 +1318,7 @@ class ListenLifecycleTests(unittest.TestCase):
     def test_listen_requires_exactly_one_duration_mode(self):
         for flags in ([], ["--seconds", "1", "--follow"]):
             with self.subTest(flags=flags), self.assertRaises(SystemExit) as caught:
-                device.main(["--port", "COM5", "listen", *flags])
+                device.main(["--board", BOARD, "listen", *flags])
             self.assertEqual(caught.exception.code, 2)
 
     def test_quiet_errors_arrive_before_capture_ends(self):
@@ -1424,14 +1406,13 @@ class ListenLifecycleTests(unittest.TestCase):
              mock.patch.object(device, "git_commit", return_value="deadbeef"), \
              mock.patch.object(device, "find_elf_for_build_id", return_value=None), \
              contextlib.redirect_stdout(io.StringIO()):
-            code = device.main(["--port", "COM5", "listen", "--follow"])
+            code = device.main(["--board", BOARD, "listen", "--follow"])
             entry = json.loads((Path(directory) / "index.jsonl").read_text().strip())
         self.assertEqual(code, 0)
         self.assertEqual(entry["reason"], "stopped")
 
     def test_interrupt_during_port_open_releases_lock(self):
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with tempfile.TemporaryDirectory() as directory, \
              mock.patch.object(device.device_lock, "LockStore", return_value=store), \
              mock.patch.object(device, "open_when_free", side_effect=KeyboardInterrupt), \
@@ -1439,7 +1420,7 @@ class ListenLifecycleTests(unittest.TestCase):
              mock.patch.object(device, "git_commit", return_value="deadbeef"), \
              mock.patch.object(device, "find_elf_for_build_id", return_value=None), \
              contextlib.redirect_stdout(io.StringIO()):
-            code = device.main(["--port", "COM5", "listen", "--follow"])
+            code = device.main(["--board", BOARD, "listen", "--follow"])
             entry = json.loads((Path(directory) / "index.jsonl").read_text().strip())
         self.assertEqual(code, 0)
         self.assertEqual(entry["reason"], "stopped")
@@ -1448,10 +1429,9 @@ class ListenLifecycleTests(unittest.TestCase):
 
 class WaiterNoticeTests(unittest.TestCase):
     def test_holder_reports_each_waiter_once(self):
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         store.tickets.return_value = [{"ticket": "one", "owner": "sam", "purpose": "test"}]
-        lock = device.HeldLock(store, "COM5", "agent", "monitor", 0, announce_waiters=True)
+        lock = device.HeldLock(store, BOARD, "agent", "monitor", 0, announce_waiters=True)
         lock.stop.wait = mock.Mock(side_effect=[False, False, True])
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
@@ -1459,10 +1439,9 @@ class WaiterNoticeTests(unittest.TestCase):
         self.assertEqual(stderr.getvalue().count("sam is waiting"), 1)
 
     def test_a_flash_or_suite_holder_never_invites_ctrl_c(self):
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         store.tickets.return_value = [{"ticket": "one", "owner": "sam", "purpose": "test"}]
-        lock = device.HeldLock(store, "COM5", "agent", "flash", 0)
+        lock = device.HeldLock(store, BOARD, "agent", "flash", 0)
         lock.stop.wait = mock.Mock(side_effect=[False, False, True])
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
@@ -1475,7 +1454,7 @@ class ResetCommandTests(unittest.TestCase):
         store = mock.Mock()
         with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
              mock.patch.object(device, "reset_device", return_value=0) as reset_device:
-            code = device.main(["--port", "COM5", "reset", "--capture", "--seconds", "15"])
+            code = device.main(["--board", BOARD, "reset", "--capture", "--seconds", "15"])
         self.assertEqual(code, 0)
         args = reset_device.call_args[0][0]
         self.assertTrue(args.capture)
@@ -1486,8 +1465,7 @@ class ResetCommandTests(unittest.TestCase):
             def read(self, unused_size):
                 raise OSError("USB device disappeared")
 
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         args = Namespace(owner="agent", purpose="autana reset", wait=0, capture=True,
                          seconds=1.0, out=None)
         first = VanishingConnection([])
@@ -1499,13 +1477,13 @@ class ResetCommandTests(unittest.TestCase):
                                    side_effect=[FakeConnection([]), first, second]) as open_when_free, \
                  mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
-                code = device.reset_device(args, store, "COM5")
+                code = device.reset_device(args, store, BOARD)
             entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
         self.assertEqual(code, 0)
-        reset.assert_called_once_with("COM5")
-        store.release.assert_called_once_with("COM5", "token")
+        reset.assert_called_once_with()
+        store.release.assert_called_once_with(BOARD, "token")
         self.assertEqual(open_when_free.call_count, 3)
-        open_when_free.assert_called_with("COM5", mock.ANY, reason="re-enumerating after reset")
+        open_when_free.assert_called_with(mock.ANY, reason="re-enumerating after reset")
         self.assertEqual(entry["command"], "reset")
         self.assertEqual(entry["reason"], "complete")
 
@@ -1516,12 +1494,11 @@ class ResetCommandTests(unittest.TestCase):
                     return super().read(unused_size)
                 raise OSError("USB device disappeared")
 
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         args = Namespace(owner="agent", purpose="autana reset", wait=0, capture=True,
                          seconds=20.0, out=None)
         connection = VanishingConnection([b"boot output\n"])
-        timeout = RuntimeError("board did not come back after reset before capture ended")
+        timeout = device.PortUnavailable("board did not come back after reset before capture ended")
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "records"
             with mock.patch.object(device, "reset"), \
@@ -1530,7 +1507,7 @@ class ResetCommandTests(unittest.TestCase):
                  mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"), \
                  mock.patch("builtins.print") as printed:
-                code = device.reset_device(args, store, "COM5")
+                code = device.reset_device(args, store, BOARD)
             entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
             capture = Path(entry["capture_path"]).read_bytes()
         self.assertEqual(code, 0)
@@ -1541,8 +1518,7 @@ class ResetCommandTests(unittest.TestCase):
         printed.assert_any_call("reset capture: " + entry["capture_path"])
 
     def test_reset_releases_the_lock_when_esptool_fails(self):
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         args = Namespace(owner="agent", purpose="autana reset", wait=0, capture=True,
                          seconds=1.0, out=None)
         with tempfile.TemporaryDirectory() as directory, \
@@ -1551,12 +1527,11 @@ class ResetCommandTests(unittest.TestCase):
              mock.patch.object(device, "open_when_free", return_value=FakeConnection([])), \
              mock.patch.object(device, "records_root", return_value=Path(directory)):
             with self.assertRaises(subprocess.CalledProcessError):
-                device.reset_device(args, store, "COM5")
-        store.release.assert_called_once_with("COM5", "token")
+                device.reset_device(args, store, BOARD)
+        store.release.assert_called_once_with(BOARD, "token")
 
     def test_reset_records_an_os_error(self):
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         args = Namespace(owner="agent", purpose="autana reset", wait=0, capture=True,
                          seconds=1.0, out=None)
         with tempfile.TemporaryDirectory() as directory:
@@ -1565,15 +1540,14 @@ class ResetCommandTests(unittest.TestCase):
                  mock.patch.object(device, "open_when_free", return_value=FakeConnection([])), \
                  mock.patch.object(device, "records_root", return_value=root):
                 with self.assertRaisesRegex(OSError, "port vanished"):
-                    device.reset_device(args, store, "COM5")
+                    device.reset_device(args, store, BOARD)
             entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
         self.assertEqual(entry["error"], "port vanished")
         self.assertIsNone(entry["reason"])
 
     def test_reset_without_capture_waits_before_and_after_reset(self):
         calls = []
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         args = Namespace(owner="agent", purpose="autana reset", wait=0, capture=False)
 
         def waited(*unused, **unused_keywords):
@@ -1581,8 +1555,8 @@ class ResetCommandTests(unittest.TestCase):
             return FakeConnection([])
 
         with mock.patch.object(device, "open_when_free", side_effect=waited), \
-             mock.patch.object(device, "reset", side_effect=lambda unused: calls.append("reset")):
-            self.assertEqual(device.reset_device(args, store, "COM5"), 0)
+             mock.patch.object(device, "reset", side_effect=lambda: calls.append("reset")):
+            self.assertEqual(device.reset_device(args, store, BOARD), 0)
         self.assertEqual(calls, ["wait", "reset", "wait"])
 
 
@@ -1608,7 +1582,7 @@ class SelftestTests(unittest.TestCase):
         connection = FakeConnection([b"free heap after framebuffer: 123456 bytes\n",
                                      b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\n"])
 
-        def fake_reset(unused_port):
+        def fake_reset():
             calls["events"].append("reset")
 
         def fake_wait(*unused, **unused_keywords):
@@ -1623,14 +1597,13 @@ class SelftestTests(unittest.TestCase):
             args = Namespace(owner="agent", purpose="autana selftest", wait=0,
                              worktree=str(worktree), out=None, perf_scope=perf_scope,
                              max_seconds=5, idle_seconds=None)
-            store = mock.Mock()
-            store.acquire.return_value = {"log": "", "token": "token"}
+            store = mock_store()
             with mock.patch.object(device, "flash", fake_flash), \
                  mock.patch.object(device, "reset", fake_reset), \
                  mock.patch.object(device, "open_when_free", side_effect=fake_wait), \
                  mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
-                code = device.selftest(args, store, "COM5")
+                code = device.selftest(args, store, BOARD)
                 entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
         return code, calls, entry
 
@@ -1669,14 +1642,13 @@ class SelftestTests(unittest.TestCase):
             args = Namespace(owner="agent", purpose="autana selftest", wait=0,
                              worktree=str(worktree), out=None, perf_scope=False,
                              max_seconds=5, idle_seconds=None)
-            store = mock.Mock()
-            store.acquire.return_value = {"log": "", "token": "token"}
+            store = mock_store()
             with mock.patch.object(device, "flash", return_value="abc123-diag"), \
                  mock.patch.object(device, "reset"), \
                  mock.patch.object(device, "open_when_free", return_value=connection), \
                  mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
-                code = device.selftest(args, store, "COM5")
+                code = device.selftest(args, store, BOARD)
         self.assertEqual(code, 1)
 
 
@@ -1730,13 +1702,12 @@ class ScreenshotCommandTests(unittest.TestCase):
 
     def test_takes_the_lock_and_writes_the_decoded_files(self):
         connection = FakeConnection([self.wire_lines(self.minimal_bmp(), '{"heap": 1}')])
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
             out = str(Path(directory) / "shot.bmp")
             args = Namespace(owner="agent", purpose="autana screenshot", wait=0, out=out, timeout=1.0)
             with mock.patch.object(device, "open_when_free", return_value=connection):
-                code = device.screenshot(args, store, "COM5")
+                code = device.screenshot(args, store, BOARD)
             self.assertEqual(code, 0)
             self.assertTrue((Path(directory) / "shot.png").is_file())
             self.assertEqual(json.loads((Path(directory) / "shot.json").read_text()),
@@ -1745,54 +1716,50 @@ class ScreenshotCommandTests(unittest.TestCase):
 
     def test_defaults_its_out_path_to_a_timestamped_name_in_the_cwd(self):
         connection = FakeConnection([self.wire_lines(self.minimal_bmp())])
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         fixed_now = datetime(2026, 9, 16, 12, 30, 45)
         with tempfile.TemporaryDirectory() as directory:
             args = Namespace(owner="agent", purpose="autana screenshot", wait=0, out=None, timeout=1.0)
             with mock.patch.object(device, "open_when_free", return_value=connection), \
                  mock.patch.object(device, "now", return_value=fixed_now), \
                  mock.patch.object(device.Path, "cwd", return_value=Path(directory)):
-                device.screenshot(args, store, "COM5")
+                device.screenshot(args, store, BOARD)
             self.assertTrue((Path(directory) / "screenshot_20260916_123045.png").is_file())
 
     def test_default_turns_the_framebuffer_to_the_board_shape_and_records_it(self):
         connection = FakeConnection([self.wire_lines(self.marked_bmp(), '{"orientation_quarter": 2}')])
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
             out = str(Path(directory) / "shot.png")
             args = Namespace(owner="agent", purpose="p", wait=0, out=out, timeout=1.0)
             with mock.patch.object(device, "open_when_free", return_value=connection):
-                device.screenshot(args, store, "COM5")
+                device.screenshot(args, store, BOARD)
             self.assertEqual(self.image_shape(out), (3, 2))
             self.assertEqual(self.first_pixel(out), bytes((18, 17, 16)))
             self.assertEqual(json.loads(Path(directory, "shot.json").read_text())["image_turn_quarter"], 3)
 
     def test_framebuffer_mode_keeps_the_bytes_orientation_and_records_zero_turn(self):
         connection = FakeConnection([self.wire_lines(self.marked_bmp(), '{"orientation_quarter": 1}')])
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
             out = str(Path(directory) / "shot.png")
             args = Namespace(owner="agent", purpose="p", wait=0, out=out, timeout=1.0,
                              framebuffer=True)
             with mock.patch.object(device, "open_when_free", return_value=connection):
-                device.screenshot(args, store, "COM5")
+                device.screenshot(args, store, BOARD)
             self.assertEqual(self.image_shape(out), (2, 3))
             self.assertEqual(self.first_pixel(out), bytes((15, 14, 13)))
             self.assertEqual(json.loads(Path(directory, "shot.json").read_text())["image_turn_quarter"], 0)
 
     def test_as_shown_uses_the_captured_orientation_quarter(self):
         connection = FakeConnection([self.wire_lines(self.marked_bmp(), '{"orientation_quarter": 2}')])
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
             out = str(Path(directory) / "shot.png")
             args = Namespace(owner="agent", purpose="p", wait=0, out=out, timeout=1.0,
                              as_shown=True)
             with mock.patch.object(device, "open_when_free", return_value=connection):
-                device.screenshot(args, store, "COM5")
+                device.screenshot(args, store, BOARD)
             self.assertEqual(self.image_shape(out), (2, 3))
             self.assertEqual(self.first_pixel(out), bytes((6, 5, 4)))
             self.assertEqual(json.loads(Path(directory, "shot.json").read_text())["image_turn_quarter"], 2)
@@ -1803,12 +1770,11 @@ class ScreenshotCommandTests(unittest.TestCase):
 
     def test_a_refusal_propagates_as_a_runtime_error(self):
         connection = FakeConnection([b"SCREENSHOT_REFUSED: no room in PSRAM\n"])
-        store = mock.Mock()
-        store.acquire.return_value = {"log": "", "token": "token"}
+        store = mock_store()
         args = Namespace(owner="agent", purpose="p", wait=0, out=None, timeout=1.0)
         with mock.patch.object(device, "open_when_free", return_value=connection):
             with self.assertRaisesRegex(RuntimeError, "no room in PSRAM"):
-                device.screenshot(args, store, "COM5")
+                device.screenshot(args, store, BOARD)
 
 
 if __name__ == "__main__":

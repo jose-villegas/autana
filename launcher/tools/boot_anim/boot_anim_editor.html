@@ -52,8 +52,9 @@
   straight to the REAL main/boot/boot_anim_timeline.json and regenerates
   the REAL boot_anim_timeline.h (what Bake + a manual copy + regenerate
   would produce, done here instead), then runs tools/build/build_flash_dev.sh -
-  builds the development firmware image and flashes it to the serial port
-  typed in next to the button (default COM3). See
+  builds the development firmware image and flashes it to the board whose
+  USB serial number is typed in next to the button (empty: the only board
+  plugged in). See
   boot_anim_editor_server.py's own top comment for the /build_flash
   endpoint this calls, and build_flash_dev.sh's own header for what the
   development image is (development-only logging/instrumentation, no test
@@ -199,7 +200,7 @@
     gap: 8px;
   }
   .playbar-row input[type=range] { flex: 1; }
-  #flashPort { width: 70px; flex: none; }
+  #flashBoard { width: 140px; flex: none; }
   #rangeFrom, #rangeTo, #playSpeed { width: 60px; flex: none; }
   #flashStatus { font-size: 12px; color: var(--text-dim); }
   button {
@@ -379,7 +380,8 @@
       <button id="btnBake" class="primary">Bake</button>
     </div>
     <div class="playbar-row">
-      <input type="text" id="flashPort" value="COM3" title="Serial port the device is on">
+      <input type="text" id="flashBoard" value="" placeholder="only board"
+             title="The board's USB serial number; leave empty for the only board plugged in">
       <button id="btnBuildFlash" class="primary">Build &amp; Flash</button>
       <span id="flashStatus"></span>
     </div>
@@ -1392,16 +1394,17 @@ document.getElementById('fileInput').addEventListener('change', (e) => {
  * flash() split.
  * ======================================================================= */
 
-const flashPortInput = document.getElementById('flashPort');
+const flashBoardInput = document.getElementById('flashBoard');
 const flashStatusEl = document.getElementById('flashStatus');
 const btnBuildFlash = document.getElementById('btnBuildFlash');
 
 btnBuildFlash.addEventListener('click', async () => {
-  const port = flashPortInput.value.trim() || 'COM3';
+  const board = flashBoardInput.value.trim();
+  const target = board ? 'board ' + board : 'the board';
   const proceed = confirm(
     'This overwrites the committed main/boot/boot_anim_timeline.json and ' +
     '.h with the values currently in this page, then builds and flashes ' +
-    'the development image to ' + port + '.\n\nContinue?');
+    'the development image to ' + target + '.\n\nContinue?');
   if (!proceed) return;
 
   btnBuildFlash.disabled = true;
@@ -1420,7 +1423,7 @@ btnBuildFlash.addEventListener('click', async () => {
         wave_wavelength_m: state.wave_wavelength_m,
         wave_period_ms: state.wave_period_ms,
         keyframes: state.keyframes,
-        port,
+        board,
       }),
     });
     const body = await res.json().catch(() => ({}));
@@ -1430,7 +1433,7 @@ btnBuildFlash.addEventListener('click', async () => {
       showFlashError(body.error || ('HTTP ' + res.status));
       return;
     }
-    flashStatusEl.textContent = 'flashed to ' + port;
+    flashStatusEl.textContent = 'flashed to ' + target;
     flashStatusEl.style.color = 'var(--accent)';
   } catch (err) {
     flashStatusEl.textContent = 'failed';

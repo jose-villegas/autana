@@ -341,50 +341,10 @@ def batch(args):
 
 
 def status(args):
-    """Who, if anyone, holds the board right now - and who is waiting."""
-    if not read_json_flag(args, "usage: autana status [--json]"):
-        return subprocess.call(device_command("status"))
-    result = subprocess.run(device_command("status"), capture_output=True, text=True)
-    if result.returncode != 0:
-        print(result.stderr, end="", file=sys.stderr)
-        return result.returncode
-    print(json.dumps(parse_status(result.stdout)))
-    return 0
-
-
-def parse_status(reply):
-    lines = reply.splitlines()
-    waiting = []
-    for line in lines:
-        match = re.fullmatch(r"  (\d+)\. (.+) for (.+); estimated start (.+)", line)
-        if match:
-            number, owner, purpose, estimate = match.groups()
-            if int(number) != len(waiting) + 1:
-                raise ValueError("device status queue is out of order")
-            waiting.append({"owner": owner, "purpose": purpose,
-                            "estimated_start": None if estimate.startswith("unknown") else estimate})
-    first = lines[0] if lines else "unlocked"
-    if first.startswith("held by "):
-        match = re.fullmatch(r"held by (.+) for (.+) since (\d+) "
-                             r"\(local (.+); elapsed (\d+)s; estimated free (.+)\)", first)
-        if match:
-            owner_name, purpose, acquired_at, local, elapsed, estimate = match.groups()
-            return {"state": "held", "owner": owner_name, "purpose": purpose,
-                    "acquired_at": int(acquired_at), "local_start": local,
-                    "elapsed_seconds": int(elapsed),
-                    "estimated_free": None if estimate.startswith("unknown") else estimate,
-                    "waiting": waiting}
-    if first.startswith("human reservation: "):
-        match = re.fullmatch(r"human reservation: (.+?): (.*) \((\d+)s ago; since (.+)\)", first)
-        if match:
-            owner_name, note, age, local = match.groups()
-            return {"state": "human", "owner": owner_name, "note": note,
-                    "age_seconds": int(age), "local_start": local, "waiting": waiting}
-    if first == "unlocked":
-        return {"state": "unlocked", "waiting": waiting}
-    if first.startswith("unlocked - stale lock from "):
-        return {"state": "unlocked", "stale_lock": first, "waiting": waiting}
-    raise ValueError(f"unrecognized device status: {first}")
+    """Every board, whether it is free, and if not who has it and until when."""
+    if read_json_flag(args, "usage: autana status [--json]"):
+        return subprocess.call(device_command("status", "--json"))
+    return subprocess.call(device_command("status"))
 
 
 def release(args):
@@ -509,16 +469,21 @@ SEND_WAIT_S = 5
 
 
 def board_holder():
-    """'held by <owner> for ...' when someone else has the board, else ''.
+    """'held by <owner> for <purpose>' when someone else has a board that is
+    plugged in, else ''.
 
     Every line of a console session is a device.py of its own under one
     autana, so a lock this autana already holds is not somebody else's and
     the session does not refuse itself."""
-    mine = f"held by {owner()} "
-    result = subprocess.run(device_command("status"), capture_output=True, text=True)
-    for line in result.stdout.splitlines():
-        if line.startswith("held by ") and not line.startswith(mine):
-            return line.strip()
+    result = subprocess.run(device_command("status", "--json"), capture_output=True, text=True)
+    try:
+        boards = json.loads(result.stdout)["boards"]
+    except (ValueError, KeyError, TypeError):
+        return ""
+    for board in boards:
+        holder = board["holder"]
+        if board["port"] and board["state"] == "held" and holder["owner"] != owner():
+            return f"held by {holder['owner']} for {holder['purpose']}"
     return ""
 
 

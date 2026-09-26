@@ -7,25 +7,19 @@ for device.py's and the wire protocol's own coverage.
 
     python -m unittest discover -s scripts/autana/tests
 """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "device" / "tests"))
+import isolation  # noqa: E402,F401  (first: keeps the suite out of real records)
 import contextlib
 import io
+import json
 import socket
-import sys
 import os
 import tempfile
 import unittest
-from pathlib import Path
 from unittest import mock
-
-
-def setUpModule():
-    global saved_hook
-    saved_hook = os.environ.pop("AUTANA_LOCK_HOOK", None)
-
-
-def tearDownModule():
-    if saved_hook is not None:
-        os.environ["AUTANA_LOCK_HOOK"] = saved_hook
 
 AUTANA = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AUTANA))
@@ -35,19 +29,27 @@ sys.path.insert(0, str(AUTANA.parent / "device"))
 import device_lock  # noqa: E402
 
 
+def busy_status(owner="someone-else@0001", port="COM3"):
+    """`device.py status --json` with one board that `owner` holds."""
+    return json.dumps({"boards": [{
+        "board": "90:70:69:FE:A3:08", "port": port, "state": "held",
+        "holder": {"owner": owner, "purpose": "autana screenshot"}, "since": 1000,
+        "elapsed_seconds": 3, "estimated_free": None, "stale": None, "waiting": []}]})
+
+
 class SendCommandBuildingTests(unittest.TestCase):
     """send() is the one place that actually shells out to `device.py send`
     - every device-verb command (freeze, touch, tune, ...) goes through it,
     so its own command-building is worth pinning once, directly."""
 
     def setUp(self):
-        status = mock.Mock(stdout="", stderr="", returncode=0)
+        status = mock.Mock(stdout='{"boards": []}', stderr="", returncode=0)
         answered = mock.Mock(stdout="TUNE_OK launcher.ridge_trail=200\n", stderr="", returncode=0)
         self.calls = []
 
         def fake_run(command, **unused_kwargs):
             self.calls.append(command)
-            return status if command[-1] == "status" else answered
+            return status if "status" in command else answered
 
         patcher = mock.patch.object(autana.subprocess, "run", side_effect=fake_run)
         patcher.start()
@@ -86,7 +88,7 @@ class SendCommandBuildingTests(unittest.TestCase):
         self.assertEqual(command[command.index("--seconds") + 1], "0.5")
 
     def test_a_busy_board_sends_nothing(self):
-        busy = mock.Mock(stdout="held by someone-else@0001 for 3s\n")
+        busy = mock.Mock(stdout=busy_status())
         with mock.patch.object(autana.subprocess, "run", return_value=busy):
             code, replies = autana.send("TUNE")
         self.assertEqual(code, 3)
@@ -94,22 +96,22 @@ class SendCommandBuildingTests(unittest.TestCase):
 
 
 class BoardHolderTests(unittest.TestCase):
-    """board_holder() reads `device.py status` as text, so what the lock
-    store prints is the contract - pinned here from a real store."""
+    """board_holder() reads `device.py status --json`, pinned here from a
+    real store's own status entry."""
 
-    def status_output(self, holder_pid):
+    BOARD = "90:70:69:FE:A3:08"
+
+    def status_output(self, holder_pid, owner="killed@0pac", port="COM3"):
         with tempfile.TemporaryDirectory() as root:
             store = device_lock.LockStore(root, is_alive=lambda pid: pid == 1)
-            store.write_json(store.lock_path("COM3"), {
-                "acquired_at": store.now(), "heartbeat_at": store.now(),
-                "expected_build_id": "", "host": socket.gethostname(),
-                "owner": "killed@0pac", "pid": holder_pid, "port": "COM3",
-                "purpose": "autana screenshot", "token": "old",
+            store.write_json(store.lock_path(self.BOARD), {
+                "acquired_at": store.now(), "board": self.BOARD, "heartbeat_at": store.now(),
+                "expected_build_id": "", "host": socket.gethostname(), "kind": "screenshot",
+                "owner": owner, "pid": holder_pid, "purpose": "autana screenshot",
+                "token": "old",
             })
-            out = io.StringIO()
-            with contextlib.redirect_stdout(out):
-                device_lock.print_status(store.status("COM3"))
-            return out.getvalue()
+            entry = device_lock.status_entry(store, self.BOARD, port, durations={})
+        return json.dumps({"boards": [entry]})
 
     def holder_seen(self, status_text):
         with mock.patch.object(autana.subprocess, "run", return_value=mock.Mock(stdout=status_text)):
@@ -119,7 +121,14 @@ class BoardHolderTests(unittest.TestCase):
         self.assertEqual(self.holder_seen(self.status_output(holder_pid=99)), "")
 
     def test_a_lock_whose_holder_lives_still_makes_the_board_busy(self):
-        self.assertTrue(self.holder_seen(self.status_output(holder_pid=1)).startswith("held by killed@0pac"))
+        self.assertEqual(self.holder_seen(self.status_output(holder_pid=1)),
+                         "held by killed@0pac for autana screenshot")
+
+    def test_a_lock_this_autana_holds_is_not_somebody_else_s(self):
+        self.assertEqual(self.holder_seen(self.status_output(1, owner=autana.owner())), "")
+
+    def test_a_held_board_that_is_not_plugged_in_blocks_nothing(self):
+        self.assertEqual(self.holder_seen(self.status_output(holder_pid=1, port=None)), "")
 
 
 class DeviceVerbCommandTests(unittest.TestCase):
@@ -288,7 +297,7 @@ class ScreenshotCommandTests(unittest.TestCase):
                 autana.screenshot(list(args))
 
     def test_a_busy_board_is_refused_without_calling_device(self):
-        busy = mock.Mock(stdout="held by someone-else@0001 for 3s\n")
+        busy = mock.Mock(stdout=busy_status())
         with mock.patch.object(autana.subprocess, "run", return_value=busy), \
              mock.patch.object(autana.subprocess, "call") as called:
             code = autana.screenshot([])
@@ -503,7 +512,13 @@ class LockCommandTests(unittest.TestCase):
         with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
             code = autana.status([])
         self.assertEqual(code, 0)
-        self.assertIn("status", called.call_args[0][0])
+        self.assertEqual(called.call_args[0][0][-1], "status")
+
+    def test_status_json_is_device_json_passed_through(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            code = autana.status(["--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(called.call_args[0][0][-2:], ["status", "--json"])
 
     def test_status_rejects_arguments(self):
         with self.assertRaises(SystemExit):
