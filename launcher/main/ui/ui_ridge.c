@@ -189,7 +189,7 @@ allocate_once(void) {
                      spring_damping);
     ridge_motion_extend(ridge_curve_y, RIDGE_CURVE_POINTS, ridge->rigid, RIDGE_EXTRA);
     memcpy(ridge->heights, ridge->rigid, sizeof ridge->heights);
-    ridge->ambient = true;
+    ridge->ambient = false;
     ridge->field = (gfx_glow_field_t){
         .span_lo = ridge->span_lo,
         .span_hi = ridge->span_hi,
