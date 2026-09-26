@@ -331,12 +331,58 @@ row_body_color(int y, int x) {
     return color;
 }
 
+static inline __attribute__((always_inline)) bool
+scanline_pick(uint8_t alpha, int phase) {
+    static const uint8_t cutoff[4] = {64, 192, 128, 255};
+    return alpha == 255 || alpha >= cutoff[phase];
+}
+
+static inline __attribute__((always_inline)) uint8_t
+layer_alpha_at(int layer, int distance) {
+    return (uint8_t)ridge_layer_alpha(layer, distance);
+}
+
+/* A segment with a lip in it, along its strip from `a0` to `a1`, scanline
+ * dither only. The same picture as backdrop_pixel(), with each layer's
+ * distance stepped instead of looked up and no orientation test per pixel. */
+static void
+paint_lip_segment(gfx_color_t* framebuffer, int strip, int a0, int a1, uint8_t reveal_alpha) {
+    const bool by_column = ridge->by_column;
+    const int step = by_column ? GFX_WIDTH : 1;
+    gfx_color_t* out = framebuffer + (by_column ? a0 * GFX_WIDTH + strip : strip * GFX_WIDTH + a0);
+    int distance[RIDGE_LAYER_COUNT];
+    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+        const int boundary = ridge->boundary[layer][strip];
+        distance[layer] = boundary == INT16_MAX ? INT_MIN / 2 : ridge->down_sign * (a0 - boundary);
+    }
+    const gfx_color_t back0 = ridge->back0_color, back1 = ridge->back1_color, black = GFX_RGB(0);
+    for (int a = a0; a < a1; a++, out += step) {
+        const int phase = (by_column ? a : strip) & 3;
+        gfx_color_t color = ridge->background_color;
+        if (!scanline_pick(reveal_alpha, phase)) {
+            color = black;
+        } else {
+            if (scanline_pick(layer_alpha_at(0, distance[0]), phase)) {
+                color = back0;
+            }
+            if (scanline_pick(layer_alpha_at(1, distance[1]), phase)) {
+                color = back1;
+            }
+            if (scanline_pick(layer_alpha_at(2, distance[2]), phase)) {
+                color = ridge->sky[a];
+            }
+        }
+        *out = color;
+        distance[0] += ridge->down_sign;
+        distance[1] += ridge->down_sign;
+        distance[2] += ridge->down_sign;
+    }
+}
+
 static inline __attribute__((always_inline)) void
 paint_row_part(gfx_color_t* row, int y, int x0, int x1, uint8_t reveal_alpha) {
     if (row_lip_at(y, x0)) {
-        for (int x = x0; x < x1; x++) {
-            row[x] = backdrop_pixel(x, y, reveal_alpha);
-        }
+        paint_lip_segment(row - y * GFX_WIDTH, y, x0, x1, reveal_alpha);
         return;
     }
     if (backdrop_dither_pick(0, y, (uint8_t)ridge_layer_alpha(2, boundary_distance(2, x0, y)))) {
@@ -391,9 +437,7 @@ paint_column_span(gfx_color_t* framebuffer, int x, int lo, int hi, uint8_t revea
     for (int part = 0; part + 1 < count; part++) {
         const int y0 = points[part], y1 = points[part + 1];
         if (row_lip_at(y0, x)) {
-            for (int y = y0; y < y1; y++) {
-                framebuffer[y * GFX_WIDTH + x] = backdrop_pixel(x, y, reveal_alpha);
-            }
+            paint_lip_segment(framebuffer, x, y0, y1, reveal_alpha);
         } else {
             paint_column_body(framebuffer, x, y0, y1, reveal_alpha);
         }
