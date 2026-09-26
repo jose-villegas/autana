@@ -60,6 +60,23 @@ samples entirely. Poll on a separate task — 100 Hz is plenty and costs
 nothing next to rendering — and latch the press/release edges so an event
 that happens wholly between two frames is still delivered to the next one.
 
+**The panel reports taps stretched, and a finger scatters.** Measured on the
+board with Input Lab (taps aimed at known points, both orientations):
+
+| | Raw | Corrected |
+|---|---|---|
+| Long axis | reads ×1.18, −29 px | ×1.02 |
+| Short axis | reads ×1.07–1.13 | ×1.00 |
+| Median miss | 30–34 px | 14–23 px |
+| Inside a 56 px button | 32–45% | 80–93% |
+
+The long-axis stretch is identical in portrait and landscape, so it is the
+panel's; `input/touch_calib.c` undoes the fitted map on every raw point before
+anything reads it (`autana tune touch.calibrate 0` turns it off to compare).
+What stays is a finger's own scatter, 11–13 px (about 1 mm), which no
+calibration removes: controls need to be large, and the corners hide about
+42 px of radius. `apps/input_lab/tools/probe_fit.py` refits from a capture.
+
 **On targets and gestures.** A small back button is fine to aim at with a mouse
 and miserable with a fingertip. A swipe up from the bottom edge — what the
 board's stock firmware used — has no target to miss, cannot be triggered
