@@ -40,6 +40,7 @@
 #include "material.h"
 #include "material_palette.h"
 #include "sand.h"
+#include "sand_paint_row.h"
 #include "util/intmath.h"
 
 #ifndef M_PI
@@ -467,7 +468,6 @@ static const scene_t scenes[] = {
 
 /* Painter mirror (sand_paint_row_n in sand_paint_row.h, n = 2). */
 
-#define SHINE_PERIOD            64
 #define FOAM_BLOB_SHIFT         3
 #define WOOD_LEAF_SLOTS_CHECKED 5u
 #define LOCAL_DEPTH_NO_ROW      (-2)
@@ -641,7 +641,7 @@ paint_cell_block(gfx_color_t* fb, uint8_t* grp, int px0, int py0, const gfx_colo
     for (int dy = 0; dy < CELL_PX; dy++) {
         for (int dx = 0; dx < CELL_PX; dx++) {
             const int shine_q8 = shine_base_q8 + dx * shine_ux_q8 + dy * shine_uy_q8;
-            const int along = (shine_q8 >> 8) & (SHINE_PERIOD - 1);
+            const int along = (shine_q8 >> 8) & (SAND_PAINT_SHINE_PERIOD - 1);
             put_px(fb, grp, px0 + dx, py0 + dy, along < CELL_PX ? col[2] : col[0], g);
         }
     }
