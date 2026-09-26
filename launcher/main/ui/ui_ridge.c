@@ -356,7 +356,7 @@ void
 ui_ridge_settle(void) {
     allocate_once();
     if (ridge != NULL) {
-        ridge->alive_ms = (uint32_t)boot_hold_ms;
+        ridge->alive_ms = (uint32_t)boot_hold_ms + (uint32_t)ambient_ease_ms;
         ridge->attitude.pose = ridge->attitude.level;
         ridge->attitude.steady_level = ridge->attitude.level;
         ridge->attitude.steady_ms = LEVEL_STEADY_MS;

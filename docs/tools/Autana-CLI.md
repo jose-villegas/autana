@@ -154,7 +154,7 @@ so an app's own command works too. A tunable is only ever reached through
 `tune`:
 
 ```
-autana> tune trail 200
+autana> tune theme_rgb 0x1199C8
 autana> freeze
 autana> step 3
 autana> resume

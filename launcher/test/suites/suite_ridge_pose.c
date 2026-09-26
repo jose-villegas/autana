@@ -54,7 +54,7 @@ test_steady_gravity_arrives_exactly_at_level(void) {
 
 static void
 test_column_under_tracks_the_pose_axis(void) {
-    TEST_ASSERT_EQUAL_INT(49, ridge_pose_column_under((ridge_vector_t){RIDGE_POSE_ONE, 0}, 100, 200, 100, 50, 0));
+    TEST_ASSERT_EQUAL_INT(49, ridge_pose_column_under((ridge_vector_t){RIDGE_POSE_ONE, 0}, 100, 200, 100, 50, 100));
     TEST_ASSERT_EQUAL_INT(0, ridge_pose_column_under((ridge_vector_t){0, RIDGE_POSE_ONE}, 100, 200, 100, 0, 100));
     TEST_ASSERT_EQUAL_INT(99, ridge_pose_column_under((ridge_vector_t){0, RIDGE_POSE_ONE}, 100, 200, 100, 99, 100));
 }

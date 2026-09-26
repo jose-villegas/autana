@@ -42,7 +42,7 @@ class SendCommandBuildingTests(unittest.TestCase):
 
     def setUp(self):
         status = mock.Mock(stdout="", stderr="", returncode=0)
-        answered = mock.Mock(stdout="TUNE_OK launcher.ridge_trail=200\n", stderr="", returncode=0)
+        answered = mock.Mock(stdout="TUNE_OK ridge.theme_rgb=200\n", stderr="", returncode=0)
         self.calls = []
 
         def fake_run(command, **unused_kwargs):
@@ -566,8 +566,8 @@ class TuneCommandTests(unittest.TestCase):
     """Tuning is no longer implicit - `tune` and its subforms are the only
     way to a tunable, on the command line and in the console alike."""
 
-    ROWS = [("ridge.trail", "226", "0", "255", "226"),
-           ("ridge.glow_radius", "13", "1", "31", "13"),
+    ROWS = [("tune.primary", "226", "0", "255", "226"),
+           ("other.value", "13", "1", "31", "13"),
            ("wave.height", "40", "0", "100", "40")]
 
     def test_bare_tune_lists_every_row(self):
@@ -593,33 +593,33 @@ class TuneCommandTests(unittest.TestCase):
     def test_an_exact_unambiguous_name_shows_just_that_one(self):
         with mock.patch.object(autana, "tunables", return_value=self.ROWS), \
              mock.patch("builtins.print") as printed:
-            autana.tune(["trail"])
+            autana.tune(["primary"])
         printed.assert_called_once()
-        self.assertIn("ridge.trail", printed.call_args[0][0])
+        self.assertIn("tune.primary", printed.call_args[0][0])
 
     def test_an_ambiguous_name_falls_back_to_the_filtered_listing(self):
-        rows = self.ROWS + [("other.trail", "1", "0", "2", "1")]
+        rows = self.ROWS + [("other.primary", "1", "0", "2", "1")]
         with mock.patch.object(autana, "tunables", return_value=rows), \
              mock.patch("builtins.print") as printed:
-            autana.tune(["trail"])
+            autana.tune(["primary"])
         self.assertEqual(printed.call_count, 2)
 
     def test_two_arguments_set_the_resolved_name(self):
-        with mock.patch.object(autana, "send", return_value=(0, ["TUNE_OK ridge.trail=200"])) as sent, \
+        with mock.patch.object(autana, "send", return_value=(0, ["TUNE_OK tune.primary=200"])) as sent, \
              mock.patch.object(autana, "tunables", return_value=self.ROWS), mock.patch("builtins.print"):
-            code = autana.tune(["trail", "200"])
+            code = autana.tune(["primary", "200"])
         self.assertEqual(code, 0)
-        sent.assert_called_once_with("SET ridge.trail 200")
+        sent.assert_called_once_with("SET tune.primary 200")
 
     def test_reset_needs_exactly_a_name(self):
         with self.assertRaises(SystemExit):
             autana.tune(["reset"])
 
     def test_reset_resets_the_resolved_name(self):
-        with mock.patch.object(autana, "send", return_value=(0, ["TUNE_OK ridge.trail=226"])) as sent, \
+        with mock.patch.object(autana, "send", return_value=(0, ["TUNE_OK tune.primary=226"])) as sent, \
              mock.patch.object(autana, "tunables", return_value=self.ROWS), mock.patch("builtins.print"):
-            autana.tune(["reset", "trail"])
-        sent.assert_called_once_with("RESET ridge.trail")
+            autana.tune(["reset", "primary"])
+        sent.assert_called_once_with("RESET tune.primary")
 
     def test_save_takes_no_further_words(self):
         with self.assertRaises(SystemExit):
@@ -633,11 +633,11 @@ class TuneCommandTests(unittest.TestCase):
 
     def test_reset_as_a_value_is_a_set_not_the_reset_subcommand(self):
         # "reset"/"save" are only ever a subcommand in first position; here
-        # "trail" is first, so "reset" is just the value being set.
-        with mock.patch.object(autana, "send", return_value=(0, ["TUNE_OK ridge.trail=reset"])) as sent, \
+        # "primary" is first, so "reset" is just the value being set.
+        with mock.patch.object(autana, "send", return_value=(0, ["TUNE_OK tune.primary=reset"])) as sent, \
              mock.patch.object(autana, "tunables", return_value=self.ROWS), mock.patch("builtins.print"):
-            autana.tune(["trail", "reset"])
-        sent.assert_called_once_with("SET ridge.trail reset")
+            autana.tune(["primary", "reset"])
+        sent.assert_called_once_with("SET tune.primary reset")
 
     def test_too_many_arguments_are_rejected(self):
         with self.assertRaises(SystemExit):
@@ -677,7 +677,7 @@ class ConsoleRoutingTests(unittest.TestCase):
 
     def test_a_forwarded_line_with_no_reply_says_sent(self):
         with mock.patch.object(autana, "send", return_value=(0, [])), mock.patch("builtins.print") as printed:
-            self.run_console(["trail 200"])
+            self.run_console(["primary 200"])
         printed.assert_any_call("sent")
 
     def test_a_forwarded_lines_several_reply_lines_are_joined(self):
@@ -689,8 +689,8 @@ class ConsoleRoutingTests(unittest.TestCase):
     def test_tune_with_a_name_is_still_the_way_to_reach_a_tunable(self):
         fake = mock.Mock(return_value=0)
         with mock.patch.dict(autana.COMMANDS, {"tune": fake}):
-            self.run_console(["tune trail"])
-        fake.assert_called_once_with(["trail"])
+            self.run_console(["tune primary"])
+        fake.assert_called_once_with(["primary"])
 
     def test_quit_ends_the_session_without_dispatching_anything(self):
         fake = mock.Mock(return_value=0)
