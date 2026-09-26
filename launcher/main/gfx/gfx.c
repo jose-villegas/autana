@@ -1,6 +1,7 @@
 #include "gfx/gfx.h"
 #include "build_variant.h"
 #include "gfx/gfx_dirty.h"
+#include "gfx/gfx_double_buffer.h"
 #include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font_roles.h"
 #include "gfx/gfx_full_redraw.h"
@@ -57,6 +58,21 @@ static gfx_color_t* fb;
  * gfx_present_begin()/gfx_present_wait() read this to know whether there is
  * a framebuffer to send at all. */
 static gfx_mode_t current_mode;
+static gfx_color_t* double_fb[2];
+static gfx_double_buffer_t double_buffer;
+
+static inline bool
+double_buffer_active(void) {
+    return current_mode.layout == GFX_LAYOUT_DOUBLE_FB;
+}
+
+static inline gfx_color_t*
+present_fb(void) {
+    if (double_buffer_active()) {
+        return double_fb[gfx_double_buffer_present_index(&double_buffer)];
+    }
+    return fb;
+}
 
 /* The band ring's own buffers - declared here, not with the rest of the
  * mode/band implementation further down, so current_target() below can
@@ -666,6 +682,9 @@ static int drawn_bbox_x0, drawn_bbox_y0, drawn_bbox_x1, drawn_bbox_y1;
 void
 gfx_set_partial_clear(bool on) {
     GFX_PRESENT_GUARD();
+    if (double_buffer_active()) {
+        on = false;
+    }
     if (!on) {
         prev_bbox_valid = false;
     }
@@ -721,6 +740,9 @@ TUNE(gfx, tight_fill_marks, 1, 0, 1);
  * mark_band() call below cost nothing there. */
 static inline void
 mark_fill(int x0, int y0, int x1, int y1) {
+    if (double_buffer_active()) {
+        return;
+    }
     if (tight_fill_marks) {
         dirty_mark(x0, y0, x1 - x0, y1 - y0);
     } else {
@@ -733,6 +755,9 @@ mark_fill(int x0, int y0, int x1, int y1) {
 void
 gfx_mark_all_dirty(void) {
     GFX_PRESENT_GUARD();
+    if (double_buffer_active()) {
+        return;
+    }
     mark_all_dirty_now();
 }
 
@@ -796,6 +821,9 @@ drawn_bbox_extend(int x0, int y0, int x1, int y1) {
 void
 gfx_mark_dirty(int x, int y, int w, int h) {
     GFX_PRESENT_GUARD();
+    if (double_buffer_active()) {
+        return;
+    }
     dirty_mark(x, y, w, h);
 
     if (w <= 0 || h <= 0) {
@@ -815,6 +843,9 @@ gfx_mark_dirty(int x, int y, int w, int h) {
 bool
 gfx_region_dirty(int x, int y, int w, int h) {
     GFX_PRESENT_GUARD();
+    if (double_buffer_active()) {
+        return true;
+    }
     return dirty_region_dirty(x, y, w, h);
 }
 
@@ -863,7 +894,7 @@ gfx_clear(gfx_color_t color) {
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
     }
-    if (!band_render_active && partial_clear_on && prev_bbox_valid) {
+    if (!band_render_active && !double_buffer_active() && partial_clear_on && prev_bbox_valid) {
         for (int y = prev_bbox_y0; y < prev_bbox_y1; y++) {
             gfx_color_t* dst = fb + (size_t)y * GFX_WIDTH + prev_bbox_x0;
             for (int x = prev_bbox_x0; x < prev_bbox_x1; x++) {
@@ -884,7 +915,7 @@ gfx_clear(gfx_color_t color) {
         words[i] = pair;
     }
 
-    if (!band_render_active) {
+    if (!band_render_active && !double_buffer_active()) {
         gfx_mark_all_dirty();
     }
 }
@@ -905,7 +936,7 @@ gfx_pixel(int x, int y, gfx_color_t color) {
         return;
     }
     gfx_target_row(target, y)[x] = color;
-    if (!band_render_active) {
+    if (!band_render_active && !double_buffer_active()) {
         mark_band(y, y + 1);
     }
 }
@@ -1745,7 +1776,7 @@ send_audit_capture(int x0, int y0, int w, int h, const gfx_color_t* buf) {
     }
     for (int r = 0; r < h; r++) {
         const gfx_color_t* src = buf + (size_t)r * w;
-        const gfx_color_t* fb_row = fb + (size_t)(y0 + r) * GFX_WIDTH + x0;
+        const gfx_color_t* fb_row = present_fb() + (size_t)(y0 + r) * GFX_WIDTH + x0;
         if (memcmp(src, fb_row, (size_t)w * sizeof(gfx_color_t)) != 0) {
             send_audit_copy_fault_px += count_differing_px(src, fb_row, w);
         }
@@ -1760,7 +1791,7 @@ send_audit_capture(int x0, int y0, int w, int h, const gfx_color_t* buf) {
  * the next present resends it. */
 static void
 send_audit_scan_row(int y) {
-    const gfx_color_t* fb_row = fb + (size_t)y * GFX_WIDTH;
+    const gfx_color_t* fb_row = present_fb() + (size_t)y * GFX_WIDTH;
     const gfx_color_t* shadow_row = send_shadow + (size_t)y * GFX_WIDTH;
     if (memcmp(fb_row, shadow_row, (size_t)GFX_WIDTH * sizeof(gfx_color_t)) == 0) {
         return;
@@ -1870,7 +1901,8 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
     *queued = 0;
 
     for (int r = 0; r < h; r++) {
-        memcpy(gather_buf + (size_t)r * w, fb + (size_t)(y0 + r) * GFX_WIDTH + x0, (size_t)w * sizeof(gfx_color_t));
+        memcpy(gather_buf + (size_t)r * w, present_fb() + (size_t)(y0 + r) * GFX_WIDTH + x0,
+               (size_t)w * sizeof(gfx_color_t));
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
     send_audit_capture(x0, y0, w, h, gather_buf);
@@ -1917,7 +1949,7 @@ static bool
 send_fb_rows(int y0, int y1) {
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
     strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
-    memcpy(slot, fb + (size_t)y0 * GFX_WIDTH, (size_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t));
+    memcpy(slot, present_fb() + (size_t)y0 * GFX_WIDTH, (size_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t));
 #if CONFIG_LAUNCHER_DEVELOPMENT
     send_audit_capture(0, y0, GFX_WIDTH, y1 - y0, slot);
     dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
@@ -2282,10 +2314,16 @@ send_dirty_rows(int* queued) {
  * (gfx_set_present_async(false)) - either way, on whichever core called it,
  * since strip_sent is an ordinary FreeRTOS semaphore and the panel's own
  * strip-sent interrupt is core-agnostic about who it wakes. */
+static void run_present_raw_full(void);
+
 static void
 run_present_normal(void) {
     panel_clock_apply();
     present_send_failed = false;
+    if (double_buffer_active()) {
+        run_present_raw_full();
+        return;
+    }
     if (current_mode.pixfmt == GFX_PIXFMT_INDEXED8) {
         run_present_indexed();
         return;
@@ -2332,7 +2370,6 @@ run_present_normal(void) {
     }
 }
 
-#if CONFIG_LAUNCHER_DEVELOPMENT
 /* Bypasses gfx_present()'s dirty tracking: every strip through the same
  * bounce copy and queue a full-band send takes, one strip_sent per strip. */
 static void
@@ -2348,7 +2385,6 @@ run_present_raw_full(void) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
 }
-#endif
 
 /* Dispatches to the present task when async, runs directly otherwise - see
  * gfx_set_present_async(). Shared by gfx_present_begin() and the raw-full
@@ -2377,6 +2413,7 @@ gfx_present_begin(void) {
     if (band_is_app_driven()) {
         return; /* the band ring sends and waits inside frame() itself */
     }
+    gfx_present_guard_allow_draw(double_buffer_active());
     present_task_mode = PRESENT_TASK_NORMAL;
     dispatch_present();
 }
@@ -2407,6 +2444,7 @@ touch_unused_dirty_run_symbols(void) {
 void
 gfx_present_begin(void) {
     gfx_present_guard_begin();
+    gfx_present_guard_allow_draw(double_buffer_active());
 }
 
 void
@@ -2509,6 +2547,17 @@ free_full_framebuffer(void) {
     fb = NULL;
 }
 
+static gfx_color_t*
+alloc_extra_full_framebuffer(void) {
+    const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+    return heap_caps_malloc(bytes, BOARD_FRAMEBUFFER_CAPS);
+}
+
+static void
+free_extra_full_framebuffer(gfx_color_t* buffer) {
+    heap_caps_free(buffer);
+}
+
 static bool
 alloc_band_buffers(int band_height) {
     (void)band_height; /* GFX_BAND_HEIGHT <= STRIP_HEIGHT, asserted above */
@@ -2546,6 +2595,25 @@ static void
 free_full_framebuffer(void) {
     free(fb);
     fb = NULL;
+}
+
+static gfx_color_t*
+alloc_extra_full_framebuffer(void) {
+    const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+#ifdef HOST_HEAP_ARENA
+    return heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    return malloc(bytes);
+#endif
+}
+
+static void
+free_extra_full_framebuffer(gfx_color_t* buffer) {
+#ifdef HOST_HEAP_ARENA
+    heap_caps_free(buffer);
+#else
+    free(buffer);
+#endif
 }
 
 static bool
@@ -2642,7 +2710,18 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
 
     const gfx_mode_t granted = gfx_mode_resolve(request, GFX_RESOLUTION_FULL, GFX_WIDTH, GFX_HEIGHT, GFX_BAND_HEIGHT);
 
-    if (granted.layout == GFX_LAYOUT_BANDS && granted.pixfmt == GFX_PIXFMT_INDEXED8) {
+    if (granted.layout == GFX_LAYOUT_DOUBLE_FB) {
+        double_fb[0] = fb;
+        double_fb[1] = alloc_extra_full_framebuffer();
+        if (double_fb[1] == NULL) {
+            double_fb[0] = NULL;
+            return &current_mode;
+        }
+        gfx_double_buffer_begin(&double_buffer);
+        fb = double_fb[gfx_double_buffer_draw_index(&double_buffer)];
+        partial_clear_on = false;
+        mark_all_dirty_now();
+    } else if (granted.layout == GFX_LAYOUT_BANDS && granted.pixfmt == GFX_PIXFMT_INDEXED8) {
         if (granted.index_grid_w <= 0 || granted.index_grid_h <= 0 || granted.cell_size <= 0
             || !alloc_indexed_image(granted.index_grid_w, granted.index_grid_h)) {
             free_indexed_image();
@@ -2674,7 +2753,17 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
 void
 gfx_mode_exit(void) {
     GFX_PRESENT_GUARD();
-    if (current_mode.layout == GFX_LAYOUT_BANDS) {
+    if (current_mode.layout == GFX_LAYOUT_DOUBLE_FB) {
+        const unsigned front = gfx_double_buffer_present_index(&double_buffer);
+        const unsigned back = gfx_double_buffer_draw_index(&double_buffer);
+        free_extra_full_framebuffer(double_fb[back]);
+        fb = double_fb[front];
+        double_fb[0] = NULL;
+        double_fb[1] = NULL;
+        gfx_fb_guard_set_available(true);
+        gfx_clear_clip();
+        mark_all_dirty_now();
+    } else if (current_mode.layout == GFX_LAYOUT_BANDS) {
         if (current_mode.pixfmt == GFX_PIXFMT_INDEXED8) {
             free_indexed_image();
         } else {
@@ -2711,6 +2800,14 @@ gfx_mode_exit(void) {
 const gfx_mode_t*
 gfx_mode_current(void) {
     return &current_mode;
+}
+
+void
+gfx_double_buffer_flip(void) {
+    GFX_PRESENT_GUARD();
+    assert(double_buffer_active());
+    gfx_double_buffer_swap(&double_buffer);
+    fb = double_fb[gfx_double_buffer_draw_index(&double_buffer)];
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -2940,8 +3037,8 @@ gfx_readback_begin(void) {
 void
 gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]) {
     GFX_PRESENT_GUARD();
-    if (current_mode.layout == GFX_LAYOUT_FULL_FB) {
-        memcpy(out_row, fb + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
+    if (current_mode.layout == GFX_LAYOUT_FULL_FB || current_mode.layout == GFX_LAYOUT_DOUBLE_FB) {
+        memcpy(out_row, present_fb() + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
     } else if (current_mode.pixfmt == GFX_PIXFMT_INDEXED8) {
         const gfx_indexed_frame_t frame = indexed_frame();
         gfx_indexed_expand_panel_row(&frame, y, out_row, GFX_WIDTH);

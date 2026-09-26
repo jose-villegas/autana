@@ -324,6 +324,10 @@ a band ring or an index image at `enter()`, and gfx frees the framebuffer
 while it holds one. The targets, the dirty tracker and the present path are
 in [Gfx-and-Presentation.md](Gfx-and-Presentation.md).
 
+A full-redraw app may instead ask gfx for one front and one back PSRAM
+framebuffer: core 1 presents the front while core 0 draws the complete next
+frame into the back, then gfx swaps them.
+
 This is also why the 3D renderer is small3dlib: it owns no framebuffer - it
 hands back every rasterized pixel through a callback - and with
 `S3L_Z_BUFFER 0` no depth buffer either, resolving visibility by sorting

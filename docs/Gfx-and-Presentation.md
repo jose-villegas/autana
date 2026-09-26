@@ -1,6 +1,6 @@
 # Gfx and Presentation
 
-How a draw call becomes pixels on the panel: the three draw targets, the dirty
+How a draw call becomes pixels on the panel: the four draw targets, the dirty
 tracker, and the present path. The API is
 [`launcher/main/gfx/gfx.h`](../launcher/main/gfx/gfx.h); the implementation is
 `gfx/gfx.c` over the pure headers beside it. For what an app owes the shell
@@ -20,10 +20,12 @@ flowchart TB
     DRAW["gfx_* draw calls<br/>or direct writes"] --> TGT["gfx_target.h<br/>clip + translate"]
     TGT --> SEL{"gfx_mode_current()"}
     SEL -->|"GFX_LAYOUT_FULL_FB"| FB["framebuffer<br/>368 x 448 RGB565, PSRAM"]
+    SEL -->|"GFX_LAYOUT_DOUBLE_FB"| DB["front + back framebuffers<br/>368 x 448 RGB565, PSRAM"]
     SEL -->|"GFX_LAYOUT_BANDS + RGB565"| BR["2-slot band ring<br/>internal DMA RAM"]
     SEL -->|"GFX_LAYOUT_BANDS + INDEXED8"| IX["index image<br/>internal RAM"]
     DRAW -.->|"marks"| DT["gfx_dirty.h<br/>7 x 4 cell grid + leaves"]
     FB --> PT["present task, core 1"]
+    DB --> PT
     IX -->|"LUT expand"| PT
     DT --> PT
     PT -->|"copy"| BNC["strip_bounce / gather_buf<br/>internal DMA RAM"]
@@ -40,16 +42,16 @@ Requested with `gfx_mode_enter()` from an app's `enter()`, released with
 `gfx_mode_exit()` from its `exit()`. `gfx_mode_resolve()` (`gfx_mode.h`) turns
 the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 
-| | Full framebuffer | Band ring | Indexed |
-|---|---|---|---|
-| Request | the default | `GFX_LAYOUT_BANDS` | `GFX_LAYOUT_BANDS` + `GFX_PIXFMT_INDEXED8` |
-| App writes | pixels, anywhere | pixels, one band at a time | palette indices, `gfx_indexed_image()` |
-| Buffer | 322 KiB, PSRAM | 2 x `GFX_BAND_HEIGHT` rows, DMA RAM | grid_w x grid_h bytes, internal RAM |
-| Who sends | present task | the app's own loop, inside `frame()` | present task |
-| Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole |
-| Content kept between frames | yes | **no** - a band is gone once sent | yes |
-| For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette |
-| Used by | launcher, diagnostics | render lab | sand |
+| | Full framebuffer | Double framebuffer | Band ring | Indexed |
+|---|---|---|---|---|
+| Request | the default | `GFX_LAYOUT_DOUBLE_FB` + `full_redraw` | `GFX_LAYOUT_BANDS` | `GFX_LAYOUT_BANDS` + `GFX_PIXFMT_INDEXED8` |
+| App writes | pixels, anywhere | the back buffer, pixels anywhere | pixels, one band at a time | palette indices, `gfx_indexed_image()` |
+| Buffer | 322 KiB, PSRAM | 2 x 322 KiB, PSRAM | 2 x `GFX_BAND_HEIGHT` rows, DMA RAM | grid_w x grid_h bytes, internal RAM |
+| Who sends | present task | present task | the app's own loop, inside `frame()` | present task |
+| Sends | dirty cells, runs or strips | whole front buffer | dirty bands, whole | dirty strips, whole |
+| Content kept between frames | yes | front buffer only | **no** - a band is gone once sent | yes |
+| For | anything that redraws part of a frame | a full-redraw renderer | a full-redraw renderer | a cell grid with a palette |
+| Used by | launcher, diagnostics | render lab cube | render lab | sand |
 
 - `gfx_mode_enter()` asserts the mode is `GFX_LAYOUT_FULL_FB`: modes do not nest.
 - A failed allocation grants nothing: the returned mode is still
@@ -64,7 +66,8 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 ## Dirty tracking
 
 `gfx_dirty.h`: header-only and static, so marking inlines into the fill and
-pixel hot paths. One tracker serves all three modes.
+pixel hot paths. It serves the retained and indexed modes; double-buffer mode
+sends every completed frame and does not track dirt.
 
 Two ways in. `dirty_mark()` takes a real box and may narrow a cell; the
 rect and blit primitives use it, so a glyph dirties the glyph. `mark_band()`
@@ -288,7 +291,7 @@ For a capture of what the panel shows:
 
 | Mode | `gfx_readback_begin()` |
 |---|---|
-| full framebuffer, indexed | `GFX_READBACK_READY` at once |
+| full framebuffer, double framebuffer, indexed | `GFX_READBACK_READY` at once |
 | band ring | `GFX_READBACK_PENDING`: forces the next frame to redraw every band into a PSRAM snapshot; call once per frame until `GFX_READBACK_READY` |
 | band ring, no room for the snapshot | `GFX_READBACK_UNAVAILABLE` |
 

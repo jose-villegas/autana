@@ -1,6 +1,6 @@
 /*
  * gfx_target - the buffer every pixel-writing gfx_* primitive actually
- * writes into: the whole framebuffer in GFX_LAYOUT_FULL_FB, or one band's
+ * writes into: the active full framebuffer, or one band's
  * own buffer while a band is being rendered in GFX_LAYOUT_BANDS
  * (gfx_mode.h). A standalone, ESP-IDF-free module, the same reason
  * gfx_dirty.h is, so a host suite can drive the real clip-and-translate

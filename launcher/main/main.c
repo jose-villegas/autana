@@ -469,6 +469,13 @@ step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, u
  * present_unless_deferred() next pass. */
 static void
 step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
+    if (gfx_mode_current()->layout == GFX_LAYOUT_DOUBLE_FB) {
+        if (frame_ready) {
+            gfx_present_begin();
+        }
+        current->frame(dt_ms, input);
+        return;
+    }
     if (current->update == NULL) {
         current->frame(dt_ms, input);
         return;
@@ -526,7 +533,7 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
     apply_pending_full_redraw(*current);
     step_running_app(*current, input, dt_ms);
 
-    if ((*current)->home_gesture && gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB) {
+    if ((*current)->home_gesture && gfx_mode_current()->layout != GFX_LAYOUT_BANDS) {
         draw_home_hint(exit_edge);
     }
 }
@@ -929,7 +936,7 @@ report_gesture_completion(void) {
 
 static void
 run_dev_frame_extras(input_t* input, const app_t* current) {
-    if (gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB) {
+    if (gfx_mode_current()->layout != GFX_LAYOUT_BANDS) {
         draw_build_mark();
     }
     if (console_screenshot_take_request()) {
@@ -947,6 +954,17 @@ run_dev_frame_extras(input_t* input, const app_t* current) {
  * synchronously, exactly as before. */
 static void
 present_unless_deferred(const app_t* current) {
+    if (current != NULL && gfx_mode_current()->layout == GFX_LAYOUT_DOUBLE_FB) {
+        if (frame_ready) {
+            gfx_present_wait();
+        }
+        gfx_double_buffer_flip();
+        if (!frame_ready) {
+            gfx_present();
+            frame_ready = true;
+        }
+        return;
+    }
     if (current == NULL || current->update == NULL) {
         FRAME_COST_BEGIN(began);
         gfx_present();

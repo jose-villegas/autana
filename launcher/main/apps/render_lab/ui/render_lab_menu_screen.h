@@ -18,12 +18,14 @@
 typedef struct {
     bool partial_updates_on;
     bool band_mode_on;
+    bool double_buffer_on;
     const char* scene_name; /* shown on the cycle-scene button */
 } render_lab_menu_screen_state_t;
 
 typedef struct {
     bool partial_updates_clicked;
     bool band_mode_clicked;
+    bool double_buffer_clicked;
     bool next_scene_clicked;
 } render_lab_menu_screen_result_t;
 

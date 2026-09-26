@@ -49,6 +49,19 @@ test_bands_at_full_res_grants_the_compile_time_band_height(void) {
     TEST_ASSERT_EQUAL_INT(BAND_H, g.band_height);
 }
 
+static void
+test_double_framebuffer_needs_a_full_redraw_declaration(void) {
+    gfx_mode_request_t r = request(GFX_LAYOUT_DOUBLE_FB, GFX_RESOLUTION_FULL, false, false);
+    gfx_mode_t g = gfx_mode_resolve(&r, GFX_RESOLUTION_FULL, FULL_W, FULL_H, BAND_H);
+
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_FULL_FB, g.layout);
+
+    r.full_redraw = true;
+    g = gfx_mode_resolve(&r, GFX_RESOLUTION_FULL, FULL_W, FULL_H, BAND_H);
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_DOUBLE_FB, g.layout);
+    TEST_ASSERT_EQUAL_INT(0, g.band_height);
+}
+
 /* min(request, system max): the app's own request is honoured even when
  * the system would allow more. */
 static void
@@ -123,6 +136,7 @@ void
 run_gfx_mode_suite(void) {
     RUN_TEST(test_full_fb_full_res_grants_the_panels_own_geometry);
     RUN_TEST(test_bands_at_full_res_grants_the_compile_time_band_height);
+    RUN_TEST(test_double_framebuffer_needs_a_full_redraw_declaration);
     RUN_TEST(test_a_half_res_request_is_granted_under_a_full_res_system_max);
     RUN_TEST(test_a_full_res_request_is_capped_by_a_half_res_system_max);
     RUN_TEST(test_half_res_bands_halves_the_band_height_too);

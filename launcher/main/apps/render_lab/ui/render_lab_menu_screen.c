@@ -9,7 +9,7 @@
 #define MENU_BTN_W   300
 #define MENU_BTN_H   UI_ROW_HEIGHT
 #define MENU_BTN_GAP 20
-#define MENU_ROWS    3
+#define MENU_ROWS    4
 
 render_lab_menu_screen_result_t
 render_lab_menu_screen_draw(mu_Context* ctx, const render_lab_menu_screen_state_t* state, uint32_t dt_ms) {
@@ -39,6 +39,12 @@ render_lab_menu_screen_draw(mu_Context* ctx, const render_lab_menu_screen_state_
         ui_flow_row(ctx, &flow, MENU_BTN_W, MENU_BTN_H);
         if (mu_button(ctx, label)) {
             result.band_mode_clicked = true;
+        }
+
+        snprintf(label, sizeof label, "DOUBLE BUFFER: %s", state->double_buffer_on ? "ON" : "OFF");
+        ui_flow_row(ctx, &flow, MENU_BTN_W, MENU_BTN_H);
+        if (mu_button(ctx, label)) {
+            result.double_buffer_clicked = true;
         }
 
         snprintf(label, sizeof label, "NEXT SCENE: %s", state->scene_name);
