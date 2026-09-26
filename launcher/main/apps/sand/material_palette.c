@@ -27,11 +27,11 @@
 #define LERP_RGB(lo, hi, sh) ((LERP_CH(lo, hi, 16, sh) << 16) | (LERP_CH(lo, hi, 8, sh) << 8) | LERP_CH(lo, hi, 0, sh))
 
 #ifdef ANALYSIS_SCAN
-/* The tables below expand this a few thousand times, which exhausts cppcheck's
- * MISRA addon and holds clang-tidy on this one file for over a minute. Stubbed
- * for the tables only: LERP goes back to LERP_RGB below them, so the functions
- * are analysed as written. */
-#define LERP(lo, hi, sh) ((uint32_t)(lo) + (uint32_t)(hi) + (uint32_t)(sh))
+/* The tables below nest LERP inside LERP, so any stub that keeps both colour
+ * arguments still doubles per level: 143,000 tokens for one row of stone
+ * grain, past cppcheck's MISRA deadline. Stubbed for the tables only: LERP
+ * goes back to LERP_RGB below them, so the functions are analysed as written. */
+#define LERP(lo, hi, sh) ((uint32_t)(sh))
 #else
 #define LERP(lo, hi, sh) LERP_RGB(lo, hi, sh)
 #endif

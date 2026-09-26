@@ -8,9 +8,9 @@
 #
 # Report-only about its FINDINGS: any number of them still exits 0. A refused
 # argument, a timeout or a cppcheck failure exits non-zero, so a report
-# consumer cannot patch from a truncated report. The sand
-# app alone currently turns up ~1200 MISRA style findings (dominated by
-# 10.4, 12.1 and 15.5 - see below), so gating CI on this before triage
+# consumer cannot patch from a truncated report. The whole
+# of main/ currently turns up ~6400 MISRA findings of its own (dominated by
+# 12.1, 10.4 and 15.5 - see below), so gating CI on this before triage
 # would just be a wall no one reads. Flip EXIT_ON_FINDINGS below once a
 # rule set has been chosen and the backlog triaged.
 #
@@ -26,8 +26,9 @@
 #   MISRA_JOBS             parallel analyses, defaults to 2 and may not
 #                          exceed 4 (each job also runs the Python addon)
 #   MISRA_TIMEOUT_SECONDS  whole-scan deadline, defaults to 900 seconds
-#   MISRA_FORCE            1 (default) checks every #ifdef configuration; 0
-#                          is faster and analyses only the pinned one
+#   MISRA_FORCE            0 (default) analyses the configuration build_dir
+#                          pins; 1 also tries every first-party #ifdef
+#                          combination, several times slower
 #   MISRA_MAX_UNITS        translation units the filter may match, defaults
 #                          to 150 (the whole project under main/ is ~80)
 #
@@ -55,22 +56,6 @@ JOBS="${MISRA_JOBS:-2}"
 TIMEOUT_SECONDS="${MISRA_TIMEOUT_SECONDS:-900}"
 MAX_UNITS="${MISRA_MAX_UNITS:-150}"
 
-# --force alongside -D, not instead of it. A -D on its own makes cppcheck
-# check that one configuration and skip the others in silence, so #ifdef'd
-# code goes unanalysed - measured on a toy case, a divide-by-zero inside an
-# #ifdef is reported without -D and missed with it. --force restores the
-# other configurations, and the -D still pins ANALYSIS_SCAN, so the un-stubbed
-# variant of a stubbed file is never the one analysed.
-#
-# It costs time for coverage that is mostly already there: this project's
-# #ifdefs are pinned by the compile database, so on the sand app --force
-# takes 90s instead of 20s and today recovers nothing first-party (one extra
-# syntax error, in a vendored header). Default on anyway, because what
-# it prevents is silent; MISRA_FORCE=0 when a scan needs to be quick.
-FORCE_FLAG="--force"
-if [ "${MISRA_FORCE:-1}" = "0" ]; then
-    FORCE_FLAG=""
-fi
 
 # Anchored at the front, so "*/managed_components/*/main/*" cannot pass by
 # merely containing the word. The filter's shape is only half the guard
@@ -112,6 +97,20 @@ COMPILE_COMMANDS="$LAUNCHER_DIR/$BUILD_DIR/compile_commands.json"
 if [ ! -f "$COMPILE_COMMANDS" ]; then
     echo "No compile_commands.json in $BUILD_DIR/ - run 'tools/build/build_flash.sh --build-only' first." >&2
     exit 1
+fi
+
+# One configuration per scan: the one this build directory's sdkconfig.h
+# pins. Another variant is scanned through its own build directory (build/
+# release, build.diag/ diagnostics). --force instead invents combinations no
+# sdkconfig.h produces, DEVELOPMENT and RELEASE both set, and took
+# app_sand.c from 58 s to past 600 s. The vendored trees stay pinned even then.
+FORCE_FLAG=""
+if [ "${MISRA_FORCE:-0}" = "1" ]; then
+    idf_dir="$(grep -o '[A-Za-z]:[^" ]*esp-idf\|/[^" ]*esp-idf' "$COMPILE_COMMANDS" | head -1)"
+    FORCE_FLAG="--force --config-exclude=$LAUNCHER_DIR/components --config-exclude=$LAUNCHER_DIR/managed_components"
+    if [ -n "$idf_dir" ]; then
+        FORCE_FLAG="$FORCE_FLAG --config-exclude=$idf_dir"
+    fi
 fi
 
 if ! command -v cppcheck >/dev/null 2>&1; then
@@ -188,7 +187,7 @@ fi
 
 # Any file that stubs a macro for the analyser is analysed as stubbed, not as
 # written. Name them, so a finding count is never read as full coverage.
-stubbed="$(grep -rl --include='*.c' --include='*.h' 'ANALYSIS_SCAN' main 2>/dev/null || true)"
+stubbed="$(grep -rl --include='*.c' --include='*.h' --exclude-dir=tools 'ANALYSIS_SCAN' main 2>/dev/null || true)"
 if [ -n "$stubbed" ]; then
     echo "Analysed with source-level stubs (see each ANALYSIS_SCAN block for scope):"
     echo "$stubbed" | sed 's|^|  |'
@@ -212,6 +211,11 @@ set +e
 scan_status=$?
 set -e
 
+# The addon deletes each unit's .dump when it finishes, so only a killed scan
+# leaves them, beside the sources: gigabytes each, one per unit and process.
+find main -name '*.dump' -delete 2>/dev/null || true
+rm -f ./*.ctu-info
+
 if [ "$scan_status" -eq 124 ] || [ "$scan_status" -eq 137 ]; then
     echo "Cppcheck exceeded the ${TIMEOUT_SECONDS}s deadline; partial report: $REPORT" >&2
     exit 2
@@ -225,10 +229,15 @@ total="$(wc -l <"$REPORT" | tr -d ' ')"
 misra_count="$(grep -c 'misra-c2012-' "$REPORT" 2>/dev/null || true)"
 other_count="$(grep -cE ': (error|warning):' "$REPORT" 2>/dev/null || true)"
 
+# Findings inside ESP-IDF and vendored headers are reported too, and on a
+# whole-project scan they are nearly half the total (mostly 2.5, unused macros).
+own="$(grep 'misra-c2012-' "$REPORT" 2>/dev/null | grep -E '[\\/]launcher[\\/]main[\\/]' || true)"
+own_count="$(printf '%s' "$own" | grep -c . || true)"
+
 echo ""
 echo "Report: $REPORT ($total lines)"
-echo "  MISRA findings:        ${misra_count:-0}"
+echo "  MISRA findings:        ${misra_count:-0} (${own_count:-0} in main/)"
 echo "  native error/warning:  ${other_count:-0}"
 echo ""
-echo "Top MISRA rules hit:"
-grep -oE 'misra-c2012-[0-9.]+' "$REPORT" 2>/dev/null | sort | uniq -c | sort -rn | head -10 || true
+echo "Top MISRA rules hit in main/:"
+printf '%s\n' "$own" | grep -oE 'misra-c2012-[0-9.]+' | sort | uniq -c | sort -rn | head -10 || true

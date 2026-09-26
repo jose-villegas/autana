@@ -261,7 +261,7 @@ main/apps/<name>/
 | `suite_*.c` | only `CONFIG_LAUNCHER_SELFTEST` builds | yes |
 | `scope_perf.cmake` | only `--perf-scope` builds | no |
 | `tools/**` | never | never |
-| `apps/diagnostics/**` | only `CONFIG_LAUNCHER_DEVELOPMENT` builds | yes |
+| `apps/diagnostics/**`, `apps/input_lab/**` | only `CONFIG_LAUNCHER_DEVELOPMENT` builds | yes |
 
 Tooling that spans an app *and* shell code lives in `launcher/tools/`, not the
 app's `tools/`. An app reaches shell headers layer-qualified: `"gfx/gfx.h"`,
