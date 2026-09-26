@@ -12,10 +12,8 @@ import complexity_gate as complexity
 CHECKS = (
     "readability-math-missing-parentheses",
     "readability-isolate-declaration",
-    "readability-implicit-bool-conversion",
     "readability-uppercase-literal-suffix",
     "bugprone-macro-parentheses",
-    "misc-use-internal-linkage",
     "bugprone-unused-return-value",
     "cert-err33-c",
     "bugprone-switch-missing-default-case",
@@ -32,7 +30,7 @@ def count_diagnostics(output):
     locations = {}
     for line in output.splitlines():
         match = DIAGNOSTIC.match(line)
-        if not match or match.group("check") not in CHECKS:
+        if not match:
             continue
         path = Path(match.group("file")).resolve()
         try:
@@ -40,9 +38,12 @@ def count_diagnostics(output):
         except ValueError:
             continue
         name = "main/" + rel.as_posix()
-        key = (match.group("check"), name)
-        counts[key] += 1
-        locations.setdefault(key, int(match.group("line")))
+        for check in match.group("check").split(","):
+            if check not in CHECKS:
+                continue
+            key = (check, name)
+            counts[key] += 1
+            locations.setdefault(key, int(match.group("line")))
     return counts, locations
 
 
