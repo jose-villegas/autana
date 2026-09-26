@@ -25,7 +25,7 @@
  *
  * Upstream values are kept in the trailing comments.
  * ------------------------------------------------------------------------ */
-#define MU_COMMANDLIST_SIZE     (8 * 1024)  /* upstream: 256 * 1024 */
+#define MU_COMMANDLIST_SIZE     (9 * 1024)  /* upstream: 256 * 1024 */
 #define MU_ROOTLIST_SIZE        8           /* upstream: 32 */
 #define MU_CONTAINERSTACK_SIZE  8           /* upstream: 32 */
 #define MU_CLIPSTACK_SIZE       8           /* upstream: 32 */
@@ -205,7 +205,7 @@ struct mu_Context {
   char number_edit_buf[MU_MAX_FMT];
   mu_Id number_edit;
   /* stacks */
-  mu_stack(char, MU_COMMANDLIST_SIZE) command_list;
+  struct { int idx; _Alignas(mu_Command) char items[MU_COMMANDLIST_SIZE]; } command_list;
   mu_stack(mu_Container*, MU_ROOTLIST_SIZE) root_list;
   mu_stack(mu_Container*, MU_CONTAINERSTACK_SIZE) container_stack;
   mu_stack(mu_Rect, MU_CLIPSTACK_SIZE) clip_stack;
