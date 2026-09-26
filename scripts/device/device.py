@@ -450,7 +450,7 @@ def reset_and_capture(port, output, seconds, idle_seconds, expected_build_id=Non
 
 RESET_FIRST_BYTE_SECONDS = 2
 RESET_REOPEN_SECONDS = 10
-FLASH_PORT_WAIT_SECONDS = 12
+FLASH_PORT_WAIT_SECONDS = 30
 FLASH_BOOT_SECONDS = 12
 
 
@@ -670,6 +670,17 @@ def verify_flashed_image(port, build_dir, output=None):
     if len(images) != 1 or not images[0][1].is_file():
         raise RuntimeError("app image missing from flash arguments: " + str(manifest))
     offset, image = images[0]
+    deadline = time.monotonic() + FLASH_PORT_WAIT_SECONDS
+    while True:
+        try:
+            port = find_port()
+            with open_serial(port):
+                pass
+            break
+        except (OSError, RuntimeError) as error:
+            if time.monotonic() >= deadline:
+                raise RuntimeError("USB Serial/JTAG port did not return after flash") from error
+            time.sleep(0.2)
     command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
                "--after", "hard_reset", "verify_flash", offset, str(image)]
     subprocess.run(command, check=True, stdout=output, stderr=subprocess.STDOUT if output else None)
