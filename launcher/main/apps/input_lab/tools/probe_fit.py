@@ -26,6 +26,7 @@ BUTTON_HALF = 28
 PROBE = re.compile(
     r"probe \d+ (?P<mode>\w+) q(?P<q>\d) aim -?\d+,-?\d+ aim_raw (?P<ax>-?\d+),(?P<ay>-?\d+) "
     r"first -?\d+,-?\d+ settled -?\d+,-?\d+ release -?\d+,-?\d+ raw_first (?P<fx>-?\d+),(?P<fy>-?\d+)"
+    r"(?:.* cal (?P<cal>-?\d+))?"
 )
 
 
@@ -36,7 +37,9 @@ def read_probes(paths):
             for line in f:
                 m = PROBE.search(line)
                 if m:
-                    probes.append({k: (v if k == "mode" else int(v)) for k, v in m.groupdict().items()})
+                    p = {k: v if k == "mode" else int(v or 0) for k, v in m.groupdict().items()}
+                    p["mode"] = f"{p['mode']}{' cal' if p['cal'] == 1 else ''}"
+                    probes.append(p)
     return probes
 
 
@@ -117,6 +120,8 @@ def main(paths):
             describe(f"{mode} q{q}", group, fit(group))
 
     random = [p for p in probes if p["mode"] == "random"]
+    if len(random) < 6:
+        return
     pooled = fit(random)
     describe("random, pooled", random, pooled)
 

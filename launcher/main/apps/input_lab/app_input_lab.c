@@ -4,12 +4,17 @@
  * is scored against its centre before the next one appears. The running hit
  * rate and offset sit at the top, and every tap is logged to the console as
  * one "probe" line for analysis off the board. BOOT switches between random
- * targets and a shuffled 5x5 grid, and starts a fresh round.
+ * targets, a shuffled 5x5 grid and a bezel page, and starts a fresh round.
  *
  * Each tap is logged three ways - the first contact, where it settled, and
  * the release - in screen and in raw panel coordinates, so a calibration can
  * be fitted in whichever frame the error proves to live in. The raw touch is
  * read, not microui's pointer, so no correction in the UI layer colours it.
+ *
+ * The bezel page draws an arc in every corner; dragging up or down changes
+ * its radius until the arcs sit on the edge of the glass, and each release
+ * logs it. Sliding off each edge there fills in the raw range the panel can
+ * report, logged at the end of every round.
  */
 
 #include <stdio.h>
@@ -19,6 +24,7 @@
 #include "esp_timer.h"
 
 #include "app.h"
+#include "apps/input_lab/corner_arc.h"
 #include "apps/input_lab/touch_probe.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
@@ -26,6 +32,7 @@
 #include "ui/ui_style.h"
 #include "ui/ui_transform.h"
 #include "ui/ui_widgets.h"
+#include "util/tune.h"
 
 static const char* TAG = "input_lab";
 
@@ -42,8 +49,14 @@ static const char* TAG = "input_lab";
 #define HUD_SCALE      2
 #define MARK_SIDE      4
 #define COL_BACKGROUND 0x0A0C14
+#define BEZEL_RADIUS   30
+#define BEZEL_MAX      80
+#define BEZEL_DRAG_PX  4
+#define ARC_STEP       2
 
-typedef enum { MODE_RANDOM, MODE_GRID } lab_mode_t;
+typedef enum { MODE_RANDOM, MODE_GRID, MODE_BEZEL, MODE_COUNT } lab_mode_t;
+
+static const char* const MODE_NAMES[MODE_COUNT] = {"random", "grid", "bezel"};
 
 static lab_mode_t mode;
 static uint32_t rng;
@@ -62,6 +75,9 @@ static int raw_min_x, raw_max_x, raw_min_y, raw_max_y;
 static bool have_last_tap;
 static int last_x, last_y;
 static bool last_hit;
+
+static int bezel_radius = BEZEL_RADIUS;
+static int radius_at_press;
 
 static void
 place_target(void) {
@@ -85,20 +101,28 @@ advance_target(void) {
 }
 
 static void
+log_raw_range(void) {
+    if (raw_max_x >= 0) {
+        ESP_LOGI(TAG, "range raw x %d..%d y %d..%d", raw_min_x, raw_max_x, raw_min_y, raw_max_y);
+    }
+}
+
+static void
 start_round(void) {
+    log_raw_range();
     stats = (touch_probe_stats_t){0};
     have_last_tap = false;
     grid_next = 0;
     raw_min_x = raw_min_y = 1 << 20;
     raw_max_x = raw_max_y = -1;
     place_target();
-    ESP_LOGI(TAG, "round %s screen %dx%d quarter %d", mode == MODE_GRID ? "grid" : "random", screen_w, screen_h,
-             display_shell_quarter());
+    ESP_LOGI(TAG, "round %s screen %dx%d quarter %d", MODE_NAMES[mode], screen_w, screen_h, display_shell_quarter());
 }
 
 static void
 input_lab_enter(void) {
     rng = (uint32_t)esp_timer_get_time() | 1u;
+    raw_max_x = -1;
     mode = MODE_RANDOM;
     tracking = false;
     idle_ms = 0;
@@ -133,6 +157,18 @@ add_sample(int x, int y, int t_ms) {
     raw_max_y = y > raw_max_y ? y : raw_max_y;
 }
 
+/* Whether the touch driver's correction was on for a tap, so a capture says
+ * which frame its raw coordinates are in; -1 where it cannot be asked. */
+static int
+calibration_on(void) {
+#if TUNE_ENABLED
+    const tune_entry_t* entry = tune_find(tune_shared(), "touch.calibrate");
+    return entry != NULL ? (int)*entry->value : -1;
+#else
+    return 1;
+#endif
+}
+
 static void
 finish_tap(int release_x, int release_y) {
     const touch_probe_sample_t first = samples[0];
@@ -154,10 +190,10 @@ finish_tap(int release_x, int release_y) {
 
     ESP_LOGI(TAG,
              "probe %d %s q%d aim %d,%d aim_raw %d,%d first %d,%d settled %d,%d release %d,%d raw_first %d,%d "
-             "raw_settled %d,%d raw_release %d,%d held %d idle %d samples %d %s",
-             stats.taps, mode == MODE_GRID ? "grid" : "random", display_shell_quarter(), aim_x, aim_y, aim_raw_x,
-             aim_raw_y, fx, fy, sx, sy, rx, ry, first.x, first.y, settled_x, settled_y, release_x, release_y, held_ms,
-             idle_before_press, sample_count, last_hit ? "HIT" : "miss");
+             "raw_settled %d,%d raw_release %d,%d held %d idle %d samples %d %s cal %d",
+             stats.taps, MODE_NAMES[mode], display_shell_quarter(), aim_x, aim_y, aim_raw_x, aim_raw_y, fx, fy, sx, sy,
+             rx, ry, first.x, first.y, settled_x, settled_y, release_x, release_y, held_ms, idle_before_press,
+             sample_count, last_hit ? "HIT" : "miss", calibration_on());
     advance_target();
 }
 
@@ -185,7 +221,44 @@ track_touch(uint32_t dt_ms, const input_t* input) {
     if (tracking && input->released) {
         tracking = false;
         idle_ms = 0;
-        finish_tap(input->x, input->y);
+        if (mode == MODE_BEZEL) {
+            ESP_LOGI(TAG, "bezel radius %d quarter %d", bezel_radius, display_shell_quarter());
+        } else {
+            finish_tap(input->x, input->y);
+        }
+    }
+}
+
+/* Up the screen grows the arcs, down shrinks them, BEZEL_DRAG_PX to a pixel. */
+static void
+drag_bezel(const input_t* input) {
+    if (input->pressed) {
+        radius_at_press = bezel_radius;
+    }
+    if (!input->down) {
+        return;
+    }
+    int x, press_y, y;
+    to_screen(input->press_x, input->press_y, &x, &press_y);
+    to_screen(input->x, input->y, &x, &y);
+    const int radius = radius_at_press + (press_y - y) / BEZEL_DRAG_PX;
+    bezel_radius = radius < 0 ? 0 : radius > BEZEL_MAX ? BEZEL_MAX : radius;
+}
+
+/* Every ARC_STEP-th row of each corner, run out to where the row above
+ * began so the steep end of the curve has no gaps. */
+static void
+draw_corner_arcs(mu_Context* ctx) {
+    const mu_Color ink = ui_rgb(0xFF00FF);
+    for (int row = 0; row < bezel_radius; row += ARC_STEP) {
+        const int inset = corner_arc_inset(bezel_radius, row);
+        const int before = row >= ARC_STEP ? corner_arc_inset(bezel_radius, row - ARC_STEP) : inset + 1;
+        const int w = before - inset > 1 ? before - inset : 1;
+        const int bottom = screen_h - row - ARC_STEP;
+        mu_draw_rect(ctx, mu_rect(inset, row, w, ARC_STEP), ink);
+        mu_draw_rect(ctx, mu_rect(screen_w - inset - w, row, w, ARC_STEP), ink);
+        mu_draw_rect(ctx, mu_rect(inset, bottom, w, ARC_STEP), ink);
+        mu_draw_rect(ctx, mu_rect(screen_w - inset - w, bottom, w, ARC_STEP), ink);
     }
 }
 
@@ -203,7 +276,7 @@ hud_line(mu_Context* ctx, int row, const char* text) {
 }
 
 static void
-draw_hud(mu_Context* ctx) {
+draw_offsets(mu_Context* ctx) {
     char line[64];
     char mean[24], spread[24];
     const int hit_pct = stats.taps > 0 ? (100 * stats.hits + stats.taps / 2) / stats.taps : 0;
@@ -220,7 +293,18 @@ draw_hud(mu_Context* ctx) {
     format_tenths(spread, sizeof spread, touch_probe_spread_dy(&stats));
     snprintf(line, sizeof line, "DY %s SD %s", mean, spread + 1);
     hud_line(ctx, 2, line);
+}
 
+static void
+draw_hud(mu_Context* ctx) {
+    char line[64];
+    if (mode == MODE_BEZEL) {
+        snprintf(line, sizeof line, "BEZEL R %d", bezel_radius);
+        hud_line(ctx, 0, line);
+        hud_line(ctx, 1, "DRAG UP OR DOWN");
+    } else {
+        draw_offsets(ctx);
+    }
     if (raw_max_x >= 0) {
         snprintf(line, sizeof line, "RAW X %d-%d Y %d-%d", raw_min_x, raw_max_x, raw_min_y, raw_max_y);
         hud_line(ctx, 3, line);
@@ -228,32 +312,46 @@ draw_hud(mu_Context* ctx) {
 }
 
 static void
+draw_target(mu_Context* ctx) {
+    if (have_last_tap) {
+        const mu_Color mark = last_hit ? ui_rgb(0x40E060) : ui_rgb(0xFFB020);
+        mu_draw_rect(ctx, mu_rect(last_x - MARK_SIDE / 2, last_y - MARK_SIDE / 2, MARK_SIDE, MARK_SIDE), mark);
+    }
+    mu_draw_rect(ctx, mu_rect(target.x, target.y, target.side, target.side), ui_rgb(0xFF00FF));
+}
+
+static void
 input_lab_frame(uint32_t dt_ms, const input_t* input) {
     if (input->boot.pressed) {
-        mode = mode == MODE_RANDOM ? MODE_GRID : MODE_RANDOM;
+        mode = (lab_mode_t)((mode + 1) % MODE_COUNT);
         start_round();
     }
     if (ui_width() != screen_w || ui_height() != screen_h) {
         place_target();
     }
     track_touch(dt_ms, input);
+    if (mode == MODE_BEZEL) {
+        drag_bezel(input);
+    }
 
     mu_Context* ctx = ui_context();
     ui_begin(input);
     if (ui_begin_screen(ctx, "Input Lab", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
         draw_hud(ctx);
-        if (have_last_tap) {
-            const mu_Color mark = last_hit ? ui_rgb(0x40E060) : ui_rgb(0xFFB020);
-            mu_draw_rect(ctx, mu_rect(last_x - MARK_SIDE / 2, last_y - MARK_SIDE / 2, MARK_SIDE, MARK_SIDE), mark);
+        if (mode == MODE_BEZEL) {
+            draw_corner_arcs(ctx);
+        } else {
+            draw_target(ctx);
         }
-        mu_draw_rect(ctx, mu_rect(target.x, target.y, target.side, target.side), ui_rgb(0xFF00FF));
         mu_end_window(ctx);
     }
     ui_end(COL_BACKGROUND);
 }
 
 static void
-input_lab_exit(void) {}
+input_lab_exit(void) {
+    log_raw_range();
+}
 
 app_t app_input_lab = {
     .name = "Input Lab",
