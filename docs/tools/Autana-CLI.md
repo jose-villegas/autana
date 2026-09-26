@@ -29,10 +29,9 @@ where Python has `readline` (Windows: `pip install pyreadline3`).
 | `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope]` | Build and flash this worktree; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
 
-After flashing, `autana flash` waits for USB Serial/JTAG to return, including
-when Windows assigns a different COM number. It verifies the boot's `BUILD_ID`
-against the build log. If the boot is not heard, it uses a watchdog reset and
-checks again before returning. A missing or different id is reported explicitly.
+`autana flash` succeeds after esptool hash-verifies the written regions
+and the build log's `BUILD_ID` matches `build_id.txt`. It does not wait
+for boot console output; a release flash is not verified at boot.
 
 ## Tests
 
@@ -46,8 +45,8 @@ checks again before returning. A missing or different id is reported explicitly.
 | `autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` | Flash once, capture the suites `N` times (3) under one lock; one summary. |
 
 Each prints the report and capture paths, PASS/FAIL counts, up to ten failure
-messages (then a FAIL count per suite) and the end reason. `--verbose` prints the whole capture; to find
-something in it, grep the capture instead.
+messages (then a FAIL count per suite) and the end reason. `--verbose`
+prints the whole capture; to find something in it, grep the capture instead.
 
 ## Watch the board
 
@@ -110,11 +109,20 @@ something in it, grep the capture instead.
 
 | Command | What it does |
 |---|---|
-| `autana status [--json]` | Who holds the board, and who is waiting. |
+| `autana status [--json]` | Whether the board is free or held; holder, local start and elapsed time, estimated free time, and FIFO waiters with purposes and estimated starts. Works while the board is off USB. |
 | `autana id [--json]` | The name this session holds the lock under: `autana-cli@<pid in base36>`. |
 | `autana release <token>` | Release a lock this session holds; the token is what its command printed. |
 | `autana hand [--wait <seconds>] <note...>` | Reserve the board and emit `human-reserved`; with `--wait`, wait until `take-back` emits `human-cleared`. |
 | `autana take-back` | Clear that reservation. |
+
+The lock follows the USB Serial/JTAG board across COM number changes.
+If a command loses the lock, its next port access or capture read stops with
+`device lock was lost`. Status estimates need three successful durations
+for the same command kind; otherwise they show `unknown`. A separate
+`flash` and `suite` leave a gap where another session can flash. `batch`
+and `selftest` hold one lock across flash and capture. Flash success means
+esptool hash-verified the written regions and the build log's `BUILD_ID`
+matched `build_id.txt`; release boot is not verified by `flash`.
 
 `autana hand --wait 30 put the board in download mode` pauses a flash script
 until someone puts the board in download mode and runs `autana take-back`.
@@ -138,7 +146,7 @@ caller decides how to proceed after either nonzero result.
 
 | Command | Fields |
 |---|---|
-| `status` | `state` (`unlocked`, `held`, `human`), `waiting`; held: `owner`, `purpose`, `acquired_at`; human: `owner`, `note`, `age_seconds` |
+| `status` | `state` (`unlocked`, `held`, `human`), `waiting` objects with `owner`, `purpose`, `estimated_start`; held: `owner`, `purpose`, `acquired_at`, `local_start`, `elapsed_seconds`, `estimated_free`; human: `owner`, `note`, `age_seconds`, `local_start`. Unknown estimates are `null`. |
 | `buildid` | `build_id` |
 | `id` | `owner`, `pid` |
 | `apps` | `apps`: `name`, `running` |
