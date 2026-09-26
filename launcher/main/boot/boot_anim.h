@@ -274,7 +274,7 @@ boot_anim_wave_envelope(uint32_t now_ms) {
 
 static inline int32_t
 boot_anim_zeta_to_t_q8(int32_t zeta_q12) {
-    return (int32_t)(((int64_t)zeta_q12 << 5) / BOOT_ANIM_T_TO_S3L_Q8);
+    return (int32_t)(((int64_t)zeta_q12 * 32) / BOOT_ANIM_T_TO_S3L_Q8);
 }
 
 /* Zero amp or wavelength zeroes lift. Period 0 freezes pattern (a static

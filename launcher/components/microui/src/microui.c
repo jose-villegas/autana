@@ -20,8 +20,11 @@
 ** IN THE SOFTWARE.
 */
 
+/* LOCAL MODIFICATION: command alignment and zero padding keep command hashes stable. */
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 #include "microui.h"
 
@@ -425,11 +428,14 @@ void mu_input_text(mu_Context *ctx, const char *text) {
 **============================================================================*/
 
 mu_Command* mu_push_command(mu_Context *ctx, int type, int size) {
+  const int alignment = _Alignof(mu_Command);
+  const int aligned_size = (size + alignment - 1) & ~(alignment - 1);
   mu_Command *cmd = (mu_Command*) (ctx->command_list.items + ctx->command_list.idx);
-  expect(ctx->command_list.idx + size < MU_COMMANDLIST_SIZE);
+  expect(ctx->command_list.idx + aligned_size < MU_COMMANDLIST_SIZE);
+  memset(ctx->command_list.items + ctx->command_list.idx + size, 0, aligned_size - size);
   cmd->base.type = type;
-  cmd->base.size = size;
-  ctx->command_list.idx += size;
+  cmd->base.size = aligned_size;
+  ctx->command_list.idx += aligned_size;
   return cmd;
 }
 
@@ -496,6 +502,7 @@ void mu_draw_text(mu_Context *ctx, mu_Font font, const char *str, int len,
   cmd = mu_push_command(ctx, MU_COMMAND_TEXT, sizeof(mu_TextCommand) + len);
   memcpy(cmd->text.str, str, len);
   cmd->text.str[len] = '\0';
+  memset(cmd->text.str + len + 1, 0, sizeof(mu_TextCommand) - offsetof(mu_TextCommand, str) - 1);
   cmd->text.pos = pos;
   cmd->text.color = color;
   cmd->text.font = font;

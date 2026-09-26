@@ -309,5 +309,4 @@ gfx_font_glyph_run_boxes(const gfx_font_t* f, unsigned char ch, gfx_font_run_box
     }
 
     return n;
-#undef GFX_FONT_MAX_OPEN_RUNS
 }
