@@ -1,6 +1,6 @@
 /*
  * tune - numbers a developer can change on a running device, by name, over
- * the console: "SET ridge.trail 200". For a constant that is judged by eye,
+ * the console: "SET ridge.theme_rgb 0x1199C8". For a constant that is judged by eye,
  * where each guess otherwise costs a build and a flash.
  *
  * A tunable is an int32_t with a range, stated once, where it is used:
