@@ -72,11 +72,14 @@ TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 #define RIDGE_LAYER_COUNT 3
 #define RIDGE_MAX_LIP_PX  48
 #define MIN_TILT_STRENGTH 64
-#define POSE_REDRAW_STEP  143
+/* Once the board holds still, a pose within 1.5 degrees of its target jumps
+ * the rest of the way instead of creeping a half-degree step at a time. */
+#define POSE_ARRIVE_STEP  430
 #define POSE_STEPS        720
 /* Enough entries for the panel's diagonal, the longest a gradient along
  * gravity can span. */
 #define RIDGE_SKY_ENTRIES 600
+#define RIDGE_SKY_EDGES   96
 #define RIDGE_PI          3.14159265f
 #define LEVEL_STEADY_STEP 29
 #define LEVEL_STEADY_MS   300
@@ -98,7 +101,9 @@ typedef struct {
     ridge_theme_t theme;
     gfx_color_t background_color, back0_color, back1_color;
     gfx_color_t sky[RIDGE_SKY_ENTRIES];
-    int sky_half;
+    int16_t sky_edge[RIDGE_SKY_EDGES];
+    int sky_half, sky_edge_count;
+    ridge_vector_t gradient_pose;
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
     uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
     int shake, last_pluck_x, strips, down_sign;
@@ -124,16 +129,20 @@ rgb_mix(uint32_t a, uint32_t b, int amount) {
 }
 
 /* The fill's gradient runs along gravity, top colour up and bottom colour
- * down, across the screen's own extent in that direction, so it turns with
- * the ridge instead of flipping from panel rows to columns at 45 degrees. */
+ * down, over a fixed span centred on the panel, so a turn only rotates it:
+ * the pixels that change are the ones a shade edge swept across. */
+#define RIDGE_SKY_HALF ((GFX_WIDTH + GFX_HEIGHT) / 4)
+
 static void
 build_sky_gradient(void) {
-    const ridge_vector_t down = ridge->pose_on_screen;
-    const int extent = (GFX_WIDTH * abs(down.down_x) + GFX_HEIGHT * abs(down.down_y)) / RIDGE_POSE_ONE;
-    ridge->sky_half = extent / 2;
-    for (int along = 0; along <= 2 * ridge->sky_half && along < RIDGE_SKY_ENTRIES; along++) {
+    ridge->sky_half = RIDGE_SKY_HALF;
+    ridge->sky_edge_count = 0;
+    for (int along = 0; along <= 2 * RIDGE_SKY_HALF; along++) {
         ridge->sky[along] =
-            gfx_rgb(rgb_mix((uint32_t)sky_top_rgb, (uint32_t)sky_bottom_rgb, along * 100 / (2 * ridge->sky_half)));
+            gfx_rgb(rgb_mix((uint32_t)sky_top_rgb, (uint32_t)sky_bottom_rgb, along * 100 / (2 * RIDGE_SKY_HALF)));
+        if (along > 0 && ridge->sky[along] != ridge->sky[along - 1] && ridge->sky_edge_count < RIDGE_SKY_EDGES) {
+            ridge->sky_edge[ridge->sky_edge_count++] = (int16_t)along;
+        }
     }
 }
 
@@ -673,37 +682,68 @@ current_reveal_alpha(void) {
     return (uint8_t)(reveal * 255 / 256);
 }
 
-/* A turn of the pose moves the fill's gradient under every pixel, not just
- * the boundaries. Recompute each row, write and mark only the stretch of it
- * that differs from what the framebuffer holds, so a small turn sends the
- * shade edges that moved rather than the whole screen. */
+/* Where along row `y` the depth `depth2` (sky_depth2()'s units) is first
+ * reached for `pose`, as a real column; -inf/+inf when the row never or
+ * always reaches it. */
+static float
+edge_column(ridge_vector_t pose, int y, int32_t depth2) {
+    const int32_t at_zero = -(GFX_WIDTH - 1) * pose.down_x + (2 * y - (GFX_HEIGHT - 1)) * pose.down_y;
+    const int32_t per_column = 2 * pose.down_x;
+    if (per_column == 0) {
+        return at_zero >= depth2 ? -1e9f : 1e9f;
+    }
+    return (float)(depth2 - at_zero) / (float)per_column;
+}
+
 static void
-repaint_turned(void) {
-    static gfx_color_t line[GFX_WIDTH];
+repaint_span(int y, int x0, int x1, uint8_t reveal_alpha) {
+    x0 = x0 < 0 ? 0 : x0;
+    x1 = x1 > GFX_WIDTH ? GFX_WIDTH : x1;
+    if (x0 >= x1) {
+        return;
+    }
+    gfx_color_t* const row = gfx_framebuffer() + y * GFX_WIDTH;
+    if (ridge->by_column) {
+        for (int x = x0; x < x1; x++) {
+            row[x] = column_pixel(x, y, reveal_alpha);
+        }
+    } else {
+        paint_row_into(row, y, x0, x1, reveal_alpha);
+    }
+}
+
+/* The gradient turned from `was` to the pose on screen: repaint, per shade
+ * edge, the pixels between its old and new line, sixteen rows to a dirty
+ * mark. */
+#define EDGE_ROWS 16
+
+static void
+repaint_gradient_turn(ridge_vector_t was) {
+    const ridge_vector_t now = ridge->pose_on_screen;
     const uint8_t reveal_alpha = current_reveal_alpha();
-    gfx_color_t* const framebuffer = gfx_framebuffer();
-    for (int y = 0; y < GFX_HEIGHT; y++) {
-        if (ridge->by_column) {
-            for (int x = 0; x < GFX_WIDTH; x++) {
-                line[x] = column_pixel(x, y, reveal_alpha);
+    for (int y0 = 0; y0 < GFX_HEIGHT; y0 += EDGE_ROWS) {
+        const int y1 = y0 + EDGE_ROWS < GFX_HEIGHT ? y0 + EDGE_ROWS : GFX_HEIGHT;
+        for (int edge = 0; edge < ridge->sky_edge_count; edge++) {
+            const int32_t depth2 = (int32_t)(ridge->sky_edge[edge] - ridge->sky_half) << 15;
+            int box_x0 = GFX_WIDTH, box_x1 = 0;
+            for (int y = y0; y < y1; y++) {
+                const float a = edge_column(was, y, depth2), b = edge_column(now, y, depth2);
+                const float lo = a < b ? a : b, hi = a < b ? b : a;
+                const int x0 = lo < -1.0f ? 0 : lo > GFX_WIDTH ? GFX_WIDTH : (int)floorf(lo) - 1;
+                const int x1 = hi < 0.0f ? 0 : hi > GFX_WIDTH ? GFX_WIDTH : (int)ceilf(hi) + 2;
+                if (x0 < x1) {
+                    repaint_span(y, x0, x1, reveal_alpha);
+                    box_x0 = x0 < box_x0 ? x0 : box_x0;
+                    box_x1 = x1 > box_x1 ? x1 : box_x1;
+                }
             }
-        } else {
-            paint_row_into(line, y, 0, GFX_WIDTH, reveal_alpha);
-        }
-        gfx_color_t* const row = framebuffer + y * GFX_WIDTH;
-        int first = 0, last = GFX_WIDTH - 1;
-        while (first <= last && line[first] == row[first]) {
-            first++;
-        }
-        while (last >= first && line[last] == row[last]) {
-            last--;
-        }
-        if (first <= last) {
-            memcpy(row + first, line + first, (size_t)(last - first + 1) * sizeof(*row));
-            gfx_mark_dirty(first, y, last - first + 1, 1);
+            if (box_x0 < box_x1) {
+                box_x0 = box_x0 < 0 ? 0 : box_x0;
+                box_x1 = box_x1 > GFX_WIDTH ? GFX_WIDTH : box_x1;
+                gfx_mark_dirty(box_x0, y0, box_x1 - box_x0, y1 - y0);
+            }
         }
     }
-    memcpy(ridge->shown, ridge->boundary, sizeof ridge->shown);
 }
 
 static void
@@ -730,6 +770,7 @@ paint_all(void) {
     }
     gfx_mark_all_dirty();
     memcpy(ridge->shown, ridge->boundary, sizeof ridge->shown);
+    ridge->gradient_pose = ridge->pose_on_screen;
     ridge->painted = true;
 }
 
@@ -916,7 +957,7 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
                                              .tau_ms = level_tau_ms,
                                              .steady_step = LEVEL_STEADY_STEP,
                                              .steady_hold_ms = LEVEL_STEADY_MS,
-                                             .redraw_step = POSE_REDRAW_STEP};
+                                             .redraw_step = POSE_ARRIVE_STEP};
     ridge_pose_advance(&ridge->attitude, &pose_params, dt_ms, ridge->alive_ms);
     pluck_from_touch(input);
     if (ridge->ambient) {
@@ -935,9 +976,11 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     FRAME_COST_BEGIN(painted_from);
     if (!ridge->painted || retuned || ridge->axis_on_screen || revealing) {
         paint_all();
-    } else if (pose_moved && ridge->scanline_dither) {
-        repaint_turned();
     } else if (hi > lo || pose_moved || ridge->ambient) {
+        if (pose_moved && ridge->scanline_dither) {
+            repaint_gradient_turn(ridge->gradient_pose);
+            ridge->gradient_pose = ridge->pose_on_screen;
+        }
         repaint_changed();
     }
     FRAME_COST_END(painted_from, "ridge.paint");
