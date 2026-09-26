@@ -103,14 +103,14 @@ VENDORED_REFERENCES = {
         "third_party/upstream/small3dlib/small3dlib.h",
 }
 
-# GCC-only Xtensa flags esp-clang's driver does not recognise at all - an
-# unrecognised -f/-m flag is a hard parse error for clang, not a warning,
-# and there is no clang equivalent needed for a syntax-only complexity
-# pass. Stripped rather than worked around.
+# ESP-IDF's GCC-only flags cannot be parsed by esp-clang. ANALYSIS_SCAN
+# also skips table uses of macros, so its unused-macro warning differs from
+# the firmware compile.
 BAD_GCC_FLAGS = {
     "-fno-tree-switch-conversion",
     "-fstrict-volatile-bitfields",
     "-mdisable-hardware-atomics",
+    "-Werror=unused-macros",
 }
 
 RESPONSE_FILE_RE = re.compile(r'@"([^"]+)"')
