@@ -16,6 +16,7 @@ import uuid
 from pathlib import Path
 
 import device_hook
+import main_copy
 
 
 DEFAULT_STALE_SECONDS = 600
@@ -571,4 +572,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    main_copy.run_main_checkout_copy(__file__)
     raise SystemExit(main())
