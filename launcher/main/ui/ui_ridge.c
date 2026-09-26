@@ -268,18 +268,34 @@ repaint_strip(int strip, int lo, int hi) {
 }
 
 static void
+extend_repaint_range(int was, int now, int* lo, int* hi) {
+    if (was == INT16_MAX && now == INT16_MAX) {
+        return;
+    }
+    int first = was == INT16_MAX ? now : was;
+    int last = now == INT16_MAX ? was : now;
+    if (first > last) {
+        const int swap = first;
+        first = last;
+        last = swap;
+    }
+    first -= lip_px;
+    last += lip_px + 1;
+    if (first < *lo) {
+        *lo = first;
+    }
+    if (last > *hi) {
+        *hi = last;
+    }
+}
+
+static void
 repaint_changed(void) {
     for (int strip = 0; strip < ridge->strips; strip++) {
         int lo = INT_MAX, hi = INT_MIN;
         for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-            const int was = ridge->shown[layer][strip], now = ridge->boundary[layer][strip];
-            if (was == INT16_MAX && now == INT16_MAX) {
-                continue;
-            }
-            const int a = was == INT16_MAX ? now : (now == INT16_MAX ? was : (was < now ? was : now));
-            const int b = was == INT16_MAX ? now : (now == INT16_MAX ? was : (was > now ? was : now));
-            lo = a - lip_px < lo ? a - lip_px : lo;
-            hi = b + lip_px + 1 > hi ? b + lip_px + 1 : hi;
+            const int now = ridge->boundary[layer][strip];
+            extend_repaint_range(ridge->shown[layer][strip], now, &lo, &hi);
             ridge->shown[layer][strip] = now;
         }
         if (lo != INT_MAX) {
