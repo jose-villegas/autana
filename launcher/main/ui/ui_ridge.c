@@ -42,6 +42,7 @@ TUNE(ridge, glow_radius, 13, 1, GFX_GLOW_MAX_RADIUS);
 TUNE(ridge, glow_core, 3, 1, GFX_GLOW_MAX_RADIUS);
 TUNE(ridge, glow_core_rgb, 0xFFFFFF, 0, 0xFFFFFF);
 TUNE(ridge, glow_halo_rgb, 0x38D6E8, 0, 0xFFFFFF);
+TUNE(ridge, glow_pattern, GFX_DITHER_BAYER4, 0, GFX_DITHER_PATTERN_COUNT - 1);
 /* Levels of stippled light in the halo; none is a smooth one. */
 TUNE(ridge, glow_steps, 0, 0, 16);
 
@@ -166,6 +167,7 @@ static void
 bake_what_is_tuned(void) {
     gfx_glow_style_set_stepped(&ridge->style, glow_radius, glow_core, (uint32_t)glow_core_rgb, (uint32_t)glow_halo_rgb,
                                glow_steps);
+    ridge->style.pattern = (gfx_dither_pattern_id_t)glow_pattern;
     ridge_motion_smooth(ridge->rigid, ridge->smooth, ridge->shape, RIDGE_COLUMNS, breath_smooth);
     memcpy(ridge->shape, ridge->heights, sizeof ridge->shape);
     prepare_light();

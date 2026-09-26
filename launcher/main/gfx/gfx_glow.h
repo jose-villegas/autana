@@ -22,6 +22,7 @@
 #include <stdint.h>
 
 #include "gfx/gfx_color.h"
+#include "gfx/gfx_dither.h"
 #include "gfx/gfx_target.h"
 
 #define GFX_GLOW_Q_SHIFT    4
@@ -39,6 +40,7 @@ typedef struct {
     /* chord[k]: how far light reaches vertically, k columns away. Q4. */
     int16_t chord[GFX_GLOW_MAX_RADIUS + 1];
     int radius;
+    gfx_dither_pattern_id_t pattern;
     uint32_t u_per_d2; /* (d/r)^2 in Q12, per unit of Q8 distance squared, << 16 */
 } gfx_glow_style_t;
 
@@ -137,6 +139,7 @@ gfx_glow_style_set_stepped(gfx_glow_style_t* style, int radius_px, int core_px, 
         core_px = radius_px;
     }
     style->radius = radius_px;
+    style->pattern = GFX_DITHER_BAYER4;
 
     const uint32_t r2_q8 = (uint32_t)(radius_px * GFX_GLOW_ONE) * (uint32_t)(radius_px * GFX_GLOW_ONE);
     style->u_per_d2 = ((uint32_t)4096 << 16) / r2_q8;
@@ -223,7 +226,10 @@ gfx_glow_colour(const gfx_glow_style_t* style, int distance2, int px, int py) {
     if (u_q12 >= 4096) {
         return GFX_RGB(0x000000);
     }
-    return style->ramp[gfx_dither4x4[py & 3][px & 3]][gfx_glow_ramp_index(u_q12)];
+    const gfx_dither_pattern_t* const pattern = gfx_dither_pattern(style->pattern);
+    const int phase =
+        pattern == NULL ? 0 : gfx_dither_threshold(style->pattern, px, py) * GFX_GLOW_PHASES / pattern->levels;
+    return style->ramp[phase][gfx_glow_ramp_index(u_q12)];
 }
 
 /*
