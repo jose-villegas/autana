@@ -39,7 +39,7 @@ Run the commands from the repository root. Host render scripts write outputs und
 
 | Image | Scene command and output | GIF command |
 |---|---|---|
-| `docs/images/overview/sand-simulation.gif` | `./launcher/main/apps/sand/tools/sand_sim_render_host.sh --video`; input: `launcher/main/apps/sand/tools/results/render/sand_sim/simulation-portrait.avi` | `ffmpeg -y -i launcher/main/apps/sand/tools/results/render/sand_sim/simulation-portrait.avi -vf "trim=start=1.6:end=4.7,setpts=PTS-STARTPTS,fps=12,scale=276:-1:flags=lanczos,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0,palettegen" docs/images/overview/sand-simulation-palette.png` then `ffmpeg -y -i launcher/main/apps/sand/tools/results/render/sand_sim/simulation-portrait.avi -i docs/images/overview/sand-simulation-palette.png -filter_complex "[0:v]trim=start=1.6:end=4.7,setpts=PTS-STARTPTS,fps=12,scale=276:-1:flags=lanczos,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0[v];[v][1:v]paletteuse=dither=bayer" -loop 0 docs/images/overview/sand-simulation.gif` |
+| `docs/images/overview/sand-simulation.gif` | `python launcher/main/apps/sand/tools/make_volcano_clip.py` | `--contact <path>` also writes a six-frame inspection strip. The script renders `simulation-landscape.avi`, rotates each panel by its scripted tilt angle, and encodes the loop. |
 | `docs/images/overview/launcher-home.png` | `./launcher/tools/render/scenes/launcher_home_render_host.sh -o <dir>`; use `landscape.png` | — |
 | `docs/images/overview/render-lab-cube.gif` | Run [`render_lab_render_host.sh`](../../launcher/main/apps/render_lab/tools/render_lab_render_host.sh), then `launcher/main/apps/render_lab/tools/results/render/render_lab/render_lab_render --quarter 1 --no-hud --scene gouraud --frames 100 --dt 33 -o launcher/main/apps/render_lab/tools/results/render/render_lab/cube-motion.bmp --video launcher/main/apps/render_lab/tools/results/render/render_lab/cube-motion.avi` | `ffmpeg -y -i launcher/main/apps/render_lab/tools/results/render/render_lab/cube-motion.avi -vf "fps=12,scale=336:-1:flags=lanczos,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0,palettegen" docs/images/overview/render-lab-cube-palette.png` then `ffmpeg -y -i launcher/main/apps/render_lab/tools/results/render/render_lab/cube-motion.avi -i docs/images/overview/render-lab-cube-palette.png -filter_complex "[0:v]fps=12,scale=336:-1:flags=lanczos,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0[v];[v][1:v]paletteuse=dither=bayer" -loop 0 docs/images/overview/render-lab-cube.gif` |
 | `docs/images/overview/sand-menu.png` | `./launcher/main/apps/sand/tools/sand_menu_render_host.sh -o <dir>`; use `title-landscape.png` | — |
@@ -185,10 +185,11 @@ harness's usual per-frame schedule. Like every other render this harness
 writes, a video's frames are drawn from a scene's own fixture data - never a
 reading from any board.
 
-`sand_sim_render_host.sh` steps the portable simulation with scripted sand,
-water and lava pours, then tilts gravity. It paints through the shared material
-shading code into the host framebuffer. Its final image is pinned as an
-integer-exact render. Render Lab's Gouraud scene rotates when stepped over
+`sand_sim_render_host.sh` steps the portable simulation through a volcano,
+lake and grove with scripted tilt through the input filter. It paints through
+the shared material shading code into the host framebuffer. The landscape
+render is checked for size. `make_volcano_clip.py` composites the rotating
+panel into a GIF. Render Lab's Gouraud scene rotates when stepped over
 multiple frames.
 
 ## The second backend: the real image under QEMU
