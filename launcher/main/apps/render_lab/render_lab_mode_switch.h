@@ -9,3 +9,4 @@ typedef struct {
 
 void render_lab_mode_switch_request(render_lab_mode_switch_t* state);
 bool render_lab_mode_switch_take(render_lab_mode_switch_t* state);
+bool render_lab_mode_switch_double_buffer_allowed(bool band_mode_active, bool scene_is_cube);
