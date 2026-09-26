@@ -4,6 +4,13 @@ One command for everything that touches the board: build and flash, run
 suites, watch it, drive its input, change a number live. It takes the device
 lock and acts on the worktree you are standing in.
 
+For a first board run, install ESP-IDF and set up `autana` as described in
+[the README](../../README.md#run-it-on-the-board), then use `autana flash dev`
+and `autana monitor 30`. On Windows, run these in Git Bash. The CLI handles
+the ESP-IDF build environment and serial port; `monitor 30` exits after 30
+seconds. For a result without a board, use the
+[host render](../../README.md#try-it-without-a-board).
+
 ```sh
 autana                  # a session: the same commands without the prefix
 autana help [topic]     # the list below; a topic is a group key or a command
@@ -51,6 +58,7 @@ something in it, grep the capture instead.
 | `autana monitor [seconds] [--follow] [--stream] [--elf PATH]` | In a terminal: the console live, until Ctrl+C or for `seconds`. Piped or scripted: needs `seconds` or `--follow`, and prints only error lines; `--stream` prints everything. Always ends with its capture path. Crash addresses decode against `PATH`, or the build whose `build_id.txt` matches. |
 | `autana reset [--capture [seconds]] [--verbose]` | Reboot and wait for USB serial. `--capture` records the boot (20 s) and prints its path and any error lines. |
 | `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | `PATH.png` plus a `PATH.json` state snapshot. Landscape by default; `--as-shown` uses the board's orientation, `--framebuffer` the raw bytes. |
+| `autana screenshot --frames N -o PATH` | `N` consecutive frames as `PATH-00` to `PATH-<N-1>`: one capture while running, then the loop frozen and stepped one frame between captures, then resumed. A band-mode capture shows the panel as it is, a band no frame resent included. |
 
 ## Drive input
 
