@@ -69,6 +69,7 @@ TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 #define RIDGE_EXTRA       88
 #define RIDGE_COLUMNS     (RIDGE_CURVE_POINTS + 2 * RIDGE_EXTRA)
 #define RIDGE_LAYER_COUNT 3
+#define RIDGE_MAX_LIP_PX  48
 #define MIN_TILT_STRENGTH 64
 #define POSE_REDRAW_STEP  143
 #define LEVEL_STEADY_STEP 29
@@ -90,6 +91,7 @@ typedef struct {
     ridge_theme_t theme;
     gfx_color_t background_color, back0_color, back1_color;
     gfx_color_t sky[GFX_HEIGHT];
+    uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
     uint32_t theme_seed, tuned_at, alive_ms, shake_seed;
     int shake, last_pluck_x, strips, down_sign;
     bool by_column, axis_on_screen, ambient, painted, scanline_dither;
@@ -123,14 +125,14 @@ build_sky_gradient(void) {
 }
 
 static inline __attribute__((always_inline)) int
-layer_alpha(int distance, int lip_alpha, int body_alpha) {
+ridge_layer_alpha(int layer, int distance) {
     if (distance < 0) {
         return 0;
     }
     if (distance >= lip_px) {
-        return body_alpha;
+        return layer == 0 ? back0_body_alpha : layer == 1 ? back1_body_alpha : front_body_alpha;
     }
-    return lip_alpha + (body_alpha - lip_alpha) * distance / lip_px;
+    return ridge->lip_alpha[layer][distance];
 }
 
 static inline __attribute__((always_inline)) int
@@ -158,13 +160,13 @@ backdrop_pixel(int x, int y, uint8_t reveal_alpha) {
     const int back0 = boundary_distance(0, x, y);
     const int back1 = boundary_distance(1, x, y);
     const int front = boundary_distance(2, x, y);
-    if (backdrop_dither_pick(x, y, (uint8_t)layer_alpha(back0, back0_lip_alpha, back0_body_alpha))) {
+    if (backdrop_dither_pick(x, y, (uint8_t)ridge_layer_alpha(0, back0))) {
         color = ridge->back0_color;
     }
-    if (backdrop_dither_pick(x, y, (uint8_t)layer_alpha(back1, back1_lip_alpha, back1_body_alpha))) {
+    if (backdrop_dither_pick(x, y, (uint8_t)ridge_layer_alpha(1, back1))) {
         color = ridge->back1_color;
     }
-    if (backdrop_dither_pick(x, y, (uint8_t)layer_alpha(front, front_lip_alpha, front_body_alpha))) {
+    if (backdrop_dither_pick(x, y, (uint8_t)ridge_layer_alpha(2, front))) {
         color = ridge->sky[ridge->by_column ? y : x];
     }
     return color;
@@ -322,16 +324,13 @@ paint_row_span(gfx_color_t* framebuffer, int y, int lo, int hi, uint8_t reveal_a
             continue;
         }
         gfx_color_t color = ridge->background_color;
-        if (backdrop_dither_pick(
-                0, y, (uint8_t)layer_alpha(boundary_distance(0, x0, y), back0_lip_alpha, back0_body_alpha))) {
+        if (backdrop_dither_pick(0, y, (uint8_t)ridge_layer_alpha(0, boundary_distance(0, x0, y)))) {
             color = ridge->back0_color;
         }
-        if (backdrop_dither_pick(
-                0, y, (uint8_t)layer_alpha(boundary_distance(1, x0, y), back1_lip_alpha, back1_body_alpha))) {
+        if (backdrop_dither_pick(0, y, (uint8_t)ridge_layer_alpha(1, boundary_distance(1, x0, y)))) {
             color = ridge->back1_color;
         }
-        if (backdrop_dither_pick(
-                0, y, (uint8_t)layer_alpha(boundary_distance(2, x0, y), front_lip_alpha, front_body_alpha))) {
+        if (backdrop_dither_pick(0, y, (uint8_t)ridge_layer_alpha(2, boundary_distance(2, x0, y)))) {
             memcpy(row + x0, ridge->sky + x0, (size_t)(x1 - x0) * sizeof(*row));
         } else {
             fill_row(row, x0, x1, color);
@@ -438,6 +437,14 @@ bake_what_is_tuned(void) {
     ridge->background_color = gfx_rgb((uint32_t)background_rgb);
     ridge->back0_color = gfx_rgb((uint32_t)back0_rgb);
     ridge->back1_color = gfx_rgb((uint32_t)back1_rgb);
+    const int lip_start[RIDGE_LAYER_COUNT] = {back0_lip_alpha, back1_lip_alpha, front_lip_alpha};
+    const int lip_end[RIDGE_LAYER_COUNT] = {back0_body_alpha, back1_body_alpha, front_body_alpha};
+    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+        for (int distance = 0; distance < lip_px; distance++) {
+            ridge->lip_alpha[layer][distance] =
+                (uint8_t)(lip_start[layer] + (lip_end[layer] - lip_start[layer]) * distance / lip_px);
+        }
+    }
     ridge->scanline_dither = fill_pattern == GFX_DITHER_SCANLINES4;
     ridge->tuned_at = TUNE_GENERATION(ridge);
 }
