@@ -36,36 +36,42 @@ put(int x, int y, cell_t cell) {
 }
 
 static void
-mountain(void) {
+ground(void) {
     for (int x = 0; x < VIEW_W; x++) {
-        const int top = x < 48 ? 79 : x < 80 ? 80 : 66;
+        const int top = x < 49 ? 72 : x < 83 ? 78 : 67;
         for (int y = top; y < VIEW_H; y++) {
-            put(x, y, CELL_MAKE(MAT_STONE, (x + y) & 7));
+            const bool soil = y < 86;
+            put(x, y, CELL_MAKE(soil ? MAT_DIRT : MAT_STONE, soil ? 13 : (x + y) & 7));
         }
     }
-    for (int x = 3; x < 52; x++) {
-        const int dx = abs(x - 25);
-        const int top = 23 + dx * 2;
-        for (int y = top; y < 79; y++) {
-            const bool vent = dx < 3 && y < 54;
-            const bool chamber = dx < 10 && y >= 54 && y < 64;
+}
+
+static void
+mountain(void) {
+    for (int x = 1; x < 57; x++) {
+        const int dx = abs(x - 27);
+        const int top = 8 + dx * 2;
+        for (int y = top; y < 72; y++) {
+            const bool vent = dx < 3 && y < 48;
+            const bool chamber = dx < 10 && y >= 48 && y < 61;
             if (vent || chamber) {
                 continue;
             }
-            put(x, y, CELL_MAKE(y < top + 4 ? MAT_DIRT : MAT_STONE, (x + y) & 7));
+            const bool soil = y < top + 9 || dx > 13;
+            put(x, y, CELL_MAKE(soil ? MAT_DIRT : MAT_STONE, soil ? 13 : (x + y) & 7));
         }
     }
 }
 
 static void
 magma(void) {
-    for (int x = 17; x < 34; x++) {
-        for (int y = 57; y < 64; y++) {
+    for (int x = 18; x < 37; x++) {
+        for (int y = 54; y < 61; y++) {
             put(x, y, CELL_MAKE(MAT_LAVA, 15));
         }
     }
-    for (int y = 31; y < 54; y++) {
-        for (int x = 23; x < 28; x++) {
+    for (int y = 16; y < 48; y++) {
+        for (int x = 25; x < 30; x++) {
             put(x, y, CELL_MAKE(MAT_LAVA, 15));
         }
     }
@@ -73,13 +79,18 @@ magma(void) {
 
 static void
 lake_and_grove(void) {
-    for (int x = 50; x < 80; x++) {
-        for (int y = 64; y < 80; y++) {
+    for (int x = 49; x < 83; x++) {
+        for (int y = 53; y < 78; y++) {
             put(x, y, CELL_MAKE(MAT_WATER, 15));
         }
     }
-    for (int x = 80; x < VIEW_W; x++) {
-        for (int y = 62; y < 66; y++) {
+    for (int x = 48; x < 55; x++) {
+        for (int y = 52; y < 59; y++) {
+            put(x, y, CELL_MAKE(MAT_DIRT, 13));
+        }
+    }
+    for (int x = 83; x < VIEW_W; x++) {
+        for (int y = 63; y < 67; y++) {
             put(x, y, CELL_MAKE(MAT_DIRT, 13));
         }
     }
@@ -87,8 +98,8 @@ lake_and_grove(void) {
 
 static void
 gunpowder_charge(void) {
-    for (int x = 37; x < 41; x++) {
-        for (int y = 47 + (x - 37) * 2; y < 54 + (x - 37) * 2; y++) {
+    for (int x = 49; x < 56; x++) {
+        for (int y = 44; y < 51; y++) {
             put(x, y, GUNPOWDER_CELL(0));
         }
     }
@@ -96,16 +107,16 @@ gunpowder_charge(void) {
 
 static void
 terrain(void) {
+    ground();
     mountain();
     magma();
     lake_and_grove();
-    gunpowder_charge();
 }
 
 static void
 trees(void) {
-    for (int i = 0; i < 3; i++) {
-        put(85 + i * 10, 61, MATX(MATX_PLANT));
+    for (int i = 0; i < 4; i++) {
+        put(85 + i * 7, 62, MATX(MATX_PLANT));
     }
 }
 
@@ -123,7 +134,7 @@ setup(int quarter) {
     sand_enable_impulses(&sim, impulses, GRID_W * GRID_H);
     terrain();
     trees();
-    sand_add_emitter(&sim, VIEW_H - 1 - 26, 25, CELL_MAKE(MAT_LAVA, 15));
+    sand_add_emitter(&sim, VIEW_H - 1 - 11, 27, CELL_MAKE(MAT_LAVA, 15));
     tilt_reset(&tilt, 256);
     const char* path = getenv("SAND_ANGLE_PATH");
     angles = path != NULL ? fopen(path, "w") : NULL;
@@ -132,7 +143,7 @@ setup(int quarter) {
 
 static double
 board_angle(int frame) {
-    const double t = (double)frame / 149.0;
+    const double t = (double)frame / 239.0;
     return 7.0 * sin(t * 6.283185307179586) + 36.0 * (0.5 - 0.5 * cos(t * 6.283185307179586));
 }
 
@@ -172,10 +183,12 @@ static void
 draw(const render_frame_t* frame) {
     int gx, gy;
     drive_tilt(frame, &gx, &gy);
-    if (frame->index == 100) {
-        put(85, 59, CELL_MAKE(MAT_FIRE, 15));
+    if (frame->index == 165) {
+        gunpowder_charge();
+        put(52, 43, CELL_MAKE(MAT_FIRE, 15));
     }
-    for (int i = 0; i < 4; i++) {
+    const int steps = frame->index >= 165 && frame->index < 190 ? 1 : 4;
+    for (int i = 0; i < steps; i++) {
         const uint8_t wait_before = sim.fuse_blast_wait;
         sand_step(&sim, gx, gy, 0);
         if (wait_before == 0 && sim.fuse_blast_wait != 0) {
@@ -195,7 +208,7 @@ draw(const render_frame_t* frame) {
 const render_scene_t render_scene = {
     .name = "sand_sim",
     .quarter = 1,
-    .frames = 150,
+    .frames = 240,
     .dt_ms = 33,
     .setup = setup,
     .draw = draw,
