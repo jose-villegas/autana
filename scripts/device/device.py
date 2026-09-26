@@ -876,8 +876,6 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
                 connection.flush()
                 data, reason = capture(connection, output, args.max_seconds, args.idle_seconds,
                                        args.expect_build_id, args.suite)
-            if count_suite_results(data)[1]:
-                held.error = "suite reported FAIL"
     except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
         error = str(caught)
         raise
@@ -948,8 +946,6 @@ def selftest(args, store, board):
                 print("report generation failed (capture is unaffected): " + str(report_error),
                       file=sys.stderr)
         failed = print_suite_output(data, final_path, "selftest", reason, getattr(args, "verbose", False))
-        if failed:
-            held.error = "selftest reported FAIL"
         return 1 if failed else 0
 
 
@@ -1166,16 +1162,18 @@ def batch(args, store, board):
                     max_seconds=args.max_seconds, idle_seconds=args.idle_seconds,
                     expect_build_id=build_id, verbose=getattr(args, "verbose", False))
                 print(f"batch: {suite_name} run {run}/{args.runs}", flush=True)
+                # A suite FAIL is a result, not a broken run: a perf capture always
+                # carries its budget targets' FAILs, and its duration still counts.
                 error = None
+                failed = False
                 try:
-                    if run_suite(suite_args, store, board, held_lock=held, worktree=worktree,
-                                 commit=commit):
-                        error = "suite reported FAIL"
+                    failed = bool(run_suite(suite_args, store, board, held_lock=held,
+                                            worktree=worktree, commit=commit))
                 except RuntimeError as caught:
                     error = str(caught)
                     print("batch: capture error, continuing: " + error, file=sys.stderr)
                 entries.append({"suite": suite_name, "run": run, "capture": str(out),
-                                "error": error})
+                                "error": error, "failed": failed})
         if any(entry["error"] for entry in entries):
             held.error = "a batch capture failed"
     meta = {"build_id": build_id, "owner": args.owner, "purpose": args.purpose,
@@ -1193,7 +1191,7 @@ def batch(args, store, board):
                      "capture_path": str(summary_path),
                      "capture_bytes": summary_path.stat().st_size})
     print("batch summary: " + str(summary_path))
-    return 1 if any(e["error"] for e in entries) else 0
+    return 1 if any(e["error"] or e["failed"] for e in entries) else 0
 
 
 def human_wait_seconds(value):

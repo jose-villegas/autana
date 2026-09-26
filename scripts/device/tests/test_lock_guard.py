@@ -903,7 +903,7 @@ class SuiteFailureTests(Store):
                                side_effect=lambda *unused, **unused_kw: Replies(self.FAILED_SUITE)), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(device.run_suite(self.suite_args(), self.store, BOARD_A), 1)
-        self.assertEqual(self.errors()["run-suite"], "suite reported FAIL")
+        self.assertIsNone(self.errors()["run-suite"])
 
     def test_selftest(self):
         args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), out=None,
@@ -915,7 +915,7 @@ class SuiteFailureTests(Store):
                 mock.patch.object(device, "git_commit", return_value="c0ffee"), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(device.selftest(args, self.store, BOARD_A), 1)
-        self.assertEqual(self.errors()["selftest"], "selftest reported FAIL")
+        self.assertIsNone(self.errors()["selftest"])
 
     def test_batch(self):
         args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
@@ -928,11 +928,18 @@ class SuiteFailureTests(Store):
                 contextlib.redirect_stdout(io.StringIO()), \
                 contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(device.batch(args, self.store, BOARD_A), 1)
-        self.assertEqual(self.errors()["batch"], "a batch capture failed")
+        self.assertIsNone(self.errors()["batch"])
         index = Path(os.environ["AUTANA_RECORDS"]) / "index.jsonl"
         entry = json.loads(index.read_text(encoding="utf-8").splitlines()[-1])
-        self.assertEqual((entry["command"], entry["error"]),
-                         ("batch", "suite reported FAIL; suite reported FAIL"))
+        self.assertEqual((entry["command"], entry["error"]), ("batch", None))
+
+    def test_a_batch_capture_that_breaks_is_an_error(self):
+        args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
+                         suite=["sand"], runs=1, perf_scope=False, max_seconds=5,
+                         idle_seconds=None, out=None)
+        with mock.patch.object(device, "flash", return_value="abc"),                 mock.patch.object(device, "run_suite", side_effect=RuntimeError("port lost")),                 mock.patch.object(device, "git_commit", return_value="c0ffee"),                 contextlib.redirect_stdout(io.StringIO()),                 contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(device.batch(args, self.store, BOARD_A), 1)
+        self.assertEqual(self.errors()["batch"], "a batch capture failed")
 
 
 class EstimateTests(Store):

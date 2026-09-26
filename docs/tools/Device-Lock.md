@@ -160,8 +160,10 @@ epoch seconds; an estimate without enough history is `null`.
 Estimates come from `durations.jsonl` beside the lock files, one file shared
 by every checkout and session on the machine. Each held command records how
 long it held the board, nested `flash` and `run-suite` inside `batch` or
-`selftest` included. A command that raises, exits non-zero, reports a failed
-suite, or loses its lock is recorded with its error and never counts. An
+`selftest` included. A command that raises, gets an error reply, or loses its
+lock is recorded with its error and never counts. A suite that reports FAIL
+is a result, not a broken run - perf captures always carry their budget
+targets' FAILs - so its duration counts. An
 estimate is the median of a command kind's last `ESTIMATE_RECENT_RUNS`
 successful runs, after at least `ESTIMATE_MINIMUM_RUNS` (constants in
 `device_lock.py`); a holder past it is estimated free now, and a human

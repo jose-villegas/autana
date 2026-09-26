@@ -479,12 +479,14 @@ def board_holder():
     the session does not refuse itself."""
     result = subprocess.run(device_command("status", "--json"), capture_output=True, text=True)
     try:
-        plugged = [board for board in json.loads(result.stdout)["boards"] if board["port"]]
+        boards = json.loads(result.stdout)["boards"]
     except (ValueError, KeyError, TypeError):
         return ""
-    if len(plugged) != 1:
+    # device.py already narrows the list to AUTANA_BOARD's board, plugged or not.
+    candidates = boards if os.environ.get("AUTANA_BOARD") else [b for b in boards if b["port"]]
+    if len(candidates) != 1:
         return ""
-    board = plugged[0]
+    board = candidates[0]
     holder = board["holder"]
     if board["state"] == "held" and holder["owner"] != owner():
         return f"held by {holder['owner']} for {holder['purpose']}"
