@@ -28,3 +28,8 @@ void ui_ridge_step(const input_t* input, uint32_t dt_ms);
 
 /* The whole layered backdrop and the ridge as it stands - a ui_backdrop_fn. */
 void ui_ridge_paint(void);
+
+#if CONFIG_LAUNCHER_SELFTEST
+/* Starts a device perf arm from the settled landscape state. */
+void ui_ridge_reset_for_test(void);
+#endif
