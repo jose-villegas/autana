@@ -5,30 +5,11 @@ The shared board has one USB serial port. Nothing opens that port except
 pyserial command. The tool finds the board by USB Serial/JTAG VID `0x303A`,
 not a fixed COM number, and opens it at 115200 with DTR and RTS low.
 
-```mermaid
-sequenceDiagram
-    participant App as autana
-    participant Dev as device.py
-    participant Lock as lock file
-    participant Port as USB port
-    participant Bash as Git bash
-    participant Flash as build_flash.sh
-
-    App->>Dev: owner, purpose
-    Dev->>Lock: take the lock
-    Dev->>Port: wait for the port
-
-    alt send, screenshot, run-suite, listen
-        Dev->>Port: open serial
-        Dev->>Port: talk to the running firmware
-    else flash, batch, selftest
-        Dev->>Bash: run with AUTANA_DEVICE_LOCK_TOKEN
-        Bash->>Flash: run it
-        Note over Flash: checks the live lock token<br/>before opening the port
-        Dev->>Port: verify app image against flash
-        Note over Dev,Port: batch and selftest keep this same lock<br/>and capture straight through, after the flash
-    end
-```
+The lock is keyed by the board's USB Serial/JTAG identity. Its COM number
+can change after a flash or reset; each port access resolves the current
+number. The flash script checks the live lock token just before `idf flash`.
+Esptool hash-verifies the written regions. `batch` and `selftest` keep one
+lock across the flash and capture.
 
 Day-to-day interactive use goes through `tools/autana`
 ([Autana-CLI.md](Autana-CLI.md)) - every `autana` command calls `device.py`
@@ -79,12 +60,13 @@ ends at a line starting with one of `--until` (default `TUNE_OK`, `TUNE_ERR`,
 `TUNE_END`). It exits 1 on an `_ERR` reply, and says so when the build does
 not know the command or nothing answers within `--seconds` (default 3).
 
-`send` is not a capture: it writes nothing under `records/` and adds no line
-to `index.jsonl`. A tuning session is dozens of these, and none is evidence.
+`send` is not a capture: it adds no capture record to `index.jsonl`. Its
+duration is recorded with every other held command in `durations.jsonl`.
 
 ### Screenshots: `device.py screenshot`
 
-`device.py screenshot [--as-shown|--framebuffer] [--out PATH] [--timeout SECONDS]` takes the lock,
+`device.py screenshot [--as-shown|--framebuffer] [--out PATH]
+[--timeout SECONDS]` takes the lock,
 requests the panel capture and writes a `.png` plus a `.json` state snapshot;
 `autana screenshot` calls it the same way. A script that needs its own
 `--owner`/`--purpose` calls `device.py screenshot` directly, the same way
@@ -119,6 +101,10 @@ capture to `PATH` instead of the default path - only with exactly one
 `--suite` and `--runs 1`, which is how `device_report.sh`'s RUNSUITE-scoped
 reports (report_boot_anim_perf.sh) call it.
 
+A separate `flash` and `run-suite` take separate locks. Another session can
+flash between them; the capture fails if it sees a different `BUILD_ID`.
+Use `batch` or `selftest` when flash and capture must share one lock.
+
 `flash`, `run-suite`, `selftest`, `batch`, `listen`, `reset`, `send`, and
 `screenshot` take the lock before they touch the board, keep it through their
 whole operation, and renew it every 30 seconds. Serial opens and esptool calls
@@ -127,12 +113,11 @@ before invoking `idf flash`. `reset` reboots with esptool and returns once the
 port is back. `reset --capture` and `selftest` reopen the port for capture if it
 vanishes or remains silent after a reset.
 
-`flash` reads the app image and offset from `flasher_args.json` and asks
-esptool to compare that image with flash. The `BUILD_ID` in `build_id.txt` must
-match the build log. It waits for USB Serial/JTAG to re-enumerate after flash.
-Verification works without a console reader, including
-while an AUTORUN image runs its suites. A console `BUILD_ID` in a later capture
-is additional evidence. `selftest` builds the diagnostics+autorun image and
+`flash` trusts esptool's hash check of every region in `write_flash`. The
+`BUILD_ID` in `build_id.txt` must match the build log. Flash success proves
+the write, not boot. A release flash has no boot verification. A later
+`selftest` or `batch` capture checks the console `BUILD_ID` against the
+flashed image. `selftest` builds the diagnostics+autorun image and
 captures the boot-time run until `SELFTEST_COMPLETE`; report scripts use the
 same held lock for their flash and capture. The default lock wait is ten
 minutes; pass `--wait 0` to return immediately when the board is busy.
@@ -164,12 +149,12 @@ python scripts/device/device.py --owner sam listen --seconds 30 --out C:\Temp\li
 ```
 
 Every invocation - default path or explicit `--out`, success or failure -
-also appends one line to `<records>/index.jsonl`: owner, purpose,
-port, the command and its arguments, the build id (verified for flash,
-best-effort observed otherwise), lock acquisition time and duration, the
-worktree and commit involved, how the capture ended, and the error if it failed. `device.py` never commits any of
-this itself - whoever ran the command commits the evidence with the work it
-supports.
+also appends one line to `<records>/index.jsonl`: owner, purpose, port,
+the command and its arguments, the build id (from the matched build log
+for flash, observed in a capture otherwise), lock acquisition time, the
+worktree and commit involved, how the capture ended, and any error.
+`durations.jsonl` holds command durations. `device.py` never commits
+these records; whoever ran the command commits the evidence with the work.
 
 `run-suite` also writes a parsed `<same stem>.md` beside its capture -
 suite PASS/FAIL counts, every failing test's Unity message, and any
@@ -191,10 +176,12 @@ python scripts/device/device.py report .records/device/20260916/153113_runsuite-
 `flash` or `listen` one (both of these narrower reports: no suite was run,
 so there is no PASS/FAIL table or app budget table to build).
 
-The lock state is `%TEMP%/autana-device/<port>.json`. It is JSON containing
-`owner`, `purpose`, `port`, `acquired_at`, `heartbeat_at`,
-`expected_build_id`, `host`, `pid`, and an opaque `token`. FIFO waiter tickets
-live in `%TEMP%/autana-device/<port>.queue/`; a dead waiter is discarded.
+The lock state is `%TEMP%/autana-device/usb-303a.json`. It is JSON containing
+`owner`, `purpose`, `kind`, `port`, `acquired_at`, `heartbeat_at`,
+`expected_build_id`, `host`, `pid`, and an opaque `token`. `port` records
+the COM number found when the lock was taken; it is not the lock key.
+FIFO waiter tickets live in the matching `.queue/` directory. A dead
+waiter is discarded.
 A lock is reclaimed when its heartbeat is more than ten minutes old, or when
 its holder's process on this host is dead; the acquirer logs
 `reclaimed lock from <owner> for <purpose> (heartbeat expiry | dead process)`.
@@ -205,12 +192,22 @@ winning the lock a command also waits for the serial port itself to come
 free, since a previous holder's reader can outlive its lock.
 
 `status` shows the holder's local start time and elapsed time, an estimated
-free time, and every waiter's purpose and estimated start in FIFO order. The
-estimates use the median of recent successful durations for the same command
-kind in `index.jsonl`. A command with no recorded duration shows
-`unknown (no duration history)`. A waiting command prints its queue place and
-estimated start while it waits. `started_at` in a capture record is the
-invocation time; `acquired_at` is when that command won the lock.
+free time, and every waiter's purpose and estimated start in FIFO order.
+`durations.jsonl` records the time from each held command's own start to
+its end, including nested flash and suite commands and commands without
+captures. Estimates use the median of the last 30 successful durations
+for the same command kind, after at least three runs. Missing history,
+a human reservation, or an unknown preceding duration makes the affected
+estimate `unknown`. A holder past its median is estimated free now.
+A waiting command prints its queue place and estimated start.
+`started_at` in a capture record is the invocation time; `acquired_at`
+is when the outer lock was won. The flash script's token check covers the
+instant before `idf flash`; it cannot prove continued ownership during
+the esptool operation. Port opens and captures stop with `device lock was
+lost` if ownership changes.
+`build_flash.sh --check-flash-lock <PORT>` runs the token check without
+building or flashing; it uses the held token in
+`AUTANA_DEVICE_LOCK_TOKEN`.
 
 `device.py --owner <owner> release --token <token>` releases a lock this
 owner holds without touching the board - useful when a run finishes
@@ -221,10 +218,10 @@ the same way.
 For inspection or emergency recovery, use the lower-level command:
 
 ```powershell
-python scripts/device/device_lock.py --port COM5 status
-python scripts/device/device_lock.py --port COM5 acquire --owner sam --purpose investigate --wait 60
-python scripts/device/device_lock.py --port COM5 heartbeat --token <token>
-python scripts/device/device_lock.py --port COM5 release --token <token>
+python scripts/device/device_lock.py --board-id usb-303a --port COM5 status
+python scripts/device/device_lock.py --board-id usb-303a --port COM5 acquire --owner sam --purpose investigate --wait 60
+python scripts/device/device_lock.py --board-id usb-303a --port COM5 heartbeat --token <token>
+python scripts/device/device_lock.py --board-id usb-303a --port COM5 release --token <token>
 ```
 
 The acquire result prints the token as JSON. Releasing requires that token, so
@@ -249,7 +246,8 @@ python scripts/device/device.py --port COM5 --owner maintainer take-back
 ```
 
 This clears the reservation and prints the resulting lock status. The lower-level
-`device_lock.py --port COM5 clear-human` command remains available for recovery.
+`device_lock.py --board-id usb-303a --port COM5 clear-human` remains available
+for recovery.
 
 ## Lock events
 
@@ -262,8 +260,8 @@ command runs through `cmd.exe` on Windows (`%VAR%`) and
 `/bin/sh` elsewhere (`$VAR`); a script that reads the variables works on both.
 Hooks run in separate processes and are not ordered across them, so one
 holder's `released` can arrive after the next holder's `acquired`. A hook has
-a three second timeout. A failed or timed out hook is quiet and never changes the lock operation's
-outcome.
+a three second timeout. A failed or timed out hook is quiet and never
+changes the lock operation's outcome.
 
 | Event | When |
 |---|---|

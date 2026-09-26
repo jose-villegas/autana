@@ -5,6 +5,7 @@ import contextlib
 import datetime
 import errno
 import json
+import math
 import os
 import socket
 import statistics
@@ -22,7 +23,8 @@ GUARD_STALE_SECONDS = 30
 
 
 def default_root():
-    return Path(tempfile.gettempdir()) / "autana-device"
+    return Path(os.environ.get("AUTANA_DEVICE_LOCK_ROOT") or
+                Path(tempfile.gettempdir()) / "autana-device")
 
 
 def process_alive(pid):
@@ -86,31 +88,14 @@ def windows_process_alive(pid, kernel32=None):
 
 
 class LockStore:
-    def __init__(self, root=None, now=time.time, is_alive=process_alive, records_root=None):
+    def __init__(self, root=None, now=time.time, is_alive=process_alive, board_id=None):
         self.root = Path(root) if root else default_root()
         self.now = now
         self.is_alive = is_alive
-        self.records_root = Path(records_root or os.environ.get("AUTANA_RECORDS") or
-                                 Path(__file__).resolve().parents[2] / ".records" / "device")
-
-    def duration_history(self):
-        history = {}
-        try:
-            with open(self.records_root / "index.jsonl", encoding="utf-8") as stream:
-                for line in stream:
-                    try:
-                        entry = json.loads(line)
-                        duration = entry.get("duration_seconds")
-                        if duration is not None and duration >= 0 and not entry.get("error"):
-                            history.setdefault(entry["command"], []).append(duration)
-                    except (ValueError, KeyError, TypeError):
-                        continue
-        except FileNotFoundError:
-            pass
-        return {kind: statistics.median(values[-30:]) for kind, values in history.items()}
+        self.board_id = board_id
 
     def stem(self, port):
-        return port.replace("/", "_").replace("\\", "_").replace(":", "_")
+        return (self.board_id or port).replace("/", "_").replace("\\", "_").replace(":", "_")
 
     def lock_path(self, port):
         return self.root / (self.stem(port) + ".json")
@@ -261,7 +246,7 @@ class LockStore:
             return held, evicted, reason
 
     def acquire(self, port, owner, purpose, expected_build_id="", wait=0,
-                stale_seconds=DEFAULT_STALE_SECONDS, kind=None):
+                stale_seconds=DEFAULT_STALE_SECONDS, kind=None, on_wait=None):
         ticket = self.enqueue(port, owner, purpose, kind=kind)
         deadline = self.now() + wait
         waiting = False
@@ -281,15 +266,8 @@ class LockStore:
             if not waiting:
                 device_hook.emit("waiting", port, owner, purpose)
                 waiting = True
-            if not hasattr(self, "_last_wait_notice") or self.now() - self._last_wait_notice >= 30:
-                status = self.status(port)
-                place = next((index for index, item in enumerate(status["queue"], 1)
-                              if item["ticket"] == ticket), None)
-                if place:
-                    estimate = queue_estimates(status, self.now()).get(ticket)
-                    print(f"waiting for board: queue place {place}; estimated start "
-                          f"{format_estimate(estimate)}", file=sys.stderr)
-                self._last_wait_notice = self.now()
+            if on_wait:
+                on_wait(ticket)
             time.sleep(min(0.1, max(0, deadline - self.now())))
 
     def cancel(self, port, ticket):
@@ -299,7 +277,7 @@ class LockStore:
     def heartbeat(self, port, token):
         with self.guard(port):
             lock = self.read_json(self.lock_path(port))
-            if not lock or lock["token"] != token:
+            if not lock or lock["token"] != token or self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
                 return False
             lock["heartbeat_at"] = self.now()
             self.write_json(self.lock_path(port), lock)
@@ -366,8 +344,27 @@ class LockStore:
                 "lock": None if reason else lock,
                 "reclaimable": dict(lock, reason=reason) if reason else None,
                 "queue": self.tickets(port),
-                "durations": self.duration_history(),
             }
+
+
+def duration_history(records_root, minimum=3):
+    history = {}
+    try:
+        with open(Path(records_root) / "durations.jsonl", encoding="utf-8") as stream:
+            for line in stream:
+                try:
+                    entry = json.loads(line)
+                    duration = entry.get("duration_seconds")
+                    if (not entry.get("error") and isinstance(duration, (int, float))
+                            and not isinstance(duration, bool) and math.isfinite(duration)
+                            and duration >= 0 and isinstance(entry.get("command"), str)):
+                        history.setdefault(entry["command"], []).append(duration)
+                except (ValueError, TypeError):
+                    continue
+    except FileNotFoundError:
+        pass
+    return {kind: statistics.median(values[-30:]) for kind, values in history.items()
+            if len(values) >= minimum}
 
 
 def local_time(timestamp):
@@ -378,8 +375,8 @@ def format_estimate(timestamp):
     return local_time(timestamp) if timestamp is not None else "unknown (no duration history)"
 
 
-def queue_estimates(status, now):
-    durations = status.get("durations", {})
+def queue_estimates(status, now, durations=None):
+    durations = durations or {}
     lock = status.get("lock")
     if status.get("human"):
         start = None
@@ -396,9 +393,9 @@ def queue_estimates(status, now):
     return estimates
 
 
-def print_status(status, now=None):
+def print_status(status, now=None, durations=None):
     now = time.time() if now is None else now
-    durations = status.get("durations", {})
+    durations = durations or {}
     if status["human"]:
         human = status["human"]
         age = max(0, now - human["since_at"])
@@ -420,7 +417,7 @@ def print_status(status, now=None):
         print("unlocked")
     if status["queue"]:
         print("waiting: " + ", ".join(ticket["owner"] for ticket in status["queue"]))
-        estimates = queue_estimates(status, now)
+        estimates = queue_estimates(status, now, durations)
         for index, ticket in enumerate(status["queue"], 1):
             print(f"  {index}. {ticket['owner']} for {ticket['purpose']}; estimated start "
                   f"{format_estimate(estimates[ticket['ticket']])}")
@@ -430,6 +427,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=default_root())
     parser.add_argument("--port", required=True)
+    parser.add_argument("--board-id")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("status")
     acquire = subparsers.add_parser("acquire")
@@ -449,7 +447,7 @@ def main(argv=None):
     human.add_argument("--note", required=True)
     subparsers.add_parser("clear-human")
     args = parser.parse_args(argv)
-    store = LockStore(args.root)
+    store = LockStore(args.root, board_id=args.board_id)
     if args.command == "status":
         print_status(store.status(args.port))
         return 0

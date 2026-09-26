@@ -41,36 +41,24 @@ esptool.py --chip esp32s3 -p <PORT> --before no_reset flash_id
 Connecting almost instantly (a few dots) means the chip is sitting in the
 bootloader.
 
-From there `autana flash` boots the new image on its own. Flashing ends with
-esptool's RTS reset. `device.py` waits for USB Serial/JTAG to return and reads
-the boot's BUILD_ID. If it is not heard, the tool resets through the watchdog
-and checks again. `reset --capture` and `selftest` use an RTS reset with a
-watchdog fallback when the board stays silent.
+From there `autana flash` writes the image and ends with esptool's RTS reset.
+Esptool hash-verifies each written region before it returns success.
+`device.py` checks that the build log's `BUILD_ID` matches `build_id.txt`.
+The flash command does not use boot console output as its success gate.
+`reset --capture` and `selftest` use an RTS reset with a watchdog fallback
+when the board stays silent.
 
 A watchdog reset or a power cycle re-enumerates USB Serial/JTAG, and Windows
-may hand the board a **different COM number** than it had before. Anything
-holding a port by name breaks there; `find_port()` in
-`scripts/device/device.py` looks it up by vendor id `0x303A` each time for
-that reason.
+may hand the board a **different COM number** than it had before. The lock
+uses the board's USB Serial/JTAG identity, and `device.py` resolves its
+current port before access.
 
-That re-enumeration comes late: the first open can get the old handle, which
-reads nothing and raises nothing. The flash capture rediscovers the port and
-reopens a silent handle while waiting for the boot. A release image has no
-console to query after boot, so a missed BUILD_ID is reported as unverified.
-
-```mermaid
-sequenceDiagram
-    participant Dev as device.py
-    participant Esp as esptool
-    participant Board as board
-    Esp->>Board: flash, then RTS reset
-    Dev->>Board: wait for USB, read BUILD_ID
-    alt BUILD_ID not heard
-        Dev->>Esp: chip_id, after watchdog_reset
-        Esp->>Board: trip the watchdog
-        Dev->>Board: wait for USB, read BUILD_ID again
-    end
-```
+That re-enumeration comes late: the first open can get an old handle that
+reads nothing. A later `selftest` or `batch` capture reopens a silent handle
+and checks the console `BUILD_ID` against the flashed image. A release flash
+has no boot verification. If the RTS reset reaches the warm-reset hang,
+the bootloader's PMIC restart below power-cycles the SoC and USB returns
+under its current COM number.
 
 If it vanishes from USB entirely — no COM port, no device at vendor ID
 `0x303A` — check
