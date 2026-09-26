@@ -10,6 +10,8 @@
 
 #define MU_VERSION "2.02"
 
+#include <stdint.h>
+
 /* ---------------------------------------------------------------------------
  * LOCAL MODIFICATION vs upstream rxi/microui 2.02.
  *
@@ -18,13 +20,16 @@
  * board has ~424 KiB of RAM in total and we spend 322 KiB of it on the
  * framebuffer, so the stock context does not fit.
  *
- * The command-list size may be overridden by a compiler flag shared by
- * every translation unit: it determines mu_Context's layout.
+ * The command-list size has one definition here because it determines
+ * mu_Context's layout. Pointer width selects a larger host budget while
+ * keeping the device context within its RAM limit.
  *
  * Upstream values are kept in the trailing comments.
  * ------------------------------------------------------------------------ */
-#ifndef MU_COMMANDLIST_SIZE
-#define MU_COMMANDLIST_SIZE     (8 * 1024)  /* upstream: 256 * 1024 */
+#if UINTPTR_MAX > 0xFFFFFFFFu
+#define MU_COMMANDLIST_SIZE     (9 * 1024)  /* 64-bit host: 8-byte pointers and alignment */
+#else
+#define MU_COMMANDLIST_SIZE     (8 * 1024)  /* the device; upstream: 256 * 1024 */
 #endif
 #define MU_ROOTLIST_SIZE        8           /* upstream: 32 */
 #define MU_CONTAINERSTACK_SIZE  8           /* upstream: 32 */
