@@ -147,6 +147,18 @@ class GuardTests(unittest.TestCase):
             self.assertNotEqual(refused.returncode, 0)
             self.assertIn("device lock token is not active", refused.stderr)
 
+    def test_status_reads_the_lock_while_the_board_is_off_usb(self):
+        with tempfile.TemporaryDirectory() as directory:
+            device_lock.LockStore(directory, now=time.time).acquire("COM5", "a", "flash", wait=0)
+            output = io.StringIO()
+            with mock.patch.object(device, "find_port",
+                                   side_effect=RuntimeError("no USB Serial/JTAG board found")), \
+                    mock.patch.object(device_lock, "default_root", return_value=Path(directory)), \
+                    mock.patch.object(sys, "argv", ["device.py", "status"]), \
+                    contextlib.redirect_stdout(output):
+                self.assertEqual(device.main(), 0)
+            self.assertIn("held by a for flash", output.getvalue())
+
     def test_every_default_store_shares_one_lock_across_com_names(self):
         with tempfile.TemporaryDirectory() as directory:
             first = device_lock.LockStore(directory, now=lambda: 1000)
