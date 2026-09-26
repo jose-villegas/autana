@@ -31,7 +31,6 @@ static const char* TAG = "imu";
 #define REG_CTRL2               0x03
 #define REG_CTRL3               0x04
 #define REG_CTRL7               0x08
-#define REG_STATUS0             0x2E
 #define REG_AX_L                0x35 /* 12 contiguous bytes: accel then gyro */
 
 #define WHO_AM_I_VALUE          0x05
@@ -49,8 +48,6 @@ static const char* TAG = "imu";
 
 /* CTRL7: enable the accelerometer and the gyroscope. */
 #define CTRL7_ENABLE_ACCEL_GYRO 0x03
-
-#define STATUS0_DATA_READY      0x03
 
 static i2c_master_dev_handle_t dev;
 static bool ready;
@@ -185,8 +182,6 @@ imu_read(imu_sample_t* out) {
     out->gx = AXIS(6);
     out->gy = AXIS(8);
     out->gz = AXIS(10);
-
-#undef AXIS
 
     return true;
 }

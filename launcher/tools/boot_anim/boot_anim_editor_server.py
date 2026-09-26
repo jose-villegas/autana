@@ -62,13 +62,14 @@ silently reverts it to a stale copy.
 
 POST /build_flash is the only other endpoint, and the only thing here that
 writes anything meant to be committed or touches the real device: same body
-shape as /render minus `ms`, plus `port` (a serial port, e.g. "COM3"). It
+shape as /render minus `ms`, plus `board` (the board's USB serial number;
+empty: AUTANA_BOARD, else the only board plugged in). It
 validates exactly like step 2 above (into a throwaway scratch file first, so
 a bad edit never reaches the real files), then overwrites the REAL
 main/boot/boot_anim_timeline.json and boot_anim_timeline.h - what
 tools/boot_anim/boot_anim_editor.html's Bake button downloads, written here instead of
 copied in by hand - and runs tools/build/build_flash_dev.sh, which builds the
-development image and flashes it to `port`. Its combined stdout/stderr comes
+development image and flashes it to that board. Its combined stdout/stderr comes
 back as the response body (200) or as the error (500) if the build or the
 flash failed.
 
@@ -92,9 +93,8 @@ TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 LAUNCHER_DIR = os.path.dirname(os.path.dirname(TOOLS_DIR))
 ENGINE_DIR = os.path.dirname(LAUNCHER_DIR)
 
-# The device lock, the same one every autana verb takes - build_and_flash()
-# below is this tool's own board access and must queue behind it rather
-# than fight it for the port.
+# build_and_flash() flashes through device.flash_script(), so it queues for
+# the board's lock like every autana command rather than fight it for the port.
 sys.path.insert(0, os.path.join(ENGINE_DIR, "scripts", "device"))
 import device  # noqa: E402
 MAIN_DIR = os.path.join(LAUNCHER_DIR, "main")
@@ -132,7 +132,7 @@ BUILD_FLASH_TIMEOUT_S = 600
 
 DEFAULT_PORT = 8934
 
-# boot_anim_timeline.json's own top-level keys, minus "ms"/"port" which are
+# boot_anim_timeline.json's own top-level keys, minus "ms"/"board" which are
 # per-request rather than per-timeline. The one place a new top-level field
 # (wave_wavelength_m, grid_spokes's own parent "timing", ...) needs to be
 # added for it to reach the renderer at all.
@@ -476,7 +476,7 @@ class Renderer:
                 break
         return run.stdout, origin
 
-    def build_and_flash(self, payload, port):
+    def build_and_flash(self, payload, board):
         """Overwrites the REAL main/boot/boot_anim_timeline.json and
         boot_anim_timeline.h - unlike render()'s scratch copy, not
         disposable - then builds and flashes the development image. Returns
@@ -578,27 +578,24 @@ class Renderer:
         # would otherwise hang this request forever - see its own comment
         # on the `|| true` that makes stdin-at-EOF there a no-op, not a
         # reported failure.
-        #
-        # Held for the whole build+flash, same as every other autana verb -
-        # build_flash.sh itself refuses to flash without the token this
-        # puts in AUTANA_DEVICE_LOCK_TOKEN, so a second flash (an agent's,
-        # or another /build_flash request) cannot land mid-write.
-        store = device.device_lock.LockStore()
-        with device.HeldLock(store, port, "boot-anim-editor", "boot anim preview flash",
-                             wait=300) as held:
-            environment = os.environ.copy()
-            environment["AUTANA_DEVICE_LOCK_TOKEN"] = held.held["token"]
-            proc = subprocess.run(
-                [bash, script_for_bash, port],
-                cwd=LAUNCHER_DIR, stdin=subprocess.DEVNULL, env=environment,
-                capture_output=True, text=True, timeout=BUILD_FLASH_TIMEOUT_S)
-        log = proc.stdout + proc.stderr
-        if proc.returncode != 0:
+        failed = None
+        with tempfile.TemporaryFile() as output:
+            try:
+                device.flash_script(
+                    device.device_lock.LockStore(), board, "boot-anim-editor",
+                    "boot anim preview flash", [bash, script_for_bash], 300,
+                    cwd=LAUNCHER_DIR, stdin=subprocess.DEVNULL, stdout=output,
+                    stderr=subprocess.STDOUT, timeout=BUILD_FLASH_TIMEOUT_S)
+            except subprocess.CalledProcessError as error:
+                failed = error
+            output.seek(0)
+            log = output.read().decode("utf-8", errors="replace")
+        if failed:
             if "No such file or directory" in log and script_for_bash in log:
                 log = log.strip() + "\n\n" + probe_info
             raise RenderError(500, log.strip() or
                               "build_flash_dev.sh exited with code %d" %
-                              proc.returncode)
+                              failed.returncode)
         return log
 
 
@@ -677,13 +674,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
             payload = {key: body[key] for key in PAYLOAD_KEYS}
-            port = body.get("port") or "COM3"
+            board = body.get("board") or None
         except (ValueError, KeyError) as exc:
             self._send_json_error(400, "bad request body: %s" % exc)
             return
 
         try:
-            log = self.renderer.build_and_flash(payload, port)
+            log = self.renderer.build_and_flash(payload, board)
         except RenderError as exc:
             self._send_json_error(exc.status, exc.message)
             return

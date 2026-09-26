@@ -17,9 +17,10 @@
 #include "apps/render_lab/ui/render_lab_hud_screen.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 
-/* A busier icon or a third screen still has this many bytes of
- * MU_COMMANDLIST_SIZE left to grow into before either screen's own peak
- * reaches the ceiling microui.c asserts against. */
+/* The header gives 64-bit hosts 9 KiB for rendering-growth checks; 32-bit
+ * device/QEMU builds use 8 KiB. A busier icon or third screen still has this
+ * many bytes of the selected MU_COMMANDLIST_SIZE left before either screen
+ * reaches it. */
 #define COMMANDLIST_HEADROOM_BYTES 2048
 #define COMMANDLIST_BUDGET         (MU_COMMANDLIST_SIZE - COMMANDLIST_HEADROOM_BYTES)
 
