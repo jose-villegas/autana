@@ -62,13 +62,14 @@ silently reverts it to a stale copy.
 
 POST /build_flash is the only other endpoint, and the only thing here that
 writes anything meant to be committed or touches the real device: same body
-shape as /render minus `ms`, plus `port` (a serial port, e.g. "COM3"). It
+shape as /render minus `ms`, plus `board` (the board's USB serial number,
+empty for the only board plugged in). It
 validates exactly like step 2 above (into a throwaway scratch file first, so
 a bad edit never reaches the real files), then overwrites the REAL
 main/boot/boot_anim_timeline.json and boot_anim_timeline.h - what
 tools/boot_anim/boot_anim_editor.html's Bake button downloads, written here instead of
 copied in by hand - and runs tools/build/build_flash_dev.sh, which builds the
-development image and flashes it to `port`. Its combined stdout/stderr comes
+development image and flashes it to that board. Its combined stdout/stderr comes
 back as the response body (200) or as the error (500) if the build or the
 flash failed.
 
@@ -132,7 +133,7 @@ BUILD_FLASH_TIMEOUT_S = 600
 
 DEFAULT_PORT = 8934
 
-# boot_anim_timeline.json's own top-level keys, minus "ms"/"port" which are
+# boot_anim_timeline.json's own top-level keys, minus "ms"/"board" which are
 # per-request rather than per-timeline. The one place a new top-level field
 # (wave_wavelength_m, grid_spokes's own parent "timing", ...) needs to be
 # added for it to reach the renderer at all.
@@ -476,7 +477,7 @@ class Renderer:
                 break
         return run.stdout, origin
 
-    def build_and_flash(self, payload, port):
+    def build_and_flash(self, payload, board):
         """Overwrites the REAL main/boot/boot_anim_timeline.json and
         boot_anim_timeline.h - unlike render()'s scratch copy, not
         disposable - then builds and flashes the development image. Returns
@@ -583,13 +584,15 @@ class Renderer:
         # build_flash.sh itself refuses to flash without the token this
         # puts in AUTANA_DEVICE_LOCK_TOKEN, so a second flash (an agent's,
         # or another /build_flash request) cannot land mid-write.
+        board = device.find_board(board).serial
         store = device.device_lock.LockStore()
-        with device.HeldLock(store, port, "boot-anim-editor", "boot anim preview flash",
+        with device.HeldLock(store, board, "boot-anim-editor", "boot anim preview flash",
                              wait=300) as held:
             environment = os.environ.copy()
             environment["AUTANA_DEVICE_LOCK_TOKEN"] = held.held["token"]
+            environment["AUTANA_BOARD"] = board
             proc = subprocess.run(
-                [bash, script_for_bash, port],
+                [bash, script_for_bash],
                 cwd=LAUNCHER_DIR, stdin=subprocess.DEVNULL, env=environment,
                 capture_output=True, text=True, timeout=BUILD_FLASH_TIMEOUT_S)
         log = proc.stdout + proc.stderr
@@ -677,13 +680,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
             payload = {key: body[key] for key in PAYLOAD_KEYS}
-            port = body.get("port") or "COM3"
+            board = body.get("board") or None
         except (ValueError, KeyError) as exc:
             self._send_json_error(400, "bad request body: %s" % exc)
             return
 
         try:
-            log = self.renderer.build_and_flash(payload, port)
+            log = self.renderer.build_and_flash(payload, board)
         except RenderError as exc:
             self._send_json_error(exc.status, exc.message)
             return
