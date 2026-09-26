@@ -92,7 +92,7 @@ typedef struct {
     gfx_color_t background_color, back0_color, back1_color;
     gfx_color_t sky[GFX_HEIGHT];
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
-    uint32_t theme_seed, tuned_at, alive_ms, shake_seed;
+    uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
     int shake, last_pluck_x, strips, down_sign;
     bool by_column, axis_on_screen, ambient, painted, scanline_dither;
 } ridge_t;
@@ -194,7 +194,7 @@ build_layers(void) {
     for (int x = 0; x < RIDGE_COLUMNS; x++) {
         for (int layer = 0; layer < 2; layer++) {
             const uint32_t phase = (uint32_t)x * 65536u / (uint32_t)wavelength[layer]
-                                   - (uint32_t)((uint64_t)ridge->alive_ms * 65536u / (uint32_t)period[layer]);
+                                   - (uint32_t)((uint64_t)ridge->wave_ms * 65536u / (uint32_t)period[layer]);
             const int echo = spring_line_scale(ridge->line.offset[x], layer == 0 ? 64 : 128) / (SPRING_LINE_ONE / 16);
             ridge->layers[layer][x] = (int16_t)(ridge->rigid[x] + offset[layer] * 16
                                                 + amplitude[layer] * trig_sin((uint16_t)phase) / 2048 + echo);
@@ -721,6 +721,11 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     ridge->line.stiffness = spring_stiffness;
     ridge->line.damping = spring_damping;
     ridge->alive_ms += dt_ms;
+    /* The back waves move with the rest of the ambient motion, or not at all:
+     * nothing repaints a wave that moves while the ridge is quiet. */
+    if (ridge->ambient) {
+        ridge->wave_ms += dt_ms;
+    }
     const ridge_pose_params_t pose_params = {.boot_pose = POSE_LANDSCAPE,
                                              .hold_ms = (uint32_t)boot_hold_ms,
                                              .tau_ms = level_tau_ms,
