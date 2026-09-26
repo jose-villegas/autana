@@ -130,6 +130,11 @@ class BoardHolderTests(unittest.TestCase):
     def test_a_held_board_that_is_not_plugged_in_blocks_nothing(self):
         self.assertEqual(self.holder_seen(self.status_output(holder_pid=1, port=None)), "")
 
+    def test_with_two_boards_plugged_and_none_named_device_py_decides(self):
+        held = json.loads(self.status_output(holder_pid=1))["boards"][0]
+        free = dict(held, board="90:70:69:FE:B1:22", port="COM7", state="unlocked", holder=None)
+        self.assertEqual(self.holder_seen(json.dumps({"boards": [held, free]})), "")
+
 
 class DeviceVerbCommandTests(unittest.TestCase):
     """freeze/resume/step/touch/imu: each is a thin line-builder over

@@ -68,6 +68,20 @@ def durations_rows(store):
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
+def replace_lock_once(store, started):
+    """Hands BOARD_A's lock to another token once `started` exists, under the
+    guard so a heartbeat cannot write the old token back over it."""
+    def replace():
+        deadline = time.monotonic() + 30
+        while not started.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        with store.guard(BOARD_A):
+            lock = store.read_json(store.lock_path(BOARD_A))
+            store.write_json(store.lock_path(BOARD_A), dict(lock, token="other"))
+
+    threading.Thread(target=replace, daemon=True).start()
+
+
 class Store(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
@@ -143,7 +157,8 @@ class PrimitiveGuardTests(Store):
 
         def check(token):
             return subprocess.run([sys.executable, str(DEVICE / "device_lock.py"),
-                                   "--root", str(self.store.root), "--board", BOARD_A.lower(),
+                                   "--root", str(self.store.root),
+                                   "--board", " " + BOARD_A.lower() + "\n",
                                    "check-token", "--token", token],
                                   capture_output=True).returncode
         self.assertEqual(check(held["token"]), 0)
@@ -495,6 +510,92 @@ class FlashTests(Store):
         self.assertLess(time.monotonic() - begun, 30)
         self.assertIsNotNone(children[0].poll())
 
+    def test_a_script_that_names_its_build_and_then_fails_fails_the_flash(self):
+        worktree = self.root / "engine"
+        script = worktree / "launcher" / "tools" / "build" / "build_flash.sh"
+        script.parent.mkdir(parents=True)
+        script.write_text("import sys\n"
+                          "print('BUILD_ID=abc')\n"
+                          "print('A fatal error occurred: Could not open COM3, the port is busy')\n"
+                          "print('FAILED: CMakeFiles/flash')\n"
+                          "sys.exit(2)\n")
+        log = self.root / "flash.log"
+        args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
+                         worktree=str(worktree), out=str(log))
+        with mock.patch.object(device, "git_bash", return_value=sys.executable), \
+                mock.patch.object(device, "open_when_free", return_value=contextlib.nullcontext()), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            with self.assertRaises(RuntimeError) as caught:
+                device.flash(args, self.store, BOARD_A)
+        self.assertEqual(str(caught.exception),
+                         "build_flash.sh failed (exit 2): A fatal error occurred: Could not open "
+                         f"COM3, the port is busy - flash log: {log}")
+        self.assertNotIn("flashed", output.getvalue())
+        self.assertIn("exit 2", self.entry()["error"])
+        self.assertIsNone(self.entry()["build_id"])
+
+    def test_a_lost_lock_stops_the_scripts_whole_process_tree(self):
+        started = self.root / "grandchild.pid"
+        script = self.root / "build_flash.py"
+        script.write_text(
+            "import pathlib, subprocess, sys, time\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+            f"pathlib.Path({str(started)!r}).write_text(str(child.pid))\n"
+            "time.sleep(60)\n")
+
+        replace_lock_once(self.store, started)
+        with mock.patch.object(device.HeldLock, "HEARTBEAT_SECONDS", 0.05), \
+                contextlib.redirect_stderr(io.StringIO()), \
+                self.assertRaises(device.LockLost):
+            device.flash_script(self.store, BOARD_A, "agent", "flash",
+                                [sys.executable, str(script)], 0,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        grandchild = int(started.read_text())
+        self.addCleanup(subprocess.run, ["taskkill", "/F", "/PID", str(grandchild)]
+                        if os.name == "nt" else ["kill", "-9", str(grandchild)],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        deadline = time.monotonic() + 5
+        while device_lock.process_alive(grandchild) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertFalse(device_lock.process_alive(grandchild))
+
+
+class EditorFlashTests(Store):
+    """The boot animation editor's Build & Flash goes through the same shared
+    flash call as device.py flash, so a lost lock stops it too."""
+
+    def test_a_lost_lock_stops_the_editors_flash(self):
+        sys.path.insert(0, str(ENGINE / "launcher" / "tools" / "boot_anim"))
+        self.addCleanup(sys.path.remove, str(ENGINE / "launcher" / "tools" / "boot_anim"))
+        import boot_anim_editor_server as editor
+
+        started = self.root / "script.pid"
+        script = self.root / "build_flash_dev.py"
+        script.write_text("import os, pathlib, time\n"
+                          f"pathlib.Path({str(started)!r}).write_text(str(os.getpid()))\n"
+                          "time.sleep(60)\n")
+        generator = self.root / "generator.py"
+        generator.write_text("print('/* header */')\n")
+        store = device_lock.LockStore()
+
+        replace_lock_once(store, started)
+        payload = {key: 0 for key in editor.PAYLOAD_KEYS}
+        with mock.patch.object(editor, "TIMELINE_JSON", str(self.root / "timeline.json")), \
+                mock.patch.object(editor, "TIMELINE_HEADER", str(self.root / "timeline.h")), \
+                mock.patch.object(editor, "GENERATOR", str(generator)), \
+                mock.patch.object(editor, "BUILD_FLASH_SCRIPT", str(script)), \
+                mock.patch.object(editor, "_ensure_image_current"), \
+                mock.patch.object(editor, "find_bash", return_value=sys.executable), \
+                mock.patch.object(device.HeldLock, "HEARTBEAT_SECONDS", 0.05), \
+                contextlib.redirect_stderr(io.StringIO()), \
+                self.assertRaises(device.LockLost):
+            editor.Renderer.__new__(editor.Renderer).build_and_flash(payload, BOARD_A)
+        deadline = time.monotonic() + 5
+        pid = int(started.read_text())
+        while device_lock.process_alive(pid) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertFalse(device_lock.process_alive(pid))
+
 
 class BuildFlashScriptTests(unittest.TestCase):
     """The real build_flash.sh, copied beside the files it sources, with
@@ -609,27 +710,71 @@ class DurationTests(Store):
         entry = device_lock.status_entry(store, BOARD_A, durations={"flash": 100})
         self.assertEqual([w["estimated_start"] for w in entry["waiting"]], [None, None])
 
-    def test_history_needs_three_successes_and_uses_the_last_thirty(self):
+    def test_history_needs_enough_successes_and_uses_only_the_recent_runs(self):
         root = self.store.root
-        for seconds in (2, 4):
+        for seconds in range(device_lock.ESTIMATE_MINIMUM_RUNS - 1):
             device_lock.record_duration("send", seconds, root=root)
         device_lock.record_duration("send", 999, "failed", root=root)
         self.assertEqual(device_lock.duration_history(root), {})
-        device_lock.record_duration("send", 6, root=root)
-        self.assertEqual(device_lock.duration_history(root), {"send": 4})
-        for seconds in range(35):
+        device_lock.record_duration("send", 50, root=root)
+        self.assertIn("send", device_lock.duration_history(root))
+        recent = device_lock.ESTIMATE_RECENT_RUNS
+        for seconds in [10_000] * recent + list(range(recent)):
             device_lock.record_duration("flash", seconds, root=root)
-        self.assertEqual(device_lock.duration_history(root)["flash"], 19.5)
+        self.assertEqual(device_lock.duration_history(root)["flash"], (recent - 1) / 2)
 
-    def test_the_file_stays_bounded(self):
+    def test_the_estimate_is_a_median(self):
+        for seconds in (10, 10, 1000):
+            device_lock.record_duration("flash", seconds, root=self.store.root)
+        self.assertEqual(device_lock.duration_history(self.store.root), {"flash": 10})
+
+    def test_durations_are_recorded_under_the_kind_not_the_purpose(self):
+        with device.HeldLock(self.store, BOARD_A, "a", "watch the sand fall", 0, kind="listen"):
+            pass
+        self.assertEqual(durations_rows(self.store)[-1]["command"], "listen")
+
+    def test_the_file_stays_bounded_however_many_kinds_there_are(self):
         root = self.store.root
-        for index in range(device_lock.DURATIONS_TRIM_LINES + 50):
-            device_lock.record_duration("flash" if index % 2 else "send", index, root=root)
-        lines = (root / device_lock.DURATIONS_FILE).read_text(encoding="utf-8").splitlines()
-        self.assertLessEqual(len(lines), device_lock.DURATIONS_TRIM_LINES)
-        history = device_lock.duration_history(root)
-        self.assertEqual(set(history), {"flash", "send"})
-        self.assertGreater(history["flash"], device_lock.DURATIONS_TRIM_LINES - 30)
+        path = root / device_lock.DURATIONS_FILE
+        kinds = device_lock.DURATIONS_TRIM_LINES // device_lock.ESTIMATE_RECENT_RUNS + 5
+        root.mkdir(parents=True)
+        path.write_text("".join(
+            json.dumps({"command": f"kind{index % kinds}", "duration_seconds": index,
+                        "error": None}) + "\n"
+            for index in range(device_lock.DURATIONS_TRIM_LINES)), encoding="utf-8")
+        for index in range(10):
+            device_lock.record_duration(f"kind{index % kinds}", index, root=root)
+            lines = path.read_text(encoding="utf-8").splitlines()
+            self.assertLessEqual(len(lines), device_lock.DURATIONS_TRIM_LINES)
+
+    def trimmed(self, rows):
+        path = self.root / device_lock.DURATIONS_FILE
+        device_lock.trim_durations(path, rows)
+        return durations_rows(types.SimpleNamespace(root=self.root))
+
+    def test_a_trim_keeps_each_kinds_newest_successes_and_drops_failures(self):
+        def row(kind, seconds, error=None):
+            return {"command": kind, "duration_seconds": seconds, "error": error}
+
+        recent = device_lock.ESTIMATE_RECENT_RUNS
+        rows = ([row("selftest", 900), row("selftest", 901), row("flash", 5, "boom")]
+                + [row("flash", seconds) for seconds in range(3 * recent)]
+                + [row("send", 1, "timed out")])
+        kept = self.trimmed(rows)
+        self.assertEqual([r["duration_seconds"] for r in kept if r["command"] == "flash"],
+                         list(range(2 * recent, 3 * recent)))
+        self.assertEqual([r["duration_seconds"] for r in kept if r["command"] == "selftest"],
+                         [900, 901])
+        self.assertFalse([r for r in kept if r["error"]])
+
+    def test_a_trim_caps_the_file_when_kinds_pile_up(self):
+        recent = device_lock.ESTIMATE_RECENT_RUNS
+        kinds = device_lock.DURATIONS_TRIM_LINES // recent + 5
+        rows = [{"command": f"kind{index % kinds}", "duration_seconds": index, "error": None}
+                for index in range(kinds * recent)]
+        kept = self.trimmed(rows)
+        self.assertEqual(len(kept), device_lock.DURATIONS_TRIM_LINES)
+        self.assertEqual(kept, rows[-device_lock.DURATIONS_TRIM_LINES:])
 
     def test_each_command_records_its_own_duration_and_a_nested_error(self):
         with device.HeldLock(self.store, BOARD_A, "a", "batch", 0, kind="batch") as outer:
@@ -687,6 +832,20 @@ class DurationTests(Store):
         self.assertEqual(lines, ["waiting for board: queue place 1; estimated start "
                                  "unknown (no duration history)"] * 4)
 
+    def test_a_waiter_hears_its_place_again_once_the_notice_interval_has_passed(self):
+        clock = [1000.0]
+        store = device_lock.LockStore(self.root / "locks", now=lambda: clock[0])
+        store.acquire(BOARD_A, "alice", "flash", kind="flash")
+        ticket = store.enqueue(BOARD_A, "bob", "look", kind="send")
+        waiter = device.HeldLock.__new__(device.HeldLock)
+        waiter.store, waiter.board, waiter.last_notice = store, BOARD_A, None
+        interval = device.HeldLock.NOTICE_SECONDS
+        with contextlib.redirect_stderr(io.StringIO()) as notices:
+            for offset in (0, interval - 0.01, interval):
+                clock[0] = 1000.0 + offset
+                waiter.wait_notice(ticket)
+        self.assertEqual(len(notices.getvalue().splitlines()), 2)
+
     def test_a_capture_record_carries_the_board_and_when_it_was_acquired(self):
         store = device_lock.LockStore(self.root / "locks", now=lambda: 1000.0)
         args = Namespace(owner="a", purpose="reset", wait=0, capture=True, seconds=1.0,
@@ -700,6 +859,226 @@ class DurationTests(Store):
         entry = json.loads(index.read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual((entry["board"], entry["acquired_at"]),
                          (BOARD_A, datetime.fromtimestamp(1000.0).isoformat()))
+
+
+class Replies:
+    """A port that answers once with `data`, then stays quiet."""
+
+    def __init__(self, data):
+        self.data = data
+
+    def read(self, unused_size):
+        data, self.data = self.data, b""
+        return data
+
+    def write(self, unused):
+        pass
+
+    def flush(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *unused):
+        return False
+
+
+class SuiteFailureTests(Store):
+    """A suite that reports FAIL fails its command, in the exit status and in
+    the recorded durations, which never count it towards an estimate."""
+
+    FAILED_SUITE = b":1:test_one:FAIL: boom\nSUITE_DONE sand\n"
+
+    def suite_args(self, **extra):
+        return Namespace(owner="a", purpose="p", wait=0, suite="sand",
+                         out=str(self.root / "suite.log"), max_seconds=5, idle_seconds=None,
+                         expect_build_id=None, **extra)
+
+    def errors(self):
+        return {row["command"]: row["error"] for row in durations_rows(self.store)}
+
+    def test_run_suite(self):
+        with mock.patch.object(device, "open_when_free",
+                               side_effect=lambda *unused, **unused_kw: Replies(self.FAILED_SUITE)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(device.run_suite(self.suite_args(), self.store, BOARD_A), 1)
+        self.assertEqual(self.errors()["run-suite"], "suite reported FAIL")
+
+    def test_selftest(self):
+        args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), out=None,
+                         perf_scope=False, max_seconds=5, idle_seconds=None)
+        replies = Replies(b":1:test_one:FAIL: boom\nSELFTEST_COMPLETE failures=1\n")
+        with mock.patch.object(device, "flash", return_value="abc"), \
+                mock.patch.object(device, "reset"), \
+                mock.patch.object(device, "open_when_free", return_value=replies), \
+                mock.patch.object(device, "git_commit", return_value="c0ffee"), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(device.selftest(args, self.store, BOARD_A), 1)
+        self.assertEqual(self.errors()["selftest"], "selftest reported FAIL")
+
+    def test_batch(self):
+        args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
+                         suite=["sand"], runs=2, perf_scope=False, max_seconds=5,
+                         idle_seconds=None, out=None)
+        with mock.patch.object(device, "flash", return_value="abc"), \
+                mock.patch.object(device, "open_when_free",
+                                  side_effect=lambda *unused, **unused_kw: Replies(self.FAILED_SUITE)), \
+                mock.patch.object(device, "git_commit", return_value="c0ffee"), \
+                contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(device.batch(args, self.store, BOARD_A), 1)
+        self.assertEqual(self.errors()["batch"], "a batch capture failed")
+        index = Path(os.environ["AUTANA_RECORDS"]) / "index.jsonl"
+        entry = json.loads(index.read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual((entry["command"], entry["error"]),
+                         ("batch", "suite reported FAIL; suite reported FAIL"))
+
+
+class EstimateTests(Store):
+    def setUp(self):
+        super().setUp()
+        self.clock = [1000.0]
+        self.store = device_lock.LockStore(self.root / "locks", now=lambda: self.clock[0])
+
+    def test_since_stays_when_the_holder_took_the_board(self):
+        held = self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
+        self.clock[0] = 1200.0
+        self.assertTrue(self.store.heartbeat(BOARD_A, held["token"]))
+        entry = device_lock.status_entry(self.store, BOARD_A, durations={})
+        self.assertEqual((entry["since"], entry["elapsed_seconds"]), (1000.0, 200))
+
+    def test_a_holder_past_its_estimate_frees_now_and_waiters_follow_from_now(self):
+        self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
+        self.store.enqueue(BOARD_A, "bob", "watch", kind="listen")
+        self.store.enqueue(BOARD_A, "cara", "flash", kind="flash")
+        self.clock[0] = 1500.0
+        entry = device_lock.status_entry(self.store, BOARD_A,
+                                         durations={"flash": 100, "listen": 30})
+        self.assertEqual(entry["estimated_free"], 1500.0)
+        self.assertEqual([w["estimated_start"] for w in entry["waiting"]], [1500.0, 1530.0])
+
+    def test_on_a_free_board_the_first_waiter_starts_now(self):
+        self.store.enqueue(BOARD_A, "bob", "watch", kind="listen")
+        self.store.enqueue(BOARD_A, "cara", "flash", kind="flash")
+        entry = device_lock.status_entry(self.store, BOARD_A, durations={"listen": 30})
+        self.assertEqual([w["estimated_start"] for w in entry["waiting"]], [1000.0, 1030.0])
+
+    def test_a_human_reservation_outranks_a_live_lock(self):
+        self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
+        self.store.set_human(BOARD_A, "maintainer", "checking the panel")
+        entry = device_lock.status_entry(self.store, BOARD_A, durations={"flash": 100})
+        self.assertEqual((entry["state"], entry["holder"], entry["estimated_free"]),
+                         ("human", {"owner": "maintainer", "purpose": "checking the panel"},
+                          None))
+
+
+class IsolationCheckTests(Store):
+    """The records guard every test module imports, run in a child process
+    whose "real" records root is a scratch directory."""
+
+    CHILD = """
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[3])
+import isolation
+real, elsewhere = Path(sys.argv[1]), Path(sys.argv[2])
+try:
+    (real / "refused.txt").write_text("x")
+    print("written", flush=True)
+except PermissionError:
+    print("refused", flush=True)
+try:
+    open(real / "swallowed.txt", "w").close()
+except Exception:
+    pass
+(elsewhere / "allowed.txt").write_text("x")
+print("allowed", flush=True)
+"""
+
+    def test_a_write_into_a_real_root_is_refused_and_fails_the_run(self):
+        real = self.root / "real-records"
+        elsewhere = self.root / "elsewhere"
+        real.mkdir()
+        elsewhere.mkdir()
+        result = subprocess.run(
+            [sys.executable, "-c", self.CHILD, str(real), str(elsewhere), str(Path(__file__).parent)],
+            env=dict(os.environ, AUTANA_RECORDS=str(real)), capture_output=True, text=True,
+            timeout=60)
+        self.assertEqual(result.stdout.split(), ["refused", "allowed"])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("swallowed.txt", result.stderr)
+        self.assertEqual(list(real.iterdir()), [])
+        self.assertTrue((elsewhere / "allowed.txt").exists())
+
+
+class BoardChoiceTests(Store):
+    """Which board a command acts on, and that it can queue for one the
+    holder's reset has taken off USB."""
+
+    def test_only_an_espressif_port_with_a_serial_number_is_a_board(self):
+        other_vendor = types.SimpleNamespace(vid=0x10C4, serial_number="0001", device="COM3")
+        no_serial = types.SimpleNamespace(vid=device.ESPRESSIF_VID, serial_number=None,
+                                          device="COM4")
+        with plugged(other_vendor, no_serial, usb(BOARD_A, "COM5")):
+            self.assertEqual(device.plugged_boards(), [device.Board(BOARD_A, "COM5")])
+
+    def test_a_padded_autana_board_still_names_its_board(self):
+        with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")), \
+                mock.patch.dict(os.environ, {"AUTANA_BOARD": " " + BOARD_B.lower() + "\n"}):
+            self.assertEqual(device.find_board(), device.Board(BOARD_B, "COM7"))
+
+    def test_the_lock_cli_stores_the_board_as_every_record_spells_it(self):
+        subprocess.run([sys.executable, str(DEVICE / "device_lock.py"), "--root",
+                        str(self.store.root), "--board", " " + BOARD_A.lower() + " ",
+                        "acquire", "--owner", "a", "--purpose", "p"],
+                       capture_output=True, check=True)
+        records = [self.store.read_json(path) for path in self.store.root.glob("*.json")]
+        self.assertEqual([record["board"] for record in records], [BOARD_A])
+
+    def test_resolve_port_honours_board_without_autana_board(self):
+        with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(device.main(["--board", BOARD_B, "resolve-port"]), 0)
+        self.assertEqual(output.getvalue(), "COM7\n")
+
+    def test_boards_include_one_known_only_from_a_waiters_ticket(self):
+        self.store.enqueue(BOARD_B, "bob", "look")
+        self.assertEqual(self.store.boards(), [BOARD_B])
+
+    def main(self, *argv):
+        with mock.patch.object(device_lock, "default_root", return_value=self.store.root), \
+                contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()) as errors:
+            code = device.main(list(argv))
+        return code, errors.getvalue()
+
+    def test_a_waiter_queues_while_the_board_is_off_usb(self):
+        self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
+        with plugged():
+            self.assertEqual(device.board_for_lock(self.store), BOARD_A)
+            waiting = mock.Mock(wraps=self.store.enqueue)
+            with mock.patch.object(device_lock.LockStore, "enqueue", waiting):
+                code, errors = self.main("--wait", "0.2", "--owner", "bob", "send", "TUNE")
+        self.assertEqual(code, 1)
+        self.assertIn("waiting for board: queue place 1", errors)
+        self.assertTrue(errors.endswith("device: device lock was not acquired\n"), errors)
+        self.assertEqual(waiting.call_args.args[:2], (BOARD_A, "bob"))
+
+    def test_take_back_works_while_the_board_is_unplugged(self):
+        self.store.set_human(BOARD_A, "maintainer", "bench")
+        with plugged():
+            self.assertEqual(self.main("take-back")[0], 0)
+        self.assertIsNone(self.store.status(BOARD_A)["human"])
+
+    def test_with_several_boards_known_and_none_plugged_the_choice_fails(self):
+        self.store.set_human(BOARD_A, "maintainer", "bench")
+        self.store.enqueue(BOARD_B, "bob", "look")
+        with plugged(), self.assertRaises(RuntimeError) as caught:
+            device.board_for_lock(self.store)
+        self.assertIn(BOARD_A + ", " + BOARD_B, str(caught.exception))
+        with plugged(usb(BOARD_B, "COM7")):
+            self.assertEqual(device.board_for_lock(self.store), BOARD_B)
 
 
 if __name__ == "__main__":
