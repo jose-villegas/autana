@@ -29,10 +29,8 @@ where Python has `readline` (Windows: `pip install pyreadline3`).
 | `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope]` | Build and flash this worktree; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
 
-After flashing, `autana flash` waits for USB Serial/JTAG to return, including
-when Windows assigns a different COM number. It verifies the boot's `BUILD_ID`
-against the build log. If the boot is not heard, it uses a watchdog reset and
-checks again before returning. A missing or different id is reported explicitly.
+`autana flash` proves the write, not the boot:
+[what a flash proves](Device-Lock.md#what-a-flash-proves).
 
 ## Tests
 
@@ -46,8 +44,8 @@ checks again before returning. A missing or different id is reported explicitly.
 | `autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` | Flash once, capture the suites `N` times (3) under one lock; one summary. |
 
 Each prints the report and capture paths, PASS/FAIL counts, up to ten failure
-messages (then a FAIL count per suite) and the end reason. `--verbose` prints the whole capture; to find
-something in it, grep the capture instead.
+messages (then a FAIL count per suite) and the end reason. `--verbose`
+prints the whole capture; to find something in it, grep the capture instead.
 
 ## Watch the board
 
@@ -110,11 +108,19 @@ something in it, grep the capture instead.
 
 | Command | What it does |
 |---|---|
-| `autana status [--json]` | Who holds the board, and who is waiting. |
+| `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
 | `autana id [--json]` | The name this session holds the lock under: `autana-cli@<pid in base36>`. |
 | `autana release <token>` | Release a lock this session holds; the token is what its command printed. |
 | `autana hand [--wait <seconds>] <note...>` | Reserve the board and emit `human-reserved`; with `--wait`, wait until `take-back` emits `human-cleared`. |
 | `autana take-back` | Clear that reservation. |
+
+A board is named by its USB serial number, so the lock follows it across
+COM number changes; with several boards plugged in, `AUTANA_BOARD=<serial>`
+picks one. If a command loses the lock it stops with `device lock was
+lost`. A separate `flash` and `suite` leave a gap where another session can
+flash; `batch` and `selftest` hold one lock across flash and capture. Lock
+loss, estimates and flash success are defined in
+[Device-Lock.md](Device-Lock.md).
 
 `autana hand --wait 30 put the board in download mode` pauses a flash script
 until someone puts the board in download mode and runs `autana take-back`.
@@ -138,7 +144,7 @@ caller decides how to proceed after either nonzero result.
 
 | Command | Fields |
 |---|---|
-| `status` | `state` (`unlocked`, `held`, `human`), `waiting`; held: `owner`, `purpose`, `acquired_at`; human: `owner`, `note`, `age_seconds` |
+| `status` | `boards`: `board`, `port`, `state` (`unlocked`, `held`, `human`), `holder` (`owner`, `purpose`), `since`, `elapsed_seconds`, `estimated_free`, `stale` (`owner`, `purpose`, `reason`), `waiting` (`owner`, `purpose`, `estimated_start`). Times are epoch seconds; unknown ones are `null`. See [Device-Lock.md](Device-Lock.md#status). |
 | `buildid` | `build_id` |
 | `id` | `owner`, `pid` |
 | `apps` | `apps`: `name`, `running` |

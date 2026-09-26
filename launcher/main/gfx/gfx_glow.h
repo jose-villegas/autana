@@ -469,7 +469,7 @@ gfx_glow_map_build(gfx_glow_map_t* map, const gfx_glow_field_t* field, const gfx
     map->lit_rows = band_rows < map->rows ? band_rows : map->rows;
 
     for (int row = 0; row < map->lit_rows; row++) {
-        const int top = (map->origin_y + row * GFX_GLOW_MAP_CELL) << GFX_GLOW_Q_SHIFT;
+        const int top = (map->origin_y + row * GFX_GLOW_MAP_CELL) * GFX_GLOW_ONE;
         const int centre = top + (GFX_GLOW_MAP_CELL << GFX_GLOW_Q_SHIFT) / 2;
         for (int c = 0; c < map->cols; c++) {
             int nearest = INT32_MAX;
@@ -491,7 +491,7 @@ gfx_glow_map_distance2(const gfx_glow_map_t* map, int x_q4, int y_q4) {
     const int cell_q4 = GFX_GLOW_MAP_CELL << GFX_GLOW_Q_SHIFT;
     const int to_q8 = 2 * (GFX_GLOW_Q_SHIFT - GFX_GLOW_MAP_Q);
     const int u = x_q4 - cell_q4 / 2;
-    const int v = y_q4 - (map->origin_y << GFX_GLOW_Q_SHIFT) - cell_q4 / 2;
+    const int v = y_q4 - map->origin_y * GFX_GLOW_ONE - cell_q4 / 2;
     int cy = v / cell_q4;
     if (v < 0 || cy + 1 >= map->lit_rows) {
         return (int)map->far << to_q8;
@@ -611,7 +611,8 @@ gfx_glow_posed_row_few_columns(gfx_color_t* dst, const gfx_glow_field_t* field, 
         lo = field->reach_lo[x] < lo ? field->reach_lo[x] : lo;
         hi = field->reach_hi[x] > hi ? field->reach_hi[x] : hi;
     }
-    gfx_glow_narrow(vy0, down_x, (int64_t)lo << to_q4, ((int64_t)hi + 1) << to_q4, &a, &b);
+    const int64_t scale = (int64_t)1 << to_q4;
+    gfx_glow_narrow(vy0, down_x, (int64_t)lo * scale, ((int64_t)hi + 1) * scale, &a, &b);
     if (b > a) {
         gfx_glow_posed_row_light(dst, field, map, style, trail, py, to_q4, vx0 + (int64_t)a * right_x,
                                  vy0 + (int64_t)a * down_x, right_x, down_x, a, b, new_lo, new_hi);

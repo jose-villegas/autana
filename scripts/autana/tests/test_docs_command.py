@@ -2,13 +2,16 @@
 
     python -m unittest discover -s scripts/autana/tests
 """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "device" / "tests"))
+import isolation  # noqa: E402,F401  (first: keeps the suite out of real records)
 import contextlib
 import io
 import subprocess
-import sys
 import tempfile
 import unittest
-from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
