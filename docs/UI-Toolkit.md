@@ -334,12 +334,14 @@ How a panel over a paused app and a drawn backdrop use these is in
 
 ## What a screen costs
 
-`MU_COMMANDLIST_SIZE` in `components/microui/include/microui.h` caps
-the command list, and everything drawn spends it. An open dropdown list
-adds its rows on top of the screen beneath it. The screen budget suites
-keep space for additional controls. A development build logs the
-high-water mark from `ui_end()`; check it before adding a texture or
-another icon.
+`MU_COMMANDLIST_SIZE` in `components/microui/include/microui.h` defaults to
+8 KiB on the device, and everything drawn spends it. An open dropdown list
+adds its rows on top of the screen beneath it. The gallery's widgets page
+with its list open exceeds 8 KiB on a 64-bit host, whose larger commands
+need a 9 KiB limit in host tests and the render harness. The screen budget
+suites reserve space for additional controls; their device/QEMU run checks
+the device limit. A development build logs the high-water mark from
+`ui_end()`; check it before adding a texture or another icon.
 
 ## Adding to the toolkit
 

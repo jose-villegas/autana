@@ -24,7 +24,8 @@
 
 #include "apps/diagnostics/ui/toggles_screen.h"
 
-/* A future toggle still has this many bytes of MU_COMMANDLIST_SIZE left to
+/* The host's larger command list checks rendering growth; device/QEMU enforces
+ * the 8 KiB RAM limit. A future toggle still has this many bytes of MU_COMMANDLIST_SIZE left to
  * grow into before this page's own peak reaches the ceiling microui.c
  * asserts against. */
 #define COMMANDLIST_HEADROOM_BYTES 2048

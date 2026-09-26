@@ -62,7 +62,8 @@ fi
 
 # Warnings are errors: a host build catches mistakes the target build misses,
 # and strictness costs nothing in tests.
-BASE_CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -Wno-unused-parameter -g -O1"
+# 64-bit pointers and 8-byte alignment make every command bigger on the host.
+BASE_CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -Wno-unused-parameter -g -O1 -DMU_COMMANDLIST_SIZE=9216"
 CFLAGS="$BASE_CFLAGS"
 if [ "${HOST_SANITIZE:-}" = undefined ]; then
     # Instrumentation widens the ranges that format-truncation reasons about.
