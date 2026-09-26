@@ -10,6 +10,7 @@ set(app_srcs
     "display/panel_clock.c"
     "gfx/gfx.c"
     "input/touch.c"
+    "input/touch_calib.c"
     "input/touch_fsm.c"
     "input/button_fsm.c"
     "input/buttons.c"
