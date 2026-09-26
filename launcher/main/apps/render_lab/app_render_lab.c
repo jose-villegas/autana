@@ -67,6 +67,10 @@ current_scene(void) {
  * needs a re-entry to take hold. */
 bool render_lab_band_mode = true;
 
+/* A full redraw of the cube can draw into the back PSRAM buffer while the
+ * front one is being sent. Read at enter(), so a change takes a re-entry. */
+bool render_lab_double_buffer;
+
 /* Hides the fps/title overlay draw_fps() builds - on by default. A render
  * host pin needs it off: the fps line is a double formatted with "%.1f",
  * which a pin cannot rely on across compilers. Read every frame. */
@@ -132,11 +136,15 @@ static uint32_t last_layout_generation;
 static void
 enter_layout(void) {
     const bool bands = render_lab_band_mode && !current_scene()->needs_full_framebuffer;
+    const bool double_buffer = !bands && render_lab_double_buffer && current_scene() == &scene_cube;
     const gfx_mode_request_t mode_request = {
-        .layout = bands ? GFX_LAYOUT_BANDS : GFX_LAYOUT_FULL_FB,
+        .layout = bands           ? GFX_LAYOUT_BANDS
+                  : double_buffer ? GFX_LAYOUT_DOUBLE_FB
+                                  : GFX_LAYOUT_FULL_FB,
         .resolution = GFX_RESOLUTION_FULL,
         .interlace_x = false,
         .interlace_y = false,
+        .full_redraw = double_buffer,
     };
     band_mode_active = gfx_mode_enter(&mode_request)->layout == GFX_LAYOUT_BANDS;
     /* The framebuffer is whatever the previous app or layout left in it -
@@ -232,6 +240,7 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
     const render_lab_menu_screen_state_t state = {
         .partial_updates_on = render_lab_partial_updates,
         .band_mode_on = render_lab_band_mode,
+        .double_buffer_on = render_lab_double_buffer,
         .scene_name = current_scene()->name,
     };
     const render_lab_menu_screen_result_t result = render_lab_menu_screen_draw(ctx, &state, dt_ms);
@@ -249,6 +258,13 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
      * nothing for the user to see - the button simply does nothing. */
     if (result.band_mode_clicked && !current_scene()->needs_full_framebuffer) {
         render_lab_band_mode = !render_lab_band_mode;
+        render_lab_mode_switch_request(&mode_switch);
+    }
+    if (result.double_buffer_clicked && current_scene() == &scene_cube) {
+        render_lab_double_buffer = !render_lab_double_buffer;
+        if (render_lab_double_buffer) {
+            render_lab_band_mode = false;
+        }
         render_lab_mode_switch_request(&mode_switch);
     }
     if (result.next_scene_clicked) {
@@ -364,9 +380,15 @@ render_lab_frame_band(uint32_t dt_ms, const input_t* input) {
 static void
 render_lab_frame(uint32_t dt_ms, const input_t* input) {
     if (render_lab_mode_switch_take(&mode_switch)) {
+        if (gfx_present_in_flight()) {
+            gfx_present_wait();
+        }
         switch_layout();
     }
     if (scene_switch_pending) {
+        if (gfx_present_in_flight()) {
+            gfx_present_wait();
+        }
         scene_switch_pending = false;
         switch_to_next_scene();
     }

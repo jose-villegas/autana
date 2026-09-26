@@ -33,6 +33,7 @@
 /* app_render_lab.c's own toggle and lifecycle, exposed the same way
  * suite_cube_perf.c already relies on. */
 extern bool render_lab_band_mode;
+extern bool render_lab_double_buffer;
 extern bool render_lab_partial_updates;
 extern int render_lab_fps_box_x_override;
 extern void render_lab_enter(void);
@@ -171,6 +172,7 @@ static int64_t raster_us_accum;
  * isolates the cube's own cost from the UI's, on (the default) is what
  * every capture before the orientation sweep always measured. */
 static bool run_fps_on = true;
+static bool double_frame_ready;
 
 static void
 full_fb_frame(uint32_t dt_ms) {
@@ -183,6 +185,29 @@ full_fb_frame(uint32_t dt_ms) {
         ui_build_us_accum += esp_timer_get_time() - build_start;
     }
     gfx_present();
+}
+
+static void
+double_fb_frame(uint32_t dt_ms) {
+    if (double_frame_ready) {
+        gfx_present_begin();
+    }
+    cube_update_rotation(dt_ms);
+    cube_clear_frame();
+    cube_rasterize_frame();
+    if (run_fps_on) {
+        const int64_t build_start = esp_timer_get_time();
+        draw_fps(&null_input, false);
+        ui_build_us_accum += esp_timer_get_time() - build_start;
+    }
+    if (double_frame_ready) {
+        gfx_present_wait();
+    }
+    gfx_double_buffer_flip();
+    if (!double_frame_ready) {
+        gfx_present();
+        double_frame_ready = true;
+    }
 }
 
 /* render_lab_frame_band()'s own shape, rebuilt from scene_cube.c's exposed
@@ -237,6 +262,7 @@ void
 test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     ui_init(); /* render_lab_enter() reads ui_layout_generation(); see suite_cube_perf.c's fixture */
     const bool saved_band_mode = render_lab_band_mode;
+    const bool saved_double_buffer = render_lab_double_buffer;
 
     samples = malloc(sizeof(int32_t) * MAX_SAMPLES);
     TEST_ASSERT_NOT_NULL_MESSAGE(samples, "need a sample buffer for the band-vs-full-fb capture");
@@ -247,6 +273,7 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     render_lab_partial_updates = false;
     run_fps_on = true;
     render_lab_band_mode = false;
+    render_lab_double_buffer = false;
     render_lab_enter();
     capture(full_fb_frame, SAMPLE_MS);
     render_lab_exit();
@@ -254,6 +281,17 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     const int full_fb_n = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES;
     const stats_t full_fb_stats = compute_stats(full_fb_n);
 
+    render_lab_double_buffer = true;
+    render_lab_enter();
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_DOUBLE_FB, gfx_mode_current()->layout);
+    double_frame_ready = false;
+    capture(double_fb_frame, SAMPLE_MS);
+    render_lab_exit();
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, sample_count, "no double-fb frames captured");
+    const int double_fb_n = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES;
+    const stats_t double_fb_stats = compute_stats(double_fb_n);
+
+    render_lab_double_buffer = false;
     render_lab_band_mode = true;
     replay_us_accum = 0;
     replay_band_count = 0;
@@ -270,10 +308,12 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
         (double)touched_band_count * GFX_WIDTH * GFX_BAND_HEIGHT * sizeof(gfx_color_t) / sample_count;
 
     render_lab_band_mode = saved_band_mode;
+    render_lab_double_buffer = saved_double_buffer;
 
     ESP_LOGI(TAG, "=== CUBE BAND VS FULL-FB (%ds each, band height %d, fps counter on in both) ===", SAMPLE_SECONDS,
              GFX_BAND_HEIGHT);
     log_stats("full_fb", full_fb_stats);
+    log_stats("double_fb", double_fb_stats);
     log_stats("band", band_stats);
     if (replay_band_count > 0) {
         ESP_LOGI(TAG, "ui_replay_band: %lld us total over %d bands, %.1f us/band, %.1f us/frame",
@@ -335,6 +375,7 @@ run_arm(const char* label, bool band_mode, int quarter, bool fps_on) {
     raster_us_accum = 0;
 
     render_lab_band_mode = band_mode;
+    render_lab_double_buffer = false;
     render_lab_enter();
     capture(band_mode ? band_frame : full_fb_frame, ORIENTATION_SAMPLE_MS);
     render_lab_exit();
@@ -415,6 +456,7 @@ void
 test_cube_orientation_and_fps_sweep(void) {
     ui_init();
     const bool saved_band_mode = render_lab_band_mode;
+    const bool saved_double_buffer = render_lab_double_buffer;
     samples = malloc(sizeof(int32_t) * MAX_SAMPLES);
     TEST_ASSERT_NOT_NULL_MESSAGE(samples, "need a sample buffer for the orientation/fps sweep");
     render_lab_partial_updates = false;
@@ -447,6 +489,7 @@ test_cube_orientation_and_fps_sweep(void) {
     }
 
     render_lab_band_mode = saved_band_mode;
+    render_lab_double_buffer = saved_double_buffer;
     ui_set_transform(ui_transform_identity());
 
     /* Deferred to here, after every arm above has already logged - a

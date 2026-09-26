@@ -26,6 +26,7 @@
 #endif
 
 static bool gfx_present_guard_in_flight;
+static bool gfx_present_guard_draw_allowed;
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
 static unsigned gfx_present_guard_trips;
@@ -42,6 +43,12 @@ gfx_present_guard_begin(void) {
 static inline void
 gfx_present_guard_end(void) {
     gfx_present_guard_in_flight = false;
+    gfx_present_guard_draw_allowed = false;
+}
+
+static inline void
+gfx_present_guard_allow_draw(bool allowed) {
+    gfx_present_guard_draw_allowed = allowed;
 }
 
 /* A caller reaching this while a present is in flight broke the app
@@ -52,7 +59,7 @@ gfx_present_guard_end(void) {
  * deliberately provokes this must keep running afterward to check it fired. */
 static inline void
 gfx_present_guard_check(void) {
-    if (!gfx_present_guard_in_flight) {
+    if (!gfx_present_guard_in_flight || gfx_present_guard_draw_allowed) {
         return;
     }
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT

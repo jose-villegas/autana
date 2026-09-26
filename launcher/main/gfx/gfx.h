@@ -352,7 +352,8 @@ void gfx_heal_restore_defaults(void);
 bool gfx_heal_active(void);
 
 /*
- * Mode: a full PSRAM framebuffer, or an internal-SRAM band ring for a
+ * Mode: a full PSRAM framebuffer, two PSRAM framebuffers for a full redraw,
+ * or an internal-SRAM band ring for a
  * full-redraw renderer (docs/Autana-Rendering-Roadmap.md section 3.3).
  * Requested from enter(), released with gfx_mode_exit() from exit(). No
  * caller ever asks for anything but full resolution; an interlace request
@@ -371,6 +372,10 @@ const gfx_mode_t* gfx_mode_enter(const gfx_mode_request_t* request);
 void gfx_mode_exit(void);
 
 const gfx_mode_t* gfx_mode_current(void);
+
+/* A completed double-buffer draw becomes the next front buffer only after
+ * the prior front buffer's present has drained. The shell owns this call. */
+void gfx_double_buffer_flip(void);
 
 /*
  * The band ring, valid only while gfx_mode_current()->layout is
