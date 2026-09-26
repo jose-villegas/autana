@@ -66,7 +66,7 @@ BASE_CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -Wno-unused-parameter -g
 CFLAGS="$BASE_CFLAGS"
 if [ "${HOST_SANITIZE:-}" = undefined ]; then
     # Instrumentation widens the ranges that format-truncation reasons about.
-    CFLAGS="$CFLAGS -fsanitize=undefined -fno-sanitize-recover=undefined -Wno-format-truncation"
+    CFLAGS="$CFLAGS -fsanitize=undefined -fsanitize-recover=undefined -Wno-format-truncation"
 fi
 
 # --- the device's heap, on this machine ------------------------------------
@@ -184,6 +184,13 @@ if [ -z "${QUIET_INNER:-}" ]; then
     quiet_run host-tests env QUIET_INNER=1 VERBOSE="$VERBOSE" sh "$0" "$@" || true
     QUIET_SUMMARY=$(grep -E '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored' "$QUIET_LOG" | tail -n 1)
     export QUIET_SUMMARY
+    if [ "${HOST_SANITIZE:-}" = undefined ]; then
+        QUIET_FINDINGS=$(grep 'runtime error:' "$QUIET_LOG" | sed -E 's/:[0-9]+: runtime error:/: runtime error:/' | sort -u || true)
+        if [ -n "$QUIET_FINDINGS" ]; then
+            printf 'UBSan findings (%s):\n%s\n' "$(printf '%s\n' "$QUIET_FINDINGS" | wc -l | tr -d ' ')" "$QUIET_FINDINGS"
+            quiet_end run_tests 1 || exit $?
+        fi
+    fi
     quiet_end run_tests || exit $?
     exit 0
 fi
