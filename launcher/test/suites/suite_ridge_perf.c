@@ -25,6 +25,8 @@ typedef enum {
     ARM_IDLE,
     ARM_PLUCK_STRUM,
     ARM_TILT_SWEEP,
+    ARM_TILT_WOBBLE,
+    ARM_AMBIENT,
 } arm_t;
 
 typedef struct {
@@ -57,6 +59,28 @@ set_sweep_gravity(int frame) {
     ui_ridge_set_gravity(gravity[phase][0], gravity[phase][1], 256, 0);
 }
 
+/* A hand tilting the board back and forth, about 15 degrees either side of
+ * landscape, once a second. */
+static void
+set_wobble_gravity(int frame) {
+    static const int gravity[][2] = {
+        {-256, 0}, {-247, 66}, {-222, 128}, {-247, 66}, {-256, 0}, {-247, -66}, {-222, -128}, {-247, -66},
+    };
+    ui_ridge_set_gravity(gravity[(frame / 8) % 8][0], gravity[(frame / 8) % 8][1], 256, 0);
+}
+
+static void
+drive(arm_t arm, int frame, input_t* input) {
+    *input = idle_input;
+    if (arm == ARM_PLUCK_STRUM) {
+        *input = pluck_strum_input(frame);
+    } else if (arm == ARM_TILT_SWEEP) {
+        set_sweep_gravity(frame);
+    } else if (arm == ARM_TILT_WOBBLE) {
+        set_wobble_gravity(frame);
+    }
+}
+
 static void
 prime(void) {
     ui_ridge_reset_for_test();
@@ -70,16 +94,13 @@ static arm_result_t
 run_arm(arm_t arm) {
     arm_result_t result = {0};
     prime();
+    ui_ridge_set_ambient(arm == ARM_AMBIENT);
     gfx_reset_strip_send_counts();
 
     const int64_t began = esp_timer_get_time();
     while (esp_timer_get_time() - began < (int64_t)ARM_MS * 1000) {
-        input_t input = idle_input;
-        if (arm == ARM_PLUCK_STRUM) {
-            input = pluck_strum_input(result.frames);
-        } else if (arm == ARM_TILT_SWEEP) {
-            set_sweep_gravity(result.frames);
-        }
+        input_t input;
+        drive(arm, result.frames, &input);
 
         int64_t phase = esp_timer_get_time();
         ui_ridge_step(&input, FRAME_DT_MS);
@@ -101,6 +122,8 @@ arm_name(arm_t arm) {
         case ARM_IDLE: return "idle";
         case ARM_PLUCK_STRUM: return "pluck_strum";
         case ARM_TILT_SWEEP: return "tilt_sweep";
+        case ARM_TILT_WOBBLE: return "tilt_wobble";
+        case ARM_AMBIENT: return "ambient";
     }
     return "unknown";
 }
@@ -123,20 +146,8 @@ assert_arm(const arm_result_t* result) {
     TEST_ASSERT_TRUE_MESSAGE(result->bytes > 0, "no panel bytes sent");
 }
 
-/* The frame the incremental repaint leaves must be the frame a full paint
- * draws from the same state; any pixel it forgets to repaint shows here. */
 static int
-pixels_unlike_a_full_paint(arm_t arm, int frames) {
-    prime();
-    for (int frame = 0; frame < frames; frame++) {
-        input_t input = idle_input;
-        if (arm == ARM_PLUCK_STRUM) {
-            input = pluck_strum_input(frame);
-        } else if (arm == ARM_TILT_SWEEP) {
-            set_sweep_gravity(frame);
-        }
-        ui_ridge_step(&input, FRAME_DT_MS);
-    }
+unlike_a_full_paint_now(void) {
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
     gfx_color_t* const repainted = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
     TEST_ASSERT_NOT_NULL(repainted);
@@ -163,16 +174,61 @@ pixels_unlike_a_full_paint(arm_t arm, int frames) {
     return unlike;
 }
 
+/* The frame the incremental repaint leaves must be the frame a full paint
+ * draws from the same state; any pixel it forgets to repaint shows here. */
+static int
+pixels_unlike_a_full_paint(arm_t arm, int frames) {
+    prime();
+    for (int frame = 0; frame < frames; frame++) {
+        input_t input;
+        drive(arm, frame, &input);
+        ui_ridge_step(&input, FRAME_DT_MS);
+    }
+    return unlike_a_full_paint_now();
+}
+
+/* After the tilting stops and the board is held about 20 degrees off level,
+ * the ridge must come to rest on what it shows: nothing left moving, and the
+ * frame on screen the one a full paint draws. */
+void
+test_ridge_settles_after_tilting(void) {
+    prime();
+    input_t input;
+    for (int frame = 0; frame < 160; frame++) {
+        drive(ARM_TILT_WOBBLE, frame, &input);
+        ui_ridge_step(&input, FRAME_DT_MS);
+        gfx_present();
+    }
+    ui_ridge_set_gravity(-240, 88, 256, 0);
+    for (int frame = 0; frame < 150; frame++) {
+        ui_ridge_step(&idle_input, FRAME_DT_MS);
+        gfx_present();
+    }
+    gfx_reset_strip_send_counts();
+    for (int frame = 0; frame < 60; frame++) {
+        ui_ridge_step(&idle_input, FRAME_DT_MS);
+        gfx_present();
+    }
+    const int64_t per_frame = gfx_get_bytes_sent() / 60;
+    const int unlike = unlike_a_full_paint_now();
+    gfx_heal_restore_defaults();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, unlike, "the held frame is not what a full paint draws");
+    ESP_LOGI(TAG, "RIDGE SETTLE bytes_per_frame=%lld", (long long)per_frame);
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(GFX_WIDTH * LAUNCHER_HEAL_ROWS * 2, (int)per_frame,
+                                          "still repainting after the tilt stopped");
+}
+
 void
 test_ridge_repaint_matches_a_full_paint(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pixels_unlike_a_full_paint(ARM_PLUCK_STRUM, 90), "after a pluck and strum");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pixels_unlike_a_full_paint(ARM_TILT_SWEEP, 150), "through a tilt sweep");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pixels_unlike_a_full_paint(ARM_TILT_WOBBLE, 150), "tilting back and forth");
     gfx_heal_restore_defaults();
 }
 
 void
 test_ridge_performance(void) {
-    for (arm_t arm = ARM_IDLE; arm <= ARM_TILT_SWEEP; arm++) {
+    for (arm_t arm = ARM_IDLE; arm <= ARM_AMBIENT; arm++) {
         const arm_result_t result = run_arm(arm);
         log_arm(arm, &result);
         assert_arm(&result);
@@ -184,6 +240,7 @@ test_ridge_performance(void) {
 void
 run_ridge_perf_suite(void) {
     RUN_TEST(test_ridge_repaint_matches_a_full_paint);
+    RUN_TEST(test_ridge_settles_after_tilting);
     RUN_TEST(test_ridge_performance);
 }
 
