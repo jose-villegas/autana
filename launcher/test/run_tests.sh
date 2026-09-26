@@ -64,7 +64,8 @@ fi
 # and strictness costs nothing in tests.
 CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -Wno-unused-parameter -g -O1"
 if [ "${HOST_SANITIZE:-}" = undefined ]; then
-    CFLAGS="$CFLAGS -fsanitize=undefined -fno-sanitize-recover=undefined"
+    # Instrumentation widens the ranges that format-truncation reasons about.
+    CFLAGS="$CFLAGS -fsanitize=undefined -fno-sanitize-recover=undefined -Wno-format-truncation"
 fi
 
 # --- the device's heap, on this machine ------------------------------------
