@@ -65,7 +65,6 @@ static boot_anim_backdrop_fn ending_backdrop;
 
 #define COL_AXIS    0x5A6478
 #define COL_TICK    0x8792A8
-#define COL_GRID    0x121A2B
 #define COL_ZERO    0xFFFFFF
 
 #define LABEL_SCALE 1 /* 8x8 glyphs: an axis label is small */

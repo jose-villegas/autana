@@ -24,9 +24,9 @@
 
 #include "apps/diagnostics/ui/toggles_screen.h"
 
-/* A future toggle still has this many bytes of MU_COMMANDLIST_SIZE left to
- * grow into before this page's own peak reaches the ceiling microui.c
- * asserts against. */
+/* The header gives 64-bit hosts 9 KiB for rendering-growth checks; 32-bit
+ * device/QEMU builds use 8 KiB. A future toggle still has this many bytes
+ * of the selected MU_COMMANDLIST_SIZE left before this page reaches it. */
 #define COMMANDLIST_HEADROOM_BYTES 2048
 #define COMMANDLIST_BUDGET         (MU_COMMANDLIST_SIZE - COMMANDLIST_HEADROOM_BYTES)
 
