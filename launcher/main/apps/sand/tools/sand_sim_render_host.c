@@ -98,8 +98,8 @@ lake_and_grove(void) {
 
 static void
 gunpowder_charge(void) {
-    for (int x = 49; x < 56; x++) {
-        for (int y = 44; y < 51; y++) {
+    for (int x = 89; x < 96; x++) {
+        for (int y = 32; y < 39; y++) {
             put(x, y, GUNPOWDER_CELL(0));
         }
     }
@@ -183,11 +183,11 @@ static void
 draw(const render_frame_t* frame) {
     int gx, gy;
     drive_tilt(frame, &gx, &gy);
-    if (frame->index == 165) {
+    if (frame->index == 180) {
         gunpowder_charge();
-        put(52, 43, CELL_MAKE(MAT_FIRE, 15));
+        put(92, 31, CELL_MAKE(MAT_FIRE, 15));
     }
-    const int steps = frame->index >= 165 && frame->index < 190 ? 1 : 4;
+    const int steps = frame->index >= 180 && frame->index < 215 ? 1 : 4;
     for (int i = 0; i < steps; i++) {
         const uint8_t wait_before = sim.fuse_blast_wait;
         sand_step(&sim, gx, gy, 0);
