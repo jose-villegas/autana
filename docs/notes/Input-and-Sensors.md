@@ -75,7 +75,9 @@ panel's; `input/touch_calib.c` undoes the fitted map on every raw point before
 anything reads it (`autana tune touch.calibrate 0` turns it off to compare).
 What stays is a finger's own scatter, 11–13 px (about 1 mm), which no
 calibration removes: controls need to be large, and the corners hide about
-42 px of radius. `apps/input_lab/tools/probe_fit.py` refits from a capture.
+42 px of radius. `apps/input_lab/tools/probe_fit.py` refits from a capture;
+the captures behind the table sit beside it in `fixtures/`, and its tests
+fail if the coefficients in `touch.c` stop being their fit.
 
 **On targets and gestures.** A small back button is fine to aim at with a mouse
 and miserable with a fingertip. A swipe up from the bottom edge — what the

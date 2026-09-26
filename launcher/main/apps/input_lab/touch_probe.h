@@ -12,6 +12,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "input/input.h"
+
 typedef struct {
     int x, y; /* top-left */
     int side;
@@ -51,6 +53,24 @@ typedef struct {
 /* Where a touch settled: the per-axis median of the samples from `from_ms`
  * to `to_ms`, or the last sample before `to_ms` when none fall inside. */
 void touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int to_ms, int* x, int* y);
+
+#define TOUCH_PROBE_SAMPLES_MAX 128
+
+/* One tap followed across frames: every position it passed through, how
+ * long it was held, and how long the panel sat idle before it. */
+typedef struct {
+    touch_probe_sample_t samples[TOUCH_PROBE_SAMPLES_MAX];
+    int count;
+    bool tracking;
+    int held_ms;
+    int idle_ms;
+    int idle_before_press;
+} touch_probe_tap_t;
+
+/* Feeds one frame's touch; true on the frame a tap that began with a press
+ * ends, its samples then complete in `tap`. A press and its release may
+ * arrive in the same frame. */
+bool touch_probe_track(touch_probe_tap_t* tap, int dt_ms, const input_t* input);
 
 float touch_probe_mean_dx(const touch_probe_stats_t* stats);
 float touch_probe_mean_dy(const touch_probe_stats_t* stats);

@@ -152,3 +152,36 @@ touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int
     *x = median(xs, count);
     *y = median(ys, count);
 }
+
+static void
+add_sample(touch_probe_tap_t* tap, int x, int y, int t_ms) {
+    if (tap->count < TOUCH_PROBE_SAMPLES_MAX) {
+        tap->samples[tap->count++] = (touch_probe_sample_t){.x = x, .y = y, .t_ms = t_ms};
+    }
+}
+
+bool
+touch_probe_track(touch_probe_tap_t* tap, int dt_ms, const input_t* input) {
+    if (input->pressed) {
+        tap->tracking = true;
+        tap->count = 0;
+        tap->held_ms = 0;
+        tap->idle_before_press = tap->idle_ms;
+        add_sample(tap, input->press_x, input->press_y, 0);
+        if (input->x != input->press_x || input->y != input->press_y) {
+            add_sample(tap, input->x, input->y, 0);
+        }
+    } else if (tap->tracking && input->down) {
+        tap->held_ms += dt_ms;
+        add_sample(tap, input->x, input->y, tap->held_ms);
+    } else if (!tap->tracking) {
+        tap->idle_ms += dt_ms;
+    }
+
+    if (!tap->tracking || !input->released) {
+        return false;
+    }
+    tap->tracking = false;
+    tap->idle_ms = 0;
+    return true;
+}

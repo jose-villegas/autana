@@ -132,7 +132,7 @@ launcher/
     │   ├── console_runsuite.{h,c}    runsuite, CONFIG_LAUNCHER_SELFTEST only
     │   └── console_inject.c, console_inject_parse.h  TOUCH/IMU/TAP/PRESS/DRAG/BUTTON (host-tested)
     └── apps/           one folder per app - see Building-an-App.md
-        ├── input_lab/  touch precision and bezel measurement
+        ├── input_lab/  touch precision and bezel measurement; development builds only
         ├── render_lab/ a software rasterizer, wireframe and ray-traced scenes
         ├── diagnostics/  bench tool; development builds only
         └── sand/       the falling-sand sandbox
@@ -468,9 +468,9 @@ here is why the build is shaped the way it is.
 > would silently vanish from the menu. Not a link error: a smaller binary and a
 > shorter list.
 
-**Bench-only apps** live in `apps/diagnostics/`, excluded by folder when
-`CONFIG_LAUNCHER_DEVELOPMENT` is off — structural rather than a name check.
-Diagnostics re-runs POST, which cycles the audio rail and re-mounts the SD
+**Bench-only apps** - `apps/diagnostics/` and `apps/input_lab/` - are
+excluded by folder when `CONFIG_LAUNCHER_DEVELOPMENT` is off, structural
+rather than a name check. Diagnostics re-runs POST, which cycles the audio rail and re-mounts the SD
 card, so it has no business being reachable in a shipped image. See
 [Build-Variants](Build-Variants.md#release-builds-contain-no-test-code) — note in
 particular that `REQUIRES` must **not** be gated this way.

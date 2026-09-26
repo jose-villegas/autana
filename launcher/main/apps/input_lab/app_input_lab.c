@@ -3,18 +3,17 @@
  * small magenta square appears on the screen; tap it, and on release the tap
  * is scored against its centre before the next one appears. The running hit
  * rate and offset sit at the top, and every tap is logged to the console as
- * one "probe" line for analysis off the board. BOOT switches between random
- * targets, a shuffled 5x5 grid and a bezel page, and starts a fresh round.
+ * one "probe" line for probe_fit.py. BOOT cycles random targets, a shuffled
+ * 5x5 grid and a bezel page, and starts a fresh round.
  *
- * Each tap is logged three ways - the first contact, where it settled, and
- * the release - in screen and in raw panel coordinates, so a calibration can
- * be fitted in whichever frame the error proves to live in. The raw touch is
- * read, not microui's pointer, so no correction in the UI layer colours it.
+ * Each probe records its first, settled and release samples in screen and
+ * panel coordinates, as the touch driver delivers them; its `cal` field says
+ * whether the driver's correction was on, so only `cal 0` rounds refit it.
  *
  * The bezel page draws an arc in every corner; dragging up or down changes
  * its radius until the arcs sit on the edge of the glass, and each release
- * logs it. Sliding off each edge there fills in the raw range the panel can
- * report, logged at the end of every round.
+ * logs it. Sliding off each edge there fills in the panel range, logged at
+ * the end of every round.
  */
 
 #include <stdio.h>
@@ -43,7 +42,6 @@ static const char* TAG = "input_lab";
 #define GRID_COUNT     (GRID_COLS * GRID_ROWS)
 #define SETTLE_FROM_MS 30
 #define SETTLE_TO_MS   80
-#define SAMPLES_MAX    128
 #define HUD_TOP        24
 #define HUD_LINE_H     20
 #define HUD_SCALE      2
@@ -66,11 +64,8 @@ static touch_probe_target_t target;
 static touch_probe_stats_t stats;
 static int screen_w, screen_h;
 
-static touch_probe_sample_t samples[SAMPLES_MAX];
-static int sample_count;
-static bool tracking;
-static int held_ms, idle_ms, idle_before_press;
-static int raw_min_x, raw_max_x, raw_min_y, raw_max_y;
+static touch_probe_tap_t tap;
+static int panel_min_x, panel_max_x, panel_min_y, panel_max_y;
 
 static bool have_last_tap;
 static int last_x, last_y;
@@ -101,20 +96,20 @@ advance_target(void) {
 }
 
 static void
-log_raw_range(void) {
-    if (raw_max_x >= 0) {
-        ESP_LOGI(TAG, "range raw x %d..%d y %d..%d", raw_min_x, raw_max_x, raw_min_y, raw_max_y);
+log_panel_range(void) {
+    if (panel_max_x >= 0) {
+        ESP_LOGI(TAG, "range panel x %d..%d y %d..%d", panel_min_x, panel_max_x, panel_min_y, panel_max_y);
     }
 }
 
 static void
 start_round(void) {
-    log_raw_range();
+    log_panel_range();
     stats = (touch_probe_stats_t){0};
     have_last_tap = false;
     grid_next = 0;
-    raw_min_x = raw_min_y = 1 << 20;
-    raw_max_x = raw_max_y = -1;
+    panel_min_x = panel_min_y = 1 << 20;
+    panel_max_x = panel_max_y = -1;
     place_target();
     ESP_LOGI(TAG, "round %s screen %dx%d quarter %d", MODE_NAMES[mode], screen_w, screen_h, display_shell_quarter());
 }
@@ -122,10 +117,9 @@ start_round(void) {
 static void
 input_lab_enter(void) {
     rng = (uint32_t)esp_timer_get_time() | 1u;
-    raw_max_x = -1;
+    panel_max_x = -1;
     mode = MODE_RANDOM;
-    tracking = false;
-    idle_ms = 0;
+    tap = (touch_probe_tap_t){0};
     start_round();
     ui_invalidate();
 }
@@ -147,18 +141,15 @@ to_screen(int px, int py, int* x, int* y) {
 }
 
 static void
-add_sample(int x, int y, int t_ms) {
-    if (sample_count < SAMPLES_MAX) {
-        samples[sample_count++] = (touch_probe_sample_t){.x = x, .y = y, .t_ms = t_ms};
-    }
-    raw_min_x = x < raw_min_x ? x : raw_min_x;
-    raw_max_x = x > raw_max_x ? x : raw_max_x;
-    raw_min_y = y < raw_min_y ? y : raw_min_y;
-    raw_max_y = y > raw_max_y ? y : raw_max_y;
+widen_panel_range(int x, int y) {
+    panel_min_x = x < panel_min_x ? x : panel_min_x;
+    panel_max_x = x > panel_max_x ? x : panel_max_x;
+    panel_min_y = y < panel_min_y ? y : panel_min_y;
+    panel_max_y = y > panel_max_y ? y : panel_max_y;
 }
 
 /* Whether the touch driver's correction was on for a tap, so a capture says
- * which frame its raw coordinates are in; -1 where it cannot be asked. */
+ * which frame its panel coordinates are in; -1 where it cannot be asked. */
 static int
 calibration_on(void) {
 #if TUNE_ENABLED
@@ -171,17 +162,17 @@ calibration_on(void) {
 
 static void
 finish_tap(int release_x, int release_y) {
-    const touch_probe_sample_t first = samples[0];
+    const touch_probe_sample_t first = tap.samples[0];
     int settled_x, settled_y;
-    touch_probe_settled(samples, sample_count, SETTLE_FROM_MS, SETTLE_TO_MS, &settled_x, &settled_y);
+    touch_probe_settled(tap.samples, tap.count, SETTLE_FROM_MS, SETTLE_TO_MS, &settled_x, &settled_y);
 
-    int fx, fy, sx, sy, rx, ry, aim_raw_x, aim_raw_y;
+    int fx, fy, sx, sy, rx, ry, aim_panel_x, aim_panel_y;
     to_screen(first.x, first.y, &fx, &fy);
     to_screen(settled_x, settled_y, &sx, &sy);
     to_screen(release_x, release_y, &rx, &ry);
     const int aim_x = target.x + target.side / 2;
     const int aim_y = target.y + target.side / 2;
-    ui_transform_point(shell_transform(), aim_x, aim_y, &aim_raw_x, &aim_raw_y);
+    ui_transform_point(shell_transform(), aim_x, aim_y, &aim_panel_x, &aim_panel_y);
 
     last_hit = touch_probe_record(&stats, target, fx, fy);
     last_x = fx;
@@ -189,43 +180,26 @@ finish_tap(int release_x, int release_y) {
     have_last_tap = true;
 
     ESP_LOGI(TAG,
-             "probe %d %s q%d aim %d,%d aim_raw %d,%d first %d,%d settled %d,%d release %d,%d raw_first %d,%d "
-             "raw_settled %d,%d raw_release %d,%d held %d idle %d samples %d %s cal %d",
-             stats.taps, MODE_NAMES[mode], display_shell_quarter(), aim_x, aim_y, aim_raw_x, aim_raw_y, fx, fy, sx, sy,
-             rx, ry, first.x, first.y, settled_x, settled_y, release_x, release_y, held_ms, idle_before_press,
-             sample_count, last_hit ? "HIT" : "miss", calibration_on());
+             "probe %d %s q%d aim %d,%d aim_panel %d,%d first %d,%d settled %d,%d release %d,%d panel_first %d,%d "
+             "panel_settled %d,%d panel_release %d,%d held %d idle %d samples %d %s cal %d",
+             stats.taps, MODE_NAMES[mode], display_shell_quarter(), aim_x, aim_y, aim_panel_x, aim_panel_y, fx, fy, sx,
+             sy, rx, ry, first.x, first.y, settled_x, settled_y, release_x, release_y, tap.held_ms,
+             tap.idle_before_press, tap.count, last_hit ? "HIT" : "miss", calibration_on());
     advance_target();
 }
 
-/* One frame of the raw touch: a press starts a sample run, each frame down
- * adds to it, and the release scores it. A tap can press and release within
- * the same frame. */
 static void
 track_touch(uint32_t dt_ms, const input_t* input) {
-    if (input->pressed) {
-        tracking = true;
-        sample_count = 0;
-        held_ms = 0;
-        idle_before_press = idle_ms;
-        add_sample(input->press_x, input->press_y, 0);
-        if (input->x != input->press_x || input->y != input->press_y) {
-            add_sample(input->x, input->y, 0);
-        }
-    } else if (tracking && input->down) {
-        held_ms += (int)dt_ms;
-        add_sample(input->x, input->y, held_ms);
-    } else if (!tracking) {
-        idle_ms += (int)dt_ms;
+    if (input->pressed || input->down) {
+        widen_panel_range(input->x, input->y);
     }
-
-    if (tracking && input->released) {
-        tracking = false;
-        idle_ms = 0;
-        if (mode == MODE_BEZEL) {
-            ESP_LOGI(TAG, "bezel radius %d quarter %d", bezel_radius, display_shell_quarter());
-        } else {
-            finish_tap(input->x, input->y);
-        }
+    if (!touch_probe_track(&tap, (int)dt_ms, input)) {
+        return;
+    }
+    if (mode == MODE_BEZEL) {
+        ESP_LOGI(TAG, "bezel radius %d quarter %d", bezel_radius, display_shell_quarter());
+    } else {
+        finish_tap(input->x, input->y);
     }
 }
 
@@ -305,8 +279,8 @@ draw_hud(mu_Context* ctx) {
     } else {
         draw_offsets(ctx);
     }
-    if (raw_max_x >= 0) {
-        snprintf(line, sizeof line, "RAW X %d-%d Y %d-%d", raw_min_x, raw_max_x, raw_min_y, raw_max_y);
+    if (panel_max_x >= 0) {
+        snprintf(line, sizeof line, "PANEL X %d-%d Y %d-%d", panel_min_x, panel_max_x, panel_min_y, panel_max_y);
         hud_line(ctx, 3, line);
     }
 }
@@ -350,7 +324,7 @@ input_lab_frame(uint32_t dt_ms, const input_t* input) {
 
 static void
 input_lab_exit(void) {
-    log_raw_range();
+    log_panel_range();
 }
 
 app_t app_input_lab = {

@@ -3,16 +3,19 @@
 
     python probe_fit.py CAPTURE.log [CAPTURE.log ...]
 
-Reads every "probe" line, and fits, per round and pooled, where the panel
-reported each tap against where it was aimed, in raw panel coordinates:
+Reads every "probe" line. Taps logged with the touch correction off (cal 0)
+are fitted, per round and pooled, as where the panel reported each tap
+against where it was aimed, both in panel coordinates:
 
-    reported_x = a*aim_x + b*aim_y + c      reported_y = d*aim_x + e*aim_y + f
+    reported_x = xx*aim_x + xy*aim_y + x0      reported_y = yx*aim_x + yy*aim_y + y0
+
+The pooled line is printed ready to paste as the touch driver's PANEL_FIT.
+Taps logged with the correction on (cal 1) are not fitted - they are already
+corrected - and are scored instead: how far each landed from its aim.
 
 Taps pinned at the panel's edge and taps on corner targets are left out: an
 edge report is clamped, and a corner target can sit under the rounded glass.
-Each orientation's fit is then tried on the other one, since a correction
-that is the panel's own holds in any orientation and one that is the hand's
-does not.
+Each orientation's fit is also tried on the other orientation.
 """
 
 import re
@@ -24,22 +27,26 @@ CORNER = 40
 BUTTON_HALF = 28
 
 PROBE = re.compile(
-    r"probe \d+ (?P<mode>\w+) q(?P<q>\d) aim -?\d+,-?\d+ aim_raw (?P<ax>-?\d+),(?P<ay>-?\d+) "
-    r"first -?\d+,-?\d+ settled -?\d+,-?\d+ release -?\d+,-?\d+ raw_first (?P<fx>-?\d+),(?P<fy>-?\d+)"
-    r"(?:.* cal (?P<cal>-?\d+))?"
+    r"probe \d+ (?P<mode>\w+) q(?P<q>\d) aim -?\d+,-?\d+ aim_panel (?P<ax>-?\d+),(?P<ay>-?\d+) "
+    r"first -?\d+,-?\d+ settled -?\d+,-?\d+ release -?\d+,-?\d+ panel_first (?P<fx>-?\d+),(?P<fy>-?\d+)"
+    r".* cal (?P<cal>-?\d+)"
 )
+
+
+def parse(lines):
+    probes = []
+    for line in lines:
+        m = PROBE.search(line)
+        if m:
+            probes.append({k: v if k == "mode" else int(v) for k, v in m.groupdict().items()})
+    return probes
 
 
 def read_probes(paths):
     probes = []
     for path in paths:
         with open(path, encoding="utf-8", errors="replace") as f:
-            for line in f:
-                m = PROBE.search(line)
-                if m:
-                    p = {k: v if k == "mode" else int(v or 0) for k, v in m.groupdict().items()}
-                    p["mode"] = f"{p['mode']}{' cal' if p['cal'] == 1 else ''}"
-                    probes.append(p)
+            probes += parse(f)
     return probes
 
 
@@ -74,6 +81,7 @@ def fit_axis(probes, reported):
 
 
 def fit(probes):
+    """((xx, xy, x0), (yx, yy, y0)) of reported against aimed."""
     return fit_axis(probes, "fx"), fit_axis(probes, "fy")
 
 
@@ -100,6 +108,15 @@ def misses(probes, cal=None):
     return out
 
 
+def inside_button(distances):
+    return sum(1 for d in distances if d <= BUTTON_HALF) / len(distances)
+
+
+def panel_fit_line(cal):
+    (xx, xy, x0), (yx, yy, y0) = cal
+    return f".xx = {xx:.3f}f, .xy = {xy:.3f}f, .x0 = {x0:.1f}f, .yx = {yx:.3f}f, .yy = {yy:.3f}f, .y0 = {y0:.1f}f,"
+
+
 def describe(name, probes, cal):
     (a, b, c), (d, e, f) = cal
     sx, sy = residual_sd(probes, cal)
@@ -107,35 +124,44 @@ def describe(name, probes, cal):
           f"   scatter {sx:4.1f},{sy:4.1f} px")
 
 
+def score(name, probes):
+    d = misses(probes)
+    print(f"{name:22} n={len(probes):3}  median miss {statistics.median(d):4.1f} px, "
+          f"inside a {2 * BUTTON_HALF} px button {inside_button(d):4.0%}")
+
+
 def main(paths):
     probes = [p for p in read_probes(paths) if usable(p)]
-    if not probes:
-        sys.exit("no usable probe lines")
+    raw = [p for p in probes if p["cal"] == 0 and p["mode"] == "random"]
+    checked = [p for p in probes if p["cal"] == 1 and p["mode"] == "random"]
 
-    rounds = {}
-    for p in probes:
-        rounds.setdefault((p["mode"], p["q"]), []).append(p)
-    for (mode, q), group in sorted(rounds.items()):
+    for q in (0, 1):
+        group = [p for p in checked if p["q"] == q]
+        if group:
+            score(f"corrected q{q}", group)
+    if len(raw) < 6:
+        if checked:
+            return
+        sys.exit("no uncorrected (cal 0) random probes to fit")
+
+    for q in (0, 1):
+        group = [p for p in raw if p["q"] == q]
         if len(group) >= 6:
-            describe(f"{mode} q{q}", group, fit(group))
+            describe(f"uncorrected q{q}", group, fit(group))
+    pooled = fit(raw)
+    describe("uncorrected, pooled", raw, pooled)
+    print(f"PANEL_FIT: {panel_fit_line(pooled)}")
 
-    random = [p for p in probes if p["mode"] == "random"]
-    if len(random) < 6:
-        return
-    pooled = fit(random)
-    describe("random, pooled", random, pooled)
-
-    print()
     for train, test in ((0, 1), (1, 0)):
-        trained = [p for p in random if p["q"] == train]
-        tested = [p for p in random if p["q"] == test]
+        trained = [p for p in raw if p["q"] == train]
+        tested = [p for p in raw if p["q"] == test]
         if len(trained) < 6 or len(tested) < 6:
             continue
         cal = fit(trained)
         before, after = misses(tested), misses(tested, cal)
-        hit = lambda m: sum(1 for d in m if d <= BUTTON_HALF) / len(m)
         print(f"fit on q{train}, tried on q{test}: median miss {statistics.median(before):4.1f} -> "
-              f"{statistics.median(after):4.1f} px, inside a {2 * BUTTON_HALF} px button {hit(before):4.0%} -> {hit(after):4.0%}")
+              f"{statistics.median(after):4.1f} px, inside a {2 * BUTTON_HALF} px button "
+              f"{inside_button(before):4.0%} -> {inside_button(after):4.0%}")
 
 
 if __name__ == "__main__":
