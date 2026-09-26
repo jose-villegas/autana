@@ -86,6 +86,7 @@ $TEST_DIR/timing.c
 $TEST_DIR/heap_arena.c
 $MAIN_DIR/app_registry.c
 $MAIN_DIR/input/touch_fsm.c
+$MAIN_DIR/input/touch_calib.c
 $MAIN_DIR/input/touch_inject_fsm.c
 $MAIN_DIR/input/gesture.c
 $MAIN_DIR/input/tilt.c
