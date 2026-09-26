@@ -1,7 +1,19 @@
 # Sand App Docs
 
-The falling-sand app's own documentation folder, referenced by name from
-[`../notes/README.md`](../notes/README.md). Eight files, two jobs:
+Touch pours material into a grid; on the board, tilt changes which way the
+material falls. Water levels, powders pile, and heat and reactions change
+what is in a cell. The host-rendered image below is the app's **menu**; the
+moving simulation and tilt input need the board.
+
+![Falling Sand title screen](../images/overview/sand-menu.png)
+
+Image render commands are in the [render harness](../tools/Render-Harness.md#images-in-these-docs).
+
+Start with [The Falling-Sand Simulation](Sand-Simulation.md) for the behavior
+and its constraints, or [Architecture](Architecture.md) for a file and data
+map. [Adding a Material](Adding-a-Material.md) is the change checklist.
+
+The rest of this folder is a reference by topic:
 
 **How it works today:**
 

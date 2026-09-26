@@ -546,14 +546,49 @@ def screenshot(args):
     device.py's own `screenshot` subcommand."""
     out = None
     view = None
+    frames = None
+    usage = "usage: autana screenshot [--as-shown|--framebuffer] [-o PATH] [--frames N]"
     while args:
         arg = args.pop(0)
         if arg in ("-o", "--out") and args and out is None:
             out = args.pop(0)
         elif arg in ("--as-shown", "--framebuffer") and view is None:
             view = arg
+        elif arg == "--frames" and args and frames is None:
+            count = args.pop(0)
+            if not (count.isdigit() and int(count) >= 1):
+                sys.exit(usage + " - N is a positive count")
+            frames = int(count)
         else:
-            sys.exit("usage: autana screenshot [--as-shown|--framebuffer] [-o PATH]")
+            sys.exit(usage)
+    if frames is not None:
+        if out is None:
+            sys.exit(usage + " - --frames needs -o PATH, the prefix of PATH-00, PATH-01, ...")
+        return screenshot_frames(frames, out, view)
+    return capture_screenshot(out, view)
+
+
+def screenshot_frames(frames, out, view):
+    """N consecutive frames: one capture while running (a band-mode app's
+    first capture needs a frame to fill its copy of the panel), then FREEZE
+    and a STEP between captures, then RESUME."""
+    code = capture_screenshot(None, view)
+    if code:
+        return code
+    code, _ = send("FREEZE", reply="FREEZE_STATE", purpose="autana screenshot --frames")
+    for i in range(frames):
+        if code:
+            break
+        if i:
+            code, _ = send("STEP", reply="FREEZE_STATE", purpose="autana screenshot --frames")
+            if code:
+                break
+        code = capture_screenshot(f"{out}-{i:02d}", view)
+    resumed, _ = send("RESUME", reply="FREEZE_STATE", purpose="autana screenshot --frames")
+    return code or resumed
+
+
+def capture_screenshot(out, view):
     holder = board_holder()
     if holder:
         print(f"the board is busy - {holder}\nnothing was sent; try again when it is free",
@@ -661,6 +696,12 @@ def button(args):
                          until=["BUTTON_OK", "BUTTON_ERR"], purpose="autana button")
     print("\n".join(replies))
     return code
+
+
+def docs(args):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "docs"))
+    import docs_search
+    return docs_search.main(args, root=engine_worktree())
 
 
 def apps(args):
@@ -934,7 +975,8 @@ COMMAND_GROUPS = (
         Command("reset", reset, (
             ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
         Command("screenshot", screenshot, (
-            ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),)),
+            ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),
+            ("screenshot --frames N -o PATH", "N consecutive frames, PATH-00 on, stepped while frozen"),)),
     )),
     ("input", "Drive input", (
         Command("tap", tap, (("tap <x> <y>", "tap a point"),)),
@@ -970,6 +1012,13 @@ COMMAND_GROUPS = (
         Command("hand", hand, (("hand [--wait <seconds>] <note...>",
                                  "reserve the board for a person at it"),)),
         Command("take-back", take_back, (("take-back", "clear that reservation"),)),
+    )),
+    ("docs", "Documentation", (
+        Command("docs", docs, (
+            ("docs <question...>", "the sections that answer it, and where to read on"),
+            ("docs --section <path:line>", "one section whole; --deep adds its subsections"),
+            ("docs --outline <path>", "a document's headings, with lines and sizes"),
+            ("docs --ask <question...>", "a short answer from the local chat model"))),
     )),
 )
 

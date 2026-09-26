@@ -157,7 +157,7 @@ severity, project-wide, with no per-call-site `#if` needed — this project
 just doesn't split that ceiling per build variant yet. See
 [Log-Level-Plan.md](plans/Log-Level-Plan.md).
 
-A FRAME_COST bracket (`util/frame_cost.h`) names a stage of the frame -
+A FRAME_COST bracket ([`util/frame_cost.h`](tools/Frame-Cost.md)) names a stage of the frame -
 something the shell or a screen does once per frame - and stays in the
 source, compiled out of release the same as everything else in this section.
 A bracket put inside a stage to answer one question is scaffolding instead:

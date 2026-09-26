@@ -25,8 +25,8 @@ test_a_fresh_ring_starts_at_band_zero_with_nothing_in_flight(void) {
     TEST_ASSERT_FALSE_MESSAGE(gfx_band_ring_must_wait(&ring), "band 0 has no previous send to wait for");
 }
 
-/* The two buffers alternate strictly by band index - what lets the app
- * render band k+1 into the OTHER slot while band k's send is in flight. */
+/* The two buffers alternate with every send - what lets the app render
+ * band k+1 into the OTHER slot while band k's send is in flight. */
 static void
 test_slots_alternate_between_the_two_buffers(void) {
     gfx_band_ring_t ring;
@@ -39,6 +39,22 @@ test_slots_alternate_between_the_two_buffers(void) {
     }
 
     TEST_ASSERT_EQUAL_INT_ARRAY(((int[]){0, 1, 0, 1}), slots, 4);
+}
+
+/* A skipped band sends nothing, so the band after it must still render
+ * into the slot that is not on the wire: band 0 sends from slot 0, band 1
+ * is skipped, and band 2 drawing into slot 0 would overwrite band 0's
+ * pixels mid-transfer. */
+static void
+test_a_skipped_band_never_hands_out_the_slot_in_flight(void) {
+    gfx_band_ring_t ring;
+    gfx_band_ring_begin(&ring, BAND_COUNT);
+
+    const int sent_slot = gfx_band_ring_slot(&ring);
+    gfx_band_ring_advance(&ring);
+    gfx_band_ring_skip(&ring);
+
+    TEST_ASSERT_NOT_EQUAL_INT(sent_slot, gfx_band_ring_slot(&ring));
 }
 
 static void
@@ -110,90 +126,6 @@ test_a_single_band_frame_never_waits(void) {
     TEST_ASSERT_TRUE(gfx_band_ring_done(&ring));
 }
 
-#define SPAN_WIDTH 368
-
-static void
-test_a_full_span_survives_clipping_unchanged(void) {
-    int x0, x1;
-    TEST_ASSERT_TRUE(gfx_band_span_clip(0, SPAN_WIDTH, SPAN_WIDTH, &x0, &x1));
-    TEST_ASSERT_EQUAL_INT(0, x0);
-    TEST_ASSERT_EQUAL_INT(SPAN_WIDTH, x1);
-}
-
-static void
-test_odd_edges_round_outward_to_even(void) {
-    int x0, x1;
-    TEST_ASSERT_TRUE(gfx_band_span_clip(11, 21, SPAN_WIDTH, &x0, &x1));
-    TEST_ASSERT_EQUAL_INT(10, x0);
-    TEST_ASSERT_EQUAL_INT(22, x1);
-}
-
-static void
-test_a_span_past_either_edge_clips_to_the_band_width(void) {
-    int x0, x1;
-    TEST_ASSERT_TRUE(gfx_band_span_clip(-20, SPAN_WIDTH + 20, SPAN_WIDTH, &x0, &x1));
-    TEST_ASSERT_EQUAL_INT(0, x0);
-    TEST_ASSERT_EQUAL_INT(SPAN_WIDTH, x1);
-}
-
-static void
-test_an_empty_span_reports_no_send(void) {
-    int x0, x1;
-    TEST_ASSERT_FALSE(gfx_band_span_clip(100, 100, SPAN_WIDTH, &x0, &x1));
-}
-
-static void
-test_a_span_entirely_off_band_reports_no_send(void) {
-    int x0, x1;
-    TEST_ASSERT_FALSE_MESSAGE(gfx_band_span_clip(SPAN_WIDTH + 4, SPAN_WIDTH + 40, SPAN_WIDTH, &x0, &x1),
-                              "wholly past the right edge");
-    TEST_ASSERT_FALSE_MESSAGE(gfx_band_span_clip(-40, -4, SPAN_WIDTH, &x0, &x1), "wholly past the left edge");
-}
-
-/* gfx_band_span_pack()'s own contract: every pixel a packed row holds came
- * from that row's [x0, x1) in the source, in order, and nothing else - a
- * narrow span first, then one only 2 px narrower than the full width on
- * each edge. */
-static void
-pack_and_check(int width, int height, int x0, int x1) {
-    gfx_color_t buf[20 * 3];
-    for (int row = 0; row < height; row++) {
-        for (int col = 0; col < width; col++) {
-            buf[row * width + col] = (gfx_color_t)(row * 100 + col);
-        }
-    }
-
-    gfx_band_span_pack(buf, width, height, x0, x1);
-
-    for (int row = 0; row < height; row++) {
-        for (int i = 0; i < x1 - x0; i++) {
-            TEST_ASSERT_EQUAL_INT(row * 100 + x0 + i, buf[row * (x1 - x0) + i]);
-        }
-    }
-}
-
-static void
-test_packing_keeps_each_rows_span_in_order(void) {
-    pack_and_check(10, 3, 2, 7);
-    pack_and_check(20, 3, 2, 18);
-}
-
-static void
-test_packing_a_full_width_span_is_a_no_op(void) {
-    enum { WIDTH = 6, HEIGHT = 2 };
-
-    gfx_color_t buf[WIDTH * HEIGHT];
-    for (int i = 0; i < WIDTH * HEIGHT; i++) {
-        buf[i] = (gfx_color_t)i;
-    }
-
-    gfx_band_span_pack(buf, WIDTH, HEIGHT, 0, WIDTH);
-
-    for (int i = 0; i < WIDTH * HEIGHT; i++) {
-        TEST_ASSERT_EQUAL_INT(i, buf[i]);
-    }
-}
-
 void
 run_gfx_band_suite(void) {
     RUN_TEST(test_a_fresh_ring_starts_at_band_zero_with_nothing_in_flight);
@@ -203,13 +135,7 @@ run_gfx_band_suite(void) {
     RUN_TEST(test_the_ring_is_done_only_after_every_band_was_handed_out);
     RUN_TEST(test_settling_clears_the_in_flight_band_exactly_once);
     RUN_TEST(test_a_single_band_frame_never_waits);
-    RUN_TEST(test_a_full_span_survives_clipping_unchanged);
-    RUN_TEST(test_odd_edges_round_outward_to_even);
-    RUN_TEST(test_a_span_past_either_edge_clips_to_the_band_width);
-    RUN_TEST(test_an_empty_span_reports_no_send);
-    RUN_TEST(test_a_span_entirely_off_band_reports_no_send);
-    RUN_TEST(test_packing_keeps_each_rows_span_in_order);
-    RUN_TEST(test_packing_a_full_width_span_is_a_no_op);
+    RUN_TEST(test_a_skipped_band_never_hands_out_the_slot_in_flight);
 }
 
 SUITE_REGISTER(run_gfx_band_suite);

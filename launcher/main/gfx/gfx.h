@@ -394,10 +394,8 @@ int gfx_band_count(void);
 
 /* Queues the current band's send, waiting first for whichever previous
  * band's send is still in flight (gfx_band_ring_must_wait(), gfx_band.h) -
- * never for the one just queued. Sends only the extent gfx_band_dirty()
- * last reported for this band (the full width if it was never called),
- * packed and even-clipped, in one esp_lcd_panel_draw_bitmap() call. An empty extent
- * sends nothing, advancing the ring as gfx_band_skip() does. */
+ * never for the one just queued. Sends the whole band, full width, in one
+ * esp_lcd_panel_draw_bitmap() call. */
 void gfx_band_submit(void);
 
 /*
@@ -419,11 +417,11 @@ uint8_t* gfx_indexed_image(void);
 
 /*
  * Readback - the frame on the panel, row by row, for a capture. A
- * framebuffer or index image is readable at once. RGB565 band mode keeps
- * nothing once a band is sent, so gfx_readback_begin() forces the next
- * frame to redraw every band and copies each one as it is submitted:
- * PENDING until that frame has run, then READY. Call it once per frame
- * until it stops answering PENDING, and pair it with gfx_readback_end().
+ * framebuffer or index image is readable at once. In RGB565 band mode the
+ * first gfx_readback_begin() is PENDING until a frame has redrawn every
+ * band into a PSRAM copy; every band sent after that updates the copy
+ * until the mode exits, so later calls are READY at once, frozen loop
+ * included. Pair each with gfx_readback_end().
  */
 typedef enum {
     GFX_READBACK_READY,
@@ -437,7 +435,7 @@ gfx_readback_t gfx_readback_begin(void);
  * path expands it. Only after gfx_readback_begin() answered READY. */
 void gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]);
 
-/* Releases band mode's snapshot, if one was taken; a no-op otherwise. */
+/* Ends a capture. Band mode's copy stays until gfx_mode_exit(). */
 void gfx_readback_end(void);
 
 /* Installs the 256-entry LUT GFX_PIXFMT_INDEXED8 expands through when 16-
@@ -463,10 +461,9 @@ void gfx_indexed_set_dither(gfx_dither_mode_t mode, const gfx_color_t* table);
 
 /* True if the band gfx_band_next() just handed out needs rendering and
  * sending - fed by the ordinary gfx_mark_dirty() calls an app and ui.c
- * already make. A true return gives the column span (out_x0/out_x1)
- * gfx_band_submit() then sends. Always true, full width, right after
- * gfx_mode_enter() and any frame following gfx_invalidate(). */
-bool gfx_band_dirty(int* out_x0, int* out_x1);
+ * already make. Always true right after gfx_mode_enter() and on any frame
+ * following gfx_invalidate(). */
+bool gfx_band_dirty(void);
 
 /* The band gfx_band_next() just handed out needs no redraw - advances past
  * it without rendering or sending, in place of gfx_band_submit(). */
