@@ -505,8 +505,85 @@ extend_repaint_range(int was, int now, int* lo, int* hi) {
     }
 }
 
+/* Columns 16 wide: one PSRAM cache line of RGB565. */
+#define COLUMN_GROUP 16
+
+static inline __attribute__((always_inline)) gfx_color_t
+column_pixel(int x, int y, uint8_t reveal_alpha) {
+    const int phase = y & 3;
+    if (!scanline_pick(reveal_alpha, phase)) {
+        return GFX_RGB(0);
+    }
+    gfx_color_t color = ridge->background_color;
+    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+        const int boundary = ridge->boundary[layer][x];
+        if (boundary == INT16_MAX) {
+            continue;
+        }
+        if (scanline_pick(layer_alpha_at(layer, ridge->down_sign * (y - boundary)), phase)) {
+            color = layer == 0 ? ridge->back0_color : layer == 1 ? ridge->back1_color : ridge->sky[y];
+        }
+    }
+    return color;
+}
+
+static void
+repaint_column_group(const int16_t* lo, const int16_t* hi, int x0, uint8_t reveal_alpha) {
+    int y0 = GFX_HEIGHT, y1 = 0;
+    for (int x = x0; x < x0 + COLUMN_GROUP && x < GFX_WIDTH; x++) {
+        if (lo[x] < hi[x]) {
+            y0 = lo[x] < y0 ? lo[x] : y0;
+            y1 = hi[x] > y1 ? hi[x] : y1;
+        }
+    }
+    if (y0 >= y1) {
+        return;
+    }
+    const int x1 = x0 + COLUMN_GROUP < GFX_WIDTH ? x0 + COLUMN_GROUP : GFX_WIDTH;
+    gfx_color_t* const framebuffer = gfx_framebuffer();
+    for (int y = y0; y < y1; y++) {
+        gfx_color_t* const row = framebuffer + y * GFX_WIDTH;
+        for (int x = x0; x < x1; x++) {
+            if (y >= lo[x] && y < hi[x]) {
+                row[x] = column_pixel(x, y, reveal_alpha);
+            }
+        }
+    }
+    gfx_mark_dirty(x0, y0, x1 - x0, y1 - y0);
+}
+
+/* Portrait: a column's pixels are a row apart in the framebuffer, so paint
+ * a group of columns row by row rather than each column top to bottom. */
+static void
+repaint_changed_columns(uint8_t reveal_alpha) {
+    int16_t lo[GFX_WIDTH], hi[GFX_WIDTH];
+    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+        for (int x = 0; x < GFX_WIDTH; x++) {
+            const int was = ridge->shown[layer][x], now = ridge->boundary[layer][x];
+            int first = INT_MAX, last = INT_MIN;
+            if (was != now) {
+                extend_repaint_range(was, now, &first, &last);
+            }
+            lo[x] = (int16_t)(first < 0 ? 0 : first > GFX_HEIGHT ? GFX_HEIGHT : first);
+            hi[x] = (int16_t)(last > GFX_HEIGHT ? GFX_HEIGHT : last < 0 ? 0 : last);
+            ridge->shown[layer][x] = (int16_t)now;
+        }
+        for (int x0 = 0; x0 < GFX_WIDTH; x0 += COLUMN_GROUP) {
+            repaint_column_group(lo, hi, x0, reveal_alpha);
+        }
+    }
+}
+
 static void
 repaint_changed(void) {
+    if (ridge->by_column && ridge->scanline_dither) {
+        const int reveal =
+            ridge->alive_ms <= (uint32_t)boot_hold_ms
+                ? 0
+                : ridge_motion_ease_in(ridge->alive_ms - (uint32_t)boot_hold_ms, (uint32_t)ambient_ease_ms);
+        repaint_changed_columns((uint8_t)(reveal * 255 / 256));
+        return;
+    }
     for (int strip = 0; strip < ridge->strips; strip++) {
         for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
             const int was = ridge->shown[layer][strip];
