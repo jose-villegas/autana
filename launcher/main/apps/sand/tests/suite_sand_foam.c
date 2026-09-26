@@ -26,6 +26,7 @@
 
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand.h"
+#include "apps/sand/sand_paint_row.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
 #include "util/intmath.h"
@@ -473,22 +474,7 @@ test_foam_flip_rate_stays_even_across_the_phase_cycle(void) {
     TEST_ASSERT_TRUE_MESSAGE(max_flips < 2 * min_flips, why);
 }
 
-/* Mirrors FOAM_BLOB_SHIFT in app_sand.c. Duplicated rather than shared,
- * because paint_row_n() - the only thing that actually applies the shift -
- * is static to that file and this suite links against material.c alone, on
- * the host. If FOAM_BLOB_SHIFT ever moves, this has to move with it by
- * hand; there is no way around that without exposing a knob that exists
- * only to be tuned by eye on the device. */
-#define TEST_FOAM_BLOB_SHIFT 3
-
-/* FOAM'S BLOBS ARE ACTUALLY BIGGER THAN ONE CELL - checked against
- * material_grain_hash() directly, since paint_row_n() (which applies the
- * shift) is `static` in app_sand.c and cannot link into a host test.
- * WITHIN an 8x8 block every cell must collapse to the identical shifted
- * hash - checked at all four CORNERS, not an adjacent pair, so the whole
- * block is proven to agree. BETWEEN two blocks the hash must generally
- * differ, checked one block width apart, or the grid has collapsed to
- * one giant block. */
+/* All cells in an 8x8 foam block share a hash. */
 static void
 test_foam_blobs_are_bigger_than_one_cell(void) {
     static const int block_starts[] = {0, 8};
@@ -501,12 +487,14 @@ test_foam_blobs_are_bigger_than_one_cell(void) {
 
     for (unsigned b = 0; b < 2; b++) {
         const int cx0 = block_starts[b];
-        const unsigned top_left = material_grain_hash(cx0 >> TEST_FOAM_BLOB_SHIFT, cy0 >> TEST_FOAM_BLOB_SHIFT);
-        const unsigned top_right = material_grain_hash((cx0 + 7) >> TEST_FOAM_BLOB_SHIFT, cy0 >> TEST_FOAM_BLOB_SHIFT);
+        const unsigned top_left =
+            material_grain_hash(cx0 >> SAND_PAINT_FOAM_BLOB_SHIFT, cy0 >> SAND_PAINT_FOAM_BLOB_SHIFT);
+        const unsigned top_right =
+            material_grain_hash((cx0 + 7) >> SAND_PAINT_FOAM_BLOB_SHIFT, cy0 >> SAND_PAINT_FOAM_BLOB_SHIFT);
         const unsigned bottom_left =
-            material_grain_hash(cx0 >> TEST_FOAM_BLOB_SHIFT, (cy0 + 7) >> TEST_FOAM_BLOB_SHIFT);
+            material_grain_hash(cx0 >> SAND_PAINT_FOAM_BLOB_SHIFT, (cy0 + 7) >> SAND_PAINT_FOAM_BLOB_SHIFT);
         const unsigned bottom_right =
-            material_grain_hash((cx0 + 7) >> TEST_FOAM_BLOB_SHIFT, (cy0 + 7) >> TEST_FOAM_BLOB_SHIFT);
+            material_grain_hash((cx0 + 7) >> SAND_PAINT_FOAM_BLOB_SHIFT, (cy0 + 7) >> SAND_PAINT_FOAM_BLOB_SHIFT);
 
         char why[256];
         snprintf(why, sizeof why,

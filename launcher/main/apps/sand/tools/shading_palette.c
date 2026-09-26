@@ -15,7 +15,7 @@
  *      through a mirror of the app's row painter, and write original,
  *      256-colour and 16-colour panels side by side as PNG.
  *
- * The painter mirror follows paint_row_n() in app_sand.c for a 2 px cell,
+ * The painter mirror follows sand_paint_row_n() in sand_paint_row.h for a 2 px cell,
  * the way suite_sand_liquid_depth.c mirrors local depth: app_sand.c is not
  * host-portable. A scene pixel whose colour the sweep never produced is
  * counted and printed, so a mirror or sweep that drifts from the real code
@@ -465,7 +465,7 @@ static const scene_t scenes[] = {
 
 #define SCENE_COUNT             ((int)(sizeof scenes / sizeof scenes[0]))
 
-/* 3b. the painter mirror (paint_row_n in app_sand.c, n = 2) */
+/* Painter mirror (sand_paint_row_n in sand_paint_row.h, n = 2). */
 
 #define SHINE_PERIOD            64
 #define FOAM_BLOB_SHIFT         3

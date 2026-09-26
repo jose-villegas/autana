@@ -1444,13 +1444,8 @@ wood_leaf_row_window(const uint8_t* big, int w, int h, int y, const uint8_t** ro
     *below = (y < h - 1) ? *row + w : NULL;
 }
 
-/* paint_row_n() is `static inline` inside app_sand.c and unreachable from
- * here, so no row in this suite exercises the app's paint path - the
- * shading could land measuring "nothing" because nothing was looking. This
- * times the per-cell work the shading adds, over the real grid, walked the
- * way paint_row_n() walks it: the scan and the wave, not the framebuffer
- * writes nor the extra paint_row() calls the gust's wake tick causes.
- * Prints; asserts no budget, since half the cost is out of reach. */
+/* Times the per-cell scan and wave over the real grid. Framebuffer
+ * writes and wake-driven row paints are outside this measurement. */
 static void
 test_the_wood_leaf_shading_on_a_grove(void) {
     uint8_t* big = malloc(REAL_W * REAL_H);
