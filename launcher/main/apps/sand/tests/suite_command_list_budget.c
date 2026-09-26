@@ -33,7 +33,8 @@
 #include "apps/sand/ui/palette_screen.h"
 #include "apps/sand/ui/title_screen.h"
 
-/* A fifth screen or a busier icon still has this many bytes of
+/* The host's larger command list checks rendering growth; device/QEMU enforces
+ * the 8 KiB RAM limit. A fifth screen or a busier icon still has this many bytes of
  * MU_COMMANDLIST_SIZE left to grow into before any screen's own peak
  * reaches the ceiling microui.c asserts against. */
 #define COMMANDLIST_HEADROOM_BYTES 2048

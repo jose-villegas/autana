@@ -62,7 +62,13 @@ fi
 
 # Warnings are errors: a host build catches mistakes the target build misses,
 # and strictness costs nothing in tests.
-CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -g -O1"
+# 64-bit pointers and 8-byte alignment make every command bigger on the host.
+BASE_CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -Wno-unused-parameter -g -O1"
+CFLAGS="$BASE_CFLAGS"
+if [ "${HOST_SANITIZE:-}" = undefined ]; then
+    # Instrumentation widens the ranges that format-truncation reasons about.
+    CFLAGS="$CFLAGS -fsanitize=undefined -fsanitize-recover=undefined -Wno-format-truncation"
+fi
 
 # --- the device's heap, on this machine ------------------------------------
 # Sourced the same way find_cc.sh is, one block above. The cap is a profile
@@ -179,6 +185,13 @@ if [ -z "${QUIET_INNER:-}" ]; then
     quiet_run host-tests env QUIET_INNER=1 VERBOSE="$VERBOSE" sh "$0" "$@" || true
     QUIET_SUMMARY=$(grep -E '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored' "$QUIET_LOG" | tail -n 1)
     export QUIET_SUMMARY
+    if [ "${HOST_SANITIZE:-}" = undefined ]; then
+        QUIET_FINDINGS=$(grep 'runtime error:' "$QUIET_LOG" | sed -E 's/:[0-9]+: runtime error:/: runtime error:/' | sort -u || true)
+        if [ -n "$QUIET_FINDINGS" ]; then
+            printf 'UBSan findings (%s):\n%s\n' "$(printf '%s\n' "$QUIET_FINDINGS" | wc -l | tr -d ' ')" "$QUIET_FINDINGS"
+            quiet_end run_tests 1 || exit $?
+        fi
+    fi
     quiet_end run_tests || exit $?
     exit 0
 fi
@@ -323,7 +336,7 @@ for f in $SU_SOURCES; do
     n=$((n + 1))
     base=$(basename "$f" .c)
     # shellcheck disable=SC2086
-    "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
+    "$CC_BIN" $BASE_CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
         -I "$TEST_DIR/../components/microui/include" \
         -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools/gen" -include "$TEST_DIR/timing.h" \
         -fstack-usage -c "$f" -o "$SU_DIR/$(printf '%02d' "$n")_$base.o" &

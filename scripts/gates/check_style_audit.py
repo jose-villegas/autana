@@ -22,6 +22,7 @@ the same reason - a worklist, not a verdict.
 import pathlib
 import re
 import sys
+from collections import Counter
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from check_comment_length import EXCLUDED, scan  # noqa: E402
@@ -674,6 +675,102 @@ def _function_body_comments(text, comments):
         if not ch.isspace():
             last_nonspace = ch
     return {c for c in comments if inside.get(id(c))}
+
+
+PLACEMENT_CALLS = {
+    "MALLOC-PLACEMENT": re.compile(r"\b(malloc|calloc|realloc|free|heap_caps_\w+)\s*\("),
+    "STDIO-PLACEMENT": re.compile(r"\b(printf|fprintf|sprintf|snprintf|vprintf|vfprintf|vsprintf|vsnprintf)\s*\("),
+}
+
+
+def _function_at_offsets(code):
+    current = "<file>"
+    depth = 0
+    signature_start = 0
+    names = []
+    for index, char in enumerate(code):
+        if char == "{":
+            if depth == 0:
+                prefix = code[signature_start:index].rstrip()
+                match = re.search(r"\b([A-Za-z_]\w*)\s*\([^{};]*\)\s*$", prefix)
+                current = match.group(1) if match else "<file>"
+            depth += 1
+        elif char == "}":
+            depth = max(0, depth - 1)
+            if depth == 0:
+                current = "<file>"
+                signature_start = index + 1
+        elif char == ";" and depth == 0:
+            signature_start = index + 1
+        names.append(current)
+    return names
+
+
+def _placement_allowlist(root, rule_id):
+    path = pathlib.Path(root) / "scripts" / "gates" / (rule_id.lower().replace("-", "_") + ".txt")
+    if not path.exists():
+        return {}
+    entries = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line and not line.startswith("#"):
+            rel, function, callee, count = line.split("\t")
+            entries[(rel, function, callee)] = int(count)
+    return entries
+
+
+def _placement_hits(root, path, text, rule_id):
+    rel = relpath(root, path)
+    if not rel.startswith("launcher/main/"):
+        return []
+    comments = scan(rel, text)
+    code = _blank_comments_and_strings(text, comments)
+    names = _function_at_offsets(code)
+    counts = Counter()
+    locations = {}
+    for match in PLACEMENT_CALLS[rule_id].finditer(code):
+        callee = match.group(1)
+        if rule_id == "MALLOC-PLACEMENT" and callee.startswith("heap_caps_") and not re.search(
+                r"(malloc|calloc|realloc|free)$", callee):
+            continue
+        key = (rel, names[match.start()], callee)
+        counts[key] += 1
+        locations.setdefault(key, text.count("\n", 0, match.start()) + 1)
+    allowed = _placement_allowlist(root, rule_id)
+    for key, count in counts.items():
+        if key not in allowed or count > allowed[key]:
+            yield locations[key], f"{key[2]}() in {key[1]}: {count} site(s), allowed {allowed.get(key, 0)}"
+
+
+@c_line_rule("MALLOC-PLACEMENT")
+def rule_malloc_placement(root, path, text):
+    yield from _placement_hits(root, path, text, "MALLOC-PLACEMENT")
+
+
+@c_line_rule("STDIO-PLACEMENT")
+def rule_stdio_placement(root, path, text):
+    yield from _placement_hits(root, path, text, "STDIO-PLACEMENT")
+
+
+@c_line_rule("UNDEF-PLACEMENT")
+def rule_undef_placement(root, path, text):
+    if not relpath(root, path).startswith("launcher/main/"):
+        return
+    comments = scan(relpath(root, path), text)
+    code = _blank_comments_and_strings(text, comments)
+    stack = []
+    for number, line in enumerate(code.splitlines(), 1):
+        directive = re.match(r"\s*#\s*(if|ifdef|ifndef|else|elif|endif|undef)\b(.*)", line)
+        if not directive:
+            continue
+        operation, argument = directive.groups()
+        if operation in ("if", "ifdef", "ifndef"):
+            stack.append(operation == "ifdef" and argument.strip() == "ANALYSIS_SCAN")
+        elif operation == "endif" and stack:
+            stack.pop()
+        elif operation in ("else", "elif") and stack:
+            stack[-1] = False
+        elif operation == "undef" and not any(stack):
+            yield number, "#undef requires an enclosing #ifdef ANALYSIS_SCAN"
 
 
 @c_comment_rule("HEADING-COMMENT", severity=WARN)
