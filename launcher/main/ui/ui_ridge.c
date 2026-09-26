@@ -361,6 +361,45 @@ paint_row_span(gfx_color_t* framebuffer, int y, int lo, int hi, uint8_t reveal_a
     }
 }
 
+/* A column segment with no lip in it: every layer there is either absent or
+ * at its body alpha, so a pixel's colour depends only on its scanline phase,
+ * and on the sky gradient where the front layer shows. */
+static inline __attribute__((always_inline)) void
+paint_column_body(gfx_color_t* framebuffer, int x, int y0, int y1, uint8_t reveal_alpha) {
+    gfx_color_t phase_color[4];
+    bool phase_sky[4];
+    for (int phase = 0; phase < 4; phase++) {
+        const int y = y0 + ((phase - y0) & 3);
+        phase_sky[phase] = false;
+        if (!backdrop_dither_pick(x, y, reveal_alpha)) {
+            phase_color[phase] = GFX_RGB(0);
+            continue;
+        }
+        phase_sky[phase] = backdrop_dither_pick(x, y, (uint8_t)ridge_layer_alpha(2, boundary_distance(2, x, y0)));
+        phase_color[phase] = row_body_color(y, x);
+    }
+    for (int y = y0; y < y1; y++) {
+        const int phase = y & 3;
+        framebuffer[y * GFX_WIDTH + x] = phase_sky[phase] ? ridge->sky[y] : phase_color[phase];
+    }
+}
+
+static void
+paint_column_span(gfx_color_t* framebuffer, int x, int lo, int hi, uint8_t reveal_alpha) {
+    int points[2 * RIDGE_LAYER_COUNT + 2] = {lo};
+    const int count = collect_row_breaks(points, x, lo, hi);
+    for (int part = 0; part + 1 < count; part++) {
+        const int y0 = points[part], y1 = points[part + 1];
+        if (row_lip_at(y0, x)) {
+            for (int y = y0; y < y1; y++) {
+                framebuffer[y * GFX_WIDTH + x] = backdrop_pixel(x, y, reveal_alpha);
+            }
+        } else {
+            paint_column_body(framebuffer, x, y0, y1, reveal_alpha);
+        }
+    }
+}
+
 static void
 repaint_strip(int strip, int lo, int hi) {
     const int limit = ridge->by_column ? GFX_HEIGHT : GFX_WIDTH;
@@ -375,8 +414,12 @@ repaint_strip(int strip, int lo, int hi) {
     const uint8_t reveal_alpha = (uint8_t)(reveal * 255 / 256);
     gfx_color_t* const framebuffer = gfx_framebuffer();
     if (ridge->by_column) {
-        for (int y = lo; y < hi; y++) {
-            framebuffer[y * GFX_WIDTH + strip] = backdrop_pixel(strip, y, reveal_alpha);
+        if (ridge->scanline_dither) {
+            paint_column_span(framebuffer, strip, lo, hi, reveal_alpha);
+        } else {
+            for (int y = lo; y < hi; y++) {
+                framebuffer[y * GFX_WIDTH + strip] = backdrop_pixel(strip, y, reveal_alpha);
+            }
         }
         gfx_mark_dirty(strip, lo, 1, hi - lo);
     } else {
@@ -445,6 +488,10 @@ paint_all(void) {
     if (!ridge->by_column && ridge->scanline_dither) {
         for (int y = 0; y < GFX_HEIGHT; y++) {
             paint_row_span(framebuffer, y, 0, GFX_WIDTH, reveal_alpha);
+        }
+    } else if (ridge->scanline_dither) {
+        for (int x = 0; x < GFX_WIDTH; x++) {
+            paint_column_span(framebuffer, x, 0, GFX_HEIGHT, reveal_alpha);
         }
     } else {
         for (int y = 0; y < GFX_HEIGHT; y++) {
