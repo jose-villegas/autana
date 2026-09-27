@@ -214,9 +214,9 @@ fifth icon.
   the run for `error:` to be sure you saw an assertion.
 - **Vary the fixture's arbitrary starting condition** and confirm the
   assertion still catches what it claims.
-- **A UI suite's file-scope objects are firmware `.bss`.** Diagnostics
-  builds link every suite, and UI fixtures are exactly the ones that get
-  large - a microui context alone is 10,744 bytes, real weight against
+- **A UI suite's file-scope objects are firmware `.bss`.** A
+  diagnostics build links every suite, and UI fixtures are exactly the ones
+  that get large - a microui context alone is 10,744 bytes, real weight against
   internal heap headroom. Allocate them in `fixture()`, and run
   `tools/build/build_diag_check.sh` to build that configuration locally rather
   than finding out from CI.

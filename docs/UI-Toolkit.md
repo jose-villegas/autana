@@ -108,10 +108,8 @@ settings_frame(const input_t* input) {
   controls in one window need different ones.
 - **One file here, three in a real screen.** A shipped screen splits this
   into layout, state and drawing, each tested on a host, as
-  [`Building-a-Screen.md`](Building-a-Screen.md) describes. The sand app's
-  options screen is a full example of that split using a slider, tiles and a
-  dropdown: `launcher/main/apps/sand/ui/options_screen.c`, with its layout
-  test in `launcher/main/apps/sand/tests/suite_options_screen.c`.
+  [`Building-a-Screen.md`](Building-a-Screen.md) describes: the screen in
+  the app's `ui/` folder, its layout test in the app's `tests/`.
 
 ### Which control
 

@@ -177,8 +177,8 @@ sequenceDiagram
 ```
 
 The first pass after `enter()` skips the begin/update/wait half: nothing is
-drawn yet. Sand is the adopter - `sand_update()` steps the sim,
-`sand_frame()` draws.
+drawn yet. The shape that adopts it is a retained app that steps a
+simulation in `update()` and draws the result in `frame()`.
 
 ## Input
 
@@ -203,7 +203,7 @@ button fields are `button_t`, from `input/buttons.h`.
 `step_app()` checks both before the app runs: `gesture_is_home_swipe()`
 against the edge `exit_edge_for_quarter()` names, or `power.held`. Leave
 `home_gesture` `false` only when the app's own input is a drag near a screen
-edge - sand does. An app with an on-screen way out calls
+edge. An app with an on-screen way out calls
 `shell_request_exit()` instead: the shell leaves before the app's next
 `frame()`, exactly as it does for the two rows above.
 
@@ -267,8 +267,8 @@ top of the next pass `apply_pending_full_redraw()` clears the flag and calls
 `invalidate()`. A
 request made inside `frame()` is served the following pass. The shell requests
 one on launch, leave, an orientation change, a screenshot and a self-test run.
-Implement `invalidate()` only for a cache gfx cannot see - sand's row runs,
-cube's band bbox.
+Implement `invalidate()` only for a cache gfx cannot see - per-row runs of
+what the last frame drew, or the bounding box it covered in each band.
 
 ## An app is a folder
 

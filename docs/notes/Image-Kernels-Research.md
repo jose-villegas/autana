@@ -213,5 +213,5 @@ building on it.
 
 ## Related
 
-- [`../Autana-Rendering-Roadmap.md`](../Autana-Rendering-Roadmap.md) — the
+- [`../plans/Autana-Rendering-Roadmap.md`](../plans/Autana-Rendering-Roadmap.md) — the
   cycle budget and the frame architecture over the one framebuffer.

@@ -169,7 +169,10 @@ and it survives the code it described. Say what shape of caller needs the
 thing ("a checkbox toggle", "a per-tile badge") or state the rule a caller
 must follow. An app's own files may name anything below them; that direction
 cannot dangle. This is the comment half of the layering rule includes obey -
-see [`docs/Firmware-Architecture.md`](Firmware-Architecture.md).
+see [`docs/Firmware-Architecture.md`](Firmware-Architecture.md). The engine's
+documents sit at the same layer and answer to the same rule: every Markdown
+file under `docs/` but an app's own folder and `docs/plans/`, whose designs
+name the apps they plan for.
 
 A NAME is all that is scripted. Borrowing an app's vocabulary is the same
 fault one step quieter - "an app's working grid" names no app but still
@@ -187,9 +190,10 @@ scripts/gates/check-comment-length.sh --files         # per-file counts
 `.github/workflows/comment-rules.yml` holds the tree to all three checks on
 every pull request and every push to `main`: length beside code and header
 height (`scripts/gates/check_comment_length.py`), every citation resolving
-(`check_comment_symbols.py`), and no app named below `apps/`
-(`check_comment_layers.py`). The last two take their vocabulary from the tree
-itself, so neither needs updating when code moves. A function the firmware
+(`check_comment_symbols.py`), and no app named below `apps/`, in a
+comment or an engine document (`check_comment_layers.py`). The last two take
+their vocabulary from the tree itself, so neither needs updating when code
+moves. A function the firmware
 calls but does not define resolves when ESP-IDF or its toolchain's C library
 declares it, read from the checkout at `IDF_PATH`. ESP-IDF counts for every
 chip it supports, so a name declared only for another chip passes too - the
