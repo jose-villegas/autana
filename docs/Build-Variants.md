@@ -45,8 +45,7 @@ broader flag than `CONFIG_LAUNCHER_SELFTEST` — it also ships in a `--dev`
 build, which carries no test suites at all. An app is gated this way by
 holding a `development_only.cmake` in its own folder; `main/CMakeLists.txt`
 globs the markers and names no app (see
-[Building-an-App.md](Building-an-App.md#an-app-is-a-folder)). Input Lab is
-the other one.
+[Building-an-App.md](Building-an-App.md#an-app-is-a-folder)).
 
 `tools/build/check_release_symbols.sh build/launcher.elf` rejects a release image that
 defines any of the suite, console or self-test symbols it names - including a
@@ -58,10 +57,11 @@ autana build rel
 launcher/tools/build/check_release_symbols.sh launcher/build/launcher.elf
 ```
 
-A development-only app's `app_<name>` belongs in the same count as `unity`/`suite_`/`selftest`
-not because the app is selftest-shaped — most of it is not — but because
-release is neither DEVELOPMENT nor SELFTEST, so every one of those symbols is
-absent from that image whichever of the two flags gates it.
+A development-only app's `app_<name>` belongs in the same count as
+`unity`/`suite_`/`selftest` not because the app is selftest-shaped — most of
+it is not — but because release is neither DEVELOPMENT nor SELFTEST, so
+every one of those symbols is absent from that image whichever of the two
+flags gates it.
 
 That matters for more than size. The suites draw to the framebuffer and drive
 the panel, which is fine in diagnostics and unacceptable in a product; and test

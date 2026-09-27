@@ -103,8 +103,8 @@ launcher_glob(discovered_apps "${CMAKE_CURRENT_LIST_DIR}/apps/*.c")
 # sources - and then WHOLE_ARCHIVE, below, force-links it into the image
 # regardless of whether anything references it, so --gc-sections never gets
 # the chance to drop it. Excluded by folder rather than by name, so the
-# rule is structural rather than needing a per-tool update. Nothing lives here yet; this guard goes in with the
-# convention itself, because the failure it prevents - a host tool's main()
+# rule is structural rather than needing a per-tool update. Nothing lives
+# here yet; this guard goes in with the convention itself, because the failure it prevents - a host tool's main()
 # silently linked into device firmware - is silent and baffling to debug
 # after the fact.
 #
@@ -121,27 +121,19 @@ list(FILTER app_suites INCLUDE REGEX "/suite_[^/]*\\.c$")
 list(FILTER discovered_apps EXCLUDE REGEX "/suite_[^/]*\\.c$")
 
 # An app whose folder holds a development_only.cmake is a bench tool: it
-# ships in any DEVELOPMENT build (--dev and --diag, since SELFTEST selects
+# ships in any DEVELOPMENT build (--dev and --diag, since SELFTEST depends on
 # DEVELOPMENT) and never in release. The app declares it from its own folder,
 # so deleting the folder deletes the declaration.
 if(NOT CONFIG_LAUNCHER_DEVELOPMENT)
     launcher_glob(development_only_markers
         "${CMAKE_CURRENT_LIST_DIR}/apps/*/development_only.cmake")
-    set(release_apps "")
-    foreach(app_src IN LISTS discovered_apps)
-        set(keep TRUE)
-        foreach(marker IN LISTS development_only_markers)
-            get_filename_component(development_only_dir "${marker}" DIRECTORY)
-            string(FIND "${app_src}" "${development_only_dir}/" at)
-            if(at EQUAL 0)
-                set(keep FALSE)
-            endif()
-        endforeach()
-        if(keep)
-            list(APPEND release_apps "${app_src}")
-        endif()
+    list(FILTER development_only_markers INCLUDE REGEX
+        "/apps/[^/]+/development_only\\.cmake$")
+    foreach(marker IN LISTS development_only_markers)
+        get_filename_component(app_dir "${marker}" DIRECTORY)
+        get_filename_component(app "${app_dir}" NAME)
+        list(FILTER discovered_apps EXCLUDE REGEX "/apps/${app}/")
     endforeach()
-    set(discovered_apps ${release_apps})
 endif()
 
 list(APPEND app_srcs ${discovered_apps})
