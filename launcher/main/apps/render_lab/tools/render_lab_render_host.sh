@@ -28,10 +28,15 @@ scene_name=render_lab
 # allocate, nothing about their size or placement, so
 # render_lab_render_host_heap.c is a plain pass-through instead.
 scene_sources="
+main/app_arena.c
 main/app_registry.c
 main/gfx/gfx.c
 main/util/tune.c
 main/util/job.c
+main/render/r3d_lit_frame.c
+main/render/r3d_lit_pipeline.c
+main/render/r3d_path.c
+main/render/r3d_span.c
 main/ui/ui.c
 main/ui/ui_build.c
 main/ui/ui_canvas_marks.c
@@ -81,6 +86,8 @@ cornell-pt-landscape|--quarter 1 --scene cornell-pt --frames 60|448x368|nopin
 cornell-pt-portrait|--quarter 0 --scene cornell-pt --frames 60|368x448|nopin
 cornell-pt-seed|--quarter 1 --scene cornell-pt --frames 2|448x368|nopin
 cornell-pt-accum|--quarter 1 --scene cornell-pt --frames 45|448x368|nopin
+sponza-landscape|--quarter 1 --no-hud --scene sponza --frames 2|448x368|nopin
+sponza-portrait|--quarter 0 --no-hud --scene sponza --frames 2|368x448|nopin
 "
 
 # shellcheck source=../../../../tools/render/render_scene.sh
