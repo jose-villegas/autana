@@ -149,7 +149,7 @@ randomly picks one of the two octants bracketing the true angle, weighted so
 the long-run average matches it - the same trick as dithering a colour ramp,
 applied to a direction. At 17 degrees about 62% of steps fall straight down
 and 38% down-right, and at 60 fps the eye integrates the two directions into
-one smooth angle. The draw costs one random number per step, not per moving
+one smooth angle. The choice costs one random number per step, not per moving
 grain. The weight needs `atan`, since at 22.5 degrees the component ratio is
 0.414 rather than 0.5; Rajan's approximation covers it in integers to within
 a degree.

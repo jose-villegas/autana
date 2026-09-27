@@ -57,8 +57,10 @@ class ProblemsTest(unittest.TestCase):
         self.assertEqual(found, ["docs/Build.md:1: document names diagnostics"])
 
     def test_a_name_wrapped_across_lines_is_still_a_name(self):
-        found = self.problems({"docs/Gfx.md": "drawn by Render\nLab today\n"})
-        self.assertEqual(found, ["docs/Gfx.md:1: document names render_lab"])
+        found = self.problems({"docs/Gfx.md": "drawn by Render\nLab today\n",
+                               "docs/List.md": "- drawn by Render\n  Lab today\n"})
+        self.assertEqual(found, ["docs/Gfx.md:1: document names render_lab",
+                                 "docs/List.md:1: document names render_lab"])
 
     def test_the_diagnostics_build_wrapped_across_lines_is_still_the_variant(self):
         self.assertEqual(self.problems({"docs/Build.md": "the diagnostics\nbuild links it\n"}), [])
