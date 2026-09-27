@@ -17,7 +17,7 @@ Run the tool with ESP-IDF's Python (the `python.exe` under
 on Windows), so its pyserial installation is available; a different
 interpreter re-runs it under that one. The examples write it as `python`.
 It works the same from PowerShell, cmd or Git Bash: `flash`, `batch`, and
-`selftest` run `build_flash.sh` and `flash_image.sh` with Git for Windows'
+`selftest` run `build.sh` and `flash_image.sh` with Git for Windows'
 own `bash.exe`, never
 whatever `bash` is first on `PATH` - from a native shell that is WSL's
 launcher, which cannot run ESP-IDF.
@@ -71,7 +71,7 @@ A flash succeeds when esptool's `write_flash` hash-verified every region it
 wrote and the flash log carries the build's `BUILD_ID=` line; `flash` then
 prints `flashed BUILD_ID=<id> (esptool hash verified; boot not verified)`.
 It proves the write, not the boot, for every variant. A flash is two
-scripts in one log: `launcher/tools/build/build_flash.sh` builds the image
+scripts in one log: `launcher/tools/build/build.sh` builds the image
 and opens no port, so it runs before the lock is taken and other sessions
 keep the board meanwhile; then, under the lock,
 `scripts/device/flash_image.sh` writes it. A build that fails never queues
@@ -92,7 +92,7 @@ flash use `batch` or `selftest` when the capture must be of that image.
 sequenceDiagram
     participant Dev as device.py
     participant Lock as lock file
-    participant Build as build_flash.sh
+    participant Build as build.sh
     participant Sh as flash_image.sh
     participant Idf as idf.py and esptool
     participant Board as board

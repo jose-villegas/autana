@@ -68,7 +68,7 @@ class DeviceAccessTest(unittest.TestCase):
 
     def test_a_flash_outside_scripts_device_is_flagged_whatever_checks_the_lock(self):
         self.assertEqual(self.openers(
-            "launcher/tools/build/build_flash.sh",
+            "launcher/tools/build/build.sh",
             '#!/bin/sh\n'
             'python "$DIR/scripts/device/device_lock.py" check-token --token "$T" || exit 1\n'
             'idf -B "$BUILD_DIR" -p "$COM_PORT" flash\n'), [3])

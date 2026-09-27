@@ -790,13 +790,13 @@ def run_build(command, timeout=None, **options):
     run_to_end(command, None, timeout, **options)
 
 
-BUILD_SCRIPT = Path("launcher") / "tools" / "build" / "build_flash.sh"
+BUILD_SCRIPT = Path("launcher") / "tools" / "build" / "build.sh"
 FLASH_SCRIPT = Path("scripts") / "device" / "flash_image.sh"
 VARIANT_FLAGS = {"release": [], "dev": ["--dev"], "diag": ["--diag"]}
 
 
 def flash_commands(bash, worktree, variant, build_flags=()):
-    """A flash is two commands: build_flash.sh builds `worktree`'s image
+    """A flash is two commands: build.sh builds `worktree`'s image
     with no lock held, then flash_image.sh, the only one that opens the
     port, writes it under the board's lock."""
     worktree = Path(worktree)

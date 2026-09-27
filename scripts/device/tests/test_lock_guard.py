@@ -1,6 +1,6 @@
 """The board lock as every command meets it: boards found by USB serial
 number, the guard on each port primitive, what a lost lock stops, the flash
-hand-off to build_flash.sh and flash_image.sh, and the durations status estimates from."""
+hand-off to build.sh and flash_image.sh, and the durations status estimates from."""
 
 import isolation  # noqa: F401  (first: keeps the suite out of real records)
 import ast
@@ -473,11 +473,11 @@ class FlashTests(Store):
             raise subprocess.CalledProcessError(1, command)
 
         with mock.patch.object(self.store, "acquire", wraps=self.store.acquire) as acquire, \
-                self.assertRaisesRegex(RuntimeError, "build_flash.sh failed .exit 1.: "
+                self.assertRaisesRegex(RuntimeError, "build.sh failed .exit 1.: "
                                                      "error: it does not compile"):
             self.flash(no_build, build=failing_build)
         acquire.assert_not_called()
-        self.assertIn("build_flash.sh failed", self.entry()["error"])
+        self.assertIn("build.sh failed", self.entry()["error"])
         self.assertIsNone(self.entry()["acquired_at"])
 
     def test_the_build_and_the_flash_share_one_log(self):
@@ -600,7 +600,7 @@ class FlashTests(Store):
 
     def test_a_lost_lock_stops_the_scripts_whole_process_tree(self):
         started = self.root / "grandchild.pid"
-        script = self.root / "build_flash.py"
+        script = self.root / "build.py"
         script.write_text(
             "import pathlib, subprocess, sys, time\n"
             "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
@@ -638,7 +638,7 @@ class EditorFlashTests(Store):
         script.write_text("import os, pathlib, time\n"
                           f"pathlib.Path({str(started)!r}).write_text(str(os.getpid()))\n"
                           "time.sleep(60)\n")
-        build = self.root / "build_flash.py"
+        build = self.root / "build.py"
         build.write_text("")
         generator = self.root / "generator.py"
         generator.write_text("print('/* header */')\n")

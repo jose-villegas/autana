@@ -72,7 +72,7 @@ menu "Launcher"
             session - just to check the POST report or flip a toggle - makes
             the build too slow to use for anything else. Turn this on only
             for an automated harness that needs the suites to run
-            themselves: build_flash.sh --diag --autorun layers
+            themselves: build.sh --diag --autorun layers
             sdkconfig.defaults.diag_autorun on top of sdkconfig.defaults.diag
             for exactly that reason, and every report script that captures a
             whole run goes through it.

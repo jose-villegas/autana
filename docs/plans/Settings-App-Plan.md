@@ -28,7 +28,7 @@ Two vocabularies name the same flag today:
 - `CONFIG_LAUNCHER_SELFTEST` (Kconfig), `boot/selftest.c`, `selftest_run()`
   — the code that actually runs the suites calls this "selftest."
 - `main/apps/diagnostics/`, `app_diagnostics`, `build.diag/`,
-  `build_flash.sh --diag`,
+  `build.sh --diag`,
   `sdkconfig.defaults.diag`, `.github/workflows/build-diagnostics.yml` —
   the app, the tooling, the CI workflow, and the prose docs all call this
   "diagnostics."

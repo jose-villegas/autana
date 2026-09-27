@@ -123,7 +123,7 @@ BOOT_PNG = os.path.join(os.path.dirname(LAUNCHER_DIR), "design", "boot", "boot.p
 BOOT_ANIM_IMAGE_HEADER = os.path.join(MAIN_DIR, "boot", "boot_anim_image.h")
 # 300 measured too short in practice - a from-scratch (or even mostly-
 # cached) dev build going through this script's own Git-Bash -> cmd-shim
-# -> idf.py chain (see build_flash.sh/idf.sh's own comments on why
+# -> idf.py chain (see build.sh/idf.sh's own comments on why
 # that chain exists at all) runs noticeably slower than the same build
 # invoked directly, and blew past 300s on a machine with a real device
 # attached. 600 is a guess at "generous enough", not a measurement of a
@@ -327,9 +327,9 @@ def find_cc():
 
 
 def find_bash():
-    """build_flash.sh is POSIX sh, written to run under Git Bash (see its
+    """build.sh is POSIX sh, written to run under Git Bash (see its
     own top comment) - idf.py itself cannot run under Git Bash on Windows
-    (see docs/Testing-Guide.md), but build_flash.sh already routes around
+    (see docs/Testing-Guide.md), but build.sh already routes around
     that itself (tools/build/idf.sh -> idf_shim.bat), so running the .sh under
     Git Bash's own bash.exe is the one thing this needs to get right.
 
@@ -522,7 +522,7 @@ class Renderer:
         bash = find_bash()
         if bash is None:
             raise RenderError(
-                500, "no bash.exe found - build_flash.sh needs Git Bash "
+                500, "no bash.exe found - build.sh needs Git Bash "
                 "(see docs/Testing-Guide.md). The timeline files were "
                 "still written to main/boot/ above.")
         commands = device.flash_commands(bash, ENGINE_DIR, "dev")
@@ -555,7 +555,7 @@ class Renderer:
         # a probe timeout is itself diagnostic (bash launched but never
         # returned), not a stand-in for "the build timed out"; letting
         # TimeoutExpired propagate unguarded here would surface that same
-        # wrong, confusing message ("build_flash.sh did not finish
+        # wrong, confusing message ("build.sh did not finish
         # within 600s") for a run that had not even reached the real
         # invocation yet.
         try:
@@ -574,7 +574,7 @@ class Renderer:
                           "FOUND/MISSING, a stronger signal than a normal "
                           "probe failure.")
 
-        # stdin=DEVNULL: build_flash.sh waits for Enter after a failure (it
+        # stdin=DEVNULL: build.sh waits for Enter after a failure (it
         # doubles as a double-clickable script), which would otherwise hang
         # this request forever.
         failed = None

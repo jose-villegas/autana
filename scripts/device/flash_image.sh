@@ -2,13 +2,13 @@
 #
 # Write a built firmware image to the board: the second half of
 # `autana flash`, which device.py runs under the board's lock once
-# launcher/tools/build/build_flash.sh has built the image.
+# launcher/tools/build/build.sh has built the image.
 #
 # Usage:
 #   scripts/device/flash_image.sh [--dev|--diag] [IDF_EXPORT]
 #
 #   --dev, --diag  write build.dev/ or build.diag/ instead of build/.
-#   IDF_EXPORT     ESP-IDF's export script, as for build_flash.sh.
+#   IDF_EXPORT     ESP-IDF's export script, as for build.sh.
 #
 # This opens the board's serial port, which is why it lives in
 # scripts/device/. It refuses unless AUTANA_DEVICE_LOCK_TOKEN is the live

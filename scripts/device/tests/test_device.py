@@ -749,7 +749,7 @@ class RunSuiteDefaultPathTests(unittest.TestCase):
 
 
 def build_prints(build_id):
-    """A run_build() standing in for build_flash.sh, which prints the id of
+    """A run_build() standing in for build.sh, which prints the id of
     the image it built into the flash log."""
     def run(*unused, **keywords):
         keywords["stdout"].write(("BUILD_ID=" + build_id + "\n").encode("ascii"))
@@ -817,7 +817,7 @@ class FlashDefaultPathTests(unittest.TestCase):
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
                 device.flash(args, store, BOARD)
             self.assertEqual([Path(call.args[0][1]).name for call in build.call_args_list],
-                             ["build_flash.sh"])
+                             ["build.sh"])
             self.assertNotIn("AUTANA_DEVICE_LOCK_TOKEN", build.call_args.kwargs["env"])
             self.assertEqual([Path(call.args[0][1]).name for call in run.call_args_list],
                              ["flash_image.sh"])
@@ -985,7 +985,7 @@ class BatchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             worktree = Path(directory) / "wt"
             (worktree / "launcher" / "tools" / "build").mkdir(parents=True)
-            (worktree / "launcher" / "tools" / "build" / "build_flash.sh").write_text(script_text)
+            (worktree / "launcher" / "tools" / "build" / "build.sh").write_text(script_text)
             calls["worktree"] = str(worktree.resolve())
             out_path = str(Path(directory) / "raw.txt") if out else None
             args = Namespace(owner="agent", purpose="p", wait=0, worktree=str(worktree),
