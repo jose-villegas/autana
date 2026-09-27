@@ -35,7 +35,8 @@ typedef struct {
     int64_t step_us;
     int64_t present_us;
     int64_t bytes;
-    int frames;
+    int64_t heal_bytes;
+    int frames, full_bands, gathered, partial_bands;
 } arm_result_t;
 
 static const input_t idle_input = {0};
@@ -122,6 +123,8 @@ run_arm(arm_t arm) {
     }
     result.elapsed_us = esp_timer_get_time() - began;
     result.bytes = gfx_get_bytes_sent();
+    result.heal_bytes = gfx_get_heal_bytes_sent();
+    gfx_get_strip_send_counts(&result.full_bands, &result.gathered, &result.partial_bands);
     return result;
 }
 
@@ -142,10 +145,12 @@ static void
 log_arm(arm_t arm, const arm_result_t* result) {
     const double frames = result->frames;
     ESP_LOGI(TAG,
-             "RIDGE PERF arm=%s frames=%d total_ms=%.3f step_ms=%.3f present_ms=%.3f fps=%.1f bytes_per_frame=%.0f",
+             "RIDGE PERF arm=%s frames=%d total_ms=%.3f step_ms=%.3f present_ms=%.3f fps=%.1f bytes_per_frame=%.0f "
+             "heal_bytes_per_frame=%.0f full_bands=%d gathered=%d partial_bands=%d",
              arm_name(arm), result->frames, (double)result->elapsed_us / frames / 1000.0,
              (double)result->step_us / frames / 1000.0, (double)result->present_us / frames / 1000.0,
-             1000000.0 * frames / result->elapsed_us, (double)result->bytes / frames);
+             1000000.0 * frames / result->elapsed_us, (double)result->bytes / frames,
+             (double)result->heal_bytes / frames, result->full_bands, result->gathered, result->partial_bands);
 }
 
 static void
