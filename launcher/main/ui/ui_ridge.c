@@ -67,7 +67,7 @@ TUNE(ridge, front_period_ms, 2600, 100, 60000);
 TUNE(ridge, tilt_push, 350, 0, 1000);
 TUNE(ridge, tilt_coast_ms, 2000, 50, 10000);
 TUNE(ridge, level_tau_ms, 700, 10, 5000);
-TUNE(ridge, gradient_steps, 6, 1, 90);
+TUNE(ridge, gradient_steps, 3, 1, 90);
 TUNE(ridge, boot_hold_ms, 700, 0, 10000);
 TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 
