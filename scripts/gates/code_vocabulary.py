@@ -3,7 +3,7 @@ import pathlib
 import re
 
 SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components", ".git"}
-SOURCE_SUFFIXES = {".c", ".h", ".py"}
+SOURCE_SUFFIXES = {".c", ".h", ".py", ".mjs"}
 C_SUFFIXES = {".c", ".h"}
 FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\(")
 MACRO = re.compile(r"^\s*#\s*define\s+([A-Z][A-Z0-9_]+)\b", re.M)
@@ -124,6 +124,10 @@ def vocabulary(root):
             # string - an environment variable it reads, a line it matches.
             vocab.constants |= set(PY_CONSTANT.findall(text))
             vocab.constants |= set(CONSTANT.findall(PY_COMMENT.sub("", text)))
+        elif path.suffix == ".mjs":
+            # An environment variable a Node gate reads; its functions are
+            # camelCase and never cited as a C or Python name would be.
+            vocab.constants |= set(CONSTANT.findall(_without_comments_or_strings(text, strings=False)))
         else:
             kconfig += KCONFIG.findall(text)
     vocab.script_functions -= vocab.functions

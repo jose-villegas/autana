@@ -2,6 +2,11 @@
 """Fail when a documentation citation no longer resolves in this tree.
 
     python scripts/gates/check_doc_citations.py [--root ROOT]
+
+A plan under docs/plans/ names what is not built yet and is not checked. Put
+``<!-- doc-citations: ignore -->`` on a line that cites a name from outside
+this tree on purpose - an SDK-private function, an example file a reader
+writes themselves.
 """
 import pathlib
 import re
@@ -16,6 +21,8 @@ INLINE = re.compile(r"`([^`\n]+)`")
 FUNCTION = re.compile(r"^([a-z][a-z0-9_]*)\(\)$")
 MACRO = re.compile(r"^[A-Z][A-Z0-9_]*$")
 FILE = re.compile(r"^(?:launcher/|apps/|[\w.-]+/)*(?:[\w.-]+\.(?:c|h|py|sh|cmake|md)|CMakeLists\.txt)$")
+ESCAPE = "<!-- doc-citations: ignore -->"
+PLANS = "docs/plans/"
 SKIP_FENCES = {"sh", "shell", "bash", "console", "text", "output"}
 FOREIGN_FUNCTIONS = {"exit", "main", "max", "name", "bsp_display_new"}
 FOREIGN_PATHS = {"idf.py", "idf_tools.py"}
@@ -51,6 +58,8 @@ def documentation(root):
 def citations(root):
     root = pathlib.Path(root)
     for path in documentation(root):
+        if path.relative_to(root).as_posix().startswith(PLANS):
+            continue
         fenced = False
         skip = False
         for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
@@ -62,7 +71,7 @@ def citations(root):
                 else:
                     fenced = skip = False
                 continue
-            if skip:
+            if skip or ESCAPE in line:
                 continue
             for text in INLINE.findall(line):
                 function = FUNCTION.fullmatch(text)
@@ -75,26 +84,6 @@ def citations(root):
                 elif MACRO.fullmatch(text):
                     yield Citation(path.relative_to(root).as_posix(), number,
                                    "macro", text)
-
-
-ALLOWLIST = "scripts/gates/doc_citation_allowlist.txt"
-PLANS = ("docs/plans/*", "*")
-
-
-def allowlist(root):
-    """(doc, citation) -> allowlist line number."""
-    path = pathlib.Path(root) / ALLOWLIST
-    allowed = {}
-    if not path.exists():
-        return allowed
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        if not line or line.startswith("#"):
-            continue
-        fields = line.split("\t")
-        if len(fields) != 3 or not all(fields):
-            raise ValueError(f"{path}:{number}: expected doc, citation, reason")
-        allowed[(fields[0], fields[1])] = number
-    return allowed
 
 
 def resolve_doc(root, value, citing_doc=None):
@@ -210,16 +199,8 @@ def unresolved_sections(root):
     return missing
 
 
-def allowlist_entry(allowed, citation):
-    if (citation.doc, citation.value) in allowed:
-        return (citation.doc, citation.value)
-    if PLANS in allowed and citation.doc.startswith("docs/plans/"):
-        return PLANS
-    return None
-
-
 def unresolved(root):
-    """Every citation that does not resolve, allowlisted or not."""
+    """Every citation that does not resolve."""
     root = pathlib.Path(root)
     vocab = vocabulary(root)
     functions, macros = vocab.functions | vocab.script_functions, vocab.constants
@@ -247,16 +228,7 @@ def unresolved(root):
 
 
 def check(root):
-    allowed = allowlist(root)
-    return [citation for citation in unresolved(root)
-            if allowlist_entry(allowed, citation) is None]
-
-
-def stale_allowlist(root):
-    """Allowlist entries that no unresolved citation needs, as (line, doc, citation)."""
-    allowed = allowlist(root)
-    used = {allowlist_entry(allowed, citation) for citation in unresolved(root)}
-    return sorted((number, *entry) for entry, number in allowed.items() if entry not in used)
+    return unresolved(root)
 
 
 def main(argv):
@@ -268,7 +240,6 @@ def main(argv):
         return 2
     try:
         missing = check(root)
-        stale = stale_allowlist(root)
         missing_sections = unresolved_sections(root)
     except ValueError as error:
         print(error, file=sys.stderr)
@@ -278,14 +249,11 @@ def main(argv):
         print(f"{item.doc}:{item.line}: missing {item.kind} citation {label}")
     for citation, reason in missing_sections:
         print(f"{citation.doc}:{citation.line}: missing section citation - {reason}")
-    for number, doc, citation in stale:
-        print(f"{ALLOWLIST}:{number}: stale entry {doc} {citation}: nothing left to allow")
     print(f"{len(missing_sections)} missing section citation"
           f"{'' if len(missing_sections) == 1 else 's'}")
     print(f"{len(missing)} missing documentation citation"
-          f"{'' if len(missing) == 1 else 's'}, {len(stale)} stale allowlist "
-          f"entr{'y' if len(stale) == 1 else 'ies'}")
-    return 1 if missing or stale or missing_sections else 0
+          f"{'' if len(missing) == 1 else 's'}")
+    return 1 if missing or missing_sections else 0
 
 
 if __name__ == "__main__":

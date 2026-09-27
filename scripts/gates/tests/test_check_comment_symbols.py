@@ -18,11 +18,8 @@ class StaleForeignTest(unittest.TestCase):
         target.write_text(text, encoding="utf-8")
 
     def test_a_foreign_entry_no_comment_cites_is_reported_stale(self):
-        # FOREIGN is meant to name real vendor/libc functions a comment
-        # legitimately cites with no local definition to find - an entry
-        # nothing ever cites any more is exactly the dead-allowlist trap
-        # check_doc_citations.py's own stale_allowlist() already guards
-        # against.
+        # FOREIGN names vendor/libc functions a comment cites with no local
+        # definition; an entry nothing cites any more is dead weight.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.write(root, "launcher/main/gfx/gfx.c",
