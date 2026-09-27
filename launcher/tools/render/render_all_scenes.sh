@@ -17,6 +17,10 @@
 # fails. A missing compiler is the one thing that is not a failure here, the
 # same way test/check_app_sources.sh treats it.
 #
+# Every render also runs the frame watch (render_watch.h): a scene whose
+# steady state allocates or prints fails. tests/check_frame_watch.sh, run
+# first, proves that check still fails what it should.
+#
 # --update-baseline re-pins every scene's hashes. It is a deliberate act:
 # run it only after looking at the images and agreeing the pixels should
 # have changed.
@@ -60,6 +64,9 @@ if [ -z "$scenes" ]; then
     echo "No *_render_host.sh found under $LAUNCHER_DIR" >&2
     exit 1
 fi
+
+echo "--- frame watch"
+sh "$TOOLS_DIR/tests/check_frame_watch.sh"
 
 count=0
 for scene in $scenes; do
