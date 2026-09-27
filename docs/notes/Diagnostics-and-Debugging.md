@@ -237,7 +237,7 @@ Two ways to see raw sensor readings without adding any code:
   gate, and the three build variants (release/dev/diag).
 - [`../Testing-Guide.md`](../Testing-Guide.md) - the host and device test
   runners, and runsuite.
-- [`../Launcher-Architecture.md`](../Launcher-Architecture.md) - the
+- [`../Firmware-Architecture.md`](../Firmware-Architecture.md) - the
   Diagnostics app (DEVELOPMENT-gated as a whole, with the self-test runner
   alone narrowed to SELFTEST), and its still-open split into a Settings app.
 - [`../plans/Settings-App-Plan.md`](../plans/Settings-App-Plan.md) - that open split,

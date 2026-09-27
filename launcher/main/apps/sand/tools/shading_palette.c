@@ -2118,7 +2118,7 @@ to_gfx_color(uint16_t native) {
 }
 
 /* A generator that half-works is worse than one that fails outright - see
- * docs/Launcher-Architecture.md's "Generated sources". */
+ * launcher/tools/gen/README.md's rules. */
 static void
 validate_palette_or_exit(void) {
     if (palette_used <= UI_ENTRIES || palette_used > PALETTE_SIZE) {

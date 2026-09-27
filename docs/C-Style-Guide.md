@@ -8,7 +8,7 @@ provide its examples because they can be added or removed independently.
 
 The comment policy is under "Comments" below, and the layering rule comments
 obey is there with it; the include half of that rule lives in
-[`docs/Launcher-Architecture.md`](Launcher-Architecture.md), since it is
+[`docs/Firmware-Architecture.md`](Firmware-Architecture.md), since it is
 about how the layers fit together rather than about C. Cppcheck and the MISRA
 addon check semantic rules through `launcher/tools/quality/misra_check.sh`.
 The checkable first-party subset is gated by
@@ -169,7 +169,7 @@ and it survives the code it described. Say what shape of caller needs the
 thing ("a checkbox toggle", "a per-tile badge") or state the rule a caller
 must follow. An app's own files may name anything below them; that direction
 cannot dangle. This is the comment half of the layering rule includes obey -
-see [`docs/Launcher-Architecture.md`](Launcher-Architecture.md).
+see [`docs/Firmware-Architecture.md`](Firmware-Architecture.md).
 
 A NAME is all that is scripted. Borrowing an app's vocabulary is the same
 fault one step quieter - "an app's working grid" names no app but still
@@ -263,7 +263,7 @@ A `.c` file includes its own public header first when it has one. Follow it
 with standard-library headers, then ESP-IDF or other external headers, then
 project headers. Keep project includes layer-qualified - `"gfx/gfx.h"`, not
 `"gfx.h"`, including between two files in the same folder; see
-[`docs/Launcher-Architecture.md`](Launcher-Architecture.md) for why. Do not
+[`docs/Firmware-Architecture.md`](Firmware-Architecture.md) for why. Do not
 expose a lower layer to a higher-layer type just to avoid passing a small
 value across the boundary.
 
