@@ -445,6 +445,22 @@ wall-clock says nothing about what the work costs on the chip.
 a scene, frames and synthetic touch, the pins, the QEMU backend, and
 `render_diff.sh`.
 
+## The frame watch as a gate
+
+The frame watch ([Launcher-Architecture.md](Launcher-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state))
+warns on the board; two places turn it into a failure, both judging frames
+after the same 16-frame warm-up by the same rule (a site in 8 of the last
+16 frames).
+
+| Where | A frame is | Watched | Fails |
+|---|---|---|---|
+| Every host render scene (`render_all_scenes.sh`, CI) | one `draw()` | `malloc`/`calloc`/`realloc`/`free` wrapped at link time, keyed by caller; anything written to stdout, which is where `ESP_LOG*` goes on a host | the render, with `FRAME_WATCH` lines on stderr carrying an `addr2line` command |
+| Every on-device test (the `RUN_TEST` wrapper in `test/timing.c`) | the span between two presents | the board's own watch | that test, with the `FRAME_WATCH` lines above its result |
+
+A scene or test shorter than 24 frames is never judged. The harness proves
+its own check with `tools/render/tests/check_frame_watch.sh`: a fixture that
+allocates or prints every frame must fail, and once must pass.
+
 ---
 
 ## POST is a third thing

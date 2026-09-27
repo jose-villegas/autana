@@ -454,6 +454,23 @@ rather than after is what lets a request made inside that very `frame()` call
 reach the following pass. The app's side is in
 [Building-an-App.md](Building-an-App.md#full-redraw).
 
+### The frame watch: no allocating or logging in steady state
+
+A frame that allocates, frees or logs every time it runs pays for it every
+frame. A development build watches for that at runtime
+(`util/frame_watch.h`); release compiles none of it.
+
+| | |
+|---|---|
+| The frame | `main.c` opens it before input is read and closes it before `vTaskDelay()`. It covers the shell's pass, the app's `frame()` and `update()`, and the present - on the loop's task, the panel's sender and the core-1 job worker. |
+| Watched | Every heap allocation and free, through ESP-IDF's heap hooks (`CONFIG_HEAP_USE_HOOKS`, dev and diag defaults), keyed by the caller's address. Every `ESP_LOG*` line, through `esp_log_set_vprintf()`, keyed by its format string. A plain `printf()` is not watched on the board. |
+| Repeating | The same site in 8 of the last 16 frames, a quarter to half a second at this board's 30-60 fps. A START press that allocates once, or the fps report every 1.5 s, never qualifies. The 16 frames after an app is entered or left are counted but not judged. |
+| Warning | One `FRAME_WATCH` line per site, repeated at most every 10 s while it lasts: `FRAME_WATCH alloc in 16 of 16 frames at 0x4201abcd`. A log site also shows its format. `autana monitor` decodes the address to a file and line against the matching `.elf`. |
+| Counts | `autana framewatch`, and the `frame_watch` key of `autana screenshot`'s `.json`: the last frame's allocs, frees and log lines, and the sites repeating now. |
+
+The gates are in [Testing-Guide.md](Testing-Guide.md#the-frame-watch-as-a-gate):
+every host render scene, and every on-device test that presents.
+
 ---
 
 ## Apps
