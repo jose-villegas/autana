@@ -58,38 +58,48 @@ class DeviceAccessTest(unittest.TestCase):
             openers, _ = check_device_access.check(root)
         self.assertEqual(openers, [])
 
-    def test_a_flash_after_a_device_lock_check_is_allowed(self):
+    def openers(self, path, text):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.write(root, "launcher/tools/build/build_flash.sh",
-                      '#!/bin/sh\n'
-                      'python "$DIR/scripts/device/device_lock.py" \\\n'
-                      '        --board "$AUTANA_BOARD" \\\n'
-                      '        check-token --token "$AUTANA_DEVICE_LOCK_TOKEN" || exit 1\n'
-                      'idf -B "$BUILD_DIR" -p "$COM_PORT" flash\n')
-            self.commit(root, "launcher")
+            self.write(root, path, text)
+            self.commit(root, path)
             openers, _ = check_device_access.check(root)
-        self.assertEqual(openers, [])
+        return [v.line for v in openers]
 
-    def test_a_flash_with_no_device_lock_check_is_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.write(root, "launcher/tools/build/build_flash.sh",
-                      '#!/bin/sh\nidf -B "$BUILD_DIR" -p "$COM_PORT" flash\n')
-            self.commit(root, "launcher")
-            openers, _ = check_device_access.check(root)
-        self.assertEqual(len(openers), 1)
+    def test_a_flash_outside_scripts_device_is_flagged_whatever_checks_the_lock(self):
+        self.assertEqual(self.openers(
+            "launcher/tools/build/build_flash.sh",
+            '#!/bin/sh\n'
+            'python "$DIR/scripts/device/device_lock.py" check-token --token "$T" || exit 1\n'
+            'idf -B "$BUILD_DIR" -p "$COM_PORT" flash\n'), [3])
 
-    def test_a_flash_before_the_device_lock_check_is_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.write(root, "launcher/tools/flash_then_check.sh",
-                      '#!/bin/sh\n'
-                      'esptool --port "$PORT" write_flash 0x0 image.bin\n'
-                      'python scripts/device/device_lock.py check-token --token "$T"\n')
-            self.commit(root, "launcher")
-            openers, _ = check_device_access.check(root)
-        self.assertEqual([v.line for v in openers], [2])
+    def test_a_shell_merge_bin_is_not_flagged(self):
+        self.assertEqual(self.openers(
+            "launcher/test/merge.sh",
+            '#!/bin/sh\nesptool.py --chip esp32s3 merge-bin -o flash.bin 0x0 boot.bin\n'), [])
+
+    def test_a_line_naming_merge_bin_but_running_write_flash_is_flagged(self):
+        for line in ('esptool -p COM5 write_flash 0x0 image.bin  # merge_bin\n',
+                     'esptool --chip esp32s3 merge_bin -o a.bin && esptool -p COM5 write_flash 0x0 a.bin\n'):
+            with self.subTest(line=line):
+                self.assertEqual(self.openers("launcher/tools/flash_it.sh", "#!/bin/sh\n" + line), [2])
+
+    def test_a_filename_containing_an_offline_name_is_flagged(self):
+        self.assertEqual(self.openers(
+            "launcher/tools/flash_it.sh",
+            '#!/bin/sh\nesptool -p COM5 write_flash 0x0 merge_bin_image_info.bin\n'), [2])
+
+    def test_merge_bin_on_the_line_after_the_esptool_module_is_not_flagged(self):
+        self.assertEqual(self.openers(
+            "launcher/test/qemu_merge.py",
+            'cmd = [python, "-m", "esptool",\n'
+            '       "merge_bin", "-o", out_path]\n'), [])
+
+    def test_a_python_write_flash_split_across_lines_is_flagged(self):
+        self.assertEqual(self.openers(
+            "launcher/tools/flash_it.py",
+            'cmd = [python, "-m", "esptool", "--port", port,\n'
+            '       "write_flash", "0x0", "merge_bin.bin"]\n'), [1])
 
     def test_an_esptool_image_merge_is_not_flagged(self):
         # QEMU boots a merged image file; merge_bin never opens a port.
