@@ -68,7 +68,7 @@ TUNE(ridge, tilt_push, 350, 0, 1000);
 TUNE(ridge, tilt_coast_ms, 2000, 50, 10000);
 TUNE(ridge, level_tau_ms, 700, 10, 5000);
 TUNE(ridge, gradient_steps, 3, 1, 90);
-TUNE(ridge, axis_dissolve_ms, 400, 0, 3000);
+TUNE(ridge, axis_dissolve_ms, 0, 0, 3000);
 TUNE(ridge, boot_hold_ms, 700, 0, 10000);
 TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 
@@ -580,9 +580,10 @@ repaint_column_strip(gfx_color_t* framebuffer, int x, int lo, int hi) {
 }
 
 /* When the strips switch between rows and columns the picture changes
- * along the ridge, and the change is shown rather than hidden: the new
- * picture dissolves in through a 4x4 ordered dither, a level at a time,
- * eased in and out. A pixel not yet dissolved keeps what it showed. */
+ * along the ridge, and the change is shown rather than hidden: a snap by
+ * default, or with `axis_dissolve_ms` set, the new picture dissolving in
+ * through a 4x4 ordered dither, eased. A pixel not yet dissolved keeps what
+ * it showed. */
 static const uint8_t dissolve_order[4][4] = {{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
 
 static inline __attribute__((always_inline)) bool
