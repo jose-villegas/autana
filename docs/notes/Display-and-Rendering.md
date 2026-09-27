@@ -159,7 +159,7 @@ An in-between clock looked like the obvious next thing to try - more margin
 than 80, still faster than 40 - and is exactly what 60 MHz was tried as. It
 is not available on this chip. GPSPI2's clock is derived from an 80 MHz
 source through an integer `pre`/`n` divider
-(`spi_ll_master_cal_clock()` in the IDF's `spi_ll.h`): a request over 60 MHz
+(`spi_ll_master_cal_clock()` in the IDF's `spi_ll.h`): a request over 60 MHz <!-- doc-citations: ignore -->
 uses that 80 MHz source directly, and anything at or under 60 MHz is bound
 by the divider search's `n >= 2` floor to at most `80/2 = 40`. There is no
 integer divider that lands near 60 - the 60 MHz request measured
