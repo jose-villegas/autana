@@ -2,7 +2,8 @@
  * lit_frame - one whole frame of a lit_mesh_t on both cores: cull on the
  * caller's core, then each core transforms half the visible clusters and
  * clears and fills half the rows. On a host, or with core 1 busy, the
- * second half runs inline.
+ * second half runs inline. Rendering at half the panel's resolution and
+ * doubling the result quarters the pixels and halves the rows and spans.
  */
 #pragma once
 
@@ -21,6 +22,9 @@ typedef struct {
     uint16_t* depth;          /* width * height */
     int width, height;
     gfx_color_t clear;
+    /* When not NULL, each core also doubles its finished rows into this
+     * picture, 2 * width by 2 * height, 4-byte aligned. */
+    gfx_color_t* doubled;
 } lit_frame_t;
 
 typedef struct {

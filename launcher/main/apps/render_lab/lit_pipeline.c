@@ -218,8 +218,6 @@ lit_transform(const lit_mesh_t* mesh, const lit_view_t* view, const uint16_t* cl
             const int16_t* p = mesh->positions[v];
             const lit_vec3_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
             lit_cs_vertex_t* out = &cs[v];
-            out->x = l.x;
-            out->y = l.y;
             out->z = l.z;
             if (l.z > view->near_z) {
                 const float inv = 1.0f / l.z;
@@ -327,7 +325,9 @@ lit_draw(const lit_mesh_t* mesh, const lit_view_t* view, const uint16_t* cluster
             if (in_front < 3) {
                 clip_vertex_t in[3];
                 for (int k = 0; k < 3; k++) {
-                    in[k] = (clip_vertex_t){v[k]->x, v[k]->y, v[k]->z, rgb[k][0], rgb[k][1], rgb[k][2]};
+                    const int16_t* p = mesh->positions[tri[k]];
+                    const lit_vec3_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
+                    in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[k][0], rgb[k][1], rgb[k][2]};
                 }
                 draw_near_clipped(view, in, c->double_sided, target);
                 continue;
