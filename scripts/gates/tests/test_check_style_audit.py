@@ -37,6 +37,65 @@ class StyleAuditTest(unittest.TestCase):
             hits = self.rule_hits(root, "UNDEF-PLACEMENT")
             self.assertEqual([hit.line for hit in hits], [7, 9])
 
+    def frame_path_fixture(self, root, body):
+        """An app whose frame() runs `body` through a helper, beside an
+        enter() and exit() free to do anything; a copy under tests/ is
+        exempt. `body` starts on line 6."""
+        text = ("static char* kept;\n"
+                "static void demo_enter(void) { kept = malloc(8); printf(\"hi\\n\"); }\n"
+                "static void demo_exit(void) { free(kept); }\n"
+                "static void\nhelper(void) {\n" + body + "}\n"
+                "static void\ndemo_frame(uint32_t dt_ms, const input_t* input) {\n    helper();\n}\n"
+                "app_t app_demo = {.enter = demo_enter, .frame = demo_frame, .exit = demo_exit};\n")
+        self.write(root, "launcher/main/apps/demo/app_demo.c", text)
+        self.write(root, "launcher/main/apps/demo/tests/suite_demo.c", text)
+        self.commit(root, "launcher")
+
+    def test_heap_calls_on_the_frame_path_are_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.frame_path_fixture(root,
+                                    "    char* p = malloc(4);\n"
+                                    "    heap_caps_free(p);\n"
+                                    "    if (kept == NULL) {\n"
+                                    "        kept = malloc(8);\n"
+                                    "    }\n"
+                                    "    if (!kept) kept = calloc(1, 8);\n"
+                                    "    size_t n = heap_caps_get_free_size(0);\n")
+            hits = self.rule_hits(root, "FRAME-PATH-HEAP")
+        self.assertEqual([(h.path, h.line) for h in hits],
+                         [("launcher/main/apps/demo/app_demo.c", 6), ("launcher/main/apps/demo/app_demo.c", 7)])
+
+    def test_a_forever_loop_is_the_frame_path_and_a_breaking_loop_is_not(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/main.c",
+                       "static void\nstep(void) {\n    free(malloc(1));\n}\n"
+                       "static void\nboot(void) {\n    for (;;) {\n        free(malloc(1));\n        break;\n    }\n}\n"
+                       "void\nloop(void) {\n    while (1) {\n        step();\n    }\n}\n")
+            self.commit(root, "launcher")
+            hits = self.rule_hits(root, "FRAME-PATH-HEAP")
+        self.assertEqual(sorted((h.line, h.message.split("(")[0]) for h in hits), [(3, "free"), (3, "malloc")])
+
+    def test_console_writes_on_the_frame_path_are_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.frame_path_fixture(root,
+                                    "    char line[8];\n"
+                                    "    snprintf(line, sizeof line, \"%d\", 1);\n"
+                                    "    printf(\"%s\\n\", line);\n"
+                                    "#if CONFIG_LAUNCHER_DEVELOPMENT\n"
+                                    "    printf(\"dev\\n\");\n"
+                                    "#else\n"
+                                    "    puts(\"release\");\n"
+                                    "#endif\n"
+                                    "#if !CONFIG_LAUNCHER_SELFTEST\n"
+                                    "    fprintf(stderr, \"x\");\n"
+                                    "#endif\n")
+            hits = self.rule_hits(root, "FRAME-PATH-CONSOLE")
+        self.assertEqual([(h.path, h.line) for h in hits],
+                         [("launcher/main/apps/demo/app_demo.c", n) for n in (8, 12, 15)])
+
     def test_a_bd_issue_id_in_a_comment_is_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
