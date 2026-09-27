@@ -1,9 +1,10 @@
 """Names declared by the engine and its checked-in maintenance scripts."""
 import pathlib
 import re
+import subprocess
 
 SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components", "node_modules", ".git"}
-SOURCE_SUFFIXES = {".c", ".h", ".py", ".mjs"}
+SOURCE_SUFFIXES = {".c", ".h", ".py", ".sh", ".mjs"}
 C_SUFFIXES = {".c", ".h"}
 FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\(")
 MACRO = re.compile(r"^\s*#\s*define\s+([A-Z][A-Z0-9_]+)\b", re.M)
@@ -25,9 +26,23 @@ def source_paths(root):
     for base in bases:
         if not base.is_dir():
             continue
-        for path in sorted(base.rglob("*")):
-            if (path.suffix in SOURCE_SUFFIXES or path.name == "Kconfig.projbuild") and not any(part in SKIP for part in path.parts):
+        for path in _listed(base):
+            if path.suffix in SOURCE_SUFFIXES or path.name == "Kconfig.projbuild":
                 yield path
+
+
+def _listed(base):
+    """Every file under `base` git would commit - tracked, or new and not
+    ignored - so a build directory's output never counts while
+    launcher/tools/build/ does. Outside git (a test fixture), every file
+    not under a SKIP directory."""
+    listing = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+                             cwd=base, capture_output=True, text=True)
+    if listing.returncode == 0:
+        paths = (base / line for line in listing.stdout.splitlines() if line)
+        return sorted(path for path in paths if path.is_file())
+    return sorted(path for path in base.rglob("*")
+                  if path.is_file() and not any(part in SKIP for part in path.relative_to(base).parts))
 
 
 def _without_comments_or_strings(text, strings=True):
@@ -83,7 +98,8 @@ class Vocabulary:
 
     `constants`: spelled in C code or a string literal, #defined, a Kconfig
     option (with or without CONFIG_), an sdkconfig default, or anywhere in a
-    script outside its `#` comments - never a name only a comment spells.
+    Python or shell script outside its `#` comments - never a name only a
+    comment spells.
 
     `families`: the first word of every C #define, and CONFIG_ plus the
     first word of every project Kconfig option; a cited constant outside
@@ -123,6 +139,10 @@ def vocabulary(root):
             # Top-level assignments, and names a script only spells in a
             # string - an environment variable it reads, a line it matches.
             vocab.constants |= set(PY_CONSTANT.findall(text))
+            vocab.constants |= set(CONSTANT.findall(PY_COMMENT.sub("", text)))
+        elif path.suffix == ".sh":
+            # A variable a shell script sets or reads: a device profile's
+            # value, an override the environment passes in.
             vocab.constants |= set(CONSTANT.findall(PY_COMMENT.sub("", text)))
         elif path.suffix == ".mjs":
             # An environment variable a Node gate reads; its functions are
