@@ -106,10 +106,10 @@ device_report_run() {
     fi
 }
 
-# Build+flash and capture are one held-lock call, scripts/device/device.py's
-# own `selftest` (report_suite="", every suite at boot) or `batch --runs 1`
-# (report_suite=<name>, one suite via RUNSUITE - the same build-then-
-# capture-under-one-lock shape, scoped to a single suite and run). BOARD,
+# Build, flash and capture are one call, scripts/device/device.py's own
+# `selftest` (report_suite="", every suite at boot) or `batch --runs 1`
+# (report_suite=<name>, one suite via RUNSUITE): the build first, then the
+# flash and the capture under one held lock. BOARD,
 # a USB serial number, is passed through when given; otherwise device.py
 # takes AUTANA_BOARD, else the only board plugged in.
 device_report_capture() {

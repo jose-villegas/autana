@@ -29,8 +29,9 @@ where Python has `readline` (Windows: `pip install pyreadline3`).
 | `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope]` | Build and flash this worktree; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
 
-`autana flash` runs `launcher/tools/build/build_flash.sh`, then, under the
-board's lock, `scripts/device/flash_image.sh`, the one that opens the port.
+`autana flash` runs `launcher/tools/build/build_flash.sh` with no lock held,
+then, under the board's lock, `scripts/device/flash_image.sh`, the one that
+opens the port.
 It proves the write, not the boot:
 [what a flash proves](Device-Lock.md#what-a-flash-proves).
 
