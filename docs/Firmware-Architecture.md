@@ -37,7 +37,9 @@ screen.
 ## Layers
 
 Each row may include anything in a row below it, and `app.h`, never a row
-above or a folder beside it in the same row. Folders that touch hardware are
+above or a folder beside it in the same row. The top row is the two callers,
+and neither includes the other: the shell reaches an app only through the
+callbacks `app.h` declares. Folders that touch hardware are
 marked. `ls launcher/main/<folder>` is the inventory; this is the shape.
 
 ```mermaid
@@ -45,10 +47,8 @@ flowchart TB
     classDef hw fill:#8a3d3d,color:#fff
     classDef contract fill:#f4f1e8,stroke:#333,stroke-width:1px,color:#111
 
-    subgraph R1["apps"]
+    subgraph R1["callers"]
         Apps["apps/<br/><i>one folder per app</i>"]
-    end
-    subgraph R2["shell"]
         Main["main.c<br/><i>the frame loop, app switching</i>"]
     end
     subgraph R3["before the loop"]
@@ -71,8 +71,9 @@ flowchart TB
         Board["board/<br/><i>this board's pins and peripherals</i>"]:::hw
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7
+    R1 --> R3 --> R4 --> R5 --> R6 --> R7
     Contract(["app.h - the shell/app contract"]):::contract
+    Main -.->|"calls through app.h"| Apps
     Contract -.->|"includes input/input.h"| Input
 ```
 
