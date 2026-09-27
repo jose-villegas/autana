@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 #
-# Build the launcher's firmware. Writing it to the board is the other half of
-# `autana flash`: device.py runs this script and then, under the board's
-# lock, scripts/device/flash_image.sh - the only one of the two that opens
-# the serial port. Nothing here needs a board or a lock.
+# Build the launcher's firmware: what `autana build` runs, the way to build
+# (docs/tools/Autana-CLI.md). Writing it to the board is the other half of
+# `autana flash`: device.py runs this script before it takes the board's
+# lock, and then, under it, scripts/device/flash_image.sh - the only one of
+# the two that opens the serial port. Nothing here needs a board or a lock.
 #
 # Usage:
-#   tools/build/build_flash.sh [--dev|--diag] [--autorun] [--perf-scope] #                        [--build-only] [--verbose] [IDF_EXPORT]
+#   tools/build/build.sh [--dev|--diag] [--autorun] [--perf-scope]
+#                        [--verbose] [IDF_EXPORT]
 #
 #   --verbose   stream and save the build output. The full stream is in the
 #               printed log path in either mode.
@@ -28,14 +30,12 @@
 #               static RAM a capture needs to instrument itself; drops
 #               behaviour coverage, so never a merge gate, and its numbers
 #               compare only with other perf-scoped captures.
-#   --build-only  the same as no flag, since building is all this does; CI
-#               and the docs spell it to say no board is involved.
 #   IDF_EXPORT  path to ESP-IDF's export script - export.bat on Windows,
 #               export.sh elsewhere. Default: the one under $IDF_PATH.
 #
 # Run from anywhere (it cds to launcher/ itself); double-click from Explorer
-# if .sh is associated with Git Bash, or right-click launcher/tools/ ->
-# "Git Bash Here" -> `./build_flash.sh`.
+# if .sh is associated with Git Bash, or right-click launcher/tools/build/ ->
+# "Git Bash Here" -> `./build.sh`.
 #
 # All the logic here is POSIX sh. On Windows the ESP-IDF calls go through
 # tools/build/idf_shim.bat, which exists only to delete MSYSTEM - see tools/build/idf.sh
@@ -73,7 +73,6 @@ while [ $# -gt 0 ]; do
         -d|--diag) VARIANT=diag; shift ;;
         --autorun) AUTORUN=1; shift ;;
         --perf-scope) PERF_SCOPE=1; shift ;;
-        --build-only) shift ;;
         --verbose) VERBOSE=1; shift ;;
         -h|--help) sed -n '2,/^# the cost of the way in/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         --)        shift; break ;;
@@ -123,7 +122,7 @@ quiet_finish() {
     status=$?
     trap - EXIT
     set +e
-    quiet_end build_flash "$status" || true
+    quiet_end build "$status" || true
     if [ "$status" -ne 0 ]; then
         echo
         echo "=== FAILED (exit $status) ==="
@@ -148,9 +147,4 @@ if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt" ]; then
     echo "  $LAUNCHER_DIR/$BUILD_DIR/build_id.txt" >&2
     exit 1
 fi
-BUILD_ID=$(tr -d '\r\n' < "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt")
-# device.py takes the flashed build's id from this line in the flash log; it
-# stays on stdout, outside quiet_run, or no flash can name what it wrote.
-echo "BUILD_ID=$BUILD_ID"
-
-echo "=== Done - $BUILD_DIR built ==="
+echo "=== Done - $BUILD_DIR built, build id $(tr -d '\r\n' < "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt") ==="

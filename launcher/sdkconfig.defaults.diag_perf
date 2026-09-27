@@ -1,5 +1,5 @@
 # Perf scope: layered on top of sdkconfig.defaults.diag (and, for a real
-# capture, sdkconfig.defaults.diag_autorun as well) by build_flash.sh
+# capture, sdkconfig.defaults.diag_autorun as well) by build.sh
 # --perf-scope. Nothing layers it by default, so an ordinary --diag build
 # still carries every suite.
 #

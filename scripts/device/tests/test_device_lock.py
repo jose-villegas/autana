@@ -309,6 +309,26 @@ class LockTests(unittest.TestCase):
             mock.call("gave-up", "COM5", "new", "flash"),
         ])
 
+    def test_a_first_claim_that_uses_the_whole_wait_still_announces_it(self):
+        self.lock.acquire("COM5", "old", "listen")
+        claim = self.lock.claim
+        heard = []
+
+        def slow_claim(*args, **kwargs):
+            self.clock.advance(1)
+            return claim(*args, **kwargs)
+
+        with mock.patch.object(device_hook, "emit") as emit, \
+                mock.patch.object(self.lock, "claim", side_effect=slow_claim), \
+                mock.patch.object(device_lock.time, "sleep"):
+            self.assertIsNone(self.lock.acquire("COM5", "new", "flash", wait=0.2,
+                                                on_wait=heard.append))
+        self.assertEqual(len(heard), 1)
+        self.assertEqual(emit.call_args_list, [
+            mock.call("waiting", "COM5", "new", "flash"),
+            mock.call("gave-up", "COM5", "new", "flash"),
+        ])
+
     def test_wait_then_win_emits_waiting_then_acquired(self):
         old = self.lock.acquire("COM5", "old", "listen")
 

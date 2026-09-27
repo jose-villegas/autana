@@ -296,20 +296,23 @@ class LockStore:
             held = self.claim(board, ticket, expected_build_id, stale_seconds)
             if held:
                 return held
+            if not self.read_json(self.queue_dir(board) / (ticket + ".json")):
+                if waiting:
+                    device_hook.emit("gave-up", board, owner, purpose)
+                return None
+            # A caller that asked to wait hears it is queued even when a slow
+            # first claim has already used up its whole wait.
+            if wait > 0:
+                if not waiting:
+                    device_hook.emit("waiting", board, owner, purpose)
+                    waiting = True
+                if on_wait:
+                    on_wait(ticket)
             if self.now() >= deadline:
                 self.cancel(board, ticket)
                 if waiting:
                     device_hook.emit("gave-up", board, owner, purpose)
                 return None
-            if not self.read_json(self.queue_dir(board) / (ticket + ".json")):
-                if waiting:
-                    device_hook.emit("gave-up", board, owner, purpose)
-                return None
-            if not waiting:
-                device_hook.emit("waiting", board, owner, purpose)
-                waiting = True
-            if on_wait:
-                on_wait(ticket)
             time.sleep(min(0.1, max(0, deadline - self.now())))
 
     def cancel(self, board, ticket):

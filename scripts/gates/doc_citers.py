@@ -28,7 +28,7 @@ import re
 import subprocess
 import sys
 
-from check_doc_citations import FOREIGN_FUNCTIONS, citations
+from check_doc_citations import citations
 
 SOURCE_SUFFIXES = {".c", ".h", ".py", ".sh"}
 # Defined in every suite, so a citation of one says nothing about which.
@@ -87,7 +87,7 @@ def touched_names(root, source, diff_args):
             opened, defined = names_on(line[1:], suffix)
             functions |= opened
             macros |= defined
-    return functions - FOREIGN_FUNCTIONS - GENERIC_FUNCTIONS, macros
+    return functions - GENERIC_FUNCTIONS, macros
 
 
 def cites_path(value, source):

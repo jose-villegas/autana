@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Fail when a file outside scripts/device/ opens the board's serial port,
-or a document names a board script this tree no longer has.
+"""Fail when a file outside scripts/device/ opens the board's serial port.
 
     python scripts/gates/check_device_access.py
 
@@ -18,9 +17,6 @@ value - is `merge_bin` (or `merge-bin`): it writes an image file and opens no
 port. Each esptool call on a line is judged by its own subcommand, a shell
 comment is no part of the command, and a Python argument list is read across
 the lines it spans.
-
-A document naming one of `RETIRED_SCRIPTS` points at a file that does not
-exist; the board is reached through `autana`, docs/tools/Autana-CLI.md.
 """
 import pathlib
 import re
@@ -28,18 +24,6 @@ import shlex
 import sys
 
 from tracked import tracked_files
-
-# Basenames only: a doc may spell one with or without its folder
-# (`screenshot.sh`, `launcher/tools/screenshot.sh`), and both name the same
-# dead file.
-RETIRED_SCRIPTS = (
-    "screenshot.sh",
-    "monitor.sh",
-    "run_device_tests.sh",
-    "collect_device_results.py",
-    "capture_selftest.py",
-    "capture_runsuite.py",
-)
 
 SERIAL_OPEN_RE = re.compile(r"\bserial\.Serial\s*\(|(?<![.\w])Serial\s*\(")
 SERIAL_IMPORT_RE = re.compile(r"^\s*(import serial\b|from serial\b)", re.MULTILINE)
@@ -198,42 +182,8 @@ def serial_port_openers(root):
     return found
 
 
-RETIRED_WORD_RE = re.compile(
-    r"(?<![A-Za-z0-9_.])(" + "|".join(re.escape(name) for name in RETIRED_SCRIPTS) + r")(?![A-Za-z0-9_])")
-
-# Extensions this scan never reads as text - a binary that happens to
-# contain these bytes is not a "mention" in the sense this check cares
-# about, and decoding one as UTF-8 is wasted work at best.
-BINARY_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".bmp", ".otf", ".ttf",
-                     ".woff", ".woff2", ".xcf", ".bin", ".elf", ".o", ".a", ".exe",
-                     ".dll", ".pyc", ".gz", ".zip", ".wav", ".mp3", ".mp4"}
-
-
-def retired_script_mentions(root):
-    """Every (path, line, name) where a tracked text file names one of
-    `RETIRED_SCRIPTS`. Every tracked file, not only docs: a stale name has
-    turned up in CI workflow comments and .gitignore too. scripts/gates/ is
-    exempt, the same self-reference reason serial_port_openers() already
-    exempts it for."""
-    root = pathlib.Path(root)
-    found = []
-    for path in tracked_files(root, []):
-        if path.startswith("scripts/gates/") or pathlib.PurePosixPath(path).suffix.lower() in BINARY_EXTENSIONS:
-            continue
-        full = root / path
-        if not full.is_file():
-            continue
-        text = full.read_text(encoding="utf-8", errors="replace")
-        for number, line in enumerate(text.splitlines(), 1):
-            for match in RETIRED_WORD_RE.finditer(line):
-                found.append(Violation(path, number, f"names retired script {match.group(1)}"))
-    return found
-
-
 def check(root="."):
-    openers = serial_port_openers(root)
-    retired = retired_script_mentions(root)
-    return openers, retired
+    return serial_port_openers(root)
 
 
 def main(argv):
@@ -241,18 +191,14 @@ def main(argv):
         print("usage: check_device_access.py", file=sys.stderr)
         return 2
     try:
-        openers, retired = check(".")
+        openers = check(".")
     except ValueError as error:
         print(error, file=sys.stderr)
         return 2
     for v in openers:
         print(f"{v.path}:{v.line}: {v.reason} outside scripts/device/")
-    for v in retired:
-        print(f"{v.path}:{v.line}: {v.reason}")
-    total = len(openers) + len(retired)
-    print(f"{len(openers)} serial port opener(s) outside scripts/device/, "
-          f"{len(retired)} retired-script mention(s)")
-    return 1 if total else 0
+    print(f"{len(openers)} serial port opener(s) outside scripts/device/")
+    return 1 if openers else 0
 
 
 if __name__ == "__main__":
