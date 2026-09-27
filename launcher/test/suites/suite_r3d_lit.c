@@ -193,7 +193,8 @@ draw_quad(const uint16_t (*triangles)[3], bool double_sided) {
     r3d_lit_cluster_t cluster;
     const r3d_lit_mesh_t mesh = quad_mesh(triangles, double_sided, &cluster);
     r3d_lit_view_t view;
-    r3d_lit_view_look(&view, (r3d_lit_vec3_t){0, 0, 400}, (r3d_lit_vec3_t){0, 0, -1}, 0.5f, 1.0f, 1, W, H, 0);
+    r3d_lit_view_look(&view, (r3d_vec3f_t){0, 0, 400}, (r3d_vec3f_t){0, 0, -1}, 0.5f, 1.0f, 1,
+                      (r3d_viewport_t){W, H, 0});
     uint16_t visible[1];
     const int count = r3d_lit_cull_clusters(&mesh, &view, visible);
     r3d_lit_vertex_t cs[4];
@@ -219,7 +220,8 @@ test_a_cluster_behind_the_camera_is_culled(void) {
     r3d_lit_cluster_t cluster;
     const r3d_lit_mesh_t mesh = quad_mesh(quad_front, false, &cluster);
     r3d_lit_view_t view;
-    r3d_lit_view_look(&view, (r3d_lit_vec3_t){0, 0, 400}, (r3d_lit_vec3_t){0, 0, 1}, 0.5f, 1.0f, 1, W, H, 0);
+    r3d_lit_view_look(&view, (r3d_vec3f_t){0, 0, 400}, (r3d_vec3f_t){0, 0, 1}, 0.5f, 1.0f, 1,
+                      (r3d_viewport_t){W, H, 0});
     uint16_t visible[1];
     TEST_ASSERT_EQUAL_INT(0, r3d_lit_cull_clusters(&mesh, &view, visible));
 }
@@ -236,7 +238,8 @@ test_a_floor_crossing_the_near_plane_draws_only_below_the_horizon(void) {
     const r3d_lit_mesh_t mesh = {floor_positions, quad_colors, floor_up, &cluster, &floor_node, 4, 2, 1, 1, 1};
 
     r3d_lit_view_t view;
-    r3d_lit_view_look(&view, (r3d_lit_vec3_t){0, 50, 0}, (r3d_lit_vec3_t){0, 0, -1}, 0.5f, 1.0f, 1, W, H, 0);
+    r3d_lit_view_look(&view, (r3d_vec3f_t){0, 50, 0}, (r3d_vec3f_t){0, 0, -1}, 0.5f, 1.0f, 1,
+                      (r3d_viewport_t){W, H, 0});
     uint16_t visible[1];
     const int count = r3d_lit_cull_clusters(&mesh, &view, visible);
     TEST_ASSERT_EQUAL_INT(1, count);
@@ -255,25 +258,26 @@ test_a_floor_crossing_the_near_plane_draws_only_below_the_horizon(void) {
     }
 }
 
-/* A point up and to the right of the view axis must land where r3d_ray.h's
- * ray camera sends the matching pixel, whichever way the panel is turned. */
+/* A point up and to the right of the view axis lands up and to the right in
+ * the upright picture, whichever way the panel is turned. */
 static void
-test_projection_agrees_with_the_ray_camera_in_every_quarter(void) {
+test_a_point_up_and_right_lands_up_and_right_in_every_quarter(void) {
     for (int quarter = 0; quarter < 4; quarter++) {
+        const r3d_viewport_t viewport = {W, H, quarter};
         r3d_lit_view_t view;
-        r3d_lit_view_look(&view, (r3d_lit_vec3_t){0, 0, 0}, (r3d_lit_vec3_t){0, 0, -1}, 0.5f, 1.0f, 1, W, H, quarter);
+        r3d_lit_view_look(&view, (r3d_vec3f_t){0, 0, 0}, (r3d_vec3f_t){0, 0, -1}, 0.5f, 1.0f, 1, viewport);
         const float px = view.m[0][0] * 30 + view.m[0][1] * 20 + view.m[0][2] * -100 + view.m[0][3];
         const float py = view.m[1][0] * 30 + view.m[1][1] * 20 + view.m[1][2] * -100 + view.m[1][3];
         const float pz = view.m[2][0] * 30 + view.m[2][1] * 20 + view.m[2][2] * -100 + view.m[2][3];
-        const int sx = (int)floorf(view.center_x + px / pz);
-        const int sy = (int)floorf(view.center_y + py / pz);
+        int ux, uy;
+        r3d_physical_to_upright(viewport, (int)floorf(view.center_x + px / pz), (int)floorf(view.center_y + py / pz),
+                                &ux, &uy);
 
-        r3d_ray_camera_t cam;
-        r3d_ray_camera_init(&cam, (r3d_vec3f_t){0, 0, 0}, (r3d_vec3f_t){0, 0, -1}, (r3d_vec3f_t){1, 0, 0},
-                            (r3d_vec3f_t){0, 1, 0}, 0.5f, (r3d_viewport_t){W, H, quarter});
-        const r3d_vec3f_t dir = r3d_ray_direction(&cam, sx, sy);
-        const r3d_vec3f_t want = r3d_vec3f_normalize((r3d_vec3f_t){30, 20, -100});
-        TEST_ASSERT_TRUE_MESSAGE(r3d_vec3f_dot(dir, want) > 0.9995f, "projected pixel's ray misses the point");
+        /* The lens fits the shorter upright axis: tan = 0.5 spans half of it. */
+        const int upright_width = (quarter & 1) ? H : W, upright_height = (quarter & 1) ? W : H;
+        const float per_unit = (float)(W < H ? W : H) / (2.0f * 0.5f) / 100.0f;
+        TEST_ASSERT_INT_WITHIN(1, (int)((float)upright_width / 2.0f + 30.0f * per_unit), ux);
+        TEST_ASSERT_INT_WITHIN(1, (int)((float)upright_height / 2.0f - 20.0f * per_unit), uy);
     }
 }
 
@@ -291,7 +295,7 @@ static void
 test_the_path_passes_through_each_waypoint(void) {
     uint32_t t = 0;
     for (int i = 0; i < 4; i++) {
-        r3d_lit_vec3_t eye, forward;
+        r3d_vec3f_t eye, forward;
         r3d_path_sample(&square_path, t, &eye, &forward);
         TEST_ASSERT_FLOAT_WITHIN(0.01f, square[i].eye.x, eye.x);
         TEST_ASSERT_FLOAT_WITHIN(0.01f, square[i].eye.z, eye.z);
@@ -304,10 +308,10 @@ test_the_path_passes_through_each_waypoint(void) {
 static void
 test_the_path_is_continuous_and_loops(void) {
     const uint32_t period = r3d_path_period_ms(&square_path);
-    r3d_lit_vec3_t prev, forward;
+    r3d_vec3f_t prev, forward;
     r3d_path_sample(&square_path, 0, &prev, &forward);
     for (uint32_t t = 10; t <= period; t += 10) {
-        r3d_lit_vec3_t eye;
+        r3d_vec3f_t eye;
         r3d_path_sample(&square_path, t, &eye, &forward);
         const float step = sqrtf((eye.x - prev.x) * (eye.x - prev.x) + (eye.z - prev.z) * (eye.z - prev.z));
         TEST_ASSERT_TRUE_MESSAGE(step < 1.5f, "the eye jumped between two samples 10 ms apart");
@@ -327,7 +331,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_face_turned_away_is_culled_unless_double_sided);
     RUN_TEST(test_a_cluster_behind_the_camera_is_culled);
     RUN_TEST(test_a_floor_crossing_the_near_plane_draws_only_below_the_horizon);
-    RUN_TEST(test_projection_agrees_with_the_ray_camera_in_every_quarter);
+    RUN_TEST(test_a_point_up_and_right_lands_up_and_right_in_every_quarter);
 
     RUN_TEST(test_the_path_passes_through_each_waypoint);
     RUN_TEST(test_the_path_is_continuous_and_loops);

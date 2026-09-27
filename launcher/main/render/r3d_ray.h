@@ -12,39 +12,10 @@
  */
 #pragma once
 
-#include <math.h>
 #include <stdbool.h>
 
 #include "render/r3d_camera.h"
-
-typedef struct {
-    float x, y, z;
-} r3d_vec3f_t;
-
-static inline r3d_vec3f_t
-r3d_vec3f_add(r3d_vec3f_t a, r3d_vec3f_t b) {
-    return (r3d_vec3f_t){a.x + b.x, a.y + b.y, a.z + b.z};
-}
-
-static inline r3d_vec3f_t
-r3d_vec3f_sub(r3d_vec3f_t a, r3d_vec3f_t b) {
-    return (r3d_vec3f_t){a.x - b.x, a.y - b.y, a.z - b.z};
-}
-
-static inline r3d_vec3f_t
-r3d_vec3f_scale(r3d_vec3f_t a, float s) {
-    return (r3d_vec3f_t){a.x * s, a.y * s, a.z * s};
-}
-
-static inline float
-r3d_vec3f_dot(r3d_vec3f_t a, r3d_vec3f_t b) {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-static inline r3d_vec3f_t
-r3d_vec3f_normalize(r3d_vec3f_t a) {
-    return r3d_vec3f_scale(a, 1.0f / sqrtf(r3d_vec3f_dot(a, a)));
-}
+#include "render/r3d_vec3f.h"
 
 typedef struct {
     r3d_vec3f_t origin, forward, right, up;
@@ -63,29 +34,34 @@ r3d_ray_camera_init(r3d_ray_camera_t* cam, r3d_vec3f_t origin, r3d_vec3f_t forwa
     cam->viewport = viewport;
 }
 
+/* How the panel's own axes lie in the upright picture once it is read at
+ * `quarter`: a step along physical x moves the upright pixel by (x_right,
+ * x_down), a step along physical y by (y_right, y_down). */
+typedef struct {
+    int x_right, x_down, y_right, y_down;
+} r3d_quarter_axes_t;
+
+static inline r3d_quarter_axes_t
+r3d_quarter_axes(int quarter) {
+    switch (quarter & 3) {
+        case 1: return (r3d_quarter_axes_t){0, -1, 1, 0};
+        case 2: return (r3d_quarter_axes_t){-1, 0, 0, -1};
+        case 3: return (r3d_quarter_axes_t){0, 1, -1, 0};
+        default: return (r3d_quarter_axes_t){1, 0, 0, 1};
+    }
+}
+
 /* The inverse of ui_transform_quarter_turn(): where in the upright picture
  * a physical pixel lands once the panel is read at `viewport.quarter`.
  * Spelled out here rather than included, since render/ sits below ui/. */
 static inline void
 r3d_physical_to_upright(r3d_viewport_t viewport, int px, int py, int* ux, int* uy) {
-    switch (viewport.quarter) {
-        case 1:
-            *ux = py;
-            *uy = viewport.width - 1 - px;
-            break;
-        case 2:
-            *ux = viewport.width - 1 - px;
-            *uy = viewport.height - 1 - py;
-            break;
-        case 3:
-            *ux = viewport.height - 1 - py;
-            *uy = px;
-            break;
-        default:
-            *ux = px;
-            *uy = py;
-            break;
-    }
+    const r3d_quarter_axes_t a = r3d_quarter_axes(viewport.quarter);
+    const bool swapped = a.x_right == 0;
+    const int upright_width = swapped ? viewport.height : viewport.width;
+    const int upright_height = swapped ? viewport.width : viewport.height;
+    *ux = (a.x_right + a.y_right < 0 ? upright_width - 1 : 0) + a.x_right * px + a.y_right * py;
+    *uy = (a.x_down + a.y_down < 0 ? upright_height - 1 : 0) + a.x_down * px + a.y_down * py;
 }
 
 /* The normalised direction for physical pixel (px, py): upright mapping,
