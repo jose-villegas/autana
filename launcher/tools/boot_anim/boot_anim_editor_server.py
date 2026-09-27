@@ -526,6 +526,7 @@ class Renderer:
                 "(see docs/Testing-Guide.md). The timeline files were "
                 "still written to main/boot/ above.")
         commands = device.flash_commands(bash, ENGINE_DIR, "dev")
+        build_command = commands[0]
         for command in commands:
             if not os.path.isfile(command[1]):
                 raise RenderError(
@@ -539,7 +540,7 @@ class Renderer:
         # script's own dirname/cd/pwd logic directly did not reproduce it),
         # but Git Bash accepts C:/... unambiguously and this removes the
         # entire class of risk regardless of the exact mechanism.
-        script_for_bash = commands[0][1]
+        script_for_bash = build_command[1]
 
         # A fast (milliseconds, not a build) sanity probe using the exact
         # same bash binary and exact same path the real invocation below
@@ -582,7 +583,8 @@ class Renderer:
             try:
                 device.flash_script(
                     device.device_lock.LockStore(), board, "boot-anim-editor",
-                    "boot anim preview flash", commands, 300,
+                    "boot anim preview flash", commands,
+                    device.build_directory(ENGINE_DIR, "dev"), 300,
                     cwd=LAUNCHER_DIR, stdin=subprocess.DEVNULL, stdout=output,
                     stderr=subprocess.STDOUT, timeout=BUILD_FLASH_TIMEOUT_S)
             except subprocess.CalledProcessError as error:

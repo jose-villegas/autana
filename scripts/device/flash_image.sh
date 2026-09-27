@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 #
-# Write a built firmware image to the board: the second half of
+# Write a snapshot of a built firmware image to the board: the second half of
 # `autana flash`, which device.py runs under the board's lock once
-# launcher/tools/build/build.sh has built the image.
+# launcher/tools/build/build.sh has built the image and device.py has copied
+# it out of the build directory.
 #
 # Usage:
-#   scripts/device/flash_image.sh [--dev|--diag] [IDF_EXPORT]
+#   scripts/device/flash_image.sh IMAGE_DIR [IDF_EXPORT]
 #
-#   --dev, --diag  write build.dev/ or build.diag/ instead of build/.
+#   IMAGE_DIR      a snapshot: flash_args, every file it lists, build_id.txt.
 #   IDF_EXPORT     ESP-IDF's export script, as for build.sh.
+#
+# esptool writes the snapshot directly - never `idf.py flash`, whose target
+# rebuilds first and writes whatever the build directory holds by then. The
+# BUILD_ID it prints is the snapshot's own, so the id device.py records is the
+# id written.
 #
 # This opens the board's serial port, which is why it lives in
 # scripts/device/. It refuses unless AUTANA_DEVICE_LOCK_TOKEN is the live
@@ -19,23 +25,31 @@
 
 set -euo pipefail
 
-BUILD_DIR=build
+IMAGE_DIR=""
 IDF_EXPORT_ARG=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --dev)  BUILD_DIR=build.dev ;;
-        --diag) BUILD_DIR=build.diag ;;
-        -*)     echo "unknown option: $1" >&2; exit 2 ;;
+        -*) echo "unknown option: $1" >&2; exit 2 ;;
         *)
-            if [ -n "$IDF_EXPORT_ARG" ]; then
+            if [ -z "$IMAGE_DIR" ]; then
+                IMAGE_DIR=$1
+            elif [ -z "$IDF_EXPORT_ARG" ]; then
+                IDF_EXPORT_ARG=$1
+            else
                 echo "too many positional arguments" >&2
                 exit 2
             fi
-            IDF_EXPORT_ARG=$1
             ;;
     esac
     shift
 done
+
+if [ -z "$IMAGE_DIR" ] || [ ! -f "$IMAGE_DIR/flash_args" ] || [ ! -f "$IMAGE_DIR/build_id.txt" ]; then
+    echo "ERROR: '$IMAGE_DIR' is not an image snapshot (flash_args, build_id.txt)." >&2
+    echo "Run 'autana flash rel|dev|diag' instead." >&2
+    exit 2
+fi
+IMAGE_DIR="$(cd "$IMAGE_DIR" && pwd)"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_DIR="$(cd "$SCRIPT_DIR/../../launcher" && pwd)"
@@ -57,6 +71,9 @@ COM_PORT=$(python "$SCRIPT_DIR/device.py" --board "$AUTANA_BOARD" resolve-port)
 . "$LAUNCHER_DIR/tools/build/idf.sh"
 idf_init "$LAUNCHER_DIR" "$IDF_EXPORT_ARG" "$LAUNCHER_DIR/tools/build" || exit 2
 
-echo "=== Flashing $BUILD_DIR to $COM_PORT ==="
-idf -B "$BUILD_DIR" -p "$COM_PORT" flash
-echo "=== Done - $BUILD_DIR is on the device ==="
+BUILD_ID=$(tr -d '\r\n' < "$IMAGE_DIR/build_id.txt")
+echo "=== Writing $BUILD_ID to $COM_PORT ==="
+idf_in "$IMAGE_DIR" python -m esptool --chip esp32s3 -p "$COM_PORT" -b 460800 \
+    --before default_reset --after hard_reset write_flash @flash_args
+echo "BUILD_ID=$BUILD_ID"
+echo "=== Done - $BUILD_ID is on the device ==="

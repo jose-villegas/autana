@@ -13,6 +13,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from datetime import datetime
@@ -756,7 +757,8 @@ def stop_process_tree(process):
 
 def run_to_end(command, lost=None, timeout=None, **options):
     """Runs `command` to its end, stopping its whole process tree on any
-    error, on Ctrl+C, or the moment `lost` (an Event) is set."""
+    error, on Ctrl+C, or the moment `lost` - a held lock's event, None for a
+    command that holds none - is set."""
     if os.name != "nt":
         options["start_new_session"] = True
     deadline = None if timeout is None else time.monotonic() + timeout
@@ -778,31 +780,80 @@ def run_to_end(command, lost=None, timeout=None, **options):
         raise subprocess.CalledProcessError(code, command)
 
 
-def run_while_held(command, held, timeout=None, **options):
-    """Runs `command` under `held`, stopping it the moment the heartbeat
-    finds the lock lost, before it writes to a board somebody else now holds."""
-    run_to_end(command, held.lost, timeout, **options)
-
-
-def run_build(command, timeout=None, **options):
-    """Runs the build step with no lock held: it never opens the port, so a
-    multi-minute build leaves the board to everyone else meanwhile."""
-    run_to_end(command, None, timeout, **options)
-
-
 BUILD_SCRIPT = Path("launcher") / "tools" / "build" / "build.sh"
 FLASH_SCRIPT = Path("scripts") / "device" / "flash_image.sh"
 VARIANT_FLAGS = {"release": [], "dev": ["--dev"], "diag": ["--diag"]}
+BUILD_DIRS = {"release": "build", "dev": "build.dev", "diag": "build.diag"}
+BUILD_LOCK = "autana-build.lock"
+BUILD_LOCK_POLL_SECONDS = 0.2
+FLASH_ARGS_FILE = re.compile(r"^0x[0-9a-fA-F]+\s+(\S+)\s*$")
 
 
 def flash_commands(bash, worktree, variant, build_flags=()):
-    """A flash is two commands: build.sh builds `worktree`'s image
-    with no lock held, then flash_image.sh, the only one that opens the
-    port, writes it under the board's lock."""
+    """A flash is a pair: `build` runs build.sh for `worktree`'s variant with
+    no lock held; `write`, given an image snapshot's folder as its last
+    argument, runs flash_image.sh, the only one that opens the port."""
     worktree = Path(worktree)
-    flags = VARIANT_FLAGS[variant]
-    return [[bash, (worktree / BUILD_SCRIPT).as_posix()] + flags + list(build_flags),
-            [bash, (worktree / FLASH_SCRIPT).as_posix()] + flags]
+    return ([bash, (worktree / BUILD_SCRIPT).as_posix()] + VARIANT_FLAGS[variant]
+            + list(build_flags),
+            [bash, (worktree / FLASH_SCRIPT).as_posix()])
+
+
+def build_directory(worktree, variant):
+    return Path(worktree) / "launcher" / BUILD_DIRS[variant]
+
+
+def try_lock_file(handle):
+    try:
+        if os.name == "nt":
+            import msvcrt
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except OSError:
+        return False
+
+
+@contextlib.contextmanager
+def build_directory_lock(build_dir):
+    """Holds `build_dir` for one build and its snapshot, so two builds of one
+    worktree's variant never interleave in one directory. An OS file lock:
+    the system drops it with the process that held it."""
+    build_dir = Path(build_dir)
+    build_dir.mkdir(parents=True, exist_ok=True)
+    with open(build_dir / BUILD_LOCK, "a+b") as handle:
+        if not try_lock_file(handle):
+            print("waiting for another build in " + str(build_dir), file=sys.stderr)
+            while not try_lock_file(handle):
+                time.sleep(BUILD_LOCK_POLL_SECONDS)
+        yield
+
+
+def snapshot_image(build_dir, image_dir):
+    """Copies what `build_dir`'s flash_args lists, flash_args itself and
+    build_id.txt into `image_dir`, keeping their relative paths, and returns
+    the build id. The write takes the snapshot, never the build directory,
+    so a later build there cannot change what this flash writes."""
+    build_dir, image_dir = Path(build_dir), Path(image_dir)
+    try:
+        flash_args = (build_dir / "flash_args").read_text(encoding="utf-8")
+        build_id = (build_dir / "build_id.txt").read_text(encoding="ascii").strip()
+    except OSError as error:
+        raise RuntimeError(f"the build left no image to flash in {build_dir}: {error}") from error
+    listed = [match.group(1) for match in map(FLASH_ARGS_FILE.match, flash_args.splitlines())
+              if match]
+    if not build_id or not listed:
+        raise RuntimeError(f"the build in {build_dir} has no build id or no flash_args images")
+    if image_dir.exists():
+        shutil.rmtree(image_dir)
+    for relative in ["flash_args", "build_id.txt"] + listed:
+        target = image_dir / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(build_dir / relative, target)
+    return build_id
 
 
 def script_environment(environment=None):
@@ -811,27 +862,36 @@ def script_environment(environment=None):
     return environment
 
 
-def run_flash_script(held, commands, **popen):
-    """Runs each of `commands` in turn under `held`, the board's lock."""
+def build_snapshot(build, build_dir, image_dir, **popen):
+    """Runs `build` and snapshots its image, holding the build directory
+    throughout and no board lock at all. Returns the build id."""
+    with build_directory_lock(build_dir):
+        run_to_end(build, None, **dict(popen, env=script_environment(popen.get("env"))))
+        return snapshot_image(build_dir, image_dir)
+
+
+def write_snapshot(held, write, image_dir, **popen):
+    """Runs `write` on `image_dir` under `held`, the board's lock."""
     environment = script_environment(popen.pop("env", None))
     # Proof to flash_image.sh that this flash holds this board's lock: it
     # runs check-token with both before it opens the port.
     environment["AUTANA_DEVICE_LOCK_TOKEN"] = held.held["token"]
     environment["AUTANA_BOARD"] = held.board
-    for command in commands:
-        run_while_held(command, held, env=environment, **popen)
+    run_to_end(write + [Path(image_dir).as_posix()], held.lost, env=environment, **popen)
 
 
-def flash_script(store, board, owner, purpose, commands, wait, **popen):
-    """Runs `commands` (see flash_commands()) for a caller outside device.py:
-    finds the board (`board`, else AUTANA_BOARD, else the only one), runs
-    the build, then queues for the board's lock and holds it while the
-    rest run. A failed build never queues. Returns the board's serial."""
+def flash_script(store, board, owner, purpose, commands, build_dir, wait, **popen):
+    """A flash for a caller outside device.py, from flash_commands()'s pair
+    and the variant's build_directory(): finds the board (`board`, else
+    AUTANA_BOARD, else the only one), builds and snapshots with no lock held,
+    then queues for the board's lock and holds it only for the write. A
+    failed build never queues. Returns the board's serial."""
     board = board_for_lock(store, board)
-    build, *writes = commands
-    run_build(build, **dict(popen, env=script_environment(popen.get("env"))))
-    with HeldLock(store, board, owner, purpose, wait, kind="flash") as held:
-        run_flash_script(held, writes, **popen)
+    build, write = commands
+    with tempfile.TemporaryDirectory(prefix="autana-image-") as image_dir:
+        build_snapshot(build, build_dir, image_dir, **popen)
+        with HeldLock(store, board, owner, purpose, wait, kind="flash") as held:
+            write_snapshot(held, write, image_dir, **popen)
     return board
 
 
@@ -849,9 +909,9 @@ def flash_failure_line(text):
     return lines[-1] if lines else "the log is empty"
 
 
-class FlashRecord:
-    """One flash's log and index entry. The build writes the log with no
-    lock held; the write to the board appends to it under the lock."""
+class Built:
+    """One flash's image, log and index entry: build_image() makes it with no
+    lock held, write_image() writes its snapshot under the lock."""
 
     def __init__(self, args, board, extra_flags):
         self.args = args
@@ -863,14 +923,17 @@ class FlashRecord:
         self.started_at = now()
         self.log, self.managed = resolve_capture_path(args.out, "flash-" + args.variant,
                                                       args.owner, self.started_at)
-        self.commands = flash_commands(git_bash(), self.worktree, args.variant, extra_flags)
+        self.image = self.log.with_suffix(".image")
+        self.build_dir = build_directory(self.worktree, args.variant)
+        self.build, self.write = flash_commands(git_bash(), self.worktree, args.variant,
+                                                extra_flags)
         print("flash log: " + str(self.log))
 
     def run(self, step, mode):
         try:
             with open(self.log, mode) as stream:
-                step(cwd=self.worktree, stdin=subprocess.DEVNULL, stdout=stream,
-                     stderr=subprocess.STDOUT)
+                return step(cwd=self.worktree, stdin=subprocess.DEVNULL, stdout=stream,
+                            stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as failed:
             text = Path(self.log).read_text(encoding="utf-8", errors="replace")
             raise RuntimeError(f"{Path(failed.cmd[1]).name} failed (exit {failed.returncode}): "
@@ -884,51 +947,51 @@ class FlashRecord:
 
 
 def build_image(args, board, extra_flags=()):
-    """The first half of a flash, run before its lock is taken. A build
-    that does not finish is recorded as the flash's own end and raised."""
-    flashing = FlashRecord(args, board, extra_flags)
+    """The first half of a flash, run before its lock is taken: builds into a
+    fresh log and snapshots the image beside it. A build that does not
+    finish is recorded as the flash's own end and raised."""
+    built = Built(args, board, extra_flags)
     error = None
-    built = False
+    done = False
     try:
-        flashing.run(lambda **popen: run_build(flashing.commands[0],
-                                               env=script_environment(), **popen), "wb")
-        built = True
+        built.run(lambda **popen: build_snapshot(built.build, built.build_dir, built.image,
+                                                 **popen), "wb")
+        done = True
     except (OSError, RuntimeError) as caught:
         error = str(caught)
         raise
     finally:
-        if not built:
-            flashing.record(error=error)
-    return flashing
+        if not done:
+            built.record(error=error)
+    return built
 
 
-def flash(args, store, board, held_lock=None, extra_flags=(), built=None):
-    """Builds, unless `built` is a build_image() already run before the
-    lock, then writes the image under the lock: a fresh one, or `held_lock`."""
-    flashing = built or build_image(args, board, extra_flags)
+def write_image(built, store, board, held_lock=None):
+    """Writes `built`'s snapshot under the lock - a fresh one, or `held_lock`
+    - and returns the build id flash_image.sh reported writing."""
     build_id = None
     error = None
     held = None
     try:
-        with holding(store, board, args, held_lock, "flash") as held:
+        with holding(store, board, built.args, held_lock, "flash") as held:
             with open_when_free():
                 pass
-            flashing.run(lambda **popen: run_flash_script(held, flashing.commands[1:], **popen),
-                         "ab")
+            built.run(lambda **popen: write_snapshot(held, built.write, built.image, **popen),
+                      "ab")
             require_live_lock()
-            expected = latest_build_id_from_bytes(Path(flashing.log).read_bytes())
-            if not expected:
+            written = latest_build_id_from_bytes(Path(built.log).read_bytes())
+            if not written:
                 raise RuntimeError("the flash log has no BUILD_ID line")
-            if not store.set_expected_build_id(board, held.held["token"], expected):
+            if not store.set_expected_build_id(board, held.held["token"], written):
                 raise LockLost()
-            build_id = expected
-            print("flashed BUILD_ID=" + expected + " (esptool hash verified; boot not verified)")
+            build_id = written
+            print("flashed BUILD_ID=" + written + " (esptool hash verified; boot not verified)")
     except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
         error = str(caught)
         raise
     finally:
-        flashing.record(build_id=build_id, error=error,
-                        acquired_at=held.held["acquired_at"] if held else None)
+        built.record(build_id=build_id, error=error,
+                     acquired_at=held.held["acquired_at"] if held else None)
     return build_id
 
 
@@ -992,7 +1055,7 @@ def selftest(args, store, board):
                                     variant="diag", out=None)
     built = build_image(flash_args, board, extra_flags)
     with HeldLock(store, board, args.owner, args.purpose, args.wait, kind="selftest") as held:
-        build_id = flash(flash_args, store, board, held_lock=held, built=built)
+        build_id = write_image(built, store, board, held_lock=held)
         commit = git_commit(worktree)
 
         data = b""
@@ -1225,7 +1288,7 @@ def batch(args, store, board):
                                     variant=args.variant, out=None)
     built = build_image(flash_args, board, extra_flags)
     with HeldLock(store, board, args.owner, args.purpose, args.wait, kind="batch") as held:
-        build_id = flash(flash_args, store, board, held_lock=held, built=built)
+        build_id = write_image(built, store, board, held_lock=held)
         commit = git_commit(worktree)
         for run in range(1, args.runs + 1):
             for suite_name in args.suite:
@@ -1475,7 +1538,7 @@ def main(argv=None):
             return 0
         if args.command == "flash":
             extra_flags = ["--perf-scope"] if args.perf_scope else []
-            flash(args, store, board, extra_flags=extra_flags)
+            write_image(build_image(args, board, extra_flags), store, board)
         elif args.command == "run-suite":
             return run_suite(args, store, board)
         elif args.command == "selftest":
