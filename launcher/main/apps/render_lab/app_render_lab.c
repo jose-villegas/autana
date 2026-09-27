@@ -40,8 +40,8 @@ static const render_lab_scene_t* const scenes[] = {
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
 
-/* Where the running scene's arena memory starts: a scene switch rewinds to
- * it, so each scene takes from the same spot. */
+/* Where the running scene's arena memory starts: a scene switch and exit
+ * rewind to it, so each scene takes from the same spot. */
 static size_t scene_arena_mark;
 
 /* current_scene_index's own re-entry seed, a scene's key - NULL (the cube)
@@ -424,6 +424,7 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
 void
 render_lab_exit(void) {
     current_scene()->exit();
+    app_arena_rewind(scene_arena_mark);
     gfx_set_partial_clear(false);
     gfx_invalidate();
     gfx_mode_exit();
@@ -448,8 +449,7 @@ app_t app_render_lab = {
 
 #if CONFIG_LAUNCHER_SELFTEST
 /* A device suite's scene switch, the same exit, rewind and enter a menu tap
- * runs. The perf suites that call render_lab_enter() directly skip the
- * shell's app_arena_reset(), so they start on whatever the arena holds. */
+ * runs. */
 void
 render_lab_test_next_scene(void) {
     switch_to_next_scene();
