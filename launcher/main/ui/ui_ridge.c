@@ -20,9 +20,11 @@
 
 #if defined(ESP_PLATFORM)
 #include "esp_heap_caps.h"
-#define RIDGE_ALLOC(bytes) heap_caps_malloc((bytes), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+#define RIDGE_ALLOC(bytes)     heap_caps_malloc((bytes), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+#define RIDGE_ALLOC_HOT(bytes) heap_caps_malloc((bytes), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
 #else
-#define RIDGE_ALLOC(bytes) malloc(bytes)
+#define RIDGE_ALLOC(bytes)     malloc(bytes)
+#define RIDGE_ALLOC_HOT(bytes) malloc(bytes)
 #endif
 
 TUNE_OWNER(ridge);
@@ -106,30 +108,36 @@ typedef struct {
     spring_line_t line;
     int32_t offset[RIDGE_COLUMNS], velocity[RIDGE_COLUMNS];
     int16_t rigid[RIDGE_COLUMNS], heights[RIDGE_COLUMNS], smooth[RIDGE_COLUMNS], shape[RIDGE_COLUMNS];
-    int16_t layers[RIDGE_LAYER_COUNT][RIDGE_COLUMNS];
     int16_t shown_layers[RIDGE_LAYER_COUNT][RIDGE_COLUMNS];
     ridge_motion_t motion;
     ridge_pose_t attitude;
-    ridge_vector_t pose_on_screen;
+    ridge_vector_t pose_on_screen, shown_pose;
     int pose_step;
     ridge_theme_t theme;
     gfx_color_t background_color, back0_color, back1_color;
-    gfx_color_t sky[RIDGE_SKY_ENTRIES];
     int16_t sky_edge[RIDGE_SKY_EDGES];
     int sky_half, sky_edge_count;
     ridge_vector_t gradient_pose;
     int gradient_step;
     uint32_t pose_still_ms;
     edge_lines_t was_lines, now_lines;
-    gfx_color_t scratch_row[GFX_WIDTH];
-    uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
-    uint8_t body_alpha[RIDGE_LAYER_COUNT];
     uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
     int shake, last_pluck_x, shown_step;
     bool ambient, painted, scanline_dither;
 } ridge_t;
 
+/* What every painted pixel reads, in internal RAM: from PSRAM each lookup
+ * competes with the framebuffer for the cache. */
+typedef struct {
+    int16_t layers[RIDGE_LAYER_COUNT][RIDGE_COLUMNS];
+    gfx_color_t sky[RIDGE_SKY_ENTRIES];
+    gfx_color_t scratch_row[GFX_WIDTH];
+    uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
+    uint8_t body_alpha[RIDGE_LAYER_COUNT];
+} ridge_hot_t;
+
 static ridge_t* ridge;
+static ridge_hot_t* hot;
 static bool allocation_tried;
 
 static inline __attribute__((always_inline)) int
@@ -157,9 +165,9 @@ build_sky_gradient(void) {
     ridge->sky_half = RIDGE_SKY_HALF;
     ridge->sky_edge_count = 0;
     for (int along = 0; along <= 2 * RIDGE_SKY_HALF; along++) {
-        ridge->sky[along] =
+        hot->sky[along] =
             gfx_rgb(rgb_mix(ridge->theme.sky_top_rgb, ridge->theme.sky_bottom_rgb, along * 100 / (2 * RIDGE_SKY_HALF)));
-        if (along > 0 && ridge->sky[along] != ridge->sky[along - 1] && ridge->sky_edge_count < RIDGE_SKY_EDGES) {
+        if (along > 0 && hot->sky[along] != hot->sky[along - 1] && ridge->sky_edge_count < RIDGE_SKY_EDGES) {
             ridge->sky_edge[ridge->sky_edge_count++] = (int16_t)along;
         }
     }
@@ -177,7 +185,7 @@ static inline __attribute__((always_inline)) gfx_color_t
 sky_from_depth2(int32_t depth2) {
     int along = ridge->sky_half + (depth2 >> 15);
     along = along < 0 ? 0 : along > 2 * ridge->sky_half ? 2 * ridge->sky_half : along;
-    return ridge->sky[along];
+    return hot->sky[along];
 }
 
 static inline __attribute__((always_inline)) gfx_color_t
@@ -218,9 +226,9 @@ build_layers(void) {
             const uint32_t phase = ((uint32_t)x * 65536U / (uint32_t)wavelength[layer]) - travelled[layer];
             const int echo = spring_line_scale(ridge->line.offset[x], layer == 0 ? 64 : 128) / (SPRING_LINE_ONE / 16);
             const int wave = amplitude[layer] * trig_sin((uint16_t)phase) / 2048 * gain / 256;
-            ridge->layers[layer][x] = (int16_t)(ridge->rigid[x] + (offset[layer] * 16) + wave + echo);
+            hot->layers[layer][x] = (int16_t)(ridge->rigid[x] + (offset[layer] * 16) + wave + echo);
         }
-        ridge->layers[2][x] = (int16_t)(ridge->heights[x] + (front_offset * 16));
+        hot->layers[2][x] = (int16_t)(ridge->heights[x] + (front_offset * 16));
     }
 }
 
@@ -290,7 +298,7 @@ curve_at(int32_t along) {
  * `down` (1/32768 px) lies; negative above it. */
 static inline __attribute__((always_inline)) int
 layer_depth(int layer, curve_at_t at, int32_t down) {
-    const int16_t* const heights = ridge->layers[layer];
+    const int16_t* const heights = hot->layers[layer];
     const int curve_q4 = heights[at.column] + (((heights[at.column + 1] - heights[at.column]) * at.frac) >> 8);
     return ((down >> 11) + (RIDGE_CURVE_VIEW_H * 8) - curve_q4) >> 4;
 }
@@ -300,7 +308,7 @@ layer_alpha(int layer, int depth) {
     if (depth < 0) {
         return 0;
     }
-    return depth < lip_px ? ridge->lip_alpha[layer][depth] : ridge->body_alpha[layer];
+    return depth < lip_px ? hot->lip_alpha[layer][depth] : hot->body_alpha[layer];
 }
 
 static inline __attribute__((always_inline)) bool
@@ -368,8 +376,8 @@ repaint_span(int y, int x0, int x1) {
     x0 = x0 < 0 ? 0 : x0;
     x1 = x1 > GFX_WIDTH ? GFX_WIDTH : x1;
     if (x0 < x1) {
-        paint_row_into(ridge->scratch_row, y, x0, x1);
-        commit_row(ridge->scratch_row, y, x0, x1);
+        paint_row_into(hot->scratch_row, y, x0, x1);
+        commit_row(hot->scratch_row, y, x0, x1);
     }
 }
 
@@ -378,8 +386,7 @@ typedef struct {
     int32_t along_lo, along_hi, down_lo, down_hi;
 } ridge_band_t;
 
-/* The columns of row `y` where `f(x) = at0 + x * step` lies in [lo, hi],
- * a pixel of slack each side. */
+/* The columns of row `y` where `f(x) = at0 + x * step` lies in [lo, hi]. */
 static void
 slab_columns(int32_t at0, int32_t step, int32_t lo, int32_t hi, int* x0, int* x1) {
     if (step == 0) {
@@ -390,14 +397,13 @@ slab_columns(int32_t at0, int32_t step, int32_t lo, int32_t hi, int* x0, int* x1
     }
     const float a = (float)(lo - at0) / (float)step;
     const float b = (float)(hi - at0) / (float)step;
-    *x0 = clamp_int((int)floorf(fminf(a, b)) - 1, 0, GFX_WIDTH);
-    *x1 = clamp_int((int)ceilf(fmaxf(a, b)) + 2, 0, GFX_WIDTH);
+    *x0 = clamp_int((int)floorf(fminf(a, b)), 0, GFX_WIDTH);
+    *x1 = clamp_int((int)ceilf(fmaxf(a, b)) + 1, 0, GFX_WIDTH);
 }
 
 /* The rows a band can reach: its four corners, back on the panel. */
 static void
-band_rows(const ridge_band_t* band, int* y0, int* y1) {
-    const ridge_vector_t pose = ridge->pose_on_screen;
+band_rows(ridge_vector_t pose, const ridge_band_t* band, int* y0, int* y1) {
     int lo = GFX_HEIGHT;
     int hi = 0;
     for (int corner = 0; corner < 4; corner++) {
@@ -412,12 +418,13 @@ band_rows(const ridge_band_t* band, int* y0, int* y1) {
     *y1 = clamp_int(hi + 1, 0, GFX_HEIGHT);
 }
 
+/* Repaints, with the ridge as it is now, the pixels of `band` laid out in
+ * the frame of `pose`. */
 static void
-repaint_band(const ridge_band_t* band) {
-    const ridge_vector_t pose = ridge->pose_on_screen;
+repaint_band(ridge_vector_t pose, const ridge_band_t* band) {
     int y0;
     int y1;
-    band_rows(band, &y0, &y1);
+    band_rows(pose, band, &y0, &y1);
     for (int y = y0; y < y1; y++) {
         const ridge_point_t start = pixel_point(pose, 0, y);
         int ax0;
@@ -440,30 +447,33 @@ column_down(const int16_t* heights, int column) {
 #define BAND_SLACK_PX 4
 #define BAND_COLUMNS  16
 
-/* The pixels columns [c0, c1) of `layer` may have changed: along, the
- * columns either side that a pixel between them blends with; down, from
- * the highest the curve stood or stands to the lowest, lip and all, and
- * `margin_px` round it for a turn. */
+/* The pixels columns [c0, c1) may have changed: along, the columns either
+ * side that a pixel between them blends with; down, from the highest the
+ * curve stood or stands to the lowest, lip and all. A turn moves no pixel
+ * as far as a lip, so the band where the curve was and the band where it is
+ * cover everything between. */
 static void
-repaint_columns(int c0, int c1, int32_t down_lo, int32_t down_hi, int margin_px) {
-    const int32_t margin = (margin_px + 1) * 32768;
+repaint_columns(int c0, int c1, int32_t down_lo, int32_t down_hi, bool turned) {
     const ridge_band_t band = {
-        .along_lo = ((c0 - 1) * 32768) - ((RIDGE_COLUMNS - 1) * 16384) - margin,
-        .along_hi = ((c1 + 1) * 32768) - ((RIDGE_COLUMNS - 1) * 16384) + margin,
-        .down_lo = down_lo - margin,
-        .down_hi = down_hi + (lip_px * 32768) + margin,
+        .along_lo = ((c0 - 1) * 32768) - ((RIDGE_COLUMNS - 1) * 16384),
+        .along_hi = ((c1 + 1) * 32768) - ((RIDGE_COLUMNS - 1) * 16384),
+        .down_lo = down_lo,
+        .down_hi = down_hi + (lip_px * 32768),
     };
-    repaint_band(&band);
+    repaint_band(ridge->pose_on_screen, &band);
+    if (turned) {
+        repaint_band(ridge->shown_pose, &band);
+    }
 }
 
 static inline __attribute__((always_inline)) bool
 column_moved(int layer, int column) {
-    return ridge->layers[layer][column] != ridge->shown_layers[layer][column];
+    return hot->layers[layer][column] != ridge->shown_layers[layer][column];
 }
 
 static void
-repaint_layer(int layer, bool everything_moved, int margin_px) {
-    const int16_t* const now = ridge->layers[layer];
+repaint_layer(int layer, bool everything_moved) {
+    const int16_t* const now = hot->layers[layer];
     const int16_t* const was = ridge->shown_layers[layer];
     int column = 0;
     while (column < RIDGE_COLUMNS) {
@@ -495,16 +505,8 @@ repaint_layer(int layer, bool everything_moved, int margin_px) {
             hi = next_hi;
             column++;
         }
-        repaint_columns(c0, column, lo, hi, margin_px);
+        repaint_columns(c0, column, lo, hi, everything_moved);
     }
-}
-
-/* How far a turn of `steps` pose steps can move a pixel, at the panel's
- * corner, the farthest point from the centre. */
-static int
-turn_margin_px(int steps) {
-    const float radius = 0.5F * sqrtf((float)((GFX_WIDTH * GFX_WIDTH) + (GFX_HEIGHT * GFX_HEIGHT)));
-    return (int)ceilf(radius * 2.0F * sinf((float)steps * RIDGE_PI / POSE_STEPS));
 }
 
 static int
@@ -513,8 +515,8 @@ pose_steps_between(int a, int b) {
     return drift > POSE_STEPS / 2 ? POSE_STEPS - drift : drift;
 }
 
-/* Past this a turn repaints everything rather than a band that wide. */
-#define TURN_REPAINT_STEPS 20
+/* A turn this far can move a pixel past a lip; it repaints everything. */
+#define TURN_REPAINT_STEPS 4
 
 static void paint_all(void);
 
@@ -525,12 +527,12 @@ repaint_changed(void) {
         paint_all();
         return;
     }
-    const int margin_px = steps > 0 ? turn_margin_px(steps) : 0;
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-        repaint_layer(layer, steps > 0, margin_px);
+        repaint_layer(layer, steps > 0);
     }
-    memcpy(ridge->shown_layers, ridge->layers, sizeof ridge->shown_layers);
+    memcpy(ridge->shown_layers, hot->layers, sizeof ridge->shown_layers);
     ridge->shown_step = ridge->pose_step;
+    ridge->shown_pose = ridge->pose_on_screen;
 }
 
 #define EDGE_FAR (INT64_C(1) << 40)
@@ -644,8 +646,9 @@ paint_all(void) {
         paint_row_into(framebuffer + (y * GFX_WIDTH), y, 0, GFX_WIDTH);
     }
     gfx_mark_all_dirty();
-    memcpy(ridge->shown_layers, ridge->layers, sizeof ridge->shown_layers);
+    memcpy(ridge->shown_layers, hot->layers, sizeof ridge->shown_layers);
     ridge->shown_step = ridge->pose_step;
+    ridge->shown_pose = ridge->pose_on_screen;
     ridge->painted = true;
 }
 
@@ -668,9 +671,9 @@ bake_what_is_tuned(void) {
     const int lip_start[RIDGE_LAYER_COUNT] = {back0_lip_alpha, back1_lip_alpha, front_lip_alpha};
     const int lip_end[RIDGE_LAYER_COUNT] = {back0_body_alpha, back1_body_alpha, front_body_alpha};
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-        ridge->body_alpha[layer] = (uint8_t)lip_end[layer];
+        hot->body_alpha[layer] = (uint8_t)lip_end[layer];
         for (int distance = 0; distance < lip_px; distance++) {
-            ridge->lip_alpha[layer][distance] =
+            hot->lip_alpha[layer][distance] =
                 (uint8_t)(lip_start[layer] + ((lip_end[layer] - lip_start[layer]) * distance / lip_px));
         }
     }
@@ -686,9 +689,17 @@ allocate_once(void) {
     }
     allocation_tried = true;
     ridge = RIDGE_ALLOC(sizeof *ridge);
-    if (ridge == NULL) {
+    hot = RIDGE_ALLOC_HOT(sizeof *hot);
+    if (hot == NULL) {
+        hot = RIDGE_ALLOC(sizeof *hot);
+    }
+    if (ridge == NULL || hot == NULL) {
+        free(ridge);
+        free(hot);
+        ridge = NULL;
         return;
     }
+    memset(hot, 0, sizeof *hot);
     memset(ridge, 0, sizeof *ridge);
     spring_line_init(&ridge->line, ridge->offset, ridge->velocity, RIDGE_COLUMNS, spring_tension, spring_stiffness,
                      spring_damping);
