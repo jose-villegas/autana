@@ -1,6 +1,11 @@
 /*
  * r3d_vec3f - the float 3-vector every float camera and path in render/
- * shares. Single precision only, for the reason r3d_ray.h gives.
+ * shares.
+ *
+ * SINGLE PRECISION ONLY. The FPU this runs on has no double, so one stray
+ * promotion costs an order of magnitude; a .c including this carries
+ * `#pragma GCC diagnostic error "-Wdouble-promotion"` itself, since a pragma
+ * in a header would bind every includer.
  */
 #pragma once
 
