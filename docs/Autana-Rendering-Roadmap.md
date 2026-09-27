@@ -464,10 +464,20 @@ replace it, chosen by app kind:
    overlap it, scissored to that band's rows by a small hook added to
    small3dlib (`S3L_SCISSOR_Y`, `components/small3dlib/include/small3dlib.h`)
    rather than the scissored span rasterizer this section otherwise assumes.
-   That rasterizer (section 8 decision 4) is still a separate, unbuilt
-   piece; a full-screen z-buffer in PSRAM is not recommended for
+   That rasterizer (section 8 decision 4) is a separate piece, begun in
+   `render/r3d_span.h`; a full-screen z-buffer in PSRAM is not recommended for
    per-pixel access, and a per-band one arrives with the rasterizer, not
    with the ring alone.
+
+**A measured exception: the lit-mesh frame.** `render/r3d_lit_frame.h`
+renders at half resolution into colour and depth targets in PSRAM and
+doubles the result into the framebuffer, both cores writing PSRAM in bulk
+every frame. It stays there until the span rasterizer draws into the band
+ring; `apps/render_lab/tests/suite_sponza_perf.c`, on a full diagnostics
+build, prints what a frame of each bake costs on both cores before present.
+The doubling belongs to gfx (section 8,
+decision 1) and moves there when gfx resolves an app's resolution; until
+then `r3d_lit_frame_double()` does it inside render/.
 
 PSRAM's role narrows to bulk and cold data read at load or per frame —
 textures, levels, the retained framebuffer as a read source — never the
@@ -639,10 +649,10 @@ lands) and pin it with `aligned(32)`; no 64-bit divides, no signed
 divides by powers of two; a unity build for cross-file inlining if the
 rasterizer spans files; host numbers predict code-shape changes well and
 work-quantity changes badly; and the RTOS tick and input tasks are a
-small, measurable tax. Allocate everything an app needs once at `enter()`
-and free it at `exit()` — the repo's "app exclusivity" convention and
-every MCU renderer's "allocate at startup, never again" advice are the
-same rule.
+small, measurable tax. Take the bulk memory an app needs once at `enter()`,
+from the shell's [app arena](Building-an-App.md#app-memory) — the
+repo's "app exclusivity" convention and every MCU renderer's "allocate at
+startup, never again" advice are the same rule.
 
 ---
 
@@ -984,7 +994,8 @@ Principles, each of which is already a repo habit:
   fonts go through generators into headers with the regenerate command
   in their banner, validated by the generator and tested independently
   (the generated-sources convention in `docs/Launcher-Architecture.md`).
-- **Allocate at `enter()`, free at `exit()`, nothing in between.**
+- **Take bulk memory from the [app arena](Building-an-App.md#app-memory)
+  at `enter()`, nothing in between.**
 - **One board, `board/` binds the facts.** `board/board.h` and
   `board_esp32s3.c` pick the bus clocks, the PSRAM policy (one retained
   framebuffer read by core-1 present; full-redraw renderers use the
@@ -1062,7 +1073,8 @@ cheapest path to something that is unmistakably a game.
 2. ~~Band height: 64 rows or 32?~~ **Live again under the revised
    decision B.** The band ring in internal SRAM is the
    standing mechanism for every full-redraw renderer (r3d, raycaster,
-   image kernels); PSRAM is never their render target. Band height stays
+   image kernels); PSRAM is never their render target (one
+   measured exception, section 3.3). Band height stays
    a compile-time constant (`GFX_BAND_HEIGHT`, divisors of 448: 64, 32,
    16), now a Kconfig choice rather than a hard-coded macro — the ring
    ships with 32 as the default, absent a device sweep saying otherwise.
@@ -1090,7 +1102,10 @@ cheapest path to something that is unmistakably a game.
    overdraw between neighbours), near-plane clipping, and the
    perspective-correction cadence, all pixel-exact against a slow
    reference on the host. small3dlib stays vendored only until the boot
-   animation stops including it, then the component is deleted.
+   animation stops including it, then the component is deleted. The first
+   piece is in the tree: `render/r3d_span.h` fills depth-tested Gouraud
+   spans into a window of rows, and `render/r3d_lit_pipeline.h` culls,
+   transforms and clips a mesh whose light is baked into vertex colours.
 5. **Decided: the platformer is exploratory, with both world
    models kept.** Track B (the sand automaton as the world, fixed-camera
    rooms, levels as blocks of a material, materials and reactions as
@@ -1124,7 +1139,8 @@ what is making it:
   with `objdump`, not the attribute, and diff `.bss` for every build
   variant before trusting a static buffer's size.
 - No new file-scope `static` buffer in any build variant without a `.bss`
-  diff; allocate at `enter()`, free at `exit()`.
+  diff; take bulk memory from the
+  [app arena](Building-an-App.md#app-memory) at `enter()`.
 - The three shell rules hold for any change: one framebuffer (the
   retained buffer for retained apps, or the internal-SRAM band ring for
   full-redraw renderers, as a gfx-owned mode), one frame loop owned by

@@ -123,10 +123,9 @@ occasion to relitigate what belongs where.
   "The blit is bus-bound".
 - Should Settings be reachable from the launcher unconditionally (like any
   other app) or only exist in `--dev`/`--diag` builds the way Diagnostics
-  does today? Development-only content argues for the latter, matching how
-  `main/CMakeLists.txt` already excludes `apps/diagnostics/` by folder under
-  `CONFIG_LAUNCHER_DEVELOPMENT` - guarding `apps/settings/` the same way,
-  under the same flag, is the obvious mirror.
+  does today? Development-only content argues for the latter, and an
+  `apps/settings/development_only.cmake` marker would do it, the same way
+  Diagnostics keeps itself out of release.
 
 ## Non-goals
 

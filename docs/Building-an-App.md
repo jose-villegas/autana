@@ -48,6 +48,9 @@ app_t app_yours = {
 APP_REGISTER(app_yours);
 ```
 
+Name the `app_t` after the folder: `apps/yours/` registers `app_yours`. The
+release symbol check finds a development-only app by that name.
+
 To check a new `app_*.c` file without the ESP32 toolchain, run
 [`check_app_sources.sh`](../launcher/test/check_app_sources.sh) in Git Bash on
 Windows or a terminal on macOS/Linux. It syntax-checks the hardware-facing
@@ -61,9 +64,9 @@ board-free preview of its drawing, declare a scene with the
 | `app_t` field | Required | Called | Contract |
 |---|---|---|---|
 | `name`, `summary` | yes | - | launcher list text; `name` is also the sort key |
-| `enter()` | yes | once, on launch | reset state, allocate, `gfx_mode_enter()`. May have run before. |
+| `enter()` | yes | once, on launch | reset state, take memory from the app arena, `gfx_mode_enter()`. May have run before. |
 | `frame(dt_ms, input)` | yes | every pass | draw and return. `dt_ms` is clamped to `FRAME_DT_MAX_MS` (250 ms). |
-| `exit()` | yes | once, on leave | release what `enter()` took, `gfx_mode_exit()` included |
+| `exit()` | yes | once, on leave | release what `enter()` acquired, `gfx_mode_exit()` included. Arena memory needs nothing: the shell empties the arena right after `exit()`. |
 | `update(dt_ms, input)` | no | every pass, before `frame()` | state only - **no `gfx_*`, no framebuffer**; a dev build asserts it |
 | `invalidate()` | no | once per full-redraw request, before the next `frame()` | reset a draw cache the app keeps beyond the framebuffer |
 | `home_gesture` | no (`false`) | - | `true`: shell owns the way home (edge swipe + hint strip) |
@@ -98,7 +101,7 @@ an app leaves by leaving the build:
 | To | Do |
 |---|---|
 | remove an app | delete `apps/<name>/` - code, tests and artwork go with it |
-| keep one out of release images | a folder filter in `main/CMakeLists.txt`, as `apps/diagnostics/` has under `CONFIG_LAUNCHER_DEVELOPMENT` |
+| keep one out of release images | add `apps/<name>/development_only.cmake`; its presence alone does it (a comment saying why is all it holds) |
 
 ## Lifecycle
 
@@ -114,9 +117,10 @@ launch, `leave_app()` on leave:
 | Launch | Leave |
 |---|---|
 | `gfx_request_full_redraw()` | `exit()` |
-| `restore_system_display_state()` | `restore_system_display_state()` |
-| `enter()` | `gfx_request_full_redraw()` |
-| next pass: `invalidate()`, then the first `frame()` | launcher drawn and presented the same pass |
+| `restore_system_display_state()` | `app_arena_rewind(0)` |
+| `enter()` | `restore_system_display_state()` |
+| next pass: `invalidate()`, then the first `frame()` | `gfx_request_full_redraw()` |
+| | launcher drawn and presented the same pass |
 
 `enter()` always precedes the first `frame()`; `exit()` always follows the
 last. The pass that leaves calls neither `update()` nor `frame()`, so the app
@@ -218,7 +222,32 @@ edge - sand does. An app with an on-screen way out calls
 | Any `gfx_*` call from `update()` | **no** - the buffer may be mid-send |
 
 Expensive work belongs in `enter()`, not `frame()`. New permanent statics cost
-every app heap; allocate in `enter()`, free in `exit()`.
+every app heap. Bulk memory comes from the app arena - see
+[App memory](#app-memory).
+
+### App memory
+
+The shell owns one block in PSRAM, `APP_ARENA_BYTES` long (`app_arena.h`),
+and lends it to the running app. Nothing taken from it survives the visit.
+
+| Call | Who | What |
+|---|---|---|
+| `app_arena_take(size, align)` | the app, usually in `enter()` | the next `size` bytes, or `NULL` when the rest cannot hold them - never an abort, so keep a fallback |
+| `app_arena_mark()` / `app_arena_rewind(mark)` | the app | scope a shorter lifetime inside one visit; rewinding past what is in use asserts |
+| `app_arena_rewind(0)` | the shell only | right after the leaving app's `exit()` |
+
+```c
+static void yours_enter(void) {
+    buf = app_arena_take(BUF_BYTES, _Alignof(gfx_color_t)); /* NULL: run without it */
+}
+static void yours_exit(void) {
+    buf = NULL; /* nothing to free */
+}
+```
+
+The arena is PSRAM: right for large buffers, wrong for a small hot table
+that wants internal RAM - that still comes from the heap, and `exit()` frees
+it.
 
 ### What the shell resets for you
 
@@ -261,7 +290,7 @@ main/apps/<name>/
 | `suite_*.c` | only `CONFIG_LAUNCHER_SELFTEST` builds | yes |
 | `scope_perf.cmake` | only `--perf-scope` builds | no |
 | `tools/**` | never | never |
-| `apps/diagnostics/**`, `apps/input_lab/**` | only `CONFIG_LAUNCHER_DEVELOPMENT` builds | yes |
+| `development_only.cmake` | never; its presence keeps the whole folder to `CONFIG_LAUNCHER_DEVELOPMENT` builds | no (the folder's portable files still are) |
 
 Tooling that spans an app *and* shell code lives in `launcher/tools/`, not the
 app's `tools/`. An app reaches shell headers layer-qualified: `"gfx/gfx.h"`,

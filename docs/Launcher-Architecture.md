@@ -37,12 +37,14 @@ launcher/
 │   ├── quality/        complexity and MISRA gates, report_test_results.sh
 │   ├── boot_anim/      the boot animation editor and its perf report
 │   ├── render/         the host render harness and its scenes
+│   ├── r3d/            offline mesh baking for render/'s r3d renderer
 │   ├── sweeps/         build and capture sweeps
 │   └── tests/          regression tests for these tools
 ├── test/               the host runner and the shell's own suites
 └── main/
     ├── main.c          the frame loop and app switching
     ├── app.h           the shell/app contract
+    ├── app_arena.{h,c} the PSRAM block lent to the running app (host-tested)
     ├── app_registry.c  the registered apps, sorted by name (host-tested)
     ├── boot/           runs once each, before the frame loop exists
     │   ├── post.{h,c}          power-on self test
@@ -53,10 +55,16 @@ launcher/
     │   ├── boot_anim_curve.h   GENERATED - see tools/gen/gen_zeta_curve.py
     │   ├── boot_anim_image.h   GENERATED - see tools/gen/gen_boot_anim_image.py
     │   └── boot_anim_timeline.h GENERATED - from boot_anim_timeline.json
-    ├── render/         3D transform, clip and projection shared by boot and apps
+    ├── render/         3D transform, clip and projection, and the r3d rasterizer
     │   ├── r3d_project.h       camera-space near clip, perspective (host-tested)
     │   ├── r3d_camera.h        camera description, upright roll, viewport fit (host-tested)
-    │   └── r3d_ray.h           float ray camera for a tracer        (host-tested)
+    │   ├── r3d_vec3f.h         the float 3-vector                   (host-tested)
+    │   ├── r3d_ray.h           float ray camera, the quarter-turn mapping (host-tested)
+    │   ├── r3d_span.{h,c}      depth-tested Gouraud spans into a window of rows (host-tested)
+    │   ├── r3d_lit_mesh.h      a mesh with light baked into vertex colours
+    │   ├── r3d_lit_pipeline.{h,c} cull, transform and near clip for that mesh (host-tested)
+    │   ├── r3d_lit_frame.{h,c} one such frame split across both cores (host-tested)
+    │   └── r3d_path.{h,c}      a looping Catmull-Rom camera path    (host-tested)
     ├── board/          the one board's pins and peripherals
     │   ├── board.h             what any board must provide
     │   └── board_esp32s3.c     this board's answer
@@ -134,7 +142,7 @@ launcher/
     │   └── console_inject.c, console_inject_parse.h  TOUCH/IMU/TAP/PRESS/DRAG/BUTTON (host-tested)
     └── apps/           one folder per app - see Building-an-App.md
         ├── input_lab/  touch precision and bezel measurement; development builds only
-        ├── render_lab/ a software rasterizer, wireframe and ray-traced scenes
+        ├── render_lab/ rasterized, wireframe, ray-traced and baked-light scenes
         ├── diagnostics/  bench tool; development builds only
         └── sand/       the falling-sand sandbox
 ```
@@ -253,7 +261,7 @@ flowchart TB
     end
     subgraph T5[" "]
         Gfx["gfx/<br/><i>the one framebuffer</i>"]
-        Render["render/<br/><i>3D transform, clip, projection</i>"]
+        Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
         Display["display/<br/><i>orientation, with hysteresis</i>"]
         Input["input/<br/><i>touch, gesture, tilt</i>"]
     end
@@ -410,6 +418,36 @@ The suite checks the shipped table against the mathematics rather than against
 the generator - the fourth rule under [Generated
 sources](#generated-sources).
 
+## A lit-mesh frame on both cores
+
+`render/r3d_lit_frame.h` draws a mesh whose light is baked into vertex
+colours at half the panel's resolution, then doubles it into the
+framebuffer. The work before the framebuffer runs in `update()`, overlapped
+with sending the previous frame; each stage is split between the two cores,
+core 1's half dispatched through `util/job.h` (inline when core 1 is busy).
+
+```mermaid
+sequenceDiagram
+    participant C0 as core 0, shell and scene
+    participant J as core 1 job worker
+    participant P as present on core 1
+    C0->>P: gfx_present_begin() sends frame N-1
+    Note over C0: update(), cull every cluster
+    C0->>J: transform the second half of the visible clusters
+    Note over C0: transform the first half
+    J-->>C0: job_wait()
+    Note over C0: pick the row that balances the triangles
+    C0->>J: clear depth and draw the rows above it
+    Note over C0: clear depth and draw the rows below it
+    J-->>C0: job_wait()
+    C0->>P: gfx_present_wait()
+    Note over C0: frame()
+    C0->>J: double the top half into the framebuffer
+    Note over C0: double the bottom half
+    J-->>C0: job_wait()
+    Note over C0,P: frame N is presented on the next pass
+```
+
 ## The frame loop
 
 The shell is a two-state machine. `current == NULL` means a system screen is
@@ -426,7 +464,7 @@ stateDiagram-v2
     ControlCenter : Control Center<br/>ui_control_center_frame()<br/>over the dimmed launcher
 
     Launcher --> Running: tap an entry<br/><i>the app's enter()</i>
-    Running --> Launcher: home swipe, PWR long-press<br/>or shell_request_exit()<br/><i>the app's exit()</i>
+    Running --> Launcher: home swipe, PWR long-press<br/>or shell_request_exit()<br/><i>the app's exit(),<br/>then the arena emptied</i>
     Launcher --> ControlCenter: swipe in from<br/>the logical top
     ControlCenter --> Launcher: swipe in from<br/>the logical bottom
 ```
@@ -495,12 +533,22 @@ here is why the build is shaped the way it is.
 > would silently vanish from the menu. Not a link error: a smaller binary and a
 > shorter list.
 
-**Bench-only apps** - `apps/diagnostics/` and `apps/input_lab/` - are
-excluded by folder when `CONFIG_LAUNCHER_DEVELOPMENT` is off, structural
-rather than a name check. Diagnostics re-runs POST, which cycles the audio rail and re-mounts the SD
-card, so it has no business being reachable in a shipped image. See
-[Build-Variants](Build-Variants.md#release-builds-contain-no-test-code) — note in
-particular that `REQUIRES` must **not** be gated this way.
+**App memory is lent, not owned.** The shell holds one static block in
+PSRAM, the app arena (`APP_ARENA_BYTES`, `app_arena.h`), and empties it
+right after every app's `exit()`; an app takes bulk buffers from it and never
+frees them. How to use it is
+[Building-an-App.md's App memory](Building-an-App.md#app-memory). Re-entry
+cannot fail to heap fragmentation, since every visit gets the same static
+block, and taking from it is no dynamic-memory call (MISRA 21.3): it bumps
+an offset.
+
+**Bench-only apps** declare themselves: an app whose folder holds a
+`development_only.cmake` is left out when `CONFIG_LAUNCHER_DEVELOPMENT` is
+off. `main/CMakeLists.txt` globs the markers the way it globs
+`scope_perf.cmake`, so it names no app, and deleting the folder deletes the
+declaration; the marker's own comment says why the app is bench-only. See
+[Build-Variants](Build-Variants.md#release-builds-contain-no-test-code) — note
+in particular that `REQUIRES` must **not** be gated this way.
 
 Diagnostics ships in any development build, `--dev` included, not just
 `--diag`. Its own toggle page mixes two shapes; the app itself does not.
