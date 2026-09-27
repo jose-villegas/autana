@@ -457,7 +457,7 @@ there.
 | Where | A frame is | Watched | Fails |
 |---|---|---|---|
 | Every host render scene (`render_all_scenes.sh`, CI) | one `draw()`; a scene with fewer frames than a warm-up and a window goes on drawing, unwritten, until it has them | `malloc`/`calloc`/`realloc`/`free` wrapped at link time, keyed by caller; anything written to stdout, which is where `ESP_LOG*` goes on a host | the render. A heap site's `FRAME_WATCH` line carries an `addr2line` command; a stdout one shows what that frame printed |
-| Every on-device test (the `RUN_TEST` wrapper in `test/timing.c`) | the span between two presents | the board's own watch | that test, with the `FRAME_WATCH` lines above its result. `FRAME_WATCH judged N of M tests` ends the run: a test that presents fewer than a warm-up's frames is not judged |
+| Every on-device test (the `RUN_TEST` wrapper in `test/timing.c`) | the span between two presents | the board's own watch | that test, with the `FRAME_WATCH` lines above its result. `FRAME_WATCH judged N of M tests` ends the run: a test is judged only once it presents more than `FRAME_WATCH_WARMUP` times |
 
 `tools/render/tests/check_frame_watch.sh` proves the host check: a fixture
 doing each kind of work every frame must fail naming that kind, once must
