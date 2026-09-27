@@ -83,6 +83,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The container runs as another user than the checkout's owner.
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Every name, file and heading a comment cites exists
         run: python3 scripts/gates/check_comment_symbols.py --require-idf
 
