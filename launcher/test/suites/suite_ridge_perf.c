@@ -212,6 +212,12 @@ pixels_unlike_a_full_paint(arm_t arm, int frames) {
         ui_ridge_step(&input, FRAME_DT_MS);
         gfx_present();
     }
+    /* A switch between strips still dissolving in is by design unlike a
+     * full paint: let it finish, holding the last tilt. */
+    for (int frame = 0; frame < 240 && ui_ridge_dissolving_for_test(); frame++) {
+        ui_ridge_step(&idle_input, FRAME_DT_MS);
+        gfx_present();
+    }
     const int64_t unsent = gfx_send_audit_uncovered_px();
     gfx_set_send_audit(false);
     TEST_ASSERT_TRUE_MESSAGE(unsent == 0, "a repainted pixel never reached the panel");
