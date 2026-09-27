@@ -52,3 +52,4 @@ jobs:
             && python "$IDF_PATH/tools/idf_tools.py" install esp-clang
             && cd ..
             && python3 launcher/tools/quality/complexity_gate.py
+            && python3 launcher/tools/quality/misra_tidy_gate.py

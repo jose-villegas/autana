@@ -34,7 +34,7 @@
 #
 # and then calls device_report_run with the arguments every report takes:
 #
-#   [--no-restore] [COM_PORT] [OUT.md]
+#   [--no-restore] [BOARD] [OUT.md]
 
 device_report_run() {
     # Defaults, applied here rather than at source time: a caller declares
@@ -63,7 +63,7 @@ device_report_run() {
         esac
     done
 
-    _dr_port="${1:-}"
+    _dr_board="${1:-}"
     _dr_out="${2:-}"
 
     # launcher/, wherever this report lives: beside tools/build/build_flash.sh, or
@@ -109,9 +109,9 @@ device_report_run() {
 # Build+flash and capture are one held-lock call, scripts/device/device.py's
 # own `selftest` (report_suite="", every suite at boot) or `batch --runs 1`
 # (report_suite=<name>, one suite via RUNSUITE - the same build-then-
-# capture-under-one-lock shape, scoped to a single suite and run). COM_PORT,
-# when given, is passed through; otherwise device.py finds the board by its
-# USB identity.
+# capture-under-one-lock shape, scoped to a single suite and run). BOARD,
+# a USB serial number, is passed through when given; otherwise device.py
+# takes AUTANA_BOARD, else the only board plugged in.
 device_report_capture() {
     if [ -n "$report_suite" ]; then
         set -- --owner "$_dr_owner" batch --worktree "$_dr_worktree" --suite "$report_suite" \
@@ -123,8 +123,8 @@ device_report_capture() {
                --max-seconds "$report_timeout" --purpose "device_report $report_name"
         echo "=== Building and capturing the self-test run ==="
     fi
-    if [ -n "$_dr_port" ]; then
-        set -- --port "$_dr_port" "$@"
+    if [ -n "$_dr_board" ]; then
+        set -- --board "$_dr_board" "$@"
     fi
     # Unquoted on purpose: a caller declares zero or more flags in one string.
     # shellcheck disable=SC2086
@@ -175,8 +175,8 @@ device_report_finish() {
         echo "=== Restoring the release firmware ==="
         set -- --owner "$_dr_owner" flash --variant release --worktree "$_dr_worktree" \
                --purpose "device_report $report_name (restore)"
-        if [ -n "$_dr_port" ]; then
-            set -- --port "$_dr_port" "$@"
+        if [ -n "$_dr_board" ]; then
+            set -- --board "$_dr_board" "$@"
         fi
         python "$_dr_device_py" "$@" \
             || echo "WARNING: could not restore the release firmware - the device may still be on build.diag"
