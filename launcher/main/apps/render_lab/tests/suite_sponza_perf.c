@@ -108,6 +108,15 @@ test_sponza_draw_stage_breakdown(void) {
     }
     span_raster_stop_after = 0;
 
+    /* A view of nothing but sky: what a frame costs before any geometry. */
+    lit_view_t empty;
+    lit_view_look(&empty, (lit_vec3_t){0.0f, 20000.0f, 0.0f}, (lit_vec3_t){0.0f, 1.0f, 0.01f}, HALF_FOV, NEAR_Z,
+                  SPONZA_POSITION_SCALE, RENDER_WIDTH, RENDER_HEIGHT, 0);
+    start = esp_timer_get_time();
+    const lit_frame_stats_t none = lit_frame_render(&b.frame, &empty);
+    ESP_LOGI(TAG, "stage, both cores: %-20s %7lldus (%d clusters)", "empty frame",
+             (long long)(esp_timer_get_time() - start), none.clusters);
+
     bench_close(&b);
     TEST_PASS();
 }

@@ -22,16 +22,19 @@ transform_slice(void* ctx) {
 }
 
 /* Two panel rows per source row, each pixel written twice as one 32-bit
- * store. */
+ * store. A pixel nothing covered (depth still 0) takes the clear colour
+ * here, so the colour buffer itself is never cleared. */
 static void
 double_rows(const lit_frame_t* f, int first, int count) {
     const int out_width = 2 * f->width;
     for (int y = first; y < first + count; y++) {
         const gfx_color_t* src = f->color + (size_t)y * (size_t)f->width;
+        const uint16_t* depth = f->depth + (size_t)y * (size_t)f->width;
         uint32_t* top = (uint32_t*)(f->doubled + (size_t)(2 * y) * (size_t)out_width);
         uint32_t* bottom = top + f->width;
         for (int x = 0; x < f->width; x++) {
-            const uint32_t pair = ((uint32_t)src[x] << 16) | src[x];
+            const gfx_color_t c = depth[x] != 0 ? src[x] : f->clear;
+            const uint32_t pair = ((uint32_t)c << 16) | c;
             top[x] = pair;
             bottom[x] = pair;
         }
@@ -47,8 +50,10 @@ draw_slice(void* ctx) {
     gfx_color_t* color = f->color + offset;
     uint16_t* depth = f->depth + offset;
 
-    for (size_t i = 0; i < pixels; i++) {
-        color[i] = f->clear;
+    if (f->doubled == NULL) {
+        for (size_t i = 0; i < pixels; i++) {
+            color[i] = f->clear;
+        }
     }
     memset(depth, 0, pixels * sizeof(*depth));
 
