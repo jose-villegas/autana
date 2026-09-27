@@ -3,8 +3,8 @@
  * is running.
  *
  * A static block in PSRAM, handed out by bumping an offset. The shell rewinds
- * it to 0 before every app's enter(), so nothing an app takes outlives its
- * visit and an app never frees: leaving is the free. A mark and a rewind to
+ * it to 0 right after every app's exit(), so nothing an app takes outlives
+ * its visit and an app never frees: leaving is the free. A mark and a rewind to
  * it scope a shorter lifetime inside one visit.
  *
  * Rejected: per-app heap_caps_malloc()/free(). Each call site is one more
