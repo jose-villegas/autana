@@ -1014,11 +1014,11 @@ sweep_cell(const sweep_quality_t* q, const sweep_scene_t* sc, const int* side, c
 
     ESP_LOGI("device_tests",
              "CHUNK_SWEEP quality=%s grid=%dx%d side=%dx%d scene=%s orient=%s arm=%s us_per_step=%lld aborts=%u "
-             "chunks=%d sweep_us=%lld liquid_us=%lld gas_us=%lld react_us=%lld other_us=%lld",
+             "chunks=%d sweep_us=%lld liquid_us=%lld gas_us=%lld react_us=%lld other_us=%lld took_us=%lld steps=%d",
              q->name, q->w, q->h, side[0], side[1], sc->name, o->name, sweep_arm_names[arm], (long long)per_step,
              b.s.split_lane_aborts, chunks, (long long)(pass.sweep / SWEEP_STEPS),
              (long long)(pass.liquid / SWEEP_STEPS), (long long)(pass.gas / SWEEP_STEPS),
-             (long long)(pass.react / SWEEP_STEPS), (long long)(other / SWEEP_STEPS));
+             (long long)(pass.react / SWEEP_STEPS), (long long)(other / SWEEP_STEPS), (long long)took, SWEEP_STEPS);
 
     (void)sand_chunk_side_for_test(0, 0);
     sweep_board_close(&b);
