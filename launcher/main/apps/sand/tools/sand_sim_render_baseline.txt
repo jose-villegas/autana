@@ -1,2 +1,3 @@
 # What the sand_sim scene's renders hash to, one per line.
-simulation-portrait 0c1fcf85ab467b6950567798c9e058699b00e90b65c244d5b648a0a80dd22bd6
+# Re-pinned deliberately, after looking at the images:
+#     ./launcher/main/apps/sand/tools/sand_sim_render_host.sh --update-baseline
