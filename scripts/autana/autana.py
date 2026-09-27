@@ -72,6 +72,16 @@ def device_tool():
     return device
 
 
+def device_module():
+    """device.py itself, for a verb that runs in this process: one that
+    needs neither pyserial nor the board, only device.py's own code."""
+    folder = str(device_tool().parent)
+    if folder not in sys.path:
+        sys.path.insert(0, folder)
+    import device
+    return device
+
+
 def device_command(*args):
     """device.py imports pyserial, so it runs under ESP-IDF's Python even
     when some other interpreter started this file."""
@@ -130,21 +140,30 @@ def run_streaming_its_log(command):
     return code
 
 
-def flash(args):
-    quiet = "--quiet" in args
-    perf_scope = "--perf-scope" in args
-    args = [arg for arg in args if arg not in ("--quiet", "--perf-scope")]
-    asked = args[0] if args else "dev"
+def variant_request(verb, args, flags):
+    """The words `autana build` and `autana flash` share: one variant (dev
+    when omitted) and the `flags` given. Prints the banner; returns the
+    variant word asked, the variant, the flags seen and the worktree."""
+    seen = {flag for flag in flags if flag in args}
+    words = [arg for arg in args if arg not in flags]
+    asked = words[0] if words else "dev"
     variant = VARIANTS.get(asked)
-    if variant is None or len(args) > 1:
-        sys.exit("usage: autana flash [rel|dev|diag] [--quiet] [--perf-scope]")
-
+    if variant is None or len(words) > 1:
+        sys.exit(f"usage: autana {verb} [rel|dev|diag] "
+                 + " ".join(f"[{flag}]" for flag in flags))
     worktree = engine_worktree()
     branch = git("branch", "--show-current") or "detached"
     commit = git("rev-parse", "--short", "HEAD")
     dirty = " (dirty)" if git("status", "--porcelain") else ""
-    print(f"autana flash: {variant} of {branch} @ {commit}{dirty}", flush=True)
+    print(f"autana {verb}: {variant} of {branch} @ {commit}{dirty}", flush=True)
+    return asked, variant, seen, worktree
 
+
+def flash(args):
+    asked, variant, seen, worktree = variant_request("flash", args,
+                                                     ("--quiet", "--perf-scope"))
+    quiet = "--quiet" in seen
+    perf_scope = "--perf-scope" in seen
     command = device_command(
         "--owner", owner(),
         "flash", "--variant", variant, "--worktree", worktree, "--purpose", f"autana flash {asked}",
@@ -152,6 +171,13 @@ def flash(args):
     if perf_scope:
         command.append("--perf-scope")
     return subprocess.call(command) if quiet else run_streaming_its_log(command)
+
+
+def build(args):
+    """Build this worktree with no board and no lock: the build half of
+    `autana flash`, device.py's own, run in this process."""
+    _, variant, seen, worktree = variant_request("build", args, ("--perf-scope",))
+    return device_module().build_worktree(worktree, variant, sorted(seen))
 
 
 def seconds_argument(args, default, usage):
@@ -954,6 +980,8 @@ Command = namedtuple("Command", "name handler usages")
 # (synopsis without "autana ", one line of what it does).
 COMMAND_GROUPS = (
     ("build", "Build and flash", (
+        Command("build", build, (
+            ("build [rel|dev|diag] [--perf-scope]", "build this worktree, no board; dev when omitted"),)),
         Command("flash", flash, (
             ("flash [rel|dev|diag] [--quiet] [--perf-scope]", "build and flash this worktree; dev when omitted"),)),
         Command("buildid", buildid, (
@@ -1067,9 +1095,9 @@ def completion_candidates(line, prefix):
         parts = line.split()
         if line and line[-1].isspace():
             parts.append("")
-        if len(parts) != 2 or parts[0] not in ("flash", "help"):
+        if len(parts) != 2 or parts[0] not in ("build", "flash", "help"):
             return []
-        words = VARIANTS if parts[0] == "flash" else HELP_TOPICS
+        words = VARIANTS if parts[0] in ("build", "flash") else HELP_TOPICS
     return sorted(word for word in words if word.startswith(prefix))
 
 
