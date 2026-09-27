@@ -3,8 +3,8 @@
 Nothing outside `scripts/device/` opens a board's USB serial port: no
 monitor, capture helper, `esptool`, or direct pyserial command
 (`scripts/gates/check_device_access.py` holds the tree to that). Every
-command takes the board's lock first, so sessions sharing a board queue for
-it instead of fighting over the port.
+command takes the board's lock before it opens the port, so sessions sharing
+a board queue for it instead of fighting over the port.
 
 Day-to-day use goes through `tools/autana` ([Autana-CLI.md](Autana-CLI.md)) -
 every `autana` command calls `device.py`. This doc covers `device.py`
@@ -68,46 +68,54 @@ own copy, for working on the tools themselves; the test suites set it.
 ## What a flash proves
 
 A flash succeeds when esptool's `write_flash` hash-verified every region it
-wrote and the flash log carries the build's `BUILD_ID=` line; `flash` then
-prints `flashed BUILD_ID=<id> (esptool hash verified; boot not verified)`.
-It proves the write, not the boot, for every variant. A flash is two
-scripts in one log: `launcher/tools/build/build.sh` builds the image
-and opens no port, so it runs before the lock is taken and other sessions
-keep the board meanwhile; then, under the lock,
-`scripts/device/flash_image.sh` writes it. A build that fails never queues
-for the board. When
-either fails, `flash` fails naming it, with the log's first error line (esptool's
-`Could not open COM3 ...`, say) and the log's path. What boots is proven
-only by a console that names it: a `selftest` or `batch` capture, which fails
-on any other `BUILD_ID`, or `autana buildid` on a development build.
+wrote and the flash log carries the written image's `BUILD_ID=` line; `flash`
+then prints `flashed BUILD_ID=<id> (esptool hash verified; boot not
+verified)`. It proves the write, not the boot, for every variant.
 
-`batch` and `selftest` build first, then hold one lock across the flash
-and the capture. A
-separate `flash` and `run-suite` take two locks, and another session can
-flash between them: `run-suite --expect-build-id <id>` fails if the board
-reports another build, but `autana suite` passes no id, so after a separate
-flash use `batch` or `selftest` when the capture must be of that image.
+A flash is two halves in one log. `launcher/tools/build/build.sh` builds the
+image with no board lock held, so other sessions keep the board meanwhile;
+a file lock on the build directory keeps a second build of the same worktree
+and variant out until this one is done. `device.py` then copies the image -
+`flash_args`, every file it lists and `build_id.txt` - into a snapshot beside
+the flash log (`<log>.image/`). Only then does it queue for the board, and
+under the lock `scripts/device/flash_image.sh` writes the snapshot with
+esptool, never `idf.py flash`: nothing builds while the board is held, a later
+build in that directory cannot change what is written, and the `BUILD_ID`
+recorded is the snapshot's own. A build that fails never queues. When either
+half fails, `flash` fails naming it, with the log's first error line
+(esptool's `Could not open COM3 ...`, say) and the log's path. What boots is
+proven only by a console that names it: a `selftest` or `batch` capture,
+which fails on any other `BUILD_ID`, or `autana buildid` on a development
+build.
+
+`batch` and `selftest` build first, then hold one lock across the flash and
+the capture. A separate `flash` and `run-suite` take two locks, and another
+session can flash between them: `run-suite --expect-build-id <id>` fails if
+the board reports another build, but `autana suite` passes no id, so after a
+separate flash use `batch` or `selftest` when the capture must be of that
+image.
 
 ```mermaid
 sequenceDiagram
     participant Dev as device.py
-    participant Lock as lock file
     participant Build as build.sh
+    participant Snap as image snapshot
+    participant Lock as board lock
     participant Sh as flash_image.sh
-    participant Idf as idf.py and esptool
     participant Board as board
 
-    Dev->>Build: run, no lock held
-    Build-->>Dev: exit status, log with BUILD_ID
+    Note over Dev,Build: build directory locked, no board lock
+    Dev->>Build: run
+    Build-->>Dev: exit status, build.dev/ with flash_args and build_id.txt
     Note over Dev,Build: a failed build ends here, never queued
+    Dev->>Snap: copy flash_args, its files, build_id.txt
     Dev->>Lock: take the board's lock
-    Dev->>Sh: run with AUTANA_DEVICE_LOCK_TOKEN and AUTANA_BOARD
+    Dev->>Sh: run on the snapshot, with the lock token and AUTANA_BOARD
     Sh->>Lock: check-token for AUTANA_BOARD
-    Sh->>Sh: device.py resolve-port - AUTANA_BOARD's COM port now
-    Sh->>Idf: idf flash on that port
-    Idf->>Board: write_flash, hash-verify each region
-    Idf->>Board: RTS reset
-    Sh-->>Dev: exit status
+    Sh->>Sh: device.py resolve-port - the board's COM port now
+    Sh->>Board: esptool write_flash @flash_args, hash-verify each region
+    Sh->>Board: RTS reset
+    Sh-->>Dev: BUILD_ID from the snapshot, exit status
     Dev->>Lock: live-lock check, record expected BUILD_ID
     opt batch and selftest, still under the same lock
         Dev->>Board: reopen the port, capture until the suites end
@@ -134,8 +142,8 @@ read, the next port open or esptool call refuses, a flash in progress is
 stopped (its whole process tree), and the command fails with
 `device lock was lost`. A command that finds its lock replaced when it ends
 fails the same way, even if nothing else noticed. `flash_image.sh` checks
-the live token for the named board just before `idf flash`; it cannot prove
-ownership during the esptool write itself, which is what the heartbeat is
+the live token for the named board just before its esptool write; it cannot
+prove ownership during the write itself, which is what the heartbeat is
 for.
 
 ```mermaid
@@ -183,17 +191,17 @@ epoch seconds; an estimate without enough history is `null`.
 Estimates come from `durations.jsonl` beside the lock files, one file shared
 by every checkout and session on the machine. Each held command records how
 long it held the board, nested `flash` and `run-suite` inside `batch` or
-`selftest` included. A `flash` holds the board only while it writes - its
-build runs before the lock - so its recorded duration, and the estimate a
-waiter behind it sees, is the write alone. A command that raises, gets an error reply, or loses its
-lock is recorded with its error and never counts. A suite that reports FAIL
-is a result, not a broken run - perf captures always carry their budget
-targets' FAILs - so its duration counts. An
-estimate is the median of a command kind's last `ESTIMATE_RECENT_RUNS`
-successful runs, after at least `ESTIMATE_MINIMUM_RUNS` (constants in
-`device_lock.py`); a holder past it is estimated free now, and a human
-reservation or an unknown duration ahead of a waiter makes its estimate
-unknown. Past `DURATIONS_TRIM_LINES` lines the file is cut back to each
+`selftest` included. A `flash` holds the board only while esptool writes its
+snapshot - the build and the snapshot come before the lock - so its recorded
+duration, and the estimate a waiter behind it sees, is the write alone. A
+command that raises, gets an error reply, or loses its lock is recorded with
+its error and never counts. A suite that reports FAIL is a result, not a
+broken run - perf captures always carry their budget targets' FAILs - so its
+duration counts. An estimate is the median of a command kind's last
+`ESTIMATE_RECENT_RUNS` successful runs, after at least
+`ESTIMATE_MINIMUM_RUNS` (constants in `device_lock.py`); a holder past it is
+estimated free now, and a human reservation or an unknown duration ahead of
+a waiter makes its estimate unknown. Past `DURATIONS_TRIM_LINES` lines the file is cut back to each
 kind's last `ESTIMATE_RECENT_RUNS` successful runs, and then to the newest
 `DURATIONS_TRIM_LINES` of those.
 

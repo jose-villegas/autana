@@ -1,11 +1,12 @@
 #!/bin/sh
 #
-# Run idf.py from a POSIX shell, on any platform. Source this and call idf().
+# Run idf.py, or any command that needs ESP-IDF's environment, from a POSIX
+# shell on any platform. Source this and call idf() or idf_in().
 #
 #   . "$(dirname "$0")/idf.sh"
 #   idf_init "/path/to/launcher" || exit $?
-#   idf -B build build               || exit $?
-#   idf -B build -p <PORT> flash     || exit $?
+#   idf -B build build                           || exit $?
+#   idf_in <dir> python -m esptool ...           || exit $?
 #
 # WHY THIS EXISTS
 #

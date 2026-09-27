@@ -33,7 +33,7 @@
 #               export.sh elsewhere. Default: the one under $IDF_PATH.
 #
 # Run from anywhere (it cds to launcher/ itself); double-click from Explorer
-# if .sh is associated with Git Bash, or right-click launcher/tools/ ->
+# if .sh is associated with Git Bash, or right-click launcher/tools/build/ ->
 # "Git Bash Here" -> `./build.sh`.
 #
 # All the logic here is POSIX sh. On Windows the ESP-IDF calls go through
