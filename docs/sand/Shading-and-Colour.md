@@ -8,11 +8,6 @@ assumes you already know what a cell byte and a material row are.
 adding a whole new material; this document is narrower and deeper, entirely
 about how an *existing* material is painted.
 
-Every number below was measured, either on a host-side probe against the
-real palette and the real `material_colours()`, or on the board itself -
-none of it is reasoned from a desk. See "How to test a shading change" at
-the end for the harness these measurements came from.
-
 ---
 
 ## The pipeline
@@ -34,7 +29,7 @@ and it stays free. Everything below is about the cells that need more.
 
 `material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth,
 gfx_color_t out[3])` is the one function every non-trivial cell goes
-through, called from `paint_row_n()` in `sand_paint_row.h` - the hottest loop
+through, called from `sand_paint_row_n()` in `sand_paint_row.h` - the hottest loop
 in the app, once per cell per dirty row. Its inputs:
 
 - **`hash`** - `material_grain_hash(cx, cy)`, a stable per-cell scramble so
@@ -45,7 +40,7 @@ in the app, once per cell per dirty row. Its inputs:
   cardinal bits (`MATERIAL_EDGE_LEFT/RIGHT/UP/DOWN`), computed for every
   cell, and 4 diagonal bits computed only when the cell is water AND
   already a cardinal edge - see "Rim, specular and foam" below.
-- **`depth`** - not liquid-exclusive. `paint_row_n()` decides what this
+- **`depth`** - not liquid-exclusive. `sand_paint_row_n()` decides what this
   slot carries *before* calling `material_colours()`, by material identity:
   a root cell (`MATX_ROOT`) gets its live neighbour-root count
   (`material_root_neighbours()`); a leaf or a wood cell next to one gets
@@ -108,11 +103,10 @@ it does:
 | Stone | a texture temperature/speckle hybrid | `MATERIAL_SPECKLED` |
 | Soil (dirt) | dry tone (0-7) or moisture level 1-7, told apart **by state**, not a fixed bit split - `CELL_SOIL_TONE()`/`CELL_SOIL_MOISTURE()`, `material.h` | one dusty-tan-to-damp-earth ramp, indexed directly by the variant |
 
-The recurring mistake this table exists to prevent: **treating a variant's
-colour ramp as if it meant something the variant does not actually carry.**
+**A variant's colour ramp must match the quantity that variant carries.**
 Building a ramp around "how much is here" when the variant actually records
 a solver residual, a screen position, or a state code only looks right in
-whichever one scene it was tuned against - see "Why the interior ignores
+one scene and misrepresents others - see "Why the interior ignores
 fill level" below for the worked example.
 
 Extended statics (metal, ice, plant, leaf, root - `MAT_EXTENDED`, id 15,
@@ -202,11 +196,7 @@ column to column)                        boundary (a per-cell Bresenham error)
 
 Both regimes measure the *same* quantity - cells along the ray - so a
 regime flip changes only how the count is computed, never what it means;
-the two agree exactly at the 45-degree crossing by construction. This is
-why the flip is safe where an earlier, now-removed design's axis flip was
-not: that design blended two *different* quantities (a plain vertical
-count and a plain horizontal count), so its own flip was a jump in the
-reported value, however rarely it fired.
+the two agree exactly at the 45-degree crossing by construction.
 
 **Storage is a plain, gravity-agnostic step count, clamped at
 `LOCAL_DEPTH_COUNT_CEILING` (== `MATERIAL_LIQUID_DEPTH_BAND`, 24),
@@ -228,9 +218,9 @@ render range gets dragged toward whatever the far-out input would show, a
 result neither input alone would ever produce. This is a standing rule for
 any future signal built the same way, not only this one.
 
-**A liquid's own `MATERIAL_LIQUID_DEPTH_BAND` (24) is shared, on purpose,
-by three unrelated call sites** - `material_colours()`'s clamp,
-`local_depth_row_a[]`/`local_depth_row_b[]`'s ceiling, and
+**`MATERIAL_LIQUID_DEPTH_BAND` connects the shade clamp, depth carry and
+dirty-span width** - `material_colours()`'s clamp,
+`sand_paint_depth_count()`'s ceiling, and
 `mark_depth_band()`'s (`sand_priv.h`) dirty-span width, which widens a
 pour's repaint radius by exactly this many cells along gravity's dominant
 axis on the assumption that anything farther already renders the same
@@ -240,8 +230,8 @@ assumption stops matching what it dirties.
 
 **A cross-row carry is trusted only when it is known to describe the
 immediately-preceding row - and only on the boundary path.**
-`local_depth_prev_cy` records which row `local_depth_prev_row[]` actually
-holds; `paint_row_n()` compares it against the expected row once per row.
+`local_depth_prev_cy` records which row the previous depth buffer holds;
+`sand_paint_row_n()` compares it against the expected row once per row.
 A same-material climb trusts a stale-but-saturated carry deliberately -
 that is what lets an isolated repaint deep inside a settled pool render at
 full depth instead of re-climbing from 1, the property
@@ -249,20 +239,18 @@ full depth instead of re-climbing from 1, the property
 *boundary* cell (this cell touches a different material or air) cannot
 make the same assumption: if the carry does not describe the row one step
 back, the honest value is 0, not whatever a different part of the pool last
-left there. Distrusting the carry on both paths reintroduces re-climb
+left there. Distrusting the carry on both paths causes re-climb
 banding; trusting it on both paths lets a stale row's saturated value leak
-across a real boundary and, once, rendered an entire settled pool at
-maximum depth for a frame.
+across a real boundary and can render a settled pool at maximum depth for a frame.
 
 **A regime flip, or a reversal flag flip that this grid's walk can actually
 observe, resets both row buffers and the debounce array wholesale.** The
 gate is exact arithmetic, not a tuned deadband: a vertical-dominant walk's
 sideways drift is observable only if `grid_h * |gx| >= |gy|`, and a
 horizontal-dominant walk's cross-row read is observable only if
-`grid_w * |gy| >= |gx|` (`update_local_depth_gravity()`, `sand_paint_row.h`) -
+`grid_w * |gy| >= |gx|` (`sand_paint_update_local_depth_gravity()`, `sand_paint_row.h`) -
 otherwise the flipped flag cannot change any number the walk computes, and
-gating on it would silently reintroduce a tuned dead zone this mechanism
-already removed once. A regime flip itself is never gated - it always
+gating on it would create a dead zone. A regime flip itself is never gated - it always
 changes what the array slot means, whatever the magnitudes are. Without
 this gate, ordinary hand tremor at axis lock (`gx` or `gy` sitting near
 zero) flips a reversal flag many times a second, and an ungated reset wipes
@@ -270,8 +258,7 @@ the debounce on nearly every frame - measured, 40 resets in 40 tremor
 frames - which never lets a boundary commit, holding a settled pool's
 surface at the shallowest shade forever instead of the true one.
 
-**The debounce key means something different in each regime** - found by
-testing, not designed in advance:
+**The debounce key means something different in each regime**:
 
 | Regime | `local_depth_top_row[cx]` holds | Commits when |
 |---|---|---|
@@ -287,23 +274,13 @@ instead of ever committing. Both regimes share the *array*, not the
 convention - a regime flip resets it wholesale, so neither has to interpret
 a value the other one wrote.
 
-Net cost of this mechanism: three `GRID_W_MAX` (184-byte) arrays -
-`local_depth_row_a[]`, `local_depth_row_b[]`, `local_depth_top_row[]` - 552
-bytes of `.bss`, plus a handful of per-frame scalars.
+The carry and debounce buffers live in `sand_paint_row_state_t`.
 
 ### Any distance-based signal must be scaled to what it currently measures
 
-`DEPTH_SATURATE_CELLS` (== `MATERIAL_LIQUID_DEPTH_BAND`, 24) exists because
-an earlier, screen-position version of this signal legitimately spanned
-0-255, and the shade formula was tuned against that range. Once depth
-became local (rarely exceeding a few dozen cells for any real pool),
-the same formula stayed pinned near one extreme - measured, luminance flat
-at 159 for local depth 0 through 20 cells before it started moving. 24 was
-picked so a realistic pool's actual depth range (0-40 cells) spans the
-visible brightness range instead of needing to approach 255 to show
-anything. Whenever a signal's meaning changes again - local to something
-else, relative to absolute - every constant tuned against its old range
-has to be re-derived, not assumed to still fit.
+`DEPTH_SATURATE_CELLS` sets the depth where an interior liquid reaches
+its body colour. Keep the shade range matched to the local depth produced
+by `sand_paint_depth_count()` and the projection in `sand_paint_row.h`.
 
 ---
 
@@ -333,8 +310,8 @@ hash values out of 8, for curvature 0 through 3+) and animated by adding
 change the foam set at all) a foam phase to the per-cell hash.
 
 **Water's foam hash is coarsened, and that is only safe while foam is its
-one consumer.** `paint_row_n()` hands water a hash sampled at
-`(cx >> FOAM_BLOB_SHIFT, cy >> FOAM_BLOB_SHIFT)` (`FOAM_BLOB_SHIFT` = 3) so
+one consumer.** `sand_paint_row_n()` hands water a hash sampled at
+`(cx >> SAND_PAINT_FOAM_BLOB_SHIFT, cy >> SAND_PAINT_FOAM_BLOB_SHIFT)` (`SAND_PAINT_FOAM_BLOB_SHIFT` = 3) so
 foam gathers in blobs bigger than a single cell - `material_colours()`
 itself stays ignorant of coordinates. Stone's speckle, wood's grain, and
 glass's shimmer all depend on the fine, per-cell hash; adjacent cells
@@ -382,10 +359,9 @@ speckle anything.
 
 ## Cullet's colour cycle
 
-Cullet (sand's reserved top band, `SAND_CULLET_BASE` (12) through
-`MATERIAL_VARIANTS - 1`, four shades - "sand that used to be glass") keeps
-a fixed nibble per grain, the same as any other speckled shade, but each of
-the four nibbles now names a **starting point**, a quarter-turn apart, on a
+Cullet (sand's reserved top band, `SAND_CULLET_BASE` through
+`MATERIAL_VARIANTS - 1`) keeps a fixed nibble per grain, the same as any
+other speckled shade, but each nibble names a **starting point** on a
 shared 16-entry cycle (`cullet_cycle[]`, `material.c`) that a per-frame
 phase (`material_set_cullet_phase()`) steps through over real time. A heap
 of broken glass shimmers through four pale tints instead of sitting on one.
@@ -405,7 +381,7 @@ The simulation does not change for any of this: `material_colours()` is a
 pure function of the cell byte plus whatever per-frame state has been set
 (gravity, foam phase, cullet phase), so the fingerprint suite - which
 hashes cell bytes, never rendered pixels - stays green while the display
-shimmers. What *does* move is `app_sand.c`'s repaint bookkeeping: a cullet
+shimmers. What *does* move is the repaint bookkeeping: a cullet
 cell's row needs the same periodic-wake treatment shine already gets -
 `sand_paint_row_state_t`'s `row_flags[]` (`sand_paint_row.h`) carries a
 `SAND_PAINT_ROW_FLAG_CULLET` bit, and `app_sand.c`'s `mark_wake_hits()`
@@ -423,7 +399,7 @@ above), 256, and 16. Both alternates request `GFX_PIXFMT_INDEXED8`
 (`gfx/gfx_mode.h`): gfx frees the PSRAM framebuffer, as `GFX_LAYOUT_BANDS`
 already does, and instead owns a persistent `grid_w x grid_h` byte image of
 palette indices in internal RAM plus a 256-entry RGB565 LUT. Sand writes
-indices, never pixels (`paint_row_n()` - the same function the RGB565 path
+indices, never pixels (`sand_paint_row_n()` - the same function the RGB565 path
 uses, forking only at the final write so hash, mask and local depth stay
 one piece of code, not two that can drift apart) - one byte per changed
 cell, not an `n x n` pixel block, which is why this mode skips the PSRAM
@@ -446,11 +422,11 @@ sweep never produced falls back to the table's own OKLab-nearest search,
 paid once at generation time.
 
 **`MATERIAL_HATCHED` adapts, rather than drops, in indexed modes.**
-`paint_row_n()` samples the same shine line once at each cell's own centre
+`sand_paint_row_n()` samples the same shine line once at each cell's own centre
 instead of per pixel: a cell the line crosses takes `col[2]`'s own index
 (already one of the study's swept colours) instead of `col[0]`'s. Local
 depth, root thickness and leaf wave all reach the index exactly as they
-reach a pixel, since `paint_row_n()` computes `depth` once and every output
+reach a pixel, since `sand_paint_row_n()` computes `depth` once and every output
 reads the same value. None of this touches the FULL path or the simulation
 itself - `material_colours()` is unmodified and the fingerprint suite stays
 green in every mode.
@@ -539,22 +515,10 @@ is future work.
 - **`panel_luminance()`** (`suite_sand_common.c`) is the Rec.601 luminance
   helper already used throughout the suite - reuse it rather than writing a
   second one.
-- **`paint_row_n()` and `update_local_depth_gravity()` live in
-  `sand_paint_row.h`** (`apps/sand/`), not `app_sand.c` - a header of
-  `static inline` functions the host suite links directly
-  (`suite_sand_paint_row.c`), the real code rather than a mirror of it.
-  `app_sand.c` itself is still excluded from the host build (`run_tests.sh`
-  excludes every `app_*.c`), so anything living only in its own per-frame
-  accumulators (foam phase, wood/leaf wind, the row-flag bookkeeping) still
-  needs a test-local mirror, not a real link. A mirror that
-  duplicates an algorithm instead of linking to it needs the same scrutiny
-  the code it protects gets: re-verify it against the *current* shape of
-  the mechanism after every change to it, not just whatever the mirror
-  already agrees with, and re-run each test's own "temporarily break the
-  fix, confirm red" proof again - a comment asserting *why* a mirror's
-  behaviour is correct is a claim to re-check, not evidence in itself, and
-  two independently-wrong implementations can still agree with each other
-  and pass.
+- **`sand_paint_row_n()` and `sand_paint_update_local_depth_gravity()` live in
+  `sand_paint_row.h`** (`apps/sand/`). The host suite calls the same row walk
+  as the firmware. `app_sand.c` owns the wake timers and `mark_wake_hits()`;
+  row flags and their spans belong to `sand_paint_row_state_t`.
 - **Prove every new cosmetic test load-bearing.** Verify red-then-green:
   make the minimal edit that should break the fix, confirm the new test
   actually fails and for the stated reason, restore the fix, confirm green.

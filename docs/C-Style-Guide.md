@@ -10,8 +10,12 @@ The comment policy is under "Comments" below, and the layering rule comments
 obey is there with it; the include half of that rule lives in
 [`docs/Launcher-Architecture.md`](Launcher-Architecture.md), since it is
 about how the layers fit together rather than about C. Cppcheck and the MISRA
-addon check semantic rules through `launcher/tools/quality/misra_check.sh`. Their
-findings are not formatting or naming rules and are not part of this guide.
+addon check semantic rules through `launcher/tools/quality/misra_check.sh`.
+The checkable first-party subset is gated by
+`launcher/tools/quality/misra_tidy_gate.py`, compiler warnings, and
+`scripts/gates/check_style_audit.py`; see
+`launcher/tools/quality/README.md` for their commands. Their findings are
+not formatting or naming rules and are not part of this guide.
 
 The guide deliberately takes structural ideas from
 [OpenBSD style(9)](https://man.openbsd.org/style.9), interface discipline from

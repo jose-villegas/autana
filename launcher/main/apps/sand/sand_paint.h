@@ -1,11 +1,4 @@
-/*
- * sand_paint - the per-cell decisions of the sand renderer, kept apart from
- * app_sand.c's state so the host suites can call the same code the frame
- * loop inlines. Everything a decision reads arrives as an argument; none of
- * these touches a pixel, a global or the panel.
- *
- * Forced inline: each runs once per cell per repainted row.
- */
+/* sand_paint: per-cell decisions; sand_paint_row.h owns the row walk and its state. */
 #pragma once
 
 #include <stdbool.h>

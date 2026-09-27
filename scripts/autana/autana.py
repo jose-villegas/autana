@@ -341,37 +341,10 @@ def batch(args):
 
 
 def status(args):
-    """Who, if anyone, holds the board right now - and who is waiting."""
-    if not read_json_flag(args, "usage: autana status [--json]"):
-        return subprocess.call(device_command("status"))
-    result = subprocess.run(device_command("status"), capture_output=True, text=True)
-    if result.returncode != 0:
-        print(result.stderr, end="", file=sys.stderr)
-        return result.returncode
-    print(json.dumps(parse_status(result.stdout)))
-    return 0
-
-
-def parse_status(reply):
-    lines = reply.splitlines()
-    waiting = next((line[len("waiting: "):].split(", ") for line in lines
-                    if line.startswith("waiting: ")), [])
-    first = lines[0] if lines else "unlocked"
-    if first.startswith("held by "):
-        match = re.fullmatch(r"held by (.+) for (.+) since (\d+)", first)
-        if match:
-            owner_name, purpose, acquired_at = match.groups()
-            return {"state": "held", "owner": owner_name, "purpose": purpose,
-                    "acquired_at": int(acquired_at), "waiting": waiting}
-    if first.startswith("human reservation: "):
-        match = re.fullmatch(r"human reservation: (.+?): (.*) \((\d+)s ago\)", first)
-        if match:
-            owner_name, note, age = match.groups()
-            return {"state": "human", "owner": owner_name, "note": note,
-                    "age_seconds": int(age), "waiting": waiting}
-    if first == "unlocked":
-        return {"state": "unlocked", "waiting": waiting}
-    raise ValueError(f"unrecognized device status: {first}")
+    """Every board, whether it is free, and if not who has it and until when."""
+    if read_json_flag(args, "usage: autana status [--json]"):
+        return subprocess.call(device_command("status", "--json"))
+    return subprocess.call(device_command("status"))
 
 
 def release(args):
@@ -496,16 +469,27 @@ SEND_WAIT_S = 5
 
 
 def board_holder():
-    """'held by <owner> for ...' when someone else has the board, else ''.
+    """'held by <owner> for <purpose>' when someone else has the board a
+    command would use, else ''. That board is AUTANA_BOARD's, else the only
+    one plugged in; with several plugged in and none named, device.py's own
+    refusal says so.
 
     Every line of a console session is a device.py of its own under one
     autana, so a lock this autana already holds is not somebody else's and
     the session does not refuse itself."""
-    mine = f"held by {owner()} "
-    result = subprocess.run(device_command("status"), capture_output=True, text=True)
-    for line in result.stdout.splitlines():
-        if line.startswith("held by ") and not line.startswith(mine):
-            return line.strip()
+    result = subprocess.run(device_command("status", "--json"), capture_output=True, text=True)
+    try:
+        boards = json.loads(result.stdout)["boards"]
+    except (ValueError, KeyError, TypeError):
+        return ""
+    # device.py already narrows the list to AUTANA_BOARD's board, plugged or not.
+    candidates = boards if os.environ.get("AUTANA_BOARD") else [b for b in boards if b["port"]]
+    if len(candidates) != 1:
+        return ""
+    board = candidates[0]
+    holder = board["holder"]
+    if board["state"] == "held" and holder["owner"] != owner():
+        return f"held by {holder['owner']} for {holder['purpose']}"
     return ""
 
 

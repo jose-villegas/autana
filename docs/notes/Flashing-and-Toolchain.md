@@ -41,36 +41,18 @@ esptool.py --chip esp32s3 -p <PORT> --before no_reset flash_id
 Connecting almost instantly (a few dots) means the chip is sitting in the
 bootloader.
 
-From there `autana flash` boots the new image on its own. Flashing ends with
-esptool's RTS reset. `device.py` waits for USB Serial/JTAG to return and reads
-the boot's BUILD_ID. If it is not heard, the tool resets through the watchdog
-and checks again. `reset --capture` and `selftest` use an RTS reset with a
-watchdog fallback when the board stays silent.
+From there `autana flash` writes the image and ends with esptool's RTS
+reset. What a flash proves - esptool's hash check and the build's
+`BUILD_ID`, not the boot - and the whole hand-off under the device lock are
+in [Device-Lock.md](../tools/Device-Lock.md#what-a-flash-proves).
 
-A watchdog reset or a power cycle re-enumerates USB Serial/JTAG, and Windows
-may hand the board a **different COM number** than it had before. Anything
-holding a port by name breaks there; `find_port()` in
-`scripts/device/device.py` looks it up by vendor id `0x303A` each time for
-that reason.
-
-That re-enumeration comes late: the first open can get the old handle, which
-reads nothing and raises nothing. The flash capture rediscovers the port and
-reopens a silent handle while waiting for the boot. A release image has no
-console to query after boot, so a missed BUILD_ID is reported as unverified.
-
-```mermaid
-sequenceDiagram
-    participant Dev as device.py
-    participant Esp as esptool
-    participant Board as board
-    Esp->>Board: flash, then RTS reset
-    Dev->>Board: wait for USB, read BUILD_ID
-    alt BUILD_ID not heard
-        Dev->>Esp: chip_id, after watchdog_reset
-        Esp->>Board: trip the watchdog
-        Dev->>Board: wait for USB, read BUILD_ID again
-    end
-```
+The RTS reset is a warm reset, so the bootloader's PMIC restart (below)
+power-cycles the SoC: USB drops and comes back, possibly on a **different
+COM number**. Nothing depends on the number - `device.py` finds the board by
+its USB serial number and looks the port up again before every open. The
+first open after the drop can get the old handle, which reads nothing; only
+`reset --capture` and `selftest` reopen a silent handle, and `selftest` and
+`batch` check the console `BUILD_ID` against the flashed image.
 
 If it vanishes from USB entirely — no COM port, no device at vendor ID
 `0x303A` — check
