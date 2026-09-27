@@ -1,6 +1,6 @@
 """The board lock as every command meets it: boards found by USB serial
 number, the guard on each port primitive, what a lost lock stops, the flash
-hand-off to build_flash.sh, and the durations status estimates from."""
+hand-off to build_flash.sh and flash_image.sh, and the durations status estimates from."""
 
 import isolation  # noqa: F401  (first: keeps the suite out of real records)
 import ast
@@ -414,8 +414,9 @@ class FlashTests(Store):
     def flash(self, build, store=None, variant="dev"):
         store = store or self.store
         worktree = self.root / "engine"
-        (worktree / "launcher" / "tools" / "build").mkdir(parents=True, exist_ok=True)
-        (worktree / "launcher" / "tools" / "build" / "build_flash.sh").write_text("")
+        for script in (device.BUILD_SCRIPT, device.FLASH_SCRIPT):
+            (worktree / script).parent.mkdir(parents=True, exist_ok=True)
+            (worktree / script).write_text("")
         args = Namespace(owner="agent", purpose="flash", wait=0, variant=variant,
                          worktree=str(worktree), out=None)
         with mock.patch.object(device, "open_when_free", return_value=contextlib.nullcontext()), \
@@ -476,8 +477,10 @@ class FlashTests(Store):
 
     def test_an_in_flight_flash_is_stopped_when_the_lock_is_lost(self):
         worktree = self.root / "engine"
-        script = worktree / "launcher" / "tools" / "build" / "build_flash.sh"
+        script = worktree / device.BUILD_SCRIPT
         script.parent.mkdir(parents=True)
+        (worktree / device.FLASH_SCRIPT).parent.mkdir(parents=True)
+        (worktree / device.FLASH_SCRIPT).write_text("")
         started = self.root / "started"
         script.write_text("import pathlib, sys, time\n"
                           f"pathlib.Path({str(started)!r}).write_text('')\n"
@@ -512,13 +515,14 @@ class FlashTests(Store):
 
     def test_a_script_that_names_its_build_and_then_fails_fails_the_flash(self):
         worktree = self.root / "engine"
-        script = worktree / "launcher" / "tools" / "build" / "build_flash.sh"
-        script.parent.mkdir(parents=True)
-        script.write_text("import sys\n"
-                          "print('BUILD_ID=abc')\n"
-                          "print('A fatal error occurred: Could not open COM3, the port is busy')\n"
-                          "print('FAILED: CMakeFiles/flash')\n"
-                          "sys.exit(2)\n")
+        for script in (device.BUILD_SCRIPT, device.FLASH_SCRIPT):
+            (worktree / script).parent.mkdir(parents=True, exist_ok=True)
+        (worktree / device.BUILD_SCRIPT).write_text("print('BUILD_ID=abc')\n")
+        (worktree / device.FLASH_SCRIPT).write_text(
+            "import sys\n"
+            "print('A fatal error occurred: Could not open COM3, the port is busy')\n"
+            "print('FAILED: CMakeFiles/flash')\n"
+            "sys.exit(2)\n")
         log = self.root / "flash.log"
         args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
                          worktree=str(worktree), out=str(log))
@@ -528,7 +532,7 @@ class FlashTests(Store):
             with self.assertRaises(RuntimeError) as caught:
                 device.flash(args, self.store, BOARD_A)
         self.assertEqual(str(caught.exception),
-                         "build_flash.sh failed (exit 2): A fatal error occurred: Could not open "
+                         "flash_image.sh failed (exit 2): A fatal error occurred: Could not open "
                          f"COM3, the port is busy - flash log: {log}")
         self.assertNotIn("flashed", output.getvalue())
         self.assertIn("exit 2", self.entry()["error"])
@@ -548,7 +552,7 @@ class FlashTests(Store):
                 contextlib.redirect_stderr(io.StringIO()), \
                 self.assertRaises(device.LockLost):
             device.flash_script(self.store, BOARD_A, "agent", "flash",
-                                [sys.executable, str(script)], 0,
+                                [[sys.executable, str(script)]], 0,
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         grandchild = int(started.read_text())
         self.addCleanup(subprocess.run, ["taskkill", "/F", "/PID", str(grandchild)]
@@ -583,7 +587,8 @@ class EditorFlashTests(Store):
         with mock.patch.object(editor, "TIMELINE_JSON", str(self.root / "timeline.json")), \
                 mock.patch.object(editor, "TIMELINE_HEADER", str(self.root / "timeline.h")), \
                 mock.patch.object(editor, "GENERATOR", str(generator)), \
-                mock.patch.object(editor, "BUILD_FLASH_SCRIPT", str(script)), \
+                mock.patch.object(device, "flash_commands",
+                                  return_value=[[sys.executable, str(script)]]), \
                 mock.patch.object(editor, "_ensure_image_current"), \
                 mock.patch.object(editor, "find_bash", return_value=sys.executable), \
                 mock.patch.object(device.HeldLock, "HEARTBEAT_SECONDS", 0.05), \
@@ -597,10 +602,10 @@ class EditorFlashTests(Store):
         self.assertFalse(device_lock.process_alive(pid))
 
 
-class BuildFlashScriptTests(unittest.TestCase):
-    """The real build_flash.sh, copied beside the files it sources, with
+class FlashImageScriptTests(unittest.TestCase):
+    """The real flash_image.sh, copied beside the files it sources, with
     idf.py and pyserial stubbed: a token that is not the board's live lock
-    stops it after the build and before any flash."""
+    stops it before any idf.py call."""
 
     def setUp(self):
         try:
@@ -610,9 +615,9 @@ class BuildFlashScriptTests(unittest.TestCase):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         self.tree = Path(temp.name)
-        for relative in ("launcher/tools/build/build_flash.sh", "launcher/tools/build/idf.sh",
-                         "launcher/tools/build/idf_variant.sh", "launcher/tools/build/idf_shim.bat",
-                         "launcher/tools/build/espressif.py", "scripts/quiet.sh",
+        (self.tree / "launcher").mkdir()
+        for relative in ("scripts/device/flash_image.sh", "launcher/tools/build/idf.sh",
+                         "launcher/tools/build/idf_shim.bat", "launcher/tools/build/espressif.py",
                          "scripts/device/device.py", "scripts/device/device_lock.py",
                          "scripts/device/device_hook.py", "scripts/device/device_report.py",
                          "scripts/device/main_copy.py"):
@@ -628,16 +633,9 @@ class BuildFlashScriptTests(unittest.TestCase):
             f"    return [SimpleNamespace(vid=0x303A, serial_number={BOARD_A!r}, device='COM42')]\n")
         self.log = self.tree / "idf.log"
         (stubs / "idf_stub.py").write_text(
-            "import sys\nfrom pathlib import Path\n"
-            "args = sys.argv[1:]\n"
+            "import sys\n"
             f"with open({str(self.log)!r}, 'a') as log:\n"
-            "    log.write(' '.join(args) + '\\n')\n"
-            "if 'build' in args:\n"
-            "    build = Path(args[args.index('-B') + 1])\n"
-            "    build.mkdir(parents=True, exist_ok=True)\n"
-            "    (build / 'sdkconfig').write_text('CONFIG_LAUNCHER_RELEASE=y\\n')\n"
-            "    (build / 'launcher.bin').write_bytes(b'')\n"
-            "    (build / 'build_id.txt').write_text('stub-build\\n')\n")
+            "    log.write(' '.join(sys.argv[1:]) + '\\n')\n")
         # One stub per platform: cmd would run a POSIX idf.py found first on
         # PATH through the .py file association instead of idf.py.bat.
         if os.name == "nt":
@@ -652,36 +650,36 @@ class BuildFlashScriptTests(unittest.TestCase):
             self.export = stubs / "export.sh"
             self.export.write_text(f'PATH="{stubs.as_posix()}:$PATH"\n')
         self.stubs = stubs
-        self.store = device_lock.LockStore()
+        self.store = device_lock.LockStore(self.tree / "locks")
 
-    def run_script(self, token):
+    def run_script(self, token, *flags):
         environment = dict(os.environ, AUTANA_DEVICE_LOCK_TOKEN=token, AUTANA_BOARD=BOARD_A,
-                           PYTHONPATH=str(self.stubs),
+                           AUTANA_DEVICE_LOCK_ROOT=str(self.store.root), PYTHONPATH=str(self.stubs),
                            PATH=str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"])
-        return subprocess.run([self.bash, str(self.tree / "launcher/tools/build/build_flash.sh"),
-                               str(self.export)], env=environment, stdin=subprocess.DEVNULL,
-                              capture_output=True, text=True, timeout=120)
+        return subprocess.run([self.bash, str(self.tree / "scripts/device/flash_image.sh"),
+                               *flags, str(self.export)], env=environment,
+                              stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              timeout=120)
 
     def idf_calls(self):
         return self.log.read_text().splitlines() if self.log.exists() else []
 
-    def test_a_foreign_token_stops_after_the_build_and_before_the_flash(self):
+    def test_a_foreign_token_stops_before_any_idf_call(self):
         held = self.store.acquire(BOARD_A, "agent", "flash")
         self.addCleanup(self.store.release, BOARD_A, held["token"])
         result = self.run_script("foreign")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("device lock token is not active for board " + BOARD_A, result.stderr)
-        self.assertTrue(any(call.endswith(" build") for call in self.idf_calls()),
-                        result.stdout[-2000:])
-        self.assertFalse(any("flash" in call.split() for call in self.idf_calls()))
+        self.assertEqual(self.idf_calls(), [])
 
-    def test_the_live_token_flashes_the_port_the_board_has_now(self):
+    def test_the_live_token_flashes_the_variants_build_to_the_port_the_board_has_now(self):
         held = self.store.acquire(BOARD_A, "agent", "flash")
         self.addCleanup(self.store.release, BOARD_A, held["token"])
-        result = self.run_script(held["token"])
-        self.assertEqual(result.returncode, 0, result.stdout[-2000:] + result.stderr[-2000:])
-        self.assertIn("BUILD_ID=stub-build", result.stdout)
-        self.assertEqual(self.idf_calls()[-1], "-B build -p COM42 flash")
+        for flags, build in (((), "build"), (("--dev",), "build.dev"), (("--diag",), "build.diag")):
+            with self.subTest(build=build):
+                result = self.run_script(held["token"], *flags)
+                self.assertEqual(result.returncode, 0, result.stdout[-2000:] + result.stderr[-2000:])
+                self.assertEqual(self.idf_calls()[-1], f"-B {build} -p COM42 flash")
 
 
 class DurationTests(Store):

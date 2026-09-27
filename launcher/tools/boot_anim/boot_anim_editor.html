@@ -51,14 +51,14 @@
   The one button here that is not a preview: it writes the current values
   straight to the REAL main/boot/boot_anim_timeline.json and regenerates
   the REAL boot_anim_timeline.h (what Bake + a manual copy + regenerate
-  would produce, done here instead), then runs tools/build/build_flash_dev.sh -
+  would produce, done here instead), then does what `autana flash dev` does -
   builds the development firmware image and flashes it to the board whose
   USB serial number is typed in next to the button (empty: the only board
   plugged in). See
   boot_anim_editor_server.py's own top comment for the /build_flash
-  endpoint this calls, and build_flash_dev.sh's own header for what the
-  development image is (development-only logging/instrumentation, no test
-  suites - see build_flash.sh's own comment on --dev vs --diag).
+  endpoint this calls, and tools/build/build_flash.sh's own header for what
+  the development image is (development-only logging/instrumentation, no
+  test suites - its comment on --dev vs --diag).
 -->
 <html lang="en">
 <head>
