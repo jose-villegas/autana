@@ -52,13 +52,3 @@ app_arena_rewind(size_t mark) {
     assert(mark <= used);
     used = mark;
 }
-
-size_t
-app_arena_used(void) {
-    return used;
-}
-
-void
-app_arena_reset(void) {
-    used = 0;
-}
