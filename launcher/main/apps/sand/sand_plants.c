@@ -49,14 +49,18 @@ support_slot(uint16_t at) {
 }
 
 typedef struct {
-    uint16_t body[SUPPORT_MAX];
+    struct {
+        uint16_t x;
+        uint16_t y;
+    } body[SUPPORT_MAX];
+
     uint16_t slot[SUPPORT_SLOTS];
     uint64_t filled;
     int n;
 } support_t;
 
 static void
-support_admit(support_t* sp, uint16_t at) {
+support_admit(support_t* sp, uint16_t at, uint16_t x, uint16_t y) {
     unsigned k = support_slot(at);
     while (((sp->filled >> k) & 1u) != 0u) {
         if (sp->slot[k] == at) {
@@ -66,15 +70,14 @@ support_admit(support_t* sp, uint16_t at) {
     }
     sp->slot[k] = at;
     sp->filled |= (uint64_t)1u << k;
-    sp->body[sp->n++] = at;
+    sp->body[sp->n].x = x;
+    sp->body[sp->n++].y = y;
 }
 
-/* True once a neighbour of body cell `at` that is not kin sits straight
+/* True once a neighbour of the body cell that is not kin sits straight
  * down: the body rests on it. Kin neighbours join the body instead. */
 static bool
-support_visit(sand_t* s, support_t* sp, int at, int w, int h, int down, cell_t self, const reaction_t* r) {
-    const int cx = at % w, cy = at / w;
-
+support_visit(sand_t* s, support_t* sp, int cx, int cy, int w, int h, int down, cell_t self, const reaction_t* r) {
     for (int d = 0; d < 8; d++) {
         const int* nd = ring_dir(down + d);
         const int nx = cx + nd[0], ny = cy + nd[1];
@@ -96,7 +99,7 @@ support_visit(sand_t* s, support_t* sp, int at, int w, int h, int down, cell_t s
         if (sp->n >= SUPPORT_MAX) {
             continue; /* too big to finish; treat as loose */
         }
-        support_admit(sp, (uint16_t)nat);
+        support_admit(sp, (uint16_t)nat, (uint16_t)nx, (uint16_t)ny);
     }
     return false;
 }
@@ -111,12 +114,15 @@ anchored(sand_t* s, int x, int y, int w, int h, cell_t self, const reaction_t* r
     const uint16_t seed = (uint16_t)((size_t)y * (size_t)w + (size_t)x);
     sp.slot[support_slot(seed)] = seed;
     sp.filled |= (uint64_t)1u << support_slot(seed);
-    sp.body[sp.n++] = seed;
+    sp.body[sp.n].x = (uint16_t)x;
+    sp.body[sp.n++].y = (uint16_t)y;
 
     const int down = ring_of(s->last_load_dx, s->last_load_dy);
 
     while (head < sp.n) {
-        if (support_visit(s, &sp, (int)sp.body[head++], w, h, down, self, r)) {
+        const int cx = sp.body[head].x, cy = sp.body[head].y;
+        head++;
+        if (support_visit(s, &sp, cx, cy, w, h, down, self, r)) {
             return true;
         }
     }
@@ -259,14 +265,20 @@ soil_offers(cell_t c, bool wants_room) {
     return wants_room ? moisture_of(c, cr) < cr->moist_max : moisture_of(c, cr) != 0;
 }
 
+typedef struct {
+    int at;
+    int x;
+    int y;
+} soil_site_t;
+
 /* From the collar at (cx, cy), gravity-ward through at most ROOT_REACH cells
  * of soil to the first one that offers what the caller wants. */
-static int
+static soil_site_t
 drink_below_collar(sand_t* s, int cx, int cy, int w, int h, const reaction_t* r, bool wants_room) {
     const int dx = s->last_load_dx, dy = s->last_load_dy;
     for (int depth = 0; depth < ROOT_REACH; depth++) {
         if ((unsigned)cx >= (unsigned)w || (unsigned)cy >= (unsigned)h) {
-            return -1;
+            return (soil_site_t){-1, 0, 0};
         }
         const size_t at = (size_t)cy * (size_t)w + (size_t)cx;
         const cell_t c = s->cells[at];
@@ -277,26 +289,26 @@ drink_below_collar(sand_t* s, int cx, int cy, int w, int h, const reaction_t* r,
             continue;
         }
         if (CELL_IS_EMPTY(c) || reaction_of(c)->soil == 0) {
-            return -1;
+            return (soil_site_t){-1, 0, 0};
         }
         if (soil_offers(c, wants_room)) {
-            return (int)at;
+            return (soil_site_t){(int)at, cx, cy};
         }
         cx += dx;
         cy += dy;
     }
-    return -1;
+    return (soil_site_t){-1, 0, 0};
 }
 
 /* Soil soaks bottom-up and dries top-down, so the collar can be dry over
  * wet rows: past the stem, the walk goes up to ROOT_REACH cells into the
  * soil for water. Roots on the stem count toward root_depth, not lift. */
-static int
-find_water(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t self, int* lift, int* contact_at,
+static soil_site_t
+find_water(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t self, int* lift, soil_site_t* contact,
            int* root_depth, bool wants_room) {
     const int down = ring_of(s->last_load_dx, s->last_load_dy);
 
-    *contact_at = -1;
+    *contact = (soil_site_t){-1, 0, 0};
 
     int cx = x, cy = y;
     int lift_count = 0;
@@ -314,13 +326,13 @@ find_water(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t se
             scan_below(s, cx, cy, w, h, r, self, down, &st);
         }
         if (st.x < 0) {
-            return -1; /* neither stem nor ground below */
+            return (soil_site_t){-1, 0, 0}; /* neither stem nor ground below */
         }
         cx = st.x;
         cy = st.y;
         if (st.on_soil) {
             /* Into the soil. This is the collar. */
-            *contact_at = (int)((size_t)cy * (size_t)w + (size_t)cx);
+            *contact = (soil_site_t){(int)((size_t)cy * (size_t)w + (size_t)cx), cx, cy};
             return drink_below_collar(s, cx, cy, w, h, r, wants_room);
         }
         if (st.via_root) {
@@ -329,29 +341,24 @@ find_water(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t se
             lift_count++;
         }
     }
-    return -1;
+    return (soil_site_t){-1, 0, 0};
 }
 
-/* The GROWER half of reaction_t.roots (material.h): fires once, at
- * root_depth == 0, welding CONTACT into the FIRST root; step_one_rooting_cell()
- * below is the ROOT half, growth from a root already placed, so the two are
- * gated apart. Moisture is spent at soil_at, which can sit cells away from
- * contact_at - only contact_at ever converts, so a deep drink never leaves a
- * disconnected root speck. */
+/* Only the collar can become the first root; deeper soil can still feed it. */
 static void
-spend_soil_moisture(sand_t* s, int w, const reaction_t* r, int soil_at, uint8_t amount, int contact_at,
+spend_soil_moisture(sand_t* s, const reaction_t* r, soil_site_t soil_site, uint8_t amount, soil_site_t contact,
                     int root_depth) {
-    const cell_t soil = s->cells[soil_at];
-    s->cells[soil_at] = soil_set_moisture(soil, (uint8_t)(moisture_of(soil, reaction_of(soil)) - amount), 0);
-    mark_rows(s, soil_at % w, soil_at / w, soil_at / w);
+    const cell_t soil = s->cells[soil_site.at];
+    s->cells[soil_site.at] = soil_set_moisture(soil, (uint8_t)(moisture_of(soil, reaction_of(soil)) - amount), 0);
+    mark_rows(s, soil_site.x, soil_site.y, soil_site.y);
 
-    if (r->roots == 0 || contact_at < 0 || root_depth != 0) {
+    if (r->roots == 0 || contact.at < 0 || root_depth != 0) {
         return;
     }
     if ((int)(rng_next(&s->rng) & 0xFF) >= r->roots) {
         return;
     }
-    place_reacted(s, contact_at % w, contact_at / w, (size_t)contact_at, r->roots_to);
+    place_reacted(s, contact.x, contact.y, (size_t)contact.at, r->roots_to);
 }
 
 /* A root with more root neighbours than this stops growing, keeping roots
@@ -576,17 +583,11 @@ step_one_drinking_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* 
         return false; /* nothing to drink */
     }
 
-    int lift = 0, contact_at = -1, root_depth = 0; /* drinking never spends
-                                                     * soil moisture, so
-                                                     * nothing here roots -
-                                                     * scratch values */
-    const int soil_at = find_water(s, x, y, w, h, r, self, &lift, &contact_at, &root_depth, true);
-    /* FALSE, though a drink is possible: the caller reads this as "soil
-     * moisture was made", and a plant standing in water with no soil under it
-     * makes none. Saying true there kept the growth stages armed off a puddle
-     * nothing could reach. Costs no drinking - this stage is gated on liquid,
-     * not on moisture. */
-    if (soil_at < 0) {
+    int lift = 0, root_depth = 0;
+    soil_site_t contact;
+    const soil_site_t soil_site = find_water(s, x, y, w, h, r, self, &lift, &contact, &root_depth, true);
+    /* Growth stages need a reachable soil cell to gain moisture. */
+    if (soil_site.at < 0) {
         return false;
     }
     if ((int)(rng_next(&s->rng) & 0xFF) >= r->drinks) {
@@ -595,11 +596,11 @@ step_one_drinking_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* 
 
     pay_quench_cost(s, lx, ly, w);
 
-    const cell_t soil = s->cells[soil_at];
+    const cell_t soil = s->cells[soil_site.at];
     const reaction_t* sr = reaction_of(soil);
-    s->cells[soil_at] = with_moisture(soil, (uint8_t)(moisture_of(soil, sr) + 1), sr);
-    mark_rows(s, soil_at % w, soil_at / w, soil_at / w);
-    wake_block_and_neighbors(s, soil_at % w, soil_at / w);
+    s->cells[soil_site.at] = with_moisture(soil, (uint8_t)(moisture_of(soil, sr) + 1), sr);
+    mark_rows(s, soil_site.x, soil_site.y, soil_site.y);
+    wake_block_and_neighbors(s, soil_site.x, soil_site.y);
     return true;
 }
 
@@ -607,7 +608,8 @@ step_one_drinking_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* 
  * Trunks live. */
 bool
 step_one_sprouting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
-    int soil_at = -1, empty_at = -1, ex = 0, ey = 0;
+    soil_site_t soil_site = {-1, 0, 0};
+    int empty_at = -1, ex = 0, ey = 0;
 
     for (int d = 0; d < 4; d++) {
         const int nx = x + reaction_dirs[d][0];
@@ -625,12 +627,12 @@ step_one_sprouting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t*
             }
             continue;
         }
-        if (soil_at < 0 && reaction_of(n)->soil != 0 && moisture_of(n, reaction_of(n)) != 0) {
-            soil_at = (int)nat;
+        if (soil_site.at < 0 && reaction_of(n)->soil != 0 && moisture_of(n, reaction_of(n)) != 0) {
+            soil_site = (soil_site_t){(int)nat, nx, ny};
         }
     }
-    if (soil_at < 0 || empty_at < 0) {
-        return soil_at >= 0;
+    if (soil_site.at < 0 || empty_at < 0) {
+        return soil_site.at >= 0;
     }
     if ((int)(rng_next(&s->rng) & 0xFF) >= r->sprouts) {
         return true;
@@ -640,7 +642,7 @@ step_one_sprouting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t*
 
     /* SPENDS, NEVER SEEDS -1. 0 reports collar, disconnected roots. Sprouting
      * pays for leaf. */
-    spend_soil_moisture(s, w, r, soil_at, 1, -1, 0);
+    spend_soil_moisture(s, r, soil_site, 1, (soil_site_t){-1, 0, 0}, 0);
     return true;
 }
 
@@ -698,12 +700,13 @@ step_one_budding_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
         return true; /* crowned, but boxed in */
     }
 
-    int lift = 0, contact_at = -1, root_depth = 0;
-    const int soil_at = find_water(s, x, y, w, h, r, self, &lift, &contact_at, &root_depth, false);
-    if (soil_at < 0) {
+    int lift = 0, root_depth = 0;
+    soil_site_t contact;
+    const soil_site_t soil_site = find_water(s, x, y, w, h, r, self, &lift, &contact, &root_depth, false);
+    if (soil_site.at < 0) {
         return true; /* nothing to drink */
     }
-    const cell_t soil = s->cells[soil_at];
+    const cell_t soil = s->cells[soil_site.at];
     if (moisture_of(soil, reaction_of(soil)) < BUD_COST) {
         return true;
     }
@@ -713,7 +716,7 @@ step_one_budding_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
 
     place_reacted(s, bx, by, (size_t)at, r->buds_to);
 
-    spend_soil_moisture(s, w, r, soil_at, BUD_COST, contact_at, root_depth);
+    spend_soil_moisture(s, r, soil_site, BUD_COST, contact, root_depth);
     return true;
 }
 
@@ -1044,9 +1047,10 @@ step_one_growing_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
         return true; /* inside the crowd, not at its edge */
     }
 
-    int lift = 0, contact_at = -1, root_depth = 0;
-    const int soil_at = find_water(s, x, y, w, h, r, self, &lift, &contact_at, &root_depth, false);
-    if (soil_at < 0) {
+    int lift = 0, root_depth = 0;
+    soil_site_t contact;
+    const soil_site_t soil_site = find_water(s, x, y, w, h, r, self, &lift, &contact, &root_depth, false);
+    if (soil_site.at < 0) {
         return true; /* nothing to drink */
     }
     if (lift >= TREE_LIFT) {
@@ -1079,7 +1083,7 @@ step_one_growing_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
     if (!grow_into(s, sx + dx, sy + dy, dx, dy, w, h, self, shoot)) {
         return true;
     }
-    spend_soil_moisture(s, w, r, soil_at, 1, contact_at, root_depth);
+    spend_soil_moisture(s, r, soil_site, 1, contact, root_depth);
 
     if (r->hardens_to == 0 || r->harden_run == 0) {
         return true;
