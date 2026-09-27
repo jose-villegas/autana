@@ -5,8 +5,8 @@ verified on the actual board or read out of the actual source — nothing is
 copied from a spec sheet unless it is marked as such. Numbers come from boot
 logs and `esp_timer` measurements taken in this repo.
 
-Six files, one hardware fact area each - the falling-sand app's own
-discovery narrative lives in [`../sand/`](../sand/) instead:
+Six files, one hardware fact area each; an app's own discovery narrative
+lives with that app's documents instead:
 
 - **[Board-and-Memory.md](Board-and-Memory.md)** — the board's hardware
   inventory, the memory budget built around the framebuffer living in
@@ -28,7 +28,7 @@ discovery narrative lives in [`../sand/`](../sand/) instead:
   measuring by deleting code instead of reasoning about it, verifying
   `static inline` actually inlined with `objdump`, register-spilling call
   boundaries, and more.
-- **[Diagnostics-and-Debugging.md](Diagnostics-and-Debugging.md)** — which
+- **[Debugging.md](Debugging.md)** — which
   tool to reach for depending on the symptom: the host and on-device test
   suites, `autana screenshot`'s image-plus-device-state capture,
   `autana monitor`, the gfx debug overlays, and the USB-Serial-JTAG console
@@ -47,10 +47,6 @@ discovery narrative lives in [`../sand/`](../sand/) instead:
 
 - [`../Firmware-Architecture.md`](../Firmware-Architecture.md) — how the
   shell and its apps are built on top of the hardware facts here.
-- [`../sand/README.md`](../sand/README.md) — the falling-sand app: how it
-  works today (`Sand-Simulation.md`) and how to add a material
-  (`Adding-a-Material.md`). Its performance numbers and memory choices
-  are shaped directly by the constraints here.
 - [`../Testing-Guide.md`](../Testing-Guide.md) — how any of this gets
   verified on real hardware.
 - [`../Build-Variants.md`](../Build-Variants.md) — which image carries the

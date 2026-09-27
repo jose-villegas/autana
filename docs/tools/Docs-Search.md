@@ -8,8 +8,8 @@ look. It runs locally, needs no board, and never sends anything off the
 machine.
 
 ```sh
-autana docs how do I add a material that burns
-autana docs --section docs/sand/Adding-a-Material.md:293      # one section whole
+autana docs how do I make a function testable on the host
+autana docs --section docs/Testing-Guide.md:486               # one section whole
 autana docs --outline docs/Testing-Guide.md                   # headings, lines, sizes
 autana docs --ask can an app call vTaskDelay inside frame     # a written answer, with sources
 ```

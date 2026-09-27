@@ -49,11 +49,11 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 | Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole |
 | Content kept between frames | yes | **no** - a band is gone once sent | yes |
 | For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette |
-| Used by | launcher, diagnostics | render lab | sand |
+| Used by | the launcher, any microui screen | a software 3D renderer | a frame that is a grid of palette indices |
 
 - `gfx_mode_enter()` asserts the mode is `GFX_LAYOUT_FULL_FB`: modes do not nest.
 - A failed allocation grants nothing: the returned mode is still
-  `GFX_LAYOUT_FULL_FB`. Check the grant, as `app_render_lab.c` does.
+  `GFX_LAYOUT_FULL_FB`. Check the grant's `layout`, not the request's.
 - Only `GFX_RESOLUTION_FULL` without interlace renders today. The other
   request fields grant correctly and nothing consumes them.
 - `GFX_BAND_HEIGHT` is 16, 32 or 64 rows by Kconfig, default 32, and always
@@ -229,10 +229,10 @@ the same `gfx_present_begin()` / `gfx_present_wait()` as the default mode.
 All four are safe only between frames. Palettes are a gfx type
 (`gfx/gfx_palette.h`, entries 0-15 reserved by `GFX_PALETTE_UI_ENTRIES`);
 curated ones ship in `gfx/gfx_palette_standard.h`, chosen at runtime by name.
-Building one is the app's work - see
-[`sand/Shading-and-Colour.md`](sand/Shading-and-Colour.md). The two steps
-every palette then needs, the colour -> index map and the dither table, are
-`tools/gen/gfx_palette_gen.h`: host-only, in OKLab, never in the firmware image.
+Building one is the app's work. The two steps every palette then needs,
+the colour -> index map and the dither table, are
+`tools/gen/gfx_palette_gen.h`: host-only, in OKLab, never in the firmware
+image.
 
 ## Panel clock and heal
 
@@ -294,7 +294,8 @@ Then `gfx_read_panel_row()` per row, and always `gfx_readback_end()`.
 
 ## Development instruments
 
-`CONFIG_LAUNCHER_DEVELOPMENT` builds only; the Diagnostics app toggles them.
+`CONFIG_LAUNCHER_DEVELOPMENT` builds only; a development-only app's
+checkboxes toggle them.
 
 | Call | Shows |
 |---|---|
@@ -312,4 +313,4 @@ Frame stage timing is described in [`tools/Frame-Cost.md`](tools/Frame-Cost.md).
 - [`Building-an-App.md`](Building-an-App.md) - when the shell presents, and `update()`
 - [`Firmware-Architecture.md`](Firmware-Architecture.md) - why one framebuffer, one frame loop
 - [`notes/Display-and-Rendering.md`](notes/Display-and-Rendering.md) - the measurements and the bugs behind each mechanism
-- [`Autana-Rendering-Roadmap.md`](Autana-Rendering-Roadmap.md) - where this is going
+- [`plans/Autana-Rendering-Roadmap.md`](plans/Autana-Rendering-Roadmap.md) - where this is going
