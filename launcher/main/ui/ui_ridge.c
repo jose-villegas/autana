@@ -107,10 +107,10 @@ typedef struct {
     int32_t offset[RIDGE_COLUMNS], velocity[RIDGE_COLUMNS];
     int16_t rigid[RIDGE_COLUMNS], heights[RIDGE_COLUMNS], smooth[RIDGE_COLUMNS], shape[RIDGE_COLUMNS];
     int16_t layers[RIDGE_LAYER_COUNT][RIDGE_COLUMNS];
-    int16_t boundary[RIDGE_LAYER_COUNT][GFX_HEIGHT], shown[RIDGE_LAYER_COUNT][GFX_HEIGHT];
+    int16_t shown_layers[RIDGE_LAYER_COUNT][RIDGE_COLUMNS];
     ridge_motion_t motion;
     ridge_pose_t attitude;
-    ridge_vector_t pose_on_screen;
+    ridge_vector_t pose_on_screen, shown_pose;
     int pose_step;
     ridge_theme_t theme;
     gfx_color_t background_color, back0_color, back1_color;
@@ -123,9 +123,10 @@ typedef struct {
     edge_lines_t was_lines, now_lines;
     gfx_color_t scratch_row[GFX_WIDTH];
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
+    uint8_t body_alpha[RIDGE_LAYER_COUNT];
     uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
-    int shake, last_pluck_x, strips, down_sign;
-    bool by_column, axis_on_screen, ambient, painted, scanline_dither;
+    int shake, last_pluck_x, shown_lip;
+    bool ambient, painted, scanline_dither;
 } ridge_t;
 
 static ridge_t* ridge;
@@ -134,11 +135,6 @@ static bool allocation_tried;
 static inline __attribute__((always_inline)) int
 clamp_int(int value, int lo, int hi) {
     return value < lo ? lo : value > hi ? hi : value;
-}
-
-static int
-round_q4(int value) {
-    return value >= 0 ? (value + 8) / 16 : (value - 8) / 16;
 }
 
 static uint32_t
@@ -189,51 +185,6 @@ sky_at(int x, int y) {
     return sky_from_depth2(sky_depth2(x, y));
 }
 
-static inline __attribute__((always_inline)) int
-ridge_layer_alpha(int layer, int distance) {
-    if (distance < 0) {
-        return 0;
-    }
-    if (distance >= lip_px) {
-        return layer == 0 ? back0_body_alpha : layer == 1 ? back1_body_alpha : front_body_alpha;
-    }
-    return ridge->lip_alpha[layer][distance];
-}
-
-static inline __attribute__((always_inline)) int
-boundary_distance(int layer, int x, int y) {
-    const int strip = ridge->by_column ? x : y;
-    const int boundary = ridge->boundary[layer][strip];
-    return boundary == INT16_MAX ? -1 : ridge->down_sign * ((ridge->by_column ? y : x) - boundary);
-}
-
-static inline __attribute__((always_inline)) bool
-backdrop_dither_pick(int x, int y, uint8_t alpha) {
-    if (ridge->scanline_dither) {
-        static const uint8_t cutoff[4] = {64, 192, 128, 255};
-        return alpha == 255 || alpha >= cutoff[y & 3];
-    }
-    return gfx_dither_alpha_pick((gfx_dither_pattern_id_t)fill_pattern, x, y, alpha);
-}
-
-static inline __attribute__((always_inline)) gfx_color_t
-backdrop_pixel(int x, int y) {
-    gfx_color_t color = ridge->background_color;
-    const int back0 = boundary_distance(0, x, y);
-    const int back1 = boundary_distance(1, x, y);
-    const int front = boundary_distance(2, x, y);
-    if (backdrop_dither_pick(x, y, (uint8_t)ridge_layer_alpha(0, back0))) {
-        color = ridge->back0_color;
-    }
-    if (backdrop_dither_pick(x, y, (uint8_t)ridge_layer_alpha(1, back1))) {
-        color = ridge->back1_color;
-    }
-    if (backdrop_dither_pick(x, y, (uint8_t)ridge_layer_alpha(2, front))) {
-        color = sky_at(x, y);
-    }
-    return color;
-}
-
 static void
 apply_theme(void) {
     ridge->theme = ridge_theme_from_rgb((uint32_t)theme_rgb);
@@ -273,35 +224,6 @@ build_layers(void) {
     }
 }
 
-static void
-put_boundary(int layer, int strip, int crossing) {
-    if (strip < 0 || strip >= ridge->strips) {
-        return;
-    }
-    int16_t* const at = &ridge->boundary[layer][strip];
-    if (*at == INT16_MAX || (ridge->down_sign > 0 ? crossing < *at : crossing > *at)) {
-        *at = (int16_t)crossing;
-    }
-}
-
-static void
-raster_segment(int layer, int x0, int y0, int x1, int y1) {
-    const int a0 = ridge->by_column ? x0 : y0;
-    const int a1 = ridge->by_column ? x1 : y1;
-    const int b0 = ridge->by_column ? y0 : x0;
-    const int b1 = ridge->by_column ? y1 : x1;
-    if (a0 == a1) {
-        put_boundary(layer, a0, b0);
-        put_boundary(layer, a0, b1);
-        return;
-    }
-    const int low = a0 < a1 ? a0 : a1;
-    const int high = a0 > a1 ? a0 : a1;
-    for (int a = low; a <= high; a++) {
-        put_boundary(layer, a, b0 + ((b1 - b0) * (a - a0) / (a1 - a0)));
-    }
-}
-
 /* `value / RIDGE_POSE_ONE` exactly, truncating toward zero, without the
  * 64-bit division: a library call on this chip, four per curve point. */
 static inline __attribute__((always_inline)) int
@@ -332,237 +254,93 @@ snap_pose_on_screen(void) {
     return moved;
 }
 
-static void
-raster_boundaries(void) {
-    const bool was_by_column = ridge->by_column;
-    const ridge_vector_t pose = ridge->pose_on_screen;
-    ridge->by_column = abs(pose.down_y) >= abs(pose.down_x);
-    ridge->axis_on_screen = ridge->painted && was_by_column != ridge->by_column;
-    ridge->strips = ridge->by_column ? GFX_WIDTH : GFX_HEIGHT;
-    ridge->down_sign = (ridge->by_column ? pose.down_y : pose.down_x) >= 0 ? 1 : -1;
-    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-        for (int strip = 0; strip < GFX_HEIGHT; strip++) {
-            ridge->boundary[layer][strip] = INT16_MAX;
-        }
-        const int32_t rx = pose.down_y;
-        const int32_t ry = -pose.down_x;
-        const int32_t dx = pose.down_x;
-        const int32_t dy = pose.down_y;
-        const int32_t u0 = -(RIDGE_COLUMNS - 1) * 8;
-        int32_t along_x = u0 * rx;
-        int32_t along_y = u0 * ry;
-        int x0 = 0;
-        int y0 = 0;
-        for (int point = 0; point < RIDGE_COLUMNS; point++) {
-            const int32_t h = ridge->layers[layer][point] - (RIDGE_CURVE_VIEW_H * 8);
-            const int x1 = round_q4(((GFX_WIDTH - 1) * 8) + pose_scale(along_x + (h * dx)));
-            const int y1 = round_q4(((GFX_HEIGHT - 1) * 8) + pose_scale(along_y + (h * dy)));
-            if (point > 0) {
-                raster_segment(layer, x0, y0, x1, y1);
-            }
-            x0 = x1;
-            y0 = y1;
-            along_x += 16 * rx;
-            along_y += 16 * ry;
-        }
-    }
-    build_sky_gradient();
+/* Where a pixel lies in the ridge's own frame, in 1/32768 px from the
+ * panel's centre: `along` the curve and `down` along gravity. Both move by
+ * a fixed step per pixel along a row. */
+typedef struct {
+    int32_t along, down;
+} ridge_point_t;
+
+static inline __attribute__((always_inline)) ridge_point_t
+pixel_point(ridge_vector_t pose, int x, int y) {
+    const int32_t x2 = (2 * x) - (GFX_WIDTH - 1);
+    const int32_t y2 = (2 * y) - (GFX_HEIGHT - 1);
+    return (ridge_point_t){(x2 * pose.down_y) - (y2 * pose.down_x), (x2 * pose.down_x) + (y2 * pose.down_y)};
 }
 
-static void
-fill_row(gfx_color_t* dst, int x0, int x1, gfx_color_t color) {
-    for (int x = x0; x < x1; x++) {
-        dst[x] = color;
+/* The curve column under `along`, and how far past it, out of 256. */
+typedef struct {
+    int column, frac;
+} curve_at_t;
+
+static inline __attribute__((always_inline)) curve_at_t
+curve_at(int32_t along) {
+    const int32_t at = along + ((RIDGE_COLUMNS - 1) * 16384);
+    const int column = at >> 15;
+    if (column < 0) {
+        return (curve_at_t){0, 0};
     }
+    if (column >= RIDGE_COLUMNS - 1) {
+        return (curve_at_t){RIDGE_COLUMNS - 2, 256};
+    }
+    return (curve_at_t){column, (at >> 7) & 0xff};
 }
 
-static void
-add_row_break(int* points, int* count, int x, int lo, int hi) {
-    if (x <= lo || x >= hi) {
-        return;
-    }
-    int at = *count;
-    while (at > 0 && points[at - 1] > x) {
-        points[at] = points[at - 1];
-        at--;
-    }
-    if (at == 0 || points[at - 1] != x) {
-        points[at] = x;
-        (*count)++;
-    }
-}
-
-static inline __attribute__((always_inline)) bool
-row_lip_at(int y, int x) {
-    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-        const int distance = boundary_distance(layer, x, y);
-        if (distance >= 0 && distance < lip_px) {
-            return true;
-        }
-    }
-    return false;
-}
-
+/* How far below `layer`'s curve, in whole pixels along gravity, a point
+ * `down` (1/32768 px) lies; negative above it. */
 static inline __attribute__((always_inline)) int
-collect_row_breaks(int* points, int y, int lo, int hi) {
-    int count = 1;
-    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-        const int boundary = ridge->boundary[layer][y];
-        if (boundary == INT16_MAX) {
-            continue;
-        }
-        if (ridge->down_sign > 0) {
-            add_row_break(points, &count, boundary, lo, hi);
-            add_row_break(points, &count, boundary + lip_px, lo, hi);
-        } else {
-            add_row_break(points, &count, boundary - lip_px + 1, lo, hi);
-            add_row_break(points, &count, boundary + 1, lo, hi);
-        }
-    }
-    points[count++] = hi;
-    return count;
-}
-
-static inline __attribute__((always_inline)) gfx_color_t
-row_body_color(int y, int x) {
-    gfx_color_t color = ridge->background_color;
-    if (backdrop_dither_pick(0, y, (uint8_t)ridge_layer_alpha(0, boundary_distance(0, x, y)))) {
-        color = ridge->back0_color;
-    }
-    if (backdrop_dither_pick(0, y, (uint8_t)ridge_layer_alpha(1, boundary_distance(1, x, y)))) {
-        color = ridge->back1_color;
-    }
-    return color;
-}
-
-static inline __attribute__((always_inline)) bool
-scanline_pick(uint8_t alpha, int phase) {
-    static const uint8_t cutoff[4] = {64, 192, 128, 255};
-    return alpha == 255 || alpha >= cutoff[phase];
+layer_depth(int layer, curve_at_t at, int32_t down) {
+    const int16_t* const heights = ridge->layers[layer];
+    const int curve_q4 = heights[at.column] + (((heights[at.column + 1] - heights[at.column]) * at.frac) >> 8);
+    return ((down >> 11) + (RIDGE_CURVE_VIEW_H * 8) - curve_q4) >> 4;
 }
 
 static inline __attribute__((always_inline)) uint8_t
-layer_alpha_at(int layer, int distance) {
-    return (uint8_t)ridge_layer_alpha(layer, distance);
-}
-
-/* A segment with a lip in it, along its strip from `a0` to `a1`, scanline
- * dither only. The same picture as backdrop_pixel(), with each layer's
- * distance stepped instead of looked up and no orientation test per pixel. */
-/* How far into each layer `a` along `strip` lies; far outside a layer
- * that does not cross the strip. */
-static inline __attribute__((always_inline)) void
-strip_distances(int strip, int a, int distance[RIDGE_LAYER_COUNT]) {
-    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-        const int boundary = ridge->boundary[layer][strip];
-        distance[layer] = boundary == INT16_MAX ? INT_MIN / 2 : ridge->down_sign * (a - boundary);
+layer_alpha(int layer, int depth) {
+    if (depth < 0) {
+        return 0;
     }
+    return depth < lip_px ? ridge->lip_alpha[layer][depth] : ridge->body_alpha[layer];
 }
 
+static inline __attribute__((always_inline)) bool
+backdrop_dither_pick(int x, int y, uint8_t alpha) {
+    if (ridge->scanline_dither) {
+        static const uint8_t cutoff[4] = {64, 192, 128, 255};
+        return alpha == 255 || alpha >= cutoff[y & 3];
+    }
+    return gfx_dither_alpha_pick((gfx_dither_pattern_id_t)fill_pattern, x, y, alpha);
+}
+
+/* One pixel of the backdrop, the front layer first since it covers the
+ * others wherever it shows. */
 static inline __attribute__((always_inline)) gfx_color_t
-lip_pixel(const int distance[RIDGE_LAYER_COUNT], int phase, int x, int y) {
-    gfx_color_t color = ridge->background_color;
-    if (scanline_pick(layer_alpha_at(0, distance[0]), phase)) {
-        color = ridge->back0_color;
+backdrop_pixel(ridge_point_t point, int32_t sky_depth, int x, int y) {
+    const curve_at_t at = curve_at(point.along);
+    if (backdrop_dither_pick(x, y, layer_alpha(2, layer_depth(2, at, point.down)))) {
+        return sky_from_depth2(sky_depth);
     }
-    if (scanline_pick(layer_alpha_at(1, distance[1]), phase)) {
-        color = ridge->back1_color;
+    if (backdrop_dither_pick(x, y, layer_alpha(1, layer_depth(1, at, point.down)))) {
+        return ridge->back1_color;
     }
-    if (scanline_pick(layer_alpha_at(2, distance[2]), phase)) {
-        color = sky_at(x, y);
+    if (backdrop_dither_pick(x, y, layer_alpha(0, layer_depth(0, at, point.down)))) {
+        return ridge->back0_color;
     }
-    return color;
-}
-
-static void
-paint_lip_segment(gfx_color_t* out, int strip, int a0, int a1) {
-    const bool by_column = ridge->by_column;
-    const int step = by_column ? GFX_WIDTH : 1;
-    int distance[RIDGE_LAYER_COUNT];
-    strip_distances(strip, a0, distance);
-    for (int a = a0; a < a1; a++, out += step) {
-        *out = by_column ? lip_pixel(distance, a & 3, strip, a) : lip_pixel(distance, strip & 3, a, strip);
-        for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-            distance[layer] += ridge->down_sign;
-        }
-    }
-}
-
-static inline __attribute__((always_inline)) void
-paint_row_part(gfx_color_t* row, int y, int x0, int x1) {
-    if (row_lip_at(y, x0)) {
-        paint_lip_segment(row + x0, y, x0, x1);
-        return;
-    }
-    if (backdrop_dither_pick(0, y, (uint8_t)ridge_layer_alpha(2, boundary_distance(2, x0, y)))) {
-        int32_t depth2 = sky_depth2(x0, y);
-        const int32_t step = 2 * ridge->gradient_pose.down_x;
-        for (int x = x0; x < x1; x++, depth2 += step) {
-            row[x] = sky_from_depth2(depth2);
-        }
-        return;
-    }
-    fill_row(row, x0, x1, row_body_color(y, x0));
+    return ridge->background_color;
 }
 
 static void
 paint_row_into(gfx_color_t* row, int y, int lo, int hi) {
-
-    int points[(2 * RIDGE_LAYER_COUNT) + 2] = {lo};
-    const int count = collect_row_breaks(points, y, lo, hi);
-    for (int part = 0; part + 1 < count; part++) {
-        paint_row_part(row, y, points[part], points[part + 1]);
+    const ridge_vector_t pose = ridge->pose_on_screen;
+    ridge_point_t point = pixel_point(pose, lo, y);
+    int32_t sky_depth = sky_depth2(lo, y);
+    const int32_t sky_step = 2 * ridge->gradient_pose.down_x;
+    for (int x = lo; x < hi; x++) {
+        row[x] = backdrop_pixel(point, sky_depth, x, y);
+        point.along += 2 * pose.down_y;
+        point.down += 2 * pose.down_x;
+        sky_depth += sky_step;
     }
-}
-
-static void
-paint_row_span(gfx_color_t* framebuffer, int y, int lo, int hi) {
-    paint_row_into(framebuffer + (y * GFX_WIDTH), y, lo, hi);
-}
-
-/* A column segment with no lip in it: every layer there is either absent or
- * at its body alpha, so a pixel's colour depends only on its scanline phase,
- * and on the sky gradient where the front layer shows. */
-static inline __attribute__((always_inline)) void
-paint_column_body(gfx_color_t* framebuffer, int x, int y0, int y1) {
-    gfx_color_t phase_color[4];
-    bool phase_sky[4];
-    for (int phase = 0; phase < 4; phase++) {
-        const int y = y0 + ((phase - y0) & 3);
-        phase_sky[phase] = backdrop_dither_pick(x, y, (uint8_t)ridge_layer_alpha(2, boundary_distance(2, x, y0)));
-        phase_color[phase] = row_body_color(y, x);
-    }
-    for (int y = y0; y < y1; y++) {
-        const int phase = y & 3;
-        framebuffer[(y * GFX_WIDTH) + x] = phase_sky[phase] ? sky_at(x, y) : phase_color[phase];
-    }
-}
-
-static void
-paint_column_span(gfx_color_t* framebuffer, int x, int lo, int hi) {
-    int points[(2 * RIDGE_LAYER_COUNT) + 2] = {lo};
-    const int count = collect_row_breaks(points, x, lo, hi);
-    for (int part = 0; part + 1 < count; part++) {
-        const int y0 = points[part];
-        const int y1 = points[part + 1];
-        if (row_lip_at(y0, x)) {
-            paint_lip_segment(framebuffer + (y0 * GFX_WIDTH) + x, x, y0, y1);
-        } else {
-            paint_column_body(framebuffer, x, y0, y1);
-        }
-    }
-}
-
-static void
-repaint_column_strip(gfx_color_t* framebuffer, int x, int lo, int hi) {
-    if (ridge->scanline_dither) {
-        paint_column_span(framebuffer, x, lo, hi);
-    } else {
-        for (int y = lo; y < hi; y++) {
-            framebuffer[(y * GFX_WIDTH) + x] = backdrop_pixel(x, y);
-        }
-    }
-    gfx_mark_dirty(x, lo, 1, hi - lo);
 }
 
 /* Most of a repainted span comes out as it was, and a pixel sent costs far
@@ -586,189 +364,89 @@ commit_row(const gfx_color_t* from, int y, int lo, int hi) {
 }
 
 static void
-repaint_row_strip(int y, int lo, int hi) {
-    gfx_color_t* const scratch = ridge->scratch_row;
-    if (ridge->scanline_dither) {
-        paint_row_into(scratch, y, lo, hi);
-    } else {
-        for (int x = lo; x < hi; x++) {
-            scratch[x] = backdrop_pixel(x, y);
-        }
-    }
-    commit_row(scratch, y, lo, hi);
-}
-
-static void
-repaint_strip(int strip, int lo, int hi) {
-    lo = lo < 0 ? 0 : lo;
-    hi = clamp_int(hi, lo, ridge->by_column ? GFX_HEIGHT : GFX_WIDTH);
-    if (lo >= hi) {
-        return;
-    }
-    if (ridge->by_column) {
-        repaint_column_strip(gfx_framebuffer(), strip, lo, hi);
-    } else {
-        repaint_row_strip(strip, lo, hi);
+repaint_span(int y, int x0, int x1) {
+    x0 = x0 < 0 ? 0 : x0;
+    x1 = x1 > GFX_WIDTH ? GFX_WIDTH : x1;
+    if (x0 < x1) {
+        paint_row_into(ridge->scratch_row, y, x0, x1);
+        commit_row(ridge->scratch_row, y, x0, x1);
     }
 }
 
-static void
-extend_repaint_range(int was, int now, int* lo, int* hi) {
-    if (was == INT16_MAX && now == INT16_MAX) {
-        return;
-    }
-    int first = was == INT16_MAX ? now : was;
-    int last = now == INT16_MAX ? was : now;
-    if (first > last) {
-        const int swap = first;
-        first = last;
-        last = swap;
-    }
-    /* The lip lies on the down side of the boundary only. */
-    if (ridge->down_sign > 0) {
-        last += lip_px + 1;
-    } else {
-        first -= lip_px;
-        last += 1;
-    }
-    if (first < *lo) {
-        *lo = first;
-    }
-    if (last > *hi) {
-        *hi = last;
-    }
-}
-
-/* Columns 16 wide: one PSRAM cache line of RGB565. */
-#define COLUMN_GROUP 16
-
-static inline __attribute__((always_inline)) gfx_color_t
-column_pixel(int x, int y) {
-    const int phase = y & 3;
-    gfx_color_t color = ridge->background_color;
-    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-        const int boundary = ridge->boundary[layer][x];
-        if (boundary == INT16_MAX) {
-            continue;
-        }
-        if (scanline_pick(layer_alpha_at(layer, ridge->down_sign * (y - boundary)), phase)) {
-            color = layer == 0 ? ridge->back0_color : layer == 1 ? ridge->back1_color : sky_at(x, y);
-        }
-    }
-    return color;
-}
-
-/* The rows any of columns [x0, x1) needs repainted; empty when none. */
-static void
-group_rows(const int16_t* lo, const int16_t* hi, int x0, int x1, int* y0, int* y1) {
-    *y0 = GFX_HEIGHT;
-    *y1 = 0;
-    for (int x = x0; x < x1; x++) {
-        if (lo[x] < hi[x]) {
-            *y0 = lo[x] < *y0 ? lo[x] : *y0;
-            *y1 = hi[x] > *y1 ? hi[x] : *y1;
-        }
-    }
-}
-
-/* The columns of changed pixels seen so far, and their rows. */
 typedef struct {
-    int x0, x1, y0, y1;
-} changed_box_t;
+    int x0, y0, x1, y1;
+} ridge_box_t;
 
 static inline __attribute__((always_inline)) void
-note_changed(changed_box_t* box, int x, int y) {
+box_add(ridge_box_t* box, int32_t x_q4, int32_t y_q4) {
+    const int x = x_q4 >> 4;
+    const int y = y_q4 >> 4;
     box->x0 = x < box->x0 ? x : box->x0;
     box->x1 = x + 1 > box->x1 ? x + 1 : box->x1;
     box->y0 = y < box->y0 ? y : box->y0;
-    box->y1 = y + 1;
+    box->y1 = y + 1 > box->y1 ? y + 1 : box->y1;
 }
 
-static inline __attribute__((always_inline)) void
-repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0, int x1, int y,
-                  changed_box_t* changed) {
-    for (int x = x0; x < x1; x++) {
-        if (y >= lo[x] && y < hi[x]) {
-            const gfx_color_t color = column_pixel(x, y);
-            if (row[x] != color) {
-                row[x] = color;
-                note_changed(changed, x, y);
-            }
+/* Adds to `box` where columns [c0, c1] of a curve stand at `pose`, from the
+ * curve down to the end of its lip, in panel pixels. */
+static void
+box_add_columns(ridge_box_t* box, ridge_vector_t pose, const int16_t* heights, int lip, int c0, int c1) {
+    for (int column = c0; column <= c1; column++) {
+        const int32_t along = (16 * column) - ((RIDGE_COLUMNS - 1) * 8);
+        const int32_t down = heights[column] - (RIDGE_CURVE_VIEW_H * 8);
+        for (int reach = 0; reach <= 1; reach++) {
+            const int32_t h = down + (reach * lip * 16);
+            box_add(box, ((GFX_WIDTH - 1) * 8) + pose_scale((along * pose.down_y) + (h * pose.down_x)),
+                    ((GFX_HEIGHT - 1) * 8) + pose_scale((h * pose.down_y) - (along * pose.down_x)));
         }
     }
 }
 
+/* Columns 8 at a time: a group's box stays small, and there are few enough
+ * to find a moved one cheaply. */
+#define RIDGE_GROUP 8
+
+static bool
+group_moved(int layer, int c0, int c1) {
+    for (int column = c0; column <= c1; column++) {
+        if (ridge->layers[layer][column] != ridge->shown_layers[layer][column]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The pixels a moved group of columns may have changed: everything from
+ * where it stood to where it stands, lips and all. */
 static void
-repaint_column_group(const int16_t* lo, const int16_t* hi, int x0) {
-    const int x1 = x0 + COLUMN_GROUP < GFX_WIDTH ? x0 + COLUMN_GROUP : GFX_WIDTH;
-    int y0;
-    int y1;
-    group_rows(lo, hi, x0, x1, &y0, &y1);
-    if (y0 >= y1) {
+repaint_group(int layer, int c0, int c1, bool everything_moved) {
+    if (!everything_moved && !group_moved(layer, c0, c1)) {
         return;
     }
-    gfx_color_t* const framebuffer = gfx_framebuffer();
-    changed_box_t changed = {x1, x0, y1, y0};
+    ridge_box_t box = {GFX_WIDTH, GFX_HEIGHT, 0, 0};
+    box_add_columns(&box, ridge->shown_pose, ridge->shown_layers[layer], ridge->shown_lip, c0, c1);
+    box_add_columns(&box, ridge->pose_on_screen, ridge->layers[layer], lip_px, c0, c1);
+    const int y0 = clamp_int(box.y0 - 1, 0, GFX_HEIGHT);
+    const int y1 = clamp_int(box.y1 + 1, 0, GFX_HEIGHT);
     for (int y = y0; y < y1; y++) {
-        repaint_group_row(framebuffer + (y * GFX_WIDTH), lo, hi, x0, x1, y, &changed);
-    }
-    if (changed.x0 < changed.x1) {
-        gfx_mark_dirty(changed.x0, changed.y0, changed.x1 - changed.x0, changed.y1 - changed.y0);
-    }
-}
-
-/* The rows of column `x` that layer `layer`'s move needs repainted; the
- * move is then what the screen shows. */
-static void
-column_repaint_rows(int layer, int x, int16_t* lo, int16_t* hi) {
-    const int was = ridge->shown[layer][x];
-    const int now = ridge->boundary[layer][x];
-    int first = INT_MAX;
-    int last = INT_MIN;
-    if (was != now) {
-        extend_repaint_range(was, now, &first, &last);
-    }
-    *lo = (int16_t)clamp_int(first, 0, GFX_HEIGHT);
-    *hi = (int16_t)clamp_int(last, 0, GFX_HEIGHT);
-    ridge->shown[layer][x] = (int16_t)now;
-}
-
-/* Portrait: a column's pixels are a row apart in the framebuffer, so paint
- * a group of columns row by row rather than each column top to bottom. */
-static void
-repaint_changed_columns(void) {
-    int16_t lo[GFX_WIDTH];
-    int16_t hi[GFX_WIDTH];
-    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-        for (int x = 0; x < GFX_WIDTH; x++) {
-            column_repaint_rows(layer, x, &lo[x], &hi[x]);
-        }
-        for (int x0 = 0; x0 < GFX_WIDTH; x0 += COLUMN_GROUP) {
-            repaint_column_group(lo, hi, x0);
-        }
+        repaint_span(y, box.x0 - 1, box.x1 + 1);
     }
 }
 
 static void
 repaint_changed(void) {
-    if (ridge->by_column && ridge->scanline_dither) {
-        repaint_changed_columns();
-        return;
-    }
-    for (int strip = 0; strip < ridge->strips; strip++) {
-        for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-            const int was = ridge->shown[layer][strip];
-            const int now = ridge->boundary[layer][strip];
-            if (was == now) {
-                continue;
-            }
-            int lo = INT_MAX;
-            int hi = INT_MIN;
-            extend_repaint_range(was, now, &lo, &hi);
-            ridge->shown[layer][strip] = (int16_t)now;
-            repaint_strip(strip, lo, hi);
+    const bool everything_moved = ridge->shown_pose.down_x != ridge->pose_on_screen.down_x
+                                  || ridge->shown_pose.down_y != ridge->pose_on_screen.down_y
+                                  || ridge->shown_lip != lip_px;
+    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+        for (int c0 = 0; c0 < RIDGE_COLUMNS - 1; c0 += RIDGE_GROUP) {
+            const int c1 = c0 + RIDGE_GROUP < RIDGE_COLUMNS - 1 ? c0 + RIDGE_GROUP : RIDGE_COLUMNS - 1;
+            repaint_group(layer, c0, c1, everything_moved);
         }
     }
+    memcpy(ridge->shown_layers, ridge->layers, sizeof ridge->shown_layers);
+    ridge->shown_pose = ridge->pose_on_screen;
+    ridge->shown_lip = lip_px;
 }
 
 #define EDGE_FAR (INT64_C(1) << 40)
@@ -814,55 +492,6 @@ edge_swept_columns(int edge, int y, int64_t was_offset, int64_t now_offset, int*
     *x1 = clamp_int((int)((hi + 65535) >> 16) + 2, 0, GFX_WIDTH);
 }
 
-/* Only the front layer shows the gradient, so a swept pixel it does not
- * reach keeps its colour. */
-static inline __attribute__((always_inline)) bool
-front_reaches(int x, int y) {
-    return boundary_distance(2, x, y) >= 0;
-}
-
-static void
-repaint_swept_columns(gfx_color_t* row, int y, int x0, int x1) {
-    int first = x1;
-    int last = x0;
-    for (int x = x0; x < x1; x++) {
-        if (!front_reaches(x, y)) {
-            continue;
-        }
-        const gfx_color_t color = column_pixel(x, y);
-        if (row[x] != color) {
-            row[x] = color;
-            first = x < first ? x : first;
-            last = x + 1;
-        }
-    }
-    if (first < last) {
-        gfx_mark_dirty(first, y, last - first, 1);
-    }
-}
-
-static void
-flush_swept_run(int y, int x0, int x1) {
-    gfx_color_t* const row = gfx_framebuffer() + (y * GFX_WIDTH);
-    if (ridge->by_column) {
-        repaint_swept_columns(row, y, x0, x1);
-        return;
-    }
-    const int front = ridge->boundary[2][y];
-    if (front == INT16_MAX) {
-        return;
-    }
-    if (ridge->down_sign > 0) {
-        x0 = front > x0 ? front : x0;
-    } else {
-        x1 = front + 1 < x1 ? front + 1 : x1;
-    }
-    if (x0 < x1) {
-        paint_row_into(ridge->scratch_row, y, x0, x1);
-        commit_row(ridge->scratch_row, y, x0, x1);
-    }
-}
-
 /* Along a row the edges come in depth order, so neighbouring edges' sweeps
  * merge into one span as they are met. */
 static void
@@ -884,13 +513,13 @@ repaint_swept_row(int y) {
             continue;
         }
         if (run_x0 < run_x1) {
-            flush_swept_run(y, run_x0, run_x1);
+            repaint_span(y, run_x0, run_x1);
         }
         run_x0 = x0;
         run_x1 = x1;
     }
     if (run_x0 < run_x1) {
-        flush_swept_run(y, run_x0, run_x1);
+        repaint_span(y, run_x0, run_x1);
     }
 }
 
@@ -923,27 +552,17 @@ gradient_due(void) {
 
 static void
 paint_all(void) {
-    gfx_color_t* const framebuffer = gfx_framebuffer();
     if (!ridge->painted) {
         catch_up_gradient();
     }
-    if (!ridge->by_column && ridge->scanline_dither) {
-        for (int y = 0; y < GFX_HEIGHT; y++) {
-            paint_row_span(framebuffer, y, 0, GFX_WIDTH);
-        }
-    } else if (ridge->scanline_dither) {
-        for (int x = 0; x < GFX_WIDTH; x++) {
-            paint_column_span(framebuffer, x, 0, GFX_HEIGHT);
-        }
-    } else {
-        for (int y = 0; y < GFX_HEIGHT; y++) {
-            for (int x = 0; x < GFX_WIDTH; x++) {
-                framebuffer[(y * GFX_WIDTH) + x] = backdrop_pixel(x, y);
-            }
-        }
+    gfx_color_t* const framebuffer = gfx_framebuffer();
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        paint_row_into(framebuffer + (y * GFX_WIDTH), y, 0, GFX_WIDTH);
     }
     gfx_mark_all_dirty();
-    memcpy(ridge->shown, ridge->boundary, sizeof ridge->shown);
+    memcpy(ridge->shown_layers, ridge->layers, sizeof ridge->shown_layers);
+    ridge->shown_pose = ridge->pose_on_screen;
+    ridge->shown_lip = lip_px;
     ridge->painted = true;
 }
 
@@ -966,12 +585,14 @@ bake_what_is_tuned(void) {
     const int lip_start[RIDGE_LAYER_COUNT] = {back0_lip_alpha, back1_lip_alpha, front_lip_alpha};
     const int lip_end[RIDGE_LAYER_COUNT] = {back0_body_alpha, back1_body_alpha, front_body_alpha};
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+        ridge->body_alpha[layer] = (uint8_t)lip_end[layer];
         for (int distance = 0; distance < lip_px; distance++) {
             ridge->lip_alpha[layer][distance] =
                 (uint8_t)(lip_start[layer] + ((lip_end[layer] - lip_start[layer]) * distance / lip_px));
         }
     }
     ridge->scanline_dither = (int)fill_pattern == (int)GFX_DITHER_SCANLINES4;
+    build_sky_gradient();
     ridge->tuned_at = TUNE_GENERATION(ridge);
 }
 
@@ -1152,10 +773,9 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     ridge->pose_still_ms = pose_moved ? 0 : ridge->pose_still_ms + dt_ms;
     FRAME_COST_BEGIN(layers_from);
     build_layers();
-    raster_boundaries();
     FRAME_COST_END(layers_from, "ridge.layers");
     FRAME_COST_BEGIN(painted_from);
-    if (!ridge->painted || retuned || ridge->axis_on_screen) {
+    if (!ridge->painted || retuned) {
         catch_up_gradient();
         paint_all();
     } else {
