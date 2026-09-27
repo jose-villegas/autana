@@ -754,9 +754,9 @@ def stop_process_tree(process):
     process.wait()
 
 
-def run_while_held(command, held, timeout=None, **options):
-    """Runs `command` to its end, or stops it the moment the heartbeat finds
-    the lock lost, before it writes to a board somebody else now holds."""
+def run_to_end(command, lost=None, timeout=None, **options):
+    """Runs `command` to its end, stopping its whole process tree on any
+    error, on Ctrl+C, or the moment `lost` (an Event) is set."""
     if os.name != "nt":
         options["start_new_session"] = True
     deadline = None if timeout is None else time.monotonic() + timeout
@@ -767,7 +767,7 @@ def run_while_held(command, held, timeout=None, **options):
                 code = process.wait(timeout=FLASH_POLL_SECONDS)
                 break
             except subprocess.TimeoutExpired:
-                if held.lost.is_set():
+                if lost is not None and lost.is_set():
                     raise LockLost("device lock was lost during the flash; the flash was stopped")
                 if deadline is not None and time.monotonic() >= deadline:
                     raise subprocess.TimeoutExpired(command, timeout)
@@ -778,24 +778,42 @@ def run_while_held(command, held, timeout=None, **options):
         raise subprocess.CalledProcessError(code, command)
 
 
+def run_while_held(command, held, timeout=None, **options):
+    """Runs `command` under `held`, stopping it the moment the heartbeat
+    finds the lock lost, before it writes to a board somebody else now holds."""
+    run_to_end(command, held.lost, timeout, **options)
+
+
+def run_build(command, timeout=None, **options):
+    """Runs the build step with no lock held: it never opens the port, so a
+    multi-minute build leaves the board to everyone else meanwhile."""
+    run_to_end(command, None, timeout, **options)
+
+
 BUILD_SCRIPT = Path("launcher") / "tools" / "build" / "build_flash.sh"
 FLASH_SCRIPT = Path("scripts") / "device" / "flash_image.sh"
 VARIANT_FLAGS = {"release": [], "dev": ["--dev"], "diag": ["--diag"]}
 
 
 def flash_commands(bash, worktree, variant, build_flags=()):
-    """A flash is two commands: build_flash.sh builds `worktree`'s image,
-    then flash_image.sh, the only one that opens the port, writes it."""
+    """A flash is two commands: build_flash.sh builds `worktree`'s image
+    with no lock held, then flash_image.sh, the only one that opens the
+    port, writes it under the board's lock."""
     worktree = Path(worktree)
     flags = VARIANT_FLAGS[variant]
     return [[bash, (worktree / BUILD_SCRIPT).as_posix()] + flags + list(build_flags),
             [bash, (worktree / FLASH_SCRIPT).as_posix()] + flags]
 
 
+def script_environment(environment=None):
+    environment = dict(environment or os.environ)
+    environment.setdefault("MSYSTEM", "MINGW64")
+    return environment
+
+
 def run_flash_script(held, commands, **popen):
     """Runs each of `commands` in turn under `held`, the board's lock."""
-    environment = dict(popen.pop("env", None) or os.environ)
-    environment.setdefault("MSYSTEM", "MINGW64")
+    environment = script_environment(popen.pop("env", None))
     # Proof to flash_image.sh that this flash holds this board's lock: it
     # runs check-token with both before it opens the port.
     environment["AUTANA_DEVICE_LOCK_TOKEN"] = held.held["token"]
@@ -806,12 +824,14 @@ def run_flash_script(held, commands, **popen):
 
 def flash_script(store, board, owner, purpose, commands, wait, **popen):
     """Runs `commands` (see flash_commands()) for a caller outside device.py:
-    finds the board (`board`, else AUTANA_BOARD, else the only one), queues
-    for its lock and holds it until the last one ends. Returns the board's
-    serial."""
+    finds the board (`board`, else AUTANA_BOARD, else the only one), runs
+    the build, then queues for the board's lock and holds it while the
+    rest run. A failed build never queues. Returns the board's serial."""
     board = board_for_lock(store, board)
+    build, *writes = commands
+    run_build(build, **dict(popen, env=script_environment(popen.get("env"))))
     with HeldLock(store, board, owner, purpose, wait, kind="flash") as held:
-        run_flash_script(held, commands, **popen)
+        run_flash_script(held, writes, **popen)
     return board
 
 
@@ -829,47 +849,87 @@ def flash_failure_line(text):
     return lines[-1] if lines else "the log is empty"
 
 
-def flash(args, store, board, held_lock=None, extra_flags=()):
-    with holding(store, board, args, held_lock, "flash") as held:
-        with open_when_free():
-            pass
-        worktree = Path(args.worktree).resolve()
+class FlashRecord:
+    """One flash's log and index entry. The build writes the log with no
+    lock held; the write to the board appends to it under the lock."""
+
+    def __init__(self, args, board, extra_flags):
+        self.args = args
+        self.board = board
+        self.worktree = Path(args.worktree).resolve()
         for script in (BUILD_SCRIPT, FLASH_SCRIPT):
-            if not (worktree / script).is_file():
-                raise RuntimeError("build tool not found: " + str(worktree / script))
-        started_at = now()
-        log, managed = resolve_capture_path(args.out, "flash-" + args.variant, args.owner,
-                                            started_at)
-        commands = flash_commands(git_bash(), worktree, args.variant, extra_flags)
-        print("flash log: " + str(log))
-        build_id = None
-        error = None
+            if not (self.worktree / script).is_file():
+                raise RuntimeError("build tool not found: " + str(self.worktree / script))
+        self.started_at = now()
+        self.log, self.managed = resolve_capture_path(args.out, "flash-" + args.variant,
+                                                      args.owner, self.started_at)
+        self.commands = flash_commands(git_bash(), self.worktree, args.variant, extra_flags)
+        print("flash log: " + str(self.log))
+
+    def run(self, step, mode):
         try:
-            try:
-                with open(log, "wb") as stream:
-                    run_flash_script(held, commands, cwd=worktree, stdin=subprocess.DEVNULL,
-                                     stdout=stream, stderr=subprocess.STDOUT)
-            except subprocess.CalledProcessError as failed:
-                text = Path(log).read_text(encoding="utf-8", errors="replace")
-                raise RuntimeError(f"{Path(failed.cmd[1]).name} failed (exit {failed.returncode}): "
-                                   f"{flash_failure_line(text)} - flash log: {log}") from failed
+            with open(self.log, mode) as stream:
+                step(cwd=self.worktree, stdin=subprocess.DEVNULL, stdout=stream,
+                     stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError as failed:
+            text = Path(self.log).read_text(encoding="utf-8", errors="replace")
+            raise RuntimeError(f"{Path(failed.cmd[1]).name} failed (exit {failed.returncode}): "
+                               f"{flash_failure_line(text)} - flash log: {self.log}") from failed
+
+    def record(self, build_id=None, error=None, acquired_at=None):
+        record_capture(self.log, self.managed, started_at=self.started_at, board=self.board,
+                       owner=self.args.owner, purpose=self.args.purpose, command="flash",
+                       build_id=build_id, worktree=str(self.worktree),
+                       commit=git_commit(self.worktree), error=error, acquired_at=acquired_at)
+
+
+def build_image(args, board, extra_flags=()):
+    """The first half of a flash, run before its lock is taken. A build
+    that does not finish is recorded as the flash's own end and raised."""
+    flashing = FlashRecord(args, board, extra_flags)
+    error = None
+    built = False
+    try:
+        flashing.run(lambda **popen: run_build(flashing.commands[0],
+                                               env=script_environment(), **popen), "wb")
+        built = True
+    except (OSError, RuntimeError) as caught:
+        error = str(caught)
+        raise
+    finally:
+        if not built:
+            flashing.record(error=error)
+    return flashing
+
+
+def flash(args, store, board, held_lock=None, extra_flags=(), built=None):
+    """Builds, unless `built` is a build_image() already run before the
+    lock, then writes the image under the lock: a fresh one, or `held_lock`."""
+    flashing = built or build_image(args, board, extra_flags)
+    build_id = None
+    error = None
+    held = None
+    try:
+        with holding(store, board, args, held_lock, "flash") as held:
+            with open_when_free():
+                pass
+            flashing.run(lambda **popen: run_flash_script(held, flashing.commands[1:], **popen),
+                         "ab")
             require_live_lock()
-            expected = latest_build_id_from_bytes(Path(log).read_bytes())
+            expected = latest_build_id_from_bytes(Path(flashing.log).read_bytes())
             if not expected:
                 raise RuntimeError("the flash log has no BUILD_ID line")
             if not store.set_expected_build_id(board, held.held["token"], expected):
                 raise LockLost()
             build_id = expected
             print("flashed BUILD_ID=" + expected + " (esptool hash verified; boot not verified)")
-        except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
-            error = str(caught)
-            raise
-        finally:
-            record_capture(log, managed, started_at=started_at, board=board, owner=args.owner,
-                           purpose=args.purpose, command="flash", build_id=build_id,
-                           worktree=str(worktree), commit=git_commit(worktree), error=error,
-                           acquired_at=held.held["acquired_at"])
-        return build_id
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
+        error = str(caught)
+        raise
+    finally:
+        flashing.record(build_id=build_id, error=error,
+                        acquired_at=held.held["acquired_at"] if held else None)
+    return build_id
 
 
 def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
@@ -914,24 +974,25 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
 
 
 def selftest(args, store, board):
-    """Build+flash the diagnostics+autorun image under one held lock, then
-    reset and capture the boot-time run of every registered suite until
-    SELFTEST_COMPLETE (or a timeout) - the way to run every suite this
+    """Build the diagnostics+autorun image, then flash it and, under that
+    same lock, reset and capture the boot-time run of every registered suite
+    until SELFTEST_COMPLETE (or a timeout) - the way to run every suite this
     worktree registers on the device, and device_report.sh's own
     build+capture step for a report with no single named suite
     (report_test_results.sh and the frame-budget reports). A report scoped
     to one suite (report_boot_anim_perf.sh) uses `batch` instead, the same
-    build-then-capture-under-one-lock shape with a suite name to send."""
+    shape with a suite name to send."""
     worktree = str(Path(args.worktree).resolve())
     started_at = now()
     extra_flags = ["--autorun"]
     if args.perf_scope:
         extra_flags.append("--perf-scope")
+    flash_args = argparse.Namespace(owner=args.owner, purpose=args.purpose + " (flash)",
+                                    wait=args.wait, worktree=args.worktree,
+                                    variant="diag", out=None)
+    built = build_image(flash_args, board, extra_flags)
     with HeldLock(store, board, args.owner, args.purpose, args.wait, kind="selftest") as held:
-        flash_args = argparse.Namespace(owner=args.owner, purpose=args.purpose + " (flash)",
-                                        wait=args.wait, worktree=args.worktree,
-                                        variant="diag", out=None)
-        build_id = flash(flash_args, store, board, held_lock=held, extra_flags=extra_flags)
+        build_id = flash(flash_args, store, board, held_lock=held, built=built)
         commit = git_commit(worktree)
 
         data = b""
@@ -1147,12 +1208,11 @@ def screenshot(args, store, board):
 
 
 def batch(args, store, board):
-    """Flash once and capture every suite `runs` times under ONE lock, then
-    write one summary across all runs. Holding the board for the whole
-    sequence is the point: nobody else can flash between two captures
-    of this image. A
-    capture that errors is recorded and the batch continues; only a failed
-    build or flash stops it."""
+    """Build once, then flash and capture every suite `runs` times under ONE
+    lock, then write one summary across all runs. Holding the board from the
+    flash to the last capture is the point: nobody else can flash between two
+    captures of this image. A capture that errors is recorded and the batch
+    continues; only a failed build or flash stops it."""
     extra_flags = ["--perf-scope"] if args.perf_scope else []
     if args.out and (len(args.suite) != 1 or args.runs != 1):
         raise RuntimeError("--out only makes sense with exactly one --suite and --runs 1 - "
@@ -1160,11 +1220,12 @@ def batch(args, store, board):
     worktree = str(Path(args.worktree).resolve())
     started_at = now()
     entries = []
+    flash_args = argparse.Namespace(owner=args.owner, purpose=args.purpose + " (flash)",
+                                    wait=args.wait, worktree=args.worktree,
+                                    variant=args.variant, out=None)
+    built = build_image(flash_args, board, extra_flags)
     with HeldLock(store, board, args.owner, args.purpose, args.wait, kind="batch") as held:
-        flash_args = argparse.Namespace(owner=args.owner, purpose=args.purpose + " (flash)",
-                                        wait=args.wait, worktree=args.worktree,
-                                        variant=args.variant, out=None)
-        build_id = flash(flash_args, store, board, held_lock=held, extra_flags=extra_flags)
+        build_id = flash(flash_args, store, board, held_lock=held, built=built)
         commit = git_commit(worktree)
         for run in range(1, args.runs + 1):
             for suite_name in args.suite:

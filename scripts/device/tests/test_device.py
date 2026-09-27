@@ -749,8 +749,8 @@ class RunSuiteDefaultPathTests(unittest.TestCase):
 
 
 def build_prints(build_id):
-    """A run_while_held() standing in for build_flash.sh, which prints the id
-    of the image it built into the flash log, and flash_image.sh."""
+    """A run_build() standing in for build_flash.sh, which prints the id of
+    the image it built into the flash log."""
     def run(*unused, **keywords):
         keywords["stdout"].write(("BUILD_ID=" + build_id + "\n").encode("ascii"))
     return run
@@ -772,7 +772,8 @@ class FlashDefaultPathTests(unittest.TestCase):
             output = io.StringIO()
             with mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device, "now", return_value=fixed_now), \
-                 mock.patch.object(device, "run_while_held", side_effect=build_prints("expected")), \
+                 mock.patch.object(device, "run_build", side_effect=build_prints("expected")), \
+                 mock.patch.object(device, "run_while_held"), \
                  mock.patch.object(device, "find_board", return_value=device.Board(BOARD, BOARD)), \
                  mock.patch.object(device, "reset"), \
                  mock.patch.object(device, "open_serial", return_value=connection), \
@@ -805,16 +806,21 @@ class FlashDefaultPathTests(unittest.TestCase):
             args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
                              worktree=str(worktree), out=None)
             store = mock_store("sekrit-token")
-            run = mock.Mock(side_effect=build_prints("expected"))
+            build = mock.Mock(side_effect=build_prints("expected"))
+            run = mock.Mock()
             with mock.patch.object(device, "records_root", return_value=root), \
+                 mock.patch.object(device, "run_build", build), \
                  mock.patch.object(device, "run_while_held", run), \
                  mock.patch.object(device, "find_board", return_value=device.Board(BOARD, BOARD)), \
                  mock.patch.object(device, "reset"), \
                  mock.patch.object(device, "open_serial", return_value=connection), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
                 device.flash(args, store, BOARD)
-            scripts = [Path(call.args[0][1]).name for call in run.call_args_list]
-            self.assertEqual(scripts, ["build_flash.sh", "flash_image.sh"])
+            self.assertEqual([Path(call.args[0][1]).name for call in build.call_args_list],
+                             ["build_flash.sh"])
+            self.assertNotIn("AUTANA_DEVICE_LOCK_TOKEN", build.call_args.kwargs["env"])
+            self.assertEqual([Path(call.args[0][1]).name for call in run.call_args_list],
+                             ["flash_image.sh"])
             passed_env = run.call_args.kwargs["env"]
             self.assertEqual(passed_env["AUTANA_DEVICE_LOCK_TOKEN"], "sekrit-token")
             self.assertEqual(passed_env["AUTANA_BOARD"], BOARD)
@@ -941,7 +947,7 @@ class BatchTests(unittest.TestCase):
 
     def run_batch(self, suites=("run_sand_perf_suite",), runs=3, fail_run=None,
                   perf_scope=False, script_text="--diag --dev --perf-scope", out=False):
-        calls = {"locks": 0, "flash": [], "run_suite": []}
+        calls = {"locks": 0, "build": [], "flash": [], "run_suite": [], "events": []}
 
         class FakeLock:
             def __init__(self, *unused, **unused_keywords):
@@ -950,16 +956,25 @@ class BatchTests(unittest.TestCase):
                 self.error = None
 
             def __enter__(self):
+                calls["events"].append("lock")
                 return self
 
             def __exit__(self, *unused):
+                calls["events"].append("unlock")
                 return False
 
-        def fake_flash(args, store, port, held_lock=None, extra_flags=()):
-            calls["flash"].append((held_lock, list(extra_flags)))
+        def fake_build_image(args, port, extra_flags=()):
+            calls["events"].append("build")
+            calls["build"].append(list(extra_flags))
+            return "built"
+
+        def fake_flash(args, store, port, held_lock=None, extra_flags=(), built=None):
+            calls["events"].append("flash")
+            calls["flash"].append((held_lock, built))
             return "abc123-diag"
 
         def fake_run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
+            calls["events"].append("capture")
             calls["run_suite"].append((args.suite, args.out, held_lock, args.expect_build_id,
                                        worktree, commit))
             Path(args.out).write_text(":1:test_one:PASS\n", encoding="utf-8")
@@ -977,6 +992,7 @@ class BatchTests(unittest.TestCase):
                              variant="diag", suite=list(suites), runs=runs, perf_scope=perf_scope,
                              max_seconds=1, idle_seconds=None, out=out_path)
             with mock.patch.object(device, "HeldLock", FakeLock), \
+                 mock.patch.object(device, "build_image", fake_build_image), \
                  mock.patch.object(device, "flash", fake_flash), \
                  mock.patch.object(device, "run_suite", fake_run_suite), \
                  mock.patch.object(device, "records_root", return_value=Path(directory) / "rec"), \
@@ -993,6 +1009,11 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(calls["locks"], 1)
         self.assertEqual(len(calls["flash"]), 1)
         self.assertEqual(len(calls["run_suite"]), 6)
+
+    def test_builds_before_the_lock_then_flashes_and_captures_under_it(self):
+        _, calls, _ = self.run_batch(runs=2)
+        self.assertEqual(calls["events"], ["build", "lock", "flash", "capture", "capture", "unlock"])
+        self.assertEqual(calls["flash"][0][1], "built")
 
     def test_every_capture_runs_inside_the_batch_lock_on_the_flashed_build(self):
         _, calls, _ = self.run_batch(runs=2)
@@ -1024,7 +1045,7 @@ class BatchTests(unittest.TestCase):
 
     def test_perf_scope_is_passed_to_the_build(self):
         _, calls, _ = self.run_batch(perf_scope=True)
-        self.assertEqual(calls["flash"][0][1], ["--perf-scope"])
+        self.assertEqual(calls["build"], [["--perf-scope"]])
 
     def test_out_is_used_for_one_suite_one_run(self):
         _, calls, _ = self.run_batch(suites=("run_sand_perf_suite",), runs=1, out=True)
@@ -1571,16 +1592,14 @@ class SelftestTests(unittest.TestCase):
     def run_selftest(self, perf_scope=False):
         calls = {"flash_extra_flags": None, "held_lock": None, "events": []}
 
-        class FakeLock:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *unused):
-                return False
-
-        def fake_flash(args, store, port, held_lock=None, extra_flags=()):
+        def fake_build_image(args, port, extra_flags=()):
             calls["flash_extra_flags"] = list(extra_flags)
+            calls["build_saw_lock"] = getattr(device.ACTIVE_LOCK, "held", None)
+            return "built"
+
+        def fake_flash(args, store, port, held_lock=None, extra_flags=(), built=None):
             calls["held_lock"] = held_lock
+            calls["built"] = built
             return "abc123-diag"
 
         connection = FakeConnection([b"free heap after framebuffer: 123456 bytes\n",
@@ -1588,6 +1607,7 @@ class SelftestTests(unittest.TestCase):
 
         def fake_reset():
             calls["events"].append("reset")
+            calls["capture_lock"] = device.ACTIVE_LOCK.held
 
         def fake_wait(*unused, **unused_keywords):
             if calls["events"]:
@@ -1602,7 +1622,8 @@ class SelftestTests(unittest.TestCase):
                              worktree=str(worktree), out=None, perf_scope=perf_scope,
                              max_seconds=5, idle_seconds=None)
             store = mock_store()
-            with mock.patch.object(device, "flash", fake_flash), \
+            with mock.patch.object(device, "build_image", fake_build_image), \
+                 mock.patch.object(device, "flash", fake_flash), \
                  mock.patch.object(device, "reset", fake_reset), \
                  mock.patch.object(device, "open_when_free", side_effect=fake_wait), \
                  mock.patch.object(device, "records_root", return_value=root), \
@@ -1616,6 +1637,12 @@ class SelftestTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(calls["flash_extra_flags"], ["--autorun"])
         self.assertIsNotNone(calls["held_lock"])
+
+    def test_builds_before_the_lock_it_flashes_and_captures_under(self):
+        _, calls, _ = self.run_selftest()
+        self.assertIsNone(calls["build_saw_lock"])
+        self.assertEqual(calls["built"], "built")
+        self.assertIs(calls["capture_lock"], calls["held_lock"])
 
     def test_perf_scope_is_passed_to_the_build(self):
         _, calls, _ = self.run_selftest(perf_scope=True)
@@ -1647,7 +1674,8 @@ class SelftestTests(unittest.TestCase):
                              worktree=str(worktree), out=None, perf_scope=False,
                              max_seconds=5, idle_seconds=None)
             store = mock_store()
-            with mock.patch.object(device, "flash", return_value="abc123-diag"), \
+            with mock.patch.object(device, "build_image"), \
+                 mock.patch.object(device, "flash", return_value="abc123-diag"), \
                  mock.patch.object(device, "reset"), \
                  mock.patch.object(device, "open_when_free", return_value=connection), \
                  mock.patch.object(device, "records_root", return_value=root), \
