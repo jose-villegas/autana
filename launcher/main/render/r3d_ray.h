@@ -4,11 +4,9 @@
  * quarter-turn physical-to-upright mapping and a lens fitted to the
  * viewport's SHORTER axis, on the same r3d_viewport_t a rasteriser uses.
  *
- * SINGLE PRECISION ONLY. The FPU this runs on has no double, so one stray
- * promotion costs an order of magnitude; a .c including this carries
- * `#pragma GCC diagnostic error "-Wdouble-promotion"` itself, since a pragma
- * in a header would bind every includer. The pose is float rather than
- * S3L_F units because a caller's numbers need not be representable there.
+ * Single precision only, for the reason r3d_vec3f.h gives. The pose is
+ * float rather than S3L_F units because a caller's numbers need not be
+ * representable there.
  */
 #pragma once
 
