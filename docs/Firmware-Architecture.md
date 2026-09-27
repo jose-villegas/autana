@@ -36,8 +36,11 @@ screen.
 
 ## Layers
 
-Each row may include anything in a row below it, and `app.h`, never a row
-above or a folder beside it in the same row. Folders that touch hardware are
+Each row may include anything in a row below it, and the root headers
+(`app.h`, `app_arena.h`, `build_variant.h`), never a row
+above or a folder beside it in the same row. The top row is the two callers,
+and neither includes the other: the shell reaches an app only through the
+callbacks `app.h` declares. Folders that touch hardware are
 marked. `ls launcher/main/<folder>` is the inventory; this is the shape.
 
 ```mermaid
@@ -45,10 +48,8 @@ flowchart TB
     classDef hw fill:#8a3d3d,color:#fff
     classDef contract fill:#f4f1e8,stroke:#333,stroke-width:1px,color:#111
 
-    subgraph R1["apps"]
+    subgraph R1["callers"]
         Apps["apps/<br/><i>one folder per app</i>"]
-    end
-    subgraph R2["shell"]
         Main["main.c<br/><i>the frame loop, app switching</i>"]
     end
     subgraph R3["before the loop"]
@@ -60,7 +61,7 @@ flowchart TB
     end
     subgraph R5["devices and drawing"]
         Gfx["gfx/<br/><i>the one framebuffer</i>"]:::hw
-        Render["render/<br/><i>3D transform, clip, projection</i>"]
+        Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
         Display["display/<br/><i>orientation, panel clock</i>"]
         Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
     end
@@ -71,8 +72,9 @@ flowchart TB
         Board["board/<br/><i>this board's pins and peripherals</i>"]:::hw
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7
+    R1 --> R3 --> R4 --> R5 --> R6 --> R7
     Contract(["app.h - the shell/app contract"]):::contract
+    Main -.->|"calls through app.h"| Apps
     Contract -.->|"includes input/input.h"| Input
 ```
 
@@ -193,7 +195,7 @@ stateDiagram-v2
     ControlCenter : Control Center<br/>ui_control_center_frame()<br/>over the dimmed launcher
 
     Launcher --> Running: tap an entry<br/><i>the app's enter()</i>
-    Running --> Launcher: home swipe if home_gesture,<br/>else PWR long-press;<br/>or shell_request_exit()<br/><i>the app's exit()</i>
+    Running --> Launcher: home swipe if home_gesture,<br/>else PWR long-press;<br/>or shell_request_exit()<br/><i>the app's exit(),<br/>then the arena emptied</i>
     Launcher --> ControlCenter: swipe in from<br/>the logical top
     ControlCenter --> Launcher: swipe in from<br/>the logical bottom
 ```
@@ -209,6 +211,36 @@ with and without `update()` is
 An app that sets `app_t.update` has the previous frame sent on core 1 while
 `update()` runs on core 0; the split present underneath is in
 [Gfx-and-Presentation.md](Gfx-and-Presentation.md#present-who-runs-it).
+
+### A lit-mesh frame on both cores
+
+`render/r3d_lit_frame.h` draws a mesh whose light is baked into vertex
+colours at half the panel's resolution, then doubles it into the
+framebuffer. The work before the framebuffer runs in `update()`, overlapped
+with sending the previous frame; each stage is split between the two cores,
+core 1's half dispatched through `util/job.h` (inline when core 1 is busy).
+
+```mermaid
+sequenceDiagram
+    participant C0 as core 0, shell and app
+    participant J as core 1 job worker
+    participant P as present on core 1
+    C0->>P: gfx_present_begin() sends frame N-1
+    Note over C0: update(), cull every cluster
+    C0->>J: transform the second half of the visible clusters
+    Note over C0: transform the first half
+    J-->>C0: job_wait()
+    Note over C0: pick the row that balances the triangles
+    C0->>J: clear depth and draw the rows above it
+    Note over C0: clear depth and draw the rows below it
+    J-->>C0: job_wait()
+    C0->>P: gfx_present_wait()
+    Note over C0: frame()
+    C0->>J: double the top half into the framebuffer
+    Note over C0: double the bottom half
+    J-->>C0: job_wait()
+    Note over C0,P: frame N is presented on the next pass
+```
 
 ### Full redraw
 
@@ -230,9 +262,19 @@ How to write one is [Building-an-App.md](Building-an-App.md). What matters
 architecturally: the build globs `apps/**/*.c` and each app registers itself
 from its own file, so adding or deleting an app touches no other file, and
 the component is linked `WHOLE_ARCHIVE` because nothing references an app by
-name. Bench-only apps are dropped from release by a filter in
-`main/CMakeLists.txt`; what each build variant carries is
+name. A bench-only app declares itself the same way: a
+`development_only.cmake` in its folder leaves it out when
+`CONFIG_LAUNCHER_DEVELOPMENT` is off, so the build names no app and deleting
+the folder deletes the declaration. What each build variant carries is
 [Build-Variants.md](Build-Variants.md).
+
+**App memory is lent, not owned.** The shell holds one static block in
+PSRAM, the app arena (`APP_ARENA_BYTES`, `app_arena.h`), and empties it
+right after every app's `exit()`; an app takes bulk buffers from it and
+never frees them. Re-entry cannot fail to heap fragmentation, since every
+visit gets the same block, and taking from it is no dynamic-memory call
+(MISRA 21.3): it bumps an offset. How to use it is
+[Building-an-App.md](Building-an-App.md#app-memory).
 
 ---
 
