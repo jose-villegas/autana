@@ -1,6 +1,8 @@
 # file	function	callee	count
 launcher/main/apps/render_lab/scene_pathtrace.c	scene_pathtrace_enter	heap_caps_malloc	1
 launcher/main/apps/render_lab/scene_pathtrace.c	scene_pathtrace_exit	heap_caps_free	1
+launcher/main/apps/render_lab/scene_sponza.c	scene_sponza_enter	heap_caps_malloc	2
+launcher/main/apps/render_lab/scene_sponza.c	scene_sponza_exit	heap_caps_free	2
 launcher/main/apps/render_lab/scene_wire.c	wire_enter	heap_caps_free	2
 launcher/main/apps/render_lab/scene_wire.c	wire_enter	heap_caps_malloc	2
 launcher/main/apps/render_lab/scene_wire.c	wire_exit	heap_caps_free	2
@@ -29,6 +31,14 @@ launcher/main/apps/render_lab/tests/suite_rt_row_split.c	assert_sweep_split_matc
 launcher/main/apps/render_lab/tests/suite_rt_row_split.c	assert_sweep_split_matches_whole	malloc	4
 launcher/main/apps/render_lab/tests/suite_rt_row_split.c	test_render_lattice_budget_matches_render_rows_over_the_same_range	free	2
 launcher/main/apps/render_lab/tests/suite_rt_row_split.c	test_render_lattice_budget_matches_render_rows_over_the_same_range	malloc	2
+launcher/main/apps/render_lab/tests/suite_sponza.c	free_tree_facts	heap_caps_free	3
+launcher/main/apps/render_lab/tests/suite_sponza.c	scratch	heap_caps_malloc	1
+launcher/main/apps/render_lab/tests/suite_sponza.c	test_a_proxy_keeps_every_edge_its_subtree_shares_with_the_rest	heap_caps_free	3
+launcher/main/apps/render_lab/tests/suite_sponza.c	test_the_lod_walk_draws_each_visible_leaf_cluster_exactly_once	heap_caps_free	3
+launcher/main/apps/render_lab/tests/suite_sponza.c	test_the_tree_holds_every_cluster_once_as_a_leafs_or_a_proxy	heap_caps_free	1
+launcher/main/apps/render_lab/tests/suite_sponza.c	test_with_no_error_allowed_the_walk_keeps_exactly_what_a_flat_test_keeps	heap_caps_free	2
+launcher/main/apps/render_lab/tests/suite_sponza_perf.c	test_sponza_frame_cost_along_the_flythrough	heap_caps_free	3
+launcher/main/apps/render_lab/tests/suite_sponza_perf.c	test_sponza_frame_cost_along_the_flythrough	heap_caps_malloc	3
 launcher/main/apps/render_lab/tests/suite_wire_pipeline.c	check_grid_is_fully_visible	free	4
 launcher/main/apps/render_lab/tests/suite_wire_pipeline.c	check_grid_is_fully_visible	malloc	4
 launcher/main/apps/render_lab/tests/suite_wire_primitives.c	is_connected	calloc	1
@@ -40,6 +50,8 @@ launcher/main/apps/render_lab/tools/render_lab_render_host_heap.c	<file>	heap_ca
 launcher/main/apps/render_lab/tools/render_lab_render_host_heap.c	heap_caps_calloc	calloc	1
 launcher/main/apps/render_lab/tools/render_lab_render_host_heap.c	heap_caps_free	free	1
 launcher/main/apps/render_lab/tools/render_lab_render_host_heap.c	heap_caps_malloc	malloc	1
+launcher/main/apps/render_lab/tools/sponza_visibility.c	lod_report	calloc	1
+launcher/main/apps/render_lab/tools/sponza_visibility.c	lod_report	free	1
 launcher/main/apps/sand/app_sand.c	alloc_grid_bookkeeping	malloc	7
 launcher/main/apps/sand/app_sand.c	sand_app_alloc_selfcheck	free	11
 launcher/main/apps/sand/app_sand.c	sand_app_alloc_selfcheck	malloc	11

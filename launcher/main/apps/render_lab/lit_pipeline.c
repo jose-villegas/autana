@@ -176,8 +176,50 @@ push_children(const lit_mesh_t* mesh, const lit_view_t* view, const lit_node_t* 
 
 int
 lit_cull_clusters(const lit_mesh_t* mesh, const lit_view_t* view, uint16_t* out) {
+    return lit_cull_clusters_lod(mesh, view, LIT_LOD_ERROR_PX, out);
+}
+
+static float
+box_nearest_depth(const lit_view_t* view, const int16_t lo[3], const int16_t hi[3]) {
+    const float* f = view->m[2];
+    float reach = 0.0f;
+    for (int k = 0; k < 3; k++) {
+        reach += fabsf(f[k]) * 0.5f * ((float)hi[k] - (float)lo[k]);
+    }
+    return box_depth(view, lo, hi) - reach;
+}
+
+/* The error is projected at the nearest depth the node's box reaches, as if
+ * straight ahead; off the view axis a length can look up to a third longer
+ * at this lens, which the budget absorbs. */
+static bool
+proxy_suffices(const lit_view_t* view, const lit_node_t* node, float pixels_per_tick, float max_error_px) {
+    if (node->lod_count == 0) {
+        return false;
+    }
+    const float z = box_nearest_depth(view, node->lo, node->hi);
+    return z > view->near_z && (float)node->lod_error * pixels_per_tick < max_error_px * z;
+}
+
+static int
+keep_clusters(const lit_mesh_t* mesh, const plane_t planes[PLANE_COUNT], unsigned mask, int first, int n, uint16_t* out,
+              int count) {
+    for (int c = first; c < first + n; c++) {
+        unsigned cluster_mask = mask;
+        if (cluster_mask == 0
+            || classify_box(mesh->clusters[c].lo, mesh->clusters[c].hi, planes, &cluster_mask) != BOX_OUTSIDE) {
+            out[count++] = (uint16_t)c;
+        }
+    }
+    return count;
+}
+
+int
+lit_cull_clusters_lod(const lit_mesh_t* mesh, const lit_view_t* view, float max_error_px, uint16_t* out) {
     plane_t planes[PLANE_COUNT];
     frustum_planes(view, planes);
+    const float* across = view->m[0];
+    const float pixels_per_tick = sqrtf(across[0] * across[0] + across[1] * across[1] + across[2] * across[2]);
 
     walk_entry_t stack[WALK_STACK_MAX];
     int top = 0;
@@ -190,17 +232,12 @@ lit_cull_clusters(const lit_mesh_t* mesh, const lit_view_t* view, uint16_t* out)
         if (mask != 0 && classify_box(node->lo, node->hi, planes, &mask) == BOX_OUTSIDE) {
             continue;
         }
-        if (!node->leaf) {
+        if (node->leaf) {
+            count = keep_clusters(mesh, planes, mask, node->first, node->count, out, count);
+        } else if (proxy_suffices(view, node, pixels_per_tick, max_error_px)) {
+            count = keep_clusters(mesh, planes, mask, node->lod_first, node->lod_count, out, count);
+        } else {
             top = push_children(mesh, view, node, mask, stack, top);
-            continue;
-        }
-        for (int i = 0; i < node->count; i++) {
-            const int c = node->first + i;
-            unsigned cluster_mask = mask;
-            if (cluster_mask == 0
-                || classify_box(mesh->clusters[c].lo, mesh->clusters[c].hi, planes, &cluster_mask) != BOX_OUTSIDE) {
-                out[count++] = (uint16_t)c;
-            }
         }
     }
     return count;
@@ -315,15 +352,17 @@ lit_draw(const lit_mesh_t* mesh, const lit_view_t* view, const uint16_t* cluster
             }
         }
         const lit_cluster_t* c = &mesh->clusters[clusters[i]];
+        const lit_cs_vertex_t* own_cs = cs + c->vertex_first;
+        const uint8_t(*own_colors)[3] = mesh->colors + c->vertex_first;
         const int end = c->triangle_first + c->triangle_count;
         for (int t = c->triangle_first; t < end; t++) {
             const uint16_t* tri = mesh->triangles[t];
-            const lit_cs_vertex_t* v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
+            const lit_cs_vertex_t* v[3] = {&own_cs[tri[0]], &own_cs[tri[1]], &own_cs[tri[2]]};
             const int in_front = (v[0]->z > view->near_z) + (v[1]->z > view->near_z) + (v[2]->z > view->near_z);
             if (in_front == 0) {
                 continue;
             }
-            const uint8_t* rgb[3] = {mesh->colors[tri[0]], mesh->colors[tri[1]], mesh->colors[tri[2]]};
+            const uint8_t* rgb[3] = {own_colors[tri[0]], own_colors[tri[1]], own_colors[tri[2]]};
             if (in_front < 3) {
                 clip_vertex_t in[3];
                 for (int k = 0; k < 3; k++) {

@@ -39,9 +39,17 @@ typedef struct {
 void lit_view_look(lit_view_t* view, lit_vec3_t eye, lit_vec3_t forward, float half_fov_short_tan, float near_z,
                    int position_scale, int width, int height, int quarter);
 
+/* How far, in pixels, a proxy may stray from the detail it replaces. */
+#define LIT_LOD_ERROR_PX 1.0f
+
 /* Walks the node tree and writes the clusters any part of which may be on
  * screen, roughly nearest first, returning how many. `out` holds
- * mesh->cluster_count entries. */
+ * mesh->cluster_count entries. A node whose proxy strays less than
+ * max_error_px on screen is drawn as that proxy; 0 always draws full
+ * detail. */
+int lit_cull_clusters_lod(const lit_mesh_t* mesh, const lit_view_t* view, float max_error_px, uint16_t* out);
+
+/* lit_cull_clusters_lod() at LIT_LOD_ERROR_PX. */
 int lit_cull_clusters(const lit_mesh_t* mesh, const lit_view_t* view, uint16_t* out);
 
 /* The screen rows a cluster's vertices span, for a caller drawing only some

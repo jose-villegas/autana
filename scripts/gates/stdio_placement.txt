@@ -8,6 +8,7 @@ launcher/main/apps/input_lab/app_input_lab.c	draw_offsets	snprintf	3
 launcher/main/apps/input_lab/app_input_lab.c	format_tenths	snprintf	1
 launcher/main/apps/render_lab/scene_pathtrace.c	pathtrace_status	snprintf	3
 launcher/main/apps/render_lab/scene_raytrace.c	raytrace_status	snprintf	2
+launcher/main/apps/render_lab/scene_sponza.c	sponza_status	snprintf	1
 launcher/main/apps/render_lab/scene_wire.c	wire_status	snprintf	1
 launcher/main/apps/render_lab/tests/suite_command_list_budget.c	assert_budget	printf	1
 launcher/main/apps/render_lab/tests/suite_command_list_budget.c	assert_budget	snprintf	1
@@ -17,8 +18,14 @@ launcher/main/apps/render_lab/tests/suite_rt_row_split.c	assert_cornell_split_ma
 launcher/main/apps/render_lab/tests/suite_rt_row_split.c	assert_seed_split_matches_whole	snprintf	1
 launcher/main/apps/render_lab/tests/suite_rt_row_split.c	assert_sweep_split_matches_whole	snprintf	1
 launcher/main/apps/render_lab/tests/suite_rt_row_split.c	test_split_mid_covers_every_row_exactly_once	snprintf	1
+launcher/main/apps/render_lab/tests/suite_sponza.c	test_a_proxy_keeps_every_edge_its_subtree_shares_with_the_rest	snprintf	1
+launcher/main/apps/render_lab/tests/suite_sponza.c	test_every_proxy_vertex_lies_within_its_nodes_error_of_the_detail	snprintf	1
+launcher/main/apps/render_lab/tests/suite_sponza.c	test_the_flythrough_keeps_clear_of_every_triangle	snprintf	1
 launcher/main/apps/render_lab/tools/render_lab_render_host.c	options	fprintf	1
 launcher/main/apps/render_lab/tools/render_lab_render_host.c	setup	fprintf	1
+launcher/main/apps/render_lab/tools/sponza_visibility.c	lod_report	printf	8
+launcher/main/apps/render_lab/tools/sponza_visibility.c	main	printf	6
+launcher/main/apps/render_lab/tools/sponza_visibility.c	print_areas	printf	1
 launcher/main/apps/render_lab/ui/render_lab_hud_screen.c	render_lab_hud_screen_draw	snprintf	1
 launcher/main/apps/render_lab/ui/render_lab_menu_screen.c	render_lab_menu_screen_draw	snprintf	3
 launcher/main/apps/sand/app_sand.c	draw_mode_label	snprintf	1
