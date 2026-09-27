@@ -805,7 +805,8 @@ try_percolate(sand_t* s, uint8_t* row, int x, int y, int w, int h, cell_t c, uin
  * Drying decreases variant. Returns true if wet/near liquid. Prevents
  * `may_have_moisture`. Activated by SOAKING side. */
 static bool
-step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reaction_t* r) {
+step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reaction_t* r,
+                      bool liquid_adjacent_possible) {
     const cell_t c = row[x];
     const uint8_t held = moisture_of(c, r);
 
@@ -830,7 +831,7 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
      * excludes only `soaks_to == 0` (dirt): `soaks_to` materials (sand)
      * ignore `held` and must keep rolling toward their conversion. */
     const bool moisture_capped = r->soaks_to == 0 && held >= r->moist_max;
-    if (soaks != 0 && r->soaks != 0 && !moisture_capped && liquid_near(s, x, y)
+    if (soaks != 0 && r->soaks != 0 && !moisture_capped && liquid_adjacent_possible && liquid_near(s, x, y)
         && soak_from_liquid(s, row, x, y, w, h, r, c, held, soaks, &beside_liquid)) {
         return true;
     }
@@ -1910,6 +1911,7 @@ typedef struct {
     int y;
     int w;
     int h;
+    bool liquid_adjacent_possible;
 } reaction_row_t;
 
 typedef struct {
@@ -2563,7 +2565,7 @@ react_stage_soak_dry(reacting_cell_t* k) {
     }
     const reaction_row_t* rr = k->rr;
     if ((k->r->soaks != 0 || k->r->dries != 0)
-        && step_one_soaking_cell(rr->s, rr->row, k->x, rr->y, rr->w, rr->h, k->r)) {
+        && step_one_soaking_cell(rr->s, rr->row, k->x, rr->y, rr->w, rr->h, k->r, rr->liquid_adjacent_possible)) {
         k->found |= FOUND_MOISTURE;
         k->done = true;
     }
@@ -2664,10 +2666,10 @@ react_stage_bud(reacting_cell_t* k) {
  * a cell it does visit sees exactly the state and RNG stream a full walk
  * would have given it. */
 static unsigned
-step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
+step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi, bool liquid_adjacent_possible) {
     const size_t row_at = (size_t)y * (size_t)w;
     uint8_t* row = s->cells + row_at;
-    const reaction_row_t reaction_row = {s, row, y, w, h};
+    const reaction_row_t reaction_row = {s, row, y, w, h, liquid_adjacent_possible};
     static void* const stage_labels[RSTAGE_COUNT] = {
         &&stage_burn_any, &&stage_burn_always, &&stage_burn_check, &&stage_dissolve, &&stage_acid_rain,
         &&stage_condense, &&stage_heat_ramp,   &&stage_crust,      &&stage_chill,    &&stage_warm,
@@ -2895,6 +2897,26 @@ refresh_moisture_blocks(sand_t* s) {
     }
 }
 
+/* Soak-only writes can consume wetting liquid but cannot create it. */
+static inline __attribute__((always_inline)) bool
+row_has_wetting_liquid(const sand_t* s, int y, int x_lo, int x_hi) {
+    const uint8_t* row = s->cells + (size_t)y * (size_t)s->w;
+    for (int x = x_lo; x < x_hi; x++) {
+        if ((pair_theirs_bits(CELL_MATERIAL(row[x])) & PAIR_WETS) != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool
+row_segment_has_wetting_liquid(const sand_t* s, int y, int x_lo, int x_hi) {
+    const int first_x = x_lo > 0 ? x_lo - 1 : x_lo;
+    const int last_x = x_hi < s->w ? x_hi + 1 : x_hi;
+    return row_has_wetting_liquid(s, y, first_x, last_x) || (y > 0 && row_has_wetting_liquid(s, y - 1, first_x, last_x))
+           || (y + 1 < s->h && row_has_wetting_liquid(s, y + 1, first_x, last_x));
+}
+
 /* SOAK-ONLY WALK: every block outside BLOCK_LIQUID_NEAR or BLOCK_HAS_
  * MOISTURE is skipped rather than visited and rejected. Sound only under
  * sand_step_reactions()'s own soak_only gate, which has already ruled out
@@ -2904,13 +2926,15 @@ step_one_reacting_row_liquid_near(sand_t* s, int y, int w, int h) {
     unsigned found = 0;
     const int by = (int)((unsigned)y / SAND_BLOCK_H);
     for (int bx = 0; bx < s->block_cols; bx++) {
-        if ((s->block_state[(size_t)by * (size_t)s->block_cols + (size_t)bx] & (BLOCK_LIQUID_NEAR | BLOCK_HAS_MOISTURE))
-            == 0) {
+        const uint8_t block_flags = s->block_state[(size_t)by * (size_t)s->block_cols + (size_t)bx];
+        if ((block_flags & (BLOCK_LIQUID_NEAR | BLOCK_HAS_MOISTURE)) == 0) {
             continue;
         }
         const int x_lo = bx * SAND_BLOCK_W;
         const int x_hi = (x_lo + SAND_BLOCK_W < w) ? x_lo + SAND_BLOCK_W : w;
-        found |= step_one_reacting_row(s, y, w, h, x_lo, x_hi);
+        const bool liquid_adjacent_possible =
+            (block_flags & BLOCK_LIQUID_NEAR) != 0 && row_segment_has_wetting_liquid(s, y, x_lo, x_hi);
+        found |= step_one_reacting_row(s, y, w, h, x_lo, x_hi, liquid_adjacent_possible);
     }
     return found;
 }
@@ -2929,7 +2953,7 @@ react_one_chunk(void* pass, int lane, int cx, int cy) {
     sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
     for (int y = y0; y < y1; y++) {
         sand_chunk_work_add(x1 - x0);
-        found |= step_one_reacting_row(s, y, s->w, s->h, x0, x1);
+        found |= step_one_reacting_row(s, y, s->w, s->h, x0, x1, true);
     }
     c->found[lane] |= found;
 }
@@ -3182,7 +3206,8 @@ react_walk_every_row(sand_t* s, bool soak_only) {
     unsigned found = 0;
 
     for (int y = 0; y < h; y++) {
-        found |= soak_only ? step_one_reacting_row_liquid_near(s, y, w, h) : step_one_reacting_row(s, y, w, h, 0, w);
+        found |=
+            soak_only ? step_one_reacting_row_liquid_near(s, y, w, h) : step_one_reacting_row(s, y, w, h, 0, w, true);
     }
     return found;
 }
