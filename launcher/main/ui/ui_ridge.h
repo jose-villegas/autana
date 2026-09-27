@@ -32,4 +32,6 @@ void ui_ridge_paint(void);
 #if CONFIG_LAUNCHER_SELFTEST
 /* Starts a device perf arm from the settled landscape state. */
 void ui_ridge_reset_for_test(void);
+/* How many pose steps the fill's gradient trails the ridge by. */
+int ui_ridge_gradient_lag_for_test(void);
 #endif

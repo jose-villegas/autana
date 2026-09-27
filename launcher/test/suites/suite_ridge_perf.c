@@ -200,14 +200,21 @@ unlike_a_full_paint_now(void) {
 
 /* The frame the incremental repaint leaves must be the frame a full paint
  * draws from the same state; any pixel it forgets to repaint shows here. */
+/* The panel must also be sent every pixel the repaint changed: with the
+ * send audit on, a changed pixel left unmarked counts as uncovered. */
 static int
 pixels_unlike_a_full_paint(arm_t arm, int frames) {
     prime();
+    gfx_set_send_audit(true);
     for (int frame = 0; frame < frames; frame++) {
         input_t input;
         drive(arm, frame, &input);
         ui_ridge_step(&input, FRAME_DT_MS);
+        gfx_present();
     }
+    const int64_t unsent = gfx_send_audit_uncovered_px();
+    gfx_set_send_audit(false);
+    TEST_ASSERT_TRUE_MESSAGE(unsent == 0, "a repainted pixel never reached the panel");
     return unlike_a_full_paint_now();
 }
 
@@ -237,6 +244,7 @@ test_ridge_settles_after_tilting(void) {
     const int unlike = unlike_a_full_paint_now();
     gfx_heal_restore_defaults();
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, unlike, "the held frame is not what a full paint draws");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, ui_ridge_gradient_lag_for_test(), "the gradient never caught up with the ridge");
     ESP_LOGI(TAG, "RIDGE SETTLE bytes_per_frame=%lld", (long long)per_frame);
     TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(GFX_WIDTH * LAUNCHER_HEAL_ROWS * 2, (int)per_frame,
                                           "still repainting after the tilt stopped");
