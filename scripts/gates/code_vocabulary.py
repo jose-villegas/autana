@@ -2,7 +2,7 @@
 import pathlib
 import re
 
-SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components", ".git"}
+SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components", "node_modules", ".git"}
 SOURCE_SUFFIXES = {".c", ".h", ".py", ".mjs"}
 C_SUFFIXES = {".c", ".h"}
 FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\(")
@@ -35,7 +35,7 @@ def _without_comments_or_strings(text, strings=True):
     spaces (newlines kept, so line numbers and `^`-anchored regexes still
     line up). C syntax only - `#`, `//` as division, `'` inside a word and a
     triple-quoted docstring all parse wrong under it, so `vocabulary()` below
-    applies this to C_SUFFIXES only, never to a .py file.
+    applies this to C and .mjs sources, never to a .py file.
 
     A name spelled `name()` only inside a comment or a message string - a
     citation of some OTHER function, say - is not a declaration or a call,
