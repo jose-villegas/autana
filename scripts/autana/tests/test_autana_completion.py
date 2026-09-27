@@ -16,6 +16,10 @@ class CompletionTests(unittest.TestCase):
     def test_first_word_completes_command_names(self):
         self.assertEqual(autana.completion_candidates("fl", "fl"), ["flash"])
 
+    def test_build_second_word_completes_variants(self):
+        self.assertEqual(autana.completion_candidates("build d", "d"), ["dev", "diag"])
+        self.assertEqual(autana.completion_candidates("build r", "r"), ["rel", "release"])
+
     def test_flash_second_word_completes_variants(self):
         self.assertEqual(autana.completion_candidates("flash d", "d"), ["dev", "diag"])
 

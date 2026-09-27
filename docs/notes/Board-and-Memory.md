@@ -139,7 +139,7 @@ it live.
 | ≤ 32 GB | FAT32 | yes |
 | > 32 GB | exFAT (`FF_FS_EXFAT 0`) | reformat to FAT32 first |
 
-8.3 filenames only (`CONFIG_FATFS_LFN_NONE`); 20 MHz (`SDMMC_FREQ_DEFAULT`), <!-- doc-citations: ignore CONFIG_FATFS_LFN_NONE -->
+8.3 filenames only (`CONFIG_FATFS_LFN_NONE`); 20 MHz (`SDMMC_FREQ_DEFAULT`),
 1-bit.
 
 ## Related

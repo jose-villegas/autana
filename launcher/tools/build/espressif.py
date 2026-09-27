@@ -1,8 +1,10 @@
-"""Where ESP-IDF's tool installer put things (espressif_tools_root()), and
-the interpreter inside it that has pyserial and esptool (idf_python()).
+"""Where ESP-IDF's tool installer put things (espressif_tools_root()), the
+ESP-IDF checkout itself (idf_path()), and the interpreter inside the tools
+that has pyserial and esptool (idf_python()).
 
-    from espressif import espressif_tools_root, idf_python
+    from espressif import espressif_tools_root, idf_path, idf_python
     root = espressif_tools_root()   # $IDF_TOOLS_PATH, or ~/.espressif
+    idf = idf_path()                # $IDF_PATH, or ~/esp/esp-idf
     python = idf_python()           # falls back to sys.executable if not found
 
 idf_python() searches only on Windows: elsewhere ESP-IDF's export script
@@ -23,6 +25,14 @@ def espressif_tools_root():
     /opt/esp), else the installer's default under the home directory."""
     env = os.environ.get("IDF_TOOLS_PATH")
     return Path(env) if env else Path.home() / ".espressif"
+
+
+def idf_path():
+    """The ESP-IDF checkout: $IDF_PATH, which ESP-IDF's installers and
+    export scripts set, else Espressif's documented ~/esp/esp-idf - the
+    same rule as idf.sh's idf_default_export(). It may not exist."""
+    env = os.environ.get("IDF_PATH")
+    return Path(env) if env else Path.home() / "esp" / "esp-idf"
 
 
 def _version_key(path):
