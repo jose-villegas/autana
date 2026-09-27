@@ -856,19 +856,40 @@ def snapshot_image(build_dir, image_dir):
     return build_id
 
 
+def on_windows():
+    return os.name == "nt"
+
+
 def script_environment(environment=None):
     """Git Bash on Windows needs MSYSTEM; elsewhere it would send idf.sh
     looking for cmd."""
     environment = dict(environment or os.environ)
-    if os.name == "nt":
+    if on_windows():
         environment.setdefault("MSYSTEM", "MINGW64")
     return environment
 
 
 def new_image_directory():
     """A snapshot's own folder: private, uniquely named, outside the records,
-    and removed by its owner once the write is done or abandoned."""
-    return Path(tempfile.mkdtemp(prefix="autana-image-"))
+    and removed by its owner once the write is done or abandoned. Made under
+    AUTANA_IMAGE_ROOT when set (the tests' own folder), else the system's
+    temporary directory."""
+    return Path(tempfile.mkdtemp(prefix="autana-image-",
+                                 dir=os.environ.get("AUTANA_IMAGE_ROOT") or None))
+
+
+def remove_image_directory(image):
+    """Removes the snapshot folder itself. Windows can refuse for a moment
+    while a stopped writer's handles close, so it tries again briefly."""
+    for _ in range(50):
+        try:
+            shutil.rmtree(image)
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            time.sleep(0.1)
+    shutil.rmtree(image, ignore_errors=True)
 
 
 def build_snapshot(build, build_dir, image_dir, **popen):
@@ -921,7 +942,7 @@ def flash_script(store, board, owner, purpose, bash, worktree, variant, wait, **
         with HeldLock(store, board, owner, purpose, wait, kind="flash") as held:
             write_snapshot(held, write, image, **popen)
     finally:
-        shutil.rmtree(image, ignore_errors=True)
+        remove_image_directory(image)
     return board
 
 
@@ -976,7 +997,7 @@ class Built:
         return self
 
     def __exit__(self, *unused):
-        shutil.rmtree(self.image, ignore_errors=True)
+        remove_image_directory(self.image)
         return False
 
     def record(self, build_id=None, error=None, acquired_at=None):
