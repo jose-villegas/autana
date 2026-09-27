@@ -11,6 +11,10 @@ name: Comment Rules
 # check_style_audit.py holds the remaining decidable text and include
 # rules, one decorated function each; its docstring says what was left
 # out because a script cannot judge it reliably.
+# The two citation gates run in their own job, inside the ESP-IDF image the
+# firmware builds with: a name the firmware uses but does not define must
+# resolve in ESP-IDF, and --require-idf fails the job rather than skip that
+# check if the image ever stops carrying it.
 # Enforced here so the rules hold for every commit, however it was made.
 # The tooling's own suites run last, in the same job: they test these
 # scripts, and are too small to be worth a runner of their own.
@@ -39,17 +43,11 @@ jobs:
           python3 scripts/gates/check_comment_length.py
           --no-banners --limit 500 --header-limit 50 --top 0
 
-      - name: Every name, file and heading a comment cites exists
-        run: python3 scripts/gates/check_comment_symbols.py
-
       - name: No comment below apps/ names an app
         run: python3 scripts/gates/check_comment_layers.py
 
       - name: No comment records where code moved
         run: python3 scripts/gates/find_narrative_comments.py --tombstones
-
-      - name: Every documentation citation resolves
-        run: python3 scripts/gates/check_doc_citations.py
 
       - name: Documentation constants match source
         run: python3 scripts/gates/check_doc_constants.py
@@ -77,3 +75,20 @@ jobs:
       - name: Tool tests
         if: ${{ !cancelled() }}
         run: sh scripts/run-tool-tests.sh
+
+  citations:
+    name: Every citation resolves, in this tree or in ESP-IDF
+    runs-on: ubuntu-latest
+    container: espressif/idf:release-v5.5
+    steps:
+      - uses: actions/checkout@v4
+
+      # The container runs as another user than the checkout's owner.
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Every name, file and heading a comment cites exists
+        run: python3 scripts/gates/check_comment_symbols.py --require-idf
+
+      - name: Every documentation citation resolves
+        run: python3 scripts/gates/check_doc_citations.py --require-idf

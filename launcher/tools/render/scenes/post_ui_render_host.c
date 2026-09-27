@@ -6,7 +6,7 @@
  *     post_ui_render_host [--quarter N] [--panel] [--failures]  > frame.bmp
  *
  * A render_host.h scene; render_host.c owns main(), the quarter turn and
- * the BMP. Built by render_scenes.sh from post_ui.scene beside it.
+ * the BMP. Built by render_scene.sh from post_ui.scene beside it.
  *
  * post.c is deliberately NOT linked: its checks probe real I2C, flash and
  * eFuse. The three functions it would have supplied are defined below over
