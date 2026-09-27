@@ -105,5 +105,60 @@ class ReporterExitCodeTest(CaptureFixture):
         self.assertIn("BOOT_ANIM PERF", done.stderr)
 
 
+class DeviceReportArgumentsTest(unittest.TestCase):
+    """device_report.sh as a report script sources it, with `python` stubbed
+    to record the device.py call instead of reaching a board."""
+
+    def setUp(self):
+        sys.path.insert(0, str(TOOLS.parents[1] / "scripts" / "device"))
+        self.addCleanup(sys.path.remove, str(TOOLS.parents[1] / "scripts" / "device"))
+        import device
+        try:
+            self.bash = device.git_bash()
+        except RuntimeError as error:
+            self.skipTest(str(error))
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.dir = pathlib.Path(temp.name)
+        self.calls = self.dir / "calls.txt"
+
+    def run_report(self, *arguments):
+        script = (
+            'report_name=t; report_dir="$1"; report_timeout=1; report_suite=""\n'
+            'report_generate() { :; }\n'
+            '. "$2"\n'
+            'calls="$3"\n'
+            'python() { printf "%s\\n" "$*" >> "$calls"; return 1; }\n'
+            'shift 3\n'
+            'device_report_run "$@"\n')
+        return subprocess.run(
+            [self.bash, "-c", script, str(TOOLS / "quality" / "report_test_results.sh"),
+             self.dir.as_posix(), (TOOLS / "device" / "device_report.sh").as_posix(),
+             self.calls.as_posix(), "--no-restore", *arguments],
+            cwd=self.dir, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+            timeout=60, env=dict(os.environ, AUTANA_BOARD=""))
+
+    def device_calls(self):
+        return self.calls.read_text().splitlines() if self.calls.exists() else []
+
+    def test_the_board_is_named_by_its_flag(self):
+        self.run_report("--board", "SERIAL1", "out.md")
+        self.assertEqual(len(self.device_calls()), 1)
+        self.assertIn("device.py --board SERIAL1 --owner", self.device_calls()[0])
+
+    def test_without_the_flag_device_py_picks_the_board(self):
+        self.run_report("out.md")
+        self.assertEqual(len(self.device_calls()), 1)
+        self.assertNotIn("--board", self.device_calls()[0])
+
+    def test_a_board_given_as_a_positional_is_refused_before_any_device_call(self):
+        for arguments in (("SERIAL1", "out.md"), ("SERIAL1",)):
+            with self.subTest(arguments=arguments):
+                done = self.run_report(*arguments)
+                self.assertNotEqual(done.returncode, 0)
+                self.assertIn("--board", done.stderr)
+                self.assertEqual(self.device_calls(), [])
+
+
 if __name__ == "__main__":
     unittest.main()
