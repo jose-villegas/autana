@@ -24,9 +24,13 @@ reconfigures another:
 
 | image | flags | built by | directory |
 |---|---|---|---|
-| release | neither | `tools/build/build_flash.sh --build-only`, `autana flash rel` | `build/` |
-| dev | DEVELOPMENT | `tools/build/build_flash.sh --dev --build-only`, `autana flash dev` | `build.dev/` |
-| diagnostics | DEVELOPMENT + SELFTEST | `tools/build/build_flash.sh --diag --build-only`, `autana flash diag`, `autana selftest` | `build.diag/` |
+| release | neither | `autana build rel`, `autana flash rel` | `build/` |
+| dev | DEVELOPMENT | `autana build dev`, `autana flash dev` | `build.dev/` |
+| diagnostics | DEVELOPMENT + SELFTEST | `autana build diag`, `autana flash diag`, `autana selftest` | `build.diag/` |
+
+`autana build` needs no board and takes no lock; what it runs is
+`launcher/tools/build/build.sh` with the variant's flag (`--dev`, `--diag`),
+and CI builds every variant the same way.
 
 ---
 
@@ -47,7 +51,7 @@ defines any of the suite, console or self-test symbols it names - including a
 `run_<name>_suite` entry point. CI runs it after the release build.
 
 ```sh
-launcher/tools/build/build_flash.sh --build-only
+autana build rel
 launcher/tools/build/check_release_symbols.sh launcher/build/launcher.elf
 ```
 
@@ -92,7 +96,8 @@ its `.text` *and* its `.bss`, which is what buys the run time back.
 bash launcher/main/apps/sand/tools/report_performance.sh --perf-scope
 # the image alone, left on the board, with no capture taken:
 autana flash diag --perf-scope
-launcher/tools/build/build_flash.sh --diag --perf-scope --build-only
+# built only, no board:
+autana build diag --perf-scope
 ```
 
 Scoped around **what a run reads**, not around folders. An app owns the perf
@@ -189,7 +194,7 @@ see its headers, and with no test sources compiled nothing references it and
 same size with and without the entry.
 
 ```sh
-tools/build/build_flash.sh --build-only     # build/       release, no test code
+autana build rel                      # build/       release, no test code
 autana selftest                       # build.diag/  firmware + suites
 ```
 
