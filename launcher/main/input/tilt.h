@@ -33,10 +33,10 @@
  * and unbounded dt would overflow the fixed-point arithmetic. */
 #define TILT_MAX_DT_MS      100
 
-/* Magnitude bounds, as percentages of one g. Between LO and HI a sample
- * is close enough to rest to be treated as gravity. Outside, something
- * is pushing the device and the reading is mostly that. Below
- * FREE_FALL nothing is supporting it at all. Wide on purpose: the cost
+/* Magnitude bounds, as percentages of one g. Between TILT_TRUST_LO_PCT and
+ * TILT_TRUST_HI_PCT a sample is close enough to rest to be treated as
+ * gravity. Outside, something is pushing the device and the reading is
+ * mostly that. Below TILT_FREE_FALL_PCT nothing is supporting it at all. Wide on purpose: the cost
  * of rejecting a good sample is a few milliseconds of staleness, and
  * the cost of accepting a bad one is whatever follows gravity thrown across
  * the screen. */
