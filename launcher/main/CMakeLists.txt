@@ -100,24 +100,11 @@ list(APPEND app_srcs "board/board_esp32s3.c")
 # fail - see the note on unity below.)
 launcher_glob(discovered_apps "${CMAKE_CURRENT_LIST_DIR}/apps/*.c")
 
-# apps/<name>/tools/ holds that app's own host-side tooling (sweep scripts,
-# report generators) - see docs/Building-an-App.md, "An app is a
-# folder". It is not firmware. But the glob above is apps/*.c, recursive, so
-# a future .c placed under one of those tools/ folders (a small host-side
-# helper program, say) would be swept in right alongside the app's real
-# sources - and then WHOLE_ARCHIVE, below, force-links it into the image
-# regardless of whether anything references it, so --gc-sections never gets
-# the chance to drop it. Excluded by folder rather than by name, same as the
-# diagnostics rule below, so the rule is structural rather than needing a
-# per-tool update. Nothing lives here yet; this guard goes in with the
-# convention itself, because the failure it prevents - a host tool's main()
-# silently linked into device firmware - is silent and baffling to debug
-# after the fact.
-#
-# Filtered HERE, before the suite split below, and not after it:
-# app_suites is captured from discovered_apps and would otherwise keep
-# a suite_*.c living under a tools/ folder, putting it back into the
-# selftest image through the other door.
+# apps/<name>/tools/ is an app's host-side tooling, not firmware. The glob
+# above is recursive and WHOLE_ARCHIVE force-links whatever it finds, so a
+# host program's main() placed there would silently land in the image.
+# Filtered before the suite split below, which would otherwise keep a
+# suite_*.c from a tools/ folder.
 list(FILTER discovered_apps EXCLUDE REGEX "/apps/[^/]*/tools/")
 
 # Test suites are app-owned but must not ship. They are added back below when
@@ -126,22 +113,20 @@ set(app_suites ${discovered_apps})
 list(FILTER app_suites INCLUDE REGEX "/suite_[^/]*\\.c$")
 list(FILTER discovered_apps EXCLUDE REGEX "/suite_[^/]*\\.c$")
 
-# Diagnostics carries the gfx debug-overlay checkboxes a developer wants
-# while working on sand, plus the POST report and (SELFTEST builds only -
-# see app_diagnostics.c) the self-test runner button. None of that belongs
-# in a release image: entering the app re-runs POST, which cycles the audio
-# rail - reasonable while debugging, not something to leave reachable in a
-# shipped product. Gated
-# on DEVELOPMENT rather than SELFTEST so it ships in a --dev build too, with
-# no test suites along for the ride - that is the whole reason a --dev
-# build exists: SELFTEST's linked-in suites cost enough static RAM that
-# sand's grid allocation can fail. LAUNCHER_SELFTEST `select`s
-# LAUNCHER_DEVELOPMENT (Kconfig.projbuild), so this one condition still
-# covers both --dev and --diag. Excluded by folder rather than by name so
-# the rule is structural. Input Lab is the same kind of bench tool: its
-# only reader is whoever refits the touch panel from its log.
+# An app whose folder holds a development_only.cmake is a bench tool: it
+# ships in any DEVELOPMENT build (--dev and --diag, since SELFTEST depends on
+# DEVELOPMENT) and never in release. The app declares it from its own folder,
+# so deleting the folder deletes the declaration.
 if(NOT CONFIG_LAUNCHER_DEVELOPMENT)
-    list(FILTER discovered_apps EXCLUDE REGEX "/apps/(diagnostics|input_lab)/")
+    launcher_glob(development_only_markers
+        "${CMAKE_CURRENT_LIST_DIR}/apps/*/development_only.cmake")
+    list(FILTER development_only_markers INCLUDE REGEX
+        "/apps/[^/]+/development_only\\.cmake$")
+    foreach(marker IN LISTS development_only_markers)
+        get_filename_component(app_dir "${marker}" DIRECTORY)
+        get_filename_component(app "${app_dir}" NAME)
+        list(FILTER discovered_apps EXCLUDE REGEX "/apps/${app}/")
+    endforeach()
 endif()
 
 list(APPEND app_srcs ${discovered_apps})
