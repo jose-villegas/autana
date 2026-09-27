@@ -15,7 +15,7 @@ soft-float library call.
 None of that matters, because the curve never changes. It is one fixed
 polyline, so it is computed here, once, in double precision, and shipped in
 .rodata where it is memory-mapped from flash at no cost in RAM - about 1.4
-KiB against a 16 MB part with 87% of the app partition free.
+KiB of flash.
 
 HOW ZETA IS EVALUATED
 

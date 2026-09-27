@@ -161,9 +161,11 @@ Every cell is measured four ways, named in the line's `arm=` field:
 
 One `CHUNK_SWEEP` line per cell, with the fields `quality=`, `grid=`,
 `side=`, `scene=`, `orient=`, `arm=`, `us_per_step=`, `aborts=`, `chunks=`,
-`sweep_us=`, `liquid_us=`, `gas_us=`, `react_us=` and `other_us=`. The last
-five break one step down by pass, so a layout that helps the liquid passes
-and hurts the gas pass is visible instead of averaged into one number.
+`sweep_us=`, `liquid_us=`, `gas_us=`, `react_us=`, `other_us=`, `took_us=`
+and `steps=`. The five `_us` fields before `took_us` break one step down by
+pass, so a layout that helps the liquid passes and hurts the gas pass is
+visible instead of averaged into one number. `took_us` is the whole timed
+window over `steps` steps, unrounded.
 
 Each quality opens with a `CHUNK_SWEEP_FLOOR` line - `quality=`,
 `serial_us=`, `split_us=`, `settle_steps=` - a settled pile stepped serial
@@ -174,7 +176,10 @@ numbers beside it are a transient rather than a floor. A quality closes
 with `CHUNK_SWEEP_COMPLETE`.
 
 Under `--icount` a `us_per_step` field times 1000 is instructions per step.
-On the board it is microseconds.
+On the board it is microseconds. It is rounded down to a whole microsecond,
+so under `--icount` a few instructions of interrupt jitter can move it by 1
+between two runs of one image; `took_us` times 1000 divided by `steps` keeps
+that jitter at its real size.
 
 ### The lists, and what a round costs
 

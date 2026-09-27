@@ -41,11 +41,6 @@ vec3_mul(r3d_vec3f_t a, r3d_vec3f_t b) {
     return (r3d_vec3f_t){a.x * b.x, a.y * b.y, a.z * b.z};
 }
 
-static r3d_vec3f_t
-vec3_cross(r3d_vec3f_t a, r3d_vec3f_t b) {
-    return (r3d_vec3f_t){a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
-}
-
 /* Fixed-point accumulator */
 
 static uint16_t
@@ -243,8 +238,8 @@ direct_light(rt_path_rng_t* rng, r3d_vec3f_t point, r3d_vec3f_t normal, r3d_vec3
 static void
 build_basis(r3d_vec3f_t n, r3d_vec3f_t* tangent, r3d_vec3f_t* bitangent) {
     const r3d_vec3f_t up = fabsf(n.y) < 0.999f ? (r3d_vec3f_t){0.0f, 1.0f, 0.0f} : (r3d_vec3f_t){1.0f, 0.0f, 0.0f};
-    *tangent = r3d_vec3f_normalize(vec3_cross(up, n));
-    *bitangent = vec3_cross(n, *tangent);
+    *tangent = r3d_vec3f_normalize(r3d_vec3f_cross(up, n));
+    *bitangent = r3d_vec3f_cross(n, *tangent);
 }
 
 /* pdf = cos(theta) / pi, the same as the Lambert BRDF's own cos/pi factor,
