@@ -1284,6 +1284,38 @@ pluck_from_shaking(void) {
                      (ridge->shake_seed & 0x80U ? 1 : -1) * (SPRING_LINE_ONE / 128) * ridge->shake);
 }
 
+static void
+follow_gradient(void) {
+    if (!gradient_due()) {
+        return;
+    }
+    const ridge_vector_t was = ridge->gradient_pose;
+    catch_up_gradient();
+    if (ridge->scanline_dither) {
+        repaint_gradient_turn(was);
+    } else {
+        paint_all();
+    }
+}
+
+static void
+paint_this_frame(bool retuned, uint32_t dt_ms) {
+    const bool dissolve = ridge->axis_on_screen && !retuned && dissolve_wanted();
+    if (dissolve) {
+        start_dissolve();
+    }
+    if (!ridge->painted || retuned || (ridge->axis_on_screen && !dissolve)) {
+        catch_up_gradient();
+        paint_all();
+        return;
+    }
+    follow_gradient();
+    /* Every frame, not only when the spring reports motion: a spring put to
+     * rest takes its last fraction of a pixel without reporting it. */
+    repaint_changed();
+    advance_dissolve(dt_ms);
+}
+
 void
 ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     allocate_once();
@@ -1326,27 +1358,6 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     raster_boundaries();
     FRAME_COST_END(layers_from, "ridge.layers");
     FRAME_COST_BEGIN(painted_from);
-    const bool dissolve = ridge->axis_on_screen && !retuned && dissolve_wanted();
-    if (dissolve) {
-        start_dissolve();
-    }
-    if (!ridge->painted || retuned || (ridge->axis_on_screen && !dissolve)) {
-        catch_up_gradient();
-        paint_all();
-    } else {
-        if (gradient_due()) {
-            const ridge_vector_t was = ridge->gradient_pose;
-            catch_up_gradient();
-            if (ridge->scanline_dither) {
-                repaint_gradient_turn(was);
-            } else {
-                paint_all();
-            }
-        }
-        /* Every frame, not only when the spring reports motion: a spring put
-         * to rest takes its last fraction of a pixel without reporting it. */
-        repaint_changed();
-        advance_dissolve(dt_ms);
-    }
+    paint_this_frame(retuned, dt_ms);
     FRAME_COST_END(painted_from, "ridge.paint");
 }
