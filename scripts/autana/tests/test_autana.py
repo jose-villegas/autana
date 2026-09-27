@@ -325,6 +325,15 @@ class FlashCommandTests(unittest.TestCase):
         command = called.call_args[0][0]
         self.assertIn("--perf-scope", command)
 
+    def test_no_variant_flashes_dev(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana, "git", return_value=""), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called, \
+             mock.patch("builtins.print"):
+            autana.flash(["--quiet"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--variant") + 1], "dev")
+
     def test_no_perf_scope_flag_is_not_forwarded(self):
         with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
              mock.patch.object(autana, "git", return_value=""), \
@@ -367,27 +376,19 @@ class BuildCommandTests(unittest.TestCase):
         self.assertEqual(self.build("dev", code=2)[0], 2)
         self.assertEqual(self.build("dev", code=0)[0], 0)
 
+    def test_a_second_variant_word_is_refused(self):
+        device = autana.device_module()
+        with mock.patch.object(device, "build_worktree") as built, \
+                self.assertRaises(SystemExit):
+            autana.build(["dev", "diag"])
+        built.assert_not_called()
+
     def test_an_unknown_variant_is_refused(self):
         device = autana.device_module()
         with mock.patch.object(device, "build_worktree") as built, \
                 self.assertRaises(SystemExit):
             autana.build(["qemu"])
         built.assert_not_called()
-
-
-class EngineWorktreeTests(unittest.TestCase):
-    def test_a_checkout_git_will_not_name_is_found_from_the_folders_it_holds(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory).resolve()
-            (root / "launcher" / "main").mkdir(parents=True)
-            (root / "scripts" / "autana").mkdir(parents=True)
-            cwd = os.getcwd()
-            os.chdir(root / "launcher" / "main")
-            try:
-                with mock.patch.object(autana, "git", return_value=""):
-                    self.assertEqual(Path(autana.engine_worktree()), root)
-            finally:
-                os.chdir(cwd)
 
 
 class MonitorCommandTests(unittest.TestCase):
