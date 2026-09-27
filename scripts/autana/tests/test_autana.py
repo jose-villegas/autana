@@ -334,6 +334,62 @@ class FlashCommandTests(unittest.TestCase):
         self.assertNotIn("--perf-scope", command)
 
 
+class BuildCommandTests(unittest.TestCase):
+    """autana build: device.py's build half, in this process, taking no
+    board and no lock - LockStore and device.py's own command line both
+    refuse here."""
+
+    def build(self, *args, code=0):
+        device = autana.device_module()
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana, "git", return_value=""), \
+             mock.patch.object(device, "build_worktree", return_value=code) as built, \
+             mock.patch.object(device.device_lock, "LockStore",
+                               side_effect=AssertionError("lock")), \
+             mock.patch.object(autana.subprocess, "call",
+                               side_effect=AssertionError("device.py")), \
+             mock.patch("builtins.print"):
+            returned = autana.build(list(args))
+        return returned, built
+
+    def test_each_variant_word_builds_that_variant_and_dev_when_omitted(self):
+        for words, variant in (((), "dev"), (("rel",), "release"), (("release",), "release"),
+                               (("dev",), "dev"), (("diag",), "diag")):
+            with self.subTest(words=words):
+                _, built = self.build(*words)
+                built.assert_called_once_with("C:/wt", variant, [])
+
+    def test_perf_scope_is_forwarded(self):
+        _, built = self.build("diag", "--perf-scope")
+        built.assert_called_once_with("C:/wt", "diag", ["--perf-scope"])
+
+    def test_the_exit_status_is_the_builds(self):
+        self.assertEqual(self.build("dev", code=2)[0], 2)
+        self.assertEqual(self.build("dev", code=0)[0], 0)
+
+    def test_an_unknown_variant_is_refused(self):
+        device = autana.device_module()
+        with mock.patch.object(device, "build_worktree") as built, \
+                self.assertRaises(SystemExit):
+            autana.build(["qemu"])
+        built.assert_not_called()
+
+
+class EngineWorktreeTests(unittest.TestCase):
+    def test_a_checkout_git_will_not_name_is_found_from_the_folders_it_holds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / "launcher" / "main").mkdir(parents=True)
+            (root / "scripts" / "autana").mkdir(parents=True)
+            cwd = os.getcwd()
+            os.chdir(root / "launcher" / "main")
+            try:
+                with mock.patch.object(autana, "git", return_value=""):
+                    self.assertEqual(Path(autana.engine_worktree()), root)
+            finally:
+                os.chdir(cwd)
+
+
 class MonitorCommandTests(unittest.TestCase):
     """autana monitor forwards to `device.py listen`, which matches the
     capture's own BUILD_ID to a build directory itself when --elf is not

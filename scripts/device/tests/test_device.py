@@ -802,6 +802,41 @@ class FlashDefaultPathTests(unittest.TestCase):
             self.assertEqual(write.kwargs["env"]["AUTANA_BOARD"], BOARD)
 
 
+class BuildWorktreeTests(unittest.TestCase):
+    """build_worktree(), behind `autana build`: the build half of a flash,
+    touching no board and no lock."""
+
+    def main(self, variant, flags=(), run=None):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = fake_flash.worktree(Path(directory) / "engine")
+            calls = []
+            with mock.patch.object(device, "run_to_end",
+                                   side_effect=run or (lambda command, lost=None, **options:
+                                                       calls.append((command, lost, options)))), \
+                 mock.patch.object(device, "board_for_lock", side_effect=AssertionError("board")), \
+                 mock.patch.object(device.device_lock, "LockStore",
+                                   side_effect=AssertionError("lock")), \
+                 mock.patch.object(device, "HeldLock", side_effect=AssertionError("held")):
+                code = device.build_worktree(worktree, variant, flags)
+        return code, calls
+
+    def test_builds_the_variant_with_no_board_and_no_lock(self):
+        code, calls = self.main("diag", ["--perf-scope"])
+        self.assertEqual(code, 0)
+        (command, lost, options), = calls
+        self.assertEqual([Path(command[1]).name] + command[2:],
+                         ["build.sh", "--diag", "--perf-scope"])
+        self.assertIsNone(lost)
+        self.assertNotIn("AUTANA_DEVICE_LOCK_TOKEN", options["env"])
+
+    def test_a_failed_build_is_the_commands_exit_status(self):
+        def failing(command, lost=None, **unused_options):
+            raise subprocess.CalledProcessError(2, command)
+
+        code, _ = self.main("dev", run=failing)
+        self.assertEqual(code, 2)
+
+
 class FlashCommandLineTests(unittest.TestCase):
     """main()'s own `flash` dispatch: --perf-scope becomes an extra_flags
     entry, the same way batch() and selftest() already build theirs."""

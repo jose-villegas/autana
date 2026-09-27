@@ -57,7 +57,15 @@ def git(*args):
 
 
 def engine_worktree():
+    """The checkout this shell stands in. Where git will not say - a CI
+    container that does not own the checkout refuses - the nearest folder up
+    from here holding launcher/ and scripts/autana/."""
     worktree = git("rev-parse", "--show-toplevel")
+    if not worktree:
+        here = Path.cwd().resolve()
+        worktree = next((str(folder) for folder in (here, *here.parents)
+                         if (folder / "launcher").is_dir()
+                         and (folder / "scripts" / "autana").is_dir()), "")
     if not worktree or not (Path(worktree) / "launcher").is_dir():
         sys.exit("autana: not inside an engine worktree (no launcher/ here)")
     return worktree
@@ -69,6 +77,16 @@ def device_tool():
     device = Path(__file__).resolve().parents[1] / "device" / "device.py"
     if not device.is_file():
         sys.exit(f"autana: {device} not found")
+    return device
+
+
+def device_module():
+    """device.py itself, for a verb that runs in this process: one that
+    needs neither pyserial nor the board, only device.py's own code."""
+    folder = str(device_tool().parent)
+    if folder not in sys.path:
+        sys.path.insert(0, folder)
+    import device
     return device
 
 
@@ -152,6 +170,25 @@ def flash(args):
     if perf_scope:
         command.append("--perf-scope")
     return subprocess.call(command) if quiet else run_streaming_its_log(command)
+
+
+def build(args):
+    """Build this worktree with no board and no lock: the build half of
+    `autana flash`, device.py's own, run in this process."""
+    perf_scope = "--perf-scope" in args
+    args = [arg for arg in args if arg != "--perf-scope"]
+    asked = args[0] if args else "dev"
+    variant = VARIANTS.get(asked)
+    if variant is None or len(args) > 1:
+        sys.exit("usage: autana build [rel|dev|diag] [--perf-scope]")
+
+    worktree = engine_worktree()
+    branch = git("branch", "--show-current") or "detached"
+    commit = git("rev-parse", "--short", "HEAD")
+    dirty = " (dirty)" if git("status", "--porcelain") else ""
+    print(f"autana build: {variant} of {branch} @ {commit}{dirty}", flush=True)
+    return device_module().build_worktree(worktree, variant,
+                                          ["--perf-scope"] if perf_scope else [])
 
 
 def seconds_argument(args, default, usage):
@@ -938,6 +975,8 @@ Command = namedtuple("Command", "name handler usages")
 # (synopsis without "autana ", one line of what it does).
 COMMAND_GROUPS = (
     ("build", "Build and flash", (
+        Command("build", build, (
+            ("build [rel|dev|diag] [--perf-scope]", "build this worktree, no board; dev when omitted"),)),
         Command("flash", flash, (
             ("flash [rel|dev|diag] [--quiet] [--perf-scope]", "build and flash this worktree; dev when omitted"),)),
         Command("buildid", buildid, (
@@ -1049,9 +1088,9 @@ def completion_candidates(line, prefix):
         parts = line.split()
         if line and line[-1].isspace():
             parts.append("")
-        if len(parts) != 2 or parts[0] not in ("flash", "help"):
+        if len(parts) != 2 or parts[0] not in ("build", "flash", "help"):
             return []
-        words = VARIANTS if parts[0] == "flash" else HELP_TOPICS
+        words = VARIANTS if parts[0] in ("build", "flash") else HELP_TOPICS
     return sorted(word for word in words if word.startswith(prefix))
 
 

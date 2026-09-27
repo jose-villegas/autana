@@ -857,8 +857,11 @@ def snapshot_image(build_dir, image_dir):
 
 
 def script_environment(environment=None):
+    """Git Bash on Windows needs MSYSTEM; elsewhere it would send idf.sh
+    looking for cmd."""
     environment = dict(environment or os.environ)
-    environment.setdefault("MSYSTEM", "MINGW64")
+    if os.name == "nt":
+        environment.setdefault("MSYSTEM", "MINGW64")
     return environment
 
 
@@ -868,6 +871,23 @@ def build_snapshot(build, build_dir, image_dir, **popen):
     with build_directory_lock(build_dir):
         run_to_end(build, None, **dict(popen, env=script_environment(popen.get("env"))))
         return snapshot_image(build_dir, image_dir)
+
+
+def build_worktree(worktree, variant, build_flags=()):
+    """The build half of a flash on its own, for `autana build`: no board and
+    no lock but the build directory's. The build's output goes to this
+    process's; returns its exit status."""
+    worktree = Path(worktree).resolve()
+    if not (worktree / BUILD_SCRIPT).is_file():
+        raise RuntimeError("build tool not found: " + str(worktree / BUILD_SCRIPT))
+    build, _ = flash_commands(git_bash(), worktree, variant, build_flags)
+    try:
+        with build_directory_lock(build_directory(worktree, variant)):
+            run_to_end(build, None, cwd=worktree, stdin=subprocess.DEVNULL,
+                       env=script_environment())
+    except subprocess.CalledProcessError as failed:
+        return failed.returncode
+    return 0
 
 
 def write_snapshot(held, write, image_dir, **popen):

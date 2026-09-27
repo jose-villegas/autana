@@ -17,7 +17,7 @@ autana help [topic]     # the list below; a topic is a group key or a command
 ```
 
 Only a development build answers (release has no console). Coordinates are
-panel pixels. Tab completes command names, `flash` variants and help topics
+panel pixels. Tab completes command names, `build` and `flash` variants and help topics
 where Python has `readline` (Windows: `pip install pyreadline3`).
 
 ## Build and flash
@@ -26,11 +26,14 @@ where Python has `readline` (Windows: `pip install pyreadline3`).
 
 | Command | What it does |
 |---|---|
+| `autana build [rel\|dev\|diag] [--perf-scope]` | Build this worktree, no board and no lock; `dev` when omitted. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. |
 | `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope]` | Build and flash this worktree; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
 
-`autana flash` runs `launcher/tools/build/build.sh` with no lock held and
-snapshots the image it built, then, under the board's lock,
+`autana build` is the way to build: it runs `launcher/tools/build/build.sh`,
+holding only the build directory so two builds of one variant take turns, and
+CI builds through it too. `autana flash` runs that same build with no board
+lock held and snapshots the image it built, then, under the board's lock,
 `scripts/device/flash_image.sh` writes that snapshot - the one script that
 opens the port.
 It proves the write, not the boot:
