@@ -12,18 +12,15 @@
 
 #include "render/r3d_lit_pipeline.h"
 
-/* Taller frames split at the middle row instead of balancing the cores. */
-#define LIT_FRAME_MAX_HEIGHT 448
-
 typedef struct {
     const r3d_lit_mesh_t* mesh;
+    int width, height;
     r3d_lit_vertex_t* cs; /* mesh->vertex_count entries */
     uint16_t* visible;    /* mesh->cluster_count entries */
     r3d_lit_rows_t* rows; /* mesh->cluster_count entries */
     uint16_t* color;      /* width * height */
     uint16_t* depth;      /* width * height */
-    int width, height;
-    uint16_t clear; /* in the pixel format r3d_span.h describes */
+    uint16_t clear;       /* in the pixel format r3d_span.h describes */
     /* When not NULL, r3d_lit_frame_double() writes the finished frame into this
      * picture, 2 * width by 2 * height, 4-byte aligned; the colour target is
      * then never cleared, since doubling puts the clear colour wherever
@@ -35,10 +32,11 @@ typedef struct {
     int clusters, triangles; /* what survived culling */
 } r3d_lit_stats_t;
 
-/* The per-vertex and per-cluster working state a frame of `mesh` needs, as
- * one block: the caller obtains it once and r3d_lit_frame_use_scratch() carves
- * it, so none of it has to live in internal RAM. */
-size_t r3d_lit_frame_scratch_bytes(const r3d_lit_mesh_t* mesh);
+/* Everything a frame of `mesh` at width by height works in - per-vertex,
+ * per-cluster, colour and depth - as one block: the caller obtains it once
+ * and r3d_lit_frame_use_scratch() carves it, after setting mesh, width and
+ * height, so none of it has to live in internal RAM. */
+size_t r3d_lit_frame_scratch_bytes(const r3d_lit_mesh_t* mesh, int width, int height);
 void r3d_lit_frame_use_scratch(r3d_lit_frame_t* frame, void* scratch);
 
 r3d_lit_stats_t r3d_lit_frame_render(const r3d_lit_frame_t* frame, const r3d_lit_view_t* view);

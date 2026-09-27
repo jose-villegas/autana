@@ -1,10 +1,13 @@
 #include "render/r3d_lit_frame.h"
 
+#include <assert.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include "util/job.h"
 
-#define JOB_WAIT_MS 1000
+#define JOB_WAIT_MS   1000
+#define SPLIT_BUCKETS 64
 
 typedef struct {
     const r3d_lit_frame_t* frame;
@@ -71,13 +74,21 @@ static void
 run_split(job_fn_t fn, slice_t first_half, slice_t second_half) {
     (void)job_run_core1(fn, &second_half, sizeof second_half);
     fn(&first_half);
-    (void)job_wait(JOB_WAIT_MS);
+    const bool done = job_wait(JOB_WAIT_MS);
+    assert(done); /* the next stage reads what core 1 wrote */
+    (void)done;
+}
+
+static size_t
+pixels(int width, int height) {
+    return (size_t)width * (size_t)height;
 }
 
 size_t
-r3d_lit_frame_scratch_bytes(const r3d_lit_mesh_t* mesh) {
+r3d_lit_frame_scratch_bytes(const r3d_lit_mesh_t* mesh, int width, int height) {
     return sizeof(r3d_lit_vertex_t) * (size_t)mesh->vertex_count
-           + (sizeof(r3d_lit_rows_t) + sizeof(uint16_t)) * (size_t)mesh->cluster_count;
+           + (sizeof(r3d_lit_rows_t) + sizeof(uint16_t)) * (size_t)mesh->cluster_count
+           + 2 * sizeof(uint16_t) * pixels(width, height);
 }
 
 /* Widest alignment first, so each part lands aligned after the one before. */
@@ -88,6 +99,10 @@ r3d_lit_frame_use_scratch(r3d_lit_frame_t* frame, void* scratch) {
     p += sizeof(r3d_lit_vertex_t) * (size_t)frame->mesh->vertex_count;
     frame->rows = (r3d_lit_rows_t*)p;
     p += sizeof(r3d_lit_rows_t) * (size_t)frame->mesh->cluster_count;
+    frame->color = (uint16_t*)p;
+    p += sizeof(uint16_t) * pixels(frame->width, frame->height);
+    frame->depth = (uint16_t*)p;
+    p += sizeof(uint16_t) * pixels(frame->width, frame->height);
     frame->visible = (uint16_t*)p;
 }
 
@@ -95,21 +110,22 @@ r3d_lit_frame_use_scratch(r3d_lit_frame_t* frame, void* scratch) {
  * at the middle of its rows - the halves are then drawn by one core each. */
 static int
 balanced_split_row(const r3d_lit_frame_t* frame, int visible) {
-    uint16_t weight[LIT_FRAME_MAX_HEIGHT] = {0}; /* a mesh holds under 65536 triangles */
-    int total = 0;
+    uint32_t weight[SPLIT_BUCKETS] = {0};
+    uint32_t total = 0;
     for (int i = 0; i < visible; i++) {
         const r3d_lit_rows_t* r = &frame->rows[frame->visible[i]];
         const float middle = r->crosses_near ? 0.5f * (float)frame->height : 0.5f * (r->y0 + r->y1);
         int row = (int)middle;
         row = row < 0 ? 0 : (row >= frame->height ? frame->height - 1 : row);
-        const int n = frame->mesh->clusters[frame->visible[i]].triangle_count;
-        weight[row] = (uint16_t)(weight[row] + n);
+        const uint32_t n = frame->mesh->clusters[frame->visible[i]].triangle_count;
+        weight[row * SPLIT_BUCKETS / frame->height] += n;
         total += n;
     }
-    int sum = 0;
-    for (int row = 0; row < frame->height; row++) {
-        sum += weight[row];
+    uint32_t sum = 0;
+    for (int bucket = 0; bucket < SPLIT_BUCKETS; bucket++) {
+        sum += weight[bucket];
         if (2 * sum >= total) {
+            const int row = (2 * bucket + 1) * frame->height / (2 * SPLIT_BUCKETS);
             return row < 1 ? 1 : row;
         }
     }
@@ -128,7 +144,7 @@ r3d_lit_frame_render(const r3d_lit_frame_t* frame, const r3d_lit_view_t* view) {
     run_split(transform_slice, (slice_t){frame, view, visible, 0, half},
               (slice_t){frame, view, visible, half, visible - half});
 
-    const int mid = frame->height <= LIT_FRAME_MAX_HEIGHT ? balanced_split_row(frame, visible) : frame->height / 2;
+    const int mid = balanced_split_row(frame, visible);
     run_split(draw_slice, (slice_t){frame, view, visible, mid, frame->height - mid},
               (slice_t){frame, view, visible, 0, mid});
     return stats;

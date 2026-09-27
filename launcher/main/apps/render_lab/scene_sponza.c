@@ -19,6 +19,7 @@
 #include <stdio.h>
 
 #include "esp_heap_caps.h"
+#include "esp_log.h"
 
 #include "display/display.h"
 #include "gfx/gfx.h"
@@ -29,35 +30,37 @@
 #include "sponza_lite_mesh_generated.h"
 #include "sponza_mesh_generated.h"
 
-#define SKY_RGB            0x9CC0E6
-#define HALF_FOV_SHORT_TAN 0.62f
-#define NEAR_Z             6.0f
+#define SKY_RGB 0x9CC0E6
 
-/* Rendered at half the panel's resolution in each axis, then doubled. */
-#define RENDER_WIDTH       (GFX_WIDTH / 2)
-#define RENDER_HEIGHT      (GFX_HEIGHT / 2)
-#define RENDER_PIXELS      ((size_t)RENDER_WIDTH * RENDER_HEIGHT)
+static const char* TAG = "sponza";
 
-static const r3d_lit_mesh_t* mesh; /* which bake the running scene draws */
 static void* scratch;
-static void* target; /* the half-size colour, then the half-size depth */
+static r3d_lit_frame_t frame; /* carved from scratch at enter() */
 static r3d_lit_stats_t stats;
 static uint32_t elapsed_ms;
-static bool rendered;      /* update() drew a frame that frame() has not doubled yet */
-static gfx_color_t* panel; /* the framebuffer, read at enter(): update() may not ask gfx */
+static bool rendered; /* update() drew a frame that frame() has not doubled yet */
 
 static void
-enter_with(const r3d_lit_mesh_t* chosen) {
-    mesh = chosen;
+enter_with(const r3d_lit_mesh_t* mesh) {
     gfx_set_partial_clear(false);
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
 
-    scratch = heap_caps_malloc(r3d_lit_frame_scratch_bytes(mesh), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    target =
-        heap_caps_malloc(RENDER_PIXELS * (sizeof(gfx_color_t) + sizeof(uint16_t)), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    frame = (r3d_lit_frame_t){
+        .mesh = mesh,
+        .width = SPONZA_RENDER_WIDTH,
+        .height = SPONZA_RENDER_HEIGHT,
+        .clear = GFX_RGB(SKY_RGB),
+        .doubled = gfx_framebuffer(),
+    };
+    const size_t bytes = r3d_lit_frame_scratch_bytes(mesh, frame.width, frame.height);
+    scratch = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (scratch == NULL) {
+        ESP_LOGE(TAG, "no %u bytes of PSRAM for the frame: the scene stays blank", (unsigned)bytes);
+    } else {
+        r3d_lit_frame_use_scratch(&frame, scratch);
+    }
     elapsed_ms = 0;
     rendered = false;
-    panel = gfx_framebuffer();
 }
 
 static void
@@ -73,49 +76,27 @@ scene_sponza_lite_enter(void) {
 static void
 scene_sponza_exit(void) {
     heap_caps_free(scratch);
-    heap_caps_free(target);
     scratch = NULL;
-    target = NULL;
 }
 
 /* Every frame already redraws the whole screen. */
 static void
 scene_sponza_invalidate(void) {}
 
-static r3d_lit_frame_t
-frame_over_target(void) {
-    gfx_color_t* color = target;
-    r3d_lit_frame_t frame = {
-        .mesh = mesh,
-        .color = color,
-        .depth = (uint16_t*)(color + RENDER_PIXELS),
-        .width = RENDER_WIDTH,
-        .height = RENDER_HEIGHT,
-        .clear = GFX_RGB(SKY_RGB),
-        .doubled = panel,
-    };
-    r3d_lit_frame_use_scratch(&frame, scratch);
-    return frame;
-}
-
 /* Everything but the framebuffer: runs while the last frame is still
  * being sent, so it names no gfx call. */
 static void
 render(uint32_t dt_ms) {
     elapsed_ms += dt_ms;
-    r3d_lit_vec3_t eye, forward;
-    r3d_path_sample(&sponza_flythrough, elapsed_ms, &eye, &forward);
     r3d_lit_view_t view;
-    r3d_lit_view_look(&view, eye, forward, HALF_FOV_SHORT_TAN, NEAR_Z, mesh->position_scale, RENDER_WIDTH,
-                      RENDER_HEIGHT, display_shell_quarter());
-    const r3d_lit_frame_t frame = frame_over_target();
+    sponza_view_at(&view, elapsed_ms, frame.mesh->position_scale, display_shell_quarter());
     stats = r3d_lit_frame_render(&frame, &view);
     rendered = true;
 }
 
 static void
 scene_sponza_update(uint32_t dt_ms) {
-    if (scratch != NULL && target != NULL) {
+    if (scratch != NULL) {
         render(dt_ms);
     }
 }
@@ -123,13 +104,12 @@ scene_sponza_update(uint32_t dt_ms) {
 static void
 scene_sponza_frame(uint32_t dt_ms, bool band_mode_active) {
     assert(!band_mode_active); /* needs_full_framebuffer keeps the app out of band mode for this scene */
-    if (scratch == NULL || target == NULL) {
+    if (scratch == NULL) {
         return;
     }
     if (!rendered) {
         render(dt_ms); /* no update() ran since the last frame: the first after entering */
     }
-    const r3d_lit_frame_t frame = frame_over_target();
     r3d_lit_frame_double(&frame);
     rendered = false;
     gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
