@@ -146,9 +146,4 @@ if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt" ]; then
     echo "  $LAUNCHER_DIR/$BUILD_DIR/build_id.txt" >&2
     exit 1
 fi
-BUILD_ID=$(tr -d '\r\n' < "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt")
-# device.py takes the flashed build's id from this line in the flash log; it
-# stays on stdout, outside quiet_run, or no flash can name what it wrote.
-echo "BUILD_ID=$BUILD_ID"
-
-echo "=== Done - $BUILD_DIR built ==="
+echo "=== Done - $BUILD_DIR built, build id $(tr -d '\r\n' < "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt") ==="

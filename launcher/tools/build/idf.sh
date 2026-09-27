@@ -85,16 +85,24 @@ idf_needs_shim() {
 
 # Run one idf.py invocation. Returns its exit status.
 idf() {
+    idf_in "$_IDF_DIR" idf.py "$@"
+}
+
+# Run one command in ESP-IDF's environment from <dir>: its own python, with
+# esptool, rather than whichever python this shell found first.
+idf_in() {
+    _IDF_IN_DIR=$1
+    shift
     if idf_needs_shim; then
         # cygpath so cmd gets Windows paths; the arguments themselves are
         # passed through as ordinary argv and must NOT be pre-quoted - see
         # idf_shim.bat for why inline quoting corrupts them.
-        IDF_SHIM_DIR="$(cygpath -w "$_IDF_DIR")" \
+        IDF_SHIM_DIR="$(cygpath -w "$_IDF_IN_DIR")" \
         IDF_SHIM_EXPORT="$_IDF_EXPORT" \
-        cmd //c "$(cygpath -w "$_IDF_SHIM")" idf.py "$@"
+        cmd //c "$(cygpath -w "$_IDF_SHIM")" "$@"
     else
         # POSIX host: source the environment once per call, same as the shim
         # does, so the two paths behave identically.
-        ( cd "$_IDF_DIR" && . "$_IDF_EXPORT" >/dev/null 2>&1 && idf.py "$@" )
+        ( cd "$_IDF_IN_DIR" && . "$_IDF_EXPORT" >/dev/null 2>&1 && "$@" )
     fi
 }

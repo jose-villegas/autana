@@ -20,6 +20,7 @@ from unittest import mock
 DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 import device
+import fake_flash  # noqa: E402
 import device_lock
 import device_hook
 import device_report
@@ -748,43 +749,36 @@ class RunSuiteDefaultPathTests(unittest.TestCase):
             self.assertTrue(Path(entry["capture_path"]).is_file())
 
 
-def build_prints(build_id):
-    """A run_build() standing in for build.sh, which prints the id of
-    the image it built into the flash log."""
-    def run(*unused, **keywords):
-        keywords["stdout"].write(("BUILD_ID=" + build_id + "\n").encode("ascii"))
-    return run
-
-
 class FlashDefaultPathTests(unittest.TestCase):
+    def flash(self, directory, run, store):
+        worktree = fake_flash.worktree(Path(directory) / "engine")
+        root = Path(directory) / "records"
+        connection = FakeConnection([])
+        args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
+                         worktree=str(worktree), out=None)
+        output = io.StringIO()
+        with mock.patch.object(device, "records_root", return_value=root), \
+             mock.patch.object(device, "now", return_value=datetime(2026, 9, 16, 12, 30, 45)), \
+             mock.patch.object(device, "run_to_end", run), \
+             mock.patch.object(device, "find_board", return_value=device.Board(BOARD, BOARD)), \
+             mock.patch.object(device, "reset"), \
+             mock.patch.object(device, "open_serial", return_value=connection), \
+             mock.patch.object(device, "git_commit", return_value="deadbeef"), \
+             contextlib.redirect_stdout(output):
+            device.write_image(device.build_image(args, BOARD), store, BOARD)
+        self.assertEqual(connection.chunks, [])
+        return worktree, root, output.getvalue()
+
     def test_flash_uses_esptool_exit_and_build_id_without_boot_console(self):
         with tempfile.TemporaryDirectory() as directory:
-            worktree = Path(directory) / "engine"
-            for script in (device.BUILD_SCRIPT, device.FLASH_SCRIPT):
-                (worktree / script).parent.mkdir(parents=True, exist_ok=True)
-                (worktree / script).write_text("")
-            root = Path(directory) / "records"
-            connection = FakeConnection([])
-            args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
-                             worktree=str(worktree), out=None)
-            store = mock_store()
-            fixed_now = datetime(2026, 9, 16, 12, 30, 45)
-            output = io.StringIO()
-            with mock.patch.object(device, "records_root", return_value=root), \
-                 mock.patch.object(device, "now", return_value=fixed_now), \
-                 mock.patch.object(device, "run_build", side_effect=build_prints("expected")), \
-                 mock.patch.object(device, "run_while_held"), \
-                 mock.patch.object(device, "find_board", return_value=device.Board(BOARD, BOARD)), \
-                 mock.patch.object(device, "reset"), \
-                 mock.patch.object(device, "open_serial", return_value=connection), \
-                 mock.patch.object(device, "git_commit", return_value="deadbeef"), \
-                 contextlib.redirect_stdout(output):
-                device.flash(args, store, BOARD)
+            worktree, root, output = self.flash(
+                directory, mock.Mock(side_effect=fake_flash.scripts("expected")), mock_store())
             self.assertIn("flashed BUILD_ID=expected (esptool hash verified; boot not verified)",
-                          output.getvalue())
-            self.assertEqual(connection.chunks, [])
+                          output)
             expected_log = root / "20260916" / "123045_flash-dev_agent.log"
             self.assertTrue(expected_log.is_file())
+            self.assertEqual((expected_log.with_suffix(".image") / "build_id.txt").read_text(),
+                             "expected\n")
             entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
             self.assertEqual(entry["capture_path"], str(expected_log))
             self.assertEqual(entry["command"], "flash")
@@ -795,35 +789,17 @@ class FlashDefaultPathTests(unittest.TestCase):
 
     def test_builds_then_passes_the_lock_token_to_flash_image_sh(self):
         # flash_image.sh refuses to flash without AUTANA_DEVICE_LOCK_TOKEN -
-        # flash() is the one place that has the token to give it.
+        # write_image() is the one place that has the token to give it.
         with tempfile.TemporaryDirectory() as directory:
-            worktree = Path(directory) / "engine"
-            for script in (device.BUILD_SCRIPT, device.FLASH_SCRIPT):
-                (worktree / script).parent.mkdir(parents=True, exist_ok=True)
-                (worktree / script).write_text("")
-            root = Path(directory) / "records"
-            connection = FakeConnection([b"BUILD_ID=expected\nTESTS_DONE\n"])
-            args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
-                             worktree=str(worktree), out=None)
-            store = mock_store("sekrit-token")
-            build = mock.Mock(side_effect=build_prints("expected"))
-            run = mock.Mock()
-            with mock.patch.object(device, "records_root", return_value=root), \
-                 mock.patch.object(device, "run_build", build), \
-                 mock.patch.object(device, "run_while_held", run), \
-                 mock.patch.object(device, "find_board", return_value=device.Board(BOARD, BOARD)), \
-                 mock.patch.object(device, "reset"), \
-                 mock.patch.object(device, "open_serial", return_value=connection), \
-                 mock.patch.object(device, "git_commit", return_value="deadbeef"):
-                device.flash(args, store, BOARD)
-            self.assertEqual([Path(call.args[0][1]).name for call in build.call_args_list],
-                             ["build.sh"])
-            self.assertNotIn("AUTANA_DEVICE_LOCK_TOKEN", build.call_args.kwargs["env"])
-            self.assertEqual([Path(call.args[0][1]).name for call in run.call_args_list],
-                             ["flash_image.sh"])
-            passed_env = run.call_args.kwargs["env"]
-            self.assertEqual(passed_env["AUTANA_DEVICE_LOCK_TOKEN"], "sekrit-token")
-            self.assertEqual(passed_env["AUTANA_BOARD"], BOARD)
+            run = mock.Mock(side_effect=fake_flash.scripts("expected"))
+            self.flash(directory, run, mock_store("sekrit-token"))
+            build, write = run.call_args_list
+            self.assertEqual(Path(build.args[0][1]).name, "build.sh")
+            self.assertNotIn("AUTANA_DEVICE_LOCK_TOKEN", build.kwargs["env"])
+            self.assertEqual(Path(write.args[0][1]).name, "flash_image.sh")
+            self.assertTrue(write.args[0][-1].endswith("_flash-dev_agent.image"))
+            self.assertEqual(write.kwargs["env"]["AUTANA_DEVICE_LOCK_TOKEN"], "sekrit-token")
+            self.assertEqual(write.kwargs["env"]["AUTANA_BOARD"], BOARD)
 
 
 class FlashCommandLineTests(unittest.TestCase):
@@ -833,12 +809,13 @@ class FlashCommandLineTests(unittest.TestCase):
     def run_main(self, argv):
         calls = []
 
-        def fake_flash(args, store, port, held_lock=None, extra_flags=()):
+        def fake_build_image(args, port, extra_flags=()):
             calls.append(list(extra_flags))
-            return 0
+            return "built"
 
         with mock.patch.object(device, "board_for_lock", return_value=BOARD), \
-             mock.patch.object(device, "flash", fake_flash), \
+             mock.patch.object(device, "build_image", fake_build_image), \
+             mock.patch.object(device, "write_image"), \
              mock.patch.object(device, "device_lock") as fake_lock_module:
             fake_lock_module.LockStore.return_value = mock.Mock()
             device.main(argv)
@@ -968,7 +945,7 @@ class BatchTests(unittest.TestCase):
             calls["build"].append(list(extra_flags))
             return "built"
 
-        def fake_flash(args, store, port, held_lock=None, extra_flags=(), built=None):
+        def fake_write_image(built, store, port, held_lock=None):
             calls["events"].append("flash")
             calls["flash"].append((held_lock, built))
             return "abc123-diag"
@@ -993,7 +970,7 @@ class BatchTests(unittest.TestCase):
                              max_seconds=1, idle_seconds=None, out=out_path)
             with mock.patch.object(device, "HeldLock", FakeLock), \
                  mock.patch.object(device, "build_image", fake_build_image), \
-                 mock.patch.object(device, "flash", fake_flash), \
+                 mock.patch.object(device, "write_image", fake_write_image), \
                  mock.patch.object(device, "run_suite", fake_run_suite), \
                  mock.patch.object(device, "records_root", return_value=Path(directory) / "rec"), \
                  mock.patch.object(device, "git_commit", return_value="c0ffee"), \
@@ -1597,7 +1574,7 @@ class SelftestTests(unittest.TestCase):
             calls["build_saw_lock"] = getattr(device.ACTIVE_LOCK, "held", None)
             return "built"
 
-        def fake_flash(args, store, port, held_lock=None, extra_flags=(), built=None):
+        def fake_write_image(built, store, port, held_lock=None):
             calls["held_lock"] = held_lock
             calls["built"] = built
             return "abc123-diag"
@@ -1623,7 +1600,7 @@ class SelftestTests(unittest.TestCase):
                              max_seconds=5, idle_seconds=None)
             store = mock_store()
             with mock.patch.object(device, "build_image", fake_build_image), \
-                 mock.patch.object(device, "flash", fake_flash), \
+                 mock.patch.object(device, "write_image", fake_write_image), \
                  mock.patch.object(device, "reset", fake_reset), \
                  mock.patch.object(device, "open_when_free", side_effect=fake_wait), \
                  mock.patch.object(device, "records_root", return_value=root), \
@@ -1675,7 +1652,7 @@ class SelftestTests(unittest.TestCase):
                              max_seconds=5, idle_seconds=None)
             store = mock_store()
             with mock.patch.object(device, "build_image"), \
-                 mock.patch.object(device, "flash", return_value="abc123-diag"), \
+                 mock.patch.object(device, "write_image", return_value="abc123-diag"), \
                  mock.patch.object(device, "reset"), \
                  mock.patch.object(device, "open_when_free", return_value=connection), \
                  mock.patch.object(device, "records_root", return_value=root), \
