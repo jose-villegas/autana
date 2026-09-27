@@ -88,6 +88,15 @@ TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 #define SHAKE_HALF_WIDTH  16
 #define POSE_LANDSCAPE    ((ridge_vector_t){-RIDGE_POSE_ONE, 0})
 
+/* Where each shade edge crosses a row for one pose, in 1/65536 columns:
+ * `at_row0[edge] + (y * per_row)`. A pose with no sideways part crosses no
+ * row, and its edges lie wholly to one side of each. */
+typedef struct {
+    ridge_vector_t pose;
+    int64_t per_row;
+    int64_t at_row0[RIDGE_SKY_EDGES];
+} edge_lines_t;
+
 typedef struct {
     spring_line_t line;
     int32_t offset[RIDGE_COLUMNS], velocity[RIDGE_COLUMNS];
@@ -104,6 +113,7 @@ typedef struct {
     int16_t sky_edge[RIDGE_SKY_EDGES];
     int sky_half, sky_edge_count;
     ridge_vector_t gradient_pose;
+    edge_lines_t was_lines, now_lines;
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
     uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
     int shake, last_pluck_x, strips, down_sign;
@@ -711,19 +721,6 @@ repaint_changed(void) {
     }
 }
 
-/* Where along row `y` the depth `depth2` (sky_depth2()'s units) is first
- * reached for `pose`, as a real column; -inf/+inf when the row never or
- * always reaches it. */
-static float
-edge_column(ridge_vector_t pose, int y, int32_t depth2) {
-    const int32_t at_zero = (-(GFX_WIDTH - 1) * pose.down_x) + ((2 * y - (GFX_HEIGHT - 1)) * pose.down_y);
-    const int32_t per_column = 2 * pose.down_x;
-    if (per_column == 0) {
-        return at_zero >= depth2 ? -1e9F : 1e9F;
-    }
-    return (float)(depth2 - at_zero) / (float)per_column;
-}
-
 static void
 repaint_span(int y, int x0, int x1) {
     x0 = x0 < 0 ? 0 : x0;
@@ -741,50 +738,92 @@ repaint_span(int y, int x0, int x1) {
     }
 }
 
-/* The gradient turned from `was` to the pose on screen: repaint, per shade
- * edge, the pixels between its old and new line, sixteen rows to a dirty
- * mark. */
-#define EDGE_ROWS 16
+#define EDGE_FAR (INT64_C(1) << 40)
 
-/* The columns of row `y` between where the edge at `depth2` crossed it at
- * `was` and where it crosses it now, with a pixel of slack each side. */
-static void
-edge_swept_columns(ridge_vector_t was, int y, int32_t depth2, int* x0, int* x1) {
-    const float a = edge_column(was, y, depth2);
-    const float b = edge_column(ridge->pose_on_screen, y, depth2);
-    const float lo = fmaxf(fminf(a, b), -2.0F);
-    const float hi = fminf(fmaxf(a, b), (float)GFX_WIDTH + 2.0F);
-    *x0 = clamp_int((int)floorf(lo) - 1, 0, GFX_WIDTH);
-    *x1 = clamp_int((int)ceilf(hi) + 2, 0, GFX_WIDTH);
+static inline __attribute__((always_inline)) int32_t
+sky_edge_depth2(int edge) {
+    return (ridge->sky_edge[edge] - ridge->sky_half) * 32768;
 }
 
-/* One shade edge across rows [y0, y1): repaint what it swept, one box. */
 static void
-repaint_edge_band(ridge_vector_t was, int y0, int y1, int32_t depth2) {
-    int box_x0 = GFX_WIDTH;
-    int box_x1 = 0;
-    for (int y = y0; y < y1; y++) {
+edge_lines(edge_lines_t* lines, ridge_vector_t pose) {
+    lines->pose = pose;
+    if (pose.down_x == 0) {
+        return;
+    }
+    const int64_t per_column = 2 * (int64_t)pose.down_x;
+    const int64_t origin = ((int64_t)(GFX_WIDTH - 1) * pose.down_x) + ((int64_t)(GFX_HEIGHT - 1) * pose.down_y);
+    lines->per_row = (-2 * (int64_t)pose.down_y * 65536) / per_column;
+    for (int edge = 0; edge < ridge->sky_edge_count; edge++) {
+        lines->at_row0[edge] = ((sky_edge_depth2(edge) + origin) * 65536) / per_column;
+    }
+}
+
+static inline __attribute__((always_inline)) int64_t
+edge_column_q16(const edge_lines_t* lines, int edge, int y, int64_t row_offset) {
+    if (lines->pose.down_x == 0) {
+        return ((2 * y - (GFX_HEIGHT - 1)) * lines->pose.down_y) >= sky_edge_depth2(edge) ? -EDGE_FAR : EDGE_FAR;
+    }
+    return lines->at_row0[edge] + row_offset;
+}
+
+/* The columns of row `y` between where `edge` crossed it at the old pose
+ * and where it crosses it now, with a pixel of slack each side. */
+static inline __attribute__((always_inline)) void
+edge_swept_columns(int edge, int y, int64_t was_offset, int64_t now_offset, int* x0, int* x1) {
+    const int64_t a = edge_column_q16(&ridge->was_lines, edge, y, was_offset);
+    const int64_t b = edge_column_q16(&ridge->now_lines, edge, y, now_offset);
+    int64_t lo = a < b ? a : b;
+    int64_t hi = a > b ? a : b;
+    lo = lo < -2 * 65536 ? -2 * 65536 : lo;
+    hi = hi > (int64_t)(GFX_WIDTH + 2) * 65536 ? (int64_t)(GFX_WIDTH + 2) * 65536 : hi;
+    *x0 = clamp_int((int)(lo >> 16) - 1, 0, GFX_WIDTH);
+    *x1 = clamp_int((int)((hi + 65535) >> 16) + 2, 0, GFX_WIDTH);
+}
+
+static inline __attribute__((always_inline)) void
+flush_swept_run(int y, int x0, int x1) {
+    if (x0 < x1) {
+        repaint_span(y, x0, x1);
+        gfx_mark_dirty(x0, y, x1 - x0, 1);
+    }
+}
+
+/* Along a row the edges come in depth order, so neighbouring edges' sweeps
+ * merge into one span as they are met. */
+static void
+repaint_swept_row(int y) {
+    const int64_t was_offset = y * ridge->was_lines.per_row;
+    const int64_t now_offset = y * ridge->now_lines.per_row;
+    int run_x0 = 0;
+    int run_x1 = 0;
+    for (int edge = 0; edge < ridge->sky_edge_count; edge++) {
         int x0;
         int x1;
-        edge_swept_columns(was, y, depth2, &x0, &x1);
-        if (x0 < x1) {
-            repaint_span(y, x0, x1);
-            box_x0 = x0 < box_x0 ? x0 : box_x0;
-            box_x1 = x1 > box_x1 ? x1 : box_x1;
+        edge_swept_columns(edge, y, was_offset, now_offset, &x0, &x1);
+        if (x0 >= x1) {
+            continue;
         }
+        if (run_x0 < run_x1 && x0 <= run_x1 && x1 >= run_x0) {
+            run_x0 = x0 < run_x0 ? x0 : run_x0;
+            run_x1 = x1 > run_x1 ? x1 : run_x1;
+            continue;
+        }
+        flush_swept_run(y, run_x0, run_x1);
+        run_x0 = x0;
+        run_x1 = x1;
     }
-    if (box_x0 < box_x1) {
-        gfx_mark_dirty(box_x0, y0, box_x1 - box_x0, y1 - y0);
-    }
+    flush_swept_run(y, run_x0, run_x1);
 }
 
+/* The gradient turned from `was` to the pose on screen: repaint the pixels
+ * between each shade edge's old and new line. */
 static void
 repaint_gradient_turn(ridge_vector_t was) {
-    for (int y0 = 0; y0 < GFX_HEIGHT; y0 += EDGE_ROWS) {
-        const int y1 = y0 + EDGE_ROWS < GFX_HEIGHT ? y0 + EDGE_ROWS : GFX_HEIGHT;
-        for (int edge = 0; edge < ridge->sky_edge_count; edge++) {
-            repaint_edge_band(was, y0, y1, (int32_t)(ridge->sky_edge[edge] - ridge->sky_half) << 15);
-        }
+    edge_lines(&ridge->was_lines, was);
+    edge_lines(&ridge->now_lines, ridge->pose_on_screen);
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        repaint_swept_row(y);
     }
 }
 
