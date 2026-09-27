@@ -175,6 +175,8 @@ launcher/main/apps/sand/tests/suite_sand_two_core.c	test_two_core_step_changes_t
 launcher/main/apps/sand/tests/suite_sand_two_core.c	test_two_core_step_conserves_grains_on_a_dense_column_and_pile	snprintf	1
 launcher/main/apps/sand/tests/suite_sand_two_core.c	test_two_core_step_does_not_leak_or_fabricate_mass	snprintf	1
 launcher/main/apps/sand/tests/suite_sand_two_core.c	test_two_core_step_matches_serial_fall_distance_at_a_seam	snprintf	1
+launcher/main/apps/sand/tools/sand_sim_render_host.c	draw	printf	1
+launcher/main/apps/sand/tools/sand_sim_render_host.c	drive_tilt	fprintf	1
 launcher/main/apps/sand/tools/brush_screen_preview.c	draw_screen	snprintf	1
 launcher/main/apps/sand/tools/brush_screen_preview.c	main	fprintf	2
 launcher/main/apps/sand/tools/brush_screen_preview.c	main	snprintf	2
