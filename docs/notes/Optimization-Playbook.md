@@ -6,9 +6,9 @@ Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 — see
 Everything else in this folder is specific to this board. This file is not —
 it is the general-purpose techniques that came out of optimizing on it,
 written so they travel to a different chip, project, or person. Each one is
-grounded in a real measurement, mostly from this project's sand-simulation
+grounded in a real measurement, mostly from a per-frame cellular workload's
 performance work and [Display-and-Rendering.md](Display-and-Rendering.md),
-but the lesson itself is not about falling sand or this particular display.
+but the lesson itself is not about that workload or this particular display.
 Most of the specific millisecond/fps figures below predate this project's
 move to the ESP32-S3 and have not been re-measured on this board; read them
 as illustrations of the technique's *shape*, not as current numbers.
@@ -139,9 +139,9 @@ crossed at all, beating a faster boundary check. Prefer widening a cheap
 
 That is the cost of the wrong granularity. There is a second cost nobody
 bills by default: **keeping the structure true**, paid by whoever changes
-anything, not by whoever reads it. A per-row "no liquid here" flag correctly
-skipped ~104 of 224 rows/step — and cost 33,426 bytes written per step to
-stay honest, to save 104 already-cheap bitmask tests. Deleting the flag
+anything, not by whoever reads it. A per-row "nothing of this kind here" flag
+correctly skipped ~104 of 224 rows/step — and cost 33,426 bytes written per
+step to stay honest, to save 104 already-cheap bitmask tests. Deleting the flag
 outright beat every attempt at cheapening its invalidation, including one
 that *proved*, by counter, it did strictly less work and still measured
 slower from a compiler layout shift. Ask not just "is this the right unit"
@@ -196,11 +196,11 @@ Benchmarks overlap by design — every one exercises the hot path — which
 makes a whole class of regression undiagnosable: when everything moves at
 once, "my change got slower" and "the binary landed differently in flash"
 look identical. Keep at least one benchmark that provably cannot reach the
-changed code, and read it first. A change confined to the liquid code
+changed code, and read it first. A change confined to one code path
 regressed everything 6–14%, indistinguishable at a glance from flash-layout
-noise — three of seven tests placed no liquid at all and came back
-byte-identical to the microsecond, turning "something's slower" into "the
-liquid path" in one capture.
+noise — three of seven tests never reached that path and came back
+byte-identical to the microsecond, turning "something's slower" into "that
+path" in one capture.
 
 ---
 
@@ -282,7 +282,7 @@ the cost, not that the work was free.
 
 The ESP32-S3's performance monitor counts retired instructions, pipeline
 bubbles and stalls beside cycles, so the relation can be read rather than
-assumed. On this board's heaviest simulation scenes (device)
+assumed. On this board's heaviest per-frame workloads (device)
 a step costs 1.5-1.8 cycles per retired instruction, pipeline bubbles are
 27-31% of all cycles, and instruction-cache fetch misses are zero — the hot
 loops run from internal RAM. One change cut a scene's instructions per step
@@ -336,8 +336,8 @@ A counter answering "does this even run" has one failure mode: pointing it
 at the benchmark's *constructor* instead of the benchmark. For a system
 that evolves while it runs, the setup code is not a complete description —
 it can create inputs the setup code proves are absent. A scene built from
-an explicit material list seemed to rule out one expensive material; it was
-there, three hundred cells of it, made by a *reaction* from two materials
+an explicit list of element kinds seemed to rule out one expensive kind; it
+was there, three hundred cells of it, produced at run time from two kinds
 that were on the list. Dump actual state at the moment of measurement, not
 at the moment the fixture is built, and diff the two.
 

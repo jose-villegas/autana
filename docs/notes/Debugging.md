@@ -37,9 +37,9 @@ I2C peripheral probes, flash size, heap headroom, MAC validity, the on-die
 temperature sensor, the SD card. Silent when everything passes; on a
 **failure** it holds the report on screen for 8 seconds or until touched, so
 a board with a genuinely faulty component says so even with nobody attached
-to a serial console. The full report is always available on demand from the
-Diagnostics app (`--dev`/`--diag` builds only - see the next sections) if you
-want to see it without waiting for a failure.
+to a serial console. `post_results()` keeps the full report, so a
+development-only app can show it on demand (`--dev`/`--diag` builds only -
+see the next sections) without waiting for a failure.
 
 ## Is the logic right? - host test suite
 
@@ -163,9 +163,9 @@ sends, and lets go.
 
 ## Rendering looks wrong - gfx debug overlays
 
-`--dev`/`--diag` builds carry two runtime overlays, toggled from the
-Diagnostics app's developer-toggle page (`gfx_set_debug_overlay()` /
-`gfx_set_leaf_overlay()` in `main/gfx/gfx.h`):
+`--dev`/`--diag` builds carry two runtime overlays, switched by
+`gfx_set_debug_overlay()` / `gfx_set_leaf_overlay()` (`main/gfx/gfx.h`),
+which a development-only app's toggle page calls:
 
 - **Dirty-region overlay** - draws a border around whatever rectangle
   `gfx_present()` is about to send, so a stale patch of screen (something
@@ -185,25 +185,23 @@ always the latest present's sends, not an accumulation.
 A development build logs frames per second on a fixed timer (`report_fps()`
 in `main/main.c`); `autana monitor` shows it.
 
-For anything deeper than an fps number: `app_sand.c` carries its own
-`CONFIG_LAUNCHER_DEVELOPMENT`-gated rolling averages (step/draw timing,
-awake-cell counts) logged periodically - see
-`main/apps/sand/tools/report_performance.sh` for the host-side report
-generator. The render lab app's cube scene has a dedicated on-device
-performance suite (`main/apps/render_lab/tests/suite_cube_perf.c`) for
-phase-by-phase timing (logic / rasterise / HUD / present) against a 60fps
+For anything deeper than an fps number, an app carries its own: rolling
+averages gated on `CONFIG_LAUNCHER_DEVELOPMENT` and logged periodically, or
+an on-device frame-budget suite timing each phase of its frame against a
 budget, run the same way as any other on-device suite (see
-[above](#does-it-still-hold-on-the-real-chip---on-device-suite));
-`main/apps/render_lab/tools/report_cube_perf.sh` is its host-side report.
+[above](#does-it-still-hold-on-the-real-chip---on-device-suite)). The
+host-side report script for either lives in that app's own `tools/`
+folder.
 
 ## Orientation or the IMU seems wrong
 
 Two ways to see raw sensor readings without adding any code:
 
-- **Diagnostics app's "show orientation" toggle** (`--dev`/`--diag` build) -
-  shows the raw accelerometer counts, the derived gx/gy display orientation
-  is actually computed from, and the shell's current quarter-turn, all at
-  once, so a physical hold can be pinned to an exact number.
+- **A development-only app's orientation readout** (`--dev`/`--diag`
+  build) - shows the raw accelerometer counts, the derived gx/gy display
+  orientation is actually computed from, and the shell's current
+  quarter-turn, all at once, so a physical hold can be pinned to an exact
+  number.
 - **An `autana screenshot` capture's `.json`** - the `imu` object (raw
   accelerometer + gyroscope counts) and `orientation_quarter` field are a
   snapshot at one specific frame, useful when the question is "what was the
@@ -234,13 +232,12 @@ Two ways to see raw sensor readings without adding any code:
 
 - [`../Build-Variants.md`](../Build-Variants.md) - what
   `CONFIG_LAUNCHER_DEVELOPMENT` and `CONFIG_LAUNCHER_SELFTEST` actually
-  gate, and the three build variants (release/dev/diag).
+  gate, the three build variants (release/dev/diag), how an app is left out
+  of release, and why a self-test runner is narrowed further, to SELFTEST.
 - [`../Testing-Guide.md`](../Testing-Guide.md) - the host and device test
   runners, and runsuite.
-- [`../Firmware-Architecture.md`](../Firmware-Architecture.md) - the
-  Diagnostics app (DEVELOPMENT-gated as a whole, with the self-test runner
-  alone narrowed to SELFTEST), and its still-open split into a Settings app.
-- [`../plans/Settings-App-Plan.md`](../plans/Settings-App-Plan.md) - that open split,
-  and the SELFTEST/"diagnostics" naming mismatch it would resolve.
+- [`../plans/Settings-App-Plan.md`](../plans/Settings-App-Plan.md) - the
+  planned Settings app, and the mismatch it would resolve between the
+  SELFTEST flag and the diagnostics build's name.
 - [`Flashing-and-Toolchain.md`](Flashing-and-Toolchain.md) - board recovery,
   and the toolchain details `autana monitor`'s crash decoding depends on.

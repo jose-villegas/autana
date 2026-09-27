@@ -30,7 +30,7 @@ sensible default - `flash`, `reset`, `run suite`, `send`, `screenshot`,
 ```powershell
 python scripts/device/device.py status
 python scripts/device/device.py --owner sam flash --variant dev --worktree C:\path\to\engine
-python scripts/device/device.py --owner sam run-suite sand --expect-build-id 0123456789ab-dev
+python scripts/device/device.py --owner sam run-suite run_gfx_suite --expect-build-id 0123456789ab-dev
 python scripts/device/device.py --owner sam listen --seconds 30
 ```
 
@@ -243,7 +243,7 @@ once, captures every suite `--runs` times, and writes one summary across all run
 `autana batch` calls it the same way ([Autana-CLI.md](Autana-CLI.md)):
 
 ```powershell
-python scripts/device/device.py --owner sam batch --worktree C:\path\to\engine --suite run_sand_perf_suite --suite run_gfx_suite --runs 3
+python scripts/device/device.py --owner sam batch --worktree C:\path\to\engine --suite run_boot_anim_perf_suite --suite run_gfx_suite --runs 3
 ```
 
 The summary (`<HHMMSS>_batch_<owner>.md` in the day's records folder) shows,
@@ -256,7 +256,7 @@ flash stops it. `--perf-scope` builds the
 perf-scoped image. `--out PATH` writes the one raw capture to `PATH` - only
 with exactly one `--suite` and `--runs 1`, which is how `device_report.sh`'s
 RUNSUITE-scoped reports (report_boot_anim_perf.sh) call it. `selftest`
-builds the diagnostics+autorun image and captures the boot-time run until
+builds the autorun diagnostics image and captures the boot-time run until
 `SELFTEST_COMPLETE`.
 
 `run-suite` stops at the shell's `RUNSUITE_COMPLETE name=<suite>` line (or an
@@ -279,7 +279,7 @@ default-path capture over 200 KB is gzipped in place (a flash log at
 uncompressed:
 
 ```powershell
-python scripts/device/device.py --owner sam run-suite sand --out C:\Temp\sand.log
+python scripts/device/device.py --owner sam run-suite run_gfx_suite --out C:\Temp\gfx.log
 ```
 
 Every invocation - default path or explicit `--out`, success or failure -
@@ -294,12 +294,12 @@ the command commits the evidence with the work.
 suite PASS/FAIL counts, every failing test's Unity message, and any
 `PERF TARGET` lines. When the manifest's `worktree` names a checkout with
 exactly one app whose `tools/report_performance.py` registers the suite that
-ran, that app's frame-budget table is appended too; zero or several matches,
+ran, that reporter's table is appended too; zero or several matches,
 or a reporter that fails, are noted in the report instead - a capture is
 never failed over this. Rebuild a report for any existing capture:
 
 ```powershell
-python scripts/device/device.py report .records/device/20260916/153113_runsuite-run_sand_perf_suite_sam.log
+python scripts/device/device.py report .records/device/20260916/153113_runsuite-run_boot_anim_perf_suite_sam.log
 ```
 
 `report` touches no lock and no board.
