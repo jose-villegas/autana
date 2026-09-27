@@ -83,8 +83,8 @@ device_report_run() {
 
     device_report_arguments "$@" || return 1
 
-    # launcher/, wherever this report lives: beside tools/build/build.sh, or
-    # four folders down in an app's own tools/. Found by walking up to the
+    # launcher/, wherever this report lives: in a folder of launcher/tools/,
+    # or four folders down in an app's own tools/. Found by walking up to the
     # folder that holds this file rather than by counting levels, so moving a
     # report script between the two is not a second thing to edit. Not by
     # CMakeLists.txt: main/ and the components each have one of those too.

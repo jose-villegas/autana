@@ -57,15 +57,16 @@ a pass/fail line, use one of the report scripts:
 ```
 
 Both declare what they want and hand the work to
-`launcher/tools/device/device_report.sh`, which calls `device.py selftest` to build
-the diagnostics variant, then flash it and capture the run under one held
-lock, writes a markdown report, and reflashes the release firmware afterwards
-unless given `--no-restore`. Every report script names its board the way
-every other command does, `--board <serial>` or `AUTANA_BOARD` (else the only
-board plugged in); its one positional is the report's own path, ending in
-`.md`. A report script differs from its siblings only in what it
-declares — capture timeout, which suite, sentinel, reporter, output location
-— so a build flag cannot reach one of them and miss another.
+`launcher/tools/device/device_report.sh`, which builds the diagnostics variant
+and then flashes it and captures the run under one held lock - through
+`device.py selftest` for a report on every suite, or `device.py batch --runs 1`
+for a report on one - writes a markdown report, and reflashes the release
+firmware afterwards unless given `--no-restore`. A report script takes its
+board from `AUTANA_BOARD`, as `autana` does, else the only board plugged in;
+its one positional is the report's own path, ending in `.md`. A report script
+differs from its siblings only in what it declares — capture timeout, which
+suite, sentinel, reporter, output location — so a build flag cannot reach one
+of them and miss another.
 
 POSIX sh — works under Git Bash or MSYS on Windows and natively on Linux and
 macOS. It finds a compiler via `$CC`, then `PATH`, then the location winget
