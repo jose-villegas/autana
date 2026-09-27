@@ -374,6 +374,7 @@ static void
 exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
+    app_arena_rewind(0);
     restore_system_display_state();
     *current = NULL;
     frame_ready = false;
@@ -402,7 +403,6 @@ start_app(const app_t** current, const app_t* next) {
     gfx_request_full_redraw();
     restore_system_display_state();
     exit_requested = false;
-    app_arena_rewind(0);
     (*current)->enter();
     frame_ready = false;
 }
@@ -597,24 +597,21 @@ shell_test_requested_exit(void) {
         exit_app(&current);
     }
     exit_requested = false;
-    app_arena_rewind(0);
     return ordinary && left && launcher_next;
 }
 
 bool
-shell_test_every_visit_starts_with_an_empty_arena(void) {
+shell_test_leaving_empties_the_arena_after_exit(void) {
     const app_t* current = NULL;
-    (void)app_arena_take(512, 1);
     start_app(&current, &shell_test_app);
-    const bool first = shell_test_arena_at_enter == 0;
     exit_app(&current);
     const bool kept_through_exit = shell_test_arena_at_exit == SHELL_TEST_ARENA_TAKE;
+    const bool emptied = app_arena_mark() == 0;
     start_app(&current, &shell_test_app);
-    const bool second = shell_test_arena_at_enter == 0 && shell_test_enters == 2;
+    const bool next_visit_empty = shell_test_arena_at_enter == 0 && shell_test_enters == 2;
     exit_app(&current);
     exit_requested = false;
-    app_arena_rewind(0);
-    return first && kept_through_exit && second;
+    return kept_through_exit && emptied && next_visit_empty;
 }
 
 bool
@@ -630,7 +627,6 @@ shell_test_stale_exit_is_cleared(void) {
         exit_app(&current);
     }
     exit_requested = false;
-    app_arena_rewind(0);
     return first_frame;
 }
 #endif

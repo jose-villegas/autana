@@ -63,7 +63,7 @@ board-free preview of its drawing, declare a scene with the
 | `name`, `summary` | yes | - | launcher list text; `name` is also the sort key |
 | `enter()` | yes | once, on launch | reset state, take memory from the app arena, `gfx_mode_enter()`. May have run before. |
 | `frame(dt_ms, input)` | yes | every pass | draw and return. `dt_ms` is clamped to `FRAME_DT_MAX_MS` (250 ms). |
-| `exit()` | yes | once, on leave | release what `enter()` acquired, `gfx_mode_exit()` included. Arena memory needs nothing: the shell empties the arena before the next app starts. |
+| `exit()` | yes | once, on leave | release what `enter()` acquired, `gfx_mode_exit()` included. Arena memory needs nothing: the shell empties the arena right after `exit()`. |
 | `update(dt_ms, input)` | no | every pass, before `frame()` | state only - **no `gfx_*`, no framebuffer**; a dev build asserts it |
 | `invalidate()` | no | once per full-redraw request, before the next `frame()` | reset a draw cache the app keeps beyond the framebuffer |
 | `home_gesture` | no (`false`) | - | `true`: shell owns the way home (edge swipe + hint strip) |
@@ -114,10 +114,10 @@ launch, `leave_app()` on leave:
 | Launch | Leave |
 |---|---|
 | `gfx_request_full_redraw()` | `exit()` |
-| `restore_system_display_state()` | `restore_system_display_state()` |
-| `app_arena_rewind(0)` | `gfx_request_full_redraw()` |
-| `enter()` | launcher drawn and presented the same pass |
-| next pass: `invalidate()`, then the first `frame()` | |
+| `restore_system_display_state()` | `app_arena_rewind(0)` |
+| `enter()` | `restore_system_display_state()` |
+| next pass: `invalidate()`, then the first `frame()` | `gfx_request_full_redraw()` |
+| | launcher drawn and presented the same pass |
 
 `enter()` always precedes the first `frame()`; `exit()` always follows the
 last. The pass that leaves calls neither `update()` nor `frame()`, so the app
@@ -231,7 +231,7 @@ and lends it to the running app. Nothing taken from it survives the visit.
 |---|---|---|
 | `app_arena_take(size, align)` | the app, usually in `enter()` | the next `size` bytes, or `NULL` when the rest cannot hold them - never an abort, so keep a fallback |
 | `app_arena_mark()` / `app_arena_rewind(mark)` | the app | scope a shorter lifetime inside one visit; rewinding past what is in use asserts |
-| `app_arena_rewind(0)` | the shell only | before every app's `enter()`, after the last app's `exit()` |
+| `app_arena_rewind(0)` | the shell only | right after the leaving app's `exit()` |
 
 ```c
 static void yours_enter(void) {
