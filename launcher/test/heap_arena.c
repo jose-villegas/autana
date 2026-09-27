@@ -152,9 +152,8 @@ ptr_in_pool(const arena_pool_t* p, const void* ptr) {
     return b >= p->storage && b < p->storage + p->storage_bytes;
 }
 
-/* A pool's memory from its compile-time default or, if set, `override` (its
- * environment variable's value), less what is reserved ahead of the heap
- * whichever gave it. */
+/* A pool's heap: its memory from the compile-time default or, when it
+ * parses, `override`, less what the board reserves ahead of the heap. */
 static size_t
 arena_pool_heap_bytes(const arena_pool_t* p, const char* override, const char** origin) {
     size_t memory = p->default_cap;
