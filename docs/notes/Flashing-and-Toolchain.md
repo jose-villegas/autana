@@ -121,7 +121,7 @@ USB-Serial/JTAG peripheral, not an external USB-UART bridge on UART0.
 ESP-IDF's own default assumes the other, more common board design (UART0
 primary, USB-Serial-JTAG a write-only secondary mirror), which would leave
 input silently unread on a board wired this way; see
-[Diagnostics-and-Debugging.md](Diagnostics-and-Debugging.md) for the full
+[Debugging.md](Debugging.md) for the full
 mismatch this fixes.
 
 ---

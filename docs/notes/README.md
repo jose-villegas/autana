@@ -28,7 +28,7 @@ discovery narrative lives in [`../sand/`](../sand/) instead:
   measuring by deleting code instead of reasoning about it, verifying
   `static inline` actually inlined with `objdump`, register-spilling call
   boundaries, and more.
-- **[Diagnostics-and-Debugging.md](Diagnostics-and-Debugging.md)** — which
+- **[Debugging.md](Debugging.md)** — which
   tool to reach for depending on the symptom: the host and on-device test
   suites, `autana screenshot`'s image-plus-device-state capture,
   `autana monitor`, the gfx debug overlays, and the USB-Serial-JTAG console

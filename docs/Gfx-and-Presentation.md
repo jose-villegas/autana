@@ -312,4 +312,4 @@ Frame stage timing is described in [`tools/Frame-Cost.md`](tools/Frame-Cost.md).
 - [`Building-an-App.md`](Building-an-App.md) - when the shell presents, and `update()`
 - [`Firmware-Architecture.md`](Firmware-Architecture.md) - why one framebuffer, one frame loop
 - [`notes/Display-and-Rendering.md`](notes/Display-and-Rendering.md) - the measurements and the bugs behind each mechanism
-- [`Autana-Rendering-Roadmap.md`](Autana-Rendering-Roadmap.md) - where this is going
+- [`plans/Autana-Rendering-Roadmap.md`](plans/Autana-Rendering-Roadmap.md) - where this is going
