@@ -1,8 +1,9 @@
 /*
- * Portable suite: the baked Sponza mesh (sponza_mesh_generated.h) and the
- * camera loop through it (sponza_flythrough.h). The mesh is checked for the
- * structure r3d_lit_pipeline.h relies on, never against the generator; the path
- * is checked against the shipped mesh itself.
+ * Portable suite: the two baked Sponza meshes (sponza_mesh_generated.h,
+ * sponza_lite_mesh_generated.h) and the camera loop through them
+ * (sponza_flythrough.h). Each mesh is checked for the structure
+ * r3d_lit_pipeline.h relies on, never against the generator; the path and
+ * the pictures it sees are checked against the shipped meshes themselves.
  */
 
 #include <math.h>
@@ -14,85 +15,18 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "esp_heap_caps.h"
+
 #include "apps/render_lab/sponza_flythrough.h"
 #include "apps/render_lab/sponza_lite_mesh_generated.h"
 #include "apps/render_lab/sponza_mesh_generated.h"
+#include "r3d_lit_mesh_expect.h"
+#include "render/r3d_lit_frame.h"
 
 _Static_assert(SPONZA_VERTEX_COUNT <= 65535 && SPONZA_LITE_VERTEX_COUNT <= 65535,
                "triangles index vertices with uint16_t");
 _Static_assert(SPONZA_LITE_CLUSTER_COUNT <= SPONZA_CLUSTER_COUNT,
                "the working arrays below are sized for the larger bake");
-
-static void
-check_clusters_tile_both_arrays_in_order(const r3d_lit_mesh_t* mesh) {
-    int next_vertex = 0, next_triangle = 0;
-    for (int i = 0; i < mesh->cluster_count; i++) {
-        const r3d_lit_cluster_t* c = &mesh->clusters[i];
-        TEST_ASSERT_EQUAL_INT(next_vertex, c->vertex_first);
-        TEST_ASSERT_EQUAL_INT(next_triangle, c->triangle_first);
-        next_vertex += c->vertex_count;
-        next_triangle += c->triangle_count;
-    }
-    TEST_ASSERT_EQUAL_INT(mesh->vertex_count, next_vertex);
-    TEST_ASSERT_EQUAL_INT(mesh->triangle_count, next_triangle);
-}
-
-static void
-check_every_triangle_indexes_three_distinct_vertices_of_its_own_cluster(const r3d_lit_mesh_t* mesh) {
-    for (int i = 0; i < mesh->cluster_count; i++) {
-        const r3d_lit_cluster_t* c = &mesh->clusters[i];
-        for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
-            const uint16_t* tri = mesh->triangles[t];
-            for (int k = 0; k < 3; k++) {
-                TEST_ASSERT_TRUE(tri[k] >= c->vertex_first && tri[k] < c->vertex_first + c->vertex_count);
-            }
-            TEST_ASSERT_TRUE(tri[0] != tri[1] && tri[1] != tri[2] && tri[0] != tri[2]);
-        }
-    }
-}
-
-static void
-check_cluster_bounds_hold_their_vertices(const r3d_lit_mesh_t* mesh) {
-    for (int i = 0; i < mesh->cluster_count; i++) {
-        const r3d_lit_cluster_t* c = &mesh->clusters[i];
-        for (int v = c->vertex_first; v < c->vertex_first + c->vertex_count; v++) {
-            for (int k = 0; k < 3; k++) {
-                TEST_ASSERT_TRUE(mesh->positions[v][k] >= c->lo[k] && mesh->positions[v][k] <= c->hi[k]);
-            }
-        }
-    }
-}
-
-static void
-visit(const r3d_lit_mesh_t* mesh, int node, uint8_t* reached) {
-    const r3d_lit_node_t* n = &mesh->nodes[node];
-    if (n->leaf) {
-        for (int c = n->first; c < n->first + n->count; c++) {
-            reached[c]++;
-            for (int k = 0; k < 3; k++) {
-                TEST_ASSERT_TRUE(mesh->clusters[c].lo[k] >= n->lo[k] && mesh->clusters[c].hi[k] <= n->hi[k]);
-            }
-        }
-        return;
-    }
-    for (int child = n->first; child < n->first + n->count; child++) {
-        TEST_ASSERT_TRUE_MESSAGE(child > node, "a child must follow its parent");
-        for (int k = 0; k < 3; k++) {
-            TEST_ASSERT_TRUE(mesh->nodes[child].lo[k] >= n->lo[k] && mesh->nodes[child].hi[k] <= n->hi[k]);
-        }
-        visit(mesh, child, reached);
-    }
-}
-
-static void
-check_the_tree_holds_every_cluster_once_inside_its_ancestors_bounds(const r3d_lit_mesh_t* mesh) {
-    static uint8_t reached[SPONZA_CLUSTER_COUNT];
-    memset(reached, 0, sizeof reached);
-    visit(mesh, 0, reached);
-    for (int c = 0; c < mesh->cluster_count; c++) {
-        TEST_ASSERT_EQUAL_UINT8(1, reached[c]);
-    }
-}
 
 /* The flat reference: every cluster's eight corners against each plane. */
 static bool
@@ -123,10 +57,8 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
     static uint16_t walked[SPONZA_CLUSTER_COUNT];
     static uint8_t kept[SPONZA_CLUSTER_COUNT];
     for (uint32_t t = 0; t < period; t += 2500) {
-        r3d_lit_vec3_t eye, forward;
-        r3d_path_sample(&sponza_flythrough, t, &eye, &forward);
         r3d_lit_view_t view;
-        r3d_lit_view_look(&view, eye, forward, 0.62f, 6.0f, mesh->position_scale, 368, 448, (int)(t / 2500) & 3);
+        sponza_view_at(&view, t, mesh->position_scale, (int)(t / 2500) & 3);
 
         memset(kept, 0, sizeof kept);
         const int count = r3d_lit_cull_clusters(mesh, &view, walked);
@@ -239,7 +171,7 @@ static void
 check_the_flythrough_keeps_clear_of_every_triangle(const r3d_lit_mesh_t* mesh) {
     const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
     for (uint32_t t = 0; t < period; t += 100) {
-        r3d_lit_vec3_t eye, forward;
+        r3d_vec3f_t eye, forward;
         r3d_path_sample(&sponza_flythrough, t, &eye, &forward);
         const float d = clearance(mesh, (v3){eye.x, eye.y, eye.z});
         if (d < SPONZA_FLYTHROUGH_CLEARANCE) {
@@ -253,27 +185,9 @@ check_the_flythrough_keeps_clear_of_every_triangle(const r3d_lit_mesh_t* mesh) {
 
 /* Every check holds for both bakes. */
 static void
-test_clusters_tile_both_arrays_in_order(void) {
-    check_clusters_tile_both_arrays_in_order(&sponza_mesh);
-    check_clusters_tile_both_arrays_in_order(&sponza_lite_mesh);
-}
-
-static void
-test_every_triangle_indexes_three_distinct_vertices_of_its_own_cluster(void) {
-    check_every_triangle_indexes_three_distinct_vertices_of_its_own_cluster(&sponza_mesh);
-    check_every_triangle_indexes_three_distinct_vertices_of_its_own_cluster(&sponza_lite_mesh);
-}
-
-static void
-test_cluster_bounds_hold_their_vertices(void) {
-    check_cluster_bounds_hold_their_vertices(&sponza_mesh);
-    check_cluster_bounds_hold_their_vertices(&sponza_lite_mesh);
-}
-
-static void
-test_the_tree_holds_every_cluster_once_inside_its_ancestors_bounds(void) {
-    check_the_tree_holds_every_cluster_once_inside_its_ancestors_bounds(&sponza_mesh);
-    check_the_tree_holds_every_cluster_once_inside_its_ancestors_bounds(&sponza_lite_mesh);
+test_both_bakes_have_the_structure_the_pipeline_relies_on(void) {
+    r3d_lit_mesh_expect_valid(&sponza_mesh);
+    r3d_lit_mesh_expect_valid(&sponza_lite_mesh);
 }
 
 static void
@@ -290,10 +204,7 @@ test_the_flythrough_keeps_clear_of_every_triangle(void) {
 
 static void
 run_sponza_suite(void) {
-    RUN_TEST(test_clusters_tile_both_arrays_in_order);
-    RUN_TEST(test_every_triangle_indexes_three_distinct_vertices_of_its_own_cluster);
-    RUN_TEST(test_cluster_bounds_hold_their_vertices);
-    RUN_TEST(test_the_tree_holds_every_cluster_once_inside_its_ancestors_bounds);
+    RUN_TEST(test_both_bakes_have_the_structure_the_pipeline_relies_on);
     RUN_TEST(test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps);
     RUN_TEST(test_the_flythrough_keeps_clear_of_every_triangle);
 }
