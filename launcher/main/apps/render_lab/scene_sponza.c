@@ -40,6 +40,8 @@ static void* scratch;
 static void* target; /* the half-size colour, then the half-size depth */
 static lit_frame_stats_t stats;
 static uint32_t elapsed_ms;
+static bool rendered;      /* update() drew a frame that frame() has not doubled yet */
+static gfx_color_t* panel; /* the framebuffer, read at enter(): update() may not ask gfx */
 
 static void
 scene_sponza_enter(void) {
@@ -50,6 +52,8 @@ scene_sponza_enter(void) {
     target =
         heap_caps_malloc(RENDER_PIXELS * (sizeof(gfx_color_t) + sizeof(uint16_t)), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     elapsed_ms = 0;
+    rendered = false;
+    panel = gfx_framebuffer();
 }
 
 static void
@@ -64,20 +68,8 @@ scene_sponza_exit(void) {
 static void
 scene_sponza_invalidate(void) {}
 
-static void
-scene_sponza_frame(uint32_t dt_ms, bool band_mode_active) {
-    assert(!band_mode_active); /* needs_full_framebuffer keeps the app out of band mode for this scene */
-    if (scratch == NULL || target == NULL) {
-        return;
-    }
-
-    elapsed_ms += dt_ms;
-    lit_vec3_t eye, forward;
-    camera_path_sample(&sponza_flythrough, elapsed_ms, &eye, &forward);
-    lit_view_t view;
-    lit_view_look(&view, eye, forward, HALF_FOV_SHORT_TAN, NEAR_Z, SPONZA_POSITION_SCALE, RENDER_WIDTH, RENDER_HEIGHT,
-                  display_shell_quarter());
-
+static lit_frame_t
+frame_over_target(void) {
     gfx_color_t* color = target;
     lit_frame_t frame = {
         .mesh = &sponza_mesh,
@@ -85,11 +77,47 @@ scene_sponza_frame(uint32_t dt_ms, bool band_mode_active) {
         .depth = (uint16_t*)(color + RENDER_PIXELS),
         .width = RENDER_WIDTH,
         .height = RENDER_HEIGHT,
-        .clear = gfx_rgb(SKY_RGB),
-        .doubled = gfx_framebuffer(),
+        .clear = GFX_RGB(SKY_RGB),
+        .doubled = panel,
     };
     lit_frame_use_scratch(&frame, scratch);
+    return frame;
+}
+
+/* Everything but the framebuffer: runs while the last frame is still
+ * being sent, so it names no gfx call. */
+static void
+render(uint32_t dt_ms) {
+    elapsed_ms += dt_ms;
+    lit_vec3_t eye, forward;
+    camera_path_sample(&sponza_flythrough, elapsed_ms, &eye, &forward);
+    lit_view_t view;
+    lit_view_look(&view, eye, forward, HALF_FOV_SHORT_TAN, NEAR_Z, SPONZA_POSITION_SCALE, RENDER_WIDTH, RENDER_HEIGHT,
+                  display_shell_quarter());
+    const lit_frame_t frame = frame_over_target();
     stats = lit_frame_render(&frame, &view);
+    rendered = true;
+}
+
+static void
+scene_sponza_update(uint32_t dt_ms) {
+    if (scratch != NULL && target != NULL) {
+        render(dt_ms);
+    }
+}
+
+static void
+scene_sponza_frame(uint32_t dt_ms, bool band_mode_active) {
+    assert(!band_mode_active); /* needs_full_framebuffer keeps the app out of band mode for this scene */
+    if (scratch == NULL || target == NULL) {
+        return;
+    }
+    if (!rendered) {
+        render(dt_ms); /* no update() ran since the last frame: the first after entering */
+    }
+    const lit_frame_t frame = frame_over_target();
+    lit_frame_double(&frame);
+    rendered = false;
     gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
 }
 
@@ -105,6 +133,7 @@ const render_lab_scene_t scene_sponza = {
     .key = "sponza",
     .enter = scene_sponza_enter,
     .frame = scene_sponza_frame,
+    .update = scene_sponza_update,
     .frame_band = NULL,
     .exit = scene_sponza_exit,
     .invalidate = scene_sponza_invalidate,

@@ -429,11 +429,24 @@ render_lab_invalidate(void) {
     current_scene()->invalidate();
 }
 
+/* The scene's own update(), if it has one, overlapped with the send of the
+ * frame drawn last pass. A scene switch or the menu takes effect in frame(),
+ * which runs after this, so a scene must cope with frame() arriving without
+ * a matching update(). */
+static void
+render_lab_update(uint32_t dt_ms, const input_t* input) {
+    (void)input;
+    if (!menu_open && current_scene()->update != NULL) {
+        current_scene()->update(dt_ms);
+    }
+}
+
 app_t app_render_lab = {
     .name = "Render Lab",
     .summary = "Software rendering experiments",
     .enter = render_lab_enter,
     .frame = render_lab_frame,
+    .update = render_lab_update,
     .exit = render_lab_exit,
     .invalidate = render_lab_invalidate,
     .home_gesture = true,
