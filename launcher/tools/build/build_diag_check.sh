@@ -3,10 +3,9 @@
 # Build the DIAGNOSTICS image and run the complexity ratchet - no device,
 # nothing flashed.
 #
-#   tools/build/build_diag_check.sh [--verbose]
+#   tools/build/build_diag_check.sh
 #
-# The result and log path are printed by default; --verbose streams and
-# saves the full command output.
+# The result and the log path are printed; the log holds the full output.
 #
 # Exists because the diagnostics variant is the only one that links every
 # test suite into firmware, so it is the only one where a suite's own
@@ -36,15 +35,11 @@
 
 set -euo pipefail
 
-VERBOSE=${VERBOSE:-0}
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --verbose) VERBOSE=1 ;;
-        -h|--help) echo "usage: tools/build/build_diag_check.sh [--verbose]"; exit 0 ;;
-        *) echo "unknown argument: $1" >&2; exit 2 ;;
-    esac
-    shift
-done
+case "${1:-}" in
+    "") ;;
+    -h|--help) echo "usage: tools/build/build_diag_check.sh"; exit 0 ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+esac
 
 # shellcheck disable=SC1007
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -57,7 +52,7 @@ GATE_BASE="${COMPLEXITY_GATE_BASE:-origin/main}"
 
 if [ -z "${QUIET_INNER:-}" ]; then
     quiet_begin "$DIR/../../build.diag/build_diag_check.log"
-    quiet_run diagnostics-check env QUIET_INNER=1 VERBOSE="$VERBOSE" bash "$0" || true
+    quiet_run diagnostics-check env QUIET_INNER=1 bash "$0" || true
     quiet_end build_diag_check || exit $?
     exit 0
 fi

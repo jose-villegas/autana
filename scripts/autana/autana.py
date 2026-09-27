@@ -57,15 +57,7 @@ def git(*args):
 
 
 def engine_worktree():
-    """The checkout this shell stands in. Where git will not say - a CI
-    container that does not own the checkout refuses - the nearest folder up
-    from here holding launcher/ and scripts/autana/."""
     worktree = git("rev-parse", "--show-toplevel")
-    if not worktree:
-        here = Path.cwd().resolve()
-        worktree = next((str(folder) for folder in (here, *here.parents)
-                         if (folder / "launcher").is_dir()
-                         and (folder / "scripts" / "autana").is_dir()), "")
     if not worktree or not (Path(worktree) / "launcher").is_dir():
         sys.exit("autana: not inside an engine worktree (no launcher/ here)")
     return worktree
@@ -148,21 +140,30 @@ def run_streaming_its_log(command):
     return code
 
 
-def flash(args):
-    quiet = "--quiet" in args
-    perf_scope = "--perf-scope" in args
-    args = [arg for arg in args if arg not in ("--quiet", "--perf-scope")]
-    asked = args[0] if args else "dev"
+def variant_request(verb, args, flags):
+    """The words `autana build` and `autana flash` share: one variant (dev
+    when omitted) and the `flags` given. Prints the banner; returns the
+    variant word asked, the variant, the flags seen and the worktree."""
+    seen = {flag for flag in flags if flag in args}
+    words = [arg for arg in args if arg not in flags]
+    asked = words[0] if words else "dev"
     variant = VARIANTS.get(asked)
-    if variant is None or len(args) > 1:
-        sys.exit("usage: autana flash [rel|dev|diag] [--quiet] [--perf-scope]")
-
+    if variant is None or len(words) > 1:
+        sys.exit(f"usage: autana {verb} [rel|dev|diag] "
+                 + " ".join(f"[{flag}]" for flag in flags))
     worktree = engine_worktree()
     branch = git("branch", "--show-current") or "detached"
     commit = git("rev-parse", "--short", "HEAD")
     dirty = " (dirty)" if git("status", "--porcelain") else ""
-    print(f"autana flash: {variant} of {branch} @ {commit}{dirty}", flush=True)
+    print(f"autana {verb}: {variant} of {branch} @ {commit}{dirty}", flush=True)
+    return asked, variant, seen, worktree
 
+
+def flash(args):
+    asked, variant, seen, worktree = variant_request("flash", args,
+                                                     ("--quiet", "--perf-scope"))
+    quiet = "--quiet" in seen
+    perf_scope = "--perf-scope" in seen
     command = device_command(
         "--owner", owner(),
         "flash", "--variant", variant, "--worktree", worktree, "--purpose", f"autana flash {asked}",
@@ -175,20 +176,8 @@ def flash(args):
 def build(args):
     """Build this worktree with no board and no lock: the build half of
     `autana flash`, device.py's own, run in this process."""
-    perf_scope = "--perf-scope" in args
-    args = [arg for arg in args if arg != "--perf-scope"]
-    asked = args[0] if args else "dev"
-    variant = VARIANTS.get(asked)
-    if variant is None or len(args) > 1:
-        sys.exit("usage: autana build [rel|dev|diag] [--perf-scope]")
-
-    worktree = engine_worktree()
-    branch = git("branch", "--show-current") or "detached"
-    commit = git("rev-parse", "--short", "HEAD")
-    dirty = " (dirty)" if git("status", "--porcelain") else ""
-    print(f"autana build: {variant} of {branch} @ {commit}{dirty}", flush=True)
-    return device_module().build_worktree(worktree, variant,
-                                          ["--perf-scope"] if perf_scope else [])
+    _, variant, seen, worktree = variant_request("build", args, ("--perf-scope",))
+    return device_module().build_worktree(worktree, variant, sorted(seen))
 
 
 def seconds_argument(args, default, usage):
