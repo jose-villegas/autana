@@ -13,14 +13,16 @@ at an already unpacked copy instead.
 The device does no lighting. Everything a pixel's colour depends on is baked
 here into one sRGB colour per vertex, with the mesh tools in launcher/tools/r3d:
 
-1. Triangles no camera inside the building can see are dropped, and each
-   material is decimated on its own to a share of its triangles.
-2. The welded whole is split only where the sun's exposure changes along an
-   edge, so a per-vertex light can carry shadow edges without tessellating
-   evenly lit surfaces.
-3. Albedo is sampled from the diffuse texture at the closest point of the
-   original mesh; light is a sun with soft shadows plus sky light, both cast
+1. Triangles no camera inside the building can see are dropped.
+2. The rest is welded, split evenly (--dense-edge) and lit per vertex:
+   albedo sampled from the diffuse texture at the closest point of the
+   original mesh, light a sun with soft shadows plus sky light, both cast
    against the full-resolution original.
+3. One meshoptimizer pass simplifies the whole lit mesh to --triangles,
+   with colour as an attribute so shadow edges and texture detail hold
+   vertices, and small props keep a reserved share (--props-share).
+   --simplifier quadric keeps the older pipeline - per-material decimation,
+   then splits where the sun's exposure changes - for comparison.
 4. Triangles are grouped into an octree whose leaves are clusters.
 
 What stays here is Sponza's own: which materials are thin sheets, how hard to
@@ -54,6 +56,7 @@ from r3d.light import (  # noqa: E402
 )
 from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
 from r3d.octree import build_octree, flatten_octree, node_bounds  # noqa: E402
+from r3d.simplify import densify, simplify  # noqa: E402
 from r3d.tessellate import adaptive_split  # noqa: E402
 
 SPONZA_URL = "https://casual-effects.com/g3d/data10/common/model/crytek_sponza/sponza.zip"
@@ -84,6 +87,10 @@ COLOUR_MERGE_STEP = 6  # sRGB levels; below what RGB565 shows
 # walls. A triangle no point in here can see is dropped.
 INTERIOR_LO = (-1400.0, 20.0, -620.0)
 INTERIOR_HI = (1270.0, 1250.0, 550.0)
+# Small detailed props: a global simplifier spends its budget on the large
+# surfaces around them, so they hold a reserved share of it instead.
+PROPS = {"vase", "vase_round", "vase_hanging", "flagpole", "chain", "leaf", "Material__57", "Material__298",
+         "Material__25", "Material__47"}
 
 
 def tuning(name):
@@ -153,6 +160,13 @@ def main():
     parser.add_argument("--visibility-rounds", type=int, default=160)
     parser.add_argument("--leaf-keep", type=float, default=0.35, help="fraction of leaf triangles kept")
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--simplifier", choices=("meshopt", "quadric"), default="meshopt",
+                        help="meshopt: split evenly, bake, one colour-aware pass (--triangles); "
+                        "quadric: per-material decimation then light-driven splits (--keep, --light-tolerance)")
+    parser.add_argument("--triangles", type=int, default=17381, help="meshopt: the triangle budget")
+    parser.add_argument("--dense-edge", type=float, default=45.0, help="meshopt: longest edge before baking")
+    parser.add_argument("--npz", help="also save the final mesh before clustering, for evaluation")
+    parser.add_argument("--props-share", type=float, default=0.3, help="meshopt: budget share held for props")
     args = parser.parse_args()
     rng = np.random.default_rng(args.seed)
 
@@ -169,13 +183,20 @@ def main():
     seen &= ~leaf | (rng.random(len(tri_v)) < args.leaf_keep)
     shown_v, shown_m = tri_v[seen], tri_m[seen]
 
-    log("decimating")
-    def brightness(points, normals):
-        return sun_exposure(points, normals, intersector, args)
+    if args.simplifier == "meshopt":
+        log("splitting evenly")
+        wp, wt = weld_keeping(p, shown_v)
+        dp, dt, dm = densify(wp, wt, shown_m, args.dense_edge)
+        parts = [(m, *compact(dp, dt[dm == m])) for m in range(len(names)) if np.any(dm == m)]
+    else:
+        log("decimating")
 
-    parts = build_display_mesh(p, shown_v, shown_m, names, args.keep, args.max_edge, brightness, args)
+        def brightness(points, normals):
+            return sun_exposure(points, normals, intersector, args)
 
-    all_pos, all_rgb, all_tris, all_double = [], [], [], []
+        parts = build_display_mesh(p, shown_v, shown_m, names, args.keep, args.max_edge, brightness, args)
+
+    all_pos, all_rgb, all_tris, all_double, all_mat = [], [], [], [], []
     base = 0
     for m, mp, mt in parts:
         double = names[m] in DOUBLE_SIDED
@@ -202,6 +223,7 @@ def main():
         all_rgb.append(vrgb)
         all_tris.append(vtris + base)
         all_double.append(np.full(len(vtris), int(double)))
+        all_mat.append(np.full(len(vtris), m))
         base += len(vpos)
         log(f"  lit {names[m]}: {len(vpos)} vertices")
 
@@ -209,6 +231,14 @@ def main():
     rgb = np.concatenate(all_rgb)
     tris = np.concatenate(all_tris)
     tri_double = np.concatenate(all_double)
+    if args.simplifier == "meshopt":
+        props = [(frozenset(i for i, n in enumerate(names) if n in PROPS), args.props_share)]
+        positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, np.concatenate(all_mat),
+                                                 args.triangles, props)
+        rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
+        tri_double = np.isin(tri_mat, [i for i, n in enumerate(names) if n in DOUBLE_SIDED]).astype(np.int64)
+    if args.npz:
+        np.savez_compressed(args.npz, pos=positions, rgb=rgb, tris=tris, double=tri_double)
 
     root = build_octree(positions, tris, args.leaf_triangles, args.max_depth)
     clusters, nodes = flatten_octree(root, tri_double)
@@ -275,11 +305,15 @@ def banner(args, out):
         "GENERATED FILE - do not edit.",
         "",
         "    python main/apps/render_lab/tools/gen_sponza.py --out-dir main/apps/render_lab \\",
-        f"        --name {args.name} --keep {args.keep:g} --light-tolerance {args.light_tolerance:g} --min-edge {args.min_edge:g}",
+        (f"        --name {args.name} --simplifier meshopt --triangles {args.triangles}"
+         f" --props-share {args.props_share:g} --dense-edge {args.dense_edge:g}"
+         if args.simplifier == "meshopt" else
+         f"        --name {args.name} --simplifier quadric --keep {args.keep:g}"
+         f" --light-tolerance {args.light_tolerance:g} --min-edge {args.min_edge:g}"),
         "",
         "Crytek Sponza (Frank Meinl, Crytek; CC BY 3.0), from the OBJ in",
         "McGuire's Computer Graphics Archive, casual-effects.com/data.",
-        "Decimated, lit by a sun and sky with baked shadows, one sRGB colour",
+        "Simplified, lit by a sun and sky with baked shadows, one sRGB colour",
         "per vertex, clusters as the leaves of an octree. Other settings:",
         f"  --max-edge {args.max_edge:g} --sun {args.sun[0]:g} {args.sun[1]:g} {args.sun[2]:g}",
         f"  --sun-rays {args.sun_rays} --sky-rays {args.sky_rays} --leaf-triangles {args.leaf_triangles}",
