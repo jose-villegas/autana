@@ -376,7 +376,7 @@ exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
     restore_system_display_state();
-    frame_watch_settle();
+    frame_watch_restart();
     *current = NULL;
     frame_ready = false;
     gfx_request_full_redraw();
@@ -406,7 +406,7 @@ start_app(const app_t** current, const app_t* next) {
     exit_requested = false;
     (*current)->enter();
     frame_ready = false;
-    frame_watch_settle();
+    frame_watch_restart();
 }
 
 /* The backdrop is the launcher's own frame under a scrim, drawn once and
@@ -776,6 +776,7 @@ run_pending_selftest_suite(void) {
     if (!found) {
         ESP_LOGE(TAG, "no suite named '%s' is registered", runsuite_name);
     }
+    suite_report_frame_watch();
     /* On its own line, so a harness knows the suite ended without having to
      * guess from how long the console has been quiet. */
     printf("\nRUNSUITE_COMPLETE name=%s found=%d\n", runsuite_name, found ? 1 : 0);
@@ -1027,7 +1028,6 @@ app_main_loop(void) {
 #if CONFIG_LAUNCHER_SELFTEST
         run_pending_selftest_suite();
 #endif
-        frame_watch_frame_begin();
 
         touch_read(&input);
         buttons_read(&input.boot, &input.power);
@@ -1036,7 +1036,6 @@ app_main_loop(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
         if (run_development_pre_frame(&current, &input, dt_ms)) {
             FRAME_COST_END(rest_began, "frame.rest");
-            frame_watch_frame_end();
             vTaskDelay(1);
             continue;
         }
@@ -1053,7 +1052,6 @@ app_main_loop(void) {
         report_fps(now_us, &fps_window_start, &frames);
 #endif
         FRAME_COST_END(rest_began, "frame.rest");
-        frame_watch_frame_end();
 
         /* Yield so the idle task can feed the watchdog. */
         vTaskDelay(1);

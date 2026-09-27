@@ -25,6 +25,6 @@ console_frame_watch_answer(void) {
     }
     char json[FRAME_WATCH_JSON_MAX];
     frame_watch_json(json, sizeof json);
-    printf("FRAMEWATCH %s\n", json);
-    fflush(stdout);
+    (void)printf("FRAMEWATCH %s\n", json);
+    (void)fflush(stdout);
 }

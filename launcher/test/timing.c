@@ -46,14 +46,19 @@ static int leaks;
 
 #ifdef DEVICE_BUILD
 static void (*watched_test)(void);
+static int tests_run;
+static int tests_judged;
 
 /* Each present a test makes is one of its frames; see frame_watch.h. */
 static void
 run_watched(void) {
     frame_watch_test_begin();
     watched_test();
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, frame_watch_test_end(),
+    const frame_watch_verdict_t verdict = frame_watch_test_end();
+    tests_judged += verdict.frames > 0;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, verdict.repeating,
                                   "work repeated frame after frame - see the FRAME_WATCH lines above");
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, verdict.dropped, "the frame watch ran out of room, so it may have missed one");
 }
 #endif
 
@@ -75,8 +80,9 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
 
 #ifdef DEVICE_BUILD
     watched_test = func;
+    tests_run++;
     UnityDefaultTestRun(run_watched, name, line);
-    frame_watch_test_end();
+    (void)frame_watch_test_end();
 #else
     UnityDefaultTestRun(func, name, line);
 #endif
@@ -128,5 +134,14 @@ suite_leaks(void) {
     return leaks;
 #else
     return 0;
+#endif
+}
+
+void
+suite_report_frame_watch(void) {
+#ifdef DEVICE_BUILD
+    printf("FRAME_WATCH judged %d of %d tests\n", tests_judged, tests_run);
+    tests_run = 0;
+    tests_judged = 0;
 #endif
 }

@@ -52,6 +52,7 @@ selftest_run(void) {
     /* Every registered suite, portable and hardware alike. Which ones exist
      * is decided at compile time by what was built in - see suites.h. */
     suites_run_all();
+    suite_report_frame_watch();
 
     int failures = UNITY_END();
     const int64_t elapsed_ms = (esp_timer_get_time() - started) / 1000;
