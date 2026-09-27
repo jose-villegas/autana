@@ -13,6 +13,9 @@
 #include "gfx/gfx_color.h"
 #include "lit_pipeline.h"
 
+/* Taller frames split at the middle row instead of balancing the cores. */
+#define LIT_FRAME_MAX_HEIGHT 448
+
 typedef struct {
     const lit_mesh_t* mesh;
     lit_cs_vertex_t* cs;      /* mesh->vertex_count entries */

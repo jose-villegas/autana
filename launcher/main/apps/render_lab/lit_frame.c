@@ -83,6 +83,31 @@ lit_frame_use_scratch(lit_frame_t* frame, void* scratch) {
     frame->visible = (uint16_t*)p;
 }
 
+/* The row splitting the visible triangles in half, counting each cluster
+ * at the middle of its rows - the halves are then drawn by one core each. */
+static int
+balanced_split_row(const lit_frame_t* frame, int visible) {
+    uint16_t weight[LIT_FRAME_MAX_HEIGHT] = {0}; /* a mesh holds under 65536 triangles */
+    int total = 0;
+    for (int i = 0; i < visible; i++) {
+        const lit_cluster_rows_t* r = &frame->rows[frame->visible[i]];
+        const float middle = r->crosses_near ? 0.5f * (float)frame->height : 0.5f * (r->y0 + r->y1);
+        int row = (int)middle;
+        row = row < 0 ? 0 : (row >= frame->height ? frame->height - 1 : row);
+        const int n = frame->mesh->clusters[frame->visible[i]].triangle_count;
+        weight[row] = (uint16_t)(weight[row] + n);
+        total += n;
+    }
+    int sum = 0;
+    for (int row = 0; row < frame->height; row++) {
+        sum += weight[row];
+        if (2 * sum >= total) {
+            return row < 1 ? 1 : row;
+        }
+    }
+    return frame->height / 2;
+}
+
 lit_frame_stats_t
 lit_frame_render(const lit_frame_t* frame, const lit_view_t* view) {
     const int visible = lit_cull_clusters(frame->mesh, view, frame->visible);
@@ -95,7 +120,7 @@ lit_frame_render(const lit_frame_t* frame, const lit_view_t* view) {
     run_split(transform_slice, (slice_t){frame, view, visible, 0, half},
               (slice_t){frame, view, visible, half, visible - half});
 
-    const int mid = frame->height / 2;
+    const int mid = frame->height <= LIT_FRAME_MAX_HEIGHT ? balanced_split_row(frame, visible) : frame->height / 2;
     run_split(draw_slice, (slice_t){frame, view, visible, mid, frame->height - mid},
               (slice_t){frame, view, visible, 0, mid});
     return stats;

@@ -6,19 +6,17 @@
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
-/* Every attribute runs in fixed point with 24 bits of range: depth as
- * 16.8 (65535 is nearest), colour channels as 8.16. A per-pixel or per-row
- * step is clamped to 2^21, far past any triangle big enough to show one;
- * with values bounded by 2^24 and at most a screen of steps from the
- * triangle's own corner, every sum stays inside int32. */
-#define ATTRIBUTES        4
-#define DEPTH_SCALE       16776960.0f /* 65535 << 8 */
-#define COLOR_SCALE       65536.0f
-#define VALUE_MAX         16776960 /* both depth and 255 << 16 */
-#define STEP_MAX          2097152.0f
-/* Beyond this a vertex takes the float path: 16.16 edge positions, and an
- * edge's whole run of steps, would overflow. */
-#define FIXED_COORD_LIMIT 8192.0f
+/* Attributes run in fixed point: depth as 16.8 (65535 is nearest), colour
+ * channels as 8.8, whose steepest real step - all 255 levels in one pixel -
+ * is far below the clamp. Only a sliver's depth step can reach 2^22; with
+ * that bound and at most a screen of steps from the triangle's own corner,
+ * every sum stays inside int32. */
+#define ATTRIBUTES  4
+#define DEPTH_SCALE 16776960.0f /* 65535 << 8 */
+#define COLOR_SCALE 256.0f
+#define STEP_MAX    4194304.0f
+
+static const int32_t value_max[ATTRIBUTES] = {16776960, 65280, 65280, 65280};
 
 int span_raster_stop_after;
 
@@ -40,13 +38,13 @@ to_step(float step) {
 }
 
 static inline int32_t
-clamp_value(int32_t v) {
-    return v < 0 ? 0 : (v > VALUE_MAX ? VALUE_MAX : v);
+clamp_value(int32_t v, int32_t max) {
+    return v < 0 ? 0 : (v > max ? max : v);
 }
 
 static inline gfx_color_t
 pack(int32_t r, int32_t g, int32_t b) {
-    const uint32_t native = ((uint32_t)(r >> 8) & 0xF800u) | ((uint32_t)(g >> 13) & 0x07E0u) | ((uint32_t)b >> 19);
+    const uint32_t native = ((uint32_t)r & 0xF800u) | (((uint32_t)g >> 5) & 0x07E0u) | ((uint32_t)b >> 11);
     return (gfx_color_t)((native >> 8) | (native << 8));
 }
 
@@ -87,12 +85,12 @@ fill_span(const span_target_t* target, const gradients_t* g, const int32_t row[A
     const int count = x_last - x_first;
     int32_t v[ATTRIBUTES], d[ATTRIBUTES];
     for (int k = 0; k < ATTRIBUTES; k++) {
-        const int32_t start = clamp_value(row[k] + g->dx[k] * offset);
+        const int32_t start = clamp_value(row[k] + g->dx[k] * offset, value_max[k]);
         const int32_t end = start + g->dx[k] * count;
         v[k] = start;
         d[k] = g->dx[k];
-        if (count > 0 && (end < 0 || end > VALUE_MAX)) {
-            d[k] = (clamp_value(end) - start) / count;
+        if (count > 0 && (end < 0 || end > value_max[k])) {
+            d[k] = (clamp_value(end, value_max[k]) - start) / count;
         }
     }
     if (span_raster_stop_after == 3) {
@@ -136,10 +134,11 @@ fill_flat_span(const span_target_t* target, int y, int x_first, int x_last, uint
 
 /* An edge in 16.16, anchored at its own first row whatever window is being
  * drawn: both triangles sharing it, and any window of rows, get the same
- * position on every row, so there are no gaps and no double fills. */
+ * position on every row, so there are no gaps and no double fills. 64 bits,
+ * because a triangle just past the near plane reaches far off screen. */
 typedef struct {
-    int32_t x;
-    int32_t step;
+    int64_t x;
+    int64_t step;
 } edge_t;
 
 static edge_t
@@ -148,215 +147,100 @@ edge_at(const span_vertex_t* top, const span_vertex_t* bottom, int y) {
     const float slope = dy > 0.0f ? (bottom->x - top->x) / dy : 0.0f;
     const int anchor = fast_ceil(top->y - 0.5f);
     const float x = top->x + ((float)anchor + 0.5f - top->y) * slope;
-    const edge_t e = {(int32_t)(x * 65536.0f), (int32_t)clampf(slope * 65536.0f, -1.0e9f, 1.0e9f)};
-    /* Within FIXED_COORD_LIMIT the product is a displacement along the edge
-     * itself, so it fits. */
-    return (edge_t){e.x + (y - anchor) * e.step, e.step};
+    const edge_t e = {(int64_t)(x * 65536.0f), (int64_t)(slope * 65536.0f)};
+    return y == anchor ? e : (edge_t){e.x + (int64_t)(y - anchor) * e.step, e.step};
 }
 
 /* ceil(x - 0.5) of a 16.16 position: the first pixel whose centre is at or
  * right of it. */
 static inline int
-first_pixel(int32_t x) {
+first_pixel(int64_t x) {
+    return (int)((x + 0x7FFF) >> 16);
+}
+
+static inline int
+first_pixel32(int32_t x) {
     return (x + 0x7FFF) >> 16;
 }
 
-/* The float path, for a triangle reaching past FIXED_COORD_LIMIT - rare,
- * only just past the near plane. */
-/* 65535 in 16.16: inverse depth 1.0 lands on the largest 16-bit depth. */
-#define FLOAT_DEPTH_ONE 4294901760.0f
-#define FLOAT_COLOR_ONE 65536.0f
-#define FLOAT_COLOR_MAX (255.0f * FLOAT_COLOR_ONE)
+/* Inside this, edge positions fit 32 bits; a triangle reaching past it (only
+ * just past the near plane) walks in 64. */
+#define NARROW_LIMIT    8192.0f
 
-/* Every attribute already scaled to its fixed-point range; only the
- * per-pixel step is also kept as an integer. */
+/* A step this steep means an edge under one row tall: it is never taken
+ * before the edge ends, so clamping it changes nothing. */
+#define NARROW_STEP_MAX 1073741824
+
 typedef struct {
-    float x0, y0;
-    float at[4];   /* z, r, g, b at (x0, y0) */
-    float ddx[4];  /* per pixel along a row */
-    float ddy[4];  /* per row */
-    int32_t dx[4]; /* ddx in fixed point */
-} float_gradients_t;
+    bool flat;
+    uint16_t flat_z;
+    gfx_color_t flat_color;
+    const gradients_t* g;
+} fill_t;
 
-static const float float_attribute_max[4] = {FLOAT_DEPTH_ONE, FLOAT_COLOR_MAX, FLOAT_COLOR_MAX, FLOAT_COLOR_MAX};
-
-/* A sliver's depth gradient can pass int32's range; the clamped step is
- * wrong only by what a span that short never reaches. */
-static inline int32_t
-float_to_step(float step) {
-    return (int32_t)(step < -2.0e9f ? -2.0e9f : (step > 2.0e9f ? 2.0e9f : step));
-}
-
-static bool
-float_compute_gradients(const span_vertex_t* a, const span_vertex_t* b, const span_vertex_t* c,
-                        float_gradients_t* out) {
-    const float e1x = b->x - a->x, e1y = b->y - a->y;
-    const float e2x = c->x - a->x, e2y = c->y - a->y;
-    const float area2 = e1x * e2y - e2x * e1y;
-    if (area2 > -1e-6f && area2 < 1e-6f) {
-        return false;
-    }
-    const float inv = 1.0f / area2;
-    const float va[4] = {a->z * FLOAT_DEPTH_ONE, a->r * FLOAT_COLOR_ONE, a->g * FLOAT_COLOR_ONE,
-                         a->b * FLOAT_COLOR_ONE};
-    const float vb[4] = {b->z * FLOAT_DEPTH_ONE, b->r * FLOAT_COLOR_ONE, b->g * FLOAT_COLOR_ONE,
-                         b->b * FLOAT_COLOR_ONE};
-    const float vc[4] = {c->z * FLOAT_DEPTH_ONE, c->r * FLOAT_COLOR_ONE, c->g * FLOAT_COLOR_ONE,
-                         c->b * FLOAT_COLOR_ONE};
-    for (int k = 0; k < 4; k++) {
-        const float d1 = vb[k] - va[k], d2 = vc[k] - va[k];
-        out->ddx[k] = (d1 * e2y - d2 * e1y) * inv;
-        out->ddy[k] = (d2 * e1x - d1 * e2x) * inv;
-        out->at[k] = va[k];
-        out->dx[k] = float_to_step(out->ddx[k]);
-    }
-    out->x0 = a->x;
-    out->y0 = a->y;
-    return true;
-}
-
-/* A pixel centre just outside the triangle extrapolates past the vertex
- * range, and a wrapped channel would be a wrong-coloured pixel. The start
- * is clamped; only a span whose end would still leave the range pays for
- * a clamped end and a step recomputed from both. */
-static void
-float_fill_span(const span_target_t* target, const float_gradients_t* g, int y, int x_first, int x_last) {
-    const float yc = (float)y + 0.5f - g->y0;
-    const float xs = (float)x_first + 0.5f - g->x0;
-    const int count = x_last - x_first;
-
-    int32_t v[4], d[4];
-    for (int k = 0; k < 4; k++) {
-        const float start = clampf(g->at[k] + g->ddx[k] * xs + g->ddy[k] * yc, 0.0f, float_attribute_max[k]);
-        const float end = start + g->ddx[k] * (float)count;
-        v[k] = (int32_t)(uint32_t)start;
-        d[k] = g->dx[k];
-        if (count > 0 && (end < 0.0f || end > float_attribute_max[k])) {
-            d[k] = float_to_step((clampf(end, 0.0f, float_attribute_max[k]) - start) / (float)count);
-        }
-    }
-
-    const int row = (y - target->row0) * target->width;
-    uint16_t* depth = target->depth + row;
-    gfx_color_t* color = target->color + row;
-    uint32_t z = (uint32_t)v[0];
-    int32_t r = v[1], gg = v[2], b = v[3];
-    for (int x = x_first; x <= x_last; x++) {
-        const uint16_t zq = (uint16_t)(z >> 16);
-        if (zq > depth[x]) {
-            depth[x] = zq;
-            color[x] = pack(r, gg, b);
-        }
-        z += (uint32_t)d[0];
-        r += d[1];
-        gg += d[2];
-        b += d[3];
-    }
-}
-
-static void
-float_fill_flat_span(const span_target_t* target, int y, int x_first, int x_last, uint16_t zq, gfx_color_t color) {
-    const int row = (y - target->row0) * target->width;
-    uint16_t* depth = target->depth + row;
-    gfx_color_t* out = target->color + row;
-    for (int x = x_first; x <= x_last; x++) {
-        if (zq > depth[x]) {
-            depth[x] = zq;
-            out[x] = color;
-        }
-    }
-}
-
-/* Small enough that a gradient across it is invisible: one colour, one
- * depth. Its coverage is still decided by the same edge walk. */
-#define FLOAT_FLAT_MAX_ROWS  2
-#define FLOAT_FLAT_MAX_WIDTH 3.0f
-
-static bool
-float_is_tiny(const span_vertex_t* a, const span_vertex_t* b, const span_vertex_t* c, int rows) {
-    if (rows > FLOAT_FLAT_MAX_ROWS) {
-        return false;
-    }
-    const float lo = a->x < b->x ? (a->x < c->x ? a->x : c->x) : (b->x < c->x ? b->x : c->x);
-    const float hi = a->x > b->x ? (a->x > c->x ? a->x : c->x) : (b->x > c->x ? b->x : c->x);
-    return hi - lo <= FLOAT_FLAT_MAX_WIDTH;
-}
-
-static void
-float_triangle(const span_target_t* target, const span_vertex_t* a, const span_vertex_t* b, const span_vertex_t* c) {
-    const span_vertex_t* v0 = a;
-    const span_vertex_t* v1 = b;
-    const span_vertex_t* v2 = c;
-    const span_vertex_t* t;
-    if (v1->y < v0->y) {
-        t = v0, v0 = v1, v1 = t;
-    }
-    if (v2->y < v1->y) {
-        t = v1, v1 = v2, v2 = t;
-    }
-    if (v1->y < v0->y) {
-        t = v0, v0 = v1, v1 = t;
-    }
-
-    const float top = (float)target->row0 - 1.0f, bottom = (float)target->row1 + 1.0f;
-    int y_first = fast_ceil(clampf(v0->y, top, bottom) - 0.5f);
-    int y_end = fast_ceil(clampf(v2->y, top, bottom) - 0.5f);
-    if (y_first < target->row0) {
-        y_first = target->row0;
-    }
-    if (y_end > target->row1) {
-        y_end = target->row1;
-    }
-    if (y_first >= y_end) {
-        return; /* no pixel centre row inside this window */
-    }
-
-    const bool flat = float_is_tiny(a, b, c, y_end - y_first);
-    float_gradients_t g;
-    uint16_t flat_z = 0;
-    gfx_color_t flat_color = 0;
-    if (flat) {
-        const float third = 1.0f / 3.0f;
-        flat_z = (uint16_t)(clampf((a->z + b->z + c->z) * third, 0.0f, 1.0f) * 65535.0f);
-        const float r = clampf((a->r + b->r + c->r) * third, 0.0f, 255.0f) * FLOAT_COLOR_ONE;
-        const float gr = clampf((a->g + b->g + c->g) * third, 0.0f, 255.0f) * FLOAT_COLOR_ONE;
-        const float bl = clampf((a->b + b->b + c->b) * third, 0.0f, 255.0f) * FLOAT_COLOR_ONE;
-        flat_color = pack((int32_t)r, (int32_t)gr, (int32_t)bl);
-    } else if (!float_compute_gradients(a, b, c, &g)) {
+static inline void
+fill_row(const span_target_t* target, const fill_t* f, const int32_t row[ATTRIBUTES], int y, int x_first, int x_last) {
+    const int last_column = target->width - 1;
+    x_first = x_first < 0 ? 0 : x_first;
+    x_last = x_last > last_column ? last_column : x_last;
+    if (x_first > x_last || span_raster_stop_after == 2) {
         return;
     }
+    if (f->flat) {
+        fill_flat_span(target, y, x_first, x_last, f->flat_z, f->flat_color);
+    } else {
+        fill_span(target, f->g, row, y, x_first, x_last);
+    }
+}
 
-    const float dy01 = v1->y - v0->y, dy12 = v2->y - v1->y, dy02 = v2->y - v0->y;
-    const float inv02 = 1.0f / dy02;
-    const float long_slope = (v2->x - v0->x) * inv02;
-    const float top_slope = dy01 > 0.0f ? (v1->x - v0->x) / dy01 : 0.0f;
-    const float bottom_slope = dy12 > 0.0f ? (v2->x - v1->x) / dy12 : 0.0f;
-    const int last_column = target->width - 1;
-    const float right_limit = (float)target->width + 1.0f;
+static inline void
+step_row(const fill_t* f, int32_t row[ATTRIBUTES]) {
+    if (!f->flat) {
+        for (int k = 0; k < ATTRIBUTES; k++) {
+            row[k] += f->g->dy[k];
+        }
+    }
+}
 
-    for (int y = y_first; y < y_end; y++) {
-        const float yc = (float)y + 0.5f;
-        const float x_long = v0->x + (yc - v0->y) * long_slope;
-        const float x_short = yc < v1->y ? v0->x + (yc - v0->y) * top_slope : v1->x + (yc - v1->y) * bottom_slope;
-        const float left = x_long < x_short ? x_long : x_short;
-        const float right = x_long < x_short ? x_short : x_long;
+static void
+walk32(const span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge_t left,
+       edge_t right) {
+    int32_t lx = (int32_t)left.x, rx = (int32_t)right.x;
+    const int32_t ls =
+        (int32_t)(left.step < -NARROW_STEP_MAX ? -NARROW_STEP_MAX
+                                               : (left.step > NARROW_STEP_MAX ? NARROW_STEP_MAX : left.step));
+    const int32_t rs =
+        (int32_t)(right.step < -NARROW_STEP_MAX ? -NARROW_STEP_MAX
+                                                : (right.step > NARROW_STEP_MAX ? NARROW_STEP_MAX : right.step));
+    for (int y = y0; y < y1; y++) {
+        fill_row(target, f, row, y, first_pixel32(lx), first_pixel32(rx) - 1);
+        lx += ls;
+        rx += rs;
+        step_row(f, row);
+    }
+}
 
-        int x_first = fast_ceil(clampf(left, -1.0f, right_limit) - 0.5f);
-        int x_last = fast_ceil(clampf(right, -1.0f, right_limit) - 0.5f) - 1;
-        if (x_first < 0) {
-            x_first = 0;
-        }
-        if (x_last > last_column) {
-            x_last = last_column;
-        }
-        if (x_first > x_last) {
-            continue;
-        }
-        if (flat) {
-            float_fill_flat_span(target, y, x_first, x_last, flat_z, flat_color);
-        } else {
-            float_fill_span(target, &g, y, x_first, x_last);
-        }
+static void
+walk64(const span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge_t left,
+       edge_t right) {
+    for (int y = y0; y < y1; y++) {
+        fill_row(target, f, row, y, first_pixel(left.x), first_pixel(right.x) - 1);
+        left.x += left.step;
+        right.x += right.step;
+        step_row(f, row);
+    }
+}
+
+static void
+walk(const span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge_t left, edge_t right,
+     bool narrow) {
+    if (y0 >= y1) {
+        return;
+    }
+    if (narrow) {
+        walk32(target, f, row, y0, y1, left, right);
+    } else {
+        walk64(target, f, row, y0, y1, left, right);
     }
 }
 
@@ -392,17 +276,14 @@ span_raster_triangle(const span_target_t* target, const span_vertex_t* a, const 
 
     const float lo_x = a->x < b->x ? (a->x < c->x ? a->x : c->x) : (b->x < c->x ? b->x : c->x);
     const float hi_x = a->x > b->x ? (a->x > c->x ? a->x : c->x) : (b->x > c->x ? b->x : c->x);
-    if (lo_x < -FIXED_COORD_LIMIT || hi_x > FIXED_COORD_LIMIT || v0->y < -FIXED_COORD_LIMIT
-        || v2->y > FIXED_COORD_LIMIT) {
-        float_triangle(target, a, b, c);
-        return;
-    }
     const bool flat = y_end - y_first <= FLAT_MAX_ROWS && hi_x - lo_x <= FLAT_MAX_WIDTH;
 
-    const int y_anchor = fast_ceil(v0->y - 0.5f);
+    /* Attributes anchor at the triangle's first row, or at screen row 0 for
+     * one starting above the screen: never at a window's own edge. */
+    const int y_anchor = fast_ceil(clampf(v0->y, -1.0f, bottom) - 0.5f);
     int x_origin = fast_ceil(lo_x - 0.5f);
     x_origin = x_origin < 0 ? 0 : x_origin;
-    gradients_t g;
+    gradients_t g = {0};
     uint16_t flat_z = 0;
     gfx_color_t flat_color = 0;
     if (flat) {
@@ -418,43 +299,32 @@ span_raster_triangle(const span_target_t* target, const span_vertex_t* a, const 
         return;
     }
 
-    /* The long edge v0-v2 runs the whole height; the short side is v0-v1
-     * above v1 and v1-v2 below it. */
+    /* The long edge v0-v2 runs the whole height, on the same side all the
+     * way down; the short side is v0-v1 above v1 and v1-v2 below it. */
     const int y_mid = fast_ceil(clampf(v1->y, top, bottom) - 0.5f);
-    edge_t long_edge = edge_at(v0, v2, y_first);
-    edge_t short_edge = y_first < y_mid ? edge_at(v0, v1, y_first) : edge_at(v1, v2, y_first);
-    int32_t row[ATTRIBUTES];
+    const int split = y_mid < y_first ? y_first : (y_mid > y_end ? y_end : y_mid);
+    const float long_x_at_v1 = v2->y > v0->y ? v0->x + (v1->y - v0->y) * (v2->x - v0->x) / (v2->y - v0->y) : v0->x;
+    const bool long_on_left = long_x_at_v1 < v1->x;
+    const bool narrow = lo_x > -NARROW_LIMIT && hi_x < NARROW_LIMIT && v0->y > -NARROW_LIMIT && v2->y < NARROW_LIMIT;
+
+    int32_t row[ATTRIBUTES] = {0};
     if (!flat) {
         for (int k = 0; k < ATTRIBUTES; k++) {
             row[k] = y_first == y_anchor ? g.base[k] : (int32_t)(g.base[k] + (int64_t)(y_first - y_anchor) * g.dy[k]);
         }
     }
-    const int last_column = target->width - 1;
+    const fill_t f = {flat, flat_z, flat_color, &g};
 
-    for (int y = y_first; y < y_end; y++) {
-        if (y == y_mid && y != y_first) {
-            short_edge = edge_at(v1, v2, y);
-        }
-        const int32_t left = long_edge.x < short_edge.x ? long_edge.x : short_edge.x;
-        const int32_t right = long_edge.x < short_edge.x ? short_edge.x : long_edge.x;
-        int x_first = first_pixel(left);
-        int x_last = first_pixel(right) - 1;
-        x_first = x_first < 0 ? 0 : x_first;
-        x_last = x_last > last_column ? last_column : x_last;
-
-        if (x_first <= x_last && span_raster_stop_after != 2) {
-            if (flat) {
-                fill_flat_span(target, y, x_first, x_last, flat_z, flat_color);
-            } else {
-                fill_span(target, &g, row, y, x_first, x_last);
-            }
-        }
-        long_edge.x += long_edge.step;
-        short_edge.x += short_edge.step;
-        if (!flat) {
-            for (int k = 0; k < ATTRIBUTES; k++) {
-                row[k] += g.dy[k];
-            }
-        }
+    const edge_t long_top = edge_at(v0, v2, y_first);
+    if (y_first < split) {
+        const edge_t short_top = edge_at(v0, v1, y_first);
+        walk(target, &f, row, y_first, split, long_on_left ? long_top : short_top, long_on_left ? short_top : long_top,
+             narrow);
+    }
+    if (split < y_end) {
+        const edge_t long_mid = edge_at(v0, v2, split);
+        const edge_t short_bottom = edge_at(v1, v2, split);
+        walk(target, &f, row, split, y_end, long_on_left ? long_mid : short_bottom,
+             long_on_left ? short_bottom : long_mid, narrow);
     }
 }
