@@ -48,7 +48,7 @@ still pays for both compilations.
 
 `autana selftest` builds, flashes and runs every suite under the device
 lock, from any shell including Git Bash. For a markdown report instead of
-a pass/fail line, use one of the report scripts:
+a pass/fail line, use the report script, or an app's own:
 
 ```sh
 ./launcher/tools/quality/report_test_results.sh                    # pass/fail for every suite  -> tools/results/
@@ -60,8 +60,8 @@ and hands the work to `launcher/tools/device/device_report.sh`, which
 builds the diagnostics variant and then flashes it and captures the run
 under one held lock - through `device.py selftest` for a report on every
 suite, or `device.py batch --runs 1` for a report on one - writes a markdown
-report, and reflashes the release
-firmware afterwards unless given `--no-restore`. A report script takes its
+report, and reflashes the release firmware afterwards unless given
+`--no-restore`. A report script takes its
 board from `AUTANA_BOARD`, as `autana` does, else the only board plugged in;
 its one positional is the report's own path, ending in `.md`. A report script
 differs from its siblings only in what it declares — capture timeout, which
