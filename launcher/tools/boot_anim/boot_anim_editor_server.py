@@ -98,6 +98,8 @@ ENGINE_DIR = os.path.dirname(LAUNCHER_DIR)
 # the board's lock like every autana command rather than fight it for the port.
 sys.path.insert(0, os.path.join(ENGINE_DIR, "scripts", "device"))
 import device  # noqa: E402
+
+FLASH_VARIANT = "dev"
 MAIN_DIR = os.path.join(LAUNCHER_DIR, "main")
 SMALL3DLIB_DIR = os.path.join(LAUNCHER_DIR, "components", "small3dlib", "include")
 MICROUI_DIR = os.path.join(LAUNCHER_DIR, "components", "microui", "include")
@@ -525,7 +527,7 @@ class Renderer:
                 500, "no bash.exe found - build.sh needs Git Bash "
                 "(see docs/Testing-Guide.md). The timeline files were "
                 "still written to main/boot/ above.")
-        commands = device.flash_commands(bash, ENGINE_DIR, "dev")
+        commands = device.flash_commands(bash, ENGINE_DIR, FLASH_VARIANT)
         build_command = commands[0]
         for command in commands:
             if not os.path.isfile(command[1]):
@@ -583,8 +585,7 @@ class Renderer:
             try:
                 device.flash_script(
                     device.device_lock.LockStore(), board, "boot-anim-editor",
-                    "boot anim preview flash", commands,
-                    device.build_directory(ENGINE_DIR, "dev"), 300,
+                    "boot anim preview flash", bash, ENGINE_DIR, FLASH_VARIANT, 300,
                     cwd=LAUNCHER_DIR, stdin=subprocess.DEVNULL, stdout=output,
                     stderr=subprocess.STDOUT, timeout=BUILD_FLASH_TIMEOUT_S)
             except subprocess.CalledProcessError as error:

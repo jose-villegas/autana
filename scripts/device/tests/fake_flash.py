@@ -1,6 +1,6 @@
 """Stand-ins for build.sh and flash_image.sh as device.run_to_end() meets
 them: the build leaves an ESP-IDF-shaped image in its variant's build
-directory, the write prints the BUILD_ID of the snapshot it was handed."""
+directory, the write notes in its log which snapshot it was handed."""
 
 from pathlib import Path
 
@@ -60,9 +60,7 @@ def scripts(build_id="abc", build=None, write=None, calls=None):
             return None
         if write is not None:
             return write(command, lost=lost, **options)
-        image = Path(command[-1])
-        options["stdout"].write(b"BUILD_ID=" + (image / "build_id.txt").read_bytes().strip()
-                                + b"\n")
+        options["stdout"].write(b"wrote " + (Path(command[-1]) / "build_id.txt").read_bytes())
         return None
     return run
 

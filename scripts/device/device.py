@@ -865,6 +865,12 @@ def script_environment(environment=None):
     return environment
 
 
+def new_image_directory():
+    """A snapshot's own folder: private, uniquely named, outside the records,
+    and removed by its owner once the write is done or abandoned."""
+    return Path(tempfile.mkdtemp(prefix="autana-image-"))
+
+
 def build_snapshot(build, build_dir, image_dir, **popen):
     """Runs `build` and snapshots its image, holding the build directory
     throughout and no board lock at all. Returns the build id."""
@@ -900,18 +906,22 @@ def write_snapshot(held, write, image_dir, **popen):
     run_to_end(write + [Path(image_dir).as_posix()], held.lost, env=environment, **popen)
 
 
-def flash_script(store, board, owner, purpose, commands, build_dir, wait, **popen):
-    """A flash for a caller outside device.py, from flash_commands()'s pair
-    and the variant's build_directory(): finds the board (`board`, else
-    AUTANA_BOARD, else the only one), builds and snapshots with no lock held,
-    then queues for the board's lock and holds it only for the write. A
-    failed build never queues. Returns the board's serial."""
+def flash_script(store, board, owner, purpose, bash, worktree, variant, wait, **popen):
+    """A flash of `worktree`'s `variant` for a caller outside device.py: finds
+    the board (`board`, else AUTANA_BOARD, else the only one), builds and
+    snapshots with no lock held, then queues for the board's lock and holds
+    it only for the write. A failed build never queues. Returns the board's
+    serial."""
     board = board_for_lock(store, board)
-    build, write = commands
-    with tempfile.TemporaryDirectory(prefix="autana-image-") as image_dir:
-        build_snapshot(build, build_dir, image_dir, **popen)
+    build, write = flash_commands(bash, worktree, variant)
+    build_dir = build_directory(worktree, variant)
+    image = new_image_directory()
+    try:
+        build_snapshot(build, build_dir, image, **popen)
         with HeldLock(store, board, owner, purpose, wait, kind="flash") as held:
-            write_snapshot(held, write, image_dir, **popen)
+            write_snapshot(held, write, image, **popen)
+    finally:
+        shutil.rmtree(image, ignore_errors=True)
     return board
 
 
@@ -931,7 +941,9 @@ def flash_failure_line(text):
 
 class Built:
     """One flash's image, log and index entry: build_image() makes it with no
-    lock held, write_image() writes its snapshot under the lock."""
+    lock held, write_image() writes its snapshot under the lock. A context
+    manager: leaving it removes the snapshot if nothing wrote it, so an
+    abandoned flash leaves none behind."""
 
     def __init__(self, args, board, extra_flags):
         self.args = args
@@ -943,7 +955,8 @@ class Built:
         self.started_at = now()
         self.log, self.managed = resolve_capture_path(args.out, "flash-" + args.variant,
                                                       args.owner, self.started_at)
-        self.image = self.log.with_suffix(".image")
+        self.image = new_image_directory()
+        self.build_id = None
         self.build_dir = build_directory(self.worktree, args.variant)
         self.build, self.write = flash_commands(git_bash(), self.worktree, args.variant,
                                                 extra_flags)
@@ -959,6 +972,13 @@ class Built:
             raise RuntimeError(f"{Path(failed.cmd[1]).name} failed (exit {failed.returncode}): "
                                f"{flash_failure_line(text)} - flash log: {self.log}") from failed
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *unused):
+        shutil.rmtree(self.image, ignore_errors=True)
+        return False
+
     def record(self, build_id=None, error=None, acquired_at=None):
         record_capture(self.log, self.managed, started_at=self.started_at, board=self.board,
                        owner=self.args.owner, purpose=self.args.purpose, command="flash",
@@ -968,27 +988,28 @@ class Built:
 
 def build_image(args, board, extra_flags=()):
     """The first half of a flash, run before its lock is taken: builds into a
-    fresh log and snapshots the image beside it. A build that does not
-    finish is recorded as the flash's own end and raised."""
+    fresh log and snapshots the image. Returns the Built for its caller to
+    enter; a build that does not finish is recorded as the flash's own end,
+    its snapshot removed, and raised."""
     built = Built(args, board, extra_flags)
     error = None
-    done = False
     try:
-        built.run(lambda **popen: build_snapshot(built.build, built.build_dir, built.image,
-                                                 **popen), "wb")
-        done = True
-    except (OSError, RuntimeError) as caught:
-        error = str(caught)
+        built.build_id = built.run(
+            lambda **popen: build_snapshot(built.build, built.build_dir, built.image, **popen),
+            "wb")
+    except BaseException as caught:
+        if isinstance(caught, (OSError, RuntimeError)):
+            error = str(caught)
+        built.record(error=error)
+        built.__exit__(None, None, None)
         raise
-    finally:
-        if not done:
-            built.record(error=error)
     return built
 
 
 def write_image(built, store, board, held_lock=None):
     """Writes `built`'s snapshot under the lock - a fresh one, or `held_lock`
-    - and returns the build id flash_image.sh reported writing."""
+    - and returns its build id, the snapshot's own. The snapshot is gone
+    afterwards, written or not."""
     build_id = None
     error = None
     held = None
@@ -999,17 +1020,15 @@ def write_image(built, store, board, held_lock=None):
             built.run(lambda **popen: write_snapshot(held, built.write, built.image, **popen),
                       "ab")
             require_live_lock()
-            written = latest_build_id_from_bytes(Path(built.log).read_bytes())
-            if not written:
-                raise RuntimeError("the flash log has no BUILD_ID line")
-            if not store.set_expected_build_id(board, held.held["token"], written):
+            if not store.set_expected_build_id(board, held.held["token"], built.build_id):
                 raise LockLost()
-            build_id = written
-            print("flashed BUILD_ID=" + written + " (esptool hash verified; boot not verified)")
+            build_id = built.build_id
+            print("flashed BUILD_ID=" + build_id + " (esptool hash verified; boot not verified)")
     except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
         error = str(caught)
         raise
     finally:
+        built.__exit__(None, None, None)
         built.record(build_id=build_id, error=error,
                      acquired_at=held.held["acquired_at"] if held else None)
     return build_id
@@ -1073,8 +1092,8 @@ def selftest(args, store, board):
     flash_args = argparse.Namespace(owner=args.owner, purpose=args.purpose + " (flash)",
                                     wait=args.wait, worktree=args.worktree,
                                     variant="diag", out=None)
-    built = build_image(flash_args, board, extra_flags)
-    with HeldLock(store, board, args.owner, args.purpose, args.wait, kind="selftest") as held:
+    with build_image(flash_args, board, extra_flags) as built, \
+            HeldLock(store, board, args.owner, args.purpose, args.wait, kind="selftest") as held:
         build_id = write_image(built, store, board, held_lock=held)
         commit = git_commit(worktree)
 
@@ -1306,8 +1325,8 @@ def batch(args, store, board):
     flash_args = argparse.Namespace(owner=args.owner, purpose=args.purpose + " (flash)",
                                     wait=args.wait, worktree=args.worktree,
                                     variant=args.variant, out=None)
-    built = build_image(flash_args, board, extra_flags)
-    with HeldLock(store, board, args.owner, args.purpose, args.wait, kind="batch") as held:
+    with build_image(flash_args, board, extra_flags) as built, \
+            HeldLock(store, board, args.owner, args.purpose, args.wait, kind="batch") as held:
         build_id = write_image(built, store, board, held_lock=held)
         commit = git_commit(worktree)
         for run in range(1, args.runs + 1):
@@ -1558,7 +1577,8 @@ def main(argv=None):
             return 0
         if args.command == "flash":
             extra_flags = ["--perf-scope"] if args.perf_scope else []
-            write_image(build_image(args, board, extra_flags), store, board)
+            with build_image(args, board, extra_flags) as built:
+                write_image(built, store, board)
         elif args.command == "run-suite":
             return run_suite(args, store, board)
         elif args.command == "selftest":

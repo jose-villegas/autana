@@ -12,9 +12,7 @@
 #   IDF_EXPORT     ESP-IDF's export script, as for build.sh.
 #
 # esptool writes the snapshot directly - never `idf.py flash`, whose target
-# rebuilds first and writes whatever the build directory holds by then. The
-# BUILD_ID it prints is the snapshot's own, so the id device.py records is the
-# id written.
+# rebuilds first and writes whatever the build directory holds by then.
 #
 # This opens the board's serial port, which is why it lives in
 # scripts/device/. It refuses unless AUTANA_DEVICE_LOCK_TOKEN is the live
@@ -75,5 +73,4 @@ BUILD_ID=$(tr -d '\r\n' < "$IMAGE_DIR/build_id.txt")
 echo "=== Writing $BUILD_ID to $COM_PORT ==="
 idf_in "$IMAGE_DIR" python -m esptool --chip esp32s3 -p "$COM_PORT" -b 460800 \
     --before default_reset --after hard_reset write_flash @flash_args
-echo "BUILD_ID=$BUILD_ID"
 echo "=== Done - $BUILD_ID is on the device ==="
