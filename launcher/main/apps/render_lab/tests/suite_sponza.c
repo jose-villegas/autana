@@ -202,11 +202,54 @@ test_the_flythrough_keeps_clear_of_every_triangle(void) {
     check_the_flythrough_keeps_clear_of_every_triangle(&sponza_lite_mesh);
 }
 
+/* The fraction of the picture covered at `t_ms` into the flythrough. */
+static float
+share_covered_at(const r3d_lit_frame_t* frame, uint32_t t_ms) {
+    r3d_lit_view_t view;
+    sponza_view_at(&view, t_ms, frame->mesh->position_scale, 0);
+    r3d_lit_frame_render(frame, &view);
+    const int pixels = frame->width * frame->height;
+    int covered = 0;
+    for (int i = 0; i < pixels; i++) {
+        covered += frame->depth[i] != 0;
+    }
+    return (float)covered / (float)pixels;
+}
+
+/* The camera stays inside the building, so on average walls, floor and
+ * galleries fill well over nine tenths of the picture (0.72 at the least,
+ * looking up at the sky). Wound the wrong way round, the same bake shows
+ * only the building's far sides, about 0.6. */
+static void
+check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
+    r3d_lit_frame_t frame = {.mesh = mesh, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
+    void* scratch = heap_caps_malloc(r3d_lit_frame_scratch_bytes(mesh, frame.width, frame.height),
+                                     MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    TEST_ASSERT_NOT_NULL(scratch);
+    r3d_lit_frame_use_scratch(&frame, scratch);
+    const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
+    float sum = 0.0f;
+    int samples = 0;
+    for (uint32_t t = 0; t < period; t += 5000) {
+        sum += share_covered_at(&frame, t);
+        samples++;
+    }
+    heap_caps_free(scratch);
+    TEST_ASSERT_GREATER_THAN_FLOAT_MESSAGE(0.85f, sum / (float)samples, "the flythrough sees mostly sky");
+}
+
+static void
+test_the_flythrough_sees_mostly_building(void) {
+    check_the_flythrough_sees_mostly_building(&sponza_mesh);
+    check_the_flythrough_sees_mostly_building(&sponza_lite_mesh);
+}
+
 static void
 run_sponza_suite(void) {
     RUN_TEST(test_both_bakes_have_the_structure_the_pipeline_relies_on);
     RUN_TEST(test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps);
     RUN_TEST(test_the_flythrough_keeps_clear_of_every_triangle);
+    RUN_TEST(test_the_flythrough_sees_mostly_building);
 }
 
 SUITE_REGISTER(run_sponza_suite);
