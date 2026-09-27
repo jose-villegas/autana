@@ -338,19 +338,24 @@ snap_pose_on_screen(void) {
     return moved;
 }
 
+static bool
+strips_run_by_column(ridge_vector_t pose) {
+    const int64_t across = abs(pose.down_x);
+    const int64_t down = abs(pose.down_y);
+    if (!ridge->painted) {
+        return down >= across;
+    }
+    if (ridge->by_column) {
+        return across * 1000 <= down * AXIS_SWITCH_SLOPE;
+    }
+    return down * 1000 > across * AXIS_SWITCH_SLOPE;
+}
+
 static void
 raster_boundaries(void) {
     const bool was_by_column = ridge->by_column;
     const ridge_vector_t pose = ridge->pose_on_screen;
-    const int64_t across = abs(pose.down_x);
-    const int64_t down = abs(pose.down_y);
-    if (!ridge->painted) {
-        ridge->by_column = down >= across;
-    } else if (ridge->by_column) {
-        ridge->by_column = across * 1000 <= down * AXIS_SWITCH_SLOPE;
-    } else {
-        ridge->by_column = down * 1000 > across * AXIS_SWITCH_SLOPE;
-    }
+    ridge->by_column = strips_run_by_column(pose);
     ridge->axis_on_screen = ridge->painted && was_by_column != ridge->by_column;
     ridge->strips = ridge->by_column ? GFX_WIDTH : GFX_HEIGHT;
     ridge->down_sign = (ridge->by_column ? pose.down_y : pose.down_x) >= 0 ? 1 : -1;
@@ -933,33 +938,35 @@ repaint_gradient_turn(ridge_vector_t was) {
     }
 }
 
+/* Every fourth pixel of row `y` from column `c`, repainted. */
+static void
+paint_dissolve_row(int y, int c) {
+    gfx_color_t* const row = gfx_framebuffer() + (y * GFX_WIDTH);
+    gfx_color_t scratch[GFX_WIDTH];
+    if (!ridge->by_column) {
+        paint_row_into(scratch, y, 0, GFX_WIDTH);
+    }
+    int first = GFX_WIDTH;
+    int last = 0;
+    for (int x = c; x < GFX_WIDTH; x += 4) {
+        const gfx_color_t color = ridge->by_column ? column_pixel(x, y) : scratch[x];
+        if (row[x] != color) {
+            row[x] = color;
+            first = x < first ? x : first;
+            last = x + 1;
+        }
+    }
+    if (first < last) {
+        gfx_mark_dirty(first, y, last - first, 1);
+    }
+}
+
 static void
 paint_dissolve_level(int level) {
-    gfx_color_t* const framebuffer = gfx_framebuffer();
-    for (int r = 0; r < 4; r++) {
-        for (int c = 0; c < 4; c++) {
-            if (dissolve_order[r][c] != level) {
-                continue;
-            }
-            for (int y = r; y < GFX_HEIGHT; y += 4) {
-                gfx_color_t* const row = framebuffer + (y * GFX_WIDTH);
-                gfx_color_t scratch[GFX_WIDTH];
-                if (!ridge->by_column) {
-                    paint_row_into(scratch, y, 0, GFX_WIDTH);
-                }
-                int first = GFX_WIDTH;
-                int last = 0;
-                for (int x = c; x < GFX_WIDTH; x += 4) {
-                    const gfx_color_t color = ridge->by_column ? column_pixel(x, y) : scratch[x];
-                    if (row[x] != color) {
-                        row[x] = color;
-                        first = x < first ? x : first;
-                        last = x + 1;
-                    }
-                }
-                if (first < last) {
-                    gfx_mark_dirty(first, y, last - first, 1);
-                }
+    for (int cell = 0; cell < 16; cell++) {
+        if (dissolve_order[cell / 4][cell % 4] == level) {
+            for (int y = cell / 4; y < GFX_HEIGHT; y += 4) {
+                paint_dissolve_row(y, cell % 4);
             }
         }
     }
