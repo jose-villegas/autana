@@ -37,6 +37,7 @@ launcher/
 │   ├── quality/        complexity and MISRA gates, report_test_results.sh
 │   ├── boot_anim/      the boot animation editor and its perf report
 │   ├── render/         the host render harness and its scenes
+│   ├── r3d/            offline mesh baking for render/'s r3d renderer
 │   ├── sweeps/         build and capture sweeps
 │   └── tests/          regression tests for these tools
 ├── test/               the host runner and the shell's own suites
@@ -54,10 +55,16 @@ launcher/
     │   ├── boot_anim_curve.h   GENERATED - see tools/gen/gen_zeta_curve.py
     │   ├── boot_anim_image.h   GENERATED - see tools/gen/gen_boot_anim_image.py
     │   └── boot_anim_timeline.h GENERATED - from boot_anim_timeline.json
-    ├── render/         3D transform, clip and projection shared by boot and apps
+    ├── render/         3D transform, clip and projection, and the r3d rasterizer
     │   ├── r3d_project.h       camera-space near clip, perspective (host-tested)
     │   ├── r3d_camera.h        camera description, upright roll, viewport fit (host-tested)
-    │   └── r3d_ray.h           float ray camera for a tracer        (host-tested)
+    │   ├── r3d_vec3f.h         the float 3-vector                   (host-tested)
+    │   ├── r3d_ray.h           float ray camera, the quarter-turn mapping (host-tested)
+    │   ├── r3d_span.{h,c}      depth-tested Gouraud spans into a window of rows (host-tested)
+    │   ├── r3d_lit_mesh.h      a mesh with light baked into vertex colours
+    │   ├── r3d_lit_pipeline.{h,c} cull, transform and near clip for that mesh (host-tested)
+    │   ├── r3d_lit_frame.{h,c} one such frame split across both cores (host-tested)
+    │   └── r3d_path.{h,c}      a looping Catmull-Rom camera path    (host-tested)
     ├── board/          the one board's pins and peripherals
     │   ├── board.h             what any board must provide
     │   └── board_esp32s3.c     this board's answer
@@ -135,7 +142,7 @@ launcher/
     │   └── console_inject.c, console_inject_parse.h  TOUCH/IMU/TAP/PRESS/DRAG/BUTTON (host-tested)
     └── apps/           one folder per app - see Building-an-App.md
         ├── input_lab/  touch precision and bezel measurement; development builds only
-        ├── render_lab/ a software rasterizer, wireframe and ray-traced scenes
+        ├── render_lab/ rasterized, wireframe, ray-traced and baked-light scenes
         ├── diagnostics/  bench tool; development builds only
         └── sand/       the falling-sand sandbox
 ```
@@ -254,7 +261,7 @@ flowchart TB
     end
     subgraph T5[" "]
         Gfx["gfx/<br/><i>the one framebuffer</i>"]
-        Render["render/<br/><i>3D transform, clip, projection</i>"]
+        Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
         Display["display/<br/><i>orientation, with hysteresis</i>"]
         Input["input/<br/><i>touch, gesture, tilt</i>"]
     end
@@ -410,6 +417,36 @@ Three files, split by what can be tested where:
 The suite checks the shipped table against the mathematics rather than against
 the generator - the fourth rule under [Generated
 sources](#generated-sources).
+
+## A lit-mesh frame on both cores
+
+`render/r3d_lit_frame.h` draws a mesh whose light is baked into vertex
+colours at half the panel's resolution, then doubles it into the
+framebuffer. The work before the framebuffer runs in `update()`, overlapped
+with sending the previous frame; each stage is split between the two cores,
+core 1's half dispatched through `util/job.h` (inline when core 1 is busy).
+
+```mermaid
+sequenceDiagram
+    participant C0 as core 0, shell and scene
+    participant J as core 1 job worker
+    participant P as present on core 1
+    C0->>P: gfx_present_begin() sends frame N-1
+    Note over C0: update(), cull every cluster
+    C0->>J: transform the second half of the visible clusters
+    Note over C0: transform the first half
+    J-->>C0: job_wait()
+    Note over C0: pick the row that balances the triangles
+    C0->>J: clear depth and draw the rows above it
+    Note over C0: clear depth and draw the rows below it
+    J-->>C0: job_wait()
+    C0->>P: gfx_present_wait()
+    Note over C0: frame()
+    C0->>J: double the top half into the framebuffer
+    Note over C0: double the bottom half
+    J-->>C0: job_wait()
+    Note over C0,P: frame N is presented on the next pass
+```
 
 ## The frame loop
 
