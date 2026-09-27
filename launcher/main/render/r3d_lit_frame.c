@@ -6,6 +6,8 @@
 
 #include "util/job.h"
 
+#pragma GCC diagnostic error "-Wdouble-promotion"
+
 #define JOB_WAIT_MS   1000
 #define SPLIT_BUCKETS 64
 
