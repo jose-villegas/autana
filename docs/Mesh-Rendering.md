@@ -48,8 +48,8 @@ flowchart LR
 ```
 
 A caller builds the view, then calls `r3d_lit_frame_render()`, and
-`r3d_lit_frame_double()` when it set `doubled`; the stages inside are public for a caller that
-schedules them itself.
+`r3d_lit_frame_double()` when it set `doubled`; the stages inside are
+public for a caller that schedules them itself.
 
 The stages are split so two cores can share them. Transforming disjoint
 cluster lists writes disjoint vertex ranges, and drawing touches only the
