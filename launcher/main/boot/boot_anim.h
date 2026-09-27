@@ -12,8 +12,8 @@
  *
  * What is drawn: a floor gridded with the complex plane zeta's VALUE lives
  * in, t straight up for the height up the critical line, and
- * zeta(1/2 + it) for t from 0 to 35 plotted at height t. The five points
- * where it touches the t axis are the first five nontrivial zeros.
+ * zeta(1/2 + it) for t from 0 to 126 plotted at height t, touching the t
+ * axis at each nontrivial zero in that range (BOOT_ANIM_ZEROS of them).
  *
  * A CAMERA and a SPACE, both keyframed: two independent small3dlib
  * transforms from boot_anim_keyframes[], generated from

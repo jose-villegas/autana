@@ -1,4 +1,4 @@
-why does my app freeze the frame loop when I call vTaskDelay	docs/Launcher-Architecture.md	There is exactly one frame loop, and it belongs to the shell
+why does my app freeze the frame loop when I call vTaskDelay	docs/Firmware-Architecture.md	There is exactly one frame loop, and it belongs to the shell
 how do I register a new app with APP_REGISTER	docs/Building-an-App.md	Registration
 what does CONFIG_LAUNCHER_SELFTEST actually gate	docs/Build-Variants.md	Development-only instrumentation is its own flag, not SELFTEST
 flash diagnostics build	docs/tools/Autana-CLI.md	Build and flash
@@ -8,9 +8,9 @@ why is my host test failing but the device suite passes	docs/Testing-Guide.md	Th
 how do I make a tunable I can change live on the device	docs/tools/Live-Tuning.md	Making something tunable
 clang-format version mismatch breaks CI	docs/C-Style-Guide.md	One formatter version
 why can't a gfx file mention a specific app name in a comment	.dev/AGENTS.md	Includes are layer-qualified
-why is LVGL not used here	docs/Launcher-Architecture.md	Why microui, not LVGL
-touch taps feel laggy in the UI	docs/Launcher-Architecture.md	Two things to know before touching it
-how does dirty-band redraw skip repainting unchanged microui windows	docs/Launcher-Architecture.md	Immediate mode versus dirty bands
+why is LVGL not used here	docs/Firmware-Architecture.md	Why microui, not LVGL
+touch taps feel laggy in the UI	docs/Firmware-Architecture.md	Two things to know before touching it
+how does dirty-band redraw skip repainting unchanged microui windows	docs/Firmware-Architecture.md	Immediate mode versus dirty bands
 one byte per sand grid cell, what fields does it hold	docs/sand/Architecture.md	The grid, in one byte
 adding a new material to the sand sim checklist	docs/sand/Adding-a-Material.md	Adding a Material
 how does water flow and cross-flow pressure work in sand	docs/sand/Sand-Simulation.md	Cross-flow: a cheap stand-in for pressure

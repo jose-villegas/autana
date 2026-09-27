@@ -45,7 +45,7 @@ discovery narrative lives in [`../sand/`](../sand/) instead:
 
 ## Related
 
-- [`../Launcher-Architecture.md`](../Launcher-Architecture.md) — how the
+- [`../Firmware-Architecture.md`](../Firmware-Architecture.md) — how the
   shell and its apps are built on top of the hardware facts here.
 - [`../sand/README.md`](../sand/README.md) — the falling-sand app: how it
   works today (`Sand-Simulation.md`) and how to add a material

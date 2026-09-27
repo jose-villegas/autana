@@ -993,7 +993,7 @@ Principles, each of which is already a repo habit:
 - **Data is baked, not parsed.** Textures, colormaps, maps, timelines and
   fonts go through generators into headers with the regenerate command
   in their banner, validated by the generator and tested independently
-  (the generated-sources convention in `docs/Launcher-Architecture.md`).
+  (the generated-sources convention in `launcher/tools/gen/README.md`).
 - **Take bulk memory from the [app arena](Building-an-App.md#app-memory)
   at `enter()`, nothing in between.**
 - **One board, `board/` binds the facts.** `board/board.h` and
@@ -1039,7 +1039,7 @@ cheapest path to something that is unmistakably a game.
   with its own per-band z-buffer — anything more is redundant state to
   keep in sync. A full-screen z-buffer in PSRAM is specifically ruled
   out: per-pixel access to it pays PSRAM's read cost on every touch (3.3).
-  LVGL is ruled out in Launcher-Architecture.md regardless.
+  LVGL is ruled out in Firmware-Architecture.md regardless.
 - **Do not swizzle the framebuffer into tiles.** Parked on purpose in
   Display-and-Rendering.md; the dirty-region grid already shipped gets
   most of that transfer-contiguity property without touching every draw
@@ -1145,7 +1145,7 @@ what is making it:
   retained buffer for retained apps, or the internal-SRAM band ring for
   full-redraw renderers, as a gfx-owned mode), one frame loop owned by
   the shell, apps as callbacks that draw and return
-  ([Launcher-Architecture.md](Launcher-Architecture.md)).
+  ([Firmware-Architecture.md](Firmware-Architecture.md)).
 - Anything graduated out of an app or the boot animation needs a second
   consumer and a reference test, or it stays where it was.
 - Update the docs a change makes wrong in the same change that makes them
@@ -1155,7 +1155,7 @@ what is making it:
 
 ## Related
 
-- [Launcher-Architecture.md](Launcher-Architecture.md) — the three rules
+- [Firmware-Architecture.md](Firmware-Architecture.md) — the three rules
   the framebuffer modes have to respect.
 - [notes/Display-and-Rendering.md](notes/Display-and-Rendering.md) — every
   bus and dirty-tracking number cited above, and the parked ideas.
