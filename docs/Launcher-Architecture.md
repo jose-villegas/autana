@@ -96,7 +96,8 @@ launcher/
     │   ├── control_center_layout.json, control_center_layout_generated.h
     │   │                       its authored rects, and the baked table
     │   ├── ui_ridge.{h,c}      the launcher's backdrop: the ridge, level with the
-    │   │                       horizon, waved by touch and shaking
+    │   │                       horizon, waved by touch and shaking; its
+    │   │                       reference look is design/launcher/backdrop/
     │   ├── ridge_motion.h      its breathing, its wave, the wave's momentum (host-tested)
     │   ├── system_navigation.{h,c}  which system screen is up (host-tested)
     │   └── ridge_curve_generated.h  Cerro Autana's ridge, a height per column of
