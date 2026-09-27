@@ -23,6 +23,7 @@
 #include "apps/render_lab/sponza_flythrough.h"
 #include "apps/render_lab/sponza_mesh_generated.h"
 #include "gfx/gfx.h"
+#include "util/job.h"
 
 static const char* TAG = "sponza_perf";
 
@@ -89,6 +90,52 @@ clear_and_draw(const lit_frame_t* frame, const lit_view_t* view, int visible) {
     lit_draw(frame->mesh, view, frame->visible, visible, frame->cs, frame->rows, &target);
 }
 
+typedef struct {
+    const lit_frame_t* frame;
+    const lit_view_t* view;
+    int visible, row0, row1;
+    int64_t us;
+} half_job_t;
+
+static half_job_t core1_result;
+
+static void
+draw_half(half_job_t* j) {
+    const lit_frame_t* f = j->frame;
+    const size_t offset = (size_t)j->row0 * (size_t)f->width;
+    const int64_t start = esp_timer_get_time();
+    memset(f->depth + offset, 0, (size_t)(j->row1 - j->row0) * (size_t)f->width * sizeof(uint16_t));
+    const span_target_t target = {f->color + offset, f->depth + offset, f->width, j->row0, j->row1};
+    lit_draw(f->mesh, j->view, f->visible, j->visible, f->cs, f->rows, &target);
+    j->us = esp_timer_get_time() - start;
+}
+
+static void
+draw_half_on_core1(void* ctx) {
+    core1_result = *(const half_job_t*)ctx;
+    draw_half(&core1_result);
+}
+
+/* Each half of the rows alone, then both at once on the two cores: equal
+ * times mean the halves are independent; longer times together mean the
+ * cores are waiting on something they share. */
+static void
+report_core_contention(const lit_frame_t* frame, const lit_view_t* view, int visible) {
+    const int mid = frame->height / 2;
+    half_job_t top = {frame, view, visible, 0, mid, 0}, bottom = {frame, view, visible, mid, frame->height, 0};
+    draw_half(&top);
+    draw_half(&bottom);
+    ESP_LOGI(TAG, "contention: alone  top %6lldus  bottom %6lldus", (long long)top.us, (long long)bottom.us);
+    half_job_t together_top = top, together_bottom = bottom;
+    const int64_t start = esp_timer_get_time();
+    (void)job_run_core1(draw_half_on_core1, &together_top, sizeof together_top);
+    draw_half(&together_bottom);
+    (void)job_wait(1000);
+    const int64_t wall = esp_timer_get_time() - start;
+    ESP_LOGI(TAG, "contention: at once top %6lldus  bottom %6lldus  wall %6lldus", (long long)core1_result.us,
+             (long long)together_bottom.us, (long long)wall);
+}
+
 void
 test_sponza_draw_stage_breakdown(void) {
     bench_t b;
@@ -107,6 +154,7 @@ test_sponza_draw_stage_breakdown(void) {
         ESP_LOGI(TAG, "stage, one core: %-22s %7lldus", names[stop], (long long)(esp_timer_get_time() - start));
     }
     span_raster_stop_after = 0;
+    report_core_contention(&b.frame, &view, visible);
 
     /* A view of nothing but sky: what a frame costs before any geometry. */
     lit_view_t empty;
