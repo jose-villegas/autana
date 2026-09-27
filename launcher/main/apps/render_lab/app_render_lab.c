@@ -14,6 +14,8 @@
 #include <string.h>
 
 #include "app.h"
+#include "app_arena.h"
+#include "build_variant.h"
 #include "gfx/gfx.h"
 #include "render_lab.h"
 #include "render_lab_mode_switch.h"
@@ -39,6 +41,10 @@ static const render_lab_scene_t* const scenes[] = {
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
+
+/* Where the running scene's arena memory starts: a scene switch and exit
+ * rewind to it, so each scene takes from the same spot. */
+static size_t scene_arena_mark;
 
 /* current_scene_index's own re-entry seed, a scene's key - NULL (the cube)
  * by default. Read only at enter(), the same contract render_lab_band_mode
@@ -151,6 +157,7 @@ void
 render_lab_enter(void) {
     current_scene_index = scene_index_for_key(render_lab_start_scene_key);
     enter_layout();
+    scene_arena_mark = app_arena_mark();
     current_scene()->enter();
     scene_title_remaining_ms = SCENE_TITLE_MS;
 
@@ -180,6 +187,7 @@ switch_layout(void) {
 static void
 switch_to_next_scene(void) {
     current_scene()->exit();
+    app_arena_rewind(scene_arena_mark);
     current_scene_index = (current_scene_index + 1) % SCENE_COUNT;
     render_lab_start_scene_key = current_scene()->key; /* keeps a later re-entry on this same scene */
     switch_layout(); /* the new scene's needs_full_framebuffer may differ from the old one's */
@@ -418,6 +426,7 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
 void
 render_lab_exit(void) {
     current_scene()->exit();
+    app_arena_rewind(scene_arena_mark);
     gfx_set_partial_clear(false);
     gfx_invalidate();
     gfx_mode_exit();
@@ -452,5 +461,14 @@ app_t app_render_lab = {
     .invalidate = render_lab_invalidate,
     .home_gesture = true,
 };
+
+#if CONFIG_LAUNCHER_SELFTEST
+/* A device suite's scene switch, the same exit, rewind and enter a menu tap
+ * runs. */
+void
+render_lab_test_next_scene(void) {
+    switch_to_next_scene();
+}
+#endif
 
 APP_REGISTER(app_render_lab);
