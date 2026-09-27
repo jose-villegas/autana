@@ -189,7 +189,12 @@ every pull request and every push to `main`: length beside code and header
 height (`scripts/gates/check_comment_length.py`), every citation resolving
 (`check_comment_symbols.py`), and no app named below `apps/`
 (`check_comment_layers.py`). The last two take their vocabulary from the tree
-itself, so neither needs updating when code moves.
+itself, so neither needs updating when code moves. A function the firmware
+calls but does not define resolves when ESP-IDF or its toolchain's C library
+declares it, read from the checkout at `IDF_PATH`. ESP-IDF counts for every
+chip it supports, so a name declared only for another chip passes too - the
+check's known limit. It runs inside the ESP-IDF image, and a run without
+ESP-IDF counts such names rather than failing on them.
 
 ### Names
 

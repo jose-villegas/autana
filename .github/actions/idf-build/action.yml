@@ -25,6 +25,9 @@ runs:
         key: idf-ccache-${{ inputs.cache-name }}-${{ github.sha }}
         restore-keys: idf-ccache-${{ inputs.cache-name }}-
 
+    # safe.directory: the container's root does not own the checkout, and
+    # autana finds the worktree it builds by asking git.
+    #
     # COMPILERCHECK=content: the release-v5.5 tag is rebuilt in place, and
     # hashing the compiler driver is cheap next to trusting the image to keep
     # its timestamps honest. MAXSIZE is about four times one variant's fresh
@@ -40,4 +43,6 @@ runs:
           -e CCACHE_DIR=/ccache
           -e CCACHE_MAXSIZE=150M
           -e CCACHE_COMPILERCHECK=content
-        command: ccache -z > /dev/null && ${{ inputs.command }} && ccache -s
+        command: >-
+          git config --global --add safe.directory "*"
+          && ccache -z > /dev/null && ${{ inputs.command }} && ccache -s

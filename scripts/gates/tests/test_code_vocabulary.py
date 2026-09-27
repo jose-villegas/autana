@@ -1,8 +1,10 @@
 """Regression tests for scripts/gates/code_vocabulary.py."""
 import pathlib
+import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 SCRIPTS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
@@ -110,6 +112,56 @@ class NamesRequireADefinitionTest(unittest.TestCase):
             self.write(root, "scripts/node_modules/lib/index.mjs", "const x = 'VENDORED_NAME';\n")
             vocab = code_vocabulary.vocabulary(str(root))
         self.assertNotIn("VENDORED_NAME", vocab.constants)
+
+    def test_a_shell_variable_counts_and_one_only_its_comment_names_does_not(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/tools/profile.sh",
+                       "# PROFILE_COMMENTED_ONLY is only named here\n"
+                       "PROFILE_FREE_BYTES=51200\n"
+                       'BASE="${PROFILE_GATE_BASE:-origin/main}"\n')
+            vocab = code_vocabulary.vocabulary(str(root))
+        self.assertIn("PROFILE_FREE_BYTES", vocab.constants)
+        self.assertIn("PROFILE_GATE_BASE", vocab.constants)
+        self.assertNotIn("PROFILE_COMMENTED_ONLY", vocab.constants)
+
+    def test_in_git_an_ignored_build_directory_is_not_read_and_tools_build_is(self):
+        # launcher/tools/build/ shares its name with a build directory, and
+        # a skip by name hid every script in it.
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, ".gitignore", "launcher/build/\n")
+            self.write(root, "launcher/build/generated.c", "void generated_only(void) {}\n")
+            self.write(root, "launcher/tools/build/flash.sh", "FLASH_BAUD=921600\n")
+            self.write(root, "launcher/main/new.c", "void not_yet_added(void) {}\n")
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "add", ".gitignore", "launcher/tools"], cwd=root, check=True)
+            vocab = code_vocabulary.vocabulary(str(root))
+        self.assertNotIn("generated_only", vocab.functions)
+        self.assertIn("FLASH_BAUD", vocab.constants)
+        self.assertIn("not_yet_added", vocab.functions)
+
+    def test_outside_git_every_file_but_a_skipped_directory_is_read(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/build/generated.c", "void generated_only(void) {}\n")
+            self.write(root, "launcher/main/a.c", "void real_function(void) {}\n")
+            vocab = code_vocabulary.vocabulary(str(root))
+        self.assertIn("real_function", vocab.functions)
+        self.assertNotIn("generated_only", vocab.functions)
+
+    def test_any_other_git_failure_raises_with_gits_message(self):
+        # In a container running as another user than the checkout's owner,
+        # git refuses the repository, and a silent fallback to the directory
+        # walk hid launcher/tools/build/ from the vocabulary.
+        refused = subprocess.CompletedProcess(
+            [], 128, "", "fatal: detected dubious ownership in repository at '/w'\n")
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/a.c", "void real_function(void) {}\n")
+            with mock.patch("subprocess.run", return_value=refused):
+                with self.assertRaisesRegex(RuntimeError, "dubious ownership"):
+                    code_vocabulary.vocabulary(str(root))
 
 
 if __name__ == "__main__":

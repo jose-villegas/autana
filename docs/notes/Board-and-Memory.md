@@ -58,6 +58,7 @@ driver, and do not add the gap yourself.
 ```mermaid
 flowchart LR
     subgraph PSRAM["PSRAM, 8 MB octal"]
+        ARENA["app arena, APP_ARENA_BYTES<br/>static, lent to the running app"]
         FB["framebuffer 322 KiB<br/>full-framebuffer mode only"]
     end
     subgraph SRAM["internal SRAM"]
@@ -73,7 +74,9 @@ In full-framebuffer mode (`BOARD_FRAMEBUFFER_CAPS`, `board.h`) the
 framebuffer is in PSRAM; band and indexed modes free it. How it reaches the
 panel is in [Gfx-and-Presentation.md](../Gfx-and-Presentation.md).
 `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps every allocation up to 64 KB
-in internal SRAM, sand's grids included.
+in internal SRAM, sand's grids included. The app arena (`main/app_arena.h`)
+is a static placed in PSRAM before the heap takes the rest, so the PSRAM heap
+is what `APP_ARENA_BYTES` leaves.
 
 | Measurement | Value | Source |
 |---|---|---|
@@ -136,7 +139,7 @@ it live.
 | ≤ 32 GB | FAT32 | yes |
 | > 32 GB | exFAT (`FF_FS_EXFAT 0`) | reformat to FAT32 first |
 
-8.3 filenames only (`CONFIG_FATFS_LFN_NONE`); 20 MHz (`SDMMC_FREQ_DEFAULT`), <!-- doc-citations: ignore CONFIG_FATFS_LFN_NONE -->
+8.3 filenames only (`CONFIG_FATFS_LFN_NONE`); 20 MHz (`SDMMC_FREQ_DEFAULT`),
 1-bit.
 
 ## Related
