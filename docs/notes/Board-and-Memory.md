@@ -58,7 +58,7 @@ driver, and do not add the gap yourself.
 ```mermaid
 flowchart LR
     subgraph PSRAM["PSRAM, 8 MB octal"]
-        ARENA["app arena 4 MiB<br/>static, lent to the running app"]
+        ARENA["app arena, APP_ARENA_BYTES<br/>static, lent to the running app"]
         FB["framebuffer 322 KiB<br/>full-framebuffer mode only"]
     end
     subgraph SRAM["internal SRAM"]
