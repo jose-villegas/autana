@@ -72,13 +72,17 @@ wrote and the flash log carries the build's `BUILD_ID=` line; `flash` then
 prints `flashed BUILD_ID=<id> (esptool hash verified; boot not verified)`.
 It proves the write, not the boot, for every variant. A flash is two
 scripts in one log: `launcher/tools/build/build_flash.sh` builds the image
-and opens no port, then `scripts/device/flash_image.sh` writes it. When
+and opens no port, so it runs before the lock is taken and other sessions
+keep the board meanwhile; then, under the lock,
+`scripts/device/flash_image.sh` writes it. A build that fails never queues
+for the board. When
 either fails, `flash` fails naming it, with the log's first error line (esptool's
 `Could not open COM3 ...`, say) and the log's path. What boots is proven
 only by a console that names it: a `selftest` or `batch` capture, which fails
 on any other `BUILD_ID`, or `autana buildid` on a development build.
 
-`batch` and `selftest` hold one lock across the flash and the capture. A
+`batch` and `selftest` build first, then hold one lock across the flash
+and the capture. A
 separate `flash` and `run-suite` take two locks, and another session can
 flash between them: `run-suite --expect-build-id <id>` fails if the board
 reports another build, but `autana suite` passes no id, so after a separate
@@ -93,9 +97,10 @@ sequenceDiagram
     participant Idf as idf.py and esptool
     participant Board as board
 
-    Dev->>Lock: take the board's lock
-    Dev->>Build: run
+    Dev->>Build: run, no lock held
     Build-->>Dev: exit status, log with BUILD_ID
+    Note over Dev,Build: a failed build ends here, never queued
+    Dev->>Lock: take the board's lock
     Dev->>Sh: run with AUTANA_DEVICE_LOCK_TOKEN and AUTANA_BOARD
     Sh->>Lock: check-token for AUTANA_BOARD
     Sh->>Sh: device.py resolve-port - AUTANA_BOARD's COM port now
@@ -178,7 +183,9 @@ epoch seconds; an estimate without enough history is `null`.
 Estimates come from `durations.jsonl` beside the lock files, one file shared
 by every checkout and session on the machine. Each held command records how
 long it held the board, nested `flash` and `run-suite` inside `batch` or
-`selftest` included. A command that raises, gets an error reply, or loses its
+`selftest` included. A `flash` holds the board only while it writes - its
+build runs before the lock - so its recorded duration, and the estimate a
+waiter behind it sees, is the write alone. A command that raises, gets an error reply, or loses its
 lock is recorded with its error and never counts. A suite that reports FAIL
 is a result, not a broken run - perf captures always carry their budget
 targets' FAILs - so its duration counts. An
@@ -220,8 +227,8 @@ port itself.
 
 ### Measuring: use `batch`, not a sequence of commands
 
-A measurement is `batch`: it takes the lock once, builds and flashes once,
-captures every suite `--runs` times, and writes one summary across all runs.
+A measurement is `batch`: it builds once, then takes the lock once, flashes
+once, captures every suite `--runs` times, and writes one summary across all runs.
 `autana batch` calls it the same way ([Autana-CLI.md](Autana-CLI.md)):
 
 ```powershell
