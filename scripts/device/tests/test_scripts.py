@@ -17,9 +17,12 @@ FOLDERS = ("scripts/device", "launcher/tools/build")
 
 
 def scripts():
-    listed = subprocess.run(["git", "ls-files", "--", *(f"{folder}/*.sh" for folder in FOLDERS)],
+    """Tracked and untracked alike: a new script is checked before its first
+    commit."""
+    listed = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard",
+                             "--", *(f"{folder}/*.sh" for folder in FOLDERS)],
                             cwd=ENGINE, capture_output=True, text=True, check=True)
-    return [ENGINE / line for line in listed.stdout.splitlines() if line]
+    return sorted({ENGINE / line for line in listed.stdout.splitlines() if line})
 
 
 class ScriptSyntaxTests(unittest.TestCase):
