@@ -275,7 +275,19 @@ main(int argc, char** argv) {
         }
     }
 
-    const int repeating = render_watch_finish();
+    /* However few frames the image needed, the scene goes on drawing until
+     * the watch has judged a whole window of it at rest. Nothing of these
+     * reaches the image. */
+    for (int i = frames; i < FRAME_WATCH_WARMUP + FRAME_WATCH_WINDOW; i++) {
+        frame.index = i;
+        frame.elapsed_ms = (uint32_t)i * dt_ms;
+        apply_input(scene, i, &frame.input);
+        render_watch_frame_begin();
+        scene->draw(&frame);
+        render_watch_frame_end();
+    }
+
+    const frame_watch_verdict_t verdict = render_watch_finish();
     free(console_path);
 
     if (video_path != NULL) {
@@ -307,9 +319,13 @@ main(int argc, char** argv) {
          * scene's own first stderr line, not this one. */
         fprintf(stderr, "RENDER %s %dx%d %ld\n", scene->name, size.width, size.height, size.bytes);
     }
-    if (repeating > 0) {
+    if (verdict.repeating > 0) {
         fprintf(stderr, "%s: %d call sites repeat frame after frame - see the FRAME_WATCH lines above\n", scene->name,
-                repeating);
+                verdict.repeating);
     }
-    return ok && repeating == 0 ? 0 : 1;
+    if (verdict.dropped > 0) {
+        fprintf(stderr, "%s: the frame watch had no room for %lu events, so it may have missed one\n", scene->name,
+                (unsigned long)verdict.dropped);
+    }
+    return ok && frame_watch_verdict_clean(verdict) ? 0 : 1;
 }

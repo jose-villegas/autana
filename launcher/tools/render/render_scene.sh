@@ -209,6 +209,14 @@ render_scene_render() {
                 echo "FAIL $scene_name/$_rs_label: wrote ${_rs_said:-nothing}, declared $_rs_want" >&2
                 exit 1
             fi
+            # Every render is judged by the frame watch (render_watch.h);
+            # one that says nothing about it was not.
+            _rs_judged=$(sed -n 's/^FRAME_WATCH judged \([0-9]*\) frames.*/\1/p' "$_rs_log")
+            if [ -z "$_rs_judged" ] || [ "$_rs_judged" -eq 0 ]; then
+                echo "FAIL $scene_name/$_rs_label: the frame watch judged no frames" >&2
+                exit 1
+            fi
+            echo "watched $scene_name/$_rs_label: $_rs_judged frames judged, none repeating"
             _rs_hash=$(render_scene_sha256 "$_rs_path")
             if [ "$_rs_pin_this" = 1 ]; then
                 printf '%s %s\n' "$_rs_label" "$_rs_hash" >> "$_rs_new"

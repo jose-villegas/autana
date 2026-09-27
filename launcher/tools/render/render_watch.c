@@ -169,7 +169,7 @@ render_watch_start(const char* binary, const char* console_path) {
         return false;
     }
     saved_stdout = watch_dup(watch_fileno(stdout));
-    const bool redirected = saved_stdout >= 0 && watch_dup2(watch_fileno(capture), watch_fileno(stdout)) == 0;
+    const bool redirected = saved_stdout >= 0 && watch_dup2(watch_fileno(capture), watch_fileno(stdout)) != -1;
     fclose(capture);
     if (!redirected) {
         if (saved_stdout >= 0) {
@@ -227,12 +227,13 @@ replay_console(void) {
     capture_path = NULL;
 }
 
-int
+frame_watch_verdict_t
 render_watch_finish(void) {
     if (capture_path != NULL) {
         replay_console();
     }
-    fprintf(stderr, "FRAME_WATCH judged %lu frames after a %d-frame warm-up: %d sites repeating\n",
-            (unsigned long)watch.frames, FRAME_WATCH_WARMUP, watch.ever_repeating);
-    return watch.ever_repeating;
+    const frame_watch_verdict_t verdict = frame_watch_verdict(&watch);
+    fprintf(stderr, "FRAME_WATCH judged %lu frames after a %d-frame warm-up: %d sites repeating, %lu events dropped\n",
+            (unsigned long)verdict.frames, FRAME_WATCH_WARMUP, verdict.repeating, (unsigned long)verdict.dropped);
+    return verdict;
 }

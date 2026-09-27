@@ -15,6 +15,8 @@
 
 #include <stdbool.h>
 
+#include "util/frame_watch.h"
+
 /* `binary` is named in each warning's addr2line hint. A `console_path`
  * sends stdout into that file until render_watch_finish(); NULL leaves
  * stdout alone and unwatched. False, with stdout untouched, when the file
@@ -27,8 +29,8 @@ void render_watch_frame_begin(void);
  * that has just become repeating. */
 void render_watch_frame_end(void);
 
-/* Gives stdout back, with what it captured, and returns how many sites
- * became repeating. */
-int render_watch_finish(void);
+/* Gives stdout back, with what it captured, and returns the verdict: sites
+ * that became repeating, and events the watch had no room for. */
+frame_watch_verdict_t render_watch_finish(void);
 
 #endif
