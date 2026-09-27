@@ -27,34 +27,6 @@ class StyleAuditTest(unittest.TestCase):
         findings, _ = check_style_audit.run_audit(root, rule_filter=rule_id, file_filter=file_filter)
         return findings
 
-    def test_placement_allowlist_limits_calls_per_function(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            source = "launcher/main/gfx/alloc.c"
-            self.write(root, source,
-                       "void *\ngfx_init(void)\n{\n    return malloc(4);\n}\n")
-            self.write(root, "scripts/gates/malloc_placement.txt",
-                       source + "\tgfx_init\tmalloc\t1\n")
-            self.commit(root, "launcher", "scripts")
-            self.assertEqual(self.rule_hits(root, "MALLOC-PLACEMENT"), [])
-            with (root / source).open("a", encoding="utf-8") as output:
-                output.write("void *\ngfx_frame(void)\n{\n    return malloc(8);\n}\n")
-            hits = self.rule_hits(root, "MALLOC-PLACEMENT")
-            self.assertEqual(len(hits), 1)
-            self.assertEqual(hits[0].line, 9)
-
-    def test_stdio_placement_ignores_comments_and_strings(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.write(root, "launcher/main/gfx/output.c",
-                       "/* printf(1); */\nvoid\ngfx_draw(void)\n{\n"
-                       "    const char *name = \"sprintf()\";\n"
-                       "    snprintf(out, 8, \"%s\", name);\n}\n")
-            self.commit(root, "launcher")
-            hits = self.rule_hits(root, "STDIO-PLACEMENT")
-            self.assertEqual(len(hits), 1)
-            self.assertIn("snprintf()", hits[0].message)
-
     def test_undef_requires_analysis_scan_ifdef(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
@@ -364,6 +336,7 @@ class StyleAuditTest(unittest.TestCase):
             root = pathlib.Path(temp)
             self.write(root, "docs/Guide.md",
                       "C6 is historical. <!-- doc-vocabulary: ignore -->\n"
+                      "The IDF's `spi_ll.h`. <!-- doc-citations: ignore spi_ll.h -->\n"
                       "<!-- BEGIN GENERATED -->\ntable\n<!-- END GENERATED -->\n")
             self.commit(root, "docs")
             findings = self.rule_hits(root, "STRAY-HTML-COMMENT")

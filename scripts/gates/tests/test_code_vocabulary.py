@@ -93,6 +93,24 @@ class NamesRequireADefinitionTest(unittest.TestCase):
             vocab = code_vocabulary.vocabulary(str(root))
         self.assertIn("real_three", vocab.script_functions)
 
+    def test_an_mjs_string_constant_counts_and_its_function_names_do_not(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "scripts/gates/check.mjs",
+                      "function render_block() {}\n"
+                      "const extra = process.env['CHECK_EXTRA_ARGS'];\n"
+                      "render_block(extra);\n")
+            vocab = code_vocabulary.vocabulary(str(root))
+        self.assertIn("CHECK_EXTRA_ARGS", vocab.constants)
+        self.assertNotIn("render_block", vocab.functions | vocab.script_functions)
+
+    def test_node_modules_is_not_read(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "scripts/node_modules/lib/index.mjs", "const x = 'VENDORED_NAME';\n")
+            vocab = code_vocabulary.vocabulary(str(root))
+        self.assertNotIn("VENDORED_NAME", vocab.constants)
+
 
 if __name__ == "__main__":
     unittest.main()
