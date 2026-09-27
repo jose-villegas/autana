@@ -1,26 +1,26 @@
-#include "lit_pipeline.h"
+#include "render/r3d_lit_pipeline.h"
 
 #include <assert.h>
 #include <math.h>
 #include <stdbool.h>
 
-#include "fast_float.h"
+#include "util/fast_float.h"
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
-static lit_vec3_t
-normalize(lit_vec3_t v) {
+static r3d_lit_vec3_t
+normalize(r3d_lit_vec3_t v) {
     const float s = 1.0f / sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
-    return (lit_vec3_t){v.x * s, v.y * s, v.z * s};
+    return (r3d_lit_vec3_t){v.x * s, v.y * s, v.z * s};
 }
 
-static lit_vec3_t
-cross(lit_vec3_t a, lit_vec3_t b) {
-    return (lit_vec3_t){a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
+static r3d_lit_vec3_t
+cross(r3d_lit_vec3_t a, r3d_lit_vec3_t b) {
+    return (r3d_lit_vec3_t){a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
 }
 
 static void
-set_row(float row[4], lit_vec3_t axis, lit_vec3_t eye, float scale, float ticks_to_units) {
+set_row(float row[4], r3d_lit_vec3_t axis, r3d_lit_vec3_t eye, float scale, float ticks_to_units) {
     row[0] = axis.x * scale * ticks_to_units;
     row[1] = axis.y * scale * ticks_to_units;
     row[2] = axis.z * scale * ticks_to_units;
@@ -28,13 +28,13 @@ set_row(float row[4], lit_vec3_t axis, lit_vec3_t eye, float scale, float ticks_
 }
 
 void
-lit_view_look(lit_view_t* view, lit_vec3_t eye, lit_vec3_t forward, float half_fov_short_tan, float near_z,
-              int position_scale, int width, int height, int quarter) {
-    const lit_vec3_t f = normalize(forward);
-    const lit_vec3_t right = normalize(cross(f, (lit_vec3_t){0.0f, 1.0f, 0.0f}));
-    const lit_vec3_t up = cross(right, f);
-    const lit_vec3_t down = {-up.x, -up.y, -up.z};
-    const lit_vec3_t left = {-right.x, -right.y, -right.z};
+r3d_lit_view_look(r3d_lit_view_t* view, r3d_lit_vec3_t eye, r3d_lit_vec3_t forward, float half_fov_short_tan,
+                  float near_z, int position_scale, int width, int height, int quarter) {
+    const r3d_lit_vec3_t f = normalize(forward);
+    const r3d_lit_vec3_t right = normalize(cross(f, (r3d_lit_vec3_t){0.0f, 1.0f, 0.0f}));
+    const r3d_lit_vec3_t up = cross(right, f);
+    const r3d_lit_vec3_t down = {-up.x, -up.y, -up.z};
+    const r3d_lit_vec3_t left = {-right.x, -right.y, -right.z};
 
     const int shorter = width < height ? width : height;
     const float k = (float)shorter / (2.0f * half_fov_short_tan);
@@ -42,7 +42,7 @@ lit_view_look(lit_view_t* view, lit_vec3_t eye, lit_vec3_t forward, float half_f
 
     /* The upright picture is (right, down); each quarter turns it onto the
      * panel's own axes. */
-    lit_vec3_t across, along;
+    r3d_lit_vec3_t across, along;
     switch (quarter & 3) {
         case 1:
             across = up;
@@ -71,10 +71,10 @@ lit_view_look(lit_view_t* view, lit_vec3_t eye, lit_vec3_t forward, float half_f
     view->height = height;
 }
 
-static inline lit_vec3_t
-to_lens(const lit_view_t* view, float x, float y, float z) {
+static inline r3d_lit_vec3_t
+to_lens(const r3d_lit_view_t* view, float x, float y, float z) {
     const float(*m)[4] = view->m;
-    return (lit_vec3_t){
+    return (r3d_lit_vec3_t){
         m[0][0] * x + m[0][1] * y + m[0][2] * z + m[0][3],
         m[1][0] * x + m[1][1] * y + m[1][2] * z + m[1][3],
         m[2][0] * x + m[2][1] * y + m[2][2] * z + m[2][3],
@@ -93,7 +93,7 @@ typedef struct {
  * space, then carried back through the view matrix to position ticks, so a
  * box is tested without transforming its corners. */
 static void
-frustum_planes(const lit_view_t* view, plane_t planes[PLANE_COUNT]) {
+frustum_planes(const r3d_lit_view_t* view, plane_t planes[PLANE_COUNT]) {
     const float right = (float)view->width - view->center_x;
     const float bottom = (float)view->height - view->center_y;
     const float lens[PLANE_COUNT][4] = {
@@ -136,7 +136,7 @@ classify_box(const int16_t lo[3], const int16_t hi[3], const plane_t planes[PLAN
 }
 
 static float
-box_depth(const lit_view_t* view, const int16_t lo[3], const int16_t hi[3]) {
+box_depth(const r3d_lit_view_t* view, const int16_t lo[3], const int16_t hi[3]) {
     const float* f = view->m[2];
     return f[0] * 0.5f * ((float)lo[0] + (float)hi[0]) + f[1] * 0.5f * ((float)lo[1] + (float)hi[1])
            + f[2] * 0.5f * ((float)lo[2] + (float)hi[2]) + f[3];
@@ -150,7 +150,7 @@ typedef struct {
 /* Children go on the stack farthest first, so the nearest pops first and
  * the walk visits leaves roughly front to back. */
 static int
-push_children(const lit_mesh_t* mesh, const lit_view_t* view, const lit_node_t* node, unsigned mask,
+push_children(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const r3d_lit_node_t* node, unsigned mask,
               walk_entry_t* stack, int top) {
     uint16_t order[8];
     float depth[8];
@@ -175,7 +175,7 @@ push_children(const lit_mesh_t* mesh, const lit_view_t* view, const lit_node_t* 
 }
 
 int
-lit_cull_clusters(const lit_mesh_t* mesh, const lit_view_t* view, uint16_t* out) {
+r3d_lit_cull_clusters(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, uint16_t* out) {
     plane_t planes[PLANE_COUNT];
     frustum_planes(view, planes);
 
@@ -185,7 +185,7 @@ lit_cull_clusters(const lit_mesh_t* mesh, const lit_view_t* view, uint16_t* out)
     int count = 0;
     while (top > 0) {
         const walk_entry_t entry = stack[--top];
-        const lit_node_t* node = &mesh->nodes[entry.node];
+        const r3d_lit_node_t* node = &mesh->nodes[entry.node];
         unsigned mask = entry.mask;
         if (mask != 0 && classify_box(node->lo, node->hi, planes, &mask) == BOX_OUTSIDE) {
             continue;
@@ -207,17 +207,17 @@ lit_cull_clusters(const lit_mesh_t* mesh, const lit_view_t* view, uint16_t* out)
 }
 
 void
-lit_transform(const lit_mesh_t* mesh, const lit_view_t* view, const uint16_t* clusters, int count, lit_cs_vertex_t* cs,
-              lit_cluster_rows_t* rows) {
+r3d_lit_transform(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* clusters, int count,
+                  r3d_lit_vertex_t* cs, r3d_lit_rows_t* rows) {
     for (int i = 0; i < count; i++) {
-        const lit_cluster_t* c = &mesh->clusters[clusters[i]];
+        const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
         const int end = c->vertex_first + c->vertex_count;
         float y0 = INFINITY, y1 = -INFINITY;
         bool crosses_near = false;
         for (int v = c->vertex_first; v < end; v++) {
             const int16_t* p = mesh->positions[v];
-            const lit_vec3_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
-            lit_cs_vertex_t* out = &cs[v];
+            const r3d_lit_vec3_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
+            r3d_lit_vertex_t* out = &cs[v];
             out->z = l.z;
             if (l.z > view->near_z) {
                 const float inv = 1.0f / l.z;
@@ -231,7 +231,7 @@ lit_transform(const lit_mesh_t* mesh, const lit_view_t* view, const uint16_t* cl
             }
         }
         if (rows != NULL) {
-            rows[clusters[i]] = (lit_cluster_rows_t){y0, y1, crosses_near};
+            rows[clusters[i]] = (r3d_lit_rows_t){y0, y1, crosses_near};
         }
     }
 }
@@ -240,15 +240,15 @@ typedef struct {
     float x, y, z, r, g, b;
 } clip_vertex_t;
 
-static span_vertex_t
-project(const lit_view_t* view, const clip_vertex_t* v) {
+static r3d_span_vertex_t
+project(const r3d_lit_view_t* view, const clip_vertex_t* v) {
     const float inv = 1.0f / v->z;
-    return (span_vertex_t){
+    return (r3d_span_vertex_t){
         view->center_x + v->x * inv, view->center_y + v->y * inv, view->near_z * inv, v->r, v->g, v->b};
 }
 
 static inline float
-signed_area2(const span_vertex_t* a, const span_vertex_t* b, const span_vertex_t* c) {
+signed_area2(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
     return (b->x - a->x) * (c->y - a->y) - (c->x - a->x) * (b->y - a->y);
 }
 
@@ -260,7 +260,8 @@ facing_away(float area2, bool double_sided) {
 }
 
 static void
-draw_near_clipped(const lit_view_t* view, const clip_vertex_t in[3], bool double_sided, const span_target_t* target) {
+draw_near_clipped(const r3d_lit_view_t* view, const clip_vertex_t in[3], bool double_sided,
+                  const r3d_span_target_t* target) {
     clip_vertex_t poly[4];
     int n = 0;
     for (int i = 0; i < 3; i++) {
@@ -280,22 +281,22 @@ draw_near_clipped(const lit_view_t* view, const clip_vertex_t in[3], bool double
     if (n < 3) {
         return;
     }
-    span_vertex_t s[4];
+    r3d_span_vertex_t s[4];
     for (int i = 0; i < n; i++) {
         s[i] = project(view, &poly[i]);
     }
     if (facing_away(signed_area2(&s[0], &s[1], &s[2]), double_sided)) {
         return;
     }
-    span_raster_triangle(target, &s[0], &s[1], &s[2]);
+    r3d_span_triangle(target, &s[0], &s[1], &s[2]);
     if (n == 4) {
-        span_raster_triangle(target, &s[0], &s[2], &s[3]);
+        r3d_span_triangle(target, &s[0], &s[2], &s[3]);
     }
 }
 
 static inline bool
-outside_target(const lit_cs_vertex_t* a, const lit_cs_vertex_t* b, const lit_cs_vertex_t* c,
-               const span_target_t* target) {
+outside_target(const r3d_lit_vertex_t* a, const r3d_lit_vertex_t* b, const r3d_lit_vertex_t* c,
+               const r3d_span_target_t* target) {
     const float w = (float)target->width;
     const float top = (float)target->row0, bottom = (float)target->row1;
     return (a->sx < 0.0f && b->sx < 0.0f && c->sx < 0.0f) || (a->sx > w && b->sx > w && c->sx > w)
@@ -303,20 +304,20 @@ outside_target(const lit_cs_vertex_t* a, const lit_cs_vertex_t* b, const lit_cs_
 }
 
 void
-lit_draw(const lit_mesh_t* mesh, const lit_view_t* view, const uint16_t* clusters, int count, const lit_cs_vertex_t* cs,
-         const lit_cluster_rows_t* rows, const span_target_t* target) {
+r3d_lit_draw(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* clusters, int count,
+             const r3d_lit_vertex_t* cs, const r3d_lit_rows_t* rows, const r3d_span_target_t* target) {
     for (int i = 0; i < count; i++) {
         if (rows != NULL) {
-            const lit_cluster_rows_t* r = &rows[clusters[i]];
+            const r3d_lit_rows_t* r = &rows[clusters[i]];
             if (!r->crosses_near && (r->y1 < (float)target->row0 || r->y0 > (float)target->row1)) {
                 continue;
             }
         }
-        const lit_cluster_t* c = &mesh->clusters[clusters[i]];
+        const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
         const int end = c->triangle_first + c->triangle_count;
         for (int t = c->triangle_first; t < end; t++) {
             const uint16_t* tri = mesh->triangles[t];
-            const lit_cs_vertex_t* v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
+            const r3d_lit_vertex_t* v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
             const int in_front = (v[0]->z > view->near_z) + (v[1]->z > view->near_z) + (v[2]->z > view->near_z);
             if (in_front == 0) {
                 continue;
@@ -326,7 +327,7 @@ lit_draw(const lit_mesh_t* mesh, const lit_view_t* view, const uint16_t* cluster
                 clip_vertex_t in[3];
                 for (int k = 0; k < 3; k++) {
                     const int16_t* p = mesh->positions[tri[k]];
-                    const lit_vec3_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
+                    const r3d_lit_vec3_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
                     in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[k][0], rgb[k][1], rgb[k][2]};
                 }
                 draw_near_clipped(view, in, c->double_sided, target);
@@ -341,11 +342,11 @@ lit_draw(const lit_mesh_t* mesh, const lit_view_t* view, const uint16_t* cluster
                 continue;
             }
 
-            span_vertex_t s[3];
+            r3d_span_vertex_t s[3];
             for (int k = 0; k < 3; k++) {
-                s[k] = (span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[k][0], rgb[k][1], rgb[k][2]};
+                s[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[k][0], rgb[k][1], rgb[k][2]};
             }
-            span_raster_triangle(target, &s[0], &s[1], &s[2]);
+            r3d_span_triangle(target, &s[0], &s[1], &s[2]);
         }
     }
 }

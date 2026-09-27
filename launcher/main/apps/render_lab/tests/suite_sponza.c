@@ -1,7 +1,7 @@
 /*
  * Portable suite: the baked Sponza mesh (sponza_mesh_generated.h) and the
  * camera loop through it (sponza_flythrough.h). The mesh is checked for the
- * structure lit_pipeline.h relies on, never against the generator; the path
+ * structure r3d_lit_pipeline.h relies on, never against the generator; the path
  * is checked against the shipped mesh itself.
  */
 
@@ -24,10 +24,10 @@ _Static_assert(SPONZA_LITE_CLUSTER_COUNT <= SPONZA_CLUSTER_COUNT,
                "the working arrays below are sized for the larger bake");
 
 static void
-check_clusters_tile_both_arrays_in_order(const lit_mesh_t* mesh) {
+check_clusters_tile_both_arrays_in_order(const r3d_lit_mesh_t* mesh) {
     int next_vertex = 0, next_triangle = 0;
     for (int i = 0; i < mesh->cluster_count; i++) {
-        const lit_cluster_t* c = &mesh->clusters[i];
+        const r3d_lit_cluster_t* c = &mesh->clusters[i];
         TEST_ASSERT_EQUAL_INT(next_vertex, c->vertex_first);
         TEST_ASSERT_EQUAL_INT(next_triangle, c->triangle_first);
         next_vertex += c->vertex_count;
@@ -38,9 +38,9 @@ check_clusters_tile_both_arrays_in_order(const lit_mesh_t* mesh) {
 }
 
 static void
-check_every_triangle_indexes_three_distinct_vertices_of_its_own_cluster(const lit_mesh_t* mesh) {
+check_every_triangle_indexes_three_distinct_vertices_of_its_own_cluster(const r3d_lit_mesh_t* mesh) {
     for (int i = 0; i < mesh->cluster_count; i++) {
-        const lit_cluster_t* c = &mesh->clusters[i];
+        const r3d_lit_cluster_t* c = &mesh->clusters[i];
         for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
             const uint16_t* tri = mesh->triangles[t];
             for (int k = 0; k < 3; k++) {
@@ -52,9 +52,9 @@ check_every_triangle_indexes_three_distinct_vertices_of_its_own_cluster(const li
 }
 
 static void
-check_cluster_bounds_hold_their_vertices(const lit_mesh_t* mesh) {
+check_cluster_bounds_hold_their_vertices(const r3d_lit_mesh_t* mesh) {
     for (int i = 0; i < mesh->cluster_count; i++) {
-        const lit_cluster_t* c = &mesh->clusters[i];
+        const r3d_lit_cluster_t* c = &mesh->clusters[i];
         for (int v = c->vertex_first; v < c->vertex_first + c->vertex_count; v++) {
             for (int k = 0; k < 3; k++) {
                 TEST_ASSERT_TRUE(mesh->positions[v][k] >= c->lo[k] && mesh->positions[v][k] <= c->hi[k]);
@@ -64,8 +64,8 @@ check_cluster_bounds_hold_their_vertices(const lit_mesh_t* mesh) {
 }
 
 static void
-visit(const lit_mesh_t* mesh, int node, uint8_t* reached) {
-    const lit_node_t* n = &mesh->nodes[node];
+visit(const r3d_lit_mesh_t* mesh, int node, uint8_t* reached) {
+    const r3d_lit_node_t* n = &mesh->nodes[node];
     if (n->leaf) {
         for (int c = n->first; c < n->first + n->count; c++) {
             reached[c]++;
@@ -85,7 +85,7 @@ visit(const lit_mesh_t* mesh, int node, uint8_t* reached) {
 }
 
 static void
-check_the_tree_holds_every_cluster_once_inside_its_ancestors_bounds(const lit_mesh_t* mesh) {
+check_the_tree_holds_every_cluster_once_inside_its_ancestors_bounds(const r3d_lit_mesh_t* mesh) {
     static uint8_t reached[SPONZA_CLUSTER_COUNT];
     memset(reached, 0, sizeof reached);
     visit(mesh, 0, reached);
@@ -96,7 +96,7 @@ check_the_tree_holds_every_cluster_once_inside_its_ancestors_bounds(const lit_me
 
 /* The flat reference: every cluster's eight corners against each plane. */
 static bool
-cluster_in_view(const lit_cluster_t* c, const lit_view_t* view) {
+cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lit_view_t* view) {
     int beyond[5] = {0};
     for (int i = 0; i < 8; i++) {
         const float x = i & 1 ? c->hi[0] : c->lo[0], y = i & 2 ? c->hi[1] : c->lo[1], z = i & 4 ? c->hi[2] : c->lo[2];
@@ -118,18 +118,18 @@ cluster_in_view(const lit_cluster_t* c, const lit_view_t* view) {
 }
 
 static void
-check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const lit_mesh_t* mesh) {
-    const uint32_t period = camera_path_period_ms(&sponza_flythrough);
+check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* mesh) {
+    const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
     static uint16_t walked[SPONZA_CLUSTER_COUNT];
     static uint8_t kept[SPONZA_CLUSTER_COUNT];
     for (uint32_t t = 0; t < period; t += 2500) {
-        lit_vec3_t eye, forward;
-        camera_path_sample(&sponza_flythrough, t, &eye, &forward);
-        lit_view_t view;
-        lit_view_look(&view, eye, forward, 0.62f, 6.0f, mesh->position_scale, 368, 448, (int)(t / 2500) & 3);
+        r3d_lit_vec3_t eye, forward;
+        r3d_path_sample(&sponza_flythrough, t, &eye, &forward);
+        r3d_lit_view_t view;
+        r3d_lit_view_look(&view, eye, forward, 0.62f, 6.0f, mesh->position_scale, 368, 448, (int)(t / 2500) & 3);
 
         memset(kept, 0, sizeof kept);
-        const int count = lit_cull_clusters(mesh, &view, walked);
+        const int count = r3d_lit_cull_clusters(mesh, &view, walked);
         for (int i = 0; i < count; i++) {
             TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, kept[walked[i]], "a cluster was listed twice");
             kept[walked[i]] = 1;
@@ -197,13 +197,13 @@ point_triangle_distance(v3 p, v3 a, v3 b, v3 c) {
 }
 
 static v3
-vertex(const lit_mesh_t* mesh, int i) {
+vertex(const r3d_lit_mesh_t* mesh, int i) {
     const float s = 1.0f / (float)mesh->position_scale;
     return (v3){mesh->positions[i][0] * s, mesh->positions[i][1] * s, mesh->positions[i][2] * s};
 }
 
 static float
-box_distance(const lit_mesh_t* mesh, const lit_cluster_t* c, v3 p) {
+box_distance(const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* c, v3 p) {
     const float s = 1.0f / (float)mesh->position_scale;
     const float point[3] = {p.x, p.y, p.z};
     float sum = 0.0f;
@@ -216,10 +216,10 @@ box_distance(const lit_mesh_t* mesh, const lit_cluster_t* c, v3 p) {
 }
 
 static float
-clearance(const lit_mesh_t* mesh, v3 p) {
+clearance(const r3d_lit_mesh_t* mesh, v3 p) {
     float best = INFINITY;
     for (int i = 0; i < mesh->cluster_count; i++) {
-        const lit_cluster_t* c = &mesh->clusters[i];
+        const r3d_lit_cluster_t* c = &mesh->clusters[i];
         if (box_distance(mesh, c, p) >= best) {
             continue;
         }
@@ -236,11 +236,11 @@ clearance(const lit_mesh_t* mesh, v3 p) {
 }
 
 static void
-check_the_flythrough_keeps_clear_of_every_triangle(const lit_mesh_t* mesh) {
-    const uint32_t period = camera_path_period_ms(&sponza_flythrough);
+check_the_flythrough_keeps_clear_of_every_triangle(const r3d_lit_mesh_t* mesh) {
+    const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
     for (uint32_t t = 0; t < period; t += 100) {
-        lit_vec3_t eye, forward;
-        camera_path_sample(&sponza_flythrough, t, &eye, &forward);
+        r3d_lit_vec3_t eye, forward;
+        r3d_path_sample(&sponza_flythrough, t, &eye, &forward);
         const float d = clearance(mesh, (v3){eye.x, eye.y, eye.z});
         if (d < SPONZA_FLYTHROUGH_CLEARANCE) {
             char message[96];

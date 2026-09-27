@@ -19,10 +19,10 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 
-#include "apps/render_lab/lit_frame.h"
 #include "apps/render_lab/sponza_flythrough.h"
 #include "apps/render_lab/sponza_mesh_generated.h"
 #include "gfx/gfx.h"
+#include "render/r3d_lit_frame.h"
 #include "util/job.h"
 
 static const char* TAG = "sponza_perf";
@@ -39,12 +39,12 @@ typedef struct {
     void* scratch;
     void* target;
     gfx_color_t* panel;
-    lit_frame_t frame;
+    r3d_lit_frame_t frame;
 } bench_t;
 
 static void
 bench_open(bench_t* b) {
-    b->scratch = heap_caps_malloc(lit_frame_scratch_bytes(&sponza_mesh), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    b->scratch = heap_caps_malloc(r3d_lit_frame_scratch_bytes(&sponza_mesh), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     b->target =
         heap_caps_malloc(RENDER_PIXELS * (sizeof(gfx_color_t) + sizeof(uint16_t)), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     b->panel = heap_caps_malloc(sizeof(gfx_color_t) * PANEL_PIXELS, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -52,7 +52,7 @@ bench_open(bench_t* b) {
     TEST_ASSERT_NOT_NULL(b->target);
     TEST_ASSERT_NOT_NULL(b->panel);
     gfx_color_t* color = b->target;
-    b->frame = (lit_frame_t){
+    b->frame = (r3d_lit_frame_t){
         .mesh = &sponza_mesh,
         .color = color,
         .depth = (uint16_t*)(color + RENDER_PIXELS),
@@ -60,7 +60,7 @@ bench_open(bench_t* b) {
         .height = RENDER_HEIGHT,
         .doubled = b->panel,
     };
-    lit_frame_use_scratch(&b->frame, b->scratch);
+    r3d_lit_frame_use_scratch(&b->frame, b->scratch);
 }
 
 static void
@@ -70,29 +70,29 @@ bench_close(bench_t* b) {
     heap_caps_free(b->panel);
 }
 
-static lit_view_t
+static r3d_lit_view_t
 view_at(uint32_t t_ms) {
-    lit_vec3_t eye, forward;
-    camera_path_sample(&sponza_flythrough, t_ms, &eye, &forward);
-    lit_view_t view;
-    lit_view_look(&view, eye, forward, HALF_FOV, NEAR_Z, SPONZA_POSITION_SCALE, RENDER_WIDTH, RENDER_HEIGHT, 0);
+    r3d_lit_vec3_t eye, forward;
+    r3d_path_sample(&sponza_flythrough, t_ms, &eye, &forward);
+    r3d_lit_view_t view;
+    r3d_lit_view_look(&view, eye, forward, HALF_FOV, NEAR_Z, SPONZA_POSITION_SCALE, RENDER_WIDTH, RENDER_HEIGHT, 0);
     return view;
 }
 
 static void
-clear_and_draw(const lit_frame_t* frame, const lit_view_t* view, int visible) {
+clear_and_draw(const r3d_lit_frame_t* frame, const r3d_lit_view_t* view, int visible) {
     const size_t pixels = (size_t)frame->width * (size_t)frame->height;
     for (size_t i = 0; i < pixels; i++) {
         frame->color[i] = frame->clear;
     }
     memset(frame->depth, 0, pixels * sizeof(*frame->depth));
-    const span_target_t target = {frame->color, frame->depth, frame->width, 0, frame->height};
-    lit_draw(frame->mesh, view, frame->visible, visible, frame->cs, frame->rows, &target);
+    const r3d_span_target_t target = {frame->color, frame->depth, frame->width, 0, frame->height};
+    r3d_lit_draw(frame->mesh, view, frame->visible, visible, frame->cs, frame->rows, &target);
 }
 
 typedef struct {
-    const lit_frame_t* frame;
-    const lit_view_t* view;
+    const r3d_lit_frame_t* frame;
+    const r3d_lit_view_t* view;
     int visible, row0, row1;
     int64_t us;
 } half_job_t;
@@ -101,12 +101,12 @@ static half_job_t core1_result;
 
 static void
 draw_half(half_job_t* j) {
-    const lit_frame_t* f = j->frame;
+    const r3d_lit_frame_t* f = j->frame;
     const size_t offset = (size_t)j->row0 * (size_t)f->width;
     const int64_t start = esp_timer_get_time();
     memset(f->depth + offset, 0, (size_t)(j->row1 - j->row0) * (size_t)f->width * sizeof(uint16_t));
-    const span_target_t target = {f->color + offset, f->depth + offset, f->width, j->row0, j->row1};
-    lit_draw(f->mesh, j->view, f->visible, j->visible, f->cs, f->rows, &target);
+    const r3d_span_target_t target = {f->color + offset, f->depth + offset, f->width, j->row0, j->row1};
+    r3d_lit_draw(f->mesh, j->view, f->visible, j->visible, f->cs, f->rows, &target);
     j->us = esp_timer_get_time() - start;
 }
 
@@ -120,7 +120,7 @@ draw_half_on_core1(void* ctx) {
  * times mean the halves are independent; longer times together mean the
  * cores are waiting on something they share. */
 static void
-report_core_contention(const lit_frame_t* frame, const lit_view_t* view, int visible) {
+report_core_contention(const r3d_lit_frame_t* frame, const r3d_lit_view_t* view, int visible) {
     const int mid = frame->height / 2;
     half_job_t top = {frame, view, visible, 0, mid, 0}, bottom = {frame, view, visible, mid, frame->height, 0};
     draw_half(&top);
@@ -140,29 +140,29 @@ void
 test_sponza_draw_stage_breakdown(void) {
     bench_t b;
     bench_open(&b);
-    const lit_view_t view = view_at(0);
-    const int visible = lit_cull_clusters(&sponza_mesh, &view, b.frame.visible);
+    const r3d_lit_view_t view = view_at(0);
+    const int visible = r3d_lit_cull_clusters(&sponza_mesh, &view, b.frame.visible);
     int64_t start = esp_timer_get_time();
-    lit_transform(&sponza_mesh, &view, b.frame.visible, visible, b.frame.cs, b.frame.rows);
+    r3d_lit_transform(&sponza_mesh, &view, b.frame.visible, visible, b.frame.cs, b.frame.rows);
     ESP_LOGI(TAG, "stage, one core: %-22s %7lldus", "transform", (long long)(esp_timer_get_time() - start));
 
     static const char* const names[4] = {"whole draw", "stop after setup", "stop after rows", "stop after span setup"};
     for (int stop = 0; stop <= 3; stop++) {
-        span_raster_stop_after = stop;
+        r3d_span_stop_after = stop;
         start = esp_timer_get_time();
         clear_and_draw(&b.frame, &view, visible);
         ESP_LOGI(TAG, "stage, one core: %-22s %7lldus", names[stop], (long long)(esp_timer_get_time() - start));
     }
-    span_raster_stop_after = 0;
+    r3d_span_stop_after = 0;
     report_core_contention(&b.frame, &view, visible);
 
     /* A view of nothing but sky: what a frame costs before any geometry. */
-    lit_view_t empty;
-    lit_view_look(&empty, (lit_vec3_t){0.0f, 20000.0f, 0.0f}, (lit_vec3_t){0.0f, 1.0f, 0.01f}, HALF_FOV, NEAR_Z,
-                  SPONZA_POSITION_SCALE, RENDER_WIDTH, RENDER_HEIGHT, 0);
+    r3d_lit_view_t empty;
+    r3d_lit_view_look(&empty, (r3d_lit_vec3_t){0.0f, 20000.0f, 0.0f}, (r3d_lit_vec3_t){0.0f, 1.0f, 0.01f}, HALF_FOV,
+                      NEAR_Z, SPONZA_POSITION_SCALE, RENDER_WIDTH, RENDER_HEIGHT, 0);
     start = esp_timer_get_time();
-    const lit_frame_stats_t none = lit_frame_render(&b.frame, &empty);
-    lit_frame_double(&b.frame);
+    const r3d_lit_stats_t none = r3d_lit_frame_render(&b.frame, &empty);
+    r3d_lit_frame_double(&b.frame);
     ESP_LOGI(TAG, "stage, both cores: %-20s %7lldus (%d clusters)", "empty frame",
              (long long)(esp_timer_get_time() - start), none.clusters);
 
@@ -177,14 +177,14 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     ESP_LOGI(TAG, "=== SPONZA FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===", SPONZA_TRIANGLE_COUNT,
              SPONZA_VERTEX_COUNT, SPONZA_CLUSTER_COUNT, RENDER_WIDTH, RENDER_HEIGHT);
 
-    const uint32_t period = camera_path_period_ms(&sponza_flythrough);
+    const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
     int64_t frame_sum = 0, worst = 0;
     int samples = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SAMPLE_EVERY_MS) {
-        const lit_view_t view = view_at(t_ms);
+        const r3d_lit_view_t view = view_at(t_ms);
         const int64_t start = esp_timer_get_time();
-        const lit_frame_stats_t stats = lit_frame_render(&b.frame, &view);
-        lit_frame_double(&b.frame);
+        const r3d_lit_stats_t stats = r3d_lit_frame_render(&b.frame, &view);
+        r3d_lit_frame_double(&b.frame);
         const int64_t us = esp_timer_get_time() - start;
         ESP_LOGI(TAG, "t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", (unsigned)(t_ms / 1000),
                  stats.clusters, stats.triangles, (long long)us);
