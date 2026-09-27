@@ -372,7 +372,9 @@ static int control_center_backdrop_quarter;
 
 static void
 exit_app(const app_t** current) {
-    ESP_LOGI(TAG, "Leaving %s, arena %u KiB", (*current)->name, (unsigned)(app_arena_used() / 1024));
+    ESP_LOGI(TAG, "Leaving %s, arena %u of %u KiB, PSRAM heap %u KiB", (*current)->name,
+             (unsigned)(app_arena_used() / 1024), (unsigned)(APP_ARENA_BYTES / 1024),
+             (unsigned)(heap_caps_get_total_size(MALLOC_CAP_SPIRAM) / 1024));
     (*current)->exit();
     restore_system_display_state();
     *current = NULL;

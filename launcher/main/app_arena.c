@@ -4,23 +4,23 @@
  */
 #include "app_arena.h"
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 
 #if defined(ESP_PLATFORM)
 #include "esp_attr.h"
 #include "sdkconfig.h"
-#if !CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY
-#error "app_arena needs CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY, or its block lands in internal RAM"
+#if !CONFIG_SPIRAM_ALLOW_NOINIT_SEG_EXTERNAL_MEMORY
+#error "app_arena needs CONFIG_SPIRAM_ALLOW_NOINIT_SEG_EXTERNAL_MEMORY, or its block lands in internal RAM"
 #endif
-#define APP_ARENA_PLACEMENT EXT_RAM_BSS_ATTR
+#define APP_ARENA_PLACEMENT EXT_RAM_NOINIT_ATTR
 #else
 #define APP_ARENA_PLACEMENT
 #endif
 
 APP_ARENA_PLACEMENT static _Alignas(64) unsigned char block[APP_ARENA_BYTES];
 static size_t used;
-static unsigned visit;
 
 static bool
 is_power_of_two(size_t n) {
@@ -42,16 +42,15 @@ app_arena_take(size_t size, size_t align) {
     return &block[offset];
 }
 
-app_arena_mark_t
+size_t
 app_arena_mark(void) {
-    return (app_arena_mark_t){used, visit};
+    return used;
 }
 
 void
-app_arena_release(app_arena_mark_t mark) {
-    if (mark.visit == visit && mark.used <= used) {
-        used = mark.used;
-    }
+app_arena_rewind(size_t mark) {
+    assert(mark <= used);
+    used = mark;
 }
 
 size_t
@@ -62,5 +61,4 @@ app_arena_used(void) {
 void
 app_arena_reset(void) {
     used = 0;
-    visit++;
 }

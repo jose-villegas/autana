@@ -11,11 +11,11 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_psram.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "app_arena.h"
 #include "board/board.h"
 #include "gfx/gfx.h"
 
@@ -185,12 +185,11 @@ check_memory(void) {
     /* This board always has octal PSRAM; its absence means the code is
      * running on hardware other than what it assumes, which is worth
      * knowing. */
-    const size_t psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+    const size_t psram = esp_psram_get_size();
 
     char psram_detail[64];
     if (psram != 0) {
-        snprintf(psram_detail, sizeof(psram_detail), "%u MiB heap + %u MiB app arena",
-                 (unsigned)(psram / (1024 * 1024)), (unsigned)(APP_ARENA_BYTES / (1024 * 1024)));
+        snprintf(psram_detail, sizeof(psram_detail), "%u MiB present", (unsigned)(psram / (1024 * 1024)));
     } else {
         snprintf(psram_detail, sizeof(psram_detail), "absent - unexpected");
     }

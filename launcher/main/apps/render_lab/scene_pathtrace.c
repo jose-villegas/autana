@@ -10,8 +10,9 @@
  * how it tells the app to grant GFX_LAYOUT_FULL_FB whatever
  * render_lab_band_mode asks for.
  *
- * The accumulator (about 1 MB) comes from the app arena, which the app
- * rewinds when this scene exits. A refused take() falls back to
+ * The accumulator (about 1 MB) comes from the app arena: the app rewinds it
+ * on a scene switch, the shell resets it on leaving the app. A refused
+ * app_arena_take() falls back to
  * rt_path_schedule_advance()'s own direct-light-only path rather than
  * losing the scene.
  */

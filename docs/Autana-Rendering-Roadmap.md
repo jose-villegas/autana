@@ -640,7 +640,7 @@ divides by powers of two; a unity build for cross-file inlining if the
 rasterizer spans files; host numbers predict code-shape changes well and
 work-quantity changes badly; and the RTOS tick and input tasks are a
 small, measurable tax. Take everything an app needs once at `enter()`,
-from the shell's app arena, which the shell empties when the app leaves —
+from the shell's app arena, which the shell empties before the next app enters —
 the repo's "app exclusivity" convention and every MCU renderer's "allocate
 at startup, never again" advice are the same rule.
 
@@ -984,7 +984,8 @@ Principles, each of which is already a repo habit:
   fonts go through generators into headers with the regenerate command
   in their banner, validated by the generator and tested independently
   (the generated-sources convention in `docs/Launcher-Architecture.md`).
-- **Allocate at `enter()`, free at `exit()`, nothing in between.**
+- **Take bulk memory from the app arena at `enter()`, nothing in between.**
+  The shell empties it before the next app's `enter()`.
 - **One board, `board/` binds the facts.** `board/board.h` and
   `board_esp32s3.c` pick the bus clocks, the PSRAM policy (one retained
   framebuffer read by core-1 present; full-redraw renderers use the
@@ -1124,7 +1125,8 @@ what is making it:
   with `objdump`, not the attribute, and diff `.bss` for every build
   variant before trusting a static buffer's size.
 - No new file-scope `static` buffer in any build variant without a `.bss`
-  diff; allocate at `enter()`, free at `exit()`.
+  diff; take bulk memory from the app arena at `enter()` (the shell
+  empties it before the next app's `enter()`).
 - The three shell rules hold for any change: one framebuffer (the
   retained buffer for retained apps, or the internal-SRAM band ring for
   full-redraw renderers, as a gfx-owned mode), one frame loop owned by
