@@ -29,8 +29,7 @@ class DeviceAccessTest(unittest.TestCase):
             self.write(root, "launcher/tools/capture.py",
                       "import serial\n\nport = serial.Serial('COM5', 115200)\n")
             self.commit(root, "launcher")
-            openers, retired = check_device_access.check(root)
-        self.assertEqual(retired, [])
+            openers = check_device_access.check(root)
         self.assertEqual(len(openers), 1)
         self.assertEqual(openers[0].path, "launcher/tools/capture.py")
 
@@ -40,7 +39,7 @@ class DeviceAccessTest(unittest.TestCase):
             self.write(root, "scripts/device/device.py",
                       "import serial\n\nport = serial.Serial('COM5', 115200)\n")
             self.commit(root, "scripts")
-            openers, _ = check_device_access.check(root)
+            openers = check_device_access.check(root)
         self.assertEqual(openers, [])
 
     def test_the_gate_itself_is_exempt(self):
@@ -55,7 +54,7 @@ class DeviceAccessTest(unittest.TestCase):
             self.write(root, "scripts/gates/tests/test_check_device_access.py",
                       'FIXTURE = \'cmd = [python, "-m", "esptool", "flash"]\'\n')
             self.commit(root, "scripts")
-            openers, _ = check_device_access.check(root)
+            openers = check_device_access.check(root)
         self.assertEqual(openers, [])
 
     def openers(self, path, text):
@@ -63,7 +62,7 @@ class DeviceAccessTest(unittest.TestCase):
             root = pathlib.Path(temp)
             self.write(root, path, text)
             self.commit(root, path)
-            openers, _ = check_device_access.check(root)
+            openers = check_device_access.check(root)
         return [v.line for v in openers]
 
     def test_a_flash_outside_scripts_device_is_flagged_whatever_checks_the_lock(self):
@@ -111,7 +110,7 @@ class DeviceAccessTest(unittest.TestCase):
                       '       "-o", out_path]\n'
                       'sock = socket.create_connection(("127.0.0.1", port), 1.0)\n')
             self.commit(root, "launcher")
-            openers, _ = check_device_access.check(root)
+            openers = check_device_access.check(root)
         self.assertEqual(openers, [])
 
     def test_a_bare_serial_call_with_no_import_is_not_flagged(self):
@@ -122,7 +121,7 @@ class DeviceAccessTest(unittest.TestCase):
             self.write(root, "launcher/tools/example.py",
                       "def Serial(x):\n    return x\n\nSerial(1)\n")
             self.commit(root, "launcher")
-            openers, _ = check_device_access.check(root)
+            openers = check_device_access.check(root)
         self.assertEqual(openers, [])
 
     def test_an_esptool_module_invocation_is_flagged(self):
@@ -131,7 +130,7 @@ class DeviceAccessTest(unittest.TestCase):
             self.write(root, "launcher/tools/flash_it.py",
                       'cmd = [python, "-m", "esptool", "--chip", "esp32s3", "flash"]\n')
             self.commit(root, "launcher")
-            openers, _ = check_device_access.check(root)
+            openers = check_device_access.check(root)
         self.assertEqual(len(openers), 1)
         self.assertIn("esptool", openers[0].reason)
 
@@ -141,7 +140,7 @@ class DeviceAccessTest(unittest.TestCase):
             self.write(root, "launcher/tools/build_it.sh",
                       '#!/bin/sh\necho "=== letting esptool pick the port ==="\n')
             self.commit(root, "launcher")
-            openers, _ = check_device_access.check(root)
+            openers = check_device_access.check(root)
         self.assertEqual(openers, [])
 
     def test_an_idf_flash_invocation_is_flagged(self):
@@ -150,7 +149,7 @@ class DeviceAccessTest(unittest.TestCase):
             self.write(root, "launcher/tools/rogue_flash.sh",
                       '#!/bin/sh\nidf -B build -p "$COM_PORT" flash\n')
             self.commit(root, "launcher")
-            openers, _ = check_device_access.check(root)
+            openers = check_device_access.check(root)
         self.assertEqual(len(openers), 1)
         self.assertIn("flash", openers[0].reason)
 
@@ -160,7 +159,7 @@ class DeviceAccessTest(unittest.TestCase):
             self.write(root, "launcher/tools/guidance.sh",
                       '#!/bin/sh\necho "Flash with: idf.py -B build -p COM3 flash"\n')
             self.commit(root, "launcher")
-            openers, _ = check_device_access.check(root)
+            openers = check_device_access.check(root)
         self.assertEqual(openers, [])
 
     def test_an_idf_monitor_script_invocation_is_flagged(self):
@@ -169,7 +168,7 @@ class DeviceAccessTest(unittest.TestCase):
             self.write(root, "monitor.sh",
                       '#!/bin/sh\nexec "$PY" "$IDF_PATH/tools/idf_monitor.py" -p "$PORT"\n')
             self.commit(root, "monitor.sh")
-            openers, _ = check_device_access.check(root)
+            openers = check_device_access.check(root)
         self.assertEqual(len(openers), 1)
         self.assertIn("idf_monitor", openers[0].reason)
 
@@ -182,65 +181,8 @@ class DeviceAccessTest(unittest.TestCase):
                       '"""Reads the response back out of the same stream idf_monitor\n'
                       'would otherwise be showing as logs.\n"""\n')
             self.commit(root, "launcher")
-            openers, _ = check_device_access.check(root)
+            openers = check_device_access.check(root)
         self.assertEqual(openers, [])
-
-    def test_a_doc_naming_a_retired_script_is_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.write(root, "docs/Guide.md",
-                      "Capture the screen with `./launcher/tools/screenshot.sh`.\n")
-            self.commit(root, "docs")
-            _, retired = check_device_access.check(root)
-        self.assertEqual(len(retired), 1)
-        self.assertIn("screenshot.sh", retired[0].reason)
-
-    def test_a_non_markdown_tracked_file_is_also_scanned(self):
-        # A stale name turned up in a CI workflow comment and .gitignore,
-        # neither of which is a .md file.
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.write(root, ".gitignore", "# from test/run_device_tests.sh\nbuild.diag/\n")
-            self.commit(root, ".gitignore")
-            _, retired = check_device_access.check(root)
-        self.assertEqual(len(retired), 1)
-        self.assertIn("run_device_tests.sh", retired[0].reason)
-
-    def test_a_binary_file_is_not_read_as_text(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            target = root / "design" / "boot.png"
-            target.parent.mkdir(parents=True)
-            target.write_bytes(b"\x89PNG\r\n\x1a\nscreenshot.sh" * 4)
-            self.commit(root, "design")
-            _, retired = check_device_access.check(root)
-        self.assertEqual(retired, [])
-
-    def test_scripts_gates_is_exempt_from_the_retired_name_scan_too(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.write(root, "scripts/gates/check_device_access.py",
-                      "RETIRED_SCRIPTS = ('screenshot.sh', 'monitor.sh')\n")
-            self.commit(root, "scripts")
-            _, retired = check_device_access.check(root)
-        self.assertEqual(retired, [])
-
-    def test_a_doc_naming_the_replacement_command_is_not_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.write(root, "docs/Guide.md", "Capture the screen with `autana screenshot`.\n")
-            self.commit(root, "docs")
-            _, retired = check_device_access.check(root)
-        self.assertEqual(retired, [])
-
-    def test_every_retired_script_name_is_individually_caught(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            lines = "\n".join(f"- `{name}`" for name in check_device_access.RETIRED_SCRIPTS)
-            self.write(root, "docs/Guide.md", lines + "\n")
-            self.commit(root, "docs")
-            _, retired = check_device_access.check(root)
-        self.assertEqual(len(retired), len(check_device_access.RETIRED_SCRIPTS))
 
 
 class MainTest(unittest.TestCase):
@@ -249,9 +191,10 @@ class MainTest(unittest.TestCase):
             root = pathlib.Path(temp)
             git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
             subprocess.run(git + ["init", "-q"], cwd=root, check=True)
-            (root / "docs").mkdir()
-            (root / "docs" / "Guide.md").write_text("`monitor.sh`\n", encoding="utf-8")
-            subprocess.run(git + ["add", "docs"], cwd=root, check=True)
+            (root / "tools").mkdir()
+            (root / "tools" / "capture.py").write_text("import serial\nserial.Serial('COM5')\n",
+                                                       encoding="utf-8")
+            subprocess.run(git + ["add", "tools"], cwd=root, check=True)
             subprocess.run(git + ["commit", "-qm", "fixture"], cwd=root, check=True)
             import os
             cwd = os.getcwd()
