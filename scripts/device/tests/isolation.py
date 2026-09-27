@@ -2,12 +2,13 @@
 
 Every test module under scripts/device/tests and scripts/autana/tests
 imports this before anything else. Once per test process it points the
-records root (AUTANA_RECORDS) and the lock root (AUTANA_DEVICE_LOCK_ROOT) at
-one temporary directory, which child processes inherit, and drops an
-inherited AUTANA_LOCK_HOOK so no test notifies anybody. An audit hook then
-refuses any write this process makes under the roots it replaced, and the
-run exits non-zero if one was attempted, even where the code under test
-swallowed the error.
+records root (AUTANA_RECORDS), the lock root (AUTANA_DEVICE_LOCK_ROOT) and
+where flash snapshots are made (AUTANA_IMAGE_ROOT) at one temporary
+directory, which child processes inherit, and drops an inherited
+AUTANA_LOCK_HOOK so no test notifies anybody. An audit hook then refuses any
+write this process makes under the roots it replaced, and the run exits
+non-zero if one was attempted, even where the code under test swallowed the
+error - or if a snapshot folder outlived the run.
 """
 
 import atexit
@@ -33,6 +34,9 @@ def replaced_roots():
 REAL_ROOTS = replaced_roots()
 os.environ["AUTANA_RECORDS"] = str(TEMP / "records")
 os.environ["AUTANA_DEVICE_LOCK_ROOT"] = str(TEMP / "locks")
+IMAGES = TEMP / "images"
+IMAGES.mkdir()
+os.environ["AUTANA_IMAGE_ROOT"] = str(IMAGES)
 # The tools under test are this checkout's, never the main checkout's.
 os.environ["AUTANA_DEVICE_TOOLS"] = "here"
 os.environ.pop("AUTANA_LOCK_HOOK", None)
@@ -71,8 +75,18 @@ def refuse_real_roots(event, args):
         checking.active = False
 
 
+def leftover_snapshots():
+    return sorted(path.name for path in IMAGES.glob("autana-image-*"))
+
+
 def finish():
+    left = leftover_snapshots()
     shutil.rmtree(TEMP, ignore_errors=True)
+    if left:
+        sys.stderr.write("FAIL: the test run left snapshot folders behind:\n  " +
+                         "\n  ".join(left) + "\n")
+        sys.stderr.flush()
+        os._exit(1)
     if violations:
         sys.stderr.write("FAIL: the test run wrote into real device roots:\n  " +
                          "\n  ".join(sorted(set(violations))) + "\n")

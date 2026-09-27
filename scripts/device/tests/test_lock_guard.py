@@ -941,13 +941,13 @@ class SnapshotTests(unittest.TestCase):
 
 class ScriptEnvironmentTests(unittest.TestCase):
     def test_windows_adds_msystem_when_absent_and_keeps_one_already_set(self):
-        with mock.patch.object(device.os, "name", "nt"):
+        with mock.patch.object(device, "on_windows", return_value=True):
             self.assertEqual(device.script_environment({})["MSYSTEM"], "MINGW64")
             self.assertEqual(device.script_environment({"MSYSTEM": "UCRT64"})["MSYSTEM"],
                              "UCRT64")
 
     def test_posix_adds_no_msystem(self):
-        with mock.patch.object(device.os, "name", "posix"):
+        with mock.patch.object(device, "on_windows", return_value=False):
             self.assertNotIn("MSYSTEM", device.script_environment({"PATH": "/bin"}))
 
     def test_the_build_and_the_write_both_get_it(self):
@@ -961,7 +961,7 @@ class ScriptEnvironmentTests(unittest.TestCase):
                     fake_flash.write_image(worktree / "launcher" / "build.dev", "abc")
 
             store = device_lock.LockStore(Path(directory) / "locks")
-            with mock.patch.object(device.os, "name", "nt"), \
+            with mock.patch.object(device, "on_windows", return_value=True), \
                     mock.patch.dict(device.os.environ, {}, clear=False), \
                     mock.patch.object(device, "run_to_end", side_effect=run):
                 device.os.environ.pop("MSYSTEM", None)
