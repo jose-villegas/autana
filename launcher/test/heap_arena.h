@@ -25,4 +25,8 @@ void heap_arena_snapshot(size_t* out_blocks, size_t* out_bytes);
 size_t heap_arena_peak_bytes(void);
 void heap_arena_reset_peak(void);
 
+/* The PSRAM heap a PSRAM size leaves: `override` as the environment variable
+ * would carry it, or the device profile's size when NULL. */
+size_t heap_arena_psram_heap_bytes(const char* override);
+
 #endif /* HOST_HEAP_ARENA */

@@ -193,7 +193,7 @@ stateDiagram-v2
     ControlCenter : Control Center<br/>ui_control_center_frame()<br/>over the dimmed launcher
 
     Launcher --> Running: tap an entry<br/><i>the app's enter()</i>
-    Running --> Launcher: home swipe if home_gesture,<br/>else PWR long-press;<br/>or shell_request_exit()<br/><i>the app's exit()</i>
+    Running --> Launcher: home swipe if home_gesture,<br/>else PWR long-press;<br/>or shell_request_exit()<br/><i>the app's exit(),<br/>then the arena emptied</i>
     Launcher --> ControlCenter: swipe in from<br/>the logical top
     ControlCenter --> Launcher: swipe in from<br/>the logical bottom
 ```
@@ -233,6 +233,14 @@ the component is linked `WHOLE_ARCHIVE` because nothing references an app by
 name. Bench-only apps are dropped from release by a filter in
 `main/CMakeLists.txt`; what each build variant carries is
 [Build-Variants.md](Build-Variants.md).
+
+**App memory is lent, not owned.** The shell holds one static block in
+PSRAM, the app arena (`APP_ARENA_BYTES`, `app_arena.h`), and empties it
+right after every app's `exit()`; an app takes bulk buffers from it and
+never frees them. Re-entry cannot fail to heap fragmentation, since every
+visit gets the same block, and taking from it is no dynamic-memory call
+(MISRA 21.3): it bumps an offset. How to use it is
+[Building-an-App.md](Building-an-App.md#app-memory).
 
 ---
 
