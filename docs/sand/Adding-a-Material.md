@@ -479,7 +479,7 @@ document.
 gcc -std=c11 -O1 -I launcher/main -o probe.exe probe.c launcher/main/apps/sand/sand.c launcher/main/apps/sand/sand_liquid.c launcher/main/apps/sand/sand_gas.c launcher/main/apps/sand/sand_reactions.c launcher/main/apps/sand/sand_plants.c launcher/main/apps/sand/sand_impulse.c launcher/main/apps/sand/material.c launcher/main/apps/sand/row_runs.c launcher/main/apps/sand/sand_chunk_sched.c launcher/main/util/job.c
 ```
 
-Your `probe.c` needs only `#include "apps/sand/sand.h"`, a grid, and a <!-- doc-citations: ignore -->
+Your probe.c needs only `#include "apps/sand/sand.h"`, a grid, and a
 loop. Build the scene the way the *app* would build it (pour-brush-sized
 blobs, hand-drawn thicknesses - see "Can a player actually build the
 scene this material needs?" above), sweep the constant you are unsure

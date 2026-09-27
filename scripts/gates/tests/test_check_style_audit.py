@@ -364,7 +364,7 @@ class StyleAuditTest(unittest.TestCase):
             root = pathlib.Path(temp)
             self.write(root, "docs/Guide.md",
                       "C6 is historical. <!-- doc-vocabulary: ignore -->\n"
-                      "The IDF's `spi_ll.h`. <!-- doc-citations: ignore -->\n"
+                      "The IDF's `spi_ll.h`. <!-- doc-citations: ignore spi_ll.h -->\n"
                       "<!-- BEGIN GENERATED -->\ntable\n<!-- END GENERATED -->\n")
             self.commit(root, "docs")
             findings = self.rule_hits(root, "STRAY-HTML-COMMENT")

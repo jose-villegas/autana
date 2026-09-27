@@ -1,4 +1,6 @@
 """Regression tests for documentation citation tools."""
+import contextlib
+import io
 import json
 import os
 import pathlib
@@ -271,15 +273,62 @@ Acid -->|"dissolvable 110"| Metal
         self.assertNotIn("docs/plans/Future-Plan.md", [item.doc for item in missing])
         self.assertIn("docs/Guide.md", [item.doc for item in missing])
 
-    def test_citation_escape_exempts_only_its_own_line(self):
+    def test_a_plans_named_file_outside_the_folder_is_checked(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/plans-archive.md", "`planned_function()`\n")
+            missing = check_doc_citations.check(root)
+        self.assertEqual([(item.doc, item.value) for item in missing],
+                         [("docs/plans-archive.md", "planned_function")])
+
+    def test_a_marker_exempts_only_the_name_it_names_on_its_own_line(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.write(root, "launcher/main/example.c", "void live_function(void) {}\n")
             self.write(root, "docs/Guide.md",
-                       "The IDF's `sdk_private()` in `sdk_private.h`. <!-- doc-citations: ignore -->\n"
-                       "`other_missing()`\n")
+                       "The IDF's `sdk_private()` in `sdk_private.h`, beside `gone_function()`."
+                       " <!-- doc-citations: ignore sdk_private() -->"
+                       " <!-- doc-citations: ignore sdk_private.h -->\n"
+                       "`sdk_private()`\n")
             missing = check_doc_citations.check(root)
-        self.assertEqual([(item.line, item.value) for item in missing], [(2, "other_missing")])
+            stale = check_doc_citations.stale_markers(root)
+        self.assertEqual([(item.line, item.value) for item in missing],
+                         [(1, "gone_function"), (2, "sdk_private")])
+        self.assertEqual(stale, [])
+
+    def test_a_marker_that_exempts_nothing_is_reported(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/example.c", "void live_function(void) {}\n")
+            self.write(root, "docs/Guide.md",
+                       "`live_function()` <!-- doc-citations: ignore live_function() -->\n"
+                       "`sdk_private()` <!-- doc-citations: ignore sdk_other() -->\n"
+                       "`sdk_private()` <!-- doc-citations: ignore -->\n")
+            stale = check_doc_citations.stale_markers(root)
+        self.assertEqual([(marker.line, reason) for marker, reason in stale],
+                         [(1, "names live_function(), which resolves"),
+                          (2, "names sdk_other(), which this line does not cite"),
+                          (3, "names nothing")])
+
+    def test_another_gates_marker_or_html_comment_does_not_silence_a_citation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/Guide.md",
+                       "`gone_a()` <!-- doc-vocabulary: ignore -->\n"
+                       "`gone_b()` <!-- doc-constants: ignore -->\n"
+                       "`gone_c()` <!-- gone_c() -->\n")
+            missing = check_doc_citations.check(root)
+        self.assertEqual([item.value for item in missing], ["gone_a", "gone_b", "gone_c"])
+
+    def test_a_missing_citation_names_the_marker_that_would_exempt_it(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/Guide.md", "`sdk_private()`\n")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = check_doc_citations.main(["--root", str(root)])
+        self.assertEqual(code, 1)
+        self.assertIn("<!-- doc-citations: ignore sdk_private() -->", output.getvalue())
 
     def test_a_constant_an_mjs_script_reads_resolves(self):
         with tempfile.TemporaryDirectory() as temp:
