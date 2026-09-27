@@ -135,6 +135,18 @@ class LitMeshTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             validate(pos, np.zeros((6, 3)), tris, clusters, nodes)
 
+    def test_validation_refuses_more_triangles_than_uint16_offsets_hold(self):
+        pos = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
+        tris = np.tile([0, 1, 2], (65536, 1))
+        with self.assertRaisesRegex(AssertionError, "triangles"):
+            validate(pos, np.zeros((3, 3)), tris, [], [])
+
+    def test_validation_refuses_more_clusters_than_uint16_offsets_hold(self):
+        pos = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
+        clusters = [(0, 3, 0, 1, np.zeros(3), np.zeros(3), False)] * 65536
+        with self.assertRaisesRegex(AssertionError, "clusters"):
+            validate(pos, np.zeros((3, 3)), np.array([[0, 1, 2]]), clusters, [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -473,9 +473,9 @@ replace it, chosen by app kind:
 renders at half resolution into colour and depth targets in PSRAM and
 doubles the result into the framebuffer, both cores writing PSRAM in bulk
 every frame. It stays there until the span rasterizer draws into the band
-ring: on the board, render_lab's Sponza scenes cost 63.9 ms per frame
-(full bake) and 46.5 ms (lite bake) on both cores before present, measured
-by the diagnostics perf suite. The doubling belongs to gfx (section 8,
+ring; `apps/render_lab/tests/suite_sponza_perf.c`, on a full diagnostics
+build, prints what a frame of each bake costs on both cores before present.
+The doubling belongs to gfx (section 8,
 decision 1) and moves there when gfx resolves an app's resolution; until
 then `r3d_lit_frame_double()` does it inside render/.
 
@@ -1073,7 +1073,8 @@ cheapest path to something that is unmistakably a game.
 2. ~~Band height: 64 rows or 32?~~ **Live again under the revised
    decision B.** The band ring in internal SRAM is the
    standing mechanism for every full-redraw renderer (r3d, raycaster,
-   image kernels); PSRAM is never their render target. Band height stays
+   image kernels); PSRAM is never their render target (one
+   measured exception, section 3.3). Band height stays
    a compile-time constant (`GFX_BAND_HEIGHT`, divisors of 448: 64, 32,
    16), now a Kconfig choice rather than a hard-coded macro — the ring
    ships with 32 as the default, absent a device sweep saying otherwise.

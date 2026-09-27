@@ -11,6 +11,8 @@ from r3d.octree import build_octree, flatten_octree, node_bounds
 INT16_MAX = 32767
 MAX_VERTICES = 65535  # uint16 indices
 MAX_NODES = 65535
+MAX_TRIANGLES = 65535  # uint16 triangle_first
+MAX_CLUSTERS = 65535  # uint16 leaf first cluster
 MAX_NODE_CHILDREN = 255
 
 
@@ -46,6 +48,8 @@ def write_lit_mesh(out_dir, name, positions, rgb, tris, double, banner_lines, le
 
 def validate(pos, rgb, tris, clusters, nodes):
     assert len(pos) <= MAX_VERTICES, f"{len(pos)} vertices exceed uint16 indices"
+    assert len(tris) <= MAX_TRIANGLES, f"{len(tris)} triangles exceed uint16 offsets"
+    assert len(clusters) <= MAX_CLUSTERS, f"{len(clusters)} clusters exceed uint16 offsets"
     assert np.abs(pos).max() <= INT16_MAX, "a position does not fit int16"
     assert rgb.min() >= 0 and rgb.max() <= 255
     assert tris.min() >= 0 and tris.max() < len(pos)
