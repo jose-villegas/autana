@@ -410,6 +410,8 @@ repeating while the host is busy: across five concurrent instances on a
 32-thread desktop, one-core measurements moved at most 1.05%, and three in
 four were identical to the digit.
 
+Under QEMU, sand's frame-budget rows use the solo chunk driver, which walks the split chunk order on one core and reports a `PERF_ROW` instruction-count line per scene. The two-core correctness tests still exercise core 1.
+
 **A step shared between two cores cannot be ranked this way at all.** The
 count sums both cores, so the second one is charged for whatever it does
 while it waits — its bounded spin, or its idle task. That is a two-core
