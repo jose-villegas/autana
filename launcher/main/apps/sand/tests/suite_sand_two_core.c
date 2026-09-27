@@ -2509,18 +2509,20 @@ test_a_stamp_is_never_read_under_a_cut_it_was_not_written_under(void) {
     sand_chunk_table_sides(TC_W, TC_H, SAND_CHUNK_TRAVEL_OTHER, &narrow_x, &narrow_y);
     TEST_ASSERT_NOT_EQUAL_MESSAGE(wide_x, narrow_x, "this board must cut its two classes differently to mean anything");
 
-    sand_stamps_arm(s, wide_x, wide_y);
-    sand_stamp_crossing(s, wide_x - 1, 0, wide_x, 0);
+    sand_stamps_arm(s);
+    sand_stamps_chunk(s, 0, wide_x, 0, wide_y);
+    sand_stamp_crossing(s, wide_x, 0);
     TEST_ASSERT_TRUE_MESSAGE(sand_cell_stamped(s, wide_x, 0), "a crossing of the wide cut must mark where it landed");
-    sand_stamp_crossing(s, narrow_x - 1, 0, narrow_x, 0);
+    sand_stamp_crossing(s, narrow_x, 0);
     TEST_ASSERT_FALSE_MESSAGE(sand_cell_stamped(s, narrow_x, 0),
                               "a move inside one wide chunk is no crossing and must leave no mark");
     sand_stamps_disarm(s);
 
-    sand_stamps_arm(s, narrow_x, narrow_y);
+    sand_stamps_arm(s);
+    sand_stamps_chunk(s, 0, narrow_x, 0, narrow_y);
     TEST_ASSERT_FALSE_MESSAGE(sand_cell_stamped(s, wide_x, 0), "a mark written under one cut was honoured under "
                                                                "another");
-    sand_stamp_crossing(s, narrow_x - 1, 0, narrow_x, 0);
+    sand_stamp_crossing(s, narrow_x, 0);
     TEST_ASSERT_TRUE_MESSAGE(sand_cell_stamped(s, narrow_x, 0), "the same move is a crossing under the narrow cut");
     sand_stamps_disarm(s);
 
@@ -2557,8 +2559,10 @@ test_a_step_hands_the_next_pass_no_marks_whatever_it_was_cut_by(void) {
         sand_step(s, gx[arm], gy[arm], 0);
         snprintf(why, sizeof why, "step %d under gravity %d,%d left the marks armed", i, gx[arm], gy[arm]);
         TEST_ASSERT_NULL_MESSAGE(s->stamps_live, why);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(0, s->stamp_side_x, why);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(0, s->stamp_side_y, why);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, s->stamp_x0, why);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, s->stamp_x1, why);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, s->stamp_y0, why);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, s->stamp_y1, why);
         for (size_t b = 0; b < sand_step_stamp_bytes(TC_W, TC_H); b++) {
             TEST_ASSERT_EQUAL_HEX8_MESSAGE(0, stamps[b], why);
         }

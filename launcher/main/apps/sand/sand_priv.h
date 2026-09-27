@@ -152,28 +152,31 @@ sand_row_cell_stamped(const uint8_t* stamp_row, int x) {
  * keeps a grain to one move exactly as serial does. Only the mover, at its
  * destination - a cell it displaced may still take its own move. */
 static inline void
-sand_stamp_crossing(sand_t* s, int x0, int y0, int x1, int y1) {
+sand_stamp_crossing(sand_t* s, int x1, int y1) {
     uint8_t* const live = s->stamps_live;
     if (live == NULL) {
         return;
     }
-    if (x0 / s->stamp_side_x == x1 / s->stamp_side_x && y0 / s->stamp_side_y == y1 / s->stamp_side_y) {
+    if (x1 >= s->stamp_x0 && x1 < s->stamp_x1 && y1 >= s->stamp_y0 && y1 < s->stamp_y1) {
         return;
     }
     live[(size_t)y1 * sand_stamp_stride(s->w) + ((unsigned)x1 >> 3)] |= (uint8_t)(1u << (x1 & 7));
     s->stamped = true;
 }
 
-/* Bracket one chunk-parallel pass, taking the sides of the plan that pass is
- * running on: two passes of one step can be cut differently, and a mark left
- * by one would name another chunk under the other. Stamps are per pass, not
- * per step, for a second reason: serial lets the next pass move a cell this
- * one already moved. */
+/* Marks end with the pass: the next pass may use another cut and must be free
+ * to move a cell this pass already moved. */
 static inline void
-sand_stamps_arm(sand_t* s, int side_x, int side_y) {
+sand_stamps_arm(sand_t* s) {
     s->stamps_live = s->step_stamps;
-    s->stamp_side_x = side_x;
-    s->stamp_side_y = side_y;
+}
+
+static inline void
+sand_stamps_chunk(sand_t* s, int x0, int x1, int y0, int y1) {
+    s->stamp_x0 = x0;
+    s->stamp_x1 = x1;
+    s->stamp_y0 = y0;
+    s->stamp_y1 = y1;
 }
 
 static inline void
@@ -183,8 +186,10 @@ sand_stamps_disarm(sand_t* s) {
         s->stamped = false;
     }
     s->stamps_live = NULL;
-    s->stamp_side_x = 0;
-    s->stamp_side_y = 0;
+    s->stamp_x0 = 0;
+    s->stamp_x1 = 0;
+    s->stamp_y0 = 0;
+    s->stamp_y1 = 0;
 }
 
 #define SAND_LANE_COUNT       2
@@ -588,6 +593,7 @@ extern unsigned sand_sweep_chunks_swept;
  * what a layout is ranked on is the work a board actually has. One global
  * charging point means only a single-lane walk can attribute a row to a
  * chunk. Armed by sand_chunk_work_enable(); never reset by a pass. */
+#ifndef DEVICE_BUILD
 extern unsigned sand_chunk_work[SAND_CHUNKS_MAX];
 extern int sand_chunk_work_at;
 
@@ -599,6 +605,12 @@ sand_chunk_work_add(int cells) {
         sand_chunk_work[sand_chunk_work_at] += (unsigned)cells;
     }
 }
+#else
+static inline void
+sand_chunk_work_add(int cells) {
+    (void)cells;
+}
+#endif
 
 /* Not sand.h API: draws a chunk-parallel pass took from the sequential stream
  * rather than through sand_rng_next_at(). A lane holds its own copy of the
@@ -1231,7 +1243,7 @@ mark_slide(sand_t* s, int x0, int y0, int x1, int y1) {
     mark_row_span(s, y0, x0, x0);
     if (y1 != y0 || x1 != x0) {
         mark_row_span(s, y1, x1, x1);
-        sand_stamp_crossing(s, x0, y0, x1, y1);
+        sand_stamp_crossing(s, x1, y1);
     }
 }
 

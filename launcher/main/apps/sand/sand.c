@@ -174,8 +174,10 @@ sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
     s->block_state = NULL;
     s->step_stamps = NULL;
     s->stamps_live = NULL;
-    s->stamp_side_x = 0;
-    s->stamp_side_y = 0;
+    s->stamp_x0 = 0;
+    s->stamp_x1 = 0;
+    s->stamp_y0 = 0;
+    s->stamp_y1 = 0;
     s->stamped = false;
     s->lane_scratch = NULL;
     s->impulse_buf = NULL;
@@ -1442,6 +1444,12 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int x0, int x1, int w, int dx
     const int b_off = b_dy * w;
     const int row_step = y_step * w;
     int row_at = y0 * w;
+    const int last_y = y1 - y_step;
+    const int low_y = y0 < last_y ? y0 : last_y;
+    const int high_y = y0 > last_y ? y0 : last_y;
+    const int low_dy = dy < a_dy ? (dy < b_dy ? dy : b_dy) : (a_dy < b_dy ? a_dy : b_dy);
+    const int high_dy = dy > a_dy ? (dy > b_dy ? dy : b_dy) : (a_dy > b_dy ? a_dy : b_dy);
+    const bool interior_rows = low_y + low_dy >= 0 && high_y + high_dy < h;
 
     int scanned_by = -1;
     bool block_row_settled = false;
@@ -1461,9 +1469,9 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int x0, int x1, int w, int dx
 
         uint8_t* const row = s->cells + row_at;
         ctx.row = row;
-        ctx.prow = dest_row_stepped(row, y + dy, h, p_off);
-        ctx.arow = dest_row_stepped(row, y + a_dy, h, a_off);
-        ctx.brow = dest_row_stepped(row, y + b_dy, h, b_off);
+        ctx.prow = interior_rows ? row + p_off : dest_row_stepped(row, y + dy, h, p_off);
+        ctx.arow = interior_rows ? row + a_off : dest_row_stepped(row, y + a_dy, h, a_off);
+        ctx.brow = interior_rows ? row + b_off : dest_row_stepped(row, y + b_dy, h, b_off);
         ctx.stamp_row = sand_stamp_row(s, y);
         ctx.y = y;
         ctx.by = by;
@@ -1501,6 +1509,7 @@ static void* chunk_pass_arg;
 #define CHUNK_PASS_SPIN_LIMIT 20000u
 #define CHUNK_PASS_JOIN_MS    100u
 
+#ifndef DEVICE_BUILD
 unsigned sand_chunk_work[SAND_CHUNKS_MAX];
 int sand_chunk_work_at = -1;
 static bool chunk_work_on;
@@ -1510,13 +1519,16 @@ sand_chunk_work_enable(bool on) {
     chunk_work_on = on;
     sand_chunk_work_at = -1;
 }
+#endif
 
 void
 sand_chunk_pass_cells(int cx, int cy, int* x0, int* x1, int* y0, int* y1) {
     sand_chunk_cells(&chunk_plan, cx, cy, x0, x1, y0, y1);
+#ifndef DEVICE_BUILD
     if (chunk_work_on) {
         sand_chunk_work_at = cy * chunk_plan.cols + cx;
     }
+#endif
 }
 
 static void
@@ -1769,7 +1781,7 @@ sand_chunk_pass_run(sand_t* s, sand_split_pass_t pass_id, int tx, int ty, sand_c
 
     s->rng_hashed = true;
     if (stamps == SAND_CHUNK_PASS_STAMP_CROSSINGS) {
-        sand_stamps_arm(s, chunk_plan.side_x, chunk_plan.side_y);
+        sand_stamps_arm(s);
     }
     for (int i = 0; i < SAND_LANE_COUNT; i++) {
         sand_lane_prepare(&lanes[i], s);
@@ -1777,7 +1789,9 @@ sand_chunk_pass_run(sand_t* s, sand_split_pass_t pass_id, int tx, int ty, sand_c
 
     const uint32_t rng_at_prepare = s->rng.state;
     drive_chunk_pass_lanes();
+#ifndef DEVICE_BUILD
     sand_chunk_work_at = -1;
+#endif
     count_sequential_draws(rng_at_prepare, s->rng.state);
 
     for (int i = 0; i < SAND_LANE_COUNT; i++) {
@@ -1819,6 +1833,7 @@ sweep_one_chunk(void* pass, int lane, int cx, int cy) {
     int x0, x1, y0, y1;
 
     sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
+    sand_stamps_chunk(view, x0, x1, y0, y1);
     if (blocks_settled_over(view, x0, x1, y0, y1, c->settled_bit)) {
         return;
     }

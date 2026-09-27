@@ -449,14 +449,20 @@ gas_sweep_range(sand_t* s, const gas_pass_t* c, int from, int to, int x0, int x1
     const int row_step = c->y_step * w;
     int row_at = from * w;
     bool any = false;
+    const int last_y = to - c->y_step;
+    const int low_y = from < last_y ? from : last_y;
+    const int high_y = from > last_y ? from : last_y;
+    const int low_dy = c->rdy < a_dy ? (c->rdy < b_dy ? c->rdy : b_dy) : (a_dy < b_dy ? a_dy : b_dy);
+    const int high_dy = c->rdy > a_dy ? (c->rdy > b_dy ? c->rdy : b_dy) : (a_dy > b_dy ? a_dy : b_dy);
+    const bool interior_rows = low_y + low_dy >= 0 && high_y + high_dy < h;
 
     for (int y = from; y != to; y += c->y_step, row_at += row_step) {
         uint8_t* const row = s->cells + row_at;
         const gas_row_t r = {
             .row = row,
-            .prow = dest_row_stepped(row, y + c->rdy, h, p_off),
-            .arow = dest_row_stepped(row, y + a_dy, h, a_off),
-            .brow = dest_row_stepped(row, y + b_dy, h, b_off),
+            .prow = interior_rows ? row + p_off : dest_row_stepped(row, y + c->rdy, h, p_off),
+            .arow = interior_rows ? row + a_off : dest_row_stepped(row, y + a_dy, h, a_off),
+            .brow = interior_rows ? row + b_off : dest_row_stepped(row, y + b_dy, h, b_off),
             .stamp_row = sand_stamp_row(s, y),
             .y = y,
             .x0 = x0,
@@ -481,6 +487,7 @@ step_one_gas_chunk(void* pass, int lane, int cx, int cy) {
     int x0, x1, y0, y1;
 
     sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
+    sand_stamps_chunk(s, x0, x1, y0, y1);
     const int from = (c->y_step > 0) ? y0 : y1 - 1;
     const int to = (c->y_step > 0) ? y1 : y0 - 1;
     c->found_any[lane] |= gas_sweep_range(s, c, from, to, x0, x1);
