@@ -58,6 +58,7 @@ driver, and do not add the gap yourself.
 ```mermaid
 flowchart LR
     subgraph PSRAM["PSRAM, 8 MB octal"]
+        ARENA["app arena, APP_ARENA_BYTES<br/>static, lent to the running app"]
         FB["framebuffer 322 KiB<br/>full-framebuffer mode only"]
     end
     subgraph SRAM["internal SRAM"]
@@ -73,7 +74,9 @@ In full-framebuffer mode (`BOARD_FRAMEBUFFER_CAPS`, `board.h`) the
 framebuffer is in PSRAM; band and indexed modes free it. How it reaches the
 panel is in [Gfx-and-Presentation.md](../Gfx-and-Presentation.md).
 `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps every allocation up to 64 KB
-in internal SRAM, an app's per-frame working buffers included.
+in internal SRAM, an app's per-frame working buffers included. The app arena (`main/app_arena.h`)
+is a static placed in PSRAM before the heap takes the rest, so the PSRAM heap
+is what `APP_ARENA_BYTES` leaves.
 
 | Measurement | Value | Source |
 |---|---|---|
@@ -121,8 +124,8 @@ Detected in task "main" at 0x4200b2f8
 
 ### Flash
 
-`launcher/partitions.csv` leaves most of the 16 MB unallocated for a future
-data partition. `esp_partition_mmap()` reads it like an array; mapped reads go
+`launcher/partitions.csv` leaves the flash past the app partition unallocated
+for a future data partition. `esp_partition_mmap()` reads it like an array; mapped reads go
 through the cache, so sequential access is fast and random access thrashes.
 
 ### SD card

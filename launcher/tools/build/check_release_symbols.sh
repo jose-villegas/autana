@@ -33,8 +33,25 @@ if ! "$NM" --defined-only "$ELF" >"$symbols_file"; then
     exit 2
 fi
 
+apps_dir="$(dirname "$0")/../../main/apps"
+if [ ! -d "$apps_dir" ]; then
+    echo "no apps directory at $apps_dir" >&2
+    exit 2
+fi
+
+development_only_apps=
+for marker in "$apps_dir"/*/development_only.cmake; do
+    [ -f "$marker" ] || continue
+    app=$(basename "$(dirname "$marker")")
+    if ! grep -q "^APP_REGISTER(app_${app});" "$apps_dir/$app/app_${app}.c" 2>/dev/null; then
+        echo "$marker: app_${app}.c does not register app_${app}" >&2
+        exit 2
+    fi
+    development_only_apps="${development_only_apps}app_${app}\$|"
+done
+
 symbols=$(awk '{print $NF}' "$symbols_file" |
-    grep -E '^(app_diagnostics$|unity$|suite_|run_.*_suite$|console_(start$|emit_line$|reply_stdio$|take_unclaimed_line$|verb_)|selftest_)' || true)
+    grep -E "^(${development_only_apps}"'unity$|suite_|run_.*_suite$|console_(start$|emit_line$|reply_stdio$|take_unclaimed_line$|verb_)|selftest_)' || true)
 if [ -n "$symbols" ]; then
     echo "release image contains development or test symbols:" >&2
     echo "$symbols" >&2

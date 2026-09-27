@@ -90,6 +90,7 @@ $TEST_DIR/host_main.c
 $TEST_DIR/suites.c
 $TEST_DIR/timing.c
 $TEST_DIR/heap_arena.c
+$MAIN_DIR/app_arena.c
 $MAIN_DIR/app_registry.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/touch_calib.c
@@ -100,6 +101,10 @@ $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/post_layout.c
 $MAIN_DIR/util/job.c
+$MAIN_DIR/render/r3d_lit_frame.c
+$MAIN_DIR/render/r3d_lit_pipeline.c
+$MAIN_DIR/render/r3d_path.c
+$MAIN_DIR/render/r3d_span.c
 $MAIN_DIR/util/tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/display/panel_clock.c

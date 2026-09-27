@@ -10,3 +10,6 @@ docs/Testing-Guide.md	2026-09-22	PR #340 round 4: reviewed against the span send
 docs/Building-an-App.md	2026-09-22	PR #345 round 3: reviewed against app_registry.c and the non-const app_t, accurate
 docs/Firmware-Architecture.md	2026-09-27	rewritten to architecture only: checked against main.c, CMakeLists.txt, check_style_audit.py LAYER_TIER, accurate
 docs/Building-a-Screen.md	2026-09-24
+docs/Building-an-App.md	2026-09-27	PR #442 round 2: reviewed against the development_only.cmake marker and check_release_symbols.sh, accurate
+docs/plans/Settings-App-Plan.md	2026-09-27	PR #442 round 2: reviewed against the development_only.cmake marker and check_release_symbols.sh, accurate
+docs/Build-Variants.md	2026-09-27	PR #442 round 2: reviewed against the development_only.cmake marker and check_release_symbols.sh, accurate
