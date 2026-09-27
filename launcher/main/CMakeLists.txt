@@ -95,23 +95,11 @@ list(APPEND app_srcs "board/board_esp32s3.c")
 # fail - see the note on unity below.)
 launcher_glob(discovered_apps "${CMAKE_CURRENT_LIST_DIR}/apps/*.c")
 
-# apps/<name>/tools/ holds that app's own host-side tooling (sweep scripts,
-# report generators) - see docs/Building-an-App.md, "An app is a
-# folder". It is not firmware. But the glob above is apps/*.c, recursive, so
-# a future .c placed under one of those tools/ folders (a small host-side
-# helper program, say) would be swept in right alongside the app's real
-# sources - and then WHOLE_ARCHIVE, below, force-links it into the image
-# regardless of whether anything references it, so --gc-sections never gets
-# the chance to drop it. Excluded by folder rather than by name, so the
-# rule is structural rather than needing a per-tool update. Nothing lives
-# here yet; this guard goes in with the convention itself, because the failure it prevents - a host tool's main()
-# silently linked into device firmware - is silent and baffling to debug
-# after the fact.
-#
-# Filtered HERE, before the suite split below, and not after it:
-# app_suites is captured from discovered_apps and would otherwise keep
-# a suite_*.c living under a tools/ folder, putting it back into the
-# selftest image through the other door.
+# apps/<name>/tools/ is an app's host-side tooling, not firmware. The glob
+# above is recursive and WHOLE_ARCHIVE force-links whatever it finds, so a
+# host program's main() placed there would silently land in the image.
+# Filtered before the suite split below, which would otherwise keep a
+# suite_*.c from a tools/ folder.
 list(FILTER discovered_apps EXCLUDE REGEX "/apps/[^/]*/tools/")
 
 # Test suites are app-owned but must not ship. They are added back below when
