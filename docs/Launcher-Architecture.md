@@ -37,6 +37,7 @@ launcher/
 │   ├── quality/        complexity and MISRA gates, report_test_results.sh
 │   ├── boot_anim/      the boot animation editor and its perf report
 │   ├── render/         the host render harness and its scenes
+│   ├── r3d/            offline mesh baking for render/'s r3d renderer
 │   ├── sweeps/         build and capture sweeps
 │   └── tests/          regression tests for these tools
 ├── test/               the host runner and the shell's own suites
@@ -141,7 +142,7 @@ launcher/
     │   └── console_inject.c, console_inject_parse.h  TOUCH/IMU/TAP/PRESS/DRAG/BUTTON (host-tested)
     └── apps/           one folder per app - see Building-an-App.md
         ├── input_lab/  touch precision and bezel measurement; development builds only
-        ├── render_lab/ a software rasterizer, wireframe and ray-traced scenes
+        ├── render_lab/ rasterized, wireframe, ray-traced and baked-light scenes
         ├── diagnostics/  bench tool; development builds only
         └── sand/       the falling-sand sandbox
 ```

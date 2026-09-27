@@ -2,8 +2,9 @@
  * Device-only suite: what a frame of each Sponza bake costs, the way
  * scene_sponza.c renders it (half resolution, doubled), at evenly spaced
  * points of the flythrough; and, for the full bake at the flythrough's
- * start, where one core's draw spends its time stage by stage. The panel
- * transfer is not included.
+ * start, where one core's draw spends its time stage by stage, whether its
+ * two halves slow each other on both cores, and what an empty frame costs.
+ * The panel transfer is not included.
  *
  * Runs under DEVICE_BUILD only - needs PSRAM, core 1 and a clock.
  */
