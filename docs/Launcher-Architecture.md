@@ -43,6 +43,7 @@ launcher/
 └── main/
     ├── main.c          the frame loop and app switching
     ├── app.h           the shell/app contract
+    ├── app_arena.{h,c} the PSRAM block lent to the running app (host-tested)
     ├── app_registry.c  the registered apps, sorted by name (host-tested)
     ├── boot/           runs once each, before the frame loop exists
     │   ├── post.{h,c}          power-on self test
@@ -426,7 +427,7 @@ stateDiagram-v2
     ControlCenter : Control Center<br/>ui_control_center_frame()<br/>over the dimmed launcher
 
     Launcher --> Running: tap an entry<br/><i>the app's enter()</i>
-    Running --> Launcher: home swipe, PWR long-press<br/>or shell_request_exit()<br/><i>the app's exit()</i>
+    Running --> Launcher: home swipe, PWR long-press<br/>or shell_request_exit()<br/><i>the app's exit(),<br/>then the arena emptied</i>
     Launcher --> ControlCenter: swipe in from<br/>the logical top
     ControlCenter --> Launcher: swipe in from<br/>the logical bottom
 ```
@@ -468,6 +469,15 @@ here is why the build is shaped the way it is.
 > object would never be extracted, its constructor would never run, and the app
 > would silently vanish from the menu. Not a link error: a smaller binary and a
 > shorter list.
+
+**App memory is lent, not owned.** The shell holds one static block in
+PSRAM, the app arena (`APP_ARENA_BYTES`, `app_arena.h`), and empties it
+right after every app's `exit()`; an app takes bulk buffers from it and never
+frees them. How to use it is
+[Building-an-App.md's App memory](Building-an-App.md#app-memory). Re-entry
+cannot fail to heap fragmentation, since every visit gets the same static
+block, and taking from it is no dynamic-memory call (MISRA 21.3): it bumps
+an offset.
 
 **Bench-only apps** declare themselves: an app whose folder holds a
 `development_only.cmake` is left out when `CONFIG_LAUNCHER_DEVELOPMENT` is
