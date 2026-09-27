@@ -39,9 +39,11 @@
 #include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"
 #include "util/frame_cost.h"
+#include "util/frame_watch.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "console/console.h"
+#include "console/console_frame_watch.h"
 #include "console/console_freeze.h"
 #include "console/console_navigation.h"
 #include "console/console_navigation_parse.h"
@@ -374,6 +376,7 @@ exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
     restore_system_display_state();
+    frame_watch_settle();
     *current = NULL;
     frame_ready = false;
     gfx_request_full_redraw();
@@ -403,6 +406,7 @@ start_app(const app_t** current, const app_t* next) {
     exit_requested = false;
     (*current)->enter();
     frame_ready = false;
+    frame_watch_settle();
 }
 
 /* The backdrop is the launcher's own frame under a scrim, drawn once and
@@ -943,6 +947,7 @@ run_dev_frame_extras(input_t* input, const app_t* current) {
         console_screenshot_dump(input, current);
         gfx_request_full_redraw();
     }
+    console_frame_watch_answer();
     offer_console_line(current);
 }
 
@@ -979,6 +984,7 @@ run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms)
         if (console_screenshot_take_request()) {
             console_screenshot_dump(input, *current);
         }
+        console_frame_watch_answer();
         offer_console_line(*current);
         return true;
     }
@@ -1007,6 +1013,7 @@ app_main_loop(void) {
      * app_boot_init()'s print. */
     printf("BUILD_ID=%s\n", BUILD_ID);
     fflush(stdout);
+    frame_watch_start();
 
     while (1) {
         const int64_t now_us = esp_timer_get_time();
@@ -1020,6 +1027,7 @@ app_main_loop(void) {
 #if CONFIG_LAUNCHER_SELFTEST
         run_pending_selftest_suite();
 #endif
+        frame_watch_frame_begin();
 
         touch_read(&input);
         buttons_read(&input.boot, &input.power);
@@ -1028,6 +1036,7 @@ app_main_loop(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
         if (run_development_pre_frame(&current, &input, dt_ms)) {
             FRAME_COST_END(rest_began, "frame.rest");
+            frame_watch_frame_end();
             vTaskDelay(1);
             continue;
         }
@@ -1044,6 +1053,7 @@ app_main_loop(void) {
         report_fps(now_us, &fps_window_start, &frames);
 #endif
         FRAME_COST_END(rest_began, "frame.rest");
+        frame_watch_frame_end();
 
         /* Yield so the idle task can feed the watchdog. */
         vTaskDelay(1);

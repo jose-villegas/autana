@@ -26,3 +26,7 @@ CONFIG_ESP_TASK_WDT_INIT=n
 # default, where every one fails with "Unity 64-bit Support Disabled" - a
 # portable suite must mean the same thing on both runners.
 CONFIG_UNITY_ENABLE_64BIT=y
+
+# The frame watch (util/frame_watch.h) counts allocations made inside a frame
+# through the heap's own hooks.
+CONFIG_HEAP_USE_HOOKS=y

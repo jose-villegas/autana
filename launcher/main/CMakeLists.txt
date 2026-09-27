@@ -30,6 +30,7 @@ set(app_srcs
     "ui/ui_scroll.c"
     "ui/ui_widgets.c"
     "util/frame_cost.c"
+    "util/frame_watch.c"
     "util/job.c"
     "util/tune.c"
 )
@@ -58,6 +59,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/console.c"
         "console/console_buildid.c"
         "console/console_freeze.c"
+        "console/console_frame_watch.c"
         "console/console_navigation.c"
         "console/console_tune.c"
         "console/console_screenshot.c"
