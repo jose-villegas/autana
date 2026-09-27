@@ -501,6 +501,8 @@ bool gfx_debug_leaf_overlay(void);
  * Off by default - it costs a full-screen compare per present. */
 void gfx_set_send_audit(bool on);
 bool gfx_send_audit(void);
+/* Pixels the audit has found the panel never sent, since it last came on. */
+int64_t gfx_send_audit_uncovered_px(void);
 
 /* Per-strip counts of which send path the last stretch of gfx_present()
  * calls actually took - full-band, a gathered send of runs, or a

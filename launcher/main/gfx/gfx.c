@@ -1679,7 +1679,7 @@ gfx_set_leaf_overlay(bool on) {
  * lies past the send buffers, on the QSPI link. */
 static gfx_color_t* send_shadow;
 static bool send_audit_primed;
-static int64_t send_audit_uncovered_px;
+static int64_t send_audit_uncovered_px, send_audit_uncovered_total;
 static int64_t send_audit_copy_fault_px;
 static int send_audit_first_x = -1, send_audit_first_y = -1;
 static int64_t send_audit_log_at_us;
@@ -1689,6 +1689,11 @@ static int64_t send_audit_log_at_us;
 bool
 gfx_send_audit(void) {
     return send_shadow != NULL;
+}
+
+int64_t
+gfx_send_audit_uncovered_px(void) {
+    return send_audit_uncovered_total;
 }
 
 void
@@ -1708,6 +1713,7 @@ gfx_set_send_audit(bool on) {
         return;
     }
     send_audit_primed = false;
+    send_audit_uncovered_total = 0;
 }
 
 static int
@@ -1757,6 +1763,7 @@ send_audit_scan_row(int y) {
             send_audit_first_y = y;
         }
         send_audit_uncovered_px++;
+        send_audit_uncovered_total++;
         /* Resent in full next time, so one gap is counted once. */
         send_audit_primed = false;
     }

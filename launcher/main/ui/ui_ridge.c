@@ -71,27 +71,28 @@ TUNE(ridge, gradient_steps, 3, 1, 90);
 TUNE(ridge, boot_hold_ms, 700, 0, 10000);
 TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 
-#define RIDGE_EXTRA        88
-#define RIDGE_COLUMNS      (RIDGE_CURVE_POINTS + (2 * RIDGE_EXTRA))
-#define RIDGE_LAYER_COUNT  3
-#define RIDGE_MAX_LIP_PX   48
-#define MIN_TILT_STRENGTH  64
+#define RIDGE_EXTRA         88
+#define RIDGE_COLUMNS       (RIDGE_CURVE_POINTS + (2 * RIDGE_EXTRA))
+#define RIDGE_LAYER_COUNT   3
+#define RIDGE_MAX_LIP_PX    48
+#define MIN_TILT_STRENGTH   64
 /* Once the board holds still, a pose within 1.5 degrees of its target jumps
  * the rest of the way instead of creeping a half-degree step at a time. */
-#define POSE_ARRIVE_STEP   430
-#define POSE_STEPS         720
-#define GRADIENT_SETTLE_MS 200
+#define POSE_ARRIVE_STEP    430
+#define POSE_STEPS          720
+#define GRADIENT_SETTLE_MS  200
 /* Enough entries for the panel's diagonal, the longest a gradient along
  * gravity can span. */
-#define RIDGE_SKY_ENTRIES  600
-#define RIDGE_SKY_EDGES    96
-#define RIDGE_PI           3.14159265f
-#define LEVEL_STEADY_STEP  29
-#define LEVEL_STEADY_MS    300
-#define STRUM_STEP_PX      12
-#define SHAKE_THRESHOLD    48
-#define SHAKE_HALF_WIDTH   16
-#define POSE_LANDSCAPE     ((ridge_vector_t){-RIDGE_POSE_ONE, 0})
+#define RIDGE_SKY_ENTRIES   600
+#define RIDGE_SKY_EDGES     96
+#define RIDGE_PI            3.14159265f
+#define LEVEL_STEADY_STEP   29
+#define LEVEL_STEADY_MS     300
+#define STRUM_STEP_PX       12
+#define SHAKE_THRESHOLD     48
+#define SHAKE_HALF_WIDTH    16
+#define POSE_LANDSCAPE      ((ridge_vector_t){-RIDGE_POSE_ONE, 0})
+#define POSE_STEP_LANDSCAPE (POSE_STEPS * 3 / 4)
 
 /* Where each shade edge crosses a row for one pose, in 1/65536 columns:
  * `at_row0[edge] + (y * per_row)`. A pose with no sideways part crosses no
@@ -121,7 +122,6 @@ typedef struct {
     int gradient_step;
     uint32_t pose_still_ms;
     edge_lines_t was_lines, now_lines;
-    gfx_color_t scratch_row[GFX_WIDTH];
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
     uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
     int shake, last_pluck_x, strips, down_sign;
@@ -565,9 +565,9 @@ repaint_column_strip(gfx_color_t* framebuffer, int x, int lo, int hi) {
     gfx_mark_dirty(x, lo, 1, hi - lo);
 }
 
-/* Most of a repainted span comes out as it was, and a pixel sent costs far
- * more than one compared: copy `from[lo, hi)` over row `y` and mark dirty
- * only the stretch that differed. */
+/* Most of a repainted span comes out as it was: copy `from[lo, hi)` over
+ * row `y` and mark dirty only the stretch that differed, so only that is
+ * sent. */
 static void
 commit_row(const gfx_color_t* from, int y, int lo, int hi) {
     gfx_color_t* const row = gfx_framebuffer() + (y * GFX_WIDTH);
@@ -587,7 +587,7 @@ commit_row(const gfx_color_t* from, int y, int lo, int hi) {
 
 static void
 repaint_row_strip(int y, int lo, int hi) {
-    gfx_color_t* const scratch = ridge->scratch_row;
+    gfx_color_t scratch[GFX_WIDTH];
     if (ridge->scanline_dither) {
         paint_row_into(scratch, y, lo, hi);
     } else {
@@ -858,8 +858,9 @@ flush_swept_run(int y, int x0, int x1) {
         x1 = front + 1 < x1 ? front + 1 : x1;
     }
     if (x0 < x1) {
-        paint_row_into(ridge->scratch_row, y, x0, x1);
-        commit_row(ridge->scratch_row, y, x0, x1);
+        gfx_color_t scratch[GFX_WIDTH];
+        paint_row_into(scratch, y, x0, x1);
+        commit_row(scratch, y, x0, x1);
     }
 }
 
@@ -914,10 +915,15 @@ catch_up_gradient(void) {
 /* The gradient follows the ridge in steps of `gradient_steps` poses rather
  * than every pose: a turned gradient moves pixels across every band, which
  * then goes whole to the panel. Once the ridge holds still it catches up. */
+static int
+gradient_drift(void) {
+    const int drift = abs(ridge->pose_step - ridge->gradient_step);
+    return drift > POSE_STEPS / 2 ? POSE_STEPS - drift : drift;
+}
+
 static bool
 gradient_due(void) {
-    int drift = abs(ridge->pose_step - ridge->gradient_step);
-    drift = drift > POSE_STEPS / 2 ? POSE_STEPS - drift : drift;
+    const int drift = gradient_drift();
     return drift >= gradient_steps || (drift > 0 && ridge->pose_still_ms >= GRADIENT_SETTLE_MS);
 }
 
@@ -996,6 +1002,7 @@ allocate_once(void) {
     ridge->attitude.level = POSE_LANDSCAPE;
     ridge->attitude.steady_level = POSE_LANDSCAPE;
     ridge->pose_on_screen = POSE_LANDSCAPE;
+    ridge->pose_step = POSE_STEP_LANDSCAPE;
     ridge->shake_seed = 0x9e3779b9U;
     ridge->ambient = true;
 }
@@ -1045,11 +1052,23 @@ ui_ridge_reset_for_test(void) {
     ridge->attitude.steady_level = POSE_LANDSCAPE;
     ridge->attitude.steady_ms = LEVEL_STEADY_MS;
     ridge->pose_on_screen = POSE_LANDSCAPE;
+    ridge->pose_step = POSE_STEP_LANDSCAPE;
     ridge->alive_ms = (uint32_t)boot_hold_ms + (uint32_t)ambient_ease_ms;
     ridge->shake = 0;
     ridge->last_pluck_x = 0;
     ridge->ambient = false;
     ridge->painted = false;
+}
+#endif
+
+#if CONFIG_LAUNCHER_SELFTEST
+int
+ui_ridge_gradient_lag_for_test(void) {
+    allocate_once();
+    if (ridge == NULL) {
+        return 0;
+    }
+    return gradient_drift();
 }
 #endif
 
@@ -1165,6 +1184,9 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
             const ridge_vector_t was = ridge->gradient_pose;
             catch_up_gradient();
             repaint_gradient_turn(was);
+        } else if (gradient_due()) {
+            catch_up_gradient();
+            paint_all();
         }
         repaint_changed();
     }
