@@ -2,9 +2,10 @@
 
 `launcher/main/render/` is the engine's 3D layer: cameras, projection, a
 span rasterizer, and a pipeline that draws a mesh whose light was baked
-offline. It sits above `gfx/` and below `apps/`. It draws into buffers its
-caller hands it, and a framebuffer is only one of them. Where it sits among
-the layers is in [Firmware-Architecture.md](Firmware-Architecture.md).
+offline. It sits beside `gfx/` and includes only `util/`, so boot and apps
+both call it. It draws into buffers its caller hands it, and a framebuffer
+is only one of them. The layers are in
+[Firmware-Architecture.md](Firmware-Architecture.md).
 
 ## The files
 
@@ -18,7 +19,7 @@ the layers is in [Firmware-Architecture.md](Firmware-Architecture.md).
 | `r3d_span.h` | One depth-tested, Gouraud-shaded triangle, filled a scanline span at a time into a window of rows |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex colour, spatial clusters, a node tree |
 | `r3d_lit_pipeline.h` | The mesh's stages: view, cull, transform, draw |
-| `r3d_lit_frame.h` | One whole frame of those stages on both cores, at half resolution, then doubled |
+| `r3d_lit_frame.h` | One whole frame of those stages on both cores, optionally doubled to twice its size |
 
 ## A lit mesh
 
@@ -38,18 +39,25 @@ against `r3d_lit_mesh.h`'s invariants before writing a byte.
 
 ```mermaid
 flowchart LR
-    View["r3d_lit_view_look()<br/><i>eye, forward, lens</i>"] --> Cull["r3d_lit_cull_clusters()<br/><i>walk the tree, nearest first</i>"]
-    Cull --> Transform["r3d_lit_transform()<br/><i>each vertex once</i>"]
-    Transform --> Draw["r3d_lit_draw()<br/><i>near clip, r3d_span</i>"]
-    Draw --> Double["r3d_lit_frame_double()<br/><i>half resolution to full</i>"]
+    View["r3d_lit_view_look()<br/><i>eye, forward, lens</i>"] --> Cull
+    subgraph Render["r3d_lit_frame_render()"]
+        Cull["r3d_lit_cull_clusters()<br/><i>walk the tree, nearest first</i>"] --> Transform["r3d_lit_transform()<br/><i>each vertex once</i>"]
+        Transform --> Draw["r3d_lit_draw()<br/><i>near clip, r3d_span</i>"]
+    end
+    Draw --> Double["r3d_lit_frame_double()<br/><i>to twice the size</i>"]
 ```
+
+A caller builds the view, then calls `r3d_lit_frame_render()` and
+`r3d_lit_frame_double()`; the stages inside are public for a caller that
+schedules them itself.
 
 The stages are split so two cores can share them. Transforming disjoint
 cluster lists writes disjoint vertex ranges, and drawing touches only the
 rows of its own target. `r3d_lit_transform()` also records the screen rows
 each cluster spans, so a core drawing half the rows skips a cluster wholly
-outside them. `r3d_lit_frame.h` renders at half the panel's resolution and
-doubles the result, which quarters the pixels and halves the rows and spans.
+outside them. `r3d_lit_frame.h` renders at the caller's width and height and
+can double the result into a picture twice each, so rendering at half the
+panel's size quarters the pixels and halves the rows and spans.
 
 ### On both cores
 
@@ -83,8 +91,8 @@ sequenceDiagram
 ## Memory
 
 The layer allocates nothing, and nothing a frame needs lives at file
-scope. A frame's
-per-vertex, per-cluster, colour and depth buffers are one block:
+scope. A frame's per-vertex, per-cluster, colour and depth buffers are one
+block:
 `r3d_lit_frame_scratch_bytes()` sizes it, the caller obtains it once, and
 `r3d_lit_frame_use_scratch()` carves it. The caller decides where it lives,
 so none of it has to take internal RAM.
@@ -94,11 +102,11 @@ so none of it has to take internal RAM.
 - **Single precision only.** The FPU has no double, and one stray promotion
   costs an order of magnitude. Each `.c` doing float work turns
   `-Wdouble-promotion` into an error itself.
-- **Host-testable.** The headers are ESP-IDF-free, and the portable suites
-  `suite_r3d_lit.c` and `suite_r3d_project.c` check them on a laptop with
-  meshes built inside the test, never a baked one.
+- **Host-testable.** The headers are ESP-IDF-free, and the portable
+  `test/suites/suite_r3d_*.c` suites check them on a laptop.
+  `suite_r3d_lit.c` builds its meshes inside the test, never a baked one.
 - **The caller owns the environment.** Viewport, panel quarter, units and
-  timeline are passed in. Nothing here knows the panel's size.
+  timeline are passed in. No code path reads the panel's size.
 
 ## Related
 
