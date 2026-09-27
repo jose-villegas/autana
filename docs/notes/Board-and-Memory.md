@@ -65,7 +65,7 @@ flowchart LR
         CACHE["I-cache 32 KiB + D-cache 32 KiB"]
         STATIC[".text .data .bss"]
         DMA["gather_buf + 2 x strip_bounce"]
-        APP["allocations up to 64 KB<br/>stacks, sand's grids"]
+        APP["allocations up to 64 KB<br/>stacks, app buffers"]
     end
     FB -->|"copied per strip"| DMA
 ```
@@ -74,7 +74,7 @@ In full-framebuffer mode (`BOARD_FRAMEBUFFER_CAPS`, `board.h`) the
 framebuffer is in PSRAM; band and indexed modes free it. How it reaches the
 panel is in [Gfx-and-Presentation.md](../Gfx-and-Presentation.md).
 `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps every allocation up to 64 KB
-in internal SRAM, sand's grids included. The app arena (`main/app_arena.h`)
+in internal SRAM, an app's per-frame working buffers included. The app arena (`main/app_arena.h`)
 is a static placed in PSRAM before the heap takes the rest, so the PSRAM heap
 is what `APP_ARENA_BYTES` leaves.
 

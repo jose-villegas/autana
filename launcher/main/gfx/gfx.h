@@ -57,7 +57,7 @@
 
 /* The band ring's compile-time band height (gfx_mode.h, gfx_band.h) - a
  * divisor of GFX_HEIGHT (448): 64, 32 or 16. 32 is the default absent a
- * device sweep saying otherwise (docs/Autana-Rendering-Roadmap.md section
+ * device sweep saying otherwise (docs/plans/Autana-Rendering-Roadmap.md section
  * 8, decision 2); override with -DGFX_BAND_HEIGHT=N to try another. */
 #ifndef GFX_BAND_HEIGHT
 #if defined(CONFIG_LAUNCHER_GFX_BAND_HEIGHT_16) && CONFIG_LAUNCHER_GFX_BAND_HEIGHT_16
@@ -346,7 +346,7 @@ bool gfx_heal_active(void);
 
 /*
  * Mode: a full PSRAM framebuffer, or an internal-SRAM band ring for a
- * full-redraw renderer (docs/Autana-Rendering-Roadmap.md section 3.3).
+ * full-redraw renderer (docs/plans/Autana-Rendering-Roadmap.md section 3.3).
  * Requested from enter(), released with gfx_mode_exit() from exit(). No
  * caller ever asks for anything but full resolution; an interlace request
  * is granted (gfx_mode.h) but changes nothing drawn - gfx_set_interlace()

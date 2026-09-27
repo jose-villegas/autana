@@ -8,7 +8,8 @@ exactly one of its two entries is ever true:
   console.
 - **`CONFIG_LAUNCHER_DEVELOPMENT`** — everything meant for someone at the
   device or watching its console while working on it: frame timings, step
-  counters, debug overlays, the screenshot listener, the Diagnostics app.
+  counters, debug overlays, the screenshot listener, the development-only
+  apps.
 
 **`CONFIG_LAUNCHER_SELFTEST`** is a separate option on top, off by default,
 that compiles the on-device test suites into the image. It *depends on*
@@ -26,7 +27,7 @@ reconfigures another:
 |---|---|---|---|
 | release | neither | `autana build rel`, `autana flash rel` | `build/` |
 | dev | DEVELOPMENT | `autana build dev`, `autana flash dev` | `build.dev/` |
-| diagnostics | DEVELOPMENT + SELFTEST | `autana build diag`, `autana flash diag`, `autana selftest` | `build.diag/` |
+| diag | DEVELOPMENT + SELFTEST | `autana build diag`, `autana flash diag`, `autana selftest` | `build.diag/` |
 
 `autana build` needs no board and takes no lock; what it runs is
 `launcher/tools/build/build.sh` with the variant's flag (`--dev`, `--diag`),
@@ -39,8 +40,8 @@ and CI builds every variant the same way.
 `CONFIG_LAUNCHER_SELFTEST` defaults **off**, and the CMake conditional leaves
 the suites and the runner out of the build entirely — not `#ifdef`-ed out,
 simply never compiled. `build/launcher.elf` (release) is neither DEVELOPMENT
-nor SELFTEST, so **the Diagnostics app** is out of it too, for a related but
-separate reason: it is gated on `CONFIG_LAUNCHER_DEVELOPMENT`, a strictly
+nor SELFTEST, so **a development-only app** is out of it too, for a related
+but separate reason: it is gated on `CONFIG_LAUNCHER_DEVELOPMENT`, a strictly
 broader flag than `CONFIG_LAUNCHER_SELFTEST` — it also ships in a `--dev`
 build, which carries no test suites at all. An app is gated this way by
 holding a `development_only.cmake` in its own folder; `main/CMakeLists.txt`
@@ -63,20 +64,21 @@ SELFTEST, so every one of those symbols is absent from that image whichever
 flag gates it.
 
 That matters for more than size. The suites draw to the framebuffer and drive
-the panel, which is fine in diagnostics and unacceptable in a product; and test
-hooks in a shipped image are a liability rather than a feature.
+the panel, which is fine in a diagnostics build and unacceptable in a
+product; and test hooks in a shipped image are a liability rather than a
+feature.
 
-The **Diagnostics app** is a bench tool: entering it re-runs POST, which
+A development-only app is a bench tool. One that re-runs POST on entry
 cycles the audio power rail and re-mounts the SD card live (both while the
-display keeps running undisturbed, since neither shares its bus).
-Reasonable while debugging, not something to leave reachable in a shipped
+display keeps running undisturbed, since neither shares its bus):
+reasonable while debugging, not something to leave reachable in a shipped
 product — hence DEVELOPMENT, not left ungated. The boot POST still runs in
-release — only this way *in* is compiled out. The self-test *runner* inside
-Diagnostics (the button, its result line, the `selftest_run()` call) is
-narrower still: gated on `CONFIG_LAUNCHER_SELFTEST` specifically, inside
-`app_diagnostics.c`, because `selftest_run()` is not even a linkable symbol
-outside a SELFTEST build (`boot/selftest.c` is only added to `app_srcs`
-under `CONFIG_LAUNCHER_SELFTEST` — see `main/CMakeLists.txt`).
+release — only this way *in* is compiled out. The self-test *runner* an app
+hosts (a button, its result line, the `selftest_run()` call) is narrower
+still: gated on `CONFIG_LAUNCHER_SELFTEST` specifically, inside the app's
+own file, because `selftest_run()` is not even a linkable symbol outside a
+SELFTEST build (`boot/selftest.c` is only added to `app_srcs` under
+`CONFIG_LAUNCHER_SELFTEST` — see `main/CMakeLists.txt`).
 
 ## A diagnostics build can be scoped
 
@@ -94,9 +96,11 @@ its `.text` *and* its `.bss`, which is what buys the run time back.
 | Full — the default | none | every suite, shell-owned and app-owned | every gate: `autana selftest`, `report_test_results.sh` |
 | Perf | `sdkconfig.defaults.diag_perf` | sources each app declares in `scope_perf.cmake` | a performance capture |
 
+An app's own frame-budget capture script, in its `tools/`, passes the flag
+through; the image alone is:
+
 ```sh
-bash launcher/main/apps/sand/tools/report_performance.sh --perf-scope
-# the image alone, left on the board, with no capture taken:
+# left on the board, with no capture taken:
 autana flash diag --perf-scope
 # built only, no board:
 autana build diag --perf-scope
@@ -130,8 +134,7 @@ it. So anything built purely for that audience — rolling averages, per-frame
 timers, a summary logged on exit — is pure cost in a release image: flash for
 the strings and the accounting, cycles for the bookkeeping, for output that
 helps nobody. It gets guarded by `CONFIG_LAUNCHER_DEVELOPMENT`, the same way
-test code is guarded by `CONFIG_LAUNCHER_SELFTEST` — see `app_sand.c`'s frame
-timing for the pattern.
+test code is guarded by `CONFIG_LAUNCHER_SELFTEST`.
 
 The two are related but not the same flag, because they answer different
 questions and can genuinely diverge:
@@ -223,10 +226,10 @@ that refuses to.
 
 - [`Testing-Guide.md`](Testing-Guide.md) — the suites these flags carry or
   drop, and how to run them.
-- [`notes/Diagnostics-and-Debugging.md`](notes/Diagnostics-and-Debugging.md) —
+- [`notes/Debugging.md`](notes/Debugging.md) —
   which tool to reach for when the board misbehaves, and which build each
   one needs.
 - [`plans/Log-Level-Plan.md`](plans/Log-Level-Plan.md) — a planned
   compile-time log-severity ceiling per variant, complementing this split.
 - [`plans/Settings-App-Plan.md`](plans/Settings-App-Plan.md) — the remaining
-  DEVELOPMENT/SELFTEST seam in the Diagnostics app.
+  DEVELOPMENT/SELFTEST seam inside a development-only app.

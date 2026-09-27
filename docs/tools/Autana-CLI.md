@@ -47,7 +47,7 @@ It proves the write, not the boot:
 |---|---|
 | `autana suite <name> [seconds] [--verbose]` | Run one registered suite on a diagnostics build already on the board. |
 | `autana suite list [text] [--json]` | The suites this worktree registers; `[on request]` ones run only by name. |
-| `autana selftest [seconds] [--verbose]` | Build diagnostics+autorun, flash, run every suite; 3000 s when omitted. |
+| `autana selftest [seconds] [--verbose]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
 | `autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` | Flash once, capture the suites `N` times (3) under one lock; one summary. |
 
 Each prints the report and capture paths, PASS/FAIL counts, up to ten failure
