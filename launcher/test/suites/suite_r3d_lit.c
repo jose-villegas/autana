@@ -383,6 +383,9 @@ typedef struct {
     r3d_lit_mesh_t mesh;
 } parts_t;
 
+/* One at a time, so a self-test image carries a single copy. */
+static parts_t shared_parts;
+
 static void
 parts_begin(parts_t* p) {
     memset(p, 0, sizeof *p);
@@ -473,12 +476,12 @@ static const uint8_t cut_colors[3][3] = {{0, 128, 128}, {255, 128, 128}, {255, 1
 
 static int
 draw_cut(const int16_t corners[3][3], bool double_sided) {
-    static parts_t p;
-    parts_begin(&p);
-    parts_add(&p, corners, 3, cut_colors, double_sided);
+    parts_t* const p = &shared_parts;
+    parts_begin(p);
+    parts_add(p, corners, 3, cut_colors, double_sided);
     const r3d_lit_view_t view = look_down_minus_z(0, 0, 100.0f);
     const r3d_span_target_t t = fixture();
-    draw_parts(&p, &view, &t, false);
+    draw_parts(p, &view, &t, false);
     return covered();
 }
 
@@ -531,24 +534,28 @@ build_floor_and_rects(parts_t* p) {
 
 static void
 test_drawing_a_window_with_cluster_rows_matches_a_full_draw(void) {
-    static parts_t p;
-    build_floor_and_rects(&p);
+    parts_t* const p = &shared_parts;
+    build_floor_and_rects(p);
     const r3d_lit_view_t view = look_down_minus_z(50, 0, 1.0f);
     const r3d_span_target_t full = fixture();
-    draw_parts(&p, &view, &full, false);
+    draw_parts(p, &view, &full, false);
 
-    static gfx_color_t band_color[W * H];
-    static uint16_t band_depth[W * H];
+    gfx_color_t* band_color = malloc(sizeof(gfx_color_t) * W * H);
+    uint16_t* band_depth = malloc(sizeof(uint16_t) * W * H);
+    TEST_ASSERT_NOT_NULL(band_color);
+    TEST_ASSERT_NOT_NULL(band_depth);
     static const int windows[][2] = {{0, 8}, {8, 16}, {16, 24}, {24, 32}, {32, 40}, {40, 48}, {5, 13}, {29, 43}};
     for (int w = 0; w < (int)(sizeof windows / sizeof windows[0]); w++) {
         const int row0 = windows[w][0], row1 = windows[w][1];
-        memset(band_color, 0, sizeof band_color);
-        memset(band_depth, 0, sizeof band_depth);
+        memset(band_color, 0, sizeof(gfx_color_t) * W * H);
+        memset(band_depth, 0, sizeof(uint16_t) * W * H);
         const r3d_span_target_t band = {band_color, band_depth, W, row0, row1};
-        draw_parts(&p, &view, &band, true);
+        draw_parts(p, &view, &band, true);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(color + row0 * W, band_color, (row1 - row0) * W,
                                               "a window drawn with cluster rows lost something");
     }
+    free(band_depth);
+    free(band_color);
 }
 
 /* Each triangle reaches over one side of the screen; at 100 away a unit is
@@ -563,19 +570,19 @@ test_a_triangle_over_any_side_of_the_screen_is_drawn(void) {
     };
     static const int16_t beyond_right[3][3] = {{80, 0, -100}, {120, -20, -100}, {120, 20, -100}};
     static const uint8_t white[3][3] = {{255, 255, 255}, {255, 255, 255}, {255, 255, 255}};
-    static parts_t p;
+    parts_t* const p = &shared_parts;
     const r3d_lit_view_t view = look_down_minus_z(0, 0, 1.0f);
     for (int side = 0; side < 4; side++) {
-        parts_begin(&p);
-        parts_add(&p, over[side], 3, white, true);
+        parts_begin(p);
+        parts_add(p, over[side], 3, white, true);
         const r3d_span_target_t t = fixture();
-        draw_parts(&p, &view, &t, false);
+        draw_parts(p, &view, &t, false);
         TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, covered(), "a triangle reaching over a side was dropped");
     }
-    parts_begin(&p);
-    parts_add(&p, beyond_right, 3, white, true);
+    parts_begin(p);
+    parts_add(p, beyond_right, 3, white, true);
     const r3d_span_target_t t = fixture();
-    draw_parts(&p, &view, &t, false);
+    draw_parts(p, &view, &t, false);
     TEST_ASSERT_EQUAL_INT(0, covered());
 }
 
@@ -621,17 +628,17 @@ typedef struct {
 
 static void
 test_the_frame_carves_its_scratch_without_overlap(void) {
-    static parts_t p;
-    build_wall_and_stack(&p);
-    r3d_lit_frame_t frame = {.mesh = &p.mesh, .width = W, .height = H};
-    const size_t bytes = r3d_lit_frame_scratch_bytes(&p.mesh, W, H);
+    parts_t* const p = &shared_parts;
+    build_wall_and_stack(p);
+    r3d_lit_frame_t frame = {.mesh = &p->mesh, .width = W, .height = H};
+    const size_t bytes = r3d_lit_frame_scratch_bytes(&p->mesh, W, H);
     char* scratch = malloc(bytes);
     TEST_ASSERT_NOT_NULL(scratch);
     r3d_lit_frame_use_scratch(&frame, scratch);
     const span_of_bytes_t parts[] = {
-        {(const char*)frame.cs, sizeof(r3d_lit_vertex_t) * (size_t)p.mesh.vertex_count},
-        {(const char*)frame.rows, sizeof(r3d_lit_rows_t) * (size_t)p.mesh.cluster_count},
-        {(const char*)frame.visible, sizeof(uint16_t) * (size_t)p.mesh.cluster_count},
+        {(const char*)frame.cs, sizeof(r3d_lit_vertex_t) * (size_t)p->mesh.vertex_count},
+        {(const char*)frame.rows, sizeof(r3d_lit_rows_t) * (size_t)p->mesh.cluster_count},
+        {(const char*)frame.visible, sizeof(uint16_t) * (size_t)p->mesh.cluster_count},
         {(const char*)frame.color, sizeof(uint16_t) * W * H},
         {(const char*)frame.depth, sizeof(uint16_t) * W * H},
     };
@@ -655,15 +662,15 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
  * stale pixels. */
 static void
 test_the_two_core_frame_matches_one_full_draw(void) {
-    static parts_t p;
-    build_wall_and_stack(&p);
+    parts_t* const p = &shared_parts;
+    build_wall_and_stack(p);
     gfx_color_t* doubled = malloc(sizeof(gfx_color_t) * 4 * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    char* scratch = malloc(r3d_lit_frame_scratch_bytes(&p.mesh, W, H));
+    char* scratch = malloc(r3d_lit_frame_scratch_bytes(&p->mesh, W, H));
     TEST_ASSERT_NOT_NULL(doubled);
     TEST_ASSERT_NOT_NULL(want);
     TEST_ASSERT_NOT_NULL(scratch);
-    r3d_lit_frame_t frame = {.mesh = &p.mesh, .width = W, .height = H, .clear = SKY, .doubled = doubled};
+    r3d_lit_frame_t frame = {.mesh = &p->mesh, .width = W, .height = H, .clear = SKY, .doubled = doubled};
     r3d_lit_frame_use_scratch(&frame, scratch);
 
     static const float eye_heights[] = {-100.0f, 0.0f, 150.0f, 230.0f, 300.0f};
@@ -674,7 +681,7 @@ test_the_two_core_frame_matches_one_full_draw(void) {
         }
         r3d_lit_frame_render(&frame, &view);
         r3d_lit_frame_double(&frame);
-        reference_frame(&p, &view, want);
+        reference_frame(p, &view, want);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, doubled, 4 * W * H, "the doubled frame differs from one full draw");
     }
 
@@ -682,7 +689,7 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     frame.doubled = NULL;
     const r3d_lit_view_t view = look_down_minus_z(150.0f, 400, 1.0f);
     r3d_lit_frame_render(&frame, &view);
-    reference_frame(&p, &view, want);
+    reference_frame(p, &view, want);
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
             TEST_ASSERT_EQUAL_HEX16(want[2 * y * 2 * W + 2 * x], frame.color[y * W + x]);
