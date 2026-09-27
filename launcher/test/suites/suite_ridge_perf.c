@@ -14,6 +14,7 @@
 
 #include "gfx/gfx.h"
 #include "ui/ui_ridge.h"
+#include "util/tune.h"
 
 static const char* TAG = "ridge_perf";
 
@@ -198,19 +199,24 @@ unlike_a_full_paint_now(void) {
     return unlike.count;
 }
 
-/* The frame the incremental repaint leaves must be the frame a full paint
- * draws from the same state; any pixel it forgets to repaint shows here. */
-/* The panel must also be sent every pixel the repaint changed: with the
- * send audit on, a changed pixel left unmarked counts as uncovered. */
+/* The frame the incremental repaint leaves must be the one a full paint
+ * draws from the same state, and with the send audit on, every pixel it
+ * changed must have reached the panel: a forgotten repaint or an unmarked
+ * change shows here. `dissolved`, when given, counts the frames a strip
+ * switch spent dissolving in. */
 static int
-pixels_unlike_a_full_paint(arm_t arm, int frames) {
+pixels_unlike_a_full_paint_counting(arm_t arm, int frames, int* dissolved) {
     prime();
     gfx_set_send_audit(true);
+    TEST_ASSERT_TRUE_MESSAGE(gfx_send_audit(), "the send audit did not come on");
     for (int frame = 0; frame < frames; frame++) {
         input_t input;
         drive(arm, frame, &input);
         ui_ridge_step(&input, FRAME_DT_MS);
         gfx_present();
+        if (dissolved != NULL && ui_ridge_dissolving_for_test()) {
+            (*dissolved)++;
+        }
     }
     /* A switch between strips still dissolving in is by design unlike a
      * full paint: let it finish, holding the last tilt. */
@@ -218,10 +224,35 @@ pixels_unlike_a_full_paint(arm_t arm, int frames) {
         ui_ridge_step(&idle_input, FRAME_DT_MS);
         gfx_present();
     }
+    TEST_ASSERT_FALSE_MESSAGE(ui_ridge_dissolving_for_test(), "a strip switch never finished dissolving in");
     const int64_t unsent = gfx_send_audit_uncovered_px();
     gfx_set_send_audit(false);
     TEST_ASSERT_TRUE_MESSAGE(unsent == 0, "a repainted pixel never reached the panel");
     return unlike_a_full_paint_now();
+}
+
+static int
+pixels_unlike_a_full_paint(arm_t arm, int frames) {
+    return pixels_unlike_a_full_paint_counting(arm, frames, NULL);
+}
+
+static void
+ignore_tune_reply(const char* line) {
+    (void)line;
+}
+
+/* The dissolve a development build can turn on for the strip switch: it
+ * must run through a sweep and still end on a full paint's frame, every
+ * changed pixel sent. */
+void
+test_ridge_dissolve_matches_a_full_paint(void) {
+    tune_handle_line("SET ridge.axis_dissolve_ms 400", ignore_tune_reply);
+    int dissolved = 0;
+    const int unlike = pixels_unlike_a_full_paint_counting(ARM_TILT_SWEEP, 150, &dissolved);
+    tune_handle_line("RESET ridge.axis_dissolve_ms", ignore_tune_reply);
+    gfx_heal_restore_defaults();
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, dissolved, "the sweep never dissolved a strip switch");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, unlike, "after a dissolved strip switch");
 }
 
 /* After the tilting stops and the board is held about 20 degrees off level,
@@ -285,6 +316,7 @@ test_ridge_performance(void) {
 void
 run_ridge_perf_suite(void) {
     RUN_TEST(test_ridge_repaint_matches_a_full_paint);
+    RUN_TEST(test_ridge_dissolve_matches_a_full_paint);
     RUN_TEST(test_ridge_settles_after_tilting);
     RUN_TEST(test_ridge_performance);
 }
