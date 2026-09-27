@@ -1,7 +1,7 @@
 /*
  * spring_line - a row of points on springs: each is pulled toward rest and
  * toward its neighbours, so a push travels along the row as a wave and dies
- * away. One offset per column, which is what displaces a gfx_glow.h curve.
+ * away. One offset per column, which displaces the caller's curve.
  *
  * Built to go QUIET. At rest nothing is simulated and nothing is reported as
  * changed, so a screen that owns one costs no draw and no bus time until it

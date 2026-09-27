@@ -73,7 +73,6 @@ launcher/
     │   ├── gfx_palette*.{h,c}  the standard palette       (host-tested)
     │   ├── gfx_target.h        where a draw call lands    (host-tested)
     │   ├── gfx_null_panel.{h,c}  a panel with nothing behind it, for QEMU
-    │   ├── gfx_glow.h          a curve drawn as light     (host-tested)
     │   ├── gfx_full_redraw.h   when everything must repaint (host-tested)
     │   ├── gfx_heal.h          repairing a torn band      (host-tested)
     │   ├── gfx_fb_guard.h, gfx_present_guard.h  misuse traps (host-tested)
@@ -90,6 +89,7 @@ launcher/
     │   ├── ui_anchor.h         a rect placed against an edge (host-tested)
     │   ├── ui_scroll.{h,c}     a screen with more rows than fit (host-tested)
     │   ├── ridge_pose.h        the ridge's pose from gravity (host-tested)
+    │   ├── ridge_theme.h       a seed colour's role palette (host-tested)
     │   ├── ui_launcher.{h,c}, ui_launcher_draw.c   the home screen
     │   ├── ui_control_center.{h,c}, ui_control_center_draw.c
     │   │                       Control Center, over a dimmed home screen
