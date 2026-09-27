@@ -100,7 +100,7 @@ prints the whole capture; to find something in it, grep the capture instead.
 | Command | What it does |
 |---|---|
 | `autana tune [text] [--json]` | List the tunables with their ranges; names containing `text`. |
-| `autana tune <name> [value]` | Show one, or set it on the board (lost on reboot). `trail` works for `ridge.trail` when unambiguous. |
+| `autana tune <name> [value]` | Show one, or set it on the board (lost on reboot). |
 | `autana tune reset <name>` | Back to the value the source declares. |
 | `autana tune save` | Write the board's values into this worktree's `TUNE(...)` lines. |
 
@@ -162,7 +162,7 @@ so an app's own command works too. A tunable is only ever reached through
 `tune`:
 
 ```
-autana> tune trail 200
+autana> tune theme_rgb 0x1199C8
 autana> freeze
 autana> step 3
 autana> resume

@@ -17,7 +17,6 @@
 #include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"
 #include "ui/ui_transform.h"
-#include "util/tune.h"
 
 #define FRAME_MS       16
 #define FRAMES_TO_REST 600
@@ -28,12 +27,6 @@
 #define TOUCH_Y        400
 
 static int failures;
-static int replies_ok;
-
-static void
-count_ok(const char* line) {
-    replies_ok += strncmp(line, "TUNE_OK ", 8) == 0;
-}
 
 static void
 expect(bool ok, const char* what) {
@@ -97,8 +90,8 @@ main(void) {
     if (as_boot_left_it == NULL) {
         return 1;
     }
-    expect(as_boot_left_it[0] == 0, "the backdrop is black, so an AMOLED pixel is off");
-    expect(lit_pixels(as_boot_left_it) > 8000, "the ridge and the app rows are drawn");
+    expect(as_boot_left_it[0] != 0, "the backdrop is visible behind the launcher");
+    expect(lit_pixels(as_boot_left_it) > 8000, "the backdrop and the app rows are drawn");
 
     int held_frames_sending = 0;
     for (int i = 0; i < 30; i++) {
@@ -131,7 +124,7 @@ main(void) {
     ui_invalidate();
     frame(false, false);
     expect(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) == 0,
-           "where it stopped is exactly level, not merely close, and turning left no trail");
+           "where it stopped is exactly level, not merely close, and leaves pixels unchanged");
     expect(!frame(false, false), "a level, untouched launcher sends nothing");
 
     expect(frame(true, true), "a touch sets the ridge moving on the frame it lands");
@@ -144,14 +137,18 @@ main(void) {
     expect(moving_frames == 20, "the wave keeps sending while it travels");
     expect(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) != 0, "the line is displaced");
 
+    /* Only pixels that change are sent, so the spring's last sub-pixel
+     * wobbles leave quiet frames between sends: rest is a long quiet run. */
     int frames_until_quiet = 0;
-    while (frames_until_quiet < FRAMES_TO_REST && frame(false, false)) {
+    int still_run = 0;
+    while (frames_until_quiet < FRAMES_TO_REST && still_run < 60) {
+        still_run = frame(false, false) ? 0 : still_run + 1;
         frames_until_quiet++;
     }
     expect(frames_until_quiet < FRAMES_TO_REST, "the line comes to rest");
     expect(!frame(false, false) && !frame(false, false), "and then sends nothing again");
     expect(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) == 0,
-           "at rest the screen is the settled one exactly: no trail, and the app rows intact");
+           "at rest the screen is the settled one exactly");
 
     /* Breathing and the wave: the launcher draws on, never strays far from
      * the ridge, and turned off again is back on the settled screen with
@@ -168,7 +165,7 @@ main(void) {
     }
     expect(ambient_frames_sending > 300, "with its ambient motion on, the ridge keeps moving");
     expect(least_lit > lit_pixels(settled) * 8 / 10 && most_lit < lit_pixels(settled) * 12 / 10,
-           "and stays one line of about the same light, not a smear");
+           "and the backdrop stays whole while it moves: nothing it covers goes dark");
 
     ui_ridge_set_ambient(false);
     for (int i = 0; i < 40; i++) {
@@ -177,25 +174,6 @@ main(void) {
     expect(!frame(false, false), "turned off, the launcher is idle again");
     expect(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) == 0,
            "on exactly the settled screen: the motion left nothing behind");
-
-    /* A number set over the console is on the screen a frame later, and set
-     * back, so is the picture. */
-    const size_t lit_at_13 = lit_pixels(settled);
-    expect(tune_handle_line("SET ridge.glow_radius 26", count_ok) && replies_ok == 1,
-           "the ridge's tunables are registered once it has drawn");
-    for (int i = 0; i < 40; i++) {
-        frame(false, false);
-    }
-    /* About 6000 more; most of what is lit is the app rows, which hide much
-     * of the glow behind them. */
-    expect(lit_pixels(gfx_framebuffer()) > lit_at_13 + 4000, "a wider glow lights more of the screen");
-    tune_handle_line("SET ridge.glow_radius 13", count_ok);
-    for (int i = 0; i < 40; i++) {
-        frame(false, false);
-    }
-    expect(!frame(false, false), "and the launcher is idle again after a retune");
-    expect(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) == 0,
-           "set back, the screen is the settled one exactly");
 
     free(settled);
     return failures;
