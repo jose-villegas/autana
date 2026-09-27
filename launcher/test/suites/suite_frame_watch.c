@@ -10,6 +10,13 @@
 
 #include "util/frame_watch.h"
 
+#ifdef DEVICE_BUILD
+#include <stdlib.h>
+
+#include "esp_log.h"
+#include "gfx/gfx.h"
+#endif
+
 #define SITE_A ((uintptr_t)0x42001000u)
 #define SITE_B ((uintptr_t)0x42002000u)
 
@@ -211,6 +218,58 @@ test_json_too_short_for_a_site_leaves_it_out_whole(void) {
     TEST_ASSERT_NOT_NULL(strstr(json, "\"sites\":[]}"));
 }
 
+#ifdef DEVICE_BUILD
+/* Long enough for the warm-up and then a whole window. */
+#define WATCHED_PRESENTS (FRAME_WATCH_WARMUP + FRAME_WATCH_WINDOW)
+
+static void
+allocate_and_free(void) {
+    volatile char* block = malloc(32);
+    if (block != NULL) {
+        block[0] = 1;
+    }
+    free((void*)block);
+}
+
+/* The RUN_TEST wrapper already watches this test; its verdict is taken here
+ * and the watch started again, so the wrapper's own finds nothing. */
+static int
+sites_caught_so_far(void) {
+    const int caught = frame_watch_test_end();
+    frame_watch_test_begin();
+    return caught;
+}
+
+static void
+test_on_the_board_an_allocation_every_present_is_caught(void) {
+    for (int i = 0; i < WATCHED_PRESENTS; i++) {
+        allocate_and_free();
+        gfx_present();
+    }
+    TEST_ASSERT_EQUAL_INT(2, sites_caught_so_far());
+}
+
+static void
+test_on_the_board_a_log_line_every_present_is_caught(void) {
+    for (int i = 0; i < WATCHED_PRESENTS; i++) {
+        ESP_LOGI("frame_watch_test", "present %d", i);
+        gfx_present();
+    }
+    TEST_ASSERT_EQUAL_INT(1, sites_caught_so_far());
+}
+
+static void
+test_on_the_board_one_allocation_among_many_presents_is_not(void) {
+    for (int i = 0; i < WATCHED_PRESENTS; i++) {
+        if (i == WATCHED_PRESENTS - FRAME_WATCH_WINDOW / 2) {
+            allocate_and_free();
+        }
+        gfx_present();
+    }
+    TEST_ASSERT_EQUAL_INT(0, sites_caught_so_far());
+}
+#endif
+
 static void
 suite_frame_watch(void) {
     RUN_TEST(test_a_site_in_every_frame_becomes_repeating_at_the_repeat_count);
@@ -227,6 +286,11 @@ suite_frame_watch(void) {
     RUN_TEST(test_a_site_not_repeating_is_never_due);
     RUN_TEST(test_json_holds_the_counts_and_the_repeating_sites);
     RUN_TEST(test_json_too_short_for_a_site_leaves_it_out_whole);
+#ifdef DEVICE_BUILD
+    RUN_TEST(test_on_the_board_an_allocation_every_present_is_caught);
+    RUN_TEST(test_on_the_board_a_log_line_every_present_is_caught);
+    RUN_TEST(test_on_the_board_one_allocation_among_many_presents_is_not);
+#endif
 }
 
 SUITE_REGISTER(suite_frame_watch);
