@@ -8,7 +8,7 @@ document.
 The objective is a tool where a screen is **authored visually and edited
 again later** - not screenshotted and re-typed. The brush screen should open
 in it as an editable instance. It is a component of the engine direction in
-[`../Autana-Rendering-Roadmap.md`](../Autana-Rendering-Roadmap.md), sibling
+[`Autana-Rendering-Roadmap.md`](Autana-Rendering-Roadmap.md), sibling
 to the level editor already banked in that roadmap.
 
 ---
@@ -237,4 +237,4 @@ run by `.github/workflows/host-tests.yml`.
 
 - [`../Building-a-Screen.md`](../Building-a-Screen.md) - how a screen is built by hand today
 - [`../tools/Icon-Baker.md`](../tools/Icon-Baker.md) - the same authored-data-to-baked-header pattern, for artwork
-- [`../Autana-Rendering-Roadmap.md`](../Autana-Rendering-Roadmap.md) - the engine direction this serves
+- [`Autana-Rendering-Roadmap.md`](Autana-Rendering-Roadmap.md) - the engine direction this serves

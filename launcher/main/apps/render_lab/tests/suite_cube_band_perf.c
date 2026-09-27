@@ -1,7 +1,7 @@
 /*
  * Device-only suite: the cube's band-mode path against its full-fb path, on
  * the same rotating scene with the fps counter showing in both - the A/B
- * the band ring exists to answer (see docs/Autana-Rendering-Roadmap.md
+ * the band ring exists to answer (see docs/plans/Autana-Rendering-Roadmap.md
  * section 3.3's frame-time argument), with real UI cost included rather
  * than measured separately.
  *

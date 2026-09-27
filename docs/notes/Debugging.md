@@ -1,4 +1,4 @@
-# Diagnostics and Debugging
+# Debugging
 
 Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 - see
 [`README.md`](README.md) for the full set.

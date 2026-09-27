@@ -10,7 +10,7 @@ lighting, and a platformer with parallax and 2D lighting.
 
 Every number below that is not marked *estimate* or *unmeasured* is
 measured, and its source is named. The house rule from
-[Optimization-Playbook.md](notes/Optimization-Playbook.md) applies to this
+[Optimization-Playbook.md](../notes/Optimization-Playbook.md) applies to this
 document too: a plausible explanation of where time goes is not a measured
 one, and every phase ends with a number, not a feeling.
 
@@ -94,7 +94,7 @@ flowchart LR
 ```
 
 The green-bordered nodes above are already in the tree, not proposed:
-`frameTime` ([`util/frame_cost.{h,c}`](tools/Frame-Cost.md)), `cubePerf`
+`frameTime` ([`util/frame_cost.{h,c}`](../tools/Frame-Cost.md)), `cubePerf`
 (`apps/render_lab/tools/report_cube_perf.sh`), `busRoot` (`GFX_QSPI_HZ`,
 `gfx_heal.h`), `corePresent` (the present task pinned to core 1,
 `gfx_present_begin()`/`gfx_present_wait()`), `bandRing` (`gfx/gfx_band.h`,
@@ -120,7 +120,7 @@ into an internal-SRAM band ring and never writes PSRAM at all. Present
 copies full-width strips out of the PSRAM framebuffer into two internal
 DMA buffers and sends them at 80 MHz QSPI: ~10.2-10.9 ms per full frame
 (device measurement). Render/rasterize durations below are shape only;
-[`util/frame_cost`](tools/Frame-Cost.md) reports an app's own.
+[`util/frame_cost`](../tools/Frame-Cost.md) reports an app's own.
 
 ```
 time (ms) 0         10        20        30        40
@@ -314,8 +314,8 @@ them.
 
 What we have and what each fact means for a renderer. Sources: the
 ESP32-S3 datasheet, the boot-time BSP probe, and this repo's own device
-captures — see [Board-and-Memory.md](notes/Board-and-Memory.md) and
-[Display-and-Rendering.md](notes/Display-and-Rendering.md) for the full
+captures — see [Board-and-Memory.md](../notes/Board-and-Memory.md) and
+[Display-and-Rendering.md](../notes/Display-and-Rendering.md) for the full
 detail behind every row.
 
 | Property | ESP32-S3 (Waveshare ESP32-S3-Touch-AMOLED-1.8) | Consequence |
@@ -367,9 +367,9 @@ of them transfer to a chip with a data cache and which were written on the
 premise that there is none — split cleanly: the algorithmic skips
 transfer, and the old SRAM-mask-style wins plausibly do not, because a
 data cache now sits between the CPU and where the grids live (see
-[`notes/Optimization-Playbook.md`](notes/Optimization-Playbook.md), "Know
+[`notes/Optimization-Playbook.md`](../notes/Optimization-Playbook.md), "Know
 what kind of memory you actually have," and
-[`notes/Board-and-Memory.md`](notes/Board-and-Memory.md), "Cache is
+[`notes/Board-and-Memory.md`](../notes/Board-and-Memory.md), "Cache is
 carved from the same pool"). The cost/benefit case for taking on the S3 at
 all is retired now that the port has happened.
 
@@ -397,7 +397,7 @@ everything in this document. Add to it:
 
 At 40 MHz a full frame is 16.5 ms theoretical over the bus alone. Two
 S3-measured present-cost figures agree closely: `gfx_present()` measures
-17.6 ms directly ([Display-and-Rendering.md](notes/Display-and-Rendering.md),
+17.6 ms directly ([Display-and-Rendering.md](../notes/Display-and-Rendering.md),
 "The blit is bus-bound") and 18.0-18.9 ms via `boot_anim_perf` rows. Both
 present figures sit above the 16.5 ms theoretical; the gap is *unmeasured*
 why.
@@ -1129,7 +1129,7 @@ what is making it:
   retained buffer for retained apps, or the internal-SRAM band ring for
   full-redraw renderers, as a gfx-owned mode), one frame loop owned by
   the shell, apps as callbacks that draw and return
-  ([Firmware-Architecture.md](Firmware-Architecture.md)).
+  ([Firmware-Architecture.md](../Firmware-Architecture.md)).
 - Anything graduated out of an app or the boot animation needs a second
   consumer and a reference test, or it stays where it was.
 - Update the docs a change makes wrong in the same change that makes them
@@ -1139,13 +1139,13 @@ what is making it:
 
 ## Related
 
-- [Firmware-Architecture.md](Firmware-Architecture.md) — the three rules
+- [Firmware-Architecture.md](../Firmware-Architecture.md) — the three rules
   the framebuffer modes have to respect.
-- [notes/Display-and-Rendering.md](notes/Display-and-Rendering.md) — every
+- [notes/Display-and-Rendering.md](../notes/Display-and-Rendering.md) — every
   bus and dirty-tracking number cited above, and the parked ideas.
-- [notes/Optimization-Playbook.md](notes/Optimization-Playbook.md) — the
+- [notes/Optimization-Playbook.md](../notes/Optimization-Playbook.md) — the
   code-shape rules a new renderer will hit.
-- [notes/Board-and-Memory.md](notes/Board-and-Memory.md) — the memory
+- [notes/Board-and-Memory.md](../notes/Board-and-Memory.md) — the memory
   budget the retained framebuffer and the band ring are designed against.
-- [Settings-App-Plan.md](plans/Settings-App-Plan.md) — the
+- [Settings-App-Plan.md](Settings-App-Plan.md) — the
   mode switch the framebuffer geometry lands in.

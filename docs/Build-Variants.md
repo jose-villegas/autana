@@ -221,7 +221,7 @@ that refuses to.
 
 - [`Testing-Guide.md`](Testing-Guide.md) — the suites these flags carry or
   drop, and how to run them.
-- [`notes/Diagnostics-and-Debugging.md`](notes/Diagnostics-and-Debugging.md) —
+- [`notes/Debugging.md`](notes/Debugging.md) —
   which tool to reach for when the board misbehaves, and which build each
   one needs.
 - [`plans/Log-Level-Plan.md`](plans/Log-Level-Plan.md) — a planned
