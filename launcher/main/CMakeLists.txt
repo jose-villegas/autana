@@ -1,6 +1,7 @@
 # The shell and the board drivers. Apps are NOT listed here - see below.
 set(app_srcs
     "main.c"
+    "app_arena.c"
     "app_registry.c"
     "boot/boot_anim.c"
     "boot/post.c"
@@ -159,7 +160,7 @@ endif()
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
 set(app_reqs microui small3dlib esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
-             esp_driver_i2c esp_driver_tsens esp_hw_support spi_flash
+             esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag vfs nvs_flash
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300

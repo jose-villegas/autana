@@ -40,6 +40,8 @@
 
 #include "heap_arena.h"
 
+#include "app_arena.h"
+
 #include "stubs/esp_heap_caps.h"
 
 #include <stdio.h>
@@ -111,6 +113,7 @@ typedef struct {
     size_t storage_bytes;
     size_t default_cap;  /* compile-time default, from the device profile */
     const char* env_var; /* widen-without-rebuild override, see below */
+    size_t reserved;     /* static memory the board places ahead of the heap */
     const char* label;   /* for messages only ("internal" / "psram") */
     arena_block_t* head;
     size_t cap; /* effective cap in bytes, <= storage_bytes */
@@ -139,6 +142,7 @@ static arena_pool_t s_psram = {
     .storage_bytes = sizeof(s_psram_storage),
     .default_cap = HOST_HEAP_ARENA_PSRAM_BYTES,
     .env_var = "HOST_HEAP_ARENA_PSRAM_BYTES",
+    .reserved = APP_ARENA_BYTES,
     .label = "psram",
 };
 
@@ -148,27 +152,40 @@ ptr_in_pool(const arena_pool_t* p, const void* ptr) {
     return b >= p->storage && b < p->storage + p->storage_bytes;
 }
 
-/* Reads a pool's compile-time default or, if set, its own environment
- * variable - so a one-off experiment can widen or narrow either cap without
- * a rebuild. Prints the effective cap and where it came from exactly once
- * per pool, since a gate whose cap is silently different from what the last
- * person read in the log is worse than one that never widened at all. */
+/* A pool's heap: its memory from the compile-time default or, when it
+ * parses, `override`, less what the board reserves ahead of the heap. */
 static size_t
-arena_pool_effective_cap(arena_pool_t* p) {
-    size_t cap = p->default_cap;
-    const char* origin = "compile-time default (device profile, via -D)";
-
-    const char* env = getenv(p->env_var);
-    if (env && *env) {
+arena_pool_heap_bytes(const arena_pool_t* p, const char* override, const char** origin) {
+    size_t memory = p->default_cap;
+    *origin = "compile-time default (device profile, via -D)";
+    if (override && *override) {
         char* end = NULL;
-        unsigned long long v = strtoull(env, &end, 10);
-        if (end != env && *end == '\0' && v > 0) {
-            cap = (size_t)v;
-            origin = "environment override";
+        unsigned long long v = strtoull(override, &end, 10);
+        if (end != override && *end == '\0' && v > 0) {
+            memory = (size_t)v;
+            *origin = "environment override";
         } else {
-            fprintf(stderr, "heap_arena: ignoring unparseable %s=%s\n", p->env_var, env);
+            fprintf(stderr, "heap_arena: ignoring unparseable %s=%s\n", p->env_var, override);
         }
     }
+    return memory > p->reserved ? memory - p->reserved : 0;
+}
+
+size_t
+heap_arena_psram_heap_bytes(const char* override) {
+    const char* origin;
+    return arena_pool_heap_bytes(&s_psram, override, &origin);
+}
+
+/* Reads a pool's cap - so a one-off experiment can widen or narrow either
+ * cap without a rebuild. Prints the effective cap and where it came from
+ * exactly once per pool, since a gate whose cap is silently different from
+ * what the last person read in the log is worse than one that never widened
+ * at all. */
+static size_t
+arena_pool_effective_cap(arena_pool_t* p) {
+    const char* origin;
+    size_t cap = arena_pool_heap_bytes(p, getenv(p->env_var), &origin);
 
     if (cap > p->storage_bytes) {
         fprintf(stderr, "heap_arena: %s pool cap %zu exceeds static storage %zu, clamping\n", p->label, cap,

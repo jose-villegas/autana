@@ -24,13 +24,8 @@
 
 #include <stdbool.h>
 
-/* Headroom, not a tight fit: the device selftest build alone (test/suites'
- * own dozen plus one suite per app) already sits close to whatever this is
- * set to, and a suite past the limit is dropped SILENTLY - suite_register()
- * only printf()s a warning to the boot console, so an overflow here reads as
- * a green run that quietly tested less than it claims. Bump this rather than
- * trim suites to fit it. */
-#define SUITE_MAX 128
+/* Headroom over the ~130 suites registered; a suite past it fails the run. */
+#define SUITE_MAX 192
 
 typedef void (*suite_fn)(void);
 
