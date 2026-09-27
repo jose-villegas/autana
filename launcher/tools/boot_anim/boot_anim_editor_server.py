@@ -69,9 +69,10 @@ a bad edit never reaches the real files), then overwrites the REAL
 main/boot/boot_anim_timeline.json and boot_anim_timeline.h - what
 tools/boot_anim/boot_anim_editor.html's Bake button downloads, written here instead of
 copied in by hand - and builds the development image and flashes it to
-that board, the same two steps as `autana flash dev` (device.flash_commands()). Its combined stdout/stderr comes
-back as the response body (200) or as the error (500) if the build or the
-flash failed.
+that board, the same two steps as `autana flash dev`
+(device.flash_commands()), the build before the board's lock is taken and
+only the flash under it. Their combined stdout/stderr comes back as the
+response body (200) or as the error (500) if the build or the flash failed.
 
 Single-threaded on purpose: this is a local, single-user tool, and every
 render already serializes through one compiler/one binary anyway. A

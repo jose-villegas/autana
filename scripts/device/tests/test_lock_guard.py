@@ -410,8 +410,12 @@ class LostLockTests(Store):
         written.assert_not_called()
 
 
+def no_build(*unused, **unused_keywords):
+    pass
+
+
 class FlashTests(Store):
-    def flash(self, build, store=None, variant="dev"):
+    def flash(self, write, store=None, variant="dev", build=no_build):
         store = store or self.store
         worktree = self.root / "engine"
         for script in (device.BUILD_SCRIPT, device.FLASH_SCRIPT):
@@ -420,7 +424,8 @@ class FlashTests(Store):
         args = Namespace(owner="agent", purpose="flash", wait=0, variant=variant,
                          worktree=str(worktree), out=None)
         with mock.patch.object(device, "open_when_free", return_value=contextlib.nullcontext()), \
-                mock.patch.object(device, "run_while_held", side_effect=build), \
+                mock.patch.object(device, "run_build", side_effect=build), \
+                mock.patch.object(device, "run_while_held", side_effect=write), \
                 mock.patch.object(device, "git_commit", return_value="c0ffee"), \
                 contextlib.redirect_stdout(io.StringIO()) as output:
             try:
@@ -448,7 +453,45 @@ class FlashTests(Store):
             self.flash(lambda *unused, stdout, **unused_kw: stdout.write(b"built\n"))
         self.assertIn("no BUILD_ID", self.entry()["error"])
 
-    def test_a_heartbeat_lost_during_the_build_fails_before_the_flash_is_claimed(self):
+    def test_the_build_runs_with_the_board_free_for_anyone_else(self):
+        seen = []
+
+        def build(*unused, stdout, **unused_keywords):
+            other = device_lock.LockStore(self.store.root)
+            taken = other.acquire(BOARD_A, "someone-else", "flash", wait=0)
+            seen.append(bool(taken))
+            other.release(BOARD_A, taken["token"])
+            stdout.write(b"BUILD_ID=abc\n")
+
+        self.flash(no_build, build=build)
+        self.assertEqual(seen, [True])
+        self.assertEqual(self.entry()["build_id"], "abc")
+
+    def test_a_failed_build_never_takes_the_lock(self):
+        def failing_build(command, *unused, stdout, **unused_keywords):
+            stdout.write(b"error: it does not compile\n")
+            raise subprocess.CalledProcessError(1, command)
+
+        with mock.patch.object(self.store, "acquire", wraps=self.store.acquire) as acquire, \
+                self.assertRaisesRegex(RuntimeError, "build_flash.sh failed .exit 1.: "
+                                                     "error: it does not compile"):
+            self.flash(no_build, build=failing_build)
+        acquire.assert_not_called()
+        self.assertIn("build_flash.sh failed", self.entry()["error"])
+        self.assertIsNone(self.entry()["acquired_at"])
+
+    def test_the_build_and_the_flash_share_one_log(self):
+        def build(*unused, stdout, **unused_keywords):
+            stdout.write(b"built\n")
+
+        def write(*unused, stdout, **unused_keywords):
+            stdout.write(b"BUILD_ID=abc\nflashed\n")
+
+        self.flash(write, build=build)
+        log = Path(self.entry()["capture_path"]).read_bytes()
+        self.assertEqual(log.replace(b"\r\n", b"\n"), b"built\nBUILD_ID=abc\nflashed\n")
+
+    def test_a_heartbeat_lost_during_the_flash_fails_before_the_flash_is_claimed(self):
         def build_then_lose(*unused, stdout, **unused_keywords):
             stdout.write(b"BUILD_ID=abc\n")
             device.ACTIVE_LOCK.held.lost.set()
@@ -477,10 +520,10 @@ class FlashTests(Store):
 
     def test_an_in_flight_flash_is_stopped_when_the_lock_is_lost(self):
         worktree = self.root / "engine"
-        script = worktree / device.BUILD_SCRIPT
+        script = worktree / device.FLASH_SCRIPT
         script.parent.mkdir(parents=True)
-        (worktree / device.FLASH_SCRIPT).parent.mkdir(parents=True)
-        (worktree / device.FLASH_SCRIPT).write_text("")
+        (worktree / device.BUILD_SCRIPT).parent.mkdir(parents=True)
+        (worktree / device.BUILD_SCRIPT).write_text("")
         started = self.root / "started"
         script.write_text("import pathlib, sys, time\n"
                           f"pathlib.Path({str(started)!r}).write_text('')\n"
@@ -511,7 +554,7 @@ class FlashTests(Store):
                     begun = time.monotonic()
                     device.flash(args, self.store, BOARD_A, held_lock=held)
         self.assertLess(time.monotonic() - begun, 30)
-        self.assertIsNotNone(children[0].poll())
+        self.assertIsNotNone(children[-1].poll())
 
     def test_a_script_that_names_its_build_and_then_fails_fails_the_flash(self):
         worktree = self.root / "engine"
@@ -538,6 +581,23 @@ class FlashTests(Store):
         self.assertIn("exit 2", self.entry()["error"])
         self.assertIsNone(self.entry()["build_id"])
 
+    def test_the_editors_build_runs_before_it_queues_and_a_failed_one_never_does(self):
+        commands = [["build"], ["write"]]
+        seen = []
+
+        def build(command, **unused_keywords):
+            seen.append(self.store.status(BOARD_A)["lock"])
+
+        with mock.patch.object(device, "run_build", side_effect=build),                 mock.patch.object(device, "run_while_held") as write:
+            device.flash_script(self.store, BOARD_A, "agent", "flash", commands, 0)
+        self.assertEqual(seen, [None])
+        self.assertEqual(write.call_args.args[0], ["write"])
+
+        failed = subprocess.CalledProcessError(1, ["build"])
+        with mock.patch.object(device, "run_build", side_effect=failed),                 mock.patch.object(self.store, "acquire") as acquire,                 self.assertRaises(subprocess.CalledProcessError):
+            device.flash_script(self.store, BOARD_A, "agent", "flash", commands, 0)
+        acquire.assert_not_called()
+
     def test_a_lost_lock_stops_the_scripts_whole_process_tree(self):
         started = self.root / "grandchild.pid"
         script = self.root / "build_flash.py"
@@ -552,7 +612,7 @@ class FlashTests(Store):
                 contextlib.redirect_stderr(io.StringIO()), \
                 self.assertRaises(device.LockLost):
             device.flash_script(self.store, BOARD_A, "agent", "flash",
-                                [[sys.executable, str(script)]], 0,
+                                [[sys.executable, "-c", "pass"], [sys.executable, str(script)]], 0,
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         grandchild = int(started.read_text())
         self.addCleanup(subprocess.run, ["taskkill", "/F", "/PID", str(grandchild)]
@@ -574,10 +634,12 @@ class EditorFlashTests(Store):
         import boot_anim_editor_server as editor
 
         started = self.root / "script.pid"
-        script = self.root / "build_flash_dev.py"
+        script = self.root / "flash_image.py"
         script.write_text("import os, pathlib, time\n"
                           f"pathlib.Path({str(started)!r}).write_text(str(os.getpid()))\n"
                           "time.sleep(60)\n")
+        build = self.root / "build_flash.py"
+        build.write_text("")
         generator = self.root / "generator.py"
         generator.write_text("print('/* header */')\n")
         store = device_lock.LockStore()
@@ -588,7 +650,8 @@ class EditorFlashTests(Store):
                 mock.patch.object(editor, "TIMELINE_HEADER", str(self.root / "timeline.h")), \
                 mock.patch.object(editor, "GENERATOR", str(generator)), \
                 mock.patch.object(device, "flash_commands",
-                                  return_value=[[sys.executable, str(script)]]), \
+                                  return_value=[[sys.executable, str(build)],
+                                                [sys.executable, str(script)]]), \
                 mock.patch.object(editor, "_ensure_image_current"), \
                 mock.patch.object(editor, "find_bash", return_value=sys.executable), \
                 mock.patch.object(device.HeldLock, "HEARTBEAT_SECONDS", 0.05), \
@@ -908,7 +971,8 @@ class SuiteFailureTests(Store):
         args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), out=None,
                          perf_scope=False, max_seconds=5, idle_seconds=None)
         replies = Replies(b":1:test_one:FAIL: boom\nSELFTEST_COMPLETE failures=1\n")
-        with mock.patch.object(device, "flash", return_value="abc"), \
+        with mock.patch.object(device, "build_image"), \
+                mock.patch.object(device, "flash", return_value="abc"), \
                 mock.patch.object(device, "reset"), \
                 mock.patch.object(device, "open_when_free", return_value=replies), \
                 mock.patch.object(device, "git_commit", return_value="c0ffee"), \
@@ -920,7 +984,8 @@ class SuiteFailureTests(Store):
         args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
                          suite=["sand"], runs=2, perf_scope=False, max_seconds=5,
                          idle_seconds=None, out=None)
-        with mock.patch.object(device, "flash", return_value="abc"), \
+        with mock.patch.object(device, "build_image"), \
+                mock.patch.object(device, "flash", return_value="abc"), \
                 mock.patch.object(device, "open_when_free",
                                   side_effect=lambda *unused, **unused_kw: Replies(self.FAILED_SUITE)), \
                 mock.patch.object(device, "git_commit", return_value="c0ffee"), \
@@ -936,7 +1001,12 @@ class SuiteFailureTests(Store):
         args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
                          suite=["sand"], runs=1, perf_scope=False, max_seconds=5,
                          idle_seconds=None, out=None)
-        with mock.patch.object(device, "flash", return_value="abc"),                 mock.patch.object(device, "run_suite", side_effect=RuntimeError("port lost")),                 mock.patch.object(device, "git_commit", return_value="c0ffee"),                 contextlib.redirect_stdout(io.StringIO()),                 contextlib.redirect_stderr(io.StringIO()):
+        with mock.patch.object(device, "build_image"), \
+                mock.patch.object(device, "flash", return_value="abc"), \
+                mock.patch.object(device, "run_suite", side_effect=RuntimeError("port lost")), \
+                mock.patch.object(device, "git_commit", return_value="c0ffee"), \
+                contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(device.batch(args, self.store, BOARD_A), 1)
         self.assertEqual(self.errors()["batch"], "a batch capture failed")
 
