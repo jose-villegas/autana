@@ -69,9 +69,10 @@ a bad edit never reaches the real files), then overwrites the REAL
 main/boot/boot_anim_timeline.json and boot_anim_timeline.h - what
 tools/boot_anim/boot_anim_editor.html's Bake button downloads, written here instead of
 copied in by hand - and builds the development image and flashes it to
-that board, the same two steps as `autana flash dev` (device.flash_commands()). Its combined stdout/stderr comes
-back as the response body (200) or as the error (500) if the build or the
-flash failed.
+that board, the same two steps as `autana flash dev`
+(device.flash_commands()), the build before the board's lock is taken and
+only the flash under it. Their combined stdout/stderr comes back as the
+response body (200) or as the error (500) if the build or the flash failed.
 
 Single-threaded on purpose: this is a local, single-user tool, and every
 render already serializes through one compiler/one binary anyway. A
@@ -97,6 +98,8 @@ ENGINE_DIR = os.path.dirname(LAUNCHER_DIR)
 # the board's lock like every autana command rather than fight it for the port.
 sys.path.insert(0, os.path.join(ENGINE_DIR, "scripts", "device"))
 import device  # noqa: E402
+
+FLASH_VARIANT = "dev"
 MAIN_DIR = os.path.join(LAUNCHER_DIR, "main")
 SMALL3DLIB_DIR = os.path.join(LAUNCHER_DIR, "components", "small3dlib", "include")
 MICROUI_DIR = os.path.join(LAUNCHER_DIR, "components", "microui", "include")
@@ -122,7 +125,7 @@ BOOT_PNG = os.path.join(os.path.dirname(LAUNCHER_DIR), "design", "boot", "boot.p
 BOOT_ANIM_IMAGE_HEADER = os.path.join(MAIN_DIR, "boot", "boot_anim_image.h")
 # 300 measured too short in practice - a from-scratch (or even mostly-
 # cached) dev build going through this script's own Git-Bash -> cmd-shim
-# -> idf.py chain (see build_flash.sh/idf.sh's own comments on why
+# -> idf.py chain (see build.sh/idf.sh's own comments on why
 # that chain exists at all) runs noticeably slower than the same build
 # invoked directly, and blew past 300s on a machine with a real device
 # attached. 600 is a guess at "generous enough", not a measurement of a
@@ -326,9 +329,9 @@ def find_cc():
 
 
 def find_bash():
-    """build_flash.sh is POSIX sh, written to run under Git Bash (see its
+    """build.sh is POSIX sh, written to run under Git Bash (see its
     own top comment) - idf.py itself cannot run under Git Bash on Windows
-    (see docs/Testing-Guide.md), but build_flash.sh already routes around
+    (see docs/Testing-Guide.md), but build.sh already routes around
     that itself (tools/build/idf.sh -> idf_shim.bat), so running the .sh under
     Git Bash's own bash.exe is the one thing this needs to get right.
 
@@ -521,10 +524,11 @@ class Renderer:
         bash = find_bash()
         if bash is None:
             raise RenderError(
-                500, "no bash.exe found - build_flash.sh needs Git Bash "
+                500, "no bash.exe found - build.sh needs Git Bash "
                 "(see docs/Testing-Guide.md). The timeline files were "
                 "still written to main/boot/ above.")
-        commands = device.flash_commands(bash, ENGINE_DIR, "dev")
+        commands = device.flash_commands(bash, ENGINE_DIR, FLASH_VARIANT)
+        build_command = commands[0]
         for command in commands:
             if not os.path.isfile(command[1]):
                 raise RenderError(
@@ -538,7 +542,7 @@ class Renderer:
         # script's own dirname/cd/pwd logic directly did not reproduce it),
         # but Git Bash accepts C:/... unambiguously and this removes the
         # entire class of risk regardless of the exact mechanism.
-        script_for_bash = commands[0][1]
+        script_for_bash = build_command[1]
 
         # A fast (milliseconds, not a build) sanity probe using the exact
         # same bash binary and exact same path the real invocation below
@@ -554,7 +558,7 @@ class Renderer:
         # a probe timeout is itself diagnostic (bash launched but never
         # returned), not a stand-in for "the build timed out"; letting
         # TimeoutExpired propagate unguarded here would surface that same
-        # wrong, confusing message ("build_flash.sh did not finish
+        # wrong, confusing message ("build.sh did not finish
         # within 600s") for a run that had not even reached the real
         # invocation yet.
         try:
@@ -573,7 +577,7 @@ class Renderer:
                           "FOUND/MISSING, a stronger signal than a normal "
                           "probe failure.")
 
-        # stdin=DEVNULL: build_flash.sh waits for Enter after a failure (it
+        # stdin=DEVNULL: build.sh waits for Enter after a failure (it
         # doubles as a double-clickable script), which would otherwise hang
         # this request forever.
         failed = None
@@ -581,7 +585,7 @@ class Renderer:
             try:
                 device.flash_script(
                     device.device_lock.LockStore(), board, "boot-anim-editor",
-                    "boot anim preview flash", commands, 300,
+                    "boot anim preview flash", bash, ENGINE_DIR, FLASH_VARIANT, 300,
                     cwd=LAUNCHER_DIR, stdin=subprocess.DEVNULL, stdout=output,
                     stderr=subprocess.STDOUT, timeout=BUILD_FLASH_TIMEOUT_S)
             except subprocess.CalledProcessError as error:
