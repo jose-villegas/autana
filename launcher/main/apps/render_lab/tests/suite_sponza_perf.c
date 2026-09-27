@@ -20,6 +20,7 @@
 #include "esp_timer.h"
 
 #include "apps/render_lab/sponza_flythrough.h"
+#include "apps/render_lab/sponza_lite_mesh_generated.h"
 #include "apps/render_lab/sponza_mesh_generated.h"
 #include "gfx/gfx.h"
 #include "render/r3d_lit_frame.h"
@@ -43,8 +44,8 @@ typedef struct {
 } bench_t;
 
 static void
-bench_open(bench_t* b) {
-    b->scratch = heap_caps_malloc(r3d_lit_frame_scratch_bytes(&sponza_mesh), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+bench_open(bench_t* b, const r3d_lit_mesh_t* mesh) {
+    b->scratch = heap_caps_malloc(r3d_lit_frame_scratch_bytes(mesh), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     b->target =
         heap_caps_malloc(RENDER_PIXELS * (sizeof(gfx_color_t) + sizeof(uint16_t)), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     b->panel = heap_caps_malloc(sizeof(gfx_color_t) * PANEL_PIXELS, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -53,7 +54,7 @@ bench_open(bench_t* b) {
     TEST_ASSERT_NOT_NULL(b->panel);
     gfx_color_t* color = b->target;
     b->frame = (r3d_lit_frame_t){
-        .mesh = &sponza_mesh,
+        .mesh = mesh,
         .color = color,
         .depth = (uint16_t*)(color + RENDER_PIXELS),
         .width = RENDER_WIDTH,
@@ -139,7 +140,7 @@ report_core_contention(const r3d_lit_frame_t* frame, const r3d_lit_view_t* view,
 void
 test_sponza_draw_stage_breakdown(void) {
     bench_t b;
-    bench_open(&b);
+    bench_open(&b, &sponza_mesh);
     const r3d_lit_view_t view = view_at(0);
     const int visible = r3d_lit_cull_clusters(&sponza_mesh, &view, b.frame.visible);
     int64_t start = esp_timer_get_time();
@@ -170,13 +171,12 @@ test_sponza_draw_stage_breakdown(void) {
     TEST_PASS();
 }
 
-void
-test_sponza_frame_cost_along_the_flythrough(void) {
+static void
+report_frame_cost(const char* label, const r3d_lit_mesh_t* mesh) {
     bench_t b;
-    bench_open(&b);
-    ESP_LOGI(TAG, "=== SPONZA FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===", SPONZA_TRIANGLE_COUNT,
-             SPONZA_VERTEX_COUNT, SPONZA_CLUSTER_COUNT, RENDER_WIDTH, RENDER_HEIGHT);
-
+    bench_open(&b, mesh);
+    ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===", label, mesh->triangle_count,
+             mesh->vertex_count, mesh->cluster_count, RENDER_WIDTH, RENDER_HEIGHT);
     const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
     int64_t frame_sum = 0, worst = 0;
     int samples = 0;
@@ -186,16 +186,21 @@ test_sponza_frame_cost_along_the_flythrough(void) {
         const r3d_lit_stats_t stats = r3d_lit_frame_render(&b.frame, &view);
         r3d_lit_frame_double(&b.frame);
         const int64_t us = esp_timer_get_time() - start;
-        ESP_LOGI(TAG, "t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", (unsigned)(t_ms / 1000),
+        ESP_LOGI(TAG, "%s t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", label, (unsigned)(t_ms / 1000),
                  stats.clusters, stats.triangles, (long long)us);
         frame_sum += us;
         worst = us > worst ? us : worst;
         samples++;
     }
-    ESP_LOGI(TAG, "both cores: mean %lldus (%.1f fps before present), worst %lldus", (long long)(frame_sum / samples),
-             1e6 * samples / (double)frame_sum, (long long)worst);
-
+    ESP_LOGI(TAG, "%s both cores: mean %lldus (%.1f fps before present), worst %lldus", label,
+             (long long)(frame_sum / samples), 1e6 * samples / (double)frame_sum, (long long)worst);
     bench_close(&b);
+}
+
+void
+test_sponza_frame_cost_along_the_flythrough(void) {
+    report_frame_cost("sponza", &sponza_mesh);
+    report_frame_cost("lite", &sponza_lite_mesh);
     TEST_PASS();
 }
 
