@@ -1,6 +1,8 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "app_arena.h"
+
 #ifdef DEVICE_BUILD
 void shell_test_fixture(void);
 bool shell_test_requested_exit(void);
@@ -27,6 +29,7 @@ test_a_request_before_start_does_not_end_the_first_frame(void) {
 static void
 test_every_visit_starts_with_an_empty_arena(void) {
     fixture();
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0, app_arena_mark(), "the app running the suites holds arena memory");
     TEST_ASSERT_TRUE(shell_test_every_visit_starts_with_an_empty_arena());
 }
 #endif
