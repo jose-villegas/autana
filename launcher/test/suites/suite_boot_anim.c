@@ -14,9 +14,9 @@
  * different constants than boot_anim.h now uses.
  *
  * So the shipped numbers are checked directly, and against the one thing that
- * makes this curve worth drawing: it must pass through zero at the five known
- * heights, and it must NOT come anywhere near zero anywhere else. Those are
- * the first five nontrivial zeros of the zeta function, and no table of
+ * makes this curve worth drawing: it must pass through zero at every known
+ * height, and it must NOT come anywhere near zero anywhere else. Those are
+ * the nontrivial zeros of the zeta function in the drawn range, and no table of
  * plausible-looking numbers passes both halves by accident.
  */
 

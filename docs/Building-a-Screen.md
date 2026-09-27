@@ -4,7 +4,7 @@ Build or change a UI screen here. A screen has three separable parts:
 rectangles and text that fit them, the state changed by input, and the drawing
 commands. The host renderer can show the real drawing code without a board;
 [the render harness](tools/Render-Harness.md) has a sample image and command.
-For the shell's frame ownership see [Launcher Architecture](Launcher-Architecture.md).
+For the shell's frame ownership see [Firmware Architecture](Firmware-Architecture.md).
 
 To inspect an existing screen first, run
 [`launcher_home_render_host.sh`](../launcher/tools/render/scenes/launcher_home_render_host.sh) from Git Bash on
@@ -167,9 +167,12 @@ panels, tracks and status indicators, not pictograms.
 ### A panel over a paused app
 
 1. `ui_end(UI_NO_BACKGROUND)` so the frozen app survives in the gaps.
-2. Dim it **once** with `gfx_fill_rect_blend()` - see the scrim section in
-   [`Launcher-Architecture.md`](Launcher-Architecture.md), and note it is
-   once per repaint of the backdrop, never per frame.
+2. Dim it **once** with `gfx_fill_rect_blend(0, 0, GFX_WIDTH, GFX_HEIGHT,
+   black, alpha)` - once per repaint of the backdrop, never per frame: the
+   blend reads the pixel it writes, so a second pass darkens the first.
+   Repaint the backdrop and dim again on a full-redraw request or a turn.
+   Why this is a pixel write and not a command is
+   [the scrim](Firmware-Architecture.md#the-scrim-the-one-thing-drawn-outside-the-command-list).
 3. Draw the panel over it.
 
 On close, force a full repaint of the app underneath and reset any
@@ -233,7 +236,7 @@ fifth icon.
 - [`Building-an-App.md`](Building-an-App.md) - the app a screen lives in
 - [`UI-Toolkit.md`](UI-Toolkit.md) - every control and helper available, pictured
 - [`Text-and-Fonts.md`](Text-and-Fonts.md) - fonts, scales, text styles
-- [`Launcher-Architecture.md`](Launcher-Architecture.md) - the mechanisms
+- [`Firmware-Architecture.md`](Firmware-Architecture.md) - the mechanisms
 - [`Testing-Guide.md`](Testing-Guide.md) - suites and runners
 - [`Build-Variants.md`](Build-Variants.md) - what release, dev and
   diagnostics builds carry

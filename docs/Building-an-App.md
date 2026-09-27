@@ -5,7 +5,7 @@ them, and how it gets into and out of the launcher list. The contract is
 [`launcher/main/app.h`](../launcher/main/app.h); the caller is
 [`launcher/main/main.c`](../launcher/main/main.c). For the UI inside an app see
 [`Building-a-Screen.md`](Building-a-Screen.md); for why the shell is built this
-way see [`Launcher-Architecture.md`](Launcher-Architecture.md).
+way see [`Firmware-Architecture.md`](Firmware-Architecture.md).
 
 The first result is a new launcher entry. Put one `app_<name>.c` file in
 `launcher/main/apps/<name>/`, give it a display name, and register it with
@@ -103,7 +103,7 @@ an app leaves by leaving the build:
 ## Lifecycle
 
 The shell's state machine - Launcher, Control Center and a running app - is
-in [Launcher-Architecture.md](Launcher-Architecture.md#the-frame-loop). An
+in [Firmware-Architecture.md](Firmware-Architecture.md#the-frame-loop). An
 app only ever sees the `Running` state; it leaves by home swipe
 (`home_gesture`), PWR long-press (no `home_gesture`), or its own call to
 `shell_request_exit()`.
@@ -282,7 +282,7 @@ Boot logs `Ready, N apps registered`; launch and leave log `Starting <name>` /
 
 - [`Building-a-Screen.md`](Building-a-Screen.md) - microui screens inside an app
 - [`Gfx-and-Presentation.md`](Gfx-and-Presentation.md) - draw targets, dirty tracking, the present path, heal
-- [`Launcher-Architecture.md`](Launcher-Architecture.md) - why one framebuffer and one frame loop
+- [`Firmware-Architecture.md`](Firmware-Architecture.md) - why one framebuffer and one frame loop
 - [`Testing-Guide.md`](Testing-Guide.md) - suites and runners
 - [`Build-Variants.md`](Build-Variants.md) - what release, dev and
   diagnostics builds carry, and which flag gates what
