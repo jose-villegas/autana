@@ -260,8 +260,10 @@ How to write one is [Building-an-App.md](Building-an-App.md). What matters
 architecturally: the build globs `apps/**/*.c` and each app registers itself
 from its own file, so adding or deleting an app touches no other file, and
 the component is linked `WHOLE_ARCHIVE` because nothing references an app by
-name. Bench-only apps are dropped from release by a filter in
-`main/CMakeLists.txt`; what each build variant carries is
+name. A bench-only app declares itself the same way: a
+`development_only.cmake` in its folder leaves it out when
+`CONFIG_LAUNCHER_DEVELOPMENT` is off, so the build names no app and deleting
+the folder deletes the declaration. What each build variant carries is
 [Build-Variants.md](Build-Variants.md).
 
 **App memory is lent, not owned.** The shell holds one static block in
