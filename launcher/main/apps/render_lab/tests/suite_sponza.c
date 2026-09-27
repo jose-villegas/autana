@@ -15,18 +15,16 @@
 #include "unity.h"
 
 #include "apps/render_lab/sponza_flythrough.h"
+#include "apps/render_lab/sponza_lite_mesh_generated.h"
 #include "apps/render_lab/sponza_mesh_generated.h"
 
-_Static_assert(SPONZA_VERTEX_COUNT <= 65535, "triangles index vertices with uint16_t");
-
-static const lit_mesh_t*
-fixture(void) {
-    return &sponza_mesh;
-}
+_Static_assert(SPONZA_VERTEX_COUNT <= 65535 && SPONZA_LITE_VERTEX_COUNT <= 65535,
+               "triangles index vertices with uint16_t");
+_Static_assert(SPONZA_LITE_CLUSTER_COUNT <= SPONZA_CLUSTER_COUNT,
+               "the working arrays below are sized for the larger bake");
 
 static void
-test_clusters_tile_both_arrays_in_order(void) {
-    const lit_mesh_t* mesh = fixture();
+check_clusters_tile_both_arrays_in_order(const lit_mesh_t* mesh) {
     int next_vertex = 0, next_triangle = 0;
     for (int i = 0; i < mesh->cluster_count; i++) {
         const lit_cluster_t* c = &mesh->clusters[i];
@@ -40,8 +38,7 @@ test_clusters_tile_both_arrays_in_order(void) {
 }
 
 static void
-test_every_triangle_indexes_three_distinct_vertices_of_its_own_cluster(void) {
-    const lit_mesh_t* mesh = fixture();
+check_every_triangle_indexes_three_distinct_vertices_of_its_own_cluster(const lit_mesh_t* mesh) {
     for (int i = 0; i < mesh->cluster_count; i++) {
         const lit_cluster_t* c = &mesh->clusters[i];
         for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
@@ -55,8 +52,7 @@ test_every_triangle_indexes_three_distinct_vertices_of_its_own_cluster(void) {
 }
 
 static void
-test_cluster_bounds_hold_their_vertices(void) {
-    const lit_mesh_t* mesh = fixture();
+check_cluster_bounds_hold_their_vertices(const lit_mesh_t* mesh) {
     for (int i = 0; i < mesh->cluster_count; i++) {
         const lit_cluster_t* c = &mesh->clusters[i];
         for (int v = c->vertex_first; v < c->vertex_first + c->vertex_count; v++) {
@@ -89,8 +85,7 @@ visit(const lit_mesh_t* mesh, int node, uint8_t* reached) {
 }
 
 static void
-test_the_tree_holds_every_cluster_once_inside_its_ancestors_bounds(void) {
-    const lit_mesh_t* mesh = fixture();
+check_the_tree_holds_every_cluster_once_inside_its_ancestors_bounds(const lit_mesh_t* mesh) {
     static uint8_t reached[SPONZA_CLUSTER_COUNT];
     memset(reached, 0, sizeof reached);
     visit(mesh, 0, reached);
@@ -123,8 +118,7 @@ cluster_in_view(const lit_cluster_t* c, const lit_view_t* view) {
 }
 
 static void
-test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(void) {
-    const lit_mesh_t* mesh = fixture();
+check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const lit_mesh_t* mesh) {
     const uint32_t period = camera_path_period_ms(&sponza_flythrough);
     static uint16_t walked[SPONZA_CLUSTER_COUNT];
     static uint8_t kept[SPONZA_CLUSTER_COUNT];
@@ -242,8 +236,7 @@ clearance(const lit_mesh_t* mesh, v3 p) {
 }
 
 static void
-test_the_flythrough_keeps_clear_of_every_triangle(void) {
-    const lit_mesh_t* mesh = fixture();
+check_the_flythrough_keeps_clear_of_every_triangle(const lit_mesh_t* mesh) {
     const uint32_t period = camera_path_period_ms(&sponza_flythrough);
     for (uint32_t t = 0; t < period; t += 100) {
         lit_vec3_t eye, forward;
@@ -256,6 +249,43 @@ test_the_flythrough_keeps_clear_of_every_triangle(void) {
             TEST_FAIL_MESSAGE(message);
         }
     }
+}
+
+/* Every check holds for both bakes. */
+static void
+test_clusters_tile_both_arrays_in_order(void) {
+    check_clusters_tile_both_arrays_in_order(&sponza_mesh);
+    check_clusters_tile_both_arrays_in_order(&sponza_lite_mesh);
+}
+
+static void
+test_every_triangle_indexes_three_distinct_vertices_of_its_own_cluster(void) {
+    check_every_triangle_indexes_three_distinct_vertices_of_its_own_cluster(&sponza_mesh);
+    check_every_triangle_indexes_three_distinct_vertices_of_its_own_cluster(&sponza_lite_mesh);
+}
+
+static void
+test_cluster_bounds_hold_their_vertices(void) {
+    check_cluster_bounds_hold_their_vertices(&sponza_mesh);
+    check_cluster_bounds_hold_their_vertices(&sponza_lite_mesh);
+}
+
+static void
+test_the_tree_holds_every_cluster_once_inside_its_ancestors_bounds(void) {
+    check_the_tree_holds_every_cluster_once_inside_its_ancestors_bounds(&sponza_mesh);
+    check_the_tree_holds_every_cluster_once_inside_its_ancestors_bounds(&sponza_lite_mesh);
+}
+
+static void
+test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(void) {
+    check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(&sponza_mesh);
+    check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(&sponza_lite_mesh);
+}
+
+static void
+test_the_flythrough_keeps_clear_of_every_triangle(void) {
+    check_the_flythrough_keeps_clear_of_every_triangle(&sponza_mesh);
+    check_the_flythrough_keeps_clear_of_every_triangle(&sponza_lite_mesh);
 }
 
 static void

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate main/apps/render_lab/sponza_mesh_generated.h/.c - Crytek Sponza as a
+"""Generate main/apps/render_lab/<name>_mesh_generated.h/.c - Crytek Sponza as a
 coloured, lit triangle mesh small enough for the board.
 
-    python main/apps/render_lab/tools/gen_sponza.py <sponza-dir> --out-dir main/apps/render_lab
+    python main/apps/render_lab/tools/gen_sponza.py <sponza-dir> --out-dir main/apps/render_lab [--name NAME]
 
 <sponza-dir> is the unpacked sponza.zip of McGuire's Computer Graphics
 Archive (https://casual-effects.com/data/): sponza.obj, sponza.mtl and
@@ -724,10 +724,10 @@ def flatten_octree(root, tri_double):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("sponza_dir")
-    parser.add_argument("--keep", type=float, default=0.07, help="share of each material's triangles decimation keeps")
+    parser.add_argument("--keep", type=float, default=0.04, help="share of each material's triangles decimation keeps")
     parser.add_argument("--max-edge", type=float, default=900.0, help="longest edge kept, model units")
-    parser.add_argument("--min-edge", type=float, default=30.0, help="shortest edge the light may split")
-    parser.add_argument("--light-tolerance", type=float, default=0.15,
+    parser.add_argument("--min-edge", type=float, default=60.0, help="shortest edge the light may split")
+    parser.add_argument("--light-tolerance", type=float, default=0.3,
                         help="sun exposure (0..1) an edge midpoint may miss by before splitting")
     parser.add_argument("--sun", type=float, nargs=3, default=[-0.25, 1.0, 0.22], help="direction towards the sun")
     parser.add_argument("--sun-disc-deg", type=float, default=1.2)
@@ -740,7 +740,8 @@ def main():
     parser.add_argument("--ray-offset", type=float, default=0.5)
     parser.add_argument("--leaf-triangles", type=int, default=160, help="most triangles an octree leaf holds")
     parser.add_argument("--max-depth", type=int, default=10)
-    parser.add_argument("--out-dir", required=True, help="where sponza_mesh_generated.h and .c are written")
+    parser.add_argument("--out-dir", required=True, help="where <name>_mesh_generated.h and .c are written")
+    parser.add_argument("--name", default="sponza", help="prefix of the files and of every symbol they define")
     parser.add_argument("--visibility-rounds", type=int, default=160)
     parser.add_argument("--leaf-keep", type=float, default=0.35, help="fraction of leaf triangles kept")
     parser.add_argument("--seed", type=int, default=1)
@@ -877,13 +878,14 @@ def banner(args, out):
     lines = [
         "GENERATED FILE - do not edit.",
         "",
-        "    python main/apps/render_lab/tools/gen_sponza.py <sponza-dir> --out-dir main/apps/render_lab",
+        "    python main/apps/render_lab/tools/gen_sponza.py <sponza-dir> --out-dir main/apps/render_lab \\",
+        f"        --name {args.name} --keep {args.keep:g} --light-tolerance {args.light_tolerance:g} --min-edge {args.min_edge:g}",
         "",
         "Crytek Sponza (Frank Meinl, Crytek; CC BY 3.0), from the OBJ in",
         "McGuire's Computer Graphics Archive, casual-effects.com/data.",
         "Decimated, lit by a sun and sky with baked shadows, one sRGB colour",
-        "per vertex, clusters as the leaves of an octree. Bake settings:",
-        f"  --keep {args.keep:g} --max-edge {args.max_edge:g} --sun {args.sun[0]:g} {args.sun[1]:g} {args.sun[2]:g}",
+        "per vertex, clusters as the leaves of an octree. Other settings:",
+        f"  --max-edge {args.max_edge:g} --sun {args.sun[0]:g} {args.sun[1]:g} {args.sun[2]:g}",
         f"  --sun-rays {args.sun_rays} --sky-rays {args.sky_rays} --leaf-triangles {args.leaf_triangles}",
     ]
     print("/*", file=out)
@@ -901,44 +903,46 @@ def c_bool(v):
 
 
 def emit(args, pos, rgb, tris, clusters, nodes):
-    with open(os.path.join(args.out_dir, "sponza_mesh_generated.h"), "w", newline="\n") as out:
+    low, up = args.name, args.name.upper()
+    header = f"{low}_mesh_generated.h"
+    with open(os.path.join(args.out_dir, header), "w", newline="\n") as out:
         banner(args, out)
         print("#pragma once", file=out)
         print(file=out)
         print('#include "lit_mesh.h"', file=out)
         print(file=out)
-        print(f"#define SPONZA_VERTEX_COUNT {len(pos)}", file=out)
-        print(f"#define SPONZA_TRIANGLE_COUNT {len(tris)}", file=out)
-        print(f"#define SPONZA_CLUSTER_COUNT {len(clusters)}", file=out)
-        print(f"#define SPONZA_NODE_COUNT {len(nodes)}", file=out)
-        print(f"#define SPONZA_POSITION_SCALE {POSITION_SCALE}", file=out)
+        print(f"#define {up}_VERTEX_COUNT {len(pos)}", file=out)
+        print(f"#define {up}_TRIANGLE_COUNT {len(tris)}", file=out)
+        print(f"#define {up}_CLUSTER_COUNT {len(clusters)}", file=out)
+        print(f"#define {up}_NODE_COUNT {len(nodes)}", file=out)
+        print(f"#define {up}_POSITION_SCALE {POSITION_SCALE}", file=out)
         print(file=out)
-        print("extern const lit_mesh_t sponza_mesh;", file=out)
+        print(f"extern const lit_mesh_t {low}_mesh;", file=out)
 
-    with open(os.path.join(args.out_dir, "sponza_mesh_generated.c"), "w", newline="\n") as out:
+    with open(os.path.join(args.out_dir, f"{low}_mesh_generated.c"), "w", newline="\n") as out:
         banner(args, out)
-        print('#include "sponza_mesh_generated.h"', file=out)
+        print(f'#include "{header}"', file=out)
         print(file=out)
-        emit_rows(out, "sponza_positions", "int16_t", pos.tolist(), 8)
+        emit_rows(out, f"{low}_positions", "int16_t", pos.tolist(), 8)
         print(file=out)
-        emit_rows(out, "sponza_colors", "uint8_t", rgb.tolist(), 10)
+        emit_rows(out, f"{low}_colors", "uint8_t", rgb.tolist(), 10)
         print(file=out)
-        emit_rows(out, "sponza_triangles", "uint16_t", tris.tolist(), 8)
+        emit_rows(out, f"{low}_triangles", "uint16_t", tris.tolist(), 8)
         print(file=out)
-        print("static const lit_cluster_t sponza_clusters[] = {", file=out)
+        print(f"static const lit_cluster_t {low}_clusters[] = {{", file=out)
         for vbase, vcount, tbase, tcount, lo, hi, double in clusters:
             print(f"    {{{vbase}, {vcount}, {tbase}, {tcount}, {triple(lo)}, {triple(hi)}, {c_bool(double)}}},", file=out)
         print("};", file=out)
         print(file=out)
-        print("static const lit_node_t sponza_nodes[] = {", file=out)
+        print(f"static const lit_node_t {low}_nodes[] = {{", file=out)
         for n in nodes:
             print(f"    {{{triple(n['lo'])}, {triple(n['hi'])}, {n['first']}, {n['count']}, {c_bool(n['leaf'])}}},", file=out)
         print("};", file=out)
         print(file=out)
-        print("const lit_mesh_t sponza_mesh = {", file=out)
-        print("    sponza_positions, sponza_colors, sponza_triangles, sponza_clusters, sponza_nodes,", file=out)
-        print("    SPONZA_VERTEX_COUNT, SPONZA_TRIANGLE_COUNT, SPONZA_CLUSTER_COUNT, SPONZA_NODE_COUNT,", file=out)
-        print("    SPONZA_POSITION_SCALE,", file=out)
+        print(f"const lit_mesh_t {low}_mesh = {{", file=out)
+        print(f"    {low}_positions, {low}_colors, {low}_triangles, {low}_clusters, {low}_nodes,", file=out)
+        print(f"    {up}_VERTEX_COUNT, {up}_TRIANGLE_COUNT, {up}_CLUSTER_COUNT, {up}_NODE_COUNT,", file=out)
+        print(f"    {up}_POSITION_SCALE,", file=out)
         print("};", file=out)
 
 
