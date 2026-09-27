@@ -3,7 +3,7 @@
  * render_host.h for what a scene declares and which options land here.
  *
  * Not built by idf.py, not part of test/run_tests.sh: standalone binaries,
- * one per scene, built by render_scenes.sh from the real firmware
+ * one per scene, built by render_scene.sh from the real firmware
  * translation units the scene names.
  *
  * No device, no serial, no file the firmware knows about: gfx_init()
