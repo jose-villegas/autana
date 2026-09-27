@@ -98,7 +98,7 @@ an app leaves by leaving the build:
 | To | Do |
 |---|---|
 | remove an app | delete `apps/<name>/` - code, tests and artwork go with it |
-| keep one out of release images | a folder filter in `main/CMakeLists.txt`, as `apps/diagnostics/` has under `CONFIG_LAUNCHER_DEVELOPMENT` |
+| keep one out of release images | add `apps/<name>/development_only.cmake`; its presence alone does it (a comment saying why is all it holds) |
 
 ## Lifecycle
 
@@ -261,7 +261,7 @@ main/apps/<name>/
 | `suite_*.c` | only `CONFIG_LAUNCHER_SELFTEST` builds | yes |
 | `scope_perf.cmake` | only `--perf-scope` builds | no |
 | `tools/**` | never | never |
-| `apps/diagnostics/**`, `apps/input_lab/**` | only `CONFIG_LAUNCHER_DEVELOPMENT` builds | yes |
+| `development_only.cmake` | never; its presence keeps the whole folder to `CONFIG_LAUNCHER_DEVELOPMENT` builds | no (the folder's portable files still are) |
 
 Tooling that spans an app *and* shell code lives in `launcher/tools/`, not the
 app's `tools/`. An app reaches shell headers layer-qualified: `"gfx/gfx.h"`,

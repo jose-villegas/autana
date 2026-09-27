@@ -41,21 +41,24 @@ the suites and the runner out of the build entirely — not `#ifdef`-ed out,
 simply never compiled. `build/launcher.elf` (release) is neither DEVELOPMENT
 nor SELFTEST, so **the Diagnostics app** is out of it too, for a related but
 separate reason: it is gated on `CONFIG_LAUNCHER_DEVELOPMENT`, a strictly
-broader flag than `CONFIG_LAUNCHER_SELFTEST` (see
-[Building-an-App.md](Building-an-App.md#an-app-is-a-folder) and
-`main/CMakeLists.txt`) — it also ships in a `--dev` build, which carries no
-test suites at all.
+broader flag than `CONFIG_LAUNCHER_SELFTEST` — it also ships in a `--dev`
+build, which carries no test suites at all. An app is gated this way by
+holding a `development_only.cmake` in its own folder; `main/CMakeLists.txt`
+globs the markers and names no app (see
+[Building-an-App.md](Building-an-App.md#an-app-is-a-folder)). Input Lab is
+the other one.
 
 `tools/build/check_release_symbols.sh build/launcher.elf` rejects a release image that
 defines any of the suite, console or self-test symbols it names - including a
-`run_<name>_suite` entry point. CI runs it after the release build.
+`run_<name>_suite` entry point - or the `app_<name>` of any app carrying a
+`development_only.cmake`. CI runs it after the release build.
 
 ```sh
 autana build rel
 launcher/tools/build/check_release_symbols.sh launcher/build/launcher.elf
 ```
 
-`app_diagnostics` belongs in the same count as `unity`/`suite_`/`selftest`
+A development-only app's `app_<name>` belongs in the same count as `unity`/`suite_`/`selftest`
 not because the app is selftest-shaped — most of it is not — but because
 release is neither DEVELOPMENT nor SELFTEST, so every one of those symbols is
 absent from that image whichever of the two flags gates it.
