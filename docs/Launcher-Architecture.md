@@ -473,10 +473,9 @@ here is why the build is shaped the way it is.
 `development_only.cmake` is left out when `CONFIG_LAUNCHER_DEVELOPMENT` is
 off. `main/CMakeLists.txt` globs the markers the way it globs
 `scope_perf.cmake`, so it names no app, and deleting the folder deletes the
-declaration. Diagnostics re-runs POST, which cycles the audio rail and re-mounts the SD
-card, so it has no business being reachable in a shipped image. See
-[Build-Variants](Build-Variants.md#release-builds-contain-no-test-code) — note in
-particular that `REQUIRES` must **not** be gated this way.
+declaration; the marker's own comment says why the app is bench-only. See
+[Build-Variants](Build-Variants.md#release-builds-contain-no-test-code) — note
+in particular that `REQUIRES` must **not** be gated this way.
 
 Diagnostics ships in any development build, `--dev` included, not just
 `--diag`. Its own toggle page mixes two shapes; the app itself does not.
