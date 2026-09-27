@@ -12,7 +12,7 @@ framebuffer's worth (see gfx.h's own top comment), and this board has
 exactly one to spare. Converting once, here, and shipping the already-panel-
 format result in .rodata costs zero RAM (it is memory-mapped from flash,
 like every other generated table in this tree) at the price of about 322
-KiB of a 3 MB app partition that is currently under 15% full.
+KiB of flash in the app partition.
 
 WHY THE ROTATION HAPPENS HERE AND NOT AT DRAW TIME
 

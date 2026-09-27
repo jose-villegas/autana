@@ -36,4 +36,10 @@ typedef struct {
      * app grants GFX_LAYOUT_FULL_FB regardless of render_lab_band_mode, and
      * never calls frame_band(), which such a scene may leave NULL. */
     bool needs_full_framebuffer;
+
+    /* Optional. Runs while the previous frame is still being sent to the
+     * panel, so it may only touch the scene's own memory - never gfx or the
+     * framebuffer (app.h's update() contract). Not called while the menu is
+     * open. */
+    void (*update)(uint32_t dt_ms);
 } render_lab_scene_t;

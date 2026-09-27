@@ -60,7 +60,7 @@ flowchart TB
     end
     subgraph R5["devices and drawing"]
         Gfx["gfx/<br/><i>the one framebuffer</i>"]:::hw
-        Render["render/<br/><i>3D transform, clip, projection</i>"]
+        Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
         Display["display/<br/><i>orientation, panel clock</i>"]
         Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
     end
@@ -209,6 +209,36 @@ with and without `update()` is
 An app that sets `app_t.update` has the previous frame sent on core 1 while
 `update()` runs on core 0; the split present underneath is in
 [Gfx-and-Presentation.md](Gfx-and-Presentation.md#present-who-runs-it).
+
+### A lit-mesh frame on both cores
+
+`render/r3d_lit_frame.h` draws a mesh whose light is baked into vertex
+colours at half the panel's resolution, then doubles it into the
+framebuffer. The work before the framebuffer runs in `update()`, overlapped
+with sending the previous frame; each stage is split between the two cores,
+core 1's half dispatched through `util/job.h` (inline when core 1 is busy).
+
+```mermaid
+sequenceDiagram
+    participant C0 as core 0, shell and scene
+    participant J as core 1 job worker
+    participant P as present on core 1
+    C0->>P: gfx_present_begin() sends frame N-1
+    Note over C0: update(), cull every cluster
+    C0->>J: transform the second half of the visible clusters
+    Note over C0: transform the first half
+    J-->>C0: job_wait()
+    Note over C0: pick the row that balances the triangles
+    C0->>J: clear depth and draw the rows above it
+    Note over C0: clear depth and draw the rows below it
+    J-->>C0: job_wait()
+    C0->>P: gfx_present_wait()
+    Note over C0: frame()
+    C0->>J: double the top half into the framebuffer
+    Note over C0: double the bottom half
+    J-->>C0: job_wait()
+    Note over C0,P: frame N is presented on the next pass
+```
 
 ### Full redraw
 
