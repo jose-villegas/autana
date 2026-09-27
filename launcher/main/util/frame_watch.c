@@ -17,39 +17,46 @@
 static const char* TAG = "frame_watch";
 
 /* The frame loop, the panel's sender and the second core's worker. */
-#define WATCHED_TASKS_MAX 4
+#define WATCHED_TASKS_MAX   4
 
-/* Events from one frame, waiting for its end: the hooks run on any task and
- * either core, so they only append here, and the frame task alone reads. */
-#define PENDING_MAX       64
+/* Events waiting for the frame's end. The hooks run on any watched task on
+ * either core; the frame task alone consumes. */
+#define PENDING_MAX         128
 
 /* How far up the stack the caller of an allocation is looked for. The
  * allocator's own frames sit in IRAM, so the first frame outside it is the
  * call site. */
-#define CALLER_DEPTH_MAX  6
+#define CALLER_DEPTH_MAX    6
 
+/* What __builtin_return_address() gives past the outermost frame on Xtensa;
+ * ESP-IDF's heap tracing stops at the same value. */
+#define XTENSA_STACK_END_PC ((void*)0x40000000)
+
+/* `sequence` is the event's index plus one once its fields are written: the
+ * consumer reads a slot only when that matches, so it never sees a write in
+ * progress, and a producer only claims an index the consumer has freed. */
 typedef struct {
     uintptr_t site;
     uint8_t kind;
+    uint32_t sequence;
 } pending_event_t;
 
-static volatile bool inside;
+static volatile bool armed;
+static volatile bool warning;
 static TaskHandle_t watched[WATCHED_TASKS_MAX];
 static volatile int watched_count;
 static pending_event_t pending[PENDING_MAX];
-static uint32_t pending_count;
+static uint32_t pending_head;
+static uint32_t pending_tail;
+static uint32_t pending_dropped;
 
 static TaskHandle_t frame_task;
-static frame_watch_t shell_watch;
-static frame_watch_t test_watch;
-static bool testing;
-static bool shell_inside;
-
+static frame_watch_t watch;
 static vprintf_like_t forward_vprintf;
 
 static IRAM_ATTR bool
 watching_this_task(void) {
-    if (!inside || xPortInIsrContext()) {
+    if (!armed || xPortInIsrContext()) {
         return false;
     }
     const TaskHandle_t self = xTaskGetCurrentTaskHandle();
@@ -63,24 +70,26 @@ watching_this_task(void) {
 
 static IRAM_ATTR void
 record(frame_watch_kind_t kind, uintptr_t site) {
-    const uint32_t slot = __atomic_fetch_add(&pending_count, 1, __ATOMIC_RELAXED);
-    if (slot < PENDING_MAX) {
-        pending[slot] = (pending_event_t){.site = site, .kind = (uint8_t)kind};
-    }
-}
-
-static IRAM_ATTR bool
-is_call_site(void* address) {
-    return esp_ptr_executable(address) && !esp_ptr_in_iram(address) && address != (void*)0x40000000;
+    uint32_t index = __atomic_load_n(&pending_head, __ATOMIC_RELAXED);
+    do {
+        if (index - __atomic_load_n(&pending_tail, __ATOMIC_ACQUIRE) >= PENDING_MAX) {
+            __atomic_fetch_add(&pending_dropped, 1, __ATOMIC_RELAXED);
+            return;
+        }
+    } while (!__atomic_compare_exchange_n(&pending_head, &index, index + 1, true, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
+    pending_event_t* slot = &pending[index % PENDING_MAX];
+    slot->site = site;
+    slot->kind = (uint8_t)kind;
+    __atomic_store_n(&slot->sequence, index + 1, __ATOMIC_RELEASE);
 }
 
 #define TRY_CALLER(N)                                                                                                  \
     do {                                                                                                               \
         void* const address = __builtin_return_address(N);                                                             \
-        if (!esp_ptr_executable(address)) {                                                                            \
+        if (address == XTENSA_STACK_END_PC || !esp_ptr_executable(address)) {                                          \
             return 0;                                                                                                  \
         }                                                                                                              \
-        if (is_call_site(address)) {                                                                                   \
+        if (!esp_ptr_in_iram(address)) {                                                                               \
             return (uintptr_t)address;                                                                                 \
         }                                                                                                              \
     } while (0)
@@ -126,7 +135,7 @@ esp_heap_trace_free_hook(void* ptr) {
 /* The format string is the site: each ESP_LOG* call passes its own literal. */
 static int
 watched_vprintf(const char* format, va_list args) {
-    if (watching_this_task()) {
+    if (!warning && watching_this_task()) {
         record(FRAME_WATCH_CONSOLE, (uintptr_t)format);
     }
     return forward_vprintf(format, args);
@@ -139,10 +148,12 @@ add_task(TaskHandle_t task) {
             return;
         }
     }
-    if (watched_count < WATCHED_TASKS_MAX) {
-        watched[watched_count] = task;
-        watched_count++;
+    if (watched_count >= WATCHED_TASKS_MAX) {
+        ESP_LOGE(TAG, "no room to watch task %s: raise WATCHED_TASKS_MAX", pcTaskGetName(task));
+        return;
     }
+    watched[watched_count] = task;
+    watched_count++;
 }
 
 void
@@ -155,20 +166,30 @@ frame_watch_start(void) {
     frame_task = xTaskGetCurrentTaskHandle();
     add_task(frame_task);
     if (forward_vprintf == NULL) {
-        frame_watch_reset(&shell_watch);
+        frame_watch_reset(&watch);
         forward_vprintf = esp_log_set_vprintf(watched_vprintf);
     }
+    armed = true;
 }
 
+/* Events stay pending from a slot whose producer has not finished writing;
+ * the next drain picks them up. Overflow is counted only once judged. */
 static void
-drain(frame_watch_t* w) {
-    uint32_t count = __atomic_exchange_n(&pending_count, 0, __ATOMIC_RELAXED);
-    if (count > PENDING_MAX) {
-        w->dropped += count - PENDING_MAX;
-        count = PENDING_MAX;
+drain(void) {
+    const uint32_t head = __atomic_load_n(&pending_head, __ATOMIC_ACQUIRE);
+    uint32_t tail = pending_tail;
+    while (tail != head) {
+        const pending_event_t* slot = &pending[tail % PENDING_MAX];
+        if (__atomic_load_n(&slot->sequence, __ATOMIC_ACQUIRE) != tail + 1) {
+            break;
+        }
+        frame_watch_note(&watch, (frame_watch_kind_t)slot->kind, slot->site);
+        tail++;
     }
-    for (uint32_t i = 0; i < count; i++) {
-        frame_watch_note(w, (frame_watch_kind_t)pending[i].kind, pending[i].site);
+    __atomic_store_n(&pending_tail, tail, __ATOMIC_RELEASE);
+    const uint32_t overflowed = __atomic_exchange_n(&pending_dropped, 0, __ATOMIC_RELAXED);
+    if (watch.warmup_left == 0) {
+        watch.dropped += overflowed;
     }
 }
 
@@ -178,87 +199,57 @@ static void
 warn(const frame_watch_site_t* s) {
     const char* kind = frame_watch_kind_name((frame_watch_kind_t)s->kind);
     const int seen = frame_watch_frames_seen(s);
+    warning = true;
     if (s->kind == FRAME_WATCH_CONSOLE && esp_ptr_in_drom((const void*)s->site)) {
         const char* format = (const char*)s->site;
         ESP_LOGW(TAG, "FRAME_WATCH %s in %d of %d frames at 0x%08lx: %.*s", kind, seen, FRAME_WATCH_WINDOW,
                  (unsigned long)s->site, (int)strcspn(format, "\n"), format);
-        return;
+    } else {
+        ESP_LOGW(TAG, "FRAME_WATCH %s in %d of %d frames at 0x%08lx", kind, seen, FRAME_WATCH_WINDOW,
+                 (unsigned long)s->site);
     }
-    ESP_LOGW(TAG, "FRAME_WATCH %s in %d of %d frames at 0x%08lx", kind, seen, FRAME_WATCH_WINDOW,
-             (unsigned long)s->site);
+    warning = false;
 }
 
-static void
-close_and_warn(frame_watch_t* w) {
-    drain(w);
-    frame_watch_close_frame(w);
+void
+frame_watch_presented(void) {
+    if (!armed || xTaskGetCurrentTaskHandle() != frame_task) {
+        return;
+    }
+    drain();
+    frame_watch_close_frame(&watch);
     const int64_t now_us = esp_timer_get_time();
     for (int i = 0; i < FRAME_WATCH_SITES; i++) {
-        if (frame_watch_take_due(&w->sites[i], now_us)) {
-            warn(&w->sites[i]);
+        if (frame_watch_take_due(&watch.sites[i], now_us)) {
+            warn(&watch.sites[i]);
         }
     }
 }
 
 void
-frame_watch_frame_begin(void) {
-    if (testing) {
-        return;
-    }
-    shell_inside = true;
-    inside = true;
-}
-
-void
-frame_watch_frame_end(void) {
-    if (testing) {
-        return;
-    }
-    inside = false;
-    shell_inside = false;
-    close_and_warn(&shell_watch);
-}
-
-void
-frame_watch_settle(void) {
-    shell_watch.warmup_left = FRAME_WATCH_WARMUP;
+frame_watch_restart(void) {
+    drain();
+    frame_watch_settle(&watch);
 }
 
 int
 frame_watch_json(char* out, size_t out_size) {
-    return frame_watch_format_json(&shell_watch, out, out_size);
+    return frame_watch_format_json(&watch, out, out_size);
 }
 
 void
 frame_watch_test_begin(void) {
     frame_watch_start();
-    inside = false;
-    drain(&shell_watch);
-    frame_watch_reset(&test_watch);
-    testing = true;
-    inside = true;
+    drain();
+    frame_watch_reset(&watch);
 }
 
-int
+frame_watch_verdict_t
 frame_watch_test_end(void) {
-    if (!testing) {
-        return 0;
-    }
-    inside = false;
-    close_and_warn(&test_watch);
-    testing = false;
-    inside = shell_inside;
-    return test_watch.ever_repeating;
-}
-
-void
-frame_watch_presented(void) {
-    if (!testing || xTaskGetCurrentTaskHandle() != frame_task) {
-        return;
-    }
-    inside = false;
-    close_and_warn(&test_watch);
-    inside = true;
+    drain();
+    const frame_watch_verdict_t verdict = frame_watch_verdict(&watch);
+    frame_watch_settle(&watch);
+    return verdict;
 }
 
 #endif

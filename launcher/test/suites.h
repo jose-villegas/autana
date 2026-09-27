@@ -66,3 +66,8 @@ bool suites_run_one(const char* name);
  * everything else could be the very suite that gets dropped, and would then
  * be the one thing not reporting the problem. */
 int suites_dropped(void);
+
+/* Prints how many tests since the last call presented past the frame
+ * watch's warm-up (util/frame_watch.h), so a run shows how much of it was
+ * judged. Defined beside the RUN_TEST wrapper, in timing.c. */
+void suite_report_frame_watch(void);

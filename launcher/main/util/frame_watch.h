@@ -1,6 +1,6 @@
 /*
  * frame_watch - work that repeats frame after frame: a heap allocation, a
- * free or a console write whose call site turns up in most recent frames.
+ * free or a log line whose call site turns up in most recent frames.
  * One such event on the frame something happened is not a finding; the same
  * site in FRAME_WATCH_REPEATS of the last FRAME_WATCH_WINDOW frames is.
  *
@@ -10,7 +10,8 @@
  * wrapped malloc/free and a captured stdout. Release compiles none of it.
  *
  * A site is whatever tells two call sites apart: the caller's address for
- * the heap, the format string for a log line.
+ * the heap, the format string for a log line. On the board a frame ends at
+ * each gfx_present_begin(), for the shell and a self-test alike.
  */
 #pragma once
 
@@ -31,7 +32,7 @@
  * finding. */
 #define FRAME_WATCH_WARMUP             16
 
-#define FRAME_WATCH_SITES              16
+#define FRAME_WATCH_SITES              32
 #define FRAME_WATCH_REPORT_INTERVAL_US (10 * 1000 * 1000)
 
 _Static_assert(FRAME_WATCH_WINDOW <= 16, "a site's history is a uint16_t");
@@ -68,6 +69,15 @@ typedef struct {
 static inline void
 frame_watch_reset(frame_watch_t* w) {
     *w = (frame_watch_t){.warmup_left = FRAME_WATCH_WARMUP};
+}
+
+/* What is drawn has changed - an app entered or left: every site's history
+ * is forgotten and the warm-up starts again. */
+static inline void
+frame_watch_settle(frame_watch_t* w) {
+    memset(w->sites, 0, sizeof w->sites);
+    w->repeating = 0;
+    w->warmup_left = FRAME_WATCH_WARMUP;
 }
 
 static inline const char*
@@ -142,6 +152,24 @@ frame_watch_close_frame(frame_watch_t* w) {
     return became;
 }
 
+/* What a gate judges: frames past the warm-up, sites that became repeating,
+ * and events no slot could hold - a finding may be hiding among those. */
+typedef struct {
+    uint32_t frames;
+    int repeating;
+    uint32_t dropped;
+} frame_watch_verdict_t;
+
+static inline frame_watch_verdict_t
+frame_watch_verdict(const frame_watch_t* w) {
+    return (frame_watch_verdict_t){.frames = w->frames, .repeating = w->ever_repeating, .dropped = w->dropped};
+}
+
+static inline bool
+frame_watch_verdict_clean(frame_watch_verdict_t v) {
+    return v.repeating == 0 && v.dropped == 0;
+}
+
 /* True when a repeating site should be warned about now: the first time,
  * then at most once per FRAME_WATCH_REPORT_INTERVAL_US while it keeps
  * repeating. Records the warning as given. */
@@ -158,7 +186,7 @@ frame_watch_take_due(frame_watch_site_t* s, int64_t now_us) {
     return true;
 }
 
-/* Room for the counts and three repeating sites; a site that does not fit
+/* Room for the counts and a few repeating sites; a site that does not fit
  * is left out rather than cut in half. */
 #define FRAME_WATCH_JSON_MAX 256
 
@@ -169,17 +197,19 @@ frame_watch_format_json(const frame_watch_t* w, char* out, size_t out_size) {
     if (out_size == 0) {
         return 0;
     }
-    int length = snprintf(out, out_size,
+    char counts[160];
+    int length = snprintf(counts, sizeof counts,
                           "{\"frames\":%lu,\"allocs\":%lu,\"frees\":%lu,\"console\":%lu,\"repeating\":%d,"
                           "\"dropped\":%lu,\"sites\":[",
                           (unsigned long)w->frames, (unsigned long)w->last[FRAME_WATCH_ALLOC],
                           (unsigned long)w->last[FRAME_WATCH_FREE], (unsigned long)w->last[FRAME_WATCH_CONSOLE],
                           w->repeating, (unsigned long)w->dropped);
     const size_t closing = 2; /* "]}" */
-    if (length < 0 || (size_t)length + closing >= out_size) {
+    if (length < 0 || (size_t)length >= sizeof counts || (size_t)length + closing >= out_size) {
         out[0] = '\0';
         return 0;
     }
+    memcpy(out, counts, (size_t)length);
     bool first = true;
     for (int i = 0; i < FRAME_WATCH_SITES; i++) {
         const frame_watch_site_t* s = &w->sites[i];
@@ -207,31 +237,27 @@ frame_watch_format_json(const frame_watch_t* w, char* out, size_t out_size) {
 #endif
 
 #if FRAME_WATCH_ENABLED
-/* The calling task becomes the watched frame task; installs the log hook.
- * Safe to call again. */
+/* The calling task is the one whose presents end frames. Installs the log
+ * hook and starts counting. Safe to call again. */
 void frame_watch_start(void);
 
-/* A task whose work belongs to the frame while one is open: the panel's
- * sender, a second core's worker. */
+/* A task whose work belongs to the frame: the panel's sender, a second
+ * core's worker. */
 void frame_watch_add_task(void* task);
 
-void frame_watch_frame_begin(void);
+/* Called at each gfx_present_begin(): closes the frame and warns, once per
+ * site and interval, about every site repeating now. */
+void frame_watch_presented(void);
 
-/* Closes the frame and warns, once per site and interval, about every site
- * repeating now. */
-void frame_watch_frame_end(void);
-
-/* The next frames start a fresh warm-up: what is drawn has changed. */
-void frame_watch_settle(void);
+/* frame_watch_settle() on the shared watch, for an app entered or left. */
+void frame_watch_restart(void);
 
 int frame_watch_json(char* out, size_t out_size);
 
-/* A self-test's own watch, over its own instance, in which each present
- * closes a frame; the shell's is set aside until test_end, which returns
- * how many sites became repeating. */
+/* A self-test's watch: begin starts from nothing; end returns what the test
+ * left judged and settles, so the shell's next frames warm up again. */
 void frame_watch_test_begin(void);
-int frame_watch_test_end(void);
-void frame_watch_presented(void);
+frame_watch_verdict_t frame_watch_test_end(void);
 #else
 static inline void
 frame_watch_start(void) {}
@@ -242,22 +268,16 @@ frame_watch_add_task(void* task) {
 }
 
 static inline void
-frame_watch_frame_begin(void) {}
+frame_watch_presented(void) {}
 
 static inline void
-frame_watch_frame_end(void) {}
-
-static inline void
-frame_watch_settle(void) {}
+frame_watch_restart(void) {}
 
 static inline void
 frame_watch_test_begin(void) {}
 
-static inline int
+static inline frame_watch_verdict_t
 frame_watch_test_end(void) {
-    return 0;
+    return (frame_watch_verdict_t){0};
 }
-
-static inline void
-frame_watch_presented(void) {}
 #endif
