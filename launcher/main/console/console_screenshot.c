@@ -14,6 +14,7 @@
 
 #include "console/device_state.h"
 #include "util/frame_watch.h"
+#include "util/json_splice.h"
 #include "util/screenshot.h"
 
 #include "esp_heap_caps.h"
@@ -62,27 +63,6 @@ static char* row_b64; /* +1: NUL, for printf("%s") */
  * a diagnostic path, not one worth re-deriving an exact bound for. */
 #define APP_DIAGNOSTIC_JSON_MAX 256
 
-/* `,"<key>":<fragment>}` over the object's closing brace, when the whole
- * fragment fits: a truncated one would break the line host scripts parse. */
-static void
-splice_key(char* json, size_t json_size, const char* key, const char* fragment) {
-    const size_t len = strlen(json);
-    if (len == 0 || json[len - 1] != '}' || len + strlen(key) + strlen(fragment) + 5 >= json_size) {
-        return;
-    }
-    char* at = json + len - 1;
-    *at++ = ',';
-    *at++ = '"';
-    memcpy(at, key, strlen(key));
-    at += strlen(key);
-    *at++ = '"';
-    *at++ = ':';
-    memcpy(at, fragment, strlen(fragment));
-    at += strlen(fragment);
-    *at++ = '}';
-    *at = '\0';
-}
-
 /* Prints one SCREENSHOT_STATE: line of plain-text JSON: the board's state,
  * the frame watch's counts, and `current_app`'s OPTIONAL diagnostic_json()
  * as an "app" key. */
@@ -91,17 +71,17 @@ dump_state(const input_t* input, const app_t* current_app) {
     device_state_t state;
     device_state_read(&state);
 
-    /* Static: the shell task's stack is 3584 bytes. */
+    /* Static: too large for the shell task's stack. */
     static char json[DEVICE_STATE_JSON_MAX + FRAME_WATCH_JSON_MAX + APP_DIAGNOSTIC_JSON_MAX];
     device_state_format_json(&state, input, json);
 
     char fragment[APP_DIAGNOSTIC_JSON_MAX > FRAME_WATCH_JSON_MAX ? APP_DIAGNOSTIC_JSON_MAX : FRAME_WATCH_JSON_MAX];
     frame_watch_json(fragment, sizeof fragment);
-    splice_key(json, sizeof json, "frame_watch", fragment);
+    (void)json_splice_key(json, sizeof json, "frame_watch", fragment);
 
     if (current_app != NULL && current_app->diagnostic_json != NULL) {
         current_app->diagnostic_json(fragment, APP_DIAGNOSTIC_JSON_MAX);
-        splice_key(json, sizeof json, "app", fragment);
+        (void)json_splice_key(json, sizeof json, "app", fragment);
     }
 
     console_emit_line("SCREENSHOT_STATE:", json);
