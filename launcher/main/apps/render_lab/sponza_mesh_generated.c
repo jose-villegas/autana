@@ -1,13 +1,14 @@
 /*
  * GENERATED FILE - do not edit.
  *
- *     python main/apps/render_lab/tools/gen_sponza.py <sponza-dir> --out-dir main/apps/render_lab
+ *     python main/apps/render_lab/tools/gen_sponza.py <sponza-dir> --out-dir main/apps/render_lab \
+ *         --name sponza --keep 0.04 --light-tolerance 0.3 --min-edge 60
  *
  * Crytek Sponza (Frank Meinl, Crytek; CC BY 3.0), from the OBJ in
  * McGuire's Computer Graphics Archive, casual-effects.com/data.
  * Decimated, lit by a sun and sky with baked shadows, one sRGB colour
- * per vertex, clusters as the leaves of an octree. Bake settings:
- *   --keep 0.04 --max-edge 900 --sun -0.25 1 0.22
+ * per vertex, clusters as the leaves of an octree. Other settings:
+ *   --max-edge 900 --sun -0.25 1 0.22
  *   --sun-rays 8 --sky-rays 48 --leaf-triangles 160
  */
 #include "sponza_mesh_generated.h"
