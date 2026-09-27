@@ -30,19 +30,20 @@ launcher/
 │   ├── esp32_s3_touch_amoled_1_8/  Waveshare BSP, LVGL trimmed
 │   ├── microui/        MIT, patched for this chip (see below)
 │   └── small3dlib/     CC0, header-only
-├── tools/              generators, build/flash wrappers, report scripts
-│   ├── gen_zeta_curve.py       generates main/boot/boot_anim_curve.h
-│   ├── gen_boot_anim_timeline.py, gen_boot_anim_image.py,
-│   │                           gen_gfx_palette_standard.py, gen_icons.py
-│   ├── gen_ui_layout.py        bakes main/ui/<screen>_layout.json into its header
-│   ├── gen_ridge_curve.py      bakes design/boot/ridge.png into main/ui/ridge_curve_generated.h
-│   ├── build_flash.sh          builds the image; --dev and --diag variants
-│   ├── device_report.sh        the one build-flash-capture-report path
-│   └── report_test_results.sh  every suite, pass/fail
+├── tools/              host tooling; flashing lives in scripts/device/
+│   ├── gen/            generators for checked-in C data (gen_zeta_curve.py, ...)
+│   ├── build/          build.sh builds the image; --dev and --diag variants
+│   ├── device/         device_report.sh, the one build-flash-capture-report path
+│   ├── quality/        complexity and MISRA gates, report_test_results.sh
+│   ├── boot_anim/      the boot animation editor and its perf report
+│   ├── render/         the host render harness and its scenes
+│   ├── sweeps/         build and capture sweeps
+│   └── tests/          regression tests for these tools
 ├── test/               the host runner and the shell's own suites
 └── main/
     ├── main.c          the frame loop and app switching
     ├── app.h           the shell/app contract
+    ├── app_arena.{h,c} the PSRAM block lent to the running app (host-tested)
     ├── app_registry.c  the registered apps, sorted by name (host-tested)
     ├── boot/           runs once each, before the frame loop exists
     │   ├── post.{h,c}          power-on self test
@@ -426,7 +427,7 @@ stateDiagram-v2
     ControlCenter : Control Center<br/>ui_control_center_frame()<br/>over the dimmed launcher
 
     Launcher --> Running: tap an entry<br/><i>the app's enter()</i>
-    Running --> Launcher: home swipe, PWR long-press<br/>or shell_request_exit()<br/><i>the app's exit()</i>
+    Running --> Launcher: home swipe, PWR long-press<br/>or shell_request_exit()<br/><i>the app's exit(),<br/>then the arena emptied</i>
     Launcher --> ControlCenter: swipe in from<br/>the logical top
     ControlCenter --> Launcher: swipe in from<br/>the logical bottom
 ```
@@ -468,6 +469,15 @@ here is why the build is shaped the way it is.
 > object would never be extracted, its constructor would never run, and the app
 > would silently vanish from the menu. Not a link error: a smaller binary and a
 > shorter list.
+
+**App memory is lent, not owned.** The shell holds one static block in
+PSRAM, the app arena (`APP_ARENA_BYTES`, `app_arena.h`), and empties it
+right after every app's `exit()`; an app takes bulk buffers from it and never
+frees them. How to use it is
+[Building-an-App.md's App memory](Building-an-App.md#app-memory). Re-entry
+cannot fail to heap fragmentation, since every visit gets the same static
+block, and taking from it is no dynamic-memory call (MISRA 21.3): it bumps
+an offset.
 
 **Bench-only apps** - `apps/diagnostics/` and `apps/input_lab/` - are
 excluded by folder when `CONFIG_LAUNCHER_DEVELOPMENT` is off, structural

@@ -118,9 +118,9 @@ with the flags it would have had rather than excused.
 
 In CI the gate is its own job in `.github/workflows/build-diagnostics.yml`,
 the only one that fetches the upstream submodules. It runs inside the ESP-IDF
-container, in the same command as its own diagnostics build: the
-toolchains exist only inside that container, and the compile database the
-build writes names container paths. The command installs esp-clang with
+container, in the same command as its own diagnostics build (`autana build
+diag`, as every CI build is): the toolchains exist only inside that
+container, and the compile database the build writes names container paths. The command installs esp-clang with
 ESP-IDF's own tool installer first, so CI scores with the same esp-clang a
 local ESP-IDF install provides. Not the pre-commit hook, which has to stay
 fast enough to run on every commit. `--changed` is the fast path for local

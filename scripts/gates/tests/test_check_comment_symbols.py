@@ -3,55 +3,52 @@ import pathlib
 import sys
 import tempfile
 import unittest
-from unittest import mock
 
 SCRIPTS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import check_comment_symbols  # noqa: E402
+import idf_vocabulary  # noqa: E402
+from fake_idf import fake_idf, fake_toolchain  # noqa: E402
 
-
-class StaleForeignTest(unittest.TestCase):
-    def write(self, root, path, text):
-        target = root / path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text, encoding="utf-8")
-
-    def test_a_foreign_entry_no_comment_cites_is_reported_stale(self):
-        # FOREIGN names vendor/libc functions a comment cites with no local
-        # definition; an entry nothing cites any more is dead weight.
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.write(root, "launcher/main/gfx/gfx.c",
-                      "/* calls malloc() to get memory */\n"
-                      "void gfx_init(void) {}\n")
-            with mock.patch.object(check_comment_symbols, "FOREIGN",
-                                   {"malloc", "an_unused_foreign_entry"}):
-                stale = check_comment_symbols.stale_foreign(str(root))
-        self.assertEqual(stale, ["an_unused_foreign_entry"])
-
-    def test_a_cited_foreign_entry_is_not_reported_stale(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.write(root, "launcher/main/gfx/gfx.c",
-                      "/* calls malloc() to get memory */\n"
-                      "void gfx_init(void) {}\n")
-            with mock.patch.object(check_comment_symbols, "FOREIGN", {"malloc"}):
-                stale = check_comment_symbols.stale_foreign(str(root))
-        self.assertEqual(stale, [])
+# An ESP-IDF that defines none of the names a test cites.
+NO_OUTSIDE_NAMES = idf_vocabulary.OutsideVocabulary(None)
 
 
 class ProblemsTest(unittest.TestCase):
     """One tree per case: `files` maps a path under launcher/ to its text."""
 
-    def problems(self, files):
+    def problems(self, files, outside=NO_OUTSIDE_NAMES, unchecked=None):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp) / "launcher"
             for path, text in files.items():
                 target = root / path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(text, encoding="utf-8")
-            return [line.split(": ", 1)[1] for line in check_comment_symbols.problems(str(root))]
+            if callable(outside):
+                outside = outside(pathlib.Path(temp))
+            found = check_comment_symbols.problems(str(root), outside, unchecked)
+            return [line.split(": ", 1)[1] for line in found]
+
+    def test_a_name_only_esp_idf_defines_resolves_and_one_in_neither_fails(self):
+        def outside(base):
+            return idf_vocabulary.outside_vocabulary(
+                fake_idf(base / "esp-idf"), fake_toolchain(base / "espressif"), base / "cache")
+        found = self.problems({
+            "main/a.c": "/* fake_ll_cal_clock() and fake_hypot() set it, not ghost_ll_function() */\n",
+        }, outside)
+        self.assertEqual(found, ["comment names ghost_ll_function(), which does not exist"])
+
+    def test_without_esp_idf_a_name_this_tree_lacks_is_counted_not_failed(self):
+        unchecked = []
+        found = self.problems({
+            "main/a.c": "#define SAND_REAL 1\n"
+                        "/* fake_ll_cal_clock() sets it; SAND_GONE bounds it */\n"
+                        "int f(void) { return SAND_REAL; }\n",
+        }, None, unchecked)
+        self.assertEqual(found, ["comment names SAND_GONE, which does not exist"])
+        self.assertEqual([line.split(": ", 1)[1] for line in unchecked], ["fake_ll_cal_clock()"])
 
     def test_a_constant_only_another_comment_spells_is_reported(self):
         # CONDUCT_REACH-style citations were never checked: the vocabulary

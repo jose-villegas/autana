@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
-"""Fail when a documentation citation no longer resolves in this tree.
+"""Fail when a documentation citation resolves neither in this tree nor in
+ESP-IDF.
 
-    python scripts/gates/check_doc_citations.py [--root ROOT]
+    python scripts/gates/check_doc_citations.py [--root ROOT] [--require-idf]
 
-A backticked function (`name()`), path or macro a doc cites must exist in
-this tree, and a quoted section a doc or C comment cites must be a heading
-of the doc it names. Under docs/plans/, which names what is not built yet,
-names are not checked; section citations still are.
+A backticked function (`name()`), path or CONSTANT_NAME a doc cites must be
+defined in this tree - the vendored components under launcher/components/
+included - or, for what the firmware uses but does not define, declared
+by ESP-IDF or its toolchain's C library (idf_vocabulary.outside_vocabulary()).
+ESP-IDF counts for every chip it supports, so a name declared only for
+another chip resolves too: that is the check's known limit. A quoted
+section a doc or C comment cites must be a heading of the doc it
+names. Under docs/plans/, which names what is not built yet, names are not
+checked; section citations still are.
 
-A line that cites a name from outside this tree on purpose - an SDK-private
-function or header - carries ``<!-- doc-citations: ignore NAME -->``, NAME
-spelled as it is between the backticks. It exempts that one name on that one
-line; every other citation there is still checked. A marker whose name the
-line does not cite, or whose name resolves after all, is itself reported,
-and so is one that names nothing.
+Without an ESP-IDF checkout, a name this tree does not define cannot be
+told apart from a typo, so it is counted, not failed, and one line says so.
+--require-idf, which CI passes, makes a missing checkout, or a missing
+toolchain C library beside it, an error instead.
 """
 import pathlib
 import re
@@ -22,18 +26,15 @@ import sys
 from check_comment_length import EXCLUDED as C_EXCLUDED, scan
 from check_doc_index import blank_fences, doc_headings
 from code_vocabulary import vocabulary
+from idf_vocabulary import not_verified_notice, outside_vocabulary, required_missing
 from tracked import tracked_files
 
 INLINE = re.compile(r"`([^`\n]+)`")
 FUNCTION = re.compile(r"^([a-z][a-z0-9_]*)\(\)$")
 MACRO = re.compile(r"^[A-Z][A-Z0-9_]*$")
 FILE = re.compile(r"^(?:launcher/|apps/|[\w.-]+/)*(?:[\w.-]+\.(?:c|h|py|sh|cmake|md)|CMakeLists\.txt)$")
-MARKER = re.compile(r"<!-- doc-citations: ignore(?: ([^\s>]+))? -->")
 PLANS = "docs/plans/"
 SKIP_FENCES = {"sh", "shell", "bash", "console", "text", "output"}
-FOREIGN_FUNCTIONS = {"exit", "main", "max", "name", "bsp_display_new"}
-FOREIGN_PATHS = {"idf.py", "idf_tools.py"}
-FOREIGN_MACRO_PREFIXES = ("ESP", "CONFIG_COMPILER", "CONFIG_LOG", "IDF", "SDMMC", "WHOLE", "LOG", "DP")
 
 # A citation of one or more sections of a doc: `X.md`'s "Section", or "One"
 # and "Two" in X.md. The backtick around the doc name is optional - both
@@ -47,20 +48,11 @@ SECTION_BEFORE_DOC = re.compile(r"(" + _QUOTED_GROUP + r")\s+in\s+`?([A-Za-z0-9_
 
 
 class Citation:
-    def __init__(self, doc, line, kind, value, marked=False):
+    def __init__(self, doc, line, kind, value):
         self.doc = doc
         self.line = line
         self.kind = kind
         self.value = value
-        self.marked = marked
-
-
-class Marker:
-    def __init__(self, doc, line, name, cited):
-        self.doc = doc
-        self.line = line
-        self.name = name
-        self.cited = cited
 
 
 def documentation(root):
@@ -71,16 +63,16 @@ def documentation(root):
             yield root / name
 
 
-def cited_name(doc, number, text, marked=False):
+def cited_name(doc, number, text):
     """The Citation backticked `text` makes, or None when it is no function,
     path or macro."""
     function = FUNCTION.fullmatch(text)
     if function:
-        return Citation(doc, number, "function", function.group(1), marked)
+        return Citation(doc, number, "function", function.group(1))
     if FILE.fullmatch(text):
-        return Citation(doc, number, "path", text, marked)
+        return Citation(doc, number, "path", text)
     if MACRO.fullmatch(text):
-        return Citation(doc, number, "macro", text, marked)
+        return Citation(doc, number, "macro", text)
     return None
 
 
@@ -107,26 +99,13 @@ def cited_lines(root):
                 yield doc, number, line
 
 
-def citations(root, include_marked=False):
-    """Every citation, without the ones a marker exempts unless
-    `include_marked`."""
+def citations(root):
+    """Every function, path and macro citation a checked line makes."""
     for doc, number, line in cited_lines(root):
-        marked = {match.group(1) for match in MARKER.finditer(line)}
         for text in INLINE.findall(line):
-            citation = cited_name(doc, number, text, text in marked)
-            if citation and (include_marked or not citation.marked):
+            citation = cited_name(doc, number, text)
+            if citation:
                 yield citation
-
-
-def markers(root):
-    """Every doc-citations marker, with whether its line cites its name as a
-    function, path or macro."""
-    for doc, number, line in cited_lines(root):
-        for match in MARKER.finditer(line):
-            name = match.group(1)
-            cited = any(text == name and cited_name(doc, number, text)
-                        for text in INLINE.findall(line))
-            yield Marker(doc, number, name, cited)
 
 
 def resolve_doc(root, value, citing_doc=None):
@@ -242,90 +221,81 @@ def unresolved_sections(root):
     return missing
 
 
-def unresolved(root):
-    """Every unmarked citation that does not resolve."""
-    return [citation for citation in _unresolved(root) if not citation.marked]
-
-
-def stale_markers(root):
-    """(marker, reason) for every marker that exempts nothing."""
-    root = pathlib.Path(root)
-    needed = {(c.doc, c.line, _spelling(c)) for c in _unresolved(root) if c.marked}
-    stale = []
-    for marker in markers(root):
-        if marker.name is None:
-            stale.append((marker, "names nothing"))
-        elif not marker.cited:
-            stale.append((marker, f"names {marker.name}, which this line does not cite"))
-        elif (marker.doc, marker.line, marker.name) not in needed:
-            stale.append((marker, f"names {marker.name}, which resolves"))
-    return stale
-
-
 def _spelling(citation):
     return citation.value + "()" if citation.kind == "function" else citation.value
 
 
-def _unresolved(root):
+def _in_tree(root, citation, functions, macros):
+    if citation.kind == "function":
+        return citation.value in functions
+    if citation.kind == "macro":
+        return citation.value in macros
+    return path_exists(root, citation.value, citation.doc)
+
+
+def _outside(citation, outside):
+    if citation.kind == "function":
+        return citation.value in outside.functions
+    if citation.kind == "macro":
+        return citation.value in outside.constants or citation.value in outside.types
+    return outside.has_path(citation.value)
+
+
+def resolve(root, outside):
+    """(missing, unchecked): the citations neither this tree nor `outside`,
+    an idf_vocabulary.OutsideVocabulary, defines, and - when `outside` is
+    None, no ESP-IDF to ask - the ones this tree does not define."""
     root = pathlib.Path(root)
     vocab = vocabulary(root)
     functions, macros = vocab.functions | vocab.script_functions, vocab.constants
-    missing = []
-    for citation in citations(root, include_marked=True):
-        if citation.kind == "function" and (
-                citation.value in FOREIGN_FUNCTIONS or
-                citation.value.startswith(("esp_", "xTask", "vTask", "heap_caps_"))):
+    missing, unchecked = [], []
+    for citation in citations(root):
+        if citation.kind == "macro" and "_" not in citation.value:
+            continue  # a shouted word, not a name
+        if _in_tree(root, citation, functions, macros):
             continue
-        if citation.kind == "path" and citation.value in FOREIGN_PATHS:
-            continue
-        if citation.kind == "macro":
-            if citation.value.startswith(FOREIGN_MACRO_PREFIXES):
-                continue
-            prefix = citation.value.split("_", 1)[0]
-            prefixes = {name.split("_", 1)[0] for name in macros}
-            if "_" not in citation.value or prefix not in prefixes:
-                continue
-        exists = (citation.value in functions if citation.kind == "function" else
-                  citation.value in macros if citation.kind == "macro" else
-                  path_exists(root, citation.value, citation.doc))
-        if not exists:
+        if outside is None:
+            unchecked.append(citation)
+        elif not _outside(citation, outside):
             missing.append(citation)
-    return missing
+    return missing, unchecked
 
 
-def check(root):
-    return unresolved(root)
+def check(root, outside):
+    return resolve(root, outside)[0]
 
 
 def main(argv):
     root = pathlib.Path(".")
+    require_idf = "--require-idf" in argv
+    argv = [arg for arg in argv if arg != "--require-idf"]
     if argv[:1] == ["--root"] and len(argv) == 2:
         root = pathlib.Path(argv[1])
     elif argv:
-        print("usage: check_doc_citations.py [--root ROOT]", file=sys.stderr)
+        print("usage: check_doc_citations.py [--root ROOT] [--require-idf]", file=sys.stderr)
+        return 2
+    outside = outside_vocabulary()
+    if require_idf and required_missing(outside):
+        print(required_missing(outside), file=sys.stderr)
         return 2
     try:
-        missing = check(root)
+        missing, unchecked = resolve(root, outside)
         missing_sections = unresolved_sections(root)
-        stale = stale_markers(root)
     except ValueError as error:
         print(error, file=sys.stderr)
         return 2
     for item in missing:
-        label = _spelling(item)
-        print(f"{item.doc}:{item.line}: missing {item.kind} citation {label}"
-              f" (cited from outside this tree on purpose? end the line with"
-              f" <!-- doc-citations: ignore {label} -->)")
+        print(f"{item.doc}:{item.line}: missing {item.kind} citation {_spelling(item)}"
+              f" (defined neither in this tree nor in ESP-IDF)")
     for citation, reason in missing_sections:
         print(f"{citation.doc}:{citation.line}: missing section citation - {reason}")
-    for marker, reason in stale:
-        print(f"{marker.doc}:{marker.line}: doc-citations marker {reason}")
+    if outside is None:
+        print(not_verified_notice(len(unchecked)))
     print(f"{len(missing_sections)} missing section citation"
           f"{'' if len(missing_sections) == 1 else 's'}")
     print(f"{len(missing)} missing documentation citation"
           f"{'' if len(missing) == 1 else 's'}")
-    print(f"{len(stale)} stale doc-citations marker{'' if len(stale) == 1 else 's'}")
-    return 1 if missing or missing_sections or stale else 0
+    return 1 if missing or missing_sections else 0
 
 
 if __name__ == "__main__":

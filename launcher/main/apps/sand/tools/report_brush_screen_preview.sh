@@ -18,8 +18,8 @@
 set -eu
 
 # This file lives at main/apps/sand/tools/, four levels below launcher/ -
-# tools -> sand -> apps -> main -> launcher - same layout report_
-# fingerprint.sh (this file's sibling) already resolves the same way.
+# tools -> sand -> apps -> main -> launcher - same layout
+# report_fingerprint.sh (this file's sibling) already resolves the same way.
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SAND_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 MAIN_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)
