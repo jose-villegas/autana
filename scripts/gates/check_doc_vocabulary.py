@@ -5,21 +5,12 @@ import re
 import sys
 
 ESCAPE = "<!-- doc-vocabulary: ignore -->"
-STALE_EXCEPTION = "stale exception"
 
 
 def terms(root):
     path = pathlib.Path(root) / "scripts/gates/doc_vocabulary.txt"
     return [(fields[0], fields[1]) for line in path.read_text(encoding="utf-8").splitlines()
             if line and not line.startswith("#") for fields in [line.split("\t", 1)]]
-
-
-def exceptions(root):
-    path = pathlib.Path(root) / "scripts/gates/doc_vocabulary_exceptions.txt"
-    if not path.exists():
-        return set()
-    return {line.split("\t", 1)[0] for line in path.read_text(encoding="utf-8").splitlines()
-            if line and not line.startswith("#")}
 
 
 def retired_uses(path, name, retired_terms):
@@ -39,18 +30,10 @@ def retired_uses(path, name, retired_terms):
 
 def check(root):
     root = pathlib.Path(root)
-    skipped = exceptions(root)
     retired_terms = terms(root)
     found = []
-    for name in sorted(skipped):
-        if not (root / name).is_file():
-            found.append((name, 0, STALE_EXCEPTION, "exception entry names no file"))
-        elif not retired_uses(root / name, name, retired_terms):
-            found.append((name, 0, STALE_EXCEPTION, "file no longer uses a retired term"))
     for path in sorted((root / "docs").rglob("*.md")):
-        name = path.relative_to(root).as_posix()
-        if name not in skipped:
-            found.extend(retired_uses(path, name, retired_terms))
+        found.extend(retired_uses(path, path.relative_to(root).as_posix(), retired_terms))
     return found
 
 
@@ -61,10 +44,7 @@ def main(argv):
         return 2
     found = check(root)
     for path, line, term, reason in found:
-        if term == STALE_EXCEPTION:
-            print(f"{path}: stale exception entry: {reason}")
-        else:
-            print(f"{path}:{line}: retired term {term!r}: {reason}")
+        print(f"{path}:{line}: retired term {term!r}: {reason}")
     return 1 if found else 0
 
 
