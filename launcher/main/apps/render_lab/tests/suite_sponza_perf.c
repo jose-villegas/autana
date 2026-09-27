@@ -110,11 +110,13 @@ draw_half_on_core1(void* ctx) {
 static void
 report_core_contention(const r3d_lit_frame_t* frame, const r3d_lit_view_t* view, int visible) {
     const int mid = frame->height / 2;
-    half_job_t top = {frame, view, visible, 0, mid, 0}, bottom = {frame, view, visible, mid, frame->height, 0};
+    half_job_t top = {frame, view, visible, 0, mid, 0};
+    half_job_t bottom = {frame, view, visible, mid, frame->height, 0};
     draw_half(&top);
     draw_half(&bottom);
     ESP_LOGI(TAG, "contention: alone  top %6lldus  bottom %6lldus", (long long)top.us, (long long)bottom.us);
-    half_job_t together_top = top, together_bottom = bottom;
+    half_job_t together_top = top;
+    half_job_t together_bottom = bottom;
     const int64_t start = esp_timer_get_time();
     (void)job_run_core1(draw_half_on_core1, &together_top, sizeof together_top);
     draw_half(&together_bottom);
@@ -146,7 +148,7 @@ test_sponza_draw_stage_breakdown(void) {
 
     /* A view of nothing but sky: what a frame costs before any geometry. */
     r3d_lit_view_t empty;
-    r3d_lit_view_look(&empty, (r3d_vec3f_t){0.0f, 20000.0f, 0.0f}, (r3d_vec3f_t){0.0f, 1.0f, 0.01f}, 1.0f, 1.0f,
+    r3d_lit_view_look(&empty, (r3d_vec3f_t){0.0F, 20000.0F, 0.0F}, (r3d_vec3f_t){0.0F, 1.0F, 0.01F}, 1.0F, 1.0F,
                       SPONZA_POSITION_SCALE, (r3d_viewport_t){SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, 0});
     start = esp_timer_get_time();
     const r3d_lit_stats_t none = r3d_lit_frame_render(&b.frame, &empty);
@@ -165,7 +167,8 @@ report_frame_cost(const char* label, const r3d_lit_mesh_t* mesh) {
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===", label, mesh->triangle_count,
              mesh->vertex_count, mesh->cluster_count, SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT);
     const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
-    int64_t frame_sum = 0, worst = 0;
+    int64_t frame_sum = 0;
+    int64_t worst = 0;
     int samples = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SAMPLE_EVERY_MS) {
         const r3d_lit_view_t view = view_at(mesh, t_ms);
