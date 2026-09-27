@@ -8,9 +8,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 SCRIPTS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import check_doc_citations  # noqa: E402
 import check_doc_constants  # noqa: E402
@@ -18,6 +20,11 @@ import check_doc_index  # noqa: E402
 import check_doc_vocabulary  # noqa: E402
 import doc_citers  # noqa: E402
 import doc_drift  # noqa: E402
+import idf_vocabulary  # noqa: E402
+from fake_idf import fake_idf, fake_toolchain  # noqa: E402
+
+# An ESP-IDF that defines none of the names a test cites.
+NO_OUTSIDE_NAMES = idf_vocabulary.OutsideVocabulary(None)
 
 
 class DocCitationTest(unittest.TestCase):
@@ -41,7 +48,7 @@ missing_function() LIVE_MISSING missing.sh
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.fixture(root)
-            missing = check_doc_citations.check(root)
+            missing = check_doc_citations.check(root, NO_OUTSIDE_NAMES)
         self.assertEqual(
             [(item.kind, item.value) for item in missing],
             [("function", "missing_function"), ("path", "missing.h"),
@@ -269,7 +276,7 @@ Acid -->|"dissolvable 110"| Metal
             root = pathlib.Path(temp)
             self.fixture(root)
             self.write(root, "docs/plans/Future-Plan.md", "`planned_function()` `planned.h`\n")
-            missing = check_doc_citations.check(root)
+            missing = check_doc_citations.check(root, NO_OUTSIDE_NAMES)
         self.assertNotIn("docs/plans/Future-Plan.md", [item.doc for item in missing])
         self.assertIn("docs/Guide.md", [item.doc for item in missing])
 
@@ -277,38 +284,9 @@ Acid -->|"dissolvable 110"| Metal
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.write(root, "docs/plans-archive.md", "`planned_function()`\n")
-            missing = check_doc_citations.check(root)
+            missing = check_doc_citations.check(root, NO_OUTSIDE_NAMES)
         self.assertEqual([(item.doc, item.value) for item in missing],
                          [("docs/plans-archive.md", "planned_function")])
-
-    def test_a_marker_exempts_only_the_name_it_names_on_its_own_line(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.write(root, "launcher/main/example.c", "void live_function(void) {}\n")
-            self.write(root, "docs/Guide.md",
-                       "The IDF's `sdk_private()` in `sdk_private.h`, beside `gone_function()`."
-                       " <!-- doc-citations: ignore sdk_private() -->"
-                       " <!-- doc-citations: ignore sdk_private.h -->\n"
-                       "`sdk_private()`\n")
-            missing = check_doc_citations.check(root)
-            stale = check_doc_citations.stale_markers(root)
-        self.assertEqual([(item.line, item.value) for item in missing],
-                         [(1, "gone_function"), (2, "sdk_private")])
-        self.assertEqual(stale, [])
-
-    def test_a_marker_that_exempts_nothing_is_reported(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.write(root, "launcher/main/example.c", "void live_function(void) {}\n")
-            self.write(root, "docs/Guide.md",
-                       "`live_function()` <!-- doc-citations: ignore live_function() -->\n"
-                       "`sdk_private()` <!-- doc-citations: ignore sdk_other() -->\n"
-                       "`sdk_private()` <!-- doc-citations: ignore -->\n")
-            stale = check_doc_citations.stale_markers(root)
-        self.assertEqual([(marker.line, reason) for marker, reason in stale],
-                         [(1, "names live_function(), which resolves"),
-                          (2, "names sdk_other(), which this line does not cite"),
-                          (3, "names nothing")])
 
     def test_another_gates_marker_or_html_comment_does_not_silence_a_citation(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -317,18 +295,57 @@ Acid -->|"dissolvable 110"| Metal
                        "`gone_a()` <!-- doc-vocabulary: ignore -->\n"
                        "`gone_b()` <!-- doc-constants: ignore -->\n"
                        "`gone_c()` <!-- gone_c() -->\n")
-            missing = check_doc_citations.check(root)
+            missing = check_doc_citations.check(root, NO_OUTSIDE_NAMES)
         self.assertEqual([item.value for item in missing], ["gone_a", "gone_b", "gone_c"])
 
-    def test_a_missing_citation_names_the_marker_that_would_exempt_it(self):
+    def test_a_name_only_esp_idf_defines_resolves_and_one_in_neither_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = pathlib.Path(temp)
+            root = base / "repo"
+            self.write(root, "launcher/main/example.c", "void live_function(void) {}\n")
+            self.write(root, "docs/Guide.md",
+                       "`live_function()` `fake_ll_cal_clock()` in `hal/fake_ll.h`, `idf.py`,\n"
+                       "`CONFIG_FAKE_LFN_NONE`, `FAKE_FREQ_DEFAULT`, `fake_hypot()` in `math.h`;\n"
+                       "`ghost_ll_function()` `GHOST_FREQ` `hal/ghost_ll.h`\n")
+            outside = idf_vocabulary.outside_vocabulary(
+                fake_idf(base / "esp-idf"), fake_toolchain(base / "espressif"), base / "cache")
+            missing = check_doc_citations.check(root, outside)
+        self.assertEqual([(item.line, item.value) for item in missing],
+                         [(3, "ghost_ll_function"), (3, "GHOST_FREQ"), (3, "hal/ghost_ll.h")])
+
+    def run_main(self, root, *flags):
+        output = io.StringIO()
+        missing_idf = pathlib.Path(root) / "no-esp-idf"
+        with mock.patch.dict(os.environ, {"IDF_PATH": str(missing_idf)}), \
+                contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            code = check_doc_citations.main(["--root", str(root), *flags])
+        return code, output.getvalue()
+
+    def test_without_esp_idf_a_name_this_tree_lacks_is_counted_not_failed(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.write(root, "docs/Guide.md", "`sdk_private()`\n")
-            output = io.StringIO()
-            with contextlib.redirect_stdout(output):
-                code = check_doc_citations.main(["--root", str(root)])
+            self.write(root, "launcher/main/example.c", "void live_function(void) {}\n")
+            self.write(root, "docs/Guide.md", "`live_function()` `fake_ll_cal_clock()`\n")
+            code, output = self.run_main(root)
+        self.assertEqual(code, 0)
+        self.assertIn("1 cited name this tree does not define went unchecked: no ESP-IDF at", output)
+
+    def test_without_esp_idf_a_section_citation_is_still_checked(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/Other.md", "# Real\n")
+            self.write(root, "docs/Guide.md", "See `Other.md`'s \"Gone\".\n")
+            code, output = self.run_main(root)
         self.assertEqual(code, 1)
-        self.assertIn("<!-- doc-citations: ignore sdk_private() -->", output.getvalue())
+        self.assertIn('"Gone" is not a heading in Other.md', output)
+
+    def test_require_idf_makes_a_missing_esp_idf_an_error(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/Guide.md", "nothing cited\n")
+            code, output = self.run_main(root, "--require-idf")
+        self.assertEqual(code, 2)
+        self.assertIn("no ESP-IDF at", output)
 
     def test_a_constant_an_mjs_script_reads_resolves(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -337,7 +354,7 @@ Acid -->|"dissolvable 110"| Metal
                        "// CHECK_COMMENTED_ONLY is only named here\n"
                        "const extra = process.env.CHECK_EXTRA_ARGS;\n")
             self.write(root, "docs/Guide.md", "`CHECK_EXTRA_ARGS` `CHECK_COMMENTED_ONLY`\n")
-            missing = check_doc_citations.check(root)
+            missing = check_doc_citations.check(root, NO_OUTSIDE_NAMES)
         self.assertEqual([item.value for item in missing], ["CHECK_COMMENTED_ONLY"])
 
     def test_section_citation_after_the_doc_is_flagged_when_missing(self):
