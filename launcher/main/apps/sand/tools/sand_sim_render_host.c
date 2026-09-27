@@ -22,13 +22,17 @@ static sand_t sim;
 static tilt_t tilt;
 static uint8_t cells[GRID_W * GRID_H];
 static impulse_t impulses[GRID_W * GRID_H];
-static uint8_t depth_a[GRID_W_MAX];
-static uint8_t depth_b[GRID_W_MAX];
-static sand_paint_row_state_t paint = {
-    .local_depth_cur_row = depth_a, .local_depth_prev_row = depth_b, .local_depth_prev_cy = LOCAL_DEPTH_NO_ROW};
+static sand_paint_row_state_t paint;
 static FILE* angles;
 static int wood_top_down;
 static int gunpowder_blasts;
+
+static bool
+close_angles(void) {
+    const int result = fclose(angles);
+    angles = NULL;
+    return result == 0;
+}
 
 static void
 put(int x, int y, cell_t cell) {
@@ -50,7 +54,7 @@ static void
 mountain(void) {
     for (int x = 1; x < 57; x++) {
         const int dx = abs(x - 27);
-        const int top = 8 + dx * 2;
+        const int top = 8 + (dx * 2);
         for (int y = top; y < 72; y++) {
             const bool vent = dx < 3 && y < 48;
             const bool chamber = dx < 10 && y >= 48 && y < 61;
@@ -116,7 +120,7 @@ terrain(void) {
 static void
 trees(void) {
     for (int i = 0; i < 4; i++) {
-        put(85 + i * 7, 62, MATX(MATX_PLANT));
+        put(85 + (i * 7), 62, MATX(MATX_PLANT));
     }
 }
 
@@ -126,6 +130,7 @@ setup(int quarter) {
         return false;
     }
     sand_init(&sim, cells, GRID_W, GRID_H, 0x564f4c43u);
+    sand_paint_row_state_init(&paint);
     sand_set_scatter(&sim, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&sim, SAND_DECAY_PER_MATERIAL);
     sand_set_evaporates(&sim, SAND_EVAPORATES_PER_MATERIAL);
@@ -156,32 +161,34 @@ drive_tilt(const render_frame_t* frame, int* gx, int* gy) {
     *gx = tilt_x(&tilt);
     *gy = tilt_y(&tilt);
     if (angles != NULL) {
-        fprintf(angles, "%.3f\n", board_angle(frame->index));
-        fflush(angles);
+        if (fprintf(angles, "%.3f\n", board_angle(frame->index)) < 0 || fflush(angles) != 0) {
+            if (!close_angles()) {
+                gunpowder_blasts = -1;
+            }
+        }
     }
 }
 
 static void
 paint_grid(const render_frame_t* frame, int gx, int gy) {
-    sand_paint_frame_t pf = {.shine_period = 64,
-                             .shine_offset = frame->index / 2,
-                             .wood_leaf_wind_sign = 1,
-                             .wood_leaf_time_ms = frame->elapsed_ms};
+    sand_paint_frame_t pf = {
+        .shine_offset = frame->index / 2, .wood_leaf_wind_sign = 1, .wood_leaf_time_ms = frame->elapsed_ms};
     material_set_gravity(gx, gy);
     material_set_foam_phase(frame->elapsed_ms / 90);
     material_shine_direction(gx, gy, &pf.shine_ux_q8, &pf.shine_uy_q8);
     material_wood_leaf_wind_axis(gx, gy, &pf.wood_leaf_wind_ux_q8, &pf.wood_leaf_wind_uy_q8);
     material_wood_leaf_top5(gx, gy, &wood_top_down, pf.wood_leaf_top5);
-    update_local_depth_gravity(&paint, gx, gy, GRID_W, GRID_H);
+    sand_paint_update_local_depth_gravity(&paint, gx, gy, GRID_W, GRID_H);
     for (int cy = 0; cy < GRID_H; cy++) {
-        paint_row_n(&paint, &pf, gfx_framebuffer(), NULL, NULL, cy, sim.cells + cy * GRID_W, CELL_SIZE, GRID_W, GRID_H,
-                    0, GRID_W, true);
+        sand_paint_row_n(&paint, &pf, gfx_framebuffer(), NULL, cy, sim.cells + cy * GRID_W, CELL_SIZE, GRID_W, GRID_H,
+                         0, GRID_W, true);
     }
 }
 
 static void
 draw(const render_frame_t* frame) {
-    int gx, gy;
+    int gx;
+    int gy;
     drive_tilt(frame, &gx, &gy);
     if (frame->index == 180) {
         gunpowder_charge();
@@ -200,8 +207,9 @@ draw(const render_frame_t* frame) {
         printf("sand_sim gunpowder blasts: %d\n", gunpowder_blasts);
     }
     if (frame->index == frame->count - 1 && angles != NULL) {
-        fclose(angles);
-        angles = NULL;
+        if (!close_angles()) {
+            gunpowder_blasts = -1;
+        }
     }
 }
 
