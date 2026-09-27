@@ -37,7 +37,8 @@ Same generator, same format, same tests.
 
 The shipped header is tested on its own terms: every icon non-empty, its
 content bounding box inside its declared `w x h`, its baked `blocks` count
-matching what `icon_walk_blocks()` actually produces, and declared
-symmetries holding (`suite_sand_icons.c`, `suite_icons_system.c`). **Do not
+matching what `icon_walk_blocks()` actually produces, and any declared
+symmetry holding. The shared set's suites are `suite_icons_system.c` and
+`suite_icons.c`; an app's header is tested from that app's `tests/`. **Do not
 assert the baked bytes against a Python re-implementation of the packer** -
 that tests the generator twice and the artifact never.

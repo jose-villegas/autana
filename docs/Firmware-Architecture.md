@@ -107,7 +107,7 @@ copy between two PSRAM buffers measured 6-15 ms, a large share of a frame,
 and a full frame over QSPI is bus-bound, not CPU-bound
 ([Display-and-Rendering.md](notes/Display-and-Rendering.md), "The blit is
 bus-bound"). The decision and its measurements are decision B in
-[Autana-Rendering-Roadmap.md](Autana-Rendering-Roadmap.md).
+[plans/Autana-Rendering-Roadmap.md](plans/Autana-Rendering-Roadmap.md).
 
 "One framebuffer" is really "one destination at a time": an app may ask at
 `enter()` for a band ring (a few strips of rows, sent as each fills) or an
@@ -195,7 +195,7 @@ stateDiagram-v2
     ControlCenter : Control Center<br/>ui_control_center_frame()<br/>over the dimmed launcher
 
     Launcher --> Running: tap an entry<br/><i>the app's enter()</i>
-    Running --> Launcher: home swipe if home_gesture,<br/>else PWR long-press;<br/>or shell_request_exit()<br/><i>the app's exit(),<br/>then the arena emptied</i>
+    Running --> Launcher: home swipe or<br/>PWR long-press,<br/>or shell_request_exit()<br/><i>the app's exit(),<br/>then the arena emptied</i>
     Launcher --> ControlCenter: swipe in from<br/>the logical top
     ControlCenter --> Launcher: swipe in from<br/>the logical bottom
 ```
@@ -212,35 +212,8 @@ An app that sets `app_t.update` has the previous frame sent on core 1 while
 `update()` runs on core 0; the split present underneath is in
 [Gfx-and-Presentation.md](Gfx-and-Presentation.md#present-who-runs-it).
 
-### A lit-mesh frame on both cores
-
-`render/r3d_lit_frame.h` draws a mesh whose light is baked into vertex
-colours at half the panel's resolution, then doubles it into the
-framebuffer. The work before the framebuffer runs in `update()`, overlapped
-with sending the previous frame; each stage is split between the two cores,
-core 1's half dispatched through `util/job.h` (inline when core 1 is busy).
-
-```mermaid
-sequenceDiagram
-    participant C0 as core 0, shell and app
-    participant J as core 1 job worker
-    participant P as present on core 1
-    C0->>P: gfx_present_begin() sends frame N-1
-    Note over C0: update(), cull every cluster
-    C0->>J: transform the second half of the visible clusters
-    Note over C0: transform the first half
-    J-->>C0: job_wait()
-    Note over C0: pick the row that balances the triangles
-    C0->>J: clear depth and draw the rows above it
-    Note over C0: clear depth and draw the rows below it
-    J-->>C0: job_wait()
-    C0->>P: gfx_present_wait()
-    Note over C0: frame()
-    C0->>J: double the top half into the framebuffer
-    Note over C0: double the bottom half
-    J-->>C0: job_wait()
-    Note over C0,P: frame N is presented on the next pass
-```
+`render/r3d_lit_frame.h` uses `update()` this way to draw a mesh on both
+cores: [Mesh-Rendering.md](Mesh-Rendering.md#on-both-cores).
 
 ### Full redraw
 
@@ -438,6 +411,8 @@ it.
   budget, panel and touch behaviour
   ([Input-and-Sensors.md](notes/Input-and-Sensors.md)), flashing and
   recovery.
+- [Mesh-Rendering.md](Mesh-Rendering.md) - `render/`: cameras, the span
+  rasterizer, the baked lit-mesh pipeline.
 - [Text-and-Fonts.md](Text-and-Fonts.md) - what a font is, the role
   accessor, text at more than one size.
 - [tools/Frame-Cost.md](tools/Frame-Cost.md) - where a frame's time goes, by

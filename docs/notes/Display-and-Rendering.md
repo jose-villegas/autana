@@ -53,9 +53,9 @@ forever. Symptom: clean boot log that stops dead after the last setup line.
 
 ## Measured performance
 
-The cube scene's own frame-budget suite (`main/apps/render_lab/tests/suite_cube_perf.c`)
-is the current source for its clear/rasterize/blit timing - see
-[`../Autana-Rendering-Roadmap.md`](../Autana-Rendering-Roadmap.md) for where
+A 3D scene's clear/rasterize/blit timing comes from its own app's
+frame-budget suite - see
+[`../plans/Autana-Rendering-Roadmap.md`](../plans/Autana-Rendering-Roadmap.md) for where
 that stands. What follows here is bus-level measurement, board-verified and
 independent of any one scene.
 
@@ -90,9 +90,10 @@ through the GPIO matrix; the SPI2 IOMUX pins are elsewhere. The S3 cannot
 make anything between 40 and 80 (see below), so 40 is the fastest in-spec
 clock.
 
-**What it looks like.** Sand being poured shows sparse red pixels in
-landscape and thin black lines through moving sand in portrait or while
-tilting; 256-colour mode shows it only at ULTRA quality. 40 MHz is clean.
+**What it looks like.** A stream of small moving regions, each sent as a
+partial update, shows sparse red pixels in landscape and thin black lines
+through the moving area in portrait or while tilting; 256-colour mode shows
+it only at its finest cell size. 40 MHz is clean.
 The corruption is pattern-dependent, not random noise: re-sending the same
 window next frame fails the same way, and only a send with a different
 window or strip layout (a full redraw, say) heals it. Screenshots never show
@@ -111,9 +112,9 @@ bad pixel stays until that region changes.
 - every dirty region sent twice, one present apart
 - no pixel write continued across a held CS (sub-windows under 32 KiB)
 - PSRAM and flash at 80 instead of 120 MHz
-- a software fault: the dev-only send audit (Diagnostics toggle "gfx send
-  audit (logs)") showed every changed pixel sent with correct bytes, and
-  PSRAM reads clean
+- a software fault: the dev-only send audit (`gfx_set_send_audit()`)
+  showed every changed pixel sent with correct bytes, and PSRAM reads
+  clean
 
 **Even edges are still required, at either clock.** Corner-shaped stale
 pixels appeared at 40 MHz on the CO5300 and went away once every window was
@@ -135,8 +136,8 @@ frames. So:
 - gfx heal, opt-in and active only at 80 MHz: a caller marks rows with
   `gfx_heal_mark()`, and gfx re-sends them as full-width strips with the
   strip grid shifted each time, under a per-present pixel budget. The app
-  owns the policy - sand heals bands that sent pixels a few presents after
-  they go quiet.
+  owns the policy - for example, re-sending a band a few presents after it
+  goes quiet.
 
 A synthetic cost independently regressed at 80 MHz too, for an unrelated
 reason worth keeping in mind if this is ever revisited: gathering two small,
@@ -174,9 +175,9 @@ no third option to chase here.
 a full redraw right after a capture - which re-sends every region with a
 different layout and heals whatever the link corrupted. A fault between the
 chip and the panel has to be judged by eye on the device. To tell a software
-fault from a link fault, turn on the dev-only send audit (Diagnostics, "gfx
-send audit (logs)"): it logs whether every changed pixel went out with the
-right bytes. If it did, A/B the link itself - clock, pad drive, PSRAM
+fault from a link fault, turn on the dev-only send audit
+(`gfx_set_send_audit()`): it logs whether every changed pixel went out with
+the right bytes. If it did, A/B the link itself - clock, pad drive, PSRAM
 speed - one build at a time.
 
 ### Partial updates: only send the bands that changed
@@ -267,18 +268,16 @@ crash.
 
 **Marking must be cheap.** A dithered glyph calls gfx_fill_rect_dither() once per set font pixel, so marking can run once per lit pixel of text. Routing it through the public entry point, with its re-clipping and call overhead, measured about 5% of the launcher's framerate with every glyph drawn a pixel at a time; an inlined helper on the already-clipped path fixed it.
 
-On the simulation side the same dirty information answers "what needs
-redrawing" as well as "what needs sending", which is the point of the
-[dirty-rect approach](https://80.lv/articles/noita-a-game-based-on-falling-sand-simulation)
-Noita uses. `sand_track_dirty_rows()` records every row a grain left or entered.
+The same dirty information can answer "what needs redrawing" as well as
+"what needs sending": a caller that records which rows its own state change
+touched repaints only those and hands the same boxes to `gfx_mark_dirty()`.
 
 **A development-only visualizer** makes this concrete on real hardware
 instead of only in synthetic tests, as two fully independent layers, each
-with its own checkbox on the Diagnostics app's second page (BOOT to reach
-it), correct in all four on/off combinations. Diagnostics is gated on
-`CONFIG_LAUNCHER_DEVELOPMENT`, not the narrower `CONFIG_LAUNCHER_SELFTEST`
-(see `docs/Firmware-Architecture.md`), so a plain `--dev` build reaches
-these checkboxes too:
+switched by its own setter, correct in all four on/off combinations.
+The setters exist under `CONFIG_LAUNCHER_DEVELOPMENT`, not the narrower
+`CONFIG_LAUNCHER_SELFTEST` (see `docs/Firmware-Architecture.md`), so a plain
+`--dev` build reaches them too:
 
 - **Panel-grid layer** (`gfx_set_debug_overlay(true)`) outlines whichever
   cells are actually being sent each frame - yellow for a gathered run, cyan
@@ -413,44 +412,23 @@ directly - no separate object to link, no ESP-IDF dependency to satisfy.
 way - leaf boundary math, run-collection edge cases, the gather-budget
 rejection path - none of which was reachable from a host before.
 
-**One real, currently-latent beneficiary: `app_sand.c`.** The concrete
-case this was built for is two separated blobs of sand inside one grid row:
-`draw_one_row()` computes each row's runs itself rather than one
-`(min_cx, max_cx)` span, so two genuinely separate blobs reach
-`gfx_mark_dirty()` as separate runs, gap and all, instead of merged before
-the leaf layer ever sees them. The run-finding and previous/current
-reconciliation live in
-`main/apps/sand/row_runs.c`/`.h` (a portable sibling of `sand.c`/`tilt.c`,
-not a special case wired into `gfx.c`) - its run finder mirrors
-`gfx.c`'s own `collect_runs_from_mask()`, and `row_runs_reconcile()`
-generalises the old single-range previous/current union to a small diff
-between two short run lists: a current run absorbs every previous run it
-overlaps, and a previous run nothing current overlaps still gets its own
-send range, so a blob splitting, merging, or vanishing entirely can never
-leave stale pixels behind. Covered by 14 adversarial host tests in
-`suite_row_runs.c` - a blob splitting into two, two blobs merging into
-one, a blob vanishing, a new blob appearing in what used to be a gap -
-since this is the highest-risk part of the whole change: getting it wrong
-is a real, visible bug (stale pixels), not a missed optimisation.
+**A caller that finds its own runs.** A caller that splits each row into
+runs itself and hands every run to `gfx_mark_dirty()` separately, rather
+than one `(min, max)` span per row, gets two separate regions sent as two
+runs with the gap between them skipped. Each run it hands over is then
+already gap-free, so the leaf layer typically has nothing to add for it -
+the gain comes from `gfx.c`'s existing cell-level run-merging seeing one
+mark per run. A caller doing this must also cover every run it sent last
+frame that nothing covers now, or a region that vanished stays on the
+panel. The leaf layer's own value is the caller-invisible version of the
+same thing, for a caller that does no run-detection.
 
-Once `app_sand.c` reports its own per-row runs, each individual run it
-hands to `gfx_mark_dirty()` is already gap-free by construction, so the
-leaf layer typically ends up a no-op for sand specifically - the measured
-win above comes from `app_sand.c` finally calling `gfx.c`'s *existing*
-cell-level run-merging correctly (once per run, not once per whole row),
-not from the new leaf layer. The leaf layer's own value is the general,
-caller-invisible capability: it stands ready for any future caller that
-does not do its own run-detection, which was the actual point.
-
-A run being gap-free within a row is not the same as the run being no
-bigger than what changed: every non-empty run in a dirty row was still
-sent whole, so one changed cell in a settled stack re-sent the stack. The
-sim's `dirty_x0`/`dirty_x1` (`sand.h`, see `docs/sand/Architecture.md`'s
-own "Dirty-row and dirty-column tracking") close that - a per-row column
-span, on top of the row bit, that `app_sand.c` clips both the pixel writes
-and the sent rects to. Landscape is where it matters: a grid row runs
-along gravity there, so it is where a run spanning far more than the
-changed cell was most likely to happen.
+A run being gap-free is not the same as a run no bigger than what changed:
+every non-empty run in a dirty row still goes out whole, so one changed
+pixel in an otherwise static run re-sends the run. A caller that also keeps
+a per-row changed-column span, and clips both its pixel writes and the
+rects it marks to that span, closes that. It matters most where rows hold
+long runs that rarely change.
 
 ### Still untapped
 
@@ -521,12 +499,12 @@ kept here so the reasoning survives to whoever picks one up.
 - **Vertical leaf refinement.** The leaf layer described above (see "A
   second, finer level underneath the grid") only narrows the x-range of a
   run; the y-range stays the run's existing tight `cell_y0`/`cell_y1`
-  union, which is already exact for the sand app's real 2px-tall rows -
+  union, which is already exact for a caller marking 2 px-tall rows -
   the case it was built for. `leaf_dirty` is a genuinely 2D array, so a
   future pass could OR fewer leaf-rows together (or none) to split
   vertically too, without any data-structure change - only a new send-side
   function. Not started: no concrete motivating case has needed it yet.
-- ~~`LEAF_REFINE_MAX_RUNS` and `ROW_MAX_RUNS` (row_runs.h) are both 2,
+- ~~`LEAF_REFINE_MAX_RUNS` and a caller's own per-row run cap are both 2,
   unmeasured.~~ **Measured** - see "The cap sweeps" below. Both stay at 2.
 - ~~Fixing 80 MHz at the driver level.~~ **Tried; no firmware knob makes
   it clean.** Window commands at 40 MHz with pixels at 80, CS setup, pad
@@ -541,27 +519,29 @@ kept here so the reasoning survives to whoever picks one up.
   texture memory does the same thing), and with power-of-two tile
   dimensions the address math is shifts, same trick as `STRIP_HEIGHT`.
   Parked because `gfx.c` owns the framebuffer for the *whole device*, not
-  just the sand app - every `gfx_fill_rect()`, every glyph, the cube
-  renderer, and `ui.c`'s canvas painting all currently address a pixel
+  one app - every `gfx_fill_rect()`, every glyph, the 3D rasterizer in
+  `render/`, and `ui.c`'s canvas painting all currently address a pixel
   with one multiply-add assuming scanline order. Tiled storage replaces
   that with a permanent tile-index-plus-offset computation on every draw
-  call, system-wide, to buy a transfer-side win only the sand app's dirty
-  pattern would exploit. The ~118 us/transaction figure above cuts the
-  other way for this one too, if it is ever revisited: it only pays off
+  call, system-wide, to buy a transfer-side win only a pattern of many
+  small scattered changes would exploit. The ~118 us/transaction figure
+  above cuts the other way for this one too, if it is ever revisited: it
+  only pays off
   with tiles large enough to keep the transaction count low, same
   constraint that just sank the per-row idea - many small tiles would
   reintroduce exactly the problem tiling was meant to solve.
 ### The dirty-region caps: swept, and mostly inert
 
-`ROW_MAX_RUNS`/`LEAF_REFINE_MAX_RUNS` (2 and 2) and `GATHER_MAX_PIXELS`
-(8192) were swept against both synthetic device tests and the three real
-sand scenes the present-cost tests measure, all of them portrait. All three
+A caller's per-row run cap, `LEAF_REFINE_MAX_RUNS` (2 and 2) and
+`GATHER_MAX_PIXELS` (8192) were swept against both synthetic device tests
+and three real full-screen workloads whose present cost an app's own perf
+suite measures, all of them portrait. All three
 stay at their shipped values: the run caps are structurally inert against
 those scenes (a checkerboard row needs the full-row fallback regardless of
 the cap, a slab row needs one run either way, and no measured scene falls
 between those two shapes), and raising the pixel cap buys a further 5-9% only by
 growing the DMA gather buffer to match, against the internal free heap
-left once the sand grid and everything else internal are accounted for
+left once every other internal allocation is accounted for
 (the framebuffer lives in PSRAM and never competes for it - see
 [Board-and-Memory.md](Board-and-Memory.md)). The dirty-region tracker
 itself is at its ceiling against an uncapped oracle - within 3% of the
@@ -569,10 +549,10 @@ exact changed-cell ideal on every portrait scene measured (landscape is
 unmeasured) - so the one real win left was a missing third send path: a box spanning the
 full panel width is already contiguous in the framebuffer and can go out
 directly, rather than through the fixed gather buffer or a full 64-row
-band. That path (`send_partial_band()` in `gfx.c`) cut falling-sand and
-lava-stress present cost by about 10% for zero extra memory; the
-thermal-shock scene, which really does dirty every strip full width and
-full height every frame, was unaffected.
+band. That path (`send_partial_band()` in `gfx.c`) cut present cost by
+about 10% on two of those workloads for zero extra memory; the third, which
+really does dirty every strip full width and full height every frame, was
+unaffected.
 
 ### A full band has two prices
 
@@ -582,7 +562,7 @@ bands come to **18,147 us**, not 7 x 3,405 = 23,835: `send_full_row()`
 queues its transfer without waiting and `gfx_present()` drains them all
 at the end, so in a real frame the bands pipeline and an isolated one
 has nothing to overlap with. `suite_gfx.c`'s ratio tests measure the
-un-pipelined price; `suite_sand_perf.c`'s three present-cost tests measure
+un-pipelined price; a present timed inside an app's real frames measures
 the pipelined one. Both are right, and multiplying one by the band
 count does not produce the other.
 
@@ -593,7 +573,8 @@ count does not produce the other.
 Verified, not assumed. `SOC_PPA_SUPPORTED` is defined **only for the ESP32-P4**
 in ESP-IDF's SoC caps — this chip has no Pixel Processing Accelerator, no 2D
 blitter, no GPU. Rendering here runs as scalar C; the render task runs on
-core 1 and sand's step splits across both.
+core 1, and a per-frame step that needs more splits across both
+(`util/job.h`).
 
 If graphics throughput ever becomes the requirement, that is a board decision:
 the ESP32-P4 has the PPA, PSRAM, *and* a real SDMMC host.

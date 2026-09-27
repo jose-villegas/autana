@@ -7,7 +7,7 @@ moving simulation and tilt input need the board.
 
 ![Falling Sand title screen](../images/overview/sand-menu.png)
 
-Image render commands are in the [render harness](../tools/Render-Harness.md#images-in-these-docs).
+Image render commands are in the app's [tools README](../../launcher/main/apps/sand/tools/README.md#images-in-the-docs).
 
 Start with [The Falling-Sand Simulation](Sand-Simulation.md) for the behavior
 and its constraints, or [Architecture](Architecture.md) for a file and data

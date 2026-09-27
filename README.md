@@ -14,7 +14,7 @@ The volcano, lake and growing trees use the real simulation and material shading
 |:---:|:---:|
 | ![The app launcher with three fixture entries](docs/images/overview/launcher-home.png) | ![A shaded cube rotating on a black screen](docs/images/overview/render-lab-cube.gif) |
 
-Image render commands are in the [render harness](docs/tools/Render-Harness.md#images-in-these-docs).
+Image render commands are in each app's tools README ([sand](launcher/main/apps/sand/tools/README.md), [render lab](launcher/main/apps/render_lab/tools/README.md)) and the [render harness](docs/tools/Render-Harness.md#images-in-these-docs).
 
 The launcher image uses placeholder app names supplied by the host fixture. On the board, the shell lists the apps built into the firmware.
 
@@ -43,7 +43,7 @@ The test runner prints a verdict and saves its full log. It compiles and runs th
 ## What is here
 
 - **Falling Sand:** pour powders and liquids with touch; the board's motion sensor steers gravity. Gas, fire, heat, and material reactions make the sandbox interactive. Start with the [sand overview](docs/sand/README.md), then the [simulation details](docs/sand/Sand-Simulation.md).
-- **Render Lab:** a shaded cube, wireframe shapes, a ray-traced Cornell box and a flythrough of Crytek Sponza with baked light, rendered in software. The [host renderer](docs/tools/Render-Harness.md) can produce still frames of these scenes without the board.
+- **Render Lab:** a shaded cube, wireframe shapes, a ray-traced Cornell box and a flythrough of Crytek Sponza with baked light, rendered in software. The [host renderer](launcher/main/apps/render_lab/tools/README.md) can produce still frames of these scenes without the board.
 - **Input Lab:** tap small targets and see how far the touch panel's reading lands from where you aimed; the numbers behind the touch correction, explained in the [input notes](docs/notes/Input-and-Sensors.md).
 - **Diagnostics:** a hardware self-test report and developer controls in development builds. The power-on check runs in every build. [Build variants](docs/Build-Variants.md) explains which tools ship in each image.
 
@@ -71,7 +71,7 @@ The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a
 | Work with fonts and controls | [Text and Fonts](docs/Text-and-Fonts.md), [UI Toolkit](docs/UI-Toolkit.md) |
 | Build, flash, render, or inspect the board | [Tools index](docs/tools/README.md), [board notes](docs/notes/README.md) |
 | Check build flags and C style | [Build Variants](docs/Build-Variants.md), [C Style Guide](docs/C-Style-Guide.md) |
-| Explore proposed work | [Rendering Roadmap](docs/Autana-Rendering-Roadmap.md), [plans](docs/plans/README.md) |
+| Explore proposed work | [Rendering Roadmap](docs/plans/Autana-Rendering-Roadmap.md), [plans](docs/plans/README.md) |
 
 The [`launcher/tools/` index](launcher/tools/README.md) maps build wrappers, generators, render scenes, and quality checks. `scripts/install-git-hooks.sh` installs optional local checks; [Mermaid diagrams](docs/tools/Mermaid-Diagrams.md) need `npm install -g @mermaid-js/mermaid-cli` if you edit them. The complexity gate also needs `git submodule update --init`; see its [guide](docs/tools/Complexity-Gate.md).
 
