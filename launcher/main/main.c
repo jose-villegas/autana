@@ -597,6 +597,7 @@ shell_test_requested_exit(void) {
         exit_app(&current);
     }
     exit_requested = false;
+    app_arena_rewind(0);
     return ordinary && left && launcher_next;
 }
 
@@ -629,6 +630,7 @@ shell_test_stale_exit_is_cleared(void) {
         exit_app(&current);
     }
     exit_requested = false;
+    app_arena_rewind(0);
     return first_frame;
 }
 #endif

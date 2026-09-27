@@ -9,8 +9,10 @@ bool shell_test_requested_exit(void);
 bool shell_test_stale_exit_is_cleared(void);
 bool shell_test_every_visit_starts_with_an_empty_arena(void);
 
+/* Every test starts an app, and starting one empties the arena. */
 static void
 fixture(void) {
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0, app_arena_mark(), "the app running the suites holds arena memory");
     shell_test_fixture();
 }
 
@@ -29,7 +31,6 @@ test_a_request_before_start_does_not_end_the_first_frame(void) {
 static void
 test_every_visit_starts_with_an_empty_arena(void) {
     fixture();
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0, app_arena_mark(), "the app running the suites holds arena memory");
     TEST_ASSERT_TRUE(shell_test_every_visit_starts_with_an_empty_arena());
 }
 #endif
