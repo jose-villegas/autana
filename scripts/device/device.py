@@ -741,7 +741,7 @@ FLASH_POLL_SECONDS = 0.5
 
 
 def stop_process_tree(process):
-    """build_flash.sh runs idf.py and esptool under it; the flash has to stop,
+    """A flash command runs idf.py and esptool under it; the flash has to stop,
     not just the shell that started it."""
     if os.name == "nt":
         subprocess.run(["taskkill", "/F", "/T", "/PID", str(process.pid)],
@@ -778,25 +778,40 @@ def run_while_held(command, held, timeout=None, **options):
         raise subprocess.CalledProcessError(code, command)
 
 
-def run_flash_script(held, command, **popen):
-    """Runs a build_flash.sh `command` under `held`, the board's lock."""
+BUILD_SCRIPT = Path("launcher") / "tools" / "build" / "build_flash.sh"
+FLASH_SCRIPT = Path("scripts") / "device" / "flash_image.sh"
+VARIANT_FLAGS = {"release": [], "dev": ["--dev"], "diag": ["--diag"]}
+
+
+def flash_commands(bash, worktree, variant, build_flags=()):
+    """A flash is two commands: build_flash.sh builds `worktree`'s image,
+    then flash_image.sh, the only one that opens the port, writes it."""
+    worktree = Path(worktree)
+    flags = VARIANT_FLAGS[variant]
+    return [[bash, (worktree / BUILD_SCRIPT).as_posix()] + flags + list(build_flags),
+            [bash, (worktree / FLASH_SCRIPT).as_posix()] + flags]
+
+
+def run_flash_script(held, commands, **popen):
+    """Runs each of `commands` in turn under `held`, the board's lock."""
     environment = dict(popen.pop("env", None) or os.environ)
     environment.setdefault("MSYSTEM", "MINGW64")
-    # Proof to build_flash.sh that this flash holds this board's lock: it runs
-    # check-token with both before it flashes. The token sits in plain text in
-    # the lock file, so this catches an accident, not a forger.
+    # Proof to flash_image.sh that this flash holds this board's lock: it
+    # runs check-token with both before it opens the port.
     environment["AUTANA_DEVICE_LOCK_TOKEN"] = held.held["token"]
     environment["AUTANA_BOARD"] = held.board
-    run_while_held(command, held, env=environment, **popen)
+    for command in commands:
+        run_while_held(command, held, env=environment, **popen)
 
 
-def flash_script(store, board, owner, purpose, command, wait, **popen):
-    """Runs a build_flash.sh `command` for a caller outside device.py: finds
-    the board (`board`, else AUTANA_BOARD, else the only one), queues for its
-    lock and holds it until the script ends. Returns the board's serial."""
+def flash_script(store, board, owner, purpose, commands, wait, **popen):
+    """Runs `commands` (see flash_commands()) for a caller outside device.py:
+    finds the board (`board`, else AUTANA_BOARD, else the only one), queues
+    for its lock and holds it until the last one ends. Returns the board's
+    serial."""
     board = board_for_lock(store, board)
     with HeldLock(store, board, owner, purpose, wait, kind="flash") as held:
-        run_flash_script(held, command, **popen)
+        run_flash_script(held, commands, **popen)
     return board
 
 
@@ -819,25 +834,24 @@ def flash(args, store, board, held_lock=None, extra_flags=()):
         with open_when_free():
             pass
         worktree = Path(args.worktree).resolve()
-        script = worktree / "launcher" / "tools" / "build" / "build_flash.sh"
-        if not script.is_file():
-            raise RuntimeError("build tool not found: " + str(script))
+        for script in (BUILD_SCRIPT, FLASH_SCRIPT):
+            if not (worktree / script).is_file():
+                raise RuntimeError("build tool not found: " + str(worktree / script))
         started_at = now()
         log, managed = resolve_capture_path(args.out, "flash-" + args.variant, args.owner,
                                             started_at)
-        flag = {"dev": "--dev", "diag": "--diag", "release": ""}[args.variant]
-        command = [git_bash(), str(script)] + ([flag] if flag else []) + list(extra_flags)
+        commands = flash_commands(git_bash(), worktree, args.variant, extra_flags)
         print("flash log: " + str(log))
         build_id = None
         error = None
         try:
             try:
                 with open(log, "wb") as stream:
-                    run_flash_script(held, command, cwd=worktree, stdin=subprocess.DEVNULL,
+                    run_flash_script(held, commands, cwd=worktree, stdin=subprocess.DEVNULL,
                                      stdout=stream, stderr=subprocess.STDOUT)
             except subprocess.CalledProcessError as failed:
                 text = Path(log).read_text(encoding="utf-8", errors="replace")
-                raise RuntimeError(f"build_flash.sh failed (exit {failed.returncode}): "
+                raise RuntimeError(f"{Path(failed.cmd[1]).name} failed (exit {failed.returncode}): "
                                    f"{flash_failure_line(text)} - flash log: {log}") from failed
             require_live_lock()
             expected = latest_build_id_from_bytes(Path(log).read_bytes())

@@ -1,7 +1,8 @@
 # Device lock
 
-Nothing opens a board's USB serial port except `scripts/device/device.py`:
-no monitor, capture helper, `esptool`, or direct pyserial command. Every
+Nothing outside `scripts/device/` opens a board's USB serial port: no
+monitor, capture helper, `esptool`, or direct pyserial command
+(`scripts/gates/check_device_access.py` holds the tree to that). Every
 command takes the board's lock first, so sessions sharing a board queue for
 it instead of fighting over the port.
 
@@ -16,7 +17,8 @@ Run the tool with ESP-IDF's Python (the `python.exe` under
 on Windows), so its pyserial installation is available; a different
 interpreter re-runs it under that one. The examples write it as `python`.
 It works the same from PowerShell, cmd or Git Bash: `flash`, `batch`, and
-`selftest` run `build_flash.sh` with Git for Windows' own `bash.exe`, never
+`selftest` run `build_flash.sh` and `flash_image.sh` with Git for Windows'
+own `bash.exe`, never
 whatever `bash` is first on `PATH` - from a native shell that is WSL's
 launcher, which cannot run ESP-IDF.
 
@@ -68,8 +70,10 @@ own copy, for working on the tools themselves; the test suites set it.
 A flash succeeds when esptool's `write_flash` hash-verified every region it
 wrote and the flash log carries the build's `BUILD_ID=` line; `flash` then
 prints `flashed BUILD_ID=<id> (esptool hash verified; boot not verified)`.
-It proves the write, not the boot, for every variant. When `build_flash.sh`
-fails, `flash` fails with the log's first error line (esptool's
+It proves the write, not the boot, for every variant. A flash is two
+scripts in one log: `launcher/tools/build/build_flash.sh` builds the image
+and opens no port, then `scripts/device/flash_image.sh` writes it. When
+either fails, `flash` fails naming it, with the log's first error line (esptool's
 `Could not open COM3 ...`, say) and the log's path. What boots is proven
 only by a console that names it: a `selftest` or `batch` capture, which fails
 on any other `BUILD_ID`, or `autana buildid` on a development build.
@@ -84,19 +88,21 @@ flash use `batch` or `selftest` when the capture must be of that image.
 sequenceDiagram
     participant Dev as device.py
     participant Lock as lock file
-    participant Sh as build_flash.sh
+    participant Build as build_flash.sh
+    participant Sh as flash_image.sh
     participant Idf as idf.py and esptool
     participant Board as board
 
     Dev->>Lock: take the board's lock
+    Dev->>Build: run
+    Build-->>Dev: exit status, log with BUILD_ID
     Dev->>Sh: run with AUTANA_DEVICE_LOCK_TOKEN and AUTANA_BOARD
-    Sh->>Sh: build, print BUILD_ID
     Sh->>Lock: check-token for AUTANA_BOARD
     Sh->>Sh: device.py resolve-port - AUTANA_BOARD's COM port now
     Sh->>Idf: idf flash on that port
     Idf->>Board: write_flash, hash-verify each region
     Idf->>Board: RTS reset
-    Sh-->>Dev: exit status, log with BUILD_ID
+    Sh-->>Dev: exit status
     Dev->>Lock: live-lock check, record expected BUILD_ID
     opt batch and selftest, still under the same lock
         Dev->>Board: reopen the port, capture until the suites end
@@ -122,7 +128,7 @@ on the command has lost the board: a capture or `send` stops at its next
 read, the next port open or esptool call refuses, a flash in progress is
 stopped (its whole process tree), and the command fails with
 `device lock was lost`. A command that finds its lock replaced when it ends
-fails the same way, even if nothing else noticed. `build_flash.sh` checks
+fails the same way, even if nothing else noticed. `flash_image.sh` checks
 the live token for the named board just before `idf flash`; it cannot prove
 ownership during the esptool write itself, which is what the heartbeat is
 for.
