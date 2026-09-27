@@ -464,10 +464,20 @@ replace it, chosen by app kind:
    overlap it, scissored to that band's rows by a small hook added to
    small3dlib (`S3L_SCISSOR_Y`, `components/small3dlib/include/small3dlib.h`)
    rather than the scissored span rasterizer this section otherwise assumes.
-   That rasterizer (section 8 decision 4) is still a separate, unbuilt
-   piece; a full-screen z-buffer in PSRAM is not recommended for
+   That rasterizer (section 8 decision 4) is a separate piece, begun in
+   `render/r3d_span.h`; a full-screen z-buffer in PSRAM is not recommended for
    per-pixel access, and a per-band one arrives with the rasterizer, not
    with the ring alone.
+
+**A measured exception: the lit-mesh frame.** `render/r3d_lit_frame.h`
+renders at half resolution into colour and depth targets in PSRAM and
+doubles the result into the framebuffer, both cores writing PSRAM in bulk
+every frame. It stays there until the span rasterizer draws into the band
+ring: on the board, render_lab's Sponza scenes cost 63.9 ms per frame
+(full bake) and 46.5 ms (lite bake) on both cores before present, measured
+by the diagnostics perf suite. The doubling belongs to gfx (section 8,
+decision 1) and moves there when gfx resolves an app's resolution; until
+then `r3d_lit_frame_double()` does it inside render/.
 
 PSRAM's role narrows to bulk and cold data read at load or per frame —
 textures, levels, the retained framebuffer as a read source — never the
@@ -1090,7 +1100,10 @@ cheapest path to something that is unmistakably a game.
    overdraw between neighbours), near-plane clipping, and the
    perspective-correction cadence, all pixel-exact against a slow
    reference on the host. small3dlib stays vendored only until the boot
-   animation stops including it, then the component is deleted.
+   animation stops including it, then the component is deleted. The first
+   piece is in the tree: `render/r3d_span.h` fills depth-tested Gouraud
+   spans into a window of rows, and `render/r3d_lit_pipeline.h` culls,
+   transforms and clips a mesh whose light is baked into vertex colours.
 5. **Decided: the platformer is exploratory, with both world
    models kept.** Track B (the sand automaton as the world, fixed-camera
    rooms, levels as blocks of a material, materials and reactions as
