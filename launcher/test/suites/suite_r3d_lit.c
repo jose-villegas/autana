@@ -456,9 +456,9 @@ look_down_minus_z(float eye_y, float eye_z, float near_z) {
  * draw skips clusters by their rows. */
 static void
 draw_parts(const parts_t* p, const r3d_lit_view_t* view, const r3d_span_target_t* t, bool use_rows) {
-    uint16_t visible[PARTS_MAX];
-    r3d_lit_vertex_t cs[PARTS_MAX * 4];
-    r3d_lit_rows_t rows[PARTS_MAX];
+    static uint16_t visible[PARTS_MAX];
+    static r3d_lit_vertex_t cs[PARTS_MAX * 4];
+    static r3d_lit_rows_t rows[PARTS_MAX];
     const int count = r3d_lit_cull_clusters(&p->mesh, view, visible);
     r3d_lit_transform(&p->mesh, view, visible, count, cs, use_rows ? rows : NULL);
     r3d_lit_draw(&p->mesh, view, visible, count, cs, use_rows ? rows : NULL, t);
