@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "lit_pipeline.h"
+#include "render/r3d_lit_pipeline.h"
 #include "sponza_flythrough.h"
 #include "sponza_mesh_generated.h"
 
@@ -28,7 +28,7 @@ static gfx_color_t color[W * H];
 static uint16_t depth[W * H];
 static uint16_t scratch[W * H];
 static gfx_color_t scratch_color[W * H];
-static lit_cs_vertex_t cs[SPONZA_VERTEX_COUNT];
+static r3d_lit_vertex_t cs[SPONZA_VERTEX_COUNT];
 static uint16_t visible[SPONZA_CLUSTER_COUNT];
 
 static const char* const area_names[AREA_BUCKETS] = {"<1", "1-4", "4-16", "16-64", "64-256", ">256"};
@@ -48,12 +48,13 @@ typedef struct {
 } triangle_stats_t;
 
 static void
-count_triangles(const lit_mesh_t* mesh, const lit_view_t* view, const uint16_t* clusters, int n, triangle_stats_t* st) {
+count_triangles(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* clusters, int n,
+                triangle_stats_t* st) {
     for (int i = 0; i < n; i++) {
-        const lit_cluster_t* c = &mesh->clusters[clusters[i]];
+        const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
         for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
             const uint16_t* tri = mesh->triangles[t];
-            const lit_cs_vertex_t *a = &cs[tri[0]], *b = &cs[tri[1]], *d = &cs[tri[2]];
+            const r3d_lit_vertex_t *a = &cs[tri[0]], *b = &cs[tri[1]], *d = &cs[tri[2]];
             st->in_view++;
             if (a->z <= view->near_z || b->z <= view->near_z || d->z <= view->near_z) {
                 st->clipped++;
@@ -72,32 +73,32 @@ count_triangles(const lit_mesh_t* mesh, const lit_view_t* view, const uint16_t* 
 int
 main(int argc, char** argv) {
     const int step_ms = argc > 1 ? atoi(argv[1]) : 5000;
-    const lit_mesh_t* mesh = &sponza_mesh;
-    const uint32_t period = camera_path_period_ms(&sponza_flythrough);
-    const span_target_t full = {color, depth, W, 0, H};
-    const span_target_t alone = {scratch_color, scratch, W, 0, H};
+    const r3d_lit_mesh_t* mesh = &sponza_mesh;
+    const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
+    const r3d_span_target_t full = {color, depth, W, 0, H};
+    const r3d_span_target_t alone = {scratch_color, scratch, W, 0, H};
 
     printf("%6s %8s %8s %8s %8s %9s %9s %9s\n", "t(s)", "clusters", "seen", "tris", "seen", "fill px", "seen px",
            "overdraw");
     long sum_kept = 0, sum_seen = 0, sum_tris = 0, sum_seen_tris = 0, sum_fill = 0, sum_seen_fill = 0;
     triangle_stats_t all = {0};
     for (uint32_t t = 0; t < period; t += (uint32_t)step_ms) {
-        lit_vec3_t eye, forward;
-        camera_path_sample(&sponza_flythrough, t, &eye, &forward);
-        lit_view_t view;
-        lit_view_look(&view, eye, forward, HALF_FOV, NEAR_Z, mesh->position_scale, W, H, 0);
+        r3d_lit_vec3_t eye, forward;
+        r3d_path_sample(&sponza_flythrough, t, &eye, &forward);
+        r3d_lit_view_t view;
+        r3d_lit_view_look(&view, eye, forward, HALF_FOV, NEAR_Z, mesh->position_scale, W, H, 0);
 
-        const int kept = lit_cull_clusters(mesh, &view, visible);
-        lit_transform(mesh, &view, visible, kept, cs, NULL);
+        const int kept = r3d_lit_cull_clusters(mesh, &view, visible);
+        r3d_lit_transform(mesh, &view, visible, kept, cs, NULL);
         memset(depth, 0, sizeof depth);
-        lit_draw(mesh, &view, visible, kept, cs, NULL, &full);
+        r3d_lit_draw(mesh, &view, visible, kept, cs, NULL, &full);
         count_triangles(mesh, &view, visible, kept, &all);
 
         int seen = 0, tris = 0, seen_tris = 0;
         long fill = 0, seen_fill = 0;
         for (int i = 0; i < kept; i++) {
             memset(scratch, 0, sizeof scratch);
-            lit_draw(mesh, &view, &visible[i], 1, cs, NULL, &alone);
+            r3d_lit_draw(mesh, &view, &visible[i], 1, cs, NULL, &alone);
             long px = 0;
             bool owns = false;
             for (int p = 0; p < W * H; p++) {

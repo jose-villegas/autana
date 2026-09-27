@@ -1,4 +1,4 @@
-#include "lit_frame.h"
+#include "render/r3d_lit_frame.h"
 
 #include <string.h>
 
@@ -7,8 +7,8 @@
 #define JOB_WAIT_MS 1000
 
 typedef struct {
-    const lit_frame_t* frame;
-    const lit_view_t* view;
+    const r3d_lit_frame_t* frame;
+    const r3d_lit_view_t* view;
     int visible_count;
     int first, count; /* clusters of visible[], or rows */
 } slice_t;
@@ -18,22 +18,22 @@ _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
 static void
 transform_slice(void* ctx) {
     const slice_t* s = ctx;
-    lit_transform(s->frame->mesh, s->view, s->frame->visible + s->first, s->count, s->frame->cs, s->frame->rows);
+    r3d_lit_transform(s->frame->mesh, s->view, s->frame->visible + s->first, s->count, s->frame->cs, s->frame->rows);
 }
 
 /* Two panel rows per source row, each pixel written twice as one 32-bit
  * store. A pixel nothing covered (depth still 0) takes the clear colour
  * here, so the colour buffer itself is never cleared. */
 static void
-double_rows(const lit_frame_t* f, int first, int count) {
+double_rows(const r3d_lit_frame_t* f, int first, int count) {
     const int out_width = 2 * f->width;
     for (int y = first; y < first + count; y++) {
-        const gfx_color_t* src = f->color + (size_t)y * (size_t)f->width;
+        const uint16_t* src = f->color + (size_t)y * (size_t)f->width;
         const uint16_t* depth = f->depth + (size_t)y * (size_t)f->width;
         uint32_t* top = (uint32_t*)(f->doubled + (size_t)(2 * y) * (size_t)out_width);
         uint32_t* bottom = top + f->width;
         for (int x = 0; x < f->width; x++) {
-            const gfx_color_t c = depth[x] != 0 ? src[x] : f->clear;
+            const uint16_t c = depth[x] != 0 ? src[x] : f->clear;
             const uint32_t pair = ((uint32_t)c << 16) | c;
             top[x] = pair;
             bottom[x] = pair;
@@ -44,10 +44,10 @@ double_rows(const lit_frame_t* f, int first, int count) {
 static void
 draw_slice(void* ctx) {
     const slice_t* s = ctx;
-    const lit_frame_t* f = s->frame;
+    const r3d_lit_frame_t* f = s->frame;
     const size_t offset = (size_t)s->first * (size_t)f->width;
     const size_t pixels = (size_t)s->count * (size_t)f->width;
-    gfx_color_t* color = f->color + offset;
+    uint16_t* color = f->color + offset;
     uint16_t* depth = f->depth + offset;
 
     if (f->doubled == NULL) {
@@ -57,8 +57,8 @@ draw_slice(void* ctx) {
     }
     memset(depth, 0, pixels * sizeof(*depth));
 
-    const span_target_t target = {color, depth, f->width, s->first, s->first + s->count};
-    lit_draw(f->mesh, s->view, f->visible, s->visible_count, f->cs, f->rows, &target);
+    const r3d_span_target_t target = {color, depth, f->width, s->first, s->first + s->count};
+    r3d_lit_draw(f->mesh, s->view, f->visible, s->visible_count, f->cs, f->rows, &target);
 }
 
 static void
@@ -75,30 +75,30 @@ run_split(job_fn_t fn, slice_t first_half, slice_t second_half) {
 }
 
 size_t
-lit_frame_scratch_bytes(const lit_mesh_t* mesh) {
-    return sizeof(lit_cs_vertex_t) * (size_t)mesh->vertex_count
-           + (sizeof(lit_cluster_rows_t) + sizeof(uint16_t)) * (size_t)mesh->cluster_count;
+r3d_lit_frame_scratch_bytes(const r3d_lit_mesh_t* mesh) {
+    return sizeof(r3d_lit_vertex_t) * (size_t)mesh->vertex_count
+           + (sizeof(r3d_lit_rows_t) + sizeof(uint16_t)) * (size_t)mesh->cluster_count;
 }
 
 /* Widest alignment first, so each part lands aligned after the one before. */
 void
-lit_frame_use_scratch(lit_frame_t* frame, void* scratch) {
+r3d_lit_frame_use_scratch(r3d_lit_frame_t* frame, void* scratch) {
     char* p = scratch;
-    frame->cs = (lit_cs_vertex_t*)p;
-    p += sizeof(lit_cs_vertex_t) * (size_t)frame->mesh->vertex_count;
-    frame->rows = (lit_cluster_rows_t*)p;
-    p += sizeof(lit_cluster_rows_t) * (size_t)frame->mesh->cluster_count;
+    frame->cs = (r3d_lit_vertex_t*)p;
+    p += sizeof(r3d_lit_vertex_t) * (size_t)frame->mesh->vertex_count;
+    frame->rows = (r3d_lit_rows_t*)p;
+    p += sizeof(r3d_lit_rows_t) * (size_t)frame->mesh->cluster_count;
     frame->visible = (uint16_t*)p;
 }
 
 /* The row splitting the visible triangles in half, counting each cluster
  * at the middle of its rows - the halves are then drawn by one core each. */
 static int
-balanced_split_row(const lit_frame_t* frame, int visible) {
+balanced_split_row(const r3d_lit_frame_t* frame, int visible) {
     uint16_t weight[LIT_FRAME_MAX_HEIGHT] = {0}; /* a mesh holds under 65536 triangles */
     int total = 0;
     for (int i = 0; i < visible; i++) {
-        const lit_cluster_rows_t* r = &frame->rows[frame->visible[i]];
+        const r3d_lit_rows_t* r = &frame->rows[frame->visible[i]];
         const float middle = r->crosses_near ? 0.5f * (float)frame->height : 0.5f * (r->y0 + r->y1);
         int row = (int)middle;
         row = row < 0 ? 0 : (row >= frame->height ? frame->height - 1 : row);
@@ -116,10 +116,10 @@ balanced_split_row(const lit_frame_t* frame, int visible) {
     return frame->height / 2;
 }
 
-lit_frame_stats_t
-lit_frame_render(const lit_frame_t* frame, const lit_view_t* view) {
-    const int visible = lit_cull_clusters(frame->mesh, view, frame->visible);
-    lit_frame_stats_t stats = {visible, 0};
+r3d_lit_stats_t
+r3d_lit_frame_render(const r3d_lit_frame_t* frame, const r3d_lit_view_t* view) {
+    const int visible = r3d_lit_cull_clusters(frame->mesh, view, frame->visible);
+    r3d_lit_stats_t stats = {visible, 0};
     for (int i = 0; i < visible; i++) {
         stats.triangles += frame->mesh->clusters[frame->visible[i]].triangle_count;
     }
@@ -135,7 +135,7 @@ lit_frame_render(const lit_frame_t* frame, const lit_view_t* view) {
 }
 
 void
-lit_frame_double(const lit_frame_t* frame) {
+r3d_lit_frame_double(const r3d_lit_frame_t* frame) {
     const int mid = frame->height / 2;
     run_split(double_slice, (slice_t){frame, NULL, 0, mid, frame->height - mid}, (slice_t){frame, NULL, 0, 0, mid});
 }

@@ -1,6 +1,6 @@
-# Mesh
+# r3d
 
-Offline mesh baking for the firmware's software renderers. Nothing here runs
+The offline half of `main/render/`'s r3d renderer: mesh baking. Nothing here runs
 on the board: a generator imports these modules, bakes a model, and writes
 checked-in C data.
 
@@ -18,9 +18,9 @@ The environment is pinned in [requirements.txt](requirements.txt). From
 `launcher/`:
 
 ```sh
-python -m venv tools/mesh/.cache/venv
-tools/mesh/.cache/venv/Scripts/python -m pip install -r tools/mesh/requirements.txt   # bin/python on Linux and macOS
-tools/mesh/.cache/venv/Scripts/python main/apps/render_lab/tools/gen_sponza.py --out-dir main/apps/render_lab
+python -m venv tools/r3d/.cache/venv
+tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.txt   # bin/python on Linux and macOS
+tools/r3d/.cache/venv/Scripts/python main/apps/render_lab/tools/gen_sponza.py --out-dir main/apps/render_lab
 ```
 
 A generator that uses these modules is

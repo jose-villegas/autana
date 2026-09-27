@@ -1,7 +1,7 @@
 /*
  * GENERATED FILE - do not edit.
  *
- *     python main/apps/render_lab/tools/gen_sponza.py <sponza-dir> --out-dir main/apps/render_lab \
+ *     python main/apps/render_lab/tools/gen_sponza.py --out-dir main/apps/render_lab \
  *         --name sponza_lite --keep 0.025 --light-tolerance 0.4 --min-edge 80
  *
  * Crytek Sponza (Frank Meinl, Crytek; CC BY 3.0), from the OBJ in
@@ -13,7 +13,7 @@
  */
 #pragma once
 
-#include "lit_mesh.h"
+#include "render/r3d_lit_mesh.h"
 
 #define SPONZA_LITE_VERTEX_COUNT 10855
 #define SPONZA_LITE_TRIANGLE_COUNT 8672
@@ -21,4 +21,4 @@
 #define SPONZA_LITE_NODE_COUNT 274
 #define SPONZA_LITE_POSITION_SCALE 8
 
-extern const lit_mesh_t sponza_lite_mesh;
+extern const r3d_lit_mesh_t sponza_lite_mesh;

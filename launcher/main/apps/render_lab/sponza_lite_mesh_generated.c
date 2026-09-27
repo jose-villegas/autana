@@ -1,7 +1,7 @@
 /*
  * GENERATED FILE - do not edit.
  *
- *     python main/apps/render_lab/tools/gen_sponza.py <sponza-dir> --out-dir main/apps/render_lab \
+ *     python main/apps/render_lab/tools/gen_sponza.py --out-dir main/apps/render_lab \
  *         --name sponza_lite --keep 0.025 --light-tolerance 0.4 --min-edge 80
  *
  * Crytek Sponza (Frank Meinl, Crytek; CC BY 3.0), from the OBJ in
@@ -3549,7 +3549,7 @@ static const uint16_t sponza_lite_triangles[][3] = {
     {10842,10843,10841}, {10842,10846,10844}, {10844,10846,10845}, {10848,10849,10852}, {10848,10852,10847}, {10847,10852,10851}, {10850,10852,10849}, {10853,10854,10852},
 };
 
-static const lit_cluster_t sponza_lite_clusters[] = {
+static const r3d_lit_cluster_t sponza_lite_clusters[] = {
     {0, 52, 0, 36, {-14823, -919, -8999}, {-5960, 6035, -4731}, false},
     {52, 4, 36, 2, {-7652, 2005, -8999}, {-481, 4929, -8999}, false},
     {56, 17, 38, 9, {-6269, -27, -5176}, {-1105, 2467, -5103}, false},
@@ -3842,7 +3842,7 @@ static const lit_cluster_t sponza_lite_clusters[] = {
     {10827, 28, 8652, 20, {4951, 3324, 1423}, {13860, 11285, 8235}, false},
 };
 
-static const lit_node_t sponza_lite_nodes[] = {
+static const r3d_lit_node_t sponza_lite_nodes[] = {
     {{-15058, -919, -9153}, {14390, 11285, 8235}, 1, 4, false},
     {{-15056, -919, -9153}, {860, 11183, 2551}, 5, 8, false},
     {{-1384, -919, -9153}, {13860, 11285, 2551}, 13, 8, false},
@@ -4119,7 +4119,7 @@ static const lit_node_t sponza_lite_nodes[] = {
     {{7501, 10561, -4630}, {10061, 11212, -1529}, 166, 1, true},
 };
 
-const lit_mesh_t sponza_lite_mesh = {
+const r3d_lit_mesh_t sponza_lite_mesh = {
     sponza_lite_positions, sponza_lite_colors, sponza_lite_triangles, sponza_lite_clusters, sponza_lite_nodes,
     SPONZA_LITE_VERTEX_COUNT, SPONZA_LITE_TRIANGLE_COUNT, SPONZA_LITE_CLUSTER_COUNT, SPONZA_LITE_NODE_COUNT,
     SPONZA_LITE_POSITION_SCALE,

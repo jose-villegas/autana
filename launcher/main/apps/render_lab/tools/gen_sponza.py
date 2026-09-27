@@ -4,14 +4,14 @@ coloured, lit triangle mesh small enough for the board.
 
     python main/apps/render_lab/tools/gen_sponza.py --out-dir main/apps/render_lab [--name NAME] [options]
 
-Run from launcher/, in an environment with launcher/tools/mesh/requirements.txt
+Run from launcher/, in an environment with launcher/tools/r3d/requirements.txt
 installed (see that folder's README). The model is Crytek Sponza from McGuire's
 Computer Graphics Archive (casual-effects.com/data), fetched once into
-launcher/tools/mesh/.cache and checked against its SHA-256; --sponza-dir points
+launcher/tools/r3d/.cache and checked against its SHA-256; --sponza-dir points
 at an already unpacked copy instead.
 
 The device does no lighting. Everything a pixel's colour depends on is baked
-here into one sRGB colour per vertex, with the mesh tools in launcher/tools/mesh:
+here into one sRGB colour per vertex, with the mesh tools in launcher/tools/r3d:
 
 1. Triangles no camera inside the building can see are dropped, and each
    material is decimated on its own to a share of its triangles.
@@ -24,7 +24,7 @@ here into one sRGB colour per vertex, with the mesh tools in launcher/tools/mesh
 4. Triangles are grouped into an octree whose leaves are clusters.
 
 What stays here is Sponza's own: which materials are thin sheets, how hard to
-decimate each, where a camera may stand, and the lit_mesh_t output format.
+decimate each, where a camera may stand, and the r3d_lit_mesh_t output format.
 The generator validates its own output before emitting anything.
 """
 
@@ -39,11 +39,11 @@ from trimesh.ray.ray_pyembree import RayMeshIntersector
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / "tools"))
 
-from mesh import log  # noqa: E402
-from mesh.decimate import decimate  # noqa: E402
-from mesh.fetch import fetch_zip  # noqa: E402
-from mesh.geometry import compact, corner_normals, weld, weld_keeping  # noqa: E402
-from mesh.light import (  # noqa: E402
+from r3d import log  # noqa: E402
+from r3d.decimate import decimate  # noqa: E402
+from r3d.fetch import fetch_zip  # noqa: E402
+from r3d.geometry import compact, corner_normals, weld, weld_keeping  # noqa: E402
+from r3d.light import (  # noqa: E402
     drop_masked,
     light,
     merge_matching_colours,
@@ -52,9 +52,9 @@ from mesh.light import (  # noqa: E402
     to_srgb8,
     visible_from_region,
 )
-from mesh.obj import load_mtl, load_obj, load_textures  # noqa: E402
-from mesh.octree import build_octree, flatten_octree, node_bounds  # noqa: E402
-from mesh.tessellate import adaptive_split  # noqa: E402
+from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
+from r3d.octree import build_octree, flatten_octree, node_bounds  # noqa: E402
+from r3d.tessellate import adaptive_split  # noqa: E402
 
 SPONZA_URL = "https://casual-effects.com/g3d/data10/common/model/crytek_sponza/sponza.zip"
 SPONZA_SHA256 = "da005cbee0be2df2abc8513f3ceb61bcb6f69aac112babcd9c00169a27c2770c"
@@ -305,7 +305,7 @@ def emit(args, pos, rgb, tris, clusters, nodes):
         banner(args, out)
         print("#pragma once", file=out)
         print(file=out)
-        print('#include "lit_mesh.h"', file=out)
+        print('#include "render/r3d_lit_mesh.h"', file=out)
         print(file=out)
         print(f"#define {up}_VERTEX_COUNT {len(pos)}", file=out)
         print(f"#define {up}_TRIANGLE_COUNT {len(tris)}", file=out)
@@ -313,7 +313,7 @@ def emit(args, pos, rgb, tris, clusters, nodes):
         print(f"#define {up}_NODE_COUNT {len(nodes)}", file=out)
         print(f"#define {up}_POSITION_SCALE {POSITION_SCALE}", file=out)
         print(file=out)
-        print(f"extern const lit_mesh_t {low}_mesh;", file=out)
+        print(f"extern const r3d_lit_mesh_t {low}_mesh;", file=out)
 
     with open(os.path.join(args.out_dir, f"{low}_mesh_generated.c"), "w", newline="\n") as out:
         banner(args, out)
@@ -325,17 +325,17 @@ def emit(args, pos, rgb, tris, clusters, nodes):
         print(file=out)
         emit_rows(out, f"{low}_triangles", "uint16_t", tris.tolist(), 8)
         print(file=out)
-        print(f"static const lit_cluster_t {low}_clusters[] = {{", file=out)
+        print(f"static const r3d_lit_cluster_t {low}_clusters[] = {{", file=out)
         for vbase, vcount, tbase, tcount, lo, hi, double in clusters:
             print(f"    {{{vbase}, {vcount}, {tbase}, {tcount}, {triple(lo)}, {triple(hi)}, {c_bool(double)}}},", file=out)
         print("};", file=out)
         print(file=out)
-        print(f"static const lit_node_t {low}_nodes[] = {{", file=out)
+        print(f"static const r3d_lit_node_t {low}_nodes[] = {{", file=out)
         for n in nodes:
             print(f"    {{{triple(n['lo'])}, {triple(n['hi'])}, {n['first']}, {n['count']}, {c_bool(n['leaf'])}}},", file=out)
         print("};", file=out)
         print(file=out)
-        print(f"const lit_mesh_t {low}_mesh = {{", file=out)
+        print(f"const r3d_lit_mesh_t {low}_mesh = {{", file=out)
         print(f"    {low}_positions, {low}_colors, {low}_triangles, {low}_clusters, {low}_nodes,", file=out)
         print(f"    {up}_VERTEX_COUNT, {up}_TRIANGLE_COUNT, {up}_CLUSTER_COUNT, {up}_NODE_COUNT,", file=out)
         print(f"    {up}_POSITION_SCALE,", file=out)

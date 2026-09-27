@@ -1,8 +1,8 @@
-#include "span_raster.h"
+#include "render/r3d_span.h"
 
 #include <stdbool.h>
 
-#include "fast_float.h"
+#include "util/fast_float.h"
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
@@ -18,7 +18,7 @@
 
 static const int32_t value_max[ATTRIBUTES] = {16776960, 65280, 65280, 65280};
 
-int span_raster_stop_after;
+int r3d_span_stop_after;
 
 typedef struct {
     int32_t base[ATTRIBUTES]; /* at the centre of pixel (x_origin, the triangle's first row) */
@@ -42,15 +42,15 @@ clamp_value(int32_t v, int32_t max) {
     return v < 0 ? 0 : (v > max ? max : v);
 }
 
-static inline gfx_color_t
+static inline uint16_t
 pack(int32_t r, int32_t g, int32_t b) {
     const uint32_t native = ((uint32_t)r & 0xF800u) | (((uint32_t)g >> 5) & 0x07E0u) | ((uint32_t)b >> 11);
-    return (gfx_color_t)((native >> 8) | (native << 8));
+    return (uint16_t)((native >> 8) | (native << 8));
 }
 
 static bool
-compute_gradients(const span_vertex_t* a, const span_vertex_t* b, const span_vertex_t* c, int x_origin, int y_anchor,
-                  gradients_t* out) {
+compute_gradients(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, int x_origin,
+                  int y_anchor, gradients_t* out) {
     const float e1x = b->x - a->x, e1y = b->y - a->y;
     const float e2x = c->x - a->x, e2y = c->y - a->y;
     const float area2 = e1x * e2y - e2x * e1y;
@@ -79,7 +79,7 @@ compute_gradients(const span_vertex_t* a, const span_vertex_t* b, const span_ver
  * start is clamped; only a span whose end would still leave the range pays
  * for a step recomputed from both clamped ends. */
 static void
-fill_span(const span_target_t* target, const gradients_t* g, const int32_t row[ATTRIBUTES], int y, int x_first,
+fill_span(const r3d_span_target_t* target, const gradients_t* g, const int32_t row[ATTRIBUTES], int y, int x_first,
           int x_last) {
     const int32_t offset = x_first - g->x_origin;
     const int count = x_last - x_first;
@@ -93,13 +93,13 @@ fill_span(const span_target_t* target, const gradients_t* g, const int32_t row[A
             d[k] = (clamp_value(end, value_max[k]) - start) / count;
         }
     }
-    if (span_raster_stop_after == 3) {
+    if (r3d_span_stop_after == 3) {
         return;
     }
 
     const int row_offset = (y - target->row0) * target->width;
     uint16_t* depth = target->depth + row_offset;
-    gfx_color_t* color = target->color + row_offset;
+    uint16_t* color = target->color + row_offset;
     int32_t z = v[0], r = v[1], gg = v[2], b = v[3];
     for (int x = x_first; x <= x_last; x++) {
         const uint16_t zq = (uint16_t)(z >> 8);
@@ -115,10 +115,10 @@ fill_span(const span_target_t* target, const gradients_t* g, const int32_t row[A
 }
 
 static void
-fill_flat_span(const span_target_t* target, int y, int x_first, int x_last, uint16_t zq, gfx_color_t color) {
+fill_flat_span(const r3d_span_target_t* target, int y, int x_first, int x_last, uint16_t zq, uint16_t color) {
     const int row = (y - target->row0) * target->width;
     uint16_t* depth = target->depth + row;
-    gfx_color_t* out = target->color + row;
+    uint16_t* out = target->color + row;
     for (int x = x_first; x <= x_last; x++) {
         if (zq > depth[x]) {
             depth[x] = zq;
@@ -142,7 +142,7 @@ typedef struct {
 } edge_t;
 
 static edge_t
-edge_at(const span_vertex_t* top, const span_vertex_t* bottom, int y) {
+edge_at(const r3d_span_vertex_t* top, const r3d_span_vertex_t* bottom, int y) {
     const float dy = bottom->y - top->y;
     const float slope = dy > 0.0f ? (bottom->x - top->x) / dy : 0.0f;
     const int anchor = fast_ceil(top->y - 0.5f);
@@ -174,16 +174,17 @@ first_pixel32(int32_t x) {
 typedef struct {
     bool flat;
     uint16_t flat_z;
-    gfx_color_t flat_color;
+    uint16_t flat_color;
     const gradients_t* g;
 } fill_t;
 
 static inline void
-fill_row(const span_target_t* target, const fill_t* f, const int32_t row[ATTRIBUTES], int y, int x_first, int x_last) {
+fill_row(const r3d_span_target_t* target, const fill_t* f, const int32_t row[ATTRIBUTES], int y, int x_first,
+         int x_last) {
     const int last_column = target->width - 1;
     x_first = x_first < 0 ? 0 : x_first;
     x_last = x_last > last_column ? last_column : x_last;
-    if (x_first > x_last || span_raster_stop_after == 2) {
+    if (x_first > x_last || r3d_span_stop_after == 2) {
         return;
     }
     if (f->flat) {
@@ -211,7 +212,7 @@ typedef struct {
  * arithmetic, so the same positions, without 64-bit conversions - each of
  * which is a library call on this chip. */
 static edge32_t
-edge32_at(const span_vertex_t* top, const span_vertex_t* bottom, int y) {
+edge32_at(const r3d_span_vertex_t* top, const r3d_span_vertex_t* bottom, int y) {
     const float dy = bottom->y - top->y;
     const float slope = dy > 0.0f ? (bottom->x - top->x) / dy : 0.0f;
     const int anchor = fast_ceil(top->y - 0.5f);
@@ -222,7 +223,7 @@ edge32_at(const span_vertex_t* top, const span_vertex_t* bottom, int y) {
 }
 
 static void
-walk32(const span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge32_t left,
+walk32(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge32_t left,
        edge32_t right) {
     int32_t lx = left.x, rx = right.x;
     for (int y = y0; y < y1; y++) {
@@ -234,7 +235,7 @@ walk32(const span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], in
 }
 
 static void
-walk64(const span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge_t left,
+walk64(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge_t left,
        edge_t right) {
     for (int y = y0; y < y1; y++) {
         fill_row(target, f, row, y, first_pixel(left.x), first_pixel(right.x) - 1);
@@ -247,9 +248,9 @@ walk64(const span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], in
 /* Walks rows [y0, y1) between the edges top-a..bottom-a and top-b..bottom-b,
  * `a_on_left` saying which is which. */
 static void
-walk(const span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, const span_vertex_t* top_a,
-     const span_vertex_t* bottom_a, const span_vertex_t* top_b, const span_vertex_t* bottom_b, bool a_on_left,
-     bool narrow) {
+walk(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1,
+     const r3d_span_vertex_t* top_a, const r3d_span_vertex_t* bottom_a, const r3d_span_vertex_t* top_b,
+     const r3d_span_vertex_t* bottom_b, bool a_on_left, bool narrow) {
     if (y0 >= y1) {
         return;
     }
@@ -263,12 +264,12 @@ walk(const span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int 
 }
 
 void
-span_raster_triangle(const span_target_t* target, const span_vertex_t* a, const span_vertex_t* b,
-                     const span_vertex_t* c) {
-    const span_vertex_t* v0 = a;
-    const span_vertex_t* v1 = b;
-    const span_vertex_t* v2 = c;
-    const span_vertex_t* t;
+r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                  const r3d_span_vertex_t* c) {
+    const r3d_span_vertex_t* v0 = a;
+    const r3d_span_vertex_t* v1 = b;
+    const r3d_span_vertex_t* v2 = c;
+    const r3d_span_vertex_t* t;
     if (v1->y < v0->y) {
         t = v0, v0 = v1, v1 = t;
     }
@@ -303,7 +304,7 @@ span_raster_triangle(const span_target_t* target, const span_vertex_t* a, const 
     x_origin = x_origin < 0 ? 0 : x_origin;
     gradients_t g = {0};
     uint16_t flat_z = 0;
-    gfx_color_t flat_color = 0;
+    uint16_t flat_color = 0;
     if (flat) {
         const float third = 1.0f / 3.0f;
         flat_z = (uint16_t)(clampf((a->z + b->z + c->z) * third, 0.0f, 1.0f) * 65535.0f);
@@ -313,7 +314,7 @@ span_raster_triangle(const span_target_t* target, const span_vertex_t* a, const 
     } else if (!compute_gradients(a, b, c, x_origin, y_anchor, &g)) {
         return;
     }
-    if (span_raster_stop_after == 1) {
+    if (r3d_span_stop_after == 1) {
         return;
     }
 

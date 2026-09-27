@@ -5,10 +5,10 @@
  */
 #pragma once
 
-#include "camera_path.h"
+#include "render/r3d_path.h"
 
 /* The camera keeps at least this far from every triangle, so the near
  * plane never cuts into a wall; suite_sponza.c holds the path to it. */
 #define SPONZA_FLYTHROUGH_CLEARANCE 25.0f
 
-extern const camera_path_t sponza_flythrough;
+extern const r3d_path_t sponza_flythrough;
