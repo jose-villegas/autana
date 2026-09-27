@@ -346,8 +346,124 @@ def tuning(name):
     return MATERIAL_TUNING.get(name, (1.0, 1.0))
 
 
-def build_display_mesh(p, tri_v, tri_m, names, keep, max_edge):
-    parts = []
+def split_marked_edges(p, tris, marked):
+    """Conforming split of every edge in `marked` (a set of sorted vertex
+    pairs): decided per edge, so neighbours always agree. Returns the new
+    positions, triangles and the midpoint index of each split edge."""
+    p = list(map(tuple, p))
+    midpoint = {}
+    for a, b in marked:
+        midpoint[(a, b)] = len(p)
+        p.append(tuple((x + y) / 2 for x, y in zip(p[a], p[b])))
+
+    def mid(a, b):
+        return midpoint.get((a, b) if a < b else (b, a), -1)
+
+    out, parent = [], []
+    for index, (a, b, c) in enumerate(tris):
+        ab, bc, ca = mid(a, b), mid(b, c), mid(c, a)
+        splits = (ab >= 0) + (bc >= 0) + (ca >= 0)
+        if splits == 0:
+            pieces = [(a, b, c)]
+        elif splits == 3:
+            pieces = [(a, ab, ca), (ab, b, bc), (ca, bc, c), (ab, bc, ca)]
+        else:
+            while ab < 0:
+                a, b, c = b, c, a
+                ab, bc, ca = bc, ca, ab
+            if splits == 1:
+                pieces = [(a, ab, c), (ab, b, c)]
+            elif bc >= 0:
+                pieces = [(a, ab, c), (ab, b, bc), (ab, bc, c)]
+            else:
+                pieces = [(a, ab, ca), (ab, b, c), (ab, c, ca)]
+        out += pieces
+        parent += [index] * len(pieces)
+    return np.array(p), np.array(out, dtype=np.int64), midpoint, np.array(parent, dtype=np.int64)
+
+
+def vertex_normals(p, tris):
+    face = np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]])
+    n = np.zeros_like(p)
+    for k in range(3):
+        np.add.at(n, tris[:, k], face)
+    return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+
+
+def adaptive_split(p, tris, attrs, brightness, min_edge, tolerance, rounds=12):
+    """Splits an edge where the light changes along it - where its midpoint's
+    brightness is off the mean of its ends by more than `tolerance` - or where
+    it is longer than the smallest limit of the triangles sharing it. Uniformly
+    lit areas keep their big triangles; shadow edges get the vertices they
+    need. `attrs` holds a row per triangle, its length limit first; each
+    piece of a split triangle inherits its row."""
+    known = {}
+    for _ in range(rounds):
+        all_edges = np.sort(np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]]), axis=1)
+        edges, owner = np.unique(all_edges, axis=0, return_inverse=True)
+        edge_limit = np.full(len(edges), np.inf)
+        np.minimum.at(edge_limit, owner.reshape(-1), np.tile(attrs[:, 0], 3))
+        length = np.linalg.norm(p[edges[:, 0]] - p[edges[:, 1]], axis=1)
+        normals = vertex_normals(p, tris)
+        need = [v for v in np.unique(edges) if v not in known]
+        if need:
+            values = brightness(p[need], normals[need])
+            known.update(zip(need, values))
+        long_enough = length > min_edge
+        cand = edges[long_enough]
+        if len(cand) == 0:
+            break
+        mid_n = normals[cand[:, 0]] + normals[cand[:, 1]]
+        mid_n /= np.maximum(np.linalg.norm(mid_n, axis=1, keepdims=True), 1e-12)
+        mid_b = brightness((p[cand[:, 0]] + p[cand[:, 1]]) / 2, mid_n)
+        ends = np.array([(known[a] + known[b]) / 2 for a, b in cand])
+        marked = (np.abs(mid_b - ends) > tolerance) | (length[long_enough] > edge_limit[long_enough])
+        if not np.any(marked):
+            break
+        chosen = cand[marked]
+        p, tris, midpoint, parent = split_marked_edges(p, tris, set(map(tuple, chosen)))
+        attrs = attrs[parent]
+        for (a, b), value in zip(map(tuple, cand), mid_b):
+            if (a, b) in midpoint:
+                known[midpoint[(a, b)]] = value
+    return p, tris, attrs
+
+
+def sun_directions(args):
+    """One fixed set of directions over the sun's disc, shared by every point,
+    so two points agree exactly unless something really shadows one of them."""
+    sun = np.array(args.sun, dtype=np.float64)
+    sun /= np.linalg.norm(sun)
+    u, v = sun_basis(sun)
+    radius = math.tan(math.radians(args.sun_disc_deg))
+    dirs = [sun]
+    rings = max(1, args.sun_rays - 1)
+    for i in range(rings):
+        a = 2 * math.pi * i / rings
+        d = sun + u * (0.7 * radius * math.cos(a)) + v * (0.7 * radius * math.sin(a))
+        dirs.append(d / np.linalg.norm(d))
+    return sun, dirs
+
+
+def sun_exposure(points, normals, intersector, args):
+    """Sun visibility weighted by how squarely the surface faces the sun:
+    what a shadow edge changes, and what Gouraud shading cannot carry."""
+    sun, dirs = sun_directions(args)
+    facing = normals @ sun
+    side = np.where(facing >= 0, 1.0, -1.0)[:, None]
+    origin = points + normals * side * args.ray_offset
+    lit = np.zeros(len(points))
+    for d in dirs:
+        lit += ~intersector.intersects_any(origin, np.tile(d, (len(points), 1)))
+    return np.abs(facing) * lit / len(dirs)
+
+
+def build_display_mesh(p, tri_v, tri_m, names, keep, max_edge, brightness, args):
+    """Decimates each material on its own, then splits the light across the
+    whole welded mesh at once: an edge two materials share is split for both
+    or for neither, so no T-junction opens a crack between them."""
+    positions, tris, labels, limits = [], [], [], []
+    base = 0
     for m, name in enumerate(names):
         sel = tri_m == m
         if not np.any(sel):
@@ -356,11 +472,34 @@ def build_display_mesh(p, tri_v, tri_m, names, keep, max_edge):
         mp, mt = weld(mp, mt)
         target = max(8, int(len(mt) * keep * tuning(name)[0]))
         mp, mt = decimate(mp, mt, target)
-        before = len(mt)
-        mp, mt = split_long_edges(mp, mt, max_edge * tuning(name)[1])
-        log(f"  {name:14s} {np.count_nonzero(sel):6d} -> {before:5d} decimated -> {len(mt):5d} split")
-        parts.append((m, mp, mt))
+        log(f"  {name:14s} {np.count_nonzero(sel):6d} -> {len(mt):5d} decimated")
+        positions.append(mp)
+        tris.append(mt + base)
+        labels.append(np.full(len(mt), m))
+        limits.append(np.full(len(mt), max_edge * tuning(name)[1]))
+        base += len(mp)
+
+    whole_p = np.concatenate(positions)
+    whole_t = np.concatenate(tris)
+    attrs = np.column_stack([np.concatenate(limits), np.concatenate(labels)])
+    whole_p, whole_t = weld_keeping(whole_p, whole_t)
+    before = len(whole_t)
+    whole_p, whole_t, attrs = adaptive_split(whole_p, whole_t, attrs, brightness, args.min_edge, args.light_tolerance)
+    log(f"  light split: {before} -> {len(whole_t)} triangles")
+    parts = []
+    for m, name in enumerate(names):
+        sel = attrs[:, 1] == m
+        if np.any(sel):
+            mp, mt = compact(whole_p, whole_t[sel])
+            parts.append((m, mp, mt))
     return parts
+
+
+def weld_keeping(p, tris, tolerance=1e-3):
+    """Merges coincident vertices across materials; every triangle stays."""
+    key = np.round(p / tolerance).astype(np.int64)
+    _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
+    return p[first], inverse.reshape(-1)[tris]
 
 
 def corner_normals(p, tris, crease_deg=40.0):
@@ -586,7 +725,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("sponza_dir")
     parser.add_argument("--keep", type=float, default=0.07, help="share of each material's triangles decimation keeps")
-    parser.add_argument("--max-edge", type=float, default=200.0, help="longest edge kept, model units")
+    parser.add_argument("--max-edge", type=float, default=900.0, help="longest edge kept, model units")
+    parser.add_argument("--min-edge", type=float, default=30.0, help="shortest edge the light may split")
+    parser.add_argument("--light-tolerance", type=float, default=0.15,
+                        help="sun exposure (0..1) an edge midpoint may miss by before splitting")
     parser.add_argument("--sun", type=float, nargs=3, default=[-0.25, 1.0, 0.22], help="direction towards the sun")
     parser.add_argument("--sun-disc-deg", type=float, default=1.2)
     parser.add_argument("--sun-rays", type=int, default=8)
@@ -618,7 +760,10 @@ def main():
     shown_v, shown_m = tri_v[seen], tri_m[seen]
 
     log("decimating")
-    parts = build_display_mesh(p, shown_v, shown_m, names, args.keep, args.max_edge)
+    def brightness(points, normals):
+        return sun_exposure(points, normals, intersector, args)
+
+    parts = build_display_mesh(p, shown_v, shown_m, names, args.keep, args.max_edge, brightness, args)
 
     all_pos, all_rgb, all_tris, all_double = [], [], [], []
     base = 0
