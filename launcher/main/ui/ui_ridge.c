@@ -67,29 +67,31 @@ TUNE(ridge, front_period_ms, 2600, 100, 60000);
 TUNE(ridge, tilt_push, 350, 0, 1000);
 TUNE(ridge, tilt_coast_ms, 2000, 50, 10000);
 TUNE(ridge, level_tau_ms, 700, 10, 5000);
+TUNE(ridge, gradient_steps, 6, 1, 90);
 TUNE(ridge, boot_hold_ms, 700, 0, 10000);
 TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 
-#define RIDGE_EXTRA       88
-#define RIDGE_COLUMNS     (RIDGE_CURVE_POINTS + (2 * RIDGE_EXTRA))
-#define RIDGE_LAYER_COUNT 3
-#define RIDGE_MAX_LIP_PX  48
-#define MIN_TILT_STRENGTH 64
+#define RIDGE_EXTRA        88
+#define RIDGE_COLUMNS      (RIDGE_CURVE_POINTS + (2 * RIDGE_EXTRA))
+#define RIDGE_LAYER_COUNT  3
+#define RIDGE_MAX_LIP_PX   48
+#define MIN_TILT_STRENGTH  64
 /* Once the board holds still, a pose within 1.5 degrees of its target jumps
  * the rest of the way instead of creeping a half-degree step at a time. */
-#define POSE_ARRIVE_STEP  430
-#define POSE_STEPS        720
+#define POSE_ARRIVE_STEP   430
+#define POSE_STEPS         720
+#define GRADIENT_SETTLE_MS 200
 /* Enough entries for the panel's diagonal, the longest a gradient along
  * gravity can span. */
-#define RIDGE_SKY_ENTRIES 600
-#define RIDGE_SKY_EDGES   96
-#define RIDGE_PI          3.14159265f
-#define LEVEL_STEADY_STEP 29
-#define LEVEL_STEADY_MS   300
-#define STRUM_STEP_PX     12
-#define SHAKE_THRESHOLD   48
-#define SHAKE_HALF_WIDTH  16
-#define POSE_LANDSCAPE    ((ridge_vector_t){-RIDGE_POSE_ONE, 0})
+#define RIDGE_SKY_ENTRIES  600
+#define RIDGE_SKY_EDGES    96
+#define RIDGE_PI           3.14159265f
+#define LEVEL_STEADY_STEP  29
+#define LEVEL_STEADY_MS    300
+#define STRUM_STEP_PX      12
+#define SHAKE_THRESHOLD    48
+#define SHAKE_HALF_WIDTH   16
+#define POSE_LANDSCAPE     ((ridge_vector_t){-RIDGE_POSE_ONE, 0})
 
 /* Where each shade edge crosses a row for one pose, in 1/65536 columns:
  * `at_row0[edge] + (y * per_row)`. A pose with no sideways part crosses no
@@ -116,7 +118,10 @@ typedef struct {
     int16_t sky_edge[RIDGE_SKY_EDGES];
     int sky_half, sky_edge_count;
     ridge_vector_t gradient_pose;
+    int gradient_step;
+    uint32_t pose_still_ms;
     edge_lines_t was_lines, now_lines;
+    gfx_color_t scratch_row[GFX_WIDTH];
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
     uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
     int shake, last_pluck_x, strips, down_sign;
@@ -168,8 +173,8 @@ build_sky_gradient(void) {
  * doubled coordinates keep the centre of an even-sized panel whole. */
 static inline __attribute__((always_inline)) int32_t
 sky_depth2(int x, int y) {
-    return ((2 * x - (GFX_WIDTH - 1)) * ridge->pose_on_screen.down_x)
-           + ((2 * y - (GFX_HEIGHT - 1)) * ridge->pose_on_screen.down_y);
+    return ((2 * x - (GFX_WIDTH - 1)) * ridge->gradient_pose.down_x)
+           + ((2 * y - (GFX_HEIGHT - 1)) * ridge->gradient_pose.down_y);
 }
 
 static inline __attribute__((always_inline)) gfx_color_t
@@ -491,7 +496,7 @@ paint_row_part(gfx_color_t* row, int y, int x0, int x1) {
     }
     if (backdrop_dither_pick(0, y, (uint8_t)ridge_layer_alpha(2, boundary_distance(2, x0, y)))) {
         int32_t depth2 = sky_depth2(x0, y);
-        const int32_t step = 2 * ridge->pose_on_screen.down_x;
+        const int32_t step = 2 * ridge->gradient_pose.down_x;
         for (int x = x0; x < x1; x++, depth2 += step) {
             row[x] = sky_from_depth2(depth2);
         }
@@ -560,16 +565,37 @@ repaint_column_strip(gfx_color_t* framebuffer, int x, int lo, int hi) {
     gfx_mark_dirty(x, lo, 1, hi - lo);
 }
 
+/* Most of a repainted span comes out as it was, and a pixel sent costs far
+ * more than one compared: copy `from[lo, hi)` over row `y` and mark dirty
+ * only the stretch that differed. */
 static void
-repaint_row_strip(gfx_color_t* framebuffer, int y, int lo, int hi) {
-    if (ridge->scanline_dither) {
-        paint_row_span(framebuffer, y, lo, hi);
-    } else {
-        for (int x = lo; x < hi; x++) {
-            framebuffer[(y * GFX_WIDTH) + x] = backdrop_pixel(x, y);
+commit_row(const gfx_color_t* from, int y, int lo, int hi) {
+    gfx_color_t* const row = gfx_framebuffer() + (y * GFX_WIDTH);
+    int first = hi;
+    int last = lo;
+    for (int x = lo; x < hi; x++) {
+        if (row[x] != from[x]) {
+            row[x] = from[x];
+            first = x < first ? x : first;
+            last = x + 1;
         }
     }
-    gfx_mark_dirty(lo, y, hi - lo, 1);
+    if (first < last) {
+        gfx_mark_dirty(first, y, last - first, 1);
+    }
+}
+
+static void
+repaint_row_strip(int y, int lo, int hi) {
+    gfx_color_t* const scratch = ridge->scratch_row;
+    if (ridge->scanline_dither) {
+        paint_row_into(scratch, y, lo, hi);
+    } else {
+        for (int x = lo; x < hi; x++) {
+            scratch[x] = backdrop_pixel(x, y);
+        }
+    }
+    commit_row(scratch, y, lo, hi);
 }
 
 static void
@@ -582,7 +608,7 @@ repaint_strip(int strip, int lo, int hi) {
     if (ridge->by_column) {
         repaint_column_strip(gfx_framebuffer(), strip, lo, hi);
     } else {
-        repaint_row_strip(gfx_framebuffer(), strip, lo, hi);
+        repaint_row_strip(strip, lo, hi);
     }
 }
 
@@ -645,11 +671,29 @@ group_rows(const int16_t* lo, const int16_t* hi, int x0, int x1, int* y0, int* y
     }
 }
 
+/* The columns of changed pixels seen so far, and their rows. */
+typedef struct {
+    int x0, x1, y0, y1;
+} changed_box_t;
+
 static inline __attribute__((always_inline)) void
-repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0, int x1, int y) {
+note_changed(changed_box_t* box, int x, int y) {
+    box->x0 = x < box->x0 ? x : box->x0;
+    box->x1 = x + 1 > box->x1 ? x + 1 : box->x1;
+    box->y0 = y < box->y0 ? y : box->y0;
+    box->y1 = y + 1;
+}
+
+static inline __attribute__((always_inline)) void
+repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0, int x1, int y,
+                  changed_box_t* changed) {
     for (int x = x0; x < x1; x++) {
         if (y >= lo[x] && y < hi[x]) {
-            row[x] = column_pixel(x, y);
+            const gfx_color_t color = column_pixel(x, y);
+            if (row[x] != color) {
+                row[x] = color;
+                note_changed(changed, x, y);
+            }
         }
     }
 }
@@ -664,10 +708,13 @@ repaint_column_group(const int16_t* lo, const int16_t* hi, int x0) {
         return;
     }
     gfx_color_t* const framebuffer = gfx_framebuffer();
+    changed_box_t changed = {x1, x0, y1, y0};
     for (int y = y0; y < y1; y++) {
-        repaint_group_row(framebuffer + (y * GFX_WIDTH), lo, hi, x0, x1, y);
+        repaint_group_row(framebuffer + (y * GFX_WIDTH), lo, hi, x0, x1, y, &changed);
     }
-    gfx_mark_dirty(x0, y0, x1 - x0, y1 - y0);
+    if (changed.x0 < changed.x1) {
+        gfx_mark_dirty(changed.x0, changed.y0, changed.x1 - changed.x0, changed.y1 - changed.y0);
+    }
 }
 
 /* The rows of column `x` that layer `layer`'s move needs repainted; the
@@ -779,8 +826,12 @@ repaint_swept_columns(gfx_color_t* row, int y, int x0, int x1) {
     int first = x1;
     int last = x0;
     for (int x = x0; x < x1; x++) {
-        if (front_reaches(x, y)) {
-            row[x] = column_pixel(x, y);
+        if (!front_reaches(x, y)) {
+            continue;
+        }
+        const gfx_color_t color = column_pixel(x, y);
+        if (row[x] != color) {
+            row[x] = color;
             first = x < first ? x : first;
             last = x + 1;
         }
@@ -807,8 +858,8 @@ flush_swept_run(int y, int x0, int x1) {
         x1 = front + 1 < x1 ? front + 1 : x1;
     }
     if (x0 < x1) {
-        paint_row_into(row, y, x0, x1);
-        gfx_mark_dirty(x0, y, x1 - x0, 1);
+        paint_row_into(ridge->scratch_row, y, x0, x1);
+        commit_row(ridge->scratch_row, y, x0, x1);
     }
 }
 
@@ -843,20 +894,39 @@ repaint_swept_row(int y) {
     }
 }
 
-/* The gradient turned from `was` to the pose on screen: repaint the pixels
+/* The gradient turned from `was` to its pose now: repaint the pixels
  * between each shade edge's old and new line. */
 static void
 repaint_gradient_turn(ridge_vector_t was) {
     edge_lines(&ridge->was_lines, was);
-    edge_lines(&ridge->now_lines, ridge->pose_on_screen);
+    edge_lines(&ridge->now_lines, ridge->gradient_pose);
     for (int y = 0; y < GFX_HEIGHT; y++) {
         repaint_swept_row(y);
     }
 }
 
 static void
+catch_up_gradient(void) {
+    ridge->gradient_pose = ridge->pose_on_screen;
+    ridge->gradient_step = ridge->pose_step;
+}
+
+/* The gradient follows the ridge in steps of `gradient_steps` poses rather
+ * than every pose: a turned gradient moves pixels across every band, which
+ * then goes whole to the panel. Once the ridge holds still it catches up. */
+static bool
+gradient_due(void) {
+    int drift = abs(ridge->pose_step - ridge->gradient_step);
+    drift = drift > POSE_STEPS / 2 ? POSE_STEPS - drift : drift;
+    return drift >= gradient_steps || (drift > 0 && ridge->pose_still_ms >= GRADIENT_SETTLE_MS);
+}
+
+static void
 paint_all(void) {
     gfx_color_t* const framebuffer = gfx_framebuffer();
+    if (!ridge->painted) {
+        catch_up_gradient();
+    }
     if (!ridge->by_column && ridge->scanline_dither) {
         for (int y = 0; y < GFX_HEIGHT; y++) {
             paint_row_span(framebuffer, y, 0, GFX_WIDTH);
@@ -874,7 +944,6 @@ paint_all(void) {
     }
     gfx_mark_all_dirty();
     memcpy(ridge->shown, ridge->boundary, sizeof ridge->shown);
-    ridge->gradient_pose = ridge->pose_on_screen;
     ridge->painted = true;
 }
 
@@ -1080,19 +1149,22 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     spring_line_advance(&ridge->line, dt_ms);
     spring_line_apply(&ridge->line, ridge->shape, ridge->heights, &lo, &hi);
     const bool pose_moved = snap_pose_on_screen();
+    ridge->pose_still_ms = pose_moved ? 0 : ridge->pose_still_ms + dt_ms;
     FRAME_COST_BEGIN(layers_from);
     build_layers();
     raster_boundaries();
     FRAME_COST_END(layers_from, "ridge.layers");
     FRAME_COST_BEGIN(painted_from);
     if (!ridge->painted || retuned || ridge->axis_on_screen) {
+        catch_up_gradient();
         paint_all();
     } else {
         /* Every frame, not only when the spring reports motion: a spring put
          * to rest takes its last fraction of a pixel without reporting it. */
-        if (pose_moved && ridge->scanline_dither) {
-            repaint_gradient_turn(ridge->gradient_pose);
-            ridge->gradient_pose = ridge->pose_on_screen;
+        if (ridge->scanline_dither && gradient_due()) {
+            const ridge_vector_t was = ridge->gradient_pose;
+            catch_up_gradient();
+            repaint_gradient_turn(was);
         }
         repaint_changed();
     }
