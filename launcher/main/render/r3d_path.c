@@ -6,10 +6,10 @@
 
 static float
 segment_seconds(const r3d_path_t* path, int i) {
-    const r3d_lit_vec3_t a = path->points[i].eye;
-    const r3d_lit_vec3_t b = path->points[(i + 1) % path->count].eye;
-    const float dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
-    const float s = sqrtf(dx * dx + dy * dy + dz * dz) / path->units_per_second;
+    const r3d_vec3f_t a = path->points[i].eye;
+    const r3d_vec3f_t b = path->points[(i + 1) % path->count].eye;
+    const r3d_vec3f_t d = r3d_vec3f_sub(b, a);
+    const float s = sqrtf(r3d_vec3f_dot(d, d)) / path->units_per_second;
     return s > path->min_segment_seconds ? s : path->min_segment_seconds;
 }
 
@@ -35,14 +35,14 @@ catmull_rom(float p0, float p1, float p2, float p3, float u) {
               + (3.0f * p1 - p0 - 3.0f * p2 + p3) * u3);
 }
 
-static r3d_lit_vec3_t
-spline(r3d_lit_vec3_t a, r3d_lit_vec3_t b, r3d_lit_vec3_t c, r3d_lit_vec3_t d, float u) {
-    return (r3d_lit_vec3_t){catmull_rom(a.x, b.x, c.x, d.x, u), catmull_rom(a.y, b.y, c.y, d.y, u),
-                            catmull_rom(a.z, b.z, c.z, d.z, u)};
+static r3d_vec3f_t
+spline(r3d_vec3f_t a, r3d_vec3f_t b, r3d_vec3f_t c, r3d_vec3f_t d, float u) {
+    return (r3d_vec3f_t){catmull_rom(a.x, b.x, c.x, d.x, u), catmull_rom(a.y, b.y, c.y, d.y, u),
+                         catmull_rom(a.z, b.z, c.z, d.z, u)};
 }
 
 void
-r3d_path_sample(const r3d_path_t* path, uint32_t t_ms, r3d_lit_vec3_t* eye, r3d_lit_vec3_t* forward) {
+r3d_path_sample(const r3d_path_t* path, uint32_t t_ms, r3d_vec3f_t* eye, r3d_vec3f_t* forward) {
     t_ms %= r3d_path_period_ms(path);
     int i = 0;
     uint32_t length = segment_ms(path, 0);
@@ -59,6 +59,6 @@ r3d_path_sample(const r3d_path_t* path, uint32_t t_ms, r3d_lit_vec3_t* eye, r3d_
     const r3d_waypoint_t* p3 = &path->points[(i + 2) % n];
 
     *eye = spline(p0->eye, p1->eye, p2->eye, p3->eye, u);
-    const r3d_lit_vec3_t target = spline(p0->target, p1->target, p2->target, p3->target, u);
-    *forward = (r3d_lit_vec3_t){target.x - eye->x, target.y - eye->y, target.z - eye->z};
+    const r3d_vec3f_t target = spline(p0->target, p1->target, p2->target, p3->target, u);
+    *forward = r3d_vec3f_sub(target, *eye);
 }

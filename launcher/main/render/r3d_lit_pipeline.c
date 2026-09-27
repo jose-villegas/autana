@@ -5,77 +5,49 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "util/fast_float.h"
+#include "render/r3d_ray.h"
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
-static r3d_lit_vec3_t
-normalize(r3d_lit_vec3_t v) {
-    const float s = 1.0f / sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
-    return (r3d_lit_vec3_t){v.x * s, v.y * s, v.z * s};
-}
-
-static r3d_lit_vec3_t
-cross(r3d_lit_vec3_t a, r3d_lit_vec3_t b) {
-    return (r3d_lit_vec3_t){a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
-}
-
 static void
-set_row(float row[4], r3d_lit_vec3_t axis, r3d_lit_vec3_t eye, float scale, float ticks_to_units) {
+set_row(float row[4], r3d_vec3f_t axis, r3d_vec3f_t eye, float scale, float ticks_to_units) {
     row[0] = axis.x * scale * ticks_to_units;
     row[1] = axis.y * scale * ticks_to_units;
     row[2] = axis.z * scale * ticks_to_units;
-    row[3] = -(axis.x * eye.x + axis.y * eye.y + axis.z * eye.z) * scale;
+    row[3] = -r3d_vec3f_dot(axis, eye) * scale;
+}
+
+static r3d_vec3f_t
+upright_step(r3d_vec3f_t right, r3d_vec3f_t down, int step_right, int step_down) {
+    return r3d_vec3f_add(r3d_vec3f_scale(right, (float)step_right), r3d_vec3f_scale(down, (float)step_down));
 }
 
 void
-r3d_lit_view_look(r3d_lit_view_t* view, r3d_lit_vec3_t eye, r3d_lit_vec3_t forward, float half_fov_short_tan,
-                  float near_z, int position_scale, int width, int height, int quarter) {
-    const r3d_lit_vec3_t f = normalize(forward);
-    const r3d_lit_vec3_t right = normalize(cross(f, (r3d_lit_vec3_t){0.0f, 1.0f, 0.0f}));
-    const r3d_lit_vec3_t up = cross(right, f);
-    const r3d_lit_vec3_t down = {-up.x, -up.y, -up.z};
-    const r3d_lit_vec3_t left = {-right.x, -right.y, -right.z};
+r3d_lit_view_look(r3d_lit_view_t* view, r3d_vec3f_t eye, r3d_vec3f_t forward, float half_fov_short_tan, float near_z,
+                  int position_scale, r3d_viewport_t viewport) {
+    const r3d_vec3f_t f = r3d_vec3f_normalize(forward);
+    const r3d_vec3f_t right = r3d_vec3f_normalize(r3d_vec3f_cross(f, (r3d_vec3f_t){0.0f, 1.0f, 0.0f}));
+    const r3d_vec3f_t down = r3d_vec3f_cross(f, right);
 
-    const int shorter = width < height ? width : height;
+    const int shorter = viewport.width < viewport.height ? viewport.width : viewport.height;
     const float k = (float)shorter / (2.0f * half_fov_short_tan);
     const float ticks_to_units = 1.0f / (float)position_scale;
 
-    /* The upright picture is (right, down); each quarter turns it onto the
-     * panel's own axes. */
-    r3d_lit_vec3_t across, along;
-    switch (quarter & 3) {
-        case 1:
-            across = up;
-            along = right;
-            break;
-        case 2:
-            across = left;
-            along = up;
-            break;
-        case 3:
-            across = down;
-            along = left;
-            break;
-        default:
-            across = right;
-            along = down;
-            break;
-    }
-    set_row(view->m[0], across, eye, k, ticks_to_units);
-    set_row(view->m[1], along, eye, k, ticks_to_units);
+    const r3d_quarter_axes_t a = r3d_quarter_axes(viewport.quarter);
+    set_row(view->m[0], upright_step(right, down, a.x_right, a.x_down), eye, k, ticks_to_units);
+    set_row(view->m[1], upright_step(right, down, a.y_right, a.y_down), eye, k, ticks_to_units);
     set_row(view->m[2], f, eye, 1.0f, ticks_to_units);
-    view->center_x = (float)width * 0.5f;
-    view->center_y = (float)height * 0.5f;
+    view->center_x = (float)viewport.width * 0.5f;
+    view->center_y = (float)viewport.height * 0.5f;
     view->near_z = near_z;
-    view->width = width;
-    view->height = height;
+    view->width = viewport.width;
+    view->height = viewport.height;
 }
 
-static inline r3d_lit_vec3_t
+static inline r3d_vec3f_t
 to_lens(const r3d_lit_view_t* view, float x, float y, float z) {
     const float(*m)[4] = view->m;
-    return (r3d_lit_vec3_t){
+    return (r3d_vec3f_t){
         m[0][0] * x + m[0][1] * y + m[0][2] * z + m[0][3],
         m[1][0] * x + m[1][1] * y + m[1][2] * z + m[1][3],
         m[2][0] * x + m[2][1] * y + m[2][2] * z + m[2][3],
@@ -217,7 +189,7 @@ r3d_lit_transform(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const 
         bool crosses_near = false;
         for (int v = c->vertex_first; v < end; v++) {
             const int16_t* p = mesh->positions[v];
-            const r3d_lit_vec3_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
+            const r3d_vec3f_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
             r3d_lit_vertex_t* out = &cs[v];
             out->z = l.z;
             if (l.z > view->near_z) {
@@ -328,7 +300,7 @@ r3d_lit_draw(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint1
                 clip_vertex_t in[3];
                 for (int k = 0; k < 3; k++) {
                     const int16_t* p = mesh->positions[tri[k]];
-                    const r3d_lit_vec3_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
+                    const r3d_vec3f_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
                     in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[k][0], rgb[k][1], rgb[k][2]};
                 }
                 draw_near_clipped(view, in, c->double_sided, target);
