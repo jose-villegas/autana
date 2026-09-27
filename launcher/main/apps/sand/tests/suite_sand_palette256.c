@@ -5,10 +5,8 @@
  * host-portable, the same reason suite_sand_*.c can drive the real
  * simulation at all - see suite_sand_common.h's own top comment.
  *
- * Does not share app_sand.c's own paint_row_n(): that file is not
- * host-portable (app_*.c, see run_tests.sh). This exercises the pieces it
- * calls - material_colours(), material_palette256_index(),
- * gfx_indexed_expand_row() - against real settled scenes instead.
+ * This suite checks the palette mapping and indexed expansion against
+ * settled scenes. The row painter is exercised by suite_sand_paint_row.c.
  */
 
 #include "suites.h"
@@ -108,18 +106,16 @@ test_expansion_reproduces_the_real_lut_cell_for_cell(void) {
     }
 }
 
-/* Mirrors paint_indexed_cell()'s own indexed shine test (app_sand.c, not
- * host-portable) at a fixed NORMAL cell size and zero shine phase - the same
- * mirroring suite_sand_common.h's own top comment describes for local
- * depth. */
+/* Mirrors sp_paint_indexed_cell()'s indexed shine test (sand_paint_row.h)
+ * at a fixed NORMAL cell size and zero shine phase. */
 #define SHINE_TEST_CELL   4
 #define SHINE_TEST_PERIOD 64
 
 /* MATERIAL_HATCHED belongs to metal (MATX_METAL); MAT_GLASS is a flat
  * MATERIAL_SPECKLED gradient with no sub-cell pattern, so it needs no
  * shine-index handling. Metal's shine cells get col[2]'s own index, which
- * dithers to a different 16-colour entry too - see paint_indexed_cell()'s own
- * comment (app_sand.c) for why one index byte forces this adaptation. */
+ * dithers to a different 16-colour entry too - see sp_paint_indexed_cell()'s own
+ * comment (sand_paint_row.h) for why one index byte forces this adaptation. */
 static void
 test_metal_shine_cells_get_a_different_index_in_256_and_16(void) {
     int shine_ux_q8, shine_uy_q8;

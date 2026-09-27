@@ -259,6 +259,8 @@ _Static_assert(GFX_WIDTH % 2 == 0 && GFX_HEIGHT % 2 == 0, "panel windows round t
 #define STRIP_BOUNCE_SLOTS       2
 static gfx_color_t* strip_bounce[STRIP_BOUNCE_SLOTS];
 static int strip_bounce_next;
+_Static_assert(GATHER_WINDOW_MAX_PIXELS <= GFX_WIDTH * STRIP_HEIGHT,
+               "a gathered window must fit one strip_bounce slot");
 
 /* band_buf[] (alloc_band_buffers() below) always aliases these slots
  * instead of allocating - idle whenever band mode is, since band mode
@@ -1610,9 +1612,9 @@ restore_border(gfx_color_t* buf, int stride, int w, int h, const gfx_color_t* sa
 /* 6240 px combined, borrowed from gather_buf's front rather than
  * malloc'd separately: a separate allocation competes for the one
  * contiguous 41 KB block an app needs, and a debug overlay must
- * never be why an app cannot start. gather_buf is idle here -
- * gather_and_send() waits for its own transfer before returning, and the
- * frame loop is single-threaded. The _Static_assert ties the fit to
+ * never be why an app cannot start. gather_buf holds nothing else:
+ * gathered runs pack into strip_bounce[], and the frame loop is
+ * single-threaded. The _Static_assert ties the fit to
  * GATHER_MAX_PIXELS, so breaking it is a compile error rather than a
  * silent DMA overflow. */
 #define OVERLAY_CELL_SAVE_PIXELS (GRID_COLS * BORDER_PIXELS)
@@ -1829,12 +1831,8 @@ note_send_failure(esp_err_t err) {
 #endif
 }
 
-/* gather_buf is shared and about to be overwritten, so every queued
- * transfer must drain first, not just the most recent. strip_sent has no
- * transfer identity, so taking it once is not the same as waiting for THIS
- * gather; draining exactly *queued first empties the queue, so the one
- * Take() after this esp_lcd_panel_draw_bitmap() unambiguously waits for
- * it. */
+/* Packs the box into the next strip_bounce slot and queues it, the same
+ * ring send_fb_rows() uses, so copying one run overlaps sending the last. */
 static void
 gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_end, bool refined, int* queued,
                 gfx_color_t border) {
@@ -1845,23 +1843,20 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
     const int w = x1 - x0;
     const int h = y1 - y0;
 
-    for (int j = 0; j < *queued; j++) {
-        xSemaphoreTake(strip_sent, portMAX_DELAY);
-    }
-    *queued = 0;
-
+    gfx_color_t* const slot = strip_bounce[strip_bounce_next];
+    strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
     for (int r = 0; r < h; r++) {
-        memcpy(gather_buf + (size_t)r * w, fb + (size_t)(y0 + r) * GFX_WIDTH + x0, (size_t)w * sizeof(gfx_color_t));
+        memcpy(slot + (size_t)r * w, fb + (size_t)(y0 + r) * GFX_WIDTH + x0, (size_t)w * sizeof(gfx_color_t));
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    send_audit_capture(x0, y0, w, h, gather_buf);
+    send_audit_capture(x0, y0, w, h, slot);
     if (debug_overlay_on && refined) {
         /* One border around the whole packed box. */
-        mark_rect_border(gather_buf, w, w, h, border);
+        mark_rect_border(slot, w, w, h, border);
     } else if (debug_overlay_on) {
         for (int col = run_start; col < run_end; col++) {
             const int idx = row * GRID_COLS + col;
-            gfx_color_t* at = gather_buf + (size_t)(cell_y0[idx] - y0) * w + (cell_x0[idx] - x0);
+            gfx_color_t* at = slot + (size_t)(cell_y0[idx] - y0) * w + (cell_x0[idx] - x0);
             mark_rect_border(at, w, cell_x1[idx] - cell_x0[idx], cell_y1[idx] - cell_y0[idx], border);
         }
     }
@@ -1869,7 +1864,7 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
         const int n = dirty_leaf_rects(row, x0, y0, x1, y1, leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
         for (int i = 0; i < n; i++) {
             const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
-            gfx_color_t* at = gather_buf + (size_t)(r->y0 - y0) * w + (r->x0 - x0);
+            gfx_color_t* at = slot + (size_t)(r->y0 - y0) * w + (r->x0 - x0);
             mark_rect_border(at, w, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
         }
     }
@@ -1883,12 +1878,12 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
 #if CONFIG_LAUNCHER_DEVELOPMENT
     dev_bytes_sent += (int64_t)w * h * sizeof(gfx_color_t);
 #endif
-    const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, x0, y0, x1, y1, gather_buf);
+    const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, x0, y0, x1, y1, slot);
     if (err != ESP_OK) {
         note_send_failure(err);
         return;
     }
-    xSemaphoreTake(strip_sent, portMAX_DELAY);
+    (*queued)++;
 }
 
 /* Queues framebuffer rows [y0, y1) through the next strip_bounce slot. At

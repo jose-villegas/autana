@@ -119,15 +119,28 @@ class LockStore:
         return self.root / (self.stem(board) + ".guard")
 
     def read_json(self, path):
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError):
-            return None
+        # A file mid-replace on Windows refuses to open with PermissionError.
+        for _ in range(250):
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except (FileNotFoundError, json.JSONDecodeError):
+                return None
+            except PermissionError:
+                time.sleep(0.02)
+        return None
 
     def write_json(self, path, value):
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
         temporary.write_text(json.dumps(value, sort_keys=True) + "\n", encoding="utf-8")
+        # Windows refuses to replace a file another process has open, and
+        # boards() reads without the guard.
+        for _ in range(250):
+            try:
+                os.replace(temporary, path)
+                return
+            except PermissionError:
+                time.sleep(0.02)
         os.replace(temporary, path)
 
     def boards(self):
@@ -140,12 +153,15 @@ class LockStore:
     def guard(self, board):
         path = self.guard_path(board)
         path.parent.mkdir(parents=True, exist_ok=True)
+        # On Windows a guard another process is still deleting, or merely
+        # stat()ing, refuses create and unlink with PermissionError: busy, not
+        # an error.
         while True:
             try:
                 descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 os.close(descriptor)
                 break
-            except FileExistsError:
+            except (FileExistsError, PermissionError):
                 try:
                     age = self.now() - path.stat().st_mtime
                     if age > GUARD_STALE_SECONDS:
@@ -153,14 +169,24 @@ class LockStore:
                         continue
                 except FileNotFoundError:
                     continue
+                except PermissionError:
+                    pass
                 time.sleep(0.02)
         try:
             yield
         finally:
+            self.drop_guard(path)
+
+    def drop_guard(self, path):
+        for _ in range(250):
             try:
                 path.unlink()
+                return
             except FileNotFoundError:
-                pass
+                return
+            except PermissionError:
+                time.sleep(0.02)
+        path.unlink(missing_ok=True)
 
     def enqueue(self, board, owner, purpose, pid=None, kind=None):
         with self.guard(board):
