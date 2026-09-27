@@ -98,7 +98,7 @@ an app leaves by leaving the build:
 | To | Do |
 |---|---|
 | remove an app | delete `apps/<name>/` - code, tests and artwork go with it |
-| keep one out of release images | a folder filter in `main/CMakeLists.txt`, as `apps/diagnostics/` has under `CONFIG_LAUNCHER_DEVELOPMENT` |
+| keep one out of release images | a folder filter in `main/CMakeLists.txt` under `CONFIG_LAUNCHER_DEVELOPMENT` that names the app's folder |
 
 ## Lifecycle
 
@@ -173,8 +173,8 @@ sequenceDiagram
 ```
 
 The first pass after `enter()` skips the begin/update/wait half: nothing is
-drawn yet. Sand is the adopter - `sand_update()` steps the sim,
-`sand_frame()` draws.
+drawn yet. The shape that adopts it is a retained app that steps a
+simulation in `update()` and draws the result in `frame()`.
 
 ## Input
 
@@ -199,7 +199,7 @@ button fields are `button_t`, from `input/buttons.h`.
 `step_app()` checks both before the app runs: `gesture_is_home_swipe()`
 against the edge `exit_edge_for_quarter()` names, or `power.held`. Leave
 `home_gesture` `false` only when the app's own input is a drag near a screen
-edge - sand does. An app with an on-screen way out calls
+edge. An app with an on-screen way out calls
 `shell_request_exit()` instead: the shell leaves before the app's next
 `frame()`, exactly as it does for the two rows above.
 
@@ -238,8 +238,8 @@ top of the next pass `apply_pending_full_redraw()` clears the flag and calls
 `invalidate()`. A
 request made inside `frame()` is served the following pass. The shell requests
 one on launch, leave, an orientation change, a screenshot and a self-test run.
-Implement `invalidate()` only for a cache gfx cannot see - sand's row runs,
-cube's band bbox.
+Implement `invalidate()` only for a cache gfx cannot see - per-row runs of
+what the last frame drew, or the bounding box it covered in each band.
 
 ## An app is a folder
 
@@ -261,7 +261,7 @@ main/apps/<name>/
 | `suite_*.c` | only `CONFIG_LAUNCHER_SELFTEST` builds | yes |
 | `scope_perf.cmake` | only `--perf-scope` builds | no |
 | `tools/**` | never | never |
-| `apps/diagnostics/**`, `apps/input_lab/**` | only `CONFIG_LAUNCHER_DEVELOPMENT` builds | yes |
+| a bench-only app's folder (the `main/CMakeLists.txt` filter) | only `CONFIG_LAUNCHER_DEVELOPMENT` builds | yes |
 
 Tooling that spans an app *and* shell code lives in `launcher/tools/`, not the
 app's `tools/`. An app reaches shell headers layer-qualified: `"gfx/gfx.h"`,

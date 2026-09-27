@@ -61,7 +61,8 @@ nothing next to rendering — and latch the press/release edges so an event
 that happens wholly between two frames is still delivered to the next one.
 
 **The panel reports taps stretched, and a finger scatters.** Measured on the
-board with Input Lab (taps aimed at known points, both orientations):
+board with a bench-only development app (taps aimed at known points, both
+orientations):
 
 | | Raw | Corrected |
 |---|---|---|
@@ -75,9 +76,9 @@ panel's; `input/touch_calib.c` undoes the fitted map on every raw point before
 anything reads it (`autana tune touch.calibrate 0` turns it off to compare).
 What stays is a finger's own scatter, 11–13 px (about 1 mm), which no
 calibration removes: controls need to be large, and the corners hide about
-42 px of radius. `apps/input_lab/tools/probe_fit.py` refits from a capture;
-the captures behind the table sit beside it in `fixtures/`, and its tests
-fail if the coefficients in `touch.c` stop being their fit.
+42 px of radius. That app's own fitting tool refits the coefficients in
+`touch_calib.c` from a capture, and its tests fail if they stop being the
+fit of the captures behind the table.
 
 **On targets and gestures.** A small back button is fine to aim at with a mouse
 and miserable with a fingertip. A swipe up from the bottom edge — what the
@@ -103,8 +104,8 @@ tell you, and the obvious guess is wrong here:
 | down (+y) | `+ax` |
 | right (+x) | `-ay` |
 
-Mapping X to X and Y to Y makes the sand fall sideways. Determined by tilting
-the board and watching which way it went; the mapping is
+Mapping X to X and Y to Y makes anything steered by gravity fall sideways.
+Determined by tilting the board and watching which way it went; the mapping is
 `imu_gravity_screen_x()`/`imu_gravity_screen_y()` in `input/imu.h`.
 
 One more distinction that is easy to get wrong: the **accelerometer** senses
@@ -192,22 +193,10 @@ matter more than the lerp:
   This is the honest reason to read the gyro at all: it answers a question the
   accelerometer structurally cannot.
 
-**Quantisation.** The second cause, and the larger one. Grains move to one of
-eight neighbours, so a single simulation step can never express "17 degrees off
-vertical" - and snapping to the nearest of eight makes a slow tilt arrive in
-45-degree jerks. No amount of filtering helps: the filter output was already
-smooth, and the quantiser threw that away.
-
-The fix is to move the quantisation into **time**, where there is room for it.
-Pick between the two directions bracketing the true angle each step, weighted by
-the angle: at 17 degrees, about 62% of frames fall straight down and 38%
-down-right. At 70 fps the eye integrates that into continuous flow. Exactly
-dithering a colour ramp, applied to a direction, and it costs one random number
-per step rather than per grain.
-
-Getting the weight right needs `atan`, since at 22.5 degrees the component ratio
-is 0.414 rather than 0.5. Rajan's approximation covers it in integers to within
-a degree.
+**Quantisation.** The second cause, and the larger one. Filtering cannot
+fix a consumer that turns the direction into a few coarse steps: the filter
+output is already smooth, and the quantiser throws that away. Such a consumer
+has to dither between the steps bracketing the true angle over time.
 
 ---
 
@@ -215,13 +204,15 @@ a degree.
 
 It measures gravity plus whatever else is accelerating the device, and a single
 reading cannot separate them. Pick the board up and the reading is mostly the
-lift - which is what made the sand lurch sideways whenever it was handled.
+lift - so anything steered by gravity lurches sideways whenever the board is
+handled.
 
 The usable half-answer: at rest the magnitude is exactly 1 g. A sample whose
 magnitude is far from 1 g is *known* to be contaminated, even though a clean one
 cannot be proven honest. Those are ignored and the previous estimate held. Wide
 bounds (0.7 g to 1.3 g), because rejecting a good sample costs a few
-milliseconds of staleness and accepting a bad one throws sand across the screen.
+milliseconds of staleness and accepting a bad one throws whatever follows
+gravity across the screen.
 
 This is also what makes the gyro-adaptive smoothing sound. Tracking *faster*
 while the board moves would be exactly wrong if "moving" meant "being shoved" -
@@ -234,13 +225,13 @@ responding quickly to real rotation is safe.
 ## Rotating is not shaking, and the gyroscope cannot tell you which
 
 These want opposite responses - a turn should be followed, a shake should
-fluidise the pile - so telling them apart matters. The obvious sensor is the
-wrong one.
+disturb whatever it drives - so telling them apart matters. The obvious sensor
+is the wrong one.
 
 Reading "shaken" off the gyroscope means every deliberate turn of the device
-registers as a hard shake. In the sand app that unlocked friction *and* made
-every grain prefer to slide sideways, so rotating the board threw the sand at
-the walls. Logged while a board was merely being held and tilted, a
+registers as a hard shake, so a consumer that loosens its contents on a shake
+throws them at the walls whenever the board is rotated. Logged while a board
+was merely being held and tilted, a
 gyro-derived shake level sat between 160 and 255 out of 255 - effectively
 pinned, the whole time.
 

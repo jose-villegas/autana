@@ -24,7 +24,6 @@ for the other runners only when you need them.
 | What do RELEASE, DEVELOPMENT and SELFTEST gate? | [`Build-Variants.md`](Build-Variants.md) |
 | I want to see a screen without flashing | [`tools/Render-Harness.md`](tools/Render-Harness.md) |
 | CI says my function is too complex | [`tools/Complexity-Gate.md`](tools/Complexity-Gate.md) |
-| Sand frame-budget numbers | [`sand/Testing-Sand.md`](sand/Testing-Sand.md) |
 
 ---
 
@@ -53,14 +52,15 @@ a pass/fail line, use one of the report scripts:
 
 ```sh
 ./launcher/tools/quality/report_test_results.sh                    # pass/fail for every suite  -> tools/results/
-./launcher/main/apps/sand/tools/report_performance.sh       # frame-budget numbers       -> its own tools/results/
 ```
 
-Both declare what they want and hand the work to
-`launcher/tools/device/device_report.sh`, which builds the diagnostics variant
-and then flashes it and captures the run under one held lock - through
-`device.py selftest` for a report on every suite, or `device.py batch --runs 1`
-for a report on one - writes a markdown report, and reflashes the release
+An app's frame-budget capture script lives in its own `tools/` and writes
+under its own `tools/results/`. Each report script declares what it wants
+and hands the work to `launcher/tools/device/device_report.sh`, which
+builds the diagnostics variant and then flashes it and captures the run
+under one held lock - through `device.py selftest` for a report on every
+suite, or `device.py batch --runs 1` for a report on one - writes a markdown
+report, and reflashes the release
 firmware afterwards unless given `--no-restore`. A report script takes its
 board from `AUTANA_BOARD`, as `autana` does, else the only board plugged in;
 its one positional is the report's own path, ending in `.md`. A report script
@@ -81,11 +81,10 @@ Requires a **host** compiler, not the ESP32 toolchain:
 | Debian/Ubuntu | `sudo apt install build-essential` |
 | macOS | `xcode-select --install` |
 
-**Sand's own frame-budget capture and its rules live beside the app**, in
-[`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md) - the free-heap
-precondition, the perf-scope trade-off, and the frame-budget scenes.
-Start here for everything else; go there once you are specifically
-capturing sand performance numbers.
+**An app's own frame-budget capture and its rules live beside the app**,
+in its docs folder and its `tools/` - any free-heap precondition, the
+perf-scope trade-off, and the frame-budget scenes. Start here for
+everything else; go there once you are capturing that app's numbers.
 
 ---
 
@@ -201,8 +200,9 @@ symbols in the two `.elf` files rather than assumed.
 
 ### A diagnostics build can be scoped
 
-A diagnostics build compiles every suite; the perf scope compiles three, for
-a sand frame-budget capture. A scoped build is an instrument and never a
+A diagnostics build compiles every suite; the perf scope compiles only the
+sources apps declare in their `scope_perf.cmake`, for a frame-budget
+capture. A scoped build is an instrument and never a
 gate, and its numbers compare only with other scoped captures.
 [`Build-Variants.md`](Build-Variants.md#a-diagnostics-build-can-be-scoped)
 
@@ -233,8 +233,7 @@ registered suite and prints its result — **with no rebuild and no reflash**:
 
 ```
 autana suite run_gfx_suite
-autana suite run_sand_perf_suite
-autana suite run_cube_band_perf_suite
+autana suite run_ui_suite
 ```
 
 Both commands only set a flag; `main.c`'s frame loop does the actual work at
@@ -253,9 +252,8 @@ needed, without paying a rebuild-and-reflash cycle per attempt.
    you touched, on a normal diag build (SELFTEST on, AUTORUN off, full
    scope).
 2. **Scoped builds for perf captures only** — see
-   [`Build-Variants.md`](Build-Variants.md#a-diagnostics-build-can-be-scoped)
-   and [`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md) for the
-   sand-specific capture.
+   [`Build-Variants.md`](Build-Variants.md#a-diagnostics-build-can-be-scoped),
+   and the capturing app's own docs for its capture.
 3. **The full self-test before a merge** — `report_test_results.sh` or
    `autana selftest`, full scope, autorun, unattended. About 18 minutes
    on this board; treat it as the gate, not the everyday loop.
@@ -375,7 +373,7 @@ what a user does, one ordered step at a time:
 
 ```sh
 python launcher/test/qemu_run.py launcher/build.qemu.shell \
-  --do "tap 180 95" --do "wait 2500" --do "screenshot cube.png" \
+  --do "tap 180 95" --do "wait 2500" --do "screenshot app.png" \
   --do "tilt 0 -4096 0" --do "wait 2500" --do "screenshot landscape.png" \
   --do "swipe 184 446 184 200" --do "screenshot home.png"
 ```
@@ -425,9 +423,7 @@ whether it removed time (see
 flash image, eFuse file and console log, and the build directory is only
 read, so `run_qemu_tests.sh --build-only` builds the image once for a
 driver that then launches several against it. How many to run at once is a
-question about whose desktop this is, not about the runner. An app-level
-measurement built on all three of these facts is in
-[`docs/sand/Testing-Sand.md`](sand/Testing-Sand.md).
+question about whose desktop this is, not about the runner.
 
 ---
 
@@ -459,7 +455,7 @@ different rules.
 
 | | POST | Test suites |
 |---|---|---|
-| Ships in release | **yes** | diagnostics (SELFTEST) builds only |
+| Ships in release | **yes** | diagnostics builds (SELFTEST) only |
 | Asks | "is this **board** working?" | "is this **code** correct?" |
 | Side effects | none — probe and report | draws to the panel, mutates state |
 | Cost | ~95 ms | runsuite: seconds; full self-test: see ["Recommended practice"](#recommended-practice) |
@@ -654,14 +650,14 @@ band-ring state machine the same way, including `gfx_mode.h`/`gfx_band.h`
 directly.
 `gfx.c`'s own allocation and DMA-send side
 of `gfx_mode_enter()`/`gfx_band_submit()` needs real device memory, so it is
-exercised instead by `main/apps/render_lab/tests/suite_cube_band_perf.c`
-(device-only), which times the cube's band-mode path against its full-fb
-path on the same scene. No device suite covers band buffers sharing the
+exercised instead by an app's device-only perf suite that times a
+full-redraw renderer's band-mode path against its full-framebuffer path on
+the same scene. No device suite covers band buffers sharing the
 strip-bounce slots.
 
 Still untested by an assertion: small3dlib's per-pixel Gouraud shading -
-verified by running the firmware and looking at the screen, since the cube
-scene's animation never settles into the fixed picture a render-harness
+verified by running the firmware and looking at the screen, since an
+animated 3D scene never settles into the fixed picture a render-harness
 pixel diff needs (`docs/tools/Render-Harness.md`). `ui_launcher.c`'s microui
 integration is driven by `suite_ui_launcher.c`, and small3dlib's row scissor
 by `suite_small3dlib_scissor.c`.
@@ -753,10 +749,6 @@ by a substring of the name, so treat it as a lookup, not an area map.
   gate, the scope choice, and the `REQUIRES` trap.
 - `docs/Building-an-App.md` — how an app plugs into the shell, and the
   folder layout the app-suite convention above assumes.
-- `docs/sand/Sand-Simulation.md` — the sand suite (`suite_sand_*.c`) is the
-  largest test suite in this codebase; this is what it is actually testing.
-- `docs/sand/Testing-Sand.md` — the sand app's own frame-budget capture,
-  its free-heap precondition, and the perf-scope trade-off.
 - `docs/tools/Render-Harness.md` — rendering a real screen on a host,
   pinning its pixels, and diffing it against a capture.
 - `docs/notes/` — the hardware constraints behind the device-only

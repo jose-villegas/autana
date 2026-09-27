@@ -26,7 +26,7 @@ file counted twice:
   `$IDF_TOOLS_PATH` when set, else `~/.espressif`).
 - **`launcher/test/run_tests.sh --print-sources`/`--print-flags`** - the
   same host-portable file list and flags that script proves compile,
-  used for whatever the diagnostics database does not contain: the
+  used for whatever the diagnostics build's database does not contain: the
   host-only test-runner files (`host_main.c`, `heap_arena.c`) and
   `gfx/gfx_palette_standard.c`. esp-clang's own default target has no
   usable libc either, so these get the same `--sysroot`/`--gcc-toolchain`
@@ -51,7 +51,7 @@ functions has nothing to say about code it did not write, and it is never
 a source of a coverage gap since it sits outside `launcher/main/`. A
 vendored function this project changed is measured - see the end of this
 page. A `static inline` helper defined only in a
-shared header (for example `sand_priv.h`'s `dest_row()`/`mark_rows()`) is
+shared header (for example `gfx/gfx_band.h`'s `gfx_band_ring_advance()`) is
 still invisible to this gate: clang-tidy's default scope is the file
 actually being compiled, not headers it pulls in.
 
@@ -102,14 +102,14 @@ python launcher/tools/quality/complexity_gate.py --changed origin/main  # only f
 
 `build_diag_check.sh` runs `--changed origin/main` itself before it starts
 the build, and a failing ratchet stops it there - the two halves CI's
-Build (Diagnostics) workflow decides are one local command. Point it at a
+`build-diagnostics.yml` workflow decides are one local command. Point it at a
 different ref with `COMPLEXITY_GATE_BASE`. With no `build.diag` on disk
 yet the ratchet has no database to read and runs after that build instead;
 the database is also the previous build's, so a `.c` file added since then
 fails the ratchet as unmeasured until a build catches the database up.
 
 A file only a build variant compiles - `gfx/gfx_null_panel.c`, which exists
-for `CONFIG_LAUNCHER_QEMU` alone - is in no diagnostics database at all.
+for `CONFIG_LAUNCHER_QEMU` alone - is in no diagnostics build's database at all.
 `VARIANT_ONLY_FILES` names a sibling in the same folder whose compile command
 it borrows, and the variant's own symbol, which is defined for it: what such
 a file calls is often declared only under that symbol, and an undeclared

@@ -33,11 +33,11 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from check_comment_length import EXCLUDED, scan  # noqa: E402
+from tracked import tracked_files  # noqa: E402
 
 LOWER = ("launcher/main/boot/", "launcher/main/display/", "launcher/main/gfx/",
          "launcher/main/input/", "launcher/main/render/", "launcher/main/ui/",
          "launcher/main/util/", "launcher/main/console/", "launcher/test/")
-SKIP = ("build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components")
 APPS = "launcher/main/apps"
 
 # The shell's own two files: they switch between apps without knowing one.
@@ -45,8 +45,9 @@ SHELL = ("launcher/main/app.h", "launcher/main/main.c")
 
 # The diagnostics build is the variant behind build.diag, which every layer
 # may name; the app that happens to share the word is what this forbids.
+# Whitespace includes a newline, since prose wraps anywhere.
 VARIANT = re.compile(
-    r"\b(?:diagnostics[ -](?:builds?|variants?|images?)|build-diagnostics)\b", re.I)
+    r"\b(?:diagnostics[\s-]+(?:builds?|variants?|images?)|build-diagnostics)\b", re.I)
 
 
 def app_names(root="."):
@@ -56,65 +57,56 @@ def app_names(root="."):
 def name_pattern(names):
     # Boundaries exclude only [A-Za-z0-9], not underscore, so a name inside a
     # compound identifier like `app_sand.c` or `sand_ui_step` still matches.
-    spelled = [re.escape(n).replace("_", "[ _-]?") for n in names]
+    spelled = [re.escape(n).replace("_", r"[\s_-]?") for n in names]
     return re.compile(r"(?<![A-Za-z0-9])(" + "|".join(spelled) + r")(?![A-Za-z0-9])", re.I)
 
 
 def canonical(hit, names):
-    flat = re.sub(r"[ _-]", "", hit.lower())
+    flat = re.sub(r"[\s_-]", "", hit.lower())
     return next(n for n in names if n.replace("_", "") == flat)
 
 
-def tracked(root):
-    for p in sorted(pathlib.Path(root).rglob("*")):
-        rel = p.relative_to(root)
-        if p.is_file() and not any(s in rel.parts for s in SKIP):
-            yield rel.as_posix(), p
-
-
 def sources(root):
-    for rp, p in tracked(pathlib.Path(root) / "launcher"):
-        rp = "launcher/" + rp
-        if p.suffix not in (".c", ".h") or any(rp.startswith(e) for e in EXCLUDED):
+    for rp in tracked_files(root):
+        if not rp.endswith((".c", ".h")) or rp.startswith(EXCLUDED):
             continue
         if rp.startswith(LOWER) or rp in SHELL:
-            yield rp, p
+            yield rp
 
 
 def documents(root, names):
     own = ("docs/plans/",) + tuple(f"docs/{n}/" for n in names)
-    for top in ("docs", "launcher"):
-        for rp, p in tracked(pathlib.Path(root) / top):
-            rp = f"{top}/{rp}"
-            if p.suffix != ".md" or rp.startswith(own):
-                continue
-            if top == "docs" or rp.startswith(LOWER):
-                yield rp, p
+    for rp in tracked_files(root):
+        if rp.endswith(".md") and rp.startswith(("docs/",) + LOWER) and not rp.startswith(own):
+            yield rp
 
 
 def problems(root=".", context=False):
     names = app_names(root)
     word = name_pattern(names)
 
-    def named(text):
-        return sorted(set(canonical(m, names) for m in word.findall(VARIANT.sub("", text))))
+    def hits(text):
+        return word.finditer(VARIANT.sub(lambda m: " " * len(m.group()), text))
+
+    def read(rp):
+        return (pathlib.Path(root) / rp).read_text(encoding="utf-8", errors="replace")
 
     found = []
-    for rp, p in sources(root):
-        for c in scan(rp, p.read_text(encoding="utf-8", errors="replace")):
-            hits = named(c.text)
-            if hits:
-                found.append(f"{rp}:{c.line}: comment names {', '.join(hits)}")
+    for rp in sources(root):
+        for c in scan(rp, read(rp)):
+            named = sorted(set(canonical(m.group(), names) for m in hits(c.text)))
+            if named:
+                found.append(f"{rp}:{c.line}: comment names {', '.join(named)}")
                 if context:
                     found.append(f"      {c.text[:160]}")
-    for rp, p in documents(root, names):
-        lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
-        for n, line in enumerate(lines, 1):
-            hits = named(line)
-            if hits:
-                found.append(f"{rp}:{n}: document names {', '.join(hits)}")
-                if context:
-                    found.append(f"      {line.strip()[:160]}")
+    for rp in documents(root, names):
+        text = read(rp)
+        lines = text.splitlines()
+        for m in hits(text):
+            line = text.count("\n", 0, m.start()) + 1
+            found.append(f"{rp}:{line}: document names {canonical(m.group(), names)}")
+            if context:
+                found.append(f"      {lines[line - 1].strip()[:160]}")
     return found
 
 
