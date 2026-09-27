@@ -765,7 +765,8 @@ class FlashDefaultPathTests(unittest.TestCase):
              mock.patch.object(device, "open_serial", return_value=connection), \
              mock.patch.object(device, "git_commit", return_value="deadbeef"), \
              contextlib.redirect_stdout(output):
-            device.write_image(device.build_image(args, BOARD), store, BOARD)
+            with device.build_image(args, BOARD) as built:
+                device.write_image(built, store, BOARD)
         self.assertEqual(connection.chunks, [])
         return worktree, root, output.getvalue()
 
@@ -777,8 +778,7 @@ class FlashDefaultPathTests(unittest.TestCase):
                           output)
             expected_log = root / "20260916" / "123045_flash-dev_agent.log"
             self.assertTrue(expected_log.is_file())
-            self.assertEqual((expected_log.with_suffix(".image") / "build_id.txt").read_text(),
-                             "expected\n")
+            self.assertFalse(expected_log.with_suffix(".image").exists())
             entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
             self.assertEqual(entry["capture_path"], str(expected_log))
             self.assertEqual(entry["command"], "flash")
@@ -797,7 +797,7 @@ class FlashDefaultPathTests(unittest.TestCase):
             self.assertEqual(Path(build.args[0][1]).name, "build.sh")
             self.assertNotIn("AUTANA_DEVICE_LOCK_TOKEN", build.kwargs["env"])
             self.assertEqual(Path(write.args[0][1]).name, "flash_image.sh")
-            self.assertTrue(write.args[0][-1].endswith("_flash-dev_agent.image"))
+            self.assertTrue(Path(write.args[0][-1]).name.startswith("autana-image-"))
             self.assertEqual(write.kwargs["env"]["AUTANA_DEVICE_LOCK_TOKEN"], "sekrit-token")
             self.assertEqual(write.kwargs["env"]["AUTANA_BOARD"], BOARD)
 
@@ -846,7 +846,7 @@ class FlashCommandLineTests(unittest.TestCase):
 
         def fake_build_image(args, port, extra_flags=()):
             calls.append(list(extra_flags))
-            return "built"
+            return contextlib.nullcontext("built")
 
         with mock.patch.object(device, "board_for_lock", return_value=BOARD), \
              mock.patch.object(device, "build_image", fake_build_image), \
@@ -978,7 +978,7 @@ class BatchTests(unittest.TestCase):
         def fake_build_image(args, port, extra_flags=()):
             calls["events"].append("build")
             calls["build"].append(list(extra_flags))
-            return "built"
+            return contextlib.nullcontext("built")
 
         def fake_write_image(built, store, port, held_lock=None):
             calls["events"].append("flash")
@@ -1607,7 +1607,7 @@ class SelftestTests(unittest.TestCase):
         def fake_build_image(args, port, extra_flags=()):
             calls["flash_extra_flags"] = list(extra_flags)
             calls["build_saw_lock"] = getattr(device.ACTIVE_LOCK, "held", None)
-            return "built"
+            return contextlib.nullcontext("built")
 
         def fake_write_image(built, store, port, held_lock=None):
             calls["held_lock"] = held_lock

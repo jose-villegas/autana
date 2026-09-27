@@ -68,16 +68,18 @@ own copy, for working on the tools themselves; the test suites set it.
 ## What a flash proves
 
 A flash succeeds when esptool's `write_flash` hash-verified every region it
-wrote and the flash log carries the written image's `BUILD_ID=` line; `flash`
-then prints `flashed BUILD_ID=<id> (esptool hash verified; boot not
-verified)`. It proves the write, not the boot, for every variant.
+wrote; `flash` then prints `flashed BUILD_ID=<id> (esptool hash verified;
+boot not verified)`, the id read from the image it wrote. It proves the
+write, not the boot, for every variant.
 
 A flash is two halves in one log. `launcher/tools/build/build.sh` builds the
 image with no board lock held, so other sessions keep the board meanwhile;
 a file lock on the build directory keeps a second build of the same worktree
 and variant out until this one is done. `device.py` then copies the image -
-`flash_args`, every file it lists and `build_id.txt` - into a snapshot beside
-the flash log (`<log>.image/`). Only then does it queue for the board, and
+`flash_args`, every file it lists and `build_id.txt` - into a snapshot of its
+own, a private temporary folder that no other flash shares and that is
+removed once the write is done, has failed or was stopped; nothing
+image-sized goes into the records. Only then does it queue for the board, and
 under the lock `scripts/device/flash_image.sh` writes the snapshot with
 esptool, never `idf.py flash`: nothing builds while the board is held, a later
 build in that directory cannot change what is written, and the `BUILD_ID`
@@ -99,7 +101,7 @@ image.
 sequenceDiagram
     participant Dev as device.py
     participant Build as build.sh
-    participant Snap as image snapshot
+    participant Snap as snapshot (temp folder)
     participant Lock as board lock
     participant Sh as flash_image.sh
     participant Board as board
@@ -115,8 +117,9 @@ sequenceDiagram
     Sh->>Sh: device.py resolve-port - the board's COM port now
     Sh->>Board: esptool write_flash @flash_args, hash-verify each region
     Sh->>Board: RTS reset
-    Sh-->>Dev: BUILD_ID from the snapshot, exit status
-    Dev->>Lock: live-lock check, record expected BUILD_ID
+    Sh-->>Dev: exit status
+    Dev->>Lock: live-lock check, record the snapshot's BUILD_ID
+    Dev->>Snap: remove, whether the write succeeded or not
     opt batch and selftest, still under the same lock
         Dev->>Board: reopen the port, capture until the suites end
         Note over Dev,Board: the capture fails on any other BUILD_ID
