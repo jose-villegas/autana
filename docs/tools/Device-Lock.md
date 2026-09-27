@@ -192,7 +192,7 @@ the lock like everything else. It is what live tuning uses - the firmware's
 development build - and what `autana tune` calls:
 
 ```powershell
-python scripts/device/device.py --owner maintainer send "SET ridge.trail 200"
+python scripts/device/device.py --owner maintainer send "SET ridge.theme_rgb 0x1199C8"
 python scripts/device/device.py --owner maintainer send TUNE
 ```
 

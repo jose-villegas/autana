@@ -11,9 +11,9 @@
  * landscape pose. */
 void ui_ridge_set_gravity(int gx, int gy, int strength, int shake);
 
-/* Breathing and the wave along the line, on unless turned off. With them the
+/* Breathing and the wave along the line, off unless turned on. With them the
  * launcher draws every frame; without, it is idle whenever untouched and
- * level - for a preview, or a test that needs a still picture. */
+ * level. */
 void ui_ridge_set_ambient(bool on);
 
 /* Puts the line at level now, with no easing and no hold after boot - for a
@@ -26,5 +26,10 @@ void ui_ridge_settle(void);
  * untouched. */
 void ui_ridge_step(const input_t* input, uint32_t dt_ms);
 
-/* The whole backdrop, black and the ridge as it stands - a ui_backdrop_fn. */
+/* The whole layered backdrop and the ridge as it stands - a ui_backdrop_fn. */
 void ui_ridge_paint(void);
+
+#if CONFIG_LAUNCHER_SELFTEST
+/* Starts a device perf arm from the settled landscape state. */
+void ui_ridge_reset_for_test(void);
+#endif
