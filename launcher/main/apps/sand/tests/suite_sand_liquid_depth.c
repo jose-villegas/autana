@@ -321,12 +321,11 @@ test_shine_direction_is_unit_length(void) {
  * of the two counts inflated a fixed true depth by up to 46% with tilt
  * alone, since neither count is a distance along gravity until projected.
  *
- * paint_row_n() cannot be linked into this host suite, so each test below
- * mirrors the algorithm it pins with a test-local helper.
+ * These tests use a test-local mirror of the row walk.
  */
 
-/* Mirrors app_sand.c's REAL vertical local depth (col_stable_depth[]/
- * col_top_row[]'s hold-then-commit, band-saturating climb) for FIXED
+/* Mirrors sand_paint_row.h's vertical local depth (local_depth_top_row[]'s
+ * hold-then-commit, band-saturating climb) for FIXED
  * straight-down-or-steeper gravity - also covers the 45-degree blend
  * test's vertical half, whose sweep never lets gy go negative. Reads the
  * LIVE grid via sand_at(); off-grid reads as MAT_STONE, a boundary.
@@ -421,7 +420,7 @@ test_local_depth_follows_the_puddles_own_shape(void) {
                               MATERIAL_LIQUID_DEPTH_BAND);
 
     /* Exact, not approximate, at this gravity: gx is exactly 0, so the
-     * combiner's weight formula (update_local_depth_gravity(), app_sand.c)
+     * combiner's weight formula (sand_paint_update_local_depth_gravity(), sand_paint_row.h)
      * puts wv_q8 at 256 and wh_q8 at 0 exactly - im_len(0, gy) reduces to
      * |gy| exactly, with none of im_len()'s own approximation error. The
      * calls above are therefore what the shipped mechanism does here, not
@@ -460,7 +459,7 @@ test_local_depth_follows_the_puddles_own_shape(void) {
                              "the water cell right below the rock plug must show a freshly-reset "
                              "local depth (0 if the reset commits, 1 if it is permanently held by "
                              "the surface boundary competing for the same tracking slot - see "
-                             "col_stable_depth[]'s own KNOWN LIMITATION comment in app_sand.c) - "
+                             "the boundary debounce in sand_paint_depth_count()) - "
                              "not a continuation of the deep climb from above the rock");
     TEST_ASSERT_TRUE_MESSAGE(depth_clear[first_row_below_plug] > depth_obstructed[first_row_below_plug],
                              "at the same row, the CLEAR column must show strictly more local "
@@ -483,9 +482,8 @@ test_local_depth_follows_the_puddles_own_shape(void) {
 }
 
 /*
- * THE SINGLE RAY WALK - one shared mirror of app_sand.c's replacement for
- * the two axis-aligned walks mirror_local_depth_column() above still pins
- * at gx == 0. Every test needing the walk at a GENERAL gravity angle calls
+ * The single ray walk - one shared mirror of sand_paint_row.h's local-depth walk. The vertical
+ * test above pins straight-down gravity. Every test needing the walk at a GENERAL gravity angle calls
  * this rather than duplicating the row-major recurrence. Callers own all
  * persisting state, matching the real file statics' persistence across
  * frames; a fresh `ray_walk_state_t` matches BSS-zero-then-untracked,
@@ -497,8 +495,8 @@ test_local_depth_follows_the_puddles_own_shape(void) {
  * larger than every one of them. */
 #define RAY_WALK_STATE_W 128
 
-/* prev_cy mirrors app_sand.c's local_depth_prev_cy for real neighbour
- * detection. RAY_WALK_NO_ROW is LOCAL_DEPTH_NO_ROW: -2, not -1, because -1
+/* prev_cy mirrors sand_paint_row_state_t.local_depth_prev_cy for real neighbour
+ * detection. RAY_WALK_NO_ROW is SAND_PAINT_NO_ROW: -2, not -1, because -1
  * can be a genuine value. See local_depth_prev_cy's comment for details. */
 #define RAY_WALK_NO_ROW  (-2)
 
@@ -542,10 +540,10 @@ mirror_ray_walk_source(sand_t* g, int cx, int cy, int grid_w, int grid_h, bool v
     return src;
 }
 
-/* local_depth_count_at()'s own count-update decision, mirrored: 0 for
+/* sp_local_depth_count_at()'s own count-update decision, mirrored: 0 for
  * anything not liquid, a climb from the source when it holds the same
  * material, a reset once this column has already committed to a different
- * source this pass, or a HOLD's own climb (local_depth_liquid_count()'s
+ * source this pass, or a HOLD's own climb (sand_paint_depth_count()'s
  * `carry_ok`) otherwise. */
 static unsigned
 mirror_ray_walk_count(int cx, int cy, bool vertical_dominant, ray_walk_source_t src, bool chain_ok, unsigned ceiling,
@@ -572,7 +570,7 @@ mirror_ray_walk_count(int cx, int cy, bool vertical_dominant, ray_walk_source_t 
     return count;
 }
 
-/* local_depth_count_at()'s and cell_shading_depth()'s per-cell count/depth
+/* sp_local_depth_count_at()'s and sp_cell_shading_depth()'s per-cell count/depth
  * update, mirrored, for one
  * column of the row mirror_ray_walk_row() below is walking. `step` is
  * that row's own horizontal-error outcome for this column (0, or +-1 off
@@ -627,7 +625,7 @@ mirror_ray_walk_row(sand_t* g, int cy, int grid_w, int grid_h, bool vertical_dom
     const int hdir = h_reverse ? -1 : 1;
     const int ysign = v_reverse ? 1 : -1;
     const int surf_cy = cy - vdir;
-    /* local_depth_walk_begin()'s own chain_ok, once per row. */
+    /* sp_local_depth_walk_begin()'s own chain_ok, once per row. */
     const bool chain_ok = st->ignore_chain_break || (st->prev_cy == surf_cy);
 
     const int row_step =
@@ -653,8 +651,8 @@ mirror_ray_walk_row(sand_t* g, int cy, int grid_w, int grid_h, bool vertical_dom
     st->prev_cy = cy;
 }
 
-/* From (gx, gy), the same three per-frame facts update_local_depth_gravity()
- * computes in app_sand.c - `vertical_dominant`, `scale_q8`, and the two scan
+/* From (gx, gy), the same three per-frame facts sand_paint_update_local_depth_gravity()
+ * computes in sand_paint_row.h: `vertical_dominant`, `scale_q8`, and the two scan
  * reverse flags (returned via out-parameters since C has no multiple return
  * values worth the struct ceremony here). */
 static void
@@ -775,14 +773,14 @@ test_the_blend_has_no_jump_crossing_45_degrees(void) {
     free(blend_pool_cells);
 }
 
-/* PAINT_ROW_N()'s debounced walk. A per-cell debounce history is not
+/* sand_paint_row_n()'s debounced walk. A per-cell debounce history is not
  * affordable: one byte per cell over the finest grid is 41,216 bytes, the
- * size of the grid buffer itself. col_stable_depth[]/col_top_row[]
- * (app_sand.c) debounces per COLUMN instead: a reset commits only once the
+ * size of the grid buffer itself. local_depth_top_row[]
+ * (sand_paint_row.h) debounces per column instead: a reset commits only once the
  * SAME row asks twice in a row - not the same column-chain position,
  * which cannot tell two different rows' reset requests apart. */
 
-/* Mirrors app_sand.c's decision; `stable`/`top_row` IN/OUT, does not touch
+/* Mirrors sand_paint_depth_count()'s decision; `stable`/`top_row` IN/OUT, does not touch
  * the grid. */
 static unsigned
 mirror_debounce_decide(unsigned char* stable, unsigned char* top_row, bool same_material, int cy) {
@@ -838,8 +836,8 @@ test_a_same_row_reset_commits_but_a_different_row_does_not(void) {
     TEST_ASSERT_EQUAL_UINT_MESSAGE(1u, after_commit, "the walk must resume climbing normally after a committed reset");
 }
 
-/* Mirrors app_sand.c's debounce logic on top of mirror_local_depth_column()'s
- * walk; state persists across calls, driven by paint_row_n(). */
+/* Mirrors sand_paint_row.h's debounce logic on top of mirror_local_depth_column()'s
+ * walk; state persists across calls, driven by sand_paint_row_n(). */
 static void
 mirror_debounced_depth_column(sand_t* g, int cx, int h, unsigned char* stable, unsigned char* top_row,
                               unsigned depth_out[]) {
@@ -867,10 +865,8 @@ mirror_debounced_depth_column(sand_t* g, int cx, int h, unsigned char* stable, u
 #define DEBOUNCE_TEST_W 4
 #define DEBOUNCE_TEST_H 20
 
-/* DIAGNOSTIC PROBE checks if boundary moves NEW row consecutively, unlike
- * BLINK. Ensures col_top_row[cx] never repeats, so never COMMITS. Prevents
- * HOLD from reading deep, saturated values. Reproduced without gravity or
- * sand_step(). */
+/* A moving boundary never requests the same row twice, so the debounce
+ * must not commit a stale depth. */
 static void
 test_a_continuously_moving_boundary_does_not_run_away(void) {
     enum { CX = 1, START_TOP = 5, DRAIN_ROWS = 8 };
@@ -892,7 +888,7 @@ test_a_continuously_moving_boundary_does_not_run_away(void) {
 
     /* The drain: the boundary recedes by exactly one row every frame, for
      * several frames running - never landing on the same row twice, so
-     * col_top_row[] can never confirm a commit for any of them. */
+     * local_depth_top_row[] can never confirm a commit for any of them. */
     for (int i = 0; i < DRAIN_ROWS; i++) {
         sand_erase(&fx.debounce_test, CX, START_TOP + i, 0);
         mirror_debounced_depth_column(&fx.debounce_test, CX, DEBOUNCE_TEST_H, &stable, &top_row, depth);
@@ -1474,9 +1470,7 @@ enum {
 
 /* ~30fps, matches the reproduction that found this. */
 #define WAKE_TEST_DT_MS   33u
-/* LOCAL_DEPTH_WAKE_MS, mirrored - app_sand.c cannot be linked here (see this
- * section's own top comment), so this is a copy of the constant, not a
- * reference to it. */
+/* Matches the wake timer in app_sand.c. */
 #define WAKE_TEST_WAKE_MS 120u
 
 static uint8_t wake_test_blocks[((WAKE_TEST_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
@@ -1580,7 +1574,7 @@ wake_test_row_carries_liquid(sand_t* g, int y) {
 }
 
 /* THE WAKE TICK'S OWN ROW GATE - row_has_liquid[]'s population, recomputed
- * fresh each frame from the live grid (paint_row_n() recomputes it every
+ * fresh each frame from the live grid (sand_paint_row_n() recomputes it every
  * time a row is painted; a row that never gets painted keeps whatever this
  * cache last decided, exactly like the real array). */
 static void
@@ -1785,7 +1779,7 @@ test_a_settled_edge_does_not_flicker_stale_to_fresh(void) {
  * A direction flip must not corrupt the boundary debounce, which commits a
  * reset only when the SAME row asks twice and so assumes the boundary
  * drifts slowly. A flip relocates which row is the boundary, so
- * alternating crossings rarely ask twice and climb col_stable_depth[cx]
+ * alternating crossings rarely ask twice and climb local-depth count
  * without bound. The column is shallower than MATERIAL_LIQUID_DEPTH_BAND
  * deliberately, 13 rows against 24; past the clamp it is the MEAN
  * debounced depth that tells a surviving gradient (7.00) from a collapsed
@@ -1805,7 +1799,7 @@ enum {
                                section's own comment for why that matters */
 };
 
-/* One row of the sweep: mirrors THE SATURATING CLIMB (app_sand.c) -
+/* One row of the sweep: mirrors the saturating climb in sand_paint_row.h -
  * MATERIAL_LIQUID_DEPTH_BAND, not 255. */
 static unsigned
 flip_test_step(int cy, bool same, unsigned char* stable, unsigned char* top_row) {
@@ -1822,12 +1816,12 @@ flip_test_step(int cy, bool same, unsigned char* stable, unsigned char* top_row)
     return depth;
 }
 
-/* Mirrors app_sand.c's col_stable_depth[]/col_top_row[] debounce,
+/* Mirrors sand_paint_row.h's local_depth_top_row[] debounce,
  * generalised for a walk whose direction can REVERSE between frames.
  * `apply_fix` gates only the reset itself, not the flip detection above
  * it. The sweep covers [top, bottom] and deliberately not the dry rows
  * above: real firmware never repaints those, and sweeping them here would
- * feed col_stable_depth[cx] a clean reset every frame whatever
+ * feed local-depth count a clean reset every frame whatever
  * `apply_fix` says, hiding the exact bug this test exists to catch. */
 static void
 flip_test_sweep_column(int top, int bottom, bool v_reverse, bool apply_fix, unsigned char* stable,
@@ -1865,7 +1859,7 @@ static double
 flip_test_run(bool apply_fix) {
     unsigned char stable = 0, top_row = 255;
     bool v_reverse_prev = false; /* matches local_depth_v_reverse_prev's own
-                                     BSS-zero default in app_sand.c */
+                                     zero-initialized default in sand_paint_row_state_t */
     unsigned depth[FLIP_TEST_H];
 
     long sum = 0;
@@ -1901,13 +1895,13 @@ test_a_direction_flip_does_not_corrupt_the_boundary_debounce(void) {
     snprintf(why, sizeof why,
              "mean debounced vertical depth across a %d-row water column "
              "was %.2f, against a saturation point of %d - update_local_"
-             "depth_gravity()'s reset on a v_reverse flip (app_sand.c) "
+             "depth_gravity()'s reset on a v_reverse flip (sand_paint_row.h) "
              "exists to keep this column's depth GRADIENT alive (mean 7.00, "
              "the average of an honest 0..%d ramp) rather than letting the "
              "HOLD branch compound every cell in it up to the saturation "
              "point (mean 24.00, one flat maximally-deep colour) when two "
              "different, both legitimate, boundary rows keep alternately "
-             "asking for col_top_row[]'s one tracking slot",
+             "asking for local_depth_top_row[]'s one tracking slot",
              FLIP_TEST_BOTTOM - FLIP_TEST_TOP + 1, mean_depth, (int)MATERIAL_LIQUID_DEPTH_BAND,
              FLIP_TEST_BOTTOM - FLIP_TEST_TOP);
     TEST_ASSERT_TRUE_MESSAGE(mean_depth < FLIP_TEST_MAX_MEAN_DEPTH, why);
@@ -2349,7 +2343,7 @@ flash_test_is_interior_liquid(int x, int y) {
 
 /* Wall-clock carried from the settle into whatever the caller does next, so
  * the wake tick's own phase is continuous across the two - the same reason
- * local_depth_wake_elapsed_ms is a file static in app_sand.c rather than a
+ * local_depth_wake_elapsed_ms is a file static in sand_paint_row.h rather than a
  * local. */
 static uint32_t flash_wake_elapsed_ms;
 
@@ -2472,7 +2466,7 @@ test_turning_a_settled_pool_to_landscape_does_not_flash_the_whole_body(void) {
              "sweep's FIRST row importing the count of the LAST row of the "
              "previous sweep - the deepest, saturated row - at the surface, "
              "which floods the whole body to maximum depth for a frame; see "
-             "local_depth_prev_cy's own comment in app_sand.c",
+             "local_depth_prev_cy's own comment in sand_paint_row.h",
              guarded, (int)FLASH_TEST_SHADE_STEP, unguarded);
     TEST_ASSERT_TRUE_MESSAGE(guarded < FLASH_TEST_MAX_CELLS, why);
     TEST_ASSERT_TRUE_MESSAGE(unguarded > FLASH_TEST_MAX_CELLS, why);
@@ -2575,7 +2569,7 @@ test_axis_lock_tremor_does_not_wipe_the_depth_debounce(void) {
              "result. Without the relevance gate the same run measures %d "
              "resets and %d moved cells. A sign flip on a component the "
              "active regime's walk cannot observe must cost nothing - see "
-             "update_local_depth_gravity()'s own comment in app_sand.c for "
+             "sand_paint_update_local_depth_gravity()'s own comment in sand_paint_row.h for "
              "why the gate is exact arithmetic rather than a deadband",
              gated_resets, (int)TREMOR_TEST_FRAMES, gated_changed, ungated_resets, ungated_changed);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, gated_resets, why);
@@ -2614,9 +2608,7 @@ shadow_test_is_liquid(int x, int y) {
 }
 
 /* Six tilts, magnitude ~1000 matching this file's own *1000 convention -
- * the SAME six this section's own top comment measures against, chosen to
- * match LOCAL DEPTH's own top comment in app_sand.c exactly so the two
- * tables can be read side by side. */
+ * used for the local-depth sweep. */
 static const struct {
     int gx, gy;
 } SHADOW_SWEEP[] = {
@@ -2870,7 +2862,7 @@ test_a_fixed_depth_reads_the_same_at_every_tilt_angle(void) {
         const unsigned scale_q8 = dom_axis ? (256u * (unsigned)len) / dom_axis : 256u;
 
         /* Combine-time projection, clamped to MATERIAL_LIQUID_DEPTH_BAND -
-         * see cell_shading_depth() (app_sand.c). Gravity is
+         * see sp_cell_shading_depth() (sand_paint_row.h). Gravity is
          * static within one sweep sample here, so there is no
          * stale-accumulator concern to model. */
         const unsigned depth_raw = (count * scale_q8) >> 8;
