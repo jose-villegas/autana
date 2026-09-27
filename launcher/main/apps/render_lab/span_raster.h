@@ -2,11 +2,11 @@
  * span_raster - a depth-tested, Gouraud-shaded triangle filled one scanline
  * span at a time into a caller's window of rows.
  *
- * Setup is float, once per triangle and once per row; the per-pixel loop is
- * integer adds only. Every attribute is sampled from its plane equation at
- * the pixel centre rather than stepped down the edges, so a triangle clipped
- * to a window of rows draws the same pixels as the whole one. Depth is the
- * caller's inverse depth in (0, 1], larger nearer, kept as 16 bits.
+ * Setup is float, once per triangle; rows and spans step in fixed point with
+ * integer adds. Edges and attributes are anchored at the triangle's own
+ * first row, so a triangle clipped to a window of rows draws exactly the
+ * pixels of the whole one. Depth is the caller's inverse depth in (0, 1],
+ * larger nearer, kept as 16 bits.
  */
 #pragma once
 
@@ -26,6 +26,10 @@ typedef struct {
     float z;       /* inverse depth, (0, 1] */
     float r, g, b; /* 0..255 */
 } span_vertex_t;
+
+/* Temporary measurement switch: 0 draws normally; 1 stops after triangle
+ * setup, 2 after walking the rows, 3 after each span's setup. */
+extern int span_raster_stop_after;
 
 void span_raster_triangle(const span_target_t* target, const span_vertex_t* a, const span_vertex_t* b,
                           const span_vertex_t* c);

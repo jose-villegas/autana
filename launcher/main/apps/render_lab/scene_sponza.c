@@ -6,8 +6,9 @@
  * shadows plus sky light), so a frame is only cull, transform, clip and
  * fill: lit_frame.h over sponza_mesh_generated.h, on both cores.
  *
- * Depth needs a whole-screen buffer, 330 KB, so it lives in PSRAM beside the
- * framebuffer, and the scene asks for the full-framebuffer layout.
+ * It renders at half the panel's resolution into its own PSRAM target and
+ * doubles that into the framebuffer, so it asks for the full-framebuffer
+ * layout.
  */
 
 #include <assert.h>
@@ -30,8 +31,13 @@
 #define HALF_FOV_SHORT_TAN 0.62f
 #define NEAR_Z             6.0f
 
+/* Rendered at half the panel's resolution in each axis, then doubled. */
+#define RENDER_WIDTH       (GFX_WIDTH / 2)
+#define RENDER_HEIGHT      (GFX_HEIGHT / 2)
+#define RENDER_PIXELS      ((size_t)RENDER_WIDTH * RENDER_HEIGHT)
+
 static void* scratch;
-static uint16_t* depth;
+static void* target; /* the half-size colour, then the half-size depth */
 static lit_frame_stats_t stats;
 static uint32_t elapsed_ms;
 
@@ -41,16 +47,17 @@ scene_sponza_enter(void) {
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
 
     scratch = heap_caps_malloc(lit_frame_scratch_bytes(&sponza_mesh), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    depth = heap_caps_malloc(sizeof(*depth) * (size_t)GFX_WIDTH * GFX_HEIGHT, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    target =
+        heap_caps_malloc(RENDER_PIXELS * (sizeof(gfx_color_t) + sizeof(uint16_t)), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     elapsed_ms = 0;
 }
 
 static void
 scene_sponza_exit(void) {
     heap_caps_free(scratch);
-    heap_caps_free(depth);
+    heap_caps_free(target);
     scratch = NULL;
-    depth = NULL;
+    target = NULL;
 }
 
 /* Every frame already redraws the whole screen. */
@@ -60,7 +67,7 @@ scene_sponza_invalidate(void) {}
 static void
 scene_sponza_frame(uint32_t dt_ms, bool band_mode_active) {
     assert(!band_mode_active); /* needs_full_framebuffer keeps the app out of band mode for this scene */
-    if (scratch == NULL || depth == NULL) {
+    if (scratch == NULL || target == NULL) {
         return;
     }
 
@@ -68,16 +75,18 @@ scene_sponza_frame(uint32_t dt_ms, bool band_mode_active) {
     lit_vec3_t eye, forward;
     camera_path_sample(&sponza_flythrough, elapsed_ms, &eye, &forward);
     lit_view_t view;
-    lit_view_look(&view, eye, forward, HALF_FOV_SHORT_TAN, NEAR_Z, SPONZA_POSITION_SCALE, GFX_WIDTH, GFX_HEIGHT,
+    lit_view_look(&view, eye, forward, HALF_FOV_SHORT_TAN, NEAR_Z, SPONZA_POSITION_SCALE, RENDER_WIDTH, RENDER_HEIGHT,
                   display_shell_quarter());
 
+    gfx_color_t* color = target;
     lit_frame_t frame = {
         .mesh = &sponza_mesh,
-        .color = gfx_framebuffer(),
-        .depth = depth,
-        .width = GFX_WIDTH,
-        .height = GFX_HEIGHT,
+        .color = color,
+        .depth = (uint16_t*)(color + RENDER_PIXELS),
+        .width = RENDER_WIDTH,
+        .height = RENDER_HEIGHT,
         .clear = gfx_rgb(SKY_RGB),
+        .doubled = gfx_framebuffer(),
     };
     lit_frame_use_scratch(&frame, scratch);
     stats = lit_frame_render(&frame, &view);

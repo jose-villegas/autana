@@ -28,8 +28,10 @@ typedef struct {
     int width, height;
 } lit_view_t;
 
+/* 16 bytes: lens-space x and y are recomputed from the position for the
+ * rare triangle that needs near clipping. */
 typedef struct {
-    float x, y, z;    /* lens space */
+    float z;          /* lens space */
     float sx, sy, iz; /* screen position and near_z / z, valid while z > near_z */
 } lit_cs_vertex_t;
 

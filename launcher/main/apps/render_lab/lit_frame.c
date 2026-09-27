@@ -21,6 +21,23 @@ transform_slice(void* ctx) {
     lit_transform(s->frame->mesh, s->view, s->frame->visible + s->first, s->count, s->frame->cs, s->frame->rows);
 }
 
+/* Two panel rows per source row, each pixel written twice as one 32-bit
+ * store. */
+static void
+double_rows(const lit_frame_t* f, int first, int count) {
+    const int out_width = 2 * f->width;
+    for (int y = first; y < first + count; y++) {
+        const gfx_color_t* src = f->color + (size_t)y * (size_t)f->width;
+        uint32_t* top = (uint32_t*)(f->doubled + (size_t)(2 * y) * (size_t)out_width);
+        uint32_t* bottom = top + f->width;
+        for (int x = 0; x < f->width; x++) {
+            const uint32_t pair = ((uint32_t)src[x] << 16) | src[x];
+            top[x] = pair;
+            bottom[x] = pair;
+        }
+    }
+}
+
 static void
 draw_slice(void* ctx) {
     const slice_t* s = ctx;
@@ -37,6 +54,9 @@ draw_slice(void* ctx) {
 
     const span_target_t target = {color, depth, f->width, s->first, s->first + s->count};
     lit_draw(f->mesh, s->view, f->visible, s->visible_count, f->cs, f->rows, &target);
+    if (f->doubled != NULL) {
+        double_rows(f, s->first, s->count);
+    }
 }
 
 static void
