@@ -75,7 +75,7 @@ typedef enum {
  * solid interior. */
 
 /* `depth` means something per material: a liquid's INTERIOR reads local
- * depth, 0 at the boundary up to 255 (see paint_row_n() and
+ * depth, 0 at the boundary up to 255 (see sand_paint_row_n() and
  * DEPTH_SATURATE_CELLS, material_palette.c); a root reads
  * material_root_neighbours(), darker the more it has; a leaf, and wood
  * beside one, read the leaf wave's fraction plus one. Everything else

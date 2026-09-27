@@ -68,6 +68,7 @@
 #include "sand_menu.h"
 #include "sand_mode_swatches.h"
 #include "sand_paint.h"
+#include "sand_paint_row.h"
 #include "sand_palette256.h"
 #include "sand_swatch.h"
 #include "sand_ui.h"
@@ -77,11 +78,6 @@
 #include "ui/title_screen.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
-#include "util/intmath.h" /* im_abs(), im_len() - see
-                             * update_local_depth_gravity() below, which
-                             * projects gravity's own direction into the
-                             * vertical/horizontal weights LOCAL DEPTH's own
-                             * comment describes */
 
 static const char* TAG = "sand";
 
@@ -153,15 +149,16 @@ static uint8_t dither16_class[GFX_INDEXED_PALETTE_SIZE];
 static uint8_t checker2_class[GFX_INDEXED_PALETTE_SIZE];
 static bool dither_classes_ready;
 
-/* paint_row_n()'s per-cell dispatch, resolved once per indexed-mode entry -
- * see apply_gfx_enter_indexed() - never re-derived from color_mode/
- * dither_mode inside the hot loop itself. `repaint_class_table` is read
- * for GFX_INDEXED_REPAINT_CLASS only; the two CELL kinds read their own
- * generated table directly (sand_dither_cell_checker/_bayer2), never a
- * class, so `repaint_class_table` is left stale (unread) for those. */
-static gfx_indexed_repaint_kind_t repaint_kind = GFX_INDEXED_REPAINT_RAW;
-static const uint8_t* repaint_class_table = NULL;
-static const gfx_color_t* repaint_cell_table = NULL;
+/* Indexed repaint dispatch is selected when entering indexed mode. */
+static sand_paint_row_state_t paint_row_state;
+static sand_paint_frame_t paint_frame = {
+    .shine_ux_q8 = 181,
+    .shine_uy_q8 = 181,
+    .wood_leaf_wind_ux_q8 = 256,
+    .wood_leaf_wind_sign = 1,
+    .wood_leaf_top5 = {{0, -1}, {-1, -1}, {1, -1}, {-1, 0}, {1, 0}},
+    .repaint_kind = GFX_INDEXED_REPAINT_RAW,
+};
 
 /* Set whenever the PANEL, not just the simulation, needs every visited
  * cell resent regardless of whether its own index moved -
@@ -401,37 +398,36 @@ apply_gfx_enter_indexed(void) {
                              GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX, checker2_class);
         dither_classes_ready = true;
     }
-    /* sand_indexed_cell_needs_repaint()'s own dispatch, resolved here and
-     * only here - color_mode/dither_mode cannot change mid-run (the START
-     * lesson), so the hot loop never re-derives this per cell or per row. */
+    /* Color and dither modes stay fixed during a run, so indexed repaint
+     * dispatch is resolved when entering indexed mode. */
     if (color_mode != SAND_COLOR_16) {
-        repaint_kind = GFX_INDEXED_REPAINT_RAW;
-        repaint_class_table = NULL;
-        repaint_cell_table = NULL;
+        paint_frame.repaint_kind = GFX_INDEXED_REPAINT_RAW;
+        paint_frame.repaint_class_table = NULL;
+        paint_frame.repaint_cell_table = NULL;
     } else {
-        repaint_class_table = NULL;
-        repaint_cell_table = NULL;
+        paint_frame.repaint_class_table = NULL;
+        paint_frame.repaint_cell_table = NULL;
         switch (dither_mode) {
             case GFX_DITHER_NONE:
-                repaint_kind = GFX_INDEXED_REPAINT_CLASS;
-                repaint_class_table = none_class;
+                paint_frame.repaint_kind = GFX_INDEXED_REPAINT_CLASS;
+                paint_frame.repaint_class_table = none_class;
                 break;
             case GFX_DITHER_CELL_CHECKER:
-                repaint_kind = GFX_INDEXED_REPAINT_CELL_CHECKER;
-                repaint_cell_table = sand_dither_cell_checker;
+                paint_frame.repaint_kind = GFX_INDEXED_REPAINT_CELL_CHECKER;
+                paint_frame.repaint_cell_table = sand_dither_cell_checker;
                 break;
             case GFX_DITHER_CELL_BAYER2:
-                repaint_kind = GFX_INDEXED_REPAINT_CELL_BAYER2;
-                repaint_cell_table = sand_dither_cell_bayer2;
+                paint_frame.repaint_kind = GFX_INDEXED_REPAINT_CELL_BAYER2;
+                paint_frame.repaint_cell_table = sand_dither_cell_bayer2;
                 break;
             case GFX_DITHER_PIXEL_CHECKER2:
-                repaint_kind = GFX_INDEXED_REPAINT_CLASS;
-                repaint_class_table = checker2_class;
+                paint_frame.repaint_kind = GFX_INDEXED_REPAINT_CLASS;
+                paint_frame.repaint_class_table = checker2_class;
                 break;
             case GFX_DITHER_PIXEL_BAYER4:
             default:
-                repaint_kind = GFX_INDEXED_REPAINT_CLASS;
-                repaint_class_table = dither16_class;
+                paint_frame.repaint_kind = GFX_INDEXED_REPAINT_CLASS;
+                paint_frame.repaint_class_table = dither16_class;
                 break;
         }
     }
@@ -610,6 +606,7 @@ start_sim(void) {
 
     sim_accumulator_q8 = 0;
     pour_accumulator_ms = 0;
+    sand_paint_row_state_init(&paint_row_state);
     sand_heal_init(&heal_policy, GFX_HEIGHT);
     gfx_heal_set_budget(SAND_HEAL_BUDGET_PIXELS);
     ui.brush = 0;
@@ -774,29 +771,14 @@ sand_exit(void) {
 
 /* Drawing */
 
-#define SHINE_PERIOD  64 /* power of two - see the mask below */
 #define SHINE_STEP_MS 40
 #define SHINE_STEP_PX 2
 
-static int shine_offset;
 static uint32_t shine_elapsed_ms;
-
-static int shine_ux_q8 = 181;
-static int shine_uy_q8 = 181;
-
-static int wood_leaf_wind_ux_q8 = 256;
-static int wood_leaf_wind_uy_q8;
 
 /* The 5 gravity-relative directions material_wood_near_leaf() checks -
  * see material_wood_leaf_top5(). Recomputed once a frame, not per cell. */
-static int8_t wood_leaf_top5[5][2] = {
-    {0, -1}, {-1, -1}, {1, -1}, {-1, 0}, {1, 0},
-};
 static int wood_leaf_top5_down;
-
-/* How many of the 5 are actually checked, out of 5 - higher reads bulkier
- * and greener since more wood cells beside foliage qualify. */
-#define WOOD_LEAF_SLOTS_CHECKED       5u
 
 /* A sweep that always travels the same way still reads as one shine, even
  * with gusts dropping out - real wind swings direction. Interval jittered
@@ -805,42 +787,11 @@ static int wood_leaf_top5_down;
 #define WOOD_LEAF_WIND_FLIP_BASE_MS   1200u
 #define WOOD_LEAF_WIND_FLIP_JITTER_MS 1800u
 
-static int wood_leaf_wind_sign = 1;
 static uint32_t wood_leaf_wind_flip_elapsed_ms;
 static uint32_t wood_leaf_wind_flip_due_ms = WOOD_LEAF_WIND_FLIP_BASE_MS;
 static unsigned wood_leaf_wind_flip_count;
 
-/* One bit per row per feature, not five 224-byte GRID_H_MAX arrays each
- * holding a single 0/1 flag - the diagnostics build, which links every
- * test suite into firmware alongside this app, has no headroom to spend
- * on that. */
-#define ROW_FLAG_SHINE     (1u << 0)
-#define ROW_FLAG_LIQUID    (1u << 1)
-#define ROW_FLAG_CULLET    (1u << 2)
-#define ROW_FLAG_GLASS     (1u << 3)
-#define ROW_FLAG_WOOD_LEAF (1u << 4)
-
-static uint8_t row_flags[GRID_H_MAX];
-
-/* The column span, within the last-painted row, carrying any of the five
- * ROW_FLAG_* properties above - a safe superset for every wake tick to
- * repaint by, one shared span rather than five keeping a tick's cost
- * independent of how many properties a row happens to mix. */
-static uint16_t row_flag_x0[GRID_H_MAX];
-static uint16_t row_flag_x1[GRID_H_MAX];
-
-/* Indexed modes only: the column span, within the last-painted row, that
- * paint_row_n() actually wrote a new index into - narrower than the span it
- * examined, since a cell whose new value dithers the same as its stored one
- * is left untouched. draw_dirty_rows() sends this instead of the wider
- * examined span, so a shading change 16 (or 256) colours cannot show costs
- * nothing beyond having been looked at. */
-static uint16_t row_changed_x0[GRID_H_MAX];
-static uint16_t row_changed_x1[GRID_H_MAX];
-
-#define FOAM_BLOB_SHIFT 3
-
-#define FOAM_PHASE_MS   90
+#define FOAM_PHASE_MS 90
 
 static uint32_t foam_elapsed_ms;
 
@@ -854,103 +805,11 @@ static uint32_t cullet_elapsed_ms;
  * same reasoning LOCAL_DEPTH_WAKE_MS already applies to liquid depth. */
 #define WOOD_LEAF_WAKE_MS 40
 
-static uint32_t wood_leaf_time_ms;
 static uint32_t wood_leaf_wake_elapsed_ms;
 
 #define GLASS_PHASE_SHIFT 7
 
 static int glass_last_phase;
-
-/* A LIQUID INTERIOR'S LOCAL DEPTH: follows each puddle's own shape, not a
- * flat screen-position gradient, so an obstacle poking through a pool
- * casts a depth "shadow" along the true gravity direction. Walked along
- * the gravity ray itself (Bresenham), switching per-row/per-column
- * regime at 45 degrees: both regimes measure the same quantity, distance
- * along the ray, so the flip changes only how the count is computed,
- * never what it means, and the two sides agree exactly at the crossing
- * by construction. */
-
-static unsigned local_depth_scale_q8;
-static bool local_depth_vertical_dominant;
-static bool local_depth_v_reverse;
-static bool local_depth_h_reverse;
-
-static unsigned local_depth_ax;
-static unsigned local_depth_ay;
-
-static bool local_depth_vertical_dominant_prev;
-static bool local_depth_v_reverse_prev;
-static bool local_depth_h_reverse_prev;
-
-static uint8_t local_depth_row_a[GRID_W_MAX];
-static uint8_t local_depth_row_b[GRID_W_MAX];
-static uint8_t* local_depth_cur_row = local_depth_row_a;
-static uint8_t* local_depth_prev_row = local_depth_row_b;
-
-/* THE DEFECT, exactly. Every cross-row read in paint_row_n() below treats
- * local_depth_prev_row[qx] as "the count belonging to the cell one step
- * back along the ray, in row cy - vdir". That is only true when the row
- * painted immediately before this one WAS row cy - vdir. */
-
-/* With this guard: 83, and none of them in the body of the pool (see the
- * residual note below). */
-
-#define LOCAL_DEPTH_NO_ROW (-2)
-static int local_depth_prev_cy = LOCAL_DEPTH_NO_ROW;
-
-/* BOTH REGIMES SHARE THE ARRAY, NOT JUST THE TYPE, because a REGIME FLIP
- * (see update_local_depth_gravity() below) always resets it wholesale
- * alongside local_depth_row_a[]/local_depth_row_b[] - the two regimes
- * never read a value the OTHER one wrote, by construction, so there is no
- * cross-regime confusion for either convention to guard against. */
-static uint8_t local_depth_top_row[GRID_W_MAX];
-
-static void
-update_local_depth_gravity(int gx, int gy) {
-    const int ax = im_abs(gx), ay = im_abs(gy);
-
-    const int len = im_len(gx, gy);
-    const bool new_vertical_dominant = (ay >= ax);
-    const unsigned dom_axis = new_vertical_dominant ? (unsigned)ay : (unsigned)ax;
-    local_depth_scale_q8 = (dom_axis != 0u) ? (256u * (unsigned)len) / dom_axis : 256u;
-    local_depth_ax = (unsigned)ax;
-    local_depth_ay = (unsigned)ay;
-
-    const bool new_v_reverse = (gy < 0);
-    const bool new_h_reverse = (gx < 0);
-
-    /* THE GATE IS EXACT ARITHMETIC, NOT A DEADBAND - deliberately, because
-     * this mechanism already removed one tuned dead zone and should not
-     * quietly grow another. Each condition below is a statement about
-     * whether the flipped flag can change a number THIS grid's walk
-     * actually computes, derived from the Bresenham arithmetic itself. */
-
-    /* A REGIME FLIP is never gated - it always changes what the array
-     * slot means, whatever the magnitudes are. */
-
-    const bool drift_observable = ((long)grid_h * (long)ax >= (long)ay);
-    const bool cross_row_observable = ((long)grid_w * (long)ay >= (long)ax);
-    const bool v_reverse_matters =
-        (new_v_reverse != local_depth_v_reverse_prev) && (new_vertical_dominant || cross_row_observable);
-    const bool h_reverse_matters =
-        (new_h_reverse != local_depth_h_reverse_prev) && (!new_vertical_dominant || drift_observable);
-
-    if (new_vertical_dominant != local_depth_vertical_dominant_prev || v_reverse_matters || h_reverse_matters) {
-        for (int cx = 0; cx < grid_w; cx++) {
-            local_depth_row_a[cx] = 0u;
-            local_depth_row_b[cx] = 0u;
-            local_depth_top_row[cx] = 255u;
-        }
-        local_depth_prev_cy = LOCAL_DEPTH_NO_ROW;
-        local_depth_vertical_dominant_prev = new_vertical_dominant;
-        local_depth_v_reverse_prev = new_v_reverse;
-        local_depth_h_reverse_prev = new_h_reverse;
-    }
-
-    local_depth_vertical_dominant = new_vertical_dominant;
-    local_depth_v_reverse = new_v_reverse;
-    local_depth_h_reverse = new_h_reverse;
-}
 
 /* A pool's INTERIOR - the bulk of its rows - is unaffected: a row with
  * any interior cell is already gated in, rim or not. Widening the gate
@@ -961,335 +820,35 @@ update_local_depth_gravity(int gx, int gy) {
 
 static uint32_t local_depth_wake_elapsed_ms;
 
-static inline void
-note_row_flag_x(int cy, int cx) {
-    if (cx < row_flag_x0[cy]) {
-        row_flag_x0[cy] = (uint16_t)cx;
-    }
-    if (cx + 1 > row_flag_x1[cy]) {
-        row_flag_x1[cy] = (uint16_t)(cx + 1);
-    }
-}
-
-static inline void
-note_row_change_x(int cy, int cx) {
-    if (cx < row_changed_x0[cy]) {
-        row_changed_x0[cy] = (uint16_t)cx;
-    }
-    if (cx + 1 > row_changed_x1[cy]) {
-        row_changed_x1[cy] = (uint16_t)(cx + 1);
-    }
-}
-
-/* paint_row_n()'s one per-cell decision - repaint_kind and its table were
- * resolved once at apply_gfx_enter_indexed() time, not re-derived here:
- * a force_full check, an index compare, one lookup, no switch per cell. */
-static inline bool
-sand_indexed_cell_needs_repaint(bool force_full, uint8_t old_idx, uint8_t new_idx, int cx, int cy) {
-    return gfx_indexed_cell_repaint(repaint_kind, repaint_class_table, repaint_cell_table, force_full, old_idx, new_idx,
-                                    cx, cy);
-}
-
-static inline __attribute__((always_inline)) unsigned
-cell_edge_mask(const uint8_t* above, const uint8_t* row, const uint8_t* below, int cx) {
-    return sand_paint_edge_mask(above, row, below, cx, grid_w);
-}
-
-/* One row's walk through the local-depth state, set up once per row by
- * paint_row_n() and advanced cell by cell by local_depth_count_at(). */
-typedef struct {
-    const uint8_t* toward_surface;
-    bool chain_ok;
-    int hdir;
-    int row_step;
-    int herr;
-    int ysign;
-} local_depth_walk_t;
-
-/* THE ROW OFFSET, WITHOUT AN ACCUMULATOR: computed from `cy` alone, not
- * a running Bresenham accumulator carried across paint_row_n() calls -
- * that function only runs for DIRTY rows, so an accumulator would
- * silently skip gaps and drift out of sync. `cum(n) - cum(n - 1)`
- * (cum(n) = floor(n*minor/dominant)) gives the same drift a real march
- * would, verified by hand, with no memory of prior rows needed.
- * Meaningless (0) when horizontal-dominant or gravity has no
- * direction. */
-static inline __attribute__((always_inline)) int
-local_depth_row_step_at(int cy, int vdir) {
-    if (!local_depth_vertical_dominant || local_depth_ay == 0u) {
-        return 0;
-    }
-    const int xsign = local_depth_h_reverse ? 1 : -1;
-    const int n = (vdir > 0) ? cy : (grid_h - 1 - cy);
-    const int cum_n = (int)(((long)(n) * (long)local_depth_ax) / (long)local_depth_ay);
-    const int cum_n1 = (int)(((long)(n + 1) * (long)local_depth_ax) / (long)local_depth_ay);
-    return xsign * (cum_n1 - cum_n);
-}
-
-static inline __attribute__((always_inline)) int
-local_depth_cross_step(local_depth_walk_t* walk) {
-    if (local_depth_vertical_dominant) {
-        return 0;
-    }
-    walk->herr += (int)local_depth_ay;
-    if (local_depth_ax > 0u && walk->herr >= (int)local_depth_ax) {
-        walk->herr -= (int)local_depth_ax;
-        return walk->ysign;
-    }
-    return 0;
-}
-
-static inline __attribute__((always_inline)) unsigned
-local_depth_liquid_count(bool same_material, bool carry_ok, unsigned src_count, int cx, int cy) {
-    return sand_paint_depth_count(local_depth_top_row, local_depth_vertical_dominant, same_material, carry_ok,
-                                  src_count, cx, cy);
-}
-
-static inline __attribute__((always_inline)) unsigned
-local_depth_count_at(local_depth_walk_t* walk, const uint8_t* row, int cx, int cy, bool here_liquid) {
-    const int step = local_depth_cross_step(walk);
-    const int qx = local_depth_vertical_dominant ? (cx + walk->row_step) : (cx - walk->hdir);
-    const bool qx_ok = (qx >= 0 && qx < grid_w);
-    const bool cross_row = local_depth_vertical_dominant || (step != 0);
-    const uint8_t* src_ptr = cross_row ? walk->toward_surface : row;
-    const uint8_t* src_arr = cross_row ? local_depth_prev_row : local_depth_cur_row;
-
-    const bool same_material =
-        here_liquid && qx_ok && src_ptr != NULL && (CELL_MATERIAL(src_ptr[qx]) == CELL_MATERIAL(row[cx]));
-    const unsigned src_count = qx_ok ? src_arr[qx] : 0u;
-
-    const unsigned count =
-        here_liquid ? local_depth_liquid_count(same_material, !cross_row || walk->chain_ok, src_count, cx, cy) : 0u;
-    local_depth_cur_row[cx] = (uint8_t)count;
-    return count;
-}
-
-/* The `depth` material_colours() takes: a root's neighbour count, a leaf
- * wave for canopy cells, else the liquid depth `count` projects to. */
-static inline __attribute__((always_inline)) unsigned
-cell_shading_depth(const uint8_t* above, const uint8_t* row, const uint8_t* below, int cx, int cy, unsigned hash,
-                   bool leaf_shading, unsigned count) {
-    const unsigned depth_raw = (count * local_depth_scale_q8) >> 8;
-    const unsigned depth_liquid = depth_raw < MATERIAL_LIQUID_DEPTH_BAND ? depth_raw : MATERIAL_LIQUID_DEPTH_BAND;
-
-    /* Projected onto the wind axis (gravity-perpendicular, see
-     * material_wood_leaf_wind_axis()), not raw `cx` - a grid column is
-     * not a screen-relative direction once the device is rotated.
-     * wood_leaf_wind_sign periodically reverses which way the gust
-     * appears to travel - see advance_wood_leaf_wind_sign(). */
-    const int wood_leaf_wind_pos = wood_leaf_wind_sign * ((cx * wood_leaf_wind_ux_q8 + cy * wood_leaf_wind_uy_q8) >> 8);
-
-    /* +1: the wave's own fraction can legitimately be 0 at its trough,
-     * which must still select the tint branch in wood_colours(),
-     * not fall through to the untinted look an untinted depth of 0
-     * would. */
-    return (row[cx] == MATX(MATX_ROOT))
-               ? material_root_neighbours(above, row, below, cx, grid_w)
-               : (leaf_shading ? material_wood_leaf_wave(wood_leaf_time_ms, wood_leaf_wind_pos, grid_w, hash) + 1u
-                               : depth_liquid);
-}
-
-static inline __attribute__((always_inline)) void
-note_row_flag(int cy, int cx, unsigned flag) {
-    row_flags[cy] |= flag;
-    note_row_flag_x(cy, cx);
-}
-
-static inline __attribute__((always_inline)) void
-note_cell_row_flags(int cy, int cx, uint8_t cell, bool here_liquid, bool leaf_shading) {
-    const unsigned cullet_first = MAT_SAND * MATERIAL_VARIANTS + SAND_CULLET_BASE;
-
-    if (here_liquid) {
-        note_row_flag(cy, cx, ROW_FLAG_LIQUID);
-    }
-    if (leaf_shading) {
-        note_row_flag(cy, cx, ROW_FLAG_WOOD_LEAF);
-    }
-    if ((unsigned)(cell - cullet_first) < SAND_CULLET_SHADES) {
-        note_row_flag(cy, cx, ROW_FLAG_CULLET);
-    }
-    if (CELL_MATERIAL(cell) == MAT_GLASS) {
-        note_row_flag(cy, cx, ROW_FLAG_GLASS);
-    }
-}
-
-/* MATERIAL_HATCHED's diagonal cannot survive one index per cell, but
- * whether THIS cell falls on the band still can: the same shine line,
- * sampled once at the cell's own centre instead of per pixel. A cell the
- * line crosses takes col[2]'s own index (already in the study's sweep -
- * see material_palette256_index()'s own comment) instead of col[0]'s. */
-static inline __attribute__((always_inline)) void
-paint_indexed_cell(uint8_t* index_row, int cx, int cy, int n, material_pattern_t pat, const gfx_color_t col[3],
-                   bool force_full) {
-    gfx_color_t shade = col[0];
-    if (pat == MATERIAL_HATCHED) {
-        const int shine_q8 = (cx * n + n / 2) * shine_ux_q8 + (cy * n + n / 2) * shine_uy_q8;
-        const int along = ((shine_q8 >> 8) + shine_offset) & (SHINE_PERIOD - 1);
-        shade = (along < n) ? col[2] : col[0];
-    }
-
-    /* Compares against what this cell already holds - the index image is
-     * never cleared between frames (only on a fresh indexed entry, see
-     * apply_gfx_enter_indexed()), so it IS last frame's sent value, at no
-     * extra storage. */
-    const uint8_t new_idx = (uint8_t)material_palette256_index(shade);
-    const uint8_t old_idx = index_row[cx];
-    if (sand_indexed_cell_needs_repaint(force_full, old_idx, new_idx, cx, cy)) {
-        index_row[cx] = new_idx;
-        note_row_change_x(cy, cx);
-    }
-}
-
-static inline __attribute__((always_inline)) void
-fill_cell_solid(gfx_color_t* p, int n, gfx_color_t c) {
-    for (int dy = 0; dy < n; dy++) {
-        for (int dx = 0; dx < n; dx++) {
-            p[dy * GFX_WIDTH + dx] = c;
-        }
-    }
-}
-
-static inline __attribute__((always_inline)) void
-fill_cell_hatched(gfx_color_t* p, int cx, int cy, int n, const gfx_color_t col[3]) {
-    const int shine_base_q8 = (cx * n) * shine_ux_q8 + (cy * n) * shine_uy_q8;
-
-    for (int dy = 0; dy < n; dy++) {
-        for (int dx = 0; dx < n; dx++) {
-
-            const int shine_q8 = shine_base_q8 + dx * shine_ux_q8 + dy * shine_uy_q8;
-            const int along = ((shine_q8 >> 8) + shine_offset) & (SHINE_PERIOD - 1);
-
-            p[dy * GFX_WIDTH + dx] = (along < n) ? col[2] : col[0];
-        }
-    }
-}
-
-/* local_depth_prev_row[] checks if `toward_surface` points at it, hoisted
- * out of the cx loop for an 841-to-83 improvement. Only the
- * hold-then-commit debounce reads it, as same-material climbs trust a
- * stale count, and BOUNDARY's carry is nonsense for other rows. */
-static inline __attribute__((always_inline)) local_depth_walk_t
-local_depth_walk_begin(int cy, const uint8_t* above, const uint8_t* below) {
-    const int local_depth_vdir = local_depth_v_reverse ? -1 : 1;
-    return (local_depth_walk_t){
-        .toward_surface = local_depth_v_reverse ? below : above,
-        .chain_ok = (local_depth_prev_cy == cy - local_depth_vdir),
-        .hdir = local_depth_h_reverse ? -1 : 1,
-        .row_step = local_depth_row_step_at(cy, local_depth_vdir),
-        .herr = 0,
-        .ysign = local_depth_v_reverse ? 1 : -1,
-    };
-}
-
-static inline __attribute__((always_inline)) unsigned
-cell_grain_hash(uint8_t cell, int cx, int cy) {
-    return CELL_MATERIAL(cell) == MAT_WATER ? material_grain_hash(cx >> FOAM_BLOB_SHIFT, cy >> FOAM_BLOB_SHIFT)
-                                            : material_grain_hash(cx, cy);
-}
-
-/* Every leaf cell rides the same wave unconditionally - no adjacency
- * check needed, unlike wood, since being leaf already means being part
- * of the canopy. */
-static inline __attribute__((always_inline)) bool
-cell_leaf_shaded(const uint8_t* above, const uint8_t* row, const uint8_t* below, int cx, unsigned hash) {
-    const bool wood_near_leaf =
-        row[cx] == CELL_MAKE(MAT_WOOD, 0)
-        && material_wood_near_leaf(above, row, below, cx, grid_w, wood_leaf_top5, hash, WOOD_LEAF_SLOTS_CHECKED);
-    return wood_near_leaf || row[cx] == MATX(MATX_LEAF);
-}
-
-/* `out` is the RGB565 row the cell's n x n block starts in, unused when
- * `index_row` is non-NULL. */
-static inline __attribute__((always_inline)) void
-paint_cell_output(gfx_color_t* out, uint8_t* index_row, int cx, int cy, int n, material_pattern_t pat,
-                  const gfx_color_t col[3], bool force_full) {
-    if (index_row != NULL) {
-        paint_indexed_cell(index_row, cx, cy, n, pat, col, force_full);
-    } else if (pat != MATERIAL_HATCHED) {
-        fill_cell_solid(out + cx * n, n, col[0]);
-    } else {
-        fill_cell_hatched(out + cx * n, cx, cy, n, col);
-    }
-}
-
-/* `index_row` NULL means the RGB565 path (`fb`/`pal`/`n`); non-NULL is
- * GFX_PIXFMT_INDEXED8's own grid row, writing one
- * material_palette256_index() byte per in-span cell instead. One function,
- * not two, keeps local depth, mask and the shine line - see
- * Shading-and-Colour.md - shared rather than re-derived. A cell the
- * diagonal shine crosses (sampled at the cell's own centre, not per pixel)
- * takes col[2]'s own index instead of col[0]'s. `force_full`: see
- * mark_sand_fully_dirty()'s own comment. */
-static inline void
-paint_row_n(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy, const uint8_t* row, int n, int wx0,
-            int wx1, bool force_full) {
-    gfx_color_t* out = index_row == NULL ? fb + (cy * n) * GFX_WIDTH : NULL;
-    row_flags[cy] = 0;
-    row_flag_x0[cy] = (uint16_t)grid_w;
-    row_flag_x1[cy] = 0;
-    row_changed_x0[cy] = (uint16_t)grid_w;
-    row_changed_x1[cy] = 0;
-
-    const uint8_t* above = (cy > 0) ? row - grid_w : NULL;
-    const uint8_t* below = (cy < grid_h - 1) ? row + grid_w : NULL;
-
-    local_depth_walk_t walk = local_depth_walk_begin(cy, above, below);
-
-    const int cx_first = local_depth_h_reverse ? grid_w - 1 : 0;
-    const int cx_step = local_depth_h_reverse ? -1 : 1;
-
-    for (int cx_i = 0; cx_i < grid_w; cx_i++) {
-        const int cx = cx_first + cx_i * cx_step;
-
-        const unsigned mask = cell_edge_mask(above, row, below, cx);
-
-        const unsigned hash = cell_grain_hash(row[cx], cx, cy);
-
-        const bool here_liquid = material_of(row[cx])->kind == KIND_LIQUID;
-        const unsigned count = local_depth_count_at(&walk, row, cx, cy, here_liquid);
-
-        const bool leaf_shading = cell_leaf_shaded(above, row, below, cx, hash);
-
-        const unsigned depth = cell_shading_depth(above, row, below, cx, cy, hash, leaf_shading, count);
-
-        note_cell_row_flags(cy, cx, row[cx], here_liquid, leaf_shading);
-
-        gfx_color_t col[3];
-        const material_pattern_t pat = material_colours(row[cx], hash, mask, depth, col);
-
-        if (pat == MATERIAL_HATCHED) {
-            note_row_flag(cy, cx, ROW_FLAG_SHINE);
-        }
-
-        /* State above (local depth, row_flags, hash) runs the full row
-         * regardless - only pixels reaching the framebuffer are bounded to
-         * [wx0,wx1). A cx outside it has provably unchanged output: every
-         * mark site already widens for the reach its own output depends on. */
-        const bool in_span = cx >= wx0 && cx < wx1;
-        if (in_span) {
-            paint_cell_output(out, index_row, cx, cy, n, pat, col, force_full);
-        }
-    }
-
-    uint8_t* local_depth_tmp = local_depth_cur_row;
-    local_depth_cur_row = local_depth_prev_row;
-    local_depth_prev_row = local_depth_tmp;
-
-    local_depth_prev_cy = cy;
-}
-
 static void
-paint_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy, const uint8_t* row, int wx0, int wx1,
-          bool force_full) {
+paint_row(gfx_color_t* fb, uint8_t* index_row, int cy, const uint8_t* row, int wx0, int wx1, bool force_full) {
     switch (cell) {
-        case 2: paint_row_n(fb, pal, index_row, cy, row, 2, wx0, wx1, force_full); break;
-        case 3: paint_row_n(fb, pal, index_row, cy, row, 3, wx0, wx1, force_full); break;
-        case 4: paint_row_n(fb, pal, index_row, cy, row, 4, wx0, wx1, force_full); break;
-        case 6: paint_row_n(fb, pal, index_row, cy, row, 6, wx0, wx1, force_full); break;
-        case 8: paint_row_n(fb, pal, index_row, cy, row, 8, wx0, wx1, force_full); break;
+        case 2:
+            sand_paint_row_n(&paint_row_state, &paint_frame, fb, index_row, cy, row, 2, grid_w, grid_h, wx0, wx1,
+                             force_full);
+            break;
+        case 3:
+            sand_paint_row_n(&paint_row_state, &paint_frame, fb, index_row, cy, row, 3, grid_w, grid_h, wx0, wx1,
+                             force_full);
+            break;
+        case 4:
+            sand_paint_row_n(&paint_row_state, &paint_frame, fb, index_row, cy, row, 4, grid_w, grid_h, wx0, wx1,
+                             force_full);
+            break;
+        case 6:
+            sand_paint_row_n(&paint_row_state, &paint_frame, fb, index_row, cy, row, 6, grid_w, grid_h, wx0, wx1,
+                             force_full);
+            break;
+        case 8:
+            sand_paint_row_n(&paint_row_state, &paint_frame, fb, index_row, cy, row, 8, grid_w, grid_h, wx0, wx1,
+                             force_full);
+            break;
         /* Unreachable for any cell size in qualities[]; falls back to size 2 to
      * avoid out-of-bounds writes. */
-        default: paint_row_n(fb, pal, index_row, cy, row, 2, wx0, wx1, force_full); break;
+        default:
+            sand_paint_row_n(&paint_row_state, &paint_frame, fb, index_row, cy, row, 2, grid_w, grid_h, wx0, wx1,
+                             force_full);
+            break;
     }
 }
 
@@ -1298,14 +857,14 @@ paint_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_row, int cy, c
  * Run detection stays full-row, so row_run_x0/x1/n keeps seeing the row's
  * true shape, not just the part just repainted. `index_image` is NULL for
  * the RGB565 path; otherwise GFX_PIXFMT_INDEXED8's own index image, and
- * `fb`/`pal` go unused - see paint_row_n()'s own comment. */
+ * `fb` goes unused - see sand_paint_row_n()'s own comment. */
 static int
-draw_one_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_image, int cy, uint16_t* cur_x0, uint16_t* cur_x1,
-             int wx0, int wx1, bool force_full) {
+draw_one_row(gfx_color_t* fb, uint8_t* index_image, int cy, uint16_t* cur_x0, uint16_t* cur_x1, int wx0, int wx1,
+             bool force_full) {
     const uint8_t* row = &grid[cy * grid_w];
     uint8_t* index_row = index_image != NULL ? index_image + cy * grid_w : NULL;
 
-    paint_row(fb, pal, index_row, cy, row, wx0, wx1, force_full);
+    paint_row(fb, index_row, cy, row, wx0, wx1, force_full);
 
     int run_x0[ROW_MAX_RUNS], run_x1[ROW_MAX_RUNS];
     const int n = row_runs_find(row, grid_w, SAND_EMPTY, run_x0, run_x1);
@@ -1333,7 +892,8 @@ advance_shine(uint32_t dt_ms) {
     }
     const uint32_t steps = shine_elapsed_ms / SHINE_STEP_MS;
     shine_elapsed_ms -= steps * SHINE_STEP_MS;
-    shine_offset = (int)(((unsigned)shine_offset + steps * SHINE_STEP_PX) & (SHINE_PERIOD - 1));
+    paint_frame.shine_offset =
+        (int)(((unsigned)paint_frame.shine_offset + steps * SHINE_STEP_PX) & (SAND_PAINT_SHINE_PERIOD - 1));
     return true;
 }
 
@@ -1354,7 +914,7 @@ advance_cullet(uint32_t dt_ms) {
 
 static bool
 advance_wood_leaf_phase(uint32_t dt_ms) {
-    wood_leaf_time_ms += dt_ms;
+    paint_frame.wood_leaf_time_ms += dt_ms;
     wood_leaf_wake_elapsed_ms += dt_ms;
     if (wood_leaf_wake_elapsed_ms < WOOD_LEAF_WAKE_MS) {
         return false;
@@ -1371,7 +931,7 @@ advance_wood_leaf_wind_sign(uint32_t dt_ms) {
         return;
     }
     wood_leaf_wind_flip_elapsed_ms -= wood_leaf_wind_flip_due_ms;
-    wood_leaf_wind_sign = -wood_leaf_wind_sign;
+    paint_frame.wood_leaf_wind_sign = -paint_frame.wood_leaf_wind_sign;
     wood_leaf_wind_flip_count++;
     wood_leaf_wind_flip_due_ms =
         WOOD_LEAF_WIND_FLIP_BASE_MS
@@ -1420,7 +980,7 @@ mark_wake_hits(bool moved, uint8_t flag) {
         return;
     }
     for (int cy = 0; cy < grid_h; cy++) {
-        if (row_flags[cy] & flag) {
+        if (paint_row_state.row_flags[cy] & flag) {
             dirty_rows[cy] = 1;
             wake_hit[cy] = true;
         }
@@ -1439,11 +999,11 @@ row_paint_span(int cy, int* out_x0, int* out_x1) {
     /* Sentinel x0/x1 (grid_w, 0) is already the correct identity element
      * for a min/max union - it never wins against a real span below. */
     if (wake_hit[cy]) {
-        if (row_flag_x0[cy] < x0) {
-            x0 = row_flag_x0[cy];
+        if (paint_row_state.row_flag_x0[cy] < x0) {
+            x0 = paint_row_state.row_flag_x0[cy];
         }
-        if (row_flag_x1[cy] > x1) {
-            x1 = row_flag_x1[cy];
+        if (paint_row_state.row_flag_x1[cy] > x1) {
+            x1 = paint_row_state.row_flag_x1[cy];
         }
     }
 
@@ -1459,7 +1019,7 @@ row_paint_span(int cy, int* out_x0, int* out_x1) {
 }
 
 /* Clipped to the span actually repainted: a send range outside
- * [wx0,wx1) provably did not change (paint_row_n()'s own comment).
+ * [wx0,wx1) provably did not change (sand_paint_row_n()'s own comment).
  * Indexed modes narrow further, to row_changed_x0/x1 - a cell visited but
  * left untouched dithers the same as before, not merely unpainted.
  * Returns the pixels marked. */
@@ -1469,8 +1029,8 @@ mark_row_sends(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t
     int64_t pixels = 0;
     for (int i = 0; i < send_n; i++) {
         int sx0, sx1;
-        if (!sand_paint_clip_send(send_x0[i], send_x1[i], wx0, wx1, indexed, row_changed_x0[cy], row_changed_x1[cy],
-                                  &sx0, &sx1)) {
+        if (!sand_paint_clip_send(send_x0[i], send_x1[i], wx0, wx1, indexed, paint_row_state.row_changed_x0[cy],
+                                  paint_row_state.row_changed_x1[cy], &sx0, &sx1)) {
             continue;
         }
         gfx_mark_dirty(sx0 * cell, cy * cell, (sx1 - sx0) * cell, cell);
@@ -1487,8 +1047,7 @@ mark_row_sends(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t
 /* Repaints dirty row `cy` and marks what changed since its last paint;
  * returns the pixels marked. */
 static int64_t
-draw_dirty_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_image, int cy, bool force_full, bool indexed,
-               bool healing) {
+draw_dirty_row(gfx_color_t* fb, uint8_t* index_image, int cy, bool force_full, bool indexed, bool healing) {
     dirty_rows[cy] = 0;
 
     int wx0, wx1;
@@ -1497,7 +1056,7 @@ draw_dirty_row(gfx_color_t* fb, const gfx_color_t* pal, uint8_t* index_image, in
     dirty_x1[cy] = 0;
 
     uint16_t cur_x0[ROW_MAX_RUNS], cur_x1[ROW_MAX_RUNS];
-    const int cur_n = draw_one_row(fb, pal, index_image, cy, cur_x0, cur_x1, wx0, wx1, force_full);
+    const int cur_n = draw_one_row(fb, index_image, cy, cur_x0, cur_x1, wx0, wx1, force_full);
 
     uint16_t* prev_x0 = &row_run_x0[cy * ROW_MAX_RUNS];
     uint16_t* prev_x1 = &row_run_x1[cy * ROW_MAX_RUNS];
@@ -1520,7 +1079,6 @@ static void
 draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool glass_moved, bool wood_leaf_moved) {
     const bool indexed = sand_colour_indexed_active(&colour_state);
     gfx_color_t* fb = indexed ? NULL : gfx_framebuffer();
-    const gfx_color_t* pal = indexed ? NULL : material_palette();
     uint8_t* index_image = indexed ? gfx_indexed_image() : NULL;
 
     /* Captured once, then cleared, so a request made mid-frame (the next
@@ -1532,11 +1090,11 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
     const bool healing = gfx_heal_active();
 
     memset(wake_hit, 0, (size_t)grid_h * sizeof(*wake_hit));
-    mark_wake_hits(shine_moved, ROW_FLAG_SHINE);
-    mark_wake_hits(local_depth_woke, ROW_FLAG_LIQUID);
-    mark_wake_hits(cullet_moved, ROW_FLAG_CULLET);
-    mark_wake_hits(glass_moved, ROW_FLAG_GLASS);
-    mark_wake_hits(wood_leaf_moved, ROW_FLAG_WOOD_LEAF);
+    mark_wake_hits(shine_moved, SAND_PAINT_ROW_FLAG_SHINE);
+    mark_wake_hits(local_depth_woke, SAND_PAINT_ROW_FLAG_LIQUID);
+    mark_wake_hits(cullet_moved, SAND_PAINT_ROW_FLAG_CULLET);
+    mark_wake_hits(glass_moved, SAND_PAINT_ROW_FLAG_GLASS);
+    mark_wake_hits(wood_leaf_moved, SAND_PAINT_ROW_FLAG_WOOD_LEAF);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     int redrawn = 0;
@@ -1549,14 +1107,14 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
      * since nothing else here depends on row order - dirty_rows[cy] and
      * friends index by cy directly, and gfx_mark_dirty() only unions a
      * bounding box. */
-    const bool reverse_rows = local_depth_v_reverse;
+    const bool reverse_rows = paint_row_state.local_depth_v_reverse;
 
     for (int i = 0; i < grid_h; i++) {
         const int cy = reverse_rows ? (grid_h - 1 - i) : i;
         if (!dirty_rows[cy]) {
             continue;
         }
-        const int64_t row_pixels = draw_dirty_row(fb, pal, index_image, cy, force_full, indexed, healing);
+        const int64_t row_pixels = draw_dirty_row(fb, index_image, cy, force_full, indexed, healing);
 #if CONFIG_LAUNCHER_DEVELOPMENT
         redrawn++;
         pixels_repainted += row_pixels;
@@ -2053,15 +1611,15 @@ sand_update(uint32_t dt_ms, const input_t* input) {
 
     material_set_gravity(gx, gy);
 
-    material_shine_direction(gx, gy, &shine_ux_q8, &shine_uy_q8);
+    material_shine_direction(gx, gy, &paint_frame.shine_ux_q8, &paint_frame.shine_uy_q8);
 
-    material_wood_leaf_wind_axis(gx, gy, &wood_leaf_wind_ux_q8, &wood_leaf_wind_uy_q8);
+    material_wood_leaf_wind_axis(gx, gy, &paint_frame.wood_leaf_wind_ux_q8, &paint_frame.wood_leaf_wind_uy_q8);
 
-    material_wood_leaf_top5(gx, gy, &wood_leaf_top5_down, wood_leaf_top5);
+    material_wood_leaf_top5(gx, gy, &wood_leaf_top5_down, paint_frame.wood_leaf_top5);
 
     advance_wood_leaf_wind_sign(dt_ms);
 
-    update_local_depth_gravity(gx, gy);
+    sand_paint_update_local_depth_gravity(&paint_row_state, gx, gy, grid_w, grid_h);
 
     foam_elapsed_ms += dt_ms;
     material_set_foam_phase(foam_elapsed_ms / FOAM_PHASE_MS);

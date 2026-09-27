@@ -1078,7 +1078,7 @@ test_leaf_tints_toward_the_wave_highlight(void) {
 }
 
 /* The count itself, on three synthetic rows with the top one missing the
- * way paint_row_n() hands a NULL `above` on the grid's first row. */
+ * way sand_paint_row_n() hands a NULL `above` on the grid's first row. */
 static void
 test_root_neighbours_are_counted_across_three_rows(void) {
     const cell_t R = MATX(MATX_ROOT), D = CELL_SOIL(MAT_DIRT, 0, 3), Wd = CELL_MAKE(MAT_WOOD, 0);
