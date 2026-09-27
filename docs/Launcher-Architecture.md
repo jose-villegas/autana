@@ -74,7 +74,6 @@ launcher/
     │   ├── gfx_palette*.{h,c}  the standard palette       (host-tested)
     │   ├── gfx_target.h        where a draw call lands    (host-tested)
     │   ├── gfx_null_panel.{h,c}  a panel with nothing behind it, for QEMU
-    │   ├── gfx_glow.h          a curve drawn as light     (host-tested)
     │   ├── gfx_full_redraw.h   when everything must repaint (host-tested)
     │   ├── gfx_heal.h          repairing a torn band      (host-tested)
     │   ├── gfx_fb_guard.h, gfx_present_guard.h  misuse traps (host-tested)
@@ -91,13 +90,15 @@ launcher/
     │   ├── ui_anchor.h         a rect placed against an edge (host-tested)
     │   ├── ui_scroll.{h,c}     a screen with more rows than fit (host-tested)
     │   ├── ridge_pose.h        the ridge's pose from gravity (host-tested)
+    │   ├── ridge_theme.h       a seed colour's role palette (host-tested)
     │   ├── ui_launcher.{h,c}, ui_launcher_draw.c   the home screen
     │   ├── ui_control_center.{h,c}, ui_control_center_draw.c
     │   │                       Control Center, over a dimmed home screen
     │   ├── control_center_layout.json, control_center_layout_generated.h
     │   │                       its authored rects, and the baked table
     │   ├── ui_ridge.{h,c}      the launcher's backdrop: the ridge, level with the
-    │   │                       horizon, waved by touch and shaking
+    │   │                       horizon, waved by touch and shaking; its
+    │   │                       reference look is design/launcher/backdrop/
     │   ├── ridge_motion.h      its breathing, its wave, the wave's momentum (host-tested)
     │   ├── system_navigation.{h,c}  which system screen is up (host-tested)
     │   └── ridge_curve_generated.h  Cerro Autana's ridge, a height per column of
