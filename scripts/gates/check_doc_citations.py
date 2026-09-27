@@ -2,6 +2,18 @@
 """Fail when a documentation citation no longer resolves in this tree.
 
     python scripts/gates/check_doc_citations.py [--root ROOT]
+
+A backticked function (`name()`), path or macro a doc cites must exist in
+this tree, and a quoted section a doc or C comment cites must be a heading
+of the doc it names. Under docs/plans/, which names what is not built yet,
+names are not checked; section citations still are.
+
+A line that cites a name from outside this tree on purpose - an SDK-private
+function or header - carries ``<!-- doc-citations: ignore NAME -->``, NAME
+spelled as it is between the backticks. It exempts that one name on that one
+line; every other citation there is still checked. A marker whose name the
+line does not cite, or whose name resolves after all, is itself reported,
+and so is one that names nothing.
 """
 import pathlib
 import re
@@ -16,6 +28,8 @@ INLINE = re.compile(r"`([^`\n]+)`")
 FUNCTION = re.compile(r"^([a-z][a-z0-9_]*)\(\)$")
 MACRO = re.compile(r"^[A-Z][A-Z0-9_]*$")
 FILE = re.compile(r"^(?:launcher/|apps/|[\w.-]+/)*(?:[\w.-]+\.(?:c|h|py|sh|cmake|md)|CMakeLists\.txt)$")
+MARKER = re.compile(r"<!-- doc-citations: ignore(?: ([^\s>]+))? -->")
+PLANS = "docs/plans/"
 SKIP_FENCES = {"sh", "shell", "bash", "console", "text", "output"}
 FOREIGN_FUNCTIONS = {"exit", "main", "max", "name", "bsp_display_new"}
 FOREIGN_PATHS = {"idf.py", "idf_tools.py"}
@@ -33,11 +47,20 @@ SECTION_BEFORE_DOC = re.compile(r"(" + _QUOTED_GROUP + r")\s+in\s+`?([A-Za-z0-9_
 
 
 class Citation:
-    def __init__(self, doc, line, kind, value):
+    def __init__(self, doc, line, kind, value, marked=False):
         self.doc = doc
         self.line = line
         self.kind = kind
         self.value = value
+        self.marked = marked
+
+
+class Marker:
+    def __init__(self, doc, line, name, cited):
+        self.doc = doc
+        self.line = line
+        self.name = name
+        self.cited = cited
 
 
 def documentation(root):
@@ -48,9 +71,27 @@ def documentation(root):
             yield root / name
 
 
-def citations(root):
+def cited_name(doc, number, text, marked=False):
+    """The Citation backticked `text` makes, or None when it is no function,
+    path or macro."""
+    function = FUNCTION.fullmatch(text)
+    if function:
+        return Citation(doc, number, "function", function.group(1), marked)
+    if FILE.fullmatch(text):
+        return Citation(doc, number, "path", text, marked)
+    if MACRO.fullmatch(text):
+        return Citation(doc, number, "macro", text, marked)
+    return None
+
+
+def cited_lines(root):
+    """(doc, line number, line) for every line whose names are checked:
+    outside docs/plans/ and outside a shell or output fence."""
     root = pathlib.Path(root)
     for path in documentation(root):
+        doc = path.relative_to(root).as_posix()
+        if doc.startswith(PLANS):
+            continue
         fenced = False
         skip = False
         for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
@@ -62,39 +103,30 @@ def citations(root):
                 else:
                     fenced = skip = False
                 continue
-            if skip:
-                continue
-            for text in INLINE.findall(line):
-                function = FUNCTION.fullmatch(text)
-                if function:
-                    yield Citation(path.relative_to(root).as_posix(), number,
-                                   "function", function.group(1))
-                elif FILE.fullmatch(text):
-                    yield Citation(path.relative_to(root).as_posix(), number,
-                                   "path", text)
-                elif MACRO.fullmatch(text):
-                    yield Citation(path.relative_to(root).as_posix(), number,
-                                   "macro", text)
+            if not skip:
+                yield doc, number, line
 
 
-ALLOWLIST = "scripts/gates/doc_citation_allowlist.txt"
-PLANS = ("docs/plans/*", "*")
+def citations(root, include_marked=False):
+    """Every citation, without the ones a marker exempts unless
+    `include_marked`."""
+    for doc, number, line in cited_lines(root):
+        marked = {match.group(1) for match in MARKER.finditer(line)}
+        for text in INLINE.findall(line):
+            citation = cited_name(doc, number, text, text in marked)
+            if citation and (include_marked or not citation.marked):
+                yield citation
 
 
-def allowlist(root):
-    """(doc, citation) -> allowlist line number."""
-    path = pathlib.Path(root) / ALLOWLIST
-    allowed = {}
-    if not path.exists():
-        return allowed
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        if not line or line.startswith("#"):
-            continue
-        fields = line.split("\t")
-        if len(fields) != 3 or not all(fields):
-            raise ValueError(f"{path}:{number}: expected doc, citation, reason")
-        allowed[(fields[0], fields[1])] = number
-    return allowed
+def markers(root):
+    """Every doc-citations marker, with whether its line cites its name as a
+    function, path or macro."""
+    for doc, number, line in cited_lines(root):
+        for match in MARKER.finditer(line):
+            name = match.group(1)
+            cited = any(text == name and cited_name(doc, number, text)
+                        for text in INLINE.findall(line))
+            yield Marker(doc, number, name, cited)
 
 
 def resolve_doc(root, value, citing_doc=None):
@@ -210,21 +242,36 @@ def unresolved_sections(root):
     return missing
 
 
-def allowlist_entry(allowed, citation):
-    if (citation.doc, citation.value) in allowed:
-        return (citation.doc, citation.value)
-    if PLANS in allowed and citation.doc.startswith("docs/plans/"):
-        return PLANS
-    return None
-
-
 def unresolved(root):
-    """Every citation that does not resolve, allowlisted or not."""
+    """Every unmarked citation that does not resolve."""
+    return [citation for citation in _unresolved(root) if not citation.marked]
+
+
+def stale_markers(root):
+    """(marker, reason) for every marker that exempts nothing."""
+    root = pathlib.Path(root)
+    needed = {(c.doc, c.line, _spelling(c)) for c in _unresolved(root) if c.marked}
+    stale = []
+    for marker in markers(root):
+        if marker.name is None:
+            stale.append((marker, "names nothing"))
+        elif not marker.cited:
+            stale.append((marker, f"names {marker.name}, which this line does not cite"))
+        elif (marker.doc, marker.line, marker.name) not in needed:
+            stale.append((marker, f"names {marker.name}, which resolves"))
+    return stale
+
+
+def _spelling(citation):
+    return citation.value + "()" if citation.kind == "function" else citation.value
+
+
+def _unresolved(root):
     root = pathlib.Path(root)
     vocab = vocabulary(root)
     functions, macros = vocab.functions | vocab.script_functions, vocab.constants
     missing = []
-    for citation in citations(root):
+    for citation in citations(root, include_marked=True):
         if citation.kind == "function" and (
                 citation.value in FOREIGN_FUNCTIONS or
                 citation.value.startswith(("esp_", "xTask", "vTask", "heap_caps_"))):
@@ -247,16 +294,7 @@ def unresolved(root):
 
 
 def check(root):
-    allowed = allowlist(root)
-    return [citation for citation in unresolved(root)
-            if allowlist_entry(allowed, citation) is None]
-
-
-def stale_allowlist(root):
-    """Allowlist entries that no unresolved citation needs, as (line, doc, citation)."""
-    allowed = allowlist(root)
-    used = {allowlist_entry(allowed, citation) for citation in unresolved(root)}
-    return sorted((number, *entry) for entry, number in allowed.items() if entry not in used)
+    return unresolved(root)
 
 
 def main(argv):
@@ -268,24 +306,26 @@ def main(argv):
         return 2
     try:
         missing = check(root)
-        stale = stale_allowlist(root)
         missing_sections = unresolved_sections(root)
+        stale = stale_markers(root)
     except ValueError as error:
         print(error, file=sys.stderr)
         return 2
     for item in missing:
-        label = item.value + "()" if item.kind == "function" else item.value
-        print(f"{item.doc}:{item.line}: missing {item.kind} citation {label}")
+        label = _spelling(item)
+        print(f"{item.doc}:{item.line}: missing {item.kind} citation {label}"
+              f" (cited from outside this tree on purpose? end the line with"
+              f" <!-- doc-citations: ignore {label} -->)")
     for citation, reason in missing_sections:
         print(f"{citation.doc}:{citation.line}: missing section citation - {reason}")
-    for number, doc, citation in stale:
-        print(f"{ALLOWLIST}:{number}: stale entry {doc} {citation}: nothing left to allow")
+    for marker, reason in stale:
+        print(f"{marker.doc}:{marker.line}: doc-citations marker {reason}")
     print(f"{len(missing_sections)} missing section citation"
           f"{'' if len(missing_sections) == 1 else 's'}")
     print(f"{len(missing)} missing documentation citation"
-          f"{'' if len(missing) == 1 else 's'}, {len(stale)} stale allowlist "
-          f"entr{'y' if len(stale) == 1 else 'ies'}")
-    return 1 if missing or stale or missing_sections else 0
+          f"{'' if len(missing) == 1 else 's'}")
+    print(f"{len(stale)} stale doc-citations marker{'' if len(stale) == 1 else 's'}")
+    return 1 if missing or missing_sections or stale else 0
 
 
 if __name__ == "__main__":

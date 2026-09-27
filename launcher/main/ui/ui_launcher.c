@@ -11,13 +11,19 @@
 #include "ui/ui_launcher.h"
 
 #include "app.h"
+#include "gfx/gfx.h"
 #include "ui/ui.h"
 #include "ui/ui_ridge.h"
 #include "util/frame_cost.h"
 
+#define LAUNCHER_HEAL_ROWS 32
+
 const app_t*
 ui_launcher_frame(const input_t* input, uint32_t dt_ms) {
     mu_Context* ctx = ui_context();
+
+    gfx_heal_set_budget(GFX_WIDTH * LAUNCHER_HEAL_ROWS);
+    gfx_heal_set_rolling(LAUNCHER_HEAL_ROWS);
 
     FRAME_COST_BEGIN(built_from);
     ui_begin(input);

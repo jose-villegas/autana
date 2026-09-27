@@ -6,9 +6,9 @@
 
 Autana is software for the [Waveshare ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/esp32-s3-touch-amoled-1.8.htm): a home screen that launches a falling-sand sandbox and software-rendering experiments. Touch and board motion control the apps. The firmware draws each frame in software and sends its pixels directly to the board's AMOLED screen.
 
-![Sand and water falling into a basin while lava reacts and gravity tilts](docs/images/overview/sand-simulation.gif)
+![A volcano spilling toward a lake beside growing and burning trees as the board turns](docs/images/overview/sand-simulation.gif)
 
-The moving sand uses the real simulation and material shading code, rendered on a computer with scripted pours and gravity input. It is a host preview, not a board capture.
+The volcano, lake and growing trees use the real simulation and material shading code, rendered on a computer with scripted tilt. It is a host preview, not a board capture.
 
 | Launcher | Rotating Render Lab cube |
 |:---:|:---:|
@@ -65,7 +65,7 @@ The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a
 | If you want to... | Read |
 |---|---|
 | Change a game or add one | [Building an App](docs/Building-an-App.md), [Building a Screen](docs/Building-a-Screen.md) |
-| Understand the frame loop and drawing path | [Launcher Architecture](docs/Launcher-Architecture.md), [Graphics and Presentation](docs/Gfx-and-Presentation.md), [Glow Curves](docs/Glow-Curves.md) |
+| Understand the frame loop and drawing path | [Launcher Architecture](docs/Launcher-Architecture.md), [Graphics and Presentation](docs/Gfx-and-Presentation.md) |
 | Follow the sand simulation | [Sand docs](docs/sand/README.md), [Simulation](docs/sand/Sand-Simulation.md) |
 | Run or add tests | [Testing Guide](docs/Testing-Guide.md) |
 | Work with fonts and controls | [Text and Fonts](docs/Text-and-Fonts.md), [UI Toolkit](docs/UI-Toolkit.md) |

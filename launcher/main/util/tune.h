@@ -1,16 +1,16 @@
 /*
  * tune - numbers a developer can change on a running device, by name, over
- * the console: "SET ridge.trail 200". For a constant that is judged by eye,
+ * the console: "SET ridge.theme_rgb 0x1199C8". For a constant that is judged by eye,
  * where each guess otherwise costs a build and a flash.
  *
  * A tunable is an int32_t with a range, stated once, where it is used:
  *
  *     TUNE_OWNER(ridge);
- *     TUNE(ridge, trail, 226, 0, 255);
+ *     TUNE(ridge, front_amplitude, 6, 0, 32);
  *
- * On a development build that is a variable `trail` and an entry that puts
+ * On a development build that is a variable `front_amplitude` and an entry that puts
  * itself in the registry before app_main(), the way an app registers. On a
- * release build it is the constant 226 and nothing else: no registry, no
+ * release build it is the constant 6 and nothing else: no registry, no
  * names, no variable. The source stays the truth; a value found on the device
  * is written back into its TUNE line, and nothing is kept across a reboot.
  *

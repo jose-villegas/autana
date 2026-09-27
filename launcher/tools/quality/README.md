@@ -15,9 +15,7 @@ database. `misra_tidy_gate.py` fails on an increased count or a new finding;
 decreases print a reminder to run `--update-baseline`. Run
 `python launcher/tools/quality/misra_tidy_gate.py --fix CHECK` to apply one
 check's available fix-its to `launcher/main/`, then review the diff and rerun
-the gate. The style audit uses `scripts/gates/malloc_placement.txt` and
-`scripts/gates/stdio_placement.txt` to pin permitted call counts by file,
-function, and callee. Host Tests CI runs the portable suites with UBSan.
+the gate. Host Tests CI runs the portable suites with UBSan.
 
 The C scan includes macro parentheses and switch default checks even when
 their pinned count is zero. The unused return value check names C functions

@@ -1,7 +1,7 @@
 # Live tuning
 
 Changing a number on a running device, by name, with no build and no flash.
-For a constant that is judged by eye - how long a trail lasts, how high a
+For a constant that is judged by eye - how a theme starts, how high a
 wave is - where each guess otherwise costs a build and a flash.
 
 `autana` alone opens a console session with the device, and everything below
@@ -11,9 +11,8 @@ line alike:
 
 ```
 autana> tune wave                 # the tunables whose names contain "wave"
-autana> tune trail                # show one
-autana> tune trail 200            # change it: on the screen a frame later
-autana> tune glow_halo_rgb 0xFF7A2A
+autana> tune theme                # show matching tunables
+autana> tune theme_rgb 0x1199C8   # change it: on the screen a frame later
 autana> tune save                 # write the device's values into the source
 autana> flash dev
 ```
@@ -22,13 +21,13 @@ Each is also a command of its own, for a script or a single change:
 
 ```sh
 autana tune                       # every tunable, its value and its range
-autana tune trail
-autana tune trail 200
+autana tune theme_rgb
+autana tune theme_rgb 0x1199C8
 autana tune save
 ```
 
-A name may drop its owner when that is unambiguous: `trail` for
-`ridge.trail` - and when it is not exactly one tunable's own, `tune <name>`
+A name may drop its owner when that is unambiguous: `theme_rgb` for
+`ridge.theme_rgb` - and when it is not exactly one tunable's own, `tune <name>`
 falls back to the same filtered listing `tune [text]` gives. `autana` is the
 terminal command - every command it takes is in
 [Autana-CLI.md](Autana-CLI.md). It calls `scripts/device/device.py send`,
@@ -58,12 +57,12 @@ sequenceDiagram
     participant C as console.c
     participant S as console_tune.c
     participant R as util/tune.c
-    T->>D: tune trail 200
-    D->>C: SET ridge.trail 200
+    T->>D: tune theme_rgb 0x1199C8
+    D->>C: SET ridge.theme_rgb 0x1199C8
     C->>S: the SET verb
     S->>R: tune_handle_line()
     Note over R: writes the int32_t,<br/>its owner reads it each frame
-    R-->>D: TUNE_OK ridge.trail=200
+    R-->>D: TUNE_OK ridge.theme_rgb=1153480
 ```
 
 The console protocol is four lines, answered by `util/tune`:
@@ -87,11 +86,11 @@ own. The console answers from the shared one, `tune_shared()`.
 #include "util/tune.h"
 
 TUNE_OWNER(ridge);                    /* once per file, before its tunables */
-TUNE(ridge, trail, 226, 0, 255);      /* where the #define was: `trail` */
+TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
 ```
 
-- That one line is the whole declaration: the variable `trail`, its name
-  `ridge.trail`, the value it ships with and its range. On a development
+- That one line is the whole declaration: the variable `theme_rgb`, its name
+  `ridge.theme_rgb`, the value it ships with and its range. On a development
   build it is a `static int32_t` and an entry that joins the registry by
   itself before `app_main()`, the way `APP_REGISTER` works, so there is
   nothing to call and every tunable linked into the image is listed from
@@ -107,8 +106,8 @@ TUNE(ridge, trail, 226, 0, 255);      /* where the #define was: `trail` */
   cannot size an array or label a `case`, and a development build does not
   fold it the way release does - a timing taken on one is a little
   pessimistic.
-- A value read every frame takes effect at once. One baked into a table - a
-  glow's ramp, a smoothed shape - needs its owner to notice:
+- A value read every frame takes effect at once. One baked into a table needs
+  its owner to notice:
   `TUNE_GENERATION(ridge)` goes up on every `SET` or `RESET` of one of that
   owner's tunables, and of no one else's, and the owner rebuilds when it
   differs from the one it last built for. It is the constant 0 in release.
@@ -118,5 +117,4 @@ TUNE(ridge, trail, 226, 0, 255);      /* where the #define was: `trail` */
 
 ## Related
 
-- [`../Glow-Curves.md`](../Glow-Curves.md) - the launcher's ridge, whose numbers are the first tunables
 - [`../Build-Variants.md`](../Build-Variants.md) - what a development build is

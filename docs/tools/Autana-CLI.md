@@ -29,7 +29,9 @@ where Python has `readline` (Windows: `pip install pyreadline3`).
 | `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope]` | Build and flash this worktree; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
 
-`autana flash` proves the write, not the boot:
+`autana flash` runs `launcher/tools/build/build_flash.sh`, then, under the
+board's lock, `scripts/device/flash_image.sh`, the one that opens the port.
+It proves the write, not the boot:
 [what a flash proves](Device-Lock.md#what-a-flash-proves).
 
 ## Tests
@@ -98,7 +100,7 @@ prints the whole capture; to find something in it, grep the capture instead.
 | Command | What it does |
 |---|---|
 | `autana tune [text] [--json]` | List the tunables with their ranges; names containing `text`. |
-| `autana tune <name> [value]` | Show one, or set it on the board (lost on reboot). `trail` works for `ridge.trail` when unambiguous. |
+| `autana tune <name> [value]` | Show one, or set it on the board (lost on reboot). |
 | `autana tune reset <name>` | Back to the value the source declares. |
 | `autana tune save` | Write the board's values into this worktree's `TUNE(...)` lines. |
 
@@ -160,7 +162,7 @@ so an app's own command works too. A tunable is only ever reached through
 `tune`:
 
 ```
-autana> tune trail 200
+autana> tune theme_rgb 0x1199C8
 autana> freeze
 autana> step 3
 autana> resume
