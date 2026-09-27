@@ -17,6 +17,18 @@ decreases print a reminder to run `--update-baseline`. Run
 check's available fix-its to `launcher/main/`, then review the diff and rerun
 the gate. Host Tests CI runs the portable suites with UBSan.
 
+`scripts/gates/check_style_audit.py` keeps the steady-state path of
+`launcher/main/` free of heap and console calls. That path is a function
+named in a `.frame`, `.update`, `.frame_band` or `.draw` initializer, the
+body of a `while (1)` or `for (;;)` loop with no `break`, `return` or `goto`,
+and every function those call in the same file; `tests/` and `tools/`
+folders are exempt.
+
+| Rule | Flags on that path | Allowed |
+|---|---|---|
+| FRAME-PATH-HEAP | `malloc`, `calloc`, `realloc`, `free`, `heap_caps_` alloc and free | `if (p == NULL) p = malloc(...)`, which allocates once |
+| FRAME-PATH-CONSOLE | `printf`, `fprintf`, `vprintf`, `vfprintf`, `puts`, `fputs`, `putchar` | `snprintf`; any call in a `CONFIG_LAUNCHER_DEVELOPMENT` or `CONFIG_LAUNCHER_SELFTEST` branch |
+
 The C scan includes macro parentheses and switch default checks even when
 their pinned count is zero. The unused return value check names C functions
 in `launcher/.clang-tidy`. Cppcheck's MISRA addon checks conditions that use

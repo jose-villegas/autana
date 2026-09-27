@@ -698,6 +698,155 @@ def rule_undef_placement(root, path, text):
             yield number, "#undef requires an enclosing #ifdef ANALYSIS_SCAN"
 
 
+# RULE: nothing on the steady-state path allocates or writes the console.
+# The path is read from the code: a function named by a `.frame`, `.update`,
+# `.frame_band` or `.draw` initializer, the body of a forever loop that never
+# breaks or returns (the shell's frame loop, a task's service loop), and what
+# those call in the same file. A heap call there fragments a heap a
+# long-running image never gets back; a console write blocks on the serial
+# link inside the frame budget.
+
+FRAME_CALLBACK = re.compile(r"\.(?:frame|update|frame_band|draw)\s*=\s*([A-Za-z_]\w*)\b(?!\s*\()")
+FOREVER_LOOP = re.compile(r"\b(?:while\s*\(\s*(?:1|true)\s*\)|for\s*\(\s*;\s*;\s*\))\s*\{")
+LOOP_EXIT = re.compile(r"\b(?:break|return|goto)\b")
+CALL = re.compile(r"(?<![\w.>])([A-Za-z_]\w*)\s*\(")
+HEAP_CALL = re.compile(
+    r"(?<![\w.>])(malloc|calloc|realloc|free"
+    r"|heap_caps_(?:malloc|calloc|realloc|free|aligned_alloc|aligned_calloc|aligned_free)(?:_prefer)?)\s*\(")
+CONSOLE_WRITE = re.compile(r"(?<![\w.>])(printf|fprintf|vprintf|vfprintf|puts|fputs|putchar)\s*\(")
+DEVELOPMENT_ONLY = re.compile(r"\bCONFIG_LAUNCHER_(?:DEVELOPMENT|SELFTEST)\b")
+
+
+def _matching_brace(code, open_index):
+    depth = 0
+    for i in range(open_index, len(code)):
+        if code[i] == "{":
+            depth += 1
+        elif code[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+    return len(code) - 1
+
+
+def _function_bodies(code):
+    """name -> (open, close) of every function body in `code`: a '{' at
+    depth 0 right after the ')' closing a parameter list."""
+    bodies = {}
+    i = 0
+    while i < len(code):
+        if code[i] == "{":
+            close = _matching_brace(code, i)
+            head = code[:i].rstrip()
+            if head.endswith(")"):
+                depth, j = 0, len(head) - 1
+                while j >= 0:
+                    depth += {")": 1, "(": -1}.get(head[j], 0)
+                    if depth == 0:
+                        break
+                    j -= 1
+                name = re.search(r"([A-Za-z_]\w*)\s*$", head[:j])
+                if name:
+                    bodies[name.group(1)] = (i, close)
+            i = close + 1
+        else:
+            i += 1
+    return bodies
+
+
+def _steady_state_spans(code):
+    """Every (start, end) span of `code` on the steady-state path."""
+    bodies = _function_bodies(code)
+    spans = [(m.end() - 1, _matching_brace(code, m.end() - 1)) for m in FOREVER_LOOP.finditer(code)]
+    spans = [(a, b) for a, b in spans if not LOOP_EXIT.search(code, a, b)]
+    pending = [m.group(1) for m in FRAME_CALLBACK.finditer(code) if m.group(1) in bodies]
+    pending += [m.group(1) for a, b in spans for m in CALL.finditer(code, a, b) if m.group(1) in bodies]
+    seen = set()
+    while pending:
+        name = pending.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        a, b = bodies[name]
+        spans.append((a, b))
+        pending += [m.group(1) for m in CALL.finditer(code, a, b) if m.group(1) in bodies]
+    return spans
+
+
+def _development_only_lines(code):
+    """Line numbers inside a positive CONFIG_LAUNCHER_DEVELOPMENT or
+    CONFIG_LAUNCHER_SELFTEST conditional - the branches release drops."""
+    stack, lines = [], set()
+    for number, line in enumerate(code.splitlines(), 1):
+        directive = re.match(r"\s*#\s*(if|ifdef|ifndef|else|elif|endif)\b(.*)", line)
+        if directive:
+            operation, argument = directive.groups()
+            if operation in ("if", "ifdef"):
+                stack.append(bool(DEVELOPMENT_ONLY.search(argument)) and "!" not in argument)
+            elif operation == "ifndef":
+                stack.append(False)
+            elif operation == "endif" and stack:
+                stack.pop()
+            elif stack:
+                stack[-1] = False
+        elif any(stack):
+            lines.add(number)
+    return lines
+
+
+def _steady_state_hits(root, path, text, pattern, skip):
+    rel = relpath(root, path)
+    if not rel.startswith("launcher/main/") or "/tests/" in rel or "/tools/" in rel:
+        return
+    code = _blank_comments_and_strings(text, scan(rel, text))
+    reported = set()
+    for a, b in _steady_state_spans(code):
+        for m in pattern.finditer(code, a, b):
+            if m.start() not in reported and not skip(code, m):
+                reported.add(m.start())
+                yield _line_of(code, m), m.group(1)
+
+
+def _line_of(code, match):
+    return code.count("\n", 0, match.start()) + 1
+
+
+def _allocates_once(code, match):
+    """`if (p == NULL) p = malloc(...)` (or `!p`, braced or not) allocates
+    only while its own target is empty - once, not every frame. A free()
+    never qualifies."""
+    target = re.search(r"([A-Za-z_][\w.>-]*)\s*=\s*$", code[:match.start()])
+    if match.group(1).endswith("free") or not target:
+        return False
+    lead_start = max(code.rfind(";", 0, target.start()), code.rfind("}", 0, target.start()))
+    guard = re.search(r"\bif\s*\(([^;{}]*)\)\s*\{?\s*$", code[lead_start + 1:target.start()])
+    name = re.escape(target.group(1))
+    return bool(guard and re.fullmatch(rf"\s*(?:{name}\s*==\s*NULL|NULL\s*==\s*{name}|!\s*{name})\s*",
+                                       guard.group(1)))
+
+
+def _release_drops(code, match):
+    """Inside a CONFIG_LAUNCHER_DEVELOPMENT or CONFIG_LAUNCHER_SELFTEST
+    region: a developer's own console reply, never compiled into release."""
+    return _line_of(code, match) in _development_only_lines(code)
+
+
+@c_line_rule("FRAME-PATH-HEAP")
+def rule_frame_path_heap(root, path, text):
+    for line, callee in _steady_state_hits(root, path, text, HEAP_CALL, _allocates_once):
+        yield line, f"{callee}() on the steady-state path - allocate in enter() or init and reuse"
+
+
+# snprintf() formats into memory and stays free; only a write to the console
+# counts.
+
+@c_line_rule("FRAME-PATH-CONSOLE")
+def rule_frame_path_console(root, path, text):
+    for line, callee in _steady_state_hits(root, path, text, CONSOLE_WRITE, _release_drops):
+        yield line, (f"{callee}() on the steady-state path - put a developer's line under "
+                     "CONFIG_LAUNCHER_DEVELOPMENT, or move it off the frame path")
+
+
 @c_comment_rule("HEADING-COMMENT", severity=WARN)
 def rule_heading_comment(root, path, text, comments):
     in_function = _function_body_comments(text, comments)
