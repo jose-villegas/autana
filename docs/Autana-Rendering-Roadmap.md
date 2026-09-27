@@ -639,10 +639,10 @@ lands) and pin it with `aligned(32)`; no 64-bit divides, no signed
 divides by powers of two; a unity build for cross-file inlining if the
 rasterizer spans files; host numbers predict code-shape changes well and
 work-quantity changes badly; and the RTOS tick and input tasks are a
-small, measurable tax. Allocate everything an app needs once at `enter()`
-and free it at `exit()` — the repo's "app exclusivity" convention and
-every MCU renderer's "allocate at startup, never again" advice are the
-same rule.
+small, measurable tax. Take everything an app needs once at `enter()`,
+from the shell's app arena, which the shell empties when the app leaves —
+the repo's "app exclusivity" convention and every MCU renderer's "allocate
+at startup, never again" advice are the same rule.
 
 ---
 

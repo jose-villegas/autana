@@ -28,6 +28,7 @@ scene_name=render_lab
 # allocate, nothing about their size or placement, so
 # render_lab_render_host_heap.c is a plain pass-through instead.
 scene_sources="
+main/app_arena.c
 main/app_registry.c
 main/gfx/gfx.c
 main/util/tune.c

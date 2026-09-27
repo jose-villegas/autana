@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "app.h"
+#include "app_arena.h"
 #include "gfx/gfx.h"
 #include "render_lab.h"
 #include "render_lab_mode_switch.h"
@@ -37,6 +38,10 @@ static const render_lab_scene_t* const scenes[] = {
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
+
+/* Where the running scene's arena memory starts: a scene switch rewinds to
+ * it, so each scene takes from the same spot. */
+static app_arena_mark_t scene_arena_mark;
 
 /* current_scene_index's own re-entry seed, a scene's key - NULL (the cube)
  * by default. Read only at enter(), the same contract render_lab_band_mode
@@ -149,6 +154,7 @@ void
 render_lab_enter(void) {
     current_scene_index = scene_index_for_key(render_lab_start_scene_key);
     enter_layout();
+    scene_arena_mark = app_arena_mark();
     current_scene()->enter();
     scene_title_remaining_ms = SCENE_TITLE_MS;
 
@@ -178,6 +184,7 @@ switch_layout(void) {
 static void
 switch_to_next_scene(void) {
     current_scene()->exit();
+    app_arena_release(scene_arena_mark);
     current_scene_index = (current_scene_index + 1) % SCENE_COUNT;
     render_lab_start_scene_key = current_scene()->key; /* keeps a later re-entry on this same scene */
     switch_layout(); /* the new scene's needs_full_framebuffer may differ from the old one's */
