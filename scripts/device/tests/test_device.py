@@ -5,6 +5,7 @@ import contextlib
 import gzip
 import json
 import os
+import re
 import struct
 import subprocess
 import tempfile
@@ -1128,14 +1129,59 @@ class DecodeCrashAddressesTests(unittest.TestCase):
         command = run.call_args[0][0]
         self.assertEqual(command.count("0x400d1234"), 1)
 
-    def test_a_frame_watch_warning_names_its_site_for_decoding(self):
+    def test_a_frame_watch_warning_is_not_a_crash(self):
         data = b"W (5123) frame_watch: FRAME_WATCH alloc in 16 of 16 frames at 0x4201abcd\n"
+        with mock.patch.object(device, "toolchain_addr2line",
+                               side_effect=AssertionError("must not be called")):
+            self.assertEqual(device.decode_crash_addresses(data, Path("x.elf")), [])
+
+
+FRAME_WATCH_SOURCE = Path(__file__).resolve().parents[3] / "launcher" / "main" / "util" / "frame_watch.c"
+
+
+class FrameWatchLineTests(unittest.TestCase):
+    """The firmware's FRAME_WATCH warning, as device.py reads it: echoed by a
+    quiet capture, its heap sites decoded apart from a crash's."""
+
+    def firmware_lines(self, kind, site):
+        """The warning as each of frame_watch.c's FRAME_WATCH formats prints it."""
+        source = FRAME_WATCH_SOURCE.read_text(encoding="utf-8")
+        formats = re.findall(r'"(FRAME_WATCH [^"]*)", kind', source)
+        self.assertEqual(len(formats), 2, "frame_watch.c's FRAME_WATCH warnings changed shape")
+        lines = []
+        for form in formats:
+            line = form.replace("%s", kind, 1).replace("%d", "9", 1).replace("%d", "16", 1)
+            lines.append("W (5123) frame_watch: " + line.replace("0x%08lx", site).replace("%.*s", "a format"))
+        return lines
+
+    def firmware_line(self, kind, site):
+        return self.firmware_lines(kind, site)[0]
+
+    def test_every_firmware_line_matches_what_device_py_parses(self):
+        for line in self.firmware_lines("alloc", "0x4201abcd"):
+            match = device.FRAME_WATCH_LINE_RE.search(line)
+            self.assertIsNotNone(match, line)
+            self.assertEqual(match.groups(), ("alloc", "9", "16", "0x4201abcd"))
+
+    def test_a_quiet_capture_echoes_a_frame_watch_warning(self):
+        output = io.StringIO()
+        sink = device.ErrorLineSink(output)
+        sink.write(b"I (10) shell: ordinary\n" + self.firmware_line("free", "0x4201abcd").encode() + b"\n")
+        sink.finish()
+        self.assertNotIn("ordinary", output.getvalue())
+        self.assertIn("FRAME_WATCH free in 9 of 16 frames at 0x4201abcd", output.getvalue())
+
+    def test_heap_sites_are_decoded_and_a_log_site_is_not(self):
+        data = (self.firmware_line("alloc", "0x4201abcd") + "\n" +
+                self.firmware_line("console", "0x3c10e270") + "\n").encode()
         result = mock.Mock(stdout="ui.c:88\n")
         with mock.patch.object(device, "toolchain_addr2line", return_value=Path("addr2line")), \
              mock.patch.object(device.subprocess, "run", return_value=result) as run:
-            decoded = device.decode_crash_addresses(data, Path("x.elf"))
+            decoded = device.decode_frame_watch_sites(data, Path("x.elf"))
         self.assertEqual(decoded, ["ui.c:88"])
-        self.assertIn("0x4201abcd", run.call_args[0][0])
+        command = run.call_args[0][0]
+        self.assertIn("0x4201abcd", command)
+        self.assertNotIn("0x3c10e270", command)
 
 
 class FindElfForBuildIdTests(unittest.TestCase):
