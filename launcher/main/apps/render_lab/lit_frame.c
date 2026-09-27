@@ -59,9 +59,12 @@ draw_slice(void* ctx) {
 
     const span_target_t target = {color, depth, f->width, s->first, s->first + s->count};
     lit_draw(f->mesh, s->view, f->visible, s->visible_count, f->cs, f->rows, &target);
-    if (f->doubled != NULL) {
-        double_rows(f, s->first, s->count);
-    }
+}
+
+static void
+double_slice(void* ctx) {
+    const slice_t* s = ctx;
+    double_rows(s->frame, s->first, s->count);
 }
 
 static void
@@ -129,4 +132,10 @@ lit_frame_render(const lit_frame_t* frame, const lit_view_t* view) {
     run_split(draw_slice, (slice_t){frame, view, visible, mid, frame->height - mid},
               (slice_t){frame, view, visible, 0, mid});
     return stats;
+}
+
+void
+lit_frame_double(const lit_frame_t* frame) {
+    const int mid = frame->height / 2;
+    run_split(double_slice, (slice_t){frame, NULL, 0, mid, frame->height - mid}, (slice_t){frame, NULL, 0, 0, mid});
 }

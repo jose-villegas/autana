@@ -162,6 +162,7 @@ test_sponza_draw_stage_breakdown(void) {
                   SPONZA_POSITION_SCALE, RENDER_WIDTH, RENDER_HEIGHT, 0);
     start = esp_timer_get_time();
     const lit_frame_stats_t none = lit_frame_render(&b.frame, &empty);
+    lit_frame_double(&b.frame);
     ESP_LOGI(TAG, "stage, both cores: %-20s %7lldus (%d clusters)", "empty frame",
              (long long)(esp_timer_get_time() - start), none.clusters);
 
@@ -183,6 +184,7 @@ test_sponza_frame_cost_along_the_flythrough(void) {
         const lit_view_t view = view_at(t_ms);
         const int64_t start = esp_timer_get_time();
         const lit_frame_stats_t stats = lit_frame_render(&b.frame, &view);
+        lit_frame_double(&b.frame);
         const int64_t us = esp_timer_get_time() - start;
         ESP_LOGI(TAG, "t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", (unsigned)(t_ms / 1000),
                  stats.clusters, stats.triangles, (long long)us);

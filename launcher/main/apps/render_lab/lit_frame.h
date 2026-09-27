@@ -25,8 +25,10 @@ typedef struct {
     uint16_t* depth;          /* width * height */
     int width, height;
     gfx_color_t clear;
-    /* When not NULL, each core also doubles its finished rows into this
-     * picture, 2 * width by 2 * height, 4-byte aligned. */
+    /* When not NULL, lit_frame_double() writes the finished frame into this
+     * picture, 2 * width by 2 * height, 4-byte aligned; the colour target is
+     * then never cleared, since doubling puts the clear colour wherever
+     * nothing was drawn. */
     gfx_color_t* doubled;
 } lit_frame_t;
 
@@ -41,3 +43,7 @@ size_t lit_frame_scratch_bytes(const lit_mesh_t* mesh);
 void lit_frame_use_scratch(lit_frame_t* frame, void* scratch);
 
 lit_frame_stats_t lit_frame_render(const lit_frame_t* frame, const lit_view_t* view);
+
+/* Doubles the frame lit_frame_render() last drew into `doubled`, both cores
+ * taking half the rows. */
+void lit_frame_double(const lit_frame_t* frame);
