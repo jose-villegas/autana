@@ -293,7 +293,7 @@ def _fix_include_layer(root, path, text):
 
 
 # RULE: a folder may include only a strictly lower tier of
-# docs/Launcher-Architecture.md's "How it fits together" (LAYER_TIER below;
+# docs/Firmware-Architecture.md's "Layers" (LAYER_TIER below;
 # two folders can share a tier). app.h is outside LAYER_TIER, so its
 # include of input/ is never checked; a system header such as
 # "driver/temperature_sensor.h" never resolves to a layer.
@@ -318,7 +318,7 @@ def _layer_dirs_match(root):
         raise ValueError(
             f"launcher/main has folder(s) {unknown} that LAYER_TIER (check_style_audit.py) "
             "does not know about - add them to the tier table (and to "
-            "Launcher-Architecture.md's diagram) before this rule can trust its own order.")
+            "Firmware-Architecture.md's diagram) before this rule can trust its own order.")
 
 
 @c_line_rule("INCLUDE-DIRECTION")

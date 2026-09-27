@@ -7,7 +7,7 @@
  *
  * THIS LOOP IS NOT THE SHELL'S FRAME LOOP
  *
- * docs/Launcher-Architecture.md says there is exactly one frame loop and it
+ * docs/Firmware-Architecture.md says there is exactly one frame loop and it
  * belongs to the shell, which is a rule about APPS: an app must not loop,
  * because the shell has to stay able to switch away from it. Nothing can be
  * switched to yet at this point in boot - touch is not even running - so this
@@ -39,7 +39,7 @@
 #include "util/fixed.h"
 #include "util/intmath.h"
 
-/* See gen_boot_anim_image.py; docs/Launcher-Architecture.md "Generated sources". Also what
+/* See gen_boot_anim_image.py; launcher/tools/gen/README.md. Also what
  * draw_image()'s own memcpy fast path below depends on being true. */
 _Static_assert(BOOT_ANIM_IMAGE_W == GFX_WIDTH && BOOT_ANIM_IMAGE_H == GFX_HEIGHT,
                "boot_anim_image.h was generated for a different panel - regenerate it: "
