@@ -84,9 +84,9 @@ complexity_gate() {
 
 build_diag() {
     if [ "$VERBOSE" -eq 1 ]; then
-        "$DIR/build_flash.sh" --diag --build-only --verbose ${IDF_EXPORT_ARG:+"$IDF_EXPORT_ARG"}
+        "$DIR/build_flash.sh" --diag --verbose ${IDF_EXPORT_ARG:+"$IDF_EXPORT_ARG"}
     else
-        "$DIR/build_flash.sh" --diag --build-only ${IDF_EXPORT_ARG:+"$IDF_EXPORT_ARG"}
+        "$DIR/build_flash.sh" --diag ${IDF_EXPORT_ARG:+"$IDF_EXPORT_ARG"}
     fi
 }
 

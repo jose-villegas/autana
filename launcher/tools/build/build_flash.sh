@@ -6,7 +6,8 @@
 # the serial port. Nothing here needs a board or a lock.
 #
 # Usage:
-#   tools/build/build_flash.sh [--dev|--diag] [--autorun] [--perf-scope] #                        [--build-only] [--verbose] [IDF_EXPORT]
+#   tools/build/build_flash.sh [--dev|--diag] [--autorun] [--perf-scope]
+#                              [--verbose] [IDF_EXPORT]
 #
 #   --verbose   stream and save the build output. The full stream is in the
 #               printed log path in either mode.
@@ -28,8 +29,6 @@
 #               static RAM a capture needs to instrument itself; drops
 #               behaviour coverage, so never a merge gate, and its numbers
 #               compare only with other perf-scoped captures.
-#   --build-only  the same as no flag, since building is all this does; CI
-#               and the docs spell it to say no board is involved.
 #   IDF_EXPORT  path to ESP-IDF's export script - export.bat on Windows,
 #               export.sh elsewhere. Default: the one under $IDF_PATH.
 #
@@ -73,7 +72,6 @@ while [ $# -gt 0 ]; do
         -d|--diag) VARIANT=diag; shift ;;
         --autorun) AUTORUN=1; shift ;;
         --perf-scope) PERF_SCOPE=1; shift ;;
-        --build-only) shift ;;
         --verbose) VERBOSE=1; shift ;;
         -h|--help) sed -n '2,/^# the cost of the way in/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         --)        shift; break ;;
