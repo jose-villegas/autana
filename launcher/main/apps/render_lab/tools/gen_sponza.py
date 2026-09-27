@@ -5,10 +5,19 @@ coloured, lit triangle mesh small enough for the board.
     python main/apps/render_lab/tools/gen_sponza.py --out-dir main/apps/render_lab [--name NAME] [options]
 
 Run from launcher/, in an environment with launcher/tools/r3d/requirements.txt
-installed (see that folder's README). The model is Crytek Sponza from McGuire's
-Computer Graphics Archive (casual-effects.com/data), fetched once into
-launcher/tools/r3d/.cache and checked against its SHA-256; --sponza-dir points
-at an already unpacked copy instead.
+installed and the meshoptimizer submodule checked out:
+
+    git submodule update --init ../third_party/upstream/meshoptimizer
+    python -m venv tools/r3d/.cache/venv
+    tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.txt
+
+(bin/python on Linux and macOS). Each generated file's banner records the
+exact command that produced it.
+
+The model is Crytek Sponza from McGuire's Computer Graphics Archive
+(casual-effects.com/data), fetched once into launcher/tools/r3d/.cache and
+checked against its SHA-256; --sponza-dir points at an already unpacked copy
+instead.
 
 The device does no lighting. Everything a pixel's colour depends on is baked
 here into one sRGB colour per vertex, with the mesh tools in launcher/tools/r3d:
@@ -21,13 +30,13 @@ here into one sRGB colour per vertex, with the mesh tools in launcher/tools/r3d:
 3. One meshoptimizer pass simplifies the whole lit mesh to --triangles,
    with colour as an attribute so shadow edges and texture detail hold
    vertices, and small props keep a reserved share (--props-share).
-   --simplifier quadric keeps the older pipeline - per-material decimation,
-   then splits where the sun's exposure changes - for comparison.
+   --simplifier quadric runs per-material decimation, then splits where the
+   sun's exposure changes, for comparison.
 4. Triangles are grouped into an octree whose leaves are clusters.
 
-What stays here is Sponza's own: which materials are thin sheets, how hard to
-decimate each, where a camera may stand, and the r3d_lit_mesh_t output format.
-The generator validates its own output before emitting anything.
+What is here is Sponza's own: which materials are thin sheets, how hard to
+decimate each and where a camera may stand. tools/r3d/lit_mesh.py clusters,
+quantizes and validates the result before emitting anything.
 """
 
 import argparse
@@ -54,8 +63,8 @@ from r3d.light import (  # noqa: E402
     to_srgb8,
     visible_from_region,
 )
+from r3d.lit_mesh import write_lit_mesh  # noqa: E402
 from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
-from r3d.octree import build_octree, flatten_octree, node_bounds  # noqa: E402
 from r3d.simplify import densify, simplify  # noqa: E402
 from r3d.tessellate import adaptive_split  # noqa: E402
 
@@ -63,8 +72,6 @@ SPONZA_URL = "https://casual-effects.com/g3d/data10/common/model/crytek_sponza/s
 SPONZA_SHA256 = "da005cbee0be2df2abc8513f3ceb61bcb6f69aac112babcd9c00169a27c2770c"
 
 POSITION_SCALE = 8  # int16 ticks per model unit
-INT16_MAX = 32767
-MAX_VERTICES = 65535  # uint16 indices
 DOUBLE_SIDED = {"fabric_a", "fabric_c", "fabric_d", "fabric_e", "fabric_f", "fabric_g", "leaf", "chain", "Material__57"}
 MASK_KEEP_ALPHA = 0.5
 # (share of triangles kept by decimation relative to --keep, longest edge
@@ -240,68 +247,13 @@ def main():
     if args.npz:
         np.savez_compressed(args.npz, pos=positions, rgb=rgb, tris=tris, double=tri_double)
 
-    root = build_octree(positions, tris, args.leaf_triangles, args.max_depth)
-    clusters, nodes = flatten_octree(root, tri_double)
-    out_pos, out_rgb, out_tris, out_clusters = [], [], [], []
-    vbase = 0
-    for double, members in clusters:
-        ct = tris[members]
-        used, local = np.unique(ct, return_inverse=True)
-        out_pos.append(positions[used])
-        out_rgb.append(rgb[used])
-        out_tris.append(local.reshape(-1, 3) + vbase)
-        q = np.round(positions[used] * POSITION_SCALE).astype(np.int64)
-        tbase = sum(len(t) for t in out_tris[:-1])
-        out_clusters.append((vbase, len(used), tbase, len(ct), q.min(axis=0), q.max(axis=0), double))
-        vbase += len(used)
-
-    q_pos = np.round(np.concatenate(out_pos) * POSITION_SCALE).astype(np.int64)
-    q_rgb = np.concatenate(out_rgb)
-    q_tris = np.concatenate(out_tris)
-    node_bounds(nodes, out_clusters)
-    validate(q_pos, q_rgb, q_tris, out_clusters, nodes)
-    emit(args, q_pos, q_rgb, q_tris, out_clusters, nodes)
-    log(f"emitted {len(q_pos)} vertices, {len(q_tris)} triangles, {len(out_clusters)} clusters, {len(nodes)} nodes")
+    counts = write_lit_mesh(args.out_dir, args.name, positions, rgb, tris, tri_double, banner_lines(args),
+                            args.leaf_triangles, args.max_depth, POSITION_SCALE)
+    log("emitted {} vertices, {} triangles, {} clusters, {} nodes".format(*counts))
 
 
-def validate(pos, rgb, tris, clusters, nodes):
-    assert len(pos) <= MAX_VERTICES, f"{len(pos)} vertices exceed uint16 indices"
-    assert np.abs(pos).max() <= INT16_MAX, "a position does not fit int16"
-    assert rgb.min() >= 0 and rgb.max() <= 255
-    assert tris.min() >= 0 and tris.max() < len(pos)
-    assert np.all((tris[:, 0] != tris[:, 1]) & (tris[:, 1] != tris[:, 2]) & (tris[:, 0] != tris[:, 2]))
-    next_v = next_t = 0
-    for vbase, vcount, tbase, tcount, lo, hi, _ in clusters:
-        assert vbase == next_v and tbase == next_t, "clusters must tile both arrays in order"
-        ct = tris[tbase : tbase + tcount]
-        assert ct.min() >= vbase and ct.max() < vbase + vcount, "a triangle reaches outside its cluster"
-        cp = pos[vbase : vbase + vcount]
-        assert np.all(cp >= lo) and np.all(cp <= hi)
-        next_v, next_t = vbase + vcount, tbase + tcount
-    assert next_v == len(pos) and next_t == len(tris)
-    reached = np.zeros(len(clusters), dtype=np.int64)
-    stack = [0]
-    while stack:
-        node = nodes[stack.pop()]
-        assert node["count"] <= 255
-        if node["leaf"]:
-            reached[node["first"] : node["first"] + node["count"]] += 1
-        else:
-            stack.extend(range(node["first"], node["first"] + node["count"]))
-    assert np.all(reached == 1), "every cluster must hang off exactly one leaf"
-    assert len(nodes) <= 65535
-
-
-def emit_rows(out, name, ctype, rows, per_line):
-    print(f"static const {ctype} {name}[][{len(rows[0])}] = {{", file=out)
-    for i in range(0, len(rows), per_line):
-        chunk = rows[i : i + per_line]
-        print("    " + " ".join("{" + ",".join(str(int(v)) for v in r) + "}," for r in chunk), file=out)
-    print("};", file=out)
-
-
-def banner(args, out):
-    lines = [
+def banner_lines(args):
+    return [
         "GENERATED FILE - do not edit.",
         "",
         "    python main/apps/render_lab/tools/gen_sponza.py --out-dir main/apps/render_lab \\",
@@ -318,62 +270,6 @@ def banner(args, out):
         f"  --max-edge {args.max_edge:g} --sun {args.sun[0]:g} {args.sun[1]:g} {args.sun[2]:g}",
         f"  --sun-rays {args.sun_rays} --sky-rays {args.sky_rays} --leaf-triangles {args.leaf_triangles}",
     ]
-    print("/*", file=out)
-    for line in lines:
-        print((" * " + line).rstrip(), file=out)
-    print(" */", file=out)
-
-
-def triple(v):
-    return "{" + ", ".join(str(int(x)) for x in v) + "}"
-
-
-def c_bool(v):
-    return "true" if v else "false"
-
-
-def emit(args, pos, rgb, tris, clusters, nodes):
-    low, up = args.name, args.name.upper()
-    header = f"{low}_mesh_generated.h"
-    with open(os.path.join(args.out_dir, header), "w", newline="\n") as out:
-        banner(args, out)
-        print("#pragma once", file=out)
-        print(file=out)
-        print('#include "render/r3d_lit_mesh.h"', file=out)
-        print(file=out)
-        print(f"#define {up}_VERTEX_COUNT {len(pos)}", file=out)
-        print(f"#define {up}_TRIANGLE_COUNT {len(tris)}", file=out)
-        print(f"#define {up}_CLUSTER_COUNT {len(clusters)}", file=out)
-        print(f"#define {up}_NODE_COUNT {len(nodes)}", file=out)
-        print(f"#define {up}_POSITION_SCALE {POSITION_SCALE}", file=out)
-        print(file=out)
-        print(f"extern const r3d_lit_mesh_t {low}_mesh;", file=out)
-
-    with open(os.path.join(args.out_dir, f"{low}_mesh_generated.c"), "w", newline="\n") as out:
-        banner(args, out)
-        print(f'#include "{header}"', file=out)
-        print(file=out)
-        emit_rows(out, f"{low}_positions", "int16_t", pos.tolist(), 8)
-        print(file=out)
-        emit_rows(out, f"{low}_colors", "uint8_t", rgb.tolist(), 10)
-        print(file=out)
-        emit_rows(out, f"{low}_triangles", "uint16_t", tris.tolist(), 8)
-        print(file=out)
-        print(f"static const r3d_lit_cluster_t {low}_clusters[] = {{", file=out)
-        for vbase, vcount, tbase, tcount, lo, hi, double in clusters:
-            print(f"    {{{vbase}, {vcount}, {tbase}, {tcount}, {triple(lo)}, {triple(hi)}, {c_bool(double)}}},", file=out)
-        print("};", file=out)
-        print(file=out)
-        print(f"static const r3d_lit_node_t {low}_nodes[] = {{", file=out)
-        for n in nodes:
-            print(f"    {{{triple(n['lo'])}, {triple(n['hi'])}, {n['first']}, {n['count']}, {c_bool(n['leaf'])}}},", file=out)
-        print("};", file=out)
-        print(file=out)
-        print(f"const r3d_lit_mesh_t {low}_mesh = {{", file=out)
-        print(f"    {low}_positions, {low}_colors, {low}_triangles, {low}_clusters, {low}_nodes,", file=out)
-        print(f"    {up}_VERTEX_COUNT, {up}_TRIANGLE_COUNT, {up}_CLUSTER_COUNT, {up}_NODE_COUNT,", file=out)
-        print(f"    {up}_POSITION_SCALE,", file=out)
-        print("};", file=out)
 
 
 if __name__ == "__main__":
