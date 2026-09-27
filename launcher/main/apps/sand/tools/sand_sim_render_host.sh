@@ -7,6 +7,7 @@ scene_sources="
 main/gfx/gfx.c
 main/util/tune.c
 main/util/job.c
+main/input/tilt.c
 main/apps/sand/sand.c
 main/apps/sand/sand_chunk_sched.c
 main/apps/sand/sand_impulse.c
@@ -19,7 +20,7 @@ main/apps/sand/material_palette.c
 main/apps/sand/tools/sand_sim_render_host.c
 "
 scene_renders="
-simulation-portrait|--quarter 0|368x448
+simulation-landscape|--quarter 1|448x368|nopin
 "
 
 . "$SCRIPT_DIR/../../../../tools/render/render_scene.sh"
