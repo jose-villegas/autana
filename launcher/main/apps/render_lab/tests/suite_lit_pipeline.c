@@ -179,7 +179,7 @@ static const uint8_t quad_colors[][3] = {{255, 255, 255}, {255, 255, 255}, {255,
 static const uint16_t quad_front[][3] = {{0, 1, 2}, {0, 2, 3}};
 static const uint16_t quad_back[][3] = {{0, 2, 1}, {0, 3, 2}};
 
-static const lit_node_t quad_node = {{-100, -100, 0}, {100, 100, 0}, 0, 1, true};
+static const lit_node_t quad_node = {{-100, -100, 0}, {100, 100, 0}, 0, 1, true, 0, 0, 0};
 
 static lit_mesh_t
 quad_mesh(const uint16_t (*triangles)[3], bool double_sided, lit_cluster_t* cluster) {
@@ -232,7 +232,7 @@ test_a_floor_crossing_the_near_plane_draws_only_below_the_horizon(void) {
         {-1000, 0, 1000}, {1000, 0, 1000}, {1000, 0, -3000}, {-1000, 0, -3000}};
     static const uint16_t floor_up[][3] = {{0, 1, 2}, {0, 2, 3}};
     lit_cluster_t cluster = {0, 4, 0, 2, {-1000, 0, -3000}, {1000, 0, 1000}, false};
-    static const lit_node_t floor_node = {{-1000, 0, -3000}, {1000, 0, 1000}, 0, 1, true};
+    static const lit_node_t floor_node = {{-1000, 0, -3000}, {1000, 0, 1000}, 0, 1, true, 0, 0, 0};
     const lit_mesh_t mesh = {floor_positions, quad_colors, floor_up, &cluster, &floor_node, 4, 2, 1, 1, 1};
 
     lit_view_t view;
@@ -252,6 +252,160 @@ test_a_floor_crossing_the_near_plane_draws_only_below_the_horizon(void) {
     }
     for (int x = 0; x < W; x++) {
         TEST_ASSERT_NOT_EQUAL(0, depth[(H - 1) * W + x]);
+    }
+}
+
+/* Two groups straight ahead of a camera at the origin looking down -z, one
+ * near and one far. Each is a node with two leaves, a left and a right half
+ * quad, and a proxy: the whole quad, one tick off. Every cluster's triangles
+ * count from its own first vertex. */
+enum { NEAR_LEFT, NEAR_RIGHT, FAR_LEFT, FAR_RIGHT, NEAR_PROXY, FAR_PROXY, GROUP_CLUSTERS };
+
+#define NEAR_Z_POS (-30)
+#define FAR_Z_POS  (-2000)
+#define FAR_HALF   200
+
+static const int16_t group_positions[GROUP_CLUSTERS * 4][3] = {
+    {-10, -10, NEAR_Z_POS},
+    {0, -10, NEAR_Z_POS},
+    {0, 10, NEAR_Z_POS},
+    {-10, 10, NEAR_Z_POS},
+    {0, -10, NEAR_Z_POS},
+    {10, -10, NEAR_Z_POS},
+    {10, 10, NEAR_Z_POS},
+    {0, 10, NEAR_Z_POS},
+    {-FAR_HALF, -FAR_HALF, FAR_Z_POS},
+    {0, -FAR_HALF, FAR_Z_POS},
+    {0, FAR_HALF, FAR_Z_POS},
+    {-FAR_HALF, FAR_HALF, FAR_Z_POS},
+    {0, -FAR_HALF, FAR_Z_POS},
+    {FAR_HALF, -FAR_HALF, FAR_Z_POS},
+    {FAR_HALF, FAR_HALF, FAR_Z_POS},
+    {0, FAR_HALF, FAR_Z_POS},
+    {-10, -10, NEAR_Z_POS + 1},
+    {10, -10, NEAR_Z_POS + 1},
+    {10, 10, NEAR_Z_POS + 1},
+    {-10, 10, NEAR_Z_POS + 1},
+    {-FAR_HALF, -FAR_HALF, FAR_Z_POS + 1},
+    {FAR_HALF, -FAR_HALF, FAR_Z_POS + 1},
+    {FAR_HALF, FAR_HALF, FAR_Z_POS + 1},
+    {-FAR_HALF, FAR_HALF, FAR_Z_POS + 1},
+};
+static const uint8_t group_colors[GROUP_CLUSTERS * 4][3] = {{200, 200, 200}};
+static const uint16_t group_triangles[GROUP_CLUSTERS * 2][3] = {
+    {0, 1, 2}, {0, 2, 3}, {0, 1, 2}, {0, 2, 3}, {0, 1, 2}, {0, 2, 3},
+    {0, 1, 2}, {0, 2, 3}, {0, 1, 2}, {0, 2, 3}, {0, 1, 2}, {0, 2, 3},
+};
+
+static lit_cluster_t
+group_cluster(int i) {
+    lit_cluster_t c = {(uint32_t)(4 * i), 4, (uint32_t)(2 * i), 2, {0, 0, 0}, {0, 0, 0}, false};
+    for (int k = 0; k < 3; k++) {
+        c.lo[k] = c.hi[k] = group_positions[4 * i][k];
+        for (int v = 4 * i; v < 4 * i + 4; v++) {
+            c.lo[k] = group_positions[v][k] < c.lo[k] ? group_positions[v][k] : c.lo[k];
+            c.hi[k] = group_positions[v][k] > c.hi[k] ? group_positions[v][k] : c.hi[k];
+        }
+    }
+    return c;
+}
+
+static lit_node_t
+group_node(int16_t half, int16_t z, uint16_t first_child, uint16_t proxy) {
+    return (lit_node_t){{-half, -half, z}, {half, half, (int16_t)(z + 1)}, first_child, 2, false, proxy, 1, 1};
+}
+
+static lit_mesh_t
+group_mesh(lit_cluster_t clusters[GROUP_CLUSTERS], lit_node_t nodes[7]) {
+    for (int i = 0; i < GROUP_CLUSTERS; i++) {
+        clusters[i] = group_cluster(i);
+    }
+    nodes[0] =
+        (lit_node_t){{-FAR_HALF, -FAR_HALF, FAR_Z_POS}, {FAR_HALF, FAR_HALF, NEAR_Z_POS + 1}, 1, 2, false, 0, 0, 0};
+    nodes[1] = group_node(10, NEAR_Z_POS, 3, NEAR_PROXY);
+    nodes[2] = group_node(FAR_HALF, FAR_Z_POS, 5, FAR_PROXY);
+    for (int leaf = 0; leaf < 4; leaf++) {
+        const lit_cluster_t* c = &clusters[leaf];
+        nodes[3 + leaf] = (lit_node_t){
+            {c->lo[0], c->lo[1], c->lo[2]}, {c->hi[0], c->hi[1], c->hi[2]}, (uint16_t)leaf, 1, true, 0, 0, 0};
+    }
+    return (lit_mesh_t){group_positions,    group_colors,       group_triangles, clusters, nodes,
+                        GROUP_CLUSTERS * 4, GROUP_CLUSTERS * 2, GROUP_CLUSTERS,  7,        1};
+}
+
+static lit_view_t
+group_view(void) {
+    lit_view_t view;
+    lit_view_look(&view, (lit_vec3_t){0, 0, 0}, (lit_vec3_t){0, 0, -1}, 0.5f, 1.0f, 1, W, H, 0);
+    return view;
+}
+
+static int
+cull_groups(float max_error_px, uint16_t out[GROUP_CLUSTERS]) {
+    static lit_cluster_t clusters[GROUP_CLUSTERS];
+    static lit_node_t nodes[7];
+    const lit_mesh_t mesh = group_mesh(clusters, nodes);
+    const lit_view_t view = group_view();
+    return lit_cull_clusters_lod(&mesh, &view, max_error_px, out);
+}
+
+static bool
+listed(const uint16_t* list, int count, int cluster) {
+    for (int i = 0; i < count; i++) {
+        if (list[i] == cluster) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* One tick is 48 / 2000 of a pixel far away but 48 / 30 near. */
+static void
+test_a_far_node_is_drawn_as_its_proxy_and_a_near_one_in_full(void) {
+    uint16_t out[GROUP_CLUSTERS];
+    const int count = cull_groups(1.0f, out);
+    TEST_ASSERT_EQUAL_INT(3, count);
+    TEST_ASSERT_TRUE(listed(out, count, NEAR_LEFT));
+    TEST_ASSERT_TRUE(listed(out, count, NEAR_RIGHT));
+    TEST_ASSERT_TRUE(listed(out, count, FAR_PROXY));
+}
+
+static void
+test_the_near_detail_comes_before_the_far_proxy(void) {
+    uint16_t out[GROUP_CLUSTERS];
+    const int count = cull_groups(1.0f, out);
+    TEST_ASSERT_EQUAL_INT(3, count);
+    TEST_ASSERT_EQUAL_INT(FAR_PROXY, out[2]);
+}
+
+static void
+test_a_zero_error_budget_draws_every_leaf_and_no_proxy(void) {
+    uint16_t out[GROUP_CLUSTERS];
+    const int count = cull_groups(0.0f, out);
+    TEST_ASSERT_EQUAL_INT(4, count);
+    for (int c = NEAR_LEFT; c <= FAR_RIGHT; c++) {
+        TEST_ASSERT_TRUE(listed(out, count, c));
+    }
+}
+
+/* Were triangles read as mesh-wide indices, the right half would be drawn
+ * with the left half's vertices. */
+static void
+test_a_clusters_triangles_count_from_its_own_first_vertex(void) {
+    static lit_cluster_t clusters[GROUP_CLUSTERS];
+    static lit_node_t nodes[7];
+    static lit_cs_vertex_t cs[GROUP_CLUSTERS * 4];
+    const lit_mesh_t mesh = group_mesh(clusters, nodes);
+    const lit_view_t view = group_view();
+    const uint16_t only[1] = {NEAR_RIGHT};
+    lit_transform(&mesh, &view, only, 1, cs, NULL);
+    const span_target_t t = fixture();
+    lit_draw(&mesh, &view, only, 1, cs, NULL, &t);
+    TEST_ASSERT_GREATER_THAN_INT(0, covered());
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W / 2; x++) {
+            TEST_ASSERT_EQUAL_UINT16(0, depth[y * W + x]);
+        }
     }
 }
 
@@ -328,6 +482,10 @@ run_lit_pipeline_suite(void) {
     RUN_TEST(test_a_cluster_behind_the_camera_is_culled);
     RUN_TEST(test_a_floor_crossing_the_near_plane_draws_only_below_the_horizon);
     RUN_TEST(test_projection_agrees_with_the_ray_camera_in_every_quarter);
+    RUN_TEST(test_a_far_node_is_drawn_as_its_proxy_and_a_near_one_in_full);
+    RUN_TEST(test_the_near_detail_comes_before_the_far_proxy);
+    RUN_TEST(test_a_zero_error_budget_draws_every_leaf_and_no_proxy);
+    RUN_TEST(test_a_clusters_triangles_count_from_its_own_first_vertex);
 
     RUN_TEST(test_the_path_passes_through_each_waypoint);
     RUN_TEST(test_the_path_is_continuous_and_loops);

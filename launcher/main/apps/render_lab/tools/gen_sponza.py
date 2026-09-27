@@ -24,6 +24,13 @@ here into one sRGB colour per vertex:
 4. Triangles are split into an octree whose leaves are clusters, each with
    its own vertex range and bounding box, so the device culls a subtree or
    a cluster whole.
+5. A node above the leaves may get a proxy standing in for its subtree:
+   vertex clustering on the coarsest grid that keeps the proxy within an
+   error budget, the subtree's shared edges locked so proxies never crack
+   against their neighbours, colours from the nearest original vertex.
+   The budget is --lod-error-px at a typical distance from the interior,
+   the proxy's measured error is recorded for the device to project, and a
+   proxy saving too little is dropped.
 
 The generator validates its own output before emitting anything.
 """
@@ -43,7 +50,7 @@ from trimesh.ray.ray_pyembree import RayMeshIntersector
 
 POSITION_SCALE = 8  # int16 ticks per model unit
 INT16_MAX = 32767
-MAX_VERTICES = 65535  # uint16 indices
+MAX_VERTICES = 65535  # a cluster's uint16 indices
 DOUBLE_SIDED = {"fabric_a", "fabric_c", "fabric_d", "fabric_e", "fabric_f", "fabric_g", "leaf", "chain", "Material__57"}
 MASK_KEEP_ALPHA = 0.5
 # (share of triangles kept by decimation relative to --keep, longest edge
@@ -602,6 +609,16 @@ def main():
     parser.add_argument("--visibility-rounds", type=int, default=160)
     parser.add_argument("--leaf-keep", type=float, default=0.35, help="fraction of leaf triangles kept")
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--view-scale", type=float, default=296.8, help="pixels one unit spans at unit depth on the device")
+    parser.add_argument("--lod-error-px", type=float, default=1.0, help="the device's LIT_LOD_ERROR_PX")
+    parser.add_argument(
+        "--lod-distance-quantile", type=float, default=0.7, help="of camera distances a node's proxy is fitted for"
+    )
+    parser.add_argument("--lod-most", type=float, default=0.7, help="largest share of its detail a proxy may keep")
+    parser.add_argument(
+        "--lod-error-percentile", type=float, default=99, help="of samples a proxy's error must cover"
+    )
+    parser.add_argument("--lod-colour-tolerance", type=float, default=16, help="sRGB levels a proxy's colour may drift")
     args = parser.parse_args()
     rng = np.random.default_rng(args.seed)
 
@@ -674,9 +691,266 @@ def main():
     q_rgb = np.concatenate(out_rgb)
     q_tris = np.concatenate(out_tris)
     node_bounds(nodes, out_clusters)
+    q_pos, q_rgb, q_tris = build_proxies(q_pos, q_rgb, q_tris, out_clusters, nodes, args)
     validate(q_pos, q_rgb, q_tris, out_clusters, nodes)
     emit(args, q_pos, q_rgb, q_tris, out_clusters, nodes)
     log(f"emitted {len(q_pos)} vertices, {len(q_tris)} triangles, {len(out_clusters)} clusters, {len(nodes)} nodes")
+
+
+def subtree_cluster_ranges(nodes):
+    """[first, end) of the clusters below each node, which flatten_octree
+    lays out together."""
+    ranges = [None] * len(nodes)
+    for i in reversed(range(len(nodes))):
+        n = nodes[i]
+        if n["leaf"]:
+            ranges[i] = (n["first"], n["first"] + n["count"])
+            continue
+        kids = [ranges[c] for c in range(n["first"], n["first"] + n["count"])]
+        first, end = min(k[0] for k in kids), max(k[1] for k in kids)
+        assert sum(k[1] - k[0] for k in kids) == end - first, "a subtree's clusters must sit together"
+        ranges[i] = (first, end)
+    return ranges
+
+
+def position_keys(pos):
+    """One int64 per tick position."""
+    p = pos.astype(np.int64) + 32768
+    return (p[:, 0] << 32) | (p[:, 1] << 16) | p[:, 2]
+
+
+def edge_set(pos, tris):
+    """Every edge as a position-key pair, lower first, with its use count."""
+    key = position_keys(pos)[tris]
+    a, b = key.reshape(-1), np.roll(key, -1, axis=1).reshape(-1)
+    return np.unique(np.stack([np.minimum(a, b), np.maximum(a, b)], axis=1), axis=0, return_counts=True)
+
+
+def vertex_normals(pos, tris):
+    face = np.cross(pos[tris[:, 1]] - pos[tris[:, 0]], pos[tris[:, 2]] - pos[tris[:, 0]])
+    n = np.zeros((len(pos), 3))
+    for k in range(3):
+        np.add.at(n, tris[:, k], face)
+    return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+
+
+def incident_triangles(vertex_count, tris, most):
+    """Up to `most` triangles using each vertex, padded with -1."""
+    corner_vertex = tris.reshape(-1)
+    order = np.argsort(corner_vertex, kind="stable")
+    start = np.searchsorted(corner_vertex[order], np.arange(vertex_count))
+    rank = np.arange(len(order)) - start[corner_vertex[order]]
+    table = np.full((vertex_count, most), -1, dtype=np.int64)
+    keep = rank < most
+    table[corner_vertex[order][keep], rank[keep]] = order[keep] // 3
+    return table
+
+
+def surface_distance(points, pos, tris):
+    """Distance from each point to the nearest of the triangles near it: those
+    with the nearest centroids and those using the nearest vertices. Never
+    below the true distance. Returns (distance, triangle, barycentrics)."""
+    a, b, c = pos[tris[:, 0]], pos[tris[:, 1]], pos[tris[:, 2]]
+    k = min(8, len(tris))
+    _, by_centroid = cKDTree((a + b + c) / 3).query(points, k=k)
+    kv = min(4, len(pos))
+    _, by_vertex = cKDTree(pos).query(points, k=kv)
+    incident = incident_triangles(len(pos), tris, 12)[by_vertex.reshape(len(points), kv)].reshape(len(points), -1)
+    cand = np.concatenate([by_centroid.reshape(len(points), k), incident], axis=1)
+    best_d = np.full(len(points), np.inf)
+    best_t = np.zeros(len(points), dtype=np.int64)
+    best_bary = np.zeros((len(points), 3))
+    for j in range(cand.shape[1]):
+        t = cand[:, j]
+        valid = t >= 0
+        t = np.where(valid, t, 0)
+        bary, d = closest_point_on_triangles(points, a[t], b[t], c[t])
+        better = valid & (d < best_d)
+        best_d[better], best_t[better], best_bary[better] = d[better], t[better], bary[better]
+    return best_d, best_t, best_bary
+
+
+def pick_colours(corner_pos, corner_normal, pos, normal, rgb, double_sided):
+    """A proxy corner takes the colour of the nearest original vertex; of
+    vertices sharing that spot (a crease), the one facing the same way."""
+    k = min(8, len(pos))
+    d, cand = cKDTree(pos).query(corner_pos, k=k)
+    d, cand = d.reshape(len(corner_pos), k), cand.reshape(len(corner_pos), k)
+    facing = (normal[cand] * corner_normal[:, None, :]).sum(axis=2)
+    if double_sided:
+        facing = np.abs(facing)
+    score = np.where(d <= d[:, :1] + 0.5, facing, -np.inf)
+    return rgb[cand[np.arange(len(cand)), np.argmax(score, axis=1)]]
+
+
+def colour_error(points, point_rgb, proxy_pos, proxy_rgb, proxy_tris, tri, bary, tolerance, k=32):
+    """How far a colour of the original lies from where the proxy shows it:
+    zero where the proxy's own colour at that spot is within tolerance,
+    otherwise the distance to the nearest proxy vertex that has it."""
+    shown = (proxy_rgb[proxy_tris[tri]] * bary[:, :, None]).sum(axis=1)
+    wrong = np.nonzero(np.abs(shown - point_rgb).max(axis=1) > tolerance)[0]
+    error = np.zeros(len(points))
+    if len(wrong) == 0:
+        return error
+    k = min(k, len(proxy_pos))
+    d, cand = cKDTree(proxy_pos).query(points[wrong], k=k)
+    d, cand = d.reshape(len(wrong), k), cand.reshape(len(wrong), k)
+    near = np.abs(proxy_rgb[cand] - point_rgb[wrong][:, None, :]).max(axis=2) <= tolerance
+    error[wrong] = np.where(near.any(axis=1), d[np.arange(len(wrong)), np.argmax(near, axis=1)], d[:, -1])
+    return error
+
+
+def canonical_triangles(tris):
+    """Drops degenerate and repeated triangles, keeping each one's winding."""
+    tris = tris[(tris[:, 0] != tris[:, 1]) & (tris[:, 1] != tris[:, 2]) & (tris[:, 0] != tris[:, 2])]
+    turns = np.argmin(tris, axis=1)
+    rolled = np.take_along_axis(tris, (turns[:, None] + np.arange(3)) % 3, axis=1)
+    return np.unique(rolled.reshape(-1, 3), axis=0)
+
+
+def cluster_vertices(pos, normal, tris, locked, cell):
+    """Vertex clustering: each unlocked vertex moves to the mean of the
+    vertices in its grid cell that face the same way along their major
+    axis, so the two faces of a thin wall never merge. A locked vertex
+    stays where it is."""
+    major = np.argmax(np.abs(normal), axis=1)
+    facing = major * 2 + (normal[np.arange(len(normal)), major] > 0)
+    lock_id = np.where(locked, np.arange(len(pos)) + 1, 0)
+    key = np.concatenate([np.floor(pos / cell).astype(np.int64), facing[:, None], lock_id[:, None]], axis=1)
+    _, inverse = np.unique(key, axis=0, return_inverse=True)
+    inverse = inverse.reshape(-1)
+    count = np.bincount(inverse)
+    merged = np.zeros((len(count), 3))
+    np.add.at(merged, inverse, pos)
+    return merged / count[:, None], canonical_triangles(inverse[tris])
+
+
+def proxy_error(pos, rgb, tris, proxy_pos, proxy_rgb, proxy_tris, tolerance, percentile):
+    """How far, in position ticks, the proxy strays: at the given percentile
+    of samples at vertices and centroids, how far either surface lies from
+    the other, or, if larger, how far the 99th percentile colour moved."""
+    fpos, fproxy = pos.astype(np.float64), proxy_pos.astype(np.float64)
+    at_vertices, tri, bary = surface_distance(fpos, fproxy, proxy_tris)
+    at_centroids, _, _ = surface_distance(fpos[tris].mean(axis=1), fproxy, proxy_tris)
+    proxy_samples = np.concatenate([fproxy, fproxy[proxy_tris].mean(axis=1)])
+    back, _, _ = surface_distance(proxy_samples, fpos, tris)
+    colour = colour_error(
+        fpos, rgb.astype(np.float64), fproxy, proxy_rgb.astype(np.float64), proxy_tris, tri, bary, tolerance
+    )
+    geometric = max(np.percentile(d, percentile) for d in (at_vertices, at_centroids, back))
+    return max(geometric, np.percentile(colour, 99))
+
+
+def build_proxy(pos, rgb, tris, locked, double_sided, budget, tolerance, percentile):
+    """One subtree's triangles of one sidedness, clustered on the coarsest
+    grid whose proxy strays at most `budget` ticks. `locked` marks the
+    vertices on edges this set shares with the rest of the mesh, kept exact
+    so a proxy meets full detail without cracks. Returns (positions,
+    colours, triangles, error), or None when no grid tried is close enough."""
+    welded, inverse = np.unique(pos, axis=0, return_inverse=True)
+    inverse = inverse.reshape(-1)
+    wt = canonical_triangles(inverse[tris])
+    wlocked = np.zeros(len(welded), dtype=bool)
+    wlocked[inverse[locked]] = True
+    fwelded = welded.astype(np.float64)
+    wnormal = vertex_normals(fwelded, wt)
+    normals = vertex_normals(pos.astype(np.float64), tris)
+    cell = 4.0 * budget
+    while cell >= 2.0:
+        merged, mt = cluster_vertices(fwelded, wnormal, wt, wlocked, cell)
+        pp = np.round(merged).astype(np.int64)
+        face = np.cross(pp[mt[:, 1]] - pp[mt[:, 0]], pp[mt[:, 2]] - pp[mt[:, 0]]).astype(np.float64)
+        face /= np.maximum(np.linalg.norm(face, axis=1, keepdims=True), 1e-12)
+        corner_pos = pp[mt].reshape(-1, 3)
+        corner_rgb = pick_colours(corner_pos, np.repeat(face, 3, axis=0), pos, normals, rgb, double_sided)
+        # Keyed by merged vertex, not position: two that round to one spot
+        # stay apart, so no triangle on a locked edge can collapse.
+        key = np.concatenate([mt.reshape(-1, 1), corner_rgb], axis=1)
+        _, first, corner = np.unique(key, axis=0, return_index=True, return_inverse=True)
+        proxy = corner_pos[first], corner_rgb[first], canonical_triangles(corner.reshape(-1, 3))
+        if len(proxy[2]) and proxy_error(pos, rgb, tris, *proxy, tolerance, percentile) <= budget:
+            return (*proxy, proxy_error(pos, rgb, tris, *proxy, tolerance, 100))
+        cell *= 0.6
+    return None
+
+
+def interior_distances(lo, hi, samples=6):
+    """Model-unit distances from a grid of points where the camera may
+    stand to the box lo..hi (ticks)."""
+    axes = [np.linspace(INTERIOR_LO[k], INTERIOR_HI[k], samples) for k in range(3)]
+    eye = np.stack(np.meshgrid(*axes, indexing="ij"), axis=-1).reshape(-1, 3)
+    blo, bhi = np.asarray(lo) / POSITION_SCALE, np.asarray(hi) / POSITION_SCALE
+    return np.linalg.norm(np.maximum(0, np.maximum(blo - eye, eye - bhi)), axis=1)
+
+
+def build_proxies(pos, rgb, tris, clusters, nodes, args):
+    """Gives each node above the leaves a proxy of its subtree where one is
+    worth having, appending its clusters after every leaf's and recording
+    lod_first, lod_count and lod_error on the node. A node's error budget is
+    what --lod-error-px allows at the --lod-distance-quantile of distances
+    from where the camera may stand."""
+    ranges = subtree_cluster_ranges(nodes)
+    all_edges, all_counts = edge_set(pos, tris)
+    extra_pos, extra_rgb, extra_tris = [], [], []
+    vbase, tbase = len(pos), len(tris)
+    for i, node in enumerate(nodes):
+        node["lod_first"] = node["lod_count"] = node["lod_error"] = 0
+        if node["leaf"]:
+            continue
+        distance = np.quantile(interior_distances(node["lo"], node["hi"]), args.lod_distance_quantile)
+        budget = args.lod_error_px * distance / args.view_scale * POSITION_SCALE
+        if budget < 2.0:
+            continue
+        first, end = ranges[i]
+        parts, before, error = [], 0, 0.0
+        for double in (False, True):
+            own = [c for c in clusters[first:end] if c[6] == double]
+            if not own:
+                continue
+            vids = np.concatenate([np.arange(c[0], c[0] + c[1]) for c in own])
+            ptris = np.concatenate([tris[c[2] : c[2] + c[3]] for c in own])
+            remap = np.full(len(pos), -1)
+            remap[vids] = np.arange(len(vids))
+            ppos, prgb, ptris = pos[vids], rgb[vids], remap[ptris]
+            edges, counts = edge_set(ppos, ptris)
+            shared = all_counts[index_rows(all_edges, edges)] > counts
+            locked = np.isin(position_keys(ppos), edges[shared].reshape(-1))
+            proxy = build_proxy(
+                ppos, prgb, ptris, locked, double, budget, args.lod_colour_tolerance, args.lod_error_percentile
+            )
+            if proxy is None:
+                parts = None
+                break
+            parts.append((double, proxy))
+            before += len(ptris)
+            error = max(error, proxy[3])
+        if not parts or sum(len(p[2]) for _, p in parts) > args.lod_most * before:
+            continue
+        node["lod_first"], node["lod_count"] = len(clusters), len(parts)
+        node["lod_error"] = int(math.ceil(error))
+        for double, (ppos, prgb, ptris, _) in parts:
+            clusters.append((vbase, len(ppos), tbase, len(ptris), ppos.min(axis=0), ppos.max(axis=0), double))
+            extra_pos.append(ppos)
+            extra_rgb.append(prgb)
+            extra_tris.append(ptris + vbase)
+            vbase += len(ppos)
+            tbase += len(ptris)
+    log(f"proxies: {sum(n['lod_count'] > 0 for n in nodes)} nodes, {tbase - len(tris)} triangles, {vbase - len(pos)} vertices")
+    if not extra_pos:
+        return pos, rgb, tris
+    return (
+        np.concatenate([pos] + extra_pos),
+        np.concatenate([rgb] + extra_rgb),
+        np.concatenate([tris] + extra_tris),
+    )
+
+
+def index_rows(table, rows):
+    """Where each of `rows` sits in `table`, both sorted and unique."""
+    view = lambda a: np.ascontiguousarray(a).view([("", a.dtype)] * a.shape[1]).reshape(-1)
+    found = np.searchsorted(view(table), view(rows))
+    assert np.all(table[found] == rows)
+    return found
 
 
 def node_bounds(nodes, clusters):
@@ -693,14 +967,17 @@ def node_bounds(nodes, clusters):
 
 
 def validate(pos, rgb, tris, clusters, nodes):
-    assert len(pos) <= MAX_VERTICES, f"{len(pos)} vertices exceed uint16 indices"
+    """Triangles here still index the whole mesh; emit() makes them count
+    from their cluster's first vertex."""
     assert np.abs(pos).max() <= INT16_MAX, "a position does not fit int16"
     assert rgb.min() >= 0 and rgb.max() <= 255
     assert tris.min() >= 0 and tris.max() < len(pos)
     assert np.all((tris[:, 0] != tris[:, 1]) & (tris[:, 1] != tris[:, 2]) & (tris[:, 0] != tris[:, 2]))
+    assert len(pos) < 2**32 and len(tris) < 2**32 and len(clusters) <= 65535
     next_v = next_t = 0
     for vbase, vcount, tbase, tcount, lo, hi, _ in clusters:
         assert vbase == next_v and tbase == next_t, "clusters must tile both arrays in order"
+        assert vcount <= MAX_VERTICES and tcount <= 65535, "a cluster outgrows its uint16 counts"
         ct = tris[tbase : tbase + tcount]
         assert ct.min() >= vbase and ct.max() < vbase + vcount, "a triangle reaches outside its cluster"
         cp = pos[vbase : vbase + vcount]
@@ -711,13 +988,43 @@ def validate(pos, rgb, tris, clusters, nodes):
     stack = [0]
     while stack:
         node = nodes[stack.pop()]
-        assert node["count"] <= 255
+        assert node["count"] <= 255 and node["lod_count"] <= 255 and node["lod_error"] <= 65535
+        reached[node["lod_first"] : node["lod_first"] + node["lod_count"]] += 1
         if node["leaf"]:
+            assert node["lod_count"] == 0
             reached[node["first"] : node["first"] + node["count"]] += 1
         else:
             stack.extend(range(node["first"], node["first"] + node["count"]))
-    assert np.all(reached == 1), "every cluster must hang off exactly one leaf"
+    assert np.all(reached == 1), "every cluster must hang off exactly one leaf or one proxy"
     assert len(nodes) <= 65535
+    validate_proxies(pos, tris, clusters, nodes)
+
+
+def cluster_triangles(tris, clusters, first, end):
+    return np.concatenate([tris[c[2] : c[2] + c[3]] for c in clusters[first:end]] or [np.zeros((0, 3), np.int64)])
+
+
+def validate_proxies(pos, tris, clusters, nodes):
+    """A proxy sits inside its node, has fewer triangles than the detail it
+    replaces, and keeps every edge that detail shares with the rest."""
+    ranges = subtree_cluster_ranges(nodes)
+    leaf_end = min(n["lod_first"] for n in nodes if n["lod_count"]) if any(n["lod_count"] for n in nodes) else 0
+    all_edges, all_counts = edge_set(pos, cluster_triangles(tris, clusters, 0, leaf_end))
+    for i, node in enumerate(nodes):
+        if not node["lod_count"]:
+            continue
+        first, end = ranges[i]
+        proxy = clusters[node["lod_first"] : node["lod_first"] + node["lod_count"]]
+        for c in proxy:
+            assert np.all(c[4] >= node["lo"]) and np.all(c[5] <= node["hi"]), f"node {i}'s proxy leaves its box"
+        detail = cluster_triangles(tris, clusters, first, end)
+        proxy_tris = cluster_triangles(tris, clusters, node["lod_first"], node["lod_first"] + node["lod_count"])
+        assert len(proxy_tris) < len(detail)
+        edges, counts = edge_set(pos, detail)
+        shared = edges[all_counts[index_rows(all_edges, edges)] > counts]
+        kept, _ = edge_set(pos, proxy_tris)
+        missing = shared[~np.isin(shared.view([("", np.int64)] * 2), kept.view([("", np.int64)] * 2))[:, 0]]
+        assert len(missing) == 0, f"node {i}'s proxy lost {len(missing)} edges it shares with its neighbours"
 
 
 def emit_rows(out, name, ctype, rows, per_line):
@@ -737,9 +1044,13 @@ def banner(args, out):
         "Crytek Sponza (Frank Meinl, Crytek; CC BY 3.0), from the OBJ in",
         "McGuire's Computer Graphics Archive, casual-effects.com/data.",
         "Decimated, lit by a sun and sky with baked shadows, one sRGB colour",
-        "per vertex, clusters as the leaves of an octree. Bake settings:",
+        "per vertex, clusters as the leaves of an octree, and coarser proxies",
+        "standing in for some of its nodes. Bake settings:",
         f"  --keep {args.keep:g} --max-edge {args.max_edge:g} --sun {args.sun[0]:g} {args.sun[1]:g} {args.sun[2]:g}",
         f"  --sun-rays {args.sun_rays} --sky-rays {args.sky_rays} --leaf-triangles {args.leaf_triangles}",
+        f"  --view-scale {args.view_scale:g} --lod-error-px {args.lod_error_px:g}"
+        f" --lod-distance-quantile {args.lod_distance_quantile:g} --lod-most {args.lod_most:g}",
+        f"  --lod-colour-tolerance {args.lod_colour_tolerance:g} --lod-error-percentile {args.lod_error_percentile:g}",
     ]
     print("/*", file=out)
     for line in lines:
@@ -778,7 +1089,8 @@ def emit(args, pos, rgb, tris, clusters, nodes):
         print(file=out)
         emit_rows(out, "sponza_colors", "uint8_t", rgb.tolist(), 10)
         print(file=out)
-        emit_rows(out, "sponza_triangles", "uint16_t", tris.tolist(), 8)
+        local = np.concatenate([tris[c[2] : c[2] + c[3]] - c[0] for c in clusters])
+        emit_rows(out, "sponza_triangles", "uint16_t", local.tolist(), 8)
         print(file=out)
         print("static const lit_cluster_t sponza_clusters[] = {", file=out)
         for vbase, vcount, tbase, tcount, lo, hi, double in clusters:
@@ -787,7 +1099,11 @@ def emit(args, pos, rgb, tris, clusters, nodes):
         print(file=out)
         print("static const lit_node_t sponza_nodes[] = {", file=out)
         for n in nodes:
-            print(f"    {{{triple(n['lo'])}, {triple(n['hi'])}, {n['first']}, {n['count']}, {c_bool(n['leaf'])}}},", file=out)
+            print(
+                f"    {{{triple(n['lo'])}, {triple(n['hi'])}, {n['first']}, {n['count']}, {c_bool(n['leaf'])},"
+                f" {n['lod_first']}, {n['lod_count']}, {n['lod_error']}}},",
+                file=out,
+            )
         print("};", file=out)
         print(file=out)
         print("const lit_mesh_t sponza_mesh = {", file=out)
