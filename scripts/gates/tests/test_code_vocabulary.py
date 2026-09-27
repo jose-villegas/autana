@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 SCRIPTS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
@@ -139,6 +140,28 @@ class NamesRequireADefinitionTest(unittest.TestCase):
         self.assertNotIn("generated_only", vocab.functions)
         self.assertIn("FLASH_BAUD", vocab.constants)
         self.assertIn("not_yet_added", vocab.functions)
+
+    def test_outside_git_every_file_but_a_skipped_directory_is_read(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/build/generated.c", "void generated_only(void) {}\n")
+            self.write(root, "launcher/main/a.c", "void real_function(void) {}\n")
+            vocab = code_vocabulary.vocabulary(str(root))
+        self.assertIn("real_function", vocab.functions)
+        self.assertNotIn("generated_only", vocab.functions)
+
+    def test_any_other_git_failure_raises_with_gits_message(self):
+        # In a container running as another user than the checkout's owner,
+        # git refuses the repository, and a silent fallback to the directory
+        # walk hid launcher/tools/build/ from the vocabulary.
+        refused = subprocess.CompletedProcess(
+            [], 128, "", "fatal: detected dubious ownership in repository at '/w'\n")
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/a.c", "void real_function(void) {}\n")
+            with mock.patch.object(code_vocabulary.subprocess, "run", return_value=refused):
+                with self.assertRaisesRegex(RuntimeError, "dubious ownership"):
+                    code_vocabulary.vocabulary(str(root))
 
 
 if __name__ == "__main__":
