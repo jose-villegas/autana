@@ -285,6 +285,21 @@ static void
 perf_target(const char* name, int64_t measured_us, int64_t goal_us, int64_t ceiling_us) {
     const int64_t distance_percent = ((measured_us - goal_us) * 100) / goal_us;
 
+#if CONFIG_LAUNCHER_QEMU
+    const char* cores = "solo";
+#else
+    const char* cores = "two";
+#endif
+    if (!gas_ab_reporting) {
+        char scene[80];
+        size_t i = 0;
+        for (; name[i] != '\0' && i < sizeof scene - 1; i++) {
+            scene[i] = name[i] == ' ' ? '_' : name[i];
+        }
+        scene[i] = '\0';
+        ESP_LOGI("device_tests", "PERF_ROW scene=%s us_per_step=%lld cores=%s", scene, (long long)measured_us, cores);
+    }
+
     ESP_LOGI("device_tests", "PERF TARGET %s: measured %lld us, goal %lld us, distance %+lld%%", name,
              (long long)measured_us, (long long)goal_us, (long long)distance_percent);
     if (measured_us > goal_us) {
@@ -4458,6 +4473,17 @@ test_the_sand_app_can_still_allocate_everything_it_needs(void) {
 }
 #endif /* DEVICE_BUILD */
 
+#if CONFIG_LAUNCHER_QEMU
+#define RUN_PERF_ROW(test)                                                                                             \
+    do {                                                                                                               \
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_SOLO);                                                     \
+        RUN_TEST(test);                                                                                                \
+        sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_CORE1);                                                    \
+    } while (0)
+#else
+#define RUN_PERF_ROW(test) RUN_TEST(test)
+#endif
+
 void
 run_sand_perf_suite(void) {
     RUN_TEST(test_acid_bubbles_do_not_favour_one_wall);
@@ -4478,19 +4504,19 @@ run_sand_perf_suite(void) {
     ESP_LOGI("device_tests", "run_sand_perf_suite: two_core_step_on=%d at entry", (int)sand_two_core_step_enabled());
     perf_unmet_targets = 0;
     RUN_TEST(test_the_sand_app_can_still_allocate_everything_it_needs);
-    RUN_TEST(test_a_full_size_step_fits_in_the_frame_budget);
-    RUN_TEST(test_a_screen_of_settled_sand_costs_almost_nothing);
-    RUN_TEST(test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget);
-    RUN_TEST(test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget);
-    RUN_TEST(test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget);
-    RUN_TEST(test_a_screen_of_water_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_a_full_size_step_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_a_screen_of_settled_sand_costs_almost_nothing);
+    RUN_PERF_ROW(test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_a_screen_of_water_fits_in_the_frame_budget);
     RUN_TEST(test_the_xtensa_counters_over_three_scenes);
     /* Ungated: the two gas movers compare through sand_set_gas_walk(), an
      * ordinary API, so this runs in every diagnostics build. */
     RUN_TEST(test_the_gas_random_walk_against_the_exhaustive_mover);
     RUN_TEST(test_two_core_step_against_the_serial_path_on_three_scenes);
     RUN_TEST(test_two_core_step_at_every_quality_grid_size);
-    RUN_TEST(test_a_gravity_flip_on_every_material_at_once_stays_sane);
+    RUN_PERF_ROW(test_a_gravity_flip_on_every_material_at_once_stays_sane);
     RUN_TEST(test_the_gas_budget_rows_on_the_serial_path);
     /* test_fire_cascading_..._fits_in_the_frame_budget also runs, ambient,
      * from inside the row above (gas_ab_reporting suppresses its own
@@ -4498,43 +4524,43 @@ run_sand_perf_suite(void) {
      * its own standalone entry. */
     {
         const two_core_scope_t core = two_core_scope_begin(true);
-        RUN_TEST(test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget);
+        RUN_PERF_ROW(test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget);
         two_core_scope_end(core);
     }
-    RUN_TEST(test_a_full_screen_of_fire_fits_in_the_frame_budget);
-    RUN_TEST(test_four_liquids_reacting_at_once_fits_in_the_frame_budget);
-    RUN_TEST(test_the_lava_stress_scene_fits_in_the_frame_budget);
-    RUN_TEST(test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_a_full_screen_of_fire_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_four_liquids_reacting_at_once_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_the_lava_stress_scene_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget);
     RUN_TEST(test_pouring_water_onto_a_plant_bed_costs_more_than_steady_growth);
-    RUN_TEST(test_a_growing_plant_bed_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_a_growing_plant_bed_fits_in_the_frame_budget);
     RUN_TEST(test_the_wood_leaf_shading_on_a_grove);
-    RUN_TEST(test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget);
     /* Same dual use as the fire-cascade row above: also called ambient
      * from test_the_gas_budget_rows_on_the_serial_path, pinned here for
      * their own standalone budget. */
     {
         const two_core_scope_t core = two_core_scope_begin(true);
-        RUN_TEST(test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget);
-        RUN_TEST(test_turning_a_half_screen_of_gas_fits_in_the_frame_budget);
+        RUN_PERF_ROW(test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget);
+        RUN_PERF_ROW(test_turning_a_half_screen_of_gas_fits_in_the_frame_budget);
         two_core_scope_end(core);
     }
-    RUN_TEST(test_the_thermal_shock_scene_fits_in_the_frame_budget);
-    RUN_TEST(test_the_boiler_scene_fits_in_the_frame_budget);
-    RUN_TEST(test_the_wet_earth_scene_fits_in_the_frame_budget);
-    RUN_TEST(test_the_water_over_lava_scene_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_the_thermal_shock_scene_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_the_boiler_scene_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_the_wet_earth_scene_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_the_water_over_lava_scene_fits_in_the_frame_budget);
     RUN_TEST(test_the_gas_ignition_vessel_logs_the_blast_stress);
-    RUN_TEST(test_the_gunpowder_basin_scene_fits_in_the_frame_budget);
-    RUN_TEST(test_the_plant_ruin_scene_fits_in_the_frame_budget);
-    RUN_TEST(test_the_filling_basin_scene_fits_in_the_frame_budget);
-    RUN_TEST(test_the_snowfall_scene_fits_in_the_frame_budget);
-    RUN_TEST(test_pouring_the_plant_brush_fits_in_the_frame_budget);
-    RUN_TEST(test_a_settled_plant_garden_fits_in_the_frame_budget);
-    RUN_TEST(test_a_finished_tree_fits_in_the_frame_budget);
-    RUN_TEST(test_pouring_water_into_a_landscape_sand_bed_fits_in_the_frame_budget);
-    RUN_TEST(test_pouring_water_into_a_deep_landscape_bed_fits_in_the_frame_budget);
-    RUN_TEST(test_pouring_sand_onto_a_landscape_sand_bed_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_the_gunpowder_basin_scene_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_the_plant_ruin_scene_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_the_filling_basin_scene_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_the_snowfall_scene_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_pouring_the_plant_brush_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_a_settled_plant_garden_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_a_finished_tree_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_pouring_water_into_a_landscape_sand_bed_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_pouring_water_into_a_deep_landscape_bed_fits_in_the_frame_budget);
+    RUN_PERF_ROW(test_pouring_sand_onto_a_landscape_sand_bed_fits_in_the_frame_budget);
 
-    RUN_TEST(test_present_cost_against_a_falling_sand_scene);
+    RUN_PERF_ROW(test_present_cost_against_a_falling_sand_scene);
     RUN_TEST(test_a_real_frame_is_sim_plus_present_on_a_falling_sand_scene);
     RUN_TEST(test_present_cost_against_the_lava_stress_scene);
     RUN_TEST(test_present_cost_against_the_thermal_shock_scene);
