@@ -6,7 +6,7 @@
  * read back from icons_system.h, so a match proves gen_icons.py reproduced
  * known-good pixels rather than merely round-tripping its own packer. This
  * is the independent witness the generated-sources convention in
- * docs/Launcher-Architecture.md asks for; suite_icons_system.c checks facts
+ * launcher/tools/gen/README.md asks for; suite_icons_system.c checks facts
  * a scan can pin down instead.
  *
  * The two sizes exercised throughout are the module's two real callers:

@@ -277,7 +277,7 @@ instead of only in synthetic tests, as two fully independent layers, each
 with its own checkbox on the Diagnostics app's second page (BOOT to reach
 it), correct in all four on/off combinations. Diagnostics is gated on
 `CONFIG_LAUNCHER_DEVELOPMENT`, not the narrower `CONFIG_LAUNCHER_SELFTEST`
-(see `docs/Launcher-Architecture.md`), so a plain `--dev` build reaches
+(see `docs/Firmware-Architecture.md`), so a plain `--dev` build reaches
 these checkboxes too:
 
 - **Panel-grid layer** (`gfx_set_debug_overlay(true)`) outlines whichever

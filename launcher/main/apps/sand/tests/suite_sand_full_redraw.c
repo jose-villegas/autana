@@ -44,7 +44,7 @@ apply_pending_full_redraw(void) {
 /* A rectangle well inside the default-quality grid's own drawable area
  * and clear of the one grain sand_app_enter_running_for_test() pours at
  * the grid's centre - stale pixels an overlay panel would leave behind,
- * the failure Launcher-Architecture.md's "Full redraw" section covers. */
+ * the failure Firmware-Architecture.md's "Full redraw" section covers. */
 #define STALE_X 60
 #define STALE_Y 60
 #define STALE_W 40
