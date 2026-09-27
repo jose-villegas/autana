@@ -1,6 +1,6 @@
 """Offline mesh baking for the r3d renderer (main/render/): load, decimate,
-split for baked light, light, and group into a cluster tree. Host only; see
-README.md for the environment."""
+split for baked light, light, group into a cluster tree and write it as C
+data. Host only; see README.md for the environment."""
 
 import sys
 
