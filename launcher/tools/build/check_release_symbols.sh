@@ -33,10 +33,20 @@ if ! "$NM" --defined-only "$ELF" >"$symbols_file"; then
     exit 2
 fi
 
+apps_dir="$(dirname "$0")/../../main/apps"
+if [ ! -d "$apps_dir" ]; then
+    echo "no apps directory at $apps_dir" >&2
+    exit 2
+fi
+
 development_only_apps=
-for marker in "$(dirname "$0")"/../../main/apps/*/development_only.cmake; do
+for marker in "$apps_dir"/*/development_only.cmake; do
     [ -f "$marker" ] || continue
     app=$(basename "$(dirname "$marker")")
+    if ! grep -q "^APP_REGISTER(app_${app});" "$apps_dir/$app/app_${app}.c" 2>/dev/null; then
+        echo "$marker: app_${app}.c does not register app_${app}" >&2
+        exit 2
+    fi
     development_only_apps="${development_only_apps}app_${app}\$|"
 done
 
