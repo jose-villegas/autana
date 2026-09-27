@@ -27,11 +27,14 @@
 
 TUNE_OWNER(ridge);
 TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
-TUNE(ridge, sky_top_rgb, 0x1199C8, 0, 0xffffff);
-TUNE(ridge, sky_bottom_rgb, 0x91C6D1, 0, 0xffffff);
-TUNE(ridge, background_rgb, 0x0B6382, 0, 0xffffff);
-TUNE(ridge, back0_rgb, 0x07638C, 0, 0xffffff);
-TUNE(ridge, back1_rgb, 0x10606B, 0, 0xffffff);
+/* Each role starts as the theme's and can then be tuned on its own. */
+#if TUNE_ENABLED
+TUNE(ridge, sky_top_rgb, 0, 0, 0xffffff);
+TUNE(ridge, sky_bottom_rgb, 0, 0, 0xffffff);
+TUNE(ridge, background_rgb, 0, 0, 0xffffff);
+TUNE(ridge, back0_rgb, 0, 0, 0xffffff);
+TUNE(ridge, back1_rgb, 0, 0, 0xffffff);
+#endif
 TUNE(ridge, fill_pattern, GFX_DITHER_SCANLINES4, 0, GFX_DITHER_PATTERN_COUNT - 1);
 TUNE(ridge, lip_px, 12, 1, 48);
 TUNE(ridge, back0_offset, -70, -160, 80);
@@ -154,7 +157,7 @@ build_sky_gradient(void) {
     ridge->sky_edge_count = 0;
     for (int along = 0; along <= 2 * RIDGE_SKY_HALF; along++) {
         ridge->sky[along] =
-            gfx_rgb(rgb_mix((uint32_t)sky_top_rgb, (uint32_t)sky_bottom_rgb, along * 100 / (2 * RIDGE_SKY_HALF)));
+            gfx_rgb(rgb_mix(ridge->theme.sky_top_rgb, ridge->theme.sky_bottom_rgb, along * 100 / (2 * RIDGE_SKY_HALF)));
         if (along > 0 && ridge->sky[along] != ridge->sky[along - 1] && ridge->sky_edge_count < RIDGE_SKY_EDGES) {
             ridge->sky_edge[ridge->sky_edge_count++] = (int16_t)along;
         }
@@ -881,9 +884,16 @@ bake_what_is_tuned(void) {
         apply_theme();
     }
     ridge_motion_smooth(ridge->rigid, ridge->smooth, ridge->shape, RIDGE_COLUMNS, breath_smooth);
-    ridge->background_color = gfx_rgb((uint32_t)background_rgb);
-    ridge->back0_color = gfx_rgb((uint32_t)back0_rgb);
-    ridge->back1_color = gfx_rgb((uint32_t)back1_rgb);
+#if TUNE_ENABLED
+    ridge->theme.background_rgb = (uint32_t)background_rgb;
+    ridge->theme.sky_top_rgb = (uint32_t)sky_top_rgb;
+    ridge->theme.sky_bottom_rgb = (uint32_t)sky_bottom_rgb;
+    ridge->theme.back0_rgb = (uint32_t)back0_rgb;
+    ridge->theme.back1_rgb = (uint32_t)back1_rgb;
+#endif
+    ridge->background_color = gfx_rgb(ridge->theme.background_rgb);
+    ridge->back0_color = gfx_rgb(ridge->theme.back0_rgb);
+    ridge->back1_color = gfx_rgb(ridge->theme.back1_rgb);
     const int lip_start[RIDGE_LAYER_COUNT] = {back0_lip_alpha, back1_lip_alpha, front_lip_alpha};
     const int lip_end[RIDGE_LAYER_COUNT] = {back0_body_alpha, back1_body_alpha, front_body_alpha};
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
@@ -892,7 +902,7 @@ bake_what_is_tuned(void) {
                 (uint8_t)(lip_start[layer] + ((lip_end[layer] - lip_start[layer]) * distance / lip_px));
         }
     }
-    ridge->scanline_dither = fill_pattern == GFX_DITHER_SCANLINES4;
+    ridge->scanline_dither = (int)fill_pattern == (int)GFX_DITHER_SCANLINES4;
     ridge->tuned_at = TUNE_GENERATION(ridge);
 }
 
