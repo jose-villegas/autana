@@ -1,6 +1,8 @@
 #include "render/r3d_span.h"
 
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 #include "util/fast_float.h"
 
@@ -263,55 +265,81 @@ walk(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], 
     }
 }
 
+static inline void
+sort_by_y(const r3d_span_vertex_t** v0, const r3d_span_vertex_t** v1, const r3d_span_vertex_t** v2) {
+    const r3d_span_vertex_t* t;
+    if ((*v1)->y < (*v0)->y) {
+        t = *v0, *v0 = *v1, *v1 = t;
+    }
+    if ((*v2)->y < (*v1)->y) {
+        t = *v1, *v1 = *v2, *v2 = t;
+    }
+    if ((*v1)->y < (*v0)->y) {
+        t = *v0, *v0 = *v1, *v1 = t;
+    }
+}
+
+static inline int
+clampi(int v, int lo, int hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
+}
+
+static inline float
+min3(float a, float b, float c) {
+    return a < b ? (a < c ? a : c) : (b < c ? b : c);
+}
+
+static inline float
+max3(float a, float b, float c) {
+    return a > b ? (a > c ? a : c) : (b > c ? b : c);
+}
+
+/* The pixel-centre row a y position rounds to, with y held one row beyond
+ * the window on either side. */
+static inline int
+row_at(const r3d_span_target_t* target, float y) {
+    return fast_ceil(clampf(y, (float)target->row0 - 1.0f, (float)target->row1 + 1.0f) - 0.5f);
+}
+
+static inline void
+set_flat(fill_t* f, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
+    const float third = 1.0f / 3.0f;
+    f->flat_z = (uint16_t)(clampf((a->z + b->z + c->z) * third, 0.0f, 1.0f) * 65535.0f);
+    f->flat_color = pack((int32_t)(clampf((a->r + b->r + c->r) * third, 0.0f, 255.0f) * COLOR_SCALE),
+                         (int32_t)(clampf((a->g + b->g + c->g) * third, 0.0f, 255.0f) * COLOR_SCALE),
+                         (int32_t)(clampf((a->b + b->b + c->b) * third, 0.0f, 255.0f) * COLOR_SCALE));
+}
+
+static inline void
+first_row_values(const gradients_t* g, int y_first, int y_anchor, int32_t row[ATTRIBUTES]) {
+    for (int k = 0; k < ATTRIBUTES; k++) {
+        row[k] = (int32_t)(g->base[k] + (int64_t)(y_first - y_anchor) * g->dy[k]);
+    }
+}
+
 void
 r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                   const r3d_span_vertex_t* c) {
-    const r3d_span_vertex_t* v0 = a;
-    const r3d_span_vertex_t* v1 = b;
-    const r3d_span_vertex_t* v2 = c;
-    const r3d_span_vertex_t* t;
-    if (v1->y < v0->y) {
-        t = v0, v0 = v1, v1 = t;
-    }
-    if (v2->y < v1->y) {
-        t = v1, v1 = v2, v2 = t;
-    }
-    if (v1->y < v0->y) {
-        t = v0, v0 = v1, v1 = t;
-    }
+    const r3d_span_vertex_t *v0 = a, *v1 = b, *v2 = c;
+    sort_by_y(&v0, &v1, &v2);
 
-    const float top = (float)target->row0 - 1.0f, bottom = (float)target->row1 + 1.0f;
-    int y_first = fast_ceil(clampf(v0->y, top, bottom) - 0.5f);
-    int y_end = fast_ceil(clampf(v2->y, top, bottom) - 0.5f);
-    if (y_first < target->row0) {
-        y_first = target->row0;
-    }
-    if (y_end > target->row1) {
-        y_end = target->row1;
-    }
+    const int y_first = clampi(row_at(target, v0->y), target->row0, target->row1);
+    const int y_end = clampi(row_at(target, v2->y), target->row0, target->row1);
     if (y_first >= y_end) {
         return; /* no pixel centre row inside this window */
     }
 
-    const float lo_x = a->x < b->x ? (a->x < c->x ? a->x : c->x) : (b->x < c->x ? b->x : c->x);
-    const float hi_x = a->x > b->x ? (a->x > c->x ? a->x : c->x) : (b->x > c->x ? b->x : c->x);
-    const bool flat = y_end - y_first <= FLAT_MAX_ROWS && hi_x - lo_x <= FLAT_MAX_WIDTH;
+    const float lo_x = min3(a->x, b->x, c->x), hi_x = max3(a->x, b->x, c->x);
+    fill_t f = {y_end - y_first <= FLAT_MAX_ROWS && hi_x - lo_x <= FLAT_MAX_WIDTH, 0, 0, NULL};
 
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
-    const int y_anchor = fast_ceil(clampf(v0->y, -1.0f, bottom) - 0.5f);
-    int x_origin = fast_ceil(lo_x - 0.5f);
-    x_origin = x_origin < 0 ? 0 : x_origin;
+    const int y_anchor = fast_ceil(clampf(v0->y, -1.0f, (float)target->row1 + 1.0f) - 0.5f);
     gradients_t g = {0};
-    uint16_t flat_z = 0;
-    uint16_t flat_color = 0;
-    if (flat) {
-        const float third = 1.0f / 3.0f;
-        flat_z = (uint16_t)(clampf((a->z + b->z + c->z) * third, 0.0f, 1.0f) * 65535.0f);
-        flat_color = pack((int32_t)(clampf((a->r + b->r + c->r) * third, 0.0f, 255.0f) * COLOR_SCALE),
-                          (int32_t)(clampf((a->g + b->g + c->g) * third, 0.0f, 255.0f) * COLOR_SCALE),
-                          (int32_t)(clampf((a->b + b->b + c->b) * third, 0.0f, 255.0f) * COLOR_SCALE));
-    } else if (!compute_gradients(a, b, c, x_origin, y_anchor, &g)) {
+    f.g = &g;
+    if (f.flat) {
+        set_flat(&f, a, b, c);
+    } else if (!compute_gradients(a, b, c, clampi(fast_ceil(lo_x - 0.5f), 0, INT32_MAX), y_anchor, &g)) {
         return;
     }
     if (r3d_span_stop_after == 1) {
@@ -320,20 +348,15 @@ r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
 
     /* The long edge v0-v2 runs the whole height, on the same side all the
      * way down; the short side is v0-v1 above v1 and v1-v2 below it. */
-    const int y_mid = fast_ceil(clampf(v1->y, top, bottom) - 0.5f);
-    const int split = y_mid < y_first ? y_first : (y_mid > y_end ? y_end : y_mid);
+    const int split = clampi(row_at(target, v1->y), y_first, y_end);
     const float long_x_at_v1 = v2->y > v0->y ? v0->x + (v1->y - v0->y) * (v2->x - v0->x) / (v2->y - v0->y) : v0->x;
     const bool long_on_left = long_x_at_v1 < v1->x;
     const bool narrow = lo_x > -NARROW_LIMIT && hi_x < NARROW_LIMIT && v0->y > -NARROW_LIMIT && v2->y < NARROW_LIMIT;
 
     int32_t row[ATTRIBUTES] = {0};
-    if (!flat) {
-        for (int k = 0; k < ATTRIBUTES; k++) {
-            row[k] = y_first == y_anchor ? g.base[k] : (int32_t)(g.base[k] + (int64_t)(y_first - y_anchor) * g.dy[k]);
-        }
+    if (!f.flat) {
+        first_row_values(&g, y_first, y_anchor, row);
     }
-    const fill_t f = {flat, flat_z, flat_color, &g};
-
     walk(target, &f, row, y_first, split, v0, v2, v0, v1, long_on_left, narrow);
     walk(target, &f, row, split, y_end, v0, v2, v1, v2, long_on_left, narrow);
 }

@@ -179,32 +179,37 @@ r3d_lit_cull_clusters(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, ui
     return count;
 }
 
+static inline r3d_lit_rows_t
+transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const r3d_lit_cluster_t* c,
+                  r3d_lit_vertex_t* cs) {
+    const int end = c->vertex_first + c->vertex_count;
+    r3d_lit_rows_t rows = {INFINITY, -INFINITY, false};
+    for (int v = c->vertex_first; v < end; v++) {
+        const int16_t* p = mesh->positions[v];
+        const r3d_vec3f_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
+        r3d_lit_vertex_t* out = &cs[v];
+        out->z = l.z;
+        if (l.z <= view->near_z) {
+            rows.crosses_near = true;
+            continue;
+        }
+        const float inv = 1.0f / l.z;
+        out->sx = view->center_x + l.x * inv;
+        out->sy = view->center_y + l.y * inv;
+        out->iz = view->near_z * inv;
+        rows.y0 = out->sy < rows.y0 ? out->sy : rows.y0;
+        rows.y1 = out->sy > rows.y1 ? out->sy : rows.y1;
+    }
+    return rows;
+}
+
 void
 r3d_lit_transform(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* clusters, int count,
                   r3d_lit_vertex_t* cs, r3d_lit_rows_t* rows) {
     for (int i = 0; i < count; i++) {
-        const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
-        const int end = c->vertex_first + c->vertex_count;
-        float y0 = INFINITY, y1 = -INFINITY;
-        bool crosses_near = false;
-        for (int v = c->vertex_first; v < end; v++) {
-            const int16_t* p = mesh->positions[v];
-            const r3d_vec3f_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
-            r3d_lit_vertex_t* out = &cs[v];
-            out->z = l.z;
-            if (l.z > view->near_z) {
-                const float inv = 1.0f / l.z;
-                out->sx = view->center_x + l.x * inv;
-                out->sy = view->center_y + l.y * inv;
-                out->iz = view->near_z * inv;
-                y0 = out->sy < y0 ? out->sy : y0;
-                y1 = out->sy > y1 ? out->sy : y1;
-            } else {
-                crosses_near = true;
-            }
-        }
+        const r3d_lit_rows_t r = transform_cluster(mesh, view, &mesh->clusters[clusters[i]], cs);
         if (rows != NULL) {
-            rows[clusters[i]] = (r3d_lit_rows_t){y0, y1, crosses_near};
+            rows[clusters[i]] = r;
         }
     }
 }
@@ -276,50 +281,65 @@ outside_target(const r3d_lit_vertex_t* a, const r3d_lit_vertex_t* b, const r3d_l
            || (a->sy < top && b->sy < top && c->sy < top) || (a->sy > bottom && b->sy > bottom && c->sy > bottom);
 }
 
+static inline bool
+rows_miss_target(const r3d_lit_rows_t* r, const r3d_span_target_t* target) {
+    return !r->crosses_near && (r->y1 < (float)target->row0 || r->y0 > (float)target->row1);
+}
+
+static void
+draw_crossing_near(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* tri, bool double_sided,
+                   const r3d_span_target_t* target) {
+    clip_vertex_t in[3];
+    for (int k = 0; k < 3; k++) {
+        const int16_t* p = mesh->positions[tri[k]];
+        const uint8_t* rgb = mesh->colors[tri[k]];
+        const r3d_vec3f_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
+        in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[0], rgb[1], rgb[2]};
+    }
+    draw_near_clipped(view, in, double_sided, target);
+}
+
+static inline void
+draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_vertex_t* const v[3], const uint16_t* tri, bool double_sided,
+              const r3d_span_target_t* target) {
+    if (outside_target(v[0], v[1], v[2], target)) {
+        return;
+    }
+    const float area2 = (v[1]->sx - v[0]->sx) * (v[2]->sy - v[0]->sy) - (v[2]->sx - v[0]->sx) * (v[1]->sy - v[0]->sy);
+    if (facing_away(area2, double_sided)) {
+        return;
+    }
+    r3d_span_vertex_t s[3];
+    for (int k = 0; k < 3; k++) {
+        const uint8_t* rgb = mesh->colors[tri[k]];
+        s[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[0], rgb[1], rgb[2]};
+    }
+    r3d_span_triangle(target, &s[0], &s[1], &s[2]);
+}
+
+static void
+draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const r3d_lit_cluster_t* c,
+             const r3d_lit_vertex_t* cs, const r3d_span_target_t* target) {
+    const int end = c->triangle_first + c->triangle_count;
+    for (int t = c->triangle_first; t < end; t++) {
+        const uint16_t* tri = mesh->triangles[t];
+        const r3d_lit_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
+        const int in_front = (v[0]->z > view->near_z) + (v[1]->z > view->near_z) + (v[2]->z > view->near_z);
+        if (in_front == 3) {
+            draw_in_front(mesh, v, tri, c->double_sided, target);
+        } else if (in_front > 0) {
+            draw_crossing_near(mesh, view, tri, c->double_sided, target);
+        }
+    }
+}
+
 void
 r3d_lit_draw(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* clusters, int count,
              const r3d_lit_vertex_t* cs, const r3d_lit_rows_t* rows, const r3d_span_target_t* target) {
     for (int i = 0; i < count; i++) {
-        if (rows != NULL) {
-            const r3d_lit_rows_t* r = &rows[clusters[i]];
-            if (!r->crosses_near && (r->y1 < (float)target->row0 || r->y0 > (float)target->row1)) {
-                continue;
-            }
+        if (rows != NULL && rows_miss_target(&rows[clusters[i]], target)) {
+            continue;
         }
-        const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
-        const int end = c->triangle_first + c->triangle_count;
-        for (int t = c->triangle_first; t < end; t++) {
-            const uint16_t* tri = mesh->triangles[t];
-            const r3d_lit_vertex_t* v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
-            const int in_front = (v[0]->z > view->near_z) + (v[1]->z > view->near_z) + (v[2]->z > view->near_z);
-            if (in_front == 0) {
-                continue;
-            }
-            const uint8_t* rgb[3] = {mesh->colors[tri[0]], mesh->colors[tri[1]], mesh->colors[tri[2]]};
-            if (in_front < 3) {
-                clip_vertex_t in[3];
-                for (int k = 0; k < 3; k++) {
-                    const int16_t* p = mesh->positions[tri[k]];
-                    const r3d_vec3f_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
-                    in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[k][0], rgb[k][1], rgb[k][2]};
-                }
-                draw_near_clipped(view, in, c->double_sided, target);
-                continue;
-            }
-            if (outside_target(v[0], v[1], v[2], target)) {
-                continue;
-            }
-            const float area2 =
-                (v[1]->sx - v[0]->sx) * (v[2]->sy - v[0]->sy) - (v[2]->sx - v[0]->sx) * (v[1]->sy - v[0]->sy);
-            if (facing_away(area2, c->double_sided)) {
-                continue;
-            }
-
-            r3d_span_vertex_t s[3];
-            for (int k = 0; k < 3; k++) {
-                s[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[k][0], rgb[k][1], rgb[k][2]};
-            }
-            r3d_span_triangle(target, &s[0], &s[1], &s[2]);
-        }
+        draw_cluster(mesh, view, &mesh->clusters[clusters[i]], cs, target);
     }
 }
