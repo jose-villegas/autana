@@ -387,7 +387,6 @@
 9	launcher/test/suites/suite_boot_anim.c:100	test_the_curve_keeps_away_from_the_axis_everywhere_else
 9	launcher/test/suites/suite_boot_anim_perf.c:182	run_checkpoint
 9	launcher/test/suites/suite_gfx.c:1438	draw_readback_band_frame
-9	launcher/test/suites/suite_gfx_glow.c:151	test_a_cliff_lights_nothing_far_above_the_plateau
 9	launcher/test/suites/suite_icons.c:107	assert_centred_within_a_pixel
 9	launcher/test/suites/suite_ui_pointer_microui.c:272	list_frame
 8	launcher/main/apps/render_lab/app_render_lab.c:296	render_lab_frame_band
@@ -637,8 +636,6 @@
 7	launcher/test/suites/suite_gfx.c:1275	memtp_best_us
 7	launcher/test/suites/suite_gfx_color.c:270	check_covers_both_at_cell
 7	launcher/test/suites/suite_gfx_dirty.c:496	test_band_extent_follows_a_moving_box_across_several_frames
-7	launcher/test/suites/suite_gfx_glow.c:339	test_narrow_keeps_exactly_the_steps_inside_the_bounds
-7	launcher/test/suites/suite_gfx_glow.c:79	test_turning_into_the_panel_matches_ui_transform
 7	launcher/test/suites/suite_gfx_heal.c:124	test_rolling_reaches_every_row_and_wraps
 7	launcher/test/suites/suite_icons.c:220	test_blocks_matches_the_artworks_actual_run_count
 7	launcher/test/suites/suite_ridge_curve.c:64	columns_on_an_edge
@@ -1005,7 +1002,6 @@
 5	launcher/main/gfx/gfx.c:771	drawn_bbox_extend
 5	launcher/main/gfx/gfx.c:2775	gfx_band_dirty
 5	launcher/main/gfx/gfx.c:2816	gfx_band_next
-5	launcher/main/gfx/gfx.c:1180	gfx_glow_curve_posed
 5	launcher/main/gfx/gfx.c:891	gfx_pixel
 5	launcher/main/gfx/gfx.c:499	present_task_fn
 5	launcher/main/gfx/gfx.c:1798	send_audit_check
@@ -1022,7 +1018,6 @@
 5	launcher/test/heap_arena.c:262	arena_pool_alloc
 5	launcher/test/suites/suite_boot_anim_perf.c:117	compute_stats
 5	launcher/test/suites/suite_gfx.c:449	test_dithered_text_at_alpha_255_matches_solid_text_exactly
-5	launcher/test/suites/suite_gfx_glow.c:249	test_clip_and_a_band_target_bound_the_writes
 5	launcher/test/suites/suite_post_ui.c:328	place_entry
 5	launcher/test/suites/suite_post_ui.c:585	take_entry
 5	launcher/test/suites/suite_spring_line.c:115	test_energy_never_exceeds_its_start_and_keeps_falling
@@ -1254,10 +1249,6 @@
 4	launcher/test/suites/suite_boot_anim.c:448	test_the_seeds_curve_stays_near_the_panel_throughout
 4	launcher/test/suites/suite_gfx_font.c:246	assert_run_rect_matches_reference
 4	launcher/test/suites/suite_gfx_font.c:227	extend_run_union
-4	launcher/test/suites/suite_gfx_glow.c:183	test_the_picture_does_not_depend_on_how_columns_are_chunked
-4	launcher/test/suites/suite_gfx_glow.c:215	test_the_reported_box_covers_exactly_what_was_written
-4	launcher/test/suites/suite_gfx_glow.c:472	test_trail_draws_is_how_long_white_takes_to_go_black
-4	launcher/test/suites/suite_gfx_glow.c:358	test_turning_leaves_no_trail
 4	launcher/test/suites/suite_gfx_heal.c:63	test_strips_are_even_edged_and_on_screen
 4	launcher/test/suites/suite_gfx_indexed.c:573	expected_pixel
 4	launcher/test/suites/suite_gfx_indexed.c:362	test_cell_checker_phase_is_gx_plus_cy_parity
@@ -1615,9 +1606,6 @@
 3	launcher/test/suites/suite_gfx_color.c:293	test_covers_both_equals_covers_the_lower_alpha
 3	launcher/test/suites/suite_gfx_font.c:414	test_dilated_halo_matches_eight_offset_copies_at_every_turn
 3	launcher/test/suites/suite_gfx_font.c:561	test_merged_boxes_match_unmerged_runs_at_every_turn
-3	launcher/test/suites/suite_gfx_glow.c:308	blacken_untouched
-3	launcher/test/suites/suite_gfx_glow.c:111	test_every_phase_fades_from_the_core_colour_to_black
-3	launcher/test/suites/suite_gfx_glow.c:301	wavy_curve_for_the_turned_view
 3	launcher/test/suites/suite_gfx_indexed.c:545	test_checker2_stays_in_phase_across_a_band_boundary
 3	launcher/test/suites/suite_gfx_indexed.c:25	test_every_output_pixel_reads_its_own_cells_lut_entry
 3	launcher/test/suites/suite_gfx_palette.c:71	test_standard_registry_finds_every_palette_by_name
@@ -1905,9 +1893,6 @@
 2	launcher/test/suites/suite_gfx.c:1337	test_memory_throughput_psram_against_internal
 2	launcher/test/suites/suite_gfx_dirty.c:25	fixture
 2	launcher/test/suites/suite_gfx_font.c:105	test_monospace_advance_is_cell_w_times_scale_for_every_glyph
-2	launcher/test/suites/suite_gfx_glow.c:234	test_a_quarter_turn_draws_the_same_curve_turned
-2	launcher/test/suites/suite_gfx_glow.c:395	test_a_turned_curve_keeps_its_width
-2	launcher/test/suites/suite_gfx_glow.c:488	test_dimming_a_grey_keeps_it_grey_all_the_way_to_black
 2	launcher/test/suites/suite_gfx_heal.c:81	test_the_budget_bounds_a_present_and_the_rest_waits
 2	launcher/test/suites/suite_gfx_indexed.c:132	test_dither_expansion_is_deterministic_at_the_same_panel_coordinates
 2	launcher/test/suites/suite_gfx_indexed.c:471	test_repaint_class_kind_matches_cell_changed

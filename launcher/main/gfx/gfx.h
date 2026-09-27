@@ -25,7 +25,6 @@
 #include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font.h"
 #include "gfx/gfx_font_roles.h"
-#include "gfx/gfx_glow.h"
 #include "gfx/gfx_indexed.h"
 #include "gfx/gfx_mode.h"
 
@@ -195,12 +194,6 @@ void gfx_line(int x0, int y0, int x1, int y1, gfx_color_t color);
 #define GFX_LINE_OPEN (1u << 1)
 
 void gfx_line_ex(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags);
-
-/* A curve drawn as light - see gfx_glow.h for a pose, a field, a map
- * and `trail`. `map` may be NULL. `lit_lo`/`lit_hi` are GFX_HEIGHT long and
- * the caller's. */
-void gfx_glow_curve_posed(const gfx_glow_field_t* field, const gfx_glow_map_t* map, int view_h, gfx_glow_pose_t pose,
-                          int16_t* lit_lo, int16_t* lit_hi, int trail, const gfx_glow_style_t* style);
 
 /* Draws at GFX_GLYPH_SCALE - the size the UI is laid out around. */
 void gfx_text(int x, int y, const char* text, gfx_color_t color);

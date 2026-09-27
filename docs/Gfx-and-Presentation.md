@@ -234,8 +234,6 @@ Building one is the app's work - see
 every palette then needs, the colour -> index map and the dither table, are
 `tools/gen/gfx_palette_gen.h`: host-only, in OKLab, never in the firmware image.
 
-The glow curve drawing primitive is described in [`Glow-Curves.md`](Glow-Curves.md).
-
 ## Panel clock and heal
 
 | | `GFX_PANEL_CLOCK_SLOW_HZ` (40 MHz) | `GFX_PANEL_CLOCK_FAST_HZ` (80 MHz) |

@@ -60,8 +60,7 @@ def scan_citations(root):
 
 
 def stale_foreign(root):
-    """FOREIGN entries no comment under `root` actually cites - dead
-    allowlisting, the same trap an unused doc-citation allowlist entry is."""
+    """FOREIGN entries no comment under `root` actually cites."""
     cited = scan_citations(root)
     return sorted(name for name in FOREIGN if name not in cited)
 
