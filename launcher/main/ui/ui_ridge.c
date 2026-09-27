@@ -110,7 +110,7 @@ typedef struct {
     int16_t shown_layers[RIDGE_LAYER_COUNT][RIDGE_COLUMNS];
     ridge_motion_t motion;
     ridge_pose_t attitude;
-    ridge_vector_t pose_on_screen, shown_pose;
+    ridge_vector_t pose_on_screen;
     int pose_step;
     ridge_theme_t theme;
     gfx_color_t background_color, back0_color, back1_color;
@@ -125,7 +125,7 @@ typedef struct {
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
     uint8_t body_alpha[RIDGE_LAYER_COUNT];
     uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
-    int shake, last_pluck_x, shown_lip;
+    int shake, last_pluck_x, shown_step;
     bool ambient, painted, scanline_dither;
 } ridge_t;
 
@@ -373,80 +373,164 @@ repaint_span(int y, int x0, int x1) {
     }
 }
 
+/* A band in the ridge's frame, 1/32768 px: `along` and `down` ranges. */
 typedef struct {
-    int x0, y0, x1, y1;
-} ridge_box_t;
+    int32_t along_lo, along_hi, down_lo, down_hi;
+} ridge_band_t;
 
-static inline __attribute__((always_inline)) void
-box_add(ridge_box_t* box, int32_t x_q4, int32_t y_q4) {
-    const int x = x_q4 >> 4;
-    const int y = y_q4 >> 4;
-    box->x0 = x < box->x0 ? x : box->x0;
-    box->x1 = x + 1 > box->x1 ? x + 1 : box->x1;
-    box->y0 = y < box->y0 ? y : box->y0;
-    box->y1 = y + 1 > box->y1 ? y + 1 : box->y1;
-}
-
-/* Adds to `box` where columns [c0, c1] of a curve stand at `pose`, from the
- * curve down to the end of its lip, in panel pixels. */
+/* The columns of row `y` where `f(x) = at0 + x * step` lies in [lo, hi],
+ * a pixel of slack each side. */
 static void
-box_add_columns(ridge_box_t* box, ridge_vector_t pose, const int16_t* heights, int lip, int c0, int c1) {
-    for (int column = c0; column <= c1; column++) {
-        const int32_t along = (16 * column) - ((RIDGE_COLUMNS - 1) * 8);
-        const int32_t down = heights[column] - (RIDGE_CURVE_VIEW_H * 8);
-        for (int reach = 0; reach <= 1; reach++) {
-            const int32_t h = down + (reach * lip * 16);
-            box_add(box, ((GFX_WIDTH - 1) * 8) + pose_scale((along * pose.down_y) + (h * pose.down_x)),
-                    ((GFX_HEIGHT - 1) * 8) + pose_scale((h * pose.down_y) - (along * pose.down_x)));
-        }
-    }
-}
-
-/* Columns 8 at a time: a group's box stays small, and there are few enough
- * to find a moved one cheaply. */
-#define RIDGE_GROUP 8
-
-static bool
-group_moved(int layer, int c0, int c1) {
-    for (int column = c0; column <= c1; column++) {
-        if (ridge->layers[layer][column] != ridge->shown_layers[layer][column]) {
-            return true;
-        }
-    }
-    return false;
-}
-
-/* The pixels a moved group of columns may have changed: everything from
- * where it stood to where it stands, lips and all. */
-static void
-repaint_group(int layer, int c0, int c1, bool everything_moved) {
-    if (!everything_moved && !group_moved(layer, c0, c1)) {
+slab_columns(int32_t at0, int32_t step, int32_t lo, int32_t hi, int* x0, int* x1) {
+    if (step == 0) {
+        const bool inside = at0 >= lo && at0 <= hi;
+        *x0 = inside ? 0 : GFX_WIDTH;
+        *x1 = inside ? GFX_WIDTH : 0;
         return;
     }
-    ridge_box_t box = {GFX_WIDTH, GFX_HEIGHT, 0, 0};
-    box_add_columns(&box, ridge->shown_pose, ridge->shown_layers[layer], ridge->shown_lip, c0, c1);
-    box_add_columns(&box, ridge->pose_on_screen, ridge->layers[layer], lip_px, c0, c1);
-    const int y0 = clamp_int(box.y0 - 1, 0, GFX_HEIGHT);
-    const int y1 = clamp_int(box.y1 + 1, 0, GFX_HEIGHT);
+    const float a = (float)(lo - at0) / (float)step;
+    const float b = (float)(hi - at0) / (float)step;
+    *x0 = clamp_int((int)floorf(fminf(a, b)) - 1, 0, GFX_WIDTH);
+    *x1 = clamp_int((int)ceilf(fmaxf(a, b)) + 2, 0, GFX_WIDTH);
+}
+
+/* The rows a band can reach: its four corners, back on the panel. */
+static void
+band_rows(const ridge_band_t* band, int* y0, int* y1) {
+    const ridge_vector_t pose = ridge->pose_on_screen;
+    int lo = GFX_HEIGHT;
+    int hi = 0;
+    for (int corner = 0; corner < 4; corner++) {
+        const int64_t along = corner & 1 ? band->along_hi : band->along_lo;
+        const int64_t down = corner & 2 ? band->down_hi : band->down_lo;
+        const int y2 = (int)(((down * pose.down_y) - (along * pose.down_x)) >> 28);
+        const int y = (y2 + (GFX_HEIGHT - 1)) / 2;
+        lo = y < lo ? y : lo;
+        hi = y + 1 > hi ? y + 1 : hi;
+    }
+    *y0 = clamp_int(lo - 1, 0, GFX_HEIGHT);
+    *y1 = clamp_int(hi + 1, 0, GFX_HEIGHT);
+}
+
+static void
+repaint_band(const ridge_band_t* band) {
+    const ridge_vector_t pose = ridge->pose_on_screen;
+    int y0;
+    int y1;
+    band_rows(band, &y0, &y1);
     for (int y = y0; y < y1; y++) {
-        repaint_span(y, box.x0 - 1, box.x1 + 1);
+        const ridge_point_t start = pixel_point(pose, 0, y);
+        int ax0;
+        int ax1;
+        int dx0;
+        int dx1;
+        slab_columns(start.along, 2 * pose.down_y, band->along_lo, band->along_hi, &ax0, &ax1);
+        slab_columns(start.down, 2 * pose.down_x, band->down_lo, band->down_hi, &dx0, &dx1);
+        repaint_span(y, ax0 > dx0 ? ax0 : dx0, ax1 < dx1 ? ax1 : dx1);
     }
 }
+
+/* A curve column's height, old or new, in 1/32768 px below the centre. */
+static inline __attribute__((always_inline)) int32_t
+column_down(const int16_t* heights, int column) {
+    return (heights[column] - (RIDGE_CURVE_VIEW_H * 8)) * 2048;
+}
+
+/* Heights within this of each other share a band; a steeper run splits. */
+#define BAND_SLACK_PX 4
+#define BAND_COLUMNS  16
+
+/* The pixels columns [c0, c1) of `layer` may have changed: along, the
+ * columns either side that a pixel between them blends with; down, from
+ * the highest the curve stood or stands to the lowest, lip and all, and
+ * `margin_px` round it for a turn. */
+static void
+repaint_columns(int c0, int c1, int32_t down_lo, int32_t down_hi, int margin_px) {
+    const int32_t margin = (margin_px + 1) * 32768;
+    const ridge_band_t band = {
+        .along_lo = ((c0 - 1) * 32768) - ((RIDGE_COLUMNS - 1) * 16384) - margin,
+        .along_hi = ((c1 + 1) * 32768) - ((RIDGE_COLUMNS - 1) * 16384) + margin,
+        .down_lo = down_lo - margin,
+        .down_hi = down_hi + (lip_px * 32768) + margin,
+    };
+    repaint_band(&band);
+}
+
+static inline __attribute__((always_inline)) bool
+column_moved(int layer, int column) {
+    return ridge->layers[layer][column] != ridge->shown_layers[layer][column];
+}
+
+static void
+repaint_layer(int layer, bool everything_moved, int margin_px) {
+    const int16_t* const now = ridge->layers[layer];
+    const int16_t* const was = ridge->shown_layers[layer];
+    int column = 0;
+    while (column < RIDGE_COLUMNS) {
+        if (!everything_moved && !column_moved(layer, column)) {
+            column++;
+            continue;
+        }
+        const int c0 = column;
+        int32_t lo = INT32_MAX;
+        int32_t hi = INT32_MIN;
+        while (column < RIDGE_COLUMNS && column - c0 < BAND_COLUMNS
+               && (everything_moved || column_moved(layer, column))) {
+            const int from = column > 0 ? column - 1 : 0;
+            const int to = column + 1 < RIDGE_COLUMNS ? column + 1 : column;
+            int32_t next_lo = lo;
+            int32_t next_hi = hi;
+            for (int c = from; c <= to; c++) {
+                const int32_t a = column_down(was, c);
+                const int32_t b = column_down(now, c);
+                next_lo = a < next_lo ? a : next_lo;
+                next_lo = b < next_lo ? b : next_lo;
+                next_hi = a > next_hi ? a : next_hi;
+                next_hi = b > next_hi ? b : next_hi;
+            }
+            if (column > c0 && next_hi - next_lo > BAND_SLACK_PX * 32768) {
+                break;
+            }
+            lo = next_lo;
+            hi = next_hi;
+            column++;
+        }
+        repaint_columns(c0, column, lo, hi, margin_px);
+    }
+}
+
+/* How far a turn of `steps` pose steps can move a pixel, at the panel's
+ * corner, the farthest point from the centre. */
+static int
+turn_margin_px(int steps) {
+    const float radius = 0.5F * sqrtf((float)((GFX_WIDTH * GFX_WIDTH) + (GFX_HEIGHT * GFX_HEIGHT)));
+    return (int)ceilf(radius * 2.0F * sinf((float)steps * RIDGE_PI / POSE_STEPS));
+}
+
+static int
+pose_steps_between(int a, int b) {
+    const int drift = abs(a - b);
+    return drift > POSE_STEPS / 2 ? POSE_STEPS - drift : drift;
+}
+
+/* Past this a turn repaints everything rather than a band that wide. */
+#define TURN_REPAINT_STEPS 20
+
+static void paint_all(void);
 
 static void
 repaint_changed(void) {
-    const bool everything_moved = ridge->shown_pose.down_x != ridge->pose_on_screen.down_x
-                                  || ridge->shown_pose.down_y != ridge->pose_on_screen.down_y
-                                  || ridge->shown_lip != lip_px;
+    const int steps = pose_steps_between(ridge->pose_step, ridge->shown_step);
+    if (steps > TURN_REPAINT_STEPS) {
+        paint_all();
+        return;
+    }
+    const int margin_px = steps > 0 ? turn_margin_px(steps) : 0;
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-        for (int c0 = 0; c0 < RIDGE_COLUMNS - 1; c0 += RIDGE_GROUP) {
-            const int c1 = c0 + RIDGE_GROUP < RIDGE_COLUMNS - 1 ? c0 + RIDGE_GROUP : RIDGE_COLUMNS - 1;
-            repaint_group(layer, c0, c1, everything_moved);
-        }
+        repaint_layer(layer, steps > 0, margin_px);
     }
     memcpy(ridge->shown_layers, ridge->layers, sizeof ridge->shown_layers);
-    ridge->shown_pose = ridge->pose_on_screen;
-    ridge->shown_lip = lip_px;
+    ridge->shown_step = ridge->pose_step;
 }
 
 #define EDGE_FAR (INT64_C(1) << 40)
@@ -561,8 +645,7 @@ paint_all(void) {
     }
     gfx_mark_all_dirty();
     memcpy(ridge->shown_layers, ridge->layers, sizeof ridge->shown_layers);
-    ridge->shown_pose = ridge->pose_on_screen;
-    ridge->shown_lip = lip_px;
+    ridge->shown_step = ridge->pose_step;
     ridge->painted = true;
 }
 
