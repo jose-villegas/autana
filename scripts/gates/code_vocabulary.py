@@ -1,7 +1,8 @@
 """Names declared by the engine and its checked-in maintenance scripts."""
 import pathlib
 import re
-import subprocess
+
+from tracked import git_listing
 
 SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components", "node_modules", ".git"}
 SOURCE_SUFFIXES = {".c", ".h", ".py", ".sh", ".mjs"}
@@ -35,15 +36,11 @@ def _listed(base):
     """Every file under `base` git would commit - tracked, or new and not
     ignored - so a build directory's output never counts while
     launcher/tools/build/ does. Outside git (a test fixture), every file
-    not under a SKIP directory. Any other git failure raises: a fallback
-    would silently shrink the vocabulary."""
-    listing = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard"],
-                             cwd=base, capture_output=True, text=True)
-    if listing.returncode == 0:
-        paths = (base / line for line in listing.stdout.splitlines() if line)
-        return sorted(path for path in paths if path.is_file())
-    if "not a git repository" not in listing.stderr:
-        raise RuntimeError(f"git ls-files in {base} failed: {listing.stderr.strip()}")
+    not under a SKIP directory; tracked.git_listing() raises on any other
+    git failure."""
+    listing = git_listing(base, ["--cached", "--others", "--exclude-standard"])
+    if listing is not None:
+        return sorted(path for path in (base / line for line in listing) if path.is_file())
     return sorted(path for path in base.rglob("*")
                   if path.is_file() and not any(part in SKIP for part in path.relative_to(base).parts))
 

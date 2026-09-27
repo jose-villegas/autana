@@ -159,7 +159,7 @@ class NamesRequireADefinitionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.write(root, "launcher/main/a.c", "void real_function(void) {}\n")
-            with mock.patch.object(code_vocabulary.subprocess, "run", return_value=refused):
+            with mock.patch("subprocess.run", return_value=refused):
                 with self.assertRaisesRegex(RuntimeError, "dubious ownership"):
                     code_vocabulary.vocabulary(str(root))
 
