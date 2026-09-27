@@ -36,7 +36,7 @@ paint_state(int gx, int gy, int w, int h) {
 static void
 paint_one(sand_paint_row_state_t* st, const sand_paint_frame_t* pf, gfx_color_t* fb, uint8_t* index_row, int cy,
           const uint8_t* cells, int n, int w, int h, int x0, int x1, bool force_full) {
-    sand_paint_row_n(st, pf, fb, index_row, cy, cells + cy * w, n, w, h, x0, x1, force_full);
+    sand_paint_row_n(st, pf, fb, index_row, cy, cells + (cy * w), n, w, h, x0, x1, force_full);
 }
 
 static void
@@ -194,7 +194,7 @@ paint_pool_sample(int gx, int gy, int sample_x, int sample_y, int passes) {
             paint_one(st, &pf, fb, NULL, cy, cells, 1, PAINT_W, PAINT_H, 0, PAINT_W, true);
         }
     }
-    const gfx_color_t result = fb[sample_y * GFX_WIDTH + sample_x];
+    const gfx_color_t result = fb[(sample_y * GFX_WIDTH) + sample_x];
     free(cells);
     free(st);
     free(fb);
@@ -225,29 +225,29 @@ test_sand_paint_skipped_row_breaks_carry_then_converges(void) {
     uint8_t cells[PAINT_W * PAINT_H];
     memset(cells, CELL_MAKE(MAT_WATER, MASS_MAX), sizeof(cells));
     for (int cx = 0; cx < PAINT_W; cx++) {
-        cells[2 * PAINT_W + cx] = CELL_MAKE(MAT_OIL, MASS_MAX);
+        cells[(2 * PAINT_W) + cx] = CELL_MAKE(MAT_OIL, MASS_MAX);
     }
     uint8_t indices[PAINT_W] = {0};
     sand_paint_frame_t pf = paint_frame();
     sand_paint_row_state_t* st = paint_state(0, 1000, PAINT_W, PAINT_H);
     paint_one(st, &pf, NULL, indices, 0, cells, 4, PAINT_W, PAINT_H, 0, PAINT_W, true);
     paint_one(st, &pf, NULL, indices, 2, cells, 4, PAINT_W, PAINT_H, 0, PAINT_W, true);
-    TEST_ASSERT_EQUAL(1, st->local_depth_rows[st->local_depth_cur_index ^ 1u][1]);
+    TEST_ASSERT_EQUAL(1, st->local_depth_rows[st->local_depth_cur_index ^ 1U][1]);
     free(st);
     st = paint_state(0, 1000, PAINT_W, PAINT_H);
     paint_one(st, &pf, NULL, indices, 0, cells, 4, PAINT_W, PAINT_H, 0, PAINT_W, true);
     paint_one(st, &pf, NULL, indices, 1, cells, 4, PAINT_W, PAINT_H, 0, PAINT_W, true);
     paint_one(st, &pf, NULL, indices, 2, cells, 4, PAINT_W, PAINT_H, 0, PAINT_W, true);
-    TEST_ASSERT_EQUAL(3, st->local_depth_rows[st->local_depth_cur_index ^ 1u][1]);
+    TEST_ASSERT_EQUAL(3, st->local_depth_rows[st->local_depth_cur_index ^ 1U][1]);
     paint_one(st, &pf, NULL, indices, 0, cells, 4, PAINT_W, PAINT_H, 0, PAINT_W, true);
     paint_one(st, &pf, NULL, indices, 1, cells, 4, PAINT_W, PAINT_H, 0, PAINT_W, true);
     paint_one(st, &pf, NULL, indices, 2, cells, 4, PAINT_W, PAINT_H, 0, PAINT_W, true);
-    const unsigned settled = st->local_depth_rows[st->local_depth_cur_index ^ 1u][1];
+    const unsigned settled = st->local_depth_rows[st->local_depth_cur_index ^ 1U][1];
     const uint8_t settled_index = indices[1];
     paint_one(st, &pf, NULL, indices, 0, cells, 4, PAINT_W, PAINT_H, 0, PAINT_W, true);
     paint_one(st, &pf, NULL, indices, 1, cells, 4, PAINT_W, PAINT_H, 0, PAINT_W, true);
     paint_one(st, &pf, NULL, indices, 2, cells, 4, PAINT_W, PAINT_H, 0, PAINT_W, true);
-    TEST_ASSERT_EQUAL(settled, st->local_depth_rows[st->local_depth_cur_index ^ 1u][1]);
+    TEST_ASSERT_EQUAL(settled, st->local_depth_rows[st->local_depth_cur_index ^ 1U][1]);
     TEST_ASSERT_EQUAL(settled_index, indices[1]);
     free(st);
 }
@@ -269,7 +269,7 @@ assert_rgb_block_span(const gfx_color_t* fb, int n) {
 
     for (int dy = 0; dy < MAX_N; dy++) {
         for (int x = 0; x < PAINT_W * n + 1; x++) {
-            const gfx_color_t px = fb[dy * GFX_WIDTH + x];
+            const gfx_color_t px = fb[(dy * GFX_WIDTH) + x];
             if (dy >= n || x < n || x >= 3 * n) {
                 TEST_ASSERT_EQUAL_HEX16(0x1234, px);
             } else {
@@ -285,7 +285,7 @@ assert_rgb_metal_shine(const gfx_color_t* fb, const uint8_t* cells, int n) {
     gfx_color_t metal_shine = 0;
     for (int dy = 0; dy < n; dy++) {
         for (int x = n; x < 2 * n; x++) {
-            const gfx_color_t px = fb[dy * GFX_WIDTH + x];
+            const gfx_color_t px = fb[(dy * GFX_WIDTH) + x];
             if (x == n) {
                 metal_base = px;
             }
@@ -338,7 +338,7 @@ paint_settled(const uint8_t* cells, gfx_color_t* fb, int grid_w, int grid_h, int
     for (int pass = 0; pass < passes; pass++) {
         sand_paint_update_local_depth_gravity(st, 0, 1000, grid_w, grid_h);
         for (int cy = 0; cy < grid_h; cy++) {
-            const uint8_t* row = cells + cy * grid_w;
+            const uint8_t* row = cells + (cy * grid_w);
             sand_paint_row_n(st, &pf, fb, NULL, cy, row, 1, grid_w, grid_h, 0, grid_w, false);
         }
     }
@@ -355,7 +355,7 @@ test_sand_paint_row_n_shades_a_settled_pool_by_depth_after_two_passes(void) {
     memset(cells, CELL_EMPTY, sizeof(cells));
     for (int y = PAINT_ROW_WATER_TOP; y < PAINT_ROW_TEST_H; y++) {
         for (int x = 0; x < PAINT_ROW_TEST_W; x++) {
-            cells[y * PAINT_ROW_TEST_W + x] = CELL_MAKE(MAT_WATER, MASS_MAX);
+            cells[(y * PAINT_ROW_TEST_W) + x] = CELL_MAKE(MAT_WATER, MASS_MAX);
         }
     }
 
@@ -371,8 +371,8 @@ test_sand_paint_row_n_shades_a_settled_pool_by_depth_after_two_passes(void) {
     const int shallow_cy = PAINT_ROW_WATER_TOP + 1;
     const int deep_cy = PAINT_ROW_TEST_H - 1;
 
-    const gfx_color_t shallow_px = fb[shallow_cy * GFX_WIDTH + CX];
-    const gfx_color_t deep_px = fb[deep_cy * GFX_WIDTH + CX];
+    const gfx_color_t shallow_px = fb[(shallow_cy * GFX_WIDTH) + CX];
+    const gfx_color_t deep_px = fb[(deep_cy * GFX_WIDTH) + CX];
     free(fb);
 
     TEST_ASSERT_TRUE_MESSAGE(panel_luminance(shallow_px) > panel_luminance(deep_px),
