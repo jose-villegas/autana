@@ -58,14 +58,49 @@ class DeviceAccessTest(unittest.TestCase):
             openers, _ = check_device_access.check(root)
         self.assertEqual(openers, [])
 
-    def test_an_allowlisted_path_is_exempt(self):
+    def test_a_flash_after_a_device_lock_check_is_allowed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/tools/build/build_flash.sh",
+                      '#!/bin/sh\n'
+                      'python "$DIR/scripts/device/device_lock.py" \\\n'
+                      '        --board "$AUTANA_BOARD" \\\n'
+                      '        check-token --token "$AUTANA_DEVICE_LOCK_TOKEN" || exit 1\n'
+                      'idf -B "$BUILD_DIR" -p "$COM_PORT" flash\n')
+            self.commit(root, "launcher")
+            openers, _ = check_device_access.check(root)
+        self.assertEqual(openers, [])
+
+    def test_a_flash_with_no_device_lock_check_is_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/tools/build/build_flash.sh",
+                      '#!/bin/sh\nidf -B "$BUILD_DIR" -p "$COM_PORT" flash\n')
+            self.commit(root, "launcher")
+            openers, _ = check_device_access.check(root)
+        self.assertEqual(len(openers), 1)
+
+    def test_a_flash_before_the_device_lock_check_is_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/tools/flash_then_check.sh",
+                      '#!/bin/sh\n'
+                      'esptool --port "$PORT" write_flash 0x0 image.bin\n'
+                      'python scripts/device/device_lock.py check-token --token "$T"\n')
+            self.commit(root, "launcher")
+            openers, _ = check_device_access.check(root)
+        self.assertEqual([v.line for v in openers], [2])
+
+    def test_an_esptool_image_merge_is_not_flagged(self):
+        # QEMU boots a merged image file; merge_bin never opens a port.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.write(root, "launcher/test/qemu_run.py",
-                      "import serial\n\nport = serial.Serial('COM5', 115200)\n")
-            self.write(root, "scripts/gates/device_access_allowlist.txt",
-                      "launcher/test/qemu_run.py\tQEMU, not the board.\n")
-            self.commit(root, "launcher", "scripts")
+                      'import socket\n\n'
+                      'cmd = [python, "-m", "esptool", "--chip", "esp32s3", "merge_bin",\n'
+                      '       "-o", out_path]\n'
+                      'sock = socket.create_connection(("127.0.0.1", port), 1.0)\n')
+            self.commit(root, "launcher")
             openers, _ = check_device_access.check(root)
         self.assertEqual(openers, [])
 
@@ -108,18 +143,6 @@ class DeviceAccessTest(unittest.TestCase):
             openers, _ = check_device_access.check(root)
         self.assertEqual(len(openers), 1)
         self.assertIn("flash", openers[0].reason)
-
-    def test_build_flash_sh_itself_needs_the_allowlist(self):
-        # It genuinely invokes `idf ... flash` - only its own runtime check
-        # (AUTANA_DEVICE_LOCK_TOKEN) makes that safe, which this gate cannot
-        # see; without the allowlist entry it is correctly flagged.
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.write(root, "launcher/tools/build/build_flash.sh",
-                      '#!/bin/sh\nidf -B "$BUILD_DIR" -p "$COM_PORT" flash\n')
-            self.commit(root, "launcher")
-            openers, _ = check_device_access.check(root)
-        self.assertEqual(len(openers), 1)
 
     def test_an_idf_flash_mention_inside_an_echo_string_is_not_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
