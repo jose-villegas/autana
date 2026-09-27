@@ -68,8 +68,8 @@ validates exactly like step 2 above (into a throwaway scratch file first, so
 a bad edit never reaches the real files), then overwrites the REAL
 main/boot/boot_anim_timeline.json and boot_anim_timeline.h - what
 tools/boot_anim/boot_anim_editor.html's Bake button downloads, written here instead of
-copied in by hand - and runs tools/build/build_flash_dev.sh, which builds the
-development image and flashes it to that board. Its combined stdout/stderr comes
+copied in by hand - and builds the development image and flashes it to
+that board, the same two steps as `autana flash dev` (device.flash_commands()). Its combined stdout/stderr comes
 back as the response body (200) or as the error (500) if the build or the
 flash failed.
 
@@ -120,10 +120,9 @@ TIMELINE_HEADER = os.path.join(MAIN_DIR, "boot", "boot_anim_timeline.h")
 GEN_IMAGE = os.path.join(LAUNCHER_DIR, "tools", "gen", "gen_boot_anim_image.py")
 BOOT_PNG = os.path.join(os.path.dirname(LAUNCHER_DIR), "design", "boot", "boot.png")
 BOOT_ANIM_IMAGE_HEADER = os.path.join(MAIN_DIR, "boot", "boot_anim_image.h")
-BUILD_FLASH_SCRIPT = os.path.join(LAUNCHER_DIR, "tools", "build", "build_flash_dev.sh")
 # 300 measured too short in practice - a from-scratch (or even mostly-
 # cached) dev build going through this script's own Git-Bash -> cmd-shim
-# -> idf.py chain (see build_flash_dev.sh/idf.sh's own comments on why
+# -> idf.py chain (see build_flash.sh/idf.sh's own comments on why
 # that chain exists at all) runs noticeably slower than the same build
 # invoked directly, and blew past 300s on a machine with a real device
 # attached. 600 is a guess at "generous enough", not a measurement of a
@@ -327,7 +326,7 @@ def find_cc():
 
 
 def find_bash():
-    """build_flash_dev.sh is POSIX sh, written to run under Git Bash (see its
+    """build_flash.sh is POSIX sh, written to run under Git Bash (see its
     own top comment) - idf.py itself cannot run under Git Bash on Windows
     (see docs/Testing-Guide.md), but build_flash.sh already routes around
     that itself (tools/build/idf.sh -> idf_shim.bat), so running the .sh under
@@ -522,23 +521,24 @@ class Renderer:
         bash = find_bash()
         if bash is None:
             raise RenderError(
-                500, "no bash.exe found - build_flash_dev.sh needs Git Bash "
+                500, "no bash.exe found - build_flash.sh needs Git Bash "
                 "(see docs/Testing-Guide.md). The timeline files were "
                 "still written to main/boot/ above.")
-        if not os.path.isfile(BUILD_FLASH_SCRIPT):
-            raise RenderError(
-                500, "build_flash_dev.sh not found at %s - the timeline "
-                "files were still written to main/boot/ above." %
-                BUILD_FLASH_SCRIPT)
+        commands = device.flash_commands(bash, ENGINE_DIR, "dev")
+        for command in commands:
+            if not os.path.isfile(command[1]):
+                raise RenderError(
+                    500, "%s not found - the timeline files were still "
+                    "written to main/boot/ above." % command[1])
 
-        # Forward slashes, not BUILD_FLASH_SCRIPT's own native backslashes -
+        # Forward slashes (flash_commands() spells them so), not native backslashes -
         # a "/bin/bash: <mangled path>: No such file or directory" turned
         # up once with every backslash in the path gone, root cause not
         # pinned down (reproducing find_bash()'s own resolution and the
         # script's own dirname/cd/pwd logic directly did not reproduce it),
         # but Git Bash accepts C:/... unambiguously and this removes the
         # entire class of risk regardless of the exact mechanism.
-        script_for_bash = BUILD_FLASH_SCRIPT.replace(os.sep, "/")
+        script_for_bash = commands[0][1]
 
         # A fast (milliseconds, not a build) sanity probe using the exact
         # same bash binary and exact same path the real invocation below
@@ -554,7 +554,7 @@ class Renderer:
         # a probe timeout is itself diagnostic (bash launched but never
         # returned), not a stand-in for "the build timed out"; letting
         # TimeoutExpired propagate unguarded here would surface that same
-        # wrong, confusing message ("build_flash_dev.sh did not finish
+        # wrong, confusing message ("build_flash.sh did not finish
         # within 600s") for a run that had not even reached the real
         # invocation yet.
         try:
@@ -573,17 +573,15 @@ class Renderer:
                           "FOUND/MISSING, a stronger signal than a normal "
                           "probe failure.")
 
-        # stdin=DEVNULL: build_flash_dev.sh ends with an interactive "press
-        # Enter to close" (it doubles as a double-clickable script) that
-        # would otherwise hang this request forever - see its own comment
-        # on the `|| true` that makes stdin-at-EOF there a no-op, not a
-        # reported failure.
+        # stdin=DEVNULL: build_flash.sh waits for Enter after a failure (it
+        # doubles as a double-clickable script), which would otherwise hang
+        # this request forever.
         failed = None
         with tempfile.TemporaryFile() as output:
             try:
                 device.flash_script(
                     device.device_lock.LockStore(), board, "boot-anim-editor",
-                    "boot anim preview flash", [bash, script_for_bash], 300,
+                    "boot anim preview flash", commands, 300,
                     cwd=LAUNCHER_DIR, stdin=subprocess.DEVNULL, stdout=output,
                     stderr=subprocess.STDOUT, timeout=BUILD_FLASH_TIMEOUT_S)
             except subprocess.CalledProcessError as error:
@@ -594,8 +592,8 @@ class Renderer:
             if "No such file or directory" in log and script_for_bash in log:
                 log = log.strip() + "\n\n" + probe_info
             raise RenderError(500, log.strip() or
-                              "build_flash_dev.sh exited with code %d" %
-                              failed.returncode)
+                              "%s exited with code %d" %
+                              (failed.cmd[1], failed.returncode))
         return log
 
 
@@ -686,7 +684,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         except subprocess.TimeoutExpired:
             self._send_json_error(
-                500, "build_flash_dev.sh did not finish within %ds" %
+                500, "the build or flash did not finish within %ds" %
                 BUILD_FLASH_TIMEOUT_S)
             return
         except Exception as exc:   # noqa: BLE001 - surfaced to the browser

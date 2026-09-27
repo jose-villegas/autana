@@ -2,9 +2,9 @@
 
 | File | Purpose |
 |---|---|
-| [build_flash.sh](build_flash.sh) | Builds a selected firmware variant and handles locked flashing. |
-| [build_flash_dev.sh](build_flash_dev.sh) | Runs the development build and flash wrapper. |
-| [build_flash_diag.sh](build_flash_diag.sh) | Runs the diagnostics build and flash wrapper. |
+| [build_flash.sh](build_flash.sh) | Builds a selected firmware variant; `autana flash` then writes it with `scripts/device/flash_image.sh`. |
+| [build_flash_dev.sh](build_flash_dev.sh) | `build_flash.sh --dev`: builds the development image. |
+| [build_flash_diag.sh](build_flash_diag.sh) | `build_flash.sh --diag`: builds the diagnostics image. |
 | [build_diag_check.sh](build_diag_check.sh) | Builds diagnostics and checks the complexity ratchet. |
 | [idf.sh](idf.sh) | Runs ESP-IDF commands from POSIX shells. |
 | [idf_shim.bat](idf_shim.bat) | Starts ESP-IDF commands from Git Bash on Windows. |
