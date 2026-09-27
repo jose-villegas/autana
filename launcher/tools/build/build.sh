@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Build the launcher's firmware. Writing it to the board is the other half of
+# Build the launcher's firmware: what `autana build` runs, the way to build
+# (docs/tools/Autana-CLI.md). Writing it to the board is the other half of
 # `autana flash`: device.py runs this script before it takes the board's
 # lock, and then, under it, scripts/device/flash_image.sh - the only one of
 # the two that opens the serial port. Nothing here needs a board or a lock.

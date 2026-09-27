@@ -3,7 +3,7 @@
 # Build the DIAGNOSTICS image and run the complexity ratchet - no device,
 # nothing flashed.
 #
-#   tools/build/build_diag_check.sh [--verbose] [IDF_EXPORT]
+#   tools/build/build_diag_check.sh [--verbose]
 #
 # The result and log path are printed by default; --verbose streams and
 # saves the full command output.
@@ -31,25 +31,17 @@
 # (default origin/main, the same ref docs/tools/Complexity-Gate.md names
 # for local use; CI scores the whole tree instead).
 #
-# See build.sh for the arguments and for why both -D flags on its
-# idf.py call are load-bearing.
+# The build is `autana build diag`, which runs build.sh; ESP-IDF is the one
+# under $IDF_PATH.
 
 set -euo pipefail
 
 VERBOSE=${VERBOSE:-0}
-IDF_EXPORT_ARG=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --verbose) VERBOSE=1 ;;
-        -h|--help) echo "usage: tools/build/build_diag_check.sh [--verbose] [IDF_EXPORT]"; exit 0 ;;
-        -*) echo "unknown option: $1" >&2; exit 2 ;;
-        *)
-            if [ -n "$IDF_EXPORT_ARG" ]; then
-                echo "too many positional arguments" >&2
-                exit 2
-            fi
-            IDF_EXPORT_ARG=$1
-            ;;
+        -h|--help) echo "usage: tools/build/build_diag_check.sh [--verbose]"; exit 0 ;;
+        *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
     shift
 done
@@ -65,7 +57,7 @@ GATE_BASE="${COMPLEXITY_GATE_BASE:-origin/main}"
 
 if [ -z "${QUIET_INNER:-}" ]; then
     quiet_begin "$DIR/../../build.diag/build_diag_check.log"
-    quiet_run diagnostics-check env QUIET_INNER=1 VERBOSE="$VERBOSE" bash "$0" ${IDF_EXPORT_ARG:+"$IDF_EXPORT_ARG"} || true
+    quiet_run diagnostics-check env QUIET_INNER=1 VERBOSE="$VERBOSE" bash "$0" || true
     quiet_end build_diag_check || exit $?
     exit 0
 fi
@@ -83,11 +75,7 @@ complexity_gate() {
 }
 
 build_diag() {
-    if [ "$VERBOSE" -eq 1 ]; then
-        "$DIR/build.sh" --diag --verbose ${IDF_EXPORT_ARG:+"$IDF_EXPORT_ARG"}
-    else
-        "$DIR/build.sh" --diag ${IDF_EXPORT_ARG:+"$IDF_EXPORT_ARG"}
-    fi
+    "$REPO_ROOT/tools/autana" build diag
 }
 
 if [ -f "$COMPILE_DB" ]; then
