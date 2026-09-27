@@ -101,8 +101,8 @@ flowchart TB
 (`BOARD_FRAMEBUFFER_CAPS` in `board.h`), so it does not count against the
 internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)). There
 is room in PSRAM for a second one and no time for it: a per-frame catch-up
-copy between two PSRAM buffers costs more than sand's own frame budget, and a
-full frame over QSPI is bus-bound, not CPU-bound
+copy between two PSRAM buffers measured 6-15 ms, a large share of a frame,
+and a full frame over QSPI is bus-bound, not CPU-bound
 ([Display-and-Rendering.md](notes/Display-and-Rendering.md), "The blit is
 bus-bound"). The decision and its measurements are decision B in
 [Autana-Rendering-Roadmap.md](Autana-Rendering-Roadmap.md).
@@ -230,8 +230,8 @@ How to write one is [Building-an-App.md](Building-an-App.md). What matters
 architecturally: the build globs `apps/**/*.c` and each app registers itself
 from its own file, so adding or deleting an app touches no other file, and
 the component is linked `WHOLE_ARCHIVE` because nothing references an app by
-name. Bench-only apps (Diagnostics, Input Lab) are dropped from release by a
-filter in `main/CMakeLists.txt`; what each build variant carries is
+name. Bench-only apps are dropped from release by a filter in
+`main/CMakeLists.txt`; what each build variant carries is
 [Build-Variants.md](Build-Variants.md).
 
 ---
@@ -322,8 +322,8 @@ widget tree and style system are a standing tax on internal SRAM for the
 life of the process. microui's cost is a fixed-size context, cut down once in
 its header (below).
 
-**Apps own their whole frame.** The sandbox and Render Lab draw straight to
-the framebuffer on their own schedule. A retained-mode toolkit wants to own
+**Apps own their whole frame.** An app draws straight to the framebuffer on
+its own schedule, with no widget tree in between. A retained-mode toolkit wants to own
 the display and the refresh cycle; microui's command list asks for nothing -
 whoever is drawing paints it whenever and into whatever they like.
 
@@ -375,7 +375,5 @@ it.
 - [tools/Frame-Cost.md](tools/Frame-Cost.md) - where a frame's time goes, by
   stage.
 - [Testing-Guide.md](Testing-Guide.md) - how to test any of it.
-- [Build-Variants.md](Build-Variants.md) - what release, dev and diagnostics
-  builds each carry.
-- [sand/Sand-Simulation.md](sand/Sand-Simulation.md) - the largest app, in
-  depth.
+- [Build-Variants.md](Build-Variants.md) - what release, development and
+  diagnostics builds each carry.
