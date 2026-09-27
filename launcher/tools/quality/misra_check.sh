@@ -18,7 +18,7 @@
 #   tools/quality/misra_check.sh [build_dir] [file_filter]
 #
 #   build_dir     defaults to build.dev - must have compile_commands.json
-#                 (run `tools/build/build_flash.sh --build-only` first if it doesn't)
+#                 (run `autana build dev` first if it doesn't)
 #   file_filter   cppcheck --file-filter glob, defaults to the sand app
 #                 (pass "*/main/*" for the whole project, minus vendored
 #                 dependencies)
@@ -95,7 +95,7 @@ fi
 
 COMPILE_COMMANDS="$LAUNCHER_DIR/$BUILD_DIR/compile_commands.json"
 if [ ! -f "$COMPILE_COMMANDS" ]; then
-    echo "No compile_commands.json in $BUILD_DIR/ - run 'tools/build/build_flash.sh --build-only' first." >&2
+    echo "No compile_commands.json in $BUILD_DIR/ - run 'autana build dev' first." >&2
     exit 1
 fi
 

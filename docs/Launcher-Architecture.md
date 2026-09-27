@@ -30,15 +30,15 @@ launcher/
 │   ├── esp32_s3_touch_amoled_1_8/  Waveshare BSP, LVGL trimmed
 │   ├── microui/        MIT, patched for this chip (see below)
 │   └── small3dlib/     CC0, header-only
-├── tools/              generators, build/flash wrappers, report scripts
-│   ├── gen_zeta_curve.py       generates main/boot/boot_anim_curve.h
-│   ├── gen_boot_anim_timeline.py, gen_boot_anim_image.py,
-│   │                           gen_gfx_palette_standard.py, gen_icons.py
-│   ├── gen_ui_layout.py        bakes main/ui/<screen>_layout.json into its header
-│   ├── gen_ridge_curve.py      bakes design/boot/ridge.png into main/ui/ridge_curve_generated.h
-│   ├── build_flash.sh          builds the image; --dev and --diag variants
-│   ├── device_report.sh        the one build-flash-capture-report path
-│   └── report_test_results.sh  every suite, pass/fail
+├── tools/              host tooling; flashing lives in scripts/device/
+│   ├── gen/            generators for checked-in C data (gen_zeta_curve.py, ...)
+│   ├── build/          build.sh builds the image; --dev and --diag variants
+│   ├── device/         device_report.sh, the one build-flash-capture-report path
+│   ├── quality/        complexity and MISRA gates, report_test_results.sh
+│   ├── boot_anim/      the boot animation editor and its perf report
+│   ├── render/         the host render harness and its scenes
+│   ├── sweeps/         build and capture sweeps
+│   └── tests/          regression tests for these tools
 ├── test/               the host runner and the shell's own suites
 └── main/
     ├── main.c          the frame loop and app switching
