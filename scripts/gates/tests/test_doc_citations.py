@@ -1,4 +1,6 @@
 """Regression tests for documentation citation tools."""
+import contextlib
+import io
 import json
 import os
 import pathlib
@@ -92,16 +94,14 @@ missing_function() LIVE_MISSING missing.sh
             found = check_doc_constants.check(root)
         self.assertEqual(found, [])
 
-    def test_constant_checker_skips_ambiguous_historical_and_allowlisted_values(self):
+    def test_constant_checker_skips_ambiguous_historical_and_escaped_values(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.write(root, "launcher/main/a.h", "#define AMBIGUOUS 4\n#define LIVE_LIMIT 32\n")
             self.write(root, "launcher/main/b.h", "#define AMBIGUOUS 8\n")
             self.write(root, "docs/Guide.md",
                        "`AMBIGUOUS` is 1.\n`LIVE_LIMIT` was 16.\n"
-                       "`LIVE_LIMIT` is 16.\n`LIVE_LIMIT` is 8. <!-- doc-constants: ignore -->\n")
-            self.write(root, "scripts/gates/doc_constant_allowlist.txt",
-                       "docs/Guide.md\tLIVE_LIMIT\t16\tdeliberate exception\n")
+                       "`LIVE_LIMIT` is 8. <!-- doc-constants: ignore -->\n")
             found = check_doc_constants.check(root)
         self.assertEqual(found, [])
 
@@ -245,16 +245,6 @@ Acid -->|"dissolvable 110"| Metal
             row = next(row for row in doc_drift.report(root) if row["doc"] == "docs/Guide.md")
         self.assertEqual((len(row["files"]), row["rank"] - row["age"]), (1, 30))
 
-    def test_vocabulary_gate_honours_archive_exception(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.write(root, "scripts/gates/doc_vocabulary.txt", "C6\twrong board\n")
-            self.write(root, "scripts/gates/doc_vocabulary_exceptions.txt", "docs/Archive.md\tarchive\n")
-            self.write(root, "docs/Guide.md", "C6 is current.\n")
-            self.write(root, "docs/Archive.md", "C6 is historical.\n")
-            found = check_doc_vocabulary.check(root)
-        self.assertEqual([(path, term) for path, _, term, _ in found], [("docs/Guide.md", "C6")])
-
     def test_vocabulary_gate_honours_inline_and_previous_line_escapes(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
@@ -266,17 +256,6 @@ Acid -->|"dissolvable 110"| Metal
             found = check_doc_vocabulary.check(root)
         self.assertEqual(found, [])
 
-    def test_vocabulary_gate_reports_stale_exception(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.write(root, "scripts/gates/doc_vocabulary.txt", "C6\twrong board\n")
-            self.write(root, "scripts/gates/doc_vocabulary_exceptions.txt",
-                       "docs/Deleted.md\tobsolete exception\n")
-            found = check_doc_vocabulary.check(root)
-        self.assertEqual([(path, term) for path, _, term, _ in found], [
-            ("docs/Deleted.md", "stale exception"),
-        ])
-
     def test_vocabulary_gate_reports_unescaped_retired_term(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
@@ -285,43 +264,81 @@ Acid -->|"dissolvable 110"| Metal
             found = check_doc_vocabulary.check(root)
         self.assertEqual([(path, term) for path, _, term, _ in found], [("docs/Guide.md", "C6")])
 
-    def test_citation_allowlist_reports_entries_nothing_needs(self):
+    def test_a_plan_may_cite_what_is_not_built_yet(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.fixture(root)
-            self.write(root, "scripts/gates/doc_citation_allowlist.txt",
-                       "# doc\tcitation\treason\n"
-                       "docs/Guide.md\tmissing.h\tstill cited and missing\n"
-                       "docs/Guide.md\tLIVE_MACRO\tresolves now\n"
-                       "docs/Gone.md\told_name\tdocument deleted\n")
+            self.write(root, "docs/plans/Future-Plan.md", "`planned_function()` `planned.h`\n")
             missing = check_doc_citations.check(root)
-            stale = check_doc_citations.stale_allowlist(root)
-        self.assertNotIn("missing.h", [item.value for item in missing])
-        self.assertEqual([(doc, citation) for _, doc, citation in stale], [
-            ("docs/Guide.md", "LIVE_MACRO"),
-            ("docs/Gone.md", "old_name"),
-        ])
+        self.assertNotIn("docs/plans/Future-Plan.md", [item.doc for item in missing])
+        self.assertIn("docs/Guide.md", [item.doc for item in missing])
 
-    def test_vocabulary_gate_reports_exception_for_a_clean_file(self):
+    def test_a_plans_named_file_outside_the_folder_is_checked(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.write(root, "scripts/gates/doc_vocabulary.txt", "C6\twrong board\n")
-            self.write(root, "scripts/gates/doc_vocabulary_exceptions.txt", "docs/Clean.md\trewritten\n")
-            self.write(root, "docs/Clean.md", "The S3 is current.\n")
-            found = check_doc_vocabulary.check(root)
-        self.assertEqual([(path, term) for path, _, term, _ in found], [
-            ("docs/Clean.md", "stale exception"),
-        ])
+            self.write(root, "docs/plans-archive.md", "`planned_function()`\n")
+            missing = check_doc_citations.check(root)
+        self.assertEqual([(item.doc, item.value) for item in missing],
+                         [("docs/plans-archive.md", "planned_function")])
 
-    def test_constant_allowlist_reports_entry_the_code_now_agrees_with(self):
+    def test_a_marker_exempts_only_the_name_it_names_on_its_own_line(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.write(root, "launcher/main/sizes.h", "#define BLOCK_W 16\n")
-            self.write(root, "docs/Guide.md", "`BLOCK_W` is 16.\n")
-            self.write(root, "scripts/gates/doc_constant_allowlist.txt",
-                       "docs/Guide.md\tBLOCK_W\t16\tused to differ\n")
-            stale = check_doc_constants.stale_allowlist(root)
-        self.assertEqual(stale, [("docs/Guide.md", "BLOCK_W", 16)])
+            self.write(root, "launcher/main/example.c", "void live_function(void) {}\n")
+            self.write(root, "docs/Guide.md",
+                       "The IDF's `sdk_private()` in `sdk_private.h`, beside `gone_function()`."
+                       " <!-- doc-citations: ignore sdk_private() -->"
+                       " <!-- doc-citations: ignore sdk_private.h -->\n"
+                       "`sdk_private()`\n")
+            missing = check_doc_citations.check(root)
+            stale = check_doc_citations.stale_markers(root)
+        self.assertEqual([(item.line, item.value) for item in missing],
+                         [(1, "gone_function"), (2, "sdk_private")])
+        self.assertEqual(stale, [])
+
+    def test_a_marker_that_exempts_nothing_is_reported(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "launcher/main/example.c", "void live_function(void) {}\n")
+            self.write(root, "docs/Guide.md",
+                       "`live_function()` <!-- doc-citations: ignore live_function() -->\n"
+                       "`sdk_private()` <!-- doc-citations: ignore sdk_other() -->\n"
+                       "`sdk_private()` <!-- doc-citations: ignore -->\n")
+            stale = check_doc_citations.stale_markers(root)
+        self.assertEqual([(marker.line, reason) for marker, reason in stale],
+                         [(1, "names live_function(), which resolves"),
+                          (2, "names sdk_other(), which this line does not cite"),
+                          (3, "names nothing")])
+
+    def test_another_gates_marker_or_html_comment_does_not_silence_a_citation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/Guide.md",
+                       "`gone_a()` <!-- doc-vocabulary: ignore -->\n"
+                       "`gone_b()` <!-- doc-constants: ignore -->\n"
+                       "`gone_c()` <!-- gone_c() -->\n")
+            missing = check_doc_citations.check(root)
+        self.assertEqual([item.value for item in missing], ["gone_a", "gone_b", "gone_c"])
+
+    def test_a_missing_citation_names_the_marker_that_would_exempt_it(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/Guide.md", "`sdk_private()`\n")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = check_doc_citations.main(["--root", str(root)])
+        self.assertEqual(code, 1)
+        self.assertIn("<!-- doc-citations: ignore sdk_private() -->", output.getvalue())
+
+    def test_a_constant_an_mjs_script_reads_resolves(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "scripts/gates/check.mjs",
+                       "// CHECK_COMMENTED_ONLY is only named here\n"
+                       "const extra = process.env.CHECK_EXTRA_ARGS;\n")
+            self.write(root, "docs/Guide.md", "`CHECK_EXTRA_ARGS` `CHECK_COMMENTED_ONLY`\n")
+            missing = check_doc_citations.check(root)
+        self.assertEqual([item.value for item in missing], ["CHECK_COMMENTED_ONLY"])
 
     def test_section_citation_after_the_doc_is_flagged_when_missing(self):
         with tempfile.TemporaryDirectory() as temp:
