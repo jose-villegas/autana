@@ -6,6 +6,7 @@ Host tooling for building, generating, rendering, inspecting, and checking the f
 |---|---|
 | [build/](build/README.md) | ESP-IDF build wrappers and host tool discovery. |
 | [gen/](gen/README.md) | Generators for checked-in C data. |
+| [mesh/](mesh/README.md) | Offline mesh baking: decimation, baked light, cluster trees. |
 | [render/](render/README.md) | Host render harness, image comparison, and [scenes](render/scenes/README.md). |
 | [device/](device/README.md) | Board profiles, report capture, and screenshot decoding. |
 | [quality/](quality/README.md) | Complexity, MISRA, and test report checks. |
