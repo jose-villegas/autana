@@ -676,12 +676,13 @@ def toolchain_addr2line():
 
 
 def decode_crash_addresses(data, elf):
-    """Every address on a `Backtrace:`/`PC` line in a capture, resolved
+    """Every address on a `Backtrace:`/`PC` line, or on a firmware
+    `FRAME_WATCH` warning, in a capture, resolved
     against `elf` to a file and line number. Returns [] when nothing looks
     like a crash, or when no addr2line is installed to ask."""
     addresses = []
     for line in data.split(b"\n"):
-        if b"Backtrace" in line or b"PC      :" in line or b"PC :" in line:
+        if b"Backtrace" in line or b"PC      :" in line or b"PC :" in line or b"FRAME_WATCH" in line:
             addresses += CRASH_ADDRESS_RE.findall(line)
     if not addresses:
         return []

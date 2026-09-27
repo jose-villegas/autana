@@ -1095,6 +1095,15 @@ class DecodeCrashAddressesTests(unittest.TestCase):
         command = run.call_args[0][0]
         self.assertEqual(command.count("0x400d1234"), 1)
 
+    def test_a_frame_watch_warning_names_its_site_for_decoding(self):
+        data = b"W (5123) frame_watch: FRAME_WATCH alloc in 16 of 16 frames at 0x4201abcd\n"
+        result = mock.Mock(stdout="ui.c:88\n")
+        with mock.patch.object(device, "toolchain_addr2line", return_value=Path("addr2line")), \
+             mock.patch.object(device.subprocess, "run", return_value=result) as run:
+            decoded = device.decode_crash_addresses(data, Path("x.elf"))
+        self.assertEqual(decoded, ["ui.c:88"])
+        self.assertIn("0x4201abcd", run.call_args[0][0])
+
 
 class FindElfForBuildIdTests(unittest.TestCase):
     """find_elf_for_build_id() picks the build actually on the board - the

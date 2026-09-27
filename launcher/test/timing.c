@@ -28,6 +28,11 @@
 #include "heap_arena.h"
 #endif
 
+#ifdef DEVICE_BUILD
+#include "unity.h"
+#include "util/frame_watch.h"
+#endif
+
 /* Not pulled from unity.h: that header only declares this when RUN_TEST is
  * NOT already defined (see timing.h's top comment) - the opposite of this
  * file's own situation, since it is what RUN_TEST now expands to. The real
@@ -37,6 +42,19 @@ extern void UnityDefaultTestRun(void (*Func)(void), const char* FuncName, const 
 
 #ifdef HOST_HEAP_ARENA
 static int leaks;
+#endif
+
+#ifdef DEVICE_BUILD
+static void (*watched_test)(void);
+
+/* Each present a test makes is one of its frames; see frame_watch.h. */
+static void
+run_watched(void) {
+    frame_watch_test_begin();
+    watched_test();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, frame_watch_test_end(),
+                                  "work repeated frame after frame - see the FRAME_WATCH lines above");
+}
 #endif
 
 void
@@ -55,7 +73,13 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
     const clock_t started = clock();
 #endif
 
+#ifdef DEVICE_BUILD
+    watched_test = func;
+    UnityDefaultTestRun(run_watched, name, line);
+    frame_watch_test_end();
+#else
     UnityDefaultTestRun(func, name, line);
+#endif
 
 #ifdef DEVICE_BUILD
     const int64_t elapsed_ms = (esp_timer_get_time() - started) / 1000;

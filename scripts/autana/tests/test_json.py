@@ -29,6 +29,12 @@ class JsonReadTests(unittest.TestCase):
         with mock.patch.object(autana, "send", return_value=(0, ["BUILD_ID=abc123"])):
             self.assertEqual(self.output(autana.buildid, ["--json"]), {"build_id": "abc123"})
 
+    def test_framewatch_reply_is_the_boards_json(self):
+        reply = 'FRAMEWATCH {"frames":40,"allocs":0,"repeating":0,"sites":[]}'
+        with mock.patch.object(autana, "send", return_value=(0, [reply])):
+            self.assertEqual(self.output(autana.framewatch, []),
+                             {"frames": 40, "allocs": 0, "repeating": 0, "sites": []})
+
     def test_apps_reply(self):
         replies = ["APPS name=Star Chart running=1", "APPS name=Sand running=0", "APPS_END"]
         self.assertEqual(autana.parse_apps(replies), [{"name": "Star Chart", "running": True},
