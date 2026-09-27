@@ -220,7 +220,7 @@ core 1's half dispatched through `util/job.h` (inline when core 1 is busy).
 
 ```mermaid
 sequenceDiagram
-    participant C0 as core 0, shell and scene
+    participant C0 as core 0, shell and app
     participant J as core 1 job worker
     participant P as present on core 1
     C0->>P: gfx_present_begin() sends frame N-1
