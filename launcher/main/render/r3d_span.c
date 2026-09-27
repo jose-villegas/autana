@@ -46,31 +46,35 @@ clamp_value(int32_t v, int32_t max) {
 
 static inline uint16_t
 pack(int32_t r, int32_t g, int32_t b) {
-    const uint32_t native = ((uint32_t)r & 0xF800u) | (((uint32_t)g >> 5) & 0x07E0u) | ((uint32_t)b >> 11);
+    const uint32_t native = ((uint32_t)r & 0xF800U) | (((uint32_t)g >> 5) & 0x07E0U) | ((uint32_t)b >> 11);
     return (uint16_t)((native >> 8) | (native << 8));
 }
 
 static bool
 compute_gradients(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, int x_origin,
                   int y_anchor, gradients_t* out) {
-    const float e1x = b->x - a->x, e1y = b->y - a->y;
-    const float e2x = c->x - a->x, e2y = c->y - a->y;
-    const float area2 = e1x * e2y - e2x * e1y;
-    if (area2 > -1e-6f && area2 < 1e-6f) {
+    const float e1x = b->x - a->x;
+    const float e1y = b->y - a->y;
+    const float e2x = c->x - a->x;
+    const float e2y = c->y - a->y;
+    const float area2 = (e1x * e2y) - (e2x * e1y);
+    if (area2 > -1e-6F && area2 < 1e-6F) {
         return false;
     }
-    const float inv = 1.0f / area2;
+    const float inv = 1.0F / area2;
     const float va[ATTRIBUTES] = {a->z * DEPTH_SCALE, a->r * COLOR_SCALE, a->g * COLOR_SCALE, a->b * COLOR_SCALE};
     const float vb[ATTRIBUTES] = {b->z * DEPTH_SCALE, b->r * COLOR_SCALE, b->g * COLOR_SCALE, b->b * COLOR_SCALE};
     const float vc[ATTRIBUTES] = {c->z * DEPTH_SCALE, c->r * COLOR_SCALE, c->g * COLOR_SCALE, c->b * COLOR_SCALE};
-    const float ox = (float)x_origin + 0.5f - a->x, oy = (float)y_anchor + 0.5f - a->y;
+    const float ox = (float)x_origin + 0.5F - a->x;
+    const float oy = (float)y_anchor + 0.5F - a->y;
     for (int k = 0; k < ATTRIBUTES; k++) {
-        const float d1 = vb[k] - va[k], d2 = vc[k] - va[k];
+        const float d1 = vb[k] - va[k];
+        const float d2 = vc[k] - va[k];
         const float ddx = (d1 * e2y - d2 * e1y) * inv;
         const float ddy = (d2 * e1x - d1 * e2x) * inv;
         out->dx[k] = to_step(ddx);
         out->dy[k] = to_step(ddy);
-        out->base[k] = (int32_t)clampf(va[k] + ddx * ox + ddy * oy, -2.0e9f, 2.0e9f);
+        out->base[k] = (int32_t)clampf(va[k] + (ddx * ox) + (ddy * oy), -2.0e9F, 2.0e9F);
     }
     out->x_origin = x_origin;
     return true;
@@ -85,10 +89,11 @@ fill_span(const r3d_span_target_t* target, const gradients_t* g, const int32_t r
           int x_last) {
     const int32_t offset = x_first - g->x_origin;
     const int count = x_last - x_first;
-    int32_t v[ATTRIBUTES], d[ATTRIBUTES];
+    int32_t v[ATTRIBUTES];
+    int32_t d[ATTRIBUTES];
     for (int k = 0; k < ATTRIBUTES; k++) {
-        const int32_t start = clamp_value(row[k] + g->dx[k] * offset, value_max[k]);
-        const int32_t end = start + g->dx[k] * count;
+        const int32_t start = clamp_value(row[k] + (g->dx[k] * offset), value_max[k]);
+        const int32_t end = start + (g->dx[k] * count);
         v[k] = start;
         d[k] = g->dx[k];
         if (count > 0 && (end < 0 || end > value_max[k])) {
@@ -102,7 +107,10 @@ fill_span(const r3d_span_target_t* target, const gradients_t* g, const int32_t r
     const int row_offset = (y - target->row0) * target->width;
     uint16_t* depth = target->depth + row_offset;
     uint16_t* color = target->color + row_offset;
-    int32_t z = v[0], r = v[1], gg = v[2], b = v[3];
+    int32_t z = v[0];
+    int32_t r = v[1];
+    int32_t gg = v[2];
+    int32_t b = v[3];
     for (int x = x_first; x <= x_last; x++) {
         const uint16_t zq = (uint16_t)(z >> 8);
         if (zq > depth[x]) {
@@ -146,11 +154,11 @@ typedef struct {
 static edge_t
 edge_at(const r3d_span_vertex_t* top, const r3d_span_vertex_t* bottom, int y) {
     const float dy = bottom->y - top->y;
-    const float slope = dy > 0.0f ? (bottom->x - top->x) / dy : 0.0f;
-    const int anchor = fast_ceil(top->y - 0.5f);
-    const float x = top->x + ((float)anchor + 0.5f - top->y) * slope;
-    const edge_t e = {(int64_t)(x * 65536.0f), (int64_t)(slope * 65536.0f)};
-    return y == anchor ? e : (edge_t){e.x + (int64_t)(y - anchor) * e.step, e.step};
+    const float slope = dy > 0.0F ? (bottom->x - top->x) / dy : 0.0F;
+    const int anchor = fast_ceil(top->y - 0.5F);
+    const float x = top->x + (((float)anchor + 0.5F - top->y) * slope);
+    const edge_t e = {(int64_t)(x * 65536.0F), (int64_t)(slope * 65536.0F)};
+    return y == anchor ? e : (edge_t){e.x + ((int64_t)(y - anchor) * e.step), e.step};
 }
 
 /* ceil(x - 0.5) of a 16.16 position: the first pixel whose centre is at or
@@ -216,18 +224,19 @@ typedef struct {
 static edge32_t
 edge32_at(const r3d_span_vertex_t* top, const r3d_span_vertex_t* bottom, int y) {
     const float dy = bottom->y - top->y;
-    const float slope = dy > 0.0f ? (bottom->x - top->x) / dy : 0.0f;
-    const int anchor = fast_ceil(top->y - 0.5f);
-    const float x = top->x + ((float)anchor + 0.5f - top->y) * slope;
-    const edge32_t e = {(int32_t)(x * 65536.0f),
-                        (int32_t)clampf(slope * 65536.0f, (float)-NARROW_STEP_MAX, (float)NARROW_STEP_MAX)};
-    return y == anchor ? e : (edge32_t){e.x + (y - anchor) * e.step, e.step};
+    const float slope = dy > 0.0F ? (bottom->x - top->x) / dy : 0.0F;
+    const int anchor = fast_ceil(top->y - 0.5F);
+    const float x = top->x + (((float)anchor + 0.5F - top->y) * slope);
+    const edge32_t e = {(int32_t)(x * 65536.0F),
+                        (int32_t)clampf(slope * 65536.0F, (float)-NARROW_STEP_MAX, (float)NARROW_STEP_MAX)};
+    return y == anchor ? e : (edge32_t){e.x + ((y - anchor) * e.step), e.step};
 }
 
 static void
 walk32(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge32_t left,
        edge32_t right) {
-    int32_t lx = left.x, rx = right.x;
+    int32_t lx = left.x;
+    int32_t rx = right.x;
     for (int y = y0; y < y1; y++) {
         fill_row(target, f, row, y, first_pixel32(lx), first_pixel32(rx) - 1);
         lx += left.step;
@@ -257,10 +266,12 @@ walk(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], 
         return;
     }
     if (narrow) {
-        const edge32_t a = edge32_at(top_a, bottom_a, y0), b = edge32_at(top_b, bottom_b, y0);
+        const edge32_t a = edge32_at(top_a, bottom_a, y0);
+        const edge32_t b = edge32_at(top_b, bottom_b, y0);
         walk32(target, f, row, y0, y1, a_on_left ? a : b, a_on_left ? b : a);
     } else {
-        const edge_t a = edge_at(top_a, bottom_a, y0), b = edge_at(top_b, bottom_b, y0);
+        const edge_t a = edge_at(top_a, bottom_a, y0);
+        const edge_t b = edge_at(top_b, bottom_b, y0);
         walk64(target, f, row, y0, y1, a_on_left ? a : b, a_on_left ? b : a);
     }
 }
@@ -298,29 +309,31 @@ max3(float a, float b, float c) {
  * the window on either side. */
 static inline int
 row_at(const r3d_span_target_t* target, float y) {
-    return fast_ceil(clampf(y, (float)target->row0 - 1.0f, (float)target->row1 + 1.0f) - 0.5f);
+    return fast_ceil(clampf(y, (float)target->row0 - 1.0F, (float)target->row1 + 1.0F) - 0.5F);
 }
 
 static inline void
 set_flat(fill_t* f, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
-    const float third = 1.0f / 3.0f;
-    f->flat_z = (uint16_t)(clampf((a->z + b->z + c->z) * third, 0.0f, 1.0f) * 65535.0f);
-    f->flat_color = pack((int32_t)(clampf((a->r + b->r + c->r) * third, 0.0f, 255.0f) * COLOR_SCALE),
-                         (int32_t)(clampf((a->g + b->g + c->g) * third, 0.0f, 255.0f) * COLOR_SCALE),
-                         (int32_t)(clampf((a->b + b->b + c->b) * third, 0.0f, 255.0f) * COLOR_SCALE));
+    const float third = 1.0F / 3.0F;
+    f->flat_z = (uint16_t)(clampf((a->z + b->z + c->z) * third, 0.0F, 1.0F) * 65535.0F);
+    f->flat_color = pack((int32_t)(clampf((a->r + b->r + c->r) * third, 0.0F, 255.0F) * COLOR_SCALE),
+                         (int32_t)(clampf((a->g + b->g + c->g) * third, 0.0F, 255.0F) * COLOR_SCALE),
+                         (int32_t)(clampf((a->b + b->b + c->b) * third, 0.0F, 255.0F) * COLOR_SCALE));
 }
 
 static inline void
 first_row_values(const gradients_t* g, int y_first, int y_anchor, int32_t row[ATTRIBUTES]) {
     for (int k = 0; k < ATTRIBUTES; k++) {
-        row[k] = (int32_t)(g->base[k] + (int64_t)(y_first - y_anchor) * g->dy[k]);
+        row[k] = (int32_t)(g->base[k] + ((int64_t)(y_first - y_anchor) * g->dy[k]));
     }
 }
 
 void
 r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                   const r3d_span_vertex_t* c) {
-    const r3d_span_vertex_t *v0 = a, *v1 = b, *v2 = c;
+    const r3d_span_vertex_t* v0 = a;
+    const r3d_span_vertex_t* v1 = b;
+    const r3d_span_vertex_t* v2 = c;
     sort_by_y(&v0, &v1, &v2);
 
     const int y_first = clampi(row_at(target, v0->y), target->row0, target->row1);
@@ -329,17 +342,18 @@ r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
         return; /* no pixel centre row inside this window */
     }
 
-    const float lo_x = min3(a->x, b->x, c->x), hi_x = max3(a->x, b->x, c->x);
+    const float lo_x = min3(a->x, b->x, c->x);
+    const float hi_x = max3(a->x, b->x, c->x);
     fill_t f = {y_end - y_first <= FLAT_MAX_ROWS && hi_x - lo_x <= FLAT_MAX_WIDTH, 0, 0, NULL};
 
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
-    const int y_anchor = fast_ceil(clampf(v0->y, -1.0f, (float)target->row1 + 1.0f) - 0.5f);
+    const int y_anchor = fast_ceil(clampf(v0->y, -1.0F, (float)target->row1 + 1.0F) - 0.5F);
     gradients_t g = {0};
     f.g = &g;
     if (f.flat) {
         set_flat(&f, a, b, c);
-    } else if (!compute_gradients(a, b, c, clampi(fast_ceil(lo_x - 0.5f), 0, INT32_MAX), y_anchor, &g)) {
+    } else if (!compute_gradients(a, b, c, clampi(fast_ceil(lo_x - 0.5F), 0, INT32_MAX), y_anchor, &g)) {
         return;
     }
     if (r3d_span_stop_after == 1) {
@@ -349,7 +363,7 @@ r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
     /* The long edge v0-v2 runs the whole height, on the same side all the
      * way down; the short side is v0-v1 above v1 and v1-v2 below it. */
     const int split = clampi(row_at(target, v1->y), y_first, y_end);
-    const float long_x_at_v1 = v2->y > v0->y ? v0->x + (v1->y - v0->y) * (v2->x - v0->x) / (v2->y - v0->y) : v0->x;
+    const float long_x_at_v1 = v2->y > v0->y ? v0->x + ((v1->y - v0->y) * (v2->x - v0->x) / (v2->y - v0->y)) : v0->x;
     const bool long_on_left = long_x_at_v1 < v1->x;
     const bool narrow = lo_x > -NARROW_LIMIT && hi_x < NARROW_LIMIT && v0->y > -NARROW_LIMIT && v2->y < NARROW_LIMIT;
 

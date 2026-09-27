@@ -33,10 +33,12 @@ static bool
 cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lit_view_t* view) {
     int beyond[5] = {0};
     for (int i = 0; i < 8; i++) {
-        const float x = i & 1 ? c->hi[0] : c->lo[0], y = i & 2 ? c->hi[1] : c->lo[1], z = i & 4 ? c->hi[2] : c->lo[2];
-        const float lx = view->m[0][0] * x + view->m[0][1] * y + view->m[0][2] * z + view->m[0][3];
-        const float ly = view->m[1][0] * x + view->m[1][1] * y + view->m[1][2] * z + view->m[1][3];
-        const float lz = view->m[2][0] * x + view->m[2][1] * y + view->m[2][2] * z + view->m[2][3];
+        const float x = (float)(i & 1 ? c->hi[0] : c->lo[0]);
+        const float y = (float)(i & 2 ? c->hi[1] : c->lo[1]);
+        const float z = (float)(i & 4 ? c->hi[2] : c->lo[2]);
+        const float lx = (view->m[0][0] * x) + (view->m[0][1] * y) + (view->m[0][2] * z) + view->m[0][3];
+        const float ly = (view->m[1][0] * x) + (view->m[1][1] * y) + (view->m[1][2] * z) + view->m[1][3];
+        const float lz = (view->m[2][0] * x) + (view->m[2][1] * y) + (view->m[2][2] * z) + view->m[2][3];
         beyond[0] += lz < view->near_z;
         beyond[1] += lx < -view->center_x * lz;
         beyond[2] += lx > ((float)view->width - view->center_x) * lz;
@@ -87,28 +89,35 @@ sub(v3 a, v3 b) {
 
 static float
 dot(v3 a, v3 b) {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
+    return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
 }
 
 static v3
 add_scaled(v3 a, v3 d, float s) {
-    return (v3){a.x + d.x * s, a.y + d.y * s, a.z + d.z * s};
+    return (v3){a.x + (d.x * s), a.y + (d.y * s), a.z + (d.z * s)};
 }
 
 /* Ericson, Real-Time Collision Detection 5.1.5. */
 static float
 point_triangle_distance(v3 p, v3 a, v3 b, v3 c) {
-    const v3 ab = sub(b, a), ac = sub(c, a), ap = sub(p, a);
-    const float d1 = dot(ab, ap), d2 = dot(ac, ap);
+    const v3 ab = sub(b, a);
+    const v3 ac = sub(c, a);
+    const v3 ap = sub(p, a);
+    const float d1 = dot(ab, ap);
+    const float d2 = dot(ac, ap);
     v3 q;
     if (d1 <= 0 && d2 <= 0) {
         q = a;
     } else {
         const v3 bp = sub(p, b);
-        const float d3 = dot(ab, bp), d4 = dot(ac, bp);
+        const float d3 = dot(ab, bp);
+        const float d4 = dot(ac, bp);
         const v3 cp = sub(p, c);
-        const float d5 = dot(ab, cp), d6 = dot(ac, cp);
-        const float vc = d1 * d4 - d3 * d2, vb = d5 * d2 - d1 * d6, va = d3 * d6 - d5 * d4;
+        const float d5 = dot(ab, cp);
+        const float d6 = dot(ac, cp);
+        const float vc = (d1 * d4) - (d3 * d2);
+        const float vb = (d5 * d2) - (d1 * d6);
+        const float va = (d3 * d6) - (d5 * d4);
         if (d3 >= 0 && d4 <= d3) {
             q = b;
         } else if (d6 >= 0 && d5 <= d6) {
@@ -120,7 +129,7 @@ point_triangle_distance(v3 p, v3 a, v3 b, v3 c) {
         } else if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) {
             q = add_scaled(b, sub(c, b), (d4 - d3) / ((d4 - d3) + (d5 - d6)));
         } else {
-            const float denom = 1.0f / (va + vb + vc);
+            const float denom = 1.0F / (va + vb + vc);
             q = add_scaled(add_scaled(a, ab, vb * denom), ac, vc * denom);
         }
     }
@@ -130,18 +139,19 @@ point_triangle_distance(v3 p, v3 a, v3 b, v3 c) {
 
 static v3
 vertex(const r3d_lit_mesh_t* mesh, int i) {
-    const float s = 1.0f / (float)mesh->position_scale;
-    return (v3){mesh->positions[i][0] * s, mesh->positions[i][1] * s, mesh->positions[i][2] * s};
+    const float s = 1.0F / (float)mesh->position_scale;
+    return (v3){(float)mesh->positions[i][0] * s, (float)mesh->positions[i][1] * s, (float)mesh->positions[i][2] * s};
 }
 
 static float
 box_distance(const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* c, v3 p) {
-    const float s = 1.0f / (float)mesh->position_scale;
+    const float s = 1.0F / (float)mesh->position_scale;
     const float point[3] = {p.x, p.y, p.z};
-    float sum = 0.0f;
+    float sum = 0.0F;
     for (int k = 0; k < 3; k++) {
-        const float lo = c->lo[k] * s, hi = c->hi[k] * s;
-        const float d = point[k] < lo ? lo - point[k] : (point[k] > hi ? point[k] - hi : 0.0f);
+        const float lo = (float)c->lo[k] * s;
+        const float hi = (float)c->hi[k] * s;
+        const float d = point[k] < lo ? lo - point[k] : (point[k] > hi ? point[k] - hi : 0.0F);
         sum += d * d;
     }
     return sqrtf(sum);
@@ -171,13 +181,15 @@ static void
 check_the_flythrough_keeps_clear_of_every_triangle(const r3d_lit_mesh_t* mesh) {
     const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
     for (uint32_t t = 0; t < period; t += 100) {
-        r3d_vec3f_t eye, forward;
+        r3d_vec3f_t eye;
+        r3d_vec3f_t forward;
         r3d_path_sample(&sponza_flythrough, t, &eye, &forward);
         const float d = clearance(mesh, (v3){eye.x, eye.y, eye.z});
         if (d < SPONZA_FLYTHROUGH_CLEARANCE) {
             char message[96];
-            snprintf(message, sizeof message, "t=%u ms eye (%.0f, %.0f, %.0f) is %.1f from a triangle", (unsigned)t,
-                     (double)eye.x, (double)eye.y, (double)eye.z, (double)d);
+            TEST_ASSERT_TRUE(snprintf(message, sizeof message, "t=%u ms eye (%.0f, %.0f, %.0f) is %.1f from a triangle",
+                                      (unsigned)t, (double)eye.x, (double)eye.y, (double)eye.z, (double)d)
+                             > 0);
             TEST_FAIL_MESSAGE(message);
         }
     }
@@ -228,14 +240,14 @@ check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
     TEST_ASSERT_NOT_NULL(scratch);
     r3d_lit_frame_use_scratch(&frame, scratch);
     const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
-    float sum = 0.0f;
+    float sum = 0.0F;
     int samples = 0;
     for (uint32_t t = 0; t < period; t += 5000) {
         sum += share_covered_at(&frame, t);
         samples++;
     }
     heap_caps_free(scratch);
-    TEST_ASSERT_GREATER_THAN_FLOAT_MESSAGE(0.85f, sum / (float)samples, "the flythrough sees mostly sky");
+    TEST_ASSERT_GREATER_THAN_FLOAT_MESSAGE(0.85F, sum / (float)samples, "the flythrough sees mostly sky");
 }
 
 static void

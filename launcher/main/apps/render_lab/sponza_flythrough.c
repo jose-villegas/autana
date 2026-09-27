@@ -4,22 +4,23 @@
 #define NEAR_Z             6.0f
 
 static const r3d_waypoint_t waypoints[] = {
-    {{1100.0f, 160.0f, -35.0f}, {0.0f, 220.0f, -35.0f}},    {{500.0f, 160.0f, -60.0f}, {-300.0f, 260.0f, 120.0f}},
-    {{-100.0f, 180.0f, 40.0f}, {-800.0f, 300.0f, -120.0f}}, {{-650.0f, 260.0f, -30.0f}, {-350.0f, 700.0f, -35.0f}},
-    {{-550.0f, 560.0f, -40.0f}, {400.0f, 500.0f, 100.0f}},  {{0.0f, 720.0f, -80.0f}, {700.0f, 450.0f, -35.0f}},
-    {{500.0f, 450.0f, 0.0f}, {-300.0f, 150.0f, -35.0f}},    {{700.0f, 170.0f, -35.0f}, {-100.0f, 200.0f, -35.0f}},
+    {{1100.0F, 160.0F, -35.0F}, {0.0F, 220.0F, -35.0F}},    {{500.0F, 160.0F, -60.0F}, {-300.0F, 260.0F, 120.0F}},
+    {{-100.0F, 180.0F, 40.0F}, {-800.0F, 300.0F, -120.0F}}, {{-650.0F, 260.0F, -30.0F}, {-350.0F, 700.0F, -35.0F}},
+    {{-550.0F, 560.0F, -40.0F}, {400.0F, 500.0F, 100.0F}},  {{0.0F, 720.0F, -80.0F}, {700.0F, 450.0F, -35.0F}},
+    {{500.0F, 450.0F, 0.0F}, {-300.0F, 150.0F, -35.0F}},    {{700.0F, 170.0F, -35.0F}, {-100.0F, 200.0F, -35.0F}},
 };
 
 const r3d_path_t sponza_flythrough = {
     waypoints,
     (int)(sizeof(waypoints) / sizeof(waypoints[0])),
-    110.0f, /* cm per second, a slow walk */
-    3.0f,
+    110.0F, /* cm per second, a slow walk */
+    3.0F,
 };
 
 void
 sponza_view_at(r3d_lit_view_t* view, uint32_t t_ms, int position_scale, int quarter) {
-    r3d_vec3f_t eye, forward;
+    r3d_vec3f_t eye;
+    r3d_vec3f_t forward;
     r3d_path_sample(&sponza_flythrough, t_ms, &eye, &forward);
     r3d_lit_view_look(view, eye, forward, HALF_FOV_SHORT_TAN, NEAR_Z, position_scale,
                       (r3d_viewport_t){SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, quarter});

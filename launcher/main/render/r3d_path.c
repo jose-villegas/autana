@@ -15,7 +15,7 @@ segment_seconds(const r3d_path_t* path, int i) {
 
 static uint32_t
 segment_ms(const r3d_path_t* path, int i) {
-    return (uint32_t)(segment_seconds(path, i) * 1000.0f + 0.5f);
+    return (uint32_t)((segment_seconds(path, i) * 1000.0F) + 0.5F);
 }
 
 uint32_t
@@ -29,10 +29,11 @@ r3d_path_period_ms(const r3d_path_t* path) {
 
 static float
 catmull_rom(float p0, float p1, float p2, float p3, float u) {
-    const float u2 = u * u, u3 = u2 * u;
-    return 0.5f
-           * (2.0f * p1 + (p2 - p0) * u + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * u2
-              + (3.0f * p1 - p0 - 3.0f * p2 + p3) * u3);
+    const float u2 = u * u;
+    const float u3 = u2 * u;
+    return 0.5F
+           * (2.0F * p1 + (p2 - p0) * u + (2.0F * p0 - 5.0F * p1 + 4.0F * p2 - p3) * u2
+              + (3.0F * p1 - p0 - 3.0F * p2 + p3) * u3);
 }
 
 static r3d_vec3f_t

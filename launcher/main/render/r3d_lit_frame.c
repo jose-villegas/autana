@@ -31,9 +31,9 @@ static void
 double_rows(const r3d_lit_frame_t* f, int first, int count) {
     const int out_width = 2 * f->width;
     for (int y = first; y < first + count; y++) {
-        const uint16_t* src = f->color + (size_t)y * (size_t)f->width;
-        const uint16_t* depth = f->depth + (size_t)y * (size_t)f->width;
-        uint32_t* top = (uint32_t*)(f->doubled + (size_t)(2 * y) * (size_t)out_width);
+        const uint16_t* src = f->color + ((size_t)y * (size_t)f->width);
+        const uint16_t* depth = f->depth + ((size_t)y * (size_t)f->width);
+        uint32_t* top = (uint32_t*)(f->doubled + ((size_t)(2 * y) * (size_t)out_width));
         uint32_t* bottom = top + f->width;
         for (int x = 0; x < f->width; x++) {
             const uint16_t c = depth[x] != 0 ? src[x] : f->clear;
@@ -86,9 +86,9 @@ pixels(int width, int height) {
 
 size_t
 r3d_lit_frame_scratch_bytes(const r3d_lit_mesh_t* mesh, int width, int height) {
-    return sizeof(r3d_lit_vertex_t) * (size_t)mesh->vertex_count
-           + (sizeof(r3d_lit_rows_t) + sizeof(uint16_t)) * (size_t)mesh->cluster_count
-           + 2 * sizeof(uint16_t) * pixels(width, height);
+    return (sizeof(r3d_lit_vertex_t) * (size_t)mesh->vertex_count)
+           + ((sizeof(r3d_lit_rows_t) + sizeof(uint16_t)) * (size_t)mesh->cluster_count)
+           + (2 * sizeof(uint16_t) * pixels(width, height));
 }
 
 /* Widest alignment first, so each part lands aligned after the one before. */
@@ -114,7 +114,7 @@ balanced_split_row(const r3d_lit_frame_t* frame, int visible) {
     uint32_t total = 0;
     for (int i = 0; i < visible; i++) {
         const r3d_lit_rows_t* r = &frame->rows[frame->visible[i]];
-        const float middle = r->crosses_near ? 0.5f * (float)frame->height : 0.5f * (r->y0 + r->y1);
+        const float middle = r->crosses_near ? 0.5F * (float)frame->height : 0.5F * (r->y0 + r->y1);
         int row = (int)middle;
         row = row < 0 ? 0 : (row >= frame->height ? frame->height - 1 : row);
         const uint32_t n = frame->mesh->clusters[frame->visible[i]].triangle_count;
