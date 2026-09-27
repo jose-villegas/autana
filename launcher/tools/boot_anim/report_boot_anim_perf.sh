@@ -9,11 +9,12 @@
 # Declaring a suite is what selects that image: see tools/device/device_report.sh.
 #
 # Usage:
-#   tools/boot_anim/report_boot_anim_perf.sh [--no-restore] [BOARD] [OUT.md]
+#   tools/boot_anim/report_boot_anim_perf.sh [--no-restore] [--board SERIAL] [OUT.md]
 #
-#   BOARD        the board's USB serial number. Default: AUTANA_BOARD, else
+#   --board SERIAL
+#                the board's USB serial number. Default: AUTANA_BOARD, else
 #                the only board plugged in - see scripts/device/device.py.
-#   OUT.md       markdown report path. Default:
+#   OUT.md       markdown report path, ending in .md. Default:
 #                tools/results/boot_anim_perf_<timestamp>.md
 #   --no-restore leave the device on the diagnostics image afterwards.
 #

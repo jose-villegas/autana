@@ -4,11 +4,12 @@
 # capture the boot-time run of every suite, write a markdown results report.
 #
 # Usage:
-#   tools/quality/report_test_results.sh [--no-restore] [BOARD] [OUT.md]
+#   tools/quality/report_test_results.sh [--no-restore] [--board SERIAL] [OUT.md]
 #
-#   BOARD        the board's USB serial number. Default: AUTANA_BOARD, else
+#   --board SERIAL
+#                the board's USB serial number. Default: AUTANA_BOARD, else
 #                the only board plugged in - see scripts/device/device.py.
-#   OUT.md       markdown report path. Default:
+#   OUT.md       markdown report path, ending in .md. Default:
 #                tools/results/test_results_<timestamp>.md
 #   --no-restore leave the device on the diagnostics image afterwards.
 #

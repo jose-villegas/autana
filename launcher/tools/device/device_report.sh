@@ -34,7 +34,40 @@
 #
 # and then calls device_report_run with the arguments every report takes:
 #
-#   [--no-restore] [BOARD] [OUT.md]
+#   [--no-restore] [--board SERIAL] [OUT.md]
+
+# The board comes only from --board or AUTANA_BOARD, never a positional:
+# the one positional is the report path, and it must end in .md so a board
+# serial left in an old call's first slot is refused rather than written to.
+device_report_arguments() {
+    _dr_restore=1
+    _dr_board=""
+    _dr_out=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --no-restore) _dr_restore=0; shift ;;
+            --board)
+                if [ $# -lt 2 ]; then
+                    echo "ERROR: --board needs the board's USB serial number" >&2
+                    return 1
+                fi
+                _dr_board="$2"; shift 2 ;;
+            --board=*) _dr_board="${1#--board=}"; shift ;;
+            -*) echo "ERROR: unknown flag: $1" >&2; return 1 ;;
+            *)
+                case "$1" in
+                    *.md) ;;
+                    *) echo "ERROR: $1 is not a report path (OUT.md); name a board with --board <serial>" >&2
+                       return 1 ;;
+                esac
+                if [ -n "$_dr_out" ]; then
+                    echo "ERROR: one report path only; name a board with --board <serial>" >&2
+                    return 1
+                fi
+                _dr_out="$1"; shift ;;
+        esac
+    done
+}
 
 device_report_run() {
     # Defaults, applied here rather than at source time: a caller declares
@@ -54,17 +87,7 @@ device_report_run() {
         return 1
     fi
 
-    _dr_restore=1
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --no-restore) _dr_restore=0; shift ;;
-            -*) echo "ERROR: unknown flag: $1" >&2; return 1 ;;
-            *) break ;;
-        esac
-    done
-
-    _dr_board="${1:-}"
-    _dr_out="${2:-}"
+    device_report_arguments "$@" || return 1
 
     # launcher/, wherever this report lives: beside tools/build/build.sh, or
     # four folders down in an app's own tools/. Found by walking up to the
@@ -109,9 +132,9 @@ device_report_run() {
 # Build, flash and capture are one call, scripts/device/device.py's own
 # `selftest` (report_suite="", every suite at boot) or `batch --runs 1`
 # (report_suite=<name>, one suite via RUNSUITE): the build first, then the
-# flash and the capture under one held lock. BOARD,
-# a USB serial number, is passed through when given; otherwise device.py
-# takes AUTANA_BOARD, else the only board plugged in.
+# flash and the capture under one held lock. --board's serial is passed
+# through when given; otherwise device.py takes AUTANA_BOARD, else the only
+# board plugged in.
 device_report_capture() {
     if [ -n "$report_suite" ]; then
         set -- --owner "$_dr_owner" batch --worktree "$_dr_worktree" --suite "$report_suite" \
