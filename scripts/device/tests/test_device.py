@@ -750,7 +750,7 @@ class RunSuiteDefaultPathTests(unittest.TestCase):
 
 def build_prints(build_id):
     """A run_while_held() standing in for build_flash.sh, which prints the id
-    of the image it built into the flash log."""
+    of the image it built into the flash log, and flash_image.sh."""
     def run(*unused, **keywords):
         keywords["stdout"].write(("BUILD_ID=" + build_id + "\n").encode("ascii"))
     return run
@@ -760,8 +760,9 @@ class FlashDefaultPathTests(unittest.TestCase):
     def test_flash_uses_esptool_exit_and_build_id_without_boot_console(self):
         with tempfile.TemporaryDirectory() as directory:
             worktree = Path(directory) / "engine"
-            (worktree / "launcher" / "tools" / "build").mkdir(parents=True)
-            (worktree / "launcher" / "tools" / "build" / "build_flash.sh").write_text("")
+            for script in (device.BUILD_SCRIPT, device.FLASH_SCRIPT):
+                (worktree / script).parent.mkdir(parents=True, exist_ok=True)
+                (worktree / script).write_text("")
             root = Path(directory) / "records"
             connection = FakeConnection([])
             args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
@@ -791,13 +792,14 @@ class FlashDefaultPathTests(unittest.TestCase):
             self.assertEqual(entry["worktree"], str(worktree.resolve()))
             self.assertEqual(entry["commit"], "deadbeef")
 
-    def test_passes_the_lock_token_to_build_flash_sh(self):
-        # build_flash.sh refuses to flash without AUTANA_DEVICE_LOCK_TOKEN -
+    def test_builds_then_passes_the_lock_token_to_flash_image_sh(self):
+        # flash_image.sh refuses to flash without AUTANA_DEVICE_LOCK_TOKEN -
         # flash() is the one place that has the token to give it.
         with tempfile.TemporaryDirectory() as directory:
             worktree = Path(directory) / "engine"
-            (worktree / "launcher" / "tools" / "build").mkdir(parents=True)
-            (worktree / "launcher" / "tools" / "build" / "build_flash.sh").write_text("")
+            for script in (device.BUILD_SCRIPT, device.FLASH_SCRIPT):
+                (worktree / script).parent.mkdir(parents=True, exist_ok=True)
+                (worktree / script).write_text("")
             root = Path(directory) / "records"
             connection = FakeConnection([b"BUILD_ID=expected\nTESTS_DONE\n"])
             args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
@@ -811,6 +813,8 @@ class FlashDefaultPathTests(unittest.TestCase):
                  mock.patch.object(device, "open_serial", return_value=connection), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
                 device.flash(args, store, BOARD)
+            scripts = [Path(call.args[0][1]).name for call in run.call_args_list]
+            self.assertEqual(scripts, ["build_flash.sh", "flash_image.sh"])
             passed_env = run.call_args.kwargs["env"]
             self.assertEqual(passed_env["AUTANA_DEVICE_LOCK_TOKEN"], "sekrit-token")
             self.assertEqual(passed_env["AUTANA_BOARD"], BOARD)
