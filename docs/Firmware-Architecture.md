@@ -36,7 +36,8 @@ screen.
 
 ## Layers
 
-Each row may include anything in a row below it, and `app.h`, never a row
+Each row may include anything in a row below it, and the root headers
+(`app.h`, `app_arena.h`, `build_variant.h`), never a row
 above or a folder beside it in the same row. The top row is the two callers,
 and neither includes the other: the shell reaches an app only through the
 callbacks `app.h` declares. Folders that touch hardware are
