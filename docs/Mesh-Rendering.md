@@ -2,10 +2,10 @@
 
 `launcher/main/render/` is the engine's 3D layer: cameras, projection, a
 span rasterizer, and a pipeline that draws a mesh whose light was baked
-offline. It sits beside `gfx/` and includes only `util/`, so boot and apps
-both call it. It draws into buffers its caller hands it, and a framebuffer
-is only one of them. The layers are in
-[Firmware-Architecture.md](Firmware-Architecture.md).
+offline. It sits beside `gfx/`, and the only other things it includes are
+`util/` and the vendored small3dlib, so boot and apps both call it. It
+draws into buffers its caller hands it, and a framebuffer is only one of
+them. The layers are in [Firmware-Architecture.md](Firmware-Architecture.md).
 
 ## The files
 
@@ -47,8 +47,8 @@ flowchart LR
     Draw --> Double["r3d_lit_frame_double()<br/><i>to twice the size</i>"]
 ```
 
-A caller builds the view, then calls `r3d_lit_frame_render()` and
-`r3d_lit_frame_double()`; the stages inside are public for a caller that
+A caller builds the view, then calls `r3d_lit_frame_render()`, and
+`r3d_lit_frame_double()` when it set `doubled`; the stages inside are public for a caller that
 schedules them itself.
 
 The stages are split so two cores can share them. Transforming disjoint

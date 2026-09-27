@@ -2,8 +2,9 @@
  * r3d_lit_frame - one whole frame of a r3d_lit_mesh_t on both cores: cull on the
  * caller's core, then each core transforms half the visible clusters and
  * clears and fills half the rows. On a host, or with core 1 busy, the
- * second half runs inline. Rendering at half the target's size and
- * doubling the result quarters the pixels and halves the rows and spans.
+ * second half runs inline. Rendering at half the size of the doubled
+ * picture and doubling the result quarters the pixels and halves the rows
+ * and spans.
  */
 #pragma once
 
