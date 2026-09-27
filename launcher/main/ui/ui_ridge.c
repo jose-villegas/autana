@@ -721,23 +721,6 @@ repaint_changed(void) {
     }
 }
 
-static void
-repaint_span(int y, int x0, int x1) {
-    x0 = x0 < 0 ? 0 : x0;
-    x1 = x1 > GFX_WIDTH ? GFX_WIDTH : x1;
-    if (x0 >= x1) {
-        return;
-    }
-    gfx_color_t* const row = gfx_framebuffer() + (y * GFX_WIDTH);
-    if (ridge->by_column) {
-        for (int x = x0; x < x1; x++) {
-            row[x] = column_pixel(x, y);
-        }
-    } else {
-        paint_row_into(row, y, x0, x1);
-    }
-}
-
 #define EDGE_FAR (INT64_C(1) << 40)
 
 static inline __attribute__((always_inline)) int32_t
@@ -781,10 +764,47 @@ edge_swept_columns(int edge, int y, int64_t was_offset, int64_t now_offset, int*
     *x1 = clamp_int((int)((hi + 65535) >> 16) + 2, 0, GFX_WIDTH);
 }
 
-static inline __attribute__((always_inline)) void
+/* Only the front layer shows the gradient, so a swept pixel it does not
+ * reach keeps its colour. */
+static inline __attribute__((always_inline)) bool
+front_reaches(int x, int y) {
+    return boundary_distance(2, x, y) >= 0;
+}
+
+static void
+repaint_swept_columns(gfx_color_t* row, int y, int x0, int x1) {
+    int first = x1;
+    int last = x0;
+    for (int x = x0; x < x1; x++) {
+        if (front_reaches(x, y)) {
+            row[x] = column_pixel(x, y);
+            first = x < first ? x : first;
+            last = x + 1;
+        }
+    }
+    if (first < last) {
+        gfx_mark_dirty(first, y, last - first, 1);
+    }
+}
+
+static void
 flush_swept_run(int y, int x0, int x1) {
+    gfx_color_t* const row = gfx_framebuffer() + (y * GFX_WIDTH);
+    if (ridge->by_column) {
+        repaint_swept_columns(row, y, x0, x1);
+        return;
+    }
+    const int front = ridge->boundary[2][y];
+    if (front == INT16_MAX) {
+        return;
+    }
+    if (ridge->down_sign > 0) {
+        x0 = front > x0 ? front : x0;
+    } else {
+        x1 = front + 1 < x1 ? front + 1 : x1;
+    }
     if (x0 < x1) {
-        repaint_span(y, x0, x1);
+        paint_row_into(row, y, x0, x1);
         gfx_mark_dirty(x0, y, x1 - x0, 1);
     }
 }
@@ -809,11 +829,15 @@ repaint_swept_row(int y) {
             run_x1 = x1 > run_x1 ? x1 : run_x1;
             continue;
         }
-        flush_swept_run(y, run_x0, run_x1);
+        if (run_x0 < run_x1) {
+            flush_swept_run(y, run_x0, run_x1);
+        }
         run_x0 = x0;
         run_x1 = x1;
     }
-    flush_swept_run(y, run_x0, run_x1);
+    if (run_x0 < run_x1) {
+        flush_swept_run(y, run_x0, run_x1);
+    }
 }
 
 /* The gradient turned from `was` to the pose on screen: repaint the pixels
