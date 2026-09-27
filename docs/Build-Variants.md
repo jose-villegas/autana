@@ -58,10 +58,9 @@ launcher/tools/build/check_release_symbols.sh launcher/build/launcher.elf
 ```
 
 A development-only app's `app_<name>` belongs in the same count as
-`unity`/`suite_`/`selftest` not because the app is selftest-shaped — most of
-it is not — but because release is neither DEVELOPMENT nor SELFTEST, so
-every one of those symbols is absent from that image whichever of the two
-flags gates it.
+`unity`/`suite_`/`selftest` because release is neither DEVELOPMENT nor
+SELFTEST, so every one of those symbols is absent from that image whichever
+flag gates it.
 
 That matters for more than size. The suites draw to the framebuffer and drive
 the panel, which is fine in diagnostics and unacceptable in a product; and test
