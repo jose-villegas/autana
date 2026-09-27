@@ -16,6 +16,7 @@
 #include <stdlib.h>
 
 #include "app.h"
+#include "app_arena.h"
 #include "boot/boot_anim.h"
 #include "boot/post.h"
 #include "boot/post_layout.h"
@@ -371,7 +372,7 @@ static int control_center_backdrop_quarter;
 
 static void
 exit_app(const app_t** current) {
-    ESP_LOGI(TAG, "Leaving %s", (*current)->name);
+    ESP_LOGI(TAG, "Leaving %s, arena %u KiB", (*current)->name, (unsigned)(app_arena_used() / 1024));
     (*current)->exit();
     restore_system_display_state();
     *current = NULL;
@@ -401,6 +402,7 @@ start_app(const app_t** current, const app_t* next) {
     gfx_request_full_redraw();
     restore_system_display_state();
     exit_requested = false;
+    app_arena_reset();
     (*current)->enter();
     frame_ready = false;
 }
@@ -537,9 +539,13 @@ static int shell_test_enters;
 static int shell_test_frames;
 static int shell_test_exits;
 
+static size_t shell_test_arena_at_enter;
+
 static void
 shell_test_enter(void) {
     shell_test_enters++;
+    shell_test_arena_at_enter = app_arena_used();
+    (void)app_arena_take(1024, 1);
 }
 
 static void
@@ -588,6 +594,20 @@ shell_test_requested_exit(void) {
     }
     exit_requested = false;
     return ordinary && left && launcher_next;
+}
+
+bool
+shell_test_every_visit_starts_with_an_empty_arena(void) {
+    const app_t* current = NULL;
+    (void)app_arena_take(512, 1);
+    start_app(&current, &shell_test_app);
+    const bool first = shell_test_arena_at_enter == 0;
+    exit_app(&current);
+    start_app(&current, &shell_test_app);
+    const bool second = shell_test_arena_at_enter == 0 && shell_test_enters == 2;
+    exit_app(&current);
+    exit_requested = false;
+    return first && second;
 }
 
 bool

@@ -15,6 +15,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "app_arena.h"
 #include "board/board.h"
 #include "gfx/gfx.h"
 
@@ -188,7 +189,8 @@ check_memory(void) {
 
     char psram_detail[64];
     if (psram != 0) {
-        snprintf(psram_detail, sizeof(psram_detail), "%u MiB present", (unsigned)(psram / (1024 * 1024)));
+        snprintf(psram_detail, sizeof(psram_detail), "%u MiB heap + %u MiB app arena",
+                 (unsigned)(psram / (1024 * 1024)), (unsigned)(APP_ARENA_BYTES / (1024 * 1024)));
     } else {
         snprintf(psram_detail, sizeof(psram_detail), "absent - unexpected");
     }

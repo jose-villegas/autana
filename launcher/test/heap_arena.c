@@ -40,6 +40,8 @@
 
 #include "heap_arena.h"
 
+#include "app_arena.h"
+
 #include "stubs/esp_heap_caps.h"
 
 #include <stdio.h>
@@ -137,7 +139,8 @@ static arena_pool_t s_internal = {
 static arena_pool_t s_psram = {
     .storage = s_psram_storage,
     .storage_bytes = sizeof(s_psram_storage),
-    .default_cap = HOST_HEAP_ARENA_PSRAM_BYTES,
+    /* The app arena's static block is placed in PSRAM before the heap gets any. */
+    .default_cap = HOST_HEAP_ARENA_PSRAM_BYTES - APP_ARENA_BYTES,
     .env_var = "HOST_HEAP_ARENA_PSRAM_BYTES",
     .label = "psram",
 };

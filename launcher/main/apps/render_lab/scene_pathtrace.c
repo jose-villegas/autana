@@ -10,8 +10,8 @@
  * how it tells the app to grant GFX_LAYOUT_FULL_FB whatever
  * render_lab_band_mode asks for.
  *
- * The accumulator is allocated, not a static: a permanent ~1 MB .bss entry
- * would eat the dev build's heap margin. A failed allocation falls back to
+ * The accumulator (about 1 MB) comes from the app arena, which the app
+ * rewinds when this scene exits. A refused take() falls back to
  * rt_path_schedule_advance()'s own direct-light-only path rather than
  * losing the scene.
  */
@@ -22,8 +22,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "esp_heap_caps.h"
-
+#include "app_arena.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "render_lab.h"
@@ -66,7 +65,7 @@ scene_pathtrace_enter(void) {
     gfx_set_partial_clear(false);
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
 
-    accum = heap_caps_malloc(sizeof(*accum) * (size_t)GFX_WIDTH * GFX_HEIGHT, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    accum = app_arena_take(sizeof(*accum) * (size_t)GFX_WIDTH * GFX_HEIGHT, _Alignof(rt_path_accum_px_t));
 
     current_quarter = display_shell_quarter();
     rt_cornell_camera_init(&camera, (r3d_viewport_t){GFX_WIDTH, GFX_HEIGHT, current_quarter});
@@ -75,7 +74,6 @@ scene_pathtrace_enter(void) {
 
 static void
 scene_pathtrace_exit(void) {
-    heap_caps_free(accum);
     accum = NULL;
 }
 

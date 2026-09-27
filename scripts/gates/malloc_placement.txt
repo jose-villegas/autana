@@ -1,6 +1,4 @@
 # file	function	callee	count
-launcher/main/apps/render_lab/scene_pathtrace.c	scene_pathtrace_enter	heap_caps_malloc	1
-launcher/main/apps/render_lab/scene_pathtrace.c	scene_pathtrace_exit	heap_caps_free	1
 launcher/main/apps/render_lab/scene_wire.c	wire_enter	heap_caps_free	2
 launcher/main/apps/render_lab/scene_wire.c	wire_enter	heap_caps_malloc	2
 launcher/main/apps/render_lab/scene_wire.c	wire_exit	heap_caps_free	2
