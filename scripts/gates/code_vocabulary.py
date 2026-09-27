@@ -2,8 +2,8 @@
 import pathlib
 import re
 
-SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components", ".git"}
-SOURCE_SUFFIXES = {".c", ".h", ".py"}
+SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components", "node_modules", ".git"}
+SOURCE_SUFFIXES = {".c", ".h", ".py", ".mjs"}
 C_SUFFIXES = {".c", ".h"}
 FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\(")
 MACRO = re.compile(r"^\s*#\s*define\s+([A-Z][A-Z0-9_]+)\b", re.M)
@@ -35,7 +35,7 @@ def _without_comments_or_strings(text, strings=True):
     spaces (newlines kept, so line numbers and `^`-anchored regexes still
     line up). C syntax only - `#`, `//` as division, `'` inside a word and a
     triple-quoted docstring all parse wrong under it, so `vocabulary()` below
-    applies this to C_SUFFIXES only, never to a .py file.
+    applies this to C and .mjs sources, never to a .py file.
 
     A name spelled `name()` only inside a comment or a message string - a
     citation of some OTHER function, say - is not a declaration or a call,
@@ -124,6 +124,10 @@ def vocabulary(root):
             # string - an environment variable it reads, a line it matches.
             vocab.constants |= set(PY_CONSTANT.findall(text))
             vocab.constants |= set(CONSTANT.findall(PY_COMMENT.sub("", text)))
+        elif path.suffix == ".mjs":
+            # An environment variable a Node gate reads; its functions are
+            # camelCase and never cited as a C or Python name would be.
+            vocab.constants |= set(CONSTANT.findall(_without_comments_or_strings(text, strings=False)))
         else:
             kconfig += KCONFIG.findall(text)
     vocab.script_functions -= vocab.functions
