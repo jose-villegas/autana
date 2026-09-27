@@ -241,6 +241,13 @@ test_ridge_settles_after_tilting(void) {
         ui_ridge_step(&idle_input, FRAME_DT_MS);
         gfx_present();
     }
+    /* A turn of about a degree, less than the gradient follows in one step:
+     * it catches up only once the ridge holds still. */
+    ui_ridge_set_gravity(-241, 84, 256, 0);
+    for (int frame = 0; frame < 150; frame++) {
+        ui_ridge_step(&idle_input, FRAME_DT_MS);
+        gfx_present();
+    }
     gfx_reset_strip_send_counts();
     for (int frame = 0; frame < 60; frame++) {
         ui_ridge_step(&idle_input, FRAME_DT_MS);
