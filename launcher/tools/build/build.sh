@@ -6,8 +6,8 @@
 # the two that opens the serial port. Nothing here needs a board or a lock.
 #
 # Usage:
-#   tools/build/build_flash.sh [--dev|--diag] [--autorun] [--perf-scope]
-#                              [--verbose] [IDF_EXPORT]
+#   tools/build/build.sh [--dev|--diag] [--autorun] [--perf-scope]
+#                        [--verbose] [IDF_EXPORT]
 #
 #   --verbose   stream and save the build output. The full stream is in the
 #               printed log path in either mode.
@@ -34,7 +34,7 @@
 #
 # Run from anywhere (it cds to launcher/ itself); double-click from Explorer
 # if .sh is associated with Git Bash, or right-click launcher/tools/ ->
-# "Git Bash Here" -> `./build_flash.sh`.
+# "Git Bash Here" -> `./build.sh`.
 #
 # All the logic here is POSIX sh. On Windows the ESP-IDF calls go through
 # tools/build/idf_shim.bat, which exists only to delete MSYSTEM - see tools/build/idf.sh
@@ -121,7 +121,7 @@ quiet_finish() {
     status=$?
     trap - EXIT
     set +e
-    quiet_end build_flash "$status" || true
+    quiet_end build "$status" || true
     if [ "$status" -ne 0 ]; then
         echo
         echo "=== FAILED (exit $status) ==="

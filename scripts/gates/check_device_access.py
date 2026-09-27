@@ -20,7 +20,8 @@ comment is no part of the command, and a Python argument list is read across
 the lines it spans.
 
 A document naming one of `RETIRED_SCRIPTS` points at a file that does not
-exist; the board is reached through `autana`, docs/tools/Autana-CLI.md.
+exist; the board is reached through `autana`, docs/tools/Autana-CLI.md, and
+a build through launcher/tools/build/build.sh.
 """
 import pathlib
 import re
@@ -39,6 +40,9 @@ RETIRED_SCRIPTS = (
     "collect_device_results.py",
     "capture_selftest.py",
     "capture_runsuite.py",
+    "build_flash.sh",
+    "build_flash_dev.sh",
+    "build_flash_diag.sh",
 )
 
 SERIAL_OPEN_RE = re.compile(r"\bserial\.Serial\s*\(|(?<![.\w])Serial\s*\(")

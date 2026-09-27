@@ -66,7 +66,7 @@ device_report_run() {
     _dr_board="${1:-}"
     _dr_out="${2:-}"
 
-    # launcher/, wherever this report lives: beside tools/build/build_flash.sh, or
+    # launcher/, wherever this report lives: beside tools/build/build.sh, or
     # four folders down in an app's own tools/. Found by walking up to the
     # folder that holds this file rather than by counting levels, so moving a
     # report script between the two is not a second thing to edit. Not by

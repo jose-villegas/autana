@@ -31,7 +31,7 @@
 # (default origin/main, the same ref docs/tools/Complexity-Gate.md names
 # for local use; CI scores the whole tree instead).
 #
-# See build_flash.sh for the arguments and for why both -D flags on its
+# See build.sh for the arguments and for why both -D flags on its
 # idf.py call are load-bearing.
 
 set -euo pipefail
@@ -84,9 +84,9 @@ complexity_gate() {
 
 build_diag() {
     if [ "$VERBOSE" -eq 1 ]; then
-        "$DIR/build_flash.sh" --diag --verbose ${IDF_EXPORT_ARG:+"$IDF_EXPORT_ARG"}
+        "$DIR/build.sh" --diag --verbose ${IDF_EXPORT_ARG:+"$IDF_EXPORT_ARG"}
     else
-        "$DIR/build_flash.sh" --diag ${IDF_EXPORT_ARG:+"$IDF_EXPORT_ARG"}
+        "$DIR/build.sh" --diag ${IDF_EXPORT_ARG:+"$IDF_EXPORT_ARG"}
     fi
 }
 
