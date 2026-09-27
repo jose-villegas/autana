@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
 #
-# Build the launcher's firmware and flash it to the device.
+# Build the launcher's firmware. Writing it to the board is the other half of
+# `autana flash`: device.py runs this script and then, under the board's
+# lock, scripts/device/flash_image.sh - the only one of the two that opens
+# the serial port. Nothing here needs a board or a lock.
 #
 # Usage:
-#   tools/build/build_flash.sh [--dev|--diag] [--autorun] [--perf-scope] \
-#                        [--build-only] [--verbose] [IDF_EXPORT]
+#   tools/build/build_flash.sh [--dev|--diag] [--autorun] [--perf-scope] #                        [--build-only] [--verbose] [IDF_EXPORT]
 #
 #   --verbose   stream and save the build output. The full stream is in the
 #               printed log path in either mode.
-#   --dev       build the DEVELOPMENT image instead of the release one, and
-#               leave it on the board: development-only logging and
+#   --dev       build the DEVELOPMENT image (build.dev/) instead of the
+#               release one (build/): development-only logging and
 #               instrumentation (frame timings, the screenshot listener)
 #               plus the Diagnostics app, but no test suites. See below.
-#   --diag      build the DIAGNOSTICS image instead of the release one, and
-#               leave it on the board: everything --dev gets you, plus the
-#               on-device test suites and Diagnostics' own button for
-#               running them. See below.
+#   --diag      build the DIAGNOSTICS image (build.diag/): everything --dev
+#               gets you, plus the on-device test suites and Diagnostics' own
+#               button for running them. See below.
 #   --autorun   with --diag only: layer sdkconfig.defaults.diag_autorun, so
 #               the suites run at boot instead of waiting for Diagnostics'
 #               button. A serial capture of SELFTEST_COMPLETE needs this;
@@ -27,15 +28,10 @@
 #               static RAM a capture needs to instrument itself; drops
 #               behaviour coverage, so never a merge gate, and its numbers
 #               compare only with other perf-scoped captures.
-#   --build-only  build and stop: no device needed, nothing flashed.
+#   --build-only  the same as no flag, since building is all this does; CI
+#               and the docs spell it to say no board is involved.
 #   IDF_EXPORT  path to ESP-IDF's export script - export.bat on Windows,
 #               export.sh elsewhere. Default: the one under $IDF_PATH.
-#
-# Flashing needs AUTANA_DEVICE_LOCK_TOKEN and AUTANA_BOARD (the board's USB
-# serial number) in the environment. device.py's `flash`, `selftest` and
-# `batch` set both after taking that board's lock, so run
-# `autana flash rel|dev|diag` rather than this script directly. --build-only
-# needs neither.
 #
 # Run from anywhere (it cds to launcher/ itself); double-click from Explorer
 # if .sh is associated with Git Bash, or right-click launcher/tools/ ->
@@ -62,18 +58,10 @@
 # a screenshot. Note the Diagnostics app carries its own side effects in
 # EITHER build: entering it re-runs POST, cycling the audio rail - that is
 # the cost of the way in being compiled at all, not of the test suites.
-#
-# Using either flag means putting that image on the board and leaving it.
-# Nothing else here does that: `autana selftest` and the report scripts
-# flash the diagnostics variant too, but to read test output back, and the
-# report scripts restore release afterwards - see tools/device/device_report.sh.
-# Neither is "put this image on the device and leave it there", which is
-# what these flags are for.
 
 set -euo pipefail
 
 VARIANT=release
-BUILD_ONLY=0
 PERF_SCOPE=0
 AUTORUN=0
 VERBOSE=0
@@ -85,9 +73,9 @@ while [ $# -gt 0 ]; do
         -d|--diag) VARIANT=diag; shift ;;
         --autorun) AUTORUN=1; shift ;;
         --perf-scope) PERF_SCOPE=1; shift ;;
-        --build-only) BUILD_ONLY=1; shift ;;
+        --build-only) shift ;;
         --verbose) VERBOSE=1; shift ;;
-        -h|--help) sed -n '2,/^# what these flags are for\./p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,/^# the cost of the way in/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         --)        shift; break ;;
         -*)        echo "unknown option: $1" >&2; exit 2 ;;
         *)
@@ -114,21 +102,6 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-
-check_flash_lock() {
-    if [ -z "${AUTANA_DEVICE_LOCK_TOKEN:-}" ] || [ -z "${AUTANA_BOARD:-}" ]; then
-        echo "ERROR: flashing needs the device lock on a named board." >&2
-        echo "Run 'autana flash rel|dev|diag' instead, or pass --build-only." >&2
-        return 1
-    fi
-    if ! python "$LAUNCHER_DIR/../scripts/device/device_lock.py" \
-            --board "$AUTANA_BOARD" \
-            check-token --token "$AUTANA_DEVICE_LOCK_TOKEN"; then
-        echo "ERROR: device lock token is not active for board $AUTANA_BOARD" >&2
-        echo "Run 'autana flash rel|dev|diag' instead, or pass --build-only." >&2
-        return 1
-    fi
-}
 
 case "$VARIANT" in
     release) BUILD_DIR="build" ;;
@@ -180,55 +153,4 @@ BUILD_ID=$(tr -d '\r\n' < "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt")
 # stays on stdout, outside quiet_run, or no flash can name what it wrote.
 echo "BUILD_ID=$BUILD_ID"
 
-if [ "$BUILD_ONLY" -eq 1 ]; then
-    # Reaching this line IS the result: nothing is flashed and no device
-    # has to be attached.
-    echo "=== Done - $BUILD_DIR built, nothing flashed ==="
-    exit 0
-fi
-
-# Flashing touches a shared board, so it needs that board's lock - this
-# refuses without proof one is held, rather than opening the port itself and
-# risking two writers. The port is looked up only now, after the build: a
-# board keeps its serial number but can come back from a reset on another COM.
-check_flash_lock
-COM_PORT=$(python "$LAUNCHER_DIR/../scripts/device/device.py" --board "$AUTANA_BOARD" resolve-port)
-
-echo "=== Flashing to $COM_PORT ==="
-idf -B "$BUILD_DIR" -p "$COM_PORT" flash
-
-case "$VARIANT" in
-    dev)
-        echo "=== Done - the DEVELOPMENT image is on the device ==="
-        echo "    Development-only logging and instrumentation is on, and the"
-        echo "    Diagnostics app is there (BOOT for its toggles page); no test"
-        echo "    suites. Re-run without --dev to put release back."
-        ;;
-    diag)
-        echo "=== Done - the DIAGNOSTICS image is on the device ==="
-        if [ "$AUTORUN" -eq 1 ]; then
-            echo "    AUTORUN is layered: every compiled-in suite runs at boot,"
-            echo "    before the shell comes up, and the run ends in a"
-            echo "    SELFTEST_COMPLETE line on the console."
-        else
-            echo "    The test suites are compiled in - Diagnostics' own button runs"
-            echo "    them on demand, since AUTORUN is not layered here."
-        fi
-        if [ "$PERF_SCOPE" -eq 1 ]; then
-            echo "    PERF-SCOPED: only sources apps declare are in there. Its numbers"
-            echo "    compare only with other perf-scoped captures, and it is not a"
-            echo "    behaviour gate."
-        fi
-        echo "    Re-run without --diag to put the release firmware back."
-        ;;
-    *)
-        echo "=== Done ==="
-        ;;
-esac
-
-# `|| true` because this is the LAST command: with stdin at EOF (piped, or
-# redirected from /dev/null in CI) read returns non-zero, which became the
-# script's exit status and made the trap above announce a failure over a
-# perfectly good flash. The pause is a convenience for double-clickers, not
-# a step that can fail.
-read -r -p "Press Enter to close..." _ || true
+echo "=== Done - $BUILD_DIR built ==="

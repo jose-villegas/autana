@@ -4,8 +4,7 @@
     python scripts/gates/check_doc_constants.py [--root ROOT] [--docs-ref REF] [--verbose]
 
 Put ``<!-- doc-constants: ignore -->`` on a line to retain a deliberate
-historical value. The allowlist is doc, name, claimed value, and reason,
-separated by tabs in scripts/gates/doc_constant_allowlist.txt.
+historical value.
 """
 import pathlib
 import re
@@ -191,39 +190,6 @@ def table_values(root):
             if value is not None and key[0].lower() not in {"empty", "extended"}}
 
 
-def allowlist(root):
-    path = pathlib.Path(root) / "scripts/gates/doc_constant_allowlist.txt"
-    allowed = set()
-    if not path.exists():
-        return allowed
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        if not line or line.startswith("#"):
-            continue
-        fields = line.split("\t")
-        if len(fields) != 4 or not all(fields):
-            raise ValueError(f"{path}:{number}: expected doc, name, value, reason")
-        if not fields[2].isdigit():
-            raise ValueError(f"{path}:{number}: value must be decimal")
-        allowed.add((fields[0], fields[1], int(fields[2])))
-    return allowed
-
-
-def stale_allowlist(root):
-    """Allowlist entries whose documented value no longer disagrees with the
-    code, or that no longer appear in their document, as (doc, name, value)."""
-    root = pathlib.Path(root)
-    values = constants(root)
-    stale = []
-    for doc, name, value in sorted(allowlist(root)):
-        path = root / doc
-        text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
-        mentioned = re.search(r"\b" + re.escape(name) + r"\b", text) and re.search(
-            r"(?<![\d.])" + str(value) + r"(?![\d.])", text)
-        if values.get(name) == value or not mentioned:
-            stale.append((doc, name, value))
-    return stale
-
-
 def adjacent(name, number, text):
     before = text[:number.start()]
     return (re.search(r"\b" + re.escape(name.group()) + r"\b\s*(?:`)?\s*(?:\(|=|,\s*currently(?:\s+is)?\s+|(?:is|are|currently|at|of)\s+)[^\d]{0,24}$", before) is not None or
@@ -304,7 +270,7 @@ def table_rows(text):
             number += 1
 
 
-def table_claims(doc, text, values, allowed, mismatches, skipped):
+def table_claims(doc, text, values, mismatches, skipped):
     entries = sorted({entry for entry, _ in values}, key=len, reverse=True)
     for line, headings, cells in table_rows(text):
         row = " | ".join(cells)
@@ -323,9 +289,7 @@ def table_claims(doc, text, values, allowed, mismatches, skipped):
                     number = numbers[0]
                     claimed = int(number.group())
                     name = f"{entry}.{field}"
-                    if (doc, name, claimed) in allowed:
-                        skipped.append((doc, line, "allowlisted"))
-                    elif claimed != defined:
+                    if claimed != defined:
                         mismatches.append(Mismatch(doc, line, name, claimed, defined))
                     continue
                 if column >= len(cells):
@@ -337,9 +301,7 @@ def table_claims(doc, text, values, allowed, mismatches, skipped):
                     continue
                 claimed = int(number.group())
                 name = f"{entry}.{field}"
-                if (doc, name, claimed) in allowed:
-                    skipped.append((doc, line, "allowlisted"))
-                elif claimed != defined:
+                if claimed != defined:
                     mismatches.append(Mismatch(doc, line, name, claimed, defined))
 
 
@@ -403,7 +365,6 @@ def check(root, verbose=False, docs_ref=None):
     root = pathlib.Path(root)
     values = constants(root)
     material_values = table_values(root)
-    allowed = allowlist(root)
     mismatches, skipped = [], []
     names = re.compile(r"\b(" + "|".join(map(re.escape, sorted(values, key=len, reverse=True))) + r")\b") if values else None
     for doc, path, text in documents(root, docs_ref):
@@ -441,12 +402,10 @@ def check(root, verbose=False, docs_ref=None):
                         skipped.append((doc, line, "skipped-on-unit"))
                         continue
                     claimed = int(number.group())
-                    if (doc, name.group(), claimed) in allowed:
-                        skipped.append((doc, line, "allowlisted"))
-                    elif claimed != values[name.group()]:
+                    if claimed != values[name.group()]:
                         mismatches.append(Mismatch(doc, line, name.group(), claimed, values[name.group()]))
         table_claims(doc, text or path.read_text(encoding="utf-8", errors="replace"), material_values,
-                     allowed, mismatches, skipped)
+                     mismatches, skipped)
         for line, sentence in sentences(path, masked_tables(text or path.read_text(encoding="utf-8", errors="replace"))):
             if ESCAPE in sentence:
                 continue
@@ -465,9 +424,7 @@ def check(root, verbose=False, docs_ref=None):
                 for number in numbers:
                     claimed = int(number.group())
                     name = f"{entry}.{field}"
-                    if (doc, name, claimed) in allowed:
-                        skipped.append((doc, line, "allowlisted"))
-                    elif claimed != defined:
+                    if claimed != defined:
                         mismatches.append(Mismatch(doc, line, name, claimed, defined))
             for field in IMPLIED_UNIQUE_FIELDS:
                 owners = [(entry, defined) for (entry, candidate), defined in material_values.items()
@@ -480,9 +437,7 @@ def check(root, verbose=False, docs_ref=None):
                 entry, defined = owners[0]
                 claimed = int(numbers[0].group())
                 name = f"{entry}.{field}"
-                if (doc, name, claimed) in allowed:
-                    skipped.append((doc, line, "allowlisted"))
-                elif claimed != defined:
+                if claimed != defined:
                     mismatches.append(Mismatch(doc, line, name, claimed, defined))
         for line, source in mermaid_lines(text or path.read_text(encoding="utf-8", errors="replace")):
             for (entry, field), defined in material_values.items():
@@ -495,9 +450,7 @@ def check(root, verbose=False, docs_ref=None):
                     continue
                 claimed = int(numbers[0].group())
                 name = f"{entry}.{field}"
-                if (doc, name, claimed) in allowed:
-                    skipped.append((doc, line, "allowlisted"))
-                elif claimed != defined:
+                if claimed != defined:
                     mismatches.append(Mismatch(doc, line, name, claimed, defined))
     return (mismatches, skipped) if verbose else mismatches
 
@@ -521,7 +474,6 @@ def main(argv):
         return 2
     try:
         result = check(root, verbose, docs_ref)
-        stale = stale_allowlist(root)
     except (subprocess.CalledProcessError, ValueError) as error:
         print(error, file=sys.stderr)
         return 2
@@ -533,13 +485,9 @@ def main(argv):
             print(f"{doc}:{line}: skipped: {reason}")
         for reason in sorted(set(item[2] for item in skipped)):
             print(f"{sum(item[2] == reason for item in skipped)} skipped: {reason}")
-    for doc, name, value in stale:
-        print(f"scripts/gates/doc_constant_allowlist.txt: stale entry {doc} {name} {value}: "
-              "the document no longer disagrees with the code")
     print(f"{len(mismatches)} documentation constant mismatch"
-          f"{'' if len(mismatches) == 1 else 'es'}, {len(stale)} stale allowlist "
-          f"entr{'y' if len(stale) == 1 else 'ies'}")
-    return 1 if mismatches or stale else 0
+          f"{'' if len(mismatches) == 1 else 'es'}")
+    return 1 if mismatches else 0
 
 
 if __name__ == "__main__":
