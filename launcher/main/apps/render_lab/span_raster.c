@@ -202,20 +202,33 @@ step_row(const fill_t* f, int32_t row[ATTRIBUTES]) {
     }
 }
 
+typedef struct {
+    int32_t x;
+    int32_t step;
+} edge32_t;
+
+/* edge_at() in 32 bits, for vertices inside NARROW_LIMIT: the same float
+ * arithmetic, so the same positions, without 64-bit conversions - each of
+ * which is a library call on this chip. */
+static edge32_t
+edge32_at(const span_vertex_t* top, const span_vertex_t* bottom, int y) {
+    const float dy = bottom->y - top->y;
+    const float slope = dy > 0.0f ? (bottom->x - top->x) / dy : 0.0f;
+    const int anchor = fast_ceil(top->y - 0.5f);
+    const float x = top->x + ((float)anchor + 0.5f - top->y) * slope;
+    const edge32_t e = {(int32_t)(x * 65536.0f),
+                        (int32_t)clampf(slope * 65536.0f, (float)-NARROW_STEP_MAX, (float)NARROW_STEP_MAX)};
+    return y == anchor ? e : (edge32_t){e.x + (y - anchor) * e.step, e.step};
+}
+
 static void
-walk32(const span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge_t left,
-       edge_t right) {
-    int32_t lx = (int32_t)left.x, rx = (int32_t)right.x;
-    const int32_t ls =
-        (int32_t)(left.step < -NARROW_STEP_MAX ? -NARROW_STEP_MAX
-                                               : (left.step > NARROW_STEP_MAX ? NARROW_STEP_MAX : left.step));
-    const int32_t rs =
-        (int32_t)(right.step < -NARROW_STEP_MAX ? -NARROW_STEP_MAX
-                                                : (right.step > NARROW_STEP_MAX ? NARROW_STEP_MAX : right.step));
+walk32(const span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge32_t left,
+       edge32_t right) {
+    int32_t lx = left.x, rx = right.x;
     for (int y = y0; y < y1; y++) {
         fill_row(target, f, row, y, first_pixel32(lx), first_pixel32(rx) - 1);
-        lx += ls;
-        rx += rs;
+        lx += left.step;
+        rx += right.step;
         step_row(f, row);
     }
 }
@@ -231,16 +244,21 @@ walk64(const span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], in
     }
 }
 
+/* Walks rows [y0, y1) between the edges top-a..bottom-a and top-b..bottom-b,
+ * `a_on_left` saying which is which. */
 static void
-walk(const span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge_t left, edge_t right,
+walk(const span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, const span_vertex_t* top_a,
+     const span_vertex_t* bottom_a, const span_vertex_t* top_b, const span_vertex_t* bottom_b, bool a_on_left,
      bool narrow) {
     if (y0 >= y1) {
         return;
     }
     if (narrow) {
-        walk32(target, f, row, y0, y1, left, right);
+        const edge32_t a = edge32_at(top_a, bottom_a, y0), b = edge32_at(top_b, bottom_b, y0);
+        walk32(target, f, row, y0, y1, a_on_left ? a : b, a_on_left ? b : a);
     } else {
-        walk64(target, f, row, y0, y1, left, right);
+        const edge_t a = edge_at(top_a, bottom_a, y0), b = edge_at(top_b, bottom_b, y0);
+        walk64(target, f, row, y0, y1, a_on_left ? a : b, a_on_left ? b : a);
     }
 }
 
@@ -315,16 +333,6 @@ span_raster_triangle(const span_target_t* target, const span_vertex_t* a, const 
     }
     const fill_t f = {flat, flat_z, flat_color, &g};
 
-    const edge_t long_top = edge_at(v0, v2, y_first);
-    if (y_first < split) {
-        const edge_t short_top = edge_at(v0, v1, y_first);
-        walk(target, &f, row, y_first, split, long_on_left ? long_top : short_top, long_on_left ? short_top : long_top,
-             narrow);
-    }
-    if (split < y_end) {
-        const edge_t long_mid = edge_at(v0, v2, split);
-        const edge_t short_bottom = edge_at(v1, v2, split);
-        walk(target, &f, row, split, y_end, long_on_left ? long_mid : short_bottom,
-             long_on_left ? short_bottom : long_mid, narrow);
-    }
+    walk(target, &f, row, y_first, split, v0, v2, v0, v1, long_on_left, narrow);
+    walk(target, &f, row, split, y_end, v0, v2, v1, v2, long_on_left, narrow);
 }
