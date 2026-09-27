@@ -43,6 +43,7 @@ launcher/
 └── main/
     ├── main.c          the frame loop and app switching
     ├── app.h           the shell/app contract
+    ├── app_arena.{h,c} the PSRAM block lent to the running app (host-tested)
     ├── app_registry.c  the registered apps, sorted by name (host-tested)
     ├── boot/           runs once each, before the frame loop exists
     │   ├── post.{h,c}          power-on self test
@@ -468,16 +469,14 @@ here is why the build is shaped the way it is.
 > would silently vanish from the menu. Not a link error: a smaller binary and a
 > shorter list.
 
-**App memory is lent, not owned.** The shell holds one static 4 MiB block
-in PSRAM, the app arena (`app_arena.h`), and empties it before every app's
-`enter()`; an app takes bulk buffers from it and never frees them. How to
-use it is [Building-an-App.md's App memory](Building-an-App.md#app-memory).
-
-| What holds | Because |
-|---|---|
-| No app keeps arena memory across visits | the shell resets it before each `enter()` |
-| Re-entry cannot fail to heap fragmentation | it is the same static block every visit |
-| An app makes no dynamic-memory call for it (MISRA 21.3) | `app_arena_take()` bumps an offset into a static |
+**App memory is lent, not owned.** The shell holds one static block in
+PSRAM, the app arena (`APP_ARENA_BYTES`, `app_arena.h`), and empties it
+before every app's `enter()`; an app takes bulk buffers from it and never
+frees them. How to use it is
+[Building-an-App.md's App memory](Building-an-App.md#app-memory). Re-entry
+cannot fail to heap fragmentation, since every visit gets the same static
+block, and taking from it is no dynamic-memory call (MISRA 21.3): it bumps
+an offset.
 
 **Bench-only apps** - `apps/diagnostics/` and `apps/input_lab/` - are
 excluded by folder when `CONFIG_LAUNCHER_DEVELOPMENT` is off, structural

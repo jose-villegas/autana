@@ -76,7 +76,7 @@ panel is in [Gfx-and-Presentation.md](../Gfx-and-Presentation.md).
 `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps every allocation up to 64 KB
 in internal SRAM, sand's grids included. The app arena (`main/app_arena.h`)
 is a static placed in PSRAM before the heap takes the rest, so the PSRAM heap
-is the other 4 MiB.
+is what `APP_ARENA_BYTES` leaves.
 
 | Measurement | Value | Source |
 |---|---|---|

@@ -115,8 +115,9 @@ launch, `leave_app()` on leave:
 |---|---|
 | `gfx_request_full_redraw()` | `exit()` |
 | `restore_system_display_state()` | `restore_system_display_state()` |
-| `enter()` | `gfx_request_full_redraw()` |
-| next pass: `invalidate()`, then the first `frame()` | launcher drawn and presented the same pass |
+| `app_arena_reset()` | `gfx_request_full_redraw()` |
+| `enter()` | launcher drawn and presented the same pass |
+| next pass: `invalidate()`, then the first `frame()` | |
 
 `enter()` always precedes the first `frame()`; `exit()` always follows the
 last. The pass that leaves calls neither `update()` nor `frame()`, so the app
@@ -223,18 +224,18 @@ every app heap. Bulk memory comes from the app arena - see
 
 ### App memory
 
-The shell owns one 4 MiB block in PSRAM (`app_arena.h`) and lends it to the
-running app. Nothing taken from it survives the visit.
+The shell owns one block in PSRAM, `APP_ARENA_BYTES` long (`app_arena.h`),
+and lends it to the running app. Nothing taken from it survives the visit.
 
 | Call | Who | What |
 |---|---|---|
 | `app_arena_take(size, align)` | the app, usually in `enter()` | the next `size` bytes, or `NULL` when the rest cannot hold them - never an abort, so keep a fallback |
-| `app_arena_mark()` / `app_arena_release(mark)` | the app | scope a shorter lifetime inside one visit, such as one scene of several |
+| `app_arena_mark()` / `app_arena_rewind(mark)` | the app | scope a shorter lifetime inside one visit; rewinding past what is in use asserts |
 | `app_arena_reset()` | the shell only | before every app's `enter()` |
 
 ```c
 static void yours_enter(void) {
-    buf = app_arena_take(BUF_BYTES, _Alignof(pixel_t)); /* NULL: run without it */
+    buf = app_arena_take(BUF_BYTES, _Alignof(gfx_color_t)); /* NULL: run without it */
 }
 static void yours_exit(void) {
     buf = NULL; /* nothing to free */
@@ -255,6 +256,9 @@ and gfx heal goes back to its defaults. The gfx mode is **not** reset - that is
 An app that minds a stray pixel at 80 MHz opts into heal: `gfx_heal_mark()`,
 `gfx_heal_set_budget()`, `gfx_heal_set_rolling()`. Resolution logic:
 `display/panel_clock.c`.
+
+On every launch, `app_arena_reset()` empties the app arena before `enter()`:
+nothing an earlier visit took is still there.
 
 ### Full redraw
 
