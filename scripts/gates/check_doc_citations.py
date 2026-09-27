@@ -6,15 +6,18 @@ ESP-IDF.
 
 A backticked function (`name()`), path or CONSTANT_NAME a doc cites must be
 defined in this tree - the vendored components under launcher/components/
-included - or, for what the firmware uses but does not define, in ESP-IDF
-or its toolchain's C library (idf_vocabulary.outside_vocabulary()). A
-quoted section a doc or C comment cites must be a heading of the doc it
+included - or, for what the firmware uses but does not define, declared
+by ESP-IDF or its toolchain's C library (idf_vocabulary.outside_vocabulary()).
+ESP-IDF counts for every chip it supports, so a name declared only for
+another chip resolves too: that is the check's known limit. A quoted
+section a doc or C comment cites must be a heading of the doc it
 names. Under docs/plans/, which names what is not built yet, names are not
 checked; section citations still are.
 
 Without an ESP-IDF checkout, a name this tree does not define cannot be
 told apart from a typo, so it is counted, not failed, and one line says so.
---require-idf, which CI passes, makes a missing checkout an error instead.
+--require-idf, which CI passes, makes a missing checkout, or a missing
+toolchain C library beside it, an error instead.
 """
 import pathlib
 import re
@@ -23,7 +26,7 @@ import sys
 from check_comment_length import EXCLUDED as C_EXCLUDED, scan
 from check_doc_index import blank_fences, doc_headings
 from code_vocabulary import vocabulary
-from idf_vocabulary import no_idf, not_verified_notice, outside_vocabulary
+from idf_vocabulary import not_verified_notice, outside_vocabulary, required_missing
 from tracked import tracked_files
 
 INLINE = re.compile(r"`([^`\n]+)`")
@@ -234,7 +237,7 @@ def _outside(citation, outside):
     if citation.kind == "function":
         return citation.value in outside.functions
     if citation.kind == "macro":
-        return citation.value in outside.constants
+        return citation.value in outside.constants or citation.value in outside.types
     return outside.has_path(citation.value)
 
 
@@ -272,8 +275,8 @@ def main(argv):
         print("usage: check_doc_citations.py [--root ROOT] [--require-idf]", file=sys.stderr)
         return 2
     outside = outside_vocabulary()
-    if outside is None and require_idf:
-        print(no_idf(), file=sys.stderr)
+    if require_idf and required_missing(outside):
+        print(required_missing(outside), file=sys.stderr)
         return 2
     try:
         missing, unchecked = resolve(root, outside)

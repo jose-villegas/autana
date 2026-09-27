@@ -8,7 +8,8 @@ is worse than the long comment it replaced. Four kinds of citation are
 checked against the tree under `root`:
 
 - `name()` must be declared or called in C code under `root` (vendored
-  components included), or in ESP-IDF or its toolchain's C library
+  components included), or declared by ESP-IDF - for any chip it supports,
+  the check's known limit - or its toolchain's C library
   (idf_vocabulary.outside_vocabulary()), or, when the comment names a `.py`
   file, defined by a Python script.
 - A CONSTANT_NAME must be spelled somewhere other than a comment (see
@@ -25,7 +26,7 @@ tell whether what a comment SAYS about a real name is still true.
 
 Without an ESP-IDF checkout a `name()` the tree does not define is counted,
 not failed, and one line says so; --require-idf, which CI passes, makes a
-missing checkout an error instead.
+missing checkout, or a missing toolchain C library, an error instead.
 """
 import pathlib
 import re
@@ -34,7 +35,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from code_vocabulary import CONSTANT, family, vocabulary  # noqa: E402
 from check_comment_length import EXCLUDED, scan  # noqa: E402
-from idf_vocabulary import no_idf, not_verified_notice, outside_vocabulary  # noqa: E402
+from idf_vocabulary import not_verified_notice, outside_vocabulary, required_missing  # noqa: E402
 
 SKIP = ("build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components")
 CITED = re.compile(r"\b([a-z_][a-z0-9_]*)\(\)")
@@ -105,8 +106,8 @@ def main(argv):
     argv = [arg for arg in argv if arg != "--require-idf"]
     root = argv[0] if argv else "launcher"
     outside = outside_vocabulary()
-    if outside is None and require_idf:
-        print(no_idf(), file=sys.stderr)
+    if require_idf and required_missing(outside):
+        print(required_missing(outside), file=sys.stderr)
         return 2
     unchecked = []
     found = problems(root, outside, unchecked)

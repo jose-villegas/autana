@@ -347,6 +347,21 @@ Acid -->|"dissolvable 110"| Metal
         self.assertEqual(code, 2)
         self.assertIn("no ESP-IDF at", output)
 
+    def test_require_idf_fails_when_no_toolchain_c_library_is_found(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = pathlib.Path(temp)
+            root = base / "repo"
+            self.write(root, "docs/Guide.md", "nothing cited\n")
+            idf = fake_idf(base / "esp-idf")
+            (base / "no-tools").mkdir()
+            output = io.StringIO()
+            with mock.patch.dict(os.environ, {"IDF_PATH": str(idf), "IDF_TOOLS_PATH": str(base / "no-tools")}), \
+                    mock.patch.object(idf_vocabulary, "cache_directory", return_value=base / "cache"), \
+                    contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+                code = check_doc_citations.main(["--root", str(root), "--require-idf"])
+        self.assertEqual(code, 2)
+        self.assertIn("C library", output.getvalue())
+
     def test_a_constant_an_mjs_script_reads_resolves(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
