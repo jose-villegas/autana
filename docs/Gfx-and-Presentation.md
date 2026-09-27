@@ -156,7 +156,7 @@ sequenceDiagram
 | Call | Does |
 |---|---|
 | `gfx_present()` | `gfx_present_begin()` then `gfx_present_wait()` |
-| `gfx_present_begin()` | hands the target to core 1, returns at once. A no-op in band-ring mode. |
+| `gfx_present_begin()` | hands the target to core 1, returns at once. A no-op in band-ring mode. Each call also ends a frame for the frame watch (`util/frame_watch.h`). |
 | `gfx_present_wait()` | blocks until everything queued has landed |
 | `gfx_set_present_async()` | `false` sends on the caller's core instead, for A/B timing |
 

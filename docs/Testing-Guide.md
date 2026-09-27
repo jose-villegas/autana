@@ -452,18 +452,21 @@ a scene, frames and synthetic touch, the pins, the QEMU backend, and
 ## The frame watch as a gate
 
 The frame watch ([Launcher-Architecture.md](Launcher-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state))
-warns on the board; two places turn it into a failure, both judging frames
-after the same 16-frame warm-up by the same rule (a site in 8 of the last
-16 frames).
+warns on the board; two places turn it into a failure, both by the rule in
+`util/frame_watch.h` (`FRAME_WATCH_REPEATS` of the last
+`FRAME_WATCH_WINDOW` frames, after `FRAME_WATCH_WARMUP`). Either also fails
+when the watch ran out of room for an event, since a finding could hide
+there.
 
 | Where | A frame is | Watched | Fails |
 |---|---|---|---|
-| Every host render scene (`render_all_scenes.sh`, CI) | one `draw()` | `malloc`/`calloc`/`realloc`/`free` wrapped at link time, keyed by caller; anything written to stdout, which is where `ESP_LOG*` goes on a host | the render, with `FRAME_WATCH` lines on stderr carrying an `addr2line` command |
-| Every on-device test (the `RUN_TEST` wrapper in `test/timing.c`) | the span between two presents | the board's own watch | that test, with the `FRAME_WATCH` lines above its result |
+| Every host render scene (`render_all_scenes.sh`, CI) | one `draw()`; a scene with fewer frames than a warm-up and a window goes on drawing, unwritten, until it has them | `malloc`/`calloc`/`realloc`/`free` wrapped at link time, keyed by caller; anything written to stdout, which is where `ESP_LOG*` goes on a host | the render. A heap site's `FRAME_WATCH` line carries an `addr2line` command; a stdout one shows what that frame printed |
+| Every on-device test (the `RUN_TEST` wrapper in `test/timing.c`) | the span between two presents | the board's own watch | that test, with the `FRAME_WATCH` lines above its result. `FRAME_WATCH judged N of M tests` ends the run: a test that presents fewer than a warm-up's frames is not judged |
 
-A scene or test shorter than 24 frames is never judged. The harness proves
-its own check with `tools/render/tests/check_frame_watch.sh`: a fixture that
-allocates or prints every frame must fail, and once must pass.
+`tools/render/tests/check_frame_watch.sh` proves the host check: a fixture
+doing each kind of work every frame must fail naming that kind, once must
+pass, three call sites taking turns must not merge, and stdout must come
+back in order.
 
 ---
 

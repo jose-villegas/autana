@@ -118,11 +118,15 @@ A scene that leaves gfx in band mode is refused rather than rendered: the
 band ring retains no frame to read back, the same reason a device capture
 refuses one.
 
-Every `draw()` is also a frame to the frame watch (`render_watch.h`): an
-allocation, free or stdout write from the same site in 8 of 16 frames,
-after a 16-frame warm-up, fails the render with a `FRAME_WATCH` line and an
-`addr2line` command naming the site. The rule is the board's - see
-[Testing-Guide.md](../Testing-Guide.md#the-frame-watch-as-a-gate).
+Every `draw()` is also a frame to the frame watch (`render_watch.h`), which
+judges it by the board's rule - see
+[Testing-Guide.md](../Testing-Guide.md#the-frame-watch-as-a-gate). A scene
+declaring fewer frames than a warm-up and a window goes on drawing past its
+image until it has them, so every scene is judged at rest; its pixels and
+pins do not change. A finding fails the render: a heap site's `FRAME_WATCH`
+line carries an `addr2line` command naming it, a stdout one shows what that
+frame printed. Each render reports `watched <scene>/<render>: N frames
+judged`.
 
 ## What each scene's pixels are pinned to
 

@@ -462,11 +462,20 @@ frame. A development build watches for that at runtime
 
 | | |
 |---|---|
-| The frame | `main.c` opens it before input is read and closes it before `vTaskDelay()`. It covers the shell's pass, the app's `frame()` and `update()`, and the present - on the loop's task, the panel's sender and the core-1 job worker. |
+| The frame | From one `gfx_present_begin()` to the next: the shell presents once per pass, so a frame is the shell's pass, the app's `frame()` and `update()`, and the present. A pass that presents nothing (frozen, a console reply) joins the next frame. Work counts on the loop's task, the panel's sender and the core-1 job worker. |
 | Watched | Every heap allocation and free, through ESP-IDF's heap hooks (`CONFIG_HEAP_USE_HOOKS`, dev and diag defaults), keyed by the caller's address. Every `ESP_LOG*` line, through `esp_log_set_vprintf()`, keyed by its format string. A plain `printf()` is not watched on the board. |
-| Repeating | The same site in 8 of the last 16 frames, a quarter to half a second at this board's 30-60 fps. A START press that allocates once, or the fps report every 1.5 s, never qualifies. The 16 frames after an app is entered or left are counted but not judged. |
-| Warning | One `FRAME_WATCH` line per site, repeated at most every 10 s while it lasts: `FRAME_WATCH alloc in 16 of 16 frames at 0x4201abcd`. A log site also shows its format. `autana monitor` decodes the address to a file and line against the matching `.elf`. |
+| Repeating | The same site in `FRAME_WATCH_REPEATS` of the last `FRAME_WATCH_WINDOW` frames (`util/frame_watch.h`), a fraction of a second at this board's frame rate. Work done once when something happens, or a report every second or two, never qualifies. The `FRAME_WATCH_WARMUP` frames after an app is entered or left are counted but not judged. |
+| Warning | One `FRAME_WATCH` line per site, repeated at most every 10 s while it lasts: `FRAME_WATCH alloc in 9 of 16 frames at 0x4201abcd`. A log site also shows its format. `scripts/device/device.py` parses this line, so its shape is fixed by a test. |
 | Counts | `autana framewatch`, and the `frame_watch` key of `autana screenshot`'s `.json`: the last frame's allocs, frees and log lines, and the sites repeating now. |
+
+A finding shows up in `autana monitor`: live in a terminal, and in a piped or
+scripted run as one of the few lines it echoes, with every heap site decoded
+to a file and line under "frame watch sites decoded" against the matching
+`.elf`. In a saved capture, `grep FRAME_WATCH` finds it. The fix is the
+[Building-an-App.md](Building-an-App.md#rules) rule: allocate in `enter()`,
+free in `exit()`, and keep what a frame needs from one frame to the next. A
+log line belongs to a change - log when a value changes, not every frame it
+holds.
 
 The gates are in [Testing-Guide.md](Testing-Guide.md#the-frame-watch-as-a-gate):
 every host render scene, and every on-device test that presents.
