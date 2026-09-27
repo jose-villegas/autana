@@ -134,9 +134,33 @@ typedef struct {
     gfx_color_t scratch_row[GFX_WIDTH];
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
     uint8_t body_alpha[RIDGE_LAYER_COUNT];
+    uint8_t shows[RIDGE_LAYER_COUNT][4][RIDGE_MAX_LIP_PX + 2];
 } ridge_hot_t;
 
 static ridge_t* ridge;
+#if defined(ESP_PLATFORM)
+#include "esp_log.h"
+#include "esp_timer.h"
+static int64_t probe_paint_us, probe_commit_us, probe_all_us, probe_px, probe_spans, probe_calls;
+#define PROBE_BEGIN(n)     const int64_t probe_##n = esp_timer_get_time()
+#define PROBE_END(n, into) (into) += esp_timer_get_time() - probe_##n
+
+static void
+probe_report(void) {
+    if (++probe_calls % 256 == 0) {
+        ESP_LOGI("ridge_probe", "per frame: all %lld us paint %lld us commit %lld us px %lld spans %lld",
+                 probe_all_us / 256, probe_paint_us / 256, probe_commit_us / 256, probe_px / 256, probe_spans / 256);
+        probe_paint_us = probe_commit_us = probe_all_us = probe_px = probe_spans = 0;
+    }
+}
+#else
+#define PROBE_BEGIN(n)
+#define PROBE_END(n, into)
+static long probe_px, probe_spans;
+
+static void
+probe_report(void) {}
+#endif
 static ridge_hot_t* hot;
 static bool allocation_tried;
 
@@ -276,9 +300,10 @@ pixel_point(ridge_vector_t pose, int x, int y) {
     return (ridge_point_t){(x2 * pose.down_y) - (y2 * pose.down_x), (x2 * pose.down_x) + (y2 * pose.down_y)};
 }
 
-/* The curve column under `along`, and how far past it, out of 256. */
+/* The curve column under `along`, and how far past it, out of 32768. */
 typedef struct {
-    int column, frac;
+    int column;
+    int32_t frac;
 } curve_at_t;
 
 static inline __attribute__((always_inline)) curve_at_t
@@ -289,9 +314,9 @@ curve_at(int32_t along) {
         return (curve_at_t){0, 0};
     }
     if (column >= RIDGE_COLUMNS - 1) {
-        return (curve_at_t){RIDGE_COLUMNS - 2, 256};
+        return (curve_at_t){RIDGE_COLUMNS - 2, 32768};
     }
-    return (curve_at_t){column, (at >> 7) & 0xff};
+    return (curve_at_t){column, at & 0x7fff};
 }
 
 /* How far below `layer`'s curve, in whole pixels along gravity, a point
@@ -299,8 +324,9 @@ curve_at(int32_t along) {
 static inline __attribute__((always_inline)) int
 layer_depth(int layer, curve_at_t at, int32_t down) {
     const int16_t* const heights = hot->layers[layer];
-    const int curve_q4 = heights[at.column] + (((heights[at.column + 1] - heights[at.column]) * at.frac) >> 8);
-    return ((down >> 11) + (RIDGE_CURVE_VIEW_H * 8) - curve_q4) >> 4;
+    const int32_t curve =
+        (heights[at.column] * 2048) + (((heights[at.column + 1] - heights[at.column]) * at.frac) >> 4);
+    return (down + (RIDGE_CURVE_VIEW_H * 8 * 2048) - curve) >> 15;
 }
 
 static inline __attribute__((always_inline)) uint8_t
@@ -337,8 +363,45 @@ backdrop_pixel(ridge_point_t point, int32_t sky_depth, int x, int y) {
     return ridge->background_color;
 }
 
+/* Whether `layer` shows at a depth, for one scanline phase: index 0 above
+ * the curve, then the lip a pixel at a time, then the body. */
+static inline __attribute__((always_inline)) bool
+layer_shows(const uint8_t* shows, int depth) {
+    return shows[depth < 0 ? 0 : depth < lip_px ? depth + 1 : lip_px + 1];
+}
+
+static void
+paint_scanline_row(gfx_color_t* row, int y, int lo, int hi) {
+    const ridge_vector_t pose = ridge->pose_on_screen;
+    const uint8_t* const front = hot->shows[2][y & 3];
+    const uint8_t* const back1 = hot->shows[1][y & 3];
+    const uint8_t* const back0 = hot->shows[0][y & 3];
+    ridge_point_t point = pixel_point(pose, lo, y);
+    int32_t sky_depth = sky_depth2(lo, y);
+    const int32_t sky_step = 2 * ridge->gradient_pose.down_x;
+    for (int x = lo; x < hi; x++) {
+        const curve_at_t at = curve_at(point.along);
+        gfx_color_t color = ridge->background_color;
+        if (layer_shows(front, layer_depth(2, at, point.down))) {
+            color = sky_from_depth2(sky_depth);
+        } else if (layer_shows(back1, layer_depth(1, at, point.down))) {
+            color = ridge->back1_color;
+        } else if (layer_shows(back0, layer_depth(0, at, point.down))) {
+            color = ridge->back0_color;
+        }
+        row[x] = color;
+        point.along += 2 * pose.down_y;
+        point.down += 2 * pose.down_x;
+        sky_depth += sky_step;
+    }
+}
+
 static void
 paint_row_into(gfx_color_t* row, int y, int lo, int hi) {
+    if (ridge->scanline_dither) {
+        paint_scanline_row(row, y, lo, hi);
+        return;
+    }
     const ridge_vector_t pose = ridge->pose_on_screen;
     ridge_point_t point = pixel_point(pose, lo, y);
     int32_t sky_depth = sky_depth2(lo, y);
@@ -378,6 +441,8 @@ repaint_span(int y, int x0, int x1) {
     if (x0 < x1) {
         paint_row_into(hot->scratch_row, y, x0, x1);
         commit_row(hot->scratch_row, y, x0, x1);
+        probe_px += x1 - x0;
+        probe_spans++;
     }
 }
 
@@ -522,6 +587,8 @@ static void paint_all(void);
 
 static void
 repaint_changed(void) {
+    PROBE_BEGIN(all);
+    probe_report();
     const int steps = pose_steps_between(ridge->pose_step, ridge->shown_step);
     if (steps > TURN_REPAINT_STEPS) {
         paint_all();
@@ -533,6 +600,7 @@ repaint_changed(void) {
     memcpy(ridge->shown_layers, hot->layers, sizeof ridge->shown_layers);
     ridge->shown_step = ridge->pose_step;
     ridge->shown_pose = ridge->pose_on_screen;
+    PROBE_END(all, probe_all_us);
 }
 
 #define EDGE_FAR (INT64_C(1) << 40)
@@ -678,6 +746,14 @@ bake_what_is_tuned(void) {
         }
     }
     ridge->scanline_dither = (int)fill_pattern == (int)GFX_DITHER_SCANLINES4;
+    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+        for (int phase = 0; phase < 4; phase++) {
+            for (int index = 0; index <= lip_px + 1; index++) {
+                const uint8_t alpha = index == 0 ? 0 : layer_alpha(layer, index - 1);
+                hot->shows[layer][phase][index] = backdrop_dither_pick(0, phase, alpha);
+            }
+        }
+    }
     build_sky_gradient();
     ridge->tuned_at = TUNE_GENERATION(ridge);
 }
