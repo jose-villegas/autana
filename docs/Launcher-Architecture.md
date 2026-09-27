@@ -426,7 +426,7 @@ stateDiagram-v2
     Launcher : Launcher<br/>ui_launcher_frame()<br/>draws the app list
     ControlCenter : Control Center<br/>ui_control_center_frame()<br/>over the dimmed launcher
 
-    Launcher --> Running: tap an entry<br/><i>the app's enter()</i>
+    Launcher --> Running: tap an entry<br/><i>app arena emptied,<br/>then the app's enter()</i>
     Running --> Launcher: home swipe, PWR long-press<br/>or shell_request_exit()<br/><i>the app's exit()</i>
     Launcher --> ControlCenter: swipe in from<br/>the logical top
     ControlCenter --> Launcher: swipe in from<br/>the logical bottom
