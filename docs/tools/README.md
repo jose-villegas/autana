@@ -10,7 +10,7 @@ The rest of this index explains the repository's checks and tools in depth.
 | | |
 |---|---|
 | [Autana-CLI.md](Autana-CLI.md) | The `autana` terminal command: every command it takes, where it lives, and how it is put on the PATH. |
-| [Docs-Search.md](Docs-Search.md) | `autana docs`: answering a question from the documentation one section at a time, how it ranks, the optional local models, and the MCP server. |
+| [Docs-Search.md](Docs-Search.md) | `autana docs`: answering a question from the documentation one section at a time, how it ranks, and the optional local models. |
 | [Device-Lock.md](Device-Lock.md) | `scripts/device/`, the only code that opens the board's serial port: the lock, flashing and capturing under it, where captures land, and recovery. |
 | [Complexity-Gate.md](Complexity-Gate.md) | The cognitive-complexity ratchet: what it measures, the committed baseline, and when a score fails or only warns. |
 | [Doc-Drift.md](Doc-Drift.md) | Ranking documents for review by age and changed cited sources, and recording a review in the ledger. |
