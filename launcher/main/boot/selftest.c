@@ -24,6 +24,7 @@
 #include "unity_test_utils_memory.h"
 
 #include "suites.h"
+#include "timing.h"
 
 static const char* TAG = "selftest";
 
