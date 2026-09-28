@@ -393,9 +393,8 @@ class DeviceCommandOwnerWaitTests(unittest.TestCase):
 
 
 class WorktreeResolutionTests(unittest.TestCase):
-    """resolve_worktree() is autana's own version of
-    .dev/launcher/tools/build_flash_select.sh's create-if-missing lookup,
-    with no menu - the branch is given, not chosen."""
+    """resolve_worktree()'s create-if-missing lookup, with no menu - the
+    branch is given, not chosen."""
 
     def test_no_value_uses_this_worktree(self):
         with mock.patch.object(autana, "engine_worktree", return_value="C:/here"):

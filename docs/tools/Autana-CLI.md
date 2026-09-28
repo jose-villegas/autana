@@ -43,10 +43,8 @@ It proves the write, not the boot:
 `--worktree PATH` acts against that path directly; `--worktree BRANCH` finds
 the worktree already checked out for that branch, or creates one for it
 (local, else `origin/BRANCH`) under the primary checkout's
-`.claude/worktrees/` when none exists yet - the same resolution
-`.dev/launcher/tools/build_flash_select.sh` offers as a menu, without the
-menu. Omitted, these commands act on the worktree you are standing in, as
-always.
+`.claude/worktrees/` when none exists yet. Omitted, these commands act on
+the worktree you are standing in, as always.
 
 ## Tests
 

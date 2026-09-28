@@ -94,19 +94,16 @@ def worktree_list():
 
 
 def sanitize_branch_for_dirname(name):
-    """claude/foo-bar -> foo-bar; a/b/c -> a-b-c - matches
-    .dev/launcher/tools/build_flash_select.sh's own naming for a worktree
-    it creates."""
+    """claude/foo-bar -> foo-bar; a/b/c -> a-b-c: a predictable worktree
+    directory name for a branch, not a decorative one."""
     return name.removeprefix("claude/").replace("/", "-")
 
 
 def resolve_worktree(value):
-    """`--worktree`'s value, resolved the way
-    .dev/launcher/tools/build_flash_select.sh resolves its own menu answer,
-    minus the menu: this worktree when `value` is None, `value` itself when
-    it already looks like a worktree, else the worktree already checked out
-    for that branch, else a fresh one created under the primary checkout's
-    `.claude/worktrees/`."""
+    """`--worktree`'s value, with no menu: this worktree when `value` is
+    None, `value` itself when it already looks like a worktree, else the
+    worktree already checked out for that branch, else a fresh one created
+    under the primary checkout's `.claude/worktrees/`."""
     if value is None:
         return engine_worktree()
     candidate = Path(value)
