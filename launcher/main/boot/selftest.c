@@ -21,6 +21,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "unity.h"
+#include "unity_test_utils_memory.h"
 
 #include "suites.h"
 
@@ -33,13 +34,17 @@ __wrap_esp_system_console_put_char(char c) {
     }
 }
 
-/* Unity requires these once per binary. The suites manage their own fixtures,
- * since they all share this program. */
+/* Unity requires these once per binary. The runner owns the memory audit. */
 void
-setUp(void) {}
+setUp(void) {
+    unity_utils_record_free_mem();
+}
 
 void
-tearDown(void) {}
+tearDown(void) {
+    suite_run_test_cleanup();
+    unity_utils_evaluate_leaks();
+}
 
 int
 selftest_run(void) {
@@ -47,6 +52,7 @@ selftest_run(void) {
 
     ESP_LOGI(TAG, "running self test");
 
+    unity_utils_set_leak_level(0);
     UNITY_BEGIN();
 
     /* Every registered suite, portable and hardware alike. Which ones exist

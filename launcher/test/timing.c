@@ -25,6 +25,14 @@ suite_set_test_cleanup(void (*cleanup)(void)) {
     test_cleanup = cleanup;
 }
 
+void
+suite_run_test_cleanup(void) {
+    if (test_cleanup != NULL) {
+        test_cleanup();
+        test_cleanup = NULL;
+    }
+}
+
 #ifdef DEVICE_BUILD
 #include "esp_timer.h"
 #else
@@ -46,10 +54,6 @@ suite_set_test_cleanup(void (*cleanup)(void)) {
  * definition lives in Unity's own unity.c/UnityDefaultTestRun and is
  * untouched; this is only the prototype, hand-matched to it. */
 extern void UnityDefaultTestRun(void (*Func)(void), const char* FuncName, const int FuncLineNum);
-
-#ifdef HOST_HEAP_ARENA
-static int leaks;
-#endif
 
 #ifdef DEVICE_BUILD
 static void (*watched_test)(void);
@@ -73,13 +77,8 @@ void
 suite_run_test_timed(void (*func)(void), const char* name, int line) {
     test_cleanup = NULL;
 #ifdef HOST_HEAP_ARENA
-    /* Outside the timed window on both ends, same as the timer itself -
-     * this must never be what widens it. */
-    size_t blocks_before, bytes_before;
-    heap_arena_snapshot(&blocks_before, &bytes_before);
     heap_arena_reset_peak();
 #endif
-
 #ifdef DEVICE_BUILD
     const int64_t started = esp_timer_get_time();
 #else
@@ -95,29 +94,10 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
     UnityDefaultTestRun(func, name, line);
 #endif
 
-    if (test_cleanup != NULL) {
-        test_cleanup();
-        test_cleanup = NULL;
-    }
-
 #ifdef DEVICE_BUILD
     const int64_t elapsed_ms = (esp_timer_get_time() - started) / 1000;
 #else
     const long elapsed_ms = (clock() - started) * 1000L / CLOCKS_PER_SEC;
-#endif
-
-#ifdef HOST_HEAP_ARENA
-    /* A rise in outstanding blocks means the test freed fewer than it
-     * allocated. A fixture that asserts before freeing skips
-     * every earlier free() and starves every test that runs after it. Own greppable line, no
-     * consumer parses it today, so its shape is free to be whatever reads
-     * clearest. */
-    size_t blocks_after, bytes_after;
-    heap_arena_snapshot(&blocks_after, &bytes_after);
-    if (blocks_after > blocks_before) {
-        printf("LEAK test=%s blocks=%zu bytes=%zu\n", name, blocks_after - blocks_before, bytes_after - bytes_before);
-        leaks++;
-    }
 #endif
 
     /* Own sentinel line, same key=value shape as SELFTEST_COMPLETE - a new
@@ -139,15 +119,6 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
            heap_arena_peak_bytes()
 #endif
     );
-}
-
-int
-suite_leaks(void) {
-#ifdef HOST_HEAP_ARENA
-    return leaks;
-#else
-    return 0;
-#endif
 }
 
 void

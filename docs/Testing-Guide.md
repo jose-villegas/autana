@@ -131,7 +131,7 @@ never runs in a release image - only in a SELFTEST build, either one suite
 at a time via runsuite (seconds) or as a full boot-time run - see
 ["Recommended practice"](#recommended-practice) for how long that takes.
 
-### The host runner enforces two of the device's limits
+### The runners enforce the device's memory limits
 
 The host has megabytes of stack and gigabytes of heap; the board's actual
 main-task stack and internal-heap figures are what
@@ -155,10 +155,15 @@ each one cost a build-flash-capture cycle to find — twice over, for both:
   heap. First-fit with real coalescing, because the rule that bites is
   contiguity, not totals: the largest single request a device profile
   records (`DP_LARGEST_ALLOC_BYTES`) is tens of kilobytes, and it fails on a
-  heap with 50 KB free whose largest block is 38 KB. Blocks still
-  outstanding when a test ends print a `LEAK` line naming that test and fail
-  the host run — that is the assert-before-free pattern, which on device
-  leaks that block and starves every later test in the same boot.
+  heap with 50 KB free whose largest block is 38 KB.
+- **An allocation a test does not release.** The host runner wraps standard
+  allocation with Unity's memory checker, which starts in runner setup and
+  evaluates in runner teardown. An outstanding allocation fails its test.
+  The Linux sanitizer run also enables AddressSanitizer, which diagnoses
+  leaks, use-after-free, and bounds errors. The device runner records its
+  8-bit and 32-bit free heap before every test and requires both to return
+  to that value in teardown. A `MALLOC_CAP_*` failure means the test left a
+  smaller heap than it started with; release the allocation the test owns.
 
 Those numbers come from `launcher/tools/device/device_profiles/<chip>.sh`, selected
 by `$DEVICE_PROFILE` (default `esp32s3`), each carrying its own provenance.
@@ -567,7 +572,8 @@ it.
 ## Conventions
 
 **Suites do not own the runner.** No suite defines `setUp`/`tearDown` or calls
-`UNITY_BEGIN`/`UNITY_END`, because several share one binary. Each keeps a
+`UNITY_BEGIN`/`UNITY_END`, because several share one binary. The runners use
+their one setup/teardown pair for the memory audit. Each suite keeps a
 `fixture()` helper and calls it at the top of every test, so a test never
 inherits state from the one before it.
 

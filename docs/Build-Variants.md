@@ -91,7 +91,7 @@ file, so a performance capture does not pay for every other suite too.
 `CONFIG_LAUNCHER_SELFTEST_SCOPE_*` says **which**. Excluding a suite removes
 its `.text` *and* its `.bss`, which is what buys the run time back.
 
-The full diagnostics gate rejects a suite object whose writable static data
+The full self-test gate rejects a suite object whose writable static data
 exceeds `SUITE_STATIC_DATA_LIMIT` in
 `launcher/tools/quality/suite_static_data_gate.py`. Suite tables are `static
 const`; mutable test buffers allocate for a test and release before the suite

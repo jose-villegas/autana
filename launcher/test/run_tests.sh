@@ -68,6 +68,9 @@ CFLAGS="$BASE_CFLAGS"
 if [ "${HOST_SANITIZE:-}" = undefined ]; then
     # Instrumentation widens the ranges that format-truncation reasons about.
     CFLAGS="$CFLAGS -fsanitize=undefined -fsanitize-recover=undefined -Wno-format-truncation"
+    case "$(uname -s)" in
+        Linux) CFLAGS="$CFLAGS -fsanitize=address -fno-omit-frame-pointer" ;;
+    esac
 fi
 
 # --- the device's heap, on this machine ------------------------------------
@@ -90,6 +93,7 @@ $TEST_DIR/host_main.c
 $TEST_DIR/suites.c
 $TEST_DIR/timing.c
 $TEST_DIR/heap_arena.c
+$TEST_DIR/framework/unity_memory.c
 $MAIN_DIR/app_arena.c
 $MAIN_DIR/app_registry.c
 $MAIN_DIR/input/touch_fsm.c
@@ -175,8 +179,8 @@ case "${1:-}" in
             -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
             -I "$TEST_DIR/../components/microui/include" \
             -I "$TEST_DIR/../components/small3dlib/include" \
-            -I "$TEST_DIR/../tools/gen" -include "$TEST_DIR/timing.h" \
-            $HEAP_ARENA_DEFINES
+            -I "$TEST_DIR/../tools/gen" $HEAP_ARENA_DEFINES \
+            -include "$TEST_DIR/timing.h"
         exit 0
         ;;
 esac
@@ -273,10 +277,9 @@ SOURCES_RSP="$BUILD_DIR/sources.rsp"
     sed -e '/^$/d' -e 's/[\\"]/\\&/g' -e 's/.*/"&"/' >"$SOURCES_RSP"
 
 # shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
+"$CC_BIN" $CFLAGS $HEAP_ARENA_DEFINES -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
     -I "$TEST_DIR/../components/microui/include" \
     -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools/gen" -include "$TEST_DIR/timing.h" \
-    $HEAP_ARENA_DEFINES \
     "@$SOURCES_RSP" "$UNITY_OBJ" -o "$OUT" \
     -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm
 
@@ -341,7 +344,7 @@ for f in $SU_SOURCES; do
     n=$((n + 1))
     base=$(basename "$f" .c)
     # shellcheck disable=SC2086
-    "$CC_BIN" $BASE_CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
+    "$CC_BIN" $BASE_CFLAGS $HEAP_ARENA_DEFINES -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
         -I "$TEST_DIR/../components/microui/include" \
         -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools/gen" -include "$TEST_DIR/timing.h" \
         -fstack-usage -c "$f" -o "$SU_DIR/$(printf '%02d' "$n")_$base.o" &

@@ -14,13 +14,17 @@
 #include "suites.h"
 #include "unity.h"
 
-/* Unity requires these once per binary. Suites manage their own fixtures,
- * because several of them share this program. */
+/* Unity requires these once per binary. The runner owns the memory audit. */
 void
-setUp(void) {}
+setUp(void) {
+    UnityMalloc_StartTest();
+}
 
 void
-tearDown(void) {}
+tearDown(void) {
+    suite_run_test_cleanup();
+    UnityMalloc_EndTest();
+}
 
 int
 main(void) {
@@ -35,10 +39,6 @@ main(void) {
     if (suites_dropped() > 0) {
         printf("FAIL: %d suite(s) dropped; raise SUITE_MAX in suites.h\n", suites_dropped());
         failures += suites_dropped();
-    }
-    if (suite_leaks() > 0) {
-        printf("FAIL: %d test(s) leaked arena blocks\n", suite_leaks());
-        failures += suite_leaks();
     }
     return failures;
 }

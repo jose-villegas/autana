@@ -17,6 +17,10 @@
  */
 #pragma once
 
+#ifdef HOST_HEAP_ARENA
+#include "unity_memory.h"
+#endif
+
 #define RUN_TEST(func) suite_run_test_timed(func, #func, __LINE__)
 
 /* Runs the test exactly as RUN_TEST always has (same file:line:name:PASS
@@ -24,5 +28,4 @@
  * long it took. */
 void suite_run_test_timed(void (*func)(void), const char* name, int line);
 void suite_set_test_cleanup(void (*cleanup)(void));
-
-int suite_leaks(void);
+void suite_run_test_cleanup(void);
