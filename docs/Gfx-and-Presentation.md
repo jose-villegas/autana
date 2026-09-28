@@ -165,11 +165,11 @@ The wait is mandatory: DMA is still reading the buffer until it returns.
 ## The band ring
 
 A picture is either **persistent** - a framebuffer or index image read by gfx
-on core 1 after `frame()` - or **transient** - an app's `draw_band()` callback,
+on core 1 after `frame()` - or **transient** - an app's `draw_band` callback,
 called for each dirty band. gfx owns every send. A transient app requests
-`GFX_LAYOUT_BANDS` in `enter()` and supplies `draw_band()`; gfx calls it only
+`GFX_LAYOUT_BANDS` in `enter()` and supplies `draw_band`; gfx calls it only
 for dirty rows, replays the UI over those rows, then submits the finished band.
-An app without `draw_band()` keeps its persistent presentation path in
+An app without `draw_band` keeps its persistent presentation path in
 `GFX_LAYOUT_FULL_FB` or `GFX_LAYOUT_INDEXED`.
 
 Two slots, so band k+1 renders while band k is on the wire:
@@ -178,7 +178,7 @@ Two slots, so band k+1 renders while band k is on the wire:
 sequenceDiagram
     participant S as shell
     participant G as gfx
-    participant A as app draw_band()
+    participant A as app draw_band callback
     participant S0 as slot 0
     participant S1 as slot 1
     participant Q as QSPI
