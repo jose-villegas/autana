@@ -1520,27 +1520,44 @@ class BoardChoiceTests(Store):
             self.assertEqual(self.main("take-back")[0], 0)
         self.assertIsNone(self.store.status(BOARD_A)["human"])
 
-    def test_a_board_stays_known_once_its_lock_is_fully_released(self):
-        # The idle state - no lock, no reservation, no waiter - is the common
-        # one, and the one a dropped-USB `hand` needs: nothing left behind by
-        # an ordinary flash should erase the board from the store's memory.
+    def test_ordinary_commands_never_fall_back_to_a_merely_seen_board(self):
+        # boards() - the fallback every command but hand/take-back uses - has
+        # to mean lock/reservation/waiter only: a seen-only board still
+        # resolving would send a plain `send`/`flash` into a 600 s port wait
+        # instead of failing at once.
         with plugged(usb(BOARD_A, "COM5")):
-            held = self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
-            self.store.release(BOARD_A, held["token"])
-            self.assertEqual(device.board_for_lock(self.store), BOARD_A)
-        with plugged():
-            self.assertEqual(device.board_for_lock(self.store), BOARD_A)
+            board = device.board_for_lock(self.store)
+            held = self.store.acquire(board, "alice", "flash", kind="flash")
+            self.store.release(board, held["token"])
+        with plugged(), self.assertRaises(device.NoBoard):
+            device.board_for_lock(self.store)
 
-    def test_hand_off_still_works_once_the_boards_lock_is_fully_released(self):
+    def test_status_does_not_list_a_seen_only_board_forever(self):
         with plugged(usb(BOARD_A, "COM5")):
             board = device.board_for_lock(self.store)
             held = self.store.acquire(board, "alice", "flash", kind="flash")
             self.store.release(board, held["token"])
         with plugged():
+            self.assertEqual(device.board_statuses(self.store), [])
+
+    def test_hand_off_still_reaches_a_board_merely_seen_before(self):
+        # The idle state - no lock, no reservation, no waiter - is the common
+        # one, and the one a dropped-USB `hand`/`take-back` needs: nothing
+        # left behind by an ordinary flash should erase the board from
+        # hand-to-human's own memory of it.
+        with plugged(usb(BOARD_A, "COM5")):
+            board = device.board_for_lock(self.store)
+            held = self.store.acquire(board, "alice", "flash", kind="flash")
+            self.store.release(board, held["token"])
+        with plugged():
+            self.assertEqual(device.board_for_lock(self.store, remembered=True), BOARD_A)
             code, errors = self.main("--owner", "agent", "hand-to-human",
                                      "--note", "power cycle it")
         self.assertEqual((code, errors), (0, ""))
         self.assertEqual(self.store.status(BOARD_A)["human"]["note"], "power cycle it")
+        with plugged():
+            self.assertEqual(self.main("take-back")[0], 0)
+        self.assertIsNone(self.store.status(BOARD_A)["human"])
 
     def test_with_several_boards_known_and_none_plugged_the_choice_fails(self):
         self.store.set_human(BOARD_A, "maintainer", "bench")

@@ -121,13 +121,6 @@ class LockStore:
     def seen_path(self, board):
         return self.root / (self.stem(board) + ".seen.json")
 
-    def note_seen(self, board):
-        """Remembers `board` past its own lock, reservation or waiter - all
-        of which vanish once released - so boards()/callers can still find a
-        board that is idle (the common state) and has since dropped off USB,
-        the case `autana lock hand` exists for."""
-        self.write_json(self.seen_path(board), {"board": board, "seen_at": self.now()})
-
     def read_json(self, path):
         # A file mid-replace on Windows refuses to open with PermissionError.
         for _ in range(250):
@@ -155,9 +148,24 @@ class LockStore:
 
     def boards(self):
         """Every board a lock, reservation or waiter in this root names."""
-        paths = list(self.root.glob("*.json")) + list(self.root.glob("*.queue/*.json"))
+        paths = ([path for path in self.root.glob("*.json") if not path.name.endswith(".seen.json")]
+                 + list(self.root.glob("*.queue/*.json")))
         return sorted({record["board"] for record in map(self.read_json, paths)
                        if isinstance(record, dict) and isinstance(record.get("board"), str)})
+
+    def seen_boards(self):
+        """Every board this machine has ever found on USB, kept past its own
+        lock, reservation or waiter - only for hand-to-human/take-back to
+        recall a board that is now idle and unplugged."""
+        return sorted({record["board"] for record in map(self.read_json, self.root.glob("*.seen.json"))
+                       if isinstance(record, dict) and isinstance(record.get("board"), str)})
+
+    def note_seen(self, board):
+        """Records a board found on USB, once - nothing reads this again
+        until seen_boards() needs it, so a repeat sighting is a no-op."""
+        path = self.seen_path(board)
+        if not self.read_json(path):
+            self.write_json(path, {"board": board})
 
     @contextlib.contextmanager
     def guard(self, board):
