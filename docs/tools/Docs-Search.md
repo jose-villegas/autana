@@ -15,10 +15,7 @@ autana docs --ask can an app call vTaskDelay inside frame     # a written answer
 ```
 
 `python scripts/docs/docs_search.py` takes the same arguments, plus `--json`,
-`--top N`, `--budget CHARS` and `--lexical`. `scripts/docs/docs_mcp.py` serves
-the same search over the Model Context Protocol, and `.mcp.json` registers it,
-so an editor that speaks MCP gets three tools: `docs_search`, `docs_section`
-and `docs_outline`.
+`--top N`, `--budget CHARS` and `--lexical`.
 
 ## What it reads
 
