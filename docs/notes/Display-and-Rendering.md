@@ -326,13 +326,13 @@ bounce slot - a disposable copy, nothing to restore - and the same clean
 resend applies, skipped for a row that is dirty again since that row goes out
 whole anyway.
 
-The app-driven band ring feeds the same tracker through `gfx_mark_dirty()`,
-so `gfx_band_submit()` draws into the band about to be sent: cyan around the
-band for the panel-grid layer, green around each marked leaf for the leaf
+The band ring feeds the same tracker through `gfx_mark_dirty()`. The app's
+`draw_band` fills the band about to be sent: cyan around the band for the
+panel-grid layer, green around each marked leaf for the leaf
 layer (`GFX_BAND_HEIGHT` is a multiple of `LEAF_H`, so a leaf never straddles
 two bands). gfx holds no copy of a band to resend, so the clean-up runs
-through the app: `gfx_band_dirty()` reports a band that was bordered last
-frame as dirty once more, and that submit goes out bare. `gfx_band_next()`
+through the app's `draw_band`: `gfx_band_dirty()` reports a band that was
+bordered last frame as dirty once more, and that send goes out bare. gfx
 resets every row's cell boxes and leaf bits at the end of the frame, the
 same reset a full-framebuffer present gives each row it sends.
 

@@ -66,7 +66,7 @@ board-free preview of its drawing, declare a scene with the
 | `name`, `summary` | yes | - | launcher list text; `name` is also the sort key |
 | `enter()` | yes | once, on launch | reset state, take memory from the app arena, `gfx_mode_enter()`. May have run before. |
 | `frame(dt_ms, input)` | yes | every pass | draw and return. `dt_ms` is clamped to `FRAME_DT_MAX_MS` (250 ms). |
-| `draw_band(row0, row1, target)` | no | each dirty transient band | regenerate exactly `[row0, row1)` after `frame()`; gfx replays UI and sends it. |
+| `draw_band(row0, row1, target)` | no | each dirty transient band | required with `GFX_LAYOUT_BANDS` (gfx asserts it); after `frame()`, fill full-width rows `[row0, row1)` of `target`, row0 first. gfx replays the UI over them and sends the band. |
 | `exit()` | yes | once, on leave | release what `enter()` acquired, `gfx_mode_exit()` included. Arena memory needs nothing: the shell empties the arena right after `exit()`. |
 | `update(dt_ms, input)` | no | every pass, before `frame()` | state only - **no `gfx_*`, no framebuffer**; a dev build asserts it |
 | `invalidate()` | no | once per full-redraw request, before the next `frame()` | reset a draw cache the app keeps beyond the framebuffer |
