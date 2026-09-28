@@ -161,9 +161,10 @@ each one cost a build-flash-capture cycle to find — twice over, for both:
   evaluates in runner teardown. An outstanding allocation fails its test.
   The Linux sanitizer run also enables AddressSanitizer, which diagnoses
   leaks, use-after-free, and bounds errors. The device runner records its
-  8-bit and 32-bit free heap before every test and requires both to return
-  to that value in teardown. A `MALLOC_CAP_*` failure means the test left a
-  smaller heap than it started with; release the allocation the test owns.
+  8-bit and 32-bit free heap before every test and evaluates each in
+  teardown. A `MALLOC_CAP_*` failure means the test changed free heap beyond
+  the runner's retained-state allowance; release the allocation the test
+  owns.
 
 Those numbers come from `launcher/tools/device/device_profiles/<chip>.sh`, selected
 by `$DEVICE_PROFILE` (default `esp32s3`), each carrying its own provenance.

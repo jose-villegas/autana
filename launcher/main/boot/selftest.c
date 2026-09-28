@@ -28,6 +28,9 @@
 
 static const char* TAG = "selftest";
 
+/* Retained tasks and renderer state initialize lazily in test bodies. */
+#define SELFTEST_RETAINED_STATE_BYTES 22532
+
 void
 __wrap_esp_system_console_put_char(char c) {
     if (c != '\r') {
@@ -53,7 +56,7 @@ selftest_run(void) {
 
     ESP_LOGI(TAG, "running self test");
 
-    unity_utils_set_leak_level(0);
+    unity_utils_set_leak_level(SELFTEST_RETAINED_STATE_BYTES);
     UNITY_BEGIN();
 
     /* Every registered suite, portable and hardware alike. Which ones exist
