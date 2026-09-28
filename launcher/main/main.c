@@ -295,9 +295,8 @@ draw_home_hint(gesture_edge_t edge) {
     gfx_fill_rect(x, y, w, h, gfx_rgb(HOME_HINT_RGB));
 }
 
-/* Band mode (gfx.h) has no framebuffer for draw_home_hint() to write into,
- * and its whole band loop runs inside frame() with no chance to draw
- * afterward - see step_app(). Queuing the hint before frame() runs lets
+/* Band mode (gfx.h) has no framebuffer for draw_home_hint() to write into.
+ * Its loop runs after frame(), so queuing the hint before frame() lets
  * whichever ui_end_for_bands() call happens this frame (fps counter, BOOT
  * menu, whichever is showing) bin it alongside its own commands. */
 static void
@@ -350,6 +349,78 @@ shell_request_exit(void) {
 }
 
 static void present_unless_deferred(const app_t* current);
+
+static void
+band_frame_begin(void* context) {
+    (void)context;
+    gfx_band_frame_begin();
+}
+
+static bool
+band_next(void* context) {
+    (void)context;
+    return gfx_band_next();
+}
+
+static bool
+band_dirty(void* context) {
+    (void)context;
+    return gfx_band_dirty();
+}
+
+static int
+band_row0(void* context) {
+    (void)context;
+    return gfx_band_row0();
+}
+
+static int
+band_height(void* context) {
+    (void)context;
+    return gfx_band_height();
+}
+
+static gfx_color_t*
+band_buffer(void* context) {
+    (void)context;
+    return gfx_band_buffer();
+}
+
+static void
+band_replay(void* context, int row0, int row1) {
+    (void)context;
+    ui_replay_band(row0, row1);
+}
+
+static void
+band_submit(void* context) {
+    (void)context;
+    gfx_band_submit();
+}
+
+static void
+band_skip(void* context) {
+    (void)context;
+    gfx_band_skip();
+}
+
+static const gfx_band_run_t band_run = {
+    .frame_begin = band_frame_begin,
+    .next = band_next,
+    .dirty = band_dirty,
+    .row0 = band_row0,
+    .height = band_height,
+    .buffer = band_buffer,
+    .replay = band_replay,
+    .submit = band_submit,
+    .skip = band_skip,
+};
+
+static bool
+app_band_active(const app_t* app) {
+    const gfx_mode_t* mode = gfx_mode_current();
+    return app->draw_band != NULL && mode->layout == GFX_LAYOUT_BANDS && mode->pixfmt == GFX_PIXFMT_RGB565;
+}
 
 /* The app half of gfx_request_full_redraw() (gfx.h): an app's own cache
  * beyond the framebuffer, if it keeps one, or the launcher's ui.c canvas
@@ -495,6 +566,15 @@ step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, u
  * present_unless_deferred() next pass. */
 static void
 step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
+    if (app_band_active(current)) {
+        if (current->update != NULL && frame_ready) {
+            current->update(dt_ms, input);
+        }
+        current->frame(dt_ms, input);
+        gfx_band_run(&band_run, NULL, current->draw_band);
+        frame_ready = true;
+        return;
+    }
     if (current->update == NULL) {
         current->frame(dt_ms, input);
         return;
@@ -541,10 +621,9 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
         return;
     }
 
-    /* Band mode's whole band loop runs inside frame(), with no chance to
-     * draw anything once it returns - see queue_home_hint()'s own comment.
-     * Queued before frame() runs; the trailing draw_home_hint() below
-     * covers every other app unchanged. */
+    /* The band loop follows frame(), so queue the hint before the app builds
+     * the UI commands it will replay. The trailing draw_home_hint() covers
+     * every full-frame app unchanged. */
     if ((*current)->home_gesture && gfx_mode_current()->layout == GFX_LAYOUT_BANDS) {
         queue_home_hint(exit_edge);
     }
@@ -1003,7 +1082,7 @@ run_dev_frame_extras(input_t* input, const app_t* current) {
  * synchronously, exactly as before. */
 static void
 present_unless_deferred(const app_t* current) {
-    if (current == NULL || current->update == NULL) {
+    if (current == NULL || (current->update == NULL && !app_band_active(current))) {
         FRAME_COST_BEGIN(began);
         gfx_present();
         FRAME_COST_END(began, "present");

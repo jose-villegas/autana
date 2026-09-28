@@ -16,6 +16,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "gfx/gfx_band_run.h"
 #include "input/input.h"
 
 /* An app's own console command - docs/tools/Autana-CLI.md's "Adding a
@@ -59,6 +60,10 @@ typedef struct app {
      * `dt_ms` is the time since the previous frame, for animation that should
      * not depend on framerate. */
     void (*frame)(uint32_t dt_ms, const input_t* input);
+
+    /* Optional. An app that entered RGB565 band mode supplies the rows for
+     * each dirty band; gfx replays UI commands and sends the finished band. */
+    gfx_band_draw_fn draw_band;
 
     /* Optional, NULL unless an app sets it. When present, the shell overlaps
      * it with sending the PREVIOUS frame() call's output on core 1

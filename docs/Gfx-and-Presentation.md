@@ -28,7 +28,7 @@ flowchart TB
     DT --> PT
     PT -->|"copy"| BNC["strip_bounce / gather_buf<br/>internal DMA RAM"]
     BNC -->|"QSPI DMA"| PANEL["panel GRAM"]
-    BR -->|"QSPI DMA, from frame()"| PANEL
+    BR -->|"QSPI DMA, from shell loop"| PANEL
 ```
 
 Exactly one target is live at a time. Entering a band or indexed mode **frees
@@ -45,7 +45,7 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 | Request | the default | `GFX_LAYOUT_BANDS` | `GFX_LAYOUT_BANDS` + `GFX_PIXFMT_INDEXED8` |
 | App writes | pixels, anywhere | pixels, one band at a time | palette indices, `gfx_indexed_image()` |
 | Buffer | 322 KiB, PSRAM | 2 x `GFX_BAND_HEIGHT` rows, DMA RAM | grid_w x grid_h bytes, internal RAM |
-| Who sends | present task | the app's own loop, inside `frame()` | present task |
+| Who sends | present task | gfx, from the shell's frame loop | present task |
 | Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole |
 | Content kept between frames | yes | **no** - a band is gone once sent | yes |
 | For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette |
@@ -164,36 +164,27 @@ The wait is mandatory: DMA is still reading the buffer until it returns.
 
 ## The band ring
 
-The app drives the send itself, inside `frame()`:
-
-```c
-gfx_band_frame_begin();
-while (gfx_band_next()) {
-    if (!gfx_band_dirty()) {
-        gfx_band_skip();            /* panel still shows it */
-        continue;
-    }
-    /* draw this band into gfx_band_buffer(); gfx_* calls are translated */
-    gfx_band_submit();
-}
-```
+An app opts in by requesting `GFX_LAYOUT_BANDS` in `enter()` and supplying
+`app_t.draw_band()`. The shell asks gfx for each band, calls the app only for
+dirty rows, replays the UI over those rows, then submits the finished band.
+An app without `draw_band()` keeps its existing presentation path.
 
 Two slots, so band k+1 renders while band k is on the wire:
 
 ```mermaid
 sequenceDiagram
-    participant A as app frame()
+    participant S as shell
+    participant A as app draw_band()
     participant S0 as slot 0
     participant S1 as slot 1
     participant Q as QSPI
-    A->>S0: render band 0
-    A->>Q: submit band 0
-    A->>S1: render band 1
-    Note over A,Q: wait for band 0 to land
-    A->>Q: submit band 1
-    A->>S0: render band 2
-    Note over A,Q: wait for band 1 to land
-    A->>Q: submit band 2
+    S->>A: draw band 0
+    A->>S0: fill rows
+    S->>Q: replay UI, submit band 0
+    S->>A: draw band 1
+    A->>S1: fill rows
+    Note over S,Q: wait for band 0 to land
+    S->>Q: replay UI, submit band 1
 ```
 
 - `gfx_band_submit()` waits only for the *previous* band, never the one it
@@ -201,7 +192,7 @@ sequenceDiagram
 - The ring state machine is `gfx_band.h`, pure and host-tested.
 - The first frame after `gfx_mode_enter()`, and any frame after
   `gfx_invalidate()`, forces every band.
-- A UI over a band renderer is built once and replayed per band:
+- A UI over a band renderer is built once and replayed per dirty band:
   `ui_end_for_bands()` bins the command list by rows, `ui_replay_band()`
   draws a band's share. The shell queues its home hint with
   `ui_queue_band_overlay_rect()` before `frame()`, since nothing can draw
