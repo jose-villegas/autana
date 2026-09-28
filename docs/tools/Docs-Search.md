@@ -33,9 +33,9 @@ every run, so it is never stale; an edit is searchable at once.
 
 `AUTANA_DOCS_EXTRA` lets notes kept outside the tracked tree join the index.
 Entries are separated by `;` on Windows and `:` elsewhere, each relative to
-the checkout unless absolute. A folder that is its own git repository gives
-what that repository tracks or would track; any other folder gives every
-Markdown file under it. A named folder's own `eval_questions.tsv` joins
+the checkout unless absolute. A folder inside a git repository other than
+this checkout gives the Markdown that repository tracks or would track
+there; any other folder gives every Markdown file under it. A named folder's own `eval_questions.tsv` joins
 `--eval`, its rows citing documents by the path search shows for them.
 
 ## How it ranks

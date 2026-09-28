@@ -226,7 +226,7 @@ class Extra(unittest.TestCase):
         self.assertEqual(self.paths(), {"docs/Flashing.md"})
 
     def test_a_named_folder_and_file_are_read_under_their_checkout_paths(self):
-        os.environ[docs_search.EXTRA_ENV] = os.pathsep.join(["notes", "Extra.md"])
+        os.environ[docs_search.EXTRA_ENV] = os.pathsep.join([" notes ", "Extra.md "])
         self.assertEqual(self.paths(), {"docs/Flashing.md", "notes/Private.md", "Extra.md"})
 
     def test_an_extra_document_ranks_below_a_document_of_record(self):
