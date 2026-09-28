@@ -38,7 +38,7 @@ fixture(void) {
 static band_probe_t*
 probe_new(void) {
     const gfx_mode_t* const mode = gfx_mode_current();
-    const int capacity = mode->height / mode->band_height;
+    const int capacity = mode->layout == GFX_LAYOUT_BANDS ? mode->height / mode->band_height : 0;
     band_probe_t* const state = calloc(1, sizeof(*state));
     TEST_ASSERT_NOT_NULL(state);
     state->row0 = calloc((size_t)capacity, sizeof(*state->row0));

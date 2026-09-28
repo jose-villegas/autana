@@ -669,7 +669,8 @@ shell_test_band_update_frame_and_present(void) {
 
     const int passes = FRAME_WATCH_WARMUP + 1;
     const gfx_mode_t* const mode = gfx_mode_current();
-    const bool stepped = shell_test_updates == passes && shell_test_frames == passes + 1
+    const bool stepped = mode->layout == GFX_LAYOUT_BANDS && shell_test_updates == passes
+                         && shell_test_frames == passes + 1
                          && shell_test_band_draws == (passes + 1) * (mode->height / mode->band_height);
     if (current != NULL) {
         exit_app(&current);
