@@ -583,23 +583,36 @@ def suite_list(args):
     return 0
 
 
-SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [--runs N] [--flash] [--perf-scope] "
-              "[--verbose] [--owner NAME] [--wait SECONDS] [--purpose TEXT] [--out PATH] "
-              "[--worktree PATH|BRANCH] [--expect-build-id ID] | autana suite list [text]")
+SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [seconds] [--runs N] [--flash] "
+              "[--perf-scope] [--verbose] [--owner NAME] [--wait SECONDS] [--purpose TEXT] "
+              "[--out PATH] [--worktree PATH|BRANCH] [--expect-build-id ID] | "
+              "autana suite list [text]")
 
 
 def suite(args):
     """One or more registered suites, captured under one lock - against the
-    image already on the board, or, with `--flash`, built and flashed first
-    (what `batch` once did on its own). The name is each suite's own
-    function, as SUITE_REGISTER() in its source spells it."""
+    image already on the board, or, with `--flash`, built and flashed first.
+    The name is each suite's own function, as SUITE_REGISTER() in its source
+    spells it. `seconds` caps the whole run, 600 when omitted - the same
+    idea as `selftest`'s own trailing `seconds`."""
     if not args:
         sys.exit(SUITE_USAGE)
     if args[0] == "list":
         return suite_list(args[1:])
-    names, rest = [], list(args)
+    positional, rest = [], list(args)
     while rest and not rest[0].startswith("--"):
-        names.append(rest.pop(0))
+        positional.append(rest.pop(0))
+    if not positional:
+        sys.exit(SUITE_USAGE)
+    seconds = 600.0
+    if len(positional) > 1:
+        try:
+            seconds = float(positional[-1])
+        except ValueError:
+            pass
+        else:
+            positional.pop()
+    names = positional
     if not names:
         sys.exit(SUITE_USAGE)
     flash = "--flash" in rest
@@ -627,6 +640,7 @@ def suite(args):
     print(f"autana suite: {', '.join(names)} x{runs}" + (" (flash)" if flash else ""), flush=True)
     command = device_command(
         "batch", "--worktree", worktree, "--variant", "diag", "--runs", runs,
+        "--max-seconds", str(seconds),
         "--purpose", purpose or "autana suite", owner_name=owner_name, wait=wait,
     )
     if not flash:
@@ -1175,7 +1189,7 @@ COMMAND_GROUPS = (
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
-            ("suite <name>... [--runs N] [--flash] [--verbose]",
+            ("suite <name>... [seconds] [--runs N] [--flash] [--verbose]",
              "run suites under one lock; --flash builds and flashes first"),
             ("suite list [text] [--json]", "the suites this worktree registers"))),
         Command("selftest", selftest, (

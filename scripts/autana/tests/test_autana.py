@@ -1195,6 +1195,43 @@ class SuiteFlashAndRunsTests(unittest.TestCase):
             autana.suite(["run_gfx_suite", "--bogus"])
 
 
+class SuiteSecondsTests(unittest.TestCase):
+    """`suite`'s own per-call timeout, restored - the old `suite <name>
+    [seconds]` (600 s default), forwarded as device.py batch's --max-seconds
+    bound, the same idea as `selftest [seconds]`."""
+
+    def test_default_max_seconds_is_600(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--max-seconds") + 1], "600.0")
+
+    def test_a_trailing_seconds_argument_is_forwarded(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite", "120"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--max-seconds") + 1], "120.0")
+        self.assertEqual(command.count("--suite"), 1)
+
+    def test_seconds_after_several_suite_names(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite", "run_sand_perf_suite", "45"])
+        command = called.call_args[0][0]
+        self.assertEqual(command.count("--suite"), 2)
+        self.assertEqual(command[command.index("--max-seconds") + 1], "45.0")
+
+    def test_seconds_survives_alongside_flash_and_runs(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite", "90", "--flash", "--runs", "2"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--max-seconds") + 1], "90.0")
+        self.assertEqual(command[command.index("--runs") + 1], "2")
+
+
 class BatchAliasTests(unittest.TestCase):
     """`autana batch` is the old spelling of `suite ... --flash`; it must
     keep working and say so once, to stderr, before running the new form."""
