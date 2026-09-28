@@ -246,10 +246,11 @@ static void yours_exit(void) {
 ```
 
 The arena is PSRAM: right for large buffers, wrong for a small hot table
-that wants internal RAM. An app takes internal memory in `enter()` and frees
-it in `exit()`, including whatever a failed `enter()` had already taken. A
-development build logs `App <name> kept <n> internal bytes (other tasks can move this)`
-when the internal heap has less free after `exit()` than it had before `enter()`.
+that wants internal RAM. An app frees in `exit()` everything it took from the
+heap in `enter()`, including whatever a failed `enter()` had already taken;
+bulk buffers come from the arena. A development build logs
+`App <name> kept <n> <heap> heap bytes (other tasks can move this)` when either
+the internal or 8-bit heap has less free after `exit()` than it had before `enter()`.
 
 ### What the shell resets for you
 
