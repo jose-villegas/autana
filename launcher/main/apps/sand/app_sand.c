@@ -749,11 +749,6 @@ sand_app_enter_running_for_test(void) {
     return previous_mode;
 }
 
-size_t
-sand_app_grid_bytes_for_test(void) {
-    return (size_t)grid_w * grid_h;
-}
-
 void
 sand_app_restore_colour_mode_for_test(int mode) {
     color_mode = (sand_color_mode_t)mode;
